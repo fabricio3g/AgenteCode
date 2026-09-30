@@ -1676,7 +1676,9 @@
       "thinking": "Réflexion…",
       "thoughtFor": "A réfléchi {s} s",
       "thought": "Raisonnement"
-    }
+    },
+    "branchFromHere": "Bifurquer à partir d'ici",
+    "branchTitle": "{title} · branche"
   },
   "titlebar": {
     "hideSidebar": "Masquer la barre latérale",
@@ -1689,5 +1691,19 @@
     "minimize": "Réduire",
     "maximize": "Agrandir",
     "restore": "Restaurer"
+  },
+  "roleplay": {
+    "regenerateEarlier": {
+      "title": "Régénérer ce tour ?",
+      "message": "Les {n} messages suivants seront supprimés. Utilisez « Bifurquer à partir d'ici » d'abord pour les garder.",
+      "confirm": "Régénérer"
+    },
+    "newDirection": "Nouvelle direction",
+    "prompt": "Prompt",
+    "outcome": {
+      "success": "Réussite",
+      "cost": "Réussite avec un prix",
+      "setback": "Revers"
+    }
   }
 }

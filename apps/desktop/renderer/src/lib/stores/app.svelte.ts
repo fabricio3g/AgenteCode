@@ -22,6 +22,9 @@ import { browserPanelStore } from '$lib/stores/browser-panel.svelte';
 import { modelsStore } from '$lib/stores/models.svelte';
 import { ttsStore } from '$lib/stores/tts.svelte';
 import { toastStore } from '$lib/stores/toast.svelte';
+import { confirmStore } from '$lib/stores/confirm.svelte';
+import { get } from 'svelte/store';
+import { _ as translate } from 'svelte-i18n';
 import type { CompletionResult, RequestMessage } from '$lib/services/chat-api';
 import { completeAssistantReply, detectToolSupport, fetchModels, fetchReasoningCapabilities, hasConfiguredVisionModel, loadChatConfig, reasoningRouteIdentity, streamAssistantReply } from '$lib/services/chat-api';
 import { loadChatState, saveChatState, saveAppConfig, saveChatStateToDb, loadChatStateFromDb, deleteChatFromDb } from '$lib/utils/storage';
@@ -1454,7 +1457,6 @@ class AppStore {
     }
 
     const message = chat.messages[index];
-    if (chat.contextMode === 'roleplay') this.preserveRoleplayBranch(chat, index + 1);
     if (message.role === 'user') {
       message.content = nextContent;
       chat.messages = chat.messages.slice(0, index + 1);
@@ -1499,7 +1501,6 @@ class AppStore {
     if (!chat) return;
     const index = chat.messages.findIndex((entry) => entry.id === messageId);
     if (index < 0) return;
-    if (chat.contextMode === 'roleplay') this.preserveRoleplayBranch(chat, index + 1);
     chat.messages = chat.messages.filter((entry) => entry.id !== messageId);
     chat.updatedAt = Date.now();
     if (this.editingMessageId === messageId) {
@@ -2680,7 +2681,19 @@ class AppStore {
       activeProvider,
       localBusyActionText: 'retrying here'
     })) return;
-    if (chat.contextMode === 'roleplay') this.preserveRoleplayBranch(chat, index + 1);
+    // An earlier Roleplay beat can't be rewritten under the turns that followed it.
+    const later = chat.messages.length - index - 1;
+    if (chat.contextMode === 'roleplay' && later > 0) {
+      const t = get(translate);
+      const ok = await confirmStore.ask({
+        title: t('roleplay.regenerateEarlier.title'),
+        message: t('roleplay.regenerateEarlier.message', { values: { n: later } }),
+        confirmLabel: t('roleplay.regenerateEarlier.confirm'),
+        danger: true
+      });
+      if (!ok || this.currentChatId !== targetChatId) return;
+      chat.messages = chat.messages.slice(0, index + 1);
+    }
 
     // A regenerate answers as the same speaker and keeps a forced next speaker.
     const currentSnapshot = message.versions?.[message.activeVersion ?? 0]?.metadata?.roleplay ?? message.metadata?.roleplay;
@@ -2915,7 +2928,6 @@ class AppStore {
     const current = typeof message.activeVersion === 'number' ? message.activeVersion : 0;
     const next = Math.max(0, Math.min(current + direction, message.versions.length - 1));
     if (next === current) return;
-    if (chat.contextMode === 'roleplay') this.preserveRoleplayBranch(chat, chat.messages.findIndex((entry) => entry.id === messageId) + 1);
     message.activeVersion = next;
     if (chat.contextMode === 'roleplay') {
       const version = message.versions[next];
@@ -2930,21 +2942,24 @@ class AppStore {
     this.persist();
   }
 
-  /** Keep an alternate timeline before changing an earlier Roleplay beat. */
-  private preserveRoleplayBranch(chat: ChatSession, keep: number) {
-    if (chat.contextMode !== 'roleplay' || keep >= chat.messages.length || keep < 0) return;
+  /** "Branch from here": a new conversation with this one's turns up to and including `messageId`. */
+  branchFromMessage(messageId: string) {
+    const chat = this.currentChat;
+    if (!chat) return;
+    const keep = chat.messages.findIndex((entry) => entry.id === messageId) + 1;
+    if (keep <= 0) return;
     const ids = new Map<string, string>([[chat.id, createId('chat')]]);
     for (const message of chat.messages) {
       ids.set(message.id, createId('msg'));
       for (const attachment of message.attachments ?? []) ids.set(attachment.id, createId('attachment'));
     }
     const branch = JSON.parse(JSON.stringify(chat), (_key, value) => typeof value === 'string' ? ids.get(value) ?? value : value) as ChatSession;
-    branch.title = `${chat.title} · alternate`;
-    branch.createdAt = Date.now();
-    branch.updatedAt = Date.now();
+    branch.messages = branch.messages.slice(0, keep);
+    branch.title = get(translate)('thread.branchTitle', { values: { title: chat.title } });
+    branch.createdAt = branch.updatedAt = Date.now();
     this.chats = [...this.chats, branch];
-    chat.messages = chat.messages.slice(0, keep);
-    toastStore.info('Later turns saved as an alternate conversation.', 3000);
+    this.selectChat(branch.id);
+    this.persist();
   }
 
   private _apiModelsCacheKey(): string | null {

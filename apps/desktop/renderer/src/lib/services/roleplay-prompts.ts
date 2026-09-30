@@ -86,7 +86,7 @@ export const ROLEPLAY_BASE_PROMPT = [
  * check is weaker than a fact it is already inside, and a list of prohibitions
  * tends to import the very subject it names.
  */
-export const CHARACTER_CHAT_PROMPT = [
+const CHARACTER_CHAT_PROMPT = [
   "Write {{char}}'s next reply in a fictional chat between {{char}} and {{user}}.",
   'Stay recognizably in character: voice, knowledge, motivations and personality follow the character definition.',
   'Reply as this person would in an everyday conversation: direct, natural spoken dialogue in their own voice.',

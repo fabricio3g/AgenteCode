@@ -220,14 +220,15 @@ describe('world scene wiring', () => {
       name: 'Eldoria',
       settings: { autoMode: true, replyOrder: 'natural', autoModeMaxTurns: 6, autoModeDelayMs: 12000, adventureChoices: true }
     });
+    await worldsStore.save(world);
 
     const chat = roleplayStore.startScene({ characters: [aiko, ren], world, openingSource: 'none' });
 
-    expect(chat?.roleplay?.autoMode).toBe(true);
-    expect(chat?.roleplay?.replyOrder).toBe('natural');
-    expect(chat?.roleplay?.autoModeMaxTurns).toBe(6);
-    expect(chat?.roleplay?.autoModeDelayMs).toBe(12000);
-    expect(chat?.roleplay?.adventureChoices).toBe(true);
+    expect(roleplayStore.settings(chat).autoMode).toBe(true);
+    expect(roleplayStore.settings(chat).replyOrder).toBe('natural');
+    expect(roleplayStore.settings(chat).autoModeMaxTurns).toBe(6);
+    expect(roleplayStore.settings(chat).autoModeDelayMs).toBe(12000);
+    expect(roleplayStore.settings(chat).adventureChoices).toBe(true);
   });
 
   it('defaults the auto delay to eight seconds without a world', async () => {
@@ -236,8 +237,8 @@ describe('world scene wiring', () => {
 
     const chat = roleplayStore.startScene({ characters: [aiko], openingSource: 'none' });
 
-    expect(chat?.roleplay?.autoModeDelayMs).toBe(8000);
-    expect(chat?.roleplay?.adventureChoices).toBe(false);
+    expect(roleplayStore.settings(chat).autoModeDelayMs).toBe(8000);
+    expect(roleplayStore.settings(chat).adventureChoices).toBe(false);
   });
 });
 
@@ -260,7 +261,7 @@ describe('Chat / Dynamic integration', () => {
 
   it('starts Chat by default and permits ensemble replies only when invited', async () => {
     const scene = await start();
-    expect(scene.roleplay?.interactionMode).toBe('chat');
+    expect(roleplayStore.settings(scene).interactionMode).toBe('chat');
     expect(roleplayStore.systemPrompt(scene)).toContain('Chat mode is always dialogue-only');
     expect(roleplayStore.systemPrompt(scene)).toContain('Ren speaks softly.');
     scene.messages.push({ id: 'invite', role: 'user', content: 'Talk to each other.', createdAt: 1 });
@@ -320,13 +321,29 @@ describe('Chat / Dynamic integration', () => {
     const character = emptyCharacter({ name: 'Ren' });
     await charactersStore.save(character);
     const world = emptyWorld({ settings: { props: true, choiceTimerSeconds: 60, interactionMode: 'dynamic' } });
+    await worldsStore.save(world);
     const scene = roleplayStore.startScene({ characters: [character], world, settings: { choiceTimerSeconds: 0 } })!;
-    expect(scene.roleplay?.props).toBe(true);
+    const settings = roleplayStore.settings(scene);
+    expect(settings.props).toBe(true);
+    expect(settings.choiceTimerSeconds).toBe(0);
+    expect(settings.interactionMode).toBe('dynamic');
+    // Only the scene's own choice is stored; the rest is inherited.
     expect(scene.roleplay?.choiceTimerSeconds).toBe(0);
-    expect(scene.roleplay?.interactionMode).toBe('dynamic');
+    expect(scene.roleplay).not.toHaveProperty('props');
   });
 
-  it('restores response-version state and saves later turns as an alternate conversation', async () => {
+  it('saves options as overrides and keeps room and journal changes made meanwhile', async () => {
+    const scene = await start();
+    const draft = { ...scene.roleplay, interactionMode: 'dynamic' as const, replyLength: 'adaptive' as const };
+    scene.roleplay = { ...scene.roleplay, journal: [{ id: 'j', kind: 'note', title: 'Kept', body: '', pinned: false, createdAt: 1 }] } as typeof scene.roleplay;
+    roleplayStore.setSettings(draft);
+    expect(scene.roleplay?.interactionMode).toBe('dynamic');
+    expect(scene.roleplay).not.toHaveProperty('replyLength');
+    expect(scene.roleplay?.journal?.[0]?.title).toBe('Kept');
+    expect(scene.roleplay?.characterIds).toEqual(['aiko', 'ren']);
+  });
+
+  it('switches response versions in place and branches only when asked', async () => {
     const scene = await start();
     roleplayStore.setOption('interactionMode', 'dynamic');
     const turn = roleplayStore.prepareTurn(scene);
@@ -340,12 +357,17 @@ describe('Chat / Dynamic integration', () => {
     const before = appStore.chats.length;
     appStore.setMessageActiveVersion('response', 1);
     expect(roleplayStore.room().location).toBe('Forest');
-    expect(appStore.currentChat?.messages).toHaveLength(1);
+    expect(appStore.currentChat?.messages).toHaveLength(2);
+    expect(appStore.chats).toHaveLength(before);
+    appStore.branchFromMessage('response');
     expect(appStore.chats).toHaveLength(before + 1);
-    const alternate = appStore.chats.find((entry) => entry.id !== scene.id)!;
-    expect(alternate.messages).toHaveLength(2);
-    expect(alternate.messages[0].activeVersion).toBe(0);
-    expect(alternate.messages[0].id).not.toBe('response');
+    const branch = appStore.currentChat!;
+    expect(branch.id).not.toBe(scene.id);
+    expect(branch.messages).toHaveLength(1);
+    expect(branch.messages[0].activeVersion).toBe(1);
+    expect(branch.messages[0].id).not.toBe('response');
+    expect(appStore.chats.find((entry) => entry.id === scene.id)?.messages).toHaveLength(2);
+    appStore.selectChat(scene.id);
     const retry = roleplayStore.prepareTurn(scene, { snapshot: secondState, historyEnd: 0 });
     expect(retry.snapshot?.seed).toBe(secondState.seed);
     expect(retry.snapshot?.direction).toBe(secondState.direction);

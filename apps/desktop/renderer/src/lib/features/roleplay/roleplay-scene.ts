@@ -37,7 +37,7 @@ export function seededRandom(seed: number): () => number {
   };
 }
 
-export function weightedPick<T extends string>(weights: Array<[T, number]>, random: () => number): T | undefined {
+function weightedPick<T extends string>(weights: Array<[T, number]>, random: () => number): T | undefined {
   const candidates = weights.filter(([, weight]) => Number.isFinite(weight) && weight > 0);
   const total = candidates.reduce((sum, [, weight]) => sum + weight, 0);
   if (!total) return undefined;
@@ -73,7 +73,8 @@ export function decideTurn(chat: ChatSession, settings: RoleplaySettings, scene:
   const outcome = settings.interactionMode === 'dynamic' && settings.outcomeRolls && attempts
     ? weightedPick(Object.entries(settings.outcomeWeights ?? {}) as Array<['success' | 'cost' | 'setback', number]>, random)
     : undefined;
-  const instruction = [
+  // Only Dynamic scenes take a direction; a quiet turn with no roll needs none.
+  const instruction = settings.interactionMode !== 'dynamic' || (direction === 'quiet' && !outcome) ? '' : [
     'Turn direction (a possibility, subordinate to canon and the user\'s stated actions):',
     DECISION_DIRECTIONS[direction as keyof typeof DECISION_DIRECTIONS],
     'Use it only when the current context supports it; otherwise answer naturally. Do not invent past events or force a twist.',
@@ -150,12 +151,14 @@ export function parseContributions(text: string, names: Map<string, string>, def
 /** Apply the same speaker boundary during streaming and finalization. */
 export function restrictContributions(text: string, names: Map<string, string>, participants: string[], defaultSpeaker: string | null, settings: RoleplaySettings): string {
   if (!participants.length) return '';
-  let spoken = 0;
+  // The cap counts characters, not lines: each speaker's lines merge into one bubble.
+  const speakers = new Set<string>();
+  const limit = Math.max(participants.length, settings.maxExchangeLines ?? 3);
   return parseContributions(text, names, defaultSpeaker).flatMap((part) => {
     if (part.speakerId === null) return settings.interactionMode === 'chat' ? [] : [`Narrator: ${part.content}`];
-    const limit = Math.max(participants.length, settings.maxExchangeLines ?? 3);
-    if (!participants.includes(part.speakerId) || spoken >= limit) return [];
-    spoken++;
+    if (!participants.includes(part.speakerId)) return [];
+    if (!speakers.has(part.speakerId) && speakers.size >= limit) return [];
+    speakers.add(part.speakerId);
     return [`${names.get(part.speakerId) ?? ''}: ${part.content}`];
   }).join('\n\n');
 }

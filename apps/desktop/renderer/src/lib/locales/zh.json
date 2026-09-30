@@ -1676,7 +1676,9 @@
       "thinking": "思考中…",
       "thoughtFor": "思考了 {s} 秒",
       "thought": "推理"
-    }
+    },
+    "branchFromHere": "从这里分支",
+    "branchTitle": "{title} · 分支"
   },
   "titlebar": {
     "hideSidebar": "隐藏侧边栏",
@@ -1689,5 +1691,19 @@
     "minimize": "最小化",
     "maximize": "最大化",
     "restore": "还原"
+  },
+  "roleplay": {
+    "regenerateEarlier": {
+      "title": "重新生成这一回合?",
+      "message": "之后的 {n} 条消息将被删除。如需保留,请先使用“从这里分支”。",
+      "confirm": "重新生成"
+    },
+    "newDirection": "换个走向",
+    "prompt": "提示词",
+    "outcome": {
+      "success": "成功",
+      "cost": "有代价的成功",
+      "setback": "挫折"
+    }
   }
 }

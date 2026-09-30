@@ -1676,7 +1676,9 @@
       "thinking": "Pensando…",
       "thoughtFor": "Pensó durante {s} s",
       "thought": "Razonamiento"
-    }
+    },
+    "branchFromHere": "Ramificar desde aquí",
+    "branchTitle": "{title} · rama"
   },
   "titlebar": {
     "hideSidebar": "Ocultar barra lateral",
@@ -1689,5 +1691,19 @@
     "minimize": "Minimizar",
     "maximize": "Maximizar",
     "restore": "Restaurar"
+  },
+  "roleplay": {
+    "regenerateEarlier": {
+      "title": "¿Regenerar este turno?",
+      "message": "Se eliminarán los {n} mensajes posteriores. Usa «Ramificar desde aquí» antes para conservarlos.",
+      "confirm": "Regenerar"
+    },
+    "newDirection": "Nueva dirección",
+    "prompt": "Prompt",
+    "outcome": {
+      "success": "Éxito",
+      "cost": "Éxito con un coste",
+      "setback": "Contratiempo"
+    }
   }
 }

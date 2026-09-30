@@ -168,6 +168,9 @@
       },
       "crap_high": {
         "count": 1
+      },
+      "crap_moderate": {
+        "count": 1
       }
     },
     "main/config.secrets.ts": {
@@ -175,7 +178,7 @@
         "count": 1
       },
       "crap_moderate": {
-        "count": 1
+        "count": 3
       }
     },
     "main/config.ts": {
@@ -285,6 +288,9 @@
       }
     },
     "main/ipc/config-handlers.ts": {
+      "complexity_critical": {
+        "count": 1
+      },
       "crap_critical": {
         "count": 1
       }
@@ -309,6 +315,12 @@
     },
     "main/ipc/tts-handlers.ts": {
       "crap_critical": {
+        "count": 1
+      },
+      "crap_high": {
+        "count": 1
+      },
+      "crap_moderate": {
         "count": 1
       }
     },
@@ -629,7 +641,7 @@
     },
     "main/stt-engine.ts": {
       "complexity_critical": {
-        "count": 3
+        "count": 4
       },
       "crap_critical": {
         "count": 5
@@ -687,6 +699,14 @@
       },
       "crap_moderate": {
         "count": 6
+      }
+    },
+    "main/voice/speech-api.ts": {
+      "complexity_critical": {
+        "count": 1
+      },
+      "crap_critical": {
+        "count": 2
       }
     },
     "main/web-crawler.ts": {
@@ -844,9 +864,6 @@
       "crap_critical": {
         "count": 1
       },
-      "crap_high": {
-        "count": 1
-      },
       "crap_moderate": {
         "count": 1
       }
@@ -1001,6 +1018,16 @@
         "count": 1
       }
     },
+    "renderer/src/lib/components/settings/voice/SpeechServiceSettings.svelte": {
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "renderer/src/lib/components/settings/voice/VoiceAssignmentEditor.svelte": {
+      "crap_moderate": {
+        "count": 1
+      }
+    },
     "renderer/src/lib/components/ui/SegmentedControl.svelte": {
       "crap_moderate": {
         "count": 1
@@ -1076,7 +1103,7 @@
         "count": 2
       },
       "crap_moderate": {
-        "count": 3
+        "count": 4
       }
     },
     "renderer/src/lib/features/chat/DocumentSurface.svelte": {
@@ -1085,11 +1112,8 @@
       }
     },
     "renderer/src/lib/features/chat/EditMessageInline.svelte": {
-      "crap_high": {
-        "count": 1
-      },
       "crap_moderate": {
-        "count": 1
+        "count": 2
       }
     },
     "renderer/src/lib/features/chat/ModelSwitcher.svelte": {
@@ -1112,11 +1136,6 @@
       },
       "crap_moderate": {
         "count": 1
-      }
-    },
-    "renderer/src/lib/features/chat/TtsAudioPlayer.svelte": {
-      "crap_moderate": {
-        "count": 2
       }
     },
     "renderer/src/lib/features/chat/composer/ComposerModelNotice.svelte": {
@@ -1149,11 +1168,6 @@
         "count": 1
       }
     },
-    "renderer/src/lib/features/chat/composer/reply-stats.ts": {
-      "crap_critical": {
-        "count": 1
-      }
-    },
     "renderer/src/lib/features/chat/composer/use-attachments.svelte.ts": {
       "crap_high": {
         "count": 1
@@ -1164,10 +1178,10 @@
     },
     "renderer/src/lib/features/chat/composer/use-dictation.svelte.ts": {
       "crap_critical": {
-        "count": 1
+        "count": 2
       },
       "crap_high": {
-        "count": 4
+        "count": 3
       },
       "crap_moderate": {
         "count": 4
@@ -1184,11 +1198,11 @@
       }
     },
     "renderer/src/lib/features/chat/thread/AssistantMessage.svelte": {
-      "crap_high": {
+      "crap_critical": {
         "count": 1
       },
       "crap_moderate": {
-        "count": 1
+        "count": 2
       }
     },
     "renderer/src/lib/features/chat/thread/Message.svelte": {
@@ -1235,6 +1249,12 @@
     },
     "renderer/src/lib/features/chat/thread/UserMessage.svelte": {
       "crap_critical": {
+        "count": 1
+      },
+      "crap_high": {
+        "count": 1
+      },
+      "crap_moderate": {
         "count": 1
       }
     },
@@ -1414,12 +1434,20 @@
       "crap_critical": {
         "count": 1
       },
+      "crap_high": {
+        "count": 1
+      },
       "crap_moderate": {
-        "count": 2
+        "count": 1
       }
     },
     "renderer/src/lib/features/roleplay/LorebookEditor.svelte": {
       "crap_moderate": {
+        "count": 1
+      }
+    },
+    "renderer/src/lib/features/roleplay/RoleplaySettingsEditor.svelte": {
+      "crap_critical": {
         "count": 1
       }
     },
@@ -1433,6 +1461,19 @@
         "count": 2
       }
     },
+    "renderer/src/lib/features/roleplay/group-turn.ts": {
+      "complexity_moderate": {
+        "count": 1
+      }
+    },
+    "renderer/src/lib/features/roleplay/roleplay-live.spec.ts": {
+      "complexity_high": {
+        "count": 1
+      },
+      "crap_high": {
+        "count": 1
+      }
+    },
     "renderer/src/lib/features/roleplay/roleplay-props.ts": {
       "complexity_high": {
         "count": 1
@@ -1444,23 +1485,52 @@
         "count": 1
       }
     },
+    "renderer/src/lib/features/roleplay/roleplay-scene.ts": {
+      "complexity_moderate": {
+        "count": 1
+      },
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "renderer/src/lib/features/roleplay/roleplay-settings.ts": {
+      "complexity_moderate": {
+        "count": 1
+      }
+    },
     "renderer/src/lib/features/roleplay/roleplay-turn.ts": {
+      "complexity_critical": {
+        "count": 1
+      },
+      "crap_critical": {
+        "count": 1
+      }
+    },
+    "renderer/src/lib/features/roleplay/roleplay-voice.ts": {
+      "complexity_moderate": {
+        "count": 1
+      },
       "crap_moderate": {
         "count": 1
       }
     },
     "renderer/src/lib/features/roleplay/roleplay.svelte.ts": {
       "complexity_critical": {
-        "count": 2
+        "count": 4
+      },
+      "complexity_moderate": {
+        "count": 1
       },
       "crap_critical": {
-        "count": 2
-      },
-      "crap_high": {
-        "count": 2
+        "count": 4
       },
       "crap_moderate": {
-        "count": 2
+        "count": 3
+      }
+    },
+    "renderer/src/lib/features/shared/NameCompletion.svelte": {
+      "crap_moderate": {
+        "count": 1
       }
     },
     "renderer/src/lib/i18n/index.ts": {
@@ -1706,6 +1776,9 @@
       }
     },
     "renderer/src/lib/services/character-card.ts": {
+      "complexity_moderate": {
+        "count": 1
+      },
       "crap_moderate": {
         "count": 2
       }
@@ -1774,10 +1847,10 @@
       }
     },
     "renderer/src/lib/services/roleplay-prompts.ts": {
-      "complexity_high": {
+      "complexity_critical": {
         "count": 1
       },
-      "crap_high": {
+      "crap_critical": {
         "count": 1
       },
       "crap_moderate": {
@@ -1797,6 +1870,11 @@
         "count": 1
       },
       "crap_critical": {
+        "count": 1
+      }
+    },
+    "renderer/src/lib/stores/app-message-pipeline.ts": {
+      "complexity_moderate": {
         "count": 1
       }
     },
@@ -1826,7 +1904,7 @@
         "count": 5
       },
       "complexity_high": {
-        "count": 3
+        "count": 4
       },
       "complexity_moderate": {
         "count": 1
@@ -1835,10 +1913,10 @@
         "count": 5
       },
       "crap_high": {
-        "count": 6
+        "count": 7
       },
       "crap_moderate": {
-        "count": 7
+        "count": 8
       }
     },
     "renderer/src/lib/stores/capabilities.svelte.ts": {
@@ -1873,14 +1951,14 @@
       }
     },
     "renderer/src/lib/stores/tts.svelte.ts": {
-      "complexity_high": {
+      "complexity_critical": {
         "count": 1
       },
-      "crap_high": {
-        "count": 2
+      "crap_critical": {
+        "count": 1
       },
       "crap_moderate": {
-        "count": 1
+        "count": 3
       }
     },
     "renderer/src/lib/ui/components/AgentBlock.svelte": {
@@ -1910,50 +1988,21 @@
         "count": 1
       }
     },
-    "renderer/src/lib/ui/components/Chart.svelte": {
-      "crap_high": {
-        "count": 1
-      },
+    "renderer/src/lib/ui/components/ReasoningBlock.svelte": {
       "crap_moderate": {
         "count": 1
       }
     },
     "renderer/src/lib/ui/components/RichContent.svelte": {
-      "complexity_critical": {
+      "complexity_high": {
         "count": 1
       },
-      "crap_critical": {
-        "count": 1
-      },
-      "crap_moderate": {
-        "count": 1
-      }
-    },
-    "renderer/src/lib/ui/components/Select.svelte": {
       "crap_high": {
-        "count": 1
-      },
-      "crap_moderate": {
-        "count": 2
-      }
-    },
-    "renderer/src/lib/ui/components/Table.svelte": {
-      "crap_moderate": {
         "count": 1
       }
     },
     "renderer/src/lib/ui/components/map-tiles.ts": {
       "complexity_moderate": {
-        "count": 1
-      }
-    },
-    "renderer/src/lib/ui/context.ts": {
-      "crap_high": {
-        "count": 2
-      }
-    },
-    "renderer/src/lib/ui/detect.ts": {
-      "crap_moderate": {
         "count": 1
       }
     },
@@ -1970,16 +2019,13 @@
         "count": 4
       },
       "crap_critical": {
-        "count": 5
+        "count": 4
       },
-      "crap_moderate": {
+      "crap_high": {
         "count": 1
       }
     },
     "renderer/src/lib/ui/prompt.ts": {
-      "crap_critical": {
-        "count": 1
-      },
       "crap_high": {
         "count": 1
       }
@@ -2070,11 +2116,6 @@
         "count": 1
       }
     },
-    "renderer/src/lib/utils/stream-reveal.ts": {
-      "crap_moderate": {
-        "count": 2
-      }
-    },
     "renderer/src/lib/utils/tool-ui.ts": {
       "crap_moderate": {
         "count": 1
@@ -2084,6 +2125,11 @@
       "complexity_critical": {
         "count": 1
       },
+      "crap_critical": {
+        "count": 2
+      }
+    },
+    "scripts/roleplay-smoke-entry.ts": {
       "crap_critical": {
         "count": 2
       }
@@ -2173,125 +2219,136 @@
       "crap_moderate": {
         "count": 1
       }
+    },
+    "tests/unit/speech-api.test.js": {
+      "crap_moderate": {
+        "count": 1
+      }
     }
   },
   "runtime_coverage_findings": [],
   "target_keys": [
     "renderer/src/lib/features/chat/viewers/viewer-controls.svelte.ts:dead code",
-    "renderer/src/lib/ui/components/Select.svelte:untested risk",
+    "renderer/src/lib/features/roleplay/roleplay-voice.ts:high impact",
     "renderer/src/lib/services/agent-llm.ts:high impact",
+    "renderer/src/lib/services/agent-tool-dispatch.ts:complexity",
     "renderer/src/lib/services/agent-artifact.ts:high impact",
+    "renderer/src/lib/services/agent-evidence.ts:high impact",
     "renderer/src/lib/utils/preview-builder.ts:high impact",
     "renderer/src/lib/services/chat-api.ts:high impact",
     "renderer/src/lib/services/runtime.ts:high impact",
-    "renderer/src/lib/services/agent-tool-artifacts.ts:high impact",
     "renderer/src/lib/stores/app-store-helpers.ts:high impact",
+    "renderer/src/lib/services/agent-tool-artifacts.ts:high impact",
     "renderer/src/lib/models/model-fit.ts:high impact",
     "main/runtime-resolver.ts:high impact",
-    "renderer/src/lib/services/agent-message-context.ts:high impact",
-    "main/whisper-resolver.ts:high impact",
-    "shared/deck.ts:high impact",
-    "renderer/src/lib/ui/message-utils.ts:high impact",
-    "renderer/src/lib/services/agent-flow.ts:high impact",
     "renderer/src/lib/stores/app.svelte.ts:complexity",
+    "main/whisper-resolver.ts:high impact",
+    "renderer/src/lib/ui/message-utils.ts:high impact",
+    "shared/deck.ts:high impact",
     "main/search-providers/providers.ts:high impact",
-    "renderer/src/lib/services/character-card.ts:high impact",
+    "renderer/src/lib/services/agent-flow.ts:high impact",
+    "renderer/src/lib/services/agent-message-context.ts:high impact",
     "renderer/src/lib/features/chat/thread/message-parts.ts:high impact",
-    "renderer/src/lib/ui/components/Chart.svelte:untested risk",
     "main/providers/helpers.ts:high impact",
-    "renderer/src/lib/stores/app-store-artifacts.ts:high impact",
     "renderer/src/lib/features/code/code.svelte.ts:high impact",
     "renderer/src/lib/services/agent-provider.ts:dead code",
+    "renderer/src/lib/features/roleplay/roleplay.svelte.ts:high impact",
+    "main/voice/speech-api.ts:high impact",
     "renderer/src/lib/services/artifact-model.ts:high impact",
-    "main/search-providers/shared.ts:high impact",
-    "renderer/src/lib/services/generated-documents.ts:high impact",
-    "renderer/src/lib/features/code/code-events.svelte.ts:dead code",
+    "renderer/src/lib/stores/app-store-artifacts.ts:high impact",
+    "renderer/src/lib/features/code/workspace.svelte.ts:high impact",
+    "renderer/src/lib/features/shared/name-completion.ts:high impact",
     "main/search-providers/aggregator/engines.ts:untested risk",
-    "renderer/src/lib/services/llama-releases.ts:dead code",
-    "renderer/src/lib/services/research-pipeline.ts:high impact",
+    "renderer/src/lib/features/code/code-events.svelte.ts:dead code",
+    "renderer/src/lib/services/generated-documents.ts:high impact",
+    "renderer/src/lib/features/roleplay/roleplay-presets.svelte.ts:high impact",
+    "main/search-providers/shared.ts:high impact",
     "renderer/src/lib/services/agent-run-finish.ts:complexity",
+    "renderer/src/lib/services/llama-releases.ts:dead code",
+    "renderer/src/lib/stores/tts.svelte.ts:high impact",
+    "renderer/src/lib/services/research-pipeline.ts:high impact",
+    "renderer/src/lib/features/roleplay/roleplay-scene.ts:high impact",
+    "renderer/src/lib/stores/app-context-budget.ts:high impact",
     "renderer/src/lib/utils/tool-ui.ts:high impact",
     "renderer/src/lib/services/agent-run-context.ts:high impact",
-    "renderer/src/lib/services/agent-tool-dispatch.ts:complexity",
-    "renderer/src/lib/stores/app-context-budget.ts:high impact",
-    "renderer/src/lib/stores/hardware.svelte.ts:high impact",
     "main/chat-ipc.ts:high impact",
+    "renderer/src/lib/stores/hardware.svelte.ts:high impact",
     "shared/work-product.ts:high impact",
     "renderer/src/lib/services/research-artifacts.ts:high impact",
-    "renderer/src/lib/features/roleplay/roleplay.svelte.ts:high impact",
     "renderer/src/lib/stores/app-store-local-model.ts:high impact",
-    "renderer/src/lib/services/agent-evidence.ts:high impact",
     "renderer/src/lib/features/chat/document-surface.ts:high impact",
     "renderer/src/lib/services/agent-run-plan.ts:complexity",
     "renderer/src/lib/components/settings/UnifiedSettingsPanel.svelte:untested risk",
-    "renderer/src/lib/services/agent-evidence-pack.ts:complexity",
     "renderer/src/lib/services/agent-home-stream.ts:complexity",
+    "main/voice/audiocpp-tts.ts:high impact",
+    "renderer/src/lib/services/agent-evidence-pack.ts:complexity",
     "renderer/src/lib/features/chat/composer/mic-probe.ts:high impact",
     "renderer/src/lib/features/code/code-run.ts:high impact",
-    "renderer/src/lib/stores/tts.svelte.ts:high impact",
-    "main/llama-runtime.ts:high impact",
-    "main/sandbox.ts:dead code",
-    "main/voice/audiocpp-tts.ts:high impact",
     "renderer/src/lib/utils/storage.ts:high impact",
+    "main/sandbox.ts:dead code",
     "main/document-markdown.ts:untested risk",
+    "main/stt-engine.ts:untested risk",
+    "renderer/src/lib/services/character-card.ts:high impact",
     "main/agente/changes.ts:untested risk",
+    "main/llama-runtime.ts:high impact",
     "renderer/src/lib/utils/code-copy.ts:dead code",
-    "renderer/src/lib/utils/local-models.ts:high impact",
     "renderer/src/lib/services/agent-tool-result.ts:high impact",
     "main/providers/connection-test.ts:untested risk",
-    "renderer/src/lib/services/agent-content.ts:high impact",
-    "renderer/src/lib/features/code/activity.ts:high impact",
     "renderer/src/lib/utils/markdown.ts:complexity",
     "renderer/src/lib/ui/context.ts:high impact",
-    "renderer/src/lib/ui/prompt.ts:untested risk",
-    "main/stt-engine.ts:untested risk",
-    "renderer/src/lib/features/code/slash-commands.ts:high impact",
-    "main/browser-actions.ts:high impact",
+    "renderer/src/lib/utils/local-models.ts:high impact",
+    "renderer/src/lib/services/agent-content.ts:high impact",
+    "renderer/src/lib/features/code/activity.ts:high impact",
+    "renderer/src/lib/features/roleplay/roleplay-settings.ts:high impact",
     "renderer/src/lib/stores/models.svelte.ts:high impact",
     "renderer/src/lib/services/agent-model-call.ts:complexity",
-    "main/web-scraper.ts:high impact",
+    "renderer/src/lib/features/code/slash-commands.ts:high impact",
+    "main/browser-actions.ts:high impact",
     "main/search-providers/aggregator/options.ts:untested risk",
-    "main/agente/rust-events.ts:high impact",
-    "main/instances.ts:untested risk",
-    "renderer/src/lib/i18n/index.ts:high impact",
-    "main/agente/transport.ts:untested risk",
-    "main/generated-documents.ts:complexity",
     "renderer/src/lib/utils/id.ts:high impact",
+    "main/instances.ts:untested risk",
+    "main/agente/transport.ts:untested risk",
+    "main/web-scraper.ts:high impact",
+    "main/agente/rust-events.ts:high impact",
+    "renderer/src/lib/i18n/index.ts:high impact",
+    "main/generated-documents.ts:complexity",
+    "main/ipc/tts-handlers.ts:untested risk",
     "renderer/src/lib/services/agent-tool-diagnostics.ts:complexity",
-    "renderer/src/lib/stores/deep-research.svelte.ts:complexity",
     "main/providers/openai-core.ts:high impact",
-    "main/content-summarizer.ts:untested risk",
-    "renderer/src/lib/features/code/workspace.svelte.ts:high impact",
     "renderer/src/lib/utils/errors.ts:high impact",
-    "main/browser-format.ts:high impact",
-    "main/system-info.ts:high impact",
+    "main/content-summarizer.ts:untested risk",
+    "renderer/src/lib/features/roleplay/group-turn.ts:high impact",
+    "renderer/src/lib/stores/deep-research.svelte.ts:complexity",
+    "main/search-engine.ts:complexity",
+    "renderer/src/lib/features/chat/viewers/xlsx-model.ts:high impact",
     "renderer/src/lib/features/code/plan-review.ts:high impact",
     "main/agente/bot-history.ts:high impact",
-    "renderer/src/lib/features/chat/viewers/xlsx-model.ts:high impact",
-    "main/search-engine.ts:complexity",
-    "main/utils/logger.ts:high impact",
+    "main/browser-format.ts:high impact",
+    "main/system-info.ts:high impact",
     "renderer/src/lib/services/agent-parsing.ts:high impact",
-    "shared/agent-core/agent-loop.ts:complexity",
+    "renderer/src/lib/services/roleplay-prompts.ts:high impact",
+    "main/utils/logger.ts:high impact",
     "renderer/src/lib/components/ui/Select.svelte:complexity",
+    "shared/agent-core/agent-loop.ts:complexity",
     "main/agente/rust-processes.ts:high impact",
-    "main/model-download.ts:complexity",
     "main/agente/rust-engine.ts:high impact",
-    "main/whisper-server.ts:high impact",
-    "main/rag-engine.ts:high impact",
+    "main/model-download.ts:complexity",
     "main/link-scorer.ts:untested risk",
+    "main/whisper-server.ts:high impact",
     "renderer/src/lib/ui/components/AgentBlock.svelte:complexity",
+    "main/rag-engine.ts:high impact",
+    "main/data-folder.ts:high impact",
     "main/process-manager.ts:high impact",
     "renderer/src/lib/features/chat/viewers/xlsx-formula.ts:high impact",
-    "main/runtime-config-resolver.ts:high impact",
     "main/agente-daemon.ts:untested risk",
-    "main/web-crawler.ts:complexity",
-    "main/data-folder.ts:high impact",
+    "main/runtime-config-resolver.ts:high impact",
+    "scripts/roleplay-smoke-entry.ts:untested risk",
     "scripts/smoke-search-scrape.mjs:untested risk",
+    "main/web-crawler.ts:complexity",
     "main/agente/desktop-tools-mcp.ts:untested risk",
     "main/browser-panel.ts:high impact",
-    "renderer/src/lib/utils/stream-reveal.ts:untested risk",
-    "renderer/src/lib/utils/assistant-visible.ts:untested risk",
     "scripts/smoke-provider-models.mjs:untested risk",
+    "renderer/src/lib/utils/assistant-visible.ts:untested risk",
     "renderer/src/lib/utils/chart-data.ts:complexity",
     "renderer/src/lib/ui/parser.ts:complexity",
     "main/live-data/quotes.ts:untested risk",

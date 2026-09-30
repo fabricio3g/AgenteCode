@@ -4,7 +4,8 @@
     "main/index.ts",
     "main/tts-worker.ts",
     "renderer/src/main.ts",
-    "shared/agente-protocol.gen.ts"
+    "shared/agente-protocol.gen.ts",
+    "scripts/roleplay-smoke-entry.ts"
   ],
   "ignorePatterns": [
     "dist/**",

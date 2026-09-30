@@ -93,3 +93,32 @@ export function presetSettings(settings: RoleplaySettings): RoleplaySettings {
 export function ensembleEnabled(settings: RoleplaySettings): boolean {
   return settings.npcDialogue ?? settings.allowMultiSpeaker ?? true;
 }
+
+const OPTION_KEYS = Object.keys(CHAT) as Array<keyof RoleplaySettings>;
+
+/**
+ * What a scene stores of its options: only the ones that differ from what it
+ * inherits (your defaults, then the world's), so later changes to those still
+ * reach it.
+ */
+export function sceneOverrides(options: Partial<RoleplaySettings>, inherited: RoleplaySettings): Partial<RoleplaySettings> {
+  return Object.fromEntries(OPTION_KEYS
+    .filter((key) => key in options && JSON.stringify(options[key]) !== JSON.stringify(inherited[key]))
+    .map((key) => [key, options[key]])) as Partial<RoleplaySettings>;
+}
+
+/** The scene's own state in `chat.roleplay` (cast, room, journal…), without its options. */
+export function sceneState(roleplay: Partial<RoleplaySettings> | null | undefined): Partial<RoleplaySettings> {
+  return Object.fromEntries(Object.entries(roleplay ?? {}).filter(([key]) => !OPTION_KEYS.includes(key as keyof RoleplaySettings))) as Partial<RoleplaySettings>;
+}
+
+/**
+ * Scenes created before options were stored as overrides held every option,
+ * resolved at creation. Keep only the ones that differ from the built-in
+ * defaults so the scene follows your defaults again.
+ */
+export function compactStoredScene(roleplay: RoleplaySettings | null | undefined): RoleplaySettings | null {
+  if (!roleplay) return null;
+  if (!OPTION_KEYS.every((key) => key in roleplay)) return roleplay;
+  return { ...sceneState(roleplay), ...sceneOverrides(roleplay, CHAT) } as RoleplaySettings;
+}

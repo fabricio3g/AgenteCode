@@ -2,7 +2,8 @@
 
 <script lang="ts">
   import Avatar from '$lib/components/ui/Avatar.svelte';
-  import { Copy, Dices, FileSearch, Pencil, RefreshCcw, Trash2, Volume2, X } from 'lucide-svelte';
+  import { Copy, Dices, FileSearch, GitBranch, Pencil, RefreshCcw, Trash2, Volume2, X } from 'lucide-svelte';
+  import { t } from 'svelte-i18n';
   import { appStore } from '$lib/stores/app.svelte';
   import { roleplayStore } from '$lib/features/roleplay/roleplay.svelte';
   import { confirmStore } from '$lib/stores/confirm.svelte';
@@ -129,15 +130,22 @@
         icon: Pencil,
         run: () => appStore.openEditMessage(ctx.message.id)
       },
+      !isGreetingMessage && {
+        id: 'branch',
+        label: $t('thread.branchFromHere'),
+        icon: GitBranch,
+        disabled: appStore.currentChatGenerating,
+        run: () => appStore.branchFromMessage(ctx.message.id)
+      },
       // Roleplay: show the composed prompt, lore and token estimate.
       snapshot?.mode === 'dynamic' && snapshot.settings.rerollEnabled && {
-        id: 'reroll', label: 'New direction', icon: Dices,
+        id: 'reroll', label: $t('roleplay.newDirection'), icon: Dices,
         disabled: appStore.currentChatGenerating || appStore.currentChatBlockedByOtherLocalRun,
         run: () => appStore.regenerateMessage(ctx.message.id, { reroll: true })
       },
       chat?.contextMode === 'roleplay' && {
         id: 'prompt',
-        label: 'Prompt',
+        label: $t('roleplay.prompt'),
         icon: FileSearch,
         run: () => (promptOpen = true)
       },
@@ -203,7 +211,7 @@
     <div data-chat-message-content data-chat-message-id={ctx.message.id}>
       <MessageParts />
       {#if snapshot?.settled && snapshot.outcomeApplied && snapshot.outcome && snapshot.settings.showOutcomes}
-        <div class="mt-2 text-[11px] text-muted-foreground">{snapshot.outcome === 'cost' ? 'Success with a cost' : snapshot.outcome === 'success' ? 'Success' : 'Setback'}</div>
+        <div class="mt-2 text-[11px] text-muted-foreground">{$t(`roleplay.outcome.${snapshot.outcome}`)}</div>
       {/if}
     </div>
 
@@ -223,7 +231,7 @@
       <ChoicePanel
         choices={adventureChoices}
         disabled={appStore.currentChatGenerating}
-        timerSeconds={snapshot?.settings.choiceTimerSeconds ?? chat?.roleplay?.choiceTimerSeconds ?? null}
+        timerSeconds={snapshot?.settings.choiceTimerSeconds ?? roleplayStore.settings(chat ?? null).choiceTimerSeconds ?? null}
         onpick={(choice) => void roleplayStore.sendChoice(choice)}
         onexpire={() => void roleplayStore.expireChoice()}
         ondismiss={() => (choicesDismissed = true)}
@@ -237,7 +245,7 @@
     <MessageFooter />
 
     {#if showTtsPlayer && !separateSpeakers}
-      <div class="mt-2" style:padding-left={separateSpeakers && presentation?.showAvatars !== false ? '2.25rem' : undefined}><TtsAudioPlayer message={ctx.message} /></div>
+      <div class="mt-2"><TtsAudioPlayer message={ctx.message} /></div>
     {/if}
 
     {#if !hasActiveDeepResearch && !ctx.isStreaming}

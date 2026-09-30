@@ -117,18 +117,7 @@ class TtsStore {
     this.pendingEndSource = null;
     this.playbackTimeline = [];
     this.scheduledDuration = 0;
-    this.unsubChunk?.();
-    this.unsubDone?.();
-    this.unsubStart?.();
-    this.unsubError?.();
-    this.unsubChunk = null;
-    this.unsubDone = null;
-    this.unsubStart = null;
-    this.unsubError = null;
-    if (this.audioCtx && this.audioCtx.state !== 'closed') {
-      void this.audioCtx.close().catch(() => {});
-      this.audioCtx = null;
-    }
+    this.releaseStream();
     if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
       window.speechSynthesis.cancel();
     }
@@ -315,6 +304,16 @@ class TtsStore {
 
   }
 
+  /** Drop the stream listeners and close the audio context. */
+  private releaseStream() {
+    for (const unsub of [this.unsubChunk, this.unsubDone, this.unsubStart, this.unsubError]) unsub?.();
+    this.unsubChunk = this.unsubDone = this.unsubStart = this.unsubError = null;
+    if (this.audioCtx && this.audioCtx.state !== 'closed') {
+      void this.audioCtx.close().catch(() => {});
+      this.audioCtx = null;
+    }
+  }
+
   private onPlaybackEnded() {
     if ((!this.playing && !this.paused) || !this.currentMessageId) return;
     this.stopProgressTracking();
@@ -332,18 +331,7 @@ class TtsStore {
     this.pendingEndSource = null;
     this.currentMessageId = null;
     this.currentRequestId = null;
-    this.unsubChunk?.();
-    this.unsubDone?.();
-    this.unsubStart?.();
-    this.unsubError?.();
-    this.unsubChunk = null;
-    this.unsubDone = null;
-    this.unsubStart = null;
-    this.unsubError = null;
-    if (this.audioCtx && this.audioCtx.state !== 'closed') {
-      void this.audioCtx.close().catch(() => {});
-      this.audioCtx = null;
-    }
+    this.releaseStream();
     if (this.queue.length) this.nextInSequence();
     else this.onPlaybackEnd?.();
     // Fire onAudioComplete AFTER buffer is stored so the player can transition

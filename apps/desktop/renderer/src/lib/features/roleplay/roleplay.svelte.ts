@@ -36,7 +36,7 @@ import { buildRoleplayStopStrings, stripSpeakerPrefix } from './roleplay-output'
 import { stripRoleplayChoiceBlock } from './roleplay-choices';
 import { makeSilenceTurn, makeTwistTurn, pickTwist, type StoryTurn } from './roleplay-twists';
 import { createRoleplayTurn, PASSTHROUGH_TURN, type RoleplayTurn } from './roleplay-turn';
-import { ensembleEnabled, resolveRoleplaySettings } from './roleplay-settings';
+import { ensembleEnabled, resolveRoleplaySettings, sceneOverrides, sceneState } from './roleplay-settings';
 import { copyScene, decideTurn, sceneForChat, seededRandom, stripSceneBlock, turnSnapshot, restrictContributions } from './roleplay-scene';
 import { roleplayPreferences } from './roleplay-presets.svelte';
 
@@ -123,8 +123,13 @@ class RoleplayStore {
   }
 
   settings(chat: ChatSession | null = this.scene): RoleplaySettings {
+    return resolveRoleplaySettings(this.inherited(chat), chat?.roleplay);
+  }
+
+  /** What a scene inherits before its own overrides: your defaults, then the world's. */
+  inherited(chat: ChatSession | null = this.scene): RoleplaySettings {
     roleplayPreferences.load();
-    return resolveRoleplaySettings(roleplayPreferences.defaults, worldsStore.getById(chat?.worldId)?.settings, chat?.roleplay);
+    return resolveRoleplaySettings(roleplayPreferences.defaults, worldsStore.getById(chat?.worldId)?.settings);
   }
 
   room(chat: ChatSession | null = this.scene): RoleplaySceneState {
@@ -153,7 +158,9 @@ class RoleplayStore {
   setSettings(settings: Partial<RoleplaySettings>) {
     const chat = this.scene;
     if (!chat) return;
-    chat.roleplay = { ...settings };
+    // Options are saved as overrides; the room, journal and cast stay as they
+    // are now, even if they changed while the settings were open.
+    chat.roleplay = { ...sceneState(chat.roleplay), ...sceneOverrides(settings, this.inherited(chat)) } as RoleplaySettings;
     if (settings.autoMode === false) this.stopAuto(chat.id);
     this.save();
   }
@@ -421,7 +428,7 @@ class RoleplayStore {
   setAutoMode(enabled: boolean) {
     const chat = this.scene;
     if (!chat) return;
-    if (enabled && (chat.roleplay?.replyOrder || 'list') === 'manual') {
+    if (enabled && this.settings(chat).replyOrder === 'manual') {
       toastStore.info('Auto mode needs a speaker order. Switch off Manual first.', 4000);
       return;
     }
@@ -726,12 +733,12 @@ class RoleplayStore {
     chat.personaId = options.personaId ?? null;
     chat.greetingIndex = openingIndex;
     roleplayPreferences.load();
-    chat.roleplay = resolveRoleplaySettings(roleplayPreferences.defaults, worldSettings, {
+    chat.roleplay = {
       characterIds: cast.map((card) => card.id),
       mutedIds: [],
       scene: { location: '', presentIds: cast.map((card) => card.id), npcs: [], facts: [], goals: [], relationships: [] },
-      ...(options.settings || {})
-    });
+      ...sceneOverrides(options.settings || {}, resolveRoleplaySettings(roleplayPreferences.defaults, worldSettings))
+    };
     chat.title = world?.name || (group ? `${primary.name} +${cast.length - 1}` : primary.name) || chat.title;
 
     const opening = openings[openingIndex];

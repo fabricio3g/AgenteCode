@@ -1676,7 +1676,9 @@
       "thinking": "Denkt nach…",
       "thoughtFor": "{s} s nachgedacht",
       "thought": "Überlegung"
-    }
+    },
+    "branchFromHere": "Ab hier abzweigen",
+    "branchTitle": "{title} · Zweig"
   },
   "titlebar": {
     "hideSidebar": "Seitenleiste ausblenden",
@@ -1689,5 +1691,19 @@
     "minimize": "Minimieren",
     "maximize": "Maximieren",
     "restore": "Wiederherstellen"
+  },
+  "roleplay": {
+    "regenerateEarlier": {
+      "title": "Diesen Zug neu erzeugen?",
+      "message": "Die {n} Nachrichten danach werden entfernt. Nutze zuerst „Ab hier abzweigen“, um sie zu behalten.",
+      "confirm": "Neu erzeugen"
+    },
+    "newDirection": "Neue Richtung",
+    "prompt": "Prompt",
+    "outcome": {
+      "success": "Erfolg",
+      "cost": "Erfolg mit Preis",
+      "setback": "Rückschlag"
+    }
   }
 }

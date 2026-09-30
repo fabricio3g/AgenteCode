@@ -55,10 +55,3 @@ export function formatDuration(seconds: number | null | undefined): string {
   if (value < 60) return `${Math.floor(value)}s`;
   return `${Math.floor(value / 60)}m ${Math.floor(value % 60)}s`;
 }
-
-/** Thousands separators for token counts and similar. `12345` → `12,345` */
-export function formatCount(value: number | null | undefined): string {
-  const n = Number(value);
-  if (!Number.isFinite(n)) return '0';
-  return n.toLocaleString('en-US');
-}

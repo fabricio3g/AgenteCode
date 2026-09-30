@@ -1676,7 +1676,9 @@
       "thinking": "考え中…",
       "thoughtFor": "{s} 秒考えました",
       "thought": "推論"
-    }
+    },
+    "branchFromHere": "ここから分岐",
+    "branchTitle": "{title}・分岐"
   },
   "titlebar": {
     "hideSidebar": "サイドバーを隠す",
@@ -1689,5 +1691,19 @@
     "minimize": "最小化",
     "maximize": "最大化",
     "restore": "元に戻す"
+  },
+  "roleplay": {
+    "regenerateEarlier": {
+      "title": "このターンを再生成しますか?",
+      "message": "この後の {n} 件のメッセージは削除されます。残すには先に「ここから分岐」を使ってください。",
+      "confirm": "再生成"
+    },
+    "newDirection": "別の展開",
+    "prompt": "プロンプト",
+    "outcome": {
+      "success": "成功",
+      "cost": "代償付きの成功",
+      "setback": "挫折"
+    }
   }
 }

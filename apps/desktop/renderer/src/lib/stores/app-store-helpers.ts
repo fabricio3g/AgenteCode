@@ -1,4 +1,5 @@
 import type { AgentActivity, AgentOutcome, AgentStopReason, ChatContextMode, ChatFolder, ChatMessage, ChatSession, MessageVersion, SearchMeta } from '$lib/types/chat';
+import { compactStoredScene } from '$lib/features/roleplay/roleplay-settings';
 import type { SearchResult } from '$lib/types/bridge';
 import type { CompletionResult, RequestMessage } from '$lib/services/chat-api';
 import { runAgentTask } from '$lib/services/agent';
@@ -593,7 +594,7 @@ export function normalizeChat(chat: Partial<ChatSession>, index: number): ChatSe
     worldId: isRoleplay ? (typeof chat.worldId === 'string' ? chat.worldId : null) : null,
     personaId: isRoleplay ? (typeof chat.personaId === 'string' ? chat.personaId : null) : null,
     greetingIndex: isRoleplay && Number.isFinite(chat.greetingIndex) ? Number(chat.greetingIndex) : 0,
-    roleplay: isRoleplay ? (chat.roleplay ?? null) : null,
+    roleplay: isRoleplay ? compactStoredScene(chat.roleplay) : null,
     messages
   };
 }

@@ -34,6 +34,8 @@ describe('Roleplay settings and decisions', () => {
     expect(decideTurn(chat([{ ...user, content: 'I opened the gate.' }]), settings, room, 123).outcome).toBeUndefined();
     expect(decideTurn(chat([{ ...user, content: 'What do you think?' }]), settings, room, 123).outcome).toBeUndefined();
     expect(decideTurn(chat(), { ...settings, interactionMode: 'chat' }, room, 123).direction).toBe('quiet');
+    expect(decideTurn(chat(), { ...settings, interactionMode: 'chat' }, room, 123).instruction).toBe('');
+    expect(decideTurn(chat(), { ...settings, interactionMode: 'narrative' }, room, 123).instruction).toBe('');
     expect(decideTurn(chat(), { ...settings, surprise: 0 }, room, 123).direction).toBe('quiet');
   });
 

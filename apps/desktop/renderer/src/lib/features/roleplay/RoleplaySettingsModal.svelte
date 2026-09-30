@@ -1,7 +1,7 @@
 <svelte:options runes={true} />
 <script lang="ts">
   import { untrack } from 'svelte';
-  import { X } from 'lucide-svelte';
+  import { Check, X } from 'lucide-svelte';
   import { modalLayer } from '$lib/components/ui/modal-layer';
   import { motionFade, flyAndScale } from '$lib/utils/transitions';
   import { charactersStore, emptyCharacter } from './characters.svelte';
@@ -36,7 +36,7 @@
           <label class="block space-y-1"><span class="text-xs text-muted-foreground">Location</span><input class="aui-input" bind:value={room.location} placeholder="Where this conversation takes place" /></label>
           <div class="flex flex-wrap gap-2" role="group" aria-label="Characters present">
             {#each cast as card (card.id)}
-              <button type="button" class="aui-btn aui-btn-ghost" aria-pressed={room.presentIds.includes(card.id)} onclick={() => { room.presentIds = room.presentIds.includes(card.id) ? room.presentIds.filter((id) => id !== card.id) : [...room.presentIds, card.id]; }}>{room.presentIds.includes(card.id) ? '◈' : '○'} {card.name}</button>
+              <button type="button" class="aui-btn aui-btn-ghost" aria-pressed={room.presentIds.includes(card.id)} onclick={() => { room.presentIds = room.presentIds.includes(card.id) ? room.presentIds.filter((id) => id !== card.id) : [...room.presentIds, card.id]; }}>{#if room.presentIds.includes(card.id)}<Check class="size-3.5" />{/if}{card.name}</button>
             {/each}
           </div>
           {#each ['facts', 'goals', 'relationships'] as key}

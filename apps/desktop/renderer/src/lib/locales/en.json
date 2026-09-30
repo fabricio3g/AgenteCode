@@ -1676,7 +1676,9 @@
       "thinking": "Thinking…",
       "thoughtFor": "Thought for {s}s",
       "thought": "Reasoning"
-    }
+    },
+    "branchFromHere": "Branch from here",
+    "branchTitle": "{title} · branch"
   },
   "titlebar": {
     "hideSidebar": "Hide sidebar",
@@ -1689,5 +1691,19 @@
     "minimize": "Minimize",
     "maximize": "Maximize",
     "restore": "Restore"
+  },
+  "roleplay": {
+    "regenerateEarlier": {
+      "title": "Regenerate this turn?",
+      "message": "The {n} messages after it will be removed. Use “Branch from here” first to keep them.",
+      "confirm": "Regenerate"
+    },
+    "newDirection": "New direction",
+    "prompt": "Prompt",
+    "outcome": {
+      "success": "Success",
+      "cost": "Success with a cost",
+      "setback": "Setback"
+    }
   }
 }
