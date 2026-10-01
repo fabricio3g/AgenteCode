@@ -652,12 +652,14 @@ fn resolve_known_model_info(
 
     if let Some(mut m) = registry.runtime_model(provider_id, model_id) {
         m.limits = effective_limits(&m.limits);
+        apply_catalog_inputs(&mut m, catalog, provider_id, model_id);
         return m;
     }
 
     if let Some(mut m) = registry.get_model(provider_id, model_id) {
         m.limits = effective_limits(&m.limits);
         apply_catalog_thinking(&mut m, catalog, provider_id, model_id);
+        apply_catalog_inputs(&mut m, catalog, provider_id, model_id);
         return m;
     }
 
@@ -670,6 +672,47 @@ fn resolve_known_model_info(
     let mut m = fallback_model_info(provider_id, model_id);
     apply_catalog_thinking(&mut m, catalog, provider_id, model_id);
     m
+}
+
+/// Add the input kinds models.dev lists to a model the provider described
+/// without them. A live `/models` that lists ids only (OpenCode Go) is
+/// snapshotted with whatever catalog existed then, so a model models.dev
+/// learned about later would otherwise stay text-only until rediscovery.
+/// Only adds: a llama-server's own answer (vision projector or not) stands.
+fn apply_catalog_inputs(
+    m: &mut ModelInfo,
+    catalog: Option<&ModelCatalog>,
+    provider_id: &str,
+    model_id: &str,
+) {
+    if spec::get(provider_id).is_some_and(|s| s.models == spec::ModelSource::Llamacpp) {
+        return;
+    }
+    let Some(cm) = catalog.and_then(|cat| {
+        cat.find_model(provider_id, model_id)
+            .or_else(|| cat.find_model(provider_id, &m.api_id))
+    }) else {
+        return;
+    };
+    let caps = &mut m.capabilities;
+    caps.vision |= cm.capabilities.vision;
+    caps.attachment |= cm.capabilities.attachment;
+    for kind in &cm.capabilities.input_modalities {
+        if !caps
+            .input_modalities
+            .iter()
+            .any(|k| k.eq_ignore_ascii_case(kind))
+        {
+            caps.input_modalities.push(kind.clone());
+        }
+    }
+    // Non-empty modalities are what `media::model_accepts` trusts over `vision`.
+    if caps.vision
+        && !caps.input_modalities.is_empty()
+        && !caps.input_modalities.iter().any(|k| k == "image")
+    {
+        caps.input_modalities.push("image".into());
+    }
 }
 
 /// Overlay models.dev thinking metadata onto a ModelInfo (authoritative).
@@ -892,5 +935,42 @@ mod resolve_tests {
         assert_eq!(enriched.limits.context, 200_000);
         assert_eq!(enriched.limits.output, 16_384);
         assert!(!enriched.capabilities.reasoning);
+    }
+
+    #[test]
+    fn a_live_stub_listed_before_the_catalog_knew_the_model_still_takes_images() {
+        // Discovered while models.dev had no entry: a text-only stub.
+        let registry = ProviderRegistry::new();
+        let mut stub = fallback_model_info("opencode-go", "space-bunny-free");
+        stub.capabilities.vision = false;
+        stub.capabilities.input_modalities = vec!["text".into()];
+        registry.replace_runtime_models("opencode-go", vec![stub]);
+
+        let catalog = ModelCatalog::parse_json(
+            r#"{
+              "opencode-go": {
+                "id": "opencode-go",
+                "name": "OpenCode Go",
+                "models": {
+                  "space-bunny-free": {
+                    "id": "space-bunny-free",
+                    "name": "Space Bunny Free",
+                    "tool_call": true,
+                    "attachment": true,
+                    "modalities": { "input": ["text", "image", "video"], "output": ["text"] },
+                    "limit": { "context": 1048576, "output": 524288 }
+                  }
+                }
+              }
+            }"#,
+        )
+        .unwrap();
+
+        let info = resolve_model_info(&registry, Some(&catalog), "opencode-go", "space-bunny-free");
+        use crate::media::{model_accepts, AttachmentKind};
+        assert!(info.capabilities.vision);
+        assert!(model_accepts(&info, AttachmentKind::Image));
+        assert!(model_accepts(&info, AttachmentKind::Video));
+        assert!(!model_accepts(&info, AttachmentKind::Audio));
     }
 }
