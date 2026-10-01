@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { spawn } from 'node:child_process';
+import { spawn, execFileSync } from 'node:child_process';
 
 const root = path.resolve(process.argv[2] || `release/${process.platform === 'win32' ? 'win' : 'linux'}-unpacked`);
 const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'Agente packaged ñ '));
@@ -9,6 +9,13 @@ const copied = path.join(temporary, 'Application ñ with spaces');
 const diagnostics = path.resolve('release/smoke-diagnostics');
 fs.mkdirSync(diagnostics, { recursive: true });
 fs.cpSync(root, copied, { recursive: true });
+// Ubuntu runners restrict unprivileged user namespaces. Configure Chromium's
+// supported SUID helper in the temporary copy instead of disabling sandboxing.
+if (process.platform === 'linux' && process.env.AGENTE_SMOKE_SETUID === '1') {
+  const sandbox = path.join(copied, 'chrome-sandbox');
+  execFileSync('sudo', ['chown', 'root:root', sandbox], { stdio: 'inherit' });
+  execFileSync('sudo', ['chmod', '4755', sandbox], { stdio: 'inherit' });
+}
 const profiles = [];
 const executable = path.join(copied, process.platform === 'win32' ? 'Agente.exe' : 'agente-desktop');
 async function launch(testCase) {

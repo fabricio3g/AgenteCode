@@ -5,6 +5,12 @@ on:
     tags:
       - 'v*'
   workflow_dispatch:
+    inputs:
+      platform:
+        description: Platform to build and verify
+        type: choice
+        default: all
+        options: [all, linux, windows]
 
 permissions:
   contents: write
@@ -12,20 +18,14 @@ permissions:
 jobs:
   build:
     name: Build ${{ matrix.name }}
-    runs-on: ${{ matrix.os }}
+    runs-on: ${{ matrix.name == 'linux' && 'ubuntu-latest' || 'windows-latest' }}
     defaults:
       run:
         working-directory: apps/desktop
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - os: ubuntu-latest
-            name: linux
-            artifact_name: agente-desktop-linux
-          - os: windows-latest
-            name: windows
-            artifact_name: agente-desktop-windows
+        name: ${{ fromJSON(github.event_name == 'workflow_dispatch' && inputs.platform != 'all' && format('["{0}"]', inputs.platform) || '["linux","windows"]') }}
 
     steps:
       - name: Checkout
@@ -112,6 +112,8 @@ jobs:
 
       - name: Packaged Linux startup and Debian install
         if: matrix.name == 'linux'
+        env:
+          AGENTE_SMOKE_SETUID: '1'
         run: |
           sudo apt-get update
           sudo apt-get install -y xvfb libgtk-3-0 libnss3 libasound2t64
@@ -155,7 +157,7 @@ jobs:
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact_name }}
+          name: agente-desktop-${{ matrix.name }}
           path: |
             apps/desktop/release/*.AppImage
             apps/desktop/release/*.deb
