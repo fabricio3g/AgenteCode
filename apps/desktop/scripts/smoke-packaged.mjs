@@ -36,7 +36,7 @@ async function launch(testCase) {
       fs.writeFileSync(path.join(diagnostics, `${testCase || 'ready'}.log`), `${output}\n${error.stack || error}`);
       reject(error);
     });
-    child.on('exit', (code) => {
+    child.on('close', (code) => {
       clearTimeout(timeout);
       const marker = testCase ? 'SMOKE_FAILURE_SCREEN ' : 'SMOKE_READY ';
       const line = output.split(/\r?\n/).find((value) => value.startsWith(marker));
@@ -55,6 +55,8 @@ try {
   if (process.platform === 'win32') executable = fs.realpathSync.native(executable);
   for (const testCase of ['', 'missing-assets', 'bootstrap']) await launch(testCase);
 } finally {
-  fs.rmSync(temporary, { recursive: true, force: true });
-  for (const profile of profiles) fs.rmSync(profile, { recursive: true, force: true });
+  // Windows may retain executable/browser file locks briefly after process exit.
+  // Wait for stdio to close above, then retry cleanup without hiding failures.
+  await fs.promises.rm(temporary, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+  for (const profile of profiles) await fs.promises.rm(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
 }
