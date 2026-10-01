@@ -11,9 +11,14 @@ on:
         type: choice
         default: all
         options: [all, linux, windows]
+      code_run_id:
+        description: Optional successful Code run to reuse (Rust sources must match)
+        type: string
+        default: ''
 
 permissions:
   contents: write
+  actions: read
 
 jobs:
   build:
@@ -30,6 +35,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Free Linux runner disk space
         if: matrix.name == 'linux'
@@ -82,13 +89,51 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Rust
+        if: inputs.code_run_id == ''
         uses: dtolnay/rust-toolchain@stable
 
       - name: Cache Rust build
+        if: inputs.code_run_id == ''
         uses: Swatinem/rust-cache@v2
 
       - name: Build and bundle the Agente runtime
+        if: inputs.code_run_id == ''
         run: npm run build:agente
+
+      - name: Verify reused Code runtime sources
+        if: inputs.code_run_id != ''
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CODE_RUN_ID: ${{ inputs.code_run_id }}
+        run: |
+          [[ "$CODE_RUN_ID" =~ ^[0-9]+$ ]]
+          result=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$CODE_RUN_ID" --jq .conclusion)
+          test "$result" = success
+          runtime_ref=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$CODE_RUN_ID" --jq .head_sha)
+          git diff --exit-code "$runtime_ref" HEAD -- Cargo.toml Cargo.lock .cargo crates assets packaging
+
+      - name: Download verified Code runtime
+        if: inputs.code_run_id != ''
+        uses: actions/download-artifact@v4
+        with:
+          run-id: ${{ inputs.code_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          name: cli-${{ matrix.name == 'windows' && 'x86_64-pc-windows-msvc' || 'x86_64-unknown-linux-gnu' }}
+          path: apps/desktop/.runtime
+
+      - name: Bundle verified Code runtime
+        if: inputs.code_run_id != ''
+        shell: bash
+        run: |
+          mkdir -p resources/bin
+          if [ "${{ matrix.name }}" = windows ]; then
+            (cd .runtime && sha256sum -c AgenteCode-windows-x64.exe.sha256)
+            cp .runtime/AgenteCode-windows-x64.exe resources/bin/agente.exe
+          else
+            (cd .runtime && sha256sum -c AgenteCode-linux-x64.sha256)
+            install -m755 .runtime/AgenteCode-linux-x64 resources/bin/agente
+          fi
 
       - name: Remove Linux compiler output after bundling
         if: matrix.name == 'linux'
@@ -97,8 +142,8 @@ jobs:
           rm -rf ../../target
           df -h .
 
-      - name: Build Electron app
-        run: npm run build:main && npm run build:renderer && npx electron-builder --publish=never
+      - name: Build packaged Electron app
+        run: npm run build:main && npm run build:renderer && npx electron-builder --dir --publish=never
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
           AGENTE_RELEASE_BUILD: '1'
@@ -110,7 +155,7 @@ jobs:
         if: matrix.name == 'windows'
         run: npm run smoke:packaged
 
-      - name: Packaged Linux startup and Debian install
+      - name: Packaged Linux startup
         if: matrix.name == 'linux'
         env:
           AGENTE_SMOKE_SETUID: '1'
@@ -118,6 +163,19 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y xvfb libgtk-3-0 libnss3 libasound2t64
           xvfb-run -a npm run smoke:packaged
+
+      - name: Build installers from verified app
+        run: npx electron-builder --prepackaged release/${{ matrix.name == 'windows' && 'win' || 'linux' }}-unpacked --publish=never
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NODE_OPTIONS: --max-old-space-size=8192
+
+      - name: Verify Desktop Debian install and remove
+        if: matrix.name == 'linux'
+        env:
+          AGENTE_SMOKE_SETUID: '1'
+        run: |
           sudo apt-get install -y ./release/AgenteDesktop-linux-amd64.deb
           installed=$(dpkg -L agente-desktop | awk '/\/agente-desktop$/ {print; exit}')
           test -x "$installed"

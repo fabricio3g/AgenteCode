@@ -64,6 +64,10 @@ edit them on the Releases page if needed.
 - To try the build without publishing, run the workflows by hand
   (Actions → Run workflow): they build and upload artifacts but skip the
   release.
+- Desktop manual runs can select Linux or Windows. For verification retries,
+  `code_run_id` can reuse a successful Code workflow's binary; checksums and
+  unchanged Rust sources, Cargo files, and embedded assets are required. Tag
+  builds compile their own runtime. Startup tests run before installer compression.
 
 - Packaged startup tests gate both Desktop upload jobs. They use temporary profiles, verify configuration IPC, a Monaco TypeScript worker and the bundled Rust binary, and exercise failure screens. Diagnostics are uploaded even on failure.
 - Desktop size reports separate installed size, installer size, renderer assets, dependencies and every native backend. All GPU runtimes remain bundled; production source maps and proven duplicate dependencies are excluded.

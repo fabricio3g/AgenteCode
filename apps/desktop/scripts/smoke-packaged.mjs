@@ -17,7 +17,7 @@ if (process.platform === 'linux' && process.env.AGENTE_SMOKE_SETUID === '1') {
   execFileSync('sudo', ['chmod', '4755', sandbox], { stdio: 'inherit' });
 }
 const profiles = [];
-const executable = path.join(copied, process.platform === 'win32' ? 'Agente.exe' : 'agente-desktop');
+let executable = path.join(copied, process.platform === 'win32' ? 'Agente.exe' : 'agente-desktop');
 async function launch(testCase) {
   return new Promise((resolve, reject) => {
     const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'Agente smoke ñ '));
@@ -27,7 +27,11 @@ async function launch(testCase) {
     const collect = (data) => { output += data; process.stdout.write(data); };
     child.stdout.on('data', collect); child.stderr.on('data', collect);
     const timeout = setTimeout(() => { child.kill(); reject(new Error(`Packaged ${testCase || 'startup'} timed out`)); }, 45_000);
-    child.on('error', (error) => { clearTimeout(timeout); reject(error); });
+    child.on('error', (error) => {
+      clearTimeout(timeout);
+      fs.writeFileSync(path.join(diagnostics, `${testCase || 'ready'}.log`), `${output}\n${error.stack || error}`);
+      reject(error);
+    });
     child.on('exit', (code) => {
       clearTimeout(timeout);
       const marker = testCase ? 'SMOKE_FAILURE_SCREEN ' : 'SMOKE_READY ';
@@ -42,6 +46,9 @@ async function launch(testCase) {
   });
 }
 try {
+  fs.writeFileSync(path.join(diagnostics, 'launch.json'), JSON.stringify({ root, copied, executable, sourceFiles: fs.readdirSync(root), copiedFiles: fs.readdirSync(copied), executableExists: fs.existsSync(executable) }, null, 2));
+  // Expand Windows' DOS short paths before CreateProcess and DLL resolution.
+  if (process.platform === 'win32') executable = fs.realpathSync.native(executable);
   for (const testCase of ['', 'missing-assets', 'bootstrap']) await launch(testCase);
 } finally {
   fs.rmSync(temporary, { recursive: true, force: true });
