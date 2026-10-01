@@ -660,6 +660,7 @@ const handlers: Record<string, (args?: Record<string, unknown>) => unknown> = {
     return { ok: true };
   },
   'agente_steer': () => ({ ok: true }),
+  'agente_model_inputs': () => ['text', 'image'],
   'agente_follow_up': () => ({ ok: true }),
   'agente_abort': () => ({ ok: true }),
   'agente_compact': () => ({ ok: true }),

@@ -480,7 +480,11 @@
       "question": "Diese Dateien an das gewählte Modell senden?",
       "attach": "Anhängen",
       "always": "Immer erlauben",
-      "remove": "{name} entfernen"
+      "remove": "{name} entfernen",
+      "textOnly": "Nur Text",
+      "textOnlyHint": "Dieses Modell sieht keine Bilder: Screenshots und angehängte Medien erreichen es als Text.",
+      "sees": "Sieht {kinds}",
+      "autoAttach": "hängt {kinds} ohne Nachfrage an"
     },
     "project": {
       "loading": "Wird geladen…",
@@ -535,7 +539,8 @@
     "message": {
       "copy": "Kopieren",
       "fork": "Abzweigen",
-      "revert": "Zurücksetzen"
+      "revert": "Zurücksetzen",
+      "queued": "In Warteschlange"
     },
     "stopSubagent": "Subagent stoppen",
     "stopCommand": "Laufenden Befehl stoppen"

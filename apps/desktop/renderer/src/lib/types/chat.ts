@@ -71,6 +71,8 @@ export interface MessageVersion {
     codeDiagnostics?: string[];
     codeConversationIndex?: number;
     codeAttachments?: CodeAttachment[];
+    /** Sent while a Code run was busy and not yet taken by the model. */
+    codeQueued?: boolean;
     currentActivity?: AgentActivity;
     activityLabel?: string;
     publicFallback?: boolean;

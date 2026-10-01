@@ -480,7 +480,11 @@
       "question": "¿Enviar estos archivos al modelo elegido?",
       "attach": "Adjuntar",
       "always": "Permitir siempre",
-      "remove": "Quitar {name}"
+      "remove": "Quitar {name}",
+      "textOnly": "Solo texto",
+      "textOnlyHint": "Este modelo no ve imágenes: las capturas y los archivos multimedia le llegan como texto.",
+      "sees": "Ve {kinds}",
+      "autoAttach": "adjunta {kinds} sin preguntar"
     },
     "project": {
       "loading": "Cargando…",
@@ -535,7 +539,8 @@
     "message": {
       "copy": "Copiar",
       "fork": "Bifurcar",
-      "revert": "Revertir"
+      "revert": "Revertir",
+      "queued": "En cola"
     },
     "stopSubagent": "Detener subagente",
     "stopCommand": "Detener el comando en curso"

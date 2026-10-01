@@ -480,7 +480,11 @@
       "question": "把这些文件发送给所选模型吗？",
       "attach": "附加",
       "always": "始终允许",
-      "remove": "移除 {name}"
+      "remove": "移除 {name}",
+      "textOnly": "仅文本",
+      "textOnlyHint": "此模型无法查看图片，截图和附加的媒体会以文本形式发送。",
+      "sees": "可识别 {kinds}",
+      "autoAttach": "无需询问即可附加 {kinds}"
     },
     "project": {
       "loading": "正在加载…",
@@ -535,7 +539,8 @@
     "message": {
       "copy": "复制",
       "fork": "分叉",
-      "revert": "还原"
+      "revert": "还原",
+      "queued": "排队中"
     },
     "stopSubagent": "停止子代理",
     "stopCommand": "停止正在运行的命令"

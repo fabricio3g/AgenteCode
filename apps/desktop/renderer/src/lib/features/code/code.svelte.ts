@@ -418,9 +418,15 @@ class CodeStore {
     if (event.type === 'agent_start' && run.done) {
       // A queued follow-up is a new Rust turn: give its deltas a fresh target.
       Object.assign(run, createCodeRunState(), { running: true, assistantMessageId: undefined });
+      // It starts the oldest follow-up, which already sits right above.
+      const followUp = chat.messages.find((message) => message.metadata?.codeQueued);
+      if (followUp) delete followUp.metadata!.codeQueued;
       this.#appendAssistant(chat);
     }
 
+    if (event.type === 'runtime_event' && event.event.type === 'user_messages_injected') {
+      this.#placeInjected(chat, run, event.event.messages.length);
+    }
     applyCodeAgentEvent(run, event);
     if (event.type === 'compaction_end' && event.success && event.tokensBefore !== undefined) {
       for (const message of chat.messages) {
@@ -446,6 +452,7 @@ class CodeStore {
     if (run.done) run.running = false;
     if (event.type === 'agent_end') {
       run.queuedCount = 0;
+      this.#clearQueued(chat);
       void this.refreshCheckpoints(event.chatId);
     }
     if (event.type === 'approval_resolved') {
@@ -522,14 +529,44 @@ class CodeStore {
     }
   }
 
+  /**
+   * The model took `count` queued messages mid-run: close the reply so far,
+   * move them right under it and stream what follows into a new reply, so
+   * the transcript reads in the order the model saw it.
+   */
+  #placeInjected(chat: ChatSession, run: AgenteRun, count: number): void {
+    const queued = chat.messages.filter((message) => message.metadata?.codeQueued).slice(0, count);
+    if (!queued.length) return;
+    const reply = chat.messages.find((message) => message.id === run.assistantMessageId);
+    if (reply?.status === 'streaming') {
+      this.#flushToMessage(chat.id, run);
+      // Closed without `done`: no end-of-run footer on the first half.
+      reply.status = 'idle';
+      if (!reply.content && !reply.agentSteps?.length && !reply.reasoning) chat.messages.splice(chat.messages.indexOf(reply), 1);
+    }
+    chat.messages = [...chat.messages.filter((message) => !queued.includes(message)), ...queued];
+    for (const message of queued) delete message.metadata!.codeQueued;
+    // A fresh reply for the continuation; run-wide state (usage, spend,
+    // todos, timing) carries on, and still-running subagents stay visible.
+    Object.assign(run, { content: '', timeline: [], reasoning: '', reasoningRaw: '', steps: [], children: run.children.filter((child) => child.status === 'running') });
+    this.#appendAssistant(chat);
+  }
+
+  /** Nothing is waiting once a run ends: whatever it never took stays where it was sent. */
+  #clearQueued(chat: ChatSession): void {
+    for (const message of chat.messages) if (message.metadata?.codeQueued) delete message.metadata.codeQueued;
+  }
+
   /** Append a user message to a chat transcript (no assistant placeholder). */
-  #appendUserTurn(chat: ChatSession, text: string, attachments: Attachment[] = []): void {
+  #appendUserTurn(chat: ChatSession, text: string, attachments: Attachment[] = [], queued = false): void {
+    const conversationIndex = !this.runs[chat.id]?.assistantMessageId && this.#conversationIndices.has(chat.id)
+      ? { codeConversationIndex: this.#conversationIndices.get(chat.id) } : {};
+    const metadata = { ...conversationIndex, ...(queued ? { codeQueued: true } : {}) };
     chat.messages.push({
       id: createId('msg'),
       role: 'user',
       content: text,
-      ...(!this.runs[chat.id]?.assistantMessageId && this.#conversationIndices.has(chat.id)
-        ? { metadata: { codeConversationIndex: this.#conversationIndices.get(chat.id) } } : {}),
+      ...(Object.keys(metadata).length ? { metadata } : {}),
       createdAt: Date.now()
     });
     if (attachments.length) chat.messages.at(-1)!.metadata = { ...chat.messages.at(-1)!.metadata, codeAttachments: attachments.map((attachment) => ({ ...attachment })) };
@@ -690,7 +727,7 @@ class CodeStore {
   async steer(chatId: string, text: string, attachments: Attachment[] = []): Promise<void> {
     const chat = appStore.chats.find((c) => c.id === chatId);
     if (!chat || !text.trim()) return;
-    this.#appendUserTurn(chat, text, attachments);
+    this.#appendUserTurn(chat, text, attachments, true);
     const run = this.#requireRun(chatId);
     run.queuedCount += 1;
     try {
@@ -710,7 +747,7 @@ class CodeStore {
       await this.send(chatId, text, attachments);
       return;
     }
-    this.#appendUserTurn(chat, text, attachments);
+    this.#appendUserTurn(chat, text, attachments, true);
     run.queuedCount += 1;
     try {
       const result = await followUpCodeAgent(chatId, text, attachments);

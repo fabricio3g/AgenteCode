@@ -195,29 +195,35 @@ async function coreRuns(client: AgenteClient, providerId: string): Promise<boole
 
 const imageSupport = new Map<string, true>();
 
-/**
- * Whether a model takes images, from the core's model data (the provider's
- * own list, models.dev): the name guess misses most models. A local model
- * sees images when it has a vision projector; the guess is the fallback
- * only when the core cannot be asked.
- */
+/** Whether a model takes images (screenshots): see {@link modelInputs}. */
 export async function modelSeesImages(providerName: string, model: string): Promise<boolean> {
   const transport = resolveTransport(providerName, model);
-  if (transport.providerName === 'local') return transportSeesImages(transport);
-  const id = transport.model || model;
-  const key = `${transport.providerName}::${id}`;
-  const known = imageSupport.get(key);
-  if (known !== undefined) return known;
+  const key = `${transport.providerName}::${transport.model || model}`;
+  if (imageSupport.get(key)) return true;
+  const sees = (await modelInputs(providerName, model)).includes('image');
+  // Only a yes is kept: the provider's live list can arrive after a
+  // models.dev "no" (it did for OpenCode Go's space-bunny).
+  if (sees && transport.providerName !== 'local') imageSupport.set(key, true);
+  return sees;
+}
+
+/**
+ * What a model takes as input (`text`, `image`, `audio`, `video`, `pdf`),
+ * from the core's model data; a local model sees images when it has a
+ * vision projector. The name guess is the fallback only when the core
+ * cannot be asked.
+ */
+export async function modelInputs(providerName: string, model: string): Promise<string[]> {
+  const transport = resolveTransport(providerName, model);
+  const guess = transportSeesImages(transport) ? ['text', 'image'] : ['text'];
+  if (transport.providerName === 'local') return guess;
   try {
     const client = await connect();
-    const info = await client.request<{ capabilities?: { vision?: boolean; input_modalities?: string[] } }>('models.info', { provider: transport.providerName, model: id });
-    const sees = !!info.capabilities?.vision || !!info.capabilities?.input_modalities?.includes('image');
-    // Only a yes is kept: the provider's live list can arrive after a
-    // models.dev "no" (it did for OpenCode Go's space-bunny).
-    if (sees) imageSupport.set(key, true);
-    return sees;
+    const info = await client.request<{ capabilities?: { vision?: boolean; input_modalities?: string[] } }>('models.info', { provider: transport.providerName, model: transport.model || model });
+    const kinds = info.capabilities?.input_modalities?.length ? info.capabilities.input_modalities : ['text'];
+    return info.capabilities?.vision && !kinds.includes('image') ? [...kinds, 'image'] : kinds;
   } catch {
-    return transportSeesImages(transport);
+    return guess;
   }
 }
 
@@ -441,12 +447,43 @@ async function queueFollowUp(chat: ChatState, text: string, attachments: Attachm
   return { ok: true };
 }
 
+/** How long Stop waits for the runtime to end the turn before the UI settles on its own. */
+const STOP_GRACE_MS = 4_000;
+
+/**
+ * Stop always stops, as far as the window is concerned: a turn the runtime
+ * no longer knows (it ended while the window missed it, the runtime
+ * restarted) or one that does not end soon after the cancel is closed here
+ * as stopped, instead of leaving a run spinning that nothing can end.
+ */
 async function abort(chatId: string): Promise<{ ok: boolean }> {
   const chat = chats.get(chatId);
-  if (!chat?.turnId) return { ok: false };
+  if (!chat) return { ok: false };
   chat.followUps = [];
-  const client = await connect();
-  return client.request('turn.cancel', { turn_id: chat.turnId });
+  const turnId = chat.turnId;
+  if (!turnId) {
+    settleStopped(chat);
+    return { ok: true };
+  }
+  // Armed before any await: a runtime that never answers cannot hold it up.
+  const grace = setTimeout(() => { if (chat.turnId === turnId) settleStopped(chat); }, STOP_GRACE_MS);
+  let cancelled = false;
+  try {
+    const client = await connect();
+    cancelled = (await client.request<{ ok: boolean }>('turn.cancel', { turn_id: turnId })).ok;
+  } catch {
+    cancelled = false;
+  }
+  if (!cancelled && chat.turnId === turnId) {
+    clearTimeout(grace);
+    settleStopped(chat);
+  }
+  return { ok: true };
+}
+
+function settleStopped(chat: ChatState): void {
+  chat.turnId = null;
+  emit({ type: 'agent_end', chatId: chat.chatId, stopReason: 'aborted' });
 }
 
 async function respondApproval(chatId: string, requestId: string, decision: ApprovalDecision): Promise<{ ok: boolean }> {
@@ -638,6 +675,7 @@ function disposeAllSessions(): void {
 /** The engine behind every Code chat. */
 export const rustEngine = {
   startSession,
+  modelInputs,
   prompt,
   steer,
   followUp,

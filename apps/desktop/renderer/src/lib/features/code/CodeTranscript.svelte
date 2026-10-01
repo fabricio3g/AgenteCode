@@ -14,7 +14,7 @@
 
 <script lang="ts">
   import { tick } from 'svelte';
-  import { ArrowDown, CircleCheck, ClipboardList, Copy, GitFork, History, RotateCcw, TriangleAlert } from 'lucide-svelte';
+  import { ArrowDown, CircleCheck, ClipboardList, Clock, Copy, GitFork, History, RotateCcw, TriangleAlert } from 'lucide-svelte';
   import type { ChatMessage } from '$lib/types/chat';
   import RichContent from '$lib/ui/components/RichContent.svelte';
   import CodeWorkBlock from './CodeWorkBlock.svelte';
@@ -120,8 +120,9 @@
   <div class="mx-auto flex min-w-0 flex-col gap-3" style="max-width: var(--thread-width);">
     {#each messages as message (message.id)}
       {#if message.role === 'user'}
+        {@const queued = !!message.metadata?.codeQueued && !!run?.running}
         <div class="group flex flex-col items-end gap-1">
-          <div class="max-w-[85%] break-words whitespace-pre-wrap rounded-3xl bg-muted px-5 py-2.5 text-sm leading-relaxed text-foreground">
+          <div class="max-w-[85%] break-words whitespace-pre-wrap rounded-3xl bg-muted px-5 py-2.5 text-sm leading-relaxed text-foreground" class:opacity-60={queued}>
             {message.content}
             {#if message.metadata?.codeAttachments?.length}
               <div class="mt-2 flex flex-wrap gap-2 text-xs text-muted-foreground">
@@ -129,6 +130,7 @@
               </div>
             {/if}
           </div>
+          {#if queued}<span class="flex items-center gap-1 text-xs text-muted-foreground"><Clock class="size-3" />{$t('code.message.queued')}</span>{/if}
           <div class="flex items-center gap-2 text-xs text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
             <button type="button" class="flex items-center gap-1" onclick={() => messageAction(message, 'copy')}><Copy class="size-3" />{$t('code.message.copy')}</button>
             {#if message.metadata?.codeConversationIndex !== undefined && !run?.running}

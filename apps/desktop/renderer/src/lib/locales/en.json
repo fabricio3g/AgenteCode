@@ -480,7 +480,11 @@
       "question": "Send these files to the selected model?",
       "attach": "Attach",
       "always": "Always allow",
-      "remove": "Remove {name}"
+      "remove": "Remove {name}",
+      "textOnly": "Text only",
+      "textOnlyHint": "This model can’t see images, so screenshots and attached media reach it as text.",
+      "sees": "Sees {kinds}",
+      "autoAttach": "attaches {kinds} without asking"
     },
     "project": {
       "loading": "Loading…",
@@ -535,7 +539,8 @@
     "message": {
       "copy": "Copy",
       "fork": "Fork",
-      "revert": "Revert"
+      "revert": "Revert",
+      "queued": "Queued"
     },
     "stopSubagent": "Stop subagent",
     "stopCommand": "Stop the running command"

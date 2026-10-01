@@ -480,7 +480,11 @@
       "question": "Envoyer ces fichiers au modèle choisi ?",
       "attach": "Joindre",
       "always": "Toujours autoriser",
-      "remove": "Retirer {name}"
+      "remove": "Retirer {name}",
+      "textOnly": "Texte seul",
+      "textOnlyHint": "Ce modèle ne voit pas les images : captures et médias joints lui parviennent en texte.",
+      "sees": "Voit {kinds}",
+      "autoAttach": "joint {kinds} sans demander"
     },
     "project": {
       "loading": "Chargement…",
@@ -535,7 +539,8 @@
     "message": {
       "copy": "Copier",
       "fork": "Dupliquer",
-      "revert": "Revenir"
+      "revert": "Revenir",
+      "queued": "En attente"
     },
     "stopSubagent": "Arrêter le sous-agent",
     "stopCommand": "Arrêter la commande en cours"

@@ -77,6 +77,7 @@ export function registerAgenteHandlers({ ipcMain, getMainWindow }: AgenteHandler
   ipcMain.handle('agente_runtime_configure', (_e, args: Record<string, unknown>) => engine.configureSettings(args));
   ipcMain.handle('agente_media_import', (_e, args: Record<string, unknown>) => engine.runtimeRequest('media.import', args));
   ipcMain.handle('agente_runtime_settings', () => engine.runtimeRequest('runtime.settings'));
+  ipcMain.handle('agente_model_inputs', (_e, args: { provider: string; model: string }) => engine.modelInputs(args.provider, args.model));
   ipcMain.handle('agente_child_cancel', (_e, args: { runId: string }) => engine.runtimeRequest('children.cancel', { run_id: args.runId }));
   ipcMain.handle('agente_live_chats', () => engine.liveChatIds());
   ipcMain.handle('agente_delete_session_data', (_e, args: { chatIds?: string[]; sessionIds?: string[] }) => engine.deleteSessionData(args ?? {}));

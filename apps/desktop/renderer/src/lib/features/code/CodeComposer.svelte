@@ -12,7 +12,7 @@
 
 <script lang="ts">
   import { onDestroy, untrack } from 'svelte';
-  import { ArrowDownToLine, ArrowUp, Check, ChevronDown, ClipboardList, File as FileIcon, MoreHorizontal, Paperclip, Play, Plus, ShieldCheck, X, Zap } from 'lucide-svelte';
+  import { ArrowDownToLine, ArrowUp, Check, ChevronDown, ClipboardList, Eye, EyeOff, File as FileIcon, MoreHorizontal, Paperclip, Play, Plus, ShieldCheck, X, Zap } from 'lucide-svelte';
   import { toastStore } from '$lib/stores/toast.svelte';
   import { codeWorkspace } from './workspace.svelte';
   import { exactSlashCommand, matchSlashCommands, slashQuery } from './slash-commands';
@@ -286,6 +286,29 @@
     textarea.focus();
     textarea.setSelectionRange(textarea.value.length, textarea.value.length);
   }
+
+  // What the selected model can take, shown quietly on the bar so a
+  // screenshot it never sees is not a surprise.
+  const MEDIA_KINDS = ['image', 'video', 'audio'] as const;
+  let modelInputs = $state<string[] | null>(null);
+  $effect(() => {
+    const local = appStore.backendMode === 'local';
+    const provider = local ? 'local' : appStore.activeProviderName;
+    const model = local ? String(appStore.config.llm?.local?.model || '') : appStore.activeModelLabel;
+    let current = true;
+    void invoke<string[]>('agente_model_inputs', { provider, model })
+      .then((kinds) => { if (current) modelInputs = kinds; })
+      .catch(() => { if (current) modelInputs = null; });
+    return () => { current = false; };
+  });
+  const seenMedia = $derived(MEDIA_KINDS.filter((kind) => modelInputs?.includes(kind)));
+  const mediaHint = $derived.by(() => {
+    if (!seenMedia.length) return $t('code.media.textOnlyHint');
+    const names = (kinds: readonly string[]) => kinds.map((kind) => $t(`code.project.settings.${kind}`)).join(', ');
+    const auto = MEDIA_KINDS.filter((kind) => allowMedia.includes(kind));
+    const sees = $t('code.media.sees', { values: { kinds: names(seenMedia) } });
+    return auto.length ? `${sees} · ${$t('code.media.autoAttach', { values: { kinds: names(auto) } })}` : sees;
+  });
 
   $effect(() => {
     void invoke<{ allow_media: AttachmentKind[] }>('agente_runtime_settings').then((settings) => (allowMedia = settings.allow_media)).catch(() => {});
@@ -578,6 +601,11 @@
 
           <div class="composer-bar-trailing">
             {#if running && queuedCount > 0}<span class="queued-status" role="status">{$t('code.queued', { values: { n: queuedCount } })}</span>{/if}
+            {#if modelReady && modelInputs}
+              <span class="media-status" class:is-off={!seenMedia.length} role="img" aria-label={mediaHint} title={mediaHint}>
+                {#if seenMedia.length}<Eye class="size-3.5" />{:else}<EyeOff class="size-3.5" />{$t('code.media.textOnly')}{/if}
+              </span>
+            {/if}
             {#if showContextRing && usage}<ContextUsageRing usedTokens={usage.promptTokens} maxTokens={usage.contextWindow ?? 0} {spend} />{/if}
 
             {#if !modelReady}
@@ -657,6 +685,8 @@
     max-width: 18rem;
   }
   .queued-status { color: var(--muted-foreground); font-size: 12px; white-space: nowrap; }
+  .media-status { display: inline-flex; align-items: center; gap: 0.25rem; color: var(--muted-foreground); opacity: 0.6; font-size: 12px; white-space: nowrap; }
+  .media-status.is-off { opacity: 0.85; }
   .slash-menu {
     max-height: min(20rem, 40vh);
     overflow-y: auto;

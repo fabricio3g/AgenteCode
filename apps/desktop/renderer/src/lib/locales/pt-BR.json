@@ -480,7 +480,11 @@
       "question": "Enviar estes arquivos para o modelo escolhido?",
       "attach": "Anexar",
       "always": "Sempre permitir",
-      "remove": "Remover {name}"
+      "remove": "Remover {name}",
+      "textOnly": "Só texto",
+      "textOnlyHint": "Este modelo não vê imagens: capturas e mídia anexada chegam a ele como texto.",
+      "sees": "Vê {kinds}",
+      "autoAttach": "anexa {kinds} sem perguntar"
     },
     "project": {
       "loading": "Carregando…",
@@ -535,7 +539,8 @@
     "message": {
       "copy": "Copiar",
       "fork": "Ramificar",
-      "revert": "Reverter"
+      "revert": "Reverter",
+      "queued": "Na fila"
     },
     "stopSubagent": "Parar subagente",
     "stopCommand": "Parar o comando em execução"

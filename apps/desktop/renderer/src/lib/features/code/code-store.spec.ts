@@ -190,6 +190,29 @@ describe('streaming targets the last assistant message, not the transcript tail'
     expect(assistant.content).toBe('first after steer');
   });
 
+  it('a steer the model takes sits between the reply before it and the reply after it', async () => {
+    await startRun();
+
+    emit({ type: 'text_delta', chatId: CHAT_ID, delta: 'before' });
+    await codeStore.steer(CHAT_ID, 'course correction');
+    expect(appStore.chats[0]!.messages.at(-1)!.metadata?.codeQueued).toBe(true);
+    emit({ type: 'text_delta', chatId: CHAT_ID, delta: ' still before' });
+    emit({ type: 'runtime_event', chatId: CHAT_ID, event: { type: 'user_messages_injected', messages: ['course correction'] } });
+    emit({ type: 'text_delta', chatId: CHAT_ID, delta: 'after' });
+    emit({ type: 'agent_end', chatId: CHAT_ID, stopReason: 'stop' });
+
+    const messages = appStore.chats[0]!.messages;
+    expect(messages.map((message) => [message.role, message.content])).toEqual([
+      ['user', 'hello'],
+      ['assistant', 'before still before'],
+      ['user', 'course correction'],
+      ['assistant', 'after']
+    ]);
+    expect(messages[1]!.done).toBeFalsy();
+    expect(messages[2]!.metadata?.codeQueued).toBeUndefined();
+    expect(messages[3]!.done).toBe(true);
+  });
+
   it('a steer carrying reasoning deltas finalizes the original assistant message', async () => {
     await startRun();
 
