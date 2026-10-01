@@ -92,15 +92,15 @@
     gap: 0.375rem;
     padding: 0.3125rem 0.5rem;
     border-radius: 0.5rem;
-    font-size: 12.5px;
+    font-size: 13px;
     color: var(--muted-foreground);
     text-align: left;
-    transition: color var(--motion-fast) var(--motion-ease), background-color var(--motion-fast) var(--motion-ease);
+    transition: color var(--motion-fast) var(--motion-ease);
   }
+  /* Only the text answers the pointer: it brightens to say it opens. */
   .work-head:hover,
   .work-head:focus-visible {
     color: var(--foreground);
-    background: var(--surface-hover);
   }
   /* The block's rows hang from a hairline under the header's chevron. */
   .work-rows {
@@ -124,7 +124,7 @@
     border-radius: 0.375rem;
     background: var(--muted);
     font-family: var(--font-mono, ui-monospace, monospace);
-    font-size: 11px;
+    font-size: 12px;
     color: var(--foreground);
     transition: background-color var(--motion-fast) var(--motion-ease);
   }

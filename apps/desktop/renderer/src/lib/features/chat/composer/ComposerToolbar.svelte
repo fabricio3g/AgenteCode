@@ -52,6 +52,7 @@
       completionCostPerMillionUsd={contextBudget.completionCostPerMillionUsd}
       estimatedInputCostUsd={contextBudget.estimatedInputCostUsd}
       remaining={contextBudget.remaining}
+      estimated={contextBudget.estimated}
       usagePercent={contextBudget.usagePercent}
     />
   {/if}

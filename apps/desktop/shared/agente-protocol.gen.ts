@@ -31,9 +31,42 @@ export interface ChildSnapshot {
   summary?: string | null;
 }
 
+export interface ClientToolCall {
+  arguments: unknown;
+  call_id: string;
+  name: string;
+  request_id: string;
+  session_id: string;
+  turn_id: string;
+}
+
+export interface ClientToolDefinition {
+  description: string;
+  mutating?: boolean;
+  name: string;
+  parameters: unknown;
+  sequential?: boolean;
+}
+
+export interface ClientToolResult {
+  attachments?: Attachment[];
+  content: string;
+  is_error?: boolean;
+  request_id: string;
+  session_id: string;
+  turn_id: string;
+}
+
 export interface FunctionCall {
   arguments: string;
   name: string;
+}
+
+/** Home turns expose only client-owned tools, never the coding tool registry. */
+export interface HomeTurnPolicy {
+  max_iterations: number;
+  max_time_ms: number;
+  max_tool_calls: number;
 }
 
 export interface Message {
@@ -60,6 +93,11 @@ export interface ProviderContinuation {
   blocks: unknown[];
   model_id: string;
   provider_id: string;
+}
+
+export interface RegisterClientTools {
+  session_id: string;
+  tools: ClientToolDefinition[];
 }
 
 export type Role = "system" | "user" | "assistant" | "tool";
@@ -267,6 +305,7 @@ export interface SessionSnapshot {
 
 export interface StartTurn {
   conversation?: Message[];
+  home?: HomeTurnPolicy | null;
   /** Mode for this turn; the session keeps it until another turn sets one. */
   mode?: TurnMode | null;
   model?: string | null;

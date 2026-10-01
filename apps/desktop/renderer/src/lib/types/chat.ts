@@ -1,3 +1,4 @@
+import type { HomeRuntimeMeta } from '$shared/home-runtime';
 import type { IndexedDocument, SearchResult, SlideData } from '$lib/types/bridge';
 import type { AgentActivityKey, CodeChild, CodeRunSummary, CodeSpend, CodeStopReason, CodeTodoItem, HomeStopReason } from '$shared/agente-protocol';
 import type { Attachment as CodeAttachment } from '$shared/agente-protocol.gen';
@@ -38,6 +39,9 @@ export interface MessageVersion {
     reasoningTimingSeconds?: number;
     usageSource?: 'provider' | 'runtime' | 'estimated' | 'none';
     timingScope?: 'model' | 'agent_wall' | 'reasoning' | 'unknown';
+    homeConversationIndex?: number;
+    homeSessionId?: string;
+    homeRevision?: number;
     inputTokens?: number;
     outputTokens?: number;
     totalTokens?: number;
@@ -776,6 +780,7 @@ export type SessionComposerMode = 'chat' | 'instant' | 'agent';
 export type SessionSearchMode = 'chat' | 'search' | 'deep' | 'max';
 
 export interface ChatSession {
+  homeRuntime?: HomeRuntimeMeta;
   id: string;
   title: string;
   createdAt: number;

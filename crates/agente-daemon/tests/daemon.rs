@@ -343,3 +343,101 @@ async fn agente_serve_answers_on_its_local_socket() {
     server.await.unwrap().unwrap();
     let _ = std::fs::remove_dir_all(dir);
 }
+
+#[tokio::test]
+async fn home_profile_skips_project_instructions_and_requires_registered_tools() {
+    let (service, dir) = runtime("home-profile");
+    std::fs::write(dir.join("AGENTS.md"), "PROJECT SECRET MUST NOT REACH HOME").unwrap();
+    let mut client = Client::connect(&service);
+    let session = agente_protocol::SessionId::new();
+    let policy = json!({"max_iterations": 1, "max_tool_calls": 2, "max_time_ms": 1000});
+    let start = json!({"session_id":session, "home":policy, "provider":"missing-fixture", "model":"fixture", "system_prompt":"Home document assistant", "prompt":{"role":"user","content":"Build a document"}});
+    let (missing, _) = client.request("turn.start", start.clone()).await;
+    assert!(missing.get("error").is_some());
+    let (registered, _) = client
+        .request(
+            "client_tools.register",
+            json!({"session_id":session,"tools":[]}),
+        )
+        .await;
+    assert_eq!(registered["result"]["ok"], true);
+    let (started, notes) = client.request("turn.start", start).await;
+    assert!(started.get("result").is_some());
+    client
+        .until(notes, |message| message["method"] == "turn.outcome")
+        .await;
+    let (state, _) = client
+        .request("session.get", json!({"session_id":session}))
+        .await;
+    let snapshot = &state["result"]["snapshot"]["conversation"];
+    assert!(snapshot.to_string().contains("Home document assistant"));
+    assert!(!snapshot.to_string().contains("PROJECT SECRET"));
+    let mut other = Client::connect(&service);
+    let (foreign, _) = other.request("turn.start", json!({"session_id":session,"home":policy,"prompt":{"role":"user","content":"Follow up"}})).await;
+    assert!(foreign.get("error").is_some());
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[tokio::test]
+async fn providers_connect_to_the_shared_key_store_and_disconnect() {
+    let (runtime, dir) = runtime("providers");
+    // The stores the TUI shares; never the developer's own.
+    let previous_config_dir = std::env::var_os("AGENTE_CONFIG_DIR");
+    std::env::set_var("AGENTE_CONFIG_DIR", dir.join("config"));
+    let mut client = Client::connect(&runtime);
+
+    let (unknown, _) = client
+        .request(
+            "providers.connect",
+            json!({ "id": "no-such", "api_key": "k" }),
+        )
+        .await;
+    assert_eq!(unknown["error"]["code"], -32602);
+
+    let (connected, _) = client
+        .request(
+            "providers.connect",
+            json!({ "id": "deepseek", "api_key": " sk-test ", "base_url": "https://example.test/v1" }),
+        )
+        .await;
+    let deepseek = |status: &Value| {
+        status["result"]["providers"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|p| p["id"] == "deepseek")
+            .cloned()
+            .unwrap()
+    };
+    let entry = deepseek(&connected);
+    assert_eq!(entry["connected"], true);
+    assert_eq!(entry["stored_key"], true);
+    assert_eq!(entry["base_url"], "https://example.test/v1");
+    assert!(
+        !connected.to_string().contains("sk-test"),
+        "status never carries keys"
+    );
+    let auth = std::fs::read_to_string(dir.join("config/auth.json")).unwrap();
+    assert!(auth.contains("sk-test") && !auth.contains(" sk-test"));
+    let saved = std::fs::read_to_string(dir.join("config/config.json")).unwrap();
+    assert!(saved.contains("https://example.test/v1") && !saved.contains("sk-test"));
+
+    let (defaulted, _) = client
+        .request(
+            "providers.set_default",
+            json!({ "provider": "deepseek", "model": "deepseek-chat" }),
+        )
+        .await;
+    assert_eq!(defaulted["result"]["default_provider"], "deepseek");
+    assert_eq!(defaulted["result"]["default_model"], "deepseek-chat");
+
+    let (gone, _) = client
+        .request("providers.disconnect", json!({ "id": "deepseek" }))
+        .await;
+    assert_eq!(deepseek(&gone)["stored_key"], false);
+    match previous_config_dir {
+        Some(path) => std::env::set_var("AGENTE_CONFIG_DIR", path),
+        None => std::env::remove_var("AGENTE_CONFIG_DIR"),
+    }
+    let _ = std::fs::remove_dir_all(dir);
+}

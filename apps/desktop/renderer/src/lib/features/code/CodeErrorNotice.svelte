@@ -17,7 +17,7 @@
     {#if safeDetail.trim()}
       <details class="mt-1.5 text-muted-foreground">
         <summary class="cursor-pointer hover:text-foreground">{$t('code.errors.details')}</summary>
-        <pre class="mt-2 max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-md bg-muted p-2 font-mono text-[11px]">{safeDetail}</pre>
+        <pre class="mt-2 max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-md bg-muted p-2 font-mono text-xs">{safeDetail}</pre>
       </details>
     {/if}
   </div>

@@ -16,14 +16,12 @@ import type { AgentMessage, UserMessage } from '$shared/agent-core/types';
 import { normPath } from '$lib/services/agent-workspace';
 import { buildMarkdownReport } from '$lib/services/agent-content';
 import { sanitizeAgentVisibleText, stripToolCallArtifacts } from '$lib/services/agent-parsing';
-import { hasVisibleArtifact } from '$lib/services/agent-flow';
 import { asksUserForDetails } from '$lib/services/agent-clarify';
 import {
   compactText, sourceRows, evidenceSources, buildEvidenceText,
   requestedArtifactKinds, missingRequestedArtifactExtensions, fallbackTitle,
   requestedVisualArtifacts, VISUAL_ARTIFACT_TOOL, type VisualArtifactKind,
-  hasAllRequestedArtifacts as hasAllRequestedArtifactsForFiles,
-  hasGatheredEvidence as hasGatheredEvidenceForContext
+  hasAllRequestedArtifacts as hasAllRequestedArtifactsForFiles
 } from '$lib/services/agent-evidence';
 import { buildScopedArtifact } from '$lib/services/agent-artifact';
 import { injectEvidenceSummary } from '$lib/services/agent-message-context';
@@ -225,16 +223,8 @@ export function pushStep(run: AgentRun, step: Omit<AgentStep, 'id'>) {
 }
 
 /** Native tool calling is live for the next model call. */
-export function nativeActive(run: AgentRun): boolean {
+function nativeActive(run: AgentRun): boolean {
   return run.plan.nativeTools && !run.transport.nativeFailed && !run.transport.directMode;
-}
-
-export function useSystemPrompt(run: AgentRun, which: keyof AgentRunPlan['prompts']) {
-  run.messages[0] = { role: 'system', content: run.plan.prompts[which] };
-}
-
-export function checkAbort(run: AgentRun) {
-  if (run.args.signal?.aborted) throw new DOMException('Agent task cancelled by user', 'AbortError');
 }
 
 /**
@@ -287,9 +277,6 @@ function hasAllRequestedArtifacts(run: AgentRun): boolean {
   return hasAllRequestedArtifactsForFiles(run.ctx.files, prompt(run));
 }
 
-export function hasGatheredEvidence(run: AgentRun, sources: SearchResult[], content = ''): boolean {
-  return hasGatheredEvidenceForContext({ files: run.ctx.files, observations: run.observations, sources, content, hasVisibleArtifact });
-}
 
 /**
  * Inline visuals the prompt asked for that no tool has created yet. Compared
@@ -366,10 +353,6 @@ function summarizeCodeObservations(observations: ToolObservation[]): string {
   if (reads.length && !paths.size) lines.push(`Explored the codebase (${reads.length} read/list/search actions) but did not finish applying changes.`);
   if (!lines.length) lines.push('No successful file changes were recorded before the limit.');
   return lines.join('\n');
-}
-
-export function codeObservationSummary(run: AgentRun): string {
-  return summarizeCodeObservations(run.observations);
 }
 
 function workspaceStoppedContent(reason: string, observations: ToolObservation[]): string {
@@ -457,53 +440,4 @@ export async function enforceRequestedArtifacts(
     });
   }
   return true;
-}
-
-export function mergeCompletionUsage(
-  current: CompletionResult['usage'],
-  next: CompletionResult['usage']
-): CompletionResult['usage'] {
-  if (!next) return current || null;
-  if (!current) return next;
-
-  const sum = (left?: number, right?: number) => {
-    const total = (Number(left) || 0) + (Number(right) || 0);
-    return total > 0 ? total : undefined;
-  };
-  const leftTimings = current.timings || {};
-  const rightTimings = next.timings || {};
-  const timings = {
-    prompt_n: sum(leftTimings.prompt_n, rightTimings.prompt_n),
-    prompt_ms: sum(leftTimings.prompt_ms, rightTimings.prompt_ms),
-    predicted_n: sum(leftTimings.predicted_n, rightTimings.predicted_n),
-    predicted_ms: sum(leftTimings.predicted_ms, rightTimings.predicted_ms),
-    total_ms: sum(leftTimings.total_ms, rightTimings.total_ms)
-  };
-  const predictedMs = Number(timings.predicted_ms || 0);
-  const outputTokens = sum(
-    current.output_tokens ?? current.completion_tokens ?? current.eval_count,
-    next.output_tokens ?? next.completion_tokens ?? next.eval_count
-  );
-
-  return {
-    ...current,
-    ...next,
-    input_tokens: sum(
-      current.input_tokens ?? current.prompt_tokens ?? current.prompt_eval_count,
-      next.input_tokens ?? next.prompt_tokens ?? next.prompt_eval_count
-    ),
-    output_tokens: outputTokens,
-    total_tokens: sum(
-      current.total_tokens ?? ((current.input_tokens || current.prompt_tokens || current.prompt_eval_count || 0) + (current.output_tokens || current.completion_tokens || current.eval_count || 0)),
-      next.total_tokens ?? ((next.input_tokens || next.prompt_tokens || next.prompt_eval_count || 0) + (next.output_tokens || next.completion_tokens || next.eval_count || 0))
-    ),
-    timings: {
-      ...leftTimings,
-      ...rightTimings,
-      ...timings,
-      ...(predictedMs > 0 && outputTokens
-        ? { predicted_per_second: outputTokens / (predictedMs / 1000) }
-        : {})
-    }
-  };
 }

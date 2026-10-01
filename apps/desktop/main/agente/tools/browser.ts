@@ -13,7 +13,7 @@ import { isLocalUrl } from '../../browser-format.ts';
 
 export interface BrowserToolOptions {
   /** Whether the current model can take images (screenshots). */
-  canSeeImages: () => boolean;
+  canSeeImages: () => boolean | Promise<boolean>;
 }
 
 const ref = z.string().describe('Element ref from the latest browser_snapshot, e.g. "e12"');
@@ -42,7 +42,7 @@ export function createBrowserTools(options: BrowserToolOptions): AgentTool[] {
     async execute() {
       const result = await runBrowserAction('screenshot');
       if (!result.ok || !result.image) return { content: result.text, isError: true };
-      if (!options.canSeeImages()) {
+      if (!(await options.canSeeImages())) {
         return { content: `${result.text} The current model cannot see images, so the screenshot was not attached — use browser_snapshot to read the page instead.` };
       }
       return { content: result.text, images: [result.image] };

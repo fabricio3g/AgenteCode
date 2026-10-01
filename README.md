@@ -155,7 +155,7 @@ agente --no-tui "fix the failing test"   # headless; auto-approves tools
 | **Context and spend** | Automatic compaction, prompt caching, context usage, and per-call and per-subagent cost accounting. Estimates are labeled. |
 | **Editor and automation** | Use `--acp-stdio` for Agent Client Protocol integrations, or `--no-tui` for scripts and CI. |
 
-Providers include OpenRouter, OpenCode Go/Zen, DeepSeek, Z.AI/GLM, MiniMax, Kimi, Qwen, OpenAI, Anthropic, Gemini, Groq, Mistral, xAI, Ollama, and LM Studio, plus compatible custom endpoints. Model capabilities determine tool, reasoning, and media support.
+Cloud providers: OpenRouter, OpenCode Go, DeepSeek, Z.AI (GLM), and MiniMax. Local: Ollama, LM Studio, and llama.cpp. Any other OpenAI-compatible endpoint works as a custom provider. Services whose terms forbid using your own key from a third-party app (such as OpenAI, Anthropic, and Gemini directly) are left out; their models are still available through OpenRouter. Model capabilities determine tool, reasoning, and media support.
 
 <details>
 <summary><strong>Keyboard shortcuts</strong></summary>

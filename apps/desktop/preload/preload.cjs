@@ -46,9 +46,10 @@ const ALLOWED_INVOKE_CHANNELS = new Set([
   'generate_pptx', 'parse_slides_from_markdown', 'slides_to_markdown',
   'generate_docx', 'generate_xlsx', 'generate_pdf',
   'fetch_url_content', 'crawl_web',
+  'home_runtime_start', 'home_runtime_result', 'home_runtime_cancel',
   'agente_start_session', 'agente_prompt',
   'agente_steer', 'agente_follow_up', 'agente_abort',
-  'agente_compact', 'agente_set_model', 'agente_set_runtime_mode',
+  'agente_compact', 'model_sees_images', 'agente_set_model', 'agente_set_runtime_mode',
   'agente_respond_approval', 'agente_list_checkpoints', 'agente_rollback',
   'agente_delete_session_data', 'agente_live_chats',
   'bots_list', 'bots_get', 'bots_create', 'bots_update', 'bots_delete', 'bots_write_doc', 'bots_compact',
@@ -67,7 +68,7 @@ const ALLOWED_EVENT_CHANNELS = new Set([
   'supervisor-event', 'download-progress', 'runtime-download-progress', 'whisper-runtime-download-progress', 'voice-setup-progress', 'instances-changed',
   'search-result', 'search-progress', 'agent-event', 'tts-event', 'chat-stream-event',
   'tts-chunk', 'tts-done', 'tts-start', 'tts-error',
-  'code_agent_event', 'browser_panel_state', 'code_process_event', 'terminal_event', 'bot_event',
+  'home_runtime_event', 'code_agent_event', 'browser_panel_state', 'code_process_event', 'terminal_event', 'bot_event',
   'ui-zoom'
 ]);
 

@@ -34,7 +34,7 @@ function homeTool(run: AgentRun, definition: { name: string; description: string
     description: definition.description,
     parameters: definition.parameters,
     executionMode: SEQUENTIAL_TOOLS.has(definition.name) ? 'sequential' : 'parallel',
-    async execute(toolCallId, args): Promise<CoreToolResult> {
+    async execute(toolCallId, args, execution): Promise<CoreToolResult> {
       const { args: runArgs, ctx } = run;
       const call: ToolCall = { id: toolCallId, name: definition.name, arguments: args };
       runArgs.onProgress?.(`${displayToolLabel(call.name)}…`);
@@ -42,7 +42,9 @@ function homeTool(run: AgentRun, definition: { name: string; description: string
       run.steps.push(step);
       emitSteps(run);
 
-      const result = recoverOptionalPresentationFailure(call, await executeToolWithTimeout(call.name, args, ctx));
+      const result = recoverOptionalPresentationFailure(call, await executeToolWithTimeout(call.name, args, { ...ctx, signal: execution.signal }));
+      execution.signal.throwIfAborted();
+      ctx.signal?.throwIfAborted();
       run.observations.push(summarizeToolObservation(call.name, args, result));
       mergeWebSearchSources({ toolCall: call, result, sources: run.sources, seenUrls: run.seenUrls, onSources: runArgs.onSources });
       finalizeToolStep(step, result, call.name);
@@ -60,13 +62,13 @@ function homeTool(run: AgentRun, definition: { name: string; description: string
 }
 
 /** Every tool the model is offered, plus the ones the loop issues on its behalf. */
-export function createHomeTools(run: AgentRun): { tools: Map<string, AgentTool>; enabled: Set<string> } {
+export function createHomeTools(run: AgentRun, runtime = false): { tools: Map<string, AgentTool>; enabled: Set<string> } {
   const definitions = run.plan.toolDefs.map((tool) => tool.function);
   const tools = new Map<string, AgentTool>();
   for (const definition of definitions) {
     tools.set(definition.name, homeTool(run, definition as { name: string; description: string; parameters: Record<string, unknown> }));
   }
-  for (const name of LOOP_ISSUED_TOOLS) {
+  for (const name of runtime ? [] : LOOP_ISSUED_TOOLS) {
     if (!tools.has(name)) tools.set(name, homeTool(run, { name, description: name, parameters: { type: 'object' } }));
   }
   return { tools, enabled: new Set(tools.keys()) };

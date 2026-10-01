@@ -518,6 +518,7 @@ mod tests {
         let process = start(
             "python3 -c \"import time; print('ready'); time.sleep(30)\"",
             &dir,
+            &crate::tools::ShellEnv::Inherit,
         )
         .await
         .unwrap();
@@ -533,7 +534,9 @@ mod tests {
     #[tokio::test]
     async fn a_command_that_ends_is_reported_as_exited() {
         let dir = project("quick");
-        let process = start("echo done; exit 3", &dir).await.unwrap();
+        let process = start("echo done; exit 3", &dir, &crate::tools::ShellEnv::Inherit)
+            .await
+            .unwrap();
         wait_until(|| process.status() != ProcessStatus::Running).await;
         assert_eq!(process.status(), ProcessStatus::Exited(Some(3)));
         wait_until(|| process.output(100).contains("done")).await;

@@ -202,6 +202,7 @@ function migrate(database) {
   addColumn(database, 'messages', 'work_context', 'TEXT');
   addColumn(database, 'messages', 'files_created', 'TEXT');
   addColumn(database, 'chats', 'code_agent', 'TEXT');
+  addColumn(database, 'chats', 'home_runtime', 'TEXT');
   addColumn(database, 'chats', 'project_id', 'TEXT');
   // Session fields required for isolation + Code/Work durability
   addColumn(database, 'chats', 'workspace', 'TEXT');
@@ -225,14 +226,15 @@ function migrate(database) {
 export function saveChatSession(session) {
   const database = getDb();
   const upsertChat = database.prepare(`
-    INSERT INTO chats (id, title, folder_id, draft, context_mode, code_agent, project_id, workspace, composer_mode, search_mode, reasoning_level, character_id, world_id, persona_id, greeting_index, roleplay, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO chats (id, title, folder_id, draft, context_mode, code_agent, home_runtime, project_id, workspace, composer_mode, search_mode, reasoning_level, character_id, world_id, persona_id, greeting_index, roleplay, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET
       title = excluded.title,
       folder_id = excluded.folder_id,
       draft = excluded.draft,
       context_mode = excluded.context_mode,
       code_agent = excluded.code_agent,
+      home_runtime = excluded.home_runtime,
       project_id = excluded.project_id,
       workspace = excluded.workspace,
       composer_mode = excluded.composer_mode,
@@ -307,6 +309,7 @@ export function saveChatSession(session) {
       session.draft || '',
       session.contextMode || 'chat',
       stringifyJson(session.codeAgent),
+      stringifyJson(session.homeRuntime),
       session.projectId || null,
       stringifyJson(session.workspace),
       session.composerMode || null,
@@ -528,6 +531,7 @@ export function loadAllChats() {
       draft: chat.draft || '',
       contextMode: chat.context_mode || 'chat',
       codeAgent: parseJson(chat.code_agent, null),
+      homeRuntime: parseJson(chat.home_runtime, undefined),
       projectId: chat.project_id || null,
       workspace: parseJson(chat.workspace, null),
       composerMode: chat.composer_mode || null,

@@ -42,6 +42,7 @@ struct Connection {
     /// the subscription must not send them a second time.
     own_turns: Mutex<HashSet<TurnId>>,
     subscription: Mutex<Option<JoinHandle<()>>>,
+    client_tools: Arc<crate::client_tools::ClientTools>,
 }
 
 /// What `initialize` answers: the protocol and server versions.
@@ -50,7 +51,7 @@ pub(crate) fn initialize_result() -> Value {
         "protocol_version": agente_protocol::PROTOCOL_VERSION,
         "server": "agente",
         "version": env!("CARGO_PKG_VERSION"),
-        "capabilities": ["bots", "routines", "project", "processes", "sessions", "turns", "edits", "desktop_v1"],
+        "capabilities": ["bots", "routines", "project", "processes", "sessions", "turns", "edits", "desktop_v1", "home_turns_v1", "provider_settings_v1"],
     })
 }
 
@@ -78,6 +79,7 @@ where
         outbox,
         own_turns: Mutex::new(HashSet::new()),
         subscription: Mutex::new(None),
+        client_tools: Arc::default(),
     });
 
     let mut lines = BufReader::new(reader).lines();
@@ -175,6 +177,7 @@ where
     if let Some(task) = connection.lock_subscription().take() {
         task.abort();
     }
+    connection.client_tools.disconnect(&connection.runtime);
     drop(connection);
     let _ = writer_task.await;
     result
@@ -374,6 +377,47 @@ impl Connection {
             "providers.list" => Ok(json!({
                 "providers": agente_core::providers::spec::all(),
             })),
+            "providers.status" => Ok(runtime.provider_status()),
+            "providers.connect" => {
+                #[derive(Deserialize)]
+                struct Params {
+                    id: String,
+                    #[serde(default)]
+                    api_key: Option<String>,
+                    #[serde(default)]
+                    base_url: Option<String>,
+                }
+                let Params {
+                    id,
+                    api_key,
+                    base_url,
+                } = parse(params)?;
+                runtime
+                    .connect_provider(&id, api_key, base_url)
+                    .map_err(runtime_failure)?;
+                Ok(runtime.provider_status())
+            }
+            "providers.disconnect" => {
+                #[derive(Deserialize)]
+                struct Params {
+                    id: String,
+                }
+                let Params { id } = parse(params)?;
+                runtime.disconnect_provider(&id).map_err(runtime_failure)?;
+                Ok(runtime.provider_status())
+            }
+            "providers.set_default" => {
+                #[derive(Deserialize)]
+                struct Params {
+                    provider: String,
+                    model: String,
+                }
+                let Params { provider, model } = parse(params)?;
+                runtime
+                    .set_default_model(&provider, &model)
+                    .map_err(runtime_failure)?;
+                Ok(runtime.provider_status())
+            }
             "models.thinking" => {
                 #[derive(Deserialize)]
                 struct Params {
@@ -472,9 +516,68 @@ impl Connection {
                 }
                 to_json(runtime.session_snapshot(fork.session_id))
             }
+            "client_tools.register" => {
+                let registration: agente_protocol::RegisterClientTools = parse(params)?;
+                if runtime.is_busy(registration.session_id) {
+                    return Err((BUSY, "Home session is busy".into()));
+                }
+                self.client_tools
+                    .register(registration.session_id, registration.tools)
+                    .map_err(|error| (rpc::INVALID_PARAMS, error))?;
+                Ok(json!({"ok": true}))
+            }
+            "client_tools.result" => {
+                self.client_tools
+                    .result(parse(params)?)
+                    .map_err(|error| (rpc::INVALID_PARAMS, error))?;
+                Ok(json!({"ok": true}))
+            }
             "turn.start" => {
                 let start: StartTurn = parse(params)?;
-                let turn = runtime.start_turn(start).map_err(runtime_failure)?;
+                // Nothing to answer: a blank prompt would start a whole turn
+                // of the model exploring on its own.
+                if start.conversation.is_empty()
+                    && start.prompt.as_ref().is_some_and(|prompt| {
+                        prompt.content.trim().is_empty() && prompt.attachments.is_empty()
+                    })
+                {
+                    return Err((rpc::INVALID_PARAMS, "Empty message".into()));
+                }
+                let turn = if let Some(policy) = &start.home {
+                    if policy.max_iterations == 0
+                        || policy.max_iterations > 500
+                        || policy.max_tool_calls > 1000
+                        || policy.max_time_ms == 0
+                        || policy.max_time_ms > 3_600_000
+                    {
+                        return Err((rpc::INVALID_PARAMS, "Invalid Home turn budgets".into()));
+                    }
+                    let turn_id = TurnId::new();
+                    let extra = self
+                        .client_tools
+                        .tools(start.session_id, turn_id, policy, self.outbox.clone())
+                        .map_err(|error| (rpc::INVALID_PARAMS, error))?;
+                    let timeout = policy.max_time_ms;
+                    let turn = runtime
+                        .start_turn_with_tools(
+                            start,
+                            turn_id,
+                            Some(agente_core::agent::TurnTools {
+                                extra,
+                                only: Some(Vec::new()),
+                                ..Default::default()
+                            }),
+                        )
+                        .map_err(runtime_failure)?;
+                    let runtime = runtime.clone();
+                    tokio::spawn(async move {
+                        tokio::time::sleep(std::time::Duration::from_millis(timeout)).await;
+                        runtime.cancel(turn_id);
+                    });
+                    turn
+                } else {
+                    runtime.start_turn(start).map_err(runtime_failure)?
+                };
                 let conversation_index = turn.conversation_index;
                 Ok(json!({ "turn_id": self.pump(turn), "conversation_index": conversation_index }))
             }

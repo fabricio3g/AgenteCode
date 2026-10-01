@@ -3,6 +3,7 @@
 import { loadConfigFromDisk } from './config.ts';
 import { normalizeBaseUrl } from './providers/helpers.ts';
 import { resolveLlamaSessionKey } from './llama-session.ts';
+import { coreKey } from './agente/core-providers.ts';
 
 const _configCache = { data: null, ts: 0 };
 const CONFIG_CACHE_TTL = 30_000;
@@ -51,5 +52,7 @@ export function resolveApiKey(apiKey?: string, baseUrl?: string, providerName?: 
   // is never written to config, so it has to be resolved from the live session.
   const sessionKey = resolveLlamaSessionKey(baseUrl);
   if (sessionKey) return sessionKey;
-  return resolveApiKeyFromConfig(getCachedConfig(), apiKey, baseUrl, providerName);
+  // The Rust core's store (shared with the TUI) holds the keys of the
+  // providers it offers; Desktop's own config keeps custom endpoints'.
+  return apiKey || coreKey(providerName) || resolveApiKeyFromConfig(getCachedConfig(), '', baseUrl, providerName);
 }

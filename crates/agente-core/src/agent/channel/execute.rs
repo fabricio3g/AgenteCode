@@ -18,6 +18,28 @@ use crate::agent::events::{AgentEvent, AgentTaskEvent};
 use crate::todo::TodoInput;
 use crate::util::clean_path;
 
+/// Name the tools that do exist, so the next call can use one; models often
+/// reach for a shell named `bash` or `run_command`.
+fn unknown_tool_message(tool_name: &str, available: &[&str]) -> String {
+    let shell_like = [
+        "bash",
+        "sh",
+        "terminal",
+        "run_command",
+        "execute_command",
+        "exec",
+    ];
+    let hint = if shell_like.contains(&tool_name) && available.contains(&"shell") {
+        " Use `shell` to run commands.".to_string()
+    } else {
+        String::new()
+    };
+    format!(
+        "Error: Unknown tool '{tool_name}'.{hint} Available tools: {}.",
+        available.join(", ")
+    )
+}
+
 /// Check if a tool should be auto-approved based on configuration.
 /// For Ask permissions, sends an approval request to the UI and waits for response.
 // Box-free Err: the failure path is cold (bad args / denied permission) and
@@ -46,13 +68,14 @@ pub(crate) async fn prepare_tool_call(
         return Err(ToolCallOutcome {
             tool_call_id: tool_call.id.clone(),
             tool_name: tool_name.clone(),
-            content: format!("Error: Unknown tool '{tool_name}'"),
+            content: unknown_tool_message(tool_name, &tool_registry.names()),
             is_error: true,
             path_changed: None,
             changed_path: None,
             file_before: None,
             file_after: None,
             todos: None,
+            attachments: Vec::new(),
         });
     }
 
@@ -71,17 +94,25 @@ pub(crate) async fn prepare_tool_call(
             file_before: None,
             file_after: None,
             todos: None,
+            attachments: Vec::new(),
         });
     }
 
     // Check permission using the permission engine. Filesystem facts are
     // collected BEFORE the lock so slow disks never stall other permission
     // decisions while the shared engine is held.
-    let facts = crate::permissions::collect_fs_facts(
-        tool_name,
-        &args,
-        Some(std::path::Path::new(project_dir)),
-    );
+    let facts = if tool_registry
+        .get(tool_name)
+        .is_some_and(|tool| tool.uses_host_filesystem())
+    {
+        crate::permissions::collect_fs_facts(
+            tool_name,
+            &args,
+            Some(std::path::Path::new(project_dir)),
+        )
+    } else {
+        crate::permissions::ToolFsFacts::default()
+    };
     let permission = {
         let engine = permission_engine
             .read()
@@ -104,25 +135,27 @@ pub(crate) async fn prepare_tool_call(
                 file_before: None,
                 file_after: None,
                 todos: None,
+                attachments: Vec::new(),
             });
         }
         crate::permissions::Permission::Ask => {
             let request = tokio::select! {
-                request = build_approval_request(tool_call, &args, project_dir) => request,
-                _ = cancel_signal.wait_aborted() => {
-                    return Err(ToolCallOutcome {
-                        tool_call_id: tool_call.id.clone(),
-                        tool_name: tool_name.clone(),
-                        content: format!("Tool '{tool_name}' canceled by user"),
-                        is_error: true,
-                        path_changed: None,
-                        changed_path: None,
-                        file_before: None,
-                        file_after: None,
-                        todos: None,
-                    });
-                }
-            };
+                    request = build_approval_request(tool_call, &args, project_dir) => request,
+                    _ = cancel_signal.wait_aborted() => {
+                        return Err(ToolCallOutcome {
+                            tool_call_id: tool_call.id.clone(),
+                            tool_name: tool_name.clone(),
+                            content: format!("Tool '{tool_name}' canceled by user"),
+                            is_error: true,
+                            path_changed: None,
+                            changed_path: None,
+                            file_before: None,
+                            file_after: None,
+                            todos: None,
+            attachments: Vec::new(),
+                        });
+                    }
+                };
 
             // Register before publishing. A fast UI response must never race
             // the broker and get discarded because no waiter existed yet.
@@ -169,6 +202,7 @@ pub(crate) async fn prepare_tool_call(
                         file_before: None,
                         file_after: None,
                         todos: None,
+                        attachments: Vec::new(),
                     });
                 }
             }
@@ -178,10 +212,13 @@ pub(crate) async fn prepare_tool_call(
         }
     }
 
-    let file_before = if matches!(
-        tool_name.as_str(),
-        "write_file" | "edit_file" | "apply_patch"
-    ) {
+    let file_before = if tool_registry
+        .get(tool_name)
+        .is_some_and(|tool| tool.uses_host_filesystem())
+        && matches!(
+            tool_name.as_str(),
+            "write_file" | "edit_file" | "apply_patch"
+        ) {
         if let Some(path) = args.get("path").and_then(|value| value.as_str()) {
             match crate::tools::resolve_project_path(path, project_dir) {
                 Ok(resolved) => Some((
@@ -247,7 +284,9 @@ pub(crate) fn build_tool_context(
     let progress_id = tool_call_id.to_string();
     let heartbeat_sender = sender.clone();
     let heartbeat_id = tool_call_id.to_string();
-    ToolExecutionContext::new(cancel_signal.clone())
+    let mut context = ToolExecutionContext::new(cancel_signal.clone());
+    context.call_id = tool_call_id.to_string();
+    context
         .with_progress(move |progress| {
             let chunk = match progress.stream {
                 ToolOutputStream::Stdout => progress.content,
@@ -307,7 +346,11 @@ pub(crate) async fn execute_prepared_tool(
     let mut after_content = None;
     let mut todos = None;
 
-    if !is_error {
+    if !is_error
+        && tool_registry
+            .get(&tool_name)
+            .is_some_and(|tool| tool.uses_host_filesystem())
+    {
         match tool_name.as_str() {
             "write_file" | "edit_file" | "apply_patch" => {
                 if let Some(path) = args.get("path").and_then(|v| v.as_str()) {
@@ -382,6 +425,10 @@ pub(crate) async fn execute_prepared_tool(
         }
     }
 
+    let attachments = tool_registry
+        .get(&tool_name)
+        .map(|tool| tool.take_result_attachments(&tool_call_id))
+        .unwrap_or_default();
     ToolCallOutcome {
         tool_call_id,
         tool_name,
@@ -392,6 +439,7 @@ pub(crate) async fn execute_prepared_tool(
         file_before: before_content,
         file_after: after_content,
         todos,
+        attachments,
     }
 }
 
@@ -622,6 +670,7 @@ async fn execute_tool_calls_parallel(
                                 file_before: None,
                                 file_after: None,
                                 todos: None,
+        attachments: Vec::new(),
                             },
                         ));
                     }

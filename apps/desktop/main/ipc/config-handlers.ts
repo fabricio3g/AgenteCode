@@ -1,5 +1,7 @@
 import type { IpcMain } from 'electron';
 import type { AppConfigLike } from './types.ts';
+import { flagCoreKeys, routeKeysToCore } from '../agente/core-providers.ts';
+import { forgetProviderKey } from '../config.ts';
 
 type ConfigHandlerDeps = {
   ipcMain: IpcMain;
@@ -46,17 +48,25 @@ export function registerConfigHandlers({
   saveConfig,
   updateConfig,
 }: ConfigHandlerDeps): void {
-  ipcMain.handle('get_config', () => redactConfig(loadConfig()));
+  ipcMain.handle('get_config', () => {
+    const redacted = redactConfig(loadConfig()) as AppConfigLike;
+    if (redacted.llm) flagCoreKeys((redacted.llm.providers ??= {}));
+    return redacted;
+  });
 
-  ipcMain.handle('save_config', (_e, cfg) => {
+  // Keys of providers the Rust core offers go to its store, not Desktop's.
+  const runtime = async () => (await import('../agente/rust-engine.ts')).runtimeConnection();
+  ipcMain.handle('save_config', async (_e, cfg) => {
     const diskConfig = loadConfigFromDisk() as AppConfigLike;
     const nextConfig = (cfg || {}) as AppConfigLike;
     mergeRedactedProviderKeys(nextConfig, diskConfig);
+    await routeKeysToCore(runtime, nextConfig.llm?.providers, forgetProviderKey);
     void forgetThinkingRoutes();
     return saveConfig(nextConfig);
   });
 
-  ipcMain.handle('update_config', (_e, partial) => {
+  ipcMain.handle('update_config', async (_e, partial) => {
+    await routeKeysToCore(runtime, (partial as AppConfigLike | undefined)?.llm?.providers, forgetProviderKey);
     void forgetThinkingRoutes();
     return updateConfig(partial);
   });

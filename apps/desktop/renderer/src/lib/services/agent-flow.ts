@@ -7,17 +7,6 @@ export type ProgressSnapshot = {
   observationCount: number;
 };
 
-export function classifyStopReason(reason?: string): AgentStopReason {
-  const text = String(reason || '').toLowerCase();
-  if (!text) return 'none';
-  if (text.includes('timed out') || text.includes('timeout')) return 'timeout';
-  if (text.includes('loop') || text.includes('repeated')) return 'loop';
-  if (text.includes('tool') && (text.includes('limit') || text.includes('budget'))) return 'tool_limit';
-  if (text.includes('iteration')) return 'iteration_limit';
-  if (text.includes('requested file') || text.includes('missing requested') || text.includes('artifact')) return 'missing_artifacts';
-  return 'error';
-}
-
 export function stoppedWarning(
   stopReason: AgentStopReason,
   reason: string,
@@ -88,20 +77,4 @@ export function isWebsiteBuildRequest(prompt: string): boolean {
   const normalized = String(prompt || '');
   if (!normalized) return false;
   return /\b(build|create|make|generate|write|design|develop)\b[\s\S]{0,100}\b(website|web\s*site|webpage|web\s*page|landing\s*page|homepage|index\.html)\b/i.test(normalized);
-}
-
-export function finalizeAgentSteps(steps: AgentStep[], hasError: boolean): void {
-  for (let index = 0; index < steps.length; index += 1) {
-    const step = steps[index];
-    if (step.status !== 'running') continue;
-    if (hasError) {
-      step.status = 'error';
-      if (!step.detail) step.detail = 'Stopped before completion';
-      continue;
-    }
-    step.status = 'done';
-    if (index === steps.length - 1 && step.type === 'thinking') {
-      step.detail = 'Response ready';
-    }
-  }
 }

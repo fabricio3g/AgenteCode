@@ -771,15 +771,14 @@ impl AppState {
     pub fn compact_conversation(&mut self) -> (usize, usize) {
         use agente_core::context::CompactionStrategy;
 
-        // Size the compaction strategy to the selected model's real context
-        // window (mirrors the agent runtime auto-compact path in channel.rs).
-        let strategy = self
+        // Sized to the selected model's window, and always shrinking what is
+        // there (the runtime's `session.compact` does the same).
+        let window = self
             .resolve_model(&self.config.current_provider, &self.config.current_model)
-            .map(|m| {
-                let window = (m.limits.context as usize).max(8_000);
-                CompactionStrategy::new(window, 8, 0.85)
-            })
-            .unwrap_or_default();
+            .map(|m| m.limits.context as usize)
+            .unwrap_or(0);
+        let current = agente_core::context::estimate_message_tokens(&self.session.conversation);
+        let strategy = CompactionStrategy::manual(window, current);
         let (removed, saved) = self.session.compact_conversation(strategy);
         if saved > 0 {
             self.agent

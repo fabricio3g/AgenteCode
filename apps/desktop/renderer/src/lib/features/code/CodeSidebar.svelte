@@ -20,7 +20,6 @@
     Folder,
     FolderOpen,
     FolderSearch,
-    MessageSquare,
     MoreHorizontal,
     Pencil,
     Plus,
@@ -135,7 +134,7 @@
     </p>
     <button
       type="button"
-      class="tree-row flex w-full items-center gap-2 px-2.5 py-[5px] text-left text-[13px]"
+      class="tree-row flex h-7 w-full items-center gap-2 px-2.5 text-left text-[13px]"
       onclick={() => void codeStore.addProject()}
     >
       <Plus class="size-3.5 shrink-0" />
@@ -148,12 +147,12 @@
       {@const missing = !!codeStore.missingProjects[project.id]}
       <div class="project">
         <div
-          class="tree-row project-row group relative flex w-full cursor-pointer items-center gap-1.5 px-2.5 py-[5px] text-left"
+          class="tree-row project-row group relative flex h-7 w-full cursor-pointer items-center gap-2 px-2.5 text-left"
           class:is-active={codeStore.activeProjectId === project.id}
           role="button"
           tabindex="0"
           aria-expanded={expanded}
-          title={missing ? `${$t('code.folderMissing')} — ${project.rootPath}` : project.rootPath}
+          title={missing ? `${$t('code.folderMissing')} — ${project.rootPath}` : undefined}
           onclick={() => renamingId !== project.id && toggle(project)}
           ondblclick={() => void startRename(project)}
           oncontextmenu={(event) => openProjectMenu(event, project.id)}
@@ -168,9 +167,6 @@
             }
           }}
         >
-          <ChevronRight
-            class={`size-3 shrink-0 text-[var(--text-muted)] transition-transform duration-150${expanded ? ' rotate-90' : ''}`}
-          />
           {#if missing}
             <TriangleAlert class="size-3.5 shrink-0 text-[var(--warning,#d97706)]" />
           {:else if expanded}
@@ -200,13 +196,13 @@
               onblur={commitRename}
             />
           {:else}
-            <span class="min-w-0 flex-1 truncate text-[13px]" class:line-through={missing}>{project.rootName}</span>
+            <span class="min-w-0 flex-1 truncate text-[13px] text-foreground" class:line-through={missing}>{project.rootName}</span>
             {#if projectRunning(project.id) && !expanded}
               <span class="running-dot shrink-0" aria-hidden="true"></span>
             {/if}
             <button
               type="button"
-              class="row-action rounded-[var(--radius-sm)] p-1"
+              class="row-action rounded-full p-1"
               aria-label={$t('code.newConversation')}
               title={$t('code.newConversation')}
               disabled={missing}
@@ -227,7 +223,7 @@
               {#snippet trigger(props)}
                 <button
                   type="button"
-                  class="row-action rounded-[var(--radius-sm)] p-1"
+                  class="row-action rounded-full p-1"
                   class:is-open={menuFor === project.id}
                   aria-label={$t('code.projectOptions')}
                   aria-expanded={props['aria-expanded']}
@@ -256,11 +252,12 @@
         </div>
 
         {#if expanded}
-          <div class="ml-4 mt-1 space-y-0.5 border-l border-[var(--sidebar-border)] pb-1 pl-1" transition:slide={{ duration: 140 }}>
+          <!-- Conversations hang from a hairline under the folder icon. -->
+          <div class="tree-children" transition:slide={{ duration: 140 }}>
             {#if missing}
               <button
                 type="button"
-                class="tree-row flex w-full items-center gap-2 px-2.5 py-[5px] text-left text-[13px] text-[var(--warning,#d97706)]"
+                class="tree-row flex h-7 w-full items-center gap-2 px-2.5 text-left text-[12.5px] text-[var(--warning,#d97706)]"
                 onclick={() => void codeStore.locateProject(project.id)}
               >
                 <FolderSearch class="size-3.5 shrink-0" />
@@ -271,7 +268,6 @@
               {@const status = statusFor(session.id)}
               <SessionRow
                 chat={session}
-                icon={MessageSquare}
                 active={appStore.currentChatId === session.id}
                 onselect={() => codeStore.openConversation(session.id)}
                 {status}
@@ -282,10 +278,10 @@
             {#if !missing}
               <button
                 type="button"
-                class="tree-row flex w-full items-center gap-2 px-2.5 py-[5px] text-left text-[13px] text-[var(--text-secondary)]"
+                class="tree-row new-row flex h-7 w-full items-center gap-2 px-2.5 text-left text-[12.5px]"
                 onclick={() => codeStore.newConversation(project)}
               >
-                <Plus class="size-3.5 shrink-0" />
+                <Plus class="size-3 shrink-0" />
                 <span class="truncate">{$t('code.newConversation')}</span>
               </button>
             {/if}
@@ -324,7 +320,6 @@
           {#each unlinked as chat (chat.id)}
             <SessionRow
               {chat}
-              icon={MessageSquare}
               active={appStore.currentChatId === chat.id}
               onselect={() => appStore.selectChat(chat.id)}
               menuLabel={$t('code.conversationOptions')}
@@ -362,6 +357,19 @@
   .project-row.is-active:not(:hover) {
     background: transparent;
     font-weight: 500;
+  }
+
+  .tree-children {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    margin: 1px 0 0.375rem 1.0625rem;
+    padding-left: 0.25rem;
+    border-left: 1px solid color-mix(in srgb, var(--sidebar-border) 70%, transparent);
+  }
+
+  .new-row {
+    color: var(--text-muted);
   }
 
   .tree-row:focus-visible {

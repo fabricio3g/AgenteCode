@@ -349,6 +349,15 @@ impl LiveSettings {
     }
 }
 
+/// Settings calls accept only the providers Agente offers itself.
+fn known_provider(id: &str) -> Result<(), RuntimeError> {
+    if agente_core::providers::spec::offered(id) {
+        Ok(())
+    } else {
+        Err(RuntimeError::Config(format!("unknown provider `{id}`")))
+    }
+}
+
 #[derive(Clone)]
 struct SessionContext {
     project_dir: String,
@@ -752,10 +761,19 @@ impl TurnHandle {
 
 impl RuntimeHandle {
     pub fn start_turn(&self, start: StartTurn) -> Result<TurnHandle, RuntimeError> {
+        self.start_turn_with_tools(start, TurnId::new(), None)
+    }
+
+    /// Client tools belong to this turn only. Home must supply an empty native allowlist.
+    pub fn start_turn_with_tools(
+        &self,
+        start: StartTurn,
+        turn_id: TurnId,
+        client_tools: Option<agente_core::agent::TurnTools>,
+    ) -> Result<TurnHandle, RuntimeError> {
         if tokio::runtime::Handle::try_current().is_err() {
             return Err(RuntimeError::MissingExecutor);
         }
-        let turn_id = TurnId::new();
         let session_id = start.session_id;
         let (event_tx, event_rx) = mpsc::channel(EVENT_CAPACITY);
         let (outcome_tx, outcome_rx) = oneshot::channel();
@@ -815,6 +833,7 @@ impl RuntimeHandle {
                 engine.set_auto_approve(auto_approve);
             }
         }
+        let home = start.home.clone();
         let persona = start.profile.as_deref().and_then(|profile| {
             let persona = self.inner.config.profile_source.as_ref()?.persona(profile);
             if persona.is_none() {
@@ -824,6 +843,7 @@ impl RuntimeHandle {
         });
         let has_persona = persona.is_some();
         match (start.system_prompt, persona) {
+            (Some(prompt), _) if home.is_some() => replace_system_prompt(&mut conversation, prompt),
             (Some(prompt), _) => ensure_system_prompt(&mut conversation, &prompt),
             // A bot's persona holds its memory: rebuilt every turn, so an
             // edit made last turn is what it knows now.
@@ -843,9 +863,11 @@ impl RuntimeHandle {
         }
         // Project instructions (AGENTS.md) as a user-message reminder;
         // idempotent, so it also re-attaches after compaction dropped it.
-        if !agente_core::context::conversation_has_reminder(
-            conversation.iter().map(|m| m.content.as_str()),
-        ) {
+        if home.is_none()
+            && !agente_core::context::conversation_has_reminder(
+                conversation.iter().map(|m| m.content.as_str()),
+            )
+        {
             if let Some(reminder) = agente_core::context::agents_md_reminder(&context.project_dir) {
                 let insert_at = conversation
                     .iter()
@@ -895,32 +917,38 @@ impl RuntimeHandle {
         let thinking = start
             .thinking_level
             .unwrap_or_else(|| live.default_thinking_level.clone());
-        let turn_tools = match (
-            has_persona,
-            start.profile.as_deref(),
-            &self.inner.config.profile_source,
-        ) {
-            (true, Some(profile), Some(source)) => agente_core::agent::TurnTools {
-                extra: source.tools(
-                    profile,
-                    &ProfileTurn {
-                        origin: start.origin.clone().unwrap_or_default(),
-                        provider: provider.clone(),
-                        model: model.clone(),
-                        thinking_level: thinking.clone(),
+        let turn_tools = client_tools.unwrap_or_else(|| {
+            match (
+                has_persona,
+                start.profile.as_deref(),
+                &self.inner.config.profile_source,
+            ) {
+                (true, Some(profile), Some(source)) => agente_core::agent::TurnTools {
+                    extra: source.tools(
+                        profile,
+                        &ProfileTurn {
+                            origin: start.origin.clone().unwrap_or_default(),
+                            provider: provider.clone(),
+                            model: model.clone(),
+                            thinking_level: thinking.clone(),
+                        },
+                    ),
+                    only: source.tool_names(profile),
+                    // A bot's commands never see the host's keys or tokens, and
+                    // run boxed wherever this machine can box them.
+                    shell_env: if agente_core::sandbox::available() {
+                        agente_core::tools::ShellEnv::Boxed(source.sandbox(profile))
+                    } else {
+                        agente_core::tools::ShellEnv::Clean
                     },
-                ),
-                only: source.tool_names(profile),
-                // A bot's commands never see the host's keys or tokens, and
-                // run boxed wherever this machine can box them.
-                shell_env: if agente_core::sandbox::available() {
-                    agente_core::tools::ShellEnv::Boxed(source.sandbox(profile))
-                } else {
-                    agente_core::tools::ShellEnv::Clean
                 },
-            },
-            _ => agente_core::agent::TurnTools::default(),
-        };
+                _ if home.is_some() => agente_core::agent::TurnTools {
+                    only: Some(Vec::new()),
+                    ..Default::default()
+                },
+                _ => agente_core::agent::TurnTools::default(),
+            }
+        });
         {
             let (provider, model, thinking) = (provider.clone(), model.clone(), thinking.clone());
             let profile = start.profile.clone();
@@ -961,7 +989,8 @@ impl RuntimeHandle {
             model,
             thinking,
             context.project_dir.clone(),
-            live.max_iterations,
+            home.as_ref()
+                .map_or(live.max_iterations, |policy| policy.max_iterations),
             Arc::clone(&live.provider_registry),
             live.catalog.clone(),
             context.engine.clone(),
@@ -1082,6 +1111,111 @@ impl RuntimeHandle {
             "allow_media": config.allow_media,
             "approved_mcp_servers": config.approved_mcp_servers,
         })
+    }
+
+    /// Each offered provider: whether a key is on hand (auth.json, config or
+    /// env — never the key itself) and where its requests go, plus the saved
+    /// default provider and model.
+    pub fn provider_status(&self) -> serde_json::Value {
+        let live = self.inner.live();
+        let config = &live.app_config;
+        let providers: Vec<_> = agente_core::providers::spec::all()
+            .iter()
+            .filter(|spec| spec.offered)
+            .map(|spec| {
+                serde_json::json!({
+                    "id": spec.id,
+                    "connected": config.has_api_key(&spec.id),
+                    "stored_key": config.auth_store.has(&spec.id),
+                    "base_url": config.resolve_base_url(&spec.id),
+                })
+            })
+            .collect();
+        serde_json::json!({
+            "providers": providers,
+            "default_provider": live.default_provider,
+            "default_model": live.default_model,
+        })
+    }
+
+    /// Save a provider's key to auth.json and its endpoint override to
+    /// config.json — the stores the TUI's `/connect` uses — so every client
+    /// and the next turn see it. An empty `base_url` clears the override.
+    pub fn connect_provider(
+        &self,
+        id: &str,
+        api_key: Option<String>,
+        base_url: Option<String>,
+    ) -> Result<(), RuntimeError> {
+        known_provider(id)?;
+        let key = api_key
+            .map(|key| key.trim().to_string())
+            .filter(|key| !key.is_empty());
+        let edit = base_url.map(|url| {
+            let url = url.trim().to_string();
+            move |config: &mut AppConfig| {
+                let entry = config.provider.entry(id.to_string()).or_default();
+                entry.options.base_url = (!url.is_empty()).then(|| url.clone());
+            }
+        });
+        self.save_settings(
+            |auth| {
+                if let Some(key) = &key {
+                    auth.set_key(id, key.clone());
+                }
+            },
+            edit,
+        )
+    }
+
+    /// Forget a provider's saved key (env keys stay in effect).
+    pub fn disconnect_provider(&self, id: &str) -> Result<(), RuntimeError> {
+        known_provider(id)?;
+        self.save_settings(|auth| auth.remove(id), None::<fn(&mut AppConfig)>)
+    }
+
+    /// The provider and model turns use when the client names none.
+    pub fn set_default_model(&self, provider: &str, model: &str) -> Result<(), RuntimeError> {
+        known_provider(provider)?;
+        let (provider, model) = (provider.to_string(), model.to_string());
+        self.save_settings(
+            |_| {},
+            Some(move |config: &mut AppConfig| {
+                config.default_provider = Some(provider.clone());
+                config.default_model = Some(model.clone());
+            }),
+        )
+    }
+
+    /// Write auth.json (when `auth` changed it) and the global config.json
+    /// (when there is an `edit`), then apply both to the live settings.
+    fn save_settings(
+        &self,
+        auth: impl FnOnce(&mut agente_core::auth::AuthStore),
+        edit: Option<impl Fn(&mut AppConfig)>,
+    ) -> Result<(), RuntimeError> {
+        let failed = |error: std::io::Error| RuntimeError::Config(error.to_string());
+        let mut live = self
+            .inner
+            .live
+            .write()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let mut store = agente_core::auth::AuthStore::load();
+        let before = serde_json::to_string(&store).ok();
+        auth(&mut store);
+        if serde_json::to_string(&store).ok() != before {
+            store.save().map_err(failed)?;
+        }
+        let mut config = live.app_config.clone();
+        if let Some(edit) = &edit {
+            AppConfig::edit_global(edit).map_err(failed)?;
+            edit(&mut config);
+        }
+        live.app_config.auth_store = store;
+        let client_providers = live.client_providers.clone();
+        let next = LiveSettings::from_app_config(config, client_providers, &live);
+        *live = next;
+        Ok(())
     }
 
     pub fn model_info(&self, provider: &str, model: &str) -> agente_core::providers::ModelInfo {
@@ -1394,8 +1528,18 @@ impl RuntimeHandle {
         let before = snapshot.conversation.len();
         let tokens_before =
             agente_core::context::estimate_message_tokens(&snapshot.conversation) as u32;
+        // The session's own model decides how much room there is.
+        let window = self
+            .session_meta(session_id)
+            .filter(|meta| !meta.info.provider.is_empty())
+            .map(|meta| {
+                self.model_info(&meta.info.provider, &meta.info.model)
+                    .limits
+                    .context
+            })
+            .unwrap_or(0) as usize;
         let result = agente_core::context::ContextCompactor::new(
-            agente_core::context::CompactionStrategy::default(),
+            agente_core::context::CompactionStrategy::manual(window, tokens_before as usize),
         )
         .compact_forced(snapshot.conversation);
         if result.messages.len() == before && result.summary.tokens_saved == 0 {

@@ -334,6 +334,8 @@
     },
     "toolInput": "Entrée",
     "toolResult": "Résultat",
+    "showAll": "Tout afficher",
+    "showLess": "Afficher moins",
     "deleteProject": "Supprimer le projet",
     "deleteProjectTitle": "Supprimer « {name} » ?",
     "deleteProjectMessage": "Retire le projet et ses {conversations} de Agente. Les fichiers de son dossier ne sont pas touchés.",

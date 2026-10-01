@@ -89,6 +89,98 @@
       ],
       "type": "object"
     },
+    "ClientToolCall": {
+      "properties": {
+        "arguments": true,
+        "call_id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "request_id": {
+          "type": "string"
+        },
+        "session_id": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "turn_id": {
+          "format": "uuid",
+          "type": "string"
+        }
+      },
+      "required": [
+        "arguments",
+        "call_id",
+        "name",
+        "request_id",
+        "session_id",
+        "turn_id"
+      ],
+      "type": "object"
+    },
+    "ClientToolDefinition": {
+      "properties": {
+        "description": {
+          "type": "string"
+        },
+        "mutating": {
+          "default": false,
+          "type": "boolean"
+        },
+        "name": {
+          "type": "string"
+        },
+        "parameters": true,
+        "sequential": {
+          "default": false,
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "description",
+        "name",
+        "parameters"
+      ],
+      "type": "object"
+    },
+    "ClientToolResult": {
+      "properties": {
+        "attachments": {
+          "default": [],
+          "items": {
+            "$ref": "#/definitions/Attachment"
+          },
+          "type": "array"
+        },
+        "content": {
+          "type": "string"
+        },
+        "is_error": {
+          "default": false,
+          "type": "boolean"
+        },
+        "request_id": {
+          "type": "string"
+        },
+        "session_id": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "turn_id": {
+          "format": "uuid",
+          "type": "string"
+        }
+      },
+      "required": [
+        "content",
+        "request_id",
+        "session_id",
+        "turn_id"
+      ],
+      "type": "object"
+    },
     "FunctionCall": {
       "properties": {
         "arguments": {
@@ -101,6 +193,32 @@
       "required": [
         "arguments",
         "name"
+      ],
+      "type": "object"
+    },
+    "HomeTurnPolicy": {
+      "description": "Home turns expose only client-owned tools, never the coding tool registry.",
+      "properties": {
+        "max_iterations": {
+          "format": "uint32",
+          "minimum": 0.0,
+          "type": "integer"
+        },
+        "max_time_ms": {
+          "format": "uint64",
+          "minimum": 0.0,
+          "type": "integer"
+        },
+        "max_tool_calls": {
+          "format": "uint32",
+          "minimum": 0.0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "max_iterations",
+        "max_time_ms",
+        "max_tool_calls"
       ],
       "type": "object"
     },
@@ -203,6 +321,25 @@
         "blocks",
         "model_id",
         "provider_id"
+      ],
+      "type": "object"
+    },
+    "RegisterClientTools": {
+      "properties": {
+        "session_id": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "tools": {
+          "items": {
+            "$ref": "#/definitions/ClientToolDefinition"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "session_id",
+        "tools"
       ],
       "type": "object"
     },
@@ -1086,6 +1223,16 @@
             "$ref": "#/definitions/Message"
           },
           "type": "array"
+        },
+        "home": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/HomeTurnPolicy"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "mode": {
           "anyOf": [

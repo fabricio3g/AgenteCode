@@ -100,6 +100,14 @@ pub(crate) fn categorize_error(raw: &str, provider: &str, model: &str) -> String
         );
     }
 
+    // Gateways report an unknown or retired model as a 400 or 5xx with the
+    // reason in the body; the status alone would blame a "feature".
+    if names_unavailable_model(&lower) {
+        return format!(
+            "Model '{model}' isn't available on {provider}. Try /model to pick another one."
+        );
+    }
+
     // A status the provider actually reported is authoritative.
     if let Some(status) = http_status(raw) {
         return match status {
@@ -165,6 +173,17 @@ pub(crate) fn categorize_error(raw: &str, provider: &str, model: &str) -> String
     }
 }
 
+/// The provider says the model itself is unknown or unavailable.
+fn names_unavailable_model(lower: &str) -> bool {
+    lower.contains("model is unavailable")
+        || lower.contains("model not found")
+        || lower.contains("model_not_found")
+        || lower.contains("unknown model")
+        || lower.contains("invalid model")
+        || lower.contains("no such model")
+        || (lower.contains("model") && lower.contains("does not exist"))
+}
+
 /// Rewrite a model-discovery failure into a user-actionable hint.
 pub(crate) fn sanitize_discovery_error(raw: &str) -> String {
     let lower = raw.to_lowercase();
@@ -179,6 +198,19 @@ pub(crate) fn sanitize_discovery_error(raw: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_unavailable_model_is_named_as_such_whatever_the_status() {
+        let raw = r#"Stream error: HTTP request failed: opencode-go: HTTP 400 Bad Request - {"error":{"type":"server_error","message":"Upstream request failed: Model is unavailable."}}"#;
+        let message = categorize_error(raw, "opencode-go", "no-such-model");
+        assert!(message.contains("isn't available"), "{message}");
+        assert!(categorize_error("HTTP 404 model_not_found", "p", "m").contains("isn't available"));
+        // An ordinary 400 still reads as a rejected request.
+        assert!(
+            categorize_error("HTTP 400 Bad Request - bad tool schema", "p", "m")
+                .contains("rejected")
+        );
+    }
 
     #[test]
     fn status_is_read_from_the_provider_error_shape() {
@@ -232,7 +264,8 @@ mod tests {
     fn status_codes_drive_the_message() {
         let at = |raw: &str| categorize_error(raw, "openai", "gpt-4o");
         assert!(at("x: HTTP 401 - bad key").contains("API key invalid"));
-        assert!(at("x: HTTP 404 - no such model").contains("not found"));
+        assert!(at("x: HTTP 404 - no such model").contains("isn't available"));
+        assert!(at("x: HTTP 404 - missing endpoint").contains("not found"));
         assert!(at("x: HTTP 429 - slow down").contains("Rate limited"));
         assert!(at("x: HTTP 503 - unavailable").contains("experiencing issues"));
         assert!(at("x: HTTP 413 - too big").contains("Context window exceeded"));

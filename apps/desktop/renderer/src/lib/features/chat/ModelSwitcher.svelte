@@ -3,14 +3,13 @@
 <script lang="ts">
   import { untrack } from 'svelte';
   import { get } from 'svelte/store';
-  import { Check, ChevronDown, Cpu, LoaderCircle, Play, Power, RefreshCw, Search, Settings2, Sparkles, Square, X } from 'lucide-svelte';
-  import { flyAndScale, motionFade } from '$lib/utils/transitions';
+  import { Check, ChevronDown, ChevronRight, Cpu, LoaderCircle, Play, Power, RefreshCw, Search, Settings2, Square, X } from 'lucide-svelte';
+  import { backdropIn, backdropOut, dialogIn, dialogOut, motionSlide } from '$lib/utils/transitions';
   import { appStore } from '$lib/stores/app.svelte';
   import { modelsStore } from '$lib/stores/models.svelte';
   import { providerModels } from '$lib/stores/provider-models.svelte';
   import { toastStore } from '$lib/stores/toast.svelte';
   import { isElectron } from '$lib/services/bridge';
-  import { Button } from '$lib/components/ui';
   import { modalLayer } from '$lib/components/ui/modal-layer';
   import { t } from 'svelte-i18n';
   import Tooltip from '$lib/components/ui/Tooltip.svelte';
@@ -217,6 +216,26 @@
     await appStore.openLocalModelLoadDialog(model);
   }
 
+  /** Cloud refreshes the provider in use; On device rescans the model folders. */
+  const refreshing = $derived(appStore.backendMode === 'api' ? !!providerModels.loading[appStore.activeProviderName] : appStore.modelsRefreshing);
+
+  function refresh() {
+    appStore.refreshModels(true);
+    modelsStore.refreshStatus();
+    if (appStore.backendMode === 'api') {
+      const active = appStore.activeProviderName;
+      if (active) void providerModels.load(active, true);
+    } else if (isElectron()) {
+      modelsStore.refreshIndex();
+    }
+  }
+
+  function openManager(section: 'providers' | 'explore') {
+    appStore.modelMenuOpen = false;
+    appStore.modelManagerOpenSection = section;
+    appStore.modelManagerOpen = true;
+  }
+
   function toggleMenu() {
     if (appStore.modelMenuOpen) {
       appStore.modelMenuOpen = false;
@@ -320,11 +339,7 @@
 {#if appStore.modelMenuOpen}
   <div use:portalToBody use:modalLayer={{ onclose: () => (appStore.modelMenuOpen = false) }} class="model-modal-root fixed inset-0">
     <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-    <div
-      class="model-modal-backdrop absolute inset-0"
-      onclick={() => (appStore.modelMenuOpen = false)}
-      transition:motionFade={{ duration: 160 }}
-    ></div>
+    <div class="model-modal-backdrop absolute inset-0" onclick={() => (appStore.modelMenuOpen = false)} in:backdropIn out:backdropOut></div>
     <div class="pointer-events-none absolute inset-0 flex items-center justify-center p-4">
       <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
       <div
@@ -337,326 +352,185 @@
         tabindex="-1"
         onclick={(e) => e.stopPropagation()}
         onpointerdown={(e) => e.stopPropagation()}
-        transition:flyAndScale={{ y: 10, start: 0.96, duration: 180 }}
-       >
-    <header class="picker-heading">
-      <div><h2 id={`${dialogId}-title`}>{$t('modelPicker.title')}</h2><p>{$t('modelPicker.subtitle')}</p></div>
-      <button type="button" class="ui-icon-button" onclick={() => (appStore.modelMenuOpen = false)} aria-label={$t('modelPicker.close')}><X class="size-4" /></button>
-    </header>
-    <div class="picker-source">
-      {#if isElectron()}
-        <SegmentedControl value={appStore.backendMode} options={[{ value: 'api', label: $t('modelPicker.cloud'), disabled: changingMode || !!selectingModel }, { value: 'local', label: $t('modelPicker.onDevice'), disabled: changingMode || !!selectingModel }]} label={$t('modelPicker.source')} onchange={(mode) => void changeBackend(mode)} />
-      {/if}
-      <span class="source-caption">{appStore.backendMode === 'local' ? $t('modelPicker.localCaption') : $t('modelPicker.cloudCaption')}</span>
-    </div>
-    <!-- Search stays anchored while provider groups scroll below it. -->
-    <div class="panel-head flex items-center gap-1.5 px-2.5 pb-2 pt-2.5">
-      <div class="search-wrapper relative min-w-0 flex-1">
-        <Search class="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-        <input
-          bind:this={searchInput}
-          bind:value={modelSearch}
-           type="search"
-           aria-label={$t('modelPicker.search')}
-          placeholder={$t('modelPicker.searchPlaceholder')}
-          class="search-input w-full py-1.5 pl-9 pr-9 text-[13px] text-foreground outline-none transition placeholder:text-muted-foreground"
-          onclick={(e) => e.stopPropagation()}
-        />
-        {#if modelSearch}
-          <button
-             class="clear-btn absolute right-2.5 top-1/2 -translate-y-1/2 p-1"
-             aria-label={$t('modelPicker.clearSearch')}
-            onclick={() => (modelSearch = '')}
-          >
-            <X class="h-3.5 w-3.5" />
-          </button>
-        {/if}
-      </div>
-      {#if appStore.backendMode === 'api'}
-        <Tooltip label={$t('modelPicker.refresh')} position="bottom">
-          <button
-            type="button"
-            class="mode-icon-btn shrink-0"
-            onclick={() => {
-              appStore.refreshModels(true);
-              modelsStore.refreshStatus();
-              const active = appStore.activeProviderName;
-              if (active) void providerModels.load(active, true);
-            }}
-            aria-label={$t('modelPicker.refresh')}
-            disabled={!!providerModels.loading[appStore.activeProviderName]}
-          >
-            <RefreshCw class="h-4 w-4 {providerModels.loading[appStore.activeProviderName] ? 'animate-spin' : ''}" />
-          </button>
-        </Tooltip>
-        <Tooltip label={$t('modelPicker.manageProviders')} position="bottom">
-          <button
-            type="button"
-            class="mode-icon-btn shrink-0"
-            onclick={() => {
-              appStore.modelMenuOpen = false;
-              appStore.modelManagerOpenSection = 'providers';
-              appStore.modelManagerOpen = true;
-            }}
-            aria-label={$t('modelPicker.manageProviders')}
-          >
-            <Settings2 class="h-4 w-4" />
-          </button>
-        </Tooltip>
-      {:else}
-        <Tooltip label="Refresh models" position="bottom">
-          <button
-            type="button"
-            class="mode-icon-btn shrink-0"
-            onclick={() => {
-              appStore.refreshModels(true);
-              modelsStore.refreshStatus();
-              if (isElectron()) modelsStore.refreshIndex();
-            }}
-            aria-label="Refresh models"
-            disabled={appStore.modelsRefreshing}
-          >
-            <RefreshCw class="h-4 w-4 {appStore.modelsRefreshing ? 'animate-spin' : ''}" />
-          </button>
-        </Tooltip>
-      {/if}
-    </div>
+        in:dialogIn
+        out:dialogOut
+      >
+        <h2 id={`${dialogId}-title`} class="sr-only">{$t('modelPicker.title')}</h2>
 
-    <!-- Runtime busy -->
-    {#if appStore.backendMode === 'local' && localLoading}
-      <div class="loading-indicator mx-3 mb-2.5 flex items-center gap-2 px-2.5 py-2">
-        <LoaderCircle class="h-4 w-4 shrink-0 animate-spin text-muted-foreground" />
-        <span class="text-sm font-medium text-fg-secondary">{$t('modelPicker.loadingModel')}</span>
-      </div>
-    {/if}
-
-    <!-- Switch confirmation -->
-    {#if confirmSwitch}
-      <div class="confirm-card mx-3 mb-2.5 p-2.5">
-        <p class="text-[12px] text-fg-secondary">
-          {$t('modelPicker.switchConfirm', { values: { current: loadedModelFilename, next: confirmSwitch.name } })}
-        </p>
-        <div class="mt-3 flex gap-2">
-          <button
-            class="confirm-btn primary flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold"
-            onclick={confirmSwitchModel}
-          >
-            <Power class="h-3.5 w-3.5" />
-            {$t('modelPicker.switch')}
-          </button>
-          <button
-            class="confirm-btn secondary px-3 py-1.5 text-sm font-medium"
-            onclick={() => (confirmSwitch = null)}
-          >{$t('modelPicker.cancel')}</button>
+        <!-- One slim bar: where models come from, refresh, providers, close. -->
+        <div class="picker-bar">
+          {#if isElectron()}
+            <SegmentedControl value={appStore.backendMode} options={[{ value: 'api', label: $t('modelPicker.cloud'), disabled: changingMode || !!selectingModel }, { value: 'local', label: $t('modelPicker.onDevice'), disabled: changingMode || !!selectingModel }]} label={$t('modelPicker.source')} onchange={(mode) => void changeBackend(mode)} />
+          {:else}
+            <span class="picker-title">{$t('modelPicker.title')}</span>
+          {/if}
+          <span class="flex-1"></span>
+          <Tooltip label={$t('modelPicker.refresh')} position="bottom">
+            <button type="button" class="ui-icon-button is-sm" onclick={refresh} aria-label={$t('modelPicker.refresh')} disabled={refreshing}>
+              <RefreshCw class={refreshing ? 'animate-spin' : ''} />
+            </button>
+          </Tooltip>
+          {#if appStore.backendMode === 'api'}
+            <Tooltip label={$t('modelPicker.manageProviders')} position="bottom">
+              <button type="button" class="ui-icon-button is-sm" onclick={() => openManager('providers')} aria-label={$t('modelPicker.manageProviders')}>
+                <Settings2 />
+              </button>
+            </Tooltip>
+          {/if}
+          <button type="button" class="ui-icon-button is-sm" onclick={() => (appStore.modelMenuOpen = false)} aria-label={$t('modelPicker.close')}><X /></button>
         </div>
-      </div>
-    {/if}
 
-    <!-- Model list -->
-    <div class="model-list min-h-0 flex-1 overflow-y-auto px-2 pb-2.5" aria-label={$t('modelPicker.available')} aria-busy={changingMode}>
-      {#if appStore.backendMode === 'api'}
-        {#if !configured.length}
-          <div class="empty-state flex flex-col items-center gap-3 px-4 py-6 text-center">
-            <div class="empty-icon flex h-10 w-10 items-center justify-center">
-              <Sparkles class="h-5 w-5 text-muted-foreground" />
-            </div>
-            <div>
-              <p class="text-sm font-medium text-fg-secondary">{$t('modelPicker.noProviders')}</p>
-              <p class="mt-0.5 text-xs text-muted-foreground">{$t('modelPicker.noProvidersHint')}</p>
-            </div>
-            <Button
-              size="sm"
-              class="text-xs"
-              onclick={() => {
-                appStore.modelMenuOpen = false;
-                appStore.modelManagerOpenSection = 'providers';
-                appStore.modelManagerOpen = true;
-              }}
-            >
-              {$t('modelPicker.configureProvider')}
-            </Button>
+        <label class="ui-pill-field picker-search">
+          <Search class="size-3.5 shrink-0 text-muted-foreground" />
+          <input
+            bind:this={searchInput}
+            bind:value={modelSearch}
+            type="search"
+            aria-label={$t('modelPicker.search')}
+            placeholder={$t('modelPicker.searchPlaceholder')}
+            onclick={(e) => e.stopPropagation()}
+          />
+          {#if modelSearch}
+            <button type="button" class="ui-icon-button is-xs -mr-1.5" aria-label={$t('modelPicker.clearSearch')} onclick={() => (modelSearch = '')}><X /></button>
+          {/if}
+        </label>
+
+        {#if appStore.backendMode === 'local' && localLoading}
+          <div class="picker-note" role="status">
+            <LoaderCircle class="size-3.5 shrink-0 animate-spin" />
+            <span>{$t('modelPicker.loadingModel')}</span>
           </div>
-        {:else if !visibleProviders.length}
-          <div class="picker-empty"><Search class="size-5" /><p>{$t('modelPicker.noResults')}</p><span>{$t('modelPicker.noResultsHint')}</span><button type="button" onclick={() => (modelSearch = '')}>{$t('modelPicker.clearSearch')}</button></div>
-        {:else}
-          <!-- Nested tree: provider → models (no card borders) -->
-          <div class="provider-tree space-y-0.5 px-0.5">
-            {#each visibleProviders as prov (prov.id)}
-              {@const open = isProviderExpanded(prov.id)}
-              {@const list = modelsForProvider(prov.id)}
-              {@const loading = !!providerModels.loading[prov.id]}
-              <div class="provider-node">
-                <button
-                  type="button"
-                  class="provider-row flex w-full items-center gap-2 rounded-full px-2.5 py-1.5 text-left transition hover:bg-muted/60"
-                  style="-webkit-app-region: no-drag; pointer-events: auto;"
-                   onclick={(e) => {
-                    e.stopPropagation();
-                    toggleProvider(prov.id);
-                   }}
-                   aria-expanded={open}
-                 >
-                  <span class="provider-mark"><ProviderIcon provider={prov.id} size={18} /></span>
-                  <ChevronDown
-                    class="h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform duration-150 {open
-                      ? 'rotate-0'
-                      : '-rotate-90'}"
-                  />
-                  <span class="min-w-0 flex-1">
-                    <span class="flex items-center gap-1.5">
-                      <span class="text-[13px] font-medium text-foreground">{prov.label}</span>
-                      {#if prov.isActive}
-                        <span class="provider-active">{$t('modelPicker.connected')}</span>
-                      {/if}
-                    </span>
-                    {#if prov.model && !open}
-                      <span class="mt-0.5 block truncate text-[12px] text-muted-foreground">{prov.model}</span>
-                    {/if}
-                  </span>
-                  {#if loading}
-                    <LoaderCircle class="h-3 w-3 shrink-0 animate-spin text-muted-foreground" />
-                  {/if}
-                </button>
+        {/if}
 
-                {#if open}
-                  <!-- No indent rail: the provider header above already groups
-                       these, so the rail was chrome restating the hierarchy. -->
-                  <div class="model-nest">
-                    {#if providerModels.errors[prov.id]}
-                      <div class="provider-error" role="status"><span>{providerModels.errors[prov.id]}</span><button type="button" disabled={loading} onclick={() => void providerModels.load(prov.id, true)}>{$t('modelPicker.retry')}</button></div>
-                    {/if}
-                    {#if list.length === 0 && loading}
-                      <div class="flex items-center gap-2 px-2 py-1.5 text-[11px] text-muted-foreground">
-                        <LoaderCircle class="h-3 w-3 animate-spin" />
-                        {$t('modelPicker.loading')}
-                      </div>
-                    {:else if list.length === 0}
-                      <div class="px-2 py-1.5 text-[11px] text-muted-foreground">
-                        {modelSearch ? $t('modelPicker.noMatches') : $t('modelPicker.noProviderModels')}
-                      </div>
-                    {:else}
-                      {#each list as model (model.id)}
-                        {@const selected =
-                          appStore.activeProviderName === prov.id && activeProvider?.model === model.id}
-                        <button
-                          type="button"
-                          class="model-row flex w-full items-center gap-2 rounded-full px-2.5 py-1.5 text-left transition hover:bg-muted/60"
-                           class:is-selected={selected}
-                           data-model-option
-                           aria-pressed={selected}
-                           disabled={!!selectingModel || changingMode}
-                           title={model.id}
-                          style="-webkit-app-region: no-drag; pointer-events: auto;"
-                          onclick={(e) => {
-                            e.stopPropagation();
-                            void selectCloudModel(prov.id, model.id);
-                          }}
-                        >
-                          {#if selectingModel === `${prov.id}/${model.id}`}
-                            <LoaderCircle class="h-3.5 w-3.5 shrink-0 animate-spin" />
-                          {:else if selected}
-                            <Check class="h-3.5 w-3.5 shrink-0 text-fg-secondary" />
-                          {:else}
-                            <span class="inline-block w-3.5 shrink-0"></span>
-                          {/if}
-                          <span class="min-w-0 flex-1 truncate text-[12px] font-medium text-foreground"
-                            >{model.name}</span
-                           >
-                          {#if selected}<span class="selected-label">{$t('modelPicker.inUse')}</span>{/if}
-                        </button>
-                      {/each}
-                    {/if}
-                  </div>
+        {#if confirmSwitch}
+          <div class="picker-note">
+            <span class="min-w-0 flex-1">{$t('modelPicker.switchConfirm', { values: { current: loadedModelFilename, next: confirmSwitch.name } })}</span>
+            <button type="button" class="ui-chip" onclick={() => (confirmSwitch = null)}>{$t('modelPicker.cancel')}</button>
+            <button type="button" class="ui-chip is-primary" onclick={confirmSwitchModel}><Power /> {$t('modelPicker.switch')}</button>
+          </div>
+        {/if}
+
+        {#snippet empty(title: string, hint: string, action: string, onaction: () => void)}
+          <div class="picker-empty">
+            <p>{title}</p>
+            <span>{hint}</span>
+            <button type="button" class="ui-chip" onclick={onaction}>{action}</button>
+          </div>
+        {/snippet}
+
+        <div class="model-list" aria-label={$t('modelPicker.available')} aria-busy={changingMode}>
+          {#if appStore.backendMode === 'api'}
+            {#if !configured.length}
+              {@render empty($t('modelPicker.noProviders'), $t('modelPicker.noProvidersHint'), $t('modelPicker.configureProvider'), () => openManager('providers'))}
+            {:else if !visibleProviders.length}
+              {@render empty($t('modelPicker.noResults'), $t('modelPicker.noResultsHint'), $t('modelPicker.clearSearch'), () => (modelSearch = ''))}
+            {:else}
+              {#each visibleProviders as prov (prov.id)}
+                {@const open = isProviderExpanded(prov.id)}
+                {@const list = modelsForProvider(prov.id)}
+                {@const loading = !!providerModels.loading[prov.id]}
+                <div class="provider-group">
+                  <button
+                    type="button"
+                    class="group-head"
+                    onclick={(e) => {
+                      e.stopPropagation();
+                      toggleProvider(prov.id);
+                    }}
+                    aria-expanded={open}
+                  >
+                    <ProviderIcon provider={prov.id} size={14} />
+                    <span class="group-name">{prov.label}</span>
+                    {#if prov.isActive}<span class="group-meta">· {$t('modelPicker.connected')}</span>{/if}
+                    <span class="flex-1"></span>
+                    {#if loading}<LoaderCircle class="size-3 shrink-0 animate-spin" />{/if}
+                    {#if prov.model && !open}<span class="group-current">{prov.model}</span>{/if}
+                    <ChevronRight class="group-chevron size-3.5 shrink-0 {open ? 'rotate-90' : ''}" />
+                  </button>
+
+                  {#if open}
+                    <div class="group-models" transition:motionSlide={{ duration: 200 }}>
+                      {#if providerModels.errors[prov.id]}
+                        <div class="picker-note is-inline" role="status">
+                          <span class="min-w-0 flex-1">{providerModels.errors[prov.id]}</span>
+                          <button type="button" class="ui-chip" disabled={loading} onclick={() => void providerModels.load(prov.id, true)}>{$t('modelPicker.retry')}</button>
+                        </div>
+                      {/if}
+                      {#if list.length === 0}
+                        <p class="group-hint">{loading ? $t('modelPicker.loading') : modelSearch ? $t('modelPicker.noMatches') : $t('modelPicker.noProviderModels')}</p>
+                      {:else}
+                        {#each list as model (model.id)}
+                          {@const selected = appStore.activeProviderName === prov.id && activeProvider?.model === model.id}
+                          <button
+                            type="button"
+                            class="model-row"
+                            class:is-selected={selected}
+                            data-model-option
+                            aria-pressed={selected}
+                            disabled={!!selectingModel || changingMode}
+                            onclick={(e) => {
+                              e.stopPropagation();
+                              void selectCloudModel(prov.id, model.id);
+                            }}
+                          >
+                            <span class="row-mark">
+                              {#if selectingModel === `${prov.id}/${model.id}`}<LoaderCircle class="size-3.5 animate-spin" />
+                              {:else if selected}<Check class="size-3.5" />{/if}
+                            </span>
+                            <span class="min-w-0 flex-1 truncate">{model.name}</span>
+                            {#if model.id !== model.name}<span class="row-id">{model.id}</span>{/if}
+                            {#if selected}<span class="row-tag">{$t('modelPicker.inUse')}</span>{/if}
+                          </button>
+                        {/each}
+                      {/if}
+                    </div>
+                  {/if}
+                </div>
+              {/each}
+            {/if}
+          {:else if !appStore.models.length}
+            {@render empty($t('modelPicker.noLocal'), $t('modelPicker.noLocalHint'), $t('modelPicker.explore'), () => openManager('explore'))}
+          {:else if filteredModels.length === 0}
+            {@render empty($t('modelPicker.noResults'), $t('modelPicker.noResultsHint'), $t('modelPicker.clearSearch'), () => (modelSearch = ''))}
+          {:else}
+            {#each filteredModels as model (model.id)}
+              {@const loaded = isLoaded(model)}
+              {@const loadingTarget = isLoadingModel(model)}
+              <div class="model-row is-local" class:is-selected={loaded}>
+                <span class="row-mark">{#if loaded}<Check class="size-3.5" />{/if}</span>
+                <span class="min-w-0 flex-1 truncate">{model.name}</span>
+                {#if metaLine(model)}<span class="row-id">{metaLine(model)}</span>{/if}
+                {#if model.path}
+                  {#if loaded}
+                    <button type="button" class="ui-chip text-error" onclick={handleUnload} disabled={unloading}>
+                      {#if unloading}<LoaderCircle class="animate-spin" />{:else}<Square />{/if}
+                      {$t('modelPicker.unload')}
+                    </button>
+                  {:else}
+                    <button
+                      type="button"
+                      class="ui-chip"
+                      onclick={async (e) => {
+                        e.stopPropagation();
+                        await handleLoad(model);
+                      }}
+                      disabled={localLoading}
+                      data-model-option
+                    >
+                      {#if loadingTarget}<LoaderCircle class="animate-spin" /> {$t('modelPicker.loading')}{:else}<Play /> {$t('modelPicker.load')}{/if}
+                    </button>
+                  {/if}
                 {/if}
               </div>
             {/each}
-          </div>
-        {/if}
-      {:else if !appStore.models.length}
-        <div class="empty-state flex flex-col items-center gap-2 px-4 py-6 text-center">
-          <div>
-            <p class="text-sm font-semibold text-foreground">{$t('modelPicker.noLocal')}</p>
-            <p class="mt-1 text-xs text-fg-secondary">{$t('modelPicker.noLocalHint')}</p>
-          </div>
-          <Button
-            size="sm"
-            class="text-xs"
-            onclick={() => {
-              appStore.modelMenuOpen = false;
-              appStore.modelManagerOpenSection = 'explore';
-              appStore.modelManagerOpen = true;
-            }}
-          >
-            {$t('modelPicker.explore')}
-          </Button>
+          {/if}
         </div>
-      {:else if filteredModels.length === 0}
-        <div class="px-4 py-6 text-center">
-          <p class="text-sm text-muted-foreground">{$t('modelPicker.noResults')}</p>
-        </div>
-      {:else}
-        <div class="space-y-0.5">
-          {#each filteredModels as model (model.id)}
-            {@const loaded = isLoaded(model)}
-            {@const loadingTarget = isLoadingModel(model)}
 
-            <div
-              class="model-item group flex w-full items-center gap-2 rounded-xl px-2 py-1.5 transition hover:bg-muted/60 {loaded ? 'bg-muted/60' : ''}"
-            >
-              <div class="min-w-0 flex-1">
-                <div class="flex items-center gap-1.5">
-                  <span class="truncate text-[12px] font-medium text-foreground">{model.name}</span>
-                </div>
-                {#if metaLine(model)}
-                  <div class="mt-0.5 truncate text-[11px] text-muted-foreground">{metaLine(model)}</div>
-                {/if}
-              </div>
-
-              {#if model.path}
-                {#if loaded}
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    class="shrink-0 text-xs text-error"
-                    onclick={handleUnload}
-                    disabled={unloading}
-                  >
-                    {#if unloading}
-                      <LoaderCircle class="h-3.5 w-3.5 animate-spin" />
-                    {:else}
-                      <Square class="h-3.5 w-3.5" />
-                    {/if}
-                    {$t('modelPicker.unload')}
-                  </Button>
-                {:else}
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    class="shrink-0 text-xs"
-                    onclick={async (e) => {
-                      e.stopPropagation();
-                      await handleLoad(model);
-                    }}
-                    disabled={localLoading}
-                    data-model-option
-                  >
-                    {#if loadingTarget}
-                      <LoaderCircle class="h-3.5 w-3.5 animate-spin" />
-                      {$t('modelPicker.loading')}
-                    {:else}
-                      <Play class="h-3.5 w-3.5" />
-                      {$t('modelPicker.load')}
-                    {/if}
-                  </Button>
-                {/if}
-              {/if}
-            </div>
-          {/each}
-        </div>
-      {/if}
-    </div>
-    <footer class="picker-footer"><span aria-live="polite">{$t(modelSearch ? 'modelPicker.countFound' : 'modelPicker.countAvailable', { values: { n: resultCount } })}</span><span class="picker-key-hint"><kbd>↑</kbd><kbd>↓</kbd> {$t('modelPicker.navigate')} <kbd>esc</kbd> {$t('modelPicker.close')}</span></footer>
-  </div>
+        <footer class="picker-footer">
+          <span aria-live="polite">{$t(modelSearch ? 'modelPicker.countFound' : 'modelPicker.countAvailable', { values: { n: resultCount } })}</span>
+          <span class="picker-key-hint"><kbd>↑</kbd><kbd>↓</kbd> {$t('modelPicker.navigate')} <kbd>esc</kbd> {$t('modelPicker.close')}</span>
+        </footer>
+      </div>
     </div>
   </div>
 {/if}
@@ -698,185 +572,236 @@
     letter-spacing: -0.01em;
   }
 
-  /* Centered modal over a gray backdrop. Square-ish card sized to
-     content, capped to the window. */
+  /* Centered over the backdrop, wide enough for long model ids; its height
+     follows the list up to the window. */
   .model-modal-root {
     -webkit-app-region: no-drag;
   }
 
   .model-modal-backdrop {
     background: var(--overlay);
+    backdrop-filter: blur(4px);
   }
 
   .model-modal {
-    width: min(520px, calc(100vw - 32px));
-    height: min(640px, calc(100dvh - 64px));
-    max-height: calc(100dvh - 32px);
+    width: min(760px, calc(100vw - 32px));
+    max-height: min(680px, calc(100dvh - 48px));
     background: var(--card);
-    border: 0;
     border-radius: var(--radius-2xl);
     box-shadow:
       inset 0 0 0 1px var(--composer-ring),
       var(--shadow-xl);
     -webkit-app-region: no-drag;
-    pointer-events: auto;
+    transform-origin: 50% 40%;
+    will-change: transform, opacity, filter;
   }
 
-  /* Segmented track: outline instead of a filled pill track. */
   .model-modal :global(.ui-segmented) {
-    background: transparent;
-    box-shadow: inset 0 0 0 1px var(--border);
-  }
-
-  .model-modal :global(.ui-segmented-item.is-active) {
     background: var(--muted);
   }
 
-  .model-modal button,
-  .model-modal input {
-    -webkit-app-region: no-drag;
-    pointer-events: auto;
-    cursor: pointer;
+  .model-trigger:focus-visible,
+  .model-modal button:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
   }
 
-  .model-modal input {
-    cursor: text;
-  }
-
-  .mode-icon-btn {
-    display: inline-flex;
+  /* The same slim bar as the browser panel's. */
+  .picker-bar {
+    display: flex;
+    height: 2.75rem;
+    flex-shrink: 0;
     align-items: center;
-    justify-content: center;
-    width: 2rem;
+    gap: 0.125rem;
+    padding: 0 0.5rem 0 0.75rem;
+  }
+  .picker-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--foreground);
+  }
+
+  .picker-search {
     height: 2rem;
-    color: var(--muted-foreground);
-    background: transparent;
-    border: none;
-    border-radius: var(--radius-md);
+    flex-shrink: 0;
+    margin: 0 0.75rem 0.375rem;
+    padding: 0 0.75rem;
+  }
+  .picker-search input {
+    font-size: 13px;
+  }
+  .picker-search input::-webkit-search-cancel-button {
+    display: none;
   }
 
-  .mode-icon-btn:hover {
-    color: var(--foreground);
+  /* Loading, a switch to confirm, a provider's error: one quiet inset row. */
+  .picker-note {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    gap: 0.5rem;
+    margin: 0 0.75rem 0.375rem;
+    padding: 0.4rem 0.4rem 0.4rem 0.75rem;
+    border-radius: 0.625rem;
     background: var(--muted);
+    color: var(--text-secondary);
+    font-size: 12px;
+  }
+  .picker-note.is-inline {
+    margin: 0.125rem 0 0.25rem;
   }
 
-  .loading-indicator {
-    background: transparent;
-    border: none;
+  .model-list {
+    min-height: 0;
+    flex: 1;
+    overflow-y: auto;
+    padding: 0.25rem 0.5rem 0.5rem;
+    overscroll-behavior: contain;
   }
 
-  .confirm-card {
-    background: var(--muted);
-    border: none;
-    border-radius: var(--radius-lg);
+  .provider-group + .provider-group {
+    margin-top: 0.125rem;
   }
 
-  .confirm-btn.primary {
-    background: var(--primary);
-    color: var(--primary-foreground);
-    border: none;
+  /* A provider is a label over its models, not a row competing with them. */
+  .group-head {
+    display: flex;
+    width: 100%;
+    height: 2rem;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0 0.625rem;
     border-radius: var(--radius-full);
-  }
-
-  .confirm-btn.primary:hover {
-    opacity: 0.9;
-  }
-
-  .confirm-btn.secondary {
-    background: transparent;
     color: var(--muted-foreground);
-    border: none;
-    border-radius: var(--radius-full);
+    font-size: 12px;
+    text-align: left;
+    transition: color var(--motion-fast) var(--motion-ease);
   }
-
-  .confirm-btn.secondary:hover {
+  .group-head:hover {
     color: var(--foreground);
-    background: color-mix(in srgb, var(--foreground) 6%, transparent);
   }
-
-  .search-wrapper .search-input {
-    background: var(--card);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-full);
+  .group-name {
+    font-weight: 600;
+    color: var(--foreground);
   }
-
-  .provider-tree {
-    padding-bottom: 0.25rem;
+  .group-meta {
+    font-size: 11px;
   }
-
-  .provider-row {
-    border: none;
-    background: transparent;
-    border-radius: var(--radius-full);
-    transition: background-color var(--motion-fast) var(--motion-ease);
+  .group-current {
+    min-width: 0;
+    max-width: 50%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: var(--font-mono, ui-monospace, monospace);
+    font-size: 11.5px;
   }
-
-  .model-nest {
-    margin-top: 0.1rem;
-    margin-bottom: 0.35rem;
+  .group-head :global(.group-chevron) {
+    transition: transform var(--motion-fast) var(--motion-ease);
+  }
+  .group-models {
+    padding-bottom: 0.375rem;
+  }
+  .group-hint {
+    padding: 0.25rem 0.625rem 0.25rem 2.125rem;
+    color: var(--muted-foreground);
+    font-size: 11.5px;
   }
 
   .model-row {
-    border: none;
-    background: transparent;
-    border-radius: var(--radius-lg);
-    min-height: 2.5rem;
-    padding-inline: 0.8rem;
+    display: flex;
+    width: 100%;
+    height: 1.875rem;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0 0.3rem 0 0.625rem;
+    border-radius: var(--radius-full);
+    color: var(--foreground);
+    font-size: 12.5px;
+    text-align: left;
     transition: background-color var(--motion-fast) var(--motion-ease);
   }
-
+  .model-row:hover,
+  .model-row:focus-visible,
   .model-row.is-selected {
-    background: var(--surface-active);
-    box-shadow: inset 0 0 0 1px var(--border-subtle);
+    background: var(--surface-hover);
   }
-
-  .search-wrapper .search-input:focus {
-    background: var(--background);
-    border-color: var(--ring);
-    box-shadow: 0 0 0 2px color-mix(in oklch, var(--ring) 25%, transparent);
+  .model-row:disabled {
+    cursor: wait;
+    opacity: 0.65;
   }
-
-  .clear-btn {
+  .model-row.is-local {
+    height: 2.125rem;
+  }
+  .row-mark {
+    display: inline-flex;
+    width: 0.875rem;
+    flex-shrink: 0;
+    justify-content: center;
+    color: var(--text-secondary);
+  }
+  .row-id {
+    min-width: 0;
+    max-width: 45%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
     color: var(--muted-foreground);
-    background: transparent;
-    border: none;
-    border-radius: var(--radius-md);
+    font-family: var(--font-mono, ui-monospace, monospace);
+    font-size: 11px;
+  }
+  .row-tag {
+    flex-shrink: 0;
+    padding-right: 0.4rem;
+    color: var(--muted-foreground);
+    font-size: 10.5px;
   }
 
-  .clear-btn:hover {
+  .picker-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 2.5rem 1rem;
+    color: var(--muted-foreground);
+    font-size: 12px;
+    text-align: center;
+  }
+  .picker-empty p {
     color: var(--foreground);
-    background: var(--muted);
+    font-size: 13px;
+    font-weight: 500;
+  }
+  .picker-empty .ui-chip {
+    margin-top: 0.375rem;
   }
 
-  .empty-icon {
+  .picker-footer {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 0.5rem 1rem 0.625rem;
+    color: var(--muted-foreground);
+    font-size: 11px;
+  }
+  .picker-key-hint {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+  }
+  .picker-key-hint kbd {
+    padding: 0 4px;
+    border-radius: 4px;
     background: var(--muted);
-    border: none;
-    border-radius: 8px;
+    font: inherit;
   }
 
-  .picker-heading { display: flex; align-items: center; justify-content: space-between; padding: 1.1rem 1.15rem 0.9rem; gap: 1rem; }
-  .picker-heading h2 { margin: 0; font-size: 1rem; font-weight: 600; letter-spacing: -0.025em; color: var(--foreground); }
-  .picker-heading p { margin: 0.3rem 0 0; font-size: 0.75rem; color: var(--muted-foreground); }
-  .picker-source { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; padding: 0 1rem 0.6rem; }
-  .source-caption { font-size: 11px; color: var(--muted-foreground); }
-  .panel-head { border-bottom: 1px solid var(--border-subtle); padding: 0.45rem 1rem 0.8rem; }
-  .search-wrapper .search-input { height: 2.5rem; background: var(--surface); }
-  .search-input::-webkit-search-cancel-button { display: none; }
-  .model-list { padding-top: 0.6rem; scrollbar-gutter: stable; overscroll-behavior: contain; }
-  .provider-row { min-height: 2.75rem; }
-  .provider-mark { display: flex; align-items: center; justify-content: center; width: 1.8rem; height: 1.8rem; border-radius: var(--radius-md); background: var(--surface); }
-  .provider-active, .selected-label { flex-shrink: 0; font-size: 10px; font-weight: 500; color: var(--muted-foreground); }
-  .selected-label { padding: 0.2rem 0.45rem; border-radius: var(--radius-full); background: var(--background); }
-  .model-nest { margin: 0.1rem 0.3rem 0.6rem; }
-  .model-row:disabled { cursor: wait; opacity: 0.65; }
-  .model-item { min-height: 3.25rem; padding: 0.6rem; }
-  .model-trigger:focus-visible, .model-modal button:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
-  .picker-footer { display: flex; flex-shrink: 0; align-items: center; justify-content: space-between; gap: 0.5rem; padding: 0.8rem 1rem; border-top: 1px solid var(--border-subtle); font-size: 11px; color: var(--muted-foreground); }
-  .picker-key-hint { display: inline-flex; align-items: center; gap: 0.25rem; }
-  .picker-key-hint kbd { padding: 1px 4px; border: 1px solid var(--border-subtle); border-radius: 4px; font: inherit; }
-  .picker-empty { display: flex; align-items: center; flex-direction: column; padding: 2.5rem 1rem; gap: 0.5rem; color: var(--muted-foreground); font-size: 12px; }
-  .picker-empty p { font-size: 14px; font-weight: 500; color: var(--foreground); }
-  .picker-empty button, .provider-error button { color: var(--foreground); text-decoration: underline; text-underline-offset: 3px; background: transparent; border: 0; }
-  .provider-error { display: flex; align-items: center; gap: 0.6rem; padding: 0.6rem; font-size: 11px; color: var(--muted-foreground); }
-  @media (max-width: 480px) { .source-caption, .picker-key-hint { display: none; } .model-modal { height: min(640px, calc(100dvh - 32px)); } }
+  @media (max-width: 560px) {
+    .picker-key-hint,
+    .row-id {
+      display: none;
+    }
+  }
 </style>

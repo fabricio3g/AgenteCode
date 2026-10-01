@@ -86,7 +86,7 @@
 </script>
 
 <div
-  class="session-row group relative flex w-full cursor-pointer items-center gap-2 px-2.5 py-[5px] text-left"
+  class="session-row group relative flex h-7 w-full cursor-pointer items-center gap-2 px-2.5 text-left"
   class:is-active={active}
   role="button"
   tabindex="0"
@@ -147,7 +147,7 @@
       {#snippet trigger(props)}
         <button
           type="button"
-          class="row-menu-btn rounded-[var(--radius-sm)] p-1"
+          class="row-menu-btn rounded-full p-1"
           class:is-open={menuOpen}
           aria-label={menuLabel}
           {...props}

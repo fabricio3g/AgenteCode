@@ -90,10 +90,11 @@ export async function loadAppConfig(): Promise<AppConfig> {
         const prev = safeParse<AppConfig>(localStorage.getItem(APP_CONFIG_KEY), {} as AppConfig);
         const storedProviders = stored?.llm?.providers || {};
         const prevProviders = prev?.llm?.providers || {};
-        // Copy API keys from localStorage into matching IPC providers
+        // Copy API keys from localStorage into matching IPC providers that
+        // main does not hold a key for yet (a stored one stays out of here)
         for (const name of Object.keys(storedProviders)) {
           const prevKey = prevProviders[name]?.api_key;
-          if (prevKey && !storedProviders[name].api_key) {
+          if (prevKey && !storedProviders[name].api_key && !storedProviders[name].has_api_key) {
             storedProviders[name].api_key = prevKey;
             delete storedProviders[name].has_api_key;
           }

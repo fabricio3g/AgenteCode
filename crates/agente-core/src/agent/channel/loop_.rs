@@ -327,6 +327,10 @@ pub(crate) async fn run_agent_loop(cfg: AgentRunConfig) -> Result<(), AgentLoopF
     // then incremented per appended message and recomputed only when the
     // conversation is rewritten (normalization repair, compaction).
     let mut running_tokens = crate::context::estimate_message_tokens(&messages);
+    // What the provider counted beyond our estimate on the last request (its
+    // tokenizer, framing, the system prompt's template), learned from the
+    // reported prompt size so the compaction gate tracks the real one.
+    let mut tokenizer_gap = 0usize;
 
     let provider = registry
         .get(&provider_id)
@@ -430,25 +434,28 @@ pub(crate) async fn run_agent_loop(cfg: AgentRunConfig) -> Result<(), AgentLoopF
         apply_thinking_level(&mut model_info, api_format, &thinking_level);
         let price = model_info.cost.clone();
 
+        let tool_defs = if provider.info().capabilities.tools && model_info.capabilities.toolcall {
+            tool_registry.definitions_for_mode(mode)
+        } else {
+            Vec::new()
+        };
+        // Every request carries the tool schemas as well as the messages.
+        let tool_tokens = crate::context::estimate_tool_definition_tokens(&tool_defs);
+
         // Auto-compact before the request when the estimated context is near
         // the model's window. Mirrors pi's `shouldCompact`, which uses the
         // model's real context window plus a reserved summary budget.
-        let context_limit = model_info.limits.context as usize;
-        let strategy = CompactionStrategy {
-            // Guard against zero/unset context windows.
-            max_tokens: context_limit.max(8_000),
-            keep_recent: 8,
-            summarize_threshold: 0.85,
-            target_reduction: 0.6,
-            reserve_tokens: 16_384,
-            keep_recent_tokens: 20_000,
-        };
+        let strategy = CompactionStrategy::for_window(
+            model_info.limits.context as usize,
+            tool_tokens + tokenizer_gap,
+        );
         let estimated_tokens = running_tokens;
         if strategy.should_compact(estimated_tokens) {
             tracing::info!(
                 iteration,
                 estimated_tokens,
-                context_limit,
+                message_budget = strategy.max_tokens,
+                tool_tokens,
                 "Compacting agent context"
             );
             // Smart compaction (user setting) writes an LLM checkpoint,
@@ -551,16 +558,22 @@ pub(crate) async fn run_agent_loop(cfg: AgentRunConfig) -> Result<(), AgentLoopF
 
         let messages_clone = messages.clone();
         let request_context = crate::providers::RequestContext::new(session_id);
-
-        let tool_defs = if provider.info().capabilities.tools && model_info.capabilities.toolcall {
-            tool_registry.definitions_for_mode(mode)
-        } else {
-            Vec::new()
-        };
+        let request_estimate = running_tokens + tool_tokens;
 
         tracing::info!(iteration, format = ?api_format, tool_count = tool_defs.len(), "Starting provider request");
         let request_started = std::time::Instant::now();
 
+        // What media this model takes, for the tool results below (the request
+        // task takes `model_info`).
+        let accepted_media: Vec<agente_protocol::AttachmentKind> = [
+            agente_protocol::AttachmentKind::Image,
+            agente_protocol::AttachmentKind::Audio,
+            agente_protocol::AttachmentKind::Video,
+            agente_protocol::AttachmentKind::Pdf,
+        ]
+        .into_iter()
+        .filter(|kind| crate::media::model_accepts(&model_info, *kind))
+        .collect();
         let stream_handle = tokio::spawn(
             async move {
                 let tools_for_request = if tool_defs.is_empty() {
@@ -673,6 +686,10 @@ pub(crate) async fn run_agent_loop(cfg: AgentRunConfig) -> Result<(), AgentLoopF
                                     .prompt_tokens
                                     .saturating_add(usage.cache_read_tokens)
                                     .saturating_add(usage.cache_creation_tokens);
+                                if last_context_tokens > 0 {
+                                    tokenizer_gap = (last_context_tokens as usize)
+                                        .saturating_sub(request_estimate);
+                                }
                                 last_completion_tokens = usage.completion_tokens;
                                 send_event(&sender, task_id, AgentEvent::CallUsage {
                                     prompt_tokens: usage.prompt_tokens,
@@ -1086,7 +1103,16 @@ pub(crate) async fn run_agent_loop(cfg: AgentRunConfig) -> Result<(), AgentLoopF
         )
         .await;
 
+        // Media a tool returned (a browser screenshot, say) goes to the model
+        // when it takes that kind; otherwise the result's text stands alone.
+        let mut tool_images = Vec::new();
         for (i, outcome) in outcomes.into_iter().enumerate() {
+            tool_images.extend(
+                outcome
+                    .attachments
+                    .into_iter()
+                    .filter(|attachment| accepted_media.contains(&attachment.kind)),
+            );
             let tool_message = Message {
                 role: Role::Tool,
                 content: outcome.content,
@@ -1107,6 +1133,23 @@ pub(crate) async fn run_agent_loop(cfg: AgentRunConfig) -> Result<(), AgentLoopF
                 crate::context::estimate_message_tokens(std::slice::from_ref(&tool_message)),
             );
             messages.push(tool_message);
+        }
+
+        if !tool_images.is_empty() {
+            let image_message = Message {
+                role: Role::User,
+                content: "Media from the latest tool results.".into(),
+                attachments: tool_images,
+                tool_calls: None,
+                tool_call_id: None,
+                thinking: None,
+                thinking_signature: None,
+                continuation: None,
+            };
+            running_tokens = running_tokens.saturating_add(
+                crate::context::estimate_message_tokens(std::slice::from_ref(&image_message)),
+            );
+            messages.push(image_message);
         }
 
         // First repeat that crossed the nudge threshold: guide the model out

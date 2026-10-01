@@ -4,7 +4,8 @@
 // Code chat runs on the Rust runtime (`agente serve`, see rust-engine).
 
 import type { IpcMain, BrowserWindow } from 'electron';
-import { rustEngine as engine } from '../agente/rust-engine.ts';
+import { registerHomeRuntimeHandlers } from '../agente/home-runtime.ts';
+import { modelSeesImages, rustEngine as engine } from '../agente/rust-engine.ts';
 import { setMainWindowGetter } from '../agente/event-bridge.ts';
 import { listProjectFiles } from '../agente/project-files.ts';
 import { historyTurns } from '../agente/bot-history.ts';
@@ -18,6 +19,7 @@ type AgenteHandlerDeps = {
 
 export function registerAgenteHandlers({ ipcMain, getMainWindow }: AgenteHandlerDeps): void {
   setMainWindowGetter(getMainWindow);
+  registerHomeRuntimeHandlers(ipcMain);
 
   ipcMain.handle('agente_start_session', (_e, args: AgenteStartSessionArgs) => engine.startSession(args));
 
@@ -29,6 +31,7 @@ export function registerAgenteHandlers({ ipcMain, getMainWindow }: AgenteHandler
   ipcMain.handle('agente_follow_up', (_e, args: { chatId: string; text: string; attachments?: Attachment[] }) => engine.followUp(args.chatId, args.text, args.attachments));
   ipcMain.handle('agente_abort', (_e, args: { chatId: string }) => engine.abort(args.chatId));
   ipcMain.handle('agente_compact', (_e, args: { chatId: string }) => engine.compact(args.chatId));
+  ipcMain.handle('model_sees_images', (_e, args: { providerName: string; model: string }) => modelSeesImages(args.providerName, args.model));
 
   ipcMain.handle('agente_set_model', (_e, args: { chatId: string; provider: string; model: string; thinkingLevel?: string }) =>
     engine.setModel(args.chatId, args.provider, args.model, args.thinkingLevel)

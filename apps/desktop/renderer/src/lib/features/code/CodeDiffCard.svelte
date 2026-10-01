@@ -10,6 +10,8 @@
 <script lang="ts">
   import { t } from 'svelte-i18n';
   import { parsePatch } from './patch';
+  import ClampedBlock from './ClampedBlock.svelte';
+  import DiffRows from './DiffRows.svelte';
 
   let { path, patch, additions = 0, deletions = 0, onopen }: { path: string; patch: string; additions?: number; deletions?: number; onopen?: () => void } = $props();
 
@@ -27,20 +29,7 @@
     {#if onopen}<button type="button" class="diff-open" onclick={onopen}>{$t('codeWs.viewChanges')}</button>{/if}
   </div>
   {#if rows.length}
-    <div class="diff-body" role="table" aria-label={$t('codeWs.diff')}>
-      {#each rows as row, index (index)}
-        {#if row.kind === 'hunk'}
-          <div class="hunk" aria-hidden="true">⋯</div>
-        {:else}
-          <div class="line {row.kind}" role="row">
-            <span class="num" aria-hidden="true">{row.oldNo ?? ''}</span>
-            <span class="num" aria-hidden="true">{row.newNo ?? ''}</span>
-            <span class="sign" aria-hidden="true">{row.kind === 'add' ? '+' : row.kind === 'del' ? '−' : ''}</span>
-            <span class="code">{row.text || ' '}</span>
-          </div>
-        {/if}
-      {/each}
-    </div>
+    <ClampedBlock max="20rem"><DiffRows {rows} {path} /></ClampedBlock>
   {/if}
 </div>
 
@@ -58,58 +47,16 @@
     padding: 0.375rem 0.625rem;
     border-bottom: 1px solid var(--border-subtle);
     font-family: var(--font-mono, ui-monospace, monospace);
-    font-size: 11.5px;
+    font-size: 12px;
     color: var(--foreground);
   }
   .diff-open {
     flex-shrink: 0;
     font-family: var(--font-sans, inherit);
-    font-size: 11px;
+    font-size: 12px;
     color: var(--muted-foreground);
   }
   .diff-open:hover {
     color: var(--foreground);
-  }
-  .diff-body {
-    max-height: 20rem;
-    overflow: auto;
-    padding: 0.25rem 0;
-    font-family: var(--font-mono, ui-monospace, monospace);
-    font-size: 11.5px;
-    line-height: 1.6;
-  }
-  .line {
-    display: flex;
-    min-width: max-content;
-    color: var(--foreground);
-  }
-  .line.add {
-    background: color-mix(in srgb, var(--success) 12%, transparent);
-  }
-  .line.del {
-    background: color-mix(in srgb, var(--error) 11%, transparent);
-  }
-  .num {
-    width: 2.5rem;
-    flex-shrink: 0;
-    padding-right: 0.5rem;
-    text-align: right;
-    color: color-mix(in srgb, var(--muted-foreground) 70%, transparent);
-    user-select: none;
-  }
-  .sign {
-    width: 1rem;
-    flex-shrink: 0;
-    color: var(--muted-foreground);
-    user-select: none;
-  }
-  .code {
-    padding-right: 0.75rem;
-    white-space: pre;
-  }
-  .hunk {
-    padding: 0 0.75rem 0 5.5rem;
-    color: var(--muted-foreground);
-    user-select: none;
   }
 </style>

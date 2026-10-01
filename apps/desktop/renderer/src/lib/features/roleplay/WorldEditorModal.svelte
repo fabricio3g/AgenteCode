@@ -8,6 +8,7 @@
 -->
 
 <script lang="ts">
+  import { deleteWorld } from './library-actions.svelte';
   import Avatar from '$lib/components/ui/Avatar.svelte';
   import { untrack } from 'svelte';
   import { ArrowDown, ArrowUp, Plus, Trash2, Upload, X } from 'lucide-svelte';
@@ -292,6 +293,10 @@
     </div>
 
     <div class="ui-modal-footer">
+      {#if world && worldsStore.getById(world.id)}
+        <!-- Deleting skips the unsaved-changes guard: the item is going away. -->
+        <button type="button" class="ui-btn ui-btn-ghost mr-auto text-error" onclick={() => world && deleteWorld(world, onclose)}>{copy.actions.delete}</button>
+      {/if}
       <button type="button" class="ui-btn ui-btn-ghost" onclick={() => guard.close(onclose)}>{copy.actions.cancel}</button>
       <Button onclick={() => void save()} disabled={saving}>{saving ? 'Saving…' : copy.actions.save}</Button>
     </div>

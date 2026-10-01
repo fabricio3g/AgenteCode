@@ -55,13 +55,10 @@
   <div class="mx-auto flex w-full flex-wrap items-center gap-2 px-6 pt-4" style="max-width: var(--thread-width);">
     <SegmentedControl value={shelf} options={tabs.map((tab) => ({ value: tab.id, label: tab.label }))} label="Roleplay library" variant="tabs" onchange={(value) => (shelf = value as Shelf)} />
     <span class="flex-1"></span>
-    <button type="button" class="ui-btn shrink-0" onclick={onnewScene}>
-      <Plus class="size-4" />
-      <span>New scene</span>
-    </button>
+    <button type="button" class="ui-chip is-primary new-scene" onclick={onnewScene}><Plus /> New scene</button>
   </div>
 
-  <div class="min-h-0 flex-1 overflow-y-auto pt-4">
+  <div class="min-h-0 flex-1 overflow-y-auto pt-3">
     {#if shelf === 'worlds'}
       <WorldGallery onpick={onpickWorld} onedit={oneditWorld} onnew={onnewWorld} />
     {:else if shelf === 'characters'}
@@ -71,3 +68,11 @@
     {/if}
   </div>
 </div>
+
+<style>
+  .new-scene {
+    height: 1.875rem;
+    padding: 0 0.85rem;
+    font-size: 12.5px;
+  }
+</style>

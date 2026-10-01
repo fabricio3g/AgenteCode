@@ -1,10 +1,16 @@
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use base64::Engine;
+use parking_lot::Mutex;
 
 use crate::mcp::client::McpManager;
 use crate::permissions::Permission;
-use crate::tools::{Tool, ToolError, ToolExecutionMode, ToolKind, ToolRenderInfo};
+use crate::tools::{
+    Tool, ToolError, ToolExecutionContext, ToolExecutionMode, ToolKind, ToolRenderInfo,
+    TOOL_HEARTBEAT_MS,
+};
 use crate::types::AgentMode;
 
 /// Makes an MCP tool look like a native [`Tool`] to the registry.
@@ -20,6 +26,9 @@ pub struct McpToolAdapter {
     read_only: bool,
     trusted: bool,
     manager: Arc<McpManager>,
+    /// Images and audio a call returned, stored and keyed by its call id,
+    /// until the loop takes them for a model that can use them.
+    media: Mutex<HashMap<String, Vec<agente_protocol::Attachment>>>,
 }
 
 impl McpToolAdapter {
@@ -32,7 +41,48 @@ impl McpToolAdapter {
             read_only: mcp_tool.read_only,
             trusted: mcp_tool.trusted,
             manager,
+            media: Mutex::new(HashMap::new()),
         }
+    }
+
+    /// Run the call; keep its media (a browser screenshot, say) as stored
+    /// attachments for `call_id` rather than only a text placeholder.
+    async fn call(&self, args: serde_json::Value, call_id: &str) -> Result<String, ToolError> {
+        let output = self
+            .manager
+            .call_tool(&self.name, args)
+            .await
+            .map_err(|e| ToolError::ExecutionError(format!("MCP tool failed: {e}")))?;
+        if output.is_error {
+            // Surfaces as a failed call, so the model sees it went wrong.
+            return Err(ToolError::ExecutionError(
+                if output.text.trim().is_empty() {
+                    "MCP tool reported an error".to_string()
+                } else {
+                    output.text
+                },
+            ));
+        }
+        let stored: Vec<_> = output
+            .media
+            .iter()
+            .enumerate()
+            .filter_map(|(index, media)| {
+                let bytes = base64::engine::general_purpose::STANDARD
+                    .decode(media.data.trim())
+                    .ok()?;
+                let name = format!("{}-{}", self.name, index + 1);
+                crate::media::store_bytes(&bytes, &name, media.kind, &media.mime)
+                    .map_err(
+                        |error| tracing::warn!(tool = %self.name, %error, "MCP media not kept"),
+                    )
+                    .ok()
+            })
+            .collect();
+        if !stored.is_empty() && !call_id.is_empty() {
+            self.media.lock().insert(call_id.to_string(), stored);
+        }
+        Ok(output.text)
     }
 
     /// One adapter per tool of every ready server.
@@ -93,22 +143,39 @@ impl Tool for McpToolAdapter {
         args: serde_json::Value,
         _project_dir: &str,
     ) -> Result<String, ToolError> {
-        let output = self
-            .manager
-            .call_tool(&self.name, args)
-            .await
-            .map_err(|e| ToolError::ExecutionError(format!("MCP tool failed: {e}")))?;
-        if output.is_error {
-            // Surfaces as a failed call, so the model sees it went wrong.
-            return Err(ToolError::ExecutionError(
-                if output.text.trim().is_empty() {
-                    "MCP tool reported an error".to_string()
-                } else {
-                    output.text
-                },
-            ));
+        self.call(args, "").await
+    }
+
+    /// The default wrapper (cancellation, heartbeats) around [`Self::call`],
+    /// which needs the call id to keep the result's media.
+    async fn execute_with_context(
+        &self,
+        args: serde_json::Value,
+        _project_dir: &str,
+        context: ToolExecutionContext,
+    ) -> Result<String, ToolError> {
+        if context.cancellation.is_aborted() {
+            return Err(ToolError::ExecutionError("Tool execution cancelled".into()));
         }
-        Ok(output.text)
+        let run = self.call(args, &context.call_id);
+        tokio::pin!(run);
+        let mut heartbeat =
+            tokio::time::interval(std::time::Duration::from_millis(TOOL_HEARTBEAT_MS));
+        heartbeat.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        heartbeat.tick().await;
+        loop {
+            tokio::select! {
+                result = &mut run => return result,
+                _ = context.cancellation.wait_aborted() => {
+                    return Err(ToolError::ExecutionError("Tool execution cancelled".into()));
+                }
+                _ = heartbeat.tick() => context.heartbeat(),
+            }
+        }
+    }
+
+    fn take_result_attachments(&self, call_id: &str) -> Vec<agente_protocol::Attachment> {
+        self.media.lock().remove(call_id).unwrap_or_default()
     }
 
     fn render_call(&self, args: &serde_json::Value) -> ToolRenderInfo {

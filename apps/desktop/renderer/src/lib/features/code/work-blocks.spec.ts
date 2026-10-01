@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { AgentStep } from '$lib/types/chat';
 import type { CodeTodoItem } from '$shared/agente-protocol';
 import { applyCodeAgentEvent, createCodeRunState, orderedEntries } from './code-run';
-import { changedFiles, currentTodo, liveStatus, replyBlocks, QUIET_MS } from './work-blocks';
+import { changedFiles, currentTodo, editedFiles, liveStatus, replyBlocks, QUIET_MS } from './work-blocks';
 
 const step = (id: string, extra: Partial<AgentStep> = {}): AgentStep => ({ id, type: 'tool', label: 'Edit', toolName: 'edit', status: 'done', ...extra });
 
@@ -42,6 +42,15 @@ describe('changed files', () => {
       { path: 'src/a.ts', name: 'a.ts', additions: 5, deletions: 1 },
       { path: 'b.ts', name: 'b.ts', additions: 4, deletions: 0 }
     ]);
+  });
+
+  it('keeps every edit\'s patch in order for the Changes pane, and skips approvals', () => {
+    const edits = editedFiles([
+      step('1', { diffStats: [{ path: 'a.ts', kind: 'modified', additions: 1, deletions: 1, patch: '@@ first' }] }),
+      step('2', { type: 'approval', diffStats: [{ path: 'a.ts', kind: 'modified', additions: 9, deletions: 9, patch: '@@ asked' }] }),
+      step('3', { diffStats: [{ path: 'a.ts', kind: 'modified', additions: 2, deletions: 0, patch: '@@ second' }] })
+    ]);
+    expect(edits).toEqual([{ path: 'a.ts', name: 'a.ts', kind: 'modified', additions: 3, deletions: 1, patches: ['@@ first', '@@ second'] }]);
   });
 });
 

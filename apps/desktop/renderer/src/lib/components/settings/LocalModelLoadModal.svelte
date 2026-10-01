@@ -14,6 +14,7 @@
   import { formatContextLength, formatModelParameterCount } from '$lib/utils/local-models';
   import { formatBytes } from '$lib/utils/format';
   import { Badge, Button, Dialog, Disclosure, SegmentedControl, Select, Switch } from '$lib/components/ui';
+  import Tooltip from '$lib/components/ui/Tooltip.svelte';
 
   /** Presets scale with the model's real trained context, not a hard cap. */
   const contextPresets = $derived.by(() => {
@@ -345,15 +346,19 @@
 </script>
 
 {#snippet row(title: string, hint: string, control: import('svelte').Snippet, below?: import('svelte').Snippet)}
-  <div class="py-3">
-    <div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
-      <div class="min-w-0">
-        <div class="text-[13px] font-medium text-foreground">{title}</div>
-        {#if hint}<div class="text-xs text-muted-foreground">{hint}</div>{/if}
-      </div>
+  <div class="load-row">
+    <div class="flex min-h-9 flex-wrap items-center justify-between gap-x-4 gap-y-1.5">
+      <span class="load-label">
+        {title}
+        {#if hint}
+          <Tooltip label={hint} position="top">
+            <button type="button" class="load-hint" aria-label={hint}><Info class="size-3" /></button>
+          </Tooltip>
+        {/if}
+      </span>
       {@render control()}
     </div>
-    {#if below}<div class="mt-2.5">{@render below()}</div>{/if}
+    {#if below}<div class="pb-1 pt-0.5">{@render below()}</div>{/if}
   </div>
 {/snippet}
 
@@ -366,12 +371,12 @@
 
 {#if target}
   <Dialog
-    title={appStore.localModelLoadAsInstance ? $t('instances.startTitle') : $t('localLoad.title')}
-    description={target.name}
-    size="lg"
+    title={target.name}
+    description={appStore.localModelLoadAsInstance ? $t('instances.startTitle') : $t('localLoad.title')}
+    class="max-w-[60rem]"
     onclose={() => appStore.closeLocalModelLoadDialog()}
   >
-    <div class="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-5">
+    <div class="min-h-0 flex-1 overflow-y-auto px-4 py-3 sm:px-5">
       <!-- What this model is and what it can do -->
       <div class="flex flex-wrap items-center gap-x-3 gap-y-2">
         {#if headerMetaLine}<span class="text-xs text-muted-foreground">{headerMetaLine}</span>{/if}
@@ -403,7 +408,7 @@
 
       <!-- Will it fit? -->
       {#if fit}
-        <div class="mt-4 rounded-lg border border-border px-3 py-3">
+        <div class="mt-3 rounded-xl bg-muted px-3.5 py-3">
           <div class="flex items-center justify-between gap-3">
             <div class="flex min-w-0 items-center gap-2 text-[13px] font-medium"
               class:text-success={fit.tone === 'success'}
@@ -415,16 +420,16 @@
               {:else}<AlertTriangle class="size-4 shrink-0" />{/if}
               <span class="min-w-0">{fit.text}</span>
             </div>
-            <Button variant="ghost" size="xs" onclick={applyRecommendedPreset} disabled={!recommended}>
+            <button type="button" class="ui-chip" onclick={applyRecommendedPreset} disabled={!recommended}>
               <Sparkles /> {$t('localLoad.useRecommended')}
-            </Button>
+            </button>
           </div>
           <div class="mt-2.5 space-y-2">
             {#each meterRows as meter (meter.label)}
               {@const pct = meter.total > 0 ? Math.min(100, (meter.used / meter.total) * 100) : 0}
               <div class="grid grid-cols-[3rem_1fr_auto] items-center gap-3 text-xs text-muted-foreground">
                 <span>{meter.label}</span>
-                <div class="h-1.5 overflow-hidden rounded-full bg-muted">
+                <div class="h-1 overflow-hidden rounded-full bg-[var(--surface-active)]">
                   <div class="h-full rounded-full transition-[width] {meter.used > meter.total * 0.95 ? 'bg-error' : 'bg-primary'}" style="width: {pct}%"></div>
                 </div>
                 <span class="tabular-nums">{meter.used.toFixed(1)} / {meter.total.toFixed(1)} GB</span>
@@ -435,7 +440,7 @@
       {/if}
 
       <!-- The few choices most people make -->
-      <div class="mt-2 divide-y divide-[var(--border-subtle)]">
+      <div class="mt-2">
         {#snippet gpuControl()}
           <SegmentedControl
             label={$t('localLoad.gpuLayers')}
@@ -477,18 +482,21 @@
           />
         {/snippet}
         {#snippet contextSlider()}
-          <input
-            type="range"
-            min="512"
-            max={maxContext}
-            step="512"
-            value={localContextLength}
-            aria-label={$t('localLoad.context')}
-            oninput={(e) => { localContextLength = Number(e.currentTarget.value); }}
-            onchange={commitContext}
-            class="load-range w-full"
-            class:is-auto={contextIsAuto}
-          />
+          <div class="flex items-center gap-3">
+            <input
+              type="range"
+              min="512"
+              max={maxContext}
+              step="512"
+              value={localContextLength}
+              aria-label={$t('localLoad.context')}
+              oninput={(e) => { localContextLength = Number(e.currentTarget.value); }}
+              onchange={commitContext}
+              class="load-range min-w-0 flex-1"
+              class:is-auto={contextIsAuto}
+            />
+            <span class="w-14 shrink-0 text-right text-xs tabular-nums text-muted-foreground">{contextIsAuto ? $t('localLoad.auto') : contextLength.toLocaleString()}</span>
+          </div>
         {/snippet}
         {@render row($t('localLoad.context'), $t('localLoad.contextHint'), contextControl, contextSlider)}
 
@@ -507,27 +515,28 @@
         {@render row($t('localLoad.thinking'), thinkingLocked ? $t('localLoad.thinkingUnsupported') : $t('localLoad.thinkingHint'), thinkingControl)}
 
         {#snippet visionControl()}
-          <div class="flex shrink-0 items-center gap-1.5">
+          <div class="flex min-w-0 shrink-0 items-center gap-1.5">
             {#if visionSelectedName}
-              <Button variant="ghost" size="sm" onclick={() => { appStore.localModelLoadMmprojPath = ''; }}>{$t('localLoad.clear')}</Button>
+              <span class="max-w-[16rem] truncate font-mono text-[11.5px] text-muted-foreground" title={visionSelectedName}>{visionSelectedName}</span>
+              <button type="button" class="ui-chip" onclick={() => { appStore.localModelLoadMmprojPath = ''; }}>{$t('localLoad.clear')}</button>
             {/if}
-            <Button variant="outline" size="sm" onclick={pickProjector}>
+            <button type="button" class="ui-chip" onclick={pickProjector}>
               {visionSelectedName ? $t('localLoad.change') : $t('localLoad.chooseFile')}
-            </Button>
+            </button>
           </div>
         {/snippet}
         {#snippet visionCandidates()}
           <div class="flex flex-wrap gap-1.5">
             {#each projectorCandidates as candidate (candidate)}
-              <Button variant="outline" size="xs" title={candidate} onclick={() => { appStore.localModelLoadMmprojPath = candidate; }}>
+              <button type="button" class="ui-chip font-mono" title={candidate} onclick={() => { appStore.localModelLoadMmprojPath = candidate; }}>
                 {candidate.split(/[/\\]/).pop()}
-              </Button>
+              </button>
             {/each}
           </div>
         {/snippet}
         {@render row(
           $t('localLoad.vision'),
-          visionSelectedName || $t('localLoad.visionHint'),
+          $t('localLoad.visionHint'),
           visionControl,
           projectorCandidates.length && !visionSelectedName ? visionCandidates : undefined
         )}
@@ -596,7 +605,7 @@
 
       {#if appStore.localModelLoadAsInstance}
         <!-- Another instance: its own port, optionally reachable from the network. -->
-        <label class="mt-3 flex items-start gap-3 rounded-xl border border-[var(--border)] px-3.5 py-3">
+        <label class="mt-3 flex items-start gap-3 rounded-xl bg-muted px-3.5 py-3">
           <Switch bind:checked={appStore.localModelLoadShare} label={$t('instances.shareOnNetwork')} />
           <span class="text-[13px] text-foreground">
             {$t('instances.shareOnNetwork')}
@@ -606,7 +615,7 @@
       {/if}
 
       <!-- Everything llama-server accepts, for people who know what they want -->
-      <Disclosure class="mt-3" title={$t('localLoad.advanced')} description={$t('localLoad.advancedHint')} bind:open={advancedOpen}>
+      <Disclosure quiet class="mt-2" title={$t('localLoad.advanced')} description={$t('localLoad.advancedHint')} bind:open={advancedOpen}>
         <div class="space-y-4">
           {#if hardware}
             <p class="text-xs text-muted-foreground">
@@ -729,6 +738,29 @@
   }
   .load-range.is-auto {
     opacity: 0.4;
+  }
+  .load-row + .load-row {
+    margin-top: 0.125rem;
+  }
+  .load-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    font-size: 12.5px;
+    font-weight: 500;
+    color: var(--foreground);
+  }
+  .load-hint {
+    display: inline-flex;
+    padding: 0.125rem;
+    border-radius: var(--radius-full);
+    color: var(--muted-foreground);
+    cursor: help;
+    outline: none;
+  }
+  .load-hint:hover,
+  .load-hint:focus-visible {
+    color: var(--foreground);
   }
   .load-input {
     height: 2.25rem;

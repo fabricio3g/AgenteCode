@@ -27,7 +27,7 @@
   {:else if todo.status === 'in_progress'}
     <span class="spinner" aria-hidden="true"></span>
   {:else}
-    <Circle class="size-3.5 shrink-0 text-muted-foreground/60" />
+    <Circle class="size-3.5 shrink-0 text-muted-foreground" />
   {/if}
 {/snippet}
 
@@ -91,7 +91,7 @@
     display: flex;
     align-items: flex-start;
     gap: 0.5rem;
-    font-size: 12.5px;
+    font-size: 13px;
     line-height: 1.45;
     color: var(--muted-foreground);
   }

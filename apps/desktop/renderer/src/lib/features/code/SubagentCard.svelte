@@ -30,7 +30,7 @@
       <CodeStepRow step={{ id: tool.id, type: 'tool', label: tool.name, toolName: tool.name, status: tool.status, output: tool.output }} />
     {/each}
     {#if child.summary}<RichContent content={child.summary} />{/if}
-    {#if spendLabel(child.spend)}<p class="text-[11px] tabular-nums text-muted-foreground">{spendLabel(child.spend)}</p>{/if}
+    {#if spendLabel(child.spend)}<p class="text-xs tabular-nums text-muted-foreground">{spendLabel(child.spend)}</p>{/if}
   </div>
 </details>
 

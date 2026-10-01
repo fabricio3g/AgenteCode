@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
-  import { ChevronDown } from 'lucide-svelte';
+  import { ChevronDown, ChevronRight } from 'lucide-svelte';
   import { cn } from '$lib/utils/cn';
   import { motionSlide } from '$lib/utils/transitions';
 
@@ -9,6 +9,7 @@
     title,
     description,
     disabled = false,
+    quiet = false,
     class: className = '',
     children,
   }: {
@@ -16,11 +17,33 @@
     title: string;
     description?: string;
     disabled?: boolean;
+    /** Text only: a chevron and the title, no card around it. */
+    quiet?: boolean;
     class?: string;
     children: Snippet;
   } = $props();
 </script>
 
+{#if quiet}
+  <div class={className}>
+    <button
+      type="button"
+      class="group flex w-full items-center gap-1.5 py-1.5 text-left text-[12.5px] text-muted-foreground outline-none transition-colors duration-[var(--motion-fast)] hover:text-foreground focus-visible:text-foreground disabled:opacity-50"
+      aria-expanded={open}
+      {disabled}
+      onclick={() => (open = !open)}
+    >
+      <ChevronRight class={cn('size-3.5 shrink-0 transition-transform duration-[var(--motion-normal)] ease-[var(--motion-ease)]', open && 'rotate-90')} />
+      <span class="font-medium text-foreground">{title}</span>
+      {#if description}<span class="min-w-0 truncate">{description}</span>{/if}
+    </button>
+    {#if open}
+      <div class="pb-1 pl-5 pt-2" transition:motionSlide={{ duration: 180 }}>
+        {@render children()}
+      </div>
+    {/if}
+  </div>
+{:else}
 <div class={cn('overflow-hidden rounded-lg border border-border bg-background', className)}>
   <button
     type="button"
@@ -41,3 +64,4 @@
     </div>
   {/if}
 </div>
+{/if}

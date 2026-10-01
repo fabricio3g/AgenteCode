@@ -349,8 +349,12 @@
     class="composer-frame mx-auto w-full"
     style="max-width: var(--thread-width);"
   >
-    <ComposerModelNotice />
-    {@render above?.()}
+    <!-- The dock ignores the pointer so the thread scrolls behind it; what
+         sits above the input opts back in, or it renders but never clicks. -->
+    <div class="composer-above">
+      <ComposerModelNotice />
+      {@render above?.()}
+    </div>
 
     {#if appStore.activeSpace === 'home'}
       <!-- The mode tab lives above the input shell on Home: Instant for fast
@@ -491,6 +495,9 @@
      the shell rather than floating in the thread. The dock is
      pointer-events:none so the thread stays scrollable behind it — opt back
      in, or the tabs render but never receive clicks. */
+  .composer-above {
+    pointer-events: auto;
+  }
   .mode-tab-row {
     display: flex;
     justify-content: flex-start;

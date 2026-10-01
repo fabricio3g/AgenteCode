@@ -334,6 +334,8 @@
     },
     "toolInput": "Input",
     "toolResult": "Result",
+    "showAll": "Show all",
+    "showLess": "Show less",
     "deleteProject": "Delete project",
     "deleteProjectTitle": "Delete “{name}”?",
     "deleteProjectMessage": "Removes the project and its {conversations} from Agente. The files in its folder are not touched.",

@@ -6,6 +6,7 @@
 
 mod bot_tools;
 mod bots;
+mod client_tools;
 mod connection;
 mod project;
 mod routines;

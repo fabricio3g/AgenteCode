@@ -16,7 +16,6 @@
 
   let mode = $state<'api' | 'local'>('api');
   let temperature = $state(0.7);
-  let topP = $state(0.95);
   let maxTokens = $state(0);
   let systemPrompt = $state('');
   let saving = $state(false);
@@ -24,19 +23,12 @@
   $effect(() => {
     if (appStore.llmDrawerOpen && !saving) {
       mode = currentMode as 'api' | 'local';
+      // Only a local model is tuned here; an API provider runs as the
+      // Rust core configures it (Settings → Providers).
       const cfg = appStore.config;
-      if (mode === 'api') {
-        const provider = appStore.activeProvider;
-        temperature = Number(provider?.temperature ?? 0.7);
-        topP = Number(provider?.top_p ?? 0.95);
-        maxTokens = Number(provider?.max_tokens ?? 0);
-        systemPrompt = provider?.system_prompt || cfg.llm?.system_prompt || '';
-      } else {
-        temperature = Number(cfg.llm?.local?.temperature ?? 0.7);
-        maxTokens = Number(cfg.llm?.local?.max_tokens ?? 0);
-        topP = 0.95;
-        systemPrompt = cfg.llm?.local?.system_prompt || cfg.llm?.system_prompt || '';
-      }
+      temperature = Number(cfg.llm?.local?.temperature ?? 0.7);
+      maxTokens = Number(cfg.llm?.local?.max_tokens ?? 0);
+      systemPrompt = cfg.llm?.local?.system_prompt || cfg.llm?.system_prompt || '';
     }
   });
 
@@ -44,15 +36,7 @@
     saving = true;
     try {
       await appStore.setBackendMode(mode);
-      if (mode === 'api') {
-        await appStore.updateProvider({
-          provider: appStore.activeProviderName,
-          temperature,
-          top_p: topP,
-          max_tokens: maxTokens > 0 ? maxTokens : undefined,
-          system_prompt: systemPrompt || undefined,
-        });
-      } else {
+      if (mode === 'local') {
         await appStore.updateLocalSettings({
           temperature,
           max_tokens: maxTokens > 0 ? maxTokens : undefined,
@@ -151,21 +135,24 @@
     <!-- Status -->
     <div class="mx-4 mt-3 pb-3">
       {#if mode === 'api'}
-        <div class="flex items-center gap-3 rounded-xl bg-[var(--muted)] px-3 py-3">
-          <div class="flex size-8 shrink-0 items-center justify-center rounded-full bg-muted text-foreground">
+        <button
+          type="button"
+          class="flex w-full items-center gap-3 rounded-xl bg-[var(--muted)] px-3 py-3 text-left transition hover:bg-[var(--surface-hover)]"
+          onclick={() => { appStore.llmDrawerOpen = false; appStore.modelManagerOpenSection = 'providers'; appStore.modelManagerOpen = true; }}
+          title="Configure providers"
+        >
+          <span class="flex size-8 shrink-0 items-center justify-center rounded-full bg-muted text-foreground">
             <Zap class="size-4" />
-          </div>
-          <div class="min-w-0 flex-1">
-            <div class="truncate text-[13px] font-semibold text-foreground">{activeProviderLabel}</div>
-            <div class="truncate text-[11px] text-muted-foreground">{activeModelShort}</div>
-          </div>
-          <button
-            type="button"
-            class="ui-icon-button shrink-0"
-            onclick={() => { appStore.llmDrawerOpen = false; appStore.modelManagerOpenSection = 'providers'; appStore.modelManagerOpen = true; }}
-            title="Configure"
-          ><ExternalLink class="size-3.5" /></button>
-        </div>
+          </span>
+          <span class="min-w-0 flex-1">
+            <span class="block truncate text-[13px] font-semibold text-foreground">{activeProviderLabel}</span>
+            <span class="block truncate text-xs text-muted-foreground">{activeModelShort}</span>
+          </span>
+          <ExternalLink class="size-3.5 shrink-0 text-muted-foreground" />
+        </button>
+        <p class="mt-3 px-1 text-xs leading-relaxed text-muted-foreground">
+          Providers, keys and models are set in Settings and shared with Agente Code in the terminal.
+        </p>
       {:else}
         <div class="px-3.5 py-3">
           <div class="flex items-center justify-between gap-2 mb-2">
@@ -223,7 +210,8 @@
       {/if}
     </div>
 
-    <!-- ── Parameters ─────────────────────────────────────────── -->
+    <!-- ── Parameters (local model only) ───────────────────────── -->
+    {#if mode === 'local'}
     <div class="px-4 pt-4 space-y-4">
 
       <!-- Temperature -->
@@ -240,17 +228,6 @@
           <span>Precise</span><span>Creative</span>
         </div>
       </div>
-
-      {#if mode === 'api'}
-        <!-- Top-P -->
-        <div>
-          <div class="mb-2 flex items-center justify-between">
-            <span class="text-[11px] font-semibold r text-[var(--text-muted)]">Top P</span>
-            <span class="min-w-[2.5rem] px-1 text-center text-[12px] font-semibold tabular-nums text-[var(--text)]">{topP.toFixed(2)}</span>
-          </div>
-          <input type="range" bind:value={topP} min="0" max="1" step="0.01" class="w-full accent-[var(--primary)] cursor-pointer" />
-        </div>
-      {/if}
 
       <!-- Max tokens -->
       <div>
@@ -274,6 +251,7 @@
       </div>
 
     </div>
+    {/if}
 
     <div class="h-4"></div>
   </div>
@@ -286,7 +264,7 @@
       onclick={save}
       disabled={saving}
     >
-      {saving ? 'Saving…' : 'Apply settings'}
+      {saving ? 'Saving…' : mode === currentMode && mode === 'api' ? 'Done' : 'Apply settings'}
     </button>
   </div>
 </aside>

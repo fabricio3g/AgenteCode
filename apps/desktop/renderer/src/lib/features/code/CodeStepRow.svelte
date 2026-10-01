@@ -10,7 +10,6 @@
 -->
 
 <script lang="ts">
-  import { tick } from 'svelte';
   import { t } from 'svelte-i18n';
   import { AlertCircle, Bot, ChevronRight, FilePen, FileText, FolderOpen, Globe, ListChecks, Loader2, Search, Square, SquareTerminal, Wrench, XCircle } from 'lucide-svelte';
   import type { AgentStep } from '$lib/types/chat';
@@ -25,6 +24,7 @@
   import { looksLikePatch } from './patch';
   import { isRunning } from './work-blocks';
   import CodeDiffCard from './CodeDiffCard.svelte';
+  import ClampedBlock from './ClampedBlock.svelte';
 
   let { step, chatId }: { step: AgentStep; chatId?: string } = $props();
 
@@ -68,13 +68,6 @@
     return () => clearInterval(timer);
   });
 
-  let outputElement = $state<HTMLPreElement>();
-  let followOutput = $state(true);
-  $effect(() => {
-    void output;
-    if (running && followOutput) void tick().then(() => { if (outputElement) outputElement.scrollTop = outputElement.scrollHeight; });
-  });
-
   const Icon = $derived(running ? Loader2 : isApproval ? AlertCircle : isError ? XCircle : plan ? ListChecks : KIND_ICON[kind]);
 
   function toggle() {
@@ -106,14 +99,14 @@
       <span class="verb shrink-0">{step.label}</span>
       {#if target}<code class="chip min-w-0 truncate">{target}</code>{/if}
       {#if adds || dels}
-        <span class="shrink-0 text-[11px] tabular-nums">
+        <span class="shrink-0 text-xs tabular-nums">
           {#if adds}<span class="text-success">+{adds}</span>{/if}
           {#if dels}<span class="ml-1 text-error">−{dels}</span>{/if}
         </span>
       {/if}
       <span class="flex-1"></span>
-      {#if running && elapsed !== undefined}<span class="shrink-0 text-[11px] tabular-nums text-muted-foreground">{formatToolDuration(elapsed)}</span>{/if}
-      {#if plan}<span class="shrink-0 text-[11px] text-muted-foreground">{$t('code.plan.open')}</span>{/if}
+      {#if running && elapsed !== undefined}<span class="shrink-0 text-xs tabular-nums text-muted-foreground">{formatToolDuration(elapsed)}</span>{/if}
+      {#if plan}<span class="shrink-0 text-xs text-muted-foreground">{$t('code.plan.open')}</span>{/if}
       {#if expandable}<ChevronRight class="chevron size-3.5 shrink-0 {open ? 'rotate-90' : ''}" />{/if}
     </button>
     {#if running && isCommand && chatId}
@@ -127,7 +120,7 @@
         <div class="term">
           <div class="term-head"><span class="text-muted-foreground">$</span> {step.detail}</div>
           {#if output}
-            <pre bind:this={outputElement} onscroll={() => { if (outputElement) followOutput = outputElement.scrollHeight - outputElement.scrollTop - outputElement.clientHeight < 24; }} class="term-out">{output.slice(-OUTPUT_LIMIT)}{#if running}<span class="caret"></span>{/if}</pre>
+            <ClampedBlock tail={running}><pre class="term-out">{output.slice(-OUTPUT_LIMIT)}{#if running}<span class="caret"></span>{/if}</pre></ClampedBlock>
           {:else if running}
             <p class="term-note">{tailPipe ? 'This pipe prints its tail when the command finishes.' : $t('codeWs.noOutput')}</p>
           {/if}
@@ -141,11 +134,11 @@
       {:else}
         {#if input}
           <p class="section-label">{$t('code.toolInput')}</p>
-          <pre class="out">{input}</pre>
+          <div class="out"><ClampedBlock><pre>{input}</pre></ClampedBlock></div>
         {/if}
         {#if output}
           {#if input}<p class="section-label">{$t('code.toolResult')}</p>{/if}
-          <pre class="out" class:text-error={isError}>{output.slice(-OUTPUT_LIMIT)}</pre>
+          <div class="out" class:text-error={isError}><ClampedBlock><pre>{output.slice(-OUTPUT_LIMIT)}</pre></ClampedBlock></div>
         {:else if running}
           <p class="term-note">{$t('codeWs.noOutput')}</p>
         {/if}
@@ -173,13 +166,17 @@
     gap: 0.5rem;
     padding: 0.3125rem 0.5rem;
     border-radius: 0.5rem;
-    font-size: 12.5px;
+    font-size: 13px;
     color: var(--muted-foreground);
     text-align: left;
-    transition: background-color var(--motion-fast) var(--motion-ease), color var(--motion-fast) var(--motion-ease);
+    transition: color var(--motion-fast) var(--motion-ease);
   }
-  .step-head:not(:disabled):hover {
-    background: var(--surface-hover);
+  /* No hover fill: the text brightens and the chevron shows that it opens. */
+  .step-head:not(:disabled):hover,
+  .step-head:focus-visible {
+    color: var(--foreground);
+  }
+  .step-head:not(:disabled):hover .chip {
     color: var(--foreground);
   }
   .step-head:disabled {
@@ -193,7 +190,7 @@
     border-radius: 0.3125rem;
     background: var(--muted);
     font-family: var(--font-mono, ui-monospace, monospace);
-    font-size: 11px;
+    font-size: 12px;
     color: var(--muted-foreground);
   }
   .step-head :global(.chevron) {
@@ -234,24 +231,28 @@
     background: color-mix(in srgb, var(--warning) 5%, transparent);
   }
   .section-label {
-    font-size: 11px;
+    font-size: 12px;
     color: var(--muted-foreground);
   }
   pre {
     margin: 0;
     font-family: var(--font-mono, ui-monospace, monospace);
-    font-size: 11.5px;
+    font-size: 12px;
     line-height: 1.55;
   }
+  /* Output wraps and grows (cut past a height by ClampedBlock): no scroll boxes. */
   .out {
-    max-height: 16rem;
-    overflow: auto;
-    padding: 0.5rem 0.625rem;
     border-radius: 0.5rem;
     background: var(--muted);
     color: var(--foreground);
+  }
+  .out pre {
+    padding: 0.5rem 0.625rem;
     white-space: pre-wrap;
     overflow-wrap: anywhere;
+  }
+  .out.text-error pre {
+    color: var(--error);
   }
   /* assistant-ui's terminal block: the command on top, output below. */
   .term {
@@ -263,26 +264,25 @@
   .term-head {
     padding: 0.375rem 0.625rem;
     border-bottom: 1px solid var(--border-subtle);
-    overflow-x: auto;
-    white-space: pre;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
     font-family: var(--font-mono, ui-monospace, monospace);
-    font-size: 11.5px;
+    font-size: 12px;
     color: var(--foreground);
   }
   .term-out {
-    max-height: 16rem;
-    overflow: auto;
     padding: 0.5rem 0.625rem;
-    white-space: pre;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
     color: var(--foreground);
   }
   .term-note {
     padding: 0.375rem 0.625rem;
-    font-size: 11.5px;
+    font-size: 12px;
     color: var(--muted-foreground);
   }
   .view-link {
-    font-size: 11px;
+    font-size: 12px;
     color: var(--muted-foreground);
     text-decoration: underline;
     text-underline-offset: 2px;

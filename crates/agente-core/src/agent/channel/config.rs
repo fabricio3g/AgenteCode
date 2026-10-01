@@ -25,6 +25,7 @@ pub(crate) struct PreparedToolCall {
 /// Result of one tool call, visible to the subagent host so it can build its
 /// own outcomes for hosted tools (`task`, `task_output`, `kill_task`).
 pub(crate) struct ToolCallOutcome {
+    pub attachments: Vec<agente_protocol::Attachment>,
     pub(crate) tool_call_id: String,
     pub(crate) tool_name: String,
     pub(crate) content: String,
@@ -54,6 +55,7 @@ impl ToolCallOutcome {
             file_before: None,
             file_after: None,
             todos: None,
+            attachments: Vec::new(),
         }
     }
 }

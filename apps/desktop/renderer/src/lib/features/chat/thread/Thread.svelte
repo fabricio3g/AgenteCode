@@ -311,7 +311,7 @@
       <div
         bind:this={container}
         id="conversation-message-scroll"
-        class="thread-scroll h-full overflow-y-auto px-4 pb-8 md:px-8"
+        class="thread-scroll h-full overflow-y-auto px-4 pb-12 md:px-8"
         style="padding-top: var(--thread-top-pad);"
         role="region"
         aria-label="Conversation messages"

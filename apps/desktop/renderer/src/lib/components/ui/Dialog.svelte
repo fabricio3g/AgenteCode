@@ -6,7 +6,7 @@
   import type { Snippet } from 'svelte';
   import { X } from 'lucide-svelte';
   import { cn } from '$lib/utils/cn';
-  import { motionFade, flyAndScale } from '$lib/utils/transitions';
+  import { backdropIn, backdropOut, dialogIn, dialogOut } from '$lib/utils/transitions';
   import { copy } from '$lib/copy';
   import Button from './Button.svelte';
   import Portal from './Portal.svelte';
@@ -72,7 +72,8 @@
     onclick={() => {
       if (dismissible) void requestClose();
     }}
-    transition:motionFade={{ duration: 200 }}
+    in:backdropIn
+    out:backdropOut
   >
     <!-- svelte-ignore a11y_no_static_element_interactions, a11y_click_events_have_key_events -->
     <div
@@ -86,7 +87,8 @@
         className
       )}
       onclick={(event) => event.stopPropagation()}
-      transition:flyAndScale={{ y: 8, start: 0.98, duration: 220 }}
+      in:dialogIn
+      out:dialogOut
     >
       {#if hideHeader}<h2 id={labelledBy} class="sr-only">{title}</h2>{:else}
       <header class="flex min-h-14 shrink-0 items-center justify-between gap-3 border-b border-[var(--border-subtle)] px-4 py-2.5 sm:px-5">

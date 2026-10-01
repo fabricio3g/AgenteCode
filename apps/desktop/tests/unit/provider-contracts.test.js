@@ -154,3 +154,12 @@ describe('provider endpoint contracts', () => {
     });
   });
 });
+
+describe('OpenCode Go direct calls', () => {
+  it('carry one x-opencode-session per app run, as the endpoint requires', () => {
+    const dialect = getDialect('opencode-go');
+    const first = dialect.headers('key')['x-opencode-session'];
+    assert.match(first, /^[0-9a-f-]{36}$/);
+    assert.equal(dialect.headers('other')['x-opencode-session'], first);
+  });
+});

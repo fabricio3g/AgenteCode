@@ -163,6 +163,7 @@ pub(crate) fn check_missing_args(
             file_before: None,
             file_after: None,
             todos: None,
+            attachments: Vec::new(),
         });
     }
     None

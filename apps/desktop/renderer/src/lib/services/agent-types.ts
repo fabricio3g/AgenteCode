@@ -1,3 +1,4 @@
+import type { HomeRuntimeMeta } from '$shared/home-runtime';
 import type { AgentArtifact, AgentOutcome, AgentStep, AgentStopReason, ArtifactManifest, ReasoningLevel, WorkspaceFile } from '$lib/types/chat';
 import type { CompletionResult, RequestMessage } from '$lib/services/chat-api';
 import type { SearchResult } from '$lib/types/bridge';
@@ -82,6 +83,12 @@ export type AgentTaskResult = {
 
 export type RunAgentTaskArgs = {
   chatId: string;
+  homeRuntime?: HomeRuntimeMeta;
+  historyIds?: string[];
+  forkIndex?: number;
+  onRuntime?: (meta: HomeRuntimeMeta) => void;
+  onConversationIndex?: (index: number, sessionId: string, revision: number) => void;
+  onUsage?: (usage: CompletionResult['usage']) => void;
   systemPrompt?: string;
   messages: RequestMessage[];
   rawPrompt?: string;
@@ -109,6 +116,11 @@ export type RunAgentTaskArgs = {
   maxToolCalls?: number;
   maxTimeMs?: number;
   toolMode?: 'agent' | 'instant' | 'search_chat';
+  /**
+   * A plain Instant answer: one model call with no tools, still through the
+   * Rust runtime so every provider it supports works (no renderer HTTP path).
+   */
+  noTools?: boolean;
   /**
    * Instant fast path: collapse run activity to a single quiet status instead of
    * per-step updates. The caller still records steps; only the activity

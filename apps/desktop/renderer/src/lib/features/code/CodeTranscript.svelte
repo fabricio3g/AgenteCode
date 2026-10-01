@@ -31,7 +31,7 @@
   import { codeWorkspace } from './workspace.svelte';
   import { toastStore } from '$lib/stores/toast.svelte';
   import { approvalsStore } from '$lib/stores/approvals.svelte';
-  import { replyBlocks } from './work-blocks';
+  import { editedFiles, replyBlocks } from './work-blocks';
   import { openWorkspaceFile } from '$lib/services/files';
 
   let { messages, chatId }: { messages: ChatMessage[]; chatId: string } = $props();
@@ -46,6 +46,11 @@
   // A plan waiting for an answer opens in the right dock, beside the conversation.
   $effect(() => {
     if (plan && !run?.running) codeWorkspace.offerPlan(chatId, plan);
+  });
+
+  // Hand the Changes pane what this conversation edited, for files git can't show.
+  $effect(() => {
+    codeWorkspace.setTranscriptEdits(chatId, editedFiles(messages.flatMap((message) => message.agentSteps ?? [])));
   });
 
   $effect(() => {
@@ -108,7 +113,10 @@
   }
 </script>
 
-<div bind:this={viewport} class="relative min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden px-4 py-6" onscroll={onScroll}>
+<!-- The bottom padding clears the composer dock's 3rem fade, so the last line
+     rests fully visible when scrolled to the end; text only fades while it
+     scrolls past. -->
+<div bind:this={viewport} class="relative min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden px-4 pb-16 pt-6" onscroll={onScroll}>
   <div class="mx-auto flex min-w-0 flex-col gap-3" style="max-width: var(--thread-width);">
     {#each messages as message (message.id)}
       {#if message.role === 'user'}
@@ -121,7 +129,7 @@
               </div>
             {/if}
           </div>
-          <div class="flex items-center gap-2 text-[11px] text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+          <div class="flex items-center gap-2 text-xs text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
             <button type="button" class="flex items-center gap-1" onclick={() => messageAction(message, 'copy')}><Copy class="size-3" />{$t('code.message.copy')}</button>
             {#if message.metadata?.codeConversationIndex !== undefined && !run?.running}
               <button type="button" class="flex items-center gap-1" onclick={() => messageAction(message, 'fork')}><GitFork class="size-3" />{$t('code.message.fork')}</button>
@@ -131,7 +139,7 @@
         </div>
       {:else if message.metadata?.codeNote && !message.content && !message.agentSteps?.length}
         <!-- A system note (restore, …): centered, quiet. -->
-        <div class="flex items-center justify-center gap-1.5 text-[11px] text-muted-foreground">
+        <div class="flex items-center justify-center gap-1.5 text-xs text-muted-foreground">
           <History class="size-3" />
           <span>{noteText(message.metadata.codeNote)}</span>
         </div>
@@ -172,31 +180,31 @@
             {@const reason = message.metadata?.codeStopReason}
             {@const elapsed = elapsedLabel(message)}
             {#if message.metadata?.codeNote}
-              <div class="run-chip flex items-center gap-1.5 self-start text-[11px] text-muted-foreground">
+              <div class="run-chip flex items-center gap-1.5 self-start text-xs text-muted-foreground">
                 <TriangleAlert class="size-3" />
                 {noteText(message.metadata.codeNote)}
               </div>
             {:else if message.metadata?.codeHitTurnLimit}
-              <div class="run-chip flex items-center gap-1.5 self-start text-[11px] text-warning">
+              <div class="run-chip flex items-center gap-1.5 self-start text-xs text-warning">
                 <TriangleAlert class="size-3" />
                 {copy.codeRun.turnLimit}{elapsed ? ` · ${elapsed}` : ''}
               </div>
             {:else if reason === 'stop' && !entries.length && !message.reasoning?.trim()}
-              <div class="run-chip flex items-center gap-1.5 self-start text-[11px] text-warning">
+              <div class="run-chip flex items-center gap-1.5 self-start text-xs text-warning">
                 <TriangleAlert class="size-3" />
                 {copy.codeRun.noReply}
               </div>
             {:else if reason === 'stop'}
-              <div class="run-chip flex items-center gap-1.5 self-start text-[11px] text-muted-foreground">
+              <div class="run-chip flex items-center gap-1.5 self-start text-xs text-muted-foreground">
                 <CircleCheck class="size-3" />
                 {$t('code.statusCompleted')}{elapsed ? ` · ${elapsed}` : ''}
               </div>
             {:else if reason === 'aborted'}
-              <div class="run-chip flex items-center gap-1.5 self-start text-[11px] text-muted-foreground">
+              <div class="run-chip flex items-center gap-1.5 self-start text-xs text-muted-foreground">
                 {$t('code.statusStopped')}{elapsed ? ` · ${elapsed}` : ''}
               </div>
             {:else if reason === 'length'}
-              <div class="run-chip flex items-center gap-1.5 self-start text-[11px] text-warning">
+              <div class="run-chip flex items-center gap-1.5 self-start text-xs text-warning">
                 <TriangleAlert class="size-3" />
                 {$t('code.statusLength')}
               </div>
@@ -240,7 +248,7 @@
     padding: 0.4rem 0.75rem;
     border-radius: 0.75rem;
     border: 1px solid var(--border-subtle);
-    font-size: 12.5px;
+    font-size: 13px;
     color: var(--foreground);
     transition: background-color var(--motion-fast) var(--motion-ease);
   }

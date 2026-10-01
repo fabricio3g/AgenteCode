@@ -137,7 +137,7 @@
     <button type="button" class="ui-icon-button" onclick={() => void browserPanelStore.history('back')} aria-label={$t('browser.back')} title={$t('browser.back')}>
       <ArrowLeft />
     </button>
-    <label class="browser-url" class:driving={browserPanelStore.agentDriving}>
+    <label class="ui-pill-field browser-url" class:driving={browserPanelStore.agentDriving}>
       {#if browserPanelStore.agentDriving}
         <span class="driving-dot" title={$t('browser.agentUsing')} aria-label={$t('browser.agentUsing')}></span>
       {/if}
@@ -153,11 +153,11 @@
       {#if browserPanelStore.loading}<LoaderCircle class="size-3 shrink-0 animate-spin text-muted-foreground" />{/if}
     </label>
     {#if browserPanelStore.userTakeover}
-      <button type="button" class="control-chip" onclick={() => void browserPanelStore.setTakeover(false)} title={$t('browser.youHaveControl')} aria-label={$t('browser.handBack')}>
+      <button type="button" class="ui-chip control-chip" onclick={() => void browserPanelStore.setTakeover(false)} title={$t('browser.youHaveControl')} aria-label={$t('browser.handBack')}>
         <Hand class="size-3" /> <span class="control-label">{$t('browser.handBack')}</span>
       </button>
     {:else if browserPanelStore.agentDriving}
-      <button type="button" class="control-chip" onclick={() => void browserPanelStore.setTakeover(true)} title={$t('browser.agentUsing')} aria-label={$t('browser.takeControl')}>
+      <button type="button" class="ui-chip control-chip" onclick={() => void browserPanelStore.setTakeover(true)} title={$t('browser.agentUsing')} aria-label={$t('browser.takeControl')}>
         <Hand class="size-3" /> <span class="control-label">{$t('browser.takeControl')}</span>
       </button>
     {/if}
@@ -243,31 +243,8 @@
   }
 
   .browser-url {
-    display: flex;
-    min-width: 0;
-    height: 1.625rem;
     flex: 1 1 auto;
-    align-items: center;
-    gap: 0.4rem;
     margin: 0 0.125rem;
-    padding: 0 0.6rem;
-    border-radius: var(--radius-full);
-    background: var(--muted);
-    cursor: text;
-  }
-
-  .browser-url input {
-    min-width: 0;
-    flex: 1;
-    border: none;
-    background: transparent;
-    color: var(--foreground);
-    font-size: 12px;
-    outline: none;
-  }
-
-  .browser-url:focus-within {
-    box-shadow: inset 0 0 0 1px var(--border-hover);
   }
 
   .driving-dot {
@@ -282,26 +259,6 @@
   @keyframes browser-drive-pulse {
     0%, 100% { opacity: 0.35; }
     50% { opacity: 1; }
-  }
-
-  .control-chip {
-    display: inline-flex;
-    height: 1.375rem;
-    flex-shrink: 0;
-    align-items: center;
-    gap: 0.25rem;
-    padding: 0 0.5rem;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-full);
-    color: var(--foreground);
-    font-size: 11px;
-    font-weight: 500;
-    white-space: nowrap;
-  }
-
-  .control-chip:hover {
-    border-color: var(--border-hover);
-    background: var(--surface-hover);
   }
 
   .browser-tabs {

@@ -30,10 +30,10 @@
   import BrowserPanel from '$lib/components/browser/BrowserPanel.svelte';
   import { browserPanelStore } from '$lib/stores/browser-panel.svelte';
   import OnboardingWizard from '$lib/components/onboarding/OnboardingWizard.svelte';
-  import { PanelLeftOpen } from 'lucide-svelte';
   import { SidebarPeek } from './sidebar-peek.svelte';
   import ResizeHandle from '$lib/components/ui/ResizeHandle.svelte';
   import RightDock, { type DockPanel } from './RightDock.svelte';
+  import TitlebarLeftTools from './TitlebarLeftTools.svelte';
   import ChangesPane from '$lib/features/code/workspace/ChangesPane.svelte';
   import PlanPanel from '$lib/features/code/PlanPanel.svelte';
   import { codeWorkspace } from '$lib/features/code/workspace.svelte';
@@ -181,7 +181,6 @@
 
   // One mounted sidebar: pinned takes layout space; the preview floats over
   // the content below the title bar (sidebar-peek.svelte.ts).
-  const isMac = typeof window !== 'undefined' && window.electronAPI?.platform === 'darwin';
   const peek = new SidebarPeek(() => appStore.sidebarOpen);
 
   function toggleSidebar() {
@@ -228,21 +227,9 @@
       inert={!appStore.sidebarOpen && !peek.open}
     >
       {#if !appStore.sidebarOpen && peek.open}
-        <!-- The preview covers the title bar's corner, so it carries the same
-             toggle in the same spot: it looks unchanged and still pins. -->
-        <div class="preview-bar" style:padding-left={isMac ? '78px' : '6px'}>
-          <button
-            type="button"
-            class="ui-icon-button"
-            data-sidebar-toggle
-            onclick={toggleSidebar}
-            aria-controls="app-sidebar"
-            aria-expanded="true"
-            aria-pressed="false"
-            aria-label={$t('titlebar.showSidebar')}
-            title={$t('titlebar.showSidebar')}
-          ><PanelLeftOpen class="size-4" /></button>
-        </div>
+        <!-- The preview runs to the top of the window, over the title bar's
+             corner, so it carries the bar's own buttons in the same spot. -->
+        <div class="preview-bar"><TitlebarLeftTools expanded onToggle={toggleSidebar} /></div>
       {/if}
       <Sidebar />
     </div>
@@ -259,7 +246,7 @@
   {/if}
 
   <!-- No overflow-hidden on this column: titlebar fade hangs below h-9. -->
-  <div class="flex min-h-0 min-w-0 flex-1 flex-col bg-sidebar">
+  <div class="flex min-h-0 min-w-0 flex-1 flex-col bg-background">
     <Titlebar sidebarPreview={peek.open} onSidebarEnter={() => peek.show()} onSidebarLeave={(event) => peek.leave(event)} onSidebarToggle={toggleSidebar} />
 
     <div class="flex min-h-0 flex-1 overflow-hidden">
@@ -393,11 +380,9 @@
     transition-delay: 40ms, 0s;
   }
 
-  /* The preview is the same sidebar, floating: same colour, square, full
-     height below the title bar (so its toggle stays reachable), with the
-     same edge as the pinned one and a shadow over the content. */
-  /* The preview is the same sidebar, floating over the content: full height,
-     same colour, square, and the same divider line running to the top. */
+  /* The preview is the same sidebar floating over the content: full height
+     to the top of the window, same colour, with the title bar's left buttons
+     redrawn in place (TitlebarLeftTools) and a shadow over the content. */
   .sidebar-view-full.preview {
     position: fixed;
     z-index: var(--z-float);

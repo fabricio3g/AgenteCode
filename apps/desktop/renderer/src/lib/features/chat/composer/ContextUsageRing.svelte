@@ -5,8 +5,9 @@
   import ComposerCard from '$lib/features/shared/composer/ComposerCard.svelte';
   import ComposerStatus from '$lib/features/shared/composer/ComposerStatus.svelte';
 
-  let { usedTokens, maxTokens, remaining, usagePercent, reservedTokens = 0,
+  let { usedTokens, maxTokens, remaining, usagePercent, reservedTokens = 0, estimated = false,
     promptCostPerMillionUsd, completionCostPerMillionUsd, estimatedInputCostUsd, spend }: {
+    estimated?: boolean;
     usedTokens: number;
     maxTokens: number;
     remaining?: number;
@@ -22,11 +23,11 @@
   const id = $props.id();
   const max = $derived(Number.isFinite(maxTokens) ? Math.max(1, Math.floor(maxTokens)) : 1);
   const used = $derived(Number.isFinite(usedTokens) ? Math.max(0, Math.floor(usedTokens)) : 0);
-  const percent = $derived(Math.max(0, Math.min(100, usagePercent ?? used / max * 100)));
+  const percent = $derived(Math.max(0, Math.min(100, (Number.isFinite(usagePercent) ? usagePercent! : used / max * 100))));
   const percentLabel = $derived(percent > 0 && percent < 1 ? '<1' : Math.floor(percent).toString());
   const color = $derived(percent >= 95 ? 'var(--destructive)' : percent >= 80 ? 'var(--warning)' : 'var(--ring)');
   const circumference = 2 * Math.PI * 5.75;
-  const label = $derived($t('chat.context.usage', { values: { used: count(used), max: count(max), percent: percentLabel } }));
+  const label = $derived((estimated ? '~' : '') + $t('chat.context.usage', { values: { used: count(used), max: count(max), percent: percentLabel } }));
   function count(value: number) { return new Intl.NumberFormat($locale || 'en').format(Math.floor(value)); }
   function usd(value: number) { return value.toFixed(value >= 1 ? 2 : value >= 0.01 ? 4 : 6); }
 </script>

@@ -42,6 +42,10 @@ export function registerProviderHandlers({ ipcMain, resolveProvider, resolveApiK
   });
 
   ipcMain.handle('get_api_model_context', async (_e, { baseUrl, apiKey, providerName, modelId }) => {
+    // The window the Rust core compacts against (registry, live discovery,
+    // models.dev), so Home's meter matches Code's and the TUI's.
+    const fromCore = providerName && providerName !== 'local' ? await coreModelContext(providerName, modelId).catch(() => null) : null;
+    if (fromCore) return fromCore;
     const provider = resolveProvider(providerName, baseUrl);
     const realKey = resolveApiKey(apiKey, baseUrl, providerName);
     if (!realKey && provider.name !== 'local') {
@@ -73,4 +77,21 @@ export function registerProviderHandlers({ ipcMain, resolveProvider, resolveApiK
     const { reasoningCapabilities } = await import('../agente/thinking.ts');
     return reasoningCapabilities(String(providerName || ''), String(model || ''));
   });
+}
+
+type CoreModelInfo = { limits?: { context?: number | null; output?: number | null }; cost?: { input?: number | null; output?: number | null } | null };
+
+/** A model's window, output cap and prices as the core knows them; null when it knows no window. */
+async function coreModelContext(providerName: string, modelId: string) {
+  const { runtimeConnection } = await import('../agente/rust-engine.ts');
+  const client = await runtimeConnection();
+  const info = await client.request<CoreModelInfo>('models.info', { provider: providerName, model: modelId });
+  const contextWindow = Number(info.limits?.context);
+  if (!Number.isFinite(contextWindow) || contextWindow <= 0) return null;
+  return {
+    context_window: contextWindow,
+    max_completion_tokens: Number(info.limits?.output) || undefined,
+    prompt_cost_per_million: Number(info.cost?.input) || undefined,
+    completion_cost_per_million: Number(info.cost?.output) || undefined
+  };
 }

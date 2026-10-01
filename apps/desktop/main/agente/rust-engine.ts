@@ -10,7 +10,7 @@ import path from 'node:path';
 import { app } from 'electron';
 import { resolveApiKey } from '../provider-auth.ts';
 import { getAppPaths } from '../paths.ts';
-import { loadConfig, saveConfig } from '../config.ts';
+import { forgetProviderKey, loadConfig, saveConfig } from '../config.ts';
 import { getLlamaStatus, getPendingMainLaunch, getRecommendedSettings, startLlama } from '../llm-runner.ts';
 import { moduleDirname } from '../module-env.ts';
 import { AgenteDaemon, resolveAgenteBinary } from '../agente-daemon.ts';
@@ -22,6 +22,7 @@ import { createBrowserTools } from './tools/browser.ts';
 import { serveDesktopTools, type DesktopToolServer } from './desktop-tools-mcp.ts';
 import { RustProcessBridge } from './rust-processes.ts';
 import { RustTurnTranslator } from './rust-events.ts';
+import { coreProviderStatus, migrateKeysToCore } from './core-providers.ts';
 import type { AgenteCheckpointSummary, AgenteRuntimeMode, AgenteStartSessionArgs, ApprovalDecision, CodeAgentEvent } from '../../shared/agente-protocol.ts';
 import type { Attachment, Message, RuntimeEventEnvelope, SessionSnapshot, TurnMode, TurnOutcome } from '../../shared/agente-protocol.gen.ts';
 
@@ -79,7 +80,7 @@ let activeChat: ChatState | null = null;
 async function registerDesktopTools(client: AgenteClient): Promise<void> {
   desktopTools ??= serveDesktopTools(
     createBrowserTools({
-      canSeeImages: () => !!activeChat && transportSeesImages(resolveTransport(activeChat.provider, activeChat.model))
+      canSeeImages: async () => !!activeChat && (await modelSeesImages(activeChat.provider, activeChat.model))
     })
   );
   const server = await desktopTools;
@@ -150,6 +151,9 @@ async function openConnection(): Promise<AgenteClient> {
     await registerDesktopTools(client).catch((error: unknown) => {
       console.warn(`[agente] desktop tools unavailable: ${error instanceof Error ? error.message : String(error)}`);
     });
+    void migrateKeysToCore(client, (loadConfig().llm?.providers || {}) as Record<string, { api_key?: string }>, forgetProviderKey).catch((error: unknown) => {
+      console.warn(`[agente] provider keys stay in Desktop for now: ${error instanceof Error ? error.message : String(error)}`);
+    });
     const saved = loadConfig().agent_runtime as Record<string, unknown> | undefined;
     if (saved) {
       const overrides = saved.subagent_models as Record<string, { provider: string; model: string }> | undefined;
@@ -163,8 +167,10 @@ async function openConnection(): Promise<AgenteClient> {
 }
 
 /**
- * Hand the runtime Desktop's provider (with its key, over the socket only)
- * and return the id and model a turn should name.
+ * The id and model a turn should name. A provider the core offers and holds
+ * a key for runs on the core's own spec and key, as in the TUI; anything
+ * else (local llama.cpp, custom endpoints) is handed over as Desktop's
+ * provider, its key over the socket only.
  */
 export async function useProvider(client: AgenteClient, providerName: string, model: string): Promise<{ id: string; model: string }> {
   const resolved = resolveTransport(providerName, model);
@@ -173,11 +179,46 @@ export async function useProvider(client: AgenteClient, providerName: string, mo
   const provider = providerEntry(providerName, model);
   if (!provider.model) throw new RuntimeNoModelError(desktopLocale());
   const transport = resolveTransport(providerName, model);
+  if (await coreRuns(client, transport.providerName)) return { id: transport.providerName, model: provider.model };
   const info = await client.request<{ capabilities: Record<string, unknown>; cost: unknown; limits: unknown; reasoning_options?: unknown; reasoning_stream_field?: string }>('models.info', { provider: transport.providerName, model: provider.model });
   const capabilities = providerCapabilities(transport, info.capabilities);
   provider.config.models = { [provider.model]: { name: provider.model, capabilities, cost: info.cost, limit: info.limits, reasoning_options: info.reasoning_options, reasoning_stream_field: info.reasoning_stream_field } };
   await client.request('runtime.configure', { provider: { [provider.id]: provider.config } });
   return { id: provider.id, model: provider.model };
+}
+
+async function coreRuns(client: AgenteClient, providerId: string): Promise<boolean> {
+  if (providerId === 'local') return false;
+  const status = await coreProviderStatus(client).catch(() => null);
+  return !!status?.providers.some((entry) => entry.id === providerId && entry.connected);
+}
+
+const imageSupport = new Map<string, true>();
+
+/**
+ * Whether a model takes images, from the core's model data (the provider's
+ * own list, models.dev): the name guess misses most models. A local model
+ * sees images when it has a vision projector; the guess is the fallback
+ * only when the core cannot be asked.
+ */
+export async function modelSeesImages(providerName: string, model: string): Promise<boolean> {
+  const transport = resolveTransport(providerName, model);
+  if (transport.providerName === 'local') return transportSeesImages(transport);
+  const id = transport.model || model;
+  const key = `${transport.providerName}::${id}`;
+  const known = imageSupport.get(key);
+  if (known !== undefined) return known;
+  try {
+    const client = await connect();
+    const info = await client.request<{ capabilities?: { vision?: boolean; input_modalities?: string[] } }>('models.info', { provider: transport.providerName, model: id });
+    const sees = !!info.capabilities?.vision || !!info.capabilities?.input_modalities?.includes('image');
+    // Only a yes is kept: the provider's live list can arrive after a
+    // models.dev "no" (it did for OpenCode Go's space-bunny).
+    if (sees) imageSupport.set(key, true);
+    return sees;
+  } catch {
+    return transportSeesImages(transport);
+  }
 }
 
 function providerCapabilities(transport: ReturnType<typeof resolveTransport>, source: Record<string, unknown>): Record<string, unknown> {
@@ -435,14 +476,23 @@ async function compact(chatId: string): Promise<{ ok: boolean; error?: string }>
   const chat = chats.get(chatId);
   if (!chat) return { ok: false, error: 'No active session' };
   emit({ type: 'compaction_start', chatId, reason: 'manual' });
+  // The runtime announces a compaction (with its before/after tokens) as an
+  // event; ending the step here too would race it and drop those numbers.
+  let reported = false;
+  const stop = onRuntimeEvent((envelope) => {
+    if (envelope.session_id === chat.sessionId && envelope.event.type === 'context_compacted') reported = true;
+  });
   try {
     const client = await connect();
     await client.request('session.compact', { session_id: chat.sessionId });
-    emit({ type: 'compaction_end', chatId, reason: 'manual', success: true });
+    // Nothing to compact: no event comes, so close the step.
+    if (!reported) emit({ type: 'compaction_end', chatId, reason: 'manual', success: true });
     return { ok: true };
   } catch (error: unknown) {
     emit({ type: 'compaction_end', chatId, reason: 'manual', success: false });
     return { ok: false, error: error instanceof Error ? error.message : String(error) };
+  } finally {
+    stop();
   }
 }
 

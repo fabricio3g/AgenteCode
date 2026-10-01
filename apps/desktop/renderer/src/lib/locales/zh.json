@@ -334,6 +334,8 @@
     },
     "toolInput": "输入",
     "toolResult": "结果",
+    "showAll": "显示全部",
+    "showLess": "收起",
     "deleteProject": "删除项目",
     "deleteProjectTitle": "删除“{name}”？",
     "deleteProjectMessage": "从 Agente 中移除该项目及其{conversations}。文件夹中的文件不会被改动。",

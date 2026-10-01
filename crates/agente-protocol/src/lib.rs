@@ -218,8 +218,57 @@ pub enum TurnMode {
     Auto,
 }
 
+/// Home turns expose only client-owned tools, never the coding tool registry.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct HomeTurnPolicy {
+    pub max_iterations: u32,
+    pub max_tool_calls: u32,
+    pub max_time_ms: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct ClientToolDefinition {
+    pub name: String,
+    pub description: String,
+    pub parameters: serde_json::Value,
+    #[serde(default)]
+    pub mutating: bool,
+    #[serde(default)]
+    pub sequential: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct RegisterClientTools {
+    pub session_id: SessionId,
+    pub tools: Vec<ClientToolDefinition>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct ClientToolCall {
+    pub session_id: SessionId,
+    pub turn_id: TurnId,
+    pub request_id: String,
+    pub call_id: String,
+    pub name: String,
+    pub arguments: serde_json::Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct ClientToolResult {
+    #[serde(default)]
+    pub attachments: Vec<Attachment>,
+    pub session_id: SessionId,
+    pub turn_id: TurnId,
+    pub request_id: String,
+    pub content: String,
+    #[serde(default)]
+    pub is_error: bool,
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
 pub struct StartTurn {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub home: Option<HomeTurnPolicy>,
     pub session_id: SessionId,
     #[serde(default)]
     pub conversation: Vec<Message>,
@@ -515,6 +564,9 @@ pub struct ChildSnapshot {
 pub fn protocol_schema() -> serde_json::Value {
     let mut generator = schemars::gen::SchemaSettings::draft07().into_generator();
     generator.subschema_for::<StartTurn>();
+    generator.subschema_for::<RegisterClientTools>();
+    generator.subschema_for::<ClientToolCall>();
+    generator.subschema_for::<ClientToolResult>();
     generator.subschema_for::<UserInput>();
     generator.subschema_for::<ApprovalDecision>();
     generator.subschema_for::<RuntimeEventEnvelope>();

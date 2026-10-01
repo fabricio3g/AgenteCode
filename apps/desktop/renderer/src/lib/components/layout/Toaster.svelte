@@ -27,6 +27,9 @@
       out:motionFade={{ duration: 150 }}
     >
       <span class="text-[13px] font-medium leading-none text-foreground">{toast.message}</span>
+      {#if toast.action}
+        <button type="button" class="toast-action" onclick={toast.action.run}>{toast.action.label}</button>
+      {/if}
       <button
         type="button"
         class="ui-icon-button is-xs shrink-0"
@@ -45,6 +48,17 @@
     border: 1px solid var(--border);
     box-shadow: var(--shadow-lg);
     border-radius: var(--radius-lg);
-    max-width: 18rem;
+    max-width: 22rem;
+  }
+  .toast-action {
+    flex-shrink: 0;
+    padding: 0.125rem 0.5rem;
+    border-radius: var(--radius-full);
+    color: var(--brand-accent, var(--foreground));
+    font-size: 12.5px;
+    font-weight: 600;
+  }
+  .toast-action:hover {
+    background: var(--surface-hover);
   }
 </style>

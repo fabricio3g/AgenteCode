@@ -6,6 +6,7 @@
 import { invoke, listen } from '$lib/services/bridge';
 import type { ChangeList, FileDiff, ProcessEvent, ProcessInfo, TerminalEvent } from '$shared/code-workspace';
 import type { PresentedPlan } from './plan-review';
+import type { FileEdit } from './work-blocks';
 
 type BottomTab = 'processes' | `terminal:${string}`;
 
@@ -76,6 +77,13 @@ class CodeWorkspaceStore {
 
   /** A file the Changes pane should select next (a transcript edit's "View changes"). */
   focusPath = $state<string | null>(null);
+
+  /** Each chat's edits as its transcript recorded them: the Changes pane's fallback where git sees nothing. */
+  transcriptEdits = $state<Record<string, FileEdit[]>>({});
+
+  setTranscriptEdits(chatId: string, edits: FileEdit[]): void {
+    this.transcriptEdits[chatId] = edits;
+  }
 
   showFileInChanges(path: string): void {
     this.focusPath = path;

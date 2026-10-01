@@ -334,6 +334,8 @@
     },
     "toolInput": "入力",
     "toolResult": "結果",
+    "showAll": "すべて表示",
+    "showLess": "折りたたむ",
     "deleteProject": "プロジェクトを削除",
     "deleteProjectTitle": "「{name}」を削除しますか？",
     "deleteProjectMessage": "プロジェクトとその{conversations}を Agente から削除します。フォルダー内のファイルには触れません。",

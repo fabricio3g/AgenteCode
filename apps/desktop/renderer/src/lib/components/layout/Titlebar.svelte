@@ -6,7 +6,7 @@
   import { onMount } from 'svelte';
   import { appWindow } from '$lib/services/window';
   import { appStore } from '$lib/stores/app.svelte';
-  import { Search, SlidersHorizontal, MoonStar, SunMedium, Globe, PanelLeftClose, PanelLeftOpen } from 'lucide-svelte';
+  import { MoonStar, SunMedium, Globe } from 'lucide-svelte';
   import Tooltip from '$lib/components/ui/Tooltip.svelte';
   import { themeStore } from '$lib/stores/theme.svelte';
   import { downloadsStore } from '$lib/stores/downloads.svelte';
@@ -15,6 +15,7 @@
   import { codeStore } from '$lib/features/code/code.svelte';
   import { isCodeSession } from '$lib/features/shared/session-guards';
   import SpaceTabs from './SpaceTabs.svelte';
+  import TitlebarLeftTools from './TitlebarLeftTools.svelte';
 
   let { sidebarPreview = false, onSidebarEnter, onSidebarLeave, onSidebarToggle }: {
     sidebarPreview?: boolean;
@@ -84,48 +85,12 @@
 
 
 <div
-  class="titlebar-row titlebar-drag relative z-20 flex h-9 shrink-0 select-none bg-sidebar"
+  class="titlebar-row titlebar-drag relative z-20 flex h-9 shrink-0 select-none bg-background"
   ondblclick={() => { void appWindow.toggleMaximize().then(checkMaximized); }}
   role="banner"
 >
-  <div class="titlebar-left flex min-w-0 flex-1 items-center gap-0.5 pl-1.5" style="{isMac ? 'padding-left: 78px;' : ''}">
-    <Tooltip label={appStore.sidebarOpen ? $t('titlebar.hideSidebar') : $t('titlebar.showSidebar')}>
-      <button
-        class="ui-icon-button titlebar-no-drag"
-        data-sidebar-toggle
-        onclick={onSidebarToggle}
-        onpointerenter={onSidebarEnter}
-        onpointerleave={onSidebarLeave}
-        aria-controls="app-sidebar"
-        aria-expanded={appStore.sidebarOpen || sidebarPreview}
-        aria-pressed={appStore.sidebarOpen}
-        aria-label={appStore.sidebarOpen ? $t('titlebar.hideSidebar') : $t('titlebar.showSidebar')}
-      >
-        {#if appStore.sidebarOpen}
-          <PanelLeftClose class="size-4" />
-        {:else}
-          <PanelLeftOpen class="size-4" />
-        {/if}
-      </button>
-    </Tooltip>
-    <Tooltip label={$t('titlebar.search')}>
-      <button
-        class="ui-icon-button titlebar-no-drag titlebar-secondary"
-        onclick={() => appStore.openSearch()}
-        aria-label={$t('titlebar.search')}
-      >
-        <Search class="size-4" />
-      </button>
-    </Tooltip>
-    <Tooltip label={$t('titlebar.llmSettings')}>
-      <button
-        class="ui-icon-button titlebar-no-drag titlebar-secondary"
-        onclick={() => (appStore.llmDrawerOpen = true)}
-        aria-label={$t('titlebar.llmSettings')}
-      >
-        <SlidersHorizontal class="size-4" />
-      </button>
-    </Tooltip>
+  <div class="titlebar-left flex min-w-0 flex-1 items-center">
+    <TitlebarLeftTools expanded={appStore.sidebarOpen || sidebarPreview} onToggle={onSidebarToggle} onEnter={onSidebarEnter} onLeave={onSidebarLeave} />
   </div>
 
   <div
@@ -199,7 +164,7 @@
   }
 
   @container (max-width: 400px) {
-    .titlebar-secondary { display: none; }
+    .titlebar-left :global(.titlebar-secondary) { display: none; }
   }
 
   .dot {

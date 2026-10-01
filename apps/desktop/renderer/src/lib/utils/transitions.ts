@@ -37,6 +37,44 @@ export function flyAndScale(
   }
 }
 
+/** Ease-in for leaving: starts gently, then gets out of the way. */
+const exitEase = (t: number): number => t * t * t
+
+/**
+ * A dialog arriving: it rises a few pixels, grows from 96% and comes into
+ * focus (a light blur clears) on the expo-out ease, so it lands softly.
+ */
+export function dialogIn(_node: Element): TransitionConfig {
+  if (reducedMotion.value) return { duration: 0, css: () => '' }
+  return {
+    duration: 320,
+    easing: smoothEase,
+    css: (t, u) =>
+      `opacity: ${Math.min(1, t * 1.8)}; transform: translate3d(0, ${u * 14}px, 0) scale(${0.96 + t * 0.04}); filter: blur(${u * 6}px);`
+  }
+}
+
+/** A dialog leaving: quicker than it came, a slight drop and shrink as it fades. */
+export function dialogOut(_node: Element): TransitionConfig {
+  if (reducedMotion.value) return { duration: 0, css: () => '' }
+  return {
+    duration: 160,
+    easing: exitEase,
+    css: (t, u) => `opacity: ${t}; transform: translate3d(0, ${u * 6}px, 0) scale(${1 - u * 0.025});`
+  }
+}
+
+/** The backdrop behind a dialog: it fades in with the dialog and out a touch faster. */
+export function backdropIn(_node: Element): TransitionConfig {
+  if (reducedMotion.value) return { duration: 0, css: () => '' }
+  return { duration: 260, easing: smoothEase, css: (t) => `opacity: ${t};` }
+}
+
+export function backdropOut(_node: Element): TransitionConfig {
+  if (reducedMotion.value) return { duration: 0, css: () => '' }
+  return { duration: 180, easing: exitEase, css: (t) => `opacity: ${t};` }
+}
+
 export function motionFade(
   node: Element,
   params: FadeParams | undefined

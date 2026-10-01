@@ -136,6 +136,17 @@ impl ContextManager {
     }
 }
 
+/// Tokens the tool schemas add to every request; the message estimate never
+/// sees them, and with dozens of tools they are thousands of tokens.
+pub fn estimate_tool_definition_tokens(tools: &[crate::types::ToolDefinition]) -> usize {
+    tools
+        .iter()
+        .map(|tool| {
+            (tool.name.len() + tool.description.len() + tool.parameters.to_string().len()) / 4 + 8
+        })
+        .sum()
+}
+
 /// Estimate the number of tokens in a slice of messages using the standard
 /// "1 token ≈ 4 characters" heuristic plus a flat 10-token overhead per tool
 /// call. Used by the status bar and the auto-compact strategy; deliberately

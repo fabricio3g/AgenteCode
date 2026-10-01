@@ -509,7 +509,7 @@
             onclick={() => void runCommand(command)}
           >
             <Icon class="size-4 shrink-0 text-muted-foreground" />
-            <span class="text-[12.5px] text-foreground">/{command.name}</span>
+            <span class="text-[13px] text-foreground">/{command.name}</span>
             <span class="min-w-0 flex-1 truncate text-xs text-muted-foreground">{command.hint}</span>
           </button>
         {/each}
@@ -559,13 +559,13 @@
                   <ChevronDown class={`h-3 w-3 shrink-0 text-[var(--text-muted)] transition-transform duration-150${modeMenuOpen ? ' rotate-180' : ''}`} />
                 </button>
               {/snippet}
-              <p class="px-2.5 pb-1.5 pt-1 text-[11px] font-medium text-muted-foreground">{$t('code.modeTitle')}</p>
+              <p class="px-2.5 pb-1.5 pt-1 text-xs font-medium text-muted-foreground">{$t('code.modeTitle')}</p>
               {#each modes as mode (mode.id)}
                 {@const selected = mode.id === runtimeMode}
                 <MenuItem class="mode-option !items-center !gap-3 !px-3 !py-2 {selected ? '!bg-[var(--surface-active)]' : ''}" onselect={() => selectMode(mode.id)}>
                   <span class="min-w-0 flex-1">
                     <span class="block text-[13px] font-medium text-foreground">{mode.label}</span>
-                    <span class="block text-[11.5px] leading-snug text-muted-foreground">{mode.hint}</span>
+                    <span class="block text-xs leading-snug text-muted-foreground">{mode.hint}</span>
                   </span>
                   <Check class="size-4 shrink-0 text-foreground {selected ? '' : 'invisible'}" />
                 </MenuItem>
@@ -615,7 +615,7 @@
       </div>
     </div>
 
-    <p class="composer-hint mx-auto mt-1.5 px-1 text-center text-[11px] text-muted-foreground">
+    <p class="composer-hint mx-auto mt-1.5 px-1 text-center text-xs text-muted-foreground">
       {#if hint}
         {hint}
       {/if}
@@ -656,7 +656,7 @@
     min-width: 0;
     max-width: 18rem;
   }
-  .queued-status { color: var(--muted-foreground); font-size: 11px; white-space: nowrap; }
+  .queued-status { color: var(--muted-foreground); font-size: 12px; white-space: nowrap; }
   .slash-menu {
     max-height: min(20rem, 40vh);
     overflow-y: auto;
@@ -685,7 +685,7 @@
   }
   .slash-foot {
     padding: 0.375rem 0.625rem 0.25rem;
-    font-size: 11px;
+    font-size: 12px;
     color: var(--muted-foreground);
   }
   /* Same white-pill treatment as the ModelSwitcher trigger beside it. */

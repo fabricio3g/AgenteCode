@@ -1,6 +1,7 @@
 import type { RequestMessage } from '$lib/services/chat-api';
 
 export interface ContextBudgetValue {
+  estimated?: boolean;
   maxContext: number;
   usedTokens: number;
   remaining: number;
@@ -220,4 +221,12 @@ export function normalizeApiModelMetadata(input: unknown): ApiModelMetadataValue
     completion_cost_per_million: Number(value.completion_cost_per_million) || undefined
   };
   return metadata.context_window > 0 ? metadata : null;
+}
+
+/** Reported runtime usage remains authoritative after compaction. Drafts are estimates. */
+export function homeRuntimeBudget(meta: { contextWindow: number; contextTokens?: number; estimated?: boolean }, draft = ''): ContextBudgetValue | null {
+  if (!Number.isFinite(meta.contextWindow) || meta.contextWindow <= 0 || !Number.isFinite(meta.contextTokens)) return null;
+  const maxContext = meta.contextWindow;
+  const usedTokens = Math.max(0, meta.contextTokens || 0) + (draft ? Math.ceil(draft.length / 4) + 4 : 0);
+  return { maxContext, usedTokens, remaining: Math.max(0, maxContext - usedTokens), usagePercent: Math.min(100, usedTokens / maxContext * 100), isOverflow: usedTokens > maxContext, reservedForCompletion: 0, estimated: !!draft || !!meta.estimated };
 }

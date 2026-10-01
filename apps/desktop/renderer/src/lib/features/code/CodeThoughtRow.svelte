@@ -55,7 +55,7 @@
     gap: 0.5rem;
     padding: 0.3125rem 0.5rem;
     border-radius: 0.5rem;
-    font-size: 12.5px;
+    font-size: 13px;
     color: var(--muted-foreground);
     text-align: left;
     transition: background-color var(--motion-fast) var(--motion-ease), color var(--motion-fast) var(--motion-ease);
@@ -81,7 +81,7 @@
     border-left: 1px solid var(--border-subtle);
     white-space: pre-wrap;
     overflow-wrap: anywhere;
-    font-size: 12.5px;
+    font-size: 13px;
     line-height: 1.6;
     color: var(--muted-foreground);
   }

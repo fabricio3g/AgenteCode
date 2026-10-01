@@ -1,6 +1,7 @@
 import type { AgentArtifact, AppConfig, Attachment, ChatContextMode, ChatFolder, ChatMessage, ChatSession, LocalThinkingMode, MessageVersion, ModelOption, ReasoningCapabilities, ReasoningLevel, WorkspaceFile } from '$lib/types/chat';
 import type { Attachment as CodeAttachment } from '$shared/agente-protocol.gen';
-import { SPACES } from '$lib/spaces';
+import { SPACES, normalizeSpace } from '$lib/spaces';
+import { getSpaceForSession } from '$lib/features/shared/session-guards';
 import { approvalsStore } from '$lib/stores/approvals.svelte';
 import type { IndexedDocument, SearchResult } from '$lib/types/bridge';
 import { countOf } from '$lib/utils/format';
@@ -31,6 +32,8 @@ import { completeAssistantReply, detectToolSupport, fetchModels, fetchReasoningC
 import { loadChatState, saveChatState, saveAppConfig, saveChatStateToDb, loadChatStateFromDb, deleteChatFromDb } from '$lib/utils/storage';
 import { toErrorMessage } from '$lib/utils/errors';
 import { describeLocalLoadError } from '$lib/utils/local-load-errors';
+import { homeRuntimeBudget } from '$lib/stores/app-context-budget';
+import type { RunAgentTaskArgs } from '$lib/services/agent-types';
 import { resolveContextBudgetPreview } from '$lib/stores/app-context-budget-preview';
 import { buildSystemPrompt, selectBaseSystemPrompt } from '$lib/stores/app-prompts';
 import {
@@ -465,7 +468,29 @@ class AppStore {
     };
   }
 
+  private homeRuntimeArgs(chat: ChatSession, message: ChatMessage, historyIds: string[]): Pick<RunAgentTaskArgs, 'homeRuntime' | 'historyIds' | 'onRuntime' | 'onConversationIndex'> {
+    return {
+      homeRuntime: chat.homeRuntime,
+      historyIds,
+      onRuntime: (meta) => {
+        // The model sees history only through this answer. Later edits force a fresh import.
+        chat.homeRuntime = { ...meta, historyIds: [...historyIds, message.id] };
+        if (this.currentChatId === chat.id) {
+          ++this.contextBudgetRequestId;
+          this.contextBudget = homeRuntimeBudget(meta, this.composer.trim()) || this.contextBudget;
+        }
+        this.touchChats();
+        this.persist();
+      },
+      onConversationIndex: (index, sessionId, revision) => {
+        message.metadata = { ...message.metadata, homeConversationIndex: index, homeSessionId: sessionId, homeRevision: revision };
+        this.persist();
+      }
+    };
+  }
+
   async refreshContextBudgetPreview() {
+    const requestId = ++this.contextBudgetRequestId;
     if (!isElectron() || typeof window === 'undefined' || !window.electronAPI?.invoke) {
       this.contextBudget = null;
       return;
@@ -477,7 +502,13 @@ class AppStore {
       return;
     }
 
-    const requestId = ++this.contextBudgetRequestId;
+    const runtime = chat.homeRuntime;
+    const providerName = this.backendMode === 'local' ? 'local' : this.activeProviderName;
+    const selectedModel = this.backendMode === 'local' ? this.config.llm?.local?.model : this.activeProvider?.model;
+    if (runtime && runtime.provider === providerName && runtime.model === selectedModel) {
+      const budget = homeRuntimeBudget(runtime, this.composer.trim());
+      if (budget) { this.contextBudget = budget; return; }
+    }
 
     const draftContent = this.composer.trim();
     const workspaceContext = this.currentContextMode === 'code' && this.currentWorkspace
@@ -522,11 +553,9 @@ class AppStore {
       });
 
       if (requestId !== this.contextBudgetRequestId) return;
-      this.contextBudget = budget;
+      this.contextBudget = budget ? { ...budget, estimated: true } : this.contextBudget;
     } catch {
-      if (requestId === this.contextBudgetRequestId) {
-        this.contextBudget = null;
-      }
+      // Keep the last reading when token counting is temporarily unavailable.
     }
   }
 
@@ -2394,7 +2423,7 @@ class AppStore {
 
       const outboundMessages = turn.decorate(buildOutboundMessages({ messages: requestMessages, systemPrompt }));
       // Context window budget check (local mode only)
-      if (activeBackendMode === 'local' && isElectron()) {
+      if (!useToolLoop && activeBackendMode === 'local' && isElectron()) {
         try {
           const electronApi = getElectronApi();
           if (electronApi) {
@@ -2416,15 +2445,19 @@ class AppStore {
         }
       }
 
-      if (useToolLoop) {
+      // Home answers through the Rust runtime on every provider; a plain
+      // Instant reply is just a turn without tools. Roleplay keeps its stream.
+      if (useToolLoop || normalizeSpace(activeContextMode) === 'home') {
         const agentResult = await runAgentTask({
           chatId: targetChatId,
+          ...this.homeRuntimeArgs(targetChat, assistantMessage, targetChat.messages.filter((entry) => entry.id !== assistantMessage.id).map((entry) => entry.id)),
           systemPrompt,
           messages: requestMessages,
           rawPrompt: content,
           conversationContext: searchConversationContext || (ragContext ? `<documents>\n${ragContext}\n</documents>` : undefined),
           executionMode: 'sandbox',
           toolMode: plan.toolMode,
+          noTools: !useToolLoop,
           agentProfile: plan.agentProfile,
           searchMode: plan.searchMode,
           reasoningLevel: activeReasoningLevel,
@@ -2798,7 +2831,8 @@ class AppStore {
     // A regenerate answers as the same speaker and keeps a forced next speaker.
     const currentSnapshot = message.versions?.[message.activeVersion ?? 0]?.metadata?.roleplay ?? message.metadata?.roleplay;
     const turn = roleplayStore.prepareTurn(chat, { speakerId: message.speakerId, snapshot: currentSnapshot, historyEnd: index, reroll: options.reroll });
-    const agentic = message.mode === 'agent' || message.mode === 'instant';
+    // Home regenerates through the Rust runtime too (older plain-chat messages included).
+    const agentic = message.mode === 'agent' || message.mode === 'instant' || getSpaceForSession(chat) === 'home';
     /*
      * The original turn's plan is carried over: an Instant answer stays on the
      * Instant fast path, and a Deep or Max research answer re-runs at the same
@@ -2889,6 +2923,8 @@ class AppStore {
       if (agentic) {
         const agentResult = await runAgentTask({
           chatId: targetChatId,
+          ...this.homeRuntimeArgs(chat, message, chat.messages.slice(0, index).map((entry) => entry.id)),
+          forkIndex: message.metadata?.homeSessionId === chat.homeRuntime?.sessionId && message.metadata?.homeRevision === chat.homeRuntime?.revision ? message.metadata?.homeConversationIndex : undefined,
           systemPrompt,
           messages: previousMessages,
           rawPrompt: regenPrompt,
@@ -3082,8 +3118,10 @@ class AppStore {
   } = {}) {
     this.config = next;
     await saveAppConfig(next);
-    // Speech credentials are handed to main for encryption, then discarded here.
-    for (const section of [this.config.tts, this.config.stt]) {
+    // Credentials are handed to main (which keeps them, or gives a provider's
+    // to the Rust core), then discarded here. A browser session has no main.
+    const sections = [isElectron() ? this.config.llm : undefined, this.config.tts, this.config.stt];
+    for (const section of sections) {
       for (const provider of Object.values(section?.providers ?? {})) {
         if (provider.api_key) { provider.has_api_key = true; delete provider.api_key; }
       }

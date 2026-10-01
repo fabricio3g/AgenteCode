@@ -409,6 +409,26 @@ impl AppConfig {
         Self::save_to(self, None)
     }
 
+    /// Apply `edit` to the saved global `config.json` alone — not the defaults,
+    /// project overrides or catalog a loaded config carries — and write it
+    /// back. A file that exists but does not parse is left untouched.
+    pub fn edit_global(edit: impl FnOnce(&mut AppConfig)) -> std::io::Result<()> {
+        let path = Self::global_config_path().ok_or_else(|| {
+            std::io::Error::new(std::io::ErrorKind::NotFound, "no home directory")
+        })?;
+        let mut saved = match std::fs::read_to_string(&path) {
+            Ok(content) => serde_json::from_str::<AppConfig>(&content)
+                .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => AppConfig {
+                provider: HashMap::new(),
+                ..Self::default()
+            },
+            Err(error) => return Err(error),
+        };
+        edit(&mut saved);
+        saved.save()
+    }
+
     /// Save config to both the global path and the workspace `<project_dir>/agente.json`.
     /// The workspace copy is a mirror that overrides the global on next load.
     pub fn save_to_workspace(&self, project_dir: &str) -> std::io::Result<()> {

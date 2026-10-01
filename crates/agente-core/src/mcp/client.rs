@@ -315,13 +315,24 @@ pub struct CallOutput {
     pub text: String,
     /// The server flagged the result as an error (`isError`).
     pub is_error: bool,
+    /// Image and audio blocks (base64), for a model that takes them.
+    pub media: Vec<CallMedia>,
+}
+
+/// One binary content block of a `tools/call` result.
+#[derive(Debug, Clone, PartialEq)]
+pub struct CallMedia {
+    pub kind: agente_protocol::AttachmentKind,
+    pub mime: String,
+    pub data: String,
 }
 
 /// Flatten a `tools/call` result: text blocks verbatim, embedded text
-/// resources inline, binary content summarized, `structuredContent` as JSON
-/// when there is nothing else.
+/// resources inline, binary content summarized (and kept in `media`),
+/// `structuredContent` as JSON when there is nothing else.
 pub fn render_call_result(result: &Value) -> CallOutput {
     let mut parts: Vec<String> = Vec::new();
+    let mut media = Vec::new();
     for block in result
         .get("content")
         .and_then(Value::as_array)
@@ -336,6 +347,17 @@ pub fn render_call_result(result: &Value) -> CallOutput {
                 let mime = text("mimeType").unwrap_or("binary");
                 let bytes = text("data").map_or(0, |d| d.len() * 3 / 4);
                 parts.push(format!("[{kind} content: {mime}, ~{bytes} bytes]"));
+                if let Some(data) = text("data").filter(|d| !d.is_empty()) {
+                    media.push(CallMedia {
+                        kind: if kind == "image" {
+                            agente_protocol::AttachmentKind::Image
+                        } else {
+                            agente_protocol::AttachmentKind::Audio
+                        },
+                        mime: mime.to_string(),
+                        data: data.to_string(),
+                    });
+                }
             }
             "resource" => {
                 let resource = block.get("resource");
@@ -372,6 +394,7 @@ pub fn render_call_result(result: &Value) -> CallOutput {
             .get("isError")
             .and_then(Value::as_bool)
             .unwrap_or(false),
+        media,
     }
 }
 
@@ -648,6 +671,15 @@ mod tests {
         assert_eq!(
             out.text,
             "hello\n[image content: image/png, ~3 bytes]\n[resource file:///a]\nbody\n[link: b <file:///b>]"
+        );
+        // The image itself is kept for a model that can see it.
+        assert_eq!(
+            out.media,
+            vec![CallMedia {
+                kind: agente_protocol::AttachmentKind::Image,
+                mime: "image/png".into(),
+                data: "AAAA".into()
+            }]
         );
 
         let structured = render_call_result(&serde_json::json!({

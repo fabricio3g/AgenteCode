@@ -265,6 +265,38 @@ impl CompactionStrategy {
         }
     }
 
+    /// The strategy for a model's context window, given what every request
+    /// carries besides the messages (tool schemas, the provider's tokenizer
+    /// gap). Thresholds apply to the room left for messages, and the recent
+    /// context kept never exceeds a quarter of it, so a small local window
+    /// compacts before it overflows. An unknown window (0) assumes 8k.
+    pub fn for_window(context_window: usize, overhead: usize) -> Self {
+        let window = if context_window == 0 {
+            8_000
+        } else {
+            context_window
+        };
+        let max_tokens = window.saturating_sub(overhead).max(window / 4).max(1_000);
+        Self {
+            max_tokens,
+            keep_recent: 8,
+            summarize_threshold: 0.85,
+            target_reduction: 0.6,
+            reserve_tokens: 16_384usize.min(max_tokens / 4),
+            keep_recent_tokens: 20_000usize.min(max_tokens / 4),
+        }
+    }
+
+    /// A manual `/compact`: always shrinks what is there (to about 60%),
+    /// never more than the window allows. Sized by the window alone, a
+    /// conversation below its compaction target would not shrink at all.
+    pub fn manual(context_window: usize, current_tokens: usize) -> Self {
+        let mut strategy = Self::for_window(context_window, 0);
+        strategy.max_tokens = strategy.max_tokens.min(current_tokens.max(1));
+        strategy.keep_recent = 4;
+        strategy
+    }
+
     /// Create a strategy for smaller context windows
     pub fn small_context() -> Self {
         Self {
@@ -567,13 +599,27 @@ impl ContextCompactor {
 
         // Keep complete assistant/tool exchanges even when the boundary falls
         // inside the tool results.
-        let recent_start = compaction_boundary(&messages, self.strategy.keep_recent, 0);
+        let tokens_from = |start: usize| -> usize {
+            messages[start..]
+                .iter()
+                .map(|m| self.estimate_message_tokens(m))
+                .sum()
+        };
+        let mut keep = self.strategy.keep_recent.max(1);
+        let mut recent_start = compaction_boundary(&messages, keep, 0);
+        // A few large messages can hold more than the target on their own:
+        // keep fewer of them, down to the newest exchange, rather than
+        // saving nothing.
+        while keep > 1 && tokens_from(recent_start) > target {
+            keep -= 1;
+            recent_start = compaction_boundary(&messages, keep, 0);
+        }
         let keep_recent = messages.len().saturating_sub(recent_start);
         let recent: Vec<Message> = messages[recent_start..].to_vec();
         let older: Vec<Message> = messages[..recent_start].to_vec();
 
         // Estimate tokens in recent messages (we'll keep all of these)
-        let recent_tokens: usize = recent.iter().map(|m| self.estimate_message_tokens(m)).sum();
+        let recent_tokens = tokens_from(recent_start);
 
         let budget_for_older = target.saturating_sub(recent_tokens);
 
@@ -938,6 +984,87 @@ mod tests {
         assert_eq!(strategy.summary_budget(4_800), 0);
         assert_eq!(strategy.summary_budget(usize::MAX), 0);
         assert_eq!(CompactionStrategy::default().summary_budget(20_000), 16_384);
+    }
+
+    #[test]
+    fn a_small_window_leaves_room_for_the_tool_schemas() {
+        // 8k window, ~4.5k of tool schemas: compaction must fire well before
+        // the messages alone reach 85% of the whole window.
+        let strategy = CompactionStrategy::for_window(8_192, 4_500);
+        assert_eq!(strategy.max_tokens, 3_692);
+        assert!(strategy.should_compact(3_300));
+        assert!(!strategy.should_compact(3_000));
+        assert!(strategy.keep_recent_tokens <= strategy.max_tokens / 4);
+        // A window smaller than the old 8k floor is used as it is.
+        assert_eq!(CompactionStrategy::for_window(4_096, 0).max_tokens, 4_096);
+        // Unknown windows assume 8k; overhead never leaves less than a quarter.
+        assert_eq!(CompactionStrategy::for_window(0, 0).max_tokens, 8_000);
+        assert_eq!(
+            CompactionStrategy::for_window(8_000, 50_000).max_tokens,
+            2_000
+        );
+    }
+
+    #[test]
+    fn a_few_huge_messages_still_compact() {
+        // Five messages, each far past the target: keeping the "last 8"
+        // would keep everything and save nothing.
+        let big = "filler line with several words in it\n".repeat(400);
+        let messages = vec![
+            create_message(Role::System, "system"),
+            create_message(Role::User, &format!("first {big}")),
+            create_message(Role::Assistant, "noted first"),
+            create_message(Role::User, &format!("second {big}")),
+            create_message(Role::Assistant, "noted second"),
+            create_message(Role::User, "latest question"),
+        ];
+        let compactor = ContextCompactor::new(CompactionStrategy::for_window(8_192, 4_500));
+        let result = compactor.compact_forced(messages);
+        assert!(
+            result.summary.tokens_saved > 0,
+            "{:?}",
+            result.summary.content
+        );
+        assert_eq!(
+            result.messages.first().map(|m| &m.role),
+            Some(&Role::System)
+        );
+        assert_eq!(
+            result.messages.last().map(|m| m.content.as_str()),
+            Some("latest question")
+        );
+    }
+
+    #[test]
+    fn manual_compact_shrinks_a_conversation_far_below_the_window() {
+        let chunk = "a sentence that takes some room in the transcript\n".repeat(40);
+        let mut messages = vec![create_message(Role::System, "system")];
+        for turn in 0..10 {
+            messages.push(create_message(
+                Role::User,
+                &format!("question {turn} {chunk}"),
+            ));
+            messages.push(create_message(
+                Role::Assistant,
+                &format!("answer {turn} {chunk}"),
+            ));
+        }
+        let before = estimate_tokens_for_test(&messages);
+        // A 1M window: the automatic target is far above this conversation.
+        let result = ContextCompactor::new(CompactionStrategy::manual(1_000_000, before))
+            .compact_forced(messages);
+        assert!(result.summary.tokens_saved > 0);
+        assert!(estimate_tokens_for_test(&result.messages) < before);
+        assert!(result
+            .messages
+            .last()
+            .unwrap()
+            .content
+            .starts_with("answer 9"));
+    }
+
+    fn estimate_tokens_for_test(messages: &[Message]) -> usize {
+        crate::context::estimate_message_tokens(messages)
     }
 
     fn create_message(role: Role, content: &str) -> Message {

@@ -4,7 +4,7 @@
 // folds to "3 steps · 2 files changed" once it is done. Under a live reply,
 // one status line says what is happening right now, next to the composer.
 
-import type { AgentStep } from '$lib/types/chat';
+import type { AgentStep, CodeAgentFileChangeKind } from '$lib/types/chat';
 import type { CodeTodoItem } from '$shared/agente-protocol';
 import type { CodeRunState, OrderedEntry } from './code-run';
 
@@ -34,22 +34,31 @@ export interface FileTotal {
   deletions: number;
 }
 
-/** Every file a block's edits touched, once each, with its churn summed. */
-export function changedFiles(items: WorkItem[]): FileTotal[] {
-  const files = new Map<string, FileTotal>();
-  for (const { step } of items) {
+/** A file the agent edited, its churn summed and each edit's patch in order. */
+export interface FileEdit extends FileTotal {
+  kind: CodeAgentFileChangeKind;
+  patches: string[];
+}
+
+/** Every file these steps edited, once each, with its churn summed (approvals don't count). */
+export function editedFiles(steps: Array<AgentStep | undefined>): FileEdit[] {
+  const files = new Map<string, FileEdit>();
+  for (const step of steps) {
     if (step?.status === 'awaiting_approval' || step?.type === 'approval') continue;
     for (const stat of step?.diffStats ?? []) {
-      const known = files.get(stat.path);
-      if (known) {
-        known.additions += stat.additions;
-        known.deletions += stat.deletions;
-      } else {
-        files.set(stat.path, { path: stat.path, name: stat.path.split(/[\\/]/).pop() || stat.path, additions: stat.additions, deletions: stat.deletions });
-      }
+      const known = files.get(stat.path) ?? { path: stat.path, name: stat.path.split(/[\\/]/).pop() || stat.path, kind: stat.kind ?? 'modified', additions: 0, deletions: 0, patches: [] };
+      known.additions += stat.additions;
+      known.deletions += stat.deletions;
+      if (stat.patch) known.patches.push(stat.patch);
+      files.set(stat.path, known);
     }
   }
   return [...files.values()];
+}
+
+/** Every file a block's edits touched, once each, with its churn summed. */
+export function changedFiles(items: WorkItem[]): FileTotal[] {
+  return editedFiles(items.map((item) => item.step)).map(({ path, name, additions, deletions }) => ({ path, name, additions, deletions }));
 }
 
 export function isRunning(step: AgentStep | undefined): boolean {

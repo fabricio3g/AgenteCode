@@ -174,17 +174,6 @@ export async function detectToolSupport(): Promise<boolean> {
 }
 
 /**
- * Record that a model does NOT support native tools.
- * Called by the agent when native tool calling fails at runtime.
- */
-export function setToolSupportCache(config: AppConfigLike, supports: boolean): void {
-  const { providerName, modelId } = toolSupportIdentity(config);
-  const key = toolSupportCacheKey(providerName, modelId);
-  toolSupportCache.set(key, supports);
-  debugToolSupport(config, `[agent] setToolSupportCache | ${providerName}/${modelId} -> ${supports}`);
-}
-
-/**
  * Identity of the route a reasoning-capabilities probe belongs to. The store
  * skips re-probing when the identity is unchanged, so every settings save
  * doesn't hit the provider catalog — and a stale probe can never pass as
@@ -377,8 +366,10 @@ export async function hasConfiguredVisionModel(config: AppConfig): Promise<boole
     return hasLocalVisionModel(config);
   }
   const providerName = config.llm?.provider || DEFAULT_PROVIDER_ID;
-  const provider = config.llm?.providers?.[providerName];
-  return isVisionModel(provider?.model || '');
+  const model = config.llm?.providers?.[providerName]?.model || '';
+  // The core knows what the model takes; the name guess is the fallback.
+  if (!isElectron() || !model) return isVisionModel(model);
+  return invoke<boolean>('model_sees_images', { providerName, model }).catch(() => isVisionModel(model));
 }
 
 export function toRequestMessages(messages: RequestMessage[], modelName?: string, hasMmproj?: boolean) {

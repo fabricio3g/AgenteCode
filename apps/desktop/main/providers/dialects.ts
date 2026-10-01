@@ -6,7 +6,15 @@
 // through the daemon, the same source Agente Code's TUI uses
 // (see ../agente/thinking.ts).
 
+import crypto from 'node:crypto';
 import { APP_NAME, APP_REPO_URL } from '../../shared/brand.ts';
+
+/**
+ * OpenCode Go refuses requests without `x-opencode-session` (the Rust core
+ * sends one per session). Desktop's own direct calls (titles, short
+ * replies) share one per app run, so they still route to a warm cache.
+ */
+const OPENCODE_SESSION = crypto.randomUUID();
 
 export interface Dialect {
   id: string;
@@ -50,7 +58,10 @@ export const DIALECTS: Dialect[] = [
     defaultBaseUrl: 'https://opencode.ai/zen/go/v1',
     transport: 'sdk',
     matchHosts: ['opencode.ai'],
-    streamUsage: true
+    streamUsage: true,
+    headers() {
+      return { 'x-opencode-session': OPENCODE_SESSION };
+    }
   },
   {
     id: 'openrouter',

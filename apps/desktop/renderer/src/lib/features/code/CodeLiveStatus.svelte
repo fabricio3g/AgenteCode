@@ -71,7 +71,7 @@
     align-items: center;
     gap: 0.5rem;
     padding: 0.25rem 0.5rem;
-    font-size: 12.5px;
+    font-size: 13px;
     color: var(--muted-foreground);
   }
   .dot {

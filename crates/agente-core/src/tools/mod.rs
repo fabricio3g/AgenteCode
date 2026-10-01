@@ -59,7 +59,7 @@ pub(crate) const MAX_EDIT_FILE_BYTES: u64 = 8 * 1024 * 1024;
 /// Liveness tick for every tool invocation. Tools that emit no progress
 /// (grep over a huge tree, a slow web fetch, a big read) would otherwise look
 /// dead to the TUI stuck-guard and get force-cancelled mid-work.
-const TOOL_HEARTBEAT_MS: u64 = 15_000;
+pub(crate) const TOOL_HEARTBEAT_MS: u64 = 15_000;
 
 /// Which output stream produced a tool progress chunk.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -164,6 +164,7 @@ fn plain_shell(command: &str) -> processkit::Command {
 #[derive(Clone)]
 pub struct ToolExecutionContext {
     pub cancellation: AbortSignal,
+    pub call_id: String,
     progress: Option<ToolProgressCallback>,
     heartbeat: Option<Arc<dyn Fn() + Send + Sync>>,
     shell_env: ShellEnv,
@@ -173,6 +174,7 @@ impl ToolExecutionContext {
     pub fn new(cancellation: AbortSignal) -> Self {
         Self {
             cancellation,
+            call_id: String::new(),
             progress: None,
             heartbeat: None,
             shell_env: ShellEnv::Inherit,
@@ -719,6 +721,16 @@ pub trait Tool: Send + Sync {
         ToolExecutionMode::Parallel
     }
 
+    /// Client-owned virtual files must never enter host filesystem diagnostics/undo.
+    fn uses_host_filesystem(&self) -> bool {
+        true
+    }
+
+    /// Media produced by a client tool, keyed by its model call ID.
+    fn take_result_attachments(&self, _call_id: &str) -> Vec<agente_protocol::Attachment> {
+        Vec::new()
+    }
+
     fn allowed_in_plan(&self) -> bool {
         true
     }
@@ -1026,6 +1038,13 @@ impl ToolRegistry {
 
     pub fn get(&self, name: &str) -> Option<&dyn Tool> {
         self.tools.get(name).map(|t| t.as_ref())
+    }
+
+    /// Registered tool names, sorted.
+    pub fn names(&self) -> Vec<&str> {
+        let mut names: Vec<&str> = self.tools.keys().map(String::as_str).collect();
+        names.sort_unstable();
+        names
     }
 
     /// Tool definitions, sorted by name.

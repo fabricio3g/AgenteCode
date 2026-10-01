@@ -134,6 +134,7 @@ fn err_outcome(tool_call_id: &str, tool_name: &str, message: impl Into<String>) 
         file_before: None,
         file_after: None,
         todos: None,
+        attachments: Vec::new(),
     }
 }
 
@@ -307,6 +308,7 @@ impl SubagentHost {
                     file_before: None,
                     file_after: None,
                     todos: None,
+                    attachments: Vec::new(),
                 }
             }
             "task_output" => self.task_output(tool_call_id, args, &context).await,
@@ -414,6 +416,7 @@ impl SubagentHost {
             file_before: None,
             file_after: None,
             todos: None,
+            attachments: Vec::new(),
         }
     }
 
@@ -462,6 +465,7 @@ impl SubagentHost {
                 file_before: None,
                 file_after: None,
                 todos: None,
+                attachments: Vec::new(),
             };
         }
         self.inner.registry.cancel(task_id);
@@ -487,6 +491,7 @@ impl SubagentHost {
             file_before: None,
             file_after: None,
             todos: None,
+            attachments: Vec::new(),
         }
     }
 

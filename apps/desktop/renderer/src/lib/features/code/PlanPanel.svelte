@@ -47,7 +47,7 @@
     <Button variant="ghost" size="icon-sm" onclick={() => codeWorkspace.closePlan()} aria-label={$t('codeWs.close')} title={$t('codeWs.close')}><X /></Button>
   </header>
   <div class="min-h-0 flex-1 overflow-y-auto px-5 py-4 text-sm leading-relaxed text-foreground">
-    {#if plan.path}<p class="mb-3 truncate text-[11px] text-muted-foreground" title={plan.path}>{plan.path}</p>{/if}
+    {#if plan.path}<p class="mb-3 truncate text-xs text-muted-foreground" title={plan.path}>{plan.path}</p>{/if}
     <RichContent content={plan.body} />
   </div>
   {#if waiting}
@@ -57,7 +57,7 @@
         <Button size="sm" variant="outline" disabled={busy} onclick={() => void answer('plan', REDO_MESSAGE)}><RefreshCw /> {$t('code.plan.redo')}</Button>
         <Button size="sm" variant="ghost" disabled={busy} onclick={comment}><MessageSquare /> {$t('code.plan.comment')}</Button>
       </div>
-      <p class="text-[11.5px] text-muted-foreground">{$t('code.plan.hint')}</p>
+      <p class="text-xs text-muted-foreground">{$t('code.plan.hint')}</p>
     </footer>
   {/if}
 </aside>

@@ -306,5 +306,12 @@ export async function updateConfig(partial: Partial<AppConfig>): Promise<AppConf
   return merged;
 }
 
+/** Drop Desktop's own copy of an LLM provider's key (the Rust core holds it now). */
+export function forgetProviderKey(id: string): void {
+  createElectronSecretsManager().deleteSecret(`llm.providers.${id}.api_key`);
+  const provider = _config?.llm?.providers?.[id] as { api_key?: string } | undefined;
+  if (provider) delete provider.api_key;
+}
+
 // Export types
 export type { AppConfig, AppPaths } from './config.types.ts';
