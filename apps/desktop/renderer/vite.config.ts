@@ -4,6 +4,7 @@ import path from 'node:path';
 import monacoEditorModule from 'vite-plugin-monaco-editor';
 
 export default defineConfig({
+  base: './',
   plugins: [
     svelte(),
     (monacoEditorModule as any).default({
@@ -29,7 +30,7 @@ export default defineConfig({
   },
   build: {
     outDir: 'dist',
-    sourcemap: true,
+    sourcemap: false,
     // es2022 (not es2021) because src/main.ts awaits the dev-only mock-electron
     // import at top level. esbuild only allows a feature if *every* listed
     // target supports it, so listing es2021 here fails the whole build.

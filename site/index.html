@@ -83,8 +83,8 @@
           </div>
           <div class="install-body" id="install-body" aria-live="polite">
             <!-- Filled by js/install.js; this is the no-JS default. -->
-            <a class="dl-row" href="https://github.com/fabricio3g/AgenteCode/releases/latest/download/Agente-linux-x86_64.AppImage">
-              <span class="dl-name">Agente-linux-x86_64.AppImage</span><span class="dl-meta">Linux x64 · runs on most distributions</span>
+            <a class="dl-row" href="https://github.com/fabricio3g/AgenteCode/releases/latest/download/AgenteDesktop-linux-x64.AppImage">
+              <span class="dl-name">AgenteDesktop-linux-x64.AppImage</span><span class="dl-meta">Linux x64 · runs on most distributions</span>
             </a>
           </div>
         </div>
@@ -245,24 +245,26 @@
             <div class="block">
               <pre><code id="cmd-code">mkdir -p ~/.local/bin
 curl -fL -o ~/.local/bin/agente \
-  https://github.com/fabricio3g/AgenteCode/releases/latest/download/agente-linux-x86_64
+  https://github.com/fabricio3g/AgenteCode/releases/latest/download/AgenteCode-linux-x64
 chmod +x ~/.local/bin/agente
 agente</code></pre>
               <button class="copy" type="button" data-copy-from="cmd-code"><span class="copy-label">Copy</span></button>
             </div>
             <p class="note">Other builds:
-              <a href="https://github.com/fabricio3g/AgenteCode/releases/latest/download/agente-linux-arm64">Linux arm64</a> ·
-              <a href="https://github.com/fabricio3g/AgenteCode/releases/latest/download/agente-windows-x86_64.exe">Windows x64</a> ·
-              <a href="https://github.com/fabricio3g/AgenteCode/releases/latest/download/SHA256SUMS">SHA256SUMS</a>.
+              <a href="https://github.com/fabricio3g/AgenteCode/releases/latest/download/AgenteCode-linux-arm64">Linux arm64</a> ·
+              <a href="https://github.com/fabricio3g/AgenteCode/releases/latest/download/AgenteCode-windows-x64.exe">Windows x64</a> ·
+              <a href="https://github.com/fabricio3g/AgenteCode/releases/latest/download/AgenteCode-linux-amd64.deb">Debian amd64</a> ·
+              <a href="https://github.com/fabricio3g/AgenteCode/releases/latest/download/AgenteCode-linux-arm64.deb">Debian arm64</a> ·
+              <a href="https://github.com/fabricio3g/AgenteCode/releases/latest/download/AgenteCode-SHA256SUMS">AgenteCode-SHA256SUMS</a>.
               Then run <code>/provider</code> and <code>/model</code>.</p>
           </div>
           <div class="panel" role="tabpanel" id="gp-desktop" aria-labelledby="g-desktop">
             <div class="dl-list">
-              <a class="dl-row" href="https://github.com/fabricio3g/AgenteCode/releases/latest/download/Agente-win-x64.exe"><span class="dl-name">Agente-win-x64.exe</span><span class="dl-meta">Windows x64 installer</span><span class="dl-go">Download</span></a>
-              <a class="dl-row" href="https://github.com/fabricio3g/AgenteCode/releases/latest/download/Agente-linux-x86_64.AppImage"><span class="dl-name">Agente-linux-x86_64.AppImage</span><span class="dl-meta">Linux x64 · runs on most distributions</span><span class="dl-go">Download</span></a>
-              <a class="dl-row" href="https://github.com/fabricio3g/AgenteCode/releases/latest/download/Agente-linux-amd64.deb"><span class="dl-name">Agente-linux-amd64.deb</span><span class="dl-meta">Debian and Ubuntu</span><span class="dl-go">Download</span></a>
+              <a class="dl-row" href="https://github.com/fabricio3g/AgenteCode/releases/latest/download/AgenteDesktop-windows-x64.exe"><span class="dl-name">AgenteDesktop-windows-x64.exe</span><span class="dl-meta">Windows x64 installer</span><span class="dl-go">Download</span></a>
+              <a class="dl-row" href="https://github.com/fabricio3g/AgenteCode/releases/latest/download/AgenteDesktop-linux-x64.AppImage"><span class="dl-name">AgenteDesktop-linux-x64.AppImage</span><span class="dl-meta">Linux x64 · runs on most distributions</span><span class="dl-go">Download</span></a>
+              <a class="dl-row" href="https://github.com/fabricio3g/AgenteCode/releases/latest/download/AgenteDesktop-linux-amd64.deb"><span class="dl-name">AgenteDesktop-linux-amd64.deb</span><span class="dl-meta">Debian and Ubuntu</span><span class="dl-go">Download</span></a>
             </div>
-            <p class="note">On macOS, build it from source (see the <a href="https://github.com/fabricio3g/AgenteCode/blob/main/apps/desktop/README.md">Desktop guide</a>).</p>
+            <p class="note">Verify downloads with <a href="https://github.com/fabricio3g/AgenteCode/releases/latest/download/AgenteDesktop-SHA256SUMS">AgenteDesktop-SHA256SUMS</a>. On macOS, build it from source (see the <a href="https://github.com/fabricio3g/AgenteCode/blob/main/apps/desktop/README.md">Desktop guide</a>).</p>
           </div>
           <div class="panel" role="tabpanel" id="gp-server" aria-labelledby="g-server">
             <div class="block">

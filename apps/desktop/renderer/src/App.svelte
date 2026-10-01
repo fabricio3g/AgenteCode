@@ -1,7 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
-  import { onDestroy, onMount } from 'svelte';
+  import { onDestroy, onMount, tick } from 'svelte';
   import AppShell from '$lib/components/layout/AppShell.svelte';
   import { initMotion } from '$lib/utils/motion.svelte';
   import { appStore } from '$lib/stores/app.svelte';
@@ -10,6 +10,7 @@
   import { ttsStore } from '$lib/stores/tts.svelte';
   import { i18nReady } from '$lib/i18n';
   import { installCodeCopyDelegate } from '$lib/utils/code-copy';
+  import { notifyDesktopReady } from '$lib/services/desktop-startup';
   import { copy } from '$lib/copy';
 
   let startupBypassed = $state(false);
@@ -81,6 +82,7 @@
       appStore.ready = true;
     }).finally(() => {
       window.clearTimeout(bypassTimer);
+      void tick().then(notifyDesktopReady).catch((error) => console.error('[startup]', error));
     });
   });
 

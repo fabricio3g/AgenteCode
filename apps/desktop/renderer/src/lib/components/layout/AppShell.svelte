@@ -211,7 +211,7 @@
   }
 </script>
 
-<div class="relative flex h-full overflow-hidden bg-background text-foreground">
+<div data-desktop-shell class="relative flex h-full overflow-hidden bg-background text-foreground">
   <!-- Full-height sidebar (Flaxeo pattern): sidebar | titlebar+main -->
   <div
     class="sidebar-outer relative flex shrink-0 flex-col bg-sidebar"

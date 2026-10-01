@@ -8,19 +8,19 @@ const DL = "https://github.com/fabricio3g/AgenteCode/releases/latest/download/";
 const REPO = "https://github.com/fabricio3g/AgenteCode";
 
 const DESKTOP = {
-  windows: [{ file: "Agente-win-x64.exe", meta: "Windows x64 installer" }],
+  windows: [{ file: "AgenteDesktop-windows-x64.exe", meta: "Windows x64 installer" }],
   linux: [
-    { file: "Agente-linux-x86_64.AppImage", meta: "Linux x64 · runs on most distributions" },
-    { file: "Agente-linux-amd64.deb", meta: "Debian and Ubuntu" },
+    { file: "AgenteDesktop-linux-x64.AppImage", meta: "Linux x64 · runs on most distributions" },
+    { file: "AgenteDesktop-linux-amd64.deb", meta: "Debian and Ubuntu" },
   ],
   arm: null, // not built for arm64
   macos: null, // no macOS installer yet
 };
 
 const CLI = {
-  linux: { prompt: "$", cmd: `curl -fL -o ~/.local/bin/agente ${DL}agente-linux-x86_64 && chmod +x ~/.local/bin/agente` },
-  arm: { prompt: "$", cmd: `curl -fL -o ~/.local/bin/agente ${DL}agente-linux-arm64 && chmod +x ~/.local/bin/agente` },
-  windows: { prompt: ">", cmd: `iwr ${DL}agente-windows-x86_64.exe -OutFile agente.exe` },
+  linux: { prompt: "$", cmd: `curl -fL -o ~/.local/bin/agente ${DL}AgenteCode-linux-x64 && chmod +x ~/.local/bin/agente` },
+  arm: { prompt: "$", cmd: `curl -fL -o ~/.local/bin/agente ${DL}AgenteCode-linux-arm64 && chmod +x ~/.local/bin/agente` },
+  windows: { prompt: ">", cmd: `iwr ${DL}AgenteCode-windows-x64.exe -OutFile agente.exe` },
   macos: { prompt: "$", cmd: `git clone ${REPO}.git && cd AgenteCode && cargo build --release --bin agente`, note: "No macOS binary yet, so this builds it from source." },
 };
 

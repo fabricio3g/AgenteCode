@@ -14,6 +14,8 @@ if (new URLSearchParams(location.search).has('mock')) {
   await import('./dev/mock-electron');
 }
 
+if (new URLSearchParams(location.search).get('fault') === 'bootstrap') throw new Error('Smoke bootstrap failure');
+
 const app = mount(App, {
   target: document.getElementById('app')!
 });

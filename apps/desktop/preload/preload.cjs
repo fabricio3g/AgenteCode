@@ -1,6 +1,7 @@
 const { contextBridge, ipcRenderer, webFrame } = require('electron');
 
 const ALLOWED_INVOKE_CHANNELS = new Set([
+  'desktop_renderer_ready',
   'window:minimize', 'window:toggle-maximize', 'window:is-maximized', 'window:close', 'window:request-close', 'window:set-active-work',
   'get_hardware_limits', 'get_desktop_capabilities', 'get_runtime_recommendations', 'is_first_run',
   'get_config', 'save_config', 'update_config',
@@ -114,3 +115,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   platform: process.platform,
   isElectron: true
 });
+
+// Resource failures can occur before the renderer module graph runs.
+window.addEventListener('error', (event) => {
+  if (document.documentElement.dataset.desktopReady) return;
+  const script = event.target && event.target.tagName === 'SCRIPT';
+  if (script || event.message) ipcRenderer.send('desktop_bootstrap_error', script ? 'Renderer script failed to load' : String(event.message).slice(0, 2000));
+}, true);

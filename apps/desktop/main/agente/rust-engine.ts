@@ -116,7 +116,7 @@ async function openConnection(): Promise<AgenteClient> {
       resourcesPath: typeof process.resourcesPath === 'string' ? process.resourcesPath : undefined,
       repoRoot: findRepoRoot(moduleDirname(import.meta.url))
     });
-    daemon = new AgenteDaemon({ binary });
+    daemon = new AgenteDaemon({ binary, socketPath: process.env.AGENTE_SMOKE_SOCKET });
   }
   const client = await daemon.connect();
   if (listening !== client) {

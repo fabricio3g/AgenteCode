@@ -1,9 +1,10 @@
+import { attachStartupDiagnostics, failStartup, smokeMode } from './startup.ts';
 import './bootstrap-data.ts';
 import { app, BrowserWindow, Menu, Tray, nativeImage, shell, session, dialog, systemPreferences } from 'electron';
 import fs from 'node:fs';
 import net from 'node:net';
 import path from 'node:path';
-import { registerIpcHandlers } from './ipc-handlers.ts';
+import { registerIpcHandlers, disposeAllAgenteSessions, disposeCodeWorkspace } from './ipc-handlers.ts';
 import { stopAllInstances } from './instances.ts';
 import { initTts } from './voice/audiocpp-tts.ts';
 import { moduleDirname } from './module-env.ts';
@@ -41,6 +42,12 @@ const PRELOAD_PATH = IS_DEV
 
 setPreloadPath(PRELOAD_PATH);
 
+// app.exit(), used by smoke mode, skips before-quit. Stop its isolated daemon.
+if (smokeMode) app.once('quit', () => {
+  disposeAllAgenteSessions();
+  disposeCodeWorkspace();
+});
+
 function createWindow() {
   const mainWindow = new BrowserWindow({
     width: 1280,
@@ -63,11 +70,14 @@ function createWindow() {
 
   setMainWindow(mainWindow);
 
+  attachStartupDiagnostics(mainWindow);
+
   if (IS_DEV) {
-    mainWindow.loadURL(RENDERER_DEV_URL);
+    void mainWindow.loadURL(RENDERER_DEV_URL).catch(failStartup);
     mainWindow.webContents.openDevTools({ mode: 'detach' });
   } else {
-    mainWindow.loadFile(RENDERER_PROD_PATH);
+    const missing = smokeMode && process.env.AGENTE_SMOKE_CASE === 'missing-assets';
+    void mainWindow.loadFile(missing ? `${RENDERER_PROD_PATH}.missing` : RENDERER_PROD_PATH, { query: smokeMode ? { smoke: '1', fault: process.env.AGENTE_SMOKE_CASE || '' } : {} }).catch(failStartup);
   }
 
   mainWindow.on('closed', () => {
@@ -141,14 +151,14 @@ app.whenReady().then(async () => {
   createWindow();
 
   // Preload Kokoro TTS model in background while app finishes booting
-  initTts().catch(() => {});
+  if (!smokeMode) initTts().catch(() => {});
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       createWindow();
     }
   });
-});
+}).catch(failStartup);
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {

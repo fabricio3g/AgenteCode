@@ -50,38 +50,42 @@ after `gh auth login`. Anonymous download requests return 404.
 
 ### Download Agente Code
 
-Ready-to-run binaries are on the [latest release](https://github.com/fabricio3g/AgenteCode/releases/latest). Choose your platform:
+The next release uses these Code filenames. Existing assets on the [releases page](https://github.com/fabricio3g/AgenteCode/releases) keep their original names. Choose your platform:
 
 | Platform | Download |
 |---|---|
-| Linux x86_64 | [agente-linux-x86_64](https://github.com/fabricio3g/AgenteCode/releases/latest/download/agente-linux-x86_64) |
-| Linux arm64 | [agente-linux-arm64](https://github.com/fabricio3g/AgenteCode/releases/latest/download/agente-linux-arm64) |
-| Windows x64 | [agente-windows-x86_64.exe](https://github.com/fabricio3g/AgenteCode/releases/latest/download/agente-windows-x86_64.exe) |
+| Linux x86_64 | [AgenteCode-linux-x64](https://github.com/fabricio3g/AgenteCode/releases/latest/download/AgenteCode-linux-x64) |
+| Linux arm64 | [AgenteCode-linux-arm64](https://github.com/fabricio3g/AgenteCode/releases/latest/download/AgenteCode-linux-arm64) |
+| Debian/Ubuntu amd64 | [AgenteCode-linux-amd64.deb](https://github.com/fabricio3g/AgenteCode/releases/latest/download/AgenteCode-linux-amd64.deb) |
+| Debian/Ubuntu arm64 | [AgenteCode-linux-arm64.deb](https://github.com/fabricio3g/AgenteCode/releases/latest/download/AgenteCode-linux-arm64.deb) |
+| Windows x64 | [AgenteCode-windows-x64.exe](https://github.com/fabricio3g/AgenteCode/releases/latest/download/AgenteCode-windows-x64.exe) |
 
 On Linux, install to your user bin directory (make sure `~/.local/bin` is on your `PATH`):
 
 ```bash
 mkdir -p ~/.local/bin
-gh release download --repo fabricio3g/AgenteCode --pattern agente-linux-x86_64 --output ~/.local/bin/agente --clobber
+gh release download --repo fabricio3g/AgenteCode --pattern AgenteCode-linux-x64 --output ~/.local/bin/agente --clobber
 chmod +x ~/.local/bin/agente
 agente --version
 ```
 
-Use `agente-linux-arm64` instead on arm64. On Windows, rename the download to `agente.exe` and put it in a folder on your `PATH`.
+Use `AgenteCode-linux-arm64` instead on arm64. Debian packages install the `agente` command, terminal launcher, and icons: `sudo apt install ./AgenteCode-linux-amd64.deb` (use the arm64 package on arm64). On Windows, rename the download to `agente.exe` and put it in a folder on your `PATH`.
 
-The release's [`SHA256SUMS`](https://github.com/fabricio3g/AgenteCode/releases/latest/download/SHA256SUMS) covers the Code binaries, Desktop installers, and update metadata.
+Verify Code binaries and Debian packages with [AgenteCode-SHA256SUMS](https://github.com/fabricio3g/AgenteCode/releases/latest/download/AgenteCode-SHA256SUMS). Desktop installers and update metadata have their own [AgenteDesktop-SHA256SUMS](https://github.com/fabricio3g/AgenteCode/releases/latest/download/AgenteDesktop-SHA256SUMS).
 
 ### Download Agente Desktop
 
-Desktop installers are included in [`v0.2.2`](https://github.com/fabricio3g/AgenteCode/releases/tag/v0.2.2):
+The next release uses the following Desktop installer names (existing release assets retain their original names):
 
 | Platform | Download |
 |---|---|
-| Linux x86_64 | [AppImage](https://github.com/fabricio3g/AgenteCode/releases/latest/download/Agente-linux-x86_64.AppImage) |
-| Debian/Ubuntu amd64 | [.deb package](https://github.com/fabricio3g/AgenteCode/releases/latest/download/Agente-linux-amd64.deb) |
-| Windows x64 | [Installer](https://github.com/fabricio3g/AgenteCode/releases/latest/download/Agente-win-x64.exe) |
+| Linux x86_64 | [AppImage](https://github.com/fabricio3g/AgenteCode/releases/latest/download/AgenteDesktop-linux-x64.AppImage) |
+| Debian/Ubuntu amd64 | [.deb package](https://github.com/fabricio3g/AgenteCode/releases/latest/download/AgenteDesktop-linux-amd64.deb) |
+| Windows x64 | [Installer](https://github.com/fabricio3g/AgenteCode/releases/latest/download/AgenteDesktop-windows-x64.exe) |
 
-On Linux, make the AppImage executable and run it, or install the Debian package with `sudo apt install ./Agente-linux-amd64.deb`. AppImages require FUSE 2 (`libfuse2t64` on recent Ubuntu). On Windows, run the installer; this release is unsigned.
+Desktop bundles all available local runtime backends, including CUDA libraries, so installers can remain around 1 GB. Each release includes a component size report. Production source maps are excluded.
+
+On Linux, make the AppImage executable and run it, or install the Debian package with `sudo apt install ./AgenteDesktop-linux-amd64.deb`. AppImages require FUSE 2 (`libfuse2t64` on recent Ubuntu). On Windows, run the installer; this release is unsigned.
 
 Desktop includes its own `agente` runtime. Install the standalone Code binary too if you want to use it in a terminal.
 

@@ -10,6 +10,7 @@
 //   node scripts/build-bundles.mjs main --watch        # dev, stays alive
 
 import process from 'node:process';
+import fs from 'node:fs';
 import { build, context } from 'esbuild';
 
 // Shared by every main-process bundle.
@@ -62,6 +63,7 @@ function optionsFor(name) {
     platform: 'node',
     format: 'cjs',
     minify,
+    metafile: true,
     external: [...RUNTIME_EXTERNALS, ...bundle.extraExternals],
     ...(bundle.define ? { define: bundle.define } : {}),
   };
@@ -75,5 +77,8 @@ if (watch) {
     console.log(`[esbuild] watching ${name} -> ${BUNDLES[name].outfile}`);
   }
 } else {
-  await Promise.all(names.map((name) => build(optionsFor(name))));
+  await Promise.all(names.map(async (name) => {
+    const result = await build(optionsFor(name));
+    fs.writeFileSync('dist-electron/main/meta.json', JSON.stringify(result.metafile));
+  }));
 }

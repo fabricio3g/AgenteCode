@@ -9,16 +9,21 @@
       content="default-src 'self' data: blob: filesystem: https: http: ws: wss:; script-src 'self' 'unsafe-eval' 'unsafe-inline'; worker-src 'self' blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https: http:; connect-src 'self' https: http: ws: wss: blob:; media-src 'self' data: blob: https: http:; frame-src 'self' https: http:;"
     />
     <title>Agente</title>
-    <link rel="icon" type="image/svg+xml" href="/app-icon.svg" />
-    <link rel="alternate icon" type="image/png" href="/app-icon.png" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
-      rel="stylesheet"
-    />
+    <link rel="icon" type="image/svg+xml" href="./app-icon.svg" />
+    <link rel="alternate icon" type="image/png" href="./app-icon.png" />
   </head>
   <body class="h-full overflow-hidden bg-[var(--background)] text-[var(--foreground)]">
+    <script>
+      // Runs before the module graph: even a missing entry script gets a visible error.
+      window.addEventListener('error', function (event) {
+        if (document.documentElement.dataset.desktopReady) return;
+        var target = document.getElementById('app');
+        if (target) target.textContent = 'Agente could not start. Please restart the app. Startup diagnostics are saved in the application logs folder.';
+      }, true);
+      window.addEventListener('unhandledrejection', function () {
+        if (!document.documentElement.dataset.desktopReady) window.dispatchEvent(new Event('error'));
+      });
+    </script>
     <div id="app" class="h-full"></div>
     <script type="module" src="/src/main.ts"></script>
   </body>

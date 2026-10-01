@@ -46,7 +46,9 @@
     "bench:agent": "node scripts/bench-agent-stability.mjs",
     "probe:sqlite": "npx electron scripts/probe-sqlite-electron.cjs",
     "test": "npx tsx --test tests/**/*.test.js",
-    "build:cities": "node scripts/build-cities.mjs"
+    "build:cities": "node scripts/build-cities.mjs",
+    "smoke:packaged": "node scripts/smoke-packaged.mjs",
+    "report:package": "node scripts/package-report.mjs"
   },
   "dependencies": {
     "@lancedb/lancedb": "^0.27.2",
@@ -101,7 +103,7 @@
       "owner": "fabricio3g",
       "repo": "AgenteCode"
     },
-    "artifactName": "Agente-${os}-${arch}.${ext}",
+    "artifactName": "AgenteDesktop-${os}-${arch}.${ext}",
     "directories": {
       "output": "release",
       "buildResources": "build"
@@ -109,14 +111,15 @@
     "files": [
       "dist-electron/main/**/*",
       "preload/**/*",
-      "renderer/dist/**/*"
+      "renderer/dist/**/*",
+      "!**/*.map",
+      "!dist-electron/main/meta.json"
     ],
     "asarUnpack": [
       "node_modules/apache-arrow/**/*",
       "node_modules/@lancedb/**/*",
       "node_modules/better-sqlite3/**/*",
-      "node_modules/node-pty/**/*",
-      "resources/bin/**/*"
+      "node_modules/node-pty/**/*"
     ],
     "extraResources": [
       {
@@ -143,8 +146,18 @@
     ],
     "linux": {
       "target": [
-        "AppImage",
-        "deb"
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "deb",
+          "arch": [
+            "x64"
+          ]
+        }
       ],
       "category": "Education"
     },
@@ -153,13 +166,22 @@
         "nsis"
       ],
       "icon": "build/icon.ico",
-      "requestedExecutionLevel": "asInvoker"
+      "requestedExecutionLevel": "asInvoker",
+      "artifactName": "AgenteDesktop-windows-${arch}.${ext}"
     },
     "mac": {
       "target": [
         "dmg"
       ],
       "icon": "build/icon.icns"
-    }
+    },
+    "appImage": {
+      "artifactName": "AgenteDesktop-linux-x64.AppImage"
+    },
+    "deb": {
+      "artifactName": "AgenteDesktop-linux-${arch}.deb"
+    },
+    "beforePack": "scripts/packaging.cjs",
+    "afterPack": "scripts/verify-package.cjs"
   }
 }
