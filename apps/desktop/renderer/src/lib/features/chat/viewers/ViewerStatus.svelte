@@ -9,6 +9,7 @@
 -->
 
 <script lang="ts">
+  import { t } from 'svelte-i18n';
   import { AlertCircle, Loader2 } from 'lucide-svelte';
 
   interface Props {
@@ -23,9 +24,10 @@
     variant?: 'inline' | 'card';
     /** Heading for the `card` variant. */
     errorTitle?: string;
+    retry?: () => void;
   }
 
-  let { loading, error, label, variant = 'inline', errorTitle = 'Preview unavailable' }: Props =
+  let { loading, error, label, variant = 'inline', errorTitle = 'Preview unavailable', retry }: Props =
     $props();
 </script>
 
@@ -45,6 +47,7 @@
     {:else}
       <span>{error}</span>
     {/if}
+    {#if retry}<button type="button" class="retry" onclick={retry}>{$t('chat.retry')}</button>{/if}
   </div>
 {/if}
 
@@ -66,12 +69,12 @@
   .viewer-status.card {
     align-items: flex-start;
     width: min(30rem, 100%);
-    margin: 4rem auto;
+    margin: 1rem auto;
     gap: 0.65rem;
     border-radius: var(--radius-lg);
-    border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+
     background: color-mix(in srgb, var(--surface-hover) 56%, transparent);
-    padding: 2rem;
+    padding: 1rem;
     color: var(--text-secondary);
     text-align: left;
   }
@@ -87,4 +90,6 @@
     display: block;
     line-height: 1.45;
   }
+  .retry { padding:4px 8px; border-radius:999px; background:var(--muted); color:var(--foreground); }
+  @media (prefers-reduced-motion: reduce) { .viewer-status :global(.animate-spin) { animation:none; } }
 </style>

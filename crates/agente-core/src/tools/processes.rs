@@ -170,7 +170,13 @@ pub fn stop_all() {
 }
 
 /// Start `command` in `project_dir` and keep it running.
-pub async fn start(command: &str, project_dir: &str) -> Result<Arc<BackgroundProcess>, ToolError> {
+pub async fn start(
+    command: &str,
+    project_dir: &str,
+    shell_env: &super::ShellEnv,
+) -> Result<Arc<BackgroundProcess>, ToolError> {
+    // First, so a command that can't run (no sandbox) leaves nothing behind.
+    let cmd = shell_env.shell(command, project_dir)?;
     static NEXT_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
     let id = format!(
         "p{}",
@@ -190,14 +196,6 @@ pub async fn start(command: &str, project_dir: &str) -> Result<Arc<BackgroundPro
 
     let (stdout_writer, stdout_reader) = tokio::io::duplex(64 * 1024);
     let (stderr_writer, stderr_reader) = tokio::io::duplex(64 * 1024);
-
-    #[cfg(target_os = "windows")]
-    let cmd = processkit::Command::new(
-        std::env::var("ComSpec").unwrap_or_else(|_| "cmd.exe".to_string()),
-    )
-    .args(["/D", "/C", command]);
-    #[cfg(not(target_os = "windows"))]
-    let cmd = processkit::Command::new("sh").args(["-c", command]);
 
     let run = cmd
         .current_dir(project_dir)
@@ -247,8 +245,9 @@ async fn collect(process: Arc<BackgroundProcess>, mut reader: tokio::io::DuplexS
 pub(crate) async fn start_and_report(
     command: &str,
     project_dir: &str,
+    shell_env: &super::ShellEnv,
 ) -> Result<String, ToolError> {
-    let process = start(command, project_dir).await?;
+    let process = start(command, project_dir, shell_env).await?;
     let deadline = tokio::time::Instant::now() + std::time::Duration::from_millis(FIRST_OUTPUT_MS);
     while tokio::time::Instant::now() < deadline
         && process.status() == ProcessStatus::Running
@@ -461,9 +460,13 @@ mod tests {
     #[tokio::test]
     async fn a_server_keeps_running_is_listed_per_project_and_stops() {
         let dir = project("server");
-        let report = start_and_report("echo listening on http://localhost:4321/; sleep 30", &dir)
-            .await
-            .unwrap();
+        let report = start_and_report(
+            "echo listening on http://localhost:4321/; sleep 30",
+            &dir,
+            &crate::tools::ShellEnv::Inherit,
+        )
+        .await
+        .unwrap();
         assert!(
             report.contains("Running in the background as p"),
             "{report}"

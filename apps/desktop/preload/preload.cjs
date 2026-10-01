@@ -39,8 +39,6 @@ const ALLOWED_INVOKE_CHANNELS = new Set([
   'reset_media_permissions',
   'agent_start_task', 'agent_update_task', 'agent_cancel_task', 'agent_get_task',
   'agent_list_tasks', 'agent_delete_task', 'agent_clear_history',
-
-  'sandbox_exec',
   'browser_agent_action', 'browser_takeover', 'browser_history', 'browser_open_tab', 'browser_list_tabs', 'browser_set_active', 'browser_close_tab',
   'browser_close_all', 'browser_panel_visible', 'browser_panel_occluded', 'browser_panel_bounds', 'browser_viewport',
   'browser_navigate', 'browser_snapshot', 'browser_click', 'browser_type_text',
@@ -54,7 +52,7 @@ const ALLOWED_INVOKE_CHANNELS = new Set([
   'agente_respond_approval', 'agente_list_checkpoints', 'agente_rollback',
   'agente_delete_session_data', 'agente_live_chats',
   'bots_list', 'bots_get', 'bots_create', 'bots_update', 'bots_delete', 'bots_write_doc', 'bots_compact',
-  'bots_history', 'bots_cancel', 'bots_chat', 'bots_respond_approval',
+  'bots_history', 'bots_cancel', 'bots_chat', 'bots_respond_approval', 'bots_toolsets', 'bots_sandbox',
   'bots_telegram', 'bots_telegram_connect', 'bots_telegram_disconnect', 'bots_telegram_pair', 'bots_telegram_unpair',
   'routines_list', 'routines_save', 'routines_delete', 'routines_run_now',
   'voice_models_status', 'voice_model_download', 'voice_model_delete',

@@ -8,26 +8,31 @@
 //! USER.md     what it knows about the person it works for
 //! MEMORY.md   notes it keeps for itself (see [`MemoryEdit`])
 //! state.json  the bot's one permanent chat session
+//! activity.jsonl  what it did, one tool call per line
 //! workspace/  the folder its tools work in
 //! ```
 //!
 //! Colina is the default bot: created on first run and never deleted.
 
+mod activity;
 mod budget;
 mod memory;
 mod prompt;
 mod routines;
 mod telegram;
+mod toolsets;
 
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
+pub use activity::Activity;
 pub use budget::DailySpend;
 pub use memory::MemoryEdit;
 pub use prompt::persona_prompt;
 pub use routines::{NewRoutine, Routine, RoutineRun, Schedule};
 pub use telegram::{ChannelTrust, PairedChat, PairingCode, TelegramState};
+pub use toolsets::{tool_allowlist, Toolset, TOOLSETS};
 
 /// The bot every install starts with.
 pub const DEFAULT_BOT: &str = "colina";
@@ -45,6 +50,12 @@ pub struct Avatar {
     pub image: Option<String>,
     /// A named accent (the Desktop theme maps it to its accent tokens).
     pub tint: String,
+    /// What the drawn face is made from. Drawn at random when a bot is
+    /// created, so renaming never changes the face and it can be re-rolled.
+    /// A bot without one (made before seeds) is drawn from its handle.
+    /// 32 bits: exact as a JSON number in every client.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub seed: Option<u32>,
 }
 
 /// A bot may pin its model; otherwise the client's current model is used.
@@ -52,6 +63,40 @@ pub struct Avatar {
 pub struct ModelPin {
     pub provider: String,
     pub model: String,
+    /// The thinking level for this model (`auto` when absent). It belongs
+    /// to the pinned model, so it never follows the client's model.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub thinking: Option<String>,
+}
+
+/// What a bot's programs may do beyond its workspace: `[sandbox]` in
+/// `bot.toml`. The box itself (and what it always forbids) is
+/// `agente_core::sandbox`; this only opens what the owner chooses to.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct SandboxSettings {
+    /// Outgoing network for its programs. Web search and fetch work without
+    /// it: they run outside the box.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub network: bool,
+    /// Extra folders its programs may read; `~/` is the home folder.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub read: Vec<String>,
+    /// Extra folders its programs may write; `~/` is the home folder.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub write: Vec<String>,
+    /// Largest file a program may write, in MB.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub file_mb: Option<u64>,
+    /// CPU time a program may use, in seconds.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cpu_secs: Option<u64>,
+}
+
+impl SandboxSettings {
+    pub fn is_default(&self) -> bool {
+        self == &Self::default()
+    }
 }
 
 /// What `bot.toml` holds.
@@ -68,6 +113,9 @@ pub struct BotConfig {
     /// Most it may spend in a day, in US dollars.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub daily_budget: Option<f64>,
+    /// What its programs may do beyond its workspace.
+    #[serde(skip_serializing_if = "SandboxSettings::is_default")]
+    pub sandbox: SandboxSettings,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -251,6 +299,9 @@ impl BotStore {
         if config.avatar.initials.is_none() && config.avatar.image.is_none() {
             config.avatar.initials = Some(initials(&config.title));
         }
+        if config.avatar.seed.is_none() {
+            config.avatar.seed = Some(face_seed());
+        }
         let soul = new.soul.unwrap_or_default();
         check_len(Doc::Soul, &soul)?;
         self.write_bot(&handle, &config, Some(&soul))?;
@@ -426,6 +477,11 @@ pub(crate) fn slug(title: &str) -> String {
     out.trim_end_matches('-').to_string()
 }
 
+/// A fresh face seed (the low 32 bits of a random UUID).
+fn face_seed() -> u32 {
+    uuid::Uuid::new_v4().as_u128() as u32
+}
+
 /// Up to two initials: "Code Reviewer" → "CR", "Scout" → "S".
 fn initials(title: &str) -> String {
     title
@@ -444,6 +500,8 @@ fn colina() -> BotConfig {
             initials: Some("C".into()),
             image: None,
             tint: "green".into(),
+            // Colina keeps the face she was first drawn with (from her handle).
+            seed: None,
         },
         ..BotConfig::default()
     }
@@ -512,6 +570,12 @@ mod tests {
             .unwrap();
         assert_eq!(scout.handle, "code-scout");
         assert_eq!(scout.config.avatar.initials.as_deref(), Some("CS"));
+        // A new bot gets its own face seed, kept across reads.
+        let seed = scout.config.avatar.seed.expect("a new bot has a face seed");
+        assert_eq!(
+            store.get("code-scout").unwrap().config.avatar.seed,
+            Some(seed)
+        );
         assert!(matches!(
             store.create(NewBot {
                 handle: Some("code-scout".into()),
@@ -536,6 +600,52 @@ mod tests {
             store.get("code-scout"),
             Err(BotError::NotFound(_))
         ));
+    }
+
+    #[test]
+    fn a_chosen_face_seed_is_kept_and_colina_has_none() {
+        let (_dir, store) = store();
+        let quill = store
+            .create(NewBot {
+                config: BotConfig {
+                    title: "Quill".into(),
+                    avatar: Avatar {
+                        seed: Some(42),
+                        ..Avatar::default()
+                    },
+                    ..BotConfig::default()
+                },
+                ..NewBot::default()
+            })
+            .unwrap();
+        assert_eq!(quill.config.avatar.seed, Some(42));
+        // A re-roll is an update with a new seed.
+        let mut config = quill.config;
+        config.avatar.seed = Some(7);
+        assert_eq!(
+            store.update("quill", config).unwrap().config.avatar.seed,
+            Some(7)
+        );
+        // Colina keeps the face drawn from her handle.
+        assert_eq!(store.get(DEFAULT_BOT).unwrap().config.avatar.seed, None);
+    }
+
+    #[test]
+    fn sandbox_settings_round_trip_and_stay_out_of_a_plain_bot_toml() {
+        let (dir, store) = store();
+        let text = std::fs::read_to_string(dir.path().join("bots/colina/bot.toml")).unwrap();
+        assert!(!text.contains("[sandbox]"));
+        let mut config = store.get(DEFAULT_BOT).unwrap().config;
+        config.sandbox = SandboxSettings {
+            network: true,
+            read: vec!["~/Documents/Reports".into()],
+            ..SandboxSettings::default()
+        };
+        store.update(DEFAULT_BOT, config.clone()).unwrap();
+        assert_eq!(
+            store.get(DEFAULT_BOT).unwrap().config.sandbox,
+            config.sandbox
+        );
     }
 
     #[test]

@@ -14,7 +14,7 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 
 use super::connection::{parse, Failure};
-use crate::bot_tools::{MemoryUpdateTool, MessageBotTool, HANDOFF_CHANNEL};
+use crate::bot_tools::{HandoffQueues, MemoryUpdateTool, MessageBotTool, HANDOFF_CHANNEL};
 use agente_acp::rpc;
 
 /// What the runtime asks about bots: their personas (straight from the bot
@@ -23,6 +23,8 @@ pub struct BotProfiles {
     store: Arc<BotStore>,
     /// Set once the runtime is running: handoffs start turns on it.
     runtime: OnceLock<RuntimeHandle>,
+    /// Handoffs waiting for a busy teammate, per bot.
+    queues: Arc<HandoffQueues>,
 }
 
 impl BotProfiles {
@@ -30,6 +32,7 @@ impl BotProfiles {
         Self {
             store,
             runtime: OnceLock::new(),
+            queues: Arc::default(),
         }
     }
 
@@ -54,6 +57,7 @@ impl ProfileSource for BotProfiles {
         if let (false, Some(runtime)) = (answering_a_bot, self.runtime.get()) {
             tools.push(Box::new(MessageBotTool::new(
                 Arc::clone(&self.store),
+                Arc::clone(&self.queues),
                 runtime.clone(),
                 profile,
                 turn,
@@ -61,46 +65,125 @@ impl ProfileSource for BotProfiles {
         }
         tools
     }
+
+    fn sandbox(&self, profile: &str) -> agente_core::sandbox::SandboxPolicy {
+        match self.store.get(profile) {
+            Ok(bot) => sandbox_policy(&bot.config.sandbox),
+            // Unreadable bot: the closed default.
+            Err(_) => agente_core::sandbox::SandboxPolicy::default(),
+        }
+    }
+
+    fn tool_names(&self, profile: &str) -> Option<Vec<String>> {
+        // A bot that can't be read gets no built-in tools rather than all of them.
+        match self.store.get(profile) {
+            Ok(bot) => agente_bot::tool_allowlist(&bot.config.toolsets),
+            Err(_) => Some(Vec::new()),
+        }
+    }
 }
 
-/// Add the cost of every model call made in a bot's session to its spend
-/// for today, so its daily budget can stop the next turn.
-pub fn spawn_spend_tracker(service: crate::Service) -> tokio::task::JoinHandle<()> {
+/// A bot's `[sandbox]` settings as the box's policy (`~/` is the home folder).
+fn sandbox_policy(settings: &agente_bot::SandboxSettings) -> agente_core::sandbox::SandboxPolicy {
+    let home = std::env::var_os("HOME").map(std::path::PathBuf::from);
+    let path = |text: &String| match (text.strip_prefix("~/"), &home) {
+        (Some(rest), Some(home)) => home.join(rest),
+        _ => std::path::PathBuf::from(text),
+    };
+    let default = agente_core::sandbox::SandboxPolicy::default();
+    agente_core::sandbox::SandboxPolicy {
+        network: settings.network,
+        read: settings.read.iter().map(path).collect(),
+        write: settings.write.iter().map(path).collect(),
+        file_mb: settings.file_mb.unwrap_or(default.file_mb),
+        cpu_secs: settings.cpu_secs.unwrap_or(default.cpu_secs),
+    }
+}
+
+/// Whether a bot's turns run in auto: only when its programs are boxed and
+/// it can't use MCP tools (their servers run outside the box). Otherwise
+/// every change waits for an approval.
+fn runs_boxed_auto(bot: &agente_bot::Bot) -> bool {
+    agente_core::sandbox::available()
+        && agente_bot::tool_allowlist(&bot.config.toolsets)
+            .is_some_and(|tools| !tools.iter().any(|tool| tool == "mcp"))
+}
+
+/// Follow every bot's turns: add the cost of each model call to the bot's
+/// spend for today (so its daily budget can stop the next turn), and write
+/// each tool call it makes to its activity log.
+pub fn spawn_bot_tracker(service: crate::Service) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         let mut events = service.runtime.subscribe();
+        // Which bot a session belongs to (`None`: not a bot's), looked up once.
+        let mut owners: std::collections::HashMap<String, Option<String>> =
+            std::collections::HashMap::new();
+        // Tool calls under way: id → (tool, arguments, started).
+        let mut pending: std::collections::HashMap<String, (String, String, std::time::Instant)> =
+            std::collections::HashMap::new();
         loop {
             let envelope = match events.recv().await {
                 Ok(envelope) => envelope,
                 Err(tokio::sync::broadcast::error::RecvError::Lagged(missed)) => {
                     tracing::warn!(
                         missed,
-                        "spend tracker fell behind; some costs were not counted"
+                        "bot tracker fell behind; some costs and activity were not recorded"
                     );
                     continue;
                 }
                 Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
             };
-            if let RuntimeEvent::CallUsage {
-                cost_usd: Some(cost),
-                ..
-            } = envelope.event
-            {
-                record_spend(&service.bots, &envelope.session_id.to_string(), cost);
+            let session = envelope.session_id.to_string();
+            let handle = owners
+                .entry(session.clone())
+                .or_insert_with(|| owner_of(&service.bots, &session))
+                .clone();
+            let Some(handle) = handle else { continue };
+            match envelope.event {
+                RuntimeEvent::CallUsage {
+                    cost_usd: Some(cost),
+                    ..
+                } => record_spend(&service.bots, &handle, cost),
+                RuntimeEvent::ToolProposed {
+                    id,
+                    name,
+                    arguments,
+                } => {
+                    pending.insert(id, (name, arguments, std::time::Instant::now()));
+                }
+                RuntimeEvent::ToolResult { id, is_error, .. } => {
+                    if let Some((tool, arguments, started)) = pending.remove(&id) {
+                        let ms = started.elapsed().as_millis() as u64;
+                        let entry = agente_bot::Activity::new(
+                            chrono::Utc::now(),
+                            &tool,
+                            &arguments,
+                            !is_error,
+                            ms,
+                        );
+                        if let Err(error) = service.bots.record_activity(&handle, &entry) {
+                            tracing::warn!(%error, bot = handle, "could not record the bot's activity");
+                        }
+                    }
+                }
+                _ => {}
             }
         }
     })
 }
 
-fn record_spend(store: &BotStore, session_id: &str, cost: f64) {
-    let handle = match store.handle_for_session(session_id) {
-        Ok(Some(handle)) => handle,
-        Ok(None) => return,
+fn owner_of(store: &BotStore, session_id: &str) -> Option<String> {
+    match store.handle_for_session(session_id) {
+        Ok(handle) => handle,
         Err(error) => {
             tracing::warn!(%error, "could not look up the bot of a session");
-            return;
+            None
         }
-    };
-    if let Err(error) = store.add_spend(&handle, chrono::Local::now().date_naive(), cost) {
+    }
+}
+
+fn record_spend(store: &BotStore, handle: &str, cost: f64) {
+    if let Err(error) = store.add_spend(handle, chrono::Local::now().date_naive(), cost) {
         tracing::warn!(%error, bot = handle, "could not record the bot's spend");
     }
 }
@@ -248,6 +331,28 @@ pub(crate) fn handle(
             let bot = store.update(&handle, config).map_err(bot_failure)?;
             with_session(store, runtime, &bot)
         }
+        // The toolsets a bot can be given, for the editor's Tools section.
+        "bots.toolsets" => Ok(json!(agente_bot::TOOLSETS)),
+        // What a bot did, newest last (`limit`, default 200).
+        "bots.activity" => {
+            #[derive(Deserialize)]
+            struct ActivityParams {
+                handle: String,
+                #[serde(default = "default_activity_limit")]
+                limit: usize,
+            }
+            fn default_activity_limit() -> usize {
+                200
+            }
+            let ActivityParams { handle, limit } = parse(params)?;
+            let entries = store.activity(&handle, limit).map_err(bot_failure)?;
+            Ok(json!(entries))
+        }
+        // Whether this machine boxes bots' programs, and how.
+        "bots.sandbox" => Ok(json!({
+            "backend": agente_core::sandbox::backend(),
+            "available": agente_core::sandbox::available(),
+        })),
         "bots.delete" => {
             let HandleParams { handle } = parse(params)?;
             store.delete(&handle).map_err(bot_failure)?;
@@ -336,7 +441,7 @@ pub(crate) fn chat_turn(store: &BotStore, params: Value) -> Result<StartTurn, Fa
 }
 
 /// The model a client (or the bot handing work over) is using.
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub(crate) struct ClientModel {
     pub provider: Option<String>,
     pub model: Option<String>,
@@ -354,6 +459,12 @@ pub(crate) fn bot_turn(
 ) -> Result<StartTurn, BotError> {
     let bot = store.get(handle)?;
     store.check_budget(handle, chrono::Local::now().date_naive())?;
+    // Boxed bots work unattended; the rest ask before each change.
+    let mode = if runs_boxed_auto(&bot) {
+        TurnMode::Auto
+    } else {
+        TurnMode::Build
+    };
     let session_id = match store
         .session_id(handle)?
         .and_then(|id| id.parse::<SessionId>().ok())
@@ -366,18 +477,20 @@ pub(crate) fn bot_turn(
         }
     };
     let workspace = store.workspace(handle)?;
-    let (provider, model) = match bot.config.model {
-        Some(pin) => (Some(pin.provider), Some(pin.model)),
-        None => (fallback.provider, fallback.model),
+    // The thinking level goes with the model it was chosen for: the pin's
+    // with the pin, the client's with the client's model.
+    let (provider, model, thinking_level) = match bot.config.model {
+        Some(pin) => (Some(pin.provider), Some(pin.model), pin.thinking),
+        None => (fallback.provider, fallback.model, fallback.thinking_level),
     };
     Ok(StartTurn {
         session_id,
         prompt: Some(Message::user(text)),
         provider,
         model,
-        thinking_level: fallback.thinking_level,
+        thinking_level,
         profile: Some(bot.handle),
-        mode: Some(TurnMode::Build),
+        mode: Some(mode),
         origin,
         project_dir: Some(workspace.to_string_lossy().to_string()),
         ..StartTurn::default()
@@ -407,6 +520,25 @@ mod tests {
     }
 
     #[test]
+    fn a_bots_toolsets_limit_its_built_in_tools() {
+        let dir = std::env::temp_dir().join(format!("agente-bots-tools-{}", std::process::id()));
+        let store = Arc::new(BotStore::open(&dir).unwrap());
+        let profiles = BotProfiles::new(Arc::clone(&store));
+        // No toolsets (every bot made before them): every tool.
+        assert_eq!(profiles.tool_names("colina"), None);
+        let mut config = store.get("colina").unwrap().config;
+        config.toolsets = vec!["web".into()];
+        store.update("colina", config).unwrap();
+        assert_eq!(
+            profiles.tool_names("colina"),
+            Some(vec!["web_search".to_string(), "web_fetch".to_string()])
+        );
+        // Unknown bot: nothing built in, never everything.
+        assert_eq!(profiles.tool_names("nobody"), Some(Vec::new()));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
     fn a_pinned_model_wins_over_the_clients() {
         let dir = std::env::temp_dir().join(format!("agente-bots-pin-{}", std::process::id()));
         let store = BotStore::open(&dir).unwrap();
@@ -414,15 +546,18 @@ mod tests {
         config.model = Some(agente_bot::ModelPin {
             provider: "openrouter".into(),
             model: "pinned".into(),
+            thinking: Some("high".into()),
         });
         store.update("colina", config).unwrap();
         let turn = chat_turn(
             &store,
-            json!({ "handle": "colina", "text": "hi", "model": "client" }),
+            json!({ "handle": "colina", "text": "hi", "model": "client", "thinking_level": "low" }),
         )
         .unwrap();
         assert_eq!(turn.model.as_deref(), Some("pinned"));
         assert_eq!(turn.provider.as_deref(), Some("openrouter"));
+        // The pin's thinking level, never the client's (it was for another model).
+        assert_eq!(turn.thinking_level.as_deref(), Some("high"));
         let _ = std::fs::remove_dir_all(dir);
     }
 
@@ -443,8 +578,10 @@ mod tests {
         let params = json!({ "handle": "colina", "text": "hi" });
         chat_turn(&store, params.clone()).unwrap();
 
+        // The tracker finds a session's bot, then records its spend.
         let session = store.session_id("colina").unwrap().unwrap();
-        record_spend(&store, &session, 0.6);
+        let owner = owner_of(&store, &session).unwrap();
+        record_spend(&store, &owner, 0.6);
         let (_, message) = chat_turn(&store, params).unwrap_err();
         assert!(message.contains("daily budget"), "{message}");
         let _ = std::fs::remove_dir_all(dir);
@@ -466,6 +603,14 @@ mod tests {
         let (code, message) = call("bots.delete", json!({ "handle": "colina" })).unwrap_err();
         assert_eq!(code, rpc::INVALID_PARAMS);
         assert!(message.contains("built in"));
+
+        // Clients list the toolsets from the core, not from a copy of their own.
+        let sets = call("bots.toolsets", Value::Null).unwrap();
+        assert_eq!(sets[0]["id"], "core");
+        assert!(sets[0]["tools"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("read_file")));
         let created = call(
             "bots.create",
             json!({ "title": "Scout", "role": "research" }),

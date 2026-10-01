@@ -26,8 +26,6 @@
     "main/providers/helpers.ts:normalizeRuntimeUsage",
     "main/providers/protocol.ts:isRetryableFailure",
     "main/providers/registry.ts:listProviders",
-    "main/sandbox.ts:getSandboxDir",
-    "main/sandbox.ts:sandboxCodeExec",
     "main/search-providers/shared.ts:DEFAULT_PROVIDER_ORDER",
     "main/search-providers/shared.ts:FREE_PROVIDER_ORDER",
     "main/search-providers/shared.ts:PROVIDER_PRIORITY",

@@ -317,6 +317,23 @@
     "statusLength": "Ausgabelimit erreicht — ein Teil der Ausführung wurde abgeschnitten",
     "retrying": "Verbindungsproblem — neuer Versuch ({n})…",
     "todosTitle": "Aufgaben",
+    "todosAllDone": "Alle Aufgaben erledigt",
+    "thinking": "Denkt nach",
+    "thought": "Gedanke",
+    "live": {
+      "writing": "Schreibt die Antwort",
+      "waiting": "Wartet auf das Modell",
+      "approval": "Wartet auf deine Freigabe",
+      "preparing": "Bereitet {tool} vor",
+      "preparingEdit": "Schreibt Änderungen",
+      "preparingCommand": "Bereitet einen Befehl vor"
+    },
+    "work": {
+      "steps": "{n, plural, one {# Schritt} other {# Schritte}}",
+      "files": "{n, plural, one {# Datei geändert} other {# Dateien geändert}}"
+    },
+    "toolInput": "Eingabe",
+    "toolResult": "Ergebnis",
     "deleteProject": "Projekt löschen",
     "deleteProjectTitle": "„{name}“ löschen?",
     "deleteProjectMessage": "Entfernt das Projekt und seine {conversations} aus Agente. Die Dateien im Ordner bleiben unberührt.",
@@ -395,6 +412,7 @@
       "redo": "Plan überarbeiten",
       "comment": "Kommentar",
       "commentPrefix": "Zum Plan: ",
+      "open": "Plan öffnen",
       "hint": "Build fragt nach Werkzeugfreigaben"
     },
     "runtimeNotes": "Laufzeithinweise · {n}",
@@ -1366,6 +1384,8 @@
     "typesTitle": "Artefakttypen"
   },
   "viewer": {
+    "wrap": "Zeilen umbrechen",
+    "fitShort": "Einpassen",
     "sheet": {
       "loading": "Tabelle wird geöffnet …",
       "failed": "Diese Tabelle konnte nicht geöffnet werden.",
@@ -1582,6 +1602,19 @@
     "editTitle": "{name} bearbeiten",
     "editorHint": "Ein Name und eine Rolle reichen; der Rest kann warten.",
     "color": "Farbe",
+    "shuffleFace": "Anderes Gesicht",
+    "thinking": "Denken",
+    "tools": "Werkzeuge",
+    "toolsHint": "Was dieser Bot nutzen darf. Sein Gedächtnis und seine Teamkollegen sind immer dabei.",
+    "sandboxOn": "Programme laufen in einer Sandbox: nur sein Arbeitsordner, kein Netzwerk, keine deiner Dateien.",
+    "sandboxOff": "Dieser Rechner kann Programme nicht abschotten, daher fragt der Bot vor dem Ausführen.",
+    "toolsets": {
+      "core": "Dateien",
+      "web": "Web",
+      "run": "Programme ausführen",
+      "agents": "Subagenten",
+      "mcp": "MCP-Server"
+    },
     "name": "Name",
     "namePlaceholder": "Scout",
     "nameNeeded": "Gib dem Bot einen Namen.",

@@ -1,10 +1,12 @@
 <svelte:options runes={true} />
 
 <!--
-  The provider and model a bot works with. "Same as the chat" leaves the
-  bot unpinned: it follows whatever model the app is using. Otherwise the
-  bot always uses its own, from any provider set up in Settings, and it can
-  be changed later from the bot's settings.
+  The provider, model and thinking level a bot works with. "Same as the chat"
+  leaves the bot unpinned: it follows the model its asker uses (the app's, a
+  routine's, a teammate's), or the server's default. Otherwise the bot always
+  uses its own, from any provider set up in Settings. Model lists come from
+  the same shared loader as the composer's model menu, and the thinking level
+  from the same selector, fed this model's capabilities.
 -->
 
 <script lang="ts">
@@ -12,19 +14,22 @@
   import { t } from 'svelte-i18n';
   import { LoaderCircle } from 'lucide-svelte';
   import { Select } from '$lib/components/ui';
+  import ReasoningLevelSelector from '$lib/features/chat/composer/ReasoningLevelSelector.svelte';
+  import { fetchReasoningCapabilities } from '$lib/services/chat-api';
   import { appStore } from '$lib/stores/app.svelte';
-  import { invoke, isElectron } from '$lib/services/bridge';
-  import { configuredProviders, defaultBaseUrl } from '$lib/utils/providers';
+  import { providerModels } from '$lib/stores/provider-models.svelte';
+  import type { ReasoningCapabilities, ReasoningLevel } from '$lib/types/chat';
+  import { configuredProviders } from '$lib/utils/providers';
 
-  type Pin = { provider: string; model: string };
+  type Pin = { provider: string; model: string; thinking?: string };
 
   let { value = $bindable() }: { value?: Pin } = $props();
 
   const initial = untrack(() => value);
   let provider = $state(initial?.provider ?? '');
   let model = $state(initial?.model ?? '');
-  let models = $state<string[]>([]);
-  let loading = $state(false);
+  let thinking = $state<ReasoningLevel | null>((initial?.thinking as ReasoningLevel | undefined) ?? null);
+  let capabilities = $state<ReasoningCapabilities>({ supported: false, levels: [], source: 'unknown' });
   let open = $state(false);
   let highlighted = $state(0);
 
@@ -35,40 +40,46 @@
     // A pinned provider that is no longer set up still shows as chosen.
     ...(provider && !providers.some((option) => option.id === provider) ? [{ value: provider, label: provider }] : [])
   ]);
+  const loading = $derived(!!(provider && providerModels.loading[provider]));
   const suggestions = $derived.by(() => {
+    if (!provider) return [];
     const query = model.trim().toLowerCase();
-    return models.filter((id) => !query || id.toLowerCase().includes(query)).slice(0, 8);
+    return providerModels.models(provider).map((option) => option.id)
+      .filter((id) => !query || id.toLowerCase().includes(query)).slice(0, 8);
   });
 
   // The pin the rest of the editor saves: unset while "Same as the chat".
   $effect(() => {
-    value = provider && model.trim() ? { provider, model: model.trim() } : undefined;
+    value = provider && model.trim()
+      ? { provider, model: model.trim(), ...(thinking ? { thinking } : {}) }
+      : undefined;
   });
 
   $effect(() => {
-    if (provider) void load(provider);
+    if (provider) void providerModels.load(provider);
   });
 
-  async function load(id: string) {
-    const saved = appStore.config.llm?.providers?.[id];
-    models = saved?.model ? [String(saved.model)] : [];
-    if (!isElectron()) return;
-    loading = true;
-    try {
-      const baseUrl = saved?.base_url || defaultBaseUrl(id);
-      // An empty key: the main process uses the one stored for the provider.
-      const ids = await invoke<string[]>('fetch_provider_models', { baseUrl, apiKey: '', providerName: id });
-      if (provider === id && Array.isArray(ids) && ids.length) models = [...new Set(ids.map(String))].sort();
-    } catch {
-      // Keep the saved model; the field still accepts any model id.
-    } finally {
-      if (provider === id) loading = false;
+  // What this model can think at; a level it doesn't offer falls back to auto.
+  $effect(() => {
+    const id = provider, name = model.trim();
+    if (!id || !name) {
+      capabilities = { supported: false, levels: [], source: 'unknown' };
+      return;
     }
-  }
+    const timer = setTimeout(async () => {
+      const saved = appStore.config.llm?.providers?.[id];
+      const next = await fetchReasoningCapabilities({ providerName: id, model: name, baseUrl: saved?.base_url });
+      if (id !== provider || name !== model.trim()) return;
+      capabilities = next;
+      if (thinking && next.supported && !next.levels.includes(thinking)) thinking = null;
+    }, 300);
+    return () => clearTimeout(timer);
+  });
 
   function chooseProvider(id: string) {
     provider = id;
     model = id ? String(appStore.config.llm?.providers?.[id]?.model ?? '') : '';
+    thinking = null;
   }
 
   function pick(id: string) {
@@ -122,6 +133,12 @@
         </ul>
       {/if}
     </div>
+    {#if capabilities.supported && capabilities.levels.length}
+      <div class="thinking-row">
+        <span class="text-[12px] text-muted-foreground">{$t('bots.thinking')}</span>
+        <ReasoningLevelSelector {capabilities} value={thinking} onchange={(level) => (thinking = level)} />
+      </div>
+    {/if}
   {/if}
 </div>
 
@@ -152,4 +169,5 @@
     font-size: 13px;
   }
   .model.on { background: var(--surface-hover); }
+  .thinking-row { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
 </style>

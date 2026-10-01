@@ -122,6 +122,14 @@ enum Command {
 }
 
 fn main() -> anyhow::Result<()> {
+    // `agente __sandbox …`: the bot sandbox's helper (agente_core::sandbox).
+    // It locks itself down and execs the command, before anything else here
+    // runs: no runtime, no logging, no config.
+    let args: Vec<String> = std::env::args().collect();
+    if args.get(1).map(String::as_str) == Some(agente_core::sandbox::HELPER_ARG) {
+        agente_core::sandbox::helper_main(&args[2..]);
+    }
+
     // Set up panic hook that logs to file
     let default_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
@@ -372,6 +380,16 @@ fn run_serve(project_dir: &str, config: AppConfig, options: ServeOptions) -> any
                 },
                 socket.display()
             );
+            // Same machine, same binary: what the server's bots get.
+            println!(
+                "bot sandbox: {}",
+                match agente_core::sandbox::backend() {
+                    agente_core::sandbox::Backend::Landlock => "landlock (programs are boxed)",
+                    agente_core::sandbox::Backend::Seatbelt => "seatbelt (programs are boxed)",
+                    agente_core::sandbox::Backend::None =>
+                        "none (bots ask before running programs)",
+                }
+            );
             std::process::exit(if serving { 0 } else { 1 });
         }
         if agente_daemon::is_serving(&socket).await {
@@ -401,7 +419,7 @@ fn run_serve(project_dir: &str, config: AppConfig, options: ServeOptions) -> any
         profiles.attach(runtime.clone());
         let service = agente_daemon::Service { runtime, bots };
         let _routines = agente_daemon::spawn_scheduler(service.clone());
-        let _spend = agente_daemon::spawn_spend_tracker(service.clone());
+        let _tracker = agente_daemon::spawn_bot_tracker(service.clone());
         let _telegram = agente_daemon::spawn_telegram(service.clone());
         // One signal stops every listener.
         let (stop, stopped) = tokio::sync::watch::channel(false);

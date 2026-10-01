@@ -25,6 +25,7 @@
   import { codeStore } from './code.svelte';
   import { codeEdits, initProject, projectFiles, setAgenteModel } from './code-ipc';
   import CodeProjectDialog from './CodeProjectDialog.svelte';
+  import TodoDock from './TodoDock.svelte';
   import { conversationSpend } from './accounting';
   import { fileMentionAt, insertFile, matchFiles } from './file-mention';
   import { downloadSessionMarkdown } from '$lib/features/shared/export-session';
@@ -86,6 +87,13 @@
   });
   /** A paused run waiting on the user: point at the row that needs an answer. */
   const awaitingApproval = $derived(approvalsStore.forChat(chat.id).length > 0);
+  /** The task list on the composer: live while a run works, then while tasks are left. */
+  const todos = $derived.by(() => {
+    if (running) return run?.todos ?? [];
+    const last = [...chat.messages].reverse().find((message) => message.role === 'assistant');
+    const saved = last?.metadata?.codeTodos ?? [];
+    return saved.some((todo) => todo.status !== 'completed') ? saved : [];
+  });
 
   const modes = $derived([
     { id: 'plan' as const, icon: ClipboardList, label: $t('code.modePlan'), hint: $t('code.modePlanHint') },
@@ -508,6 +516,7 @@
         <p class="slash-foot">{$t('code.slash.keys')}</p>
       </div>
     {/if}
+    {#if todos.length}<TodoDock {todos} />{/if}
     <div class="composer-shell ui-composer pointer-events-auto transition">
       <div class="composer-body">
         {#if attachments.length}

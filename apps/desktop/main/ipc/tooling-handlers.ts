@@ -2,7 +2,6 @@ import type { IpcMain } from 'electron';
 
 type ToolingHandlerDeps = {
   ipcMain: IpcMain;
-  sandboxExec: (args: unknown) => unknown;
   panelOpenTab: (url?: string) => unknown;
   panelListTabs: () => unknown;
   panelSetActive: (tabId: string) => unknown;
@@ -29,8 +28,6 @@ type ToolingHandlerDeps = {
 };
 
 export function registerToolingHandlers(deps: ToolingHandlerDeps): void {
-  deps.ipcMain.handle('sandbox_exec', (_e, args) => deps.sandboxExec(args));
-
   deps.ipcMain.handle('browser_open_tab', (_e, { url } = {}) => deps.panelOpenTab(url));
   deps.ipcMain.handle('browser_list_tabs', () => deps.panelListTabs());
   deps.ipcMain.handle('browser_set_active', (_e, { tabId }) => deps.panelSetActive(tabId));

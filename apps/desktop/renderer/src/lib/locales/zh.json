@@ -317,6 +317,23 @@
     "statusLength": "达到输出上限 — 部分运行被截断",
     "retrying": "连接中断 — 正在重试（第 {n} 次）…",
     "todosTitle": "任务",
+    "todosAllDone": "所有任务已完成",
+    "thinking": "思考中",
+    "thought": "思考",
+    "live": {
+      "writing": "正在写回复",
+      "waiting": "正在等待模型",
+      "approval": "正在等待你的批准",
+      "preparing": "正在准备 {tool}",
+      "preparingEdit": "正在写入更改",
+      "preparingCommand": "正在准备命令"
+    },
+    "work": {
+      "steps": "{n} 个步骤",
+      "files": "{n} 个文件已更改"
+    },
+    "toolInput": "输入",
+    "toolResult": "结果",
     "deleteProject": "删除项目",
     "deleteProjectTitle": "删除“{name}”？",
     "deleteProjectMessage": "从 Agente 中移除该项目及其{conversations}。文件夹中的文件不会被改动。",
@@ -395,6 +412,7 @@
       "redo": "修改计划",
       "comment": "评论",
       "commentPrefix": "关于计划：",
+      "open": "打开计划",
       "hint": "Build 会请求工具批准"
     },
     "runtimeNotes": "运行说明 · {n}",
@@ -1366,6 +1384,8 @@
     "typesTitle": "产物类型"
   },
   "viewer": {
+    "wrap": "自动换行",
+    "fitShort": "适合",
     "sheet": {
       "loading": "正在打开电子表格…",
       "failed": "无法打开此电子表格。",
@@ -1582,6 +1602,19 @@
     "editTitle": "编辑 {name}",
     "editorHint": "有名字和角色就够了，其他的以后再说。",
     "color": "颜色",
+    "shuffleFace": "换一张脸",
+    "thinking": "思考",
+    "tools": "工具",
+    "toolsHint": "这个机器人可以使用的内容。它的记忆和队友始终可用。",
+    "sandboxOn": "程序在沙盒中运行：只能访问它的工作区，没有网络，也碰不到你的文件。",
+    "sandboxOff": "这台机器无法隔离程序，因此机器人会在运行前先询问。",
+    "toolsets": {
+      "core": "文件",
+      "web": "网页",
+      "run": "运行程序",
+      "agents": "子代理",
+      "mcp": "MCP 服务器"
+    },
     "name": "名称",
     "namePlaceholder": "Scout",
     "nameNeeded": "请给机器人起个名字。",

@@ -8,13 +8,16 @@
 -->
 
 <script lang="ts">
-  import { ChevronLeft, ChevronRight, NotebookText, Play, X } from 'lucide-svelte';
+  import { X } from 'lucide-svelte';
   import { t } from 'svelte-i18n';
   import ViewerStatus from './ViewerStatus.svelte';
   import { renderPptx, type RenderedDeck } from './pptx-render';
   import DeckSlideView from './DeckSlideView.svelte';
   import Portal from '$lib/ui/components/Portal.svelte';
   import type { DeckSpec } from '$shared/deck';
+
+  import { registerViewerControls, useViewerControls } from './viewer-controls.svelte';
+  const controls = useViewerControls();
 
   interface Props {
     src: string;
@@ -80,6 +83,14 @@
     };
   });
 
+  registerViewerControls(controls, () => ({
+    page: current + 1, pages: slides.length, goToPage: page => go(page - 1),
+    actions: [
+      { label: showNotes ? $t('viewer.slides.hideNotes') : $t('viewer.slides.showNotes'), run: () => { showNotes = !showNotes; }, active: showNotes },
+      { label: $t('viewer.slides.present'), run: () => void present(), disabled: !slides.length }
+    ]
+  }));
+
   // Narrow panels hide the rail; the stage matters more.
   $effect(() => {
     if (!root || typeof ResizeObserver === 'undefined') return;
@@ -95,6 +106,7 @@
   }
 
   function onKeydown(event: KeyboardEvent) {
+    if ((event.target as HTMLElement).closest('input, textarea, button')) return;
     const next = ['ArrowRight', 'ArrowDown', 'PageDown', ' '];
     const previous = ['ArrowLeft', 'ArrowUp', 'PageUp'];
     if (next.includes(event.key)) {
@@ -188,19 +200,6 @@
       </div>
     {/if}
 
-    <div class="deck-bar">
-      <div class="bar-group">
-        <button type="button" class="bar-btn" onclick={() => go(current - 1)} disabled={current === 0} aria-label={$t('viewer.previous')}><ChevronLeft class="size-4" /></button>
-        <span class="counter">{$t('viewer.slides.of', { values: { n: current + 1, total: slides.length } })}</span>
-        <button type="button" class="bar-btn" onclick={() => go(current + 1)} disabled={current >= slides.length - 1} aria-label={$t('viewer.next')}><ChevronRight class="size-4" /></button>
-      </div>
-      <div class="bar-group">
-        <button type="button" class="text-btn" class:on={showNotes} onclick={() => (showNotes = !showNotes)} aria-pressed={showNotes}>
-          <NotebookText class="size-3.5" /> {showNotes ? $t('viewer.slides.hideNotes') : $t('viewer.slides.showNotes')}
-        </button>
-        <button type="button" class="text-btn" onclick={present}><Play class="size-3.5" /> {$t('viewer.slides.present')}</button>
-      </div>
-    </div>
   {/if}
 </div>
 
@@ -234,13 +233,11 @@
   .deck {
     --deck-canvas: color-mix(in srgb, var(--foreground) 7%, var(--background));
     display: flex;
-    height: var(--doc-viewer-height, calc(96vh - 8rem));
-    min-height: 18rem;
+    min-height: 0;
     flex: 1 1 auto;
     flex-direction: column;
     overflow: hidden;
-    border: var(--doc-viewer-border, 1px solid var(--border));
-    border-radius: var(--doc-viewer-radius, 0.75rem);
+
     background: var(--deck-canvas);
     outline: none;
   }
@@ -342,56 +339,6 @@
   }
   .notes-empty {
     color: var(--muted-foreground);
-  }
-
-  .deck-bar {
-    display: flex;
-    height: 2.25rem;
-    flex-shrink: 0;
-    align-items: center;
-    justify-content: space-between;
-    padding: 0 0.5rem;
-    border-top: 1px solid var(--border);
-    background: var(--background);
-    font-size: 12px;
-    color: var(--muted-foreground);
-  }
-  .bar-group {
-    display: flex;
-    align-items: center;
-    gap: 0.25rem;
-  }
-  .counter {
-    min-width: 3.5rem;
-    text-align: center;
-    font-variant-numeric: tabular-nums;
-  }
-  .bar-btn {
-    display: inline-flex;
-    width: 1.75rem;
-    height: 1.75rem;
-    align-items: center;
-    justify-content: center;
-    border-radius: 0.375rem;
-  }
-  .bar-btn:hover:not(:disabled),
-  .text-btn:hover {
-    background: var(--surface-hover);
-    color: var(--foreground);
-  }
-  .bar-btn:disabled {
-    opacity: 0.4;
-  }
-  .text-btn {
-    display: inline-flex;
-    height: 1.75rem;
-    align-items: center;
-    gap: 0.375rem;
-    padding: 0 0.625rem;
-    border-radius: 0.375rem;
-  }
-  .text-btn.on {
-    color: var(--foreground);
   }
 
   .presenter {

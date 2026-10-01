@@ -56,6 +56,5 @@ export function registerAppCapabilityHandlers({
     audio_recording: true,
     rag_indexing: true,
     web_search: true,
-    sandbox_exec: true,
   }));
 }

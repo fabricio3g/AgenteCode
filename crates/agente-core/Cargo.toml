@@ -36,6 +36,11 @@ ignore = { workspace = true }
 http = "1"
 rmcp = { version = "3.4", default-features = false, features = ["client", "transport-child-process", "transport-streamable-http-client-reqwest", "reqwest"] }
 
+[target.'cfg(target_os = "linux")'.dependencies]
+# The bot sandbox (src/sandbox/linux.rs): Landlock rules and the seccomp filter.
+landlock = "0.4.4"
+libc = "0.2"
+
 [dev-dependencies]
 tokio-test = "0.4"
 

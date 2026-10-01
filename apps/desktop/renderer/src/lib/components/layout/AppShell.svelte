@@ -35,6 +35,7 @@
   import ResizeHandle from '$lib/components/ui/ResizeHandle.svelte';
   import RightDock, { type DockPanel } from './RightDock.svelte';
   import ChangesPane from '$lib/features/code/workspace/ChangesPane.svelte';
+  import PlanPanel from '$lib/features/code/PlanPanel.svelte';
   import { codeWorkspace } from '$lib/features/code/workspace.svelte';
   import { appStore } from '$lib/stores/app.svelte';
   import { capabilitiesStore } from '$lib/stores/capabilities.svelte';
@@ -50,15 +51,18 @@
   const inBots = $derived(appStore.activeTab === 'bots');
   const inCodeSpace = $derived(appStore.activeTab === 'code');
 
-  // The right dock: Changes (Code), the open artifact (Home chat) and the
-  // agent browser, stacked when more than one is open.
+  // The right dock: Changes and the presented plan (Code), the open artifact
+  // (Home chat) and the agent browser, stacked when more than one is open.
   const changesTarget = $derived(codeWorkspace.changesTarget);
   const showChanges = $derived(inCodeSpace && codeWorkspace.layout.changesOpen && !!changesTarget);
+  /** The plan belongs to one conversation: another one open hides it. */
+  const openPlan = $derived(inCodeSpace && codeWorkspace.plan?.chatId === appStore.currentChat?.id ? codeWorkspace.plan : null);
   const showArtifact = $derived(!inCodeSpace && !inBots && appStore.homeView === 'chat' && !!appStore.artifactPanel);
   const showRoutines = $derived(inBots && !!botsStore.current && botsStore.routinesOpen);
   const dockPanels = $derived.by(() => {
     const panels: DockPanel[] = [];
     if (showChanges) panels.push({ id: 'changes', content: changesPanel });
+    if (openPlan) panels.push({ id: 'plan', content: planPanel });
     if (showArtifact) panels.push({ id: 'artifact', content: artifactPanel });
     if (showRoutines) panels.push({ id: 'routines', content: routinesPanel });
     if (browserPanelStore.open) panels.push({ id: 'browser', content: browserPanel, accent: browserPanelStore.agentDriving });
@@ -282,6 +286,9 @@
 
 {#snippet changesPanel()}
   {#if changesTarget}<ChangesPane chatId={changesTarget.chatId} projectRoot={changesTarget.projectRoot} sessionId={changesTarget.sessionId} />{/if}
+{/snippet}
+{#snippet planPanel()}
+  {#if openPlan}{#key openPlan.plan.body}<PlanPanel chatId={openPlan.chatId} plan={openPlan.plan} />{/key}{/if}
 {/snippet}
 {#snippet artifactPanel()}<ArtifactPanel />{/snippet}
 {#snippet browserPanel()}<BrowserPanel />{/snippet}

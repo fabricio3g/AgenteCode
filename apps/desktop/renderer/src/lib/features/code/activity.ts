@@ -7,6 +7,10 @@ import { toolKind, type ToolKind } from '$shared/tool-kinds';
 /** Order the counts appear in the summary line. */
 const ORDER: ToolKind[] = ['edit', 'command', 'read', 'list', 'search', 'web', 'subagent', 'other'];
 
+function isStepRunning(step: AgentStep): boolean {
+  return step.status === 'running' || step.status === 'pending';
+}
+
 export function stepKind(step: AgentStep): ToolKind {
   return toolKind(step.toolName);
 }
@@ -23,13 +27,15 @@ function editedFiles(steps: AgentStep[]): number {
 export interface ActivityCount {
   kind: ToolKind;
   count: number;
+  /** A step of this kind is still going. */
+  running: boolean;
 }
 
 /** Per-kind counts for a run of steps, in reading order, and whether any is still going. */
 export function activitySummary(steps: AgentStep[]): { counts: ActivityCount[]; running: boolean } {
   const counts = ORDER.map((kind) => {
     const ofKind = steps.filter((step) => stepKind(step) === kind);
-    return { kind, count: kind === 'edit' ? (ofKind.length ? editedFiles(ofKind) : 0) : ofKind.length };
+    return { kind, count: kind === 'edit' ? (ofKind.length ? editedFiles(ofKind) : 0) : ofKind.length, running: ofKind.some(isStepRunning) };
   }).filter((entry) => entry.count > 0);
-  return { counts, running: steps.some((step) => step.status === 'running' || step.status === 'pending') };
+  return { counts, running: steps.some(isStepRunning) };
 }

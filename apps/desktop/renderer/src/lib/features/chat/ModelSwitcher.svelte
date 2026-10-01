@@ -7,8 +7,9 @@
   import { flyAndScale, motionFade } from '$lib/utils/transitions';
   import { appStore } from '$lib/stores/app.svelte';
   import { modelsStore } from '$lib/stores/models.svelte';
+  import { providerModels } from '$lib/stores/provider-models.svelte';
   import { toastStore } from '$lib/stores/toast.svelte';
-  import { invoke, isElectron } from '$lib/services/bridge';
+  import { isElectron } from '$lib/services/bridge';
   import { Button } from '$lib/components/ui';
   import { modalLayer } from '$lib/components/ui/modal-layer';
   import { t } from 'svelte-i18n';
@@ -35,11 +36,7 @@
   let searchInput = $state<HTMLInputElement | undefined>(undefined);
   let unloading = $state(false);
   let confirmSwitch = $state<ModelOption | null>(null);
-  /** Cloud: models cached per provider id (`undefined` = not loaded yet) */
-  let modelsByProvider = $state<Record<string, ModelOption[] | undefined>>({});
-  let loadingProvider = $state<Record<string, boolean>>({});
   let expandedProviders = $state<Record<string, boolean>>({});
-  let providerErrors = $state<Record<string, string>>({});
   let selectingModel = $state('');
   let changingMode = $state(false);
   let panelEl = $state<HTMLDivElement>();
@@ -70,20 +67,8 @@
       : appStore.models
   );
 
-  function seedModels(id: string): ModelOption[] {
-    const saved = appStore.config.llm?.providers?.[id];
-    if (id === appStore.activeProviderName && appStore.models.length) {
-      return appStore.models.slice();
-    }
-    if (saved?.model) {
-      return [{ id: String(saved.model), name: String(saved.model), source: 'api' as const }];
-    }
-    return [];
-  }
-
   function modelsForProvider(id: string): ModelOption[] {
-    const cached = modelsByProvider[id];
-    const list = cached !== undefined ? cached : seedModels(id);
+    const list = providerModels.models(id);
     const q = modelSearch.trim().toLowerCase();
     const matchesProvider = providerLabel(id).toLowerCase().includes(q);
     const matches = !q || matchesProvider ? list : list.filter((m) => m.name.toLowerCase().includes(q) || m.id.toLowerCase().includes(q));
@@ -93,7 +78,7 @@
     });
   }
 
-  const visibleProviders = $derived(configured.filter((provider) => !modelSearch.trim() || modelsForProvider(provider.id).length || loadingProvider[provider.id] || providerErrors[provider.id]));
+  const visibleProviders = $derived(configured.filter((provider) => !modelSearch.trim() || modelsForProvider(provider.id).length || providerModels.loading[provider.id] || providerModels.errors[provider.id]));
   const resultCount = $derived(appStore.backendMode === 'api' ? visibleProviders.reduce((sum, provider) => sum + modelsForProvider(provider.id).length, 0) : filteredModels.length);
 
   function isProviderExpanded(id: string): boolean {
@@ -104,78 +89,10 @@
     return expandedProviders[id] === true;
   }
 
-  function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
-    return new Promise((resolve, reject) => {
-      const t = setTimeout(() => reject(new Error('timeout')), ms);
-      promise.then(
-        (v) => {
-          clearTimeout(t);
-          resolve(v);
-        },
-        (e) => {
-          clearTimeout(t);
-          reject(e);
-        }
-      );
-    });
-  }
-
-  async function loadModelsForProvider(id: string, force = false) {
-    if (loadingProvider[id]) return;
-    if (!force && modelsByProvider[id] !== undefined) return;
-
-    // Instant seed so UI never sits on an empty/infinite loader
-    const seeded = seedModels(id);
-    if (seeded.length && modelsByProvider[id] === undefined) {
-      modelsByProvider = { ...modelsByProvider, [id]: seeded };
-    }
-
-    const saved = appStore.config.llm?.providers?.[id];
-    const baseUrl = saved?.base_url || defaultBaseUrl(id);
-
-    // A provider with no key cannot list models, and asking anyway makes the
-    // main process log a handler error on every start. The seeded list above
-    // is already what the user sees, so there is nothing to gain by calling.
-    // Keyless local runtimes (llama.cpp, Ollama, LM Studio) still get queried.
-    const hasKey = !!(saved?.has_api_key || saved?.api_key);
-    const isLocal = id === 'local' || /^https?:\/\/(127\.0\.0\.1|localhost|\[::1\])(:|\/|$)/i.test(baseUrl);
-    if (!hasKey && !isLocal) return;
-
-    loadingProvider = { ...loadingProvider, [id]: true };
-    providerErrors = { ...providerErrors, [id]: '' };
-
-    try {
-      // Empty key → main process resolves stored secret by providerName
-      const ids = await withTimeout(
-        invoke<string[]>('fetch_provider_models', {
-          baseUrl,
-          apiKey: '',
-          providerName: id
-        }),
-        12_000
-      );
-      let list: ModelOption[] = [...new Set((Array.isArray(ids) ? ids : []).filter((id) => typeof id === 'string' && id.trim()))].map((mid) => ({
-        id: String(mid),
-        name: String(mid),
-        source: 'api' as const
-      }));
-      if (!list.length) list = seedModels(id);
-      modelsByProvider = { ...modelsByProvider, [id]: list };
-    } catch {
-      providerErrors = { ...providerErrors, [id]: get(t)('modelPicker.refreshFailed') };
-      // Keep seed / previous list — never leave empty-loading state
-      if (modelsByProvider[id] === undefined) {
-        modelsByProvider = { ...modelsByProvider, [id]: seedModels(id) };
-      }
-    } finally {
-      loadingProvider = { ...loadingProvider, [id]: false };
-    }
-  }
-
   function toggleProvider(id: string) {
     const nextOpen = !isProviderExpanded(id);
     expandedProviders = { ...expandedProviders, [id]: nextOpen };
-    if (nextOpen) void loadModelsForProvider(id);
+    if (nextOpen) void providerModels.load(id);
   }
 
   async function selectCloudModel(providerId: string, modelId: string) {
@@ -316,7 +233,7 @@
       if (!active) return;
       // Every opening starts collapsed; the list is fetched ahead for search.
       expandedProviders = {};
-      void loadModelsForProvider(active);
+      void providerModels.load(active);
     });
   }
 
@@ -361,7 +278,7 @@
   $effect(() => {
     if (!appStore.modelMenuOpen || appStore.backendMode !== 'api' || !modelSearch.trim()) return;
     const timer = setTimeout(() => untrack(() => {
-      for (const provider of configured) void loadModelsForProvider(provider.id);
+      for (const provider of configured) void providerModels.load(provider.id);
     }), 180);
     return () => clearTimeout(timer);
   });
@@ -464,12 +381,12 @@
               appStore.refreshModels(true);
               modelsStore.refreshStatus();
               const active = appStore.activeProviderName;
-              if (active) void loadModelsForProvider(active, true);
+              if (active) void providerModels.load(active, true);
             }}
             aria-label={$t('modelPicker.refresh')}
-            disabled={!!loadingProvider[appStore.activeProviderName]}
+            disabled={!!providerModels.loading[appStore.activeProviderName]}
           >
-            <RefreshCw class="h-4 w-4 {loadingProvider[appStore.activeProviderName] ? 'animate-spin' : ''}" />
+            <RefreshCw class="h-4 w-4 {providerModels.loading[appStore.activeProviderName] ? 'animate-spin' : ''}" />
           </button>
         </Tooltip>
         <Tooltip label={$t('modelPicker.manageProviders')} position="bottom">
@@ -567,7 +484,7 @@
             {#each visibleProviders as prov (prov.id)}
               {@const open = isProviderExpanded(prov.id)}
               {@const list = modelsForProvider(prov.id)}
-              {@const loading = !!loadingProvider[prov.id]}
+              {@const loading = !!providerModels.loading[prov.id]}
               <div class="provider-node">
                 <button
                   type="button"
@@ -605,8 +522,8 @@
                   <!-- No indent rail: the provider header above already groups
                        these, so the rail was chrome restating the hierarchy. -->
                   <div class="model-nest">
-                    {#if providerErrors[prov.id]}
-                      <div class="provider-error" role="status"><span>{providerErrors[prov.id]}</span><button type="button" disabled={loading} onclick={() => void loadModelsForProvider(prov.id, true)}>{$t('modelPicker.retry')}</button></div>
+                    {#if providerModels.errors[prov.id]}
+                      <div class="provider-error" role="status"><span>{providerModels.errors[prov.id]}</span><button type="button" disabled={loading} onclick={() => void providerModels.load(prov.id, true)}>{$t('modelPicker.retry')}</button></div>
                     {/if}
                     {#if list.length === 0 && loading}
                       <div class="flex items-center gap-2 px-2 py-1.5 text-[11px] text-muted-foreground">

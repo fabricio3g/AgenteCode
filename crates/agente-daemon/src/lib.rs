@@ -12,7 +12,7 @@ mod routines;
 mod tcp;
 mod telegram;
 
-pub use bots::{spawn_spend_tracker, BotProfiles};
+pub use bots::{spawn_bot_tracker, BotProfiles};
 pub use connection::serve_connection;
 pub use routines::spawn_scheduler;
 pub use tcp::{

@@ -91,6 +91,12 @@ pub struct SubagentHostConfig {
     pub custom_agents: Vec<CustomSubagent>,
     /// User-configured per-type model overrides (`subagent_models` setting).
     pub subagent_models: crate::config::SubagentModels,
+    /// The parent turn's command environment; children inherit it, so a
+    /// bot's subagent never gets the host's keys either.
+    pub shell_env: crate::tools::ShellEnv,
+    /// The parent turn's tool allowlist (a bot's toolsets); children never
+    /// get a tool their parent couldn't use.
+    pub only_tools: Option<Vec<String>>,
 }
 
 /// Spawn orchestration + shared registry, shareable between parent and children.
@@ -922,6 +928,8 @@ impl SubagentHost {
             smart_compaction: false,
             user_inbox: None,
             extra_tools: Vec::new(),
+            only_tools: host.inner.config.only_tools.clone(),
+            shell_env: host.inner.config.shell_env.clone(),
         };
         let thread_name = format!("agente-subagent-{child_id}");
         let error_sender = child_tx;
@@ -1444,6 +1452,8 @@ mod tests {
             SubagentHostConfig {
                 custom_agents: Vec::new(),
                 subagent_models: Default::default(),
+                shell_env: crate::tools::ShellEnv::Inherit,
+                only_tools: None,
                 event_sender,
                 task_id: 1,
                 provider_id: "test".into(),
@@ -1971,6 +1981,8 @@ mod tests {
             SubagentHostConfig {
                 custom_agents: Vec::new(),
                 subagent_models: Default::default(),
+                shell_env: crate::tools::ShellEnv::Inherit,
+                only_tools: None,
                 event_sender,
                 task_id: 1,
                 provider_id: "test".into(),

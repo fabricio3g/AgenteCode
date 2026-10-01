@@ -4,19 +4,21 @@
   The Code space transcript.
 
   The user speaks in a quiet right-aligned bubble; the agent answers
-  full-width, in the order things happened: thinking (collapsible), then text
-  and tool rows interleaved as the run produced them, then one footer with
-  how it ended and how long it took. No avatars; hierarchy comes from
-  alignment and type, not from icon boxes.
+  full-width, strictly in the order things happened: text, and between the
+  words one work block of thoughts and tool calls (see work-blocks.ts). A
+  live reply ends with one status line — what is happening right now — so
+  the newest thing always sits next to the composer; a finished one ends
+  with how it ended and how long it took. The task list lives on the
+  composer, the presented plan in the right dock.
 -->
 
 <script lang="ts">
   import { tick } from 'svelte';
-  import { ArrowDown, CircleCheck, Copy, GitFork, History, RotateCcw, TriangleAlert } from 'lucide-svelte';
+  import { ArrowDown, CircleCheck, ClipboardList, Copy, GitFork, History, RotateCcw, TriangleAlert } from 'lucide-svelte';
   import type { ChatMessage } from '$lib/types/chat';
   import RichContent from '$lib/ui/components/RichContent.svelte';
-  import ReasoningBlock from '$lib/ui/components/ReasoningBlock.svelte';
-  import CodeActivityGroup from './CodeActivityGroup.svelte';
+  import CodeWorkBlock from './CodeWorkBlock.svelte';
+  import CodeLiveStatus from './CodeLiveStatus.svelte';
   import CodeErrorNotice from './CodeErrorNotice.svelte';
   import { withoutCodeErrorText } from './code-error';
   import { t } from 'svelte-i18n';
@@ -24,11 +26,12 @@
   import { formatDuration } from '$lib/utils/format';
   import { codeStore } from './code.svelte';
   import { orderedEntries } from './code-run';
-  import TodoList from './TodoList.svelte';
   import SubagentGroup from './SubagentGroup.svelte';
-  import PlanReviewCard from './PlanReviewCard.svelte';
   import { pendingPlan } from './plan-review';
+  import { codeWorkspace } from './workspace.svelte';
   import { toastStore } from '$lib/stores/toast.svelte';
+  import { approvalsStore } from '$lib/stores/approvals.svelte';
+  import { replyBlocks } from './work-blocks';
   import { openWorkspaceFile } from '$lib/services/files';
 
   let { messages, chatId }: { messages: ChatMessage[]; chatId: string } = $props();
@@ -40,12 +43,19 @@
   const run = $derived(codeStore.runFor(chatId));
   const plan = $derived(pendingPlan(messages));
 
+  // A plan waiting for an answer opens in the right dock, beside the conversation.
+  $effect(() => {
+    if (plan && !run?.running) codeWorkspace.offerPlan(chatId, plan);
+  });
+
   $effect(() => {
     void messages.length;
     void messages[messages.length - 1]?.content;
     void messages[messages.length - 1]?.agentSteps?.length;
     void run?.children.map((child) => `${child.status}${child.text}${child.summary}${child.tools.map((tool) => tool.output).join('')}`).join('');
     void run?.steps.map((step) => step.output).join('');
+    void run?.timeline.length;
+    void run?.preparing;
     if (pinnedToBottom) {
       void tick().then(() => {
         if (viewport) viewport.scrollTop = viewport.scrollHeight;
@@ -63,24 +73,6 @@
       if (action === 'copy') await navigator.clipboard.writeText(message.content);
       else await codeStore.actOnMessage(chatId, message.id, action);
     } catch (error) { toastStore.error(String(error)); }
-  }
-
-  type Entry = ReturnType<typeof orderedEntries>[number];
-  type Block = { key: string; steps?: NonNullable<Entry['step']>[]; text?: string };
-
-  /** Consecutive steps become one block (one summary line), so text and work alternate cleanly. */
-  function groupEntries(entries: Entry[]): Block[] {
-    const blocks: Block[] = [];
-    for (const entry of entries) {
-      const last = blocks[blocks.length - 1];
-      if (entry.step) {
-        if (last?.steps) last.steps.push(entry.step);
-        else blocks.push({ key: entry.key, steps: [entry.step] });
-      } else if (entry.text) {
-        blocks.push({ key: entry.key, text: entry.text });
-      }
-    }
-    return blocks;
   }
 
   function entriesFor(message: ChatMessage) {
@@ -121,7 +113,7 @@
     {#each messages as message (message.id)}
       {#if message.role === 'user'}
         <div class="group flex flex-col items-end gap-1">
-          <div class="max-w-[85%] break-words whitespace-pre-wrap rounded-2xl rounded-br-sm bg-muted px-4 py-2.5 text-sm leading-relaxed text-foreground">
+          <div class="max-w-[85%] break-words whitespace-pre-wrap rounded-3xl bg-muted px-5 py-2.5 text-sm leading-relaxed text-foreground">
             {message.content}
             {#if message.metadata?.codeAttachments?.length}
               <div class="mt-2 flex flex-wrap gap-2 text-xs text-muted-foreground">
@@ -147,21 +139,16 @@
         {@const streaming = message.status === 'streaming'}
         {@const live = run?.assistantMessageId === message.id}
         {@const entries = entriesFor(message)}
-        {@const todos = live ? run?.todos ?? [] : message.metadata?.codeTodos ?? []}
         {@const children = live ? run?.children ?? [] : message.metadata?.codeChildren ?? []}
         {@const diagnostics = live ? run?.diagnostics ?? [] : message.metadata?.codeDiagnostics ?? []}
-        <div class="flex min-w-0 flex-col gap-4">
-          {#if message.reasoning?.trim()}
-            <ReasoningBlock reasoning={message.reasoning} status={message.status} variant="outline" />
-          {/if}
-
-          <!-- Runs of steps sit together as one block; text and cards get room around them. -->
-          {#each groupEntries(entries) as block (block.key)}
-            {#if block.steps}
-              <div class="-mx-2 flex flex-col gap-px">
-                <CodeActivityGroup steps={block.steps} {chatId} />
+        {@const blocks = replyBlocks(entries)}
+        <div class="flex min-w-0 flex-col gap-3">
+          {#each blocks as block, index (block.key)}
+            {#if block.items}
+              <div class="-mx-2 min-w-0">
+                <CodeWorkBlock items={block.items} {chatId} live={streaming && index === blocks.length - 1} />
               </div>
-            {:else if block.text}
+            {:else}
               <div class="text-sm leading-relaxed text-foreground">
                 <RichContent content={block.text} />
               </div>
@@ -173,31 +160,9 @@
             <details class="text-xs text-muted-foreground"><summary class="cursor-pointer">{$t('code.runtimeNotes', { values: { n: diagnostics.length } })}</summary><div class="mt-2 space-y-1">{#each diagnostics as note, index (index)}<p>{note}</p>{/each}</div></details>
           {/if}
 
-          {#if streaming && !entries.length && !message.reasoning}
-            <div class="flex items-center px-1 text-xs text-muted-foreground">
-              <span class="thinking-dots" aria-label={copy.status.working}></span>
-            </div>
-          {/if}
-
-          {#if todos.length}
-            {#if streaming}
-              <TodoList {todos} />
-            {:else}
-              <details class="plan-block">
-                <summary class="cursor-pointer text-[11px] text-muted-foreground">
-                  {copy.codeRun.plan} · {todos.filter((todo) => todo.status === 'completed').length}/{todos.length}
-                </summary>
-                <div class="mt-1.5"><TodoList {todos} /></div>
-              </details>
-            {/if}
-          {/if}
-
-          {#if streaming && run?.retrying}
-            {@const retry = run.retrying}
-            <div class="flex items-center gap-2 self-start rounded-full border border-border bg-muted/50 px-3 py-1 text-xs text-muted-foreground">
-              <span class="retry-dot" aria-hidden="true"></span>
-              {$t('code.retrying', { values: { n: retry.attempt } })}
-            </div>
+          <!-- What is happening now: always the last line, next to the composer. -->
+          {#if streaming && live && run}
+            <div class="-mx-2"><CodeLiveStatus {run} awaitingApproval={approvalsStore.forChat(chatId).length > 0} /></div>
           {/if}
 
           {#if message.status === 'error'}
@@ -240,7 +205,13 @@
         </div>
       {/if}
     {/each}
-    {#if plan && !run?.running}<PlanReviewCard {chatId} {plan} />{/if}
+    {#if plan && !run?.running && codeWorkspace.plan?.chatId !== chatId}
+      <button type="button" class="plan-reopen self-start" onclick={() => codeWorkspace.showPlan(chatId, plan)}>
+        <ClipboardList class="size-3.5" />
+        <span class="truncate">{plan.title}</span>
+        <span class="text-muted-foreground">· {$t('code.plan.open')}</span>
+      </button>
+    {/if}
   </div>
   {#if !pinnedToBottom}
     <!-- Back to the latest output: centred, above the composer, never over text. -->
@@ -261,21 +232,20 @@
     opacity: 0.85;
   }
 
-  .plan-block summary::marker {
-    color: var(--muted-foreground);
+  .plan-reopen {
+    display: inline-flex;
+    max-width: 100%;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.4rem 0.75rem;
+    border-radius: 0.75rem;
+    border: 1px solid var(--border-subtle);
+    font-size: 12.5px;
+    color: var(--foreground);
+    transition: background-color var(--motion-fast) var(--motion-ease);
   }
-
-  /* Retry notice: a single breathing dot — presence without alarm. */
-  .retry-dot {
-    width: 0.4rem;
-    height: 0.4rem;
-    border-radius: 9999px;
-    background: var(--muted-foreground);
-    animation: code-retry-pulse 1s ease-in-out infinite;
-  }
-  @keyframes code-retry-pulse {
-    0%, 100% { opacity: 0.25; }
-    50% { opacity: 1; }
+  .plan-reopen:hover {
+    background: var(--surface-hover);
   }
 
   .jump-latest {
@@ -292,39 +262,4 @@
   }
   .jump-latest:hover { color: var(--foreground); }
 
-  .thinking-dots {
-    position: relative;
-    width: 2rem;
-    height: 1.25rem;
-  }
-  .thinking-dots::before,
-  .thinking-dots::after {
-    content: '';
-    position: absolute;
-    top: 0.4rem;
-    width: 0.3rem;
-    height: 0.3rem;
-    border-radius: 9999px;
-    background: var(--muted-foreground);
-    animation: code-pulse 1.2s ease-in-out infinite;
-  }
-  .thinking-dots::before {
-    left: 0.25rem;
-  }
-  .thinking-dots::after {
-    left: 0.85rem;
-    animation-delay: 0.2s;
-  }
-  @keyframes code-pulse {
-    0%, 100% { opacity: 0.25; }
-    50% { opacity: 1; }
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    .retry-dot,
-    .thinking-dots::before,
-    .thinking-dots::after {
-      animation: none;
-    }
-  }
 </style>

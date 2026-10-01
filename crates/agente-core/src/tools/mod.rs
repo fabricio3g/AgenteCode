@@ -77,6 +77,85 @@ pub struct ToolProgress {
 
 type ToolProgressCallback = Arc<dyn Fn(ToolProgress) + Send + Sync>;
 
+/// How a command a tool starts (`shell`, background processes) runs.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub enum ShellEnv {
+    /// With everything the host process has: the coding agent's usual shell.
+    #[default]
+    Inherit,
+    /// With only a short allowlist (path, locale, time zone, temp dir) and
+    /// the home folder set to the project: no keys or tokens from the host
+    /// (provider keys, `AGENTE_TOKEN`, cloud credentials). Bot turns where
+    /// no sandbox exists.
+    Clean,
+    /// Clean, and inside the sandbox ([`crate::sandbox`]): writes only the
+    /// project, reads nothing of the user's, network only if allowed.
+    Boxed(crate::sandbox::SandboxPolicy),
+}
+
+/// What a clean environment keeps from the host.
+const CLEAN_ENV_VARS: &[&str] = &[
+    "PATH",
+    "LANG",
+    "LC_ALL",
+    "LC_CTYPE",
+    "TZ",
+    "TERM",
+    "TMPDIR",
+    "TEMP",
+    "TMP",
+    "USER",
+    "LOGNAME",
+    "SHELL",
+    "SystemRoot",
+    "SystemDrive",
+    "WINDIR",
+    "ComSpec",
+    "PATHEXT",
+    "NUMBER_OF_PROCESSORS",
+    "PROCESSOR_ARCHITECTURE",
+];
+
+impl ShellEnv {
+    /// The command that runs `command` through the shell (`sh -c`, or
+    /// `cmd /C` on Windows) in `project_dir`, this way. A command that must be
+    /// boxed but can't be is refused, never run unboxed.
+    pub(crate) fn shell(
+        &self,
+        command: &str,
+        project_dir: &str,
+    ) -> Result<processkit::Command, ToolError> {
+        let cmd = match self {
+            ShellEnv::Boxed(policy) => crate::sandbox::command(command, project_dir, policy)
+                .map_err(|reason| {
+                    ToolError::ExecutionError(format!(
+                        "This can't run here: the sandbox isn't available ({reason})."
+                    ))
+                })?,
+            ShellEnv::Inherit | ShellEnv::Clean => plain_shell(command),
+        };
+        Ok(match self {
+            ShellEnv::Inherit => cmd,
+            ShellEnv::Clean | ShellEnv::Boxed(_) => cmd
+                .inherit_env(CLEAN_ENV_VARS)
+                .env("HOME", project_dir)
+                .env("USERPROFILE", project_dir),
+        })
+    }
+}
+
+/// `sh -c <command>`, or on Windows `ComSpec` (falling back to `cmd.exe`,
+/// extension included: a bare `cmd` can be shadowed by an unrelated tool on
+/// PATH, nvm for Windows ships one).
+fn plain_shell(command: &str) -> processkit::Command {
+    if cfg!(target_os = "windows") {
+        processkit::Command::new(std::env::var("ComSpec").unwrap_or_else(|_| "cmd.exe".to_string()))
+            .args(["/D", "/C", command])
+    } else {
+        processkit::Command::new("sh").args(["-c", command])
+    }
+}
+
 /// Runtime context supplied to a tool invocation.
 ///
 /// The default context never cancels and emits no progress, so existing tools
@@ -87,6 +166,7 @@ pub struct ToolExecutionContext {
     pub cancellation: AbortSignal,
     progress: Option<ToolProgressCallback>,
     heartbeat: Option<Arc<dyn Fn() + Send + Sync>>,
+    shell_env: ShellEnv,
 }
 
 impl ToolExecutionContext {
@@ -95,7 +175,18 @@ impl ToolExecutionContext {
             cancellation,
             progress: None,
             heartbeat: None,
+            shell_env: ShellEnv::Inherit,
         }
+    }
+
+    /// How commands started by this call run.
+    pub fn shell_env(&self) -> &ShellEnv {
+        &self.shell_env
+    }
+
+    pub fn with_shell_env(mut self, shell_env: ShellEnv) -> Self {
+        self.shell_env = shell_env;
+        self
     }
 
     pub fn with_progress<F>(mut self, callback: F) -> Self
@@ -858,6 +949,8 @@ pub enum ToolExecutionMode {
 pub struct ToolRegistry {
     tools: HashMap<String, Box<dyn Tool>>,
     project_dir: String,
+    /// Stamped onto every call's context (see [`ShellEnv`]).
+    shell_env: ShellEnv,
 }
 
 impl ToolRegistry {
@@ -876,6 +969,7 @@ impl ToolRegistry {
         let mut registry = Self {
             tools: HashMap::new(),
             project_dir: project_dir.into(),
+            shell_env: ShellEnv::Inherit,
         };
         registry.register_typed::<ShellTool>();
         registry.register_typed::<processes::ProcessListTool>();
@@ -1008,6 +1102,7 @@ impl ToolRegistry {
             .tools
             .get(name)
             .ok_or_else(|| ToolError::NotFound(name.to_string()))?;
+        let context = context.with_shell_env(self.shell_env.clone());
         let result = tool
             .execute_with_context(args, &self.project_dir, context)
             .await?;
@@ -1036,6 +1131,11 @@ impl ToolRegistry {
     /// can never call an out-of-scope tool even if the model hallucinates one.
     pub fn retain_named(&mut self, names: &[&str]) {
         self.tools.retain(|name, _| names.contains(&name.as_str()));
+    }
+
+    /// The environment the commands this turn's tools start get.
+    pub fn set_shell_env(&mut self, shell_env: ShellEnv) {
+        self.shell_env = shell_env;
     }
 }
 

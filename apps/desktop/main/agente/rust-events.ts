@@ -5,8 +5,10 @@
 // names and arguments are mapped to the ones the UI knows, a tool's file
 // changes ride its tool_end, and each finished turn reports what it changed.
 
+import { structuredPatch } from 'diff';
 import type { RuntimeEvent, RuntimeEventEnvelope } from '../../shared/agente-protocol.gen.ts';
 import type { CodeAgentEvent, CodeTodoItem } from '../../shared/agente-protocol.ts';
+import { lineCount } from './text-lines.ts';
 
 /** Rust tool name → the name the Code UI renders (commands, edits, reads…). */
 const UI_TOOL_NAMES: Record<string, string> = {
@@ -36,11 +38,6 @@ function parseArgs(raw: string): unknown {
   }
 }
 
-function lineCount(text: string | null | undefined): number {
-  if (!text) return 0;
-  return text.endsWith('\n') ? text.split('\n').length - 1 : text.split('\n').length;
-}
-
 function lineCounts(text: string): Map<string, number> {
   const counts = new Map<string, number>();
   for (const line of text.split('\n')) counts.set(line, (counts.get(line) ?? 0) + 1);
@@ -68,14 +65,28 @@ function changeKind(before: string | null | undefined, after: string | null | un
   return 'modified';
 }
 
-/** A unified-looking preview for the approval card. */
-export function approvalDiff(path: string | null | undefined, before: string | null | undefined, after: string | null | undefined): string | undefined {
+/** Longest patch a step carries into the transcript (it is saved with the chat). */
+const MAX_PATCH_CHARS = 24_000;
+
+/**
+ * A real unified diff — hunks with three lines of context — for the edit's
+ * card and the approval card. Only what changed travels, never whole files.
+ */
+function unifiedPatch(path: string | null | undefined, before: string | null | undefined, after: string | null | undefined): string | undefined {
   if (before == null && after == null) return undefined;
-  const lines = [`--- ${path ?? ''} (before)`, `+++ ${path ?? ''} (after)`];
-  if (before) lines.push(...before.split('\n').map((line) => `-${line}`));
-  if (after) lines.push(...after.split('\n').map((line) => `+${line}`));
-  return lines.join('\n');
+  const name = path ?? '';
+  const patch = structuredPatch(name, name, before ?? '', after ?? '', '', '', { context: 3 });
+  const lines = [`--- ${name}`, `+++ ${name}`];
+  for (const hunk of patch.hunks) {
+    lines.push(`@@ -${hunk.oldStart},${hunk.oldLines} +${hunk.newStart},${hunk.newLines} @@`);
+    lines.push(...hunk.lines.filter((line) => !line.startsWith('\\')));
+  }
+  const text = lines.join('\n');
+  return text.length > MAX_PATCH_CHARS ? `${text.slice(0, MAX_PATCH_CHARS)}\n…` : text;
 }
+
+/** The approval card's preview: the same unified diff. */
+export const approvalDiff = unifiedPatch;
 
 function todos(value: unknown): CodeTodoItem[] {
   if (!Array.isArray(value)) return [];
@@ -89,7 +100,7 @@ function todos(value: unknown): CodeTodoItem[] {
   });
 }
 
-type FileChange = { path: string; kind: string; additions: number; deletions: number };
+type FileChange = { path: string; kind: string; additions: number; deletions: number; patch?: string };
 
 /**
  * One chat's translator. Stateful per turn: tool output accumulates for
@@ -133,8 +144,9 @@ export class RustTurnTranslator {
     const previous = this.turnFiles.get(event.path);
     this.turnFiles.set(event.path, previous ? { ...change, additions: previous.additions + stats.additions, deletions: previous.deletions + stats.deletions } : change);
     if (this.pendingEnd) {
+      const patch = unifiedPatch(event.path, event.before, event.after);
       this.pendingEnd.fileChanges = [...(this.pendingEnd.fileChanges ?? []), { path: change.path, kind: change.kind }];
-      this.pendingEnd.diffStats = [...(this.pendingEnd.diffStats ?? []), change];
+      this.pendingEnd.diffStats = [...(this.pendingEnd.diffStats ?? []), { ...change, ...(patch ? { patch } : {}) }];
     }
   }
 
@@ -182,6 +194,8 @@ export class RustTurnTranslator {
     },
     assistant_delta: (event) => [{ type: 'text_delta', chatId: this.chatId, delta: event.text }],
     reasoning_delta: (event) => [{ type: 'thinking_delta', chatId: this.chatId, delta: event.text }],
+    // The tool being written ("Preparing edit…") in the names the UI knows.
+    generation_progress: (event) => [this.runtimeEvent({ ...event, tool_name: event.tool_name ? uiToolName(event.tool_name) : event.tool_name })],
     tool_proposed: (event) => {
       this.output.set(event.id, '');
       return [{ type: 'tool_start', chatId: this.chatId, toolCallId: event.id, toolName: uiToolName(event.name), args: parseArgs(event.arguments) }];

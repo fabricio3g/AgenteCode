@@ -276,8 +276,24 @@ function storeImages(images: Array<{ data: string; mimeType: string }> | undefin
   });
 }
 
+/**
+ * The window the runtime itself compacts against (models.info: registry,
+ * live discovery, models.dev) — so the meter and compaction agree. Desktop's
+ * own lookup is only the fallback when the runtime has no answer.
+ */
+async function runtimeContextWindow(chat: ChatState): Promise<number | null> {
+  const transport = resolveTransport(chat.provider, chat.model);
+  if (transport.providerName === 'local') return null;
+  const client = await connect();
+  const info = await client.request<{ limits?: { context?: number } }>('models.info', { provider: transport.providerName, model: transport.model || chat.model });
+  const context = Number(info.limits?.context);
+  return Number.isFinite(context) && context > 0 ? context : null;
+}
+
 function refreshContextWindow(chat: ChatState): void {
-  void resolveContextWindow(resolveTransport(chat.provider, chat.model))
+  void runtimeContextWindow(chat)
+    .catch(() => null)
+    .then((window) => window ?? resolveContextWindow(resolveTransport(chat.provider, chat.model)))
     .then((window) => {
       chat.contextWindow = window;
     })

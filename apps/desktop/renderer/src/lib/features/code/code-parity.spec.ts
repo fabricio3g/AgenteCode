@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ChatMessage } from '$lib/types/chat';
-import { acceptMessage, parsePlan, pendingPlan } from './plan-review';
+import { acceptMessage, isPlanWaiting, parsePlan, pendingPlan } from './plan-review';
 import { fileMentionAt, insertFile, matchFiles } from './file-mention';
 import { activitySummary, stepKind } from './activity';
 import { conversationSpend, spendLabel } from './accounting';
@@ -23,6 +23,14 @@ describe('plan review', () => {
     expect(pendingPlan([presented])?.title).toBe('My Plan');
     expect(pendingPlan([presented, message({ role: 'user', content: 'ok' })])).toBeNull();
     expect(acceptMessage(parsePlan(PLAN)!)).toContain('.agente/plan.md');
+  });
+
+  it('keeps an answered plan readable but no longer waiting', () => {
+    const presented = message({ agentSteps: [{ id: 's', type: 'tool', label: 'Plan', toolName: 'present_plan', status: 'done', output: PLAN }] });
+    const plan = parsePlan(PLAN)!;
+    expect(isPlanWaiting([presented], plan)).toBe(true);
+    expect(isPlanWaiting([presented, message({ role: 'user', content: 'ok' })], plan)).toBe(false);
+    expect(isPlanWaiting([presented], { ...plan, body: 'an older plan' })).toBe(false);
   });
 });
 
@@ -73,10 +81,10 @@ describe('activity summary', () => {
     const summary = activitySummary([step('read_file'), step('find'), step('read_file'), step('edit_file', 'done', 'a.ts'), step('edit_file', 'done', 'a.ts'), step('shell', 'running')]);
     expect(summary.running).toBe(true);
     expect(summary.counts).toEqual([
-      { kind: 'edit', count: 1 },
-      { kind: 'command', count: 1 },
-      { kind: 'read', count: 2 },
-      { kind: 'search', count: 1 }
+      { kind: 'edit', count: 1, running: false },
+      { kind: 'command', count: 1, running: true },
+      { kind: 'read', count: 2, running: false },
+      { kind: 'search', count: 1, running: false }
     ]);
   });
 });

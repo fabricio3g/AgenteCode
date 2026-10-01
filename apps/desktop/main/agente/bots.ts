@@ -109,6 +109,8 @@ async function modelFor(choice: ModelChoice): Promise<{ provider?: string; model
 /** Plain calls: the renderer's arguments go to the runtime method as they are. */
 const PASSTHROUGH: Record<string, string> = {
   bots_get: 'bots.get',
+  bots_toolsets: 'bots.toolsets',
+  bots_sandbox: 'bots.sandbox',
   bots_delete: 'bots.delete',
   bots_write_doc: 'bots.write_doc',
   bots_compact: 'bots.compact',

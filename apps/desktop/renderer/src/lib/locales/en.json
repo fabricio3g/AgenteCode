@@ -317,6 +317,23 @@
     "statusLength": "Hit the output limit — part of the run was cut off",
     "retrying": "Connection hiccup — retrying (attempt {n})…",
     "todosTitle": "Tasks",
+    "todosAllDone": "All tasks done",
+    "thinking": "Thinking",
+    "thought": "Thought",
+    "live": {
+      "writing": "Writing the reply",
+      "waiting": "Waiting for the model",
+      "approval": "Waiting for your approval",
+      "preparing": "Preparing {tool}",
+      "preparingEdit": "Writing changes",
+      "preparingCommand": "Preparing a command"
+    },
+    "work": {
+      "steps": "{n, plural, one {# step} other {# steps}}",
+      "files": "{n, plural, one {# file changed} other {# files changed}}"
+    },
+    "toolInput": "Input",
+    "toolResult": "Result",
     "deleteProject": "Delete project",
     "deleteProjectTitle": "Delete “{name}”?",
     "deleteProjectMessage": "Removes the project and its {conversations} from Agente. The files in its folder are not touched.",
@@ -395,6 +412,7 @@
       "redo": "Revise plan",
       "comment": "Comment",
       "commentPrefix": "About the plan: ",
+      "open": "Open plan",
       "hint": "Build asks for tool approvals"
     },
     "runtimeNotes": "Runtime notes · {n}",
@@ -1366,6 +1384,8 @@
     "typesTitle": "Artifact types"
   },
   "viewer": {
+    "wrap": "Wrap lines",
+    "fitShort": "Fit",
     "sheet": {
       "loading": "Opening spreadsheet…",
       "failed": "This spreadsheet couldn’t be opened.",
@@ -1582,6 +1602,19 @@
     "editTitle": "Edit {name}",
     "editorHint": "A name and a role are enough; the rest can wait.",
     "color": "Color",
+    "shuffleFace": "New face",
+    "thinking": "Thinking",
+    "tools": "Tools",
+    "toolsHint": "What this bot may use. Its memory and its teammates are always there.",
+    "sandboxOn": "Programs run in a sandbox: only its workspace, no network, none of your files.",
+    "sandboxOff": "This machine can't box programs, so the bot asks before running them.",
+    "toolsets": {
+      "core": "Files",
+      "web": "Web",
+      "run": "Run programs",
+      "agents": "Subagents",
+      "mcp": "MCP servers"
+    },
     "name": "Name",
     "namePlaceholder": "Scout",
     "nameNeeded": "Give the bot a name.",

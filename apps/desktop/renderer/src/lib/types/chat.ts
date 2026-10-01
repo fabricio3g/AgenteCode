@@ -3,7 +3,8 @@ import type { AgentActivityKey, CodeChild, CodeRunSummary, CodeSpend, CodeStopRe
 import type { Attachment as CodeAttachment } from '$shared/agente-protocol.gen';
 
 /** One entry of a Code run's transcript, in arrival order. */
-export type CodeTimelineEntry = { kind: 'text'; text: string } | { kind: 'step'; id: string };
+/** A Code run in arrival order: what it said, what it thought, what it did. */
+export type CodeTimelineEntry = { kind: 'text'; text: string } | { kind: 'thinking'; text: string } | { kind: 'step'; id: string };
 
 export interface Attachment {
   id: string;
@@ -328,6 +329,8 @@ export interface CodeAgentDiffStat {
   deletions: number;
   before?: string;
   after?: string;
+  /** Unified diff of the change (hunks with context), when the engine reported one. */
+  patch?: string;
 }
 
 export interface GeneratedWorkProductFile {

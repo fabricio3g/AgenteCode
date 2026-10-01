@@ -24,7 +24,6 @@ export interface DesktopCapabilities {
   audio_recording: boolean;
   rag_indexing: boolean;
   web_search: boolean;
-  sandbox_exec: boolean;
 }
 
 export interface GgufMeta {

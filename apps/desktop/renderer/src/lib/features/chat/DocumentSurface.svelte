@@ -1,16 +1,21 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
-  import { AlertCircle, Download, ExternalLink, FileText, Search, X } from 'lucide-svelte';
+  import { AlertCircle, Download, ExternalLink, FileText, X } from 'lucide-svelte';
   import { motionFade } from '$lib/utils/transitions';
   import Portal from '$lib/ui/components/Portal.svelte';
   import { getFileIcon, getViewerKind, downloadFromDataUrl, downloadFromSrc } from '$lib/utils/doc-utils';
   import type { ViewerKind } from '$lib/utils/doc-utils';
   import DocumentViewer from './DocumentViewer.svelte';
-  import { documentSource, isMarkdownDocument } from './document-viewer';
+  import { documentSource } from './document-viewer';
   import { baseName, fileTypeLabel, type DocumentSurfaceItem } from './document-surface';
   import { t } from 'svelte-i18n';
   import { say } from '$lib/copy';
+
+  import ViewerToolbar from './viewers/ViewerToolbar.svelte';
+  import ViewerTabs from './viewers/ViewerTabs.svelte';
+  import { createViewerControls, provideViewerControls, viewerShortcuts } from './viewers/viewer-controls.svelte';
+  import { modalLayer } from '$lib/components/ui/modal-layer';
 
   interface Props {
     docs?: DocumentSurfaceItem[];
@@ -34,7 +39,8 @@
 
   let open = $state(false);
   let activeId = $state('');
-  let query = $state('');
+  const controls = createViewerControls();
+  provideViewerControls(controls);
 
   const visibleDocs = $derived((docs || []).filter(Boolean));
   const activeDoc = $derived.by(() => {
@@ -70,19 +76,6 @@
   });
   const warnings = $derived(Array.from(new Set(visibleDocs.flatMap((doc) => doc.warnings || []))));
   const status = $derived(visibleDocs.find((doc) => doc.status)?.status || (warnings.length ? 'partial' : 'ready'));
-  const activeText = $derived((activeDoc?.content || '').toLowerCase());
-  const searchTerm = $derived(query.trim());
-  const canSearch = $derived.by(() => {
-    if (!activeDoc) return false;
-    return isMarkdown(activeDoc) || viewerKind(activeDoc) === 'text' || viewerKind(activeDoc) === 'xlsx';
-  });
-  const searchMatchCount = $derived.by(() => {
-    const term = searchTerm.toLowerCase();
-    if (!term || !activeText) return 0;
-    return activeText.split(term).length - 1;
-  });
-  const searchHit = $derived(searchTerm ? (searchMatchCount > 0 || viewerKind(activeDoc) === 'xlsx') : false);
-
   function stop(event: Event) {
     event.stopPropagation();
   }
@@ -107,9 +100,6 @@
     open = false;
   }
 
-  function handleKeydown(event: KeyboardEvent) {
-    if (open && event.key === 'Escape') open = false;
-  }
 
   function handleCapsuleKeydown(event: KeyboardEvent) {
     if (event.key !== 'Enter' && event.key !== ' ') return;
@@ -135,9 +125,6 @@
     return getViewerKind(doc.name, doc.type || '');
   }
 
-  function isMarkdown(doc: DocumentSurfaceItem | null) {
-    return isMarkdownDocument(doc);
-  }
 
   function downloadDoc(doc: DocumentSurfaceItem | null, event?: Event) {
     event?.preventDefault();
@@ -157,7 +144,7 @@
   }
 </script>
 
-<svelte:window onkeydown={handleKeydown} />
+
 
 {#if visibleDocs.length}
   <div class={`document-surface ${className}`}>
@@ -233,9 +220,8 @@
 
     {#if open}
       <Portal className="document-reader-portal">
-        <div class="document-reader-layer" transition:motionFade={{ duration: 120 }}>
+        <div class="document-reader-layer" use:modalLayer={{ onclose: closeReader }} transition:motionFade={{ duration: 120 }}>
           <button class="document-reader-scrim" aria-label={$t('artifacts.reader.close')} onclick={closeReader}></button>
-        </div>
         <!-- svelte-ignore a11y_no_static_element_interactions -->
         <div
           class={`document-workspace ${viewerKind(activeDoc) === 'image' ? 'image-workspace' : ''}`}
@@ -243,37 +229,13 @@
           aria-modal="true"
           aria-label={surfaceTitle}
           tabindex="-1"
+          data-autofocus
           transition:motionFade={{ duration: 120 }}
           onpointerdown={stop}
+          use:viewerShortcuts={controls}
         >
           {#if viewerKind(activeDoc) !== 'image'}
-            <header class="workspace-header">
-              <div class="reader-title-wrap">
-                <div class="reader-title">{surfaceTitle}</div>
-                <div class="reader-subtitle">{subtitle || $t('artifacts.kind.document')}{#if status !== 'ready'} · {$t(`artifacts.status.${status}`)}{/if}</div>
-              </div>
-              <div class="workspace-tools">
-                {#if canSearch}
-                  <label class="workspace-search" title={$t('artifacts.reader.search')}>
-                    <Search class="h-3.5 w-3.5" />
-                    <input bind:value={query} placeholder={$t('artifacts.reader.search')} />
-                    {#if query}
-                      <button type="button" class="search-clear" onclick={() => (query = '')} aria-label={$t('artifacts.clearSearch')} title={$t('artifacts.clearSearch')}>
-                        <X class="h-3 w-3" />
-                      </button>
-                    {/if}
-                  </label>
-                {/if}
-                {#if allowDownload && activeDoc && (docSource(activeDoc) || activeDoc.kind === 'slides')}
-                  <button type="button" class="reader-icon-btn" onclick={(event) => downloadDoc(activeDoc, event)} aria-label={$t('artifacts.card.download')} title={$t('artifacts.card.download')}>
-                    <Download class="h-4 w-4" />
-                  </button>
-                {/if}
-                <button type="button" class="reader-icon-btn" onclick={closeReader} aria-label={$t('artifacts.reader.close')} title={$t('artifacts.reader.close')}>
-                  <X class="h-4 w-4" />
-                </button>
-              </div>
-            </header>
+            <ViewerToolbar title={activeDoc?.title || baseName(activeDoc?.name || '') || surfaceTitle} onclose={closeReader} ondownload={allowDownload ? () => downloadDoc(activeDoc) : undefined} />
           {:else}
             <button type="button" class="image-viewer-close" onclick={closeReader} aria-label={$t('artifacts.reader.close')} title={$t('artifacts.reader.close')}>
               <X class="h-5 w-5" />
@@ -287,46 +249,17 @@
             </div>
           {/if}
 
-          {#if searchTerm && canSearch}
-            <div class="workspace-search-status" class:miss={!searchHit}>
-              {#if viewerKind(activeDoc) === 'xlsx'}
-                {$t('artifacts.reader.filteringRows')}
-              {:else}
-                {$t('artifacts.reader.matches', { values: { n: searchMatchCount } })}
-              {/if}
-            </div>
-          {/if}
-
-          <div class="reader-body" class:single={visibleDocs.length === 1}>
+          <div class="reader-body">
             {#if visibleDocs.length > 1}
-              <nav class="reader-rail" aria-label={$t('artifacts.group.documents')}>
-                {#each visibleDocs as doc (doc.id)}
-                  <button
-                    type="button"
-                    class="reader-file"
-                    class:active={activeDoc?.id === doc.id}
-                    onclick={() => (activeId = doc.id)}
-                  >
-                    <span class="reader-file-icon">
-                      {#each [getFileIcon(doc.name, doc.type || '')] as Icon}
-                        <Icon class="h-3.5 w-3.5" />
-                      {/each}
-                    </span>
-                    <span class="reader-file-copy">
-                      <span class="reader-file-title">{doc.title || baseName(doc.name)}</span>
-                      <span class="reader-file-type">{typeLabel(doc)}</span>
-                    </span>
-                  </button>
-                {/each}
-              </nav>
+              <ViewerTabs items={visibleDocs.map(doc => ({ id: doc.id, title: doc.title || baseName(doc.name) }))} active={activeDoc?.id || ''} onchange={id => { activeId = id; controls.query = ''; controls.searchOpen = false; }} />
             {/if}
-
             <main class="reader-preview">
               {#if activeDoc}
-                <DocumentViewer doc={activeDoc} {query} {onDownloadSlides} />
+                {#key activeDoc.id}<DocumentViewer doc={activeDoc} {onDownloadSlides} />{/key}
               {/if}
             </main>
           </div>
+        </div>
         </div>
       </Portal>
     {/if}
@@ -545,14 +478,12 @@
     transition: background 150ms ease, color 150ms ease;
   }
 
-  .document-action:hover,
-  .reader-icon-btn:hover {
+  .document-action:hover {
     color: var(--text);
     background: var(--artifact-surface-hover);
   }
 
-  .document-action:focus-visible,
-  .reader-icon-btn:focus-visible {
+  .document-action:focus-visible {
     outline: none;
     box-shadow: var(--artifact-focus);
   }
@@ -574,7 +505,8 @@
   .document-workspace {
     position: fixed;
     inset: 1vh 1vw;
-    z-index: 10001;
+    z-index: 1;
+    pointer-events: auto;
     display: flex;
     flex-direction: column;
     overflow: hidden;
@@ -588,177 +520,9 @@
       var(--shadow-xl);
   }
 
-  .workspace-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 1rem;
-    border-bottom: 0;
-    padding: 0.55rem 0.75rem;
-    background: color-mix(in srgb, var(--artifact-surface) 70%, transparent);
-  }
-
-  .reader-title-wrap {
-    min-width: 0;
-  }
-
-  .reader-title {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    color: var(--text);
-    font-size: 0.88rem;
-    font-weight: 650;
-  }
-
-  .reader-subtitle {
-    color: var(--text-muted);
-    font-size: 0.68rem;
-    margin-top: 0.05rem;
-  }
-
-  .workspace-tools {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.25rem;
-  }
-
-  .workspace-search {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.35rem;
-    width: min(14rem, 28vw);
-    height: 2rem;
-    border: 0;
-    border-radius: var(--radius-sm);
-    padding: 0 0.6rem;
-    color: var(--text-secondary);
-    background: var(--artifact-surface-hover);
-  }
-
-  .workspace-search:focus-within {
-    box-shadow: var(--artifact-focus);
-  }
-
-  .workspace-search input {
-    min-width: 0;
-    flex: 1;
-    border: 0;
-    outline: 0;
-    background: transparent;
-    color: var(--text);
-    font-size: 0.75rem;
-  }
-
-  .search-clear {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 1rem;
-    height: 1rem;
-    flex-shrink: 0;
-    border-radius: 999px;
-    color: var(--text-tertiary);
-  }
-
-  .search-clear:hover {
-    background: var(--surface-hover);
-    color: var(--text);
-  }
-
-  .workspace-warning,
-  .workspace-search-status {
-    display: flex;
-    align-items: center;
-    gap: 0.4rem;
-    border-bottom: 0;
-    padding: 0.45rem 1rem;
-    color: var(--text-secondary);
-    font-size: 0.72rem;
-    background: color-mix(in srgb, var(--artifact-surface-hover) 55%, transparent);
-  }
-
-  .workspace-search-status.miss {
-    color: var(--text-tertiary);
-  }
-
-  .reader-body {
-    display: grid;
-    grid-template-columns: minmax(10rem, 13rem) minmax(0, 1fr);
-    min-height: 0;
-    flex: 1;
-  }
-
-  .reader-rail {
-    overflow: auto;
-    border-right: 0;
-    padding: 0.45rem;
-    background: color-mix(in srgb, var(--artifact-surface) 80%, transparent);
-  }
-
-  .reader-file {
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr);
-    width: 100%;
-    align-items: center;
-    gap: 0.5rem;
-    border: 0;
-    border-radius: var(--radius-sm);
-    padding: 0.5rem;
-    text-align: left;
-    color: var(--text-secondary);
-    transition: background 0.14s ease, color 0.14s ease;
-  }
-
-  .reader-file:hover,
-  .reader-file.active {
-    background: var(--artifact-surface-hover);
-    color: var(--text);
-  }
-
-  .reader-file:focus-visible {
-    outline: none;
-    box-shadow: var(--artifact-focus);
-  }
-
-  .reader-file-icon {
-    display: inline-flex;
-    width: 1.35rem;
-    align-items: center;
-    justify-content: center;
-    color: var(--text-tertiary);
-  }
-
-  .reader-file-copy {
-    display: flex;
-    min-width: 0;
-    flex-direction: column;
-  }
-
-  .reader-file-title,
-  .reader-file-type {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .reader-file-title {
-    color: var(--text);
-    font-size: 0.75rem;
-    font-weight: 550;
-  }
-
-  .reader-file-type {
-    color: var(--text-muted);
-    font-size: 0.625rem;
-  }
-
-  .reader-preview {
-    min-width: 0;
-    overflow: auto;
-    background: var(--chat-bg);
-    padding: 0.5rem 0.75rem;
-  }
+  .workspace-warning { display:flex; align-items:center; gap:6px; padding:5px 10px; color:var(--muted-foreground); font-size:11px; }
+  .reader-body { display:flex; flex-direction:column; min-height:0; flex:1; }
+  .reader-preview { display:flex; min-width:0; min-height:0; flex:1; overflow:hidden; margin:0 4px 4px; border-radius:8px; background:var(--muted); }
 
   .image-workspace {
     inset: 3vh 3vw;
@@ -807,9 +571,6 @@
   }
 
 
-  .reader-body.single {
-    grid-template-columns: minmax(0, 1fr);
-  }
 
 
 
@@ -836,20 +597,8 @@
       border-radius: 0;
     }
 
-    .workspace-header {
-      align-items: flex-start;
-      flex-direction: column;
-    }
 
-    .workspace-tools,
-    .workspace-search {
-      width: 100%;
-    }
 
-    .reader-body {
-      grid-template-columns: minmax(0, 1fr);
-      grid-template-rows: auto minmax(0, 1fr);
-    }
 
     .attachment-launcher {
       max-width: 100%;
@@ -857,19 +606,6 @@
       width: 100%;
     }
 
-    .reader-rail {
-      display: flex;
-      gap: 0.35rem;
-      border-right: 0;
-      border-bottom: 0;
-      overflow-x: auto;
-      padding: 0.45rem;
-      background: color-mix(in srgb, var(--artifact-surface) 80%, transparent);
-    }
 
-    .reader-file {
-      width: min(13rem, 72vw);
-      flex-shrink: 0;
-    }
   }
 </style>

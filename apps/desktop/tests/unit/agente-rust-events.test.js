@@ -41,7 +41,7 @@ test('a turn with a command and an edit becomes the Code UI stream', () => {
   assert.deepEqual(commandStart.args, { command: 'npm test' });
   assert.equal(out.filter((e) => e.type === 'tool_update').at(-1).partialResult, 'ok 1/1', 'output accumulates');
   assert.deepEqual(edit.fileChanges, [{ path: 'a.ts', kind: 'modified' }], 'the edit carries its file change');
-  assert.deepEqual(edit.diffStats, [{ path: 'a.ts', kind: 'modified', additions: 2, deletions: 1 }]);
+  assert.deepEqual(edit.diffStats, [{ path: 'a.ts', kind: 'modified', additions: 2, deletions: 1, patch: '--- a.ts\n+++ a.ts\n@@ -1,2 +1,3 @@\n a\n-b\n+c\n+d' }]);
   const usage = out.find((e) => e.type === 'usage');
   assert.equal(usage.promptTokens, 1000);
   assert.equal(usage.contextWindow, 64_000);
@@ -69,7 +69,7 @@ test('approvals, failures and subagent events', () => {
   }]);
   assert.equal(approval.type, 'approval_request');
   assert.equal(approval.toolName, 'write');
-  assert.equal(approval.diff, '--- x.txt (before)\n+++ x.txt (after)\n+hi');
+  assert.equal(approval.diff, '--- x.txt\n+++ x.txt\n@@ -1,0 +1,1 @@\n+hi');
 
   // A subagent's own events never become this chat's steps.
   const child = translator.translate(envelope({ type: 'assistant_delta', text: 'child' }, { parent_run_id: 'run-1' }));
@@ -89,4 +89,10 @@ test('helpers', () => {
   assert.deepEqual(diffStats(null, 'a\nb\n'), { additions: 2, deletions: 0 });
   assert.deepEqual(diffStats('a\n', null), { additions: 0, deletions: 1 });
   assert.equal(approvalDiff('p', null, null), undefined);
+  // Only the changed lines and their context travel, not the whole file.
+  const long = Array.from({ length: 50 }, (_, i) => `line ${i}`).join('\n');
+  const patch = approvalDiff('big.ts', long, long.replace('line 25', 'LINE 25'));
+  assert.equal(patch.split('\n').filter((line) => line.startsWith(' ')).length, 6);
+  assert.match(patch, /^-line 25$/m);
+  assert.match(patch, /^\+LINE 25$/m);
 });

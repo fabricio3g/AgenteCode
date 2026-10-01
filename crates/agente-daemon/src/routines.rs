@@ -70,7 +70,7 @@ fn routine_turn(store: &BotStore, handle: &str, routine: &Routine) -> Result<Sta
     let fallback = ClientModel {
         provider: routine.model.as_ref().map(|pin| pin.provider.clone()),
         model: routine.model.as_ref().map(|pin| pin.model.clone()),
-        thinking_level: None,
+        thinking_level: routine.model.as_ref().and_then(|pin| pin.thinking.clone()),
     };
     let origin = Origin {
         channel: ROUTINE_CHANNEL.into(),
@@ -220,6 +220,7 @@ mod tests {
                     model: Some(agente_bot::ModelPin {
                         provider: "openrouter".into(),
                         model: "m".into(),
+                        thinking: None,
                     }),
                 },
             )

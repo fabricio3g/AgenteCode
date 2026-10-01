@@ -75,6 +75,35 @@ Only paired people can talk to the bot, in private chats. A code works
 once, for 10 minutes. Each bot answers on its own model and within its
 daily budget.
 
+## Bot sandbox
+
+A bot's programs (its shell commands and background processes) run in a box:
+- **Files:** they write only the bot's `workspace/` and read only the system's programs and libraries, never your home folder, `~/.agente` or another bot.
+- **Environment:** none of the server's keys or tokens.
+- **Network:** none, unless you allow it for that bot.
+- **Limits:** caps on file size and CPU time.
+
+A boxed bot works unattended (routines, handoffs, Telegram). A bot without a box asks before each change.
+
+On Linux the box is Landlock plus seccomp, applied by the `agente` binary itself; it needs kernel 5.13+ with Landlock enabled. Check what a server has (Desktop's bot editor also says so under Tools):
+
+```bash
+agente serve --status   # … bot sandbox: landlock (programs are boxed)
+```
+
+In Docker, the container's seccomp profile has to allow the `landlock_*` system calls. Current Docker releases do; if yours doesn't, `available` is `false` and bots fall back to asking. For a stronger wall around the whole server, run the container under gVisor (`--runtime=runsc`).
+
+A bot's `bot.toml` can open its box a little:
+
+```toml
+[sandbox]
+network = true                       # outgoing network for its programs
+read = ["~/Documents/Reports"]       # extra folders it may read
+write = ["~/Documents/Drafts"]       # extra folders it may write
+file_mb = 1024                       # largest file it may write
+cpu_secs = 600                       # CPU time per program
+```
+
 ## Reaching it safely
 
 The connection is **not encrypted**. The examples publish the port on

@@ -43,7 +43,6 @@ import {
 } from './filesystem.ts';
 import { downloadRuntime } from './runtime-download.ts';
 
-import { sandboxExec } from './sandbox.ts';
 import {
   panelOpenTab, panelListTabs, panelSetActive, panelCloseTab, panelCloseAll,
   panelSetVisible, panelSetOccluded, panelSetBounds, panelSetViewport,
@@ -347,7 +346,6 @@ export function registerIpcHandlers() {
   registerCodeWorkspaceHandlers(ipcMain);
   registerToolingHandlers({
     ipcMain,
-    sandboxExec,
     panelOpenTab,
     panelListTabs,
     panelSetActive,

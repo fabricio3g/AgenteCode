@@ -17,6 +17,7 @@ import { normPath } from '$lib/services/agent-workspace';
 import { buildMarkdownReport } from '$lib/services/agent-content';
 import { sanitizeAgentVisibleText, stripToolCallArtifacts } from '$lib/services/agent-parsing';
 import { hasVisibleArtifact } from '$lib/services/agent-flow';
+import { asksUserForDetails } from '$lib/services/agent-clarify';
 import {
   compactText, sourceRows, evidenceSources, buildEvidenceText,
   requestedArtifactKinds, missingRequestedArtifactExtensions, fallbackTitle,
@@ -409,12 +410,15 @@ export async function enforceRequestedArtifacts(
   });
   const before = missing();
   if (!before.files && !before.visuals.length) return true;
+  // "Create me a pdf" with nothing to put in it: the model's question is the answer.
+  if (asksUserForDetails(params.draft, run.observations)) return true;
 
   const observations: ToolObservation[] = [...run.observations, {
     name: 'assistant_draft',
     args: {},
     success: true,
-    summary: `Assistant draft before artifact enforcement: ${compactText(params.draft, 1400)}`
+    // The draft is content for the file; an internal label here ended up printed in it.
+    summary: compactText(sanitizeAgentVisibleText(params.draft), 1400)
   }];
   const created = await ensureRequestedArtifactsFromEvidence(run, params.reason, observations);
   const after = missing();

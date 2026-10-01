@@ -363,8 +363,10 @@ async fn run_shell(
         return Err(ToolError::ExecutionError("Command cancelled".into()));
     }
     if args.background == Some(true) {
-        return super::processes::start_and_report(&command, project_dir).await;
+        return super::processes::start_and_report(&command, project_dir, context.shell_env())
+            .await;
     }
+    let cmd = context.shell_env().shell(&command, project_dir)?;
 
     let (sender, mut receiver) = mpsc::channel::<OutputChunk>(64);
     // Raw byte tees feed duplex pipes; the duplex read ends are drained by the
@@ -402,17 +404,6 @@ async fn run_shell(
         })
     };
 
-    // `ComSpec` (falling back to `cmd.exe`, extension included) — a bare
-    // `cmd` can be shadowed by an unrelated tool on PATH (nvm for Windows
-    // ships one), which CreateProcess-style `.exe` resolution hid before.
-    #[cfg(target_os = "windows")]
-    let cmd = processkit::Command::new(
-        std::env::var("ComSpec").unwrap_or_else(|_| "cmd.exe".to_string()),
-    )
-    .args(["/D", "/C", command.as_str()]);
-
-    #[cfg(not(target_os = "windows"))]
-    let cmd = processkit::Command::new("sh").args(["-c", command.as_str()]);
     let launched = cmd
         .current_dir(project_dir)
         .stdin(processkit::Stdin::empty())
@@ -627,6 +618,43 @@ mod tests {
             .all(|event| event.content.len() <= PROGRESS_BATCH_BYTES));
         let reconstructed: String = events.iter().map(|event| event.content.as_str()).collect();
         assert_eq!(reconstructed, content);
+    }
+
+    /// A bot's shell (`ShellEnv::Clean`) gets none of the host's secrets:
+    /// a variable only this test sets stands in for a provider key.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_clean_shell_gets_none_of_the_hosts_secrets() {
+        let name = format!("AGENTE_TEST_SECRET_{}", std::process::id());
+        std::env::set_var(&name, "leaked");
+        let dir = std::env::temp_dir();
+        let dir = dir.to_str().unwrap();
+        let tool = TypedTool::new(ShellTool);
+        let context =
+            |env| ToolExecutionContext::new(AbortController::new().signal()).with_shell_env(env);
+
+        let inherited = tool
+            .execute_with_context(
+                json!({"command": "env"}),
+                dir,
+                context(crate::tools::ShellEnv::Inherit),
+            )
+            .await
+            .unwrap();
+        assert!(inherited.contains(&name), "{inherited}");
+
+        let clean = tool
+            .execute_with_context(
+                json!({"command": "env"}),
+                dir,
+                context(crate::tools::ShellEnv::Clean),
+            )
+            .await
+            .unwrap();
+        std::env::remove_var(&name);
+        assert!(!clean.contains(&name), "{clean}");
+        assert!(clean.contains(&format!("HOME={dir}")), "{clean}");
+        assert!(clean.contains("PATH="), "{clean}");
     }
 
     #[tokio::test]

@@ -30,6 +30,11 @@ export function pendingPlan(messages: ChatMessage[]): PresentedPlan | null {
   return parsePlan(step?.output);
 }
 
+/** Whether this plan is the one still waiting for an answer. */
+export function isPlanWaiting(messages: ChatMessage[], plan: PresentedPlan): boolean {
+  return pendingPlan(messages)?.body === plan.body;
+}
+
 export function acceptMessage(plan: PresentedPlan): string {
   return `User accepted the plan (${plan.path || 'the plan'}). Implement it now. Follow the plan; only ask if blocked.`;
 }

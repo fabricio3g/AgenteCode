@@ -322,6 +322,9 @@ async fn attach(options: AttachOptions) -> anyhow::Result<()> {
         Target::Bot { handle, title, .. } => eprintln!("Attached to {title} (@{handle})."),
     }
     eprintln!("Type a message and press Enter. /stop cancels the running turn, /quit leaves.");
+    if matches!(target, Target::Bot { .. }) {
+        eprintln!("/activity shows what the bot did lately.");
+    }
 
     let mut stdin = BufReader::new(tokio::io::stdin()).lines();
     let mut running: Option<String> = None;
@@ -346,6 +349,15 @@ async fn attach(options: AttachOptions) -> anyhow::Result<()> {
                 }
                 match text {
                     "/quit" | "/exit" => break,
+                    "/activity" => match &target {
+                        Target::Bot { handle, .. } => {
+                            let entries = client
+                                .call("bots.activity", json!({ "handle": handle, "limit": 20 }))
+                                .await?;
+                            print_activity(&entries);
+                        }
+                        Target::Session { .. } => eprintln!("/activity is for bots (@handle)."),
+                    },
                     "/stop" => {
                         if let Some(turn_id) = &running {
                             client.call("turn.cancel", json!({ "turn_id": turn_id })).await?;
@@ -392,6 +404,37 @@ async fn attach(options: AttachOptions) -> anyhow::Result<()> {
         }
     }
     Ok(())
+}
+
+/// A bot's recent tool calls, one line each: time, ✓/✗, tool, what, how long.
+fn print_activity(entries: &Value) {
+    let entries = entries.as_array().map(Vec::as_slice).unwrap_or_default();
+    if entries.is_empty() {
+        eprintln!("No activity yet.");
+        return;
+    }
+    for entry in entries {
+        let at = entry["at"]
+            .as_str()
+            .and_then(|at| chrono::DateTime::parse_from_rfc3339(at).ok())
+            .map(|at| {
+                at.with_timezone(&chrono::Local)
+                    .format("%H:%M:%S")
+                    .to_string()
+            })
+            .unwrap_or_default();
+        let mark = if entry["ok"].as_bool().unwrap_or(false) {
+            "✓"
+        } else {
+            "✗"
+        };
+        eprintln!(
+            "{at} {mark} {:<12} {}  {}ms",
+            entry["tool"].as_str().unwrap_or("?"),
+            entry["detail"].as_str().unwrap_or(""),
+            entry["ms"].as_u64().unwrap_or(0)
+        );
+    }
 }
 
 /// Start a turn with `text` in the target's session.

@@ -9,15 +9,29 @@
   The levels, their order (low → high), the provider default Auto resolves to
   and each budget all come from the shared Rust core — the same profile Agente
   Code's TUI shows. What a level means lives on its stop's tooltip.
+
+  Without props it drives the app's model. Given `capabilities`, `value` and
+  `onchange` it picks a level for any other model (a bot's pinned one).
 -->
 
 <script lang="ts">
   import { t } from 'svelte-i18n';
   import ComposerCard from '$lib/features/shared/composer/ComposerCard.svelte';
   import { appStore } from '$lib/stores/app.svelte';
-  import type { ReasoningLevel } from '$lib/types/chat';
+  import type { ReasoningCapabilities, ReasoningLevel } from '$lib/types/chat';
   import { normalizeThinkingMode } from '$lib/stores/app-store-local-model';
   import { effortBars, formatBudget } from './reasoning-effort';
+
+  let {
+    capabilities: given,
+    value,
+    onchange
+  }: {
+    capabilities?: ReasoningCapabilities;
+    value?: ReasoningLevel | null;
+    onchange?: (level: ReasoningLevel | null) => void;
+  } = $props();
+  const controlled = $derived(!!given);
 
   let open = $state(false);
   let anchor = $state<HTMLButtonElement>();
@@ -28,17 +42,18 @@
   let sheenKey = $state(0);
   let changed = $state(false);
   const id = $props.id();
-  const capabilities = $derived(appStore.reasoningCapabilities);
+  const capabilities = $derived(given ?? appStore.reasoningCapabilities);
   const known = $derived(capabilities.source !== 'unknown');
   // Auto plus at least one level is a choice.
   const visible = $derived(known && capabilities.supported && capabilities.levels.length > 0);
   // A model that always thinks and offers nothing to pick: say so, quietly.
   const alwaysThinking = $derived(known && !visible && capabilities.mandatory === true);
-  const modelDefault = $derived<ReasoningLevel | 'auto'>(appStore.backendMode === 'local'
+  const modelDefault = $derived<ReasoningLevel | 'auto'>(!controlled && appStore.backendMode === 'local'
     ? normalizeThinkingMode(appStore.config.llm?.local?.thinking_mode, appStore.config.llm?.local?.disable_thinking)
     : capabilities.default ?? 'auto');
   const levels = $derived<Array<ReasoningLevel | null>>([null, ...capabilities.levels]);
-  const current = $derived(levels.includes(appStore.reasoningLevel) ? appStore.reasoningLevel : null);
+  const chosen = $derived(controlled ? (value ?? null) : appStore.reasoningLevel);
+  const current = $derived(levels.includes(chosen) ? chosen : null);
   const index = $derived(levels.indexOf(current));
   // 0 at the first level, 1 at the last.
   const position = $derived(levels.length > 1 ? index / (levels.length - 1) : 0);
@@ -49,7 +64,8 @@
     // Same level, no call and no sheen: the bar should react to a change, not to
     // a pointer passing over the level already chosen.
     if (next === current) return;
-    appStore.setReasoningLevel(next);
+    if (controlled) onchange?.(next);
+    else appStore.setReasoningLevel(next);
     changed = true;
     sheenKey += 1;
   }

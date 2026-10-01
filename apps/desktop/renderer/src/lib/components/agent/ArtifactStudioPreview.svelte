@@ -9,6 +9,10 @@
   import { resolveArtifactPresentation } from '$lib/services/artifact-model';
   import { buildPreviewHtml } from '$lib/utils/preview-builder';
 
+  import ViewerTabs from '$lib/features/chat/viewers/ViewerTabs.svelte';
+  import { useViewerControls } from '$lib/features/chat/viewers/viewer-controls.svelte';
+  const controls = useViewerControls();
+
   interface Props { artifact: AgentArtifact; refreshKey?: number }
   let { artifact, refreshKey = 0 }: Props = $props();
   const resolved = $derived(resolveArtifactPresentation(artifact));
@@ -16,6 +20,7 @@
   // Documents open in their native viewer, same as the chat reader.
   const documents = $derived(resolved.manifest.presentation === 'document' ? artifactDocumentItems(resolved) : []);
   let activeDocId = $state('');
+  $effect(() => { if (controls) controls.title = activeDoc?.title || activeDoc?.name || ''; return () => { if (controls) controls.title = ''; }; });
   const activeDoc = $derived(documents.find((doc) => doc.id === activeDocId) ?? documents.find((doc) => doc.id === entryPath) ?? documents[0]);
   const previewBuild = $derived(resolved.preview
     ? buildPreviewHtml(resolved.preview.html, resolved.artifact.files, resolved.preview.basePath, true)
@@ -27,14 +32,8 @@
   {#if resolved.manifest.presentation === 'inline' && resolved.artifact.inline}
     <div class="min-h-0 flex-1 overflow-auto p-4 sm:p-6"><ArtifactRenderer artifact={resolved.artifact} /></div>
   {:else if activeDoc}
-    {#if documents.length > 1}
-      <div class="flex shrink-0 gap-1 overflow-x-auto border-b border-[var(--border-subtle)] px-3 py-2" role="tablist" aria-label={$t('artifacts.studio.files')}>
-        {#each documents as doc (doc.id)}
-          <button type="button" role="tab" aria-selected={doc.id === activeDoc.id} class="doc-tab" class:is-on={doc.id === activeDoc.id} onclick={() => (activeDocId = doc.id)}>{doc.title}</button>
-        {/each}
-      </div>
-    {/if}
-    <div class="studio-doc min-h-0 flex-1 overflow-auto">
+    <ViewerTabs items={documents.map(doc => ({ id: doc.id, title: doc.title || doc.name }))} active={activeDoc.id} onchange={id => { activeDocId = id; if (controls) { controls.query = ''; controls.searchOpen = false; } }} />
+    <div class="studio-doc min-h-0 flex-1 overflow-hidden">
       {#key activeDoc.id}<DocumentViewer doc={activeDoc} />{/key}
     </div>
   {:else if previewBuild.html}
@@ -55,29 +54,5 @@
 </div>
 
 <style>
-  .doc-tab {
-    flex-shrink: 0;
-    height: 1.75rem;
-    padding: 0 0.75rem;
-    border-radius: 9999px;
-    font-size: 12px;
-    color: var(--muted-foreground);
-    transition: background-color var(--motion-fast) var(--motion-ease), color var(--motion-fast) var(--motion-ease);
-  }
-  .doc-tab:hover {
-    color: var(--foreground);
-    background: var(--surface-hover);
-  }
-  .doc-tab.is-on {
-    color: var(--foreground);
-    background: var(--surface-active);
-  }
-  /* Documents fill the studio edge to edge, the way their own apps do. */
-  .studio-doc {
-    --doc-viewer-height: auto;
-    --doc-viewer-border: 0;
-    --doc-viewer-radius: 0;
-    display: flex;
-    flex-direction: column;
-  }
+  .studio-doc { display:flex; min-width:0; flex-direction:column; margin:0 4px 4px; border-radius:8px; overflow:hidden; }
 </style>

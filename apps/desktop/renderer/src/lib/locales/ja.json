@@ -317,6 +317,23 @@
     "statusLength": "出力上限に達しました — 実行の一部が切断されました",
     "retrying": "接続エラー — 再試行中（{n} 回目）…",
     "todosTitle": "タスク",
+    "todosAllDone": "すべてのタスクが完了",
+    "thinking": "考え中",
+    "thought": "思考",
+    "live": {
+      "writing": "返信を書いています",
+      "waiting": "モデルを待っています",
+      "approval": "承認を待っています",
+      "preparing": "{tool} を準備中",
+      "preparingEdit": "変更を書いています",
+      "preparingCommand": "コマンドを準備中"
+    },
+    "work": {
+      "steps": "{n} ステップ",
+      "files": "{n} ファイルを変更"
+    },
+    "toolInput": "入力",
+    "toolResult": "結果",
     "deleteProject": "プロジェクトを削除",
     "deleteProjectTitle": "「{name}」を削除しますか？",
     "deleteProjectMessage": "プロジェクトとその{conversations}を Agente から削除します。フォルダー内のファイルには触れません。",
@@ -395,6 +412,7 @@
       "redo": "プランを修正",
       "comment": "コメント",
       "commentPrefix": "プランについて: ",
+      "open": "プランを開く",
       "hint": "Build はツールの承認を求めます"
     },
     "runtimeNotes": "実行時のメモ · {n}",
@@ -1366,6 +1384,8 @@
     "typesTitle": "アーティファクトの種類"
   },
   "viewer": {
+    "wrap": "行を折り返す",
+    "fitShort": "幅に合わせる",
     "sheet": {
       "loading": "スプレッドシートを開いています…",
       "failed": "このスプレッドシートを開けませんでした。",
@@ -1582,6 +1602,19 @@
     "editTitle": "{name}を編集",
     "editorHint": "名前と役割があれば十分です。ほかは後からでも。",
     "color": "色",
+    "shuffleFace": "別の顔にする",
+    "thinking": "思考",
+    "tools": "ツール",
+    "toolsHint": "このボットが使えるもの。メモリとチームメイトは常に使えます。",
+    "sandboxOn": "プログラムはサンドボックスで動きます。作業フォルダーのみ、ネットワークなし、あなたのファイルには触れません。",
+    "sandboxOff": "このマシンではプログラムを隔離できないため、ボットは実行前に確認します。",
+    "toolsets": {
+      "core": "ファイル",
+      "web": "Web",
+      "run": "プログラムの実行",
+      "agents": "サブエージェント",
+      "mcp": "MCP サーバー"
+    },
     "name": "名前",
     "namePlaceholder": "Scout",
     "nameNeeded": "ボットに名前を付けてください。",

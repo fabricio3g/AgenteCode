@@ -557,14 +557,6 @@
         "count": 2
       }
     },
-    "main/sandbox.ts": {
-      "crap_critical": {
-        "count": 1
-      },
-      "crap_moderate": {
-        "count": 3
-      }
-    },
     "main/search-engine.ts": {
       "complexity_critical": {
         "count": 4
@@ -2293,7 +2285,6 @@
     "renderer/src/lib/features/chat/composer/mic-probe.ts:high impact",
     "renderer/src/lib/features/code/code-run.ts:high impact",
     "renderer/src/lib/utils/storage.ts:high impact",
-    "main/sandbox.ts:dead code",
     "main/document-markdown.ts:untested risk",
     "main/stt-engine.ts:untested risk",
     "renderer/src/lib/services/character-card.ts:high impact",

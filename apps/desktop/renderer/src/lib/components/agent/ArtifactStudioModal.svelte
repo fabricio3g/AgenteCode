@@ -7,6 +7,8 @@
   import { appStore } from '$lib/stores/app.svelte';
   import { confirmStore } from '$lib/stores/confirm.svelte';
   import Dialog from '$lib/components/ui/Dialog.svelte';
+  import { X } from 'lucide-svelte';
+  import { resolveArtifactPresentation } from '$lib/services/artifact-model';
   import ArtifactStudio from './ArtifactStudio.svelte';
 
   const artifact = appStore.currentArtifact!;
@@ -38,12 +40,10 @@
   });
 </script>
 
-<Dialog title={artifact.title || $t('artifacts.untitled')} onclose={requestClose} class="artifact-studio-dialog h-[88vh] w-[96vw] max-w-6xl">
+<Dialog hideHeader={resolveArtifactPresentation(artifact).manifest.presentation === 'document'} title={artifact.title || $t('artifacts.untitled')} onclose={requestClose} class="artifact-studio-dialog h-[88vh] w-[96vw] max-w-6xl">
   <div class="min-h-0 flex-1">
-    <ArtifactStudio {artifact} chatId={originChatId} messageId={originMessageId} bind:dirty />
+    <ArtifactStudio {artifact} chatId={originChatId} messageId={originMessageId} bind:dirty>
+      {#snippet trail()}{#if resolveArtifactPresentation(artifact).manifest.presentation === 'document'}<button type="button" class="ui-icon-button is-sm" aria-label={$t('artifacts.reader.close')} onclick={requestClose}><X /></button>{/if}{/snippet}
+    </ArtifactStudio>
   </div>
 </Dialog>
-
-<style>
-  :global(.artifact-studio-dialog > header) { min-height: 3.5rem; }
-</style>

@@ -34,6 +34,9 @@
   import type { AgentArtifact } from '$lib/types/chat';
   import type { Snippet } from 'svelte';
 
+  import ViewerToolbar from '$lib/features/chat/viewers/ViewerToolbar.svelte';
+  import { createViewerControls, provideViewerControls, viewerShortcuts } from '$lib/features/chat/viewers/viewer-controls.svelte';
+
   interface Props {
     artifact: AgentArtifact;
     /** The chat and message the artifact lives on (Save writes back there). */
@@ -50,6 +53,8 @@
 
   let { artifact, chatId, messageId, dirty = $bindable(false), compact = false, lead, trail }: Props = $props();
 
+  const controls = createViewerControls();
+  provideViewerControls(controls);
   type PathMode = 'create' | 'rename' | null;
   // The studio edits a snapshot; re-keying the component opens another artifact.
   // Drafts are cloned, and reactive proxies can't be, so snapshot them first.
@@ -187,8 +192,17 @@
   }
 </script>
 
-<div class="flex h-full min-h-0 flex-col">
-  {#if compact}
+<div class="flex h-full min-h-0 flex-col" use:viewerShortcuts={controls}>
+  {#if resolved.manifest.presentation === 'document'}
+    <ViewerToolbar title={(activeView === 'source' ? selectedPath : '') || draft.current.title || $t('artifacts.untitled')} ondownload={activeView === 'preview' ? (controls.download ?? downloadAll) : downloadSelected} {trail}
+      actions={[
+        ...(hasReadableSource ? [{ label: activeView === 'preview' ? $t('artifacts.studio.source') : $t('artifacts.studio.preview'), run: () => { activeView = activeView === 'preview' ? 'source' : 'preview'; } }] : []),
+        ...(dirty ? [{ label: $t('artifacts.studio.discard'), run: discard }] : []),
+        ...(files.length > 1 ? [{ label: $t('artifacts.studio.zipHint'), run: () => void downloadZip(), disabled: downloading }] : [])
+      ]}>
+      {#snippet beforeMenu()}{#if dirty}<Button size="sm" onclick={save}><Save /> {$t('artifacts.studio.save')}</Button>{/if}{/snippet}
+    </ViewerToolbar>
+  {:else if compact}
     <div class="flex h-12 shrink-0 items-center gap-2 border-b border-[var(--border-subtle)] pl-3 pr-2">
       <div class="min-w-0 flex-1">{@render lead?.()}</div>
       <!-- Source only for readable files (HTML, code, text); an Office file's bytes are not code. -->
@@ -224,7 +238,7 @@
 
   <div class="flex min-h-0 flex-1 flex-col sm:flex-row">
     <!-- A lone file needs no file list, except while editing its source. -->
-    {#if (!compact && files.length > 1) || activeView === 'source'}
+    {#if (!compact && resolved.manifest.presentation !== 'document' && files.length > 1) || activeView === 'source'}
     <ArtifactFileRail {files} {selectedPath} collapsed={railCollapsed} onselect={(path) => { selectedPath = path; activeView = 'source'; }} ontoggle={() => (railCollapsed = !railCollapsed)} oncreate={() => openPathDialog('create')} onrename={() => openPathDialog('rename')} ondelete={requestDelete} />
     {/if}
     <main class="min-h-0 min-w-0 flex-1">
@@ -232,7 +246,7 @@
         <ArtifactStudioPreview artifact={draft.current} />
       {:else}
         {#key selectedPath}
-          <ArtifactSourcePane path={selectedPath} content={selectedContent} onchange={updateSelected} ondownload={downloadSelected} />
+          <ArtifactSourcePane chrome={resolved.manifest.presentation !== 'document'} path={selectedPath} content={selectedContent} onchange={updateSelected} ondownload={downloadSelected} />
         {/key}
       {/if}
     </main>

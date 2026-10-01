@@ -5,6 +5,7 @@
 
 import { invoke, listen } from '$lib/services/bridge';
 import type { ChangeList, FileDiff, ProcessEvent, ProcessInfo, TerminalEvent } from '$shared/code-workspace';
+import type { PresentedPlan } from './plan-review';
 
 type BottomTab = 'processes' | `terminal:${string}`;
 
@@ -79,6 +80,28 @@ class CodeWorkspaceStore {
   showFileInChanges(path: string): void {
     this.focusPath = path;
     this.setLayout({ changesOpen: true });
+  }
+
+  // ── Plan ─────────────────────────────────────────────────────────────
+  /** The plan open in the right dock, like the agent browser beside the conversation. */
+  plan = $state<{ chatId: string; plan: PresentedPlan } | null>(null);
+  /** The last plan offered on its own, so closing it keeps it closed. */
+  #offeredPlan = '';
+
+  showPlan(chatId: string, plan: PresentedPlan): void {
+    this.plan = { chatId, plan };
+  }
+
+  closePlan(): void {
+    this.plan = null;
+  }
+
+  /** A newly presented plan opens once; after the viewer closes it, only "Open plan" brings it back. */
+  offerPlan(chatId: string, plan: PresentedPlan): void {
+    const key = `${chatId}\n${plan.path}\n${plan.body}`;
+    if (key === this.#offeredPlan) return;
+    this.#offeredPlan = key;
+    this.showPlan(chatId, plan);
   }
 
   showBottom(tab?: BottomTab): void {

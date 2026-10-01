@@ -55,6 +55,35 @@ describe('changes in a git repository', () => {
   });
 });
 
+describe('a project inside a bigger repository', () => {
+  it('lists, diffs and reverts with paths from the project folder', async () => {
+    const repo = tempDir();
+    const git = (...args) => execFileSync('git', args, { cwd: repo, stdio: 'pipe' });
+    git('init', '-q');
+    git('config', 'user.email', 't@t');
+    git('config', 'user.name', 't');
+    const root = path.join(repo, 'apps', 'web');
+    fs.mkdirSync(root, { recursive: true });
+    fs.writeFileSync(path.join(root, 'a.txt'), 'one\n');
+    fs.writeFileSync(path.join(repo, 'outside.txt'), 'x\n');
+    git('add', '.');
+    git('commit', '-qm', 'init');
+    fs.writeFileSync(path.join(root, 'a.txt'), 'one\ntwo\n');
+    fs.writeFileSync(path.join(root, 'new.txt'), 'n\n');
+    fs.writeFileSync(path.join(repo, 'outside.txt'), 'changed\n');
+
+    assert.deepEqual((await listChanges(root)).files, [
+      { path: 'a.txt', kind: 'modified', additions: 1, deletions: 0 },
+      { path: 'new.txt', kind: 'created', additions: 1, deletions: 0 }
+    ]);
+    const diff = await fileDiff(root, 'a.txt');
+    assert.equal(diff.before, 'one\n');
+    assert.equal(diff.after, 'one\ntwo\n');
+    await revertFile(root, 'a.txt');
+    assert.equal(fs.readFileSync(path.join(root, 'a.txt'), 'utf8'), 'one\n');
+  });
+});
+
 describe('changes outside git', () => {
   it('has nothing to compare against', async () => {
     const root = tempDir();

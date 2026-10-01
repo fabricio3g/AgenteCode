@@ -17,6 +17,63 @@ use crate::bots::{bot_turn, ClientModel};
 pub(crate) const HANDOFF_CHANNEL: &str = "bot";
 /// Longest answer brought back from a teammate, in characters.
 const MAX_REPLY_CHARS: usize = 16_000;
+/// How long a handoff waits for a busy teammate before giving up.
+const MAX_QUEUE_WAIT: std::time::Duration = std::time::Duration::from_secs(10 * 60);
+/// How often a waiting handoff checks whether the teammate is free.
+const QUEUE_POLL: std::time::Duration = std::time::Duration::from_millis(500);
+
+/// One gate per bot: handoffs to a bot wait their turn in the order they
+/// came (tokio's mutex is fair), instead of failing while it's busy.
+#[derive(Default)]
+pub(crate) struct HandoffQueues {
+    gates: std::sync::Mutex<std::collections::HashMap<String, Arc<tokio::sync::Mutex<()>>>>,
+    /// Handoffs in progress (waiting or running), as (from, to).
+    active: std::sync::Mutex<std::collections::HashSet<(String, String)>>,
+}
+
+impl HandoffQueues {
+    fn gate(&self, handle: &str) -> Arc<tokio::sync::Mutex<()>> {
+        let mut gates = self
+            .gates
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        Arc::clone(gates.entry(handle.to_string()).or_default())
+    }
+
+    /// Record `from` → `to`, unless `to` is already waiting on `from`: two
+    /// bots waiting on each other would each sit out the whole wait.
+    fn begin(self: &Arc<Self>, from: &str, to: &str) -> Option<ActiveHandoff> {
+        let mut active = self
+            .active
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if active.contains(&(to.to_string(), from.to_string())) {
+            return None;
+        }
+        let pair = (from.to_string(), to.to_string());
+        active.insert(pair.clone());
+        Some(ActiveHandoff {
+            queues: Arc::clone(self),
+            pair,
+        })
+    }
+}
+
+/// A handoff in progress; forgotten when dropped (done, failed or cancelled).
+struct ActiveHandoff {
+    queues: Arc<HandoffQueues>,
+    pair: (String, String),
+}
+
+impl Drop for ActiveHandoff {
+    fn drop(&mut self) {
+        self.queues
+            .active
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .remove(&self.pair);
+    }
+}
 
 pub(crate) struct MemoryUpdateTool {
     store: Arc<BotStore>,
@@ -83,6 +140,7 @@ impl Tool for MemoryUpdateTool {
 
 pub(crate) struct MessageBotTool {
     store: Arc<BotStore>,
+    queues: Arc<HandoffQueues>,
     runtime: RuntimeHandle,
     from: String,
     trust: Trust,
@@ -92,12 +150,14 @@ pub(crate) struct MessageBotTool {
 impl MessageBotTool {
     pub(crate) fn new(
         store: Arc<BotStore>,
+        queues: Arc<HandoffQueues>,
         runtime: RuntimeHandle,
         from: &str,
         turn: &ProfileTurn,
     ) -> Self {
         Self {
             store,
+            queues,
             runtime,
             from: from.to_string(),
             trust: turn.origin.trust,
@@ -195,19 +255,42 @@ impl Tool for MessageBotTool {
             sender: Some(self.from.clone()),
             trust: self.trust,
         };
-        let start = bot_turn(&self.store, &target.handle, text, fallback, Some(origin))
+        // Wait our turn: handoffs to this teammate run one at a time, in the
+        // order they came, and each waits for whatever it's doing now.
+        let Some(_handoff) = self.queues.begin(&self.from, &target.handle) else {
+            return Err(failed(format!(
+                "@{} is waiting on you right now; finish this turn first, then ask again.",
+                target.handle
+            )));
+        };
+        let gate = self.queues.gate(&target.handle);
+        let _slot = gate.lock().await;
+        let waited = tokio::time::Instant::now();
+        let (session_id, mut turn) = loop {
+            let start = bot_turn(
+                &self.store,
+                &target.handle,
+                text.clone(),
+                fallback.clone(),
+                Some(origin.clone()),
+            )
             .map_err(|error| failed(error.to_string()))?;
-        let session_id = start.session_id;
-        let mut turn = self
-            .runtime
-            .start_turn(start)
-            .map_err(|error| match error {
-                RuntimeError::SessionBusy(_) => failed(format!(
-                    "@{} is busy in another conversation; try again in a moment.",
-                    target.handle
-                )),
-                other => failed(other.to_string()),
-            })?;
+            let session_id = start.session_id;
+            match self.runtime.start_turn(start) {
+                Ok(turn) => break (session_id, turn),
+                Err(RuntimeError::SessionBusy(_)) if waited.elapsed() < MAX_QUEUE_WAIT => {
+                    tokio::time::sleep(QUEUE_POLL).await;
+                }
+                Err(RuntimeError::SessionBusy(_)) => {
+                    return Err(failed(format!(
+                        "@{} stayed busy for {} minutes; try again later.",
+                        target.handle,
+                        MAX_QUEUE_WAIT.as_secs() / 60
+                    )))
+                }
+                Err(other) => return Err(failed(other.to_string())),
+            }
+        };
         let mut running = RunningTurn {
             runtime: self.runtime.clone(),
             turn_id: turn.turn_id(),
@@ -338,6 +421,25 @@ mod tests {
             .await
             .is_err());
         let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[tokio::test]
+    async fn handoffs_to_one_bot_wait_in_line_and_others_do_not() {
+        let queues = Arc::new(HandoffQueues::default());
+        let scout = queues.gate("scout");
+        let held = scout.lock().await;
+        // A second handoff to Scout waits for the first…
+        assert!(queues.gate("scout").try_lock().is_err());
+        // …while one to another bot goes ahead.
+        assert!(queues.gate("quill").try_lock().is_ok());
+        drop(held);
+        assert!(queues.gate("scout").try_lock().is_ok());
+
+        // Two bots never wait on each other.
+        let colina_to_scout = queues.begin("colina", "scout").unwrap();
+        assert!(queues.begin("scout", "colina").is_none());
+        drop(colina_to_scout);
+        assert!(queues.begin("scout", "colina").is_some());
     }
 
     #[tokio::test]

@@ -54,7 +54,7 @@ pub fn spawn_chat_task(
     smart_compaction: bool,
     max_parallel_subagents: usize,
     user_inbox: super::config::UserInbox,
-    extra_tools: Vec<Box<dyn crate::tools::Tool>>,
+    turn_tools: super::config::TurnTools,
 ) -> tokio::task::JoinHandle<()> {
     tracing::info!(%session_id, task_id, provider = %provider_id, model = %model, "Spawning chat task");
     tokio::spawn(async move {
@@ -82,6 +82,8 @@ pub fn spawn_chat_task(
                 thinking_level: thinking_level.clone(),
                 parent_mode,
                 registry: subagent_registry,
+                shell_env: turn_tools.shell_env.clone(),
+                only_tools: turn_tools.only.clone(),
             },
             DEFAULT_MAX_SUBAGENT_DEPTH,
             max_parallel_subagents,
@@ -113,7 +115,9 @@ pub fn spawn_chat_task(
             loop_stop_after: DEFAULT_LOOP_STOP_AFTER,
             smart_compaction,
             user_inbox: Some(user_inbox),
-            extra_tools,
+            extra_tools: turn_tools.extra,
+            only_tools: turn_tools.only,
+            shell_env: turn_tools.shell_env,
         };
         // A panic inside the loop must not kill the spawned task silently:
         // without a terminal event the TUI would hang "running" until the
@@ -212,13 +216,24 @@ pub(crate) async fn run_agent_loop(cfg: AgentRunConfig) -> Result<(), AgentLoopF
         smart_compaction,
         user_inbox,
         extra_tools,
+        only_tools,
+        shell_env,
     } = cfg;
 
     let mut tool_registry = ToolRegistry::with_agents(&project_dir, &custom_agents);
 
+    // A host's allowlist (a bot's toolsets) trims the built-in tools; MCP
+    // tools come in only when it names "mcp".
+    if let Some(only) = &only_tools {
+        tool_registry.retain_named(&only.iter().map(String::as_str).collect::<Vec<_>>());
+    }
+    let mcp_allowed = only_tools
+        .as_ref()
+        .is_none_or(|only| only.iter().any(|name| name == "mcp"));
+
     // MCP tools of every server that is ready now; servers still connecting
     // join on a later turn (a slow server never delays this one).
-    if let Some(manager) = &mcp_manager {
+    if let Some(manager) = mcp_manager.as_ref().filter(|_| mcp_allowed) {
         manager.refresh_stale_tools().await;
         tool_registry.register_mcp_adapters(crate::mcp::McpToolAdapter::all(manager));
     }
@@ -238,6 +253,7 @@ pub(crate) async fn run_agent_loop(cfg: AgentRunConfig) -> Result<(), AgentLoopF
         tool_registry.retain_named(&keep.iter().map(|s| s.as_str()).collect::<Vec<_>>());
     }
 
+    tool_registry.set_shell_env(shell_env);
     let tool_registry = Arc::new(tool_registry);
     let mode = permission_engine
         .read()
@@ -1476,6 +1492,8 @@ mod tests {
             smart_compaction: false,
             user_inbox: Some(Arc::clone(&inbox)),
             extra_tools: Vec::new(),
+            only_tools: None,
+            shell_env: Default::default(),
         };
         run_agent_loop(config).await.expect("turn completes");
 
@@ -1639,6 +1657,8 @@ mod tests {
             smart_compaction: false,
             user_inbox: None,
             extra_tools: Vec::new(),
+            only_tools: None,
+            shell_env: Default::default(),
         };
         run_agent_loop(config).await.expect("turn recovers");
 
@@ -1764,6 +1784,8 @@ mod tests {
             smart_compaction: false,
             user_inbox: None,
             extra_tools: Vec::new(),
+            only_tools: None,
+            shell_env: Default::default(),
         };
         let result = run_agent_loop(config).await;
         let calls = *provider.calls.lock().unwrap();
@@ -1930,6 +1952,8 @@ mod tests {
             smart_compaction: false,
             user_inbox: None,
             extra_tools: Vec::new(),
+            only_tools: None,
+            shell_env: Default::default(),
         };
         (dir, rx, provider, config)
     }

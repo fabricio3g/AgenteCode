@@ -1,3 +1,5 @@
+import { reducedMotion } from '$lib/utils/motion.svelte';
+
 /**
  * Moving around a zoomed document: drag to pan once the content is larger
  * than the view, and Ctrl/⌘ + wheel to zoom. A plain wheel still scrolls.
@@ -26,7 +28,7 @@ export function panScroll(node: HTMLElement, initial: PanScrollOptions = {}) {
 
   const onPointerDown = (event: PointerEvent) => {
     if (event.button !== 0 || event.pointerType === 'touch' || !overflows(node)) return;
-    if ((event.target as HTMLElement).closest('input, textarea, button, a, select')) return;
+    if ((event.target as HTMLElement).closest('input, textarea, button, a, select, [data-viewer-text]')) return;
     start = { x: event.clientX, y: event.clientY, left: node.scrollLeft, top: node.scrollTop, id: event.pointerId };
   };
 
@@ -104,4 +106,8 @@ export async function zoomAroundCenter(node: HTMLElement | undefined, apply: () 
   await settle();
   node.scrollLeft = x * node.scrollWidth - node.clientWidth / 2;
   node.scrollTop = y * node.scrollHeight - node.clientHeight / 2;
+}
+
+export function readerScrollBehavior(): ScrollBehavior {
+  return reducedMotion.value || (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false) ? 'instant' : 'smooth';
 }

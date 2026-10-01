@@ -54,6 +54,19 @@ pub trait ProfileSource: Send + Sync {
     fn tools(&self, _profile: &str, _turn: &ProfileTurn) -> Vec<Box<dyn agente_core::tools::Tool>> {
         Vec::new()
     }
+
+    /// The built-in tools this profile may use (a bot's toolsets), `"mcp"`
+    /// for MCP tools; `None` for every tool. Its own `tools` are always kept.
+    fn tool_names(&self, _profile: &str) -> Option<Vec<String>> {
+        None
+    }
+
+    /// The box this profile's commands run in, when this machine has one
+    /// (see `agente_core::sandbox`); without one they run with a clean
+    /// environment instead.
+    fn sandbox(&self, _profile: &str) -> agente_core::sandbox::SandboxPolicy {
+        agente_core::sandbox::SandboxPolicy::default()
+    }
 }
 
 /// The turn a profile's tools are made for.
@@ -882,21 +895,31 @@ impl RuntimeHandle {
         let thinking = start
             .thinking_level
             .unwrap_or_else(|| live.default_thinking_level.clone());
-        let extra_tools = match (
+        let turn_tools = match (
             has_persona,
             start.profile.as_deref(),
             &self.inner.config.profile_source,
         ) {
-            (true, Some(profile), Some(source)) => source.tools(
-                profile,
-                &ProfileTurn {
-                    origin: start.origin.clone().unwrap_or_default(),
-                    provider: provider.clone(),
-                    model: model.clone(),
-                    thinking_level: thinking.clone(),
+            (true, Some(profile), Some(source)) => agente_core::agent::TurnTools {
+                extra: source.tools(
+                    profile,
+                    &ProfileTurn {
+                        origin: start.origin.clone().unwrap_or_default(),
+                        provider: provider.clone(),
+                        model: model.clone(),
+                        thinking_level: thinking.clone(),
+                    },
+                ),
+                only: source.tool_names(profile),
+                // A bot's commands never see the host's keys or tokens, and
+                // run boxed wherever this machine can box them.
+                shell_env: if agente_core::sandbox::available() {
+                    agente_core::tools::ShellEnv::Boxed(source.sandbox(profile))
+                } else {
+                    agente_core::tools::ShellEnv::Clean
                 },
-            ),
-            _ => Vec::new(),
+            },
+            _ => agente_core::agent::TurnTools::default(),
         };
         {
             let (provider, model, thinking) = (provider.clone(), model.clone(), thinking.clone());
@@ -950,7 +973,7 @@ impl RuntimeHandle {
             live.smart_compaction,
             live.max_parallel_subagents,
             inbox,
-            extra_tools,
+            turn_tools,
         );
 
         let started = self.envelope(session_id, turn_id, None, RuntimeEvent::TurnStarted);

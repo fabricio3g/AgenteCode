@@ -131,7 +131,7 @@ impl App {
             self.state.config.config.smart_compaction,
             self.state.config.config.parallel_subagents(),
             Arc::clone(&self.state.agent.user_inbox),
-            Vec::new(),
+            agente_core::agent::TurnTools::default(),
         );
         self.state.agent.task_handle = Some(task_handle);
 

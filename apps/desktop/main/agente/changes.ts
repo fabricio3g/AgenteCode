@@ -3,12 +3,17 @@
 // source of truth: it also sees edits made through the shell, formatters and
 // the user's own editor. Outside a git repository the pane has nothing to
 // compare against (the chat's own undo still works there).
+//
+// A project can be a folder inside a bigger repository: every path here is
+// relative to the project, never to the repository root, and only the
+// project's own files are listed.
 
 import { execFile } from 'node:child_process';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import type { ChangedFile, ChangeKind, ChangeList, FileDiff } from '../../shared/code-workspace.ts';
+import { lineCount } from './text-lines.ts';
 
 const run = promisify(execFile);
 
@@ -60,28 +65,32 @@ export function parsePorcelain(raw: string): Array<{ path: string; kind: ChangeK
   return out;
 }
 
-function countLines(text: string): number {
-  if (!text) return 0;
-  return text.endsWith('\n') ? text.split('\n').length - 1 : text.split('\n').length;
+/** Porcelain paths are relative to the repository root: drop the project's own prefix. */
+function withinProject(files: Array<{ path: string; kind: ChangeKind }>, prefix: string): Array<{ path: string; kind: ChangeKind }> {
+  if (!prefix) return files;
+  return files.filter((file) => file.path.startsWith(prefix)).map((file) => ({ ...file, path: file.path.slice(prefix.length) }));
 }
 
 async function gitChanges(projectRoot: string): Promise<ChangeList> {
-  const [status, numstat, branch] = await Promise.all([
-    git(projectRoot, ['status', '--porcelain=v1', '-z', '--untracked-files=all']),
-    git(projectRoot, ['diff', 'HEAD', '--numstat', '-z']).catch(() => ''),
-    git(projectRoot, ['rev-parse', '--abbrev-ref', 'HEAD']).then((out) => out.trim()).catch(() => '')
+  const [status, numstat, branch, prefix] = await Promise.all([
+    // `-- .` keeps the listing to the project folder.
+    git(projectRoot, ['status', '--porcelain=v1', '-z', '--untracked-files=all', '--', '.']),
+    // `--relative` prints paths from the project folder, like the list below.
+    git(projectRoot, ['diff', 'HEAD', '--numstat', '-z', '--relative']).catch(() => ''),
+    git(projectRoot, ['rev-parse', '--abbrev-ref', 'HEAD']).then((out) => out.trim()).catch(() => ''),
+    git(projectRoot, ['rev-parse', '--show-prefix']).then((out) => out.trim()).catch(() => '')
   ]);
   const counts = new Map<string, { additions: number; deletions: number }>();
   for (const line of numstat.split('\0')) {
     const match = line.match(/^(\d+|-)\t(\d+|-)\t(.+)$/);
     if (match) counts.set(match[3], { additions: Number(match[1]) || 0, deletions: Number(match[2]) || 0 });
   }
-  const files = await Promise.all(parsePorcelain(status).map(async (file): Promise<ChangedFile> => {
+  const files = await Promise.all(withinProject(parsePorcelain(status), prefix).map(async (file): Promise<ChangedFile> => {
     const known = counts.get(file.path);
     if (known) return { ...file, ...known };
     if (file.kind === 'created') {
       const text = await fsp.readFile(path.join(projectRoot, file.path), 'utf8').catch(() => '');
-      return { ...file, additions: countLines(text), deletions: 0 };
+      return { ...file, additions: lineCount(text), deletions: 0 };
     }
     return { ...file, additions: 0, deletions: 0 };
   }));
@@ -103,7 +112,8 @@ export async function fileDiff(projectRoot: string, relPath: string): Promise<Fi
   const after = await fsp.readFile(abs, 'utf8').catch(() => '');
   let before = '';
   if (await isGitRepo(projectRoot)) {
-    before = await git(projectRoot, ['show', `HEAD:${rel}`]).catch(() => '');
+    // `HEAD:./path` reads from the project folder, not the repository root.
+    before = await git(projectRoot, ['show', `HEAD:./${rel}`]).catch(() => '');
   }
   const binary = looksBinary(before) || looksBinary(after);
   const tooLarge = before.length + after.length > MAX_DIFF_BYTES;
@@ -122,7 +132,7 @@ export async function revertFile(projectRoot: string, relPath: string): Promise<
   const rel = path.relative(projectRoot, abs).split(path.sep).join('/');
   if (!(await isGitRepo(projectRoot))) throw new Error(`No earlier version of ${rel} was recorded.`);
   const tracked = await git(projectRoot, ['ls-files', '--error-unmatch', '--', rel]).then(() => true, () => false);
-  const inHead = await git(projectRoot, ['cat-file', '-e', `HEAD:${rel}`]).then(() => true, () => false);
+  const inHead = await git(projectRoot, ['cat-file', '-e', `HEAD:./${rel}`]).then(() => true, () => false);
   if (inHead) await git(projectRoot, ['checkout', 'HEAD', '--', rel]);
   else {
     if (tracked) await git(projectRoot, ['rm', '--cached', '--quiet', '--', rel]).catch(() => '');

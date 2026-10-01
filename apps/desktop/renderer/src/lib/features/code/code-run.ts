@@ -57,6 +57,10 @@ export interface CodeRunState {
   spend: CodeSpend;
   diagnostics: string[];
   generation?: { outputBytes: number; toolName?: string | null };
+  /** The tool call the model is writing right now, before it runs ("Preparing edit… 3 KB"). */
+  preparing?: { toolName: string; bytes: number; startBytes: number } | null;
+  /** When the last event arrived: silence past a few seconds is worth saying. */
+  lastEventAt?: number;
 }
 
 export function emptySpend(): CodeSpend {
@@ -117,13 +121,22 @@ function applyRuntimeEvent(state: CodeRunState, event: Extract<CodeAgentEvent, {
       state.diagnostics = [...state.diagnostics, value.message].slice(-20);
       return true;
     case 'generation_progress':
-      if (!child) state.generation = { outputBytes: value.output_bytes, toolName: value.tool_name };
-      return false;
+      if (child) return false;
+      state.generation = { outputBytes: value.output_bytes, toolName: value.tool_name };
+      state.preparing = trackPreparing(state.preparing, value.tool_name, value.output_bytes);
+      return true;
     case 'tool_heartbeat':
       return false;
     default:
       return false;
   }
+}
+
+/** The tool call being written: its name and how much of it has streamed. */
+function trackPreparing(current: CodeRunState['preparing'], toolName: string | null | undefined, outputBytes: number): CodeRunState['preparing'] {
+  if (!toolName) return null;
+  if (current?.toolName !== toolName) return { toolName, bytes: 0, startBytes: outputBytes };
+  return { ...current, bytes: Math.max(0, outputBytes - current.startBytes) };
 }
 
 /** Add or update a step; a new step also takes its place in the timeline. */
@@ -144,7 +157,7 @@ function upsertStep(state: CodeRunState, step: AgentStep): void {
  */
 function lastTextLength(state: CodeRunState): number {
   const last = state.timeline[state.timeline.length - 1];
-  return last?.kind === 'text' ? last.text.length : 0;
+  return last && last.kind !== 'step' ? last.text.length : 0;
 }
 
 /** Drop what the current turn wrote: the model is replaying it. */
@@ -154,9 +167,16 @@ function rollBackTurn(state: CodeRunState): void {
   state.content = state.content.slice(0, mark.content);
   state.timeline = state.timeline.slice(0, mark.timeline);
   const last = state.timeline[state.timeline.length - 1];
-  if (last?.kind === 'text') last.text = last.text.slice(0, mark.lastText);
+  if (last && last.kind !== 'step') last.text = last.text.slice(0, mark.lastText);
   state.reasoningRaw = state.reasoningRaw.slice(0, mark.reasoning);
   state.reasoning = sanitizeAgentVisibleText(state.reasoningRaw);
+}
+
+/** Reasoning takes its place in the timeline, like text: a new thought after anything else. */
+function appendThinking(state: CodeRunState, delta: string): void {
+  const last = state.timeline[state.timeline.length - 1];
+  if (last?.kind === 'thinking') last.text += delta;
+  else state.timeline.push({ kind: 'thinking', text: delta });
 }
 
 function appendText(state: CodeRunState, delta: string): void {
@@ -251,27 +271,40 @@ function failRun(state: CodeRunState, message: string): void {
  * timeline; saved runs carry theirs; older messages fall back to steps, then
  * text. Steps whose row is gone and blank text segments are skipped.
  */
+export type OrderedEntry = { key: string; step?: AgentStep; text?: string; thinking?: string };
+
 export function orderedEntries(
-  message: { agentSteps?: AgentStep[]; content: string; metadata?: { codeTimeline?: CodeTimelineEntry[] } },
+  message: { agentSteps?: AgentStep[]; content: string; reasoning?: string; metadata?: { codeTimeline?: CodeTimelineEntry[] } },
   liveTimeline?: CodeTimelineEntry[]
-): Array<{ key: string; step?: AgentStep; text?: string }> {
+): OrderedEntry[] {
   const steps = new Map((message.agentSteps ?? []).map((step) => [step.id, step]));
   let entries = liveTimeline ?? message.metadata?.codeTimeline ?? [];
   if (!entries.length) {
     entries = [...steps.keys()].map((id) => ({ kind: 'step' as const, id }));
     if (message.content) entries.push({ kind: 'text', text: message.content });
   }
-  const out: Array<{ key: string; step?: AgentStep; text?: string }> = [];
+  // Runs saved before reasoning had a place in the timeline: it came first.
+  if (message.reasoning?.trim() && !entries.some((entry) => entry.kind === 'thinking')) {
+    entries = [{ kind: 'thinking', text: message.reasoning }, ...entries];
+  }
+  const out: OrderedEntry[] = [];
   entries.forEach((entry, index) => {
     const step = entry.kind === 'step' ? steps.get(entry.id) : undefined;
     // Engine bookkeeping, not work to show: turn rows and output-cap notes
-    // (saved by older runs), and todo updates (the Tasks card shows those).
-    if (step && (step.id.startsWith('turn-') || step.id.startsWith('length-') || step.toolName === 'todo_write')) return;
+    // (saved by older runs), and todo updates (the task bar shows those).
+    if (step && (step.id.startsWith('turn-') || step.id.startsWith('length-') || TODO_TOOLS.has(step.toolName ?? ''))) return;
     if (step) out.push({ key: `s-${step.id}`, step });
     else if (entry.kind === 'text' && entry.text.trim()) out.push({ key: `t-${index}`, text: entry.text });
+    else if (entry.kind === 'thinking') {
+      const thinking = sanitizeAgentVisibleText(entry.text);
+      if (thinking.trim()) out.push({ key: `r-${index}`, thinking });
+    }
   });
   return out;
 }
+
+/** The todo tool under its names: the task bar above the composer shows it, not a row. */
+const TODO_TOOLS = new Set(['todo_write', 'todo']);
 
 export function eventToStep(event: CodeAgentEvent): AgentStep | null {
   switch (event.type) {
@@ -311,6 +344,7 @@ export function eventToStep(event: CodeAgentEvent): AgentStep | null {
  * and should be flushed into the chat transcript.
  */
 export function applyCodeAgentEvent(state: CodeRunState, event: CodeAgentEvent): boolean {
+  state.lastEventAt = Date.now();
   switch (event.type) {
     case 'runtime_event':
       return applyRuntimeEvent(state, event);
@@ -322,6 +356,7 @@ export function applyCodeAgentEvent(state: CodeRunState, event: CodeAgentEvent):
     }
     case 'text_delta': {
       appendText(state, event.delta);
+      state.preparing = null;
       state.retrying = null;
       return true;
     }
@@ -332,12 +367,15 @@ export function applyCodeAgentEvent(state: CodeRunState, event: CodeAgentEvent):
       // miss patterns split across chunks.
       state.reasoningRaw += event.delta;
       state.reasoning = sanitizeAgentVisibleText(state.reasoningRaw);
+      appendThinking(state, event.delta);
+      state.preparing = null;
       state.retrying = null;
       return true;
     }
     case 'tool_start': {
       const step = eventToStep(event);
       if (step) upsertStep(state, step);
+      state.preparing = null;
       state.retrying = null;
       return true;
     }
@@ -364,7 +402,8 @@ export function applyCodeAgentEvent(state: CodeRunState, event: CodeAgentEvent):
             path: file.path,
             kind: file.kind as CodeAgentDiffStat['kind'],
             additions: file.additions,
-            deletions: file.deletions
+            deletions: file.deletions,
+            ...(file.patch ? { patch: file.patch } : {})
           }));
         }
       }
@@ -412,9 +451,10 @@ export function applyCodeAgentEvent(state: CodeRunState, event: CodeAgentEvent):
           kind: file.kind as 'created' | 'modified' | 'deleted'
         });
       }
-      // Attach the cumulative diff to the most recent file-writing step.
+      // Engines that report files only per turn: the last edit carries them.
+      // Steps that came with their own changes (and patches) keep those.
       const writing = [...state.steps].reverse().find((s) => s.type !== 'approval' && (s.toolName === 'write' || s.toolName === 'edit'));
-      if (writing) {
+      if (writing && !writing.diffStats?.length) {
         writing.diffStats = [...state.diffStats];
         writing.fileChanges = [...state.fileChanges];
       }
@@ -482,7 +522,7 @@ export function applyCodeAgentEvent(state: CodeRunState, event: CodeAgentEvent):
       // The engine rewrote the whole answer: keep the steps where they were
       // and put the new text after them.
       state.content = event.content;
-      state.timeline = [...state.timeline.filter((entry) => entry.kind === 'step'), { kind: 'text', text: event.content }];
+      state.timeline = [...state.timeline.filter((entry) => entry.kind !== 'text'), { kind: 'text', text: event.content }];
       state.retrying = null;
       return true;
     }
@@ -505,6 +545,7 @@ export function applyCodeAgentEvent(state: CodeRunState, event: CodeAgentEvent):
       state.hitTurnLimit = !!event.hitTurnLimit;
       state.endedAt = Date.now();
       state.retrying = null;
+      state.preparing = null;
       // A still-running step at the end of a run only means failure if the
       // run itself failed; on success it was simply never closed out.
       const running = state.steps.find((s) => s.status === 'running');

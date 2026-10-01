@@ -70,6 +70,21 @@ impl ToolCallOutcome {
 /// finishing — so the model sees them without the turn being cancelled.
 pub type UserInbox = Arc<parking_lot::Mutex<Vec<crate::types::Message>>>;
 
+/// What a host adds to, or limits in, one turn's tools: a bot's own tools,
+/// the toolsets it may use and its commands' environment. Subagents inherit
+/// the limits (`only`, `shell_env`) but never the extra tools.
+#[derive(Default)]
+pub struct TurnTools {
+    /// Tools only this turn gets (a bot's memory and handoff tools). Always kept.
+    pub extra: Vec<Box<dyn crate::tools::Tool>>,
+    /// When set, only these built-in tools are kept; the entry `"mcp"` also
+    /// lets MCP tools in. `None` keeps every tool.
+    pub only: Option<Vec<String>>,
+    /// The environment of the commands this turn's tools start (and its
+    /// subagents'). Bot turns run `Clean`: none of the host's keys.
+    pub shell_env: crate::tools::ShellEnv,
+}
+
 pub(crate) struct AgentRunConfig {
     pub session_id: uuid::Uuid,
     pub task_id: u64,
@@ -110,6 +125,10 @@ pub(crate) struct AgentRunConfig {
     /// Tools the host adds for this turn only (a bot's memory and handoff
     /// tools). Children never inherit them.
     pub extra_tools: Vec<Box<dyn crate::tools::Tool>>,
+    /// See [`TurnTools::only`]. Children inherit it.
+    pub only_tools: Option<Vec<String>>,
+    /// See [`TurnTools::shell_env`]. Children inherit it.
+    pub shell_env: crate::tools::ShellEnv,
 }
 
 /// Tag an event with its task id and swallow send failures (the TUI may be

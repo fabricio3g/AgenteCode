@@ -335,6 +335,36 @@ h2 { font-size: clamp(30px, 4vw, 44px); line-height: 1.08; letter-spacing: -0.03
 .facts { list-style: none; padding: 0; margin: 14px 0 0; display: flex; flex-wrap: wrap; justify-content: center; gap: 6px 22px; color: var(--text-faint); font-size: 13px; }
 .facts li::before { content: "~ "; font-family: var(--font-mono); color: var(--brand-accent); opacity: 0.8; }
 
+/* ---------- Bots team (faces from Desktop's engine, js/faces.js) ---------- */
+.team-row {
+  list-style: none; padding: 0; margin: 8px auto 0; max-width: 880px;
+  display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 24px 12px; text-align: center;
+}
+.team-row li { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.team-row b { margin-top: 10px; font-size: 15px; font-weight: 600; letter-spacing: -0.01em; }
+.team-row li > span:last-child { font-size: 13px; color: var(--text-tertiary); }
+.team-status { margin: 28px 0 0; text-align: center; font: 13px var(--font-mono); color: var(--text-faint); min-height: 1.6em; }
+.team-status .who { color: var(--text-secondary); }
+.team-status #team-line { transition: opacity 280ms var(--ease); }
+
+/* Mirrors BotFace.svelte's styles. */
+.bot-face { --face-eye: #fdf9f1; --face-grain: #1b1622; display: inline-block; flex: none; line-height: 0; color: var(--foreground); width: 88px; height: 88px; }
+.bot-face svg { width: 100%; height: 100%; display: block; overflow: visible; isolation: isolate; fill: initial; stroke: initial; stroke-width: initial; }
+.bot-face .grain { color: var(--face-grain); mix-blend-mode: multiply; opacity: .55; }
+.bot-face .ribbon { fill: currentColor; fill-rule: evenodd; }
+.bot-face .rim { stroke: var(--face-eye); }
+.bot-face .eye path { fill: var(--face-eye); stroke: currentColor; }
+.bot-face .eye .socket { fill: currentColor; stroke: none; opacity: .18; }
+.bot-face .eye.happy path { fill: none; stroke-linecap: round; }
+.bot-face .eye.happy .socket { display: none; }
+.bot-face .fx path { fill: currentColor; stroke: none; }
+.bot-face .acc path { stroke: currentColor; }
+[data-theme="dark"] .bot-face { --face-grain: #ffffff; }
+[data-theme="dark"] .bot-face .ink, [data-theme="dark"] .bot-face .ink2, [data-theme="dark"] .bot-face .eye path { stroke: #493649; }
+[data-theme="dark"] .bot-face .ribbon { fill: #493649; }
+[data-theme="dark"] .bot-face .rim { opacity: .35; }
+[data-theme="dark"] .bot-face .grain { mix-blend-mode: screen; opacity: .28; }
+
 /* ---------- Principles ---------- */
 .principles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 48px; }
 .principles h3 { font-size: 17px; letter-spacing: -0.015em; margin-bottom: 10px; }
@@ -377,10 +407,13 @@ h2 { font-size: clamp(30px, 4vw, 44px); line-height: 1.08; letter-spacing: -0.03
 
 /* ---------- Responsive ---------- */
 @media (max-width: 860px) {
+  .team-row { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .principles { grid-template-columns: 1fr; gap: 32px; }
   .section { padding: 88px 0; }
 }
 @media (max-width: 560px) {
+  .team-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .bot-face { width: 72px; height: 72px; }
   .install-head { flex-wrap: wrap; }
   .seg-sm button { padding: 0 8px; font-size: 12px; }
   .copy-btn .copy-label { display: none; }

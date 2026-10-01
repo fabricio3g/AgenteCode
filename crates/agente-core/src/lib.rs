@@ -12,6 +12,7 @@ pub mod media;
 pub mod models;
 pub mod permissions;
 pub mod providers;
+pub mod sandbox;
 pub mod session;
 pub mod subagent;
 pub mod thinking;

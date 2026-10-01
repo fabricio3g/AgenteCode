@@ -5,7 +5,7 @@ import ArtifactStudioPreview from './ArtifactStudioPreview.svelte';
 
 vi.mock('pdfjs-dist', () => ({
   GlobalWorkerOptions: {},
-  getDocument: () => ({ promise: Promise.resolve({ numPages: 0 }) })
+  getDocument: () => ({ promise: Promise.resolve({ numPages: 0 }), destroy: () => Promise.resolve() })
 }));
 afterEach(cleanup);
 

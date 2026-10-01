@@ -20,8 +20,11 @@
   import SlidesViewer from './SlidesViewer.svelte';
   import PptxViewer from './viewers/PptxViewer.svelte';
   import { baseName, type DocumentSurfaceItem } from './document-surface';
-  import { downloadFromDataUrl } from '$lib/utils/doc-utils';
+  import { downloadFromDataUrl, downloadFromSrc } from '$lib/utils/doc-utils';
   import { documentSource, pickDocumentViewer } from './document-viewer';
+
+  import ViewerToolbar from './viewers/ViewerToolbar.svelte';
+  import { createViewerControls, provideViewerControls, registerViewerControls, useViewerControls, viewerShortcuts } from './viewers/viewer-controls.svelte';
 
   interface Props {
     doc: DocumentSurfaceItem;
@@ -32,14 +35,29 @@
 
   let { doc, query = '', onDownloadSlides }: Props = $props();
 
+  const inherited = useViewerControls();
+  const controls = inherited ?? createViewerControls();
+  provideViewerControls(controls);
+  $effect(() => { doc.id; controls.query = query; controls.searchOpen = !!query; });
+  $effect(() => {
+    doc;
+    controls.download = downloadFile;
+    return () => { if (controls.download === downloadFile) controls.download = null; };
+  });
+
   let root = $state<HTMLElement>();
   const viewer = $derived(pickDocumentViewer(doc));
   const source = $derived(documentSource(doc));
-  const term = $derived(query.trim());
+  const term = $derived(controls.query.trim());
+  const effectiveQuery = $derived(controls.query);
+  registerViewerControls(controls, () => viewer === 'markdown' ? { search: { matches: term ? (doc.content || '').toLowerCase().split(term.toLowerCase()).length - 1 : 0, index: 0 } } : null);
   const previewHtml = $derived(viewer === 'html' && doc.previewHtml ? buildPreviewHtml(doc.previewHtml, {}, doc.name).html : '');
 
   function downloadFile() {
-    if (source) downloadFromDataUrl(source, baseName(doc.name));
+    if (doc.kind === 'slides' && onDownloadSlides) { onDownloadSlides(); return; }
+    if (!source) return;
+    if (source.startsWith('data:')) downloadFromDataUrl(source, baseName(doc.name));
+    else downloadFromSrc(source, baseName(doc.name));
   }
 
   function markdownHtml(content: string): string {
@@ -52,11 +70,13 @@
   // Bring the first search hit into view.
   $effect(() => {
     if (!term || !root || viewer !== 'markdown') return;
-    requestAnimationFrame(() => root?.querySelector('mark')?.scrollIntoView({ block: 'center', behavior: 'smooth' }));
+    requestAnimationFrame(() => root?.querySelector('mark')?.scrollIntoView({ block: 'center', behavior: window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' }));
   });
 </script>
 
-<div class="doc-viewer" bind:this={root}>
+<div class="doc-viewer" bind:this={root} use:viewerShortcuts={controls}>
+  {#if !inherited && viewer !== 'image'}<ViewerToolbar title={doc.title || baseName(doc.name)} ondownload={downloadFile} />{/if}
+  {#key doc.id}
   {#if viewer === 'pptx'}
     <PptxViewer src={source} filename={doc.name} spec={doc.deck} />
   {:else if viewer === 'slides' && doc.slides}
@@ -64,11 +84,11 @@
   {:else if viewer === 'pdf'}
     <PdfViewer src={source} filename={doc.name} />
   {:else if viewer === 'docx'}
-    <DocxViewer src={source} filename={doc.name} {query} />
+    <DocxViewer src={source} filename={doc.name} query={effectiveQuery} />
   {:else if viewer === 'xlsx'}
-    <XlsxViewer src={source} filename={doc.name} {query} />
+    <XlsxViewer src={source} filename={doc.name} query={effectiveQuery} />
   {:else if viewer === 'markdown'}
-    <article class="doc-article">
+    <div class="doc-reading"><article class="doc-article">
       {#each parseContentSegments(doc.content || '') as segment, index (index)}
         {#if segment.kind === 'text'}
           {#if segment.content.trim()}
@@ -78,9 +98,9 @@
           <ChartBlock type={segment.type} title={segment.title} xlabel={segment.xlabel} ylabel={segment.ylabel} raw={segment.raw} />
         {/if}
       {/each}
-    </article>
+    </article></div>
   {:else if viewer === 'text'}
-    <TextViewer src={source} filename={doc.name} {query} />
+    <TextViewer src={source} filename={doc.name} query={effectiveQuery} />
   {:else if viewer === 'image'}
     <div class="doc-image-stage">
       <img class="doc-image" src={source} alt={doc.title || baseName(doc.name)} />
@@ -92,6 +112,7 @@
   {:else}
     <div class="doc-empty">{$t('artifacts.viewer.unsupported')}</div>
   {/if}
+  {/key}
 </div>
 
 <style>
@@ -108,6 +129,7 @@
     color: inherit;
     padding: 0 0.08rem;
   }
+  .doc-reading { min-height:0; flex:1; overflow:auto; }
   .doc-article {
     width: min(48rem, 100%);
     margin: 0 auto;
@@ -119,9 +141,9 @@
   .doc-iframe {
     display: block;
     width: 100%;
-    min-height: 20rem;
+    min-height: 0;
     flex: 1 1 auto;
-    height: var(--doc-viewer-height, calc(96vh - 7.5rem));
+    height: 100%;
     border: 0;
     border-radius: 0.5rem;
     background: var(--card);

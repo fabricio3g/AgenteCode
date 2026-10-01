@@ -9,11 +9,15 @@ export type BotTint = 'green' | 'blue' | 'yellow' | 'red';
 export interface BotConfig {
   title: string;
   role: string;
-  avatar: { initials?: string; image?: string; tint: string };
-  model?: { provider: string; model: string };
+  /** `seed` draws the face; a bot without one is drawn from its handle. */
+  avatar: { initials?: string; image?: string; tint: string; seed?: number };
+  /** A pinned model; `thinking` is its level (auto when absent). */
+  model?: { provider: string; model: string; thinking?: string };
   toolsets: string[];
   skills: string[];
   daily_budget?: number;
+  /** `[sandbox]` in bot.toml: what its programs may do beyond its workspace. */
+  sandbox?: { network?: boolean; read?: string[]; write?: string[]; file_mb?: number; cpu_secs?: number };
 }
 
 export interface Bot extends BotConfig {
@@ -86,12 +90,26 @@ export interface TelegramStatus {
   pairing: PairingCode | null;
 }
 
+/** A group of tools a bot can be given (from the core's list). */
+export interface Toolset {
+  id: string;
+  tools: string[];
+}
+
+/** Whether the machine running the bots boxes their programs. */
+export interface SandboxStatus {
+  backend: 'landlock' | 'seatbelt' | 'none';
+  available: boolean;
+}
+
 /** The model the app is using (bots without a pinned model use it). */
 export type ModelChoice = { provider?: string; model?: string };
 
 export const botsIpc = {
   list: () => invoke<Bot[]>('bots_list', {}),
   get: (handle: string) => invoke<BotDetail>('bots_get', { handle }),
+  toolsets: () => invoke<Toolset[]>('bots_toolsets', {}),
+  sandbox: () => invoke<SandboxStatus>('bots_sandbox', {}),
   create: (bot: Partial<BotConfig> & { title: string; soul?: string; handle?: string }) => invoke<Bot>('bots_create', bot),
   update: (handle: string, config: BotConfig) => invoke<Bot>('bots_update', { handle, config }),
   remove: (handle: string) => invoke<{ deleted: boolean }>('bots_delete', { handle }),

@@ -1,11 +1,15 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
-  import { FileText } from 'lucide-svelte';
   import { copy } from '$lib/copy';
   import ViewerStatus from './ViewerStatus.svelte';
   import { readArrayBuffer } from './viewer-source';
   import { escapeHtml, highlightTerm } from './viewer-text';
+
+  import { registerViewerControls, useViewerControls } from './viewer-controls.svelte';
+  const controls = useViewerControls();
+  let wrap = $state(false);
+  import { t } from 'svelte-i18n';
 
   interface Props {
     src: string;
@@ -15,6 +19,12 @@
   }
 
   let { src, filename, lang = '', query = '' }: Props = $props();
+  const term = $derived(query || controls?.query || '');
+  registerViewerControls(controls, () => ({
+    search: { matches: term.trim() ? textContent.toLowerCase().split(term.trim().toLowerCase()).length - 1 : 0, index: 0 },
+    actions: [{ label: $t('viewer.wrap'), active: wrap, run: () => { wrap = !wrap; } }]
+  }));
+
 
   let loading = $state(true);
   let error = $state<string | null>(null);
@@ -24,8 +34,8 @@
   // With a search term the raw text is escaped and marked; without one the
   // syntax-highlighted HTML from hljs is preferred when it is available.
   const renderedHtml = $derived.by(() => {
-    if (!query.trim()) return highlightedHtml || escapeHtml(textContent);
-    return highlightTerm(textContent, query);
+    if (!term.trim()) return highlightedHtml || escapeHtml(textContent);
+    return highlightTerm(textContent, term);
   });
 
   async function loadText() {
@@ -87,14 +97,9 @@
     <ViewerStatus {loading} {error} label={copy.viewer.loadingFile} />
   {:else}
     <div class="text-frame">
-      <pre class="text-pre"><code>{@html renderedHtml}</code></pre>
+      <pre class="text-pre" class:wrap><code>{@html renderedHtml}</code></pre>
     </div>
-    {#if textContent.length > 50000}
-      <div class="text-truncated">
-        <FileText class="h-3.5 w-3.5" />
-        <span>Showing first 50,000 characters of {textContent.length.toLocaleString()}</span>
-      </div>
-    {/if}
+
   {/if}
 </div>
 
@@ -102,14 +107,19 @@
   .text-viewer {
     display: flex;
     flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    min-width: 0;
   }
 
 
 
   .text-frame {
-    background: #0d1117;
+    background: var(--background);
+    flex: 1;
+    min-height: 0;
     overflow: auto;
-    max-height: 28rem;
+
   }
 
   .text-pre {
@@ -118,11 +128,12 @@
     font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
     font-size: 0.75rem;
     line-height: 1.55;
-    color: #e6edf3;
+    color: var(--foreground);
     white-space: pre;
     tab-size: 2;
   }
 
+  .text-pre.wrap { white-space:pre-wrap; overflow-wrap:anywhere; }
   .text-pre code {
     font-family: inherit;
     background: none;
@@ -136,12 +147,4 @@
     padding: 0 0.08rem;
   }
 
-  .text-truncated {
-    display: flex;
-    align-items: center;
-    gap: 0.4rem;
-    margin-top: 0.5rem;
-    font-size: 0.6875rem;
-    color: var(--text-muted);
-  }
 </style>

@@ -4,6 +4,9 @@
 
 import { KICKOFF_PPTX, REAL_DOCX, REAL_PPTX, REAL_XLSX, SAMPLE_DOCX, SAMPLE_XLSX } from './mock-office-files';
 
+import readerPdf from '$lib/features/chat/viewers/__fixtures__/reader.pdf?url';
+const PDF_FIXTURE = `data:application/pdf;base64,${btoa(String.fromCharCode(...new Uint8Array(await (await fetch(readerPdf)).arrayBuffer())))}`;
+
 type Listener = (payload: unknown) => void;
 
 const eventListeners = new Map<string, Set<Listener>>();
@@ -261,6 +264,21 @@ savedSessions.push({
       ]
     }
   ]
+});
+
+// Reader fixtures: docked preview, attachment dialog and several compact tabs.
+savedSessions.push({
+  id: 'chat-readers', title: 'Document reader checks', createdAt: Date.now(), updatedAt: Date.now(), folderId: null, draft: '', contextMode: 'home', projectId: null,
+  messages: [{ id: 'reader-upload', role: 'user', content: 'Read these documents.', createdAt: Date.now(), attachments: [
+    { id: 'pdf-attachment', name: 'reader.pdf', type: 'application/pdf', kind: 'document', status: 'ready', size: 10000, data: PDF_FIXTURE },
+    { id: 'docx-attachment', name: 'board-report.docx', type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', kind: 'document', status: 'ready', size: 10000, data: REAL_DOCX },
+    { id: 'xlsx-attachment', name: 'operating-model.xlsx', type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', kind: 'document', status: 'ready', size: 10000, data: REAL_XLSX },
+    { id: 'pptx-attachment', name: 'business-review.pptx', type: 'application/vnd.openxmlformats-officedocument.presentationml.presentation', kind: 'document', status: 'ready', size: 10000, data: REAL_PPTX }
+  ] }, { id: 'reader-docs', role: 'assistant', content: 'A PDF with 16 pages, mixed page sizes and selectable text.', createdAt: Date.now(),
+    artifacts: [officeArtifact('Continuous PDF reader', 'reader.pdf', 'document', PDF_FIXTURE), {
+      title: 'Reading notes', files: { 'notes.md': '# Reading notes\n\nQuiet controls give the document more room.\n\n## Pages\nSearch this document with Ctrl+F.', 'notes.txt': 'Quiet controls give the document more room.\n'.repeat(80) },
+      manifest: { schemaVersion: 1, kind: 'document', presentation: 'document', entryPath: 'notes.md', status: 'ready' }
+    }] }]
 });
 
 /** Last runtime mode set via agente_set_runtime_mode — steers the script. */

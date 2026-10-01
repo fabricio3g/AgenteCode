@@ -317,6 +317,23 @@
     "statusLength": "Limite de sortie atteinte — une partie de l'exécution a été tronquée",
     "retrying": "Problème de connexion — nouvelle tentative ({n})…",
     "todosTitle": "Tâches",
+    "todosAllDone": "Toutes les tâches terminées",
+    "thinking": "Réflexion",
+    "thought": "Réflexion",
+    "live": {
+      "writing": "Rédige la réponse",
+      "waiting": "En attente du modèle",
+      "approval": "En attente de votre accord",
+      "preparing": "Prépare {tool}",
+      "preparingEdit": "Écrit les modifications",
+      "preparingCommand": "Prépare une commande"
+    },
+    "work": {
+      "steps": "{n, plural, one {# étape} other {# étapes}}",
+      "files": "{n, plural, one {# fichier modifié} other {# fichiers modifiés}}"
+    },
+    "toolInput": "Entrée",
+    "toolResult": "Résultat",
     "deleteProject": "Supprimer le projet",
     "deleteProjectTitle": "Supprimer « {name} » ?",
     "deleteProjectMessage": "Retire le projet et ses {conversations} de Agente. Les fichiers de son dossier ne sont pas touchés.",
@@ -395,6 +412,7 @@
       "redo": "Réviser le plan",
       "comment": "Commentaire",
       "commentPrefix": "À propos du plan : ",
+      "open": "Ouvrir le plan",
       "hint": "Build demande l’approbation des outils"
     },
     "runtimeNotes": "Notes d'exécution · {n}",
@@ -1366,6 +1384,8 @@
     "typesTitle": "Types d’artefacts"
   },
   "viewer": {
+    "wrap": "Retour à la ligne",
+    "fitShort": "Ajuster",
     "sheet": {
       "loading": "Ouverture de la feuille…",
       "failed": "Impossible d’ouvrir cette feuille de calcul.",
@@ -1582,6 +1602,19 @@
     "editTitle": "Modifier {name}",
     "editorHint": "Un nom et un rôle suffisent ; le reste peut attendre.",
     "color": "Couleur",
+    "shuffleFace": "Autre visage",
+    "thinking": "Réflexion",
+    "tools": "Outils",
+    "toolsHint": "Ce que ce bot peut utiliser. Sa mémoire et ses coéquipiers sont toujours là.",
+    "sandboxOn": "Les programmes tournent dans un bac à sable : seulement son espace de travail, sans réseau ni vos fichiers.",
+    "sandboxOff": "Cette machine ne peut pas isoler les programmes : le bot demande avant de les lancer.",
+    "toolsets": {
+      "core": "Fichiers",
+      "web": "Web",
+      "run": "Exécuter des programmes",
+      "agents": "Sous-agents",
+      "mcp": "Serveurs MCP"
+    },
     "name": "Nom",
     "namePlaceholder": "Scout",
     "nameNeeded": "Donnez un nom au bot.",

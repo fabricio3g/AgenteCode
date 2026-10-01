@@ -2,8 +2,9 @@
 
 <script lang="ts">
   import type { SlideData } from '$lib/types/bridge';
-  import { ChevronLeft, ChevronRight, Download } from 'lucide-svelte';
-  import { countOf } from '$lib/utils/format';
+  import { t } from 'svelte-i18n';
+  import { registerViewerControls, useViewerControls } from './viewers/viewer-controls.svelte';
+  const controls = useViewerControls();
 
   interface Props {
     slides: SlideData[];
@@ -17,6 +18,12 @@
   const currentSlide = $derived(slides[currentIndex] || null);
   const total = $derived(slides.length);
 
+  let showNotes = $state(true);
+  registerViewerControls(controls, () => ({
+    page: currentIndex + 1, pages: total, goToPage: page => { currentIndex = Math.max(0, Math.min(total - 1, page - 1)); },
+    actions: [{ label: showNotes ? $t('viewer.slides.hideNotes') : $t('viewer.slides.showNotes'), run: () => { showNotes = !showNotes; } }, { label: $t('artifacts.card.download'), run: onDownload }]
+  }));
+
   function prev() {
     if (currentIndex > 0) currentIndex -= 1;
   }
@@ -26,6 +33,7 @@
   }
 
   function handleKeydown(event: KeyboardEvent) {
+    if ((event.target as HTMLElement).closest('input, textarea, button')) return;
     if (event.key === 'ArrowLeft') prev();
     else if (event.key === 'ArrowRight') next();
   }
@@ -37,23 +45,8 @@
   }
 </script>
 
-<svelte:window onkeydown={handleKeydown} />
-
-<div class="mt-4 overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface)] shadow-sm">
-  <!-- Header bar -->
-  <div class="flex items-center justify-between border-b border-[var(--border)] px-4 py-3">
-    <span class="text-xs font-semibold text-[var(--text-secondary)]">
-      Presentation · {countOf(total, 'slide')}
-    </span>
-    <button
-      class="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border-hover)] bg-[var(--primary)] px-3 py-1.5 text-xs font-semibold text-[var(--primary-fg)] transition hover:opacity-88 active:scale-[0.98]"
-      onclick={onDownload}
-    >
-      <Download class="h-3.5 w-3.5" />
-      Download PPTX
-    </button>
-  </div>
-
+<!-- svelte-ignore a11y_no_noninteractive_element_interactions, a11y_no_noninteractive_tabindex -->
+<div class="legacy-deck" role="region" tabindex="0" aria-label={$t('artifacts.kind.presentation')} onkeydown={handleKeydown}>
   <!-- Slide content -->
   {#if currentSlide}
     <div class="px-6 py-8">
@@ -68,7 +61,7 @@
           </li>
         {/each}
       </ul>
-      {#if currentSlide.notes}
+      {#if currentSlide.notes && showNotes}
         <div class="mt-6 rounded-xl border border-dashed border-[var(--border)] bg-[var(--surface-hover)] px-4 py-3 text-xs text-[var(--text-secondary)]">
           <span class="font-semibold">Speaker notes: </span>{currentSlide.notes}
         </div>
@@ -76,30 +69,7 @@
     </div>
   {/if}
 
-  <!-- Navigation footer -->
-  <div class="flex items-center justify-between border-t border-[var(--border)] px-4 py-3">
-    <button
-      class="flex items-center gap-1 rounded-lg px-3 py-1.5 text-sm font-medium text-[var(--text-secondary)] transition hover:bg-[var(--surface-hover)] disabled:opacity-30"
-      onclick={prev}
-      disabled={currentIndex === 0}
-      aria-label="Previous slide"
-    >
-      <ChevronLeft class="h-4 w-4" />
-      Prev
-    </button>
-
-    <span class="text-sm font-medium tabular-nums text-[var(--text-secondary)]">
-      {currentIndex + 1} / {total}
-    </span>
-
-    <button
-      class="flex items-center gap-1 rounded-lg px-3 py-1.5 text-sm font-medium text-[var(--text-secondary)] transition hover:bg-[var(--surface-hover)] disabled:opacity-30"
-      onclick={next}
-      disabled={currentIndex === total - 1}
-      aria-label="Next slide"
-    >
-      Next
-      <ChevronRight class="h-4 w-4" />
-    </button>
-  </div>
 </div>
+<style>
+  .legacy-deck { flex:1; min-height:0; overflow:auto; background:var(--muted); color:var(--foreground); }
+</style>

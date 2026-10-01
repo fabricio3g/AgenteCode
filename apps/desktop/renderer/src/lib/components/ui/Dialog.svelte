@@ -33,6 +33,7 @@
     class: className = '',
     children,
     headerActions,
+    hideHeader = false,
     footer
   }: {
     title: string;
@@ -51,6 +52,8 @@
     class?: string;
     children: Snippet;
     headerActions?: Snippet;
+    /** A reader supplies its own toolbar and close action. */
+    hideHeader?: boolean;
     /** Action row pinned under the content: secondary actions first, primary last. */
     footer?: Snippet;
   } = $props();
@@ -85,6 +88,7 @@
       onclick={(event) => event.stopPropagation()}
       transition:flyAndScale={{ y: 8, start: 0.98, duration: 220 }}
     >
+      {#if hideHeader}<h2 id={labelledBy} class="sr-only">{title}</h2>{:else}
       <header class="flex min-h-14 shrink-0 items-center justify-between gap-3 border-b border-[var(--border-subtle)] px-4 py-2.5 sm:px-5">
         <div class="min-w-0">
           <h2 id={labelledBy} class="truncate text-[15px] font-semibold tracking-[-0.01em]">{title}</h2>
@@ -97,6 +101,7 @@
           </Button>
         </div>
       </header>
+      {/if}
       <!-- The body scrolls when the dialog is taller than the window (small
            windows, large interface sizes); bodies with their own scroller
            still get a bounded height from this flex column. -->

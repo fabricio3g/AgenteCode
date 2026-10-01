@@ -317,6 +317,23 @@
     "statusLength": "Se alcanzó el límite de salida — parte de la ejecución se cortó",
     "retrying": "Fallo de conexión — reintentando (intento {n})…",
     "todosTitle": "Tareas",
+    "todosAllDone": "Todas las tareas hechas",
+    "thinking": "Pensando",
+    "thought": "Pensamiento",
+    "live": {
+      "writing": "Escribiendo la respuesta",
+      "waiting": "Esperando al modelo",
+      "approval": "Esperando tu aprobación",
+      "preparing": "Preparando {tool}",
+      "preparingEdit": "Escribiendo cambios",
+      "preparingCommand": "Preparando un comando"
+    },
+    "work": {
+      "steps": "{n, plural, one {# paso} other {# pasos}}",
+      "files": "{n, plural, one {# archivo cambiado} other {# archivos cambiados}}"
+    },
+    "toolInput": "Entrada",
+    "toolResult": "Resultado",
     "deleteProject": "Eliminar proyecto",
     "deleteProjectTitle": "¿Eliminar «{name}»?",
     "deleteProjectMessage": "Quita el proyecto y sus {conversations} de Agente. Los archivos de su carpeta no se tocan.",
@@ -395,6 +412,7 @@
       "redo": "Rehacer el plan",
       "comment": "Comentario",
       "commentPrefix": "Sobre el plan: ",
+      "open": "Abrir plan",
       "hint": "Build pide la aprobación de las herramientas"
     },
     "runtimeNotes": "Notas del entorno · {n}",
@@ -1366,6 +1384,8 @@
     "typesTitle": "Tipos de artefacto"
   },
   "viewer": {
+    "wrap": "Ajustar líneas",
+    "fitShort": "Ajustar",
     "sheet": {
       "loading": "Abriendo hoja de cálculo…",
       "failed": "No se pudo abrir esta hoja de cálculo.",
@@ -1582,6 +1602,19 @@
     "editTitle": "Editar a {name}",
     "editorHint": "Con un nombre y un rol basta; lo demás puede esperar.",
     "color": "Color",
+    "shuffleFace": "Otra cara",
+    "thinking": "Razonamiento",
+    "tools": "Herramientas",
+    "toolsHint": "Lo que este bot puede usar. Su memoria y sus compañeros siempre están.",
+    "sandboxOn": "Los programas se ejecutan en un entorno aislado: solo su espacio de trabajo, sin red y sin tus archivos.",
+    "sandboxOff": "Este equipo no puede aislar programas, así que el bot pregunta antes de ejecutarlos.",
+    "toolsets": {
+      "core": "Archivos",
+      "web": "Web",
+      "run": "Ejecutar programas",
+      "agents": "Subagentes",
+      "mcp": "Servidores MCP"
+    },
     "name": "Nombre",
     "namePlaceholder": "Scout",
     "nameNeeded": "Ponle un nombre al bot.",

@@ -10,12 +10,14 @@
 -->
 
 <script lang="ts">
-  import { ChevronDown, ChevronUp, Minus, Plus, Search, X } from 'lucide-svelte';
   import { t, locale } from 'svelte-i18n';
   import { readArrayBuffer } from './viewer-source';
   import ViewerStatus from './ViewerStatus.svelte';
   import { columnName, rawCell, selectionToTsv, sheetToGrid, summarize, type GridCell, type GridSheet } from './xlsx-model';
   import { createFormulaEvaluator, type CellInput } from './xlsx-formula';
+
+  import { registerViewerControls, useViewerControls } from './viewer-controls.svelte';
+  const controls = useViewerControls();
 
   interface Props {
     src: string;
@@ -35,7 +37,7 @@
   let sheets = $state<GridSheet[]>([]);
   let active = $state(0);
   let zoom = $state(1);
-  let find = $state('');
+
   let findIndex = $state(0);
   let scroller = $state<HTMLDivElement>();
   let scrollTop = $state(0);
@@ -87,7 +89,7 @@
     return summarize(cells);
   });
 
-  const term = $derived((find || query).trim().toLowerCase());
+  const term = $derived((query || controls?.query || '').trim().toLowerCase());
   const matches = $derived.by(() => {
     if (!sheet || !term) return [] as Array<{ row: number; col: number }>;
     const found: Array<{ row: number; col: number }> = [];
@@ -96,6 +98,11 @@
     }));
     return found;
   });
+
+  registerViewerControls(controls, () => ({
+    zoom: `${Math.round(zoom * 100)}%`, zoomBy: direction => setZoom(zoom + direction * 0.1), fit: () => setZoom(1),
+    search: { matches: matches.length, index: findIndex, step }, retry: error ? () => void load() : undefined
+  }));
 
   function number(value: number): string {
     return new Intl.NumberFormat($locale || 'en', { maximumFractionDigits: 2 }).format(value);
@@ -290,21 +297,7 @@
       <span class="name-box" aria-label={$t('viewer.sheet.cell')}>{address}</span>
       <span class="fx" aria-hidden="true">fx</span>
       <span class="formula" title={focusCell?.input || ''}>{focusCell?.input || ''}</span>
-      <label class="find">
-        <Search class="size-3.5 shrink-0 opacity-60" />
-        <input
-          bind:value={find}
-          placeholder={$t('viewer.sheet.find')}
-          aria-label={$t('viewer.sheet.find')}
-          onkeydown={(event) => { if (event.key === 'Enter') { event.preventDefault(); step(event.shiftKey ? -1 : 1); } }}
-        />
-        {#if term}
-          <span class="find-count">{matches.length ? `${findIndex + 1}/${matches.length}` : '0'}</span>
-          <button type="button" class="bar-btn" onclick={() => step(-1)} aria-label={$t('viewer.previous')}><ChevronUp class="size-3.5" /></button>
-          <button type="button" class="bar-btn" onclick={() => step(1)} aria-label={$t('viewer.next')}><ChevronDown class="size-3.5" /></button>
-          {#if find}<button type="button" class="bar-btn" onclick={() => (find = '')} aria-label={$t('artifacts.clearSearch')}><X class="size-3.5" /></button>{/if}
-        {/if}
-      </label>
+
     </div>
 
     <!-- The grid -->
@@ -390,11 +383,7 @@
           {/if}
         {/if}
       </div>
-      <div class="zoom">
-        <button type="button" class="bar-btn" onclick={() => setZoom(zoom - 0.1)} aria-label={$t('viewer.zoomOut')}><Minus class="size-3.5" /></button>
-        <button type="button" class="zoom-value" onclick={() => setZoom(1)} title={$t('viewer.zoomReset')}>{Math.round(zoom * 100)}%</button>
-        <button type="button" class="bar-btn" onclick={() => setZoom(zoom + 0.1)} aria-label={$t('viewer.zoomIn')}><Plus class="size-3.5" /></button>
-      </div>
+
     </div>
   {/if}
 </div>
@@ -404,20 +393,18 @@
     --grid-line: color-mix(in srgb, var(--foreground) 11%, transparent);
     --sheet-accent: var(--success);
     display: flex;
-    height: var(--doc-viewer-height, calc(96vh - 8rem));
-    min-height: 16rem;
+    min-height: 0;
     flex: 1 1 auto;
     flex-direction: column;
     overflow: hidden;
-    border: var(--doc-viewer-border, 1px solid var(--border));
-    border-radius: var(--doc-viewer-radius, 0.75rem);
+
     background: var(--background);
     color: var(--foreground);
   }
 
   .sheet-bar {
     display: flex;
-    height: 2.25rem;
+    height: 1.75rem;
     flex-shrink: 0;
     align-items: center;
     gap: 0.5rem;
@@ -450,47 +437,6 @@
     font-variant-numeric: tabular-nums;
     font-size: 12px;
   }
-  .find {
-    display: flex;
-    width: 15rem;
-    max-width: 40%;
-    flex-shrink: 0;
-    align-items: center;
-    gap: 0.25rem;
-    padding: 0 0.25rem 0 0.5rem;
-    height: 1.625rem;
-    border-radius: 9999px;
-    background: var(--muted);
-  }
-  .find input {
-    min-width: 0;
-    flex: 1;
-    border: 0;
-    background: transparent;
-    font-size: 12px;
-    color: inherit;
-    outline: none;
-  }
-  .find-count {
-    font-size: 11px;
-    color: var(--muted-foreground);
-    font-variant-numeric: tabular-nums;
-  }
-  .bar-btn {
-    display: inline-flex;
-    width: 1.5rem;
-    height: 1.5rem;
-    flex-shrink: 0;
-    align-items: center;
-    justify-content: center;
-    border-radius: 0.375rem;
-    color: var(--muted-foreground);
-  }
-  .bar-btn:hover {
-    background: var(--surface-hover);
-    color: var(--foreground);
-  }
-
   .sheet-scroll {
     position: relative;
     min-height: 0;
@@ -621,15 +567,5 @@
     color: var(--muted-foreground);
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
-  }
-  .zoom {
-    display: flex;
-    align-items: center;
-  }
-  .zoom-value {
-    min-width: 2.75rem;
-    font-size: 11.5px;
-    color: var(--muted-foreground);
-    font-variant-numeric: tabular-nums;
   }
 </style>
