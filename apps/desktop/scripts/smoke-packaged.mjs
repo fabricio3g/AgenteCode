@@ -4,11 +4,15 @@ import path from 'node:path';
 import { spawn, execFileSync } from 'node:child_process';
 
 const root = path.resolve(process.argv[2] || `release/${process.platform === 'win32' ? 'win' : 'linux'}-unpacked`);
-const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'Agente packaged ñ '));
-const copied = path.join(temporary, 'Application ñ with spaces');
+// Windows must exercise Unicode paths. Chromium's Linux SUID helper parses its
+// executable path on spaces, so keep the Linux helper's directory space-free.
+const temporary = fs.mkdtempSync(path.join(os.tmpdir(), process.platform === 'win32' ? 'Agente packaged ñ ' : 'agente-packaged-'));
+const copied = path.join(temporary, process.platform === 'win32' ? 'Application ñ with spaces' : 'application');
 const diagnostics = path.resolve('release/smoke-diagnostics');
 fs.mkdirSync(diagnostics, { recursive: true });
-fs.cpSync(root, copied, { recursive: true });
+// A filter selects Node's per-file copier. The native recursive fast path in
+// Node 22 can return without creating the requested Unicode Windows directory.
+fs.cpSync(root, copied, { recursive: true, filter: () => true });
 // Ubuntu runners restrict unprivileged user namespaces. Configure Chromium's
 // supported SUID helper in the temporary copy instead of disabling sandboxing.
 if (process.platform === 'linux' && process.env.AGENTE_SMOKE_SETUID === '1') {
@@ -38,7 +42,7 @@ async function launch(testCase) {
       const line = output.split(/\r?\n/).find((value) => value.startsWith(marker));
       fs.writeFileSync(path.join(diagnostics, `${testCase || 'ready'}.log`), output);
       const logs = path.join(profile, 'browser/logs');
-      if (fs.existsSync(logs)) fs.cpSync(logs, path.join(diagnostics, testCase || 'ready'), { recursive: true });
+      if (fs.existsSync(logs)) fs.cpSync(logs, path.join(diagnostics, testCase || 'ready'), { recursive: true, filter: () => true });
       if (!line || code !== (testCase ? 1 : 0)) return reject(new Error(`Packaged ${testCase || 'startup'} failed (exit ${code})`));
       JSON.parse(line.slice(marker.length));
       resolve();
