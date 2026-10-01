@@ -17,7 +17,7 @@ export function packageReport(unpacked, release) {
   const totals = { renderer: 0, dependencies: 0, rust: 0, backends: {}, installed: directoryBytes(unpacked), installers: {} };
   for (const file of asar.listPackage(archive)) {
     const relative = file.replace(/^[\\/]+/, '').replace(/\\/g, '/');
-    const stat = asar.statFile(archive, relative);
+    const stat = asar.statFile(archive, path.normalize(relative));
     if (stat.files || stat.link) continue;
     if (relative.startsWith('renderer/dist/')) totals.renderer += stat.size;
     if (relative.startsWith('node_modules/')) totals.dependencies += stat.size;
