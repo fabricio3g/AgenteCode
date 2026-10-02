@@ -347,8 +347,9 @@
   }
 
   /* The sidebar's edge, drawn above the panel inside it (whose fixed width
-     would otherwise paint over a border), in the same colour as the
-     preview's edge. */
+     would otherwise paint over a border). A step quieter than the preview's:
+     the inset inside the rail already darkens this boundary, so a hard line
+     here would read as a doubled edge. */
   .sidebar-outer.expanded::after {
     content: '';
     position: absolute;
@@ -357,11 +358,19 @@
     bottom: 0;
     z-index: 1;
     width: 1px;
-    background: var(--border-hover);
+    background: var(--border);
     pointer-events: none;
   }
   .sidebar-outer.resizing {
     transition: none;
+  }
+
+  /* The docked rail's depth, drawn inside it (--sidebar-inner-shadow). Scoped
+     to .expanded on purpose: the floating ghost below is not a groove — it is
+     a panel over the page, so it takes its depth from the cast outside and no
+     inset at all. The aside lives in Sidebar.svelte, hence the :global. */
+  .sidebar-outer.expanded :global(.sidebar) {
+    box-shadow: var(--sidebar-inner-shadow);
   }
 
   .sidebar-view-full {
