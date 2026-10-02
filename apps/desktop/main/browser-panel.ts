@@ -1,7 +1,11 @@
 import { WebContentsView, session, shell } from 'electron';
+import { AsyncLocalStorage } from 'node:async_hooks';
+import { createHash } from 'node:crypto';
+import { isWorkspaceScope } from '../shared/workspace-scope.ts';
 import { getMainWindow } from './window-manager.ts';
 import { BROWSER_VIEWPORTS, type BrowserViewportPreset } from '../shared/browser-viewports.ts';
 import { debuggerConsoleMessage, type BrowserConsoleMessage } from './browser-console.ts';
+import { browserViewBounds, type BrowserPresentation } from '../shared/browser-presentation.ts';
 
 export const AGENT_BROWSER_PARTITION = 'persist:agent-browser';
 export const AGENT_BROWSER_MAX_TABS = 5;
@@ -15,6 +19,7 @@ export interface PanelConsoleEntry extends BrowserConsoleMessage {
 }
 
 export interface PanelTab {
+  scope: string;
   id: string;
   view: WebContentsView;
   preset: AgentBrowserViewportPreset;
@@ -26,19 +31,40 @@ export interface PanelTab {
 
 const CONSOLE_LIMIT = 200;
 
-const tabs = new Map<string, PanelTab>();
+type BrowserOwner = {
+  tabs: Map<string, PanelTab>;
+  activeTabId: string | null;
+  panelVisible: boolean;
+  panelExposed: boolean;
+  panelBounds: { x: number; y: number; width: number; height: number } | null;
+  panelOccluded: boolean;
+  agentDriving: boolean;
+  agentDrivingTimer: ReturnType<typeof setTimeout> | null;
+  userTakeover: boolean;
+};
+const owners = new Map<string, BrowserOwner>();
+const scopeContext = new AsyncLocalStorage<string>();
+let foregroundScope = 'unassigned';
 let tabSeq = 0;
-let activeTabId: string | null = null;
-let panelVisible = false;
-let panelBounds: { x: number; y: number; width: number; height: number } | null = null;
-/** An agent tool touched the browser in the last few seconds. */
-let agentDriving = false;
-let agentDrivingTimer: ReturnType<typeof setTimeout> | null = null;
-/** The user took control: agent actions are refused until they hand it back. */
-let userTakeover = false;
+export function browserScope(): string { return scopeContext.getStore() ?? foregroundScope; }
+export function withBrowserScope<T>(scope: string, run: () => T): T {
+  if (!isWorkspaceScope(scope)) throw new Error('Browser conversation is required');
+  return scopeContext.run(scope, run);
+}
+function state(scope = browserScope()): BrowserOwner {
+  let owner = owners.get(scope);
+  if (!owner) {
+    owner = { tabs: new Map(), activeTabId: null, panelVisible: false, panelExposed: scope === 'unassigned', panelBounds: null, panelOccluded: false, agentDriving: false, agentDrivingTimer: null, userTakeover: false };
+    owners.set(scope, owner);
+  }
+  return owner;
+}
+function partition(scope = browserScope()): string {
+  return scope === 'unassigned' ? AGENT_BROWSER_PARTITION : `${AGENT_BROWSER_PARTITION}-${createHash('sha256').update(scope).digest('hex').slice(0, 24)}`;
+}
 
 function guestSession() {
-  return session.fromPartition(AGENT_BROWSER_PARTITION);
+  return session.fromPartition(partition());
 }
 
 function hardenGuestSession() {
@@ -64,21 +90,17 @@ function hardenGuestSession() {
   });
 }
 
-function pushState() {
+export function panelState(scope = browserScope()) {
+  const owner = state(scope);
+  return {
+    scope, visible: owner.panelVisible, activeTabId: owner.activeTabId, agentDriving: owner.agentDriving, takeover: owner.userTakeover,
+    tabs: [...owner.tabs.values()].map((t) => ({ id: t.id, url: safeUrl(t), title: safeTitle(t.view), preset: t.preset }))
+  };
+}
+function pushState(scope = browserScope()) {
   const win = getMainWindow();
   if (!win || win.isDestroyed()) return;
-  win.webContents.send('browser_panel_state', {
-    visible: panelVisible,
-    activeTabId,
-    agentDriving,
-    takeover: userTakeover,
-    tabs: [...tabs.values()].map((t) => ({
-      id: t.id,
-      url: safeUrl(t.view),
-      title: safeTitle(t.view),
-      preset: t.preset
-    }))
-  });
+  win.webContents.send('browser_panel_state', panelState(scope));
 }
 
 function safeUrl(tab: PanelTab): string;
@@ -108,17 +130,21 @@ function attachToMainWindow(view: WebContentsView) {
 }
 
 function applyBounds() {
-  const entry = activeTabId ? tabs.get(activeTabId) : null;
-  for (const tab of tabs.values()) {
-    try {
-      tab.view.setVisible(false);
-    } catch { /* ignore */ }
+  for (const owner of owners.values()) for (const tab of owner.tabs.values()) {
+    try { tab.view.setVisible(false); } catch { /* Guest may be closing. */ }
   }
-  if (!entry || !panelVisible || !panelBounds || panelOccluded) return;
-  try {
-    entry.view.setBounds({ ...panelBounds });
-    entry.view.setVisible(true);
-  } catch { /* ignore */ }
+  const owner = state(foregroundScope);
+  const entry = owner.activeTabId ? owner.tabs.get(owner.activeTabId) : null;
+  if (!entry || !owner.panelVisible || !owner.panelExposed || !owner.panelBounds || owner.panelOccluded) return;
+  try { entry.view.setBounds({ ...owner.panelBounds }); entry.view.setVisible(true); } catch { /* Guest may be closing. */ }
+}
+/** Only the renderer selects which conversation may present a live native view. */
+export function panelSelectScope(scope: string) {
+  if (!isWorkspaceScope(scope)) throw new Error('Browser conversation is required');
+  foregroundScope = scope;
+  state(scope).panelExposed = false;
+  applyBounds(); pushState(scope);
+  return panelState(scope);
 }
 
 function allowWebNavigation(event: { preventDefault(): void }, url: string): void {
@@ -132,7 +158,7 @@ function allowWebNavigation(event: { preventDefault(): void }, url: string): voi
 
 function wireGuestEvents(tab: PanelTab) {
   const wc = tab.view.webContents;
-  const refresh = () => pushState();
+  const refresh = () => pushState(tab.scope);
   wc.on('did-navigate', refresh);
   wc.on('did-navigate-in-page', refresh);
   wc.on('did-finish-load', refresh);
@@ -149,14 +175,14 @@ function wireGuestEvents(tab: PanelTab) {
     return { action: 'deny' };
   });
   wc.on('will-navigate', allowWebNavigation);
-  wc.on('will-frame-navigate', allowWebNavigation);
+  wc.on('will-frame-navigate', (details) => allowWebNavigation(details, details.url));
 }
 
 function createTab(url?: string): PanelTab {
   hardenGuestSession();
   const view = new WebContentsView({
     webPreferences: {
-      partition: AGENT_BROWSER_PARTITION,
+      partition: partition(),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
@@ -171,13 +197,15 @@ function createTab(url?: string): PanelTab {
   // Rounded like the box it sits in, inside the right dock's card.
   (view as unknown as { setBorderRadius?: (radius: number) => void }).setBorderRadius?.(8);
   tabSeq += 1;
-  const tab: PanelTab = { id: `btab-${Date.now()}-${tabSeq}`, view, preset: 'fit', debuggerAttached: false, console: [], consoleSeq: 0 };
+  view.setBounds({ x: 0, y: 0, width: 640, height: 480 });
+  view.setVisible(false);
+  const tab: PanelTab = { scope: browserScope(), id: `btab-${Date.now()}-${tabSeq}`, view, preset: 'fit', debuggerAttached: false, console: [], consoleSeq: 0 };
   wireGuestEvents(tab);
   attachToMainWindow(view);
   // Attach before the first load so the page's console is captured from the start.
   void ensureDebugger(tab).catch(() => {});
-  tabs.set(tab.id, tab);
-  activeTabId = tab.id;
+  state().tabs.set(tab.id, tab);
+  state().activeTabId = tab.id;
   if (url) {
     void view.webContents.loadURL(url).catch(() => {});
   }
@@ -187,8 +215,8 @@ function createTab(url?: string): PanelTab {
 }
 
 function requireTab(tabId?: string): PanelTab {
-  const id = tabId || activeTabId || '';
-  const tab = tabs.get(id);
+  const id = tabId || state().activeTabId || '';
+  const tab = state().tabs.get(id);
   if (!tab) throw new Error('No browser tab open');
   return tab;
 }
@@ -268,31 +296,27 @@ export function panelCdp<T>(tab: PanelTab, method: string, params?: Record<strin
 
 /** Record that an agent is using the browser; the flag clears after a quiet spell. */
 export function panelMarkAgentDriving() {
-  if (agentDrivingTimer) clearTimeout(agentDrivingTimer);
-  if (!agentDriving) {
-    agentDriving = true;
-    pushState();
-  }
-  agentDrivingTimer = setTimeout(() => {
-    agentDriving = false;
-    agentDrivingTimer = null;
-    pushState();
+  const scope = browserScope(); const owner = state(scope);
+  if (owner.agentDrivingTimer) clearTimeout(owner.agentDrivingTimer);
+  if (!owner.agentDriving) { owner.agentDriving = true; pushState(scope); }
+  owner.agentDrivingTimer = setTimeout(() => {
+    owner.agentDriving = false; owner.agentDrivingTimer = null; pushState(scope);
   }, 5000);
 }
 
 export function panelSetTakeover(on: boolean) {
-  userTakeover = on;
+  state().userTakeover = on;
   pushState();
-  return { takeover: userTakeover };
+  return { takeover: state().userTakeover };
 }
 
 export function panelIsTakenOver(): boolean {
-  return userTakeover;
+  return state().userTakeover;
 }
 
 export function panelShow() {
-  if (!panelVisible) {
-    panelVisible = true;
+  if (!state().panelVisible) {
+    state().panelVisible = true;
     applyBounds();
     pushState();
   }
@@ -315,22 +339,22 @@ export function panelOpenTab(url?: string) {
       throw new Error('Only http(s) URLs allowed');
     }
   }
-  if (tabs.size >= AGENT_BROWSER_MAX_TABS) {
-    const oldest = [...tabs.values()][0];
+  if (state().tabs.size >= AGENT_BROWSER_MAX_TABS) {
+    const oldest = [...state().tabs.values()][0];
     if (oldest) closeTabEntry(oldest.id);
   }
-  panelVisible = true;
+  state().panelVisible = true;
   const tab = createTab(url);
   return { id: tab.id, url: url || '' };
 }
 
 export function panelListTabs() {
-  return [...tabs.values()].map((t) => ({ id: t.id, url: safeUrl(t), title: safeTitle(t.view), preset: t.preset }));
+  return [...state().tabs.values()].map((t) => ({ id: t.id, url: safeUrl(t), title: safeTitle(t.view), preset: t.preset }));
 }
 
 export function panelSetActive(tabId: string) {
-  if (!tabs.has(tabId)) throw new Error('Unknown browser tab');
-  activeTabId = tabId;
+  if (!state().tabs.has(tabId)) throw new Error('Unknown browser tab');
+  state().activeTabId = tabId;
   applyBounds();
   pushState();
   return { id: tabId };
@@ -356,18 +380,18 @@ function releaseTab(tab: PanelTab): void {
 }
 
 function selectAfterClose(tabId: string): void {
-  if (activeTabId === tabId) {
-    activeTabId = [...tabs.keys()].pop() || null;
+  if (state().activeTabId === tabId) {
+    state().activeTabId = [...state().tabs.keys()].pop() || null;
   }
 }
 
 function closeTabEntry(tabId: string) {
-  const tab = tabs.get(tabId);
+  const tab = state().tabs.get(tabId);
   if (!tab) return;
   releaseTab(tab);
-  tabs.delete(tabId);
+  state().tabs.delete(tabId);
   selectAfterClose(tabId);
-  if (!tabs.size) panelVisible = false;
+  if (!state().tabs.size) state().panelVisible = false;
 }
 
 export function panelCloseTab(tabId?: string) {
@@ -379,9 +403,9 @@ export function panelCloseTab(tabId?: string) {
 }
 
 export function panelCloseAll() {
-  for (const id of [...tabs.keys()]) closeTabEntry(id);
-  activeTabId = null;
-  panelVisible = false;
+  for (const id of [...state().tabs.keys()]) closeTabEntry(id);
+  state().activeTabId = null;
+  state().panelVisible = false;
   pushState();
   return { closed: true };
 }
@@ -392,41 +416,52 @@ export function panelCloseAll() {
  * the panel: it gets a still of the page to show in its place and the live
  * view steps aside; un-occluding brings the live page back.
  */
-let panelOccluded = false;
+
 
 export async function panelSetOccluded(occluded: boolean): Promise<{ image: string | null }> {
-  if (occluded === panelOccluded) return { image: null };
+  if (occluded === state().panelOccluded) return { image: null };
   let image: string | null = null;
-  const entry = activeTabId ? tabs.get(activeTabId) : null;
-  if (occluded && entry && panelVisible) {
+  const entry = state().activeTabId ? state().tabs.get(state().activeTabId!) : null;
+  if (occluded && entry && state().panelVisible) {
     try {
       image = (await entry.view.webContents.capturePage()).toDataURL();
     } catch { /* no still: the box just shows empty for a moment */ }
   }
-  panelOccluded = occluded;
+  state().panelOccluded = occluded;
   applyBounds();
   return { image };
 }
 
 export function panelSetVisible(visible: boolean) {
-  panelVisible = visible;
+  state().panelVisible = visible;
   applyBounds();
   pushState();
   return { visible };
 }
 
 export function panelSetBounds(rect: { x: number; y: number; width: number; height: number }) {
-  panelBounds = {
-    x: Math.max(0, Math.round(rect.x)),
-    y: Math.max(0, Math.round(rect.y)),
-    width: Math.max(200, Math.round(rect.width)),
-    height: Math.max(200, Math.round(rect.height))
-  };
+  const win = getMainWindow();
+  state().panelBounds = browserViewBounds(rect, 1, win?.getContentBounds() ?? { width: 10000, height: 10000 });
   applyBounds();
   // A fixed-size preset rescales to the new panel size.
-  const active = activeTabId ? tabs.get(activeTabId) : null;
+  const active = state().activeTabId ? state().tabs.get(state().activeTabId!) : null;
   if (active && active.preset !== 'fit') void panelSetViewport(active.preset, active.id).catch(() => {});
   return { ok: true };
+}
+
+/** Presentation never changes logical openness or broadcasts a browser hide. */
+export async function panelSetPresentation(presentation: BrowserPresentation): Promise<{ image: string | null }> {
+  const win = getMainWindow();
+  const wasOccluded = state().panelOccluded;
+  const active = state().activeTabId ? state().tabs.get(state().activeTabId!) : null;
+  const capture = presentation.occluded && !wasOccluded && state().panelExposed && active && state().panelVisible
+    ? active.view.webContents.capturePage().then((image) => image.toDataURL()).catch(() => null) : Promise.resolve(null);
+  state().panelExposed = !!presentation.exposed;
+  state().panelOccluded = !!presentation.occluded;
+  state().panelBounds = browserViewBounds(presentation.bounds, win?.webContents.getZoomFactor() ?? 1, win?.getContentBounds() ?? { width: 0, height: 0 });
+  applyBounds();
+  if (active && active.preset !== 'fit' && state().panelBounds) void panelSetViewport(active.preset, active.id).catch(() => {});
+  return { image: await capture };
 }
 
 export async function panelNavigate(url: string, tabId?: string) {
@@ -434,9 +469,9 @@ export async function panelNavigate(url: string, tabId?: string) {
   if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
     throw new Error('Only http(s) URLs allowed');
   }
-  panelVisible = true;
-  const tab = tabId ? requireTab(tabId) : activeTabId ? requireTab(activeTabId) : createTab();
-  activeTabId = tab.id;
+  state().panelVisible = true;
+  const tab = tabId ? requireTab(tabId) : state().activeTabId ? requireTab(state().activeTabId!) : createTab();
+  state().activeTabId = tab.id;
   await tab.view.webContents.loadURL(url);
   applyBounds();
   pushState();
@@ -511,7 +546,8 @@ export async function panelSetViewport(preset: AgentBrowserViewportPreset, tabId
   const config = BROWSER_VIEWPORTS[preset] ?? BROWSER_VIEWPORTS.desktop;
   // Real size (Desktop used to just clear the override and render at the
   // ~600px panel width), scaled down so the whole page fits the panel.
-  const fit = panelBounds ? Math.min(1, panelBounds.width / config.width, panelBounds.height / config.height) : 1;
+  const bounds = state().panelBounds;
+  const fit = bounds ? Math.min(1, bounds.width / config.width, bounds.height / config.height) : 1;
   await cdp(tab, 'Emulation.setDeviceMetricsOverride', {
     width: config.width,
     height: config.height,

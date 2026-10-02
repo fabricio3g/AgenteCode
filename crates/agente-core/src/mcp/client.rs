@@ -578,6 +578,15 @@ impl McpManager {
     /// Call `full_name` (as the model sees it). No manager lock is held
     /// during the call.
     pub async fn call_tool(&self, full_name: &str, args: Value) -> anyhow::Result<CallOutput> {
+        self.call_tool_with_meta(full_name, args, None).await
+    }
+
+    pub async fn call_tool_with_meta(
+        &self,
+        full_name: &str,
+        args: Value,
+        meta: Option<Value>,
+    ) -> anyhow::Result<CallOutput> {
         let found = self.servers.iter().find_map(|server| {
             let connection = server.connection.read().clone()?;
             let tool = connection
@@ -600,6 +609,7 @@ impl McpManager {
         if let Some(arguments) = arguments {
             params = params.with_arguments(arguments);
         }
+        params.meta = meta.map(serde_json::from_value).transpose()?;
         let timeout = server.config.call_timeout();
         let result = tokio::time::timeout(timeout, connection.service.call_tool(params))
             .await
@@ -715,7 +725,7 @@ for line in sys.stdin:
               "params": {"level": "info", "data": "working"}})
         name, args = msg["params"]["name"], msg["params"].get("arguments", {})
         if name == "echo":
-            result = {"content": [{"type": "text", "text": "echo: " + args.get("text", "")}]}
+            result = {"content": [{"type": "text", "text": ("meta: " + msg["params"].get("_meta", {}).get("agente/sessionId", "") if args.get("meta") else "echo: " + args.get("text", ""))}]}
         else:
             result = {"content": [{"type": "text", "text": "it broke"}], "isError": True}
         send({"jsonrpc": "2.0", "id": mid, "result": result})
@@ -765,6 +775,15 @@ for line in sys.stdin:
         );
         assert_eq!(a.unwrap().text, "echo: one");
         assert_eq!(b.unwrap().text, "echo: two");
+        let owned = manager
+            .call_tool_with_meta(
+                "mock_echo",
+                serde_json::json!({"meta": true}),
+                Some(serde_json::json!({"agente/sessionId": "owner-a"})),
+            )
+            .await
+            .unwrap();
+        assert_eq!(owned.text, "meta: owner-a");
         let failed = manager
             .call_tool("mock_boom", serde_json::json!({}))
             .await

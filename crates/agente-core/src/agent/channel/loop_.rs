@@ -87,7 +87,8 @@ pub fn spawn_chat_task(
             },
             DEFAULT_MAX_SUBAGENT_DEPTH,
             max_parallel_subagents,
-        );
+        )
+        .with_mcp_session_id(session_id);
         let config = AgentRunConfig {
             session_id,
             task_id,
@@ -235,7 +236,13 @@ pub(crate) async fn run_agent_loop(cfg: AgentRunConfig) -> Result<(), AgentLoopF
     // join on a later turn (a slow server never delays this one).
     if let Some(manager) = mcp_manager.as_ref().filter(|_| mcp_allowed) {
         manager.refresh_stale_tools().await;
-        tool_registry.register_mcp_adapters(crate::mcp::McpToolAdapter::all(manager));
+        tool_registry.register_mcp_adapters(crate::mcp::McpToolAdapter::all_for_session(
+            manager,
+            subagent_host
+                .as_ref()
+                .and_then(SubagentHost::mcp_session_id)
+                .unwrap_or(session_id),
+        ));
     }
     for tool in extra_tools {
         tool_registry.register(tool);

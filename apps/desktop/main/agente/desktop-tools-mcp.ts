@@ -9,7 +9,7 @@
 import crypto from 'node:crypto';
 import http from 'node:http';
 import type { AddressInfo } from 'node:net';
-import type { AgentTool, ToolResult } from '../../shared/agent-core/types.ts';
+import type { AgentTool, ToolResult, ToolExecContext } from '../../shared/agent-core/types.ts';
 
 const PROTOCOL_VERSION = '2025-06-18';
 const MAX_BODY_BYTES = 4 * 1024 * 1024;
@@ -19,6 +19,8 @@ export type DesktopToolServer = {
   token: string;
   close(): Promise<void>;
 };
+
+type ResolveContext = (meta: Record<string, unknown>) => Partial<ToolExecContext> | Promise<Partial<ToolExecContext>>;
 
 type RpcRequest = { jsonrpc?: string; id?: unknown; method?: string; params?: Record<string, unknown> };
 
@@ -46,19 +48,20 @@ function callResult(result: ToolResult) {
   };
 }
 
-async function callTool(tools: Map<string, AgentTool>, params: Record<string, unknown> = {}) {
+async function callTool(tools: Map<string, AgentTool>, params: Record<string, unknown> = {}, resolveContext?: ResolveContext) {
   const tool = tools.get(String(params.name ?? ''));
   if (!tool) return callResult({ content: `Unknown tool ${String(params.name)}`, isError: true });
   const args = (params.arguments ?? {}) as Record<string, unknown>;
   try {
     const signal = new AbortController().signal;
-    return callResult(await tool.execute(`mcp-${crypto.randomUUID()}`, args, { signal }));
+    const context = await resolveContext?.((params._meta ?? {}) as Record<string, unknown>);
+    return callResult(await tool.execute(`mcp-${crypto.randomUUID()}`, args, { ...context, signal }));
   } catch (error: unknown) {
     return callResult({ content: error instanceof Error ? error.message : String(error), isError: true });
   }
 }
 
-type Handler = (tools: Map<string, AgentTool>, params: Record<string, unknown> | undefined) => unknown;
+type Handler = (tools: Map<string, AgentTool>, params: Record<string, unknown> | undefined, resolveContext?: ResolveContext) => unknown;
 
 const HANDLERS: Record<string, Handler> = {
   initialize: (_tools, params) => ({
@@ -68,20 +71,20 @@ const HANDLERS: Record<string, Handler> = {
   }),
   ping: () => ({}),
   'tools/list': (tools) => ({ tools: toolList([...tools.values()]) }),
-  'tools/call': (tools, params) => callTool(tools, params)
+  'tools/call': (tools, params, resolveContext) => callTool(tools, params, resolveContext)
 };
 
 /** The JSON-RPC result for one request. */
-async function answer(tools: Map<string, AgentTool>, request: RpcRequest): Promise<unknown> {
+async function answer(tools: Map<string, AgentTool>, request: RpcRequest, resolveContext?: ResolveContext): Promise<unknown> {
   const handler = HANDLERS[String(request.method)];
   if (!handler) throw Object.assign(new Error(`Method not found: ${request.method}`), { code: -32601 });
-  return handler(tools, request.params);
+  return handler(tools, request.params, resolveContext);
 }
 
-async function reply(tools: Map<string, AgentTool>, request: RpcRequest): Promise<unknown | undefined> {
+async function reply(tools: Map<string, AgentTool>, request: RpcRequest, resolveContext?: ResolveContext): Promise<unknown | undefined> {
   if (request.id === undefined) return undefined; // notification
   try {
-    return { jsonrpc: '2.0', id: request.id, result: await answer(tools, request) };
+    return { jsonrpc: '2.0', id: request.id, result: await answer(tools, request, resolveContext) };
   } catch (error: unknown) {
     const code = (error as { code?: number }).code ?? -32603;
     return { jsonrpc: '2.0', id: request.id, error: { code, message: error instanceof Error ? error.message : String(error) } };
@@ -113,7 +116,7 @@ function refusal(token: string, req: http.IncomingMessage): number | null {
   return req.method === 'POST' ? null : 405;
 }
 
-async function handle(tools: Map<string, AgentTool>, token: string, req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+async function handle(tools: Map<string, AgentTool>, token: string, req: http.IncomingMessage, res: http.ServerResponse, resolveContext?: ResolveContext): Promise<void> {
   const refused = refusal(token, req);
   if (refused) {
     res.writeHead(refused, refused === 405 ? { Allow: 'POST' } : {}).end();
@@ -121,7 +124,7 @@ async function handle(tools: Map<string, AgentTool>, token: string, req: http.In
   }
   const body = JSON.parse(await readBody(req)) as RpcRequest | RpcRequest[];
   const requests = Array.isArray(body) ? body : [body];
-  const replies = (await Promise.all(requests.map((request) => reply(tools, request)))).filter((value) => value !== undefined);
+  const replies = (await Promise.all(requests.map((request) => reply(tools, request, resolveContext)))).filter((value) => value !== undefined);
   if (!replies.length) {
     res.writeHead(202).end();
     return;
@@ -131,11 +134,11 @@ async function handle(tools: Map<string, AgentTool>, token: string, req: http.In
 }
 
 /** Serve `tools` to the Rust runtime; resolves once listening. */
-export function serveDesktopTools(tools: AgentTool[]): Promise<DesktopToolServer> {
+export function serveDesktopTools(tools: AgentTool[], options: { resolveContext?: ResolveContext } = {}): Promise<DesktopToolServer> {
   const byName = new Map(tools.map((tool) => [tool.name, tool]));
   const token = crypto.randomBytes(24).toString('hex');
   const server = http.createServer((req, res) => {
-    handle(byName, token, req, res).catch(() => {
+    handle(byName, token, req, res, options.resolveContext).catch(() => {
       if (!res.headersSent) res.writeHead(400);
       res.end();
     });

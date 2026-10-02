@@ -2,7 +2,8 @@
 
 <script lang="ts">
   import { modalLayer } from '$lib/components/ui/modal-layer';
-  import { onMount } from 'svelte';
+  import { onMount, untrack } from 'svelte';
+  import { conversationScope } from '$shared/workspace-scope';
   import { t } from 'svelte-i18n';
   import Titlebar from '$lib/components/layout/Titlebar.svelte';
   import Sidebar from '$lib/components/layout/Sidebar.svelte';
@@ -32,7 +33,13 @@
   import OnboardingWizard from '$lib/components/onboarding/OnboardingWizard.svelte';
   import { SidebarPeek } from './sidebar-peek.svelte';
   import ResizeHandle from '$lib/components/ui/ResizeHandle.svelte';
-  import RightDock, { type DockPanel } from './RightDock.svelte';
+  import WorkspaceHost from './WorkspaceHost.svelte';
+  import type { WorkspacePanel, PanelRenderState } from './workspace-panel';
+  import { workspaceLayout } from '$lib/stores/workspace-layout.svelte';
+  import { Activity, ClipboardList, FileBox, GitCompareArrows, Globe, ListTodo, SquareTerminal } from 'lucide-svelte';
+  import ProcessesView from '$lib/features/code/workspace/ProcessesView.svelte';
+  import TerminalView from '$lib/features/code/workspace/TerminalView.svelte';
+  import { latestPlan } from '$lib/features/code/plan-review';
   import TitlebarLeftTools from './TitlebarLeftTools.svelte';
   import ChangesPane from '$lib/features/code/workspace/ChangesPane.svelte';
   import PlanPanel from '$lib/features/code/PlanPanel.svelte';
@@ -47,25 +54,43 @@
   import { formatShortcut, isMacPlatform } from '$lib/utils/shortcuts';
 
   let showShortcutsHelp = $state(false);
+  let artifactPanelHandle = $state<{ requestClose: () => void }>();
   // The top-bar tab decides the main view; Bots sits beside the three spaces.
   const inBots = $derived(appStore.activeTab === 'bots');
   const inCodeSpace = $derived(appStore.activeTab === 'code');
 
+  const scope = $derived(inBots && botsStore.current ? conversationScope(`bot:${botsStore.current.handle}`) : !inBots && appStore.currentChat ? conversationScope(appStore.currentChat.id) : inCodeSpace ? `space:code:${codeStore.activeProjectId ?? 'none'}` : `space:${appStore.activeTab}`);
+  $effect.pre(() => {
+    const owner = scope;
+    untrack(() => { workspaceLayout.selectScope(owner); void browserPanelStore.selectScope(owner); });
+  });
+
   // The right dock: Changes and the presented plan (Code), the open artifact
   // (Home chat) and the agent browser, stacked when more than one is open.
   const changesTarget = $derived(codeWorkspace.changesTarget);
-  const showChanges = $derived(inCodeSpace && codeWorkspace.layout.changesOpen && !!changesTarget);
-  /** The plan belongs to one conversation: another one open hides it. */
-  const openPlan = $derived(inCodeSpace && codeWorkspace.plan?.chatId === appStore.currentChat?.id ? codeWorkspace.plan : null);
+  // Keep visited content mounted so diff selection and scroll survive a chat switch.
+  let conversations = $state<Record<string, NonNullable<typeof codeWorkspace.changesTarget>>>({});
+  $effect(() => {
+    const target = changesTarget;
+    if (target) untrack(() => { conversations[target.chatId] = target; });
+  });
+  const openPlan = $derived(codeWorkspace.plan?.chatId === appStore.currentChat?.id ? codeWorkspace.plan?.plan ?? latestPlan(appStore.currentChat?.messages ?? []) : latestPlan(appStore.currentChat?.messages ?? []));
   const showArtifact = $derived(!inCodeSpace && !inBots && appStore.homeView === 'chat' && !!appStore.artifactPanel);
   const showRoutines = $derived(inBots && !!botsStore.current && botsStore.routinesOpen);
   const dockPanels = $derived.by(() => {
-    const panels: DockPanel[] = [];
-    if (showChanges) panels.push({ id: 'changes', content: changesPanel });
-    if (openPlan) panels.push({ id: 'plan', content: planPanel });
-    if (showArtifact) panels.push({ id: 'artifact', content: artifactPanel });
-    if (showRoutines) panels.push({ id: 'routines', content: routinesPanel });
-    if (browserPanelStore.open) panels.push({ id: 'browser', content: browserPanel, accent: browserPanelStore.agentDriving });
+    const codeAvailable = inCodeSpace && !!changesTarget;
+    const panels: WorkspacePanel[] = [
+      { id: 'changes', title: $t('codeWs.changes'), icon: GitCompareArrows, content: changesPanel, region: 'right', available: codeAvailable, open: workspaceLayout.isOpen('changes'), onhide: () => codeWorkspace.toggleChanges(false) },
+      { id: 'plan', title: openPlan?.title ?? $t('code.plan.title'), icon: ClipboardList, content: planPanel, region: 'right', available: codeAvailable, open: workspaceLayout.isOpen('plan'), onhide: () => codeWorkspace.closePlan() },
+      { id: 'artifact', title: $t('artifacts.title'), icon: FileBox, content: artifactPanel, region: 'right', available: showArtifact, open: showArtifact, onhide: () => artifactPanelHandle?.requestClose() },
+      { id: 'routines', title: $t('bots.routines'), icon: ListTodo, content: routinesPanel, region: 'right', available: showRoutines, open: showRoutines, onhide: () => (botsStore.routinesOpen = false) },
+      { id: 'browser', title: $t('browser.title'), icon: Globe, content: browserPanel, region: 'right', available: true, open: browserPanelStore.open, onhide: () => void browserPanelStore.hide() },
+      { id: 'processes', title: $t('codeWs.processes'), icon: Activity, content: processesPanel, region: 'bottom', available: codeAvailable, open: workspaceLayout.isOpen('processes'), onhide: () => workspaceLayout.hide('processes') }
+    ];
+    for (const term of codeWorkspace.terminals) panels.push({ id: `terminal:${term.id}`, title: term.title, icon: SquareTerminal, content: terminalPanel, region: 'bottom', available: codeAvailable && term.scope === scope, open: term.scope === scope && workspaceLayout.isOpen(`terminal:${term.id}`), onhide: () => workspaceLayout.hide(`terminal:${term.id}`), actions: [
+      { label: $t('codeWs.newTerminal'), run: () => { if (changesTarget) void codeWorkspace.newTerminal(changesTarget.projectRoot); } },
+      { label: $t('codeWs.closeTerminal', { values: { name: term.title } }), run: () => codeWorkspace.closeTerminal(term.id) }
+    ] });
     return panels;
   });
   const inRoleplaySpace = $derived(appStore.activeTab === 'roleplay');
@@ -249,7 +274,7 @@
   <div class="flex min-h-0 min-w-0 flex-1 flex-col bg-background">
     <Titlebar sidebarPreview={peek.open} onSidebarEnter={() => peek.show()} onSidebarLeave={(event) => peek.leave(event)} onSidebarToggle={toggleSidebar} />
 
-    <div class="flex min-h-0 flex-1 overflow-hidden">
+    <WorkspaceHost panels={dockPanels}>
       <!-- The one branch point between the spaces:
            Code hosts the coding agent surface; Roleplay the character surface;
            Home keeps the general chat panel. -->
@@ -266,21 +291,28 @@
           <HomeSurface />
         {/if}
       </div>
-      <RightDock panels={dockPanels} />
-    </div>
+    </WorkspaceHost>
   </div>
 </div>
 
 {#snippet changesPanel()}
-  {#if changesTarget}<ChangesPane chatId={changesTarget.chatId} projectRoot={changesTarget.projectRoot} sessionId={changesTarget.sessionId} />{/if}
+  {#each Object.values(conversations) as target (target.chatId)}
+    <div class="conversation-panel" hidden={target.chatId !== changesTarget?.chatId}><ChangesPane embedded chatId={target.chatId} projectRoot={target.projectRoot} sessionId={target.sessionId} /></div>
+  {/each}
 {/snippet}
 {#snippet planPanel()}
-  {#if openPlan}{#key openPlan.plan.body}<PlanPanel chatId={openPlan.chatId} plan={openPlan.plan} />{/key}{/if}
+  {#if openPlan && appStore.currentChat}<PlanPanel embedded chatId={appStore.currentChat.id} plan={openPlan} />{:else}<p class="p-5 text-xs text-muted-foreground">{$t('workspace.noPlan')}</p>{/if}
 {/snippet}
-{#snippet artifactPanel()}<ArtifactPanel />{/snippet}
-{#snippet browserPanel()}<BrowserPanel />{/snippet}
+{#snippet artifactPanel(state: PanelRenderState)}<ArtifactPanel embedded exposed={state.exposed} bind:this={artifactPanelHandle} />{/snippet}
+{#snippet browserPanel(state: PanelRenderState)}<BrowserPanel embedded exposed={state.exposed} presentationKey={JSON.stringify(state.rect)} />{/snippet}
+{#snippet processesPanel()}
+  {#each Object.values(conversations) as target (target.chatId)}
+    <div class="conversation-panel" hidden={target.chatId !== changesTarget?.chatId}><ProcessesView chatId={target.chatId} cwd={target.projectRoot} /></div>
+  {/each}
+{/snippet}
+{#snippet terminalPanel(state: PanelRenderState)}<TerminalView id={state.id.slice('terminal:'.length)} active={state.exposed} focused={state.focused} />{/snippet}
 {#snippet routinesPanel()}
-  {#if botsStore.current}<BotRoutines bot={botsStore.current} onclose={() => (botsStore.routinesOpen = false)} />{/if}
+  {#if botsStore.current}<BotRoutines embedded bot={botsStore.current} onclose={() => (botsStore.routinesOpen = false)} />{/if}
 {/snippet}
 
 {#if appStore.promptConfigOpen}
@@ -336,6 +368,8 @@
 {/if}
 
 <style>
+  .conversation-panel { display: flex; flex: 1; flex-direction: column; min-height: 0; min-width: 0; overflow: hidden; }
+  .conversation-panel[hidden] { display: none; }
   .sidebar-outer {
     width: 0;
     transition: width var(--motion-smooth) var(--motion-ease-out);

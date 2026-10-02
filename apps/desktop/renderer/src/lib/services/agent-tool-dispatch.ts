@@ -1,3 +1,4 @@
+import { conversationScope } from '$shared/workspace-scope';
 /**
  * Tool dispatch for the Home agent run: routes a tool call to its handler,
  * and wraps it with the per-tool timeout and retry policy.
@@ -312,7 +313,7 @@ export async function executeTool(
       const action = name === 'browser_navigate' ? 'open' : name === 'browser_type' ? 'fill' : name.replace('browser_', '');
       const result = await invoke<{ ok: boolean; text: string; image?: { data: string; mimeType: string } }>(
         'browser_agent_action',
-        { action, args }
+        { action, args, scope: conversationScope(ctx.chatId) }
       ).catch((err: unknown) => ({ ok: false, text: toErrorMessage(err) }));
       if (!result.ok) return fail(result.text);
       return { success: true, output: { page: result.text }, ...('image' in result && result.image ? { image: result.image } : {}) };

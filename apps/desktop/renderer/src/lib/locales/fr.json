@@ -2124,5 +2124,36 @@
     "speed": "Vitesse",
     "language": "Langue",
     "languagePlaceholder": "Par défaut · ex. fr"
+  },
+  "workspace": {
+    "panels": "Panneaux de travail",
+    "actions": "Actions du panneau",
+    "float": "Faire flotter le panneau",
+    "dockRight": "Ancrer à droite",
+    "dockBottom": "Ancrer sous la discussion",
+    "center": "Regrouper en onglets",
+    "left": "Diviser à gauche",
+    "right": "Diviser à droite",
+    "top": "Empiler au-dessus",
+    "bottom": "Empiler en dessous",
+    "maximize": "Agrandir le panneau",
+    "restore": "Restaurer le panneau",
+    "resize": "Redimensionner le panneau",
+    "hide": "Masquer {name}",
+    "reset": "Réinitialiser la disposition",
+    "noPlan": "Aucun plan pour le moment. Les plans présentés dans cette discussion apparaissent ici.",
+    "resizeWidth": "Modifier la largeur",
+    "resizeHeight": "Modifier la hauteur",
+    "resizeCorner": "Redimensionner dans les deux directions depuis ce coin",
+    "resizeEdges": {
+      "n": "Redimensionner le bord supérieur",
+      "s": "Redimensionner le bord inférieur",
+      "e": "Redimensionner le bord droit",
+      "w": "Redimensionner le bord gauche",
+      "ne": "Redimensionner le coin supérieur droit",
+      "nw": "Redimensionner le coin supérieur gauche",
+      "se": "Redimensionner le coin inférieur droit",
+      "sw": "Redimensionner le coin inférieur gauche"
+    }
   }
 }

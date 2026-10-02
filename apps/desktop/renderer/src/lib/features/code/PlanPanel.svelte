@@ -18,7 +18,7 @@
   import { codeWorkspace } from './workspace.svelte';
   import { acceptMessage, isPlanWaiting, REDO_MESSAGE, type PresentedPlan } from './plan-review';
 
-  let { chatId, plan }: { chatId: string; plan: PresentedPlan } = $props();
+  let { chatId, plan, embedded = false }: { chatId: string; plan: PresentedPlan; embedded?: boolean } = $props();
 
   let busy = $state(false);
 
@@ -41,11 +41,11 @@
 </script>
 
 <aside class="flex min-h-0 flex-1 flex-col" aria-label={$t('code.plan.title')}>
-  <header class="flex h-11 shrink-0 items-center gap-2 border-b border-[var(--border-subtle)] pl-4 pr-2">
+  {#if !embedded}<header class="flex h-11 shrink-0 items-center gap-2 border-b border-[var(--border-subtle)] pl-4 pr-2">
     <ClipboardList class="size-4 shrink-0 text-muted-foreground" />
     <p class="min-w-0 flex-1 truncate text-[13px] font-medium text-foreground" title={plan.path || plan.title}>{plan.title}</p>
     <Button variant="ghost" size="icon-sm" onclick={() => codeWorkspace.closePlan()} aria-label={$t('codeWs.close')} title={$t('codeWs.close')}><X /></Button>
-  </header>
+  </header>{/if}
   <div class="min-h-0 flex-1 overflow-y-auto px-5 py-4 text-sm leading-relaxed text-foreground">
     {#if plan.path}<p class="mb-3 truncate text-xs text-muted-foreground" title={plan.path}>{plan.path}</p>{/if}
     <RichContent content={plan.body} />

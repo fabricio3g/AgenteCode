@@ -45,7 +45,7 @@ import { downloadRuntime } from './runtime-download.ts';
 
 import {
   panelOpenTab, panelListTabs, panelSetActive, panelCloseTab, panelCloseAll,
-  panelSetVisible, panelSetOccluded, panelSetBounds, panelSetViewport,
+  panelSetVisible, panelSetOccluded, panelSetBounds, panelSetPresentation, panelSetViewport,
   panelNavigate as browserNavigate, panelSnapshot as browserSnapshot,
   panelClick as browserClick, panelTypeText as browserTypeText,
   panelEvaluate as browserEvaluate, panelScreenshot as browserScreenshot,
@@ -354,6 +354,7 @@ export function registerIpcHandlers() {
     panelSetVisible,
     panelSetOccluded,
     panelSetBounds,
+    panelSetPresentation,
     panelSetViewport,
     browserNavigate,
     browserSnapshot,

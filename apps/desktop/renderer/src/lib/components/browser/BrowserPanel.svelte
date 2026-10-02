@@ -15,9 +15,12 @@
   import Menu from '$lib/components/ui/Menu.svelte';
   import MenuItem from '$lib/components/ui/MenuItem.svelte';
   import { browserPanelStore } from '$lib/stores/browser-panel.svelte';
-  import { setBrowserPanelOccluded, syncBrowserPanelBounds, type BrowserViewportPreset } from '$lib/services/browser';
+  import { syncBrowserPresentation, type BrowserViewportPreset } from '$lib/services/browser';
   import { BROWSER_VIEWPORTS } from '$shared/browser-viewports';
   import { overlapsViewport } from './browser-occlusion';
+  import { accessibilityStore } from '$lib/stores/accessibility.svelte';
+
+  let { embedded = false, exposed = true, presentationKey = '' }: { embedded?: boolean; exposed?: boolean; presentationKey?: string } = $props();
 
   const VIEWPORT_ICON: Record<BrowserViewportPreset, typeof Monitor> = {
     fit: PanelRight,
@@ -31,39 +34,51 @@
   let viewportEl = $state<HTMLDivElement | undefined>(undefined);
   /** A still of the page, shown while an overlay covers the live view. */
   let still = $state<string | null>(null);
-  let occluded = false;
+  let mounted = false;
+  let pending = 0;
+  let syncing = false;
+  let dirty = false;
 
   /** Anything floating: menus, dialogs, popovers, listboxes, tooltips. */
   const OVERLAYS = '[role="dialog"], [role="alertdialog"], [role="menu"], [role="listbox"], [role="tooltip"], .ui-modal-backdrop, [data-overlay]';
 
-  /** Whether a floating element sits over the page box. */
+  /** Native content cannot be ordered with DOM z-index. Only higher windows cover it. */
   function covered(): boolean {
-    if (!viewportEl) return false;
+    if (!viewportEl || !exposed) return false;
+    if (document.querySelector('[data-workspace-interacting="true"]')) return true;
     const box = viewportEl.getBoundingClientRect();
-    if (box.width < 10 || box.height < 10) return false;
-    return Array.from(document.querySelectorAll<HTMLElement>(OVERLAYS))
-      .some((node) => overlapsViewport(box, node.getBoundingClientRect()));
+    const own = panelEl?.closest<HTMLElement>('[data-workspace-panel]');
+    const z = Number(own?.dataset.workspaceZ ?? 0);
+    return Array.from(document.querySelectorAll<HTMLElement>(`${OVERLAYS}, .workspace-panel.floating:not([hidden])`)).some((node) => {
+      if (node === own || node.contains(viewportEl!)) return false;
+      if (node.matches('.workspace-panel') && Number(node.dataset.workspaceZ ?? 0) <= z) return false;
+      return overlapsViewport(box, node.getBoundingClientRect());
+    });
   }
 
-  /**
-   * The page is a native view above the whole window: no z-index can put a
-   * menu or dialog over it. While one would overlap it, show a still of the
-   * page in its place and let the live view step aside.
-   */
-  async function checkOcclusion() {
-    const next = covered();
-    if (next === occluded) return;
-    occluded = next;
-    const image = await setBrowserPanelOccluded(next).catch(() => null);
-    if (occluded === next) still = next ? image : null;
+  async function present() {
+    if (syncing || !mounted) { dirty = true; return; }
+    syncing = true;
+    do {
+      dirty = false;
+      const scope = browserPanelStore.scope;
+      const rect = viewportEl?.getBoundingClientRect();
+      const occluded = covered();
+      const image = await syncBrowserPresentation(scope, { bounds: rect && rect.width > 0 && rect.height > 0 ? { x: rect.left, y: rect.top, width: rect.width, height: rect.height } : null, exposed, occluded }).catch(() => null);
+      if (!mounted) break;
+      if (scope !== browserPanelStore.scope) { dirty = true; continue; }
+      if (occluded && image) still = image;
+      else if (!occluded) still = null;
+    } while (dirty && mounted);
+    syncing = false;
   }
-
-  async function syncBounds() {
-    if (!viewportEl) return;
-    const rect = viewportEl.getBoundingClientRect();
-    if (rect.width < 10 || rect.height < 10) return;
-    await syncBrowserPanelBounds({ x: rect.left, y: rect.top, width: rect.width, height: rect.height }).catch(() => {});
+  function schedulePresentation() {
+    if (!mounted) return;
+    dirty = true;
+    if (pending) return;
+    pending = requestAnimationFrame(() => { pending = 0; void present(); });
   }
+  async function syncBounds() { schedulePresentation(); }
 
   function onAddressKeydown(event: KeyboardEvent) {
     if (event.key === 'Enter') {
@@ -93,37 +108,34 @@
   }
 
   onMount(() => {
+    mounted = true;
     browserPanelStore.init();
-    void tick().then(() => void syncBounds());
-    const onResize = () => void syncBounds();
-    window.addEventListener('resize', onResize);
-    const stopBounds = observeBounds(onResize);
-    // Overlays come and go anywhere in the document; check once per frame at most.
-    let pending = 0;
-    const scheduleCheck = () => {
-      if (pending) return;
-      pending = requestAnimationFrame(() => {
-        pending = 0;
-        void checkOcclusion();
-      });
-    };
-    const overlays = new MutationObserver(scheduleCheck);
-    overlays.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class', 'style', 'hidden', 'open', 'role'] });
+    void tick().then(schedulePresentation);
+    window.addEventListener('resize', schedulePresentation);
+    const stopBounds = observeBounds(schedulePresentation);
+    const overlays = new MutationObserver(schedulePresentation);
+    overlays.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class', 'style', 'hidden', 'open', 'role', 'data-workspace-interacting', 'data-workspace-z'] });
     return () => {
-      window.removeEventListener('resize', onResize);
-      stopBounds();
-      overlays.disconnect();
-      cancelAnimationFrame(pending);
-      if (occluded) void setBrowserPanelOccluded(false).catch(() => null);
+      mounted = false;
+      window.removeEventListener('resize', schedulePresentation);
+      stopBounds(); overlays.disconnect(); cancelAnimationFrame(pending);
+      void syncBrowserPresentation(browserPanelStore.scope, { bounds: null, exposed: false, occluded: false }).catch(() => null);
     };
   });
 
   $effect(() => {
+    void browserPanelStore.scope;
+    still = null;
+  });
+  $effect(() => {
+    void browserPanelStore.scope;
     void browserPanelStore.activeTabId;
     void browserPanelStore.tabs.length;
     void browserPanelStore.viewport;
-    void tick().then(() => syncBounds());
+    void exposed; void presentationKey; void accessibilityStore.prefs.uiScale;
+    void tick().then(schedulePresentation);
   });
+
 </script>
 
 <div
@@ -189,9 +201,9 @@
         />
       {/each}
     </Menu>
-    <button type="button" class="ui-icon-button" onclick={() => void browserPanelStore.hide()} aria-label={$t('browser.closePanel')} title={$t('browser.closePanel')}>
+    {#if !embedded}    <button type="button" class="ui-icon-button" onclick={() => void browserPanelStore.hide()} aria-label={$t('browser.closePanel')} title={$t('browser.closePanel')}>
       <X />
-    </button>
+    </button>{/if}
   </div>
 
   <!-- Tabs only once there is more than one. -->
@@ -331,7 +343,7 @@
     overflow: hidden;
     flex: 1 1 auto;
     min-height: 0;
-    margin: 0 4px 4px;
+    margin: 0 12px 14px;
     border-radius: 8px;
     background: var(--muted);
   }

@@ -65,3 +65,25 @@ test('Desktop tools are served over MCP to whoever holds the token', async () =>
     await server.close();
   }
 });
+
+test('Desktop browser calls use host session metadata, including simultaneous owners', async () => {
+  const ownedTool = {
+    ...tools[0],
+    async execute(_id, args, context) {
+      await new Promise((resolve) => setTimeout(resolve, args.delay ?? 0));
+      return { content: `${context.sessionId}|${context.browserScope}` };
+    }
+  };
+  const server = await serveDesktopTools([ownedTool], { async resolveContext(meta) {
+    const id = meta['agente/sessionId'];
+    if (!['session-a', 'session-b'].includes(id)) throw new Error('Browser call has no owning conversation');
+    return { sessionId: id, browserScope: `chat:${id.slice(-1)}` };
+  } });
+  const call = (id, delay = 0) => rpc(server, { id, method: 'tools/call', params: { name: 'browser_snapshot', arguments: { delay, scope: 'chat:wrong' }, _meta: { 'agente/sessionId': id } } });
+  try {
+    const [a, b] = await Promise.all([call('session-a', 25), call('session-b')]);
+    assert.equal(a.json.result.content[0].text, 'session-a|chat:a'); assert.equal(b.json.result.content[0].text, 'session-b|chat:b');
+    const missing = await rpc(server, { id: 3, method: 'tools/call', params: { name: 'browser_snapshot', arguments: { scope: 'chat:a' } } });
+    assert.equal(missing.json.result.isError, true); assert.match(missing.json.result.content[0].text, /owning conversation/);
+  } finally { await server.close(); }
+});

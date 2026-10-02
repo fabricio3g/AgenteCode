@@ -111,7 +111,7 @@ The dev command builds `agente` and starts Electron and the renderer. See the [D
 **A workspace for the whole task.** Move between Home, Code, Roleplay, and Bots without juggling separate apps.
 
 - **Chat and research.** Use cloud or local models, search the web, and keep conversations organized.
-- **Artifacts beside the conversation.** Preview pages, documents, slides, and spreadsheets, then download the results. Stack panels in the shared right dock.
+- **Artifacts beside the conversation.** Preview pages, documents, slides, and spreadsheets, then download the results. Float panels, stack them, or group them as tabs in the workspace.
 - **Local inference.** Manage GGUF models and llama.cpp runtimes, with CPU and GPU backends selected for your machine. Available backends depend on the runtime bundle.
 - **Voice.** Dictate with whisper.cpp speech-to-text and listen to responses with text-to-speech.
 - **Roleplay.** Work with characters, personas, and worlds in a dedicated space.
@@ -126,6 +126,8 @@ The dev command builds `agente` and starts Electron and the renderer. See the [D
 </p>
 
 Desktop's Code section runs the Rust coding agent through `agente serve`. Open projects, follow tool activity, review approvals and diffs, and use docked changes, terminals, processes, and the agent's browser. Revert or fork from messages, and restore file checkpoints when you need to go back.
+
+Each conversation keeps its own panel layout, terminal sessions, and browser tabs and storage. Use panel menus to dock, split, group, or float panels; arrow keys resize focused edges and corners. Hiding a terminal or process panel keeps the work running. Close terminals or stop processes explicitly when you are finished.
 
 ## Agente Code
 

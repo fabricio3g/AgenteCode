@@ -5,6 +5,7 @@
 // CodeAgentEvent stream the UI renders.
 
 import crypto from 'node:crypto';
+import { conversationScope } from '../../shared/workspace-scope.ts';
 import fs from 'node:fs';
 import path from 'node:path';
 import { app } from 'electron';
@@ -48,6 +49,7 @@ type ChatState = {
 };
 
 const chats = new Map<string, ChatState>();
+const botBrowserModels = new Map<string, { provider: string; model: string }>();
 let daemon: AgenteDaemon | null = null;
 let listening: AgenteClient | null = null;
 let desktopTools: Promise<DesktopToolServer> | null = null;
@@ -71,8 +73,6 @@ export const rustProcesses = new RustProcessBridge(
   () => (daemon ? connect() : null),
   () => [...chats.values()].map((chat) => ({ chatId: chat.chatId, projectRoot: chat.projectRoot }))
 );
-/** The chat that sent the latest message: whose model screenshots are for. */
-let activeChat: ChatState | null = null;
 
 /**
  * Serve Desktop-only tools (the in-app browser) to the runtime as the MCP
@@ -81,8 +81,27 @@ let activeChat: ChatState | null = null;
 async function registerDesktopTools(client: AgenteClient): Promise<void> {
   desktopTools ??= serveDesktopTools(
     createBrowserTools({
-      canSeeImages: async () => !!activeChat && (await modelSeesImages(activeChat.provider, activeChat.model))
-    })
+      canSeeImages: async (context) => {
+        const chat = [...chats.values()].find((owner) => owner.sessionId === context.sessionId);
+        const choice = chat ?? botBrowserModels.get(context.sessionId ?? '');
+        return !!choice && (await modelSeesImages(choice.provider, choice.model));
+      }
+    }),
+    { resolveContext: async (meta) => {
+      const chat = [...chats.values()].find((owner) => owner.sessionId === meta['agente/sessionId']);
+      if (chat) return { sessionId: chat.sessionId, browserScope: conversationScope(chat.chatId) };
+      const sessionId = meta['agente/sessionId'];
+      if (typeof sessionId !== 'string' || !UUID.test(sessionId)) throw new Error('Browser call has no owning conversation');
+      const bots = await client.request<Array<{ handle: string; session_id: string | null }>>('bots.list');
+      const bot = bots.find((owner) => owner.session_id === sessionId);
+      if (!bot) throw new Error('Browser call has no owning conversation');
+      // Session metadata holds the actual turn model, including routine overrides
+      // and unpinned bots using the client's current model.
+      const { meta: sessionMeta } = await client.request<{ meta: { info: { provider: string; model: string } } | null }>('session.get', { session_id: sessionId });
+      if (sessionMeta?.info.provider && sessionMeta.info.model) botBrowserModels.set(sessionId, { model: sessionMeta.info.model, provider: sessionMeta.info.provider.replace(/^desktop-/, '') });
+      else botBrowserModels.delete(sessionId);
+      return { sessionId, browserScope: conversationScope(`bot:${bot.handle}`) };
+    } }
   );
   const server = await desktopTools;
   await client.request('runtime.configure', {
@@ -403,7 +422,6 @@ async function prompt(chatId: string, text: string, images?: Array<{ data: strin
   try {
     await ensureProvider(resolveTransport(chat.provider, chat.model));
     const client = await connect();
-    activeChat = chat;
     const provider = await useProvider(client, chat.provider, chat.model);
     const expanded = await client.request<{ text: string }>('project.expand_prompt', { project_dir: chat.projectRoot, text });
     const media = [...attachments, ...storeImages(images)];
@@ -668,7 +686,7 @@ function disposeAllSessions(): void {
   daemon = null;
   listening = null;
   connectionPromise = null;
-  activeChat = null;
+  botBrowserModels.clear();
   rustProcesses.dispose();
   void desktopTools?.then((server) => server.close());
   desktopTools = null;

@@ -2644,7 +2644,7 @@ class AppStore {
     // The browser tool sets this when an agent starts driving a page, and only
     // the normal agent exit used to clear it — aborting left the "Agent" badge
     // stuck on the browser panel. Stopping a run is always a safe reset point.
-    browserPanelStore.agentDriving = false;
+    browserPanelStore.stopDriving(chatId);
     const run = chatId ? this.activeRunsByChat[chatId] : null;
     run?.controller.abort();
     if (run) {

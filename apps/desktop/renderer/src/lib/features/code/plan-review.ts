@@ -30,6 +30,19 @@ export function pendingPlan(messages: ChatMessage[]): PresentedPlan | null {
   return parsePlan(step?.output);
 }
 
+/** Most recent complete plan, including plans the user already answered. */
+export function latestPlan(messages: ChatMessage[]): PresentedPlan | null {
+  for (const message of [...messages].reverse()) {
+    if (message.role !== 'assistant') continue;
+    for (const step of [...(message.agentSteps ?? [])].reverse()) {
+      if (step.toolName !== 'present_plan' || step.status !== 'done') continue;
+      const plan = parsePlan(step.output);
+      if (plan) return plan;
+    }
+  }
+  return null;
+}
+
 /** Whether this plan is the one still waiting for an answer. */
 export function isPlanWaiting(messages: ChatMessage[], plan: PresentedPlan): boolean {
   return pendingPlan(messages)?.body === plan.body;

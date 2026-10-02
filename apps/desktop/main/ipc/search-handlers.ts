@@ -1,4 +1,5 @@
 import type { IpcMain, BrowserWindow } from 'electron';
+import { withBrowserScope } from '../browser-panel.ts';
 import type { ErrorMessageFn } from './types.ts';
 
 type SearchHandlerDeps = {
@@ -58,13 +59,13 @@ export function registerSearchHandlers({
     }
   });
 
-  ipcMain.handle('open_webviewer', (_e, { url, title }) => {
+  ipcMain.handle('open_webviewer', (_e, { url, title, scope }) => {
     if (!url || typeof url !== 'string') return { error: 'Invalid URL' };
     if (!url.startsWith('http://') && !url.startsWith('https://')) {
       return { error: 'Invalid URL scheme' };
     }
     try {
-      createWebviewerWindow(url, title || 'Web Viewer');
+      withBrowserScope(scope, () => createWebviewerWindow(url, title || 'Web Viewer'));
       return { success: true };
     } catch (err: unknown) {
       return { error: toErrorMessage(err) };

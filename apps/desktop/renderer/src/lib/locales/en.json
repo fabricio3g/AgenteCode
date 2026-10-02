@@ -2124,5 +2124,36 @@
     "speed": "Speed",
     "language": "Language",
     "languagePlaceholder": "Default · e.g. en"
+  },
+  "workspace": {
+    "panels": "Workspace panels",
+    "actions": "Panel actions",
+    "float": "Float panel",
+    "dockRight": "Dock on the right",
+    "dockBottom": "Dock below chat",
+    "center": "Group as tabs",
+    "left": "Split to the left",
+    "right": "Split to the right",
+    "top": "Stack above",
+    "bottom": "Stack below",
+    "maximize": "Maximize panel",
+    "restore": "Restore panel",
+    "resize": "Resize panel",
+    "hide": "Hide {name}",
+    "reset": "Reset layout",
+    "noPlan": "No plan yet. Plans presented in this conversation appear here.",
+    "resizeWidth": "Resize width",
+    "resizeHeight": "Resize height",
+    "resizeCorner": "Resize both dimensions from this corner",
+    "resizeEdges": {
+      "n": "Resize top edge",
+      "s": "Resize bottom edge",
+      "e": "Resize right edge",
+      "w": "Resize left edge",
+      "ne": "Resize top-right corner",
+      "nw": "Resize top-left corner",
+      "se": "Resize bottom-right corner",
+      "sw": "Resize bottom-left corner"
+    }
   }
 }

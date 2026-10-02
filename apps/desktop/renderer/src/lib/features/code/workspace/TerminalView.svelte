@@ -14,7 +14,7 @@
   import { themeStore } from '$lib/stores/theme.svelte';
   import { codeWorkspace } from '../workspace.svelte';
 
-  let { id, active }: { id: string; active: boolean } = $props();
+  let { id, active, focused = false }: { id: string; active: boolean; focused?: boolean } = $props();
 
   let host = $state<HTMLDivElement>();
   let term: Terminal | null = null;
@@ -64,7 +64,7 @@
     observer.observe(host!);
     requestAnimationFrame(() => {
       refit();
-      if (active) term?.focus();
+      if (focused) term?.focus();
     });
     return () => {
       observer.disconnect();
@@ -84,9 +84,9 @@
     if (!active) return;
     requestAnimationFrame(() => {
       refit();
-      term?.focus();
     });
   });
+  $effect(() => { if (focused && active) requestAnimationFrame(() => term?.focus()); });
 </script>
 
 <div class="terminal-host h-full w-full" class:hidden={!active} bind:this={host}></div>

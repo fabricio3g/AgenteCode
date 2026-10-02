@@ -2124,5 +2124,36 @@
     "speed": "语速",
     "language": "语言",
     "languagePlaceholder": "默认 · 如 zh"
+  },
+  "workspace": {
+    "panels": "工作区面板",
+    "actions": "面板操作",
+    "float": "浮动面板",
+    "dockRight": "停靠在右侧",
+    "dockBottom": "停靠在聊天下方",
+    "center": "合并为标签页",
+    "left": "向左拆分",
+    "right": "向右拆分",
+    "top": "堆叠在上方",
+    "bottom": "堆叠在下方",
+    "maximize": "最大化面板",
+    "restore": "还原面板",
+    "resize": "调整面板大小",
+    "hide": "隐藏{name}",
+    "reset": "重置布局",
+    "noPlan": "暂无计划。本次对话中提出的计划会显示在这里。",
+    "resizeWidth": "调整宽度",
+    "resizeHeight": "调整高度",
+    "resizeCorner": "从此角同时调整宽度和高度",
+    "resizeEdges": {
+      "n": "调整上边缘",
+      "s": "调整下边缘",
+      "e": "调整右边缘",
+      "w": "调整左边缘",
+      "ne": "调整右上角",
+      "nw": "调整左上角",
+      "se": "调整右下角",
+      "sw": "调整左下角"
+    }
   }
 }

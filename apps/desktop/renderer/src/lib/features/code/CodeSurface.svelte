@@ -13,13 +13,11 @@
   import { onMount } from 'svelte';
   import { t } from 'svelte-i18n';
   import { Bug, FlaskConical, Globe, Telescope } from 'lucide-svelte';
-  import { ResizeHandle } from '$lib/components/ui';
   import { appStore } from '$lib/stores/app.svelte';
   import { codeStore } from './code.svelte';
   import { codeWorkspace } from './workspace.svelte';
   import CodeTranscript from './CodeTranscript.svelte';
   import CodeComposer from './CodeComposer.svelte';
-  import BottomDock from './workspace/BottomDock.svelte';
   import { isCodeSession } from '$lib/features/shared/session-guards';
 
   onMount(() => {
@@ -76,15 +74,6 @@
     return () => window.removeEventListener('focus', onFocus);
   });
 
-  // ── Pane sizes ───────────────────────────────────────────────────────
-  let mainColumn = $state<HTMLDivElement>();
-  let startSize = 0;
-
-  function resizeBottom(delta: number) {
-    const max = Math.max(160, (mainColumn?.clientHeight ?? 800) - 180);
-    codeWorkspace.setLayout({ bottomHeight: Math.round(Math.min(max, Math.max(120, startSize - delta))) });
-  }
-
   const starters = $derived([
     { icon: Telescope, text: $t('code.starterExplain') },
     { icon: Bug, text: $t('code.starterBug') },
@@ -118,7 +107,7 @@
   {:else if chat}
     <div class="flex min-h-0 flex-1">
       <!-- Conversation + bottom dock -->
-      <div class="flex min-h-0 min-w-0 flex-1 flex-col" bind:this={mainColumn}>
+      <div class="flex min-h-0 min-w-0 flex-1 flex-col">
         <div class="flex min-h-0 flex-1 flex-col">
           {#if !chat.messages.length && !unlinked}
             <div class="flex flex-1 flex-col items-center justify-center gap-4 px-6">
@@ -147,17 +136,7 @@
           {/if}
         </div>
 
-        {#if codeWorkspace.layout.bottomOpen && chatProject}
-          <ResizeHandle
-            axis="y"
-            label={$t('codeWs.resizeBottom')}
-            onstart={() => (startSize = codeWorkspace.layout.bottomHeight)}
-            onresize={resizeBottom}
-          />
-          <div class="shrink-0 px-2 pb-2" style="height: {codeWorkspace.layout.bottomHeight}px">
-            <BottomDock chatId={chat.id} cwd={chatProject.rootPath} />
-          </div>
-        {/if}
+
       </div>
 
     </div>

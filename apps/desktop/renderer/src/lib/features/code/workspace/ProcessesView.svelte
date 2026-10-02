@@ -6,6 +6,7 @@
 -->
 
 <script lang="ts">
+  import { conversationScope } from '$shared/workspace-scope';
   import { t } from 'svelte-i18n';
   import { ChevronRight, ExternalLink, Play, Square, Trash2 } from 'lucide-svelte';
   import { browserPanelStore } from '$lib/stores/browser-panel.svelte';
@@ -15,7 +16,7 @@
   let { chatId, cwd }: { chatId: string; cwd: string } = $props();
 
   const processes = $derived([...codeWorkspace.processesFor(chatId)].reverse());
-  const selected = $derived(processes.find((p) => p.id === codeWorkspace.selectedProcessId) ?? processes[0] ?? null);
+  const selected = $derived(processes.find((p) => p.id === codeWorkspace.selectedProcesses[conversationScope(chatId)]) ?? processes[0] ?? null);
   // eslint-disable-next-line no-control-regex
   const ANSI = /\u001b\[[0-9;?]*[ -/]*[@-~]|\u001b\][^\u0007]*\u0007|\r(?!\n)/g;
   const output = $derived(selected ? (codeWorkspace.processOutput[selected.id] ?? '').replace(ANSI, '') : '');
@@ -93,7 +94,7 @@
             class="proc-row"
             class:is-active={selected?.id === p.id}
             title={`${p.command}\n${status(p)} · ${elapsed(p)}`}
-            onclick={() => (codeWorkspace.selectedProcessId = p.id)}
+            onclick={() => (codeWorkspace.selectedProcesses[conversationScope(chatId)] = p.id)}
           >
             <span class="proc-dot {p.status === 'running' ? 'is-running' : p.status === 'exited' && p.exitCode ? 'is-failed' : ''}"></span>
             <span class="min-w-0 flex-1 truncate font-mono">{p.command}</span>

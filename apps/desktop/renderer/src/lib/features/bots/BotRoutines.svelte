@@ -15,7 +15,7 @@
   import { describeSchedule } from './routine-schedule';
   import RoutineEditor from './RoutineEditor.svelte';
 
-  let { bot, onclose }: { bot: Bot; onclose: () => void } = $props();
+  let { bot, onclose, embedded = false }: { bot: Bot; onclose: () => void; embedded?: boolean } = $props();
 
   let editing = $state<Routine | null>(null);
   let creating = $state(false);
@@ -45,14 +45,14 @@
 
 <div class="flex h-full min-h-0 flex-col" role="region" aria-label={$t('bots.routines')}>
   <div class="flex h-10 shrink-0 items-center justify-between pl-3.5 pr-1.5">
-    <p class="text-[13px] font-medium text-foreground">{$t('bots.routines')}</p>
+    {#if !embedded}<p class="text-[13px] font-medium text-foreground">{$t('bots.routines')}</p>{:else}<span class="flex-1"></span>{/if}
     <div class="flex items-center">
       <button type="button" class="ui-icon-button" onclick={() => (creating = true)} title={$t('bots.newRoutine')} aria-label={$t('bots.newRoutine')}>
         <Plus class="size-3.5" />
       </button>
-      <button type="button" class="ui-icon-button" onclick={onclose} title={$t('bots.close')} aria-label={$t('bots.close')}>
+      {#if !embedded}<button type="button" class="ui-icon-button" onclick={onclose} title={$t('bots.close')} aria-label={$t('bots.close')}>
         <X class="size-3.5" />
-      </button>
+      </button>{/if}
     </div>
   </div>
 

@@ -94,6 +94,9 @@ export interface ToolResult {
 }
 
 export interface ToolExecContext {
+  /** Host-owned conversation routing, never a model argument. */
+  browserScope?: string;
+  sessionId?: string;
   signal: AbortSignal;
   /** Streaming progress for long-running tools (tool_update events). */
   onUpdate?: (partial: unknown) => void;

@@ -1,6 +1,7 @@
 import { invoke, listen } from '$lib/services/bridge';
 
 import type { BrowserViewportPreset } from '$shared/browser-viewports';
+import type { BrowserPresentation } from '$shared/browser-presentation';
 
 export type { BrowserViewportPreset } from '$shared/browser-viewports';
 
@@ -12,6 +13,7 @@ export interface BrowserPanelTab {
 }
 
 export interface BrowserPanelState {
+  scope: string;
   visible: boolean;
   activeTabId: string | null;
   tabs: BrowserPanelTab[];
@@ -21,54 +23,50 @@ export interface BrowserPanelState {
   takeover?: boolean;
 }
 
-export async function openBrowserTab(url?: string): Promise<{ id: string; url: string }> {
-  return invoke('browser_open_tab', { url });
+export function selectBrowserScope(scope: string): Promise<BrowserPanelState> {
+  return invoke('browser_select_scope', { scope });
 }
-
-export async function listBrowserTabs(): Promise<BrowserPanelTab[]> {
-  return invoke('browser_list_tabs');
+export function openBrowserTab(scope: string, url?: string): Promise<{ id: string; url: string }> {
+  return invoke('browser_open_tab', { scope, url });
 }
-
-export async function setActiveBrowserTab(tabId: string): Promise<void> {
-  await invoke('browser_set_active', { tabId });
+export function listBrowserTabs(scope: string): Promise<BrowserPanelTab[]> {
+  return invoke('browser_list_tabs', { scope });
 }
-
-export async function closeBrowserTab(tabId?: string): Promise<void> {
-  await invoke('browser_close_tab', { tabId });
+export async function setActiveBrowserTab(scope: string, tabId: string): Promise<void> {
+  await invoke('browser_set_active', { scope, tabId });
 }
-
-export async function closeAllBrowserTabs(): Promise<void> {
-  await invoke('browser_close_all');
+export async function closeBrowserTab(scope: string, tabId?: string): Promise<void> {
+  await invoke('browser_close_tab', { scope, tabId });
 }
-
-export async function setBrowserPanelVisible(visible: boolean): Promise<void> {
-  await invoke('browser_panel_visible', { visible });
+export async function closeAllBrowserTabs(scope: string): Promise<void> {
+  await invoke('browser_close_all', { scope });
 }
-
+export async function setBrowserPanelVisible(scope: string, visible: boolean): Promise<void> {
+  await invoke('browser_panel_visible', { scope, visible });
+}
 /** Step the live page aside while an overlay covers it; returns a still to show meanwhile. */
-export async function setBrowserPanelOccluded(occluded: boolean): Promise<string | null> {
-  const result = await invoke<{ image: string | null }>('browser_panel_occluded', { occluded });
+export async function setBrowserPanelOccluded(scope: string, occluded: boolean): Promise<string | null> {
+  const result = await invoke<{ image: string | null }>('browser_panel_occluded', { scope, occluded });
   return result?.image ?? null;
 }
-
-export async function syncBrowserPanelBounds(rect: { x: number; y: number; width: number; height: number }): Promise<void> {
-  await invoke('browser_panel_bounds', rect);
+export async function syncBrowserPanelBounds(scope: string, rect: { x: number; y: number; width: number; height: number }): Promise<void> {
+  await invoke('browser_panel_bounds', { scope, ...rect });
 }
-
-export async function setBrowserViewport(preset: BrowserViewportPreset, tabId?: string): Promise<void> {
-  await invoke('browser_viewport', { preset, tabId });
+export async function syncBrowserPresentation(scope: string, presentation: BrowserPresentation): Promise<string | null> {
+  const result = await invoke<{ image: string | null }>('browser_panel_presentation', { scope, ...presentation });
+  return result?.image ?? null;
 }
-
-export async function setBrowserTakeover(on: boolean): Promise<void> {
-  await invoke('browser_takeover', { on });
+export async function setBrowserViewport(scope: string, preset: BrowserViewportPreset, tabId?: string): Promise<void> {
+  await invoke('browser_viewport', { scope, preset, tabId });
 }
-
-export async function browserHistory(action: 'back' | 'forward' | 'reload', tabId?: string): Promise<void> {
-  await invoke('browser_history', { action, tabId });
+export async function setBrowserTakeover(scope: string, on: boolean): Promise<void> {
+  await invoke('browser_takeover', { scope, on });
 }
-
-export async function browserNavigate(url: string, tabId?: string): Promise<unknown> {
-  return invoke('browser_navigate', { url, tabId });
+export async function browserHistory(scope: string, action: 'back' | 'forward' | 'reload', tabId?: string): Promise<void> {
+  await invoke('browser_history', { scope, action, tabId });
+}
+export function browserNavigate(scope: string, url: string, tabId?: string): Promise<unknown> {
+  return invoke('browser_navigate', { scope, url, tabId });
 }
 
 export function onBrowserPanelState(handler: (state: BrowserPanelState) => void): Promise<() => void> {

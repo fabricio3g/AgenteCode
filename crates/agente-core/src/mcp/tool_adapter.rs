@@ -20,6 +20,7 @@ use crate::types::AgentMode;
 /// any other tool asks first unless the server is configured `trust: true`.
 pub struct McpToolAdapter {
     name: String,
+    owner_session: Option<uuid::Uuid>,
     description: String,
     parameters: serde_json::Value,
     plan_mode: bool,
@@ -35,6 +36,7 @@ impl McpToolAdapter {
     pub fn from_mcp_tool(mcp_tool: crate::mcp::McpTool, manager: Arc<McpManager>) -> Self {
         Self {
             name: mcp_tool.full_name,
+            owner_session: None,
             description: mcp_tool.description,
             parameters: mcp_tool.input_schema,
             plan_mode: mcp_tool.plan_mode,
@@ -50,7 +52,7 @@ impl McpToolAdapter {
     async fn call(&self, args: serde_json::Value, call_id: &str) -> Result<String, ToolError> {
         let output = self
             .manager
-            .call_tool(&self.name, args)
+            .call_tool_with_meta(&self.name, args, self.request_meta())
             .await
             .map_err(|e| ToolError::ExecutionError(format!("MCP tool failed: {e}")))?;
         if output.is_error {
@@ -83,6 +85,25 @@ impl McpToolAdapter {
             self.media.lock().insert(call_id.to_string(), stored);
         }
         Ok(output.text)
+    }
+
+    fn request_meta(&self) -> Option<serde_json::Value> {
+        self.owner_session
+            .filter(|_| self.name.starts_with("desktop_"))
+            .map(|session| serde_json::json!({ "agente/sessionId": session.to_string() }))
+    }
+
+    /// Desktop tools inherit the root conversation, including from children.
+    pub fn all_for_session(manager: &Arc<McpManager>, session: uuid::Uuid) -> Vec<Box<dyn Tool>> {
+        manager
+            .tools()
+            .into_iter()
+            .map(|tool| {
+                let mut adapter = Self::from_mcp_tool(tool, Arc::clone(manager));
+                adapter.owner_session = Some(session);
+                Box::new(adapter) as Box<dyn Tool>
+            })
+            .collect()
     }
 
     /// One adapter per tool of every ready server.
@@ -222,6 +243,19 @@ mod tests {
             &ToolFsFacts::default(),
             tool.default_permission(mode),
         )
+    }
+
+    #[test]
+    fn desktop_calls_carry_host_session_without_changing_model_arguments() {
+        let mut tool = adapter(true, false, true);
+        let session = uuid::Uuid::new_v4();
+        tool.owner_session = Some(session);
+        assert!(tool.request_meta().is_none());
+        tool.name = "desktop_browser_snapshot".into();
+        assert_eq!(
+            tool.request_meta().unwrap()["agente/sessionId"],
+            session.to_string()
+        );
     }
 
     #[test]

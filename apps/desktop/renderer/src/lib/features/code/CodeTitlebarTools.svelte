@@ -11,7 +11,7 @@
 
 <script lang="ts">
   import { t } from 'svelte-i18n';
-  import { Activity, GitCompareArrows, History, SquareTerminal } from 'lucide-svelte';
+  import { Activity, ClipboardList, GitCompareArrows, History, SquareTerminal } from 'lucide-svelte';
   import Menu from '$lib/components/ui/Menu.svelte';
   import MenuItem from '$lib/components/ui/MenuItem.svelte';
   import { Tooltip } from '$lib/components/ui';
@@ -21,6 +21,8 @@
   import type { ChatSession, CodeProject } from '$lib/types/chat';
   import { codeStore } from './code.svelte';
   import { codeWorkspace } from './workspace.svelte';
+  import { workspaceLayout } from '$lib/stores/workspace-layout.svelte';
+  import { latestPlan } from './plan-review';
 
   let { chat, project }: { chat: ChatSession; project: CodeProject | null } = $props();
 
@@ -29,8 +31,8 @@
   const changes = $derived(codeWorkspace.changes);
   const changeTotals = $derived((changes?.files ?? []).reduce((acc, f) => ({ add: acc.add + f.additions, del: acc.del + f.deletions }), { add: 0, del: 0 }));
   const running = $derived(codeWorkspace.runningCount(chat.id));
-  const terminalOpen = $derived(codeWorkspace.layout.bottomOpen && codeWorkspace.bottomTab.startsWith('terminal:'));
-  const processesOpen = $derived(codeWorkspace.layout.bottomOpen && codeWorkspace.bottomTab === 'processes');
+  const terminalOpen = $derived(codeWorkspace.terminalsForScope().some((term) => workspaceLayout.isOpen(`terminal:${term.id}`)));
+  const processesOpen = $derived(workspaceLayout.isOpen('processes'));
 
   let historyOpen = $state(false);
 
@@ -88,7 +90,8 @@
 {/snippet}
 
 <div class="code-tools titlebar-no-drag flex items-center gap-0.5" role="toolbar" aria-label={$t('codeWs.panes')}>
-  {@render toggle($t('codeWs.changes'), codeWorkspace.layout.changesOpen, () => codeWorkspace.toggleChanges(), GitCompareArrows, changesBadge)}
+  {@render toggle($t('codeWs.changes'), workspaceLayout.isOpen('changes'), () => codeWorkspace.toggleChanges(), GitCompareArrows, changesBadge)}
+  {@render toggle($t('code.plan.title'), workspaceLayout.isOpen('plan'), () => codeWorkspace.togglePlan(chat.id, latestPlan(chat.messages)), ClipboardList)}
   {@render toggle($t('codeWs.terminal'), terminalOpen, () => void toggleTerminal(), SquareTerminal)}
   {@render toggle($t('codeWs.processes'), processesOpen, () => void codeWorkspace.toggleBottom('processes', cwd), Activity, processesBadge)}
   {#if checkpoints.length}

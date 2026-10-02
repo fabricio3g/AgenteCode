@@ -2124,5 +2124,36 @@
     "speed": "Geschwindigkeit",
     "language": "Sprache",
     "languagePlaceholder": "Standard · z. B. de"
+  },
+  "workspace": {
+    "panels": "Arbeitsbereiche",
+    "actions": "Bereichsaktionen",
+    "float": "Bereich schweben lassen",
+    "dockRight": "Rechts andocken",
+    "dockBottom": "Unter dem Chat andocken",
+    "center": "Als Tabs gruppieren",
+    "left": "Links teilen",
+    "right": "Rechts teilen",
+    "top": "Darüber stapeln",
+    "bottom": "Darunter stapeln",
+    "maximize": "Bereich maximieren",
+    "restore": "Bereich wiederherstellen",
+    "resize": "Bereichsgröße ändern",
+    "hide": "{name} ausblenden",
+    "reset": "Layout zurücksetzen",
+    "noPlan": "Noch kein Plan. Pläne aus diesem Chat erscheinen hier.",
+    "resizeWidth": "Breite ändern",
+    "resizeHeight": "Höhe ändern",
+    "resizeCorner": "Beide Abmessungen an dieser Ecke ändern",
+    "resizeEdges": {
+      "n": "Größe am oberen Rand ändern",
+      "s": "Größe am unteren Rand ändern",
+      "e": "Größe am rechten Rand ändern",
+      "w": "Größe am linken Rand ändern",
+      "ne": "Größe an der oberen rechten Ecke ändern",
+      "nw": "Größe an der oberen linken Ecke ändern",
+      "se": "Größe an der unteren rechten Ecke ändern",
+      "sw": "Größe an der unteren linken Ecke ändern"
+    }
   }
 }

@@ -113,6 +113,7 @@ struct SubagentHostInner {
     /// The parent runtime owns queued preparation; forwarders run on plain
     /// OS threads, and child runtimes disappear when their loops finish.
     scheduler: OnceLock<tokio::runtime::Handle>,
+    mcp_session_id: OnceLock<uuid::Uuid>,
 }
 
 /// Child task ids are allocated from a high offset so they never collide with
@@ -249,8 +250,19 @@ impl SubagentHost {
                 max_depth,
                 max_concurrent,
                 scheduler: OnceLock::new(),
+                mcp_session_id: OnceLock::new(),
             }),
         }
+    }
+
+    /// Children share the root conversation's Desktop tool ownership.
+    pub fn with_mcp_session_id(self, session: uuid::Uuid) -> Self {
+        let _ = self.inner.mcp_session_id.set(session);
+        self
+    }
+
+    pub fn mcp_session_id(&self) -> Option<uuid::Uuid> {
+        self.inner.mcp_session_id.get().copied()
     }
 
     pub fn registry(&self) -> &SubagentRegistry {

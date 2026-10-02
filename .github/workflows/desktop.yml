@@ -51,6 +51,33 @@ jobs:
       - name: Run renderer tests
         run: npm test --prefix renderer
 
+      - name: Run Electron workspace smoke tests
+        env:
+          NODE_OPTIONS: --max-old-space-size=6144
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/agente-workspace-smoke"
+          npx esbuild tests/electron/workspace-panels.smoke.ts tests/electron/workspace-renderer.smoke.ts --bundle --platform=node --format=cjs --external:electron --out-extension:.js=.cjs --outdir="$RUNNER_TEMP/agente-workspace-smoke"
+          xvfb-run -a node_modules/.bin/electron --no-sandbox --user-data-dir="$RUNNER_TEMP/agente-browser-profile" "$RUNNER_TEMP/agente-workspace-smoke/workspace-panels.smoke.cjs"
+          npm run dev:renderer > "$RUNNER_TEMP/agente-workspace-vite.log" 2>&1 &
+          renderer_pid=$!
+          trap 'kill "$renderer_pid" || true' EXIT
+          for attempt in {1..60}; do
+            if curl --silent --fail http://127.0.0.1:5173/ > /dev/null; then break; fi
+            sleep 1
+          done
+          xvfb-run -a node_modules/.bin/electron --no-sandbox --user-data-dir="$RUNNER_TEMP/agente-renderer-profile" "$RUNNER_TEMP/agente-workspace-smoke/workspace-renderer.smoke.cjs"
+
+      - name: Upload workspace smoke diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: workspace-smoke-diagnostics
+          if-no-files-found: ignore
+          path: |
+            /tmp/agente-conversation-panels*.png
+            ${{ runner.temp }}/agente-workspace-vite.log
+
       - name: Build production bundles
         env:
           # The renderer dependency graph exceeds Node's default 2 GB heap.

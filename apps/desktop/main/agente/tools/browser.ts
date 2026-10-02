@@ -6,14 +6,14 @@
 // Supervised and Plan modes.
 
 import { z } from 'zod';
-import type { AgentTool } from '../../../shared/agent-core/types.ts';
+import type { AgentTool, ToolExecContext } from '../../../shared/agent-core/types.ts';
 import { defineTool } from './define-tool.ts';
 import { runBrowserAction, type BrowserActionName } from '../../browser-actions.ts';
 import { isLocalUrl } from '../../browser-format.ts';
 
 export interface BrowserToolOptions {
   /** Whether the current model can take images (screenshots). */
-  canSeeImages: () => boolean | Promise<boolean>;
+  canSeeImages: (context: ToolExecContext) => boolean | Promise<boolean>;
 }
 
 const ref = z.string().describe('Element ref from the latest browser_snapshot, e.g. "e12"');
@@ -23,11 +23,12 @@ function tool<T extends z.ZodType>(name: string, description: string, schema: T,
     name,
     description,
     schema,
-    // The browser is one shared surface: actions must not interleave.
+    // Actions within this conversation run in sequence.
     executionMode: 'sequential',
     ...extra,
-    async execute(args) {
-      const result = await runBrowserAction(action, args as Record<string, unknown>);
+    async execute(args, ctx) {
+      if (!ctx.browserScope) return { content: 'Browser conversation is required', isError: true };
+      const result = await runBrowserAction(action, args as Record<string, unknown>, ctx.browserScope);
       return { content: result.text, isError: !result.ok };
     }
   });
@@ -39,10 +40,11 @@ export function createBrowserTools(options: BrowserToolOptions): AgentTool[] {
     description: 'Capture the visible page as an image to check layout and visual details. Prefer browser_snapshot for reading text and finding elements.',
     schema: z.object({}),
     executionMode: 'sequential',
-    async execute() {
-      const result = await runBrowserAction('screenshot');
+    async execute(_args, ctx) {
+      if (!ctx.browserScope) return { content: 'Browser conversation is required', isError: true };
+      const result = await runBrowserAction('screenshot', {}, ctx.browserScope);
       if (!result.ok || !result.image) return { content: result.text, isError: true };
-      if (!(await options.canSeeImages())) {
+      if (!(await options.canSeeImages(ctx))) {
         return { content: `${result.text} The current model cannot see images, so the screenshot was not attached — use browser_snapshot to read the page instead.` };
       }
       return { content: result.text, images: [result.image] };

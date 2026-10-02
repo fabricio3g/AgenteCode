@@ -2124,5 +2124,36 @@
     "speed": "Velocidad",
     "language": "Idioma",
     "languagePlaceholder": "Por defecto · p. ej. es"
+  },
+  "workspace": {
+    "panels": "Paneles de trabajo",
+    "actions": "Acciones del panel",
+    "float": "Panel flotante",
+    "dockRight": "Acoplar a la derecha",
+    "dockBottom": "Acoplar debajo del chat",
+    "center": "Agrupar como pestañas",
+    "left": "Dividir a la izquierda",
+    "right": "Dividir a la derecha",
+    "top": "Apilar arriba",
+    "bottom": "Apilar abajo",
+    "maximize": "Maximizar panel",
+    "restore": "Restaurar panel",
+    "resize": "Cambiar tamaño del panel",
+    "hide": "Ocultar {name}",
+    "reset": "Restablecer diseño",
+    "noPlan": "Aún no hay un plan. Los planes presentados en esta conversación aparecen aquí.",
+    "resizeWidth": "Cambiar ancho",
+    "resizeHeight": "Cambiar altura",
+    "resizeCorner": "Cambiar ambas dimensiones desde esta esquina",
+    "resizeEdges": {
+      "n": "Cambiar tamaño desde arriba",
+      "s": "Cambiar tamaño desde abajo",
+      "e": "Cambiar tamaño desde la derecha",
+      "w": "Cambiar tamaño desde la izquierda",
+      "ne": "Cambiar tamaño desde la esquina superior derecha",
+      "nw": "Cambiar tamaño desde la esquina superior izquierda",
+      "se": "Cambiar tamaño desde la esquina inferior derecha",
+      "sw": "Cambiar tamaño desde la esquina inferior izquierda"
+    }
   }
 }

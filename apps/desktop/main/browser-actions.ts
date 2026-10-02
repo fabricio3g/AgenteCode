@@ -2,6 +2,7 @@
 // The Code agent calls this in-process; the Home agent reaches it through the
 // `browser_agent_action` IPC channel. Same actions, same model-facing text.
 
+import { browserScope, withBrowserScope } from './browser-panel.ts';
 import * as driver from './browser-driver.ts';
 import { formatConsole, formatSnapshot, type BrowserSnapshot } from './browser-format.ts';
 
@@ -66,12 +67,17 @@ const ACTIONS: Record<BrowserActionName, (args: Args) => Promise<BrowserActionRe
   }
 };
 
+const queues = new Map<string, Promise<unknown>>();
+
 /** Run an action; errors come back as text the model can act on, never throws. */
-export async function runBrowserAction(action: BrowserActionName, args: Record<string, unknown> = {}): Promise<BrowserActionResult> {
+export async function runBrowserAction(action: BrowserActionName, args: Record<string, unknown> = {}, scope = browserScope()): Promise<BrowserActionResult> {
   const handler = ACTIONS[action];
   if (!handler) return { ok: false, text: `Unknown browser action "${String(action)}".` };
   try {
-    return await handler(args);
+    const previous = queues.get(scope) ?? Promise.resolve();
+    const pending = previous.catch(() => {}).then(() => withBrowserScope(scope, () => handler(args)));
+    queues.set(scope, pending);
+    try { return await pending; } finally { if (queues.get(scope) === pending) queues.delete(scope); }
   } catch (err: unknown) {
     return { ok: false, text: err instanceof Error ? err.message : String(err) };
   }

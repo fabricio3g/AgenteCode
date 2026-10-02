@@ -2,12 +2,23 @@
 // so the renderer can be exercised in a plain browser without Electron.
 // Never imported unless the query flag is present (see src/main.ts).
 
+import type { BrowserPanelState } from '$lib/services/browser';
 import { KICKOFF_PPTX, REAL_DOCX, REAL_PPTX, REAL_XLSX, SAMPLE_DOCX, SAMPLE_XLSX } from './mock-office-files';
 
 import readerPdf from '$lib/features/chat/viewers/__fixtures__/reader.pdf?url';
 const PDF_FIXTURE = `data:application/pdf;base64,${btoa(String.fromCharCode(...new Uint8Array(await (await fetch(readerPdf)).arrayBuffer())))}`;
 
 type Listener = (payload: unknown) => void;
+
+const browserOwners = new Map<string, BrowserPanelState>();
+let browserTabSequence = 0;
+function browserState(args?: Record<string, unknown>): BrowserPanelState {
+  const scope = String(args?.scope ?? 'unassigned');
+  let state = browserOwners.get(scope);
+  if (!state) { state = { scope, tabs: [], activeTabId: null, visible: false, agentDriving: false, takeover: false }; browserOwners.set(scope, state); }
+  return state;
+}
+function pushBrowser(state: BrowserPanelState) { emit('browser_panel_state', { ...state, tabs: [...state.tabs] }); }
 
 const eventListeners = new Map<string, Set<Listener>>();
 // One conversation whose project was removed by an older build (orphan).
@@ -470,19 +481,24 @@ const botHandlers: Record<string, (args?: Record<string, unknown>) => unknown> =
     return bot;
   },
   bots_write_doc: () => ({ ok: true }),
-  // Agent browser: one tab, shown as if an agent were driving it.
+  browser_select_scope: (args) => browserState(args),
   browser_open_tab: (args) => {
-    const tab = { id: 'btab-1', url: String(args?.url ?? 'https://example.com'), title: 'Example Domain', preset: 'fit' };
-    emit('browser_panel_state', { tabs: [tab], activeTabId: tab.id, visible: true, agentDriving: true, takeover: false });
-    return tab;
+    const state = browserState(args);
+    const tab = { id: `btab-${++browserTabSequence}`, url: String(args?.url ?? ''), title: args?.url ? 'Example Domain' : '', preset: 'fit' as const };
+    state.tabs.push(tab); state.activeTabId = tab.id; state.visible = true;
+    pushBrowser(state); return tab;
   },
-  browser_panel_visible: (args) => {
-    const visible = !!args?.visible;
-    emit('browser_panel_state', visible
-      ? { tabs: [{ id: 'btab-1', url: 'https://example.com', title: 'Example Domain', preset: 'fit' }], activeTabId: 'btab-1', visible, agentDriving: true, takeover: false }
-      : { tabs: [{ id: 'btab-1', url: 'https://example.com', title: 'Example Domain', preset: 'fit' }], activeTabId: 'btab-1', visible, agentDriving: false, takeover: false });
-    return { ok: true };
+  browser_list_tabs: (args) => browserState(args).tabs,
+  browser_set_active: (args) => { const state = browserState(args); state.activeTabId = String(args?.tabId); pushBrowser(state); },
+  browser_close_tab: (args) => {
+    const state = browserState(args); state.tabs = state.tabs.filter((tab) => tab.id !== (args?.tabId ?? state.activeTabId));
+    state.activeTabId = state.tabs.at(-1)?.id ?? null; state.visible = !!state.tabs.length; pushBrowser(state);
   },
+  browser_panel_presentation: () => ({ image: null }),
+  browser_panel_visible: (args) => { const state = browserState(args); state.visible = !!args?.visible; pushBrowser(state); return { ok: true }; },
+  browser_takeover: (args) => { const state = browserState(args); state.takeover = !!args?.on; pushBrowser(state); },
+  browser_viewport: (args) => { const state = browserState(args); const tab = state.tabs.find((tab) => tab.id === (args?.tabId ?? state.activeTabId)); if (tab) tab.preset = args?.preset as typeof tab.preset; pushBrowser(state); },
+  browser_navigate: (args) => { const state = browserState(args); const tab = state.tabs.find((tab) => tab.id === (args?.tabId ?? state.activeTabId)); if (tab) tab.url = String(args?.url); pushBrowser(state); },
   bots_telegram: () => ({ ...mockTelegram }),
   bots_telegram_connect: () => Object.assign(mockTelegram, { connected: true, username: 'colina_agente_bot', error: null }),
   bots_telegram_disconnect: () => Object.assign(mockTelegram, { connected: false, username: null, paired: [], pairing: null }),

@@ -15,6 +15,7 @@
   import { artifactsForMessage } from '$lib/stores/app-store-artifacts';
   import { resolveArtifactPresentation } from '$lib/services/artifact-model';
   import ArtifactStudio from '$lib/components/agent/ArtifactStudio.svelte';
+  let { embedded = false, exposed = true }: { embedded?: boolean; exposed?: boolean } = $props();
 
   let dirty = $state(false);
 
@@ -54,9 +55,10 @@
       onConfirm: done
     });
   }
+  export function requestClose() { close(); }
 
   function onKeydown(event: KeyboardEvent) {
-    if (event.key !== 'Escape' || !ref || event.defaultPrevented) return;
+    if (event.key !== 'Escape' || !ref || !exposed || event.defaultPrevented) return;
     // Leave Escape to dialogs and menus that are open on top.
     if (document.querySelector('[role="dialog"], [role="menu"]')) return;
     close();
@@ -80,9 +82,9 @@
             </div>
           {/snippet}
           {#snippet trail()}
-            <button type="button" class="panel-close" onclick={close} aria-label={$t('artifacts.reader.close')} title={$t('artifacts.reader.close')}>
+            {#if !embedded}<button type="button" class="panel-close" onclick={close} aria-label={$t('artifacts.reader.close')} title={$t('artifacts.reader.close')}>
               <X class="size-4" />
-            </button>
+            </button>{/if}
           {/snippet}
         </ArtifactStudio>
       {/key}

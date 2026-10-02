@@ -16,6 +16,7 @@ function fakeRun(): ActiveGenerationRun {
 describe('stopStreaming teardown', () => {
   beforeEach(() => {
     appStore.activeRunsByChat = {};
+    browserPanelStore.scope = 'chat:chat-1';
     browserPanelStore.agentDriving = false;
   });
 
@@ -38,4 +39,11 @@ describe('stopStreaming teardown', () => {
 
     expect(browserPanelStore.agentDriving).toBe(false);
   });
+  it('stopping a background chat leaves the active browser badge alone', () => {
+    browserPanelStore.scope = 'chat:chat-2'; browserPanelStore.agentDriving = true;
+    appStore.activeRunsByChat = { 'chat-1': fakeRun() };
+    appStore.stopStreaming('chat-1');
+    expect(browserPanelStore.agentDriving).toBe(true);
+  });
+
 });

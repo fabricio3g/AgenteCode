@@ -7,6 +7,7 @@
 -->
 
 <script lang="ts">
+  import { conversationScope } from '$shared/workspace-scope';
   import { t } from 'svelte-i18n';
   import { FileCode2, FolderOpen, LoaderCircle, RefreshCw, Undo2, X } from 'lucide-svelte';
   import { invoke } from '$lib/services/bridge';
@@ -18,13 +19,13 @@
   import DiffView from './DiffView.svelte';
   import type { ChangeKind, FileDiff } from '$shared/code-workspace';
 
-  let { chatId, projectRoot, sessionId }: { chatId: string; projectRoot: string; sessionId?: string } = $props();
+  let { chatId, projectRoot, sessionId, embedded = false }: { chatId: string; projectRoot: string; sessionId?: string; embedded?: boolean } = $props();
 
   /** A listed file: from git, or only from the transcript's own record of an edit. */
   type Entry = { path: string; kind: ChangeKind; additions: number; deletions: number; patches?: string[] };
 
   const args = $derived({ chatId, projectRoot, ...(sessionId ? { sessionId } : {}) });
-  const list = $derived(codeWorkspace.changes);
+  const list = $derived(codeWorkspace.changesFor(chatId));
   const root = $derived(projectRoot.replace(/[\\/]+$/, '').replace(/\\/g, '/'));
 
   /** An edit's path relative to the project when it lies inside it. */
@@ -59,12 +60,12 @@
 
   // "View changes" from the transcript picks its file once it is listed.
   $effect(() => {
-    const wanted = codeWorkspace.focusPath;
+    const wanted = codeWorkspace.focusPaths[conversationScope(chatId)];
     if (!wanted) return;
     const match = files.find((f) => samePath(f.path, relative(wanted)));
     if (match) {
       selectedPath = match.path;
-      codeWorkspace.focusPath = null;
+      codeWorkspace.focusPaths[conversationScope(chatId)] = null;
     }
   });
 
@@ -79,13 +80,17 @@
     void list;
     if (!path || selected?.patches) {
       diff = null;
+      diffLoading = false;
       return;
     }
+    const owner = chatId;
+    let cancelled = false;
     diffLoading = true;
     void codeWorkspace.fileDiff({ ...args, path })
-      .then((result) => { if (selectedPath === path) diff = result; })
-      .catch(() => { if (selectedPath === path) diff = null; })
-      .finally(() => { if (selectedPath === path) diffLoading = false; });
+      .then((result) => { if (!cancelled && owner === chatId && selectedPath === path) diff = result; })
+      .catch(() => { if (!cancelled && owner === chatId && selectedPath === path) diff = null; })
+      .finally(() => { if (!cancelled && owner === chatId && selectedPath === path) diffLoading = false; });
+    return () => { cancelled = true; };
   });
 
   function split(path: string): { name: string; dir: string } {
@@ -125,19 +130,19 @@
   <!-- The same slim bar as the browser panel's. -->
   <header class="changes-bar">
     <p class="min-w-0 flex-1 truncate">
-      <span class="font-medium text-foreground">{$t('codeWs.changes')}</span>
+      {#if !embedded}<span class="font-medium text-foreground">{$t('codeWs.changes')}</span>{/if}
       {#if files.length}
         <span class="ml-1.5 text-muted-foreground">{$t('codeWs.fileCount', { values: { n: files.length } })}</span>
         <span class="ml-1 tabular-nums"><span class="text-success">+{totals.add}</span> <span class="text-error">−{totals.del}</span></span>
       {/if}
     </p>
-    <button type="button" class="ui-icon-button is-sm" onclick={refresh} disabled={codeWorkspace.changesLoading} aria-label={$t('codeWs.refresh')} title={$t('codeWs.refresh')}>
-      <RefreshCw class={codeWorkspace.changesLoading ? 'animate-spin' : ''} />
+    <button type="button" class="ui-icon-button is-sm" onclick={refresh} disabled={codeWorkspace.changeLoading[chatId]} aria-label={$t('codeWs.refresh')} title={$t('codeWs.refresh')}>
+      <RefreshCw class={codeWorkspace.changeLoading[chatId] ? 'animate-spin' : ''} />
     </button>
-    <button type="button" class="ui-icon-button is-sm" onclick={() => codeWorkspace.toggleChanges(false)} aria-label={$t('codeWs.close')} title={$t('codeWs.close')}><X /></button>
+    {#if !embedded}<button type="button" class="ui-icon-button is-sm" onclick={() => codeWorkspace.toggleChanges(false)} aria-label={$t('codeWs.close')} title={$t('codeWs.close')}><X /></button>{/if}
   </header>
 
-  {#if !list && codeWorkspace.changesLoading}
+  {#if !list && codeWorkspace.changeLoading[chatId]}
     <div class="flex flex-1 items-center justify-center"><LoaderCircle class="size-4 animate-spin text-muted-foreground" /></div>
   {:else if !files.length}
     <!-- Empty: a quiet note at the top, not a poster in the middle. -->

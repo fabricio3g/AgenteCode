@@ -1,5 +1,6 @@
 import type { SearchOptions, SearchResponse } from '$lib/types/bridge';
 import { invoke } from './bridge';
+import { workspaceLayout } from '$lib/stores/workspace-layout.svelte';
 import { loadAppConfig } from '$lib/utils/storage';
 import { getStoredHfToken } from './huggingface';
 
@@ -209,7 +210,7 @@ export interface OpenWebviewerResult {
 }
 
 export async function openWebviewer(url: string, title?: string): Promise<OpenWebviewerResult> {
-  return invoke<OpenWebviewerResult>('open_webviewer', { url, title });
+  return invoke<OpenWebviewerResult>('open_webviewer', { url, title, scope: workspaceLayout.scope });
 }
 
 export interface FetchUrlResult {

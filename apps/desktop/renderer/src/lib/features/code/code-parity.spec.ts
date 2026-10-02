@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ChatMessage } from '$lib/types/chat';
-import { acceptMessage, isPlanWaiting, parsePlan, pendingPlan } from './plan-review';
+import { acceptMessage, isPlanWaiting, latestPlan, parsePlan, pendingPlan } from './plan-review';
 import { fileMentionAt, insertFile, matchFiles } from './file-mention';
 import { activitySummary, stepKind } from './activity';
 import { conversationSpend, spendLabel } from './accounting';
@@ -13,6 +13,13 @@ function message(partial: Partial<ChatMessage>): ChatMessage {
 }
 
 describe('plan review', () => {
+  it('reopens the latest complete plan after it was answered and history was restored', () => {
+    const presented = message({ agentSteps: [{ id: 's', type: 'tool', label: 'Plan', toolName: 'present_plan', status: 'done', output: PLAN }] });
+    const messages = [presented, message({ role: 'user', content: 'Build it' }), message({ content: 'Done' })];
+    expect(latestPlan(JSON.parse(JSON.stringify(messages)))?.title).toBe('My Plan');
+    expect(latestPlan([])).toBeNull();
+    expect(latestPlan([...messages, message({ agentSteps: [{ id: 't', type: 'tool', label: 'Plan', toolName: 'present_plan', status: 'running', output: PLAN.replace('My Plan', 'Unfinished') }] })])?.title).toBe('My Plan');
+  });
   it('reads a presented plan', () => {
     expect(parsePlan(PLAN)).toEqual({ path: '.agente/plan.md', title: 'My Plan', body: '# My Plan\n\n1. Do it' });
     expect(parsePlan('ordinary output')).toBeNull();

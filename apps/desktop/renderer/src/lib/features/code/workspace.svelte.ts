@@ -3,46 +3,33 @@
 // Changes pane on the right, and the bottom dock with terminals and the
 // agent's background processes. Layout choices are remembered per viewer.
 
+import { conversationScope } from '$shared/workspace-scope';
 import { invoke, listen } from '$lib/services/bridge';
 import type { ChangeList, FileDiff, ProcessEvent, ProcessInfo, TerminalEvent } from '$shared/code-workspace';
 import type { PresentedPlan } from './plan-review';
 import type { FileEdit } from './work-blocks';
+import { workspaceLayout } from '$lib/stores/workspace-layout.svelte';
 
 type BottomTab = 'processes' | `terminal:${string}`;
 
-interface Layout {
-  changesOpen: boolean;
-  bottomOpen: boolean;
-  bottomHeight: number;
-}
-
-const LAYOUT_KEY = 'flaxeo.code.layout';
-const DEFAULT_LAYOUT: Layout = { changesOpen: false, bottomOpen: false, bottomHeight: 260 };
 const MAX_PROCESS_OUTPUT = 120_000;
-
-function readLayout(): Layout {
-  try {
-    return { ...DEFAULT_LAYOUT, ...JSON.parse(localStorage.getItem(LAYOUT_KEY) || '{}') };
-  } catch {
-    return { ...DEFAULT_LAYOUT };
-  }
-}
 
 export interface TerminalTab {
   id: string;
   title: string;
   cwd: string;
   exited: boolean;
+  scope?: string;
 }
 
-class CodeWorkspaceStore {
-  layout = $state<Layout>(readLayout());
-  bottomTab = $state<BottomTab>('processes');
+export class CodeWorkspaceStore {
 
   processes = $state<ProcessInfo[]>([]);
   /** Output per process id, ANSI included (the viewer strips it). */
   processOutput = $state<Record<string, string>>({});
-  selectedProcessId = $state<string | null>(null);
+  selectedProcesses = $state<Record<string, string | null>>({});
+  get selectedProcessId(): string | null { return this.selectedProcesses[workspaceLayout.scope] ?? null; }
+  set selectedProcessId(id: string | null) { this.selectedProcesses[workspaceLayout.scope] = id; }
 
   terminals = $state<TerminalTab[]>([]);
   #terminalListeners = new Map<string, (data: string) => void>();
@@ -51,32 +38,23 @@ class CodeWorkspaceStore {
   /** What the Changes pane in the right dock shows: the open Code conversation. */
   changesTarget = $state<{ chatId: string; projectRoot: string; sessionId?: string } | null>(null);
 
-  changes = $state<ChangeList | null>(null);
-  changesLoading = $state(false);
-  changesKey = '';
+  changeLists = $state<Record<string, ChangeList | null>>({});
+  changeLoading = $state<Record<string, boolean>>({});
+  #changeRequests = new Map<string, number>();
+  get changes(): ChangeList | null { return this.changesTarget ? this.changesFor(this.changesTarget.chatId) : null; }
+  changesFor(chatId: string): ChangeList | null { return this.changeLists[chatId] ?? null; }
 
   #wired = false;
 
   // ── Layout ───────────────────────────────────────────────────────────
-  #saveLayout(): void {
-    try {
-      localStorage.setItem(LAYOUT_KEY, JSON.stringify(this.layout));
-    } catch {
-      // Blocked storage: the layout lasts for this session.
-    }
-  }
-
-  setLayout(patch: Partial<Layout>): void {
-    this.layout = { ...this.layout, ...patch };
-    this.#saveLayout();
-  }
-
-  toggleChanges(open = !this.layout.changesOpen): void {
-    this.setLayout({ changesOpen: open });
+  toggleChanges(open = !workspaceLayout.isOpen('changes')): void {
+    if (open) workspaceLayout.show('changes'); else workspaceLayout.hide('changes');
   }
 
   /** A file the Changes pane should select next (a transcript edit's "View changes"). */
-  focusPath = $state<string | null>(null);
+  focusPaths = $state<Record<string, string | null>>({});
+  get focusPath(): string | null { return this.focusPaths[workspaceLayout.scope] ?? null; }
+  set focusPath(path: string | null) { this.focusPaths[workspaceLayout.scope] = path; }
 
   /** Each chat's edits as its transcript recorded them: the Changes pane's fallback where git sees nothing. */
   transcriptEdits = $state<Record<string, FileEdit[]>>({});
@@ -87,48 +65,69 @@ class CodeWorkspaceStore {
 
   showFileInChanges(path: string): void {
     this.focusPath = path;
-    this.setLayout({ changesOpen: true });
+    workspaceLayout.show('changes');
   }
 
   // ── Plan ─────────────────────────────────────────────────────────────
   /** The plan open in the right dock, like the agent browser beside the conversation. */
-  plan = $state<{ chatId: string; plan: PresentedPlan } | null>(null);
-  /** The last plan offered on its own, so closing it keeps it closed. */
-  #offeredPlan = '';
+  plan = $state<{ chatId: string; plan: PresentedPlan | null } | null>(null);
+  /** Remember every offered plan, including after switching chats or restarting. */
+  #offeredPlans = new Set<string>();
+
+  constructor() {
+    try {
+      const saved: unknown = JSON.parse(localStorage.getItem('agente.offeredPlans') ?? '[]');
+      if (Array.isArray(saved)) this.#offeredPlans = new Set(saved.filter((key): key is string => typeof key === 'string').slice(-256));
+    } catch { /* Plans still open once per session when storage is unavailable. */ }
+  }
 
   showPlan(chatId: string, plan: PresentedPlan): void {
     this.plan = { chatId, plan };
+    workspaceLayout.forScope(conversationScope(chatId), (owner) => owner.show('plan'));
   }
 
   closePlan(): void {
-    this.plan = null;
+    workspaceLayout.hide('plan');
+  }
+
+  togglePlan(chatId: string, plan: PresentedPlan | null): void {
+    if (workspaceLayout.isOpen('plan')) this.closePlan();
+    else { this.plan = { chatId, plan }; workspaceLayout.forScope(conversationScope(chatId), (owner) => owner.show('plan')); }
   }
 
   /** A newly presented plan opens once; after the viewer closes it, only "Open plan" brings it back. */
   offerPlan(chatId: string, plan: PresentedPlan): void {
-    const key = `${chatId}\n${plan.path}\n${plan.body}`;
-    if (key === this.#offeredPlan) return;
-    this.#offeredPlan = key;
+    let hash = 2166136261;
+    for (const char of plan.body) hash = Math.imul(hash ^ char.charCodeAt(0), 16777619) >>> 0;
+    const key = `${chatId}\n${plan.path}\n${plan.body.length}:${hash}`;
+    if (this.#offeredPlans.has(key)) return;
+    this.#offeredPlans.add(key);
+    this.#offeredPlans = new Set([...this.#offeredPlans].slice(-256));
+    try { localStorage.setItem('agente.offeredPlans', JSON.stringify([...this.#offeredPlans])); } catch { /* Session-only. */ }
     this.showPlan(chatId, plan);
   }
 
   showBottom(tab?: BottomTab): void {
-    if (tab) this.bottomTab = tab;
-    this.setLayout({ bottomOpen: true });
+    workspaceLayout.show(tab ?? 'processes', 'bottom');
   }
 
   /** Toolbar toggle: show that tab, or hide the dock if it is already showing. */
   async toggleBottom(tab: 'processes' | 'terminal', cwd: string): Promise<void> {
-    const onTab = tab === 'processes' ? this.bottomTab === 'processes' : this.bottomTab.startsWith('terminal:');
-    if (this.layout.bottomOpen && onTab) {
-      this.setLayout({ bottomOpen: false });
+    const terminals = this.terminalsForScope();
+    if (tab === 'terminal' && terminals.some((term) => workspaceLayout.isOpen(`terminal:${term.id}`))) {
+      for (const term of terminals) workspaceLayout.hide(`terminal:${term.id}`);
+      return;
+    }
+    const id = tab === 'processes' ? 'processes' : terminals.at(-1) ? `terminal:${terminals.at(-1)!.id}` : null;
+    if (id && workspaceLayout.isOpen(id)) {
+      workspaceLayout.hide(id);
       return;
     }
     if (tab === 'processes') {
       this.showBottom('processes');
       return;
     }
-    const last = this.terminals.at(-1);
+    const last = terminals.at(-1);
     if (last) this.showBottom(`terminal:${last.id}`);
     else await this.newTerminal(cwd);
   }
@@ -159,8 +158,8 @@ class CodeWorkspaceStore {
     this.#upsert(event.process);
     if (event.type === 'process_start') {
       // Something new is running: show it, unless the user is in a terminal.
-      this.selectedProcessId = event.process.id;
-      if (!this.layout.bottomOpen) this.showBottom('processes');
+      this.selectedProcesses[conversationScope(event.process.chatId)] = event.process.id;
+      workspaceLayout.forScope(conversationScope(event.process.chatId), (owner) => { if (!owner.isOpen('processes')) owner.show('processes', 'bottom'); });
     }
   }
 
@@ -190,7 +189,9 @@ class CodeWorkspaceStore {
     const gone = new Set(this.processesFor(chatId).filter((p) => p.status !== 'running').map((p) => p.id));
     this.processes = this.processes.filter((p) => !gone.has(p.id));
     for (const id of gone) delete this.processOutput[id];
-    if (this.selectedProcessId && gone.has(this.selectedProcessId)) this.selectedProcessId = null;
+    const scope = conversationScope(chatId);
+    const selected = this.selectedProcesses[scope];
+    if (selected && gone.has(selected)) this.selectedProcesses[scope] = null;
   }
 
   // ── Terminals ────────────────────────────────────────────────────────
@@ -218,12 +219,15 @@ class CodeWorkspaceStore {
     };
   }
 
+  terminalsForScope(scope = workspaceLayout.scope): TerminalTab[] { return this.terminals.filter((term) => term.scope === scope); }
+
   async newTerminal(cwd: string, size: { cols: number; rows: number } = { cols: 100, rows: 24 }): Promise<void> {
+    const scope = workspaceLayout.scope;
     try {
       const { id, shell } = await invoke<{ id: string; shell: string }>('terminal_create', { cwd, ...size });
-      const n = this.terminals.length + 1;
-      this.terminals = [...this.terminals, { id, title: n > 1 ? `${shell} ${n}` : shell, cwd, exited: false }];
-      this.showBottom(`terminal:${id}`);
+      const n = this.terminalsForScope(scope).length + 1;
+      this.terminals = [...this.terminals, { id, title: n > 1 ? `${shell} ${n}` : shell, cwd, scope, exited: false }];
+      workspaceLayout.forScope(scope, (owner) => owner.show(`terminal:${id}`, 'bottom'));
     } catch (error) {
       throw new Error(String((error as Error)?.message || error));
     }
@@ -239,29 +243,25 @@ class CodeWorkspaceStore {
 
   closeTerminal(id: string): void {
     void invoke('terminal_kill', { id });
-    const index = this.terminals.findIndex((t) => t.id === id);
+    const scope = this.terminals.find((term) => term.id === id)?.scope ?? workspaceLayout.scope;
     this.terminals = this.terminals.filter((t) => t.id !== id);
     this.#terminalListeners.delete(id);
     this.#terminalBacklog.delete(id);
-    if (this.bottomTab === `terminal:${id}`) {
-      const next = this.terminals[Math.max(0, index - 1)];
-      this.bottomTab = next ? `terminal:${next.id}` : 'processes';
-    }
+    workspaceLayout.forScope(scope, (owner) => owner.forget(`terminal:${id}`));
   }
 
   // ── Changes ──────────────────────────────────────────────────────────
   async refreshChanges(args: { chatId: string; projectRoot: string; sessionId?: string }): Promise<void> {
-    const key = `${args.chatId}|${args.projectRoot}`;
-    if (key !== this.changesKey) this.changes = null;
-    this.changesKey = key;
-    this.changesLoading = true;
+    const id = args.chatId;
+    const request = (this.#changeRequests.get(id) ?? 0) + 1;
+    this.#changeRequests.set(id, request); this.changeLoading[id] = true;
     try {
       const list = await invoke<ChangeList>('agente_changes', args);
-      if (this.changesKey === key) this.changes = list;
+      if (this.#changeRequests.get(id) === request) this.changeLists[id] = list;
     } catch {
-      if (this.changesKey === key) this.changes = { source: 'none', files: [] };
+      if (this.#changeRequests.get(id) === request) this.changeLists[id] = { source: 'none', files: [] };
     } finally {
-      if (this.changesKey === key) this.changesLoading = false;
+      if (this.#changeRequests.get(id) === request) this.changeLoading[id] = false;
     }
   }
 
