@@ -453,7 +453,7 @@
       },
       "settings": {
         "label": "Ajustes del agente",
-        "hint": "Compactación y subagentes en paralelo"
+        "hint": "Compactación, subagentes en paralelo y qué se adjunta sin preguntar"
       },
       "mode": {
         "label": "Siguiente modo",
@@ -483,11 +483,13 @@
       "remove": "Quitar {name}",
       "textOnly": "Solo texto",
       "textOnlyHint": "Este modelo no ve imágenes: las capturas y los archivos multimedia le llegan como texto.",
+      "noVisionHint": "Sin visión: acepta {kinds} pero no imágenes, que le llegan como texto.",
       "sees": "Ve {kinds}",
       "autoAttach": "adjunta {kinds} sin preguntar"
     },
     "project": {
       "loading": "Cargando…",
+      "needsProject": "Abre un proyecto para ver esto.",
       "skills": {
         "title": "Habilidades y comandos",
         "hint": "Elige uno para ponerlo en el cuadro de mensaje.",

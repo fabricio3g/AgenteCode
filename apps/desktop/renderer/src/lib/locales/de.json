@@ -453,7 +453,7 @@
       },
       "settings": {
         "label": "Agent-Einstellungen",
-        "hint": "Verdichtung und parallele Subagenten"
+        "hint": "Verdichtung, parallele Subagenten und was ohne Nachfrage angehängt wird"
       },
       "mode": {
         "label": "Nächster Modus",
@@ -483,11 +483,13 @@
       "remove": "{name} entfernen",
       "textOnly": "Nur Text",
       "textOnlyHint": "Dieses Modell sieht keine Bilder: Screenshots und angehängte Medien erreichen es als Text.",
+      "noVisionHint": "Keine Vision: Es nimmt {kinds} an, aber keine Bilder – die erreichen es als Text.",
       "sees": "Sieht {kinds}",
       "autoAttach": "hängt {kinds} ohne Nachfrage an"
     },
     "project": {
       "loading": "Wird geladen…",
+      "needsProject": "Öffne ein Projekt, um das zu sehen.",
       "skills": {
         "title": "Skills und Befehle",
         "hint": "Wähle einen, um ihn ins Eingabefeld zu setzen.",

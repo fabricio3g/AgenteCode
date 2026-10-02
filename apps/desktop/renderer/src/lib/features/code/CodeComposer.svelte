@@ -35,6 +35,7 @@
   import { MEDIA_ACCEPT, isMediaPath, mediaData } from './code-media';
   import Menu from '$lib/components/ui/Menu.svelte';
   import MenuItem from '$lib/components/ui/MenuItem.svelte';
+  import Tooltip from '$lib/components/ui/Tooltip.svelte';
   import SendButton from '$lib/features/shared/composer/SendButton.svelte';
   import ReasoningLevelSelector from '$lib/features/chat/composer/ReasoningLevelSelector.svelte';
   import { approvalsStore } from '$lib/stores/approvals.svelte';
@@ -145,6 +146,9 @@
   type Command = CodeCommand;
 
   const project = $derived(codeStore.projectById(chat.projectId ?? null));
+  // These sections ask the engine about a project directory. The rest —
+  // Agent settings and saved sessions — are runtime-wide and work without one.
+  const PROJECT_SECTIONS: CodeDialog[] = ['skills', 'agents', 'mcp'];
   const commands = $derived<Command[]>(codeCommands({
     t: (key) => $t(key),
     running,
@@ -302,17 +306,34 @@
     return () => { current = false; };
   });
   const seenMedia = $derived(MEDIA_KINDS.filter((kind) => modelInputs?.includes(kind)));
+  /** The eye is about vision: audio or video input is not a picture. */
+  const vision = $derived(seenMedia.includes('image'));
   const mediaHint = $derived.by(() => {
     if (!seenMedia.length) return $t('code.media.textOnlyHint');
     const names = (kinds: readonly string[]) => kinds.map((kind) => $t(`code.project.settings.${kind}`)).join(', ');
     const auto = MEDIA_KINDS.filter((kind) => allowMedia.includes(kind));
-    const sees = $t('code.media.sees', { values: { kinds: names(seenMedia) } });
+    const sees = vision
+      ? $t('code.media.sees', { values: { kinds: names(seenMedia) } })
+      : $t('code.media.noVisionHint', { values: { kinds: names(seenMedia) } });
     return auto.length ? `${sees} · ${$t('code.media.autoAttach', { values: { kinds: names(auto) } })}` : sees;
   });
+  /** What the icon opens, so the tooltip can name its destination. */
+  const mediaLabel = $derived(`${mediaHint} — ${$t('code.cmd.settings.label')}`);
 
-  $effect(() => {
-    void invoke<{ allow_media: AttachmentKind[] }>('agente_runtime_settings').then((settings) => (allowMedia = settings.allow_media)).catch(() => {});
-  });
+  /**
+   * `allow_media` lives in Agent settings, so the bar has to re-read it when
+   * that dialog closes — a mount-only read left the icon describing a policy
+   * the user had already changed.
+   */
+  async function refreshSettings() {
+    try {
+      const settings = await invoke<{ allow_media: AttachmentKind[] }>('agente_runtime_settings');
+      allowMedia = settings.allow_media;
+    } catch {
+      /* The daemon is not up yet; the bar keeps the last known policy. */
+    }
+  }
+  $effect(() => { void refreshSettings(); });
   function offerMedia(items: Attachment[]) {
     const ready = items.filter((item) => item.kind === 'pdf' || allowMedia.includes(item.kind));
     attachments = [...attachments, ...ready.filter((item) => !attachments.some((existing) => existing.path === item.path))];
@@ -492,7 +513,7 @@
   onDestroy(() => appStore.persist());
 </script>
 
-{#if dialog && project}<CodeProjectDialog chatId={chat.id} projectRoot={project.rootPath} section={dialog} onclose={() => (dialog = null)} />{/if}
+{#if dialog && (project || !PROJECT_SECTIONS.includes(dialog))}<CodeProjectDialog chatId={chat.id} projectRoot={project?.rootPath} section={dialog} onclose={() => { dialog = null; void refreshSettings(); }} />{/if}
 {#if pendingMedia.length}
   <Dialog title={$t('code.media.title')} onclose={() => (pendingMedia = [])} size="sm">
     <div class="space-y-3 p-4 text-sm"><p class="text-muted-foreground">{$t('code.media.question')}</p>{#each pendingMedia as media, index (index)}<p class="truncate">{media.name} · {media.kind}</p>{/each}
@@ -564,7 +585,9 @@
         <div class="composer-bar">
           <div class="composer-bar-leading">
             <input bind:this={mediaPicker} type="file" class="hidden" accept={MEDIA_ACCEPT} multiple onchange={(event) => { void attachFiles([...((event.currentTarget as HTMLInputElement).files || [])]); event.currentTarget.value = ''; }} />
-            <button type="button" class="ui-icon-button" aria-label={$t('code.attach')} title={$t('code.attach')} disabled={attaching} onclick={() => mediaPicker?.click()}><Plus class="size-3.5" /></button>
+            <Tooltip label={$t('code.attach')} position="top">
+              <button type="button" class="ui-icon-button" aria-label={$t('code.attach')} disabled={attaching} onclick={() => mediaPicker?.click()}><Plus class="size-3.5" /></button>
+            </Tooltip>
 
             <!-- Runtime mode gate — plan / supervised / full-auto. -->
             <Menu bind:open={modeMenuOpen} placement="top-start" minWidth="20rem" label={$t('code.modeSelector')} class="p-1.5">
@@ -602,28 +625,36 @@
           <div class="composer-bar-trailing">
             {#if running && queuedCount > 0}<span class="queued-status" role="status">{$t('code.queued', { values: { n: queuedCount } })}</span>{/if}
             {#if modelReady && modelInputs}
-              <span class="media-status" class:is-off={!seenMedia.length} role="img" aria-label={mediaHint} title={mediaHint}>
-                {#if seenMedia.length}<Eye class="size-3.5" />{:else}<EyeOff class="size-3.5" />{$t('code.media.textOnly')}{/if}
-              </span>
+              <!-- Capability and policy in one glyph: what the model sees, and
+                   the door to the toggles that decide what gets attached. -->
+              <Tooltip label={mediaLabel} position="top">
+                <button type="button" class="media-status" aria-label={mediaLabel} onclick={() => (dialog = 'settings')}>
+                  {#if vision}<Eye class="size-3.5" />{:else}<EyeOff class="size-3.5" />{$t('code.media.textOnly')}{/if}
+                </button>
+              </Tooltip>
             {/if}
             {#if showContextRing && usage}<ContextUsageRing usedTokens={usage.promptTokens} maxTokens={usage.contextWindow ?? 0} {spend} />{/if}
 
             {#if !modelReady}
               <!-- The one honest interruption: point at the fix. -->
-              <button type="button" class="composer-chip" onclick={openModelHub} title={$t('code.selectModel')}>
-                <ArrowDownToLine class="size-3.5" />
-                {copy.model.browseAll}
-              </button>
+              <Tooltip label={$t('code.selectModel')} position="top">
+                <button type="button" class="composer-chip" onclick={openModelHub}>
+                  <ArrowDownToLine class="size-3.5" />
+                  {copy.model.browseAll}
+                </button>
+              </Tooltip>
             {:else if canContinue && !text.trim()}
               <!-- The run stopped short: one click picks the work back up. -->
-              <button type="button" class="composer-chip" onclick={() => void codeStore.followUp(chat.id, $t('code.continuePrompt'))} title={$t('code.continue')}>
-                <Play class="size-3.5" />
-                {$t('code.continue')}
-              </button>
+              <Tooltip label={$t('code.continue')} position="top">
+                <button type="button" class="composer-chip" onclick={() => void codeStore.followUp(chat.id, $t('code.continuePrompt'))}>
+                  <Play class="size-3.5" />
+                  {$t('code.continue')}
+                </button>
+              </Tooltip>
             {/if}
 
             <Menu bind:open={toolsMenuOpen} placement="top-end" minWidth="14rem" label={$t('code.toolsMenu')}>
-              {#snippet trigger(props)}<button type="button" class="ui-icon-button" aria-label={$t('code.toolsMenu')} title={$t('code.toolsMenu')} {...props}><MoreHorizontal class="size-3.5" /></button>{/snippet}
+              {#snippet trigger(props)}<Tooltip label={$t('code.toolsMenu')} position="top"><button type="button" class="ui-icon-button" aria-label={$t('code.toolsMenu')} {...props}><MoreHorizontal class="size-3.5" /></button></Tooltip>{/snippet}
               {#each menuGroups as group, index (index)}
                 {#if index > 0}<div class="ui-menu-separator" role="separator"></div>{/if}
                 {#each group as command (command.name)}<MenuItem icon={command.icon} label={command.label} disabled={command.disabled} onselect={() => void runCommand(command)} />{/each}
@@ -685,8 +716,20 @@
     max-width: 18rem;
   }
   .queued-status { color: var(--muted-foreground); font-size: 12px; white-space: nowrap; }
-  .media-status { display: inline-flex; align-items: center; gap: 0.25rem; color: var(--muted-foreground); opacity: 0.6; font-size: 12px; white-space: nowrap; }
-  .media-status.is-off { opacity: 0.85; }
+  /* One muted base for both states: "Text only" is a quiet note, not the
+     brightest thing on the bar. */
+  .media-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    border-radius: 9999px;
+    padding: 0.25rem 0.375rem;
+    color: var(--muted-foreground);
+    font-size: 12px;
+    white-space: nowrap;
+    transition: background-color 120ms ease, color 120ms ease;
+  }
+  .media-status:hover { background: var(--surface-hover); color: var(--foreground); }
   .slash-menu {
     max-height: min(20rem, 40vh);
     overflow-y: auto;

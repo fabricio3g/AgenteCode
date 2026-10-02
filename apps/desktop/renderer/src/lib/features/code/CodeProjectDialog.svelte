@@ -21,7 +21,7 @@
   import type { CodeDialog } from './code-commands';
   import SubagentCard from './SubagentCard.svelte';
 
-  let { chatId, projectRoot, section, onclose }: { chatId: string; projectRoot: string; section: CodeDialog; onclose: () => void } = $props();
+  let { chatId, projectRoot, section, onclose }: { chatId: string; projectRoot?: string; section: CodeDialog; onclose: () => void } = $props();
 
   type Settings = { smart_compaction: boolean; max_parallel_subagents: number; subagent_models: Record<string, { provider: string; model: string }>; allow_media: string[] };
 
@@ -33,6 +33,8 @@
   let settings = $state<Settings>({ smart_compaction: false, max_parallel_subagents: 8, subagent_models: {}, allow_media: [] });
   const run = $derived(codeStore.runFor(chatId));
   const MEDIA = ['image', 'audio', 'video'] as const;
+  /** Only these sections ask the engine about a project directory. */
+  const needsProject = $derived(['skills', 'agents', 'mcp'].includes(section));
 
   onMount(() => void load());
 
@@ -40,11 +42,11 @@
     loading = true;
     error = '';
     try {
-      if (section === 'mcp') servers = await mcpStatus(projectRoot);
+      if (section === 'mcp') servers = await mcpStatus(projectRoot!);
       else if (section === 'sessions') sessions = await invoke<SessionInfo[]>('agente_session_list');
       else if (section === 'settings') settings = await invoke<Settings>('agente_runtime_settings');
       else {
-        info = await projectInfo(projectRoot);
+        info = projectRoot ? await projectInfo(projectRoot) : null;
         if (section === 'agents') settings = await invoke<Settings>('agente_runtime_settings');
       }
     } catch (cause) {
@@ -56,7 +58,7 @@
 
   async function controlServer(name: string, action: 'approve' | 'reconnect' | 'disable') {
     try {
-      await invoke('agente_mcp_control', { projectRoot, name, action });
+      await invoke('agente_mcp_control', { projectRoot: projectRoot!, name, action });
       await load();
     } catch (cause) {
       error = String(cause);
@@ -102,6 +104,8 @@
 
     {#if loading}
       <p class="px-2 py-3 text-[13px] text-muted-foreground">{$t('code.project.loading')}</p>
+    {:else if needsProject && !projectRoot}
+      <p class="empty">{$t('code.project.needsProject')}</p>
     {:else if section === 'skills' && info}
       {#each [...info.skills, ...info.commands] as item (item.name)}
         <button type="button" class="row w-full text-left" onclick={() => insert(item.name)}>

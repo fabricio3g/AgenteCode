@@ -453,7 +453,7 @@
       },
       "settings": {
         "label": "Agent settings",
-        "hint": "Compaction and parallel subagents"
+        "hint": "Compaction, parallel subagents and what attaches without asking"
       },
       "mode": {
         "label": "Next mode",
@@ -483,11 +483,13 @@
       "remove": "Remove {name}",
       "textOnly": "Text only",
       "textOnlyHint": "This model can’t see images, so screenshots and attached media reach it as text.",
+      "noVisionHint": "No vision: it takes {kinds} but not images, so pictures reach it as text.",
       "sees": "Sees {kinds}",
       "autoAttach": "attaches {kinds} without asking"
     },
     "project": {
       "loading": "Loading…",
+      "needsProject": "Open a project to see this.",
       "skills": {
         "title": "Skills and commands",
         "hint": "Pick one to put it in the message box.",

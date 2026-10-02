@@ -453,7 +453,7 @@
       },
       "settings": {
         "label": "Réglages de l'agent",
-        "hint": "Compactage et sous-agents en parallèle"
+        "hint": "Compactage, sous-agents en parallèle et ce qui s'attache sans demander"
       },
       "mode": {
         "label": "Mode suivant",
@@ -483,11 +483,13 @@
       "remove": "Retirer {name}",
       "textOnly": "Texte seul",
       "textOnlyHint": "Ce modèle ne voit pas les images : captures et médias joints lui parviennent en texte.",
+      "noVisionHint": "Pas de vision : il accepte {kinds} mais pas les images, qui lui parviennent en texte.",
       "sees": "Voit {kinds}",
       "autoAttach": "joint {kinds} sans demander"
     },
     "project": {
       "loading": "Chargement…",
+      "needsProject": "Ouvrez un projet pour voir ceci.",
       "skills": {
         "title": "Compétences et commandes",
         "hint": "Choisissez-en une pour la mettre dans la zone de message.",

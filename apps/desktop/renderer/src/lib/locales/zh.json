@@ -453,7 +453,7 @@
       },
       "settings": {
         "label": "代理设置",
-        "hint": "压缩和并行子代理"
+        "hint": "压缩、并行子代理，以及无需询问即可附加的内容"
       },
       "mode": {
         "label": "下一个模式",
@@ -483,11 +483,13 @@
       "remove": "移除 {name}",
       "textOnly": "仅文本",
       "textOnlyHint": "此模型无法查看图片，截图和附加的媒体会以文本形式发送。",
+      "noVisionHint": "无视觉：它可以接受 {kinds}，但图片会以文本形式发送。",
       "sees": "可识别 {kinds}",
       "autoAttach": "无需询问即可附加 {kinds}"
     },
     "project": {
       "loading": "正在加载…",
+      "needsProject": "打开一个项目即可查看。",
       "skills": {
         "title": "技能和命令",
         "hint": "选择一个，放进输入框。",
