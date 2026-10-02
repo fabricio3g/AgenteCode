@@ -702,7 +702,12 @@ fn resolve_known_model_info(
     }
 
     if let Some(mut m) = registry.runtime_model(provider_id, model_id) {
-        reset_derived_transport(&mut m);
+        let refresh_catalog = catalog.is_some()
+            || registry.get(provider_id).is_some_and(|provider| {
+                find_model(&provider.info().models, provider_id, model_id)
+                    .is_some_and(|model| model.api.format_source == policy::MetadataSource::Catalog)
+            });
+        reset_derived_transport(&mut m, refresh_catalog);
         if let Some(cm) = catalog.and_then(|catalog| catalog.find_model(provider_id, model_id)) {
             overlay_transport(&mut m, &model_info_from_catalog(cm, provider_id));
         }
@@ -893,11 +898,12 @@ pub fn enrich_discovered_model(
     resolved
 }
 
-fn reset_derived_transport(model: &mut ModelInfo) {
-    if matches!(
-        model.api.format_source,
-        policy::MetadataSource::Configured | policy::MetadataSource::Catalog
-    ) {
+fn reset_derived_transport(model: &mut ModelInfo, refresh_catalog: bool) {
+    let reset = |source| {
+        source == policy::MetadataSource::Configured
+            || (refresh_catalog && source == policy::MetadataSource::Catalog)
+    };
+    if reset(model.api.format_source) {
         model.api.format = model.api.live_format;
         model.api.format_source = if model.api.format.is_some() {
             policy::MetadataSource::Live
@@ -905,10 +911,7 @@ fn reset_derived_transport(model: &mut ModelInfo) {
             policy::MetadataSource::Fallback
         };
     }
-    if matches!(
-        model.api.cache_source,
-        policy::MetadataSource::Configured | policy::MetadataSource::Catalog
-    ) {
+    if reset(model.api.cache_source) {
         model.options.remove("cache_control");
         if let Some(nested) = model
             .options

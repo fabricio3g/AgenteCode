@@ -1162,7 +1162,9 @@ fn provider_policy_overrides_are_partial_and_persist_without_losing_defaults() {
     let alias = aliases.get("desktop-opencode-go").unwrap();
     let selected = resolve_model_info(&aliases, None, "desktop-opencode-go", "future-model");
     assert_eq!(selected.api.resolved_format, Some(ApiFormat::Responses));
-    assert!(super::cache::prompt_cache_key(alias.info(), &selected, uuid::Uuid::new_v4()).is_none());
+    assert!(
+        super::cache::prompt_cache_key(alias.info(), &selected, uuid::Uuid::new_v4()).is_none()
+    );
     let router = registry.get("openrouter").unwrap();
     let selected = fallback_model_info("openrouter", "anthropic/future");
     assert!(!router
