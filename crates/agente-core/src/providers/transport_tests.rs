@@ -1153,7 +1153,7 @@ fn provider_policy_overrides_are_partial_and_persist_without_losing_defaults() {
         "models": {"future-model": {"provider": {"api_format": metadata["api_format"]}}},
     }))
     .unwrap();
-    let mut aliases = ProviderRegistry::new();
+    let aliases = ProviderRegistry::new();
     aliases.register_client_provider(
         "desktop-opencode-go",
         &alias_config,
