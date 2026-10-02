@@ -96,6 +96,7 @@ pub struct ModelApi {
     pub resolved_format: Option<ApiFormat>,
     pub resolved_base_url: Option<String>,
     pub resolved_cache_control: Option<bool>,
+    pub resolved_policy: Option<policy::TransportPolicy>,
     pub route_error: Option<String>,
 }
 
@@ -975,6 +976,7 @@ pub(crate) fn resolve_registered_transport(model: &mut ModelInfo, provider: &dyn
 }
 
 pub(crate) fn resolve_transport(model: &mut ModelInfo, info: &ProviderInfo) {
+    model.api.resolved_policy = Some(info.transport_policy());
     model.api.resolved_base_url = Some(info.resolve_base_url());
     match info.resolve_format(model) {
         Ok(format) => {

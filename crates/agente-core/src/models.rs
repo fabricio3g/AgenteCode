@@ -99,6 +99,7 @@ pub fn transport_json(model: &ModelInfo) -> serde_json::Value {
         "api_format": model.api.resolved_format,
         "base_url": model.api.resolved_base_url,
         "cache_control": model.api.resolved_cache_control,
+        "policy": model.api.resolved_policy,
         "error": model.api.route_error,
     })
 }

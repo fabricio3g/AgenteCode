@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { modelTransportConfig } from '../../main/agente/model-transport.ts';
+import { modelTransportConfig, providerTransportPolicy } from '../../main/agente/model-transport.ts';
 
 const transport = {
   ready: true,
@@ -33,4 +33,10 @@ test('older runtimes without policy metadata remain compatible', () => {
   assert.deepEqual(modelTransportConfig('http://localhost:11435/v1', 'openai'), {
     provider: { api_format: 'openai' },
   });
+});
+
+test('Desktop aliases preserve route maps and disabled session cache keys', () => {
+  const policy = { require_model_route: true, model_routes: { future: 'responses' }, cache: { prompt_cache_key: false } };
+  assert.deepEqual(providerTransportPolicy('https://gateway.example/v1', { ...transport, policy }), policy);
+  assert.equal(providerTransportPolicy('https://gateway.example/openai/v1', { ...transport, policy }), undefined);
 });

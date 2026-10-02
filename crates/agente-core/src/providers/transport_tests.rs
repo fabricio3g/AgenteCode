@@ -1147,6 +1147,22 @@ fn provider_policy_overrides_are_partial_and_persist_without_losing_defaults() {
         ApiFormat::Anthropic
     );
     assert!(super::cache::prompt_cache_key(go.info(), &selected, uuid::Uuid::new_v4()).is_none());
+    let metadata = crate::models::transport_json(&selected);
+    let alias_config = serde_json::from_value(json!({
+        "transport": metadata["policy"],
+        "models": {"future-model": {"provider": {"api_format": metadata["api_format"]}}},
+    }))
+    .unwrap();
+    let mut aliases = ProviderRegistry::new();
+    aliases.register_client_provider(
+        "desktop-opencode-go",
+        &alias_config,
+        &crate::config::AppConfig::default(),
+    );
+    let alias = aliases.get("desktop-opencode-go").unwrap();
+    let selected = resolve_model_info(&aliases, None, "desktop-opencode-go", "future-model");
+    assert_eq!(selected.api.resolved_format, Some(ApiFormat::Responses));
+    assert!(super::cache::prompt_cache_key(alias.info(), &selected, uuid::Uuid::new_v4()).is_none());
     let router = registry.get("openrouter").unwrap();
     let selected = fallback_model_info("openrouter", "anthropic/future");
     assert!(!router

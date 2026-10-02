@@ -33,7 +33,7 @@ OpenCode Go requires model-specific routes because its gateway serves several pr
 
 The model ID above is illustrative: use an ID returned by the provider and the protocol it documents. Alternatively, put route defaults in `transport.model_routes`. Explicit model, live, and catalog metadata still take precedence over that map. Configuration survives catalog refresh and registry rebuilds. Desktop aliases of the same endpoint carry the core's resolved route and cache override; a separate OpenAI compatibility endpoint retains its configured protocol. Endpoint and authentication protections still apply.
 
-`models.info` and discovery rows expose additive `transport` metadata: `ready`, `api_format`, `base_url`, `cache_control`, and `error`. Clients can display unresolved models without guessing their protocol.
+`models.info` and discovery rows expose additive `transport` metadata: `ready`, `api_format`, `base_url`, `cache_control`, `error`, and the resolved `policy`. Clients can display unresolved models without guessing their protocol. Desktop aliases of the same endpoint retain this policy, including session cache-key overrides.
 
 ## Cache policy
 
