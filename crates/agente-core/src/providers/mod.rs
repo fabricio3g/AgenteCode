@@ -701,7 +701,7 @@ fn resolve_known_model_info(
     }
 
     if let Some(mut m) = registry.runtime_model(provider_id, model_id) {
-        reset_configured_transport(&mut m);
+        reset_derived_transport(&mut m);
         if let Some(cm) = catalog.and_then(|catalog| catalog.find_model(provider_id, model_id)) {
             overlay_transport(&mut m, &model_info_from_catalog(cm, provider_id));
         }
@@ -892,8 +892,11 @@ pub fn enrich_discovered_model(
     resolved
 }
 
-fn reset_configured_transport(model: &mut ModelInfo) {
-    if model.api.format_source == policy::MetadataSource::Configured {
+fn reset_derived_transport(model: &mut ModelInfo) {
+    if matches!(
+        model.api.format_source,
+        policy::MetadataSource::Configured | policy::MetadataSource::Catalog
+    ) {
         model.api.format = model.api.live_format;
         model.api.format_source = if model.api.format.is_some() {
             policy::MetadataSource::Live
@@ -901,7 +904,10 @@ fn reset_configured_transport(model: &mut ModelInfo) {
             policy::MetadataSource::Fallback
         };
     }
-    if model.api.cache_source == policy::MetadataSource::Configured {
+    if matches!(
+        model.api.cache_source,
+        policy::MetadataSource::Configured | policy::MetadataSource::Catalog
+    ) {
         model.options.remove("cache_control");
         if let Some(nested) = model
             .options

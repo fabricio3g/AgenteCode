@@ -1285,3 +1285,28 @@ async fn preexisting_annotations_do_not_enable_a_fallback_retry() {
         assert_eq!(requests.try_iter().count(), 1);
     }
 }
+
+#[test]
+fn refreshed_catalog_replaces_derived_transport_in_live_snapshots() {
+    let old = ModelCatalog::parse_json(
+        &json!({"opencode-go":{"id":"opencode-go","models":{"future-model":{"name":"Future","provider":{"api_format":"responses"},"options":{"cache_control":true}}}}})
+            .to_string(),
+    )
+    .unwrap();
+    let mut config = crate::config::AppConfig::default();
+    config.refresh_catalog(&old);
+    let registry = ProviderRegistry::from_config(&config);
+    let snapshot = resolve_model_info(&registry, Some(&old), "opencode-go", "future-model");
+    assert_eq!(snapshot.api.resolved_format, Some(ApiFormat::Responses));
+    let fresh = ModelCatalog::parse_json(
+        &json!({"opencode-go":{"id":"opencode-go","models":{"future-model":{"name":"Future"}}}})
+            .to_string(),
+    )
+    .unwrap();
+    config.refresh_catalog(&fresh);
+    let rebuilt = ProviderRegistry::from_config(&config);
+    rebuilt.replace_runtime_models("opencode-go", vec![snapshot]);
+    let selected = resolve_model_info(&rebuilt, Some(&fresh), "opencode-go", "future-model");
+    assert!(selected.api.route_error.is_some());
+    assert!(selected.api.resolved_cache_control.is_none());
+}
