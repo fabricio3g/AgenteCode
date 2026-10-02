@@ -666,7 +666,9 @@ async fn fallback_preserves_the_original_request_on_both_transports() {
                     json!({"type":"tool_use","id":"old-call","name":"inspect_header","input":{"cache_control":"retain-input"}}),
                 ]
             } else {
-                vec![json!({"type":"chat_completion","message":{"role":"assistant","content":"","tool_calls":previous.tool_calls,"reasoning_details":[{"cache_control":"retain-continuation"}]}})]
+                vec![
+                    json!({"type":"chat_completion","message":{"role":"assistant","content":"","tool_calls":previous.tool_calls,"reasoning_details":[{"cache_control":"retain-continuation"}]}}),
+                ]
             },
         });
         let mut system = Message::user("instructions");
@@ -1260,12 +1262,8 @@ async fn preexisting_annotations_do_not_enable_a_fallback_retry() {
             "model": selected.api_id,
             "messages": [{"role":"user","content":[{"type":"text","text":"inspect","cache_control":{"type":"ephemeral","ttl":"1h"}}]}],
         });
-        let request = super::cache::PreparedRequest::new(
-            original.clone(),
-            format,
-            &descriptor,
-            &selected,
-        );
+        let request =
+            super::cache::PreparedRequest::new(original.clone(), format, &descriptor, &selected);
         assert_eq!(request.body, original);
         assert!(request.uncached.is_none());
         assert!(super::send_with_cache_fallback(
