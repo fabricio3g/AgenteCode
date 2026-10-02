@@ -93,7 +93,8 @@ async function run() {
     const after = await run<{ width: number; top: number }>('(() => { const r = document.querySelector("[data-workspace-panel=changes]").getBoundingClientRect(); return { width: r.width, top: r.top }; })()');
     assert.equal(after.width, before.width - 24, 'Top corner resizes width');
     assert.equal(after.top, before.top + 24, 'Top corner resizes height from the top');
-    await win.webContents.debugger.sendCommand('Input.dispatchMouseEvent', { type: 'mouseMoved', x: corner.x + 24, y: corner.y + 24 });
+    const resizedCorner = await run<{ x: number; y: number }>('(() => { const r = document.querySelector(".window-resize.edge-nw").getBoundingClientRect(); return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) }; })()');
+    await win.webContents.debugger.sendCommand('Input.dispatchMouseEvent', { type: 'mouseMoved', ...resizedCorner });
     await new Promise(resolve => setTimeout(resolve, 100));
     await capture('/tmp/agente-conversation-panels.png');
     await win.webContents.debugger.sendCommand('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 400, y: 300 });
