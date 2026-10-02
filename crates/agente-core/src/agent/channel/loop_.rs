@@ -427,9 +427,6 @@ pub(crate) async fn run_agent_loop(cfg: AgentRunConfig) -> Result<(), AgentLoopF
             }
         }
         let api_format = provider.request_api_format(&model_info);
-        if crate::config::provider_is_supported(&provider_id, &Default::default()) {
-            model_info.api.format = Some(api_format);
-        }
         model_info.options = provider.get_request_options(&model_info);
         apply_thinking_level(&mut model_info, api_format, &thinking_level);
         let price = model_info.cost.clone();

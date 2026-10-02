@@ -1,61 +1,90 @@
 //! Prompt-cache plumbing shared by the wire formats.
 //!
 //! Two halves:
-//! - **Breakpoints.** OpenAI, DeepSeek, GLM and most OpenAI-compatible APIs
-//!   cache a stable prefix automatically. Anthropic-style endpoints (Claude,
-//!   MiniMax's Anthropic API, OpenCode Go's `/messages` routes for
-//!   MiniMax/Qwen) and OpenRouter's Claude/Gemini routes cache only what
-//!   carries `cache_control`, so those requests mark the system prompt plus a
-//!   rolling breakpoint on the two newest user turns — the prefix grows turn
-//!   by turn and every call reuses the previous one. OpenCode Go's
-//!   `/chat/completions` models (DeepSeek, GLM, Kimi, …) auto-cache and its
-//!   gateway rejects the parameter per model (HTTP 400), so they carry only
-//!   the session key below.
+//! - **Breakpoints.** Shared transport metadata decides whether to annotate
+//!   the system prompt and the two newest user turns. Protocol defaults and
+//!   documented provider rules are configurable, as is the session cache key.
 //! - **Usage.** Providers report cache hits under different names; they all
 //!   land in `Usage::cache_read_tokens` / `cache_creation_tokens`.
 //!
 //! A model option `"cache_control": true|false` forces breakpoints on/off.
+//! Fallback resends the retained original request, including user annotations.
 
 use serde_json::{json, Value};
 
 use super::ModelInfo;
 
-/// Whether a request should carry explicit `cache_control` breakpoints.
-/// `anthropic_format` is the resolved route: OpenCode Go serves MiniMax and
-/// Qwen over `/messages` (breakpoints), while its `/chat/completions` models
-/// auto-cache and the gateway rejects the parameter per model (HTTP 400) —
-/// so the provider id itself is never a reason to mark a request.
+/// Whether the resolved transport policy enables explicit annotations.
 pub(crate) fn wants_breakpoints(
-    anthropic_format: bool,
-    provider_id: &str,
+    format: super::ApiFormat,
+    info: &super::ProviderInfo,
     model: &ModelInfo,
 ) -> bool {
-    let provider_id = super::canonical_provider_id(provider_id);
-    if let Some(forced) = model.options.get("cache_control").and_then(Value::as_bool) {
-        return forced;
-    }
-    if anthropic_format {
-        return true;
-    }
-    let id = model.api_id.to_ascii_lowercase();
-    // OpenRouter fronts Claude/Gemini with an OpenAI-shaped body that still
-    // honors Anthropic-style breakpoints.
-    provider_id == "openrouter" && (id.starts_with("anthropic/") || id.starts_with("google/gemini"))
+    info.transport_policy().breakpoints(format, model)
 }
 
-/// Session-scoped `prompt_cache_key` for gateways that only reuse a cached
-/// prefix when told which session a request belongs to (OpenCode Go, every
-/// route — its auto-caching `/chat/completions` models and its
-/// breakpoint-caching `/messages` routes alike). An explicit model option
-/// wins.
 pub(crate) fn prompt_cache_key(
-    provider_id: &str,
+    info: &super::ProviderInfo,
     model: &ModelInfo,
     session_id: uuid::Uuid,
 ) -> Option<String> {
-    let provider_id = super::canonical_provider_id(provider_id);
-    (provider_id == "opencode-go" && !model.options.contains_key("prompt_cache_key"))
-        .then(|| session_id.to_string())
+    (info.transport_policy().cache.prompt_cache_key == Some(true)
+        && !super::model_options(&model.options).contains_key("prompt_cache_key"))
+    .then(|| session_id.to_string())
+}
+
+/// Retain the complete original request. Only the copy gets Agente's markers.
+/// A retry never walks arbitrary JSON or changes the original content shapes.
+pub(crate) struct PreparedRequest {
+    pub body: Value,
+    pub uncached: Option<Value>,
+}
+
+impl PreparedRequest {
+    pub fn new(
+        original: Value,
+        format: super::ApiFormat,
+        info: &super::ProviderInfo,
+        model: &ModelInfo,
+    ) -> Self {
+        if !wants_breakpoints(format, info, model) {
+            return Self {
+                body: original,
+                uncached: None,
+            };
+        }
+        let mut body = original.clone();
+        match format {
+            super::ApiFormat::Anthropic => {
+                if let Some(system) = body
+                    .get_mut("system")
+                    .filter(|system| !is_empty_content(system))
+                {
+                    let mut message = json!({"content": system});
+                    mark_last_block(&mut message);
+                    *system = message["content"].take();
+                }
+            }
+            super::ApiFormat::OpenAI => {
+                if let Some(messages) = body["messages"].as_array_mut() {
+                    if let Some(system) = messages.iter_mut().find(|m| m["role"] == "system") {
+                        mark_last_block(system);
+                    }
+                }
+            }
+            _ => {}
+        }
+        if matches!(
+            format,
+            super::ApiFormat::OpenAI | super::ApiFormat::Anthropic
+        ) {
+            if let Some(messages) = body["messages"].as_array_mut() {
+                mark_recent_user_turns(messages);
+            }
+        }
+        let uncached = (body != original).then_some(original);
+        Self { body, uncached }
+    }
 }
 
 fn ephemeral() -> Value {
@@ -73,7 +102,9 @@ pub(crate) fn mark_last_block(message: &mut Value) {
         }
         Value::Array(blocks) => {
             if let Some(last) = blocks.last_mut().filter(|b| b.is_object()) {
-                last["cache_control"] = ephemeral();
+                if last.get("cache_control").is_none() {
+                    last["cache_control"] = ephemeral();
+                }
             }
         }
         _ => {}
@@ -101,37 +132,6 @@ fn is_empty_content(content: &Value) -> bool {
         Value::String(s) => s.is_empty(),
         Value::Array(a) => a.is_empty(),
         _ => true,
-    }
-}
-
-/// Whether a request body already carries `cache_control` markers (the
-/// fallback retry only fires when there is something to strip).
-pub(crate) fn has_breakpoints(value: &Value) -> bool {
-    match value {
-        Value::Object(map) => map
-            .iter()
-            .any(|(key, value)| key == "cache_control" || has_breakpoints(value)),
-        Value::Array(items) => items.iter().any(has_breakpoints),
-        _ => false,
-    }
-}
-
-/// Remove every `cache_control` marker from a request body — the retry after
-/// a provider rejects the parameter for a model we expected to accept it.
-pub(crate) fn strip_breakpoints(value: &mut Value) {
-    match value {
-        Value::Object(map) => {
-            map.remove("cache_control");
-            for value in map.values_mut() {
-                strip_breakpoints(value);
-            }
-        }
-        Value::Array(items) => {
-            for item in items {
-                strip_breakpoints(item);
-            }
-        }
-        _ => {}
     }
 }
 
@@ -210,26 +210,5 @@ mod tests {
             messages[3]["content"].is_string(),
             "assistant turns untouched"
         );
-    }
-
-    #[test]
-    fn breakpoint_helpers_detect_and_strip_markers() {
-        let mut body = json!({
-            "messages": [
-                {"role": "system", "content": [
-                    {"type": "text", "text": "s", "cache_control": {"type": "ephemeral"}}
-                ]},
-                {"role": "user", "content": "hello"},
-            ],
-            "stream": true,
-        });
-        assert!(has_breakpoints(&body));
-        strip_breakpoints(&mut body);
-        assert!(!has_breakpoints(&body));
-        assert_eq!(body["messages"][0]["content"][0]["text"], "s");
-        assert_eq!(body["stream"], true);
-        assert!(!has_breakpoints(
-            &json!({"messages": [{"role": "user", "content": "hi"}]})
-        ));
     }
 }

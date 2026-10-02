@@ -13,11 +13,11 @@ use crate::llm::{LlmError, StreamEvent, Usage};
 use crate::types::{Message, ToolDefinition};
 
 mod cache;
-mod go;
 pub mod google;
 pub mod llamacpp;
 pub mod messages;
 pub mod openai;
+pub mod policy;
 pub mod responses;
 mod routed;
 pub mod spec;
@@ -52,7 +52,8 @@ impl RequestContext {
 }
 
 /// API format types
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum ApiFormat {
     #[default]
     OpenAI,
@@ -88,6 +89,14 @@ impl ApiFormat {
 pub struct ModelApi {
     pub format: Option<ApiFormat>,
     pub base_url: Option<String>,
+    pub format_source: policy::MetadataSource,
+    pub live_format: Option<ApiFormat>,
+    pub live_cache_control: Option<bool>,
+    pub cache_source: policy::MetadataSource,
+    pub resolved_format: Option<ApiFormat>,
+    pub resolved_base_url: Option<String>,
+    pub resolved_cache_control: Option<bool>,
+    pub route_error: Option<String>,
 }
 
 impl ModelApi {
@@ -102,6 +111,7 @@ impl ModelApi {
                 .and_then(ApiFormat::from_name)
                 .or_else(|| provider.npm.as_deref().and_then(ApiFormat::from_npm)),
             base_url: provider.api.clone().filter(|url| !url.is_empty()),
+            ..Default::default()
         }
     }
 }
@@ -130,6 +140,7 @@ pub struct ProviderInfo {
     pub models: Vec<ModelInfo>,
     /// Resolved API key from auth store (takes priority over env vars).
     pub api_key: Option<String>,
+    pub transport: policy::TransportPolicy,
 }
 
 /// Model info
@@ -274,7 +285,11 @@ pub trait Provider: Send + Sync {
 
     /// The wire format can be selected per model for gateway providers.
     fn request_api_format(&self, model: &ModelInfo) -> ApiFormat {
-        model.api.format.unwrap_or(self.info().api_format)
+        self.resolve_request_api_format(model)
+            .unwrap_or(self.info().api_format)
+    }
+    fn resolve_request_api_format(&self, model: &ModelInfo) -> Result<ApiFormat, LlmError> {
+        self.info().resolve_format(model)
     }
 }
 
@@ -391,7 +406,19 @@ impl ProviderRegistry {
                         )
                     };
                 ModelInfo {
-                    api: ModelApi::from_provider(model.provider.as_ref()),
+                    api: ModelApi {
+                        format_source: if model.api_from_catalog {
+                            policy::MetadataSource::Catalog
+                        } else {
+                            policy::MetadataSource::Configured
+                        },
+                        cache_source: if model.api_from_catalog {
+                            policy::MetadataSource::Catalog
+                        } else {
+                            policy::MetadataSource::Configured
+                        },
+                        ..ModelApi::from_provider(model.provider.as_ref())
+                    },
                     id: model_id.clone(),
                     name: model.name.clone().unwrap_or_else(|| model_id.clone()),
                     api_id: model_id.clone(),
@@ -421,6 +448,7 @@ impl ProviderRegistry {
         );
 
         let info = ProviderInfo {
+            transport: provider_config.transport.clone().unwrap_or_default(),
             id: id.to_string(),
             name: provider_config
                 .name
@@ -551,7 +579,11 @@ fn find_model(models: &[ModelInfo], provider_id: &str, model_id: &str) -> Option
 /// Convert a catalog entry into runtime `ModelInfo`.
 pub fn model_info_from_catalog(model: &CatalogModel, provider_id: &str) -> ModelInfo {
     ModelInfo {
-        api: ModelApi::from_provider(model.provider.as_ref()),
+        api: ModelApi {
+            format_source: policy::MetadataSource::Catalog,
+            cache_source: policy::MetadataSource::Catalog,
+            ..ModelApi::from_provider(model.provider.as_ref())
+        },
         id: model.id.clone(),
         name: if model.name.is_empty() {
             model.id.clone()
@@ -615,6 +647,24 @@ pub fn resolve_model_info(
     let mut model = resolve_known_model_info(registry, catalog, provider_id, model_id);
     adopt_served_thinking(registry, provider_id, &mut model);
     spec::apply_fallback_reasoning(&mut model);
+    // Reconfiguration wins over stale live snapshots.
+    if let Some(provider) = registry.get(provider_id) {
+        if let Some(configured) = find_model(&provider.info().models, provider_id, model_id) {
+            overlay_transport(&mut model, &configured);
+        }
+        resolve_registered_transport(&mut model, provider.as_ref());
+    } else if let Some(spec) = spec::get(canonical_provider_id(provider_id)) {
+        resolve_transport(
+            &mut model,
+            &ProviderInfo {
+                id: provider_id.into(),
+                name: spec.name.clone(),
+                api_format: spec.api_format(),
+                base_url: spec.base_url.clone(),
+                ..Default::default()
+            },
+        );
+    }
     model
 }
 
@@ -651,6 +701,10 @@ fn resolve_known_model_info(
     }
 
     if let Some(mut m) = registry.runtime_model(provider_id, model_id) {
+        reset_configured_transport(&mut m);
+        if let Some(cm) = catalog.and_then(|catalog| catalog.find_model(provider_id, model_id)) {
+            overlay_transport(&mut m, &model_info_from_catalog(cm, provider_id));
+        }
         m.limits = effective_limits(&m.limits);
         apply_catalog_inputs(&mut m, catalog, provider_id, model_id);
         return m;
@@ -738,6 +792,7 @@ fn apply_catalog_thinking(
     let catalog_api = ModelApi::from_provider(cm.provider.as_ref());
     if m.api.format.is_none() {
         m.api.format = catalog_api.format;
+        m.api.format_source = policy::MetadataSource::Catalog;
     }
     if m.api.base_url.is_none() {
         m.api.base_url = catalog_api.base_url;
@@ -784,6 +839,8 @@ pub fn enrich_discovered_model(
         resolved.name = discovered.name.clone();
     }
 
+    overlay_transport(&mut resolved, discovered);
+
     // Live API context/output wins when providers actually send them.
     if discovered.limits.context > 0 {
         resolved.limits.context = discovered.limits.context;
@@ -829,7 +886,103 @@ pub fn enrich_discovered_model(
     );
 
     resolved.limits = effective_limits(&resolved.limits);
+    if let Some(provider) = registry.get(&discovered.provider_id) {
+        resolve_registered_transport(&mut resolved, provider.as_ref());
+    }
     resolved
+}
+
+fn reset_configured_transport(model: &mut ModelInfo) {
+    if model.api.format_source == policy::MetadataSource::Configured {
+        model.api.format = model.api.live_format;
+        model.api.format_source = if model.api.format.is_some() {
+            policy::MetadataSource::Live
+        } else {
+            policy::MetadataSource::Fallback
+        };
+    }
+    if model.api.cache_source == policy::MetadataSource::Configured {
+        model.options.remove("cache_control");
+        if let Some(nested) = model
+            .options
+            .get_mut("options")
+            .and_then(serde_json::Value::as_object_mut)
+        {
+            nested.remove("cache_control");
+        }
+        model.api.cache_source = policy::MetadataSource::Fallback;
+        if let Some(cache) = model.api.live_cache_control {
+            model
+                .options
+                .insert("cache_control".into(), serde_json::json!(cache));
+            model.api.cache_source = policy::MetadataSource::Live;
+        }
+    }
+}
+
+pub(crate) fn overlay_transport(target: &mut ModelInfo, source: &ModelInfo) {
+    if source.api.live_format.is_some() {
+        target.api.live_format = source.api.live_format;
+    } else if source.api.format_source == policy::MetadataSource::Live {
+        target.api.live_format = source.api.format;
+    }
+    if source.api.live_cache_control.is_some() {
+        target.api.live_cache_control = source.api.live_cache_control;
+    } else if source.api.cache_source == policy::MetadataSource::Live {
+        target.api.live_cache_control = model_options(&source.options)
+            .get("cache_control")
+            .and_then(serde_json::Value::as_bool);
+    }
+    if source.api.format.is_some()
+        && (target.api.format.is_none() || source.api.format_source >= target.api.format_source)
+    {
+        target.api.format = source.api.format;
+        target.api.format_source = source.api.format_source;
+    }
+    if let Some(cache) = model_options(&source.options)
+        .get("cache_control")
+        .and_then(serde_json::Value::as_bool)
+    {
+        if !model_options(&target.options).contains_key("cache_control")
+            || source.api.cache_source >= target.api.cache_source
+        {
+            target
+                .options
+                .insert("cache_control".into(), serde_json::json!(cache));
+            target.api.cache_source = source.api.cache_source;
+        }
+    }
+}
+
+pub(crate) fn resolve_registered_transport(model: &mut ModelInfo, provider: &dyn Provider) {
+    resolve_transport(model, provider.info());
+    if let Some(format) = model.api.resolved_format {
+        let mut request_model = model.clone();
+        request_model.options = provider.get_request_options(model);
+        model.api.resolved_cache_control = Some(
+            provider
+                .info()
+                .transport_policy()
+                .breakpoints(format, &request_model),
+        );
+    }
+}
+
+pub(crate) fn resolve_transport(model: &mut ModelInfo, info: &ProviderInfo) {
+    model.api.resolved_base_url = Some(info.resolve_base_url());
+    match info.resolve_format(model) {
+        Ok(format) => {
+            model.api.resolved_format = Some(format);
+            model.api.resolved_cache_control =
+                Some(info.transport_policy().breakpoints(format, model));
+            model.api.route_error = None;
+        }
+        Err(error) => {
+            model.api.resolved_format = None;
+            model.api.resolved_cache_control = None;
+            model.api.route_error = Some(error.to_string());
+        }
+    }
 }
 
 impl Default for ProviderRegistry {

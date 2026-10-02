@@ -23,6 +23,7 @@ import { serveDesktopTools, type DesktopToolServer } from './desktop-tools-mcp.t
 import { RustProcessBridge } from './rust-processes.ts';
 import { RustTurnTranslator } from './rust-events.ts';
 import { coreProviderStatus, migrateKeysToCore } from './core-providers.ts';
+import { modelTransportConfig, type ModelTransport } from './model-transport.ts';
 import type { AgenteCheckpointSummary, AgenteRuntimeMode, AgenteStartSessionArgs, ApprovalDecision, CodeAgentEvent } from '../../shared/agente-protocol.ts';
 import type { Attachment, Message, RuntimeEventEnvelope, SessionSnapshot, TurnMode, TurnOutcome } from '../../shared/agente-protocol.gen.ts';
 
@@ -180,9 +181,9 @@ export async function useProvider(client: AgenteClient, providerName: string, mo
   if (!provider.model) throw new RuntimeNoModelError(desktopLocale());
   const transport = resolveTransport(providerName, model);
   if (await coreRuns(client, transport.providerName)) return { id: transport.providerName, model: provider.model };
-  const info = await client.request<{ capabilities: Record<string, unknown>; cost: unknown; limits: unknown; reasoning_options?: unknown; reasoning_stream_field?: string }>('models.info', { provider: transport.providerName, model: provider.model });
+  const info = await client.request<{ capabilities: Record<string, unknown>; cost: unknown; limits: unknown; reasoning_options?: unknown; reasoning_stream_field?: string; transport?: ModelTransport }>('models.info', { provider: transport.providerName, model: provider.model });
   const capabilities = providerCapabilities(transport, info.capabilities);
-  provider.config.models = { [provider.model]: { name: provider.model, capabilities, cost: info.cost, limit: info.limits, reasoning_options: info.reasoning_options, reasoning_stream_field: info.reasoning_stream_field } };
+  provider.config.models = { [provider.model]: { name: provider.model, ...modelTransportConfig(transport.baseUrl, provider.config.api_format, info.transport), capabilities, cost: info.cost, limit: info.limits, reasoning_options: info.reasoning_options, reasoning_stream_field: info.reasoning_stream_field } };
   await client.request('runtime.configure', { provider: { [provider.id]: provider.config } });
   return { id: provider.id, model: provider.model };
 }

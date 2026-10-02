@@ -208,7 +208,10 @@ impl Provider for GoogleProvider {
                 "Invalid Google model identifier".into(),
             ));
         }
-        let body = self.request_body(messages, tools, model)?;
+        let mut body = self.request_body(messages, tools, model)?;
+        if let Some(key) = super::cache::prompt_cache_key(&self.info, model, context.session_id) {
+            body["prompt_cache_key"] = json!(key);
+        }
         let response = super::send_request(
             &self.info,
             model,

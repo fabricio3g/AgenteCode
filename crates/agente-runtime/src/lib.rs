@@ -1284,7 +1284,11 @@ impl RuntimeHandle {
                 info.options = registered.get_request_options(&info);
                 registered.request_api_format(&info)
             }
-            None => info.api.format.unwrap_or_default(),
+            None => info
+                .api
+                .resolved_format
+                .or(info.api.format)
+                .unwrap_or_default(),
         };
         (info, format)
     }

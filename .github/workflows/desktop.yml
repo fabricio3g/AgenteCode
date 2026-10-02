@@ -51,6 +51,11 @@ jobs:
       - name: Run renderer tests
         run: npm test --prefix renderer
 
+      - name: Build production bundles
+        run: |
+          npm run build:main
+          npm run build:renderer
+
       - name: Run Fallow audit
         if: github.event_name == 'pull_request'
         run: |

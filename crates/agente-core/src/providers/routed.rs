@@ -19,6 +19,7 @@ impl RoutedProvider {
 
     fn transport_info(&self, format: ApiFormat) -> ProviderInfo {
         ProviderInfo {
+            transport: self.info.transport.clone(),
             id: self.info.id.clone(),
             name: self.info.name.clone(),
             api_format: format,
@@ -53,16 +54,6 @@ impl Provider for RoutedProvider {
         options
     }
 
-    fn request_api_format(&self, model: &ModelInfo) -> ApiFormat {
-        if matches!(
-            self.info.id.as_str(),
-            "deepseek" | "minimax" | "glm" | "opencode-go"
-        ) {
-            return self.info.api_format;
-        }
-        model.api.format.unwrap_or(self.info.api_format)
-    }
-
     async fn stream_completion(
         &self,
         messages: &[Message],
@@ -71,25 +62,16 @@ impl Provider for RoutedProvider {
         sender: Sender<StreamEvent>,
         context: RequestContext,
     ) -> Result<Usage, LlmError> {
-        if self.info.id == "opencode-go" && self.info.id != model.provider_id {
+        if super::canonical_provider_id(&self.info.id)
+            != super::canonical_provider_id(&model.provider_id)
+        {
             return Err(LlmError::HttpError(
-                "OpenCode Go model belongs to a different provider".into(),
+                "Model belongs to a different provider".into(),
             ));
         }
-        let format = if self.info.id == "opencode-go" {
-            super::go::format(&model.api_id).ok_or_else(|| {
-                LlmError::HttpError(format!(
-                    "OpenCode Go model '{}' has no documented API route; refresh the supported model list",
-                    model.api_id
-                ))
-            })?
-        } else {
-            self.request_api_format(model)
-        };
+        let format = self.resolve_request_api_format(model)?;
         let mut model = model.clone();
-        if crate::config::provider_is_supported(&self.info.id, &Default::default()) {
-            model.api.format = Some(format);
-        }
+        model.api.format = Some(format);
         model.options = self.get_request_options(&model);
         let info = self.transport_info(format);
         match format {
@@ -130,14 +112,7 @@ impl Provider for RoutedProvider {
                 let models = super::openai::OpenAIProvider::from_info(self.info.clone())
                     .list_models()
                     .await?;
-                if self.info.id == "opencode-go" {
-                    Ok(models
-                        .into_iter()
-                        .filter(|model| super::go::format(&model.api_id).is_some())
-                        .collect())
-                } else {
-                    Ok(models)
-                }
+                Ok(models)
             }
         }
     }

@@ -28,13 +28,17 @@ fn read_request(socket: &mut std::net::TcpStream) -> (String, Value) {
             key.eq_ignore_ascii_case("content-length")
                 .then(|| value.trim().parse().unwrap())
         })
-        .unwrap();
+        .unwrap_or(0);
     while bytes.len() < header_end + length {
         let n = socket.read(&mut buffer).unwrap();
         assert!(n > 0);
         bytes.extend_from_slice(&buffer[..n]);
     }
-    let body = serde_json::from_slice(&bytes[header_end..header_end + length]).unwrap();
+    let body = if length == 0 {
+        Value::Null
+    } else {
+        serde_json::from_slice(&bytes[header_end..header_end + length]).unwrap()
+    };
     (headers, body)
 }
 
@@ -59,38 +63,52 @@ fn server(events: Vec<Value>) -> (String, std::sync::mpsc::Receiver<(String, Val
     (url, rx)
 }
 
-/// Answers the first request with `status` + `error` and the second with the
-/// SSE stream — for exercising one-shot retries. Both request bodies come
-/// back in order.
-fn retry_server(
-    status: u16,
-    error: Value,
-    events: Vec<Value>,
-) -> (String, std::sync::mpsc::Receiver<Value>) {
+/// Bounded server that fails if the transport sends fewer or more requests.
+fn scripted_server(
+    responses: Vec<String>,
+) -> (
+    String,
+    std::sync::mpsc::Receiver<(String, Value)>,
+    std::thread::JoinHandle<()>,
+) {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    listener.set_nonblocking(true).unwrap();
     let url = format!("http://{}", listener.local_addr().unwrap());
     let (tx, rx) = std::sync::mpsc::channel();
-    std::thread::spawn(move || {
-        for attempt in 0..2 {
-            let (mut socket, _) = listener.accept().unwrap();
-            let (_, body) = read_request(&mut socket);
-            tx.send(body).unwrap();
-            if attempt == 0 {
-                let payload = serde_json::to_string(&error).unwrap();
-                write!(
-                    socket,
-                    "HTTP/1.1 {} Bad Request\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
-                    status,
-                    payload.len(),
-                    payload
-                )
-                .unwrap();
-            } else {
-                write!(socket, "{}", sse_response(&events)).unwrap();
-            }
+    let handle = std::thread::spawn(move || {
+        for response in responses {
+            let deadline = std::time::Instant::now() + Duration::from_secs(3);
+            let mut socket = loop {
+                match listener.accept() {
+                    Ok((socket, _)) => break socket,
+                    Err(error)
+                        if error.kind() == std::io::ErrorKind::WouldBlock
+                            && std::time::Instant::now() < deadline =>
+                    {
+                        std::thread::sleep(Duration::from_millis(2))
+                    }
+                    result => panic!("expected request: {result:?}"),
+                }
+            };
+            let request = read_request(&mut socket);
+            tx.send(request).unwrap();
+            write!(socket, "{response}").unwrap();
+        }
+        let deadline = std::time::Instant::now() + Duration::from_millis(40);
+        while std::time::Instant::now() < deadline {
+            assert!(
+                matches!(listener.accept(), Err(error) if error.kind() == std::io::ErrorKind::WouldBlock),
+                "unexpected extra request"
+            );
+            std::thread::sleep(Duration::from_millis(2));
         }
     });
-    (url, rx)
+    (url, rx, handle)
+}
+
+fn error_response(status: u16, error: Value) -> String {
+    let payload = error.to_string();
+    format!("HTTP/1.1 {status} Error\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{payload}", payload.len())
 }
 
 fn info(url: String) -> ProviderInfo {
@@ -588,133 +606,419 @@ async fn openrouter_reported_cost_reaches_usage() {
     );
 }
 
-#[test]
-fn opencode_go_gets_a_session_cache_key_and_breakpoints_only_on_messages_routes() {
-    // The Go endpoint itself is pinned (keys never leave opencode.ai), so
-    // this checks the request decisions rather than a mock round-trip.
-    let mut go = model(ApiFormat::OpenAI);
-    go.provider_id = "opencode-go".into();
-    let session = uuid::Uuid::new_v4();
-    assert_eq!(
-        super::cache::prompt_cache_key("opencode-go", &go, session),
-        Some(session.to_string())
-    );
-    // `/chat/completions` models auto-cache on an exact prefix; the gateway
-    // rejects `cache_control` for them with HTTP 400.
-    assert!(!super::cache::wants_breakpoints(false, "opencode-go", &go));
-    // `/messages` models (MiniMax, Qwen) take explicit breakpoints.
-    assert!(super::cache::wants_breakpoints(true, "opencode-go", &go));
-    assert_eq!(
-        super::cache::prompt_cache_key("desktop-opencode-go", &go, session),
-        Some(session.to_string())
-    );
-    assert!(!super::cache::wants_breakpoints(
-        false,
-        "desktop-opencode-go",
-        &go
-    ));
-    assert!(super::cache::wants_breakpoints(
-        true,
-        "desktop-opencode-go",
-        &go
-    ));
-    assert_eq!(
-        super::cache::prompt_cache_key("deepseek", &go, session),
-        None
-    );
-    assert!(!super::cache::wants_breakpoints(false, "deepseek", &go));
+fn completion_events(format: ApiFormat) -> Vec<Value> {
+    match format {
+        ApiFormat::Anthropic => vec![
+            json!({"type":"message_start","message":{"usage":{"input_tokens":10}}}),
+            json!({"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}),
+            json!({"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"ok"}}),
+            json!({"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":1}}),
+            json!({"type":"message_stop"}),
+        ],
+        _ => vec![
+            json!({"choices":[{"delta":{"content":"ok"}}]}),
+            json!({"choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":10,"completion_tokens":1}}),
+        ],
+    }
 }
 
-/// One row per provider/route we ship: a future edit must not flip another
-/// provider's caching behavior silently.
-#[test]
-fn breakpoint_decisions_cover_every_provider_route() {
-    let cases: &[(&str, &str, ApiFormat, bool)] = &[
-        ("deepseek", "deepseek-v4-pro", ApiFormat::OpenAI, false),
-        ("glm", "glm-5.3", ApiFormat::OpenAI, false),
-        ("minimax", "MiniMax-M3", ApiFormat::Anthropic, true),
-        (
-            "opencode-go",
-            "deepseek-v4.1-flash",
-            ApiFormat::OpenAI,
-            false,
-        ),
-        ("opencode-go", "glm-5.3", ApiFormat::OpenAI, false),
-        ("opencode-go", "kimi-k2.6", ApiFormat::OpenAI, false),
-        ("opencode-go", "minimax-m3", ApiFormat::Anthropic, true),
-        ("opencode-go", "qwen3.8-max", ApiFormat::Anthropic, true),
-        ("opencode-go", "grok-4.7", ApiFormat::Responses, false),
-        (
-            "desktop-opencode-go",
-            "deepseek-v4.1-flash",
-            ApiFormat::OpenAI,
-            false,
-        ),
-        (
-            "desktop-opencode-go",
-            "qwen3.8-max",
-            ApiFormat::Anthropic,
-            true,
-        ),
-        (
-            "openrouter",
-            "anthropic/claude-sonnet-4",
-            ApiFormat::OpenAI,
-            true,
-        ),
-        (
-            "openrouter",
-            "google/gemini-2.5-pro",
-            ApiFormat::OpenAI,
-            true,
-        ),
-        ("openrouter", "openai/gpt-5", ApiFormat::OpenAI, false),
-        ("ollama", "qwen3", ApiFormat::OpenAI, false),
-        ("custom", "local-model", ApiFormat::OpenAI, false),
-        ("custom", "gateway-model", ApiFormat::Anthropic, true),
-    ];
-    for (provider, api_id, format, expected) in cases {
-        let mut candidate = model(*format);
-        candidate.provider_id = (*provider).into();
-        candidate.api_id = (*api_id).into();
+#[tokio::test]
+async fn fallback_preserves_the_original_request_on_both_transports() {
+    for format in [ApiFormat::OpenAI, ApiFormat::Anthropic] {
+        let (url, requests, server) = scripted_server(vec![
+            error_response(
+                400,
+                json!({"error":{"message":"The parameter cache_control is not supported for the requested model"}}),
+            ),
+            sse_response(&completion_events(format)),
+        ]);
+        let mut provider_info = info(url);
+        provider_info.transport.cache.prompt_cache_key = Some(true);
+        let provider = routed::RoutedProvider::new(provider_info, HashMap::new());
+        let mut selected = model(format);
+        selected.capabilities.toolcall = true;
+        selected.options.insert("cache_control".into(), json!(true));
+        selected.options.insert(
+            "metadata".into(),
+            json!({"cache_control":"keep", "nested":{"cache_control":{"type":"ephemeral"}}}),
+        );
+        let tools = [ToolDefinition {
+            name: "inspect_header".into(),
+            description: "Inspect caching".into(),
+            parameters: json!({"type":"object","properties":{"cache_control":{"type":"string"}},"required":["cache_control"]}),
+        }];
+        let mut previous = Message::user("");
+        previous.role = Role::Assistant;
+        previous.tool_calls = Some(vec![ToolCall {
+            id: "old-call".into(),
+            call_type: "function".into(),
+            function: FunctionCall {
+                name: "inspect_header".into(),
+                arguments: json!({"cache_control":"retain-input"}).to_string(),
+            },
+        }]);
+        let mut system = Message::user("instructions");
+        system.role = Role::System;
+        let messages = [system, previous, Message::user("inspect")];
+        let session = uuid::Uuid::new_v4();
+        let (tx, mut rx) = tokio::sync::mpsc::channel(128);
+        let result = provider
+            .stream_completion(
+                &messages,
+                Some(&tools),
+                &selected,
+                tx,
+                RequestContext::new(session),
+            )
+            .await;
+        while rx.recv().await.is_some() {}
+        assert!(result.is_ok(), "{format:?}: {result:?}");
+        server.join().unwrap();
+        let (first_headers, first) = requests.recv().unwrap();
+        let (second_headers, second) = requests.recv().unwrap();
+        let stable_headers = |headers: &str| {
+            headers
+                .lines()
+                .filter(|line| !line.starts_with("content-length:"))
+                .collect::<Vec<_>>()
+                .join("\n")
+        };
         assert_eq!(
-            super::cache::wants_breakpoints(*format == ApiFormat::Anthropic, provider, &candidate),
-            *expected,
-            "{provider}/{api_id}"
+            stable_headers(&first_headers),
+            stable_headers(&second_headers),
+            "route/authentication must remain identical"
+        );
+        assert_eq!(first["tools"], second["tools"]);
+        assert_eq!(first["metadata"], second["metadata"]);
+        assert_eq!(first["prompt_cache_key"], session.to_string());
+        assert_eq!(first["prompt_cache_key"], second["prompt_cache_key"]);
+        assert_eq!(first["model"], second["model"]);
+        let schema = if format == ApiFormat::Anthropic {
+            &second["tools"][0]["input_schema"]
+        } else {
+            &second["tools"][0]["function"]["parameters"]
+        };
+        assert_eq!(schema["properties"]["cache_control"]["type"], "string");
+        assert_eq!(schema["required"][0], "cache_control");
+        if format == ApiFormat::Anthropic {
+            assert_eq!(first["system"][0]["cache_control"]["type"], "ephemeral");
+            assert_eq!(second["system"], "instructions");
+            assert_eq!(
+                second["messages"][0]["content"][0]["input"]["cache_control"],
+                "retain-input"
+            );
+        } else {
+            assert_eq!(
+                first["messages"][0]["content"][0]["cache_control"]["type"],
+                "ephemeral"
+            );
+            assert_eq!(second["messages"][0]["content"], "instructions");
+            assert_eq!(
+                second["messages"][1]["tool_calls"][0]["function"]["arguments"],
+                json!({"cache_control":"retain-input"}).to_string()
+            );
+        }
+        assert!(requests.try_recv().is_err());
+    }
+}
+
+#[tokio::test]
+async fn retry_requires_an_explicit_unsupported_parameter_and_stops_after_one_attempt() {
+    let unsupported = json!({"error":{"param":"cache_control","code":"unsupported_parameter"}});
+    let cases = [
+        (400, unsupported.clone(), true),
+        (422, unsupported.clone(), true),
+        (
+            400,
+            json!({"error":{"message":"Unsupported parameter: 'cache_control'."}}),
+            true,
+        ),
+        (
+            422,
+            json!({"error":{"message":"The cache_control parameter is not supported"}}),
+            true,
+        ),
+        (
+            400,
+            json!({"error":{"message":"cache_control has an invalid TTL"}}),
+            false,
+        ),
+        (
+            422,
+            json!({"error":{"param":"other", "code":"unsupported_parameter", "message":"inspect cache_control"}}),
+            false,
+        ),
+        (
+            400,
+            json!({"error":{"message":"Parameter cache_controlled is not supported"}}),
+            false,
+        ),
+        (
+            400,
+            json!({"error":{"message":"Unsupported parameter: cache_controlled"}}),
+            false,
+        ),
+        (401, unsupported.clone(), false),
+        (403, unsupported.clone(), false),
+        (429, unsupported.clone(), false),
+        (500, unsupported.clone(), false),
+        (503, unsupported, false),
+    ];
+    for format in [ApiFormat::OpenAI, ApiFormat::Anthropic] {
+        for (status, error, retry) in &cases {
+            let mut responses = vec![error_response(*status, error.clone())];
+            if *retry {
+                responses.push(error_response(*status, error.clone()));
+            }
+            let (url, requests, server) = scripted_server(responses);
+            let provider = routed::RoutedProvider::new(info(url), HashMap::new());
+            let mut selected = model(format);
+            selected.options.insert("cache_control".into(), json!(true));
+            let (tx, _rx) = tokio::sync::mpsc::channel(128);
+            let result = provider
+                .stream_completion(
+                    &[Message::user("inspect")],
+                    None,
+                    &selected,
+                    tx,
+                    RequestContext::new(uuid::Uuid::new_v4()),
+                )
+                .await;
+            assert!(result.is_err());
+            assert!(result
+                .unwrap_err()
+                .to_string()
+                .contains(&format!("HTTP {status}")));
+            server.join().unwrap();
+            assert_eq!(requests.try_iter().count(), if *retry { 2 } else { 1 });
+        }
+    }
+}
+
+#[tokio::test]
+async fn schemas_and_user_annotations_alone_do_not_enable_a_retry() {
+    for format in [ApiFormat::OpenAI, ApiFormat::Anthropic] {
+        let (url, requests, server) = scripted_server(vec![error_response(
+            400,
+            json!({"error":{"param":"cache_control", "code":"unsupported_parameter"}}),
+        )]);
+        let provider = routed::RoutedProvider::new(info(url), HashMap::new());
+        let mut selected = model(format);
+        selected
+            .options
+            .insert("cache_control".into(), json!(false));
+        selected.options.insert(
+            "metadata".into(),
+            json!({"cache_control":{"type":"ephemeral"}}),
+        );
+        selected.capabilities.toolcall = true;
+        let tools = [ToolDefinition {
+            name: "test".into(),
+            description: "test".into(),
+            parameters: json!({"type":"object", "properties":{"cache_control":{"type":"string"}}}),
+        }];
+        let (tx, _rx) = tokio::sync::mpsc::channel(128);
+        assert!(provider
+            .stream_completion(
+                &[Message::user("inspect")],
+                Some(&tools),
+                &selected,
+                tx,
+                RequestContext::new(uuid::Uuid::new_v4())
+            )
+            .await
+            .is_err());
+        server.join().unwrap();
+        assert_eq!(requests.try_iter().count(), 1);
+    }
+}
+
+#[tokio::test]
+async fn network_and_stream_errors_are_not_retried() {
+    for format in [ApiFormat::OpenAI, ApiFormat::Anthropic] {
+        let (url, requests, server) = scripted_server(vec![sse_response(&[
+            json!({"error":{"param":"cache_control", "code":"unsupported_parameter", "message":"The parameter cache_control is not supported"}}),
+        ])]);
+        let provider = routed::RoutedProvider::new(info(url), HashMap::new());
+        let mut selected = model(format);
+        selected.options.insert("cache_control".into(), json!(true));
+        let (tx, _rx) = tokio::sync::mpsc::channel(128);
+        assert!(provider
+            .stream_completion(
+                &[Message::user("inspect")],
+                None,
+                &selected,
+                tx,
+                RequestContext::new(uuid::Uuid::new_v4())
+            )
+            .await
+            .is_err());
+        server.join().unwrap();
+        assert_eq!(requests.try_iter().count(), 1);
+    }
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let url = format!("http://{}", listener.local_addr().unwrap());
+    drop(listener);
+    let mut selected = model(ApiFormat::OpenAI);
+    selected.options.insert("cache_control".into(), json!(true));
+    let request = super::cache::PreparedRequest::new(
+        json!({"messages":[{"role":"user","content":"inspect"}]}),
+        ApiFormat::OpenAI,
+        &info(url.clone()),
+        &selected,
+    );
+    assert!(super::send_with_cache_fallback(
+        &info(url),
+        &selected,
+        "chat/completions",
+        &request,
+        RequestContext::new(uuid::Uuid::new_v4())
+    )
+    .await
+    .is_err());
+}
+
+#[test]
+fn declared_go_routes_and_aliases_use_the_shared_resolver_and_request_policy() {
+    let config = crate::config::AppConfig::default();
+    let registry = ProviderRegistry::from_config(&config);
+    let provider = registry.get("opencode-go").unwrap();
+    let declared = provider.info().transport_policy();
+    assert!(!declared.model_routes.is_empty());
+    for (id, expected) in &declared.model_routes {
+        let selected = fallback_model_info("opencode-go", id);
+        assert_eq!(
+            provider.resolve_request_api_format(&selected).unwrap(),
+            *expected
+        );
+        for provider_id in ["opencode-go", "desktop-opencode-go"] {
+            let mut descriptor = provider.info().clone();
+            descriptor.id = provider_id.into();
+            let format = descriptor.resolve_format(&selected).unwrap();
+            let prepared = super::cache::PreparedRequest::new(
+                json!({"system":"instructions", "messages":[{"role":"user", "content":"inspect"}]}),
+                format,
+                &descriptor,
+                &selected,
+            );
+            assert_eq!(
+                prepared.uncached.is_some(),
+                format == ApiFormat::Anthropic,
+                "{provider_id}/{id}"
+            );
+            let session = uuid::Uuid::new_v4();
+            assert_eq!(
+                super::cache::prompt_cache_key(&descriptor, &selected, session),
+                Some(session.to_string())
+            );
+        }
+    }
+    assert_eq!(
+        declared.model_routes["longcat-2.5-preview-free"],
+        ApiFormat::OpenAI
+    );
+    let unknown = resolve_model_info(&registry, None, "opencode-go", "future-model");
+    assert!(unknown
+        .api
+        .route_error
+        .unwrap()
+        .contains("provider.opencode-go.models.future-model.provider.api_format"));
+    assert_eq!(unknown.api.resolved_format, None);
+}
+
+#[test]
+fn configured_routes_cache_and_refresh_override_live_catalog_and_defaults() {
+    let catalog = ModelCatalog::parse_json(&json!({"opencode-go":{"id":"opencode-go", "models":{"future-model":{"name":"Future", "provider":{"api_format":"responses"}, "options":{"cache_control":false}}}}}).to_string()).unwrap();
+    let mut config = crate::config::AppConfig::default();
+    config.refresh_catalog(&catalog);
+    let registry = ProviderRegistry::from_config(&config);
+    let catalog_only = resolve_model_info(&registry, Some(&catalog), "opencode-go", "future-model");
+    assert_eq!(catalog_only.api.resolved_format, Some(ApiFormat::Responses));
+    assert_eq!(catalog_only.api.resolved_cache_control, Some(false));
+    let mut live = fallback_model_info("opencode-go", "future-model");
+    live.api.format = Some(ApiFormat::Anthropic);
+    live.api.format_source = policy::MetadataSource::Live;
+    live.api.cache_source = policy::MetadataSource::Live;
+    live.options.insert("cache_control".into(), json!(true));
+    let enriched = enrich_discovered_model(&live, &registry, Some(&catalog));
+    assert_eq!(enriched.api.resolved_format, Some(ApiFormat::Anthropic));
+    assert_eq!(enriched.options["cache_control"], true);
+    config = config.merge(serde_json::from_value(json!({"provider":{"opencode-go":{"models":{"future-model":{"provider":{"api_format":"openai"},"options":{"cache_control":false}}}}}})).unwrap());
+    config.refresh_catalog(&catalog);
+    let rebuilt = ProviderRegistry::from_config(&config);
+    let enriched = enrich_discovered_model(&live, &rebuilt, Some(&catalog));
+    assert_eq!(enriched.api.resolved_format, Some(ApiFormat::OpenAI));
+    assert_eq!(
+        super::model_options(&enriched.options)["cache_control"],
+        false
+    );
+    rebuilt.replace_runtime_models("opencode-go", vec![enriched]);
+    let resolved = resolve_model_info(&rebuilt, Some(&catalog), "opencode-go", "future-model");
+    assert_eq!(resolved.api.resolved_format, Some(ApiFormat::OpenAI));
+    let loaded: crate::config::AppConfig =
+        serde_json::from_str(&serde_json::to_string(&config).unwrap()).unwrap();
+    let from_disk = ProviderRegistry::from_config(&loaded);
+    assert_eq!(
+        resolve_model_info(&from_disk, None, "opencode-go", "future-model")
+            .api
+            .resolved_format,
+        Some(ApiFormat::OpenAI)
+    );
+    let descriptor = from_disk.get("opencode-go").unwrap().info().clone();
+    let mut alias = descriptor;
+    alias.id = "desktop-opencode-go".into();
+    assert_eq!(alias.resolve_format(&resolved).unwrap(), ApiFormat::OpenAI);
+}
+
+#[tokio::test]
+async fn unseen_configured_model_uses_its_route_in_real_request_builders() {
+    for format in [ApiFormat::OpenAI, ApiFormat::Anthropic] {
+        let (url, request) = server(completion_events(format));
+        let config: crate::config::AppConfig = serde_json::from_value(json!({"provider":{"gateway":{"api_format":"openai", "options":{"base_url":url, "api_key":"test-key"}, "transport":{"require_model_route":true,"cache":{"breakpoints":false}}, "models":{"future-model":{"provider":{"api_format":format},"options":{"cache_control":true}}}}}})).unwrap();
+        let registry = ProviderRegistry::from_config(&config);
+        registry.register_client_provider("gateway", &config.provider["gateway"], &config);
+        let selected = resolve_model_info(&registry, None, "gateway", "future-model");
+        assert_eq!(selected.api.resolved_format, Some(format));
+        assert_eq!(
+            crate::models::model_json(&selected)["transport"]["ready"],
+            true
+        );
+        let (tx, mut rx) = tokio::sync::mpsc::channel(128);
+        assert!(registry
+            .get("gateway")
+            .unwrap()
+            .stream_completion(
+                &[Message::user("inspect")],
+                None,
+                &selected,
+                tx,
+                RequestContext::new(uuid::Uuid::new_v4())
+            )
+            .await
+            .is_ok());
+        while rx.recv().await.is_some() {}
+        let (headers, body) = request.recv_timeout(Duration::from_secs(3)).unwrap();
+        assert!(headers.starts_with(if format == ApiFormat::Anthropic {
+            "POST /messages "
+        } else {
+            "POST /chat/completions "
+        }));
+        assert_eq!(
+            body["messages"][0]["content"][0]["cache_control"]["type"],
+            "ephemeral"
         );
     }
 }
 
-#[test]
-fn cache_control_option_overrides_the_route_rule() {
-    let mut chat = model(ApiFormat::OpenAI);
-    chat.provider_id = "opencode-go".into();
-    chat.options.insert("cache_control".into(), json!(true));
-    assert!(super::cache::wants_breakpoints(false, "opencode-go", &chat));
-    let mut messages = model(ApiFormat::Anthropic);
-    messages.provider_id = "minimax".into();
-    messages
-        .options
-        .insert("cache_control".into(), json!(false));
-    assert!(!super::cache::wants_breakpoints(true, "minimax", &messages));
-}
-
 #[tokio::test]
-async fn cache_control_rejection_retries_once_without_breakpoints() {
-    let (url, requests) = retry_server(
-        400,
-        json!({"error": {"message": "The parameter cache_control is not supported for the requested model"}}),
-        vec![
-            json!({"choices":[{"delta":{"content":"ok"}}]}),
-            json!({"choices":[{"delta":{},"finish_reason":"stop"}],
-                   "usage":{"prompt_tokens":10,"completion_tokens":1}}),
-        ],
-    );
-    let provider = openai::OpenAIProvider::from_info(info(url));
-    let (tx, mut rx) = tokio::sync::mpsc::channel(128);
-    let mut selected = model(ApiFormat::OpenAI);
-    selected.options.insert("cache_control".into(), json!(true));
-    let result = provider
+async fn unresolved_model_fails_before_any_http_request() {
+    let (url, requests, handle) = scripted_server(vec![]);
+    let mut descriptor = info(url);
+    descriptor.transport.require_model_route = Some(true);
+    let provider = routed::RoutedProvider::new(descriptor, HashMap::new());
+    let selected = fallback_model_info("gateway", "future-model");
+    let (tx, _rx) = tokio::sync::mpsc::channel(128);
+    let error = provider
         .stream_completion(
             &[Message::user("inspect")],
             None,
@@ -722,18 +1026,200 @@ async fn cache_control_rejection_retries_once_without_breakpoints() {
             tx,
             RequestContext::new(uuid::Uuid::new_v4()),
         )
-        .await;
-    while rx.recv().await.is_some() {}
-    assert!(result.is_ok(), "{result:?}");
-    let first = requests.recv_timeout(Duration::from_secs(10)).unwrap();
-    let second = requests.recv_timeout(Duration::from_secs(10)).unwrap();
-    assert!(
-        super::cache::has_breakpoints(&first),
-        "first attempt carried markers"
+        .await
+        .unwrap_err();
+    assert!(error
+        .to_string()
+        .contains("provider.gateway.models.future-model.provider.api_format"));
+    handle.join().unwrap();
+    assert_eq!(requests.try_iter().count(), 0);
+}
+
+#[tokio::test]
+async fn discovery_keeps_unrouted_models_and_preserves_live_metadata() {
+    let (url, requests, handle) = scripted_server(vec![error_response(
+        200,
+        json!({"data":[
+            {"id":"future-model","api_format":"anthropic","cache_control":false},
+            {"id":"unrouted-model"}
+        ]}),
+    )]);
+    let mut descriptor = info(url);
+    descriptor.transport.require_model_route = Some(true);
+    let registry = ProviderRegistry::new();
+    registry.register(
+        "gateway",
+        Arc::new(routed::RoutedProvider::new(descriptor, HashMap::new())),
     );
-    assert!(
-        !super::cache::has_breakpoints(&second),
-        "retry dropped the markers"
+    let discovered = crate::models::discover(&registry, &registry, None, "gateway")
+        .await
+        .unwrap();
+    handle.join().unwrap();
+    assert_eq!(discovered.len(), 2);
+    let live = discovered
+        .iter()
+        .find(|model| model.id == "future-model")
+        .unwrap();
+    assert_eq!(live.api.resolved_format, Some(ApiFormat::Anthropic));
+    assert_eq!(live.api.resolved_cache_control, Some(false));
+    let unresolved = discovered
+        .iter()
+        .find(|model| model.id == "unrouted-model")
+        .unwrap();
+    assert_eq!(
+        crate::models::model_json(unresolved)["transport"]["ready"],
+        false
     );
-    assert_eq!(second["messages"][0]["content"][0]["text"], "inspect");
+    assert!(unresolved.api.route_error.is_some());
+    assert_eq!(
+        resolve_model_info(&registry, None, "gateway", "future-model")
+            .api
+            .resolved_format,
+        Some(ApiFormat::Anthropic)
+    );
+    let headers = requests.recv().unwrap().0;
+    assert!(
+        headers.starts_with("GET ")
+            && headers
+                .lines()
+                .next()
+                .unwrap()
+                .ends_with("/models HTTP/1.1")
+    );
+}
+
+#[test]
+fn registry_rebuild_discards_removed_overrides_but_keeps_live_routes() {
+    let configured: crate::config::AppConfig = serde_json::from_value(json!({"provider":{"opencode-go":{"models":{"future-model":{"provider":{"api_format":"responses"},"options":{"cache_control":false}}}}}})).unwrap();
+    let configured = crate::config::AppConfig::default().merge(configured);
+    let registry = ProviderRegistry::from_config(&configured);
+    let mut live = fallback_model_info("opencode-go", "future-model");
+    live.api.format = Some(ApiFormat::Anthropic);
+    live.api.format_source = policy::MetadataSource::Live;
+    live.api.cache_source = policy::MetadataSource::Live;
+    live.options.insert("cache_control".into(), json!(true));
+    let resolved = enrich_discovered_model(&live, &registry, None);
+    assert_eq!(resolved.api.resolved_format, Some(ApiFormat::Responses));
+    let rebuilt = ProviderRegistry::from_config(&crate::config::AppConfig::default());
+    rebuilt.replace_runtime_models("opencode-go", vec![resolved]);
+    let restored = resolve_model_info(&rebuilt, None, "opencode-go", "future-model");
+    assert_eq!(restored.api.resolved_format, Some(ApiFormat::Anthropic));
+    assert_eq!(restored.api.resolved_cache_control, Some(true));
+}
+
+#[test]
+fn provider_policy_overrides_are_partial_and_persist_without_losing_defaults() {
+    let overrides: crate::config::AppConfig = serde_json::from_value(json!({"provider":{"openrouter":{"transport":{"cache":{"breakpoints":false}}},"opencode-go":{"transport":{"model_routes":{"future-model":"responses"},"cache":{"prompt_cache_key":false}}}}})).unwrap();
+    let mut config = crate::config::AppConfig::default().merge(overrides);
+    let catalog = ModelCatalog::parse_json(
+        &json!({"opencode-go":{"id":"opencode-go","models":{"future-model":{"name":"Future"}}}})
+            .to_string(),
+    )
+    .unwrap();
+    config.refresh_catalog(&catalog);
+    let saved = serde_json::to_string(&config).unwrap();
+    let loaded = serde_json::from_str(&saved).unwrap();
+    let registry = ProviderRegistry::from_config(&loaded);
+    let go = registry.get("opencode-go").unwrap();
+    let selected = resolve_model_info(&registry, None, "opencode-go", "future-model");
+    assert_eq!(selected.api.resolved_format, Some(ApiFormat::Responses));
+    assert_eq!(
+        go.info().transport_policy().model_routes["minimax-m3"],
+        ApiFormat::Anthropic
+    );
+    assert!(super::cache::prompt_cache_key(go.info(), &selected, uuid::Uuid::new_v4()).is_none());
+    let router = registry.get("openrouter").unwrap();
+    let selected = fallback_model_info("openrouter", "anthropic/future");
+    assert!(!router
+        .info()
+        .transport_policy()
+        .breakpoints(ApiFormat::OpenAI, &selected));
+}
+
+#[tokio::test]
+async fn cancellation_does_not_start_a_fallback_request() {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let url = format!("http://{}", listener.local_addr().unwrap());
+    let (accepted, acceptance) = tokio::sync::oneshot::channel();
+    let (release, ready) = std::sync::mpsc::channel();
+    let handle = std::thread::spawn(move || {
+        let (mut socket, _) = listener.accept().unwrap();
+        read_request(&mut socket);
+        accepted.send(()).unwrap();
+        ready.recv_timeout(Duration::from_secs(3)).unwrap();
+        let _ = write!(
+            socket,
+            "{}",
+            error_response(
+                400,
+                json!({"error":{"param":"cache_control", "code":"unsupported_parameter"}})
+            )
+        );
+        listener.set_nonblocking(true).unwrap();
+        std::thread::sleep(Duration::from_millis(40));
+        assert!(
+            matches!(listener.accept(), Err(error) if error.kind() == std::io::ErrorKind::WouldBlock)
+        );
+    });
+    let mut selected = model(ApiFormat::OpenAI);
+    selected.options.insert("cache_control".into(), json!(true));
+    let task = tokio::spawn(async move {
+        let provider = routed::RoutedProvider::new(info(url), HashMap::new());
+        let (tx, _rx) = tokio::sync::mpsc::channel(128);
+        provider
+            .stream_completion(
+                &[Message::user("inspect")],
+                None,
+                &selected,
+                tx,
+                RequestContext::new(uuid::Uuid::new_v4()),
+            )
+            .await
+    });
+    tokio::time::timeout(Duration::from_secs(3), acceptance)
+        .await
+        .unwrap()
+        .unwrap();
+    task.abort();
+    assert!(task.await.unwrap_err().is_cancelled());
+    release.send(()).unwrap();
+    handle.join().unwrap();
+}
+
+#[tokio::test]
+async fn session_cache_keys_follow_policy_on_every_transport() {
+    for format in [
+        ApiFormat::OpenAI,
+        ApiFormat::Anthropic,
+        ApiFormat::Responses,
+        ApiFormat::Google,
+    ] {
+        for override_key in [None, Some("user-selected-cache")] {
+            let (url, requests, server) = scripted_server(vec![sse_response(&[])]);
+            let mut descriptor = info(url);
+            descriptor.transport.cache.prompt_cache_key = Some(true);
+            let provider = routed::RoutedProvider::new(descriptor, HashMap::new());
+            let mut selected = model(format);
+            if let Some(key) = override_key {
+                selected.options.insert("prompt_cache_key".into(), json!(key));
+            }
+            let session = uuid::Uuid::new_v4();
+            let (tx, _rx) = tokio::sync::mpsc::channel(128);
+            let _ = provider
+                .stream_completion(
+                    &[Message::user("inspect")],
+                    None,
+                    &selected,
+                    tx,
+                    RequestContext::new(session),
+                )
+                .await;
+            server.join().unwrap();
+            let (_, request) = requests.recv().unwrap();
+            assert_eq!(
+                request["prompt_cache_key"],
+                override_key.map_or_else(|| session.to_string(), str::to_owned)
+            );
+        }
+    }
 }

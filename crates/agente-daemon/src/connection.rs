@@ -372,6 +372,7 @@ impl Connection {
                     "limits": info.limits,
                     "reasoning_options": info.reasoning_options,
                     "reasoning_stream_field": info.reasoning_stream_field,
+                    "transport": agente_core::models::transport_json(&info),
                 }))
             }
             "providers.list" => Ok(json!({
@@ -449,6 +450,9 @@ impl Connection {
                     model,
                     level,
                 } = parse(params)?;
+                if let Some(error) = runtime.model_info(&provider, &model).api.route_error {
+                    return Err((rpc::INVALID_PARAMS, error));
+                }
                 Ok(json!({ "body": runtime.thinking_request(&provider, &model, &level) }))
             }
             "media.import" => crate::project::import_media(params),

@@ -92,6 +92,8 @@ pub struct SeedModel {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ProviderSpec {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transport: Option<super::policy::TransportPolicy>,
     pub id: String,
     pub name: String,
     pub group: ProviderGroup,
@@ -174,6 +176,7 @@ impl ProviderSpec {
             extra.insert("headers".to_string(), serde_json::json!(self.headers));
         }
         ProviderConfig {
+            transport: self.transport.clone(),
             api: Some(self.base_url.clone()),
             name: Some(self.name.clone()),
             env: self.env.clone(),

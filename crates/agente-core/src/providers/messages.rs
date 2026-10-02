@@ -102,20 +102,8 @@ impl MessagesProvider {
             .map(|m| m.content.as_str())
             .collect::<Vec<_>>()
             .join("\n\n");
-        let breakpoints = super::cache::wants_breakpoints(true, &self.info.id, model);
         if !system.is_empty() {
-            // Array form so the system prompt (and the tools before it) can
-            // carry the cache breakpoint.
-            body["system"] = if breakpoints {
-                json!([{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}])
-            } else {
-                json!(system)
-            };
-        }
-        if breakpoints {
-            if let Some(turns) = body["messages"].as_array_mut() {
-                super::cache::mark_recent_user_turns(turns);
-            }
+            body["system"] = json!(system);
         }
         for (key, value) in super::wire_options(&model.options) {
             match key.as_str() {
@@ -343,14 +331,14 @@ impl Provider for MessagesProvider {
         sender: Sender<StreamEvent>,
         context: RequestContext,
     ) -> Result<Usage, LlmError> {
-        let response = super::send_with_cache_fallback(
-            &self.info,
-            model,
-            "messages",
-            &self.request_body(messages, tools, model),
-            context,
-        )
-        .await?;
+        let mut body = self.request_body(messages, tools, model);
+        if let Some(key) = super::cache::prompt_cache_key(&self.info, model, context.session_id) {
+            body["prompt_cache_key"] = json!(key);
+        }
+        let body =
+            super::cache::PreparedRequest::new(body, ApiFormat::Anthropic, &self.info, model);
+        let response =
+            super::send_with_cache_fallback(&self.info, model, "messages", &body, context).await?;
         let mut stream = super::sse::EventStream::new(response.bytes_stream());
         let mut state = MessageStream::default();
         let _ = sender.send(StreamEvent::TextStart).await;

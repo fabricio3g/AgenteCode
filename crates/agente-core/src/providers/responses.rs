@@ -373,7 +373,10 @@ impl Provider for ResponsesProvider {
         sender: Sender<StreamEvent>,
         context: RequestContext,
     ) -> Result<Usage, LlmError> {
-        let body = self.request_body(messages, tools, model);
+        let mut body = self.request_body(messages, tools, model);
+        if let Some(key) = super::cache::prompt_cache_key(&self.info, model, context.session_id) {
+            body["prompt_cache_key"] = json!(key);
+        }
         let response = super::send_request(&self.info, model, "responses", &body, context).await?;
         let mut stream = super::sse::EventStream::new(response.bytes_stream());
         let mut state = ResponseState::default();

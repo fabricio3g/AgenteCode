@@ -190,6 +190,8 @@ Useful commands: `/settings`, `/skills`, `/mcp`, `/compact`, `/undo`, `/redo`, `
 
 TUI settings merge from `~/.agente/config.json` and your project's `agente.json`; the project wins. Provider keys live in `~/.agente/auth.json`. See [`agente.json.example`](agente.json.example) for configuration fields.
 
+Provider routes and cache behavior use shared metadata, with configuration overrides. Newly discovered gateway models stay visible even when their protocol is unknown; set `models.<id>.provider.api_format` to enable one. See [Provider routing and caching](docs/PROVIDERS.md) for precedence, cache rules, and examples.
+
 - **Skills:** folders containing `SKILL.md` in `.agente/skills`, `.agents/skills`, or `.claude/skills`, with user-level equivalents. The agent can select a skill, or you can invoke `/skill-name`.
 - **Custom agents:** Markdown definitions in `.agente/agents/*.md`.
 - **MCP:** configure servers in `agente.json` or the project's `.mcp.json`. Project servers require approval; read-only tools are available in Plan mode.

@@ -147,13 +147,75 @@ pub(super) fn completion_request(
     Ok(request.json(body))
 }
 
-pub(super) async fn send_request(
+/// Keep machine-readable failure details until retry policy has been evaluated.
+struct HttpFailure {
+    error: LlmError,
+    status: Option<reqwest::StatusCode>,
+    details: Value,
+}
+
+impl From<LlmError> for HttpFailure {
+    fn from(error: LlmError) -> Self {
+        Self {
+            error,
+            status: None,
+            details: Value::Null,
+        }
+    }
+}
+
+impl HttpFailure {
+    fn rejects_cache_control(&self) -> bool {
+        if !matches!(self.status.map(|s| s.as_u16()), Some(400 | 422)) {
+            return false;
+        }
+        let error = self.details.get("error").unwrap_or(&self.details);
+        let parameter = error
+            .get("param")
+            .or_else(|| error.get("parameter"))
+            .and_then(Value::as_str);
+        let code = error
+            .get("code")
+            .or_else(|| error.get("type"))
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        let message = error
+            .get("message")
+            .and_then(Value::as_str)
+            .or_else(|| error.as_str())
+            .unwrap_or_default()
+            .to_ascii_lowercase()
+            .replace(['\"', '\'', '`'], "");
+        if parameter == Some("cache_control")
+            && (matches!(
+                code,
+                "unsupported_parameter" | "unsupported_parameter_error"
+            ) || message.contains("not supported")
+                || message.contains("unsupported"))
+        {
+            return true;
+        }
+        // A message-only gateway response must explicitly name the rejected parameter.
+        let words: Vec<_> = message
+            .split(|character: char| !character.is_ascii_alphanumeric() && character != '_')
+            .filter(|word| !word.is_empty())
+            .collect();
+        words.windows(5).any(|words| {
+            words == ["parameter", "cache_control", "is", "not", "supported"]
+                || words == ["cache_control", "parameter", "is", "not", "supported"]
+        }) || words
+            .windows(3)
+            .any(|words| words == ["unsupported", "parameter", "cache_control"])
+    }
+}
+
+async fn send_http(
     info: &ProviderInfo,
     model: &ModelInfo,
     path: &str,
     body: &Value,
     context: RequestContext,
-) -> Result<reqwest::Response, LlmError> {
+) -> Result<reqwest::Response, HttpFailure> {
     let request = completion_request(info, model, path, body, context)?;
     let started = std::time::Instant::now();
     let response = request
@@ -164,41 +226,54 @@ pub(super) async fn send_request(
     if !response.status().is_success() {
         let status = response.status();
         let text = crate::util::redact_secrets(&response.text().await.unwrap_or_default());
-        return Err(LlmError::HttpError(format!(
-            "{}: HTTP {status} - {}",
-            info.name,
-            text.chars().take(1500).collect::<String>()
-        )));
+        return Err(HttpFailure {
+            error: LlmError::HttpError(format!(
+                "{}: HTTP {status} - {}",
+                info.name,
+                text.chars().take(1500).collect::<String>()
+            )),
+            status: Some(status),
+            details: serde_json::from_str(&text).unwrap_or(Value::String(text)),
+        });
     }
     Ok(response)
 }
 
-/// `send_request`, retrying once without cache breakpoints when a provider
-/// rejects `cache_control` for a model we expected to accept it (OpenCode Go
-/// validates the parameter per model). The retry only fires when the body
-/// carried markers and the error names the parameter, so normal traffic never
-/// pays for it.
-pub(super) async fn send_with_cache_fallback(
+pub(super) async fn send_request(
     info: &ProviderInfo,
     model: &ModelInfo,
     path: &str,
     body: &Value,
     context: RequestContext,
 ) -> Result<reqwest::Response, LlmError> {
-    match send_request(info, model, path, body, context).await {
-        Err(LlmError::HttpError(message))
-            if message.contains("cache_control") && super::cache::has_breakpoints(body) =>
-        {
-            tracing::warn!(
-                provider = %info.id,
-                model = %model.api_id,
-                "Provider rejected cache_control; retrying without breakpoints"
-            );
-            let mut retry = body.clone();
-            super::cache::strip_breakpoints(&mut retry);
-            send_request(info, model, path, &retry, context).await
+    send_http(info, model, path, body, context)
+        .await
+        .map_err(|failure| failure.error)
+}
+
+pub(super) async fn send_with_cache_fallback(
+    info: &ProviderInfo,
+    model: &ModelInfo,
+    path: &str,
+    request: &super::cache::PreparedRequest,
+    context: RequestContext,
+) -> Result<reqwest::Response, LlmError> {
+    match send_http(info, model, path, &request.body, context).await {
+        Err(failure) if request.uncached.is_some() && failure.rejects_cache_control() => {
+            tracing::warn!(provider = %info.id, model = %model.api_id, "Provider rejected cache_control; retrying original request without Agente annotations");
+            send_request(
+                info,
+                model,
+                path,
+                request
+                    .uncached
+                    .as_ref()
+                    .expect("guard checked uncached request"),
+                context,
+            )
+            .await
         }
-        result => result,
+        result => result.map_err(|failure| failure.error),
     }
 }
 

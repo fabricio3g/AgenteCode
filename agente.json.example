@@ -1,6 +1,19 @@
 {
-  "$comment": "OpenDev configuration file. Place at ~/.opendev/config.json or ./opendev.json",
+  "$comment": "Agente configuration file. Place at ~/.agente/config.json or ./agente.json. Provider transport overrides: docs/PROVIDERS.md",
   "provider": {
+    "opencode-go": {
+      "transport": {
+        "require_model_route": true,
+        "model_routes": { "longcat-2.5-preview-free": "openai" },
+        "cache": { "prompt_cache_key": true }
+      },
+      "models": {
+        "longcat-2.5-preview-free": {
+          "provider": { "api_format": "openai" },
+          "options": { "cache_control": false }
+        }
+      }
+    },
     "openai": {
       "api_format": "openai",
       "options": {

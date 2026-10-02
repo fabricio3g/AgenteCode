@@ -102,12 +102,25 @@ impl ThinkingProfile {
 }
 
 /// The wire format a model is sent in when the caller does not say:
-/// the model's own override, else its provider spec, else OpenAI.
+/// the shared resolver's result, or the same provider policy before resolution.
 fn effective_format(model: &ModelInfo) -> ApiFormat {
     model
         .api
-        .format
-        .or_else(|| crate::providers::spec::get(&model.provider_id).map(|s| s.api_format()))
+        .resolved_format
+        .or_else(|| {
+            let spec = crate::providers::spec::get(crate::providers::canonical_provider_id(
+                &model.provider_id,
+            ))?;
+            crate::providers::ProviderInfo {
+                id: model.provider_id.clone(),
+                name: spec.name.clone(),
+                api_format: spec.api_format(),
+                ..Default::default()
+            }
+            .resolve_format(model)
+            .ok()
+        })
+        .or(model.api.format)
         .unwrap_or(ApiFormat::OpenAI)
 }
 

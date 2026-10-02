@@ -26,6 +26,8 @@ pub struct ProviderOptions {
 /// Provider configuration: endpoint, credentials, and model catalog entries.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ProviderConfig {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transport: Option<crate::providers::policy::TransportPolicy>,
     #[serde(default)]
     pub api: Option<String>,
     #[serde(default)]
@@ -53,6 +55,10 @@ pub struct ProviderConfig {
 /// Model configuration override
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ModelConfig {
+    /// Internal provenance; never written to configuration files.
+    #[doc(hidden)]
+    #[serde(skip)]
+    pub api_from_catalog: bool,
     pub name: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub provider: Option<crate::catalog::ModelProvider>,
@@ -510,7 +516,8 @@ impl AppConfig {
             if builtin.provider.contains_key(id) {
                 return true;
             }
-            provider.options.api_key.is_some()
+            provider.transport.is_some()
+                || provider.options.api_key.is_some()
                 || provider.options.base_url.is_some()
                 || provider.options.enterprise_url.is_some()
                 || provider.options.timeout.is_some()
@@ -597,6 +604,12 @@ impl AppConfig {
     pub fn merge(mut self, other: AppConfig) -> Self {
         for (k, v) in other.provider {
             if let Some(existing) = self.provider.get_mut(&k) {
+                if let Some(policy) = v.transport {
+                    existing
+                        .transport
+                        .get_or_insert_with(Default::default)
+                        .overlay(&policy);
+                }
                 if v.api.is_some() {
                     existing.api = v.api;
                 }
@@ -799,6 +812,7 @@ impl AppConfig {
         // Merge with existing config if present
         let config = if let Some(existing) = self.provider.get(provider_name) {
             ProviderConfig {
+                transport: existing.transport.clone(),
                 name: existing.name.clone().or_else(|| Some(provider_name.into())),
                 api: Some(base_url.clone()),
                 env: if existing.env.is_empty() {
@@ -939,6 +953,7 @@ impl AppConfig {
 
 fn model_config_from_catalog(model: &crate::catalog::CatalogModel) -> ModelConfig {
     ModelConfig {
+        api_from_catalog: true,
         name: Some(model.name.clone()),
         provider: model.provider.clone(),
         capabilities: Some(model.capabilities.clone()),

@@ -56,7 +56,18 @@ pub async fn discover(
             ))
         }
     };
-    let enriched = enrich_discovered(&raw, baseline, catalog);
+    let mut enriched = enrich_discovered(&raw, baseline, catalog);
+    for model in &mut enriched {
+        if let Some(configured) = provider
+            .info()
+            .models
+            .iter()
+            .find(|known| known.id == model.id || known.api_id == model.api_id)
+        {
+            crate::providers::overlay_transport(model, configured);
+        }
+        crate::providers::resolve_registered_transport(model, provider.as_ref());
+    }
     registry.replace_runtime_models(provider_id, enriched.clone());
     tracing::info!(provider = %provider_id, count = enriched.len(), "Models discovered");
     Ok(enriched)
@@ -66,6 +77,7 @@ pub async fn discover(
 /// thinking profile.
 pub fn model_json(model: &ModelInfo) -> serde_json::Value {
     serde_json::json!({
+        "transport": transport_json(model),
         "id": model.id,
         "name": model.name,
         "provider_id": model.provider_id,
@@ -77,5 +89,16 @@ pub fn model_json(model: &ModelInfo) -> serde_json::Value {
         "reasoning": model.capabilities.reasoning,
         "cost": model.cost,
         "thinking": crate::thinking::profile(model),
+    })
+}
+
+/// Additive readiness metadata; clients never need to reproduce route policy.
+pub fn transport_json(model: &ModelInfo) -> serde_json::Value {
+    serde_json::json!({
+        "ready": model.api.resolved_format.is_some(),
+        "api_format": model.api.resolved_format,
+        "base_url": model.api.resolved_base_url,
+        "cache_control": model.api.resolved_cache_control,
+        "error": model.api.route_error,
     })
 }

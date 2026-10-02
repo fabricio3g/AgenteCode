@@ -38,6 +38,7 @@ impl OpenAIProvider {
             headers: HashMap::new(),
             models: vec![],
             api_key: None,
+            transport: Default::default(),
         })
     }
 
@@ -166,16 +167,6 @@ impl Provider for OpenAIProvider {
             }
         }
 
-        // Explicit prompt-cache breakpoints where the route needs them
-        // (OpenRouter's Claude/Gemini); auto-caching APIs get the same stable
-        // prefix without markers.
-        if super::cache::wants_breakpoints(false, &self.info.id, model) {
-            if let Some(system) = messages_json.iter_mut().find(|m| m["role"] == "system") {
-                super::cache::mark_last_block(system);
-            }
-            super::cache::mark_recent_user_turns(&mut messages_json);
-        }
-
         let mut body = serde_json::json!({
             "model": model.api_id,
             "messages": messages_json,
@@ -221,12 +212,8 @@ impl Provider for OpenAIProvider {
         }
         // OpenRouter always reports the real charge (`usage.cost`) in the
         // final chunk — the old `usage: {include: true}` flag is deprecated.
-        //
-        // OpenCode Go's gateway only reuses a cached prefix when the request
-        // names its session: a stable `prompt_cache_key` routes every turn of
-        // one session to the same cache.
-        if let Some(key) = super::cache::prompt_cache_key(&self.info.id, model, context.session_id)
-        {
+        // A configured session cache key keeps successive turns on one cache.
+        if let Some(key) = super::cache::prompt_cache_key(&self.info, model, context.session_id) {
             body["prompt_cache_key"] = serde_json::json!(key);
         }
 
@@ -267,6 +254,7 @@ impl Provider for OpenAIProvider {
             }
         }
 
+        let body = super::cache::PreparedRequest::new(body, ApiFormat::OpenAI, &self.info, model);
         let response =
             super::send_with_cache_fallback(&self.info, model, "chat/completions", &body, context)
                 .await?;
@@ -653,6 +641,7 @@ impl OpenAIProvider {
                 known.capabilities.vision = modalities.iter().any(|m| m == "image");
                 known.capabilities.input_modalities = modalities;
             }
+            apply_live_transport(&mut known, raw);
             return known;
         }
 
@@ -670,7 +659,7 @@ impl OpenAIProvider {
             capabilities.input_modalities = modalities;
         }
 
-        ModelInfo {
+        let mut discovered = ModelInfo {
             api: super::ModelApi::default(),
             id: id.to_string(),
             name: raw
@@ -695,6 +684,39 @@ impl OpenAIProvider {
             reasoning_options: live_reasoning.into_iter().collect(),
             reasoning_stream_field: None,
             compat: crate::thinking::detect_thinking_format(&self.info.id, &self.info.base_url),
+        };
+        apply_live_transport(&mut discovered, raw);
+        discovered
+    }
+}
+
+fn apply_live_transport(model: &mut ModelInfo, raw: &serde_json::Value) {
+    let provider = raw
+        .get("provider")
+        .cloned()
+        .and_then(|v| serde_json::from_value::<crate::catalog::ModelProvider>(v).ok());
+    let format = raw
+        .get("api_format")
+        .and_then(serde_json::Value::as_str)
+        .and_then(ApiFormat::from_name)
+        .or_else(|| super::ModelApi::from_provider(provider.as_ref()).format);
+    if let Some(format) = format {
+        model.api.live_format = Some(format);
+        if model.api.format_source <= super::policy::MetadataSource::Live {
+            model.api.format = Some(format);
+            model.api.format_source = super::policy::MetadataSource::Live;
+        }
+    }
+    if let Some(cache) = raw
+        .get("cache_control")
+        .and_then(serde_json::Value::as_bool)
+    {
+        model.api.live_cache_control = Some(cache);
+        if model.api.cache_source <= super::policy::MetadataSource::Live {
+            model
+                .options
+                .insert("cache_control".into(), serde_json::json!(cache));
+            model.api.cache_source = super::policy::MetadataSource::Live;
         }
     }
 }
@@ -894,6 +916,7 @@ mod discovery_tests {
             headers: HashMap::new(),
             models,
             api_key: None,
+            transport: Default::default(),
         })
     }
 
