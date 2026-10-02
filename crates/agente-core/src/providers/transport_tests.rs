@@ -657,6 +657,18 @@ async fn fallback_preserves_the_original_request_on_both_transports() {
                 arguments: json!({"cache_control":"retain-input"}).to_string(),
             },
         }]);
+        previous.continuation = Some(crate::types::ProviderContinuation {
+            provider_id: selected.provider_id.clone(),
+            model_id: selected.api_id.clone(),
+            blocks: if format == ApiFormat::Anthropic {
+                vec![
+                    json!({"type":"thinking","thinking":"inspect","signature":"signed","cache_control":"retain-continuation"}),
+                    json!({"type":"tool_use","id":"old-call","name":"inspect_header","input":{"cache_control":"retain-input"}}),
+                ]
+            } else {
+                vec![json!({"type":"chat_completion","message":{"role":"assistant","content":"","tool_calls":previous.tool_calls,"reasoning_details":[{"cache_control":"retain-continuation"}]}})]
+            },
+        });
         let mut system = Message::user("instructions");
         system.role = Role::System;
         let messages = [system, previous, Message::user("inspect")];
@@ -704,8 +716,12 @@ async fn fallback_preserves_the_original_request_on_both_transports() {
             assert_eq!(first["system"][0]["cache_control"]["type"], "ephemeral");
             assert_eq!(second["system"], "instructions");
             assert_eq!(
-                second["messages"][0]["content"][0]["input"]["cache_control"],
+                second["messages"][0]["content"][1]["input"]["cache_control"],
                 "retain-input"
+            );
+            assert_eq!(
+                second["messages"][0]["content"][0]["cache_control"],
+                "retain-continuation"
             );
         } else {
             assert_eq!(
@@ -716,6 +732,10 @@ async fn fallback_preserves_the_original_request_on_both_transports() {
             assert_eq!(
                 second["messages"][1]["tool_calls"][0]["function"]["arguments"],
                 json!({"cache_control":"retain-input"}).to_string()
+            );
+            assert_eq!(
+                second["messages"][1]["reasoning_details"][0]["cache_control"],
+                "retain-continuation"
             );
         }
         assert!(requests.try_recv().is_err());
@@ -1201,7 +1221,9 @@ async fn session_cache_keys_follow_policy_on_every_transport() {
             let provider = routed::RoutedProvider::new(descriptor, HashMap::new());
             let mut selected = model(format);
             if let Some(key) = override_key {
-                selected.options.insert("prompt_cache_key".into(), json!(key));
+                selected
+                    .options
+                    .insert("prompt_cache_key".into(), json!(key));
             }
             let session = uuid::Uuid::new_v4();
             let (tx, _rx) = tokio::sync::mpsc::channel(128);
@@ -1221,5 +1243,45 @@ async fn session_cache_keys_follow_policy_on_every_transport() {
                 override_key.map_or_else(|| session.to_string(), str::to_owned)
             );
         }
+    }
+}
+
+#[tokio::test]
+async fn preexisting_annotations_do_not_enable_a_fallback_retry() {
+    for format in [ApiFormat::OpenAI, ApiFormat::Anthropic] {
+        let (url, requests, server) = scripted_server(vec![error_response(
+            422,
+            json!({"error":{"param":"cache_control","code":"unsupported_parameter"}}),
+        )]);
+        let descriptor = info(url);
+        let mut selected = model(format);
+        selected.options.insert("cache_control".into(), json!(true));
+        let original = json!({
+            "model": selected.api_id,
+            "messages": [{"role":"user","content":[{"type":"text","text":"inspect","cache_control":{"type":"ephemeral","ttl":"1h"}}]}],
+        });
+        let request = super::cache::PreparedRequest::new(
+            original.clone(),
+            format,
+            &descriptor,
+            &selected,
+        );
+        assert_eq!(request.body, original);
+        assert!(request.uncached.is_none());
+        assert!(super::send_with_cache_fallback(
+            &descriptor,
+            &selected,
+            if format == ApiFormat::Anthropic {
+                "messages"
+            } else {
+                "chat/completions"
+            },
+            &request,
+            RequestContext::new(uuid::Uuid::new_v4()),
+        )
+        .await
+        .is_err());
+        server.join().unwrap();
+        assert_eq!(requests.try_iter().count(), 1);
     }
 }
