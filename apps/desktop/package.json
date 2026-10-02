@@ -1,8 +1,8 @@
 {
   "name": "agente-desktop",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "private": true,
-  "description": "Agente Desktop \u2013 local AI workspace (Electron)",
+  "description": "Agente Desktop – local AI workspace (Electron)",
   "repository": {
     "type": "git",
     "url": "https://github.com/fabricio3g/AgenteCode.git",
@@ -140,7 +140,9 @@
         "from": "resources/bin",
         "to": "bin",
         "filter": [
-          "**/*"
+          "**/*",
+          "!llama/rocm",
+          "!llama/rocm/**/*"
         ]
       }
     ],

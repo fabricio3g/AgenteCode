@@ -82,7 +82,7 @@ jobs:
         env:
           NATIVE_RUNTIME_PLATFORM: ${{ matrix.name }}
           NATIVE_RUNTIME_ARCH: ${{ runner.arch == 'ARM64' && 'arm64' || 'x64' }}
-          NATIVE_RUNTIME_BACKENDS: '' # Keep every platform backend in releases.
+          NATIVE_RUNTIME_BACKENDS: 'cpu,vulkan,cuda,sycl' # ROCm is downloaded through the UI.
           LLAMA_CPP_TAG: ${{ vars.LLAMA_CPP_TAG }}
           WHISPER_CPP_TAG: ${{ vars.WHISPER_CPP_TAG }}
           AUDIO_CPP_TAG: ${{ vars.AUDIO_CPP_TAG }}
@@ -177,7 +177,8 @@ jobs:
           AGENTE_SMOKE_SETUID: '1'
         run: |
           sudo apt-get install -y ./release/AgenteDesktop-linux-amd64.deb
-          installed=$(dpkg -L agente-desktop | awk '/\/agente-desktop$/ {print; exit}')
+          installed=$(dpkg -L agente-desktop | awk '/^\/opt\/.*\/agente-desktop$/ {print; exit}')
+          test -f "$installed"
           test -x "$installed"
           installed_dir=$(dirname "$installed")
           xvfb-run -a node scripts/smoke-packaged.mjs "$installed_dir"

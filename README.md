@@ -83,7 +83,7 @@ The next release uses the following Desktop installer names (existing release as
 | Debian/Ubuntu amd64 | [.deb package](https://github.com/fabricio3g/AgenteCode/releases/latest/download/AgenteDesktop-linux-amd64.deb) |
 | Windows x64 | [Installer](https://github.com/fabricio3g/AgenteCode/releases/latest/download/AgenteDesktop-windows-x64.exe) |
 
-Desktop bundles all available local runtime backends, including CUDA libraries, so installers can remain around 1 GB. Each release includes a component size report. Production source maps are excluded.
+Desktop bundles CPU, Vulkan, CUDA and SYCL runtimes with their required libraries. ROCm is available through the UI download. CUDA can still make installers large; each release includes a component size report. Production source maps are excluded.
 
 On Linux, make the AppImage executable and run it, or install the Debian package with `sudo apt install ./AgenteDesktop-linux-amd64.deb`. AppImages require FUSE 2 (`libfuse2t64` on recent Ubuntu). On Windows, run the installer; this release is unsigned.
 

@@ -8,6 +8,7 @@ module.exports = async function verifyPackage(context) {
     ? path.join(context.appOutDir, `${context.packager.appInfo.productFilename}.app/Contents/Resources`)
     : path.join(context.appOutDir, 'resources');
   const archive = path.join(resources, 'app.asar');
+  if (fs.existsSync(path.join(resources, 'bin/llama/rocm'))) throw new Error('ROCm must be downloaded through the UI, not bundled');
   for (const file of ['dist-electron/main/index.cjs', 'preload/preload.cjs', 'renderer/dist/index.html']) {
     if (!asar.extractFile(archive, path.normalize(file)).equals(fs.readFileSync(path.join(root, file)))) throw new Error(`Corrupt packaged asset: ${file}`);
   }

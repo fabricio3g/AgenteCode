@@ -9,14 +9,12 @@
 // Environment:
 //   NATIVE_RUNTIME_PLATFORM  linux | windows | macos   (default: this machine)
 //   NATIVE_RUNTIME_ARCH      x64 | arm64                (default: this machine)
-//   NATIVE_RUNTIME_BACKENDS  e.g. "cpu,vulkan"          (default: every one published)
+//   NATIVE_RUNTIME_BACKENDS  e.g. "cpu,vulkan"          (default: published backends except ROCm)
 //   LLAMA_CPP_TAG / WHISPER_CPP_TAG / AUDIO_CPP_TAG  release to use (defaults below)
 //   GITHUB_TOKEN             optional, avoids the API rate limit in CI
 //
-// Each OS build ships every backend its platform has: CPU, Vulkan (any GPU),
-// CUDA 12 with its runtime (NVIDIA; 12 rather than 13 so GTX 10-series cards
-// still work), ROCm (AMD) and SYCL (Intel). CUDA with its runtime is the
-// largest, ~0.6-0.8 GB; the whole set is ~1.1 GB per installer.
+// Releases include CPU, Vulkan (any GPU), CUDA with its runtime and SYCL
+// (Intel), wherever published. ROCm (AMD) is downloaded through the UI.
 
 import crypto from 'node:crypto';
 import fs from 'node:fs';
@@ -102,7 +100,7 @@ const ENGINES = [
 const LIBRARY = /\.(so(\.\d+)*|dll|dylib|metallib)$/i;
 
 function wanted(backend) {
-  return !BACKENDS.length || BACKENDS.includes(backend);
+  return BACKENDS.length ? BACKENDS.includes(backend) : backend !== 'rocm';
 }
 
 async function github(url) {

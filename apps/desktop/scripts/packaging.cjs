@@ -65,7 +65,7 @@ async function beforePack(context) {
   }
   if (process.env.AGENTE_RELEASE_BUILD === '1' && ['linux', 'win32'].includes(context.electronPlatformName)) {
     const exe = context.electronPlatformName === 'win32' ? '.exe' : '';
-    for (const backend of ['cpu', 'vulkan', 'cuda', 'rocm', 'sycl']) {
+    for (const backend of ['cpu', 'vulkan', 'cuda', 'sycl']) {
       if (!fs.existsSync(path.join(root, 'resources/bin/llama', backend, `llama-server${exe}`))) throw new Error(`Missing release backend: llama/${backend}`);
     }
     for (const [engine, binary] of [['audio', 'audiocpp_server'], ['whisper', 'whisper-cli']]) {

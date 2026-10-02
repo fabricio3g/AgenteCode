@@ -59,8 +59,9 @@ edit them on the Releases page if needed.
   repository to be public.
 - Desktop file names come from `build.artifactName` in
   `apps/desktop/package.json`, with target-specific overrides for Windows and AppImage. Debian uses Debian architecture names (`amd64`, `arm64`).
-- Desktop bundles llama.cpp and whisper.cpp from their own GitHub releases
-  (`scripts/fetch-native-runtimes.mjs`); nothing native is compiled.
+- Desktop bundles CPU, Vulkan, CUDA and SYCL llama.cpp runtimes, plus whisper.cpp,
+  from upstream releases (`scripts/fetch-native-runtimes.mjs`). ROCm is available
+  through the UI download.
 - To try the build without publishing, run the workflows by hand
   (Actions → Run workflow): they build and upload artifacts but skip the
   release.
@@ -70,5 +71,5 @@ edit them on the Releases page if needed.
   builds compile their own runtime. Startup tests run before installer compression.
 
 - Packaged startup tests gate both Desktop upload jobs. They use temporary profiles, verify configuration IPC, a Monaco TypeScript worker and the bundled Rust binary, and exercise failure screens. Diagnostics are uploaded even on failure.
-- Desktop size reports separate installed size, installer size, renderer assets, dependencies and every native backend. All GPU runtimes remain bundled; production source maps and proven duplicate dependencies are excluded.
+- Desktop size reports separate installed size, installer size, renderer assets, dependencies and each bundled backend. ROCm, production source maps and proven duplicate dependencies are excluded from installers.
 - Existing releases keep their original names. These names apply to releases built after this change.
