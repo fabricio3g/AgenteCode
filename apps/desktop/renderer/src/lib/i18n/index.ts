@@ -1,12 +1,8 @@
-import { init, register, locale, waitLocale } from 'svelte-i18n';
+import { init, addMessages, locale, waitLocale } from 'svelte-i18n';
+import { UI_CATALOGS } from './catalogs';
 
-register('en', () => import('../locales/en.json'));
-register('es', () => import('../locales/es.json'));
-register('pt-BR', () => import('../locales/pt-BR.json'));
-register('zh', () => import('../locales/zh.json'));
-register('fr', () => import('../locales/fr.json'));
-register('de', () => import('../locales/de.json'));
-register('ja', () => import('../locales/ja.json'));
+// Error recognition already needs every catalog; share that eager load.
+for (const [code, catalog] of Object.entries(UI_CATALOGS)) addMessages(code, catalog);
 
 const SUPPORTED_LOCALES = ['en', 'es', 'pt-BR', 'zh', 'fr', 'de', 'ja'] as const;
 

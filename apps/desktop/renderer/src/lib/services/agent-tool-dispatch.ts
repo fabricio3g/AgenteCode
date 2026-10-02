@@ -23,6 +23,7 @@ import { isWorkspace, normPath, getWsFiles, upsertWsFile, readWsText, globToRege
 import { toErrorMessage, isAbortError } from '$lib/utils/errors';
 import { buildPreviewHtml } from '$lib/services/agent-content';
 import { executeWithTimeoutAndRetries } from '$lib/services/agent-tool-runtime';
+import { approvalsStore } from '$lib/stores/approvals.svelte';
 import { addGeneratedArtifactFile as addGeneratedArtifactFileEntry } from '$lib/services/agent-artifact';
 import {
   handleReadFile, handleWriteFile, handleEditFile, handleDeleteFile, handleListFiles,
@@ -217,7 +218,6 @@ export async function executeTool(
       // In supervised mode, request user approval before executing
       if (ctx.runtimeMode === 'supervised') {
         try {
-          const { approvalsStore } = await import('$lib/stores/approvals.svelte');
           const approved = await approvalsStore.request({
             id: `bash-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
             chatId: ctx.chatId,

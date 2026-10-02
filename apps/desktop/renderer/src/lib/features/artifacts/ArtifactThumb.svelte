@@ -19,6 +19,8 @@
   import { readArrayBuffer } from '$lib/features/chat/viewers/viewer-source';
   import { columnName, rawCell, sheetToGrid, type GridSheet } from '$lib/features/chat/viewers/xlsx-model';
   import { createFormulaEvaluator, type CellInput } from '$lib/features/chat/viewers/xlsx-formula';
+  import { renderPptx } from '$lib/features/chat/viewers/pptx-render';
+  import { loadDocxInto } from '$lib/features/chat/viewers/docx-pages';
 
   let { artifact, visible }: { artifact: AgentArtifact; visible: boolean } = $props();
 
@@ -66,7 +68,6 @@
           await page.render({ canvasContext: canvas.getContext('2d')!, viewport, canvas }).promise;
           done(() => (imageUrl = canvas.toDataURL('image/png')));
         } else if (ext === 'pptx' && !doc.deck && source) {
-          const { renderPptx } = await import('$lib/features/chat/viewers/pptx-render');
           const deck = await renderPptx(source);
           revoke = deck.slides[0]?.url ?? '';
           // Keep only the first slide's URL alive.
@@ -80,7 +81,6 @@
           const evaluator = createFormulaEvaluator((name, row, col) => rawCell(workbook.getWorksheet(name), row, col) as CellInput);
           if (first) done(() => (sheet = sheetToGrid(first, 'en', { minRows: 14, minCols: 7 }, (formula, row, col) => evaluator.evaluateCell(formula, first.name, row, col))));
         } else if (ext === 'docx' && source && docxHost) {
-          const { loadDocxInto } = await import('$lib/features/chat/viewers/docx-pages');
           const pending = document.createElement('div');
           await loadDocxInto(source, doc.name, pending);
           const page = pending.querySelector('section.docx');

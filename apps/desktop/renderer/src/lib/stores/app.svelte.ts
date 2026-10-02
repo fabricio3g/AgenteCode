@@ -18,6 +18,7 @@ import { clearRagDocuments, ingestDocument, ingestText, ingestTextFast, listRagD
 import { webSearch } from '$lib/services/search';
 import { getRecommendedSettings, loadLocalModel, onSupervisorEvent, stopLlama } from '$lib/services/runtime';
 import { invoke, isElectron } from '$lib/services/bridge';
+import { checkIsFirstRun } from '$lib/services/onboarding';
 import { downloadsStore } from '$lib/stores/downloads.svelte';
 import { deepResearchStore } from '$lib/stores/deep-research.svelte';
 import { browserPanelStore } from '$lib/stores/browser-panel.svelte';
@@ -1141,7 +1142,6 @@ class AppStore {
 
   private async checkOnboarding() {
     try {
-      const { checkIsFirstRun } = await import('$lib/services/onboarding');
       const isFirstRun = await checkIsFirstRun();
       if (isFirstRun) {
         this.onboardingOpen = true;

@@ -31,6 +31,9 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     sourcemap: false,
+    // Local Electron assets include Monaco and office libraries. Keep a
+    // 5 MiB chunk budget; CI still rejects build diagnostics and regressions.
+    chunkSizeWarningLimit: 5 * 1024,
     // es2022 (not es2021) because src/main.ts awaits the dev-only mock-electron
     // import at top level. esbuild only allows a feature if *every* listed
     // target supports it, so listing es2021 here fails the whole build.

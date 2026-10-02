@@ -1,14 +1,8 @@
-import en from '$lib/locales/en.json';
-import es from '$lib/locales/es.json';
-import pt from '$lib/locales/pt-BR.json';
-import fr from '$lib/locales/fr.json';
-import de from '$lib/locales/de.json';
-import ja from '$lib/locales/ja.json';
-import zh from '$lib/locales/zh.json';
+import { UI_CATALOGS } from '$lib/i18n/catalogs';
 
 export type CodeErrorKind = 'providerUnavailable' | 'internetUnavailable' | 'localModelNotRunning' | 'providerRejected' | 'failed';
 
-const localModelSentences = [en, es, pt, fr, de, ja, zh].map((catalog) => catalog.code.runtimeLocalModelNotRunning.toLowerCase());
+const localModelSentences = Object.values(UI_CATALOGS).map((catalog) => catalog.code.runtimeLocalModelNotRunning.toLowerCase());
 
 function providerStatus(detail: string): number | undefined {
   const http = /\bHTTP\s*[:=]?\s*(\d{3})\b/i.exec(detail);
