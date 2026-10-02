@@ -6,46 +6,89 @@ use std::io::{Read, Write};
 use std::net::TcpListener;
 use std::time::Duration;
 
+fn read_request(socket: &mut std::net::TcpStream) -> (String, Value) {
+    socket
+        .set_read_timeout(Some(Duration::from_secs(10)))
+        .unwrap();
+    let mut bytes = Vec::new();
+    let mut buffer = [0; 4096];
+    let header_end = loop {
+        let n = socket.read(&mut buffer).unwrap();
+        assert!(n > 0);
+        bytes.extend_from_slice(&buffer[..n]);
+        if let Some(index) = bytes.windows(4).position(|w| w == b"\r\n\r\n") {
+            break index + 4;
+        }
+    };
+    let headers = String::from_utf8(bytes[..header_end].to_vec()).unwrap();
+    let length: usize = headers
+        .lines()
+        .find_map(|line| {
+            let (key, value) = line.split_once(':')?;
+            key.eq_ignore_ascii_case("content-length")
+                .then(|| value.trim().parse().unwrap())
+        })
+        .unwrap();
+    while bytes.len() < header_end + length {
+        let n = socket.read(&mut buffer).unwrap();
+        assert!(n > 0);
+        bytes.extend_from_slice(&buffer[..n]);
+    }
+    let body = serde_json::from_slice(&bytes[header_end..header_end + length]).unwrap();
+    (headers, body)
+}
+
+fn sse_response(events: &[Value]) -> String {
+    let sse = events
+        .iter()
+        .map(|event| format!("data: {event}\n\n"))
+        .collect::<String>();
+    format!("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", sse.len(), sse)
+}
+
 fn server(events: Vec<Value>) -> (String, std::sync::mpsc::Receiver<(String, Value)>) {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let url = format!("http://{}", listener.local_addr().unwrap());
     let (tx, rx) = std::sync::mpsc::channel();
     std::thread::spawn(move || {
         let (mut socket, _) = listener.accept().unwrap();
-        socket
-            .set_read_timeout(Some(Duration::from_secs(10)))
-            .unwrap();
-        let mut bytes = Vec::new();
-        let mut buffer = [0; 4096];
-        let header_end = loop {
-            let n = socket.read(&mut buffer).unwrap();
-            assert!(n > 0);
-            bytes.extend_from_slice(&buffer[..n]);
-            if let Some(index) = bytes.windows(4).position(|w| w == b"\r\n\r\n") {
-                break index + 4;
-            }
-        };
-        let headers = String::from_utf8(bytes[..header_end].to_vec()).unwrap();
-        let length: usize = headers
-            .lines()
-            .find_map(|line| {
-                let (key, value) = line.split_once(':')?;
-                key.eq_ignore_ascii_case("content-length")
-                    .then(|| value.trim().parse().unwrap())
-            })
-            .unwrap();
-        while bytes.len() < header_end + length {
-            let n = socket.read(&mut buffer).unwrap();
-            assert!(n > 0);
-            bytes.extend_from_slice(&buffer[..n]);
-        }
-        let body = serde_json::from_slice(&bytes[header_end..header_end + length]).unwrap();
+        let (headers, body) = read_request(&mut socket);
         tx.send((headers, body)).unwrap();
-        let sse = events
-            .iter()
-            .map(|event| format!("data: {event}\n\n"))
-            .collect::<String>();
-        write!(socket, "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", sse.len(), sse).unwrap();
+        write!(socket, "{}", sse_response(&events)).unwrap();
+    });
+    (url, rx)
+}
+
+/// Answers the first request with `status` + `error` and the second with the
+/// SSE stream — for exercising one-shot retries. Both request bodies come
+/// back in order.
+fn retry_server(
+    status: u16,
+    error: Value,
+    events: Vec<Value>,
+) -> (String, std::sync::mpsc::Receiver<Value>) {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let url = format!("http://{}", listener.local_addr().unwrap());
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        for attempt in 0..2 {
+            let (mut socket, _) = listener.accept().unwrap();
+            let (_, body) = read_request(&mut socket);
+            tx.send(body).unwrap();
+            if attempt == 0 {
+                let payload = serde_json::to_string(&error).unwrap();
+                write!(
+                    socket,
+                    "HTTP/1.1 {} Bad Request\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                    status,
+                    payload.len(),
+                    payload
+                )
+                .unwrap();
+            } else {
+                write!(socket, "{}", sse_response(&events)).unwrap();
+            }
+        }
     });
     (url, rx)
 }
@@ -546,7 +589,7 @@ async fn openrouter_reported_cost_reaches_usage() {
 }
 
 #[test]
-fn opencode_go_gets_a_session_cache_key_and_breakpoints() {
+fn opencode_go_gets_a_session_cache_key_and_breakpoints_only_on_messages_routes() {
     // The Go endpoint itself is pinned (keys never leave opencode.ai), so
     // this checks the request decisions rather than a mock round-trip.
     let mut go = model(ApiFormat::OpenAI);
@@ -556,13 +599,22 @@ fn opencode_go_gets_a_session_cache_key_and_breakpoints() {
         super::cache::prompt_cache_key("opencode-go", &go, session),
         Some(session.to_string())
     );
-    assert!(super::cache::wants_breakpoints(false, "opencode-go", &go));
+    // `/chat/completions` models auto-cache on an exact prefix; the gateway
+    // rejects `cache_control` for them with HTTP 400.
+    assert!(!super::cache::wants_breakpoints(false, "opencode-go", &go));
+    // `/messages` models (MiniMax, Qwen) take explicit breakpoints.
+    assert!(super::cache::wants_breakpoints(true, "opencode-go", &go));
     assert_eq!(
         super::cache::prompt_cache_key("desktop-opencode-go", &go, session),
         Some(session.to_string())
     );
-    assert!(super::cache::wants_breakpoints(
+    assert!(!super::cache::wants_breakpoints(
         false,
+        "desktop-opencode-go",
+        &go
+    ));
+    assert!(super::cache::wants_breakpoints(
+        true,
         "desktop-opencode-go",
         &go
     ));
@@ -571,4 +623,117 @@ fn opencode_go_gets_a_session_cache_key_and_breakpoints() {
         None
     );
     assert!(!super::cache::wants_breakpoints(false, "deepseek", &go));
+}
+
+/// One row per provider/route we ship: a future edit must not flip another
+/// provider's caching behavior silently.
+#[test]
+fn breakpoint_decisions_cover_every_provider_route() {
+    let cases: &[(&str, &str, ApiFormat, bool)] = &[
+        ("deepseek", "deepseek-v4-pro", ApiFormat::OpenAI, false),
+        ("glm", "glm-5.3", ApiFormat::OpenAI, false),
+        ("minimax", "MiniMax-M3", ApiFormat::Anthropic, true),
+        (
+            "opencode-go",
+            "deepseek-v4.1-flash",
+            ApiFormat::OpenAI,
+            false,
+        ),
+        ("opencode-go", "glm-5.3", ApiFormat::OpenAI, false),
+        ("opencode-go", "kimi-k2.6", ApiFormat::OpenAI, false),
+        ("opencode-go", "minimax-m3", ApiFormat::Anthropic, true),
+        ("opencode-go", "qwen3.8-max", ApiFormat::Anthropic, true),
+        ("opencode-go", "grok-4.7", ApiFormat::Responses, false),
+        (
+            "desktop-opencode-go",
+            "deepseek-v4.1-flash",
+            ApiFormat::OpenAI,
+            false,
+        ),
+        (
+            "desktop-opencode-go",
+            "qwen3.8-max",
+            ApiFormat::Anthropic,
+            true,
+        ),
+        (
+            "openrouter",
+            "anthropic/claude-sonnet-4",
+            ApiFormat::OpenAI,
+            true,
+        ),
+        (
+            "openrouter",
+            "google/gemini-2.5-pro",
+            ApiFormat::OpenAI,
+            true,
+        ),
+        ("openrouter", "openai/gpt-5", ApiFormat::OpenAI, false),
+        ("ollama", "qwen3", ApiFormat::OpenAI, false),
+        ("custom", "local-model", ApiFormat::OpenAI, false),
+        ("custom", "gateway-model", ApiFormat::Anthropic, true),
+    ];
+    for (provider, api_id, format, expected) in cases {
+        let mut candidate = model(*format);
+        candidate.provider_id = (*provider).into();
+        candidate.api_id = (*api_id).into();
+        assert_eq!(
+            super::cache::wants_breakpoints(*format == ApiFormat::Anthropic, provider, &candidate),
+            *expected,
+            "{provider}/{api_id}"
+        );
+    }
+}
+
+#[test]
+fn cache_control_option_overrides_the_route_rule() {
+    let mut chat = model(ApiFormat::OpenAI);
+    chat.provider_id = "opencode-go".into();
+    chat.options.insert("cache_control".into(), json!(true));
+    assert!(super::cache::wants_breakpoints(false, "opencode-go", &chat));
+    let mut messages = model(ApiFormat::Anthropic);
+    messages.provider_id = "minimax".into();
+    messages
+        .options
+        .insert("cache_control".into(), json!(false));
+    assert!(!super::cache::wants_breakpoints(true, "minimax", &messages));
+}
+
+#[tokio::test]
+async fn cache_control_rejection_retries_once_without_breakpoints() {
+    let (url, requests) = retry_server(
+        400,
+        json!({"error": {"message": "The parameter cache_control is not supported for the requested model"}}),
+        vec![
+            json!({"choices":[{"delta":{"content":"ok"}}]}),
+            json!({"choices":[{"delta":{},"finish_reason":"stop"}],
+                   "usage":{"prompt_tokens":10,"completion_tokens":1}}),
+        ],
+    );
+    let provider = openai::OpenAIProvider::from_info(info(url));
+    let (tx, mut rx) = tokio::sync::mpsc::channel(128);
+    let mut selected = model(ApiFormat::OpenAI);
+    selected.options.insert("cache_control".into(), json!(true));
+    let result = provider
+        .stream_completion(
+            &[Message::user("inspect")],
+            None,
+            &selected,
+            tx,
+            RequestContext::new(uuid::Uuid::new_v4()),
+        )
+        .await;
+    while rx.recv().await.is_some() {}
+    assert!(result.is_ok(), "{result:?}");
+    let first = requests.recv_timeout(Duration::from_secs(10)).unwrap();
+    let second = requests.recv_timeout(Duration::from_secs(10)).unwrap();
+    assert!(
+        super::cache::has_breakpoints(&first),
+        "first attempt carried markers"
+    );
+    assert!(
+        !super::cache::has_breakpoints(&second),
+        "retry dropped the markers"
+    );
+    assert_eq!(second["messages"][0]["content"][0]["text"], "inspect");
 }

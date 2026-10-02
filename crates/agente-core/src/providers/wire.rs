@@ -173,6 +173,35 @@ pub(super) async fn send_request(
     Ok(response)
 }
 
+/// `send_request`, retrying once without cache breakpoints when a provider
+/// rejects `cache_control` for a model we expected to accept it (OpenCode Go
+/// validates the parameter per model). The retry only fires when the body
+/// carried markers and the error names the parameter, so normal traffic never
+/// pays for it.
+pub(super) async fn send_with_cache_fallback(
+    info: &ProviderInfo,
+    model: &ModelInfo,
+    path: &str,
+    body: &Value,
+    context: RequestContext,
+) -> Result<reqwest::Response, LlmError> {
+    match send_request(info, model, path, body, context).await {
+        Err(LlmError::HttpError(message))
+            if message.contains("cache_control") && super::cache::has_breakpoints(body) =>
+        {
+            tracing::warn!(
+                provider = %info.id,
+                model = %model.api_id,
+                "Provider rejected cache_control; retrying without breakpoints"
+            );
+            let mut retry = body.clone();
+            super::cache::strip_breakpoints(&mut retry);
+            send_request(info, model, path, &retry, context).await
+        }
+        result => result,
+    }
+}
+
 /// Replay native blocks only while their generic transcript projection still
 /// matches. Compaction, tool repair, or a model switch must not resurrect stale
 /// tool calls or invalid signed reasoning.

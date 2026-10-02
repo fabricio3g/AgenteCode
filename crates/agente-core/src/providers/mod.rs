@@ -23,7 +23,7 @@ mod routed;
 pub mod spec;
 mod wire;
 pub(crate) use wire::{model_options, wire_options};
-use wire::{replay_blocks, send_request, stream_error};
+use wire::{replay_blocks, send_request, send_with_cache_fallback, stream_error};
 mod sse;
 pub mod summarizer;
 pub mod title;

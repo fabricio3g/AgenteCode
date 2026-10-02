@@ -343,7 +343,7 @@ impl Provider for MessagesProvider {
         sender: Sender<StreamEvent>,
         context: RequestContext,
     ) -> Result<Usage, LlmError> {
-        let response = super::send_request(
+        let response = super::send_with_cache_fallback(
             &self.info,
             model,
             "messages",

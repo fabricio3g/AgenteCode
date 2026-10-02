@@ -268,7 +268,8 @@ impl Provider for OpenAIProvider {
         }
 
         let response =
-            super::send_request(&self.info, model, "chat/completions", &body, context).await?;
+            super::send_with_cache_fallback(&self.info, model, "chat/completions", &body, context)
+                .await?;
 
         let mut stream = super::sse::EventStream::new(response.bytes_stream());
         let mut usage = Usage::default();

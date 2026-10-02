@@ -3,10 +3,14 @@
 //! Two halves:
 //! - **Breakpoints.** OpenAI, DeepSeek, GLM and most OpenAI-compatible APIs
 //!   cache a stable prefix automatically. Anthropic-style endpoints (Claude,
-//!   MiniMax's Anthropic API) and OpenRouter's Claude/Gemini routes cache
-//!   only what carries `cache_control`, so those requests mark the system
-//!   prompt plus a rolling breakpoint on the two newest user turns — the
-//!   prefix grows turn by turn and every call reuses the previous one.
+//!   MiniMax's Anthropic API, OpenCode Go's `/messages` routes for
+//!   MiniMax/Qwen) and OpenRouter's Claude/Gemini routes cache only what
+//!   carries `cache_control`, so those requests mark the system prompt plus a
+//!   rolling breakpoint on the two newest user turns — the prefix grows turn
+//!   by turn and every call reuses the previous one. OpenCode Go's
+//!   `/chat/completions` models (DeepSeek, GLM, Kimi, …) auto-cache and its
+//!   gateway rejects the parameter per model (HTTP 400), so they carry only
+//!   the session key below.
 //! - **Usage.** Providers report cache hits under different names; they all
 //!   land in `Usage::cache_read_tokens` / `cache_creation_tokens`.
 //!
@@ -17,6 +21,10 @@ use serde_json::{json, Value};
 use super::ModelInfo;
 
 /// Whether a request should carry explicit `cache_control` breakpoints.
+/// `anthropic_format` is the resolved route: OpenCode Go serves MiniMax and
+/// Qwen over `/messages` (breakpoints), while its `/chat/completions` models
+/// auto-cache and the gateway rejects the parameter per model (HTTP 400) —
+/// so the provider id itself is never a reason to mark a request.
 pub(crate) fn wants_breakpoints(
     anthropic_format: bool,
     provider_id: &str,
@@ -30,16 +38,16 @@ pub(crate) fn wants_breakpoints(
         return true;
     }
     let id = model.api_id.to_ascii_lowercase();
-    // OpenCode Go honors breakpoints on the models it can cache; without
-    // them (and a `prompt_cache_key`) its gateway never engages the cache.
-    provider_id == "opencode-go"
-        || (provider_id == "openrouter"
-            && (id.starts_with("anthropic/") || id.starts_with("google/gemini")))
+    // OpenRouter fronts Claude/Gemini with an OpenAI-shaped body that still
+    // honors Anthropic-style breakpoints.
+    provider_id == "openrouter" && (id.starts_with("anthropic/") || id.starts_with("google/gemini"))
 }
 
 /// Session-scoped `prompt_cache_key` for gateways that only reuse a cached
-/// prefix when told which session a request belongs to (OpenCode Go). An
-/// explicit model option wins.
+/// prefix when told which session a request belongs to (OpenCode Go, every
+/// route — its auto-caching `/chat/completions` models and its
+/// breakpoint-caching `/messages` routes alike). An explicit model option
+/// wins.
 pub(crate) fn prompt_cache_key(
     provider_id: &str,
     model: &ModelInfo,
@@ -93,6 +101,37 @@ fn is_empty_content(content: &Value) -> bool {
         Value::String(s) => s.is_empty(),
         Value::Array(a) => a.is_empty(),
         _ => true,
+    }
+}
+
+/// Whether a request body already carries `cache_control` markers (the
+/// fallback retry only fires when there is something to strip).
+pub(crate) fn has_breakpoints(value: &Value) -> bool {
+    match value {
+        Value::Object(map) => map
+            .iter()
+            .any(|(key, value)| key == "cache_control" || has_breakpoints(value)),
+        Value::Array(items) => items.iter().any(has_breakpoints),
+        _ => false,
+    }
+}
+
+/// Remove every `cache_control` marker from a request body — the retry after
+/// a provider rejects the parameter for a model we expected to accept it.
+pub(crate) fn strip_breakpoints(value: &mut Value) {
+    match value {
+        Value::Object(map) => {
+            map.remove("cache_control");
+            for value in map.values_mut() {
+                strip_breakpoints(value);
+            }
+        }
+        Value::Array(items) => {
+            for item in items {
+                strip_breakpoints(item);
+            }
+        }
+        _ => {}
     }
 }
 
@@ -171,5 +210,26 @@ mod tests {
             messages[3]["content"].is_string(),
             "assistant turns untouched"
         );
+    }
+
+    #[test]
+    fn breakpoint_helpers_detect_and_strip_markers() {
+        let mut body = json!({
+            "messages": [
+                {"role": "system", "content": [
+                    {"type": "text", "text": "s", "cache_control": {"type": "ephemeral"}}
+                ]},
+                {"role": "user", "content": "hello"},
+            ],
+            "stream": true,
+        });
+        assert!(has_breakpoints(&body));
+        strip_breakpoints(&mut body);
+        assert!(!has_breakpoints(&body));
+        assert_eq!(body["messages"][0]["content"][0]["text"], "s");
+        assert_eq!(body["stream"], true);
+        assert!(!has_breakpoints(
+            &json!({"messages": [{"role": "user", "content": "hi"}]})
+        ));
     }
 }
