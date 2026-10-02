@@ -1100,14 +1100,11 @@ async fn discovery_keeps_unrouted_models_and_preserves_live_metadata() {
         Some(ApiFormat::Anthropic)
     );
     let headers = requests.recv().unwrap().0;
-    assert!(
-        headers.starts_with("GET ")
-            && headers
-                .lines()
-                .next()
-                .unwrap()
-                .ends_with("/models HTTP/1.1")
-    );
+    let mut request_line = headers.lines().next().unwrap().split_whitespace();
+    assert_eq!(request_line.next(), Some("GET"));
+    let target = request_line.next().unwrap().split('?').next().unwrap();
+    assert!(target.ends_with("/models"), "{headers}");
+    assert_eq!(request_line.next(), Some("HTTP/1.1"));
 }
 
 #[test]

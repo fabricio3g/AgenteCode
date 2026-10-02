@@ -52,6 +52,9 @@ jobs:
         run: npm test --prefix renderer
 
       - name: Build production bundles
+        env:
+          # The renderer dependency graph exceeds Node's default 2 GB heap.
+          NODE_OPTIONS: --max-old-space-size=6144
         run: |
           npm run build:main
           npm run build:renderer
