@@ -70,6 +70,39 @@ afterEach(async () => {
 });
 
 describe('chat-db process persistence', () => {
+  it('updates drafts without replacing messages or model choices', async (t) => {
+    if (!getDatabase()) { t.skip(`better-sqlite3 unavailable: ${sqliteUnavailable}`); return; }
+    const { saveChatSession, saveChatDraft, loadAllChats } = await loadChatDb();
+    saveChatSession({ id: 'draft', title: 'Draft', createdAt: 1, updatedAt: 1,
+      modelSelection: { provider: 'custom-a', model: 'model-a' },
+      messages: [{ id: 'kept', role: 'assistant', content: 'Scrollback', createdAt: 1, done: true }] });
+    assert.strictEqual(saveChatDraft('draft', 'typed', null, 2), true);
+    const [saved] = loadAllChats();
+    assert.strictEqual(saved.draft, 'typed');
+    assert.strictEqual(saved.modelSelection.model, 'model-a');
+    assert.strictEqual(saved.messages[0].content, 'Scrollback');
+    assert.strictEqual(saveChatDraft('missing', 'typed', null, 2), false);
+  });
+
+  it('persists a different provider/model and reasoning choice in each space', async (t) => {
+    if (!getDatabase()) { t.skip(`better-sqlite3 unavailable: ${sqliteUnavailable}`); return; }
+    const { saveChatSession, loadAllChats, closeDb } = await loadChatDb();
+    for (const [index, contextMode] of ['home', 'code', 'roleplay'].entries()) {
+      saveChatSession({ id: contextMode, title: contextMode, contextMode, createdAt: 1, updatedAt: index + 1,
+        reasoningLevel: 'high', modelSelection: { backendMode: index === 1 ? 'local' : 'api',
+          provider: `custom-${index}`, model: `model-${index}`, localModel: `local-${index}`,
+          localModelPath: `/models/${index}.gguf`, localBaseUrl: 'http://localhost:1234/v1' }, messages: [] });
+    }
+    closeDb();
+    const chats = loadAllChats();
+    for (const [index, contextMode] of ['home', 'code', 'roleplay'].entries()) {
+      const chat = chats.find(chat => chat.id === contextMode);
+      assert.strictEqual(chat.modelSelection.provider, `custom-${index}`);
+      assert.strictEqual(chat.modelSelection.model, `model-${index}`);
+      assert.strictEqual(chat.reasoningLevel, 'high');
+    }
+  });
+
   it('round-trips Roleplay presence, decisions, response versions and historical persona identity', async (t) => {
     if (!getDatabase()) {
       t.skip(`better-sqlite3 is unavailable in this Node runtime: ${sqliteUnavailable}`);

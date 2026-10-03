@@ -40,11 +40,13 @@ describe('manager routing', () => {
 });
 
 describe('models and settings shell integration', () => {
-  it('renders separate expanded sidebar Models and Settings entries and no separate Runtime entry', () => {
+  // Models, providers and preferences are all sections of the Settings screen,
+  // so the sidebar has one door to that room, not two — and no Runtime either.
+  it('leaves one sidebar entry for Settings and no separate Models or Runtime entry', () => {
     const sidebar = readFileSync('renderer/src/lib/components/layout/Sidebar.svelte', 'utf8');
     // Labels are translated: match the message keys the buttons render.
-    assert.equal((sidebar.match(/<span class="btn-label">\{\$t\('sidebar\.models'\)\}<\/span>/g) || []).length, 1);
-    assert.equal((sidebar.match(/<span class="btn-label">\{\$t\('sidebar\.settings'\)\}<\/span>/g) || []).length, 1);
+    assert.equal((sidebar.match(/<span class="sidebar-row-label">\{\$t\('sidebar\.settings'\)\}<\/span>/g) || []).length, 1);
+    assert.equal((sidebar.match(/sidebar\.models|>Models</g) || []).length, 0);
     assert.equal((sidebar.match(/sidebar\.runtime|>Runtime</g) || []).length, 0);
   });
 
@@ -54,5 +56,25 @@ describe('models and settings shell integration', () => {
     assert.match(appShell, /legacyFlagToModelHubSection\('runtimeManagerOpen'\)/);
     assert.doesNotMatch(appShell, /<SettingsModal/);
     assert.doesNotMatch(appShell, /<LocalRuntimeModal/);
+  });
+
+  // Settings is a screen in the shell, not a modal over it: the surface
+  // underneath has to stay mounted, which only holds if the screen is layered
+  // on top of the workspace instead of joining the space branch.
+  it('mounts Settings over the workspace, never in the space branch', () => {
+    const appShell = readFileSync('renderer/src/lib/components/layout/AppShell.svelte', 'utf8');
+    assert.match(appShell, /<SettingsScreen \/>/);
+    assert.doesNotMatch(appShell, /<ModelHubModal/);
+    const host = appShell.indexOf('</WorkspaceHost>');
+    const screen = appShell.indexOf('<SettingsScreen');
+    assert.ok(host > 0 && screen > host, 'the screen is layered above the workspace, not inside it');
+  });
+
+  it('opens Settings from the sidebar through the screen, not the old modal flags', () => {
+    const sidebar = readFileSync('renderer/src/lib/components/layout/Sidebar.svelte', 'utf8');
+    assert.equal((sidebar.match(/appStore\.openSettings\('/g) || []).length, 1);
+    assert.doesNotMatch(sidebar, /modelManagerOpen/);
+    // The screen's way back: focus returns to the button that opened it.
+    assert.match(sidebar, /data-sidebar-settings/);
   });
 });

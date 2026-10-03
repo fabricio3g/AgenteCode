@@ -139,3 +139,10 @@ test('missing-model error uses the shared localized sentence in all seven langua
   assert.equal(new RuntimeNoModelError('pt-PT').message, new RuntimeNoModelError('pt-BR').message);
   assert.equal(new RuntimeNoModelError('unknown').message, new RuntimeNoModelError('en').message);
 });
+
+test('a returning conversation loads its saved local file rather than the global selection', async () => {
+  const h = harness({ status: () => ({ state: 'ready', model_path: '/models/model.gguf', port: 11435 }) });
+  await h.ensure({ ...transport, modelPath: '/models/conversation.gguf', model: 'conversation.gguf' });
+  assert.equal(h.starts.length, 1);
+  assert.equal(h.starts[0].model_path, '/models/conversation.gguf');
+});
