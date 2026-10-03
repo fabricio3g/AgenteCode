@@ -18,7 +18,7 @@ import { lineCount } from './text-lines.ts';
 const run = promisify(execFile);
 
 /** `relative` resolved inside `projectRoot`; throws when it points outside. */
-function resolveInRoot(projectRoot: string, relative: string): string {
+export function resolveInRoot(projectRoot: string, relative: string): string {
   const root = path.resolve(projectRoot);
   const abs = path.isAbsolute(relative) ? path.resolve(relative) : path.resolve(root, relative);
   if (abs !== root && !abs.startsWith(root + path.sep)) {

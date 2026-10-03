@@ -4,12 +4,12 @@ import { app, BrowserWindow, Menu, Tray, nativeImage, shell, session, dialog, sy
 import fs from 'node:fs';
 import net from 'node:net';
 import path from 'node:path';
+import { chatDatabase } from './chat-db-client.ts';
 import { registerIpcHandlers, disposeAllAgenteSessions, disposeCodeWorkspace } from './ipc-handlers.ts';
 import { stopAllInstances } from './instances.ts';
-import { initTts } from './voice/audiocpp-tts.ts';
 import { moduleDirname } from './module-env.ts';
 import { APP_NAME } from '../shared/brand.ts';
-import { setMainWindow, setPreloadPath, getMainWindow, requestMainWindowClose, setActiveWorkState } from './window-manager.ts';
+import { setMainWindow, setPreloadPath, getMainWindow, requestMainWindowClose, setActiveWorkState, TITLEBAR_HEIGHT, TITLEBAR_OVERLAY, usesCaptionOverlay } from './window-manager.ts';
 import { zoomKeyDirection } from '../shared/zoom-keys.ts';
 
 // Resolves under both the esbuild CJS bundle and tsx's ESM loader.
@@ -25,6 +25,11 @@ const RENDERER_DEV_URL = 'http://localhost:5173';
  * providers all broke that way. Give each attempt time to finish.
  */
 net.setDefaultAutoSelectFamilyAttemptTimeout(2500);
+
+// Chromium's HTTP cache is unbounded by default and grew past a gigabyte —
+// in development almost all of it Vite modules served from localhost. The
+// packaged renderer loads from disk, so a small cache loses nothing.
+app.commandLine.appendSwitch('disk-cache-size', String((IS_DEV ? 32 : 128) * 1024 * 1024));
 
 // Packaged, the main bundle runs from app.asar/dist-electron/main: the
 // renderer and preload are found from the app's root, not from here.
@@ -56,8 +61,19 @@ function createWindow() {
     minHeight: 640,
     title: APP_NAME,
     icon: fs.existsSync(APP_ICON_PATH) ? APP_ICON_PATH : undefined,
-    frame: false,
-    titleBarStyle: 'hidden',
+    // `titleBarStyle` replaces the old `frame: false`, which on macOS *is*
+    // 'hidden' and would silently undo the 'hiddenInset' inset below.
+    // Windows/Linux keep their caption controls when we add the overlay;
+    // macOS keeps its real traffic lights.
+    titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'hidden',
+    // Let the OS draw the caption buttons instead of us faking them: correct
+    // hover states, correct hit areas at every DPI, the Win11 snap-layout
+    // flyout, and the system menu. macOS ignores this option entirely.
+    ...(usesCaptionOverlay
+      ? { titleBarOverlay: { ...TITLEBAR_OVERLAY, height: TITLEBAR_HEIGHT } }
+      : {}),
+    // Win11 draws the rounded corners and shadow itself once the frame is ours.
+    roundedCorners: true,
     webPreferences: {
       preload: PRELOAD_PATH,
       contextIsolation: true,
@@ -151,7 +167,8 @@ app.whenReady().then(async () => {
   createWindow();
 
   // Preload Kokoro TTS model in background while app finishes booting
-  if (!smokeMode) initTts().catch(() => {});
+  // TTS starts its audio.cpp server on the first speak (generateTtsStream),
+  // not at launch: most sessions never speak, and the server costs cores and RAM.
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -166,7 +183,14 @@ app.on('window-all-closed', () => {
   }
 });
 
-app.on('before-quit', async () => {
+let cleanupComplete = false;
+let cleanupStarted = false;
+app.on('before-quit', async event => {
+  if (cleanupComplete) return;
+  event.preventDefault();
+  if (cleanupStarted) return;
+  cleanupStarted = true;
+  try { await chatDatabase.close(); } catch (error) { console.warn('[database] shutdown:', error); }
   try {
     const { disposeAllAgenteSessions, disposeCodeWorkspace } = await import('./ipc-handlers.js');
     disposeAllAgenteSessions();
@@ -181,4 +205,6 @@ app.on('before-quit', async () => {
     const { closeDb } = await import('./chat-db.js');
     closeDb();
   } catch { /* ignore cleanup errors */ }
+  cleanupComplete = true;
+  app.quit();
 });

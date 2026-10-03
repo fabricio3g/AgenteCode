@@ -65,7 +65,7 @@ export function registerHomeRuntimeHandlers(ipcMain: IpcMain) {
       sessionId = snapshot.session_id;
     }
     if ([...runs.values()].some((run) => run.sessionId === sessionId)) throw new Error('This Home chat is already working.');
-    const provider = await useProvider(client, args.provider, args.model);
+    const provider = await useProvider(client, args.provider, args.model, args.localSelection);
     const info = await client.request<{ limits?: { context?: number } }>('models.info', { provider: provider.id, model: provider.model });
     await client.request('client_tools.register', { session_id: sessionId, tools: args.tools });
     const run: Run = { runId: args.runId, sessionId, owner: event.sender, client, pending: new Set() };
@@ -97,6 +97,11 @@ export function registerHomeRuntimeHandlers(ipcMain: IpcMain) {
     const run = runs.get(args.runId);
     if (!run || run.owner.id !== event.sender.id || run.sessionId !== args.result.session_id || run.turnId !== args.result.turn_id || !run.pending.delete(args.result.request_id)) throw new Error('Stale or foreign Home tool result.');
     return run.client.request('client_tools.result', args.result);
+  });
+  ipcMain.handle('home_runtime_update', async (event, args: { sessionId: string; thinkingLevel?: string }) => {
+    const run = [...runs.values()].find(run => run.sessionId === args.sessionId && run.owner.id === event.sender.id);
+    if (!run?.turnId) return { ok: false };
+    return run.client.request('turn.update', { turn_id: run.turnId, thinking_level: args.thinkingLevel || 'auto' });
   });
   ipcMain.handle('home_runtime_cancel', async (event, args: { runId: string }) => {
     const run = runs.get(args.runId);

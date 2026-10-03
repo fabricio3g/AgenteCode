@@ -1,9 +1,8 @@
 // ── "Test connection" for a provider ───────────────────────────────────
-// The catalog helpers swallow failures (a missing list must never break a
-// chat), which is useless for telling someone why their key does not work.
-// This asks the endpoint directly and names the failure.
+// This asks the endpoint directly and categorizes connection failures.
 
 import type { Dialect } from './dialects.ts';
+import { APP_USER_AGENT } from '../../shared/brand.ts';
 
 export type ConnectionFailure = 'no_key' | 'auth' | 'not_found' | 'rate_limited' | 'server' | 'unreachable' | 'bad_response';
 
@@ -37,6 +36,7 @@ export async function testProviderConnection(args: {
   if (!base) return { ok: false, reason: 'unreachable', detail: 'No base URL' };
   const headers: Record<string, string> = {
     Accept: 'application/json',
+    'User-Agent': APP_USER_AGENT,
     ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
     ...(dialect?.headers ? dialect.headers(apiKey) : {})
   };

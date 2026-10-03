@@ -157,7 +157,7 @@ export type CodeAgentEvent =
   | { type: 'length_continue'; chatId: string; turnIndex: number }
   | { type: 'todo_update'; chatId: string; todos: CodeTodoItem[] }
   | { type: 'compaction_start'; chatId: string; reason: string }
-  | { type: 'compaction_end'; chatId: string; reason: string; success: boolean; tokensBefore?: number; tokensAfter?: number; smart?: boolean }
+  | { type: 'compaction_end'; chatId: string; reason: string; success: boolean; tokensBefore?: number; tokensAfter?: number; smart?: boolean; requestedSmart?: boolean; modelTokens?: number; inputTokens?: number; outputTokens?: number; cacheReadTokens?: number; cacheWriteTokens?: number }
   | { type: 'approval_request'; chatId: string; requestId: string; toolName: string; args: unknown; diff?: string; kind?: 'action' | 'plan' }
   | { type: 'approval_resolved'; chatId: string; requestId: string; decision: ApprovalDecision }
   | { type: 'checkpoint_captured'; chatId: string; turnIndex: number; fileCount: number }
@@ -186,7 +186,13 @@ export type CodeAgentEvent =
   | { type: 'content_replace'; chatId: string; content: string }
   | { type: 'steer_acknowledged'; chatId: string; accepted: boolean; queuedCount?: number };
 
+export interface LocalModelSelection {
+  modelPath: string;
+  baseUrl: string;
+}
+
 export interface AgenteStartSessionArgs {
+  localSelection?: LocalModelSelection;
   chatId: string;
   projectRoot: string;
   provider: string;

@@ -49,3 +49,60 @@ export interface FileDiff {
   binary: boolean;
   tooLarge: boolean;
 }
+
+/** One local branch, as `git for-each-ref` describes it. */
+export interface GitBranch {
+  name: string;
+  /** Short commit id of the branch tip. */
+  commit: string;
+  current: boolean;
+  upstream?: string;
+  ahead: number;
+  behind: number;
+}
+
+/** Everything the branch menu needs for one project, in a single round trip. */
+export interface GitBranches {
+  source: 'git' | 'none';
+  /** The branch HEAD points at, the short commit when detached, null outside git. */
+  current: string | null;
+  detached: boolean;
+  /** The worktree has staged, modified or deleted files (untracked ones do not count). */
+  dirty: boolean;
+  branches: GitBranch[];
+}
+
+/** `git switch` is an action, so failure comes back as data, never as a throw. */
+export interface SwitchBranchResult {
+  ok: boolean;
+  error?: string;
+  branch?: string;
+}
+
+export interface OpenInEditorArgs {
+  projectRoot: string;
+  /** Project-relative or absolute; the main process rejects paths outside the root. */
+  path: string;
+  line?: number;
+  /** The user's editor preference; empty means resolve from the environment. */
+  editor?: string;
+}
+
+/**
+ * A terminal-only editor (nvim, vim, hx) cannot be launched detached into a
+ * window; the app runs it in its own terminal instead. `command` is a complete
+ * shell line, already quoted.
+ */
+export interface EditorTerminalRequest {
+  command: string;
+  cwd: string;
+}
+
+/** `ok: false` carries a message; a `terminal` request means "run this instead". */
+export interface OpenInEditorResult {
+  ok: boolean;
+  /** The editor that was launched (or would have been), for the toast. */
+  editor?: string;
+  error?: string;
+  terminal?: EditorTerminalRequest;
+}

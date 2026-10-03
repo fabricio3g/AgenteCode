@@ -60,7 +60,7 @@ import {
 import { completeChatRequest, startChatStream, cancelChatStream } from './chat-ipc.ts';
 import { resolveApiKey } from './provider-auth.ts';
 import { resolveProvider } from './providers/registry.ts';
-import { saveChatSession, loadAllChats, searchChatContent, deleteChat as deleteChatFromDb, migrateFromLocalStorage, loadAllFolders, saveFolder, deleteFolder, loadAllCodeProjects, saveCodeProject, deleteCodeProject, loadAllCharacters, saveCharacter, deleteCharacter, loadAllPersonas, savePersona, deletePersona, loadAllWorlds, saveWorld, deleteWorld } from './chat-db.ts';
+import { chatDatabase } from './chat-db-client.ts';
 import { countTokens, buildContextBudget, truncateMessages } from './token-counter.ts';
 import { registerWindowHandlers } from './ipc/window-handlers.ts';
 import { registerConfigHandlers } from './ipc/config-handlers.ts';
@@ -72,6 +72,7 @@ import { registerEngineHandlers } from './ipc/engine-handlers.ts';
 import { registerInstanceHandlers } from './ipc/instance-handlers.ts';
 import { registerWhisperHandlers } from './ipc/whisper-handlers.ts';
 import { registerProviderHandlers } from './ipc/provider-handlers.ts';
+import { invalidateProviderDiscovery } from './agente/thinking.ts';
 import { registerChatHandlers } from './ipc/chat-handlers.ts';
 import { registerChatDbHandlers } from './ipc/chat-db-handlers.ts';
 import { registerTokenHandlers } from './ipc/token-handlers.ts';
@@ -201,6 +202,7 @@ export function registerIpcHandlers() {
     ipcMain,
     resolveProvider,
     resolveApiKey,
+    onModelsRefreshed: invalidateProviderDiscovery,
   });
 
   // ── Chat (main-process network for API key safety) ──
@@ -215,27 +217,28 @@ export function registerIpcHandlers() {
   // ── Chat DB (SQLite persistence) ──
   registerChatDbHandlers({
     ipcMain,
-    saveChatSession,
-    loadAllChats,
-    searchChatContent,
-    deleteChatFromDb,
+    saveChatDraft: (...args) => chatDatabase.request('saveChatDraft', ...args),
+    saveChatSession: (...args) => chatDatabase.request('saveChatSession', ...args),
+    loadAllChats: (...args) => chatDatabase.request('loadAllChats', ...args),
+    searchChatContent: (...args) => chatDatabase.request('searchChatContent', ...args),
+    deleteChatFromDb: (...args) => chatDatabase.request('deleteChatFromDb', ...args),
     clearRagDocuments,
-    migrateFromLocalStorage,
-    loadAllFolders,
-    saveFolder,
-    deleteFolder,
-    loadAllCodeProjects,
-    saveCodeProject,
-    deleteCodeProject,
-    loadAllCharacters,
-    saveCharacter,
-    deleteCharacter,
-    loadAllPersonas,
-    savePersona,
-    deletePersona,
-    loadAllWorlds,
-    saveWorld,
-    deleteWorld,
+    migrateFromLocalStorage: (...args) => chatDatabase.request('migrateFromLocalStorage', ...args),
+    loadAllFolders: (...args) => chatDatabase.request('loadAllFolders', ...args),
+    saveFolder: (...args) => chatDatabase.request('saveFolder', ...args),
+    deleteFolder: (...args) => chatDatabase.request('deleteFolder', ...args),
+    loadAllCodeProjects: (...args) => chatDatabase.request('loadAllCodeProjects', ...args),
+    saveCodeProject: (...args) => chatDatabase.request('saveCodeProject', ...args),
+    deleteCodeProject: (...args) => chatDatabase.request('deleteCodeProject', ...args),
+    loadAllCharacters: (...args) => chatDatabase.request('loadAllCharacters', ...args),
+    saveCharacter: (...args) => chatDatabase.request('saveCharacter', ...args),
+    deleteCharacter: (...args) => chatDatabase.request('deleteCharacter', ...args),
+    loadAllPersonas: (...args) => chatDatabase.request('loadAllPersonas', ...args),
+    savePersona: (...args) => chatDatabase.request('savePersona', ...args),
+    deletePersona: (...args) => chatDatabase.request('deletePersona', ...args),
+    loadAllWorlds: (...args) => chatDatabase.request('loadAllWorlds', ...args),
+    saveWorld: (...args) => chatDatabase.request('saveWorld', ...args),
+    deleteWorld: (...args) => chatDatabase.request('deleteWorld', ...args),
   });
 
   // ── Token counting / context budget ──

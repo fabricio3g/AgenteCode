@@ -1,9 +1,16 @@
 import Database from 'better-sqlite3';
+import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { getAppPaths } from './paths.ts';
 
 let db = null;
+let databasePath: string | undefined;
+const messageFingerprints = new Map<string, string>();
+const chatMessageIds = new Map<string, Set<string>>();
+/** Workers receive the resolved path; Electron's app API stays on the main thread. */
+export function setChatDbPath(value: string) { if (db) throw new Error('Database already open'); databasePath = value; }
+
 
 function stringifyJson(value) {
   if (value == null) return null;
@@ -33,6 +40,7 @@ function addColumn(database, table, column, definition) {
 }
 
 function getDbPath() {
+  if (databasePath) return databasePath;
   const { cacheRoot } = getAppPaths();
   return path.join(cacheRoot, 'chat-history.db');
 }
@@ -209,6 +217,8 @@ function migrate(database) {
   addColumn(database, 'chats', 'composer_mode', 'TEXT');
   addColumn(database, 'chats', 'search_mode', 'TEXT');
   addColumn(database, 'chats', 'reasoning_level', 'TEXT');
+  addColumn(database, 'chats', 'model_selection', 'TEXT');
+  addColumn(database, 'chats', 'pending_prompts', 'TEXT');
   addColumn(database, 'message_versions', 'metadata', 'TEXT');
   addColumn(database, 'attachments', 'data', 'TEXT');
   // Roleplay identity
@@ -223,11 +233,17 @@ function migrate(database) {
   addColumn(database, 'messages', 'story_turn', 'TEXT');
 }
 
+/** Draft changes never rewrite the transcript, attachments, or response versions. */
+export function saveChatDraft(chatId: string, draft: string, codeAgent: unknown, updatedAt: number, pendingPrompts?: unknown): boolean {
+  return getDb().prepare('UPDATE chats SET draft = ?, code_agent = ?, updated_at = ?, pending_prompts = COALESCE(?, pending_prompts) WHERE id = ?')
+    .run(draft, stringifyJson(codeAgent), updatedAt, pendingPrompts === undefined ? null : stringifyJson(pendingPrompts), chatId).changes > 0;
+}
+
 export function saveChatSession(session) {
   const database = getDb();
   const upsertChat = database.prepare(`
-    INSERT INTO chats (id, title, folder_id, draft, context_mode, code_agent, home_runtime, project_id, workspace, composer_mode, search_mode, reasoning_level, character_id, world_id, persona_id, greeting_index, roleplay, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO chats (id, title, folder_id, draft, context_mode, code_agent, home_runtime, project_id, workspace, composer_mode, search_mode, reasoning_level, model_selection, pending_prompts, character_id, world_id, persona_id, greeting_index, roleplay, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET
       title = excluded.title,
       folder_id = excluded.folder_id,
@@ -240,6 +256,8 @@ export function saveChatSession(session) {
       composer_mode = excluded.composer_mode,
       search_mode = excluded.search_mode,
       reasoning_level = excluded.reasoning_level,
+      model_selection = excluded.model_selection,
+      pending_prompts = excluded.pending_prompts,
       character_id = excluded.character_id,
       world_id = excluded.world_id,
       persona_id = excluded.persona_id,
@@ -301,6 +319,8 @@ export function saveChatSession(session) {
     database.prepare(`DELETE FROM messages WHERE chat_id = ? AND id NOT IN (${placeholders})`).run(chatId, ...keepIds);
   };
 
+  const pendingFingerprints = new Map<string, string>();
+  const messageIds = new Set<string>();
   const transaction = database.transaction(() => {
     upsertChat.run(
       session.id,
@@ -315,6 +335,8 @@ export function saveChatSession(session) {
       session.composerMode || null,
       session.searchMode || null,
       session.reasoningLevel || null,
+      stringifyJson(session.modelSelection),
+      stringifyJson(session.pendingPrompts),
       session.characterId || null,
       session.worldId || null,
       session.personaId || null,
@@ -330,6 +352,11 @@ export function saveChatSession(session) {
 
     for (const msg of messages) {
       if (!msg?.id) continue;
+      messageIds.add(msg.id);
+      const cacheKey = `${session.id}\0${msg.id}`;
+      const fingerprint = createHash('sha256').update(JSON.stringify(msg)).digest('hex');
+      if (messageFingerprints.get(cacheKey) === fingerprint) continue;
+      pendingFingerprints.set(cacheKey, fingerprint);
       upsertMessage.run(
         msg.id,
         session.id,
@@ -402,6 +429,11 @@ export function saveChatSession(session) {
   });
 
   transaction();
+  // Publish fingerprints only after commit; failed transactions must be retried.
+  for (const id of chatMessageIds.get(session.id) ?? []) if (!messageIds.has(id)) messageFingerprints.delete(`${session.id}\0${id}`);
+  chatMessageIds.set(session.id, messageIds);
+  for (const [key, fingerprint] of pendingFingerprints) messageFingerprints.set(key, fingerprint);
+  while (messageFingerprints.size > 10000) messageFingerprints.delete(messageFingerprints.keys().next().value!);
 }
 
 /**
@@ -537,6 +569,8 @@ export function loadAllChats() {
       composerMode: chat.composer_mode || null,
       searchMode: chat.search_mode || null,
       reasoningLevel: chat.reasoning_level || null,
+      modelSelection: parseJson(chat.model_selection, null),
+      pendingPrompts: parseJson(chat.pending_prompts, []),
       characterId: chat.character_id || null,
       worldId: chat.world_id || null,
       personaId: chat.persona_id || null,
@@ -727,6 +761,8 @@ export function deleteWorld(worldId) {
 export function deleteChat(chatId) {
   const database = getDb();
   database.prepare('DELETE FROM chats WHERE id = ?').run(chatId);
+  for (const id of chatMessageIds.get(chatId) ?? []) messageFingerprints.delete(`${chatId}\0${id}`);
+  chatMessageIds.delete(chatId);
 }
 
 export function migrateFromLocalStorage(persistedState) {
@@ -752,6 +788,8 @@ export function migrateFromLocalStorage(persistedState) {
 }
 
 export function closeDb() {
+  messageFingerprints.clear();
+  chatMessageIds.clear();
   if (db) {
     db.close();
     db = null;

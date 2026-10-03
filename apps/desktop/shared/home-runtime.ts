@@ -1,3 +1,4 @@
+import type { LocalModelSelection } from './agente-protocol.ts';
 import type { ClientToolCall, ClientToolDefinition, ClientToolResult, HomeTurnPolicy, Message, RuntimeEventEnvelope, SessionSnapshot, TurnOutcome } from './agente-protocol.gen.ts';
 
 export interface HomeRuntimeMeta {
@@ -13,6 +14,7 @@ export interface HomeRuntimeMeta {
   files?: Record<string, string>;
 }
 export interface HomeStartArgs {
+  localSelection?: LocalModelSelection;
   runId: string;
   sessionId?: string;
   forkIndex?: number;

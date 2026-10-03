@@ -44,6 +44,7 @@
     "smoke:live-data": "node scripts/smoke-live-data.mjs",
     "smoke:models": "npx tsx scripts/smoke-provider-models.mjs",
     "bench:agent": "node scripts/bench-agent-stability.mjs",
+    "bench:runtime": "tsx scripts/bench-runtime.ts",
     "probe:sqlite": "npx electron scripts/probe-sqlite-electron.cjs",
     "test": "npx tsx --test tests/**/*.test.js",
     "build:cities": "node scripts/build-cities.mjs",

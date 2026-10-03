@@ -1,3 +1,4 @@
+import type { LocalModelSelection } from '../../shared/agente-protocol.ts';
 // ── Which endpoint a Code chat talks to ────────────────────────────────
 // A chat names a provider and model; this resolves them against Desktop's
 // config into the endpoint the Rust runtime is configured with, and answers
@@ -18,6 +19,7 @@ export interface AgenteTransport {
   providerName: string;
   baseUrl: string;
   model: string;
+  modelPath?: string;
 }
 
 type LlmConfig = { backend_mode?: string; local?: Record<string, any>; providers?: Record<string, Record<string, any>> };
@@ -35,7 +37,7 @@ function localBaseUrl(local: Record<string, any>): string {
 
 function localTransport(local: Record<string, any>, model?: string): AgenteTransport {
   const selected = local.selected_model_path ? path.basename(local.selected_model_path) : '';
-  return { providerName: 'local', baseUrl: localBaseUrl(local), model: model || local.model || selected };
+  return { providerName: 'local', baseUrl: localBaseUrl(local), model: model || local.model || selected, modelPath: local.selected_model_path };
 }
 
 function apiTransport(providerName: string, provider: Record<string, any>, model?: string): AgenteTransport {
@@ -47,9 +49,9 @@ function usesLocal(llm: LlmConfig, providerName: string, modelOverride?: string)
   return providerName === 'local' || (!modelOverride && llm.backend_mode === 'local');
 }
 
-export function resolveTransport(providerName: string, modelOverride?: string): AgenteTransport {
+export function resolveTransport(providerName: string, modelOverride?: string, selection?: LocalModelSelection): AgenteTransport {
   const llm = llmConfig();
-  if (usesLocal(llm, providerName, modelOverride)) return localTransport(llm.local ?? {}, modelOverride);
+  if (usesLocal(llm, providerName, modelOverride)) return localTransport({ ...llm.local, ...(selection ? { selected_model_path: selection.modelPath, base_url: selection.baseUrl || llm.local?.base_url } : {}) }, modelOverride);
   return apiTransport(providerName, llm.providers?.[providerName] ?? {}, modelOverride);
 }
 

@@ -64,10 +64,16 @@ export function installedVoiceModels(): VoiceModel[] {
 }
 
 /** Whether eSpeak-ng is available (Kokoro needs it for most languages). */
+let espeakFound: boolean | undefined;
+
+/** Probed once per process: the check blocks the main thread for up to 3 s. */
 export function hasEspeak(): boolean {
   if (process.platform === 'win32') return false;
-  const probe = spawnSync('sh', ['-c', 'ldconfig -p 2>/dev/null | grep -q libespeak-ng'], { timeout: 3000 });
-  return probe.status === 0;
+  if (espeakFound === undefined) {
+    const probe = spawnSync('sh', ['-c', 'ldconfig -p 2>/dev/null | grep -q libespeak-ng'], { timeout: 3000 });
+    espeakFound = probe.status === 0;
+  }
+  return espeakFound;
 }
 
 function freePort(): Promise<number> {

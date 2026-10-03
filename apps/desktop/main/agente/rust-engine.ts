@@ -25,7 +25,7 @@ import { RustProcessBridge } from './rust-processes.ts';
 import { RustTurnTranslator } from './rust-events.ts';
 import { coreProviderStatus, migrateKeysToCore } from './core-providers.ts';
 import { modelTransportConfig, providerTransportPolicy, type ModelTransport } from './model-transport.ts';
-import type { AgenteCheckpointSummary, AgenteRuntimeMode, AgenteStartSessionArgs, ApprovalDecision, CodeAgentEvent } from '../../shared/agente-protocol.ts';
+import type { AgenteCheckpointSummary, AgenteRuntimeMode, AgenteStartSessionArgs, ApprovalDecision, CodeAgentEvent, LocalModelSelection } from '../../shared/agente-protocol.ts';
 import type { Attachment, Message, RuntimeEventEnvelope, SessionSnapshot, TurnMode, TurnOutcome } from '../../shared/agente-protocol.gen.ts';
 
 const FALLBACK_CONTEXT_WINDOW = 32_768;
@@ -37,11 +37,13 @@ type ChatState = {
   projectRoot: string;
   provider: string;
   model: string;
+  localSelection?: LocalModelSelection;
   thinkingLevel?: string;
   mode: AgenteRuntimeMode;
   /** Sent with the first turn of a new session only. */
   systemPrompt?: string;
   turnId: string | null;
+  settlement?: { promise: Promise<void>; resolve: () => void };
   followUps: Array<{ text: string; attachments: Attachment[] }>;
   contextWindow: number;
   translator: RustTurnTranslator;
@@ -49,6 +51,7 @@ type ChatState = {
 };
 
 const chats = new Map<string, ChatState>();
+const manualCompactions = new Set<string>();
 const botBrowserModels = new Map<string, { provider: string; model: string }>();
 let daemon: AgenteDaemon | null = null;
 let listening: AgenteClient | null = null;
@@ -148,6 +151,8 @@ async function openConnection(): Promise<AgenteClient> {
       for (const chat of chats.values()) {
         if (!chat.turnId) continue;
         chat.turnId = null;
+        chat.settlement?.resolve();
+        chat.settlement = undefined;
         chat.followUps = [];
         emit({ type: 'error', chatId: chat.chatId, message: 'The Rust runtime disconnected. Reconnect by sending a new message.' });
         emit({ type: 'agent_end', chatId: chat.chatId, stopReason: 'error' });
@@ -177,7 +182,7 @@ async function openConnection(): Promise<AgenteClient> {
     const saved = loadConfig().agent_runtime as Record<string, unknown> | undefined;
     if (saved) {
       const overrides = saved.subagent_models as Record<string, { provider: string; model: string }> | undefined;
-      for (const model of Object.values(overrides || {})) {
+      for (const model of [...Object.values(overrides || {}), ...(saved.compaction_model ? [saved.compaction_model as { provider: string; model: string }] : [])]) {
         if (model.provider.startsWith('desktop-')) await useProvider(client, model.provider.slice(8), model.model);
       }
       await client.request('runtime.configure', saved);
@@ -192,13 +197,13 @@ async function openConnection(): Promise<AgenteClient> {
  * else (local llama.cpp, custom endpoints) is handed over as Desktop's
  * provider, its key over the socket only.
  */
-export async function useProvider(client: AgenteClient, providerName: string, model: string): Promise<{ id: string; model: string }> {
-  const resolved = resolveTransport(providerName, model);
+export async function useProvider(client: AgenteClient, providerName: string, model: string, selection?: LocalModelSelection): Promise<{ id: string; model: string }> {
+  const resolved = resolveTransport(providerName, model, selection);
   await ensureProvider(resolved);
   if (resolved.providerName === 'local' && !resolved.model) model = String(getLlamaStatus().model_id || '');
-  const provider = providerEntry(providerName, model);
+  const provider = providerEntry(providerName, model, selection);
   if (!provider.model) throw new RuntimeNoModelError(desktopLocale());
-  const transport = resolveTransport(providerName, model);
+  const transport = resolveTransport(providerName, model, selection);
   if (await coreRuns(client, transport.providerName)) return { id: transport.providerName, model: provider.model };
   const info = await client.request<{ capabilities: Record<string, unknown>; cost: unknown; limits: unknown; reasoning_options?: unknown; reasoning_stream_field?: string; transport?: ModelTransport }>('models.info', { provider: transport.providerName, model: provider.model });
   const capabilities = providerCapabilities(transport, info.capabilities);
@@ -289,6 +294,8 @@ function recordCheckpoint(chat: ChatState, event: Extract<CodeAgentEvent, { type
 /** The turn ended: send the next queued follow-up, if any. */
 function continueWithFollowUp(chat: ChatState): void {
   chat.turnId = null;
+  chat.settlement?.resolve();
+  chat.settlement = undefined;
   const next = chat.followUps.shift();
   if (next !== undefined) void prompt(chat.chatId, next.text, undefined, next.attachments);
 }
@@ -296,6 +303,12 @@ function continueWithFollowUp(chat: ChatState): void {
 function route(envelope: RuntimeEventEnvelope): void {
   const chat = [...chats.values()].find((state) => state.sessionId === envelope.session_id);
   if (!chat) return;
+  if (envelope.event.type === 'context_compacted' && manualCompactions.has(chat.sessionId)) return;
+  if (['turn_finished', 'turn_cancelled', 'turn_failed'].includes(envelope.event.type) && !chat.settlement) {
+    let resolve!: () => void;
+    const promise = new Promise<void>((done) => { resolve = done; });
+    chat.settlement = { promise, resolve };
+  }
   if (envelope.event.type === 'turn_started' && !envelope.parent_run_id) chat.turnId = envelope.turn_id;
   for (const event of chat.translator.translate(envelope)) {
     if (event.type === 'checkpoint_finalized') recordCheckpoint(chat, event);
@@ -308,18 +321,18 @@ function route(envelope: RuntimeEventEnvelope): void {
 const TURN_MODES: Record<AgenteRuntimeMode, TurnMode> = { full: 'auto', supervised: 'build', plan: 'plan' };
 
 /** Desktop's provider and model, as a provider entry for runtime.configure. */
-function providerEntry(providerName: string, model: string): { id: string; config: Record<string, unknown>; model: string } {
-  const transport = resolveTransport(providerName, model);
+function providerEntry(providerName: string, model: string, selection?: LocalModelSelection): { id: string; config: Record<string, unknown>; model: string } {
+  const transport = resolveTransport(providerName, model, selection);
   return {
     id: `desktop-${transport.providerName}`,
     model: transport.model,
-    config: providerConfig(providerName, [transport.model])
+    config: providerConfig(providerName, [transport.model], selection)
   };
 }
 
 /** A provider as the runtime takes it: Desktop's endpoint and key, and these models. */
-export function providerConfig(providerName: string, models: string[]): Record<string, unknown> {
-  const transport = resolveTransport(providerName, models[0]);
+export function providerConfig(providerName: string, models: string[], selection?: LocalModelSelection): Record<string, unknown> {
+  const transport = resolveTransport(providerName, models[0], selection);
   const apiKey = resolveApiKey('', transport.baseUrl, transport.providerName) || undefined;
   return {
     name: transport.providerName,
@@ -350,7 +363,7 @@ function storeImages(images: Array<{ data: string; mimeType: string }> | undefin
  * own lookup is only the fallback when the runtime has no answer.
  */
 async function runtimeContextWindow(chat: ChatState): Promise<number | null> {
-  const transport = resolveTransport(chat.provider, chat.model);
+  const transport = resolveTransport(chat.provider, chat.model, chat.localSelection);
   if (transport.providerName === 'local') return null;
   const client = await connect();
   const info = await client.request<{ limits?: { context?: number } }>('models.info', { provider: transport.providerName, model: transport.model || chat.model });
@@ -361,7 +374,7 @@ async function runtimeContextWindow(chat: ChatState): Promise<number | null> {
 function refreshContextWindow(chat: ChatState): void {
   void runtimeContextWindow(chat)
     .catch(() => null)
-    .then((window) => window ?? resolveContextWindow(resolveTransport(chat.provider, chat.model)))
+    .then((window) => window ?? resolveContextWindow(resolveTransport(chat.provider, chat.model, chat.localSelection)))
     .then((window) => {
       chat.contextWindow = window;
     })
@@ -384,10 +397,10 @@ function turnParams(chat: ChatState, provider: { id: string; model: string }, me
 }
 
 async function startSession(args: AgenteStartSessionArgs): Promise<{ sessionId: string; resumed: boolean; conversationIndex: number }> {
-  await ensureProvider(resolveTransport(args.provider, args.model));
+  await ensureProvider(resolveTransport(args.provider, args.model, args.localSelection));
   const live = chats.get(args.chatId);
   if (live) {
-    Object.assign(live, { provider: args.provider, model: args.model, mode: args.runtimeMode, thinkingLevel: args.thinkingLevel });
+    Object.assign(live, { provider: args.provider, model: args.model, mode: args.runtimeMode, thinkingLevel: args.thinkingLevel, localSelection: args.localSelection });
     const current = await runtimeRequest<{ snapshot: SessionSnapshot }>('session.get', { session_id: live.sessionId });
     return { sessionId: live.sessionId, resumed: true, conversationIndex: current.snapshot.conversation.length };
   }
@@ -401,6 +414,7 @@ async function startSession(args: AgenteStartSessionArgs): Promise<{ sessionId: 
     projectRoot: args.projectRoot,
     provider: args.provider,
     model: args.model,
+    localSelection: args.localSelection,
     thinkingLevel: args.thinkingLevel,
     mode: args.runtimeMode,
     systemPrompt: resumed ? undefined : args.systemPromptOverride,
@@ -420,9 +434,12 @@ async function prompt(chatId: string, text: string, images?: Array<{ data: strin
   const chat = chats.get(chatId);
   if (!chat) return { ok: false, error: 'No active agente session for this chat' };
   try {
-    await ensureProvider(resolveTransport(chat.provider, chat.model));
+    // The terminal event reaches the renderer before the runtime releases its turn slot.
+    // Wait for turn.outcome before starting the next queued prompt.
+    if (chat.settlement) await chat.settlement.promise;
+    await ensureProvider(resolveTransport(chat.provider, chat.model, chat.localSelection));
     const client = await connect();
-    const provider = await useProvider(client, chat.provider, chat.model);
+    const provider = await useProvider(client, chat.provider, chat.model, chat.localSelection);
     const expanded = await client.request<{ text: string }>('project.expand_prompt', { project_dir: chat.projectRoot, text });
     const media = [...attachments, ...storeImages(images)];
     if (media.length) {
@@ -514,42 +531,39 @@ async function respondApproval(chatId: string, requestId: string, decision: Appr
   return result;
 }
 
-function setRuntimeMode(chatId: string, mode: AgenteRuntimeMode): { ok: boolean } {
+async function setRuntimeMode(chatId: string, mode: AgenteRuntimeMode): Promise<{ ok: boolean }> {
   const chat = chats.get(chatId);
   if (!chat) return { ok: false };
   chat.mode = mode;
+  if (chat.turnId) await (await connect()).request('turn.update', { turn_id: chat.turnId, mode: TURN_MODES[mode] });
   return { ok: true };
 }
 
-function setModel(chatId: string, provider: string, model: string, thinkingLevel?: string): { ok: boolean } {
+async function setModel(chatId: string, provider: string, model: string, thinkingLevel?: string, localSelection?: LocalModelSelection): Promise<{ ok: boolean }> {
   const chat = chats.get(chatId);
   if (!chat) return { ok: false };
-  Object.assign(chat, { provider, model, thinkingLevel });
+  const thinkingChanged = chat.thinkingLevel !== thinkingLevel;
+  Object.assign(chat, { provider, model, thinkingLevel, localSelection });
+  if (chat.turnId && thinkingChanged) await (await connect()).request('turn.update', { turn_id: chat.turnId, thinking_level: thinkingLevel ?? 'auto' });
   refreshContextWindow(chat);
   return { ok: true };
 }
 
-async function compact(chatId: string): Promise<{ ok: boolean; error?: string }> {
+async function compact(chatId: string, smart = true): Promise<{ ok: boolean; error?: string }> {
   const chat = chats.get(chatId);
   if (!chat) return { ok: false, error: 'No active session' };
   emit({ type: 'compaction_start', chatId, reason: 'manual' });
-  // The runtime announces a compaction (with its before/after tokens) as an
-  // event; ending the step here too would race it and drop those numbers.
-  let reported = false;
-  const stop = onRuntimeEvent((envelope) => {
-    if (envelope.session_id === chat.sessionId && envelope.event.type === 'context_compacted') reported = true;
-  });
+  manualCompactions.add(chat.sessionId);
   try {
     const client = await connect();
-    await client.request('session.compact', { session_id: chat.sessionId });
-    // Nothing to compact: no event comes, so close the step.
-    if (!reported) emit({ type: 'compaction_end', chatId, reason: 'manual', success: true });
+    const result = await client.request<{ compaction: { tokens_before: number; tokens_after: number; smart: boolean; requested_smart: boolean; model_tokens: number | null; input_tokens: number | null; output_tokens: number | null; cache_read_tokens: number | null; cache_creation_tokens: number | null } }>('session.compact', { session_id: chat.sessionId, smart });
+    emit({ type: 'compaction_end', chatId, reason: 'manual', success: true, tokensBefore: result.compaction.tokens_before, tokensAfter: result.compaction.tokens_after, smart: result.compaction.smart, requestedSmart: smart, modelTokens: result.compaction.model_tokens ?? undefined, inputTokens: result.compaction.input_tokens ?? undefined, outputTokens: result.compaction.output_tokens ?? undefined, cacheReadTokens: result.compaction.cache_read_tokens ?? undefined, cacheWriteTokens: result.compaction.cache_creation_tokens ?? undefined });
     return { ok: true };
   } catch (error: unknown) {
     emit({ type: 'compaction_end', chatId, reason: 'manual', success: false });
     return { ok: false, error: error instanceof Error ? error.message : String(error) };
   } finally {
-    stop();
+    manualCompactions.delete(chat.sessionId);
   }
 }
 
@@ -598,7 +612,7 @@ async function subagentModel(chatId: string, kind: string, inherit: boolean): Pr
   const models = { ...settings.subagent_models };
   if (inherit) delete models[kind];
   else {
-    const provider = await useProvider(client, chat.provider, chat.model);
+    const provider = await useProvider(client, chat.provider, chat.model, chat.localSelection);
     models[kind] = { provider: provider.id, model: provider.model };
   }
   return configureSettings({ subagent_models: models });
@@ -606,9 +620,15 @@ async function subagentModel(chatId: string, kind: string, inherit: boolean): Pr
 
 /** Persist only user settings; endpoint keys and Desktop's MCP token stay live. */
 async function configureSettings(patch: Record<string, unknown>): Promise<{ ok: boolean }> {
-  const allowed = ['smart_compaction', 'max_parallel_subagents', 'subagent_models', 'allow_media', 'approved_mcp_servers'];
+  const allowed = ['smart_compaction', 'compaction_model', 'max_parallel_subagents', 'subagent_models', 'allow_media', 'approved_mcp_servers'];
   if (Object.keys(patch).some((key) => !allowed.includes(key))) throw new Error('Unknown agent setting.');
   if ('max_parallel_subagents' in patch && (!Number.isInteger(patch.max_parallel_subagents) || Number(patch.max_parallel_subagents) < 1 || Number(patch.max_parallel_subagents) > 32)) throw new Error('Choose 1–32 parallel subagents.');
+  if (patch.compaction_model != null) {
+    const chosen = patch.compaction_model as { provider?: unknown; model?: unknown };
+    if (typeof chosen.provider !== 'string' || typeof chosen.model !== 'string' || !chosen.provider.trim() || !chosen.model.trim()) throw new Error('Choose a compaction provider and model.');
+    const target = await useProvider(await connect(), chosen.provider.replace(/^desktop-/, ''), chosen.model);
+    patch = { ...patch, compaction_model: { provider: target.id, model: target.model } };
+  }
   const result = await runtimeRequest<{ ok: boolean }>('runtime.configure', patch);
   const config = loadConfig();
   config.agent_runtime = { ...(config.agent_runtime as Record<string, unknown> || {}), ...patch };

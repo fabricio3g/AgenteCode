@@ -1,7 +1,42 @@
 import { BrowserWindow, dialog, nativeImage } from 'electron';
 import { APP_NAME } from '../shared/brand.ts';
+import { TITLEBAR_HEIGHT, TITLEBAR_OVERLAY_COLOR, TITLEBAR_SYMBOL_COLOR } from '../shared/titlebar.ts';
 
 let mainWindow: BrowserWindow | null = null;
+
+export { TITLEBAR_HEIGHT };
+
+/**
+ * Caption overlay: theme-matched background and glyphs. The native controls
+ * live outside the web contents, so the renderer pushes the live CSS colours
+ * through `window:set-titlebar-overlay` on every theme change. Dark is the
+ * first-frame default.
+ */
+export const TITLEBAR_OVERLAY = {
+  color: TITLEBAR_OVERLAY_COLOR,
+  symbolColor: TITLEBAR_SYMBOL_COLOR
+} as const;
+
+/** `titleBarOverlay` is ignored on macOS, where `hiddenInset` keeps the lights. */
+export const usesCaptionOverlay = process.platform !== 'darwin';
+
+// `#rgb`, `#rgba`, `#rrggbb` and `#rrggbbaa`. The overlay background is
+// transparent, so alpha has to be accepted here.
+const HEX_COLOR = /^#(?:[0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i;
+
+/**
+ * Hand the caption buttons the current theme's colours. Returns false on
+ * macOS (no overlay to paint) and on input the OS would reject.
+ */
+export function applyTitlebarOverlay(win: BrowserWindow | null, overlay: unknown): boolean {
+  if (!win || win.isDestroyed() || !usesCaptionOverlay) return false;
+  const next = overlay as { color?: unknown; symbolColor?: unknown } | null;
+  const color = typeof next?.color === 'string' ? next.color : '';
+  const symbolColor = typeof next?.symbolColor === 'string' ? next.symbolColor : '';
+  if (!HEX_COLOR.test(color) || !HEX_COLOR.test(symbolColor)) return false;
+  win.setTitleBarOverlay({ color, symbolColor, height: TITLEBAR_HEIGHT });
+  return true;
+}
 type ActiveWorkState = { active: boolean; reasons: string[] };
 type ActiveWorkStateInput = { active?: unknown; reasons?: unknown };
 

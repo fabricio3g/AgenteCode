@@ -4,6 +4,9 @@ import { BrowserWindow, type IpcMain } from 'electron';
 import { createTerminal, killAllTerminals, killTerminal, resizeTerminal, writeTerminal } from '../terminal.ts';
 import { processRegistry, type ProcessEvent } from '../agente/processes.ts';
 import { fileDiff, listChanges, revertFile } from '../agente/changes.ts';
+import { branchState, switchBranch } from '../agente/git-branches.ts';
+import { openInEditor } from '../agente/open-editor.ts';
+import { revealPath } from '../agente/reveal.ts';
 import { rustProcesses } from '../agente/rust-engine.ts';
 import { isRustProcessId } from '../agente/rust-processes.ts';
 
@@ -54,6 +57,19 @@ export function registerCodeWorkspaceHandlers(ipcMain: IpcMain): void {
       return { ok: false, error: (error as Error).message };
     }
   });
+
+  ipcMain.handle('agente_git_branches', (_e, args: { projectRoot: string }) =>
+    branchState(args.projectRoot)
+  );
+  ipcMain.handle('agente_git_switch_branch', (_e, args: { projectRoot: string; name: string; create?: boolean }) =>
+    switchBranch(args.projectRoot, args.name, args.create === true)
+  );
+  ipcMain.handle('agente_open_in_editor', (_e, args: { projectRoot: string; path: string; line?: number; editor?: string }) =>
+    openInEditor(args)
+  );
+  ipcMain.handle('agente_reveal_path', (_e, args: { projectRoot: string; path: string }) =>
+    revealPath(args.projectRoot, args.path)
+  );
 }
 
 export function disposeCodeWorkspace(): void {

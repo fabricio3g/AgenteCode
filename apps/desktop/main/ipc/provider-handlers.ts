@@ -19,16 +19,19 @@ type ProviderHandlerDeps = {
   ipcMain: IpcMain;
   resolveProvider: (providerName?: string, baseUrl?: string) => Provider;
   resolveApiKey: (apiKey: string, baseUrl: string, providerName?: string) => string;
+  onModelsRefreshed?: (providerName: string) => void;
 };
 
-export function registerProviderHandlers({ ipcMain, resolveProvider, resolveApiKey }: ProviderHandlerDeps): void {
+export function registerProviderHandlers({ ipcMain, resolveProvider, resolveApiKey, onModelsRefreshed }: ProviderHandlerDeps): void {
   ipcMain.handle('fetch_provider_models', async (_e, { baseUrl, apiKey, providerName }) => {
     const provider = resolveProvider(providerName, baseUrl);
     const realKey = resolveApiKey(apiKey, baseUrl, providerName);
     if (!realKey && provider.name !== 'local') {
       throw new Error(`No API key configured for ${providerName || 'the selected provider'}. Please add your API key in Settings > LLM Providers.`);
     }
-    return provider.fetchModels(realKey, baseUrl);
+    const models = await provider.fetchModels(realKey, baseUrl);
+    if (providerName) onModelsRefreshed?.(providerName);
+    return models;
   });
 
   ipcMain.handle('test_provider_connection', async (_e, { baseUrl, apiKey, providerName }) => {

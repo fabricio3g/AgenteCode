@@ -5,7 +5,7 @@
 // list (OpenRouter's `reasoning` object) and llama-server's `/props` — the
 // same profile Agente Code's TUI shows. This module asks the daemon:
 //
-//   models.discover  {provider}               live list (once per provider)
+//   models.discover  {provider}               live list (bounded freshness)
 //   models.thinking  {provider, model}        → ThinkingProfile
 //   thinking.request {provider, model, level} → request fields to merge
 
@@ -33,9 +33,10 @@ export type ProviderSpec = {
 
 /** How long a resolved route (provider registered with the runtime) is reused. */
 const ROUTE_TTL_MS = 60_000;
+const DISCOVERY_TTL_MS = 5 * 60_000;
 
 const routes = new Map<string, { at: number; route: Promise<{ id: string; model: string }> }>();
-const discovered = new Map<string, Promise<void>>();
+const discovered = new Map<string, { at: number; pending: Promise<void> }>();
 let specs: Promise<ProviderSpec[]> | null = null;
 
 function errorText(error: unknown): string {
@@ -66,7 +67,7 @@ function providerSpecs(client: AgenteClient): Promise<ProviderSpec[]> {
 
 /**
  * Providers whose own model list carries thinking metadata (OpenRouter,
- * llama-server, …) are listed live once per runtime provider id, so the
+ * llama-server, …) are listed live with bounded freshness, so the
  * profile reads the provider's answer rather than models.dev's copy.
  */
 async function ensureDiscovered(client: AgenteClient, providerId: string): Promise<void> {
@@ -80,18 +81,26 @@ async function discoverModels(client: AgenteClient, providerId: string, source: 
   if (source === 'catalog') return;
   // A llama-server can load another model at any time; /props is local and cheap.
   if (source === 'llamacpp') discovered.delete(providerId);
-  let pending = discovered.get(providerId);
-  if (!pending) {
-    pending = client.request('models.discover', { provider: providerId }).then(
-      () => undefined,
+  let entry = discovered.get(providerId);
+  if (!entry || Date.now() - entry.at >= DISCOVERY_TTL_MS) {
+    const next = { at: Date.now(), pending: Promise.resolve() };
+    next.pending = client.request('models.discover', { provider: providerId }).then(
+      () => { next.at = Date.now(); },
       (error: unknown) => {
-        discovered.delete(providerId);
+        if (discovered.get(providerId) === next) discovered.delete(providerId);
         console.warn(`[thinking] ${providerId} model list unavailable: ${errorText(error)}`);
       }
     );
-    discovered.set(providerId, pending);
+    discovered.set(providerId, next);
+    entry = next;
   }
-  await pending;
+  await entry.pending;
+}
+
+/** A freshly fetched picker list invalidates its live reasoning metadata too. */
+export function invalidateProviderDiscovery(providerName: string): void {
+  discovered.delete(providerName);
+  discovered.delete(`desktop-${providerName}`);
 }
 
 /** Every provider spec, in list order — the one provider directory. */

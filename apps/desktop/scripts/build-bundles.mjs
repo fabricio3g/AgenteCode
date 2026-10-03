@@ -30,6 +30,7 @@ const RUNTIME_EXTERNALS = [
 const MAIN_ONLY_EXTERNALS = ['sherpa-onnx-node', '@opentelemetry/api'];
 
 const BUNDLES = {
+  database: { entry: 'main/chat-db-worker.ts', outfile: 'dist-electron/main/chat-db-worker.cjs', define: { 'import.meta.url': '__filename' }, extraExternals: [] },
   main: {
     entry: 'main/index.ts',
     outfile: 'dist-electron/main/index.cjs',
@@ -42,7 +43,8 @@ const BUNDLES = {
 
 const argv = process.argv.slice(2);
 const flags = new Set(argv.filter((arg) => arg.startsWith('--')));
-const names = argv.filter((arg) => !arg.startsWith('--'));
+const requested = argv.filter((arg) => !arg.startsWith('--'));
+const names = [...new Set([...requested, ...(requested.includes('main') ? ['database'] : [])])];
 const minify = flags.has('--minify');
 const watch = flags.has('--watch');
 
@@ -79,6 +81,6 @@ if (watch) {
 } else {
   await Promise.all(names.map(async (name) => {
     const result = await build(optionsFor(name));
-    fs.writeFileSync('dist-electron/main/meta.json', JSON.stringify(result.metafile));
+    if (name === 'main') fs.writeFileSync('dist-electron/main/meta.json', JSON.stringify(result.metafile));
   }));
 }

@@ -5,6 +5,7 @@
 // normalized, one place an error is classified.
 
 import OpenAI from 'openai';
+import { APP_USER_AGENT } from '../../shared/brand.ts';
 import {
   LlmStreamError,
   classifyError,
@@ -34,7 +35,7 @@ function sdkClient(dialect: Dialect, apiKey: string, baseUrl?: string): OpenAI {
   const client = new OpenAI({
     apiKey: apiKey || 'not-needed',
     baseURL: normalized,
-    ...(dialect.headers ? { defaultHeaders: dialect.headers(apiKey) } : {})
+    defaultHeaders: { 'User-Agent': APP_USER_AGENT, ...(dialect.headers?.(apiKey) ?? {}) }
   });
   clients.set(key, { client });
   return client;
@@ -329,28 +330,33 @@ async function completeFetchSse(dialect: Dialect, params: StreamParams): Promise
 // ── Model catalog ──────────────────────────────────────────────────────
 
 async function fetchModelsByTransport(dialect: Dialect, apiKey: string, baseUrl?: string): Promise<string[]> {
-  try {
-    if (dialect.transport === 'fetch-sse') {
-      const base = dialect.normalizeBaseUrl
-        ? dialect.normalizeBaseUrl(baseUrl)
-        : String(baseUrl || '').trim().replace(/\/+$/, '');
-      if (!base) return [];
-      const res = await fetch(`${base}/models`, {
-        headers: { Accept: 'application/json', ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}) },
-        signal: AbortSignal.timeout(5000)
-      }).catch(() => null);
-      if (!res || !res.ok) return [];
-      const data = await res.json().catch(() => ({}));
-      const list = data?.data ?? data?.models ?? [];
-      return list.map((m: Record<string, unknown>) => String(m.id || '')).filter(Boolean).sort();
+  const base = dialect.normalizeBaseUrl
+    ? dialect.normalizeBaseUrl(baseUrl)
+    : String(baseUrl || dialect.defaultBaseUrl).trim().replace(/\/+$/, '');
+  if (!base) throw new Error('No model API endpoint configured');
+  const url = new URL(`${base}/models`);
+  const ids = new Set<string>();
+  for (let page = 0; page < 100; page++) {
+    const response = await fetch(url.toString(), {
+      headers: { Accept: 'application/json', 'User-Agent': APP_USER_AGENT, 'Cache-Control': 'no-cache',
+        ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+        ...(dialect.headers?.(apiKey) ?? {}) },
+      cache: 'no-store', signal: AbortSignal.timeout(10_000)
+    });
+    if (!response.ok) throw new Error(`Model discovery failed with HTTP ${response.status}`);
+    const data = await response.json() as { data?: unknown; models?: unknown; has_more?: boolean; last_id?: string };
+    const list = Array.isArray(data?.data) ? data.data : Array.isArray(data?.models) ? data.models : null;
+    if (!list) throw new Error('Invalid provider model list');
+    for (const entry of list) {
+      const id = typeof entry?.id === 'string' ? entry.id.trim() : '';
+      if (id) ids.add(id);
     }
-    const client = sdkClient(dialect, apiKey, baseUrl);
-    const response = await client.models.list();
-    const list = response?.data ?? [];
-    return list.map((m) => String(m.id || '')).filter(Boolean).sort();
-  } catch {
-    return [];
+    if (!data.has_more) return [...ids].sort();
+    const cursor = data.last_id || list.at(-1)?.id;
+    if (!cursor || cursor === url.searchParams.get('after_id')) throw new Error('Invalid model-list pagination');
+    url.searchParams.set('after_id', cursor);
   }
+  throw new Error('Model-list pagination exceeded its limit');
 }
 
 /** Union metadata parser across every catalog shape we have met so far. */

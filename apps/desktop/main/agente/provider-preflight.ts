@@ -93,7 +93,7 @@ export function createProviderPreflight(deps: PreflightDeps): (transport: Agente
     finally { clearPending(request); }
   }
   async function ensureLocal(transport: AgenteTransport): Promise<void> {
-    const local = deps.localConfig();
+    const local = { ...deps.localConfig(), ...(transport.modelPath !== undefined ? { selected_model_path: transport.modelPath } : {}) };
     const { port, selectedPath } = localSelection(local, transport.baseUrl);
     // A Home load may still be preparing the model. Await its exact launch
     // rather than replacing it with recommended defaults midway through.

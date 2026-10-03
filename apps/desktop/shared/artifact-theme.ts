@@ -46,7 +46,7 @@ export function artifactDocumentCss(theme: ArtifactTheme = 'light', accent: Arti
   return `
 *{box-sizing:border-box}
 html{color-scheme:${theme}}
-body{margin:0;background:${ink.bg};color:${ink.text};font:16px/1.65 Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;-webkit-font-smoothing:antialiased}
+body{margin:0;background:${ink.bg};color:${ink.text};font:17px/1.65 system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans",Arial,sans-serif;-webkit-font-smoothing:antialiased}
 .page{max-width:720px;margin:0 auto;padding:56px 24px 72px}
 .eyebrow{font-size:12px;font-weight:500;color:${tint};margin:0 0 10px}
 h1{font-size:34px;line-height:1.15;letter-spacing:-.02em;font-weight:650;margin:0 0 10px}
