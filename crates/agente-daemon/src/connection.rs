@@ -94,11 +94,26 @@ where
         }
         match rpc::classify(&line) {
             Ok(Incoming::Request { id, method, params }) => {
-                if method == "models.discover" {
-                    // A slow models endpoint must not hold up the connection.
+                if method == "models.discover"
+                    || method == "session.compact"
+                    || method == "turn.start"
+                {
+                    // Discovery and smart compaction must not hold up other chats
+                    // or control requests on the shared Desktop connection.
                     let connection = Arc::clone(&connection);
                     tokio::spawn(async move {
-                        let outcome = connection.discover_models(params).await;
+                        let outcome = if method == "turn.start" {
+                            let turn_connection = Arc::clone(&connection);
+                            tokio::task::spawn_blocking(move || {
+                                turn_connection.handle("turn.start", params)
+                            })
+                            .await
+                            .unwrap_or_else(|error| Err((rpc::INTERNAL_ERROR, error.to_string())))
+                        } else if method == "session.compact" {
+                            connection.compact_session(params).await
+                        } else {
+                            connection.discover_models(params).await
+                        };
                         let reply = match outcome {
                             Ok(result) => json!({ "jsonrpc": "2.0", "id": id, "result": result }),
                             Err((code, message)) => error_reply(id, code, &message),
@@ -316,6 +331,40 @@ struct ClientStateParams {
 impl Connection {
     /// `models.discover {provider}` → the provider's live list, enriched,
     /// each model with its thinking profile.
+    async fn compact_session(&self, params: Value) -> Result<Value, Failure> {
+        #[derive(Deserialize)]
+        struct CompactParams {
+            session_id: SessionId,
+            #[serde(default = "default_smart_compaction")]
+            smart: bool,
+        }
+        fn default_smart_compaction() -> bool {
+            true
+        }
+        let CompactParams {
+            session_id,
+            smart: requested_smart,
+        } = parse(params)?;
+        let before = self.runtime.session_snapshot(session_id);
+        let tokens_before = agente_core::context::estimate_message_tokens(&before.conversation);
+        let (snapshot, smart, usage) = if requested_smart {
+            self.runtime
+                .compact_smart(session_id)
+                .await
+                .map_err(runtime_failure)?
+        } else {
+            (
+                self.runtime.compact(session_id).map_err(runtime_failure)?,
+                false,
+                None,
+            )
+        };
+        let tokens_after = agente_core::context::estimate_message_tokens(&snapshot.conversation);
+        let mut result = to_json(snapshot)?;
+        result["compaction"] = json!({ "tokens_before": tokens_before, "tokens_after": tokens_after, "estimated": true, "smart": smart, "requested_smart": requested_smart, "model_tokens": if requested_smart { usage.as_ref().map(|u| u.total_tokens.max(u.prompt_tokens.saturating_add(u.cache_read_tokens).saturating_add(u.cache_creation_tokens).saturating_add(u.completion_tokens))) } else { Some(0) }, "input_tokens": usage.as_ref().map(|u| u.prompt_tokens.saturating_add(u.cache_read_tokens).saturating_add(u.cache_creation_tokens)), "cache_read_tokens": usage.as_ref().map(|u| u.cache_read_tokens), "cache_creation_tokens": usage.as_ref().map(|u| u.cache_creation_tokens), "output_tokens": usage.as_ref().map(|u| u.completion_tokens) });
+        Ok(result)
+    }
+
     async fn discover_models(&self, params: Value) -> Result<Value, Failure> {
         #[derive(Deserialize)]
         struct Params {
@@ -456,6 +505,16 @@ impl Connection {
                 Ok(json!({ "body": runtime.thinking_request(&provider, &model, &level) }))
             }
             "media.import" => crate::project::import_media(params),
+            "media.preview_path" => {
+                #[derive(Deserialize)]
+                struct PreviewParams {
+                    path: String,
+                }
+                let args: PreviewParams = parse(params)?;
+                let path = agente_core::media::stored_image_path(&args.path)
+                    .map_err(|error| (rpc::INVALID_PARAMS, error.to_string()))?;
+                Ok(json!({ "path": path }))
+            }
             "children.cancel" => {
                 #[derive(Deserialize)]
                 struct Params {
@@ -491,10 +550,6 @@ impl Connection {
                     .delete_session(session_id)
                     .map_err(runtime_failure)?;
                 Ok(json!({ "deleted": deleted }))
-            }
-            "session.compact" => {
-                let SessionParams { session_id } = parse(params)?;
-                to_json(runtime.compact(session_id).map_err(runtime_failure)?)
             }
             "session.fork" => {
                 let ForkParams {
@@ -601,6 +656,18 @@ impl Connection {
             "turn.cancel" => {
                 let TurnParams { turn_id } = parse(params)?;
                 Ok(json!({ "ok": runtime.cancel(turn_id) }))
+            }
+            "turn.update" => {
+                #[derive(Deserialize)]
+                struct UpdateParams {
+                    turn_id: TurnId,
+                    thinking_level: Option<String>,
+                    mode: Option<agente_protocol::TurnMode>,
+                }
+                let args: UpdateParams = parse(params)?;
+                Ok(
+                    json!({ "ok": runtime.update_turn(args.turn_id, args.thinking_level, args.mode) }),
+                )
             }
             "turn.steer" => {
                 let SteerParams {

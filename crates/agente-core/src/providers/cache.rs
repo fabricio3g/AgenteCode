@@ -111,13 +111,16 @@ pub(crate) fn mark_last_block(message: &mut Value) {
     }
 }
 
-/// Rolling breakpoints: mark the two newest `user` messages (tool results
-/// travel as user turns in the Anthropic format). With the system marker
-/// that is three of the four breakpoints Anthropic allows.
+/// Rolling breakpoints: mark the two newest `user` or `tool` messages (tool
+/// results travel as user turns in the Anthropic format and as `tool` turns
+/// in OpenAI chat, where a tool loop would otherwise never move its cache
+/// point past the first prompt). With the system marker that is three of the
+/// four breakpoints Anthropic allows.
 pub(crate) fn mark_recent_user_turns(messages: &mut [Value]) {
     let mut marked = 0;
     for message in messages.iter_mut().rev() {
-        if message["role"] == "user" && !is_empty_content(&message["content"]) {
+        let role = &message["role"];
+        if (role == "user" || role == "tool") && !is_empty_content(&message["content"]) {
             mark_last_block(message);
             marked += 1;
             if marked == 2 {
@@ -210,5 +213,25 @@ mod tests {
             messages[3]["content"].is_string(),
             "assistant turns untouched"
         );
+    }
+
+    #[test]
+    fn rolling_breakpoints_follow_openai_tool_results() {
+        let mut messages = vec![
+            json!({"role": "user", "content": "task"}),
+            json!({"role": "assistant", "content": "", "tool_calls": []}),
+            json!({"role": "tool", "tool_call_id": "a", "content": "first"}),
+            json!({"role": "assistant", "content": "", "tool_calls": []}),
+            json!({"role": "tool", "tool_call_id": "b", "content": "second"}),
+        ];
+        mark_recent_user_turns(&mut messages);
+        assert!(messages[0]["content"].is_string(), "older prompt untouched");
+        for i in [2, 4] {
+            assert_eq!(
+                messages[i]["content"][0]["cache_control"]["type"],
+                "ephemeral"
+            );
+        }
+        assert_eq!(messages[4]["tool_call_id"], "b");
     }
 }

@@ -778,6 +778,10 @@ impl AgentRuntimeState {
             inbox.push(message.to_message());
             sent += 1;
         }
+        drop(inbox);
+        if sent > 0 {
+            self.user_inbox.interrupt_thinking();
+        }
         sent
     }
 

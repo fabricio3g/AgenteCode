@@ -1,4 +1,4 @@
-# MiniMax through its Anthropic-compatible API; caches only cache_control breakpoints.
+# MiniMax supports automatic prefix caching; M2 also supports explicit markers.
 id = "minimax"
 name = "MiniMax"
 group = "cloud"
@@ -17,3 +17,11 @@ openai_compatible_url = "https://api.minimax.io/v1"
 [models_seed]
 "MiniMax-M3" = { name = "MiniMax M3", context = 1000000 }
 "MiniMax-M2.7" = { name = "MiniMax M2.7", context = 204800 }
+
+# Default to automatic caching; the documented M2 family supports explicit markers.
+# Keep this exception in data, never in the transport builder.
+[transport.cache]
+breakpoints = false
+rules = [
+  { model_prefix = "MiniMax-M2", format = "anthropic", breakpoints = true },
+]

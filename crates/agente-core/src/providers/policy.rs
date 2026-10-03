@@ -19,6 +19,8 @@ pub struct CachePolicy {
     pub breakpoints: Option<bool>,
     pub rules: Vec<CacheRule>,
     pub prompt_cache_key: Option<bool>,
+    /// Stable conversation routing header; empty explicitly disables it.
+    pub session_header: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -47,6 +49,9 @@ impl TransportPolicy {
         }
         if !other.cache.rules.is_empty() {
             self.cache.rules = other.cache.rules.clone();
+        }
+        if other.cache.session_header.is_some() {
+            self.cache.session_header = other.cache.session_header.clone();
         }
         if other.cache.prompt_cache_key.is_some() {
             self.cache.prompt_cache_key = other.cache.prompt_cache_key;

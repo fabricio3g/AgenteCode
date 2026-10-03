@@ -490,6 +490,22 @@ impl ContextCompactor {
         }
     }
 
+    /// Manual semantic compaction, independent of the automatic threshold.
+    /// A failed summarizer still performs the forced local trim.
+    pub async fn compact_async_forced(&self, messages: Vec<Message>) -> CompactionResult {
+        if let Some(summarizer) = &self.summarizer {
+            let tokens = self.estimate_tokens(&messages);
+            let count = messages.len();
+            if let Ok(result) = self
+                .perform_semantic_compaction(summarizer.as_ref(), messages.clone(), tokens, count)
+                .await
+            {
+                return result;
+            }
+        }
+        self.compact_forced(messages)
+    }
+
     fn no_compaction_result(
         &self,
         messages: Vec<Message>,
@@ -555,6 +571,9 @@ impl ContextCompactor {
             ));
         }
         let summary_text = summarizer.summarize(&older, summary_budget, None).await?;
+        if summary_text.trim().is_empty() {
+            return Err(SummarizeError::Llm("Empty summary from model".into()));
+        }
 
         let mut result = system_msgs;
         result.push(summary_message(&summary_text));
@@ -1474,6 +1493,34 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn manual_smart_compaction_runs_below_the_automatic_threshold() {
+        let messages = vec![
+            create_message(Role::System, "System"),
+            create_message(Role::User, &"old context ".repeat(1000)),
+            create_message(Role::Assistant, "old response"),
+            create_message(Role::User, "latest question"),
+            create_message(Role::Assistant, "latest answer"),
+        ];
+        let strategy = CompactionStrategy {
+            max_tokens: 100_000,
+            keep_recent: 2,
+            ..CompactionStrategy::default()
+        };
+        assert!(!strategy.should_compact(crate::context::estimate_message_tokens(&messages)));
+        let compactor = ContextCompactor::new(strategy).with_summarizer(Arc::new(FakeSummarizer {
+            summary: "Manual summary".into(),
+            fail: false,
+        }));
+        let result = compactor.compact_async_forced(messages).await;
+        assert_eq!(result.summary.metadata.summary_type, SummaryType::Semantic);
+        assert!(result
+            .messages
+            .iter()
+            .any(|message| message.content.contains("Manual summary")));
+        assert_eq!(result.messages.last().unwrap().content, "latest answer");
+    }
+
+    #[tokio::test]
     async fn semantic_compaction_uses_summarizer_and_keeps_recent() {
         let compactor = ContextCompactor::new(CompactionStrategy {
             max_tokens: 200,
@@ -1586,6 +1633,29 @@ mod tests {
         // Failure falls back to the heuristic path instead of panicking.
         assert_ne!(result.summary.metadata.summary_type, SummaryType::Semantic);
         assert!(!result.messages.is_empty());
+    }
+
+    #[tokio::test]
+    async fn empty_semantic_summary_falls_back_without_discarding_recent_context() {
+        let compactor = ContextCompactor::new(CompactionStrategy::for_window(2_000, 0))
+            .with_summarizer(Arc::new(FakeSummarizer {
+                summary: " \n ".into(),
+                fail: false,
+            }));
+        let mut messages = vec![create_message(
+            Role::User,
+            &"Earlier evidence. ".repeat(500),
+        )];
+        messages.push(create_message(
+            Role::User,
+            "Keep this latest request intact",
+        ));
+        let result = compactor.compact_async_forced(messages).await;
+        assert_ne!(result.summary.metadata.summary_type, SummaryType::Semantic);
+        assert!(result
+            .messages
+            .iter()
+            .any(|message| message.content == "Keep this latest request intact"));
     }
 
     #[test]

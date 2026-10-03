@@ -627,24 +627,31 @@ async fn execute_tool_calls_parallel(
         std::collections::HashMap::new();
     for (i, p) in prepared.into_iter().enumerate() {
         tracing::info!(task_id, tool_id = %p.tool_call.id, tool = %p.tool_call.function.name, "Tool started");
-        // Hosted subagent tools route through the SubagentHost here too, so
-        // the routing never depends on which batch path a call lands in.
-        if is_hosted_tool(p.tool_call.function.name.as_str()) {
-            let outcome =
-                execute_hosted_tool(host, p, &cancel_signal, &sender, task_id, depth).await;
-            results.push((i, outcome));
-            continue;
-        }
+        // Child admission is atomic and writing children have isolated roots.
+        // Awaiting hosted calls inline serialized foreground siblings even in
+        // the parallel batch. They belong in the same join set as read tools.
+        let hosted = is_hosted_tool(p.tool_call.function.name.as_str());
+        let child_host = host.cloned();
         let registry = Arc::clone(&tool_registry);
         let signal = cancel_signal.clone();
         let event_sender = sender.clone();
         let owner_id = p.tool_call.id.clone();
         let owner_name = p.tool_call.function.name.clone();
         let handle = join_set.spawn(async move {
-            (
-                i,
-                execute_prepared_tool(p, &registry, &signal, &event_sender, task_id).await,
-            )
+            let outcome = if hosted {
+                execute_hosted_tool(
+                    child_host.as_ref(),
+                    p,
+                    &signal,
+                    &event_sender,
+                    task_id,
+                    depth,
+                )
+                .await
+            } else {
+                execute_prepared_tool(p, &registry, &signal, &event_sender, task_id).await
+            };
+            (i, outcome)
         });
         join_owners.insert(handle.id(), (i, owner_id, owner_name));
     }

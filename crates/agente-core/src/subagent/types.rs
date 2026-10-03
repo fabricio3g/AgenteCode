@@ -184,7 +184,8 @@ pub struct SubagentSnapshot {
     /// summary or a copy of its conversation. Displayed in the handoff view.
     pub prompt: String,
     pub status: SubagentStatus,
-    /// Final writeup / error text (capped).
+    /// Latest writeup: the live tail of what the child has produced while it
+    /// runs, replaced by the final answer (or error text) when it finishes.
     pub summary: Option<String>,
     /// Transcript kept for `resume_from` (bounded).
     pub conversation: Vec<Message>,
@@ -245,21 +246,28 @@ impl SubagentResult {
             self.status,
             SubagentStatus::Pending | SubagentStatus::Running
         ) {
-            let note = self
+            let text = self
                 .summary
                 .as_deref()
-                .filter(|s| !s.is_empty())
-                .map(|s| format!("\n{s}"))
-                .unwrap_or_default();
+                .map(str::trim)
+                .filter(|s| !s.is_empty());
             if self.status == SubagentStatus::Pending {
+                // A queued child has a queue position to report, not output.
+                let note = text.map(|s| format!("\n{s}")).unwrap_or_default();
                 return format!(
                     "Subagent {} (pending) queued.\nstatus: pending{}\nUse task_output to collect the result once it starts, or kill_task to cancel it.\n{}",
                     self.id, note, resume
                 );
             }
+            // A running child reports what it has found so far. Without this a
+            // poll returned a bare status line, so the model polled again and
+            // blocked on another bounded wait — slow and empty at once.
+            let progress = text
+                .map(|s| format!("\nOutput so far:\n{s}"))
+                .unwrap_or_default();
             format!(
                 "Subagent {} ({}) started.\nstatus: {}{}\nUse task_output to retrieve the result, or kill_task to cancel it.\n{}",
-                self.id, status, status, note, resume
+                self.id, status, status, progress, resume
             )
         } else if self.is_error {
             format!(
@@ -315,6 +323,23 @@ mod tests {
             "running render must name task_output: {out}"
         );
         assert!(out.contains("resume_from: s-1"), "{out}");
+    }
+
+    #[test]
+    fn render_running_reports_output_so_far() {
+        let r = result(
+            SubagentStatus::Running,
+            Some("found three call sites"),
+            false,
+        );
+        let out = r.render();
+        assert!(out.contains("Output so far:"), "{out}");
+        assert!(out.contains("found three call sites"), "{out}");
+        // A queue position is not output, and must not be labelled as it.
+        let pending = result(SubagentStatus::Pending, Some("queued at position 2"), false);
+        let out = pending.render();
+        assert!(!out.contains("Output so far:"), "{out}");
+        assert!(out.contains("queued at position 2"), "{out}");
     }
 
     #[test]

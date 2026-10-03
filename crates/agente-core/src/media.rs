@@ -78,6 +78,25 @@ fn store_dir() -> anyhow::Result<PathBuf> {
     Ok(dir)
 }
 
+/// Resolve an imported image for Desktop thumbnails, never arbitrary files.
+pub fn stored_image_path(path: &str) -> anyhow::Result<PathBuf> {
+    stored_image_in(&store_dir()?, Path::new(path))
+}
+
+fn stored_image_in(root: &Path, path: &Path) -> anyhow::Result<PathBuf> {
+    let root = root.canonicalize()?;
+    let path = path.canonicalize()?;
+    if path.parent() != Some(root.as_path())
+        || !matches!(kind_for_path(&path), Some((AttachmentKind::Image, _)))
+    {
+        anyhow::bail!("preview requires an imported image");
+    }
+    if std::fs::metadata(&path)?.len() > max_bytes(AttachmentKind::Image) {
+        anyhow::bail!("image is too large");
+    }
+    Ok(path)
+}
+
 /// Store `bytes` (content-addressed, so the same file is kept once).
 pub fn store_bytes(
     bytes: &[u8],
@@ -291,6 +310,28 @@ pub fn estimated_tokens(attachment: &Attachment) -> usize {
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
+
+    #[test]
+    fn thumbnails_accept_only_images_inside_the_attachment_store() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("attachments");
+        std::fs::create_dir(&root).unwrap();
+        let image = root.join("image.png");
+        std::fs::write(&image, b"image").unwrap();
+        assert_eq!(stored_image_in(&root, &image).unwrap(), image);
+        let outside = dir.path().join("outside.png");
+        std::fs::write(&outside, b"outside").unwrap();
+        assert!(stored_image_in(&root, &outside).is_err());
+        let pdf = root.join("document.pdf");
+        std::fs::write(&pdf, b"pdf").unwrap();
+        assert!(stored_image_in(&root, &pdf).is_err());
+        #[cfg(unix)]
+        {
+            let link = root.join("link.png");
+            std::os::unix::fs::symlink(&outside, &link).unwrap();
+            assert!(stored_image_in(&root, &link).is_err());
+        }
+    }
 
     #[test]
     fn media_types_come_from_the_extension() {

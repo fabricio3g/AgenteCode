@@ -512,8 +512,8 @@ impl Provider for OpenAIProvider {
             for (key, value) in &self.info.headers {
                 request = request.header(key.as_str(), value.as_str());
             }
-            if let Some(session) = super::wire::session_header(&self.info.id, None) {
-                request = request.header("x-opencode-session", session);
+            if let Some((name, session)) = super::wire::session_header(&self.info, None) {
+                request = request.header(name, session);
             }
             if let Some(api_key) = &api_key {
                 request = if self.info.api_format == ApiFormat::Anthropic {

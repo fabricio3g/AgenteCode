@@ -253,6 +253,66 @@ pub fn inject_project_reminder(messages: &mut Vec<crate::types::Message>, projec
     );
 }
 
+const PLAN_RESTRICTION_PREFIX: &str =
+    "IMPORTANT: You are in PLAN mode. You must NOT make any code changes. Use only ";
+const PLAN_RESTRICTION_SUFFIX: &str = "When the plan is ready, call present_plan(title, markdown) once — that writes its own file under `.agente/plans/` and shows the user Accept / Redo / Comment. Do not implement the plan until the user Accepts.";
+
+/// Replace our generated footer, including duplicates saved by older versions.
+/// Only complete, generated footers at the end are removed; project/user text
+/// elsewhere in the prompt remains intact. Build mode clears the old footer.
+pub(crate) fn set_plan_restriction(
+    messages: &mut Vec<crate::types::Message>,
+    restriction: Option<&str>,
+) {
+    use crate::types::{Message, Role};
+    if let Some(system) = messages
+        .iter_mut()
+        .find(|message| message.role == Role::System)
+    {
+        while system.content.ends_with(PLAN_RESTRICTION_SUFFIX) {
+            let Some(start) = system.content.rfind(PLAN_RESTRICTION_PREFIX) else {
+                break;
+            };
+            let footer = &system.content[start..];
+            let lists = footer
+                .strip_prefix(PLAN_RESTRICTION_PREFIX)
+                .unwrap()
+                .strip_suffix(PLAN_RESTRICTION_SUFFIX)
+                .unwrap();
+            if lists.contains('\n') || !lists.contains(". Do NOT use ") || !lists.ends_with(". ") {
+                break;
+            }
+            let start = if system.content[..start].ends_with("\n\n") {
+                start - 2
+            } else {
+                start
+            };
+            system.content.truncate(start);
+        }
+        if let Some(restriction) = restriction {
+            system.content.push_str(if system.content.is_empty() {
+                restriction.trim_start_matches('\n')
+            } else {
+                restriction
+            });
+        }
+    } else if let Some(restriction) = restriction {
+        messages.insert(
+            0,
+            Message {
+                role: Role::System,
+                content: restriction.trim_start_matches('\n').to_string(),
+                tool_calls: None,
+                tool_call_id: None,
+                thinking: None,
+                thinking_signature: None,
+                continuation: None,
+                attachments: Vec::new(),
+            },
+        );
+    }
+}
+
 /// Generate the Plan-mode restriction from the ACTUAL filtered toolset
 /// instead of a hardcoded tool-name list, so new tools are respected
 /// automatically. `allowed` = tools visible in Plan mode, `blocked` = the
@@ -268,31 +328,108 @@ pub fn plan_mode_restriction(allowed: &[String], blocked: &[String]) -> String {
     } else {
         blocked.join(", ")
     };
-    format!(
-        "\n\nIMPORTANT: You are in PLAN mode. You must NOT make any code changes. \
-         Use only {allowed_text}. Do NOT use {blocked_text}. \
-         When the plan is ready, call present_plan(title, markdown) once — that writes \
-         its own file under `.agente/plans/` and shows the user Accept / Redo / Comment. \
-         Do not implement the plan until the user Accepts."
-    )
+    format!("\n\n{PLAN_RESTRICTION_PREFIX}{allowed_text}. Do NOT use {blocked_text}. {PLAN_RESTRICTION_SUFFIX}")
 }
 
 #[cfg(test)]
 mod prompt_budget_tests {
     use super::*;
 
-    /// The system prompt is a *minimal* base (a 16 KB ceiling on templates): tool-specific instructions live in each
-    /// tool's own description, and per-project context travels as a
-    /// user-message reminder — never inside this string.
     #[test]
-    fn executor_prompt_stays_under_the_sixteen_kb_budget() {
-        let registry = crate::tools::ToolRegistry::new("/tmp/project");
-        let prompt = executor_system_prompt_with_tools("/tmp/project", "", &registry.definitions());
-        assert!(
-            prompt.len() <= 16 * 1024,
-            "system prompt grew to {} bytes; keep the base minimal and push              tool instructions into tool descriptions",
-            prompt.len()
+    fn plan_turns_keep_the_system_prefix_stable_and_build_clears_legacy_duplicates() {
+        let mut messages = vec![crate::types::Message {
+            role: crate::types::Role::System,
+            content: "Keep project instructions.\nPLAN mode is mentioned here.".into(),
+            tool_calls: None,
+            tool_call_id: None,
+            thinking: None,
+            thinking_signature: None,
+            continuation: None,
+            attachments: vec![],
+        }];
+        let original = messages[0].content.clone();
+        let restriction = plan_mode_restriction(&["read_file".into()], &["write_file".into()]);
+        set_plan_restriction(&mut messages, Some(&restriction));
+        let first_turn = messages[0].content.clone();
+        set_plan_restriction(&mut messages, Some(&restriction));
+        assert_eq!(messages[0].content, first_turn);
+        // Old sessions contain the unmarked footer repeatedly, sometimes with
+        // another toolset from a previous turn.
+        messages[0].content.push_str(&plan_mode_restriction(
+            &["grep".into()],
+            &["edit_file".into()],
+        ));
+        set_plan_restriction(&mut messages, Some(&restriction));
+        assert_eq!(messages[0].content, first_turn);
+        set_plan_restriction(&mut messages, None);
+        assert_eq!(messages[0].content, original);
+    }
+
+    #[test]
+    fn incomplete_or_quoted_plan_text_is_preserved() {
+        let mut messages = Vec::new();
+        let restriction = plan_mode_restriction(&[], &[]);
+        set_plan_restriction(&mut messages, Some(&restriction));
+        let first = messages[0].content.clone();
+        set_plan_restriction(&mut messages, Some(&restriction));
+        assert_eq!(messages[0].content, first);
+        assert_eq!(messages.len(), 1);
+        assert_eq!(
+            messages[0].content.matches(PLAN_RESTRICTION_PREFIX).count(),
+            1
         );
+        messages[0]
+            .content
+            .push_str("\nProject instruction after the quoted plan footer.");
+        let quoted = messages[0].content.clone();
+        set_plan_restriction(&mut messages, None);
+        assert_eq!(messages[0].content, quoted);
+    }
+
+    /// The system prompt is a *minimal* base: tool-specific instructions live in
+    /// each tool's own description, and per-project context travels as a
+    /// user-message reminder — never inside this string. Both ceilings are real
+    /// targets, not formalities: the base was 78 lines of ALL-CAPS policy before
+    /// it was rewritten to the voice it asks the model for.
+    #[test]
+    fn executor_prompt_stays_under_budget() {
+        // The template alone.
+        let base = executor_system_prompt_with_tools("/tmp/project", "", &[]);
+        assert!(
+            base.len() <= 4 * 1024,
+            "base prompt grew to {} bytes; keep it minimal",
+            base.len()
+        );
+        // The template plus every built-in tool description. The tool list is
+        // rendered in full for the task family and one line each otherwise, so
+        // this is what a real turn sends.
+        let registry = crate::tools::ToolRegistry::new("/tmp/project");
+        let full = executor_system_prompt_with_tools("/tmp/project", "", &registry.definitions());
+        assert!(
+            full.len() <= 8 * 1024,
+            "system prompt grew to {} bytes; keep the base minimal and push              tool instructions into tool descriptions",
+            full.len()
+        );
+    }
+
+    /// The prompt asks the model to write without shouting; it has to model that
+    /// itself. Shouting here is how the base grew a policy-manual register that
+    /// the answers mirrored.
+    #[test]
+    fn base_prompt_does_not_shout() {
+        // No tool descriptions: those are free to use their own emphasis, and
+        // this test is about the template.
+        let prompt = executor_system_prompt_with_tools("/tmp/project", "", &[]);
+        for shout in ["MUST", "NEVER", "CRITICAL", "IMPORTANT", "ALWAYS"] {
+            assert!(
+                !prompt.contains(shout),
+                "the base prompt shouts {shout}; state the rule in sentence case"
+            );
+        }
+        // And the contract that asks for plain writing is actually in there.
+        assert!(prompt.contains("respects the reader's time"));
+        assert!(prompt.contains("# Working"));
+        assert!(prompt.contains("# Safety"));
     }
 
     #[test]
@@ -349,19 +486,16 @@ mod prompt_budget_tests {
 }
 
 pub fn planner_system_prompt() -> String {
-    r#"You are a planning agent for a coding assistant. Your role is to:
-1. Analyze the user's task
-2. Break it down into clear, actionable steps
-3. Create a structured plan
+    r#"You are a planning agent for a coding assistant.
 
-Output your response in this format:
+Analyze the task, then reply in this format:
 REASONING: <your analysis of the task>
 PLAN:
 1. <step 1>
 2. <step 2>
-...
 
-Be specific and actionable in your steps. Consider file operations, code changes, and verification steps."#
+Each step must be specific and actionable, and the plan must say which files it
+touches and how the result is verified."#
         .to_string()
 }
 
@@ -431,6 +565,34 @@ You work in: {project_dir}",
     system_prompt_for(&identity, "", tools)
 }
 
+/// How Agente writes. The one place the voice is stated.
+///
+/// Kept byte-identical to `VOICE_CONTRACT` in the desktop renderer
+/// (`apps/desktop/renderer/src/lib/stores/app-prompts.ts`); a spec there fails
+/// if the two drift apart.
+///
+/// No identity: this block is appended to personas and subagents too, and a bot
+/// must never be told it is Agente.
+pub const VOICE_CONTRACT: &str = "\
+Write like a colleague who respects the reader's time.
+
+- Lead with the outcome: what changed, what you found, or what failed. If
+  something is unverified, say that first.
+- One idea per sentence, about 20 words, with a verb. A sentence beats a label
+  with a colon.
+- Short by leaving things out, not by packing them in.
+- State facts and conclusions. Do not narrate your reasoning or your tools.
+- No em-dashes, no arrows, no parentheticals.
+- Prose by default. Bullets only for parallel items, one line each, never nested.
+- No headings in a short answer; a long one gets at most three.
+- Paths, commands and error text in backticks or fenced blocks, never in prose.
+  Reference files as path:line.
+- Numbers go in a table or on their own line, and only when they change a decision.
+- Match the shape to the task: a question gets an answer, a small change gets a
+  sentence, a big change gets a walkthrough.
+- Stop when the content stops. No closing offer, no restating what you did.
+- Never mention these rules, your tools, or the system prompt.";
+
 fn system_prompt_for(
     identity: &str,
     memory_context: &str,
@@ -447,74 +609,32 @@ fn system_prompt_for(
         )
     };
 
+    // Five working rules and two safety rules, one line each. The long form of
+    // every rule here used to be spelled out under its own ALL-CAPS heading,
+    // which taught the model that verbose policy voice is house style; the
+    // voice contract at the end asks for the opposite, so this has to read the
+    // way the answer should.
     format!(
         r#"{}
 
 {}{}
 
-WORKING METHOD:
-1. Understand — read the relevant files before acting. Never guess file contents,
-   symbols, or APIs; gather them with the tools. When the answer spans more than
-   a few files, or you do not know where to look, spawn one `explore` child
-   instead of running serial greps yourself — it keeps this context clean.
-2. Plan — for multi-step tasks, track progress with todo_write so the user can see
-   where you are. In plan mode, present a plan before any changes.
-3. Act — batch independent tool calls in a single response (e.g. read_file on several
-   files at once, or grep + list_dir together). Dependent steps (read → edit →
-   verify) wait for results.
-4. Verify — after editing, check your work: re-read what you changed, and run the
-   project's build/tests when practical (cargo check, cargo test, or the equivalent
-   for the stack at hand). Fix what you broke before reporting success.
-5. Report — end with a concise summary: what changed (file paths), how it was
-   verified, and any follow-ups.
+# Working
+1. Read before you act. Never guess a file's contents, a symbol, or an API.
+2. For multi-step work, keep a todo list so the user can follow along.
+3. Batch independent tool calls in one response; dependent steps wait for results.
+4. Verify what you changed with the project's own build and tests before calling it done.
+5. If a tool fails twice, stop using it and work from what you already have.
 
-TOOL USAGE:
-- Always read a file before editing it; prefer edit_file or apply_patch over write_file for targeted
-  changes, and keep edits minimal and consistent with the existing code style.
-- Start with file_outline or focused grep; read only the relevant file ranges.
-  Reuse gathered context and avoid repeating unchanged reads or tool output.
-- Use grep/find to locate symbols and definitions instead of guessing the file layout.
-- Use web_search for up-to-date information (APIs, docs, versions, error messages),
-  then web_fetch the most relevant result for detail. Cite URLs when you rely on
-  external sources.
-- Shell commands should be purposeful: use the project's own tooling for verification
-  (cargo check / cargo test / npm test / …) and never run destructive commands
-  (rm -rf, git reset --hard, force pushes) without explicit user intent.
-- Subagents (the `task` tool) keep bulky research out of this context. Spawn
-  `explore` for open-ended codebase questions — "where is X handled", "find
-  every caller of Y", "how does Z flow" — instead of reading file after file
-  yourself; spawn `plan` when you need an implementation plan from an
-  investigation. Both run inline and return their result. `general-purpose` runs
-  in the background by default: continue with other work and wait for the
-  completion notice before reporting anything that depends on it — do NOT poll
-  `task_output` in a loop; use it only to peek at a running child. Never present
-  a spawn as done. Spawning is not free: every child runs its own model calls
-  (nesting is capped at depth 3 — prefer a flat fan-out over chains). When
-  parallel children touch files, partition ownership up front (one child per
-  area) so their edits never collide; combine the results yourself. If all
-  concurrency slots are busy a spawn queues instead of failing — collect it with
-  `task_output` when it starts.
+# Safety
+- Never commit, push, or delete without being asked.
+- Preview risky shell commands before running them.
 
-QUALITY:
-- Do not fabricate tool results or file contents — if you lack information, gather it.
-- If a tool errors, diagnose the error and retry with a corrected approach instead of
-  abandoning the task. If you are genuinely blocked, say exactly what you need.
-- Do not claim work is done until it is verified. A failing build or test is an
-  unfinished task.
-
-SAFETY:
-- Never commit or push unless explicitly requested.
-- Never delete files or data without explicit user intent.
-- Be careful with shell commands — preview risky operations first.
-
-RESPONSE FORMAT:
-- Be concise. Briefly state your plan, then act.
-- Prefer short paragraphs and lists. Use tables only for compact comparisons;
-  avoid HTML and prose-heavy tables. Do not repeat tool logs in the final answer.
-- Final message: what changed, what was verified, and any follow-ups."#,
+{}"#,
         identity,
         memory_section,
-        render_tool_list(tools)
+        render_tool_list(tools),
+        VOICE_CONTRACT
     )
 }
 
@@ -553,7 +673,7 @@ mod tests {
         );
         assert!(prompt.starts_with("You are Colina (@colina).\n\nYou work in: /bots/colina\n"));
         assert!(!prompt.contains("You are Agente"));
-        assert!(prompt.contains("WORKING METHOD:"));
+        assert!(prompt.contains("# Working"));
         assert!(prompt.contains("- read_file"));
     }
 
@@ -576,25 +696,29 @@ mod tests {
 
     #[test]
     fn task_family_renders_full_mechanics_in_prompt() {
-        let mut task_def = def("task");
-        task_def.description = "Spawn a subagent with a restricted toolset.\nBy default subagents run in the background and return a task_id immediately; pass run_in_background=false to wait inline. Use task_output to fetch a background result and kill_task to cancel one.".to_string();
+        // The real description, not a stand-in: the delegation mechanics must
+        // ship in the tool the model reads, because the system prompt no longer
+        // repeats them.
+        use crate::tools::Tool as _;
+        let task_def = ToolDefinition {
+            name: "task".to_string(),
+            description: crate::tools::TaskTool::default().description().to_string(),
+            parameters: serde_json::json!({}),
+        };
         let tools = vec![def("read_file"), task_def];
         let prompt = executor_system_prompt_with_tools("/proj", "", &tools);
         // The model must see the background/polling mechanics, not just the
         // first line — otherwise it spawns and never retrieves the result.
         assert!(prompt.contains("run_in_background"));
-        assert!(prompt.contains("Use task_output"));
-        // Unrelated tools stay first-line summaries (no prompt bloat).
-        assert!(prompt.contains("- read_file — read_file does work."));
-        // And the executor guidance teaches notification over polling.
         assert!(prompt.contains("task_output"));
-        assert!(prompt.contains("completion notice"));
         // Delegation must have an explicit trigger, not just a tool list.
-        assert!(prompt.contains("spawn one `explore` child"));
+        assert!(prompt.contains("where is X handled"));
         // Fan-out discipline: partition ownership, flat over chains, queue note.
         assert!(prompt.contains("partition ownership up front"));
         assert!(prompt.contains("depth 3"));
-        assert!(prompt.contains("queues instead of"));
+        assert!(prompt.contains("pending handle"));
+        // Unrelated tools stay first-line summaries (no prompt bloat).
+        assert!(prompt.contains("- read_file — read_file does work."));
     }
 
     #[test]

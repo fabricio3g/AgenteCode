@@ -1,4 +1,4 @@
-//! Explicit subagent handoffs and bounded completion summaries.
+//! Explicit subagent handoffs and complete final results.
 //!
 //! Fresh children receive their own system prompt and exactly the task prompt
 //! authored by the delegating agent. Parent messages, tool results, reasoning,
@@ -27,15 +27,10 @@ pub fn fork_subagent_context(child_system_prompt: &str, child_prompt: &str) -> V
     .collect()
 }
 
-/// Cap a subagent's final output so the parent's context stays lean.
-pub fn completion_summary(output: &str, max_chars: usize) -> String {
-    let trimmed = output.trim();
-    if trimmed.chars().count() > max_chars {
-        let head: String = trimmed.chars().take(max_chars).collect();
-        format!("{head}\n...\n[subagent output truncated]")
-    } else {
-        trimmed.to_string()
-    }
+/// Preserve the child's complete answer. Display previews and context
+/// compaction have their own limits; neither may silently clip this handoff.
+pub fn completion_output(output: &str) -> String {
+    output.trim().to_string()
 }
 
 #[cfg(test)]
@@ -70,10 +65,9 @@ mod tests {
     }
 
     #[test]
-    fn completion_summary_caps_output() {
-        let capped = completion_summary(&"x".repeat(5000), 100);
-        assert!(capped.contains("[subagent output truncated]"));
-        assert!(capped.chars().count() < 200);
-        assert_eq!(completion_summary("done", 100), "done");
+    fn completion_output_preserves_findings_at_the_end() {
+        let output = format!("{}\nAcceptance criteria verified.", "日".repeat(10000));
+        assert_eq!(completion_output(&output), output);
+        assert_eq!(completion_output(" done "), "done");
     }
 }

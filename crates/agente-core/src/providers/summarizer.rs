@@ -18,15 +18,33 @@ pub struct ProviderSummarizer {
     provider: Arc<dyn Provider>,
     model: ModelInfo,
     context: RequestContext,
+    usage: Arc<parking_lot::Mutex<Option<crate::llm::Usage>>>,
+    attempted: std::sync::atomic::AtomicBool,
 }
 
 impl ProviderSummarizer {
+    pub fn attempted(&self) -> bool {
+        self.attempted.load(std::sync::atomic::Ordering::Acquire)
+    }
+
+    pub fn usage(&self) -> Option<crate::llm::Usage> {
+        self.usage.lock().clone().filter(|usage| {
+            usage.total_tokens > 0
+                || usage.prompt_tokens > 0
+                || usage.completion_tokens > 0
+                || usage.cache_read_tokens > 0
+                || usage.cache_creation_tokens > 0
+        })
+    }
+
     /// Create a summarizer using the selected model, including live metadata.
     pub fn new(provider: Arc<dyn Provider>, model: ModelInfo, context: RequestContext) -> Self {
         Self {
             provider,
             model,
             context,
+            usage: Arc::default(),
+            attempted: std::sync::atomic::AtomicBool::new(false),
         }
     }
 }
@@ -54,7 +72,7 @@ pub async fn complete_text(
     messages: &[Message],
     context: RequestContext,
 ) -> Result<String, LlmError> {
-    complete_text_with_budget(provider, model, messages, None, context).await
+    complete_text_with_budget(provider, model, messages, None, context, None).await
 }
 
 async fn complete_text_with_budget(
@@ -63,6 +81,7 @@ async fn complete_text_with_budget(
     messages: &[Message],
     budget_tokens: Option<usize>,
     context: RequestContext,
+    usage: Option<Arc<parking_lot::Mutex<Option<crate::llm::Usage>>>>,
 ) -> Result<String, LlmError> {
     if let Some(budget) = budget_tokens {
         model.limits.output = model
@@ -98,6 +117,11 @@ async fn complete_text_with_budget(
             }
             Ok(None) => break Ok(()),
             Ok(Some(StreamEvent::TextDelta(t))) => text.push_str(&t),
+            Ok(Some(StreamEvent::Done { usage: value, .. })) => {
+                if let Some(usage) = &usage {
+                    *usage.lock() = Some(value);
+                }
+            }
             Ok(Some(StreamEvent::Error(e))) => {
                 handle.abort();
                 break Err(LlmError::StreamError(e));
@@ -110,9 +134,15 @@ async fn complete_text_with_budget(
         return outcome.map(|_| text);
     }
 
-    handle
+    let returned_usage = handle
         .await
         .map_err(|e| LlmError::StreamError(e.to_string()))??;
+    if let Some(usage) = &usage {
+        let mut recorded = usage.lock();
+        if recorded.is_none() {
+            *recorded = Some(returned_usage);
+        }
+    }
     Ok(text)
 }
 
@@ -124,6 +154,8 @@ impl Summarizer for ProviderSummarizer {
         budget_tokens: usize,
         previous_summary: Option<&str>,
     ) -> Result<String, SummarizeError> {
+        self.attempted
+            .store(true, std::sync::atomic::Ordering::Release);
         let llm_messages = build_summarization_messages(messages, previous_summary);
         complete_text_with_budget(
             self.provider.clone(),
@@ -131,6 +163,7 @@ impl Summarizer for ProviderSummarizer {
             &llm_messages,
             Some(budget_tokens),
             self.context,
+            Some(Arc::clone(&self.usage)),
         )
         .await
         .map_err(|e| SummarizeError::Llm(e.to_string()))
@@ -184,7 +217,19 @@ mod tests {
             assert!(!model.options.contains_key("max_tokens"));
             assert!(!model.options.contains_key("max_completion_tokens"));
             let _ = sender.send(StreamEvent::TextDelta("summary".into())).await;
-            Ok(Usage::default())
+            let usage = Usage {
+                prompt_tokens: 80,
+                completion_tokens: 20,
+                total_tokens: 100,
+                ..Default::default()
+            };
+            let _ = sender
+                .send(StreamEvent::Done {
+                    usage: usage.clone(),
+                    stop_reason: crate::llm::StopReason::Stop,
+                })
+                .await;
+            Ok(usage)
         }
     }
 
@@ -226,15 +271,14 @@ mod tests {
     #[tokio::test]
     async fn summary_budget_reaches_provider_without_mutating_catalog() {
         let provider = probe(false);
-        let text = ProviderSummarizer::new(
+        let summarizer = ProviderSummarizer::new(
             provider.clone(),
             provider.info.models[0].clone(),
             RequestContext::new(uuid::Uuid::new_v4()),
-        )
-        .summarize(&[], 1800, None)
-        .await
-        .unwrap();
+        );
+        let text = summarizer.summarize(&[], 1800, None).await.unwrap();
         assert_eq!(text, "summary");
+        assert_eq!(summarizer.usage().unwrap().total_tokens, 100);
         assert_eq!(provider.info.models[0].limits.output, 4096);
     }
 

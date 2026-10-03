@@ -62,6 +62,7 @@ pub(crate) fn forward_legacy_events(
                     session_id,
                     turn_id,
                     compat::conversation_from_core(conversation),
+                    &mut forwarder,
                 );
                 forwarder.emit(RuntimeEvent::TurnFinished { revision });
                 terminal_outcome = Some(TurnOutcome {
@@ -84,6 +85,7 @@ pub(crate) fn forward_legacy_events(
                     session_id,
                     turn_id,
                     compat::conversation_from_core(conversation),
+                    &mut forwarder,
                 );
                 forwarder.emit(RuntimeEvent::TurnCancelled {
                     revision,
@@ -117,7 +119,8 @@ pub(crate) fn forward_legacy_events(
                 } else {
                     compat::conversation_from_core(conversation)
                 };
-                let revision = commit_conversation(&inner, session_id, turn_id, committed);
+                let revision =
+                    commit_conversation(&inner, session_id, turn_id, committed, &mut forwarder);
                 forwarder.emit(RuntimeEvent::TurnFailed {
                     message: message.clone(),
                 });
@@ -170,7 +173,7 @@ pub(crate) fn forward_legacy_events(
             .get(&session_id)
             .map(|snapshot| snapshot.conversation.clone())
             .unwrap_or_default();
-        let revision = commit_conversation(&inner, session_id, turn_id, last_known);
+        let revision = commit_conversation(&inner, session_id, turn_id, last_known, &mut forwarder);
         forwarder.emit(RuntimeEvent::TurnFailed {
             message: message.clone(),
         });
@@ -416,13 +419,25 @@ fn commit_conversation(
     session_id: SessionId,
     turn_id: TurnId,
     mut conversation: Vec<Message>,
+    forwarder: &mut EventForwarder,
 ) -> u64 {
     // Steering that arrived too late for the loop to read is still the
     // user's input: keep it in the session.
-    if let Some(control) = inner.lock_turns().get(&turn_id) {
-        conversation.extend(std::mem::take(&mut *control.inbox.lock()));
+    let pending = inner
+        .lock_turns()
+        .get(&turn_id)
+        .map(|control| control.inbox.close())
+        .unwrap_or_default();
+    let messages = pending
+        .iter()
+        .map(|message| message.content.clone())
+        .collect::<Vec<_>>();
+    conversation.extend(pending);
+    let revision = replace_conversation(inner, session_id, conversation);
+    if !messages.is_empty() {
+        forwarder.emit(RuntimeEvent::UserMessagesInjected { messages });
     }
-    replace_conversation(inner, session_id, conversation)
+    revision
 }
 
 pub(crate) fn replace_conversation(
@@ -430,6 +445,10 @@ pub(crate) fn replace_conversation(
     session_id: SessionId,
     conversation: Vec<Message>,
 ) -> u64 {
+    let commit_lock = inner.commit_lock(session_id);
+    let _commit = commit_lock
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     let mut sessions = inner.write_sessions();
     let revision = sessions
         .get(&session_id)
@@ -441,14 +460,9 @@ pub(crate) fn replace_conversation(
     };
     let count = crate::chat_message_count(&snapshot.conversation);
     sessions.insert(session_id, snapshot.clone());
-    // Persist while still holding the sessions write lock. Commits are
-    // per-turn (low frequency), the fsync window on the small snapshot file is
-    // tiny, and holding the lock keeps the durable copy strictly ordered with
-    // the in-memory revision. Persistence failures are logged inside
-    // `persist_snapshot`, never propagated — a failed write must not fail the
-    // turn.
-    inner.persist_snapshot(&snapshot);
     drop(sessions);
+    // The per-session lock preserves revision order; fsync never owns the global map.
+    inner.persist_snapshot(&snapshot);
     let project_dir = inner.session_context(session_id, None).project_dir;
     inner.update_meta(session_id, &project_dir, |info| {
         info.message_count = count;
@@ -625,6 +639,7 @@ mod tests {
         inner.lock_turns().insert(
             turn_id,
             TurnControl {
+                trust: agente_protocol::Trust::Owner,
                 cancel: AbortController::new(),
                 inbox: {
                     let inbox = agente_core::agent::UserInbox::default();
@@ -673,8 +688,18 @@ mod tests {
             assert_eq!(conversation[1].content, "queued steering");
         }
         assert!(inner.lock_turns().get(&turn_id).is_none());
-        // Drain the event channel so the forwarder's sends never block.
-        while rx_env.recv().await.is_some() {}
+        // Even input arriving after the final completion needs a receipt,
+        // before the terminal event, so clients do not resubmit it.
+        let mut events = Vec::new();
+        while let Some(envelope) = rx_env.recv().await {
+            events.push(envelope.event);
+        }
+        let receipt = events.iter().position(|event| matches!(event, RuntimeEvent::UserMessagesInjected { messages } if messages == &["queued steering"])).unwrap();
+        let terminal = events
+            .iter()
+            .position(|event| matches!(event, RuntimeEvent::TurnFinished { .. }))
+            .unwrap();
+        assert!(receipt < terminal);
     }
 
     #[tokio::test]
@@ -881,6 +906,7 @@ mod tests {
         inner.lock_turns().insert(
             turn_id,
             TurnControl {
+                trust: agente_protocol::Trust::Owner,
                 cancel: AbortController::new(),
                 inbox: agente_core::agent::UserInbox::default(),
                 events: tx_env.clone(),

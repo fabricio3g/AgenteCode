@@ -185,6 +185,9 @@ pub struct AppConfig {
     /// instant and free; smart compaction costs one extra model call.
     #[serde(default)]
     pub smart_compaction: bool,
+    /// Optional model for manual and automatic LLM checkpoints; otherwise use the chat model.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub compaction_model: Option<SubagentModel>,
     /// Subagents allowed to run at once; the rest queue FIFO. `None` uses
     /// `DEFAULT_MAX_CONCURRENT_SUBAGENTS`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -242,6 +245,7 @@ impl Default for AppConfig {
             theme: None,
             reduce_motion: false,
             smart_compaction: false,
+            compaction_model: None,
             max_parallel_subagents: None,
             subagent_models: HashMap::new(),
             approved_mcp_servers: Vec::new(),
@@ -693,6 +697,9 @@ impl AppConfig {
         }
         self.reduce_motion |= other.reduce_motion;
         self.smart_compaction |= other.smart_compaction;
+        if other.compaction_model.is_some() {
+            self.compaction_model = other.compaction_model;
+        }
         if other.max_parallel_subagents.is_some() {
             self.max_parallel_subagents = other.max_parallel_subagents;
         }
@@ -921,6 +928,7 @@ impl AppConfig {
             theme: self.theme.clone(),
             reduce_motion: self.reduce_motion,
             smart_compaction: self.smart_compaction,
+            compaction_model: self.compaction_model.clone(),
             max_parallel_subagents: self.max_parallel_subagents,
             subagent_models: self.subagent_models.clone(),
             approved_mcp_servers: self.approved_mcp_servers.clone(),

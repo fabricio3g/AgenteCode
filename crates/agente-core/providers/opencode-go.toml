@@ -25,6 +25,7 @@ docs_url = "https://opencode.ai/docs/go/"
 require_model_route = true
 
 [transport.cache]
+session_header = "x-opencode-session"
 prompt_cache_key = true
 
 [transport.model_routes]

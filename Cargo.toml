@@ -20,6 +20,21 @@ authors = ["Agente Contributors"]
 license = "MIT"
 repository = "https://github.com/fabricio3g/AgenteCode"
 
+# Debug builds: line tables are enough for readable backtraces and cost a
+# fraction of full DWARF; dependencies carry no debug info at all and are
+# optimized once (they rarely rebuild), so a debug daemon/TUI is not slow
+# from unoptimized syntect/regex/serde/rustls. Together this keeps
+# `target/debug` from growing into the hundreds of gigabytes.
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false
+opt-level = 2
+
+[profile.release]
+strip = "debuginfo"
+
 # Zero-warning policy, enforced structurally: dead code is an error, the rest
 # of rustc/clippy warns. Every crate inherits via `[lints] workspace = true`.
 [workspace.lints.rust]

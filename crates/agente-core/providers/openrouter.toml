@@ -28,6 +28,7 @@ docs_url = "https://openrouter.ai/docs/quickstart"
 "meta-llama/llama-3.3-70b" = { name = "Llama 3.3 70B (Router)", context = 128000 }
 
 [transport.cache]
+session_header = "x-session-id"
 rules = [
   { model_prefix = "anthropic/", format = "openai", breakpoints = true },
   { model_prefix = "google/gemini", format = "openai", breakpoints = true },

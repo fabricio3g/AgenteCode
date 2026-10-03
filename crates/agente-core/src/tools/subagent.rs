@@ -76,6 +76,13 @@ fn task_description(roster: &[crate::subagent::definition::AgentRosterEntry]) ->
     out.push_str(
         " explore and plan wait for the result inline by default (pass run_in_background=true to detach); general-purpose runs in the background by default and returns a task_id immediately. Use task_output to fetch a background result and kill_task to cancel one. A background completion with no outstanding poll is pushed to you automatically — do not poll task_output in a loop. If all concurrency slots are busy the spawn queues and returns a pending handle instead of failing.",
     );
+    // When to delegate, and what delegation costs. This used to live in the
+    // executor system prompt, where it was a fifteen-line paragraph inside
+    // "TOOL USAGE" — the mechanics belong to the tool, and the prompt renders
+    // this description in full.
+    out.push_str(
+        " Reach for explore on open-ended codebase questions (\"where is X handled\", \"find every caller of Y\", \"how does Z flow\") instead of reading file after file yourself; reach for plan when you need an implementation plan from an investigation; general-purpose is for work that changes files. Spawning is not free: every child runs its own model calls, so prefer a flat fan-out over chains (nesting is capped at depth 3). When parallel children touch files, partition ownership up front — one child per area — so their edits never collide, and combine the results yourself.",
+    );
     out.push_str(
         " The child starts with a fresh context: it sees ONLY your `prompt`, never the parent conversation. Pack everything it needs into the prompt — exact file paths, prior findings, constraints, and what \"done\" looks like. A prompt like \"fix what we discussed\" will fail.",
     );
@@ -157,7 +164,7 @@ impl Tool for TaskTool {
     }
 
     fn execution_mode(&self) -> ToolExecutionMode {
-        ToolExecutionMode::Sequential
+        ToolExecutionMode::Parallel
     }
 
     fn allowed_in_plan(&self) -> bool {
@@ -214,7 +221,7 @@ impl Tool for TaskOutputTool {
     }
 
     fn execution_mode(&self) -> ToolExecutionMode {
-        ToolExecutionMode::Sequential
+        ToolExecutionMode::Parallel
     }
 
     fn allowed_in_plan(&self) -> bool {

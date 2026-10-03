@@ -441,3 +441,133 @@ async fn providers_connect_to_the_shared_key_store_and_disconnect() {
     }
     let _ = std::fs::remove_dir_all(dir);
 }
+
+#[tokio::test]
+async fn manual_compaction_returns_token_receipt_without_an_event_subscription() {
+    use agente_protocol::{Message, SessionId, StartTurn};
+    let (service, dir) = runtime("manual-compaction");
+    let session_id = SessionId::new();
+    let mut turn = service
+        .runtime
+        .start_turn(StartTurn {
+            session_id,
+            provider: Some("missing-provider-fixture".into()),
+            conversation: (0..10)
+                .map(|index| {
+                    Message::user(format!("Old turn {index}: {}", "evidence ".repeat(1000)))
+                })
+                .chain(std::iter::once(Message::user("Keep the latest question")))
+                .collect(),
+            ..StartTurn::default()
+        })
+        .unwrap();
+    turn.outcome().await.unwrap();
+    let mut client = Client::connect(&service);
+    let (response, _) = client
+        .request(
+            "session.compact",
+            json!({"session_id": session_id, "smart": false}),
+        )
+        .await;
+    assert!(response.get("error").is_none(), "{response}");
+    let receipt = &response["result"]["compaction"];
+    assert!(receipt["tokens_before"].as_u64().unwrap() > receipt["tokens_after"].as_u64().unwrap());
+    assert_eq!(receipt["model_tokens"], 0);
+    assert_eq!(receipt["smart"], false);
+    assert_eq!(receipt["estimated"], true);
+    assert!(response["result"]["conversation"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|message| message["content"] == "Keep the latest question"));
+    // Calling again still yields a receipt, even when nothing remains to trim.
+    let (response, _) = client
+        .request(
+            "session.compact",
+            json!({"session_id": session_id, "smart": false}),
+        )
+        .await;
+    assert!(response["result"]["compaction"].is_object());
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[tokio::test]
+async fn manual_compaction_defaults_to_llm_and_uses_the_configured_cached_model() {
+    use agente_protocol::{Message, SessionId, StartTurn};
+    use std::io::{Read, Write};
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let endpoint = format!("http://{}/v1", listener.local_addr().unwrap());
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    let server = std::thread::spawn(move || {
+        let (mut socket, _) = listener.accept().unwrap();
+        socket
+            .set_read_timeout(Some(Duration::from_secs(5)))
+            .unwrap();
+        let mut bytes = Vec::new();
+        let mut buffer = [0u8; 4096];
+        let (end, length) = loop {
+            let n = socket.read(&mut buffer).unwrap();
+            assert!(n > 0);
+            bytes.extend_from_slice(&buffer[..n]);
+            if let Some(end) = bytes.windows(4).position(|part| part == b"\r\n\r\n") {
+                let length = String::from_utf8_lossy(&bytes[..end])
+                    .lines()
+                    .find_map(|line| {
+                        let (name, value) = line.split_once(':')?;
+                        name.eq_ignore_ascii_case("content-length")
+                            .then(|| value.trim().parse::<usize>().unwrap())
+                    })
+                    .unwrap();
+                break (end + 4, length);
+            }
+        };
+        while bytes.len() < end + length {
+            let n = socket.read(&mut buffer).unwrap();
+            assert!(n > 0);
+            bytes.extend_from_slice(&buffer[..n]);
+        }
+        let request: Value = serde_json::from_slice(&bytes[end..end + length]).unwrap();
+        let payload = concat!("data: {\"choices\":[{\"delta\":{\"content\":\"Checkpoint: preserve the evidence and finish the latest question.\"}}]}\n\n", "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":1000,\"completion_tokens\":20,\"total_tokens\":1020,\"prompt_tokens_details\":{\"cached_tokens\":800}}}\n\n", "data: [DONE]\n\n");
+        write!(socket,"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{payload}",payload.len()).unwrap();
+        tx.send(request).unwrap();
+    });
+    let (mut service, dir) = runtime("cached-compaction-model");
+    service.runtime = RuntimeSupervisor::start(
+        RuntimeConfig::from_app_config(&AppConfig::default(), dir.to_string_lossy())
+            .with_persistence_dir(dir.join("sessions"))
+            .unwrap(),
+    );
+    service.runtime.configure(json!({"provider":{"checkpoint-fixture":{"api_format":"openai","options":{"base_url":endpoint,"api_key":"test"},"transport":{"cache":{"prompt_cache_key":true}},"models":{"checkpoint-model":{"name":"Checkpoint"}}}},"compaction_model":{"provider":"checkpoint-fixture","model":"checkpoint-model"}})).unwrap();
+    let session_id = SessionId::new();
+    let mut turn = service
+        .runtime
+        .start_turn(StartTurn {
+            session_id,
+            provider: Some("missing-parent-fixture".into()),
+            conversation: (0..10)
+                .map(|index| Message::user(format!("Evidence {index}: {}", "detail ".repeat(1000))))
+                .collect(),
+            ..StartTurn::default()
+        })
+        .unwrap();
+    turn.outcome().await.unwrap();
+    let mut client = Client::connect(&service);
+    // No smart flag: the public manual action must call the LLM.
+    let (response, _) = client
+        .request("session.compact", json!({"session_id":session_id}))
+        .await;
+    assert!(response.get("error").is_none(), "{response}");
+    assert_eq!(response["result"]["compaction"]["smart"], true);
+    assert_eq!(response["result"]["compaction"]["model_tokens"], 1020);
+    let request = rx.await.unwrap();
+    assert_eq!(request["model"], "checkpoint-model");
+    assert_eq!(request["prompt_cache_key"], session_id.to_string());
+    assert!(!request["messages"].as_array().unwrap().is_empty());
+    server.join().unwrap();
+    service
+        .runtime
+        .configure(json!({"compaction_model":null}))
+        .unwrap();
+    assert!(service.runtime.settings()["compaction_model"].is_null());
+    let _ = std::fs::remove_dir_all(dir);
+}

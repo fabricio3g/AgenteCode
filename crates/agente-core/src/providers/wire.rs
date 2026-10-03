@@ -5,21 +5,22 @@ use crate::types::{Message, Role};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 
-/// OpenCode uses the same conversation routing contract for Go and Zen.
-/// Discovery has no conversation, so it shares one process-scoped identity.
-pub(crate) fn session_header(provider_id: &str, context: Option<RequestContext>) -> Option<String> {
+/// Routing identity is a declarative provider policy, shared by every dialect.
+/// Discovery has no conversation, so it uses a stable process identity.
+pub(crate) fn session_header(
+    info: &ProviderInfo,
+    context: Option<RequestContext>,
+) -> Option<(String, String)> {
     static PROCESS_SESSION: std::sync::OnceLock<uuid::Uuid> = std::sync::OnceLock::new();
-    matches!(
-        super::canonical_provider_id(provider_id),
-        "opencode-go" | "opencode" | "opencode-zen"
-    )
-    .then(|| {
-        context
-            .map(|context| context.session_id)
-            .filter(|id| !id.is_nil())
-            .unwrap_or_else(|| *PROCESS_SESSION.get_or_init(uuid::Uuid::new_v4))
-            .to_string()
-    })
+    let name = info.transport_policy().cache.session_header?;
+    if name.is_empty() {
+        return None;
+    }
+    let session = context
+        .map(|context| context.session_id)
+        .filter(|id| !id.is_nil())
+        .unwrap_or_else(|| *PROCESS_SESSION.get_or_init(uuid::Uuid::new_v4));
+    Some((name, session.to_string()))
 }
 
 pub(crate) fn model_options(options: &HashMap<String, Value>) -> HashMap<String, Value> {
@@ -103,8 +104,8 @@ pub(super) fn completion_request(
     let mut request = crate::util::http_client()
         .post(url)
         .header("Content-Type", "application/json");
-    if let Some(session) = session_header(&info.id, Some(context)) {
-        request = request.header("x-opencode-session", session);
+    if let Some((name, session)) = session_header(info, Some(context)) {
+        request = request.header(name, session);
     }
     let format = model.api.format.unwrap_or(info.api_format);
     if let Some(key) = info.resolve_api_key() {
@@ -129,7 +130,12 @@ pub(super) fn completion_request(
             &Default::default(),
         ) && (key.eq_ignore_ascii_case("authorization")
             || key.eq_ignore_ascii_case("x-api-key")
-            || key.eq_ignore_ascii_case("x-opencode-session")
+            || info
+                .transport_policy()
+                .cache
+                .session_header
+                .as_ref()
+                .is_some_and(|name| key.eq_ignore_ascii_case(name))
             || key.eq_ignore_ascii_case("host"))
         {
             return Err(LlmError::HttpError(format!(

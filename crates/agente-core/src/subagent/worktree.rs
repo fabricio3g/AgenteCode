@@ -144,6 +144,31 @@ pub fn pool_for(repo_root: &Path) -> Arc<WorktreePool> {
     pool
 }
 
+/// Collect stale worktrees for the repository holding `project_dir` on a
+/// background thread, once per process. Without it, cleanup only ran when a
+/// writing child acquired a checkout, so explore-only sessions never did.
+pub fn gc_in_background(project_dir: &Path) {
+    if cfg!(test) {
+        return;
+    }
+    let Some(root) = find_repo_root(project_dir) else {
+        return;
+    };
+    static STARTED: OnceLock<StdMutex<std::collections::HashSet<PathBuf>>> = OnceLock::new();
+    let first = STARTED
+        .get_or_init(|| StdMutex::new(std::collections::HashSet::new()))
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .insert(root.clone());
+    if first {
+        let _ = std::thread::Builder::new()
+            .name("agente-worktree-gc".into())
+            .spawn(move || {
+                pool_for(&root);
+            });
+    }
+}
+
 /// Acquire an isolated checkout for a child on a blocking thread.
 pub async fn acquire_for(repo_root: &Path, label: &str) -> Option<WorktreeInfo> {
     let root = repo_root.to_path_buf();
@@ -534,6 +559,13 @@ impl WorktreePool {
         if !path.exists() {
             return;
         }
+        // The checkout's own branch goes with it; otherwise every child leaves
+        // an `agente/*` branch behind forever.
+        let branch = git(path, &["rev-parse", "--abbrev-ref", "HEAD"])
+            .ok()
+            .filter(|out| out.status.success())
+            .map(|out| String::from_utf8_lossy(&out.stdout).trim().to_string())
+            .filter(|name| name.starts_with("agente/"));
         let removed = git(
             &self.repo_root,
             &[
@@ -547,6 +579,10 @@ impl WorktreePool {
         .unwrap_or(false);
         if !removed {
             let _ = std::fs::remove_dir_all(path);
+            let _ = git(&self.repo_root, &["worktree", "prune"]);
+        }
+        if let Some(branch) = branch {
+            let _ = git(&self.repo_root, &["branch", "-D", &branch]);
         }
     }
 
@@ -655,6 +691,17 @@ impl WorktreePool {
         for entry in entries.flatten() {
             let path = entry.path();
             if !path.is_dir() {
+                continue;
+            }
+            // Read-only types (explore, plan) no longer get checkouts, so any
+            // left from older builds hold nothing worth keeping.
+            let read_only_leftover = path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| name.starts_with("explore-") || name.starts_with("plan-"));
+            if read_only_leftover {
+                self.force_remove(&path);
+                self.clear_marker(&path);
                 continue;
             }
             if self.marker_state(&path).as_deref() != Some(STATE_DISPOSABLE) {

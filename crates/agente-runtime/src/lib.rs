@@ -99,6 +99,7 @@ pub struct RuntimeConfig {
     pub subagent_models: agente_core::config::SubagentModels,
     /// LLM-summary compaction instead of trimming (user setting).
     pub smart_compaction: bool,
+    pub compaction_model: Option<agente_core::config::SubagentModel>,
     /// Subagents allowed to run at once.
     pub max_parallel_subagents: usize,
     /// Optional durable session store. When set, every session commit writes
@@ -154,6 +155,7 @@ impl RuntimeConfig {
             subagent_registry: SubagentRegistry::new(),
             subagent_models: app_config.subagent_models.clone(),
             smart_compaction: app_config.smart_compaction,
+            compaction_model: app_config.compaction_model.clone(),
             max_parallel_subagents: app_config.parallel_subagents(),
             session_store: None,
             app_config: app_config.clone(),
@@ -224,6 +226,7 @@ impl RuntimeSupervisor {
             inner: Arc::new(RuntimeInner {
                 config,
                 sessions: RwLock::new(HashMap::new()),
+                commit_locks: Mutex::new(HashMap::new()),
                 contexts: Mutex::new(HashMap::new()),
                 project_mcps: Mutex::new(HashMap::new()),
                 turns: Mutex::new(HashMap::new()),
@@ -233,7 +236,7 @@ impl RuntimeSupervisor {
                 system_prompts: Mutex::new(HashMap::new()),
                 events,
                 edits: Mutex::new(edits::EditLog::default()),
-                live: RwLock::new(live),
+                live: RwLock::new(Arc::new(live)),
             }),
         }
     }
@@ -247,6 +250,8 @@ pub struct RuntimeHandle {
 struct RuntimeInner {
     config: RuntimeConfig,
     sessions: RwLock<HashMap<SessionId, SessionSnapshot>>,
+    /// Order commits within a session without holding the global map across disk I/O.
+    commit_locks: Mutex<HashMap<SessionId, Arc<Mutex<()>>>>,
     /// Per-session project folder and permissions (mode, approve-all grants).
     contexts: Mutex<HashMap<SessionId, SessionContext>>,
     project_mcps: Mutex<HashMap<String, Arc<McpManager>>>,
@@ -263,12 +268,12 @@ struct RuntimeInner {
     events: broadcast::Sender<RuntimeEventEnvelope>,
     /// Undo/redo of each session's file edits.
     edits: Mutex<edits::EditLog>,
-    live: RwLock<LiveSettings>,
+    live: RwLock<Arc<LiveSettings>>,
 }
 
 /// Settings a client can change while the runtime runs (`configure`):
-/// providers and their keys, defaults, and loop limits. Each turn reads a
-/// copy when it starts; running turns keep theirs.
+/// providers and their keys, defaults, and loop limits. Each turn reads an immutable
+/// shared snapshot when it starts; running turns keep theirs.
 #[derive(Clone)]
 struct LiveSettings {
     app_config: AppConfig,
@@ -276,12 +281,13 @@ struct LiveSettings {
     /// curated allowlist does not name them.
     client_providers: std::collections::BTreeSet<String>,
     provider_registry: Arc<ProviderRegistry>,
-    catalog: Option<ModelCatalog>,
+    catalog: Option<Arc<ModelCatalog>>,
     default_provider: String,
     default_model: String,
     default_thinking_level: String,
     max_iterations: u32,
     smart_compaction: bool,
+    compaction_model: Option<agente_core::config::SubagentModel>,
     max_parallel_subagents: usize,
     subagent_models: agente_core::config::SubagentModels,
     /// MCP servers from the config (`mcp`), including tools a client serves
@@ -295,12 +301,13 @@ impl LiveSettings {
             app_config: config.app_config.clone(),
             client_providers: Default::default(),
             provider_registry: Arc::clone(&config.provider_registry),
-            catalog: config.catalog.clone(),
+            catalog: config.catalog.clone().map(Arc::new),
             default_provider: config.default_provider.clone(),
             default_model: config.default_model.clone(),
             default_thinking_level: config.default_thinking_level.clone(),
             max_iterations: config.max_iterations,
             smart_compaction: config.smart_compaction,
+            compaction_model: config.compaction_model.clone(),
             max_parallel_subagents: config.max_parallel_subagents,
             subagent_models: config.subagent_models.clone(),
             mcp_manager: None,
@@ -340,6 +347,7 @@ impl LiveSettings {
             default_thinking_level: rebuilt.default_thinking_level,
             max_iterations: rebuilt.max_iterations,
             smart_compaction: rebuilt.smart_compaction,
+            compaction_model: rebuilt.compaction_model,
             max_parallel_subagents: rebuilt.max_parallel_subagents,
             subagent_models: rebuilt.subagent_models,
             mcp_manager: previous.mcp_manager.clone(),
@@ -502,6 +510,7 @@ impl RuntimeInner {
         }
         let base = live
             .mcp_manager
+            .clone()
             .or_else(|| self.config.mcp_manager.clone())
             .unwrap_or_else(|| Arc::new(McpManager::from_sources(&live.app_config.mcp, "", &[])));
         let manager =
@@ -588,7 +597,7 @@ impl RuntimeInner {
         }
     }
 
-    fn live(&self) -> LiveSettings {
+    fn live(&self) -> Arc<LiveSettings> {
         self.live
             .read()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
@@ -642,6 +651,15 @@ impl RuntimeInner {
     /// Write a session snapshot through the configured store. Persistence
     /// failures never propagate: the in-memory session remains authoritative
     /// and the next commit retries. A no-op without a configured store.
+    fn commit_lock(&self, session_id: SessionId) -> Arc<Mutex<()>> {
+        self.commit_locks
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .entry(session_id)
+            .or_insert_with(|| Arc::new(Mutex::new(())))
+            .clone()
+    }
+
     fn persist_edits(&self, session_id: SessionId) {
         let Some(store) = &self.config.session_store else {
             return;
@@ -650,6 +668,9 @@ impl RuntimeInner {
         let Ok(Some(mut meta)) = store.read_meta(session_id) else {
             return;
         };
+        if meta.clients.get("runtime_edits") == Some(&value) {
+            return;
+        }
         meta.clients.insert("runtime_edits".into(), value);
         if let Err(error) = store.write_meta(&meta) {
             tracing::warn!(%session_id, %error, "session edit history persistence failed");
@@ -699,7 +720,18 @@ impl RuntimeInner {
     }
 }
 
+struct CompactionReservation {
+    inner: Arc<RuntimeInner>,
+    turn_id: TurnId,
+}
+impl Drop for CompactionReservation {
+    fn drop(&mut self) {
+        self.inner.lock_turns().remove(&self.turn_id);
+    }
+}
+
 struct TurnControl {
+    trust: Trust,
     cancel: AbortController,
     /// Steering input the running loop picks up at its next step; whatever
     /// is still here when the turn ends is committed as user messages.
@@ -795,6 +827,10 @@ impl RuntimeHandle {
             turns.insert(
                 turn_id,
                 TurnControl {
+                    trust: start
+                        .origin
+                        .as_ref()
+                        .map_or(Trust::Owner, |origin| origin.trust),
                     cancel: cancel.clone(),
                     inbox: Arc::clone(&inbox),
                     events: event_tx.clone(),
@@ -899,12 +935,14 @@ impl RuntimeHandle {
             conversation: conversation.clone(),
         };
         {
-            let mut sessions = self.inner.write_sessions();
-            sessions.insert(session_id, snapshot.clone());
-            // Persist under the sessions write lock: the initial insert is the
-            // first commit point (a crash before the turn ends must not lose
-            // the user's input), and holding the lock keeps the durable copy
-            // ordered with the in-memory revision.
+            let commit_lock = self.inner.commit_lock(session_id);
+            let _commit = commit_lock
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            self.inner
+                .write_sessions()
+                .insert(session_id, snapshot.clone());
+            // Preserve the initial durable checkpoint without blocking other sessions.
             self.inner.persist_snapshot(&snapshot);
         }
 
@@ -1000,6 +1038,7 @@ impl RuntimeHandle {
             self.inner.config.subagent_registry.clone(),
             live.subagent_models.clone(),
             live.smart_compaction,
+            live.compaction_model.clone(),
             live.max_parallel_subagents,
             inbox,
             turn_tools,
@@ -1059,12 +1098,47 @@ impl RuntimeHandle {
         self.steer_message(turn_id, Message::user(input.content))
     }
 
+    /// Change active-turn controls. Request settings apply at the next safe
+    /// completion boundary; permissions change immediately for future tools.
+    pub fn update_turn(
+        &self,
+        turn_id: TurnId,
+        thinking: Option<String>,
+        mode: Option<TurnMode>,
+    ) -> bool {
+        let turns = self.inner.lock_turns();
+        let Some(control) = turns
+            .get(&turn_id)
+            .filter(|control| !control.inbox.is_closed())
+        else {
+            return false;
+        };
+        if let Some(mode) = mode {
+            let context = self.inner.session_context(control.session_id, None);
+            let (mode, auto) = effective_mode(Some(mode), self.inner.config.mode, control.trust);
+            let mut engine = context
+                .engine
+                .write()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            engine.set_mode(mode);
+            if let Some(auto) = auto {
+                engine.set_auto_approve(auto);
+            }
+        }
+        control.inbox.update_settings(thinking);
+        true
+    }
+
     pub fn steer_message(&self, turn_id: TurnId, message: Message) -> bool {
         let turns = self.inner.lock_turns();
         let Some(control) = turns.get(&turn_id) else {
             return false;
         };
+        if control.inbox.is_closed() {
+            return false;
+        }
         control.inbox.lock().push(message);
+        control.inbox.interrupt_thinking();
         let envelope = self.envelope(
             control.session_id,
             turn_id,
@@ -1106,6 +1180,7 @@ impl RuntimeHandle {
         let config = &live.app_config;
         serde_json::json!({
             "smart_compaction": config.smart_compaction,
+            "compaction_model": config.compaction_model,
             "max_parallel_subagents": config.max_parallel_subagents.unwrap_or(8),
             "subagent_models": config.subagent_models,
             "allow_media": config.allow_media,
@@ -1211,10 +1286,10 @@ impl RuntimeHandle {
             AppConfig::edit_global(edit).map_err(failed)?;
             edit(&mut config);
         }
-        live.app_config.auth_store = store;
+        Arc::make_mut(&mut live).app_config.auth_store = store;
         let client_providers = live.client_providers.clone();
         let next = LiveSettings::from_app_config(config, client_providers, &live);
-        *live = next;
+        *live = Arc::new(next);
         Ok(())
     }
 
@@ -1222,7 +1297,7 @@ impl RuntimeHandle {
         let live = self.inner.live();
         agente_core::providers::resolve_model_info(
             &live.provider_registry,
-            live.catalog.as_ref(),
+            live.catalog.as_deref(),
             provider,
             model,
         )
@@ -1239,7 +1314,7 @@ impl RuntimeHandle {
         agente_core::models::discover(
             &live.provider_registry,
             &baseline,
-            live.catalog.as_ref(),
+            live.catalog.as_deref(),
             provider,
         )
         .await
@@ -1354,7 +1429,7 @@ impl RuntimeHandle {
             }
             added = Some(manager);
         }
-        *live = next;
+        *live = Arc::new(next);
         if patch_mcp || patch_approvals {
             self.inner
                 .project_mcps
@@ -1428,7 +1503,7 @@ impl RuntimeHandle {
                         "only project MCP servers need approval".into(),
                     ));
                 }
-                let mut approved = self.inner.live().app_config.approved_mcp_servers;
+                let mut approved = self.inner.live().app_config.approved_mcp_servers.clone();
                 let key = agente_core::mcp::approval_key(project_dir, name);
                 if !approved.contains(&key) {
                     approved.push(key);
@@ -1524,10 +1599,127 @@ impl RuntimeHandle {
     /// Shrink the session's conversation now (trimming older turns, keeping
     /// recent ones), like the automatic compaction between model calls.
     /// Refused while a turn runs. Returns the new snapshot.
-    pub fn compact(&self, session_id: SessionId) -> Result<SessionSnapshot, RuntimeError> {
-        if self.is_busy(session_id) {
+    fn reserve_compaction(
+        &self,
+        session_id: SessionId,
+    ) -> Result<CompactionReservation, RuntimeError> {
+        let mut turns = self.inner.lock_turns();
+        if turns
+            .values()
+            .any(|control| control.session_id == session_id)
+        {
             return Err(RuntimeError::SessionBusy(session_id));
         }
+        let turn_id = TurnId::new();
+        let inbox = UserInbox::default();
+        inbox.close();
+        let (events, _rx) = mpsc::channel(1);
+        turns.insert(
+            turn_id,
+            TurnControl {
+                trust: Trust::Owner,
+                cancel: AbortController::new(),
+                inbox,
+                events,
+                session_id,
+            },
+        );
+        Ok(CompactionReservation {
+            inner: Arc::clone(&self.inner),
+            turn_id,
+        })
+    }
+
+    pub async fn compact_smart(
+        &self,
+        session_id: SessionId,
+    ) -> Result<(SessionSnapshot, bool, Option<agente_core::llm::Usage>), RuntimeError> {
+        let _reservation = self.reserve_compaction(session_id)?;
+        let snapshot = self.inner.lookup_session(session_id);
+        let meta = self.session_meta(session_id).ok_or_else(|| {
+            RuntimeError::Config(
+                "Choose a model and start a conversation before smart compaction".into(),
+            )
+        })?;
+        let live = self.inner.live();
+        let provider_id = live
+            .compaction_model
+            .as_ref()
+            .map_or(meta.info.provider.as_str(), |chosen| {
+                chosen.provider.as_str()
+            });
+        let model_id = live
+            .compaction_model
+            .as_ref()
+            .map_or(meta.info.model.as_str(), |chosen| chosen.model.as_str());
+        let provider = live.provider_registry.get(provider_id).ok_or_else(|| {
+            RuntimeError::Config("The conversation provider is unavailable".into())
+        })?;
+        let mut model = agente_core::providers::resolve_model_info(
+            &live.provider_registry,
+            live.catalog.as_deref(),
+            provider_id,
+            model_id,
+        );
+        model.options = provider.get_request_options(&model);
+        let tokens_before = agente_core::context::estimate_message_tokens(&snapshot.conversation);
+        let strategy = agente_core::context::CompactionStrategy::manual(
+            model.limits.context as usize,
+            tokens_before,
+        );
+        let summarizer = Arc::new(agente_core::providers::ProviderSummarizer::new(
+            provider,
+            model,
+            agente_core::providers::RequestContext::new(session_id.as_uuid()),
+        ));
+        let result = agente_core::context::ContextCompactor::new(strategy)
+            .with_summarizer(summarizer.clone())
+            .compact_async_forced(snapshot.conversation.clone())
+            .await;
+        let smart = matches!(
+            result.summary.metadata.summary_type,
+            agente_core::context::SummaryType::Semantic
+        );
+        let tokens_after = agente_core::context::estimate_message_tokens(&result.messages);
+        if tokens_after >= tokens_before {
+            return Ok((
+                snapshot,
+                false,
+                if summarizer.attempted() {
+                    summarizer.usage()
+                } else {
+                    Some(agente_core::llm::Usage::default())
+                },
+            ));
+        }
+        self.inner.lock_edits().compacted(session_id);
+        self.inner.persist_edits(session_id);
+        let revision = bridge::replace_conversation(&self.inner, session_id, result.messages);
+        self.inner.publish(&self.envelope(
+            session_id,
+            TurnId::new(),
+            None,
+            RuntimeEvent::ContextCompacted {
+                summary: result.summary.content,
+                revision,
+                tokens_before: tokens_before as u32,
+                tokens_after: tokens_after as u32,
+                smart,
+            },
+        ));
+        Ok((
+            self.inner.lookup_session(session_id),
+            smart,
+            if summarizer.attempted() {
+                summarizer.usage()
+            } else {
+                Some(agente_core::llm::Usage::default())
+            },
+        ))
+    }
+
+    pub fn compact(&self, session_id: SessionId) -> Result<SessionSnapshot, RuntimeError> {
+        let _reservation = self.reserve_compaction(session_id)?;
         let snapshot = self.inner.lookup_session(session_id);
         let before = snapshot.conversation.len();
         let tokens_before =
@@ -1605,6 +1797,7 @@ impl RuntimeHandle {
             turns.insert(
                 turn_id,
                 TurnControl {
+                    trust: Trust::Owner,
                     cancel: cancel.clone(),
                     inbox: UserInbox::default(),
                     events: event_tx.clone(),
@@ -2091,6 +2284,7 @@ mod tests {
         inner.lock_turns().insert(
             turn_id,
             TurnControl {
+                trust: Trust::Owner,
                 cancel: AbortController::new(),
                 inbox: {
                     let inbox = UserInbox::default();
@@ -2390,6 +2584,42 @@ mod tests {
         assert!(Arc::ptr_eq(&other.engine, &again.engine));
     }
 
+    #[test]
+    fn active_controls_are_scoped_and_keep_untrusted_turns_read_only() {
+        let handle = RuntimeSupervisor::start(test_config());
+        let session_id = SessionId::new();
+        let other = handle.inner.session_context(SessionId::new(), None);
+        let context = handle.inner.session_context(session_id, None);
+        let turn_id = TurnId::new();
+        let cancel = AbortController::new();
+        let inbox = UserInbox::default();
+        handle.inner.lock_turns().insert(
+            turn_id,
+            TurnControl {
+                trust: Trust::Owner,
+                cancel: cancel.clone(),
+                inbox: inbox.clone(),
+                events: mpsc::channel(1).0,
+                session_id,
+            },
+        );
+        assert!(handle.update_turn(turn_id, Some("high".into()), Some(TurnMode::Auto)));
+        assert_eq!(context.engine.read().unwrap().mode, AgentMode::Build);
+        assert!(context.engine.read().unwrap().auto_approve());
+        assert_eq!(other.engine.read().unwrap().mode, AgentMode::Build);
+        assert!(!cancel.signal().is_aborted());
+        assert!(handle.update_turn(turn_id, None, Some(TurnMode::Build)));
+        assert!(!context.engine.read().unwrap().auto_approve());
+        assert!(handle.update_turn(turn_id, None, Some(TurnMode::Plan)));
+        assert_eq!(context.engine.read().unwrap().mode, AgentMode::Plan);
+        handle.inner.lock_turns().get_mut(&turn_id).unwrap().trust = Trust::Public;
+        assert!(handle.update_turn(turn_id, None, Some(TurnMode::Auto)));
+        assert_eq!(context.engine.read().unwrap().mode, AgentMode::Plan);
+        assert!(!context.engine.read().unwrap().auto_approve());
+        inbox.close();
+        assert!(!handle.update_turn(turn_id, None, Some(TurnMode::Auto)));
+    }
+
     #[tokio::test]
     async fn steering_joins_the_running_turn_without_cancelling_it() {
         let handle = RuntimeSupervisor::start(test_config());
@@ -2402,6 +2632,7 @@ mod tests {
         handle.inner.lock_turns().insert(
             turn_id,
             TurnControl {
+                trust: Trust::Owner,
                 cancel: cancel.clone(),
                 inbox: Arc::clone(&inbox),
                 events,
@@ -2454,6 +2685,7 @@ mod tests {
         restarted.inner.lock_turns().insert(
             TurnId::new(),
             TurnControl {
+                trust: Trust::Owner,
                 cancel: AbortController::new(),
                 inbox: UserInbox::default(),
                 events: mpsc::channel(1).0,
@@ -2602,6 +2834,21 @@ mod tests {
     }
 
     #[test]
+    fn live_reads_share_an_immutable_snapshot_and_configure_keeps_old_turn_settings() {
+        let handle = RuntimeSupervisor::start(test_config());
+        let first = handle.inner.live();
+        assert!(Arc::ptr_eq(&first, &handle.inner.live()));
+        let old_limit = first.max_iterations;
+        handle
+            .configure(serde_json::json!({ "max_iterations": old_limit + 1 }))
+            .unwrap();
+        let next = handle.inner.live();
+        assert!(!Arc::ptr_eq(&first, &next));
+        assert_eq!(first.max_iterations, old_limit);
+        assert_eq!(next.max_iterations, old_limit + 1);
+    }
+
+    #[test]
     fn configure_adds_a_provider_and_changes_the_defaults() {
         let handle = RuntimeSupervisor::start(test_config());
         handle
@@ -2712,7 +2959,7 @@ mod tests {
             .outcome()
             .await;
         assert!(system().starts_with("You are Colina (@colina).\nMemory: likes tea."));
-        assert!(system().contains("WORKING METHOD:"));
+        assert!(system().contains("Read before you act."));
 
         *personas.0.lock().unwrap() = "You are Colina (@colina).\nMemory: likes coffee.".into();
         let _ = handle
@@ -2743,7 +2990,12 @@ mod tests {
             }))
             .await
             .unwrap();
-        let manager = handle.inner.live().mcp_manager.expect("manager built");
+        let manager = handle
+            .inner
+            .live()
+            .mcp_manager
+            .clone()
+            .expect("manager built");
         assert!(manager.tools().is_empty());
         // Settings that do not name mcp keep the manager.
         handle
@@ -2751,7 +3003,7 @@ mod tests {
             .unwrap();
         assert!(Arc::ptr_eq(
             &manager,
-            &handle.inner.live().mcp_manager.unwrap()
+            &handle.inner.live().mcp_manager.clone().unwrap()
         ));
     }
 }

@@ -44,7 +44,7 @@ pub fn spawn_chat_task(
     project_dir: String,
     max_iterations: u32,
     registry: Arc<ProviderRegistry>,
-    catalog: Option<crate::catalog::ModelCatalog>,
+    catalog: Option<Arc<crate::catalog::ModelCatalog>>,
     permission_engine: SharedPermissionEngine,
     cancel_signal: AbortSignal,
     approval_broker: ApprovalBroker,
@@ -52,6 +52,7 @@ pub fn spawn_chat_task(
     subagent_registry: crate::subagent::SubagentRegistry,
     subagent_models: crate::config::SubagentModels,
     smart_compaction: bool,
+    compaction_model: Option<crate::config::SubagentModel>,
     max_parallel_subagents: usize,
     user_inbox: super::config::UserInbox,
     turn_tools: super::config::TurnTools,
@@ -115,6 +116,7 @@ pub fn spawn_chat_task(
             loop_nudge_after: DEFAULT_LOOP_NUDGE_AFTER,
             loop_stop_after: DEFAULT_LOOP_STOP_AFTER,
             smart_compaction,
+            compaction_model,
             user_inbox: Some(user_inbox),
             extra_tools: turn_tools.extra,
             only_tools: turn_tools.only,
@@ -198,7 +200,7 @@ pub(crate) async fn run_agent_loop(cfg: AgentRunConfig) -> Result<(), AgentLoopF
         messages: conversation,
         provider_id,
         model,
-        thinking_level,
+        mut thinking_level,
         project_dir,
         max_iterations,
         registry,
@@ -215,6 +217,7 @@ pub(crate) async fn run_agent_loop(cfg: AgentRunConfig) -> Result<(), AgentLoopF
         loop_nudge_after,
         loop_stop_after,
         smart_compaction,
+        compaction_model,
         user_inbox,
         extra_tools,
         only_tools,
@@ -262,51 +265,10 @@ pub(crate) async fn run_agent_loop(cfg: AgentRunConfig) -> Result<(), AgentLoopF
 
     tool_registry.set_shell_env(shell_env);
     let tool_registry = Arc::new(tool_registry);
-    let mode = permission_engine
-        .read()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
-        .mode;
-
-    // Append mode restriction to existing system message. Children skip this —
-    // the host gates plan-mode parents before spawning them.
     let mut messages = conversation;
-    if !is_subagent {
-        // Project instructions (AGENTS.md) travel as a user-message reminder;
-        // idempotent, so it re-attaches after compaction dropped it.
-        crate::context::inject_project_reminder(&mut messages, &project_dir);
-    }
-    if !is_subagent && mode == crate::types::AgentMode::Plan {
-        let allowed: Vec<String> = tool_registry
-            .definitions_for_mode(crate::types::AgentMode::Plan)
-            .into_iter()
-            .map(|d| d.name)
-            .collect();
-        let blocked: Vec<String> = tool_registry
-            .definitions()
-            .into_iter()
-            .map(|d| d.name)
-            .filter(|name| !allowed.contains(name))
-            .collect();
-        let restriction = crate::context::plan_mode_restriction(&allowed, &blocked);
-        // Find and append to existing system message instead of inserting a second one
-        if let Some(sys_msg) = messages.iter_mut().find(|m| m.role == Role::System) {
-            sys_msg.content.push_str(&restriction);
-        } else {
-            messages.insert(
-                0,
-                Message {
-                    role: Role::System,
-                    content: restriction[2..].to_string(), // strip leading \n\n
-                    tool_calls: None,
-                    tool_call_id: None,
-                    thinking: None,
-                    thinking_signature: None,
-                    continuation: None,
-                    attachments: Vec::new(),
-                },
-            );
-        }
-    }
+    // Children get the project's AGENTS.md as well: without it every explore
+    // run spends tool rounds rediscovering layout and build commands.
+    crate::context::inject_project_reminder(&mut messages, &project_dir);
 
     // Loop-local counters for per-turn and cumulative usage tracking. The stream
     // loop mutates these in place; terminal events carry them to the UI.
@@ -393,6 +355,34 @@ pub(crate) async fn run_agent_loop(cfg: AgentRunConfig) -> Result<(), AgentLoopF
             }
         }
 
+        if let Some(level) = user_inbox.as_ref().and_then(|inbox| inbox.take_thinking()) {
+            thinking_level = level;
+        }
+        let mode = permission_engine
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .mode;
+
+        // Refresh mode restriction in the existing system message. Children skip this —
+        // the host gates plan-mode parents before spawning them.
+        if !is_subagent && mode == crate::types::AgentMode::Plan {
+            let allowed: Vec<String> = tool_registry
+                .definitions_for_mode(crate::types::AgentMode::Plan)
+                .into_iter()
+                .map(|d| d.name)
+                .collect();
+            let blocked: Vec<String> = tool_registry
+                .definitions()
+                .into_iter()
+                .map(|d| d.name)
+                .filter(|name| !allowed.contains(name))
+                .collect();
+            let restriction = crate::context::plan_mode_restriction(&allowed, &blocked);
+            crate::context::set_plan_restriction(&mut messages, Some(&restriction));
+        } else if !is_subagent {
+            crate::context::set_plan_restriction(&mut messages, None);
+        }
+
         tracing::info!(
             iteration,
             message_count = messages.len(),
@@ -421,7 +411,7 @@ pub(crate) async fn run_agent_loop(cfg: AgentRunConfig) -> Result<(), AgentLoopF
         // context window). Never use a bare discovery stub when catalog knows the model.
         let mut model_info = crate::providers::resolve_model_info(
             registry.as_ref(),
-            catalog.as_ref(),
+            catalog.as_deref(),
             &provider_id,
             &model_clone,
         );
@@ -467,13 +457,37 @@ pub(crate) async fn run_agent_loop(cfg: AgentRunConfig) -> Result<(), AgentLoopF
             // straight away — instant, and no extra model call.
             let smart = smart_compaction;
             send_event(&sender, task_id, AgentEvent::CompactionStarted { smart });
+            let summary_target = if let Some(chosen) = &compaction_model {
+                registry.get(&chosen.provider).map(|summary_provider| {
+                    let mut summary_model = crate::providers::resolve_model_info(
+                        &registry,
+                        catalog.as_deref(),
+                        &chosen.provider,
+                        &chosen.model,
+                    );
+                    summary_model.options = summary_provider.get_request_options(&summary_model);
+                    (summary_provider, summary_model)
+                })
+            } else {
+                Some((provider.clone(), model_info.clone()))
+            };
+            let summary_price = summary_target
+                .as_ref()
+                .map(|(_, model)| model.cost.clone())
+                .unwrap_or_default();
+            let summarizer = smart
+                .then_some(summary_target)
+                .flatten()
+                .map(|(provider, model)| {
+                    Arc::new(ProviderSummarizer::new(
+                        provider,
+                        model,
+                        crate::providers::RequestContext::new(session_id),
+                    ))
+                });
             let compactor = ContextCompactor::new(strategy.clone());
-            let compactor = if smart {
-                compactor.with_summarizer(Arc::new(ProviderSummarizer::new(
-                    provider.clone(),
-                    model_info.clone(),
-                    crate::providers::RequestContext::new(session_id),
-                )))
+            let compactor = if let Some(summarizer) = &summarizer {
+                compactor.with_summarizer(summarizer.clone())
             } else {
                 compactor
             };
@@ -528,11 +542,43 @@ pub(crate) async fn run_agent_loop(cfg: AgentRunConfig) -> Result<(), AgentLoopF
                 Ok(r) => Some(r),
                 Err(e) => {
                     tracing::warn!(error = %e, "compaction task failed; continuing un-compacted");
-                    None
+                    Some(ContextCompactor::new(strategy.clone()).compact_forced(messages.clone()))
                 }
             };
+            if let Some(usage) = summarizer
+                .as_ref()
+                .and_then(|summarizer| summarizer.usage())
+            {
+                total_tokens = total_tokens.saturating_add(usage.total_tokens);
+                send_event(
+                    &sender,
+                    task_id,
+                    AgentEvent::CallUsage {
+                        prompt_tokens: usage.prompt_tokens,
+                        completion_tokens: usage.completion_tokens,
+                        cache_read_tokens: usage.cache_read_tokens,
+                        cache_creation_tokens: usage.cache_creation_tokens,
+                        cost_usd: usage.cost_usd.or_else(|| {
+                            summary_price.is_priced().then(|| {
+                                summary_price.cost_usd(
+                                    usage.prompt_tokens,
+                                    usage.completion_tokens,
+                                    usage.cache_read_tokens,
+                                    usage.cache_creation_tokens,
+                                )
+                            })
+                        }),
+                        cost_estimated: usage.cost_usd.is_none(),
+                        subagent_id: None,
+                    },
+                );
+            }
             if let Some(result) = compacted {
-                if result.summary.tokens_saved > 0 {
+                {
+                    let smart = matches!(
+                        result.summary.metadata.summary_type,
+                        crate::context::SummaryType::Semantic
+                    );
                     tracing::info!(
                         iteration,
                         tokens_saved = result.summary.tokens_saved,
@@ -616,8 +662,24 @@ pub(crate) async fn run_agent_loop(cfg: AgentRunConfig) -> Result<(), AgentLoopF
         let mut stream_stop_reason = StopReason::Unknown;
         let mut received_output = false;
 
+        let mut steered = false;
         loop {
             tokio::select! {
+                // Once a tool call starts, finish the provider response and
+                // tool round before injecting input. Incomplete tool pairs or
+                // unsigned thinking must never be replayed to a provider.
+                _ = async {
+                    match &user_inbox {
+                        Some(inbox) => inbox.wait_interrupt().await,
+                        None => std::future::pending::<()>().await,
+                    }
+                }, if tool_calls.is_empty() && tool_call_accumulators.is_empty() => {
+                    if user_inbox.as_ref().is_some_and(|inbox| !inbox.lock().is_empty() || inbox.has_settings_update()) {
+                        stream_handle.abort();
+                        steered = true;
+                        break;
+                    }
+                }
                 event = rx.recv() => {
                     match event {
                         Some(event) => match event {
@@ -756,6 +818,22 @@ pub(crate) async fn run_agent_loop(cfg: AgentRunConfig) -> Result<(), AgentLoopF
         generation_progress.finish_request(&sender, task_id);
         // A provider must not remain blocked sending after its terminal event.
         drop(rx);
+        if steered {
+            let _ = stream_handle.await;
+            // Keep already displayed text, without provider continuation or
+            // partial thinking signatures. The next iteration takes the inbox.
+            if !full_response.is_empty() {
+                let mut message = Message::user(full_response.clone());
+                message.role = Role::Assistant;
+                running_tokens = running_tokens.saturating_add(
+                    crate::context::estimate_message_tokens(std::slice::from_ref(&message)),
+                );
+                messages.push(message);
+                send_event(&sender, task_id, AgentEvent::AssistantText(full_response));
+            }
+            iteration = iteration.saturating_sub(1);
+            continue;
+        }
         let stream_result = match stream_handle.await {
             Ok(Ok(usage)) => Ok(usage),
             Ok(Err(e)) => Err(format!("Stream error: {e}")),
@@ -1442,6 +1520,9 @@ mod tests {
         info: crate::providers::ProviderInfo,
         inbox: super::super::config::UserInbox,
         seen: std::sync::Mutex<Vec<Vec<String>>>,
+        interrupt_first: bool,
+        live_settings: Option<crate::permissions::SharedPermissionEngine>,
+        levels: std::sync::Mutex<Vec<String>>,
     }
 
     #[async_trait::async_trait]
@@ -1458,15 +1539,57 @@ mod tests {
             sender: tokio::sync::mpsc::Sender<crate::llm::StreamEvent>,
             _context: crate::providers::RequestContext,
         ) -> Result<crate::llm::Usage, crate::llm::LlmError> {
+            self.levels.lock().unwrap().push(
+                _model
+                    .options
+                    .get("reasoning_effort")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("none")
+                    .to_string(),
+            );
             let call = {
                 let mut seen = self.seen.lock().unwrap();
                 seen.push(messages.iter().map(|m| m.content.clone()).collect());
                 seen.len()
             };
             if call == 1 {
-                self.inbox
-                    .lock()
-                    .push(Message::user("also update the docs"));
+                if self.interrupt_first {
+                    sender
+                        .send(crate::llm::StreamEvent::ReasoningDelta(
+                            "unfinished reasoning".into(),
+                        ))
+                        .await
+                        .ok();
+                    sender
+                        .send(crate::llm::StreamEvent::TextDelta("partial answer".into()))
+                        .await
+                        .ok();
+                    tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+                }
+                if let Some(engine) = &self.live_settings {
+                    engine
+                        .write()
+                        .unwrap()
+                        .set_mode(crate::types::AgentMode::Plan);
+                    self.inbox.update_settings(Some("high".into()));
+                } else {
+                    self.inbox
+                        .lock()
+                        .push(Message::user("also update the docs"));
+                }
+                if self.interrupt_first {
+                    self.inbox.interrupt_thinking();
+                    std::future::pending::<()>().await;
+                }
+            }
+            if self.interrupt_first {
+                assert!(
+                    messages
+                        .iter()
+                        .all(|message| message.thinking_signature.is_none()
+                            && message.continuation.is_none()),
+                    "interrupted provider state must not be replayed"
+                );
             }
             let text = if call == 1 {
                 "first answer"
@@ -1495,7 +1618,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn messages_sent_mid_turn_join_the_same_turn() {
+    async fn send_now_interrupts_an_unfinished_completion_and_keeps_the_turn() {
         use crate::cancellation::AbortController;
         use crate::permissions::{shared_permission_engine, ApprovalBroker};
         use crate::types::AgentMode;
@@ -1510,6 +1633,9 @@ mod tests {
             },
             inbox: Arc::clone(&inbox),
             seen: std::sync::Mutex::new(Vec::new()),
+            interrupt_first: true,
+            live_settings: None,
+            levels: Default::default(),
         });
         registry.register("test-overflow", provider.clone());
         let (tx, rx) = std::sync::mpsc::channel();
@@ -1537,6 +1663,163 @@ mod tests {
             loop_nudge_after: DEFAULT_LOOP_NUDGE_AFTER,
             loop_stop_after: DEFAULT_LOOP_STOP_AFTER,
             smart_compaction: false,
+            compaction_model: None,
+            user_inbox: Some(Arc::clone(&inbox)),
+            extra_tools: Vec::new(),
+            only_tools: None,
+            shell_env: Default::default(),
+        };
+        tokio::time::timeout(std::time::Duration::from_secs(2), run_agent_loop(config))
+            .await
+            .expect("steering must not wait for the old completion")
+            .expect("turn completes");
+
+        let seen = provider.seen.lock().unwrap().clone();
+        assert_eq!(seen.len(), 2, "the turn went on instead of finishing");
+        assert_eq!(
+            seen[1][seen[1].len() - 2..],
+            [
+                "partial answer".to_string(),
+                "also update the docs".to_string()
+            ],
+            "the message joins after the reply it arrived during"
+        );
+        assert!(inbox.lock().is_empty(), "taken from the inbox");
+        let events: Vec<AgentTaskEvent> = rx.try_iter().collect();
+        assert!(events.iter().any(|e| matches!(
+            &e.event,
+            AgentEvent::UserMessagesInjected { messages } if messages == &["also update the docs"]
+        )));
+        let done = events
+            .iter()
+            .find_map(|e| match &e.event {
+                AgentEvent::Done { conversation, .. } => Some(conversation.clone()),
+                _ => None,
+            })
+            .expect("Done");
+        assert_eq!(done.last().unwrap().content, "docs updated");
+    }
+
+    #[tokio::test]
+    async fn active_thinking_and_plan_controls_restart_a_stalled_request() {
+        use crate::cancellation::AbortController;
+        use crate::permissions::{shared_permission_engine, ApprovalBroker};
+        use crate::types::AgentMode;
+
+        let inbox = super::super::config::UserInbox::default();
+        let permissions = shared_permission_engine(AgentMode::Build);
+        let registry = Arc::new(ProviderRegistry::new());
+        let provider = Arc::new(MidTurnProvider {
+            info: crate::providers::ProviderInfo {
+                id: "test-overflow".into(),
+                models: vec![overflow_test_model()],
+                ..Default::default()
+            },
+            inbox: Arc::clone(&inbox),
+            seen: std::sync::Mutex::new(Vec::new()),
+            interrupt_first: true,
+            live_settings: Some(permissions.clone()),
+            levels: Default::default(),
+        });
+        registry.register("test-overflow", provider.clone());
+        let (tx, rx) = std::sync::mpsc::channel();
+        let config = AgentRunConfig {
+            session_id: uuid::Uuid::new_v4(),
+            task_id: 1,
+            sender: tx,
+            messages: vec![Message::user("fix the parser")],
+            provider_id: "test-overflow".into(),
+            model: "stub-model".into(),
+            thinking_level: "off".into(),
+            project_dir: ".".into(),
+            max_iterations: Some(5),
+            registry,
+            catalog: None,
+            permission_engine: permissions.clone(),
+            cancel_signal: AbortController::new().signal(),
+            approval_broker: ApprovalBroker::new(),
+            mcp_manager: None,
+            subagent_host: None,
+            custom_agents: Vec::new(),
+            tool_policy: None,
+            is_subagent: false,
+            depth: 0,
+            loop_nudge_after: DEFAULT_LOOP_NUDGE_AFTER,
+            loop_stop_after: DEFAULT_LOOP_STOP_AFTER,
+            smart_compaction: false,
+            compaction_model: None,
+            user_inbox: Some(Arc::clone(&inbox)),
+            extra_tools: Vec::new(),
+            only_tools: None,
+            shell_env: Default::default(),
+        };
+        tokio::time::timeout(std::time::Duration::from_secs(2), run_agent_loop(config))
+            .await
+            .expect("steering must not wait for the old completion")
+            .expect("turn completes");
+
+        let seen = provider.seen.lock().unwrap().clone();
+        assert_eq!(seen.len(), 2, "the turn went on instead of finishing");
+        assert_eq!(provider.levels.lock().unwrap()[1], "high");
+        assert_eq!(permissions.read().unwrap().mode, AgentMode::Plan);
+        assert!(
+            seen[1].iter().any(|text| text.contains("PLAN mode")),
+            "request must contain the new plan restriction"
+        );
+        assert!(
+            rx.try_iter()
+                .all(|event| !matches!(event.event, AgentEvent::UserMessagesInjected { .. })),
+            "control changes do not invent user prompts"
+        );
+    }
+
+    #[tokio::test]
+    async fn messages_sent_mid_turn_join_the_same_turn() {
+        use crate::cancellation::AbortController;
+        use crate::permissions::{shared_permission_engine, ApprovalBroker};
+        use crate::types::AgentMode;
+
+        let inbox = super::super::config::UserInbox::default();
+        let registry = Arc::new(ProviderRegistry::new());
+        let provider = Arc::new(MidTurnProvider {
+            info: crate::providers::ProviderInfo {
+                id: "test-overflow".into(),
+                models: vec![overflow_test_model()],
+                ..Default::default()
+            },
+            inbox: Arc::clone(&inbox),
+            seen: std::sync::Mutex::new(Vec::new()),
+            interrupt_first: false,
+            live_settings: None,
+            levels: Default::default(),
+        });
+        registry.register("test-overflow", provider.clone());
+        let (tx, rx) = std::sync::mpsc::channel();
+        let config = AgentRunConfig {
+            session_id: uuid::Uuid::new_v4(),
+            task_id: 1,
+            sender: tx,
+            messages: vec![Message::user("fix the parser")],
+            provider_id: "test-overflow".into(),
+            model: "stub-model".into(),
+            thinking_level: "off".into(),
+            project_dir: ".".into(),
+            max_iterations: Some(5),
+            registry,
+            catalog: None,
+            permission_engine: shared_permission_engine(AgentMode::Build),
+            cancel_signal: AbortController::new().signal(),
+            approval_broker: ApprovalBroker::new(),
+            mcp_manager: None,
+            subagent_host: None,
+            custom_agents: Vec::new(),
+            tool_policy: None,
+            is_subagent: false,
+            depth: 0,
+            loop_nudge_after: DEFAULT_LOOP_NUDGE_AFTER,
+            loop_stop_after: DEFAULT_LOOP_STOP_AFTER,
+            smart_compaction: false,
+            compaction_model: None,
             user_inbox: Some(Arc::clone(&inbox)),
             extra_tools: Vec::new(),
             only_tools: None,
@@ -1702,6 +1985,7 @@ mod tests {
             loop_nudge_after: DEFAULT_LOOP_NUDGE_AFTER,
             loop_stop_after: DEFAULT_LOOP_STOP_AFTER,
             smart_compaction: false,
+            compaction_model: None,
             user_inbox: None,
             extra_tools: Vec::new(),
             only_tools: None,
@@ -1829,6 +2113,7 @@ mod tests {
             loop_nudge_after: DEFAULT_LOOP_NUDGE_AFTER,
             loop_stop_after: DEFAULT_LOOP_STOP_AFTER,
             smart_compaction: false,
+            compaction_model: None,
             user_inbox: None,
             extra_tools: Vec::new(),
             only_tools: None,
@@ -1997,6 +2282,7 @@ mod tests {
             loop_nudge_after: DEFAULT_LOOP_NUDGE_AFTER,
             loop_stop_after: DEFAULT_LOOP_STOP_AFTER,
             smart_compaction: false,
+            compaction_model: None,
             user_inbox: None,
             extra_tools: Vec::new(),
             only_tools: None,

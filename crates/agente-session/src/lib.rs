@@ -85,6 +85,13 @@ struct StoredSnapshot {
     snapshot: SessionSnapshot,
 }
 
+#[derive(Serialize)]
+struct StoredSnapshotRef<'a> {
+    protocol_version: u16,
+    last_sequence: u64,
+    snapshot: &'a SessionSnapshot,
+}
+
 #[derive(Debug, Clone)]
 pub struct RecoveredSession {
     pub snapshot: SessionSnapshot,
@@ -106,6 +113,20 @@ struct StoredMeta {
     protocol_version: u16,
     #[serde(flatten)]
     meta: SessionMeta,
+}
+
+#[derive(Serialize)]
+struct StoredMetaRef<'a> {
+    protocol_version: u16,
+    #[serde(flatten)]
+    meta: &'a SessionMeta,
+}
+
+// Listing does not need to allocate a client's transcript or file versions.
+#[derive(Deserialize)]
+struct StoredInfo {
+    protocol_version: u16,
+    info: SessionInfo,
 }
 
 #[derive(Debug, Clone)]
@@ -215,10 +236,10 @@ impl SessionStore {
         last_sequence: u64,
     ) -> Result<(), SessionStoreError> {
         self.flush(snapshot.session_id)?;
-        let stored = StoredSnapshot {
+        let stored = StoredSnapshotRef {
             protocol_version: PROTOCOL_VERSION,
             last_sequence,
-            snapshot: snapshot.clone(),
+            snapshot,
         };
         self.write_atomic(&self.snapshot_path(snapshot.session_id), &stored)
     }
@@ -233,14 +254,16 @@ impl SessionStore {
             TEMP_COUNTER.fetch_add(1, Ordering::Relaxed),
         ));
         let outcome: Result<(), SessionStoreError> = (|| {
-            let mut file = OpenOptions::new()
+            let file = OpenOptions::new()
                 .create(true)
                 .truncate(true)
                 .write(true)
                 .open(&temporary)?;
-            serde_json::to_writer(&mut file, value)?;
-            file.flush()?;
-            file.sync_data()?;
+            let mut writer = BufWriter::with_capacity(LOG_BUFFER_CAPACITY, file);
+            serde_json::to_writer(&mut writer, value)?;
+            writer.flush()?;
+            writer.get_ref().sync_data()?;
+            drop(writer);
             rename_replace(&temporary, target)?;
             Ok(())
         })();
@@ -251,9 +274,9 @@ impl SessionStore {
     }
 
     pub fn write_meta(&self, meta: &SessionMeta) -> Result<(), SessionStoreError> {
-        let stored = StoredMeta {
+        let stored = StoredMetaRef {
             protocol_version: PROTOCOL_VERSION,
-            meta: meta.clone(),
+            meta,
         };
         self.write_atomic(&self.meta_path(meta.info.session_id), &stored)
     }
@@ -264,12 +287,12 @@ impl SessionStore {
         session_id: SessionId,
     ) -> Result<Option<SessionMeta>, SessionStoreError> {
         let path = self.meta_path(session_id);
-        let file = match fs::File::open(&path) {
-            Ok(file) => file,
+        let bytes = match fs::read(&path) {
+            Ok(bytes) => bytes,
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
             Err(error) => return Err(error.into()),
         };
-        let stored: StoredMeta = serde_json::from_reader(BufReader::new(file))?;
+        let stored: StoredMeta = serde_json::from_slice(&bytes)?;
         if !readable(stored.protocol_version) {
             return Err(SessionStoreError::UnsupportedVersion(
                 stored.protocol_version,
@@ -278,14 +301,29 @@ impl SessionStore {
         Ok(Some(stored.meta))
     }
 
+    fn read_info(&self, session_id: SessionId) -> Result<Option<SessionInfo>, SessionStoreError> {
+        let bytes = match fs::read(self.meta_path(session_id)) {
+            Ok(bytes) => bytes,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(error) => return Err(error.into()),
+        };
+        let stored: StoredInfo = serde_json::from_slice(&bytes)?;
+        if !readable(stored.protocol_version) {
+            return Err(SessionStoreError::UnsupportedVersion(
+                stored.protocol_version,
+            ));
+        }
+        Ok(Some(stored.info))
+    }
+
     /// Every saved session's list entry, most recently active first. Sessions
     /// without one (saved before metadata existed) are skipped; unreadable
     /// entries are logged and skipped so one bad file never hides the rest.
     pub fn list_infos(&self) -> Result<Vec<SessionInfo>, SessionStoreError> {
         let mut infos = Vec::new();
         for session_id in self.list_sessions()? {
-            match self.read_meta(session_id) {
-                Ok(Some(meta)) => infos.push(meta.info),
+            match self.read_info(session_id) {
+                Ok(Some(info)) => infos.push(info),
                 Ok(None) => {}
                 Err(error) => {
                     tracing::warn!(session = %session_id, %error, "unreadable session metadata")
@@ -311,8 +349,8 @@ impl SessionStore {
         self.flush(session_id)?;
 
         let mut recovered = if self.snapshot_path(session_id).exists() {
-            let file = fs::File::open(self.snapshot_path(session_id))?;
-            let stored: StoredSnapshot = serde_json::from_reader(file)?;
+            let bytes = fs::read(self.snapshot_path(session_id))?;
+            let stored: StoredSnapshot = serde_json::from_slice(&bytes)?;
             if !readable(stored.protocol_version) {
                 return Err(SessionStoreError::UnsupportedVersion(
                     stored.protocol_version,

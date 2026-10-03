@@ -82,7 +82,13 @@ impl SubagentRegistry {
     }
 
     pub fn running_count(&self) -> usize {
-        self.list_running().len()
+        self.inner
+            .read()
+            .unwrap()
+            .subagents
+            .values()
+            .filter(|snapshot| !snapshot.status.is_terminal())
+            .count()
     }
 
     /// Children that actually hold a concurrency slot (started, unfinished).
@@ -188,6 +194,33 @@ impl SubagentRegistry {
 
     pub fn contains(&self, id: &str) -> bool {
         self.inner.read().unwrap().subagents.contains_key(id)
+    }
+
+    /// Keep the live tail of a running child's output, so a `task_output` poll
+    /// returns findings instead of a bare status line.
+    ///
+    /// Never touches a finished child: a late delta must not overwrite the
+    /// final writeup with a fragment of it.
+    pub fn set_progress(&self, id: &str, text: &str) {
+        // Enough to be useful in a poll without being a second transcript.
+        const MAX_PROGRESS_BYTES: usize = 4 * 1024;
+        let text = text.trim();
+        if text.is_empty() {
+            return;
+        }
+        // Keep the tail: the newest findings are the ones worth reporting.
+        let start = if text.len() > MAX_PROGRESS_BYTES {
+            crate::util::truncate_at_char_boundary(text, text.len() - MAX_PROGRESS_BYTES).len()
+        } else {
+            0
+        };
+        let mut inner = self.inner.write().unwrap();
+        if let Some(snapshot) = inner.subagents.get_mut(id) {
+            if snapshot.status.is_terminal() {
+                return;
+            }
+            snapshot.summary = Some(text[start..].to_string());
+        }
     }
 
     /// Transition a subagent to a terminal state and signal waiters.
@@ -389,6 +422,46 @@ mod tests {
             depth: 0,
             coerced_to_read_only: false,
         }
+    }
+
+    #[test]
+    fn progress_publishes_the_live_tail_and_never_clobbers_a_finished_child() {
+        let registry = SubagentRegistry::new();
+        registry.insert(snapshot("s-1"));
+
+        registry.set_progress("s-1", "found the parser in src/parse.rs");
+        assert_eq!(
+            registry.get("s-1").unwrap().summary.as_deref(),
+            Some("found the parser in src/parse.rs")
+        );
+
+        // The tail, not the head: a long transcript must not push the newest
+        // findings out of the poll result.
+        let long = format!("{}\nLATEST", "x".repeat(8 * 1024));
+        registry.set_progress("s-1", &long);
+        let kept = registry.get("s-1").unwrap().summary.clone().unwrap();
+        assert!(
+            kept.len() <= 4 * 1024 + 16,
+            "tail grew to {} bytes",
+            kept.len()
+        );
+        assert!(
+            kept.ends_with("LATEST"),
+            "tail kept the head instead of the end"
+        );
+
+        // A finished child keeps its final writeup.
+        registry.finish(
+            "s-1",
+            SubagentStatus::Completed,
+            "the final answer".into(),
+            Vec::new(),
+        );
+        registry.set_progress("s-1", "a late delta");
+        assert_eq!(
+            registry.get("s-1").unwrap().summary.as_deref(),
+            Some("the final answer")
+        );
     }
 
     #[test]

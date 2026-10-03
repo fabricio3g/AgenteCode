@@ -18,11 +18,10 @@ use crate::cancellation::{AbortController, AbortSignal};
 use crate::catalog::ModelCatalog;
 use crate::permissions::{ApprovalBroker, SharedPermissionEngine};
 use crate::providers::ProviderRegistry;
-use crate::subagent::context::{completion_summary, fork_subagent_context};
+use crate::subagent::context::{completion_output, fork_subagent_context};
 use crate::subagent::definition::{
     capability_for_parent_mode, filter_tool_definitions, resolve_effective_config,
     resolve_timeout_ms, CustomSubagent, EffectiveRuntimeConfig, SubagentParentDefaults,
-    DEFAULT_SUBAGENT_SUMMARY_CAP,
 };
 use crate::subagent::registry::{
     bound_conversation, QueuedSpawn, SpawnAdmission, SubagentRegistry,
@@ -74,7 +73,7 @@ pub struct SubagentHostConfig {
     pub task_id: u64,
     pub provider_id: String,
     pub provider_registry: Arc<ProviderRegistry>,
-    pub catalog: Option<ModelCatalog>,
+    pub catalog: Option<Arc<ModelCatalog>>,
     pub permission_engine: SharedPermissionEngine,
     pub approval_broker: ApprovalBroker,
     pub mcp_manager: Option<Arc<crate::mcp::client::McpManager>>,
@@ -243,6 +242,7 @@ fn coercion_note(coerced: bool) -> Option<String> {
 impl SubagentHost {
     pub fn new(config: SubagentHostConfig, max_depth: u32, max_concurrent: usize) -> Self {
         let registry = config.registry.clone();
+        worktree::gc_in_background(Path::new(&config.project_dir));
         Self {
             inner: Arc::new(SubagentHostInner {
                 config,
@@ -556,8 +556,15 @@ impl SubagentHost {
         // looks unavailable in Plan mode. The child-registry prune plus the
         // Plan-mode permission checks keep the no-mutation invariant
         // regardless of the requested type.
-        let (effective_capability, coerced_to_read_only) =
-            capability_for_parent_mode(self.inner.config.parent_mode, cfg.capability);
+        let (effective_capability, coerced_to_read_only) = capability_for_parent_mode(
+            self.inner
+                .config
+                .permission_engine
+                .read()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .mode,
+            cfg.capability,
+        );
         if coerced_to_read_only {
             tracing::info!(
                 subagent_type = %request.subagent_type,
@@ -943,6 +950,7 @@ impl SubagentHost {
             loop_stop_after: DEFAULT_LOOP_STOP_AFTER,
             // Children always trim: they are short-lived and cheap.
             smart_compaction: false,
+            compaction_model: None,
             user_inbox: None,
             extra_tools: Vec::new(),
             only_tools: host.inner.config.only_tools.clone(),
@@ -1103,6 +1111,11 @@ fn forward_child_events(
     // summary keeps its own cap, so dropping the tail only affects display.
     const MAX_SUBAGENT_STREAM_BYTES: usize = 256 * 1024;
     let mut streamed_bytes = 0usize;
+    // Publish the live tail on a byte cadence, not per token: the registry
+    // lock is shared with every poll, and a status line that is a second
+    // behind is worth far more than one lock per delta.
+    const PROGRESS_EVERY_BYTES: usize = 1024;
+    let mut published_at = 0usize;
 
     let send = |event: AgentEvent| {
         let _ = parent_sender.send(AgentTaskEvent {
@@ -1130,9 +1143,15 @@ fn forward_child_events(
                 if full_text.len() < MAX_SUBAGENT_STREAM_BYTES {
                     full_text.push_str(&delta);
                 }
+                if full_text.len().saturating_sub(published_at) >= PROGRESS_EVERY_BYTES {
+                    published_at = full_text.len();
+                    host.inner.registry.set_progress(&subagent_id, &full_text);
+                }
             }
             AgentEvent::AssistantText(text) => {
                 full_text = text.clone();
+                published_at = full_text.len();
+                host.inner.registry.set_progress(&subagent_id, &full_text);
                 let mut text = text;
                 if text.len() > MAX_SUBAGENT_STREAM_BYTES {
                     let end =
@@ -1233,7 +1252,16 @@ fn forward_child_events(
                 });
             }
             AgentEvent::Done { conversation, .. } => {
-                let summary = completion_summary(&full_text, DEFAULT_SUBAGENT_SUMMARY_CAP);
+                let summary = completion_output(
+                    conversation
+                        .iter()
+                        .rev()
+                        .find(|message| {
+                            message.role == Role::Assistant && message.tool_calls.is_none()
+                        })
+                        .map(|message| message.content.as_str())
+                        .unwrap_or(&full_text),
+                );
                 // Settle the checkout before publishing completion: a resume
                 // that observes the terminal status must not race a release
                 // resetting the same directory.
@@ -1272,12 +1300,11 @@ fn forward_child_events(
                                 "{note} Resume with resume_from:{subagent_id} if follow-up work is needed."
                             )
                         } else {
-                            completion_summary(
+                            completion_output(
                                 &format!(
                                     "{note}\nPartial output:\n{partial_text}\nResume with resume_from:{subagent_id}."
                                 ),
-                                DEFAULT_SUBAGENT_SUMMARY_CAP,
-                            )
+                                                        )
                         };
                         (SubagentStatus::Failed, summary)
                     }
@@ -1285,7 +1312,7 @@ fn forward_child_events(
                         let summary = if partial_text.trim().is_empty() {
                             "cancelled".to_string()
                         } else {
-                            completion_summary(&partial_text, DEFAULT_SUBAGENT_SUMMARY_CAP)
+                            completion_output(&partial_text)
                         };
                         (SubagentStatus::Cancelled, summary)
                     }
@@ -1310,7 +1337,7 @@ fn forward_child_events(
                 message: msg,
                 conversation,
             } => {
-                let summary = completion_summary(&msg, DEFAULT_SUBAGENT_SUMMARY_CAP);
+                let summary = completion_output(&msg);
                 settle_worktree_blocking(&host, &subagent_id);
                 host.inner.registry.finish(
                     &subagent_id,
@@ -1523,6 +1550,144 @@ mod tests {
             finished_at: None,
             cwd: None,
             worktree: None,
+        }
+    }
+
+    struct ParallelChildProvider {
+        info: crate::providers::ProviderInfo,
+        active: std::sync::atomic::AtomicUsize,
+        peak: std::sync::atomic::AtomicUsize,
+    }
+
+    #[async_trait::async_trait]
+    impl crate::providers::Provider for ParallelChildProvider {
+        fn info(&self) -> &crate::providers::ProviderInfo {
+            &self.info
+        }
+        async fn list_models(
+            &self,
+        ) -> Result<Vec<crate::providers::ModelInfo>, crate::llm::LlmError> {
+            Ok(vec![])
+        }
+        async fn stream_completion(
+            &self,
+            _messages: &[Message],
+            _tools: Option<&[ToolDefinition]>,
+            _model: &crate::providers::ModelInfo,
+            sender: tokio::sync::mpsc::Sender<crate::llm::StreamEvent>,
+            _context: crate::providers::RequestContext,
+        ) -> Result<crate::llm::Usage, crate::llm::LlmError> {
+            let active = self.active.fetch_add(1, Ordering::SeqCst) + 1;
+            self.peak.fetch_max(active, Ordering::SeqCst);
+            tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+            let answer = format!("{}\nFINAL EVIDENCE PRESERVED", "日".repeat(10000));
+            sender
+                .send(crate::llm::StreamEvent::TextDelta(answer))
+                .await
+                .unwrap();
+            sender
+                .send(crate::llm::StreamEvent::Done {
+                    usage: Default::default(),
+                    stop_reason: crate::llm::StopReason::Stop,
+                })
+                .await
+                .unwrap();
+            self.active.fetch_sub(1, Ordering::SeqCst);
+            Ok(Default::default())
+        }
+    }
+
+    /// Exercises the actual tool batch, child runtimes, forwarders and result
+    /// waiters: foreground siblings must overlap and retain the answer's tail.
+    #[tokio::test]
+    async fn foreground_children_overlap_and_return_complete_results() {
+        let registry = SubagentRegistry::new();
+        let (host, _events) = queue_test_host(registry.clone(), 2);
+        host.inner
+            .config
+            .permission_engine
+            .write()
+            .unwrap()
+            .set_auto_approve(true);
+        let provider = Arc::new(ParallelChildProvider {
+            info: crate::providers::ProviderInfo {
+                id: "test".into(),
+                ..Default::default()
+            },
+            active: Default::default(),
+            peak: Default::default(),
+        });
+        host.inner
+            .config
+            .provider_registry
+            .register("test", provider.clone());
+        let tools = Arc::new(crate::tools::ToolRegistry::new("."));
+        let calls: Vec<ToolCall> = (0..2)
+            .map(|index| ToolCall {
+                id: format!("call-{index}"),
+                call_type: "function".into(),
+                function: crate::types::FunctionCall {
+                    name: "task".into(),
+                    arguments: serde_json::json!({
+                        "prompt": "Return findings", "description": "Read-only findings",
+                        "subagent_type": "explore", "run_in_background": false,
+                    })
+                    .to_string(),
+                },
+            })
+            .collect();
+        let cancel = AbortController::new();
+        let started = std::time::Instant::now();
+        let results = tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            crate::agent::channel::execute_tool_calls_batched(
+                &calls,
+                tools,
+                host.inner.config.event_sender.clone(),
+                1,
+                &host.inner.config.permission_engine,
+                &host.inner.config.approval_broker,
+                &cancel.signal(),
+                ".",
+                0,
+                Some(&host),
+            ),
+        )
+        .await;
+        if results.is_err() {
+            cancel.abort();
+        }
+        let results = results.expect("children finish promptly");
+        eprintln!(
+            "two foreground children: {:?}; peak concurrent completions: {}",
+            started.elapsed(),
+            provider.peak.load(Ordering::SeqCst)
+        );
+        assert_eq!(
+            provider.peak.load(Ordering::SeqCst),
+            2,
+            "foreground tasks were serialized"
+        );
+        assert_eq!(results.len(), 2);
+        for result in results {
+            assert!(!result.is_error, "{}", result.content);
+            assert!(result.content.contains("FINAL EVIDENCE PRESERVED"));
+            assert!(result.content.len() > 30000);
+            assert!(!result.content.contains("output truncated"));
+        }
+        for snapshot in registry.list() {
+            assert!(
+                snapshot.worktree.is_none(),
+                "read-only children need no checkout"
+            );
+            let outcome = host
+                .task_output(
+                    "poll".into(),
+                    serde_json::json!({"task_id": snapshot.id}),
+                    &crate::tools::ToolExecutionContext::default(),
+                )
+                .await;
+            assert!(outcome.content.contains("FINAL EVIDENCE PRESERVED"));
         }
     }
 

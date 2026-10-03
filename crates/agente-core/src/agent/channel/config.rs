@@ -70,7 +70,63 @@ impl ToolCallOutcome {
 /// Messages the user sent while a turn runs ("send now"). The loop takes
 /// them at the next step boundary — after a tool round, or instead of
 /// finishing — so the model sees them without the turn being cancelled.
-pub type UserInbox = Arc<parking_lot::Mutex<Vec<crate::types::Message>>>;
+pub type UserInbox = Arc<UserInboxState>;
+
+/// Shared input queue and a request-local wakeup. Interrupting a completion
+/// never aborts the turn, its tools, or its children.
+#[derive(Debug, Default)]
+pub struct UserInboxState {
+    messages: parking_lot::Mutex<Vec<crate::types::Message>>,
+    interrupt: tokio::sync::Notify,
+    closed: std::sync::atomic::AtomicBool,
+    thinking: parking_lot::Mutex<Option<String>>,
+    settings_changed: std::sync::atomic::AtomicBool,
+}
+
+impl UserInboxState {
+    pub fn lock(&self) -> parking_lot::MutexGuard<'_, Vec<crate::types::Message>> {
+        self.messages.lock()
+    }
+
+    /// Seal the inbox while its owner commits the terminal conversation.
+    pub fn close(&self) -> Vec<Message> {
+        self.closed
+            .store(true, std::sync::atomic::Ordering::Release);
+        std::mem::take(&mut *self.messages.lock())
+    }
+
+    pub fn is_closed(&self) -> bool {
+        self.closed.load(std::sync::atomic::Ordering::Acquire)
+    }
+
+    pub fn update_settings(&self, thinking: Option<String>) {
+        if let Some(thinking) = thinking {
+            *self.thinking.lock() = Some(thinking);
+        }
+        self.settings_changed
+            .store(true, std::sync::atomic::Ordering::Release);
+        self.interrupt_thinking();
+    }
+
+    pub(crate) fn take_thinking(&self) -> Option<String> {
+        self.settings_changed
+            .store(false, std::sync::atomic::Ordering::Release);
+        self.thinking.lock().take()
+    }
+
+    pub(crate) fn has_settings_update(&self) -> bool {
+        self.settings_changed
+            .load(std::sync::atomic::Ordering::Acquire)
+    }
+
+    pub fn interrupt_thinking(&self) {
+        self.interrupt.notify_one();
+    }
+
+    pub(crate) async fn wait_interrupt(&self) {
+        self.interrupt.notified().await;
+    }
+}
 
 /// What a host adds to, or limits in, one turn's tools: a bot's own tools,
 /// the toolsets it may use and its commands' environment. Subagents inherit
@@ -103,7 +159,7 @@ pub(crate) struct AgentRunConfig {
     /// The parent turn always passes `Some` (config default 500).
     pub max_iterations: Option<u32>,
     pub registry: Arc<ProviderRegistry>,
-    pub catalog: Option<ModelCatalog>,
+    pub catalog: Option<Arc<ModelCatalog>>,
     pub permission_engine: SharedPermissionEngine,
     pub cancel_signal: AbortSignal,
     pub approval_broker: ApprovalBroker,
@@ -122,6 +178,7 @@ pub(crate) struct AgentRunConfig {
     pub loop_stop_after: u32,
     /// Compact with an LLM summary instead of trimming (user setting).
     pub smart_compaction: bool,
+    pub compaction_model: Option<crate::config::SubagentModel>,
     /// Mid-turn user messages (parent turns only).
     pub user_inbox: Option<UserInbox>,
     /// Tools the host adds for this turn only (a bot's memory and handoff

@@ -122,7 +122,7 @@ fn info(url: String) -> ProviderInfo {
 }
 
 #[test]
-fn opencode_requests_have_stable_session_headers_only_on_opencode() {
+fn requests_use_declared_session_routing_headers() {
     let session = uuid::Uuid::new_v4();
     for provider in [
         "opencode-go",
@@ -151,16 +151,55 @@ fn opencode_requests_have_stable_session_headers_only_on_opencode() {
         .unwrap()
         .build()
         .unwrap();
+        let router = request.headers().get("x-session-id");
+        if super::canonical_provider_id(provider) == "openrouter" {
+            assert_eq!(router.unwrap().to_str().unwrap(), session.to_string());
+        } else {
+            assert!(router.is_none());
+        }
         let header = request.headers().get("x-opencode-session");
-        if super::canonical_provider_id(provider).starts_with("opencode") {
+        if super::canonical_provider_id(provider) == "opencode-go" {
             assert_eq!(header.unwrap().to_str().unwrap(), session.to_string());
-            let fallback = super::wire::session_header(provider, None).unwrap();
-            assert!(!uuid::Uuid::parse_str(&fallback).unwrap().is_nil());
-            assert_eq!(Some(fallback), super::wire::session_header(provider, None));
+            let fallback = super::wire::session_header(&info, None).unwrap();
+            assert!(!uuid::Uuid::parse_str(&fallback.1).unwrap().is_nil());
+            assert_eq!(Some(fallback), super::wire::session_header(&info, None));
         } else {
             assert!(header.is_none());
         }
     }
+}
+
+#[test]
+fn custom_session_headers_and_minimax_cache_modes_are_declarative() {
+    let mut custom = info("http://localhost/v1".into());
+    custom.id = "new-provider".into();
+    custom.transport.cache.session_header = Some("x-conversation-id".into());
+    let session = uuid::Uuid::new_v4();
+    let request = super::wire::completion_request(
+        &custom,
+        &model(ApiFormat::OpenAI),
+        "chat/completions",
+        &json!({}),
+        RequestContext::new(session),
+    )
+    .unwrap()
+    .build()
+    .unwrap();
+    assert_eq!(request.headers()["x-conversation-id"], session.to_string());
+    custom.transport.cache.session_header = Some(String::new());
+    assert!(super::wire::session_header(&custom, Some(RequestContext::new(session))).is_none());
+
+    let mut minimax = info("https://api.minimax.io/anthropic/v1".into());
+    minimax.id = "minimax".into();
+    let mut selected = model(ApiFormat::Anthropic);
+    selected.api_id = "MiniMax-M3".into();
+    assert!(!minimax
+        .transport_policy()
+        .breakpoints(ApiFormat::Anthropic, &selected));
+    selected.api_id = "MiniMax-M2.7".into();
+    assert!(minimax
+        .transport_policy()
+        .breakpoints(ApiFormat::Anthropic, &selected));
 }
 
 #[test]

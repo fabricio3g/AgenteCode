@@ -17,6 +17,8 @@ mod config;
 mod discovery;
 mod errors;
 mod execute;
+#[cfg(test)]
+pub(crate) use execute::execute_tool_calls_batched;
 mod loop_;
 pub(crate) mod loop_detection;
 mod progress;
