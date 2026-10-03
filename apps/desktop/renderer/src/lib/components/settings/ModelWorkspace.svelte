@@ -536,9 +536,9 @@
                       disabled={!card.model}
                       onclick={() => card.model && (selectedRepoId = card.model.ggufRepository)}
                     >
-                      <p class="text-[11px] text-muted-foreground">{card.label}</p>
+                      <p class="text-[12px] text-muted-foreground">{card.label}</p>
                       <p class="mt-1 truncate text-sm font-medium text-foreground">{card.model?.name ?? $t('modelHub.nothingFits')}</p>
-                      {#if card.model}<p class="truncate text-[11px] text-muted-foreground">{roleOf(card.model)} · {formatBytes(defaultArtifact(card.model).sizeBytes)}</p>{/if}
+                      {#if card.model}<p class="truncate text-[12px] text-muted-foreground">{roleOf(card.model)} · {formatBytes(defaultArtifact(card.model).sizeBytes)}</p>{/if}
                     </button>
                   {/each}
                 </div>
@@ -558,7 +558,7 @@
                             <span class="text-sm font-medium text-foreground">{model.name}</span>
                             <span class="text-xs text-muted-foreground">{roleOf(model)}</span>
                           </span>
-                          <span class="mt-0.5 flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground" title={fit.reason}>
+                          <span class="mt-0.5 flex flex-wrap items-center gap-1.5 text-[12px] text-muted-foreground" title={fit.reason}>
                             <Badge tone={fitTone(fit)}>{fitLabel(fit)}</Badge>
                             {@render licenseBadge(model.license)}
                             <span class="tabular-nums">{primary.quantization} · {formatBytes(primary.sizeBytes)}</span>
@@ -598,7 +598,7 @@
                             {#if item.gated}<Badge tone="warning" class="shrink-0">{$t('modelHub.gated')}</Badge>{/if}
                             {@render licenseBadge(item.license)}
                           </span>
-                          <span class="mt-0.5 block truncate text-[11px] text-muted-foreground">
+                          <span class="mt-0.5 block truncate text-[12px] text-muted-foreground">
                             {[
                               item.author || item.repo_id.split('/')[0],
                               repoSummaryLine(item),
@@ -699,7 +699,7 @@
                       <span class="truncate text-sm font-medium text-foreground">{model.name}</span>
                       {#if loaded}<Badge tone="success" class="shrink-0">{$t('modelHub.loaded')}</Badge>{/if}
                     </p>
-                    <p class="mt-0.5 flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground" title={fit.reason}>
+                    <p class="mt-0.5 flex flex-wrap items-center gap-1.5 text-[12px] text-muted-foreground" title={fit.reason}>
                       <Badge tone={fitTone(fit)}>{fitLabel(fit)}</Badge>
                       <span class="truncate">{[model.architecture, model.quantization_name, formatBytes(Number(model.size_gb || 0) * 1024 ** 3)].filter(Boolean).join(' · ')}</span>
                     </p>

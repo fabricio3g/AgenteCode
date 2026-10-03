@@ -3,6 +3,7 @@
 <script lang="ts">
   import { modalLayer } from '$lib/components/ui/modal-layer';
   import { LoaderCircle, Search as SearchIcon, X } from 'lucide-svelte';
+  import { t } from 'svelte-i18n';
   import { motionFade, motionFly } from '$lib/utils/transitions';
   import { appStore } from '$lib/stores/app.svelte';
   import { openWebviewer } from '$lib/services/search';
@@ -33,7 +34,7 @@
   <button
     type="button"
     class="absolute inset-0 h-full w-full bg-overlay"
-    aria-label="Close source search"
+    aria-label={$t('search.source.closeLabel')}
     transition:motionFade={{ duration: 160 }}
     onclick={closeSidebar}
   ></button>
@@ -43,8 +44,8 @@
     transition:motionFly={{ x: 24, duration: 220 }}
   >
     <header class="flex shrink-0 items-center justify-between px-4 py-3">
-      <h2 class="text-sm font-semibold text-foreground">Source Search</h2>
-      <button type="button" class="ui-icon-button" onclick={closeSidebar} aria-label="Close">
+      <h2 class="text-sm font-semibold text-foreground">{$t('search.source.title')}</h2>
+      <button type="button" class="ui-icon-button" onclick={closeSidebar} aria-label={$t('common.close')}>
         <X class="size-4" />
       </button>
     </header>
@@ -54,7 +55,7 @@
         <input
           type="text"
           class="ui-input flex-1"
-          placeholder="Search the web sources..."
+          placeholder={$t('search.source.placeholder')}
           bind:value={query}
           onkeydown={(event) => {
             if (event.key === 'Enter') void runSearch();
@@ -65,8 +66,8 @@
           class="ui-btn ui-btn-primary size-9 shrink-0 !p-0"
           onclick={runSearch}
           disabled={currentSearchState.loading}
-          aria-label="Run source search"
-          title="Run search"
+          aria-label={$t('search.source.run')}
+          title={$t('search.source.run')}
         >
           {#if currentSearchState.loading}
             <LoaderCircle class="size-4 animate-spin" />
@@ -81,11 +82,11 @@
       {#if currentSearchState.loading}
         <div class="flex items-center gap-2 px-2 py-3 text-sm text-muted-foreground">
           <LoaderCircle class="size-4 animate-spin" />
-          Searching...
+          {$t('search.source.searching')}
         </div>
       {:else if !currentSearchState.results.length}
         <p class="px-2 py-8 text-center text-sm text-muted-foreground">
-          No results yet. Run a search to populate sources.
+          {$t('search.source.empty')}
         </p>
       {:else}
         <div class="flex flex-col gap-0.5">
@@ -99,7 +100,7 @@
               {#if result.snippet}
                 <p class="mt-1 line-clamp-3 text-xs text-muted-foreground">{result.snippet}</p>
               {/if}
-              <p class="mt-1.5 truncate text-[11px] text-muted-foreground">{result.url}</p>
+              <p class="mt-1.5 truncate text-[12px] text-muted-foreground">{result.url}</p>
             </button>
           {/each}
         </div>

@@ -13,10 +13,12 @@
 -->
 
 <script lang="ts">
-  import { tick } from 'svelte';
+  import { onDestroy } from 'svelte';
+  import { writeToClipboard } from '$lib/utils/clipboard';
   import { ArrowDown, CircleCheck, ClipboardList, Clock, Copy, GitFork, History, RotateCcw, TriangleAlert } from 'lucide-svelte';
   import type { ChatMessage } from '$lib/types/chat';
   import RichContent from '$lib/ui/components/RichContent.svelte';
+  import MediaAttachmentCard from './MediaAttachmentCard.svelte';
   import CodeWorkBlock from './CodeWorkBlock.svelte';
   import CodeLiveStatus from './CodeLiveStatus.svelte';
   import CodeErrorNotice from './CodeErrorNotice.svelte';
@@ -32,7 +34,6 @@
   import { toastStore } from '$lib/stores/toast.svelte';
   import { approvalsStore } from '$lib/stores/approvals.svelte';
   import { editedFiles, replyBlocks } from './work-blocks';
-  import { openWorkspaceFile } from '$lib/services/files';
 
   let { messages, chatId }: { messages: ChatMessage[]; chatId: string } = $props();
 
@@ -53,17 +54,23 @@
     codeWorkspace.setTranscriptEdits(chatId, editedFiles(messages.flatMap((message) => message.agentSteps ?? [])));
   });
 
+  let scrollFrame = 0;
+  onDestroy(() => { if (scrollFrame) cancelAnimationFrame(scrollFrame); });
   $effect(() => {
     void messages.length;
     void messages[messages.length - 1]?.content;
     void messages[messages.length - 1]?.agentSteps?.length;
-    void run?.children.map((child) => `${child.status}${child.text}${child.summary}${child.tools.map((tool) => tool.output).join('')}`).join('');
-    void run?.steps.map((step) => step.output).join('');
+    for (const child of run?.children ?? []) {
+      void child.status; void child.text.length; void child.summary?.length;
+      for (const tool of child.tools) void tool.output?.length;
+    }
+    for (const step of run?.steps ?? []) void step.output?.length;
     void run?.timeline.length;
     void run?.preparing;
-    if (pinnedToBottom) {
-      void tick().then(() => {
-        if (viewport) viewport.scrollTop = viewport.scrollHeight;
+    if (pinnedToBottom && !scrollFrame) {
+      scrollFrame = requestAnimationFrame(() => {
+        scrollFrame = 0;
+        if (viewport && pinnedToBottom) viewport.scrollTop = viewport.scrollHeight;
       });
     }
   });
@@ -75,7 +82,10 @@
 
   async function messageAction(message: ChatMessage, action: 'copy' | 'fork' | 'rewind') {
     try {
-      if (action === 'copy') await navigator.clipboard.writeText(message.content);
+      if (action === 'copy') {
+        if (!await writeToClipboard(message.content)) throw new Error('Could not copy the message');
+        toastStore.success($t('chat.copied'));
+      }
       else await codeStore.actOnMessage(chatId, message.id, action);
     } catch (error) { toastStore.error(String(error)); }
   }
@@ -119,6 +129,7 @@
 <div bind:this={viewport} class="relative min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden px-4 pb-16 pt-6" onscroll={onScroll}>
   <div class="mx-auto flex min-w-0 flex-col gap-3" style="max-width: var(--thread-width);">
     {#each messages as message (message.id)}
+      <div class="code-message-slot" class:is-live={message.status === 'streaming'}>
       {#if message.role === 'user'}
         {@const queued = !!message.metadata?.codeQueued && !!run?.running}
         <div class="group flex flex-col items-end gap-1">
@@ -126,7 +137,7 @@
             {message.content}
             {#if message.metadata?.codeAttachments?.length}
               <div class="mt-2 flex flex-wrap gap-2 text-xs text-muted-foreground">
-                {#each message.metadata.codeAttachments as attachment, index (index)}<button type="button" class="max-w-64 truncate rounded-full bg-background/50 px-2 py-1 hover:bg-background" onclick={() => openWorkspaceFile(attachment.path).catch((error) => toastStore.error(String(error)))}>{attachment.name} · {attachment.kind}</button>{/each}
+                {#each message.metadata.codeAttachments as attachment (attachment.path)}<MediaAttachmentCard {attachment} />{/each}
               </div>
             {/if}
           </div>
@@ -138,6 +149,18 @@
               <button type="button" class="flex items-center gap-1" onclick={() => messageAction(message, 'rewind')}><RotateCcw class="size-3" />{$t('code.message.revert')}</button>
             {/if}
           </div>
+        </div>
+      {:else if message.metadata?.codeCompaction}
+        {@const report = message.metadata.codeCompaction}
+        <div class="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground" role="status">
+          <ClipboardList class="size-3" />
+          <span>{report.running ? copy.codeRun.compacting : report.success ? (report.tokensBefore === report.tokensAfter ? $t('code.compaction.unchanged') : copy.codeRun.compacted) : $t('code.compaction.failed')}</span>
+          {#if report.tokensBefore !== undefined && report.tokensAfter !== undefined}
+            <span class="tabular-nums">· ~{report.tokensBefore.toLocaleString()} → ~{report.tokensAfter.toLocaleString()} {$t('code.compaction.tokens')}</span>
+            <span>· {report.smart ? $t('code.compaction.summarized') : report.requestedSmart ? $t('code.compaction.fallback') : $t('code.compaction.noModelCall')}</span>
+            {#if report.cacheReadTokens}<span>· {$t('code.compaction.cached', { values: { n: report.cacheReadTokens.toLocaleString() } })}</span>{/if}
+            {#if report.requestedSmart}<span>· {report.modelTokens !== undefined ? $t('code.compaction.spent', { values: { n: report.modelTokens.toLocaleString() } }) : $t('code.compaction.unreported')}</span>{/if}
+          {/if}
         </div>
       {:else if message.metadata?.codeNote && !message.content && !message.agentSteps?.length}
         <!-- A system note (restore, …): centered, quiet. -->
@@ -152,7 +175,7 @@
         {@const children = live ? run?.children ?? [] : message.metadata?.codeChildren ?? []}
         {@const diagnostics = live ? run?.diagnostics ?? [] : message.metadata?.codeDiagnostics ?? []}
         {@const blocks = replyBlocks(entries)}
-        <div class="flex min-w-0 flex-col gap-3">
+        <div class="group flex min-w-0 flex-col gap-3">
           {#each blocks as block, index (block.key)}
             {#if block.items}
               <div class="-mx-2 min-w-0">
@@ -160,7 +183,7 @@
               </div>
             {:else}
               <div class="text-sm leading-relaxed text-foreground">
-                <RichContent content={block.text} />
+                <RichContent content={block.text} status={streaming && index === blocks.length - 1 ? 'streaming' : 'idle'} />
               </div>
             {/if}
           {/each}
@@ -212,8 +235,10 @@
               </div>
             {/if}
           {/if}
+          {#if message.content.trim()}<button type="button" class="flex items-center gap-1 self-start text-xs text-muted-foreground opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100 focus-visible:opacity-100" onclick={() => messageAction(message, 'copy')}><Copy class="size-3" />{$t('code.message.copy')}</button>{/if}
         </div>
       {/if}
+      </div>
     {/each}
     {#if plan && !run?.running && codeWorkspace.plan?.chatId !== chatId}
       <button type="button" class="plan-reopen self-start" onclick={() => codeWorkspace.showPlan(chatId, plan)}>
@@ -272,4 +297,6 @@
   }
   .jump-latest:hover { color: var(--foreground); }
 
+  .code-message-slot { min-width: 0; content-visibility: auto; contain-intrinsic-size: auto 120px; }
+  .code-message-slot.is-live { content-visibility: visible; }
 </style>

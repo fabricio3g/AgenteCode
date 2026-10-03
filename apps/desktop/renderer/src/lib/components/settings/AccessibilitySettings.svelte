@@ -18,7 +18,8 @@
     TEXT_SCALES,
     UI_SCALES,
     type ReadingFont,
-    type ReduceMotion
+    type ReduceMotion,
+    type TextWeight
   } from '$lib/stores/accessibility.svelte';
 
   const prefs = $derived(accessibilityStore.prefs);
@@ -57,6 +58,21 @@
   </SettingsSection>
 
   <SettingsSection title={$t('accessibility.reading')}>
+    <Field horizontal class="py-3" label={$t('accessibility.textWeight')} description={$t('accessibility.textWeightDesc')} htmlFor="a11y-weight">
+      <div class="flex justify-end">
+        <SegmentedControl
+          id="a11y-weight"
+          label={$t('accessibility.textWeight')}
+          value={prefs.textWeight}
+          options={[
+            { value: 'regular', label: $t('accessibility.weightRegular') },
+            { value: 'medium', label: $t('accessibility.weightMedium') }
+          ]}
+          onchange={(value) => accessibilityStore.update({ textWeight: value as TextWeight })}
+        />
+      </div>
+    </Field>
+
     <Field horizontal class="py-3" label={$t('accessibility.font')} description={$t('accessibility.fontDesc')} htmlFor="a11y-font">
       <Select
         id="a11y-font"

@@ -8,9 +8,9 @@
 -->
 
 <script lang="ts">
-  import { tick } from 'svelte';
+  import { onDestroy } from 'svelte';
   import { t } from 'svelte-i18n';
-  import { ChevronRight, Sparkles } from 'lucide-svelte';
+  import { ChevronRight } from 'lucide-svelte';
 
   let { text, live = false }: { text: string; live?: boolean } = $props();
 
@@ -20,29 +20,37 @@
     if (!userToggled) open = live;
   });
 
-  const preview = $derived(text.trim().split('\n').find((line) => line.trim())?.replace(/^[#>*\-\s]+/, '') ?? '');
+  const preview = $derived(text.trimStart().slice(0, 240).split('\n', 1)[0].replace(/^[#>*\-\s]+/, ''));
 
   let body = $state<HTMLDivElement>();
+  let scrollFrame = 0;
+  let following = true;
   $effect(() => {
     void text;
-    if (live && open) void tick().then(() => { if (body) body.scrollTop = body.scrollHeight; });
+    if (live && open && following && !scrollFrame) {
+      scrollFrame = requestAnimationFrame(() => {
+        scrollFrame = 0;
+        if (body && following) body.scrollTop = body.scrollHeight;
+      });
+    }
   });
+  onDestroy(() => { if (scrollFrame) cancelAnimationFrame(scrollFrame); });
 
   function toggle() {
     userToggled = true;
     open = !open;
+    following = true;
   }
 </script>
 
 <div class="thought">
-  <button type="button" class="thought-head" aria-expanded={open} onclick={toggle}>
-    <Sparkles class="size-3.5 shrink-0" />
-    <span class="shrink-0 {live ? 'ui-legacy-shimmer-text' : 'text-foreground'}">{live ? $t('code.thinking') : $t('code.thought')}</span>
+  <button type="button" class="thought-head ui-quiet-disclosure" aria-expanded={open} onclick={toggle}>
+    <span class="shrink-0">{live ? $t('code.thinking') : $t('code.thought')}</span>
     {#if !open && preview}<span class="min-w-0 flex-1 truncate">{preview}</span>{:else}<span class="flex-1"></span>{/if}
     <ChevronRight class="chevron size-3.5 shrink-0 {open ? 'rotate-90' : ''}" />
   </button>
   {#if open}
-    <div bind:this={body} class="thought-body" class:is-live={live}>{text.trim()}</div>
+    <div bind:this={body} class="thought-body" class:is-live={live} onscroll={() => { if (body) following = body.scrollHeight - body.scrollTop - body.clientHeight < 24; }}>{text.trim()}</div>
   {/if}
 </div>
 
@@ -58,10 +66,9 @@
     font-size: 13px;
     color: var(--muted-foreground);
     text-align: left;
-    transition: background-color var(--motion-fast) var(--motion-ease), color var(--motion-fast) var(--motion-ease);
+    transition: color var(--motion-fast) var(--motion-ease);
   }
   .thought-head:hover {
-    background: var(--surface-hover);
     color: var(--foreground);
   }
   .thought-head :global(.chevron) {
@@ -76,7 +83,7 @@
   .thought-body {
     max-height: 16rem;
     overflow-y: auto;
-    margin: 0.125rem 0 0.375rem 1.125rem;
+    margin: 0.125rem 0 0.375rem 0.5rem;
     padding: 0.125rem 0.5rem 0.125rem 0.75rem;
     border-left: 1px solid var(--border-subtle);
     white-space: pre-wrap;

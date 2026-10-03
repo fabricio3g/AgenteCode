@@ -138,7 +138,7 @@
             {$t('bots.telegram.sendCode', { values: { bot: status.username ? `@${status.username}` : $t('bots.telegram.theBot'), minutes: minutesLeft(status.pairing.expires_at) } })}
           </p>
           <p class="code">/pair {status.pairing.code}</p>
-          <p class="text-[11.5px] text-muted-foreground">{status.pairing.trust === 'owner' ? $t('bots.telegram.fullHint') : $t('bots.telegram.readOnlyHint')}</p>
+          <p class="text-[13px] text-muted-foreground">{status.pairing.trust === 'owner' ? $t('bots.telegram.fullHint') : $t('bots.telegram.readOnlyHint')}</p>
         </div>
       {:else}
         <div class="flex flex-wrap items-center gap-2">

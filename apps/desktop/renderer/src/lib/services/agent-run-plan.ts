@@ -17,7 +17,7 @@ import { compactText } from '$lib/services/agent-evidence';
 import { isResearchProductPath, resolveResearchMode } from '$lib/services/research-pipeline';
 import {
   getNativeSystemPrompt, getXmlSystemPrompt, buildDirectSystemPrompt, buildCurrentRequestReminder,
-  getAgenteCodeSystemPrompt, getAgenteChatSystemPrompt
+  getAgenteChatSystemPrompt
 } from '$lib/services/agent-prompts';
 import { DEFAULT_PROVIDER_ID } from '$shared/providers';
 
@@ -125,25 +125,17 @@ function defaultToolCalls(profile: { code: boolean; chat: boolean }, maxIteratio
 
 function modeNote(plan: { isCodeProfile: boolean; isChatProfile: boolean; executionMode: string }, workspaceRoot?: string): string {
   if (plan.isCodeProfile || (plan.executionMode === 'workspace' && !plan.isChatProfile)) {
+    // The coding rules themselves live in the base prompt (native) or in the
+    // tool descriptions (XML); this note only says where the work happens.
+    // It used to re-state the whole Agente code prompt plus an eight-bullet
+    // tool inventory that the API already sends as schemas.
     return [
-      plan.isCodeProfile ? getAgenteCodeSystemPrompt() : '',
       `You are attached to a real workspace folder at ${workspaceRoot || 'the project root'}.`,
       'Files and bash commands run on the host filesystem, confined to the workspace root.',
-      '',
-      'Available tools:',
-      '- read_file (path, offset?, limit?): Read a file. Use offset/limit for large files.',
-      '- write_file (path, content, mode?): Create or overwrite a file.',
-      '- edit_file (path, edits[]): Make precise text replacements. Each edit has {oldText, newText}. Prefer this over write_file for modifying existing files.',
-      '- delete_file (path): Delete a file.',
-      '- list_files (pattern?): List files in the workspace.',
-      '- search_files (query, caseSensitive?, path?, maxResults?): Search file contents.',
-      '- bash (command, timeout?): Run any shell command with full shell access. Output is streamed back.',
-      '',
-      'Use bash for running tests, installing dependencies, git operations, building, and other CLI tasks.',
-      'Use edit_file for precise changes to existing files instead of rewriting the whole file with write_file.',
-      'For reading large files, use read_file with offset to paginate.',
-      'Diffs and file changes auto-render in the chat as a changed-files overview.',
-    ].filter(Boolean).join('\n');
+      'Work with read_file, write_file, edit_file, delete_file, list_dir, grep, find and bash; use bash for tests, installs, builds and git.',
+      'Read a file before you modify it, and prefer edit_file over rewriting it with write_file.',
+      'Diffs and file changes auto-render in the chat as a changed-files overview.'
+    ].join('\n');
   }
   if (plan.isChatProfile) {
     return [

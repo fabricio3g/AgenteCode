@@ -7,6 +7,7 @@
   import ToolCallRow from '$lib/components/agent/ToolCallRow.svelte';
   import { appStore } from '$lib/stores/app.svelte';
   import { copy } from '$lib/copy';
+  import { ActiveDuration } from '$lib/utils/active-duration';
   import { formatDuration, plural } from '$lib/utils/format';
   import { activityLabel as resolveActivityLabel, searchModeChip } from '$lib/utils/tool-ui';
 
@@ -60,9 +61,8 @@
   /** Debounced short label so progress ticks don't thrash the line. */
   let stableVerb = $state(resolveActivityLabel(null));
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
-  let streamStartedAt = $state<number | null>(null);
+  const clock = new ActiveDuration();
   let liveElapsed = $state(0);
-  let liveTimer: ReturnType<typeof setInterval> | null = null;
 
   /**
    * Prefer the reported activity; fall back to sniffing the label only for
@@ -112,27 +112,11 @@
   });
 
   $effect(() => {
-    if (isStreaming) {
-      if (streamStartedAt == null) streamStartedAt = Date.now();
-      if (liveTimer) clearInterval(liveTimer);
-      liveTimer = setInterval(() => {
-        if (streamStartedAt != null) liveElapsed = (Date.now() - streamStartedAt) / 1000;
-      }, 250);
-      liveElapsed = streamStartedAt != null ? (Date.now() - streamStartedAt) / 1000 : 0;
-    } else {
-      streamStartedAt = null;
-      liveElapsed = 0;
-      if (liveTimer) {
-        clearInterval(liveTimer);
-        liveTimer = null;
-      }
-    }
-    return () => {
-      if (liveTimer) {
-        clearInterval(liveTimer);
-        liveTimer = null;
-      }
-    };
+    if (!isStreaming) return;
+    clock.resume();
+    liveElapsed = clock.elapsed() / 1000;
+    const timer = setInterval(() => (liveElapsed = clock.elapsed() / 1000), 250);
+    return () => { clearInterval(timer); clock.pause(); };
   });
 
   function openActivity() {

@@ -135,7 +135,7 @@
       <div class="flex items-center justify-between gap-3 rounded-[var(--radius-md)] border border-[var(--border-subtle)] px-3 py-2">
         <div class="min-w-0">
           <div class="text-xs font-medium text-foreground">Default persona</div>
-          <div class="text-[11px] text-muted-foreground">New scenes start with this persona selected.</div>
+          <div class="text-[12px] text-muted-foreground">New scenes start with this persona selected.</div>
         </div>
         <button
           type="button"

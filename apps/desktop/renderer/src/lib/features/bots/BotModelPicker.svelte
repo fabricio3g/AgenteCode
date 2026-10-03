@@ -23,7 +23,7 @@
 
   type Pin = { provider: string; model: string; thinking?: string };
 
-  let { value = $bindable() }: { value?: Pin } = $props();
+  let { value = $bindable(), showThinking = true }: { value?: Pin; showThinking?: boolean } = $props();
 
   const initial = untrack(() => value);
   let provider = $state(initial?.provider ?? '');
@@ -56,13 +56,14 @@
   });
 
   $effect(() => {
+    void open; // Recheck cache freshness when reopening a long-lived picker.
     if (provider) void providerModels.load(provider);
   });
 
   // What this model can think at; a level it doesn't offer falls back to auto.
   $effect(() => {
     const id = provider, name = model.trim();
-    if (!id || !name) {
+    if (!showThinking || !id || !name) {
       capabilities = { supported: false, levels: [], source: 'unknown' };
       return;
     }
@@ -133,7 +134,7 @@
         </ul>
       {/if}
     </div>
-    {#if capabilities.supported && capabilities.levels.length}
+    {#if showThinking && capabilities.supported && capabilities.levels.length}
       <div class="thinking-row">
         <span class="text-[12px] text-muted-foreground">{$t('bots.thinking')}</span>
         <ReasoningLevelSelector {capabilities} value={thinking} onchange={(level) => (thinking = level)} />

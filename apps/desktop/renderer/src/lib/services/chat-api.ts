@@ -11,8 +11,25 @@ import { loadAppConfig } from '$lib/utils/storage';
 import { toErrorMessage } from '$lib/utils/errors';
 import type { RoleplaySampling } from '$lib/services/roleplay-prompts';
 import { DEFAULT_PROVIDER_BASE_URL, DEFAULT_PROVIDER_ID } from '$shared/providers';
+import { defaultBaseUrl } from '$lib/utils/providers';
+import { ModelListCache } from './model-list-cache';
 
 const _openaiClients = new Map<string, OpenAI>();
+const modelLists = new ModelListCache<ModelOption[]>();
+
+function modelListRoute(config: AppConfig, apiKeyOverride?: string) {
+  const { provider, providerName } = resolveProvider(config);
+  const baseUrl = provider.base_url || defaultBaseUrl(providerName);
+  const apiKey = apiKeyOverride ?? provider.api_key ?? '';
+  return { provider, providerName, baseUrl, apiKey,
+    key: JSON.stringify([providerName, baseUrl.replace(/\/+$/, ''), apiKey, !!provider.has_api_key, isElectron()]) };
+}
+
+export function cachedModels(config: AppConfig): ModelOption[] | undefined {
+  return modelLists.peek(modelListRoute(config).key);
+}
+
+export function invalidateModels(): void { modelLists.clear(); }
 
 type UnknownRecord = Record<string, unknown>;
 type ProviderLike = {
@@ -466,42 +483,44 @@ export async function loadChatConfig(): Promise<AppConfig> {
   return next;
 }
 
-export async function fetchModels(config?: AppConfig, apiKeyOverride?: string): Promise<ModelOption[]> {
+export async function fetchModels(config?: AppConfig, apiKeyOverride?: string, force = false): Promise<ModelOption[]> {
   const resolvedConfig = config || (await loadChatConfig());
-  // ...
-  const { provider, providerName } = resolveProvider(resolvedConfig);
-  const apiKey = (apiKeyOverride ?? provider.api_key) || '';
-  if (!provider.base_url) return [];
+  const { provider, providerName, baseUrl, apiKey, key } = modelListRoute(resolvedConfig, apiKeyOverride);
+  if (!baseUrl) return [];
 
   // Listing models needs a key. Calling without one throws in the main process
   // and logs a handler error on every startup, and the result is discarded here
   // anyway. Keyless local runtimes (llama.cpp, Ollama, LM Studio) still apply.
   const isLocalProvider = providerName === 'local'
-    || /^https?:\/\/(127\.0\.0\.1|localhost|\[::1\])(:|\/|$)/i.test(provider.base_url);
+    || /^https?:\/\/(127\.0\.0\.1|localhost|\[::1\])(:|\/|$)/i.test(baseUrl);
   if (!apiKey && !provider.has_api_key && !isLocalProvider) return [];
 
-  if (isElectron()) {
-    try {
-      const ids = await invoke<string[]>('fetch_provider_models', {
-        baseUrl: provider.base_url,
-        apiKey,
-        providerName
-      });
-      const mapped: ModelOption[] = (ids || []).map((id) => ({
-        id: String(id || ''),
-        name: String(id || 'Unnamed model'),
-        source: 'api' as const
-      }));
-      return mapped.filter((entry) => !!entry.id);
-    } catch {
-      return [];
+  return modelLists.load(key, async () => {
+    if (isElectron()) {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      try {
+        const request = invoke<string[]>('fetch_provider_models', {
+          baseUrl,
+          apiKey,
+          providerName
+        });
+        const ids = await Promise.race([request, new Promise<string[]>((_resolve, reject) => {
+          timer = setTimeout(() => reject(new Error('Model discovery timed out')), 12_000);
+        })]);
+        // IPC errors must reach the picker; an empty successful list is authoritative.
+        if (!Array.isArray(ids)) throw new Error('Invalid provider model list');
+        const mapped: ModelOption[] = [...new Set(ids)].map((id) => ({
+          id: String(id || ''),
+          name: String(id || 'Unnamed model'),
+          source: 'api' as const
+        }));
+        return mapped.filter((entry) => !!entry.id);
+      } finally { clearTimeout(timer); }
     }
-  }
-
-  try {
-    const client = getOpenAIClient(apiKey, provider.base_url || '');
-    const response = await client.models.list();
-    const list = response?.data ?? [];
+    const client = getOpenAIClient(apiKey, baseUrl);
+    const response = await client.models.list({ timeout: 10_000, maxRetries: 0 });
+    const list = response?.data;
+    if (!Array.isArray(list)) throw new Error('Invalid provider model list');
     return list
       .map((m: { id: string }) => ({
         id: String(m.id || ''),
@@ -509,9 +528,7 @@ export async function fetchModels(config?: AppConfig, apiKeyOverride?: string): 
         source: 'api' as const
       }))
       .filter((entry: ModelOption) => !!entry.id);
-  } catch {
-    return [];
-  }
+  }, force);
 }
 
 /**
@@ -632,6 +649,7 @@ async function waitChatStream(
 }
 
 async function streamLocalReply(args: {
+  config?: AppConfig;
   messages: RequestMessage[];
   signal?: AbortSignal;
   onChunk: (value: string) => void;
@@ -641,7 +659,7 @@ async function streamLocalReply(args: {
   sampling?: RoleplaySampling;
   stop?: string[];
 }): Promise<void> {
-  const config = await loadChatConfig();
+  const config = args.config ?? await loadChatConfig();
   // Proxied through the main process (chat_stream_start), not fetched from
   // here: llama-server is launched with a per-run `--api-key` that only main
   // knows (see main/llama-session.ts — it deliberately never reaches the
@@ -667,6 +685,7 @@ async function streamLocalReply(args: {
 }
 
 export async function streamAssistantReply(args: {
+  config?: AppConfig;
   messages: RequestMessage[];
   signal?: AbortSignal;
   onChunk: (value: string) => void;
@@ -677,10 +696,10 @@ export async function streamAssistantReply(args: {
   sampling?: RoleplaySampling;
   stop?: string[];
 }): Promise<void> {
-  const config = await loadChatConfig();
+  const config = args.config ?? await loadChatConfig();
   const reasoning = buildReasoningRequest(args.reasoningLevel);
   if (config.llm?.backend_mode === 'local' && isElectron()) {
-    return streamLocalReply({ ...args, reasoning });
+    return streamLocalReply({ ...args, config, reasoning });
   }
   const { provider, providerName } = resolveProvider(config);
   const apiKey = (args.apiKey ?? provider.api_key) || '';
@@ -746,6 +765,7 @@ async function fetchProviderCompletion(provider: ProviderSampling & { base_url?:
 }
 
 export async function completeAssistantReply(args: {
+  config?: AppConfig;
   messages: RequestMessage[];
   signal?: AbortSignal;
   apiKey?: string;
@@ -756,7 +776,7 @@ export async function completeAssistantReply(args: {
    */
   omitMaxTokens?: boolean;
 }): Promise<CompletionResult> {
-  const config = await loadChatConfig();
+  const config = args.config ?? await loadChatConfig();
 
   const reasoning = buildReasoningRequest(args.reasoningLevel);
   const omitMaxTokens = !!args.omitMaxTokens;

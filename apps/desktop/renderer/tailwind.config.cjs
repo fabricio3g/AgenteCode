@@ -8,6 +8,17 @@ module.exports = {
         serif: ['var(--font-serif)'],
         mono: ['var(--font-mono)']
       },
+      // Mirrors the `--text-*` tokens in app.css so `text-base` in markup and
+      // `body` resolve to the same size. These are dead otherwise: Tailwind v3
+      // generates utilities from `theme.fontSize`, not from CSS custom
+      // properties, so the two ladders drifted apart.
+      fontSize: {
+        // Conversation prose: what ChatGPT and Claude read at.
+        prose: ['var(--text-prose)', { lineHeight: '1.65' }],
+        base: ['var(--text-base)', { lineHeight: 'var(--leading-base)' }],
+        sm: ['var(--text-sm)', { lineHeight: '1.45' }],
+        xs: ['var(--text-xs)', { lineHeight: '1.4' }]
+      },
       colors: {
         // Canonical Flaxeo names
         background: 'var(--background)',
@@ -132,7 +143,9 @@ module.exports = {
       },
       letterSpacing: {
         tighter: '-0.02em',
-        tight: '-0.01em'
+        tight: '-0.01em',
+        // Opens the counters at caption sizes, where negative tracking hurts.
+        caption: 'var(--tracking-caption)'
       },
       lineHeight: {
         tight: '1.2',

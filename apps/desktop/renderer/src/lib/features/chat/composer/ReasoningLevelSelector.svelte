@@ -1,7 +1,7 @@
 <svelte:options runes={true} />
 
 <!--
-  How hard the model thinks. The trigger is a tiny effort meter and the level's
+  How hard the model thinks. The trigger uses only the level's
   name; it opens a small card: the title with the chosen level (and its
   thinking-token budget) on one line, a thin gradient bar with a dot per level
   and a thumb at the choice, and the two ends of the scale as captions.
@@ -20,7 +20,7 @@
   import { appStore } from '$lib/stores/app.svelte';
   import type { ReasoningCapabilities, ReasoningLevel } from '$lib/types/chat';
   import { normalizeThinkingMode } from '$lib/stores/app-store-local-model';
-  import { effortBars, formatBudget } from './reasoning-effort';
+  import { formatBudget } from './reasoning-effort';
 
   let {
     capabilities: given,
@@ -129,19 +129,11 @@
   }
 </script>
 
-{#snippet meter(level: ReasoningLevel | null)}
-  {@const filled = effortBars(level)}
-  <span class="meter" class:is-auto={level === null} aria-hidden="true">
-    {#each [1, 2, 3, 4] as bar (bar)}<span class:is-on={bar <= filled}></span>{/each}
-  </span>
-{/snippet}
-
 {#if visible}
   <button bind:this={anchor} type="button" class="thinking-trigger" class:is-open={open}
     aria-haspopup="dialog" aria-expanded={open} aria-controls={open ? id : undefined}
     aria-label={$t('composer.thinking.trigger', { values: { level: labelFor(current) } })} title={$t('composer.thinking.title')}
     onclick={() => (open = !open)}>
-    {@render meter(current)}
     <span>{labelFor(current)}</span>
   </button>
   {#if open}
@@ -167,6 +159,18 @@
                the class holds it still until the first move. -->
           <span class="fill" style:width={at(position)}>
             {#key sheenKey}<span class="sheen" class:is-live={changed} aria-hidden="true"></span>{/key}
+            <!-- Keyed on the same counter, so a change of level restarts the
+                 drift and the stream visibly re-staggers as the sheen flashes.
+                 The negative delays mean they come back mid-flight rather than
+                 all from the left edge — a surge, not a glitch. No timer, no
+                 extra state. -->
+            {#key sheenKey}
+              <span class="bubbles" aria-hidden="true">
+                <span class="bubble"></span>
+                <span class="bubble"></span>
+                <span class="bubble"></span>
+              </span>
+            {/key}
           </span>
           {#each levels as level, step (level)}
             <span class="tick" class:is-on={step <= index} style:left={at(stopAt(step))}
@@ -186,7 +190,6 @@
   {/if}
 {:else if alwaysThinking}
   <span class="thinking-trigger is-static" title={$t('composer.thinking.hint.always')}>
-    {@render meter('high')}
     <span>{$t('composer.thinking.always')}</span>
   </span>
 {/if}
@@ -207,7 +210,6 @@
 
   .thinking-trigger:not(.is-static):hover,
   .thinking-trigger.is-open {
-    background: var(--surface-hover);
     color: var(--foreground);
   }
 
@@ -218,49 +220,30 @@
 
   .is-static { cursor: default; }
 
-  /* Four rising bars, filled to the level: reads as "effort" at a glance. */
-  .meter {
-    display: inline-flex;
-    height: 10px;
-    flex-shrink: 0;
-    align-items: flex-end;
-    gap: 1.5px;
-  }
-
-  .meter span {
-    width: 2.5px;
-    border-radius: 1px;
-    background: currentColor;
-    opacity: 0.25;
-  }
-
-  .meter span:nth-child(1) { height: 4px; }
-  .meter span:nth-child(2) { height: 6px; }
-  .meter span:nth-child(3) { height: 8px; }
-  .meter span:nth-child(4) { height: 10px; }
-  .meter span.is-on { opacity: 1; background: var(--brand-accent); }
-  .meter.is-auto span { opacity: 0.5; }
-
   .effort { display: grid; width: 13rem; gap: 0.375rem; }
 
   .effort-budget { color: var(--foreground); }
 
-  /* The ends of the scale, as quiet captions under the bar. */
+  /* The ends of the scale, as quiet captions under the bar. `var(--text-xs)` is
+     the 12px floor the type scale sets for caption text. */
   .effort-scale {
     display: flex;
     justify-content: space-between;
     color: var(--muted-foreground);
-    font-size: 10.5px;
+    font-size: var(--text-xs);
+    letter-spacing: var(--tracking-caption);
   }
 
-  /* A thin bar; the whole scale is a light-to-accent gradient, so the ends
+  /* A thick bar; the whole scale is a light-to-accent gradient, so the ends
      read as "quick" and "deep" before the captions do. */
   .rail {
     position: relative;
-    height: 14px;
+    height: 18px;
     cursor: pointer;
     touch-action: none;
     user-select: none;
+    /* A width change on the fill must not cascade into the card's layout. */
+    contain: layout;
   }
 
   /* Widen the target for the pointer without changing what is drawn. */
@@ -278,23 +261,35 @@
     position: absolute;
     top: 50%;
     left: 0;
-    height: 6px;
-    border-radius: 3px;
+    height: 10px;
+    border-radius: 5px;
     transform: translateY(-50%);
+    background-blend-mode: soft-light;
   }
 
   .track {
     right: 0;
-    background: color-mix(in srgb, var(--muted) 70%, var(--border));
+    /* Grain first so it modulates the surface colour underneath. */
+    background-image: var(--grain-noise), linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--muted) 80%, var(--border)) 0%,
+      color-mix(in srgb, var(--muted) 58%, var(--border)) 100%
+    );
+    background-size: 140px 140px, 100% 100%;
   }
 
   .fill {
-    overflow: hidden;
-    background: linear-gradient(
-      90deg,
-      color-mix(in srgb, var(--brand-accent) 35%, #fff) 0%,
-      var(--brand-accent) 100%
-    );
+    /* `clip` rather than `hidden`: same clipping, no scroll container. */
+    overflow: clip;
+    container-type: inline-size;
+    background-image:
+      var(--grain-noise),
+      linear-gradient(
+        90deg,
+        color-mix(in srgb, var(--brand-accent) 35%, #fff) 0%,
+        var(--brand-accent) 100%
+      );
+    background-size: 140px 140px, 100% 100%;
     transition: width 200ms var(--motion-ease);
   }
 
@@ -316,10 +311,77 @@
 
   .sheen.is-live { animation: effortSheen 600ms var(--motion-ease); }
 
+  /*
+   * Bubbles drifting through the fill, so the bar reads as effort in motion
+   * rather than only as a length. They are a *static* radial gradient that is
+   * only ever moved, which is what keeps this cheap: no filter, no blur, no
+   * box-shadow and no layout property is animated anywhere below.
+   *
+   * Three of them at different heights, sizes and delays, so the stream never
+   * visibly loops. They hide once the fill is too short to hold them (Auto sits
+   * at one thumb-width) rather than piling into a nub.
+   */
+  .bubbles {
+    position: absolute;
+    inset: 0;
+    overflow: clip;
+    border-radius: inherit;
+    pointer-events: none;
+  }
+
+  @container (max-width: 24px) {
+    .bubbles { display: none; }
+  }
+
+  .bubble {
+    position: absolute;
+    left: 0;
+    width: 6px;
+    height: 6px;
+    /* Centred with a margin rather than a translate, so the animation below can
+       own the transform outright. */
+    margin-top: -3px;
+    border-radius: 50%;
+    background: radial-gradient(
+      circle at 34% 30%,
+      rgb(255 255 255 / 0.95),
+      rgb(255 255 255 / 0.3) 55%,
+      rgb(255 255 255 / 0) 72%
+    );
+    /* `translate`/`scale` are separate properties, so they compose with each
+       other and never fight a centring transform. Both are compositor-only. */
+    animation: bubbleDrift 2.9s linear infinite;
+    /* Scoped on purpose. See app.css: `will-change` promoted the streaming
+       caret's whole markdown body to a compositing layer and re-rasterised it
+       on every DOM write. That was on a large, constantly-mutating element;
+       three 6px dots with a static background inside a card that unmounts on
+       close are the opposite case. Do not widen this. */
+    will-change: translate, scale;
+  }
+
+  /* Off-centre heights, staggered so they cross rather than travel in a line. */
+  .bubble:nth-child(1) { top: 32%; animation-duration: 2.9s; animation-delay: -0.4s; }
+  .bubble:nth-child(2) { top: 62%; width: 4px; height: 4px; margin-top: -2px; animation-duration: 2.2s; animation-delay: -1.7s; }
+  .bubble:nth-child(3) { top: 46%; width: 5px; height: 5px; margin-top: -2.5px; animation-duration: 3.4s; animation-delay: -2.6s; }
+
+  @keyframes bubbleDrift {
+    0%   { translate: -26px 0; scale: 0.7; opacity: 0; }
+    14%  { opacity: 0.9; }
+    86%  { opacity: 0.9; }
+    100% { translate: 240px 0; scale: 1.15; opacity: 0; }
+  }
+
+  /* Stillness, not absence: the bubbles stay as a static scatter. */
   @media (prefers-reduced-motion: reduce) {
     .sheen.is-live { animation: none; }
     .fill, .thumb { transition: none; }
+    .bubble { animation: none; will-change: auto; opacity: 0.55; translate: 40px 0; scale: 1; }
   }
+
+  :global(.a11y-reduce-motion) .sheen.is-live { animation: none; }
+  :global(.a11y-reduce-motion) .fill,
+  :global(.a11y-reduce-motion) .thumb { transition: none; }
+  :global(.a11y-reduce-motion) .bubble { animation: none; will-change: auto; opacity: 0.55; translate: 40px 0; scale: 1; }
 
   .tick {
     position: absolute;

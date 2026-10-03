@@ -12,7 +12,7 @@ import { createId } from '$lib/utils/id';
 import { isDefaultChatTitle } from '$lib/stores/app-store-helpers';
 import type { ChatSession, CodeProject, CodeTimelineEntry } from '$lib/types/chat';
 import type { AgenteCheckpointSummary, CodeAgentEvent } from '$shared/agente-protocol';
-import { applyCodeAgentEvent, createCodeRunState, type CodeRunState } from './code-run';
+import { applyCodeAgentEvent, codeRunElapsed, createCodeRunState, type CodeRunState } from './code-run';
 import {
   startCodeAgentSession,
   promptCodeAgent,
@@ -82,6 +82,8 @@ class CodeStore {
   #engineSettled = new Set<string>();
   #repairedInterrupted = false;
   #unsubEvents: (() => void) | null = null;
+  /** Chats whose streaming message waits for the next frame's flush. */
+  #pendingFlush = new Map<string, () => void>();
 
   constructor() {
     // Deleted conversations must not leave run state behind (unbounded growth)
@@ -415,6 +417,22 @@ class CodeStore {
     const chat = appStore.chats.find((c) => c.id === event.chatId);
     if (!chat) return;
 
+    if ((event.type === 'compaction_start' || event.type === 'compaction_end') && !run.running) {
+      let note = [...chat.messages].reverse().find(message => message.metadata?.codeCompaction?.running);
+      if (!note) {
+        note = { id: createId('compaction'), role: 'assistant', content: '', createdAt: Date.now(), status: 'idle', done: true, metadata: { codeCompaction: { running: true } } };
+        chat.messages.push(note);
+        note = chat.messages.at(-1)!;
+      }
+      if (event.type === 'compaction_end') {
+        note.metadata!.codeCompaction = { running: false, success: event.success, tokensBefore: event.tokensBefore, tokensAfter: event.tokensAfter, smart: event.smart, requestedSmart: event.requestedSmart, modelTokens: event.modelTokens, inputTokens: event.inputTokens, outputTokens: event.outputTokens, cacheReadTokens: event.cacheReadTokens, cacheWriteTokens: event.cacheWriteTokens };
+        if (event.success && event.tokensBefore !== event.tokensAfter) for (const message of chat.messages) if (message.metadata) delete message.metadata.codeConversationIndex;
+      }
+      appStore.markChatDirty(chat.id);
+      appStore.persist();
+      return;
+    }
+
     if (event.type === 'agent_start' && run.done) {
       // A queued follow-up is a new Rust turn: give its deltas a fresh target.
       Object.assign(run, createCodeRunState(), { running: true, assistantMessageId: undefined });
@@ -453,6 +471,13 @@ class CodeStore {
     if (event.type === 'agent_end') {
       run.queuedCount = 0;
       this.#clearQueued(chat);
+      for (const item of chat.pendingPrompts ?? []) item.sending = false;
+      appStore.persistDraft(chat.id);
+      // A normal completion runs the oldest locally queued prompt. A stopped
+      // or failed run leaves it editable; it never surprises the user by restarting.
+      if (event.stopReason !== 'aborted' && event.stopReason !== 'error' && !run.error) {
+        setTimeout(() => { if (!this.runFor(chat.id)?.running) void this.sendQueuedNow(chat.id); }, 0);
+      }
       void this.refreshCheckpoints(event.chatId);
     }
     if (event.type === 'approval_resolved') {
@@ -467,7 +492,8 @@ class CodeStore {
       for (const pending of approvalsStore.forChat(event.chatId)) this.#engineSettled.add(pending.id);
       approvalsStore.clearForChat(event.chatId);
     }
-    this.#flushToMessage(event.chatId, run);
+    if (isStreamingDelta(event)) this.#scheduleFlush(event.chatId, run);
+    else this.#flushNow(event.chatId, run);
 
     if (event.type === 'approval_request') {
       void (async () => {
@@ -490,6 +516,38 @@ class CodeStore {
     }
   }
 
+  /**
+   * Token-rate events (text/thinking deltas, tool output) arrive faster than
+   * the screen refreshes; mirroring each one re-runs every dependent derived
+   * and markdown pass. They land in the run at once and reach the message
+   * once per frame.
+   */
+  #scheduleFlush(chatId: string, run: AgenteRun): void {
+    if (this.#pendingFlush.has(chatId)) return;
+    const flush = () => {
+      this.#pendingFlush.delete(chatId);
+      this.#flushToMessage(chatId, run);
+    };
+    // A hidden window gets no frames; a short timer keeps it current.
+    if (typeof requestAnimationFrame === 'function' && typeof document !== 'undefined' && !document.hidden) {
+      const id = requestAnimationFrame(flush);
+      this.#pendingFlush.set(chatId, () => cancelAnimationFrame(id));
+    } else {
+      const id = setTimeout(flush, 16);
+      this.#pendingFlush.set(chatId, () => clearTimeout(id));
+    }
+  }
+
+  /** Flush synchronously, dropping any frame-scheduled flush for the chat. */
+  #flushNow(chatId: string, run: AgenteRun): void {
+    const cancel = this.#pendingFlush.get(chatId);
+    if (cancel) {
+      cancel();
+      this.#pendingFlush.delete(chatId);
+    }
+    this.#flushToMessage(chatId, run);
+  }
+
   /** Mirror run state into the streaming assistant message of the chat. */
   #flushToMessage(chatId: string, run: AgenteRun): void {
     const chat = appStore.chats.find((c) => c.id === chatId);
@@ -498,11 +556,11 @@ class CodeStore {
     if (!message || message.role !== 'assistant' || message.status !== 'streaming') return;
     message.content = run.content;
     message.reasoning = run.reasoning || undefined;
-    message.agentSteps = run.steps.map((step) => ({ ...step }));
+    message.agentSteps = run.done ? run.steps.map((step) => ({ ...step })) : run.steps;
     message.metadata = {
       ...message.metadata,
-      codeTimeline: run.timeline.map((entry) => ({ ...entry })),
-      codeChildren: structuredClone($state.snapshot(run.children)),
+      codeTimeline: run.done ? run.timeline.map((entry) => ({ ...entry })) : run.timeline,
+      codeChildren: run.done ? structuredClone($state.snapshot(run.children)) : run.children,
       codeSpend: { ...run.spend },
       ...(run.usage ? { codeUsage: { ...run.usage } } : {}),
       codeDiagnostics: [...run.diagnostics]
@@ -510,7 +568,7 @@ class CodeStore {
     if (run.done) {
       message.status = run.error ? 'error' : 'idle';
       message.done = true;
-      const elapsed = run.startedAt ? (run.endedAt ?? Date.now()) - run.startedAt : undefined;
+      const elapsed = run.startedAt !== undefined ? codeRunElapsed(run) : undefined;
       message.metadata = {
         ...message.metadata,
         ...(run.todos.length ? { codeTodos: run.todos.map((todo) => ({ ...todo })) } : {}),
@@ -535,8 +593,9 @@ class CodeStore {
    * the transcript reads in the order the model saw it.
    */
   #placeInjected(chat: ChatSession, run: AgenteRun, count: number): void {
-    const queued = chat.messages.filter((message) => message.metadata?.codeQueued).slice(0, count);
-    if (!queued.length) return;
+    const taken = (chat.pendingPrompts ?? []).filter(item => item.sending).slice(0, count);
+    const queued = chat.messages.filter((message) => message.metadata?.codeQueued).slice(0, Math.max(0, count - taken.length));
+    if (!queued.length && !taken.length) return;
     const reply = chat.messages.find((message) => message.id === run.assistantMessageId);
     if (reply?.status === 'streaming') {
       this.#flushToMessage(chat.id, run);
@@ -546,6 +605,9 @@ class CodeStore {
     }
     chat.messages = [...chat.messages.filter((message) => !queued.includes(message)), ...queued];
     for (const message of queued) delete message.metadata!.codeQueued;
+    for (const item of taken) this.#appendUserTurn(chat, item.content, item.codeAttachments ?? []);
+    chat.pendingPrompts = chat.pendingPrompts?.filter(item => !taken.some(taken => taken.id === item.id));
+    appStore.persistDraft(chat.id);
     // A fresh reply for the continuation; run-wide state (usage, spend,
     // todos, timing) carries on, and still-running subagents stay visible.
     Object.assign(run, { content: '', timeline: [], reasoning: '', reasoningRaw: '', steps: [], children: run.children.filter((child) => child.status === 'running') });
@@ -623,7 +685,7 @@ class CodeStore {
 
     const run = this.#requireRun(chatId);
     if (run.running) {
-      await this.steer(chatId, text, attachments);
+      this.queue(chatId, text, attachments);
       return;
     }
 
@@ -691,7 +753,7 @@ class CodeStore {
         if (snapshot) this.#conversationIndices.set(chatId, snapshot.snapshot.conversation.length);
         return null;
       }
-      const { provider, model } = await currentProviderModel();
+      const { provider, model } = await currentProviderModel(appStore.configForChat(chat));
       const runtimeMode = chat.codeAgent?.runtimeMode || this.defaultMode;
       const resumeSessionId = chat.codeAgent?.sessionId || undefined;
       const { sessionId, conversationIndex } = await startCodeAgentSession({
@@ -699,6 +761,7 @@ class CodeStore {
         projectRoot: project.rootPath,
         provider,
         model,
+        localSelection: chat.modelSelection ? { modelPath: chat.modelSelection.localModelPath, baseUrl: chat.modelSelection.localBaseUrl } : undefined,
         runtimeMode,
         resumeSessionId,
         ...(chat.reasoningLevel ? { thinkingLevel: chat.reasoningLevel } : {})
@@ -716,8 +779,37 @@ class CodeStore {
   }
 
   async #syncSelectedModel(chat: ChatSession): Promise<void> {
-    const { provider, model } = await currentProviderModel();
-    if (model || provider === 'local') await setAgenteModel(chat.id, provider, model, chat.reasoningLevel || undefined);
+    const { provider, model } = await currentProviderModel(appStore.configForChat(chat));
+    if (model || provider === 'local') await setAgenteModel(chat.id, provider, model, chat.reasoningLevel || undefined, chat.modelSelection ? { modelPath: chat.modelSelection.localModelPath, baseUrl: chat.modelSelection.localBaseUrl } : undefined);
+  }
+
+  /** Keep unsent input outside the transcript until the engine consumes it. */
+  queue(chatId: string, text: string, attachments: Attachment[] = []): void {
+    appStore.queuePrompt(chatId, text, { codeAttachments: attachments.map(item => ({ ...item })) });
+  }
+
+  async sendQueuedNow(chatId: string): Promise<void> {
+    const chat = appStore.chats.find(chat => chat.id === chatId);
+    if (!chat) return;
+    const waiting = chat.pendingPrompts?.filter(item => !item.sending) ?? [];
+    if (!waiting.length) return;
+    if (!this.runFor(chatId)?.running) {
+      const item = waiting[0]!;
+      chat.pendingPrompts = chat.pendingPrompts!.filter(entry => entry.id !== item.id);
+      appStore.persistDraft(chatId);
+      await this.send(chatId, item.content, item.codeAttachments ?? []);
+      return;
+    }
+    // Lock the batch before IPC, so rapid Enter presses cannot send it twice.
+    for (const item of waiting) item.sending = true;
+    appStore.persistDraft(chatId);
+    for (const item of waiting) {
+      try {
+        const result = await steerCodeAgent(chatId, item.content, item.codeAttachments ?? []);
+        if (!result.ok) item.sending = false;
+      } catch { item.sending = false; }
+    }
+    appStore.persistDraft(chatId);
   }
 
   /**
@@ -782,8 +874,9 @@ class CodeStore {
     await setCodeAgentRuntimeMode(chatId, mode);
   }
 
-  async compact(chatId: string): Promise<{ ok: boolean; error?: string }> {
-    return compactCodeAgent(chatId);
+  async compact(chatId: string, smart = true): Promise<{ ok: boolean; error?: string }> {
+    await this.ensureSession(chatId);
+    return compactCodeAgent(chatId, smart);
   }
 
   async actOnMessage(chatId: string, messageId: string, action: 'fork' | 'rewind'): Promise<void> {
@@ -903,6 +996,14 @@ function summarizeArgs(args: unknown): string {
     if (typeof record.path === 'string') return record.path;
   }
   return '';
+}
+
+const RUNTIME_DELTAS = new Set(['assistant_delta', 'child_delta', 'child_tool', 'generation_progress', 'tool_heartbeat', 'call_usage']);
+
+/** Events that arrive at token rate and can share one flush per frame. */
+function isStreamingDelta(event: CodeAgentEvent): boolean {
+  if (event.type === 'text_delta' || event.type === 'thinking_delta' || event.type === 'tool_update') return true;
+  return event.type === 'runtime_event' && RUNTIME_DELTAS.has(event.event.type);
 }
 
 export const codeStore = new CodeStore();

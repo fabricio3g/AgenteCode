@@ -49,7 +49,7 @@
 
 {#if reasoning}
   <div class="reasoning" data-state={isOpen ? 'open' : 'closed'}>
-    <button type="button" class="reasoning-line" aria-expanded={isOpen} onclick={() => (userOpen = !isOpen)}>
+    <button type="button" class="reasoning-line ui-quiet-disclosure" aria-expanded={isOpen} onclick={() => (userOpen = !isOpen)}>
       <ChevronRight class="size-3 shrink-0 transition-transform {isOpen ? 'rotate-90' : ''}" />
       <span class:shimmer={streaming}>{label}</span>
     </button>
@@ -72,18 +72,17 @@
     padding: 0.25rem 0.375rem 0.25rem 0.25rem;
     color: var(--muted-foreground);
     font-size: 12.5px;
-    transition: color var(--motion-fast), background-color var(--motion-fast);
+    transition: color var(--motion-fast);
   }
   .reasoning-line:hover,
   .reasoning-line:focus-visible {
     color: var(--foreground);
-    background: var(--surface-hover);
   }
   .reasoning-text {
     margin: 0.25rem 0 0.25rem 0.55rem;
     max-height: 16rem;
     overflow-y: auto;
-    border-left: 2px solid var(--border-hover);
+    border-left: 1px solid var(--border-subtle);
     padding: 0.125rem 0 0.125rem 0.75rem;
     color: var(--text-secondary);
     font-size: 13px;

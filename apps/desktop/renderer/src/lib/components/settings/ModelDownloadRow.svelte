@@ -75,7 +75,7 @@
     </div>
 
     {#if job.load_when_ready && !['completed'].includes(job.status)}
-      <p class="mt-1 text-[10px] text-[var(--text-muted)]">{$t('modelHub.willLoad')}</p>
+      <p class="mt-1 text-[12px] text-[var(--text-muted)]">{$t('modelHub.willLoad')}</p>
     {/if}
   </div>
 

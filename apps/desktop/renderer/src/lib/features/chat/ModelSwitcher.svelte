@@ -216,24 +216,23 @@
     await appStore.openLocalModelLoadDialog(model);
   }
 
-  /** Cloud refreshes the provider in use; On device rescans the model folders. */
-  const refreshing = $derived(appStore.backendMode === 'api' ? !!providerModels.loading[appStore.activeProviderName] : appStore.modelsRefreshing);
+  /** Cloud refreshes every configured group shown by this picker. */
+  const refreshing = $derived(appStore.backendMode === 'api' ? configured.some(provider => providerModels.loading[provider.id]) : appStore.modelsRefreshing);
 
   function refresh() {
-    appStore.refreshModels(true);
     modelsStore.refreshStatus();
     if (appStore.backendMode === 'api') {
-      const active = appStore.activeProviderName;
-      if (active) void providerModels.load(active, true);
+      void Promise.all(configured.map(provider => providerModels.load(provider.id, true)))
+        .then(() => appStore.refreshModels())
+        .then(() => appStore.refreshReasoningCapabilities(true));
     } else if (isElectron()) {
-      modelsStore.refreshIndex();
+      void appStore.refreshModels(true);
     }
   }
 
   function openManager(section: 'providers' | 'explore') {
     appStore.modelMenuOpen = false;
-    appStore.modelManagerOpenSection = section;
-    appStore.modelManagerOpen = true;
+    appStore.openSettings(section);
   }
 
   function toggleMenu() {

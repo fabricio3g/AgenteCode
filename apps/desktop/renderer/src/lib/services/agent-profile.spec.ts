@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { CHAT_AGENT_TOOL_NAMES, CODE_AGENT_TOOL_NAMES, getToolDefinitions } from '$lib/services/agent-tooling';
-import { getAgenteChatSystemPrompt, getAgenteCodeSystemPrompt } from '$lib/services/agent-prompts';
+import { getAgenteChatSystemPrompt, getNativeSystemPrompt } from '$lib/services/agent-prompts';
 
 describe('agent profiles', () => {
   it('chat profile excludes host shell and diagnostics', () => {
@@ -38,6 +38,10 @@ describe('agent profiles', () => {
   it('prompts are profile-specific', () => {
     expect(getAgenteChatSystemPrompt()).toContain('You are Agente');
     expect(getAgenteChatSystemPrompt().toLowerCase()).toContain('shell');
-    expect(getAgenteCodeSystemPrompt()).toContain('coding agent');
+    // The code profile's own framing lives in the base prompt now; the
+    // standalone code prompt was a second copy that shipped twice.
+    expect(getNativeSystemPrompt(undefined, 80, 28, 'agent', 'workspace')).toContain(
+      'You are Agente, a coding agent'
+    );
   });
 });

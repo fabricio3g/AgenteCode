@@ -1,5 +1,6 @@
-import type { AgentArtifact, AppConfig, Attachment, ChatContextMode, ChatFolder, ChatMessage, ChatSession, LocalThinkingMode, MessageVersion, ModelOption, ReasoningCapabilities, ReasoningLevel, WorkspaceFile } from '$lib/types/chat';
+import type { AgentArtifact, AppConfig, Attachment, ChatContextMode, ChatFolder, ChatMessage, ChatSession, LocalThinkingMode, MessageVersion, QueuedPrompt, ModelOption, ReasoningCapabilities, ReasoningLevel, WorkspaceFile } from '$lib/types/chat';
 import type { Attachment as CodeAttachment } from '$shared/agente-protocol.gen';
+import { captureChatModel, configForChatModel, homeRuntimeMatchesModel } from './chat-model';
 import { SPACES, normalizeSpace } from '$lib/spaces';
 import { getSpaceForSession } from '$lib/features/shared/session-guards';
 import { approvalsStore } from '$lib/stores/approvals.svelte';
@@ -29,8 +30,8 @@ import { confirmStore } from '$lib/stores/confirm.svelte';
 import { get } from 'svelte/store';
 import { _ as translate } from 'svelte-i18n';
 import type { CompletionResult, RequestMessage } from '$lib/services/chat-api';
-import { completeAssistantReply, detectToolSupport, fetchModels, fetchReasoningCapabilities, hasConfiguredVisionModel, loadChatConfig, reasoningRouteIdentity, streamAssistantReply } from '$lib/services/chat-api';
-import { loadChatState, saveChatState, saveAppConfig, saveChatStateToDb, loadChatStateFromDb, deleteChatFromDb } from '$lib/utils/storage';
+import { cachedModels, completeAssistantReply, detectToolSupport, fetchModels, fetchReasoningCapabilities, hasConfiguredVisionModel, invalidateModels, loadChatConfig, reasoningRouteIdentity, streamAssistantReply } from '$lib/services/chat-api';
+import { loadChatState, saveChatState, saveAppConfig, saveChatDraftToDb, saveChatStateToDb, loadChatStateFromDb, deleteChatFromDb } from '$lib/utils/storage';
 import { toErrorMessage } from '$lib/utils/errors';
 import { describeLocalLoadError } from '$lib/utils/local-load-errors';
 import { homeRuntimeBudget } from '$lib/stores/app-context-budget';
@@ -135,7 +136,19 @@ import { loadProviderDirectory } from '$lib/utils/provider-directory.svelte';
 
 class AppStore {
   ready = $state(false);
-  config = $state<AppConfig>({});
+  private globalConfig = $state<AppConfig>({});
+
+  get config(): AppConfig {
+    return configForChatModel(this.globalConfig, this.currentChat?.modelSelection);
+  }
+
+  set config(value: AppConfig) {
+    this.globalConfig = value;
+  }
+
+  configForChat(chat: ChatSession): AppConfig {
+    return configForChatModel(this.globalConfig, chat.modelSelection);
+  }
   chats = $state<ChatSession[]>([]);
   folders = $state<ChatFolder[]>([]);
   currentChatId = $state<string | null>(null);
@@ -144,13 +157,19 @@ class AppStore {
   composer = $state('');
   models = $state<ModelOption[]>([]);
   modelsRefreshing = $state(false);
-  _apiModelsCache = new Map<string, ModelOption[]>();
+  private modelsRefreshSequence = 0;
   modelMenuOpen = $state(false);
+  /** Legacy: something outside the renderer asks for Settings; AppShell maps it to a section. */
   settingsOpen = $state(false);
   promptConfigOpen = $state(false);
-  modelManagerOpen = $state(false);
-  modelManagerOpenModelId = $state<string | null>(null);
-  modelManagerOpenSection = $state<string | null>(null);
+  /**
+   * The Settings screen: a surface over the current space, not a modal. The
+   * conversation stays mounted underneath it, so a trip to Settings costs no
+   * scroll position and no streaming turn.
+   */
+  settingsScreenOpen = $state(false);
+  /** Section to open at (`'general'`, `'providers'`, `'runtime'`, …); null keeps the last one. */
+  settingsScreenSection = $state<string | null>(null);
   runtimeManagerOpen = $state(false);
   agentWorkspaceOpen = $state(false);
   artifactStudioOpen = $state(false);
@@ -469,22 +488,24 @@ class AppStore {
     };
   }
 
-  private homeRuntimeArgs(chat: ChatSession, message: ChatMessage, historyIds: string[]): Pick<RunAgentTaskArgs, 'homeRuntime' | 'historyIds' | 'onRuntime' | 'onConversationIndex'> {
+  private homeRuntimeArgs(chat: ChatSession, message: ChatMessage, historyIds: string[]): Pick<RunAgentTaskArgs, 'config' | 'homeRuntime' | 'historyIds' | 'onRuntime' | 'onConversationIndex'> {
     return {
+      config: this.configForChat(chat),
       homeRuntime: chat.homeRuntime,
       historyIds,
       onRuntime: (meta) => {
         // The model sees history only through this answer. Later edits force a fresh import.
         chat.homeRuntime = { ...meta, historyIds: [...historyIds, message.id] };
-        if (this.currentChatId === chat.id) {
+        if (this.currentChatId === chat.id && homeRuntimeMatchesModel(meta, this.config)) {
           ++this.contextBudgetRequestId;
           this.contextBudget = homeRuntimeBudget(meta, this.composer.trim()) || this.contextBudget;
         }
-        this.touchChats();
+        this.touchChats(chat.id);
         this.persist();
       },
       onConversationIndex: (index, sessionId, revision) => {
         message.metadata = { ...message.metadata, homeConversationIndex: index, homeSessionId: sessionId, homeRevision: revision };
+        this.markChatDirty(chat.id);
         this.persist();
       }
     };
@@ -504,9 +525,7 @@ class AppStore {
     }
 
     const runtime = chat.homeRuntime;
-    const providerName = this.backendMode === 'local' ? 'local' : this.activeProviderName;
-    const selectedModel = this.backendMode === 'local' ? this.config.llm?.local?.model : this.activeProvider?.model;
-    if (runtime && runtime.provider === providerName && runtime.model === selectedModel) {
+    if (runtime && homeRuntimeMatchesModel(runtime, this.config)) {
       const budget = homeRuntimeBudget(runtime, this.composer.trim());
       if (budget) { this.contextBudget = budget; return; }
     }
@@ -673,6 +692,22 @@ class AppStore {
   showBots() {
     this.botsOpen = true;
     this.persist();
+  }
+
+  /**
+   * Show the Settings screen, at `section` when one is named.
+   *
+   * A deep link only wins while the screen is closed: `Ctrl+,` inside Settings
+   * is a toggle, so re-picking General would otherwise yank you out of Voice.
+   */
+  openSettings(section: string | null = null) {
+    if (!this.settingsScreenOpen) this.settingsScreenSection = section;
+    this.settingsScreenOpen = true;
+  }
+
+  /** Leave Settings for whatever was underneath it. */
+  closeSettings() {
+    this.settingsScreenOpen = false;
   }
 
   /** Show the Artifacts library. */
@@ -1223,6 +1258,7 @@ class AppStore {
       this.searchSidebarOpen = false;
       return;
     }
+    chat.modelSelection ??= captureChatModel(this.globalConfig, this.backendMode);
     const mode = normalizeContextMode(chat.contextMode);
     this.composer = chat.draft || '';
     this.searchMode = mode === 'roleplay' ? 'chat' : normalizeSessionSearchMode(chat.searchMode);
@@ -1334,6 +1370,7 @@ class AppStore {
       codeAgent: null,
       projectId: null,
       workspace: contextMode === 'code' ? (options.workspace || null) : null,
+      modelSelection: captureChatModel(this.config, this.backendMode),
       reasoningLevel: null,
       composerMode,
       searchMode: 'chat',
@@ -1375,9 +1412,13 @@ class AppStore {
     this.pendingAttachments = [];
 
     this.currentChatId = chatId;
+    ++this.contextBudgetRequestId;
+    this.contextBudget = null;
     this.refreshGenerationState();
     // Restore per-chat UI slice (modes, draft, panels) — never rewrite contextMode
     this.hydrateUiFromChat(match);
+    void this.refreshModels();
+    void this.refreshReasoningCapabilities();
     this.persist();
     if (isElectron()) {
       void this.refreshRagDocuments(chatId);
@@ -1386,7 +1427,65 @@ class AppStore {
 
   updateComposer(value: string) {
     this.composer = value;
-    if (this.currentChatId && this.updateChatDraft(this.currentChatId, value)) this.persist();
+    if (this.currentChatId && this.updateChatDraft(this.currentChatId, value)) this.persistDraft(this.currentChatId);
+  }
+
+  persistDraft(chatId: string) {
+    const chat = this.findChat(chatId);
+    if (!chat) return;
+    if (isElectron()) {
+      void saveChatDraftToDb(chat).catch(error => {
+        console.error('[draft] Save failed:', error);
+      });
+    } else this.persist();
+  }
+
+  queuePrompt(chatId: string, content: string, media: Pick<QueuedPrompt, 'attachments' | 'codeAttachments'> = {}): QueuedPrompt | null {
+    const chat = this.findChat(chatId);
+    if (!chat || !content.trim()) return null;
+    const item: QueuedPrompt = { id: createId('queued'), content: content.trim(), ...media };
+    chat.pendingPrompts = [...(chat.pendingPrompts ?? []), item];
+    this.persistDraft(chatId);
+    return chat.pendingPrompts.at(-1)!;
+  }
+
+  updateQueuedPrompt(chatId: string, id: string, content: string): void {
+    const item = this.findChat(chatId)?.pendingPrompts?.find(item => item.id === id && !item.sending);
+    if (!item || !content.trim()) return;
+    item.content = content.trim();
+    this.persistDraft(chatId);
+  }
+
+  removeQueuedPrompt(chatId: string, id: string): QueuedPrompt | undefined {
+    const chat = this.findChat(chatId);
+    const item = chat?.pendingPrompts?.find(item => item.id === id && !item.sending);
+    if (!chat || !item) return;
+    chat.pendingPrompts = chat.pendingPrompts!.filter(entry => entry.id !== id);
+    this.persistDraft(chatId);
+    return item;
+  }
+
+  private queuedContinuation = new Set<string>();
+
+  async sendQueuedPromptsNow(chatId: string): Promise<void> {
+    if (!this.findChat(chatId)?.pendingPrompts?.length) return;
+    const run = this.activeRunsByChat[chatId];
+    if (run) {
+      this.queuedContinuation.add(chatId);
+      // Let the run's finally finish saving its partial answer before starting
+      // the queued turn. Do not release its slot early or abort another chat.
+      run.controller.abort();
+    } else await this.startNextQueuedPrompt(chatId);
+  }
+
+  private async startNextQueuedPrompt(chatId: string): Promise<void> {
+    if (this.isChatGenerating(chatId)) return;
+    const chat = this.findChat(chatId);
+    const item = chat?.pendingPrompts?.find(item => !item.sending);
+    if (!item) return;
+    // Remove only when generation actually starts; an unavailable local model
+    // or provider keeps the prompt editable instead of silently losing it.
+    await this.sendCurrentMessage({ chatId, queuedPrompt: item });
   }
 
   /** Drafts are mutated here, where the chat state is owned, by stable id. */
@@ -1438,6 +1537,7 @@ class AppStore {
 
   /** `silent` skips the toast (bulk deletes, e.g. a whole Code project). */
   deleteChat(chatId: string, options: { silent?: boolean } = {}) {
+    this.queuedContinuation.delete(chatId);
     if (this.isChatGenerating(chatId)) {
       this.stopStreaming(chatId);
     }
@@ -1640,6 +1740,9 @@ class AppStore {
     const chat = this.currentChat;
     if (chat) {
       chat.reasoningLevel = level;
+      if (chat.contextMode !== 'code' && chat.homeRuntime?.sessionId && this.isChatGenerating(chat.id)) {
+        void invoke('home_runtime_update', { sessionId: chat.homeRuntime.sessionId, thinkingLevel: level || 'auto' }).catch(error => toastStore.error(String(error)));
+      }
       this.touchChats();
       this.persist();
     }
@@ -1657,7 +1760,7 @@ class AppStore {
     }
     const seq = ++this.reasoningCapabilitiesSeq;
     try {
-      const config = await loadChatConfig();
+      const config = this.config;
       if (seq !== this.reasoningCapabilitiesSeq) return; // superseded while loading
       const identity = reasoningRouteIdentity(config);
       if (!force && identity === this.reasoningCapabilitiesKey && this.reasoningCapabilities.source !== 'unknown') {
@@ -2160,10 +2263,11 @@ class AppStore {
     targetChatId: string;
     activeProvider?: { has_api_key?: boolean; api_key?: string; model?: string } | null;
     localBusyActionText?: string;
+    selectedLocalModelPath?: string;
   }): boolean {
     return canStartGenerationHelper({
       ...params,
-      selectedLocalModelPath: this.selectedLocalModelPath,
+      selectedLocalModelPath: params.selectedLocalModelPath ?? this.selectedLocalModelPath,
       localModelActive: Boolean(this.localModelActive),
       isChatGenerating: (chatId) => this.isChatGenerating(chatId),
       hasOtherChatGeneration: (chatId) => this.hasOtherChatGeneration(chatId),
@@ -2176,17 +2280,31 @@ class AppStore {
    * Send the composer as a user turn, or — with `silent` — generate a
    * character turn without one (group force-talk and auto mode).
    */
-  async sendCurrentMessage(options: { silent?: boolean } = {}) {
+  async sendCurrentMessage(options: { silent?: boolean; chatId?: string; queuedPrompt?: QueuedPrompt } = {}) {
     const silent = !!options.silent;
-    const content = silent ? '' : this.composer.trim();
-    const targetChatId = this.currentChatId;
+    const content = silent ? '' : (options.queuedPrompt?.content ?? this.composer).trim();
+    const targetChatId = options.chatId ?? this.currentChatId;
     const targetChat = this.findChat(targetChatId);
-    if ((!silent && !content && this.pendingAttachments.length === 0) || !targetChat || !targetChatId) return;
+    if (!targetChat || !targetChatId) return;
+    if (!silent && !content && !((options.queuedPrompt ? options.queuedPrompt.attachments ?? [] : this.pendingAttachments)).length) {
+      await this.sendQueuedPromptsNow(targetChatId);
+      return;
+    }
 
-    const activeBackendMode = this.backendMode as GenerationBackendMode;
-
-    const activeModelLabel = this.activeModelLabel;
-    const activeProvider = this.activeProvider;
+    const inputAttachments = (options.queuedPrompt ? options.queuedPrompt.attachments ?? [] : this.pendingAttachments);
+    if (!silent && this.isChatGenerating(targetChatId)) {
+      if (content || inputAttachments.length) {
+        this.queuePrompt(targetChatId, content || 'Please review the attached media.', { attachments: [...inputAttachments] });
+        this.updateComposer('');
+        this.pendingAttachments = [];
+      } else await this.sendQueuedPromptsNow(targetChatId);
+      return;
+    }
+    const selectedConfig = this.configForChat(targetChat);
+    const selection = captureChatModel(selectedConfig, this.backendMode);
+    const activeBackendMode = selection.backendMode as GenerationBackendMode;
+    const activeModelLabel = activeBackendMode === 'local' ? selection.localModel : selection.model;
+    const activeProvider = selectedConfig.llm?.providers?.[selection.provider];
     const activeProviderApiKey = activeProvider?.api_key;
     const activeContextMode = normalizeContextMode(targetChat.contextMode);
     const activeSearchMode = normalizeSessionSearchMode(targetChat.searchMode ?? this.searchMode);
@@ -2197,7 +2315,8 @@ class AppStore {
     if (!this.canStartGeneration({
       backendMode: activeBackendMode,
       targetChatId,
-      activeProvider
+      activeProvider,
+      selectedLocalModelPath: selection.localModelPath
     })) return;
 
     this.error = null;
@@ -2210,7 +2329,7 @@ class AppStore {
           createdAt: Date.now(),
           done: true,
           status: 'idle',
-          attachments: this.pendingAttachments,
+          attachments: inputAttachments,
           mode: activeComposerMode,
           searchMode: activeSearchMode
         };
@@ -2227,11 +2346,16 @@ class AppStore {
 
     if (userMessage) {
       this.appendMessageToChat(targetChatId, userMessage);
-      this.composer = '';
-      targetChat.draft = '';
+      if (options.queuedPrompt) {
+        targetChat.pendingPrompts = targetChat.pendingPrompts?.filter(item => item.id !== options.queuedPrompt!.id);
+        this.persistDraft(targetChatId);
+      } else {
+        this.composer = '';
+        targetChat.draft = '';
+      }
     }
-    const sentAttachments = silent ? [] : [...this.pendingAttachments];
-    if (!silent) this.pendingAttachments = [];
+    const sentAttachments = silent ? [] : [...inputAttachments];
+    if (!silent && !options.queuedPrompt) this.pendingAttachments = [];
 
     const composerRoute = resolveComposerRoute({
       prompt: content,
@@ -2430,7 +2554,7 @@ class AppStore {
             await applyLocalContextBudgetTruncation({
               backendMode: activeBackendMode,
               isElectron: true,
-              config: this.config,
+              config: selectedConfig,
               messages: outboundMessages,
               invoke: toInvoke(electronApi),
               // Uploaded / RAG document context must not be token-budget trimmed away.
@@ -2482,9 +2606,9 @@ class AppStore {
           modelName: activeModelLabel,
           backendMode: activeBackendMode,
           searchMode: plan.searchMode,
-          requestedProvider: this.config.search?.provider || 'aggregator'
+          requestedProvider: selectedConfig.search?.provider || 'aggregator'
         });
-        if (this.config.ui?.agent_debug_logs && (agentResult.warning || agentResult.error)) {
+        if (selectedConfig.ui?.agent_debug_logs && (agentResult.warning || agentResult.error)) {
           console.info('[agent]', agentResult.warning || agentResult.error);
         }
         syncMsg(true);
@@ -2492,6 +2616,7 @@ class AppStore {
         this.focusArtifact(targetChatId, assistantMessage.id, agentResult.artifact);
       } else {
         await streamAssistantReply({
+          config: this.configForChat(targetChat),
           messages: outboundMessages,
           signal: controller.signal,
           apiKey: activeProviderApiKey,
@@ -2570,7 +2695,7 @@ class AppStore {
       syncMsg(true);
       this.persist();
 
-      if (this.config.tts?.enable_voice_output && this.config.tts?.auto_play_voice && assistantMessage.content
+      if (selectedConfig.tts?.enable_voice_output && selectedConfig.tts?.auto_play_voice && assistantMessage.content
         && (activeContextMode !== 'roleplay' || roleplayStore.settings(targetChat).voicePlayback !== false)) {
         try {
           if (activeContextMode === 'roleplay') ttsStore.speakSequence(messageSpeechParts(assistantMessage, charactersStore.characters, this.config));
@@ -2628,8 +2753,13 @@ class AppStore {
       this.endGenerationRun(targetChatId, controller);
       // Group auto mode: queue the next character turn once this one settles.
       // A stopped or failed turn ends the chain instead of retrying.
-      roleplayStore.continueAuto(targetChatId, controller.signal.aborted || assistantMessage.status === 'error');
-      roleplayStore.afterTurn(targetChatId, controller.signal.aborted || assistantMessage.status === 'error');
+      const continueQueued = this.queuedContinuation.delete(targetChatId) || (!controller.signal.aborted && assistantMessage.status !== 'error');
+      if (continueQueued && this.findChat(targetChatId)?.pendingPrompts?.length) {
+        void this.startNextQueuedPrompt(targetChatId);
+      } else {
+        roleplayStore.continueAuto(targetChatId, controller.signal.aborted || assistantMessage.status === 'error');
+        roleplayStore.afterTurn(targetChatId, controller.signal.aborted || assistantMessage.status === 'error');
+      }
     }
   }
 
@@ -2641,6 +2771,7 @@ class AppStore {
   }
 
   stopStreaming(chatId = this.currentChatId || '') {
+    this.queuedContinuation.delete(chatId);
     // The browser tool sets this when an agent starts driving a page, and only
     // the normal agent exit used to clear it — aborting left the "Agent" badge
     // stuck on the browser panel. Stopping a run is always a safe reset point.
@@ -2764,6 +2895,7 @@ class AppStore {
       this.beginGenerationRun(targetChatId, { controller, messageId: message.id, backendMode: activeBackendMode, mode: 'chat', startedAt: Date.now() });
       const systemPrompt = this.buildSystemPromptForMode({ backendMode: activeBackendMode, providerPrompt: activeProvider?.system_prompt, chat, speakerId: turn.speakerId, roleplaySnapshot: { roleplay: snapshot } });
       await streamAssistantReply({
+        config: this.configForChat(chat),
         messages: [...turn.decorate(buildOutboundMessages({ messages: history, systemPrompt })), { role: 'system', content: CONTINUE_INSTRUCTION }],
         signal: controller.signal,
         apiKey: activeProvider?.api_key,
@@ -2968,6 +3100,7 @@ class AppStore {
         this.persist();
       } else {
         await streamAssistantReply({
+          config: this.configForChat(chat),
           messages: turn.decorate(buildOutboundMessages({ messages: previousMessages, systemPrompt })),
           signal: controller.signal,
           apiKey: activeProvider?.api_key,
@@ -3102,25 +3235,32 @@ class AppStore {
     this.persist();
   }
 
-  private _apiModelsCacheKey(): string | null {
-    const isLocal = this.config.llm?.backend_mode === 'local' && isElectron();
-    if (isLocal) return null;
-    const providerName = this.config.llm?.provider || DEFAULT_PROVIDER_ID;
-    const provider = this.config.llm?.providers?.[providerName];
-    const baseUrl = provider?.base_url || '';
-    return `${providerName}:${baseUrl}`;
-  }
-
   private async commitConfig(next: AppConfig, options: {
+    invalidateModels?: boolean;
     refreshModels?: boolean;
     refreshLocalStatus?: boolean;
     detectTools?: boolean;
   } = {}) {
+    // Capture the owner before asynchronous persistence: switching chats while
+    // saving must never pin the choice onto the newly visible conversation.
+    const chat = this.currentChat;
+    const selection = captureChatModel(next, this.backendMode);
+    const selectionChanged = chat && JSON.stringify(chat.modelSelection) !== JSON.stringify(selection);
+    if (selectionChanged) {
+      chat.modelSelection = selection;
+      this.markChatDirty(chat.id);
+      this.persist();
+    }
     this.config = next;
+    if (selectionChanged) {
+      ++this.contextBudgetRequestId;
+      this.contextBudget = null;
+    }
     await saveAppConfig(next);
+    if (options.invalidateModels) invalidateModels();
     // Credentials are handed to main (which keeps them, or gives a provider's
     // to the Rust core), then discarded here. A browser session has no main.
-    const sections = [isElectron() ? this.config.llm : undefined, this.config.tts, this.config.stt];
+    const sections = [isElectron() ? this.globalConfig.llm : undefined, this.globalConfig.tts, this.globalConfig.stt];
     for (const section of sections) {
       for (const provider of Object.values(section?.providers ?? {})) {
         if (provider.api_key) { provider.has_api_key = true; delete provider.api_key; }
@@ -3139,47 +3279,45 @@ class AppStore {
   }
 
   async refreshModels(force?: boolean) {
-    if (this.backendMode === 'local' && isElectron()) {
+    const sequence = ++this.modelsRefreshSequence;
+    const config = this.config;
+    const isCurrent = () => sequence === this.modelsRefreshSequence;
+    if (config.llm?.backend_mode === 'local' && isElectron()) {
       this.modelsRefreshing = true;
+      this.models = [];
       try {
         await modelsStore.refreshIndex();
         const localModels = await Promise.all(modelsStore.availableModels.map(async (m) =>
           buildLocalModelOption(m, !!(m.path && await this.detectMmprojForModel(m.path)))
         ));
-        this.models = localModels;
+        if (isCurrent()) this.models = localModels;
       } catch {
-        this.models = [];
+        if (isCurrent()) this.models = [];
       } finally {
-        this.modelsRefreshing = false;
+        if (isCurrent()) this.modelsRefreshing = false;
       }
       return;
     }
 
-    const cacheKey = this._apiModelsCacheKey();
-    if (cacheKey && !force) {
-      const cached = this._apiModelsCache.get(cacheKey);
-      if (cached) {
-        this.models = cached;
-        return;
-      }
-    }
     this.modelsRefreshing = true;
+    this.models = cachedModels(config) ?? [];
     try {
-      const data = await fetchModels(this.config);
-      this.models = data;
-      if (cacheKey && data.length > 0) {
-        this._apiModelsCache.set(cacheKey, data);
-      }
+      const data = await fetchModels(config, undefined, force);
+      if (isCurrent()) this.models = data;
     } catch {
-      this.models = [];
+      if (isCurrent()) this.models = [];
     } finally {
-      this.modelsRefreshing = false;
+      if (isCurrent()) this.modelsRefreshing = false;
     }
   }
 
   async updateProvider(partial: ProviderUpdate, opts: { activate?: boolean } = {}) {
+    const previous = this.config.llm?.providers?.[partial.provider];
+    const credentialsChanged = partial.api_key !== undefined
+      || (partial.base_url !== undefined && partial.base_url !== previous?.base_url);
     const next = mergeProviderConfig(this.config, partial, opts);
     await this.commitConfig(next, {
+      invalidateModels: credentialsChanged,
       refreshModels: true,
       detectTools: true,
       refreshLocalStatus: next.llm?.backend_mode === 'local'
@@ -3218,7 +3356,7 @@ class AppStore {
         providers,
         ...(wasActive ? { provider: '' } : {})
       }
-    }, { refreshModels: true });
+    }, { refreshModels: true, invalidateModels: true });
   }
 
   async setBackendMode(mode: 'local' | 'api') {
@@ -3292,8 +3430,18 @@ class AppStore {
     artifact_toggles?: Record<string, boolean>;
     composer_mode_control?: 'tabs' | 'auto';
     roleplay_enabled?: boolean;
+    editor?: string;
   }) {
     await this.commitConfig(mergeUiSettingsConfig(this.config, partial));
+  }
+
+  /** The editor "Open in editor" launches; empty means auto-detect. */
+  get editorCommand(): string {
+    return this.config.ui?.editor ?? '';
+  }
+
+  async setEditorCommand(command: string) {
+    await this.updateUiSettings({ editor: command.trim() });
   }
 
   get composerModeControl(): 'tabs' | 'auto' {

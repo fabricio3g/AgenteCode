@@ -336,8 +336,7 @@
 
   function openRuntimeManager() {
     appStore.closeLocalModelLoadDialog();
-    appStore.modelManagerOpenSection = 'runtime';
-    appStore.modelManagerOpen = true;
+    appStore.openSettings('runtime');
   }
 
   const loadBlockedReason = $derived(
@@ -517,7 +516,7 @@
         {#snippet visionControl()}
           <div class="flex min-w-0 shrink-0 items-center gap-1.5">
             {#if visionSelectedName}
-              <span class="max-w-[16rem] truncate font-mono text-[11.5px] text-muted-foreground" title={visionSelectedName}>{visionSelectedName}</span>
+              <span class="max-w-[16rem] truncate font-mono text-[13px] text-muted-foreground" title={visionSelectedName}>{visionSelectedName}</span>
               <button type="button" class="ui-chip" onclick={() => { appStore.localModelLoadMmprojPath = ''; }}>{$t('localLoad.clear')}</button>
             {/if}
             <button type="button" class="ui-chip" onclick={pickProjector}>
@@ -680,8 +679,8 @@
             {#if previewLoading && !commandPreview}
               <p class="text-xs text-muted-foreground">{$t('localLoad.commandResolving')}</p>
             {:else if commandPreview}
-              <pre class="max-h-32 overflow-auto whitespace-pre-wrap break-all font-mono text-[11px] leading-relaxed text-muted-foreground">{commandPreview}</pre>
-              <p class="pt-1.5 text-[11px] text-muted-foreground">{$t('localLoad.commandNote')}</p>
+              <pre class="max-h-32 overflow-auto whitespace-pre-wrap break-all font-mono text-[12px] leading-relaxed text-muted-foreground">{commandPreview}</pre>
+              <p class="pt-1.5 text-[12px] text-muted-foreground">{$t('localLoad.commandNote')}</p>
             {:else}
               <p class="text-xs text-muted-foreground">{$t('localLoad.commandUnavailable')}</p>
             {/if}

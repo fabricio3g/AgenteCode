@@ -134,7 +134,7 @@
         <div class="flex items-center justify-between">
           <span class="text-sm font-medium text-muted-foreground">Cast</span>
           {#if cast.length}
-            <span class="text-[11px] text-muted-foreground">First speaks first</span>
+            <span class="text-[12px] text-muted-foreground">First speaks first</span>
           {/if}
         </div>
         <CastPicker value={castIds} onchange={(ids) => (castIds = ids)} />
@@ -155,7 +155,7 @@
         <span class="text-sm font-medium text-muted-foreground">Opening</span>
         {#if worldOpenings.length}
           <div class="space-y-1.5">
-            <span class="text-[11px] text-muted-foreground">World openings</span>
+            <span class="text-[12px] text-muted-foreground">World openings</span>
             {#each worldOpenings as opening (opening.key)}
               <button
                 type="button"
@@ -171,7 +171,7 @@
         {/if}
         {#if greetingOpenings.length}
           <div class="space-y-1.5">
-            <span class="text-[11px] text-muted-foreground">{primary?.name || 'Character'} greetings</span>
+            <span class="text-[12px] text-muted-foreground">{primary?.name || 'Character'} greetings</span>
             {#each greetingOpenings as opening (opening.key)}
               <button
                 type="button"

@@ -23,6 +23,12 @@
   } = $props();
 
   let nameValue = $state(appStore.userName);
+  /** Saved on blur or Enter, never per keystroke: each save writes config.json. */
+  let editorValue = $state(appStore.editorCommand);
+
+  function saveEditor() {
+    if (editorValue.trim() !== appStore.editorCommand) void appStore.setEditorCommand(editorValue);
+  }
 
   function setLocale(code: string) {
     setUiLocale(code);
@@ -111,6 +117,30 @@
           options={[{ value: 'light', label: $t('generalSettings.light') }, { value: 'dark', label: $t('generalSettings.dark') }]}
           onchange={(value) => themeStore.set(value as 'light' | 'dark')}
         /></div>
+      </Field>
+  </SettingsSection>
+
+  <SettingsSection title={$t('generalSettings.editor')}>
+      <Field
+        horizontal
+        class="py-3"
+        label={$t('generalSettings.editorCommand')}
+        description={$t('generalSettings.editorDesc')}
+        htmlFor="editor-command"
+      >
+        <Input
+          id="editor-command"
+          type="text"
+          bind:value={editorValue}
+          placeholder={$t('generalSettings.editorPlaceholder')}
+          onblur={saveEditor}
+          onkeydown={(event) => {
+            if (event.key === 'Enter') {
+              event.preventDefault();
+              saveEditor();
+            }
+          }}
+        />
       </Field>
   </SettingsSection>
 

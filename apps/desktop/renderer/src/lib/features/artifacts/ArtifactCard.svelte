@@ -46,12 +46,12 @@
     <ArtifactThumb artifact={entry.artifact} {visible} />
   </div>
   <div class="min-w-0 px-3.5 pb-3 pt-2.5 text-left">
-    <p class="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+    <p class="flex items-center gap-1.5 text-[12px] text-muted-foreground">
       <Icon class="size-3.5 shrink-0" />
       <span class="truncate">{$t(`artifacts.group.${entry.group}`)}</span>
     </p>
     <p class="mt-1 line-clamp-2 text-sm font-medium leading-snug text-foreground">{entry.artifact.title || $t('artifacts.untitled')}</p>
-    <p class="mt-1 truncate text-[11px] text-muted-foreground">{entry.chatTitle} · {when(entry.createdAt)}</p>
+    <p class="mt-1 truncate text-[12px] text-muted-foreground">{entry.chatTitle} · {when(entry.createdAt)}</p>
   </div>
 </button>
 

@@ -3,6 +3,7 @@
 import { invoke } from '$lib/services/bridge';
 import type { CodeCheckpointSummary, AgenteStartSessionArgs } from '$shared/agente-protocol';
 import type { Attachment } from '$shared/agente-protocol.gen';
+import type { GitBranches, OpenInEditorArgs, OpenInEditorResult, SwitchBranchResult } from '$shared/code-workspace';
 
 export function startCodeAgentSession(args: AgenteStartSessionArgs): Promise<{ sessionId: string; resumed: boolean; conversationIndex?: number }> {
   return invoke('agente_start_session', args as unknown as Record<string, unknown>);
@@ -28,12 +29,12 @@ export function abortCodeAgent(chatId: string): Promise<{ ok: boolean }> {
   return invoke('agente_abort', { chatId });
 }
 
-export function compactCodeAgent(chatId: string, customInstructions?: string): Promise<{ ok: boolean; error?: string }> {
-  return invoke('agente_compact', { chatId, customInstructions });
+export function compactCodeAgent(chatId: string, smart = true): Promise<{ ok: boolean; error?: string }> {
+  return invoke('agente_compact', { chatId, smart });
 }
 
-export function setAgenteModel(chatId: string, provider: string, model: string, thinkingLevel?: string): Promise<{ ok: boolean }> {
-  return invoke('agente_set_model', { chatId, provider, model, thinkingLevel });
+export function setAgenteModel(chatId: string, provider: string, model: string, thinkingLevel?: string, localSelection?: import('$shared/agente-protocol').LocalModelSelection): Promise<{ ok: boolean }> {
+  return invoke('agente_set_model', { chatId, provider, model, thinkingLevel, localSelection });
 }
 
 export function setCodeAgentRuntimeMode(chatId: string, mode: 'full' | 'supervised' | 'plan'): Promise<{ ok: boolean }> {
@@ -111,4 +112,19 @@ export function mcpStatus(projectRoot?: string): Promise<McpServer[]> {
 /** The project's files (git's view when it is a repository), for @ mentions. */
 export function projectFiles(projectRoot: string): Promise<string[]> {
   return invoke('agente_project_files', { projectRoot });
+}
+
+/** Local branches of the project's repository, with the worktree's dirty flag. */
+export function gitBranches(projectRoot: string): Promise<GitBranches> {
+  return invoke('agente_git_branches', { projectRoot });
+}
+
+/** Switch to `name`, creating it when `create` is set. */
+export function switchGitBranch(projectRoot: string, name: string, create = false): Promise<SwitchBranchResult> {
+  return invoke('agente_git_switch_branch', { projectRoot, name, create });
+}
+
+/** Open `path` in the user's editor, at `line` when the editor understands it. */
+export function openInEditor(args: OpenInEditorArgs): Promise<OpenInEditorResult> {
+  return invoke('agente_open_in_editor', args as unknown as Record<string, unknown>);
 }

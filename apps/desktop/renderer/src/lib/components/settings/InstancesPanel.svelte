@@ -100,7 +100,7 @@
     {#snippet trigger(props)}
       <Button size="sm" disabled={!library.length} {...props}><Plus /> {$t('instances.startAnother')}</Button>
     {/snippet}
-    <p class="px-2.5 pb-1 pt-1.5 text-[11px] font-semibold text-muted-foreground">{$t('instances.pickModel')}</p>
+    <p class="px-2.5 pb-1 pt-1.5 text-[12px] font-semibold text-muted-foreground">{$t('instances.pickModel')}</p>
     {#each library as model (model.path)}
       <MenuItem
         label={model.name}

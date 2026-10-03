@@ -138,7 +138,7 @@
         <button
           type="button"
           class="flex w-full items-center gap-3 rounded-xl bg-[var(--muted)] px-3 py-3 text-left transition hover:bg-[var(--surface-hover)]"
-          onclick={() => { appStore.llmDrawerOpen = false; appStore.modelManagerOpenSection = 'providers'; appStore.modelManagerOpen = true; }}
+          onclick={() => { appStore.llmDrawerOpen = false; appStore.openSettings('providers'); }}
           title="Configure providers"
         >
           <span class="flex size-8 shrink-0 items-center justify-center rounded-full bg-muted text-foreground">
@@ -160,7 +160,7 @@
               <Cpu class="h-3.5 w-3.5 text-[var(--text-muted)]" />
               <span class="text-[12px] font-semibold text-[var(--text)]">Local Runtime</span>
             </div>
-            <span class="runtime-status rounded-full px-2 py-0.5 text-[10px] font-semibold {runtimeRunning ? 'running' : 'stopped'}">
+            <span class="runtime-status rounded-full px-2 py-0.5 text-[12px] font-semibold {runtimeRunning ? 'running' : 'stopped'}">
               {#if runtimeRunning}<span class="status-dot h-1.5 w-1.5 rounded-full animate-pulse"></span>Running{:else}Stopped{/if}
             </span>
           </div>
@@ -170,7 +170,7 @@
             <div class="space-y-2 pt-1">
               <!-- RAM bar -->
               <div>
-                <div class="mb-1 flex items-center justify-between text-[10px] text-[var(--text-muted)]">
+                <div class="mb-1 flex items-center justify-between text-[12px] text-[var(--text-muted)]">
                   <span class="flex items-center gap-1"><MemoryStick class="h-3 w-3" /> RAM</span>
                   <span class="tabular-nums">{hardwareStore.ramUsedGb.toFixed(1)} / {hardwareStore.info.total_ram_gb.toFixed(0)} GB</span>
                 </div>
@@ -182,12 +182,12 @@
                   </div>
               </div>
               {#if hardwareStore.info.vram_gb > 0}
-                <div class="flex items-center gap-1 text-[10px] text-[var(--text-muted)]">
+                <div class="flex items-center gap-1 text-[12px] text-[var(--text-muted)]">
                   <Cpu class="h-3 w-3 shrink-0" />
                   <span class="truncate">{hardwareStore.info.gpu_name || 'GPU'} · {hardwareStore.info.vram_gb.toFixed(1)} GB · {hardwareStore.backendLabel}</span>
                 </div>
               {:else}
-                <div class="flex items-center gap-1 text-[10px] text-[var(--text-muted)]">
+                <div class="flex items-center gap-1 text-[12px] text-[var(--text-muted)]">
                   <Cpu class="h-3 w-3 shrink-0" />
                   <span class="truncate">{hardwareStore.info.cpu_model || 'CPU'} · {hardwareStore.info.physical_cores}c · CPU only</span>
                 </div>
@@ -198,11 +198,11 @@
           <div class="mt-3 flex items-center gap-3">
             <button
               class="text-[12px] font-medium text-[var(--text-secondary)] transition hover:text-[var(--text)]"
-              onclick={() => { appStore.llmDrawerOpen = false; appStore.modelManagerOpenSection = 'models'; appStore.modelManagerOpen = true; }}
+              onclick={() => { appStore.llmDrawerOpen = false; appStore.openSettings('models'); }}
             >Manage models</button>
             <button
               class="inline-flex items-center gap-1 text-[12px] font-medium text-[var(--text-secondary)] transition hover:text-[var(--text)]"
-              onclick={() => { appStore.llmDrawerOpen = false; appStore.modelManagerOpenSection = 'runtime'; appStore.modelManagerOpen = true; }}
+              onclick={() => { appStore.llmDrawerOpen = false; appStore.openSettings('runtime'); }}
               title="Runtime settings"
             ><ExternalLink class="h-3.5 w-3.5" />Runtime</button>
           </div>
@@ -217,14 +217,14 @@
       <!-- Temperature -->
       <div>
         <div class="mb-2 flex items-center justify-between">
-          <span class="text-[11px] font-semibold r text-[var(--text-muted)]">Temperature</span>
+          <span class="text-[12px] font-semibold r text-[var(--text-muted)]">Temperature</span>
           <div class="flex items-center gap-1.5">
-            <span class="text-[11px] text-[var(--text-muted)]">{tempLabel(temperature)}</span>
+            <span class="text-[12px] text-[var(--text-muted)]">{tempLabel(temperature)}</span>
             <span class="min-w-[2.5rem] px-1 text-center text-[12px] font-semibold tabular-nums text-[var(--text)]">{temperature.toFixed(2)}</span>
           </div>
         </div>
         <input type="range" bind:value={temperature} min="0" max="2" step="0.05" class="w-full accent-[var(--primary)] cursor-pointer" />
-        <div class="mt-1 flex justify-between text-[10px] text-[var(--text-muted)]">
+        <div class="mt-1 flex justify-between text-[12px] text-[var(--text-muted)]">
           <span>Precise</span><span>Creative</span>
         </div>
       </div>
@@ -232,7 +232,7 @@
       <!-- Max tokens -->
       <div>
         <div class="mb-2 flex items-center justify-between">
-          <span class="text-[11px] font-semibold r text-[var(--text-muted)]">Max tokens</span>
+          <span class="text-[12px] font-semibold r text-[var(--text-muted)]">Max tokens</span>
           <span class="min-w-[2.5rem] px-1 text-center text-[12px] font-semibold tabular-nums text-[var(--text)]">{maxTokens > 0 ? maxTokens.toLocaleString() : 'Auto'}</span>
         </div>
         <input type="range" bind:value={maxTokens} min="0" max="32768" step="256" class="w-full accent-[var(--primary)] cursor-pointer" />
@@ -240,7 +240,7 @@
 
       <!-- System prompt -->
       <div>
-        <label for="llm-system-prompt" class="mb-1.5 block text-[11px] font-semibold r text-[var(--text-muted)]">System prompt</label>
+        <label for="llm-system-prompt" class="mb-1.5 block text-[12px] font-semibold r text-[var(--text-muted)]">System prompt</label>
         <textarea
           id="llm-system-prompt"
           bind:value={systemPrompt}

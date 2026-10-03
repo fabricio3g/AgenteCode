@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
-import { applyCodeAgentEvent, createCodeRunState, orderedEntries } from './code-run';
+import { describe, it, expect, vi } from 'vitest';
+import { applyCodeAgentEvent, codeRunElapsed, createCodeRunState, orderedEntries } from './code-run';
 import type { CodeAgentEvent } from '$shared/agente-protocol';
 
 function run(events: CodeAgentEvent[]) {
@@ -350,5 +350,49 @@ describe('orderedEntries', () => {
     const todo = { id: 't', type: 'tool' as const, label: 'Update tasks', toolName: 'todo_write', status: 'done' as const };
     const entries = orderedEntries({ agentSteps: [turn, cap, todo, read], content: '' });
     expect(entries.map((entry) => entry.step?.id)).toEqual(['r']);
+  });
+});
+
+
+describe('active run timing', () => {
+  it('excludes an idle stop/resume gap and freezes the stopped timer', () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(1000);
+      const state = createCodeRunState();
+      applyCodeAgentEvent(state, { type: 'agent_start', chatId: 'c' });
+      vi.setSystemTime(61000);
+      applyCodeAgentEvent(state, { type: 'agent_end', chatId: 'c', stopReason: 'aborted' });
+      vi.setSystemTime(600000);
+      expect(codeRunElapsed(state)).toBe(60000);
+      applyCodeAgentEvent(state, { type: 'agent_start', chatId: 'c' });
+      vi.setSystemTime(630000);
+      expect(codeRunElapsed(state)).toBe(90000);
+      applyCodeAgentEvent(state, { type: 'agent_end', chatId: 'c', stopReason: 'stop' });
+      vi.setSystemTime(900000);
+      expect(codeRunElapsed(state)).toBe(90000);
+    } finally { vi.useRealTimers(); }
+  });
+  it('clears timestamps when an existing store object is reset for a new turn', () => {
+    const state = createCodeRunState();
+    state.startedAt = 1000; state.endedAt = 3000; state.elapsedMs = 2000;
+    Object.assign(state, createCodeRunState());
+    expect(state.startedAt).toBeUndefined();
+    expect(state.endedAt).toBeUndefined();
+    expect(codeRunElapsed(state, 900000)).toBe(0);
+  });
+  it('stops counting if an error arrives without an end event', () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(1000);
+      const state = createCodeRunState();
+      applyCodeAgentEvent(state, { type: 'agent_start', chatId: 'c' });
+      vi.setSystemTime(11000);
+      applyCodeAgentEvent(state, { type: 'error', chatId: 'c', message: 'Disconnected' });
+      vi.setSystemTime(91000);
+      expect(codeRunElapsed(state)).toBe(10000);
+      applyCodeAgentEvent(state, { type: 'agent_end', chatId: 'c', stopReason: 'error' });
+      expect(codeRunElapsed(state)).toBe(10000);
+    } finally { vi.useRealTimers(); }
   });
 });

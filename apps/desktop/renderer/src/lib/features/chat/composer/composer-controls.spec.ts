@@ -150,11 +150,12 @@ describe('thinking level', () => {
     expect(document.activeElement).toBe(button);
   });
 
-  it('fills to the chosen level and leaves naming it to the trigger', async () => {
+  it('names the chosen level without a decorative thinking icon', async () => {
     store.reasoningLevel = 'high';
     const view = render(ReasoningLevelSelector);
     const button = view.getByRole('button', { name: 'Thinking: High' });
-    expect(button.querySelectorAll('.meter .is-on')).toHaveLength(3);
+    expect(button.querySelector('.meter')).toBeNull();
+    expect(button.textContent).toContain('High');
 
     await fireEvent.click(button);
     const rail = view.getByRole('slider');

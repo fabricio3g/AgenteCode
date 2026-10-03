@@ -556,6 +556,13 @@ const handlers: Record<string, (args?: Record<string, unknown>) => unknown> = {
   get_runtime_recommendations: () => ({ platform: 'linux', arch: 'x64', gpu_backend: 'vulkan', has_gpu: true, recommended_variant: 'vulkan' }),
 
   chat_db_load_all: () => savedSessions,
+  chat_db_save_draft: (args) => {
+    const draft = args as { chatId: string; draft: string; codeAgent?: unknown; pendingPrompts?: unknown; updatedAt: number };
+    const session = savedSessions.find((entry) => (entry as { id?: string }).id === draft.chatId) as Record<string, unknown> | undefined;
+    if (!session) return false;
+    Object.assign(session, { draft: draft.draft, codeAgent: draft.codeAgent, pendingPrompts: draft.pendingPrompts, updatedAt: draft.updatedAt });
+    return true;
+  },
   chat_db_save_session: (args) => {
     // Upsert like the real table (id is the primary key).
     const session = (args as { session?: { id?: string } } | undefined)?.session;
@@ -631,6 +638,38 @@ const handlers: Record<string, (args?: Record<string, unknown>) => unknown> = {
       : { path: file, before: '<script>\n  let count = 0;\n</script>\n\n<button on:click={() => count++}>\n  Clicked {count}\n</button>\n', after: '<script>\n  import { load } from \'./lib/api\';\n  let count = $state(0);\n  const items = load();\n</script>\n\n<button onclick={() => count++}>\n  Clicked {count} times\n</button>\n', binary: false, tooLarge: false };
   },
   agente_revert_file: () => ({ ok: true }),
+  // A small tree with the shapes that matter: nested folders, a couple of the
+  // files the Changes pane lists, and files deep enough to scroll.
+  agente_project_files: () => [
+    '.gitignore',
+    'README.md',
+    'package.json',
+    'src/App.svelte',
+    'src/main.ts',
+    'src/lib/api.ts',
+    'src/lib/stores/app.svelte.ts',
+    'src/lib/components/Chat.svelte',
+    'src/lib/components/ui/Button.svelte',
+    'src/lib/features/code/CodeSurface.svelte',
+    'src/lib/features/code/workspace/ChangesPane.svelte',
+    'tests/unit/api.test.ts',
+    'tests/unit/components.test.ts',
+    'vite.config.ts'
+  ],
+  agente_reveal_path: () => ({ ok: true }),
+  agente_git_branches: () => ({
+    source: 'git',
+    current: 'main',
+    detached: false,
+    dirty: true,
+    branches: [
+      { name: 'main', commit: 'a1b2c3d', current: true, upstream: 'origin/main', ahead: 0, behind: 2 },
+      { name: 'feat/desktop-panels', commit: 'e4f5a6b', current: false, ahead: 3, behind: 0 },
+      { name: 'fix/sidebar-width', commit: 'c7d8e9f', current: false, ahead: 0, behind: 0 }
+    ]
+  }),
+  agente_git_switch_branch: (args) => ({ ok: true, branch: String((args as { name?: string })?.name ?? 'main') }),
+  agente_open_in_editor: () => ({ ok: true, editor: 'code' }),
   agente_process_list: () => [],
   agente_process_output: () => '',
   agente_process_clear: () => undefined,
@@ -732,6 +771,7 @@ function installMockElectron(): void {
     windowMinimize: () => Promise.resolve(),
     windowToggleMaximize: () => Promise.resolve(),
     windowIsMaximized: () => Promise.resolve(false),
+    windowSetTitlebarOverlay: () => Promise.resolve(false),
     windowClose: () => Promise.resolve(),
     windowRequestClose: () => Promise.resolve({ closed: true, prompted: false }),
     windowSetActiveWork: () => Promise.resolve()

@@ -132,11 +132,18 @@ export async function saveAppConfig(next: AppConfig): Promise<void> {
 }
 
 export function loadChatState<T>(fallback: T): T {
-  return safeParse<T>(localStorage.getItem(CHAT_STATE_KEY), fallback);
+  const legacy = safeParse<T>(localStorage.getItem(CHAT_STATE_KEY), fallback);
+  const navigation = safeParse<Record<string, unknown> | null>(localStorage.getItem(`${CHAT_STATE_KEY}.navigation`), null);
+  return navigation && isElectronEnv() ? { ...legacy, ...navigation } : legacy;
 }
 
 export function saveChatState<T>(value: T): void {
-  localStorage.setItem(CHAT_STATE_KEY, JSON.stringify(value));
+  if (isElectronEnv() && value && typeof value === 'object' && 'chats' in value) {
+    // SQLite owns complete transcripts. Keep the old backup for migration, but
+    // stop serializing attachments and every conversation on the UI thread.
+    const { chats: _chats, ...navigation } = value as Record<string, unknown>;
+    localStorage.setItem(`${CHAT_STATE_KEY}.navigation`, JSON.stringify(navigation));
+  } else localStorage.setItem(CHAT_STATE_KEY, JSON.stringify(value));
 }
 
 export async function loadChatStateFromDb(): Promise<{ chats: ChatSession[]; folders: ChatFolder[]; migrated: boolean } | null> {
@@ -173,6 +180,17 @@ export async function loadChatStateFromDb(): Promise<{ chats: ChatSession[]; fol
     console.error('[loadChatStateFromDb] Failed:', err);
     return null;
   }
+}
+
+export async function saveChatDraftToDb(session: ChatSession): Promise<void> {
+  if (!isElectronEnv()) return;
+  const saved = await (window as any).electronAPI.invoke('chat_db_save_draft', {
+    chatId: session.id, draft: session.draft, updatedAt: session.updatedAt,
+    pendingPrompts: JSON.parse(JSON.stringify(session.pendingPrompts ?? [])),
+    codeAgent: session.codeAgent ? JSON.parse(JSON.stringify(session.codeAgent)) : null
+  });
+  // Older/missing rows still receive the complete session once.
+  if (!saved) await saveChatStateToDb(session);
 }
 
 export async function saveChatStateToDb(session: ChatSession): Promise<void> {

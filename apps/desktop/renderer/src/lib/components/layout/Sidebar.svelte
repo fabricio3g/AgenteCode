@@ -10,7 +10,7 @@
   import { flip } from 'svelte/animate';
   import { smoothEase } from '$lib/utils/transitions';
   import { formatShortcut } from '$lib/utils/shortcuts';
-  import { Boxes, Drama, MessageSquare, Plus, Puzzle, Search, Settings } from 'lucide-svelte';
+  import { Drama, MessageSquare, Plus, Puzzle, Search, Settings } from 'lucide-svelte';
   import { copy } from '$lib/copy';
   import SessionRow from '$lib/features/shared/SessionRow.svelte';
   import BotRoster from '$lib/features/bots/BotRoster.svelte';
@@ -44,9 +44,10 @@
     type ChatGroup = { key: number; label: string; chats: typeof appStore.visibleHomeChats };
     const groups: ChatGroup[] = [];
     const groupMap = new Map<number, ChatGroup>();
+    // Read once: the same midnight is the reference for every row below.
+    const now = startOfDay(Date.now());
 
     for (const chat of listChats) {
-      const now = startOfDay(Date.now());
       const day = startOfDay(chat.updatedAt || chat.createdAt);
       const diff = Math.floor((now - day) / 86400000);
       const bucket = diff <= 0 ? 0 : diff === 1 ? 1 : diff <= 6 ? 2 : diff <= 29 ? 3 : 4;
@@ -63,7 +64,6 @@
     return groups;
   });
 
-  const sidebarIconColor = $derived('currentColor');
   const inBots = $derived(appStore.activeTab === 'bots');
   const newButtonLabel = $derived(
     inBots
@@ -104,44 +104,43 @@
   <div class="relative z-10 flex min-h-0 flex-1 flex-col px-3 pb-1 pt-2">
     <div class="flex flex-col gap-1.5 pb-3 pt-1">
       <button
-        class="new-chat-btn flex w-full items-center gap-2.5 rounded-full px-2.5 py-1.5 text-sm font-medium transition-colors"
+        class="sidebar-row is-emphasis"
         onclick={createForActiveSpace}
       >
         <Plus class="size-3.5 shrink-0" />
-        <span class="btn-label">{newButtonLabel}</span>
+        <span class="sidebar-row-label">{newButtonLabel}</span>
       </button>
 
       <!-- The Code agent does not produce artifacts; the toggle list only
            concerns Home and Roleplay. -->
       {#if appStore.activeSpace !== 'code' && !inBots}
         <button
-          class="sidebar-btn flex w-full items-center gap-2.5 rounded-full px-2.5 py-1 text-[13px] transition-colors"
+          class="sidebar-row"
           class:is-current={appStore.homeView === 'artifacts'}
           aria-current={appStore.homeView === 'artifacts' ? 'page' : undefined}
           onclick={() => appStore.showArtifactLibrary()}
           title={$t('sidebar.artifacts')}
         >
           <Puzzle class="size-3.5 shrink-0" />
-          <span class="btn-label">{$t('sidebar.artifacts')}</span>
+          <span class="sidebar-row-label">{$t('sidebar.artifacts')}</span>
         </button>
-        <SidebarInstances />
       {/if}
     </div>
 
     {#if inBots}
-      <label class="sidebar-btn bot-filter flex w-full items-center gap-2.5 rounded-full px-2.5 py-1 text-[13px]">
+      <label class="sidebar-row bot-filter">
         <Search class="size-3.5 shrink-0" />
         <input data-bot-search bind:value={botsStore.query} placeholder={$t('bots.search')} aria-label={$t('bots.search')} />
       </label>
     {:else}
     <button
       type="button"
-      class="sidebar-btn flex w-full items-center gap-2.5 rounded-full px-2.5 py-1 text-[13px] transition-colors"
+      class="sidebar-row"
       onclick={() => { appStore.chatSearchOpen = true; }}
       title={`${searchLabel} (${formatShortcut('mod+shift+k')})`}
     >
       <Search class="size-3.5 shrink-0" />
-      <span class="btn-label btn-label-truncate">{searchLabel}</span>
+      <span class="sidebar-row-label">{searchLabel}</span>
     </button>
     {/if}
 
@@ -158,7 +157,7 @@
           <div class="mb-1.5">
             <button
               type="button"
-              class="group-label w-full cursor-pointer px-2 pb-1 pt-3 text-left text-[11px] font-semibold text-[var(--text-muted)]"
+              class="sidebar-section"
               aria-expanded={!isCollapsed}
               onclick={() => toggleGroup(group.key)}
             >
@@ -181,103 +180,59 @@
           </div>
         {/each}
       {:else}
-        <div class="empty-state flex flex-col items-center justify-center py-12 text-center">
-          <div class="empty-icon mb-2 flex h-8 w-8 items-center justify-center rounded-[var(--radius-sm)]">
+        <div class="sidebar-empty">
+          <div class="sidebar-empty-icon">
             {#if appStore.activeSpace === 'roleplay'}
-              <Drama class="h-4 w-4" style={`color: ${sidebarIconColor};`} />
+              <Drama class="h-4 w-4" />
             {:else}
-              <MessageSquare class="h-4 w-4" style={`color: ${sidebarIconColor};`} />
+              <MessageSquare class="h-4 w-4" />
             {/if}
           </div>
           {#if appStore.activeSpace === 'roleplay'}
-            <p class="text-[14px] text-[var(--text-muted)]">{copy.roleplay.noRoleplays}</p>
-            <p class="mt-0.5 text-[12px] text-[var(--text-muted)]">{copy.roleplay.noRoleplaysHint}</p>
+            <p>{copy.roleplay.noRoleplays}</p>
+            <p class="sidebar-empty-hint">{copy.roleplay.noRoleplaysHint}</p>
           {:else}
-            <p class="text-[14px] text-[var(--text-muted)]">{$t('sidebar.noConversations')}</p>
-            <p class="mt-0.5 text-[12px] text-[var(--text-muted)]">{$t('sidebar.emptyHint')}</p>
+            <p>{$t('sidebar.noConversations')}</p>
+            <p class="sidebar-empty-hint">{$t('sidebar.emptyHint')}</p>
           {/if}
         </div>
       {/if}
     </div>
 
-    <div class="sidebar-footer px-0.5 py-2">
+    <!-- One way in: Models, providers and preferences are all sections of
+         the Settings screen, so a second sidebar entry would be a second
+         door to the same room.
+
+         The running-model list sits here rather than above the search field:
+         a model loading must not push the search field and every conversation
+         below it down the rail. -->
+    <div class="sidebar-footer">
+      <SidebarInstances />
       <button
-        class="sidebar-btn flex w-full items-center gap-2.5 rounded-full px-2.5 py-1 text-[13px] transition-colors"
-        onclick={() => { appStore.modelManagerOpenSection = 'models'; appStore.modelManagerOpen = true; }}
-        title={$t('sidebar.models')}
-      >
-        <Boxes class="size-3.5 shrink-0" />
-        <span class="btn-label">{$t('sidebar.models')}</span>
-      </button>
-      <button
-        class="sidebar-btn flex w-full items-center gap-2.5 rounded-full px-2.5 py-1 text-[13px] transition-colors"
-        onclick={() => { appStore.modelManagerOpenSection = 'general'; appStore.modelManagerOpen = true; }}
+        data-sidebar-settings
+        class="sidebar-row"
+        onclick={() => appStore.openSettings('general')}
         title={$t('sidebar.settings')}
+        class:is-current={appStore.settingsScreenOpen}
       >
         <Settings class="size-3.5 shrink-0" />
-        <span class="btn-label">{$t('sidebar.settings')}</span>
+        <span class="sidebar-row-label">{$t('sidebar.settings')}</span>
       </button>
     </div>
   </div>
 </aside>
 
 <style>
-  .btn-label-truncate {
-    min-width: 0;
-    flex: 1 1 auto;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    text-align: left;
-  }
-
   .bot-filter input {
     min-width: 0;
     flex: 1;
     background: transparent;
-    color: var(--sidebar-foreground);
+    color: inherit;
     outline: none;
   }
 
   .bot-filter input::placeholder {
     color: inherit;
-  }
-
-  .new-chat-btn {
-    color: var(--sidebar-foreground);
-    background: transparent;
-    border: none;
-  }
-
-  .new-chat-btn:hover {
-    background: var(--sidebar-accent);
-    color: var(--sidebar-accent-foreground);
-  }
-
-  .btn-label {
-    color: inherit;
-  }
-
-  .group-label {
-    appearance: none;
-    border: 0;
-    outline: none;
-    box-shadow: none;
-    background: transparent;
-    font-family: inherit;
-  }
-
-  .group-label:hover {
-    color: var(--sidebar-foreground);
-  }
-
-  /* A quiet raised fill, not an inverted slab. A white pill in a dark sidebar
-     pulls more attention than the conversation itself. */
-  .empty-icon {
-    background: var(--sidebar-accent);
-    border: 1px solid var(--sidebar-border);
-    border-radius: var(--radius-md);
-    color: var(--muted-foreground);
   }
 
   .sidebar-footer {
@@ -286,22 +241,4 @@
     gap: 0.125rem;
     padding-top: 0.5rem;
   }
-
-  .sidebar-btn {
-    color: var(--text-secondary);
-    background: transparent;
-    border: none;
-  }
-
-  .sidebar-btn:hover {
-    background: var(--sidebar-accent);
-    color: var(--sidebar-accent-foreground);
-  }
-
-  .sidebar-btn.is-current {
-    background: var(--sidebar-accent);
-    color: var(--sidebar-accent-foreground);
-    font-weight: 500;
-  }
-
 </style>

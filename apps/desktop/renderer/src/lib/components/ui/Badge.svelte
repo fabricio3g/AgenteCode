@@ -21,7 +21,7 @@
 </script>
 
 <span
-  class={cn('inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium leading-4', tones[tone], className)}
+  class={cn('inline-flex items-center rounded-full border px-2 py-0.5 text-[12px] font-medium leading-4', tones[tone], className)}
   {...rest}
 >
   {@render children?.()}

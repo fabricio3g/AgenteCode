@@ -133,13 +133,14 @@
     position: fixed;
     z-index: var(--z-tooltip);
     white-space: nowrap;
-    padding: 0.25rem 0.5rem;
-    background: var(--popover);
-    border: 1px solid var(--border);
-    color: var(--popover-foreground);
-    border-radius: var(--radius-md);
-    box-shadow: var(--shadow-lg);
+    padding: 0.3rem 0.55rem;
+    background: #000;
+    border: 1px solid #000;
+    color: #fff;
+    border-radius: 0.35rem;
+    box-shadow: 0 5px 14px rgb(0 0 0 / 0.28);
     pointer-events: none;
     font-size: 0.75rem;
+    line-height: 1.25;
   }
 </style>

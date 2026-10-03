@@ -16,6 +16,7 @@
   import { approvalsStore } from '$lib/stores/approvals.svelte';
   import { formatToolDuration } from '$lib/utils/tool-ui';
   import { copy } from '$lib/copy';
+  import { ActiveDuration } from '$lib/utils/active-duration';
   import { toastStore } from '$lib/stores/toast.svelte';
   import { codeWorkspace } from './workspace.svelte';
   import { codeStore } from './code.svelte';
@@ -58,14 +59,15 @@
     if (!userToggled) open = isApproval || isError;
   });
 
-  // Live elapsed time while running.
-  let startedAt: number | null = null;
+  // Monotonic active intervals survive stop/resume without counting the pause.
+  const clock = new ActiveDuration();
   let elapsed = $state<number | undefined>(undefined);
   $effect(() => {
     if (!running) return;
-    startedAt ??= Date.now();
-    const timer = setInterval(() => (elapsed = Date.now() - (startedAt ?? Date.now())), 250);
-    return () => clearInterval(timer);
+    clock.resume();
+    elapsed = clock.elapsed();
+    const timer = setInterval(() => (elapsed = clock.elapsed()), 250);
+    return () => { clearInterval(timer); clock.pause(); };
   });
 
   const Icon = $derived(running ? Loader2 : isApproval ? AlertCircle : isError ? XCircle : plan ? ListChecks : KIND_ICON[kind]);
@@ -94,7 +96,7 @@
 {#if !(step.type === 'approval' && !isApproval)}
 <div class="step" class:is-error={isError} class:is-approval={isApproval}>
   <div class="flex min-w-0 items-center">
-    <button type="button" class="step-head" onclick={toggle} aria-expanded={expandable ? open : undefined} disabled={!expandable && !plan}>
+    <button type="button" class="step-head ui-quiet-disclosure" onclick={toggle} aria-expanded={expandable ? open : undefined} disabled={!expandable && !plan}>
       <Icon class="step-icon size-3.5 shrink-0 {running ? 'animate-spin' : ''}" />
       <span class="verb shrink-0">{step.label}</span>
       {#if target}<code class="chip min-w-0 truncate">{target}</code>{/if}

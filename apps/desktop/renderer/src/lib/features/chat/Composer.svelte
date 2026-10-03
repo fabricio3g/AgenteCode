@@ -37,6 +37,7 @@
   import { Dictation } from './composer/use-dictation.svelte';
   import { MAX_COMPOSER_TEXTAREA_PX, autogrowTextarea } from '$lib/features/shared/composer-autogrow';
   import NameCompletion from '$lib/features/shared/NameCompletion.svelte';
+  import PromptQueue from '$lib/features/shared/PromptQueue.svelte';
   import type { NameCandidate } from '$lib/features/shared/name-completion';
 
   let { placeholder: customPlaceholder, nameCompletion, above }: {
@@ -157,6 +158,14 @@
 
   function onKeydown(event: KeyboardEvent) {
     if (event.isComposing || event.defaultPrevented) return;
+    if (event.key === 'ArrowUp' && !appStore.composer && !appStore.pendingAttachments.length) {
+      const item = [...(appStore.currentChat?.pendingPrompts ?? [])].reverse().find(item => !item.sending);
+      if (item && appStore.currentChatId) {
+        event.preventDefault(); appStore.removeQueuedPrompt(appStore.currentChatId, item.id);
+        appStore.updateComposer(item.content); appStore.pendingAttachments = item.attachments ?? [];
+        return;
+      }
+    }
     if (event.key !== 'Enter' || event.shiftKey) return;
     event.preventDefault();
     void submit();
@@ -392,13 +401,16 @@
 
     <!-- Radius comes from --composer-radius on .ui-composer; the rounded-*
          utilities that used to sit here fought it at equal specificity. -->
+    {#if appStore.currentChat?.pendingPrompts?.length && appStore.currentChatId}
+      <PromptQueue items={appStore.currentChat.pendingPrompts} onupdate={(id, content) => appStore.updateQueuedPrompt(appStore.currentChatId!, id, content)} onremove={(id) => { appStore.removeQueuedPrompt(appStore.currentChatId!, id); }} onsend={() => void appStore.sendQueuedPromptsNow(appStore.currentChatId!)} />
+    {/if}
     <div class="composer-shell ui-composer pointer-events-auto transition">
       {#if nameCompletion}
         <NameCompletion {textarea} text={appStore.composer} {...nameCompletion} onchange={(text) => appStore.updateComposer(text)} />
       {/if}
       {#if attachments.ocrLabel}
         <div class="px-3 pt-1">
-          <div class="inline-flex items-center gap-1.5 px-2 py-1 text-[11px] font-medium text-muted-foreground">
+          <div class="inline-flex items-center gap-1.5 px-2 py-1 text-[12px] font-medium text-muted-foreground">
             <span
               class="size-1.5 rounded-[2px] bg-muted-foreground"
               class:animate-pulse={!attachments.ocrSettled}
@@ -411,7 +423,7 @@
       <AttachmentCards />
 
       {#if localBusyElsewhere}
-        <div class="px-4 pt-1 text-[11px] text-muted-foreground">
+        <div class="px-4 pt-1 text-[12px] text-muted-foreground">
           {$t('chat.localBusy')}
         </div>
       {/if}

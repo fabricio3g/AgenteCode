@@ -19,16 +19,22 @@
   import { projectInfo, mcpStatus, type ProjectInfo, type McpServer } from './code-ipc';
   import { codeStore } from './code.svelte';
   import type { CodeDialog } from './code-commands';
+  import BotModelPicker from '$lib/features/bots/BotModelPicker.svelte';
   import SubagentCard from './SubagentCard.svelte';
 
   let { chatId, projectRoot, section, onclose }: { chatId: string; projectRoot?: string; section: CodeDialog; onclose: () => void } = $props();
 
-  type Settings = { smart_compaction: boolean; max_parallel_subagents: number; subagent_models: Record<string, { provider: string; model: string }>; allow_media: string[] };
+  type Settings = { smart_compaction: boolean; compaction_model?: {provider: string; model: string}; max_parallel_subagents: number; subagent_models: Record<string, { provider: string; model: string }>; allow_media: string[] };
 
   let info = $state<ProjectInfo | null>(null);
   let servers = $state<McpServer[]>([]);
   let sessions = $state<SessionInfo[]>([]);
   let error = $state('');
+  let compacting = $state(false);
+  async function compactNow(smart: boolean) {
+    compacting = true; error = '';
+    try { if (smart) await invoke('agente_runtime_configure', { compaction_model: settings.compaction_model ?? null }); const result = await codeStore.compact(chatId, smart); if (!result.ok) error = result.error || 'Compaction failed'; } catch (cause) { error = String(cause); } finally { compacting = false; }
+  }
   let loading = $state(true);
   let settings = $state<Settings>({ smart_compaction: false, max_parallel_subagents: 8, subagent_models: {}, allow_media: [] });
   const run = $derived(codeStore.runFor(chatId));
@@ -44,11 +50,12 @@
     try {
       if (section === 'mcp') servers = await mcpStatus(projectRoot!);
       else if (section === 'sessions') sessions = await invoke<SessionInfo[]>('agente_session_list');
-      else if (section === 'settings') settings = await invoke<Settings>('agente_runtime_settings');
+      else if (section === 'settings') settings = await invoke<Settings>('agente_runtime_settings') ?? settings;
       else {
         info = projectRoot ? await projectInfo(projectRoot) : null;
-        if (section === 'agents') settings = await invoke<Settings>('agente_runtime_settings');
+        if (section === 'agents') settings = await invoke<Settings>('agente_runtime_settings') ?? settings;
       }
+      if (settings.compaction_model?.provider.startsWith('desktop-')) settings.compaction_model = { ...settings.compaction_model, provider: settings.compaction_model.provider.slice(8) };
     } catch (cause) {
       error = String(cause);
     } finally {
@@ -88,6 +95,7 @@
     try {
       await invoke('agente_runtime_configure', {
         smart_compaction: settings.smart_compaction,
+        compaction_model: settings.compaction_model ?? null,
         max_parallel_subagents: Math.max(1, Math.min(32, Math.round(Number(settings.max_parallel_subagents) || 1))),
         allow_media: settings.allow_media
       });
@@ -160,6 +168,17 @@
         <p class="empty">{$t('code.project.sessions.empty')}</p>
       {/each}
     {:else if section === 'settings'}
+      <p class="px-2 pb-2 text-[12px] text-muted-foreground">{$t('code.compaction.settingsHint')}</p>
+      <div class="flex flex-wrap gap-2 px-2 pb-3">
+        <Button size="sm" disabled={compacting || !!run?.running} onclick={() => compactNow(true)}>{$t('code.compaction.manualNow')}</Button>
+        <Button size="sm" variant="ghost" disabled={compacting || !!run?.running} onclick={() => compactNow(false)}>{$t('code.compaction.trimNow')}</Button>
+      </div>
+      {#if compacting}<p class="px-2 pb-2 text-[12px] text-muted-foreground" role="status">{$t('code.compaction.working')}</p>{/if}
+      <div class="px-2 py-2">
+        <p class="mb-2 text-[13px] text-foreground">{$t('code.compaction.model')}</p>
+        <BotModelPicker bind:value={settings.compaction_model} showThinking={false} />
+        <p class="mt-2 text-[12px] text-muted-foreground">{$t('code.compaction.modelHint')}</p>
+      </div>
       <div class="row">
         <span class="min-w-0 flex-1 text-[13px] text-foreground">{$t('code.project.settings.smartCompaction')}</span>
         <Switch label={$t('code.project.settings.smartCompaction')} bind:checked={settings.smart_compaction} />
@@ -168,7 +187,7 @@
         <span class="min-w-0 flex-1 text-[13px] text-foreground">{$t('code.project.settings.parallel')}</span>
         <Input class="w-20" type="number" min="1" max="32" bind:value={settings.max_parallel_subagents} aria-label={$t('code.project.settings.parallel')} />
       </div>
-      <p class="px-2 pb-1 pt-3 text-[11px] font-medium text-muted-foreground">{$t('code.project.settings.media')}</p>
+      <p class="px-2 pb-1 pt-3 text-[12px] font-medium text-muted-foreground">{$t('code.project.settings.media')}</p>
       {#each MEDIA as kind (kind)}
         <div class="row">
           <span class="min-w-0 flex-1 text-[13px] text-foreground">{$t(`code.project.settings.${kind}`)}</span>

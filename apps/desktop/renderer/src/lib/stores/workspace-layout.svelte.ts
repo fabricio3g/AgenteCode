@@ -58,6 +58,21 @@ export class WorkspaceLayoutStore {
     this.activate(id); this.save();
   }
   hide(id: string) { this.layout = { ...this.layout, open: this.layout.open.filter((panel) => panel !== id) }; this.save(); }
+  /**
+   * Open a panel floating over the workspace. For panels that want room —
+   * a canvas is useless at the 460px right dock — so the first open lands
+   * centred; every later toggle is a plain hide/show.
+   */
+  showFloating(id: string, rect: Rect, bounds: Rect) {
+    this.layout = { ...this.layout, open: this.layout.open.includes(id) ? this.layout.open : [...this.layout.open, id] };
+    this.float(id, rect, bounds);
+    this.save();
+  }
+  /** A panel's working area, centred and clamped — the default first-open geometry. */
+  static floatingRect(bounds: Rect, size = { width: 880, height: 620 }): Rect {
+    const width = Math.min(bounds.width, size.width), height = Math.min(bounds.height, size.height);
+    return clampRect({ x: bounds.x + (bounds.width - width) / 2, y: bounds.y + (bounds.height - height) / 2, width, height }, bounds);
+  }
   forget(id: string) { this.layout = forgetPanel(this.layout, id); this.save(); }
   toggle(id: string, region: Region = 'right') { if (this.isOpen(id)) this.hide(id); else this.show(id, region); }
   activate(id: string) {

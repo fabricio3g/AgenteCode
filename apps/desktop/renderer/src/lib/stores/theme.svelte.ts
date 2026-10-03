@@ -1,4 +1,6 @@
 import { loadTheme, saveTheme } from '$lib/utils/storage';
+import { appWindow } from '$lib/services/window';
+import { TITLEBAR_OVERLAY_COLOR } from '$shared/titlebar';
 
 class ThemeStore {
   current = $state<'light' | 'dark'>('dark');
@@ -32,6 +34,27 @@ class ThemeStore {
     if (typeof document === 'undefined') return;
     document.documentElement.classList.toggle('dark', this.current === 'dark');
     saveTheme(this.current);
+    void this.syncCaptionOverlay();
+  }
+
+  /**
+   * Hand the OS caption buttons the current surface colours.
+   *
+   * Caption buttons live outside the web contents. Transparent overlay colour
+   * therefore becomes the platform's default grey instead of showing the
+   * titlebar behind it. Read both colours from the live CSS tokens so the
+   * native strip follows the UI on a theme flip.
+   */
+  private async syncCaptionOverlay() {
+    const styles = getComputedStyle(document.documentElement);
+    const symbolColor = styles.getPropertyValue('--foreground').trim();
+    const background = styles.getPropertyValue('--background').trim();
+    if (!symbolColor) return;
+    // The current palettes use hex tokens, which Electron accepts on every
+    // supported platform. Keep the shared dark default for an unusual custom
+    // token rather than sending a value the main-process validator rejects.
+    const color = /^#[\da-f]{3,8}$/i.test(background) ? background : TITLEBAR_OVERLAY_COLOR;
+    await appWindow.setTitlebarOverlay({ color, symbolColor });
   }
 
   /**

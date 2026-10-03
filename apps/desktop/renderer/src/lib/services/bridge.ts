@@ -8,6 +8,7 @@ type ElectronAPI = {
   windowMinimize: () => Promise<void>;
   windowToggleMaximize: () => Promise<void>;
   windowIsMaximized: () => Promise<boolean>;
+  windowSetTitlebarOverlay?: (overlay: { color: string; symbolColor: string }) => Promise<boolean>;
   windowClose: () => Promise<void>;
   windowRequestClose: () => Promise<{ closed: boolean; prompted: boolean }>;
   windowSetActiveWork: (active: boolean, reasons?: string[]) => Promise<unknown>;

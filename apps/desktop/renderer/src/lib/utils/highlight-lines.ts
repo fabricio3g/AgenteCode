@@ -1,4 +1,7 @@
-import hljs from 'highlight.js';
+// The common set (~37 languages: rust, ts, python, go, bash, json, yaml, sql…)
+// instead of all ~190: a fraction of the bundle, and highlightAuto only has
+// to try these.
+import hljs from 'highlight.js/lib/common';
 
 /** Grammars for extensions highlight.js has no alias for. */
 const EXTENSION_LANGUAGE: Record<string, string> = {

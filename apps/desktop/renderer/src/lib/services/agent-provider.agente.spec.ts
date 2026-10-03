@@ -6,7 +6,6 @@ import {
   resolveCodeAgentInstance
 } from '$lib/services/agent-provider';
 import { CODE_AGENT_TOOL_NAMES, getToolDefinitions } from '$lib/services/agent-tooling';
-import { getAgenteCodeSystemPrompt } from '$lib/services/agent-prompts';
 
 describe('Agente (built-in code)', () => {
   it('normalizes aliases to chatea-agent instance', () => {
@@ -78,9 +77,4 @@ describe('Agente (built-in code)', () => {
     expect(names).not.toContain('create_document');
   });
 
-  it('has a Pi-inspired system prompt', () => {
-    const prompt = getAgenteCodeSystemPrompt();
-    expect(prompt).toContain('You are Agente');
-    expect(prompt.toLowerCase()).toMatch(/edit_file|bash|workspace|diagnostic|web_search/);
-  });
 });

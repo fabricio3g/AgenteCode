@@ -185,15 +185,16 @@ describe('agent-prompts', () => {
   it('chat prompt mandates calling artifact tools instead of describing deliverables', () => {
     const prompt = getAgenteChatSystemPrompt();
 
-    expect(prompt).toContain('DELIVERABLES');
-    expect(prompt).toContain('call the matching create_* tool');
+    // The rule matters; the ALL-CAPS heading it used to live under does not.
+    expect(prompt).toContain('call the matching tool with real arguments');
+    expect(prompt).toContain('Describing it in prose is not delivering it');
     expect(prompt).not.toMatch(/must not replace or block the final answer/);
   });
 
   it('native sandbox prompt forbids prose substitutes for deliverables', () => {
     const prompt = getNativeSystemPrompt(undefined, 24, 12, 'agent', 'sandbox');
 
-    expect(prompt).toContain('A prose description of the deliverable is not the deliverable');
+    expect(prompt).toContain('Describing it in prose is not delivering it');
   });
 
   it('XML agent prompt shows an artifact call example', () => {
@@ -209,7 +210,51 @@ describe('agent-prompts', () => {
     ]);
 
     expect(prompt).toContain('create_chart');
-    expect(prompt).toMatch(/prose description is never an acceptable substitute/);
+    expect(prompt).toMatch(/Describing it in prose is not delivering it/);
+  });
+
+  /*
+   * The prompt asks the model to write plainly. It has to model that itself:
+   * shouting is how these grew the policy-manual register the answers mirrored.
+   */
+  it('no prompt shouts a rule', () => {
+    const prompts: Array<[string, string]> = [
+      ['chat', getAgenteChatSystemPrompt()],
+      ['native agent sandbox', getNativeSystemPrompt(undefined, 24, 12, 'agent', 'sandbox')],
+      ['native agent workspace', getNativeSystemPrompt(undefined, 80, 28, 'agent', 'workspace')],
+      ['native instant', getNativeSystemPrompt(undefined, 8, 4, 'instant')],
+      ['native search', getNativeSystemPrompt(undefined, 24, 12, 'search_chat')],
+      ['xml agent', getXmlSystemPrompt(undefined, 24, 12, [], 'agent', 'sandbox')],
+      ['direct', buildDirectSystemPrompt(undefined)]
+    ];
+    const offenders = prompts.flatMap(([name, text]) =>
+      ['MUST', 'NEVER', 'CRITICAL', 'IMPORTANT', 'ALWAYS']
+        .filter((shout) => text.includes(shout))
+        .map((shout) => `${name} shouts ${shout}`)
+    );
+    expect(offenders).toEqual([]);
+  });
+
+  /*
+   * Minimal is a budget, not an intention. These ceilings are the real ones:
+   * the base prompts were 3-5 KB of policy each before the rewrite.
+   */
+  it('keeps every prompt inside its budget', () => {
+    // Ceilings sit just above today's sizes on purpose: the next addition has to
+    // be argued for instead of silently joining a 5 KB wall of policy. The
+    // sandbox and XML profiles are the largest because they carry the artifact
+    // and report schemas, which are content contracts rather than style.
+    const budgets: Array<[string, string, number]> = [
+      ['chat', getAgenteChatSystemPrompt(), 1_700],
+      ['native agent sandbox', getNativeSystemPrompt(undefined, 24, 12, 'agent', 'sandbox'), 4_300],
+      ['native agent workspace', getNativeSystemPrompt(undefined, 80, 28, 'agent', 'workspace'), 1_050],
+      ['native search', getNativeSystemPrompt(undefined, 24, 12, 'search_chat'), 4_200],
+      ['xml agent sandbox', getXmlSystemPrompt(undefined, 24, 12, [], 'agent', 'sandbox'), 3_950]
+    ];
+    const over = budgets
+      .filter(([, text, max]) => text.length > max)
+      .map(([name, text, max]) => `${name}: ${text.length} bytes over ${max}`);
+    expect(over).toEqual([]);
   });
 
   it('gives instant mode a lean direct-answer base with no artifact mandates', () => {

@@ -223,7 +223,7 @@
       <SegmentedControl bind:value={activeView} options={[{ value: 'preview', label: $t('artifacts.studio.preview'), disabled: !resolved.capabilities.preview }, { value: 'source', label: $t('artifacts.studio.source') }]} label={$t('artifacts.studio.view')} />
     {/if}
     <div class="flex min-w-0 items-center gap-1.5">
-      {#if dirty}<span class="hidden text-[11px] text-muted-foreground sm:inline">{$t('artifacts.studio.unsaved')}</span>{/if}
+      {#if dirty}<span class="hidden text-[12px] text-muted-foreground sm:inline">{$t('artifacts.studio.unsaved')}</span>{/if}
       <Button variant="ghost" size="sm" onclick={discard} disabled={!dirty} title={$t('artifacts.studio.discard')}><RotateCcw /> <span class="hidden sm:inline">{$t('artifacts.studio.discard')}</span></Button>
       <Button variant="outline" size="sm" onclick={downloadZip} loading={downloading} disabled={!files.length} title={$t('artifacts.studio.zipHint')}><Download /> <span class="hidden sm:inline">ZIP</span></Button>
       <Button size="sm" onclick={save} disabled={!dirty}><Save /> {$t('artifacts.studio.save')}</Button>

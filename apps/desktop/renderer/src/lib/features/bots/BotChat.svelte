@@ -110,7 +110,7 @@
     <BotAvatar {bot} size="sm" />
     <div class="min-w-0 flex-1">
       <p class="truncate text-[13px] font-medium text-foreground">{bot.title}</p>
-      <p class="truncate text-[11.5px] text-muted-foreground">@{bot.handle}{bot.role ? ` · ${bot.role}` : ''}{bot.model ? ` · ${bot.model.model}` : ''}</p>
+      <p class="truncate text-[13px] text-muted-foreground">@{bot.handle}{bot.role ? ` · ${bot.role}` : ''}{bot.model ? ` · ${bot.model.model}` : ''}</p>
     </div>
     <button type="button" class="ui-icon-button head-btn" onclick={() => void botsStore.compact(bot.handle)} title={$t('bots.compactHint')} aria-label={$t('bots.compact')} disabled={bot.working || !turns.length}>
       <Eraser class="size-4" />
@@ -180,7 +180,7 @@
                 <BotAvatar bot={option} size="sm" />
                 <span class="truncate text-[13px] text-foreground">{option.title}</span>
                 <span class="truncate text-[12px] text-muted-foreground">@{option.handle}</span>
-                {#if option.role}<span class="ml-auto truncate pl-2 text-[11.5px] text-muted-foreground">{option.role}</span>{/if}
+                {#if option.role}<span class="ml-auto truncate pl-2 text-[13px] text-muted-foreground">{option.role}</span>{/if}
               </button>
             </li>
           {/each}

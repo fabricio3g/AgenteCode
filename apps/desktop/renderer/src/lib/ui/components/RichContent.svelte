@@ -39,6 +39,7 @@
     reveal.update(content, status === 'streaming' && !reducedMotion.value && !document.hidden);
   });
   $effect(() => {
+    if (status !== 'streaming') return;
     const onVisibility = () => { if (document.hidden) reveal.flush(); };
     document.addEventListener('visibilitychange', onVisibility);
     return () => document.removeEventListener('visibilitychange', onVisibility);
@@ -114,7 +115,7 @@
         for (const numberText of numbers) {
           const source = refs[Number(numberText) - 1];
           if (source && /^https?:/i.test(source.url)) {
-            const chip = document.createElement('a');            chip.className = 'ui-legacy-pill mx-0.5 inline-flex h-5 min-w-5 items-center justify-center px-1.5 align-middle text-[11px] font-medium text-[var(--text-secondary)]';
+            const chip = document.createElement('a');            chip.className = 'ui-legacy-pill mx-0.5 inline-flex h-5 min-w-5 items-center justify-center px-1.5 align-middle text-[12px] font-medium text-[var(--text-secondary)]';
             chip.href = source.url;
             chip.target = '_blank';
             chip.rel = 'noreferrer';

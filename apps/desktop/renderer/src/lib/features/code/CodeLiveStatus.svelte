@@ -12,7 +12,7 @@
   import { t } from 'svelte-i18n';
   import { copy } from '$lib/copy';
   import { formatToolDuration } from '$lib/utils/tool-ui';
-  import type { CodeRunState } from './code-run';
+  import { codeRunElapsed, type CodeRunState } from './code-run';
   import { toolKind } from '$shared/tool-kinds';
   import { liveStatus, QUIET_MS, type LiveStatus } from './work-blocks';
 
@@ -25,7 +25,7 @@
   });
 
   const status = $derived(liveStatus(run, awaitingApproval, now));
-  const elapsed = $derived(run.startedAt ? formatToolDuration(now - run.startedAt) : '');
+  const elapsed = $derived(run.startedAt !== undefined ? formatToolDuration(codeRunElapsed(run, now)) : '');
 
   function verb(toolName: string): string {
     const verbs = copy.codeRun as Record<string, string>;
@@ -47,20 +47,26 @@
     approval: () => $t('code.live.approval'),
     retry: (status) => $t('code.retrying', { values: { n: status.attempt } }),
     preparing: (status) => preparingLabel(status.toolName, status.bytes),
-    // The running row sits right above: the line only keeps time.
-    running: () => copy.status.working,
+    running: (status) => {
+      const target = status.step.detail?.split('\n')[0]?.trim();
+      return target ? `${status.step.label} ${target}` : status.step.label;
+    },
     thinking: () => $t('code.thinking'),
     writing: () => $t('code.live.writing'),
-    waiting: (status) => (status.quietMs >= QUIET_MS ? `${$t('code.live.waiting')} · ${Math.floor(status.quietMs / 1000)}s` : $t('code.live.waiting'))
+    starting: () => $t('code.live.starting'),
+    requesting: () => $t('code.live.requesting'),
+    compacting: () => copy.codeRun.compacting
   };
+  const quietMs = $derived(run.lastEventAt === undefined ? 0 : Math.max(0, now - run.lastEventAt));
   const label = $derived((labels[status.kind] as (status: LiveStatus) => string)(status));
 </script>
 
 <div class="live" class:is-waiting={status.kind === 'approval'} role="status" aria-live="polite">
   <span class="dot" aria-hidden="true"></span>
   <span class="min-w-0 truncate">
-    <span class={status.kind === 'thinking' || status.kind === 'writing' ? 'ui-legacy-shimmer-text' : 'text-foreground'}>{label}</span>
+    <span class="text-foreground">{label}</span>
   </span>
+  {#if quietMs >= QUIET_MS}<span class="shrink-0">· {$t('code.live.noUpdate', { values: { seconds: Math.floor(quietMs / 1000) } })}</span>{/if}
   {#if elapsed}<span class="shrink-0 tabular-nums">· {elapsed}</span>{/if}
 </div>
 

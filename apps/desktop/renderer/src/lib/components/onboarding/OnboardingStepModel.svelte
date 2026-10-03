@@ -149,7 +149,7 @@
             <div class="flex items-center gap-2">
               <span class="truncate text-sm font-medium">{model.label}</span>
               {#if model.recommended}
-                <span class="shrink-0 rounded-md px-2 py-0.5 text-[10px] font-medium {isSelected ? 'bg-primary-foreground/15' : 'bg-muted text-muted-foreground'}">{$t('onboarding.recommended')}</span>
+                <span class="shrink-0 rounded-md px-2 py-0.5 text-[12px] font-medium {isSelected ? 'bg-primary-foreground/15' : 'bg-muted text-muted-foreground'}">{$t('onboarding.recommended')}</span>
               {/if}
               {#if isLocal}
                 <CheckCircle2 class="size-3.5 shrink-0 {isSelected ? 'opacity-90' : 'text-success'}" />

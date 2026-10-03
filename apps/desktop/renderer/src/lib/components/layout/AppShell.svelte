@@ -3,6 +3,7 @@
 <script lang="ts">
   import { modalLayer } from '$lib/components/ui/modal-layer';
   import { onMount, untrack } from 'svelte';
+  import { motionFade } from '$lib/utils/transitions';
   import { conversationScope } from '$shared/workspace-scope';
   import { t } from 'svelte-i18n';
   import Titlebar from '$lib/components/layout/Titlebar.svelte';
@@ -21,7 +22,8 @@
   import { codeStore } from '$lib/features/code/code.svelte';
   import SystemPromptModal from '$lib/components/settings/SystemPromptModal.svelte';
   import LocalModelLoadModal from '$lib/components/settings/LocalModelLoadModal.svelte';
-  import ModelHubModal from '$lib/components/settings/ModelHubModal.svelte';
+  import SettingsScreen from '$lib/components/settings/SettingsScreen.svelte';
+  import { openModalLayerCount } from '$lib/components/ui/modal-layer';
   import ArtifactStudioModal from '$lib/components/agent/ArtifactStudioModal.svelte';
   import Toaster from '$lib/components/layout/Toaster.svelte';
   import ConfirmDialog from '$lib/components/layout/ConfirmDialog.svelte';
@@ -36,12 +38,17 @@
   import WorkspaceHost from './WorkspaceHost.svelte';
   import type { WorkspacePanel, PanelRenderState } from './workspace-panel';
   import { workspaceLayout } from '$lib/stores/workspace-layout.svelte';
-  import { Activity, ClipboardList, FileBox, GitCompareArrows, Globe, ListTodo, SquareTerminal } from 'lucide-svelte';
+  import { Activity, ClipboardList, FileBox, FolderTree, GitCompareArrows, Globe, Image, ListTodo, SquareTerminal } from 'lucide-svelte';
   import ProcessesView from '$lib/features/code/workspace/ProcessesView.svelte';
-  import TerminalView from '$lib/features/code/workspace/TerminalView.svelte';
+  // xterm is heavy and most sessions never open a terminal: load it with the
+  // first terminal pane instead of in the startup bundle.
+  let terminalModule: Promise<typeof import('$lib/features/code/workspace/TerminalView.svelte')> | undefined;
+  const loadTerminal = () => (terminalModule ??= import('$lib/features/code/workspace/TerminalView.svelte'));
   import { latestPlan } from '$lib/features/code/plan-review';
+  import CanvasPanel from '$lib/features/canvas/CanvasPanel.svelte';
   import TitlebarLeftTools from './TitlebarLeftTools.svelte';
   import ChangesPane from '$lib/features/code/workspace/ChangesPane.svelte';
+  import FileExplorer from '$lib/features/code/workspace/FileExplorer.svelte';
   import PlanPanel from '$lib/features/code/PlanPanel.svelte';
   import { codeWorkspace } from '$lib/features/code/workspace.svelte';
   import { appStore } from '$lib/stores/app.svelte';
@@ -77,14 +84,18 @@
   const openPlan = $derived(codeWorkspace.plan?.chatId === appStore.currentChat?.id ? codeWorkspace.plan?.plan ?? latestPlan(appStore.currentChat?.messages ?? []) : latestPlan(appStore.currentChat?.messages ?? []));
   const showArtifact = $derived(!inCodeSpace && !inBots && appStore.homeView === 'chat' && !!appStore.artifactPanel);
   const showRoutines = $derived(inBots && !!botsStore.current && botsStore.routinesOpen);
+  /** The canvas annotates for whichever conversation is open, so it follows the chat. */
+  const canvasAvailable = $derived((inCodeSpace && !!changesTarget) || (!inCodeSpace && !inBots && appStore.homeView === 'chat' && !!appStore.currentChat));
   const dockPanels = $derived.by(() => {
     const codeAvailable = inCodeSpace && !!changesTarget;
     const panels: WorkspacePanel[] = [
       { id: 'changes', title: $t('codeWs.changes'), icon: GitCompareArrows, content: changesPanel, region: 'right', available: codeAvailable, open: workspaceLayout.isOpen('changes'), onhide: () => codeWorkspace.toggleChanges(false) },
+      { id: 'files', title: $t('codeWs.files'), icon: FolderTree, content: filesPanel, region: 'right', available: codeAvailable, open: workspaceLayout.isOpen('files'), onhide: () => codeWorkspace.toggleFiles(false) },
       { id: 'plan', title: openPlan?.title ?? $t('code.plan.title'), icon: ClipboardList, content: planPanel, region: 'right', available: codeAvailable, open: workspaceLayout.isOpen('plan'), onhide: () => codeWorkspace.closePlan() },
       { id: 'artifact', title: $t('artifacts.title'), icon: FileBox, content: artifactPanel, region: 'right', available: showArtifact, open: showArtifact, onhide: () => artifactPanelHandle?.requestClose() },
       { id: 'routines', title: $t('bots.routines'), icon: ListTodo, content: routinesPanel, region: 'right', available: showRoutines, open: showRoutines, onhide: () => (botsStore.routinesOpen = false) },
       { id: 'browser', title: $t('browser.title'), icon: Globe, content: browserPanel, region: 'right', available: true, open: browserPanelStore.open, onhide: () => void browserPanelStore.hide() },
+      { id: 'canvas', title: $t('canvas.title'), icon: Image, content: canvasPanel, region: 'right', available: canvasAvailable, open: workspaceLayout.isOpen('canvas'), onhide: () => workspaceLayout.hide('canvas') },
       { id: 'processes', title: $t('codeWs.processes'), icon: Activity, content: processesPanel, region: 'bottom', available: codeAvailable, open: workspaceLayout.isOpen('processes'), onhide: () => workspaceLayout.hide('processes') }
     ];
     for (const term of codeWorkspace.terminals) panels.push({ id: `terminal:${term.id}`, title: term.title, icon: SquareTerminal, content: terminalPanel, region: 'bottom', available: codeAvailable && term.scope === scope, open: term.scope === scope && workspaceLayout.isOpen(`terminal:${term.id}`), onhide: () => workspaceLayout.hide(`terminal:${term.id}`), actions: [
@@ -94,6 +105,8 @@
     return panels;
   });
   const inRoleplaySpace = $derived(appStore.activeTab === 'roleplay');
+  /** The screen to leave: Settings is open, or nothing is. */
+  const settingsShowing = $derived(appStore.settingsScreenOpen);
   /** Ctrl/⌘+K means "new" in every space — a chat, a roleplay, or a project. */
   const shortcutRows = $derived<Array<[string, string]>>([
     ['mod+k', inBots ? $t('bots.new') : inCodeSpace ? $t('shortcuts.addProject') : inRoleplaySpace ? copy.roleplay.newRoleplay : $t('shortcuts.newChat')],
@@ -104,6 +117,8 @@
     ['mod+e', $t('shortcuts.export')],
     ['F2', $t('shortcuts.rename')],
     ['mod+?', $t('shortcuts.help')],
+    // Settings is a screen, so Escape leaves it for the conversation.
+    ...(settingsShowing ? ([['escape', $t('shortcuts.backToConversation')]] as Array<[string, string]>) : []),
     ['escape', $t('shortcuts.escape')]
   ]);
 
@@ -120,9 +135,17 @@
   }
 
 
-  function openModelHub(section: string = 'models') {
-    appStore.modelManagerOpenSection = resolveModelHubSection(section);
-    appStore.modelManagerOpen = true;
+  /** A section deep-links the screen; none reopens it where you left off. */
+  function openSettings(section: string | null = null) {
+    appStore.openSettings(section ? resolveModelHubSection(section) : null);
+  }
+
+  function closeSettings() {
+    appStore.closeSettings();
+    // The sidebar is hidden while Settings is up, so the way back is the space
+    // tab: whatever surface returns to already knows where to put the caret.
+    const tab = appStore.activeTab === 'bots' ? 'home' : appStore.activeTab;
+    requestAnimationFrame(() => document.getElementById(`space-tab-${tab}`)?.focus());
   }
 
   function handleKeydown(event: KeyboardEvent) {
@@ -139,10 +162,25 @@
       event.preventDefault(); appStore.openSearch(); return;
     }
     if (ctrl && event.key === ',') {
-      event.preventDefault(); openModelHub('general'); return;
+      event.preventDefault();
+      // A toggle, not a jump: pressed inside Settings it closes it, and it
+      // reopens on the section you last used rather than always General.
+      if (settingsShowing) closeSettings(); else openSettings();
+      return;
+    }
+    if (event.key === 'Escape' && settingsShowing) {
+      // A dialog or menu above the screen owns Escape (modal layers listen on
+      // window, we listen on document, so they would never see it).
+      if (openModalLayerCount() > 0) return;
+      event.preventDefault();
+      closeSettings();
+      return;
     }
     if (ctrl && event.key === 'b') {
-      event.preventDefault(); toggleSidebar(); return;
+      event.preventDefault();
+      // There is no sidebar to show while Settings owns the window.
+      if (!settingsShowing) toggleSidebar();
+      return;
     }
     // Ctrl+` toggles the artifact studio
     if (ctrl && event.key === '`') {
@@ -181,13 +219,20 @@
   $effect(() => {
     if (!appStore.settingsOpen) return;
     appStore.settingsOpen = false;
-    openModelHub(legacyFlagToModelHubSection('settingsOpen'));
+    openSettings(legacyFlagToModelHubSection('settingsOpen'));
   });
 
   $effect(() => {
     if (!appStore.runtimeManagerOpen) return;
     appStore.runtimeManagerOpen = false;
-    openModelHub(legacyFlagToModelHubSection('runtimeManagerOpen'));
+    openSettings(legacyFlagToModelHubSection('runtimeManagerOpen'));
+  });
+
+  // Settings is a screen, not a dialog: nothing moves the caret for it, so put
+  // it on the way back — the one control the screen leaves visible.
+  $effect(() => {
+    if (!settingsShowing) return;
+    requestAnimationFrame(() => document.querySelector<HTMLButtonElement>('[data-back-to-chat]')?.focus());
   });
 
   // ── Sidebar width (drag its edge; remembered) ────────────────────────
@@ -214,7 +259,8 @@
   }
 
   $effect(() => {
-    if (appStore.sidebarOpen) peek.close();
+    // Settings hides the sidebar; a preview floating over it would be a ghost.
+    if (appStore.sidebarOpen || settingsShowing) peek.close();
   });
 
   $effect(() => {
@@ -237,67 +283,98 @@
 </script>
 
 <div data-desktop-shell class="relative flex h-full overflow-hidden bg-background text-foreground">
-  <!-- Full-height sidebar (Flaxeo pattern): sidebar | titlebar+main -->
-  <div
-    class="sidebar-outer relative flex shrink-0 flex-col bg-sidebar"
-    class:expanded={appStore.sidebarOpen}
-    class:resizing={sidebarResizing}
-    style="--sidebar-w: {sidebarWidth}px"
-  >
+  <!-- Full-height sidebar (Flaxeo pattern): sidebar | titlebar+main. Settings
+       takes the whole window, so it is not rendered at all while it is up. -->
+  {#if !settingsShowing}
     <div
-      bind:this={peek.panel}
-      id="app-sidebar"
-      class="sidebar-view-full absolute inset-0 flex flex-col"
-      class:preview={!appStore.sidebarOpen && peek.open}
-      inert={!appStore.sidebarOpen && !peek.open}
+      class="sidebar-outer relative flex shrink-0 flex-col bg-sidebar"
+      class:expanded={appStore.sidebarOpen}
+      class:resizing={sidebarResizing}
+      style="--sidebar-w: {sidebarWidth}px"
     >
-      {#if !appStore.sidebarOpen && peek.open}
-        <!-- The preview runs to the top of the window, over the title bar's
-             corner, so it carries the bar's own buttons in the same spot. -->
-        <div class="preview-bar"><TitlebarLeftTools expanded onToggle={toggleSidebar} /></div>
-      {/if}
-      <Sidebar />
+      <div
+        bind:this={peek.panel}
+        id="app-sidebar"
+        class="sidebar-view-full absolute inset-0 flex flex-col"
+        class:preview={!appStore.sidebarOpen && peek.open}
+        inert={!appStore.sidebarOpen && !peek.open}
+      >
+        {#if !appStore.sidebarOpen && peek.open}
+          <!-- The preview runs to the top of the window, over the title bar's
+               corner, so it carries the bar's own buttons in the same spot. -->
+          <div class="preview-bar"><TitlebarLeftTools expanded onToggle={toggleSidebar} /></div>
+        {/if}
+        <Sidebar />
+      </div>
     </div>
-  </div>
 
-  {#if appStore.sidebarOpen}
-    <ResizeHandle
-      axis="x"
-      label={$t('shortcuts.resizeSidebar')}
-      onstart={() => { sidebarStart = sidebarWidth; sidebarResizing = true; }}
-      onresize={resizeSidebar}
-      onend={endSidebarResize}
-    />
+    {#if appStore.sidebarOpen}
+      <ResizeHandle
+        axis="x"
+        label={$t('shortcuts.resizeSidebar')}
+        onstart={() => { sidebarStart = sidebarWidth; sidebarResizing = true; }}
+        onresize={resizeSidebar}
+        onend={endSidebarResize}
+      />
+    {/if}
   {/if}
 
   <!-- No overflow-hidden on this column: titlebar fade hangs below h-9. -->
   <div class="flex min-h-0 min-w-0 flex-1 flex-col bg-background">
-    <Titlebar sidebarPreview={peek.open} onSidebarEnter={() => peek.show()} onSidebarLeave={(event) => peek.leave(event)} onSidebarToggle={toggleSidebar} />
+    <Titlebar
+      sidebarPreview={peek.open}
+      settingsOpen={settingsShowing}
+      onleaveSettings={closeSettings}
+      onSidebarEnter={() => peek.show()}
+      onSidebarLeave={(event) => peek.leave(event)}
+      onSidebarToggle={toggleSidebar}
+    />
 
-    <WorkspaceHost panels={dockPanels}>
-      <!-- The one branch point between the spaces:
-           Code hosts the coding agent surface; Roleplay the character surface;
-           Home keeps the general chat panel. -->
-      <div class="flex min-h-0 min-w-0 flex-1 overflow-hidden">
-        {#if inBots}
-          <BotsScreen />
-        {:else if inCodeSpace}
-          <CodeSurface />
-        {:else if appStore.homeView === 'artifacts'}
-          <ArtifactsScreen />
-        {:else if inRoleplaySpace}
-          <RoleplaySurface />
-        {:else}
-          <HomeSurface />
-        {/if}
-      </div>
-    </WorkspaceHost>
+    <div class="relative flex min-h-0 min-w-0 flex-1 flex-col">
+      <WorkspaceHost panels={dockPanels}>
+        <!-- The one branch point between the spaces:
+             Code hosts the coding agent surface; Roleplay the character surface;
+             Home keeps the general chat panel. -->
+        <div class="flex min-h-0 min-w-0 flex-1 overflow-hidden">
+          {#if inBots}
+            <BotsScreen />
+          {:else if inCodeSpace}
+            <CodeSurface />
+          {:else if appStore.homeView === 'artifacts'}
+            <ArtifactsScreen />
+          {:else if inRoleplaySpace}
+            <RoleplaySurface />
+          {:else}
+            <HomeSurface />
+          {/if}
+        </div>
+      </WorkspaceHost>
+
+      <!-- Settings sits over the workspace rather than in the branch above it:
+           the surface underneath stays mounted, so a trip to Settings costs no
+           scroll position and no streaming turn, and Back lands you exactly
+           where you left. Above the dock panels (z-index 1..n) on purpose — the
+           screen owns the whole content area while it is up. -->
+      {#if settingsShowing}
+        <div
+          class="absolute inset-0 z-20 flex min-h-0 min-w-0 flex-col bg-background"
+          transition:motionFade={{ duration: 160 }}
+        >
+          <SettingsScreen />
+        </div>
+      {/if}
+    </div>
   </div>
 </div>
 
 {#snippet changesPanel()}
   {#each Object.values(conversations) as target (target.chatId)}
     <div class="conversation-panel" hidden={target.chatId !== changesTarget?.chatId}><ChangesPane embedded chatId={target.chatId} projectRoot={target.projectRoot} sessionId={target.sessionId} /></div>
+  {/each}
+{/snippet}
+{#snippet filesPanel()}
+  {#each Object.values(conversations) as target (target.chatId)}
+    <div class="conversation-panel" hidden={target.chatId !== changesTarget?.chatId}><FileExplorer embedded chatId={target.chatId} projectRoot={target.projectRoot} /></div>
   {/each}
 {/snippet}
 {#snippet planPanel()}
@@ -310,19 +387,18 @@
     <div class="conversation-panel" hidden={target.chatId !== changesTarget?.chatId}><ProcessesView chatId={target.chatId} cwd={target.projectRoot} /></div>
   {/each}
 {/snippet}
-{#snippet terminalPanel(state: PanelRenderState)}<TerminalView id={state.id.slice('terminal:'.length)} active={state.exposed} focused={state.focused} />{/snippet}
+{#snippet terminalPanel(state: PanelRenderState)}{#await loadTerminal() then { default: TerminalView }}<TerminalView id={state.id.slice('terminal:'.length)} active={state.exposed} focused={state.focused} />{/await}{/snippet}
 {#snippet routinesPanel()}
   {#if botsStore.current}<BotRoutines embedded bot={botsStore.current} onclose={() => (botsStore.routinesOpen = false)} />{/if}
+{/snippet}
+{#snippet canvasPanel()}
+  {#if appStore.currentChat}<CanvasPanel chatId={appStore.currentChat.id} />{/if}
 {/snippet}
 
 {#if appStore.promptConfigOpen}
   <SystemPromptModal />
 {/if}
 <LocalModelLoadModal />
-
-{#if appStore.modelManagerOpen}
-  <ModelHubModal />
-{/if}
 
 
 <Toaster />

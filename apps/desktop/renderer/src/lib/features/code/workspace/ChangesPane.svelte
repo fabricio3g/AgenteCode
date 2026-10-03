@@ -9,7 +9,7 @@
 <script lang="ts">
   import { conversationScope } from '$shared/workspace-scope';
   import { t } from 'svelte-i18n';
-  import { FileCode2, FolderOpen, LoaderCircle, RefreshCw, Undo2, X } from 'lucide-svelte';
+  import { FileCode2, FolderOpen, GitBranch, LoaderCircle, RefreshCw, Undo2, X } from 'lucide-svelte';
   import { invoke } from '$lib/services/bridge';
   import { confirmStore } from '$lib/stores/confirm.svelte';
   import { toastStore } from '$lib/stores/toast.svelte';
@@ -26,6 +26,9 @@
 
   const args = $derived({ chatId, projectRoot, ...(sessionId ? { sessionId } : {}) });
   const list = $derived(codeWorkspace.changesFor(chatId));
+  // The branch chip keeps this loaded; `list.branch` is the fallback for a pane
+  // that rendered before the chip asked, and it is refreshed with the changes.
+  const branch = $derived(codeWorkspace.branchFor(projectRoot)?.current ?? list?.branch ?? '');
   const root = $derived(projectRoot.replace(/[\\/]+$/, '').replace(/\\/g, '/'));
 
   /** An edit's path relative to the project when it lies inside it. */
@@ -131,6 +134,9 @@
   <header class="changes-bar">
     <p class="min-w-0 flex-1 truncate">
       {#if !embedded}<span class="font-medium text-foreground">{$t('codeWs.changes')}</span>{/if}
+      {#if branch}
+        <span class="branch-label" title={$t('codeWs.branch')}><GitBranch class="size-3" aria-hidden="true" />{branch}</span>
+      {/if}
       {#if files.length}
         <span class="ml-1.5 text-muted-foreground">{$t('codeWs.fileCount', { values: { n: files.length } })}</span>
         <span class="ml-1 tabular-nums"><span class="text-success">+{totals.add}</span> <span class="text-error">−{totals.del}</span></span>
@@ -160,12 +166,12 @@
         {@const mark = KIND_MARK[file.kind] ?? KIND_MARK.modified}
         <li role="option" aria-selected={selectedPath === file.path}>
           <button type="button" class="file-row" class:is-active={selectedPath === file.path} onclick={() => (selectedPath = file.path)} title={file.path}>
-            <span class="w-3 shrink-0 text-center text-[10.5px] font-semibold {mark.tone}">{mark.letter}</span>
+            <span class="w-3 shrink-0 text-center text-[12px] font-semibold {mark.tone}">{mark.letter}</span>
             <span class="min-w-0 flex-1 truncate">
               <span class="text-foreground">{parts.name}</span>
               {#if parts.dir}<span class="ml-1.5 text-muted-foreground">{parts.dir}</span>{/if}
             </span>
-            <span class="shrink-0 text-[11px] tabular-nums">
+            <span class="shrink-0 text-[12px] tabular-nums">
               {#if file.additions}<span class="text-success">+{file.additions}</span>{/if}
               {#if file.deletions}<span class="ml-1 text-error">−{file.deletions}</span>{/if}
             </span>
@@ -229,6 +235,18 @@
     padding: 0 0.3rem 0 0.75rem;
     font-size: 12.5px;
   }
+
+  /* The branch sits beside the file count, quiet enough to not read as a count. */
+  .branch-label {
+    display: inline-flex;
+    max-width: 12rem;
+    align-items: center;
+    gap: 0.25rem;
+    margin-left: 0.5rem;
+    vertical-align: -2px;
+    color: var(--muted-foreground);
+  }
+  .branch-label :global(svg) { flex-shrink: 0; }
 
   .changes-empty {
     display: flex;

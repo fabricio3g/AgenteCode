@@ -330,7 +330,7 @@
         <div class="h-1.5 flex-1 overflow-hidden rounded-full bg-[var(--surface-active)]">
           <div class="h-full rounded-full bg-primary transition-[width]" style="width:{Math.max(4, state.progress)}%"></div>
         </div>
-        <span class="w-10 text-right text-[11px] tabular-nums text-muted-foreground">{state.progress}%</span>
+        <span class="w-10 text-right text-[12px] tabular-nums text-muted-foreground">{state.progress}%</span>
       </div>
     {:else if state.failed}
       <p class="mt-1.5 text-xs text-error">{$t('voice.downloadError')}</p>
@@ -473,7 +473,7 @@
             </span>
             <div class="min-w-0 flex-1">
               <p class="text-sm font-medium text-foreground">{runtime.variant}</p>
-              <p class="truncate text-[11px] text-muted-foreground" title={runtime.path}>{runtime.path}</p>
+              <p class="truncate text-[12px] text-muted-foreground" title={runtime.path}>{runtime.path}</p>
             </div>
             {#if runtime.is_active}
               <Badge tone="success">{$t('voice.inUse')}</Badge>

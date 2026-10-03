@@ -33,7 +33,7 @@ export const WIDGET_CSP =
 /** Minimal, token-based components. Everything is opt-in by class. */
 export const WIDGET_KIT_CSS = `
 *,*::before,*::after{box-sizing:border-box}
-html,body{margin:0;padding:0;background:transparent;color:var(--foreground,#111);font:14px/1.5 Inter,system-ui,-apple-system,'Segoe UI',sans-serif;-webkit-font-smoothing:antialiased}
+html,body{margin:0;padding:0;background:transparent;color:var(--foreground,#111);font:15px/1.5 system-ui,-apple-system,'Segoe UI',Roboto,'Noto Sans',sans-serif;-webkit-font-smoothing:antialiased}
 body{padding:2px;overflow-wrap:anywhere}
 h1,h2,h3,h4{margin:0 0 .4em;line-height:1.25;letter-spacing:-.01em}
 h1{font-size:1.35rem}h2{font-size:1.1rem}h3{font-size:.95rem}

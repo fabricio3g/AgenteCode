@@ -5,8 +5,12 @@
 
   Select on click; rename inline (double-click or the menu); the "…" menu and
   a right-click open the same Rename / Export / Delete menu. A status dot shows
-  a run in progress or a paused run waiting for approval. Home, Roleplay and
-  Code used to each hand-roll this, and Code had no menu at all.
+  a run in progress or a paused run waiting for approval.
+
+  Home, Roleplay and Code used to each hand-roll this, and Code had no menu at
+  all. The row itself, its rename input and its status dot now come from the
+  shared rail recipe (app.css `.sidebar-row`, `.chat-rename-input`, StatusDot),
+  so this component carries no scoped CSS.
 -->
 
 <script lang="ts">
@@ -16,6 +20,8 @@
   import { FileDown, MoreHorizontal, Pencil, Trash2 } from 'lucide-svelte';
   import Menu from '$lib/components/ui/Menu.svelte';
   import MenuItem from '$lib/components/ui/MenuItem.svelte';
+  import IconButton from '$lib/components/ui/IconButton.svelte';
+  import StatusDot from '$lib/components/ui/StatusDot.svelte';
   import { appStore } from '$lib/stores/app.svelte';
   import { confirmStore } from '$lib/stores/confirm.svelte';
   import { toastStore } from '$lib/stores/toast.svelte';
@@ -86,8 +92,8 @@
 </script>
 
 <div
-  class="session-row group relative flex h-7 w-full cursor-pointer items-center gap-2 px-2.5 text-left"
-  class:is-active={active}
+  class="sidebar-row group relative"
+  class:is-current={active}
   role="button"
   tabindex="0"
   onclick={() => !renaming && onselect()}
@@ -105,55 +111,49 @@
   }}
 >
   {#if Icon}<Icon class="size-3.5 shrink-0" />{/if}
-  <div class="min-w-0 flex-1">
-    {#if renaming}
-      <input
-        bind:this={inputEl}
-        class="session-rename w-full"
-        bind:value={renameValue}
-        maxlength="120"
-        aria-label={copy.actions.rename}
-        onclick={(event) => event.stopPropagation()}
-        onkeydown={(event) => {
-          event.stopPropagation();
-          if (event.key === 'Enter') {
-            event.preventDefault();
-            commitRename();
-          } else if (event.key === 'Escape') {
-            // Handled here: the sidebar must not treat it as "close dialog".
-            event.preventDefault();
-            renaming = false;
-          }
-        }}
-        onblur={commitRename}
-      />
-    {:else}
-      <div class="truncate text-[13px]">{title}</div>
-    {/if}
-  </div>
+
+  {#if renaming}
+    <input
+      bind:this={inputEl}
+      class="chat-rename-input sidebar-row-label"
+      bind:value={renameValue}
+      maxlength="120"
+      aria-label={copy.actions.rename}
+      onclick={(event) => event.stopPropagation()}
+      onkeydown={(event) => {
+        event.stopPropagation();
+        if (event.key === 'Enter') {
+          event.preventDefault();
+          commitRename();
+        } else if (event.key === 'Escape') {
+          // Handled here: the sidebar must not treat it as "close dialog".
+          event.preventDefault();
+          renaming = false;
+        }
+      }}
+      onblur={commitRename}
+    />
+  {:else}
+    <div class="sidebar-row-label">{title}</div>
+  {/if}
 
   {#if status && !renaming}
-    <span
-      class="status-dot shrink-0"
-      class:approval={status === 'approval'}
-      title={statusLabel}
-      aria-label={statusLabel}
-      role="status"
-    ></span>
+    <StatusDot
+      tone={status === 'approval' ? 'approval' : 'running'}
+      label={statusLabel}
+    />
   {/if}
 
   {#if !renaming}
     <Menu bind:open={menuOpen} bind:anchorPoint placement="bottom-end" label={menuLabel}>
       {#snippet trigger(props)}
-        <button
-          type="button"
-          class="row-menu-btn rounded-full p-1"
-          class:is-open={menuOpen}
-          aria-label={menuLabel}
+        <IconButton
           {...props}
+          class="sidebar-row-action{menuOpen ? ' is-open' : ''}"
+          label={menuLabel}
         >
-          <MoreHorizontal class="size-3.5" />
-        </button>
+          <MoreHorizontal />
+        </IconButton>
       {/snippet}
       <MenuItem icon={Pencil} label={copy.actions.rename} onselect={() => void startRename()} />
       <MenuItem icon={FileDown} label={copy.actions.export} onselect={exportChat} />
@@ -161,81 +161,3 @@
     </Menu>
   {/if}
 </div>
-
-<style>
-  .session-row {
-    color: var(--text-secondary);
-    border-radius: var(--radius-full);
-    transition:
-      background-color var(--motion-fast) var(--motion-ease),
-      color var(--motion-fast) var(--motion-ease);
-  }
-
-  .session-row:hover {
-    background: var(--sidebar-accent);
-    color: var(--sidebar-accent-foreground);
-  }
-
-  .session-row.is-active {
-    background: var(--sidebar-accent);
-    color: var(--foreground);
-  }
-
-  .session-row:focus-visible {
-    outline: 2px solid var(--sidebar-ring);
-    outline-offset: -2px;
-  }
-
-  .session-rename {
-    background: var(--background);
-    border: 1px solid var(--sidebar-ring);
-    border-radius: var(--radius-sm);
-    color: var(--foreground);
-    font-size: 13px;
-    padding: 0 0.35rem;
-    outline: none;
-  }
-
-  /* Revealed on hover or keyboard focus, never invisible to keyboard users. */
-  .row-menu-btn {
-    color: inherit;
-    background: transparent;
-    border: none;
-    opacity: 0;
-    transition: opacity var(--motion-fast) var(--motion-ease);
-  }
-
-  .session-row:hover .row-menu-btn,
-  .session-row:focus-within .row-menu-btn,
-  .row-menu-btn.is-open,
-  .row-menu-btn:focus-visible {
-    opacity: 0.75;
-  }
-
-  .row-menu-btn:hover {
-    opacity: 1;
-    background: color-mix(in srgb, var(--sidebar-foreground) 10%, transparent);
-  }
-
-  .status-dot {
-    width: 0.4rem;
-    height: 0.4rem;
-    border-radius: 9999px;
-    background: var(--muted-foreground);
-    animation: session-pulse 1.2s ease-in-out infinite;
-  }
-
-  .status-dot.approval {
-    background: var(--warning, #d97706);
-    animation: none;
-  }
-
-  @keyframes session-pulse {
-    0%, 100% { opacity: 0.35; }
-    50% { opacity: 1; }
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    .status-dot { animation: none; }
-  }
-</style>

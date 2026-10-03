@@ -122,7 +122,7 @@
           {#if installing && selectedAsset?.name === asset.name}
             <LoaderCircle class="size-4 shrink-0 animate-spin" />
           {:else if asset.variant === 'recommended'}
-            <span class="rounded-md bg-primary px-2 py-0.5 text-[10px] font-medium text-primary-foreground">{$t('onboarding.recommended')}</span>
+            <span class="rounded-md bg-primary px-2 py-0.5 text-[12px] font-medium text-primary-foreground">{$t('onboarding.recommended')}</span>
           {:else}
             <Download class="size-4 shrink-0 text-muted-foreground" />
           {/if}

@@ -20,6 +20,7 @@
   import { approvalsStore } from '$lib/stores/approvals.svelte';
   import { formatToolDuration, titleCaseToolName, toolStatusLabel } from '$lib/utils/tool-ui';
   import { copy } from '$lib/copy';
+  import { ActiveDuration } from '$lib/utils/active-duration';
 
   interface Props {
     step: AgentStep;
@@ -32,9 +33,8 @@
 
   let expanded = $state(false);
   let userToggled = $state(false);
-  let runStartedAt = $state<number | null>(null);
+  const clock = new ActiveDuration();
   let elapsedMs = $state<number | undefined>(undefined);
-  let elapsedTimer: ReturnType<typeof setInterval> | null = null;
 
   const isRunning = $derived(step.status === 'running' || step.status === 'pending');
   const isApproval = $derived(step.status === 'awaiting_approval');
@@ -74,23 +74,11 @@
   });
 
   $effect(() => {
-    if (isRunning) {
-      if (runStartedAt == null) runStartedAt = Date.now();
-      if (elapsedTimer) clearInterval(elapsedTimer);
-      elapsedTimer = setInterval(() => {
-        if (runStartedAt != null) elapsedMs = Date.now() - runStartedAt;
-      }, 200);
-      elapsedMs = runStartedAt != null ? Date.now() - runStartedAt : 0;
-    } else if (elapsedTimer) {
-      clearInterval(elapsedTimer);
-      elapsedTimer = null;
-    }
-    return () => {
-      if (elapsedTimer) {
-        clearInterval(elapsedTimer);
-        elapsedTimer = null;
-      }
-    };
+    if (!isRunning) return;
+    clock.resume();
+    elapsedMs = clock.elapsed();
+    const timer = setInterval(() => (elapsedMs = clock.elapsed()), 200);
+    return () => { clearInterval(timer); clock.pause(); };
   });
 
   // The store is reactive now, so this is a read rather than a subscription.

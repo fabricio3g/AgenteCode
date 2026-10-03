@@ -70,7 +70,7 @@
         <div class="flex items-start gap-2">
           <div class="min-w-0 flex-1">
             <p class="truncate text-[13px] font-medium text-foreground">{routine.title}</p>
-            <p class="text-[11.5px] text-muted-foreground">{$t(schedule.key, { values: schedule.values })}</p>
+            <p class="text-[13px] text-muted-foreground">{$t(schedule.key, { values: schedule.values })}</p>
           </div>
           <Switch checked={!routine.paused} label={$t('bots.routineOn')} onchange={(on: boolean) => togglePaused(routine, on)} />
         </div>

@@ -7,12 +7,18 @@ import { zoomKeyDirection } from '$shared/zoom-keys';
 
 export type ReduceMotion = 'system' | 'on' | 'off';
 export type ReadingFont = 'default' | 'system' | 'hyperlegible';
+/**
+ * Stroke weight for conversation text. Inter Variable carries the full 100–900
+ * axis, so `medium` is a real interpolated weight — never a faux bold.
+ */
+export type TextWeight = 'regular' | 'medium';
 
 export interface AccessibilityPrefs {
   /** Whole-interface zoom (text, controls and spacing together). */
   uiScale: number;
   /** Chat messages and the composer, on top of the interface size. */
   textScale: number;
+  textWeight: TextWeight;
   font: ReadingFont;
   relaxedSpacing: boolean;
   reduceMotion: ReduceMotion;
@@ -27,6 +33,7 @@ export const TEXT_SCALES = [0.9, 1, 1.15, 1.3, 1.5] as const;
 export const DEFAULT_ACCESSIBILITY: AccessibilityPrefs = {
   uiScale: 1,
   textScale: 1,
+  textWeight: 'regular',
   font: 'default',
   relaxedSpacing: false,
   reduceMotion: 'system',
@@ -54,6 +61,7 @@ export function parseAccessibility(raw: string | null): AccessibilityPrefs {
   return {
     uiScale: clamp(saved.uiScale, 0.5, 2, base.uiScale),
     textScale: clamp(saved.textScale, 0.75, 2, base.textScale),
+    textWeight: saved.textWeight === 'medium' ? 'medium' : 'regular',
     font: saved.font === 'system' || saved.font === 'hyperlegible' ? saved.font : 'default',
     relaxedSpacing: saved.relaxedSpacing === true,
     reduceMotion: saved.reduceMotion === 'on' || saved.reduceMotion === 'off' ? saved.reduceMotion : 'system',
@@ -128,6 +136,7 @@ class AccessibilityStore {
     }
 
     root.style.setProperty('--reading-scale', String(prefs.textScale));
+    root.style.setProperty('--reading-weight', prefs.textWeight === 'medium' ? '500' : '400');
     if (prefs.font === 'hyperlegible' && !hyperlegibleLoaded) {
       hyperlegibleLoaded = true;
       void import('@fontsource/atkinson-hyperlegible/400.css');

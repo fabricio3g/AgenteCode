@@ -9,7 +9,7 @@ import type {
 } from '$lib/types/chat';
 import type { RunAgentTaskArgs, AgentTaskResult } from '$lib/services/agent-types';
 import { runAgentTask } from '$lib/services/agent';
-import { getAgenteCodeSystemPrompt } from '$lib/services/agent-prompts';
+import { getAgenteChatSystemPrompt } from '$lib/services/agent-prompts';
 
 export interface CodeAgentAdapter {
   readonly instance: CodeAgentInstance;
@@ -131,7 +131,6 @@ function createBuiltinAgentDriver(): CodeAgentDriverDefinition {
             error: 'No workspace root'
           };
         }
-        const agentePrompt = getAgenteCodeSystemPrompt();
         return runAgentTask({
           ...args,
           executionMode: 'workspace',
@@ -141,7 +140,9 @@ function createBuiltinAgentDriver(): CodeAgentDriverDefinition {
           maxIterations: args.maxIterations ?? 28,
           maxToolCalls: args.maxToolCalls ?? 80,
           maxTimeMs: args.maxTimeMs ?? 8 * 60 * 1000,
-          systemPrompt: [agentePrompt, args.systemPrompt].filter(Boolean).join('\n\n'),
+          // The coding rules arrive through `modeNote`; prepending the code
+          // prompt here too is what used to send it twice.
+          systemPrompt: args.systemPrompt,
         });
       },
     ),

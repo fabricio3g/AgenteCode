@@ -1,6 +1,13 @@
-import '@fontsource-variable/inter';
+// `opsz.css`, not the package entry: the entry ships only the `wght` axis, so
+// `font-optical-sizing: auto` had nothing to read and silently did nothing.
+// The `opsz` build carries both axes and opens the counters at small sizes.
+// The italic faces are loaded because `font-synthesis: none` forbids the
+// browser from slanting one, so without them italic markup renders upright.
+import '@fontsource-variable/inter/opsz.css';
+import '@fontsource-variable/inter/wght-italic.css';
 import '@fontsource/ibm-plex-mono/400.css';
 import '@fontsource/ibm-plex-mono/500.css';
+import '@fontsource/ibm-plex-mono/600.css';
 import './app.css';
 import '$lib/i18n/index';
 // Interface size, contrast, motion… before the first paint.

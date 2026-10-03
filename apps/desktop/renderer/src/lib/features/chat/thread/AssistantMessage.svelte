@@ -212,7 +212,7 @@
   {/if}
   <div class="min-w-0 flex-1">
     {#if ctx.message.storyTurn}
-      <div class="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+      <div class="flex items-center gap-1.5 text-[12px] text-muted-foreground">
         <span class="h-1 w-1 shrink-0 rounded-full bg-current opacity-60" aria-hidden="true"></span>
         <span class="min-w-0 truncate">{ctx.message.storyTurn.label}</span>
       </div>

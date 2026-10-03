@@ -39,7 +39,7 @@ export function resizeCorners(dividers: Divider[], bounds: Rect): ResizeCorner[]
 const GAP = 4;
 const MIN_WIDTH = 240;
 const MIN_HEIGHT = 140;
-const known = new Set(['changes', 'plan', 'browser', 'artifact', 'routines', 'processes']);
+const known = new Set(['changes', 'files', 'plan', 'browser', 'artifact', 'routines', 'processes', 'canvas']);
 const validId = (id: unknown): id is string => typeof id === 'string' && (known.has(id) || /^terminal:[\w-]+$/.test(id));
 const finite = (value: unknown, fallback: number, min = 1, max = 10000) => typeof value === 'number' && Number.isFinite(value) ? Math.min(max, Math.max(min, value)) : fallback;
 const json = (raw: string | null): Record<string, unknown> => {

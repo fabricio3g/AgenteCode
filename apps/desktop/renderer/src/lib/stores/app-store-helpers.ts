@@ -584,8 +584,12 @@ export function normalizeChat(chat: Partial<ChatSession>, index: number): ChatSe
     draft: String(chat.draft || ''),
     contextMode,
     codeAgent: isCode ? (chat.codeAgent ?? null) : null,
+    homeRuntime: isCode ? undefined : chat.homeRuntime,
     projectId: isCode ? (chat.projectId ?? null) : null,
     workspace: isCode ? chat.workspace || null : null,
+    modelSelection: chat.modelSelection ?? null,
+    pendingPrompts: (chat.pendingPrompts ?? []).filter(item => item && typeof item.id === 'string' && typeof item.content === 'string')
+      .map(item => ({ ...item, sending: false })),
     reasoningLevel: chat.reasoningLevel ?? null,
     composerMode: normalizeSessionComposerMode(chat.composerMode, contextMode),
     // Roleplay has no web-search modes; anything persisted collapses to chat.

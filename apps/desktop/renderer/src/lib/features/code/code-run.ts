@@ -15,11 +15,16 @@ export interface AgenteUsage {
 
 export interface CodeRunState {
   content: string;
+  compactionTokens?: number;
+  phase?: 'starting' | 'requesting' | 'thinking' | 'writing' | 'compacting';
   /** Text segments and steps in arrival order — what the transcript renders. */
   timeline: CodeTimelineEntry[];
   /** Wall-clock bounds of the run (agent_start → agent_end). */
   startedAt?: number;
   endedAt?: number;
+  /** Accumulated active intervals; paused time is never included. */
+  elapsedMs?: number;
+  activeStartedAt?: number;
   /** The turn budget ran out: the run stopped without finishing. */
   hitTurnLimit?: boolean;
   reasoning: string;
@@ -68,7 +73,19 @@ export function emptySpend(): CodeSpend {
 }
 
 export function createCodeRunState(): CodeRunState {
-  return { content: '', timeline: [], reasoning: '', reasoningRaw: '', steps: [], diffStats: [], fileChanges: [], done: false, todos: [], truncatedOnce: false, artifacts: [], sources: [], children: [], spend: emptySpend(), diagnostics: [] };
+  return { phase: undefined, startedAt: undefined, endedAt: undefined, elapsedMs: 0, activeStartedAt: undefined, lastEventAt: undefined, preparing: null, retrying: null, hitTurnLimit: false, summary: undefined, turnMark: undefined, generation: undefined, activity: undefined, content: '', timeline: [], reasoning: '', reasoningRaw: '', steps: [], diffStats: [], fileChanges: [], done: false, todos: [], truncatedOnce: false, artifacts: [], sources: [], children: [], spend: emptySpend(), diagnostics: [] };
+}
+
+export function codeRunElapsed(state: Pick<CodeRunState, 'elapsedMs' | 'activeStartedAt' | 'startedAt' | 'endedAt'>, now = Date.now()): number {
+  if (state.elapsedMs !== undefined) return state.elapsedMs + (state.activeStartedAt === undefined ? 0 : Math.max(0, now - state.activeStartedAt));
+  // Older saved runs have wall-clock bounds only.
+  return state.startedAt === undefined ? 0 : Math.max(0, (state.endedAt ?? now) - state.startedAt);
+}
+
+function stopRunClock(state: CodeRunState): void {
+  state.elapsedMs = codeRunElapsed(state);
+  state.activeStartedAt = undefined;
+  state.endedAt = Date.now();
 }
 
 function applyRuntimeEvent(state: CodeRunState, event: Extract<CodeAgentEvent, { type: 'runtime_event' }>): boolean {
@@ -80,6 +97,11 @@ function applyRuntimeEvent(state: CodeRunState, event: Extract<CodeAgentEvent, {
     state.children.push(child);
   }
   switch (value.type) {
+    case 'thinking':
+      if (child) return false;
+      state.phase = 'requesting';
+      state.preparing = null;
+      return false;
     case 'child_started':
       Object.assign(child!, { kind: value.kind, description: value.description, status: 'running' });
       return true;
@@ -106,6 +128,7 @@ function applyRuntimeEvent(state: CodeRunState, event: Extract<CodeAgentEvent, {
       Object.assign(child!, { summary: value.summary, status: value.type === 'child_finished' ? (value.is_error ? 'error' : 'done') : (value.status === 'completed' ? 'done' : 'error') });
       return true;
     case 'call_usage': {
+      if (!child && state.phase === 'compacting') state.compactionTokens = (state.compactionTokens ?? 0) + value.usage.prompt_tokens + value.usage.completion_tokens + value.usage.cache_read_tokens + value.usage.cache_creation_tokens;
       // The session includes its children; a child also keeps its own subtotal.
       for (const spend of child ? [state.spend, child.spend] : [state.spend]) {
         spend.costUsd += value.cost_usd ?? 0;
@@ -264,6 +287,7 @@ function failRun(state: CodeRunState, message: string): void {
   state.stopReason ??= 'error';
   const broken = state.steps.find((s) => s.status === 'running');
   if (broken) broken.status = 'error';
+  stopRunClock(state);
 }
 
 /**
@@ -349,18 +373,21 @@ export function applyCodeAgentEvent(state: CodeRunState, event: CodeAgentEvent):
     case 'runtime_event':
       return applyRuntimeEvent(state, event);
     case 'agent_start': {
-      // A follow-up restarts the engine loop inside the same run: keep the
-      // original start so "worked for" covers the whole piece of work.
+      state.phase = 'starting';
       state.startedAt ??= Date.now();
+      state.activeStartedAt ??= Date.now();
+      state.endedAt = undefined;
       return false;
     }
     case 'text_delta': {
+      state.phase = 'writing';
       appendText(state, event.delta);
       state.preparing = null;
       state.retrying = null;
       return true;
     }
     case 'thinking_delta': {
+      state.phase = 'thinking';
       // Same normalization rule as Home (agent.ts): one owner —
       // sanitizeAgentVisibleText — applied to the whole accumulation, since
       // the strip patterns are multi-line and per-chunk sanitizing would
@@ -419,7 +446,10 @@ export function applyCodeAgentEvent(state: CodeRunState, event: CodeAgentEvent):
       return false;
     case 'compaction_start':
     case 'compaction_end': {
+      if (event.type === 'compaction_start') state.compactionTokens = undefined;
+      state.phase = event.type === 'compaction_start' ? 'compacting' : 'requesting';
       const step = eventToStep(event);
+      if (step && event.type === 'compaction_end' && state.compactionTokens !== undefined) step.detail = `${step.detail ?? ''} · ${state.compactionTokens.toLocaleString()} model tokens used`;
       if (step) upsertStep(state, step);
       return true;
     }
@@ -543,7 +573,7 @@ export function applyCodeAgentEvent(state: CodeRunState, event: CodeAgentEvent):
       state.done = true;
       state.stopReason = event.stopReason;
       state.hitTurnLimit = !!event.hitTurnLimit;
-      state.endedAt = Date.now();
+      stopRunClock(state);
       state.retrying = null;
       state.preparing = null;
       // A still-running step at the end of a run only means failure if the

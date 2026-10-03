@@ -36,10 +36,9 @@
   let scrollTicket = 0;
   let pinnedMessageId = $state<string | null>(null);
   let pinTimer: ReturnType<typeof setTimeout> | null = null;
-  let slotRefs = $state<Record<string, HTMLDivElement | undefined>>({});
+  const slotRefs = new Map<string, HTMLDivElement>();
   let previousEditingMessageId = $state<string | null>(null);
   let editAnchorTop = $state<number | null>(null);
-  let timelineMarkers = $state<TimelineMarker[]>([]);
   let timelineIndex = $state(0);
   let timelineBrowsing = $state(false);
   /** Stick to the live edge while true. Any user scroll away pauses it; scrolling
@@ -50,6 +49,10 @@
   const JUMP_BUTTON_PX = 320;
 
   const messages = $derived(appStore.currentChat?.messages || []);
+  const timelineMarkers = $derived<TimelineMarker[]>(messages.map(message => ({
+    id: message.id, role: message.role, preview: conversationTimelinePreview(message)
+  })));
+
   const contextMode = $derived(appStore.currentChat?.contextMode || 'home');
   const hasMessages = $derived(messages.length > 0);
   // Short chats don't need a dial; it would only add noise.
@@ -110,7 +113,7 @@
   }
 
   function scrollMessageIntoView(messageId: string, block: ScrollLogicalPosition) {
-    const slot = slotRefs[messageId];
+    const slot = slotRefs.get(messageId);
     if (!slot) return;
     followingLatest = false;
     slot.scrollIntoView({ behavior: reducedMotion.value ? 'auto' : 'smooth', block });
@@ -130,28 +133,26 @@
   function refreshTimeline() {
     if (!container) return;
 
-    timelineMarkers = messages.map((message) => ({
-      id: message.id,
-      role: message.role,
-      preview: conversationTimelinePreview(message)
-    }));
-
     const latestIndex = Math.max(0, messages.length - 1);
     let currentIndex = latestIndex;
 
     if (!isNearBottom()) {
       const viewportCenter = container.getBoundingClientRect().top + container.clientHeight / 2;
-      let nearestDistance = Number.POSITIVE_INFINITY;
-      messages.forEach((message, index) => {
-        const slot = slotRefs[message.id];
-        if (!slot) return;
-        const bounds = slot.getBoundingClientRect();
-        const distance = Math.abs(bounds.top + bounds.height / 2 - viewportCenter);
-        if (distance < nearestDistance) {
-          nearestDistance = distance;
-          currentIndex = index;
-        }
-      });
+      // Slot centers are ordered. Inspect O(log n) bounds instead of forcing
+      // geometry reads for the entire transcript on every scroll frame.
+      let low = 0;
+      let high = latestIndex;
+      const center = (index: number) => {
+        const bounds = slotRefs.get(messages[index].id)?.getBoundingClientRect();
+        return bounds ? bounds.top + bounds.height / 2 : Number.POSITIVE_INFINITY;
+      };
+      while (low < high) {
+        const middle = Math.floor((low + high) / 2);
+        if (center(middle) < viewportCenter) low = middle + 1;
+        else high = middle;
+      }
+      currentIndex = low > 0 && Math.abs(center(low - 1) - viewportCenter) < Math.abs(center(low) - viewportCenter)
+        ? low - 1 : low;
     }
 
     timelineIndex = timelineBrowsing ? Math.min(timelineIndex, latestIndex) : currentIndex;
@@ -175,7 +176,7 @@
 
   function captureEditAnchor(messageId: string | null) {
     if (!messageId || !container) return;
-    const slot = slotRefs[messageId];
+    const slot = slotRefs.get(messageId);
     if (!slot) return;
     editAnchorTop = slot.getBoundingClientRect().top;
   }
@@ -183,7 +184,7 @@
   /** Swapping a bubble for an editor changes its height; absorb the shift. */
   function restoreEditAnchor(messageId: string | null) {
     if (!messageId || !container || editAnchorTop == null) return;
-    const slot = slotRefs[messageId];
+    const slot = slotRefs.get(messageId);
     if (!slot) return;
     const delta = slot.getBoundingClientRect().top - editAnchorTop;
     if (Math.abs(delta) > 0.5) container.scrollTop += delta;
@@ -191,13 +192,11 @@
   }
 
   function registerSlot(node: HTMLDivElement, messageId: string) {
-    slotRefs = { ...slotRefs, [messageId]: node };
+    slotRefs.set(messageId, node);
     queueTimelineRefresh();
     return {
       destroy() {
-        const next = { ...slotRefs };
-        delete next[messageId];
-        slotRefs = next;
+        slotRefs.delete(messageId);
         queueTimelineRefresh();
       }
     };
@@ -246,7 +245,6 @@
 
   $effect(() => {
     void messages.length;
-    void slotRefs;
     tick().then(queueTimelineRefresh);
   });
 
@@ -322,7 +320,7 @@
           style="max-width: var(--thread-width);"
         >
           {#each messages as message (message.id)}
-            <div class="message-slot" use:registerSlot={message.id}>
+            <div class="message-slot" class:is-live={message.status === 'streaming' || appStore.editingMessageId === message.id} use:registerSlot={message.id}>
               {#if appStore.editingMessageId === message.id}
                 <div
                   class="edit-inline-container {message.role === 'user' ? 'is-user' : 'is-assistant'}"
@@ -380,6 +378,12 @@
 
   .message-slot {
     position: relative;
+    content-visibility: auto;
+    contain-intrinsic-size: auto 160px;
+  }
+
+  .message-slot.is-live {
+    content-visibility: visible;
   }
 
   .edit-inline-container {

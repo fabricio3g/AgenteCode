@@ -25,4 +25,16 @@ describe('conversation workspace ownership', () => {
     localStorage.setItem('agente.workspaceLayout', JSON.stringify({ version: 2, scopes: { 'chat:a': { version: 1, right: { kind: 'group', id: 'g', panels: ['browser', 'terminal:dead', 'invalid'], active: 'browser' }, open: ['browser', 'terminal:dead'] } } }));
     const store = new WorkspaceLayoutStore(); store.selectScope('chat:a'); expect(panelIds(store.layout.right)).toEqual(['browser']); expect(store.layout.open).toEqual(['browser']);
   });
+  it('keeps every registered panel across a restart, canvas included', () => {
+    // A panel id missing from `known` is dropped by validId, which would make
+    // the canvas silently forget it was open on every launch.
+    const store = new WorkspaceLayoutStore(); store.selectScope('chat:a');
+    for (const id of ['changes', 'plan', 'canvas', 'artifact', 'routines', 'browser']) store.show(id);
+    store.show('processes', 'bottom');
+    const saved = store.snapshot();
+    const restored = new WorkspaceLayoutStore(); restored.selectScope('chat:a');
+    expect(restored.snapshot()).toEqual(saved);
+    expect(restored.isOpen('canvas')).toBe(true);
+    expect(panelIds(restored.layout.right)).toContain('canvas');
+  });
 });

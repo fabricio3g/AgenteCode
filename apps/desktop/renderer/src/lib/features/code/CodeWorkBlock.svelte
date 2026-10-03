@@ -61,7 +61,7 @@
   <div class="min-w-0">{@render row(visible[0])}</div>
 {:else if visible.length}
   <div class="work min-w-0">
-    <button type="button" class="work-head" aria-expanded={open} onclick={() => { userToggled = true; open = !open; }}>
+    <button type="button" class="work-head ui-quiet-disclosure" aria-expanded={open} onclick={() => { userToggled = true; open = !open; }}>
       <ChevronRight class="size-3.5 shrink-0 transition-transform {open ? 'rotate-90' : ''}" />
       <span class="min-w-0 truncate tabular-nums">{line}</span>
     </button>

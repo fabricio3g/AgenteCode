@@ -358,7 +358,7 @@
           {#if items.length}
             <div class="border-b border-[var(--border-subtle)] last:border-b-0">
               <div class="sticky top-0 z-10 bg-card/95 px-4 py-2 backdrop-blur">
-                <h5 class="text-[11px] font-semibold text-muted-foreground">{group.label}</h5>
+                <h5 class="text-[12px] font-semibold text-muted-foreground">{group.label}</h5>
               </div>
               <div class="">
                 {#each items as item (item.id)}
@@ -379,7 +379,7 @@
                           {#if item.recommended}<Badge tone="success">Recommended</Badge>{/if}
                           {#if item.stability === 'experimental'}<Badge tone="warning">Experimental</Badge>{/if}
                         </div>
-                        <div class="mt-0.5 flex flex-wrap items-center gap-1 text-[11px] text-muted-foreground">
+                        <div class="mt-0.5 flex flex-wrap items-center gap-1 text-[12px] text-muted-foreground">
                           <span>{item.transport.toUpperCase()}</span>
                           <span aria-hidden="true">·</span>
                           <span>{item.stability}</span>
@@ -392,7 +392,7 @@
                           {/if}
                         </div>
                         {#if probeStatuses[item.id]}
-                          <p class={`mt-1 text-[11px] ${probeStatuses[item.id].success ? 'text-success' : 'text-warning'}`}>
+                          <p class={`mt-1 text-[12px] ${probeStatuses[item.id].success ? 'text-success' : 'text-warning'}`}>
                             {probeStatuses[item.id].detail}
                           </p>
                         {/if}
@@ -435,7 +435,7 @@
                             </Field>
                           {/if}
                           <div class="flex items-center justify-between gap-3">
-                            <p class="text-[11px] leading-relaxed text-muted-foreground">
+                            <p class="text-[12px] leading-relaxed text-muted-foreground">
                               Saving configuration never enables this engine automatically.
                             </p>
                             <Button

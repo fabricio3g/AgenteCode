@@ -151,7 +151,7 @@
       <div class="h-1.5 flex-1 overflow-hidden rounded-full bg-[var(--surface-active)]">
         <div class="h-full rounded-full bg-primary transition-[width]" style="width:{Math.max(4, downloadProgress)}%"></div>
       </div>
-      <span class="w-24 text-right text-[11px] tabular-nums text-muted-foreground">
+      <span class="w-24 text-right text-[12px] tabular-nums text-muted-foreground">
         {downloadPhase === 'extracting' ? $t('runtime.extracting') : `${downloadProgress.toFixed(0)}%`}
       </span>
     </div>
@@ -181,7 +181,7 @@
         </span>
         <div class="min-w-0 flex-1">
           <p class="truncate text-sm font-medium text-foreground">{rt.name}</p>
-          <p class="truncate text-[11px] text-muted-foreground" title={rt.path}>{rt.path}</p>
+          <p class="truncate text-[12px] text-muted-foreground" title={rt.path}>{rt.path}</p>
         </div>
         {#if active}
           <Badge tone="success">{$t('runtime.active')}</Badge>
@@ -223,13 +223,13 @@
             [$t('runtime.speed'), telemetry?.tokens_per_second != null ? `${telemetry.tokens_per_second.toFixed(1)} tok/s` : '—']
           ] as [label, value] (label)}
             <div class="rounded-lg bg-[var(--muted)] px-3 py-2">
-              <dt class="text-[10px] text-muted-foreground">{label}</dt>
+              <dt class="text-[12px] text-muted-foreground">{label}</dt>
               <dd class="mt-0.5 text-xs font-medium tabular-nums text-foreground">{value}</dd>
             </div>
           {/each}
         </dl>
       {/if}
-      {#if supervisor.build_info}<p class="mt-2 text-[11px] text-muted-foreground">{supervisor.build_info}</p>{/if}
+      {#if supervisor.build_info}<p class="mt-2 text-[12px] text-muted-foreground">{supervisor.build_info}</p>{/if}
     </div>
   {/if}
 </SettingsSection>

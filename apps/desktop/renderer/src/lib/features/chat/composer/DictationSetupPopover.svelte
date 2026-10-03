@@ -36,8 +36,7 @@
 
   function useCloud() {
     dictation.closeChoice();
-    appStore.modelManagerOpenSection = resolveModelHubSection('voice');
-    appStore.modelManagerOpen = true;
+    appStore.openSettings(resolveModelHubSection('voice'));
   }
 
   function onKeydown(event: KeyboardEvent) {

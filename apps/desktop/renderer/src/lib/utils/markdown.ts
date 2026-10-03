@@ -1,6 +1,9 @@
 import { marked, type Tokens } from 'marked';
 import DOMPurify from 'dompurify';
-import hljs from 'highlight.js';
+// The common set (~37 languages: rust, ts, python, go, bash, json, yaml, sql…)
+// instead of all ~190: a fraction of the bundle, and highlightAuto only has
+// to try these.
+import hljs from 'highlight.js/lib/common';
 import katex from 'katex';
 import { CODE_COPY_BUTTON_HTML } from './code-copy';
 

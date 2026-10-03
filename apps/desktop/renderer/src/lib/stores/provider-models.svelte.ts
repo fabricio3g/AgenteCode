@@ -1,4 +1,4 @@
-// The models each configured cloud provider offers, loaded once and shared by
+// The models each configured cloud provider offers, shared by
 // every picker (the composer's ModelSwitcher, a bot's model pin). A list is
 // seeded instantly from what the app already knows, so a picker never sits on
 // an empty loader; the provider is asked only when it can answer.
@@ -6,77 +6,75 @@
 import { get } from 'svelte/store';
 import { t } from 'svelte-i18n';
 import { appStore } from '$lib/stores/app.svelte';
-import { invoke } from '$lib/services/bridge';
-import type { ModelOption } from '$lib/types/chat';
+import { cachedModels, fetchModels } from '$lib/services/chat-api';
+import type { AppConfig, ModelOption } from '$lib/types/chat';
 import { defaultBaseUrl } from '$lib/utils/providers';
 
-const TIMEOUT_MS = 12_000;
+export class ProviderModelsStore {
+  private loaded = new Map<string, { route: string; list: ModelOption[] }>();
+  private pending = new Map<string, { route: string; force: boolean; promise: Promise<void> }>();
 
-function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error('timeout')), ms);
-    promise.then(
-      (value) => {
-        clearTimeout(timer);
-        resolve(value);
-      },
-      (error) => {
-        clearTimeout(timer);
-        reject(error);
-      }
-    );
-  });
-}
-
-class ProviderModelsStore {
+  private request(id: string): { config: AppConfig; route: string } {
+    const current = appStore.config;
+    const saved = current.llm?.providers?.[id];
+    const baseUrl = saved?.base_url || defaultBaseUrl(id);
+    return {
+      route: JSON.stringify([id, baseUrl.replace(/\/+$/, ''), saved?.api_key || '', !!saved?.has_api_key]),
+      config: { ...current, llm: { ...current.llm, provider: id,
+        providers: { ...current.llm?.providers, [id]: { ...saved, model: saved?.model || '', base_url: baseUrl } } } }
+    };
+  }
   /** Models per provider id; `undefined` = not asked yet. */
   byProvider = $state<Record<string, ModelOption[] | undefined>>({});
   loading = $state<Record<string, boolean>>({});
   errors = $state<Record<string, string>>({});
 
-  /** What the app already knows about `id`: the active list, or the saved model. */
+  /** A saved choice seeds the picker until its first successful API response. */
   seed(id: string): ModelOption[] {
-    if (id === appStore.activeProviderName && appStore.models.length) return appStore.models.slice();
     const saved = appStore.config.llm?.providers?.[id];
     return saved?.model ? [{ id: String(saved.model), name: String(saved.model), source: 'api' as const }] : [];
   }
 
   /** The loaded list, or the seed until it arrives. */
   models(id: string): ModelOption[] {
-    return this.byProvider[id] ?? this.seed(id);
+    const list = this.byProvider[id];
+    return this.loaded.get(id)?.route === this.request(id).route ? list ?? [] : this.seed(id);
   }
 
-  async load(id: string, force = false): Promise<void> {
-    if (this.loading[id]) return;
-    if (!force && this.byProvider[id] !== undefined) return;
+  load(id: string, force = false): Promise<void> {
+    const { config, route } = this.request(id);
+    const current = this.pending.get(id);
+    if (current?.route === route && (!force || current.force)) return current.promise;
+    const cached = cachedModels(config);
+    const loaded = this.loaded.get(id);
+    if (!force && cached && loaded?.route === route && loaded.list === cached) return Promise.resolve();
 
-    const seeded = this.seed(id);
-    if (seeded.length && this.byProvider[id] === undefined) this.byProvider = { ...this.byProvider, [id]: seeded };
-
-    const saved = appStore.config.llm?.providers?.[id];
-    const baseUrl = saved?.base_url || defaultBaseUrl(id);
-    // A provider with no key can't list models, and asking anyway makes the
-    // main process log a handler error on every start. Keyless local runtimes
-    // (llama.cpp, Ollama, LM Studio) are still asked.
+    const saved = config.llm?.providers?.[id];
+    const baseUrl = saved?.base_url || '';
     const hasKey = !!(saved?.has_api_key || saved?.api_key);
     const isLocal = id === 'local' || /^https?:\/\/(127\.0\.0\.1|localhost|\[::1\])(:|\/|$)/i.test(baseUrl);
-    if (!hasKey && !isLocal) return;
+    if (!hasKey && !isLocal) return Promise.resolve();
 
     this.loading = { ...this.loading, [id]: true };
     this.errors = { ...this.errors, [id]: '' };
-    try {
-      // An empty key: the main process uses the one stored for the provider.
-      const ids = await withTimeout(invoke<string[]>('fetch_provider_models', { baseUrl, apiKey: '', providerName: id }), TIMEOUT_MS);
-      const unique = [...new Set((Array.isArray(ids) ? ids : []).filter((mid) => typeof mid === 'string' && mid.trim()))];
-      const list = unique.map((mid) => ({ id: String(mid), name: String(mid), source: 'api' as const }));
-      this.byProvider = { ...this.byProvider, [id]: list.length ? list : this.seed(id) };
-    } catch {
-      this.errors = { ...this.errors, [id]: get(t)('modelPicker.refreshFailed') };
-      // Keep the seed or the previous list: never an empty loader.
-      if (this.byProvider[id] === undefined) this.byProvider = { ...this.byProvider, [id]: this.seed(id) };
-    } finally {
-      this.loading = { ...this.loading, [id]: false };
-    }
+    const request = { route, force, promise: Promise.resolve() };
+    this.pending.set(id, request);
+    request.promise = fetchModels(config, undefined, force).then(list => {
+      if (this.pending.get(id) !== request) return;
+      this.loaded.set(id, { route, list });
+      // Successful lists replace the snapshot, including an empty list.
+      this.byProvider = { ...this.byProvider, [id]: list };
+    }).catch(() => {
+      if (this.pending.get(id) === request) {
+        this.errors = { ...this.errors, [id]: get(t)('modelPicker.refreshFailed') };
+      }
+    }).finally(() => {
+      if (this.pending.get(id) === request) {
+        this.pending.delete(id);
+        this.loading = { ...this.loading, [id]: false };
+      }
+    });
+    return request.promise;
   }
 }
 

@@ -125,7 +125,7 @@
         <div class="flex items-start justify-between gap-2">
           <div class="min-w-0">
             <p class="text-[13px] font-medium text-foreground">{model.title}</p>
-            <p class="text-[11.5px] text-muted-foreground">{$t(`voice.engine.${model.id}`)}</p>
+            <p class="text-[13px] text-muted-foreground">{$t(`voice.engine.${model.id}`)}</p>
           </div>
           {#if isActive}<span class="in-use"><Check class="size-3" /> {$t('voice.inUse')}</span>{/if}
         </div>
@@ -176,7 +176,7 @@
           <div class="voice" class:selected>
             <button type="button" class="pick" onclick={() => void appStore.updateTtsSettings({ voice: voice.id, voice_model: active.id, language })} aria-pressed={selected}>
               <span class="truncate text-[13px] text-foreground">{voice.label}</span>
-              <span class="text-[11px] text-muted-foreground">{$t(`voice.engine.${voice.gender}`)}</span>
+              <span class="text-[12px] text-muted-foreground">{$t(`voice.engine.${voice.gender}`)}</span>
             </button>
             <button type="button" class="play" onclick={() => void preview(voice.id)} aria-label={$t('voice.preview')} title={$t('voice.preview')}>
               {#if previewing === voice.id}<LoaderCircle class="size-3.5 animate-spin" />{:else}<Play class="size-3.5" />{/if}

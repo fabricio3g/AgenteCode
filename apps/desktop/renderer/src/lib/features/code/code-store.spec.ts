@@ -169,6 +169,9 @@ describe('run finalization', () => {
   });
 });
 
+/** Mid-stream deltas reach the message once per frame (structural events flush at once). */
+const nextFrame = () => new Promise((resolve) => setTimeout(resolve, 50));
+
 describe('streaming targets the last assistant message, not the transcript tail', () => {
   it('steers land in the original assistant message, not the appended user turn', async () => {
     await startRun();
@@ -176,6 +179,7 @@ describe('streaming targets the last assistant message, not the transcript tail'
     emit({ type: 'text_delta', chatId: CHAT_ID, delta: 'first' });
     await codeStore.steer(CHAT_ID, 'course correction');
     emit({ type: 'text_delta', chatId: CHAT_ID, delta: ' after steer' });
+    await nextFrame();
 
     const messages = appStore.chats[0]!.messages;
     expect(messages).toHaveLength(3);
@@ -258,6 +262,7 @@ describe('streaming targets the last assistant message, not the transcript tail'
     bridge.responses['agente_steer'] = { ok: false };
     await codeStore.steer(CHAT_ID, 'lost steer');
     emit({ type: 'text_delta', chatId: CHAT_ID, delta: 'kept' });
+    await nextFrame();
 
     const messages = appStore.chats[0]!.messages;
     expect(messages).toHaveLength(3);
@@ -391,5 +396,79 @@ describe('approvals and interrupted runs', () => {
     emit({ type: 'approval_request', chatId: CHAT_ID, requestId: 'apr-10', toolName: 'bash', args: { command: 'ls' } });
     emit({ type: 'agent_end', chatId: CHAT_ID, stopReason: 'aborted' });
     expect(approvalsStore.forChat(CHAT_ID)).toHaveLength(0);
+  });
+});
+
+
+describe('editable prompt queue', () => {
+  it('keeps prompts out of the transcript and IPC until explicit send-now', async () => {
+    await startRun();
+    codeStore.queue(CHAT_ID, 'first');
+    codeStore.queue(CHAT_ID, 'second');
+    const chat = appStore.chats[0]!;
+    expect(chat.messages).toHaveLength(2);
+    expect(bridge.invokes.filter(call => call.command === 'agente_steer')).toHaveLength(0);
+    const first = chat.pendingPrompts![0]!;
+    const second = chat.pendingPrompts![1]!;
+    appStore.updateQueuedPrompt(CHAT_ID, first.id, 'revised first');
+    appStore.removeQueuedPrompt(CHAT_ID, second.id);
+    expect(chat.pendingPrompts?.map(item => item.content)).toEqual(['revised first']);
+    await codeStore.sendQueuedNow(CHAT_ID);
+    expect(chat.messages).toHaveLength(2);
+    expect(chat.pendingPrompts![0]?.sending).toBe(true);
+    expect(bridge.invokes.find(call => call.command === 'agente_steer')?.args?.text).toBe('revised first');
+    emit({ type: 'runtime_event', chatId: CHAT_ID, event: { type: 'user_messages_injected', messages: ['revised first'] } });
+    expect(chat.pendingPrompts).toEqual([]);
+    expect(chat.messages.filter(message => message.role === 'user').map(message => message.content)).toEqual(['hello', 'revised first']);
+  });
+
+  it('does not double-send and unlocks a rejected prompt for editing', async () => {
+    await startRun();
+    codeStore.queue(CHAT_ID, 'retry me');
+    let resolve!: (value: unknown) => void;
+    bridge.responses.agente_steer = () => new Promise(done => { resolve = done; });
+    const send = codeStore.sendQueuedNow(CHAT_ID);
+    await Promise.resolve();
+    await codeStore.sendQueuedNow(CHAT_ID);
+    expect(bridge.invokes.filter(call => call.command === 'agente_steer')).toHaveLength(1);
+    resolve({ ok: false }); await send;
+    const chat = appStore.chats[0]!;
+    expect(chat.pendingPrompts![0]?.sending).toBe(false);
+    expect(chat.messages).toHaveLength(2);
+  });
+
+  it('retains a stopped queue and keeps another conversation isolated', async () => {
+    await startRun();
+    const other: ChatSession = { ...makeChat(), id: 'other', pendingPrompts: [] };
+    appStore.chats.push(other);
+    codeStore.queue(CHAT_ID, 'continue later');
+    codeStore.queue('other', 'other task');
+    emit({ type: 'agent_end', chatId: CHAT_ID, stopReason: 'aborted' });
+    expect(appStore.chats[0]?.pendingPrompts?.[0]?.content).toBe('continue later');
+    expect(appStore.chats.find(chat => chat.id === 'other')?.pendingPrompts?.[0]?.content).toBe('other task');
+  });
+});
+
+describe('manual compaction reporting', () => {
+  it('adds a separate idle report without modifying an old answer', async () => {
+    await startRun();
+    emit({ type: 'text_delta', chatId: CHAT_ID, delta: 'Original answer' });
+    emit({ type: 'agent_end', chatId: CHAT_ID, stopReason: 'stop' });
+    const before = appStore.chats[0]!.messages[1]!.content;
+    emit({ type: 'compaction_start', chatId: CHAT_ID, reason: 'manual' });
+    expect(appStore.chats[0]!.messages.at(-1)!.metadata?.codeCompaction?.running).toBe(true);
+    emit({ type: 'compaction_end', chatId: CHAT_ID, reason: 'manual', success: true, tokensBefore: 12000, tokensAfter: 4000, smart: true, requestedSmart: true, modelTokens: 800 });
+    const report = appStore.chats[0]!.messages.at(-1)!.metadata!.codeCompaction!;
+    expect(report).toMatchObject({ running: false, tokensBefore: 12000, tokensAfter: 4000, smart: true, modelTokens: 800 });
+    expect(appStore.chats[0]!.messages[1]!.content).toBe(before);
+  });
+
+  it('settles no-change and failed reports visibly', async () => {
+    emit({ type: 'compaction_start', chatId: CHAT_ID, reason: 'manual' });
+    emit({ type: 'compaction_end', chatId: CHAT_ID, reason: 'manual', success: true, tokensBefore: 120, tokensAfter: 120 });
+    expect(appStore.chats[0]!.messages.at(-1)!.metadata?.codeCompaction).toMatchObject({ running: false, tokensBefore: 120, tokensAfter: 120 });
+    emit({ type: 'compaction_start', chatId: CHAT_ID, reason: 'manual' });
+    emit({ type: 'compaction_end', chatId: CHAT_ID, reason: 'manual', success: false });
+    expect(appStore.chats[0]!.messages.at(-1)!.metadata?.codeCompaction).toMatchObject({ running: false, success: false });
   });
 });

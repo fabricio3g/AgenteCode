@@ -7,7 +7,6 @@
   import { appStore } from '$lib/stores/app.svelte';
   import { deepResearchStore } from '$lib/stores/deep-research.svelte';
   import { themeStore } from '$lib/stores/theme.svelte';
-  import { ttsStore } from '$lib/stores/tts.svelte';
   import { i18nReady } from '$lib/i18n';
   import { installCodeCopyDelegate } from '$lib/utils/code-copy';
   import { notifyDesktopReady } from '$lib/services/desktop-startup';
@@ -68,10 +67,6 @@
 
     step('theme', () => themeStore.set(themeStore.current));
     step('deep-research', () => deepResearchStore.init());
-    // Preload TTS engine in background
-    if (!startupBypassed) {
-      step('tts-preload', () => void ttsStore.preloadEngine());
-    }
     activeWorkSyncInterval = setInterval(() => {
       step('work-sync', () => void appStore.syncWindowActiveWork());
     }, 900);

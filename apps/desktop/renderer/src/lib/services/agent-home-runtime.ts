@@ -220,6 +220,7 @@ async function startAttempt(turn: HomeTurn, attempt: Attempt): Promise<{ session
   turn.activeRunId = crypto.randomUUID();
   const started = await invoke<{ sessionId: string; turnId: string; conversationIndex?: number; contextWindow: number }>('home_runtime_start', {
     runId: turn.activeRunId, ...attempt, provider, model: plan.activeModel, thinkingLevel: args.reasoningLevel || 'auto',
+    localSelection: plan.localMode ? { modelPath: run.config.llm?.local?.selected_model_path || '', baseUrl: run.config.llm?.local?.base_url || '' } : undefined,
     policy: remainingPolicy(turn), tools: toolManifest(turn.tools)
   });
   turn.meta = { sessionId: started.sessionId, revision: turn.meta?.revision || args.homeRuntime?.revision || 0, provider, model: plan.activeModel, contextWindow: started.contextWindow, historyIds: args.historyIds || [], files: run.ctx.files };
@@ -269,7 +270,7 @@ async function driveTurns(turn: HomeTurn, onIndex: (index: number | undefined) =
 }
 
 export async function runHomeRuntime(args: RunAgentTaskArgs): Promise<AgentTaskResult> {
-  const config = await loadAppConfig();
+  const config = args.config ?? await loadAppConfig();
   const plan = resolveAgentRunPlan(args, config, { isElectron: true });
   const controller = new AbortController();
   const abort = () => controller.abort();

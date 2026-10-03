@@ -76,9 +76,11 @@ export type LiveStatus =
   | { kind: 'running'; step: AgentStep }
   | { kind: 'thinking' }
   | { kind: 'writing' }
-  | { kind: 'waiting'; quietMs: number };
+  | { kind: 'starting' }
+  | { kind: 'requesting' }
+  | { kind: 'compacting' };
 
-/** Seconds of silence before the line admits it is waiting on the model. */
+/** Seconds without a new engine event before adding a factual silence note. */
 export const QUIET_MS = 8_000;
 
 /**
@@ -86,18 +88,18 @@ export const QUIET_MS = 8_000;
  * (an approval), a retry, a tool call being written, a tool running, then
  * whatever the model streams last — thought or reply.
  */
-export function liveStatus(run: Pick<CodeRunState, 'timeline' | 'steps' | 'preparing' | 'retrying' | 'lastEventAt'>, awaitingApproval: boolean, now = Date.now()): LiveStatus {
+export function liveStatus(run: Pick<CodeRunState, 'timeline' | 'steps' | 'preparing' | 'retrying' | 'lastEventAt' | 'phase'>, awaitingApproval: boolean, now = Date.now()): LiveStatus {
   if (awaitingApproval) return { kind: 'approval' };
   if (run.retrying) return { kind: 'retry', attempt: run.retrying.attempt };
   if (run.preparing) return { kind: 'preparing', toolName: run.preparing.toolName, bytes: run.preparing.bytes };
   const running = [...run.steps].reverse().find(isRunning);
   if (running) return { kind: 'running', step: running };
-  const quietMs = run.lastEventAt ? now - run.lastEventAt : 0;
-  if (quietMs >= QUIET_MS) return { kind: 'waiting', quietMs };
+  void now;
+  if (run.phase) return { kind: run.phase };
   const last = run.timeline[run.timeline.length - 1];
   if (last?.kind === 'thinking') return { kind: 'thinking' };
   if (last?.kind === 'text') return { kind: 'writing' };
-  return { kind: 'waiting', quietMs };
+  return { kind: 'starting' };
 }
 
 /** The task the bar above the composer names: the one in progress, else the next, else the last. */

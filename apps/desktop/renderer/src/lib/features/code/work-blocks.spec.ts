@@ -72,7 +72,9 @@ describe('live status', () => {
     expect(liveStatus(run, false, run.lastEventAt!).kind).toBe('thinking');
     applyCodeAgentEvent(run, { type: 'text_delta', chatId: 'c', delta: 'Ok' });
     expect(liveStatus(run, false, run.lastEventAt!).kind).toBe('writing');
-    expect(liveStatus(run, false, run.lastEventAt! + QUIET_MS).kind).toBe('waiting');
+    expect(liveStatus(run, false, run.lastEventAt! + QUIET_MS).kind).toBe('writing');
+    applyCodeAgentEvent(run, { type: 'runtime_event', chatId: 'c', event: { type: 'thinking' } });
+    expect(liveStatus(run, false, run.lastEventAt! + QUIET_MS).kind).toBe('requesting');
     expect(liveStatus(run, true, run.lastEventAt!).kind).toBe('approval');
   });
 });

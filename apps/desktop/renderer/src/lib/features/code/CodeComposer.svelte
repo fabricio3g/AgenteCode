@@ -26,6 +26,8 @@
   import { codeEdits, initProject, projectFiles, setAgenteModel } from './code-ipc';
   import CodeProjectDialog from './CodeProjectDialog.svelte';
   import TodoDock from './TodoDock.svelte';
+  import MediaAttachmentCard from './MediaAttachmentCard.svelte';
+  import PromptQueue from '$lib/features/shared/PromptQueue.svelte';
   import { conversationSpend } from './accounting';
   import { fileMentionAt, insertFile, matchFiles } from './file-mention';
   import { downloadSessionMarkdown } from '$lib/features/shared/export-session';
@@ -41,6 +43,7 @@
   import { approvalsStore } from '$lib/stores/approvals.svelte';
   import { copy } from '$lib/copy';
   import { MAX_COMPOSER_TEXTAREA_PX, autogrowTextarea } from '$lib/features/shared/composer-autogrow';
+  import { mergeDraft } from '$lib/features/canvas/canvas-doc';
 
   let { chat }: { chat: ChatSession } = $props();
 
@@ -120,8 +123,7 @@
   }
 
   function openModelHub() {
-    appStore.modelManagerOpenSection = 'models';
-    appStore.modelManagerOpen = true;
+    appStore.openSettings('models');
   }
 
   const placeholder = $derived(
@@ -385,7 +387,8 @@
 
   async function submit() {
     const value = text.trim() || (attachments.length ? 'Please review the attached media.' : '');
-    if (!value || attaching) return;
+    if (attaching) return;
+    if (!value) { await codeStore.sendQueuedNow(chat.id); return; }
     // "/compact" typed out and sent runs the command, it is not a message.
     const command = exactSlashCommand(commands, value);
     if (command) {
@@ -397,7 +400,7 @@
       attachments = [];
       text = '';
       if (textarea) autoGrow(textarea);
-      await codeStore.steer(chat.id, value, media);
+      codeStore.queue(chat.id, value, media);
       return;
     }
     if (!modelReady) return;
@@ -417,10 +420,21 @@
     const media = attachments;
     attachments = [];
     if (textarea) autoGrow(textarea);
-    await codeStore.followUp(chat.id, value, media);
+    if (running) codeStore.queue(chat.id, value, media);
+    else await codeStore.send(chat.id, value, media);
   }
 
   function onKeydown(event: KeyboardEvent) {
+    if (event.key === 'ArrowUp' && !text && !attachments.length && !event.isComposing) {
+      const item = [...(chat.pendingPrompts ?? [])].reverse().find(item => !item.sending);
+      if (item) {
+        event.preventDefault();
+        appStore.removeQueuedPrompt(chat.id, item.id);
+        text = item.content; attachments = item.codeAttachments ?? [];
+        void Promise.resolve().then(focusComposer);
+        return;
+      }
+    }
     if (event.key === 'Backspace' && !text && attachments.length) { event.preventDefault(); attachments = attachments.slice(0, -1); return; }
     if (onFileKey(event)) return;
     if (onSlashKey(event)) return;
@@ -478,8 +492,9 @@
       chat.id,
       backend === 'local' ? 'local' : provider,
       backend === 'local' ? String(appStore.config.llm?.local?.model || '') : model,
-      thinking
-    ).catch(() => {});
+      thinking,
+      chat.modelSelection ? { modelPath: chat.modelSelection.localModelPath, baseUrl: chat.modelSelection.localBaseUrl } : undefined
+    ).catch((error) => toastStore.error(String(error)));
   });
 
   $effect(() => {
@@ -489,11 +504,23 @@
       text = String((event as CustomEvent<string>).detail ?? '');
       void Promise.resolve().then(focusComposer);
     };
+    // The canvas panel hands over a rendered image plus the instruction that
+    // describes it. Unlike a starter prompt it *appends*: whatever the user has
+    // half-written stays, and both the text and the chips land together.
+    const onAppend = (event: Event) => {
+      const detail = (event as CustomEvent<{ text?: string; media?: Attachment[] }>).detail ?? {};
+      text = mergeDraft(text, String(detail.text ?? ''));
+      const media = detail.media ?? [];
+      if (media.length) attachments = [...attachments, ...media.filter((item) => !attachments.some((existing) => existing.path === item.path))];
+      void Promise.resolve().then(focusComposer);
+    };
     window.addEventListener('focus-composer', onFocusComposer);
     window.addEventListener('code-composer-draft', onDraft);
+    window.addEventListener('code-composer-append', onAppend);
     return () => {
       window.removeEventListener('focus-composer', onFocusComposer);
       window.removeEventListener('code-composer-draft', onDraft);
+      window.removeEventListener('code-composer-append', onAppend);
     };
   });
 
@@ -507,7 +534,7 @@
     const draft = text;
     const media = attachments.map((item) => ({ ...item }));
     untrack(() => appStore.updateChatDraft(id, draft, media));
-    const timer = setTimeout(() => appStore.persist(), 300);
+    const timer = setTimeout(() => appStore.persistDraft(id), 300);
     return () => clearTimeout(timer);
   });
   onDestroy(() => appStore.persist());
@@ -560,12 +587,15 @@
         <p class="slash-foot">{$t('code.slash.keys')}</p>
       </div>
     {/if}
+    {#if chat.pendingPrompts?.length}
+      <PromptQueue items={chat.pendingPrompts} onupdate={(id, content) => appStore.updateQueuedPrompt(chat.id, id, content)} onremove={(id) => { appStore.removeQueuedPrompt(chat.id, id); }} onsend={() => void codeStore.sendQueuedNow(chat.id)} />
+    {/if}
     {#if todos.length}<TodoDock {todos} />{/if}
     <div class="composer-shell ui-composer pointer-events-auto transition">
       <div class="composer-body">
         {#if attachments.length}
           <div class="mb-2 flex flex-wrap gap-1.5">
-            {#each attachments as media, index (index)}<span class="flex max-w-64 items-center gap-1.5 rounded-full bg-muted px-2 py-1 text-xs text-muted-foreground"><Paperclip class="size-3" /><span class="truncate">{media.name}</span><button type="button" aria-label={$t('code.media.remove', { values: { name: media.name } })} onclick={() => (attachments = attachments.filter((_, i) => i !== index))}><X class="size-3" /></button></span>{/each}
+            {#each attachments as media (media.path)}<MediaAttachmentCard attachment={media} onremove={() => attachments = attachments.filter(item => item.path !== media.path)} />{/each}
           </div>
         {/if}
         <textarea

@@ -81,6 +81,12 @@ describe('space isolation helpers', () => {
     expect(chat.codeAgent).toBeNull();
   });
 
+  it('retains the Home runtime session and model history across restart', () => {
+    const homeRuntime = { sessionId: 'runtime-session', revision: 3, provider: 'custom-a', model: 'model-a', contextWindow: 32000, historyIds: ['u', 'a'] };
+    const restored = normalizeChat({ id: 'home', contextMode: 'home', homeRuntime, messages: [] }, 0);
+    expect(restored.homeRuntime).toEqual(homeRuntime);
+  });
+
   it('normalizeChat migrates legacy sessions to code and preserves agent identity', () => {
     // Code space conversations must keep their project link + engine
     // session meta through hydration — resume depends on both surviving.
@@ -114,4 +120,11 @@ describe('space isolation helpers', () => {
     // stored modes ('chat', pre-merge 'ask') migrate to Instant (see above).
     expect(plain.composerMode).toBe('agent');
   });
+});
+
+
+it('restores unsent queued prompts and attachments without retaining an in-flight lock', () => {
+  const restored = normalizeChat({ contextMode: 'code', pendingPrompts: [{ id: 'queue-1', content: 'Continue', sending: true, codeAttachments: [{ path: '/tmp/image.png', name: 'image.png', kind: 'image', mime: 'image/png', bytes: 100 }] }] }, 0);
+  expect(restored.pendingPrompts?.[0]?.sending).toBe(false);
+  expect(restored.pendingPrompts?.[0]?.codeAttachments?.[0]?.path).toBe('/tmp/image.png');
 });

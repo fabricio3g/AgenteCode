@@ -301,12 +301,12 @@
                     <div class="min-w-0 flex-1">
                       <p class="truncate text-sm font-medium text-foreground">{displayChatTitle(hit.chat)}</p>
                       {#if hit.snippet}
-                        <p class="result-snippet mt-0.5 line-clamp-2 text-[11px] leading-snug text-muted-foreground">{hit.snippet}</p>
+                        <p class="result-snippet mt-0.5 line-clamp-2 text-[12px] leading-snug text-muted-foreground">{hit.snippet}</p>
                       {/if}
                     </div>
                   {/if}
                   <div class="result-trailing">
-                    <span class="result-date text-[11px] text-muted-foreground">{relativeDate(hit.chat.updatedAt || hit.chat.createdAt)}</span>
+                    <span class="result-date text-[12px] text-muted-foreground">{relativeDate(hit.chat.updatedAt || hit.chat.createdAt)}</span>
                     <div class="result-actions flex items-center gap-0.5">
                       <button type="button" class="result-action" onclick={(e) => { e.stopPropagation(); selectChat(hit.chat.id, hit.matchMessageId); }} aria-label={`${copy.actions.open}: ${displayChatTitle(hit.chat)}`} title={copy.actions.open}>
                         <ExternalLink class="size-3.5" />

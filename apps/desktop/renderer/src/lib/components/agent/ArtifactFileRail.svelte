@@ -32,7 +32,7 @@
 
 <aside class:collapsed class="file-rail min-h-0 shrink-0 border-r border-[var(--border-subtle)] bg-[var(--muted)]">
   <div class="flex h-10 items-center justify-between border-b border-[var(--border-subtle)] px-2">
-    {#if !collapsed}<span class="px-1 text-[11px] font-semibold text-muted-foreground">{$t('artifacts.studio.files')}</span>{/if}
+    {#if !collapsed}<span class="px-1 text-[12px] font-semibold text-muted-foreground">{$t('artifacts.studio.files')}</span>{/if}
     <Button variant="ghost" size="icon-sm" onclick={ontoggle} aria-label={collapsed ? $t('artifacts.studio.expandFiles') : $t('artifacts.studio.collapseFiles')}>
       {#if collapsed}<ChevronRight />{:else}<ChevronLeft />{/if}
     </Button>

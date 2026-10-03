@@ -67,7 +67,7 @@
       <span class="h-4 w-px bg-[var(--border)]" aria-hidden="true"></span>
       <div class="min-w-0 flex-1 px-1">
         <p class="truncate text-[13px] font-medium text-foreground">{open.artifact.title || $t('artifacts.untitled')}</p>
-        <p class="truncate text-[11px] text-muted-foreground">{$t(`artifacts.group.${open.group}`)} · {open.chatTitle}</p>
+        <p class="truncate text-[12px] text-muted-foreground">{$t(`artifacts.group.${open.group}`)} · {open.chatTitle}</p>
       </div>
       {#if !returnChat}<Button variant="outline" size="sm" onclick={() => goToChat(open)}><MessageSquare /> {$t('artifacts.openChat')}</Button>{/if}
     </header>

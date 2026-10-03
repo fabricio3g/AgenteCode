@@ -218,7 +218,7 @@
               oninput={(event) => updateEntry(selected.id, { keys: parseKeys(event.currentTarget.value) })}
               placeholder="comma, separated, words"
             />
-            <span class="block text-[11px] text-muted-foreground">Injected when any key appears in the last messages.</span>
+            <span class="block text-[12px] text-muted-foreground">Injected when any key appears in the last messages.</span>
           </label>
 
           <label class="block space-y-1.5 text-sm">
@@ -264,7 +264,7 @@
           <div class="flex items-center justify-between gap-3 rounded-[var(--radius-md)] border border-[var(--border-subtle)] px-3 py-2">
             <div class="min-w-0">
               <div class="text-xs font-medium text-foreground">Require a secondary key</div>
-              <div class="text-[11px] text-muted-foreground">Only inject when the filter keys also match.</div>
+              <div class="text-[12px] text-muted-foreground">Only inject when the filter keys also match.</div>
             </div>
             <Switch
               checked={!!selected.selective}

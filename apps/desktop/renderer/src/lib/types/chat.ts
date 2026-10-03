@@ -43,7 +43,7 @@ export interface MessageVersion {
     homeSessionId?: string;
     homeRevision?: number;
     inputTokens?: number;
-    outputTokens?: number;
+    outputTokens?: number; cacheReadTokens?: number; cacheWriteTokens?: number;
     totalTokens?: number;
     promptEvalTimingSeconds?: number;
     executionBackend?: 'local' | 'api';
@@ -70,6 +70,7 @@ export interface MessageVersion {
     codeUsage?: CodeRunSummary['usage'];
     codeDiagnostics?: string[];
     codeConversationIndex?: number;
+    codeCompaction?: { running: boolean; success?: boolean; tokensBefore?: number; tokensAfter?: number; smart?: boolean; requestedSmart?: boolean; modelTokens?: number; inputTokens?: number; outputTokens?: number; cacheReadTokens?: number; cacheWriteTokens?: number; error?: string };
     codeAttachments?: CodeAttachment[];
     /** Sent while a Code run was busy and not yet taken by the model. */
     codeQueued?: boolean;
@@ -781,7 +782,28 @@ export interface CodeProject {
 export type SessionComposerMode = 'chat' | 'instant' | 'agent';
 export type SessionSearchMode = 'chat' | 'search' | 'deep' | 'max';
 
+export interface ChatModelSelection {
+  backendMode: 'local' | 'api';
+  provider: string;
+  model: string;
+  localModel: string;
+  localModelPath: string;
+  localBaseUrl: string;
+}
+
+export interface QueuedPrompt {
+  id: string;
+  content: string;
+  attachments?: Attachment[];
+  codeAttachments?: CodeAttachment[];
+  /** Locked only after an explicit send-now hands this entry to the engine. */
+  sending?: boolean;
+}
+
 export interface ChatSession {
+  pendingPrompts?: QueuedPrompt[];
+  /** Provider and both cloud/local choices are owned by this conversation. */
+  modelSelection?: ChatModelSelection | null;
   homeRuntime?: HomeRuntimeMeta;
   id: string;
   title: string;
@@ -996,6 +1018,12 @@ export interface AppConfig {
     theme?: 'light' | 'dark';
     show_assistant_text?: boolean;
     enable_thinking?: boolean;
+    /**
+     * Command used by "Open in editor", e.g. `code --reuse-window`. Empty
+     * means auto-detect: the app checks $VISUAL/$EDITOR, then the editors it
+     * knows on PATH. `{file}` and `{line}` are filled in when present.
+     */
+    editor?: string;
     agent_debug_logs?: boolean;
     artifact_toggles?: Record<string, boolean>;
     /** Enables the Roleplay space (tab, surface and settings section). */

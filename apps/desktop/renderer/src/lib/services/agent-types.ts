@@ -1,5 +1,5 @@
 import type { HomeRuntimeMeta } from '$shared/home-runtime';
-import type { AgentArtifact, AgentOutcome, AgentStep, AgentStopReason, ArtifactManifest, ReasoningLevel, WorkspaceFile } from '$lib/types/chat';
+import type { AgentArtifact, AppConfig, AgentOutcome, AgentStep, AgentStopReason, ArtifactManifest, ReasoningLevel, WorkspaceFile } from '$lib/types/chat';
 import type { CompletionResult, RequestMessage } from '$lib/services/chat-api';
 import type { SearchResult } from '$lib/types/bridge';
 
@@ -82,6 +82,8 @@ export type AgentTaskResult = {
 };
 
 export type RunAgentTaskArgs = {
+  /** Immutable selection captured from the owning conversation at launch. */
+  config?: AppConfig;
   chatId: string;
   homeRuntime?: HomeRuntimeMeta;
   historyIds?: string[];

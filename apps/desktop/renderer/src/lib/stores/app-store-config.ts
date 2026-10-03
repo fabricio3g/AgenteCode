@@ -134,6 +134,7 @@ export function mergeUiSettingsConfig(
     artifact_toggles?: Record<string, boolean>;
     composer_mode_control?: 'tabs' | 'auto';
     roleplay_enabled?: boolean;
+    editor?: string;
   }
 ): AppConfig {
   return {

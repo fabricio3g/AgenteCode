@@ -37,8 +37,7 @@
   });
 
   function openModelHub(section: string) {
-    appStore.modelManagerOpenSection = section;
-    appStore.modelManagerOpen = true;
+    appStore.openSettings(section);
   }
 </script>
 

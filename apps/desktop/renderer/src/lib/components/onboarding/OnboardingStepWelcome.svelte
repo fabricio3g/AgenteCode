@@ -39,7 +39,7 @@
     />
   </div>
 
-  <div class="flex gap-1.5 text-[11px] text-muted-foreground">
+  <div class="flex gap-1.5 text-[12px] text-muted-foreground">
     <span class="rounded-full bg-muted px-2.5 py-1 font-medium">{$t('onboarding.runtime')}</span>
     <span class="rounded-full bg-muted px-2.5 py-1 font-medium">{$t('onboarding.model')}</span>
     <span class="rounded-full bg-primary px-2.5 py-1 font-semibold text-primary-foreground">{$t('onboarding.startChatting')}</span>

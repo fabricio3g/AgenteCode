@@ -5,7 +5,8 @@
 
 import { conversationScope } from '$shared/workspace-scope';
 import { invoke, listen } from '$lib/services/bridge';
-import type { ChangeList, FileDiff, ProcessEvent, ProcessInfo, TerminalEvent } from '$shared/code-workspace';
+import type { ChangeList, FileDiff, GitBranches, ProcessEvent, ProcessInfo, SwitchBranchResult, TerminalEvent } from '$shared/code-workspace';
+import { gitBranches, projectFiles as listProjectFiles, switchGitBranch } from './code-ipc';
 import type { PresentedPlan } from './plan-review';
 import type { FileEdit } from './work-blocks';
 import { workspaceLayout } from '$lib/stores/workspace-layout.svelte';
@@ -46,6 +47,66 @@ export class CodeWorkspaceStore {
 
   #wired = false;
 
+  // ── Project files (the explorer's tree) ──────────────────────────────
+  /**
+   * The project's file list, one entry per project root. The explorer builds
+   * its tree from it and the composer reads the same IPC for `@` mentions, so
+   * a checkout or a refresh fills both.
+   */
+  projectFiles = $state<Record<string, string[] | null>>({});
+  projectFilesLoading = $state<Record<string, boolean>>({});
+
+  filesFor(projectRoot: string): string[] | null { return this.projectFiles[projectRoot] ?? null; }
+
+  async loadProjectFiles(projectRoot: string, force = false): Promise<string[] | null> {
+    if (!projectRoot) return null;
+    if (!force && this.projectFiles[projectRoot]) return this.projectFiles[projectRoot];
+    if (this.projectFilesLoading[projectRoot]) return this.projectFiles[projectRoot] ?? null;
+    this.projectFilesLoading[projectRoot] = true;
+    try {
+      const files = (await listProjectFiles(projectRoot)) ?? [];
+      this.projectFiles[projectRoot] = files;
+      return files;
+    } catch {
+      this.projectFiles[projectRoot] = [];
+      return [];
+    } finally {
+      this.projectFilesLoading[projectRoot] = false;
+    }
+  }
+
+  // ── Branches ─────────────────────────────────────────────────────────
+  /** Branch state per project root, read by the branch chip in the pane strip. */
+  branchStates = $state<Record<string, GitBranches | null>>({});
+
+  branchFor(projectRoot: string): GitBranches | null { return this.branchStates[projectRoot] ?? null; }
+
+  async loadBranches(projectRoot: string): Promise<GitBranches | null> {
+    if (!projectRoot) return null;
+    try {
+      const state = await gitBranches(projectRoot);
+      this.branchStates[projectRoot] = state ?? null;
+    } catch {
+      // Not a repository, or git is missing: the chip hides itself.
+      this.branchStates[projectRoot] = { source: 'none', current: null, detached: false, dirty: false, branches: [] };
+    }
+    return this.branchStates[projectRoot];
+  }
+
+  /**
+   * Switch (or create) a branch. A checkout rewrites the working tree, so the
+   * branch list, the changed files and the explorer's list are all refreshed.
+   */
+  async switchBranch(projectRoot: string, name: string, create = false): Promise<SwitchBranchResult> {
+    const result = await switchGitBranch(projectRoot, name, create);
+    if (!result.ok) return result;
+    await this.loadBranches(projectRoot);
+    this.projectFiles[projectRoot] = null;
+    const target = this.changesTarget;
+    if (target && target.projectRoot === projectRoot) void this.refreshChanges(target);
+    return result;
+  }
+
   // ── Layout ───────────────────────────────────────────────────────────
   toggleChanges(open = !workspaceLayout.isOpen('changes')): void {
     if (open) workspaceLayout.show('changes'); else workspaceLayout.hide('changes');
@@ -66,6 +127,11 @@ export class CodeWorkspaceStore {
   showFileInChanges(path: string): void {
     this.focusPath = path;
     workspaceLayout.show('changes');
+  }
+
+  /** The explorer, docked beside the Changes pane like every other pane. */
+  toggleFiles(open = !workspaceLayout.isOpen('files')): void {
+    if (open) workspaceLayout.show('files'); else workspaceLayout.hide('files');
   }
 
   // ── Plan ─────────────────────────────────────────────────────────────
@@ -221,13 +287,15 @@ export class CodeWorkspaceStore {
 
   terminalsForScope(scope = workspaceLayout.scope): TerminalTab[] { return this.terminals.filter((term) => term.scope === scope); }
 
-  async newTerminal(cwd: string, size: { cols: number; rows: number } = { cols: 100, rows: 24 }): Promise<void> {
+  async newTerminal(cwd: string, size: { cols: number; rows: number } = { cols: 100, rows: 24 }): Promise<TerminalTab> {
     const scope = workspaceLayout.scope;
     try {
       const { id, shell } = await invoke<{ id: string; shell: string }>('terminal_create', { cwd, ...size });
       const n = this.terminalsForScope(scope).length + 1;
-      this.terminals = [...this.terminals, { id, title: n > 1 ? `${shell} ${n}` : shell, cwd, scope, exited: false }];
+      const tab: TerminalTab = { id, title: n > 1 ? `${shell} ${n}` : shell, cwd, scope, exited: false };
+      this.terminals = [...this.terminals, tab];
       workspaceLayout.forScope(scope, (owner) => owner.show(`terminal:${id}`, 'bottom'));
+      return tab;
     } catch (error) {
       throw new Error(String((error as Error)?.message || error));
     }
