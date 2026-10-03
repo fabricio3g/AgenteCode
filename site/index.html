@@ -3,12 +3,12 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Agente — your models, your workspace</title>
+  <title>Agente — a workbench is more than a chat</title>
   <meta name="description" content="Agente is an open-source Rust agent platform: a calm desktop, a keyboard-first terminal coding agent, persistent bots, and a runtime you can host yourself." />
   <meta name="color-scheme" content="dark light" />
   <meta name="theme-color" content="#161616" />
-  <meta property="og:title" content="Agente — your models, your workspace" />
-  <meta property="og:description" content="One Rust agent core behind a desktop, a terminal, a team of bots, and a server you host." />
+  <meta property="og:title" content="Agente — a workbench is more than a chat" />
+  <meta property="og:description" content="One Rust agent core behind a desktop, a terminal, a team of bots, and a server you host. Not a chat box." />
   <meta property="og:image" content="assets/og.png" />
   <meta name="twitter:card" content="summary_large_image" />
   <link rel="icon" href="assets/favicon.ico" />
@@ -54,10 +54,10 @@
     <!-- 1 · Hero -->
     <section class="hero" id="top">
       <div class="hero-bg" aria-hidden="true">
-        <canvas class="ascii" id="ascii-hero"></canvas>
+        <canvas class="tiles" id="tiles-hero"></canvas>
       </div>
       <div class="wrap hero-inner">
-        <h1 class="enter" style="--d:0ms">Your models.<br />Your <span class="shimmer">workspace.</span></h1>
+        <h1 class="enter" style="--d:0ms">A workbench is<br /><span class="shimmer">more than a chat.</span></h1>
         <p class="lede enter" style="--d:80ms">One Rust agent core behind a desktop, a terminal, a team of bots, and a server you host.</p>
         <div class="actions enter" style="--d:160ms">
           <a class="btn btn-primary" href="#get-started">Get Agente
@@ -286,7 +286,7 @@ docker run -d --name agente \
 
   <!-- 5 · Footer -->
   <footer class="footer">
-    <div class="footer-bg" aria-hidden="true"><canvas class="ascii" id="ascii-foot"></canvas></div>
+    <div class="footer-bg" aria-hidden="true"><canvas class="tiles" id="tiles-foot"></canvas></div>
     <div class="wrap footer-inner">
       <a class="wordmark wordmark-sm" href="#top" aria-label="Agente home"><svg class="wordmark-a" viewBox="22 22 76 76" aria-hidden="true"><path class="wm-a" d="M22 98 50 22h20l28 76H79L60 44 41 98Z"/><path class="wm-tilde" d="M36 77c8-10 16-10 24-4s16 6 24-4"/></svg><span>gente</span></a>
       <nav aria-label="Footer">

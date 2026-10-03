@@ -26,9 +26,13 @@
   --btn-secondary: #262626;
   --btn-secondary-hover: #2f2f2f;
 
-  --ascii-ink: 150 150 150;
-  --ascii-accent: 232 121 58;
-  --ascii-alpha: 0.34;
+  /* Tile field: the mosaic behind the hero, all one orange at shifting intensity. */
+  --tile-accent: 232 121 58;
+  --tile-hi: 255 190 152;
+  --tile-alpha: 0.92;
+  --tile-levels: 6;
+  --tile-radius: 0.2;
+  --tile-inset: 0.8;
   --glow: rgb(232 121 58 / 0.13);
 
   --font-sans: "Inter", "Inter Variable", "SF Pro Text", -apple-system, "Segoe UI", system-ui, sans-serif;
@@ -71,9 +75,14 @@
   --btn-secondary: #f1f1f1;
   --btn-secondary-hover: #e8e8e8;
 
-  --ascii-ink: 70 70 70;
-  --ascii-accent: 231 109 31;
-  --ascii-alpha: 0.26;
+  /* On white the ramp runs the other way: the faint tiles are a pale tint and the
+     brightest ones are the saturated brand orange. */
+  --tile-accent: 248 216 194;
+  --tile-hi: 231 109 31;
+  --tile-alpha: 0.72;
+  --tile-levels: 6;
+  --tile-radius: 0.2;
+  --tile-inset: 0.8;
   --glow: rgb(231 109 31 / 0.1);
   color-scheme: light;
 }
@@ -163,26 +172,26 @@ svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width:
 }
 .hero-bg {
   position: absolute; inset: 0; z-index: -1; pointer-events: none;
-  /* The gradient under the characters; also the no-JS / no-canvas look. */
+  /* The glow under the tiles; also the no-JS / no-canvas look. */
   background:
     radial-gradient(70% 55% at 50% 108%, var(--glow), transparent 70%),
     radial-gradient(40% 40% at 90% -5%, color-mix(in srgb, var(--glow) 55%, transparent), transparent 70%);
   /* Runs on below the hero so the glow rises behind the product frame. */
   bottom: -300px;
-  mask-image: linear-gradient(to bottom, #000 72%, transparent);
-  -webkit-mask-image: linear-gradient(to bottom, #000 72%, transparent);
+  mask-image: linear-gradient(to bottom, #000 58%, transparent 94%);
+  -webkit-mask-image: linear-gradient(to bottom, #000 58%, transparent 94%);
   transform: translateY(calc(var(--hero-p) * 30%));
   opacity: calc(1 - var(--hero-p) * 0.7);
   will-change: transform, opacity;
 }
-.ascii {
+.tiles {
   position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0;
   transition: opacity 1.2s var(--ease-out);
   /* Quiet the field behind the copy so the text always wins. */
-  mask-image: radial-gradient(ellipse 40% 26% at 50% 30%, rgb(0 0 0 / 0.25), #000 100%);
-  -webkit-mask-image: radial-gradient(ellipse 40% 26% at 50% 30%, rgb(0 0 0 / 0.25), #000 100%);
+  mask-image: radial-gradient(ellipse 42% 30% at 50% 28%, rgb(0 0 0 / 0.18), #000 100%);
+  -webkit-mask-image: radial-gradient(ellipse 42% 30% at 50% 28%, rgb(0 0 0 / 0.18), #000 100%);
 }
-.ascii.ready { opacity: 1; }
+.tiles.ready { opacity: 1; }
 
 .hero-inner {
   display: flex; flex-direction: column; align-items: center; text-align: center;
@@ -196,7 +205,9 @@ h1 { font-size: clamp(40px, 6vw, 68px); line-height: 1.02; letter-spacing: -0.03
   -webkit-background-clip: text; background-clip: text; color: transparent;
   animation: text-shimmer 2.4s var(--ease) 0.7s 1 forwards;
 }
-@keyframes text-shimmer { from { background-position: 100% 0; } to { background-position: 0% 0; } }
+/* Sweeps the highlight in from the right and parks it over the word, so the
+   shimmer ends bright instead of settling on the dim end of the gradient. */
+@keyframes text-shimmer { from { background-position: 100% 0; } to { background-position: 50% 0; } }
 .lede { max-width: 520px; margin: 18px 0 0; color: var(--text-tertiary); font-size: clamp(16px, 1.8vw, 18px); line-height: 1.5; }
 .actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin-top: 26px; }
 
@@ -283,7 +294,9 @@ h2 { font-size: clamp(30px, 4vw, 44px); line-height: 1.08; letter-spacing: -0.03
 .seg-wrap { display: flex; justify-content: center; margin-bottom: 28px; }
 .segmented {
   position: relative; display: inline-flex; gap: 2px; padding: 3px; border-radius: 999px;
-  background: var(--muted); box-shadow: inset 0 0 0 1px var(--border-subtle);
+  /* Near opaque: the tile field runs behind this strip, so the labels have to win. */
+  background: color-mix(in srgb, var(--background) 88%, transparent);
+  box-shadow: inset 0 0 0 1px var(--border), 0 6px 20px -12px rgb(0 0 0 / 0.45);
 }
 .segmented button {
   position: relative; z-index: 1; height: 30px; padding: 0 16px; border: 0; border-radius: 999px;
@@ -416,7 +429,7 @@ h2 { font-size: clamp(30px, 4vw, 44px); line-height: 1.08; letter-spacing: -0.03
   background: radial-gradient(70% 90% at 50% 110%, var(--glow), transparent 70%);
 }
 .footer-bg::before { content: ""; position: absolute; inset: 0 0 auto; height: 60%; z-index: 1; background: linear-gradient(var(--background), transparent); }
-.footer .ascii { mask-image: none; -webkit-mask-image: none; }
+.footer .tiles { mask-image: none; -webkit-mask-image: none; }
 .footer-inner { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
 .footer nav { display: flex; flex-wrap: wrap; gap: 2px; }
 

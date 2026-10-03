@@ -1,4 +1,4 @@
-import { mountAscii } from "./js/ascii.js";
+import { mountTiles } from "./js/tiles.js";
 import { initInstall } from "./js/install.js";
 import { initTeam } from "./js/team.js";
 import { initTheme, initSegmented, initCopy, initReveal, initScroll } from "./js/ui.js";
@@ -11,5 +11,7 @@ initReveal();
 initScroll();
 initTeam();
 
-mountAscii(document.getElementById("ascii-hero"), { interactive: true, focus: [0.5, 0.8] });
-mountAscii(document.getElementById("ascii-foot"), { focus: [0.5, 1.15], corner: 0 });
+mountTiles(document.getElementById("tiles-hero"), { focus: [0.5, 0.7] });
+mountTiles(document.getElementById("tiles-foot"), {
+  cell: [11, 11], focus: [0.5, 1.24], corner: 0, ember: 0.7, dim: 0.6,
+});
