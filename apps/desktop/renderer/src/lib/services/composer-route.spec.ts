@@ -132,3 +132,9 @@ describe('shouldUseToolLoop', () => {
     })).toBe(false);
   });
 });
+
+it('Instant voice calls remain reply-only even when a prompt would route to tools', () => {
+  expect(shouldUseToolLoop({ control: 'tabs', composerMode: 'instant', route: 'tools', contextMode: 'home', voiceCall: true })).toBe(false);
+  expect(shouldUseToolLoop({ control: 'tabs', composerMode: 'agent', route: 'tools', contextMode: 'home', voiceCall: true })).toBe(true);
+  expect(shouldUseToolLoop({ control: 'tabs', composerMode: 'instant', route: 'tools', contextMode: 'home' })).toBe(true);
+});

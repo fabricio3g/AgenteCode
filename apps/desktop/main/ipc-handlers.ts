@@ -17,7 +17,7 @@ import {
 import { getEmbeddingStatus } from './embedding-state.ts';
 import { initTts, generateTtsStream, cancelTtsStream, unloadTts, checkEspeakData, listVoices, onWorkerMessage } from './voice/audiocpp-tts.ts';
 import { registerVoiceModelHandlers } from './voice/voice-model-handlers.ts';
-import { transcribeAudio, getSttStatus, unloadWhisper } from './stt-engine.ts';
+import { transcribeAudio, getSttStatus, preloadWhisper, unloadWhisper } from './stt-engine.ts';
 import {
   startDownloadHf, getDownloadJobs, cancelDownloadJob,
   pauseDownloadJob, clearFinishedDownloads, removeDownloadJob,
@@ -185,6 +185,7 @@ export function registerIpcHandlers() {
   registerSttHandlers({
     ipcMain,
     transcribeAudio,
+    preloadWhisper,
     getSttStatus,
     unloadWhisper,
   });

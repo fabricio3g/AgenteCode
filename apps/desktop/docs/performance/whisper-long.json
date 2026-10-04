@@ -1,0 +1,25 @@
+{
+  "model": "ggml-base-q5_1.bin",
+  "threads": 4,
+  "audioSeconds": 13.05,
+  "results": [
+    {
+      "mode": "warm-server",
+      "audioContext": 0,
+      "ms": 1073,
+      "transcript": " Hello, I want to talk about this project, and I have another question.\n Please listen while I explain the problem.\n The browser is overlapping the settings window, and I want to fix it without losing any functionality.\n"
+    },
+    {
+      "mode": "warm-server",
+      "audioContext": 1024,
+      "ms": 738,
+      "transcript": " Hello, I want to talk about this project, and I have another question.\n Please listen while I explain the problem.\n The browser is overlapping the settings window,\n and I want to fix it without losing any functionality.\n"
+    },
+    {
+      "mode": "warm-server",
+      "audioContext": 1024,
+      "ms": 768,
+      "transcript": " Hello, I want to talk about this project, and I have another question.\n Please listen while I explain the problem.\n The browser is overlapping the settings window,\n and I want to fix it without losing any functionality.\n"
+    }
+  ]
+}

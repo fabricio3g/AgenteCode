@@ -161,11 +161,13 @@ async function ensureServer(serverPath: string, modelPath: string): Promise<Serv
   }
 }
 
-async function request(current: Server, wav: Buffer, language: string): Promise<string> {
+async function request(current: Server, wav: Buffer, language: string, audioContext = 0): Promise<string> {
   const form = new FormData();
   form.append('file', new Blob([new Uint8Array(wav)], { type: 'audio/wav' }), 'audio.wav');
   form.append('response_format', 'json');
   form.append('temperature', '0');
+  form.append('translate', 'false');
+  if (audioContext > 0) form.append('audio_ctx', String(audioContext));
   form.append('language', language || 'auto');
   const res = await fetch(`http://127.0.0.1:${current.port}/inference`, {
     method: 'POST',
@@ -178,11 +180,17 @@ async function request(current: Server, wav: Buffer, language: string): Promise<
   return String(data.text || '').replace(/\s+/g, ' ').trim();
 }
 
+/** Load the selected local model ahead of capture; no audio or inference request. */
+export async function warmWhisperServer(serverPath: string, modelPath: string): Promise<void> {
+  await ensureServer(serverPath, modelPath);
+  touch();
+}
+
 /** Transcribe 16 kHz mono WAV with a warm server. */
-export async function transcribeWithServer(serverPath: string, modelPath: string, wav: Buffer, language: string): Promise<{ text: string; gpu: string | null }> {
+export async function transcribeWithServer(serverPath: string, modelPath: string, wav: Buffer, language: string, audioContext = 0): Promise<{ text: string; gpu: string | null }> {
   let current = await ensureServer(serverPath, modelPath);
   try {
-    const text = await request(current, wav, language);
+    const text = await request(current, wav, language, audioContext);
     touch();
     return { text, gpu: current.gpu };
   } catch (err) {
@@ -192,7 +200,7 @@ export async function transcribeWithServer(serverPath: string, modelPath: string
       gpuDisabled = true;
       stopServer();
       current = await ensureServer(serverPath, modelPath);
-      const text = await request(current, wav, language);
+      const text = await request(current, wav, language, audioContext);
       touch();
       return { text, gpu: current.gpu };
     }

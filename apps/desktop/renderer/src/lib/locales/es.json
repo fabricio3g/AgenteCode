@@ -1104,7 +1104,9 @@
       "preview": "Habla con el modelo de este chat. La entrada y las respuestas usan tus ajustes de voz.",
       "start": "Iniciar llamada",
       "automatic": "Automático",
-      "preparingAudio": "Preparando audio"
+      "preparingAudio": "Preparando audio",
+      "noise": "Ruido de fondo",
+      "finishing": "Esperando a que termines"
     }
   },
   "searchSettings": {

@@ -88,7 +88,7 @@ const ENGINES = [
     engine: 'whisper',
     repo: 'ggml-org/whisper.cpp',
     tag: process.env.WHISPER_CPP_TAG || 'b5130',
-    executables: ['whisper-cli', 'main'],
+    executables: ['whisper-cli', 'whisper-server', 'main'],
     // whisper.cpp publishes CPU builds for every OS; its only GPU build
     // (Windows CUDA) is 674 MB, and speech-to-text is quick on the CPU.
     assets: {
@@ -205,8 +205,8 @@ function writeBuildInfo(outDir, spec, backend, sources) {
 
 /** Download and unpack one backend's archives into resources/bin/<engine>/<backend>. */
 async function fetchBackend(spec, backend, names, assets, work) {
-  const outDir = path.join(OUT_ROOT, spec.engine, backend);
-  fs.rmSync(outDir, { recursive: true, force: true });
+  const targetDir = path.join(OUT_ROOT, spec.engine, backend);
+  const outDir = path.join(work, `${spec.engine}-${backend}-install`);
   fs.mkdirSync(outDir, { recursive: true });
   const executables = new Set(spec.executables.flatMap((name) => [name, `${name}.exe`]));
   let found = 0;
@@ -223,6 +223,11 @@ async function fetchBackend(spec, backend, names, assets, work) {
   }
   if (!found) throw new Error(`${spec.engine}/${backend}: no ${spec.executables.join(' or ')} in the archives`);
   writeBuildInfo(outDir, spec, backend, sources);
+  // Keep the installed runtime usable throughout downloads and verification.
+  const staged = `${targetDir}.install-${process.pid}`;
+  fs.cpSync(outDir, staged, { recursive: true });
+  fs.rmSync(targetDir, { recursive: true, force: true });
+  fs.renameSync(staged, targetDir);
   console.log(`[native] ${spec.engine}/${backend} ready`);
 }
 

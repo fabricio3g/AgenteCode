@@ -179,3 +179,35 @@ it('queues streamed call sentences without interrupting the first, then cancels 
   ttsStore.forgetAudio(['call-first', 'call-second']);
   expect(ttsStore.hasStoredAudio('call-first')).toBe(false);
 });
+
+it('synthesizes the next clip during playback and reuses it without another request', async () => {
+  ttsStore.enqueueSpeech([{id:'lookahead-1',text:'First.',config},{id:'lookahead-2',text:'Second.',config}]);
+  await vi.advanceTimersByTimeAsync(0);
+  emit('tts-chunk', requests[0].requestId, {index:0,total:1,base64:pcm});
+  emit('tts-done', requests[0].requestId, {total:1});
+  await vi.advanceTimersByTimeAsync(0);
+  expect(requests).toHaveLength(2);
+  expect(ttsStore.currentMessageId).toBe('lookahead-1');
+  expect(ttsStore.audioStarted).toBe(true);
+  emit('tts-chunk', requests[1].requestId, {index:0,total:1,base64:pcm});
+  emit('tts-done', requests[1].requestId, {total:1});
+  sources[0].onended?.();
+  await vi.advanceTimersByTimeAsync(0);
+  expect(ttsStore.currentMessageId).toBe('lookahead-2');
+  expect(requests).toHaveLength(2);
+  expect(ttsStore.audioStarted).toBe(true);
+});
+it('cancels lookahead synthesis and ignores its late chunks when speech is interrupted', async () => {
+  ttsStore.enqueueSpeech([{id:'cancel-a',text:'First.',config},{id:'cancel-b',text:'Second.',config}]);
+  await vi.advanceTimersByTimeAsync(0);
+  emit('tts-chunk', requests[0].requestId, {index:0,total:1,base64:pcm});
+  emit('tts-done', requests[0].requestId, {total:1});
+  await vi.advanceTimersByTimeAsync(0);
+  expect(requests).toHaveLength(2);
+  ttsStore.stop();
+  emit('tts-chunk', requests[1].requestId, {index:0,total:1,base64:pcm});
+  emit('tts-done', requests[1].requestId, {total:1});
+  sources[0].onended?.(); await vi.advanceTimersByTimeAsync(0);
+  expect(ttsStore.currentMessageId).toBeNull();
+  expect(ttsStore.hasStoredAudio('cancel-b')).toBe(false);
+});

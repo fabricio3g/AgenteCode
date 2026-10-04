@@ -6,7 +6,8 @@ import { loadConfig, WHISPER_QUALITY_CATALOG } from './config.ts';
 import { getAppPaths } from './paths.ts';
 import { resolveWhisperBinary, detectBestBackend, pickBestRuntime, listWhisperBinaries } from './whisper-resolver.ts';
 import { DEFAULT_PROVIDER_BASE_URL, DEFAULT_PROVIDER_ID } from '../shared/providers.ts';
-import { findWhisperServer, stopWhisperServer, transcribeWithServer, whisperServerStatus } from './whisper-server.ts';
+import { warmWhisperServer, findWhisperServer, stopWhisperServer, transcribeWithServer, whisperServerStatus } from './whisper-server.ts';
+import { liveWhisperContext } from './voice/whisper-window.ts';
 import { transcribeApiAudio } from './voice/speech-api.ts';
 
 const MAX_STT_AUDIO_BYTES = 16 * 1024 * 1024;
@@ -165,7 +166,7 @@ async function runWhisperCli(
   binaryPath: string,
   modelPath: string,
   wavPath: string,
-  options: { language: string; threads: number }
+  options: { language: string; threads: number; audioContext?: number }
 ): Promise<WhisperCliResult> {
   return new Promise((resolve, reject) => {
     const args = [
@@ -175,6 +176,7 @@ async function runWhisperCli(
       '-l', options.language || 'auto',
       '-t', String(options.threads),
       '-np',
+      ...(options.audioContext ? ['-ac', String(options.audioContext)] : []),
     ];
 
     const child = spawn(binaryPath, args, {
@@ -248,7 +250,7 @@ function parseWhisperOutput(output: string): string {
 
 // ── Transcription ────────────────────────────────────────────────────────────
 
-async function transcribeLocal(audioBytes, mimeType, quality): Promise<{ text: string; language?: string }> {
+async function transcribeLocal(audioBytes, mimeType, quality, live = false): Promise<{ text: string; language?: string }> {
   const { available, modelPath, catalog, searchedDirs } = checkLocalWhisperModel(quality);
   if (!available) {
     const lookedIn = (searchedDirs || []).slice(0, 3).join(', ');
@@ -273,12 +275,13 @@ async function transcribeLocal(audioBytes, mimeType, quality): Promise<{ text: s
   // The app records 16 kHz mono WAV itself, so ffmpeg is only needed for
   // other formats (older builds, pasted files).
   const isWav = /wav/i.test(String(mimeType));
+  const audioContext = live && isWav ? liveWhisperContext(Buffer.from(audioBytes)) : 0;
 
   // Fast path: a warm whisper-server (GPU when available).
   const serverPath = isWav ? findWhisperServer(binary.path) : null;
   if (serverPath) {
     try {
-      const result = await transcribeWithServer(serverPath, modelPath, Buffer.from(audioBytes), language);
+      const result = await transcribeWithServer(serverPath, modelPath, Buffer.from(audioBytes), language, audioContext);
       return { text: result.text, language };
     } catch (err) {
       console.warn('[stt-engine] whisper-server failed, falling back to the CLI:', errorMessage(err));
@@ -291,7 +294,7 @@ async function transcribeLocal(audioBytes, mimeType, quality): Promise<{ text: s
     const decoded = isWav ? writeTempWav(audioBytes) : await decodeAudioToWav(audioBytes, mimeType);
     wavPath = decoded.wavPath;
     inputPath = decoded.inputPath;
-    const result = await runWhisperCli(binary.path, modelPath, wavPath, { language, threads });
+    const result = await runWhisperCli(binary.path, modelPath, wavPath, { language, threads, audioContext });
     return { text: result.text, language: result.language };
   } finally {
     if (wavPath) {
@@ -350,6 +353,16 @@ async function transcribeApi(audioBytes, mimeType) {
 
 // ── Public API ───────────────────────────────────────────────────────────────
 
+/** Warm only an installed local model; cloud services are never called here. */
+export async function preloadWhisper(): Promise<void> {
+  const cfg = loadConfig();
+  const model = checkLocalWhisperModel(cfg.stt?.whisper_quality || 'medium_q5');
+  const binary = getWhisperBinary();
+  if (resolveSttProviderMode(cfg, model.available && !!binary) === 'api' || !model.available || !binary) return;
+  const serverPath = findWhisperServer(binary.path);
+  if (serverPath) await warmWhisperServer(serverPath, model.modelPath);
+}
+
 export async function transcribeAudio(args = {}) {
   const mime_type = args?.mime_type || 'audio/webm';
   const audioBytes = normalizeAudioBytes(args);
@@ -383,7 +396,7 @@ export async function transcribeAudio(args = {}) {
       );
     }
     try {
-      return await transcribeLocal(audioBytes, mime_type, quality);
+      return await transcribeLocal(audioBytes, mime_type, quality, args.live === true);
     } catch (err: unknown) {
       throw new Error(`Local transcription failed: ${errorMessage(err)}`);
     }
@@ -396,7 +409,7 @@ export async function transcribeAudio(args = {}) {
   // auto mode: prefer local, fall back to API
   if (available) {
     try {
-      return await transcribeLocal(audioBytes, mime_type, quality);
+      return await transcribeLocal(audioBytes, mime_type, quality, args.live === true);
     } catch (err: unknown) {
       console.error('[stt-engine] Local transcription failed, falling back to API:', errorMessage(err));
     }

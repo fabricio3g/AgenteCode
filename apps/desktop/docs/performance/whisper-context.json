@@ -1,0 +1,31 @@
+{
+  "model": "ggml-base-q5_1.bin",
+  "threads": 4,
+  "audioSeconds": 4.125,
+  "results": [
+    {
+      "mode": "warm-server",
+      "audioContext": 0,
+      "ms": 927,
+      "transcript": " Hello, I want to talk about this project and I have another question.\n"
+    },
+    {
+      "mode": "warm-server",
+      "audioContext": 512,
+      "ms": 304,
+      "transcript": " Hello, I want to talk about this project and I have another question.\n"
+    },
+    {
+      "mode": "warm-server",
+      "audioContext": 256,
+      "ms": 171,
+      "transcript": " Hello, I want to talk about this project and I have another question.\n"
+    },
+    {
+      "mode": "warm-server",
+      "audioContext": 256,
+      "ms": 198,
+      "transcript": " Hello, I want to talk about this project and I have another question.\n"
+    }
+  ]
+}

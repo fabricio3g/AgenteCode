@@ -646,7 +646,9 @@ class AppStore {
       globalPrompt: this.config.llm?.system_prompt
     });
     const voicePrompt = this.voiceModeActive && chat?.id === this.currentChatId
-      ? '\n\nThis is a live voice conversation. Reply in short, natural spoken sentences. Give a brief useful update before background searches and return findings as they arrive. Keep tool calls out of spoken text. Use the available tools when the question needs verification; never invent progress or results.' : '';
+      ? (chat?.composerMode === 'instant'
+        ? '\n\nThis is a live voice conversation in Instant mode. Talk naturally in short sentences. Answer directly without tools or background work. Be honest when current information cannot be verified.'
+        : '\n\nThis is a live voice conversation. Reply in short, natural spoken sentences. Give a brief useful update before background searches and return findings as they arrive. Keep tool calls out of spoken text. Use the available tools when the question needs verification; never invent progress or results.') : '';
     return buildSystemPrompt({
       basePrompt: basePrompt + voicePrompt,
       userName: this.userName,
@@ -2393,6 +2395,7 @@ class AppStore {
       contextMode: activeContextMode
     });
     const useToolLoop = shouldUseToolLoop({
+      voiceCall: this.voiceModeActive && targetChatId === this.currentChatId,
       control: this.composerModeControl,
       composerMode: activeComposerMode,
       route: composerRoute,

@@ -39,7 +39,8 @@ export interface WhisperRuntime {
  */
 export async function sttTranscribe(
   audioData: string | Uint8Array | ArrayBuffer,
-  mimeType = 'audio/webm'
+  mimeType = 'audio/webm',
+  options?: { live?: boolean }
 ): Promise<SttTranscribeResult> {
   // Normalize to Uint8Array if ArrayBuffer
   const bytes = audioData instanceof ArrayBuffer && !(audioData instanceof Uint8Array)
@@ -49,13 +50,15 @@ export async function sttTranscribe(
   if (bytes instanceof Uint8Array) {
     return invoke<SttTranscribeResult>('stt_transcribe', {
       audio_bytes: bytes,
-      mime_type: mimeType
+      mime_type: mimeType,
+      live: options?.live === true
     });
   }
 
   return invoke<SttTranscribeResult>('stt_transcribe', {
     audio_base64: bytes,
-    mime_type: mimeType
+    mime_type: mimeType,
+      live: options?.live === true
   });
 }
 

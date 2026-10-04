@@ -1,0 +1,32 @@
+{
+  "model": "ggml-base-q5_1.bin",
+  "threads": 4,
+  "audioSeconds": 4.125,
+  "results": [
+    {
+      "mode": "cold-cli",
+      "ms": 1699,
+      "transcript": "Hello, I want to talk about this project and I have another question."
+    },
+    {
+      "mode": "cold-cli",
+      "ms": 1266,
+      "transcript": "Hello, I want to talk about this project and I have another question."
+    },
+    {
+      "mode": "warm-server",
+      "ms": 938,
+      "transcript": " Hello, I want to talk about this project and I have another question.\n"
+    },
+    {
+      "mode": "warm-server",
+      "ms": 938,
+      "transcript": " Hello, I want to talk about this project and I have another question.\n"
+    },
+    {
+      "mode": "warm-server",
+      "ms": 1067,
+      "transcript": " Hello, I want to talk about this project and I have another question.\n"
+    }
+  ]
+}

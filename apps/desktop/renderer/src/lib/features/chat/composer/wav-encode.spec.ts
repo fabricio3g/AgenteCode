@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { encodeWav, WHISPER_SAMPLE_RATE } from './wav-encode';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { encodeWav, recordingToWav, WHISPER_SAMPLE_RATE } from './wav-encode';
 
 describe('encodeWav', () => {
   it('writes a 16 kHz mono PCM16 header whisper.cpp accepts', () => {
@@ -24,4 +24,26 @@ describe('encodeWav', () => {
     expect(view.getInt16(50, true)).toBe(-32768);
     expect(view.getInt16(52, true)).toBe(0);
   });
+});
+
+afterEach(() => vi.unstubAllGlobals());
+it('sends only the utterance range to transcription, not the preceding idle recording', async () => {
+  const start = vi.fn();
+  const close = vi.fn(async () => {});
+  const render = vi.fn(async () => ({ getChannelData: () => new Float32Array(6400) }));
+  const constructor = vi.fn();
+  vi.stubGlobal('AudioContext', class { close = close; decodeAudioData = async () => ({ duration: 8 }); });
+  vi.stubGlobal('OfflineAudioContext', class {
+    destination = {};
+    constructor(...args: unknown[]) { constructor(...args); }
+    createBufferSource() { return { buffer: null, connect: vi.fn(), start }; }
+    startRendering = render;
+  });
+  const wav = await recordingToWav({ arrayBuffer: async () => new ArrayBuffer(0) } as Blob, { start: 2.8, end: 3.2 });
+  expect(start.mock.calls[0]?.[0]).toBe(0);
+  expect(start.mock.calls[0]?.[1]).toBe(2.8);
+  expect(start.mock.calls[0]?.[2]).toBeCloseTo(.4);
+  expect(constructor.mock.calls[0]?.[1]).toBeLessThanOrEqual(6401);
+  expect(wav.length).toBe(44 + 6400 * 2);
+  expect(close).toHaveBeenCalledOnce();
 });

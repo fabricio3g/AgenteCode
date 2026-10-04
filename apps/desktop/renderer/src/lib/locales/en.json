@@ -1104,7 +1104,9 @@
       "preview": "Talk hands-free with this chat’s model. Listening and spoken replies use your Voice settings.",
       "start": "Start call",
       "automatic": "Automatic",
-      "preparingAudio": "Preparing audio"
+      "preparingAudio": "Preparing audio",
+      "noise": "Background noise",
+      "finishing": "Waiting for you to finish"
     }
   },
   "searchSettings": {

@@ -11,6 +11,22 @@ type TtsChunkEvent = { requestId?: string; index?: number; total?: number; base6
 type TtsStartEvent = { requestId?: string; total?: number };
 type TtsDoneEvent = { requestId?: string };
 
+type SpeechPart = { id: string; text: string; config: AppConfig };
+function speechSignature(text: string, config: AppConfig): string {
+  return JSON.stringify([speechRequest(text, config, ''), config.tts?.providers?.[config.tts.api_provider ?? '']?.base_url]);
+}
+function engineSpeech(config: AppConfig): boolean {
+  const tts = config.tts;
+  return tts?.backend_mode === 'api' || (tts?.backend_mode !== 'browser' &&
+    (tts?.backend_mode === 'local' || VOICE_MODELS.some(model => model.voices.some(voice => voice.id === (tts?.voice || 'af_heart')))));
+}
+function speechRequest(text: string, config: AppConfig, requestId: string) {
+  const tts = config.tts;
+  return { text: cleanTextForTTS(text), requestId, voice: tts?.backend_mode === 'api' ? tts.voice || tts.providers?.[tts.api_provider ?? '']?.voice || '' : tts?.voice || 'af_heart',
+    speed: tts?.speed ?? 1, volume: tts?.volume ?? 1, backend: tts?.backend_mode, provider: tts?.api_provider,
+    model: tts?.backend_mode === 'api' ? tts.providers?.[tts.api_provider ?? '']?.model : tts?.voice_model, language: tts?.language };
+}
+
 class TtsStore {
   playing = $state(false);
   /** Audio was scheduled or the browser reported playback, not just synthesis requested. */
@@ -30,6 +46,8 @@ class TtsStore {
   private audioSignatures = new Map<string, string>();
   private queue: Array<{ id: string; text: string; config: AppConfig }> = [];
   private queueing = false;
+  private queueEpoch = 0;
+  private prefetch: { id: string; promise: Promise<void>; cancel: () => void } | null = null;
 
   speakSequence(parts: Array<{ id: string; text: string; config: AppConfig }>) {
     this.stop();
@@ -41,6 +59,7 @@ class TtsStore {
   enqueueSpeech(parts: Array<{ id: string; text: string; config: AppConfig }>) {
     this.queue.push(...parts.filter(part => part.text.trim()));
     if (!this.playing && !this.isGenerating && !this.paused) this.nextInSequence();
+    else if (this.playing && !this.isGenerating) this.prefetchNext();
   }
 
   forgetAudio(ids: string[]) {
@@ -51,9 +70,54 @@ class TtsStore {
   private nextInSequence() {
     const next = this.queue.shift();
     if (!next) return;
-    this.queueing = true;
-    void this.speak(next.id, next.text, next.config);
-    this.queueing = false;
+    const epoch = this.queueEpoch;
+    const warm = this.prefetch?.id === next.id ? this.prefetch : null;
+    const play = () => {
+      if (epoch !== this.queueEpoch) return;
+      if (warm && this.prefetch === warm) this.prefetch = null;
+      this.queueing = true;
+      void this.speak(next.id, next.text, next.config);
+      this.queueing = false;
+    };
+    if (warm) { this.isGenerating = true; void warm.promise.then(play); } else play();
+  }
+
+  /** Prepare one following clip while the audio clock plays the current one. */
+  private prefetchNext() {
+    const next = this.queue[0];
+    if (!next || next.id === this.currentMessageId || this.prefetch || !engineSpeech(next.config)) return;
+    const epoch = this.queueEpoch;
+    const requestId = crypto.randomUUID();
+    const chunks = new Map<number, Float32Array>();
+    let expected = 0;
+    const unsubs: Array<() => void> = [];
+    let finish!: () => void;
+    let settled = false;
+    const promise = new Promise<void>(resolve => { finish = resolve; });
+    const cleanup = () => { if (settled) return; settled = true; unsubs.forEach(unsub => unsub()); finish(); };
+    this.prefetch = { id: next.id, promise, cancel: cleanup };
+    unsubs.push(onTtsChunk(event => {
+      const chunk = event as TtsChunkEvent;
+      if (epoch !== this.queueEpoch || chunk.requestId !== requestId) return;
+      expected = Number(chunk.total ?? expected);
+      chunks.set(Number(chunk.index ?? 0), base64ToFloat32Pcm(String(chunk.base64 ?? '')));
+    }));
+    unsubs.push(onTtsDone(event => {
+      if ((event as TtsDoneEvent).requestId !== requestId) return;
+      expected = Number(event.total ?? expected);
+      if (epoch === this.queueEpoch && chunks.size) {
+        const ordered = [...chunks.entries()].sort((a,b) => a[0]-b[0]);
+        if ((!expected || ordered.length === expected) && ordered.every(([index], position) => index === position)) {
+          const samples = new Float32Array(ordered.reduce((length, [,chunk]) => length + chunk.length, 0));
+          let offset = 0; for (const [,chunk] of ordered) { samples.set(chunk, offset); offset += chunk.length; }
+          this.audioBuffers.set(next.id, samples); this.audioSignatures.set(next.id, speechSignature(next.text, next.config));
+          this.storedAudioIds = new Set(this.storedAudioIds).add(next.id);
+        }
+      }
+      cleanup();
+    }));
+    unsubs.push(onTtsError(event => { if (event.requestId === requestId) cleanup(); }));
+    void generateTtsStream(speechRequest(next.text, next.config, requestId)).catch(cleanup);
   }
   // Reactive set of message IDs that have stored audio (for Svelte reactivity)
   storedAudioIds = $state<Set<string>>(new Set());
@@ -117,7 +181,7 @@ class TtsStore {
   }
 
   stop() {
-    if (!this.queueing) this.queue = [];
+    if (!this.queueing) { this.queue = []; this.queueEpoch++; this.prefetch?.cancel(); this.prefetch = null; }
     this.genId++;
     cancelTtsStream();
     this.stopProgressTracking();
@@ -166,8 +230,7 @@ class TtsStore {
   }
 
   async speak(messageId: string, text: string, config: AppConfig): Promise<void> {
-    const signature = JSON.stringify([cleanTextForTTS(text), config.tts?.backend_mode, config.tts?.api_provider, config.tts?.voice, config.tts?.voice_model, config.tts?.speed, config.tts?.volume, config.tts?.language,
-      config.tts?.providers?.[config.tts.api_provider ?? '']?.model, config.tts?.providers?.[config.tts.api_provider ?? '']?.base_url, config.tts?.providers?.[config.tts.api_provider ?? '']?.voice]);
+    const signature = speechSignature(text, config);
     if (this.audioSignatures.get(messageId) !== signature) {
       this.audioBuffers.delete(messageId);
       this.storedAudioIds = new Set([...this.storedAudioIds].filter((id) => id !== messageId));
@@ -191,12 +254,9 @@ class TtsStore {
     this.totalDuration = 0;
     this.collectedChunks = [];
 
-    const voice = config.tts?.backend_mode === 'api' ? config.tts?.voice || config.tts?.providers?.[config.tts.api_provider ?? '']?.voice || '' : config.tts?.voice || 'af_heart';
-    const speed = config.tts?.speed ?? 1;
-    const volume = config.tts?.volume ?? 1;
 
     // A voice of the local engines (Settings → Voice); anything else is the browser's.
-    if (config.tts?.backend_mode === 'api' || (config.tts?.backend_mode !== 'browser' && (config.tts?.backend_mode === 'local' || VOICE_MODELS.some((model) => model.voices.some((option) => option.id === voice))))) {
+    if (engineSpeech(config)) {
       const session = this.genId;
       const requestId = crypto.randomUUID();
       this.currentRequestId = requestId;
@@ -238,6 +298,7 @@ class TtsStore {
         this.isGenerating = false;
         this.scheduleAhead();
         if (!this.pendingEndSource) this.onPlaybackEnded();
+        else this.prefetchNext();
       });
 
       this.unsubError = onTtsError((event) => {
@@ -251,10 +312,7 @@ class TtsStore {
         await this.ensureAudioContext();
         if (session !== this.genId) return;
         this.startProgressTracking();
-        await generateTtsStream({ text: cleaned, voice, speed, volume, requestId,
-          backend: config.tts?.backend_mode, provider: config.tts?.api_provider,
-          model: config.tts?.backend_mode === 'api' ? config.tts?.providers?.[config.tts.api_provider ?? '']?.model : config.tts?.voice_model,
-          language: config.tts?.language });
+        await generateTtsStream(speechRequest(cleaned, config, requestId));
       } catch (error) {
         if (session === this.genId) this.failPlayback(error instanceof Error ? error.message : String(error));
       }
@@ -415,6 +473,7 @@ class TtsStore {
       this.startProgressTracking();
       source.start();
       this.audioStarted = true;
+      this.prefetchNext();
     } catch (error) {
       if (session === this.genId) this.failPlayback(error instanceof Error ? error.message : String(error));
     }

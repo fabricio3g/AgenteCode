@@ -33,7 +33,7 @@ export function encodeWav(samples: Float32Array, sampleRate = WHISPER_SAMPLE_RAT
 }
 
 /** Decode any recording the browser can play, downmix and resample to 16 kHz. */
-export async function recordingToWav(blob: Blob): Promise<Uint8Array> {
+export async function recordingToWav(blob: Blob, range?: { start: number; end: number }): Promise<Uint8Array> {
   const decodeContext = new AudioContext();
   let decoded: AudioBuffer;
   try {
@@ -41,12 +41,15 @@ export async function recordingToWav(blob: Blob): Promise<Uint8Array> {
   } finally {
     void decodeContext.close();
   }
-  const frames = Math.max(1, Math.ceil(decoded.duration * WHISPER_SAMPLE_RATE));
+  const start = Math.max(0, Math.min(decoded.duration, range?.start ?? 0));
+  const end = Math.max(start, Math.min(decoded.duration, range?.end ?? decoded.duration));
+  const duration = end - start;
+  const frames = Math.max(1, Math.ceil(duration * WHISPER_SAMPLE_RATE));
   const offline = new OfflineAudioContext(1, frames, WHISPER_SAMPLE_RATE);
   const source = offline.createBufferSource();
   source.buffer = decoded;
   source.connect(offline.destination); // a mono destination downmixes the channels
-  source.start();
+  source.start(0, start, duration);
   const rendered = await offline.startRendering();
   return encodeWav(rendered.getChannelData(0));
 }
