@@ -1,31 +1,54 @@
 <svelte:options runes={true} />
 
+<!--
+  The spawns no step points at: background children, and any the transcript
+  lost track of. A child whose `task` step is in this message already draws on
+  that step's row, so it is not repeated here.
+-->
+
 <script lang="ts">
-  import { ChevronRight } from 'lucide-svelte';
   import { t } from 'svelte-i18n';
   import type { CodeChild } from '$shared/agente-protocol';
+  import { disclosureKey } from './disclosure.svelte';
+  import Disclosure from './Disclosure.svelte';
   import SubagentCard from './SubagentCard.svelte';
 
-  let { children }: { children: CodeChild[] } = $props();
+  let {
+    children,
+    chatId,
+    messageId
+  }: { children: CodeChild[]; chatId: string; messageId: string } = $props();
+
   const running = $derived(children.filter((child) => child.status === 'running').length);
+  /** A failure is never folded away: it is the one thing worth reading. */
   const failed = $derived(children.filter((child) => child.status === 'error'));
   const quiet = $derived(children.filter((child) => child.status !== 'error'));
 </script>
 
 {#if quiet.length}
-  <details class="subagents min-w-0">
-    <summary class="flex w-fit max-w-full cursor-pointer items-center gap-1.5 rounded-md px-2 py-1.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground">
-      <ChevronRight class="chevron size-3 shrink-0 transition-transform" />
-      <span>{$t(`code.activity.subagents.${running ? 'running' : 'done'}`)}</span>
-      <span class="tabular-nums">{running || quiet.length}</span>
-    </summary>
-    <div class="ml-3 space-y-1 py-1">{#each quiet as child (child.id)}<SubagentCard {child} />{/each}</div>
-  </details>
+  <Disclosure id={disclosureKey(chatId, messageId, 'subagents')} level="block" chevron="leading" defaultOpen={running > 0}>
+    {#snippet header()}
+      <span class="line">{$t(`code.activity.subagents.${running ? 'running' : 'done'}`)}</span>
+      <span class="count tabular-nums">{running || quiet.length}</span>
+    {/snippet}
+
+    {#snippet body()}
+      {#each quiet as child (child.id)}
+        <SubagentCard {child} id={disclosureKey(chatId, messageId, `child-${child.id}`)} />
+      {/each}
+    {/snippet}
+  </Disclosure>
 {/if}
-{#each failed as child (child.id)}<SubagentCard {child} />{/each}
+{#each failed as child (child.id)}
+  <SubagentCard {child} id={disclosureKey(chatId, messageId, `child-${child.id}`)} />
+{/each}
 
 <style>
-  summary { list-style: none; }
-  summary::-webkit-details-marker { display: none; }
-  .subagents[open] > summary :global(.chevron) { transform: rotate(90deg); }
+  .line {
+    font-size: var(--text-code);
+  }
+  .count {
+    font-size: var(--text-xs);
+    color: var(--muted-foreground);
+  }
 </style>

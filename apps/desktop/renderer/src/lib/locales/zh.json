@@ -432,6 +432,10 @@
         "list": "列出了 {n} 个文件夹"
       }
     },
+    "subagent": {
+      "starting": "正在启动",
+      "tools": "{n, plural, other {# 个工具}}"
+    },
     "plan": {
       "title": "查看计划",
       "accept": "接受并构建",

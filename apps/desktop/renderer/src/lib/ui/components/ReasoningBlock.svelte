@@ -51,7 +51,7 @@
   <div class="reasoning" data-state={isOpen ? 'open' : 'closed'}>
     <button type="button" class="reasoning-line ui-quiet-disclosure" aria-expanded={isOpen} onclick={() => (userOpen = !isOpen)}>
       <ChevronRight class="size-3 shrink-0 transition-transform {isOpen ? 'rotate-90' : ''}" />
-      <span class:shimmer={streaming}>{label}</span>
+      <span class="ui-shimmer-text" class:shimmer={streaming}>{label}</span>
     </button>
     {#if isOpen}
       <div bind:this={textEl} class="reasoning-text" transition:slide={{ duration: 180, easing: quintOut }} aria-busy={streaming}>
@@ -89,14 +89,8 @@
     line-height: 1.55;
     white-space: pre-wrap;
   }
+  /* The running label shimmers through the one shared rule (app.css). */
   .shimmer {
-    background: linear-gradient(90deg, var(--muted-foreground) 0%, var(--foreground) 50%, var(--muted-foreground) 100%);
-    background-size: 200% 100%;
-    background-clip: text;
-    -webkit-background-clip: text;
-    color: transparent;
-    animation: shimmer 1.6s linear infinite;
+    --shimmer-duration: 1.6s;
   }
-  @keyframes shimmer { to { background-position: -200% 0; } }
-  @media (prefers-reduced-motion: reduce) { .shimmer { animation: none; color: var(--muted-foreground); } }
 </style>

@@ -36,6 +36,7 @@
   import { toastStore } from '$lib/stores/toast.svelte';
   import { approvalsStore } from '$lib/stores/approvals.svelte';
   import { editedFiles, replyBlocks } from './work-blocks';
+  import { unlinkedChildren } from './subagent-row';
 
   let { messages, chatId }: { messages: ChatMessage[]; chatId: string } = $props();
 
@@ -106,18 +107,12 @@
 
   function entriesFor(message: ChatMessage) {
     const live = message.status === 'streaming' && run?.assistantMessageId === message.id ? run.timeline : undefined;
-    const children = live ? run?.children : message.metadata?.codeChildren;
-    return withoutCodeErrorText(orderedEntries(message, live), diagnosticFor(message))
-      .filter((entry) => showEntry(entry, Boolean(children?.length)));
+    return withoutCodeErrorText(orderedEntries(message, live), diagnosticFor(message));
   }
 
   function diagnosticFor(message: ChatMessage): string | undefined {
     if (message.status !== 'error') return undefined;
     return message.metadata?.errorMessage || message.content;
-  }
-
-  function showEntry(entry: ReturnType<typeof orderedEntries>[number], hasChildren: boolean): boolean {
-    return !(hasChildren && entry.step?.toolName === 'task' && entry.step.status !== 'error');
   }
 
   function noteText(note: string): string {
@@ -180,11 +175,12 @@
         {@const children = live ? run?.children ?? [] : message.metadata?.codeChildren ?? []}
         {@const diagnostics = live ? run?.diagnostics ?? [] : message.metadata?.codeDiagnostics ?? []}
         {@const blocks = replyBlocks(entries)}
+        {@const orphans = unlinkedChildren(children, entries.flatMap((entry) => (entry.step ? [entry.step] : [])))}
         <div class="group flex min-w-0 flex-col gap-3">
           {#each blocks as block, index (block.key)}
             {#if block.items}
               <div class="-mx-2 min-w-0">
-                <CodeWorkBlock items={block.items} {chatId} live={streaming && index === blocks.length - 1} />
+                <CodeWorkBlock items={block.items} {chatId} messageId={message.id} {children} live={streaming && index === blocks.length - 1} />
               </div>
             {:else}
               <div class="text-sm leading-relaxed text-foreground">
@@ -193,7 +189,9 @@
             {/if}
           {/each}
 
-          {#if children.length}<SubagentGroup {children} />{/if}
+          <!-- Background spawns: a child whose `task` step is above already
+               draws on that step's row. -->
+          {#if orphans.length}<SubagentGroup children={orphans} {chatId} messageId={message.id} />{/if}
           {#if diagnostics.length}
             <details class="text-xs text-muted-foreground"><summary class="cursor-pointer">{$t('code.runtimeNotes', { values: { n: diagnostics.length } })}</summary><div class="mt-2 space-y-1">{#each diagnostics as note, index (index)}<p>{note}</p>{/each}</div></details>
           {/if}

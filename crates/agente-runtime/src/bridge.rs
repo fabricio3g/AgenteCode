@@ -270,7 +270,9 @@ fn map_event(inner: &RuntimeInner, event: AgentEvent) -> Option<(RuntimeEvent, O
             cost_usd,
             cost_estimated,
         },
-        AgentEvent::CompactionStarted { smart } => RuntimeEvent::CompactionStarted { smart },
+        AgentEvent::CompactionStarted { smart, model } => {
+            RuntimeEvent::CompactionStarted { smart, model }
+        }
         AgentEvent::UserMessagesInjected { messages } => {
             RuntimeEvent::UserMessagesInjected { messages }
         }
@@ -342,10 +344,12 @@ fn map_event(inner: &RuntimeInner, event: AgentEvent) -> Option<(RuntimeEvent, O
             id,
             subagent_type,
             description,
+            model,
         } => RuntimeEvent::ChildStarted {
             run_id: inner.child_id(&id),
             kind: subagent_type,
             description,
+            model,
         },
         AgentEvent::SubagentText { id, text } => RuntimeEvent::ChildDelta {
             run_id: inner.child_id(&id),

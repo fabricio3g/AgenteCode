@@ -871,6 +871,16 @@ class CodeStore {
     } catch {
       // Blocked storage: the choice applies to this conversation only.
     }
+    /*
+     * Full mode approves every tool call. A prompt still on screen is a
+     * question the user just answered globally, so answer it here: the engine
+     * holds the run until its own approval is settled, and changing the mode
+     * does not reach a request that is already waiting. Leaving it would strand
+     * the turn behind buttons for a decision that no longer exists.
+     */
+    if (mode === 'full') {
+      for (const pending of approvalsStore.forChat(chatId)) approvalsStore.resolve(pending.id, true);
+    }
     await setCodeAgentRuntimeMode(chatId, mode);
   }
 

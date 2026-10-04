@@ -548,6 +548,7 @@ impl SubagentHost {
         ) {
             cfg.model = Some(chosen.model.clone());
             cfg.provider = Some(chosen.provider.clone());
+            cfg.thinking_level = chosen.thinking.clone();
         }
 
         // Plan-mode parent: every child runs read-only. Coerce instead of
@@ -651,6 +652,7 @@ impl SubagentHost {
                         id: id.clone(),
                         subagent_type: request.subagent_type.clone(),
                         description: request.description.clone(),
+                        model: model.clone(),
                     },
                 });
                 // Also covers a slot freed just before admission.
@@ -855,6 +857,7 @@ impl SubagentHost {
                 id: id.clone(),
                 subagent_type: request.subagent_type.clone(),
                 description: request.description.clone(),
+                model: model.clone(),
             },
         });
 
@@ -926,7 +929,10 @@ impl SubagentHost {
                 .clone()
                 .unwrap_or_else(|| host.inner.config.provider_id.clone()),
             model: model.clone(),
-            thinking_level: host.inner.config.thinking_level.clone(),
+            thinking_level: cfg
+                .thinking_level
+                .clone()
+                .unwrap_or_else(|| host.inner.config.thinking_level.clone()),
             project_dir: cfg
                 .cwd
                 .clone()

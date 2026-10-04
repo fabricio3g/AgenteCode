@@ -4,33 +4,66 @@
   The work between two pieces of the reply, as one timeline (assistant-ui's
   tool timeline): thoughts and tool calls in the order they happened. While
   it is the live block it stays open and grows; once the model moves on it
-  folds to "4 steps · 2 files changed" with the touched files as chips —
-  each opens its diff in the Changes pane. Approvals and failures never fold
-  away.
+  folds to "4 steps · 2 files changed · 12.4s" with the touched files as
+  chips — each opens its diff in the Changes pane. Approvals and failures never
+  fold away on their own.
+
+  This is L1: the smallest, quietest line on the page, with its rows hanging
+  from the rail the shared disclosure draws for it.
 -->
 
 <script lang="ts">
-  import { ChevronRight } from 'lucide-svelte';
   import { t } from 'svelte-i18n';
+  import type { CodeChild } from '$shared/agente-protocol';
   import { approvalsStore } from '$lib/stores/approvals.svelte';
+  import { formatToolDuration } from '$lib/utils/tool-ui';
   import { activitySummary } from './activity';
   import { codeWorkspace } from './workspace.svelte';
   import { changedFiles, isRunning, needsAttention, type WorkItem } from './work-blocks';
+  import { disclosure, disclosureKey } from './disclosure.svelte';
   import CodeStepRow from './CodeStepRow.svelte';
   import CodeThoughtRow from './CodeThoughtRow.svelte';
+  import Disclosure from './Disclosure.svelte';
 
-  let { items, chatId, live = false }: { items: WorkItem[]; chatId: string; live?: boolean } = $props();
+  let {
+    items,
+    chatId,
+    messageId,
+    children,
+    live = false
+  }: {
+    items: WorkItem[];
+    chatId: string;
+    messageId: string;
+    /** The run's children, so a spawn's row finds the agent it started. */
+    children?: CodeChild[];
+    live?: boolean;
+  } = $props();
 
-  const approvals = $derived(new Set(approvalsStore.items.map((item) => item.id)));
+  const approvals = $derived(new Set(approvalsStore.items.map((item) => item.requestId)));
   /** Settled approvals repeat their tool's row: leave them out. */
   const visible = $derived(items.filter((item) => !(item.step?.type === 'approval' && !needsAttention(item.step, approvals))));
   const files = $derived(changedFiles(visible));
   const steps = $derived(visible.flatMap((item) => (item.step ? [item.step] : [])));
+  const running = $derived(steps.some(isRunning));
 
-  let userToggled = $state(false);
-  let open = $state(false);
-  $effect(() => {
-    if (!userToggled) open = live;
+  /** The block is keyed by its first row, which is stable for the message. */
+  const id = $derived(disclosureKey(chatId, messageId, visible[0]?.key ?? 'block'));
+  const attention = $derived(steps.some((step) => needsAttention(step, approvals)));
+  const open = $derived(disclosure.isOpen(id, live || attention));
+
+  /**
+   * How long the whole run of work took: from the first step that started to the
+   * last one that ended. Only once nothing is running — while it is live the
+   * header says what is happening, which is more use than a stopwatch.
+   */
+  const span = $derived.by(() => {
+    if (running) return undefined;
+    const bounds = steps
+      .filter((step) => step.startedAt !== undefined && step.durationMs !== undefined)
+      .map((step) => [step.startedAt!, step.startedAt! + step.durationMs!] as const);
+    if (!bounds.length) return undefined;
+    return Math.max(...bounds.map(([, end]) => end)) - Math.min(...bounds.map(([start]) => start));
   });
 
   /** Live: what it has done and is doing ("edited 1 file · running 1 command"); done: "4 steps · 2 files changed". */
@@ -44,16 +77,23 @@
     return parts.join(' · ');
   });
 
-  /** A folded block still shows what needs you, and what is running. */
-  const rows = $derived(open ? visible : visible.filter((item) => needsAttention(item.step, approvals) || isRunning(item.step)));
   const lastKey = $derived(visible.at(-1)?.key);
 </script>
 
 {#snippet row(item: WorkItem)}
   {#if item.thinking !== undefined}
-    <CodeThoughtRow text={item.thinking} live={live && item.key === lastKey} />
+    <CodeThoughtRow
+      text={item.thinking}
+      live={live && item.key === lastKey}
+      id={disclosureKey(chatId, messageId, item.key)}
+    />
   {:else if item.step}
-    <CodeStepRow step={item.step} {chatId} />
+    <CodeStepRow
+      step={item.step}
+      {chatId}
+      {children}
+      id={disclosureKey(chatId, messageId, item.key)}
+    />
   {/if}
 {/snippet}
 
@@ -61,15 +101,18 @@
   <div class="min-w-0">{@render row(visible[0])}</div>
 {:else if visible.length}
   <div class="work min-w-0">
-    <button type="button" class="work-head ui-quiet-disclosure" aria-expanded={open} onclick={() => { userToggled = true; open = !open; }}>
-      <ChevronRight class="size-3.5 shrink-0 transition-transform {open ? 'rotate-90' : ''}" />
-      <span class="min-w-0 truncate tabular-nums">{line}</span>
-    </button>
-    {#if rows.length}
-      <div class="work-rows">
-        {#each rows as item (item.key)}{@render row(item)}{/each}
-      </div>
-    {/if}
+    <Disclosure {id} level="block" chevron="leading" defaultOpen={live || attention}>
+      {#snippet header()}
+        <span class="line min-w-0 truncate tabular-nums">{line}</span>
+        <span class="flex-1"></span>
+        {#if span !== undefined}<span class="span shrink-0 tabular-nums">{formatToolDuration(span)}</span>{/if}
+      {/snippet}
+
+      {#snippet body()}
+        {#each visible as item (item.key)}{@render row(item)}{/each}
+      {/snippet}
+    </Disclosure>
+    <!-- Folded, the chips are the one-click way to a file's diff. -->
     {#if files.length && !open}
       <div class="files">
         {#each files as file (file.path)}
@@ -85,30 +128,12 @@
 {/if}
 
 <style>
-  .work-head {
-    display: flex;
-    max-width: 100%;
-    align-items: center;
-    gap: 0.375rem;
-    padding: 0.3125rem 0.5rem;
-    border-radius: 0.5rem;
+  .line {
     font-size: var(--text-code);
+  }
+  .span {
+    font-size: var(--text-xs);
     color: var(--muted-foreground);
-    text-align: left;
-    transition: color var(--motion-fast) var(--motion-ease);
-  }
-  /* Only the text answers the pointer: it brightens to say it opens. */
-  .work-head:hover,
-  .work-head:focus-visible {
-    color: var(--foreground);
-  }
-  /* The block's rows hang from a hairline under the header's chevron. */
-  .work-rows {
-    display: flex;
-    flex-direction: column;
-    margin-left: 0.9375rem;
-    padding-left: 0.25rem;
-    border-left: 1px solid var(--border-subtle);
   }
   .files {
     display: flex;

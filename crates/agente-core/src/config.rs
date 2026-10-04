@@ -122,6 +122,9 @@ impl Default for AutoApproveConfig {
 pub struct SubagentModel {
     pub provider: String,
     pub model: String,
+    /// Thinking level this override runs at; `None` inherits the parent's.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub thinking: Option<String>,
 }
 
 /// Subagent type → model override.
@@ -1193,6 +1196,7 @@ mod tests {
         let pick = |provider: &str, model: &str| SubagentModel {
             provider: provider.into(),
             model: model.into(),
+            thinking: None,
         };
         let mut models = SubagentModels::new();
         assert_eq!(subagent_model_for(&models, "explore"), None);

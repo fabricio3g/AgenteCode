@@ -88,6 +88,9 @@ pub enum AgentEvent {
     /// which can take a while). Followed by `ContextCompacted` on success.
     CompactionStarted {
         smart: bool,
+        /// The model that will write the checkpoint, when one will. `None` for
+        /// a trim, which calls no model at all.
+        model: Option<String>,
     },
     ContextCompacted {
         summary: String,
@@ -175,6 +178,9 @@ pub enum AgentEvent {
         id: String,
         subagent_type: String,
         description: String,
+        /// The model this child runs on, so its card can name it. Children run
+        /// on the parent's model unless a `subagent_models` override applies.
+        model: String,
     },
     /// Live text streamed from a subagent.
     SubagentText {

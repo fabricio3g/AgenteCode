@@ -14,7 +14,13 @@
  */
 
 export interface PendingApproval {
+  /** Unique inside the store; equal to `requestId` unless two calls collided. */
   id: string;
+  /**
+   * The id the engine asked with. A transcript row knows its approval by this,
+   * never by `id`, which the store may have suffixed.
+   */
+  requestId: string;
   /** Which conversation is blocked, so the UI can find this without an id match. */
   chatId: string;
   command: string;
@@ -36,11 +42,20 @@ class ApprovalsStore {
     return this.items.filter((item) => item.chatId === chatId);
   }
 
+  /**
+   * The pending approval a transcript row stands for. A row keys on the id the
+   * engine asked with, so a store-suffixed id still finds its own row — and a
+   * row whose request has been answered finds nothing and stops asking.
+   */
+  forRequest(requestId: string): PendingApproval | undefined {
+    return this.items.find((item) => item.requestId === requestId);
+  }
+
   /** Monotonic suffix guaranteeing distinct ids even within the same millisecond. */
   #seq = 0;
 
   /** Resolves once the user answers, or `false` if the run is torn down first. */
-  request(input: PendingApproval): Promise<boolean> {
+  request(input: Omit<PendingApproval, 'requestId'>): Promise<boolean> {
     /*
      * The id is made unique here rather than trusted from the caller.
      *
@@ -56,7 +71,7 @@ class ApprovalsStore {
     return new Promise<boolean>((resolve) => {
       this.#resolvers.set(id, resolve);
       // Reassign rather than mutate so the rune notifies.
-      this.items = [...this.items, { ...input, id }];
+      this.items = [...this.items, { ...input, id, requestId: input.id }];
     });
   }
 

@@ -25,7 +25,7 @@
     <div class="setup-bar" aria-hidden="true"><span style:width={`${dictation.setupProgress}%`}></span></div>
     <span class="time">{dictation.setupProgress}%</span>
   {:else if phase === 'transcribing'}
-    <span class="shimmer">{$t('voice.recorder.transcribing')}</span>
+    <span class="shimmer ui-shimmer-text">{$t('voice.recorder.transcribing')}</span>
   {:else if phase === 'error'}
     <span class="label">{$t('voice.recorder.failed')}</span>
     <button type="button" class="text-btn" onclick={() => dictation.toggle(false)}>{$t('voice.recorder.retry')}</button>
@@ -171,12 +171,7 @@
   .shimmer {
     flex: 1;
     font-size: 0.8125rem;
-    background: linear-gradient(90deg, var(--muted-foreground) 0%, var(--foreground) 50%, var(--muted-foreground) 100%);
-    background-size: 200% 100%;
-    -webkit-background-clip: text;
-    background-clip: text;
-    -webkit-text-fill-color: transparent;
-    animation: rec-shimmer 1.4s linear infinite;
+    --shimmer-duration: 1.4s;
   }
 
   @keyframes rec-in {
@@ -186,10 +181,6 @@
 
   @keyframes rec-blink {
     50% { opacity: 0.25; }
-  }
-
-  @keyframes rec-shimmer {
-    to { background-position: -200% 0; }
   }
 
   @media (prefers-reduced-motion: reduce) {

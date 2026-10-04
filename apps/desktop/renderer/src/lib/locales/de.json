@@ -432,6 +432,10 @@
         "list": "{n, plural, one {# Ordner aufgelistet} other {# Ordner aufgelistet}}"
       }
     },
+    "subagent": {
+      "starting": "Startet",
+      "tools": "{n, plural, one {# Werkzeug} other {# Werkzeuge}}"
+    },
     "plan": {
       "title": "Plan prüfen",
       "accept": "Annehmen und bauen",

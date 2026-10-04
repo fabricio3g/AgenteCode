@@ -5,6 +5,7 @@ import type { CodeAgentEvent, CodeArtifactRef, CodeChild, CodeRunSummary, CodeSo
 import type { AgentStep, CodeAgentDiffStat, CodeAgentFileChange, CodeTimelineEntry } from '$lib/types/chat';
 import { sanitizeAgentVisibleText } from '$lib/services/agent-parsing';
 import { copy } from '$lib/copy';
+import { linkChildToStep } from './subagent-row';
 
 export interface AgenteUsage {
   promptTokens: number;
@@ -88,12 +89,20 @@ function stopRunClock(state: CodeRunState): void {
   state.endedAt = Date.now();
 }
 
+/** Point the `task` step that asked for this child at it, once. */
+function linkChild(state: CodeRunState, child: CodeChild, description: string): void {
+  const stepId = linkChildToStep(state.steps, description);
+  if (!stepId) return;
+  const step = state.steps.find((candidate) => candidate.id === stepId);
+  if (step) step.subagentId = child.id;
+}
+
 function applyRuntimeEvent(state: CodeRunState, event: Extract<CodeAgentEvent, { type: 'runtime_event' }>): boolean {
   const value = event.event;
   const id = event.parentRunId || ('run_id' in value ? value.run_id : undefined);
   let child = id ? state.children.find((item) => item.id === id) : undefined;
   if (id && !child) {
-    child = { id, kind: 'subagent', description: '', status: 'running', text: '', tools: [], spend: emptySpend() };
+    child = { id, kind: 'subagent', description: '', status: 'running', text: '', tools: [], spend: emptySpend(), startedAt: Date.now() };
     state.children.push(child);
   }
   switch (value.type) {
@@ -103,7 +112,10 @@ function applyRuntimeEvent(state: CodeRunState, event: Extract<CodeAgentEvent, {
       state.preparing = null;
       return false;
     case 'child_started':
-      Object.assign(child!, { kind: value.kind, description: value.description, status: 'running' });
+      Object.assign(child!, { kind: value.kind, description: value.description, status: 'running', model: value.model });
+      // One spawn, one row: hand the child to the `task` step that asked for it,
+      // so the transcript draws its card there instead of a generic tool row.
+      linkChild(state, child!, value.description);
       return true;
     case 'assistant_delta':
       if (!child) return false;
@@ -126,6 +138,7 @@ function applyRuntimeEvent(state: CodeRunState, event: Extract<CodeAgentEvent, {
     case 'child_finished':
     case 'child_completed_notice':
       Object.assign(child!, { summary: value.summary, status: value.type === 'child_finished' ? (value.is_error ? 'error' : 'done') : (value.status === 'completed' ? 'done' : 'error') });
+      child!.finishedAt ??= Date.now();
       return true;
     case 'call_usage': {
       if (!child && state.phase === 'compacting') state.compactionTokens = (state.compactionTokens ?? 0) + value.usage.prompt_tokens + value.usage.completion_tokens + value.usage.cache_read_tokens + value.usage.cache_creation_tokens;
@@ -195,17 +208,37 @@ function rollBackTurn(state: CodeRunState): void {
   state.reasoning = sanitizeAgentVisibleText(state.reasoningRaw);
 }
 
-/** Reasoning takes its place in the timeline, like text: a new thought after anything else. */
-function appendThinking(state: CodeRunState, delta: string): void {
+/**
+ * The entry a delta of `kind` extends: the last one, or the run it interrupted.
+ *
+ * A provider that streams `reasoning_content` and `content` in the same chunk
+ * (OpenRouter's `reasoning`, several gateways) makes the loop emit a thinking
+ * delta and a text delta for every chunk. Appending blindly produced
+ * [thought, word, thought, word, …] and one sentence was drawn as three rows.
+ *
+ * Within one response the reasoning precedes the reply, so when the same kind
+ * sits one entry back with only the other kind between them, the delta joins
+ * that run. A step in between means a new response, and a new row: a second
+ * thought after a tool call is a real second thought.
+ */
+function openRun(state: CodeRunState, kind: 'text' | 'thinking') {
   const last = state.timeline[state.timeline.length - 1];
-  if (last?.kind === 'thinking') last.text += delta;
+  if (!last || last.kind === 'step') return undefined;
+  if (last.kind === kind) return last;
+  const before = state.timeline[state.timeline.length - 2];
+  return before?.kind === kind ? before : undefined;
+}
+
+function appendThinking(state: CodeRunState, delta: string): void {
+  const run = openRun(state, 'thinking');
+  if (run) run.text += delta;
   else state.timeline.push({ kind: 'thinking', text: delta });
 }
 
 function appendText(state: CodeRunState, delta: string): void {
-  const last = state.timeline[state.timeline.length - 1];
-  if (last?.kind === 'text') {
-    last.text += delta;
+  const run = openRun(state, 'text');
+  if (run) {
+    run.text += delta;
   } else {
     if (state.content && !state.content.endsWith('\n\n')) state.content += '\n\n';
     state.timeline.push({ kind: 'text', text: delta });
@@ -238,8 +271,25 @@ function firstLine(text: string, max = 160): string {
 }
 
 /**
+ * Keys that read as "what this call is about", tried in order for any tool
+ * without a case of its own.
+ */
+const SUBJECT_KEYS = ['url', 'path', 'command', 'query', 'pattern', 'text', 'ref', 'title', 'description', 'name', 'id', 'to', 'new', 'line', 'prompt'];
+
+/** The subagent type a `task` call asked for; `task` defaults to `general-purpose`. */
+function subagentTypeOf(args: unknown): string {
+  const record = (args && typeof args === 'object' ? args : {}) as Record<string, unknown>;
+  const kind = record.subagent_type;
+  return typeof kind === 'string' && kind.trim() ? kind : 'general-purpose';
+}
+
+/**
  * What a tool call is about, in one short line: a path, a command, a search.
- * Replaces the raw JSON the rows used to show.
+ *
+ * Every tool that ships with the agent has a case here, and the fallback for an
+ * unknown one (an MCP tool) is its first readable field. It never stringifies
+ * the arguments: `Task {"subagent_type":…}` and a `present_plan` call dumping
+ * its whole markdown into one chip were both this function's old default.
  */
 function describeToolArgs(toolName: string, args: unknown): string {
   if (typeof args === 'string') return firstLine(args);
@@ -261,20 +311,28 @@ function describeToolArgs(toolName: string, args: unknown): string {
       return `“${text('pattern')}”${text('path') ? ` · ${text('path')}` : ''}`;
     case 'ls':
       return text('path') || '.';
+    // A spawn reads as its own description; the subagent row shows the type.
+    case 'task':
+      return firstLine(text('description') || text('subagent_type'));
+    case 'task_output':
+    case 'kill_task':
+      return firstLine(text('description') || text('task_id'));
+    case 'present_plan':
+      return firstLine(text('title'));
+    case 'skill':
+      return firstLine(text('name'));
+    case 'process_output':
+    case 'process_stop':
+      return firstLine(text('id'));
     case 'message_bot':
       return [text('to'), firstLine(text('message'))].filter(Boolean).join(' · ');
     case 'memory_update':
       return firstLine(text('new') || text('line'));
     default: {
-      for (const key of ['url', 'path', 'command', 'query', 'pattern', 'text', 'ref']) {
+      for (const key of SUBJECT_KEYS) {
         if (text(key)) return firstLine(text(key));
       }
-      try {
-        const json = JSON.stringify(record);
-        return json === '{}' ? '' : firstLine(json);
-      } catch {
-        return '';
-      }
+      return '';
     }
   }
 }
@@ -339,7 +397,11 @@ export function eventToStep(event: CodeAgentEvent): AgentStep | null {
         label: event.label || toolLabel(event.toolName),
         toolName: event.toolName,
         status: 'running',
-        detail: event.detail || describeToolArgs(event.toolName, event.args)
+        detail: event.detail || describeToolArgs(event.toolName, event.args),
+        // A spawn names its kind on its own row before the child registers, so
+        // the row reads "Explore · …" from the first frame.
+        ...(event.toolName === 'task' ? { subagentType: subagentTypeOf(event.args) } : {}),
+        startedAt: Date.now()
       };
     case 'approval_request':
       return {
@@ -354,7 +416,7 @@ export function eventToStep(event: CodeAgentEvent): AgentStep | null {
         detail: event.kind === 'plan' ? `${event.diff ?? ''}\n\n${copy.codeRun.planNote}` : event.diff
       };
     case 'compaction_start':
-      return { id: `compaction-${event.chatId}`, type: 'planning', label: copy.codeRun.compacting, status: 'running' };
+      return { id: `compaction-${event.chatId}`, type: 'planning', label: copy.codeRun.compacting, status: 'running', model: event.model ?? undefined };
     case 'compaction_end':
       return { id: `compaction-${event.chatId}`, type: 'done', label: copy.codeRun.compacted, status: event.success ? 'done' : 'error', detail: event.tokensBefore !== undefined ? `${event.tokensBefore.toLocaleString()} → ${(event.tokensAfter ?? 0).toLocaleString()} tokens · ${event.smart ? 'summarized' : 'trimmed'}` : undefined };
     default:
@@ -419,6 +481,9 @@ export function applyCodeAgentEvent(state: CodeRunState, event: CodeAgentEvent):
       const step = state.steps.find((s) => s.id === event.toolCallId);
       if (step) {
         step.status = event.status || (event.isError ? 'error' : 'done');
+        // Freeze the clock: the row keeps its duration once it has settled, so a
+        // folded block can say how long its work took without opening it.
+        step.durationMs ??= step.startedAt === undefined ? undefined : Math.max(0, Date.now() - step.startedAt);
         const output = event.result != null ? String(event.result) : '';
         if (output) step.output = step.toolName === 'present_plan' ? output : output.slice(-32_768);
         if (event.fileChanges?.length) {

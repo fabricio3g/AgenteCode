@@ -103,6 +103,19 @@ export interface CodeChild {
   summary?: string;
   tools: Array<{ id: string; name: string; output: string; status: 'running' | 'done' | 'error' }>;
   spend: CodeSpend;
+  /**
+   * When the child's card appeared, stamped by the renderer — the wire carries
+   * no start time for a child. It rides along into `codeChildren`, so a saved
+   * turn keeps its duration, and nothing in main reads it.
+   */
+  startedAt?: number;
+  /** When the child reached a terminal state; stamped by the renderer. */
+  finishedAt?: number;
+  /**
+   * The model the runtime resolved for this child at spawn: the parent's, or
+   * the `subagent_models` override for its type. Only the runtime knows it.
+   */
+  model?: string;
 }
 
 /** One file a turn produced, by reference — the bytes stay behind the wire. */
@@ -156,7 +169,7 @@ export type CodeAgentEvent =
   | { type: 'llm_retry'; chatId: string; attempt: number; delayMs: number; discardPartial?: boolean }
   | { type: 'length_continue'; chatId: string; turnIndex: number }
   | { type: 'todo_update'; chatId: string; todos: CodeTodoItem[] }
-  | { type: 'compaction_start'; chatId: string; reason: string }
+  | { type: 'compaction_start'; chatId: string; reason: string; model?: string | null }
   | { type: 'compaction_end'; chatId: string; reason: string; success: boolean; tokensBefore?: number; tokensAfter?: number; smart?: boolean; requestedSmart?: boolean; modelTokens?: number; inputTokens?: number; outputTokens?: number; cacheReadTokens?: number; cacheWriteTokens?: number }
   | { type: 'approval_request'; chatId: string; requestId: string; toolName: string; args: unknown; diff?: string; kind?: 'action' | 'plan' }
   | { type: 'approval_resolved'; chatId: string; requestId: string; decision: ApprovalDecision }

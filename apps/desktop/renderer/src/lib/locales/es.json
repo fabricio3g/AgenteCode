@@ -432,6 +432,10 @@
         "list": "listó {n, plural, one {# carpeta} other {# carpetas}}"
       }
     },
+    "subagent": {
+      "starting": "Iniciando",
+      "tools": "{n, plural, one {# herramienta} other {# herramientas}}"
+    },
     "plan": {
       "title": "Revisar el plan",
       "accept": "Aceptar y construir",

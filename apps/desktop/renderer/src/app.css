@@ -1366,6 +1366,33 @@ textarea {
   100% { background-position: -100% 0; }
 }
 
+/*
+ * The one shimmer for a label that is still moving.
+ *
+ * ReasoningBlock, ComposerRecorder and `.text-shimmer` each carried their own
+ * copy of this gradient, identical but for the keyframe name. A running tool, a
+ * running subagent and a streaming thought now all read as the same kind of
+ * thing, and `--shimmer-duration` is the only knob.
+ */
+.ui-shimmer-text {
+  background: linear-gradient(
+    90deg,
+    var(--muted-foreground) 0%,
+    var(--foreground) 50%,
+    var(--muted-foreground) 100%
+  );
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+  animation: ui-shimmer-text-sweep var(--shimmer-duration, 1.8s) linear infinite;
+}
+
+@keyframes ui-shimmer-text-sweep {
+  to { background-position: -200% 0; }
+}
+
 /* Tool call rows (ToolCallRow) */
 .ui-tool-fallback-root {
   width: 100%;
@@ -1596,6 +1623,13 @@ textarea {
   .ui-shimmer {
     animation: none !important;
     display: none;
+  }
+  /* The label still says what is running; it just stops moving. `currentColor`
+     hands the fill back to whatever colour the row already chose. */
+  .ui-shimmer-text {
+    animation: none;
+    background: none;
+    -webkit-text-fill-color: currentColor;
   }
   .ui-tool-fallback-trigger-icon.is-running {
     animation: none;
@@ -2849,18 +2883,6 @@ kbd {
 }
 
 /* Text shimmer for "Thinking" label */
-@keyframes textShimmer {
-  0% { background-position: 200% center; }
-  100% { background-position: -200% center; }
-}
-.text-shimmer {
-  background: linear-gradient(to right, var(--text-muted) 40%, var(--text) 60%, var(--text-muted) 80%);
-  background-size: 200% auto;
-  background-clip: text;
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  animation: textShimmer 3s linear infinite;
-}
 
 
 input[type="range"] {

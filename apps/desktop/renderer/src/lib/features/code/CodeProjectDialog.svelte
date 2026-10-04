@@ -26,7 +26,7 @@
 
   let { chatId, projectRoot, section, onclose }: { chatId: string; projectRoot?: string; section: CodeDialog; onclose: () => void } = $props();
 
-  type Settings = { smart_compaction: boolean; compaction_model?: {provider: string; model: string}; max_parallel_subagents: number; subagent_models: Record<string, { provider: string; model: string }>; allow_media: string[] };
+  type Settings = { smart_compaction: boolean; compaction_model?: {provider: string; model: string; thinking?: string}; max_parallel_subagents: number; subagent_models: Record<string, { provider: string; model: string; thinking?: string }>; allow_media: string[] };
 
   let info = $state<ProjectInfo | null>(null);
   let servers = $state<McpServer[]>([]);
@@ -84,10 +84,10 @@
     onclose();
   }
 
-  async function chooseModel(kind: string, inherit: boolean) {
+  async function chooseModel(kind: string, pin: { provider: string; model: string; thinking?: string } | null | undefined) {
     try {
       await codeStore.ensureSession(chatId);
-      await invoke('agente_subagent_model', { chatId, kind, inherit });
+      await invoke('agente_subagent_model', { chatId, kind, pin });
       await load();
     } catch (cause) {
       toastStore.error(String(cause));
@@ -113,7 +113,7 @@
   }
 </script>
 
-<Dialog title={$t(`code.project.${section}.title`)} description={$t(`code.project.${section}.hint`)} {onclose} size="md">
+<Dialog title={$t(`code.project.${section}.title`)} description={$t(`code.project.${section}.hint`)} {onclose} size="lg">
   <div class="space-y-1 p-3 text-sm">
     {#if error}<p class="px-2 pb-2 text-[13px] text-error" role="alert">{error}</p>{/if}
 
@@ -131,18 +131,20 @@
         <p class="empty">{$t('code.project.skills.empty')}</p>
       {/each}
     {:else if section === 'agents' && info}
-      {#each run?.children ?? [] as child (child.id)}<SubagentCard {child} />{/each}
+      {#each run?.children ?? [] as child (child.id)}<SubagentCard {child} id={`project:${child.id}`} />{/each}
+      <!-- One card per type, with the same picker the bot editor uses: the
+           provider, the model and the thinking level it runs at. Unpinned is a
+           state, not a button that guesses the chat's model. -->
       {#each [{ name: '*', description: $t('code.project.agents.all'), builtin: true }, ...info.agents] as agent (agent.name)}
-        <div class="row">
+        {@const pin = settings.subagent_models[agent.name]}
+        <div class="agent-card">
           <div class="min-w-0 flex-1">
             <p class="text-[13px] font-medium text-foreground">{agent.name}</p>
             <p class="row-detail">{agent.description}</p>
-            <p class="row-detail">{settings.subagent_models[agent.name]?.model || $t('code.project.agents.inherit')}</p>
+            {#if !pin}<p class="row-detail">{$t('code.project.agents.inherit')}</p>{/if}
           </div>
-          <div class="flex shrink-0 gap-1">
-            <Button size="sm" variant="ghost" onclick={() => chooseModel(agent.name, false)}>{$t('code.project.agents.useModel')}</Button>
-            {#if settings.subagent_models[agent.name]}<Button size="sm" variant="ghost" onclick={() => chooseModel(agent.name, true)}>{$t('code.project.agents.reset')}</Button>{/if}
-          </div>
+          <BotModelPicker value={pin} onchange={(next) => chooseModel(agent.name, next)} />
+          {#if pin}<button type="button" class="agent-reset" onclick={() => chooseModel(agent.name, null)}>{$t('code.project.agents.reset')}</button>{/if}
         </div>
       {/each}
     {:else if section === 'mcp'}
@@ -185,7 +187,7 @@
       {#if compactReport}<CompactionReport report={compactReport} />{:else if compacting}<p class="text-xs text-muted-foreground" role="status">{$t('code.compaction.working')}</p>{/if}
       <div class="px-2 py-2">
         <p class="mb-2 text-[13px] text-foreground">{$t('code.compaction.model')}</p>
-        <BotModelPicker bind:value={settings.compaction_model} showThinking={false} />
+        <BotModelPicker bind:value={settings.compaction_model} />
         <p class="mt-2 text-[12px] text-muted-foreground">{$t('code.compaction.modelHint')}</p>
       </div>
       <div class="row">
@@ -212,6 +214,9 @@
 <style>
   .compaction-settings { display: grid; gap: .75rem; padding: .5rem; margin-bottom: .75rem; }
   .compaction-settings h3 { font-size: var(--text-sm); font-weight: 500; }
+  .agent-card { display: grid; gap: .5rem; padding: .5rem; }
+  .agent-reset { justify-self: start; font-size: var(--text-xs); color: var(--muted-foreground); text-decoration: underline; text-underline-offset: 2px; }
+  .agent-reset:hover { color: var(--foreground); }
 
   .row {
     display: flex;

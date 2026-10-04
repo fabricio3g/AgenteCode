@@ -159,6 +159,25 @@ export interface AgentStep {
   research?: { query?: string; results?: number; url?: string; title?: string };
   /** The agent's opening sentence before it starts working; shown as text, not as a step. */
   preface?: boolean;
+  /**
+   * The subagent type a `task` step asked for, so its row can name the kind
+   * (Explore, Plan) before the child's card has registered.
+   */
+  subagentType?: string;
+  /**
+   * The child this `task` step spawned. The runtime never reports the parent's
+   * tool call id, so the link is made in the renderer when the child appears
+   * (see `linkChildToStep`).
+   */
+  subagentId?: string;
+  /** When the step started, and how long it took once it ended (Code space). */
+  startedAt?: number;
+  durationMs?: number;
+  /**
+   * The model that did this step's work, when it is not the conversation's own:
+   * the child a spawn runs on, or the checkpoint writer a compaction used.
+   */
+  model?: string;
 }
 
 export type ChartArtifactPayload = {

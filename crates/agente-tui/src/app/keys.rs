@@ -1595,6 +1595,7 @@ impl App {
                         agente_core::config::SubagentModel {
                             provider: entry.provider.clone(),
                             model: entry.model_id.clone(),
+                            thinking: None,
                         },
                     );
                     self.state.input.show_model_selector = false;
@@ -3408,6 +3409,7 @@ mod tests {
             id: "child".into(),
             subagent_type: "explore".into(),
             description: "look around".into(),
+            model: "test-model".into(),
         });
         let call = |cost, subagent_id: Option<&str>| AgentEvent::CallUsage {
             prompt_tokens: 100,
@@ -3431,7 +3433,10 @@ mod tests {
         use agente_core::agent::AgentEvent;
         let mut app = test_app();
         app.state.agent.state = types::AgentState::StreamingResponse;
-        app.inject_agent_event(AgentEvent::CompactionStarted { smart: true });
+        app.inject_agent_event(AgentEvent::CompactionStarted {
+            smart: true,
+            model: Some("test-model".into()),
+        });
         app.process_agent_events();
         assert_eq!(app.state.agent.compacting, Some(true));
         // A heartbeat during a slow summary keeps the indicator up.

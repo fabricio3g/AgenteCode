@@ -150,7 +150,7 @@
           <div class="flex flex-col gap-3">
             {#each entries(turn) as entry (entry.key)}
               {#if entry.step}
-                <div class="-mx-2"><CodeStepRow step={entry.step} /></div>
+                <div class="-mx-2"><CodeStepRow step={entry.step} id={`bot:${turn.key}:${entry.key}`} /></div>
               {:else if entry.text}
                 <div class="text-sm leading-relaxed text-foreground"><RichContent content={entry.text} /></div>
               {/if}

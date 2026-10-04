@@ -5,7 +5,8 @@ import CompactionReport from './CompactionReport.svelte';
 afterEach(cleanup);
 it('shows before/after context and actual model/cache usage', () => {
   const { container } = render(CompactionReport, { report: { running: false, success: true, tokensBefore: 12000, tokensAfter: 4000, smart: true, requestedSmart: true, modelTokens: 800, cacheReadTokens: 200 } });
-  expect(container.textContent).toContain('12,000 → ~4,000');
+  // `toLocaleString` follows the machine, so the separators are not the point.
+  expect(container.textContent).toMatch(/12[.,\s]?000\s*→\s*~4[.,\s]?000/);
   expect(container.textContent).toContain('800');
   expect(container.textContent).toContain('200');
 });

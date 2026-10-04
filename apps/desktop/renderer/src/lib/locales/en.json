@@ -432,6 +432,10 @@
         "list": "listed {n, plural, one {# folder} other {# folders}}"
       }
     },
+    "subagent": {
+      "starting": "Starting",
+      "tools": "{n, plural, one {# tool} other {# tools}}"
+    },
     "plan": {
       "title": "Review plan",
       "accept": "Accept and build",

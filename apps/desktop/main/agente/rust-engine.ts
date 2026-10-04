@@ -604,16 +604,29 @@ async function runtimeRequest<T>(method: string, params: Record<string, unknown>
   return client.request<T>(method, params);
 }
 
-async function subagentModel(chatId: string, kind: string, inherit: boolean): Promise<{ ok: boolean }> {
+/**
+ * Pin a subagent type (or `*`) to a provider, model and thinking level, or drop
+ * the pin so it inherits again. `thinking` is optional: without it the child
+ * follows whatever the parent runs at.
+ */
+async function subagentModel(
+  chatId: string,
+  kind: string,
+  pin: { provider: string; model: string; thinking?: string } | null
+): Promise<{ ok: boolean }> {
   const chat = chats.get(chatId);
   if (!chat) throw new Error('Start a Code session before choosing subagent models.');
   const client = await connect();
-  const settings = await client.request<{ subagent_models: Record<string, { provider: string; model: string }> }>('runtime.settings');
+  const settings = await client.request<{ subagent_models: Record<string, { provider: string; model: string; thinking?: string }> }>('runtime.settings');
   const models = { ...settings.subagent_models };
-  if (inherit) delete models[kind];
+  if (!pin) delete models[kind];
   else {
-    const provider = await useProvider(client, chat.provider, chat.model, chat.localSelection);
-    models[kind] = { provider: provider.id, model: provider.model };
+    const provider = await useProvider(client, pin.provider, pin.model);
+    models[kind] = {
+      provider: provider.id,
+      model: provider.model,
+      ...(pin.thinking ? { thinking: pin.thinking } : {})
+    };
   }
   return configureSettings({ subagent_models: models });
 }
@@ -624,10 +637,17 @@ async function configureSettings(patch: Record<string, unknown>): Promise<{ ok: 
   if (Object.keys(patch).some((key) => !allowed.includes(key))) throw new Error('Unknown agent setting.');
   if ('max_parallel_subagents' in patch && (!Number.isInteger(patch.max_parallel_subagents) || Number(patch.max_parallel_subagents) < 1 || Number(patch.max_parallel_subagents) > 32)) throw new Error('Choose 1–32 parallel subagents.');
   if (patch.compaction_model != null) {
-    const chosen = patch.compaction_model as { provider?: unknown; model?: unknown };
+    const chosen = patch.compaction_model as { provider?: unknown; model?: unknown; thinking?: unknown };
     if (typeof chosen.provider !== 'string' || typeof chosen.model !== 'string' || !chosen.provider.trim() || !chosen.model.trim()) throw new Error('Choose a compaction provider and model.');
     const target = await useProvider(await connect(), chosen.provider.replace(/^desktop-/, ''), chosen.model);
-    patch = { ...patch, compaction_model: { provider: target.id, model: target.model } };
+    patch = {
+      ...patch,
+      compaction_model: {
+        provider: target.id,
+        model: target.model,
+        ...(typeof chosen.thinking === 'string' && chosen.thinking ? { thinking: chosen.thinking } : {})
+      }
+    };
   }
   const result = await runtimeRequest<{ ok: boolean }>('runtime.configure', patch);
   const config = loadConfig();

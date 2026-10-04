@@ -73,7 +73,7 @@ export function registerAgenteHandlers({ ipcMain, getMainWindow }: AgenteHandler
     const { snapshot } = await engine.runtimeRequest<{ snapshot: SessionSnapshot }>('session.get', { session_id: args.sessionId });
     return historyTurns(snapshot.conversation, args.chatId);
   });
-  ipcMain.handle('agente_subagent_model', (_e, args: { chatId: string; kind: string; inherit: boolean }) => engine.subagentModel(args.chatId, args.kind, args.inherit));
+  ipcMain.handle('agente_subagent_model', (_e, args: { chatId: string; kind: string; pin: { provider: string; model: string; thinking?: string } | null }) => engine.subagentModel(args.chatId, args.kind, args.pin));
   ipcMain.handle('agente_runtime_configure', (_e, args: Record<string, unknown>) => engine.configureSettings(args));
   const previews = new Map<string, string>();
   ipcMain.handle('agente_media_preview', async (_e, args: { path: string; maxSize?: number }) => {

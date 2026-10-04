@@ -37,7 +37,7 @@ pub fn type_label(key: &str) -> &str {
 fn model_summary(state: &AppState, key: &str) -> (String, bool) {
     let models = &state.config.config.subagent_models;
     match models.get(key) {
-        Some(SubagentModel { provider, model }) => {
+        Some(SubagentModel { provider, model, .. }) => {
             (state.get_model_display_name(provider, model), true)
         }
         None if key != ALL_SUBAGENTS && models.contains_key(ALL_SUBAGENTS) => {
@@ -129,6 +129,7 @@ mod tests {
             SubagentModel {
                 provider: "deepseek".into(),
                 model: "deepseek-flash".into(),
+                thinking: None,
             },
         );
         let mut terminal = Terminal::new(TestBackend::new(80, 20)).unwrap();

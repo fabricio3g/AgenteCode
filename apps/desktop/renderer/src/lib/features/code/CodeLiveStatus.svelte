@@ -64,7 +64,7 @@
 <div class="live" class:is-waiting={status.kind === 'approval'} role="status" aria-live="polite">
   <span class="dot" aria-hidden="true"></span>
   <span class="min-w-0 truncate">
-    <span class="text-foreground">{label}</span>
+    <span class="text-foreground" class:ui-shimmer-text={status.kind !== 'approval'}>{label}</span>
   </span>
   {#if quietMs >= QUIET_MS}<span class="shrink-0">· {$t('code.live.noUpdate', { values: { seconds: Math.floor(quietMs / 1000) } })}</span>{/if}
   {#if elapsed}<span class="shrink-0 tabular-nums">· {elapsed}</span>{/if}

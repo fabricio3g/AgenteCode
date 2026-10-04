@@ -430,7 +430,13 @@ savedSessions.push({
       role: 'assistant',
       content: 'Two subagents reported back; the third is still running.',
       createdAt: Date.now() - 29_000,
+      agentSteps: [
+        { id: 'sub-s1', type: 'reading', label: 'Read', toolName: 'read', status: 'done', detail: 'renderer/src/lib/features/code/CodeTranscript.svelte', startedAt: Date.now() - 29_000, durationMs: 40 },
+        { id: 'sub-s2', type: 'tool', label: 'Task', toolName: 'task', status: 'done', detail: 'Map transcript rendering', subagentType: 'explore', subagentId: 'child-done', startedAt: Date.now() - 28_900, durationMs: 134_000 },
+        { id: 'sub-s3', type: 'executing', label: 'Run', toolName: 'bash', status: 'done', detail: 'npm run check', startedAt: Date.now() - 28_800, durationMs: 9_200, output: 'svelte-check found 0 errors and 0 warnings' }
+      ],
       metadata: {
+        codeTimeline: [{ kind: 'step', id: 'sub-s1' }, { kind: 'step', id: 'sub-s2' }, { kind: 'step', id: 'sub-s3' }],
         codeChildren: [
           {
             id: 'child-done', kind: 'explore', description: 'Map transcript rendering', status: 'done',
@@ -440,11 +446,13 @@ savedSessions.push({
               { id: 'sub-t1', name: 'grep', output: 'thread/Thread.svelte:318\nRichContent.svelte:71', status: 'done' },
               { id: 'sub-t2', name: 'read_file', output: 'The settled prefix is written once; only the tail re-renders.', status: 'done' }
             ],
-            spend: childSpend(0.012, 18_400)
+            spend: childSpend(0.012, 18_400),
+            model: 'anthropic/claude-sonnet-4'
           },
           {
             id: 'child-running', kind: 'general-purpose', description: 'Patch the delta path', status: 'running',
-            text: 'Reading the streaming split, then the reveal buffer that feeds it. ', tools: [], spend: childSpend(0.004, 5_100)
+            text: 'Reading the streaming split, then the reveal buffer that feeds it. ', tools: [], spend: childSpend(0.004, 5_100),
+            model: 'deepseek/deepseek-v4-flash'
           },
           {
             id: 'child-error', kind: 'explore', description: 'Survey the terminal renderer', status: 'error',
@@ -821,6 +829,24 @@ const handlers: Record<string, (args?: Record<string, unknown>) => unknown> = {
     'vite.config.ts'
   ],
   agente_reveal_path: () => ({ ok: true }),
+  // The project dialogs read this for their skills, agents and commands lists.
+  agente_project_info: () => ({
+    skills: [{ name: 'find-skills', description: 'Discover installable agent skills.' }],
+    commands: [{ name: 'init', description: 'Write an AGENTS.md for this project.' }],
+    agents: [
+      { name: 'general-purpose', description: 'Multi-step work that spans many files.', builtin: true },
+      { name: 'explore', description: 'Read-only survey of an unfamiliar area.', builtin: true },
+      { name: 'plan', description: 'A structured implementation plan.', builtin: true }
+    ]
+  }),
+  agente_runtime_settings: () => ({
+    smart_compaction: true,
+    compaction_model: null,
+    max_parallel_subagents: 8,
+    subagent_models: {},
+    allow_media: ['image', 'audio', 'video']
+  }),
+  agente_subagent_model: () => ({ ok: true }),
   agente_git_branches: () => ({
     source: 'git',
     current: 'main',

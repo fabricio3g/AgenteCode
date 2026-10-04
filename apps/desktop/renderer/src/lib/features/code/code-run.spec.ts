@@ -11,7 +11,7 @@ function run(events: CodeAgentEvent[]) {
 describe('agente run reducer', () => {
   it('keeps subagent text and tool output separate, counting child spend once in the session', () => {
     const state = run([
-      { type: 'runtime_event', chatId: 'c', event: { type: 'child_started', run_id: 'child', kind: 'explore', description: 'Check tests' } },
+      { type: 'runtime_event', chatId: 'c', event: { type: 'child_started', run_id: 'child', kind: 'explore', description: 'Check tests', model: 'test-model' } },
       { type: 'runtime_event', chatId: 'c', event: { type: 'child_delta', run_id: 'child', text: 'Looking.' } },
       { type: 'runtime_event', chatId: 'c', event: { type: 'child_tool', run_id: 'child', call_id: 'tool', name: 'read_file', content: 'src/a.ts', finished: false, is_error: false } },
       { type: 'runtime_event', chatId: 'c', event: { type: 'child_tool', run_id: 'child', call_id: 'tool', name: '', content: 'actual output', finished: true, is_error: false } },
@@ -27,7 +27,7 @@ describe('agente run reducer', () => {
   it('retains complete child replies and completed tool results beyond the live preview limit', () => {
     const text = '日'.repeat(150000) + 'FINAL EVIDENCE';
     const state = run([
-      { type: 'runtime_event', chatId: 'c', event: { type: 'child_started', run_id: 'child', kind: 'explore', description: 'Large result' } },
+      { type: 'runtime_event', chatId: 'c', event: { type: 'child_started', run_id: 'child', kind: 'explore', description: 'Large result', model: 'test-model' } },
       { type: 'runtime_event', chatId: 'c', event: { type: 'child_delta', run_id: 'child', text } },
       { type: 'runtime_event', chatId: 'c', event: { type: 'child_tool', run_id: 'child', call_id: 'tool', name: 'task_output', content: text, finished: true, is_error: false } }
     ]);
@@ -43,6 +43,34 @@ describe('agente run reducer', () => {
     ]);
     expect(state.content).toBe('Hello world');
     expect(state.reasoning).toBe('hmm');
+  });
+
+  it('keeps one thought and one reply when the provider interleaves them per chunk', () => {
+    // OpenRouter and several gateways stream `reasoning` and `content` in the
+    // same chunk, so every chunk produced a thinking delta and a text delta and
+    // the reply was drawn as alternating fragments of one sentence.
+    const state = run([
+      { type: 'thinking_delta', chatId: 'c', delta: 'Two bugs to fix: ' },
+      { type: 'text_delta', chatId: 'c', delta: 'Let' },
+      { type: 'thinking_delta', chatId: 'c', delta: 'a temporary spec.' },
+      { type: 'text_delta', chatId: 'c', delta: ' me find whether this is the store' }
+    ]);
+    expect(state.timeline).toEqual([
+      { kind: 'thinking', text: 'Two bugs to fix: a temporary spec.' },
+      { kind: 'text', text: 'Let me find whether this is the store' }
+    ]);
+    expect(state.content).toBe('Let me find whether this is the store');
+  });
+
+  it('still gives a second thought its own row after a tool call', () => {
+    const state = run([
+      { type: 'thinking_delta', chatId: 'c', delta: 'first thought' },
+      { type: 'text_delta', chatId: 'c', delta: 'First.' },
+      { type: 'tool_start', chatId: 'c', toolCallId: 't1', toolName: 'read', args: { path: 'a.ts' } },
+      { type: 'thinking_delta', chatId: 'c', delta: 'second thought' },
+      { type: 'text_delta', chatId: 'c', delta: 'Second.' }
+    ]);
+    expect(state.timeline.map((entry) => entry.kind)).toEqual(['thinking', 'text', 'step', 'thinking', 'text']);
   });
 
   it('tracks a tool call from start to end', () => {

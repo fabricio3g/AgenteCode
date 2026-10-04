@@ -340,7 +340,7 @@ impl App {
                     let _ = self.start_chat_turn();
                 }
             }
-            AgentEvent::CompactionStarted { smart } => {
+            AgentEvent::CompactionStarted { smart, model: _ } => {
                 self.state.agent.compacting = Some(smart);
             }
             AgentEvent::ContextCompacted {
@@ -562,6 +562,7 @@ impl App {
                 id,
                 subagent_type,
                 description,
+                model,
             } => {
                 // Card status mirrors the registry snapshot so a queued
                 // spawn reads pending, not running. A re-sent Started
@@ -572,28 +573,32 @@ impl App {
                     .as_ref()
                     .map(|snap| snap.status.as_str().to_string())
                     .unwrap_or_else(|| "running".to_string());
-                let meta = snapshot.as_ref().map(|snap| {
-                    (
-                        snap.model.clone(),
-                        Some(snap.started_at),
-                        snap.worktree.clone(),
-                    )
-                });
+                let meta = snapshot
+                    .as_ref()
+                    .map(|snap| (Some(snap.started_at), snap.worktree.clone()));
+                // The registry is the live source; the event carries what the
+                // runtime resolved at spawn, so a card still names its model
+                // when the snapshot is gone.
+                let card_model = snapshot
+                    .as_ref()
+                    .map(|snap| snap.model.clone())
+                    .filter(|model| !model.is_empty())
+                    .unwrap_or(model);
                 if let Some(card) = self.state.agent.subagents.get_mut(&id) {
                     card.subagent_type = subagent_type.clone();
                     card.description = description.clone();
                     card.status = status;
-                    if let Some((model, started_at, worktree)) = meta {
-                        if !model.is_empty() {
-                            card.model = model;
-                        }
+                    if !card_model.is_empty() {
+                        card.model = card_model;
+                    }
+                    if let Some((started_at, worktree)) = meta {
                         if card.started_at.is_none() {
                             card.started_at = started_at;
                         }
                         card.worktree = worktree;
                     }
                 } else {
-                    let (model, started_at, worktree) = meta.unwrap_or((String::new(), None, None));
+                    let (started_at, worktree) = meta.unwrap_or((None, None));
                     self.state.agent.subagents.insert(
                         id.clone(),
                         crate::state::SubagentUiState {
@@ -601,7 +606,7 @@ impl App {
                             subagent_type: subagent_type.clone(),
                             description: description.clone(),
                             status,
-                            model,
+                            model: card_model,
                             started_at,
                             worktree,
                             ..Default::default()
@@ -1010,6 +1015,7 @@ mod tests {
                     id: "child".into(),
                     subagent_type: "explore".into(),
                     description: "research".into(),
+                    model: "test-model".into(),
                 },
             })
             .unwrap();
@@ -1606,6 +1612,7 @@ mod tests {
             id: "q-1".into(),
             subagent_type: "explore".into(),
             description: "queued work".into(),
+            model: "test-model".into(),
         };
         app.inject_agent_event(started());
         app.process_agent_events();

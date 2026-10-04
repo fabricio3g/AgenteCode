@@ -432,6 +432,10 @@
         "list": "listou {n, plural, one {# pasta} other {# pastas}}"
       }
     },
+    "subagent": {
+      "starting": "Iniciando",
+      "tools": "{n, plural, one {# ferramenta} other {# ferramentas}}"
+    },
     "plan": {
       "title": "Revisar o plano",
       "accept": "Aceitar e construir",

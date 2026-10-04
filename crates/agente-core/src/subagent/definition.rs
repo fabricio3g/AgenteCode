@@ -287,6 +287,8 @@ pub struct EffectiveRuntimeConfig {
     /// Provider for `model` when a subagent-model override applies; `None`
     /// runs on the parent's provider.
     pub provider: Option<String>,
+    /// Thinking level the override asked for; `None` inherits the parent's.
+    pub thinking_level: Option<String>,
     pub cwd: Option<String>,
 }
 
@@ -360,6 +362,7 @@ pub fn resolve_effective_config(
         capability,
         model,
         provider: None,
+        thinking_level: None,
         cwd,
     })
 }

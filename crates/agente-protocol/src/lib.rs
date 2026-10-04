@@ -393,6 +393,10 @@ pub enum RuntimeEvent {
         run_id: RunId,
         kind: String,
         description: String,
+        /// The model this child runs on. Children inherit the parent's model
+        /// unless a `subagent_models` override applies, so a card cannot infer
+        /// it; the runtime resolves it once, at spawn.
+        model: String,
     },
     ChildDelta {
         run_id: RunId,
@@ -450,6 +454,10 @@ pub enum RuntimeEvent {
     CompactionStarted {
         /// Summarized by the model rather than trimmed.
         smart: bool,
+        /// The model writing the checkpoint, when one will; `None` for a trim,
+        /// which calls no model at all.
+        #[serde(default)]
+        model: Option<String>,
     },
     /// Output streamed so far in the current model call, for liveness.
     GenerationProgress {

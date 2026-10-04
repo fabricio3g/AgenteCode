@@ -55,3 +55,14 @@ export function formatDuration(seconds: number | null | undefined): string {
   if (value < 60) return `${Math.floor(value)}s`;
   return `${Math.floor(value / 60)}m ${Math.floor(value % 60)}s`;
 }
+
+/**
+ * A model id without its vendor prefix, for a row that has one line to spare:
+ * `anthropic/claude-sonnet-4` → `claude-sonnet-4`. The full id stays in the
+ * element's `title`.
+ */
+export function shortModel(model: string | null | undefined): string {
+  const text = String(model ?? '').trim();
+  const slash = text.lastIndexOf('/');
+  return slash === -1 ? text : text.slice(slash + 1);
+}

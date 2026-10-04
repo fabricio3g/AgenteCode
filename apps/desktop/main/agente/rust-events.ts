@@ -227,7 +227,7 @@ export class RustTurnTranslator {
       kind: 'action'
     }],
     todo_changed: (event) => [{ type: 'todo_update', chatId: this.chatId, todos: todos(event.todos) }],
-    compaction_started: () => [{ type: 'compaction_start', chatId: this.chatId, reason: 'auto' }],
+    compaction_started: (event) => [{ type: 'compaction_start', chatId: this.chatId, reason: 'auto', model: event.model ?? null }],
     context_compacted: (event) => [{ type: 'compaction_end', chatId: this.chatId, reason: 'auto', success: true, tokensBefore: event.tokens_before, tokensAfter: event.tokens_after, smart: event.smart }],
     usage: (event) => [this.usage(event.usage)],
     retry: (event) => [{ type: 'llm_retry', chatId: this.chatId, attempt: event.attempt, delayMs: event.delay_ms }],

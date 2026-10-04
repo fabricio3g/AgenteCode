@@ -655,6 +655,10 @@
             "kind": {
               "type": "string"
             },
+            "model": {
+              "description": "The model this child runs on. Children inherit the parent's model unless a `subagent_models` override applies, so a card cannot infer it; the runtime resolves it once, at spawn.",
+              "type": "string"
+            },
             "run_id": {
               "format": "uuid",
               "type": "string"
@@ -669,6 +673,7 @@
           "required": [
             "description",
             "kind",
+            "model",
             "run_id",
             "type"
           ],
@@ -911,6 +916,14 @@
         },
         {
           "properties": {
+            "model": {
+              "default": null,
+              "description": "The model writing the checkpoint, when one will; `None` for a trim, which calls no model at all.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
             "smart": {
               "description": "Summarized by the model rather than trimmed.",
               "type": "boolean"

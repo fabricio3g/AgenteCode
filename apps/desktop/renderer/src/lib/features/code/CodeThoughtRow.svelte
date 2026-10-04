@@ -5,91 +5,55 @@
   the model is still thinking it stays open and follows the newest lines;
   the moment it moves on (a tool call, the reply) it folds to "Thought" and
   a one-line preview, like the TUI's collapsed ◇ thoughts.
+
+  This is the quietest level: no icon, no chevron of its own until it has more
+  to say, and dimmer than everything around it.
 -->
 
 <script lang="ts">
   import { onDestroy } from 'svelte';
   import { t } from 'svelte-i18n';
-  import { ChevronRight } from 'lucide-svelte';
+  import Disclosure from './Disclosure.svelte';
 
-  let { text, live = false }: { text: string; live?: boolean } = $props();
-
-  let userToggled = $state(false);
-  let open = $state(false);
-  $effect(() => {
-    if (!userToggled) open = live;
-  });
+  let { text, id, live = false }: { text: string; id: string; live?: boolean } = $props();
 
   const preview = $derived(text.trimStart().slice(0, 240).split('\n', 1)[0].replace(/^[#>*\-\s]+/, ''));
 
-  let body = $state<HTMLDivElement>();
+  let textEl = $state<HTMLDivElement>();
   let scrollFrame = 0;
   let following = true;
   $effect(() => {
     void text;
-    if (live && open && following && !scrollFrame) {
+    if (live && following && !scrollFrame) {
       scrollFrame = requestAnimationFrame(() => {
         scrollFrame = 0;
-        if (body && following) body.scrollTop = body.scrollHeight;
+        if (textEl && following) textEl.scrollTop = textEl.scrollHeight;
       });
     }
   });
   onDestroy(() => { if (scrollFrame) cancelAnimationFrame(scrollFrame); });
-
-  function toggle() {
-    userToggled = true;
-    open = !open;
-    following = true;
-  }
 </script>
 
-<div class="thought">
-  <button type="button" class="thought-head ui-quiet-disclosure" aria-expanded={open} onclick={toggle}>
+<Disclosure {id} level="thought" chevron="trailing" defaultOpen={live}>
+  {#snippet header()}
     <span class="shrink-0">{live ? $t('code.thinking') : $t('code.thought')}</span>
-    {#if !open && preview}<span class="min-w-0 flex-1 truncate">{preview}</span>{:else}<span class="flex-1"></span>{/if}
-    <ChevronRight class="chevron size-3.5 shrink-0 {open ? 'rotate-90' : ''}" />
-  </button>
-  {#if open}
-    <div bind:this={body} class="thought-body" class:is-live={live} onscroll={() => { if (body) following = body.scrollHeight - body.scrollTop - body.clientHeight < 24; }}>{text.trim()}</div>
-  {/if}
-</div>
+    <span class="preview min-w-0 flex-1 truncate">{preview}</span>
+  {/snippet}
+
+  {#snippet body()}
+    <div bind:this={textEl} class="thought-body" class:is-live={live} onscroll={() => { if (textEl) following = textEl.scrollHeight - textEl.scrollTop - textEl.clientHeight < 24; }}>{text.trim()}</div>
+  {/snippet}
+</Disclosure>
 
 <style>
-  .thought-head {
-    display: flex;
-    width: 100%;
-    min-width: 0;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.3125rem 0.5rem;
-    border-radius: 0.5rem;
-    font-size: var(--text-sm);
-    color: var(--muted-foreground);
-    text-align: left;
-    transition: color var(--motion-fast) var(--motion-ease);
-  }
-  .thought-head:hover {
-    color: var(--foreground);
-  }
-  .thought-head :global(.chevron) {
-    opacity: 0;
-    transition: transform var(--motion-fast) var(--motion-ease), opacity var(--motion-fast) var(--motion-ease);
-  }
-  .thought-head:hover :global(.chevron),
-  .thought-head:focus-visible :global(.chevron),
-  .thought-head[aria-expanded='true'] :global(.chevron) {
-    opacity: 1;
+  .preview {
+    font-size: var(--text-xs);
   }
   .thought-body {
     max-height: 16rem;
     overflow-y: auto;
-    margin: 0.125rem 0 0.375rem 0.5rem;
-    padding: 0.125rem 0.5rem 0.125rem 0.75rem;
-    border-left: 1px solid var(--border-subtle);
     white-space: pre-wrap;
     overflow-wrap: anywhere;
-    font-size: var(--text-sm);
-    line-height: 1.6;
     color: var(--muted-foreground);
   }
   /* Live: a short window on the newest lines, fading out at the top. */

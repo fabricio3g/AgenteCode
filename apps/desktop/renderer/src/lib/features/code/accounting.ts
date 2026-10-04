@@ -21,13 +21,24 @@ export function conversationSpend(messages: ChatMessage[], live?: { assistantMes
 /** Only reported spend/cache data appears; missing pricing is explicit. */
 export function spendLabel(spend: CodeSpend): string {
   const parts: string[] = [];
-  if (spend.costUsd > 0) {
-    const amount = spend.costUsd < 0.001 ? '<$0.001' : `$${spend.costUsd.toFixed(3)}`;
-    parts.push(`${spend.estimated ? '~' : ''}${amount}${spend.unpriced ? '+' : ''}`);
-  } else if (!spend.unpriced && spend.promptTokens + spend.cacheReadTokens + spend.cacheWriteTokens > 0) {
-    parts.push(spend.estimated ? '~$0' : 'free');
-  }
+  const cost = spendCostLabel(spend);
+  if (cost) parts.push(cost);
   const context = spend.promptTokens + spend.cacheReadTokens + spend.cacheWriteTokens;
   if (spend.cacheReadTokens > 0 && context > 0) parts.push(`${Math.floor(spend.cacheReadTokens * 100 / context)}% cached`);
   return parts.join(' · ');
+}
+
+/**
+ * Just the money, for a row's one meta line — the cache rate belongs to the
+ * detail, where there is room to say what it is a rate of.
+ */
+export function spendCostLabel(spend: CodeSpend): string {
+  if (spend.costUsd > 0) {
+    const amount = spend.costUsd < 0.001 ? '<$0.001' : `$${spend.costUsd.toFixed(3)}`;
+    return `${spend.estimated ? '~' : ''}${amount}${spend.unpriced ? '+' : ''}`;
+  }
+  if (!spend.unpriced && spend.promptTokens + spend.cacheReadTokens + spend.cacheWriteTokens > 0) {
+    return spend.estimated ? '~$0' : 'free';
+  }
+  return '';
 }

@@ -172,6 +172,8 @@ export type RuntimeEvent =
   | {
     description: string;
     kind: string;
+    /** The model this child runs on. Children inherit the parent's model unless a `subagent_models` override applies, so a card cannot infer it; the runtime resolves it once, at spawn. */
+    model: string;
     run_id: string;
     type: "child_started";
   }
@@ -232,6 +234,8 @@ export type RuntimeEvent =
     type: "user_messages_injected";
   }
   | {
+    /** The model writing the checkpoint, when one will; `None` for a trim, which calls no model at all. */
+    model?: string | null;
     /** Summarized by the model rather than trimmed. */
     smart: boolean;
     type: "compaction_started";

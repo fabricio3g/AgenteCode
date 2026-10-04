@@ -432,6 +432,10 @@
         "list": "{n} 件のフォルダを一覧"
       }
     },
+    "subagent": {
+      "starting": "開始中",
+      "tools": "{n, plural, other {# ツール}}"
+    },
     "plan": {
       "title": "プランを確認",
       "accept": "承認して構築",

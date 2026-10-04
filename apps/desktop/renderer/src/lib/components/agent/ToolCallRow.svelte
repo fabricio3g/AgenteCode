@@ -82,8 +82,10 @@
   });
 
   // The store is reactive now, so this is a read rather than a subscription.
-  const pendingMatch = $derived(approvalsStore.items.some((a) => a.id === step.id));
-  const showApproval = $derived(isApproval || pendingMatch);
+  // Matched on the id the engine asked with: the store may have suffixed its
+  // own key, and a row whose request was answered must find nothing.
+  const pendingMatch = $derived(approvalsStore.forRequest(step.id));
+  const showApproval = $derived(isApproval || !!pendingMatch);
   const durationText = $derived(
     elapsedMs !== undefined && (isRunning || step.status === 'done' || isError)
       ? formatToolDuration(elapsedMs)
@@ -91,11 +93,11 @@
   );
 
   function allow() {
-    approvalsStore.resolve(step.id, true);
+    approvalsStore.resolve(pendingMatch?.id ?? step.id, true);
   }
 
   function deny() {
-    approvalsStore.resolve(step.id, false);
+    approvalsStore.resolve(pendingMatch?.id ?? step.id, false);
   }
 </script>
 

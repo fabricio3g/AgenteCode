@@ -432,6 +432,10 @@
         "list": "{n, plural, one {# dossier listé} other {# dossiers listés}}"
       }
     },
+    "subagent": {
+      "starting": "Démarrage",
+      "tools": "{n, plural, one {# outil} other {# outils}}"
+    },
     "plan": {
       "title": "Examiner le plan",
       "accept": "Accepter et construire",

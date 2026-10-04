@@ -456,7 +456,22 @@ pub(crate) async fn run_agent_loop(cfg: AgentRunConfig) -> Result<(), AgentLoopF
             // falling back to trimming if the summary fails; otherwise trim
             // straight away — instant, and no extra model call.
             let smart = smart_compaction;
-            send_event(&sender, task_id, AgentEvent::CompactionStarted { smart });
+            // Name the model that will write the checkpoint, so the transcript
+            // can say what compacted the context. A trim calls no model.
+            let summary_model_name = smart.then(|| {
+                compaction_model
+                    .as_ref()
+                    .map(|chosen| chosen.model.clone())
+                    .unwrap_or_else(|| model.clone())
+            });
+            send_event(
+                &sender,
+                task_id,
+                AgentEvent::CompactionStarted {
+                    smart,
+                    model: summary_model_name,
+                },
+            );
             let summary_target = if let Some(chosen) = &compaction_model {
                 registry.get(&chosen.provider).map(|summary_provider| {
                     let mut summary_model = crate::providers::resolve_model_info(
@@ -466,6 +481,15 @@ pub(crate) async fn run_agent_loop(cfg: AgentRunConfig) -> Result<(), AgentLoopF
                         &chosen.model,
                     );
                     summary_model.options = summary_provider.get_request_options(&summary_model);
+                    // The override carries its own thinking level; without one
+                    // the checkpoint follows the model's configured default.
+                    if let Some(level) = &chosen.thinking {
+                        apply_thinking_level(
+                            &mut summary_model,
+                            summary_provider.info().api_format,
+                            level,
+                        );
+                    }
                     (summary_provider, summary_model)
                 })
             } else {
