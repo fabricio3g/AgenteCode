@@ -109,7 +109,7 @@
   }
 </script>
 
-<div class="space-y-3 py-3">
+<div class="space-y-3 px-4 py-3 sm:px-5">
   <div>
     <p class="text-sm font-medium text-foreground">{$t('voice.engine.title')}</p>
     <p class="text-xs text-muted-foreground">{$t('voice.engine.hint')}</p>

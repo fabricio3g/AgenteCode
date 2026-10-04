@@ -25,7 +25,7 @@
     tone?: 'default' | 'danger';
     /** Content spans the card edge to edge (lists with their own padding). */
     flush?: boolean;
-    /** Roomier title and card padding (provider pages). */
+    /** Roomier title and description (provider pages). */
     large?: boolean;
     class?: string;
     children: Snippet;
@@ -42,7 +42,7 @@
       {#if actions}<div class="flex shrink-0 items-center gap-1">{@render actions()}</div>{/if}
     </div>
   {/if}
-  <div class={cn('settings-card', tone === 'danger' && 'is-danger', flush ? 'py-1' : large ? 'px-5 py-1' : 'px-3.5 py-0.5', large && 'is-large')}>
+  <div class={cn('settings-card', tone === 'danger' && 'is-danger', flush && 'py-1')}>
     <div class="settings-rows">
       {@render children()}
     </div>
@@ -50,16 +50,17 @@
 </section>
 
 <style>
-  /* A grouped list: a quiet white card with a hairline edge, rows inside
-     separated by hairlines — the same card language as the chat. */
+  /* A grouped list: a quiet card with a hairline edge, rows inside separated
+     by hairlines — the same card language as the chat. The card itself never
+     pads: SettingsRow owns the inset, so a hairline runs the full width and
+     two pages cannot disagree about the gutter. `flush` adds the small
+     vertical padding custom content (tile grids) still needs. */
   .settings-card {
     overflow: hidden;
     border: 1px solid var(--border);
     border-radius: 0.875rem;
     background: var(--card);
   }
-
-  .settings-card.is-large { border-radius: 1rem; }
 
   .settings-card.is-danger {
     border-color: var(--error-border);

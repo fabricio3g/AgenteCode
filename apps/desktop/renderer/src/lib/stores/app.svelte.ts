@@ -690,6 +690,7 @@ class AppStore {
 
   /** Show the Bots screen (the roster, a bot's chat and its routines). */
   showBots() {
+    this.settingsScreenOpen = false;
     this.botsOpen = true;
     this.persist();
   }
@@ -1192,7 +1193,7 @@ class AppStore {
     if (chatId) this.dirtyChatIds.add(chatId);
   }
 
-  persist() {
+  persist({ navigationOnly = false }: { navigationOnly?: boolean } = {}) {
     saveChatState<PersistedState>({
       chats: this.chats,
       folders: this.folders,
@@ -1203,12 +1204,10 @@ class AppStore {
     });
     // Flush current, generating, and any explicitly dirty chats to SQLite.
     const chatIds = new Set<string>(this.dirtyChatIds);
-    if (this.currentChatId) chatIds.add(this.currentChatId);
-    for (const chatId of Object.keys(this.activeRunsByChat)) {
-      chatIds.add(chatId);
+    if (!navigationOnly) {
+      if (this.currentChatId) chatIds.add(this.currentChatId);
+      for (const chatId of Object.keys(this.activeRunsByChat)) chatIds.add(chatId);
     }
-    // Always mark current dirty so mode/workspace/draft changes survive restarts
-    if (this.currentChatId) this.dirtyChatIds.add(this.currentChatId);
 
     for (const chatId of chatIds) {
       const chat = this.findChat(chatId);
@@ -1258,6 +1257,9 @@ class AppStore {
       this.searchSidebarOpen = false;
       return;
     }
+    const previousModel = chat.modelSelection;
+    const previousSearchMode = chat.searchMode;
+    const previousComposerMode = chat.composerMode;
     chat.modelSelection ??= captureChatModel(this.globalConfig, this.backendMode);
     const mode = normalizeContextMode(chat.contextMode);
     this.composer = chat.draft || '';
@@ -1267,6 +1269,7 @@ class AppStore {
     // Keep session fields canonical after hydrate
     chat.searchMode = this.searchMode;
     chat.composerMode = this.composerMode;
+    if (!previousModel || previousSearchMode !== chat.searchMode || previousComposerMode !== chat.composerMode) this.markChatDirty(chat.id);
 
     const lastArtifactMsg = findLatestArtifactMessage(chat);
     this.currentArtifact = lastArtifactMsg?.artifact || null;
@@ -1337,6 +1340,7 @@ class AppStore {
   }
 
   setActiveSpace(mode: ChatContextMode) {
+    this.settingsScreenOpen = false;
     this.homeView = 'chat';
     this.botsOpen = false;
     const nextMode = normalizeContextMode(mode);
@@ -1354,6 +1358,7 @@ class AppStore {
   }
 
   createChat(mode: ChatContextMode = this.activeSpace, options: { workspace?: ChatSession['workspace'] } = {}) {
+    this.settingsScreenOpen = false;
     this.homeView = 'chat';
     this.botsOpen = false;
     const contextMode = normalizeContextMode(mode);
@@ -1396,6 +1401,8 @@ class AppStore {
   }
 
   selectChat(chatId: string) {
+    this.settingsScreenOpen = false;
+    const previousRoute = reasoningRouteIdentity(this.config);
     this.homeView = 'chat';
     this.botsOpen = false;
     const match = this.chats.find((chat) => chat.id === chatId);
@@ -1417,9 +1424,9 @@ class AppStore {
     this.refreshGenerationState();
     // Restore per-chat UI slice (modes, draft, panels) — never rewrite contextMode
     this.hydrateUiFromChat(match);
-    void this.refreshModels();
+    if (previousRoute !== reasoningRouteIdentity(this.config) || !this.models.length) void this.refreshModels();
     void this.refreshReasoningCapabilities();
-    this.persist();
+    this.persist({ navigationOnly: true });
     if (isElectron()) {
       void this.refreshRagDocuments(chatId);
     }

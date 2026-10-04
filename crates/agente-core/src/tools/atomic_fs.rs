@@ -52,12 +52,16 @@ pub fn record_read(path: &Path, content: &str) {
         Ok(metadata) => (metadata.modified().ok(), metadata.len()),
         Err(_) => (None, content.len() as u64),
     };
+    // Hashing and canonicalization can touch large files: keep them outside
+    // the shared mutex so simultaneous agents only serialize the map insert.
+    let key = state_key(path);
+    let hash = content_hash(content.as_bytes());
     lock_states().insert(
-        state_key(path),
+        key,
         ReadState {
             modified,
             len,
-            hash: Some(content_hash(content.as_bytes())),
+            hash: Some(hash),
         },
     );
 }
@@ -69,8 +73,9 @@ pub fn record_read_partial(path: &Path) {
         Ok(metadata) => (metadata.modified().ok(), metadata.len()),
         Err(_) => (None, 0),
     };
+    let key = state_key(path);
     lock_states().insert(
-        state_key(path),
+        key,
         ReadState {
             modified,
             len,

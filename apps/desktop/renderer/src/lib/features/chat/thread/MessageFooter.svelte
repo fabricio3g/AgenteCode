@@ -246,7 +246,7 @@
     padding: 0.1rem 0.4rem;
     border-radius: var(--radius-sm);
     background: var(--muted);
-    font-size: 0.6875rem;
+    font-size: var(--text-xs);
     font-weight: 500;
   }
 

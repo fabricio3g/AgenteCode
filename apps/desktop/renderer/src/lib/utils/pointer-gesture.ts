@@ -3,8 +3,18 @@ export function startPointerGesture(event: PointerEvent, move: (event: PointerEv
   const target = event.currentTarget as HTMLElement;
   target.setPointerCapture(event.pointerId);
   let ended = false;
+  let frame = 0;
+  let pending: PointerEvent | null = null;
+  const flush = () => {
+    cancelAnimationFrame(frame); frame = 0;
+    const next = pending; pending = null;
+    if (next) move(next);
+  };
   const end = (cancelled: boolean) => {
     if (ended) return;
+    // Commit the last position before saving; Escape discards an unpainted move.
+    if (!cancelled) flush();
+    cancelAnimationFrame(frame); pending = null;
     ended = true;
     window.removeEventListener('pointermove', moved, true);
     window.removeEventListener('pointerup', up, true);
@@ -14,7 +24,11 @@ export function startPointerGesture(event: PointerEvent, move: (event: PointerEv
     if (target.hasPointerCapture(event.pointerId)) target.releasePointerCapture(event.pointerId);
     finish(cancelled);
   };
-  const moved = (next: PointerEvent) => { if (next.pointerId === event.pointerId) move(next); };
+  const moved = (next: PointerEvent) => {
+    if (next.pointerId !== event.pointerId) return;
+    pending = next;
+    if (!frame) frame = requestAnimationFrame(flush);
+  };
   const up = (next: PointerEvent) => { if (next.pointerId === event.pointerId) end(false); };
   const abort = (next: PointerEvent) => { if (next.pointerId === event.pointerId) end(true); };
   const cancel = () => end(true);

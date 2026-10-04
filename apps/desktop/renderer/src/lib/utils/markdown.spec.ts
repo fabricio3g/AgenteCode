@@ -27,6 +27,38 @@ describe('renderMarkdown', () => {
     expect(withMath).toContain('katex');
     expect(withoutMath).not.toContain('katex');
   });
+
+  it('wraps a table so a wide one scrolls instead of squeezing', () => {
+    const html = renderMarkdown('| a | b |\n| - | - |\n| 1 | 2 |', { cache: false });
+    expect(html).toContain('<div class="table-scroll"><table>');
+    expect(html).toMatch(/<\/table>\s*<\/div>/);
+  });
+
+  it('reflows model output: a soft line break is not a line break', () => {
+    // Model prose arrives hard-wrapped at a column of its own, so it has to
+    // reflow into the reading measure or every paragraph keeps a ragged edge.
+    const html = renderMarkdown('one line\nand its continuation', { cache: false });
+    expect(html).not.toContain('<br>');
+    expect(html.match(/<p>/g)).toHaveLength(1);
+    expect(html).toContain('one line');
+    expect(html).toContain('and its continuation');
+  });
+
+  it('keeps line breaks in text a person typed', () => {
+    const html = renderMarkdown('first\nsecond', { breaks: true, cache: false });
+    expect(html).toContain('<br>');
+  });
+
+  it('caches the two break modes apart', () => {
+    // One source string, two renders: a cache keyed on the text alone would
+    // hand the user's line breaks to model output, or the reverse.
+    const source = 'alpha\nbeta';
+    const withBreaks = renderMarkdown(source, { breaks: true });
+    const reflowed = renderMarkdown(source);
+    expect(withBreaks).not.toBe(reflowed);
+    expect(renderMarkdown(source, { breaks: true })).toBe(withBreaks);
+    expect(renderMarkdown(source)).toBe(reflowed);
+  });
 });
 
 describe('splitStreamingMarkdown', () => {

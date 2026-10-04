@@ -559,6 +559,7 @@ async fn manual_compaction_defaults_to_llm_and_uses_the_configured_cached_model(
     assert!(response.get("error").is_none(), "{response}");
     assert_eq!(response["result"]["compaction"]["smart"], true);
     assert_eq!(response["result"]["compaction"]["model_tokens"], 1020);
+    assert_eq!(response["result"]["compaction"]["cache_read_tokens"], 800);
     let request = rx.await.unwrap();
     assert_eq!(request["model"], "checkpoint-model");
     assert_eq!(request["prompt_cache_key"], session_id.to_string());

@@ -18,10 +18,11 @@ async function run() {
    await wait(() => window.electronAPI); console.log('fixture bridge ready');
    const oldInvoke = window.electronAPI.invoke;
    window.electronAPI.invoke = (command,args) => command === 'clipboard_write' ? window.chatControlsTest.invoke(command,args) : command === 'agente_media_preview' ? Promise.resolve('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a8WQAAAAASUVORK5CYII=') : oldInvoke(command,args);
+   const {locale}=await import('/node_modules/.vite/deps/svelte-i18n.js');locale.set('en');
    const { mount, unmount } = await import('/node_modules/.vite/deps/svelte.js');
    const { default: Transcript } = await import('/src/lib/features/code/CodeTranscript.svelte');
    const { default: Settings } = await import('/src/lib/features/code/CodeProjectDialog.svelte');
-   const { appStore } = await import('/src/lib/stores/app.svelte.ts');
+   const { appStore } = await import(performance.getEntriesByType('resource').map(entry=>entry.name).find(url=>new URL(url).pathname==='/src/lib/stores/app.svelte.ts')||'/src/lib/stores/app.svelte.ts');
    await wait(() => appStore.ready); console.log('fixture store ready');
    const target = document.createElement('div'); target.style.cssText='position:fixed;inset:24px;background:var(--background);z-index:10;padding:24px;display:flex;flex-direction:column';document.body.appendChild(target);
    const text = 'Copied intact: café 日本語 '+ 'complete evidence '.repeat(1000);

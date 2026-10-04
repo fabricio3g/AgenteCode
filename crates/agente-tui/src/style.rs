@@ -94,6 +94,12 @@ pub mod dark {
     pub const DIFF_ADDED_BG: Color = Color::Rgb(14, 61, 19); // #0e3d13
     pub const DIFF_REMOVED_BG: Color = Color::Rgb(61, 14, 19); // #3d0e13
 
+    // Hero tile field — the landing page's mosaic, one brand orange at
+    // shifting intensity. Dim end first, highlight last.
+    pub const TILE_ACCENT: Color = Color::Rgb(232, 121, 58); // #e8793a
+    pub const TILE_HI: Color = Color::Rgb(255, 190, 152); // #ffbe98
+    pub const TILE_ALPHA: f32 = 0.4;
+
     // Markdown colors — teal section headings, blue sub-headings, white bold
     pub const MD_HEADING: Color = Color::Rgb(78, 201, 176); // #4ec9b0
     pub const MD_LINK: Color = Color::Rgb(129, 162, 190); // #81a2be
@@ -162,6 +168,12 @@ pub mod light {
     pub const DIFF_ADDED_BG: Color = Color::Rgb(213, 229, 213); // #d5e5d5
     pub const DIFF_REMOVED_BG: Color = Color::Rgb(247, 216, 219); // #f7d8db
 
+    // On white the ramp runs the other way: the faint tiles are a pale tint and
+    // the brightest ones are the saturated brand orange.
+    pub const TILE_ACCENT: Color = Color::Rgb(248, 216, 194); // #f8d8c2
+    pub const TILE_HI: Color = Color::Rgb(231, 109, 31); // #e76d1f
+    pub const TILE_ALPHA: f32 = 0.5;
+
     // Markdown colors
     pub const MD_HEADING: Color = Color::Rgb(214, 140, 39);
     pub const MD_LINK: Color = Color::Rgb(59, 125, 216);
@@ -223,6 +235,18 @@ theme_color!(DIFF_ADDED);
 theme_color!(DIFF_REMOVED);
 theme_color!(DIFF_ADDED_BG);
 theme_color!(DIFF_REMOVED_BG);
+theme_color!(TILE_ACCENT);
+theme_color!(TILE_HI);
+
+/// Overall strength of the hero's tile field. The mosaic is a background, so
+/// even its brightest squares stay a blend toward the canvas.
+#[allow(non_snake_case)]
+pub fn TILE_ALPHA() -> f32 {
+    match current_theme() {
+        Theme::Light => light::TILE_ALPHA,
+        Theme::Dark => dark::TILE_ALPHA,
+    }
+}
 theme_color!(MD_HEADING);
 theme_color!(MD_LINK);
 theme_color!(MD_CODE);

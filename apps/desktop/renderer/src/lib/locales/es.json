@@ -630,7 +630,11 @@
     "agent": "Agente",
     "more": "Más",
     "tabs": "Pestañas del navegador",
-    "page": "Página"
+    "page": "Página",
+    "emptyTitle": "Abre un sitio web",
+    "emptyHint": "Ingresa una dirección arriba o pide al agente que navegue.",
+    "annotate": "Dibujar y añadir instrucciones",
+    "browse": "Volver a la página en vivo"
   },
   "localLoad": {
     "title": "Cargar modelo local",
@@ -2260,7 +2264,15 @@
       "highlight": "Resaltar",
       "blur": "Desenfocar",
       "pan": "Mover"
-    }
+    },
+    "drawingSettings": "Ajustes de dibujo",
+    "boardWidth": "Ancho del nuevo lienzo",
+    "boardHeight": "Alto del nuevo lienzo",
+    "textContent": "Texto",
+    "markInstruction": "Instrucción para esta marca",
+    "markInstructionHint": "¿Qué debería cambiar aquí?",
+    "instructions": "Instrucciones",
+    "instructionsHint": "Describe lo que quieres que el agente cree o cambie…"
   },
   "promptQueue": {
     "title": "En cola",

@@ -771,10 +771,12 @@ pub trait Tool: Send + Sync {
         }
         let run = self.execute(args, project_dir);
         tokio::pin!(run);
-        let mut heartbeat =
-            tokio::time::interval(std::time::Duration::from_millis(TOOL_HEARTBEAT_MS));
+        // Schedule the first heartbeat in the future. Awaiting interval's
+        // immediate first tick before polling the tool imposed a timer wakeup
+        // (~1 ms) on every read/search, even when the tool completed instantly.
+        let period = std::time::Duration::from_millis(TOOL_HEARTBEAT_MS);
+        let mut heartbeat = tokio::time::interval_at(tokio::time::Instant::now() + period, period);
         heartbeat.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
-        heartbeat.tick().await;
         loop {
             tokio::select! {
                 result = &mut run => return result,
@@ -936,10 +938,12 @@ impl<C: ToolCore> Tool for TypedTool<C> {
             .map_err(|e| ToolError::InvalidArguments(format!("Invalid arguments: {e}")))?;
         let run = self.0.run(parsed, project_dir, &context);
         tokio::pin!(run);
-        let mut heartbeat =
-            tokio::time::interval(std::time::Duration::from_millis(TOOL_HEARTBEAT_MS));
+        // Schedule the first heartbeat in the future. Awaiting interval's
+        // immediate first tick before polling the tool imposed a timer wakeup
+        // (~1 ms) on every read/search, even when the tool completed instantly.
+        let period = std::time::Duration::from_millis(TOOL_HEARTBEAT_MS);
+        let mut heartbeat = tokio::time::interval_at(tokio::time::Instant::now() + period, period);
         heartbeat.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
-        heartbeat.tick().await;
         loop {
             tokio::select! {
                 result = &mut run => return result,

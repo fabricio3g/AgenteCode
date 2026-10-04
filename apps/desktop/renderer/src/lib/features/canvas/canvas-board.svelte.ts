@@ -55,7 +55,7 @@ export class CanvasBoardStore {
   strokeWidth = $state(4);
   selectedId = $state('');
   /** The id being dragged, so the surface can keep drawing it without a commit. */
-  preview: CanvasMark | null = null;
+  preview = $state<CanvasMark | null>(null);
 
   get doc(): CanvasDoc {
     return (this.activeChatId && this.#docs[this.activeChatId]) || blank();
@@ -261,6 +261,16 @@ export class CanvasBoardStore {
 
   select(id: string): void {
     this.selectedId = id;
+  }
+
+  setInstructions(instructions: string): void {
+    if (!this.activeChatId) return;
+    this.#docs[this.activeChatId] = { ...this.doc, instructions };
+  }
+
+  styleMark(id: string, style: Pick<CanvasMark, 'color' | 'width'>): void {
+    const mark = this.doc.marks.find(item => item.id === id);
+    if (mark) this.#write({ ...this.doc, marks: withMark(this.doc.marks, { ...mark, ...style }) });
   }
 }
 

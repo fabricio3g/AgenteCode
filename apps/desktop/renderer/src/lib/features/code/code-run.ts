@@ -107,10 +107,10 @@ function applyRuntimeEvent(state: CodeRunState, event: Extract<CodeAgentEvent, {
       return true;
     case 'assistant_delta':
       if (!child) return false;
-      child.text = (child.text + value.text).slice(-32_768);
+      child.text += value.text;
       return true;
     case 'child_delta':
-      child!.text = (child!.text + value.text).slice(-32_768);
+      child!.text += value.text;
       return true;
     case 'child_tool': {
       let tool = child!.tools.find((item) => item.id === value.call_id);
@@ -119,7 +119,7 @@ function applyRuntimeEvent(state: CodeRunState, event: Extract<CodeAgentEvent, {
         child!.tools.push(tool);
       }
       if (value.name) tool.name = value.name;
-      tool.output = (value.finished || value.name ? value.content : tool.output + value.content).slice(-32_768);
+      tool.output = value.finished || value.name ? value.content : (tool.output + value.content).slice(-32_768);
       tool.status = value.finished ? (value.is_error ? 'error' : 'done') : 'running';
       return true;
     }

@@ -6,6 +6,52 @@ export function isAbortError(err: unknown): boolean {
   return err instanceof DOMException && err.name === 'AbortError';
 }
 
+/** Strip Electron IPC wrappers and stacked `Error:` prefixes. */
+function cleanIpcError(raw: string): string {
+  return raw
+    .replace(/^Error invoking remote method '[^']+':\s*/i, '')
+    .replace(/^(Error:\s*)+/i, '')
+    .trim();
+}
+
+/** User-facing copy for model-list failures — never raw IPC dumps. */
+export function humanizeProviderError(err: unknown): string {
+  const cleaned = cleanIpcError(toErrorMessage(err));
+  // Machine-shaped blobs carry no words worth showing, even when they hold
+  // a digit run a status branch would otherwise match.
+  if (!cleaned || /^[{[]/.test(cleaned)) return 'Could not load the model list. Please try again.';
+  const lower = cleaned.toLowerCase();
+
+  const missingKey = cleaned.match(/no API key configured for ["']?([\w-]+)/i);
+  if (missingKey) {
+    const name = missingKey[1];
+    const label = name.charAt(0).toUpperCase() + name.slice(1);
+    return `No API key for ${label} yet. Add it above, then refresh the list.`;
+  }
+  if (/timed out|timeout/i.test(cleaned)) {
+    return 'Loading the model list took too long. Check the connection and try again.';
+  }
+  if (/401|403|unauthorized|invalid_api_key|invalid key/i.test(lower)) {
+    return 'The provider rejected this key. Check it and try again.';
+  }
+  if (/429|rate limit|quota|too many requests/i.test(lower)) {
+    return 'The provider is rate-limiting requests right now. Wait a moment and try again.';
+  }
+  if (/5\d{2}|internal server error|bad gateway|service unavailable/i.test(lower)) {
+    return 'The provider had a temporary outage. Please try again in a moment.';
+  }
+  if (/network|fetch failed|econnrefused|enotfound|etimedout|econnreset|socket/i.test(lower)) {
+    return 'Could not reach the provider. Check the address and connection, then try again.';
+  }
+  if (/HTTP\s+\d{3}/i.test(cleaned)) {
+    return 'The provider returned an error. Check the address and key, then try again.';
+  }
+  if (cleaned.length > 180) {
+    return 'Could not load the model list. Please try again.';
+  }
+  return cleaned;
+}
+
 /** User-facing copy for agent/tool failures — never raw IPC/API dumps. */
 export function humanizeAgentError(err: unknown): string {
   const raw = toErrorMessage(err);

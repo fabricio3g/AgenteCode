@@ -230,7 +230,7 @@
 
   .section-label {
     color: var(--text-tertiary);
-    font-size: 0.6875rem;
+    font-size: var(--text-xs);
     font-weight: 600;
     letter-spacing: 0.05em;
     text-transform: uppercase;
@@ -329,7 +329,7 @@
     border-radius: var(--radius-full);
     background: var(--card);
     color: var(--text-muted);
-    font-size: 0.6875rem;
+    font-size: var(--text-xs);
     cursor: pointer;
   }
 

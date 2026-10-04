@@ -9,8 +9,8 @@ import { registerIpcHandlers, disposeAllAgenteSessions, disposeCodeWorkspace } f
 import { stopAllInstances } from './instances.ts';
 import { moduleDirname } from './module-env.ts';
 import { APP_NAME } from '../shared/brand.ts';
-import { setMainWindow, setPreloadPath, getMainWindow, requestMainWindowClose, setActiveWorkState, TITLEBAR_HEIGHT, TITLEBAR_OVERLAY, usesCaptionOverlay } from './window-manager.ts';
-import { zoomKeyDirection } from '../shared/zoom-keys.ts';
+import { setMainWindow, setPreloadPath, getMainWindow, requestMainWindowClose, setActiveWorkState, TITLEBAR_HEIGHT, initialWindowColors, flushWindowTheme, usesCaptionOverlay } from './window-manager.ts';
+import { registerWindowZoom } from './window-zoom.ts';
 
 // Resolves under both the esbuild CJS bundle and tsx's ESM loader.
 const moduleDir = moduleDirname(import.meta.url);
@@ -54,12 +54,14 @@ if (smokeMode) app.once('quit', () => {
 });
 
 function createWindow() {
+  const colors = initialWindowColors();
   const mainWindow = new BrowserWindow({
     width: 1280,
     height: 820,
     minWidth: 960,
     minHeight: 640,
     title: APP_NAME,
+    backgroundColor: colors.color,
     icon: fs.existsSync(APP_ICON_PATH) ? APP_ICON_PATH : undefined,
     // `titleBarStyle` replaces the old `frame: false`, which on macOS *is*
     // 'hidden' and would silently undo the 'hiddenInset' inset below.
@@ -70,7 +72,7 @@ function createWindow() {
     // hover states, correct hit areas at every DPI, the Win11 snap-layout
     // flyout, and the system menu. macOS ignores this option entirely.
     ...(usesCaptionOverlay
-      ? { titleBarOverlay: { ...TITLEBAR_OVERLAY, height: TITLEBAR_HEIGHT } }
+      ? { titleBarOverlay: { ...colors, height: TITLEBAR_HEIGHT } }
       : {}),
     // Win11 draws the rounded corners and shadow itself once the frame is ours.
     roundedCorners: true,
@@ -113,14 +115,8 @@ function createWindow() {
     event.preventDefault();
   });
 
-  // Ctrl/Cmd +, - and 0 change the interface size setting (Settings →
-  // Accessibility) instead of an unsaved zoom from the default menu.
-  mainWindow.webContents.on('before-input-event', (event, input) => {
-    const direction = input.type === 'keyDown' ? zoomKeyDirection(input.key, input.control || input.meta, input.alt) : null;
-    if (direction === null) return;
-    event.preventDefault();
-    mainWindow.webContents.send('ui-zoom', direction);
-  });
+  // Saved interface scale and Ctrl/Cmd +/-/0 share the same controls.
+  registerWindowZoom(mainWindow.webContents);
 }
 
 function createTray() {
@@ -190,6 +186,7 @@ app.on('before-quit', async event => {
   event.preventDefault();
   if (cleanupStarted) return;
   cleanupStarted = true;
+  try { await flushWindowTheme(); } catch (error) { console.warn('[window theme] shutdown:', error); }
   try { await chatDatabase.close(); } catch (error) { console.warn('[database] shutdown:', error); }
   try {
     const { disposeAllAgenteSessions, disposeCodeWorkspace } = await import('./ipc-handlers.js');

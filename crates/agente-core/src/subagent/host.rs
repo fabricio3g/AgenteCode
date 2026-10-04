@@ -1095,6 +1095,19 @@ impl SubagentHost {
     }
 }
 
+/// How many bytes of a finished message the parent has not seen yet.
+///
+/// A streaming provider reports the same reply twice: once as deltas, once as
+/// the finished message. `streamed` holds the deltas of the message in flight,
+/// so a finished message that starts with it only needs its tail forwarded.
+fn unsent_remainder(finished: &str, streamed: &str) -> usize {
+    if finished.starts_with(streamed) {
+        streamed.len()
+    } else {
+        0
+    }
+}
+
 /// Translate a child's private event stream into `AgentEvent::Subagent*`
 /// events on the parent's channel, and record the final transcript. Runs on a
 /// dedicated OS thread: the receive and the sends are blocking, and must not
@@ -1107,10 +1120,11 @@ fn forward_child_events(
     let parent_sender = host.inner.config.event_sender.clone();
     let parent_task_id = host.inner.config.task_id;
     let mut full_text = String::new();
-    // A chatty child must not grow the parent's memory without bound; the
-    // summary keeps its own cap, so dropping the tail only affects display.
-    const MAX_SUBAGENT_STREAM_BYTES: usize = 256 * 1024;
-    let mut streamed_bytes = 0usize;
+    // What the parent already received of the message in flight. A provider
+    // that streams reports the reply twice — once as deltas, once as the
+    // finished message — so the finished message is forwarded only where the
+    // deltas did not reach. Without this the card prints the reply twice.
+    let mut streamed_message = String::new();
     // Publish the live tail on a byte cadence, not per token: the registry
     // lock is shared with every poll, and a status line that is a second
     // behind is worth far more than one lock per delta.
@@ -1127,22 +1141,12 @@ fn forward_child_events(
     while let Ok(task_event) = child_rx.recv() {
         match task_event.event {
             AgentEvent::TextDelta(delta) => {
-                if streamed_bytes < MAX_SUBAGENT_STREAM_BYTES {
-                    streamed_bytes = streamed_bytes.saturating_add(delta.len());
-                    send(AgentEvent::SubagentText {
-                        id: subagent_id.clone(),
-                        text: delta.clone(),
-                    });
-                    if streamed_bytes >= MAX_SUBAGENT_STREAM_BYTES {
-                        send(AgentEvent::SubagentText {
-                            id: subagent_id.clone(),
-                            text: "\n… child output truncated …\n".to_string(),
-                        });
-                    }
-                }
-                if full_text.len() < MAX_SUBAGENT_STREAM_BYTES {
-                    full_text.push_str(&delta);
-                }
+                streamed_message.push_str(&delta);
+                full_text.push_str(&delta);
+                send(AgentEvent::SubagentText {
+                    id: subagent_id.clone(),
+                    text: delta,
+                });
                 if full_text.len().saturating_sub(published_at) >= PROGRESS_EVERY_BYTES {
                     published_at = full_text.len();
                     host.inner.registry.set_progress(&subagent_id, &full_text);
@@ -1152,18 +1156,18 @@ fn forward_child_events(
                 full_text = text.clone();
                 published_at = full_text.len();
                 host.inner.registry.set_progress(&subagent_id, &full_text);
-                let mut text = text;
-                if text.len() > MAX_SUBAGENT_STREAM_BYTES {
-                    let end =
-                        crate::util::truncate_at_char_boundary(&text, MAX_SUBAGENT_STREAM_BYTES)
-                            .len();
-                    text.truncate(end);
-                    text.push_str("\n… child output truncated …\n");
+                // Only the bytes the deltas did not cover: a provider that
+                // streamed the message already sent them, and forwarding the
+                // finished message again doubles the text on screen.
+                let already = unsent_remainder(&text, &streamed_message);
+                streamed_message.clear();
+                let remainder = text[already..].to_string();
+                if !remainder.is_empty() {
+                    send(AgentEvent::SubagentText {
+                        id: subagent_id.clone(),
+                        text: remainder,
+                    });
                 }
-                send(AgentEvent::SubagentText {
-                    id: subagent_id.clone(),
-                    text,
-                });
             }
             AgentEvent::ToolCallStart { id, name, args } => {
                 send(AgentEvent::SubagentToolCallStart {
@@ -1474,6 +1478,21 @@ mod tests {
         }
     }
 
+    /// A streamed reply arrives twice: once as deltas, once as the finished
+    /// message. Only the tail the deltas missed may be forwarded, or the card
+    /// shows the whole reply twice, run together.
+    #[test]
+    fn a_streamed_message_is_not_forwarded_twice() {
+        assert_eq!(unsent_remainder("hello world", "hello "), 6);
+        assert_eq!(unsent_remainder("hello world", "hello world"), 11);
+        // Nothing streamed yet: the finished message is all there is to send.
+        assert_eq!(unsent_remainder("hello", ""), 0);
+        // Unrelated text (a provider that streamed something else) is not a
+        // prefix, so the whole message goes out rather than a slice of it.
+        assert_eq!(unsent_remainder("hello", "different"), 0);
+        assert_eq!(unsent_remainder("", ""), 0);
+    }
+
     #[test]
     fn notify_decision_pushes_only_unobserved_background_without_waiters() {
         // Background, nobody waiting, never delivered: notify.
@@ -1580,7 +1599,7 @@ mod tests {
             let active = self.active.fetch_add(1, Ordering::SeqCst) + 1;
             self.peak.fetch_max(active, Ordering::SeqCst);
             tokio::time::sleep(std::time::Duration::from_millis(150)).await;
-            let answer = format!("{}\nFINAL EVIDENCE PRESERVED", "日".repeat(10000));
+            let answer = format!("{}\nFINAL EVIDENCE PRESERVED", "日".repeat(150000));
             sender
                 .send(crate::llm::StreamEvent::TextDelta(answer))
                 .await
@@ -1602,7 +1621,7 @@ mod tests {
     #[tokio::test]
     async fn foreground_children_overlap_and_return_complete_results() {
         let registry = SubagentRegistry::new();
-        let (host, _events) = queue_test_host(registry.clone(), 2);
+        let (host, events) = queue_test_host(registry.clone(), 2);
         host.inner
             .config
             .permission_engine
@@ -1672,8 +1691,21 @@ mod tests {
         for result in results {
             assert!(!result.is_error, "{}", result.content);
             assert!(result.content.contains("FINAL EVIDENCE PRESERVED"));
-            assert!(result.content.len() > 30000);
+            assert!(result.content.len() > 450000);
             assert!(!result.content.contains("output truncated"));
+        }
+        let mut displayed = std::collections::HashMap::<String, String>::new();
+        for event in events.try_iter() {
+            if let AgentEvent::SubagentText { id, text } = event.event {
+                displayed.entry(id).or_default().push_str(&text);
+            }
+        }
+        assert_eq!(displayed.len(), 2);
+        for text in displayed.values() {
+            assert_eq!(
+                text,
+                &format!("{}\nFINAL EVIDENCE PRESERVED", "日".repeat(150000))
+            );
         }
         for snapshot in registry.list() {
             assert!(

@@ -103,7 +103,7 @@
     border: 1px solid var(--border);
     border-radius: var(--radius-full);
     color: var(--text-muted);
-    font-size: 0.6875rem;
+    font-size: var(--text-xs);
   }
 
   .prompt-block {
@@ -113,7 +113,7 @@
     background: var(--surface-sunken, var(--card));
     color: var(--foreground);
     font-variant-numeric: tabular-nums;
-    font-size: 0.6875rem;
+    font-size: var(--text-xs);
     line-height: 1.5;
     white-space: pre-wrap;
     word-break: break-word;

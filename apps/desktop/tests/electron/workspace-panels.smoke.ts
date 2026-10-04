@@ -2,10 +2,10 @@
 // Verifies real DOM zoom / native View alignment and presentation independent of openness.
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
-import { app, BrowserWindow, WebContentsView } from 'electron';
+import { app, BrowserWindow, WebContentsView, nativeImage } from 'electron';
 import { setMainWindow } from '../../main/window-manager.ts';
 import { runBrowserAction } from '../../main/browser-actions.ts';
-import { panelTab, panelSelectScope, panelListTabs, panelSetTakeover, panelIsTakenOver, withBrowserScope, panelOpenTab, panelSetPresentation, panelSetVisible, panelCloseAll } from '../../main/browser-panel.ts';
+import { panelTab, panelSelectScope, panelListTabs, panelSetTakeover, panelSetOccluded, panelIsTakenOver, withBrowserScope, panelOpenTab, panelSetPresentation, panelSetVisible, panelCloseAll } from '../../main/browser-panel.ts';
 
 app.disableHardwareAcceleration();
 app.on('window-all-closed', () => {});
@@ -38,6 +38,15 @@ async function run() {
     assert.equal(view.getVisible(), false, 'Inactive workspace tab hides the native view');
     await panelSetPresentation({ bounds: rect, exposed: true, occluded: false });
     assert.equal(view.getVisible(), true, 'Tab activation exposes the same page');
+    const capturePage = view.webContents.capturePage.bind(view.webContents);
+    let finishCapture!: (image: ReturnType<typeof nativeImage.createEmpty>) => void;
+    view.webContents.capturePage = () => new Promise(resolve => { finishCapture = resolve; });
+    const pendingOcclusion = panelSetOccluded(true);
+    assert.equal(view.getVisible(), false, 'Legacy occlusion hides before awaiting capture');
+    finishCapture(nativeImage.createEmpty());
+    assert.equal((await pendingOcclusion).image, null, 'Empty captures never produce a broken image');
+    view.webContents.capturePage = capturePage;
+    await panelSetOccluded(false);
     console.log('smoke: overlap');
     await panelSetPresentation({ bounds: rect, exposed: true, occluded: true });
     assert.equal(view.getVisible(), false, 'Floating overlap/drag occludes the native page');

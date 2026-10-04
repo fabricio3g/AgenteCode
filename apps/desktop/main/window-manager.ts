@@ -1,8 +1,20 @@
-import { BrowserWindow, dialog, nativeImage } from 'electron';
+import { app, BrowserWindow, dialog, nativeImage } from 'electron';
+import path from 'node:path';
 import { APP_NAME } from '../shared/brand.ts';
 import { TITLEBAR_HEIGHT, TITLEBAR_OVERLAY_COLOR, TITLEBAR_SYMBOL_COLOR } from '../shared/titlebar.ts';
+import { WINDOW_THEME_COLORS } from '../shared/window-theme.ts';
+import { WindowThemePreferences } from './window-theme-preferences.ts';
 
 let mainWindow: BrowserWindow | null = null;
+let themePreferences: WindowThemePreferences | undefined;
+const paintedColors = new WeakMap<BrowserWindow, string>();
+
+export function initialWindowColors() {
+  themePreferences ??= new WindowThemePreferences(path.join(app.getPath('userData'), 'window-theme.json'));
+  return WINDOW_THEME_COLORS[themePreferences.theme];
+}
+
+export async function flushWindowTheme(): Promise<void> { await themePreferences?.flush(); }
 
 export { TITLEBAR_HEIGHT };
 
@@ -25,16 +37,25 @@ export const usesCaptionOverlay = process.platform !== 'darwin';
 const HEX_COLOR = /^#(?:[0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i;
 
 /**
- * Hand the caption buttons the current theme's colours. Returns false on
- * macOS (no overlay to paint) and on input the OS would reject.
+ * Update the backing window and native caption together, including on reload.
  */
 export function applyTitlebarOverlay(win: BrowserWindow | null, overlay: unknown): boolean {
-  if (!win || win.isDestroyed() || !usesCaptionOverlay) return false;
+  if (!win || win.isDestroyed()) return false;
   const next = overlay as { color?: unknown; symbolColor?: unknown } | null;
   const color = typeof next?.color === 'string' ? next.color : '';
   const symbolColor = typeof next?.symbolColor === 'string' ? next.symbolColor : '';
   if (!HEX_COLOR.test(color) || !HEX_COLOR.test(symbolColor)) return false;
-  win.setTitleBarOverlay({ color, symbolColor, height: TITLEBAR_HEIGHT });
+  const key = `${color}:${symbolColor}`;
+  if (paintedColors.get(win) !== key) {
+    win.setBackgroundColor(color);
+    if (usesCaptionOverlay) win.setTitleBarOverlay({ color, symbolColor, height: TITLEBAR_HEIGHT });
+    paintedColors.set(win, key);
+  }
+  const theme = color === WINDOW_THEME_COLORS.dark.color ? 'dark' : color === WINDOW_THEME_COLORS.light.color ? 'light' : null;
+  if (theme) {
+    initialWindowColors();
+    themePreferences!.update(theme);
+  }
   return true;
 }
 type ActiveWorkState = { active: boolean; reasons: string[] };

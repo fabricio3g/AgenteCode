@@ -370,7 +370,7 @@
     gap: 0.25rem;
     overflow: hidden;
     color: var(--text-muted);
-    font-size: 0.625rem;
+    font-size: var(--text-xs);
   }
 
   .lore-badge {
@@ -378,7 +378,7 @@
     padding: 0 0.25rem;
     border: 1px solid var(--border);
     border-radius: var(--radius-full);
-    font-size: 0.5625rem;
+    font-size: var(--text-xs);
     line-height: 1rem;
     text-transform: uppercase;
     letter-spacing: 0.02em;

@@ -181,7 +181,7 @@
     top: 0.375rem;
     right: 0.5rem;
     color: var(--text-tertiary);
-    font-size: 0.625rem;
+    font-size: var(--text-xs);
     font-variant-numeric: tabular-nums;
   }
 
@@ -243,7 +243,7 @@
     border-radius: var(--radius-full);
     background: var(--muted);
     color: var(--text-muted);
-    font-size: 0.6875rem;
+    font-size: var(--text-xs);
     font-variant-numeric: tabular-nums;
   }
 
@@ -264,7 +264,7 @@
 
   .hint {
     color: var(--text-tertiary);
-    font-size: 0.6875rem;
+    font-size: var(--text-xs);
   }
 
   .dismiss {

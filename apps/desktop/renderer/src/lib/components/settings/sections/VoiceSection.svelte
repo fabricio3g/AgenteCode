@@ -28,6 +28,7 @@
   import SpeechModelPicker from '$lib/features/chat/composer/SpeechModelPicker.svelte';
   import { listSpeechModels, removeSpeechModel, setupSpeech, useSpeechModel, type SpeechModel } from '$lib/features/chat/composer/speech-models';
   import SettingsPage from '../SettingsPage.svelte';
+  import SettingsRow from '../SettingsRow.svelte';
   import SettingsSection from '../SettingsSection.svelte';
   import { loadVoiceCatalog, type VoiceModelEntry } from '../voice-catalog';
 
@@ -338,57 +339,6 @@
   </div>
 {/snippet}
 
-{#snippet settingRow(label: string, hint: string, control: import('svelte').Snippet)}
-  <div class="flex flex-col gap-2 py-3 sm:flex-row sm:items-center sm:justify-between">
-    <div class="min-w-0">
-      <p class="text-sm font-medium text-foreground">{label}</p>
-      {#if hint}<p class="text-xs leading-relaxed text-muted-foreground">{hint}</p>{/if}
-    </div>
-    <div class="shrink-0">{@render control()}</div>
-  </div>
-{/snippet}
-
-{#snippet outputSwitch()}
-  <Switch label={$t('voice.enableOutput')} checked={outputOn} onchange={(on) => void appStore.updateTtsSettings({ enable_voice_output: on })} />
-{/snippet}
-
-{#snippet autoplaySwitch()}
-  <Switch label={$t('voice.autoPlay')} checked={!!tts.auto_play_voice} disabled={!outputOn} onchange={(on) => void appStore.updateTtsSettings({ auto_play_voice: on })} />
-{/snippet}
-
-{#snippet languageSelect()}
-  <Select
-    class="w-56"
-    value={stt.language || 'auto'}
-    options={STT_LANGUAGES.map((code) => ({ value: code, label: languageNames(code) }))}
-    onchange={(value) => void appStore.updateSttSettings({ language: value })}
-    aria-label={$t('voice.language')}
-  />
-{/snippet}
-
-{#snippet micSelect()}
-  {#if micState === 'blocked'}
-    <span class="text-xs text-error">{$t('voice.micDenied')}</span>
-  {:else if micState === 'none' || micState === 'unsupported'}
-    <span class="text-xs text-muted-foreground">{$t('voice.micNone')}</span>
-  {:else if micState === 'busy'}
-    <span class="text-xs text-warning">{$t('voice.micBusy')}</span>
-  {:else if micState === 'checking'}
-    <span class="flex items-center gap-1.5 text-xs text-muted-foreground"><LoaderCircle class="size-3.5 animate-spin" /> {$t('voice.detectingMics')}</span>
-  {:else}
-    <Select
-      class="w-56"
-      value={stt.audio_input_device_id ?? ''}
-      options={[
-        { value: '', label: $t('voice.systemDefault') },
-        ...audioInputDevices.map((device) => ({ value: device.deviceId, label: device.label || $t('voice.micN', { values: { id: device.deviceId.slice(0, 6) } }) }))
-      ]}
-      onchange={(value) => void appStore.updateSttSettings({ audio_input_device_id: value })}
-      aria-label={$t('voice.microphone')}
-    />
-  {/if}
-{/snippet}
-
 <SettingsPage title={$t('voice.title')} description={$t('voice.description')}>
   {#snippet actions()}
     <SegmentedControl
@@ -403,43 +353,72 @@
 
   {#if voiceMode === 'tts'}
     <SettingsSection title={$t('voice.readAloud')}>
-      {@render settingRow($t('voice.enableOutput'), $t('voice.enableOutputHint'), outputSwitch)}
+      <SettingsRow label={$t('voice.enableOutput')} description={$t('voice.enableOutputHint')} control="auto">
+        <Switch label={$t('voice.enableOutput')} checked={outputOn} onchange={(on) => void appStore.updateTtsSettings({ enable_voice_output: on })} />
+      </SettingsRow>
 
-      {@render settingRow($t('voice.autoPlay'), $t('voice.autoPlayHint'), autoplaySwitch)}
+      <SettingsRow label={$t('voice.autoPlay')} description={$t('voice.autoPlayHint')} control="auto">
+        <Switch label={$t('voice.autoPlay')} checked={!!tts.auto_play_voice} disabled={!outputOn} onchange={(on) => void appStore.updateTtsSettings({ auto_play_voice: on })} />
+      </SettingsRow>
 
-       <SpeechServiceSettings kind="tts" />
-       {#if !tts.backend_mode || tts.backend_mode === 'local'}<SpeakVoicePicker />{/if}
-       <div class="py-3"><VoiceAssignmentEditor label={$t('roleplay.voice.narrator')} value={tts.narrator} previewText={$t('roleplay.voice.narratorPreview')} onchange={(narrator) => void appStore.updateTtsSettings({ narrator: narrator ?? undefined })} /></div>
+      <SpeechServiceSettings kind="tts" />
+      {#if !tts.backend_mode || tts.backend_mode === 'local'}<SpeakVoicePicker />{/if}
+      <div class="px-4 py-3 sm:px-5"><VoiceAssignmentEditor label={$t('roleplay.voice.narrator')} value={tts.narrator} previewText={$t('roleplay.voice.narratorPreview')} onchange={(narrator) => void appStore.updateTtsSettings({ narrator: narrator ?? undefined })} /></div>
 
-      <div class="contents">
-        {#snippet speedSlider()}
-          <div class="flex w-56 items-center gap-3">
-            <input type="range" min="0.5" max="2" step="0.05" bind:value={speed} onchange={() => void appStore.updateTtsSettings({ speed })} class="flex-1 accent-[var(--primary)]" aria-label={$t('voice.speed')} />
-            <span class="w-10 text-right text-xs tabular-nums text-muted-foreground">{speed.toFixed(2)}×</span>
-          </div>
-        {/snippet}
-        {@render settingRow($t('voice.speed'), '', speedSlider)}
+      <SettingsRow label={$t('voice.speed')} control="auto">
+        <div class="flex w-56 items-center gap-3">
+          <input type="range" min="0.5" max="2" step="0.05" bind:value={speed} onchange={() => void appStore.updateTtsSettings({ speed })} class="flex-1 accent-[var(--primary)]" aria-label={$t('voice.speed')} />
+          <span class="w-10 text-right text-xs tabular-nums text-muted-foreground">{speed.toFixed(2)}×</span>
+        </div>
+      </SettingsRow>
 
-        {#snippet volumeSlider()}
-          <div class="flex w-56 items-center gap-3">
-            <input type="range" min="0" max="100" step="5" bind:value={volume} onchange={() => void appStore.updateTtsSettings({ volume: volume / 100 })} class="flex-1 accent-[var(--primary)]" aria-label={$t('voice.volume')} />
-            <span class="w-10 text-right text-xs tabular-nums text-muted-foreground">{volume}%</span>
-          </div>
-        {/snippet}
-        {@render settingRow($t('voice.volume'), '', volumeSlider)}
-      </div>
+      <SettingsRow label={$t('voice.volume')} control="auto">
+        <div class="flex w-56 items-center gap-3">
+          <input type="range" min="0" max="100" step="5" bind:value={volume} onchange={() => void appStore.updateTtsSettings({ volume: volume / 100 })} class="flex-1 accent-[var(--primary)]" aria-label={$t('voice.volume')} />
+          <span class="w-10 text-right text-xs tabular-nums text-muted-foreground">{volume}%</span>
+        </div>
+      </SettingsRow>
     </SettingsSection>
 
   {:else}
     <SettingsSection title={$t('voice.dictation')}>
       <SpeechServiceSettings kind="stt" />
-      {@render settingRow($t('voice.language'), $t('voice.languageHint'), languageSelect)}
+      <SettingsRow label={$t('voice.language')} description={$t('voice.languageHint')} control="auto">
+        <Select
+          class="w-56"
+          value={stt.language || 'auto'}
+          options={STT_LANGUAGES.map((code) => ({ value: code, label: languageNames(code) }))}
+          onchange={(value) => void appStore.updateSttSettings({ language: value })}
+          aria-label={$t('voice.language')}
+        />
+      </SettingsRow>
 
-      {@render settingRow($t('voice.microphone'), micState === 'blocked' ? $t('voice.micDeniedHint') : micState === 'none' ? $t('voice.micNoneHint') : micState === 'busy' ? $t('voice.micBusyHint') : '', micSelect)}
+      <SettingsRow label={$t('voice.microphone')} description={micState === 'blocked' ? $t('voice.micDeniedHint') : micState === 'none' ? $t('voice.micNoneHint') : micState === 'busy' ? $t('voice.micBusyHint') : ''} control="auto">
+        {#if micState === 'blocked'}
+          <span class="text-xs text-error">{$t('voice.micDenied')}</span>
+        {:else if micState === 'none' || micState === 'unsupported'}
+          <span class="text-xs text-muted-foreground">{$t('voice.micNone')}</span>
+        {:else if micState === 'busy'}
+          <span class="text-xs text-warning">{$t('voice.micBusy')}</span>
+        {:else if micState === 'checking'}
+          <span class="flex items-center gap-1.5 text-xs text-muted-foreground"><LoaderCircle class="size-3.5 animate-spin" /> {$t('voice.detectingMics')}</span>
+        {:else}
+          <Select
+            class="w-56"
+            value={stt.audio_input_device_id ?? ''}
+            options={[
+              { value: '', label: $t('voice.systemDefault') },
+              ...audioInputDevices.map((device) => ({ value: device.deviceId, label: device.label || $t('voice.micN', { values: { id: device.deviceId.slice(0, 6) } }) }))
+            ]}
+            onchange={(value) => void appStore.updateSttSettings({ audio_input_device_id: value })}
+            aria-label={$t('voice.microphone')}
+          />
+        {/if}
+      </SettingsRow>
     </SettingsSection>
 
     {#if stt.provider !== 'api'}<SettingsSection title={$t('voice.sttModels')} description={$t('voice.tier.sectionHint')}>
-      <div class="py-3">
+      <div class="px-4 py-3 sm:px-5">
         {#if speechModels.length}
           <SpeechModelPicker
             models={speechModels}
@@ -462,12 +441,12 @@
         <Button variant="ghost" size="sm" onclick={() => void chooseCustomRuntime()}><FolderInput /> {$t('voice.customBuild')}</Button>
       {/snippet}
       {#if whisperRuntimesLoading && !whisperRuntimes.length}
-        <p class="flex items-center gap-2 py-3 text-sm text-muted-foreground"><LoaderCircle class="size-4 animate-spin" /> {$t('voice.scanning')}</p>
+        <p class="flex items-center gap-2 px-4 py-3 text-sm text-muted-foreground sm:px-5"><LoaderCircle class="size-4 animate-spin" /> {$t('voice.scanning')}</p>
       {:else if !whisperRuntimes.length}
-        <p class="py-3 text-xs text-muted-foreground">{$t('voice.noWhisperRuntime')}</p>
+        <p class="px-4 py-3 text-xs text-muted-foreground sm:px-5">{$t('voice.noWhisperRuntime')}</p>
       {:else}
         {#each whisperRuntimes as runtime (runtime.path)}
-          <div class="flex items-center gap-3 py-2.5">
+          <div class="flex items-center gap-3 px-4 py-2.5 sm:px-5">
             <span class="flex size-4 shrink-0 items-center justify-center rounded-full border {runtime.is_active ? 'border-primary bg-primary text-primary-fg' : 'border-border'}">
               {#if runtime.is_active}<Check class="size-2.5" />{/if}
             </span>

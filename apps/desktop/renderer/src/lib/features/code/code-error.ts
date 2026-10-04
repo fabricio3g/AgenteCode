@@ -20,7 +20,7 @@ export function classifyCodeError(detail: string): CodeErrorKind {
   if (status !== undefined && status >= 400 && status < 500) return 'providerRejected';
   if (status !== undefined && status >= 500 && status < 600) return 'providerUnavailable';
   if (localModelSentences.some((sentence) => text.includes(sentence))) return 'localModelNotRunning';
-  const connectionFailure = /econnrefused|connection refused|failed to connect|connection error|error sending request|fetch failed|failed to fetch|network error|networkerror|unreachable|timed?\s*out|etimedout/.test(text);
+  const connectionFailure = /econnrefused|connection refused|failed to connect|connection error|error sending request|fetch failed|failed to fetch|network error|networkerror|broken pipe|stream closed|connection reset|error reading a body|unreachable|timed?\s*out|etimedout/.test(text);
   const localEndpoint = /localhost|127\.0\.0\.1|\[::1\]|\b0\.0\.0\.0\b/.test(text);
   if (/local[_ ]model[_ ]not[_ ]running|local (?:model|runtime|server).*(?:not running|not started|not available|unavailable|could not (?:start|be started)|failed to start)|no (?:running|active) local (?:model|runtime)|llama.*(?:not running|not started)/.test(text)
     || (localEndpoint && connectionFailure)) return 'localModelNotRunning';

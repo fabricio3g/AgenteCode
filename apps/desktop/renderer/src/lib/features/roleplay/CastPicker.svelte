@@ -105,7 +105,7 @@
     border-radius: var(--radius-full);
     background: var(--muted);
     color: var(--text-muted);
-    font-size: 0.6875rem;
+    font-size: var(--text-xs);
     font-weight: 600;
   }
 
@@ -127,7 +127,7 @@
   .cast-order {
     flex-shrink: 0;
     color: var(--text-muted);
-    font-size: 0.6875rem;
+    font-size: var(--text-xs);
     font-variant-numeric: tabular-nums;
   }
 </style>

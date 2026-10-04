@@ -12,7 +12,7 @@
 
 <script lang="ts">
   import { t } from 'svelte-i18n';
-  import { ArrowRight, Circle, Minus, MousePointer2, Move, Pencil, RotateCcw, RotateCw, Square, SquareDashed, Trash2, Type, Upload, X } from 'lucide-svelte';
+  import { ArrowRight, Circle, Minus, MousePointer2, Move, Pencil, Plus, RotateCcw, RotateCw, Square, SquareDashed, Trash2, Type, Upload, X } from 'lucide-svelte';
   import { Button, IconButton, Tooltip } from '$lib/components/ui';
   import CanvasSurface from './CanvasSurface.svelte';
   import { canvasBoard } from './canvas-board.svelte';
@@ -21,6 +21,7 @@
   import { invoke } from '$lib/services/bridge';
   import { mediaData } from '$lib/features/code/code-media';
   import { toastStore } from '$lib/stores/toast.svelte';
+  import { bitmapSize } from './canvas-images';
 
   let { chatId }: { chatId: string } = $props();
 
@@ -31,6 +32,8 @@
   let dragOver = $state(false);
   let sending = $state(false);
   let showPoints = $state(true);
+  let boardWidth = $state(1600);
+  let boardHeight = $state(1000);
 
   $effect(() => { canvasBoard.useChat(chatId); });
 
@@ -43,6 +46,13 @@
   const blank = $derived(image ? isBlankBoard(image) : false);
   const ready = $derived(!!image && (blank || !!src));
   const busy = $derived(sending || !image);
+  const selected = $derived(marks.find(mark => mark.id === canvasBoard.selectedId));
+
+  function setStyle(color: string, width: number) {
+    canvasBoard.color = color;
+    canvasBoard.strokeWidth = Math.max(1, Math.min(24, width));
+    if (selected) canvasBoard.styleMark(selected.id, { color, width: canvasBoard.strokeWidth });
+  }
 
   const TOOL_ICONS: Array<{ id: ToolId; icon: typeof Square; key: string }> = [
     { id: 'select', icon: MousePointer2, key: 'v' },
@@ -62,6 +72,7 @@
 
   /** Import through the daemon, then read the stored copy back to draw on. */
   async function attach(files: File[]) {
+    const owner = chatId;
     for (const file of files) {
       try {
         const { attachment } = await invoke<{ attachment: { path: string; name?: string } }>('agente_media_import', await mediaData(file));
@@ -72,10 +83,9 @@
           continue;
         }
         // The natural size is the unit every mark is measured in.
-        const bitmap = new Image();
-        bitmap.src = href;
-        await bitmap.decode();
-        canvasBoard.addImage({ path: attachment.path, name: attachment.name || file.name, w: bitmap.naturalWidth, h: bitmap.naturalHeight }, href);
+        const size = await bitmapSize(href);
+        if (chatId !== owner || canvasBoard.activeChatId !== owner) return;
+        canvasBoard.addImage({ path: attachment.path, name: attachment.name || file.name, ...size }, href);
       } catch (error) {
         toastStore.error(String(error));
       }
@@ -107,7 +117,8 @@
   function newBoard() {
     // The exported file name is built from this one and the daemon reads the
     // media kind from its extension, so the `.png` is not decoration.
-    canvasBoard.addBoard(`${$t('canvas.boardName')}.png`);
+    const clamp = (value: number) => Math.max(320, Math.min(4096, Number(value) || 1600));
+    canvasBoard.addBoard(`${$t('canvas.boardName')}.png`, clamp(boardWidth), clamp(boardHeight));
   }
 
   /** Restore a board whose marks survived a restart: only the bitmaps reload. */
@@ -191,6 +202,7 @@
     <Tooltip label={$t('canvas.attach')} position="bottom">
       <IconButton label={$t('canvas.attach')} size="xs" onclick={() => picker?.click()}><Upload /></IconButton>
     </Tooltip>
+    <Tooltip label={$t('canvas.newBoard')} position="bottom"><IconButton label={$t('canvas.newBoard')} size="xs" onclick={newBoard}><Plus /></IconButton></Tooltip>
     <span class="mx-1 h-4 w-px shrink-0 bg-border" aria-hidden="true"></span>
     {#each TOOL_ICONS as tool (tool.id)}
       {@const Icon = tool.icon}
@@ -215,7 +227,7 @@
           class="canvas-swatch"
           class:is-on={canvasBoard.color === tone}
           style="background: {tone}"
-          onclick={() => (canvasBoard.color = tone)}
+          onclick={() => setStyle(tone, selected?.width ?? canvasBoard.strokeWidth)}
         ></button>
       {/each}
     </div>
@@ -228,7 +240,7 @@
           aria-label={$t('canvas.strokeWidth', { values: { n: String(width) } })}
           class="canvas-stroke"
           class:is-on={canvasBoard.strokeWidth === width}
-          onclick={() => (canvasBoard.strokeWidth = width)}
+          onclick={() => setStyle(selected?.color ?? canvasBoard.color, width)}
         ><span style="height: {Math.max(1, width / 2)}px"></span></button>
       {/each}
     </div>
@@ -250,6 +262,16 @@
       </Tooltip>
     {/if}
   </div>
+
+  <details class="canvas-settings">
+    <summary>{$t('canvas.drawingSettings')}</summary>
+    <div class="canvas-settings-fields">
+      <label>{$t('canvas.color')}<input type="color" value={selected?.color ?? canvasBoard.color} onchange={(event) => setStyle(event.currentTarget.value, selected?.width ?? canvasBoard.strokeWidth)} /></label>
+      <label>{$t('canvas.stroke')}<input type="number" min="1" max="24" value={selected?.width ?? canvasBoard.strokeWidth} onchange={(event) => setStyle(selected?.color ?? canvasBoard.color, event.currentTarget.valueAsNumber || 1)} /></label>
+      <label>{$t('canvas.boardWidth')}<input type="number" min="320" max="4096" bind:value={boardWidth} /></label>
+      <label>{$t('canvas.boardHeight')}<input type="number" min="320" max="4096" bind:value={boardHeight} /></label>
+    </div>
+  </details>
 
   {#if boards.length > 1}
     <div class="canvas-boards flex items-center gap-1 overflow-x-auto border-b px-2 py-1" role="tablist" aria-label={$t('canvas.boards')}>
@@ -281,9 +303,16 @@
     <div class="min-h-0 flex-1"><CanvasSurface imageId={image.id} {src} /></div>
   {/if}
 
-  {#if marks.length}
+  {#if selected}
+    <label class="canvas-mark-note">{$t(selected.kind === 'text' ? 'canvas.textContent' : 'canvas.markInstruction')}
+      <input class="ui-input" value={selected.text ?? ''} placeholder={$t('canvas.markInstructionHint')} oninput={(event) => canvasBoard.previewMark({ ...selected, text: event.currentTarget.value })} onchange={(event) => { canvasBoard.label(selected.id, event.currentTarget.value); canvasBoard.previewMark(null); }} />
+    </label>
+  {/if}
+
+  {#if image}
+    <textarea class="canvas-instructions ui-input" rows="2" aria-label={$t('canvas.instructions')} placeholder={$t('canvas.instructionsHint')} value={canvasBoard.doc.instructions ?? ''} oninput={(event) => canvasBoard.setInstructions(event.currentTarget.value)} onblur={() => canvasBoard.save()}></textarea>
     <div class="flex items-center gap-2 border-t px-2 py-1">
-      <button type="button" class="canvas-points-toggle text-[11px] text-muted-foreground hover:text-foreground" aria-expanded={showPoints} onclick={() => (showPoints = !showPoints)}>
+      <button type="button" class="canvas-points-toggle text-xs text-muted-foreground hover:text-foreground" aria-expanded={showPoints} onclick={() => (showPoints = !showPoints)}>
         {$t('canvas.points', { values: { n: String(points.length) } })}
       </button>
       <span class="flex-1"></span>
@@ -303,7 +332,7 @@
             placeholder={pointName(index)}
             aria-label={pointName(index)}
             onfocus={() => canvasBoard.select(mark.id)}
-            oninput={(event) => canvasBoard.label(mark.id, (event.currentTarget as HTMLInputElement).value)}
+            onchange={(event) => canvasBoard.label(mark.id, (event.currentTarget as HTMLInputElement).value)}
           />
           <span class="canvas-point-where tabular-nums">{where(mark, owner)}</span>
           <IconButton label={$t('canvas.removePoint')} size="xs" onclick={() => canvasBoard.remove(mark.id)}><X /></IconButton>
@@ -317,7 +346,7 @@
   .canvas-panel { background: var(--card); outline: none; }
   .canvas-panel :global(.is-on) { background: var(--surface-hover); color: var(--foreground); }
   .canvas-panel.is-drop { box-shadow: inset 0 0 0 2px var(--ring); }
-  .canvas-board-chip { max-width: 12rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 2px 8px; border-radius: var(--radius-full); font-size: 11px; color: var(--muted-foreground); background: var(--muted); }
+  .canvas-board-chip { max-width: 12rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 2px 8px; border-radius: var(--radius-full); font-size: var(--text-xs); color: var(--muted-foreground); background: var(--muted); }
   .canvas-board-chip:hover { color: var(--foreground); }
   .canvas-board-chip.is-on { color: var(--foreground); background: var(--surface-hover); box-shadow: inset 0 0 0 1px var(--border); }
   .canvas-swatch { width: 14px; height: 14px; border-radius: 999px; box-shadow: inset 0 0 0 1px var(--border); transition: transform var(--motion-fast) var(--motion-ease-out); }
@@ -330,6 +359,14 @@
   .canvas-points { max-height: 40%; background: var(--card); }
   .canvas-point { display: flex; align-items: center; gap: 6px; padding: 3px 6px; }
   .canvas-point:hover, .canvas-point.is-on { background: var(--surface-hover); }
-  .canvas-point-hit { display: inline-flex; width: 16px; height: 16px; flex-shrink: 0; align-items: center; justify-content: center; border-radius: 999px; background: var(--muted); font-size: 10px; font-weight: 700; }
-  .canvas-point-where { flex-shrink: 0; font-size: 10px; color: var(--muted-foreground); }
+  .canvas-point-hit { display: inline-flex; width: 20px; height: 20px; flex-shrink: 0; align-items: center; justify-content: center; border-radius: 999px; background: var(--muted); font-size: var(--text-xs); font-weight: 700; }
+  .canvas-point-where { flex-shrink: 0; font-size: var(--text-xs); color: var(--muted-foreground); }
+  .canvas-settings { flex-shrink: 0; padding: .25rem .5rem; color: var(--muted-foreground); font-size: var(--text-xs); }
+  .canvas-settings summary { cursor: pointer; }
+  .canvas-settings-fields { display: flex; flex-wrap: wrap; gap: .5rem; padding-top: .5rem; }
+  .canvas-settings-fields label { display: flex; align-items: center; gap: .35rem; }
+  .canvas-settings-fields input { width: 4rem; padding: .2rem; border-radius: var(--radius-sm); background: var(--muted); color: var(--foreground); }
+  .canvas-settings-fields input[type=color] { width: 2rem; height: 1.5rem; }
+  .canvas-mark-note { display: flex; flex-shrink: 0; flex-direction: column; gap: .25rem; padding: .4rem .5rem; color: var(--muted-foreground); font-size: var(--text-xs); }
+  .canvas-instructions { flex-shrink: 0; width: calc(100% - 1rem); margin: .25rem .5rem; resize: vertical; max-height: 25%; font-size: var(--text-xs); }
 </style>

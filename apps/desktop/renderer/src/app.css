@@ -7,18 +7,31 @@
 
 /* ─── Flaxeo-aligned design tokens (monochrome) ─────────────────────────── */
 :root {
-  --font-sans: 'Inter Variable', 'SF Pro Text', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  /* Bundled fonts only, all OFL (see the import list in main.ts): Inter, IBM
+     Plex Mono and the Atkinson Hyperlegible pair. Nothing here may resolve to
+     a licensed system face. The sans stack keeps emoji and CJK hooks because
+     Inter covers neither: without them a CJK session depends on whatever the
+     platform picks after `system-ui`. */
+  --font-sans: 'Inter Variable', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, 'Noto Sans', 'Noto Sans CJK SC', 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', sans-serif;
+  /* Optional local faces, never bundled: a machine that has one of these
+     installed should use it before Georgia. Nothing is fetched at runtime. */
   --font-serif: 'Source Serif 4', 'Source Serif Pro', 'Noto Serif', Georgia, Cambria, 'Times New Roman', serif;
   --font-mono: 'IBM Plex Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
+  /* One multiplier drives every text tier: Settings → Text size moves
+     captions, chrome, prose and code together, the way text-only zoom does,
+     instead of resizing prose alone. Interface size is a window zoom on top. */
+  --reading-scale: 1;
   /* Type scale — one source of truth, mirrored into Tailwind's `fontSize` in
      tailwind.config.cjs so utilities and these tokens never disagree.
      `--text-prose` sits one step above the chrome so the conversation keeps the
-     emphasis. `--text-xs` (12px) is a floor, not a target: the ~10–11px caption
-     tier that used to sit under it is unreadable at any weight. */
-  --text-prose: 14px;
-  --text-base: 14px;
-  --text-sm: 13px;
-  --text-xs: 12px;
+     emphasis. `--text-xs` (12px) is a floor, not a target: it is the smallest
+     size regular text stays legible at, and no surface may hardcode below it.
+     `--text-code` carries code, diffs and the terminal. */
+  --text-prose: calc(15px * var(--reading-scale));
+  --text-base: calc(14px * var(--reading-scale));
+  --text-sm: calc(13px * var(--reading-scale));
+  --text-xs: calc(12px * var(--reading-scale));
+  --text-code: calc(13px * var(--reading-scale));
   --leading-base: 1.5;
 
   /* Small text needs the opposite of the tracking large display type takes:
@@ -51,8 +64,8 @@
   --segment-active-shadow: 0 1px 2px rgb(0 0 0 / 0.08), 0 0 0 1px rgb(0 0 0 / 0.06);
   /* One background — see the note in `.dark`. Fills are alpha overlays so they
      work on top of it rather than being separate greys. */
-  --background: #ffffff;
-  --foreground: #0d0d0d;
+  --background: var(--theme-background);
+  --foreground: var(--theme-foreground);
   --card: #ffffff;
   --card-foreground: #0d0d0d;
   --popover: #ffffff;
@@ -71,8 +84,23 @@
   --border: rgb(0 0 0 / 0.07);
   --input: rgb(0 0 0 / 0.1);
   --ring: rgb(0 0 0 / 0.2);
+  /* Startup tile field — the landing page's mosaic, read by site/js/tiles.js
+     (space-separated channels, the syntax that module parses). On white the
+     ramp runs the other way: faint tiles are a pale tint, the brightest ones
+     are the saturated brand orange. */
+  --tile-accent: 248 216 194;
+  --tile-hi: 231 109 31;
+  --tile-alpha: 0.72;
+  --tile-levels: 6;
+  --tile-radius: 0.2;
+  --tile-inset: 0.8;
+  --glow: rgb(231 109 31 / 0.1);
   /* Sidebars sit a step behind the canvas, so the layout reads in layers. */
   --sidebar: #f5f5f6;
+  /* The rail is its own plane, not more sidebar: a step off the sidebar surface
+     in the direction this theme has headroom for, closed by the 1px seam
+     `.activity-rail` draws with --border. Derived, so a theme moves it too. */
+  --rail-bg: color-mix(in srgb, var(--sidebar) 93%, var(--foreground) 7%);
   --sidebar-foreground: #0d0d0d;
   --sidebar-primary: #0d0d0d;
   --sidebar-primary-foreground: #ffffff;
@@ -202,8 +230,17 @@
   /* Icon buttons across the chrome: one size, one icon size. */
   --icon-btn: 1.625rem;
   --icon: 14px;
-  /* One height for every row in the sidebar rail (.sidebar-row). */
-  --sidebar-row-h: 1.75rem;
+  /* The activity rail: one width, one button, one icon for the strip the whole
+     window hangs off. It is the one place the 14px chrome icon scale does not
+     apply — a column of 14px marks reads as decoration. */
+  --rail-w: 3.25rem;
+  --rail-btn: 2.25rem;
+  --rail-icon: 18px;
+  /* One height for every row in the sidebar rail (.sidebar-row), and one size
+     for the mark that leads it. Rows stepped up to 2rem with the activity rail
+     so the whole left edge reads at one scale. */
+  --sidebar-row-h: 2rem;
+  --sidebar-icon: 16px;
   /*
    * Width of blocks rendered inside an assistant turn — charts, artifacts, the
    * research widget, the file-changes card.
@@ -280,8 +317,8 @@
    * one step more. Every fill and hairline is a white alpha so it reads the
    * same on any of those surfaces. One accent (orange) for focus and active.
    */
-  --background: #161616;
-  --foreground: #ececec;
+  --background: var(--theme-background);
+  --foreground: var(--theme-foreground);
   --card: #1e1e1e;
   --card-foreground: var(--foreground);
   --popover: #262626;
@@ -299,8 +336,20 @@
   --border: rgb(255 255 255 / 0.08);
   --input: rgb(255 255 255 / 0.12);
   --ring: rgb(255 255 255 / 0.24);
+  /* Startup tile field — the landing page's mosaic, read by site/js/tiles.js.
+     One brand orange at shifting intensity, dim end first. */
+  --tile-accent: 232 121 58;
+  --tile-hi: 255 190 152;
+  --tile-alpha: 0.92;
+  --tile-levels: 6;
+  --tile-radius: 0.2;
+  --tile-inset: 0.8;
+  --glow: rgb(232 121 58 / 0.13);
   /* A shade darker than the #161616 canvas: recessed, not a hard panel. */
   --sidebar: #0f0f10;
+  /* Dark has no room to recede further, so the rail steps the other way: one
+     shade lighter than the sidebar, still under --card. */
+  --rail-bg: color-mix(in srgb, var(--sidebar) 90%, var(--foreground) 10%);
   --sidebar-foreground: var(--foreground);
   --sidebar-primary: var(--primary);
   --sidebar-primary-foreground: var(--primary-foreground);
@@ -462,6 +511,13 @@ html.dark {
   color-scheme: dark;
 }
 
+/* Native chrome has no page snapshot. Commit desktop theme colors together. */
+html[data-theme-switching] *,
+html[data-theme-switching] *::before,
+html[data-theme-switching] *::after {
+  transition: none !important;
+}
+
 body {
   margin: 0;
   font-family: var(--font-sans);
@@ -475,7 +531,6 @@ body {
   -moz-osx-font-smoothing: auto;
   font-synthesis: none;
   font-optical-sizing: auto;
-  text-rendering: optimizeLegibility;
   background: var(--background);
   color: var(--foreground);
   line-height: var(--leading-base);
@@ -682,7 +737,7 @@ textarea {
   min-height: 2.25rem;
   max-height: 13rem;
   padding: 0 0.25rem;
-  font-size: calc(var(--text-prose) * var(--reading-scale, 1));
+  font-size: var(--text-prose);
   line-height: 1.55;
   letter-spacing: 0;
   font-weight: var(--reading-weight, 400);
@@ -739,7 +794,7 @@ textarea {
 @media (max-width: 640px) {
   .composer-textarea {
     max-height: 10rem;
-    font-size: calc(var(--text-prose) * var(--reading-scale, 1));
+    font-size: var(--text-prose);
   }
 }
 
@@ -1803,6 +1858,11 @@ textarea {
  * copy, which is how the rail drifted into four row heights, four section-label
  * styles and two weights for the same state; now they are identical by
  * construction rather than by coincidence.
+ *
+ * The shape is the activity rail's: a soft squircle, not a pill, so a selected
+ * row and a selected rail button are the same object at two sizes. The fills
+ * are the chrome's shared --surface-hover / --surface-active rather than a
+ * second pair of alphas that happened to match.
  */
 .sidebar-row {
   display: flex;
@@ -1810,10 +1870,10 @@ textarea {
   min-width: 0;
   height: var(--sidebar-row-h);
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.625rem;
   padding: 0 0.625rem;
   border: 0;
-  border-radius: var(--radius-full);
+  border-radius: 0.5rem;
   background: transparent;
   color: var(--text-secondary);
   font-family: inherit;
@@ -1825,13 +1885,21 @@ textarea {
     color var(--motion-fast) var(--motion-ease);
 }
 
+/* The mark that leads a row: one size, from one token. A row's trailing
+   controls are buttons (.sidebar-row-action) and keep the chrome's scale. */
+.sidebar-row-icon {
+  width: var(--sidebar-icon);
+  height: var(--sidebar-icon);
+  flex-shrink: 0;
+}
+
 .sidebar-row:hover {
-  background: var(--sidebar-accent);
-  color: var(--sidebar-accent-foreground);
+  background: var(--surface-hover);
+  color: var(--foreground);
 }
 
 .sidebar-row.is-current {
-  background: var(--sidebar-accent);
+  background: var(--surface-active);
   color: var(--sidebar-foreground);
   font-weight: 500;
 }
@@ -1858,8 +1926,8 @@ textarea {
 }
 
 .sidebar-row.is-ancestor:hover {
-  background: var(--sidebar-accent);
-  color: var(--sidebar-accent-foreground);
+  background: var(--surface-hover);
+  color: var(--foreground);
 }
 
 /* Quieter than a real row: the "new conversation" affordance under a folder. */
@@ -1871,9 +1939,11 @@ textarea {
   color: var(--warning);
 }
 
+/* The same keyboard ring the activity rail and the settings nav rows draw:
+   one grammar for every focusable strip in the chrome. */
 .sidebar-row:focus-visible {
-  outline: 2px solid var(--sidebar-ring);
-  outline-offset: -2px;
+  outline: none;
+  box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--ring) 45%, transparent);
 }
 
 /* The flexible part of a row: truncates rather than pushing trailing controls out. */
@@ -1912,6 +1982,16 @@ button.sidebar-section {
 
 button.sidebar-section:hover {
   color: var(--sidebar-foreground);
+}
+
+/* A quiet heading inside a group: the settings rail's "Cloud" / "On this
+   computer", one step under `.sidebar-section`. */
+.sidebar-subsection {
+  margin: 0;
+  padding: 0.5rem 0.625rem 0.25rem;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  font-weight: 500;
 }
 
 /* A row's trailing controls: revealed on hover or keyboard focus, never hidden from Tab. */
@@ -1991,6 +2071,8 @@ button.sidebar-section:hover {
 .sidebar-dot.is-approval { background: var(--warning); }
 .sidebar-dot.is-active { background: var(--success); }
 .sidebar-dot.is-error { background: var(--error); }
+/* Reachable but not in use: present without competing with a live one. */
+.sidebar-dot.is-idle { opacity: 0.6; }
 
 @keyframes sidebar-dot-pulse {
   0%, 100% { opacity: 0.35; }
@@ -2012,7 +2094,7 @@ button.sidebar-section:hover {
    */
   overflow-wrap: break-word;
   padding: 0.625rem 0.9375rem;
-  font-size: calc(var(--text-prose) * var(--reading-scale, 1));
+  font-size: var(--text-prose);
   font-weight: var(--reading-weight, 400);
   background: var(--user-bubble);
   color: var(--user-bubble-text);
@@ -2234,7 +2316,6 @@ kbd {
 
 .markdown-body {
   contain: layout style;
-  text-rendering: optimizeLegibility;
   -webkit-font-smoothing: auto;
   -moz-osx-font-smoothing: auto;
   font-synthesis: none;
@@ -2242,17 +2323,32 @@ kbd {
      entry only carries `wght`, so this was silently a no-op. */
   font-optical-sizing: auto;
   color: inherit;
-  line-height: 1.65;
+  line-height: 1.7;
   /* Compact prose keeps the reader’s size and weight controls. */
   font-weight: var(--reading-weight, 400);
   letter-spacing: 0;
-  font-size: calc(var(--text-prose) * var(--reading-scale, 1));
+  font-size: var(--text-prose);
+  /* A long path or URL must not run out of the column. */
+  overflow-wrap: break-word;
+}
+
+/* Keep technical prose ragged right: paths and code cannot hyphenate reliably. */
+.markdown-body :is(p, li, blockquote, dd) {
+  text-align: left;
+  text-wrap: pretty;
+  hyphens: none;
+}
+.markdown-body :is(p, ul, ol, blockquote, dl) {
+  max-width: 72ch;
+}
+.markdown-body {
+  container-type: normal;
 }
 
 /* Research modes (Search / Deep / Max): APA-style reports need more air */
 .markdown-body.is-research {
   line-height: 1.74;
-  font-size: calc(var(--text-prose) * var(--reading-scale, 1));
+  font-size: var(--text-prose);
 }
 
 .markdown-body.is-research p,
@@ -2329,26 +2425,43 @@ kbd {
   margin-bottom: 0;
 }
 
+/* Block rhythm in `em`, so Settings → Text size scales the spacing with the
+   glyphs instead of growing text into fixed gaps. */
 .markdown-body p,
 .markdown-body ul,
 .markdown-body ol,
 .markdown-body blockquote,
 .markdown-body pre,
 .markdown-body table {
-  margin: 0 0 1rem;
+  margin: 0 0 1.05em;
 }
 
+/*
+ * Preflight removes list markers, and markdown without them loses the structure
+ * the model wrote: numbered steps read as ordinary sentences.
+ */
 .markdown-body ul,
 .markdown-body ol {
-  padding-left: 1.25rem;
+  padding-left: 1.4em;
 }
+
+.markdown-body ul { list-style: disc; }
+.markdown-body ol { list-style: decimal; }
+.markdown-body ul ul { list-style: circle; }
+.markdown-body ul ul ul { list-style: square; }
+.markdown-body li::marker { color: var(--text-muted); }
+.markdown-body ol > li::marker { font-variant-numeric: tabular-nums; }
+.markdown-body li > ul,
+.markdown-body li > ol { margin: 0.25em 0 0; }
 
 .markdown-body pre {
   overflow-x: auto;
   padding: 1rem;
   background: var(--surface);
   margin: 0;
-  font-size: 0.875rem;
+  font-size: var(--text-code);
+  line-height: 1.55;
+  tab-size: 2;
 }
 
 .dark .markdown-body pre {
@@ -2400,9 +2513,22 @@ kbd {
   padding: 0.875rem;
 }
 
+/*
+ * The highlight theme paints a white background on the `code` element and the
+ * dark theme only ever overrode its colour, so every dark-mode block was a
+ * white slab carrying dark-mode syntax colours. The block owns the surface, so
+ * the code element stays transparent and drops the theme's own padding.
+ */
+.markdown-body pre code.hljs {
+  display: block;
+  padding: 0;
+  background: transparent;
+  overflow-x: visible;
+}
+
 /* A quiet caption, not a badge — the pill competed with the code beneath it. */
 .markdown-body .code-lang {
-  font-size: 0.75rem;
+  font-size: var(--text-xs);
   font-weight: 500;
   padding: 0;
   background: transparent;
@@ -2450,36 +2576,42 @@ kbd {
   transform: scale(1);
 }
 
+/* Inline code is code: mono, one step down from prose, on a soft fill. */
 .markdown-body code:not(pre code) {
   border-radius: var(--radius-sm);
-  padding: 0.15rem 0.4rem;
-  background: var(--surface);
-  font-family: inherit;
-  font-size: 0.92em;
-  border: 1px solid var(--border);
+  padding: 0 0.12em;
+  background: color-mix(in srgb, var(--surface-hover) 35%, transparent);
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+  border: 0;
+  overflow-wrap: break-word;
 }
 
-.dark .markdown-body code:not(pre code) {
-  background: var(--surface);
-  border-color: var(--border);
+/*
+ * A link has to be findable in a paragraph. The accent colour plus a soft
+ * underline is the non-colour cue WCAG 1.4.1 asks for; hover solidifies it.
+ * Citation pills are links too, so they opt out of this.
+ */
+.markdown-body a:not(.ui-legacy-pill) {
+  color: var(--brand-accent-strong);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, currentColor 40%, transparent);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+  transition: color var(--motion-fast) var(--motion-ease), text-decoration-color var(--motion-fast) var(--motion-ease);
 }
 
-.markdown-body a {
-  color: var(--text);
-  text-decoration: none;
-  border-bottom: 1px solid var(--border);
-  transition: border-color 0.15s ease;
+.markdown-body a:not(.ui-legacy-pill):hover {
+  color: var(--foreground);
+  text-decoration-color: currentColor;
 }
 
-.markdown-body a:hover {
-  border-color: var(--text);
-}
-
+/* A rail and a quieter colour carry the quote; italics over a long passage read
+   worse than the upright face. */
 .markdown-body blockquote {
   border-left: 2px solid var(--border);
-  padding-left: 1rem;
+  padding-left: 0.9em;
   color: var(--text-secondary);
-  font-style: italic;
 }
 
 .dark .markdown-body blockquote {
@@ -2541,27 +2673,40 @@ kbd {
 .markdown-body h6 {
   font-weight: 600;
   line-height: 1.3;
-  margin: 1.5rem 0 0.5rem;
+  /* Rhythm in `em`: a heading keeps its proportion to the prose at any reading
+     scale instead of drifting apart from it. */
+  margin: 1.6em 0 0.6em;
   color: inherit;
   letter-spacing: -0.01em;
+  /* A heading is short: balance its lines rather than leave one word alone. */
+  text-wrap: balance;
+  scroll-margin-top: 1em;
 }
-.markdown-body h1 { font-size: 1.5rem; font-weight: 700; }
-.markdown-body h2 { font-size: 1.25rem; }
-.markdown-body h3 { font-size: 1.1rem; }
-.markdown-body h4, .markdown-body h5, .markdown-body h6 { font-size: 1rem; }
+.markdown-body h1 { font-size: 1.3em; }
+.markdown-body h2 { font-size: 1.15em; }
+.markdown-body h3 { font-size: 1.05em; }
+.markdown-body h4, .markdown-body h5, .markdown-body h6 { font-size: 1em; }
 
 .markdown-body hr {
   border: none;
   border-top: 1px solid var(--border);
-  margin: 1.5rem 0;
+  margin: 1.6em 0;
 }
 
 /* Markdown tables */
+/* A wide table scrolls inside its own band instead of squeezing its columns. */
+.markdown-body .table-scroll {
+  margin: 0 0 1.05em;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+}
+.markdown-body .table-scroll table {
+  margin: 0;
+}
 .markdown-body table {
   border-collapse: collapse;
   width: 100%;
-  font-size: 0.875rem;
-  margin-bottom: 1rem;
+  font-size: 0.94em;
   overflow: hidden;
   border-radius: var(--radius-md);
   border: 1px solid var(--border);
@@ -2574,9 +2719,10 @@ kbd {
   padding: 0.6rem 0.875rem;
   text-align: left;
   font-weight: 600;
-  font-size: 0.8rem;
-  letter-spacing: 0.02em;
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-caption);
   border-bottom: 1px solid var(--border);
+  white-space: nowrap;
 }
 .dark .markdown-body th {
   background: var(--surface-hover);
@@ -2585,6 +2731,17 @@ kbd {
 .markdown-body td {
   padding: 0.55rem 0.875rem;
   border-bottom: 1px solid var(--border);
+  /* Numeric columns line up digit for digit. */
+  font-variant-numeric: tabular-nums;
+}
+/* `:---:` arrives as an `align` attribute; state the alignment in CSS as well. */
+.markdown-body th[align='right'],
+.markdown-body td[align='right'] {
+  text-align: right;
+}
+.markdown-body th[align='center'],
+.markdown-body td[align='center'] {
+  text-align: center;
 }
 .dark .markdown-body td {
   border-color: var(--border);
@@ -2600,11 +2757,35 @@ kbd {
 }
 
 /* Nested lists */
-.markdown-body li {
-  margin-bottom: 0.25rem;
+.markdown-body li + li {
+  margin-top: 0.22em;
 }
-.markdown-body li p {
-  margin-bottom: 0.25rem;
+.markdown-body li > p {
+  margin-bottom: 0.35em;
+}
+
+/* Inline elements */
+.markdown-body strong { font-weight: 600; }
+.markdown-body del { color: var(--text-muted); }
+.markdown-body sup,
+.markdown-body sub {
+  font-size: 0.7em;
+  /* Without this a superscript stretches the line it sits on. */
+  line-height: 0;
+}
+
+/* An image in an answer is content: it stays inside the column and takes the
+   same corner as every other block. */
+.markdown-body img {
+  max-width: 100%;
+  height: auto;
+  border-radius: var(--radius-md);
+}
+.markdown-body figure { margin: 0 0 1.05em; }
+.markdown-body figcaption {
+  margin-top: 0.4em;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
 }
 
 /* Task list checkboxes */
@@ -2870,9 +3051,9 @@ svg.lucide:is(.size-2, .size-2\.5, .size-3, .h-3, .h-2\.5) {
 
 /* ─── Accessibility (Settings → Accessibility) ─────────────────────────────
    The store in stores/accessibility.svelte.ts sets these on <html>. Interface
-   size is the window zoom; everything else is a class or a variable here. */
+   size is the window zoom, the reading scale lives with the type scale at the
+   top of this file, and everything else is a class or a variable here. */
 :root {
-  --reading-scale: 1;
   /* Inter Variable carries the full 100–900 axis, so 500 is a real interpolated
      weight — never a faux bold (font-synthesis stays off). */
   --reading-weight: 400;
@@ -2882,8 +3063,12 @@ html[data-font='system'] {
   --font-sans: system-ui, -apple-system, 'Segoe UI', Roboto, 'Noto Sans', Ubuntu, sans-serif;
 }
 
+/* Atkinson Hyperlegible for reading, and its mono companion for code and the
+   terminal: a low-vision reader gets one family across the whole window
+   instead of a legible transcript in an illegible diff. */
 html[data-font='hyperlegible'] {
   --font-sans: 'Atkinson Hyperlegible', 'Inter Variable', system-ui, sans-serif;
+  --font-mono: 'Atkinson Hyperlegible Mono Variable', 'Atkinson Hyperlegible Mono', 'IBM Plex Mono', monospace;
 }
 
 /* Relaxed spacing: more room between lines, letters and words when reading. */
@@ -2922,6 +3107,45 @@ html.dark.a11y-contrast {
   --border-hover: rgb(255 255 255 / 0.36);
   --input: rgb(255 255 255 / 0.34);
   --composer-ring: rgb(255 255 255 / 0.34);
+}
+
+/* The OS can ask for the same thing, and it should not need the switch above.
+   `prefers-contrast: more` raises the same tokens; Windows high contrast
+   replaces the palette wholesale, so there we only drop our own decoration. */
+@media (prefers-contrast: more) {
+  :root {
+    --muted-foreground: #3f3f3f;
+    --text-secondary: #262626;
+    --text-tertiary: #3f3f3f;
+    --border: rgb(0 0 0 / 0.2);
+    --border-subtle: rgb(0 0 0 / 0.14);
+    --border-hover: rgb(0 0 0 / 0.32);
+    --input: rgb(0 0 0 / 0.32);
+    --composer-ring: rgb(0 0 0 / 0.32);
+  }
+  html.dark {
+    --muted-foreground: #cfcfcf;
+    --text-secondary: #e5e5e5;
+    --text-tertiary: #cfcfcf;
+    --border: rgb(255 255 255 / 0.24);
+    --border-subtle: rgb(255 255 255 / 0.16);
+    --border-hover: rgb(255 255 255 / 0.36);
+    --input: rgb(255 255 255 / 0.34);
+    --composer-ring: rgb(255 255 255 / 0.34);
+  }
+}
+
+@media (forced-colors: active) {
+  html {
+    --grain-noise: none;
+  }
+  .backdrop-blur-xl {
+    backdrop-filter: none;
+  }
+  :focus-visible {
+    outline: 2px solid CanvasText;
+    outline-offset: 2px;
+  }
 }
 
 /* Always-visible focus: a solid outline on whatever has keyboard focus. */

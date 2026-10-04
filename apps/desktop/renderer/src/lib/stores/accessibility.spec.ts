@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_ACCESSIBILITY, parseAccessibility, stepScale } from './accessibility.svelte';
+import { DEFAULT_ACCESSIBILITY, parseAccessibility, stepScale, UI_SCALES } from './accessibility.svelte';
 
 describe('parseAccessibility', () => {
   it('falls back to the defaults for missing or broken data', () => {
@@ -25,8 +25,14 @@ describe('stepScale', () => {
   it('moves between the presets and stops at the ends', () => {
     expect(stepScale(1, 1)).toBe(1.1);
     expect(stepScale(1, -1)).toBe(0.9);
-    expect(stepScale(1.5, 1)).toBe(1.5);
-    expect(stepScale(0.8, -1)).toBe(0.8);
+    expect(stepScale(1.5, 1)).toBe(1.75);
+    expect(stepScale(2, 1)).toBe(2);
+    expect(stepScale(0.9, -1)).toBe(0.9);
+  });
+
+  it('reaches the 200% ceiling the accessibility criteria ask for', () => {
+    expect(stepScale(1.75, 1)).toBe(2);
+    expect(Math.max(...UI_SCALES)).toBe(2);
   });
 
   it('snaps an in-between size to the next preset', () => {

@@ -735,7 +735,7 @@ impl AppState {
     }
 
     /// Whether any continuous UI animation or active turn needs smooth continuous rendering
-    /// The hero's tilde sea is on screen and should keep drifting (a slow
+    /// The hero's tile field is on screen and should keep drifting (a slow
     /// ~15 fps ambient repaint, separate from the fast animation tick).
     /// The `/mcp` dialog also repaints this way: server statuses change in
     /// the background while it is open.

@@ -1,9 +1,11 @@
 import { loadTheme, saveTheme } from '$lib/utils/storage';
 import { appWindow } from '$lib/services/window';
-import { TITLEBAR_OVERLAY_COLOR } from '$shared/titlebar';
+import { isElectron } from '$lib/services/bridge';
+import { WINDOW_THEME_COLORS } from '$shared/window-theme';
 
 class ThemeStore {
   current = $state<'light' | 'dark'>('dark');
+  private resetFrame = 0;
 
   /**
    * Dark is the default, unconditionally.
@@ -26,35 +28,24 @@ class ThemeStore {
   }
 
   set(next: 'light' | 'dark') {
+    if (next === this.current) return;
     this.current = next;
     this.applyWithReveal();
   }
 
   private apply() {
     if (typeof document === 'undefined') return;
-    document.documentElement.classList.toggle('dark', this.current === 'dark');
+    const root = document.documentElement;
+    if (isElectron()) {
+      root.dataset.themeSwitching = 'true';
+      cancelAnimationFrame(this.resetFrame);
+      this.resetFrame = requestAnimationFrame(() => {
+        this.resetFrame = requestAnimationFrame(() => { delete root.dataset.themeSwitching; });
+      });
+    }
+    root.classList.toggle('dark', this.current === 'dark');
     saveTheme(this.current);
-    void this.syncCaptionOverlay();
-  }
-
-  /**
-   * Hand the OS caption buttons the current surface colours.
-   *
-   * Caption buttons live outside the web contents. Transparent overlay colour
-   * therefore becomes the platform's default grey instead of showing the
-   * titlebar behind it. Read both colours from the live CSS tokens so the
-   * native strip follows the UI on a theme flip.
-   */
-  private async syncCaptionOverlay() {
-    const styles = getComputedStyle(document.documentElement);
-    const symbolColor = styles.getPropertyValue('--foreground').trim();
-    const background = styles.getPropertyValue('--background').trim();
-    if (!symbolColor) return;
-    // The current palettes use hex tokens, which Electron accepts on every
-    // supported platform. Keep the shared dark default for an unusual custom
-    // token rather than sending a value the main-process validator rejects.
-    const color = /^#[\da-f]{3,8}$/i.test(background) ? background : TITLEBAR_OVERLAY_COLOR;
-    await appWindow.setTitlebarOverlay({ color, symbolColor });
+    void appWindow.setTitlebarOverlay(WINDOW_THEME_COLORS[this.current]).catch(() => {});
   }
 
   /**
@@ -64,7 +55,7 @@ class ThemeStore {
    * when reduced motion asks for quiet.
    */
   private applyWithReveal(origin?: { x: number; y: number }) {
-    if (typeof document === 'undefined') {
+    if (typeof document === 'undefined' || isElectron()) {
       this.apply();
       return;
     }
@@ -85,7 +76,11 @@ class ThemeStore {
       root.style.setProperty('--vt-y', `${origin.y}px`);
       root.style.setProperty('--vt-r', `${radius}px`);
     }
-    document.startViewTransition(() => this.apply());
+    // A skipped transition (rapid toggles, HMR, unload) rejects its promises:
+    // handled here so it never surfaces as an unhandled rejection.
+    const transition = document.startViewTransition(() => this.apply());
+    transition.ready.catch(() => {});
+    transition.finished.catch(() => {});
   }
 }
 

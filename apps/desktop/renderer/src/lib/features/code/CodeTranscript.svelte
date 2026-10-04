@@ -13,10 +13,12 @@
 -->
 
 <script lang="ts">
+  import CompactionReport from './CompactionReport.svelte';
   import { onDestroy } from 'svelte';
   import { writeToClipboard } from '$lib/utils/clipboard';
   import { ArrowDown, CircleCheck, ClipboardList, Clock, Copy, GitFork, History, RotateCcw, TriangleAlert } from 'lucide-svelte';
   import type { ChatMessage } from '$lib/types/chat';
+  import DeferredMessage from '$lib/features/shared/DeferredMessage.svelte';
   import RichContent from '$lib/ui/components/RichContent.svelte';
   import MediaAttachmentCard from './MediaAttachmentCard.svelte';
   import CodeWorkBlock from './CodeWorkBlock.svelte';
@@ -75,6 +77,18 @@
     }
   });
 
+  function followContentGrowth(node: HTMLElement) {
+    const observer = new ResizeObserver(() => {
+      if (!pinnedToBottom || scrollFrame) return;
+      scrollFrame = requestAnimationFrame(() => {
+        scrollFrame = 0;
+        if (viewport && pinnedToBottom) viewport.scrollTop = viewport.scrollHeight;
+      });
+    });
+    observer.observe(node);
+    return { destroy: () => observer.disconnect() };
+  }
+
   function onScroll() {
     if (!viewport) return;
     pinnedToBottom = viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight < 80;
@@ -127,9 +141,10 @@
      rests fully visible when scrolled to the end; text only fades while it
      scrolls past. -->
 <div bind:this={viewport} class="relative min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden px-4 pb-16 pt-6" onscroll={onScroll}>
-  <div class="mx-auto flex min-w-0 flex-col gap-3" style="max-width: var(--thread-width);">
-    {#each messages as message (message.id)}
+  <div class="mx-auto flex min-w-0 flex-col gap-3" style="max-width: var(--thread-width);" use:followContentGrowth>
+    {#each messages as message, messageIndex (message.id)}
       <div class="code-message-slot" class:is-live={message.status === 'streaming'}>
+      <DeferredMessage content={message.content} immediate={messages.length < 60 || messageIndex >= messages.length - 6 || message.status === 'streaming'}>
       {#if message.role === 'user'}
         {@const queued = !!message.metadata?.codeQueued && !!run?.running}
         <div class="group flex flex-col items-end gap-1">
@@ -151,17 +166,7 @@
           </div>
         </div>
       {:else if message.metadata?.codeCompaction}
-        {@const report = message.metadata.codeCompaction}
-        <div class="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground" role="status">
-          <ClipboardList class="size-3" />
-          <span>{report.running ? copy.codeRun.compacting : report.success ? (report.tokensBefore === report.tokensAfter ? $t('code.compaction.unchanged') : copy.codeRun.compacted) : $t('code.compaction.failed')}</span>
-          {#if report.tokensBefore !== undefined && report.tokensAfter !== undefined}
-            <span class="tabular-nums">· ~{report.tokensBefore.toLocaleString()} → ~{report.tokensAfter.toLocaleString()} {$t('code.compaction.tokens')}</span>
-            <span>· {report.smart ? $t('code.compaction.summarized') : report.requestedSmart ? $t('code.compaction.fallback') : $t('code.compaction.noModelCall')}</span>
-            {#if report.cacheReadTokens}<span>· {$t('code.compaction.cached', { values: { n: report.cacheReadTokens.toLocaleString() } })}</span>{/if}
-            {#if report.requestedSmart}<span>· {report.modelTokens !== undefined ? $t('code.compaction.spent', { values: { n: report.modelTokens.toLocaleString() } }) : $t('code.compaction.unreported')}</span>{/if}
-          {/if}
-        </div>
+        <CompactionReport report={message.metadata.codeCompaction} />
       {:else if message.metadata?.codeNote && !message.content && !message.agentSteps?.length}
         <!-- A system note (restore, …): centered, quiet. -->
         <div class="flex items-center justify-center gap-1.5 text-xs text-muted-foreground">
@@ -238,6 +243,7 @@
           {#if message.content.trim()}<button type="button" class="flex items-center gap-1 self-start text-xs text-muted-foreground opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100 focus-visible:opacity-100" onclick={() => messageAction(message, 'copy')}><Copy class="size-3" />{$t('code.message.copy')}</button>{/if}
         </div>
       {/if}
+      </DeferredMessage>
       </div>
     {/each}
     {#if plan && !run?.running && codeWorkspace.plan?.chatId !== chatId}
@@ -275,7 +281,7 @@
     padding: 0.4rem 0.75rem;
     border-radius: 0.75rem;
     border: 1px solid var(--border-subtle);
-    font-size: 13px;
+    font-size: var(--text-sm);
     color: var(--foreground);
     transition: background-color var(--motion-fast) var(--motion-ease);
   }

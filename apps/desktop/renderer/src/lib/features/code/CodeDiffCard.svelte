@@ -47,13 +47,13 @@
     padding: 0.375rem 0.625rem;
     border-bottom: 1px solid var(--border-subtle);
     font-family: var(--font-mono, ui-monospace, monospace);
-    font-size: 12px;
+    font-size: var(--text-code);
     color: var(--foreground);
   }
   .diff-open {
     flex-shrink: 0;
     font-family: var(--font-sans, inherit);
-    font-size: 12px;
+    font-size: var(--text-xs);
     color: var(--muted-foreground);
   }
   .diff-open:hover {

@@ -182,7 +182,7 @@
     border-radius: 999px;
     background: var(--artifact-surface-hover, var(--surface-hover));
     color: var(--foreground);
-    font-size: 0.65rem;
+    font-size: var(--text-xs);
     font-weight: 650;
     letter-spacing: 0.02em;
   }

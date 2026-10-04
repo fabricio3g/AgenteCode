@@ -105,7 +105,7 @@
   .card { margin-top: 0.5rem; width: var(--inline-block-width); max-width: 100%; border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); background: color-mix(in srgb, var(--muted) 45%, transparent); overflow: hidden; }
   .hdr { display: flex; align-items: center; gap: 0.4rem; padding: 0.45rem 0.6rem; font-size: 0.72rem; font-weight: 680; color: var(--muted-foreground); }
   .title { flex: 1; }
-  .cnt { display: inline-flex; gap: 0.25rem; font-variant-numeric: tabular-nums; font-size: 0.68rem; font-weight: 700; }
+  .cnt { display: inline-flex; gap: 0.25rem; font-variant-numeric: tabular-nums; font-size: var(--text-xs); font-weight: 700; }
   .a { color: var(--success); }
   .d { color: var(--error); }
   .list { max-height: 28rem; overflow-y: auto; }
@@ -116,13 +116,13 @@
   .tr:hover { background: var(--surface-hover); color: var(--foreground); }
   .ci { width: 0.85rem; height: 0.85rem; flex-shrink: 0; }
   .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.75rem; flex: 1; }
-  .kind { border-radius: var(--radius-full); background: var(--muted); padding: 0.1rem 0.35rem; font-size: 0.625rem; font-weight: 650; letter-spacing: 0.01em; }
+  .kind { border-radius: var(--radius-full); background: var(--muted); padding: 0.1rem 0.35rem; font-size: var(--text-xs); font-weight: 650; letter-spacing: 0.01em; }
   .kind.created { color: var(--success); }
   .kind.modified { color: var(--primary); }
   .kind.deleted { color: var(--error); }
   /* Matches .ui-tool-fallback-args-value so agent code blocks read the same
      inline as they do in the activity drawer. */
-  .diff { margin: 0; max-height: 16rem; overflow: auto; border-top: 1px solid var(--border-subtle); background: color-mix(in srgb, var(--muted) 50%, transparent); color: color-mix(in srgb, var(--foreground) 90%, transparent); border-radius: 0; padding: 0.45rem 0.6rem; font-family: var(--font-mono); font-size: 0.68rem; line-height: 1.5; white-space: pre-wrap; }
+  .diff { margin: 0; max-height: 16rem; overflow: auto; border-top: 1px solid var(--border-subtle); background: color-mix(in srgb, var(--muted) 50%, transparent); color: color-mix(in srgb, var(--foreground) 90%, transparent); border-radius: 0; padding: 0.45rem 0.6rem; font-family: var(--font-mono); font-size: var(--text-xs); line-height: 1.5; white-space: pre-wrap; }
   .depth-1 { padding-left: 1rem; }
   .depth-2 { padding-left: 1.6rem; }
   .depth-3 { padding-left: 2.2rem; }

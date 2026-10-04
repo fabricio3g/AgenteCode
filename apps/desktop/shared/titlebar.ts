@@ -10,6 +10,8 @@
  * Windows/Linux caption overlay is sized to match so the OS buttons share our
  * row instead of sitting in a strip of their own.
  */
+import { WINDOW_THEME_COLORS } from './window-theme.ts';
+
 export const TITLEBAR_HEIGHT = 36;
 
 /**
@@ -21,11 +23,11 @@ export const TITLEBAR_HEIGHT = 36;
  * theme background after first paint; this dark value keeps the first frame
  * coherent before that update arrives.
  */
-export const TITLEBAR_OVERLAY_COLOR = '#161616';
+export const TITLEBAR_OVERLAY_COLOR = WINDOW_THEME_COLORS.dark.color;
 
 /**
  * Default symbol (glyph) colour, matching the dark theme's `--foreground`.
  * The renderer pushes both the live fill and glyph colour through
  * `window:set-titlebar-overlay` on every theme change.
  */
-export const TITLEBAR_SYMBOL_COLOR = '#ececec';
+export const TITLEBAR_SYMBOL_COLOR = WINDOW_THEME_COLORS.dark.symbolColor;

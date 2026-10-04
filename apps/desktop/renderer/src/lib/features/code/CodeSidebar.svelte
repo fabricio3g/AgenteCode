@@ -45,14 +45,28 @@
     void codeStore.load();
   });
 
-  // A restored conversation (restart, space switch) should find its folder
-  // open and highlighted — not require the user to re-navigate the tree.
+  /**
+   * The project whose folder this sidebar opened by itself, once.
+   *
+   * The reveal must not run on every write to `expandedProjects`: an effect
+   * that re-opens the current conversation's folder whenever that record
+   * changes makes the one folder the user is most likely to close the one
+   * folder that never closes. It runs when the current conversation's
+   * project changes instead, so a restored or switched conversation still
+   * finds its folder open — and a folder the user collapsed stays closed.
+   */
+  let revealed = $state<string | null>(null);
+
   $effect(() => {
     const projectId = appStore.currentChat?.projectId;
-    if (projectId && codeStore.projects.some((p) => p.id === projectId)) {
-      if (!codeStore.expandedProjects[projectId]) codeStore.expandedProjects[projectId] = true;
-      if (codeStore.activeProjectId !== projectId) codeStore.activeProjectId = projectId;
-    }
+    if (!projectId || revealed === projectId) return;
+    // Projects load asynchronously: wait for the folder to exist before
+    // marking it revealed, or a conversation restored before the list lands
+    // would never open its folder.
+    if (!codeStore.projects.some((p) => p.id === projectId)) return;
+    revealed = projectId;
+    if (!codeStore.expandedProjects[projectId]) codeStore.expandedProjects[projectId] = true;
+    if (codeStore.activeProjectId !== projectId) codeStore.activeProjectId = projectId;
   });
 
   /**
@@ -179,7 +193,7 @@
       class="sidebar-row is-emphasis"
       onclick={() => void codeStore.addProject()}
     >
-      <Plus class="size-3.5 shrink-0" />
+      <Plus class="sidebar-row-icon" />
       <span class="sidebar-row-label">{$t('code.addProject')}</span>
     </button>
   {:else}
@@ -210,11 +224,11 @@
           }}
         >
           {#if missing}
-            <TriangleAlert class="size-3.5 shrink-0 text-[var(--warning)]" />
+            <TriangleAlert class="sidebar-row-icon text-[var(--warning)]" />
           {:else if expanded}
-            <FolderOpen class="size-3.5 shrink-0" />
+            <FolderOpen class="sidebar-row-icon" />
           {:else}
-            <Folder class="size-3.5 shrink-0" />
+            <Folder class="sidebar-row-icon" />
           {/if}
 
           {#if renamingId === project.id}
@@ -246,7 +260,12 @@
               class="sidebar-row-action"
               label={$t('code.newConversation')}
               disabled={missing}
-              onclick={() => codeStore.newConversation(project)}
+              onclick={(event) => {
+                // The row toggles the folder; the "+" opens a conversation in
+                // it and must not also close it again.
+                event.stopPropagation();
+                codeStore.newConversation(project);
+              }}
             >
               <Plus />
             </IconButton>
@@ -296,7 +315,7 @@
                 class="sidebar-row is-warning"
                 onclick={() => void codeStore.locateProject(project.id)}
               >
-                <FolderSearch class="size-3.5 shrink-0" />
+                <FolderSearch class="sidebar-row-icon" />
                 <span class="sidebar-row-label">{$t('code.locateFolder')}</span>
               </button>
             {/if}
@@ -317,7 +336,7 @@
                 class="sidebar-row is-muted"
                 onclick={() => codeStore.newConversation(project)}
               >
-                <Plus class="size-3 shrink-0" />
+                <Plus class="sidebar-row-icon" />
                 <span class="sidebar-row-label">{$t('code.newConversation')}</span>
               </button>
             {/if}

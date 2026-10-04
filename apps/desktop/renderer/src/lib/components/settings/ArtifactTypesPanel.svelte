@@ -23,6 +23,8 @@
   import { appStore } from '$lib/stores/app.svelte';
   import { toastStore } from '$lib/stores/toast.svelte';
   import Switch from '$lib/components/ui/Switch.svelte';
+  import SettingsRow from './SettingsRow.svelte';
+  import SettingsSection from './SettingsSection.svelte';
   import {
     getAllArtifacts,
     type ArtifactCategory,
@@ -106,33 +108,30 @@
   </div>
 
   {#each categories as category (category)}
-    <section>
-      <h4 class="px-1 pb-2 text-[13px] font-semibold text-foreground">{$t(`artifacts.category.${category}`)}</h4>
-      <div class="type-rows overflow-hidden rounded-[0.875rem] border border-[var(--border)] bg-[var(--card)] px-2 py-1">
-        {#each artifacts.filter((artifact) => artifact.category === category) as artifact (artifact.id)}
-          {@const Icon = iconComponents[artifact.icon]}
-          {@const enabled = isEnabled(artifact)}
-          <div class="flex items-center justify-between gap-4 rounded-xl px-2.5 py-2.5">
-            <div class="flex min-w-0 items-center gap-3">
-              <span class:enabled class="artifact-setting-icon"><Icon class="size-4" /></span>
-              <span class="min-w-0">
-                <span class="block text-sm font-medium text-foreground">{typeText(artifact, 'name')}</span>
-                <span class="block text-xs text-muted-foreground">{typeText(artifact, 'description')}</span>
-              </span>
-            </div>
-            <Switch checked={enabled} disabled={bulkPending || pendingIds.has(artifact.id)} label={typeText(artifact, 'name')} onchange={(checked) => toggleArtifact(artifact, checked)} />
-          </div>
-        {/each}
-      </div>
-    </section>
+    <SettingsSection title={$t(`artifacts.category.${category}`)}>
+      {#each artifacts.filter((artifact) => artifact.category === category) as artifact (artifact.id)}
+        {@const Icon = iconComponents[artifact.icon]}
+        {@const enabled = isEnabled(artifact)}
+        <!-- The switch states on/off unambiguously, so the tile only lifts: a
+             filled --primary disc turned the list into a column of blobs. The
+             tile keeps --muted either way; only the glyph brightens. -->
+        {#snippet tile()}
+          <Icon class="size-4 {enabled ? 'text-foreground' : 'opacity-70'}" />
+        {/snippet}
+        <SettingsRow
+          label={typeText(artifact, 'name')}
+          description={typeText(artifact, 'description')}
+          tile={tile}
+          control="auto"
+        >
+          <Switch checked={enabled} disabled={bulkPending || pendingIds.has(artifact.id)} label={typeText(artifact, 'name')} onchange={(checked) => toggleArtifact(artifact, checked)} />
+        </SettingsRow>
+      {/each}
+    </SettingsSection>
   {/each}
 </div>
 
 <style>
-  .type-rows > :global(* + *) {
-    border-top: 1px solid var(--border-subtle);
-  }
-
   .bulk-btn {
     border-radius: 9999px;
     padding: 0.25rem 0.625rem;
@@ -146,38 +145,5 @@
   }
   .bulk-btn:disabled {
     opacity: 0.4;
-  }
-
-  .artifact-setting-icon {
-    display: inline-flex;
-    width: 2.25rem;
-    height: 2.25rem;
-    flex-shrink: 0;
-    align-items: center;
-    justify-content: center;
-    border-radius: var(--radius-full);
-    background: var(--muted);
-    color: var(--muted-foreground);
-    opacity: 0.7;
-    transition:
-      opacity var(--motion-fast) var(--motion-ease),
-      background-color var(--motion-fast) var(--motion-ease),
-      color var(--motion-fast) var(--motion-ease),
-      box-shadow var(--motion-fast) var(--motion-ease);
-  }
-
-  /*
-   * The switch already states on/off unambiguously, so the icon only needs to
-   * lift — filling it with --primary put a hard black (or white) disc against
-   * every enabled row and turned the list into a column of blobs.
-   *
-   * --surface-active rather than --card: in dark mode --card and --muted are
-   * the same #212121, which would have left enabled and disabled separated by
-   * nothing but a hairline.
-   */
-  .artifact-setting-icon.enabled {
-    background: var(--surface-active);
-    color: var(--foreground);
-    opacity: 1;
   }
 </style>

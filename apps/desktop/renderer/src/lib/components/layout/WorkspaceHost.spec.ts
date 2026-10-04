@@ -17,6 +17,12 @@ vi.mock('@xterm/xterm', () => ({ Terminal: class {
 } }));
 vi.mock('@xterm/addon-fit', () => ({ FitAddon: class { fit() {} } }));
 
+async function movePointer(target: Element, options: MouseEventInit) {
+  await fireEvent.pointerMove(target, options);
+  await new Promise(resolve => requestAnimationFrame(resolve));
+  await tick();
+}
+
 beforeEach(() => {
   vi.stubGlobal('ResizeObserver', class { constructor(private callback: () => void) {} observe() { this.callback(); } disconnect() {} });
   vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => setTimeout(() => callback(0), 0));
@@ -57,7 +63,7 @@ describe('stable workspace panel hosts', () => {
     await fireEvent.keyDown(widthHandle, { key: 'ArrowLeft' }); expect(workspaceLayout.layout.rightWidth).toBe(start + 16);
     const snapshot = JSON.stringify(workspaceLayout.layout);
     await fireEvent.pointerDown(widthHandle, { button: 0, clientX: 700, clientY: 200 });
-    await fireEvent.pointerMove(widthHandle, { clientX: 650, clientY: 200 });
+    await movePointer(widthHandle, { clientX: 650, clientY: 200 });
     expect(workspaceLayout.layout.rightWidth).toBe(start + 66);
     await fireEvent.keyDown(window, { key: 'Escape' });
     expect(JSON.stringify(workspaceLayout.layout)).toBe(snapshot); expect(workspaceLayout.interacting).toBe(false);
@@ -72,7 +78,7 @@ describe('stable workspace panel hosts', () => {
     const saved = JSON.stringify(workspaceLayout.layout);
     await fireEvent.pointerDown(corner, { button: 0, clientX: 740, clientY: 400 });
     // Native capture can be released while moving away from the corner.
-    await fireEvent.pointerMove(view.container, { clientX: 700, clientY: 460 });
+    await movePointer(view.container, { clientX: 700, clientY: 460 });
     expect(workspaceLayout.layout.rightWidth).toBe(width + 40);
     expect(parseFloat((frame as HTMLElement).style.height)).toBeCloseTo(height + 60);
     await fireEvent.keyDown(window, { key: 'Escape' });
@@ -85,9 +91,9 @@ describe('stable workspace panel hosts', () => {
     const handles = view.container.querySelectorAll('.workspace-divider .resize-handle');
     const top = handles[2];
     await fireEvent.pointerDown(top, { button: 0, clientX: 900, clientY: 3 });
-    await fireEvent.pointerMove(top, { clientX: 900, clientY: 23 });
-    await fireEvent.pointerMove(top, { clientX: 900, clientY: 43 });
-    await fireEvent.pointerMove(top, { clientX: 900, clientY: 63 });
+    await movePointer(top, { clientX: 900, clientY: 23 });
+    await movePointer(top, { clientX: 900, clientY: 43 });
+    await movePointer(top, { clientX: 900, clientY: 63 });
     expect(frame.style.top).toBe('60px'); expect(frame.style.height).toBe('740px');
     expect(workspaceLayout.layout.floating).toHaveLength(0);
     await fireEvent.pointerUp(top);
@@ -100,7 +106,7 @@ describe('stable workspace panel hosts', () => {
     const handle = view.container.querySelector('.workspace-divider .resize-handle')!;
     const displayed = measureWorkspace(workspaceLayout.layout, { x: 0, y: 0, width: 1200, height: 800 }, new Set(['browser'])).placements[0].rect.width;
     await fireEvent.pointerDown(handle, { button: 0, clientX: 320, clientY: 200 });
-    await fireEvent.pointerMove(handle, { clientX: 360, clientY: 200 });
+    await movePointer(handle, { clientX: 360, clientY: 200 });
     expect(workspaceLayout.layout.rightWidth).toBe(displayed - 40);
     await fireEvent.pointerUp(handle);
   });
@@ -112,7 +118,7 @@ describe('stable workspace panel hosts', () => {
     const corner = view.container.querySelector<HTMLElement>('.edge-se')!;
     expect(corner.style.width).toBe('24px'); expect(corner.style.height).toBe('24px');
     await fireEvent.pointerDown(corner, { button: 0, clientX: 500, clientY: 400 });
-    await fireEvent.pointerMove(corner, { clientX: 560, clientY: 450 });
+    await movePointer(corner, { clientX: 560, clientY: 450 });
     expect(workspaceLayout.layout.floating[0].rect).toEqual({ x: 100, y: 100, width: 460, height: 350 });
     await fireEvent.pointerUp(corner); expect(workspaceLayout.interacting).toBe(false);
   });
@@ -121,14 +127,14 @@ describe('stable workspace panel hosts', () => {
     const view = render(WorkspaceFixture); await tick();
     const tab = view.getByRole('tab', { name: 'Terminal' });
     await fireEvent.pointerDown(tab, { button: 0, clientX: 200, clientY: 550 });
-    await fireEvent.pointerMove(tab, { clientX: 1000, clientY: 400 });
+    await movePointer(tab, { clientX: 1000, clientY: 400 });
     expect(view.container.querySelector('.drop-preview')).not.toBeNull();
     await fireEvent.pointerUp(tab, { clientX: 1000, clientY: 400 });
     expect(groups(workspaceLayout.layout.right)[0].panels).toEqual(['browser', 'terminal:test']);
     const saved = JSON.stringify(workspaceLayout.layout);
     const movedTab = view.getByRole('tab', { name: 'Terminal' });
     await fireEvent.pointerDown(movedTab, { button: 0, clientX: 1000, clientY: 30 });
-    await fireEvent.pointerMove(movedTab, { clientX: 500, clientY: 100 });
+    await movePointer(movedTab, { clientX: 500, clientY: 100 });
     await fireEvent.keyDown(window, { key: 'Escape' });
     expect(JSON.stringify(workspaceLayout.layout)).toBe(saved); expect(view.container.querySelector('.drag-ghost')).toBeNull();
   });

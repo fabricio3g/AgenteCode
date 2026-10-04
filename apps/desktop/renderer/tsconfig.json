@@ -21,7 +21,8 @@
     "baseUrl": ".",
     "paths": {
       "$lib/*": ["src/lib/*"],
-      "$shared/*": ["../shared/*"]
+      "$shared/*": ["../shared/*"],
+      "$site/*": ["../../../site/*"]
     }
   },
   "include": ["src/**/*.ts", "src/**/*.js", "src/**/*.svelte", "vite.config.ts", "../shared/**/*.ts"]

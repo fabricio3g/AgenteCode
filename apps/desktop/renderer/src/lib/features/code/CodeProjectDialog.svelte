@@ -21,6 +21,8 @@
   import type { CodeDialog } from './code-commands';
   import BotModelPicker from '$lib/features/bots/BotModelPicker.svelte';
   import SubagentCard from './SubagentCard.svelte';
+  import CompactionReport from './CompactionReport.svelte';
+  import { appStore } from '$lib/stores/app.svelte';
 
   let { chatId, projectRoot, section, onclose }: { chatId: string; projectRoot?: string; section: CodeDialog; onclose: () => void } = $props();
 
@@ -38,6 +40,11 @@
   let loading = $state(true);
   let settings = $state<Settings>({ smart_compaction: false, max_parallel_subagents: 8, subagent_models: {}, allow_media: [] });
   const run = $derived(codeStore.runFor(chatId));
+  const compactReport = $derived.by(() => {
+    const messages = appStore.chats.find(chat => chat.id === chatId)?.messages ?? [];
+    for (let index = messages.length - 1; index >= 0; index--) if (messages[index]!.metadata?.codeCompaction) return messages[index]!.metadata!.codeCompaction;
+    return undefined;
+  });
   const MEDIA = ['image', 'audio', 'video'] as const;
   /** Only these sections ask the engine about a project directory. */
   const needsProject = $derived(['skills', 'agents', 'mcp'].includes(section));
@@ -168,12 +175,14 @@
         <p class="empty">{$t('code.project.sessions.empty')}</p>
       {/each}
     {:else if section === 'settings'}
-      <p class="px-2 pb-2 text-[12px] text-muted-foreground">{$t('code.compaction.settingsHint')}</p>
+      <section class="compaction-settings">
+      <h3>{$t('code.compact')}</h3>
+      <p class="text-xs text-muted-foreground">{$t('code.compaction.settingsHint')}</p>
       <div class="flex flex-wrap gap-2 px-2 pb-3">
-        <Button size="sm" disabled={compacting || !!run?.running} onclick={() => compactNow(true)}>{$t('code.compaction.manualNow')}</Button>
+        <Button size="sm" disabled={compacting || !!run?.running} onclick={() => compactNow(true)}>{$t('code.compaction.smartNow')}</Button>
         <Button size="sm" variant="ghost" disabled={compacting || !!run?.running} onclick={() => compactNow(false)}>{$t('code.compaction.trimNow')}</Button>
       </div>
-      {#if compacting}<p class="px-2 pb-2 text-[12px] text-muted-foreground" role="status">{$t('code.compaction.working')}</p>{/if}
+      {#if compactReport}<CompactionReport report={compactReport} />{:else if compacting}<p class="text-xs text-muted-foreground" role="status">{$t('code.compaction.working')}</p>{/if}
       <div class="px-2 py-2">
         <p class="mb-2 text-[13px] text-foreground">{$t('code.compaction.model')}</p>
         <BotModelPicker bind:value={settings.compaction_model} showThinking={false} />
@@ -183,6 +192,7 @@
         <span class="min-w-0 flex-1 text-[13px] text-foreground">{$t('code.project.settings.smartCompaction')}</span>
         <Switch label={$t('code.project.settings.smartCompaction')} bind:checked={settings.smart_compaction} />
       </div>
+      </section>
       <div class="row">
         <span class="min-w-0 flex-1 text-[13px] text-foreground">{$t('code.project.settings.parallel')}</span>
         <Input class="w-20" type="number" min="1" max="32" bind:value={settings.max_parallel_subagents} aria-label={$t('code.project.settings.parallel')} />
@@ -200,6 +210,9 @@
 </Dialog>
 
 <style>
+  .compaction-settings { display: grid; gap: .75rem; padding: .5rem; margin-bottom: .75rem; }
+  .compaction-settings h3 { font-size: var(--text-sm); font-weight: 500; }
+
   .row {
     display: flex;
     min-width: 0;

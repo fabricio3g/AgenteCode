@@ -24,6 +24,17 @@ describe('agente run reducer', () => {
     expect(state.spend.costUsd).toBe(0.01);
     expect(state.children[0]!.spend.costUsd).toBe(0.01);
   });
+  it('retains complete child replies and completed tool results beyond the live preview limit', () => {
+    const text = '日'.repeat(150000) + 'FINAL EVIDENCE';
+    const state = run([
+      { type: 'runtime_event', chatId: 'c', event: { type: 'child_started', run_id: 'child', kind: 'explore', description: 'Large result' } },
+      { type: 'runtime_event', chatId: 'c', event: { type: 'child_delta', run_id: 'child', text } },
+      { type: 'runtime_event', chatId: 'c', event: { type: 'child_tool', run_id: 'child', call_id: 'tool', name: 'task_output', content: text, finished: true, is_error: false } }
+    ]);
+    expect(state.children[0]!.text).toBe(text);
+    expect(state.children[0]!.tools[0]!.output).toBe(text);
+  });
+
   it('accumulates text and thinking deltas', () => {
     const state = run([
       { type: 'text_delta', chatId: 'c', delta: 'Hello ' },

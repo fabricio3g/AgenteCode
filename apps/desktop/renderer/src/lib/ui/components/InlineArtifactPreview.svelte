@@ -100,7 +100,7 @@
     box-shadow: var(--artifact-elev);
   }
 
-  .blocked-assets { margin-top: 0.4rem; color: var(--text-secondary); font-size: 0.68rem; }
+  .blocked-assets { margin-top: 0.4rem; color: var(--text-secondary); font-size: var(--text-xs); }
 
   /* Matches `.artifact-state` in ArtifactRenderer so the two fallbacks look alike. */
   .inline-unsupported {

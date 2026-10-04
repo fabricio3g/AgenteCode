@@ -6,7 +6,8 @@
   import { themeStore } from '$lib/stores/theme.svelte';
   import { t } from 'svelte-i18n';
   import { locale } from 'svelte-i18n';
-  import { Button, Field, Input, SegmentedControl, Select, Switch } from '$lib/components/ui';
+  import { Button, Input, SegmentedControl, Select, Switch } from '$lib/components/ui';
+  import SettingsRow from './SettingsRow.svelte';
   import SettingsSection from './SettingsSection.svelte';
   const languages = SUPPORTED_UI_LANGUAGES;
 
@@ -35,129 +36,115 @@
   }
 </script>
 
-<div class="space-y-7">
+<div class="space-y-5 sm:space-y-6">
   <SettingsSection title={$t('generalSettings.profile')}>
-      <Field
-        horizontal
-        class="py-3"
-        label={$t('generalSettings.yourName')}
-        description={$t('generalSettings.shownOnWelcome')}
-        htmlFor="profile-name"
-      >
-        <Input
-          id="profile-name"
-          type="text"
-          bind:value={nameValue}
-          oninput={() => appStore.setUserName(nameValue)}
-          placeholder={$t('generalSettings.enterYourName')}
-        />
-      </Field>
+    <SettingsRow
+      label={$t('generalSettings.yourName')}
+      description={$t('generalSettings.shownOnWelcome')}
+      htmlFor="profile-name"
+    >
+      <Input
+        id="profile-name"
+        type="text"
+        bind:value={nameValue}
+        oninput={() => appStore.setUserName(nameValue)}
+        placeholder={$t('generalSettings.enterYourName')}
+      />
+    </SettingsRow>
 
-      <Field
-        horizontal
-        class="py-3"
-        label={$t('generalSettings.language')}
-        description={$t('generalSettings.languageDesc')}
-        htmlFor="interface-language"
-      >
-        <Select
-          id="interface-language"
-          value={normalizeLocaleCode($locale)}
-          options={languages.map((lang) => ({ value: lang.code, label: lang.label }))}
-          onchange={setLocale}
-        />
-      </Field>
+    <SettingsRow
+      label={$t('generalSettings.language')}
+      description={$t('generalSettings.languageDesc')}
+      htmlFor="interface-language"
+    >
+      <Select
+        id="interface-language"
+        value={normalizeLocaleCode($locale)}
+        options={languages.map((lang) => ({ value: lang.code, label: lang.label }))}
+        onchange={setLocale}
+      />
+    </SettingsRow>
   </SettingsSection>
 
   <SettingsSection title={$t('generalSettings.chatBehavior')}>
-      <Field
-        horizontal
-        class="py-3"
-        label={$t('generalSettings.showAssistantText')}
-        description={$t('generalSettings.showAssistantTextDesc')}
-      >
-        <div class="flex justify-end"><Switch bind:checked={showAssistantText} label={$t('generalSettings.showAssistantText')} /></div>
-      </Field>
+    <SettingsRow
+      label={$t('generalSettings.showAssistantText')}
+      description={$t('generalSettings.showAssistantTextDesc')}
+      control="auto"
+    >
+      <Switch bind:checked={showAssistantText} label={$t('generalSettings.showAssistantText')} />
+    </SettingsRow>
 
-      <Field
-        horizontal
-        class="py-3"
-        label={$t('generalSettings.enableThinking')}
-        description={$t('generalSettings.enableThinkingDesc')}
-      >
-        <div class="flex justify-end"><Switch bind:checked={enableThinking} label={$t('generalSettings.enableThinking')} /></div>
-      </Field>
+    <SettingsRow
+      label={$t('generalSettings.enableThinking')}
+      description={$t('generalSettings.enableThinkingDesc')}
+      control="auto"
+    >
+      <Switch bind:checked={enableThinking} label={$t('generalSettings.enableThinking')} />
+    </SettingsRow>
 
-      <Field
-        horizontal
-        class="py-3"
+    <SettingsRow
+      label={$t('generalSettings.roleplay')}
+      description={$t('generalSettings.roleplayDesc')}
+      control="auto"
+    >
+      <Switch
+        checked={appStore.roleplayEnabled}
         label={$t('generalSettings.roleplay')}
-        description={$t('generalSettings.roleplayDesc')}
-      >
-        <div class="flex justify-end">
-          <Switch
-            checked={appStore.roleplayEnabled}
-            label={$t('generalSettings.roleplay')}
-            onchange={(checked) => void appStore.setRoleplayEnabled(checked)}
-          />
-        </div>
-      </Field>
+        onchange={(checked) => void appStore.setRoleplayEnabled(checked)}
+      />
+    </SettingsRow>
   </SettingsSection>
 
   <SettingsSection title={$t('generalSettings.appearance')}>
-      <Field
-        horizontal
-        class="py-3"
+    <SettingsRow
+      label={$t('generalSettings.theme')}
+      description={$t('generalSettings.themeDesc')}
+      control="auto"
+    >
+      <SegmentedControl
         label={$t('generalSettings.theme')}
-        description={$t('generalSettings.themeDesc')}
-      >
-        <div class="flex justify-end"><SegmentedControl
-          label={$t('generalSettings.theme')}
-          value={themeStore.current}
-          options={[{ value: 'light', label: $t('generalSettings.light') }, { value: 'dark', label: $t('generalSettings.dark') }]}
-          onchange={(value) => themeStore.set(value as 'light' | 'dark')}
-        /></div>
-      </Field>
+        value={themeStore.current}
+        options={[{ value: 'light', label: $t('generalSettings.light') }, { value: 'dark', label: $t('generalSettings.dark') }]}
+        onchange={(value) => themeStore.set(value as 'light' | 'dark')}
+      />
+    </SettingsRow>
   </SettingsSection>
 
   <SettingsSection title={$t('generalSettings.editor')}>
-      <Field
-        horizontal
-        class="py-3"
-        label={$t('generalSettings.editorCommand')}
-        description={$t('generalSettings.editorDesc')}
-        htmlFor="editor-command"
-      >
-        <Input
-          id="editor-command"
-          type="text"
-          bind:value={editorValue}
-          placeholder={$t('generalSettings.editorPlaceholder')}
-          onblur={saveEditor}
-          onkeydown={(event) => {
-            if (event.key === 'Enter') {
-              event.preventDefault();
-              saveEditor();
-            }
-          }}
-        />
-      </Field>
+    <SettingsRow
+      label={$t('generalSettings.editorCommand')}
+      description={$t('generalSettings.editorDesc')}
+      htmlFor="editor-command"
+    >
+      <Input
+        id="editor-command"
+        type="text"
+        bind:value={editorValue}
+        placeholder={$t('generalSettings.editorPlaceholder')}
+        onblur={saveEditor}
+        onkeydown={(event) => {
+          if (event.key === 'Enter') {
+            event.preventDefault();
+            saveEditor();
+          }
+        }}
+      />
+    </SettingsRow>
   </SettingsSection>
 
   <SettingsSection title={$t('generalSettings.huggingFaceAccess')} description={$t('generalSettings.huggingFaceDesc')}>
-    <div class="py-3">
-      <Field label={$t('generalSettings.accessToken')} htmlFor="hf-access-token">
-        <div class="flex flex-col gap-2 sm:flex-row">
-          <Input
-            id="hf-access-token"
-            type="password"
-            bind:value={hfToken}
-            placeholder="hf_..."
-            class="min-w-0 flex-1"
-          />
-          <Button onclick={onsaveHfToken}>{$t('generalSettings.save')}</Button>
-        </div>
-      </Field>
-    </div>
+    <SettingsRow label={$t('generalSettings.accessToken')} htmlFor="hf-access-token">
+      <div class="flex flex-col gap-2 sm:flex-row">
+        <Input
+          id="hf-access-token"
+          type="password"
+          bind:value={hfToken}
+          placeholder="hf_..."
+          class="min-w-0 flex-1"
+        />
+        <Button onclick={onsaveHfToken}>{$t('generalSettings.save')}</Button>
+      </div>
+    </SettingsRow>
   </SettingsSection>
 </div>

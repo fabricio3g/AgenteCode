@@ -11,7 +11,7 @@ app.whenReady().then(async()=>{
   win.webContents.debugger.attach('1.3');await win.webContents.debugger.sendCommand('Performance.enable');
   const report=await win.webContents.executeJavaScript(`(async()=>{
    const frame=()=>new Promise(resolve=>requestAnimationFrame(resolve));
-   const {appStore}=await import('/src/lib/stores/app.svelte.ts');
+   const {appStore}=await import(performance.getEntriesByType('resource').map(entry=>entry.name).find(url=>new URL(url).pathname==='/src/lib/stores/app.svelte.ts')||'/src/lib/stores/app.svelte.ts');
    for(let i=0;!appStore.ready&&i<400;i++)await new Promise(resolve=>setTimeout(resolve,50));
    if(!appStore.ready)throw new Error('Bootstrap timed out');
    const {mount,unmount}=await import('/node_modules/.vite/deps/svelte.js');
@@ -34,7 +34,7 @@ app.whenReady().then(async()=>{
    await unmount(transcript);target.remove();
    const callbacks=[];const oldOn=window.electronAPI.on;window.electronAPI.on=(name,callback)=>{if(name==='code_agent_event')callbacks.push(callback);return oldOn(name,callback);};
    const oldInvoke=window.electronAPI.invoke;window.electronAPI.invoke=(name,args)=>name==='agente_start_session'?Promise.resolve({sessionId:'render-session',resumed:false}):['agente_prompt','agente_set_model'].includes(name)?Promise.resolve({ok:true}):oldInvoke(name,args);
-   const {codeStore}=await import('/src/lib/features/code/code.svelte.ts');
+   const {codeStore}=await import(performance.getEntriesByType('resource').map(entry=>entry.name).find(url=>new URL(url).pathname==='/src/lib/features/code/code.svelte.ts')||'/src/lib/features/code/code.svelte.ts');
    const chat={id:'stream-fixture',title:'Stream',contextMode:'code',projectId:'stream-project',messages:[],draft:'',createdAt:1,updatedAt:1,codeAgent:{runtimeMode:'supervised',instanceId:'agente',driverKind:'agente',substrate:'native',updatedAt:1}};
    appStore.chats.push(chat);codeStore.projects.push({id:'stream-project',rootPath:'/tmp',rootName:'tmp',createdAt:1,updatedAt:1});await codeStore.send(chat.id,'Synthetic fixture');
    if(!callbacks.length||!codeStore.runFor(chat.id)?.running)throw new Error('Streaming fixture did not start');

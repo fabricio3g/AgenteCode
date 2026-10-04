@@ -19,20 +19,24 @@ const MAX_SEARCH_SCAN_BYTES: u64 = 256 * 1024 * 1024;
 /// `.gitignore`-aware, symlink-safe walk rooted at `root`. Skipping symlinks
 /// matters for containment: a link inside the project can otherwise point at
 /// a file outside it.
-fn build_walker(root: &std::path::Path) -> ignore::Walk {
-    ignore::WalkBuilder::new(root)
+fn walker_builder(root: &std::path::Path) -> ignore::WalkBuilder {
+    let mut builder = ignore::WalkBuilder::new(root);
+    builder
         .hidden(false)
         .follow_links(false)
         .require_git(false)
         .filter_entry(|entry| {
-            let is_skip_dir = entry.file_type().is_some_and(|t| t.is_dir())
+            !(entry.file_type().is_some_and(|t| t.is_dir())
                 && matches!(
                     entry.file_name().to_str(),
                     Some(".git" | "target" | "node_modules" | ".venv")
-                );
-            !is_skip_dir
-        })
-        .build()
+                ))
+        });
+    builder
+}
+
+fn build_walker(root: &std::path::Path) -> ignore::Walk {
+    walker_builder(root).build()
 }
 
 fn relative_display(root: &std::path::Path, path: &std::path::Path) -> String {
@@ -156,101 +160,152 @@ fn grep_blocking(
     limit: usize,
     tool_context: ToolExecutionContext,
 ) -> Vec<String> {
-    let mut results = Vec::new();
-    let mut skipped_files = 0usize;
-    let mut scanned_bytes: u64 = 0;
-    let mut budget_hit = false;
-
-    for entry in build_walker(root) {
-        if tool_context.cancellation.is_aborted() || results.len() >= limit {
-            break;
+    use std::sync::{
+        atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
+        Mutex,
+    };
+    let results = Mutex::new(Vec::<(std::path::PathBuf, Vec<String>)>::new());
+    let skipped = AtomicUsize::new(0);
+    let scanned = AtomicU64::new(0);
+    let matches = AtomicUsize::new(0);
+    let budget_hit = AtomicBool::new(false);
+    // Avoid multiplying worker pools across simultaneous parent/child calls.
+    // File searches and calls beyond the first two scan directly on their
+    // existing blocking worker; at most two directory calls use extra workers.
+    static ACTIVE_SEARCHES: AtomicUsize = AtomicUsize::new(0);
+    struct ActiveSearch;
+    impl Drop for ActiveSearch {
+        fn drop(&mut self) {
+            ACTIVE_SEARCHES.fetch_sub(1, Ordering::Relaxed);
         }
-        let Ok(entry) = entry else { continue };
-        // `is_file` is false for symlinks, so linked-in files are never read.
+    }
+    let active = ACTIVE_SEARCHES.fetch_add(1, Ordering::Relaxed) + 1;
+    let _active = ActiveSearch;
+    let scan = |entry: Result<ignore::DirEntry, ignore::Error>| {
+        if tool_context.cancellation.is_aborted() || matches.load(Ordering::Relaxed) >= limit {
+            return ignore::WalkState::Quit;
+        }
+        let Ok(entry) = entry else {
+            return ignore::WalkState::Continue;
+        };
         if !entry.file_type().is_some_and(|t| t.is_file()) {
-            continue;
+            return ignore::WalkState::Continue;
         }
-        let name = entry.file_name().to_string_lossy().to_string();
         let rel = relative_display(root, entry.path());
-        if !(include_glob.matches(&rel) || include_glob.matches(&name)) {
-            continue;
+        if !(include_glob.matches(&rel)
+            || include_glob.matches(&entry.file_name().to_string_lossy()))
+        {
+            return ignore::WalkState::Continue;
         }
         let Ok(metadata) = entry.metadata() else {
-            continue;
+            return ignore::WalkState::Continue;
         };
         if metadata.len() > MAX_SEARCH_FILE_BYTES {
-            skipped_files += 1;
-            continue;
+            skipped.fetch_add(1, Ordering::Relaxed);
+            return ignore::WalkState::Continue;
         }
-        if scanned_bytes.saturating_add(metadata.len()) > MAX_SEARCH_SCAN_BYTES {
-            budget_hit = true;
-            break;
+        if scanned
+            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |bytes| {
+                bytes
+                    .checked_add(metadata.len())
+                    .filter(|n| *n <= MAX_SEARCH_SCAN_BYTES)
+            })
+            .is_err()
+        {
+            budget_hit.store(true, Ordering::Relaxed);
+            return ignore::WalkState::Quit;
         }
-        scanned_bytes += metadata.len();
         let Ok(content) = std::fs::read_to_string(entry.path()) else {
-            continue;
+            return ignore::WalkState::Continue;
         };
-
-        let lines: Vec<&str> = content.lines().collect();
-        let mut last_emitted: Option<usize> = None;
-        let mut match_count = 0;
-
-        for (line_num, line) in lines.iter().enumerate() {
-            if match_count >= limit {
-                break;
+        // Allocate context lines only when requested; preserve per-line anchors.
+        let lines = (context > 0).then(|| content.lines().collect::<Vec<_>>());
+        let mut output = Vec::new();
+        let mut last_emitted = None;
+        for (line_num, line) in content.lines().enumerate() {
+            if tool_context.cancellation.is_aborted() {
+                return ignore::WalkState::Quit;
             }
             if !re.is_match(line) {
                 continue;
             }
-
-            let start = line_num.saturating_sub(context);
-            let end = line_num
-                .saturating_add(context)
-                .saturating_add(1)
-                .min(lines.len());
-            if let Some(prev) = last_emitted {
-                if start > prev + 1 {
-                    results.push("--".to_string());
+            if matches
+                .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |count| {
+                    (count < limit).then_some(count + 1)
+                })
+                .is_err()
+            {
+                break;
+            }
+            if let Some(lines) = &lines {
+                let start = line_num.saturating_sub(context);
+                let end = line_num.saturating_add(context + 1).min(lines.len());
+                if last_emitted.is_some_and(|prev| start > prev + 1) {
+                    output.push("--".to_string());
                 }
-            }
-
-            for (ctx_idx, ctx_line) in lines[start..end].iter().enumerate() {
-                let actual = start + ctx_idx;
-                let marker = if actual == line_num {
-                    ":"
-                } else if actual < line_num {
-                    "-"
-                } else {
-                    "+"
-                };
-                let display = truncate_search_line(ctx_line);
-                results.push(format!(
-                    "{}:{}{} {}",
-                    entry.path().to_string_lossy(),
-                    actual + 1,
-                    marker,
-                    display
+                for (index, text) in lines[start..end].iter().enumerate() {
+                    let actual = start + index;
+                    let marker = if actual == line_num {
+                        ":"
+                    } else if actual < line_num {
+                        "-"
+                    } else {
+                        "+"
+                    };
+                    output.push(format!(
+                        "{}:{}{} {}",
+                        entry.path().display(),
+                        actual + 1,
+                        marker,
+                        truncate_search_line(text)
+                    ));
+                    last_emitted = Some(actual);
+                }
+            } else {
+                output.push(format!(
+                    "{}:{}: {}",
+                    entry.path().display(),
+                    line_num + 1,
+                    truncate_search_line(line)
                 ));
-                last_emitted = Some(actual);
             }
-            match_count += 1;
-            if match_count >= limit {
+        }
+        if !output.is_empty() {
+            results
+                .lock()
+                .unwrap()
+                .push((entry.path().to_owned(), output));
+        }
+        ignore::WalkState::Continue
+    };
+    let threads = std::thread::available_parallelism().map_or(1, |n| n.get().min(2));
+    if root.is_file() || active > 2 || threads == 1 {
+        for entry in build_walker(root) {
+            if scan(entry) == ignore::WalkState::Quit {
                 break;
             }
         }
+    } else {
+        walker_builder(root)
+            .threads(threads)
+            .build_parallel()
+            .run(|| Box::new(&scan));
     }
-
-    if results.len() >= limit {
+    let mut files = results.into_inner().unwrap();
+    files.sort_by(|a, b| a.0.cmp(&b.0));
+    let mut results: Vec<String> = files.into_iter().flat_map(|(_, lines)| lines).collect();
+    if matches.load(Ordering::Relaxed) >= limit {
         results.push(format!(
             "[Truncated: showing {limit} matches; use limit/context to narrow]"
         ));
     }
+    let skipped_files = skipped.load(Ordering::Relaxed);
     if skipped_files > 0 {
         results.push(format!(
             "[{skipped_files} files skipped: larger than {MAX_SEARCH_FILE_BYTES} bytes]"
         ));
     }
-    if budget_hit {
+    if budget_hit.load(Ordering::Relaxed) {
         results.push(format!(
             "[Scan budget reached ({MAX_SEARCH_SCAN_BYTES} bytes); narrow path/glob]"
         ));
@@ -259,14 +314,13 @@ fn grep_blocking(
 }
 
 fn truncate_search_line(line: &str) -> String {
-    if line.chars().count() > MAX_GREP_LINE_LEN {
-        let mut truncated: String = line.chars().take(MAX_GREP_LINE_LEN).collect();
-        truncated.push_str("...");
-        truncated
-    } else {
-        line.to_string()
+    let mut chars = line.char_indices();
+    match chars.nth(MAX_GREP_LINE_LEN) {
+        Some((end, _)) => format!("{}...", &line[..end]),
+        None => line.to_string(),
     }
 }
+
 /// Arguments accepted by the `find` tool.
 #[derive(Debug, Default, serde::Deserialize, schemars::JsonSchema)]
 pub struct FindArgs {
@@ -387,6 +441,44 @@ mod extra_tests {
     use super::*;
     use crate::tools::{Tool, TypedTool};
     use serde_json::json;
+
+    #[tokio::test]
+    async fn parallel_grep_counts_matches_not_context_and_sees_external_edits() {
+        let dir = tempfile::tempdir().unwrap();
+        for name in ["a.txt", "b.txt", "c.txt"] {
+            std::fs::write(dir.path().join(name), "before\nneedle\nafter\n").unwrap();
+        }
+        let tool = TypedTool::new(GrepTool);
+        let args = json!({"pattern": "^needle$", "context": 1, "limit": 2});
+        let output = tool
+            .execute(args, dir.path().to_str().unwrap())
+            .await
+            .unwrap();
+        assert_eq!(
+            output
+                .lines()
+                .filter(|line| line.ends_with(": needle"))
+                .count(),
+            2,
+            "{output}"
+        );
+        assert_eq!(
+            output
+                .lines()
+                .filter(|line| line.ends_with("- before"))
+                .count(),
+            2
+        );
+        std::fs::write(dir.path().join("a.txt"), "changed\n").unwrap();
+        let output = tool
+            .execute(
+                json!({"pattern": "^changed$"}),
+                dir.path().to_str().unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(output.contains("a.txt:1: changed"), "{output}");
+    }
 
     #[tokio::test]
     async fn find_matches_globs_across_directories() {

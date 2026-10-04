@@ -377,7 +377,7 @@
 
   .attachment-type {
     color: var(--text-muted);
-    font-size: 0.65rem;
+    font-size: var(--text-xs);
   }
 
   .attachment-download {
@@ -454,7 +454,7 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     color: var(--text-muted);
-    font-size: 0.68rem;
+    font-size: var(--text-xs);
     font-weight: 450;
   }
 

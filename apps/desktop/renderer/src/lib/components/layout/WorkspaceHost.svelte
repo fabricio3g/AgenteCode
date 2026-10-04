@@ -32,8 +32,9 @@
   const measured = $derived(measureWorkspace(workspaceLayout.layout, bounds, visible, workspaceLayout.focused));
   const corners = $derived(resizeCorners(measured.dividers, bounds));
   const byId = $derived(new Map(panels.map((panel) => [panel.id, panel])));
+  const placementsById = $derived(new Map(measured.placements.flatMap((placement) => placement.group.panels.map((id) => [id, placement] as const))));
   const position = (rect: Rect) => `left:${rect.x}px;top:${rect.y}px;width:${rect.width}px;height:${rect.height}px;`;
-  const location = (id: string) => measured.placements.find((placement) => placement.group.panels.includes(id));
+  const location = (id: string) => placementsById.get(id);
 
   $effect(() => {
     if (previousScope !== workspaceLayout.scope) { previousOpen.clear(); previousScope = workspaceLayout.scope; }
@@ -43,9 +44,14 @@
     for (const panel of opened) workspaceLayout.activate(panel.id);
   });
   onMount(() => {
-    const observer = new ResizeObserver(() => { if (host) size = { width: host.clientWidth, height: host.clientHeight }; });
+    const measure = () => {
+      if (host && (host.clientWidth !== size.width || host.clientHeight !== size.height)) size = { width: host.clientWidth, height: host.clientHeight };
+    };
+    const observer = new ResizeObserver(measure);
+    measure();
     observer.observe(host!);
-    return () => { observer.disconnect(); stopGesture?.(); };
+    const frame = requestAnimationFrame(measure);
+    return () => { cancelAnimationFrame(frame); observer.disconnect(); stopGesture?.(); };
   });
 
   function local(event: PointerEvent): { x: number; y: number } {
@@ -218,7 +224,7 @@
   {/each}
   {#each measured.dividers as divider (divider.id)}
     <div class="workspace-divider" style="{position(divider.rect)}z-index:{divider.floatingId ? (workspaceLayout.layout.floating.find((item) => item.group.id === divider.floatingId)?.z ?? 1) + 12 : 5}">
-      <ResizeHandle fill axis={divider.axis} label={$t(divider.axis === 'x' ? 'workspace.resizeWidth' : 'workspace.resizeHeight')} onstart={() => startDivider(divider)} onresize={(delta) => resizeDivider(resizeDividerStart ?? divider, delta)} onend={() => { resizeDividerStart = null; workspaceLayout.interacting = false; workspaceLayout.save(); }} oncancel={() => { if (resizeStart) workspaceLayout.restore(resizeStart); }} />
+      <ResizeHandle fill axis={divider.axis} label={$t(divider.axis === 'x' ? 'workspace.resizeWidth' : 'workspace.resizeHeight')} onstart={() => startDivider(divider)} onresize={(delta) => resizeDivider(resizeDividerStart ?? divider, delta)} onend={() => { resizeDividerStart = null; workspaceLayout.interacting = false; workspaceLayout.save(); }} oncancel={() => { resizeDividerStart = null; if (resizeStart) workspaceLayout.restore(resizeStart); }} />
     </div>
   {/each}
   {#each corners as corner (corner.id)}
@@ -247,7 +253,7 @@
   .workspace-panel.floating { box-shadow: inset 0 0 0 1px var(--border-hover), 0 8px 30px #0002; }
   .workspace-header { display: flex; align-items: center; flex-shrink: 0; gap: 2px; height: 30px; padding: 0 6px; cursor: grab; touch-action: none; }
   .workspace-tabs { display: flex; min-width: 0; flex: 1; gap: 2px; overflow-x: auto; scrollbar-width: none; }
-  .workspace-tab { display: inline-flex; align-items: center; gap: 5px; min-width: 0; max-width: 180px; height: 23px; padding: 0 7px; flex-shrink: 0; border-radius: var(--radius-full); font-size: 11.5px; color: var(--muted-foreground); cursor: grab; touch-action: none; }
+  .workspace-tab { display: inline-flex; align-items: center; gap: 5px; min-width: 0; max-width: 180px; height: 23px; padding: 0 7px; flex-shrink: 0; border-radius: var(--radius-full); font-size: var(--text-xs); color: var(--muted-foreground); cursor: grab; touch-action: none; }
   .workspace-tab span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .workspace-tab:hover, .workspace-tab.active { color: var(--foreground); background: var(--surface-hover); }
   .workspace-tab:focus-visible { outline: 1px solid var(--ring); outline-offset: -1px; }
@@ -255,6 +261,6 @@
   .workspace-divider { position: absolute; }
   .workspace-panel.resize-ready { box-shadow: inset 0 0 0 1px var(--muted-foreground), 0 8px 30px #0002; }
   .drag-ghost, .drop-preview { position: absolute; pointer-events: none; z-index: 100000; border-radius: .875rem; }
-  .drag-ghost { display: flex; align-items: flex-start; gap: 6px; padding: 8px; opacity: .75; color: var(--muted-foreground); background: var(--card); box-shadow: var(--panel-shadow); font-size: 12px; }
+  .drag-ghost { display: flex; align-items: flex-start; gap: 6px; padding: 8px; opacity: .75; color: var(--muted-foreground); background: var(--card); box-shadow: var(--panel-shadow); font-size: var(--text-xs); }
   .drop-preview { background: color-mix(in srgb, var(--foreground) 8%, transparent); box-shadow: inset 0 0 0 1px var(--border-hover); }
 </style>

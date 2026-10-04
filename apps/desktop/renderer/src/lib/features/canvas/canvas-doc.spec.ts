@@ -164,3 +164,8 @@ describe('a board painted from scratch', () => {
     expect(padded({ x: 0, y: 0, w: 20, h: 20 }, 12, paper)).toEqual({ x: 0, y: 0, w: 32, h: 32 });
   });
 });
+
+it('moves and resizes ink vertices with their mark', () => {
+  const ink = mark({ kind: 'freehand', x: 10, y: 20, w: 100, h: 60, points: [[10, 20], [110, 80]] });
+  expect(resizeMark(ink, { x: 40, y: 60, w: 200, h: 120 }, image).points).toEqual([[40, 60], [240, 180]]);
+});

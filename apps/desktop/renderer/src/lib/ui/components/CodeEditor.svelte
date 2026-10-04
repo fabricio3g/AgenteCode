@@ -3,6 +3,8 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
   import type * as Monaco from 'monaco-editor';
+  import { accessibilityStore } from '$lib/stores/accessibility.svelte';
+  import { codeFontFamily, codeFontSize } from '$lib/utils/type-tokens';
 
   interface Props {
     value?: string;
@@ -82,9 +84,11 @@
       theme: getTheme(),
       readOnly,
       minimap: { enabled: false },
-      fontSize: 13,
-      fontFamily: "'IBM Plex Mono', Consolas, monospace",
-      fontLigatures: true,
+      fontSize: codeFontSize(),
+      fontFamily: codeFontFamily(),
+      // Off by default, like VS Code: a ligature merges `!=` into one glyph,
+      // which is exactly the shape a reader has to tell apart in a diff.
+      fontLigatures: false,
       lineNumbers: 'on',
       lineNumbersMinChars: 4,
       roundedSelection: true,
@@ -115,7 +119,7 @@
       overviewRulerBorder: false,
       hideCursorInOverviewRuler: true,
       contextmenu: true,
-      mouseWheelZoom: true,
+      mouseWheelZoom: false,
       accessibilitySupport: 'auto'
     });
 
@@ -145,6 +149,13 @@
     const model = editor?.getModel();
     editor?.dispose();
     model?.dispose();
+  });
+
+  // Text size and reading font reach the canvas through the tokens.
+  $effect(() => {
+    void accessibilityStore.prefs.textScale;
+    void accessibilityStore.prefs.font;
+    editor?.updateOptions({ fontSize: codeFontSize(), fontFamily: codeFontFamily() });
   });
 
   $effect(() => {

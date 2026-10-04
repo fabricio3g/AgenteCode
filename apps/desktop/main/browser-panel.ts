@@ -5,7 +5,7 @@ import { isWorkspaceScope } from '../shared/workspace-scope.ts';
 import { getMainWindow } from './window-manager.ts';
 import { BROWSER_VIEWPORTS, type BrowserViewportPreset } from '../shared/browser-viewports.ts';
 import { debuggerConsoleMessage, type BrowserConsoleMessage } from './browser-console.ts';
-import { browserViewBounds, type BrowserPresentation } from '../shared/browser-presentation.ts';
+import { browserViewBounds, sameBrowserBounds, type BrowserPresentation } from '../shared/browser-presentation.ts';
 
 export const AGENT_BROWSER_PARTITION = 'persist:agent-browser';
 export const AGENT_BROWSER_MAX_TABS = 5;
@@ -130,13 +130,17 @@ function attachToMainWindow(view: WebContentsView) {
 }
 
 function applyBounds() {
-  for (const owner of owners.values()) for (const tab of owner.tabs.values()) {
-    try { tab.view.setVisible(false); } catch { /* Guest may be closing. */ }
-  }
   const owner = state(foregroundScope);
   const entry = owner.activeTabId ? owner.tabs.get(owner.activeTabId) : null;
-  if (!entry || !owner.panelVisible || !owner.panelExposed || !owner.panelBounds || owner.panelOccluded) return;
-  try { entry.view.setBounds({ ...owner.panelBounds }); entry.view.setVisible(true); } catch { /* Guest may be closing. */ }
+  const live = !!entry && owner.panelVisible && owner.panelExposed && !!owner.panelBounds && !owner.panelOccluded;
+  for (const other of owners.values()) for (const tab of other.tabs.values()) {
+    try { if ((!live || tab !== entry) && tab.view.getVisible()) tab.view.setVisible(false); } catch { /* Guest may be closing. */ }
+  }
+  if (!entry || !live || !owner.panelBounds) return;
+  try {
+    if (!sameBrowserBounds(entry.view.getBounds(), owner.panelBounds)) entry.view.setBounds({ ...owner.panelBounds });
+    if (!entry.view.getVisible()) entry.view.setVisible(true);
+  } catch { /* Guest may be closing. */ }
 }
 /** Only the renderer selects which conversation may present a live native view. */
 export function panelSelectScope(scope: string) {
@@ -419,17 +423,18 @@ export function panelCloseAll() {
 
 
 export async function panelSetOccluded(occluded: boolean): Promise<{ image: string | null }> {
-  if (occluded === state().panelOccluded) return { image: null };
-  let image: string | null = null;
-  const entry = state().activeTabId ? state().tabs.get(state().activeTabId!) : null;
-  if (occluded && entry && state().panelVisible) {
-    try {
-      image = (await entry.view.webContents.capturePage()).toDataURL();
-    } catch { /* no still: the box just shows empty for a moment */ }
-  }
-  state().panelOccluded = occluded;
+  const owner = state();
+  if (occluded === owner.panelOccluded) return { image: null };
+  const entry = owner.activeTabId ? owner.tabs.get(owner.activeTabId) : null;
+  const capture = occluded && entry && owner.panelVisible
+    ? entry.view.webContents.capturePage().then(frame => frame.isEmpty() ? null : frame.toDataURL()).catch(() => null)
+    : Promise.resolve(null);
+  // Start the capture while exposed, then hide synchronously. A slow capture
+  // must never keep native content above a menu or another workspace panel.
+  owner.panelOccluded = occluded;
   applyBounds();
-  return { image };
+  const image = await capture;
+  return { image: owner.panelOccluded && owner.activeTabId === entry?.id ? image : null };
 }
 
 export function panelSetVisible(visible: boolean) {
@@ -455,7 +460,7 @@ export async function panelSetPresentation(presentation: BrowserPresentation): P
   const wasOccluded = state().panelOccluded;
   const active = state().activeTabId ? state().tabs.get(state().activeTabId!) : null;
   const capture = presentation.occluded && !wasOccluded && state().panelExposed && active && state().panelVisible
-    ? active.view.webContents.capturePage().then((image) => image.toDataURL()).catch(() => null) : Promise.resolve(null);
+    ? active.view.webContents.capturePage().then((image) => image.isEmpty() ? null : image.toDataURL()).catch(() => null) : Promise.resolve(null);
   state().panelExposed = !!presentation.exposed;
   state().panelOccluded = !!presentation.occluded;
   state().panelBounds = browserViewBounds(presentation.bounds, win?.webContents.getZoomFactor() ?? 1, win?.getContentBounds() ?? { width: 0, height: 0 });

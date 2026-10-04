@@ -97,7 +97,7 @@
 
   .metric-label {
     color: var(--text-secondary);
-    font-size: 0.68rem;
+    font-size: var(--text-xs);
     font-weight: 650;
   }
 

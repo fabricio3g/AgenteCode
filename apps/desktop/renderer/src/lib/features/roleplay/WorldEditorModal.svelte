@@ -355,7 +355,7 @@
   .cast-order {
     width: 1.125rem;
     color: var(--text-muted);
-    font-size: 0.6875rem;
+    font-size: var(--text-xs);
     font-variant-numeric: tabular-nums;
     text-align: center;
   }
@@ -370,7 +370,7 @@
     border-radius: var(--radius-full);
     background: var(--muted);
     color: var(--text-muted);
-    font-size: 0.6875rem;
+    font-size: var(--text-xs);
     font-weight: 600;
   }
 

@@ -229,6 +229,9 @@
   .mini-sheet thead th:not(:first-child) {
     width: auto;
   }
+  /* The one place allowed below the type ladder: this is a scaled-down page
+     preview, so its type is artwork, not text anyone reads at 7px. Real UI
+     text starts at `--text-xs`. */
   .md-page,
   .text-page {
     position: absolute;

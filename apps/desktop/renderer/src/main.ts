@@ -1,3 +1,12 @@
+// Every font is bundled and OFL-1.1 (open source, free for commercial use), so
+// no surface falls back to a licensed platform face and nothing needs a
+// network fetch at runtime:
+//   Inter Variable            (OFL) UI and reading text
+//   IBM Plex Mono             (OFL) code, diffs and the terminal
+//   Atkinson Hyperlegible     (OFL) optional reading font, loaded on demand
+//   Atkinson Hyperlegible Mono(OFL) its code companion, loaded with it
+// A new face only lands here if it is OFL or otherwise free for commercial use.
+//
 // `opsz.css`, not the package entry: the entry ships only the `wght` axis, so
 // `font-optical-sizing: auto` had nothing to read and silently did nothing.
 // The `opsz` build carries both axes and opens the counters at small sizes.

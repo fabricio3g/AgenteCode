@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 // The export path's two shapes: an uploaded bitmap is inlined, a blank board is
 // painted. Only the SVG builder is exercised here — rasterizing needs a DOM and
 // the imports are the daemon's job — but the builder is where a board could
@@ -7,11 +8,12 @@ import { describe, expect, it, vi } from 'vitest';
 import type { CanvasImage, CanvasMark } from './canvas-doc';
 
 vi.mock('$lib/services/bridge', () => ({ invoke: vi.fn() }));
-vi.mock('$lib/stores/app.svelte', () => ({ appStore: { currentChat: null, composer: '', pendingAttachments: [], updateComposer: vi.fn() } }));
+const fakeApp = vi.hoisted(() => ({ currentChat: { id: 'chat-a', codeAgent: false }, composer: 'Existing', pendingAttachments: [], updateComposer: vi.fn() }));
+vi.mock('$lib/stores/app.svelte', () => ({ appStore: fakeApp }));
 vi.mock('$lib/stores/toast.svelte', () => ({ toastStore: { error: vi.fn(), success: vi.fn() } }));
 vi.mock('./canvas-board.svelte', () => ({ canvasBoard: { doc: { images: [], marks: [], view: { zoom: 1, panX: 0, panY: 0 }, labelled: [] } } }));
 
-const { entrySvg } = await import('./canvas-handoff');
+const { entrySvg, handOffToAgent } = await import('./canvas-handoff');
 
 const bitmap: CanvasImage = { id: 'img1', path: '/root/.agente/attachments/a.png', name: 'shot.png', w: 1000, h: 500 };
 const board: CanvasImage = { id: 'board1', name: 'whiteboard.png', w: 1600, h: 1000 };
@@ -48,4 +50,15 @@ describe('a piece of the board as SVG', () => {
     expect(svg).toContain('fill="#ffffff"');
     expect(svg.trimEnd().endsWith('</svg>')).toBe(true);
   });
+});
+
+it('exports arrows in the direction drawn, including a horizontal reverse arrow', () => {
+  const svg = entrySvg(board, null, { imageId: 'board1', box: null, marks: [stroke({ kind: 'arrow', x: 10, y: 20, w: 100, h: 0, points: [[110, 20], [10, 20]] })] });
+  expect(svg).toContain('d="M110 20 L10 20"');
+});
+it('keeps an asynchronous canvas handoff in its owning conversation', () => {
+  expect(handOffToAgent('Instructions', [], 'chat-b')).toBe(false);
+  expect(fakeApp.updateComposer).not.toHaveBeenCalled();
+  expect(handOffToAgent('Instructions', [], 'chat-a')).toBe(true);
+  expect(fakeApp.updateComposer).toHaveBeenCalledWith('Existing\n\nInstructions');
 });

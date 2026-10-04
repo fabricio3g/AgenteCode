@@ -104,7 +104,11 @@
   bind:this={containerEl}
   {id}
   class={cn(
-    'relative inline-flex rounded-full p-[3px]',
+    // Wraps rather than clips: the interface-size track has seven steps, and
+    // the people who need the top of it are the ones running a large text
+    // scale, which is exactly when the row stops fitting.
+    'relative inline-flex flex-wrap rounded-full p-[3px]',
+    variant === 'tabs' && 'flex-nowrap',
     'bg-[var(--muted)]',
     className,
   )}
@@ -132,7 +136,9 @@
       tabindex={variant === 'tabs' ? (value === option.value ? 0 : -1) : undefined}
       disabled={option.disabled}
       class={cn(
-        'relative z-10 rounded-full px-3 py-1 text-xs font-medium outline-none transition-[color,box-shadow,transform] duration-[var(--motion-fast)] ease-[var(--motion-ease)] focus-visible:ring-[3px] focus-visible:ring-ring/20 active:scale-[0.98] disabled:opacity-50',
+        // One control height for the whole settings screen: the 26px segment
+        // inside a 3px track lands on 32px, level with Input and Select.
+        'relative z-10 inline-flex h-[26px] items-center rounded-full px-3 text-[12.5px] font-medium outline-none transition-[color,box-shadow,transform] duration-[var(--motion-fast)] ease-[var(--motion-ease)] focus-visible:ring-[3px] focus-visible:ring-ring/20 active:scale-[0.98] disabled:opacity-50',
         value === option.value
           ? variant === 'tabs' ? 'text-foreground' : 'bg-[var(--segment-active-bg)] shadow-[var(--segment-active-shadow)] text-foreground'
           : 'text-muted-foreground hover:text-foreground',

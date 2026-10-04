@@ -234,7 +234,9 @@ function webglRenderer(canvas, opts) {
       // 1 · the field, one fragment per tile
       field.use();
       gl.uniform2f(field.loc("uGrid"), cols, rows);
-      gl.uniform2f(field.loc("uSize"), size[0] / (UNIT * dpr), size[1] / (UNIT * dpr));
+      // `spread` zooms the field: the canvas then covers more field units, so
+      // the glow and the rings sit smaller inside it.
+      gl.uniform2f(field.loc("uSize"), size[0] / (UNIT * dpr) * opts.spread, size[1] / (UNIT * dpr) * opts.spread);
       gl.uniform1f(field.loc("uTime"), t);
       gl.uniform2f(field.loc("uFocus"), opts.focus[0], opts.focus[1]);
       gl.uniform1f(field.loc("uCorner"), opts.corner);
@@ -284,7 +286,7 @@ function canvasRenderer(canvas, opts) {
       ctx.clearRect(0, 0, w / dpr, h / dpr);
       const [cw, ch] = opts.cell;
       const cols = Math.ceil(w / dpr / cw), rows = Math.ceil(h / dpr / ch);
-      const sx = w / dpr / UNIT, sy = h / dpr / UNIT;
+      const sx = w / dpr / UNIT * opts.spread, sy = h / dpr / UNIT * opts.spread;
       const levels = col.levels;
       const hx = (opts.focus[0] + Math.sin(t * 0.11) * 0.12) * sx;
       const hy = opts.focus[1] * sy;
@@ -317,12 +319,14 @@ function canvasRenderer(canvas, opts) {
  * Mount a tile field on `canvas`. Options:
  *   cell: [w, h] CSS px per tile, focus: [x, y] glow center (0..1), corner: top-right
  *   light, wave / ember: motion strengths, dim: overall strength (the footer runs
- *   quieter so its wordmark stays readable).
+ *   quieter so its wordmark stays readable), spread: zoom of the field inside
+ *   the canvas (1 keeps the hero's framing; a wider canvas wants more, or the
+ *   glow stops reading as a glow and covers everything).
  */
 export function mountTiles(el, options = {}) {
   const opts = {
     cell: [12, 12], focus: [0.5, 1.0], corner: 0.5, wave: 0.22, ember: 0.55,
-    gamma: 1.9, dim: 1, ...options,
+    gamma: 1.9, dim: 1, spread: 1, ...options,
   };
   let canvas = el;
   let r = null;
@@ -389,15 +393,38 @@ export function mountTiles(el, options = {}) {
     stats.running = running;
   }
 
+  const onResize = () => { resize(); if (!running) still(); };
+  const onVisible = ([e]) => { visible = e.isIntersecting; update(); };
+  const onTheme = () => { recolor(); if (!running) still(); };
+  const resizeObserver = new ResizeObserver(onResize);
+  const visibleObserver = new IntersectionObserver(onVisible);
+
   resize();
   recolor();
   if (reduceMotion.matches) still();
-  new ResizeObserver(() => { resize(); if (!running) still(); }).observe(canvas);
-  new IntersectionObserver(([e]) => { visible = e.isIntersecting; update(); }).observe(canvas);
+  resizeObserver.observe(canvas);
+  visibleObserver.observe(canvas);
   document.addEventListener("visibilitychange", update);
   reduceMotion.addEventListener("change", update);
-  document.addEventListener("themechange", () => { recolor(); if (!running) still(); });
+  document.addEventListener("themechange", onTheme);
   canvas.classList.add("ready");
   update();
-  return r.kind;
+  return {
+    kind: r.kind,
+    /**
+     * Stop the loop and detach every observer and listener. Hosts that mount
+     * the field for a screen with a lifetime of its own — the Desktop startup
+     * screen, which unmounts the canvas once the app is ready — must call this
+     * instead of leaving a rAF loop running behind the app.
+     */
+    destroy() {
+      running = false;
+      resizeObserver.disconnect();
+      visibleObserver.disconnect();
+      document.removeEventListener("visibilitychange", update);
+      reduceMotion.removeEventListener("change", update);
+      document.removeEventListener("themechange", onTheme);
+      canvas.classList.remove("ready");
+    },
+  };
 }

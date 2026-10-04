@@ -19,6 +19,7 @@
   import { toastStore } from '$lib/stores/toast.svelte';
   import { invoke, isElectron } from '$lib/services/bridge';
   import { defaultBaseUrl, isProviderConfigured, providerMeta } from '$lib/utils/providers';
+  import { humanizeProviderError } from '$lib/utils/errors';
   import { Badge, Button, Disclosure, Input } from '$lib/components/ui';
   import ProviderIcon from '$lib/components/ui/ProviderIcon.svelte';
   import SettingsPage from '../SettingsPage.svelte';
@@ -219,11 +220,11 @@
           modelFetch.fetched = list.map((m: { id?: string }) => String(m?.id || '')).filter(Boolean);
           modelFetch.loaded = true;
         } catch (directErr) {
-          modelFetch.error = (directErr as Error)?.message || String(directErr);
+          modelFetch.error = humanizeProviderError(directErr);
         }
       } else if (hasKey || keyOptional) {
         // Without a key the empty state already explains what to do.
-        modelFetch.error = (err as Error)?.message || String(err);
+        modelFetch.error = humanizeProviderError(err);
       }
     } finally {
       modelFetch.loading = false;
@@ -299,7 +300,7 @@
 
   <!-- Connection -->
   <SettingsSection large title={$t('providers.connection')} description={keyOptional ? $t('providers.connectionLocalHint') : $t('providers.connectionHint', { values: { name: label } })}>
-    <div class="space-y-2 py-4">
+    <div class="space-y-2 px-4 py-3 sm:px-5">
       <div class="flex items-center justify-between gap-2">
         <label for="provider-key" class="text-[14px] font-medium text-foreground">
           {$t('providers.apiKey')}{#if keyOptional}<span class="font-normal text-muted-foreground"> · {$t('providers.optional')}</span>{/if}
@@ -335,7 +336,7 @@
       {/if}
     </div>
 
-    <div class="space-y-2 py-4">
+    <div class="space-y-2 px-4 py-3 sm:px-5">
       <label for="provider-url" class="text-[14px] font-medium text-foreground">{$t('providers.baseUrl')}</label>
       <Input
         id="provider-url"
@@ -347,7 +348,7 @@
       />
     </div>
 
-    <div class="flex flex-wrap items-center justify-between gap-2 py-4">
+    <div class="flex flex-wrap items-center justify-between gap-2 px-4 py-3 sm:px-5">
       <div class="min-w-0 text-[12.5px]" role="status">
         {#if testing}
           <span class="inline-flex items-center gap-1.5 text-muted-foreground"><LoaderCircle class="size-3.5 animate-spin" /> {$t('providers.testing')}</span>
@@ -376,7 +377,7 @@
       </Button>
     {/snippet}
 
-    <div class="space-y-2 px-4 pb-2 pt-2">
+    <div class="space-y-2 px-3 pt-2.5 pb-2 sm:px-4">
       {#if addingModel}
         <div class="flex gap-2">
           <Input
@@ -395,7 +396,7 @@
         </div>
       {/if}
       {#if modelFetch.error}
-        <p class="rounded-lg bg-error-bg px-3 py-2 text-[12.5px] text-error">{modelFetch.error}</p>
+        <p class="rounded-lg bg-error-bg px-3.5 py-2.5 text-[12.5px] text-error">{modelFetch.error}</p>
       {/if}
     </div>
 
@@ -404,7 +405,7 @@
         {keyOptional || hasKey ? $t('providers.noModelsYet') : $t('providers.noModelsNeedKey')}
       </p>
     {:else}
-      <ul class="max-h-[28rem] overflow-y-auto px-2 pb-2" role="radiogroup" aria-label={$t('providers.models')}>
+      <ul class="max-h-[28rem] overflow-y-auto px-3 pb-2.5 sm:px-4" role="radiogroup" aria-label={$t('providers.models')}>
         {#each visibleRoster as entry (entry.id)}
           {@const isDefault = saved?.model === entry.id}
           <li class="group flex items-center gap-1 rounded-[10px] pr-1.5 hover:bg-[var(--surface-hover)] {isDefault ? 'bg-[var(--surface-hover)]' : ''}">
@@ -477,7 +478,7 @@
 
   {#if isCustom}
     <SettingsSection large tone="danger">
-      <div class="flex items-center justify-between gap-3 py-4">
+      <div class="flex items-center justify-between gap-3 px-4 py-4 sm:px-5">
         <div class="min-w-0">
           <p class="text-sm font-medium text-foreground">{$t('providers.removeEndpoint')}</p>
           <p class="text-xs text-muted-foreground">{$t('providers.removeMessage')}</p>

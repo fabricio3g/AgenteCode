@@ -34,7 +34,7 @@
   }
 </script>
 
-<div class="space-y-4 py-3">
+<div class="space-y-4 px-4 py-3.5 sm:px-5">
   <SegmentedControl label={kind === 'tts' ? $t('speech.outputBackend') : $t('speech.inputBackend')} value={mode} options={[{ value: 'local', label: $t('speech.local') }, { value: 'api', label: $t('speech.api') }, ...(kind === 'tts' ? [{ value: 'browser', label: $t('speech.system') }] : [])]} onchange={(value) => void backend(value)} />
   {#if mode === 'api'}
     <Select aria-label={$t('speech.service')} value={selected} options={[{ value: 'openai', label: 'OpenAI' }, { value: 'compatible', label: $t('speech.compatible') }, kind === 'tts' ? { value: 'elevenlabs', label: 'ElevenLabs' } : { value: 'deepgram', label: 'Deepgram' }]} onchange={(value) => { selected = value; draft = loadDraft(value); }} />

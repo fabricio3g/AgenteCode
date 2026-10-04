@@ -107,7 +107,7 @@
   .prop-kind {
     flex-shrink: 0;
     color: var(--text-tertiary);
-    font-size: 0.625rem;
+    font-size: var(--text-xs);
     letter-spacing: 0.04em;
     text-transform: uppercase;
   }

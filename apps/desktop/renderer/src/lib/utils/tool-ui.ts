@@ -78,3 +78,15 @@ export function searchModeChip(mode: 'chat' | 'search' | 'deep' | 'max' | null |
   if (!mode || mode === 'chat') return '';
   return copy.searchModes[mode].label;
 }
+
+/** Task coordination arguments belong in details, not the reading timeline. */
+export function toolTarget(name: string | undefined, detail: string | undefined): string {
+  if (!detail) return '';
+  if (name === 'task' || name === 'task_output' || name === 'kill_task') {
+    try {
+      const args = JSON.parse(detail);
+      return typeof args.description === 'string' ? args.description.split('\n')[0] : '';
+    } catch { /* Already formatted descriptions remain readable. */ }
+  }
+  return detail.split('\n')[0].trim();
+}

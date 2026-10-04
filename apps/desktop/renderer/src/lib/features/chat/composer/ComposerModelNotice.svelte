@@ -91,7 +91,7 @@
     letter-spacing: -0.005em;
   }
   .notice-empty { flex-direction: column; justify-content: center; gap: 0.5rem; }
-  .notice-empty-label { font-size: 0.6875rem; font-weight: 400; color: var(--muted-foreground); }
+  .notice-empty-label { font-size: var(--text-xs); font-weight: 400; color: var(--muted-foreground); }
   .notice-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 0.5rem; }
 
   /* Pill buttons sized to sit level with the composer's own controls. Both

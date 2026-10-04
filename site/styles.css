@@ -22,6 +22,11 @@
   --segment-active-shadow: 0 0 0 1px rgb(255 255 255 / 0.06);
   --panel-shadow: inset 0 1px 0 rgb(255 255 255 / 0.03), 0 10px 28px -8px rgb(0 0 0 / 0.55);
   --frame-shadow: 0 0 0 1px rgb(255 255 255 / 0.06), 0 40px 90px -40px rgb(0 0 0 / 0.8);
+  /* Every product capture sits on this plate: a graphite gradient under a
+     grain layer, so the shot reads as an object on a surface. */
+  --frame-plate: linear-gradient(155deg, #2b2b2b 0%, #1d1d1d 54%, #141414 100%);
+  --capture-shadow: 0 20px 40px -24px rgb(0 0 0 / 0.75);
+  --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)' opacity='0.5'/%3E%3C/svg%3E");
   --code-bg: #111111;
   --btn-secondary: #262626;
   --btn-secondary-hover: #2f2f2f;
@@ -71,6 +76,8 @@
   --segment-active-shadow: 0 1px 2px rgb(0 0 0 / 0.08), 0 0 0 1px rgb(0 0 0 / 0.06);
   --panel-shadow: 0 1px 2px rgb(0 0 0 / 0.04), 0 6px 18px -6px rgb(0 0 0 / 0.1);
   --frame-shadow: 0 0 0 1px rgb(0 0 0 / 0.06), 0 40px 80px -40px rgb(0 0 0 / 0.35);
+  --frame-plate: linear-gradient(155deg, #f5f5f6 0%, #ededef 54%, #e3e3e6 100%);
+  --capture-shadow: 0 20px 40px -26px rgb(0 0 0 / 0.28);
   --code-bg: #161616;
   --btn-secondary: #f1f1f1;
   --btn-secondary-hover: #e8e8e8;
@@ -137,6 +144,9 @@ svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width:
   padding: 6px 12px; border-radius: 999px; color: var(--text-tertiary); font-size: 13.5px; font-weight: 500;
   transition: color var(--t-fast) var(--ease), background var(--t-fast) var(--ease);
 }
+/* The footer row sits over the tile field, so its links run one step brighter
+   than the top nav's and never rely on the mosaic staying dark. */
+.footer nav a { color: var(--text-secondary); }
 .nav-links a:hover, .footer nav a:hover { color: var(--foreground); background: var(--surface-hover); }
 .nav-actions { margin-left: auto; display: flex; gap: 4px; }
 .icon-btn {
@@ -331,15 +341,20 @@ h2 { font-size: clamp(30px, 4vw, 44px); line-height: 1.08; letter-spacing: -0.03
   transition: opacity 0.6s var(--ease-out), transform 0.6s var(--ease-out), visibility 0s linear 0.6s;
 }
 .panel.is-active { opacity: 1; transform: none; visibility: visible; transition-delay: 0s; }
+/* Every capture sits on the grainy plate: square plate, small radius on the
+   image itself, and the image sizes the frame so nothing is cropped. */
 .frame {
-  margin: 0; aspect-ratio: 1400 / 920; border-radius: var(--radius-2xl); overflow: hidden;
-  background: #161616; box-shadow: var(--frame-shadow);
+  margin: 0; padding: clamp(10px, 1.5vw, 20px); border-radius: 0;
+  background-image: var(--grain), var(--frame-plate);
+  background-blend-mode: soft-light, normal;
+  box-shadow: var(--frame-shadow);
 }
-.frame img { width: 100%; height: 100%; object-fit: cover; object-position: top center; }
-.frame-term { background: #000; }
-.frame-term img { object-fit: contain; }
-.frame-code { display: flex; align-items: center; justify-content: center; background: var(--code-bg); }
-.frame-code pre { margin: 0; padding: 32px; font-size: clamp(11px, 1.45vw, 16px); line-height: 1.75; color: #e6e6e6; overflow: auto; max-width: 100%; }
+.frame img {
+  display: block; width: 100%; height: auto;
+  border-radius: 6px; box-shadow: var(--capture-shadow);
+}
+.frame-code { display: flex; align-items: center; justify-content: center; }
+.frame-code pre { margin: 0; padding: 32px; font-size: clamp(11px, 1.45vw, 16px); line-height: 1.75; color: #e6e6e6; overflow: auto; max-width: 100%; background: var(--code-bg); border-radius: 6px; }
 .c-p { color: #e8793a; }
 .c-d { color: #6e6e6e; }
 .caption { margin: 26px 0 0; text-align: center; color: var(--text-tertiary); font-size: 15px; }
@@ -347,6 +362,9 @@ h2 { font-size: clamp(30px, 4vw, 44px); line-height: 1.08; letter-spacing: -0.03
 .tag { margin-left: 6px; padding: 2px 8px; border-radius: 999px; font-size: 11.5px; font-weight: 500; color: var(--brand-accent-strong); background: color-mix(in srgb, var(--brand-accent) 12%, transparent); }
 .facts { list-style: none; padding: 0; margin: 14px 0 0; display: flex; flex-wrap: wrap; justify-content: center; gap: 6px 22px; color: var(--text-faint); font-size: 13px; }
 .facts li::before { content: "~ "; font-family: var(--font-mono); color: var(--brand-accent); opacity: 0.8; }
+
+/* A panel that shows two surfaces stacks them with the same air as the caption. */
+.panel .frame + .frame { margin-top: 18px; }
 
 /* ---------- Bots team (faces from Desktop's engine, js/faces.js) ---------- */
 .team-row {
@@ -429,6 +447,12 @@ h2 { font-size: clamp(30px, 4vw, 44px); line-height: 1.08; letter-spacing: -0.03
   background: radial-gradient(70% 90% at 50% 110%, var(--glow), transparent 70%);
 }
 .footer-bg::before { content: ""; position: absolute; inset: 0 0 auto; height: 60%; z-index: 1; background: linear-gradient(var(--background), transparent); }
+/* The mosaic peaks at the bottom, exactly where the wordmark and the links sit,
+   so the last strip settles back into the page surface. */
+.footer-bg::after {
+  content: ""; position: absolute; inset: auto 0 0; height: 46%; z-index: 1;
+  background: linear-gradient(transparent, var(--background) 60%);
+}
 .footer .tiles { mask-image: none; -webkit-mask-image: none; }
 .footer-inner { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
 .footer nav { display: flex; flex-wrap: wrap; gap: 2px; }
@@ -451,8 +475,6 @@ h2 { font-size: clamp(30px, 4vw, 44px); line-height: 1.08; letter-spacing: -0.03
   .copy-btn { padding: 0 8px; }
   .nav-links { display: none; }
   .segmented button { padding: 0 12px; }
-  .frame { border-radius: var(--radius-xl); }
-  .frame-code { aspect-ratio: auto; }
   .frame-code pre { padding: 20px; font-size: 11.5px; }
   .block pre { font-size: 12px; padding: 18px; padding-top: 48px; }
   .facts { gap: 4px 14px; }

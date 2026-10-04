@@ -19,10 +19,12 @@ const RAIL = [
   './SidebarInstances.svelte',
   '../../features/shared/SessionRow.svelte',
   '../../features/code/CodeSidebar.svelte',
-  '../../features/bots/BotRoster.svelte'
+  '../../features/bots/BotRoster.svelte',
+  // The Settings screen's nav is the same column, one screen over.
+  '../settings/SettingsRail.svelte'
 ] as const;
 
-const SOURCES = import.meta.glob<string>(['./Sidebar.svelte', './SidebarInstances.svelte', '../../features/shared/SessionRow.svelte', '../../features/code/CodeSidebar.svelte', '../../features/bots/BotRoster.svelte'], {
+const SOURCES = import.meta.glob<string>(['./Sidebar.svelte', './SidebarInstances.svelte', '../../features/shared/SessionRow.svelte', '../../features/code/CodeSidebar.svelte', '../../features/bots/BotRoster.svelte', '../settings/SettingsRail.svelte'], {
   query: '?raw',
   import: 'default',
   eager: true

@@ -3,12 +3,31 @@
 // Never imported unless the query flag is present (see src/main.ts).
 
 import type { BrowserPanelState } from '$lib/services/browser';
+import { CHAT_STATE_KEY } from '$lib/utils/storage';
 import { KICKOFF_PPTX, REAL_DOCX, REAL_PPTX, REAL_XLSX, SAMPLE_DOCX, SAMPLE_XLSX } from './mock-office-files';
 
 import readerPdf from '$lib/features/chat/viewers/__fixtures__/reader.pdf?url';
 const PDF_FIXTURE = `data:application/pdf;base64,${btoa(String.fromCharCode(...new Uint8Array(await (await fetch(readerPdf)).arrayBuffer())))}`;
 
 type Listener = (payload: unknown) => void;
+
+// `?chat=<id>` boots straight into one fixture conversation instead of whatever
+// the profile last had open. Runs before the store reads its navigation state.
+// `&space=code` opens a Code conversation (its own space), home otherwise.
+const bootParams = new URLSearchParams(location.search);
+const requestedChat = bootParams.get('chat');
+if (requestedChat) {
+  const space = bootParams.get('space') === 'code' ? 'code' : 'home';
+  try {
+    localStorage.setItem(`${CHAT_STATE_KEY}.navigation`, JSON.stringify({
+      currentChatId: requestedChat,
+      activeSpace: space,
+      currentChatIdBySpace: { home: space === 'home' ? requestedChat : null, code: space === 'code' ? requestedChat : null, roleplay: null }
+    }));
+  } catch {
+    /* private mode: the default fixture still loads */
+  }
+}
 
 const browserOwners = new Map<string, BrowserPanelState>();
 let browserTabSequence = 0;
@@ -290,6 +309,151 @@ savedSessions.push({
       title: 'Reading notes', files: { 'notes.md': '# Reading notes\n\nQuiet controls give the document more room.\n\n## Pages\nSearch this document with Ctrl+F.', 'notes.txt': 'Quiet controls give the document more room.\n'.repeat(80) },
       manifest: { schemaVersion: 1, kind: 'document', presentation: 'document', entryPath: 'notes.md', status: 'ready' }
     }] }]
+});
+
+// Typography fixture: one turn that exercises every markdown block the chat can
+// render, so the reading column, code chrome, tables and lists can be checked in
+// one screen. Open it with `?mock=1&chat=chat-typography`.
+const TYPOGRAPHY_SAMPLE = `# Retry budget
+
+The retry budget is now bounded by wall-clock time instead of attempt count, so a request that keeps failing against a slow upstream no longer holds a connection for the whole attempt ladder: the scheduler reclaims the slot as soon as the deadline passes, and the caller gets the last error instead of waiting for a retry that was never going to fit inside the budget it was given.
+
+This paragraph arrives hard-wrapped by the model at
+eighty columns, so it shows whether soft line breaks
+reflow into the reading column or stay where the
+model put them.
+
+## What changed
+
+- **Deadline first.** \`retry.deadlineMs\` caps the whole ladder, so three attempts of five seconds cannot become a fifteen second stall.
+- **Jittered backoff**, capped at two seconds:
+  - base delay 120ms
+  - multiplier 1.8
+  - full jitter
+- Per-host concurrency stays at four, unchanged.
+
+1. Drain in-flight requests.
+2. Rebuild the ladder from the new budget.
+3. Replay the queue in priority order.
+
+- [x] Deadline plumbed through the scheduler
+- [ ] Retire the attempt-count guard
+
+> Retries are a budget, not a count. Spending time is what costs the user.
+
+---
+
+| Field | Type | Default | Notes |
+| --- | --- | --- | --- |
+| \`deadlineMs\` | number | 15000 | Wall-clock cap for the whole ladder, measured from the first attempt |
+| \`maxAttempts\` | number | 5 | Kept for compatibility; the deadline wins whenever both are set |
+| \`baseDelayMs\` | number | 120 | First backoff step, before jitter |
+
+| Host | Requests | Failures | p95 |
+| ---: | ---: | ---: | ---: |
+| api.example.com | 1204 | 3 | 218ms |
+| cdn.example.com | 8891 | 0 | 41ms |
+| search.example.com | 512 | 17 | 902ms |
+
+The migration notes live at [the runbook](https://example.com/docs/runbooks/retry-budget-migration?section=rollout&revision=2026-03-14) and the ladder itself is \`src/net/retry/ladder.ts\`, whose installed path is /opt/agente/runtimes/current/lib/net/retry/ladder.ts.
+
+\`\`\`ts
+export function ladder(budget: Budget): Step[] {
+  const steps: Step[] = [];
+  let delay = budget.baseDelayMs;
+  while (steps.length < budget.maxAttempts && budget.remaining() > delay) {
+    steps.push({ delay, jitter: 'full' });
+    delay = Math.min(delay * 1.8, 2_000);
+  }
+  return steps;
+}
+\`\`\`
+
+\`\`\`bash
+agente run --profile slow-upstream --deadline-ms 15000
+\`\`\`
+
+Follow [the migration guide](https://example.com/docs/migration) before flipping the flag in production.
+
+Inline \`deadlineMs\`, ~~attempt counts~~, **wall-clock budgets** and *jitter* all render here.
+
+$$\\text{budget} = \\min(\\text{deadline},\\ \\sum_i \\text{delay}_i)$$
+
+#### Migration notes
+
+![Agente icon](/app-icon.png)
+`;
+
+savedSessions.unshift({
+  id: 'chat-typography',
+  title: 'Retry budget typography',
+  createdAt: Date.now() - 60_000,
+  updatedAt: Date.now() - 60_000,
+  folderId: null,
+  draft: '',
+  contextMode: 'home',
+  projectId: null,
+  messages: [
+    {
+      id: 'typo-user',
+      role: 'user',
+      content: 'Show me the retry budget change. I want the deadline, the new backoff shape and the numbers we measured against each host, with the migration notes underneath.',
+      createdAt: Date.now() - 60_000
+    },
+    { id: 'typo-assistant', role: 'assistant', content: TYPOGRAPHY_SAMPLE, createdAt: Date.now() - 59_000 }
+  ]
+});
+
+/**
+ * Subagent fixture: a finished child with a long answer (the clamp), one still
+ * running (the tail), and one that failed (the error state).
+ */
+const SUBAGENT_LONG_TEXT = `## Findings
+
+The transcript walks its content twice per frame: once to measure the block and once to paint it, and nothing is kept between deltas, so every flush re-parses the answer the model just grew by a few characters.\n\nThe cheap fix is the one already in the renderer: keep the settled prefix in its own element and let only the tail re-render, which is what the streaming split does for the main reply.\n\nSecond finding: the card scrolled inside the transcript instead of letting the transcript scroll it, so a long answer arrived in a 320px window with a second scrollbar of its own.\n\nThird: the reply was forwarded twice, once as deltas and once as the finished message, so the card printed the whole thing twice, run together with no separator between the copies.\n\n`;
+
+const childSpend = (costUsd: number, promptTokens: number) => ({ costUsd, estimated: false, unpriced: false, promptTokens, cacheReadTokens: 0, cacheWriteTokens: 0 });
+
+savedSessions.push({
+  id: 'chat-subagents',
+  title: 'Subagent cards',
+  createdAt: Date.now() - 30_000,
+  updatedAt: Date.now() - 30_000,
+  folderId: null,
+  draft: '',
+  contextMode: 'code',
+  projectId: 'proj-1',
+  messages: [
+    { id: 'sub-user', role: 'user', content: 'Map how the transcript renders and where it re-parses per delta.', createdAt: Date.now() - 30_000 },
+    {
+      id: 'sub-assistant',
+      role: 'assistant',
+      content: 'Two subagents reported back; the third is still running.',
+      createdAt: Date.now() - 29_000,
+      metadata: {
+        codeChildren: [
+          {
+            id: 'child-done', kind: 'explore', description: 'Map transcript rendering', status: 'done',
+            text: SUBAGENT_LONG_TEXT,
+            summary: 'The reply paints once per frame and caches nothing between deltas.',
+            tools: [
+              { id: 'sub-t1', name: 'grep', output: 'thread/Thread.svelte:318\nRichContent.svelte:71', status: 'done' },
+              { id: 'sub-t2', name: 'read_file', output: 'The settled prefix is written once; only the tail re-renders.', status: 'done' }
+            ],
+            spend: childSpend(0.012, 18_400)
+          },
+          {
+            id: 'child-running', kind: 'general-purpose', description: 'Patch the delta path', status: 'running',
+            text: 'Reading the streaming split, then the reveal buffer that feeds it. ', tools: [], spend: childSpend(0.004, 5_100)
+          },
+          {
+            id: 'child-error', kind: 'explore', description: 'Survey the terminal renderer', status: 'error',
+            text: '', summary: 'Stopped before it finished.', tools: [], spend: childSpend(0, 0)
+          }
+        ]
+      }
+    }
+  ]
 });
 
 /** Last runtime mode set via agente_set_runtime_mode — steers the script. */

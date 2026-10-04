@@ -604,7 +604,7 @@
   .map-attribution {
     margin: 0.45rem 0 0;
     color: var(--text-muted);
-    font-size: 0.65rem;
+    font-size: var(--text-xs);
     font-variant-numeric: tabular-nums;
   }
 </style>

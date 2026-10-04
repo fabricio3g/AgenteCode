@@ -288,7 +288,7 @@
     justify-content: center;
     background: var(--muted);
     color: var(--muted-foreground);
-    font-size: 9px;
+    font-size: var(--text-xs);
     font-weight: 600;
   }
 

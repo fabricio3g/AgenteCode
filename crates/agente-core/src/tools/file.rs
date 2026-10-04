@@ -11,7 +11,7 @@ use super::{
     with_file_mutation_queue, ToolCore, ToolError, ToolExecutionContext, ToolExecutionMode,
     ToolKind, MAX_DIR_ENTRIES, MAX_FILE_LINES,
 };
-use tokio::io::AsyncBufReadExt;
+use std::io::BufRead;
 
 #[derive(Default)]
 pub struct ReadFileTool;
@@ -54,7 +54,7 @@ impl ToolCore for ReadFileTool {
         &self,
         args: ReadFileArgs,
         project_dir: &str,
-        _context: &ToolExecutionContext,
+        context: &ToolExecutionContext,
     ) -> Result<String, ToolError> {
         let path = args
             .path
@@ -63,120 +63,142 @@ impl ToolCore for ReadFileTool {
         let resolved = super::resolve_read_path(&path, project_dir)?;
         let resolved_str = resolved.to_string_lossy().to_string();
 
-        let metadata = tokio::fs::metadata(&resolved).await.map_err(|e| {
-            ToolError::ExecutionError(format!("Failed to read file {resolved_str}: {e}"))
-        })?;
-
-        let start_line = args.start_line.unwrap_or(1) as usize;
-        let end_line = args.end_line.map(|v| v as usize);
-        let range_requested = start_line > 1 || end_line.is_some();
-
-        if !range_requested && metadata.len() > super::MAX_READ_FILE_BYTES {
-            return Err(ToolError::ExecutionError(format!(
-                "File {resolved_str} is {} bytes (whole-file limit {}). \
-                 Read it with start_line/end_line instead.",
-                metadata.len(),
-                super::MAX_READ_FILE_BYTES
-            )));
-        }
-
-        if range_requested {
-            // Stream the range so a huge file never lands in memory whole.
-            let file = tokio::fs::File::open(&resolved).await.map_err(|e| {
+        let context = context.clone();
+        tokio::task::spawn_blocking(move || {
+            ensure_not_cancelled(&context.cancellation)?;
+            let metadata = std::fs::metadata(&resolved).map_err(|e| {
                 ToolError::ExecutionError(format!("Failed to read file {resolved_str}: {e}"))
             })?;
-            let mut stream = tokio::io::BufReader::new(file).lines();
-            atomic_fs::record_read_partial(&resolved);
 
-            let mut selected: Vec<String> = Vec::new();
-            let mut total = 0usize;
-            let mut hit_line_cap = false;
-            let mut stopped_at_end_line = false;
-            while let Some(line) = stream.next_line().await.map_err(|e| {
-                ToolError::ExecutionError(format!("Failed to read file {resolved_str}: {e}"))
-            })? {
-                total += 1;
-                let before_end = end_line.map(|e| total <= e).unwrap_or(true);
-                if total >= start_line && before_end {
-                    if selected.len() >= MAX_FILE_LINES {
-                        hit_line_cap = true;
+            let start_line = args.start_line.unwrap_or(1) as usize;
+            let end_line = args.end_line.map(|v| v as usize);
+            let range_requested = start_line > 1 || end_line.is_some();
+
+            if !range_requested && metadata.len() > super::MAX_READ_FILE_BYTES {
+                return Err(ToolError::ExecutionError(format!(
+                    "File {resolved_str} is {} bytes (whole-file limit {}). \
+                 Read it with start_line/end_line instead.",
+                    metadata.len(),
+                    super::MAX_READ_FILE_BYTES
+                )));
+            }
+
+            if range_requested {
+                // Stream the range so a huge file never lands in memory whole.
+                let file = std::fs::File::open(&resolved).map_err(|e| {
+                    ToolError::ExecutionError(format!("Failed to read file {resolved_str}: {e}"))
+                })?;
+                let mut stream = std::io::BufReader::with_capacity(64 * 1024, file);
+                let mut line = String::new();
+                atomic_fs::record_read_partial(&resolved);
+
+                let mut selected: Vec<String> = Vec::new();
+                let mut total = 0usize;
+                let mut hit_line_cap = false;
+                let mut stopped_at_end_line = false;
+                loop {
+                    ensure_not_cancelled(&context.cancellation)?;
+                    line.clear();
+                    if stream.read_line(&mut line).map_err(|e| {
+                        ToolError::ExecutionError(format!(
+                            "Failed to read file {resolved_str}: {e}"
+                        ))
+                    })? == 0
+                    {
                         break;
                     }
-                    selected.push(cap_line(&line));
+                    if line.ends_with('\n') {
+                        line.pop();
+                        if line.ends_with('\r') {
+                            line.pop();
+                        }
+                    }
+                    total += 1;
+                    let before_end = end_line.map(|e| total <= e).unwrap_or(true);
+                    if total >= start_line && before_end {
+                        if selected.len() >= MAX_FILE_LINES {
+                            hit_line_cap = true;
+                            break;
+                        }
+                        selected.push(cap_line(&line));
+                    }
+                    if end_line.is_some_and(|e| total >= e) {
+                        stopped_at_end_line = true;
+                        break;
+                    }
                 }
-                if end_line.is_some_and(|e| total >= e) {
-                    stopped_at_end_line = true;
-                    break;
+
+                if selected.is_empty() {
+                    let end = end_line.unwrap_or(total).min(total).max(start_line);
+                    let plus = if stopped_at_end_line || hit_line_cap {
+                        "+"
+                    } else {
+                        ""
+                    };
+                    return Ok(format!(
+                        "[No lines in range {start_line}-{end} of {total}{plus}]"
+                    ));
                 }
-            }
 
-            if selected.is_empty() {
-                let end = end_line.unwrap_or(total).min(total).max(start_line);
-                let plus = if stopped_at_end_line || hit_line_cap {
-                    "+"
-                } else {
-                    ""
-                };
-                return Ok(format!(
-                    "[No lines in range {start_line}-{end} of {total}{plus}]"
-                ));
-            }
-
-            let last_shown = start_line.saturating_add(selected.len()).saturating_sub(1);
-            let body = selected.join("\n");
-            if hit_line_cap {
-                // Lead with the incomplete-view signal and the exact next call.
-                // A trailing note is read as commentary; agents overwhelmingly
-                // stop after the first chunk (see Claude Code's PARTIAL view
-                // change and the "Agents Don't Paginate" telemetry study).
-                let next = last_shown.saturating_add(1);
-                return Ok(format!(
-                    "[PARTIAL view — lines {start_line}-{last_shown} of {total}+; \
+                let last_shown = start_line.saturating_add(selected.len()).saturating_sub(1);
+                let body = selected.join("\n");
+                if hit_line_cap {
+                    // Lead with the incomplete-view signal and the exact next call.
+                    // A trailing note is read as commentary; agents overwhelmingly
+                    // stop after the first chunk (see Claude Code's PARTIAL view
+                    // change and the "Agents Don't Paginate" telemetry study).
+                    let next = last_shown.saturating_add(1);
+                    return Ok(format!(
+                        "[PARTIAL view — lines {start_line}-{last_shown} of {total}+; \
                      {MAX_FILE_LINES}-line read cap]\n\
                      next: read_file with start_line={next}\n\n{body}"
+                    ));
+                }
+
+                let plus = if stopped_at_end_line { "+" } else { "" };
+                return Ok(format!(
+                    "[Lines {start_line}-{last_shown} of {total}{plus}]\n{body}"
                 ));
             }
 
-            let plus = if stopped_at_end_line { "+" } else { "" };
-            return Ok(format!(
-                "[Lines {start_line}-{last_shown} of {total}{plus}]\n{body}"
-            ));
-        }
+            let content = std::fs::read_to_string(&resolved).map_err(|e| {
+                ToolError::ExecutionError(format!("Failed to read file {resolved_str}: {e}"))
+            })?;
 
-        let content = tokio::fs::read_to_string(&resolved).await.map_err(|e| {
-            ToolError::ExecutionError(format!("Failed to read file {resolved_str}: {e}"))
-        })?;
+            // Record before any early return so an empty file still counts as read.
+            atomic_fs::record_read(&resolved, &content);
 
-        // Record before any early return so an empty file still counts as read.
-        atomic_fs::record_read(&resolved, &content);
+            let lines: Vec<&str> = content.lines().collect();
+            let total = lines.len();
+            if total == 0 {
+                return Ok("[File is empty]".to_string());
+            }
+            let start = start_line.saturating_sub(1).min(total);
+            let end = end_line
+                .map(|e| e.max(1))
+                .unwrap_or(total)
+                .min(total)
+                .max(start);
 
-        let lines: Vec<&str> = content.lines().collect();
-        let total = lines.len();
-        if total == 0 {
-            return Ok("[File is empty]".to_string());
-        }
-        let start = start_line.saturating_sub(1).min(total);
-        let end = end_line
-            .map(|e| e.max(1))
-            .unwrap_or(total)
-            .min(total)
-            .max(start);
+            let selected: Vec<String> = lines[start..end]
+                .iter()
+                .map(|line| cap_line(line))
+                .collect();
+            let mut result = selected.join("\n");
 
-        let selected: Vec<String> = lines[start..end]
-            .iter()
-            .map(|line| cap_line(line))
-            .collect();
-        let mut result = selected.join("\n");
+            if result.is_empty() {
+                result = format!("[No lines in range {}-{} of {}]", start + 1, end, total);
+            }
 
-        if result.is_empty() {
-            result = format!("[No lines in range {}-{} of {}]", start + 1, end, total);
-        }
+            if start_line > 1 {
+                result = format!("[Lines {}-{} of {}]\n{}", start + 1, end, total, result);
+            }
 
-        if start_line > 1 {
-            result = format!("[Lines {}-{} of {}]\n{}", start + 1, end, total, result);
-        }
-
-        Ok(truncate_tool_output(&result, MAX_FILE_LINES, "head"))
+            ensure_not_cancelled(&context.cancellation)?;
+            Ok(truncate_tool_output(&result, MAX_FILE_LINES, "head"))
+        })
+        .await
+        .map_err(|e| ToolError::ExecutionError(format!("Read task failed: {e}")))?
     }
 }
 
@@ -624,6 +646,37 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("agente_{}_{}", name, uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&dir).unwrap();
         dir
+    }
+
+    #[tokio::test]
+    async fn ranged_reads_preserve_crlf_unicode_and_cancellation() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("a.txt"), "one\r\n日\r\nlast\n").unwrap();
+        let tool = ReadFileTool;
+        let args = || ReadFileArgs {
+            path: Some("a.txt".into()),
+            start_line: Some(2),
+            end_line: Some(3),
+        };
+        let output = tool
+            .run(
+                args(),
+                dir.path().to_str().unwrap(),
+                &ToolExecutionContext::default(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(output, "[Lines 2-3 of 3+]\n日\nlast");
+        let cancel = crate::cancellation::AbortController::new();
+        cancel.abort();
+        let context = ToolExecutionContext {
+            cancellation: cancel.signal(),
+            ..Default::default()
+        };
+        assert!(tool
+            .run(args(), dir.path().to_str().unwrap(), &context)
+            .await
+            .is_err());
     }
 
     #[tokio::test]

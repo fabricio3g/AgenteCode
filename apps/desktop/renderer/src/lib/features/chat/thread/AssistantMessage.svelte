@@ -305,7 +305,7 @@
     border-radius: var(--radius-full);
     background: var(--muted);
     color: var(--text-muted);
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     font-weight: 600;
   }
 
@@ -316,13 +316,13 @@
     gap: 0.35rem;
     margin: 0 0 0.35rem 0.625rem;
     color: var(--muted-foreground);
-    font-size: 11.5px;
+    font-size: var(--text-xs);
   }
 
   .speaker-name {
     margin-bottom: 0.25rem;
     color: var(--text-secondary);
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     font-weight: 600;
     letter-spacing: 0.01em;
   }

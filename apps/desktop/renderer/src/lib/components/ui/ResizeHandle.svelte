@@ -44,8 +44,7 @@
     stopGesture = startPointerGesture(event, (next) => onresize((axis === 'x' ? next.clientX : next.clientY) - start), (cancelled) => {
       dragging = false;
       stopGesture = undefined;
-      onend?.();
-      if (cancelled) oncancel?.();
+      if (cancelled && oncancel) oncancel(); else onend?.();
     });
   }
 

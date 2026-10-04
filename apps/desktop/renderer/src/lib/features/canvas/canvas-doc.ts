@@ -29,6 +29,8 @@ export interface CanvasImage {
    */
   path?: string;
   name: string;
+  /** URL of a browser snapshot, retained with the instructions sent to the agent. */
+  sourceUrl?: string;
   /** Natural bitmap size, and therefore the unit of every mark on this image. */
   w: number;
   h: number;
@@ -38,7 +40,7 @@ export interface CanvasMark extends Box {
   id: string;
   imageId: string;
   kind: MarkKind;
-  /** Freehand ink only. A line or arrow derives its points from the box. */
+  /** Ink vertices or directed line/arrow endpoints in image coordinates. */
   points?: Array<[number, number]>;
   /** The label on a text mark, and the instruction on a point. */
   text?: string;
@@ -57,6 +59,7 @@ export interface CanvasDoc {
   labelled: string[];
   /** The board the panel paints when a conversation holds more than one. */
   activeImageId?: string;
+  instructions?: string;
 }
 
 /** Strokes a user can draw with, in toolbar order. */
@@ -136,11 +139,22 @@ export function marksFor(doc: CanvasDoc, imageId: string): CanvasMark[] {
 /** Move/resize a mark; the box is normalized so a flip cannot store a negative side. */
 export function moveMark(mark: CanvasMark, from: Point, by: Point, image: CanvasImage): CanvasMark {
   const box = normalizeBox({ x: from.x + by.x, y: from.y + by.y }, { x: from.x + by.x + mark.w, y: from.y + by.y + mark.h });
-  return { ...mark, ...clampToImage(box, image) };
+  return resizeMark(mark, box, image);
 }
 
 export function resizeMark(mark: CanvasMark, box: Box, image: CanvasImage): CanvasMark {
-  return { ...mark, ...clampToImage(box, image) };
+  const clamped = clampToImage(box, image);
+  const points = mark.points?.map(([x, y]): [number, number] => [
+    clamped.x + (x - mark.x) * (mark.w ? clamped.w / mark.w : 1),
+    clamped.y + (y - mark.y) * (mark.h ? clamped.h / mark.h : 1)
+  ]);
+  return { ...mark, ...clamped, points };
+}
+
+export function lineEndpoints(mark: CanvasMark): { start: Point; end: Point } {
+  const first = mark.points?.[0], last = mark.points?.at(-1);
+  return { start: first ? { x: first[0], y: first[1] } : { x: mark.x, y: mark.y },
+    end: last ? { x: last[0], y: last[1] } : { x: mark.x + mark.w, y: mark.y + mark.h } };
 }
 
 function clampToImage(box: Box, image: CanvasImage): Box {

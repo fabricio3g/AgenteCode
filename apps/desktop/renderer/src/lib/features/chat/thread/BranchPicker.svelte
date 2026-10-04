@@ -57,6 +57,6 @@
     flex: 1;
     text-align: center;
     color: var(--muted-foreground);
-    font-size: 0.6875rem;
+    font-size: var(--text-xs);
   }
 </style>

@@ -2,6 +2,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PEEK_CLOSE_MS, PEEK_OPEN_MS, SidebarPeek } from './sidebar-peek.svelte';
 
+// AppShell hands the sidebar element to the plain peek object through local
+// state: binding straight to `peek.panel` logs binding_property_non_reactive
+// on every mount in dev.
+const appShell = import.meta.glob<string>('./AppShell.svelte', { query: '?raw', import: 'default', eager: true });
+
 describe('sidebar hover preview', () => {
   let now = 0;
   beforeEach(() => {
@@ -48,5 +53,12 @@ describe('sidebar hover preview', () => {
     peek.show();
     vi.advanceTimersByTime(PEEK_OPEN_MS);
     expect(peek.open).toBe(true);
+  });
+
+  it('binds the sidebar element through local state, not the peek object', () => {
+    const source = appShell['./AppShell.svelte'];
+    expect(source).toContain('bind:this={sidebarPanel}');
+    expect(source).toContain('peek.panel = sidebarPanel');
+    expect(source).not.toContain('bind:this={peek.panel}');
   });
 });

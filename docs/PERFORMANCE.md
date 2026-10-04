@@ -270,3 +270,65 @@ node_modules/.bin/esbuild tests/electron/chat-controls.smoke.ts --bundle \
   --outfile=/tmp/agente-chat-controls.cjs
 node_modules/.bin/electron /tmp/agente-chat-controls.cjs --no-sandbox
 ```
+
+## Electron persistence, streaming, and navigation follow-up (2026-10-03)
+
+Desktop manual **Compact now** now requests an LLM summary by default; **Trim
+locally** remains an explicit alternative. Settings can select a provider/model
+for compaction independently of the chat model, using the existing provider/model
+picker and registry. Automatic smart compaction uses the same override. Empty or
+failed summaries fall back to local trimming. The receipt carries before/after
+context estimates, model usage, and provider-reported cached input tokens.
+
+The summarizer uses the shared provider transport/cache policy and session cache
+key. Its summary prompt differs from a normal agent request, so sharing a session
+key does not guarantee reuse of that request's cached prefix. Cache hits remain
+provider-reported, rather than inferred from elapsed time or a configured key.
+
+Changes to reduce local work:
+
+- Native navigation preferences no longer serialize every transcript into
+  localStorage. The legacy backup remains available for migration; SQLite owns
+  complete native chat history.
+- Unchanged SQLite messages skip attachment/version rewrites. Database calls run
+  FIFO on a worker thread; application shutdown drains pending requests.
+- Rust serializes durable commits per session, releasing the global session lock
+  before disk persistence. Turn startup runs on the daemon's blocking pool.
+- Live Code messages reuse child state during streaming and take a complete final
+  snapshot once. Markdown receives streaming status, preserves settled blocks,
+  and processes the growing tail incrementally. Scroll writes are batched per
+  frame; scrolling away from live reasoning pauses following.
+- Selecting a chat saves navigation and explicitly dirty data, without resaving
+  an unchanged transcript. Chats using the same route reuse the current model
+  list, avoiding another local model scan.
+- Electron captions and tool rows use the shared reading-size tokens. Dialogs
+  animate opacity/transform without text blur; panel motion uses shared reduced
+  motion controls. Thinking labels no longer shimmer continuously.
+
+Isolated real Electron measurements (synthetic data, software rendering; these
+are controlled fixture comparisons, not a guarantee for every computer):
+
+| Fixture | Before | After |
+| --- | ---: | ---: |
+| SQLite: 400 messages, 20 last-message edits | 267 ms | 69 ms |
+| SQLite WAL growth for that batch | 2,706,840 bytes | 671,560 bytes |
+| Code scroll frame p95, 400 messages | 32 ms | 17 ms |
+| Home/Code switching median, 100 messages per chat | 346 ms | 49–60 ms |
+| Home/Code switching slowest of 12 switches | 955 ms | 65–79 ms |
+| Full transcript saves across 12 unchanged switches | 12 | 0 |
+
+The WAL measurement counts SQLite journal growth, not physical disk traffic.
+The container's process write-byte counter reported zero and cannot support a
+physical disk-write claim. The navigation comparison toggles full-save behavior
+in the current renderer; other improvements apply to both cases. The final navigation pass also defers offscreen message content in histories
+of 60 or more messages. The newest six messages render immediately; earlier
+messages render within 400 pixels of the viewport and stay mounted thereafter.
+The benchmark includes two animation frames per switch. Sidebar clicks have no
+width/fade delay; hover preview opens after 40 ms and closes after an 80 ms grace
+period. Large transcript mounts still cost time and are not claimed to be instant.
+
+Fixtures live in `apps/desktop/tests/electron/{disk-writes,database-worker,
+code-rendering,navigation,chat-controls}.smoke.ts`. They use isolated profiles and
+scripted/local responses rather than paid provider calls. Rebuild/restart
+`npm run dev` to load the new main-process worker and Rust binary; renderer HMR
+alone does not load those changes.

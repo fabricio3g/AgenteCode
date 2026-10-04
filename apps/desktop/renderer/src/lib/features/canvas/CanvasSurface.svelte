@@ -12,7 +12,7 @@
 
 <script lang="ts">
   import { canvasBoard } from './canvas-board.svelte';
-  import { boundsOf, normalizeBox, type CanvasMark, type Point } from './canvas-doc';
+  import { boundsOf, normalizeBox, resizeMark, lineEndpoints, type CanvasMark, type Point } from './canvas-doc';
 
   let { imageId, src }: { imageId: string; src?: string } = $props();
 
@@ -45,11 +45,15 @@
   }
 
   function buildDraft(current: NonNullable<typeof drag>): CanvasMark | null {
+    if (tool === 'arrow' || tool === 'line') {
+      return Math.hypot(current.last.x-current.from.x, current.last.y-current.from.y) >= 2
+        ? canvasBoard.draft(tool, current.box, [[current.from.x, current.from.y], [current.last.x, current.last.y]]) : null;
+    }
     if (current.box.w < 2 || current.box.h < 2) return null;
     if (tool === 'freehand') {
       return current.points.length >= 2 ? canvasBoard.draft('freehand', boundsOf(current.points), current.points) : null;
     }
-    if (tool === 'rect' || tool === 'ellipse' || tool === 'highlight' || tool === 'blur' || tool === 'arrow' || tool === 'line') {
+    if (tool === 'rect' || tool === 'ellipse' || tool === 'highlight' || tool === 'blur') {
       return canvasBoard.draft(tool, current.box);
     }
     return null;
@@ -93,11 +97,12 @@
       // the preview is already following the pointer, so a fixed origin here
       // would accumulate one frame of error per move.
       const mark = canvasBoard.preview ?? canvasBoard.doc.marks.find((item) => item.id === drag!.moving);
-      if (mark) canvasBoard.previewMark({ ...mark, x: mark.x + (point.x - drag.last.x), y: mark.y + (point.y - drag.last.y) });
+      if (mark) canvasBoard.previewMark(resizeMark(mark, { x: mark.x + (point.x - drag.last.x), y: mark.y + (point.y - drag.last.y), w: mark.w, h: mark.h }, image!));
       drag.last = point;
       return;
     }
     drag.box = normalizeBox(drag.from, point);
+    drag.last = point;
     if (tool === 'freehand') {
       const last = drag.points.at(-1);
       // Skip sub-pixel jitter: a stroke is a polyline, not every mouse event.
@@ -193,11 +198,14 @@
       <rect x={live.x} y={live.y} width={live.w} height={live.h} rx="2" fill="var(--muted-foreground)" fill-opacity="0.5" />
     {:else if live.kind === 'text'}
       <text x={live.x} y={live.y} fill={live.color} font-size={Math.max(14, live.width * 4)} dominant-baseline="middle">{live.text || '…'}</text>
+    {:else if live.kind === 'ellipse'}
+      <ellipse cx={live.x + live.w / 2} cy={live.y + live.h / 2} rx={live.w / 2} ry={live.h / 2} fill="none" stroke={live.color} stroke-width={live.width} />
     {:else if live.kind === 'freehand'}
       <path d={pathOf(live)} fill="none" stroke={live.color} stroke-width={live.width} stroke-linecap="round" stroke-linejoin="round" />
     {:else if live.kind === 'line' || live.kind === 'arrow'}
-      {@const end = { x: live.x + live.w, y: live.y + live.h }}
-      {@const angle = Math.atan2(end.y - live.y, end.x - live.x)}
+      {@const endpoints = lineEndpoints(live)}
+      {@const end = endpoints.end}
+      {@const angle = Math.atan2(end.y - endpoints.start.y, end.x - endpoints.start.x)}
       {@const head = Math.max(10, live.width * 3)}
       <path d={pathOf(live)} fill="none" stroke={live.color} stroke-width={live.width} stroke-linecap="round" />
       {#if live.kind === 'arrow'}
@@ -212,7 +220,7 @@
         {/each}
       {/if}
     {/if}
-    {#if selected === live.id || pointed}
+    {#if tool === 'select' || selected === live.id || pointed}
       <!-- A fat invisible stroke makes a 2px outline grabbable without a new handle. -->
       <!-- svelte-ignore a11y_no_static_element_interactions -->
       <rect

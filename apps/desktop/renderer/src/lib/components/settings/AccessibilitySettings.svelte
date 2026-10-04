@@ -9,7 +9,8 @@
 <script lang="ts">
   import { t } from 'svelte-i18n';
   import { RotateCcw } from 'lucide-svelte';
-  import { Button, Field, SegmentedControl, Select, Switch } from '$lib/components/ui';
+  import { Button, SegmentedControl, Select, Switch } from '$lib/components/ui';
+  import SettingsRow from './SettingsRow.svelte';
   import SettingsPage from './SettingsPage.svelte';
   import SettingsSection from './SettingsSection.svelte';
   import {
@@ -33,7 +34,9 @@
 
 <SettingsPage title={$t('accessibility.title')} description={$t('accessibility.description')}>
   <SettingsSection title={$t('accessibility.display')}>
-    <Field class="py-3" label={$t('accessibility.interfaceSize')} description={$t('accessibility.interfaceSizeDesc')}>
+    <!-- Interface and text size stay stacked: a 7-step scale is wider than the
+         256px control column, and the sample needs the full row width. -->
+    <SettingsRow layout="stack" label={$t('accessibility.interfaceSize')} description={$t('accessibility.interfaceSizeDesc')}>
       <SegmentedControl
         class="mt-2.5"
         label={$t('accessibility.interfaceSize')}
@@ -41,9 +44,9 @@
         options={UI_SCALES.map((scale) => ({ value: String(scale), label: percent(scale) }))}
         onchange={(value) => accessibilityStore.update({ uiScale: Number(value) })}
       />
-    </Field>
+    </SettingsRow>
 
-    <Field class="py-3" label={$t('accessibility.textSize')} description={$t('accessibility.textSizeDesc')}>
+    <SettingsRow layout="stack" label={$t('accessibility.textSize')} description={$t('accessibility.textSizeDesc')}>
       <SegmentedControl
         class="mt-2.5"
         label={$t('accessibility.textSize')}
@@ -54,26 +57,24 @@
       <div class="sample markdown-body mt-3" aria-hidden="true">
         <p>{$t('accessibility.sample')}</p>
       </div>
-    </Field>
+    </SettingsRow>
   </SettingsSection>
 
   <SettingsSection title={$t('accessibility.reading')}>
-    <Field horizontal class="py-3" label={$t('accessibility.textWeight')} description={$t('accessibility.textWeightDesc')} htmlFor="a11y-weight">
-      <div class="flex justify-end">
-        <SegmentedControl
-          id="a11y-weight"
-          label={$t('accessibility.textWeight')}
-          value={prefs.textWeight}
-          options={[
-            { value: 'regular', label: $t('accessibility.weightRegular') },
-            { value: 'medium', label: $t('accessibility.weightMedium') }
-          ]}
-          onchange={(value) => accessibilityStore.update({ textWeight: value as TextWeight })}
-        />
-      </div>
-    </Field>
+    <SettingsRow label={$t('accessibility.textWeight')} description={$t('accessibility.textWeightDesc')} htmlFor="a11y-weight" control="auto">
+      <SegmentedControl
+        id="a11y-weight"
+        label={$t('accessibility.textWeight')}
+        value={prefs.textWeight}
+        options={[
+          { value: 'regular', label: $t('accessibility.weightRegular') },
+          { value: 'medium', label: $t('accessibility.weightMedium') }
+        ]}
+        onchange={(value) => accessibilityStore.update({ textWeight: value as TextWeight })}
+      />
+    </SettingsRow>
 
-    <Field horizontal class="py-3" label={$t('accessibility.font')} description={$t('accessibility.fontDesc')} htmlFor="a11y-font">
+    <SettingsRow label={$t('accessibility.font')} description={$t('accessibility.fontDesc')} htmlFor="a11y-font">
       <Select
         id="a11y-font"
         value={prefs.font}
@@ -84,50 +85,40 @@
         ]}
         onchange={(value) => accessibilityStore.update({ font: value as ReadingFont })}
       />
-    </Field>
+    </SettingsRow>
 
-    <Field horizontal class="py-3" label={$t('accessibility.relaxed')} description={$t('accessibility.relaxedDesc')}>
-      <div class="flex justify-end">
-        <Switch label={$t('accessibility.relaxed')} checked={prefs.relaxedSpacing} onchange={(checked) => accessibilityStore.update({ relaxedSpacing: checked })} />
-      </div>
-    </Field>
+    <SettingsRow label={$t('accessibility.relaxed')} description={$t('accessibility.relaxedDesc')} control="auto">
+      <Switch label={$t('accessibility.relaxed')} checked={prefs.relaxedSpacing} onchange={(checked) => accessibilityStore.update({ relaxedSpacing: checked })} />
+    </SettingsRow>
 
-    <Field horizontal class="py-3" label={$t('accessibility.underlineLinks')} description={$t('accessibility.underlineLinksDesc')}>
-      <div class="flex justify-end">
-        <Switch label={$t('accessibility.underlineLinks')} checked={prefs.underlineLinks} onchange={(checked) => accessibilityStore.update({ underlineLinks: checked })} />
-      </div>
-    </Field>
+    <SettingsRow label={$t('accessibility.underlineLinks')} description={$t('accessibility.underlineLinksDesc')} control="auto">
+      <Switch label={$t('accessibility.underlineLinks')} checked={prefs.underlineLinks} onchange={(checked) => accessibilityStore.update({ underlineLinks: checked })} />
+    </SettingsRow>
   </SettingsSection>
 
   <SettingsSection title={$t('accessibility.visibility')}>
-    <Field horizontal class="py-3" label={$t('accessibility.contrast')} description={$t('accessibility.contrastDesc')}>
-      <div class="flex justify-end">
-        <Switch label={$t('accessibility.contrast')} checked={prefs.highContrast} onchange={(checked) => accessibilityStore.update({ highContrast: checked })} />
-      </div>
-    </Field>
+    <SettingsRow label={$t('accessibility.contrast')} description={$t('accessibility.contrastDesc')} control="auto">
+      <Switch label={$t('accessibility.contrast')} checked={prefs.highContrast} onchange={(checked) => accessibilityStore.update({ highContrast: checked })} />
+    </SettingsRow>
 
-    <Field horizontal class="py-3" label={$t('accessibility.focus')} description={$t('accessibility.focusDesc')}>
-      <div class="flex justify-end">
-        <Switch label={$t('accessibility.focus')} checked={prefs.focusRings} onchange={(checked) => accessibilityStore.update({ focusRings: checked })} />
-      </div>
-    </Field>
+    <SettingsRow label={$t('accessibility.focus')} description={$t('accessibility.focusDesc')} control="auto">
+      <Switch label={$t('accessibility.focus')} checked={prefs.focusRings} onchange={(checked) => accessibilityStore.update({ focusRings: checked })} />
+    </SettingsRow>
   </SettingsSection>
 
   <SettingsSection title={$t('accessibility.motion')}>
-    <Field horizontal class="py-3" label={$t('accessibility.reduceMotion')} description={$t('accessibility.reduceMotionDesc')}>
-      <div class="flex justify-end">
-        <SegmentedControl
-          label={$t('accessibility.reduceMotion')}
-          value={prefs.reduceMotion}
-          options={[
-            { value: 'system', label: $t('accessibility.motionSystem') },
-            { value: 'on', label: $t('accessibility.motionOn') },
-            { value: 'off', label: $t('accessibility.motionOff') }
-          ]}
-          onchange={(value) => accessibilityStore.update({ reduceMotion: value as ReduceMotion })}
-        />
-      </div>
-    </Field>
+    <SettingsRow label={$t('accessibility.reduceMotion')} description={$t('accessibility.reduceMotionDesc')} control="auto">
+      <SegmentedControl
+        label={$t('accessibility.reduceMotion')}
+        value={prefs.reduceMotion}
+        options={[
+          { value: 'system', label: $t('accessibility.motionSystem') },
+          { value: 'on', label: $t('accessibility.motionOn') },
+          { value: 'off', label: $t('accessibility.motionOff') }
+        ]}
+        onchange={(value) => accessibilityStore.update({ reduceMotion: value as ReduceMotion })}
+      />
+    </SettingsRow>
   </SettingsSection>
 
   <div class="flex justify-end">

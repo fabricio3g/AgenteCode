@@ -23,6 +23,7 @@
   import { fetchLlamaReleaseAssets, toDownloadPayload, type ReleaseAsset, type ReleaseFetchResult } from '$lib/services/llama-releases';
   import { Badge, Button, Disclosure, Input } from '$lib/components/ui';
   import SettingsSection from './SettingsSection.svelte';
+  import SettingsRow from './SettingsRow.svelte';
 
   type InstalledRuntime = { name: string; path: string; is_active?: boolean };
   type Supervisor = { state?: string; load_phase?: string; active_model?: string | null; build_info?: string; n_ctx?: number; total_slots?: number };
@@ -175,14 +176,10 @@
   {:else}
     {#each runtimes as rt (rt.path)}
       {@const active = isActive(rt)}
-      <div class="flex items-center gap-3 py-2.5">
-        <span class="flex size-4 shrink-0 items-center justify-center rounded-full border {active ? 'border-primary bg-primary text-primary-fg' : 'border-border'}">
+      <SettingsRow label={rt.name} description={rt.path} control="auto" align="start">
+        <span class="flex size-4 shrink-0 items-center justify-center rounded-full border {active ? 'border-primary bg-primary text-primary-fg' : 'border-border'}" aria-hidden="true">
           {#if active}<Check class="size-2.5" />{/if}
         </span>
-        <div class="min-w-0 flex-1">
-          <p class="truncate text-sm font-medium text-foreground">{rt.name}</p>
-          <p class="truncate text-[12px] text-muted-foreground" title={rt.path}>{rt.path}</p>
-        </div>
         {#if active}
           <Badge tone="success">{$t('runtime.active')}</Badge>
         {:else}
@@ -191,12 +188,12 @@
         <Button variant="ghost" size="icon-sm" class="text-muted-foreground hover:text-error" onclick={() => void removeRuntime(rt)} aria-label={$t('runtime.deleteTitle', { values: { name: rt.name } })}>
           <Trash2 />
         </Button>
-      </div>
+      </SettingsRow>
     {/each}
   {/if}
 
   {#if supervisor}
-    <div class="py-3">
+    <div class="px-4 py-3 sm:px-5">
       <div class="flex items-center justify-between gap-3">
         <div class="min-w-0">
           <p class="flex items-center gap-2 text-sm font-medium text-foreground">
@@ -244,17 +241,17 @@
   {/snippet}
 
   {#if releaseNotice}
-    <p class="py-2.5 text-xs text-muted-foreground">{$t(`runtime.notice.${releaseNotice}`, { values: { latest: latestTag, tag: releaseTag } })}</p>
+    <p class="px-4 py-2.5 text-xs text-muted-foreground sm:px-5">{$t(`runtime.notice.${releaseNotice}`, { values: { latest: latestTag, tag: releaseTag } })}</p>
   {/if}
 
   {#if loadingRelease && !releaseAssets.length}
-    <p class="flex items-center gap-2 py-3 text-sm text-muted-foreground"><LoaderCircle class="size-4 animate-spin" /> {$t('runtime.checking')}</p>
+    <p class="flex items-center gap-2 px-4 py-3 text-sm text-muted-foreground sm:px-5"><LoaderCircle class="size-4 animate-spin" /> {$t('runtime.checking')}</p>
   {:else if !releaseAssets.length}
-    <p class="py-3 text-sm text-muted-foreground">{$t('runtime.noBuilds')}</p>
+    <p class="px-4 py-3 text-sm text-muted-foreground sm:px-5">{$t('runtime.noBuilds')}</p>
   {:else}
     {#each releaseAssets as asset (asset.name)}
       {@const recommended = asset.variant === 'recommended'}
-      <div class="py-3">
+      <div class="px-4 py-3 sm:px-5">
         <div class="flex items-center gap-3">
           <div class="min-w-0 flex-1">
             <p class="flex flex-wrap items-center gap-1.5 text-sm font-medium text-foreground">

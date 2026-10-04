@@ -620,13 +620,8 @@ impl App {
                 );
             }
             AgentEvent::SubagentText { id, text } => {
-                // Core caps the forwarded stream; cap again here so a
-                // placeholder card built before the cap still stays bounded.
-                const MAX_STREAM_BYTES: usize = 256 * 1024;
                 let card = self.subagent_card_or_placeholder(&id);
-                if card.streaming_text.len() < MAX_STREAM_BYTES {
-                    card.streaming_text.push_str(&text);
-                }
+                card.streaming_text.push_str(&text);
             }
             AgentEvent::SubagentToolCallStart {
                 id,
@@ -943,7 +938,7 @@ mod tests {
         for event in [
             AgentEvent::SubagentText {
                 id: "ghost".into(),
-                text: "reading files".into(),
+                text: "reading files".repeat(30000),
             },
             AgentEvent::SubagentToolCallStart {
                 id: "ghost".into(),
@@ -977,6 +972,7 @@ mod tests {
             .get("ghost")
             .expect("card must materialize without SubagentStarted");
         assert!(card.streaming_text.contains("reading files"));
+        assert_eq!(card.streaming_text, "reading files".repeat(30000));
         assert_eq!(card.tool_rows.len(), 1);
         assert_eq!(card.tool_rows[0].result.as_deref(), Some("contents"));
         assert_eq!(card.status, "completed");

@@ -12,6 +12,8 @@
   import { FitAddon } from '@xterm/addon-fit';
   import '@xterm/xterm/css/xterm.css';
   import { themeStore } from '$lib/stores/theme.svelte';
+  import { accessibilityStore } from '$lib/stores/accessibility.svelte';
+  import { codeFontFamily, codeFontSize, cssToken } from '$lib/utils/type-tokens';
   import { codeWorkspace } from '../workspace.svelte';
 
   let { id, active, focused = false }: { id: string; active: boolean; focused?: boolean } = $props();
@@ -20,17 +22,12 @@
   let term: Terminal | null = null;
   let fit: FitAddon | null = null;
 
-  function cssVar(name: string, fallback: string): string {
-    const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
-    return value || fallback;
-  }
-
   function theme() {
     const dark = themeStore.current === 'dark';
     return {
-      background: cssVar('--background', dark ? '#111' : '#fff'),
-      foreground: cssVar('--foreground', dark ? '#eee' : '#111'),
-      cursor: cssVar('--foreground', dark ? '#eee' : '#111'),
+      background: cssToken('--background', dark ? '#111' : '#fff'),
+      foreground: cssToken('--foreground', dark ? '#eee' : '#111'),
+      cursor: cssToken('--foreground', dark ? '#eee' : '#111'),
       selectionBackground: dark ? 'rgba(255,255,255,0.18)' : 'rgba(0,0,0,0.14)'
     };
   }
@@ -47,8 +44,8 @@
 
   onMount(() => {
     term = new Terminal({
-      fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
-      fontSize: 12.5,
+      fontFamily: codeFontFamily(),
+      fontSize: codeFontSize(),
       lineHeight: 1.25,
       cursorBlink: true,
       scrollback: 5000,
@@ -78,6 +75,17 @@
   $effect(() => {
     void themeStore.current;
     if (term) term.options.theme = theme();
+  });
+
+  // Text size and reading font reach the canvas through the tokens; a new cell
+  // size changes cols/rows, so the fit addon runs again.
+  $effect(() => {
+    void accessibilityStore.prefs.textScale;
+    void accessibilityStore.prefs.font;
+    if (!term) return;
+    term.options.fontFamily = codeFontFamily();
+    term.options.fontSize = codeFontSize();
+    requestAnimationFrame(() => refit());
   });
 
   $effect(() => {

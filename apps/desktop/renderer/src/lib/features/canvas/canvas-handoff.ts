@@ -5,7 +5,7 @@ import { createId } from '$lib/utils/id';
 import type { Attachment as ChatAttachment } from '$lib/types/chat';
 import type { Attachment } from '$shared/agente-protocol.gen';
 import { canvasBoard } from './canvas-board.svelte';
-import { asFractions, composePrompt, isPoint, marksFor, mergeDraft, planHandoff, type CanvasImage, type CanvasMark, type HandoffEntry } from './canvas-doc';
+import { asFractions, lineEndpoints, composePrompt, isPoint, marksFor, mergeDraft, planHandoff, type CanvasImage, type CanvasMark, type HandoffEntry } from './canvas-doc';
 
 /**
  * The board's way out: render what the user drew, import it the same way any
@@ -40,16 +40,18 @@ function markSvg(mark: CanvasMark): string {
       return `<rect x="${mark.x}" y="${mark.y}" width="${mark.w}" height="${mark.h}" rx="2" fill="#808080" fill-opacity="0.55" />`;
     case 'text':
       return `<text x="${mark.x}" y="${mark.y}" fill="${color}" font-size="${labelFontSize(mark)}" font-family="sans-serif" dominant-baseline="middle">${escapeXml(mark.text || '')}</text>`;
-    case 'line':
-      return `<path d="M${mark.x} ${mark.y} L${mark.x + mark.w} ${mark.y + mark.h}" fill="none" ${stroke} />`;
+    case 'line': {
+      const { start, end } = lineEndpoints(mark);
+      return `<path d="M${start.x} ${start.y} L${end.x} ${end.y}" fill="none" ${stroke} />`;
+    }
     case 'arrow': {
-      const end = { x: mark.x + mark.w, y: mark.y + mark.h };
-      const angle = Math.atan2(end.y - mark.y, end.x - mark.x);
+      const { start, end } = lineEndpoints(mark);
+      const angle = Math.atan2(end.y - start.y, end.x - start.x);
       const head = Math.max(10, mark.width * 3);
       const barb = (sign: number) => `M${end.x} ${end.y} L${end.x - head * Math.cos(angle + sign * 0.42)} ${end.y - head * Math.sin(angle + sign * 0.42)}`;
-      return `<path d="M${mark.x} ${mark.y} L${end.x} ${end.y}" fill="none" ${stroke} />`
-        + `<path d="${barb(-0.42)}" fill="none" ${stroke} />`
-        + `<path d="${barb(0.42)}" fill="none" ${stroke} />`;
+      return `<path d="M${start.x} ${start.y} L${end.x} ${end.y}" fill="none" ${stroke} />`
+        + `<path d="${barb(-1)}" fill="none" ${stroke} />`
+        + `<path d="${barb(1)}" fill="none" ${stroke} />`;
     }
     case 'freehand':
       return `<path d="${mark.points?.map(([x, y], index) => `${index ? 'L' : 'M'}${x} ${y}`).join(' ') ?? ''}" fill="none" ${stroke} />`;
@@ -175,7 +177,9 @@ export async function exportBoard(header: string, boardHeader: string, empty: st
     points.push({ label: mark.text || mark.kind, kind: mark.kind, box: asFractions(entry.box!, image), path });
   }
 
-  return { media, prompt: composePrompt(overviewPaths, points, hasBitmap ? header : boardHeader, empty).text };
+  const sources = [...new Set(doc.images.map(image => image.sourceUrl).filter(Boolean))];
+  const notes = [doc.instructions?.trim(), ...sources.map(url => `Source page: ${url}`)].filter(Boolean).join('\n\n');
+  return { media, prompt: [notes, composePrompt(overviewPaths, points, hasBitmap ? header : boardHeader, empty).text].filter(Boolean).join('\n\n') };
 }
 
 /** The daemon's filesystem attachment as Home's browser-side one. */
@@ -201,9 +205,9 @@ function toChatAttachment(media: ExportedMedia): ChatAttachment {
  * use. Home's reads its draft straight from the store, but its attachments are
  * a different type, so each composer is given what it expects.
  */
-export function handOffToAgent(text: string, media: ExportedMedia[]): boolean {
+export function handOffToAgent(text: string, media: ExportedMedia[], chatId?: string): boolean {
   const chat = appStore.currentChat;
-  if (!chat) return false;
+  if (!chat || chatId && chat.id !== chatId) return false;
   if (chat.codeAgent) {
     window.dispatchEvent(new CustomEvent('code-composer-append', { detail: { text, media: media.map((item) => item.attachment) } }));
   } else {
@@ -217,13 +221,14 @@ export function handOffToAgent(text: string, media: ExportedMedia[]): boolean {
 
 /** The panel's send action: render, import, place, and report what happened. */
 export async function sendCanvasToAgent(header: string, boardHeader: string, empty: string, sent: string): Promise<void> {
+  const chatId = canvasBoard.activeChatId;
   try {
     const { media, prompt } = await exportBoard(header, boardHeader, empty);
     if (!media.length) {
       toastStore.error(empty);
       return;
     }
-    if (!handOffToAgent(prompt, media)) {
+    if (!handOffToAgent(prompt, media, chatId)) {
       toastStore.error(empty);
       return;
     }

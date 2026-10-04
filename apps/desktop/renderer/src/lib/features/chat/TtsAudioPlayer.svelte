@@ -52,7 +52,7 @@
   .tts-play { width: 1.5rem; height: 1.5rem; color: var(--text-secondary); border-radius: var(--radius-md); }
   .tts-close { width: 1.25rem; height: 1.25rem; opacity: 0; transition: opacity var(--motion-fast); }
   .tts-player:hover .tts-close, .tts-player:focus-within .tts-close { opacity: 1; }
-  .tts-time { flex-shrink: 0; color: var(--text-secondary); font-size: 0.6875rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .tts-time { flex-shrink: 0; color: var(--text-secondary); font-size: var(--text-xs); font-variant-numeric: tabular-nums; white-space: nowrap; }
   .tts-time-separator { opacity: 0.5; padding: 0 0.125rem; }
   .tts-progress { appearance: none; flex: 1; min-width: 2rem; height: 2px; border-radius: var(--radius-full); background: linear-gradient(to right, var(--text-secondary) var(--audio-progress), color-mix(in srgb, var(--foreground) 12%, transparent) var(--audio-progress)); cursor: pointer; }
   .tts-progress:disabled { cursor: default; }

@@ -94,6 +94,6 @@
   .name-completion { position: absolute; bottom: calc(100% + 0.4rem); left: 0; z-index: var(--z-float); width: min(24rem, 100%); max-height: 20rem; overflow-y: auto; padding: 0.35rem; border-radius: var(--radius-lg); background: var(--card); box-shadow: var(--shadow-lg); pointer-events: auto; }
   .completion-row { display: flex; align-items: center; gap: 0.65rem; width: 100%; padding: 0.5rem; border-radius: var(--radius-md); text-align: left; color: var(--foreground); font-size: 0.8125rem; }
   .completion-row:hover, .is-selected { background: var(--surface-hover); }
-  small { display: block; color: var(--muted-foreground); font-size: 0.6875rem; overflow: hidden; text-overflow: ellipsis; }
-  .completion-hint { padding: 0.4rem 0.5rem 0.2rem; color: var(--muted-foreground); font-size: 0.6875rem; }
+  small { display: block; color: var(--muted-foreground); font-size: var(--text-xs); overflow: hidden; text-overflow: ellipsis; }
+  .completion-hint { padding: 0.4rem 0.5rem 0.2rem; color: var(--muted-foreground); font-size: var(--text-xs); }
 </style>

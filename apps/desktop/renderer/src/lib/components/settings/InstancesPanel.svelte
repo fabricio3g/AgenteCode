@@ -210,7 +210,7 @@
     gap: 0.2rem;
     padding: 0 0.45rem;
     border-radius: var(--radius-full);
-    font-size: 0.65rem;
+    font-size: var(--text-xs);
     font-weight: 500;
   }
 

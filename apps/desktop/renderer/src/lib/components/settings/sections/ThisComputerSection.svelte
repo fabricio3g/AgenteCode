@@ -22,6 +22,7 @@
   import { Badge, Button, Disclosure } from '$lib/components/ui';
   import SettingsPage from '../SettingsPage.svelte';
   import SettingsSection from '../SettingsSection.svelte';
+  import SettingsRow from '../SettingsRow.svelte';
   import HardwareSummary from '../HardwareSummary.svelte';
   import LocalRuntimePanel from '../LocalRuntimePanel.svelte';
 
@@ -157,16 +158,6 @@
   onDestroy(() => unlisteners.forEach((off) => off()));
 </script>
 
-{#snippet engineRow(Icon: typeof Brain, name: string, license: string, meta: string)}
-  <span class="flex size-8 shrink-0 items-center justify-center rounded-lg bg-[var(--muted)] text-muted-foreground">
-    <Icon class="size-4" />
-  </span>
-  <div class="min-w-0 flex-1">
-    <p class="flex items-center gap-1.5 text-sm font-medium text-foreground">{name}<span class="license">{license}</span></p>
-    <p class="truncate text-xs text-muted-foreground">{meta}</p>
-  </div>
-{/snippet}
-
 {#snippet status(isBusy: boolean, update: string | null, onupdate: () => void, installed: boolean, oninstall: () => void, checked: boolean)}
   {#if isBusy}
     <span class="w-20 text-right text-xs tabular-nums text-muted-foreground">{Math.round(progress)}%</span>
@@ -189,22 +180,27 @@
       </Button>
     {/snippet}
 
-    <div class="flex items-center gap-3 py-3">
-      {@render engineRow(Brain, 'llama.cpp', 'MIT', llamaSelected
+    <SettingsRow
+      label="llama.cpp"
+      description={`MIT · ${llamaSelected
         ? [llamaSelected.tag, variantLabel(llamaSelected.variant), $t('computer.runsChat')].filter(Boolean).join(' · ')
-        : $t('computer.notInstalled'))}
+        : $t('computer.notInstalled')}`}
+      control="auto"
+      align="start"
+    >
+      {#snippet tile()}<Brain class="size-4" />{/snippet}
       {@render status(busy === 'llama', llamaUpdate?.tag ?? null, () => void updateLlama(), !!llamaSelected, () => void updateLlama(), llamaChecked)}
-    </div>
+    </SettingsRow>
 
-    <div class="flex items-center gap-3 py-3">
-      {@render engineRow(Mic, 'whisper.cpp', 'MIT', whisperMeta)}
+    <SettingsRow label="whisper.cpp" description={`MIT · ${whisperMeta}`} control="auto" align="start">
+      {#snippet tile()}<Mic class="size-4" />{/snippet}
       {@render status(busy === 'whisper', whisperLatest?.tag ?? null, () => void updateWhisper(), !!whisperSelected, () => void updateWhisper(), whisperChecked)}
-    </div>
+    </SettingsRow>
 
-    <div class="flex items-center gap-3 py-3">
-      {@render engineRow(Volume2, 'Kokoro', 'Apache-2.0', $t('computer.runsVoice'))}
+    <SettingsRow label="Kokoro" description={`Apache-2.0 · ${$t('computer.runsVoice')}`} control="auto" align="start">
+      {#snippet tile()}<Volume2 class="size-4" />{/snippet}
       <Badge tone="neutral">{$t('computer.builtIn')}</Badge>
-    </div>
+    </SettingsRow>
   </SettingsSection>
 
   {#if overview}
@@ -213,7 +209,7 @@
       {#snippet actions()}
         <span class="text-xs tabular-nums text-muted-foreground">{formatBytes(total)}</span>
       {/snippet}
-      <div class="py-3">
+      <div class="px-4 py-3.5 sm:px-5">
         <p class="truncate text-xs text-muted-foreground" title={overview.storage.root}>{overview.storage.root}</p>
         <div class="storage-bar mt-2.5" aria-hidden="true">
           {#each categories as item (item.key)}
@@ -229,7 +225,7 @@
           {/each}
         </div>
       </div>
-      <div class="flex flex-wrap gap-2 py-3">
+      <div class="flex flex-wrap gap-2 px-4 py-3 sm:px-5">
         <Button variant="outline" size="sm" onclick={() => void invoke('open_data_folder')}><FolderOpen /> {$t('computer.openFolder')}</Button>
         <Button variant="outline" size="sm" onclick={() => void cleanup()} loading={busy === 'cleanup'}><Sparkles /> {$t('computer.cleanup')}</Button>
       </div>
@@ -244,15 +240,6 @@
 </SettingsPage>
 
 <style>
-  .license {
-    padding: 0 0.4rem;
-    border-radius: var(--radius-full);
-    background: var(--muted);
-    font-size: 0.65rem;
-    font-weight: 500;
-    color: var(--muted-foreground);
-  }
-
   .storage-bar {
     display: flex;
     height: 0.5rem;

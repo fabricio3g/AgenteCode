@@ -630,7 +630,11 @@
     "agent": "エージェント",
     "more": "その他",
     "tabs": "ブラウザーのタブ",
-    "page": "ページ"
+    "page": "ページ",
+    "emptyTitle": "Open a website",
+    "emptyHint": "Enter an address above, or ask the agent to browse.",
+    "annotate": "Draw and add instructions",
+    "browse": "Return to the live page"
   },
   "localLoad": {
     "title": "ローカルモデルを読み込む",
@@ -2260,7 +2264,15 @@
       "highlight": "ハイライト",
       "blur": "ぼかし",
       "pan": "移動"
-    }
+    },
+    "drawingSettings": "Drawing settings",
+    "boardWidth": "New board width",
+    "boardHeight": "New board height",
+    "textContent": "Text",
+    "markInstruction": "Instruction for this mark",
+    "markInstructionHint": "What should change here?",
+    "instructions": "Instructions",
+    "instructionsHint": "Describe what you want the agent to build or change…"
   },
   "promptQueue": {
     "title": "キュー",

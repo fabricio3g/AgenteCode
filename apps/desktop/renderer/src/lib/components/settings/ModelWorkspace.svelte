@@ -528,7 +528,7 @@
             {:else if filteredSearchItems.length === 0}
               <!-- Empty query: hardware picks and the curated list instead of an empty wall. -->
               <SettingsSection title={$t('modelHub.pickedTitle')} description={hardwareStore.info ? $t('modelHub.pickedHint') : $t('modelHub.pickedNoHardware')}>
-                <div class="grid gap-2 py-3 sm:grid-cols-3">
+                <div class="grid gap-2 px-4 py-3 sm:grid-cols-3 sm:px-5">
                   {#each recommendationCards as card (card.label)}
                     <button
                       type="button"
@@ -648,7 +648,7 @@
         {#if activeJobs.length}
           <SettingsSection title={$t('modelHub.downloadingTitle')}>
             {#each activeJobs as job (job.id)}
-              <div class="py-2.5"><ModelDownloadRow {job} /></div>
+              <div class="px-4 py-2.5 sm:px-5"><ModelDownloadRow {job} /></div>
             {/each}
           </SettingsSection>
         {/if}
@@ -737,7 +737,7 @@
     padding: 0 0.45rem;
     border-radius: var(--radius-full);
     background: var(--muted);
-    font-size: 0.65rem;
+    font-size: var(--text-xs);
     font-weight: 500;
     color: var(--muted-foreground);
     white-space: nowrap;

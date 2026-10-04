@@ -630,7 +630,11 @@
     "agent": "Agent",
     "more": "More",
     "tabs": "Browser tabs",
-    "page": "Page"
+    "page": "Page",
+    "emptyTitle": "Open a website",
+    "emptyHint": "Enter an address above, or ask the agent to browse.",
+    "annotate": "Draw and add instructions",
+    "browse": "Return to the live page"
   },
   "localLoad": {
     "title": "Load local model",
@@ -2260,7 +2264,15 @@
       "highlight": "Highlight",
       "blur": "Blur",
       "pan": "Pan"
-    }
+    },
+    "drawingSettings": "Drawing settings",
+    "boardWidth": "New board width",
+    "boardHeight": "New board height",
+    "textContent": "Text",
+    "markInstruction": "Instruction for this mark",
+    "markInstructionHint": "What should change here?",
+    "instructions": "Instructions",
+    "instructionsHint": "Describe what you want the agent to build or change…"
   },
   "promptQueue": {
     "title": "Queued",

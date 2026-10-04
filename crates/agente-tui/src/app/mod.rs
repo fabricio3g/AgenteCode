@@ -293,7 +293,7 @@ impl App {
         } else if ambient {
             Self::paint_delay(
                 self.state.ui.last_stream_paint_at.map(|at| at.elapsed()),
-                crate::widgets::welcome::SEA_FRAME_MS,
+                crate::widgets::welcome::TILE_FRAME_MS,
             )
         } else {
             Duration::from_millis(100)
@@ -326,10 +326,10 @@ impl App {
                 .last_stream_paint_at
                 .map(|t| t.elapsed().as_millis() >= Self::STREAM_PAINT_MIN_MS)
                 .unwrap_or(true);
-        // The hero's ambient sea: a slow repaint of its own.
+        // The hero's ambient tile field: a slow repaint of its own.
         let ambient_paint_due = self.state.wants_ambient_paint()
             && self.state.ui.last_stream_paint_at.is_none_or(|t| {
-                t.elapsed().as_millis() >= u128::from(crate::widgets::welcome::SEA_FRAME_MS)
+                t.elapsed().as_millis() >= u128::from(crate::widgets::welcome::TILE_FRAME_MS)
             });
         let should_render = user_wants_paint || stream_paint_due || ambient_paint_due;
 

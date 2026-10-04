@@ -7,7 +7,13 @@
   This replaces the two rails the modal carried — `ModelNavRail` for Models and
   an `<aside>` for the settings sections — which shared a class and nothing
   else. Switching between "Library" and "General" no longer swaps the whole
-  left column, and the nav-row styling has exactly one owner.
+  left column.
+
+  It is a sidebar, not a second nav language: the column carries the sidebar's
+  own plane (--sidebar) closed by the same 1px seam as the app sidebar, and
+  every row rides app.css `.sidebar-row` — one height, one radius, one hover
+  and current fill, one focus ring, shared with the conversation list next
+  door. Group titles use `.sidebar-section`, status dots use `.sidebar-dot`.
 
   The rail renders the navigation model it is handed (groups of rows); the
   screen owns that model, so a label exists in one place only and the header
@@ -51,6 +57,7 @@
   import { importLocalModel } from '$lib/services/models';
   import { openModelsFolder, pickModelFile } from '$lib/services/files';
   import { modelsStore } from '$lib/stores/models.svelte';
+  import { isMacPlatform } from '$lib/utils/shortcuts';
 
   let {
     groups,
@@ -129,7 +136,11 @@
   }
 </script>
 
-<aside bind:this={rail} class="flex shrink-0 flex-col gap-2 overflow-hidden border-b border-[var(--border)] px-3 py-3 md:w-[220px] md:border-b-0 md:border-r md:py-5" aria-label={$t('settingsNav.label')}>
+<aside
+  bind:this={rail}
+  class="flex shrink-0 flex-col gap-2 overflow-hidden border-b border-[var(--border)] bg-sidebar px-3 py-2.5 md:w-[220px] md:border-b-0 md:border-r md:pt-2 md:pb-4"
+  aria-label={$t('settingsNav.label')}
+>
   <div class="px-1">
     <ModelSearchField
       bind:value={query}
@@ -154,23 +165,24 @@
       <button
         type="button"
         data-nav-row
-        class={`nav-row flex w-full items-center gap-2.5 ${active ? 'is-active' : ''}`}
+        class="sidebar-row"
+        class:is-current={active}
         aria-current={active ? 'page' : undefined}
         onclick={() => onselect(item)}
       >
         {#if item.kind === 'provider'}
-          <ProviderIcon provider={item.id} size={18} />
+          <ProviderIcon provider={item.id} size={16} />
         {:else}
           {@const Icon = item.icon}
-          <Icon class="size-4 shrink-0" />
+          <Icon class="sidebar-row-icon" />
         {/if}
-        <span class="min-w-0 flex-1 truncate text-left">{item.label}</span>
+        <span class="sidebar-row-label">{item.label}</span>
         {#if item.kind === 'tab' && item.count}
           <span class="rounded-full bg-primary px-1.5 text-[12px] font-semibold tabular-nums text-primary-fg">{item.count}</span>
         {:else if status === 'in-use'}
-          <span class="mr-0.5 size-1.5 shrink-0 rounded-full bg-[var(--success)]" title={$t('settingsNav.inUse')}></span>
+          <span class="sidebar-dot is-active" title={$t('settingsNav.inUse')}></span>
         {:else if status === 'ready'}
-          <span class="mr-0.5 size-1.5 shrink-0 rounded-full bg-[var(--text-muted)] opacity-60" title={$t('settingsNav.connected')}></span>
+          <span class="sidebar-dot is-idle" title={$t('settingsNav.connected')}></span>
         {/if}
       </button>
     {/snippet}
@@ -180,9 +192,9 @@
     {/snippet}
 
     {#each visibleGroups as group (group.id)}
-      <div class="min-w-max md:min-w-0 md:mt-2 md:first:mt-0 md:border-t md:border-[var(--border-subtle)] md:pt-2 md:first:border-t-0 md:first:pt-0">
-        <div class="flex items-center justify-between gap-2 px-2.5 pb-1">
-          <span class="text-[12px] font-semibold uppercase tracking-wide text-muted-foreground/80">{group.title}</span>
+      <div class="min-w-max md:min-w-0 md:mt-1 md:border-t md:border-[var(--border-subtle)] md:first:mt-0 md:first:border-t-0">
+        <div class="flex items-center justify-between gap-2 pr-2.5">
+          <span class="sidebar-section">{group.title}</span>
           {#if group.id === 'providers'}
             <button
               type="button"
@@ -200,7 +212,7 @@
           <div class="flex flex-col gap-0.5">
             {#each group.subgroups as sub (sub.title)}
               {#snippet subRows()}
-                {#if sub.title}<p class="mt-2 px-2.5 text-[12px] font-medium text-muted-foreground/80">{sub.title}</p>{/if}
+                {#if sub.title}<p class="sidebar-subsection">{sub.title}</p>{/if}
                 {@render groupRows(sub.items)}
               {/snippet}
               {#if sub.items.length}{@render subRows()}{/if}
@@ -215,53 +227,21 @@
 
   {#if !query.trim()}
     <!-- Model library actions. The rail's floor at every width: the old
-         model rail showed them in a narrow window too. -->
-    <div class="flex min-w-max shrink-0 flex-col gap-0.5 border-t border-[var(--border)] pt-3 md:mt-auto">
-      <button type="button" data-nav-row class="nav-row flex w-full items-center gap-2.5 font-normal" onclick={() => void openModelsFolder()}>
-        <FolderOpen class="size-4 shrink-0" />
-        <span class="truncate">{$t('modelHub.openFolder')}</span>
+         model rail showed them in a narrow window too. -->    <div class="flex min-w-max shrink-0 flex-col gap-0.5 border-t border-[var(--border)] pt-3 md:mt-auto">
+      <button type="button" data-nav-row class="sidebar-row" onclick={() => void openModelsFolder()}>
+        <FolderOpen class="sidebar-row-icon" />
+        <span class="sidebar-row-label">{$t('modelHub.openFolder')}</span>
       </button>
-      <button type="button" data-nav-row class="nav-row flex w-full items-center gap-2.5 font-normal disabled:opacity-50" onclick={() => void importModel()} disabled={importing}>
-        <FolderInput class="size-4 shrink-0" />
-        <span class="truncate">{importing ? $t('modelHub.importing') : $t('modelHub.importModel')}</span>
+      <button type="button" data-nav-row class="sidebar-row disabled:opacity-50" onclick={() => void importModel()} disabled={importing}>
+        <FolderInput class="sidebar-row-icon" />
+        <span class="sidebar-row-label">{importing ? $t('modelHub.importing') : $t('modelHub.importModel')}</span>
       </button>
       <div class="flex items-center justify-between gap-2 px-2.5 py-1.5" title={$t('modelHub.autoLoadHint')}>
-        <span class="text-[12px] text-muted-foreground">{$t('modelHub.autoLoad')}</span>
+        <span class="text-xs text-muted-foreground">{$t('modelHub.autoLoad')}</span>
         <Switch label={$t('modelHub.autoLoad')} checked={autoLoad} onchange={(next) => onautoload(next)} />
       </div>
     </div>
   {/if}
 </aside>
 
-<style>
-  /* Nav rows: quiet and the same size in every group. Active is a soft fill,
-     never a ring; the focus ring only shows for keyboard focus. */
-  .nav-row {
-    height: 1.75rem;
-    padding: 0 0.625rem;
-    border: 0;
-    border-radius: 0.5rem;
-    background: transparent;
-    color: var(--muted-foreground);
-    font-size: 13px;
-    font-weight: 500;
-    text-align: left;
-    outline: none;
-    white-space: nowrap;
-    transition: background-color var(--motion-fast) var(--motion-ease), color var(--motion-fast) var(--motion-ease);
-  }
 
-  .nav-row:hover {
-    background: var(--surface-hover);
-    color: var(--foreground);
-  }
-
-  .nav-row.is-active {
-    background: var(--surface-active);
-    color: var(--foreground);
-  }
-
-  .nav-row:focus-visible {
-    box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--ring) 45%, transparent);
-  }
-</style>

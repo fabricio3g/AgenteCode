@@ -140,15 +140,15 @@
     position: absolute;
     right: -2px;
     top: -2px;
-    min-width: 14px;
-    height: 14px;
+    min-width: 16px;
+    height: 16px;
     padding: 0 3px;
     border-radius: 999px;
     background: var(--sidebar-primary);
     color: var(--sidebar-primary-foreground);
-    font-size: 9px;
+    font-size: var(--text-xs);
     font-weight: 600;
-    line-height: 14px;
+    line-height: 16px;
     text-align: center;
   }
 

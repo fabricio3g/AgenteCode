@@ -241,7 +241,7 @@
   }
 
   .opening-index {
-    font-size: 0.625rem;
+    font-size: var(--text-xs);
     font-variant-numeric: tabular-nums;
   }
 </style>

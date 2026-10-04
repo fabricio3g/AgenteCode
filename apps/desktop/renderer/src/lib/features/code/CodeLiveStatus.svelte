@@ -11,7 +11,7 @@
 <script lang="ts">
   import { t } from 'svelte-i18n';
   import { copy } from '$lib/copy';
-  import { formatToolDuration } from '$lib/utils/tool-ui';
+  import { formatToolDuration, toolTarget } from '$lib/utils/tool-ui';
   import { codeRunElapsed, type CodeRunState } from './code-run';
   import { toolKind } from '$shared/tool-kinds';
   import { liveStatus, QUIET_MS, type LiveStatus } from './work-blocks';
@@ -48,7 +48,7 @@
     retry: (status) => $t('code.retrying', { values: { n: status.attempt } }),
     preparing: (status) => preparingLabel(status.toolName, status.bytes),
     running: (status) => {
-      const target = status.step.detail?.split('\n')[0]?.trim();
+      const target = toolTarget(status.step.toolName, status.step.detail);
       return target ? `${status.step.label} ${target}` : status.step.label;
     },
     thinking: () => $t('code.thinking'),

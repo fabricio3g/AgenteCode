@@ -745,7 +745,7 @@
     min-width: 0;
     max-width: 18rem;
   }
-  .queued-status { color: var(--muted-foreground); font-size: 12px; white-space: nowrap; }
+  .queued-status { color: var(--muted-foreground); font-size: var(--text-xs); white-space: nowrap; }
   /* One muted base for both states: "Text only" is a quiet note, not the
      brightest thing on the bar. */
   .media-status {
@@ -755,7 +755,7 @@
     border-radius: 9999px;
     padding: 0.25rem 0.375rem;
     color: var(--muted-foreground);
-    font-size: 12px;
+    font-size: var(--text-xs);
     white-space: nowrap;
     transition: background-color 120ms ease, color 120ms ease;
   }
@@ -788,7 +788,7 @@
   }
   .slash-foot {
     padding: 0.375rem 0.625rem 0.25rem;
-    font-size: 12px;
+    font-size: var(--text-xs);
     color: var(--muted-foreground);
   }
   /* Same white-pill treatment as the ModelSwitcher trigger beside it. */

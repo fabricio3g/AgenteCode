@@ -1,6 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+  let { onNavigate }: { onNavigate?: () => void } = $props();
   import SidebarInstances from './SidebarInstances.svelte';
   import { appStore } from '$lib/stores/app.svelte';
   import CodeSidebar from '$lib/features/code/CodeSidebar.svelte';
@@ -10,7 +11,7 @@
   import { flip } from 'svelte/animate';
   import { smoothEase } from '$lib/utils/transitions';
   import { formatShortcut } from '$lib/utils/shortcuts';
-  import { Drama, MessageSquare, Plus, Puzzle, Search, Settings } from 'lucide-svelte';
+  import { Drama, MessageSquare, Plus, Puzzle, Search } from 'lucide-svelte';
   import { copy } from '$lib/copy';
   import SessionRow from '$lib/features/shared/SessionRow.svelte';
   import BotRoster from '$lib/features/bots/BotRoster.svelte';
@@ -87,6 +88,7 @@
   }
 
   function createForActiveSpace() {
+    onNavigate?.();
     if (inBots) {
       botsStore.editor = 'new';
       return;
@@ -104,10 +106,11 @@
   <div class="relative z-10 flex min-h-0 flex-1 flex-col px-3 pb-1 pt-2">
     <div class="flex flex-col gap-1.5 pb-3 pt-1">
       <button
+        type="button"
         class="sidebar-row is-emphasis"
         onclick={createForActiveSpace}
       >
-        <Plus class="size-3.5 shrink-0" />
+        <Plus class="sidebar-row-icon" />
         <span class="sidebar-row-label">{newButtonLabel}</span>
       </button>
 
@@ -121,7 +124,7 @@
           onclick={() => appStore.showArtifactLibrary()}
           title={$t('sidebar.artifacts')}
         >
-          <Puzzle class="size-3.5 shrink-0" />
+          <Puzzle class="sidebar-row-icon" />
           <span class="sidebar-row-label">{$t('sidebar.artifacts')}</span>
         </button>
       {/if}
@@ -129,7 +132,7 @@
 
     {#if inBots}
       <label class="sidebar-row bot-filter">
-        <Search class="size-3.5 shrink-0" />
+        <Search class="sidebar-row-icon" />
         <input data-bot-search bind:value={botsStore.query} placeholder={$t('bots.search')} aria-label={$t('bots.search')} />
       </label>
     {:else}
@@ -139,7 +142,7 @@
       onclick={() => { appStore.chatSearchOpen = true; }}
       title={`${searchLabel} (${formatShortcut('mod+shift+k')})`}
     >
-      <Search class="size-3.5 shrink-0" />
+      <Search class="sidebar-row-icon" />
       <span class="sidebar-row-label">{searchLabel}</span>
     </button>
     {/if}
@@ -199,25 +202,12 @@
       {/if}
     </div>
 
-    <!-- One way in: Models, providers and preferences are all sections of
-         the Settings screen, so a second sidebar entry would be a second
-         door to the same room.
-
-         The running-model list sits here rather than above the search field:
+    <!-- Settings lives in the activity rail now; the footer keeps only the
+         running-model list. It sits here rather than above the search field:
          a model loading must not push the search field and every conversation
          below it down the rail. -->
     <div class="sidebar-footer">
       <SidebarInstances />
-      <button
-        data-sidebar-settings
-        class="sidebar-row"
-        onclick={() => appStore.openSettings('general')}
-        title={$t('sidebar.settings')}
-        class:is-current={appStore.settingsScreenOpen}
-      >
-        <Settings class="size-3.5 shrink-0" />
-        <span class="sidebar-row-label">{$t('sidebar.settings')}</span>
-      </button>
     </div>
   </div>
 </aside>

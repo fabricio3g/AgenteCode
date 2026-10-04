@@ -88,7 +88,7 @@
     white-space: nowrap;
     color: var(--muted-foreground);
     font-variant-numeric: tabular-nums;
-    font-size: 0.68rem;
+    font-size: var(--text-xs);
   }
 
   .actions {

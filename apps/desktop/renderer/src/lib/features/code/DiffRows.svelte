@@ -61,7 +61,7 @@
   .diff-rows {
     padding: 0.25rem 0;
     font-family: var(--font-mono, ui-monospace, monospace);
-    font-size: 12px;
+    font-size: var(--text-code);
     line-height: 1.6;
   }
   .line {

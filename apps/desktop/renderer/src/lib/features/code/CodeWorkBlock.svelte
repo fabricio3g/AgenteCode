@@ -92,7 +92,7 @@
     gap: 0.375rem;
     padding: 0.3125rem 0.5rem;
     border-radius: 0.5rem;
-    font-size: 13px;
+    font-size: var(--text-code);
     color: var(--muted-foreground);
     text-align: left;
     transition: color var(--motion-fast) var(--motion-ease);
@@ -124,7 +124,7 @@
     border-radius: 0.375rem;
     background: var(--muted);
     font-family: var(--font-mono, ui-monospace, monospace);
-    font-size: 12px;
+    font-size: var(--text-code);
     color: var(--foreground);
     transition: background-color var(--motion-fast) var(--motion-ease);
   }

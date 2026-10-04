@@ -18,6 +18,7 @@
   import EditMessageInline from '$lib/features/chat/EditMessageInline.svelte';
   import SelectedTextAskAction from '$lib/features/chat/SelectedTextAskAction.svelte';
   import Message from './Message.svelte';
+  import DeferredMessage from '$lib/features/shared/DeferredMessage.svelte';
   import ThreadTimeline from './ThreadTimeline.svelte';
   import type { TimelineMarker } from './timeline';
   let { density = 'comfortable' }: { density?: 'comfortable' | 'compact' } = $props();
@@ -319,8 +320,9 @@
           class="mx-auto flex w-full flex-col {density === 'compact' ? 'gap-4' : 'gap-7'}"
           style="max-width: var(--thread-width);"
         >
-          {#each messages as message (message.id)}
+          {#each messages as message, index (message.id)}
             <div class="message-slot" class:is-live={message.status === 'streaming' || appStore.editingMessageId === message.id} use:registerSlot={message.id}>
+              <DeferredMessage content={message.content} immediate={messages.length < 60 || index >= messages.length - 6 || message.status === 'streaming' || appStore.editingMessageId === message.id}>
               {#if appStore.editingMessageId === message.id}
                 <div
                   class="edit-inline-container {message.role === 'user' ? 'is-user' : 'is-assistant'}"
@@ -340,6 +342,7 @@
                   forceActionsVisible={pinnedMessageId === message.id}
                 />
               {/if}
+              </DeferredMessage>
             </div>
           {/each}
         </div>

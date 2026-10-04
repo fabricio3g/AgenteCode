@@ -630,7 +630,11 @@
     "agent": "代理",
     "more": "更多",
     "tabs": "浏览器标签页",
-    "page": "页面"
+    "page": "页面",
+    "emptyTitle": "Open a website",
+    "emptyHint": "Enter an address above, or ask the agent to browse.",
+    "annotate": "Draw and add instructions",
+    "browse": "Return to the live page"
   },
   "localLoad": {
     "title": "加载本地模型",
@@ -2260,7 +2264,15 @@
       "highlight": "高亮",
       "blur": "模糊",
       "pan": "平移"
-    }
+    },
+    "drawingSettings": "Drawing settings",
+    "boardWidth": "New board width",
+    "boardHeight": "New board height",
+    "textContent": "Text",
+    "markInstruction": "Instruction for this mark",
+    "markInstructionHint": "What should change here?",
+    "instructions": "Instructions",
+    "instructionsHint": "Describe what you want the agent to build or change…"
   },
   "promptQueue": {
     "title": "队列中",

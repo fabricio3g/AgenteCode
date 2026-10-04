@@ -56,17 +56,22 @@
   }
 
   const quoted = $derived(splitSelectedTextQuestion(ctx.message.content || ''));
+  /*
+   * `breaks: true` everywhere here: this is text a person typed, so a single
+   * newline is a line break they chose. Model output is rendered with the
+   * opposite default so its own hard wrapping reflows into the reading column.
+   */
   const bodyHtml = $derived.by(() => {
     const content = quoted?.question || ctx.message.content || '';
-    if (ctx.contextMode !== 'roleplay') return renderMarkdown(content);
+    if (ctx.contextMode !== 'roleplay') return renderMarkdown(content, { breaks: true });
     const chat = appStore.currentChat;
     const names = (chat?.roleplay?.characterIds ?? (chat?.characterId ? [chat.characterId] : [])).flatMap((id) => {
       const card = charactersStore.getById(id);
       return card ? [card.name, card.nickname ?? '', ...(card.aliases ?? [])] : [];
     });
-    return highlightRoleplayMentions(renderMarkdown(content.replace(/\s*\[character:[^\]]+\]/g, '')), [...names, ...roleplayStore.room().npcs.map((npc) => npc.name)]);
+    return highlightRoleplayMentions(renderMarkdown(content.replace(/\s*\[character:[^\]]+\]/g, ''), { breaks: true }), [...names, ...roleplayStore.room().npcs.map((npc) => npc.name)]);
   });
-  const quoteHtml = $derived(quoted ? renderMarkdown(quoted.selectedText) : '');
+  const quoteHtml = $derived(quoted ? renderMarkdown(quoted.selectedText, { breaks: true }) : '');
   const workContext = $derived(ctx.message.workContext);
 
   /** Roleplay: the persona this turn speaks as, for chat-app identity. */
@@ -194,7 +199,7 @@
     border-radius: var(--radius-full);
     background: var(--muted);
     color: var(--text-muted);
-    font-size: 0.625rem;
+    font-size: var(--text-xs);
     font-weight: 600;
   }
 

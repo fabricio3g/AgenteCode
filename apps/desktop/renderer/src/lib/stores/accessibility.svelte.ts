@@ -27,7 +27,13 @@ export interface AccessibilityPrefs {
   underlineLinks: boolean;
 }
 
-export const UI_SCALES = [0.8, 0.9, 1, 1.1, 1.25, 1.5] as const;
+/**
+ * Interface sizes. 200% is the ceiling WCAG 1.4.4 asks for, and the steps above
+ * 100% stay close enough together that nobody has to overshoot to read. 0.9 is
+ * the one step below 1: it fits more on a small screen at the cost of the
+ * caption tier, which is the user's call to make.
+ */
+export const UI_SCALES = [0.9, 1, 1.1, 1.25, 1.5, 1.75, 2] as const;
 export const TEXT_SCALES = [0.9, 1, 1.15, 1.3, 1.5] as const;
 
 export const DEFAULT_ACCESSIBILITY: AccessibilityPrefs = {
@@ -141,6 +147,9 @@ class AccessibilityStore {
       hyperlegibleLoaded = true;
       void import('@fontsource/atkinson-hyperlegible/400.css');
       void import('@fontsource/atkinson-hyperlegible/700.css');
+      // Code, diffs and the terminal follow the same family through
+      // `--font-mono`, so the mono companion loads with it.
+      void import('@fontsource-variable/atkinson-hyperlegible-mono');
     }
     root.dataset.font = prefs.font;
     root.classList.toggle('a11y-relaxed', prefs.relaxedSpacing);

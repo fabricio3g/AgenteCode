@@ -1,7 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
-  import { cubicOut } from 'svelte/easing';
+  import { motionFly } from '$lib/utils/transitions';
   import Thread from '$lib/features/chat/thread/Thread.svelte';
   import Composer from '$lib/features/chat/Composer.svelte';
   import ActivityDrawer from '$lib/components/agent/ActivityDrawer.svelte';
@@ -10,23 +10,6 @@
 
   const threadIsEmpty = $derived(!(appStore.currentChat?.messages?.length));
 
-  /**
-   * Slide the activity panel in from the right edge.
-   *
-   * Deliberately transform/opacity only. The previous version animated `width`,
-   * which made the whole conversation reflow and re-wrap on every open and
-   * close; the panel now floats above the thread and leaves it untouched.
-   */
-  function drawerSlotTransition(_node: Element) {
-    return {
-      duration: 260,
-      easing: cubicOut,
-      css: (t: number, u: number) => `
-        opacity: ${t};
-        transform: translateX(${u * 100}%);
-      `
-    };
-  }
 </script>
 
 <div class="chat-panel relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
@@ -47,7 +30,7 @@
   <!-- Floats over the conversation: opening it must not reflow the
        thread or the composer. -->
   {#if appStore.activityDrawerOpen}
-    <div class="activity-drawer-slot" transition:drawerSlotTransition>
+    <div class="activity-drawer-slot" transition:motionFly={{ x: 24, duration: 160 }}>
       <ActivityDrawer />
     </div>
   {/if}

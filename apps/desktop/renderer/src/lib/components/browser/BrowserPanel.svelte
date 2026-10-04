@@ -10,7 +10,7 @@
 
 <script lang="ts">
   import { onMount, tick } from 'svelte';
-  import { X, Plus, ArrowLeft, ArrowRight, RotateCw, LoaderCircle, Monitor, Laptop, Tablet, Smartphone, PanelRight, Hand, MoreHorizontal } from 'lucide-svelte';
+  import { X, Plus, ArrowLeft, ArrowRight, RotateCw, LoaderCircle, Monitor, Laptop, Tablet, Smartphone, PanelRight, Hand, MoreHorizontal, Pencil, Globe } from 'lucide-svelte';
   import { t } from 'svelte-i18n';
   import Menu from '$lib/components/ui/Menu.svelte';
   import MenuItem from '$lib/components/ui/MenuItem.svelte';
@@ -19,8 +19,37 @@
   import { BROWSER_VIEWPORTS } from '$shared/browser-viewports';
   import { overlapsViewport } from './browser-occlusion';
   import { accessibilityStore } from '$lib/stores/accessibility.svelte';
+  import { sameBrowserPresentation, type BrowserPresentation } from '$shared/browser-presentation';
+  import { affectsBrowserPresentation, BROWSER_OVERLAYS } from './browser-presentation-updates';
+  import CanvasPanel from '$lib/features/canvas/CanvasPanel.svelte';
+  import { canvasBoard } from '$lib/features/canvas/canvas-board.svelte';
+  import { bitmapSize } from '$lib/features/canvas/canvas-images';
+  import { invoke } from '$lib/services/bridge';
+  import { toastStore } from '$lib/stores/toast.svelte';
 
-  let { embedded = false, exposed = true, presentationKey = '' }: { embedded?: boolean; exposed?: boolean; presentationKey?: string } = $props();
+  let { embedded = false, exposed = true, presentationKey = '', chatId }: { embedded?: boolean; exposed?: boolean; presentationKey?: string; chatId?: string } = $props();
+  let annotating = $state(false);
+  let capturing = $state(false);
+  const hasPage = $derived(!!browserPanelStore.activeTab?.url && browserPanelStore.activeTab.url !== 'about:blank');
+
+  async function annotate() {
+    if (capturing || !hasPage || !chatId) return;
+    const owner = chatId, scope = browserPanelStore.scope, tabId = browserPanelStore.activeTabId;
+    const sourceUrl = browserPanelStore.activeTab!.url;
+    capturing = true;
+    try {
+      const href = await invoke<string>('browser_screenshot', { scope, tabId });
+      const size = await bitmapSize(href);
+      const name = `${new URL(sourceUrl).hostname || 'website'}.png`;
+      const { attachment } = await invoke<{ attachment: { path: string } }>('agente_media_import', { name, data: href.split(',')[1] });
+      if (chatId !== owner || browserPanelStore.scope !== scope || browserPanelStore.activeTabId !== tabId) return;
+      canvasBoard.useChat(owner);
+      canvasBoard.addImage({ path: attachment.path, name, sourceUrl, ...size }, href);
+      canvasBoard.tool = 'arrow';
+      annotating = true;
+    } catch (error) { toastStore.error(String(error)); }
+    finally { capturing = false; }
+  }
 
   const VIEWPORT_ICON: Record<BrowserViewportPreset, typeof Monitor> = {
     fit: PanelRight,
@@ -36,11 +65,11 @@
   let still = $state<string | null>(null);
   let mounted = false;
   let pending = 0;
-  let syncing = false;
-  let dirty = false;
+  let presentationVersion = 0;
+  let lastPresentation: { key: string; value: BrowserPresentation } | null = null;
 
   /** Anything floating: menus, dialogs, popovers, listboxes, tooltips. */
-  const OVERLAYS = '[role="dialog"], [role="alertdialog"], [role="menu"], [role="listbox"], [role="tooltip"], .ui-modal-backdrop, [data-overlay]';
+  const OVERLAYS = BROWSER_OVERLAYS;
 
   /** Native content cannot be ordered with DOM z-index. Only higher windows cover it. */
   function covered(): boolean {
@@ -57,25 +86,28 @@
   }
 
   async function present() {
-    if (syncing || !mounted) { dirty = true; return; }
-    syncing = true;
-    do {
-      dirty = false;
-      const scope = browserPanelStore.scope;
-      const rect = viewportEl?.getBoundingClientRect();
-      const occluded = covered();
-      const image = await syncBrowserPresentation(scope, { bounds: rect && rect.width > 0 && rect.height > 0 ? { x: rect.left, y: rect.top, width: rect.width, height: rect.height } : null, exposed, occluded }).catch(() => null);
-      if (!mounted) break;
-      if (scope !== browserPanelStore.scope) { dirty = true; continue; }
+    if (!mounted) return;
+    const scope = browserPanelStore.scope;
+    const nativeExposed = exposed && hasPage && !annotating;
+    const rect = nativeExposed ? viewportEl?.getBoundingClientRect() : null;
+    const occluded = covered();
+    const value: BrowserPresentation = { bounds: rect && rect.width > 0 && rect.height > 0 ? { x: rect.left, y: rect.top, width: rect.width, height: rect.height } : null, exposed: nativeExposed, occluded: nativeExposed && occluded };
+    const key = JSON.stringify([scope, browserPanelStore.activeTabId, browserPanelStore.viewport, accessibilityStore.prefs.uiScale]);
+    if (lastPresentation?.key === key && sameBrowserPresentation(lastPresentation.value, value)) return;
+    lastPresentation = { key, value };
+    const version = ++presentationVersion;
+    // Capturing a still can take time. Never serialize visibility behind it.
+    try {
+      const image = await syncBrowserPresentation(scope, value);
+      if (!mounted || version !== presentationVersion || scope !== browserPanelStore.scope) return;
       if (occluded && image) still = image;
       else if (!occluded) still = null;
-    } while (dirty && mounted);
-    syncing = false;
+    } catch {
+      if (version === presentationVersion) lastPresentation = null;
+    }
   }
   function schedulePresentation() {
-    if (!mounted) return;
-    dirty = true;
-    if (pending) return;
+    if (!mounted || pending) return;
     pending = requestAnimationFrame(() => { pending = 0; void present(); });
   }
   async function syncBounds() { schedulePresentation(); }
@@ -113,7 +145,7 @@
     void tick().then(schedulePresentation);
     window.addEventListener('resize', schedulePresentation);
     const stopBounds = observeBounds(schedulePresentation);
-    const overlays = new MutationObserver(schedulePresentation);
+    const overlays = new MutationObserver((records) => { if (affectsBrowserPresentation(records, viewportEl)) schedulePresentation(); });
     overlays.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class', 'style', 'hidden', 'open', 'role', 'data-workspace-interacting', 'data-workspace-z'] });
     return () => {
       mounted = false;
@@ -126,13 +158,15 @@
   $effect(() => {
     void browserPanelStore.scope;
     still = null;
+    lastPresentation = null;
+    annotating = false;
   });
   $effect(() => {
     void browserPanelStore.scope;
     void browserPanelStore.activeTabId;
     void browserPanelStore.tabs.length;
     void browserPanelStore.viewport;
-    void exposed; void presentationKey; void accessibilityStore.prefs.uiScale;
+    void exposed; void presentationKey; void accessibilityStore.prefs.uiScale; void hasPage; void annotating;
     void tick().then(schedulePresentation);
   });
 
@@ -176,6 +210,9 @@
     <button type="button" class="ui-icon-button" onclick={() => void browserPanelStore.history('reload')} aria-label={$t('browser.reload')} title={$t('browser.reload')}>
       <RotateCw />
     </button>
+    <button type="button" class="ui-icon-button" aria-label={$t(annotating ? 'browser.browse' : 'browser.annotate')} title={$t(annotating ? 'browser.browse' : 'browser.annotate')} aria-pressed={annotating} disabled={!hasPage || !chatId || capturing} onclick={() => { if (annotating) annotating = false; else void annotate(); }}>
+      {#if capturing}<LoaderCircle class="size-3 animate-spin" />{:else if annotating}<Globe />{:else}<Pencil />{/if}
+    </button>
     <Menu placement="bottom-end" label={$t('browser.more')} minWidth="12rem">
       {#snippet trigger(props)}
         <button type="button" class="ui-icon-button" aria-label={$t('browser.more')} title={$t('browser.more')} {...props}>
@@ -214,7 +251,7 @@
           <button
             type="button"
             class="browser-tab-label"
-            onclick={() => void browserPanelStore.selectTab(tab.id).then(() => syncBounds())}
+            onclick={() => { annotating = false; void browserPanelStore.selectTab(tab.id).then(() => syncBounds()); }}
             title={tab.url || $t('browser.newTab')}
           >
             {shortLabel(tab)}
@@ -227,8 +264,12 @@
     </div>
   {/if}
 
-  <div bind:this={viewportEl} class="browser-viewport-box" aria-label={$t('browser.page')}>
-    {#if still}<img class="viewport-still" src={still} alt="" />{/if}
+  <div bind:this={viewportEl} class="browser-viewport-box" class:annotating aria-label={$t('browser.page')}>
+    {#if annotating && chatId}
+      <CanvasPanel {chatId} />
+    {:else if !hasPage}
+      <div class="browser-empty"><Globe class="size-5" /><p>{$t('browser.emptyTitle')}</p><span>{$t('browser.emptyHint')}</span></div>
+    {:else if still}<img class="viewport-still" src={still} alt="" onerror={() => (still = null)} />{/if}
   </div>
 </div>
 
@@ -293,7 +334,7 @@
     padding: 0 0.15rem 0 0.5rem;
     border-radius: var(--radius-full);
     color: var(--muted-foreground);
-    font-size: 11.5px;
+    font-size: var(--text-xs);
     white-space: nowrap;
   }
 
@@ -347,6 +388,11 @@
     border-radius: 8px;
     background: var(--muted);
   }
+
+  .browser-viewport-box.annotating { display: flex; margin: 0; border-radius: 0; }
+  .browser-empty { display: flex; height: 100%; flex-direction: column; align-items: center; justify-content: center; gap: .5rem; padding: 1.5rem; text-align: center; color: var(--muted-foreground); }
+  .browser-empty p { margin: 0; font-size: var(--text-sm); color: var(--foreground); }
+  .browser-empty span { max-width: 24rem; font-size: var(--text-xs); }
 
   /* A narrow card keeps the address readable: the chip becomes its icon. */
   @container (max-width: 380px) {

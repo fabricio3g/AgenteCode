@@ -2,8 +2,12 @@
 // Verifies composed AppShell behavior, including CSS resize affordances.
 import assert from 'node:assert/strict';
 import { writeFile } from 'node:fs/promises';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { app, BrowserWindow } from 'electron';
 app.disableHardwareAcceleration();
+app.setPath('userData', mkdtempSync(join(tmpdir(), 'agente-workspace-smoke-')));
 async function run() {
   await app.whenReady();
   const win = new BrowserWindow({ show: false, width: 1200, height: 800, webPreferences: { sandbox: true, contextIsolation: true, backgroundThrottling: false } });
@@ -53,6 +57,17 @@ async function run() {
     assert.equal(await run<string>('document.getElementById("browser-address-input").value'), 'https://a.test');
     const sizes = await run<{ a: number; b: number }>('(() => { const scopes = JSON.parse(localStorage.getItem("agente.workspaceLayout")).scopes; return { a: scopes["chat:workspace-a"].rightWidth, b: scopes["chat:workspace-b"].rightWidth }; })()');
     assert.equal(sizes.a, 450); assert.notEqual(sizes.b, 450);
+    await run(`(async () => {
+      window.__presentations = [];
+      const invoke = window.electronAPI.invoke;
+      window.electronAPI.invoke = (channel, args) => { if (channel === 'browser_panel_presentation') window.__presentations.push(args); return invoke(channel, args); };
+      const { appStore } = await import('/src/lib/stores/app.svelte.ts'); appStore.openSettings('general');
+    })()`);
+    await new Promise(resolve => setTimeout(resolve, 150));
+    assert.equal(await run<boolean>(`window.__presentations.at(-1)?.exposed`), false, 'Settings explicitly hides the native browser');
+    await run(`(async () => { const { appStore } = await import('/src/lib/stores/app.svelte.ts'); appStore.closeSettings(); })()`);
+    await new Promise(resolve => setTimeout(resolve, 150));
+    assert.equal(await run<boolean>(`window.__presentations.at(-1)?.exposed`), true, 'Closing settings restores browser exposure');
     console.log('smoke: project conversations and hover');
     await run(`(async () => {
       const { appStore } = await import('/src/lib/stores/app.svelte.ts');
@@ -87,6 +102,7 @@ async function run() {
     const before = await run<{ width: number; top: number }>('(() => { const r = document.querySelector("[data-workspace-panel=changes]").getBoundingClientRect(); return { width: r.width, top: r.top }; })()');
     assert.ok(before.width > 0, 'Changes remains visible before dragging');
     await win.webContents.debugger.sendCommand('Input.dispatchMouseEvent', { type: 'mousePressed', button: 'left', buttons: 1, clickCount: 1, ...corner });
+    await new Promise(resolve => setTimeout(resolve, 30));
     await win.webContents.debugger.sendCommand('Input.dispatchMouseEvent', { type: 'mouseMoved', buttons: 1, x: corner.x + 24, y: corner.y + 24 });
     await win.webContents.debugger.sendCommand('Input.dispatchMouseEvent', { type: 'mouseReleased', button: 'left', buttons: 0, clickCount: 1, x: corner.x + 24, y: corner.y + 24 });
     await new Promise(resolve => setTimeout(resolve, 100));
@@ -104,6 +120,20 @@ async function run() {
     assert.equal(await run<string>('getComputedStyle(document.querySelector(".window-resize.edge-nw .grip")).opacity'), '0');
     assert.ok(Number.parseFloat(await run<string>('getComputedStyle(document.querySelector(".window-resize.edge-nw .grip")).transitionDuration')) < .001, 'Reduced motion removes visible resize animation');
     await capture('/tmp/agente-conversation-panels-light.png');
+    // Hovering New chat must keep the preview interactive; clicking closes it.
+    await run(`(async () => { const { appStore } = await import('/src/lib/stores/app.svelte.ts'); appStore.setActiveSpace('home'); appStore.sidebarOpen = false; })()`);
+    const toggle = await run<{x:number;y:number}>(`(() => { const r = document.querySelector('[data-sidebar-toggle]').getBoundingClientRect(); return {x:Math.round(r.x+r.width/2),y:Math.round(r.y+r.height/2)}; })()`);
+    await win.webContents.debugger.sendCommand('Input.dispatchMouseEvent', { type: 'mouseMoved', ...toggle });
+    await new Promise(resolve => setTimeout(resolve, 100));
+    assert.equal(await run<boolean>(`!!document.querySelector('.sidebar-view-full.preview')`), true);
+    const newChat = await run<{x:number;y:number}>(`(() => { const r = document.querySelector('.sidebar-view-full .sidebar-row.is-emphasis').getBoundingClientRect(); return {x:Math.round(r.x+r.width/2),y:Math.round(r.y+r.height/2)}; })()`);
+    await win.webContents.debugger.sendCommand('Input.dispatchMouseEvent', { type:'mouseMoved', ...newChat });
+    await new Promise(resolve => setTimeout(resolve, 150));
+    assert.equal(await run<boolean>(`!!document.querySelector('.sidebar-view-full.preview')`), true, 'New chat hover retains the preview');
+    await win.webContents.debugger.sendCommand('Input.dispatchMouseEvent', { type:'mousePressed', button:'left', buttons:1, clickCount:1, ...newChat });
+    await win.webContents.debugger.sendCommand('Input.dispatchMouseEvent', { type:'mouseReleased', button:'left', buttons:0, clickCount:1, ...newChat });
+    await new Promise(resolve => setTimeout(resolve, 100));
+    assert.equal(await run<boolean>(`!document.querySelector('.sidebar-view-full.preview')`), true, 'New chat dismisses preview');
     assert.equal(errors.length, 0, errors.join('\n'));
     console.log('workspace-renderer smoke: ok (project/chat switching, isolated layout/browser, real corner dragging, hover-only cues, light/dark, reduced motion)');
   } finally { win.destroy(); }

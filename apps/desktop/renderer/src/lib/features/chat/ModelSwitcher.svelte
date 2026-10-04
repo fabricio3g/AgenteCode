@@ -4,7 +4,7 @@
   import { untrack } from 'svelte';
   import { get } from 'svelte/store';
   import { Check, ChevronDown, ChevronRight, Cpu, LoaderCircle, Play, Power, RefreshCw, Search, Settings2, Square, X } from 'lucide-svelte';
-  import { backdropIn, backdropOut, dialogIn, dialogOut, motionSlide } from '$lib/utils/transitions';
+  import { backdropIn, backdropOut, dialogIn, dialogOut } from '$lib/utils/transitions';
   import { appStore } from '$lib/stores/app.svelte';
   import { modelsStore } from '$lib/stores/models.svelte';
   import { providerModels } from '$lib/stores/provider-models.svelte';
@@ -17,7 +17,7 @@
   import SegmentedControl from '$lib/components/ui/SegmentedControl.svelte';
   import type { ModelOption } from '$lib/types/chat';
   import { buildLocalModelSecondaryText, formatContextLength, localModelMatchesSearch } from '$lib/utils/local-models';
-  import { configuredProviders, defaultBaseUrl, providerLabel } from '$lib/utils/providers';
+  import { configuredProviders, defaultBaseUrl } from '$lib/utils/providers';
 
   let { compact = false }: { compact?: boolean } = $props();
 
@@ -37,6 +37,7 @@
   let confirmSwitch = $state<ModelOption | null>(null);
   let expandedProviders = $state<Record<string, boolean>>({});
   let selectingModel = $state('');
+  let showAll = $state<Record<string, boolean>>({});
   let changingMode = $state(false);
   let panelEl = $state<HTMLDivElement>();
   const dialogId = $props.id();
@@ -66,16 +67,19 @@
       : appStore.models
   );
 
-  function modelsForProvider(id: string): ModelOption[] {
-    const list = providerModels.models(id);
+  // Filter/sort each provider once per change, not again for every header,
+  // count, expansion check and rendered row.
+  const groupedModels = $derived.by(() => {
     const q = modelSearch.trim().toLowerCase();
-    const matchesProvider = providerLabel(id).toLowerCase().includes(q);
-    const matches = !q || matchesProvider ? list : list.filter((m) => m.name.toLowerCase().includes(q) || m.id.toLowerCase().includes(q));
-    return matches.slice().sort((a, b) => {
-      const selected = id === appStore.activeProviderName ? activeProvider?.model : '';
-      return Number(b.id === selected) - Number(a.id === selected) || a.name.localeCompare(b.name);
-    });
-  }
+    return new Map(configured.map(provider => {
+      const list = providerModels.models(provider.id);
+      const matchesProvider = provider.label.toLowerCase().includes(q);
+      const matches = !q || matchesProvider ? list : list.filter(model => model.name.toLowerCase().includes(q) || model.id.toLowerCase().includes(q));
+      const selected = provider.id === appStore.activeProviderName ? activeProvider?.model : '';
+      return [provider.id, matches.slice().sort((a, b) => Number(b.id === selected) - Number(a.id === selected) || a.name.localeCompare(b.name))] as const;
+    }));
+  });
+  function modelsForProvider(id: string): ModelOption[] { return groupedModels.get(id) ?? []; }
 
   const visibleProviders = $derived(configured.filter((provider) => !modelSearch.trim() || modelsForProvider(provider.id).length || providerModels.loading[provider.id] || providerModels.errors[provider.id]));
   const resultCount = $derived(appStore.backendMode === 'api' ? visibleProviders.reduce((sum, provider) => sum + modelsForProvider(provider.id).length, 0) : filteredModels.length);
@@ -84,7 +88,7 @@
     if (modelSearch.trim()) {
       return modelsForProvider(id).length > 0 || expandedProviders[id] === true;
     }
-    // Groups start collapsed (the header shows the model in use); a click opens one.
+    // Open the active group immediately so arrow keys reach actual choices.
     return expandedProviders[id] === true;
   }
 
@@ -249,9 +253,9 @@
       if (appStore.backendMode !== 'api') return;
       const active = appStore.activeProviderName;
       if (!active) return;
-      // Every opening starts collapsed; the list is fetched ahead for search.
-      expandedProviders = {};
-      void providerModels.load(active);
+      expandedProviders = { [active]: true };
+      showAll = {};
+      for (const provider of configured) void providerModels.load(provider.id);
     });
   }
 
@@ -266,7 +270,7 @@
 
     initCloudListWhenOpen();
     // Focus search once the modal lands.
-    const focusTimer = window.setTimeout(() => searchInput?.focus(), 60);
+    const focusTimer = requestAnimationFrame(() => searchInput?.focus());
 
     // Escape, focus trapping and focus return come from modalLayer; this only
     // adds arrow-key movement between the search field and the model rows.
@@ -287,7 +291,7 @@
     }
     document.addEventListener('keydown', handleKeydown);
     return () => {
-      clearTimeout(focusTimer);
+      cancelAnimationFrame(focusTimer);
       document.removeEventListener('keydown', handleKeydown);
     };
   });
@@ -448,7 +452,7 @@
                   </button>
 
                   {#if open}
-                    <div class="group-models" transition:motionSlide={{ duration: 200 }}>
+                    <div class="group-models" >
                       {#if providerModels.errors[prov.id]}
                         <div class="picker-note is-inline" role="status">
                           <span class="min-w-0 flex-1">{providerModels.errors[prov.id]}</span>
@@ -458,7 +462,7 @@
                       {#if list.length === 0}
                         <p class="group-hint">{loading ? $t('modelPicker.loading') : modelSearch ? $t('modelPicker.noMatches') : $t('modelPicker.noProviderModels')}</p>
                       {:else}
-                        {#each list as model (model.id)}
+                        {#each (showAll[prov.id] ? list : list.slice(0, 50)) as model (model.id)}
                           {@const selected = appStore.activeProviderName === prov.id && activeProvider?.model === model.id}
                           <button
                             type="button"
@@ -481,6 +485,9 @@
                             {#if selected}<span class="row-tag">{$t('modelPicker.inUse')}</span>{/if}
                           </button>
                         {/each}
+                        {#if list.length > 50 && !showAll[prov.id]}
+                          <button type="button" class="group-head" onclick={() => { showAll = { ...showAll, [prov.id]: true }; }}>{$t('code.showAll')} · {list.length}</button>
+                        {/if}
                       {/if}
                     </div>
                   {/if}
@@ -566,7 +573,7 @@
 
   .trigger-label {
     color: inherit;
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     font-weight: 500;
     letter-spacing: -0.01em;
   }
@@ -579,11 +586,11 @@
 
   .model-modal-backdrop {
     background: var(--overlay);
-    backdrop-filter: blur(4px);
+
   }
 
   .model-modal {
-    width: min(760px, calc(100vw - 32px));
+    width: min(560px, calc(100vw - 32px));
     max-height: min(680px, calc(100dvh - 48px));
     background: var(--card);
     border-radius: var(--radius-2xl);
@@ -592,7 +599,7 @@
       var(--shadow-xl);
     -webkit-app-region: no-drag;
     transform-origin: 50% 40%;
-    will-change: transform, opacity, filter;
+
   }
 
   .model-modal :global(.ui-segmented) {
@@ -615,7 +622,7 @@
     padding: 0 0.5rem 0 0.75rem;
   }
   .picker-title {
-    font-size: 13px;
+    font-size: var(--text-sm);
     font-weight: 600;
     color: var(--foreground);
   }
@@ -627,7 +634,7 @@
     padding: 0 0.75rem;
   }
   .picker-search input {
-    font-size: 13px;
+    font-size: var(--text-sm);
   }
   .picker-search input::-webkit-search-cancel-button {
     display: none;
@@ -644,7 +651,7 @@
     border-radius: 0.625rem;
     background: var(--muted);
     color: var(--text-secondary);
-    font-size: 12px;
+    font-size: var(--text-xs);
   }
   .picker-note.is-inline {
     margin: 0.125rem 0 0.25rem;
@@ -672,7 +679,7 @@
     padding: 0 0.625rem;
     border-radius: var(--radius-full);
     color: var(--muted-foreground);
-    font-size: 12px;
+    font-size: var(--text-xs);
     text-align: left;
     transition: color var(--motion-fast) var(--motion-ease);
   }
@@ -684,7 +691,7 @@
     color: var(--foreground);
   }
   .group-meta {
-    font-size: 11px;
+    font-size: var(--text-xs);
   }
   .group-current {
     min-width: 0;
@@ -693,7 +700,7 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     font-family: var(--font-mono, ui-monospace, monospace);
-    font-size: 11.5px;
+    font-size: var(--text-xs);
   }
   .group-head :global(.group-chevron) {
     transition: transform var(--motion-fast) var(--motion-ease);
@@ -704,19 +711,19 @@
   .group-hint {
     padding: 0.25rem 0.625rem 0.25rem 2.125rem;
     color: var(--muted-foreground);
-    font-size: 11.5px;
+    font-size: var(--text-xs);
   }
 
   .model-row {
     display: flex;
     width: 100%;
-    height: 1.875rem;
+    min-height: 2.25rem;
     align-items: center;
     gap: 0.5rem;
     padding: 0 0.3rem 0 0.625rem;
-    border-radius: var(--radius-full);
+    border-radius: var(--radius-md);
     color: var(--foreground);
-    font-size: 12.5px;
+    font-size: var(--text-sm);
     text-align: left;
     transition: background-color var(--motion-fast) var(--motion-ease);
   }
@@ -747,13 +754,13 @@
     white-space: nowrap;
     color: var(--muted-foreground);
     font-family: var(--font-mono, ui-monospace, monospace);
-    font-size: 11px;
+    font-size: var(--text-xs);
   }
   .row-tag {
     flex-shrink: 0;
     padding-right: 0.4rem;
     color: var(--muted-foreground);
-    font-size: 10.5px;
+    font-size: var(--text-xs);
   }
 
   .picker-empty {
@@ -763,12 +770,12 @@
     gap: 0.375rem;
     padding: 2.5rem 1rem;
     color: var(--muted-foreground);
-    font-size: 12px;
+    font-size: var(--text-xs);
     text-align: center;
   }
   .picker-empty p {
     color: var(--foreground);
-    font-size: 13px;
+    font-size: var(--text-sm);
     font-weight: 500;
   }
   .picker-empty .ui-chip {
@@ -783,7 +790,7 @@
     gap: 0.5rem;
     padding: 0.5rem 1rem 0.625rem;
     color: var(--muted-foreground);
-    font-size: 11px;
+    font-size: var(--text-xs);
   }
   .picker-key-hint {
     display: inline-flex;

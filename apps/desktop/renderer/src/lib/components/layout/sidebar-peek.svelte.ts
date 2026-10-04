@@ -5,16 +5,16 @@
 // (AppShell), which moves the content over.
 
 /** Hover this long on the toggle before the preview opens. */
-export const PEEK_OPEN_MS = 120;
+export const PEEK_OPEN_MS = 40;
 /** Leave for this long before it closes, so crossing a gap doesn't flicker. */
-export const PEEK_CLOSE_MS = 180;
+export const PEEK_CLOSE_MS = 80;
 /** After a click on the toggle, ignore hover for this long. */
-const TOGGLE_QUIET_MS = 250;
+const TOGGLE_QUIET_MS = 120;
 
 export class SidebarPeek {
   open = $state(false);
-  /** The sidebar element (AppShell binds it). */
-  panel: HTMLElement | undefined = undefined;
+  /** The sidebar element (AppShell binds it; reactive so the binding sticks). */
+  panel = $state<HTMLElement | undefined>(undefined);
 
   #openTimer: ReturnType<typeof setTimeout> | undefined;
   #closeTimer: ReturnType<typeof setTimeout> | undefined;

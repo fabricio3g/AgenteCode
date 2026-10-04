@@ -19,15 +19,41 @@ function emptyMessage(role: Message['role'], content: string): Message { return 
 export function canContinueHomeHistory(meta: HomeRuntimeMeta | undefined, ids: string[]): boolean {
   return !!meta && meta.historyIds.length === ids.length - 1 && meta.historyIds.every((id, index) => id === ids[index]);
 }
+const MAX_REQUEST_IMAGES = 20;
+
 async function wireMessages(args: RunAgentTaskArgs): Promise<Message[]> {
-  return Promise.all(args.messages.filter((message) => message.role !== 'system').map(async (message) => {
-    const text = typeof message.content === 'string' ? message.content : (message.content || []).filter((part) => part.type === 'text').map((part) => part.text || '').join('\n');
+  const nonSystemMessages = args.messages.filter((message) => message.role !== 'system');
+  let imagesAllowed = MAX_REQUEST_IMAGES;
+  const allowedKeys = new Set<string>();
+  for (let m = nonSystemMessages.length - 1; m >= 0; m--) {
+    const msg = nonSystemMessages[m];
+    if (msg.attachments) {
+      for (let a = msg.attachments.length - 1; a >= 0; a--) {
+        const att = msg.attachments[a];
+        if (att.kind === 'image' && att.base64) {
+          if (imagesAllowed > 0) {
+            allowedKeys.add(`${m}:${a}`);
+            imagesAllowed--;
+          }
+        }
+      }
+    }
+  }
+
+  return Promise.all(nonSystemMessages.map(async (message, mIndex) => {
+    let text = typeof message.content === 'string' ? message.content : (message.content || []).filter((part) => part.type === 'text').map((part) => part.text || '').join('\n');
     const attachments: Attachment[] = [];
-    for (const attachment of message.attachments || []) {
+    const rawAttachments = message.attachments || [];
+    for (let aIndex = 0; aIndex < rawAttachments.length; aIndex++) {
+      const attachment = rawAttachments[aIndex];
       if (attachment.kind === 'image' && attachment.base64) {
-        const data = attachment.base64.replace(/^data:[^;]+;base64,/, '');
-        const imported = await invoke<{ attachment: Attachment }>('agente_media_import', { name: attachment.name || 'image.png', data });
-        attachments.push(imported.attachment);
+        if (allowedKeys.has(`${mIndex}:${aIndex}`)) {
+          const data = attachment.base64.replace(/^data:[^;]+;base64,/, '');
+          const imported = await invoke<{ attachment: Attachment }>('agente_media_import', { name: attachment.name || 'image.png', data });
+          attachments.push(imported.attachment);
+        } else {
+          text += `\n[Image: ${attachment.name || 'image'} (omitted from earlier history to stay under provider limit)]`;
+        }
       }
     }
     return { role: message.role, content: text, ...(attachments.length ? { attachments } : {}) };

@@ -14,7 +14,7 @@
   import { AlertCircle, Bot, ChevronRight, FilePen, FileText, FolderOpen, Globe, ListChecks, Loader2, Search, Square, SquareTerminal, Wrench, XCircle } from 'lucide-svelte';
   import type { AgentStep } from '$lib/types/chat';
   import { approvalsStore } from '$lib/stores/approvals.svelte';
-  import { formatToolDuration } from '$lib/utils/tool-ui';
+  import { formatToolDuration, toolTarget } from '$lib/utils/tool-ui';
   import { copy } from '$lib/copy';
   import { ActiveDuration } from '$lib/utils/active-duration';
   import { toastStore } from '$lib/stores/toast.svelte';
@@ -38,7 +38,7 @@
   const isError = $derived(step.status === 'error');
   const isCommand = $derived(kind === 'command');
   const plan = $derived(step.toolName === 'present_plan' ? parsePlan(step.output) : null);
-  const target = $derived(isApproval ? '' : (step.detail ?? '').split('\n')[0]);
+  const target = $derived(isApproval ? '' : toolTarget(step.toolName, step.detail));
   const adds = $derived(step.diffStats?.reduce((sum, file) => sum + file.additions, 0) || 0);
   const dels = $derived(step.diffStats?.reduce((sum, file) => sum + file.deletions, 0) || 0);
   const patches = $derived((step.diffStats ?? []).filter((file) => file.patch));
@@ -46,7 +46,7 @@
   /** What the tool was asked, when the chip's one line doesn't say it all. */
   const input = $derived.by(() => {
     const detail = step.detail ?? '';
-    return !isCommand && !isApproval && (detail.length > 60 || detail.includes('\n')) ? detail : '';
+    return !isCommand && !isApproval && (detail.length > 60 || detail.includes('\n') || /^(task|task_output|kill_task)$/.test(step.toolName ?? '')) ? detail : '';
   });
   /** `cmd | tail` prints nothing until the command ends: say so instead of looking stuck. */
   const tailPipe = $derived(/\|\s*tail\b/.test(step.detail || ''));
@@ -122,7 +122,7 @@
         <div class="term">
           <div class="term-head"><span class="text-muted-foreground">$</span> {step.detail}</div>
           {#if output}
-            <ClampedBlock tail={running}><pre class="term-out">{output.slice(-OUTPUT_LIMIT)}{#if running}<span class="caret"></span>{/if}</pre></ClampedBlock>
+            <ClampedBlock tail={running}><pre class="term-out">{running ? output.slice(-OUTPUT_LIMIT) : output}{#if running}<span class="caret"></span>{/if}</pre></ClampedBlock>
           {:else if running}
             <p class="term-note">{tailPipe ? 'This pipe prints its tail when the command finishes.' : $t('codeWs.noOutput')}</p>
           {/if}
@@ -140,7 +140,7 @@
         {/if}
         {#if output}
           {#if input}<p class="section-label">{$t('code.toolResult')}</p>{/if}
-          <div class="out" class:text-error={isError}><ClampedBlock><pre>{output.slice(-OUTPUT_LIMIT)}</pre></ClampedBlock></div>
+          <div class="out" class:text-error={isError}><ClampedBlock><pre>{running ? output.slice(-OUTPUT_LIMIT) : output}</pre></ClampedBlock></div>
         {:else if running}
           <p class="term-note">{$t('codeWs.noOutput')}</p>
         {/if}
@@ -168,7 +168,7 @@
     gap: 0.5rem;
     padding: 0.3125rem 0.5rem;
     border-radius: 0.5rem;
-    font-size: 13px;
+    font-size: var(--text-sm);
     color: var(--muted-foreground);
     text-align: left;
     transition: color var(--motion-fast) var(--motion-ease);
@@ -192,7 +192,7 @@
     border-radius: 0.3125rem;
     background: var(--muted);
     font-family: var(--font-mono, ui-monospace, monospace);
-    font-size: 12px;
+    font-size: var(--text-xs);
     color: var(--muted-foreground);
   }
   .step-head :global(.chevron) {
@@ -233,13 +233,13 @@
     background: color-mix(in srgb, var(--warning) 5%, transparent);
   }
   .section-label {
-    font-size: 12px;
+    font-size: var(--text-xs);
     color: var(--muted-foreground);
   }
   pre {
     margin: 0;
     font-family: var(--font-mono, ui-monospace, monospace);
-    font-size: 12px;
+    font-size: var(--text-xs);
     line-height: 1.55;
   }
   /* Output wraps and grows (cut past a height by ClampedBlock): no scroll boxes. */
@@ -269,7 +269,7 @@
     white-space: pre-wrap;
     overflow-wrap: anywhere;
     font-family: var(--font-mono, ui-monospace, monospace);
-    font-size: 12px;
+    font-size: var(--text-xs);
     color: var(--foreground);
   }
   .term-out {
@@ -280,11 +280,11 @@
   }
   .term-note {
     padding: 0.375rem 0.625rem;
-    font-size: 12px;
+    font-size: var(--text-xs);
     color: var(--muted-foreground);
   }
   .view-link {
-    font-size: 12px;
+    font-size: var(--text-xs);
     color: var(--muted-foreground);
     text-decoration: underline;
     text-underline-offset: 2px;
@@ -308,7 +308,7 @@
     height: 1.75rem;
     padding: 0 0.75rem;
     border-radius: 9999px;
-    font-size: 12px;
+    font-size: var(--text-xs);
     font-weight: 500;
     color: var(--foreground);
     border: 1px solid var(--border);

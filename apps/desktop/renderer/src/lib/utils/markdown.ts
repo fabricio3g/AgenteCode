@@ -1,4 +1,4 @@
-import { marked, type Tokens } from 'marked';
+import { marked, Renderer, type Tokens } from 'marked';
 import DOMPurify from 'dompurify';
 // The common set (~37 languages: rust, ts, python, go, bash, json, yaml, sql…)
 // instead of all ~190: a fraction of the bundle, and highlightAuto only has
@@ -8,7 +8,6 @@ import katex from 'katex';
 import { CODE_COPY_BUTTON_HTML } from './code-copy';
 
 marked.setOptions({
-  breaks: true,
   gfm: true
 });
 
@@ -43,10 +42,22 @@ function makeCodeRenderer(highlight: boolean) {
   };
 }
 
-const renderer = new marked.Renderer();
+/**
+ * A wide table scrolls inside its own band instead of squeezing its columns.
+ * The wrapper is emitted here rather than styled onto the table itself:
+ * `overflow-x` on the table box makes the table its own scroll container, and
+ * a table is the worst thing to make one.
+ */
+function withScrollableTables<T extends Renderer>(target: T): T {
+  const table = target.table.bind(target);
+  target.table = (token) => `<div class="table-scroll">${table(token)}</div>`;
+  return target;
+}
+
+const renderer = withScrollableTables(new marked.Renderer());
 renderer.code = makeCodeRenderer(true);
 
-const plainCodeRenderer = new marked.Renderer();
+const plainCodeRenderer = withScrollableTables(new marked.Renderer());
 plainCodeRenderer.code = makeCodeRenderer(false);
 
 // Protect fenced code blocks and inline code from LaTeX processing
@@ -158,6 +169,12 @@ export type RenderMarkdownOptions = {
   /** Syntax-highlight fenced code inline. Off for streaming tails — see makeCodeRenderer. */
   highlight?: boolean;
   /**
+   * Keep single newlines as line breaks. On for text a person typed, where Enter
+   * means a line break; off for model output, which hard-wraps at a column of its
+   * own and has to reflow to ours.
+   */
+  breaks?: boolean;
+  /**
    * Run KaTeX. Off for streaming tails: a half-arrived `$$` renders as an error
    * node that flashes and is replaced on the next flush, and the work is thrown
    * away each time. The block gets full treatment once it settles.
@@ -171,10 +188,13 @@ export type RenderMarkdownOptions = {
 };
 
 export function renderMarkdown(source: string, options: RenderMarkdownOptions = {}): string {
-  const { highlight = true, math = true, cache = true } = options;
+  const { highlight = true, math = true, cache = true, breaks = false } = options;
   const input = source || '';
+  // The key carries the option: the same text renders differently with and
+  // without `breaks`, and both variants are reachable in one session.
+  const cacheKey = breaks ? `breaks:${input}` : input;
   if (cache) {
-    const cached = getCachedMarkdown(input);
+    const cached = getCachedMarkdown(cacheKey);
     if (cached != null) return cached;
   }
 
@@ -187,10 +207,11 @@ export function renderMarkdown(source: string, options: RenderMarkdownOptions = 
     .replace(/\[\^(\d+)\]/g, '[$1]');
   const withLatex = math ? renderLatex(cleaned) : cleaned;
   const html = marked.parse(withLatex, {
+    breaks,
     renderer: highlight ? renderer : plainCodeRenderer
   }) as string;
   const safe = sanitizeAssistantHtml(html);
-  if (cache) setCachedMarkdown(input, safe);
+  if (cache) setCachedMarkdown(cacheKey, safe);
   return safe;
 }
 

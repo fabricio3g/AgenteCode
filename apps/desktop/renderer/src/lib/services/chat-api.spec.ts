@@ -55,6 +55,38 @@ describe('chat-api vision message conversion', () => {
     expect(isVisionModel('gpt-4o-mini')).toBe(true);
     expect(isVisionModel('plain-llama-text')).toBe(false);
   });
+
+  it('caps images to newest 20 when history has more than 20 image attachments', () => {
+    const messages = Array.from({ length: 25 }, (_, i) => ({
+      role: 'user' as const,
+      content: `Turn ${i}`,
+      attachments: [{
+        id: `att-${i}`,
+        name: `image-${i}.png`,
+        kind: 'image' as const,
+        status: 'ready' as const,
+        base64: `data:image/png;base64,data${i}`
+      }]
+    }));
+
+    const converted = toRequestMessages(messages, 'gpt-4o', true);
+    expect(converted).toHaveLength(25);
+
+    // Oldest 5 messages (indices 0..4) should have omitted note and text-only content
+    for (let i = 0; i < 5; i++) {
+      expect(Array.isArray(converted[i].content)).toBe(false);
+      expect(typeof converted[i].content).toBe('string');
+      expect(converted[i].content).toContain(`[Image: image-${i}.png (omitted from earlier history to stay under provider image limit)]`);
+    }
+
+    // Newest 20 messages (indices 5..24) should have image_url parts
+    for (let i = 5; i < 25; i++) {
+      expect(Array.isArray(converted[i].content)).toBe(true);
+      const parts = converted[i].content as Array<{ type: string; image_url?: { url: string } }>;
+      const imagePart = parts.find((p) => p.type === 'image_url');
+      expect(imagePart?.image_url?.url).toBe(`data:image/png;base64,data${i}`);
+    }
+  });
 });
 
 describe('chat-api local backend routing helpers', () => {

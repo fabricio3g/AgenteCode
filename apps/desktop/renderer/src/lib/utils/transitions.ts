@@ -41,16 +41,16 @@ export function flyAndScale(
 const exitEase = (t: number): number => t * t * t
 
 /**
- * A dialog arriving: it rises a few pixels, grows from 96% and comes into
- * focus (a light blur clears) on the expo-out ease, so it lands softly.
+ * Dialogs share a short transform/opacity transition. Text stays sharp
+ * throughout; animating a blur forces repeated rasterization of the panel.
  */
 export function dialogIn(_node: Element): TransitionConfig {
   if (reducedMotion.value) return { duration: 0, css: () => '' }
   return {
-    duration: 320,
+    duration: 200,
     easing: smoothEase,
     css: (t, u) =>
-      `opacity: ${Math.min(1, t * 1.8)}; transform: translate3d(0, ${u * 14}px, 0) scale(${0.96 + t * 0.04}); filter: blur(${u * 6}px);`
+      `opacity: ${Math.min(1, t * 1.8)}; transform: translate3d(0, ${u * 6}px, 0) scale(${0.985 + t * 0.015});`
   }
 }
 
@@ -67,12 +67,12 @@ export function dialogOut(_node: Element): TransitionConfig {
 /** The backdrop behind a dialog: it fades in with the dialog and out a touch faster. */
 export function backdropIn(_node: Element): TransitionConfig {
   if (reducedMotion.value) return { duration: 0, css: () => '' }
-  return { duration: 260, easing: smoothEase, css: (t) => `opacity: ${t};` }
+  return { duration: 150, easing: smoothEase, css: (t) => `opacity: ${t};` }
 }
 
 export function backdropOut(_node: Element): TransitionConfig {
   if (reducedMotion.value) return { duration: 0, css: () => '' }
-  return { duration: 180, easing: exitEase, css: (t) => `opacity: ${t};` }
+  return { duration: 150, easing: exitEase, css: (t) => `opacity: ${t};` }
 }
 
 export function motionFade(
@@ -80,7 +80,7 @@ export function motionFade(
   params: FadeParams | undefined
 ): TransitionConfig {
   if (reducedMotion.value) return { duration: 0, css: () => '' }
-  return fade(node, params)
+  return fade(node, { duration: 150, easing: smoothEase, ...params })
 }
 
 export function motionFly(
@@ -88,7 +88,7 @@ export function motionFly(
   params: FlyParams | undefined
 ): TransitionConfig {
   if (reducedMotion.value) return { duration: 0, css: () => '' }
-  return fly(node, params)
+  return fly(node, { duration: 200, easing: smoothEase, ...params })
 }
 
 export function motionSlide(

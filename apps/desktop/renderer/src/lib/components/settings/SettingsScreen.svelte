@@ -237,16 +237,9 @@
 </script>
 
 <section class="flex min-h-0 min-w-0 flex-1 flex-col bg-background" aria-label={$t('settingsNav.title')}>
-  <!-- No way back here: the title bar carries it, in the place the buttons it
-       displaced used to sit. This row only says where you are. -->
-  <header class="flex h-11 shrink-0 items-center gap-2 border-b border-[var(--border-subtle)] px-3">
-    <h1 class="min-w-0 truncate text-[13px] font-semibold tracking-[-0.01em] text-foreground">{$t('settingsNav.title')}</h1>
-    {#if selectedRow}
-      <span class="text-[var(--text-muted)]" aria-hidden="true">·</span>
-      <p class="min-w-0 truncate text-[13px] text-muted-foreground">{selectedRow.label}</p>
-    {/if}
-  </header>
-
+  <!-- No header here: the rail names every row and each panel titles itself,
+       so a screen-level bar only repeats where you are. Back lives in the
+       title bar, where the buttons it displaced used to sit. -->
   <div class="flex min-h-0 flex-1 flex-col overflow-hidden md:flex-row">
     <SettingsRail
       groups={groups}

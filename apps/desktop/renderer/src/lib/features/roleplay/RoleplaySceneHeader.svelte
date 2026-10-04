@@ -245,7 +245,7 @@
     border-radius: var(--radius-full);
     background: var(--card);
     color: var(--text-muted);
-    font-size: 0.6875rem;
+    font-size: var(--text-xs);
     font-weight: 600;
     cursor: pointer;
     transition:
@@ -341,7 +341,7 @@
     border-radius: var(--radius-full);
     background: var(--card);
     color: var(--text-muted);
-    font-size: 0.6875rem;
+    font-size: var(--text-xs);
     font-weight: 500;
     cursor: pointer;
     transition:
@@ -386,7 +386,7 @@
     border-radius: var(--radius-full);
     background: transparent;
     color: var(--text-muted);
-    font-size: 0.6875rem;
+    font-size: var(--text-xs);
     cursor: pointer;
     transition:
       border-color var(--motion-fast) var(--motion-ease),

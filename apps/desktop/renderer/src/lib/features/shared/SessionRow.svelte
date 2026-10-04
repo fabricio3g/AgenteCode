@@ -110,7 +110,7 @@
     }
   }}
 >
-  {#if Icon}<Icon class="size-3.5 shrink-0" />{/if}
+  {#if Icon}<Icon class="sidebar-row-icon" />{/if}
 
   {#if renaming}
     <input

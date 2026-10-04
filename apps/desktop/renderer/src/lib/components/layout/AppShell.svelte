@@ -7,6 +7,7 @@
   import { conversationScope } from '$shared/workspace-scope';
   import { t } from 'svelte-i18n';
   import Titlebar from '$lib/components/layout/Titlebar.svelte';
+  import ActivityRail from '$lib/components/layout/ActivityRail.svelte';
   import Sidebar from '$lib/components/layout/Sidebar.svelte';
   import HomeSurface from '$lib/features/home/HomeSurface.svelte';
   import CodeSurface from '$lib/features/code/CodeSurface.svelte';
@@ -228,13 +229,6 @@
     openSettings(legacyFlagToModelHubSection('runtimeManagerOpen'));
   });
 
-  // Settings is a screen, not a dialog: nothing moves the caret for it, so put
-  // it on the way back — the one control the screen leaves visible.
-  $effect(() => {
-    if (!settingsShowing) return;
-    requestAnimationFrame(() => document.querySelector<HTMLButtonElement>('[data-back-to-chat]')?.focus());
-  });
-
   // ── Sidebar width (drag its edge; remembered) ────────────────────────
   const SIDEBAR_WIDTH_KEY = 'flaxeo.sidebar.width';
   function readSidebarWidth(): number {
@@ -252,6 +246,13 @@
   // One mounted sidebar: pinned takes layout space; the preview floats over
   // the content below the title bar (sidebar-peek.svelte.ts).
   const peek = new SidebarPeek(() => appStore.sidebarOpen);
+  // The preview helper is a plain object, so the element binding below lands
+  // on local state first — binding straight to `peek.panel` warns as a
+  // non-reactive target — and an effect hands it over.
+  let sidebarPanel = $state<HTMLElement | undefined>(undefined);
+  $effect(() => {
+    peek.panel = sidebarPanel;
+  });
 
   function toggleSidebar() {
     peek.toggled();
@@ -283,8 +284,12 @@
 </script>
 
 <div data-desktop-shell class="relative flex h-full overflow-hidden bg-background text-foreground">
-  <!-- Full-height sidebar (Flaxeo pattern): sidebar | titlebar+main. Settings
-       takes the whole window, so it is not rendered at all while it is up. -->
+  <!-- The activity rail is always on: spaces, Settings, downloads and theme
+       stay one click away even while Settings owns the content area. Only the
+       collapsible sidebar hides. -->
+  <ActivityRail />
+  <!-- Full-height sidebar (Flaxeo pattern): rail | sidebar | titlebar+main.
+       Settings hides the sidebar, never the rail. -->
   {#if !settingsShowing}
     <div
       class="sidebar-outer relative flex shrink-0 flex-col bg-sidebar"
@@ -293,7 +298,7 @@
       style="--sidebar-w: {sidebarWidth}px"
     >
       <div
-        bind:this={peek.panel}
+        bind:this={sidebarPanel}
         id="app-sidebar"
         class="sidebar-view-full absolute inset-0 flex flex-col"
         class:preview={!appStore.sidebarOpen && peek.open}
@@ -304,7 +309,7 @@
                corner, so it carries the bar's own buttons in the same spot. -->
           <div class="preview-bar"><TitlebarLeftTools expanded onToggle={toggleSidebar} /></div>
         {/if}
-        <Sidebar />
+        <Sidebar onNavigate={() => peek.toggled()} />
       </div>
     </div>
 
@@ -320,11 +325,10 @@
   {/if}
 
   <!-- No overflow-hidden on this column: titlebar fade hangs below h-9. -->
-  <div class="flex min-h-0 min-w-0 flex-1 flex-col bg-background">
+  <div class="relative flex min-h-0 min-w-0 flex-1 flex-col bg-background">
     <Titlebar
       sidebarPreview={peek.open}
       settingsOpen={settingsShowing}
-      onleaveSettings={closeSettings}
       onSidebarEnter={() => peek.show()}
       onSidebarLeave={(event) => peek.leave(event)}
       onSidebarToggle={toggleSidebar}
@@ -352,13 +356,16 @@
 
       <!-- Settings sits over the workspace rather than in the branch above it:
            the surface underneath stays mounted, so a trip to Settings costs no
-           scroll position and no streaming turn, and Back lands you exactly
-           where you left. Above the dock panels (z-index 1..n) on purpose — the
-           screen owns the whole content area while it is up. -->
+           scroll position and no streaming turn, and leaving lands you exactly
+           where you were. It covers the title bar too — the screen's nav column
+           runs to the top edge of the window, and the page header carries the
+           drag region the bar gave up. Above the dock panels (z-index 1..n) and
+           above the bar itself on purpose. -->
       {#if settingsShowing}
         <div
-          class="absolute inset-0 z-20 flex min-h-0 min-w-0 flex-col bg-background"
-          transition:motionFade={{ duration: 160 }}
+          data-overlay="settings"
+          class="absolute inset-0 z-30 flex min-h-0 min-w-0 flex-col bg-background"
+          transition:motionFade={{ duration: isElectron() ? 0 : 160 }}
         >
           <SettingsScreen />
         </div>
@@ -381,7 +388,7 @@
   {#if openPlan && appStore.currentChat}<PlanPanel embedded chatId={appStore.currentChat.id} plan={openPlan} />{:else}<p class="p-5 text-xs text-muted-foreground">{$t('workspace.noPlan')}</p>{/if}
 {/snippet}
 {#snippet artifactPanel(state: PanelRenderState)}<ArtifactPanel embedded exposed={state.exposed} bind:this={artifactPanelHandle} />{/snippet}
-{#snippet browserPanel(state: PanelRenderState)}<BrowserPanel embedded exposed={state.exposed} presentationKey={JSON.stringify(state.rect)} />{/snippet}
+{#snippet browserPanel(state: PanelRenderState)}<BrowserPanel embedded exposed={state.exposed && !settingsShowing} presentationKey={JSON.stringify(state.rect)} chatId={inBots ? undefined : appStore.currentChat?.id} />{/snippet}
 {#snippet processesPanel()}
   {#each Object.values(conversations) as target (target.chatId)}
     <div class="conversation-panel" hidden={target.chatId !== changesTarget?.chatId}><ProcessesView chatId={target.chatId} cwd={target.projectRoot} /></div>
@@ -448,7 +455,7 @@
   .conversation-panel[hidden] { display: none; }
   .sidebar-outer {
     width: 0;
-    transition: width var(--motion-smooth) var(--motion-ease-out);
+    transition: none;
   }
   /* Default 15rem: room for a project tree with row actions and status
      dots; dragging the edge sets --sidebar-w. */
@@ -489,29 +496,32 @@
     visibility: hidden;
     pointer-events: none;
     overflow: hidden;
-    transition: opacity 150ms ease, visibility 0s linear 150ms;
+    transition: none;
   }
   .sidebar-outer.expanded .sidebar-view-full,
   .sidebar-view-full.preview {
     opacity: 1;
     visibility: visible;
     pointer-events: auto;
-    transition-delay: 40ms, 0s;
   }
 
   /* The preview is the same sidebar floating over the content: full height
-     to the top of the window, same colour, with the title bar's left buttons
-     redrawn in place (TitlebarLeftTools) and a shadow over the content. */
+     to the top of the window, starting beside the always-on activity rail
+     (--rail-w) so it never covers it, with the title bar's left buttons redrawn
+     in place (TitlebarLeftTools). It reads as a panel, not as the docked rail:
+     the same surface, but the outer corners round like the workspace cards, the
+     seam steps up to --border-hover and the elevation comes from --shadow-xl. */
   .sidebar-view-full.preview {
     position: fixed;
     z-index: var(--z-float);
     top: 0;
     bottom: 0;
-    left: 0;
+    left: var(--rail-w);
     right: auto;
     max-width: calc(100vw - 1rem);
     background: var(--sidebar);
     border-right: 1px solid var(--border-hover);
+    border-radius: 0 0.875rem 0.875rem 0;
     box-shadow: var(--shadow-xl);
   }
 

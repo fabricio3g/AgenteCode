@@ -1,9 +1,11 @@
 import type { AppConfig, ChatSession, ChatFolder, CharacterCard, CodeProject, RoleplayWorld, UserPersona } from '$lib/types/chat';
 import { isElectron } from '$lib/services/bridge';
+import { THEME_STORAGE_KEY } from '$shared/window-theme';
 
 const APP_CONFIG_KEY = 'chatealm_app_config';
-const CHAT_STATE_KEY = 'chatealm_chat_state_v2';
-const THEME_KEY = 'chatealm_theme';
+/** Chat navigation state. Exported so the dev harness can boot into a fixture. */
+export const CHAT_STATE_KEY = 'chatealm_chat_state_v2';
+const THEME_KEY = THEME_STORAGE_KEY;
 const DB_MIGRATED_KEY = 'chatealm_db_migrated';
 const CHARACTERS_KEY = 'chatealm_characters_v1';
 const PERSONAS_KEY = 'chatealm_personas_v1';
@@ -369,10 +371,12 @@ export async function deleteWorldFromDb(worldId: string): Promise<void> {
 }
 
 export function loadTheme(): 'light' | 'dark' | null {
-  const value = localStorage.getItem(THEME_KEY);
-  return value === 'light' || value === 'dark' ? value : null;
+  try {
+    const value = localStorage.getItem(THEME_KEY);
+    return value === 'light' || value === 'dark' ? value : null;
+  } catch { return null; }
 }
 
 export function saveTheme(value: 'light' | 'dark'): void {
-  localStorage.setItem(THEME_KEY, value);
+  try { localStorage.setItem(THEME_KEY, value); } catch { /* Apply even when storage is unavailable. */ }
 }

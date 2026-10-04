@@ -14,6 +14,8 @@
     Switch,
   } from '$lib/components/ui';
   import { motionSlide } from '$lib/utils/transitions';
+  import SettingsSection from './SettingsSection.svelte';
+  import SettingsRow from './SettingsRow.svelte';
   import {
     getAggregatorCatalog,
     probeAggregatorEngines,
@@ -200,61 +202,53 @@
 </script>
 
 <div class="space-y-5">
-  <section class="rounded-2xl bg-[var(--muted)]">
-    <div class="px-4">
-      <Field
-        horizontal
-        class="py-3"
-        label="Search provider"
-        description="Use one provider directly, or combine an engine pool."
-        htmlFor="search-provider"
-      >
-        <Select
-          id="search-provider"
-          bind:value={searchProvider}
-          options={SEARCH_PROVIDERS.map((provider) => ({ value: provider.id, label: provider.label }))}
-        />
-      </Field>
+  <SettingsSection>
+    <SettingsRow
+      label="Search provider"
+      description="Use one provider directly, or combine an engine pool."
+      htmlFor="search-provider"
+    >
+      <Select
+        id="search-provider"
+        bind:value={searchProvider}
+        options={SEARCH_PROVIDERS.map((provider) => ({ value: provider.id, label: provider.label }))}
+      />
+    </SettingsRow>
 
-      <Field
-        horizontal
-        class="py-3"
-        label="Target results"
-        description="Standard web searches request 1–20 results. Deep modes use their own larger research budget."
-        htmlFor="search-result-target"
-      >
-        <Input
-          id="search-result-target"
-          type="number"
-          min="1"
-          max="20"
-          inputmode="numeric"
-          bind:value={searchMaxResults}
-        />
-      </Field>
+    <SettingsRow
+      label="Target results"
+      description="Standard web searches request 1–20 results. Deep modes use their own larger research budget."
+      htmlFor="search-result-target"
+    >
+      <Input
+        id="search-result-target"
+        type="number"
+        min="1"
+        max="20"
+        inputmode="numeric"
+        bind:value={searchMaxResults}
+      />
+    </SettingsRow>
 
-      <Field
-        horizontal
-        class="py-3"
-        label="Safe search"
-        description="Applied when the selected engine supports it."
-        htmlFor="safe-search"
-      >
-        <Select
-          id="safe-search"
-          bind:value={searchSafeSearch}
-          options={[
-            { value: '0', label: 'Off' },
-            { value: '2', label: 'Moderate' },
-            { value: '4', label: 'Strict' },
-          ]}
-        />
-      </Field>
-    </div>
-  </section>
+    <SettingsRow
+      label="Safe search"
+      description="Applied when the selected engine supports it."
+      htmlFor="safe-search"
+    >
+      <Select
+        id="safe-search"
+        bind:value={searchSafeSearch}
+        options={[
+          { value: '0', label: 'Off' },
+          { value: '2', label: 'Moderate' },
+          { value: '4', label: 'Strict' },
+        ]}
+      />
+    </SettingsRow>
+  </SettingsSection>
 
   {#if providerNeedsConfiguration && searchProvider !== 'aggregator'}
-    <section class="rounded-2xl bg-[var(--muted)] p-4">
+    <section class="rounded-2xl border border-[var(--border)] bg-[var(--card)] p-4 sm:p-5">
       <h4 class="text-sm font-semibold text-foreground">{currentSearchProvider.label} configuration</h4>
       <p class="mt-1 text-xs leading-relaxed text-muted-foreground">
         This provider remains inactive until its required fields are saved successfully.
@@ -289,8 +283,8 @@
   {/if}
 
   {#if searchProvider === 'aggregator'}
-    <section class="overflow-hidden rounded-2xl bg-[var(--muted)]">
-      <div class="flex flex-wrap items-start justify-between gap-3 border-b border-[var(--border-subtle)] px-4 py-4">
+    <section class="overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--card)]">
+      <div class="flex flex-wrap items-start justify-between gap-3 border-b border-[var(--border-subtle)] px-4 py-4 sm:px-5">
         <div>
           <div class="flex items-center gap-2">
             <h4 class="text-sm font-semibold text-foreground">Engine pool</h4>

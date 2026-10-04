@@ -171,7 +171,7 @@
   .ui-tool-row :global(.ui-tool-fallback-trigger) { border-radius: var(--radius-md); background: transparent; padding: 0.5rem 0.625rem; font-size: 0.75rem; }
   .ui-tool-row :global(.ui-tool-fallback-trigger:hover) { background: var(--muted); }
   .ui-tool-row :global(.ui-tool-fallback-content) { margin: 0 0.625rem 0.5rem; border-left: 1px solid var(--border); padding: 0.5rem 0.75rem; background: transparent; }
-  .ui-tool-row :global(pre) { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 18rem; overflow-y: auto; font-size: 0.6875rem; }
+  .ui-tool-row :global(pre) { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 18rem; overflow-y: auto; font-size: var(--text-xs); }
 
   /* Completed, collapsed work steps back so the answer leads; hover restores
      full contrast. Running / error / expanded rows stay at full weight. */
@@ -192,7 +192,7 @@
     gap: 0.25rem;
     flex-shrink: 0;
     font-variant-numeric: tabular-nums;
-    font-size: 0.68rem;
+    font-size: var(--text-xs);
     font-weight: 600;
   }
 
