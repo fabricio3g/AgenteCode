@@ -120,6 +120,10 @@ class HomeTurn {
 
   /** What each runtime event means for the message; events not listed change nothing here. */
   readonly #handlers: { [K in RuntimeEvent['type']]?: (event: Extract<RuntimeEvent, { type: K }>) => void } = {
+    user_messages_injected: (event) => {
+      this.args.onMessagesInjected?.(event.messages);
+      this.text = ''; this.reasoning = '';
+    },
     assistant_delta: (event) => { this.text += event.text; this.args.onContent?.(this.text); },
     assistant_message: (event) => { this.text = event.text; this.args.onContent?.(this.text); },
     reasoning_delta: (event) => { this.reasoning += event.text; this.args.onReasoning?.(this.reasoning); },

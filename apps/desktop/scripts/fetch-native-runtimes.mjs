@@ -9,6 +9,7 @@
 // Environment:
 //   NATIVE_RUNTIME_PLATFORM  linux | windows | macos   (default: this machine)
 //   NATIVE_RUNTIME_ARCH      x64 | arm64                (default: this machine)
+//   NATIVE_RUNTIME_ENGINES   e.g. "audio"               (default: all engines)
 //   NATIVE_RUNTIME_BACKENDS  e.g. "cpu,vulkan"          (default: published backends except ROCm)
 //   LLAMA_CPP_TAG / WHISPER_CPP_TAG / AUDIO_CPP_TAG  release to use (defaults below)
 //   GITHUB_TOKEN             optional, avoids the API rate limit in CI
@@ -30,6 +31,7 @@ const PLATFORM = process.env.NATIVE_RUNTIME_PLATFORM || (
   process.platform === 'win32' ? 'windows' : process.platform === 'darwin' ? 'macos' : 'linux'
 );
 const ARCH = process.env.NATIVE_RUNTIME_ARCH || (process.arch === 'arm64' ? 'arm64' : 'x64');
+const SELECTED_ENGINES = (process.env.NATIVE_RUNTIME_ENGINES || '').split(',').map(value => value.trim()).filter(Boolean);
 const BACKENDS = (process.env.NATIVE_RUNTIME_BACKENDS || '')
   .split(',')
   .map((value) => value.trim().toLowerCase())
@@ -78,8 +80,8 @@ const ENGINES = [
     // Text to speech (Settings → Voice). CPU builds run everywhere; the
     // models are downloaded by the user in the app.
     assets: {
-      'linux-x64': { cpu: ['audio-{tag}-bin-ubuntu-x64-cpu-portable.tar.gz'] },
-      'windows-x64': { cpu: ['audio-{tag}-bin-windows-x64-cpu-portable.zip'] }
+      'linux-x64': { cpu: ['audio-{tag}-bin-ubuntu-x64-cpu-portable.tar.gz'], vulkan: ['audio-{tag}-bin-ubuntu-x64-vulkan-portable.tar.gz'] },
+      'windows-x64': { cpu: ['audio-{tag}-bin-windows-x64-cpu-portable.zip'], vulkan: ['audio-{tag}-bin-windows-x64-vulkan.zip'] }
     }
   },
   {
@@ -181,7 +183,10 @@ function install(unpacked, outDir, executables) {
     fs.rmSync(target, { force: true });
     // Keep versioned-library symlinks (libllama.so -> libllama.so.0) as links.
     fs.cpSync(file, target, { verbatimSymlinks: true });
-    if (executables.has(path.basename(file))) count += 1;
+    if (executables.has(path.basename(file))) {
+      if (process.platform !== 'win32') fs.chmodSync(target, 0o755);
+      count += 1;
+    }
   }
   return count;
 }
@@ -239,7 +244,7 @@ const work = fs.mkdtempSync(path.join(os.tmpdir(), 'agente-native-'));
 try {
   fs.mkdirSync(OUT_ROOT, { recursive: true });
   for (const spec of ENGINES) {
-    fs.rmSync(path.join(OUT_ROOT, spec.engine), { recursive: true, force: true });
+    if (SELECTED_ENGINES.length && !SELECTED_ENGINES.includes(spec.engine)) continue;
     await fetchEngine(spec, key, work);
   }
   console.log(`[native] Done: ${OUT_ROOT}`);

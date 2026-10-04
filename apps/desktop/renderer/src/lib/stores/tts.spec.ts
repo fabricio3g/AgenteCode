@@ -59,6 +59,17 @@ afterEach(() => {
 });
 
 describe('audio.cpp playback requests', () => {
+  it('reports preparing audio until an actual clip is scheduled', async () => {
+    await ttsStore.speak('synchronized', 'Hello.', config);
+    expect(ttsStore.audioStarted).toBe(false);
+    expect(ttsStore.isGenerating).toBe(true);
+    emit('tts-start', requests[0].requestId, { total: 1 });
+    expect(ttsStore.audioStarted).toBe(false);
+    emit('tts-chunk', requests[0].requestId, { index: 0, total: 1, base64: pcm });
+    expect(ttsStore.audioStarted).toBe(true);
+    ttsStore.stop();
+    expect(ttsStore.audioStarted).toBe(false);
+  });
   it('pauses without cancelling synthesis and resumes the same request', async () => {
     await ttsStore.speak('message', 'Hello.', config);
     emit('tts-chunk', requests[0].requestId, { index: 0, total: 1, base64: pcm });
@@ -149,4 +160,22 @@ describe('audio.cpp playback requests', () => {
     expect(ttsStore.hasStoredAudio('message')).toBe(false);
     expect(ttsStore.onAudioComplete).not.toHaveBeenCalled();
   });
+});
+
+it('queues streamed call sentences without interrupting the first, then cancels them on barge-in', async () => {
+  ttsStore.enqueueSpeech([{ id: 'call-first', text: 'First sentence.', config }]);
+  await vi.advanceTimersByTimeAsync(0);
+  ttsStore.enqueueSpeech([{ id: 'call-second', text: 'Second sentence.', config }]);
+  expect(requests).toHaveLength(1);
+  emit('tts-chunk', requests[0].requestId, { index: 0, total: 1, base64: pcm });
+  emit('tts-done', requests[0].requestId);
+  sources[0].onended?.();
+  await vi.advanceTimersByTimeAsync(0);
+  expect(requests[1].text).toBe('Second sentence.');
+  ttsStore.enqueueSpeech([{ id: 'call-third', text: 'Third sentence.', config }]);
+  ttsStore.stop();
+  emit('tts-done', requests[1].requestId);
+  expect(requests).toHaveLength(2);
+  ttsStore.forgetAudio(['call-first', 'call-second']);
+  expect(ttsStore.hasStoredAudio('call-first')).toBe(false);
 });

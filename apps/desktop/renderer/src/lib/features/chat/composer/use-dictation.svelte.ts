@@ -4,8 +4,8 @@ import { ttsStore } from '$lib/stores/tts.svelte';
 import { invoke, isElectron, listen } from '$lib/services/bridge';
 import { sttTranscribe } from '$lib/services/stt';
 import { recordingToWav } from './wav-encode';
+import { requestMicrophone } from './mic-probe';
 import { setupSpeech } from './speech-models';
-import { hasMicrophone } from './mic-probe';
 
 /**
  * Speech-to-text for the composer.
@@ -117,6 +117,13 @@ export class Dictation {
   private discard = false;
   /** Voice engine is known to be installed; checked once per session. */
   private voiceReady = false;
+  afterSetup: (() => void) | undefined;
+
+  async prepareCall(): Promise<boolean> {
+    if (!this.supported) return false;
+    this.cancel();
+    return this.ensureVoiceEngine();
+  }
 
   private recognition: RecognitionInstance | null = null;
   private recorder: MediaRecorder | null = null;
@@ -234,8 +241,7 @@ export class Dictation {
 
     // Prime the preferred device first: Chrome hands SpeechRecognition whichever
     // audio input was most recently activated, not the one we configured.
-    void navigator.mediaDevices
-      .getUserMedia(this.audioConstraints())
+    void requestMicrophone(appStore.config.stt?.audio_input_device_id)
       .then((stream) => {
         this.micStream = stream;
         this.startAnalyser(stream);
@@ -313,11 +319,7 @@ export class Dictation {
     }
 
     ttsStore.stop();
-    // No microphone plugged in: say so before offering any download.
-    if (!(await hasMicrophone())) {
-      toastStore.error(microphoneAccessMessage(new DOMException('No microphone', 'NotFoundError')));
-      return;
-    }
+    // Device enumeration can be empty before capture permission on Linux.
     if (!(await this.ensureVoiceEngine())) return;
     this.phase = 'permission';
     this.interim = '';
@@ -325,7 +327,7 @@ export class Dictation {
     this.discard = false;
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia(this.audioConstraints());
+      const stream = await requestMicrophone(appStore.config.stt?.audio_input_device_id);
       this.whisperListening = true;
       this.phase = 'recording';
       this.micStream = stream;
@@ -457,20 +459,17 @@ export class Dictation {
       unlisten();
       this.setupProgress = 0;
     }
-    this.toggle(false);
+    if (this.afterSetup) { const ready = this.afterSetup; this.afterSetup = undefined; ready(); }
+    else this.toggle(false);
   }
 
   /** Close the first-run choice without installing anything. */
   closeChoice(): void {
     if (this.phase === 'choose') this.phase = 'idle';
+    this.afterSetup = undefined;
   }
 
   // ── Shared ────────────────────────────────────────────────────────────────
-
-  private audioConstraints(): MediaStreamConstraints {
-    const deviceId = appStore.config.stt?.audio_input_device_id;
-    return deviceId ? { audio: { deviceId: { exact: deviceId } } } : { audio: true };
-  }
 
   private appendToComposer(text: string): void {
     const addition = text.trim();

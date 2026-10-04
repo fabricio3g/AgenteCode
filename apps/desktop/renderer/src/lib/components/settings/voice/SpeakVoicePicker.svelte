@@ -21,6 +21,7 @@
 
   let installed = $state<string[]>([]);
   let espeak = $state(true);
+  let backends = $state<string[]>(['cpu']);
   let previewing = $state<string | null>(null);
 
   const tts = $derived(appStore.config.tts ?? {});
@@ -29,9 +30,10 @@
   const voices = $derived(active ? active.voices.filter((voice) => voice.language === '*' || voice.language === language) : []);
 
   async function refresh() {
-    const status = await invoke<{ installed: string[]; espeak: boolean }>('voice_models_status').catch(() => ({ installed: [], espeak: true }));
+    const status = await invoke<{ installed: string[]; espeak: boolean; backends?: string[] }>('voice_models_status').catch(() => ({ installed: [], espeak: true, backends: ['cpu'] }));
     installed = status.installed;
     espeak = status.espeak;
+    backends = status.backends ?? ['cpu'];
   }
 
   onMount(() => {
@@ -115,6 +117,18 @@
     <p class="text-xs text-muted-foreground">{$t('voice.engine.hint')}</p>
   </div>
 
+  <div class="flex items-center justify-between gap-3">
+    <span class="text-sm text-foreground">{$t('voice.engine.acceleration')}</span>
+    <Select class="w-56" aria-label={$t('voice.engine.acceleration')} value={tts.local_backend ?? 'cpu'}
+      onchange={(value) => appStore.updateTtsSettings({ local_backend: value as 'cpu' | 'vulkan' })}
+      options={backends.map(value => ({ value, label: value === 'vulkan' ? 'Vulkan (GPU)' : 'CPU' }))} />
+  </div>
+  <div class="flex items-center justify-between gap-3">
+    <span class="text-sm text-foreground">{$t('voice.engine.threads')}</span>
+    <Select class="w-56" aria-label={$t('voice.engine.threads')} value={String(tts.num_threads ?? 2)}
+      onchange={(value) => appStore.updateTtsSettings({ num_threads: Number(value) })}
+      options={[1,2,4,8].map(value => ({ value: String(value), label: String(value) }))} />
+  </div>
   <div class="grid gap-2 sm:grid-cols-2">
     {#each VOICE_MODELS as model (model.id)}
       {@const job = jobFor(model)}

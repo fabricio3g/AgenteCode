@@ -12,6 +12,7 @@ import net from 'node:net';
 import path from 'node:path';
 import { availableParallelism } from 'node:os';
 import type { BrowserWindow } from 'electron';
+import { loadConfig } from '../config.ts';
 import { getAppPaths } from '../paths.ts';
 import { createLogger } from '../utils/logger.ts';
 import { VOICE_MODELS, voiceLanguage, voiceModel, voiceModelRelPath, type VoiceModel } from '../../shared/voice-models.ts';
@@ -44,14 +45,17 @@ export function onWorkerMessage(handler: (msg: TtsMessage) => void): void {
   listeners.add(handler);
 }
 
-function binary(): string | null {
+export function availableSpeechBackends(): string[] {
+  const root = path.join(getAppPaths().nativeBinRoot, 'audio');
+  const name = process.platform === 'win32' ? 'audiocpp_server.exe' : 'audiocpp_server';
+  return ['cpu', 'vulkan'].filter(backend => fs.existsSync(path.join(root, backend, name)));
+}
+
+function binary(backend: string): string | null {
   const name = process.platform === 'win32' ? 'audiocpp_server.exe' : 'audiocpp_server';
   const root = path.join(getAppPaths().nativeBinRoot, 'audio');
-  for (const backend of ['cpu', 'vulkan']) {
-    const candidate = path.join(root, backend, name);
-    if (fs.existsSync(candidate)) return candidate;
-  }
-  return null;
+  const candidate = path.join(root, backend, name);
+  return fs.existsSync(candidate) ? candidate : null;
 }
 
 export function modelPath(model: VoiceModel): string {
@@ -101,24 +105,28 @@ async function waitHealthy(port: number, child: ChildProcess): Promise<void> {
 /** Start (or restart, when the downloaded models changed) the server; returns its port. */
 async function ensureServer(): Promise<number> {
   const models = installedVoiceModels();
-  const signature = models.map((model) => model.id).join(',');
+  const tts = loadConfig().tts;
+  const backend = tts?.local_backend === 'vulkan' ? 'vulkan' : 'cpu';
+  const threads = Math.max(1, Math.min(availableParallelism(), Number(tts?.num_threads) || 8));
+  const selected = voiceModel(typeof tts?.voice_model === 'string' ? tts.voice_model : undefined)?.id ?? models[0]?.id;
+  const signature = JSON.stringify([models.map(model => model.id), backend, threads, selected]);
   if (server && server.models === signature && server.child.exitCode === null) return server.port;
   if (starting) return starting;
   starting = (async () => {
     stopServer();
-    const exe = binary();
+    const exe = binary(backend);
     if (!exe) throw new Error('The voice engine (audio.cpp) is not bundled with this build.');
     if (!models.length) throw new Error('Download a voice model in Settings → Voice first.');
     const port = await freePort();
     const config = {
       host: '127.0.0.1',
       port,
-      backend: 'cpu',
-      threads: Math.min(4, availableParallelism()),
+      backend,
+      threads,
       lazy_load: true,
       max_loaded_models: 1,
       idle_unload_ms: IDLE_UNLOAD_MS,
-      models: models.map((model) => ({ id: model.id, family: model.family, path: modelPath(model), task: 'tts', mode: 'offline' }))
+      models: models.map((model) => ({ id: model.id, family: model.family, path: modelPath(model), task: 'tts', mode: 'offline', lazy: model.id !== selected }))
     };
     const configPath = path.join(getAppPaths().voiceModelsRoot, 'audiocpp', 'server.json');
     fs.mkdirSync(path.dirname(configPath), { recursive: true });
@@ -200,14 +208,21 @@ export function toPlayerPcm(samples: Float32Array, rate: number, volume: number)
   return out.toString('base64');
 }
 
-/** Sentences, merged up to ~220 characters, so audio starts after the first one. */
+/** Small natural phrases bound first-audio latency; keep the first sentence separate. */
 export function splitSentences(text: string): string[] {
   const parts = text.replace(/\s+/g, ' ').trim().split(/(?<=[.!?…。！？])\s+/);
   const out: string[] = [];
-  for (const part of parts) {
-    const last = out[out.length - 1];
-    if (last !== undefined && last.length + part.length < 220 && last.length < 60) out[out.length - 1] = `${last} ${part}`;
-    else if (part) out.push(part);
+  for (let part of parts) {
+    while (part.length > 100) {
+      const prefix = part.slice(0, 100);
+      const clause = [...prefix.matchAll(/[,;:]\s+/g)].at(-1);
+      const boundary = clause && clause.index >= 35 ? clause.index + 1 : prefix.lastIndexOf(' ');
+      // Never split inside a word, URL or identifier.
+      if (boundary < 1) break;
+      out.push(part.slice(0, boundary).trim());
+      part = part.slice(boundary).trim();
+    }
+    if (part) out.push(part);
   }
   return out;
 }

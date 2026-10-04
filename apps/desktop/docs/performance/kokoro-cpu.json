@@ -1,0 +1,44 @@
+[
+  {
+    "threads": 4,
+    "chars": 18,
+    "firstAudioMs": 4557,
+    "totalMs": 4557,
+    "bytes": 86444
+  },
+  {
+    "threads": 4,
+    "chars": 18,
+    "firstAudioMs": 1026,
+    "totalMs": 1026,
+    "bytes": 86444
+  },
+  {
+    "threads": 4,
+    "chars": 110,
+    "firstAudioMs": 3544,
+    "totalMs": 3545,
+    "bytes": 307244
+  },
+  {
+    "threads": 8,
+    "chars": 18,
+    "firstAudioMs": 4100,
+    "totalMs": 4100,
+    "bytes": 86444
+  },
+  {
+    "threads": 8,
+    "chars": 18,
+    "firstAudioMs": 894,
+    "totalMs": 894,
+    "bytes": 86444
+  },
+  {
+    "threads": 8,
+    "chars": 110,
+    "firstAudioMs": 3300,
+    "totalMs": 3300,
+    "bytes": 307244
+  }
+]

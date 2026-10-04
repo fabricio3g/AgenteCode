@@ -8,12 +8,13 @@ import type { IpcMain } from 'electron';
 import { getAppPaths } from '../paths.ts';
 import { startDownloadHf } from '../model-download.ts';
 import { voiceModel, voiceModelRelPath } from '../../shared/voice-models.ts';
-import { hasEspeak, installedVoiceModels, modelPath, unloadTts } from './audiocpp-tts.ts';
+import { availableSpeechBackends, hasEspeak, installedVoiceModels, modelPath, unloadTts } from './audiocpp-tts.ts';
 
 export function registerVoiceModelHandlers(ipcMain: IpcMain): void {
   ipcMain.handle('voice_models_status', () => ({
     installed: installedVoiceModels().map((model) => model.id),
-    espeak: hasEspeak()
+    espeak: hasEspeak(),
+    backends: availableSpeechBackends()
   }));
 
   ipcMain.handle('voice_model_download', (_e, args: { id: string }) => {

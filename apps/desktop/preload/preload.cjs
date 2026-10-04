@@ -47,7 +47,7 @@ const ALLOWED_INVOKE_CHANNELS = new Set([
   'generate_pptx', 'parse_slides_from_markdown', 'slides_to_markdown',
   'generate_docx', 'generate_xlsx', 'generate_pdf',
   'fetch_url_content', 'crawl_web',
-  'home_runtime_start', 'home_runtime_result', 'home_runtime_cancel', 'home_runtime_update',
+  'home_runtime_start', 'home_runtime_result', 'home_runtime_cancel', 'home_runtime_update', 'home_runtime_steer',
   'agente_start_session', 'agente_prompt',
   'agente_steer', 'agente_follow_up', 'agente_abort',
   'agente_compact', 'model_sees_images', 'agente_set_model', 'agente_set_runtime_mode',

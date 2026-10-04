@@ -103,6 +103,11 @@ export function registerHomeRuntimeHandlers(ipcMain: IpcMain) {
     if (!run?.turnId) return { ok: false };
     return run.client.request('turn.update', { turn_id: run.turnId, thinking_level: args.thinkingLevel || 'auto' });
   });
+  ipcMain.handle('home_runtime_steer', async (event, args: { sessionId: string; content: string }) => {
+    const run = [...runs.values()].find(run => run.sessionId === args.sessionId && run.owner.id === event.sender.id);
+    if (!run?.turnId || !args.content?.trim()) return { ok: false };
+    return run.client.request('turn.steer', { turn_id: run.turnId, content: args.content.trim(), attachments: [] });
+  });
   ipcMain.handle('home_runtime_cancel', async (event, args: { runId: string }) => {
     const run = runs.get(args.runId);
     if (run && run.owner.id === event.sender.id) await cancel(run);

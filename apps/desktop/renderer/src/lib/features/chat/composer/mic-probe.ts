@@ -1,9 +1,8 @@
 /**
  * Is there a microphone we can use, and if not, why not?
  *
- * The device list is checked before asking for access, so "nothing plugged
- * in" is never reported as "access denied" (Chromium hides inputs whose jack
- * is unplugged, and getUserMedia then fails with NotFoundError).
+ * Capture is authoritative: Linux can expose an empty device list before
+ * the first successful permission request. An empty list is not a denial.
  */
 
 export type MicState = 'ready' | 'none' | 'blocked' | 'busy' | 'unsupported';
@@ -31,11 +30,22 @@ export async function hasMicrophone(): Promise<boolean> {
   return (await audioInputs()).length > 0;
 }
 
+/** Retry a stale persisted device id after USB reconnection, using the OS default. */
+export async function requestMicrophone(deviceId?: string): Promise<MediaStream> {
+  const options = { echoCancellation: true, noiseSuppression: true, autoGainControl: true };
+  try {
+    return await navigator.mediaDevices.getUserMedia({ audio: { ...options, ...(deviceId ? { deviceId: { exact: deviceId } } : {}) } });
+  } catch (error) {
+    const name = error && typeof error === 'object' && 'name' in error ? String(error.name) : '';
+    if (!deviceId || !['NotFoundError', 'OverconstrainedError', 'DevicesNotFoundError'].includes(name)) throw error;
+    return navigator.mediaDevices.getUserMedia({ audio: options });
+  }
+}
+
 export async function probeMicrophone(): Promise<MicProbe> {
   if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) return { state: 'unsupported', devices: [] };
-  if (!(await audioInputs()).length) return { state: 'none', devices: [] };
   try {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const stream = await requestMicrophone();
     stream.getTracks().forEach((track) => track.stop());
   } catch (err) {
     return { state: micStateFromError(err), devices: await audioInputs() };

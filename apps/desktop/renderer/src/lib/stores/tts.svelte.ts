@@ -13,6 +13,8 @@ type TtsDoneEvent = { requestId?: string };
 
 class TtsStore {
   playing = $state(false);
+  /** Audio was scheduled or the browser reported playback, not just synthesis requested. */
+  audioStarted = $state(false);
   paused = $state(false);
   isGenerating = $state(false);
   currentMessageId = $state<string | null>(null);
@@ -33,6 +35,17 @@ class TtsStore {
     this.stop();
     this.queue = parts.filter((part) => part.text.trim());
     this.nextInSequence();
+  }
+
+  /** Add streaming call sentences without stopping speech already in progress. */
+  enqueueSpeech(parts: Array<{ id: string; text: string; config: AppConfig }>) {
+    this.queue.push(...parts.filter(part => part.text.trim()));
+    if (!this.playing && !this.isGenerating && !this.paused) this.nextInSequence();
+  }
+
+  forgetAudio(ids: string[]) {
+    for (const id of ids) { this.audioBuffers.delete(id); this.audioSignatures.delete(id); }
+    this.storedAudioIds = new Set([...this.storedAudioIds].filter(id => !ids.includes(id)));
   }
 
   private nextInSequence() {
@@ -121,6 +134,7 @@ class TtsStore {
     if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
       window.speechSynthesis.cancel();
     }
+    this.audioStarted = false;
     this.playing = false;
     this.paused = false;
     this.isGenerating = false;
@@ -136,6 +150,7 @@ class TtsStore {
     if (this.audioCtx?.state === 'running') await this.audioCtx.suspend();
     else if (typeof window !== 'undefined') window.speechSynthesis?.pause();
     if (session !== this.genId || !this.currentMessageId) return;
+    this.audioStarted = false;
     this.playing = false;
     this.paused = true;
   }
@@ -292,6 +307,7 @@ class TtsStore {
       // Schedule to start at the later of: current time + small margin, or lastScheduledEnd
       const when = Math.max(this.audioCtx.currentTime + 0.02, this.lastScheduledEnd);
       source.start(when);
+      this.audioStarted = true;
       this.playbackTimeline.push({ start: when, duration: buffer.duration, offset: this.scheduledDuration });
       this.scheduledDuration += buffer.duration;
 
@@ -324,6 +340,7 @@ class TtsStore {
     const finishedId = this.currentMessageId;
     const totalDur = this.totalDuration;
     this.isGenerating = false;
+    this.audioStarted = false;
     this.playing = false;
     this.paused = false;
     this.progress = null;
@@ -397,6 +414,7 @@ class TtsStore {
       this.playbackTimeline.push({ start: ctx.currentTime, duration: audioBuffer.duration, offset: this.elapsedTime });
       this.startProgressTracking();
       source.start();
+      this.audioStarted = true;
     } catch (error) {
       if (session === this.genId) this.failPlayback(error instanceof Error ? error.message : String(error));
     }
@@ -404,6 +422,7 @@ class TtsStore {
 
   private finishStoredPlayback() {
     this.stopProgressTracking();
+    this.audioStarted = false;
     this.playing = false;
     this.paused = false;
     this.currentMessageId = null;
@@ -416,7 +435,8 @@ class TtsStore {
 
   private playBrowser(messageId: string, text: string, config: AppConfig) {
     if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
-      this.playing = false; this.currentMessageId = null; this.isGenerating = false; this.onPlaybackEnd?.();
+      this.audioStarted = false;
+    this.playing = false; this.currentMessageId = null; this.isGenerating = false; this.onPlaybackEnd?.();
       return;
     }
     window.speechSynthesis.cancel();
@@ -426,10 +446,12 @@ class TtsStore {
     if (config.tts?.language) u.lang = config.tts.language;
     const voice = window.speechSynthesis.getVoices().find((voice) => voice.name === config.tts?.voice || voice.voiceURI === config.tts?.voice);
     if (voice) u.voice = voice;
-    u.onend = () => { if (this.currentMessageId === messageId) { this.playing = false; this.paused = false; this.currentMessageId = null; this.isGenerating = false; if (this.queue.length) this.nextInSequence(); else this.onPlaybackEnd?.(); } };
-    u.onerror = () => { if (this.currentMessageId === messageId) { this.playing = false; this.currentMessageId = null; this.isGenerating = false; this.onPlaybackEnd?.(); } };
+    u.onstart = () => { if (this.currentMessageId === messageId) this.audioStarted = true; };
+    u.onend = () => { if (this.currentMessageId === messageId) { this.audioStarted = false; this.playing = false; this.paused = false; this.currentMessageId = null; this.isGenerating = false; if (this.queue.length) this.nextInSequence(); else this.onPlaybackEnd?.(); } };
+    u.onerror = () => { if (this.currentMessageId === messageId) { this.audioStarted = false; this.playing = false; this.currentMessageId = null; this.isGenerating = false; this.onPlaybackEnd?.(); } };
     try { window.speechSynthesis.speak(u); } catch {
-      this.playing = false; this.currentMessageId = null; this.isGenerating = false;
+      this.audioStarted = false;
+    this.playing = false; this.currentMessageId = null; this.isGenerating = false;
     }
   }
 }

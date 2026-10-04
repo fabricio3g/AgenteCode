@@ -130,6 +130,7 @@ export type TTSEngineType = 'kokoro' | 'wasm';
  * TTS configuration.
  */
 export interface TTSConfig {
+  local_backend?: 'cpu' | 'vulkan';
   backend_mode?: 'local' | 'api' | 'browser';
   api_provider?: string;
   providers?: Record<string, import('../shared/speech.ts').SpeechProviderConfig>;

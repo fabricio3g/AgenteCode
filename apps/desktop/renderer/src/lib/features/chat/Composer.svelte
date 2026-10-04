@@ -30,7 +30,7 @@
   import ComposerToolbar from './composer/ComposerToolbar.svelte';
   import ModeSelector from './composer/ModeSelector.svelte';
   import SelectedTextCard from './composer/SelectedTextCard.svelte';
-  import VoiceModeOverlay from './composer/VoiceModeOverlay.svelte';
+  import VoiceCallPanel from './composer/VoiceCallPanel.svelte';
   import ComposerRecorder from './composer/ComposerRecorder.svelte';
   import DictationSetupPopover from './composer/DictationSetupPopover.svelte';
   import { ComposerAttachments } from './composer/use-attachments.svelte';
@@ -54,7 +54,6 @@
   /** Debounce before recomputing the context-budget preview. */
   const BUDGET_DEBOUNCE_MS = 140;
   /** Pause before re-arming the mic in hands-free voice mode. */
-  const VOICE_REARM_MS = 600;
 
   const dictation = new Dictation();
   const attachments = new ComposerAttachments();
@@ -187,46 +186,21 @@
 
   // ── Hands-free voice mode ─────────────────────────────────────────────────
 
-  function enterVoiceMode() {
-    appStore.voiceModeActive = true;
-    ttsStore.onPlaybackEnd = () => {
-      if (destroyed || !appStore.voiceModeActive || appStore.currentChatGenerating) return;
-      setTimeout(() => {
-        if (destroyed || !appStore.voiceModeActive) return;
-        dictation.toggle(true);
-      }, 400);
-    };
-    dictation.toggle(true);
+  async function enterVoiceMode() {
+    if (appStore.voiceModeActive) { exitVoiceMode(); return; }
+    if (!appStore.currentChatId) appStore.createChat('home');
+    const ready = await dictation.prepareCall();
+    if (destroyed) return;
+    if (ready) appStore.voiceModeActive = true;
+    else if (dictation.phase === 'choose') dictation.afterSetup = () => { if (!destroyed) appStore.voiceModeActive = true; };
   }
 
   function exitVoiceMode() {
     appStore.voiceModeActive = false;
-    ttsStore.onPlaybackEnd = null;
+    dictation.afterSetup = undefined;
     ttsStore.stop();
-    dictation.stop();
+    dictation.cancel();
   }
-
-  // Re-arm the mic when a turn finishes and TTS isn't going to speak the reply.
-  $effect(() => {
-    if (!voiceMode || appStore.currentChatGenerating || ttsStore.playing || dictation.listening) {
-      return;
-    }
-    const ttsWillSpeak =
-      appStore.config.tts?.enable_voice_output && appStore.config.tts?.auto_play_voice;
-    if (ttsWillSpeak) return;
-
-    const timer = setTimeout(() => {
-      if (
-        appStore.voiceModeActive &&
-        !appStore.currentChatGenerating &&
-        !ttsStore.playing &&
-        !dictation.listening
-      ) {
-        dictation.toggle(true);
-      }
-    }, VOICE_REARM_MS);
-    return () => clearTimeout(timer);
-  });
 
   // ── Window events ─────────────────────────────────────────────────────────
 
@@ -391,13 +365,9 @@
       </button>
     {/if}
 
-    <VoiceModeOverlay
-      phase={dictation.phase}
-      isListening={dictation.listening}
-      interimTranscript={dictation.interim}
-      {exitVoiceMode}
-      audioLevels={dictation.audioLevels}
-    />
+    {#if voiceMode}
+      <VoiceCallPanel onend={exitVoiceMode} />
+    {/if}
 
     <!-- Radius comes from --composer-radius on .ui-composer; the rounded-*
          utilities that used to sit here fought it at equal specificity. -->
@@ -465,6 +435,7 @@
               {dictation}
               {generating}
               {sendDisabled}
+              oncall={() => void enterVoiceMode()}
               onsubmit={() => void submit()}
               onstop={() => appStore.stopStreaming()}
             />

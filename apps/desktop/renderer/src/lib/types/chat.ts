@@ -1019,6 +1019,8 @@ export interface AppConfig {
     model_variant?: string;
     /** The audio.cpp voice model (shared/voice-models.ts) and the language it speaks. */
     voice_model?: string;
+    local_backend?: 'cpu' | 'vulkan';
+    num_threads?: number;
     language?: string;
   };
   stt?: {

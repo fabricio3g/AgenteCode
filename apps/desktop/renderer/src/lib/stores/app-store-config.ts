@@ -209,6 +209,8 @@ export function mergeTtsSettingsConfig(
     data_dir?: string;
     model_variant?: string;
     voice_model?: string;
+    local_backend?: 'cpu' | 'vulkan';
+    num_threads?: number;
     language?: string;
   }
 ): AppConfig {

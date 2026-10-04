@@ -7,7 +7,8 @@
 -->
 
 <script lang="ts">
-  import { Mic } from 'lucide-svelte';
+  import { Tooltip } from '$lib/components/ui';
+  import { Mic, Phone, Settings2 } from 'lucide-svelte';
   import { t } from 'svelte-i18n';
   import { appStore } from '$lib/stores/app.svelte';
   import { copy, say } from '$lib/copy';
@@ -19,11 +20,12 @@
     dictation: Dictation;
     generating: boolean;
     sendDisabled: boolean;
+    oncall: () => void;
     onsubmit: () => void;
     onstop: () => void;
   }
 
-  let { dictation, generating, sendDisabled, onsubmit, onstop }: Props = $props();
+  let { dictation, generating, sendDisabled, oncall, onsubmit, onstop }: Props = $props();
 
   const contextBudget = $derived(appStore.contextBudget);
   // An empty ring reads as a broken control, so it only appears once there is
@@ -57,16 +59,16 @@
     />
   {/if}
 
-  {#if !generating}
+  <div class="mic-control">
     <button
       type="button"
       class="ui-icon-button mic-btn"
       class:is-listening={dictation.uiActive}
       class:unavailable={!dictation.supported}
-      onclick={dictation.supported ? () => dictation.toggle(false) : undefined}
+      onclick={dictation.supported ? () => appStore.voiceModeActive ? oncall() : dictation.toggle(false) : undefined}
       disabled={!dictation.supported}
       aria-label={dictation.listening ? $t('chat.dictation.stop') : copy.composer.dictate}
-      title={micTitle}
+      aria-describedby="home-microphone-preview"
     >
       {#if dictation.listening}
         <span class="mic-lines">
@@ -78,7 +80,18 @@
         <Mic class="size-3.5" />
       {/if}
     </button>
-  {/if}
+    <div class="mic-preview" id="home-microphone-preview" role="group" aria-label={$t('voice.call.title')}>
+      <Tooltip label={appStore.voiceModeActive ? $t('voice.call.end') : $t('voice.call.start')} position="top">
+        <button type="button" class="ui-icon-button" class:selected={appStore.voiceModeActive} aria-label={appStore.voiceModeActive ? $t('voice.call.end') : $t('voice.call.start')} onclick={oncall} disabled={!dictation.supported}><Phone class="size-4" /></button>
+      </Tooltip>
+      <Tooltip label={micTitle} position="top">
+        <button type="button" class="ui-icon-button" class:selected={dictation.listening} aria-label={copy.composer.dictate} onclick={() => { if (appStore.voiceModeActive) oncall(); dictation.toggle(false); }} disabled={!dictation.supported}><Mic class="size-4" /></button>
+      </Tooltip>
+      <Tooltip label={$t('voice.call.settings')} position="top">
+        <button type="button" class="ui-icon-button" aria-label={$t('voice.call.settings')} onclick={() => appStore.openSettings('voice')}><Settings2 class="size-4" /></button>
+      </Tooltip>
+    </div>
+  </div>
 
   <SendButton
     running={generating}
@@ -91,6 +104,10 @@
 </div>
 
 <style>
+  .mic-control { position: relative; }
+  .mic-preview { position: absolute; right: 0; bottom: 100%; z-index: 60; padding: .35rem; display: none; align-items: center; gap: .2rem; background: var(--popover); color: var(--popover-foreground); border-radius: var(--radius-lg); box-shadow: var(--shadow-lg); }
+  .mic-control:hover .mic-preview, .mic-control:focus-within .mic-preview { display: flex; }
+  .mic-preview .selected { background: var(--muted); color: var(--foreground); }
   .mic-btn { color: var(--text-secondary); }
   .mic-btn.unavailable { opacity: 0.4; cursor: not-allowed; }
   .mic-btn.is-listening { background: var(--primary); color: var(--primary-foreground); }

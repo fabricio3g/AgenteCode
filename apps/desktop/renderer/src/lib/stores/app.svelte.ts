@@ -645,8 +645,10 @@ class AppStore {
       providerPrompt: args.providerPrompt,
       globalPrompt: this.config.llm?.system_prompt
     });
+    const voicePrompt = this.voiceModeActive && chat?.id === this.currentChatId
+      ? '\n\nThis is a live voice conversation. Reply in short, natural spoken sentences. Give a brief useful update before background searches and return findings as they arrive. Keep tool calls out of spoken text. Use the available tools when the question needs verification; never invent progress or results.' : '';
     return buildSystemPrompt({
-      basePrompt,
+      basePrompt: basePrompt + voicePrompt,
       userName: this.userName,
       includeChartHint: args.includeChartHint
     });
@@ -1470,6 +1472,26 @@ class AppStore {
     chat.pendingPrompts = chat.pendingPrompts!.filter(entry => entry.id !== id);
     this.persistDraft(chatId);
     return item;
+  }
+
+  private voiceSteering = new Map<string, Set<string>>();
+
+  /** Voice interruption stops playback, while a running search keeps its turn. */
+  async sendVoicePrompt(chatId: string, text: string): Promise<void> {
+    const chat = this.findChat(chatId);
+    if (!chat || !text.trim()) return;
+    const item = this.queuePrompt(chatId, text);
+    if (!item) return;
+    if (this.isChatGenerating(chatId) && chat.homeRuntime?.sessionId) {
+      const ids = this.voiceSteering.get(chatId) ?? new Set<string>();
+      ids.add(item.id); this.voiceSteering.set(chatId, ids); item.sending = true;
+      try {
+        const result = await invoke<{ ok: boolean }>('home_runtime_steer', { sessionId: chat.homeRuntime.sessionId, content: text });
+        if (result.ok) return;
+      } catch { /* A turn may settle while transcription finishes. Keep the input queued. */ }
+      ids.delete(item.id); item.sending = false;
+    }
+    if (!this.isChatGenerating(chatId)) void this.startNextQueuedPrompt(chatId);
   }
 
   private queuedContinuation = new Set<string>();
@@ -2594,6 +2616,26 @@ class AppStore {
           reasoningLevel: activeReasoningLevel,
           quietActivity: plan.instant,
           preserveDocumentContext: preserveDocuments,
+          onMessagesInjected: (messages) => {
+            const ids = this.voiceSteering.get(targetChatId);
+            const accepted: ChatMessage[] = [];
+            for (const text of messages) {
+              const item = targetChat.pendingPrompts?.find(item => ids?.has(item.id) && item.content === text);
+              if (!item) continue;
+              ids!.delete(item.id);
+              targetChat.pendingPrompts = targetChat.pendingPrompts!.filter(entry => entry.id !== item.id);
+              accepted.push({ id: createId('msg'), role: 'user', content: text, createdAt: Date.now(), done: true, status: 'idle' });
+            }
+            if (!accepted.length) return;
+            const index = targetChat.messages.findIndex(message => message.id === assistantMessage.id);
+            if (index < 0) return;
+            const prefix: ChatMessage[] = assistantMessage.content.trim()
+              ? [{ ...assistantMessage, id: createId('msg'), done: true, status: 'idle', metadata: { ...assistantMessage.metadata }, agentSteps: undefined }]
+              : [];
+            assistantMessage.content = ''; assistantMessage.reasoning = '';
+            targetChat.messages.splice(index, 0, ...prefix, ...accepted);
+            syncMsg(true); this.persist();
+          },
           ...plan.budget,
           signal: controller.signal,
           ...homeAgentCallbacks({
@@ -2702,7 +2744,7 @@ class AppStore {
       syncMsg(true);
       this.persist();
 
-      if (selectedConfig.tts?.enable_voice_output && selectedConfig.tts?.auto_play_voice && assistantMessage.content
+      if (!this.voiceModeActive && selectedConfig.tts?.enable_voice_output && selectedConfig.tts?.auto_play_voice && assistantMessage.content
         && (activeContextMode !== 'roleplay' || roleplayStore.settings(targetChat).voicePlayback !== false)) {
         try {
           if (activeContextMode === 'roleplay') ttsStore.speakSequence(messageSpeechParts(assistantMessage, charactersStore.characters, this.config));
@@ -2758,6 +2800,9 @@ class AppStore {
       // the user may have already stopped.
       cancelTrailingSync();
       this.endGenerationRun(targetChatId, controller);
+      const unsentVoice = this.voiceSteering.get(targetChatId);
+      for (const item of this.findChat(targetChatId)?.pendingPrompts ?? []) if (unsentVoice?.has(item.id)) item.sending = false;
+      this.voiceSteering.delete(targetChatId);
       // Group auto mode: queue the next character turn once this one settles.
       // A stopped or failed turn ends the chain instead of retrying.
       const continueQueued = this.queuedContinuation.delete(targetChatId) || (!controller.signal.aborted && assistantMessage.status !== 'error');

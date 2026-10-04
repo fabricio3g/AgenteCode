@@ -6,6 +6,7 @@
 -->
 
 <script lang="ts">
+  import { voiceText } from '../composer/voice-text.svelte';
   import type { ChatContextMode, ChatMessage, SearchMeta } from '$lib/types/chat';
   import { appStore } from '$lib/stores/app.svelte';
   import { deepResearchStore } from '$lib/stores/deep-research.svelte';
@@ -37,7 +38,8 @@
   const activeVersion = $derived(versions[activeVersionIndex] || null);
   const isStreaming = $derived(message.status === 'streaming');
 
-  const rawContent = $derived(activeVersion?.content || message.content || '');
+  const voiceBuffered = $derived(message.role === 'assistant' && voiceText.chatId === appStore.currentChatId && (message.id in voiceText.visible || message.status === 'streaming' && message.createdAt >= voiceText.startedAt));
+  const rawContent = $derived(voiceBuffered ? voiceText.visible[message.id] ?? '' : activeVersion?.content || message.content || '');
   // Assistant text is sanitized once settled; mid-stream it is left alone so the
   // sanitizer never truncates a partial construct it hasn't seen the end of.
   const displayContent = $derived(

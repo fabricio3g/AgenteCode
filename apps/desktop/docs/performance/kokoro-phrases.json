@@ -1,0 +1,23 @@
+[
+  {
+    "threads": 8,
+    "chars": 18,
+    "firstAudioMs": 4865,
+    "totalMs": 4865,
+    "bytes": 86444
+  },
+  {
+    "threads": 8,
+    "chars": 38,
+    "firstAudioMs": 1971,
+    "totalMs": 1971,
+    "bytes": 116444
+  },
+  {
+    "threads": 8,
+    "chars": 71,
+    "firstAudioMs": 2890,
+    "totalMs": 2890,
+    "bytes": 192044
+  }
+]

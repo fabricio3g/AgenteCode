@@ -40,14 +40,19 @@ describe('audio.cpp speech for the player', () => {
     assert.equal(pcm.readInt16LE(0), 32767);
   });
 
-  it('speaks sentence by sentence, merging short ones', () => {
+  it('starts short sentences immediately and bounds long phrases', () => {
     const long = 'The first sentence is long enough to be spoken on its own right away. The second one follows it.';
     assert.deepEqual(splitSentences(long), [
       'The first sentence is long enough to be spoken on its own right away.',
       'The second one follows it.'
     ]);
-    assert.deepEqual(splitSentences('Hi. How are you?'), ['Hi. How are you?']);
+    assert.deepEqual(splitSentences('Hi. How are you?'), ['Hi.', 'How are you?']);
     assert.deepEqual(splitSentences('   '), []);
+    const prose = 'I found the information you asked for, and I can explain the result while the background search keeps running.';
+    const chunks = splitSentences(prose);
+    assert.equal(chunks.join(' '), prose);
+    assert.ok(chunks.every(chunk => chunk.length <= 100));
+    assert.equal(chunks[0], 'I found the information you asked for,');
   });
 
   it('knows each voice and where its model lives', () => {
