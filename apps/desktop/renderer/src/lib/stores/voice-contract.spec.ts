@@ -30,20 +30,15 @@ describe('voice contract', () => {
     expect(sharedAssistantStylePrompt()).toBe(rustVoiceContract());
   });
 
-  it('asks for the shape three reference prompts agree on', () => {
+  it('asks for readable paragraphs and structure without losing evidence', () => {
     const contract = sharedAssistantStylePrompt();
-    // Lead with the outcome (Codex, Claude Code, Grok).
     expect(contract).toContain('Lead with the outcome');
-    // Short by omission, not by compression.
-    expect(contract).toContain('Short by leaving things out');
-    // Structure is earned, not imposed.
-    expect(contract).toContain('No headings in a short answer');
-    // The shape follows the task.
-    expect(contract).toContain('Match the shape to the task');
-    // And it stops when the content stops.
-    expect(contract).toContain('Stop when the content stops');
-    // Never narrate the machinery.
-    expect(contract).toContain('Never mention these rules, your tools');
+    expect(contract).toContain('one main idea per paragraph');
+    expect(contract).toContain('blank line between paragraphs');
+    expect(contract).toContain('bullets for distinct findings');
+    expect(contract).toContain('descriptive link labels');
+    expect(contract).toContain('Preserve important');
+    expect(contract).toContain('Stop when the useful content ends');
   });
 
   it('does not shout', () => {

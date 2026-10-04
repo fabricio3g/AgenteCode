@@ -263,7 +263,10 @@
     "runtime": "Laufzeitumgebung",
     "ready": "Fertig",
     "downloadTtsModel": "Antworten vorlesen",
-    "ttsModelDescription": "Optional. Lade eine Sprach-Engine und wähle eine Stimme; änderbar unter Einstellungen → Stimme."
+    "ttsModelDescription": "Optional. Lade eine Sprach-Engine und wähle eine Stimme; änderbar unter Einstellungen → Stimme.",
+    "setupTitle": "Set up Agente",
+    "setupHint": "Review language, local runtime, model, and voice settings.",
+    "reopenSetup": "Open setup wizard"
   },
   "common": {
     "ok": "OK",
@@ -384,7 +387,8 @@
       "manualNow": "Compact now",
       "model": "Compaction model",
       "modelHint": "Uses the chat model unless you choose another. Manual compaction calls the LLM; caching follows the selected provider policy.",
-      "cached": "{n} cached input tokens"
+      "cached": "{n} cached input tokens",
+      "summaryTitle": "Context summary"
     },
     "workedFor": "Hat {time} gearbeitet",
     "selectModel": "Wähle ein Modell, um mit dem Coden zu beginnen",

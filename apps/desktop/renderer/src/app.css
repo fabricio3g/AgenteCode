@@ -27,7 +27,7 @@
      emphasis. `--text-xs` (12px) is a floor, not a target: it is the smallest
      size regular text stays legible at, and no surface may hardcode below it.
      `--text-code` carries code, diffs and the terminal. */
-  --text-prose: calc(15px * var(--reading-scale));
+  --text-prose: calc(14px * var(--reading-scale));
   --text-base: calc(14px * var(--reading-scale));
   --text-sm: calc(13px * var(--reading-scale));
   --text-xs: calc(12px * var(--reading-scale));
@@ -2357,7 +2357,7 @@ kbd {
      entry only carries `wght`, so this was silently a no-op. */
   font-optical-sizing: auto;
   color: inherit;
-  line-height: 1.7;
+  line-height: 1.6;
   /* Compact prose keeps the reader’s size and weight controls. */
   font-weight: var(--reading-weight, 400);
   letter-spacing: 0;
@@ -2372,16 +2372,13 @@ kbd {
   text-wrap: pretty;
   hyphens: none;
 }
-.markdown-body :is(p, ul, ol, blockquote, dl) {
-  max-width: 72ch;
-}
 .markdown-body {
   container-type: normal;
 }
 
-/* Research modes (Search / Deep / Max): APA-style reports need more air */
+/* Research reports share the same reading rhythm as other desktop replies. */
 .markdown-body.is-research {
-  line-height: 1.74;
+  line-height: 1.6;
   font-size: var(--text-prose);
 }
 
@@ -3209,3 +3206,22 @@ html.a11y-reduce-motion *::after {
   rotate: none;
   scale: none;
 }
+
+/* Reference accents carry meaning while body copy stays quiet. */
+.markdown-body .site-reference { color: var(--brand-accent-strong); text-decoration-color: color-mix(in srgb, currentColor 35%, transparent); }
+.markdown-body .link-site-icon { display: inline-block; position: relative; width: .9em; height: .9em; margin-right: .3em; vertical-align: -.08em; }
+.markdown-body .link-site-icon img { width: 100%; height: 100%; object-fit: contain; display: block; border-radius: 2px; }
+.markdown-body .link-site-icon img[hidden] { display: none; }
+.markdown-body .link-site-icon::before,
+.markdown-body .inline-reference::before { content: ''; display: inline-block; width: .95em; height: .95em; background: currentColor; opacity: .65; mask: var(--reference-icon) center / contain no-repeat; }
+.markdown-body .link-site-icon::before { position: absolute; inset: 0; --reference-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.5'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M3 12h18M12 3c-5 6-5 12 0 18 5-6 5-12 0-18'/%3E%3C/svg%3E"); }
+.markdown-body .link-site-icon:has(img:not([hidden]))::before { display: none; }
+.markdown-body .inline-reference { color: var(--text-secondary); background: transparent; padding: 0; }
+.markdown-body .inline-reference::before { margin-right: .25em; vertical-align: -.12em; }
+.markdown-body .folder-reference { --reference-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.5' stroke-linejoin='round'%3E%3Cpath d='M3 7V5h6l2 2h10v12H3V7Z'/%3E%3C/svg%3E"); }
+.markdown-body .file-reference { --reference-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.5' stroke-linejoin='round'%3E%3Cpath d='M5 3h9l5 5v13H5V3Zm9 0v6h5M8 13h8M8 17h6'/%3E%3C/svg%3E"); }
+@media (forced-colors: active) { .markdown-body .inline-reference::before, .markdown-body .link-site-icon::before { background: CanvasText; opacity: 1; } }
+
+.markdown-body :is(h1, h2, h3),
+.markdown-body p > strong:first-child { color: var(--brand-accent-strong); }
+.markdown-body .inline-reference { color: color-mix(in srgb, var(--brand-accent-strong) 45%, var(--foreground)); }

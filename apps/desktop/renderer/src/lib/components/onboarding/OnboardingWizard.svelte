@@ -3,7 +3,7 @@
 <script lang="ts">
   import { modalLayer } from '$lib/components/ui/modal-layer';
   import { onMount } from 'svelte';
-  import { motionFade, motionFly } from '$lib/utils/transitions';
+  import { motionFade } from '$lib/utils/transitions';
   import { t } from 'svelte-i18n';
   import { X } from 'lucide-svelte';
   import OnboardingStepWelcome from './OnboardingStepWelcome.svelte';
@@ -23,6 +23,7 @@
   let modelFilename = $state('');
 
   const STEPS: Step[] = ['welcome', 'runtime', 'model', 'tts-model', 'ready'];
+  const stepLabels = $derived([$t('onboarding.welcome'), $t('onboarding.runtime'), $t('onboarding.model'), $t('onboarding.downloadTtsModel'), $t('onboarding.ready')]);
   const STEP_INDEX = $derived(STEPS.indexOf(step));
 
   function goNext() {
@@ -50,7 +51,7 @@
     appStore.onboardingCompleted = true;
   }
   function handleSkip() {
-    markOnboardingComplete();
+    void markOnboardingComplete();
     appStore.onboardingOpen = false;
     appStore.onboardingCompleted = true;
   }
@@ -61,38 +62,26 @@
   });
 </script>
 
-<!-- First-run setup: no Escape — the wizard owns its own Skip/Next. -->
-<div class="ui-modal-backdrop" use:modalLayer={{}} transition:motionFade={{ duration: 150 }}>
-  <div
-    class="ui-modal-surface h-full max-h-[580px] max-w-lg"
-    transition:motionFly={{ y: 20, duration: 200 }}
-    role="dialog"
-    aria-modal="true"
-  >
-    <!-- Header with step indicator -->
-    <div class="ui-modal-header">
-      <div class="flex items-center gap-3">
-        <div class="flex items-center gap-1.5">
-          {#each STEPS as s, i}
-            <div
-              class="h-1.5 w-1.5 rounded-full transition-all {i <= STEP_INDEX ? 'scale-125 bg-foreground' : 'bg-muted'}"
-            ></div>
-          {/each}
-        </div>
-        <span class="text-xs font-medium text-muted-foreground">{$t('onboarding.stepOf', { values: { current: STEP_INDEX + 1, total: STEPS.length } })}</span>
+<!-- The setup can be reopened from settings; closing never changes installed models. -->
+<div class="ui-modal-backdrop" use:modalLayer={{ onclose: handleSkip }} transition:motionFade={{ duration: 100 }}>
+  <div class="ui-modal-surface setup-wizard" role="dialog" aria-modal="true" aria-labelledby="setup-title">
+    <header class="setup-header">
+      <div>
+        <h2 id="setup-title">{$t('onboarding.setupTitle')}</h2>
+        <p>{$t('onboarding.stepOf', { values: { current: STEP_INDEX + 1, total: STEPS.length } })}</p>
       </div>
-      <button
-        type="button"
-        class="ui-icon-button"
-        onclick={handleSkip}
-        title={$t('onboarding.skipSetup')}
-      >
-        <X class="size-4" />
-      </button>
-    </div>
+      <button type="button" class="ui-icon-button" onclick={handleSkip} aria-label={$t('onboarding.skipSetup')} title={$t('onboarding.skipSetup')}><X class="size-4" /></button>
+    </header>
+    <ol class="setup-progress" aria-label={$t('onboarding.setupTitle')}>
+      {#each STEPS as stage, index}
+        <li class:current={index === STEP_INDEX} class:complete={index < STEP_INDEX} aria-current={index === STEP_INDEX ? 'step' : undefined}>
+          <span class="stage-number">{index + 1}</span><span>{stepLabels[index]}</span>
+        </li>
+      {/each}
+    </ol>
 
     <!-- Step content -->
-    <div class="flex flex-1 overflow-y-auto px-1 py-2">
+    <div class="setup-content">
       {#if step === 'welcome'}
         <OnboardingStepWelcome onNext={goNext} />
       {:else if step === 'runtime'}
@@ -107,3 +96,18 @@
     </div>
   </div>
 </div>
+
+<style>
+  .setup-wizard { width: min(640px, 100%); max-width: 640px; height: min(620px, calc(100dvh - 48px)); min-height: 0; padding: 0; overflow: hidden; }
+  .setup-header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 1.25rem 1.5rem 1rem; }
+  .setup-header h2 { font-size: var(--text-base); font-weight: 600; }
+  .setup-header p { color: var(--muted-foreground); font-size: var(--text-xs); margin-top: .25rem; }
+  .setup-progress { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: .5rem; padding: 0 1.5rem 1rem; list-style: none; }
+  .setup-progress li { display: flex; align-items: center; gap: .375rem; color: var(--muted-foreground); font-size: var(--text-xs); min-width: 0; padding-top: .5rem; border-top: 2px solid var(--border-subtle); }
+  .setup-progress li > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .setup-progress .current { color: var(--foreground); border-color: var(--muted-foreground); }
+  .setup-progress .complete { border-color: var(--border); }
+  .stage-number { font-variant-numeric: tabular-nums; opacity: .65; }
+  .setup-content { display: flex; flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: .5rem 0 1.5rem; font-size: var(--text-base); line-height: 1.6; }
+  @media (max-width: 480px) { .setup-progress li { flex-direction: column; align-items: flex-start; } .setup-header, .setup-progress { padding-left: 1rem; padding-right: 1rem; } }
+</style>

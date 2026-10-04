@@ -124,7 +124,7 @@
     level="step"
     chevron="trailing"
     disabled={!expandable}
-    defaultOpen={isApproval || isError}
+    defaultOpen={isApproval}
     onActivate={plan ? openPlan : undefined}
   >
     {#snippet header()}

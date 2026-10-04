@@ -5,6 +5,7 @@ import DOMPurify from 'dompurify';
 // to try these.
 import hljs from 'highlight.js/lib/common';
 import katex from 'katex';
+import { withReferences } from './markdown-references';
 import { CODE_COPY_BUTTON_HTML } from './code-copy';
 
 marked.setOptions({
@@ -54,10 +55,10 @@ function withScrollableTables<T extends Renderer>(target: T): T {
   return target;
 }
 
-const renderer = withScrollableTables(new marked.Renderer());
+const renderer = withReferences(withScrollableTables(new marked.Renderer()));
 renderer.code = makeCodeRenderer(true);
 
-const plainCodeRenderer = withScrollableTables(new marked.Renderer());
+const plainCodeRenderer = withReferences(withScrollableTables(new marked.Renderer()));
 plainCodeRenderer.code = makeCodeRenderer(false);
 
 // Protect fenced code blocks and inline code from LaTeX processing
@@ -110,6 +111,7 @@ export function sanitizeAssistantHtml(html: string): string {
   if (typeof window === 'undefined') return html;
   if (!purifyHooksInstalled) {
     DOMPurify.addHook('uponSanitizeElement', (node) => {
+      if (node instanceof Element && node.tagName === 'IMG') node.setAttribute('referrerpolicy', 'no-referrer');
       if (node instanceof Element && node.tagName === 'A') {
         const anchor = node as HTMLAnchorElement;
         const href = anchor.getAttribute('href') || '';
@@ -123,6 +125,7 @@ export function sanitizeAssistantHtml(html: string): string {
   }
   return DOMPurify.sanitize(html, {
     FORBID_TAGS: ['script', 'style', 'iframe', 'object', 'embed', 'form', 'base', 'link', 'meta', 'title', 'textarea', 'slot'],
+    ADD_ATTR: ['target', 'referrerpolicy'],
     ALLOW_UNKNOWN_PROTOCOLS: false
   });
 }

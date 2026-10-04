@@ -457,9 +457,9 @@ describe('manual compaction reporting', () => {
     const before = appStore.chats[0]!.messages[1]!.content;
     emit({ type: 'compaction_start', chatId: CHAT_ID, reason: 'manual' });
     expect(appStore.chats[0]!.messages.at(-1)!.metadata?.codeCompaction?.running).toBe(true);
-    emit({ type: 'compaction_end', chatId: CHAT_ID, reason: 'manual', success: true, tokensBefore: 12000, tokensAfter: 4000, smart: true, requestedSmart: true, modelTokens: 800 });
+    emit({ type: 'compaction_end', chatId: CHAT_ID, reason: 'manual', success: true, tokensBefore: 12000, tokensAfter: 4000, smart: true, summary: "Keep the selected model and pending edits.", requestedSmart: true, modelTokens: 800 });
     const report = appStore.chats[0]!.messages.at(-1)!.metadata!.codeCompaction!;
-    expect(report).toMatchObject({ running: false, tokensBefore: 12000, tokensAfter: 4000, smart: true, modelTokens: 800 });
+    expect(report).toMatchObject({ running: false, tokensBefore: 12000, tokensAfter: 4000, smart: true, summary: "Keep the selected model and pending edits.", modelTokens: 800 });
     expect(appStore.chats[0]!.messages[1]!.content).toBe(before);
   });
 

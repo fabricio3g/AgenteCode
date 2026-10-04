@@ -107,7 +107,10 @@
     }
   }
   function schedulePresentation() {
-    if (!mounted || pending) return;
+    if (!mounted) return;
+    // Hiding must also work when Electron pauses animation frames in the background.
+    if (!exposed) { cancelAnimationFrame(pending); pending = 0; void present(); return; }
+    if (pending) return;
     pending = requestAnimationFrame(() => { pending = 0; void present(); });
   }
   async function syncBounds() { schedulePresentation(); }

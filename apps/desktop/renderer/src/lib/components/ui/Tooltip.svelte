@@ -132,15 +132,17 @@
   .tooltip-pill {
     position: fixed;
     z-index: var(--z-tooltip);
-    white-space: nowrap;
-    padding: 0.3rem 0.55rem;
-    background: #000;
-    border: 1px solid #000;
-    color: #fff;
-    border-radius: 0.35rem;
+    white-space: normal;
+    max-width: min(22rem, calc(100vw - 16px));
+    overflow-wrap: anywhere;
+    padding: 0.45rem 0.7rem;
+    background: var(--popover);
+    border: 0;
+    color: var(--popover-foreground);
+    border-radius: 0.5rem;
     box-shadow: 0 5px 14px rgb(0 0 0 / 0.28);
     pointer-events: none;
-    font-size: 0.75rem;
-    line-height: 1.25;
+    font-size: var(--text-sm);
+    line-height: 1.5;
   }
 </style>

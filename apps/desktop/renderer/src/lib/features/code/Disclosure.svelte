@@ -10,8 +10,8 @@
   the same. The levels below are the whole hierarchy: one place decides how deep
   a row sits and how loud it is.
 
-  `level` also picks the default: the work in flight is open, the work that
-  settled is a single line, and the reader's own choice always wins over both.
+  The caller supplies a default, and the reader's own choice always wins.
+  Work and reasoning stay folded until the reader asks to see them.
 -->
 
 <script lang="ts">

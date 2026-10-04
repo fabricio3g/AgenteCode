@@ -96,3 +96,12 @@ test('helpers', () => {
   assert.match(patch, /^-line 25$/m);
   assert.match(patch, /^\+LINE 25$/m);
 });
+
+test('compaction forwards the real model checkpoint but does not label trimming as a summary', () => {
+  const translator = new RustTurnTranslator('chat-1', () => 64_000);
+  const [summarized] = run(translator, [{ type: 'context_compacted', summary: 'Keep the pending edits and selected model.', revision: 3, tokens_before: 12000, tokens_after: 4000, smart: true }]);
+  assert.equal(summarized.summary, 'Keep the pending edits and selected model.');
+  assert.equal(summarized.tokensAfter, 4000);
+  const [trimmed] = run(translator, [{ type: 'context_compacted', summary: '4 messages compacted', revision: 4, tokens_before: 4000, tokens_after: 3000, smart: false }]);
+  assert.equal(trimmed.summary, undefined);
+});

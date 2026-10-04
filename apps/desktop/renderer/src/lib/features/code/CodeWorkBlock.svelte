@@ -2,11 +2,9 @@
 
 <!--
   The work between two pieces of the reply, as one timeline (assistant-ui's
-  tool timeline): thoughts and tool calls in the order they happened. While
-  it is the live block it stays open and grows; once the model moves on it
-  folds to "4 steps · 2 files changed · 12.4s" with the touched files as
-  chips — each opens its diff in the Changes pane. Approvals and failures never
-  fold away on their own.
+  tool timeline): thoughts and tool calls in the order they happened. It starts folded and opens when the reader asks; the header
+  updates as work progresses. It folds to "4 steps · 2 files changed · 12.4s" with the touched files as
+  chips — each opens its diff in the Changes pane. The live status line still names pending approvals and failures.
 
   This is L1: the smallest, quietest line on the page, with its rows hanging
   from the rail the shared disclosure draws for it.
@@ -49,8 +47,7 @@
 
   /** The block is keyed by its first row, which is stable for the message. */
   const id = $derived(disclosureKey(chatId, messageId, visible[0]?.key ?? 'block'));
-  const attention = $derived(steps.some((step) => needsAttention(step, approvals)));
-  const open = $derived(disclosure.isOpen(id, live || attention));
+  const open = $derived(disclosure.isOpen(id, false));
 
   /**
    * How long the whole run of work took: from the first step that started to the
@@ -101,7 +98,7 @@
   <div class="min-w-0">{@render row(visible[0])}</div>
 {:else if visible.length}
   <div class="work min-w-0">
-    <Disclosure {id} level="block" chevron="leading" defaultOpen={live || attention}>
+    <Disclosure {id} level="block" chevron="leading" defaultOpen={false}>
       {#snippet header()}
         <span class="line min-w-0 truncate tabular-nums">{line}</span>
         <span class="flex-1"></span>

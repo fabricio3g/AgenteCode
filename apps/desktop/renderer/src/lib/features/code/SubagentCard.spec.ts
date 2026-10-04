@@ -22,8 +22,8 @@ it('reads as the agent it is: kind, description and what it is doing', () => {
   expect(container.textContent).not.toContain('{');
 });
 
-it('opens a failed child and leaves the rest folded', () => {
-  for (const [status, expected] of [['running', false], ['error', true], ['done', false]] as const) {
+it('keeps every child folded until the reader opens it', () => {
+  for (const [status, expected] of [['running', false], ['error', false], ['done', false]] as const) {
     disclosure.clear();
     const { container } = render(SubagentCard, { child: child({ status }), id: `k-${status}` });
     expect(container.querySelector('.body') !== null).toBe(expected);
@@ -42,6 +42,7 @@ it('keeps a finished answer out of the DOM until the reader opens it', () => {
 it('shows a failed child its diagnostic instead of an answer', () => {
   const diagnostic = 'Stream error: error reading a body from connection: stream closed because of a broken pipe';
   const { container } = render(SubagentCard, { child: child({ status: 'error', text: diagnostic, summary: diagnostic }), id: 'c' });
+  flushSync(() => (container.querySelector('.head') as HTMLButtonElement).click());
   expect(container.querySelector('[role="alert"]')).toBeTruthy();
   expect(container.querySelector('.markdown-body')).toBeNull();
   expect(container.querySelector('pre')?.textContent).toBe(diagnostic);

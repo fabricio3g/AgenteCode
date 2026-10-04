@@ -435,3 +435,36 @@ describe('active run timing', () => {
     } finally { vi.useRealTimers(); }
   });
 });
+
+it('keeps reused provider tool IDs in chronological rows instead of overwriting older work', () => {
+  const state = run([
+    {type:'tool_start',chatId:'c',toolCallId:'call_0',toolName:'read',args:{path:'first.ts'}},
+    {type:'tool_end',chatId:'c',toolCallId:'call_0',result:'First result',isError:false},
+    {type:'text_delta',chatId:'c',delta:'Next I will edit.'},
+    {type:'tool_start',chatId:'c',toolCallId:'call_0',toolName:'edit',args:{path:'second.ts'}},
+    {type:'tool_end',chatId:'c',toolCallId:'call_0',result:'Second result',isError:false},
+    {type:'tool_update',chatId:'c',toolCallId:'call_0',partialResult:'Late heartbeat'}
+  ]);
+  expect(state.steps.map(step=>[step.detail,step.output,step.status])).toEqual([['first.ts','First result','done'],['second.ts','Second result','done']]);
+  expect(orderedEntries({agentSteps:state.steps,content:state.content},state.timeline).map(entry=>entry.step?.detail || entry.text)).toEqual(['first.ts','Next I will edit.','second.ts']);
+});
+it('preserves submission order when parallel tools finish in reverse order', () => {
+  const state=run([
+    {type:'tool_start',chatId:'c',toolCallId:'a',toolName:'read',args:{path:'a.ts'}},
+    {type:'tool_start',chatId:'c',toolCallId:'b',toolName:'read',args:{path:'b.ts'}},
+    {type:'tool_end',chatId:'c',toolCallId:'b',result:'B',isError:false},
+    {type:'tool_end',chatId:'c',toolCallId:'a',result:'A',isError:false}
+  ]);
+  expect(orderedEntries({agentSteps:state.steps,content:''},state.timeline).map(entry=>entry.step?.output)).toEqual(['A','B']);
+});
+
+it('keeps each invocation when a subagent reuses a provider tool ID',()=>{
+  const state=run([
+    {type:'runtime_event',chatId:'c',event:{type:'child_started',run_id:'child',kind:'explore',description:'Inspect',model:'test'}},
+    {type:'runtime_event',chatId:'c',event:{type:'child_tool',run_id:'child',call_id:'call_0',name:'read_file',content:'a.ts',finished:false,is_error:false}},
+    {type:'runtime_event',chatId:'c',event:{type:'child_tool',run_id:'child',call_id:'call_0',name:'',content:'A result',finished:true,is_error:false}},
+    {type:'runtime_event',chatId:'c',event:{type:'child_tool',run_id:'child',call_id:'call_0',name:'read_file',content:'b.ts',finished:false,is_error:false}},
+    {type:'runtime_event',chatId:'c',event:{type:'child_tool',run_id:'child',call_id:'call_0',name:'',content:'B result',finished:true,is_error:false}}
+  ]);
+  expect(state.children[0]!.tools.map(tool=>tool.output)).toEqual(['A result','B result']);
+});

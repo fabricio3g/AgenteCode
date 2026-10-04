@@ -26,7 +26,7 @@
 </script>
 
 {#if quiet.length}
-  <Disclosure id={disclosureKey(chatId, messageId, 'subagents')} level="block" chevron="leading" defaultOpen={running > 0}>
+  <Disclosure id={disclosureKey(chatId, messageId, 'subagents')} level="block" chevron="leading" defaultOpen={false}>
     {#snippet header()}
       <span class="line">{$t(`code.activity.subagents.${running ? 'running' : 'done'}`)}</span>
       <span class="count tabular-nums">{running || quiet.length}</span>

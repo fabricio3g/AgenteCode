@@ -425,7 +425,7 @@ class CodeStore {
         note = chat.messages.at(-1)!;
       }
       if (event.type === 'compaction_end') {
-        note.metadata!.codeCompaction = { running: false, success: event.success, tokensBefore: event.tokensBefore, tokensAfter: event.tokensAfter, smart: event.smart, requestedSmart: event.requestedSmart, modelTokens: event.modelTokens, inputTokens: event.inputTokens, outputTokens: event.outputTokens, cacheReadTokens: event.cacheReadTokens, cacheWriteTokens: event.cacheWriteTokens };
+        note.metadata!.codeCompaction = { running: false, success: event.success, tokensBefore: event.tokensBefore, tokensAfter: event.tokensAfter, smart: event.smart, summary: event.summary, requestedSmart: event.requestedSmart, modelTokens: event.modelTokens, inputTokens: event.inputTokens, outputTokens: event.outputTokens, cacheReadTokens: event.cacheReadTokens, cacheWriteTokens: event.cacheWriteTokens };
         if (event.success && event.tokensBefore !== event.tokensAfter) for (const message of chat.messages) if (message.metadata) delete message.metadata.codeConversationIndex;
       }
       appStore.markChatDirty(chat.id);

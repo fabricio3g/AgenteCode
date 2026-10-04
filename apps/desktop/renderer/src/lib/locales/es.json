@@ -263,7 +263,10 @@
     "runtime": "Runtime",
     "ready": "Listo",
     "downloadTtsModel": "Leer las respuestas en voz alta",
-    "ttsModelDescription": "Opcional. Descarga un motor de voz y elige una voz; puedes cambiarlo luego en Configuración → Voz."
+    "ttsModelDescription": "Opcional. Descarga un motor de voz y elige una voz; puedes cambiarlo luego en Configuración → Voz.",
+    "setupTitle": "Configurar Agente",
+    "setupHint": "Revisa el idioma, el motor local, el modelo y la voz.",
+    "reopenSetup": "Abrir configuración inicial"
   },
   "common": {
     "ok": "Aceptar",
@@ -384,7 +387,8 @@
       "manualNow": "Compactar ahora",
       "model": "Modelo de compactación",
       "modelHint": "Usa el modelo del chat salvo que elijas otro. La compactación manual usa el LLM y la política de caché del proveedor.",
-      "cached": "{n} tokens de entrada en caché"
+      "cached": "{n} tokens de entrada en caché",
+      "summaryTitle": "Resumen del contexto"
     },
     "workedFor": "Trabajó {time}",
     "selectModel": "Elige un modelo para empezar a programar",

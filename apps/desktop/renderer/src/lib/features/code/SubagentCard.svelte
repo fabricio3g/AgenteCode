@@ -100,10 +100,9 @@
   Folded by default, like every other row: what a running child is doing is
   already on the line (its current tool, its tool count, its elapsed time), and
   an answer streaming into the row would push the rest of the transcript off
-  the screen. A failure opens, because that is the one thing the line cannot
-  say.
+  the screen. A failure stays folded too; its status remains visible in the header.
 -->
-<Disclosure {id} level="subagent" chevron="leading" defaultOpen={failed}>
+<Disclosure {id} level="subagent" chevron="leading" defaultOpen={false}>
   {#snippet header()}
     <!--
       Two lines: who this is, then what it is doing. One line could not hold a

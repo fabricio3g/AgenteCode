@@ -62,6 +62,9 @@ export interface CodeRunState {
   children: CodeChild[];
   spend: CodeSpend;
   diagnostics: string[];
+  /** Provider call IDs may repeat across model rounds; UI rows remain unique. */
+  toolStepIds?: Map<string, string>;
+  childToolStepIds?: Map<string, Map<string, string>>;
   generation?: { outputBytes: number; toolName?: string | null };
   /** The tool call the model is writing right now, before it runs ("Preparing edit… 3 KB"). */
   preparing?: { toolName: string; bytes: number; startBytes: number } | null;
@@ -125,9 +128,13 @@ function applyRuntimeEvent(state: CodeRunState, event: Extract<CodeAgentEvent, {
       child!.text += value.text;
       return true;
     case 'child_tool': {
-      let tool = child!.tools.find((item) => item.id === value.call_id);
+      const byChild = state.childToolStepIds ??= new Map();
+      let ids = byChild.get(child!.id);
+      if (!ids) { ids = new Map(); byChild.set(child!.id, ids); }
+      const callId = invocationId(child!.tools, value.call_id, ids, !!value.name && !value.finished);
+      let tool = child!.tools.find((item) => item.id === callId);
       if (!tool) {
-        tool = { id: value.call_id, name: value.name, output: '', status: 'running' };
+        tool = { id: callId, name: value.name, output: '', status: 'running' };
         child!.tools.push(tool);
       }
       if (value.name) tool.name = value.name;
@@ -173,6 +180,18 @@ function trackPreparing(current: CodeRunState['preparing'], toolName: string | n
   if (!toolName) return null;
   if (current?.toolName !== toolName) return { toolName, bytes: 0, startBytes: outputBytes };
   return { ...current, bytes: Math.max(0, outputBytes - current.startBytes) };
+}
+
+/** Stable row IDs keep repeated provider IDs from overwriting earlier invocations. */
+function invocationId(rows: readonly { id: string; status: string }[], callId: string, ids: Map<string, string>, starting: boolean): string {
+  let id = ids.get(callId) ?? callId;
+  const previous = rows.find(row => row.id === id);
+  if (starting && previous && (previous.status === 'done' || previous.status === 'error')) {
+    let suffix = rows.length;
+    do { id = `${callId}#${suffix++}`; } while (rows.some(row => row.id === id));
+  }
+  ids.set(callId, id);
+  return id;
 }
 
 /** Add or update a step; a new step also takes its place in the timeline. */
@@ -370,12 +389,17 @@ export function orderedEntries(
     entries = [{ kind: 'thinking', text: message.reasoning }, ...entries];
   }
   const out: OrderedEntry[] = [];
+  const seenSteps = new Set<string>();
   entries.forEach((entry, index) => {
     const step = entry.kind === 'step' ? steps.get(entry.id) : undefined;
     // Engine bookkeeping, not work to show: turn rows and output-cap notes
     // (saved by older runs), and todo updates (the task bar shows those).
     if (step && (step.id.startsWith('turn-') || step.id.startsWith('length-') || TODO_TOOLS.has(step.toolName ?? ''))) return;
-    if (step) out.push({ key: `s-${step.id}`, step });
+    if (step) {
+      if (seenSteps.has(step.id)) return;
+      seenSteps.add(step.id);
+      out.push({ key: `s-${step.id}`, step });
+    }
     else if (entry.kind === 'text' && entry.text.trim()) out.push({ key: `t-${index}`, text: entry.text });
     else if (entry.kind === 'thinking') {
       const thinking = sanitizeAgentVisibleText(entry.text);
@@ -463,7 +487,11 @@ export function applyCodeAgentEvent(state: CodeRunState, event: CodeAgentEvent):
     }
     case 'tool_start': {
       const step = eventToStep(event);
-      if (step) upsertStep(state, step);
+      if (step) {
+        const ids = state.toolStepIds ??= new Map();
+        step.id = invocationId(state.steps, event.toolCallId, ids, true);
+        upsertStep(state, step);
+      }
       state.preparing = null;
       state.retrying = null;
       return true;
@@ -471,21 +499,21 @@ export function applyCodeAgentEvent(state: CodeRunState, event: CodeAgentEvent):
     case 'tool_update': {
       // Only text is output; status objects ({ status: 'running' }) are not
       // (they used to render as "[object Object]").
-      const step = state.steps.find((s) => s.id === event.toolCallId);
+      const step = state.steps.find((s) => s.id === (state.toolStepIds?.get(event.toolCallId) ?? event.toolCallId));
       const partial = event.partialResult;
       const text = typeof partial === 'string' ? partial : (partial as { output?: unknown } | null)?.output;
-      if (step && typeof text === 'string') step.output = text.slice(-32_768);
+      if (step && (step.status === 'running' || step.status === 'pending') && typeof text === 'string') step.output = text.slice(-32_768);
       return true;
     }
     case 'tool_end': {
-      const step = state.steps.find((s) => s.id === event.toolCallId);
+      const step = state.steps.find((s) => s.id === (state.toolStepIds?.get(event.toolCallId) ?? event.toolCallId));
       if (step) {
         step.status = event.status || (event.isError ? 'error' : 'done');
         // Freeze the clock: the row keeps its duration once it has settled, so a
         // folded block can say how long its work took without opening it.
         step.durationMs ??= step.startedAt === undefined ? undefined : Math.max(0, Date.now() - step.startedAt);
         const output = event.result != null ? String(event.result) : '';
-        if (output) step.output = step.toolName === 'present_plan' ? output : output.slice(-32_768);
+        if (output) step.output = output;
         if (event.fileChanges?.length) {
           step.fileChanges = event.fileChanges.map((file) => ({ path: file.path, kind: file.kind as CodeAgentFileChange['kind'] }));
         }

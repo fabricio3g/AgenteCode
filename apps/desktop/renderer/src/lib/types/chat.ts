@@ -70,7 +70,7 @@ export interface MessageVersion {
     codeUsage?: CodeRunSummary['usage'];
     codeDiagnostics?: string[];
     codeConversationIndex?: number;
-    codeCompaction?: { running: boolean; success?: boolean; tokensBefore?: number; tokensAfter?: number; smart?: boolean; requestedSmart?: boolean; modelTokens?: number; inputTokens?: number; outputTokens?: number; cacheReadTokens?: number; cacheWriteTokens?: number; error?: string };
+    codeCompaction?: { running: boolean; success?: boolean; tokensBefore?: number; tokensAfter?: number; summary?: string; smart?: boolean; requestedSmart?: boolean; modelTokens?: number; inputTokens?: number; outputTokens?: number; cacheReadTokens?: number; cacheWriteTokens?: number; error?: string };
     codeAttachments?: CodeAttachment[];
     /** Sent while a Code run was busy and not yet taken by the model. */
     codeQueued?: boolean;

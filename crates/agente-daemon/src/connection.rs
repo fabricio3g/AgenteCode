@@ -360,8 +360,20 @@ impl Connection {
             )
         };
         let tokens_after = agente_core::context::estimate_message_tokens(&snapshot.conversation);
+        // Return the persisted checkpoint with the RPC response: notification
+        // delivery and the response may race on separate connection tasks.
+        let summary = if smart && tokens_after < tokens_before {
+            snapshot.conversation.iter().find_map(|message| {
+                (message.role == agente_protocol::Role::Assistant)
+                    .then(|| message.content.strip_prefix("[Conversation summary]\n"))
+                    .flatten()
+                    .map(str::to_owned)
+            })
+        } else {
+            None
+        };
         let mut result = to_json(snapshot)?;
-        result["compaction"] = json!({ "tokens_before": tokens_before, "tokens_after": tokens_after, "estimated": true, "smart": smart, "requested_smart": requested_smart, "model_tokens": if requested_smart { usage.as_ref().map(|u| u.total_tokens.max(u.prompt_tokens.saturating_add(u.cache_read_tokens).saturating_add(u.cache_creation_tokens).saturating_add(u.completion_tokens))) } else { Some(0) }, "input_tokens": usage.as_ref().map(|u| u.prompt_tokens.saturating_add(u.cache_read_tokens).saturating_add(u.cache_creation_tokens)), "cache_read_tokens": usage.as_ref().map(|u| u.cache_read_tokens), "cache_creation_tokens": usage.as_ref().map(|u| u.cache_creation_tokens), "output_tokens": usage.as_ref().map(|u| u.completion_tokens) });
+        result["compaction"] = json!({ "tokens_before": tokens_before, "tokens_after": tokens_after, "summary": summary, "estimated": true, "smart": smart, "requested_smart": requested_smart, "model_tokens": if requested_smart { usage.as_ref().map(|u| u.total_tokens.max(u.prompt_tokens.saturating_add(u.cache_read_tokens).saturating_add(u.cache_creation_tokens).saturating_add(u.completion_tokens))) } else { Some(0) }, "input_tokens": usage.as_ref().map(|u| u.prompt_tokens.saturating_add(u.cache_read_tokens).saturating_add(u.cache_creation_tokens)), "cache_read_tokens": usage.as_ref().map(|u| u.cache_read_tokens), "cache_creation_tokens": usage.as_ref().map(|u| u.cache_creation_tokens), "output_tokens": usage.as_ref().map(|u| u.completion_tokens) });
         Ok(result)
     }
 

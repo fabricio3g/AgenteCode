@@ -51,5 +51,5 @@ conversation storage, theme/zoom reloads, resizing and sidebar interaction.
 The Electron rendering fixture mounts 24 collapsed subagents with 450 KiB
 answers each in about 25 ms on this machine. Opening one mounts only its own
 complete reply, including the final evidence. This measures disclosure rendering,
-not provider speed. The same fixture checks left-aligned prose, bounded reading
-measure, and quiet inline code in both themes.
+not provider speed. The same fixture checks left-aligned prose, full reading
+column, and quiet inline code in both themes.

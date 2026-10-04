@@ -552,7 +552,6 @@ impl ContextCompactor {
 
         let recent_start =
             compaction_boundary(&messages, self.strategy.keep_recent, summarize_start);
-        let keep_recent = messages.len().saturating_sub(recent_start);
 
         let older: Vec<Message> = messages[summarize_start..recent_start].to_vec();
         if older.is_empty() {
@@ -584,12 +583,7 @@ impl ContextCompactor {
         let tokens_saved = original_tokens.saturating_sub(compressed_tokens);
 
         let summary = Summary {
-            content: format!(
-                "Compacted {} messages ({} original, {} kept recent)",
-                older.len(),
-                original_count,
-                keep_recent
-            ),
+            content: summary_text,
             tokens_saved,
             metadata: SummaryMetadata {
                 original_message_count: original_count,
@@ -1512,6 +1506,7 @@ mod tests {
             fail: false,
         }));
         let result = compactor.compact_async_forced(messages).await;
+        assert_eq!(result.summary.content, "Manual summary");
         assert_eq!(result.summary.metadata.summary_type, SummaryType::Semantic);
         assert!(result
             .messages

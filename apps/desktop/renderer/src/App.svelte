@@ -8,6 +8,7 @@
   import { deepResearchStore } from '$lib/stores/deep-research.svelte';
   import { themeStore } from '$lib/stores/theme.svelte';
   import { i18nReady } from '$lib/i18n';
+  import { installReferenceIconFallback } from '$lib/utils/markdown-references';
   import { installCodeCopyDelegate } from '$lib/utils/code-copy';
   import { notifyDesktopReady } from '$lib/services/desktop-startup';
   import { copy } from '$lib/copy';
@@ -19,6 +20,7 @@
   let activeWorkSyncInterval: ReturnType<typeof setInterval> | null = null;
   let startupHintIndex = $state(0);
   let startupHintInterval: ReturnType<typeof setInterval> | null = null;
+  let teardownReferences: (() => void) | null = null;
   let teardownCodeCopy: (() => void) | null = null;
   // Startup is a progress indicator, not a personality. One verb, from the
   // canonical status vocabulary, plus concrete steps.
@@ -61,6 +63,7 @@
 
   onMount(async () => {
     step('motion', initMotion);
+    step('reference-icons', () => { teardownReferences = installReferenceIconFallback(); });
     step('code-copy', () => {
       teardownCodeCopy = installCodeCopyDelegate();
     });
@@ -106,6 +109,7 @@
       clearInterval(startupHintInterval);
       startupHintInterval = null;
     }
+    teardownReferences?.();
     teardownCodeCopy?.();
     teardownCodeCopy = null;
   });

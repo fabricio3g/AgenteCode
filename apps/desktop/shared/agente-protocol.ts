@@ -170,7 +170,7 @@ export type CodeAgentEvent =
   | { type: 'length_continue'; chatId: string; turnIndex: number }
   | { type: 'todo_update'; chatId: string; todos: CodeTodoItem[] }
   | { type: 'compaction_start'; chatId: string; reason: string; model?: string | null }
-  | { type: 'compaction_end'; chatId: string; reason: string; success: boolean; tokensBefore?: number; tokensAfter?: number; smart?: boolean; requestedSmart?: boolean; modelTokens?: number; inputTokens?: number; outputTokens?: number; cacheReadTokens?: number; cacheWriteTokens?: number }
+  | { type: 'compaction_end'; chatId: string; reason: string; success: boolean; tokensBefore?: number; tokensAfter?: number; summary?: string; smart?: boolean; requestedSmart?: boolean; modelTokens?: number; inputTokens?: number; outputTokens?: number; cacheReadTokens?: number; cacheWriteTokens?: number }
   | { type: 'approval_request'; chatId: string; requestId: string; toolName: string; args: unknown; diff?: string; kind?: 'action' | 'plan' }
   | { type: 'approval_resolved'; chatId: string; requestId: string; decision: ApprovalDecision }
   | { type: 'checkpoint_captured'; chatId: string; turnIndex: number; fileCount: number }

@@ -37,6 +37,12 @@
 </script>
 
 <div class="space-y-5 sm:space-y-6">
+  <SettingsSection title={$t('onboarding.setupTitle')}>
+    <SettingsRow label={$t('onboarding.setupTitle')} description={$t('onboarding.setupHint')}>
+      <Button variant="secondary" onclick={() => { appStore.onboardingOpen = true; }}>{$t('onboarding.reopenSetup')}</Button>
+    </SettingsRow>
+  </SettingsSection>
+
   <SettingsSection title={$t('generalSettings.profile')}>
     <SettingsRow
       label={$t('generalSettings.yourName')}

@@ -23,6 +23,7 @@ app.whenReady().then(async () => {
  try {
   let win;
   await wait(() => { win = BrowserWindow.getAllWindows().find(window => !window.webContents.getURL().startsWith('devtools:')); return win && !win.webContents.isLoading() && win.webContents.getURL().startsWith('http:'); });
+  win.webContents.setBackgroundThrottling(false);
   const waitForRenderer = () => wait(() => win.webContents.executeJavaScript("document.documentElement.dataset.desktopReady === 'true'"));
   await waitForRenderer();
   await win.webContents.executeJavaScript(`window.electronAPI.invoke('update_config', {onboarding:{completed:true,completed_at:Date.now()}})`);

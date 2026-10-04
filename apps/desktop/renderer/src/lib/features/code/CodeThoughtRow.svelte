@@ -34,7 +34,7 @@
   onDestroy(() => { if (scrollFrame) cancelAnimationFrame(scrollFrame); });
 </script>
 
-<Disclosure {id} level="thought" chevron="trailing" defaultOpen={live}>
+<Disclosure {id} level="thought" chevron="trailing" defaultOpen={false}>
   {#snippet header()}
     <span class="shrink-0">{live ? $t('code.thinking') : $t('code.thought')}</span>
     <span class="preview min-w-0 flex-1 truncate">{preview}</span>
