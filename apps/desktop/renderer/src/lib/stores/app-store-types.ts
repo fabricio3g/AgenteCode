@@ -19,6 +19,14 @@ export interface ActiveGenerationRun {
   backendMode: GenerationBackendMode;
   mode: GenerationComposerMode;
   startedAt: number;
+  /**
+   * When this run last said anything (a delta, a step, a progress note).
+   *
+   * The only clock the UI has for telling work from silence on the Home path:
+   * the jump button wears the tile meter off it, exactly as the Code space does
+   * off `CodeRunState.lastEventAt`.
+   */
+  lastEventAt?: number;
   researchTaskId?: string | null;
 }
 

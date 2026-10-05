@@ -378,11 +378,19 @@ class AppStore {
   }
 
   private beginGenerationRun(chatId: string, run: ActiveGenerationRun) {
+    // The clock starts with the run, so work can be told from silence before
+    // the first event lands.
     this.activeRunsByChat = {
       ...this.activeRunsByChat,
-      [chatId]: run
+      [chatId]: { lastEventAt: Date.now(), ...run }
     };
     this.refreshGenerationState();
+  }
+
+  /** An event just arrived for this chat's run: the meter reads this as "alive". */
+  private touchRun(chatId: string) {
+    const run = this.activeRunsByChat[chatId];
+    if (run) run.lastEventAt = Date.now();
   }
 
   private endGenerationRun(chatId: string, controller?: AbortController) {
@@ -2647,7 +2655,8 @@ class AppStore {
             sync: syncMsg,
             persist: () => this.persist(),
             onReasoningStart: () => reasoningTimer.markStarted(),
-            onArtifacts: (latest) => this.focusArtifact(targetChatId, assistantMessage.id, latest)
+            onArtifacts: (latest) => this.focusArtifact(targetChatId, assistantMessage.id, latest),
+            touch: () => this.touchRun(targetChatId)
           })
         });
         exactUsage = agentResult.usage || exactUsage;
@@ -3133,7 +3142,8 @@ class AppStore {
             },
             persist: () => this.persist(),
             onReasoningStart: () => reasoningTimer.markStarted(),
-            onArtifacts: (latest) => this.focusArtifact(targetChatId, message.id, latest)
+            onArtifacts: (latest) => this.focusArtifact(targetChatId, message.id, latest),
+            touch: () => this.touchRun(targetChatId)
           })
         });
         exactUsage = agentResult.usage || exactUsage;

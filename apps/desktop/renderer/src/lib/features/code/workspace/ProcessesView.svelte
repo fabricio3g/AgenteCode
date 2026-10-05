@@ -146,7 +146,8 @@
     height: 100%;
     min-height: 0;
     gap: 0.25rem;
-    padding: 0 4px 4px;
+    /* Two insets: the top one keeps the run pill off the dock's tab strip. */
+    padding: 2px 4px 4px;
   }
 
   .proc-list {
@@ -158,7 +159,11 @@
     min-height: 0;
   }
 
+  /* Full-radius hover pills, like the Changes list: a gap keeps them apart. */
   .proc-items {
+    display: flex;
+    flex-direction: column;
+    gap: 0.125rem;
     min-height: 0;
     flex: 1;
     overflow-y: auto;
@@ -260,7 +265,9 @@
     flex: 1;
     overflow: auto;
     margin: 0;
-    padding: 0 0.75rem 0.6rem;
+    /* The head above is a chip row with no padding of its own, so the first log
+       line needs the top inset it never had. */
+    padding: 0.35rem 0.75rem 0.6rem;
     white-space: pre;
     color: var(--foreground);
     font-family: var(--font-mono, ui-monospace, monospace);

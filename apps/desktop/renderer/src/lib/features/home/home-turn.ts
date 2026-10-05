@@ -101,18 +101,22 @@ export function homeAgentCallbacks(args: {
   persist: () => void;
   onReasoningStart: () => void;
   onArtifacts: (latest: ChatMessage['artifact']) => void;
+  /** Punches the run's clock. Without it a live run and a silent one look alike. */
+  touch: () => void;
 }): Pick<RunAgentTaskArgs, 'onContent' | 'onStep' | 'onProgress' | 'onReasoning' | 'onArtifact' | 'onSources'> {
-  const { message, quiet, sync, persist } = args;
+  const { message, quiet, sync, persist, touch } = args;
   const showActivity = (label: string) => {
     const mapped = activityFromProgress(label);
     setAgentActivity(message, mapped.currentActivity, mapped.activityLabel);
   };
   return {
     onContent: (value) => {
+      touch();
       message.content = value;
       sync();
     },
     onStep: (steps) => {
+      touch();
       message.agentSteps = steps;
       const running = quiet ? undefined : steps.find((step) => step.status === 'running');
       if (running) showActivity(running.label);
@@ -120,15 +124,18 @@ export function homeAgentCallbacks(args: {
       persist();
     },
     onProgress: (text) => {
+      touch();
       if (!quiet) showActivity(text);
       sync();
     },
     onReasoning: (value) => {
+      touch();
       args.onReasoningStart();
       message.reasoning = value;
       sync();
     },
     onArtifact: (artifacts) => {
+      touch();
       const latest = artifacts.length ? artifacts[artifacts.length - 1] : null;
       message.artifacts = artifacts;
       message.artifact = latest;
@@ -137,6 +144,7 @@ export function homeAgentCallbacks(args: {
       args.onArtifacts(latest);
     },
     onSources: (liveSources) => {
+      touch();
       if (!mergeLiveSources(message, liveSources)) return;
       sync(true);
       persist();

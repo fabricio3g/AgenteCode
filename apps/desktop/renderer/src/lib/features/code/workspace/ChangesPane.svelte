@@ -252,17 +252,22 @@
     display: flex;
     align-items: flex-start;
     gap: 0.5rem;
-    padding: 0.25rem 0.75rem;
+    padding: 0.5rem 0.75rem;
     color: var(--muted-foreground);
     font-size: 12px;
     line-height: 1.55;
   }
 
   .changes-list {
+    /* Rows are full-radius hover pills: with no gap they merge into one band,
+       and with no top inset the first one sits on the bar above it. */
+    display: flex;
+    flex-direction: column;
+    gap: 0.125rem;
     max-height: 40%;
     flex-shrink: 0;
     overflow-y: auto;
-    padding: 0 4px 4px;
+    padding: 0.25rem 4px 4px;
   }
 
   .file-row {
@@ -288,7 +293,9 @@
     min-height: 0;
     flex: 1;
     flex-direction: column;
-    margin: 0 4px 4px;
+    /* The path bar and the first diff line are two things, not one. */
+    gap: 0.125rem;
+    margin: 0.25rem 4px 4px;
     overflow: hidden;
     border-radius: 8px;
     background: var(--muted);

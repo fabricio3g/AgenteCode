@@ -16,11 +16,7 @@
   import { toolKind } from '$shared/tool-kinds';
   import TileMeter from './TileMeter.svelte';
   import { liveStatus, QUIET_MS, type LiveStatus } from './work-blocks';
-
-  /** Silence after which the rain slows to a drizzle: nothing is arriving. */
-  const STALLED_MS = 1_200;
-  const ATTENTION: ReadonlySet<LiveStatus['kind']> = new Set(['approval', 'retry']);
-  const WORKING: ReadonlySet<LiveStatus['kind']> = new Set(['running', 'writing', 'preparing', 'thinking']);
+  import { runMeterMode } from './tile-meter';
 
   let { run, awaitingApproval = false }: { run: CodeRunState; awaitingApproval?: boolean } = $props();
 
@@ -39,15 +35,7 @@
    * for a beat, an amber square while it waits on you, and the still frame the
    * moment you ask it to stop.
    */
-  const mode = $derived<'busy' | 'quiet' | 'attention' | 'stopped'>(
-    run.stopping
-      ? 'stopped'
-      : ATTENTION.has(status.kind)
-        ? 'attention'
-        : WORKING.has(status.kind) && now - (run.lastEventAt ?? 0) < STALLED_MS
-          ? 'busy'
-          : 'quiet',
-  );
+  const mode = $derived(runMeterMode(run, awaitingApproval, now));
 
   function verb(toolName: string): string {
     const verbs = copy.codeRun as Record<string, string>;

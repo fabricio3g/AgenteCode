@@ -16,7 +16,7 @@
   import CompactionReport from './CompactionReport.svelte';
   import { onDestroy } from 'svelte';
   import { writeToClipboard } from '$lib/utils/clipboard';
-  import { ArrowDown, CircleCheck, ClipboardList, Clock, Copy, GitFork, History, RotateCcw, TriangleAlert } from 'lucide-svelte';
+  import { CircleCheck, ClipboardList, Clock, Copy, GitFork, History, RotateCcw, TriangleAlert } from 'lucide-svelte';
   import type { ChatMessage } from '$lib/types/chat';
   import DeferredMessage from '$lib/features/shared/DeferredMessage.svelte';
   import RichContent from '$lib/ui/components/RichContent.svelte';
@@ -31,6 +31,8 @@
   import { codeStore } from './code.svelte';
   import { orderedEntries } from './code-run';
   import SubagentGroup from './SubagentGroup.svelte';
+  import JumpToLatest from '$lib/features/chat/thread/JumpToLatest.svelte';
+  import { runMeterMode } from './tile-meter';
   import { pendingPlan } from './plan-review';
   import { codeWorkspace } from './workspace.svelte';
   import { toastStore } from '$lib/stores/toast.svelte';
@@ -46,6 +48,21 @@
   /** Live run state for retry + todo visibility while streaming. */
   const run = $derived(codeStore.runFor(chatId));
   const plan = $derived(pendingPlan(messages));
+
+  /* An approval waiting on you is the one thing a scrolled-away transcript
+     cannot show, so the status row and the jump button share the answer. */
+  const awaitingApproval = $derived(approvalsStore.forChat(chatId).length > 0);
+
+  /* The button's meter reads the same clock as the status row, and only ticks
+     while a run is live: an idle transcript must not wake twice a second. */
+  let meterNow = $state(Date.now());
+  const jumpMode = $derived(run?.running ? runMeterMode(run, awaitingApproval, meterNow) : 'quiet');
+  $effect(() => {
+    if (!run?.running) return;
+    meterNow = Date.now();
+    const timer = setInterval(() => (meterNow = Date.now()), 500);
+    return () => clearInterval(timer);
+  });
 
   // A plan waiting for an answer opens in the right dock, beside the conversation.
   $effect(() => {
@@ -198,7 +215,7 @@
 
           <!-- What is happening now: always the last line, next to the composer. -->
           {#if streaming && live && run}
-            <div class="-mx-2"><CodeLiveStatus {run} awaitingApproval={approvalsStore.forChat(chatId).length > 0} /></div>
+            <div class="-mx-2"><CodeLiveStatus {run} {awaitingApproval} /></div>
           {/if}
 
           {#if message.status === 'error'}
@@ -253,15 +270,17 @@
     {/if}
   </div>
   {#if !pinnedToBottom}
-    <!-- Back to the latest output: centred, above the composer, never over text. -->
+    <!-- Back to the latest output: centred, above the composer, never over text.
+         While the run is live it wears the meter, so being scrolled away from
+         the status row no longer hides that the run is still working. -->
     <div class="pointer-events-none sticky bottom-2 flex justify-center">
-      <button
-        type="button"
-        class="jump-latest pointer-events-auto"
-        aria-label={$t('chat.jumpToLatest')}
-        title={$t('chat.jumpToLatest')}
+      <JumpToLatest
+        variant="float"
+        class="pointer-events-auto"
+        working={!!run?.running}
+        mode={jumpMode}
         onclick={() => { pinnedToBottom = true; if (viewport) viewport.scrollTop = viewport.scrollHeight; }}
-      ><ArrowDown class="size-4" /></button>
+      />
     </div>
   {/if}
 </div>
@@ -286,20 +305,6 @@
   .plan-reopen:hover {
     background: var(--surface-hover);
   }
-
-  .jump-latest {
-    display: inline-flex;
-    width: 2rem;
-    height: 2rem;
-    align-items: center;
-    justify-content: center;
-    border-radius: 9999px;
-    border: 1px solid var(--border);
-    background: var(--popover);
-    color: var(--muted-foreground);
-    box-shadow: var(--shadow-lg);
-  }
-  .jump-latest:hover { color: var(--foreground); }
 
   .code-message-slot { min-width: 0; content-visibility: auto; contain-intrinsic-size: auto 120px; }
   .code-message-slot.is-live { content-visibility: visible; }

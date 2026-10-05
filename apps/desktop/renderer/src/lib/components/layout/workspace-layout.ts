@@ -36,7 +36,14 @@ export function resizeCorners(dividers: Divider[], bounds: Rect): ResizeCorner[]
   }
   return result;
 }
-const GAP = 4;
+/**
+ * A panel is an object on the window, not the window itself: `GAP` is the room
+ * it keeps from whatever sits beside it (the conversation, another panel),
+ * `EDGE` the room it keeps from the window's own edge. Exported because the
+ * drag maths works in frame coordinates and has to convert back.
+ */
+const GAP = 8;
+export const EDGE = 6;
 const MIN_WIDTH = 240;
 const MIN_HEIGHT = 140;
 const known = new Set(['changes', 'files', 'plan', 'browser', 'artifact', 'routines', 'processes', 'canvas']);
@@ -206,10 +213,12 @@ function minimum(node: DockNode): { width: number; height: number } {
 export function measureWorkspace(layout: WorkspaceLayout, bounds: Rect, visible: Set<string>, focused = ''): { main: Rect; placements: Placement[]; dividers: Divider[] } {
   const placements: Placement[] = [], dividers: Divider[] = [];
   const right = filterNode(layout.right, visible), bottom = filterNode(layout.bottom, visible);
-  const rw = right ? Math.min(Math.max(MIN_WIDTH, bounds.width - 320), layout.rightWidth, bounds.width) : 0;
-  const mainWidth = Math.max(0, bounds.width - rw - (right ? GAP : 0));
-  const bh = bottom ? Math.min(layout.bottomHeight, Math.max(MIN_HEIGHT, bounds.height - 220), bounds.height) : 0;
-  const main = { ...bounds, width: mainWidth, height: Math.max(0, bounds.height - bh - (bottom ? GAP : 0)) };
+  /** Everything docked lives inside this, so no panel's border touches the frame. */
+  const frame = { x: bounds.x + EDGE, y: bounds.y + EDGE, width: Math.max(0, bounds.width - EDGE * 2), height: Math.max(0, bounds.height - EDGE * 2) };
+  const rw = right ? Math.min(Math.max(MIN_WIDTH, frame.width - 320), layout.rightWidth, frame.width) : 0;
+  const mainWidth = Math.max(0, bounds.width - rw - (right ? GAP + EDGE : 0));
+  const bh = bottom ? Math.min(layout.bottomHeight, Math.max(MIN_HEIGHT, frame.height - 220), frame.height) : 0;
+  const main = { ...bounds, width: mainWidth, height: Math.max(0, bounds.height - bh - (bottom ? GAP + EDGE : 0)) };
   function walk(node: DockNode, rect: Rect, region: Region | null, z = 1, maximized = false, floatingId?: string) {
     const min = minimum(node);
     if (node.kind === 'group' || rect.width < min.width || rect.height < min.height) {
@@ -227,13 +236,13 @@ export function measureWorkspace(layout: WorkspaceLayout, bounds: Rect, visible:
     walk(node.a, a, region, z, maximized, floatingId); walk(node.b, b, region, z, maximized, floatingId);
   }
   if (right) {
-    const top = Math.min(layout.rightTop, Math.max(0, bounds.height - MIN_HEIGHT));
-    const rect = { x: bounds.x + bounds.width - rw, y: bounds.y + top, width: rw, height: Math.min(bounds.height - top, layout.rightHeight ?? bounds.height) };
+    const top = Math.min(layout.rightTop, Math.max(0, frame.height - MIN_HEIGHT));
+    const rect = { x: frame.x + frame.width - rw, y: frame.y + top, width: rw, height: Math.min(frame.height - top, layout.rightHeight ?? frame.height) };
     walk(right, rect, 'right');
     dividers.push({ id: 'rightWidth', outer: 'rightWidth', axis: 'x', region: 'right', length: bounds.width, rect: { x: rect.x - 7, y: rect.y, width: 14, height: rect.height } }, { id: 'rightHeight', outer: 'rightHeight', axis: 'y', region: 'right', length: bounds.height - top, rect: { x: rect.x, y: rect.y + rect.height - 12, width: rect.width, height: 14 } }, { id: 'rightTop', outer: 'rightTop', axis: 'y', region: 'right', length: rect.height, rect: { x: rect.x, y: Math.max(bounds.y, rect.y - 5), width: rect.width, height: 10 } });
   }
   if (bottom) {
-    const rect = { x: bounds.x, y: bounds.y + bounds.height - bh, width: Math.min(mainWidth, layout.bottomWidth ?? mainWidth), height: bh };
+    const rect = { x: frame.x, y: frame.y + frame.height - bh, width: Math.min(mainWidth, layout.bottomWidth ?? mainWidth), height: bh };
     walk(bottom, rect, 'bottom');
     dividers.push({ id: 'bottomHeight', outer: 'bottomHeight', axis: 'y', region: 'bottom', length: bounds.height, rect: { x: rect.x, y: rect.y - 7, width: rect.width, height: 14 } }, { id: 'bottomWidth', outer: 'bottomWidth', axis: 'x', region: 'bottom', length: mainWidth, rect: { x: rect.x + rect.width - 12, y: rect.y, width: 14, height: rect.height } });
   }

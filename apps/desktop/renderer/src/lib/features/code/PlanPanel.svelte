@@ -51,7 +51,7 @@
     <RichContent content={plan.body} />
   </div>
   {#if waiting}
-    <footer class="flex shrink-0 flex-col gap-2 border-t border-[var(--border-subtle)] px-4 py-3">
+    <footer class="flex shrink-0 flex-col gap-2 border-t border-[var(--border-subtle)] px-5 py-3">
       <div class="flex flex-wrap items-center gap-2">
         <Button size="sm" disabled={busy} onclick={() => void answer('supervised', acceptMessage(plan))}><Hammer /> {$t('code.plan.accept')}</Button>
         <Button size="sm" variant="outline" disabled={busy} onclick={() => void answer('plan', REDO_MESSAGE)}><RefreshCw /> {$t('code.plan.redo')}</Button>

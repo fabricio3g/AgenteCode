@@ -8,7 +8,7 @@
   import ResizeHandle from '$lib/components/ui/ResizeHandle.svelte';
   import WindowResizeHandle from '$lib/components/ui/WindowResizeHandle.svelte';
   import { workspaceLayout } from '$lib/stores/workspace-layout.svelte';
-  import { clampRect, dropEdge, measureWorkspace, panelIds, previewRect, projectedSplitRatio, resizeCorners, resizeRect, type Divider, type DockEdge, type Placement, type Rect, type ResizeCorner, type WorkspaceLayout } from './workspace-layout';
+  import { clampRect, dropEdge, EDGE, measureWorkspace, panelIds, previewRect, projectedSplitRatio, resizeCorners, resizeRect, type Divider, type DockEdge, type Placement, type Rect, type ResizeCorner, type WorkspaceLayout } from './workspace-layout';
   import type { WorkspacePanel } from './workspace-panel';
   import { startPointerGesture } from '$lib/utils/pointer-gesture';
 
@@ -129,8 +129,14 @@
   function resizeDivider(divider: Divider, delta: number, start = resizeValue, snapshot = resizeStart) {
     if (divider.outer) {
       if (divider.outer === 'rightTop') {
-        const top = Math.round(Math.max(0, Math.min(start + divider.length - 140, start + delta)));
-        workspaceLayout.layout = { ...workspaceLayout.layout, rightTop: top, rightHeight: divider.length + start - top };
+        /*
+         * `start` is the panel's top on screen; `rightTop` is measured from the
+         * frame's inset, so the first drag of this edge would otherwise jump by
+         * EDGE before the pointer had moved.
+         */
+        const base = start - EDGE;
+        const top = Math.round(Math.max(0, Math.min(base + divider.length - 140, base + delta)));
+        workspaceLayout.layout = { ...workspaceLayout.layout, rightTop: top, rightHeight: divider.length + base - top };
         return;
       }
       const reverse = divider.outer === 'rightWidth' || divider.outer === 'bottomHeight';
@@ -251,7 +257,9 @@
   .workspace-panel { position: absolute; display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; border-radius: .875rem; background: var(--card); box-shadow: inset 0 0 0 1px var(--border-subtle), var(--panel-shadow); }
   .workspace-panel[hidden] { display: none; }
   .workspace-panel.floating { box-shadow: inset 0 0 0 1px var(--border-hover), 0 8px 30px #0002; }
-  .workspace-header { display: flex; align-items: center; flex-shrink: 0; gap: 2px; height: 30px; padding: 0 6px; cursor: grab; touch-action: none; }
+  /* The strip owns the panel's top edge, so it draws the line under itself: the
+     body below it is a different surface, not more of the tab row. */
+  .workspace-header { display: flex; align-items: center; flex-shrink: 0; gap: 2px; height: 30px; padding: 0 6px; cursor: grab; touch-action: none; box-shadow: inset 0 -1px 0 var(--border-subtle); }
   .workspace-tabs { display: flex; min-width: 0; flex: 1; gap: 2px; overflow-x: auto; scrollbar-width: none; }
   .workspace-tab { display: inline-flex; align-items: center; gap: 5px; min-width: 0; max-width: 180px; height: 23px; padding: 0 7px; flex-shrink: 0; border-radius: var(--radius-full); font-size: var(--text-xs); color: var(--muted-foreground); cursor: grab; touch-action: none; }
   .workspace-tab span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

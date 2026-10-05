@@ -18,9 +18,9 @@
 -->
 
 <script lang="ts">
-  type Mode = 'busy' | 'quiet' | 'attention' | 'stopped';
+  import type { TileMeterMode } from './tile-meter';
 
-  let { mode = 'quiet' }: { mode?: Mode } = $props();
+  let { mode = 'quiet' }: { mode?: TileMeterMode } = $props();
 
   /**
    * All eight tiles take the same five-step trip (dark → dim → trail → head →

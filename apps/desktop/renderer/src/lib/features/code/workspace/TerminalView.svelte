@@ -101,7 +101,9 @@
 
 <style>
   .terminal-host {
-    padding: 6px 0 0 10px;
+    /* Right and bottom had none: xterm's last row and its scrollbar landed on
+       the dock's rounded corner. */
+    padding: 6px 8px 6px 10px;
   }
   .terminal-host :global(.xterm-viewport) {
     background: transparent !important;

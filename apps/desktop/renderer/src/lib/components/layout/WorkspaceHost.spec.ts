@@ -89,16 +89,21 @@ describe('stable workspace panel hosts', () => {
     workspaceLayout.show('changes'); const view = render(WorkspaceFixture); await tick();
     const frame = view.container.querySelector<HTMLElement>('[data-workspace-panel="changes"]')!;
     const handles = view.container.querySelectorAll('.workspace-divider .resize-handle');
+    // The dock's own insets (GAP, EDGE) decide where the panel starts, so the
+    // assertions are about the drag: +60 down, one ArrowUp of 16 back up.
+    const startTop = parseFloat(frame.style.top); const startHeight = parseFloat(frame.style.height);
     const top = handles[2];
     await fireEvent.pointerDown(top, { button: 0, clientX: 900, clientY: 3 });
     await movePointer(top, { clientX: 900, clientY: 23 });
     await movePointer(top, { clientX: 900, clientY: 43 });
     await movePointer(top, { clientX: 900, clientY: 63 });
-    expect(frame.style.top).toBe('60px'); expect(frame.style.height).toBe('740px');
+    expect(parseFloat(frame.style.top)).toBeCloseTo(startTop + 60);
+    expect(parseFloat(frame.style.height)).toBeCloseTo(startHeight - 60);
     expect(workspaceLayout.layout.floating).toHaveLength(0);
     await fireEvent.pointerUp(top);
     await fireEvent.keyDown(top, { key: 'ArrowUp' });
-    expect(frame.style.top).toBe('44px'); expect(frame.style.height).toBe('756px');
+    expect(parseFloat(frame.style.top)).toBeCloseTo(startTop + 44);
+    expect(parseFloat(frame.style.height)).toBeCloseTo(startHeight - 44);
   });
   it('starts resizing from the displayed width when the saved width is constrained', async () => {
     workspaceLayout.show('browser'); workspaceLayout.layout = { ...workspaceLayout.layout, rightWidth: 1000 };

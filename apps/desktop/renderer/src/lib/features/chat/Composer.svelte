@@ -12,11 +12,12 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
   import { onDestroy, tick } from 'svelte';
-  import { ArrowDown, Paperclip } from 'lucide-svelte';
+  import { Paperclip } from 'lucide-svelte';
   import { t } from 'svelte-i18n';
   import { threadJump } from './thread/thread-jump.svelte';
   import { appStore } from '$lib/stores/app.svelte';
   import { toastStore } from '$lib/stores/toast.svelte';
+  import { approvalsStore } from '$lib/stores/approvals.svelte';
   import { ttsStore } from '$lib/stores/tts.svelte';
   import { isElectron } from '$lib/services/bridge';
   import { copy, say } from '$lib/copy';
@@ -38,6 +39,8 @@
   import { MAX_COMPOSER_TEXTAREA_PX, autogrowTextarea } from '$lib/features/shared/composer-autogrow';
   import NameCompletion from '$lib/features/shared/NameCompletion.svelte';
   import PromptQueue from '$lib/features/shared/PromptQueue.svelte';
+  import JumpToLatest from './thread/JumpToLatest.svelte';
+  import { meterMode } from '$lib/features/code/tile-meter';
   import type { NameCandidate } from '$lib/features/shared/name-completion';
 
   let { placeholder: customPlaceholder, nameCompletion, above }: {
@@ -71,6 +74,23 @@
   let destroyed = false;
 
   const generating = $derived(appStore.currentChatGenerating);
+
+  /* The jump button wears the run's weather while the thread is scrolled away.
+     Same helper as the Code status row, so the two never disagree about whether
+     the run is busy, waiting on you, or has gone quiet. */
+  let jumpNow = $state(Date.now());
+  const jumpMode = $derived(meterMode({
+    attention: approvalsStore.forChat(appStore.currentChatId || '').length > 0,
+    working: generating,
+    lastEventAt: appStore.currentRun?.lastEventAt
+  }, jumpNow));
+  $effect(() => {
+    if (!generating) return;
+    jumpNow = Date.now();
+    const timer = setInterval(() => (jumpNow = Date.now()), 500);
+    return () => clearInterval(timer);
+  });
+
   const localBusyElsewhere = $derived(appStore.currentChatBlockedByOtherLocalRun);
   /* Starter prompts only make sense before the conversation has started. */
   const threadIsEmpty = $derived(!(appStore.currentChat?.messages?.length));
@@ -352,17 +372,13 @@
       <DictationSetupPopover {dictation} />
     {/if}
 
-    <!-- Back to the latest message, on the tab row's right end. -->
+    <!-- Back to the latest message, on the tab row's right end. While the run is
+         live the button wears the meter, so a thread scrolled away from the
+         status row still says the agent is working. -->
     {#if threadJump.visible && threadJump.jump}
-      <button
-        type="button"
-        class="jump-latest"
-        onclick={() => threadJump.jump?.()}
-        aria-label={$t('chat.jumpToLatest')}
-        title={$t('chat.jumpToLatest')}
-      >
-        <ArrowDown class="size-4" />
-      </button>
+      <div class="jump-slot">
+        <JumpToLatest working={generating} mode={jumpMode} onclick={() => threadJump.jump?.()} />
+      </div>
     {/if}
 
     {#if voiceMode}
@@ -487,40 +503,15 @@
     padding: 0 0 0.35rem;
     pointer-events: auto;
   }
-  /* Level with the Agent / Instant tabs, flush with the input's right edge. */
-  .jump-latest {
+  /* Level with the Agent / Instant tabs, flush with the input's right edge. The
+     dock ignores the pointer so the thread stays scrollable behind it, so the
+     slot opts back in; the button's own look lives in JumpToLatest. */
+  .jump-slot {
     position: absolute;
     top: 0;
     right: 0.35rem;
     z-index: 30;
-    display: inline-flex;
-    width: 2rem;
-    height: 2rem;
-    align-items: center;
-    justify-content: center;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-full);
-    background: var(--card);
-    color: var(--muted-foreground);
-    box-shadow: 0 1px 2px rgb(0 0 0 / 0.08);
     pointer-events: auto;
-    animation: jump-in var(--motion-fast) var(--motion-ease);
-    transition: color var(--motion-fast) var(--motion-ease), background-color var(--motion-fast) var(--motion-ease);
-  }
-  .jump-latest:hover {
-    background: var(--muted);
-    color: var(--foreground);
-  }
-  .jump-latest:focus-visible {
-    outline: none;
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--ring) 35%, transparent);
-  }
-  @keyframes jump-in {
-    from { opacity: 0; transform: translateY(4px); }
-    to { opacity: 1; transform: none; }
-  }
-  @media (prefers-reduced-motion: reduce) {
-    .jump-latest { animation: none; }
   }
   .drop-overlay {
     position: absolute;
