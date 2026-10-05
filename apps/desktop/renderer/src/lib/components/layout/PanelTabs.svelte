@@ -32,6 +32,7 @@
   import { workspaceLayout } from '$lib/stores/workspace-layout.svelte';
   import { browserPanelStore } from '$lib/stores/browser-panel.svelte';
   import { latestPlan } from '$lib/features/code/plan-review';
+  import { groupedNumber } from '$lib/utils/format';
 
   let { chat = null, project = null }: { chat?: ChatSession | null; project?: CodeProject | null } = $props();
 
@@ -91,11 +92,12 @@
   }
 </script>
 
-{#snippet pane(id: string, label: string, pressed: boolean, onclick: () => void, icon: typeof Activity, badge: Snippet | null = null)}
+{#snippet pane(id: string, label: string, pressed: boolean, onclick: () => void, icon: typeof Activity, badge: Snippet | null = null, text: string | null = null)}
   {@const Icon = icon}
   <Tooltip {label} position="bottom">
-    <button type="button" class="ui-icon-button is-sm pane-tab titlebar-no-drag" class:has-badge={!!badge} class:is-on={pressed} aria-pressed={pressed} aria-label={label} data-panel-tab={id} {onclick}>
+    <button type="button" class="ui-icon-button is-sm pane-tab titlebar-no-drag" class:has-badge={!!badge} class:has-label={!!text} class:is-on={pressed} aria-pressed={pressed} aria-label={label} data-panel-tab={id} {onclick}>
       <Icon class="size-3.5" aria-hidden="true" />
+      {#if text}<span class="pane-tab-label">{text}</span>{/if}
       {#if badge}{@render badge()}{/if}
     </button>
   </Tooltip>
@@ -103,7 +105,7 @@
 
 {#snippet changesBadge()}
   {#if changes?.files.length}
-    <span class="changes-badge" aria-hidden="true"><span class="text-success">+{changeTotals.add}</span><span class="text-error">−{changeTotals.del}</span></span>
+    <span class="changes-badge" aria-hidden="true"><span class="text-success">+{groupedNumber(changeTotals.add)}</span><span class="text-error">−{groupedNumber(changeTotals.del)}</span></span>
   {/if}
 {/snippet}
 
@@ -116,9 +118,15 @@
     {/if}
     <div class="pane-strip-tabs">
       {#if inCode && chat}
-        {@render pane('changes', $t('codeWs.changes'), workspaceLayout.isOpen('changes'), () => codeWorkspace.toggleChanges(), GitCompareArrows, changesBadge)}
-        {@render pane('files', $t('codeWs.files'), workspaceLayout.isOpen('files'), () => codeWorkspace.toggleFiles(), FolderTree)}
-        {@render pane('plan', $t('code.plan.title'), workspaceLayout.isOpen('plan'), () => codeWorkspace.togglePlan(chat.id, latestPlan(chat.messages)), ClipboardList)}
+        <!--
+          Three panes are named and four stay icons. Changes, Files and Plan are
+          the surfaces a conversation is read through — the ones a new reader
+          cannot guess from a glyph — while Terminal, Processes, Canvas and
+          Browser are instruments you go looking for by name anyway.
+        -->
+        {@render pane('changes', $t('codeWs.changes'), workspaceLayout.isOpen('changes'), () => codeWorkspace.toggleChanges(), GitCompareArrows, changesBadge, $t('codeWs.changes'))}
+        {@render pane('files', $t('codeWs.files'), workspaceLayout.isOpen('files'), () => codeWorkspace.toggleFiles(), FolderTree, null, $t('codeWs.files'))}
+        {@render pane('plan', $t('code.plan.title'), workspaceLayout.isOpen('plan'), () => codeWorkspace.togglePlan(chat.id, latestPlan(chat.messages)), ClipboardList, null, $t('codeWs.plan'))}
         {@render pane('terminal', $t('codeWs.terminal'), terminalOpen, () => void toggleTerminal(), SquareTerminal)}
         {@render pane('processes', $t('codeWs.processes'), processesOpen, () => void codeWorkspace.toggleBottom('processes', cwd), Activity)}
         {@render pane('canvas', $t('canvas.title'), workspaceLayout.isOpen('canvas'), () => workspaceLayout.toggle('canvas'), Image)}
@@ -192,24 +200,43 @@
 
   /*
    * The same circular icon button as the title bar (`.ui-icon-button`), with
-   * one addition: a pane that carries a live count widens into a pill so the
-   * number has a home instead of overprinting the glyph.
+   * one addition: a pane that carries a live count — or its name — widens into
+   * a pill so the text has a home instead of overprinting the glyph.
    */
   .pane-tab {
     position: relative;
     transition: width var(--motion-fast) var(--motion-ease), background-color var(--motion-fast) var(--motion-ease), color var(--motion-fast) var(--motion-ease);
   }
-  .pane-tab.has-badge {
+  .pane-tab.has-badge,
+  .pane-tab.has-label {
     width: auto;
     gap: 0.3rem;
     padding-inline: 0.4rem;
     border-radius: var(--radius-full);
   }
 
+  .pane-tab-label {
+    font-size: var(--text-xs);
+    white-space: nowrap;
+  }
+
+  /*
+   * The strip is the app's whole control surface, so the names stay while there
+   * is room and fold back into their icons — which keep the tooltip and the
+   * aria-label — when there is not. `container-type` on the strip was declared
+   * for exactly this and never had a rule using it; the icons themselves never
+   * disappear, so no pane becomes unreachable.
+   */
+  @container (max-width: 46rem) {
+    .pane-tab-label {
+      display: none;
+    }
+  }
+
   .changes-badge {
     display: inline-flex;
     gap: 0.25rem;
-    font-size: 11.5px;
+    font-size: var(--text-xs);
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
   }

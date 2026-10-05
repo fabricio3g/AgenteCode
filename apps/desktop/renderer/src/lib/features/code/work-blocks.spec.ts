@@ -2,9 +2,28 @@ import { describe, expect, it } from 'vitest';
 import type { AgentStep } from '$lib/types/chat';
 import type { CodeTodoItem } from '$shared/agente-protocol';
 import { applyCodeAgentEvent, createCodeRunState, orderedEntries } from './code-run';
-import { changedFiles, currentTodo, editedFiles, liveStatus, replyBlocks, QUIET_MS } from './work-blocks';
+import { disclosureKey, DisclosureStore } from './disclosure.svelte';
+import { changedFiles, currentTodo, editedFiles, liveStatus, replyBlocks, workBlockKey, QUIET_MS } from './work-blocks';
 
 const step = (id: string, extra: Partial<AgentStep> = {}): AgentStep => ({ id, type: 'tool', label: 'Edit', toolName: 'edit', status: 'done', ...extra });
+
+describe('work block keys', () => {
+  it('never borrows a row key, so folding the first child cannot fold the block', () => {
+    const store = new DisclosureStore();
+    const rowKey = disclosureKey('c', 'm', 's-task-1');
+    const blockKey = disclosureKey('c', 'm', workBlockKey('s-task-1'));
+
+    store.toggle(rowKey, false);
+
+    expect(store.isOpen(rowKey, false)).toBe(true);
+    expect(store.isOpen(blockKey, false)).toBe(false);
+  });
+
+  it('still keys a block by its first row, so a message keeps one block state', () => {
+    expect(workBlockKey('s-task-1')).toBe(workBlockKey('s-task-1'));
+    expect(workBlockKey(undefined)).toBe('block-work');
+  });
+});
 
 describe('reply blocks', () => {
   it('keeps thoughts where they happened and groups them with the work around them', () => {

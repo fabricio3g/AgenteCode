@@ -1393,6 +1393,124 @@ textarea {
   to { background-position: -200% 0; }
 }
 
+/*
+ * The live tile meter — the run's weather in the landing page's mosaic.
+ *
+ * Two columns of tiles; a drop steps through each cell in turn, so a cell goes
+ * dark, dim, trail, head, dark. `--rain-step` is how long a drop takes to cross
+ * one cell, which is how the host says how alive the run is: fast while events
+ * are arriving, a drizzle when the engine has gone quiet. `--rain-peak` dims
+ * the whole thing without restarting a single animation.
+ *
+ * One keyframe serves all eight tiles — only the phase differs, and the phases
+ * live with the component (a drop enters the cell three steps before it is
+ * due). The alpha ramp is compressed against the hero's (`alpha = i^1.35`): at
+ * four pixels on white a level-2 tile lands at 6% opacity and disappears.
+ *
+ * The base styles underneath `animation` are the reduced-motion still: with
+ * motion off — the setting or the media query — you get a drizzle frozen
+ * mid-fall, not the headless remnant of a stopped animation.
+ */
+.tile-rain {
+  --rain-cell: 0.3em;
+  --rain-step: 1.25s;
+  --rain-peak: 0.62;
+  display: grid;
+  grid-template-columns: repeat(2, var(--rain-cell));
+  grid-template-rows: repeat(4, var(--rain-cell));
+  place-items: center;
+  flex-shrink: 0;
+}
+
+.tile-rain.is-busy {
+  --rain-step: 0.31s;
+  --rain-peak: 1;
+}
+
+.tile-rain .tile {
+  width: calc(var(--rain-cell) * 0.8);
+  aspect-ratio: 1;
+  border-radius: calc(var(--tile-radius, 0.2) * 100%);
+  background: color-mix(in oklab, rgb(var(--tile-hi)) 100%, rgb(var(--tile-accent)));
+  opacity: 0;
+  animation: tile-rain calc(var(--rain-step) * 5) steps(1, end) infinite;
+  animation-delay: calc(var(--p) * var(--rain-step));
+}
+
+@keyframes tile-rain {
+  0%, 39.9% {
+    opacity: 0;
+  }
+  40%, 59.9% {
+    opacity: calc(var(--rain-peak) * 0.39);
+    background: color-mix(in oklab, rgb(var(--tile-hi)) 5%, rgb(var(--tile-accent)));
+  }
+  60%, 79.9% {
+    opacity: calc(var(--rain-peak) * 0.53);
+    background: color-mix(in oklab, rgb(var(--tile-hi)) 22%, rgb(var(--tile-accent)));
+  }
+  80%, 100% {
+    opacity: var(--rain-peak);
+    background: color-mix(in oklab, rgb(var(--tile-hi)) 100%, rgb(var(--tile-accent)));
+  }
+}
+
+/* The still: one drop mid-fall in each column, and the second one's tail. */
+.tile-rain .tile:nth-child(3),
+.tile-rain .tile:nth-child(8) {
+  opacity: var(--rain-peak);
+  background: color-mix(in oklab, rgb(var(--tile-hi)) 100%, rgb(var(--tile-accent)));
+}
+
+.tile-rain .tile:nth-child(5) {
+  opacity: calc(var(--rain-peak) * 0.53);
+  background: color-mix(in oklab, rgb(var(--tile-hi)) 22%, rgb(var(--tile-accent)));
+}
+
+.tile-rain .tile:nth-child(7) {
+  opacity: calc(var(--rain-peak) * 0.39);
+  background: color-mix(in oklab, rgb(var(--tile-hi)) 5%, rgb(var(--tile-accent)));
+}
+
+/*
+ * Waiting on you: the rain stops mid-fall and the square turns amber, the left
+ * column blinking against the right. Stillness plus one slow blink asks for an
+ * answer without competing with the label above it.
+ */
+.tile-rain.is-attention .tile {
+  animation: none;
+  opacity: calc(var(--rain-peak) * 0.55);
+  background: color-mix(in oklab, var(--warning) 62%, rgb(var(--tile-accent)));
+}
+
+.tile-rain.is-attention .tile:nth-child(odd) {
+  animation: tile-rain-ask 1.2s steps(1, end) infinite;
+}
+
+@keyframes tile-rain-ask {
+  0%, 49.9% {
+    opacity: var(--rain-peak);
+  }
+  50%, 100% {
+    opacity: calc(var(--rain-peak) * 0.35);
+  }
+}
+
+/*
+ * Asked to stop: the engine is unwinding, so the rain holds the same still frame
+ * it shows under reduced motion. A run that has been told to stop should not go
+ * on looking busy for the round trip.
+ */
+.tile-rain.is-stopped .tile {
+  animation: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tile-rain .tile {
+    animation: none;
+  }
+}
+
 /* Tool call rows (ToolCallRow) */
 .ui-tool-fallback-root {
   width: 100%;

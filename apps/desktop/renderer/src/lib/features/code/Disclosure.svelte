@@ -22,6 +22,7 @@
   let {
     id,
     level = 'step',
+    variant = 'row',
     chevron = 'trailing',
     defaultOpen = false,
     disabled = false,
@@ -34,6 +35,12 @@
     id: string;
     /** Where the row sits in the hierarchy. */
     level?: 'block' | 'step' | 'subagent' | 'thought';
+    /**
+     * How the row is drawn. A `card` is an object of its own: it brings its own
+     * boundary, so the head drops its padding and the body its rail — one
+     * border per side is the point.
+     */
+    variant?: 'row' | 'card';
     /** Which end the chevron sits on. A block and a subagent lead with it. */
     chevron?: 'leading' | 'trailing';
     defaultOpen?: boolean;
@@ -57,7 +64,7 @@
   }
 </script>
 
-<div class="disclosure level-{level}">
+<div class="disclosure level-{level}" class:is-card={variant === 'card'}>
   <div class="row">
     <button
       type="button"
@@ -171,6 +178,33 @@
     margin-left: 0.75rem;
     padding: 0.125rem 0.375rem 0.375rem 0.5rem;
     border-left: 1px solid var(--border-subtle);
+  }
+
+  /* ── a card: one child of a run, drawn as its own object ────────────── */
+  /*
+   * No box. A child sits inside a block that already draws a rail, and a second
+   * boundary two levels down reads as noise — the three rows and the space
+   * around them are what tell one child from the next.
+   */
+  .disclosure.is-card {
+    margin-block: 0.375rem;
+    padding: 0.125rem 0.5rem;
+  }
+  /* The action column sits a step away from the cost that ends the head line,
+     or the two read as one control. */
+  .disclosure.is-card > .row {
+    align-items: flex-start;
+    gap: 0.5rem;
+  }
+  /* The action column and the head are one line of the card's own column. */
+  .disclosure.is-card > .row > .head {
+    padding: 0;
+    border-radius: 0;
+  }
+  .disclosure.is-card > .body {
+    margin-left: 0;
+    padding: 0.375rem 0 0.125rem;
+    border-left: 0;
   }
 
   /* ── Lq: what the model thought, the quietest row on the page ────────── */

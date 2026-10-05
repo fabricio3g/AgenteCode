@@ -413,7 +413,9 @@
     "activity": {
       "subagents": {
         "running": "Running subagents",
-        "done": "Subagents"
+        "done": "Subagents",
+        "working": "{n} working",
+        "failed": "{n} failed"
       },
       "running": {
         "read": "reading {n, plural, one {# file} other {# files}}",
@@ -1264,6 +1266,7 @@
   "codeWs": {
     "panes": "Panels",
     "changes": "Changes",
+    "plan": "Plan",
     "terminal": "Terminal",
     "processes": "Processes",
     "browser": "Browser",

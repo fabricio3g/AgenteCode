@@ -470,6 +470,7 @@ class CodeStore {
     if (run.done) run.running = false;
     if (event.type === 'agent_end') {
       run.queuedCount = 0;
+      run.stopping = false;
       this.#clearQueued(chat);
       for (const item of chat.pendingPrompts ?? []) item.sending = false;
       appStore.persistDraft(chat.id);
@@ -855,6 +856,10 @@ class CodeStore {
   }
 
   async stop(chatId: string): Promise<void> {
+    // Say it now: the engine needs a moment to unwind, and until it does the
+    // run would keep animating as if nothing had been asked of it.
+    const run = this.runFor(chatId);
+    if (run) run.stopping = true;
     await abortCodeAgent(chatId);
   }
 

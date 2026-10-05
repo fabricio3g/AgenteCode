@@ -413,7 +413,9 @@
     "activity": {
       "subagents": {
         "running": "正在运行子智能体",
-        "done": "子智能体"
+        "done": "子智能体",
+  "working": "{n} 个运行中",
+  "failed": "{n} 个失败"
       },
       "running": {
         "read": "正在读取 {n} 个文件",
@@ -1264,6 +1266,7 @@
   "codeWs": {
     "panes": "面板",
     "changes": "更改",
+  "plan": "计划",
     "terminal": "终端",
     "processes": "进程",
     "browser": "浏览器",

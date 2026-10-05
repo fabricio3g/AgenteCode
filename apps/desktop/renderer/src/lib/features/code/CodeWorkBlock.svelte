@@ -17,7 +17,7 @@
   import { formatToolDuration } from '$lib/utils/tool-ui';
   import { activitySummary } from './activity';
   import { codeWorkspace } from './workspace.svelte';
-  import { changedFiles, isRunning, needsAttention, type WorkItem } from './work-blocks';
+  import { changedFiles, isRunning, needsAttention, workBlockKey, type WorkItem } from './work-blocks';
   import { disclosure, disclosureKey } from './disclosure.svelte';
   import CodeStepRow from './CodeStepRow.svelte';
   import CodeThoughtRow from './CodeThoughtRow.svelte';
@@ -45,8 +45,11 @@
   const steps = $derived(visible.flatMap((item) => (item.step ? [item.step] : [])));
   const running = $derived(steps.some(isRunning));
 
-  /** The block is keyed by its first row, which is stable for the message. */
-  const id = $derived(disclosureKey(chatId, messageId, visible[0]?.key ?? 'block'));
+  /**
+   * The block's own key: namespaced away from its first row's, which is what
+   * the reader's choice for that row (a step, or the card of a spawn) hangs on.
+   */
+  const id = $derived(disclosureKey(chatId, messageId, workBlockKey(visible[0]?.key)));
   const open = $derived(disclosure.isOpen(id, false));
 
   /**

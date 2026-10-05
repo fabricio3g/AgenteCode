@@ -70,6 +70,12 @@ export interface CodeRunState {
   preparing?: { toolName: string; bytes: number; startBytes: number } | null;
   /** When the last event arrived: silence past a few seconds is worth saying. */
   lastEventAt?: number;
+  /**
+   * The reader asked to stop. The engine takes a moment to unwind, so the UI
+   * says it at once: motion halts and the run stops looking busy while the
+   * abort travels.
+   */
+  stopping?: boolean;
 }
 
 export function emptySpend(): CodeSpend {
@@ -77,7 +83,7 @@ export function emptySpend(): CodeSpend {
 }
 
 export function createCodeRunState(): CodeRunState {
-  return { phase: undefined, startedAt: undefined, endedAt: undefined, elapsedMs: 0, activeStartedAt: undefined, lastEventAt: undefined, preparing: null, retrying: null, hitTurnLimit: false, summary: undefined, turnMark: undefined, generation: undefined, activity: undefined, content: '', timeline: [], reasoning: '', reasoningRaw: '', steps: [], diffStats: [], fileChanges: [], done: false, todos: [], truncatedOnce: false, artifacts: [], sources: [], children: [], spend: emptySpend(), diagnostics: [] };
+  return { phase: undefined, startedAt: undefined, endedAt: undefined, elapsedMs: 0, activeStartedAt: undefined, lastEventAt: undefined, stopping: false, preparing: null, retrying: null, hitTurnLimit: false, summary: undefined, turnMark: undefined, generation: undefined, activity: undefined, content: '', timeline: [], reasoning: '', reasoningRaw: '', steps: [], diffStats: [], fileChanges: [], done: false, todos: [], truncatedOnce: false, artifacts: [], sources: [], children: [], spend: emptySpend(), diagnostics: [] };
 }
 
 export function codeRunElapsed(state: Pick<CodeRunState, 'elapsedMs' | 'activeStartedAt' | 'startedAt' | 'endedAt'>, now = Date.now()): number {

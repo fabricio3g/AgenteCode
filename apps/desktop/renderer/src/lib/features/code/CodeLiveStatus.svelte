@@ -14,7 +14,13 @@
   import { formatToolDuration, toolTarget } from '$lib/utils/tool-ui';
   import { codeRunElapsed, type CodeRunState } from './code-run';
   import { toolKind } from '$shared/tool-kinds';
+  import TileMeter from './TileMeter.svelte';
   import { liveStatus, QUIET_MS, type LiveStatus } from './work-blocks';
+
+  /** Silence after which the rain slows to a drizzle: nothing is arriving. */
+  const STALLED_MS = 1_200;
+  const ATTENTION: ReadonlySet<LiveStatus['kind']> = new Set(['approval', 'retry']);
+  const WORKING: ReadonlySet<LiveStatus['kind']> = new Set(['running', 'writing', 'preparing', 'thinking']);
 
   let { run, awaitingApproval = false }: { run: CodeRunState; awaitingApproval?: boolean } = $props();
 
@@ -26,6 +32,22 @@
 
   const status = $derived(liveStatus(run, awaitingApproval, now));
   const elapsed = $derived(run.startedAt !== undefined ? formatToolDuration(codeRunElapsed(run, now)) : '');
+
+  /*
+   * The meter answers "is it still working?" before the label is read: rain at
+   * full tilt while the engine is producing, a drizzle once it has gone quiet
+   * for a beat, an amber square while it waits on you, and the still frame the
+   * moment you ask it to stop.
+   */
+  const mode = $derived<'busy' | 'quiet' | 'attention' | 'stopped'>(
+    run.stopping
+      ? 'stopped'
+      : ATTENTION.has(status.kind)
+        ? 'attention'
+        : WORKING.has(status.kind) && now - (run.lastEventAt ?? 0) < STALLED_MS
+          ? 'busy'
+          : 'quiet',
+  );
 
   function verb(toolName: string): string {
     const verbs = copy.codeRun as Record<string, string>;
@@ -61,10 +83,10 @@
   const label = $derived((labels[status.kind] as (status: LiveStatus) => string)(status));
 </script>
 
-<div class="live" class:is-waiting={status.kind === 'approval'} role="status" aria-live="polite">
-  <span class="dot" aria-hidden="true"></span>
+<div class="live" role="status" aria-live="polite">
+  <TileMeter {mode} />
   <span class="min-w-0 truncate">
-    <span class="text-foreground" class:ui-shimmer-text={status.kind !== 'approval'}>{label}</span>
+    <span class="text-foreground">{label}</span>
   </span>
   {#if quietMs >= QUIET_MS}<span class="shrink-0">· {$t('code.live.noUpdate', { values: { seconds: Math.floor(quietMs / 1000) } })}</span>{/if}
   {#if elapsed}<span class="shrink-0 tabular-nums">· {elapsed}</span>{/if}
@@ -77,25 +99,7 @@
     align-items: center;
     gap: 0.5rem;
     padding: 0.25rem 0.5rem;
-    font-size: 13px;
+    font-size: var(--text-sm);
     color: var(--muted-foreground);
-  }
-  .dot {
-    width: 0.375rem;
-    height: 0.375rem;
-    flex-shrink: 0;
-    border-radius: 9999px;
-    background: var(--brand-accent, var(--primary));
-    animation: live-breathe 1.4s ease-in-out infinite;
-  }
-  .live.is-waiting .dot {
-    background: var(--warning);
-  }
-  @keyframes live-breathe {
-    0%, 100% { opacity: 0.35; }
-    50% { opacity: 1; }
-  }
-  @media (prefers-reduced-motion: reduce) {
-    .dot { animation: none; }
   }
 </style>

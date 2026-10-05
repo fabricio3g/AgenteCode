@@ -27,6 +27,18 @@ export function replyBlocks(entries: OrderedEntry[]): ReplyBlock[] {
   return blocks;
 }
 
+/**
+ * The key a work block's own disclosure uses.
+ *
+ * Prefixed, because the block used to borrow its first row's key — and a `task`
+ * step hands that same key down to the child's card. One key, two disclosures:
+ * opening the block opened the first child, and folding that child folded the
+ * whole block, border and steps and all.
+ */
+export function workBlockKey(firstKey: string | undefined): string {
+  return `block-${firstKey ?? 'work'}`;
+}
+
 export interface FileTotal {
   path: string;
   name: string;

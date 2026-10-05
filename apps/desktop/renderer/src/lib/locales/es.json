@@ -413,7 +413,9 @@
     "activity": {
       "subagents": {
         "running": "Ejecutando subagentes",
-        "done": "Subagentes"
+        "done": "Subagentes",
+  "working": "{n} en curso",
+  "failed": "{n} con error"
       },
       "running": {
         "read": "leyendo {n, plural, one {# archivo} other {# archivos}}",
@@ -1264,6 +1266,7 @@
   "codeWs": {
     "panes": "Paneles",
     "changes": "Cambios",
+  "plan": "Plan",
     "terminal": "Terminal",
     "processes": "Procesos",
     "browser": "Navegador",

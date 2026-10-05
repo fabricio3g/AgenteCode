@@ -116,7 +116,7 @@
 </script>
 
 {#if isSpawn}
-  <SubagentCard child={child ?? childFromStep(step)} {id} pending={!child && running} />
+  <SubagentCard child={child ?? childFromStep(step)} {id} {chatId} pending={!child && running} />
 {:else if !(step.type === 'approval' && !isApproval)}
   <!-- A settled approval says nothing the tool's own row doesn't: hide it. -->
   <Disclosure

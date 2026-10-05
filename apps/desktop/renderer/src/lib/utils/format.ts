@@ -39,6 +39,18 @@ export function plural(count: number, singular: string, pluralForm?: string): st
   return Math.abs(Number(count)) === 1 ? singular : (pluralForm ?? `${singular}s`);
 }
 
+/**
+ * A count with its thousands grouped: `42459` → `42,459`.
+ *
+ * A diff badge is the reason this exists — an ungrouped five-digit line count
+ * is read as noise, not as a number — and `Intl` is the only thing that knows
+ * where the app's locale puts the separator.
+ */
+export function groupedNumber(value: number | null | undefined): string {
+  const count = Number(value);
+  return Number.isFinite(count) ? Math.round(count).toLocaleString() : '0';
+}
+
 /** `countOf(3, 'file')` → `3 files` */
 export function countOf(count: number, singular: string, pluralForm?: string): string {
   return `${count} ${plural(count, singular, pluralForm)}`;
