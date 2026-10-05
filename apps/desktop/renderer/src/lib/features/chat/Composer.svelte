@@ -14,10 +14,8 @@
   import { onDestroy, tick } from 'svelte';
   import { Paperclip } from 'lucide-svelte';
   import { t } from 'svelte-i18n';
-  import { threadJump } from './thread/thread-jump.svelte';
   import { appStore } from '$lib/stores/app.svelte';
   import { toastStore } from '$lib/stores/toast.svelte';
-  import { approvalsStore } from '$lib/stores/approvals.svelte';
   import { ttsStore } from '$lib/stores/tts.svelte';
   import { isElectron } from '$lib/services/bridge';
   import { copy, say } from '$lib/copy';
@@ -39,8 +37,6 @@
   import { MAX_COMPOSER_TEXTAREA_PX, autogrowTextarea } from '$lib/features/shared/composer-autogrow';
   import NameCompletion from '$lib/features/shared/NameCompletion.svelte';
   import PromptQueue from '$lib/features/shared/PromptQueue.svelte';
-  import JumpToLatest from './thread/JumpToLatest.svelte';
-  import { meterMode } from '$lib/features/code/tile-meter';
   import type { NameCandidate } from '$lib/features/shared/name-completion';
 
   let { placeholder: customPlaceholder, nameCompletion, above }: {
@@ -74,23 +70,6 @@
   let destroyed = false;
 
   const generating = $derived(appStore.currentChatGenerating);
-
-  /* The jump button wears the run's weather while the thread is scrolled away.
-     Same helper as the Code status row, so the two never disagree about whether
-     the run is busy, waiting on you, or has gone quiet. */
-  let jumpNow = $state(Date.now());
-  const jumpMode = $derived(meterMode({
-    attention: approvalsStore.forChat(appStore.currentChatId || '').length > 0,
-    working: generating,
-    lastEventAt: appStore.currentRun?.lastEventAt
-  }, jumpNow));
-  $effect(() => {
-    if (!generating) return;
-    jumpNow = Date.now();
-    const timer = setInterval(() => (jumpNow = Date.now()), 500);
-    return () => clearInterval(timer);
-  });
-
   const localBusyElsewhere = $derived(appStore.currentChatBlockedByOtherLocalRun);
   /* Starter prompts only make sense before the conversation has started. */
   const threadIsEmpty = $derived(!(appStore.currentChat?.messages?.length));
@@ -372,14 +351,8 @@
       <DictationSetupPopover {dictation} />
     {/if}
 
-    <!-- Back to the latest message, on the tab row's right end. While the run is
-         live the button wears the meter, so a thread scrolled away from the
-         status row still says the agent is working. -->
-    {#if threadJump.visible && threadJump.jump}
-      <div class="jump-slot">
-        <JumpToLatest working={generating} mode={jumpMode} onclick={() => threadJump.jump?.()} />
-      </div>
-    {/if}
+    <!-- The way back to the live edge is drawn by the thread itself, so Home
+         and Code raise the same button in the same place. -->
 
     {#if voiceMode}
       <VoiceCallPanel onend={exitVoiceMode} />
@@ -501,16 +474,6 @@
     display: flex;
     justify-content: flex-start;
     padding: 0 0 0.35rem;
-    pointer-events: auto;
-  }
-  /* Level with the Agent / Instant tabs, flush with the input's right edge. The
-     dock ignores the pointer so the thread stays scrollable behind it, so the
-     slot opts back in; the button's own look lives in JumpToLatest. */
-  .jump-slot {
-    position: absolute;
-    top: 0;
-    right: 0.35rem;
-    z-index: 30;
     pointer-events: auto;
   }
   .drop-overlay {

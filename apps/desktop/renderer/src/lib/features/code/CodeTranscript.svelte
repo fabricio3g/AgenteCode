@@ -149,17 +149,18 @@
   }
 </script>
 
-<!-- The bottom padding clears the composer dock's 3rem fade, so the last line
-     rests fully visible when scrolled to the end; text only fades while it
-     scrolls past. -->
-<div bind:this={viewport} class="relative min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden px-4 pb-16 pt-6" onscroll={onScroll}>
-  <div class="mx-auto flex min-w-0 flex-col gap-3" style="max-width: var(--thread-width);" use:followContentGrowth>
+<!-- The bottom padding clears the composer dock's fade, so the last line rests
+     fully visible when scrolled to the end; text only fades while it scrolls
+     past. Both are `--dock-gap`-sized: the 64px that used to sit here was dead
+     air between every prompt and the composer. -->
+<div bind:this={viewport} class="relative min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden px-4 pb-4 pt-6" onscroll={onScroll}>
+  <div class="mx-auto flex min-w-0 flex-col gap-[var(--thread-gap)]" style="max-width: var(--thread-width);" use:followContentGrowth>
     {#each messages as message, messageIndex (message.id)}
       <div class="code-message-slot" class:is-live={message.status === 'streaming'}>
       <DeferredMessage content={message.content} immediate={messages.length < 60 || messageIndex >= messages.length - 6 || message.status === 'streaming'}>
       {#if message.role === 'user'}
         {@const queued = !!message.metadata?.codeQueued && !!run?.running}
-        <div class="group flex flex-col items-end gap-1">
+        <div class="group relative flex flex-col items-end gap-1">
           <div class="max-w-[85%] break-words whitespace-pre-wrap rounded-3xl bg-muted px-5 py-2.5 text-sm leading-relaxed text-foreground" class:opacity-60={queued}>
             {message.content}
             {#if message.metadata?.codeAttachments?.length}
@@ -169,7 +170,13 @@
             {/if}
           </div>
           {#if queued}<span class="flex items-center gap-1 text-xs text-muted-foreground"><Clock class="size-3" />{$t('code.message.queued')}</span>{/if}
-          <div class="flex items-center gap-2 text-xs text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+          <!-- The actions hang half in the prompt's own bottom padding and half
+               in the gap below it: no reserved line (16px per message), and the
+               pointer stays inside the group while it travels to a button. The
+               row is always hit-testable — hiding it with `pointer-events`
+               would make it unreachable, since the hover that reveals it is the
+               one it has to keep. -->
+          <div class="absolute right-1 top-full z-10 -mt-2.5 flex items-center gap-2 rounded-full bg-popover/95 px-2 py-0.5 text-xs text-muted-foreground opacity-0 shadow-sm backdrop-blur transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
             <button type="button" class="flex items-center gap-1" onclick={() => messageAction(message, 'copy')}><Copy class="size-3" />{$t('code.message.copy')}</button>
             {#if message.metadata?.codeConversationIndex !== undefined && !run?.running}
               <button type="button" class="flex items-center gap-1" onclick={() => messageAction(message, 'fork')}><GitFork class="size-3" />{$t('code.message.fork')}</button>
@@ -193,7 +200,7 @@
         {@const diagnostics = live ? run?.diagnostics ?? [] : message.metadata?.codeDiagnostics ?? []}
         {@const blocks = replyBlocks(entries)}
         {@const orphans = unlinkedChildren(children, entries.flatMap((entry) => (entry.step ? [entry.step] : [])))}
-        <div class="group flex min-w-0 flex-col gap-3">
+        <div class="group flex min-w-0 flex-col gap-[var(--thread-gap)]">
           {#each blocks as block, index (block.key)}
             {#if block.items}
               <div class="-mx-2 min-w-0">

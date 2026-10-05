@@ -704,7 +704,7 @@
       </div>
     </div>
 
-    <p class="composer-hint mx-auto mt-1.5 px-1 text-center text-xs text-muted-foreground">
+    <p class="composer-hint mx-auto mt-[var(--dock-gap)] px-1 text-center text-xs text-muted-foreground">
       {#if hint}
         {hint}
       {/if}
@@ -721,13 +721,15 @@
   .composer-dock {
     background: var(--chat-bg);
   }
-  /* Fade the transcript out into the dock rather than cutting it off. */
+  /* Fade the transcript out into the dock rather than cutting it off. One
+     `--dock-gap` deep, matching the padding the transcript keeps under its last
+     row, so the fade never reaches a line of text. */
   .composer-dock::before {
     content: '';
     position: absolute;
     inset-inline: 0;
-    top: -3rem;
-    height: 3rem;
+    top: calc(-1 * var(--dock-gap, 8px));
+    height: var(--dock-gap, 8px);
     pointer-events: none;
     background: linear-gradient(
       to bottom,

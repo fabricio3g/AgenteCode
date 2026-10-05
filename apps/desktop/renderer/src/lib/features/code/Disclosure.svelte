@@ -138,10 +138,13 @@
     border-radius: 0.5rem;
     font-size: var(--text-xs);
   }
-  /* Its rows hang from a hairline under the chevron. */
+  /* Its rows hang from a hairline under the chevron, and keep `--row-gap`
+     between them: at 0 a run of steps read as one paragraph, while the blocks
+     around them breathe at `--thread-gap`. */
   .level-block > .body {
     display: flex;
     flex-direction: column;
+    gap: var(--row-gap, 2px);
     margin-left: 0.9375rem;
     padding-left: 0.25rem;
     border-left: 1px solid var(--border-subtle);
@@ -158,7 +161,7 @@
     display: flex;
     flex-direction: column;
     gap: 0.375rem;
-    padding: 0.25rem 0.5rem 0.625rem var(--step-body-indent, 1.875rem);
+    padding: 0.5rem 0.5rem 0.5rem var(--step-body-indent, 1.875rem);
   }
 
   /* ── L2: a subagent, which is an agent and not a call ────────────────── */

@@ -227,6 +227,18 @@
   /* Thread geometry. The message column and the composer share one width so
      they line up as a single column, and the composer is a full pill. */
   --thread-width: 48rem;
+  /*
+   * The conversation's spacing ladder. `--thread-gap` is the only distance
+   * between entries in the column; inside a work block it steps down to
+   * `--group-gap` between blocks and `--row-gap` between rows, and anything
+   * docked to the composer keeps `--dock-gap`. `--step-indent` is the width of
+   * the rail a block's body hangs from, so a chip under it lines up with it.
+   */
+  --thread-gap: 12px;
+  --group-gap: 6px;
+  --row-gap: 2px;
+  --step-indent: 19px;
+  --dock-gap: 8px;
   /* Icon buttons across the chrome: one size, one icon size. */
   --icon-btn: 1.625rem;
   --icon: 14px;
