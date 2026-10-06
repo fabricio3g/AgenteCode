@@ -1,113 +1,142 @@
 <svelte:options runes={true} />
 
+<!--
+  First-run setup, and the same wizard reopened from Settings → General.
+
+  Four stages, each optional past the first: say hello (language, theme),
+  choose how models run (a cloud provider with its key, or llama.cpp and a
+  model on this computer), voice (a model to read replies aloud, dictation),
+  and a summary. Closing at any point keeps whatever was already set up and
+  marks setup as done; nothing installed is ever removed here.
+-->
+
 <script lang="ts">
-  import { modalLayer } from '$lib/components/ui/modal-layer';
-  import { onMount } from 'svelte';
-  import { motionFade } from '$lib/utils/transitions';
+  import { Tooltip } from '$lib/components/ui';
   import { t } from 'svelte-i18n';
   import { X } from 'lucide-svelte';
-  import OnboardingStepWelcome from './OnboardingStepWelcome.svelte';
-  import OnboardingStepRuntime from './OnboardingStepRuntime.svelte';
-  import OnboardingStepModel from './OnboardingStepModel.svelte';
-  import OnboardingStepTtsModel from './OnboardingStepTtsModel.svelte';
-  import OnboardingStepReady from './OnboardingStepReady.svelte';
-  import { gatherOnboardingHardware, markOnboardingComplete } from '$lib/services/onboarding';
+  import { modalLayer } from '$lib/components/ui/modal-layer';
+  import { motionFade } from '$lib/utils/transitions';
+  import { markOnboardingComplete } from '$lib/services/onboarding';
   import { appStore } from '$lib/stores/app.svelte';
-  import type { HardwareInfo } from '$lib/types/bridge';
+  import SetupWelcome from './SetupWelcome.svelte';
+  import SetupModels from './SetupModels.svelte';
+  import SetupVoice from './SetupVoice.svelte';
+  import SetupDone from './SetupDone.svelte';
 
-  type Step = 'welcome' | 'runtime' | 'model' | 'tts-model' | 'ready';
+  type Stage = 'welcome' | 'models' | 'voice' | 'done';
+  const STAGES: Stage[] = ['welcome', 'models', 'voice', 'done'];
 
-  let step = $state<Step>('welcome');
-  let hardware = $state<HardwareInfo | null>(null);
-  let runtimePath = $state('');
-  let modelFilename = $state('');
+  let stage = $state<Stage>('welcome');
+  const index = $derived(STAGES.indexOf(stage));
+  const labels = $derived<Record<Stage, string>>({
+    welcome: $t('onboarding.stage.welcome'),
+    models: $t('onboarding.stage.models'),
+    voice: $t('onboarding.stage.voice'),
+    done: $t('onboarding.stage.done')
+  });
 
-  const STEPS: Step[] = ['welcome', 'runtime', 'model', 'tts-model', 'ready'];
-  const stepLabels = $derived([$t('onboarding.welcome'), $t('onboarding.runtime'), $t('onboarding.model'), $t('onboarding.downloadTtsModel'), $t('onboarding.ready')]);
-  const STEP_INDEX = $derived(STEPS.indexOf(step));
-
-  function goNext() {
-    const idx = STEP_INDEX;
-    if (idx < STEPS.length - 1) step = STEPS[idx + 1];
-  }
-  function goBack() {
-    const idx = STEP_INDEX;
-    if (idx > 0) step = STEPS[idx - 1];
+  function go(next: Stage) {
+    stage = next;
   }
 
-  function handleRuntimeNext(path: string) {
-    runtimePath = path;
-    goNext();
-  }
-  function handleModelNext(filename: string) {
-    modelFilename = filename;
-    goNext();
-  }
-  function handleTtsModelNext() {
-    goNext();
-  }
-  function handleFinish() {
-    appStore.onboardingOpen = false;
-    appStore.onboardingCompleted = true;
-  }
-  function handleSkip() {
+  function close() {
     void markOnboardingComplete();
     appStore.onboardingOpen = false;
     appStore.onboardingCompleted = true;
   }
-
-  onMount(async () => {
-    const result = await gatherOnboardingHardware();
-    hardware = result.hardware;
-  });
 </script>
 
-<!-- The setup can be reopened from settings; closing never changes installed models. -->
-<div class="ui-modal-backdrop" use:modalLayer={{ onclose: handleSkip }} transition:motionFade={{ duration: 100 }}>
-  <div class="ui-modal-surface setup-wizard" role="dialog" aria-modal="true" aria-labelledby="setup-title">
+<div class="ui-modal-backdrop" use:modalLayer={{ onclose: close }} transition:motionFade={{ duration: 100 }}>
+  <div class="ui-modal-surface setup" role="dialog" aria-modal="true" aria-labelledby="setup-title">
     <header class="setup-header">
-      <div>
+      <div class="min-w-0">
         <h2 id="setup-title">{$t('onboarding.setupTitle')}</h2>
-        <p>{$t('onboarding.stepOf', { values: { current: STEP_INDEX + 1, total: STEPS.length } })}</p>
+        <ol class="setup-progress" aria-label={$t('onboarding.progress')}>
+          {#each STAGES as item, i (item)}
+            <li class:is-current={i === index} class:is-done={i < index} aria-current={i === index ? 'step' : undefined}>
+              <span class="step-number">{i + 1}</span>{labels[item]}
+            </li>
+          {/each}
+        </ol>
       </div>
-      <button type="button" class="ui-icon-button" onclick={handleSkip} aria-label={$t('onboarding.skipSetup')} title={$t('onboarding.skipSetup')}><X class="size-4" /></button>
+      <Tooltip label={$t('onboarding.skipSetup')} position="bottom"><button type="button" class="ui-icon-button" onclick={close} aria-label={$t('onboarding.skipSetup')}>
+        <X />
+      </button></Tooltip>
     </header>
-    <ol class="setup-progress" aria-label={$t('onboarding.setupTitle')}>
-      {#each STEPS as stage, index}
-        <li class:current={index === STEP_INDEX} class:complete={index < STEP_INDEX} aria-current={index === STEP_INDEX ? 'step' : undefined}>
-          <span class="stage-number">{index + 1}</span><span>{stepLabels[index]}</span>
-        </li>
-      {/each}
-    </ol>
 
-    <!-- Step content -->
-    <div class="setup-content">
-      {#if step === 'welcome'}
-        <OnboardingStepWelcome onNext={goNext} />
-      {:else if step === 'runtime'}
-        <OnboardingStepRuntime onNext={handleRuntimeNext} onBack={goBack} />
-      {:else if step === 'model'}
-        <OnboardingStepModel onNext={handleModelNext} onBack={goBack} {hardware} />
-      {:else if step === 'tts-model'}
-        <OnboardingStepTtsModel onNext={handleTtsModelNext} onBack={goBack} />
-      {:else if step === 'ready'}
-        <OnboardingStepReady {modelFilename} onBack={goBack} onFinish={handleFinish} />
+    <div class="setup-body">
+      {#if stage === 'welcome'}
+        <SetupWelcome onnext={() => go('models')} onskip={close} />
+      {:else if stage === 'models'}
+        <SetupModels onback={() => go('welcome')} onnext={() => go('voice')} />
+      {:else if stage === 'voice'}
+        <SetupVoice onback={() => go('models')} onnext={() => go('done')} />
+      {:else}
+        <SetupDone onback={() => go('voice')} onfinish={close} />
       {/if}
     </div>
   </div>
 </div>
 
 <style>
-  .setup-wizard { width: min(640px, 100%); max-width: 640px; height: min(620px, calc(100dvh - 48px)); min-height: 0; padding: 0; overflow: hidden; }
-  .setup-header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 1.25rem 1.5rem 1rem; }
-  .setup-header h2 { font-size: var(--text-base); font-weight: 600; }
-  .setup-header p { color: var(--muted-foreground); font-size: var(--text-xs); margin-top: .25rem; }
-  .setup-progress { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: .5rem; padding: 0 1.5rem 1rem; list-style: none; }
-  .setup-progress li { display: flex; align-items: center; gap: .375rem; color: var(--muted-foreground); font-size: var(--text-xs); min-width: 0; padding-top: .5rem; border-top: 2px solid var(--border-subtle); }
-  .setup-progress li > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .setup-progress .current { color: var(--foreground); border-color: var(--muted-foreground); }
-  .setup-progress .complete { border-color: var(--border); }
-  .stage-number { font-variant-numeric: tabular-nums; opacity: .65; }
-  .setup-content { display: flex; flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: .5rem 0 1.5rem; font-size: var(--text-base); line-height: 1.6; }
-  @media (max-width: 480px) { .setup-progress li { flex-direction: column; align-items: flex-start; } .setup-header, .setup-progress { padding-left: 1rem; padding-right: 1rem; } }
+  .setup {
+    width: min(40rem, 100%);
+    height: min(40rem, calc(100dvh - 3rem));
+    padding: 0;
+  }
+
+  .setup-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 1.125rem 1.5rem 0.875rem;
+    border-bottom: 1px solid var(--border-subtle);
+  }
+
+  .setup-header h2 {
+    color: var(--foreground);
+    font-size: var(--text-base);
+    font-weight: 600;
+  }
+
+  .setup-progress {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem 1rem;
+    margin-top: 0.375rem;
+    list-style: none;
+  }
+
+  .setup-progress li {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    color: var(--muted-foreground);
+    font-size: var(--text-xs);
+  }
+
+  .setup-progress li.is-current { color: var(--foreground); font-weight: 500; }
+
+  .step-number {
+    display: inline-flex;
+    width: 1.125rem;
+    height: 1.125rem;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--float-border);
+    border-radius: 9999px;
+    font-size: 0.6875rem;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .is-current .step-number { border-color: var(--foreground); background: var(--foreground); color: var(--background); }
+  .is-done .step-number { border-color: var(--border-hover); background: var(--surface-active); }
+
+  .setup-body {
+    display: flex;
+    min-height: 0;
+    flex: 1;
+    flex-direction: column;
+  }
 </style>

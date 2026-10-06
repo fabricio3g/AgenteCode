@@ -93,7 +93,7 @@
 </section>
 
 <style>
-  .call-panel { background: var(--surface); border-radius: var(--radius-lg); padding: .45rem .55rem; margin-bottom: .5rem; font-size: var(--text-sm); }
+  .call-panel { background: var(--float-bg); border: 1px solid var(--float-border); border-radius: var(--float-radius); box-shadow: var(--float-shadow); padding: .375rem .5rem; margin-bottom: .5rem; font-size: var(--text-sm); }
   .call-row, .call-controls { display: flex; align-items: center; gap: .35rem; }
   .call-row { min-height: 2rem; }
   .call-status { display: grid; flex: 1; min-width: 0; gap: .15rem; padding-inline: .25rem; }

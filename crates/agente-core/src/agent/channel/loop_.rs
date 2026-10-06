@@ -630,7 +630,8 @@ pub(crate) async fn run_agent_loop(cfg: AgentRunConfig) -> Result<(), AgentLoopF
             }
         }
 
-        let messages_clone = messages.clone();
+        let mut messages_clone = messages.clone();
+        crate::media::prune_stale_tool_media(&mut messages_clone);
         let request_context = crate::providers::RequestContext::new(session_id);
         let request_estimate = running_tokens + tool_tokens;
 
@@ -685,6 +686,12 @@ pub(crate) async fn run_agent_loop(cfg: AgentRunConfig) -> Result<(), AgentLoopF
         let mut stream_error: Option<String> = None;
         let mut stream_stop_reason = StopReason::Unknown;
         let mut received_output = false;
+        // Where this request's wait went: the first SSE event of any kind and
+        // the first token of visible output. A long `first_event_ms` is a
+        // provider that has not answered yet; a long gap between the two is a
+        // model thinking (or a route that hides its reasoning).
+        let mut first_event_ms: Option<u128> = None;
+        let mut first_output_ms: Option<u128> = None;
 
         let mut steered = false;
         loop {
@@ -811,6 +818,12 @@ pub(crate) async fn run_agent_loop(cfg: AgentRunConfig) -> Result<(), AgentLoopF
                         },
                         None => break,
                     }
+                    // Where the wait went: the first event of any kind, then
+                    // the first token of visible output.
+                    first_event_ms.get_or_insert_with(|| request_started.elapsed().as_millis());
+                    if received_output {
+                        first_output_ms.get_or_insert_with(|| request_started.elapsed().as_millis());
+                    }
                 }
                 _ = cancel_signal.wait_aborted() => {
                     tracing::info!("Chat task cancelled during streaming");
@@ -872,7 +885,7 @@ pub(crate) async fn run_agent_loop(cfg: AgentRunConfig) -> Result<(), AgentLoopF
             .clone()
             .or_else(|| stream_result.as_ref().err().cloned());
         if let Some(err) = stream_failure {
-            tracing::warn!(iteration, retry_attempt, elapsed_ms = request_started.elapsed().as_millis(), error = %crate::util::redact_secrets(&err), "Provider request failed");
+            tracing::warn!(iteration, retry_attempt, elapsed_ms = request_started.elapsed().as_millis(), first_event_ms = ?first_event_ms, error = %crate::util::redact_secrets(&err), "Provider request failed");
             // Provider-side context overflow: the pre-request estimate said
             // the transcript fits, but the provider (real tokenizer, plus the
             // tool schemas the estimate never counts) disagrees. Shrink the
@@ -965,7 +978,7 @@ pub(crate) async fn run_agent_loop(cfg: AgentRunConfig) -> Result<(), AgentLoopF
         }
 
         retry_attempt = 0;
-        tracing::info!(iteration, elapsed_ms = request_started.elapsed().as_millis(), stop = ?stream_stop_reason, text_bytes = full_response.len(), reasoning_bytes = full_reasoning.len(), tool_calls = tool_calls.len(), "Provider request completed");
+        tracing::info!(iteration, elapsed_ms = request_started.elapsed().as_millis(), first_event_ms = ?first_event_ms, first_output_ms = ?first_output_ms, stop = ?stream_stop_reason, text_bytes = full_response.len(), reasoning_bytes = full_reasoning.len(), tool_calls = tool_calls.len(), "Provider request completed");
 
         // The provider's per-request usage is the true context size; forward
         // it every iteration so the status bar tracks the turn live instead
@@ -1244,7 +1257,7 @@ pub(crate) async fn run_agent_loop(cfg: AgentRunConfig) -> Result<(), AgentLoopF
         if !tool_images.is_empty() {
             let image_message = Message {
                 role: Role::User,
-                content: "Media from the latest tool results.".into(),
+                content: crate::media::TOOL_MEDIA_NOTE.into(),
                 attachments: tool_images,
                 tool_calls: None,
                 tool_call_id: None,

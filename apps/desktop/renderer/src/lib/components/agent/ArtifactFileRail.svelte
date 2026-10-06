@@ -1,6 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+  import { Tooltip } from '$lib/components/ui';
   import { t } from 'svelte-i18n';
   import { ChevronLeft, ChevronRight, Pencil, Plus, Trash2 } from 'lucide-svelte';
   import { getFileIcon } from '$lib/utils/doc-utils';
@@ -24,24 +25,24 @@
 <div class="mobile-files border-b border-[var(--border-subtle)] p-2">
   <Select value={selectedPath} options={files.map(([path]) => ({ value: path, label: path }))} onchange={onselect} aria-label={$t('artifacts.studio.file')} variant="surface" class="w-full" />
   <div class="mt-1 flex gap-1">
-    <Button variant="ghost" size="icon-sm" onclick={oncreate} aria-label={$t('artifacts.studio.createFile')}><Plus /></Button>
-    <Button variant="ghost" size="icon-sm" onclick={onrename} disabled={!selectedPath} aria-label={$t('artifacts.studio.renameFile')}><Pencil /></Button>
-    <Button variant="ghost" size="icon-sm" onclick={ondelete} disabled={!selectedPath} aria-label={$t('artifacts.studio.deleteFile')}><Trash2 /></Button>
+    <Tooltip label={$t('artifacts.studio.createFile')} position="bottom"><Button variant="ghost" size="icon-sm" onclick={oncreate} aria-label={$t('artifacts.studio.createFile')}><Plus /></Button></Tooltip>
+    <Tooltip label={$t('artifacts.studio.renameFile')} position="bottom"><Button variant="ghost" size="icon-sm" onclick={onrename} disabled={!selectedPath} aria-label={$t('artifacts.studio.renameFile')}><Pencil /></Button></Tooltip>
+    <Tooltip label={$t('artifacts.studio.deleteFile')} position="bottom"><Button variant="ghost" size="icon-sm" onclick={ondelete} disabled={!selectedPath} aria-label={$t('artifacts.studio.deleteFile')}><Trash2 /></Button></Tooltip>
   </div>
 </div>
 
 <aside class:collapsed class="file-rail min-h-0 shrink-0 border-r border-[var(--border-subtle)] bg-[var(--muted)]">
   <div class="flex h-10 items-center justify-between border-b border-[var(--border-subtle)] px-2">
     {#if !collapsed}<span class="px-1 text-[12px] font-semibold text-muted-foreground">{$t('artifacts.studio.files')}</span>{/if}
-    <Button variant="ghost" size="icon-sm" onclick={ontoggle} aria-label={collapsed ? $t('artifacts.studio.expandFiles') : $t('artifacts.studio.collapseFiles')}>
+    <Tooltip label={collapsed ? $t('artifacts.studio.expandFiles') : $t('artifacts.studio.collapseFiles')} position="bottom"><Button variant="ghost" size="icon-sm" onclick={ontoggle} aria-label={collapsed ? $t('artifacts.studio.expandFiles') : $t('artifacts.studio.collapseFiles')}>
       {#if collapsed}<ChevronRight />{:else}<ChevronLeft />{/if}
-    </Button>
+    </Button></Tooltip>
   </div>
   {#if !collapsed}
     <div class="flex items-center gap-0.5 border-b border-[var(--border-subtle)] p-1.5">
-      <Button variant="ghost" size="icon-sm" onclick={oncreate} aria-label={$t('artifacts.studio.createFile')}><Plus /></Button>
-      <Button variant="ghost" size="icon-sm" onclick={onrename} disabled={!selectedPath} aria-label={$t('artifacts.studio.renameFile')}><Pencil /></Button>
-      <Button variant="ghost" size="icon-sm" onclick={ondelete} disabled={!selectedPath} aria-label={$t('artifacts.studio.deleteFile')}><Trash2 /></Button>
+      <Tooltip label={$t('artifacts.studio.createFile')} position="bottom"><Button variant="ghost" size="icon-sm" onclick={oncreate} aria-label={$t('artifacts.studio.createFile')}><Plus /></Button></Tooltip>
+      <Tooltip label={$t('artifacts.studio.renameFile')} position="bottom"><Button variant="ghost" size="icon-sm" onclick={onrename} disabled={!selectedPath} aria-label={$t('artifacts.studio.renameFile')}><Pencil /></Button></Tooltip>
+      <Tooltip label={$t('artifacts.studio.deleteFile')} position="bottom"><Button variant="ghost" size="icon-sm" onclick={ondelete} disabled={!selectedPath} aria-label={$t('artifacts.studio.deleteFile')}><Trash2 /></Button></Tooltip>
     </div>
     <div class="min-h-0 overflow-auto p-1.5">
       {#each files as [path] (path)}

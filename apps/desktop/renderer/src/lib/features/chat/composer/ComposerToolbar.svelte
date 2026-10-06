@@ -105,7 +105,9 @@
 
 <style>
   .mic-control { position: relative; }
-  .mic-preview { position: absolute; right: 0; bottom: 100%; z-index: 60; padding: .35rem; display: none; align-items: center; gap: .2rem; background: var(--popover); color: var(--popover-foreground); border-radius: var(--radius-lg); box-shadow: var(--shadow-lg); }
+  .mic-preview { position: absolute; right: -0.25rem; bottom: calc(100% + 0.25rem); z-index: var(--z-float); padding: var(--float-pad); display: none; align-items: center; gap: .2rem; background: var(--float-bg); color: var(--popover-foreground); border: 1px solid var(--float-border); border-radius: var(--float-radius); box-shadow: var(--float-shadow); }
+  /* Bridges the gap to the button so the pointer can travel up into the card. */
+  .mic-preview::after { content: ''; position: absolute; inset-inline: 0; top: 100%; height: 0.5rem; }
   .mic-control:hover .mic-preview, .mic-control:focus-within .mic-preview { display: flex; }
   .mic-preview .selected { background: var(--muted); color: var(--foreground); }
   .mic-btn { color: var(--text-secondary); }

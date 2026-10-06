@@ -480,6 +480,19 @@ impl Connection {
                     .map_err(runtime_failure)?;
                 Ok(runtime.provider_status())
             }
+            "models.catalog" => {
+                #[derive(Deserialize)]
+                struct Params {
+                    provider: String,
+                }
+                let Params { provider } = parse(params)?;
+                let models: Vec<Value> = runtime
+                    .catalog_models(&provider)
+                    .into_iter()
+                    .map(|(id, name, status)| json!({ "id": id, "name": name, "status": status }))
+                    .collect();
+                Ok(json!({ "provider": provider, "models": models }))
+            }
             "models.thinking" => {
                 #[derive(Deserialize)]
                 struct Params {

@@ -1,5 +1,6 @@
 <svelte:options runes={true} />
 <script lang="ts">
+  import { Tooltip } from '$lib/components/ui';
   import { File, FileImage, FileText, Music, Video, X } from 'lucide-svelte';
   import { t } from 'svelte-i18n';
   import type { Attachment } from '$shared/agente-protocol.gen';
@@ -25,7 +26,7 @@
     </span>
     <span class="media-caption"><span class="media-name">{attachment.name}</span><span class="media-kind">{attachment.kind}{attachment.bytes ? ` · ${(attachment.bytes / 1024).toFixed(0)} KB` : ''}</span></span>
   </button>
-  {#if onremove}<button type="button" class="media-remove ui-icon-button" aria-label={$t('code.media.remove', { values: { name: attachment.name } })} onclick={onremove}><X class="size-3" /></button>{/if}
+  {#if onremove}<Tooltip label={$t('code.media.remove', { values: { name: attachment.name } })} position="bottom"><button type="button" class="media-remove ui-icon-button" aria-label={$t('code.media.remove', { values: { name: attachment.name } })} onclick={onremove}><X class="size-3" /></button></Tooltip>{/if}
 </div>
 <style>
   .media-card { display: flex; align-items: center; gap: 0.25rem; max-width: 16rem; min-width: 0; padding: 0.25rem; border-radius: 0.625rem; background: color-mix(in srgb, var(--muted) 70%, var(--background)); }

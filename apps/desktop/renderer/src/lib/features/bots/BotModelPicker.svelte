@@ -26,8 +26,9 @@
   let {
     value = $bindable(),
     showThinking = true,
+    compact = false,
     onchange
-  }: { value?: Pin; showThinking?: boolean; onchange?: (pin: Pin | undefined) => void } = $props();
+  }: { value?: Pin; showThinking?: boolean; /** One thin line: model button and thinking level side by side. */ compact?: boolean; onchange?: (pin: Pin | undefined) => void } = $props();
 
   const initial = untrack(() => value);
   let provider = $state(initial?.provider ?? '');
@@ -84,7 +85,7 @@
   }
 </script>
 
-<div class="space-y-2">
+<div class={compact ? 'picker is-compact' : 'space-y-2'}>
   <button type="button" class="model-trigger" onclick={() => (open = true)} aria-haspopup="dialog" aria-expanded={open}>
     <span class="min-w-0 flex-1 truncate">{label}</span>
     <ChevronDown class="size-3.5 shrink-0 text-muted-foreground" />
@@ -99,7 +100,7 @@
 
   {#if showThinking && capabilities.supported && capabilities.levels.length}
     <div class="thinking-row">
-      <span class="text-[12px] text-muted-foreground">{$t('bots.thinking')}</span>
+      {#if !compact}<span class="text-[12px] text-muted-foreground">{$t('bots.thinking')}</span>{/if}
       <ReasoningLevelSelector {capabilities} value={thinking} onchange={(level) => (thinking = level)} />
     </div>
   {/if}
@@ -133,4 +134,7 @@
     justify-content: space-between;
     gap: 0.5rem;
   }
+  .picker.is-compact { display: flex; min-width: 0; max-width: 100%; align-items: center; justify-content: flex-end; gap: 0.25rem; }
+  .is-compact .model-trigger { width: auto; min-width: 0; max-width: 100%; height: 1.75rem; gap: 0.375rem; padding: 0 0.625rem; border-radius: var(--radius-full); background: transparent; font-size: var(--text-sm); }
+  .is-compact .thinking-row { flex-shrink: 0; }
 </style>

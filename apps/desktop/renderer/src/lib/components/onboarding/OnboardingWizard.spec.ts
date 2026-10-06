@@ -12,15 +12,15 @@ it('labels setup and its progress, and supports closing with Escape',async()=>{
   state.onboardingOpen=true;
   const view=render(OnboardingWizard);
   expect(view.getByRole('dialog',{name:'Set up Agente'})).toBeTruthy();
-  expect(view.container.querySelectorAll('.setup-progress li')).toHaveLength(5);
-  expect(view.container.querySelector('[aria-current=step]')?.textContent).toContain('1');
+  expect(document.querySelectorAll('.setup-progress li')).toHaveLength(4);
+  expect(document.querySelector('[aria-current=step]')?.textContent).toContain('1');
   await fireEvent.keyDown(document,{key:'Escape'});
   expect(state.onboardingOpen).toBe(false);
   expect(markComplete).toHaveBeenCalled();
 });
 it('reopens setup from general settings without resetting installed preferences',async()=>{
   state.onboardingOpen=false;
-  const view=render(GeneralSettings,{showAssistantText:true,enableThinking:true,hfToken:'',onsaveHfToken:()=>{}});
+  const view=render(GeneralSettings,{enableThinking:true,hfToken:'',onsaveHfToken:()=>{}});
   await fireEvent.click(view.getByRole('button',{name:'Open setup wizard'}));
   expect(state.onboardingOpen).toBe(true);
   expect(state.editorCommand).toBe('');

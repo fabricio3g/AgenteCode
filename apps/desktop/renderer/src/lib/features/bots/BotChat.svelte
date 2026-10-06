@@ -8,6 +8,7 @@
 -->
 
 <script lang="ts">
+  import { Tooltip } from '$lib/components/ui';
   import { tick } from 'svelte';
   import { t } from 'svelte-i18n';
   import { AlertCircle, ArrowUp, CalendarClock, Eraser, Pencil, Users } from 'lucide-svelte';
@@ -112,19 +113,19 @@
       <p class="truncate text-[13px] font-medium text-foreground">{bot.title}</p>
       <p class="truncate text-[13px] text-muted-foreground">@{bot.handle}{bot.role ? ` · ${bot.role}` : ''}{bot.model ? ` · ${bot.model.model}` : ''}</p>
     </div>
-    <button type="button" class="ui-icon-button head-btn" onclick={() => void botsStore.compact(bot.handle)} title={$t('bots.compactHint')} aria-label={$t('bots.compact')} disabled={bot.working || !turns.length}>
+    <Tooltip label={$t('bots.compactHint')} position="bottom"><button type="button" class="ui-icon-button head-btn" onclick={() => void botsStore.compact(bot.handle)} aria-label={$t('bots.compact')} disabled={bot.working || !turns.length}>
       <Eraser class="size-4" />
-    </button>
-    <button type="button" class="ui-icon-button head-btn" onclick={onedit} title={$t('bots.edit')} aria-label={$t('bots.edit')}>
+    </button></Tooltip>
+    <Tooltip label={$t('bots.edit')} position="bottom"><button type="button" class="ui-icon-button head-btn" onclick={onedit} aria-label={$t('bots.edit')}>
       <Pencil class="size-4" />
-    </button>
-    <button type="button" class="ui-icon-button head-btn" class:on={routinesOpen} onclick={ontoggleroutines} title={$t('bots.routines')} aria-label={$t('bots.routines')} aria-pressed={routinesOpen}>
+    </button></Tooltip>
+    <Tooltip label={$t('bots.routines')} position="bottom"><button type="button" class="ui-icon-button head-btn" class:on={routinesOpen} onclick={ontoggleroutines} aria-label={$t('bots.routines')} aria-pressed={routinesOpen}>
       <CalendarClock class="size-4" />
-    </button>
+    </button></Tooltip>
   </header>
 
-  <div class="ui-top-fade flex min-h-0 min-w-0 flex-1 flex-col">
-    <div bind:this={viewport} class="min-h-0 flex-1 overflow-y-auto px-4 py-6" onscroll={onScroll}>
+  <div class="ui-top-fade flex min-h-0 min-w-0 flex-1 flex-col" class:justify-center={!turns.length}>
+    <div bind:this={viewport} class="bot-transcript min-h-0 flex-1 overflow-y-auto px-4 py-6" class:is-empty={!turns.length} onscroll={onScroll}>
       <div class="mx-auto flex max-w-3xl flex-col gap-5">
         {#if !turns.length}
           <div class="empty">
@@ -213,7 +214,7 @@
             <div class="composer-bar-trailing">
               <SendButton
                 running={bot.working}
-                disabled={!draft.trim()}
+                disabled={bot.working || !draft.trim()}
                 sendLabel={$t('bots.send')}
                 stopLabel={$t('bots.stop')}
                 onsend={send}
@@ -228,6 +229,9 @@
 </section>
 
 <style>
+  .bot-transcript.is-empty { display:flex;align-items:center;justify-content:center; }
+  .bot-transcript.is-empty > div {width:100%;}
+
   .head-btn.on { background: var(--surface-hover); color: var(--foreground); }
   .head-btn:disabled { opacity: 0.45; }
   .empty {
@@ -261,11 +265,11 @@
     display: flex;
     flex-direction: column;
     gap: 1px;
-    border-radius: 0.9rem;
-    border: 1px solid var(--border);
-    background: var(--popover);
-    padding: 0.3rem;
-    box-shadow: var(--shadow-lg);
+    border: 1px solid var(--float-border);
+    border-radius: var(--float-radius);
+    background: var(--float-bg);
+    box-shadow: var(--float-shadow);
+    padding: var(--float-pad);
   }
   .mention {
     display: flex;
@@ -273,9 +277,11 @@
     min-width: 0;
     align-items: center;
     gap: 0.5rem;
-    border-radius: 0.6rem;
-    padding: 0.35rem 0.5rem;
+    min-height: var(--float-row-h);
+    border-radius: var(--float-row-radius);
+    padding: 0.3125rem 0.625rem;
+    font-size: var(--text-sm);
     text-align: left;
   }
-  .mention.on { background: var(--surface-hover); }
+  .mention:hover, .mention.on { background: var(--float-row-hover); }
 </style>

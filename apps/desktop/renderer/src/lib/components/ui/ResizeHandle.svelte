@@ -16,7 +16,8 @@
     onresize,
     onend,
     oncancel,
-    fill = false
+    fill = false,
+    visible = false
   }: {
     /** x: a vertical bar resizing widths; y: a horizontal bar resizing heights. */
     axis?: 'x' | 'y';
@@ -28,6 +29,8 @@
     oncancel?: () => void;
     /** Occupy an absolutely positioned splitter hit area. */
     fill?: boolean;
+    /** Keep a quiet line and grip visible for conversation splits. */
+    visible?: boolean;
   } = $props();
 
   let dragging = $state(false);
@@ -75,6 +78,7 @@
   class:is-y={axis === 'y'}
   class:is-dragging={dragging}
   class:fill
+  class:persistent={visible}
   onpointerdown={down}
   onkeydown={key}
 ></div>
@@ -115,6 +119,8 @@
     inset: 50% 0 auto;
     height: 1px;
   }
+  .resize-handle.persistent::after { background: var(--split-line); }
+  .resize-handle.persistent::before { opacity: .6; background: var(--companion); }
   .resize-handle:hover::after,
   .resize-handle:focus-visible::after,
   .resize-handle.is-dragging::after {

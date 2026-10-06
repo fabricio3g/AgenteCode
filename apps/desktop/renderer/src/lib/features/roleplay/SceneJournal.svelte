@@ -9,6 +9,7 @@
 -->
 
 <script lang="ts">
+  import { Button, Tooltip } from '$lib/components/ui';
   import { BookMarked, LoaderCircle, Pin, Plus, RefreshCw, Trash2, X } from 'lucide-svelte';
   import { t } from 'svelte-i18n';
   import { flyAndScale, motionFade } from '$lib/utils/transitions';
@@ -92,9 +93,9 @@
           {$t('roleplay.journal.count', { values: { n: entries.length } })}
         </div>
       </div>
-      <button type="button" class="ui-icon-button" onclick={onclose} aria-label={copyText.actions.close}>
+      <Tooltip label={copyText.actions.close} position="bottom"><button type="button" class="ui-icon-button" onclick={onclose} aria-label={copyText.actions.close}>
         <X class="size-4" />
-      </button>
+      </button></Tooltip>
     </div>
 
     <div class="ui-modal-body max-h-[58vh] space-y-4 overflow-y-auto">
@@ -175,8 +176,8 @@
           <input class="ui-input" bind:value={draftTitle} placeholder={$t('roleplay.journal.titlePlaceholder')} />
           <textarea class="ui-input min-h-20 resize-y" bind:value={draftBody} placeholder={$t('roleplay.journal.bodyPlaceholder')}></textarea>
           <div class="composer-row composer-actions">
-            <button type="button" class="ui-btn ui-btn-ghost" onclick={() => (adding = false)}>{$t('roleplay.settings.cancel')}</button>
-            <button type="button" class="ui-btn ui-btn-primary" onclick={add}>{$t('roleplay.journal.add')}</button>
+            <Button variant="outline" size="sm" type="button" onclick={() => (adding = false)}>{$t('roleplay.settings.cancel')}</Button>
+            <Button variant="default" size="sm" type="button" onclick={add}>{$t('roleplay.journal.add')}</Button>
           </div>
         </div>
       {/if}
@@ -184,10 +185,10 @@
 
     {#if !adding}
       <div class="journal-actions">
-        <button type="button" class="ui-btn ui-btn-ghost" onclick={() => (adding = true)}>
+        <Button variant="outline" size="sm" type="button" onclick={() => (adding = true)}>
           <Plus class="size-3.5" />
           <span>{$t('roleplay.journal.addEntry')}</span>
-        </button>
+        </Button>
       </div>
     {/if}
   </div>
@@ -349,9 +350,4 @@
     border-top: 1px solid var(--border-subtle);
   }
 
-  .journal-actions :global(.ui-btn) {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.375rem;
-  }
 </style>

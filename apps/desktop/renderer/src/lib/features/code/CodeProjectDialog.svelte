@@ -51,8 +51,8 @@
 
   onMount(() => void load());
 
-  async function load() {
-    loading = true;
+  async function load(silent = false) {
+    if (!silent) loading = true;
     error = '';
     try {
       if (section === 'mcp') servers = await mcpStatus(projectRoot!);
@@ -63,6 +63,7 @@
         if (section === 'agents') settings = await invoke<Settings>('agente_runtime_settings') ?? settings;
       }
       if (settings.compaction_model?.provider.startsWith('desktop-')) settings.compaction_model = { ...settings.compaction_model, provider: settings.compaction_model.provider.slice(8) };
+      lastSaved = snapshot();
     } catch (cause) {
       error = String(cause);
     } finally {
@@ -73,7 +74,7 @@
   async function controlServer(name: string, action: 'approve' | 'reconnect' | 'disable') {
     try {
       await invoke('agente_mcp_control', { projectRoot: projectRoot!, name, action });
-      await load();
+      await load(true);
     } catch (cause) {
       error = String(cause);
     }
@@ -88,7 +89,7 @@
     try {
       await codeStore.ensureSession(chatId);
       await invoke('agente_subagent_model', { chatId, kind, pin });
-      await load();
+      await load(true);
     } catch (cause) {
       toastStore.error(String(cause));
     }
@@ -98,19 +99,40 @@
     settings.allow_media = on ? [...new Set([...settings.allow_media, kind])] : settings.allow_media.filter((item) => item !== kind);
   }
 
-  async function save() {
-    try {
-      await invoke('agente_runtime_configure', {
-        smart_compaction: settings.smart_compaction,
-        compaction_model: settings.compaction_model ?? null,
-        max_parallel_subagents: Math.max(1, Math.min(32, Math.round(Number(settings.max_parallel_subagents) || 1))),
-        allow_media: settings.allow_media
-      });
-      onclose();
-    } catch (cause) {
-      error = String(cause);
-    }
-  }
+  /** Settings apply as they change: there is no Save to forget. */
+  const snapshot = () => JSON.stringify({
+    smart: settings.smart_compaction,
+    model: settings.compaction_model ?? null,
+    parallel: Math.max(1, Math.min(32, Math.round(Number(settings.max_parallel_subagents) || 1))),
+    media: [...settings.allow_media].sort()
+  });
+  let lastSaved = '';
+  let saveState = $state<'idle' | 'saving' | 'saved'>('idle');
+
+  $effect(() => {
+    if (section !== 'settings' || loading) return;
+    const next = snapshot();
+    if (next === lastSaved) return;
+    const timer = setTimeout(async () => {
+      saveState = 'saving';
+      try {
+        const value = JSON.parse(next) as { smart: boolean; model: Settings['compaction_model'] | null; parallel: number; media: string[] };
+        await invoke('agente_runtime_configure', {
+          smart_compaction: value.smart,
+          compaction_model: value.model,
+          max_parallel_subagents: value.parallel,
+          allow_media: value.media
+        });
+        lastSaved = next;
+        error = '';
+        saveState = 'saved';
+      } catch (cause) {
+        error = String(cause);
+        saveState = 'idle';
+      }
+    }, 350);
+    return () => clearTimeout(timer);
+  });
 </script>
 
 <Dialog title={$t(`code.project.${section}.title`)} description={$t(`code.project.${section}.hint`)} {onclose} size="lg">
@@ -137,14 +159,15 @@
            state, not a button that guesses the chat's model. -->
       {#each [{ name: '*', description: $t('code.project.agents.all'), builtin: true }, ...info.agents] as agent (agent.name)}
         {@const pin = settings.subagent_models[agent.name]}
-        <div class="agent-card">
-          <div class="min-w-0 flex-1">
-            <p class="text-[13px] font-medium text-foreground">{agent.name}</p>
-            <p class="row-detail">{agent.description}</p>
-            {#if !pin}<p class="row-detail">{$t('code.project.agents.inherit')}</p>{/if}
+        <div class="agent-row" class:is-default={agent.name === '*'}>
+          <div class="min-w-0">
+            <p class="agent-name">{agent.name === '*' ? $t('code.project.agents.defaultName') : agent.name}</p>
+            <p class="row-detail clamp-2">{agent.name === '*' ? $t('code.project.agents.defaultHint') : agent.description}</p>
           </div>
-          <BotModelPicker value={pin} onchange={(next) => chooseModel(agent.name, next)} />
-          {#if pin}<button type="button" class="agent-reset" onclick={() => chooseModel(agent.name, null)}>{$t('code.project.agents.reset')}</button>{/if}
+          <div class="agent-pick">
+            <BotModelPicker compact value={pin} onchange={(next) => chooseModel(agent.name, next)} />
+            {#if pin}<button type="button" class="agent-reset" onclick={() => chooseModel(agent.name, null)}>{$t('code.project.agents.reset')}</button>{/if}
+          </div>
         </div>
       {/each}
     {:else if section === 'mcp'}
@@ -166,7 +189,7 @@
       {:else}
         <p class="empty">{$t('code.project.mcp.empty')}</p>
       {/each}
-      <div class="flex justify-end px-2 pt-2"><Button size="sm" variant="ghost" onclick={load}><RefreshCw /> {$t('code.project.mcp.refresh')}</Button></div>
+      <div class="flex justify-end px-2 pt-2"><Button size="sm" variant="ghost" onclick={() => load()}><RefreshCw /> {$t('code.project.mcp.refresh')}</Button></div>
     {:else if section === 'sessions'}
       {#each sessions.filter((session) => !session.profile) as session (session.session_id)}
         <button type="button" class="row w-full text-left" onclick={() => { void codeStore.importSession(session).then(onclose).catch((cause) => (error = String(cause))); }}>
@@ -177,46 +200,67 @@
         <p class="empty">{$t('code.project.sessions.empty')}</p>
       {/each}
     {:else if section === 'settings'}
-      <section class="compaction-settings">
-      <h3>{$t('code.compact')}</h3>
-      <p class="text-xs text-muted-foreground">{$t('code.compaction.settingsHint')}</p>
-      <div class="flex flex-wrap gap-2 px-2 pb-3">
-        <Button size="sm" disabled={compacting || !!run?.running} onclick={() => compactNow(true)}>{$t('code.compaction.smartNow')}</Button>
-        <Button size="sm" variant="ghost" disabled={compacting || !!run?.running} onclick={() => compactNow(false)}>{$t('code.compaction.trimNow')}</Button>
-      </div>
-      {#if compactReport}<CompactionReport report={compactReport} />{:else if compacting}<p class="text-xs text-muted-foreground" role="status">{$t('code.compaction.working')}</p>{/if}
-      <div class="px-2 py-2">
-        <p class="mb-2 text-[13px] text-foreground">{$t('code.compaction.model')}</p>
-        <BotModelPicker bind:value={settings.compaction_model} />
-        <p class="mt-2 text-[12px] text-muted-foreground">{$t('code.compaction.modelHint')}</p>
-      </div>
+      <h3 class="group">{$t('code.project.settings.context')}</h3>
       <div class="row">
-        <span class="min-w-0 flex-1 text-[13px] text-foreground">{$t('code.project.settings.smartCompaction')}</span>
+        <span class="min-w-0 flex-1">
+          <span class="row-title">{$t('code.project.settings.smartCompaction')}</span>
+          <span class="row-detail block">{$t('code.project.settings.smartCompactionHint')}</span>
+        </span>
         <Switch label={$t('code.project.settings.smartCompaction')} bind:checked={settings.smart_compaction} />
       </div>
-      </section>
       <div class="row">
-        <span class="min-w-0 flex-1 text-[13px] text-foreground">{$t('code.project.settings.parallel')}</span>
+        <span class="min-w-0 flex-1">
+          <span class="row-title">{$t('code.compaction.model')}</span>
+          <span class="row-detail block">{$t('code.compaction.modelHint')}</span>
+        </span>
+        <div class="model-cell"><BotModelPicker compact bind:value={settings.compaction_model} /></div>
+      </div>
+      <div class="row">
+        <span class="min-w-0 flex-1">
+          <span class="row-title">{$t('code.project.settings.compactNow')}</span>
+          <span class="row-detail block">{$t('code.compaction.settingsHint')}</span>
+        </span>
+        <div class="flex shrink-0 gap-1.5">
+          <Button size="sm" variant="outline" disabled={compacting || !!run?.running} loading={compacting} onclick={() => compactNow(true)}>{$t('code.compaction.smartNow')}</Button>
+          <Button size="sm" variant="outline" disabled={compacting || !!run?.running} onclick={() => compactNow(false)}>{$t('code.compaction.trimNow')}</Button>
+        </div>
+      </div>
+      {#if compactReport}<div class="px-2.5"><CompactionReport report={compactReport} /></div>{:else if compacting}<p class="px-2.5 text-xs text-muted-foreground" role="status">{$t('code.compaction.working')}</p>{/if}
+
+      <h3 class="group">{$t('code.project.settings.subagents')}</h3>
+      <div class="row">
+        <span class="min-w-0 flex-1 row-title">{$t('code.project.settings.parallel')}</span>
         <Input class="w-20" type="number" min="1" max="32" bind:value={settings.max_parallel_subagents} aria-label={$t('code.project.settings.parallel')} />
       </div>
-      <p class="px-2 pb-1 pt-3 text-[12px] font-medium text-muted-foreground">{$t('code.project.settings.media')}</p>
+
+      <h3 class="group">{$t('code.project.settings.media')}</h3>
       {#each MEDIA as kind (kind)}
         <div class="row">
-          <span class="min-w-0 flex-1 text-[13px] text-foreground">{$t(`code.project.settings.${kind}`)}</span>
+          <span class="min-w-0 flex-1 row-title">{$t(`code.project.settings.${kind}`)}</span>
           <Switch label={$t(`code.project.settings.${kind}`)} checked={settings.allow_media.includes(kind)} onchange={(on) => toggleMedia(kind, on)} />
         </div>
       {/each}
-      <div class="flex justify-end px-2 pt-3"><Button size="sm" onclick={save}>{$t('code.project.settings.save')}</Button></div>
+      <p class="save-state" role="status" aria-live="polite">{saveState === 'saving' ? $t('code.project.settings.saving') : saveState === 'saved' ? $t('code.project.settings.saved') : $t('code.project.settings.auto')}</p>
     {/if}
   </div>
 </Dialog>
 
 <style>
-  .compaction-settings { display: grid; gap: .75rem; padding: .5rem; margin-bottom: .75rem; }
-  .compaction-settings h3 { font-size: var(--text-sm); font-weight: 500; }
-  .agent-card { display: grid; gap: .5rem; padding: .5rem; }
-  .agent-reset { justify-self: start; font-size: var(--text-xs); color: var(--muted-foreground); text-decoration: underline; text-underline-offset: 2px; }
-  .agent-reset:hover { color: var(--foreground); }
+  .group { padding: 1rem 0.625rem 0.25rem; font-size: var(--text-xs); font-weight: 500; letter-spacing: 0.02em; text-transform: uppercase; color: var(--muted-foreground); }
+  .group:first-child { padding-top: 0.25rem; }
+  .model-cell { flex: 0 1 16rem; min-width: 0; }
+  .agent-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 16rem); align-items: start; gap: 0.75rem; padding: 0.625rem; border-radius: 0.625rem; }
+  .agent-row + .agent-row { border-top: 1px solid var(--border-subtle); border-radius: 0; }
+  .agent-row.is-default { background: var(--surface-hover); border-radius: 0.625rem; margin-bottom: 0.25rem; }
+  .agent-row.is-default + .agent-row { border-top: 0; }
+  .agent-name { font-size: 13px; font-weight: 500; color: var(--foreground); }
+  .agent-pick { display: flex; min-width: 0; flex-direction: column; align-items: flex-end; gap: 0.125rem; }
+  .agent-reset { font-size: var(--text-xs); color: var(--muted-foreground); }
+  .agent-reset:hover { color: var(--foreground); text-decoration: underline; text-underline-offset: 2px; }
+  .clamp-2 { display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  @media (max-width: 560px) { .agent-row { grid-template-columns: minmax(0, 1fr); } .agent-pick { justify-items: stretch; } }
+  .row-title { font-size: 13px; color: var(--foreground); }
+  .save-state { padding: 1rem 0.625rem 0.25rem; font-size: var(--text-xs); color: var(--muted-foreground); }
 
   .row {
     display: flex;

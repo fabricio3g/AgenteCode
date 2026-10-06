@@ -12,20 +12,22 @@
 
 <script lang="ts">
   import { onDestroy, untrack } from 'svelte';
-  import { ArrowDownToLine, ArrowUp, Check, ChevronDown, ClipboardList, Eye, EyeOff, File as FileIcon, MoreHorizontal, Paperclip, Play, Plus, ShieldCheck, X, Zap } from 'lucide-svelte';
+  import { ArrowDownToLine, ArrowUp, ChevronDown, ClipboardList, Eye, EyeOff, File as FileIcon, MoreHorizontal, Paperclip, Play, Plus, ShieldCheck, Settings2, X, Zap } from 'lucide-svelte';
   import { toastStore } from '$lib/stores/toast.svelte';
   import { codeWorkspace } from './workspace.svelte';
   import { exactSlashCommand, matchSlashCommands, slashQuery } from './slash-commands';
   import { codeCommands, type CodeCommand, type CodeDialog } from './code-commands';
   import { t } from 'svelte-i18n';
-  import type { ChatSession } from '$lib/types/chat';
+  import type { ChatSession, ReasoningCapabilities, ReasoningLevel } from '$lib/types/chat';
   import { appStore } from '$lib/stores/app.svelte';
+  import { fetchReasoningCapabilities } from '$lib/services/chat-api';
   import ModelSwitcher from '$lib/features/chat/ModelSwitcher.svelte';
   import ContextUsageRing from '$lib/features/chat/composer/ContextUsageRing.svelte';
   import { codeStore } from './code.svelte';
   import { codeEdits, initProject, projectFiles, setAgenteModel } from './code-ipc';
   import CodeProjectDialog from './CodeProjectDialog.svelte';
   import TodoDock from './TodoDock.svelte';
+  import { conversationTodos } from './code-run';
   import MediaAttachmentCard from './MediaAttachmentCard.svelte';
   import PromptQueue from '$lib/features/shared/PromptQueue.svelte';
   import { conversationSpend } from './accounting';
@@ -67,10 +69,25 @@
 
   const run = $derived(codeStore.runFor(chat.id));
   const running = $derived(!!run?.running);
+  const ownConfig = $derived(appStore.configForChat(chat));
+  const ownBackend = $derived(ownConfig.llm?.backend_mode ?? 'local');
+  const ownProvider = $derived(ownBackend === 'local' ? 'local' : ownConfig.llm?.provider ?? '');
+  const ownModel = $derived(ownBackend === 'local' ? ownConfig.llm?.local?.model ?? '' : ownConfig.llm?.providers?.[ownProvider]?.model ?? '');
+  let ownThinking = $state<ReasoningCapabilities>({supported:false,levels:[],source:'unknown'});
+  $effect(() => {
+    const provider = ownConfig.llm?.providers?.[ownProvider];
+    let current = true;
+    void fetchReasoningCapabilities({providerName:ownProvider,model:ownModel,baseUrl:provider?.base_url,apiKey:provider?.api_key,modelPath:ownConfig.llm?.local?.selected_model_path}).then(value=>{if(current)ownThinking=value;}).catch(()=>{});
+    return () => {current=false;};
+  });
+  function setThinking(level: ReasoningLevel | null) {
+    chat.reasoningLevel=level; if(appStore.currentChatId===chat.id)appStore.reasoningLevel=level;
+    appStore.markChatDirty(chat.id);appStore.persist();
+  }
   const runtimeMode = $derived(chat.codeAgent?.runtimeMode ?? codeStore.defaultMode);
   // Honest model visibility: without a usable model the bar says so instead
   // of letting a send die inside the provider.
-  const modelReady = $derived(codeStore.modelReady);
+  const modelReady = $derived(ownBackend === 'local' ? !!(ownConfig.llm?.local?.selected_model_path && appStore.localModelActive) : !!(ownModel && (ownConfig.llm?.providers?.[ownProvider]?.api_key || ownConfig.llm?.providers?.[ownProvider]?.has_api_key)));
   const canSend = $derived((!!text.trim() || attachments.length > 0) && !attaching && (modelReady || running));
   // Real accounting from the engine: promptTokens of the last call is the
   // context footprint. Hidden until the first report, like Home's ring.
@@ -94,8 +111,7 @@
   /** The task list on the composer: live while a run works, then while tasks are left. */
   const todos = $derived.by(() => {
     if (running) return run?.todos ?? [];
-    const last = [...chat.messages].reverse().find((message) => message.role === 'assistant');
-    const saved = last?.metadata?.codeTodos ?? [];
+    const saved = conversationTodos(chat.messages);
     return saved.some((todo) => todo.status !== 'completed') ? saved : [];
   });
 
@@ -130,7 +146,7 @@
     running
       ? $t('code.steerPlaceholder')
       : !modelReady
-        ? $t('code.selectModel')
+        ? ownBackend === 'api' && ownModel ? copy.model.configureProvider : $t('code.selectModel')
         : $t('code.composerPlaceholder')
   );
 
@@ -289,6 +305,7 @@
 
   function focusComposer() {
     if (!textarea) return;
+    if (appStore.currentChatId !== chat.id) codeStore.openConversation(chat.id);
     textarea.focus();
     textarea.setSelectionRange(textarea.value.length, textarea.value.length);
   }
@@ -298,9 +315,8 @@
   const MEDIA_KINDS = ['image', 'video', 'audio'] as const;
   let modelInputs = $state<string[] | null>(null);
   $effect(() => {
-    const local = appStore.backendMode === 'local';
-    const provider = local ? 'local' : appStore.activeProviderName;
-    const model = local ? String(appStore.config.llm?.local?.model || '') : appStore.activeModelLabel;
+    const provider = ownProvider;
+    const model = ownModel;
     let current = true;
     void invoke<string[]>('agente_model_inputs', { provider, model })
       .then((kinds) => { if (current) modelInputs = kinds; })
@@ -388,7 +404,7 @@
   async function submit() {
     const value = text.trim() || (attachments.length ? 'Please review the attached media.' : '');
     if (attaching) return;
-    if (!value) { await codeStore.sendQueuedNow(chat.id); return; }
+    if (!value) { await codeStore.sendQueuedNow(chat.id, chat.pendingPrompts?.find((item) => !item.sending)?.id); return; }
     // "/compact" typed out and sent runs the command, it is not a message.
     const command = exactSlashCommand(commands, value);
     if (command) {
@@ -400,7 +416,7 @@
       attachments = [];
       text = '';
       if (textarea) autoGrow(textarea);
-      codeStore.queue(chat.id, value, media);
+      void codeStore.steer(chat.id, value, media);
       return;
     }
     if (!modelReady) return;
@@ -476,9 +492,9 @@
   // (ModelSwitcher writes app config; the agente runtime keeps its own copy).
   let lastAppliedModel = $state('');
   $effect(() => {
-    const provider = appStore.activeProviderName;
-    const model = appStore.activeModelLabel;
-    const backend = appStore.backendMode;
+    const provider = ownProvider;
+    const model = ownModel;
+    const backend = ownBackend;
     const thinking = chat.reasoningLevel || undefined;
     const key = `${backend}:${provider}:${model}:${thinking || ''}`;
     if (!lastAppliedModel) {
@@ -491,24 +507,27 @@
     void setAgenteModel(
       chat.id,
       backend === 'local' ? 'local' : provider,
-      backend === 'local' ? String(appStore.config.llm?.local?.model || '') : model,
+      model,
       thinking,
       chat.modelSelection ? { modelPath: chat.modelSelection.localModelPath, baseUrl: chat.modelSelection.localBaseUrl } : undefined
     ).catch((error) => toastStore.error(String(error)));
   });
 
   $effect(() => {
-    const onFocusComposer = () => focusComposer();
+    const onFocusComposer = () => { if (appStore.currentChatId === chat.id) focusComposer(); };
     // Starter prompts fill the composer; they never send on their own.
     const onDraft = (event: Event) => {
-      text = String((event as CustomEvent<string>).detail ?? '');
+      const detail = (event as CustomEvent<string | { chatId?: string; text?: string }>).detail;
+      if ((typeof detail === 'object' ? detail.chatId : appStore.currentChatId) !== chat.id) return;
+      text = typeof detail === 'string' ? detail : detail?.text ?? '';
       void Promise.resolve().then(focusComposer);
     };
     // The canvas panel hands over a rendered image plus the instruction that
     // describes it. Unlike a starter prompt it *appends*: whatever the user has
     // half-written stays, and both the text and the chips land together.
     const onAppend = (event: Event) => {
-      const detail = (event as CustomEvent<{ text?: string; media?: Attachment[] }>).detail ?? {};
+      const detail = (event as CustomEvent<{ chatId?: string; text?: string; media?: Attachment[] }>).detail ?? {};
+      if ((detail.chatId ?? appStore.currentChatId) !== chat.id) return;
       text = mergeDraft(text, String(detail.text ?? ''));
       const media = detail.media ?? [];
       if (media.length) attachments = [...attachments, ...media.filter((item) => !attachments.some((existing) => existing.path === item.path))];
@@ -588,9 +607,9 @@
       </div>
     {/if}
     {#if chat.pendingPrompts?.length}
-      <PromptQueue items={chat.pendingPrompts} onupdate={(id, content) => appStore.updateQueuedPrompt(chat.id, id, content)} onremove={(id) => { appStore.removeQueuedPrompt(chat.id, id); }} onsend={() => void codeStore.sendQueuedNow(chat.id)} />
+      <PromptQueue items={chat.pendingPrompts} onupdate={(id, content) => appStore.updateQueuedPrompt(chat.id, id, content)} onremove={(id) => { appStore.removeQueuedPrompt(chat.id, id); }} onsend={(id) => void codeStore.sendQueuedNow(chat.id, id)} />
     {/if}
-    {#if todos.length}<TodoDock {todos} />{/if}
+    {#if todos.length}<TodoDock {todos} running={running && !run?.stopping && !!run?.todosUpdated} />{/if}
     <div class="composer-shell ui-composer pointer-events-auto transition">
       <div class="composer-body">
         {#if attachments.length}
@@ -612,7 +631,7 @@
           onselect={() => { if (textarea) caret = textarea.selectionStart; }}
         ></textarea>
 
-        <div class="composer-bar">
+        <div class="composer-bar is-compact">
           <div class="composer-bar-leading">
             <input bind:this={mediaPicker} type="file" class="hidden" accept={MEDIA_ACCEPT} multiple onchange={(event) => { void attachFiles([...((event.currentTarget as HTMLInputElement).files || [])]); event.currentTarget.value = ''; }} />
             <Tooltip label={$t('code.attach')} position="top">
@@ -620,17 +639,17 @@
             </Tooltip>
 
             <!-- Runtime mode gate — plan / supervised / full-auto. -->
-            <Menu bind:open={modeMenuOpen} placement="top-start" minWidth="20rem" label={$t('code.modeSelector')} class="p-1.5">
+            <Menu bind:open={modeMenuOpen} placement="top-start" minWidth="16rem" label={$t('code.modeSelector')} class="mode-menu">
               {#snippet trigger(props)}
                 <button
                   type="button"
-                  class="mode-trigger flex h-8 items-center gap-1.5 px-2.5 transition"
+                  class="mode-trigger flex h-6 items-center gap-1 px-2 transition"
                   class:is-open={modeMenuOpen}
                   aria-label={$t('code.modeSelector')}
                   title={activeMode.hint}
                   {...props}
                 >
-                  <ModeIcon class="h-3.5 w-3.5 shrink-0 text-[var(--text-muted)]" />
+                  <ModeIcon class="h-3 w-3 shrink-0 text-[var(--text-muted)]" />
                   <span class="trigger-label truncate">{activeMode.label}</span>
                   <ChevronDown class={`h-3 w-3 shrink-0 text-[var(--text-muted)] transition-transform duration-150${modeMenuOpen ? ' rotate-180' : ''}`} />
                 </button>
@@ -638,42 +657,15 @@
               <p class="px-2.5 pb-1.5 pt-1 text-xs font-medium text-muted-foreground">{$t('code.modeTitle')}</p>
               {#each modes as mode (mode.id)}
                 {@const selected = mode.id === runtimeMode}
-                <MenuItem class="mode-option !items-center !gap-3 !px-3 !py-2 {selected ? '!bg-[var(--surface-active)]' : ''}" onselect={() => selectMode(mode.id)}>
-                  <span class="min-w-0 flex-1">
-                    <span class="block text-[13px] font-medium text-foreground">{mode.label}</span>
-                    <span class="block text-xs leading-snug text-muted-foreground">{mode.hint}</span>
-                  </span>
-                  <Check class="size-4 shrink-0 text-foreground {selected ? '' : 'invisible'}" />
-                </MenuItem>
+                <MenuItem class="mode-option" icon={mode.icon} label={mode.label} description={mode.hint} active={selected} onselect={() => selectMode(mode.id)} />
               {/each}
             </Menu>
 
-            <div class="model-slot"><ModelSwitcher compact /></div>
-            <ReasoningLevelSelector />
+
           </div>
 
           <div class="composer-bar-trailing">
-            {#if running && queuedCount > 0}<span class="queued-status" role="status">{$t('code.queued', { values: { n: queuedCount } })}</span>{/if}
-            {#if modelReady && modelInputs}
-              <!-- Capability and policy in one glyph: what the model sees, and
-                   the door to the toggles that decide what gets attached. -->
-              <Tooltip label={mediaLabel} position="top">
-                <button type="button" class="media-status" aria-label={mediaLabel} onclick={() => (dialog = 'settings')}>
-                  {#if vision}<Eye class="size-3.5" />{:else}<EyeOff class="size-3.5" />{$t('code.media.textOnly')}{/if}
-                </button>
-              </Tooltip>
-            {/if}
-            {#if showContextRing && usage}<ContextUsageRing usedTokens={usage.promptTokens} maxTokens={usage.contextWindow ?? 0} {spend} />{/if}
-
-            {#if !modelReady}
-              <!-- The one honest interruption: point at the fix. -->
-              <Tooltip label={$t('code.selectModel')} position="top">
-                <button type="button" class="composer-chip" onclick={openModelHub}>
-                  <ArrowDownToLine class="size-3.5" />
-                  {copy.model.browseAll}
-                </button>
-              </Tooltip>
-            {:else if canContinue && !text.trim()}
+            {#if modelReady && canContinue && !text.trim()}
               <!-- The run stopped short: one click picks the work back up. -->
               <Tooltip label={$t('code.continue')} position="top">
                 <button type="button" class="composer-chip" onclick={() => void codeStore.followUp(chat.id, $t('code.continuePrompt'))}>
@@ -691,7 +683,7 @@
               {/each}
             </Menu>
 
-            <SendButton
+            <SendButton compact stopShortcut="escape"
               {running}
               disabled={!canSend}
               sendLabel={$t('code.send')}
@@ -704,7 +696,30 @@
       </div>
     </div>
 
-    <p class="composer-hint mx-auto mt-[var(--dock-gap)] px-1 text-center text-xs text-muted-foreground">
+    <div class="composer-secondary">
+      <div class="composer-secondary-options"><div class="model-slot"><ModelSwitcher compact {chat} /></div>
+        {#if ownBackend === 'local'}
+          <Tooltip label={copy.model.browseAll} position="top"><button type="button" class="ui-icon-button local-model-library" aria-label={copy.model.browseAll} onclick={()=>appStore.openSettings('explore')}><ArrowDownToLine class="size-3" /></button></Tooltip>
+        {:else if !modelReady}
+          <Tooltip label={copy.model.configureProvider} position="top"><button type="button" class="ui-icon-button provider-setup" aria-label={copy.model.configureProvider} onclick={()=>appStore.openSettings('providers')}><Settings2 class="size-3" /></button></Tooltip>
+        {/if}
+        <ReasoningLevelSelector capabilities={ownThinking} value={chat.reasoningLevel} onchange={setThinking} /></div>
+      <div class="composer-secondary-status">            {#if running && queuedCount > 0}<span class="queued-status" role="status">{$t('code.queued', { values: { n: queuedCount } })}</span>{/if}
+            {#if modelReady && modelInputs}
+              <!-- Capability and policy in one glyph: what the model sees, and
+                   the door to the toggles that decide what gets attached. -->
+              <Tooltip label={mediaLabel} position="top">
+                <button type="button" class="media-status" aria-label={mediaLabel} onclick={() => (dialog = 'settings')}>
+                  {#if vision}<Eye class="size-3.5" />{:else}<EyeOff class="size-3.5" />{$t('code.media.textOnly')}{/if}
+                </button>
+              </Tooltip>
+            {/if}
+            {#if showContextRing && usage}<ContextUsageRing usedTokens={usage.promptTokens} maxTokens={usage.contextWindow ?? 0} {spend} />{/if}
+
+</div>
+    </div>
+
+    <p class="composer-hint mx-auto mt-[var(--dock-gap)] px-1 text-center text-xs text-muted-foreground opacity-70">
       {#if hint}
         {hint}
       {/if}
@@ -713,6 +728,11 @@
 </div>
 
 <style>
+  .composer-bar {min-height:1.5rem;flex-wrap:nowrap;}
+  .composer-bar :global(.ui-icon-button), .composer-secondary :global(.ui-icon-button) {width:1.5rem;height:1.5rem;}
+  .composer-secondary :global(.model-trigger), .composer-secondary :global(.thinking-trigger) {height:1.5rem;font-size:var(--text-xs);}
+  .composer-bar :global(.ui-icon-button svg) {width:0.75rem;height:0.75rem;}
+
   .approval-pill {
     border: 1px solid color-mix(in srgb, var(--warning, #d97706) 45%, transparent);
     background: color-mix(in srgb, var(--warning, #d97706) 12%, var(--background));
@@ -766,23 +786,26 @@
     max-height: min(20rem, 40vh);
     overflow-y: auto;
     margin-bottom: 0.5rem;
-    padding: 0.25rem;
-    border: 1px solid var(--border);
-    border-radius: 0.875rem;
-    background: var(--popover, var(--background));
-    box-shadow: var(--shadow-lg);
+    padding: var(--float-pad);
+    border: 1px solid var(--float-border);
+    border-radius: var(--float-radius);
+    background: var(--float-bg);
+    box-shadow: var(--float-shadow);
   }
   .slash-item {
     display: flex;
     width: 100%;
+    min-height: var(--float-row-h);
     align-items: center;
     gap: 0.625rem;
-    padding: 0.4375rem 0.625rem;
-    border-radius: 0.625rem;
+    padding: 0.3125rem 0.625rem;
+    border-radius: var(--float-row-radius);
+    font-size: var(--text-sm);
     text-align: left;
   }
+  .slash-item:hover,
   .slash-item.is-active {
-    background: var(--surface-active);
+    background: var(--float-row-hover);
   }
   .slash-item.is-disabled {
     opacity: 0.45;
@@ -793,39 +816,20 @@
     font-size: var(--text-xs);
     color: var(--muted-foreground);
   }
-  /* Same white-pill treatment as the ModelSwitcher trigger beside it. */
-  .mode-trigger {
-    color: var(--text-secondary);
-    background: transparent;
-    border: 1px solid transparent;
-    border-radius: var(--radius-full);
-    box-shadow: none;
-    transition:
-      background-color var(--motion-fast) var(--motion-ease),
-      border-color var(--motion-fast) var(--motion-ease),
-      color var(--motion-fast) var(--motion-ease);
-  }
-  .mode-trigger:hover,
-  .mode-trigger.is-open {
-    background: var(--muted);
-    color: var(--foreground);
-  }
-  .mode-trigger:active {
-    transform: scale(0.98);
-  }
-  .mode-trigger :global(svg) {
-    transition: transform var(--motion-fast) var(--motion-ease);
-  }
-  .mode-trigger:hover :global(svg) {
-    transform: scale(1.08);
-  }
+  /* Compact rectangle: clear edges, quiet depth, no pill or glyph motion. */
+  :global(.mode-menu) {width:16rem;max-width:calc(100vw - 1.5rem);}
+  :global(.mode-menu .mode-option) {padding:0.4375rem 0.625rem;}
+  :global(.mode-menu .mode-option.is-active) {background:var(--float-row-selected);}
+  :global(.mode-menu .ui-menu-item-hint) {white-space:normal;overflow-wrap:anywhere;}
+  :global(.mode-menu .ui-menu-check) {color:var(--brand-accent-strong);}
+  .mode-trigger {color:var(--text-secondary);min-width:0;max-width:9rem;background:var(--control-bg);border:1px solid var(--border);border-radius:var(--radius-sm);box-shadow:var(--control-inset);transition:background-color var(--motion-fast),border-color var(--motion-fast),color var(--motion-fast);}
+  .mode-trigger:hover,.mode-trigger.is-open {background:var(--float-row-hover);border-color:var(--border-hover);color:var(--foreground);}
+  .mode-trigger:focus-visible {outline:2px solid var(--brand-accent);outline-offset:2px;}
   .mode-trigger .trigger-label {
     color: inherit;
-    font-size: 0.8125rem;
+    font-size: var(--text-xs);
     font-weight: 500;
     letter-spacing: -0.01em;
   }
-  .mode-option:hover {
-    background: var(--muted);
-  }
+
 </style>

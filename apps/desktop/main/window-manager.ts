@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, nativeImage } from 'electron';
+import { app, BrowserWindow, dialog } from 'electron';
 import path from 'node:path';
 import { APP_NAME } from '../shared/brand.ts';
 import { TITLEBAR_HEIGHT, TITLEBAR_OVERLAY_COLOR, TITLEBAR_SYMBOL_COLOR } from '../shared/titlebar.ts';
@@ -29,8 +29,14 @@ export const TITLEBAR_OVERLAY = {
   symbolColor: TITLEBAR_SYMBOL_COLOR
 } as const;
 
-/** `titleBarOverlay` is ignored on macOS, where `hiddenInset` keeps the lights. */
-export const usesCaptionOverlay = process.platform !== 'darwin';
+/**
+ * Windows draws its caption buttons through `titleBarOverlay` (snap layouts,
+ * system menu). macOS keeps its traffic lights. Linux gets neither: its
+ * overlay does not repaint reliably when the colour changes, so the buttons
+ * kept the old theme and never dimmed under a dialog. The renderer draws them
+ * there instead (`WindowControls.svelte`), inside the page like everything else.
+ */
+export const usesCaptionOverlay = process.platform === 'win32';
 
 // `#rgb`, `#rgba`, `#rrggbb` and `#rrggbbaa`. The overlay background is
 // transparent, so alpha has to be accepted here.
@@ -61,6 +67,7 @@ export function applyTitlebarOverlay(win: BrowserWindow | null, overlay: unknown
 type ActiveWorkState = { active: boolean; reasons: string[] };
 type ActiveWorkStateInput = { active?: unknown; reasons?: unknown };
 
+const activeWorkByWindow = new Map<number, ActiveWorkState>();
 let activeWorkState: ActiveWorkState = { active: false, reasons: [] };
 let preloadPath = '';
 
@@ -80,25 +87,26 @@ export function getMainWindow(): BrowserWindow | null {
   return mainWindow;
 }
 
-export function setActiveWorkState(state: ActiveWorkStateInput = {}) {
+export function setActiveWorkState(state: ActiveWorkStateInput = {}, win = getMainWindow()) {
   const active = Boolean(state.active);
   const reasons = Array.isArray(state.reasons)
     ? state.reasons.map((value) => String(value || '').trim()).filter(Boolean)
     : [];
   activeWorkState = { active, reasons };
+  if (win) activeWorkByWindow.set(win.id, activeWorkState);
   return activeWorkState;
 }
 
-export async function requestMainWindowClose() {
-  const win = getMainWindow();
+export async function requestMainWindowClose(win = getMainWindow()) {
   if (!win || win.isDestroyed()) return { closed: false, prompted: false };
-  if (!activeWorkState.active) {
+  const work = activeWorkByWindow.get(win.id) ?? activeWorkState;
+  if (!work.active) {
     win.close();
     return { closed: true, prompted: false };
   }
 
-  const reasonText = activeWorkState.reasons.length
-    ? `Active tasks: ${activeWorkState.reasons.join(', ')}`
+  const reasonText = work.reasons.length
+    ? `Active tasks: ${work.reasons.join(', ')}`
     : 'An operation is still running.';
   const result = await dialog.showMessageBox(win, {
     type: 'warning',
@@ -117,6 +125,14 @@ export async function requestMainWindowClose() {
   }
 
   return { closed: false, prompted: true };
+}
+
+let conversationWindowFactory: ((chatId: string) => BrowserWindow) | undefined;
+export function setConversationWindowFactory(factory: (chatId: string) => BrowserWindow) { conversationWindowFactory = factory; }
+export function openConversationWindow(chatId: unknown) {
+  if (typeof chatId !== 'string' || !chatId.trim() || chatId.length > 512) throw new Error('Conversation is required');
+  if (!conversationWindowFactory) throw new Error('Window factory is unavailable');
+  return { windowId: conversationWindowFactory(chatId).id };
 }
 
 // Retired: separate webviewer window leaked full preload bridge into

@@ -170,13 +170,8 @@
             {/if}
           </div>
           {#if queued}<span class="flex items-center gap-1 text-xs text-muted-foreground"><Clock class="size-3" />{$t('code.message.queued')}</span>{/if}
-          <!-- The actions hang half in the prompt's own bottom padding and half
-               in the gap below it: no reserved line (16px per message), and the
-               pointer stays inside the group while it travels to a button. The
-               row is always hit-testable — hiding it with `pointer-events`
-               would make it unreachable, since the hover that reveals it is the
-               one it has to keep. -->
-          <div class="absolute right-1 top-full z-10 -mt-2.5 flex items-center gap-2 rounded-full bg-popover/95 px-2 py-0.5 text-xs text-muted-foreground opacity-0 shadow-sm backdrop-blur transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+          <!-- Actions occupy their own line below the prompt, including in narrow panes. -->
+          <div class="prompt-actions flex min-h-6 max-w-full flex-wrap items-center justify-end gap-2 px-2 py-0.5 text-xs text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
             <button type="button" class="flex items-center gap-1" onclick={() => messageAction(message, 'copy')}><Copy class="size-3" />{$t('code.message.copy')}</button>
             {#if message.metadata?.codeConversationIndex !== undefined && !run?.running}
               <button type="button" class="flex items-center gap-1" onclick={() => messageAction(message, 'fork')}><GitFork class="size-3" />{$t('code.message.fork')}</button>

@@ -70,6 +70,10 @@ pub(crate) struct EventStream<S> {
     source: S,
     decoder: Decoder,
     ended: bool,
+    /// Any transport bytes at all (data, comments or keepalives).
+    received_any: bool,
+    /// Deadline for the *first* bytes only; `None` uses the idle timeout.
+    first_byte: Option<Duration>,
 }
 
 impl<S> EventStream<S> {
@@ -78,7 +82,23 @@ impl<S> EventStream<S> {
             source,
             decoder: Decoder::default(),
             ended: false,
+            received_any: false,
+            first_byte: None,
         }
+    }
+
+    /// A provider completion stream from `url`: the first chunk runs against
+    /// its own deadline (`AGENTE_STREAM_FIRST_BYTE_SECS`), so a request that
+    /// never answered is retried instead of holding the turn for the idle
+    /// timeout — except on a local model server, which gets the longer local
+    /// deadline to read the prompt.
+    pub(crate) fn for_completion(source: S, url: &str) -> Self {
+        Self::new(source).with_first_byte_timeout(crate::util::completion_first_byte_timeout(url))
+    }
+
+    pub(crate) fn with_first_byte_timeout(mut self, timeout: Duration) -> Self {
+        self.first_byte = Some(timeout);
+        self
     }
 }
 
@@ -89,6 +109,7 @@ where
     E: std::fmt::Display,
 {
     /// Timeout measures raw transport inactivity, including provider keepalives.
+    /// Before the first chunk arrives the shorter first-byte deadline applies.
     pub(crate) async fn next_event(&mut self, idle: Duration) -> Result<Option<String>, LlmError> {
         loop {
             if let Some(event) = self.decoder.events.pop_front() {
@@ -97,8 +118,16 @@ where
             if self.ended {
                 return Ok(None);
             }
-            match tokio::time::timeout(idle, self.source.next()).await {
-                Ok(Some(Ok(bytes))) => self.decoder.push(bytes.as_ref())?,
+            let wait = if self.received_any {
+                idle
+            } else {
+                self.first_byte.unwrap_or(idle)
+            };
+            match tokio::time::timeout(wait, self.source.next()).await {
+                Ok(Some(Ok(bytes))) => {
+                    self.received_any = true;
+                    self.decoder.push(bytes.as_ref())?;
+                }
                 Ok(Some(Err(e))) => return Err(LlmError::StreamError(e.to_string())),
                 Ok(None) => {
                     self.ended = true;
@@ -107,7 +136,7 @@ where
                 Err(_) => {
                     return Err(LlmError::StreamError(format!(
                         "Stream stalled (no data for {}s).",
-                        idle.as_secs()
+                        wait.as_secs()
                     )))
                 }
             }
@@ -146,6 +175,48 @@ mod tests {
         let mut decoder = Decoder::default();
         decoder.push(&vec![b'x'; MAX_EVENT_BYTES]).unwrap();
         assert!(decoder.push(b"x").is_err());
+    }
+
+    #[tokio::test]
+    async fn first_chunk_has_its_own_deadline() {
+        // A socket that never yields must fail on the first-byte deadline
+        // (short here) instead of waiting out the much longer idle timeout.
+        let source = futures::stream::pending::<Result<Vec<u8>, &str>>();
+        let mut stream =
+            EventStream::new(source).with_first_byte_timeout(Duration::from_millis(20));
+        let started = std::time::Instant::now();
+        let error = stream
+            .next_event(Duration::from_secs(30))
+            .await
+            .expect_err("a silent stream must fail");
+        assert!(
+            started.elapsed() < Duration::from_secs(5),
+            "idle timeout won"
+        );
+        assert!(error.to_string().contains("stalled"), "{error}");
+    }
+
+    #[tokio::test]
+    async fn arrived_bytes_switch_to_the_idle_timeout() {
+        // Keepalives and partial events count as life: after the first chunk
+        // the longer idle timeout governs, so a thinking model is not cut off.
+        let source = futures::stream::iter([Ok::<_, &str>(b"data: first\n\n".to_vec())])
+            .chain(futures::stream::pending());
+        let mut stream = EventStream::new(source).with_first_byte_timeout(Duration::from_secs(30));
+        assert_eq!(
+            stream
+                .next_event(Duration::from_millis(20))
+                .await
+                .unwrap()
+                .as_deref(),
+            Some("first")
+        );
+        let started = std::time::Instant::now();
+        assert!(stream.next_event(Duration::from_millis(20)).await.is_err());
+        assert!(
+            started.elapsed() < Duration::from_secs(5),
+            "first-byte deadline leaked"
+        );
     }
 
     #[tokio::test]

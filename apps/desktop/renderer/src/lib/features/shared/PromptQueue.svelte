@@ -10,17 +10,22 @@
 -->
 
 <script lang="ts">
+  import { Button, Tooltip } from '$lib/components/ui';
   import { tick } from 'svelte';
   import { ArrowUp, Paperclip, Pencil, X } from 'lucide-svelte';
   import { t } from 'svelte-i18n';
   import type { QueuedPrompt } from '$lib/types/chat';
 
-  let { items, onupdate, onremove, onsend }: {
+  let { items, onupdate, onremove, onsend, canSendAll = true }: {
     items: QueuedPrompt[];
     onupdate: (id: string, content: string) => void;
     onremove: (id: string) => void;
-    onsend: () => void;
+    /** One prompt by id, or every waiting prompt when called without one. */
+    onsend: (id?: string) => void;
+    /** Some runtimes send one prompt per turn; they only offer "send one". */
+    canSendAll?: boolean;
   } = $props();
+  const waiting = $derived(items.filter((item) => !item.sending));
   let editing = $state<string | null>(null);
   let draft = $state('');
   let editor = $state<HTMLTextAreaElement>();
@@ -29,12 +34,12 @@
     await tick(); editor?.focus();
     editor?.setSelectionRange(draft.length, draft.length);
   }
-  function sendNow() {
+  function sendNow(id?: string) {
     if (editing) {
       if (!draft.trim()) return;
       save(editing);
     }
-    onsend();
+    onsend(id);
   }
   function save(id: string) {
     if (!draft.trim()) return;
@@ -46,13 +51,12 @@
   <div class="queue-heading">
     <span class="queue-title">{$t('promptQueue.title')} <span class="tabular-nums">{items.length}</span></span>
     <span class="queue-hint">{$t('promptQueue.hint')}</span>
-    <button
+    <Button variant="outline" size="sm" class="ml-1"
       type="button"
-      class="ui-chip queue-send"
       aria-label={$t('promptQueue.sendNow')}
-      disabled={!items.some((item) => !item.sending) || (!!editing && !draft.trim())}
-      onclick={sendNow}
-    ><ArrowUp /><span>{$t('promptQueue.send')}</span></button>
+      disabled={!waiting.length || (!!editing && !draft.trim())}
+      onclick={() => sendNow(waiting.length > 1 && !canSendAll ? waiting[0]!.id : undefined)}
+    ><ArrowUp /><span>{waiting.length > 1 ? (canSendAll ? $t('promptQueue.sendAll') : $t('promptQueue.sendNext')) : $t('promptQueue.send')}</span></Button>
   </div>
   <ol>
     {#each items as item, index (item.id)}
@@ -71,8 +75,8 @@
               }}
             ></textarea>
             <div class="edit-actions">
-              <button type="button" class="ui-chip" onclick={() => (editing = null)}>{$t('promptQueue.cancel')}</button>
-              <button type="submit" class="ui-chip is-primary" disabled={!draft.trim()}>{$t('promptQueue.save')}</button>
+              <Button variant="outline" size="sm" type="button" onclick={() => (editing = null)}>{$t('promptQueue.cancel')}</Button>
+              <Button variant="default" size="sm" type="submit" disabled={!draft.trim()}>{$t('promptQueue.save')}</Button>
             </div>
           </form>
         {:else}
@@ -81,8 +85,9 @@
           {#if item.sending}
             <span class="queue-status">{$t('promptQueue.sending')}</span>
           {:else}
-            <button type="button" class="ui-icon-button is-xs queue-action" aria-label={$t('promptQueue.edit')} onclick={() => void edit(item)}><Pencil /></button>
-            <button type="button" class="ui-icon-button is-xs queue-action" aria-label={$t('promptQueue.remove')} onclick={() => onremove(item.id)}><X /></button>
+            {#if waiting.length > 1}<Tooltip label={$t('promptQueue.sendOne')} position="top"><button type="button" class="ui-icon-button is-xs queue-action" aria-label={$t('promptQueue.sendOne')} onclick={() => sendNow(item.id)}><ArrowUp /></button></Tooltip>{/if}
+            <Tooltip label={$t('promptQueue.edit')} position="top"><button type="button" class="ui-icon-button is-xs queue-action" aria-label={$t('promptQueue.edit')} onclick={() => void edit(item)}><Pencil /></button></Tooltip>
+            <Tooltip label={$t('promptQueue.remove')} position="top"><button type="button" class="ui-icon-button is-xs queue-action" aria-label={$t('promptQueue.remove')} onclick={() => onremove(item.id)}><X /></button></Tooltip>
           {/if}
         {/if}
       </li>
@@ -91,23 +96,21 @@
 </section>
 
 <style>
-  /* The composer's own card language, one step quieter: same ring, same radius
-     family, and no drop shadow competing with the input below it. */
+  /* A dock like the todo bar: sits on the composer's top edge, same inset,
+     fill and hairline, rounded on top only. */
   .prompt-queue {
-    margin: 0 0.75rem 0.5rem;
-    padding: 0.3rem 0.4rem 0.4rem;
-    border-radius: var(--radius-xl);
-    background: var(--composer-surface, var(--card));
-    box-shadow: inset 0 0 0 1px var(--composer-ring, var(--border-subtle));
+    margin: 0 0.75rem -1px;
+    padding: 0.3rem 0.4rem 0.5rem;
+    border: 1px solid var(--border-subtle);
+    border-bottom: 0;
+    border-radius: 0.75rem 0.75rem 0 0;
+    background: color-mix(in srgb, var(--muted) 55%, var(--chat-bg, var(--background)));
   }
   .queue-heading,
   li { display: flex; align-items: center; gap: 0.4rem; min-width: 0; }
   .queue-heading { padding: 0 0.35rem 0.25rem; font-size: var(--text-xs); color: var(--muted-foreground); }
   .queue-title { font-weight: 500; color: var(--foreground); }
   .queue-hint { margin-left: auto; }
-  .queue-send { margin-left: 0.25rem; }
-  .queue-send:disabled { opacity: 0.45; cursor: default; }
-  .queue-send:disabled:hover { border-color: var(--border); background: transparent; }
 
   ol { max-height: min(12rem, 30vh); overflow-y: auto; margin: 0; padding: 0; list-style: none; }
   li {

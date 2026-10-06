@@ -342,6 +342,8 @@ export interface TtsRequest {
   /** The voice model (shared/voice-models.ts); the first downloaded one when unset. */
   model?: string;
   language?: string;
+  /** A cloned voice: the reference clip and what it says. */
+  voiceRef?: { file: string; transcript?: string };
 }
 
 export interface SandboxExecResult {

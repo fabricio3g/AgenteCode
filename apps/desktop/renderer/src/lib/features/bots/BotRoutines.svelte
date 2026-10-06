@@ -8,7 +8,7 @@
 <script lang="ts">
   import { t } from 'svelte-i18n';
   import { CalendarClock, Pencil, Play, Plus, Trash2, X } from 'lucide-svelte';
-  import { Switch } from '$lib/components/ui';
+  import { Switch, Tooltip } from '$lib/components/ui';
   import { confirmStore } from '$lib/stores/confirm.svelte';
   import { botsStore } from './bots.svelte';
   import type { Bot, Routine } from './bots-ipc';
@@ -47,12 +47,12 @@
   <div class="flex h-10 shrink-0 items-center justify-between pl-3.5 pr-1.5">
     {#if !embedded}<p class="text-[13px] font-medium text-foreground">{$t('bots.routines')}</p>{:else}<span class="flex-1"></span>{/if}
     <div class="flex items-center">
-      <button type="button" class="ui-icon-button" onclick={() => (creating = true)} title={$t('bots.newRoutine')} aria-label={$t('bots.newRoutine')}>
+      <Tooltip label={$t('bots.newRoutine')} position="bottom"><button type="button" class="ui-icon-button" onclick={() => (creating = true)} aria-label={$t('bots.newRoutine')}>
         <Plus class="size-3.5" />
-      </button>
-      {#if !embedded}<button type="button" class="ui-icon-button" onclick={onclose} title={$t('bots.close')} aria-label={$t('bots.close')}>
+      </button></Tooltip>
+      {#if !embedded}<Tooltip label={$t('bots.close')} position="bottom"><button type="button" class="ui-icon-button" onclick={onclose} aria-label={$t('bots.close')}>
         <X class="size-3.5" />
-      </button>{/if}
+      </button></Tooltip>{/if}
     </div>
   </div>
 

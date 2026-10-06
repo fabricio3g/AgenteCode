@@ -5,11 +5,30 @@ export interface Rect { x: number; y: number; width: number; height: number }
 export interface PanelGroup { kind: 'group'; id: string; panels: string[]; active: string }
 export interface PanelSplit { kind: 'split'; id: string; axis: 'x' | 'y'; ratio: number; a: DockNode; b: DockNode }
 export type DockNode = PanelGroup | PanelSplit;
+/*
+ * The centre holds conversations the way a dock holds panels: a binary tree of
+ * splits whose leaves are conversations. It is deliberately not a `DockNode` — a
+ * pane is not a tab strip (one conversation each), and the tab strip above them
+ * belongs to the window, not to a pane.
+ */
+export interface PaneLeaf { kind: 'pane'; id: string; chatId: string }
+export interface PaneSplit { kind: 'psplit'; id: string; axis: 'x' | 'y'; ratio: number; a: PaneNode; b: PaneNode }
+export type PaneNode = PaneLeaf | PaneSplit;
+export interface PanePlacement { id: string; chatId: string; rect: Rect; focused: boolean }
+/**
+ * Below this a pane stops being a conversation — two columns that cannot hold a
+ * sentence. A split that would cross it is refused rather than squeezed, and a
+ * saved layout that no longer fits (a smaller window) shows its first pane alone.
+ */
+export const MIN_PANE_WIDTH = 320;
+export const MIN_PANE_HEIGHT = 220;
 export interface FloatingGroup { group: DockNode; rect: Rect; z: number; maximized: boolean }
 export interface WorkspaceLayout {
-  version: 1;
+  version: 2;
   right: DockNode | null;
   bottom: DockNode | null;
+  /** The conversations on screen: null means one pane, opened on demand. */
+  centre: PaneNode | null;
   rightWidth: number;
   rightTop: number;
   rightHeight: number | null;
@@ -45,6 +64,7 @@ export function resizeCorners(dividers: Divider[], bounds: Rect): ResizeCorner[]
 const GAP = 8;
 export const EDGE = 6;
 const MIN_WIDTH = 240;
+const MIN_CHAT_WIDTH = 400;
 const MIN_HEIGHT = 140;
 const known = new Set(['changes', 'files', 'plan', 'browser', 'artifact', 'routines', 'processes', 'canvas']);
 const validId = (id: unknown): id is string => typeof id === 'string' && (known.has(id) || /^terminal:[\w-]+$/.test(id));
@@ -53,6 +73,86 @@ const json = (raw: string | null): Record<string, unknown> => {
   try { const value = JSON.parse(raw || '{}'); return value && typeof value === 'object' && !Array.isArray(value) ? value : {}; } catch { return {}; }
 };
 export const group = (id: string): PanelGroup => ({ kind: 'group', id: `group:${id}:${crypto.randomUUID()}`, panels: [id], active: id });
+
+/* ── the centre: conversations, split ──────────────────────────────────────── */
+
+export const pane = (chatId: string): PaneLeaf => ({ kind: 'pane', id: `pane:${crypto.randomUUID()}`, chatId });
+export function paneIds(node: PaneNode | null): string[] {
+  return !node ? [] : node.kind === 'pane' ? [node.id] : [...paneIds(node.a), ...paneIds(node.b)];
+}
+export function panes(node: PaneNode | null): PaneLeaf[] {
+  return !node ? [] : node.kind === 'pane' ? [node] : [...panes(node.a), ...panes(node.b)];
+}
+export function findPane(node: PaneNode | null, id: string): PaneLeaf | null {
+  if (!node) return null;
+  return node.kind === 'pane' ? (node.id === id ? node : null) : findPane(node.a, id) ?? findPane(node.b, id);
+}
+/** The pane already showing this conversation, so it is never opened twice. */
+export function paneShowing(node: PaneNode | null, chatId: string): PaneLeaf | null {
+  return panes(node).find((leaf) => leaf.chatId === chatId) ?? null;
+}
+/** Whether this rect has room for one more column (or row) of conversations. */
+export function canSplit(rect: Rect, axis: 'x' | 'y'): boolean {
+  return axis === 'x' ? rect.width >= MIN_PANE_WIDTH * 2 + GAP : rect.height >= MIN_PANE_HEIGHT * 2 + GAP;
+}
+/**
+ * Put `added` beside `target` (or beside the first pane, when the target is
+ * gone). Left and top put the new conversation first, so the tree reads in
+ * reading order.
+ */
+export function splitPane(node: PaneNode | null, target: string | null, added: PaneLeaf, edge: 'left' | 'right' | 'top' | 'bottom'): PaneNode {
+  const first = edge === 'left' || edge === 'top';
+  const split = (leaf: PaneLeaf): PaneSplit => ({
+    kind: 'psplit', id: `psplit:${added.id}:${leaf.id}`, axis: edge === 'left' || edge === 'right' ? 'x' : 'y', ratio: 0.5,
+    a: first ? added : leaf, b: first ? leaf : added,
+  });
+  if (!node) return added;
+  /* The anchor is the pane that was asked for, or the first one when it is gone:
+     resolved once, so exactly one leaf is replaced. */
+  const anchor = target && findPane(node, target) ? target : panes(node)[0].id;
+  const place = (current: PaneNode): PaneNode => current.kind === 'pane'
+    ? (current.id === anchor ? split(current) : current)
+    : { ...current, a: place(current.a), b: place(current.b) };
+  return place(node);
+}
+/** Remove a pane, collapsing the split it leaves behind. */
+export function removePane(node: PaneNode | null, id: string): PaneNode | null {
+  if (!node) return null;
+  if (node.kind === 'pane') return node.id === id ? null : node;
+  const a = removePane(node.a, id), b = removePane(node.b, id);
+  return a && b ? { ...node, a, b } : a ?? b;
+}
+export function setPaneRatio(node: PaneNode | null, id: string, ratio: number): PaneNode | null {  if (!node || node.kind === 'pane') return node;
+  return node.id === id ? { ...node, ratio: finite(ratio, 0.5, 0.05, 0.95) } : { ...node, a: setPaneRatio(node.a, id, ratio)!, b: setPaneRatio(node.b, id, ratio)! };
+}
+/** Point one pane at another conversation — what picking a row in the sidebar does. */
+export function setPaneChat(node: PaneNode | null, id: string, chatId: string): PaneNode | null {
+  if (!node) return null;
+  if (node.kind === 'pane') return node.id === id ? { ...node, chatId } : node;
+  return { ...node, a: setPaneChat(node.a, id, chatId)!, b: setPaneChat(node.b, id, chatId)! };
+}
+/**
+ * Where each conversation sits inside `rect`, and the dividers between them.
+ *
+ * A split that no longer fits shows its first pane over the whole rect instead
+ * of two unreadable strips: the tree is the reader's, the window's size is not.
+ */
+export function measurePanes(root: PaneNode | null, rect: Rect, focused = ''): { panes: PanePlacement[]; dividers: Divider[] } {
+  const panes: PanePlacement[] = [], dividers: Divider[] = [];
+  function walk(node: PaneNode, box: Rect) {
+    if (node.kind === 'pane') { panes.push({ id: node.id, chatId: node.chatId, rect: box, focused: node.id === focused }); return; }
+    const horizontal = node.axis === 'x', length = (horizontal ? box.width : box.height) - GAP;
+    const share = horizontal ? MIN_PANE_WIDTH : MIN_PANE_HEIGHT;
+    if (length < share * 2) { walk(paneIds(node.b).includes(focused) ? node.b : node.a, box); return; }
+    const size = Math.max(share, Math.min(length - share, length * node.ratio));
+    const a = { ...box, ...(horizontal ? { width: size } : { height: size }) };
+    const b = { ...box, ...(horizontal ? { x: box.x + size + GAP, width: length - size } : { y: box.y + size + GAP, height: length - size }) };
+    dividers.push({ id: node.id, axis: node.axis, length, ratio: size / length, region: null, rect: horizontal ? { x: box.x + size - 5, y: box.y, width: 14, height: box.height } : { x: box.x, y: box.y + size - 5, width: box.width, height: 14 } });
+    walk(node.a, a); walk(node.b, b);
+  }
+  if (root) walk(root, rect);
+  return { panes, dividers };
+}
 export function panelIds(node: DockNode | null): string[] {
   return !node ? [] : node.kind === 'group' ? node.panels : [...panelIds(node.a), ...panelIds(node.b)];
 }
@@ -160,6 +260,23 @@ export function parseWorkspaceLayout(raw: string | null, oldRight: string | null
   const saved = json(raw), right = json(oldRight), bottom = json(oldBottom);
   const seen = new Set<string>();
   const seenNodes = new Set<string>();
+  /* A conversation lives in one pane: a saved centre that shows the same chat
+     twice keeps the first and collapses around the rest. */
+  const seenPanes = new Set<string>();
+  const seenChats = new Set<string>();
+  function paneNode(value: unknown, depth = 0): PaneNode | null {
+    if (!value || typeof value !== 'object' || depth > 32) return null;
+    const data = value as Record<string, unknown>;
+    if (typeof data.id !== 'string' || seenPanes.has(data.id)) return null;
+    seenPanes.add(data.id);
+    if (data.kind === 'psplit') {
+      const a = paneNode(data.a, depth + 1), b = paneNode(data.b, depth + 1);
+      return a && b ? { kind: 'psplit', id: data.id, axis: data.axis === 'x' ? 'x' : 'y', ratio: finite(data.ratio, 0.5, 0.05, 0.95), a, b } : a ?? b;
+    }
+    if (data.kind !== 'pane' || typeof data.chatId !== 'string' || !data.chatId || seenChats.has(data.chatId)) return null;
+    seenChats.add(data.chatId);
+    return { kind: 'pane', id: data.id, chatId: data.chatId };
+  }
   function node(value: unknown, depth = 0): DockNode | null {
     if (!value || typeof value !== 'object' || depth > 32) return null;
     const data = value as Record<string, unknown>;
@@ -176,9 +293,11 @@ export function parseWorkspaceLayout(raw: string | null, oldRight: string | null
     });
     return panels.length ? { kind: 'group', id: data.id, panels, active: panels.includes(String(data.active)) ? String(data.active) : panels[0] } : null;
   }
-  const modern = saved.version === 1;
+  const modern = saved.version === 1 || saved.version === 2;
   let layout: WorkspaceLayout = {
-    version: 1, right: modern ? node(saved.right) : null, bottom: modern ? node(saved.bottom) : null,
+    version: 2, right: modern ? node(saved.right) : null, bottom: modern ? node(saved.bottom) : null,
+    /* The centre arrived with version 2; an older save opens on one pane. */
+    centre: saved.version === 2 ? paneNode(saved.centre) : null,
     rightWidth: finite(modern ? saved.rightWidth : right.width, 460, MIN_WIDTH),
     rightTop: modern ? finite(saved.rightTop, 0, 0) : 0,
     rightHeight: modern && typeof saved.rightHeight === 'number' ? finite(saved.rightHeight, 360, MIN_HEIGHT) : null,
@@ -215,7 +334,8 @@ export function measureWorkspace(layout: WorkspaceLayout, bounds: Rect, visible:
   const right = filterNode(layout.right, visible), bottom = filterNode(layout.bottom, visible);
   /** Everything docked lives inside this, so no panel's border touches the frame. */
   const frame = { x: bounds.x + EDGE, y: bounds.y + EDGE, width: Math.max(0, bounds.width - EDGE * 2), height: Math.max(0, bounds.height - EDGE * 2) };
-  const rw = right ? Math.min(Math.max(MIN_WIDTH, frame.width - 320), layout.rightWidth, frame.width) : 0;
+  const compact = bounds.width < MIN_CHAT_WIDTH + MIN_WIDTH + GAP + EDGE * 2;
+  const rw = right && !compact ? Math.min(Math.max(MIN_WIDTH, frame.width - MIN_CHAT_WIDTH), layout.rightWidth, frame.width) : 0;
   const mainWidth = Math.max(0, bounds.width - rw - (right ? GAP + EDGE : 0));
   const bh = bottom ? Math.min(layout.bottomHeight, Math.max(MIN_HEIGHT, frame.height - 220), frame.height) : 0;
   const main = { ...bounds, width: mainWidth, height: Math.max(0, bounds.height - bh - (bottom ? GAP + EDGE : 0)) };
@@ -235,13 +355,22 @@ export function measureWorkspace(layout: WorkspaceLayout, bounds: Rect, visible:
     dividers.push({ id: node.id, axis: node.axis, region, length, ratio: size / length, floatingId, rect: horizontal ? { x: rect.x + size - 5, y: rect.y, width: 14, height: rect.height } : { x: rect.x, y: rect.y + size - 5, width: rect.width, height: 14 } });
     walk(node.a, a, region, z, maximized, floatingId); walk(node.b, b, region, z, maximized, floatingId);
   }
-  if (right) {
+  if (compact && (right || bottom)) {
+    const roots = [right, bottom].filter((node): node is DockNode => !!node);
+    const leaves = roots.flatMap(groups), panels = roots.flatMap(panelIds);
+    const height = Math.min(layout.bottomHeight, frame.height * 0.45);
+    const rect = { x: frame.x, y: frame.y + frame.height - height, width: frame.width, height };
+    main.width = bounds.width; main.height = Math.max(0, rect.y - bounds.y - GAP);
+    placements.push({ group: { kind: 'group', id: leaves[0].id, panels, active: panels.includes(focused) ? focused : leaves[0].active }, groupIds: leaves.map((leaf) => leaf.id), rect, region: 'bottom', z: 1, maximized: false });
+    dividers.push({ id: 'bottomHeight', outer: 'bottomHeight', axis: 'y', region: 'bottom', length: bounds.height, rect: { x: rect.x, y: rect.y - 7, width: rect.width, height: 14 } });
+  }
+  if (right && !compact) {
     const top = Math.min(layout.rightTop, Math.max(0, frame.height - MIN_HEIGHT));
     const rect = { x: frame.x + frame.width - rw, y: frame.y + top, width: rw, height: Math.min(frame.height - top, layout.rightHeight ?? frame.height) };
     walk(right, rect, 'right');
     dividers.push({ id: 'rightWidth', outer: 'rightWidth', axis: 'x', region: 'right', length: bounds.width, rect: { x: rect.x - 7, y: rect.y, width: 14, height: rect.height } }, { id: 'rightHeight', outer: 'rightHeight', axis: 'y', region: 'right', length: bounds.height - top, rect: { x: rect.x, y: rect.y + rect.height - 12, width: rect.width, height: 14 } }, { id: 'rightTop', outer: 'rightTop', axis: 'y', region: 'right', length: rect.height, rect: { x: rect.x, y: Math.max(bounds.y, rect.y - 5), width: rect.width, height: 10 } });
   }
-  if (bottom) {
+  if (bottom && !compact) {
     const rect = { x: frame.x, y: frame.y + frame.height - bh, width: Math.min(mainWidth, layout.bottomWidth ?? mainWidth), height: bh };
     walk(bottom, rect, 'bottom');
     dividers.push({ id: 'bottomHeight', outer: 'bottomHeight', axis: 'y', region: 'bottom', length: bounds.height, rect: { x: rect.x, y: rect.y - 7, width: rect.width, height: 14 } }, { id: 'bottomWidth', outer: 'bottomWidth', axis: 'x', region: 'bottom', length: mainWidth, rect: { x: rect.x + rect.width - 12, y: rect.y, width: 14, height: rect.height } });

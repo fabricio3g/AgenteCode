@@ -46,37 +46,23 @@
 </script>
 
 <script lang="ts">
-  import { FolderInput, FolderOpen, Plus } from 'lucide-svelte';
-  import { get } from 'svelte/store';
+  import { Plus } from 'lucide-svelte';
   import { t } from 'svelte-i18n';
-  import { Switch } from '$lib/components/ui';
   import ModelSearchField from './ModelSearchField.svelte';
   import ProviderIcon from '$lib/components/ui/ProviderIcon.svelte';
-  import { toastStore } from '$lib/stores/toast.svelte';
-  import { appStore } from '$lib/stores/app.svelte';
-  import { importLocalModel } from '$lib/services/models';
-  import { openModelsFolder, pickModelFile } from '$lib/services/files';
-  import { modelsStore } from '$lib/stores/models.svelte';
-  import { isMacPlatform } from '$lib/utils/shortcuts';
 
   let {
     groups,
     selected,
-    autoLoad,
     onselect,
-    onautoload,
     onaddendpoint
   }: {
     groups: RailGroup[];
     /** The row on screen, as `kind:id`. */
     selected: string;
-    autoLoad: boolean;
     onselect: (item: RailItem) => void;
-    onautoload: (value: boolean) => void;
     onaddendpoint: () => void;
   } = $props();
-
-  let importing = $state(false);
 
   let rail = $state<HTMLElement>();
   let query = $state('');
@@ -118,27 +104,11 @@
     rows[next]?.focus();
   }
 
-  /** Importing a model is the rail's own action, busy state and all. */
-  async function importModel() {
-    if (importing) return;
-    importing = true;
-    try {
-      const path = await pickModelFile();
-      if (!path) return;
-      await importLocalModel(path, false);
-      await Promise.all([modelsStore.refreshIndex(), appStore.refreshModels()]);
-      toastStore.success(get(t)('modelHub.imported'));
-    } catch (error) {
-      toastStore.error(get(t)('modelHub.importFailed', { values: { reason: (error as Error)?.message || String(error) } }));
-    } finally {
-      importing = false;
-    }
-  }
 </script>
 
 <aside
   bind:this={rail}
-  class="flex shrink-0 flex-col gap-2 overflow-hidden border-b border-[var(--border)] bg-sidebar px-3 py-2.5 md:w-[220px] md:border-b-0 md:border-r md:pt-2 md:pb-4"
+  class="flex shrink-0 flex-col gap-2 overflow-hidden border-b border-[var(--border)] bg-sidebar px-3 py-2.5 md:w-[236px] md:border-b-0 md:border-r md:pt-2 md:pb-4"
   aria-label={$t('settingsNav.label')}
 >
   <div class="px-1">
@@ -178,7 +148,7 @@
         {/if}
         <span class="sidebar-row-label">{item.label}</span>
         {#if item.kind === 'tab' && item.count}
-          <span class="rounded-full bg-primary px-1.5 text-[12px] font-semibold tabular-nums text-primary-fg">{item.count}</span>
+          <span class="rounded-full bg-primary px-1.5 text-[length:var(--text-xs)] font-semibold tabular-nums text-primary-fg">{item.count}</span>
         {:else if status === 'in-use'}
           <span class="sidebar-dot is-active" title={$t('settingsNav.inUse')}></span>
         {:else if status === 'ready'}
@@ -194,7 +164,7 @@
     {#each visibleGroups as group (group.id)}
       <div class="min-w-max md:min-w-0 md:mt-1 md:border-t md:border-[var(--border-subtle)] md:first:mt-0 md:first:border-t-0">
         <div class="flex items-center justify-between gap-2 pr-2.5">
-          <span class="sidebar-section">{group.title}</span>
+          <span class="sidebar-section min-w-0 truncate whitespace-nowrap">{group.title}</span>
           {#if group.id === 'providers'}
             <button
               type="button"
@@ -224,24 +194,6 @@
       </div>
     {/each}
   </nav>
-
-  {#if !query.trim()}
-    <!-- Model library actions. The rail's floor at every width: the old
-         model rail showed them in a narrow window too. -->    <div class="flex min-w-max shrink-0 flex-col gap-0.5 border-t border-[var(--border)] pt-3 md:mt-auto">
-      <button type="button" data-nav-row class="sidebar-row" onclick={() => void openModelsFolder()}>
-        <FolderOpen class="sidebar-row-icon" />
-        <span class="sidebar-row-label">{$t('modelHub.openFolder')}</span>
-      </button>
-      <button type="button" data-nav-row class="sidebar-row disabled:opacity-50" onclick={() => void importModel()} disabled={importing}>
-        <FolderInput class="sidebar-row-icon" />
-        <span class="sidebar-row-label">{importing ? $t('modelHub.importing') : $t('modelHub.importModel')}</span>
-      </button>
-      <div class="flex items-center justify-between gap-2 px-2.5 py-1.5" title={$t('modelHub.autoLoadHint')}>
-        <span class="text-xs text-muted-foreground">{$t('modelHub.autoLoad')}</span>
-        <Switch label={$t('modelHub.autoLoad')} checked={autoLoad} onchange={(next) => onautoload(next)} />
-      </div>
-    </div>
-  {/if}
 </aside>
 
 

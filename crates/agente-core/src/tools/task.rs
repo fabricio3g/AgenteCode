@@ -98,7 +98,7 @@ impl ToolCore for TodoWriteTool {
     }
 
     fn description(&self) -> &str {
-        "Update the task todo list for this session. Use this to track progress on multi-step tasks."
+        "Replace the full task todo list for this session. The list persists across turns and interruptions. When resuming, review unfinished tasks against the user's latest request and update the list before continuing: resume relevant work, revise or replace superseded tasks, and preserve completed tasks that still belong to the work. Use an empty todos array to clear a list that is no longer relevant."
     }
 
     async fn run(

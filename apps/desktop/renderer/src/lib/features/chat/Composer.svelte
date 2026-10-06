@@ -26,6 +26,7 @@
   import ComposerModelNotice from './composer/ComposerModelNotice.svelte';
   import ComposerSuggestions from './composer/ComposerSuggestions.svelte';
   import ComposerAddMenu from './composer/ComposerAddMenu.svelte';
+  import ComposerToolsMenu from './composer/ComposerToolsMenu.svelte';
   import ComposerToolbar from './composer/ComposerToolbar.svelte';
   import ModeSelector from './composer/ModeSelector.svelte';
   import SelectedTextCard from './composer/SelectedTextCard.svelte';
@@ -361,7 +362,7 @@
     <!-- Radius comes from --composer-radius on .ui-composer; the rounded-*
          utilities that used to sit here fought it at equal specificity. -->
     {#if appStore.currentChat?.pendingPrompts?.length && appStore.currentChatId}
-      <PromptQueue items={appStore.currentChat.pendingPrompts} onupdate={(id, content) => appStore.updateQueuedPrompt(appStore.currentChatId!, id, content)} onremove={(id) => { appStore.removeQueuedPrompt(appStore.currentChatId!, id); }} onsend={() => void appStore.sendQueuedPromptsNow(appStore.currentChatId!)} />
+      <PromptQueue canSendAll={false} items={appStore.currentChat.pendingPrompts} onupdate={(id, content) => appStore.updateQueuedPrompt(appStore.currentChatId!, id, content)} onremove={(id) => { appStore.removeQueuedPrompt(appStore.currentChatId!, id); }} onsend={(id) => void appStore.sendQueuedPromptsNow(appStore.currentChatId!, id)} />
     {/if}
     <div class="composer-shell ui-composer pointer-events-auto transition">
       {#if nameCompletion}
@@ -417,8 +418,7 @@
           {:else}
             <div class="composer-bar-leading">
               <ComposerAddMenu onattach={() => fileInput?.click()} />
-              <div class="model-slot"><ModelSwitcher compact /></div>
-              <ReasoningLevelSelector />
+
             </div>
             <ComposerToolbar
               {dictation}
@@ -432,6 +432,8 @@
         </div>
       </div>
     </div>
+
+    <div class="composer-secondary"><div class="composer-secondary-options"><div class="model-slot"><ModelSwitcher compact /></div><ReasoningLevelSelector /><ComposerToolsMenu /></div></div>
 
     {#if threadIsEmpty}
       <!-- await tick() so the textarea holds the inserted prompt before we
@@ -463,11 +465,11 @@
   .composer-frame {
     position: relative;
   }
-  /* Instant/Agent tab above the input shell: quiet, left-aligned, attached to
-     the shell rather than floating in the thread. The dock is
-     pointer-events:none so the thread stays scrollable behind it — opt back
-     in, or the tabs render but never receive clicks. */
-  .composer-above {
+  /* The dock is pointer-events:none so the thread stays scrollable behind its
+     empty edges. Everything drawn in the frame — the mode tabs, the call panel,
+     the queue, the shell, the model row — takes clicks again. Opting in one
+     widget at a time left the call panel and the thinking button dead. */
+  .composer-frame > :global(*) {
     pointer-events: auto;
   }
   .mode-tab-row {

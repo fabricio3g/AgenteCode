@@ -34,10 +34,11 @@ pub fn spawn_discovery_task(
         /// Bound discovery so a hung models endpoint cannot leave the UI in
         /// "discovering…" forever (same order of magnitude as title gen).
         const DISCOVERY_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+        let started = std::time::Instant::now();
         let result = tokio::time::timeout(DISCOVERY_TIMEOUT, provider.list_models()).await;
         match result {
             Ok(Ok(models)) => {
-                tracing::info!(provider = %provider_id, count = models.len(), "Models discovered");
+                tracing::info!(provider = %provider_id, count = models.len(), elapsed_ms = started.elapsed().as_millis(), "Models discovered");
                 send_event(
                     &sender,
                     task_id,
@@ -48,7 +49,7 @@ pub fn spawn_discovery_task(
                 );
             }
             Ok(Err(e)) => {
-                tracing::error!(provider = %provider_id, error = %e, "Model discovery failed");
+                tracing::error!(provider = %provider_id, elapsed_ms = started.elapsed().as_millis(), error = %e, "Model discovery failed");
                 send_event(
                     &sender,
                     task_id,
@@ -59,7 +60,7 @@ pub fn spawn_discovery_task(
                 );
             }
             Err(_elapsed) => {
-                tracing::error!(provider = %provider_id, "Model discovery timed out");
+                tracing::error!(provider = %provider_id, elapsed_ms = started.elapsed().as_millis(), "Model discovery timed out");
                 send_event(&sender, task_id, AgentEvent::ModelDiscoveryFailed {
                     provider: provider_id,
                     error: "Model discovery timed out. Check the network or API key, then retry /provider."

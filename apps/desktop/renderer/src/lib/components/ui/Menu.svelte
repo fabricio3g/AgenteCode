@@ -19,8 +19,13 @@
     </Menu>
 -->
 
+<script module lang="ts">
+  const MENU_FAMILY = Symbol('menu-family');
+  type MenuFamily = { panels: Set<HTMLElement>; stack: HTMLElement[] };
+</script>
+
 <script lang="ts">
-  import type { Snippet } from 'svelte';
+  import { getContext, setContext, type Snippet } from 'svelte';
   import { cn } from '$lib/utils/cn';
   import { flyAndScale } from '$lib/utils/transitions';
   import { placePanel, pointRect, type MenuPlacement } from './menu';
@@ -63,6 +68,9 @@
     anchorPoint = $bindable(null)
   }: Props = $props();
 
+  const family = getContext<MenuFamily>(MENU_FAMILY) ?? { panels: new Set<HTMLElement>(), stack: [] };
+  setContext(MENU_FAMILY, family);
+
   let anchorEl = $state<HTMLElement | undefined>(undefined);
   let panelEl = $state<HTMLElement | undefined>(undefined);
   let top = $state(0);
@@ -71,6 +79,13 @@
   let maxHeight = $state<number>();
   let maxWidth = $state<number>();
   const menuId = $props.id();
+
+  $effect(() => {
+    if (!open || !panelEl) return;
+    const panel = panelEl;
+    family.panels.add(panel); family.stack.push(panel);
+    return () => { family.panels.delete(panel); family.stack = family.stack.filter(item => item !== panel); };
+  });
 
   function close() {
     if (!open) return;
@@ -137,11 +152,12 @@
     const onPointerDown = (event: PointerEvent) => {
       const target = event.target as Node | null;
       if (!target) return;
-      if (panelEl?.contains(target) || anchorEl?.contains(target)) return;
+      if (anchorEl?.contains(target) || [...family.panels].some(panel => panel.contains(target))) return;
       close();
     };
 
     const onKeyDown = (event: KeyboardEvent) => {
+      if (family.stack.at(-1) !== panelEl || event.target instanceof HTMLElement && event.target.matches('input,textarea') && event.key !== 'Escape') return;
       if (event.key === 'Escape') {
         event.stopPropagation();
         close();
@@ -178,7 +194,7 @@
     <div
       bind:this={panelEl}
       id={menuId}
-      class={cn('ui-menu ui-menu-panel py-1', className)}
+      class={cn('ui-menu ui-menu-panel', className)}
       role="menu"
       aria-label={label}
       tabindex="-1"
@@ -186,7 +202,7 @@
       onclick={(event) => {
         // Choosing an item closes the menu; callers no longer each have to.
         const item = (event.target as HTMLElement).closest('[role="menuitem"]');
-        if (item && !item.hasAttribute('disabled')) queueMicrotask(close);
+        if (item && !item.hasAttribute('disabled') && !item.hasAttribute('data-keep-open')) queueMicrotask(close);
       }}
       transition:flyAndScale={{ y: placement.startsWith('top') ? 4 : -4, start: 0.97, duration: 130 }}
     >

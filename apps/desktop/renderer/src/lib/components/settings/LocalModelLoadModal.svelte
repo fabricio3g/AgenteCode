@@ -13,7 +13,7 @@
   import { getInstalledRuntimes, pickMmprojFile } from '$lib/services/files';
   import { formatContextLength, formatModelParameterCount } from '$lib/utils/local-models';
   import { formatBytes } from '$lib/utils/format';
-  import { Badge, Button, Dialog, Disclosure, SegmentedControl, Select, Switch } from '$lib/components/ui';
+  import { Badge, Button, Dialog, Disclosure, Input, SegmentedControl, Select, Switch } from '$lib/components/ui';
   import Tooltip from '$lib/components/ui/Tooltip.svelte';
 
   /** Presets scale with the model's real trained context, not a hard cap. */
@@ -398,7 +398,7 @@
         <div class="mt-4 flex items-start gap-3 rounded-lg border border-warning-border bg-warning-bg px-3 py-2.5">
           <AlertTriangle class="mt-0.5 size-4 shrink-0 text-warning" />
           <div class="min-w-0 flex-1">
-            <p class="text-[13px] font-medium text-foreground">{$t('localLoad.runtimeMissing')}</p>
+            <p class="text-[length:var(--text-sm)] font-medium text-foreground">{$t('localLoad.runtimeMissing')}</p>
             <p class="text-xs text-muted-foreground">{$t('localLoad.runtimeMissingHint')}</p>
           </div>
           <Button size="sm" onclick={openRuntimeManager}>{$t('localLoad.installRuntime')}</Button>
@@ -409,7 +409,7 @@
       {#if fit}
         <div class="mt-3 rounded-xl bg-muted px-3.5 py-3">
           <div class="flex items-center justify-between gap-3">
-            <div class="flex min-w-0 items-center gap-2 text-[13px] font-medium"
+            <div class="flex min-w-0 items-center gap-2 text-[length:var(--text-sm)] font-medium"
               class:text-success={fit.tone === 'success'}
               class:text-warning={fit.tone === 'warning'}
               class:text-error={fit.tone === 'error'}
@@ -516,7 +516,7 @@
         {#snippet visionControl()}
           <div class="flex min-w-0 shrink-0 items-center gap-1.5">
             {#if visionSelectedName}
-              <span class="max-w-[16rem] truncate font-mono text-[13px] text-muted-foreground" title={visionSelectedName}>{visionSelectedName}</span>
+              <span class="max-w-[16rem] truncate font-mono text-[length:var(--text-sm)] text-muted-foreground" title={visionSelectedName}>{visionSelectedName}</span>
               <button type="button" class="ui-chip" onclick={() => { appStore.localModelLoadMmprojPath = ''; }}>{$t('localLoad.clear')}</button>
             {/if}
             <button type="button" class="ui-chip" onclick={pickProjector}>
@@ -606,7 +606,7 @@
         <!-- Another instance: its own port, optionally reachable from the network. -->
         <label class="mt-3 flex items-start gap-3 rounded-xl bg-muted px-3.5 py-3">
           <Switch bind:checked={appStore.localModelLoadShare} label={$t('instances.shareOnNetwork')} />
-          <span class="text-[13px] text-foreground">
+          <span class="text-[length:var(--text-sm)] text-foreground">
             {$t('instances.shareOnNetwork')}
             <span class="block text-xs text-muted-foreground">{$t('instances.shareHintNew')}</span>
           </span>
@@ -632,33 +632,33 @@
               </div>
             {/snippet}
             {@render field($t('localLoad.cpuThreads'), threads)}
-            {#snippet batch()}<input class="load-input w-full" bind:value={appStore.localModelLoadBatchSize} inputmode="numeric" />{/snippet}
+            {#snippet batch()}<Input class="w-full" bind:value={appStore.localModelLoadBatchSize} inputmode="numeric" />{/snippet}
             {@render field($t('localLoad.batchSize'), batch)}
-            {#snippet cacheK()}<Select class="h-9 w-full text-[13px]" bind:value={appStore.localModelLoadCacheTypeK} options={cacheTypes.map((type) => ({ value: type, label: type }))} />{/snippet}
+            {#snippet cacheK()}<Select class="h-9 w-full text-[length:var(--text-sm)]" bind:value={appStore.localModelLoadCacheTypeK} options={cacheTypes.map((type) => ({ value: type, label: type }))} />{/snippet}
             {@render field($t('localLoad.cacheTypeK'), cacheK)}
-            {#snippet cacheV()}<Select class="h-9 w-full text-[13px]" bind:value={appStore.localModelLoadCacheTypeV} options={cacheTypes.map((type) => ({ value: type, label: type }))} />{/snippet}
+            {#snippet cacheV()}<Select class="h-9 w-full text-[length:var(--text-sm)]" bind:value={appStore.localModelLoadCacheTypeV} options={cacheTypes.map((type) => ({ value: type, label: type }))} />{/snippet}
             {@render field($t('localLoad.cacheTypeV'), cacheV)}
-            {#snippet parallel()}<input class="load-input w-full" bind:value={appStore.localModelLoadParallel} inputmode="numeric" />{/snippet}
+            {#snippet parallel()}<Input class="w-full" bind:value={appStore.localModelLoadParallel} inputmode="numeric" />{/snippet}
             {@render field($t('localLoad.parallel'), parallel)}
-            {#snippet split()}<Select class="h-9 w-full text-[13px]" bind:value={appStore.localModelLoadSplitMode} options={splitModes.map((mode) => ({ value: mode, label: mode || $t('localLoad.auto') }))} />{/snippet}
+            {#snippet split()}<Select class="h-9 w-full text-[length:var(--text-sm)]" bind:value={appStore.localModelLoadSplitMode} options={splitModes.map((mode) => ({ value: mode, label: mode || $t('localLoad.auto') }))} />{/snippet}
             {@render field($t('localLoad.splitMode'), split)}
-            {#snippet seed()}<input class="load-input w-full" bind:value={appStore.localModelLoadSeed} inputmode="numeric" placeholder={$t('localLoad.optional')} />{/snippet}
+            {#snippet seed()}<Input class="w-full" bind:value={appStore.localModelLoadSeed} inputmode="numeric" placeholder={$t('localLoad.optional')} />{/snippet}
             {@render field($t('localLoad.seed'), seed)}
-            {#snippet cacheRam()}<input class="load-input w-full" bind:value={appStore.localModelLoadCacheRamMb} inputmode="numeric" placeholder="8192" />{/snippet}
+            {#snippet cacheRam()}<Input class="w-full" bind:value={appStore.localModelLoadCacheRamMb} inputmode="numeric" placeholder="8192" />{/snippet}
             {@render field($t('localLoad.promptCache'), cacheRam)}
-            {#snippet ropeBase()}<input class="load-input w-full" bind:value={appStore.localModelLoadRopeFreqBase} inputmode="decimal" placeholder={$t('localLoad.optional')} />{/snippet}
+            {#snippet ropeBase()}<Input class="w-full" bind:value={appStore.localModelLoadRopeFreqBase} inputmode="decimal" placeholder={$t('localLoad.optional')} />{/snippet}
             {@render field($t('localLoad.ropeBase'), ropeBase)}
-            {#snippet ropeScale()}<input class="load-input w-full" bind:value={appStore.localModelLoadRopeFreqScale} inputmode="decimal" placeholder={$t('localLoad.optional')} />{/snippet}
+            {#snippet ropeScale()}<Input class="w-full" bind:value={appStore.localModelLoadRopeFreqScale} inputmode="decimal" placeholder={$t('localLoad.optional')} />{/snippet}
             {@render field($t('localLoad.ropeScale'), ropeScale)}
-            {#snippet cacheReuse()}<input class="load-input w-full" bind:value={appStore.localModelLoadCacheReuse} inputmode="numeric" placeholder="0" />{/snippet}
+            {#snippet cacheReuse()}<Input class="w-full" bind:value={appStore.localModelLoadCacheReuse} inputmode="numeric" placeholder="0" />{/snippet}
             {@render field($t('localLoad.cacheReuse'), cacheReuse)}
-            {#snippet runtimePath()}<input class="load-input w-full" bind:value={appStore.localModelLoadRuntimePath} placeholder={$t('localLoad.runtimePathPlaceholder')} />{/snippet}
+            {#snippet runtimePath()}<Input class="w-full" bind:value={appStore.localModelLoadRuntimePath} placeholder={$t('localLoad.runtimePathPlaceholder')} />{/snippet}
             {@render field($t('localLoad.runtimePath'), runtimePath)}
           </div>
 
           <div class="grid gap-x-6 sm:grid-cols-2">
             {#each engineToggles as [key, prop] (key)}
-              <div class="flex items-center justify-between gap-3 py-1.5 text-[13px]">
+              <div class="flex items-center justify-between gap-3 py-1.5 text-[length:var(--text-sm)]">
                 <span title={$t(`localLoad.${key}Hint`)}>{$t(`localLoad.${key}`)}</span>
                 <Switch label={$t(`localLoad.${key}`)} bind:checked={appStore[prop]} />
               </div>
@@ -679,8 +679,8 @@
             {#if previewLoading && !commandPreview}
               <p class="text-xs text-muted-foreground">{$t('localLoad.commandResolving')}</p>
             {:else if commandPreview}
-              <pre class="max-h-32 overflow-auto whitespace-pre-wrap break-all font-mono text-[12px] leading-relaxed text-muted-foreground">{commandPreview}</pre>
-              <p class="pt-1.5 text-[12px] text-muted-foreground">{$t('localLoad.commandNote')}</p>
+              <pre class="max-h-32 overflow-auto whitespace-pre-wrap break-all font-mono text-[length:var(--text-xs)] leading-relaxed text-muted-foreground">{commandPreview}</pre>
+              <p class="pt-1.5 text-[length:var(--text-xs)] text-muted-foreground">{$t('localLoad.commandNote')}</p>
             {:else}
               <p class="text-xs text-muted-foreground">{$t('localLoad.commandUnavailable')}</p>
             {/if}
@@ -745,7 +745,7 @@
     display: inline-flex;
     align-items: center;
     gap: 0.375rem;
-    font-size: 12.5px;
+    font-size: var(--text-xs);
     font-weight: 500;
     color: var(--foreground);
   }
@@ -767,7 +767,7 @@
     border: 1px solid var(--border);
     background: var(--background);
     padding: 0 0.625rem;
-    font-size: 13px;
+    font-size: var(--text-sm);
     color: var(--text);
     outline: none;
   }

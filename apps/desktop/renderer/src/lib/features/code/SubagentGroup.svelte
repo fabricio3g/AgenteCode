@@ -112,11 +112,12 @@
     font-size: var(--text-xs);
   }
   .pill.is-live {
-    background: color-mix(in srgb, var(--brand-accent) 12%, transparent);
-    color: var(--brand-accent);
+    background: var(--work-accent-soft);
+    color: var(--work-accent-strong);
   }
   .pill.is-error {
-    background: color-mix(in srgb, var(--error) 12%, transparent);
+    background: transparent;
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--error) 35%, transparent);
     color: var(--error);
   }
   .total {

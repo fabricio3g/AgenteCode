@@ -14,7 +14,7 @@ import { humanizeAgentError } from '$lib/utils/errors';
 import { stripToolCallArtifacts } from './agent-parsing';
 import { uid } from './agent-tool-dispatch';
 
-const MUTATING = /^(?:write_|edit_|delete_|create_|preview_project$|browser_(?:open|click|fill|press|back|scroll))/;
+const MUTATING = /^(?:write_|edit_|delete_|create_|domain_write$|preview_project$|browser_(?:open|click|fill|press|back|scroll))/;
 function emptyMessage(role: Message['role'], content: string): Message { return { role, content }; }
 export function canContinueHomeHistory(meta: HomeRuntimeMeta | undefined, ids: string[]): boolean {
   return !!meta && meta.historyIds.length === ids.length - 1 && meta.historyIds.every((id, index) => id === ids[index]);

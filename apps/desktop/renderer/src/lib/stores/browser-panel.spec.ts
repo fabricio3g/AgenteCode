@@ -24,4 +24,14 @@ describe('browser conversation ownership', () => {
     expect(bridge.invoke).toHaveBeenCalledWith('browser_open_tab', { scope: 'chat:a', url: 'http://localhost:5173' }); expect(store.addressInput).toBe('https://b.test'); expect(store.loading).toBe(false);
     await store.hide(); expect(bridge.invoke).toHaveBeenLastCalledWith('browser_panel_visible', { scope: 'chat:b', visible: false });
   });
+  it('lets two live pane handles receive and navigate their own browser', async () => {
+    const store = new BrowserPanelStore(); const a = store.forScope('chat:a'), b = store.forScope('chat:b');
+    await Promise.resolve(); await Promise.resolve();
+    store.receive(state('chat:a', 'https://a.test')); store.receive(state('chat:b', 'https://b.test'));
+    expect(a.activeTab?.url).toBe('https://a.test'); expect(b.activeTab?.url).toBe('https://b.test');
+    await a.openUrl('https://new-a.test');
+    expect(bridge.invoke).toHaveBeenLastCalledWith('browser_open_tab', { scope: 'chat:a', url: 'https://new-a.test' });
+    await a.hide(); expect(a.open).toBe(false); expect(b.open).toBe(true);
+  });
+
 });

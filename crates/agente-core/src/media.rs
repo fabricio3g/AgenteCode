@@ -284,6 +284,40 @@ pub fn encode_for<'a>(model: &ModelInfo, attachments: &'a [Attachment]) -> Vec<E
         .collect()
 }
 
+/// Text of the user message that carries media tools returned.
+pub const TOOL_MEDIA_NOTE: &str = "Media from the latest tool results.";
+
+/// Send tool media once: a screenshot goes inline only in the request right
+/// after the tool round that took it. Every step resends the whole history,
+/// and a browsing session's full-size screenshots grew each call to megabytes
+/// that cloud providers took close to a minute to accept. Once the model has
+/// answered past it, it becomes a note; the stored history keeps the file,
+/// and media the user attached is never touched.
+pub fn prune_stale_tool_media(messages: &mut [agente_protocol::Message]) {
+    let answered = messages
+        .iter()
+        .rposition(|message| message.role == agente_protocol::Role::Assistant)
+        .unwrap_or(0);
+    for message in &mut messages[..answered] {
+        if message.role != agente_protocol::Role::User
+            || message.content != TOOL_MEDIA_NOTE
+            || message.attachments.is_empty()
+        {
+            continue;
+        }
+        let names: Vec<&str> = message
+            .attachments
+            .iter()
+            .map(|a| a.name.as_str())
+            .collect();
+        message.content = format!(
+            "[Tool media already shown: {}. Take it again to look at it.]",
+            names.join(", ")
+        );
+        message.attachments.clear();
+    }
+}
+
 /// `input_audio.format` for the OpenAI chat format.
 pub fn audio_format(mime: &str) -> &'static str {
     match mime {
@@ -331,6 +365,58 @@ pub(crate) mod tests {
             std::os::unix::fs::symlink(&outside, &link).unwrap();
             assert!(stored_image_in(&root, &link).is_err());
         }
+    }
+
+    #[test]
+    fn tool_media_is_sent_once() {
+        let dir = tempfile::tempdir().unwrap();
+        let message = |role: agente_protocol::Role, content: &str, name: Option<&str>| {
+            agente_protocol::Message {
+                role,
+                content: content.into(),
+                tool_calls: None,
+                tool_call_id: None,
+                thinking: None,
+                thinking_signature: None,
+                continuation: None,
+                attachments: name
+                    .map(|name| {
+                        vec![attachment(
+                            dir.path(),
+                            name,
+                            AttachmentKind::Image,
+                            "image/png",
+                        )]
+                    })
+                    .unwrap_or_default(),
+            }
+        };
+        use agente_protocol::Role::{Assistant, Tool, User};
+        let mut messages = vec![
+            message(User, "look at this", Some("mine.png")),
+            message(Assistant, "", None),
+            message(Tool, "screenshot taken", None),
+            message(User, TOOL_MEDIA_NOTE, Some("one.png")),
+            message(Assistant, "", None),
+            message(Tool, "screenshot taken", None),
+            message(User, TOOL_MEDIA_NOTE, Some("two.png")),
+        ];
+        prune_stale_tool_media(&mut messages);
+        assert_eq!(messages[0].attachments.len(), 1, "user media stays");
+        assert!(
+            messages[3].attachments.is_empty(),
+            "answered media is not resent"
+        );
+        assert!(
+            messages[3].content.contains("one.png"),
+            "{}",
+            messages[3].content
+        );
+        assert_eq!(
+            messages[6].attachments.len(),
+            1,
+            "the new screenshot goes once"
+        );
     }
 
     #[test]

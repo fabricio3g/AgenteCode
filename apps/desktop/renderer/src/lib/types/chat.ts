@@ -881,6 +881,9 @@ export interface ModelOption {
   id: string;
   name: string;
   source: 'local' | 'api';
+  /** Not in the provider's own list: `catalog` (models.dev lists it) or
+      `retired` (models.dev marks it deprecated). Absent = served today. */
+  availability?: 'catalog' | 'retired';
   path?: string;
   details?: string;
   architecture?: string;
@@ -1022,6 +1025,9 @@ export interface AppConfig {
     local_backend?: 'cpu' | 'vulkan';
     num_threads?: number;
     language?: string;
+    /** Voices cloned from a recording, and the one in use (empty = a built-in voice). */
+    cloned_voices?: import('$shared/voice-models').ClonedVoice[];
+    cloned_voice?: string;
   };
   stt?: {
     provider?: 'local' | 'api' | 'auto';
@@ -1047,6 +1053,8 @@ export interface AppConfig {
     editor?: string;
     agent_debug_logs?: boolean;
     artifact_toggles?: Record<string, boolean>;
+    /** Home tools switched off from the composer's Tools menu: group ids and/or tool names. */
+    home_tools_disabled?: string[];
     /** Enables the Roleplay space (tab, surface and settings section). */
     roleplay_enabled?: boolean;
     /** Set once the starter kit has been offered, so deleting it stays deleted. */

@@ -44,22 +44,22 @@
     {/if}
   </div>
 {:else}
-<div class={cn('overflow-hidden rounded-lg border border-border bg-background', className)}>
+<div class={cn('overflow-hidden rounded-[var(--float-radius)] border border-[var(--float-border)] bg-[var(--card)]', className)}>
   <button
     type="button"
-    class="flex w-full items-center justify-between gap-4 px-3 py-2.5 text-left outline-none transition-colors duration-[var(--motion-fast)] hover:bg-muted/40 focus-visible:ring-[3px] focus-visible:ring-inset focus-visible:ring-ring/20 disabled:opacity-50"
+    class="flex w-full items-center justify-between gap-4 px-4 py-3 text-left outline-none transition-colors duration-[var(--motion-fast)] hover:bg-[var(--float-row-hover)] focus-visible:ring-[3px] focus-visible:ring-inset focus-visible:ring-ring/20 disabled:opacity-50"
     aria-expanded={open}
     {disabled}
     onclick={() => (open = !open)}
   >
     <span class="min-w-0">
-      <span class="block text-sm font-medium text-foreground">{title}</span>
+      <span class="block text-[13px] font-medium text-foreground">{title}</span>
       {#if description}<span class="mt-0.5 block text-xs text-muted-foreground">{description}</span>{/if}
     </span>
     <ChevronDown class={cn('size-4 shrink-0 text-muted-foreground transition-transform duration-[var(--motion-normal)] ease-[var(--motion-ease)]', open && 'rotate-180')} />
   </button>
   {#if open}
-    <div class="border-t border-border px-3 py-3" transition:motionSlide={{ duration: 180 }}>
+    <div class="border-t border-[var(--border-subtle)] px-4 py-3" transition:motionSlide={{ duration: 180 }}>
       {@render children()}
     </div>
   {/if}

@@ -7,6 +7,7 @@
 -->
 
 <script lang="ts">
+  import { Tooltip } from '$lib/components/ui';
   import JSZip from 'jszip';
   import { Download, RotateCcw, Save } from 'lucide-svelte';
   import { appStore } from '$lib/stores/app.svelte';
@@ -210,10 +211,10 @@
         <SegmentedControl bind:value={activeView} options={[{ value: 'preview', label: $t('artifacts.studio.preview') }, { value: 'source', label: $t('artifacts.studio.source') }]} label={$t('artifacts.studio.view')} />
       {/if}
       {#if dirty}
-        <Button variant="ghost" size="icon-sm" onclick={discard} aria-label={$t('artifacts.studio.discard')} title={$t('artifacts.studio.discard')}><RotateCcw /></Button>
+        <Tooltip label={$t('artifacts.studio.discard')} position="bottom"><Button variant="ghost" size="icon-sm" onclick={discard} aria-label={$t('artifacts.studio.discard')}><RotateCcw /></Button></Tooltip>
         <Button size="sm" onclick={save}><Save /> {$t('artifacts.studio.save')}</Button>
       {/if}
-      <Button variant="ghost" size="icon-sm" onclick={downloadAll} loading={downloading} disabled={!files.length} aria-label={files.length === 1 ? $t('artifacts.card.download') : $t('artifacts.studio.zipHint')} title={files.length === 1 ? $t('artifacts.card.download') : $t('artifacts.studio.zipHint')}><Download /></Button>
+      <Tooltip label={files.length === 1 ? $t('artifacts.card.download') : $t('artifacts.studio.zipHint')} position="bottom"><Button variant="ghost" size="icon-sm" onclick={downloadAll} loading={downloading} disabled={!files.length} aria-label={files.length === 1 ? $t('artifacts.card.download') : $t('artifacts.studio.zipHint')}><Download /></Button></Tooltip>
       {@render trail?.()}
     </div>
   {:else}

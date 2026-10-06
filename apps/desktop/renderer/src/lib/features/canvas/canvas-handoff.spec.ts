@@ -8,7 +8,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { CanvasImage, CanvasMark } from './canvas-doc';
 
 vi.mock('$lib/services/bridge', () => ({ invoke: vi.fn() }));
-const fakeApp = vi.hoisted(() => ({ currentChat: { id: 'chat-a', codeAgent: false }, composer: 'Existing', pendingAttachments: [], updateComposer: vi.fn() }));
+const fakeApp = vi.hoisted(() => ({ chats: [{ id: 'chat-a', codeAgent: false }], currentChat: { id: 'chat-a', codeAgent: false }, composer: 'Existing', pendingAttachments: [], updateComposer: vi.fn() }));
 vi.mock('$lib/stores/app.svelte', () => ({ appStore: fakeApp }));
 vi.mock('$lib/stores/toast.svelte', () => ({ toastStore: { error: vi.fn(), success: vi.fn() } }));
 vi.mock('./canvas-board.svelte', () => ({ canvasBoard: { doc: { images: [], marks: [], view: { zoom: 1, panX: 0, panY: 0 }, labelled: [] } } }));

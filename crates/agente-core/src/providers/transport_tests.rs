@@ -43,11 +43,16 @@ fn read_request(socket: &mut std::net::TcpStream) -> (String, Value) {
 }
 
 fn sse_response(events: &[Value]) -> String {
-    let sse = events
+    let sse = sse_body(events);
+    format!("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", sse.len(), sse)
+}
+
+/// The event stream alone, for fixtures that write their own headers.
+fn sse_body(events: &[Value]) -> String {
+    events
         .iter()
         .map(|event| format!("data: {event}\n\n"))
-        .collect::<String>();
-    format!("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", sse.len(), sse)
+        .collect()
 }
 
 fn server(events: Vec<Value>) -> (String, std::sync::mpsc::Receiver<(String, Value)>) {
@@ -502,6 +507,77 @@ async fn chat_preserves_structured_reasoning_and_arguments_before_tool_name() {
     assert_eq!(
         blocks[0]["message"]["reasoning_details"][0]["text"],
         "Inspect first"
+    );
+}
+
+#[tokio::test]
+async fn chat_replays_observed_reasoning_without_catalog_capability() {
+    let (url, requests) = server(vec![
+        json!({"choices":[{"delta":{"reasoning_content":"Inspect "}}]}),
+        json!({"choices":[{"delta":{"reasoning_content":"first", "tool_calls":[{"index":0,"id":"call_read","function":{"name":"read","arguments":"{}"}}]}}]}),
+        json!({"choices":[{"delta":{},"finish_reason":"tool_calls"}]}),
+    ]);
+    let provider = openai::OpenAIProvider::from_info(info(url));
+    let mut selected = fallback_model_info("gateway", "mimo-v2.5");
+    assert!(!selected.capabilities.reasoning);
+    selected.limits.output = 0;
+    let (tx, mut rx) = tokio::sync::mpsc::channel(128);
+    provider
+        .stream_completion(
+            &[Message::user("inspect")],
+            None,
+            &selected,
+            tx,
+            RequestContext::new(uuid::Uuid::new_v4()),
+        )
+        .await
+        .unwrap();
+    requests.recv_timeout(Duration::from_secs(10)).unwrap();
+    let mut events = Vec::new();
+    while let Some(event) = rx.recv().await {
+        events.push(event);
+    }
+    let assistant = transcript(&events);
+    assert_eq!(assistant.thinking.as_deref(), Some("Inspect first"));
+    let mut tool = Message::user("file contents");
+    tool.role = Role::Tool;
+    tool.tool_call_id = Some("call_read".into());
+    let (url, requests) = server(vec![
+        json!({"choices":[{"delta":{"content":"done"},"finish_reason":"stop"}]}),
+    ]);
+    let provider = openai::OpenAIProvider::from_info(info(url));
+    let (tx, _rx) = tokio::sync::mpsc::channel(128);
+    provider
+        .stream_completion(
+            &[Message::user("inspect"), assistant, tool],
+            None,
+            &selected,
+            tx,
+            RequestContext::new(uuid::Uuid::new_v4()),
+        )
+        .await
+        .unwrap();
+    let (_, body) = requests.recv_timeout(Duration::from_secs(10)).unwrap();
+    assert_eq!(body["messages"][1]["reasoning_content"], "Inspect first");
+    assert_eq!(body["messages"][1]["tool_calls"][0]["id"], "call_read");
+    assert_eq!(body["messages"][2]["tool_call_id"], "call_read");
+}
+
+#[test]
+fn go_live_stub_adopts_catalog_reasoning_on_resolution() {
+    let catalog = ModelCatalog::parse_json(&json!({"opencode-go":{"id":"opencode-go","models":{
+        "mimo-v2.5":{"name":"MiMo V2.5","reasoning":true,"reasoning_stream_field":"reasoning_content"}
+    }}}).to_string()).unwrap();
+    let registry = ProviderRegistry::from_config(&crate::config::AppConfig::default());
+    registry.replace_runtime_models(
+        "opencode-go",
+        vec![fallback_model_info("opencode-go", "mimo-v2.5")],
+    );
+    let resolved = resolve_model_info(&registry, Some(&catalog), "opencode-go", "mimo-v2.5");
+    assert!(resolved.capabilities.reasoning);
+    assert_eq!(
+        resolved.reasoning_stream_field.as_deref(),
+        Some("reasoning_content")
     );
 }
 
@@ -1361,4 +1437,69 @@ fn refreshed_catalog_replaces_derived_transport_in_live_snapshots() {
     let selected = resolve_model_info(&rebuilt, Some(&fresh), "opencode-go", "future-model");
     assert!(selected.api.route_error.is_some());
     assert!(selected.api.resolved_cache_control.is_none());
+}
+
+/// A provider that answers late but stays connected. The first chunk runs
+/// against the first-byte deadline (`AGENTE_STREAM_FIRST_BYTE_SECS`) and every
+/// chunk after it against the idle timeout, so a slow start must not read as a
+/// stalled socket — and the tokens must still arrive.
+#[tokio::test]
+async fn a_late_first_byte_is_waited_for_not_treated_as_a_stall() {
+    let events = vec![
+        json!({"choices":[{"delta":{"content":"slow"}}]}),
+        json!({"choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":5,"completion_tokens":1,"total_tokens":6}}),
+    ];
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let url = format!("http://{}", listener.local_addr().unwrap());
+    let handle = std::thread::spawn(move || {
+        let (mut socket, _) = listener.accept().unwrap();
+        read_request(&mut socket);
+        // Headers first, then silence: the client holds an open response and
+        // waits on the body, which is the window the first-byte deadline owns.
+        write!(
+            socket,
+            "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nConnection: close\r\n\r\n"
+        )
+        .unwrap();
+        socket.flush().unwrap();
+        std::thread::sleep(Duration::from_millis(400));
+        write!(socket, "{}", sse_body(&events)).unwrap();
+    });
+
+    let provider = routed::RoutedProvider::new(info(url), HashMap::new());
+    let (tx, mut rx) = tokio::sync::mpsc::channel(128);
+    let started = std::time::Instant::now();
+    let result = provider
+        .stream_completion(
+            &[Message::user("inspect")],
+            None,
+            &model(ApiFormat::OpenAI),
+            tx,
+            RequestContext::new(uuid::Uuid::new_v4()),
+        )
+        .await;
+    let mut text = String::new();
+    let mut done = false;
+    while let Some(event) = rx.recv().await {
+        match event {
+            StreamEvent::TextDelta(delta) => text.push_str(&delta),
+            StreamEvent::Done { .. } => done = true,
+            _ => {}
+        }
+    }
+    handle.join().unwrap();
+    assert!(
+        result.is_ok(),
+        "a late first byte must not fail: {result:?}"
+    );
+    assert_eq!(text, "slow");
+    assert!(done, "the stream must complete");
+    assert!(
+        started.elapsed() >= Duration::from_millis(400),
+        "the fixture delay was skipped"
+    );
+    assert!(
+        started.elapsed() < crate::util::stream_first_byte_timeout(),
+        "the wait must stay inside the first-byte deadline"
+    );
 }

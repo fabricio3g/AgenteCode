@@ -258,6 +258,14 @@ export async function readWorkspaceFile(workspaceRoot, relativePath) {
   return fs.readFileSync(fullPath, 'utf8');
 }
 
+/** Raw bytes of a workspace file as a base64 data URL (documents, images, audio). */
+export async function readWorkspaceBinary(workspaceRoot, relativePath) {
+  const fullPath = resolveWorkspacePath(workspaceRoot, relativePath);
+  const stat = fs.statSync(fullPath);
+  if (stat.size > 50 * 1024 * 1024) throw new Error('File is larger than 50 MB.');
+  return `data:application/octet-stream;base64,${fs.readFileSync(fullPath).toString('base64')}`;
+}
+
 export async function createWorkspaceDocument(workspaceRoot, relativePath, docType, content) {
   return writeWorkspaceFile(workspaceRoot, relativePath, content);
 }

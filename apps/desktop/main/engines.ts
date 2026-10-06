@@ -107,9 +107,9 @@ export async function checkWhisperUpdate(): Promise<{ tag: string; asset: string
   return installed.includes(asset.tag) ? null : { tag: asset.tag, asset: asset.name };
 }
 
-/** Install the newest whisper.cpp build next to the current one and switch to it. */
-export async function updateWhisperEngine(): Promise<EngineOverview> {
-  const asset = await findWhisperRuntimeAsset();
+/** Install a whisper.cpp build (the newest, or `tag`) next to the current one and switch to it. */
+export async function updateWhisperEngine(tag?: string): Promise<EngineOverview> {
+  const asset = await findWhisperRuntimeAsset(tag);
   if (!asset) throw new Error('No whisper.cpp build was found for this system.');
   const result = await downloadWhisperRuntime({ download_url: asset.url, asset_name: asset.name, release_tag: asset.tag });
   stopWhisperServer();

@@ -22,6 +22,19 @@ afterEach(() => {
 });
 
 describe('modalLayer', () => {
+  it('removes a layer it hoisted to <body> when the layer closes', () => {
+    // A layer rendered inside a panel is moved to <body>; Svelte cannot find it
+    // there any more, so leaving it would strand an invisible backdrop.
+    const panel = document.createElement('section');
+    const node = document.createElement('div');
+    panel.appendChild(node);
+    document.body.appendChild(panel);
+    const layer = modalLayer(node);
+    expect(node.parentElement).toBe(document.body);
+    layer.destroy();
+    expect(node.isConnected).toBe(false);
+  });
+
   it('lets only the topmost layer handle Escape', async () => {
     const outerClose = vi.fn();
     const innerClose = vi.fn();

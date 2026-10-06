@@ -15,6 +15,9 @@
   import { onMount, tick } from 'svelte';
   import { slide } from 'svelte/transition';
   import {
+    ArrowUp,
+    ArrowDown,
+    FolderPlus,
     ChevronRight,
     Copy as CopyIcon,
     Folder,
@@ -31,9 +34,12 @@
   import MenuItem from '$lib/components/ui/MenuItem.svelte';
   import IconButton from '$lib/components/ui/IconButton.svelte';
   import StatusDot from '$lib/components/ui/StatusDot.svelte';
+  import ProjectConversations from './ProjectConversations.svelte';
+  import { sidebarOrganization as organization } from './sidebar-organization.svelte';
   import SessionRow from '$lib/features/shared/SessionRow.svelte';
   import { codeStore } from './code.svelte';
   import { appStore } from '$lib/stores/app.svelte';
+  import { workspaceLayout } from '$lib/stores/workspace-layout.svelte';
   import { approvalsStore } from '$lib/stores/approvals.svelte';
   import { confirmStore } from '$lib/stores/confirm.svelte';
   import { toastStore } from '$lib/stores/toast.svelte';
@@ -179,6 +185,20 @@
     menuPoint = null;
     menuFor = menuFor === projectId ? null : projectId;
   }
+  /**
+   * Open a conversation beside the one being read. The centre measures itself, so
+   * the refusal is honest: two columns that cannot hold a sentence are worse than
+   * no split, and the reader gets told why instead of watching it squeeze.
+   */
+  function splitWith(chatId: string, edge: 'right' | 'bottom') {
+    const { width, height } = workspaceLayout.centreSize;
+    if (!workspaceLayout.splitWith(chatId, edge, { x: 0, y: 0, width, height })) {
+      toastStore.error($t('code.pane.tooNarrow'));
+      return;
+    }
+    // The new pane is already focused; say so to everything that reads "current".
+    codeStore.openConversation(chatId);
+  }
 </script>
 
 <div class="flex flex-col gap-0.5 pb-2">
@@ -197,13 +217,25 @@
       <span class="sidebar-row-label">{$t('code.addProject')}</span>
     </button>
   {:else}
-    {#each codeStore.projects as project (project.id)}
+    {#each organization.list('projects',codeStore.projects) as project (project.id)}
       {@const expanded = !!codeStore.expandedProjects[project.id]}
       {@const sessions = sessionsFor(project.id)}
       {@const missing = !!codeStore.missingProjects[project.id]}
-      <div class="project">
+      <div class="project" data-sidebar-project={project.id}>
         <div
           class="sidebar-row is-strong group relative"
+          class:is-drop-target={organization.hover===`project:${project.id}`}
+          draggable={renamingId!==project.id}
+          ondragstart={(event)=>organization.start(event,{kind:'project',id:project.id})}
+          ondragend={()=>organization.end()}
+          ondragover={(event)=>organization.over(event,{kind:'project',id:project.id})}
+          ondrop={(event)=>{
+            if(!organization.over(event,{kind:'project',id:project.id}))return;
+            const source=organization.dragging!;
+            if(source.kind==='project')organization.reorder('projects',organization.list('projects',codeStore.projects).map(project=>project.id),source.id,project.id);
+            else if(source.kind==='chat'){const chat=appStore.chats.find(chat=>chat.id===source.id);if(chat)organization.moveChat(chat,null);}
+            organization.end();
+          }}
           class:is-ancestor={codeStore.activeProjectId === project.id}
           role="button"
           tabindex="0"
@@ -298,6 +330,9 @@
               {:else}
                 <MenuItem icon={Plus} label={$t('code.newConversation')} onselect={() => codeStore.newConversation(project)} />
               {/if}
+              <MenuItem icon={FolderPlus} label={$t('sidebarOrganize.newFolder')} onselect={()=>{organization.creatingIn=project.id;codeStore.expandedProjects[project.id]=true;}} />
+              <MenuItem icon={ArrowUp} label={$t('sidebarOrganize.moveUp')} onselect={()=>organization.move('projects',organization.list('projects',codeStore.projects).map(project=>project.id),project.id,-1)} />
+              <MenuItem icon={ArrowDown} label={$t('sidebarOrganize.moveDown')} onselect={()=>organization.move('projects',organization.list('projects',codeStore.projects).map(project=>project.id),project.id,1)} />
               <MenuItem icon={Pencil} label={copy.actions.rename} onselect={() => void startRename(project)} />
               <MenuItem icon={FolderOpen} label={copy.actions.reveal} disabled={missing} onselect={() => void codeStore.revealProject(project.id)} />
               <MenuItem icon={CopyIcon} label={copy.actions.copyPath} onselect={() => void copyPath(project)} />
@@ -319,27 +354,7 @@
                 <span class="sidebar-row-label">{$t('code.locateFolder')}</span>
               </button>
             {/if}
-            {#each sessions as session (session.id)}
-              {@const status = statusFor(session.id)}
-              <SessionRow
-                chat={session}
-                active={appStore.currentChatId === session.id}
-                onselect={() => codeStore.openConversation(session.id)}
-                {status}
-                statusLabel={status === 'approval' ? $t('code.awaitingApproval') : $t('code.running')}
-                menuLabel={$t('code.conversationOptions')}
-              />
-            {/each}
-            {#if !missing}
-              <button
-                type="button"
-                class="sidebar-row is-muted"
-                onclick={() => codeStore.newConversation(project)}
-              >
-                <Plus class="sidebar-row-icon" />
-                <span class="sidebar-row-label">{$t('code.newConversation')}</span>
-              </button>
-            {/if}
+            <ProjectConversations {project} {sessions} {missing} {statusFor} onsplit={splitWith} />
           </div>
         {/if}
       </div>
@@ -374,7 +389,9 @@
             <SessionRow
               {chat}
               active={appStore.currentChatId === chat.id}
+              open={!!workspaceLayout.paneForChat(chat.id)}
               onselect={() => appStore.selectChat(chat.id)}
+              onsplit={(edge) => splitWith(chat.id, edge)}
               menuLabel={$t('code.conversationOptions')}
             />
           {/each}

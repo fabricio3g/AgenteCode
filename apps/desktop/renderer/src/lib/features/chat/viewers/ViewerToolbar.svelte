@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { Tooltip } from '$lib/components/ui';
   import { tick, type Snippet } from 'svelte';
   import { ChevronLeft, ChevronRight, Download, Ellipsis, Minus, Plus, Search, X } from 'lucide-svelte';
   import { t } from 'svelte-i18n';
@@ -50,18 +51,18 @@
   <span class="viewer-title" title={title}>{controls.title || title}</span>
   {#if caps?.goToPage && caps.pages}
     <div class="page-controls">
-      <button type="button" class="ui-icon-button is-sm" onclick={() => caps?.goToPage?.((caps.page ?? 1) - 1)} disabled={(caps.page ?? 1) <= 1} aria-label={$t('viewer.previous')}><ChevronLeft /></button>
+      <Tooltip label={$t('viewer.previous')} position="bottom"><button type="button" class="ui-icon-button is-sm" onclick={() => caps?.goToPage?.((caps.page ?? 1) - 1)} disabled={(caps.page ?? 1) <= 1} aria-label={$t('viewer.previous')}><ChevronLeft /></button></Tooltip>
       <input class="page-number" aria-label={$t('viewer.page', { values: { n: caps.page, total: caps.pages } })} inputmode="numeric" bind:value={pageInput} onblur={commitPage} onkeydown={(event) => { if (event.key === 'Enter') { event.preventDefault(); commitPage(); } else if (event.key === 'Escape') { event.stopPropagation(); pageInput = String(caps?.page ?? 1); event.currentTarget.blur(); } }} />
       <span class="page-total">/ {caps.pages}</span>
-      <button type="button" class="ui-icon-button is-sm" onclick={() => caps?.goToPage?.((caps.page ?? 1) + 1)} disabled={(caps.page ?? 1) >= caps.pages} aria-label={$t('viewer.next')}><ChevronRight /></button>
+      <Tooltip label={$t('viewer.next')} position="bottom"><button type="button" class="ui-icon-button is-sm" onclick={() => caps?.goToPage?.((caps.page ?? 1) + 1)} disabled={(caps.page ?? 1) >= caps.pages} aria-label={$t('viewer.next')}><ChevronRight /></button></Tooltip>
     </div>
   {/if}
   {#if caps?.zoomBy}
-    {#if !narrow}<button type="button" class="ui-icon-button is-sm" onclick={() => caps?.zoomBy?.(-1)} aria-label={$t('viewer.zoomOut')}><Minus /></button>{/if}
+    {#if !narrow}<Tooltip label={$t('viewer.zoomOut')} position="bottom"><button type="button" class="ui-icon-button is-sm" onclick={() => caps?.zoomBy?.(-1)} aria-label={$t('viewer.zoomOut')}><Minus /></button></Tooltip>{/if}
     <button type="button" class="zoom-label" onclick={() => caps?.fit?.()} disabled={!caps.fit} title={$t('viewer.fit')}>{caps.zoom}</button>
-    {#if !narrow}<button type="button" class="ui-icon-button is-sm" onclick={() => caps?.zoomBy?.(1)} aria-label={$t('viewer.zoomIn')}><Plus /></button>{/if}
+    {#if !narrow}<Tooltip label={$t('viewer.zoomIn')} position="bottom"><button type="button" class="ui-icon-button is-sm" onclick={() => caps?.zoomBy?.(1)} aria-label={$t('viewer.zoomIn')}><Plus /></button></Tooltip>{/if}
   {/if}
-  {#if caps?.search}<button type="button" class="ui-icon-button is-sm" aria-label={$t('artifacts.reader.search')} aria-expanded={controls.searchOpen} bind:this={searchToggle} onclick={() => { controls.searchOpen = !controls.searchOpen; }}><Search /></button>{/if}
+  {#if caps?.search}<Tooltip label={$t('artifacts.reader.search')} position="bottom"><button type="button" class="ui-icon-button is-sm" aria-label={$t('artifacts.reader.search')} aria-expanded={controls.searchOpen} bind:this={searchToggle} onclick={() => { controls.searchOpen = !controls.searchOpen; }}><Search /></button></Tooltip>{/if}
   {@render beforeMenu?.()}
   <Menu label={$t('browser.more')} placement="bottom-end">
     {#snippet trigger(props)}<button type="button" class="ui-icon-button is-sm" {...props} aria-label={$t('browser.more')}><Ellipsis /></button>{/snippet}
@@ -75,7 +76,7 @@
     {#each menuActions as action (action.label)}<MenuItem label={action.label} active={action.active} disabled={action.disabled} onselect={action.run} />{/each}
   </Menu>
   {@render trail?.()}
-  {#if onclose}<button type="button" class="ui-icon-button is-sm" onclick={onclose} aria-label={$t('artifacts.reader.close')}><X /></button>{/if}
+  {#if onclose}<Tooltip label={$t('artifacts.reader.close')} position="bottom"><button type="button" class="ui-icon-button is-sm" onclick={onclose} aria-label={$t('artifacts.reader.close')}><X /></button></Tooltip>{/if}
 </header>
 {#if controls.searchOpen && caps?.search}
   <div class="viewer-find">
@@ -83,10 +84,10 @@
     <input bind:this={field} bind:value={controls.query} aria-label={$t('artifacts.reader.search')} placeholder={$t('artifacts.reader.search')} onkeydown={findKeydown} />
     <span aria-live="polite">{caps.search.matches ? caps.search.index + 1 : 0}/{caps.search.matches}</span>
     {#if caps.search.step}
-      <button type="button" class="ui-icon-button is-xs" onclick={() => caps?.search?.step?.(-1)} aria-label={$t('viewer.previous')}><ChevronLeft /></button>
-      <button type="button" class="ui-icon-button is-xs" onclick={() => caps?.search?.step?.(1)} aria-label={$t('viewer.next')}><ChevronRight /></button>
+      <Tooltip label={$t('viewer.previous')} position="bottom"><button type="button" class="ui-icon-button is-xs" onclick={() => caps?.search?.step?.(-1)} aria-label={$t('viewer.previous')}><ChevronLeft /></button></Tooltip>
+      <Tooltip label={$t('viewer.next')} position="bottom"><button type="button" class="ui-icon-button is-xs" onclick={() => caps?.search?.step?.(1)} aria-label={$t('viewer.next')}><ChevronRight /></button></Tooltip>
     {/if}
-    <button type="button" class="ui-icon-button is-xs" onclick={() => { controls.query = ''; controls.searchOpen = false; }} aria-label={$t('artifacts.clearSearch')}><X /></button>
+    <Tooltip label={$t('artifacts.clearSearch')} position="bottom"><button type="button" class="ui-icon-button is-xs" onclick={() => { controls.query = ''; controls.searchOpen = false; }} aria-label={$t('artifacts.clearSearch')}><X /></button></Tooltip>
   </div>
 {/if}
 

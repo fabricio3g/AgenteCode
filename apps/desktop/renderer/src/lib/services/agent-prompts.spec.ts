@@ -245,11 +245,11 @@ describe('agent-prompts', () => {
     // sandbox and XML profiles are the largest because they carry the artifact
     // and report schemas, which are content contracts rather than style.
     const budgets: Array<[string, string, number]> = [
-      ['chat', getAgenteChatSystemPrompt(), 1_700],
-      ['native agent sandbox', getNativeSystemPrompt(undefined, 24, 12, 'agent', 'sandbox'), 4_300],
+      ['chat', getAgenteChatSystemPrompt(), 1_900],
+      ['native agent sandbox', getNativeSystemPrompt(undefined, 24, 12, 'agent', 'sandbox'), 4_500],
       ['native agent workspace', getNativeSystemPrompt(undefined, 80, 28, 'agent', 'workspace'), 1_050],
       ['native search', getNativeSystemPrompt(undefined, 24, 12, 'search_chat'), 4_200],
-      ['xml agent sandbox', getXmlSystemPrompt(undefined, 24, 12, [], 'agent', 'sandbox'), 3_950]
+      ['xml agent sandbox', getXmlSystemPrompt(undefined, 24, 12, [], 'agent', 'sandbox'), 4_150]
     ];
     const over = budgets
       .filter(([, text, max]) => text.length > max)

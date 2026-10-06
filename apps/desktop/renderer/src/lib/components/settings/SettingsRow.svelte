@@ -55,8 +55,8 @@
   <div class="settings-row-text">
     {#if tile}<span class="settings-row-tile">{@render tile()}</span>{/if}
     <div class="min-w-0 space-y-0.5">
-      <label class="block text-[13px] font-medium text-foreground" for={htmlFor}>{label}</label>
-      {#if description}<p class="text-xs leading-relaxed text-muted-foreground">{description}</p>{/if}
+      <label class="settings-row-label" for={htmlFor}>{label}</label>
+      {#if description}<p class="settings-row-description">{description}</p>{/if}
       {#if error}<p class="text-xs text-error" role="alert">{error}</p>{/if}
     </div>
   </div>
@@ -70,9 +70,23 @@
      between rows, so the row itself draws no border. */
   .settings-row {
     display: flex;
+    min-height: 3.25rem;
     flex-direction: column;
     gap: 0.75rem;
-    padding: 0.875rem 1rem;
+    padding: 0.75rem 1rem;
+  }
+
+  .settings-row-label {
+    display: block;
+    color: var(--foreground);
+    font-size: var(--text-sm);
+    font-weight: 500;
+  }
+
+  .settings-row-description {
+    color: var(--muted-foreground);
+    font-size: var(--text-xs);
+    line-height: 1.5;
   }
 
   @media (min-width: 640px) {
@@ -108,7 +122,8 @@
     flex-shrink: 0;
     align-items: center;
     justify-content: center;
-    border-radius: 0.5rem;
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--float-row-radius);
     background: var(--muted);
     color: var(--muted-foreground);
   }

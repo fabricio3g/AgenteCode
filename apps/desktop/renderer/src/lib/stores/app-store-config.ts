@@ -132,6 +132,7 @@ export function mergeUiSettingsConfig(
     show_assistant_text?: boolean;
     enable_thinking?: boolean;
     artifact_toggles?: Record<string, boolean>;
+    home_tools_disabled?: string[];
     composer_mode_control?: 'tabs' | 'auto';
     roleplay_enabled?: boolean;
     editor?: string;

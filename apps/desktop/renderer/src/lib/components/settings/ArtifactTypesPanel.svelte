@@ -22,7 +22,7 @@
   import { get } from 'svelte/store';
   import { appStore } from '$lib/stores/app.svelte';
   import { toastStore } from '$lib/stores/toast.svelte';
-  import Switch from '$lib/components/ui/Switch.svelte';
+  import { Button, Switch } from '$lib/components/ui';
   import SettingsRow from './SettingsRow.svelte';
   import SettingsSection from './SettingsSection.svelte';
   import {
@@ -98,13 +98,10 @@
 </script>
 
 <div class="space-y-5">
-  <div class="flex flex-wrap items-center justify-between gap-3">
-    <p class="text-sm text-muted-foreground">{$t('artifacts.typesHint')}</p>
-    <div class="flex items-center gap-1">
-      <span class="mr-2 text-xs tabular-nums text-muted-foreground">{$t('artifacts.typesEnabled', { values: { n: enabledCount, total: artifacts.length } })}</span>
-      <button type="button" class="bulk-btn" onclick={() => void setAllArtifacts(true)} disabled={bulkPending || enabledCount === artifacts.length}>{$t('artifacts.enableAll')}</button>
-      <button type="button" class="bulk-btn" onclick={() => void setAllArtifacts(false)} disabled={bulkPending || enabledCount === 0}>{$t('artifacts.disableAll')}</button>
-    </div>
+  <div class="flex items-center justify-end gap-1.5">
+    <span class="mr-1 text-[length:var(--text-xs)] tabular-nums text-muted-foreground">{$t('artifacts.typesEnabled', { values: { n: enabledCount, total: artifacts.length } })}</span>
+    <Button variant="ghost" size="sm" onclick={() => void setAllArtifacts(true)} disabled={bulkPending || enabledCount === artifacts.length}>{$t('artifacts.enableAll')}</Button>
+    <Button variant="ghost" size="sm" onclick={() => void setAllArtifacts(false)} disabled={bulkPending || enabledCount === 0}>{$t('artifacts.disableAll')}</Button>
   </div>
 
   {#each categories as category (category)}
@@ -130,20 +127,3 @@
     </SettingsSection>
   {/each}
 </div>
-
-<style>
-  .bulk-btn {
-    border-radius: 9999px;
-    padding: 0.25rem 0.625rem;
-    font-size: 0.75rem;
-    font-weight: 500;
-    color: var(--muted-foreground);
-  }
-  .bulk-btn:hover:not(:disabled) {
-    background: var(--surface-hover);
-    color: var(--foreground);
-  }
-  .bulk-btn:disabled {
-    opacity: 0.4;
-  }
-</style>

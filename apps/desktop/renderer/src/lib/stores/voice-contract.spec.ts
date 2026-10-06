@@ -34,11 +34,11 @@ describe('voice contract', () => {
     const contract = sharedAssistantStylePrompt();
     expect(contract).toContain('Lead with the outcome');
     expect(contract).toContain('one main idea per paragraph');
-    expect(contract).toContain('blank line between paragraphs');
+    expect(contract).toContain('a blank line between paragraphs');
     expect(contract).toContain('bullets for distinct findings');
     expect(contract).toContain('descriptive link labels');
     expect(contract).toContain('Preserve important');
-    expect(contract).toContain('Stop when the useful content ends');
+    expect(contract).toContain('no filler, recap, closing offer');
   });
 
   it('does not shout', () => {

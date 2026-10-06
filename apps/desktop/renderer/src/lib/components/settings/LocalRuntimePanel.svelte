@@ -21,7 +21,7 @@
   import { listen } from '$lib/services/bridge';
   import { getRuntimeRecommendations, type RuntimeRecommendations } from '$lib/services/system-info';
   import { fetchLlamaReleaseAssets, toDownloadPayload, type ReleaseAsset, type ReleaseFetchResult } from '$lib/services/llama-releases';
-  import { Badge, Button, Disclosure, Input } from '$lib/components/ui';
+  import { Badge, Button, Disclosure, Input, Tooltip } from '$lib/components/ui';
   import SettingsSection from './SettingsSection.svelte';
   import SettingsRow from './SettingsRow.svelte';
 
@@ -152,7 +152,7 @@
       <div class="h-1.5 flex-1 overflow-hidden rounded-full bg-[var(--surface-active)]">
         <div class="h-full rounded-full bg-primary transition-[width]" style="width:{Math.max(4, downloadProgress)}%"></div>
       </div>
-      <span class="w-24 text-right text-[12px] tabular-nums text-muted-foreground">
+      <span class="w-24 text-right text-[length:var(--text-xs)] tabular-nums text-muted-foreground">
         {downloadPhase === 'extracting' ? $t('runtime.extracting') : `${downloadProgress.toFixed(0)}%`}
       </span>
     </div>
@@ -162,7 +162,7 @@
 <!-- Installed builds + the running server -->
 <SettingsSection title={$t('runtime.installed')} description={$t('runtime.installedHint')}>
   {#snippet actions()}
-    <Button variant="ghost" size="icon-sm" onclick={() => void refresh()} aria-label={$t('runtime.refresh')} title={$t('runtime.refresh')}><RefreshCw /></Button>
+    <Tooltip label={$t('runtime.refresh')} position="bottom"><Button variant="ghost" size="icon-sm" onclick={() => void refresh()} aria-label={$t('runtime.refresh')}><RefreshCw /></Button></Tooltip>
   {/snippet}
 
   {#if !runtimes.length}
@@ -185,9 +185,9 @@
         {:else}
           <Button variant="outline" size="sm" onclick={() => appStore.setLocalRuntimePath(rt.path)}>{$t('runtime.use')}</Button>
         {/if}
-        <Button variant="ghost" size="icon-sm" class="text-muted-foreground hover:text-error" onclick={() => void removeRuntime(rt)} aria-label={$t('runtime.deleteTitle', { values: { name: rt.name } })}>
+        <Tooltip label={$t('runtime.deleteTitle', { values: { name: rt.name } })} position="bottom"><Button variant="ghost" size="icon-sm" class="text-muted-foreground hover:text-error" onclick={() => void removeRuntime(rt)} aria-label={$t('runtime.deleteTitle', { values: { name: rt.name } })}>
           <Trash2 />
-        </Button>
+        </Button></Tooltip>
       </SettingsRow>
     {/each}
   {/if}
@@ -220,13 +220,13 @@
             [$t('runtime.speed'), telemetry?.tokens_per_second != null ? `${telemetry.tokens_per_second.toFixed(1)} tok/s` : '—']
           ] as [label, value] (label)}
             <div class="rounded-lg bg-[var(--muted)] px-3 py-2">
-              <dt class="text-[12px] text-muted-foreground">{label}</dt>
+              <dt class="text-[length:var(--text-xs)] text-muted-foreground">{label}</dt>
               <dd class="mt-0.5 text-xs font-medium tabular-nums text-foreground">{value}</dd>
             </div>
           {/each}
         </dl>
       {/if}
-      {#if supervisor.build_info}<p class="mt-2 text-[12px] text-muted-foreground">{supervisor.build_info}</p>{/if}
+      {#if supervisor.build_info}<p class="mt-2 text-[length:var(--text-xs)] text-muted-foreground">{supervisor.build_info}</p>{/if}
     </div>
   {/if}
 </SettingsSection>
@@ -235,9 +235,9 @@
 <SettingsSection title={$t('runtime.install')} description={$t('runtime.installHint', { values: { platform: platformLabel } })}>
   {#snippet actions()}
     {#if releaseTag}<span class="text-xs tabular-nums text-muted-foreground">{releaseTag}</span>{/if}
-    <Button variant="ghost" size="icon-sm" onclick={() => void fetchLatestRelease()} disabled={loadingRelease} aria-label={$t('runtime.checkReleases')} title={$t('runtime.checkReleases')}>
+    <Tooltip label={$t('runtime.checkReleases')} position="bottom"><Button variant="ghost" size="icon-sm" onclick={() => void fetchLatestRelease()} disabled={loadingRelease} aria-label={$t('runtime.checkReleases')}>
       <RefreshCw class={loadingRelease ? 'animate-spin' : ''} />
-    </Button>
+    </Button></Tooltip>
   {/snippet}
 
   {#if releaseNotice}

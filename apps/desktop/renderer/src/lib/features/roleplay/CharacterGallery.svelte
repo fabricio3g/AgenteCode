@@ -9,6 +9,7 @@
 -->
 
 <script lang="ts">
+  import { Button } from '$lib/components/ui';
   import Avatar from '$lib/components/ui/Avatar.svelte';
   import { Plus, Upload } from 'lucide-svelte';
   import type { CharacterCard } from '$lib/types/chat';
@@ -62,12 +63,12 @@
   });
 </script>
 
-<div class="mx-auto w-full px-6 pb-6" style="max-width: var(--thread-width);">
+<div class="library-shelf mx-auto w-full px-6 pb-6" style="max-width: var(--thread-width);">
   <LibraryToolbar bind:query placeholder={charactersStore.characters.length ? 'Search characters' : ''}>
-    <button type="button" class="ui-chip" disabled={importing} onclick={() => importInput?.click()}>
+    <Button variant="outline" size="sm" type="button" disabled={importing} onclick={() => importInput?.click()}>
       <Upload /> {importing ? 'Importing…' : copy.roleplay.importCharacter}
-    </button>
-    <button type="button" class="ui-chip" onclick={onnew}><Plus /> {copy.roleplay.newCharacter}</button>
+    </Button>
+    <Button variant="outline" size="sm" type="button" onclick={onnew}><Plus /> {copy.roleplay.newCharacter}</Button>
   </LibraryToolbar>
   <input bind:this={importInput} class="hidden" type="file" accept=".json,.png,application/json,image/png" onchange={onImportFile} />
 
@@ -76,7 +77,7 @@
   {:else if !filtered.length}
     <LibraryEmpty title={copy.empty.noMatches} action="Clear search" onaction={() => (query = '')} />
   {:else}
-    <div class="grid gap-2.5 sm:grid-cols-2">
+    <div class="library-grid">
       {#each filtered as card (card.id)}
         <LibraryCard
           kind="character"

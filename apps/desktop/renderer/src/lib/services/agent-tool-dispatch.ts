@@ -35,6 +35,8 @@ import { liveGeocodePlace } from '$lib/services/live-data';
 import { handleWebSearch, handleFetchUrl, handleQueryKnowledge, handleCalculator } from '$lib/services/agent-tool-core';
 import { handleGetDiagnostics } from '$lib/services/agent-tool-diagnostics';
 import { dispatchArtifactTool } from '$lib/services/agent-artifact-dispatch';
+import { isToolDisabled } from '$lib/services/agent-tool-registry';
+import { runHomeTool } from '$lib/services/agent-tool-home';
 
 const TOOL_TIMEOUT_MS = 30000;
 /** Ceiling for a tool blocked on a human answer — see `executeToolWithTimeout`. */
@@ -106,6 +108,29 @@ export async function executeTool(
 ): Promise<ToolResult> {
   ctx.signal?.throwIfAborted?.();
 
+  // Turning a group off in the composer's Tools menu removes its tools from the
+  // list the model sees; refuse here too, so a call from earlier context can't slip through.
+  if (isToolDisabled(name, ctx.disabledTools)) {
+    return fail(`The ${name} tool is turned off in the Tools menu.`, 'Ask the user to turn it back on if it is needed.');
+  }
+
+  if (name.startsWith('domain_')) {
+    if (!isElectron()) return fail('Local domain tools require the desktop app.');
+    if (name === 'domain_write' && ctx.runtimeMode === 'supervised') {
+      const approved = await approvalsStore.request({ id: crypto.randomUUID(), chatId: ctx.chatId, command: `${args.domain}.${args.operation}`, cwd: 'Local creative project' });
+      if (!approved) return fail('Domain change declined.');
+    }
+    const owner = `home:${ctx.chatId}:${crypto.randomUUID()}`;
+    const abort = () => { void invoke('domains_cancel', { owner }).catch(() => {}); };
+    ctx.signal?.addEventListener('abort', abort, { once: true });
+    try {
+      if (ctx.signal?.aborted) throw new DOMException('Stopped', 'AbortError');
+      const output = await invoke('domains_call', { name, args, owner, workspaceRoot: ctx.workspaceRoot });
+      return ok(output);
+    } catch (error) { return failFromError(error); }
+    finally { ctx.signal?.removeEventListener('abort', abort); }
+  }
+
   const artifactResult = await dispatchArtifactTool(name, args, ctx, {
     normPath,
     isElectron,
@@ -127,6 +152,9 @@ export async function executeTool(
     failFromError
   });
   if (artifactResult) return artifactResult;
+
+  const homeResult = await runHomeTool(name, args, ctx);
+  if (homeResult) return homeResult;
 
   switch (name) {
 
@@ -305,6 +333,12 @@ export async function executeTool(
     case 'browser_scroll':
     case 'browser_wait':
     case 'browser_back':
+    case 'browser_forward':
+    case 'browser_reload':
+    case 'browser_hover':
+    case 'browser_select':
+    case 'browser_read':
+    case 'browser_tabs':
     case 'browser_console':
     case 'browser_screenshot': {
       if (!isElectron()) return fail('Agent browser requires the desktop app');
@@ -333,13 +367,14 @@ export async function executeToolWithTimeout(name: string, args: Record<string, 
    * for the same command. Approval waits get a long ceiling and no retry. Aborting
    * still cuts it short, because abort now rejects the race.
    */
-  const awaitsApproval = name === 'bash' && ctx.runtimeMode === 'supervised';
+  const isDomain = name.startsWith('domain_');
+  const awaitsApproval = (name === 'bash' || name === 'domain_write') && ctx.runtimeMode === 'supervised';
   return executeWithTimeoutAndRetries<ToolResult>({
     name,
     args,
     signal: ctx.signal,
-    timeoutMs: awaitsApproval ? APPROVAL_TOOL_TIMEOUT_MS : TOOL_TIMEOUT_MS,
-    maxRetries: awaitsApproval ? 0 : MAX_TOOL_RETRIES,
+    timeoutMs: isDomain ? 30 * 60 * 1000 : awaitsApproval ? APPROVAL_TOOL_TIMEOUT_MS : TOOL_TIMEOUT_MS,
+    maxRetries: awaitsApproval || isDomain ? 0 : MAX_TOOL_RETRIES,
     debug: !!ctx.debugLogs,
     onDebug: debugLog,
     runTool: () => executeTool(name, args, ctx),

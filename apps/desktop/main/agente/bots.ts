@@ -8,8 +8,9 @@
 // here and the ones the runtime starts itself (routines, handoffs).
 
 import type { BrowserWindow, IpcMain } from 'electron';
-import { onRuntimeEvent, providerConfig, runtimeConnection, useProvider } from './rust-engine.ts';
+import { configureDesktopProvider, onRuntimeEvent, providerConfig, runtimeConnection, useProvider } from './rust-engine.ts';
 import { RustTurnTranslator } from './rust-events.ts';
+import { coreProviderStatus } from './core-providers.ts';
 import { historyTurns } from './bot-history.ts';
 import type { RuntimeEventEnvelope, SessionSnapshot } from '../../shared/agente-protocol.gen.ts';
 
@@ -55,9 +56,10 @@ async function listBots(): Promise<BotSummary[]> {
 async function registerPinnedProviders(bots: BotSummary[]): Promise<void> {
   const byProvider = groupPins(await pinsOf(bots));
   if (!byProvider.size) return;
-  const provider: Record<string, unknown> = {};
-  for (const [id, models] of byProvider) provider[id] = providerConfig(id.replace(/^desktop-/, ''), [...models]);
-  await request('runtime.configure', { provider });
+  const client = await runtimeConnection();
+  // A provider the core runs on its own spec and key needs nothing from Desktop.
+  const coreRuns = new Set((await coreProviderStatus(client).catch(() => null))?.providers.filter((entry) => entry.connected).map((entry) => entry.id));
+  for (const [id, models] of byProvider) if (!coreRuns.has(id)) await configureDesktopProvider(client, id, providerConfig(id.replace(/^desktop-/, ''), [...models]), 'held');
 }
 
 /** Every model pin: the bots' own and their routines'. */

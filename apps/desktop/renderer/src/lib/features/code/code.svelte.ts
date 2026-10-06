@@ -12,7 +12,7 @@ import { createId } from '$lib/utils/id';
 import { isDefaultChatTitle } from '$lib/stores/app-store-helpers';
 import type { ChatSession, CodeProject, CodeTimelineEntry } from '$lib/types/chat';
 import type { AgenteCheckpointSummary, CodeAgentEvent } from '$shared/agente-protocol';
-import { applyCodeAgentEvent, codeRunElapsed, createCodeRunState, type CodeRunState } from './code-run';
+import { applyCodeAgentEvent, codeRunElapsed, conversationTodos, createCodeRunState, type CodeRunState } from './code-run';
 import {
   startCodeAgentSession,
   promptCodeAgent,
@@ -106,6 +106,7 @@ class CodeStore {
   async load(): Promise<void> {
     if (this.loading) return;
     this.loading = true;
+    this.#ensureEventSubscription();
     try {
       this.projects = sortByActivity(await loadCodeProjectsFromDb());
       this.loaded = true;
@@ -127,7 +128,7 @@ class CodeStore {
     this.#repairedInterrupted = true;
     const live = new Set(await listLiveCodeAgentChats().catch(() => [] as string[]));
     for (const chat of appStore.visibleCodeChats) {
-      if (live.has(chat.id)) continue;
+      if (live.has(chat.id)) { this.#requireRun(chat.id); continue; }
       const stuck = chat.messages.filter((message) => message.role === 'assistant' && message.status === 'streaming');
       if (!stuck.length) continue;
       for (const message of stuck) {
@@ -315,6 +316,7 @@ class CodeStore {
     chat.title = info.title || info.first_prompt || 'Resumed session';
     for (const turn of turns) {
       const run = createCodeRunState();
+      run.todos = conversationTodos(chat.messages);
       for (const event of turn.events) applyCodeAgentEvent(run, event);
       chat.messages.push(
         { id: createId('msg'), role: 'user', content: turn.prompt, createdAt: Date.now(), metadata: { codeConversationIndex: turn.conversationIndex } },
@@ -391,7 +393,7 @@ class CodeStore {
         ...createCodeRunState(),
         content: assistant?.content || '',
         timeline: restoreTimeline(assistant),
-        todos: assistant?.metadata?.codeTodos?.map((todo) => ({ ...todo })) ?? [],
+        todos: conversationTodos(chat?.messages ?? []),
         reasoning: assistant?.reasoning || '',
         reasoningRaw: assistant?.reasoning || '',
         steps: assistant?.agentSteps?.map((step) => ({ ...step })) || []
@@ -435,7 +437,8 @@ class CodeStore {
 
     if (event.type === 'agent_start' && run.done) {
       // A queued follow-up is a new Rust turn: give its deltas a fresh target.
-      Object.assign(run, createCodeRunState(), { running: true, assistantMessageId: undefined });
+      const todos = conversationTodos(chat.messages);
+      Object.assign(run, createCodeRunState(), { todos, running: true, assistantMessageId: undefined });
       // It starts the oldest follow-up, which already sits right above.
       const followUp = chat.messages.find((message) => message.metadata?.codeQueued);
       if (followUp) delete followUp.metadata!.codeQueued;
@@ -563,6 +566,7 @@ class CodeStore {
       codeTimeline: run.done ? run.timeline.map((entry) => ({ ...entry })) : run.timeline,
       codeChildren: run.done ? structuredClone($state.snapshot(run.children)) : run.children,
       codeSpend: { ...run.spend },
+      codeTodos: run.todos.map((todo) => ({ ...todo })),
       ...(run.usage ? { codeUsage: { ...run.usage } } : {}),
       codeDiagnostics: [...run.diagnostics]
     };
@@ -572,7 +576,6 @@ class CodeStore {
       const elapsed = run.startedAt !== undefined ? codeRunElapsed(run) : undefined;
       message.metadata = {
         ...message.metadata,
-        ...(run.todos.length ? { codeTodos: run.todos.map((todo) => ({ ...todo })) } : {}),
         ...(elapsed ? { codeElapsedMs: elapsed } : {}),
         ...(run.hitTurnLimit ? { codeHitTurnLimit: true } : {})
       };
@@ -647,6 +650,11 @@ class CodeStore {
     this.#appendAssistant(chat);
   }
 
+  private modelLabelFor(chat: ChatSession): string {
+    const llm = appStore.configForChat(chat).llm;
+    return llm?.backend_mode === 'local' || !llm?.provider ? llm?.local?.model ?? '' : llm.providers?.[llm.provider]?.model ?? '';
+  }
+
   #appendAssistant(chat: ChatSession): void {
     const assistantMessageId = createId('msg');
     this.#requireRun(chat.id).assistantMessageId = assistantMessageId;
@@ -657,7 +665,8 @@ class CodeStore {
       createdAt: Date.now(),
       status: 'streaming',
       mode: 'agent',
-      agentSteps: []
+      agentSteps: [],
+      metadata: { modelName: chat.modelSelection?.backendMode === 'local' ? chat.modelSelection.localModel : chat.modelSelection?.model || this.modelLabelFor(chat) }
     });
     appStore.markChatDirty(chat.id);
     appStore.persist();
@@ -693,7 +702,9 @@ class CodeStore {
     // Keep the last usage report visible between runs — the next turn
     // refreshes it; it should not blank while the first reply streams.
     const previousUsage = run.usage;
+    const todos = conversationTodos(chat.messages);
     Object.assign(run, createCodeRunState(), {
+      todos,
       running: true,
       assistantMessageId: undefined,
       error: undefined,
@@ -789,10 +800,11 @@ class CodeStore {
     appStore.queuePrompt(chatId, text, { codeAttachments: attachments.map(item => ({ ...item })) });
   }
 
-  async sendQueuedNow(chatId: string): Promise<void> {
+  /** Hand queued prompts to the engine now: one by `id`, or every waiting one. */
+  async sendQueuedNow(chatId: string, id?: string): Promise<void> {
     const chat = appStore.chats.find(chat => chat.id === chatId);
     if (!chat) return;
-    const waiting = chat.pendingPrompts?.filter(item => !item.sending) ?? [];
+    const waiting = chat.pendingPrompts?.filter(item => !item.sending && (!id || item.id === id)) ?? [];
     if (!waiting.length) return;
     if (!this.runFor(chatId)?.running) {
       const item = waiting[0]!;

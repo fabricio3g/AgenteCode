@@ -1,15 +1,20 @@
 // The voice models Desktop offers, run by the bundled audio.cpp server.
-// Every model here allows commercial use (audio.cpp's docs/model_licenses.md);
-// the user downloads the ones they want from Settings → Voice.
+//
+// Two are featured and described here by hand (their voices, languages and
+// eSpeak needs). The rest of the catalog is read at runtime from audio.cpp's
+// own model specs (main/voice/voice-catalog.ts), so it always matches what
+// the bundled engine can run. The user downloads the ones they want from
+// Settings → Voice.
 
-export type VoiceModelId = 'supertonic-3' | 'kokoro-82m';
+export type VoiceModelId = string;
 
 export interface VoiceOption {
   id: string;
   /** Shown in the picker. */
   label: string;
   language: string;
-  gender: 'female' | 'male';
+  /** Unknown for catalog voices audio.cpp only names. */
+  gender?: 'female' | 'male';
 }
 
 export interface VoiceModel {
@@ -18,15 +23,42 @@ export interface VoiceModel {
   family: string;
   title: string;
   license: string;
-  /** Hugging Face repo and file (downloaded with the app's resumable downloader). */
+  /** Hugging Face repo and its main file (downloaded with the app's resumable downloader). */
   repo: string;
   file: string;
+  /** Every file the model needs, when it is more than `file` (repo paths). */
+  files?: string[];
+  /** Repo folder the files sit under; dropped from the local path. */
+  stripPrefix?: string;
+  /** One line from audio.cpp's spec, for catalog models. */
+  description?: string;
+  /** audio.cpp's maturity label: supported, community, testing, experimental. */
+  status?: string;
+  /** Hand-described and recommended (Kokoro, Supertonic). */
+  featured?: boolean;
+  /** Speaks only in a voice cloned from a recording (no built-in voices). */
+  needsReference?: boolean;
+  /** Can speak in a voice cloned from a short recording (audio.cpp `voice_ref`). */
+  canClone?: boolean;
+
   sizeMb: number;
   /** Language codes the model speaks. */
   languages: string[];
   voices: VoiceOption[];
   /** Needs the system eSpeak-ng library for these languages (others work without it). */
   espeakLanguages: string[];
+}
+
+
+/** A voice cloned from a recording: a WAV clip the engine imitates. */
+export interface ClonedVoice {
+  id: string;
+  name: string;
+  /** Absolute path of the WAV clip (in the app's voice models folder). */
+  file: string;
+  /** What the clip says; some models clone more accurately with it. */
+  transcript?: string;
+  seconds?: number;
 }
 
 const SUPERTONIC_LANGUAGES = [
@@ -65,6 +97,8 @@ const kokoroVoices: VoiceOption[] = Object.entries(KOKORO_VOICES).flatMap(([lang
 export const VOICE_MODELS: VoiceModel[] = [
   {
     id: 'supertonic-3',
+    featured: true,
+    status: 'supported',
     family: 'supertonic',
     title: 'Supertonic 3',
     license: 'OpenRAIL-M',
@@ -77,6 +111,8 @@ export const VOICE_MODELS: VoiceModel[] = [
   },
   {
     id: 'kokoro-82m',
+    featured: true,
+    status: 'community',
     family: 'kokoro_tts',
     title: 'Kokoro 82M',
     license: 'Apache-2.0',
@@ -93,9 +129,22 @@ export function voiceModel(id: string | undefined): VoiceModel | undefined {
   return VOICE_MODELS.find((model) => model.id === id);
 }
 
-/** Where a model's file lives under the app's voice models folder. */
+/** Every repo file a model needs. */
+export function voiceModelFiles(model: VoiceModel): string[] {
+  return model.files?.length ? model.files : [model.file];
+}
+
+/** Where one of a model's files lives under the app's voice models folder. */
+export function voiceFileRelPath(model: VoiceModel, file: string): string {
+  const prefix = model.stripPrefix ? `${model.stripPrefix.replace(/\/+$/, '')}/` : '';
+  const inside = prefix && file.startsWith(prefix) ? file.slice(prefix.length) : file.split('/').pop()!;
+  return `audiocpp/${model.id}/${inside}`;
+}
+
+/** What the server loads: the file for a one-file model, else the model's folder. */
 export function voiceModelRelPath(model: VoiceModel): string {
-  return `audiocpp/${model.id}/${model.file.split('/').pop()}`;
+  const files = voiceModelFiles(model);
+  return files.length > 1 ? `audiocpp/${model.id}` : voiceFileRelPath(model, files[0]);
 }
 
 /** The language a Kokoro voice speaks, from its prefix; Supertonic takes any. */

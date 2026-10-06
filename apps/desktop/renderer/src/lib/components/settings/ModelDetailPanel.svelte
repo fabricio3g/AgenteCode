@@ -9,7 +9,7 @@
 <script lang="ts">
   import { Check, Download, ExternalLink, LoaderCircle, X } from 'lucide-svelte';
   import { t } from 'svelte-i18n';
-  import { Badge, Button, Disclosure } from '$lib/components/ui';
+  import { Badge, Button, Disclosure, Tooltip } from '$lib/components/ui';
   import { renderMarkdown } from '$lib/utils/markdown';
 
   export interface DetailFile {
@@ -74,10 +74,10 @@
       <h3 class="truncate text-[15px] font-semibold tracking-[-0.01em] text-foreground">{detail.title}</h3>
       <p class="truncate text-xs text-muted-foreground">{detail.repoId}</p>
     </div>
-    <Button variant="ghost" size="icon-sm" onclick={onclose} aria-label={$t('modelHub.closeProfile')}><X /></Button>
+    <Tooltip label={$t('modelHub.closeProfile')} position="bottom"><Button variant="ghost" size="icon-sm" onclick={onclose} aria-label={$t('modelHub.closeProfile')}><X /></Button></Tooltip>
   </div>
 
-  <div class="flex flex-wrap items-center gap-1.5 px-4 pb-3 text-[12px] text-muted-foreground">
+  <div class="flex flex-wrap items-center gap-1.5 px-4 pb-3 text-[length:var(--text-xs)] text-muted-foreground">
     {#if detail.params}<Badge>{detail.params}</Badge>{/if}
     {#if detail.gated}<Badge tone="warning">{$t('modelHub.gated')}</Badge>{/if}
     {#each detail.capabilities as capability (capability)}<Badge>{capability}</Badge>{/each}
@@ -92,7 +92,7 @@
   {#if detail.downloadedName}
     <div class="mx-3 mb-3 flex items-center gap-2 rounded-xl bg-[var(--muted)] px-3 py-2.5">
       <div class="min-w-0 flex-1">
-        <p class="text-[12px] text-muted-foreground">{$t('modelHub.onThisComputer')}</p>
+        <p class="text-[length:var(--text-xs)] text-muted-foreground">{$t('modelHub.onThisComputer')}</p>
         <p class="truncate text-xs font-medium text-foreground">{detail.downloadedName}</p>
       </div>
       {#if detail.loaded}
@@ -104,8 +104,8 @@
   {/if}
 
   <div class="border-t border-[var(--border-subtle)] px-4 py-3">
-    <h4 class="text-[13px] font-semibold text-foreground">{$t('modelHub.chooseFile')}</h4>
-    <p class="text-[12px] text-muted-foreground">{$t('modelHub.chooseFileHint')}</p>
+    <h4 class="text-[length:var(--text-sm)] font-semibold text-foreground">{$t('modelHub.chooseFile')}</h4>
+    <p class="text-[length:var(--text-xs)] text-muted-foreground">{$t('modelHub.chooseFileHint')}</p>
     {#if detail.error}
       <p class="mt-2 text-xs text-error">{detail.error}</p>
     {:else if detail.files.length}
@@ -124,8 +124,8 @@
               <span class="flex size-4 shrink-0 items-center justify-center rounded-full border {chosen ? 'border-primary bg-primary text-primary-fg' : 'border-border'}">
                 {#if chosen}<Check class="size-2.5" />{/if}
               </span>
-              <span class="w-16 shrink-0 text-[12px] text-foreground">{file.quantization || 'GGUF'}</span>
-              <span class="flex-1 text-[12px] tabular-nums text-muted-foreground">{file.sizeHuman}</span>
+              <span class="w-16 shrink-0 text-[length:var(--text-xs)] text-foreground">{file.quantization || 'GGUF'}</span>
+              <span class="flex-1 text-[length:var(--text-xs)] tabular-nums text-muted-foreground">{file.sizeHuman}</span>
               <Badge tone={file.fitTone}>{file.fitLabel}</Badge>
             </button>
           </li>

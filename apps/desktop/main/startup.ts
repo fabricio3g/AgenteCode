@@ -22,6 +22,7 @@ if (smokeMode) {
 app.setAppLogsPath();
 const logPath = path.join(app.getPath('logs'), 'startup.log');
 let window: BrowserWindow | undefined;
+const startupWindows = new Set<number>();
 let ready = false;
 let failed = false;
 let timer: ReturnType<typeof setTimeout> | undefined;
@@ -71,6 +72,8 @@ process.on('unhandledRejection', (error) => { if (!ready) void failStartup(error
 
 export function attachStartupDiagnostics(win: BrowserWindow): void {
   window = win;
+  startupWindows.add(win.id);
+  win.once('closed', () => startupWindows.delete(win.id));
   ready = false;
   failed = false;
   record(`Loading ${app.isPackaged ? 'packaged' : 'development'} renderer`);
@@ -88,8 +91,9 @@ export function attachStartupDiagnostics(win: BrowserWindow): void {
 }
 
 ipcMain.handle('desktop_renderer_ready', async (event, payload?: { worker?: boolean }) => {
-  if (!window || event.sender !== window.webContents || event.senderFrame !== window.webContents.mainFrame || failed) throw new Error('Foreign or failed renderer');
-  const mounted = await window.webContents.executeJavaScript("(() => { const shell = document.querySelector('[data-desktop-shell]'); return !!shell && shell.getBoundingClientRect().width > 0 && !!shell.textContent.trim(); })()");
+  const senderWindow = BrowserWindow.fromWebContents(event.sender);
+  if (!senderWindow || !startupWindows.has(senderWindow.id) || event.senderFrame !== event.sender.mainFrame || failed) throw new Error('Foreign or failed renderer');
+  const mounted = await senderWindow.webContents.executeJavaScript("(() => { const shell = document.querySelector('[data-desktop-shell]'); return !!shell && shell.getBoundingClientRect().width > 0 && !!shell.textContent.trim(); })()");
   if (!mounted) throw new Error('Application shell is not mounted');
   if (smokeMode && !payload?.worker) throw new Error('Editor worker was not checked');
   ready = true;

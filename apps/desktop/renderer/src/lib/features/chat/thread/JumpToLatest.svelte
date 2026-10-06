@@ -90,11 +90,12 @@
   }
 
   /* Hovering — or reaching it from the keyboard — never empties the circle: it
-     lifts it onto its own surface and rings it in the brand orange the meter
-     rains in, so the arrow arriving reads as an invitation, not as a fade. */
+     lifts it onto its own surface so the arrow arriving reads as an invitation,
+     not as a fade. The edge stays the app's own hover border: a brand-orange
+     ring here read as a state the button does not have. */
   .jump-latest:is(:hover, :focus-visible) {
     background: var(--popover);
-    border-color: color-mix(in oklab, rgb(var(--tile-hi)) 45%, transparent);
+    border-color: var(--border-hover, var(--border));
     color: var(--foreground);
   }
 

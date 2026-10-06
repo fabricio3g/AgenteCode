@@ -1,5 +1,6 @@
 import type { IpcMain } from 'electron';
-import { panelSelectScope, withBrowserScope } from '../browser-panel.ts';
+import { panelPickElement, panelPickCancel } from '../browser-picker.ts';
+import { panelState, panelSetHost, panelSelectScope, withBrowserScope } from '../browser-panel.ts';
 import type { BrowserPresentation } from '../../shared/browser-presentation.ts';
 
 type ToolingHandlerDeps = {
@@ -31,6 +32,7 @@ type ToolingHandlerDeps = {
 };
 
 export function registerToolingHandlers(deps: ToolingHandlerDeps): void {
+  deps.ipcMain.handle('browser_get_state', (_e, { scope }) => withBrowserScope(scope, () => panelState(scope)));
   deps.ipcMain.handle('browser_select_scope', (_e, { scope }) => panelSelectScope(scope));
   deps.ipcMain.handle('browser_open_tab', (_e, { url, scope } = {}) => withBrowserScope(scope, () => deps.panelOpenTab(url)));
   deps.ipcMain.handle('browser_list_tabs', (_e, { scope }) => withBrowserScope(scope, () => deps.panelListTabs()));
@@ -40,7 +42,7 @@ export function registerToolingHandlers(deps: ToolingHandlerDeps): void {
   deps.ipcMain.handle('browser_panel_visible', (_e, { visible, scope }) => withBrowserScope(scope, () => deps.panelSetVisible(visible)));
   deps.ipcMain.handle('browser_panel_occluded', (_e, { occluded, scope }) => withBrowserScope(scope, () => deps.panelSetOccluded(!!occluded)));
   deps.ipcMain.handle('browser_panel_bounds', (_e, rect) => withBrowserScope(rect.scope, () => deps.panelSetBounds(rect)));
-  deps.ipcMain.handle('browser_panel_presentation', (_e, presentation) => withBrowserScope(presentation.scope, () => deps.panelSetPresentation(presentation)));
+  deps.ipcMain.handle('browser_panel_presentation', (event, presentation) => withBrowserScope(presentation.scope, () => { if (!panelSetHost(event.sender, presentation.exposed)) return { image: null }; return deps.panelSetPresentation(presentation); }));
   deps.ipcMain.handle('browser_viewport', (_e, { preset, tabId, scope } = {}) => withBrowserScope(scope, () => deps.panelSetViewport(preset, tabId)));
 
   deps.ipcMain.handle('browser_navigate', (_e, { url, tabId, scope }) => withBrowserScope(scope, () => deps.browserNavigate(url, tabId)));
@@ -48,6 +50,8 @@ export function registerToolingHandlers(deps: ToolingHandlerDeps): void {
   deps.ipcMain.handle('browser_click', (_e, { text, tabId, scope }) => withBrowserScope(scope, () => deps.browserClick(text, tabId)));
   deps.ipcMain.handle('browser_type_text', (_e, { selector, text, tabId, scope }) => withBrowserScope(scope, () => deps.browserTypeText(selector, text, tabId)));
   deps.ipcMain.handle('browser_evaluate', (_e, { script, tabId, scope }) => withBrowserScope(scope, () => deps.browserEvaluate(script, tabId)));
+  deps.ipcMain.handle('browser_pick_element', (_e, { tabId, scope, multi } = {}) => withBrowserScope(scope, () => panelPickElement(tabId, !!multi)));
+  deps.ipcMain.handle('browser_pick_cancel', (_e, { tabId, scope } = {}) => withBrowserScope(scope, () => panelPickCancel(tabId)));
   deps.ipcMain.handle('browser_screenshot', (_e, { tabId, scope } = {}) => withBrowserScope(scope, () => deps.browserScreenshot(tabId)));
   deps.ipcMain.handle('browser_get_current_url', (_e, { tabId, scope } = {}) => withBrowserScope(scope, () => deps.browserGetCurrentUrl(tabId)));
   deps.ipcMain.handle('browser_close', (_e, { tabId, scope } = {}) => withBrowserScope(scope, () => deps.browserClose(tabId)));

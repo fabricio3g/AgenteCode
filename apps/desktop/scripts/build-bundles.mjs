@@ -16,6 +16,9 @@ import { build, context } from 'esbuild';
 // Shared by every main-process bundle.
 const RUNTIME_EXTERNALS = [
   'electron',
+  'sharp',
+  'ffmpeg-static',
+  'ffprobe-static',
   'better-sqlite3',
   '@lancedb/*',
   'apache-arrow',

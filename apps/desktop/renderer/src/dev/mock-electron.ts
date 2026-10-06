@@ -653,10 +653,11 @@ const botHandlers: Record<string, (args?: Record<string, unknown>) => unknown> =
     return bot;
   },
   bots_write_doc: () => ({ ok: true }),
+  browser_get_state: (args) => browserState(args),
   browser_select_scope: (args) => browserState(args),
   browser_open_tab: (args) => {
     const state = browserState(args);
-    const tab = { id: `btab-${++browserTabSequence}`, url: String(args?.url ?? ''), title: args?.url ? 'Example Domain' : '', preset: 'fit' as const };
+    const tab = { id: `btab-${++browserTabSequence}`, url: String(args?.url ?? ''), title: args?.url ? 'Example Domain' : '', preset: 'desktop' as const };
     state.tabs.push(tab); state.activeTabId = tab.id; state.visible = true;
     pushBrowser(state); return tab;
   },
@@ -666,6 +667,8 @@ const botHandlers: Record<string, (args?: Record<string, unknown>) => unknown> =
     const state = browserState(args); state.tabs = state.tabs.filter((tab) => tab.id !== (args?.tabId ?? state.activeTabId));
     state.activeTabId = state.tabs.at(-1)?.id ?? null; state.visible = !!state.tabs.length; pushBrowser(state);
   },
+  browser_pick_element: () => [{ selector: 'button#buy', tag: 'button', role: '', text: 'Buy now', attributes: { type: 'button' }, outerHTML: '<button id="buy" type="button">Buy now</button>', rect: { x: 10, y: 10, width: 90, height: 32 }, url: 'https://example.com/page', title: 'Example' }],
+  browser_pick_cancel: () => undefined,
   browser_panel_presentation: () => ({ image: null }),
   browser_panel_visible: (args) => { const state = browserState(args); state.visible = !!args?.visible; pushBrowser(state); return { ok: true }; },
   browser_takeover: (args) => { const state = browserState(args); state.takeover = !!args?.on; pushBrowser(state); },
@@ -707,6 +710,13 @@ const botHandlers: Record<string, (args?: Record<string, unknown>) => unknown> =
 };
 
 const handlers: Record<string, (args?: Record<string, unknown>) => unknown> = {
+  'search:get-catalog': () => [
+    { id: 'duckduckgo', label: 'DuckDuckGo', category: 'general', transport: 'html', stability: 'stable', requires: [], supports_safe_search: true, timeout_ms: 8000, recommended: true },
+    { id: 'wikipedia', label: 'Wikipedia', category: 'research', transport: 'json', stability: 'stable', requires: [], supports_safe_search: false, timeout_ms: 8000, recommended: true },
+    { id: 'arxiv', label: 'arXiv', category: 'research', transport: 'xml', stability: 'stable', requires: [], supports_safe_search: false, timeout_ms: 8000, recommended: false },
+    { id: 'searxng', label: 'SearXNG', category: 'self_hosted', transport: 'json', stability: 'beta', requires: ['base_url'], supports_safe_search: true, timeout_ms: 8000, recommended: false },
+    { id: 'brave', label: 'Brave Search', category: 'api', transport: 'json', stability: 'stable', requires: ['api_key'], supports_safe_search: true, timeout_ms: 8000, recommended: false }
+  ],
   ...botHandlers,
   get_config: () => config,
   save_config: () => ({}),
@@ -874,6 +884,31 @@ const handlers: Record<string, (args?: Record<string, unknown>) => unknown> = {
   },
   terminal_create: () => { throw new Error('Terminals need the desktop app'); },
   fetch_provider_models: () => ['deepseek/deepseek-v4-flash', 'moonshotai/kimi-k3', 'qwen/qwen3.8-max', 'z-ai/glm-5.3'],
+  voice_models_status: () => ({ version: 'v0.8.2', backends: ['cpu', 'vulkan'], backend: 'cpu', threads: 8, cores: 12, running: false, installed: ['kokoro-82m'], espeak: true, binaryPath: '/opt/agente/bin/audio/cpu/audiocpp_server', port: null, specs: 6, modelsDir: '~/.agente/models/voices' }),
+  voice_engine_restart: () => undefined,
+  voice_clone_save: (args) => ({ id: `mock-${Date.now()}`, name: String(args?.name ?? ''), file: '/tmp/mock.wav', transcript: args?.transcript, seconds: args?.seconds }),
+  voice_clone_delete: () => true,
+  voice_catalog: async () => {
+    const { VOICE_MODELS } = await import('../../../shared/voice-models');
+    const extra = (id: string, title: string, sizeMb: number, status: string, languages: string[], description: string, needsReference = false) => ({
+      id, family: id, title, license: '', repo: 'audio-cpp/audio.cpp-gguf', file: `${title}-GGUF/${id}.gguf`, sizeMb, languages, voices: [], espeakLanguages: [], description, status, needsReference
+    });
+    return [
+      ...VOICE_MODELS,
+      extra('chatterbox', 'Chatterbox', 2088, 'supported', ['en', 'es', 'fr', 'de'], 'Expressive multilingual speech with emotion exaggeration control.'),
+      extra('kitten_tts', 'KittenTTS Mini 0.8', 302, 'community', ['en'], 'Tiny English speech model with eight built-in voices.'),
+      extra('qwen3_tts', 'Qwen3-TTS', 1991, 'supported', ['en', 'zh', 'es', 'ja'], 'Natural multilingual speech from the Qwen team.'),
+      extra('cosyvoice3', 'CosyVoice3', 2258, 'supported', ['en', 'zh'], 'Zero-shot voice cloning from a short reference clip.', true),
+      extra('fish_audio', 'Fish Audio S2 Pro', 6318, 'supported', ['en'], 'Large high-fidelity English speech model.'),
+      extra('dramabox', 'DramaBox', 18943, 'experimental', ['en'], 'Long-form dramatic narration.', true)
+    ];
+  },
+  get_engine_overview: () => ({
+    llama: { builds: [{ id: 'b11400-vulkan', tag: 'b11400', variant: 'vulkan', path: '/opt/llama/b11400', selected: true, bytes: 120e6, modified: Date.now() }] },
+    whisper: { builds: [{ id: 'b5130', tag: 'b5130', variant: 'cpu', path: '/opt/whisper', selected: true, bytes: 40e6, modified: Date.now() }], gpu: { source: 'none', backend: null }, server: false },
+    storage: { root: '/home/me/.config/Agente', total: 2.9e9, categories: { chat: 1.78e9, speech: 238e6, voices: 479e6, engines: 198e6, other: 32e6 } }
+  }),
+  check_whisper_update: () => null,
   // A key containing "bad" is rejected so the failure path can be seen.
   test_provider_connection: (args) => String((args as { apiKey?: string })?.apiKey ?? '').includes('bad')
     ? { ok: false, reason: 'auth', status: 401 }

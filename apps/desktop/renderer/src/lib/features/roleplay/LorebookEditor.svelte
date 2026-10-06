@@ -11,7 +11,7 @@
 <script lang="ts">
   import { untrack } from 'svelte';
   import { BookOpen, Copy, Plus, Trash2 } from 'lucide-svelte';
-  import { Button, Select, Switch } from '$lib/components/ui';
+  import { Button, Select, Switch, Tooltip } from '$lib/components/ui';
   import type { CharacterBook, LorebookEntry } from '$lib/types/chat';
   import { emptyLoreEntry, normalizeBook } from '$lib/services/character-card';
   import { createId } from '$lib/utils/id';
@@ -143,9 +143,9 @@
         <span class="text-xs font-medium text-muted-foreground">
           Entries {draft.entries.length ? `(${draft.entries.length})` : ''}
         </span>
-        <button type="button" class="ui-icon-button is-xs" onclick={addEntry} aria-label="Add entry">
+        <Tooltip label="Add entry" position="bottom"><button type="button" class="ui-icon-button is-xs" onclick={addEntry} aria-label="Add entry">
           <Plus class="size-3.5" />
-        </button>
+        </button></Tooltip>
       </div>
       <div class="min-h-0 flex-1 overflow-y-auto p-1">
         {#if !draft.entries.length}
@@ -189,24 +189,24 @@
               />
             </label>
             <div class="flex items-center gap-1 pt-6">
-              <button
+              <Tooltip label="Duplicate entry" position="bottom"><button
                 type="button"
                 class="ui-icon-button"
                 onclick={() => duplicateEntry(selected.id)}
                 aria-label="Duplicate entry"
-                title="Duplicate entry"
+               
               >
                 <Copy class="size-3.5" />
-              </button>
-              <button
+              </button></Tooltip>
+              <Tooltip label="Delete entry" position="bottom"><button
                 type="button"
                 class="ui-icon-button text-error"
                 onclick={() => removeEntry(selected.id)}
                 aria-label="Delete entry"
-                title="Delete entry"
+               
               >
                 <Trash2 class="size-3.5" />
-              </button>
+              </button></Tooltip>
             </div>
           </div>
 

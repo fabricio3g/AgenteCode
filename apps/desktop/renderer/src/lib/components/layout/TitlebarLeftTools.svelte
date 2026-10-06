@@ -1,7 +1,7 @@
 <svelte:options runes={true} />
 
 <!--
-  The title bar's left group — sidebar toggle, search, model settings. The
+  The title bar's left group — sidebar toggle, search, and local-model settings (hidden on a cloud model). The
   sidebar's hover preview reaches the top of the window and draws this same
   group in the same spot, so the buttons never vanish under it.
 -->
@@ -25,7 +25,7 @@
 </script>
 
 <div class="flex min-w-0 items-center gap-0.5 pl-1.5" style={isMac ? 'padding-left: 78px;' : ''}>
-  <Tooltip label={toggleLabel}>
+  <Tooltip label={toggleLabel} shortcut="mod+b">
     <button
       class="ui-icon-button titlebar-no-drag"
       data-sidebar-toggle
@@ -40,14 +40,17 @@
       {#if appStore.sidebarOpen}<PanelLeftClose class="size-4" />{:else}<PanelLeftOpen class="size-4" />{/if}
     </button>
   </Tooltip>
-  <Tooltip label={$t('titlebar.search')}>
+  <Tooltip label={$t('titlebar.search')} shortcut="mod+shift+k">
     <button class="ui-icon-button titlebar-no-drag titlebar-secondary" onclick={() => appStore.openSearch()} aria-label={$t('titlebar.search')}>
       <Search class="size-4" />
     </button>
   </Tooltip>
-  <Tooltip label={$t('titlebar.llmSettings')}>
-    <button class="ui-icon-button titlebar-no-drag titlebar-secondary" onclick={() => (appStore.llmDrawerOpen = true)} aria-label={$t('titlebar.llmSettings')}>
-      <SlidersHorizontal class="size-4" />
-    </button>
-  </Tooltip>
+  <!-- Local-engine tuning (context length, GPU layers…): a cloud model has none. -->
+  {#if appStore.backendMode !== 'api'}
+    <Tooltip label={$t('titlebar.llmSettings')}>
+      <button class="ui-icon-button titlebar-no-drag titlebar-secondary" onclick={() => (appStore.llmDrawerOpen = true)} aria-label={$t('titlebar.llmSettings')}>
+        <SlidersHorizontal class="size-4" />
+      </button>
+    </Tooltip>
+  {/if}
 </div>

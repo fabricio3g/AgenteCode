@@ -12,10 +12,11 @@
 
 <script lang="ts">
   import { t } from 'svelte-i18n';
-  import { ArrowRight, Circle, Minus, MousePointer2, Move, Pencil, Plus, RotateCcw, RotateCw, Square, SquareDashed, Trash2, Type, Upload, X } from 'lucide-svelte';
-  import { Button, IconButton, Tooltip } from '$lib/components/ui';
+  import { ArrowRight, Check, EyeOff, Highlighter, ChevronLeft, ChevronRight, Circle, ImagePlus, Minus, MousePointer2, Move, Pencil, Plus, RotateCcw, RotateCw, Square, SquareDashed, Trash2, Type, Upload, X } from 'lucide-svelte';
+  import { Button, IconButton, Menu, Tooltip } from '$lib/components/ui';
   import CanvasSurface from './CanvasSurface.svelte';
-  import { canvasBoard } from './canvas-board.svelte';
+  import { getCanvasBoard } from './canvas-context';
+  const canvasBoard = getCanvasBoard();
   import { asFractions, formatFraction, isBlankBoard, isPoint, marksFor, type CanvasImage, type CanvasMark, type ToolId } from './canvas-doc';
   import { PREVIEW_MAX_EDGE, sendCanvasToAgent } from './canvas-handoff';
   import { invoke } from '$lib/services/bridge';
@@ -31,9 +32,10 @@
   let picker = $state<HTMLInputElement>();
   let dragOver = $state(false);
   let sending = $state(false);
-  let showPoints = $state(true);
-  let boardWidth = $state(1600);
-  let boardHeight = $state(1000);
+  let showPoints = $state(false);
+  let styleOpen = $state(false);
+  const boardWidth = 1600;
+  const boardHeight = 1000;
 
   $effect(() => { canvasBoard.useChat(chatId); });
 
@@ -54,6 +56,9 @@
     if (selected) canvasBoard.styleMark(selected.id, { color, width: canvasBoard.strokeWidth });
   }
 
+  const activeColor = $derived(selected?.color ?? canvasBoard.color);
+  const activeWidth = $derived(selected?.width ?? canvasBoard.strokeWidth);
+
   const TOOL_ICONS: Array<{ id: ToolId; icon: typeof Square; key: string }> = [
     { id: 'select', icon: MousePointer2, key: 'v' },
     { id: 'rect', icon: Square, key: 'r' },
@@ -62,9 +67,16 @@
     { id: 'line', icon: Minus, key: 'l' },
     { id: 'freehand', icon: Pencil, key: 'p' },
     { id: 'text', icon: Type, key: 't' },
-    { id: 'highlight', icon: SquareDashed, key: 'h' },
-    { id: 'blur', icon: SquareDashed, key: 'b' },
+    { id: 'highlight', icon: Highlighter, key: 'h' },
+    { id: 'blur', icon: EyeOff, key: 'b' },
     { id: 'pan', icon: Move, key: '␣' }
+  ];
+  const byId = (...ids: ToolId[]) => ids.map((id) => TOOL_ICONS.find((tool) => tool.id === id)!);
+  const TOOL_GROUPS = [
+    byId('select', 'pan'),
+    byId('rect', 'ellipse', 'highlight', 'blur'),
+    byId('arrow', 'line', 'freehand'),
+    byId('text')
   ];
   const WIDTHS = [2, 4, 8];
 
@@ -168,7 +180,7 @@
     if (busy) return;
     sending = true;
     try {
-      await sendCanvasToAgent($t('canvas.prompt'), $t('canvas.promptBoard'), $t('canvas.empty'), $t('canvas.sent'));
+      await sendCanvasToAgent($t('canvas.prompt'), $t('canvas.promptBoard'), $t('canvas.empty'), $t('canvas.sent'), canvasBoard);
     } finally {
       sending = false;
     }
@@ -187,7 +199,7 @@
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 <section
-  class="canvas-panel flex min-h-0 min-w-0 flex-1 flex-col"
+  class="canvas-panel"
   class:is-drop={dragOver}
   aria-label={$t('canvas.title')}
   tabindex="-1"
@@ -197,176 +209,235 @@
   ondragleave={() => (dragOver = false)}
   ondrop={onDrop}
 >
-  <div class="canvas-bar flex flex-wrap items-center gap-0.5 border-b px-2 py-1">
-    <input bind:this={picker} type="file" accept={IMAGE_ACCEPT} class="hidden" multiple onchange={onPick} />
-    <Tooltip label={$t('canvas.attach')} position="bottom">
-      <IconButton label={$t('canvas.attach')} size="xs" onclick={() => picker?.click()}><Upload /></IconButton>
-    </Tooltip>
-    <Tooltip label={$t('canvas.newBoard')} position="bottom"><IconButton label={$t('canvas.newBoard')} size="xs" onclick={newBoard}><Plus /></IconButton></Tooltip>
-    <span class="mx-1 h-4 w-px shrink-0 bg-border" aria-hidden="true"></span>
-    {#each TOOL_ICONS as tool (tool.id)}
-      {@const Icon = tool.icon}
-      <Tooltip label={`${$t(`canvas.tools.${tool.id}`)} · ${tool.key}`} position="bottom">
-        <IconButton
-          label={$t(`canvas.tools.${tool.id}`)}
-          size="xs"
-          class={canvasBoard.tool === tool.id ? 'is-on' : ''}
-          aria-pressed={canvasBoard.tool === tool.id}
-          onclick={() => (canvasBoard.tool = tool.id)}
-        ><Icon /></IconButton>
-      </Tooltip>
-    {/each}
-    <span class="mx-1 h-4 w-px shrink-0 bg-border" aria-hidden="true"></span>
-    <div class="flex items-center gap-1" role="radiogroup" aria-label={$t('canvas.color')}>
-      {#each canvasBoard.colors as tone (tone)}
-        <button
-          type="button"
-          role="radio"
-          aria-checked={canvasBoard.color === tone}
-          aria-label={tone}
-          class="canvas-swatch"
-          class:is-on={canvasBoard.color === tone}
-          style="background: {tone}"
-          onclick={() => setStyle(tone, selected?.width ?? canvasBoard.strokeWidth)}
-        ></button>
-      {/each}
-    </div>
-    <div class="flex items-center gap-0.5" role="radiogroup" aria-label={$t('canvas.stroke')}>
-      {#each WIDTHS as width (width)}
-        <button
-          type="button"
-          role="radio"
-          aria-checked={canvasBoard.strokeWidth === width}
-          aria-label={$t('canvas.strokeWidth', { values: { n: String(width) } })}
-          class="canvas-stroke"
-          class:is-on={canvasBoard.strokeWidth === width}
-          onclick={() => setStyle(selected?.color ?? canvasBoard.color, width)}
-        ><span style="height: {Math.max(1, width / 2)}px"></span></button>
-      {/each}
-    </div>
-    <span class="flex-1"></span>
-    <Tooltip label={`${$t('canvas.undo')} · ⌘Z`} position="bottom">
-      <IconButton label={$t('canvas.undo')} size="xs" disabled={!canvasBoard.canUndo} onclick={() => canvasBoard.undo()}><RotateCcw /></IconButton>
-    </Tooltip>
-    <Tooltip label={`${$t('canvas.redo')} · ⌘⇧Z`} position="bottom">
-      <IconButton label={$t('canvas.redo')} size="xs" disabled={!canvasBoard.canRedo} onclick={() => canvasBoard.redo()}><RotateCw /></IconButton>
-    </Tooltip>
-    {#if image}
-      <Tooltip label={$t('canvas.clear')} position="bottom">
-        <IconButton label={$t('canvas.clear')} size="xs" onclick={() => canvasBoard.clear()}><Trash2 /></IconButton>
-      </Tooltip>
-    {/if}
-    {#if boards.length > 1}
-      <Tooltip label={$t('canvas.removeBoard')} position="bottom">
-        <IconButton label={$t('canvas.removeBoard')} size="xs" onclick={() => image && canvasBoard.removeImage(image.id)}><X /></IconButton>
-      </Tooltip>
+  <input bind:this={picker} type="file" accept={IMAGE_ACCEPT} class="hidden" multiple onchange={onPick} />
+
+  <div class="canvas-stage">
+    {#if !image}
+      <div class="canvas-empty">
+        <div class="canvas-drop" class:is-over={dragOver}>
+          <ImagePlus class="canvas-drop-icon" />
+          <span class="canvas-drop-text">{$t('canvas.emptyDrop')}</span>
+          <div class="canvas-drop-actions">
+            <Button variant="outline" size="sm" onclick={newBoard}><Pencil />{$t('canvas.newBoard')}</Button>
+            <Button variant="outline" size="sm" onclick={() => picker?.click()}><Upload />{$t('canvas.uploadImage')}</Button>
+          </div>
+        </div>
+      </div>
+    {:else if !ready}
+      <div class="canvas-empty canvas-loading">{$t('canvas.loading')}</div>
+    {:else}
+      <CanvasSurface imageId={image.id} {src} />
     {/if}
   </div>
 
-  <details class="canvas-settings">
-    <summary>{$t('canvas.drawingSettings')}</summary>
-    <div class="canvas-settings-fields">
-      <label>{$t('canvas.color')}<input type="color" value={selected?.color ?? canvasBoard.color} onchange={(event) => setStyle(event.currentTarget.value, selected?.width ?? canvasBoard.strokeWidth)} /></label>
-      <label>{$t('canvas.stroke')}<input type="number" min="1" max="24" value={selected?.width ?? canvasBoard.strokeWidth} onchange={(event) => setStyle(selected?.color ?? canvasBoard.color, event.currentTarget.valueAsNumber || 1)} /></label>
-      <label>{$t('canvas.boardWidth')}<input type="number" min="320" max="4096" bind:value={boardWidth} /></label>
-      <label>{$t('canvas.boardHeight')}<input type="number" min="320" max="4096" bind:value={boardHeight} /></label>
-    </div>
-  </details>
-
-  {#if boards.length > 1}
-    <div class="canvas-boards flex items-center gap-1 overflow-x-auto border-b px-2 py-1" role="tablist" aria-label={$t('canvas.boards')}>
-      {#each boards as board (board.id)}
-        <button
-          type="button"
-          role="tab"
-          aria-selected={image?.id === board.id}
-          class="canvas-board-chip"
-          class:is-on={image?.id === board.id}
-          title={board.name}
-          onclick={() => canvasBoard.selectImage(board.id)}
-        >{board.name}</button>
-      {/each}
-    </div>
-  {/if}
-
-  {#if !image}
-    <div class="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
-      <span class="text-xs text-muted-foreground">{$t('canvas.empty')}</span>
-      <div class="flex items-center gap-2">
-        <Button size="sm" onclick={newBoard}><Pencil />{$t('canvas.newBoard')}</Button>
-        <Button size="sm" onclick={() => picker?.click()}><Upload />{$t('canvas.uploadImage')}</Button>
-      </div>
-    </div>
-  {:else if !ready}
-    <div class="flex flex-1 items-center justify-center text-xs text-muted-foreground">{$t('canvas.loading')}</div>
-  {:else}
-    <div class="min-h-0 flex-1"><CanvasSurface imageId={image.id} {src} /></div>
-  {/if}
-
-  {#if selected}
-    <label class="canvas-mark-note">{$t(selected.kind === 'text' ? 'canvas.textContent' : 'canvas.markInstruction')}
-      <input class="ui-input" value={selected.text ?? ''} placeholder={$t('canvas.markInstructionHint')} oninput={(event) => canvasBoard.previewMark({ ...selected, text: event.currentTarget.value })} onchange={(event) => { canvasBoard.label(selected.id, event.currentTarget.value); canvasBoard.previewMark(null); }} />
-    </label>
-  {/if}
-
   {#if image}
-    <textarea class="canvas-instructions ui-input" rows="2" aria-label={$t('canvas.instructions')} placeholder={$t('canvas.instructionsHint')} value={canvasBoard.doc.instructions ?? ''} oninput={(event) => canvasBoard.setInstructions(event.currentTarget.value)} onblur={() => canvasBoard.save()}></textarea>
-    <div class="flex items-center gap-2 border-t px-2 py-1">
-      <button type="button" class="canvas-points-toggle text-xs text-muted-foreground hover:text-foreground" aria-expanded={showPoints} onclick={() => (showPoints = !showPoints)}>
-        {$t('canvas.points', { values: { n: String(points.length) } })}
-      </button>
-      <span class="flex-1"></span>
-      <Button size="sm" disabled={busy} title={$t('canvas.sendHint')} onclick={send}><ArrowRight />{$t('canvas.send')}</Button>
+    <div class="canvas-float canvas-top-left">
+      {#if boards.length > 1}
+        <div class="canvas-boards" role="tablist" aria-label={$t('canvas.boards')}>
+          {#each boards as board (board.id)}
+            <button
+              type="button"
+              role="tab"
+              aria-selected={image.id === board.id}
+              class="canvas-board-chip"
+              class:is-on={image.id === board.id}
+              title={board.name}
+              onclick={() => canvasBoard.selectImage(board.id)}
+            >{board.name}</button>
+          {/each}
+        </div>
+        <span class="canvas-sep" aria-hidden="true"></span>
+      {/if}
+      <Tooltip label={$t('canvas.newBoard')} position="bottom"><IconButton label={$t('canvas.newBoard')} size="sm" onclick={newBoard}><Plus /></IconButton></Tooltip>
+      <Tooltip label={$t('canvas.attach')} position="bottom"><IconButton label={$t('canvas.attach')} size="sm" onclick={() => picker?.click()}><Upload /></IconButton></Tooltip>
+      {#if boards.length > 1}
+        <Tooltip label={$t('canvas.removeBoard')} position="bottom"><IconButton label={$t('canvas.removeBoard')} size="sm" onclick={() => canvasBoard.removeImage(image.id)}><X /></IconButton></Tooltip>
+      {/if}
     </div>
-  {/if}
 
-  {#if showPoints && points.length}
-    <ul class="canvas-points min-h-0 shrink-0 overflow-y-auto border-t" aria-label={$t('canvas.pointsList')}>
-      {#each points as mark, index (mark.id)}
-        {@const owner = canvasBoard.doc.images.find((item) => item.id === mark.imageId) as CanvasImage}
-        <li class="canvas-point" class:is-on={canvasBoard.selectedId === mark.id}>
-          <button type="button" class="canvas-point-hit" aria-label={$t('canvas.selectPoint', { values: { n: String(index + 1) } })} onclick={() => canvasBoard.select(mark.id)}>{numberOf(mark)}</button>
-          <input
-            class="canvas-point-label min-w-0 flex-1 bg-transparent text-xs outline-none"
-            value={mark.text || ''}
-            placeholder={pointName(index)}
-            aria-label={pointName(index)}
-            onfocus={() => canvasBoard.select(mark.id)}
-            onchange={(event) => canvasBoard.label(mark.id, (event.currentTarget as HTMLInputElement).value)}
-          />
-          <span class="canvas-point-where tabular-nums">{where(mark, owner)}</span>
-          <IconButton label={$t('canvas.removePoint')} size="xs" onclick={() => canvasBoard.remove(mark.id)}><X /></IconButton>
-        </li>
+    <div class="canvas-float canvas-top-right">
+      <Tooltip label={$t('canvas.undo')} shortcut="mod+z" position="bottom">
+        <IconButton label={$t('canvas.undo')} size="sm" disabled={!canvasBoard.canUndo} onclick={() => canvasBoard.undo()}><RotateCcw /></IconButton>
+      </Tooltip>
+      <Tooltip label={$t('canvas.redo')} shortcut="mod+shift+z" position="bottom">
+        <IconButton label={$t('canvas.redo')} size="sm" disabled={!canvasBoard.canRedo} onclick={() => canvasBoard.redo()}><RotateCw /></IconButton>
+      </Tooltip>
+      <Tooltip label={$t('canvas.clear')} position="bottom">
+        <IconButton label={$t('canvas.clear')} size="sm" onclick={() => canvasBoard.clear()}><Trash2 /></IconButton>
+      </Tooltip>
+      <span class="canvas-sep" aria-hidden="true"></span>
+      <Tooltip label={busy ? (sending ? $t('canvas.sending') : $t('canvas.sendDisabled')) : $t('canvas.sendHint')} position="bottom">
+        <Button size="sm" disabled={busy || !ready} onclick={send} aria-label={$t('canvas.send')}><ArrowRight /><span class="canvas-send-label">{$t('canvas.send')}</span></Button>
+      </Tooltip>
+    </div>
+
+    <div class="canvas-float canvas-dock" role="toolbar" aria-label={$t('canvas.title')}>
+      {#each TOOL_GROUPS as group, index (index)}
+        {#if index > 0}<span class="canvas-sep" aria-hidden="true"></span>{/if}
+        {#each group as tool (tool.id)}
+          {@const Icon = tool.icon}
+          <Tooltip label={$t(`canvas.tools.${tool.id}`)} shortcut={tool.key === '␣' ? 'space' : tool.key} position="top">
+            <button
+              type="button"
+              class="canvas-tool"
+              class:is-on={canvasBoard.tool === tool.id}
+              aria-label={$t(`canvas.tools.${tool.id}`)}
+              aria-pressed={canvasBoard.tool === tool.id}
+              onclick={() => (canvasBoard.tool = tool.id)}
+            ><Icon /></button>
+          </Tooltip>
+        {/each}
       {/each}
-    </ul>
+      <span class="canvas-sep" aria-hidden="true"></span>
+      <Menu bind:open={styleOpen} placement="top-end" minWidth="11rem" label={$t('canvas.style')}>
+        {#snippet trigger(props)}
+          <Tooltip label={$t('canvas.style')} position="top">
+            <button type="button" class="canvas-tool canvas-style" {...props} aria-label={$t('canvas.style')}>
+              <span class="canvas-dot" style="background: {activeColor}"></span>
+              <span class="canvas-line" style="height: {Math.max(1, activeWidth / 2)}px"></span>
+            </button>
+          </Tooltip>
+        {/snippet}
+        <div class="canvas-style-pop">
+          <div class="canvas-swatches" role="radiogroup" aria-label={$t('canvas.color')}>
+            {#each canvasBoard.colors as tone (tone)}
+              <button
+                type="button"
+                role="radio"
+                aria-checked={activeColor === tone}
+                aria-label={tone}
+                class="canvas-swatch"
+                style="background: {tone}"
+                onclick={() => setStyle(tone, activeWidth)}
+              >{#if activeColor === tone}<Check />{/if}</button>
+            {/each}
+          </div>
+          <div class="canvas-widths" role="radiogroup" aria-label={$t('canvas.stroke')}>
+            {#each WIDTHS as width (width)}
+              <button
+                type="button"
+                role="radio"
+                aria-checked={activeWidth === width}
+                aria-label={$t('canvas.strokeWidth', { values: { n: String(width) } })}
+                class="canvas-stroke"
+                class:is-on={activeWidth === width}
+                onclick={() => setStyle(activeColor, width)}
+              ><span style="height: {Math.max(1, width / 2)}px"></span></button>
+            {/each}
+          </div>
+        </div>
+      </Menu>
+    </div>
+
+    {#if showPoints}
+      <aside class="canvas-float canvas-sheet" aria-label={$t('canvas.pointsList')}>
+        <div class="canvas-sheet-head">
+          <span class="canvas-sheet-title">{$t('canvas.points', { values: { n: String(points.length) } })}</span>
+          <IconButton label={$t('canvas.hidePoints')} size="sm" onclick={() => (showPoints = false)}><ChevronRight /></IconButton>
+        </div>
+        {#if selected}
+          <label class="canvas-field">{$t(selected.kind === 'text' ? 'canvas.textContent' : 'canvas.markInstruction')}
+            <input class="ui-input" value={selected.text ?? ''} placeholder={$t('canvas.markInstructionHint')} oninput={(event) => canvasBoard.previewMark({ ...selected, text: event.currentTarget.value })} onchange={(event) => { canvasBoard.label(selected.id, event.currentTarget.value); canvasBoard.previewMark(null); }} />
+          </label>
+        {/if}
+        <ul class="canvas-points" aria-label={$t('canvas.pointsList')}>
+          {#each points as mark, index (mark.id)}
+            {@const owner = canvasBoard.doc.images.find((item) => item.id === mark.imageId) as CanvasImage}
+            <li class="canvas-point" class:is-on={canvasBoard.selectedId === mark.id}>
+              <button type="button" class="canvas-point-hit" aria-label={$t('canvas.selectPoint', { values: { n: String(index + 1) } })} onclick={() => canvasBoard.select(mark.id)}>{numberOf(mark)}</button>
+              <input
+                class="canvas-point-label"
+                value={mark.text || ''}
+                placeholder={pointName(index)}
+                aria-label={pointName(index)}
+                onfocus={() => canvasBoard.select(mark.id)}
+                onchange={(event) => canvasBoard.label(mark.id, (event.currentTarget as HTMLInputElement).value)}
+              />
+              <span class="canvas-point-where">{where(mark, owner)}</span>
+              <IconButton label={$t('canvas.removePoint')} size="sm" onclick={() => canvasBoard.remove(mark.id)}><X /></IconButton>
+            </li>
+          {/each}
+        </ul>
+        <textarea class="canvas-instructions ui-input" rows="2" aria-label={$t('canvas.instructions')} placeholder={$t('canvas.instructionsHint')} value={canvasBoard.doc.instructions ?? ''} oninput={(event) => canvasBoard.setInstructions(event.currentTarget.value)} onblur={() => canvasBoard.save()}></textarea>
+      </aside>
+    {:else}
+      <button type="button" class="canvas-float canvas-chip" aria-expanded="false" onclick={() => (showPoints = true)}>
+        <ChevronLeft />{$t('canvas.points', { values: { n: String(points.length) } })}
+      </button>
+    {/if}
   {/if}
 </section>
 
 <style>
-  .canvas-panel { background: var(--card); outline: none; }
-  .canvas-panel :global(.is-on) { background: var(--surface-hover); color: var(--foreground); }
+  .canvas-panel { container-type: size; position: relative; display: flex; min-height: 0; min-width: 0; flex: 1; background: var(--card); outline: none; }
   .canvas-panel.is-drop { box-shadow: inset 0 0 0 2px var(--ring); }
-  .canvas-board-chip { max-width: 12rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 2px 8px; border-radius: var(--radius-full); font-size: var(--text-xs); color: var(--muted-foreground); background: var(--muted); }
-  .canvas-board-chip:hover { color: var(--foreground); }
-  .canvas-board-chip.is-on { color: var(--foreground); background: var(--surface-hover); box-shadow: inset 0 0 0 1px var(--border); }
-  .canvas-swatch { width: 14px; height: 14px; border-radius: 999px; box-shadow: inset 0 0 0 1px var(--border); transition: transform var(--motion-fast) var(--motion-ease-out); }
-  .canvas-swatch:hover { transform: scale(1.12); }
-  .canvas-swatch.is-on { box-shadow: inset 0 0 0 1px var(--card), 0 0 0 1.5px var(--foreground); }
-  .canvas-stroke { display: inline-flex; width: 20px; height: 20px; align-items: center; justify-content: center; border-radius: var(--radius-sm); }
-  .canvas-stroke span { display: block; width: 12px; background: var(--muted-foreground); border-radius: 999px; }
-  .canvas-stroke:hover, .canvas-stroke.is-on { background: var(--surface-hover); }
+  .canvas-stage { position: absolute; inset: 0; min-height: 0; }
+  .canvas-empty { display: flex; height: 100%; align-items: center; justify-content: center; padding: 1.5rem; font-size: var(--text-xs); color: var(--muted-foreground); }
+  .canvas-drop { display: flex; max-width: 28rem; flex-direction: column; align-items: center; gap: 0.75rem; padding: 2rem 1.5rem; text-align: center; border: 1px dashed var(--border-hover); border-radius: var(--float-radius); transition: background var(--motion-fast) var(--motion-ease-out), border-color var(--motion-fast) var(--motion-ease-out); }
+  .canvas-drop.is-over { background: var(--float-row-hover); border-color: var(--ring); }
+  .canvas-drop :global(.canvas-drop-icon) { width: 1.75rem; height: 1.75rem; color: var(--muted-foreground); }
+  .canvas-drop-text { font-size: var(--text-sm); color: var(--foreground); }
+  .canvas-drop-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.5rem; }
+
+  .canvas-float { position: absolute; z-index: 2; display: flex; align-items: center; gap: 0.125rem; padding: var(--float-pad); background: var(--float-bg); border: 1px solid var(--float-border); border-radius: var(--float-radius); box-shadow: var(--float-shadow); }
+  .canvas-top-left { top: 0.625rem; left: 0.625rem; max-width: calc(100% - 17rem); }
+  .canvas-top-right { top: 0.625rem; right: 0.625rem; }
+  /* One row always; a narrow panel scrolls the dock sideways rather than stacking it. */
+  .canvas-dock { bottom: 0.75rem; left: 50%; transform: translateX(-50%); max-width: calc(100% - 1.25rem); flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+  .canvas-dock::-webkit-scrollbar { display: none; }
+  /* Narrow panels: "Send" keeps its icon, the top groups shrink, and the points
+     chip rises above the dock instead of sitting under it. */
+  @container (max-width: 34rem) {
+    .canvas-send-label { display: none; }
+    .canvas-top-left { max-width: calc(100% - 12rem); }
+    .canvas-chip { bottom: 3.75rem; }
+  }
+  .canvas-sep { width: 1px; height: 1.125rem; margin: 0 0.25rem; flex-shrink: 0; background: var(--float-border); }
+
+  .canvas-tool { display: inline-flex; width: 1.75rem; height: 1.75rem; flex-shrink: 0; align-items: center; justify-content: center; gap: 0.125rem; border-radius: var(--float-row-radius); color: var(--muted-foreground); transition: background var(--motion-fast) var(--motion-ease-out), color var(--motion-fast) var(--motion-ease-out); }
+  .canvas-tool :global(svg) { width: 1rem; height: 1rem; }
+  .canvas-tool:hover { background: var(--float-row-hover); color: var(--foreground); }
+  .canvas-tool.is-on { background: var(--nav-current-bg); box-shadow: var(--nav-current-ring); color: var(--foreground); }
+  .canvas-style { width: auto; padding: 0 0.375rem; }
+  .canvas-dot { width: 0.875rem; height: 0.875rem; border-radius: 999px; box-shadow: inset 0 0 0 1px var(--float-border); }
+  .canvas-line { display: block; width: 0.5rem; border-radius: 999px; background: var(--foreground); }
+
+  .canvas-style-pop { display: flex; flex-direction: column; gap: 0.5rem; padding: 0.25rem; }
+  .canvas-swatches { display: grid; grid-template-columns: repeat(4, 1.5rem); gap: 0.375rem; }
+  .canvas-swatch { display: inline-flex; width: 1.5rem; height: 1.5rem; align-items: center; justify-content: center; border-radius: 999px; box-shadow: inset 0 0 0 1px var(--float-border); color: white; transition: transform var(--motion-fast) var(--motion-ease-out); }
+  .canvas-swatch :global(svg) { width: 0.875rem; height: 0.875rem; filter: drop-shadow(0 0 1px rgb(0 0 0 / 0.6)); }
+  .canvas-swatch:hover { transform: scale(1.1); }
+  .canvas-widths { display: flex; gap: 0.25rem; }
+  .canvas-stroke { display: inline-flex; flex: 1; height: 1.75rem; align-items: center; justify-content: center; border-radius: var(--float-row-radius); }
+  .canvas-stroke span { display: block; width: 1.25rem; border-radius: 999px; background: var(--muted-foreground); }
+  .canvas-stroke:hover { background: var(--float-row-hover); }
+  .canvas-stroke.is-on { background: var(--nav-current-bg); box-shadow: var(--nav-current-ring); }
   .canvas-stroke.is-on span { background: var(--foreground); }
-  .canvas-points { max-height: 40%; background: var(--card); }
-  .canvas-point { display: flex; align-items: center; gap: 6px; padding: 3px 6px; }
-  .canvas-point:hover, .canvas-point.is-on { background: var(--surface-hover); }
-  .canvas-point-hit { display: inline-flex; width: 20px; height: 20px; flex-shrink: 0; align-items: center; justify-content: center; border-radius: 999px; background: var(--muted); font-size: var(--text-xs); font-weight: 700; }
-  .canvas-point-where { flex-shrink: 0; font-size: var(--text-xs); color: var(--muted-foreground); }
-  .canvas-settings { flex-shrink: 0; padding: .25rem .5rem; color: var(--muted-foreground); font-size: var(--text-xs); }
-  .canvas-settings summary { cursor: pointer; }
-  .canvas-settings-fields { display: flex; flex-wrap: wrap; gap: .5rem; padding-top: .5rem; }
-  .canvas-settings-fields label { display: flex; align-items: center; gap: .35rem; }
-  .canvas-settings-fields input { width: 4rem; padding: .2rem; border-radius: var(--radius-sm); background: var(--muted); color: var(--foreground); }
-  .canvas-settings-fields input[type=color] { width: 2rem; height: 1.5rem; }
-  .canvas-mark-note { display: flex; flex-shrink: 0; flex-direction: column; gap: .25rem; padding: .4rem .5rem; color: var(--muted-foreground); font-size: var(--text-xs); }
-  .canvas-instructions { flex-shrink: 0; width: calc(100% - 1rem); margin: .25rem .5rem; resize: vertical; max-height: 25%; font-size: var(--text-xs); }
+
+  .canvas-boards { display: flex; min-width: 0; gap: 0.25rem; overflow-x: auto; }
+  .canvas-board-chip { max-width: 10rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0.125rem 0.5rem; border-radius: var(--float-row-radius); font-size: var(--text-xs); color: var(--muted-foreground); }
+  .canvas-board-chip:hover { background: var(--float-row-hover); color: var(--foreground); }
+  .canvas-board-chip.is-on { background: var(--nav-current-bg); box-shadow: var(--nav-current-ring); color: var(--foreground); }
+
+  .canvas-chip { right: 0.625rem; bottom: 0.75rem; gap: 0.25rem; padding: 0.25rem 0.625rem; font-size: var(--text-xs); color: var(--muted-foreground); }
+  .canvas-chip:hover { background: var(--float-row-hover); color: var(--foreground); }
+  .canvas-chip :global(svg) { width: 0.875rem; height: 0.875rem; }
+  .canvas-sheet { top: 3.75rem; right: 0.625rem; bottom: 0.75rem; width: min(17rem, 40%); flex-direction: column; align-items: stretch; gap: 0.5rem; overflow-y: auto; padding: 0.5rem; }
+  @media (max-height: 30rem) { .canvas-sheet { top: 3.75rem; bottom: 3.5rem; } }
+  .canvas-sheet-head { display: flex; align-items: center; justify-content: space-between; }
+  .canvas-sheet-title { font-size: var(--text-xs); font-weight: 600; color: var(--muted-foreground); }
+  .canvas-field { display: flex; flex-direction: column; gap: 0.25rem; font-size: var(--text-xs); color: var(--muted-foreground); }
+  .canvas-points { display: flex; min-height: 0; flex-direction: column; gap: 0.0625rem; }
+  .canvas-point { display: flex; align-items: center; gap: 0.375rem; padding: 0.125rem 0.25rem; border-radius: var(--float-row-radius); }
+  .canvas-point:hover { background: var(--float-row-hover); }
+  .canvas-point.is-on { background: var(--float-row-selected); }
+  .canvas-point-hit { display: inline-flex; width: 1.25rem; height: 1.25rem; flex-shrink: 0; align-items: center; justify-content: center; border-radius: 999px; background: var(--muted); font-size: var(--text-xs); font-weight: 700; }
+  .canvas-point-label { min-width: 0; flex: 1; background: transparent; font-size: var(--text-xs); outline: none; }
+  .canvas-point-where { flex-shrink: 0; font-size: var(--text-xs); color: var(--muted-foreground); font-variant-numeric: tabular-nums; }
+  .canvas-instructions { flex-shrink: 0; resize: vertical; max-height: 8rem; font-size: var(--text-xs); }
+
+  @media (prefers-reduced-motion: reduce) {
+    .canvas-tool, .canvas-swatch, .canvas-drop { transition: none; }
+    .canvas-swatch:hover { transform: none; }
+  }
 </style>

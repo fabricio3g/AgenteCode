@@ -1,5 +1,6 @@
 <svelte:options runes={true} />
 <script lang="ts">
+  import { Tooltip } from '$lib/components/ui';
   import { onMount, type Snippet } from 'svelte';
   import { t } from 'svelte-i18n';
   import { Maximize2, Minimize2, MoreHorizontal, PanelBottom, PanelRight, PanelsTopLeft, RotateCcw, X } from 'lucide-svelte';
@@ -7,12 +8,12 @@
   import MenuItem from '$lib/components/ui/MenuItem.svelte';
   import ResizeHandle from '$lib/components/ui/ResizeHandle.svelte';
   import WindowResizeHandle from '$lib/components/ui/WindowResizeHandle.svelte';
-  import { workspaceLayout } from '$lib/stores/workspace-layout.svelte';
+  import { workspaceLayout as defaultLayout, type WorkspaceLayoutStore } from '$lib/stores/workspace-layout.svelte';
   import { clampRect, dropEdge, EDGE, measureWorkspace, panelIds, previewRect, projectedSplitRatio, resizeCorners, resizeRect, type Divider, type DockEdge, type Placement, type Rect, type ResizeCorner, type WorkspaceLayout } from './workspace-layout';
   import type { WorkspacePanel } from './workspace-panel';
   import { startPointerGesture } from '$lib/utils/pointer-gesture';
 
-  let { panels, children }: { panels: WorkspacePanel[]; children: Snippet } = $props();
+  let { panels, children, layout: workspaceLayout = defaultLayout }: { layout?: WorkspaceLayoutStore; panels: WorkspacePanel[]; children: Snippet } = $props();
   let host = $state<HTMLDivElement>();
   let size = $state({ width: 0, height: 0 });
   let preview = $state<Rect | null>(null);
@@ -33,7 +34,8 @@
   const corners = $derived(resizeCorners(measured.dividers, bounds));
   const byId = $derived(new Map(panels.map((panel) => [panel.id, panel])));
   const placementsById = $derived(new Map(measured.placements.flatMap((placement) => placement.group.panels.map((id) => [id, placement] as const))));
-  const position = (rect: Rect) => `left:${rect.x}px;top:${rect.y}px;width:${rect.width}px;height:${rect.height}px;`;
+  // Whole pixels: a fractional edge blurs the text and hairlines inside the panel.
+  const position = (rect: Rect) => `left:${Math.round(rect.x)}px;top:${Math.round(rect.y)}px;width:${Math.round(rect.width)}px;height:${Math.round(rect.height)}px;`;
   const location = (id: string) => placementsById.get(id);
 
   $effect(() => {
@@ -183,7 +185,7 @@
 
 <div class="workspace" bind:this={host} data-workspace-interacting={workspaceLayout.interacting ? 'true' : undefined}>
   <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-  <main onpointerdown={() => { workspaceLayout.focused = ''; }} class="workspace-main" style={position(measured.main)}>{@render children()}</main>
+  <main onpointerdown={() => { workspaceLayout.focused = ''; }} class="workspace-main" style="left:0;top:0;width:calc(100% - {Math.max(0,size.width-measured.main.width)}px);height:calc(100% - {Math.max(0,size.height-measured.main.height)}px);">{@render children()}</main>
   {#each panels as panel (panel.id)}
     {@const placement = location(panel.id)}
     {@const exposed = !!placement && placement.group.active === panel.id}
@@ -207,7 +209,7 @@
             {/if}
           {/each}
         </div>
-        {#if placement?.region === null}<button type="button" class="ui-icon-button is-xs" aria-label={$t(placement.maximized ? 'workspace.restore' : 'workspace.maximize')} title={$t(placement.maximized ? 'workspace.restore' : 'workspace.maximize')} onclick={() => workspaceLayout.maximize(panel.id)}>{#if placement.maximized}<Minimize2 />{:else}<Maximize2 />{/if}</button>{/if}
+        {#if placement?.region === null}<Tooltip label={$t(placement.maximized ? 'workspace.restore' : 'workspace.maximize')} position="bottom"><button type="button" class="ui-icon-button is-xs" aria-label={$t(placement.maximized ? 'workspace.restore' : 'workspace.maximize')} onclick={() => workspaceLayout.maximize(panel.id)}>{#if placement.maximized}<Minimize2 />{:else}<Maximize2 />{/if}</button></Tooltip>{/if}
         <Menu placement="bottom-end" label={$t('workspace.actions')} minWidth="12rem">
           {#snippet trigger(props)}<button type="button" class="ui-icon-button is-xs" aria-label={$t('workspace.actions')} {...props}><MoreHorizontal /></button>{/snippet}
           <MenuItem icon={PanelsTopLeft} label={$t('workspace.float')} onselect={() => float(panel.id)} />
@@ -223,7 +225,7 @@
           <div class="ui-menu-separator" role="separator"></div>
           <MenuItem icon={RotateCcw} label={$t('workspace.reset')} onselect={() => workspaceLayout.reset()} />
         </Menu>
-        <button type="button" class="ui-icon-button is-xs" aria-label={$t('workspace.hide', { values: { name: panel.title } })} title={$t('workspace.hide', { values: { name: panel.title } })} onclick={() => hide(panel)}><X /></button>
+        <Tooltip label={$t('workspace.hide', { values: { name: panel.title } })} position="bottom"><button type="button" class="ui-icon-button is-xs" aria-label={$t('workspace.hide', { values: { name: panel.title } })} onclick={() => hide(panel)}><X /></button></Tooltip>
       </header>
       <div class="workspace-content">{@render panel.content({ id: panel.id, exposed, focused: exposed && workspaceLayout.focused === panel.id, rect })}</div>
     </section>
@@ -253,22 +255,30 @@
 
 <style>
   .workspace { position: relative; flex: 1; min-width: 0; min-height: 0; overflow: hidden; }
-  .workspace-main { position: absolute; z-index: 0; display: flex; min-width: 0; min-height: 0; overflow: hidden; }
-  .workspace-panel { position: absolute; display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; border-radius: .875rem; background: var(--card); box-shadow: inset 0 0 0 1px var(--border-subtle), var(--panel-shadow); }
+  .workspace-main { position: absolute; z-index: 0; display: flex; max-width:100%;max-height:100%; min-width: 0; min-height: 0; overflow: hidden; }
+  /* Quiet surfaces: one hairline and a soft shadow, no inner highlight. A docked
+     panel is flat; a floating one lifts a little. */
+  .workspace-panel { position: absolute; display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; border-radius: var(--float-radius); background: var(--card); }
+  /* The edge is drawn on top of the content: an inset shadow sat under children
+     with their own fill (the canvas board, the browser), so those panels lost it. */
+  .workspace-panel::after { content: ''; position: absolute; inset: 0; z-index: 30; border: 1px solid var(--border-hover); border-radius: inherit; pointer-events: none; }
   .workspace-panel[hidden] { display: none; }
-  .workspace-panel.floating { box-shadow: inset 0 0 0 1px var(--border-hover), 0 8px 30px #0002; }
-  /* The strip owns the panel's top edge, so it draws the line under itself: the
-     body below it is a different surface, not more of the tab row. */
-  .workspace-header { display: flex; align-items: center; flex-shrink: 0; gap: 2px; height: 30px; padding: 0 6px; cursor: grab; touch-action: none; box-shadow: inset 0 -1px 0 var(--border-subtle); }
+  .workspace-panel.floating { box-shadow: var(--float-shadow); }
+  .workspace-panel.resize-ready::after { border-color: var(--split-line); }
+  /* The strip owns the panel's top edge: no fill, just a hairline under it. */
+  .workspace-header { display: flex; align-items: center; flex-shrink: 0; gap: 2px; height: 32px; padding: 0 6px 0 8px; cursor: grab; touch-action: none; box-shadow: inset 0 -1px 0 var(--border-subtle); }
+  .workspace-header :global(.ui-icon-button) { border-color: transparent; background: transparent; box-shadow: none; }
+  .workspace-header :global(.ui-icon-button:hover) { background: var(--surface-hover); border-color: transparent; }
   .workspace-tabs { display: flex; min-width: 0; flex: 1; gap: 2px; overflow-x: auto; scrollbar-width: none; }
-  .workspace-tab { display: inline-flex; align-items: center; gap: 5px; min-width: 0; max-width: 180px; height: 23px; padding: 0 7px; flex-shrink: 0; border-radius: var(--radius-full); font-size: var(--text-xs); color: var(--muted-foreground); cursor: grab; touch-action: none; }
+  .workspace-tab { display: inline-flex; align-items: center; gap: 5px; min-width: 0; max-width: 180px; height: 22px; padding: 0 8px; flex-shrink: 0; border-radius: var(--radius-full); font-size: var(--text-xs); color: var(--muted-foreground); cursor: grab; touch-action: none; transition: color var(--motion-fast) var(--motion-ease), background-color var(--motion-fast) var(--motion-ease); }
   .workspace-tab span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .workspace-tab:hover, .workspace-tab.active { color: var(--foreground); background: var(--surface-hover); }
+  .workspace-tab:hover { color: var(--foreground); }
+  .workspace-tab.active { color: var(--foreground); background: var(--surface-active); font-weight: 500; }
   .workspace-tab:focus-visible { outline: 1px solid var(--ring); outline-offset: -1px; }
   .workspace-content { display: flex; flex: 1; flex-direction: column; min-height: 0; min-width: 0; overflow: hidden; }
   .workspace-divider { position: absolute; }
   .workspace-panel.resize-ready { box-shadow: inset 0 0 0 1px var(--muted-foreground), 0 8px 30px #0002; }
-  .drag-ghost, .drop-preview { position: absolute; pointer-events: none; z-index: 100000; border-radius: .875rem; }
-  .drag-ghost { display: flex; align-items: flex-start; gap: 6px; padding: 8px; opacity: .75; color: var(--muted-foreground); background: var(--card); box-shadow: var(--panel-shadow); font-size: var(--text-xs); }
+  .drag-ghost, .drop-preview { position: absolute; pointer-events: none; z-index: 100000; border-radius: 0.75rem; }
+  .drag-ghost { display: flex; align-items: flex-start; gap: 6px; padding: 8px; opacity: .75; color: var(--muted-foreground); background: var(--card); box-shadow: var(--shadow-lg); font-size: var(--text-xs); }
   .drop-preview { background: color-mix(in srgb, var(--foreground) 8%, transparent); box-shadow: inset 0 0 0 1px var(--border-hover); }
 </style>

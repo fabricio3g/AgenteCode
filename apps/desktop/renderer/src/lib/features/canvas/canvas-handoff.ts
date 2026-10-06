@@ -4,7 +4,7 @@ import { invoke } from '$lib/services/bridge';
 import { createId } from '$lib/utils/id';
 import type { Attachment as ChatAttachment } from '$lib/types/chat';
 import type { Attachment } from '$shared/agente-protocol.gen';
-import { canvasBoard } from './canvas-board.svelte';
+import { canvasBoard as defaultBoard, type CanvasBoardStore } from './canvas-board.svelte';
 import { asFractions, lineEndpoints, composePrompt, isPoint, marksFor, mergeDraft, planHandoff, type CanvasImage, type CanvasMark, type HandoffEntry } from './canvas-doc';
 
 /**
@@ -134,7 +134,7 @@ export interface HandoffResult {
  * ask a model to read, so a board made from scratch gets its own wording. A
  * board holding both keeps the screenshot wording, which still fits the images.
  */
-export async function exportBoard(header: string, boardHeader: string, empty: string): Promise<HandoffResult> {
+export async function exportBoard(header: string, boardHeader: string, empty: string, canvasBoard: CanvasBoardStore = defaultBoard): Promise<HandoffResult> {
   const doc = canvasBoard.doc;
   const plan = planHandoff(doc);
   if (!plan.overview.length) return { media: [], prompt: '' };
@@ -206,10 +206,10 @@ function toChatAttachment(media: ExportedMedia): ChatAttachment {
  * a different type, so each composer is given what it expects.
  */
 export function handOffToAgent(text: string, media: ExportedMedia[], chatId?: string): boolean {
-  const chat = appStore.currentChat;
-  if (!chat || chatId && chat.id !== chatId) return false;
+  const chat = chatId ? appStore.chats.find((item) => item.id === chatId) : appStore.currentChat;
+  if (!chat || !chat.codeAgent && appStore.currentChat?.id !== chat.id) return false;
   if (chat.codeAgent) {
-    window.dispatchEvent(new CustomEvent('code-composer-append', { detail: { text, media: media.map((item) => item.attachment) } }));
+    window.dispatchEvent(new CustomEvent('code-composer-append', { detail: { chatId: chat.id, text, media: media.map((item) => item.attachment) } }));
   } else {
     appStore.updateComposer(mergeDraft(appStore.composer, text));
     const next = media.map(toChatAttachment).filter((item) => !appStore.pendingAttachments.some((existing) => existing.name === item.name));
@@ -220,10 +220,10 @@ export function handOffToAgent(text: string, media: ExportedMedia[], chatId?: st
 }
 
 /** The panel's send action: render, import, place, and report what happened. */
-export async function sendCanvasToAgent(header: string, boardHeader: string, empty: string, sent: string): Promise<void> {
+export async function sendCanvasToAgent(header: string, boardHeader: string, empty: string, sent: string, canvasBoard: CanvasBoardStore = defaultBoard): Promise<void> {
   const chatId = canvasBoard.activeChatId;
   try {
-    const { media, prompt } = await exportBoard(header, boardHeader, empty);
+    const { media, prompt } = await exportBoard(header, boardHeader, empty, canvasBoard);
     if (!media.length) {
       toastStore.error(empty);
       return;
@@ -239,6 +239,6 @@ export async function sendCanvasToAgent(header: string, boardHeader: string, emp
 }
 
 /** How many labelled points the panel is about to send. */
-export function pointCount(): number {
+export function pointCount(canvasBoard: CanvasBoardStore = defaultBoard): number {
   return marksFor(canvasBoard.doc, canvasBoard.image?.id ?? '').filter(isPoint).filter((mark) => canvasBoard.doc.labelled.includes(mark.id)).length;
 }

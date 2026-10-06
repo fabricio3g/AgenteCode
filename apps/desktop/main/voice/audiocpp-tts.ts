@@ -15,7 +15,8 @@ import type { BrowserWindow } from 'electron';
 import { loadConfig } from '../config.ts';
 import { getAppPaths } from '../paths.ts';
 import { createLogger } from '../utils/logger.ts';
-import { VOICE_MODELS, voiceLanguage, voiceModel, voiceModelRelPath, type VoiceModel } from '../../shared/voice-models.ts';
+import { voiceFileRelPath, voiceLanguage, voiceModelFiles, voiceModelRelPath, type VoiceModel } from '../../shared/voice-models.ts';
+import { findVoiceModel, voiceCatalog } from './voice-catalog.ts';
 
 type TtsMessage = (
   | { type: 'start'; id: number; total: number }
@@ -23,7 +24,7 @@ type TtsMessage = (
   | { type: 'done'; id: number; total: number }
   | { type: 'error'; id: number; message: string }) & { requestId?: string };
 
-type SpeechRequest = { text: string; voice?: string; speed?: number; volume?: number; model?: string; language?: string; requestId?: string };
+type SpeechRequest = { text: string; voice?: string; speed?: number; volume?: number; voiceRef?: { file: string; transcript?: string }; model?: string; language?: string; requestId?: string };
 
 const log = createLogger('[TTS]');
 const OUT_RATE = 24_000;
@@ -51,6 +52,51 @@ export function availableSpeechBackends(): string[] {
   return ['cpu', 'vulkan'].filter(backend => fs.existsSync(path.join(root, backend, name)));
 }
 
+/** The bundled audio.cpp release (`BUILD_INFO.txt`, written by fetch-native-runtimes). */
+export function speechEngineVersion(): string | null {
+  for (const backend of availableSpeechBackends()) {
+    const info = path.join(getAppPaths().nativeBinRoot, 'audio', backend, 'BUILD_INFO.txt');
+    try {
+      const release = fs.readFileSync(info, 'utf8').match(/^release=(.+)$/m)?.[1]?.trim();
+      if (release) return release;
+    } catch { /* older bundles have no build info */ }
+  }
+  return null;
+}
+
+/** The backend to run: the chosen one when this build has it, else whatever is bundled (Vulkan by default). */
+function speechBackend(setting: unknown): 'cpu' | 'vulkan' {
+  const available = availableSpeechBackends();
+  if (setting === 'cpu' && available.includes('cpu')) return 'cpu';
+  if (setting === 'vulkan' && available.includes('vulkan')) return 'vulkan';
+  return available.includes('vulkan') ? 'vulkan' : 'cpu';
+}
+
+/** Threads the server runs with: the setting, else up to 8 of this machine's cores. */
+export function speechThreads(setting: unknown): number {
+  const cores = availableParallelism();
+  return Math.max(1, Math.min(cores, Number(setting) || Math.min(8, cores)));
+}
+
+/** What Settings shows for the voice engine. */
+export function speechEngineStatus() {
+  const tts = loadConfig().tts;
+  return {
+    version: speechEngineVersion(),
+    backends: availableSpeechBackends(),
+    backend: speechBackend(tts?.local_backend),
+    threads: speechThreads(tts?.num_threads),
+    cores: availableParallelism(),
+    running: !!server && server.child.exitCode === null,
+    installed: installedVoiceModels().map((model) => model.id),
+    espeak: hasEspeak(),
+    binaryPath: binary(speechBackend(tts?.local_backend)),
+    port: server && server.child.exitCode === null ? server.port : null,
+    specs: voiceCatalog().length,
+    modelsDir: getAppPaths().voiceModelsRoot
+  };
+}
+
 function binary(backend: string): string | null {
   const name = process.platform === 'win32' ? 'audiocpp_server.exe' : 'audiocpp_server';
   const root = path.join(getAppPaths().nativeBinRoot, 'audio');
@@ -62,9 +108,14 @@ export function modelPath(model: VoiceModel): string {
   return path.join(getAppPaths().voiceModelsRoot, voiceModelRelPath(model));
 }
 
+/** Every file of the model is on disk. */
+function isInstalled(model: VoiceModel): boolean {
+  return voiceModelFiles(model).every((file) => fs.existsSync(path.join(getAppPaths().voiceModelsRoot, voiceFileRelPath(model, file))));
+}
+
 /** The voice models that are downloaded. */
 export function installedVoiceModels(): VoiceModel[] {
-  return VOICE_MODELS.filter((model) => fs.existsSync(modelPath(model)));
+  return voiceCatalog().filter(isInstalled);
 }
 
 /** Whether eSpeak-ng is available (Kokoro needs it for most languages). */
@@ -106,9 +157,9 @@ async function waitHealthy(port: number, child: ChildProcess): Promise<void> {
 async function ensureServer(): Promise<number> {
   const models = installedVoiceModels();
   const tts = loadConfig().tts;
-  const backend = tts?.local_backend === 'vulkan' ? 'vulkan' : 'cpu';
-  const threads = Math.max(1, Math.min(availableParallelism(), Number(tts?.num_threads) || 8));
-  const selected = voiceModel(typeof tts?.voice_model === 'string' ? tts.voice_model : undefined)?.id ?? models[0]?.id;
+  const backend = speechBackend(tts?.local_backend);
+  const threads = speechThreads(tts?.num_threads);
+  const selected = findVoiceModel(typeof tts?.voice_model === 'string' ? tts.voice_model : undefined)?.id ?? models[0]?.id;
   const signature = JSON.stringify([models.map(model => model.id), backend, threads, selected]);
   if (server && server.models === signature && server.child.exitCode === null) return server.port;
   if (starting) return starting;
@@ -228,7 +279,10 @@ export function splitSentences(text: string): string[] {
 }
 
 async function speak(port: number, model: VoiceModel, request: SpeechRequest, sentence: string, signal: AbortSignal): Promise<Buffer> {
-  const voice = request.voice && model.voices.some((option) => option.id === request.voice) ? request.voice : model.voices[0].id;
+  // Catalog models without built-in voices speak in their default voice: send none.
+  const ref = model.canClone && request.voiceRef?.file ? request.voiceRef : undefined;
+  if (model.needsReference && !ref) throw new Error('This model needs a cloned voice. Add one in Settings → Voice.');
+  const voice = ref ? undefined : request.voice && model.voices.some((option) => option.id === request.voice) ? request.voice : model.voices[0]?.id;
   const res = await fetch(`http://127.0.0.1:${port}/v1/audio/speech`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -236,8 +290,9 @@ async function speak(port: number, model: VoiceModel, request: SpeechRequest, se
     body: JSON.stringify({
       model: model.id,
       input: sentence,
-      voice,
-      language: voiceLanguage(model, voice, request.language || 'en'),
+      ...(voice ? { voice } : {}),
+      ...(ref ? { voice_ref: ref.file, ...(ref.transcript ? { reference_text: ref.transcript } : {}) } : {}),
+      language: voice ? voiceLanguage(model, voice, request.language || 'en') : (request.language || model.languages[0] || 'en'),
       ...(request.speed && request.speed !== 1 ? { speed: request.speed } : {})
     })
   });
@@ -247,7 +302,7 @@ async function speak(port: number, model: VoiceModel, request: SpeechRequest, se
 
 function chosenModel(request: SpeechRequest): VoiceModel {
   const installed = installedVoiceModels();
-  const model = voiceModel(request.model);
+  const model = findVoiceModel(request.model);
   if (model) {
     if (!installed.includes(model)) throw new Error(`Download ${model.title} in Settings → Voice first.`);
     return model;

@@ -220,7 +220,8 @@ impl Provider for GoogleProvider {
             context,
         )
         .await?;
-        let mut stream = super::sse::EventStream::new(response.bytes_stream());
+        let mut stream =
+            super::sse::EventStream::for_completion(response.bytes_stream(), &self.info.base_url);
         let mut parts = Vec::new();
         let mut call_ids = Vec::new();
         let mut usage = Usage::default();

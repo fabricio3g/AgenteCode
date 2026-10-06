@@ -6,13 +6,13 @@ import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { app, BrowserWindow } from 'electron';
 import { setMainWindow } from '../../main/window-manager.ts';
-import { panelSetBounds, panelSetTakeover } from '../../main/browser-panel.ts';
+import { panelSetBounds, panelSetTakeover, panelTab, panelSetViewport } from '../../main/browser-panel.ts';
 import { runBrowserAction } from '../../main/browser-actions.ts';
 
 app.disableHardwareAcceleration();
 app.on('window-all-closed', () => {});
 
-const PAGE = `<!doctype html><title>Driver test</title>
+const PAGE = `<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><title>Driver test</title>
 <h1>Sign up</h1>
 <label for="email">Email</label><input id="email" name="email">
 <button id="go" onclick="document.getElementById('out').textContent = 'Hello ' + document.getElementById('email').value; console.error('boom from page')">Continue</button>
@@ -45,6 +45,12 @@ async function run() {
     const clicked = await runBrowserAction('click', { ref: go });
     assert.match(clicked.text, /Hello ada@example.com/);
     assert.match(clicked.text, /1 new error\(s\)/);
+    const cursor = await panelTab().view.webContents.executeJavaScript("(() => { const host=document.getElementById('__agente_pointer');return {visible:host?.style.opacity==='1',transparent:host?.style.pointerEvents==='none'}; })()");
+    assert.deepEqual(cursor,{visible:true,transparent:true},'Agent pointer is visible without intercepting clicks');
+    await panelSetViewport('mobile');
+    assert.equal(await panelTab().view.webContents.executeJavaScript('innerWidth'),390);
+    await panelSetViewport('desktop');
+    assert.equal(await panelTab().view.webContents.executeJavaScript('innerWidth'),1440);
 
     const consoleRead = await runBrowserAction('console', { level: 'error' });
     assert.match(consoleRead.text, /\[error\] boom from page/);

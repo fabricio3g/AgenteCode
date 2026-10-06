@@ -117,8 +117,8 @@
     "enterYourName": "Introduce tu nombre",
     "showAssistantText": "Mostrar texto del asistente",
     "showAssistantTextDesc": "Mostrar respuestas de texto del asistente.",
-    "enableThinking": "Activar pensamiento",
-    "enableThinkingDesc": "Reservar espacio para futura visualización del razonamiento.",
+    "enableThinking": "Mostrar el razonamiento",
+    "enableThinkingDesc": "Muestra el razonamiento del modelo, plegado, sobre su respuesta.",
     "huggingFaceAccess": "Acceso a Hugging Face",
     "huggingFaceDesc": "Solo necesario para descargas de modelos restringidos o privados.",
     "accessToken": "Token de acceso",
@@ -139,7 +139,9 @@
     "editorDesc": "Se usa en «Abrir en el editor». Déjalo vacío para detectar $EDITOR o los editores de tu PATH. {file} y {line} se reemplazan cuando existen.",
     "editorPlaceholder": "Automático (VS Code, Cursor, Zed…)",
     "light": "Claro",
-    "dark": "Oscuro"
+    "dark": "Oscuro",
+    "setup": "Configuración inicial",
+    "setupWizard": "Asistente de configuración"
   },
   "composer": {
     "modeChat": "Chat",
@@ -265,8 +267,69 @@
     "downloadTtsModel": "Leer las respuestas en voz alta",
     "ttsModelDescription": "Opcional. Descarga un motor de voz y elige una voz; puedes cambiarlo luego en Configuración → Voz.",
     "setupTitle": "Configurar Agente",
-    "setupHint": "Revisa el idioma, el motor local, el modelo y la voz.",
-    "reopenSetup": "Abrir configuración inicial"
+    "setupHint": "Repite la configuración inicial: modelos, voz y dictado. No se borra nada instalado.",
+    "reopenSetup": "Abrir configuración inicial",
+    "progress": "Progreso de la configuración",
+    "stage": {
+      "welcome": "Bienvenida",
+      "models": "Modelos",
+      "voice": "Voz",
+      "done": "Listo"
+    },
+    "skip": "Omitir",
+    "later": "Configurar después",
+    "continue": "Continuar",
+    "getStarted": "Empezar",
+    "start": "Empezar a usar Agente",
+    "install": "Instalar",
+    "installed": "Instalado",
+    "download": "Descargar",
+    "welcomeTitle": "Te damos la bienvenida a {app}",
+    "welcomeLead": "Unas pocas elecciones y listo. Todo se puede cambiar después en Ajustes.",
+    "models": {
+      "title": "¿Cómo deben funcionar los chats?",
+      "lead": "Usa un proveedor en la nube o un modelo privado en este equipo. Puedes añadir el otro después.",
+      "cloud": "Un proveedor en la nube",
+      "cloudHint": "Los modelos más potentes, rápidos en cualquier equipo. Requiere una clave de API del proveedor.",
+      "local": "En este equipo",
+      "localHint": "Privado y sin conexión. Descarga un motor y un modelo de 1–3 GB."
+    },
+    "cloud": {
+      "title": "Conecta un proveedor",
+      "lead": "Pega una clave de API, comprueba la conexión y elige el modelo con el que empiezan los chats.",
+      "provider": "Proveedor",
+      "keySaved": "Clave guardada — déjalo vacío para conservarla",
+      "connect": "Comprobar conexión",
+      "model": "Modelo"
+    },
+    "local": {
+      "title": "Usar modelos en este equipo",
+      "lead": "Este equipo tiene {ram} GB de memoria y {gpu}. Después vienen el motor y un modelo a su medida.",
+      "leadUnknown": "Instala el motor y luego un modelo a la medida de este equipo.",
+      "engineReady": "El motor que ejecuta los modelos de chat está instalado.",
+      "engineHint": "El motor que ejecuta los modelos de chat. Instala la versión probada, {tag}.",
+      "models": "Modelos",
+      "minRam": "necesita {n} GB de memoria"
+    },
+    "noEngineBuild": "No se encontró una versión de llama.cpp para este equipo.",
+    "voice": {
+      "title": "Voz",
+      "lead": "Ambas opcionales y sin conexión: una voz que lee las respuestas y el dictado para el botón del micrófono.",
+      "readAloud": "Leer respuestas en voz alta",
+      "dictation": "Dictado",
+      "dictationReady": "El dictado funciona en este equipo.",
+      "dictationHint": "Habla en lugar de escribir. Descarga el motor y un modelo de voz.",
+      "dictationDownload": "Descargar · {size} MB"
+    },
+    "done": {
+      "title": "Todo listo",
+      "lead": "Esto es lo que está preparado. Lo que omitiste te espera en Ajustes.",
+      "cloud": "{provider} · {model}",
+      "local": "{model}, en este equipo",
+      "voice": "{model}",
+      "noModel": "Sin configurar — añade un proveedor o un modelo local en Ajustes",
+      "noVoice": "Desactivado — descarga una voz en Ajustes → Voz"
+    }
   },
   "common": {
     "ok": "Aceptar",
@@ -285,6 +348,11 @@
     "refresh": "Actualizar"
   },
   "code": {
+    "pane": {
+      "openWindow": "Abrir en una nueva ventana",
+      "close": "Cerrar panel",
+      "tooNarrow": "No hay espacio para un segundo panel"
+    },
     "errors": {
       "providerUnavailable": "El proveedor no está disponible temporalmente. Inténtalo de nuevo en unos instantes.",
       "internetUnavailable": "No se pudo conectar a internet. Comprueba tu conexión.",
@@ -373,8 +441,8 @@
     "compactFailed": "No se pudo compactar: {error}",
     "compaction": {
       "working": "Compactando…",
-      "trimNow": "Recortar localmente",
-      "smartNow": "Resumir y compactar",
+      "trimNow": "Recortar",
+      "smartNow": "Resumir",
       "settingsHint": "Resume la conversación con el LLM o recórtala localmente sin una llamada al modelo.",
       "unchanged": "Nada que compactar",
       "tokens": "tokens",
@@ -414,8 +482,8 @@
       "subagents": {
         "running": "Ejecutando subagentes",
         "done": "Subagentes",
-  "working": "{n} en curso",
-  "failed": "{n} con error"
+        "working": "{n} en curso",
+        "failed": "{n} con error"
       },
       "running": {
         "read": "leyendo {n, plural, one {# archivo} other {# archivos}}",
@@ -535,7 +603,9 @@
         "all": "Todos los subagentes",
         "inherit": "Usa el modelo de la conversación",
         "useModel": "Usar el modelo actual",
-        "reset": "Restablecer"
+        "reset": "Usar el predeterminado",
+        "defaultName": "Todos los subagentes",
+        "defaultHint": "Lo usa cualquier tipo sin modelo propio. Sin definir, sigue al chat."
       },
       "mcp": {
         "title": "Servidores MCP",
@@ -569,7 +639,14 @@
         "image": "Imágenes",
         "audio": "Audio",
         "video": "Vídeo",
-        "save": "Guardar"
+        "save": "Guardar",
+        "context": "Contexto",
+        "subagents": "Subagentes",
+        "smartCompactionHint": "Compacta solo cerca del límite, con el modelo de compactación.",
+        "compactNow": "Compactar ahora",
+        "auto": "Los cambios se aplican al instante.",
+        "saving": "Guardando…",
+        "saved": "Guardado"
       }
     },
     "message": {
@@ -619,9 +696,16 @@
     "previewPick": "Elige una conversación para verla",
     "previewHint": "Pasa el cursor sobre un resultado o usa las flechas.",
     "clear": "Borrar",
-    "daysAgo": "hace {n} d"
+    "daysAgo": "hace {n} d",
+    "matches": "Coincidencias",
+    "recent": "Recientes",
+    "keysMove": "mover",
+    "keysOpen": "abrir",
+    "keysClose": "cerrar"
   },
   "browser": {
+    "resolution": "Resolución",
+    "pointerHint": "El puntero naranja muestra acciones del agente",
     "title": "Navegador del agente",
     "newTab": "Nueva pestaña",
     "closeTab": "Cerrar pestaña",
@@ -644,7 +728,10 @@
     "emptyTitle": "Abre un sitio web",
     "emptyHint": "Ingresa una dirección arriba o pide al agente que navegue.",
     "annotate": "Dibujar y añadir instrucciones",
-    "browse": "Volver a la página en vivo"
+    "browse": "Volver a la página en vivo",
+    "pick": "Seleccionar elemento",
+    "pickHint": "Haz clic en un elemento · Mayús+clic para varios · Esc para parar",
+    "pickAdded": "{n, plural, one {# elemento añadido al mensaje} other {# elementos añadidos al mensaje}}"
   },
   "localLoad": {
     "title": "Cargar modelo local",
@@ -788,7 +875,11 @@
     "switchFailed": "No se pudo cambiar el modelo",
     "sourceFailed": "No se pudo cambiar el origen del modelo. Inténtalo de nuevo.",
     "unloaded": "Modelo descargado",
-    "unloadFailed": "No se pudo descargar el modelo"
+    "unloadFailed": "No se pudo descargar el modelo",
+    "retired": "Retirado",
+    "retiredHint": "El proveedor ya no lista este modelo; puede dejar de funcionar.",
+    "notListed": "No listado",
+    "notListedHint": "Lo lista models.dev, pero no la lista de modelos del proveedor."
   },
   "settingsNav": {
     "label": "Secciones de ajustes",
@@ -1060,7 +1151,7 @@
     "micBusyHint": "Cierra la app que lo usa y vuelve a intentarlo.",
     "engine": {
       "title": "Motor de voz",
-      "hint": "Funciona en este equipo. Descárgalo una vez y desde entonces se usa sin conexión.",
+      "hint": "audio.cpp, incluido con la app. Arranca con la primera respuesta leída y funciona sin conexión.",
       "supertonic-3": "Rápido, natural y multilingüe. Recomendado.",
       "kokoro-82m": "Las voces más naturales, en 9 idiomas.",
       "languages": "{n} idiomas",
@@ -1070,14 +1161,24 @@
       "delete": "Eliminar",
       "deleteTitle": "¿Eliminar {name}?",
       "deleteMessage": "Libera {size} MB. Puedes volver a descargarlo cuando quieras.",
-      "download": "Descargar · {size} MB",
+      "download": "Descargar · {size}",
       "needsEspeak": "Este idioma necesita eSpeak NG en tu equipo. En Ubuntu o Debian: sudo apt install espeak-ng",
       "languageHint": "El idioma en que se leen las respuestas.",
       "female": "Femenina",
       "male": "Masculina",
       "none": "Descarga un motor de voz arriba para oír las respuestas en voz alta.",
       "acceleration": "Aceleración",
-      "threads": "Hilos de CPU"
+      "threads": "Hilos de CPU",
+      "runsHere": "funciona en este equipo",
+      "idle": "En reposo",
+      "restart": "Reiniciar el motor de voz",
+      "accelerationHint": "Vulkan usa la tarjeta gráfica cuando esta versión lo incluye.",
+      "cpu": "CPU",
+      "vulkan": "Vulkan (tarjeta gráfica)",
+      "threadsHint": "Más hilos hablan antes y usan más procesador.",
+      "threadsAuto": "Automático ({n})",
+      "modelsTitle": "Modelos de voz",
+      "modelsHint": "Descarga uno; las respuestas se leen con el modelo en uso."
     },
     "call": {
       "title": "Llamada de voz",
@@ -1109,12 +1210,102 @@
       "preparingAudio": "Preparando audio",
       "noise": "Ruido de fondo",
       "finishing": "Esperando a que termines"
+    },
+    "sound": "Sonido",
+    "playSample": "Escuchar una muestra",
+    "catalog": {
+      "search": "Buscar entre {n} modelos de voz",
+      "searchLabel": "Buscar modelos de voz",
+      "featured": "Recomendado",
+      "status": {
+        "testing": "En pruebas",
+        "experimental": "Experimental"
+      },
+      "needsReference": "Solo habla con una voz clonada de una grabación",
+      "fit": {
+        "good": "Funciona bien en este equipo",
+        "slow": "Funciona aquí, pero puede ir lento",
+        "no": "Demasiado grande para este equipo",
+        "unknown": "Tamaño desconocido"
+      },
+      "noMatches": "Ningún modelo de voz coincide.",
+      "showAll": "Ver los {n} modelos"
+    },
+    "clone": {
+      "title": "Tus voces",
+      "hint": "Clona una voz a partir de una grabación corta. Los modelos compatibles hablarán con ella.",
+      "group": "Tus voces",
+      "add": "Añadir una voz",
+      "addHint": "Graba 10–30 segundos de voz clara o elige un archivo de audio.",
+      "record": "Grabar",
+      "stop": "Detener",
+      "choose": "Elegir archivo",
+      "name": "Nombre",
+      "transcript": "Lo que dice el clip (opcional, mejora la precisión)",
+      "save": "Guardar voz",
+      "delete": "Eliminar voz",
+      "recording": "Grabación",
+      "micDenied": "Se denegó el acceso al micrófono.",
+      "unreadable": "No se pudo leer ese audio."
     }
   },
   "searchSettings": {
     "title": "Búsqueda web",
     "description": "De dónde salen los resultados web y cuántos usar.",
-    "getKey": "Obtener una clave API de {name}"
+    "getKey": "Obtener una clave API de {name}",
+    "auto": "Automático",
+    "providerSection": "Proveedor",
+    "provider": "Proveedor de búsqueda",
+    "providerHint": "Usa un proveedor directamente o combina un grupo de motores.",
+    "targetResults": "Resultados objetivo",
+    "targetResultsHint": "Las búsquedas web normales piden de 1 a 20 resultados. Los modos profundos usan su propio presupuesto de investigación, mayor.",
+    "safeSearch": "Búsqueda segura",
+    "safeSearchHint": "Se aplica cuando el motor seleccionado lo admite.",
+    "safeOff": "Desactivada",
+    "safeModerate": "Moderada",
+    "safeStrict": "Estricta",
+    "configuration": "Configuración de {name}",
+    "configurationHint": "Este proveedor permanece inactivo hasta que sus campos obligatorios se guarden correctamente.",
+    "apiKey": "Clave de API",
+    "apiKeyFor": "Clave de API de {name}",
+    "baseUrl": "URL base",
+    "baseUrlFor": "URL base de {name}",
+    "model": "Modelo",
+    "apiUrl": "URL de la API",
+    "saveAndUse": "Guardar y usar",
+    "saving": "Guardando…",
+    "saveConfiguration": "Guardar configuración",
+    "saveNote": "Guardar la configuración nunca activa este motor automáticamente.",
+    "enginePool": "Grupo de motores",
+    "enabledCount": "{n} activados",
+    "enginePoolHint": "Solo los motores activados con la configuración completa reciben consultas.",
+    "testEnabled": "Probar activados",
+    "testing": "Probando…",
+    "poolActions": "Acciones del grupo de motores",
+    "enableRecommended": "Activar recomendados",
+    "enableAll": "Activar todos los configurados",
+    "disableAll": "Desactivar todos",
+    "resetRecommended": "Restablecer a recomendados",
+    "filter": "Filtrar motores…",
+    "filterLabel": "Filtrar motores",
+    "emptyPool": "Activa al menos un motor. Este grupo vacío no reemplazará tu última selección guardada.",
+    "group": {
+      "recommended": "Recomendados",
+      "general": "General",
+      "research": "Investigación",
+      "configured": "Autoalojados / API"
+    },
+    "experimental": "Experimental",
+    "missing": "Falta {what}",
+    "configured": "Configurado",
+    "enable": "Activar {name}",
+    "disable": "Desactivar {name}",
+    "configure": "Configurar",
+    "noMatch": "Ningún motor coincide con “{query}”.",
+    "catalogError": "No se pudo cargar el catálogo de motores.",
+    "probeError": "No se pudieron probar los motores seleccionados.",
+    "cooldown": "En pausa hasta las {time}",
+    "noResults": "Sin resultados"
   },
   "modelHub": {
     "navTitle": "Modelos locales",
@@ -1266,7 +1457,7 @@
   "codeWs": {
     "panes": "Paneles",
     "changes": "Cambios",
-  "plan": "Plan",
+    "plan": "Plan",
     "terminal": "Terminal",
     "processes": "Procesos",
     "browser": "Navegador",
@@ -1607,7 +1798,26 @@
     "cleanedUp": "Se liberaron {size}",
     "nothingToClean": "No hay nada que limpiar",
     "manageBuilds": "Compilaciones de llama.cpp",
-    "manageBuildsHint": "Elige una compilación concreta, mira el servidor en ejecución o instala desde una URL."
+    "manageBuildsHint": "Elige una compilación concreta, mira el servidor en ejecución o instala desde una URL.",
+    "notBundled": "No incluido en esta versión",
+    "noVoiceModel": "sin modelo de voz",
+    "setUpVoice": "Configurar voz",
+    "running": "En marcha",
+    "bundled": "Incluido",
+    "notInstalledChat": "No instalado · necesario para usar modelos de chat en este equipo",
+    "notInstalledDictation": "No instalado · necesario para dictar en este equipo",
+    "recommended": "Recomendada",
+    "installed": "Instalada",
+    "version": "Versión",
+    "inUse": "En uso",
+    "switch": "Cambiar",
+    "checking": "Buscando versiones…",
+    "releasesUnavailable": "No se pudieron listar las versiones. Revisa tu conexión e inténtalo de nuevo.",
+    "llamaBuilds": "Compilaciones de llama.cpp",
+    "llamaBuildsHint": "Compilaciones instaladas, el servidor en ejecución e instalación desde una URL",
+    "whisperBuilds": "Compilaciones de whisper.cpp",
+    "whisperBuildsHint": "Elige qué compilación usa el dictado, o añade la tuya",
+    "audioEngineHint": "El motor de voz incluido: estado, backend y archivos"
   },
   "downloads": {
     "title": "Descargas",
@@ -1896,7 +2106,8 @@
     "close": "Cerrar",
     "minimize": "Minimizar",
     "maximize": "Maximizar",
-    "restore": "Restaurar"
+    "restore": "Restaurar",
+    "window": "Ventana"
   },
   "roleplay": {
     "regenerateEarlier": {
@@ -2236,7 +2447,11 @@
     "systemDefault": "Por defecto del sistema",
     "speed": "Velocidad",
     "language": "Idioma",
-    "languagePlaceholder": "Por defecto · p. ej. es"
+    "languagePlaceholder": "Por defecto · p. ej. es",
+    "localHint": "Privado y sin conexión, en este equipo.",
+    "apiHint": "Un servicio en la nube que conectas con una clave de API.",
+    "systemHint": "Las voces incluidas en tu sistema operativo.",
+    "runsOn": "Se ejecuta en"
   },
   "workspace": {
     "panels": "Paneles de trabajo",
@@ -2316,17 +2531,101 @@
     "markInstruction": "Instrucción para esta marca",
     "markInstructionHint": "¿Qué debería cambiar aquí?",
     "instructions": "Instrucciones",
-    "instructionsHint": "Describe lo que quieres que el agente cree o cambie…"
+    "instructionsHint": "Describe lo que quieres que el agente cree o cambie…",
+    "emptyDrop": "Suelta, pega o sube una imagen para marcarla",
+    "sendDisabled": "Añade una imagen o un tablero para enviar",
+    "sending": "Enviando…",
+    "style": "Color y trazo",
+    "hidePoints": "Ocultar puntos"
   },
   "promptQueue": {
     "title": "En cola",
-    "hint": "Enter envía ahora",
+    "hint": "Se envía al terminar la ejecución",
     "send": "Enviar ahora",
     "sendNow": "Enviar ahora los mensajes en cola",
     "edit": "Editar mensaje en cola",
     "save": "Guardar",
     "cancel": "Cancelar",
     "sending": "Enviando…",
-    "remove": "Quitar mensaje de la cola"
+    "remove": "Quitar mensaje de la cola",
+    "sendAll": "Enviar todo",
+    "sendNext": "Enviar siguiente",
+    "sendOne": "Enviar este ahora"
+  },
+  "conversationInfo": {
+    "created": "Creada",
+    "updated": "Actualizada",
+    "folder": "Carpeta",
+    "project": "Proyecto",
+    "models": "Modelos usados",
+    "unrecorded": "Sin registro",
+    "selectedModel": "Modelo seleccionado"
+  },
+  "sidebarOrganize": {
+    "newFolder": "Nueva carpeta de conversaciones",
+    "folderName": "Nombre de carpeta",
+    "create": "Crear",
+    "folderOptions": "Opciones de carpeta",
+    "moveUp": "Subir",
+    "moveDown": "Bajar",
+    "ungroup": "Sacar de la carpeta",
+    "moveTo": "Mover a {name}",
+    "removeFolder": "Quitar carpeta",
+    "dropHere": "Arrastra conversaciones aquí"
+  },
+  "projectControls": {
+    "title": "Controles del proyecto",
+    "openEditor": "Abrir en el editor",
+    "push": "Enviar cambios",
+    "addScript": "Añadir script al proyecto",
+    "scriptName": "Nombre del script",
+    "command": "Comando"
+  },
+  "audioEngine": {
+    "version": "Versión",
+    "backends": "Backends incluidos",
+    "inUse": "En uso",
+    "threads": "{count} hilos",
+    "models": "Familias de modelos de voz compatibles",
+    "status": "Estado",
+    "runningOn": "En ejecución en el puerto {port}",
+    "stopped": "Detenido",
+    "espeakHint": "Kokoro lo necesita para la mayoría de idiomas",
+    "present": "Presente",
+    "missing": "Falta",
+    "binary": "Binario del motor",
+    "modelsFolder": "Carpeta de modelos de voz",
+    "restart": "Reiniciar"
+  },
+  "promptSettings": {
+    "localTitle": "Prompt de sistema local",
+    "apiTitle": "Prompt de sistema de la API",
+    "localDescription": "Se usa en las conversaciones con el entorno local.",
+    "apiDescription": "Se usa en las conversaciones con proveedores de API.",
+    "fallbackLabel": "Prompt de sistema compartido de respaldo",
+    "systemLabel": "Prompt de sistema",
+    "localLabel": "Prompt del entorno local",
+    "localPlaceholder": "Instrucciones específicas para el modelo local.",
+    "userLabel": "Prefijo del prompt de usuario",
+    "userPlaceholder": "Prefijo de instrucciones opcional para conversaciones con la API.",
+    "cancel": "Cancelar",
+    "save": "Guardar",
+    "saving": "Guardando…"
+  },
+  "home": {
+    "tools": {
+      "title": "Herramientas",
+      "button": "Herramientas {on}/{total}",
+      "count": "{on} de {total} activas",
+      "group": {
+        "web": "Web",
+        "browser": "Navegador",
+        "files": "Archivos y documentos",
+        "productivity": "Productividad",
+        "media": "Multimedia",
+        "data": "Datos y gráficos",
+        "code": "Código"
+      }
+    }
   }
 }

@@ -1,6 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+  import { Tooltip } from '$lib/components/ui';
   import { motionFly, motionFade } from '$lib/utils/transitions';
   import { X } from 'lucide-svelte';
   import { toastStore } from '$lib/stores/toast.svelte';
@@ -30,24 +31,24 @@
       {#if toast.action}
         <button type="button" class="toast-action" onclick={toast.action.run}>{toast.action.label}</button>
       {/if}
-      <button
+      <Tooltip label="Dismiss" position="bottom"><button
         type="button"
         class="ui-icon-button is-xs shrink-0"
         onclick={() => toastStore.dismiss(toast.id)}
         aria-label="Dismiss"
       >
         <X class="size-3" />
-      </button>
+      </button></Tooltip>
     </div>
   {/each}
 </div>
 
 <style>
   .toast {
-    background: var(--popover);
-    border: 1px solid var(--border);
-    box-shadow: var(--shadow-lg);
-    border-radius: var(--radius-lg);
+    background: var(--float-bg);
+    border: 1px solid var(--float-border);
+    box-shadow: var(--float-shadow);
+    border-radius: var(--float-radius);
     max-width: 22rem;
   }
   .toast-action {

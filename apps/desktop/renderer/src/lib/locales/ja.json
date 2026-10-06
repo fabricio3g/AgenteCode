@@ -117,8 +117,8 @@
     "enterYourName": "お名前を入力",
     "showAssistantText": "アシスタントテキストを表示",
     "showAssistantTextDesc": "アシスタントのテキスト応答を表示します。",
-    "enableThinking": "思考を有効にする",
-    "enableThinkingDesc": "将来の推論表示用にスペースを予約します。",
+    "enableThinking": "Show thinking",
+    "enableThinkingDesc": "Show the model's reasoning, folded, above its answer.",
     "huggingFaceAccess": "Hugging Face アクセス",
     "huggingFaceDesc": "制限付きまたはプライベートモデルのダウンロードにのみ必要です。",
     "accessToken": "アクセストークン",
@@ -139,7 +139,9 @@
     "editorDesc": "「エディターで開く」で使用します。空欄なら $EDITOR か PATH 上のエディターを自動検出します。{file} と {line} は存在する場合に置換されます。",
     "editorPlaceholder": "自動（VS Code、Cursor、Zed…）",
     "light": "ライト",
-    "dark": "ダーク"
+    "dark": "ダーク",
+    "setup": "Setup",
+    "setupWizard": "Setup wizard"
   },
   "composer": {
     "modeChat": "チャット",
@@ -265,8 +267,69 @@
     "downloadTtsModel": "返信を読み上げる",
     "ttsModelDescription": "任意。音声エンジンをダウンロードして声を選びます。後で 設定 → 音声 で変更できます。",
     "setupTitle": "Set up Agente",
-    "setupHint": "Review language, local runtime, model, and voice settings.",
-    "reopenSetup": "Open setup wizard"
+    "setupHint": "Run the first-time setup again: models, voice and dictation. Nothing installed is removed.",
+    "reopenSetup": "Open setup wizard",
+    "progress": "Setup progress",
+    "stage": {
+      "welcome": "Welcome",
+      "models": "Models",
+      "voice": "Voice",
+      "done": "Done"
+    },
+    "skip": "Skip",
+    "later": "Set up later",
+    "continue": "Continue",
+    "getStarted": "Get started",
+    "start": "Start using Agente",
+    "install": "Install",
+    "installed": "Installed",
+    "download": "Download",
+    "welcomeTitle": "Welcome to {app}",
+    "welcomeLead": "A few choices and you are ready. Everything here can be changed later in Settings.",
+    "models": {
+      "title": "How should chats run?",
+      "lead": "Use a cloud provider, or run a model privately on this computer. You can add the other later.",
+      "cloud": "A cloud provider",
+      "cloudHint": "The strongest models, fast on any computer. Needs an API key from the provider.",
+      "local": "On this computer",
+      "localHint": "Private and offline. Downloads an engine and a model of 1–3 GB."
+    },
+    "cloud": {
+      "title": "Connect a provider",
+      "lead": "Paste an API key, check the connection, and pick the model chats start with.",
+      "provider": "Provider",
+      "keySaved": "Key saved — leave empty to keep it",
+      "connect": "Check connection",
+      "model": "Model"
+    },
+    "local": {
+      "title": "Run models on this computer",
+      "lead": "This computer has {ram} GB of memory and {gpu}. The engine and a model sized for it come next.",
+      "leadUnknown": "Install the engine, then a model sized for this computer.",
+      "engineReady": "The engine that runs chat models is installed.",
+      "engineHint": "The engine that runs chat models. Installs the tested release, {tag}.",
+      "models": "Models",
+      "minRam": "needs {n} GB of memory"
+    },
+    "noEngineBuild": "No llama.cpp build was found for this computer.",
+    "voice": {
+      "title": "Voice",
+      "lead": "Both optional, both offline: a voice that reads replies aloud, and dictation for the microphone button.",
+      "readAloud": "Read replies aloud",
+      "dictation": "Dictation",
+      "dictationReady": "Dictation runs on this computer.",
+      "dictationHint": "Speak instead of typing. Downloads the engine and a speech model.",
+      "dictationDownload": "Download · {size} MB"
+    },
+    "done": {
+      "title": "You're set",
+      "lead": "Here is what is ready. Anything skipped waits in Settings.",
+      "cloud": "{provider} · {model}",
+      "local": "{model}, on this computer",
+      "voice": "{model}",
+      "noModel": "Not set up — add a provider or a local model in Settings",
+      "noVoice": "Off — download a voice in Settings → Voice"
+    }
   },
   "common": {
     "ok": "OK",
@@ -285,6 +348,11 @@
     "refresh": "更新"
   },
   "code": {
+    "pane": {
+      "openWindow": "新しいウィンドウで開く",
+      "close": "ペインを閉じる",
+      "tooNarrow": "2 つ目のペインを置く幅がありません"
+    },
     "errors": {
       "providerUnavailable": "プロバイダーは一時的に利用できません。しばらくしてから再試行してください。",
       "internetUnavailable": "インターネットに接続できません。接続を確認してください。",
@@ -414,8 +482,8 @@
       "subagents": {
         "running": "サブエージェントを実行中",
         "done": "サブエージェント",
-  "working": "{n} 件実行中",
-  "failed": "{n} 件失敗"
+        "working": "{n} 件実行中",
+        "failed": "{n} 件失敗"
       },
       "running": {
         "read": "{n} 件のファイルを読み込み中",
@@ -535,7 +603,9 @@
         "all": "すべてのサブエージェント",
         "inherit": "会話のモデルを使用",
         "useModel": "現在のモデルを使う",
-        "reset": "リセット"
+        "reset": "リセット",
+        "defaultName": "All subagents",
+        "defaultHint": "Used by any type below that has no model of its own. Unset follows the chat."
       },
       "mcp": {
         "title": "MCP サーバー",
@@ -569,7 +639,14 @@
         "image": "画像",
         "audio": "音声",
         "video": "動画",
-        "save": "保存"
+        "save": "保存",
+        "context": "Context",
+        "subagents": "Subagents",
+        "smartCompactionHint": "Compacts on its own near the limit, using the compaction model.",
+        "compactNow": "Compact now",
+        "auto": "Changes apply as you make them.",
+        "saving": "Saving…",
+        "saved": "Saved"
       }
     },
     "message": {
@@ -619,9 +696,16 @@
     "previewPick": "プレビューする会話を選択",
     "previewHint": "結果にカーソルを合わせるか、矢印キーを使います。",
     "clear": "クリア",
-    "daysAgo": "{n}日前"
+    "daysAgo": "{n}日前",
+    "matches": "Matches",
+    "recent": "Recent",
+    "keysMove": "move",
+    "keysOpen": "open",
+    "keysClose": "close"
   },
   "browser": {
+    "resolution": "解像度",
+    "pointerHint": "オレンジのポインターはエージェントの操作を示します",
     "title": "エージェントブラウザー",
     "newTab": "新しいタブ",
     "closeTab": "タブを閉じる",
@@ -644,7 +728,10 @@
     "emptyTitle": "Open a website",
     "emptyHint": "Enter an address above, or ask the agent to browse.",
     "annotate": "Draw and add instructions",
-    "browse": "Return to the live page"
+    "browse": "Return to the live page",
+    "pick": "Select element",
+    "pickHint": "Click an element · Shift-click for several · Esc to stop",
+    "pickAdded": "{n, plural, one {# element added to the message} other {# elements added to the message}}"
   },
   "localLoad": {
     "title": "ローカルモデルを読み込む",
@@ -788,7 +875,11 @@
     "switchFailed": "モデルを切り替えられませんでした",
     "sourceFailed": "モデルの提供元を変更できませんでした。もう一度お試しください。",
     "unloaded": "モデルを解放しました",
-    "unloadFailed": "モデルを解放できませんでした"
+    "unloadFailed": "モデルを解放できませんでした",
+    "retired": "Retired",
+    "retiredHint": "The provider no longer lists this model; it may stop working.",
+    "notListed": "Not listed",
+    "notListedHint": "Listed by models.dev but not by the provider's own model list."
   },
   "settingsNav": {
     "label": "設定のセクション",
@@ -1070,14 +1161,24 @@
       "delete": "削除",
       "deleteTitle": "{name} を削除しますか？",
       "deleteMessage": "{size} MB を解放します。いつでも再ダウンロードできます。",
-      "download": "ダウンロード · {size} MB",
+      "download": "ダウンロード · {size}",
       "needsEspeak": "この言語には eSpeak NG が必要です。Ubuntu / Debian: sudo apt install espeak-ng",
       "languageHint": "返答を読み上げる言語。",
       "female": "女性",
       "male": "男性",
       "none": "上で音声エンジンをダウンロードすると、返答を読み上げられます。",
       "acceleration": "Acceleration",
-      "threads": "CPU threads"
+      "threads": "CPU threads",
+      "runsHere": "runs on this computer",
+      "idle": "Idle",
+      "restart": "Restart the voice engine",
+      "accelerationHint": "Vulkan uses the graphics card when this build includes it.",
+      "cpu": "CPU",
+      "vulkan": "Vulkan (graphics card)",
+      "threadsHint": "More threads speak sooner and use more of the processor.",
+      "threadsAuto": "Automatic ({n})",
+      "modelsTitle": "Voice models",
+      "modelsHint": "Download one; replies are read with the model in use."
     },
     "call": {
       "title": "Voice call",
@@ -1109,12 +1210,102 @@
       "preparingAudio": "Preparing audio",
       "noise": "Background noise",
       "finishing": "Waiting for you to finish"
+    },
+    "sound": "Sound",
+    "playSample": "Play a sample",
+    "catalog": {
+      "search": "Search {n} voice models",
+      "searchLabel": "Search voice models",
+      "featured": "Recommended",
+      "status": {
+        "testing": "Testing",
+        "experimental": "Experimental"
+      },
+      "needsReference": "Speaks only in a voice cloned from a recording",
+      "fit": {
+        "good": "Runs well on this computer",
+        "slow": "Runs here, but may be slow",
+        "no": "Too large for this computer",
+        "unknown": "Size unknown"
+      },
+      "noMatches": "No voice model matches.",
+      "showAll": "Show all {n} models"
+    },
+    "clone": {
+      "title": "Your voices",
+      "hint": "Clone a voice from a short recording. Models that support it will speak in it.",
+      "group": "Your voices",
+      "add": "Add a voice",
+      "addHint": "Record 10–30 seconds of clear speech, or choose an audio file.",
+      "record": "Record",
+      "stop": "Stop",
+      "choose": "Choose file",
+      "name": "Name",
+      "transcript": "What the clip says (optional, improves accuracy)",
+      "save": "Save voice",
+      "delete": "Delete voice",
+      "recording": "Recording",
+      "micDenied": "Microphone access was denied.",
+      "unreadable": "That audio could not be read."
     }
   },
   "searchSettings": {
     "title": "ウェブ検索",
     "description": "ウェブ検索結果の取得元と件数。",
-    "getKey": "{name} の API キーを取得"
+    "getKey": "{name} の API キーを取得",
+    "auto": "Auto",
+    "providerSection": "Provider",
+    "provider": "Search provider",
+    "providerHint": "Use one provider directly, or combine an engine pool.",
+    "targetResults": "Target results",
+    "targetResultsHint": "Standard web searches request 1–20 results. Deep modes use their own larger research budget.",
+    "safeSearch": "Safe search",
+    "safeSearchHint": "Applied when the selected engine supports it.",
+    "safeOff": "Off",
+    "safeModerate": "Moderate",
+    "safeStrict": "Strict",
+    "configuration": "{name} configuration",
+    "configurationHint": "This provider remains inactive until its required fields are saved successfully.",
+    "apiKey": "API key",
+    "apiKeyFor": "{name} API key",
+    "baseUrl": "Base URL",
+    "baseUrlFor": "{name} base URL",
+    "model": "Model",
+    "apiUrl": "API URL",
+    "saveAndUse": "Save and use",
+    "saving": "Saving…",
+    "saveConfiguration": "Save configuration",
+    "saveNote": "Saving configuration never enables this engine automatically.",
+    "enginePool": "Engine pool",
+    "enabledCount": "{n} enabled",
+    "enginePoolHint": "Only enabled engines with complete configuration receive a query.",
+    "testEnabled": "Test enabled",
+    "testing": "Testing…",
+    "poolActions": "Engine pool actions",
+    "enableRecommended": "Enable recommended",
+    "enableAll": "Enable all configured",
+    "disableAll": "Disable all",
+    "resetRecommended": "Reset to recommended",
+    "filter": "Filter engines…",
+    "filterLabel": "Filter engines",
+    "emptyPool": "Enable at least one engine. This empty pool will not replace your last saved selection.",
+    "group": {
+      "recommended": "Recommended",
+      "general": "General",
+      "research": "Research",
+      "configured": "Self-hosted / API"
+    },
+    "experimental": "Experimental",
+    "missing": "Missing {what}",
+    "configured": "Configured",
+    "enable": "Enable {name}",
+    "disable": "Disable {name}",
+    "configure": "Configure",
+    "noMatch": "No engines match “{query}”.",
+    "catalogError": "Could not load the engine catalog.",
+    "probeError": "Could not test the selected engines.",
+    "cooldown": "Cooling down until {time}",
+    "noResults": "No results"
   },
   "modelHub": {
     "navTitle": "ローカルモデル",
@@ -1266,7 +1457,7 @@
   "codeWs": {
     "panes": "パネル",
     "changes": "変更",
-  "plan": "プラン",
+    "plan": "プラン",
     "terminal": "ターミナル",
     "processes": "プロセス",
     "browser": "ブラウザー",
@@ -1607,7 +1798,26 @@
     "cleanedUp": "{size} を解放しました",
     "nothingToClean": "削除するものはありません",
     "manageBuilds": "llama.cpp のビルド",
-    "manageBuildsHint": "特定のビルドを選ぶ、実行中のサーバーを見る、URL からインストールする。"
+    "manageBuildsHint": "特定のビルドを選ぶ、実行中のサーバーを見る、URL からインストールする。",
+    "notBundled": "Not included in this build",
+    "noVoiceModel": "no voice model yet",
+    "setUpVoice": "Set up voice",
+    "running": "Running",
+    "bundled": "Bundled",
+    "notInstalledChat": "Not installed · needed to run chat models on this computer",
+    "notInstalledDictation": "Not installed · needed for dictation on this computer",
+    "recommended": "Recommended",
+    "installed": "Installed",
+    "version": "Version",
+    "inUse": "In use",
+    "switch": "Switch",
+    "checking": "Checking releases…",
+    "releasesUnavailable": "Could not list releases. Check your connection and try again.",
+    "llamaBuilds": "llama.cpp builds",
+    "llamaBuildsHint": "Installed builds, the running server and installing from a URL",
+    "whisperBuilds": "whisper.cpp builds",
+    "whisperBuildsHint": "Choose which build dictation runs on, or add your own",
+    "audioEngineHint": "The bundled voice engine: status, backend and files"
   },
   "downloads": {
     "title": "ダウンロード",
@@ -1896,7 +2106,8 @@
     "close": "閉じる",
     "minimize": "最小化",
     "maximize": "最大化",
-    "restore": "元に戻す"
+    "restore": "元に戻す",
+    "window": "Window"
   },
   "roleplay": {
     "regenerateEarlier": {
@@ -2236,7 +2447,11 @@
     "systemDefault": "システムの既定",
     "speed": "速度",
     "language": "言語",
-    "languagePlaceholder": "既定 · 例: ja"
+    "languagePlaceholder": "既定 · 例: ja",
+    "localHint": "Private and offline, on this computer.",
+    "apiHint": "A cloud service you connect with an API key.",
+    "systemHint": "The voices built into your operating system.",
+    "runsOn": "Runs on"
   },
   "workspace": {
     "panels": "ワークスペースのパネル",
@@ -2316,7 +2531,12 @@
     "markInstruction": "Instruction for this mark",
     "markInstructionHint": "What should change here?",
     "instructions": "Instructions",
-    "instructionsHint": "Describe what you want the agent to build or change…"
+    "instructionsHint": "Describe what you want the agent to build or change…",
+    "emptyDrop": "Drop, paste or upload an image to mark it up",
+    "sendDisabled": "Add an image or board to send",
+    "sending": "Sending…",
+    "style": "Colour and stroke",
+    "hidePoints": "Hide points"
   },
   "promptQueue": {
     "title": "キュー",
@@ -2327,6 +2547,85 @@
     "save": "保存",
     "cancel": "キャンセル",
     "sending": "送信中…",
-    "remove": "キューのメッセージを削除"
+    "remove": "キューのメッセージを削除",
+    "sendAll": "Send all",
+    "sendNext": "Send next",
+    "sendOne": "Send this one now"
+  },
+  "conversationInfo": {
+    "created": "作成日時",
+    "updated": "更新日時",
+    "folder": "フォルダー",
+    "project": "プロジェクト",
+    "models": "使用したモデル",
+    "unrecorded": "記録なし",
+    "selectedModel": "選択中のモデル"
+  },
+  "sidebarOrganize": {
+    "newFolder": "新しい会話フォルダー",
+    "folderName": "フォルダー名",
+    "create": "作成",
+    "folderOptions": "フォルダーの設定",
+    "moveUp": "上へ移動",
+    "moveDown": "下へ移動",
+    "ungroup": "フォルダーから出す",
+    "moveTo": "{name}に移動",
+    "removeFolder": "フォルダーを削除",
+    "dropHere": "会話をここにドロップ"
+  },
+  "projectControls": {
+    "title": "プロジェクトの操作",
+    "openEditor": "エディターで開く",
+    "push": "プッシュ",
+    "addScript": "プロジェクトスクリプトを追加",
+    "scriptName": "スクリプト名",
+    "command": "コマンド"
+  },
+  "audioEngine": {
+    "version": "Version",
+    "backends": "Bundled backends",
+    "inUse": "In use",
+    "threads": "{count} threads",
+    "models": "Supported voice model families",
+    "status": "Status",
+    "runningOn": "Running on port {port}",
+    "stopped": "Stopped",
+    "espeakHint": "Kokoro needs it for most languages",
+    "present": "Present",
+    "missing": "Missing",
+    "binary": "Engine binary",
+    "modelsFolder": "Voice models folder",
+    "restart": "Restart"
+  },
+  "promptSettings": {
+    "localTitle": "Local system prompt",
+    "apiTitle": "API system prompt",
+    "localDescription": "Used for local runtime conversations.",
+    "apiDescription": "Used for API-provider conversations.",
+    "fallbackLabel": "Fallback shared system prompt",
+    "systemLabel": "System prompt",
+    "localLabel": "Local runtime prompt",
+    "localPlaceholder": "Instructions specific to the local model.",
+    "userLabel": "User prompt prefix",
+    "userPlaceholder": "Optional instruction prefix for API conversations.",
+    "cancel": "Cancel",
+    "save": "Save",
+    "saving": "Saving…"
+  },
+  "home": {
+    "tools": {
+      "title": "Tools",
+      "button": "Tools {on}/{total}",
+      "count": "{on} of {total} on",
+      "group": {
+        "web": "Web",
+        "browser": "Browser",
+        "files": "Files & documents",
+        "productivity": "Productivity",
+        "media": "Media",
+        "data": "Data & charts",
+        "code": "Code"
+      }
+    }
   }
 }

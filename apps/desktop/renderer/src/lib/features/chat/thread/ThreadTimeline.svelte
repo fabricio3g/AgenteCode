@@ -204,10 +204,10 @@
     transform: translateY(-50%);
     flex-direction: column;
     gap: 0.125rem;
-    border: 1px solid var(--border);
-    border-radius: 0.75rem;
-    background: var(--popover);
-    box-shadow: var(--shadow-md);
+    border: 1px solid var(--float-border);
+    border-radius: var(--float-radius);
+    background: var(--float-bg);
+    box-shadow: var(--float-shadow);
     color: var(--popover-foreground);
     pointer-events: none;
     animation: dial-tip-in 120ms ease-out;

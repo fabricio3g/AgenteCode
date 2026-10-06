@@ -22,7 +22,8 @@ function engineSpeech(config: AppConfig): boolean {
 }
 function speechRequest(text: string, config: AppConfig, requestId: string) {
   const tts = config.tts;
-  return { text: cleanTextForTTS(text), requestId, voice: tts?.backend_mode === 'api' ? tts.voice || tts.providers?.[tts.api_provider ?? '']?.voice || '' : tts?.voice || 'af_heart',
+  const clone = tts?.backend_mode === 'api' ? undefined : tts?.cloned_voices?.find((voice) => voice.id === tts.cloned_voice);
+  return { text: cleanTextForTTS(text), requestId, ...(clone ? { voiceRef: { file: clone.file, transcript: clone.transcript } } : {}), voice: tts?.backend_mode === 'api' ? tts.voice || tts.providers?.[tts.api_provider ?? '']?.voice || '' : tts?.voice || 'af_heart',
     speed: tts?.speed ?? 1, volume: tts?.volume ?? 1, backend: tts?.backend_mode, provider: tts?.api_provider,
     model: tts?.backend_mode === 'api' ? tts.providers?.[tts.api_provider ?? '']?.model : tts?.voice_model, language: tts?.language };
 }

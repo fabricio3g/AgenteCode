@@ -83,9 +83,15 @@ export class CanvasBoardStore {
     this.save();
   }
 
+  #owners = new Map<string, CanvasBoardStore>();
+  forChat(chatId: string): CanvasBoardStore {
+    let owner = this.#owners.get(chatId);
+    if (!owner) { owner = new CanvasBoardStore(); owner.useChat(chatId); this.#owners.set(chatId, owner); }
+    return owner;
+  }
   save(): void {
     try {
-      localStorage.setItem(KEY, JSON.stringify(Object.fromEntries(Object.entries(this.#docs).map(([id, doc]) => [id, { ...doc, view: { zoom: 1, panX: 0, panY: 0 } }]))));
+      localStorage.setItem(KEY, JSON.stringify(Object.fromEntries(Object.entries({ ...read(), ...(this.activeChatId ? { [this.activeChatId]: this.doc } : {}) }).map(([id, doc]) => [id, { ...doc, view: { zoom: 1, panX: 0, panY: 0 } }]))));
     } catch {
       // Private mode or a full quota: the board lasts for this session.
     }
@@ -274,4 +280,5 @@ export class CanvasBoardStore {
   }
 }
 
+export const CANVAS_CONTEXT = Symbol('conversation-canvas');
 export const canvasBoard = new CanvasBoardStore();

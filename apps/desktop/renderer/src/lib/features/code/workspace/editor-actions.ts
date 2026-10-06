@@ -12,18 +12,18 @@ import { appStore } from '$lib/stores/app.svelte';
 import { toastStore } from '$lib/stores/toast.svelte';
 
 /** Run the terminal-editor command in a fresh terminal at the project root. */
-async function runInTerminal(request: { command: string; cwd: string }): Promise<void> {
-  const tab = await codeWorkspace.newTerminal(request.cwd);
+async function runInTerminal(request: { command: string; cwd: string }, scope?: string): Promise<void> {
+  const tab = await codeWorkspace.newTerminal(request.cwd, undefined, scope);
   codeWorkspace.writeTerminal(tab.id, request.command + '\n');
 }
 
-export async function openFileInEditor(projectRoot: string, path: string, line?: number): Promise<void> {
+export async function openFileInEditor(projectRoot: string, path: string, line?: number, scope?: string): Promise<void> {
   if (!projectRoot || !path) return;
   const editor = (appStore.config.ui?.editor ?? '').trim();
   try {
     const result = await openInEditor({ projectRoot, path, ...(line ? { line } : {}), ...(editor ? { editor } : {}) });
     if (result.terminal) {
-      await runInTerminal(result.terminal);
+      await runInTerminal(result.terminal, scope);
       return;
     }
     if (!result.ok) toastStore.error(result.error || 'Could not open the editor.');

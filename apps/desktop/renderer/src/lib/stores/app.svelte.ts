@@ -1506,8 +1506,12 @@ class AppStore {
 
   private queuedContinuation = new Set<string>();
 
-  async sendQueuedPromptsNow(chatId: string): Promise<void> {
-    if (!this.findChat(chatId)?.pendingPrompts?.length) return;
+  async sendQueuedPromptsNow(chatId: string, id?: string): Promise<void> {
+    const chat = this.findChat(chatId);
+    if (!chat?.pendingPrompts?.length) return;
+    // Chat sends one prompt per turn: the chosen one goes first.
+    const chosen = id ? chat.pendingPrompts.find((item) => item.id === id && !item.sending) : undefined;
+    if (chosen) chat.pendingPrompts = [chosen, ...chat.pendingPrompts.filter((item) => item !== chosen)];
     const run = this.activeRunsByChat[chatId];
     if (run) {
       this.queuedContinuation.add(chatId);
@@ -3493,6 +3497,7 @@ class AppStore {
     show_assistant_text?: boolean;
     enable_thinking?: boolean;
     artifact_toggles?: Record<string, boolean>;
+    home_tools_disabled?: string[];
     composer_mode_control?: 'tabs' | 'auto';
     roleplay_enabled?: boolean;
     editor?: string;
@@ -3524,6 +3529,14 @@ class AppStore {
     if (!enabled && this.activeSpace === 'roleplay') {
       this.setActiveSpace('home');
     }
+  }
+
+  get homeToolsDisabled(): string[] {
+    return this.config.ui?.home_tools_disabled ?? [];
+  }
+
+  async setHomeToolsDisabled(disabled: string[]) {
+    await this.updateUiSettings({ home_tools_disabled: disabled });
   }
 
   getArtifactToggles(): Record<string, boolean> {

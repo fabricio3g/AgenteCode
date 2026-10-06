@@ -332,3 +332,59 @@ code-rendering,navigation,chat-controls}.smoke.ts`. They use isolated profiles a
 scripted/local responses rather than paid provider calls. Rebuild/restart
 `npm run dev` to load the new main-process worker and Rust binary; renderer HMR
 alone does not load those changes.
+
+## Reading why a model is slow (2026-10-06)
+
+A slow turn is one of three waits, and they are now distinguishable from the
+log instead of guessed at. The TUI writes one log per process to
+`~/.cache/agente/agente-<nanos>-<pid>-N.log` (8 MiB per segment, four segments;
+`RUST_LOG=agente_core=debug` for more).
+
+One request produces four lines:
+
+| Line | What it carries |
+| --- | --- |
+| `Provider request shape` | `prompt_bytes`, `messages`, `tool_count`, `tools_bytes`, `cache_markers`, `prompt_cache_key`, `thinking`, `max_tokens` |
+| `Provider HTTP response` | `elapsed_ms` until the response headers |
+| `Provider request completed` | `elapsed_ms`, `first_event_ms`, `first_output_ms`, `stop`, `text_bytes`, `reasoning_bytes`, `tool_calls` |
+| `Provider request failed` | the same `elapsed_ms` / `first_event_ms` plus the error |
+
+```bash
+log=$(ls -t ~/.cache/agente/agente-*.log | head -1)
+grep -E 'Provider (request shape|HTTP response|request (completed|failed))' "$log" | tail -20
+```
+
+How to read it:
+
+- `first_event_ms` high, cache read healthy → the provider has not answered yet
+  (queue, model warm-up, or a gateway hiccup). Nothing local fixes this.
+- `first_event_ms` low, `first_output_ms` high → the model is generating
+  something it does not stream: reasoning with `thinking` above `auto`, or a
+  route that hides its reasoning.
+- Both high and `cache_markers`/`prompt_cache_key` present with no cache read in
+  the usage → the prefix is not being reused; check the provider's cache policy
+  in its TOML before touching the prompt.
+- `tools_bytes` large relative to `prompt_bytes` → the tool schemas are the
+  prompt. Schemas already drop `$schema`/`title`; the rest is real contract.
+- Repeated `failed` lines with a low `first_event_ms` → upstream errors, not
+  latency; the retry line says which attempt it is on.
+- A `Provider request shape` line with no matching `Provider HTTP response` →
+  the provider never answered at all. The wait for headers is bounded by the
+  idle timeout, then the request fails as a stall and is retried.
+
+Three deadlines bound the wait, each on the phase it can safely cut:
+
+| Phase | Deadline | Override |
+| --- | --- | --- |
+| Response headers (nothing answered) | idle, 90 s | `AGENTE_STREAM_IDLE_SECS` |
+| First body bytes (nothing produced) | 45 s | `AGENTE_STREAM_FIRST_BYTE_SECS` |
+| Silence mid-stream (a model may be thinking) | idle, 90 s | `AGENTE_STREAM_IDLE_SECS` |
+
+A request that produced nothing is safe to retry, so it fails sooner than a
+stream that has already started. `Models discovered` carries its own
+`elapsed_ms` for provider model lists, so a slow picker is never confused with a
+slow answer.
+
+The activity strip under the transcript reports the same thing live: after 15 s
+without an event it says `Waiting for the model… 24k in context` (the prompt it
+is waiting on), and after 60 s `No response for 75s`.

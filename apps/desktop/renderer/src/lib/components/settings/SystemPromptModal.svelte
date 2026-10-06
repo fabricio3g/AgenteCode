@@ -1,10 +1,10 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
-  import { motionFade, flyAndScale } from '$lib/utils/transitions';
-  import { modalLayer } from '$lib/components/ui/modal-layer';
+  import { t } from 'svelte-i18n';
+  import { Button, Dialog } from '$lib/components/ui';
   import { dirtyGuard } from '$lib/components/ui/dirty-guard';
-  import { Brain, Cpu, MessageSquareText, X } from 'lucide-svelte';
+  import { MessageSquareText } from 'lucide-svelte';
   import { appStore } from '$lib/stores/app.svelte';
   import { APP_SYSTEM_PROMPT_DEFAULT } from '$lib/app-meta';
 
@@ -32,92 +32,52 @@
   }
 </script>
 
-<div
-  class="ui-modal-backdrop"
-  role="presentation"
-  use:modalLayer={{ onclose: () => requestClose() }}
-  transition:motionFade={{ duration: 150 }}
-  onclick={(e) => {
-    if (e.target === e.currentTarget) requestClose();
-  }}
+<Dialog
+  size="lg"
+  title={isLocal ? $t('promptSettings.localTitle') : $t('promptSettings.apiTitle')}
+  description={isLocal ? $t('promptSettings.localDescription') : $t('promptSettings.apiDescription')}
+  onclose={() => (appStore.promptConfigOpen = false)}
+  beforeClose={guard.allowClose}
 >
-  <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-  <div
-    class="ui-modal-surface max-w-2xl"
-    role="dialog"
-    aria-modal="true"
-    tabindex="-1"
-    transition:flyAndScale={{ y: -12, start: 0.96, duration: 200 }}
-    onclick={(e) => e.stopPropagation()}
-  >
-    <div class="ui-modal-header">
-      <div class="flex items-center gap-2.5 min-w-0">
-        {#if isLocal}
-          <Cpu class="size-4 shrink-0 text-muted-foreground" />
-        {:else}
-          <Brain class="size-4 shrink-0 text-muted-foreground" />
-        {/if}
-        <div class="min-w-0">
-          <div class="ui-modal-title">{isLocal ? 'Local system prompt' : 'API system prompt'}</div>
-          <div class="text-xs text-muted-foreground">
-            {isLocal ? 'Used for local runtime conversations.' : 'Used for API-provider conversations.'}
-          </div>
-        </div>
-      </div>
-      <button
-        type="button"
-        class="ui-icon-button"
-        onclick={() => requestClose()}
-        aria-label="Close prompt settings"
-      >
-        <X class="size-4" />
-      </button>
-    </div>
+  <div class="space-y-4 px-4 py-4 sm:px-5">
+    <label class="block space-y-1.5">
+      <span class="text-[length:var(--text-xs)] font-medium text-muted-foreground">{isLocal ? $t('promptSettings.fallbackLabel') : $t('promptSettings.systemLabel')}</span>
+      <textarea
+        bind:value={systemPrompt}
+        rows="6"
+        class="ui-input resize-y text-[length:var(--text-sm)]"
+        placeholder={APP_SYSTEM_PROMPT_DEFAULT}
+      ></textarea>
+    </label>
 
-    <div class="ui-modal-body space-y-4">
-      <label class="block space-y-2 text-sm">
-        <span class="font-medium text-muted-foreground">{isLocal ? 'Fallback shared system prompt' : 'System prompt'}</span>
+    {#if isLocal}
+      <label class="block space-y-1.5">
+        <span class="text-[length:var(--text-xs)] font-medium text-muted-foreground">{$t('promptSettings.localLabel')}</span>
         <textarea
-          bind:value={systemPrompt}
+          bind:value={localSystemPrompt}
           rows="6"
-          class="ui-input resize-y"
-          placeholder={APP_SYSTEM_PROMPT_DEFAULT}
+          class="ui-input resize-y text-[length:var(--text-sm)]"
+          placeholder={$t('promptSettings.localPlaceholder')}
         ></textarea>
       </label>
-
-      {#if isLocal}
-        <label class="block space-y-2 text-sm">
-          <span class="font-medium text-muted-foreground">Local runtime prompt</span>
-          <textarea
-            bind:value={localSystemPrompt}
-            rows="6"
-            class="ui-input resize-y"
-            placeholder="Instructions specific to the local model."
-          ></textarea>
-        </label>
-      {:else}
-        <label class="block space-y-2 text-sm">
-          <span class="flex items-center gap-2 font-medium text-muted-foreground">
-            <MessageSquareText class="size-4" />
-            User prompt prefix
-          </span>
-          <textarea
-            bind:value={userPrompt}
-            rows="4"
-            class="ui-input resize-y"
-            placeholder="Optional instruction prefix for API conversations."
-          ></textarea>
-        </label>
-      {/if}
-    </div>
-
-    <div class="ui-modal-footer">
-      <button type="button" class="ui-btn ui-btn-ghost" onclick={() => requestClose()}>
-        Cancel
-      </button>
-      <button type="button" class="ui-btn ui-btn-primary" onclick={save} disabled={saving}>
-        {saving ? 'Saving…' : 'Save'}
-      </button>
-    </div>
+    {:else}
+      <label class="block space-y-1.5">
+        <span class="flex items-center gap-1.5 text-[length:var(--text-xs)] font-medium text-muted-foreground">
+          <MessageSquareText class="size-3.5" />
+          {$t('promptSettings.userLabel')}
+        </span>
+        <textarea
+          bind:value={userPrompt}
+          rows="4"
+          class="ui-input resize-y text-[length:var(--text-sm)]"
+          placeholder={$t('promptSettings.userPlaceholder')}
+        ></textarea>
+      </label>
+    {/if}
   </div>
-</div>
+
+  {#snippet footer()}
+    <Button variant="ghost" onclick={() => requestClose()}>{$t('promptSettings.cancel')}</Button>
+    <Button onclick={save} loading={saving} loadingLabel={$t('promptSettings.saving')}>{$t('promptSettings.save')}</Button>
+  {/snippet}
+</Dialog>

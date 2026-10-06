@@ -13,7 +13,7 @@
   import { motionFade, flyAndScale } from '$lib/utils/transitions';
   import { modalLayer } from '$lib/components/ui/modal-layer';
   import { dirtyGuard } from '$lib/components/ui/dirty-guard';
-  import { Button } from '$lib/components/ui';
+  import { Button, Tooltip } from '$lib/components/ui';
   import CastPicker from './CastPicker.svelte';
   import { copy } from '$lib/copy';
 
@@ -62,9 +62,9 @@
           · the first member speaks first
         </div>
       </div>
-      <button type="button" class="ui-icon-button" onclick={() => guard.close(onclose)} aria-label={copy.actions.close}>
+      <Tooltip label={copy.actions.close} position="bottom"><button type="button" class="ui-icon-button" onclick={() => guard.close(onclose)} aria-label={copy.actions.close}>
         <X class="size-4" />
-      </button>
+      </button></Tooltip>
     </div>
 
     <div class="ui-modal-body max-h-[62vh] space-y-3 overflow-y-auto">
@@ -75,7 +75,7 @@
     </div>
 
     <div class="ui-modal-footer">
-      <button type="button" class="ui-btn ui-btn-ghost" onclick={() => guard.close(onclose)}>{copy.actions.cancel}</button>
+      <Button variant="outline" size="sm" type="button" onclick={() => guard.close(onclose)}>{copy.actions.cancel}</Button>
       <Button onclick={save} disabled={!castIds.length}>Save cast</Button>
     </div>
   </div>

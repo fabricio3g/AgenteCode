@@ -76,15 +76,64 @@ pub fn http_client() -> reqwest::Client {
         .clone()
 }
 
-/// Max silence on an SSE/byte stream before we abort (seconds).
-/// Override with `AGENTE_STREAM_IDLE_SECS`.
-pub fn stream_idle_timeout() -> std::time::Duration {
-    let secs = std::env::var("AGENTE_STREAM_IDLE_SECS")
+/// Positive whole seconds from `name`, else `default`.
+fn seconds_from_env(name: &str, default: u64) -> std::time::Duration {
+    let secs = std::env::var(name)
         .ok()
         .and_then(|s| s.parse().ok())
         .filter(|&n: &u64| n > 0)
-        .unwrap_or(90);
+        .unwrap_or(default);
     std::time::Duration::from_secs(secs)
+}
+
+/// Max silence on an SSE/byte stream before we abort (seconds).
+/// Override with `AGENTE_STREAM_IDLE_SECS`.
+pub fn stream_idle_timeout() -> std::time::Duration {
+    seconds_from_env("AGENTE_STREAM_IDLE_SECS", 90)
+}
+
+/// Max wait for the *first* byte of a streamed response (seconds).
+///
+/// A request that has produced nothing is safe to retry, so it fails sooner
+/// than a mid-stream stall: the idle timeout has to tolerate a model thinking
+/// mid-answer, while an unanswered request is usually a dead socket or a
+/// provider that dropped it. Override with `AGENTE_STREAM_FIRST_BYTE_SECS`.
+pub fn stream_first_byte_timeout() -> std::time::Duration {
+    seconds_from_env("AGENTE_STREAM_FIRST_BYTE_SECS", 45)
+}
+
+/// Max wait for a model served on this machine or the local network to start
+/// answering (seconds). A llama-server reads the whole prompt before its first
+/// byte, which on a CPU or a small GPU takes minutes for a long conversation;
+/// cutting it at the remote deadline retried the prefill forever. Override
+/// with `AGENTE_STREAM_LOCAL_FIRST_BYTE_SECS`.
+pub fn local_first_byte_timeout() -> std::time::Duration {
+    seconds_from_env("AGENTE_STREAM_LOCAL_FIRST_BYTE_SECS", 600)
+}
+
+/// Whether `url` points at this machine or a private network (a local model
+/// server), where a slow first byte is prefill, not a dead socket.
+pub fn is_local_endpoint(url: &str) -> bool {
+    let Some(host) = reqwest::Url::parse(url).ok().and_then(|url| {
+        url.host_str()
+            .map(|host| host.trim_matches(['[', ']']).to_ascii_lowercase())
+    }) else {
+        return false;
+    };
+    match host.parse::<std::net::IpAddr>() {
+        Ok(std::net::IpAddr::V4(ip)) => ip.is_loopback() || ip.is_private() || ip.is_link_local(),
+        Ok(std::net::IpAddr::V6(ip)) => ip.is_loopback(),
+        Err(_) => host == "localhost" || host.ends_with(".localhost") || host.ends_with(".local"),
+    }
+}
+
+/// How long a completion to `url` may take to produce its first byte.
+pub fn completion_first_byte_timeout(url: &str) -> std::time::Duration {
+    if is_local_endpoint(url) {
+        local_first_byte_timeout()
+    } else {
+        stream_first_byte_timeout()
+    }
 }
 
 /// Clean a path for tool-facing use: strip verbatim prefixes and normalize
@@ -179,6 +228,47 @@ pub fn redact_secrets(text: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The first-byte deadline must be the shorter of the two: a request that
+    /// produced nothing is safe to retry, while a mid-stream pause may be a
+    /// model still thinking.
+    #[test]
+    fn local_endpoints_wait_longer_for_the_first_byte() {
+        for url in [
+            "http://127.0.0.1:11435/v1",
+            "http://localhost:8080/v1",
+            "http://[::1]:8080/v1",
+            "http://192.168.1.20:8080/v1",
+            "http://box.local:8080/v1",
+        ] {
+            assert!(is_local_endpoint(url), "{url}");
+        }
+        for url in [
+            "https://openrouter.ai/api/v1",
+            "https://api.deepseek.com",
+            "not a url",
+        ] {
+            assert!(!is_local_endpoint(url), "{url}");
+        }
+        assert!(
+            completion_first_byte_timeout("http://127.0.0.1:11435/v1")
+                > completion_first_byte_timeout("https://openrouter.ai/api/v1")
+        );
+    }
+
+    #[test]
+    fn first_byte_deadline_defaults_below_the_idle_timeout() {
+        // Unset names, so an operator's `AGENTE_STREAM_*` overrides in the
+        // environment cannot make this assertion lie about the defaults.
+        let first = seconds_from_env("AGENTE_TEST_UNSET_FIRST_BYTE", 45);
+        let idle = seconds_from_env("AGENTE_TEST_UNSET_IDLE", 90);
+        assert_eq!(first.as_secs(), 45);
+        assert_eq!(idle.as_secs(), 90);
+        assert!(first < idle);
+        // Whatever the environment says, the ordering the retry path relies on
+        // (fail before the idle timeout when nothing arrived) still holds.
+        assert!(stream_first_byte_timeout() <= stream_idle_timeout());
+    }
 
     #[test]
     fn expands_braced_env_template() {

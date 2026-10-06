@@ -11,6 +11,7 @@
 -->
 
 <script lang="ts">
+  import { Button } from '$lib/components/ui';
   import { AlertTriangle } from 'lucide-svelte';
   import Thread from '$lib/features/chat/thread/Thread.svelte';
   import Composer from '$lib/features/chat/Composer.svelte';
@@ -199,16 +200,16 @@
             {missingCharacter ? $t('roleplay.hint.missingCharacter') : $t('roleplay.hint.missingPersona')}
           </span>
           {#if missingCharacter}
-            <button type="button" class="ui-btn ui-btn-ghost" onclick={() => (castEditorOpen = true)}>
+            <Button variant="outline" size="sm" type="button" onclick={() => (castEditorOpen = true)}>
               {$t('roleplay.hint.chooseCharacter')}
-            </button>
-            <button type="button" class="ui-btn ui-btn-ghost text-error" onclick={confirmDeleteScene}>
+            </Button>
+            <Button variant="outline" size="sm" class="text-error" type="button" onclick={confirmDeleteScene}>
               {$t('roleplay.hint.deleteScene')}
-            </button>
+            </Button>
           {:else}
-            <button type="button" class="ui-btn ui-btn-ghost" onclick={() => onPersona(null)}>
+            <Button variant="outline" size="sm" type="button" onclick={() => onPersona(null)}>
               {$t('roleplay.hint.clearPersona')}
-            </button>
+            </Button>
           {/if}
         </div>
       {/if}

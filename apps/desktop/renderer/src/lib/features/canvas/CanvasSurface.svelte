@@ -11,7 +11,8 @@
 -->
 
 <script lang="ts">
-  import { canvasBoard } from './canvas-board.svelte';
+  import { getCanvasBoard } from './canvas-context';
+  const canvasBoard = getCanvasBoard();
   import { boundsOf, normalizeBox, resizeMark, lineEndpoints, type CanvasMark, type Point } from './canvas-doc';
 
   let { imageId, src }: { imageId: string; src?: string } = $props();

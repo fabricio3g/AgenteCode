@@ -284,6 +284,25 @@ export function buildFallbackAssets(platformInfo: RuntimePlatformInfo): ReleaseA
   return selectRuntimeAssets(manifest, FALLBACK_TAG, platformInfo).assets;
 }
 
+/** Recent llama.cpp releases with a build for this machine, newest first, for a version picker. */
+export async function fetchLlamaReleaseList(platformInfo: RuntimePlatformInfo, limit = 8): Promise<Array<{ tag: string; asset: ReleaseAsset }>> {
+  const res = await fetch(`https://api.github.com/repos/${LLAMA_REPO}/releases?per_page=20`, {
+    headers: { Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28', 'User-Agent': 'AgenteDesktop' }
+  });
+  if (!res.ok) throw new Error(`GitHub API ${res.status}`);
+  const releases = await res.json() as Array<{ tag_name: string; draft?: boolean; assets: { name: string; browser_download_url: string }[] }>;
+  const list: Array<{ tag: string; asset: ReleaseAsset }> = [];
+  for (const release of releases) {
+    if (release.draft) continue;
+    const manifest = (release.assets || []).map((a) => ({ name: a.name, url: a.browser_download_url }));
+    const { assets } = selectRuntimeAssets(manifest, release.tag_name, platformInfo);
+    const asset = assets.find((a) => a.variant === 'recommended') ?? assets[0];
+    if (asset) list.push({ tag: release.tag_name, asset });
+    if (list.length >= limit) break;
+  }
+  return list;
+}
+
 export async function fetchLlamaReleaseAssets(
   platformInfo: RuntimePlatformInfo
 ): Promise<ReleaseFetchResult> {

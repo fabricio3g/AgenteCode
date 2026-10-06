@@ -12,6 +12,12 @@ export function isMacPlatform(): boolean {
 const MAC_KEYS: Record<string, string> = { mod: '⌘', shift: '⇧', alt: '⌥', ctrl: '⌃', enter: '↩', escape: 'Esc' };
 const PC_KEYS: Record<string, string> = { mod: 'Ctrl', shift: 'Shift', alt: 'Alt', ctrl: 'Ctrl', enter: 'Enter', escape: 'Esc' };
 
+/** The keys of a combo, one cap each: `mod+shift+k` → ["⌘","⇧","K"] / ["Ctrl","Shift","K"]. */
+export function shortcutKeys(combo: string, mac = isMacPlatform()): string[] {
+  const names = mac ? MAC_KEYS : PC_KEYS;
+  return combo.split('+').map((part) => names[part.toLowerCase()] ?? (part.length === 1 ? part.toUpperCase() : part));
+}
+
 export function formatShortcut(combo: string, mac = isMacPlatform()): string {
   const names = mac ? MAC_KEYS : PC_KEYS;
   const parts = combo.split('+').map((part) => names[part.toLowerCase()] ?? (part.length === 1 ? part.toUpperCase() : part));

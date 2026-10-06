@@ -12,9 +12,9 @@
 <style>
   .window-resize { position: absolute; touch-action: none; outline: none; }
   .window-resize::after { content: ''; position: absolute; border-radius: 6px; background: var(--muted-foreground); opacity: 0; transition: opacity var(--motion-fast) var(--motion-ease); pointer-events: none; }
-  .window-resize:hover::after, .window-resize:focus-visible::after, .window-resize.active::after { opacity: .35; }
+  .window-resize:hover::after, .window-resize:focus-visible::after, .window-resize.active::after { opacity: .18; }
   .grip { position: absolute; pointer-events: none; opacity: 0; transition: opacity var(--motion-fast) var(--motion-ease), transform var(--motion-fast) var(--motion-ease); }
-  .window-resize:hover .grip, .window-resize:focus-visible .grip, .window-resize.active .grip { opacity: .85; }
+  .window-resize:hover .grip, .window-resize:focus-visible .grip, .window-resize.active .grip { opacity: .5; }
   .edge-n, .edge-s { cursor: ns-resize; }
   .edge-e, .edge-w { cursor: ew-resize; }
   .edge-n::after, .edge-s::after { height: 2px; left: 12px; right: 12px; top: calc(50% - 1px); }

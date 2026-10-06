@@ -1303,6 +1303,25 @@ impl RuntimeHandle {
         )
     }
 
+    /// The models.dev record of a provider's models, retired ones included:
+    /// `(id, name, status)`. Empty when the catalog has not loaded.
+    pub fn catalog_models(
+        &self,
+        provider: &str,
+    ) -> Vec<(String, String, agente_core::catalog::ModelStatus)> {
+        let live = self.inner.live();
+        live.catalog
+            .as_deref()
+            .map(|catalog| {
+                catalog
+                    .provider_models(provider)
+                    .into_iter()
+                    .map(|model| (model.id.clone(), model.name.clone(), model.status.clone()))
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
     /// List a provider's models live and keep them as the snapshot turns and
     /// [`Self::model_info`] resolve against.
     pub async fn discover_models(

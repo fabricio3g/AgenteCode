@@ -1,6 +1,10 @@
 // ── Bundled local runtimes, from the upstream releases ─────────────────
-// Desktop ships llama.cpp (llama-server) and whisper.cpp (whisper-cli) so
-// local models work out of the box. Instead of compiling them, the build
+// By default Desktop bundles only audio.cpp's Vulkan build (the voice engine;
+// a Vulkan build also runs on the CPU). llama.cpp and whisper.cpp stay out of
+// the installer: the app downloads the official release the user picks in
+// Settings → On this computer, so the download stays small. Set
+// NATIVE_RUNTIME_ENGINES / NATIVE_RUNTIME_BACKENDS to bundle more (offline
+// installers, development). Instead of compiling them, the build
 // downloads the binaries ggml-org publishes on each project's GitHub
 // releases, checks each archive against the SHA-256 GitHub records for it,
 // and unpacks it into resources/bin/<engine>/<backend>/ (git-ignored), where
@@ -9,8 +13,8 @@
 // Environment:
 //   NATIVE_RUNTIME_PLATFORM  linux | windows | macos   (default: this machine)
 //   NATIVE_RUNTIME_ARCH      x64 | arm64                (default: this machine)
-//   NATIVE_RUNTIME_ENGINES   e.g. "audio"               (default: all engines)
-//   NATIVE_RUNTIME_BACKENDS  e.g. "cpu,vulkan"          (default: published backends except ROCm)
+//   NATIVE_RUNTIME_ENGINES   e.g. "audio,llama"         (default: "audio")
+//   NATIVE_RUNTIME_BACKENDS  e.g. "cpu,vulkan"          (default: vulkan for audio; published backends except ROCm otherwise)
 //   LLAMA_CPP_TAG / WHISPER_CPP_TAG / AUDIO_CPP_TAG  release to use (defaults below)
 //   GITHUB_TOKEN             optional, avoids the API rate limit in CI
 //
@@ -31,7 +35,9 @@ const PLATFORM = process.env.NATIVE_RUNTIME_PLATFORM || (
   process.platform === 'win32' ? 'windows' : process.platform === 'darwin' ? 'macos' : 'linux'
 );
 const ARCH = process.env.NATIVE_RUNTIME_ARCH || (process.arch === 'arm64' ? 'arm64' : 'x64');
-const SELECTED_ENGINES = (process.env.NATIVE_RUNTIME_ENGINES || '').split(',').map(value => value.trim()).filter(Boolean);
+const SELECTED_ENGINES = (process.env.NATIVE_RUNTIME_ENGINES || 'audio').split(',').map(value => value.trim()).filter(Boolean);
+/** The tested releases, shared with the app (Settings recommends the same ones). */
+const TESTED = JSON.parse(fs.readFileSync(path.join(ROOT, 'shared', 'engine-versions.json'), 'utf8'));
 const BACKENDS = (process.env.NATIVE_RUNTIME_BACKENDS || '')
   .split(',')
   .map((value) => value.trim().toLowerCase())
@@ -43,7 +49,7 @@ const ENGINES = [
     engine: 'llama',
     repo: 'ggml-org/llama.cpp',
     // The build the stable v0.5.0 release points at (its nightly-tag.txt).
-    tag: process.env.LLAMA_CPP_TAG || 'b11146',
+    tag: process.env.LLAMA_CPP_TAG || TESTED.llama,
     executables: ['llama-server', 'llama-cli'],
     assets: {
       'linux-x64': {
@@ -73,7 +79,7 @@ const ENGINES = [
   {
     engine: 'audio',
     repo: '0xShug0/audio.cpp',
-    tag: process.env.AUDIO_CPP_TAG || 'v0.8.2',
+    tag: process.env.AUDIO_CPP_TAG || TESTED.audio,
     executables: ['audiocpp_server'],
     // The server reads each model family's definition from model_specs/.
     folders: ['model_specs'],
@@ -87,7 +93,7 @@ const ENGINES = [
   {
     engine: 'whisper',
     repo: 'ggml-org/whisper.cpp',
-    tag: process.env.WHISPER_CPP_TAG || 'b5130',
+    tag: process.env.WHISPER_CPP_TAG || TESTED.whisper,
     executables: ['whisper-cli', 'whisper-server', 'main'],
     // whisper.cpp publishes CPU builds for every OS; its only GPU build
     // (Windows CUDA) is 674 MB, and speech-to-text is quick on the CPU.
@@ -101,8 +107,11 @@ const ENGINES = [
 
 const LIBRARY = /\.(so(\.\d+)*|dll|dylib|metallib)$/i;
 
-function wanted(backend) {
-  return BACKENDS.length ? BACKENDS.includes(backend) : backend !== 'rocm';
+function wanted(backend, spec) {
+  if (BACKENDS.length) return BACKENDS.includes(backend);
+  // audio.cpp ships as its Vulkan build alone: it also runs on the CPU.
+  if (spec.engine === 'audio') return backend === 'vulkan';
+  return backend !== 'rocm';
 }
 
 async function github(url) {
@@ -240,7 +249,7 @@ async function fetchEngine(spec, key, work) {
   const release = await github(`https://api.github.com/repos/${spec.repo}/releases/tags/${spec.tag}`);
   const assets = new Map(release.assets.map((asset) => [asset.name, asset]));
   for (const [backend, names] of Object.entries(byBackend)) {
-    if (wanted(backend)) await fetchBackend(spec, backend, names, assets, work);
+    if (wanted(backend, spec)) await fetchBackend(spec, backend, names, assets, work);
   }
 }
 

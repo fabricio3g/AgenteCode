@@ -1,0 +1,22 @@
+[package]
+name = "agente-audio"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Local, isolated audio processing and device engine"
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true
+hound = "3.5"
+rustfft = "6.4"
+cpal = { version = "0.16", optional = true }
+
+[features]
+default = []
+devices = ["dep:cpal"]
+
+[lints]
+workspace = true

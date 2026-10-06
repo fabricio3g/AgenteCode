@@ -103,7 +103,8 @@ export function createAgentRun(args: RunAgentTaskArgs, config: AppConfig, plan: 
       runtimeMode: normalizeHomeRuntimeMode(args.runtimeMode),
       debugLogs: plan.debugLogs,
       signal: args.signal,
-      artifactToggles: plan.artifactToggles
+      artifactToggles: plan.artifactToggles,
+      disabledTools: plan.disabledTools
     },
     steps: [],
     sources,

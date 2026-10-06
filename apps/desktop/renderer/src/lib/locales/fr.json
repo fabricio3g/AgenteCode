@@ -117,8 +117,8 @@
     "enterYourName": "Entrez votre nom",
     "showAssistantText": "Afficher le texte de l'assistant",
     "showAssistantTextDesc": "Afficher les réponses texte de l'assistant.",
-    "enableThinking": "Activer la réflexion",
-    "enableThinkingDesc": "Réserver de l'espace pour l'affichage futur du raisonnement.",
+    "enableThinking": "Show thinking",
+    "enableThinkingDesc": "Show the model's reasoning, folded, above its answer.",
     "huggingFaceAccess": "Accès Hugging Face",
     "huggingFaceDesc": "Nécessaire uniquement pour les téléchargements de modèles restreints ou privés.",
     "accessToken": "Jeton d'accès",
@@ -139,7 +139,9 @@
     "editorDesc": "Utilisée par « Ouvrir dans l'éditeur ». Laissez vide pour détecter $EDITOR ou les éditeurs de votre PATH. {file} et {line} sont remplacés s'ils sont présents.",
     "editorPlaceholder": "Auto (VS Code, Cursor, Zed…)",
     "light": "Clair",
-    "dark": "Sombre"
+    "dark": "Sombre",
+    "setup": "Setup",
+    "setupWizard": "Setup wizard"
   },
   "composer": {
     "modeChat": "Chat",
@@ -265,8 +267,69 @@
     "downloadTtsModel": "Lire les réponses à voix haute",
     "ttsModelDescription": "Facultatif. Téléchargez un moteur vocal et choisissez une voix ; modifiable plus tard dans Paramètres → Voix.",
     "setupTitle": "Set up Agente",
-    "setupHint": "Review language, local runtime, model, and voice settings.",
-    "reopenSetup": "Open setup wizard"
+    "setupHint": "Run the first-time setup again: models, voice and dictation. Nothing installed is removed.",
+    "reopenSetup": "Open setup wizard",
+    "progress": "Setup progress",
+    "stage": {
+      "welcome": "Welcome",
+      "models": "Models",
+      "voice": "Voice",
+      "done": "Done"
+    },
+    "skip": "Skip",
+    "later": "Set up later",
+    "continue": "Continue",
+    "getStarted": "Get started",
+    "start": "Start using Agente",
+    "install": "Install",
+    "installed": "Installed",
+    "download": "Download",
+    "welcomeTitle": "Welcome to {app}",
+    "welcomeLead": "A few choices and you are ready. Everything here can be changed later in Settings.",
+    "models": {
+      "title": "How should chats run?",
+      "lead": "Use a cloud provider, or run a model privately on this computer. You can add the other later.",
+      "cloud": "A cloud provider",
+      "cloudHint": "The strongest models, fast on any computer. Needs an API key from the provider.",
+      "local": "On this computer",
+      "localHint": "Private and offline. Downloads an engine and a model of 1–3 GB."
+    },
+    "cloud": {
+      "title": "Connect a provider",
+      "lead": "Paste an API key, check the connection, and pick the model chats start with.",
+      "provider": "Provider",
+      "keySaved": "Key saved — leave empty to keep it",
+      "connect": "Check connection",
+      "model": "Model"
+    },
+    "local": {
+      "title": "Run models on this computer",
+      "lead": "This computer has {ram} GB of memory and {gpu}. The engine and a model sized for it come next.",
+      "leadUnknown": "Install the engine, then a model sized for this computer.",
+      "engineReady": "The engine that runs chat models is installed.",
+      "engineHint": "The engine that runs chat models. Installs the tested release, {tag}.",
+      "models": "Models",
+      "minRam": "needs {n} GB of memory"
+    },
+    "noEngineBuild": "No llama.cpp build was found for this computer.",
+    "voice": {
+      "title": "Voice",
+      "lead": "Both optional, both offline: a voice that reads replies aloud, and dictation for the microphone button.",
+      "readAloud": "Read replies aloud",
+      "dictation": "Dictation",
+      "dictationReady": "Dictation runs on this computer.",
+      "dictationHint": "Speak instead of typing. Downloads the engine and a speech model.",
+      "dictationDownload": "Download · {size} MB"
+    },
+    "done": {
+      "title": "You're set",
+      "lead": "Here is what is ready. Anything skipped waits in Settings.",
+      "cloud": "{provider} · {model}",
+      "local": "{model}, on this computer",
+      "voice": "{model}",
+      "noModel": "Not set up — add a provider or a local model in Settings",
+      "noVoice": "Off — download a voice in Settings → Voice"
+    }
   },
   "common": {
     "ok": "OK",
@@ -285,6 +348,11 @@
     "refresh": "Actualiser"
   },
   "code": {
+    "pane": {
+      "openWindow": "Ouvrir dans une nouvelle fenêtre",
+      "close": "Fermer le volet",
+      "tooNarrow": "Pas assez de place pour un second volet"
+    },
     "errors": {
       "providerUnavailable": "Le fournisseur est temporairement indisponible. Réessayez dans un instant.",
       "internetUnavailable": "Impossible de se connecter à internet. Vérifiez votre connexion.",
@@ -414,8 +482,8 @@
       "subagents": {
         "running": "Exécution des sous-agents",
         "done": "Sous-agents",
-  "working": "{n} en cours",
-  "failed": "{n} en échec"
+        "working": "{n} en cours",
+        "failed": "{n} en échec"
       },
       "running": {
         "read": "lecture de {n, plural, one {# fichier} other {# fichiers}}",
@@ -535,7 +603,9 @@
         "all": "Tous les sous-agents",
         "inherit": "Utilise le modèle de la conversation",
         "useModel": "Utiliser le modèle actuel",
-        "reset": "Réinitialiser"
+        "reset": "Réinitialiser",
+        "defaultName": "All subagents",
+        "defaultHint": "Used by any type below that has no model of its own. Unset follows the chat."
       },
       "mcp": {
         "title": "Serveurs MCP",
@@ -569,7 +639,14 @@
         "image": "Images",
         "audio": "Audio",
         "video": "Vidéo",
-        "save": "Enregistrer"
+        "save": "Enregistrer",
+        "context": "Context",
+        "subagents": "Subagents",
+        "smartCompactionHint": "Compacts on its own near the limit, using the compaction model.",
+        "compactNow": "Compact now",
+        "auto": "Changes apply as you make them.",
+        "saving": "Saving…",
+        "saved": "Saved"
       }
     },
     "message": {
@@ -619,9 +696,16 @@
     "previewPick": "Sélectionnez une conversation à prévisualiser",
     "previewHint": "Survolez un résultat ou utilisez les flèches.",
     "clear": "Effacer",
-    "daysAgo": "il y a {n} j"
+    "daysAgo": "il y a {n} j",
+    "matches": "Matches",
+    "recent": "Recent",
+    "keysMove": "move",
+    "keysOpen": "open",
+    "keysClose": "close"
   },
   "browser": {
+    "resolution": "Résolution",
+    "pointerHint": "Le pointeur orange montre les actions de l’agent",
     "title": "Navigateur de l’agent",
     "newTab": "Nouvel onglet",
     "closeTab": "Fermer l’onglet",
@@ -644,7 +728,10 @@
     "emptyTitle": "Open a website",
     "emptyHint": "Enter an address above, or ask the agent to browse.",
     "annotate": "Draw and add instructions",
-    "browse": "Return to the live page"
+    "browse": "Return to the live page",
+    "pick": "Select element",
+    "pickHint": "Click an element · Shift-click for several · Esc to stop",
+    "pickAdded": "{n, plural, one {# element added to the message} other {# elements added to the message}}"
   },
   "localLoad": {
     "title": "Charger un modèle local",
@@ -788,7 +875,11 @@
     "switchFailed": "Impossible de changer de modèle",
     "sourceFailed": "Impossible de changer la source du modèle. Réessayez.",
     "unloaded": "Modèle déchargé",
-    "unloadFailed": "Impossible de décharger le modèle"
+    "unloadFailed": "Impossible de décharger le modèle",
+    "retired": "Retired",
+    "retiredHint": "The provider no longer lists this model; it may stop working.",
+    "notListed": "Not listed",
+    "notListedHint": "Listed by models.dev but not by the provider's own model list."
   },
   "settingsNav": {
     "label": "Sections des réglages",
@@ -1070,14 +1161,24 @@
       "delete": "Supprimer",
       "deleteTitle": "Supprimer {name} ?",
       "deleteMessage": "Libère {size} Mo. Vous pourrez le retélécharger à tout moment.",
-      "download": "Télécharger · {size} Mo",
+      "download": "Télécharger · {size}",
       "needsEspeak": "Cette langue nécessite eSpeak NG sur votre ordinateur. Sous Ubuntu ou Debian : sudo apt install espeak-ng",
       "languageHint": "La langue dans laquelle les réponses sont lues.",
       "female": "Féminine",
       "male": "Masculine",
       "none": "Téléchargez un moteur vocal ci-dessus pour entendre les réponses à voix haute.",
       "acceleration": "Acceleration",
-      "threads": "CPU threads"
+      "threads": "CPU threads",
+      "runsHere": "runs on this computer",
+      "idle": "Idle",
+      "restart": "Restart the voice engine",
+      "accelerationHint": "Vulkan uses the graphics card when this build includes it.",
+      "cpu": "CPU",
+      "vulkan": "Vulkan (graphics card)",
+      "threadsHint": "More threads speak sooner and use more of the processor.",
+      "threadsAuto": "Automatic ({n})",
+      "modelsTitle": "Voice models",
+      "modelsHint": "Download one; replies are read with the model in use."
     },
     "call": {
       "title": "Voice call",
@@ -1109,12 +1210,102 @@
       "preparingAudio": "Preparing audio",
       "noise": "Background noise",
       "finishing": "Waiting for you to finish"
+    },
+    "sound": "Sound",
+    "playSample": "Play a sample",
+    "catalog": {
+      "search": "Search {n} voice models",
+      "searchLabel": "Search voice models",
+      "featured": "Recommended",
+      "status": {
+        "testing": "Testing",
+        "experimental": "Experimental"
+      },
+      "needsReference": "Speaks only in a voice cloned from a recording",
+      "fit": {
+        "good": "Runs well on this computer",
+        "slow": "Runs here, but may be slow",
+        "no": "Too large for this computer",
+        "unknown": "Size unknown"
+      },
+      "noMatches": "No voice model matches.",
+      "showAll": "Show all {n} models"
+    },
+    "clone": {
+      "title": "Your voices",
+      "hint": "Clone a voice from a short recording. Models that support it will speak in it.",
+      "group": "Your voices",
+      "add": "Add a voice",
+      "addHint": "Record 10–30 seconds of clear speech, or choose an audio file.",
+      "record": "Record",
+      "stop": "Stop",
+      "choose": "Choose file",
+      "name": "Name",
+      "transcript": "What the clip says (optional, improves accuracy)",
+      "save": "Save voice",
+      "delete": "Delete voice",
+      "recording": "Recording",
+      "micDenied": "Microphone access was denied.",
+      "unreadable": "That audio could not be read."
     }
   },
   "searchSettings": {
     "title": "Recherche web",
     "description": "D'où viennent les résultats web et combien en utiliser.",
-    "getKey": "Obtenir une clé API {name}"
+    "getKey": "Obtenir une clé API {name}",
+    "auto": "Auto",
+    "providerSection": "Provider",
+    "provider": "Search provider",
+    "providerHint": "Use one provider directly, or combine an engine pool.",
+    "targetResults": "Target results",
+    "targetResultsHint": "Standard web searches request 1–20 results. Deep modes use their own larger research budget.",
+    "safeSearch": "Safe search",
+    "safeSearchHint": "Applied when the selected engine supports it.",
+    "safeOff": "Off",
+    "safeModerate": "Moderate",
+    "safeStrict": "Strict",
+    "configuration": "{name} configuration",
+    "configurationHint": "This provider remains inactive until its required fields are saved successfully.",
+    "apiKey": "API key",
+    "apiKeyFor": "{name} API key",
+    "baseUrl": "Base URL",
+    "baseUrlFor": "{name} base URL",
+    "model": "Model",
+    "apiUrl": "API URL",
+    "saveAndUse": "Save and use",
+    "saving": "Saving…",
+    "saveConfiguration": "Save configuration",
+    "saveNote": "Saving configuration never enables this engine automatically.",
+    "enginePool": "Engine pool",
+    "enabledCount": "{n} enabled",
+    "enginePoolHint": "Only enabled engines with complete configuration receive a query.",
+    "testEnabled": "Test enabled",
+    "testing": "Testing…",
+    "poolActions": "Engine pool actions",
+    "enableRecommended": "Enable recommended",
+    "enableAll": "Enable all configured",
+    "disableAll": "Disable all",
+    "resetRecommended": "Reset to recommended",
+    "filter": "Filter engines…",
+    "filterLabel": "Filter engines",
+    "emptyPool": "Enable at least one engine. This empty pool will not replace your last saved selection.",
+    "group": {
+      "recommended": "Recommended",
+      "general": "General",
+      "research": "Research",
+      "configured": "Self-hosted / API"
+    },
+    "experimental": "Experimental",
+    "missing": "Missing {what}",
+    "configured": "Configured",
+    "enable": "Enable {name}",
+    "disable": "Disable {name}",
+    "configure": "Configure",
+    "noMatch": "No engines match “{query}”.",
+    "catalogError": "Could not load the engine catalog.",
+    "probeError": "Could not test the selected engines.",
+    "cooldown": "Cooling down until {time}",
+    "noResults": "No results"
   },
   "modelHub": {
     "navTitle": "Modèles locaux",
@@ -1266,7 +1457,7 @@
   "codeWs": {
     "panes": "Panneaux",
     "changes": "Modifications",
-  "plan": "Plan",
+    "plan": "Plan",
     "terminal": "Terminal",
     "processes": "Processus",
     "browser": "Navigateur",
@@ -1607,7 +1798,26 @@
     "cleanedUp": "{size} libérés",
     "nothingToClean": "Rien à nettoyer",
     "manageBuilds": "Builds de llama.cpp",
-    "manageBuildsHint": "Choisissez un build précis, consultez le serveur en cours ou installez depuis une URL."
+    "manageBuildsHint": "Choisissez un build précis, consultez le serveur en cours ou installez depuis une URL.",
+    "notBundled": "Not included in this build",
+    "noVoiceModel": "no voice model yet",
+    "setUpVoice": "Set up voice",
+    "running": "Running",
+    "bundled": "Bundled",
+    "notInstalledChat": "Not installed · needed to run chat models on this computer",
+    "notInstalledDictation": "Not installed · needed for dictation on this computer",
+    "recommended": "Recommended",
+    "installed": "Installed",
+    "version": "Version",
+    "inUse": "In use",
+    "switch": "Switch",
+    "checking": "Checking releases…",
+    "releasesUnavailable": "Could not list releases. Check your connection and try again.",
+    "llamaBuilds": "llama.cpp builds",
+    "llamaBuildsHint": "Installed builds, the running server and installing from a URL",
+    "whisperBuilds": "whisper.cpp builds",
+    "whisperBuildsHint": "Choose which build dictation runs on, or add your own",
+    "audioEngineHint": "The bundled voice engine: status, backend and files"
   },
   "downloads": {
     "title": "Téléchargements",
@@ -1896,7 +2106,8 @@
     "close": "Fermer",
     "minimize": "Réduire",
     "maximize": "Agrandir",
-    "restore": "Restaurer"
+    "restore": "Restaurer",
+    "window": "Window"
   },
   "roleplay": {
     "regenerateEarlier": {
@@ -2236,7 +2447,11 @@
     "systemDefault": "Par défaut du système",
     "speed": "Vitesse",
     "language": "Langue",
-    "languagePlaceholder": "Par défaut · ex. fr"
+    "languagePlaceholder": "Par défaut · ex. fr",
+    "localHint": "Private and offline, on this computer.",
+    "apiHint": "A cloud service you connect with an API key.",
+    "systemHint": "The voices built into your operating system.",
+    "runsOn": "Runs on"
   },
   "workspace": {
     "panels": "Panneaux de travail",
@@ -2316,7 +2531,12 @@
     "markInstruction": "Instruction for this mark",
     "markInstructionHint": "What should change here?",
     "instructions": "Instructions",
-    "instructionsHint": "Describe what you want the agent to build or change…"
+    "instructionsHint": "Describe what you want the agent to build or change…",
+    "emptyDrop": "Drop, paste or upload an image to mark it up",
+    "sendDisabled": "Add an image or board to send",
+    "sending": "Sending…",
+    "style": "Colour and stroke",
+    "hidePoints": "Hide points"
   },
   "promptQueue": {
     "title": "En file d’attente",
@@ -2327,6 +2547,85 @@
     "save": "Enregistrer",
     "cancel": "Annuler",
     "sending": "Envoi…",
-    "remove": "Retirer le message de la file d'attente"
+    "remove": "Retirer le message de la file d'attente",
+    "sendAll": "Send all",
+    "sendNext": "Send next",
+    "sendOne": "Send this one now"
+  },
+  "conversationInfo": {
+    "created": "Créée",
+    "updated": "Mise à jour",
+    "folder": "Dossier",
+    "project": "Projet",
+    "models": "Modèles utilisés",
+    "unrecorded": "Non enregistré",
+    "selectedModel": "Modèle sélectionné"
+  },
+  "sidebarOrganize": {
+    "newFolder": "Nouveau dossier de conversations",
+    "folderName": "Nom du dossier",
+    "create": "Créer",
+    "folderOptions": "Options du dossier",
+    "moveUp": "Monter",
+    "moveDown": "Descendre",
+    "ungroup": "Sortir du dossier",
+    "moveTo": "Déplacer vers {name}",
+    "removeFolder": "Retirer le dossier",
+    "dropHere": "Déposez des conversations ici"
+  },
+  "projectControls": {
+    "title": "Commandes du projet",
+    "openEditor": "Ouvrir dans l’éditeur",
+    "push": "Envoyer",
+    "addScript": "Ajouter un script au projet",
+    "scriptName": "Nom du script",
+    "command": "Commande"
+  },
+  "audioEngine": {
+    "version": "Version",
+    "backends": "Bundled backends",
+    "inUse": "In use",
+    "threads": "{count} threads",
+    "models": "Supported voice model families",
+    "status": "Status",
+    "runningOn": "Running on port {port}",
+    "stopped": "Stopped",
+    "espeakHint": "Kokoro needs it for most languages",
+    "present": "Present",
+    "missing": "Missing",
+    "binary": "Engine binary",
+    "modelsFolder": "Voice models folder",
+    "restart": "Restart"
+  },
+  "promptSettings": {
+    "localTitle": "Local system prompt",
+    "apiTitle": "API system prompt",
+    "localDescription": "Used for local runtime conversations.",
+    "apiDescription": "Used for API-provider conversations.",
+    "fallbackLabel": "Fallback shared system prompt",
+    "systemLabel": "System prompt",
+    "localLabel": "Local runtime prompt",
+    "localPlaceholder": "Instructions specific to the local model.",
+    "userLabel": "User prompt prefix",
+    "userPlaceholder": "Optional instruction prefix for API conversations.",
+    "cancel": "Cancel",
+    "save": "Save",
+    "saving": "Saving…"
+  },
+  "home": {
+    "tools": {
+      "title": "Tools",
+      "button": "Tools {on}/{total}",
+      "count": "{on} of {total} on",
+      "group": {
+        "web": "Web",
+        "browser": "Browser",
+        "files": "Files & documents",
+        "productivity": "Productivity",
+        "media": "Media",
+        "data": "Data & charts",
+        "code": "Code"
+      }
+    }
   }
 }

@@ -9,7 +9,7 @@ import type { ChangeList, FileDiff, GitBranches, ProcessEvent, ProcessInfo, Swit
 import { gitBranches, projectFiles as listProjectFiles, switchGitBranch } from './code-ipc';
 import type { PresentedPlan } from './plan-review';
 import type { FileEdit } from './work-blocks';
-import { workspaceLayout } from '$lib/stores/workspace-layout.svelte';
+import { workspaceLayout, type WorkspaceLayoutStore } from '$lib/stores/workspace-layout.svelte';
 
 type BottomTab = 'processes' | `terminal:${string}`;
 
@@ -156,8 +156,8 @@ export class CodeWorkspaceStore {
     workspaceLayout.hide('plan');
   }
 
-  togglePlan(chatId: string, plan: PresentedPlan | null): void {
-    if (workspaceLayout.isOpen('plan')) this.closePlan();
+  togglePlan(chatId: string, plan: PresentedPlan | null, owner: WorkspaceLayoutStore = workspaceLayout): void {
+    if (owner.isOpen('plan')) owner.hide('plan');
     else { this.plan = { chatId, plan }; workspaceLayout.forScope(conversationScope(chatId), (owner) => owner.show('plan')); }
   }
 
@@ -178,24 +178,24 @@ export class CodeWorkspaceStore {
   }
 
   /** Toolbar toggle: show that tab, or hide the dock if it is already showing. */
-  async toggleBottom(tab: 'processes' | 'terminal', cwd: string): Promise<void> {
-    const terminals = this.terminalsForScope();
-    if (tab === 'terminal' && terminals.some((term) => workspaceLayout.isOpen(`terminal:${term.id}`))) {
-      for (const term of terminals) workspaceLayout.hide(`terminal:${term.id}`);
+  async toggleBottom(tab: 'processes' | 'terminal', cwd: string, owner: WorkspaceLayoutStore = workspaceLayout): Promise<void> {
+    const terminals = this.terminalsForScope(owner.scope);
+    if (tab === 'terminal' && terminals.some((term) => owner.isOpen(`terminal:${term.id}`))) {
+      for (const term of terminals) owner.hide(`terminal:${term.id}`);
       return;
     }
     const id = tab === 'processes' ? 'processes' : terminals.at(-1) ? `terminal:${terminals.at(-1)!.id}` : null;
-    if (id && workspaceLayout.isOpen(id)) {
-      workspaceLayout.hide(id);
+    if (id && owner.isOpen(id)) {
+      owner.hide(id);
       return;
     }
     if (tab === 'processes') {
-      this.showBottom('processes');
+      owner.show('processes', 'bottom');
       return;
     }
     const last = terminals.at(-1);
-    if (last) this.showBottom(`terminal:${last.id}`);
-    else await this.newTerminal(cwd);
+    if (last) owner.show(`terminal:${last.id}`, 'bottom');
+    else await this.newTerminal(cwd, undefined, owner.scope);
   }
 
   // ── Events ───────────────────────────────────────────────────────────
@@ -287,8 +287,7 @@ export class CodeWorkspaceStore {
 
   terminalsForScope(scope = workspaceLayout.scope): TerminalTab[] { return this.terminals.filter((term) => term.scope === scope); }
 
-  async newTerminal(cwd: string, size: { cols: number; rows: number } = { cols: 100, rows: 24 }): Promise<TerminalTab> {
-    const scope = workspaceLayout.scope;
+  async newTerminal(cwd: string, size: { cols: number; rows: number } = { cols: 100, rows: 24 }, scope = workspaceLayout.scope): Promise<TerminalTab> {
     try {
       const { id, shell } = await invoke<{ id: string; shell: string }>('terminal_create', { cwd, ...size });
       const n = this.terminalsForScope(scope).length + 1;

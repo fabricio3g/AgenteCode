@@ -37,4 +37,26 @@ describe('conversation workspace ownership', () => {
     expect(restored.isOpen('canvas')).toBe(true);
     expect(panelIds(restored.layout.right)).toContain('canvas');
   });
+  it('keeps live scoped hosts independent while focus and global commands change', () => {
+    const store = new WorkspaceLayoutStore(); store.selectScope('chat:a');
+    const a = store.scoped('chat:a'), b = store.scoped('chat:b');
+    a.show('changes'); b.show('files');
+    expect(a.focused).toBe('changes'); expect(b.focused).toBe('files');
+    store.selectScope('chat:b'); store.show('plan');
+    expect(b.focused).toBe('plan'); expect(a.focused).toBe('changes');
+    expect(a.isOpen('files')).toBe(false); expect(b.isOpen('changes')).toBe(false);
+    a.layout.rightWidth = 360; a.save();
+    store.spaceScope = 'space:code'; store.showConversation('a');
+    expect(store.scoped('chat:a').layout.rightWidth).toBe(360);
+    a.hide('changes'); expect(b.isOpen('files')).toBe(true);
+  });
+  it('preserves another window’s centre when saving its own dock', () => {
+    const first = new WorkspaceLayoutStore(); first.selectScope('chat:a'); first.spaceScope = 'space:code:first'; first.showConversation('a');
+    const second = new WorkspaceLayoutStore(); second.selectScope('chat:b'); second.spaceScope = 'space:code:second'; second.showConversation('b');
+    first.show('changes');
+    const saved = JSON.parse(localStorage.getItem('agente.workspaceLayout')!);
+    expect(saved.scopes['space:code:second'].centre.chatId).toBe('b');
+    expect(saved.scopes['space:code:first'].centre.chatId).toBe('a');
+  });
+
 });

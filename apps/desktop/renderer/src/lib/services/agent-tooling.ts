@@ -1,5 +1,8 @@
 import type { AgentStep } from '$lib/types/chat';
 import type { ToolDefinition } from '$lib/services/chat-api';
+import { HOME_EXTRA_TOOL_DEFS } from '$lib/services/agent-tool-home-schemas';
+import { DOMAIN_TOOL_DEFS } from '$shared/domains';
+import { filterEnabledTools } from '$lib/services/agent-tool-registry';
 import { getAllArtifacts, getEnabledArtifactIds } from '$lib/services/artifact-registry';
 
 /** Pi-inspired coding tools (Agente code profile) + web + diagnostics. */
@@ -31,6 +34,12 @@ export const CHAT_AGENT_TOOL_NAMES = new Set([
   'browser_scroll',
   'browser_wait',
   'browser_back',
+  'browser_forward',
+  'browser_reload',
+  'browser_hover',
+  'browser_select',
+  'browser_read',
+  'browser_tabs',
   'browser_console',
   'browser_screenshot',
   'read_file',
@@ -53,7 +62,17 @@ export const CHAT_AGENT_TOOL_NAMES = new Set([
   'create_widget',
   'get_weather',
   'convert_currency',
-  'get_quote'
+  'get_quote',
+  'read_document',
+  'extract_tables',
+  'notes',
+  'todos',
+  'reminders',
+  'convert_units',
+  'convert_time',
+  'ocr_image',
+  'describe_image',
+  'transcribe_audio'
 ]);
 
 export type AgentProfile = 'chat' | 'code' | 'search' | 'work';
@@ -61,7 +80,18 @@ export type AgentProfile = 'chat' | 'code' | 'search' | 'work';
 export function getToolDefinitions(
   executionMode?: 'workspace' | 'sandbox',
   artifactToggles: Record<string, boolean> = {},
-  agentProfile: AgentProfile = 'work'
+  agentProfile: AgentProfile = 'work',
+  disabledTools: readonly string[] = []
+): ToolDefinition[] {
+  const tools = buildToolDefinitions(executionMode, artifactToggles, agentProfile);
+  tools.push(...DOMAIN_TOOL_DEFS.map(def => ({ type: 'function' as const, function: def })));
+  return filterEnabledTools(tools, disabledTools);
+}
+
+function buildToolDefinitions(
+  executionMode: 'workspace' | 'sandbox' | undefined,
+  artifactToggles: Record<string, boolean>,
+  agentProfile: AgentProfile
 ): ToolDefinition[] {
   const isWorkspace = executionMode === 'workspace';
   const fileScope = isWorkspace ? 'workspace' : 'chat sandbox';
@@ -377,6 +407,56 @@ export function getToolDefinitions(
     },
     {
       type: 'function', function: {
+        name: 'browser_forward',
+        description: 'Go forward in the browser history. Returns the new snapshot.',
+        parameters: { type: 'object', properties: {} }
+      }
+    },
+    {
+      type: 'function', function: {
+        name: 'browser_reload',
+        description: 'Reload the current page. Returns the new snapshot.',
+        parameters: { type: 'object', properties: {} }
+      }
+    },
+    {
+      type: 'function', function: {
+        name: 'browser_hover',
+        description: 'Move the pointer over an element by ref (menus, tooltips). Returns the new snapshot.',
+        parameters: { type: 'object', properties: { ref: { type: 'string', description: 'Element ref, e.g. "e12"' } }, required: ['ref'] }
+      }
+    },
+    {
+      type: 'function', function: {
+        name: 'browser_select',
+        description: 'Choose an option in a <select> by ref, using its value or visible label.',
+        parameters: {
+          type: 'object',
+          properties: { ref: { type: 'string', description: 'Select ref, e.g. "e7"' }, value: { type: 'string', description: 'Option value or label' } },
+          required: ['ref', 'value']
+        }
+      }
+    },
+    {
+      type: 'function', function: {
+        name: 'browser_read',
+        description: "Read the page's main text, or one element's text/value by ref. Long text is truncated; use it when the snapshot text is not enough.",
+        parameters: { type: 'object', properties: { ref: { type: 'string', description: 'Optional element ref' } } }
+      }
+    },
+    {
+      type: 'function', function: {
+        name: 'browser_tabs',
+        description: 'List the browser tabs, or switch to / close one by tab_id (ids from the list).',
+        parameters: {
+          type: 'object',
+          properties: { action: { type: 'string', enum: ['list', 'switch', 'close'] }, tab_id: { type: 'string' } },
+          required: ['action']
+        }
+      }
+    },
+    {
+      type: 'function', function: {
         name: 'browser_console',
         description: "Read the page's console output, uncaught exceptions and failed requests since the last check.",
         parameters: { type: 'object', properties: { level: { type: 'string', enum: ['error', 'warning', 'all'] } } }
@@ -389,6 +469,7 @@ export function getToolDefinitions(
         parameters: { type: 'object', properties: {} }
       }
     },
+    ...HOME_EXTRA_TOOL_DEFS,
     {
       type: 'function', function: {
         name: 'get_diagnostics',
@@ -423,7 +504,7 @@ export const STEP_TYPE: Record<string, AgentStep['type']> = {
   web_search: 'searching', fetch_url: 'reading',
   browser_open: 'reading', browser_navigate: 'reading', browser_snapshot: 'reading',
   browser_click: 'executing', browser_type: 'executing', browser_fill: 'executing', browser_press: 'executing',
-  browser_scroll: 'reading', browser_wait: 'reading', browser_back: 'reading', browser_console: 'reading',
+  browser_scroll: 'reading', browser_wait: 'reading', browser_back: 'reading', browser_forward: 'reading', browser_reload: 'reading', browser_hover: 'executing', browser_select: 'executing', browser_read: 'reading', browser_tabs: 'reading', browser_console: 'reading',
   browser_screenshot: 'reading',
   query_knowledge: 'reading',
   read_file: 'reading', list_files: 'reading', search_files: 'reading',
@@ -435,4 +516,6 @@ export const STEP_TYPE: Record<string, AgentStep['type']> = {
   create_info_card: 'writing', create_html_card: 'writing', create_widget: 'writing',
   get_weather: 'searching', convert_currency: 'tool', get_quote: 'searching',
   calculator: 'tool',
+  read_document: 'reading', extract_tables: 'reading', notes: 'tool', todos: 'tool', reminders: 'tool',
+  convert_units: 'tool', convert_time: 'tool', ocr_image: 'reading', describe_image: 'reading', transcribe_audio: 'reading',
 };
