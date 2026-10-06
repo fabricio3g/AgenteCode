@@ -240,7 +240,6 @@
 
     {#if activeTab === 'General'}
       <GeneralSettings
-        bind:showAssistantText
         bind:enableThinking
         bind:hfToken
         onsaveHfToken={saveHfToken}

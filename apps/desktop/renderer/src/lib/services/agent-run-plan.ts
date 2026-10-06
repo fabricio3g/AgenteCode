@@ -82,6 +82,8 @@ export interface AgentRunPlan {
   /** Workspace runs write real files on disk; there is no sandbox artifact to show. */
   artifactsEnabled: boolean;
   artifactToggles: Record<string, boolean>;
+  /** Tool groups or names turned off in the Tools menu (config.ui.home_tools_disabled). */
+  disabledTools: string[];
   toolMode: ToolMode;
   /** Instant: intent-gated fast path — answer directly, tools only when needed. */
   isInstant: boolean;
@@ -165,14 +167,14 @@ const INSTANT_MODE_NOTE = [
   'You cannot create files, artifacts, or visuals in this mode — answer in prose, with sources where they matter.'
 ].join(' ');
 
-function selectToolDefs(toolMode: ToolMode, executionMode: 'workspace' | 'sandbox', toggles: Record<string, boolean>, profile: AgentRunPlan['agentProfile']) {
+function selectToolDefs(toolMode: ToolMode, executionMode: 'workspace' | 'sandbox', toggles: Record<string, boolean>, profile: AgentRunPlan['agentProfile'], disabled: readonly string[] = []) {
   if (toolMode === 'search_chat') {
-    return getToolDefinitions(executionMode, toggles, 'search').filter((tool) => SEARCH_TOOL_NAMES.has(tool.function.name));
+    return getToolDefinitions(executionMode, toggles, 'search', disabled).filter((tool) => SEARCH_TOOL_NAMES.has(tool.function.name));
   }
   if (toolMode === 'instant') {
-    return getToolDefinitions(executionMode, toggles, 'search').filter((tool) => INSTANT_TOOL_NAMES.has(tool.function.name));
+    return getToolDefinitions(executionMode, toggles, 'search', disabled).filter((tool) => INSTANT_TOOL_NAMES.has(tool.function.name));
   }
-  return getToolDefinitions(executionMode, toggles, profile);
+  return getToolDefinitions(executionMode, toggles, profile, disabled);
 }
 
 export function resolveAgentRunPlan(args: RunAgentTaskArgs, config: AppConfig, host: { isElectron: boolean }): AgentRunPlan {
@@ -205,7 +207,7 @@ export function resolveAgentRunPlan(args: RunAgentTaskArgs, config: AppConfig, h
     || [...args.messages].reverse().find((message) => message.role === 'user')?.content?.toString?.()
     || '';
   const wantsWebsiteArtifact = !isInstant && isWebsiteBuildRequest(latestUserText);
-  const toolDefs = selectToolDefs(toolMode, executionMode, artifactToggles, agentProfile);
+  const toolDefs = selectToolDefs(toolMode, executionMode, artifactToggles, agentProfile, config.ui?.home_tools_disabled ?? []);
 
   const agentExtra = [
     modeNote({ isCodeProfile, isChatProfile, executionMode }, args.workspaceRoot),
@@ -228,6 +230,7 @@ export function resolveAgentRunPlan(args: RunAgentTaskArgs, config: AppConfig, h
     executionMode,
     artifactsEnabled: executionMode !== 'workspace',
     artifactToggles,
+    disabledTools: config.ui?.home_tools_disabled ?? [],
     toolMode,
     isInstant,
     agentProfile,

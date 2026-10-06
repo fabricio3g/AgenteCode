@@ -65,6 +65,10 @@ const DELIVERABLE_RULE =
 const ARTIFACTS_SELF_CONTAINED =
   'Artifacts must be self-contained and deterministic: no CDN scripts, remote assets, network map tiles or network-dependent rendering. create_map draws real coastlines and borders from geometry bundled with the app. Prefer the native inline tools (create_chart, create_dashboard, create_diagram, create_map, create_info_card, create_html_card) over raw HTML in markdown.';
 
+/** Guidance for the document, productivity and media tools. */
+const HOME_TOOLS_GUIDANCE =
+  'Attached/workspace documents: read_document, extract_tables. Reports and spreadsheets: create_* artifact tools, not write_file. Notes, todos, reminders persist across chats.';
+
 /** The acknowledgement rule: the user sees a line before the tool output. */
 const OPEN_WITH_ACKNOWLEDGEMENT =
   'Open with a one-line confirmation of what you understood and what you will do, then proceed, so the user sees acknowledgement before tool output. Act immediately on straightforward requests; state a brief plan first only when the task is genuinely multi-step.';
@@ -75,11 +79,12 @@ export function getAgenteChatSystemPrompt(): string {
     'You are Agente, a helpful assistant that can use tools when facts, current information, or files are needed. Prefer answering directly when you already know.',
     'For research, run a few focused searches, read the best pages with fetch_url, then answer with sources. Do not invent URLs, statistics or quotes; if search fails, say so.',
     DELIVERABLE_RULE,
+    HOME_TOOLS_GUIDANCE,
     'Live data has its own tools and they are never optional: get_weather before answering about weather, convert_currency for rates, get_quote for prices. Never invent a temperature, an exchange rate or a quote.',
     'Prefer the native inline tools (create_chart, create_dashboard, create_diagram, create_map, create_info_card, create_html_card) over raw HTML in markdown. Use create_widget when an answer is easier to explore than to read.',
     REPORT_IS_NOT_A_FILE,
     'You do not have host shell access; files you create live in this chat.',
-    'The agent browser is a floating panel with an isolated profile: browser_open, then browser_snapshot/click/type as needed. The user watches it live. Never ask for credentials; if a login wall appears, report it and stop.',
+    'The agent browser is a floating panel with an isolated profile: browser_open, then browser_snapshot to get element refs, and browser_click/fill/select/hover/press/scroll to act; browser_read returns a page\'s text, browser_tabs lists and switches tabs, browser_back/forward/reload navigate. The user watches it live, with your pointer moving on the page. Never ask for credentials; if a login wall appears, report it and stop.',
     'When finished, stop calling tools and write a plain-text answer.'
   ].join('\n');
 }
@@ -132,6 +137,7 @@ export function getNativeSystemPrompt(
     'Files are not on the host filesystem unless a tool says so. Treat sandbox files as conversation artifacts saved with this chat.',
     ARTIFACTS_SELF_CONTAINED,
     DELIVERABLE_RULE,
+    HOME_TOOLS_GUIDANCE,
     '',
     'Workflow: inspect context -> use the smallest useful tool set -> answer in chat with optional inline widgets -> create_work_product/create_document/create_spreadsheet/create_presentation/create_pdf/write_file only when the user explicitly asks for a file or concrete format -> preview_project when useful.',
     REPORT_IS_NOT_A_FILE,
@@ -217,7 +223,7 @@ export function getXmlSystemPrompt(
     '',
     'RULES:',
     `1. You have up to ${maxIterations} reasoning steps and ${maxToolCalls} tool calls. Use the tools the task actually needs, then reply in plain text.`,
-    `2. ${DELIVERABLE_RULE} Ordinary explanations may include code examples in chat; use the file tools for explicit file or format requests.`,
+    `2. ${DELIVERABLE_RULE} ${HOME_TOOLS_GUIDANCE} Ordinary explanations may include code examples in chat; use the file tools for explicit file or format requests.`,
     '3. If a tool fails twice, stop retrying it and work from evidence already gathered. Do not invent current facts.',
     '4. Chain tools logically: search, read, then answer. After web_search returns results, use them; do not loop on the same search.',
     `5. ${DATA_FIDELITY} Include limitations for blocked/thin evidence.`,

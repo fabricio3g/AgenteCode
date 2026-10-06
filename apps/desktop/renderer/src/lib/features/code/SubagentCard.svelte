@@ -212,7 +212,7 @@
     gap: 0.375rem;
     overflow: hidden;
     font-size: var(--text-xs);
-    color: var(--muted-foreground);
+    color: var(--text-secondary);
   }
   .live > span {
     flex-shrink: 0;
@@ -229,6 +229,9 @@
   .live.text-error {
     color: var(--error);
   }
+  .live:not(.text-error) :global(.tile-meter) {
+    color: var(--work-accent);
+  }
   /* The footer: how much work, on what, at what cache rate. */
   .foot {
     display: flex;
@@ -236,7 +239,7 @@
     gap: 0.5rem;
     overflow: hidden;
     font-size: var(--text-xs);
-    color: var(--muted-foreground);
+    color: var(--text-secondary);
   }
   .foot > span {
     flex-shrink: 0;

@@ -1,10 +1,11 @@
-import { WebContentsView, session, shell } from 'electron';
+import { BrowserWindow, WebContentsView, session, shell, type WebContents } from 'electron';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { createHash } from 'node:crypto';
 import { isWorkspaceScope } from '../shared/workspace-scope.ts';
 import { getMainWindow } from './window-manager.ts';
 import { BROWSER_VIEWPORTS, type BrowserViewportPreset } from '../shared/browser-viewports.ts';
 import { debuggerConsoleMessage, type BrowserConsoleMessage } from './browser-console.ts';
+import { browserPointerScript } from './browser-pointer.ts';
 import { browserViewBounds, sameBrowserBounds, type BrowserPresentation } from '../shared/browser-presentation.ts';
 
 export const AGENT_BROWSER_PARTITION = 'persist:agent-browser';
@@ -27,11 +28,15 @@ export interface PanelTab {
   /** Ring buffer of the last console / exception / network entries. */
   console: PanelConsoleEntry[];
   consoleSeq: number;
+  viewportVersion?: number;
+  /** Settles once the view holds a document; emulation must wait for it. */
+  firstLoad?: Promise<void>;
 }
 
 const CONSOLE_LIMIT = 200;
 
 type BrowserOwner = {
+  host?: BrowserWindow;
   tabs: Map<string, PanelTab>;
   activeTabId: string | null;
   panelVisible: boolean;
@@ -98,9 +103,7 @@ export function panelState(scope = browserScope()) {
   };
 }
 function pushState(scope = browserScope()) {
-  const win = getMainWindow();
-  if (!win || win.isDestroyed()) return;
-  win.webContents.send('browser_panel_state', panelState(scope));
+  for (const win of BrowserWindow.getAllWindows()) if (!win.isDestroyed()) win.webContents.send('browser_panel_state', panelState(scope));
 }
 
 function safeUrl(tab: PanelTab): string;
@@ -108,7 +111,9 @@ function safeUrl(view: WebContentsView): string;
 function safeUrl(target: PanelTab | WebContentsView): string {
   try {
     const wc = 'view' in target ? target.view.webContents : target.webContents;
-    return wc.getURL() || '';
+    const url = wc.getURL();
+    // A new tab holds about:blank (see createTab); the address bar stays empty.
+    return url === 'about:blank' ? '' : url;
   } catch {
     return '';
   }
@@ -123,28 +128,45 @@ function safeTitle(view: WebContentsView): string {
 }
 
 function attachToMainWindow(view: WebContentsView) {
-  const win = getMainWindow();
+  const win = state().host ?? getMainWindow();
   if (!win || win.isDestroyed()) throw new Error('Main window not available');
   const contentView = (win as unknown as { contentView: { addChildView: (v: unknown) => void } }).contentView;
   contentView.addChildView(view);
 }
 
 function applyBounds() {
-  const owner = state(foregroundScope);
+  for (const owner of owners.values()) {
   const entry = owner.activeTabId ? owner.tabs.get(owner.activeTabId) : null;
   const live = !!entry && owner.panelVisible && owner.panelExposed && !!owner.panelBounds && !owner.panelOccluded;
-  for (const other of owners.values()) for (const tab of other.tabs.values()) {
+  for (const tab of owner.tabs.values()) {
     try { if ((!live || tab !== entry) && tab.view.getVisible()) tab.view.setVisible(false); } catch { /* Guest may be closing. */ }
   }
-  if (!entry || !live || !owner.panelBounds) return;
+  if (!entry || !live || !owner.panelBounds) continue;
   try {
     if (!sameBrowserBounds(entry.view.getBounds(), owner.panelBounds)) entry.view.setBounds({ ...owner.panelBounds });
     if (!entry.view.getVisible()) entry.view.setVisible(true);
   } catch { /* Guest may be closing. */ }
+  }
+}
+export function panelSetHost(sender: WebContents, exposed = true): boolean {
+  const host = BrowserWindow.fromWebContents(sender);
+  if (!host) return false;
+  const owner = state();
+  if (owner.host === host) return true;
+  if (!exposed) return false;
+  for (const tab of owner.tabs.values()) {
+    const previous = owner.host ?? getMainWindow();
+    if (previous && !previous.isDestroyed()) previous.contentView.removeChildView(tab.view);
+    host.contentView.addChildView(tab.view);
+  }
+  owner.host = host;
+  host.once('closed', () => { if (owner.host === host) { owner.panelExposed = false; owner.host = undefined; applyBounds(); } });
+  return true;
 }
 /** Only the renderer selects which conversation may present a live native view. */
 export function panelSelectScope(scope: string) {
   if (!isWorkspaceScope(scope)) throw new Error('Browser conversation is required');
+  if (foregroundScope !== scope) state(foregroundScope).panelExposed = false;
   foregroundScope = scope;
   state(scope).panelExposed = false;
   applyBounds(); pushState(scope);
@@ -198,21 +220,28 @@ function createTab(url?: string): PanelTab {
   try {
     (view.webContents as unknown as { setAudioMuted?: (m: boolean) => void }).setAudioMuted?.(false);
   } catch { /* ignore */ }
-  // Rounded like the box it sits in, inside the right dock's card.
-  (view as unknown as { setBorderRadius?: (radius: number) => void }).setBorderRadius?.(8);
+  // No setBorderRadius: on Linux it crashed the whole app (SIGSEGV) when the
+  // panel opened from the UI, reproduced and cleared by removing only this call.
+  // The panel's card already rounds the box around the page.
   tabSeq += 1;
   view.setBounds({ x: 0, y: 0, width: 640, height: 480 });
   view.setVisible(false);
-  const tab: PanelTab = { scope: browserScope(), id: `btab-${Date.now()}-${tabSeq}`, view, preset: 'fit', debuggerAttached: false, console: [], consoleSeq: 0 };
+  const tab: PanelTab = { scope: browserScope(), id: `btab-${Date.now()}-${tabSeq}`, view, preset: 'desktop', debuggerAttached: false, console: [], consoleSeq: 0 };
   wireGuestEvents(tab);
   attachToMainWindow(view);
   // Attach before the first load so the page's console is captured from the start.
   void ensureDebugger(tab).catch(() => {});
   state().tabs.set(tab.id, tab);
   state().activeTabId = tab.id;
-  if (url) {
-    void view.webContents.loadURL(url).catch(() => {});
-  }
+  // Emulation on a view that has never held a document crashes Electron
+  // (SIGSEGV on Linux, reproduced with only attach + setDeviceMetricsOverride):
+  // the viewport waits for the first page — this load, or one that replaces it.
+  tab.firstLoad = new Promise<void>((resolve) => {
+    view.webContents.once('did-finish-load', () => resolve());
+    view.webContents.on('did-fail-load', (_event, code) => { if (code !== -3) resolve(); });
+  });
+  void view.webContents.loadURL(url || 'about:blank').catch(() => {});
+  void panelSetViewport('desktop', tab.id).catch(() => {});
   applyBounds();
   pushState();
   return tab;
@@ -254,8 +283,19 @@ async function ensureDebugger(tab: PanelTab) {
   }
 }
 
+/** Show the decorative agent pointer at viewport point (x, y); it glides from its last position. */
+export async function panelPointer(tab: PanelTab, x: number, y: number, pressed = false, pulse = false) {
+  const config = tab.preset === 'fit' ? null : BROWSER_VIEWPORTS[tab.preset];
+  const bounds = state(tab.scope).panelBounds;
+  const scale = config && bounds ? Math.min(1,bounds.width/config.width,bounds.height/config.height) : 1;
+  await tab.view.webContents.debugger.sendCommand('Runtime.evaluate', {expression:browserPointerScript(x,y,pressed,scale,pulse),returnByValue:true}).catch(() => {});
+}
+
 async function cdp<T>(tab: PanelTab, method: string, params?: Record<string, unknown>): Promise<T> {
   await ensureDebugger(tab);
+  if (method === 'Input.dispatchMouseEvent' && typeof params?.x === 'number' && typeof params?.y === 'number') {
+    await panelPointer(tab, params.x, params.y, params.type === 'mousePressed');
+  }
   return tab.view.webContents.debugger.sendCommand(method, params) as Promise<T>;
 }
 
@@ -310,6 +350,7 @@ export function panelMarkAgentDriving() {
 
 export function panelSetTakeover(on: boolean) {
   state().userTakeover = on;
+  if(on)for(const tab of state().tabs.values())void tab.view.webContents.executeJavaScript("document.getElementById('__agente_pointer')?.remove()").catch(()=>{});
   pushState();
   return { takeover: state().userTakeover };
 }
@@ -371,7 +412,7 @@ function tryRelease(action: () => void): void {
 }
 
 function removeTabView(tab: PanelTab): void {
-  const win = getMainWindow();
+  const win = state(tab.scope).host ?? getMainWindow();
   const contentView = win as unknown as { contentView?: { removeChildView?: (v: unknown) => void } } | null;
   contentView?.contentView?.removeChildView?.(tab.view);
 }
@@ -445,7 +486,7 @@ export function panelSetVisible(visible: boolean) {
 }
 
 export function panelSetBounds(rect: { x: number; y: number; width: number; height: number }) {
-  const win = getMainWindow();
+  const win = state().host ?? getMainWindow();
   state().panelBounds = browserViewBounds(rect, 1, win?.getContentBounds() ?? { width: 10000, height: 10000 });
   applyBounds();
   // A fixed-size preset rescales to the new panel size.
@@ -456,7 +497,7 @@ export function panelSetBounds(rect: { x: number; y: number; width: number; heig
 
 /** Presentation never changes logical openness or broadcasts a browser hide. */
 export async function panelSetPresentation(presentation: BrowserPresentation): Promise<{ image: string | null }> {
-  const win = getMainWindow();
+  const win = state().host ?? getMainWindow();
   const wasOccluded = state().panelOccluded;
   const active = state().activeTabId ? state().tabs.get(state().activeTabId!) : null;
   const capture = presentation.occluded && !wasOccluded && state().panelExposed && active && state().panelVisible
@@ -538,14 +579,18 @@ export function panelCurrentUrl(tabId?: string) {
 
 export async function panelSetViewport(preset: AgentBrowserViewportPreset, tabId?: string) {
   const tab = requireTab(tabId);
+  if (preset !== 'fit' && !Object.hasOwn(BROWSER_VIEWPORTS,preset)) throw new Error('Unknown browser viewport');
   tab.preset = preset;
+  const version = (tab.viewportVersion ?? 0) + 1;tab.viewportVersion=version;
+  await tab.firstLoad;
   await ensureDebugger(tab);
+  if(tab.viewportVersion!==version)return{preset:tab.preset};
   if (preset === 'fit') {
     // Responsive: the page gets the panel's own size.
     await cdp(tab, 'Emulation.clearDeviceMetricsOverride', {});
     await cdp(tab, 'Emulation.setUserAgentOverride', { userAgent: tab.view.webContents.session.getUserAgent() }).catch(() => {});
     await cdp(tab, 'Emulation.setTouchEmulationEnabled', { enabled: false }).catch(() => {});
-    pushState();
+    if(tab.viewportVersion===version)pushState();
     return { preset };
   }
   const config = BROWSER_VIEWPORTS[preset] ?? BROWSER_VIEWPORTS.desktop;

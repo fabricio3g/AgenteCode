@@ -339,7 +339,8 @@ impl Provider for MessagesProvider {
             super::cache::PreparedRequest::new(body, ApiFormat::Anthropic, &self.info, model);
         let response =
             super::send_with_cache_fallback(&self.info, model, "messages", &body, context).await?;
-        let mut stream = super::sse::EventStream::new(response.bytes_stream());
+        let mut stream =
+            super::sse::EventStream::for_completion(response.bytes_stream(), &self.info.base_url);
         let mut state = MessageStream::default();
         let _ = sender.send(StreamEvent::TextStart).await;
         while let Some(data) = stream

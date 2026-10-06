@@ -9,6 +9,7 @@
 -->
 
 <script lang="ts">
+  import { Button, Tooltip } from '$lib/components/ui';
   import { untrack } from 'svelte';
   import { X } from 'lucide-svelte';
   import { t } from 'svelte-i18n';
@@ -57,9 +58,9 @@
           {parts.speaker ? $t('roleplay.inspector.turn', { values: { name: parts.speaker.name } }) : $t('roleplay.inspector.scene')} · {$t('roleplay.inspector.tokens', { values: { n: estimatedTokens } })}
         </div>
       </div>
-      <button type="button" class="ui-icon-button" onclick={onclose} aria-label={copy.actions.close}>
+      <Tooltip label={copy.actions.close} position="bottom"><button type="button" class="ui-icon-button" onclick={onclose} aria-label={copy.actions.close}>
         <X class="size-4" />
-      </button>
+      </button></Tooltip>
     </div>
 
     <div class="ui-modal-body space-y-4">
@@ -91,7 +92,7 @@
     </div>
 
     <div class="ui-modal-footer">
-      <button type="button" class="ui-btn ui-btn-ghost" onclick={onclose}>{copy.actions.close}</button>
+      <Button variant="outline" size="sm" type="button" onclick={onclose}>{copy.actions.close}</Button>
     </div>
   </div>
 </div>

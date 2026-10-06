@@ -93,14 +93,14 @@
 {/snippet}
 
 <div class="flex items-center justify-between gap-3">
-  <p class="text-[13px] text-muted-foreground">
+  <p class="text-[length:var(--text-sm)] text-muted-foreground">
     {instancesStore.running.length ? $t('instances.count', { values: { n: instancesStore.running.length } }) : ''}
   </p>
   <Menu bind:open={pickerOpen} placement="bottom-end" minWidth="18rem" label={$t('instances.startAnother')}>
     {#snippet trigger(props)}
       <Button size="sm" disabled={!library.length} {...props}><Plus /> {$t('instances.startAnother')}</Button>
     {/snippet}
-    <p class="px-2.5 pb-1 pt-1.5 text-[12px] font-semibold text-muted-foreground">{$t('instances.pickModel')}</p>
+    <p class="px-2.5 pb-1 pt-1.5 text-[length:var(--text-xs)] font-semibold text-muted-foreground">{$t('instances.pickModel')}</p>
     {#each library as model (model.path)}
       <MenuItem
         label={model.name}
@@ -169,7 +169,7 @@
       </div>
 
       <div class="flex flex-wrap items-center justify-between gap-3 py-3">
-        <label class="flex items-center gap-2.5 text-[13px] text-foreground">
+        <label class="flex items-center gap-2.5 text-[length:var(--text-sm)] text-foreground">
           <Switch
             checked={instance.shared}
             disabled={busy === instance.id}

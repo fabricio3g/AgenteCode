@@ -19,6 +19,8 @@
   import { appStore } from '$lib/stores/app.svelte';
   import { copy } from '$lib/copy';
   import type { ChatContextMode } from '$lib/types/chat';
+  import { codeStore } from '$lib/features/code/code.svelte';
+  import { botsStore } from '$lib/features/bots/bots.svelte';
 
   type TabId = ChatContextMode | 'bots';
   const tabs: Array<{ id: TabId; label: string; icon: typeof House }> = [
@@ -27,6 +29,12 @@
     { id: 'roleplay', label: copy.spaces.roleplay, icon: Drama },
     { id: 'bots', label: copy.spaces.bots, icon: Bot }
   ];
+
+  /** A space with work going on in it shows a quiet dot, so the rail reports as well as navigates. */
+  const busy = $derived<Partial<Record<TabId, boolean>>>({
+    code: Object.values(codeStore.runs).some((run) => run.running),
+    bots: botsStore.working.length > 0
+  });
 
   function activate(id: TabId) {
     if (appStore.settingsScreenOpen) {
@@ -83,6 +91,7 @@
           onclick={() => activate(tab.id)}
         >
           <Icon aria-hidden="true" />
+          {#if busy[tab.id] && !active}<span class="busy-dot" aria-hidden="true"></span>{/if}
         </button>
       </Tooltip>
     {/each}
@@ -90,7 +99,7 @@
 
   <!-- Settings anchors the rail bottom, one click away from anywhere. -->
   <div class="rail-bottom">
-    <Tooltip label={$t('sidebar.settings')} position="right">
+    <Tooltip label={$t('sidebar.settings')} shortcut="mod+," position="right">
       <button
         type="button"
         class="rail-button ui-icon-button"
@@ -107,8 +116,9 @@
 </nav>
 
 <style>
-  /* Its own plane: a step off the sidebar surface (--rail-bg) plus the one
-     hairline that separates the two columns. */
+  /* One continuous plane with the sidebar, split by a single hairline. Nothing
+     in it is boxed: a glyph is muted until hovered, and the current space is the
+     only filled thing on the strip. */
   .activity-rail {
     display: flex;
     width: var(--rail-w);
@@ -116,8 +126,7 @@
     flex-direction: column;
     align-items: center;
     padding-block: 0.75rem;
-    /* The fallback keeps an unresolved color-mix from painting the rail through. */
-    background: var(--rail-bg, var(--sidebar));
+    background: var(--sidebar);
     border-right: 1px solid var(--border);
   }
 
@@ -138,35 +147,54 @@
   }
 
   .rail-button {
+    position: relative;
     width: var(--rail-btn);
     height: var(--rail-btn);
-    /* The app's selected row is a soft squircle, not a disc: the same shape the
-       settings rail uses, so one look carries both strips. */
-    border-radius: 0.5rem;
-    /* The chrome's 14px mark is too small for a 52px strip. `.ui-icon-button`
-       already sizes its svg from --icon, so the rail rebinds the token here;
-       the `size-4` utility that used to sit on the icon lost to that rule on
-       specificity and never took effect. */
+    border-radius: var(--float-row-radius);
+    /* Plain glyph: the shared icon button's ring and shadow are chrome the rail
+       does not need. */
+    border-color: transparent;
+    background: transparent;
+    box-shadow: none;
+    color: var(--muted-foreground);
     --icon: var(--rail-icon);
   }
+  .rail-button:hover {
+    background: var(--float-row-hover);
+    border-color: transparent;
+    color: var(--foreground);
+  }
 
-  /* Lucide scales its stroke with the glyph, so an 18px mark carries 0.75x the
-     weight it has at 24px. 2.1 lands at ~1.6px: a hair above the default 1.5px
-     the chrome's marks read at, without the heaviness of a full step up. */
+  /* Lucide scales its stroke with the glyph; 2.1 reads at ~1.6px on 18px. */
   .rail-button :global(svg) {
     stroke-width: 2.1;
   }
 
-  .rail-button.is-active {
-    background: var(--surface-active);
+  /* The current space: the raised chip the sidebar's open row uses too. */
+  .rail-button.is-active,
+  .rail-button.is-active:hover {
+    background: var(--nav-current-bg);
+    border-color: transparent;
+    box-shadow: var(--nav-current-ring);
     color: var(--foreground);
-    /* The fill alone floats on the rail's own surface; the hairline seats it. */
-    border: 1px solid var(--border-hover);
   }
 
-  /* `.ui-icon-button` drops the browser outline, so keyboard focus needs the
-     app's own ring — the rail is roving-focus and was invisible when tabbed to. */
+  .busy-dot {
+    position: absolute;
+    top: 0.4375rem;
+    right: 0.4375rem;
+    inline-size: 0.375rem;
+    block-size: 0.375rem;
+    border-radius: 9999px;
+    background: var(--brand-accent);
+    box-shadow: 0 0 0 2px var(--sidebar);
+    animation: rail-pulse 1.6s ease-in-out infinite;
+  }
+  @keyframes rail-pulse { 50% { opacity: 0.45; } }
+  @media (prefers-reduced-motion: reduce) { .busy-dot { animation: none; } }
+
   .rail-button:focus-visible {
-    box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--ring) 45%, transparent);
+    outline: 2px solid var(--brand-accent);
+    outline-offset: -2px;
   }
 </style>

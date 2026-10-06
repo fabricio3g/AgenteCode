@@ -11,7 +11,7 @@
 <script lang="ts">
   import { t } from 'svelte-i18n';
   import { ClipboardList, MessageSquare, RefreshCw, Hammer, X } from 'lucide-svelte';
-  import { Button } from '$lib/components/ui';
+  import { Button, Tooltip } from '$lib/components/ui';
   import RichContent from '$lib/ui/components/RichContent.svelte';
   import { appStore } from '$lib/stores/app.svelte';
   import { codeStore } from './code.svelte';
@@ -22,7 +22,7 @@
 
   let busy = $state(false);
 
-  const messages = $derived(appStore.currentChat?.id === chatId ? appStore.currentChat.messages : []);
+  const messages = $derived(appStore.chats.find((chat) => chat.id === chatId)?.messages ?? []);
   const waiting = $derived(isPlanWaiting(messages, plan) && !codeStore.runFor(chatId)?.running);
 
   async function answer(mode: 'supervised' | 'plan', text: string) {
@@ -36,7 +36,7 @@
   }
 
   function comment() {
-    window.dispatchEvent(new CustomEvent('code-composer-draft', { detail: $t('code.plan.commentPrefix') }));
+    window.dispatchEvent(new CustomEvent('code-composer-draft', { detail: { chatId, text: $t('code.plan.commentPrefix') } }));
   }
 </script>
 
@@ -44,14 +44,14 @@
   {#if !embedded}<header class="flex h-11 shrink-0 items-center gap-2 border-b border-[var(--border-subtle)] pl-4 pr-2">
     <ClipboardList class="size-4 shrink-0 text-muted-foreground" />
     <p class="min-w-0 flex-1 truncate text-[13px] font-medium text-foreground" title={plan.path || plan.title}>{plan.title}</p>
-    <Button variant="ghost" size="icon-sm" onclick={() => codeWorkspace.closePlan()} aria-label={$t('codeWs.close')} title={$t('codeWs.close')}><X /></Button>
+    <Tooltip label={$t('codeWs.close')} position="bottom"><Button variant="ghost" size="icon-sm" onclick={() => codeWorkspace.closePlan()} aria-label={$t('codeWs.close')}><X /></Button></Tooltip>
   </header>{/if}
   <div class="min-h-0 flex-1 overflow-y-auto px-5 py-4 text-sm leading-relaxed text-foreground">
     {#if plan.path}<p class="mb-3 truncate text-xs text-muted-foreground" title={plan.path}>{plan.path}</p>{/if}
     <RichContent content={plan.body} />
   </div>
   {#if waiting}
-    <footer class="flex shrink-0 flex-col gap-2 border-t border-[var(--border-subtle)] px-4 py-3">
+    <footer class="flex shrink-0 flex-col gap-2 border-t border-[var(--border-subtle)] px-5 py-3">
       <div class="flex flex-wrap items-center gap-2">
         <Button size="sm" disabled={busy} onclick={() => void answer('supervised', acceptMessage(plan))}><Hammer /> {$t('code.plan.accept')}</Button>
         <Button size="sm" variant="outline" disabled={busy} onclick={() => void answer('plan', REDO_MESSAGE)}><RefreshCw /> {$t('code.plan.redo')}</Button>

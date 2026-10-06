@@ -139,7 +139,7 @@
     display: flex;
     flex-wrap: wrap;
     gap: 0.375rem;
-    padding: 0.25rem 0.5rem 0.125rem 1.875rem;
+    padding: var(--group-gap, 6px) var(--dock-gap, 8px) 0 var(--step-indent, 19px);
   }
   .file-chip {
     display: inline-flex;

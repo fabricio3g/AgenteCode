@@ -17,8 +17,11 @@ const MAX_BODY_BYTES = 4 * 1024 * 1024;
 export type DesktopToolServer = {
   url: string;
   token: string;
+  cancelSession(sessionId: string): void;
   close(): Promise<void>;
 };
+
+const activeCalls = new Set<{ controller: AbortController; sessionId?: string }>();
 
 type ResolveContext = (meta: Record<string, unknown>) => Partial<ToolExecContext> | Promise<Partial<ToolExecContext>>;
 
@@ -53,9 +56,12 @@ async function callTool(tools: Map<string, AgentTool>, params: Record<string, un
   if (!tool) return callResult({ content: `Unknown tool ${String(params.name)}`, isError: true });
   const args = (params.arguments ?? {}) as Record<string, unknown>;
   try {
-    const signal = new AbortController().signal;
+    const controller = new AbortController();
     const context = await resolveContext?.((params._meta ?? {}) as Record<string, unknown>);
-    return callResult(await tool.execute(`mcp-${crypto.randomUUID()}`, args, { ...context, signal }));
+    const active = { controller, sessionId: context?.sessionId };
+    activeCalls.add(active);
+    try { return callResult(await tool.execute(`mcp-${crypto.randomUUID()}`, args, { ...context, signal: controller.signal })); }
+    finally { activeCalls.delete(active); }
   } catch (error: unknown) {
     return callResult({ content: error instanceof Error ? error.message : String(error), isError: true });
   }
@@ -150,6 +156,7 @@ export function serveDesktopTools(tools: AgentTool[], options: { resolveContext?
       resolve({
         url: `http://127.0.0.1:${port}/mcp`,
         token,
+        cancelSession: sessionId => { for (const active of activeCalls) if (active.sessionId === sessionId) active.controller.abort(); },
         close: () => new Promise((done) => server.close(() => done()))
       });
     });

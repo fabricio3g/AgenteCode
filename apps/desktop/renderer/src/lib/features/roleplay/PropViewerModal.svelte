@@ -10,6 +10,7 @@
 -->
 
 <script lang="ts">
+  import { Button, Tooltip } from '$lib/components/ui';
   import { Copy, X } from 'lucide-svelte';
   import { BookMarked } from 'lucide-svelte';
   import { flyAndScale, motionFade } from '$lib/utils/transitions';
@@ -72,9 +73,9 @@
         <div class="ui-modal-title">{prop.title}</div>
         <div class="text-xs text-muted-foreground">{prop.kind}</div>
       </div>
-      <button type="button" class="ui-icon-button" onclick={onclose} aria-label={copyText.actions.close}>
+      <Tooltip label={copyText.actions.close} position="bottom"><button type="button" class="ui-icon-button" onclick={onclose} aria-label={copyText.actions.close}>
         <X class="size-4" />
-      </button>
+      </button></Tooltip>
     </div>
 
     <div class="ui-modal-body max-h-[58vh] overflow-y-auto">
@@ -82,14 +83,14 @@
     </div>
 
     <div class="prop-actions">
-      <button type="button" class="ui-btn ui-btn-ghost" onclick={copyBody}>
+      <Button variant="outline" size="sm" type="button" onclick={copyBody}>
         <Copy class="size-3.5" />
         <span>Copy</span>
-      </button>
-      <button type="button" class="ui-btn ui-btn-ghost" disabled={kept} onclick={keep}>
+      </Button>
+      <Button variant="outline" size="sm" type="button" disabled={kept} onclick={keep}>
         <BookMarked class="size-3.5" />
         <span>{kept ? 'In journal' : 'Keep in journal'}</span>
-      </button>
+      </Button>
     </div>
   </div>
 </div>

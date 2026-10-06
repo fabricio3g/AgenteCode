@@ -5,9 +5,14 @@
 // Shared by the Code agent's tools (main process) and the Home agent's tools
 // (through IPC). The panel itself (tabs, bounds, CDP) lives in browser-panel.
 
+import { nativeImage, type NativeImage } from 'electron';
 import { describeLoadError, type BrowserSnapshot } from './browser-format.ts';
 import {
   panelCdp,
+  panelCloseTab,
+  panelListTabs,
+  panelPointer,
+  panelSetActive,
   panelHistory,
   panelIsTakenOver,
   panelMarkAgentDriving,
@@ -184,6 +189,8 @@ export async function snapshot(tabId?: string): Promise<BrowserSnapshot> {
 }
 
 function refSelector(ref: string): string {
+  // A CSS selector the user picked in the panel ("css:button#buy") is accepted too.
+  if (ref.startsWith('css:')) return ref.slice(4);
   if (!/^e\d{1,4}$/.test(ref)) throw new Error(`"${ref}" is not an element ref. Take a browser_snapshot and use a ref like "e12".`);
   return `[data-agent-ref="${ref}"]`;
 }
@@ -208,6 +215,15 @@ async function mouse(tab: PanelTab, type: string, x: number, y: number) {
   await panelCdp(tab, 'Input.dispatchMouseEvent', { type, x, y, button: 'left', clickCount: 1 });
 }
 
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+const GLIDE_MS = 230;
+
+/** Move the real mouse and the visible pointer to (x, y), and let the user watch it travel. */
+async function glide(tab: PanelTab, x: number, y: number) {
+  await mouse(tab, 'mouseMoved', x, y);
+  await sleep(GLIDE_MS);
+}
+
 export async function click(ref: string, tabId?: string): Promise<BrowserSnapshot> {
   const tab = begin(tabId);
   const { x, y } = await locate(tab, ref);
@@ -221,7 +237,7 @@ export async function click(ref: string, tabId?: string): Promise<BrowserSnapsho
     el && el.addEventListener('click', () => { window.__agentClickLanded = true; }, { once: true, capture: true });
     return true;
   })()`);
-  await mouse(tab, 'mouseMoved', x, y);
+  await glide(tab, x, y);
   await mouse(tab, 'mousePressed', x, y);
   await mouse(tab, 'mouseReleased', x, y);
   const landed = await evaluate<boolean>(tab, 'window.__agentClickLanded === true').catch(() => true);
@@ -233,7 +249,7 @@ export async function click(ref: string, tabId?: string): Promise<BrowserSnapsho
 export async function hover(ref: string, tabId?: string): Promise<BrowserSnapshot> {
   const tab = begin(tabId);
   const { x, y } = await locate(tab, ref);
-  await mouse(tab, 'mouseMoved', x, y);
+  await glide(tab, x, y);
   await settle(tab, 1000);
   return snapshot(tab.id);
 }
@@ -241,6 +257,8 @@ export async function hover(ref: string, tabId?: string): Promise<BrowserSnapsho
 /** Replace a field's content with `text`; optionally press Enter to submit. */
 export async function fill(ref: string, text: string, options: { submit?: boolean } = {}, tabId?: string): Promise<BrowserSnapshot> {
   const tab = begin(tabId);
+  const point = await locate(tab,ref);
+  await glide(tab, point.x, point.y);
   const focused = await evaluate<boolean>(
     tab,
     `(() => {
@@ -260,15 +278,19 @@ export async function fill(ref: string, text: string, options: { submit?: boolea
     })()`
   );
   if (!focused) throw new Error(`No element ${ref} on the page anymore. Take a new browser_snapshot.`);
+  await panelPointer(tab, point.x, point.y, false, true);
   if (text) await panelCdp(tab, 'Input.insertText', { text });
   else await key(tab, 'Backspace');
   if (options.submit) await key(tab, 'Enter');
+  await panelPointer(tab, point.x, point.y, false, false);
   await settle(tab);
   return snapshot(tab.id);
 }
 
 export async function selectOption(ref: string, value: string, tabId?: string): Promise<BrowserSnapshot> {
   const tab = begin(tabId);
+  const point = await locate(tab, ref);
+  await glide(tab, point.x, point.y);
   const chosen = await evaluate<string | null>(
     tab,
     `(() => {
@@ -334,6 +356,13 @@ async function key(tab: PanelTab, name: string) {
 
 export async function press(name: string, tabId?: string): Promise<BrowserSnapshot> {
   const tab = begin(tabId);
+  const focus = await evaluate<{ x: number; y: number } | null>(tab, `(() => {
+    const el = document.activeElement;
+    if (!el || el === document.body || el === document.documentElement) return null;
+    const r = el.getBoundingClientRect();
+    return r.width && r.height ? { x: r.left + r.width / 2, y: r.top + r.height / 2 } : null;
+  })()`).catch(() => null);
+  if (focus) await panelPointer(tab, focus.x, focus.y, false, true);
   await key(tab, name);
   await settle(tab, 2000);
   return snapshot(tab.id);
@@ -342,11 +371,15 @@ export async function press(name: string, tabId?: string): Promise<BrowserSnapsh
 export async function scroll(options: { direction?: 'up' | 'down'; pages?: number; ref?: string }, tabId?: string): Promise<BrowserSnapshot> {
   const tab = begin(tabId);
   if (options.ref) {
-    await locate(tab, options.ref);
+    const point = await locate(tab, options.ref);
+    await glide(tab, point.x, point.y);
   } else {
+    const center = await evaluate<{ x: number; y: number }>(tab, '({ x: innerWidth / 2, y: innerHeight / 2 })').catch(() => null);
+    if (center) await glide(tab, center.x, center.y);
     const pages = Math.max(0.25, Math.min(options.pages ?? 1, 10));
     const sign = options.direction === 'up' ? -1 : 1;
     await evaluate(tab, `window.scrollBy({ top: ${sign} * innerHeight * ${pages} * 0.9 }), true`);
+    if (center) await mouse(tab, 'mouseMoved', center.x, center.y);
   }
   await settle(tab, 800);
   return snapshot(tab.id);
@@ -422,12 +455,63 @@ export function consoleEntries(options: { level?: 'error' | 'warning' | 'all'; s
   return entries.slice(-80);
 }
 
+/** Widest screenshot sent to a model: more pixels add upload and tokens, not legibility. */
+const SCREENSHOT_MAX_WIDTH = 1280;
+
+/**
+ * A screenshot as the model gets it: at most {@link SCREENSHOT_MAX_WIDTH}
+ * wide and JPEG. A full-resolution PNG of a HiDPI page ran past 1.5 MB, and
+ * every one rides in the request.
+ */
+function forModel(image: NativeImage): { data: string; mimeType: string } {
+  const { width } = image.getSize();
+  const scaled = width > SCREENSHOT_MAX_WIDTH ? image.resize({ width: SCREENSHOT_MAX_WIDTH, quality: 'good' }) : image;
+  return { data: scaled.toJPEG(80).toString('base64'), mimeType: 'image/jpeg' };
+}
+
 export async function screenshot(tabId?: string): Promise<{ data: string; mimeType: string }> {
   const tab = begin(tabId);
   const shot = await panelCdp<{ data?: string }>(tab, 'Page.captureScreenshot', { format: 'png' }).catch(() => null);
-  if (shot?.data) return { data: shot.data, mimeType: 'image/png' };
+  if (shot?.data) return forModel(nativeImage.createFromBuffer(Buffer.from(shot.data, 'base64')));
   // CDP cannot capture a page that is not being painted; Electron sometimes can.
-  const image = await tab.view.webContents.capturePage().catch(() => null);
-  if (image && !image.isEmpty()) return { data: image.toPNG().toString('base64'), mimeType: 'image/png' };
+  const contents = tab.view.webContents;
+  const image = contents && !contents.isDestroyed() ? await contents.capturePage().catch(() => null) : null;
+  if (image && !image.isEmpty()) return forModel(image);
   throw new Error('The page could not be captured — the app window must be visible (not minimized) to take a screenshot. Use browser_snapshot to read the page instead.');
+}
+
+const READ_LIMIT = 8000;
+
+/** The page's readable text, or one element's text/value, truncated to a sensible length. */
+export async function read(ref?: string, tabId?: string): Promise<{ url: string; title: string; text: string; truncated: boolean }> {
+  const tab = begin(tabId);
+  const selector = ref ? JSON.stringify(refSelector(ref)) : 'null';
+  const out = await evaluate<{ url: string; title: string; text: string; missing?: boolean } | null>(tab, `(() => {
+    const sel = ${selector};
+    const el = sel ? document.querySelector(sel) : (document.querySelector('main, article, [role=main]') || document.body);
+    if (!el) return { url: location.href, title: document.title, text: '', missing: true };
+    const raw = el.value !== undefined && typeof el.value === 'string' && !el.isContentEditable ? el.value : el.innerText || el.textContent || '';
+    return { url: location.href, title: document.title, text: String(raw).replace(/\\n{3,}/g, '\\n\\n').trim() };
+  })()`);
+  if (!out || out.missing) throw new Error(`No element ${ref} on the page anymore. Take a new browser_snapshot — refs change when the page changes.`);
+  const truncated = out.text.length > READ_LIMIT;
+  return { url: out.url, title: out.title, text: truncated ? out.text.slice(0, READ_LIMIT) : out.text, truncated };
+}
+
+/** List, switch to, or close the agent browser's tabs. */
+export async function tabs(action: 'list' | 'switch' | 'close', tabId?: string): Promise<{ tabs: { id: string; url: string; title: string; active: boolean }[]; message: string }> {
+  if (panelIsTakenOver()) begin();
+  panelMarkAgentDriving();
+  let message = '';
+  if (action === 'switch') {
+    if (!tabId) throw new Error('browser_tabs switch needs tab_id (from browser_tabs list).');
+    panelSetActive(tabId);
+    message = `Switched to ${tabId}.`;
+  } else if (action === 'close') {
+    const closed = panelCloseTab(tabId);
+    message = `Closed ${closed.closed}.`;
+  }
+  const active = (() => { try { return panelTab().id; } catch { return ''; } })();
+  const list = panelListTabs().map((t) => ({ id: t.id, url: t.url, title: t.title, active: t.id === active }));
+  return { tabs: list, message };
 }

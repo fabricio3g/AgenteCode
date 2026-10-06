@@ -7,6 +7,7 @@
 -->
 
 <script lang="ts">
+  import { Button, Tooltip } from '$lib/components/ui';
   import { conversationScope } from '$shared/workspace-scope';
   import { t } from 'svelte-i18n';
   import { FileCode2, FolderOpen, GitBranch, LoaderCircle, RefreshCw, Undo2, X } from 'lucide-svelte';
@@ -142,10 +143,10 @@
         <span class="ml-1 tabular-nums"><span class="text-success">+{totals.add}</span> <span class="text-error">−{totals.del}</span></span>
       {/if}
     </p>
-    <button type="button" class="ui-icon-button is-sm" onclick={refresh} disabled={codeWorkspace.changeLoading[chatId]} aria-label={$t('codeWs.refresh')} title={$t('codeWs.refresh')}>
+    <Tooltip label={$t('codeWs.refresh')} position="bottom"><button type="button" class="ui-icon-button is-sm" onclick={refresh} disabled={codeWorkspace.changeLoading[chatId]} aria-label={$t('codeWs.refresh')}>
       <RefreshCw class={codeWorkspace.changeLoading[chatId] ? 'animate-spin' : ''} />
-    </button>
-    {#if !embedded}<button type="button" class="ui-icon-button is-sm" onclick={() => codeWorkspace.toggleChanges(false)} aria-label={$t('codeWs.close')} title={$t('codeWs.close')}><X /></button>{/if}
+    </button></Tooltip>
+    {#if !embedded}<Tooltip label={$t('codeWs.close')} position="bottom"><button type="button" class="ui-icon-button is-sm" onclick={() => codeWorkspace.toggleChanges(false)} aria-label={$t('codeWs.close')}><X /></button></Tooltip>{/if}
   </header>
 
   {#if !list && codeWorkspace.changeLoading[chatId]}
@@ -186,10 +187,10 @@
         <div class="diff-bar">
           <span class="min-w-0 flex-1 truncate font-mono" title={selected.path}>{selected.path}</span>
           {#if selected.kind !== 'deleted'}
-            <button type="button" class="ui-chip" onclick={() => openFile(selected.path)} title={$t('codeWs.openFile')}><FolderOpen /> {$t('codeWs.open')}</button>
+            <Button variant="outline" size="sm" type="button" onclick={() => openFile(selected.path)} title={$t('codeWs.openFile')}><FolderOpen /> {$t('codeWs.open')}</Button>
           {/if}
           {#if !selected.patches}
-            <button type="button" class="ui-chip" onclick={() => void revert(selected)} title={$t('codeWs.revert')}><Undo2 /> {$t('codeWs.revert')}</button>
+            <Button variant="outline" size="sm" type="button" onclick={() => void revert(selected)} title={$t('codeWs.revert')}><Undo2 /> {$t('codeWs.revert')}</Button>
           {/if}
         </div>
         <div class="diff-scroll">
@@ -252,17 +253,22 @@
     display: flex;
     align-items: flex-start;
     gap: 0.5rem;
-    padding: 0.25rem 0.75rem;
+    padding: 0.5rem 0.75rem;
     color: var(--muted-foreground);
     font-size: 12px;
     line-height: 1.55;
   }
 
   .changes-list {
+    /* Rows are full-radius hover pills: with no gap they merge into one band,
+       and with no top inset the first one sits on the bar above it. */
+    display: flex;
+    flex-direction: column;
+    gap: 0.125rem;
     max-height: 40%;
     flex-shrink: 0;
     overflow-y: auto;
-    padding: 0 4px 4px;
+    padding: 0.25rem 4px 4px;
   }
 
   .file-row {
@@ -288,7 +294,9 @@
     min-height: 0;
     flex: 1;
     flex-direction: column;
-    margin: 0 4px 4px;
+    /* The path bar and the first diff line are two things, not one. */
+    gap: 0.125rem;
+    margin: 0.25rem 4px 4px;
     overflow: hidden;
     border-radius: 8px;
     background: var(--muted);

@@ -43,17 +43,20 @@ pub async fn discover(
     let provider = registry
         .get(provider_id)
         .ok_or_else(|| format!("Unknown provider '{provider_id}'"))?;
+    let started = std::time::Instant::now();
     let raw = match tokio::time::timeout(DISCOVERY_TIMEOUT, provider.list_models()).await {
         Ok(Ok(models)) => models,
         Ok(Err(error)) => {
+            tracing::warn!(provider = %provider_id, elapsed_ms = started.elapsed().as_millis(), "Model discovery failed");
             return Err(crate::util::redact_secrets(&format!(
                 "{provider_id}: model list failed: {error}"
-            )))
+            )));
         }
         Err(_) => {
+            tracing::warn!(provider = %provider_id, elapsed_ms = started.elapsed().as_millis(), "Model discovery timed out");
             return Err(format!(
                 "{provider_id}: model list timed out; check the network or API key"
-            ))
+            ));
         }
     };
     let mut enriched = enrich_discovered(&raw, baseline, catalog);
@@ -69,7 +72,7 @@ pub async fn discover(
         crate::providers::resolve_registered_transport(model, provider.as_ref());
     }
     registry.replace_runtime_models(provider_id, enriched.clone());
-    tracing::info!(provider = %provider_id, count = enriched.len(), "Models discovered");
+    tracing::info!(provider = %provider_id, count = enriched.len(), elapsed_ms = started.elapsed().as_millis(), "Models discovered");
     Ok(enriched)
 }
 

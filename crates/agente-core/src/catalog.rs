@@ -722,6 +722,24 @@ impl ModelCatalog {
         None
     }
 
+    /// Every model models.dev records for a provider — retired ones included,
+    /// with their status — sorted by id. A provider's own `/models` lists only
+    /// what it serves today and often not even all of that, so pickers merge
+    /// this in to show the rest.
+    pub fn provider_models(&self, provider_id: &str) -> Vec<&CatalogModel> {
+        let provider_id = crate::providers::spec::catalog_id(provider_id);
+        let Some(provider) = self
+            .providers
+            .get(provider_id)
+            .or_else(|| self.providers.values().find(|p| p.id == provider_id))
+        else {
+            return Vec::new();
+        };
+        let mut models: Vec<&CatalogModel> = provider.models.values().collect();
+        models.sort_by(|a, b| a.id.cmp(&b.id));
+        models
+    }
+
     /// Search every provider for a model id / api_id.
     pub fn find_model_any(&self, model_id: &str) -> Option<&CatalogModel> {
         if model_id.is_empty() {
@@ -763,6 +781,24 @@ impl ModelCatalog {
         }
         let prefixed = format!("{}/{}", provider.id, model_id);
         provider.models.get(&prefixed)
+    }
+
+    /// Limits of the nearest sibling of a model the catalog has not heard of:
+    /// the same id once minor versions are dropped (`deepseek-v4.1-flash` →
+    /// `deepseek-v4-flash`). A point release keeps its family's window; the
+    /// 32k default would otherwise make a 1M-token model look permanently full.
+    pub fn find_family_limits(&self, provider_id: &str, model_id: &str) -> Option<ModelLimits> {
+        let provider_id = crate::providers::spec::catalog_id(provider_id);
+        let provider = self
+            .providers
+            .get(provider_id)
+            .or_else(|| self.providers.values().find(|p| p.id == provider_id))?;
+        let wanted = family_key(model_id);
+        provider
+            .models
+            .values()
+            .find(|m| family_key(&m.id) == wanted)
+            .map(|m| m.limit.clone())
     }
 
     /// How long the on-disk catalog is trusted before a background refresh.
@@ -981,6 +1017,23 @@ mod tests {
     }"#;
 
     #[test]
+    fn point_release_inherits_its_familys_window() {
+        let catalog = ModelCatalog::parse_json(FIXTURE).expect("parse fixture");
+        let limits = catalog
+            .find_family_limits("deepseek", "deepseek-v4.1-flash")
+            .expect("sibling");
+        assert_eq!(limits.context, 1_000_000);
+        assert!(catalog
+            .find_family_limits("deepseek", "deepseek-v5-flash")
+            .is_none());
+        assert_eq!(
+            family_key("deepseek/deepseek-v4.1-flash"),
+            "deepseek-v4-flash"
+        );
+        assert_eq!(family_key("gpt-4.1-mini"), "gpt-4-mini");
+    }
+
+    #[test]
     fn parses_models_dev_flat_schema() {
         let catalog = ModelCatalog::parse_json(FIXTURE).expect("parse fixture");
         assert_eq!(catalog.providers.len(), 2);
@@ -1082,4 +1135,29 @@ mod tests {
             other => panic!("unexpected options: {other:?}"),
         }
     }
+}
+
+/// An id with its minor versions dropped: `deepseek-v4.1-flash` and
+/// `deepseek-v4-flash` share one key.
+fn family_key(model_id: &str) -> String {
+    let bare = model_id
+        .rsplit('/')
+        .next()
+        .unwrap_or(model_id)
+        .to_lowercase();
+    let mut out = String::with_capacity(bare.len());
+    let mut chars = bare.chars().peekable();
+    let mut prev_digit = false;
+    while let Some(c) = chars.next() {
+        if c == '.' && prev_digit && chars.peek().is_some_and(|n| n.is_ascii_digit()) {
+            while chars.peek().is_some_and(|n| n.is_ascii_digit()) {
+                chars.next();
+            }
+            prev_digit = false;
+            continue;
+        }
+        prev_digit = c.is_ascii_digit();
+        out.push(c);
+    }
+    out
 }

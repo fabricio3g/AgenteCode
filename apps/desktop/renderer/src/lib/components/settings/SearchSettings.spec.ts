@@ -33,6 +33,10 @@ vi.mock('$lib/services/search', () => ({
   probeAggregatorEngines: vi.fn(async () => ({ engine_attempts: [] })),
 }));
 
+if (!('ResizeObserver' in globalThis)) {
+  vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} });
+}
+
 afterEach(cleanup);
 
 function renderSearch(provider = 'aggregator') {
@@ -87,9 +91,9 @@ describe('SearchSettings', () => {
     const view = renderSearch();
     await view.findByText('Wikipedia');
     await fireEvent.click(view.getByRole('button', { name: 'Engine pool actions' }));
-    expect(view.getByRole('button', { name: 'Enable recommended' })).toBeTruthy();
-    expect(view.getByRole('button', { name: 'Enable all configured' })).toBeTruthy();
-    expect(view.getByRole('button', { name: 'Disable all' })).toBeTruthy();
-    expect(view.getByRole('button', { name: 'Reset to recommended' })).toBeTruthy();
+    expect(view.getByRole('menuitem', { name: 'Enable recommended' })).toBeTruthy();
+    expect(view.getByRole('menuitem', { name: 'Enable all configured' })).toBeTruthy();
+    expect(view.getByRole('menuitem', { name: 'Disable all' })).toBeTruthy();
+    expect(view.getByRole('menuitem', { name: 'Reset to recommended' })).toBeTruthy();
   });
 });

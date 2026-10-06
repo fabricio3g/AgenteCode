@@ -172,7 +172,7 @@
     font-size: 0.82rem;
     border: 1px solid var(--border);
   }
-  :global(.ui-button) {
+  :global(.ui-root .ui-button) {
     border: 1px solid var(--border-hover);
     border-radius: var(--radius-sm);
     padding: 0.65rem 1rem;
@@ -181,11 +181,11 @@
     box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), 0 1px 2px rgba(0,0,0,0.04);
     transition: transform 0.1s ease, opacity 0.12s ease, border-color 0.12s ease;
   }
-  :global(.ui-button:hover) {
+  :global(.ui-root .ui-button:hover) {
     opacity: 0.88;
     border-color: var(--text);
   }
-  :global(.ui-button:active) {
+  :global(.ui-root .ui-button:active) {
     transform: scale(0.98);
   }
   :global(.ui-artifact-button-primary) {
@@ -201,7 +201,7 @@
     background: var(--surface-hover);
     border-color: var(--fg-tertiary);
   }
-  :global(.dark .ui-button) {
+  :global(.dark .ui-root .ui-button) {
     box-shadow: inset 0 1px 0 rgba(255,255,255,0.04), 0 1px 2px rgba(0,0,0,0.2);
   }
   :global(.ui-form), :global(.ui-artifact-field) {

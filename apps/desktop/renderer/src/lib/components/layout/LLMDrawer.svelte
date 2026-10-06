@@ -1,6 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+  import { Button, Tooltip } from '$lib/components/ui';
   import { modalLayer } from '$lib/components/ui/modal-layer';
   import { motionFade, motionFly } from '$lib/utils/transitions';
   import { Settings, X, Cpu, ExternalLink, MemoryStick, Zap, Sliders } from 'lucide-svelte';
@@ -89,7 +90,7 @@
      anchoring flush to the right as a full-height drawer. -->
 <aside
   use:modalLayer={{ onclose: () => (appStore.llmDrawerOpen = false), zToken: '--z-drawer' }}
-  class="fixed bottom-3 right-3 top-12 flex w-80 flex-col overflow-hidden rounded-[var(--radius-2xl)] border border-[var(--panel-border)] bg-popover shadow-[shadow:var(--shadow-xl)]"
+  class="fixed bottom-3 right-3 top-12 flex w-80 flex-col overflow-hidden rounded-[var(--radius-2xl)] border border-[var(--float-border)] bg-[var(--float-bg)] shadow-[shadow:var(--float-shadow)]"
   aria-label="Generation settings"
   transition:motionFly={{ x: 24, duration: 260, opacity: 0 }}
 >
@@ -101,14 +102,14 @@
       </div>
       <span class="text-sm font-semibold text-foreground">Generation</span>
     </div>
-    <button
+    <Tooltip label="Close" position="bottom"><button
       type="button"
       class="ui-icon-button"
       onclick={() => (appStore.llmDrawerOpen = false)}
       aria-label="Close"
     >
       <X class="size-4" />
-    </button>
+    </button></Tooltip>
   </div>
 
   <!-- ── Body ───────────────────────────────────────────────────── -->
@@ -258,14 +259,13 @@
 
   <!-- ── Footer ─────────────────────────────────────────────────── -->
   <div class="shrink-0 px-4 py-3">
-    <button
+    <Button variant="default" size="lg" class="w-full"
       type="button"
-      class="ui-btn ui-btn-primary w-full py-2.5"
       onclick={save}
       disabled={saving}
     >
       {saving ? 'Saving…' : mode === currentMode && mode === 'api' ? 'Done' : 'Apply settings'}
-    </button>
+    </Button>
   </div>
 </aside>
 {/if}

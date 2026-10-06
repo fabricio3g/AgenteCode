@@ -12,12 +12,10 @@
   const languages = SUPPORTED_UI_LANGUAGES;
 
   let {
-    showAssistantText = $bindable(),
     enableThinking = $bindable(),
     hfToken = $bindable(),
     onsaveHfToken,
   }: {
-    showAssistantText: boolean;
     enableThinking: boolean;
     hfToken: string;
     onsaveHfToken: () => void;
@@ -36,12 +34,7 @@
   }
 </script>
 
-<div class="space-y-5 sm:space-y-6">
-  <SettingsSection title={$t('onboarding.setupTitle')}>
-    <SettingsRow label={$t('onboarding.setupTitle')} description={$t('onboarding.setupHint')}>
-      <Button variant="secondary" onclick={() => { appStore.onboardingOpen = true; }}>{$t('onboarding.reopenSetup')}</Button>
-    </SettingsRow>
-  </SettingsSection>
+<div class="flex flex-col gap-7">
 
   <SettingsSection title={$t('generalSettings.profile')}>
     <SettingsRow
@@ -73,14 +66,6 @@
   </SettingsSection>
 
   <SettingsSection title={$t('generalSettings.chatBehavior')}>
-    <SettingsRow
-      label={$t('generalSettings.showAssistantText')}
-      description={$t('generalSettings.showAssistantTextDesc')}
-      control="auto"
-    >
-      <Switch bind:checked={showAssistantText} label={$t('generalSettings.showAssistantText')} />
-    </SettingsRow>
-
     <SettingsRow
       label={$t('generalSettings.enableThinking')}
       description={$t('generalSettings.enableThinkingDesc')}
@@ -149,8 +134,14 @@
           placeholder="hf_..."
           class="min-w-0 flex-1"
         />
-        <Button onclick={onsaveHfToken}>{$t('generalSettings.save')}</Button>
+        <Button variant="outline" onclick={onsaveHfToken}>{$t('generalSettings.save')}</Button>
       </div>
+    </SettingsRow>
+  </SettingsSection>
+
+  <SettingsSection title={$t('generalSettings.setup')}>
+    <SettingsRow label={$t('generalSettings.setupWizard')} description={$t('onboarding.setupHint')} control="auto">
+      <Button variant="outline" size="sm" onclick={() => { appStore.onboardingOpen = true; }}>{$t('onboarding.reopenSetup')}</Button>
     </SettingsRow>
   </SettingsSection>
 </div>

@@ -877,6 +877,41 @@ impl<C: ToolCore> TypedTool<C> {
     }
 }
 
+/// Drop JSON-Schema document furniture from a tool schema.
+///
+/// `schemars` emits `$schema` and a `title` per struct and per field. Neither
+/// tells a model anything it needs to call the tool, and every byte rides in
+/// the request prefix of every turn — on a twenty-tool registry that is
+/// thousands of tokens of pure boilerplate. Types, descriptions, properties,
+/// required lists and enums are untouched.
+pub(crate) fn compact_schema(value: serde_json::Value) -> serde_json::Value {
+    compact_schema_at(value, false)
+}
+
+/// `property_names` is true for the map whose *keys* are argument names
+/// (`properties`, `$defs`, `definitions`): a tool argument may legitimately be
+/// called `title`, and its name is not schema furniture.
+fn compact_schema_at(value: serde_json::Value, property_names: bool) -> serde_json::Value {
+    match value {
+        serde_json::Value::Object(map) => serde_json::Value::Object(
+            map.into_iter()
+                .filter(|(key, _)| property_names || (key != "$schema" && key != "title"))
+                .map(|(key, child)| {
+                    let names = matches!(key.as_str(), "properties" | "$defs" | "definitions");
+                    (key, compact_schema_at(child, names))
+                })
+                .collect(),
+        ),
+        serde_json::Value::Array(items) => serde_json::Value::Array(
+            items
+                .into_iter()
+                .map(|item| compact_schema_at(item, false))
+                .collect(),
+        ),
+        other => other,
+    }
+}
+
 #[async_trait]
 impl<C: ToolCore> Tool for TypedTool<C> {
     fn name(&self) -> &str {
@@ -888,9 +923,11 @@ impl<C: ToolCore> Tool for TypedTool<C> {
     }
 
     fn parameters(&self) -> serde_json::Value {
-        serde_json::to_value(schemars::schema_for!(C::Args)).unwrap_or(serde_json::json!({
-            "type": "object"
-        }))
+        compact_schema(
+            serde_json::to_value(schemars::schema_for!(C::Args)).unwrap_or(serde_json::json!({
+                "type": "object"
+            })),
+        )
     }
 
     fn execution_mode(&self) -> ToolExecutionMode {
@@ -1245,6 +1282,99 @@ mod typed_path_tests {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Tool schemas ride in every request, so the document furniture
+    /// `schemars` adds has to go — while what the model needs to call the
+    /// tool stays.
+    #[test]
+    fn tool_schemas_drop_document_furniture_but_keep_the_contract() {
+        let schema = compact_schema(serde_json::json!({
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "title": "Args",
+            "type": "object",
+            "properties": {
+                "path": {
+                    "title": "Path",
+                    "description": "File to read",
+                    "type": "string"
+                },
+                "mode": { "enum": ["fast", "thorough"] },
+                // An argument may be *named* title (`present_plan` takes one):
+                // its name is not furniture and must survive.
+                "title": {
+                    "title": "Title",
+                    "description": "Short plan title",
+                    "type": "string"
+                }
+            },
+            "required": ["path"]
+        }));
+        let text = serde_json::to_string(&schema).unwrap();
+        assert!(!text.contains("$schema"), "{text}");
+        assert_eq!(schema["properties"]["path"]["description"], "File to read");
+        assert_eq!(schema["properties"]["path"]["type"], "string");
+        assert_eq!(schema["properties"]["mode"]["enum"][0], "fast");
+        assert_eq!(
+            schema["properties"]["title"]["description"],
+            "Short plan title"
+        );
+        assert!(schema["properties"]["title"].get("title").is_none());
+        assert_eq!(schema["required"][0], "path");
+        assert_eq!(schema["type"], "object");
+    }
+
+    /// The real registry: every emitted schema is compact and still declares
+    /// its arguments. `title` may appear as an argument *name* (`present_plan`
+    /// takes one); it must never appear as schema furniture.
+    #[test]
+    fn every_registered_tool_schema_is_compact() {
+        fn furniture(value: &serde_json::Value, property_names: bool) -> Option<&'static str> {
+            match value {
+                serde_json::Value::Object(map) => {
+                    if map.contains_key("$schema") {
+                        return Some("$schema");
+                    }
+                    if !property_names && map.contains_key("title") {
+                        return Some("title");
+                    }
+                    map.iter().find_map(|(key, child)| {
+                        let names = matches!(key.as_str(), "properties" | "$defs" | "definitions");
+                        furniture(child, names)
+                    })
+                }
+                serde_json::Value::Array(items) => {
+                    items.iter().find_map(|item| furniture(item, false))
+                }
+                _ => None,
+            }
+        }
+
+        let registry = ToolRegistry::new("/tmp");
+        let defs = registry.definitions();
+        assert!(!defs.is_empty());
+        for def in &defs {
+            assert_eq!(
+                furniture(&def.parameters, false),
+                None,
+                "{} carries schema boilerplate: {}",
+                def.name,
+                def.parameters
+            );
+            assert_eq!(
+                def.parameters["type"], "object",
+                "{} lost its object type",
+                def.name
+            );
+        }
+        // A tool with arguments keeps them: compaction must not eat the
+        // contract, only the boilerplate. `process_list` legitimately has none.
+        let read_file = defs
+            .iter()
+            .find(|def| def.name == "read_file")
+            .expect("read_file is registered");
+        assert_eq!(read_file.parameters["properties"]["path"]["type"], "string");
+        assert_eq!(read_file.parameters["required"][0], "path");
+    }
 
     /// Dropping the caller's future must not release the path lock while an
     /// already-started mutation is still committing. The second mutation has

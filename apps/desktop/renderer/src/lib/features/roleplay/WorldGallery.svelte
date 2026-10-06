@@ -6,6 +6,7 @@
 -->
 
 <script lang="ts">
+  import { Button } from '$lib/components/ui';
   import { Globe2, Plus } from 'lucide-svelte';
   import type { RoleplayWorld } from '$lib/types/chat';
   import { worldsStore } from './worlds.svelte';
@@ -41,9 +42,9 @@
   }
 </script>
 
-<div class="mx-auto w-full px-6 pb-6" style="max-width: var(--thread-width);">
+<div class="library-shelf mx-auto w-full px-6 pb-6" style="max-width: var(--thread-width);">
   <LibraryToolbar bind:query placeholder={worldsStore.worlds.length ? 'Search worlds' : ''}>
-    <button type="button" class="ui-chip" onclick={onnew}><Plus /> New world</button>
+    <Button variant="outline" size="sm" type="button" onclick={onnew}><Plus /> New world</Button>
   </LibraryToolbar>
 
   {#if !worldsStore.worlds.length}
@@ -51,7 +52,7 @@
   {:else if !filtered.length}
     <LibraryEmpty title="No matches" action="Clear search" onaction={() => (query = '')} />
   {:else}
-    <div class="grid gap-2.5 sm:grid-cols-2">
+    <div class="library-grid">
       {#each filtered as world (world.id)}
         <LibraryCard
           kind="world"

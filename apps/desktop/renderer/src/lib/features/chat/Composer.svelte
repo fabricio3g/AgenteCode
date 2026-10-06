@@ -12,9 +12,8 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
   import { onDestroy, tick } from 'svelte';
-  import { ArrowDown, Paperclip } from 'lucide-svelte';
+  import { Paperclip } from 'lucide-svelte';
   import { t } from 'svelte-i18n';
-  import { threadJump } from './thread/thread-jump.svelte';
   import { appStore } from '$lib/stores/app.svelte';
   import { toastStore } from '$lib/stores/toast.svelte';
   import { ttsStore } from '$lib/stores/tts.svelte';
@@ -27,6 +26,7 @@
   import ComposerModelNotice from './composer/ComposerModelNotice.svelte';
   import ComposerSuggestions from './composer/ComposerSuggestions.svelte';
   import ComposerAddMenu from './composer/ComposerAddMenu.svelte';
+  import ComposerToolsMenu from './composer/ComposerToolsMenu.svelte';
   import ComposerToolbar from './composer/ComposerToolbar.svelte';
   import ModeSelector from './composer/ModeSelector.svelte';
   import SelectedTextCard from './composer/SelectedTextCard.svelte';
@@ -352,18 +352,8 @@
       <DictationSetupPopover {dictation} />
     {/if}
 
-    <!-- Back to the latest message, on the tab row's right end. -->
-    {#if threadJump.visible && threadJump.jump}
-      <button
-        type="button"
-        class="jump-latest"
-        onclick={() => threadJump.jump?.()}
-        aria-label={$t('chat.jumpToLatest')}
-        title={$t('chat.jumpToLatest')}
-      >
-        <ArrowDown class="size-4" />
-      </button>
-    {/if}
+    <!-- The way back to the live edge is drawn by the thread itself, so Home
+         and Code raise the same button in the same place. -->
 
     {#if voiceMode}
       <VoiceCallPanel onend={exitVoiceMode} />
@@ -372,7 +362,7 @@
     <!-- Radius comes from --composer-radius on .ui-composer; the rounded-*
          utilities that used to sit here fought it at equal specificity. -->
     {#if appStore.currentChat?.pendingPrompts?.length && appStore.currentChatId}
-      <PromptQueue items={appStore.currentChat.pendingPrompts} onupdate={(id, content) => appStore.updateQueuedPrompt(appStore.currentChatId!, id, content)} onremove={(id) => { appStore.removeQueuedPrompt(appStore.currentChatId!, id); }} onsend={() => void appStore.sendQueuedPromptsNow(appStore.currentChatId!)} />
+      <PromptQueue canSendAll={false} items={appStore.currentChat.pendingPrompts} onupdate={(id, content) => appStore.updateQueuedPrompt(appStore.currentChatId!, id, content)} onremove={(id) => { appStore.removeQueuedPrompt(appStore.currentChatId!, id); }} onsend={(id) => void appStore.sendQueuedPromptsNow(appStore.currentChatId!, id)} />
     {/if}
     <div class="composer-shell ui-composer pointer-events-auto transition">
       {#if nameCompletion}
@@ -428,8 +418,7 @@
           {:else}
             <div class="composer-bar-leading">
               <ComposerAddMenu onattach={() => fileInput?.click()} />
-              <div class="model-slot"><ModelSwitcher compact /></div>
-              <ReasoningLevelSelector />
+
             </div>
             <ComposerToolbar
               {dictation}
@@ -443,6 +432,8 @@
         </div>
       </div>
     </div>
+
+    <div class="composer-secondary"><div class="composer-secondary-options"><div class="model-slot"><ModelSwitcher compact /></div><ReasoningLevelSelector /><ComposerToolsMenu /></div></div>
 
     {#if threadIsEmpty}
       <!-- await tick() so the textarea holds the inserted prompt before we
@@ -474,11 +465,11 @@
   .composer-frame {
     position: relative;
   }
-  /* Instant/Agent tab above the input shell: quiet, left-aligned, attached to
-     the shell rather than floating in the thread. The dock is
-     pointer-events:none so the thread stays scrollable behind it — opt back
-     in, or the tabs render but never receive clicks. */
-  .composer-above {
+  /* The dock is pointer-events:none so the thread stays scrollable behind its
+     empty edges. Everything drawn in the frame — the mode tabs, the call panel,
+     the queue, the shell, the model row — takes clicks again. Opting in one
+     widget at a time left the call panel and the thinking button dead. */
+  .composer-frame > :global(*) {
     pointer-events: auto;
   }
   .mode-tab-row {
@@ -486,41 +477,6 @@
     justify-content: flex-start;
     padding: 0 0 0.35rem;
     pointer-events: auto;
-  }
-  /* Level with the Agent / Instant tabs, flush with the input's right edge. */
-  .jump-latest {
-    position: absolute;
-    top: 0;
-    right: 0.35rem;
-    z-index: 30;
-    display: inline-flex;
-    width: 2rem;
-    height: 2rem;
-    align-items: center;
-    justify-content: center;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-full);
-    background: var(--card);
-    color: var(--muted-foreground);
-    box-shadow: 0 1px 2px rgb(0 0 0 / 0.08);
-    pointer-events: auto;
-    animation: jump-in var(--motion-fast) var(--motion-ease);
-    transition: color var(--motion-fast) var(--motion-ease), background-color var(--motion-fast) var(--motion-ease);
-  }
-  .jump-latest:hover {
-    background: var(--muted);
-    color: var(--foreground);
-  }
-  .jump-latest:focus-visible {
-    outline: none;
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--ring) 35%, transparent);
-  }
-  @keyframes jump-in {
-    from { opacity: 0; transform: translateY(4px); }
-    to { opacity: 1; transform: none; }
-  }
-  @media (prefers-reduced-motion: reduce) {
-    .jump-latest { animation: none; }
   }
   .drop-overlay {
     position: absolute;

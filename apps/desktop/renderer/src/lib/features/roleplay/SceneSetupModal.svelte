@@ -13,7 +13,7 @@
   import { Globe2, X } from 'lucide-svelte';
   import { motionFade, flyAndScale } from '$lib/utils/transitions';
   import { modalLayer } from '$lib/components/ui/modal-layer';
-  import { Button, Select } from '$lib/components/ui';
+  import { Button, Select, Tooltip } from '$lib/components/ui';
   import type { CharacterCard, RoleplaySettings, RoleplayWorld } from '$lib/types/chat';
   import RoleplaySettingsEditor from './RoleplaySettingsEditor.svelte';
   import { roleplayPreferences } from './roleplay-presets.svelte';
@@ -123,9 +123,9 @@
           {world ? ' · world canon active' : ''}
         </div>
       </div>
-      <button type="button" class="ui-icon-button" onclick={onclose} aria-label={copy.actions.close}>
+      <Tooltip label={copy.actions.close} position="bottom"><button type="button" class="ui-icon-button" onclick={onclose} aria-label={copy.actions.close}>
         <X class="size-4" />
-      </button>
+      </button></Tooltip>
     </div>
 
     <div class="ui-modal-body max-h-[64vh] space-y-5 overflow-y-auto">
@@ -198,7 +198,7 @@
     </div>
 
     <div class="ui-modal-footer">
-      <button type="button" class="ui-btn ui-btn-ghost" onclick={onclose}>{copy.actions.cancel}</button>
+      <Button variant="outline" size="sm" type="button" onclick={onclose}>{copy.actions.cancel}</Button>
       <Button onclick={start} disabled={!primary}>{group ? 'Start group scene' : 'Start scene'}</Button>
     </div>
   </div>

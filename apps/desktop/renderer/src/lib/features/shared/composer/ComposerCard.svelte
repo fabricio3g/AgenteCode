@@ -78,37 +78,22 @@
 <style>
   .composer-card {
     position: fixed;
-    z-index: 100;
+    z-index: var(--z-menu);
     width: max-content;
     overflow: auto;
     padding: 0.75rem;
-    background: var(--popover);
+    background: var(--float-bg);
     color: var(--foreground);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-lg);
-    box-shadow: var(--shadow-lg);
+    border: 1px solid var(--float-border);
+    border-radius: var(--float-radius);
+    box-shadow: var(--float-shadow);
     font-size: 12px;
     line-height: 1.5;
   }
   .is-tooltip { pointer-events: none; }
 
-  /* A small white card, separated from the page by a hairline and a soft
-     two-layer shadow (the thinking slider). */
+  /* The thinking slider: the same surface, a little tighter. */
   .is-bright {
     padding: 0.625rem 0.75rem 0.5rem;
-    background: #fff;
-    border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
-    border-radius: 12px;
-    box-shadow:
-      0 1px 2px rgb(0 0 0 / 0.05),
-      0 6px 16px -4px rgb(0 0 0 / 0.12);
-  }
-
-  :global(.dark) .is-bright {
-    background: color-mix(in srgb, var(--popover) 92%, #fff);
-    border-color: rgb(255 255 255 / 0.08);
-    box-shadow:
-      0 1px 2px rgb(0 0 0 / 0.4),
-      0 8px 20px -4px rgb(0 0 0 / 0.55);
   }
 </style>

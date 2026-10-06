@@ -21,6 +21,7 @@ pub mod policy;
 pub mod responses;
 mod routed;
 pub mod spec;
+pub mod text_tools;
 mod wire;
 pub(crate) use wire::{model_options, wire_options};
 use wire::{replay_blocks, send_request, send_with_cache_fallback, stream_error};
@@ -712,6 +713,7 @@ fn resolve_known_model_info(
             overlay_transport(&mut m, &model_info_from_catalog(cm, provider_id));
         }
         m.limits = effective_limits(&m.limits);
+        apply_catalog_thinking(&mut m, catalog, provider_id, model_id);
         apply_catalog_inputs(&mut m, catalog, provider_id, model_id);
         return m;
     }
@@ -730,6 +732,9 @@ fn resolve_known_model_info(
     }
 
     let mut m = fallback_model_info(provider_id, model_id);
+    if let Some(limits) = catalog.and_then(|cat| cat.find_family_limits(provider_id, model_id)) {
+        m.limits = effective_limits(&limits);
+    }
     apply_catalog_thinking(&mut m, catalog, provider_id, model_id);
     m
 }

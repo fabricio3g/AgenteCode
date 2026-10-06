@@ -14,10 +14,14 @@
 -->
 
 <script lang="ts">
-  import type { ComponentType } from 'svelte';
+  import type { ComponentType, Snippet } from 'svelte';
   import type { Icon as LucideIcon } from 'lucide-svelte';
+  import { t } from 'svelte-i18n';
+  import { openConversationWindow } from './conversation-window';
   import { tick } from 'svelte';
-  import { FileDown, MoreHorizontal, Pencil, Trash2 } from 'lucide-svelte';
+  import { FileDown, MoreHorizontal, PanelBottom, PanelRight, ExternalLink, Pencil, Trash2 } from 'lucide-svelte';
+  import Tooltip from '$lib/components/ui/Tooltip.svelte';
+  import SessionMetadata from './SessionMetadata.svelte';
   import Menu from '$lib/components/ui/Menu.svelte';
   import MenuItem from '$lib/components/ui/MenuItem.svelte';
   import IconButton from '$lib/components/ui/IconButton.svelte';
@@ -32,6 +36,12 @@
 
   interface Props {
     chat: ChatSession;
+    extraActions?: Snippet;
+    ondragstart?: (event: DragEvent) => void;
+    ondragend?: () => void;
+    ondragover?: (event: DragEvent) => void;
+    ondrop?: (event: DragEvent) => void;
+    dropActive?: boolean;
     active: boolean;
     onselect: () => void;
     /** Leading icon (Code shows a speech bubble; Home shows none). */
@@ -39,9 +49,17 @@
     status?: 'running' | 'approval' | null;
     statusLabel?: string;
     menuLabel?: string;
+    /**
+     * Open this conversation in a second pane, to the right of or below the
+     * one being read. Omitted by the spaces that have no centre to split (Home,
+     * Roleplay), which is why the menu items appear only where it is passed.
+     */
+    onsplit?: (edge: 'right' | 'bottom') => void;
+    /** Shown in a pane beside the one being read (the sidebar marks those). */
+    open?: boolean;
   }
 
-  let { chat, active, onselect, icon: Icon, status = null, statusLabel = '', menuLabel = copy.actions.more }: Props = $props();
+  let { chat, active, onselect, icon: Icon, status = null, statusLabel = '', menuLabel = copy.actions.more, onsplit, open = false, extraActions, ondragstart, ondragend, ondragover, ondrop, dropActive = false }: Props = $props();
 
   const title = $derived(displayChatTitle(chat));
 
@@ -91,7 +109,13 @@
   }
 </script>
 
+{#snippet metadata()}<SessionMetadata {chat} />{/snippet}
+<Tooltip label={title} content={metadata} delay={500} class="session-tip">
 <div
+  data-session-row={chat.id}
+  draggable={!!ondragstart && !renaming}
+  {ondragstart} {ondragend} {ondragover} {ondrop}
+  class:is-drop-target={dropActive}
   class="sidebar-row group relative"
   class:is-current={active}
   role="button"
@@ -144,6 +168,12 @@
     />
   {/if}
 
+  {#if open && !renaming}
+    <!-- Read beside another conversation, not merely remembered: the sidebar
+         says which conversations the window is actually showing. -->
+    <PanelRight class="sidebar-row-open" aria-hidden="true" />
+  {/if}
+
   {#if !renaming}
     <Menu bind:open={menuOpen} bind:anchorPoint placement="bottom-end" label={menuLabel}>
       {#snippet trigger(props)}
@@ -155,9 +185,21 @@
           <MoreHorizontal />
         </IconButton>
       {/snippet}
+      {#if onsplit}
+        <MenuItem icon={PanelRight} label={copy.actions.splitRight} onselect={() => onsplit('right')} />
+        <MenuItem icon={PanelBottom} label={copy.actions.splitBelow} onselect={() => onsplit('bottom')} />
+      {/if}
+      <MenuItem icon={ExternalLink} label={$t('code.pane.openWindow')} onselect={() => void openConversationWindow(chat.id)} />
+      {@render extraActions?.()}
       <MenuItem icon={Pencil} label={copy.actions.rename} onselect={() => void startRename()} />
       <MenuItem icon={FileDown} label={copy.actions.export} onselect={exportChat} />
       <MenuItem icon={Trash2} label={copy.actions.delete} danger onselect={confirmDelete} />
     </Menu>
   {/if}
 </div>
+
+</Tooltip>
+
+<style>
+  :global(.session-tip) { display: flex; width: 100%; min-width: 0; }
+</style>

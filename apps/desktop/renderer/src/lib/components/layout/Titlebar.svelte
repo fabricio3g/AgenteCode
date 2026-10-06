@@ -5,15 +5,21 @@
   import DownloadsButton from './DownloadsButton.svelte';
   import { onMount } from 'svelte';
   import { appStore } from '$lib/stores/app.svelte';
-  import { ArrowLeft, MoonStar, SunMedium } from 'lucide-svelte';
+  import { ArrowLeft, Globe, MoonStar, SunMedium } from 'lucide-svelte';
   import Tooltip from '$lib/components/ui/Tooltip.svelte';
   import { Button } from '$lib/components/ui';
   import { themeStore } from '$lib/stores/theme.svelte';
   import { downloadsStore } from '$lib/stores/downloads.svelte';
-  import PanelTabs from './PanelTabs.svelte';
+  import { browserPanelStore, type BrowserPanelStore } from '$lib/stores/browser-panel.svelte';
+  import { toastStore } from '$lib/stores/toast.svelte';
+  import { untrack } from 'svelte';
+  import { workspaceLayout, type WorkspaceLayoutStore } from '$lib/stores/workspace-layout.svelte';
+  import { conversationScope } from '$shared/workspace-scope';
   import { codeStore } from '$lib/features/code/code.svelte';
   import { isCodeSession } from '$lib/features/shared/session-guards';
+  import PanelTabs from './PanelTabs.svelte';
   import TitlebarLeftTools from './TitlebarLeftTools.svelte';
+  import WindowControls from './WindowControls.svelte';
 
   let { sidebarPreview = false, settingsOpen = false, onSidebarEnter, onSidebarLeave, onSidebarToggle }: {
     sidebarPreview?: boolean;
@@ -24,12 +30,26 @@
     onSidebarToggle: () => void;
   } = $props();
 
-  /** The open Code conversation, when there is one: its pane toggles live here. */
+  /** The open Code conversation: its tools sit in this bar unless the centre is split. */
   const codeChat = $derived.by(() => {
     const chat = appStore.currentChat;
     return appStore.activeTab === 'code' && chat && chat.projectId && isCodeSession(chat) ? chat : null;
   });
   const codeProject = $derived(codeStore.projectById(codeChat?.projectId ?? null));
+  const scope = $derived(codeChat ? conversationScope(codeChat.id) : null);
+  // The conversation's own stores are created on demand, which writes state: that
+  // belongs in an effect, never in a $derived or the template.
+  let chatLayout = $state<WorkspaceLayoutStore>(workspaceLayout);
+  let chatBrowser = $state<BrowserPanelStore>(browserPanelStore);
+  $effect(() => {
+    const id = scope;
+    untrack(() => {
+      chatLayout = id ? workspaceLayout.scoped(id) : workspaceLayout;
+      chatBrowser = id ? browserPanelStore.forScope(id) : browserPanelStore;
+    });
+  });
+  // Settings owns the window: a conversation's pane toggles have nothing to act on there.
+  const toolsHere = $derived(!settingsOpen && !!codeChat && !!codeProject && workspaceLayout.panes.length < 2);
 
   const platform = typeof window !== 'undefined' ? (window.electronAPI?.platform ?? 'linux') : 'linux';
   const isMac = platform === 'darwin';
@@ -37,6 +57,7 @@
   let safeEl = $state<HTMLElement | undefined>(undefined);
 
   type OverlayControls = EventTarget & {
+    visible?: boolean;
     getTitlebarAreaRect(): { x: number; width: number };
   };
   function overlayControls(): OverlayControls | undefined {
@@ -55,11 +76,15 @@
     if (!safeEl || typeof window === 'undefined') return;
     let rect: { x: number; width: number } | undefined;
     try {
-      rect = overlayControls()?.getTitlebarAreaRect();
+      // A window without a caption overlay (Linux draws its own buttons) still
+      // exposes the API, with an empty rect: reserving from it pushed every
+      // button on the right out of the bar.
+      const overlay = overlayControls();
+      rect = overlay?.visible ? overlay.getTitlebarAreaRect() : undefined;
     } catch {
       rect = undefined;
     }
-    if (!rect) {
+    if (!rect || rect.width <= 0) {
       safeEl.style.removeProperty('--caption-inline-start');
       safeEl.style.removeProperty('--caption-reserve');
       return;
@@ -100,9 +125,32 @@
 -->
 
 <!-- Downloads and theme ride the titlebar right; spaces and Settings live in
-     the activity rail. Pane toggles sit in the PanelTabs strip below. -->
+     the activity rail. Code pane toggles live with each conversation. -->
 {#snippet appTools()}
   <div class="flex items-center gap-0.5">
+    {#if toolsHere && codeChat && codeProject}
+      <div class="titlebar-no-drag flex items-center">
+        <PanelTabs inline chat={codeChat} project={codeProject} layout={chatLayout} browser={chatBrowser} />
+      </div>
+      <span class="mx-1 h-4 w-px bg-[var(--border)]" aria-hidden="true"></span>
+    {/if}
+    <!-- Home, Roleplay and Bots have no pane strip, so the browser opens from here.
+         Code reaches it from the project card, on the conversation's own browser. -->
+    {#if !codeChat}
+      <Tooltip label={$t('browser.title')} position="bottom">
+        <button
+          type="button"
+          class="ui-icon-button titlebar-no-drag"
+          class:selected={browserPanelStore.open}
+          aria-pressed={browserPanelStore.open}
+          aria-label={$t('browser.title')}
+          data-panel-tab="browser"
+          onclick={() => void browserPanelStore.toggle().catch((error) => toastStore.error(String(error)))}
+        >
+          <Globe class="size-4" />
+        </button>
+      </Tooltip>
+    {/if}
     <DownloadsButton />
     <Tooltip label={$t('titlebar.theme')} position="bottom">
       <button
@@ -130,7 +178,7 @@
   {#if settingsOpen}
     <!-- Seamless sidebar continuation to topbar -->
     <div
-      class="pointer-events-none absolute inset-y-0 left-0 w-[220px] border-r border-[var(--border)] bg-sidebar"
+      class="pointer-events-none absolute inset-y-0 left-0 w-[236px] border-r border-[var(--border)] bg-sidebar"
       aria-hidden="true"
     ></div>
   {/if}
@@ -141,7 +189,7 @@
         <TitlebarLeftTools expanded={appStore.sidebarOpen || sidebarPreview} onToggle={onSidebarToggle} onEnter={onSidebarEnter} onLeave={onSidebarLeave} />
       {:else}
         <div class="flex items-center gap-1.5 pl-1.5">
-          <Tooltip label={$t('shortcuts.backToConversation')}>
+          <Tooltip label={$t('shortcuts.backToConversation')} shortcut="escape">
             <button
               type="button"
               class="ui-icon-button titlebar-no-drag"
@@ -151,7 +199,7 @@
               <ArrowLeft class="size-4" />
             </button>
           </Tooltip>
-          <span class="text-xs font-semibold text-foreground px-1">{$t('sidebar.settings')}</span>
+          <span class="px-1 text-[length:var(--text-sm)] font-semibold text-foreground">{$t('sidebar.settings')}</span>
         </div>
       {/if}
     </div>
@@ -160,16 +208,10 @@
 
     <div class="titlebar-right flex items-center justify-end">
       {@render appTools()}
+      <WindowControls />
     </div>
   </div>
 </div>
-
-<!-- One strip for the panes of whichever space is open. It lives below the
-     title bar so the bar keeps global chrome only and neither group has to
-     compete for the same pixels. -->
-{#if !settingsOpen}
-  <PanelTabs chat={codeChat} project={codeProject} />
-{/if}
 
 <style>
   .titlebar-row {
@@ -188,6 +230,9 @@
    * unset: full width, plain gap.
    */
   .titlebar-safe {
+    /* Above the settings strip (absolute, painted first) so its back button shows. */
+    position: relative;
+    z-index: 1;
     width: calc(100% - var(--caption-inline-start, 0px));
     margin-inline-start: var(--caption-inline-start, 0px);
     height: 100%;

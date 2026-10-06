@@ -19,19 +19,31 @@
   import CodeTranscript from './CodeTranscript.svelte';
   import CodeComposer from './CodeComposer.svelte';
   import { isCodeSession } from '$lib/features/shared/session-guards';
+  import type { ChatSession } from '$lib/types/chat';
 
   onMount(() => {
     void codeStore.load();
     codeWorkspace.wire();
   });
 
+  let {
+    /**
+     * The conversation this surface shows. A pane passes its own, so two panes
+     * are two conversations; without one it falls back to the current chat,
+     * which is what the single-pane window has always done.
+     */
+    chat: pinned = null
+  }: { chat?: ChatSession | null } = $props();
+
   /**
-   * The conversation to show: whatever code-space chat is current AND belongs
-   * to a project. Keyed off the chat's own projectId — not the sidebar's
-   * project selection — so a restored conversation (currentChatIdBySpace)
-   * renders even if no folder row was ever clicked.
+   * The conversation to show: the one this surface was given, or whatever
+   * code-space chat is current AND belongs to a project. Keyed off the chat's
+   * own projectId — not the sidebar's project selection — so a restored
+   * conversation (currentChatIdBySpace) renders even if no folder row was ever
+   * clicked.
    */
   const chat = $derived.by(() => {
+    if (pinned) return isCodeSession(pinned) ? pinned : null;
     const current = appStore.currentChat;
     // Until projects load, a chat without one cannot be judged yet.
     const judgeable = !!current?.projectId || codeStore.loaded;
@@ -44,11 +56,11 @@
   const run = $derived(codeStore.runFor(chat?.id));
   const sessionId = $derived(chat?.codeAgent?.sessionId || undefined);
 
-  // The right dock's Changes pane follows the open conversation.
-  $effect(() => {
-    codeWorkspace.changesTarget = chat && chatProject ? { chatId: chat.id, projectRoot: chatProject.rootPath, ...(sessionId ? { sessionId } : {}) } : null;
-    return () => (codeWorkspace.changesTarget = null);
-  });
+  // The right dock's Changes pane follows the conversation the window is
+  // focused on, and a pane and its dock move to another conversation in the
+  // same breath. The pane that owns the keyboard writes this; a background
+  // surface stays quiet, or two mounted conversations would take turns
+  // overwriting it. See `ConversationPanes` for the writer.
 
   // History survives a restart: load it when a conversation opens, not only
   // when a run ends.
@@ -82,11 +94,11 @@
   ]);
 
   function useStarter(text: string) {
-    window.dispatchEvent(new CustomEvent('code-composer-draft', { detail: text }));
+    window.dispatchEvent(new CustomEvent('code-composer-draft', { detail: { chatId: chat?.id, text } }));
   }
 </script>
 
-<div class="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+<div class="code-surface relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
   {#if !codeStore.loaded && codeStore.loading}
     <div class="flex flex-1 items-center justify-center"></div>
   {:else if !codeStore.projects.length}
@@ -110,9 +122,9 @@
       <div class="flex min-h-0 min-w-0 flex-1 flex-col">
         <div class="flex min-h-0 flex-1 flex-col">
           {#if !chat.messages.length && !unlinked}
-            <div class="flex flex-1 flex-col items-center justify-center gap-4 px-6">
-              <p class="text-sm text-muted-foreground">{$t('code.startersTitle')}</p>
-              <div class="grid w-full max-w-xl gap-2 sm:grid-cols-2">
+            <div class="starter-area">
+              <div class="starter-content"><p class="text-sm text-muted-foreground">{$t('code.startersTitle')}</p>
+              <div class="starter-grid">
                 {#each starters as starter (starter.text)}
                   {@const Icon = starter.icon}
                   <button type="button" class="starter flex items-center gap-2.5 rounded-xl border border-border px-3.5 py-3 text-left text-[13px] text-foreground transition" onclick={() => useStarter(starter.text)}>
@@ -120,7 +132,7 @@
                     <span class="min-w-0 flex-1">{starter.text.trim()}{starter.text.endsWith(' ') ? '…' : ''}</span>
                   </button>
                 {/each}
-              </div>
+              </div></div>
             </div>
           {:else}
             <div class="ui-top-fade flex min-h-0 min-w-0 flex-1 flex-col">
@@ -161,8 +173,14 @@
 </div>
 
 <style>
+  .code-surface { container-type: inline-size; }
+  .starter-grid { display:grid; grid-template-columns:minmax(0,1fr);gap:0.5rem;width:100%;max-width:36rem; }
+  @container (min-width: 38rem) { .starter-grid {grid-template-columns:repeat(2,minmax(0,1fr));} }
+  .starter { min-width:0; background:var(--control-bg);box-shadow:var(--control-inset); }
+  .starter-area { min-height:0;flex:1;overflow-y:auto;display:flex;padding:1rem; }
+  .starter-content { width:100%;max-width:36rem;margin:auto;display:flex;flex-direction:column;align-items:center;gap:1rem; }
   .starter {
-    background: transparent;
+    background: var(--control-bg);
   }
 
   .starter:hover {

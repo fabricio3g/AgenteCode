@@ -94,19 +94,32 @@ export function voiceSetupPlan(requested?: string): VoiceSetupPlan {
   };
 }
 
-export async function findWhisperRuntimeAsset(): Promise<{ url: string; name: string; tag: string } | null> {
+type WhisperAsset = { url: string; name: string; tag: string; bytes: number };
+
+/** Recent whisper.cpp releases that publish a build for this machine, newest first. */
+export async function listWhisperReleases(): Promise<WhisperAsset[]> {
   const patterns = assetCandidates();
-  if (!patterns.length) return null;
+  if (!patterns.length) return [];
   const res = await fetch(RELEASES_URL, { headers: { Accept: 'application/vnd.github+json', 'User-Agent': APP_USER_AGENT } });
   if (!res.ok) throw new Error(`Could not list whisper.cpp releases (HTTP ${res.status})`);
   const releases = await res.json() as Release[];
-  for (const pattern of patterns) {
-    for (const release of releases) {
+  const found: WhisperAsset[] = [];
+  for (const release of releases) {
+    for (const pattern of patterns) {
       const asset = release.assets.find((a) => pattern.test(a.name));
-      if (asset) return { url: asset.browser_download_url, name: asset.name, tag: release.tag_name };
+      if (asset) {
+        found.push({ url: asset.browser_download_url, name: asset.name, tag: release.tag_name, bytes: asset.size });
+        break;
+      }
     }
   }
-  return null;
+  return found;
+}
+
+/** The build to install: the given release, else the newest one with a build for this machine. */
+export async function findWhisperRuntimeAsset(tag?: string): Promise<WhisperAsset | null> {
+  const releases = await listWhisperReleases();
+  return (tag ? releases.find((release) => release.tag === tag) : releases[0]) ?? null;
 }
 
 let inFlight: Promise<VoiceSetupPlan> | null = null;

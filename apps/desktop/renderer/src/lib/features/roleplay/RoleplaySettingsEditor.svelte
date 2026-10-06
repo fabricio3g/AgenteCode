@@ -1,6 +1,6 @@
 <svelte:options runes={true} />
 <script lang="ts">
-  import { Select, Switch } from '$lib/components/ui';
+  import { Select, Switch, Button } from '$lib/components/ui';
   import SegmentedControl from '$lib/components/ui/SegmentedControl.svelte';
   import type { RoleplaySettings } from '$lib/types/chat';
   import { DECISION_DIRECTIONS, presetSettings, resolveRoleplaySettings } from './roleplay-settings';
@@ -108,7 +108,7 @@
 <div class="space-y-4">
   <div class="flex flex-wrap items-center gap-2">
     <div class="min-w-40 flex-1"><Select variant="surface" value={selectedPreset} options={[{ value: '', label: $t('roleplay.settings.custom') }, ...roleplayPreferences.presets.map((preset) => ({ value: preset.id, label: presetLabel(preset) }))]} aria-label={$t('roleplay.settings.preset')} onchange={applyPreset} /></div>
-    <button type="button" class="ui-btn ui-btn-ghost" onclick={reset}>{$t('roleplay.settings.resetOverrides')}</button>
+    <Button variant="outline" size="sm" type="button" onclick={reset}>{$t('roleplay.settings.resetOverrides')}</Button>
   </div>
   <div class="overflow-x-auto py-1">
     <SegmentedControl value={section} options={tabs.map((value) => ({ value, label: $t(`roleplay.settings.tab.${value}`) }))} label={$t('roleplay.settings.sections')} variant="tabs" class="whitespace-nowrap" onchange={(value) => (section = value)} />
@@ -150,12 +150,12 @@
     <div class="space-y-2 pt-2">
       <input class="ui-input" aria-label={$t('roleplay.settings.presetName')} placeholder={$t('roleplay.settings.presetNamePlaceholder')} bind:value={presetName} />
       <div class="flex flex-wrap gap-2">
-        <button type="button" class="ui-btn ui-btn-ghost" onclick={savePreset}>{$t('roleplay.settings.saveNew')}</button>
-        <button type="button" class="ui-btn ui-btn-ghost" onclick={exportPreset}>{$t('roleplay.settings.export')}</button>
-        <button type="button" class="ui-btn ui-btn-ghost" onclick={() => importInput.click()}>{$t('roleplay.settings.import')}</button>
-        {#if roleplayPreferences.saved.some((entry) => entry.id === selectedPreset)}<button type="button" class="ui-btn ui-btn-ghost" onclick={() => { roleplayPreferences.remove(selectedPreset); selectedPreset = ''; }}>{$t('roleplay.settings.deletePreset')}</button>{/if}
-        <button type="button" class="ui-btn ui-btn-ghost" onclick={() => { roleplayPreferences.setDefaults(settings); toastStore.info($t('roleplay.settings.defaultsSaved')); }}>{$t('roleplay.settings.useDefaults')}</button>
-        <button type="button" class="ui-btn ui-btn-ghost" onclick={() => roleplayPreferences.resetDefaults()}>{$t('roleplay.settings.resetDefaults')}</button>
+        <Button variant="outline" size="sm" type="button" onclick={savePreset}>{$t('roleplay.settings.saveNew')}</Button>
+        <Button variant="outline" size="sm" type="button" onclick={exportPreset}>{$t('roleplay.settings.export')}</Button>
+        <Button variant="outline" size="sm" type="button" onclick={() => importInput.click()}>{$t('roleplay.settings.import')}</Button>
+        {#if roleplayPreferences.saved.some((entry) => entry.id === selectedPreset)}<Button variant="outline" size="sm" type="button" onclick={() => { roleplayPreferences.remove(selectedPreset); selectedPreset = ''; }}>{$t('roleplay.settings.deletePreset')}</Button>{/if}
+        <Button variant="outline" size="sm" type="button" onclick={() => { roleplayPreferences.setDefaults(settings); toastStore.info($t('roleplay.settings.defaultsSaved')); }}>{$t('roleplay.settings.useDefaults')}</Button>
+        <Button variant="outline" size="sm" type="button" onclick={() => roleplayPreferences.resetDefaults()}>{$t('roleplay.settings.resetDefaults')}</Button>
       </div>
       <input class="hidden" type="file" accept="application/json,.json" bind:this={importInput} onchange={importPreset} />
       <p>{$t('roleplay.settings.inheritHint')}</p>

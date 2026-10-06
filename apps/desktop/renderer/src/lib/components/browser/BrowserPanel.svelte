@@ -9,12 +9,13 @@
 -->
 
 <script lang="ts">
+  import { Button, Tooltip } from '$lib/components/ui';
   import { onMount, tick } from 'svelte';
-  import { X, Plus, ArrowLeft, ArrowRight, RotateCw, LoaderCircle, Monitor, Laptop, Tablet, Smartphone, PanelRight, Hand, MoreHorizontal, Pencil, Globe } from 'lucide-svelte';
+  import { X, Plus, ArrowLeft, ArrowRight, RotateCw, LoaderCircle, Monitor, Laptop, Tablet, Smartphone, PanelRight, Hand, MoreHorizontal, Pencil, Globe, SquareDashedMousePointer } from 'lucide-svelte';
   import { t } from 'svelte-i18n';
   import Menu from '$lib/components/ui/Menu.svelte';
   import MenuItem from '$lib/components/ui/MenuItem.svelte';
-  import { browserPanelStore } from '$lib/stores/browser-panel.svelte';
+  import { browserPanelStore as defaultBrowser, type BrowserPanelStore } from '$lib/stores/browser-panel.svelte';
   import { syncBrowserPresentation, type BrowserViewportPreset } from '$lib/services/browser';
   import { BROWSER_VIEWPORTS } from '$shared/browser-viewports';
   import { overlapsViewport } from './browser-occlusion';
@@ -22,15 +23,33 @@
   import { sameBrowserPresentation, type BrowserPresentation } from '$shared/browser-presentation';
   import { affectsBrowserPresentation, BROWSER_OVERLAYS } from './browser-presentation-updates';
   import CanvasPanel from '$lib/features/canvas/CanvasPanel.svelte';
-  import { canvasBoard } from '$lib/features/canvas/canvas-board.svelte';
+  import { getCanvasBoard } from '$lib/features/canvas/canvas-context';
+  const canvasBoard = getCanvasBoard();
   import { bitmapSize } from '$lib/features/canvas/canvas-images';
   import { invoke } from '$lib/services/bridge';
   import { toastStore } from '$lib/stores/toast.svelte';
+  import { pickBrowserElements, cancelBrowserPick, sendPicksToComposer } from '$lib/services/browser-pick';
 
-  let { embedded = false, exposed = true, presentationKey = '', chatId }: { embedded?: boolean; exposed?: boolean; presentationKey?: string; chatId?: string } = $props();
+  let { store: browserPanelStore = defaultBrowser, embedded = false, exposed = true, presentationKey = '', chatId }: { store?: BrowserPanelStore; embedded?: boolean; exposed?: boolean; presentationKey?: string; chatId?: string } = $props();
   let annotating = $state(false);
   let capturing = $state(false);
   const hasPage = $derived(!!browserPanelStore.activeTab?.url && browserPanelStore.activeTab.url !== 'about:blank');
+
+  let picking = $state(false);
+  async function togglePick() {
+    const scope = browserPanelStore.scope, tabId = browserPanelStore.activeTabId;
+    if (picking) { await cancelBrowserPick(scope, tabId).catch(() => {}); return; }
+    if (!hasPage || !chatId || annotating) return;
+    const owner = chatId;
+    picking = true;
+    try {
+      const picks = await pickBrowserElements(scope, tabId, true);
+      if (picks.length) {
+        if (await sendPicksToComposer(picks, owner)) toastStore.success($t('browser.pickAdded', { values: { n: picks.length } }));
+      }
+    } catch (error) { toastStore.error(String(error)); }
+    finally { picking = false; }
+  }
 
   async function annotate() {
     if (capturing || !hasPage || !chatId) return;
@@ -183,9 +202,9 @@
 >
   <!-- One slim row: back, the address, reload, everything else in "…". -->
   <div class="browser-bar">
-    <button type="button" class="ui-icon-button" onclick={() => void browserPanelStore.history('back')} aria-label={$t('browser.back')} title={$t('browser.back')}>
+    <Tooltip label={$t('browser.back')} position="bottom"><button type="button" class="ui-icon-button" onclick={() => void browserPanelStore.history('back')} aria-label={$t('browser.back')}>
       <ArrowLeft />
-    </button>
+    </button></Tooltip>
     <label class="ui-pill-field browser-url" class:driving={browserPanelStore.agentDriving}>
       {#if browserPanelStore.agentDriving}
         <span class="driving-dot" title={$t('browser.agentUsing')} aria-label={$t('browser.agentUsing')}></span>
@@ -201,21 +220,15 @@
       />
       {#if browserPanelStore.loading}<LoaderCircle class="size-3 shrink-0 animate-spin text-muted-foreground" />{/if}
     </label>
-    {#if browserPanelStore.userTakeover}
-      <button type="button" class="ui-chip control-chip" onclick={() => void browserPanelStore.setTakeover(false)} title={$t('browser.youHaveControl')} aria-label={$t('browser.handBack')}>
-        <Hand class="size-3" /> <span class="control-label">{$t('browser.handBack')}</span>
-      </button>
-    {:else if browserPanelStore.agentDriving}
-      <button type="button" class="ui-chip control-chip" onclick={() => void browserPanelStore.setTakeover(true)} title={$t('browser.agentUsing')} aria-label={$t('browser.takeControl')}>
-        <Hand class="size-3" /> <span class="control-label">{$t('browser.takeControl')}</span>
-      </button>
-    {/if}
-    <button type="button" class="ui-icon-button" onclick={() => void browserPanelStore.history('reload')} aria-label={$t('browser.reload')} title={$t('browser.reload')}>
+    <Tooltip label={$t('browser.reload')} position="bottom"><button type="button" class="ui-icon-button" onclick={() => void browserPanelStore.history('reload')} aria-label={$t('browser.reload')}>
       <RotateCw />
-    </button>
-    <button type="button" class="ui-icon-button" aria-label={$t(annotating ? 'browser.browse' : 'browser.annotate')} title={$t(annotating ? 'browser.browse' : 'browser.annotate')} aria-pressed={annotating} disabled={!hasPage || !chatId || capturing} onclick={() => { if (annotating) annotating = false; else void annotate(); }}>
+    </button></Tooltip>
+    <Tooltip label={$t('browser.pick')} position="bottom"><button type="button" class="ui-icon-button" aria-label={$t('browser.pick')} aria-pressed={picking} disabled={!hasPage || !chatId || annotating} onclick={() => void togglePick()}>
+      <SquareDashedMousePointer />
+    </button></Tooltip>
+    <Tooltip label={$t(annotating ? 'browser.browse' : 'browser.annotate')} position="bottom"><button type="button" class="ui-icon-button" aria-label={$t(annotating ? 'browser.browse' : 'browser.annotate')} aria-pressed={annotating} disabled={!hasPage || !chatId || capturing} onclick={() => { if (annotating) annotating = false; else void annotate(); }}>
       {#if capturing}<LoaderCircle class="size-3 animate-spin" />{:else if annotating}<Globe />{:else}<Pencil />{/if}
-    </button>
+    </button></Tooltip>
     <Menu placement="bottom-end" label={$t('browser.more')} minWidth="12rem">
       {#snippet trigger(props)}
         <button type="button" class="ui-icon-button" aria-label={$t('browser.more')} title={$t('browser.more')} {...props}>
@@ -224,6 +237,15 @@
       {/snippet}
       <MenuItem icon={ArrowRight} label={$t('browser.forward')} onselect={() => void browserPanelStore.history('forward')} />
       <MenuItem icon={Plus} label={$t('browser.newTab')} onselect={() => void browserPanelStore.newTab().then(() => syncBounds())} />
+    </Menu>
+    {#if !embedded}    <Tooltip label={$t('browser.closePanel')} position="bottom"><button type="button" class="ui-icon-button" onclick={() => void browserPanelStore.hide()} aria-label={$t('browser.closePanel')}>
+      <X />
+    </button></Tooltip>{/if}
+  </div>
+
+  <div class="browser-status-bar">
+    <Menu placement="bottom-start" label={$t('browser.resolution')} minWidth="12rem">
+      {#snippet trigger(props)}<Button variant="outline" size="sm" type="button" class="text-[length:var(--text-xs)] tabular-nums" {...props} aria-label={$t('browser.resolution')}><Monitor class="size-3" /><span>{browserPanelStore.viewport==='fit'?$t('browser.fit'):`${BROWSER_VIEWPORTS[browserPanelStore.viewport].width}×${BROWSER_VIEWPORTS[browserPanelStore.viewport].height}`}</span></Button>{/snippet}
       <div class="ui-menu-separator" role="separator"></div>
       <MenuItem
         icon={PanelRight}
@@ -241,9 +263,16 @@
         />
       {/each}
     </Menu>
-    {#if !embedded}    <button type="button" class="ui-icon-button" onclick={() => void browserPanelStore.hide()} aria-label={$t('browser.closePanel')} title={$t('browser.closePanel')}>
-      <X />
-    </button>{/if}
+    <span class="browser-driver-note" title={$t('browser.pointerHint')}>{browserPanelStore.userTakeover?$t('browser.youHaveControl'):browserPanelStore.agentDriving?$t('browser.agentUsing'):$t('browser.pointerHint')}</span>
+    {#if browserPanelStore.userTakeover}
+      <Button variant="outline" size="sm" class="ml-auto" type="button" onclick={() => void browserPanelStore.setTakeover(false)} title={$t('browser.youHaveControl')} aria-label={$t('browser.handBack')}>
+        <Hand class="size-3" /> <span class="control-label">{$t('browser.handBack')}</span>
+      </Button>
+    {:else}
+      <Button variant="outline" size="sm" class="ml-auto" type="button" onclick={() => void browserPanelStore.setTakeover(true)} title={$t('browser.agentUsing')} aria-label={$t('browser.takeControl')}>
+        <Hand class="size-3" /> <span class="control-label">{$t('browser.takeControl')}</span>
+      </Button>
+    {/if}
   </div>
 
   <!-- Tabs only once there is more than one. -->
@@ -267,6 +296,8 @@
     </div>
   {/if}
 
+  {#if picking}<div class="browser-pick-hint" role="status">{$t('browser.pickHint')}</div>{/if}
+
   <div bind:this={viewportEl} class="browser-viewport-box" class:annotating aria-label={$t('browser.page')}>
     {#if annotating && chatId}
       <CanvasPanel {chatId} />
@@ -277,6 +308,10 @@
 </div>
 
 <style>
+  .browser-pick-hint {flex-shrink:0;padding:0.25rem 0.75rem;font-size:var(--text-xs);color:var(--muted-foreground);text-align:center;}
+  .browser-status-bar {display:flex;align-items:center;flex-wrap:wrap;gap:0.375rem;padding:0 0.5rem 0.375rem;min-width:0;}
+  .browser-driver-note {flex:1;min-width:4rem;font-size:var(--text-xs);color:var(--muted-foreground);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+
   .browser-panel {
     position: relative;
     display: flex;
@@ -299,6 +334,7 @@
   }
 
   .browser-url {
+    min-width:0;
     flex: 1 1 auto;
     margin: 0 0.125rem;
   }
@@ -400,7 +436,6 @@
   /* A narrow card keeps the address readable: the chip becomes its icon. */
   @container (max-width: 380px) {
     .control-label { display: none; }
-    .control-chip { padding: 0 0.35rem; }
   }
 
   @media (prefers-reduced-motion: reduce) {

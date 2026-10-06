@@ -53,7 +53,7 @@
   class={cn(
     buttonVariants({ variant, size: 'icon-sm' }),
     SIZE_CLASS[size],
-    'shrink-0 rounded-full',
+    'shrink-0',
     quiet && 'text-muted-foreground hover:text-foreground',
     className
   )}

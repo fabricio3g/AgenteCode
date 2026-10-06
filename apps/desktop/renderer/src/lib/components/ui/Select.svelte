@@ -248,10 +248,10 @@
   aria-activedescendant={open && activeIndex >= 0 ? optionId(activeIndex) : undefined}
   aria-required={required || undefined}
   class={cn(
-    'flex h-8 w-full items-center justify-between gap-2 rounded-md px-2.5 text-left text-[13px] text-foreground outline-none disabled:cursor-not-allowed disabled:opacity-50',
+    'flex h-8 w-full items-center justify-between gap-2 rounded-[var(--float-row-radius)] px-2.5 text-left text-[length:var(--text-sm)] text-foreground outline-none disabled:cursor-not-allowed disabled:opacity-50',
     variant === 'surface'
       ? 'border-0 bg-[var(--card)] transition-[background-color,box-shadow] duration-[var(--motion-fast)] hover:bg-[var(--surface-hover)] focus-visible:bg-[var(--card)] focus-visible:ring-[3px] focus-visible:ring-ring/25'
-      : 'border border-border bg-background transition-[border-color,box-shadow] duration-[var(--motion-fast)] focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/20',
+      : 'border border-[var(--float-border)] bg-background transition-[border-color,box-shadow] duration-[var(--motion-fast)] focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/20',
     className,
   )}
   onclick={() => open ? closeMenu({ restoreFocus: true }) : void openMenu()}
@@ -282,7 +282,7 @@
       aria-label={ariaLabel}
       aria-labelledby={ariaLabel ? undefined : (ariaLabelledby || triggerId)}
       class={cn(
-        'fixed z-[var(--z-menu)] overflow-y-auto rounded-lg bg-[var(--card)] p-1 text-foreground shadow-[shadow:var(--shadow-lg)] ring-1 ring-black/5 dark:ring-white/10',
+        'ui-menu fixed overflow-y-auto',
         placement === 'top' ? 'origin-bottom' : 'origin-top',
         menuClass,
       )}
@@ -297,16 +297,12 @@
           aria-selected={option.value === value}
           aria-disabled={option.disabled || undefined}
           disabled={option.disabled}
-          class={cn(
-            'flex w-full items-start gap-2 rounded-md px-2.5 py-1.5 text-left text-[13px] outline-none transition-colors duration-[var(--motion-fast)] disabled:cursor-not-allowed disabled:opacity-40',
-            activeIndex === index && 'bg-[var(--surface-hover)]',
-            option.value === value && 'bg-[var(--surface-active)] text-foreground',
-          )}
+          class={cn('ui-row', activeIndex === index && 'is-highlighted')}
           onpointerenter={() => { if (!option.disabled) activeIndex = index; }}
           onclick={() => choose(option)}
         >
           <span class="min-w-0 flex-1">
-            <span class="block truncate font-medium">{option.label}</span>
+            <span class={cn('block truncate', option.value === value && 'font-medium')}>{option.label}</span>
             {#if option.description}
               <span class="mt-0.5 block text-xs leading-snug text-muted-foreground">{option.description}</span>
             {/if}

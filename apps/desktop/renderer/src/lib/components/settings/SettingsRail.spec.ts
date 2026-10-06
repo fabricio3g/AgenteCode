@@ -51,9 +51,7 @@ function renderRail(selected = 'section:general') {
     props: {
       groups,
       selected,
-      autoLoad: false,
       onselect,
-      onautoload: vi.fn(),
       onaddendpoint: vi.fn()
     }
   });
@@ -104,6 +102,7 @@ describe('SettingsRail', () => {
     await fireEvent.keyDown(first, { key: 'ArrowDown' });
     expect(document.activeElement?.textContent).toContain('Library');
     await fireEvent.keyDown(first, { key: 'End' });
-    expect(document.activeElement?.textContent).toContain('Import .gguf');
+    // The library actions moved to the Library page; the rail ends on the last provider.
+    expect(document.activeElement?.textContent).toContain('Ollama');
   });
 });

@@ -60,7 +60,9 @@ impl ResponsesProvider {
                 for call in calls {
                     input.push(json!({
                         "type": "function_call", "call_id": call.id,
-                        "name": call.function.name, "arguments": call.function.arguments,
+                        "name": call.function.name,
+                        // Broken arguments replayed made strict upstreams reject the request.
+                        "arguments": super::openai::well_formed_arguments(&call.function.arguments),
                     }));
                 }
             }
@@ -378,7 +380,8 @@ impl Provider for ResponsesProvider {
             body["prompt_cache_key"] = json!(key);
         }
         let response = super::send_request(&self.info, model, "responses", &body, context).await?;
-        let mut stream = super::sse::EventStream::new(response.bytes_stream());
+        let mut stream =
+            super::sse::EventStream::for_completion(response.bytes_stream(), &self.info.base_url);
         let mut state = ResponseState::default();
         let _ = sender.send(StreamEvent::TextStart).await;
         while let Some(data) = stream

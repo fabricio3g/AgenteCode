@@ -117,7 +117,15 @@ pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState) {
         // fails on its own after the stream idle timeout (90 s). So say
         // "waiting" first, and warn only when it has gone on for a while.
         let waiting = state.agent.preparing_tool.as_deref().map_or_else(
-            || "Waiting for the model…".to_string(),
+            || match state.agent.total_tokens {
+                // Say what the request carries: a 24k-token prompt on a cold
+                // cache is why a first token can take fifteen seconds.
+                0 => "Waiting for the model…".to_string(),
+                tokens => format!(
+                    "Waiting for the model… {} in context",
+                    crate::widgets::hints::format_token_count(tokens as usize)
+                ),
+            },
             |name| format!("Preparing {name}…"),
         );
         if secs >= SILENT_WARN_SECS {
@@ -390,6 +398,44 @@ mod tests {
                 "braille frame {frame} must not appear while blocked"
             );
         }
+    }
+
+    #[test]
+    fn quiet_wait_names_the_context_it_sent() {
+        let mut state = test_state(AgentState::StreamingResponse);
+        state.agent.total_tokens = 24_000;
+        // 16s of silence: the strip reports what the request carries, which is
+        // the difference between a cold 24k prompt and a stalled socket.
+        state.agent.last_agent_event_at =
+            Some(std::time::Instant::now() - std::time::Duration::from_secs(16));
+        let backend = TestBackend::new(80, 1);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal
+            .draw(|f| {
+                let area = f.area();
+                render(f, area, &mut state);
+            })
+            .unwrap();
+        let text: String = (0..80)
+            .map(|x| terminal.backend().buffer()[(x, 0)].symbol())
+            .collect();
+        assert!(
+            text.contains("Waiting for the model… 24k in context"),
+            "got: {text}"
+        );
+
+        // Without a known context size the plain wording stays.
+        state.agent.total_tokens = 0;
+        terminal
+            .draw(|f| {
+                let area = f.area();
+                render(f, area, &mut state);
+            })
+            .unwrap();
+        let text: String = (0..80)
+            .map(|x| terminal.backend().buffer()[(x, 0)].symbol())
+            .collect();
+        assert!(text.contains("Waiting for the model… 16s"), "got: {text}");
     }
 
     #[test]

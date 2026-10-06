@@ -1,5 +1,6 @@
 import {
   selectBrowserScope,
+  getBrowserState,
   openBrowserTab,
   closeBrowserTab,
   setActiveBrowserTab,
@@ -59,7 +60,18 @@ export class BrowserPanelStore {
     void onBrowserPanelState((state) => this.receive(state));
   }
 
+  #owners = new Map<string, BrowserPanelStore>();
+  forScope(scope: string): BrowserPanelStore {
+    let owner = this.#owners.get(scope);
+    if (!owner) {
+      owner = new BrowserPanelStore(); owner.scope = scope;
+      this.#owners.set(scope, owner);
+      if (isElectron()) void getBrowserState(scope).then((state) => owner!.receive(state)).catch(() => {});
+    }
+    return owner;
+  }
   receive(state: BrowserPanelState) {
+    this.#owners.get(state.scope)?.receive(state);
     this.#states.set(state.scope, state);
     if (state.scope !== this.scope) return;
     this.tabs = state.tabs; this.activeTabId = state.activeTabId;

@@ -1,5 +1,7 @@
 [workspace]
 members = [
+    "crates/agente-audio",
+    "apps/desktop-egui-port",
     "crates/agente-protocol",
     "crates/agente-session",
     "crates/agente-runtime",

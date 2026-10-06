@@ -1,4 +1,5 @@
 import type { IpcMain } from 'electron';
+import { readWorkspaceBinary } from '../filesystem.ts';
 
 type WorkspaceHandlerDeps = {
   ipcMain: IpcMain;
@@ -54,6 +55,7 @@ export function registerWorkspaceHandlers({
   ipcMain.handle('write_workspace_file', (_e, { workspaceRoot, relativePath, content }) => writeWorkspaceFile(workspaceRoot, relativePath, content));
   ipcMain.handle('write_workspace_binary', (_e, { workspaceRoot, relativePath, dataUrl }) => writeWorkspaceBinary(workspaceRoot, relativePath, dataUrl));
   ipcMain.handle('read_workspace_file', (_e, { workspaceRoot, relativePath }) => readWorkspaceFile(workspaceRoot, relativePath));
+  ipcMain.handle('read_workspace_binary', (_e, { workspaceRoot, relativePath }) => readWorkspaceBinary(workspaceRoot, relativePath));
   ipcMain.handle('create_workspace_document', (_e, { workspaceRoot, relativePath, docType, content }) =>
     createWorkspaceDocument(workspaceRoot, relativePath, docType, content));
   ipcMain.handle('rename_workspace_file', (_e, { workspaceRoot, oldPath, newPath }) => renameWorkspaceFile(workspaceRoot, oldPath, newPath));

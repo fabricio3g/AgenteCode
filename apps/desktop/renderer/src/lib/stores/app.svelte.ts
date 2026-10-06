@@ -378,11 +378,19 @@ class AppStore {
   }
 
   private beginGenerationRun(chatId: string, run: ActiveGenerationRun) {
+    // The clock starts with the run, so work can be told from silence before
+    // the first event lands.
     this.activeRunsByChat = {
       ...this.activeRunsByChat,
-      [chatId]: run
+      [chatId]: { lastEventAt: Date.now(), ...run }
     };
     this.refreshGenerationState();
+  }
+
+  /** An event just arrived for this chat's run: the meter reads this as "alive". */
+  private touchRun(chatId: string) {
+    const run = this.activeRunsByChat[chatId];
+    if (run) run.lastEventAt = Date.now();
   }
 
   private endGenerationRun(chatId: string, controller?: AbortController) {
@@ -1498,8 +1506,12 @@ class AppStore {
 
   private queuedContinuation = new Set<string>();
 
-  async sendQueuedPromptsNow(chatId: string): Promise<void> {
-    if (!this.findChat(chatId)?.pendingPrompts?.length) return;
+  async sendQueuedPromptsNow(chatId: string, id?: string): Promise<void> {
+    const chat = this.findChat(chatId);
+    if (!chat?.pendingPrompts?.length) return;
+    // Chat sends one prompt per turn: the chosen one goes first.
+    const chosen = id ? chat.pendingPrompts.find((item) => item.id === id && !item.sending) : undefined;
+    if (chosen) chat.pendingPrompts = [chosen, ...chat.pendingPrompts.filter((item) => item !== chosen)];
     const run = this.activeRunsByChat[chatId];
     if (run) {
       this.queuedContinuation.add(chatId);
@@ -2647,7 +2659,8 @@ class AppStore {
             sync: syncMsg,
             persist: () => this.persist(),
             onReasoningStart: () => reasoningTimer.markStarted(),
-            onArtifacts: (latest) => this.focusArtifact(targetChatId, assistantMessage.id, latest)
+            onArtifacts: (latest) => this.focusArtifact(targetChatId, assistantMessage.id, latest),
+            touch: () => this.touchRun(targetChatId)
           })
         });
         exactUsage = agentResult.usage || exactUsage;
@@ -3133,7 +3146,8 @@ class AppStore {
             },
             persist: () => this.persist(),
             onReasoningStart: () => reasoningTimer.markStarted(),
-            onArtifacts: (latest) => this.focusArtifact(targetChatId, message.id, latest)
+            onArtifacts: (latest) => this.focusArtifact(targetChatId, message.id, latest),
+            touch: () => this.touchRun(targetChatId)
           })
         });
         exactUsage = agentResult.usage || exactUsage;
@@ -3483,6 +3497,7 @@ class AppStore {
     show_assistant_text?: boolean;
     enable_thinking?: boolean;
     artifact_toggles?: Record<string, boolean>;
+    home_tools_disabled?: string[];
     composer_mode_control?: 'tabs' | 'auto';
     roleplay_enabled?: boolean;
     editor?: string;
@@ -3514,6 +3529,14 @@ class AppStore {
     if (!enabled && this.activeSpace === 'roleplay') {
       this.setActiveSpace('home');
     }
+  }
+
+  get homeToolsDisabled(): string[] {
+    return this.config.ui?.home_tools_disabled ?? [];
+  }
+
+  async setHomeToolsDisabled(disabled: string[]) {
+    await this.updateUiSettings({ home_tools_disabled: disabled });
   }
 
   getArtifactToggles(): Record<string, boolean> {

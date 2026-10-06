@@ -14,7 +14,7 @@
   import { motionFade, flyAndScale } from '$lib/utils/transitions';
   import { modalLayer } from '$lib/components/ui/modal-layer';
   import { dirtyGuard } from '$lib/components/ui/dirty-guard';
-  import { Button } from '$lib/components/ui';
+  import { Button, Tooltip } from '$lib/components/ui';
   import type { UserPersona } from '$lib/types/chat';
   import { charactersStore, emptyPersona } from './characters.svelte';
   import { toastStore } from '$lib/stores/toast.svelte';
@@ -94,9 +94,9 @@
         <div class="ui-modal-title">{isNew ? 'New persona' : draft.name || 'Edit persona'}</div>
         <div class="text-xs text-muted-foreground">Who you are inside the story.</div>
       </div>
-      <button type="button" class="ui-icon-button" onclick={() => guard.close(onclose)} aria-label={copy.actions.close}>
+      <Tooltip label={copy.actions.close} position="bottom"><button type="button" class="ui-icon-button" onclick={() => guard.close(onclose)} aria-label={copy.actions.close}>
         <X class="size-4" />
-      </button>
+      </button></Tooltip>
     </div>
 
     <div class="ui-modal-body max-h-[62vh] space-y-4 overflow-y-auto">
@@ -137,22 +137,23 @@
           <div class="text-xs font-medium text-foreground">Default persona</div>
           <div class="text-[12px] text-muted-foreground">New scenes start with this persona selected.</div>
         </div>
-        <button
+        <Button
           type="button"
-          class="ui-btn {draft.isDefault ? 'ui-btn-primary' : ''} shrink-0"
+          size="sm"
+          variant={draft.isDefault ? 'default' : 'outline'}
           onclick={() => set('isDefault', !draft.isDefault)}
         >
           {draft.isDefault ? 'Default' : 'Make default'}
-        </button>
+        </Button>
       </div>
     </div>
 
     <div class="ui-modal-footer">
       {#if persona && charactersStore.getPersonaById(persona.id)}
         <!-- Deleting skips the unsaved-changes guard: the item is going away. -->
-        <button type="button" class="ui-btn ui-btn-ghost mr-auto text-error" onclick={() => persona && deletePersona(persona, onclose)}>{copy.actions.delete}</button>
+        <Button variant="outline" size="sm" class="mr-auto text-error" type="button" onclick={() => persona && deletePersona(persona, onclose)}>{copy.actions.delete}</Button>
       {/if}
-      <button type="button" class="ui-btn ui-btn-ghost" onclick={() => guard.close(onclose)}>{copy.actions.cancel}</button>
+      <Button variant="outline" size="sm" type="button" onclick={() => guard.close(onclose)}>{copy.actions.cancel}</Button>
       <Button onclick={() => void save()} disabled={saving}>{saving ? 'Saving…' : copy.actions.save}</Button>
     </div>
   </div>

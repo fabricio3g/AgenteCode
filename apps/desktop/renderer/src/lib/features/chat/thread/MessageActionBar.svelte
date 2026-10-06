@@ -10,6 +10,7 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
   import { Check } from 'lucide-svelte';
+  import Tooltip from '$lib/components/ui/Tooltip.svelte';
   import type { MessageAction } from './message-actions';
 
   interface Props {
@@ -67,6 +68,7 @@
   {#each inline as action (action.id)}
     {@const Icon = action.active && action.activeIcon ? action.activeIcon : action.icon}
     {@const label = action.active && action.activeLabel ? action.activeLabel : action.label}
+    <Tooltip {label} position="top">
     <button
       type="button"
       class="msg-action-btn"
@@ -75,7 +77,6 @@
       disabled={action.disabled}
       onclick={() => run(action)}
       aria-label={label}
-      title={label}
     >
       {#if confirmedId === action.id}
         <Check class="size-3" />
@@ -83,6 +84,7 @@
         <Icon class="size-3" />
       {/if}
     </button>
+    </Tooltip>
   {/each}
 
 </div>

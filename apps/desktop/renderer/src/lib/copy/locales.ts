@@ -31,6 +31,7 @@ export interface SayStrings {
 
 const es: CopyOverride = {
   actions: {
+    splitRight: 'Abrir al lado', splitBelow: 'Abrir debajo', splitTooSmall: 'La ventana es demasiado estrecha para dividirla',
     copy: 'Copiar', copied: 'Copiado', copyCode: 'Copiar código', edit: 'Editar', retry: 'Reintentar',
     regenerate: 'Regenerar', delete: 'Eliminar', cancel: 'Cancelar', close: 'Cerrar', save: 'Guardar',
     stop: 'Detener', more: 'Más', open: 'Abrir', download: 'Descargar', export: 'Exportar',
@@ -114,6 +115,7 @@ const es: CopyOverride = {
 
 const ptBR: CopyOverride = {
   actions: {
+    splitRight: 'Abrir ao lado', splitBelow: 'Abrir abaixo', splitTooSmall: 'A janela é estreita demais para dividir',
     copy: 'Copiar', copied: 'Copiado', copyCode: 'Copiar código', edit: 'Editar', retry: 'Tentar de novo',
     regenerate: 'Regenerar', delete: 'Excluir', cancel: 'Cancelar', close: 'Fechar', save: 'Salvar',
     stop: 'Parar', more: 'Mais', open: 'Abrir', download: 'Baixar', export: 'Exportar',
@@ -197,6 +199,7 @@ const ptBR: CopyOverride = {
 
 const fr: CopyOverride = {
   actions: {
+    splitRight: 'Ouvrir à côté', splitBelow: 'Ouvrir en dessous', splitTooSmall: 'La fenêtre est trop étroite pour être divisée',
     copy: 'Copier', copied: 'Copié', copyCode: 'Copier le code', edit: 'Modifier', retry: 'Réessayer',
     regenerate: 'Régénérer', delete: 'Supprimer', cancel: 'Annuler', close: 'Fermer', save: 'Enregistrer',
     stop: 'Arrêter', more: 'Plus', open: 'Ouvrir', download: 'Télécharger', export: 'Exporter',
@@ -280,6 +283,7 @@ const fr: CopyOverride = {
 
 const de: CopyOverride = {
   actions: {
+    splitRight: 'Daneben öffnen', splitBelow: 'Darunter öffnen', splitTooSmall: 'Das Fenster ist zu schmal zum Teilen',
     copy: 'Kopieren', copied: 'Kopiert', copyCode: 'Code kopieren', edit: 'Bearbeiten', retry: 'Erneut versuchen',
     regenerate: 'Neu generieren', delete: 'Löschen', cancel: 'Abbrechen', close: 'Schließen', save: 'Speichern',
     stop: 'Stoppen', more: 'Mehr', open: 'Öffnen', download: 'Herunterladen', export: 'Exportieren',
@@ -363,6 +367,7 @@ const de: CopyOverride = {
 
 const ja: CopyOverride = {
   actions: {
+    splitRight: '横に開く', splitBelow: '下に開く', splitTooSmall: 'ウィンドウが狭すぎて分割できません',
     copy: 'コピー', copied: 'コピーしました', copyCode: 'コードをコピー', edit: '編集', retry: '再試行',
     regenerate: '再生成', delete: '削除', cancel: 'キャンセル', close: '閉じる', save: '保存',
     stop: '停止', more: 'その他', open: '開く', download: 'ダウンロード', export: 'エクスポート',
@@ -446,6 +451,7 @@ const ja: CopyOverride = {
 
 const zh: CopyOverride = {
   actions: {
+    splitRight: '在旁边打开', splitBelow: '在下方打开', splitTooSmall: '窗口太窄，无法拆分',
     copy: '复制', copied: '已复制', copyCode: '复制代码', edit: '编辑', retry: '重试',
     regenerate: '重新生成', delete: '删除', cancel: '取消', close: '关闭', save: '保存',
     stop: '停止', more: '更多', open: '打开', download: '下载', export: '导出',

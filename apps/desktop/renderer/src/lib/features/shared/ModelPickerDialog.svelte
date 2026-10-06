@@ -13,6 +13,7 @@
 -->
 
 <script lang="ts">
+  import { Button } from '$lib/components/ui';
   import type { Snippet } from 'svelte';
   import { Check, ChevronRight, LoaderCircle, RefreshCw, Search, Settings2, X } from 'lucide-svelte';
   import { t } from 'svelte-i18n';
@@ -143,7 +144,7 @@
 </script>
 
 {#if open}
-  <div use:portalToBody use:modalLayer={{ onclose: () => (open = false) }} class="model-modal-root fixed inset-0">
+  <div use:portalToBody use:modalLayer={{ onclose: () => (open = false), dim: true }} class="model-modal-root fixed inset-0">
     <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
     <div class="model-modal-backdrop absolute inset-0" onclick={() => (open = false)} in:backdropIn out:backdropOut></div>
     <div class="pointer-events-none absolute inset-0 flex items-center justify-center p-4">
@@ -179,7 +180,7 @@
               </button>
             </Tooltip>
           {/if}
-          <button type="button" class="ui-icon-button is-sm" onclick={() => (open = false)} aria-label={$t('modelPicker.close')}><X /></button>
+          <Tooltip label={$t('modelPicker.close')} position="bottom"><button type="button" class="ui-icon-button is-sm" onclick={() => (open = false)} aria-label={$t('modelPicker.close')}><X /></button></Tooltip>
         </div>
 
         <label class="ui-pill-field picker-search">
@@ -192,7 +193,7 @@
             placeholder={$t('modelPicker.searchPlaceholder')}
           />
           {#if search}
-            <button type="button" class="ui-icon-button is-xs -mr-1.5" aria-label={$t('modelPicker.clearSearch')} onclick={() => (search = '')}><X /></button>
+            <Tooltip label={$t('modelPicker.clearSearch')} position="bottom"><button type="button" class="ui-icon-button is-xs -mr-1.5" aria-label={$t('modelPicker.clearSearch')} onclick={() => (search = '')}><X /></button></Tooltip>
           {/if}
         </label>
 
@@ -205,13 +206,13 @@
             <div class="picker-empty">
               <p>{$t('modelPicker.noProviders')}</p>
               <span>{$t('modelPicker.noProvidersHint')}</span>
-              {#if onmanage}<button type="button" class="ui-chip" onclick={onmanage}>{$t('modelPicker.configureProvider')}</button>{/if}
+              {#if onmanage}<Button variant="outline" size="sm" type="button" onclick={onmanage}>{$t('modelPicker.configureProvider')}</Button>{/if}
             </div>
           {:else if !visible.length}
             <div class="picker-empty">
               <p>{$t('modelPicker.noResults')}</p>
               <span>{$t('modelPicker.noResultsHint')}</span>
-              <button type="button" class="ui-chip" onclick={() => (search = '')}>{$t('modelPicker.clearSearch')}</button>
+              <Button variant="outline" size="sm" type="button" onclick={() => (search = '')}>{$t('modelPicker.clearSearch')}</Button>
             </div>
           {:else}
             {#each visible as provider (provider.id)}
@@ -234,7 +235,7 @@
                     {#if providerModels.errors[provider.id]}
                       <div class="picker-note is-inline" role="status">
                         <span class="min-w-0 flex-1">{providerModels.errors[provider.id]}</span>
-                        <button type="button" class="ui-chip" disabled={loading} onclick={() => void providerModels.load(provider.id, true)}>{$t('modelPicker.retry')}</button>
+                        <Button variant="outline" size="sm" type="button" disabled={loading} onclick={() => void providerModels.load(provider.id, true)}>{$t('modelPicker.retry')}</Button>
                       </div>
                     {/if}
                     {#if list.length === 0}
@@ -289,11 +290,10 @@
     width: min(720px, calc(100vw - 32px));
     max-height: min(820px, calc(100dvh - 40px));
     min-height: min(520px, calc(100dvh - 40px));
-    background: var(--card);
+    background: var(--float-bg);
+    border: 1px solid var(--float-border);
     border-radius: var(--radius-2xl);
-    box-shadow:
-      inset 0 0 0 1px var(--composer-ring),
-      var(--shadow-xl);
+    box-shadow: var(--float-shadow);
     -webkit-app-region: no-drag;
     transform-origin: 50% 40%;
   }
@@ -461,9 +461,6 @@
     color: var(--foreground);
     font-size: var(--text-sm);
     font-weight: 500;
-  }
-  .picker-empty .ui-chip {
-    margin-top: 0.375rem;
   }
 
   .picker-footer {

@@ -1,6 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+  import { Tooltip } from '$lib/components/ui';
   import { ExternalLink, Loader2, X } from 'lucide-svelte';
   import { appStore } from '$lib/stores/app.svelte';
   import type { ChatMessage } from '$lib/types/chat';
@@ -108,9 +109,9 @@
           {countOf(sourceCount, 'Source')}
         </button>
       </div>
-      <button type="button" class="ui-icon-button shrink-0" onclick={close} aria-label={copy.actions.close} title={copy.actions.close}>
+      <Tooltip label={copy.actions.close} position="bottom"><button type="button" class="ui-icon-button shrink-0" onclick={close} aria-label={copy.actions.close}>
         <X class="size-3.5" />
-      </button>
+      </button></Tooltip>
     </div>
   </header>
 

@@ -26,7 +26,7 @@
   });
 </script>
 
-<div bind:this={host} class={className}>
+<div bind:this={host} class={className} data-portal>
   {#if mounted}
     {@render children?.()}
   {/if}

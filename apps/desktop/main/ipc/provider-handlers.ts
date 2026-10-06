@@ -1,6 +1,7 @@
 import type { IpcMain } from 'electron';
 import { getDialect, resolveDialect } from '../providers/dialects.ts';
 import { testProviderConnection } from '../providers/connection-test.ts';
+import { mergeModelLists, type CatalogEntry } from '../providers/model-list-merge.ts';
 
 type Provider = {
   name: string;
@@ -29,9 +30,13 @@ export function registerProviderHandlers({ ipcMain, resolveProvider, resolveApiK
     if (!realKey && provider.name !== 'local') {
       throw new Error(`No API key configured for ${providerName || 'the selected provider'}. Please add your API key in Settings > LLM Providers.`);
     }
-    const models = await provider.fetchModels(realKey, baseUrl);
+    const live = await provider.fetchModels(realKey, baseUrl);
     if (providerName) onModelsRefreshed?.(providerName);
-    return models;
+    if (!providerName || providerName === 'local' || !Array.isArray(live)) return live;
+    // What the provider no longer lists (retired) or never listed still shows,
+    // from models.dev, marked as such.
+    const catalog = await coreCatalogModels(providerName).catch(() => []);
+    return mergeModelLists(live.map(String), catalog);
   });
 
   ipcMain.handle('test_provider_connection', async (_e, { baseUrl, apiKey, providerName }) => {
@@ -85,6 +90,13 @@ export function registerProviderHandlers({ ipcMain, resolveProvider, resolveApiK
 type CoreModelInfo = { limits?: { context?: number | null; output?: number | null }; cost?: { input?: number | null; output?: number | null } | null };
 
 /** A model's window, output cap and prices as the core knows them; null when it knows no window. */
+async function coreCatalogModels(providerName: string): Promise<CatalogEntry[]> {
+  const { runtimeConnection } = await import('../agente/rust-engine.ts');
+  const client = await runtimeConnection();
+  const result = await client.request<{ models?: CatalogEntry[] }>('models.catalog', { provider: providerName });
+  return Array.isArray(result.models) ? result.models : [];
+}
+
 async function coreModelContext(providerName: string, modelId: string) {
   const { runtimeConnection } = await import('../agente/rust-engine.ts');
   const client = await runtimeConnection();

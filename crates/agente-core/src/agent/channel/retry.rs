@@ -98,6 +98,11 @@ mod tests {
     #[test]
     fn statusless_transport_failures_stay_retryable() {
         assert!(is_retryable_error("Stream stalled (no data for 90s)"));
+        // The header phase is bounded by the same classification: a provider
+        // that accepted the request and never answered is worth retrying.
+        assert!(is_retryable_error(
+            "OpenCode Go: stream stalled (no response headers for 90s)"
+        ));
         assert!(is_retryable_error("connection reset by peer"));
         assert!(is_retryable_error(
             "Stream error: Chat stream ended before completion"

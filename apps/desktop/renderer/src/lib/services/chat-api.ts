@@ -1,4 +1,5 @@
 import { isVisionModel } from '$shared/model-capabilities';
+import { listedModels } from './listed-models';
 import OpenAI from 'openai';
 import type { AppConfig, ChatMessage, ModelOption, ReasoningCapabilities, ReasoningLevel, ReasoningRequest } from '$lib/types/chat';
 import type { LocalModel } from '$lib/types/bridge';
@@ -538,22 +539,16 @@ export async function fetchModels(config?: AppConfig, apiKeyOverride?: string, f
     if (isElectron()) {
       let timer: ReturnType<typeof setTimeout> | undefined;
       try {
-        const request = invoke<string[]>('fetch_provider_models', {
+        const request = invoke<unknown>('fetch_provider_models', {
           baseUrl,
           apiKey,
           providerName
         });
-        const ids = await Promise.race([request, new Promise<string[]>((_resolve, reject) => {
+        const raw = await Promise.race([request, new Promise<never>((_resolve, reject) => {
           timer = setTimeout(() => reject(new Error('Model discovery timed out')), 12_000);
         })]);
         // IPC errors must reach the picker; an empty successful list is authoritative.
-        if (!Array.isArray(ids)) throw new Error('Invalid provider model list');
-        const mapped: ModelOption[] = [...new Set(ids)].map((id) => ({
-          id: String(id || ''),
-          name: String(id || 'Unnamed model'),
-          source: 'api' as const
-        }));
-        return mapped.filter((entry) => !!entry.id);
+        return listedModels(raw);
       } finally { clearTimeout(timer); }
     }
     const client = getOpenAIClient(apiKey, baseUrl);

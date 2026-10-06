@@ -6,14 +6,15 @@
 -->
 
 <script lang="ts">
+  import { Button, Tooltip } from '$lib/components/ui';
   import { conversationScope } from '$shared/workspace-scope';
   import { t } from 'svelte-i18n';
   import { ChevronRight, ExternalLink, Play, Square, Trash2 } from 'lucide-svelte';
-  import { browserPanelStore } from '$lib/stores/browser-panel.svelte';
+  import { browserPanelStore as defaultBrowser, type BrowserPanelStore } from '$lib/stores/browser-panel.svelte';
   import { codeWorkspace } from '../workspace.svelte';
   import type { ProcessInfo } from '$shared/code-workspace';
 
-  let { chatId, cwd }: { chatId: string; cwd: string } = $props();
+  let { chatId, cwd, browser: browserPanelStore = defaultBrowser }: { browser?: BrowserPanelStore; chatId: string; cwd: string } = $props();
 
   const processes = $derived([...codeWorkspace.processesFor(chatId)].reverse());
   const selected = $derived(processes.find((p) => p.id === codeWorkspace.selectedProcesses[conversationScope(chatId)]) ?? processes[0] ?? null);
@@ -83,7 +84,7 @@
         aria-label={$t('codeWs.runPlaceholder')}
       />
       {#if command.trim()}
-        <button type="submit" class="ui-icon-button is-xs -mr-1.5" aria-label={$t('codeWs.run')} title={$t('codeWs.run')}><Play /></button>
+        <Tooltip label={$t('codeWs.run')} position="bottom"><button type="submit" class="ui-icon-button is-xs -mr-1.5" aria-label={$t('codeWs.run')}><Play /></button></Tooltip>
       {/if}
     </form>
     <ul class="proc-items">
@@ -119,14 +120,14 @@
         <span class="min-w-0 flex-1 truncate font-mono text-foreground" title={selected.command}>{selected.command}</span>
         <span class="shrink-0 tabular-nums">{status(selected)} · {elapsed(selected)}</span>
         {#each selected.urls as url (url)}
-          <button type="button" class="ui-chip" onclick={() => openUrl(url)} title={$t('codeWs.openInBrowser')}>
+          <Button variant="outline" size="sm" type="button" onclick={() => openUrl(url)} title={$t('codeWs.openInBrowser')}>
             <ExternalLink /> {url.replace(/^https?:\/\//, '')}
-          </button>
+          </Button>
         {/each}
         {#if selected.status === 'running'}
-          <button type="button" class="ui-chip text-error" onclick={() => void codeWorkspace.stopProcess(selected.id)}>
+          <Button variant="outline" size="sm" class="text-error" type="button" onclick={() => void codeWorkspace.stopProcess(selected.id)}>
             <Square /> {$t('codeWs.stop')}
-          </button>
+          </Button>
         {/if}
       </div>
       <pre
@@ -146,7 +147,8 @@
     height: 100%;
     min-height: 0;
     gap: 0.25rem;
-    padding: 0 4px 4px;
+    /* Two insets: the top one keeps the run pill off the dock's tab strip. */
+    padding: 2px 4px 4px;
   }
 
   .proc-list {
@@ -158,7 +160,11 @@
     min-height: 0;
   }
 
+  /* Full-radius hover pills, like the Changes list: a gap keeps them apart. */
   .proc-items {
+    display: flex;
+    flex-direction: column;
+    gap: 0.125rem;
     min-height: 0;
     flex: 1;
     overflow-y: auto;
@@ -260,7 +266,9 @@
     flex: 1;
     overflow: auto;
     margin: 0;
-    padding: 0 0.75rem 0.6rem;
+    /* The head above is a chip row with no padding of its own, so the first log
+       line needs the top inset it never had. */
+    padding: 0.35rem 0.75rem 0.6rem;
     white-space: pre;
     color: var(--foreground);
     font-family: var(--font-mono, ui-monospace, monospace);

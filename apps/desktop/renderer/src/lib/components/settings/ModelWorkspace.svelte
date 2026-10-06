@@ -21,10 +21,12 @@
   import { confirmStore } from '$lib/stores/confirm.svelte';
   import { onMount } from 'svelte';
   import {
-    AlertCircle, Ban, ChevronRight, Cpu, Download, HardDrive,
+    AlertCircle, Ban, Check, ChevronRight, Cpu, Download, FolderInput, FolderOpen, HardDrive,
     LoaderCircle, MemoryStick, Trash2,
   } from 'lucide-svelte';
-  import { Badge, Button, Select } from '$lib/components/ui';
+  import { Badge, Button, Select, Switch, Tooltip } from '$lib/components/ui';
+  import { openModelsFolder, pickModelFile } from '$lib/services/files';
+  import { importLocalModel } from '$lib/services/models';
   import { compactCount, quantFromFilename } from '$lib/models/model-explore';
   import ModelSearchField from './ModelSearchField.svelte';
   import ModelDownloadRow from './ModelDownloadRow.svelte';
@@ -286,9 +288,28 @@
     return formatSizeBytes(bytes, get(t)('modelHub.sizeUnknown'));
   }
 
-  /** Remembered "Download & load" choice — owned by the modal rail, bound here. */
+  /** Remembered "Download & load" choice: the switch sits on the Explore header. */
   function setAutoLoadPreferred(value: boolean) {
     autoLoad = value;
+  }
+
+  let importing = $state(false);
+
+  /** Add a .gguf from anywhere on disk to the library. */
+  async function importModel() {
+    if (importing) return;
+    importing = true;
+    try {
+      const path = await pickModelFile();
+      if (!path) return;
+      await importLocalModel(path, false);
+      await Promise.all([modelsStore.refreshIndex(), appStore.refreshModels()]);
+      toastStore.success(get(t)('modelHub.imported'));
+    } catch (error) {
+      toastStore.error(get(t)('modelHub.importFailed', { values: { reason: (error as Error)?.message || String(error) } }));
+    } finally {
+      importing = false;
+    }
   }
 
   function fitForCurated(model: CuratedModelDefinition, artifact = defaultArtifact(model)): ModelFitAssessment {
@@ -472,7 +493,7 @@
   {@const job = downloadsStore.jobFor(repoId, filename)}
   {#if job && ['queued', 'running', 'paused'].includes(job.status)}
     <span class="text-xs tabular-nums text-muted-foreground">{Math.round(job.progress)}%</span>
-    <Button variant="ghost" size="icon-sm" aria-label={$t('modelHub.cancelDownload')} title={$t('modelHub.cancelDownload')} onclick={() => void downloadsStore.cancelJob(job.id)}><Ban /></Button>
+    <Tooltip label={$t('modelHub.cancelDownload')} position="bottom"><Button variant="ghost" size="icon-sm" aria-label={$t('modelHub.cancelDownload')} onclick={() => void downloadsStore.cancelJob(job.id)}><Ban /></Button></Tooltip>
   {/if}
 {/snippet}
 
@@ -480,6 +501,12 @@
   <div class="flex min-h-0 flex-1 flex-col" in:motionFade={{ duration: 120 }}>
     {#if tab === 'discover'}
       <SettingsPage title={$t('modelHub.exploreTitle')} description={$t('modelHub.exploreDescription')} wide={!!detailData}>
+        {#snippet actions()}
+          <span class="flex items-center gap-2 text-xs text-muted-foreground" title={$t('modelHub.autoLoadHint')}>
+            <span aria-hidden="true">{$t('modelHub.autoLoad')}</span>
+            <Switch label={$t('modelHub.autoLoad')} checked={autoLoad} onchange={(next) => setAutoLoadPreferred(next)} />
+          </span>
+        {/snippet}
         <!-- Search, then the filters that refine it -->
         <ModelSearchField
           bind:value={searchQuery}
@@ -490,7 +517,7 @@
         <div class="-mt-2 flex flex-wrap items-center gap-2">
           <Select
             bind:value={searchSort}
-            class="h-9 w-40 text-xs"
+            class="w-40"
             aria-label={$t('modelHub.sort')}
             options={[
               { value: 'likes', label: $t('modelHub.sortLikes') },
@@ -500,7 +527,7 @@
           />
           <Select
             bind:value={parameterFilter}
-            class="h-9 w-40 text-xs"
+            class="w-40"
             aria-label={$t('modelHub.size')}
             options={[
               { value: 'all', label: $t('modelHub.sizeAny') },
@@ -509,9 +536,9 @@
               { value: 'large', label: $t('modelHub.sizeLarge') },
             ]}
           />
-          <button type="button" class="license-filter" class:on={openLicenseOnly} aria-pressed={openLicenseOnly} onclick={() => (openLicenseOnly = !openLicenseOnly)}>
-            {$t('modelHub.openLicenseOnly')}
-          </button>
+          <Button variant="outline" size="sm" class={openLicenseOnly ? 'bg-[var(--float-row-hover)] text-foreground' : 'text-muted-foreground'} aria-pressed={openLicenseOnly} onclick={() => (openLicenseOnly = !openLicenseOnly)}>
+            {#if openLicenseOnly}<Check />{/if}{$t('modelHub.openLicenseOnly')}
+          </Button>
         </div>
 
         {#if searchError}
@@ -528,17 +555,17 @@
             {:else if filteredSearchItems.length === 0}
               <!-- Empty query: hardware picks and the curated list instead of an empty wall. -->
               <SettingsSection title={$t('modelHub.pickedTitle')} description={hardwareStore.info ? $t('modelHub.pickedHint') : $t('modelHub.pickedNoHardware')}>
-                <div class="grid gap-2 px-4 py-3 sm:grid-cols-3 sm:px-5">
+                <div class="pick-grid">
                   {#each recommendationCards as card (card.label)}
                     <button
                       type="button"
-                      class="rounded-xl bg-[var(--muted)] p-3 text-left transition hover:bg-[var(--surface-hover)] disabled:cursor-default disabled:opacity-60"
+                      class="pick-cell"
                       disabled={!card.model}
                       onclick={() => card.model && (selectedRepoId = card.model.ggufRepository)}
                     >
-                      <p class="text-[12px] text-muted-foreground">{card.label}</p>
+                      <p class="text-[length:var(--text-xs)] text-muted-foreground">{card.label}</p>
                       <p class="mt-1 truncate text-sm font-medium text-foreground">{card.model?.name ?? $t('modelHub.nothingFits')}</p>
-                      {#if card.model}<p class="truncate text-[12px] text-muted-foreground">{roleOf(card.model)} · {formatBytes(defaultArtifact(card.model).sizeBytes)}</p>{/if}
+                      {#if card.model}<p class="truncate text-[length:var(--text-xs)] text-muted-foreground">{roleOf(card.model)} · {formatBytes(defaultArtifact(card.model).sizeBytes)}</p>{/if}
                     </button>
                   {/each}
                 </div>
@@ -558,7 +585,7 @@
                             <span class="text-sm font-medium text-foreground">{model.name}</span>
                             <span class="text-xs text-muted-foreground">{roleOf(model)}</span>
                           </span>
-                          <span class="mt-0.5 flex flex-wrap items-center gap-1.5 text-[12px] text-muted-foreground" title={fit.reason}>
+                          <span class="mt-0.5 flex flex-wrap items-center gap-1.5 text-[length:var(--text-xs)] text-muted-foreground" title={fit.reason}>
                             <Badge tone={fitTone(fit)}>{fitLabel(fit)}</Badge>
                             {@render licenseBadge(model.license)}
                             <span class="tabular-nums">{primary.quantization} · {formatBytes(primary.sizeBytes)}</span>
@@ -598,7 +625,7 @@
                             {#if item.gated}<Badge tone="warning" class="shrink-0">{$t('modelHub.gated')}</Badge>{/if}
                             {@render licenseBadge(item.license)}
                           </span>
-                          <span class="mt-0.5 block truncate text-[12px] text-muted-foreground">
+                          <span class="mt-0.5 block truncate text-[length:var(--text-xs)] text-muted-foreground">
                             {[
                               item.author || item.repo_id.split('/')[0],
                               repoSummaryLine(item),
@@ -645,6 +672,10 @@
         title={$t('modelHub.libraryTitle')}
         description={$t('modelHub.libraryDescription', { values: { n: modelsStore.availableModels.length, size: formatBytes(totalDiskBytes) } })}
       >
+        {#snippet actions()}
+          <Button variant="outline" size="sm" onclick={() => void openModelsFolder()}><FolderOpen /> {$t('modelHub.openFolder')}</Button>
+          <Button variant="outline" size="sm" loading={importing} onclick={() => void importModel()}><FolderInput /> {importing ? $t('modelHub.importing') : $t('modelHub.importModel')}</Button>
+        {/snippet}
         {#if activeJobs.length}
           <SettingsSection title={$t('modelHub.downloadingTitle')}>
             {#each activeJobs as job (job.id)}
@@ -663,7 +694,7 @@
           />
           <Select
             bind:value={localSort}
-            class="h-9 w-36 text-xs"
+            class="w-36"
             aria-label={$t('modelHub.sort')}
             options={[
               { value: 'name', label: $t('modelHub.sortName') },
@@ -699,7 +730,7 @@
                       <span class="truncate text-sm font-medium text-foreground">{model.name}</span>
                       {#if loaded}<Badge tone="success" class="shrink-0">{$t('modelHub.loaded')}</Badge>{/if}
                     </p>
-                    <p class="mt-0.5 flex flex-wrap items-center gap-1.5 text-[12px] text-muted-foreground" title={fit.reason}>
+                    <p class="mt-0.5 flex flex-wrap items-center gap-1.5 text-[length:var(--text-xs)] text-muted-foreground" title={fit.reason}>
                       <Badge tone={fitTone(fit)}>{fitLabel(fit)}</Badge>
                       <span class="truncate">{[model.architecture, model.quantization_name, formatBytes(Number(model.size_gb || 0) * 1024 ** 3)].filter(Boolean).join(' · ')}</span>
                     </p>
@@ -710,7 +741,7 @@
                     {:else}
                       <Button variant="outline" size="sm" onclick={() => appStore.openLocalModelLoadDialog(model)}>{$t('modelHub.load')}</Button>
                     {/if}
-                    <Button variant="ghost" size="icon-sm" class="text-muted-foreground hover:text-error" aria-label={$t('modelHub.deleteTitle', { values: { name: model.name } })} onclick={() => removeModel(model)}><Trash2 /></Button>
+                    <Tooltip label={$t('modelHub.deleteTitle', { values: { name: model.name } })} position="bottom"><Button variant="ghost" size="icon-sm" class="text-muted-foreground hover:text-error" aria-label={$t('modelHub.deleteTitle', { values: { name: model.name } })} onclick={() => removeModel(model)}><Trash2 /></Button></Tooltip>
                   </div>
                 </li>
               {/each}
@@ -753,25 +784,19 @@
     color: var(--accent-yellow-text);
   }
 
-  .license-filter {
-    height: 2.25rem;
-    padding: 0 0.85rem;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-full);
-    background: transparent;
-    font-size: 0.75rem;
-    color: var(--muted-foreground);
-    transition: background-color var(--motion-fast) var(--motion-ease), color var(--motion-fast) var(--motion-ease);
+  /* Three picks side by side in one card, split by hairlines. */
+  .pick-grid { display: grid; }
+  .pick-cell {
+    min-width: 0;
+    padding: 0.75rem 1rem;
+    text-align: left;
+    transition: background-color var(--motion-fast) var(--motion-ease);
   }
-
-  .license-filter:hover {
-    background: var(--muted);
-    color: var(--foreground);
-  }
-
-  .license-filter.on {
-    border-color: transparent;
-    background: var(--accent-green-bg);
-    color: var(--accent-green-text);
+  .pick-cell + .pick-cell { border-top: 1px solid var(--border-subtle); }
+  .pick-cell:hover:not(:disabled) { background: var(--float-row-hover); }
+  .pick-cell:disabled { cursor: default; opacity: 0.6; }
+  @media (min-width: 640px) {
+    .pick-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .pick-cell + .pick-cell { border-top: 0; border-left: 1px solid var(--border-subtle); }
   }
 </style>

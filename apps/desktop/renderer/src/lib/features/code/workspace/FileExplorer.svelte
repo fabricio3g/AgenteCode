@@ -13,15 +13,16 @@
 -->
 
 <script lang="ts">
+  import { Tooltip } from '$lib/components/ui';
   import { t } from 'svelte-i18n';
   import { FolderTree, LoaderCircle, RefreshCw, X } from 'lucide-svelte';
-  import { workspaceLayout } from '$lib/stores/workspace-layout.svelte';
+  import { workspaceLayout as defaultLayout, type WorkspaceLayoutStore } from '$lib/stores/workspace-layout.svelte';
   import { codeWorkspace } from '../workspace.svelte';
   import FileRow, { type FileEntry } from './FileRow.svelte';
   import { buildTree, firstChildPath, parentPath, visibleRows } from './file-tree';
   import { openFileInEditor } from './editor-actions';
 
-  let { chatId, projectRoot, embedded = false }: { chatId: string; projectRoot: string; embedded?: boolean } = $props();
+  let { chatId, projectRoot, embedded = false, layout: workspaceLayout = defaultLayout }: { layout?: WorkspaceLayoutStore; chatId: string; projectRoot: string; embedded?: boolean } = $props();
 
   /** Folders the user opened, by project-relative path. */
   let expanded = $state(new Set<string>());
@@ -130,10 +131,10 @@
       {#if !embedded}<span class="font-medium text-foreground">{$t('codeWs.files')}</span>{/if}
       {#if files}<span class="ml-1.5 text-muted-foreground">{$t('codeWs.fileCount', { values: { n: files.length } })}</span>{/if}
     </p>
-    <button type="button" class="ui-icon-button is-sm" onclick={refresh} disabled={loading} aria-label={$t('codeWs.refresh')} title={$t('codeWs.refresh')}>
+    <Tooltip label={$t('codeWs.refresh')} position="bottom"><button type="button" class="ui-icon-button is-sm" onclick={refresh} disabled={loading} aria-label={$t('codeWs.refresh')}>
       <RefreshCw class={loading ? 'animate-spin' : ''} />
-    </button>
-    {#if !embedded}<button type="button" class="ui-icon-button is-sm" onclick={hide} aria-label={$t('codeWs.close')} title={$t('codeWs.close')}><X /></button>{/if}
+    </button></Tooltip>
+    {#if !embedded}<Tooltip label={$t('codeWs.close')} position="bottom"><button type="button" class="ui-icon-button is-sm" onclick={hide} aria-label={$t('codeWs.close')}><X /></button></Tooltip>{/if}
   </header>
 
   {#if loading}
@@ -172,7 +173,9 @@
     padding: 0 0.3rem 0 0.75rem;
     font-size: 12.5px;
   }
-  .files-tree { flex: 1; min-height: 0; overflow-y: auto; padding: 2px 4px 4px; outline: none; }
+  /* Rows are 1.375rem tiles: the gap keeps a hovered row from touching the next,
+     and the top inset keeps the first one off the bar. */
+  .files-tree { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 0.125rem; padding: 0.25rem 4px 4px; outline: none; }
   .files-tree:focus-visible { outline: 1px solid var(--border-hover); outline-offset: -1px; }
-  .files-empty { display: flex; align-items: flex-start; gap: 0.5rem; padding: 0.25rem 0.75rem; color: var(--muted-foreground); font-size: 12px; line-height: 1.55; }
+  .files-empty { display: flex; align-items: flex-start; gap: 0.5rem; padding: 0.5rem 0.75rem; color: var(--muted-foreground); font-size: 12px; line-height: 1.55; }
 </style>

@@ -28,21 +28,21 @@
   import type { ChatSession, CodeProject } from '$lib/types/chat';
   import { codeStore } from '$lib/features/code/code.svelte';
   import { codeWorkspace } from '$lib/features/code/workspace.svelte';
-  import BranchMenu from '$lib/features/code/workspace/BranchMenu.svelte';
-  import { workspaceLayout } from '$lib/stores/workspace-layout.svelte';
-  import { browserPanelStore } from '$lib/stores/browser-panel.svelte';
+  import ProjectControls from '$lib/features/code/workspace/ProjectControls.svelte';
+  import { workspaceLayout as defaultLayout, type WorkspaceLayoutStore } from '$lib/stores/workspace-layout.svelte';
+  import { browserPanelStore as defaultBrowser, type BrowserPanelStore } from '$lib/stores/browser-panel.svelte';
   import { latestPlan } from '$lib/features/code/plan-review';
   import { groupedNumber } from '$lib/utils/format';
 
-  let { chat = null, project = null }: { chat?: ChatSession | null; project?: CodeProject | null } = $props();
+  let { chat = null, project = null, inline = false, layout: workspaceLayout = defaultLayout, browser: browserPanelStore = defaultBrowser }: { inline?: boolean; layout?: WorkspaceLayoutStore; browser?: BrowserPanelStore; chat?: ChatSession | null; project?: CodeProject | null } = $props();
 
   /** The Code panes only exist inside an open Code conversation. */
   const inCode = $derived(!!chat && !!project);
   const cwd = $derived(project?.rootPath ?? '');
   const run = $derived(chat ? codeStore.runFor(chat.id) : null);
-  const changes = $derived(codeWorkspace.changes);
+  const changes = $derived(chat ? codeWorkspace.changesFor(chat.id) : null);
   const changeTotals = $derived((changes?.files ?? []).reduce((acc, f) => ({ add: acc.add + f.additions, del: acc.del + f.deletions }), { add: 0, del: 0 }));
-  const terminalOpen = $derived(codeWorkspace.terminalsForScope().some((term) => workspaceLayout.isOpen(`terminal:${term.id}`)));
+  const terminalOpen = $derived(codeWorkspace.terminalsForScope(workspaceLayout.scope).some((term) => workspaceLayout.isOpen(`terminal:${term.id}`)));
   const processesOpen = $derived(workspaceLayout.isOpen('processes'));
 
   let historyOpen = $state(false);
@@ -74,7 +74,7 @@
 
   async function toggleTerminal() {
     try {
-      await codeWorkspace.toggleBottom('terminal', cwd);
+      await codeWorkspace.toggleBottom('terminal', cwd, workspaceLayout);
     } catch (error) {
       toastStore.error($t('codeWs.terminalFailed', { values: { reason: (error as Error).message } }));
     }
@@ -109,12 +109,16 @@
   {/if}
 {/snippet}
 
-<div class="pane-strip titlebar-drag" role="toolbar" tabindex="-1" aria-label={$t('workspace.panels')} onkeydown={onKeydown} ondblclick={(event) => event.stopPropagation()}>
+<div class="pane-strip" class:inline role="toolbar" tabindex="-1" aria-label={$t('workspace.panels')} onkeydown={onKeydown} ondblclick={(event) => event.stopPropagation()}>
   <div class="pane-strip-controls">
     <!-- The branch names the checkout the panes act on, so it leads the strip. -->
-    {#if inCode && project}
-      <BranchMenu projectRoot={project.rootPath} />
-      <span class="pane-strip-divider" aria-hidden="true"></span>
+    {#if inCode && project && chat}
+      <ProjectControls {chat} {project} layout={workspaceLayout}>
+        {@render pane('plan', $t('code.plan.title'), workspaceLayout.isOpen('plan'), () => codeWorkspace.togglePlan(chat!.id, latestPlan(chat!.messages), workspaceLayout), ClipboardList)}
+        {@render pane('processes', $t('codeWs.processes'), processesOpen, () => void codeWorkspace.toggleBottom('processes', cwd, workspaceLayout), Activity)}
+        {@render pane('canvas', $t('canvas.title'), workspaceLayout.isOpen('canvas'), () => workspaceLayout.toggle('canvas'), Image)}
+        {@render pane('browser', $t('browser.title'), browserPanelStore.open, () => void browserPanelStore.toggle().catch((error) => toastStore.error(String(error))), Globe)}
+      </ProjectControls>
     {/if}
     <div class="pane-strip-tabs">
       {#if inCode && chat}
@@ -124,14 +128,10 @@
           cannot guess from a glyph — while Terminal, Processes, Canvas and
           Browser are instruments you go looking for by name anyway.
         -->
-        {@render pane('changes', $t('codeWs.changes'), workspaceLayout.isOpen('changes'), () => codeWorkspace.toggleChanges(), GitCompareArrows, changesBadge, $t('codeWs.changes'))}
-        {@render pane('files', $t('codeWs.files'), workspaceLayout.isOpen('files'), () => codeWorkspace.toggleFiles(), FolderTree, null, $t('codeWs.files'))}
-        {@render pane('plan', $t('code.plan.title'), workspaceLayout.isOpen('plan'), () => codeWorkspace.togglePlan(chat.id, latestPlan(chat.messages)), ClipboardList, null, $t('codeWs.plan'))}
+        {@render pane('changes', $t('codeWs.changes'), workspaceLayout.isOpen('changes'), () => workspaceLayout.toggle('changes'), GitCompareArrows, changesBadge)}
+        {@render pane('files', $t('codeWs.files'), workspaceLayout.isOpen('files'), () => workspaceLayout.toggle('files'), FolderTree)}
         {@render pane('terminal', $t('codeWs.terminal'), terminalOpen, () => void toggleTerminal(), SquareTerminal)}
-        {@render pane('processes', $t('codeWs.processes'), processesOpen, () => void codeWorkspace.toggleBottom('processes', cwd), Activity)}
-        {@render pane('canvas', $t('canvas.title'), workspaceLayout.isOpen('canvas'), () => workspaceLayout.toggle('canvas'), Image)}
       {/if}
-      {@render pane('browser', $t('browser.title'), browserPanelStore.open, () => void browserPanelStore.toggle(), Globe)}
     </div>
 
     <!-- Checkpoints act on the turn, not on a pane, so they trail the strip. -->
@@ -144,7 +144,7 @@
             </button>
           </Tooltip>
         {/snippet}
-        <p class="px-2.5 pb-1 pt-1.5 text-[12px] font-semibold text-muted-foreground">{$t('code.historyTitle')}</p>
+        <p class="px-2.5 pb-1 pt-1.5 text-xs font-semibold text-muted-foreground">{$t('code.historyTitle')}</p>
         {#each checkpoints as checkpoint (checkpoint.turnIndex)}
           <MenuItem onselect={() => confirmRestore(checkpoint.turnIndex)}>
             <span class="min-w-0 flex-1 truncate">
@@ -163,22 +163,23 @@
 </div>
 
 <style>
-  /*
-   * The strip is draggable like the title bar itself, so the window can still
-   * be moved from the empty space trailing the last button; the buttons opt
-   * out of it individually with `.titlebar-no-drag`.
-   */
+  /* Small instruments stay visible; less frequent actions live in the project card. */
   .pane-strip {
     display: flex;
     align-items: center;
     gap: 0.25rem;
     height: 2rem;
-    flex-shrink: 0;
+    flex: 0 0 auto;
+    min-width: 0;
+    width: 100%;
     justify-content: flex-end;
     padding-inline: 0.375rem;
     container-type: inline-size;
     background: var(--background);
   }
+  .pane-strip.inline {width:auto;container-type:normal;padding:0;background:transparent;}
+  /* Inside the title bar a scroll container would swallow the no-drag regions of its buttons. */
+  .pane-strip.inline .pane-strip-tabs { overflow: visible; }
   .pane-strip-controls {
     display: flex;
     min-width: 0;
@@ -196,7 +197,6 @@
     scrollbar-width: none;
   }
   .pane-strip-tabs::-webkit-scrollbar { display: none; }
-  .pane-strip-divider { width: 1px; height: 1rem; flex-shrink: 0; margin-inline: 0.25rem; background: var(--border-subtle); }
 
   /*
    * The same circular icon button as the title bar (`.ui-icon-button`), with

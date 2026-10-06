@@ -127,7 +127,7 @@
     height: 1.5rem;
     padding-inline: 0.5rem;
     border-radius: var(--radius-full);
-    font-size: 12px;
+    font-size: var(--text-xs);
     color: var(--muted-foreground);
     transition: background-color var(--motion-fast) var(--motion-ease), color var(--motion-fast) var(--motion-ease);
   }
@@ -136,8 +136,8 @@
   .branch-dot { width: 5px; height: 5px; flex-shrink: 0; border-radius: 999px; background: var(--warning); }
   .branch-menu { min-width: 0; }
   .branch-row { display: flex; min-width: 0; align-items: center; gap: 0.4rem; }
-  .branch-track { flex-shrink: 0; font-size: 11px; font-variant-numeric: tabular-nums; color: var(--muted-foreground); }
-  .branch-empty { padding: 0.5rem 0.625rem; font-size: 12.5px; color: var(--muted-foreground); }
+  .branch-track { flex-shrink: 0; font-size: var(--text-xs); font-variant-numeric: tabular-nums; color: var(--muted-foreground); }
+  .branch-empty { padding: 0.5rem 0.625rem; font-size: var(--text-xs); color: var(--muted-foreground); }
   .branch-divider { height: 1px; margin: 0.25rem 0; background: var(--border-subtle); }
 
   @media (prefers-reduced-motion: reduce) {

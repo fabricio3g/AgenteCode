@@ -2,7 +2,7 @@
 // content. Pure logic — no Svelte, no IPC — so it is directly testable.
 
 import type { CodeAgentEvent, CodeArtifactRef, CodeChild, CodeRunSummary, CodeSourceRef, CodeSpend, CodeStopReason, CodeTodoItem, AgentActivityKey } from '$shared/agente-protocol';
-import type { AgentStep, CodeAgentDiffStat, CodeAgentFileChange, CodeTimelineEntry } from '$lib/types/chat';
+import type { AgentStep, ChatMessage, CodeAgentDiffStat, CodeAgentFileChange, CodeTimelineEntry } from '$lib/types/chat';
 import { sanitizeAgentVisibleText } from '$lib/services/agent-parsing';
 import { copy } from '$lib/copy';
 import { linkChildToStep } from './subagent-row';
@@ -49,6 +49,8 @@ export interface CodeRunState {
   retrying?: { attempt: number; delayMs: number } | null;
   /** The model-maintained todo list, updated live via todo_update. */
   todos: CodeTodoItem[];
+  /** Inherited tasks stay still until the agent updates the list this turn. */
+  todosUpdated?: boolean;
   /** A length-truncated turn was auto-continued at least once this run. */
   truncatedOnce: boolean;
   /** Artifacts announced via artifact_created/list (references only). */
@@ -83,7 +85,18 @@ export function emptySpend(): CodeSpend {
 }
 
 export function createCodeRunState(): CodeRunState {
-  return { phase: undefined, startedAt: undefined, endedAt: undefined, elapsedMs: 0, activeStartedAt: undefined, lastEventAt: undefined, stopping: false, preparing: null, retrying: null, hitTurnLimit: false, summary: undefined, turnMark: undefined, generation: undefined, activity: undefined, content: '', timeline: [], reasoning: '', reasoningRaw: '', steps: [], diffStats: [], fileChanges: [], done: false, todos: [], truncatedOnce: false, artifacts: [], sources: [], children: [], spend: emptySpend(), diagnostics: [] };
+  return { phase: undefined, startedAt: undefined, endedAt: undefined, elapsedMs: 0, activeStartedAt: undefined, lastEventAt: undefined, stopping: false, preparing: null, retrying: null, hitTurnLimit: false, summary: undefined, turnMark: undefined, generation: undefined, activity: undefined, content: '', timeline: [], reasoning: '', reasoningRaw: '', steps: [], diffStats: [], fileChanges: [], done: false, todos: [], todosUpdated: false, truncatedOnce: false, artifacts: [], sources: [], children: [], spend: emptySpend(), diagnostics: [] };
+}
+
+/** The latest explicit snapshot wins, including an intentionally empty list. */
+export function conversationTodos(messages: readonly ChatMessage[]): CodeTodoItem[] {
+  for (let index = messages.length - 1; index >= 0; index--) {
+    const message = messages[index];
+    if (message.role === 'assistant' && Array.isArray(message.metadata?.codeTodos)) {
+      return message.metadata.codeTodos.map((todo) => ({ ...todo }));
+    }
+  }
+  return [];
 }
 
 export function codeRunElapsed(state: Pick<CodeRunState, 'elapsedMs' | 'activeStartedAt' | 'startedAt' | 'endedAt'>, now = Date.now()): number {
@@ -609,6 +622,7 @@ export function applyCodeAgentEvent(state: CodeRunState, event: CodeAgentEvent):
       return false;
     case 'todo_update': {
       state.todos = event.todos.map((todo) => ({ ...todo }));
+      state.todosUpdated = true;
       return true;
     }
     case 'artifact_created': {

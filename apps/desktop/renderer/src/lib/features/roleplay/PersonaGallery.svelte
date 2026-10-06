@@ -6,6 +6,7 @@
 -->
 
 <script lang="ts">
+  import { Button } from '$lib/components/ui';
   import { Plus } from 'lucide-svelte';
   import Avatar from '$lib/components/ui/Avatar.svelte';
   import type { UserPersona } from '$lib/types/chat';
@@ -23,15 +24,15 @@
   let { onedit, onnew }: Props = $props();
 </script>
 
-<div class="mx-auto w-full px-6 pb-6" style="max-width: var(--thread-width);">
+<div class="library-shelf mx-auto w-full px-6 pb-6" style="max-width: var(--thread-width);">
   <LibraryToolbar>
-    <button type="button" class="ui-chip" onclick={onnew}><Plus /> New persona</button>
+    <Button variant="outline" size="sm" type="button" onclick={onnew}><Plus /> New persona</Button>
   </LibraryToolbar>
 
   {#if !charactersStore.personas.length}
     <LibraryEmpty title="No personas yet" hint="Create one to tell the cast who you are in the story." action="New persona" onaction={onnew} />
   {:else}
-    <div class="grid gap-2.5 sm:grid-cols-2">
+    <div class="library-grid">
       {#each charactersStore.personas as persona (persona.id)}
         <LibraryCard
           kind="persona"

@@ -12,7 +12,7 @@
 <script lang="ts">
   import Avatar from '$lib/components/ui/Avatar.svelte';
   import { Ban, BookOpen, Pause, Pencil, Play, Plus, Settings2 } from 'lucide-svelte';
-  import { Select } from '$lib/components/ui';
+  import { Select, Tooltip } from '$lib/components/ui';
   import SegmentedControl from '$lib/components/ui/SegmentedControl.svelte';
   import { appStore } from '$lib/stores/app.svelte';
   import { roleplayStore } from '$lib/features/roleplay/roleplay.svelte';
@@ -167,12 +167,12 @@
     {/if}
 
     {#if onjournal}
-      <button type="button" class="ui-icon-button is-sm" title={$t('roleplay.journal.title')} aria-label={$t('roleplay.journal.title')} onclick={onjournal}>
+      <Tooltip label={$t('roleplay.journal.title')} position="bottom"><button type="button" class="ui-icon-button is-sm" aria-label={$t('roleplay.journal.title')} onclick={onjournal}>
         <BookOpen class="size-3.5" />
-      </button>
+      </button></Tooltip>
     {/if}
 
-    <button type="button" class="ui-icon-button is-sm" aria-label={$t('roleplay.settings.title')} title={$t('roleplay.settings.title')} disabled={disabled} onclick={() => onsettings?.()}><Settings2 class="size-3.5" /></button>
+    <Tooltip label={$t('roleplay.settings.title')} position="bottom"><button type="button" class="ui-icon-button is-sm" aria-label={$t('roleplay.settings.title')} disabled={disabled} onclick={() => onsettings?.()}><Settings2 class="size-3.5" /></button></Tooltip>
 
     <div class="persona-group">
       {#if personas.length && onpersona}
@@ -186,15 +186,15 @@
           />
         </div>
         {#if onpersonaedit}
-          <button
+          <Tooltip label={activePersonaId ? $t('roleplay.header.editPersona') : $t('roleplay.header.newPersona')} position="bottom"><button
             type="button"
             class="ui-icon-button is-sm"
             aria-label={activePersonaId ? $t('roleplay.header.editPersona') : $t('roleplay.header.newPersona')}
-            title={activePersonaId ? $t('roleplay.header.editPersona') : $t('roleplay.header.newPersona')}
+           
             onclick={editActivePersona}
           >
             <Pencil class="size-3.5" />
-          </button>
+          </button></Tooltip>
         {/if}
       {:else if onpersonaedit}
         <button type="button" class="persona-add" onclick={() => onpersonaedit?.(null)}>

@@ -395,8 +395,8 @@
       {#if tooltip.visible}
         <div
           bind:this={tooltipEl}
-          class="pointer-events-none absolute z-20 rounded-lg border px-3 py-2 text-xs shadow-lg"
-          style="left:{tooltip.x + 10}px;top:{tooltip.y - 36}px;border-color:var(--border);background:var(--surface);color:var(--text)"
+          class="ui-float pointer-events-none absolute z-20 px-3 py-2 text-xs"
+          style="left:{tooltip.x + 10}px;top:{tooltip.y - 36}px"
         >
           {#if tooltip.series}<span class="font-semibold" style="color:var(--work-accent)">{tooltip.series}: </span>{/if}
           <span class="font-medium">{tooltip.label}</span>

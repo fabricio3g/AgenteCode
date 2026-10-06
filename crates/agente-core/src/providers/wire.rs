@@ -153,6 +153,115 @@ pub(super) fn completion_request(
     Ok(request.json(body))
 }
 
+/// Wire-level shape of one completion request: what went out, independent of
+/// the transcript's contents. Logged per attempt so a slow first token can be
+/// attributed to prompt size, tool schemas, caching or thinking instead of
+/// guessed at.
+pub(crate) struct RequestShape {
+    pub prompt_bytes: usize,
+    pub messages: usize,
+    pub tool_count: usize,
+    pub tools_bytes: usize,
+    pub cache_markers: usize,
+    pub prompt_cache_key: bool,
+    pub thinking: String,
+    pub max_tokens: Option<u64>,
+}
+
+impl RequestShape {
+    pub(crate) fn of(body: &Value) -> Self {
+        let prompt = body
+            .get("messages")
+            .or_else(|| body.get("input"))
+            .or_else(|| body.get("contents"));
+        let tools = body.get("tools").and_then(Value::as_array);
+        Self {
+            prompt_bytes: prompt.map_or(0, json_len),
+            messages: prompt.and_then(Value::as_array).map_or(0, Vec::len),
+            tool_count: tools.map_or(0, Vec::len),
+            tools_bytes: tools.map_or(0, |tools| tools.iter().map(json_len).sum()),
+            cache_markers: count_keys(body, "cache_control"),
+            prompt_cache_key: body.get("prompt_cache_key").is_some(),
+            thinking: thinking_label(body),
+            max_tokens: ["max_tokens", "max_completion_tokens", "max_output_tokens"]
+                .iter()
+                .find_map(|key| body.get(*key).and_then(Value::as_u64))
+                .or_else(|| {
+                    body.get("generationConfig")
+                        .and_then(|config| config.get("maxOutputTokens"))
+                        .and_then(Value::as_u64)
+                }),
+        }
+    }
+}
+
+fn json_len(value: &Value) -> usize {
+    serde_json::to_string(value).map_or(0, |text| text.len())
+}
+
+/// Occurrences of `key` anywhere in the document (cache breakpoint markers).
+fn count_keys(value: &Value, key: &str) -> usize {
+    match value {
+        Value::Object(map) => map
+            .iter()
+            .map(|(name, child)| usize::from(name == key) + count_keys(child, key))
+            .sum(),
+        Value::Array(items) => items.iter().map(|item| count_keys(item, key)).sum(),
+        _ => 0,
+    }
+}
+
+/// Compact `thinking` for the log: the level the wire actually carries, not the
+/// level the UI offered. `none` means the request asked for no reasoning.
+fn thinking_label(body: &Value) -> String {
+    let budget = body
+        .get("thinking")
+        .and_then(|thinking| thinking.get("budget_tokens"))
+        .or_else(|| {
+            body.get("reasoning")
+                .and_then(|value| value.get("max_tokens"))
+        })
+        .or_else(|| {
+            body.get("generationConfig")
+                .and_then(|config| config.get("thinkingConfig"))
+                .and_then(|config| config.get("thinkingBudget"))
+        })
+        .and_then(Value::as_u64);
+    if let Some(effort) = body
+        .get("reasoning_effort")
+        .or_else(|| {
+            body.get("output_config")
+                .and_then(|value| value.get("effort"))
+        })
+        .or_else(|| body.get("reasoning").and_then(|value| value.get("effort")))
+        .or_else(|| body.get("thinking").and_then(|value| value.get("type")))
+        .and_then(Value::as_str)
+    {
+        return match budget {
+            Some(budget) => format!("{effort} budget={budget}"),
+            None => effort.to_string(),
+        };
+    }
+    if let Some(budget) = budget {
+        return format!("budget={budget}");
+    }
+    if body.get("enable_thinking").and_then(Value::as_bool) == Some(false) {
+        return "off".into();
+    }
+    if body.get("thinking").is_some()
+        || body.get("reasoning").is_some()
+        || body.get("enable_thinking").is_some()
+        || body.get("chat_template_kwargs").is_some()
+        || body
+            .get("generationConfig")
+            .and_then(|config| config.get("thinkingConfig"))
+            .is_some()
+    {
+        return "on".into();
+    }
+    "none".into()
+}
+
 /// Keep machine-readable failure details until retry policy has been evaluated.
 struct HttpFailure {
     error: LlmError,
@@ -215,6 +324,23 @@ impl HttpFailure {
     }
 }
 
+/// Bound a wait that has no natural end. `what` names the provider in the
+/// failure, which is phrased like an SSE stall: a request that produced
+/// nothing is what the retry policy treats as transient.
+async fn deadline<T>(
+    limit: std::time::Duration,
+    what: &str,
+    future: impl std::future::Future<Output = Result<T, LlmError>>,
+) -> Result<T, LlmError> {
+    match tokio::time::timeout(limit, future).await {
+        Ok(result) => result,
+        Err(_) => Err(LlmError::HttpError(format!(
+            "{what}: stream stalled (no response headers for {}s)",
+            limit.as_secs()
+        ))),
+    }
+}
+
 async fn send_http(
     info: &ProviderInfo,
     model: &ModelInfo,
@@ -223,11 +349,41 @@ async fn send_http(
     context: RequestContext,
 ) -> Result<reqwest::Response, HttpFailure> {
     let request = completion_request(info, model, path, body, context)?;
+    let shape = RequestShape::of(body);
+    tracing::info!(
+        provider = %info.id,
+        model = %model.api_id,
+        path,
+        prompt_bytes = shape.prompt_bytes,
+        messages = shape.messages,
+        tool_count = shape.tool_count,
+        tools_bytes = shape.tools_bytes,
+        cache_markers = shape.cache_markers,
+        prompt_cache_key = shape.prompt_cache_key,
+        thinking = %shape.thinking,
+        max_tokens = ?shape.max_tokens,
+        "Provider request shape"
+    );
     let started = std::time::Instant::now();
-    let response = request
-        .send()
-        .await
-        .map_err(|e| LlmError::HttpError(format!("{}: {e}", info.name)))?;
+    // The client carries no overall timeout — a streamed answer may run for
+    // minutes — which would leave a gateway that accepted the connection and
+    // never answered holding the turn forever. Bound only the wait for the
+    // response headers, at the idle timeout: a response that starts inside it
+    // is never cut off, and a silent one becomes a retryable failure.
+    // A local model server may hold its headers until it has read the prompt.
+    let wait = if crate::util::is_local_endpoint(&info.base_url) {
+        crate::util::local_first_byte_timeout()
+    } else {
+        crate::util::stream_idle_timeout()
+    };
+    let response = deadline(wait, &info.name, async {
+        request
+            .send()
+            .await
+            .map_err(|e| LlmError::HttpError(format!("{}: {e}", info.name)))
+    })
+    .await
+    .map_err(HttpFailure::from)?;
     tracing::info!(provider = %info.id, model = %model.api_id, status = %response.status(), elapsed_ms = started.elapsed().as_millis(), "Provider HTTP response");
     if !response.status().is_success() {
         let status = response.status();
@@ -371,4 +527,105 @@ pub(super) fn tool_output(text: &str) -> Value {
         .ok()
         .filter(Value::is_object)
         .unwrap_or_else(|| json!({"output": text}))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn shape_reads_an_openai_chat_body() {
+        let body = json!({
+            "model": "m",
+            "messages": [
+                {"role": "system", "content": [{"type": "text", "text": "hi", "cache_control": {"type": "ephemeral"}}]},
+                {"role": "user", "content": "hello"}
+            ],
+            "tools": [{"type": "function", "function": {"name": "read_file"}}],
+            "prompt_cache_key": "session",
+            "reasoning_effort": "high",
+            "max_completion_tokens": 8192,
+            "stream": true,
+        });
+        let shape = RequestShape::of(&body);
+        assert_eq!(shape.messages, 2);
+        assert!(shape.prompt_bytes > 0);
+        assert_eq!(shape.tool_count, 1);
+        assert!(shape.tools_bytes > 0);
+        assert_eq!(shape.cache_markers, 1);
+        assert!(shape.prompt_cache_key);
+        assert_eq!(shape.thinking, "high");
+        assert_eq!(shape.max_tokens, Some(8_192));
+    }
+
+    #[test]
+    fn shape_reads_responses_and_anthropic_bodies() {
+        let responses = json!({"input": [{"role": "user"}], "max_output_tokens": 512});
+        let shape = RequestShape::of(&responses);
+        assert_eq!(shape.messages, 1);
+        assert_eq!(shape.max_tokens, Some(512));
+        assert_eq!(shape.thinking, "none");
+
+        let anthropic = json!({
+            "messages": [{"role": "user", "content": [
+                {"type": "text", "text": "a", "cache_control": {"type": "ephemeral"}},
+                {"type": "text", "text": "b", "cache_control": {"type": "ephemeral"}}
+            ]}],
+            "thinking": {"type": "enabled", "budget_tokens": 24_576},
+            "max_tokens": 32_000,
+        });
+        let shape = RequestShape::of(&anthropic);
+        assert_eq!(shape.cache_markers, 2);
+        assert_eq!(shape.thinking, "enabled budget=24576");
+        assert_eq!(shape.max_tokens, Some(32_000));
+        assert!(!shape.prompt_cache_key);
+    }
+
+    #[test]
+    fn thinking_label_names_off_and_google_budgets() {
+        assert_eq!(
+            thinking_label(&json!({"enable_thinking": false})),
+            "off",
+            "a disabled toggle is not 'on'"
+        );
+        assert_eq!(
+            thinking_label(&json!({
+                "generationConfig": {"thinkingConfig": {"thinkingBudget": 2048}}
+            })),
+            "budget=2048"
+        );
+        assert_eq!(thinking_label(&json!({"stream": true})), "none");
+    }
+
+    /// A gateway that accepts the connection and never answers must not hold
+    /// the turn forever: the wait for response headers is bounded, and the
+    /// failure is worded as a stall so the retry policy retries a request that
+    /// produced nothing (`agent::channel::retry`).
+    #[tokio::test]
+    async fn a_silent_response_is_bounded_and_reads_as_a_stall() {
+        let started = std::time::Instant::now();
+        let error = deadline(std::time::Duration::from_millis(20), "Test", async {
+            std::future::pending::<Result<reqwest::Response, LlmError>>().await
+        })
+        .await
+        .expect_err("a silent response must fail");
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(5),
+            "the header wait was not bounded"
+        );
+        let message = error.to_string();
+        assert!(message.contains("stream stalled"), "{message}");
+        assert!(message.contains("no response headers"), "{message}");
+    }
+
+    /// A response that answers is passed through untouched, deadline or not.
+    #[tokio::test]
+    async fn an_answered_response_is_not_affected_by_the_bound() {
+        let value = deadline(std::time::Duration::from_secs(30), "Test", async {
+            Ok::<u32, LlmError>(7)
+        })
+        .await
+        .expect("an answered call must pass through");
+        assert_eq!(value, 7);
+    }
 }

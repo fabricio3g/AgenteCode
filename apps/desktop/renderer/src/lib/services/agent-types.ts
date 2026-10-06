@@ -61,6 +61,8 @@ export type ToolContext = {
    * turned off.
    */
   artifactToggles?: Record<string, boolean>;
+  /** Tool groups or names turned off in the composer's Tools menu; refused at execution time too. */
+  disabledTools?: readonly string[];
 };
 
 export type AgentTaskResult = {

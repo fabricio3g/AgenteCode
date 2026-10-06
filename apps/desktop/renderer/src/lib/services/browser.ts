@@ -29,6 +29,7 @@ export function selectBrowserScope(scope: string): Promise<BrowserPanelState> {
 export function openBrowserTab(scope: string, url?: string): Promise<{ id: string; url: string }> {
   return invoke('browser_open_tab', { scope, url });
 }
+export function getBrowserState(scope: string): Promise<BrowserPanelState> { return invoke('browser_get_state', { scope }); }
 export function listBrowserTabs(scope: string): Promise<BrowserPanelTab[]> {
   return invoke('browser_list_tabs', { scope });
 }

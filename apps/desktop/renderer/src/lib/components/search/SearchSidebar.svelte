@@ -1,6 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+  import { Button, Tooltip } from '$lib/components/ui';
   import { modalLayer } from '$lib/components/ui/modal-layer';
   import { LoaderCircle, Search as SearchIcon, X } from 'lucide-svelte';
   import { t } from 'svelte-i18n';
@@ -45,9 +46,9 @@
   >
     <header class="flex shrink-0 items-center justify-between px-4 py-3">
       <h2 class="text-sm font-semibold text-foreground">{$t('search.source.title')}</h2>
-      <button type="button" class="ui-icon-button" onclick={closeSidebar} aria-label={$t('common.close')}>
+      <Tooltip label={$t('common.close')} position="bottom"><button type="button" class="ui-icon-button" onclick={closeSidebar} aria-label={$t('common.close')}>
         <X class="size-4" />
-      </button>
+      </button></Tooltip>
     </header>
 
     <div class="shrink-0 px-3 pb-3">
@@ -61,20 +62,19 @@
             if (event.key === 'Enter') void runSearch();
           }}
         />
-        <button
+        <Tooltip label={$t('search.source.run')} position="bottom"><Button variant="default" size="icon-lg"
           type="button"
-          class="ui-btn ui-btn-primary size-9 shrink-0 !p-0"
           onclick={runSearch}
           disabled={currentSearchState.loading}
           aria-label={$t('search.source.run')}
-          title={$t('search.source.run')}
+         
         >
           {#if currentSearchState.loading}
             <LoaderCircle class="size-4 animate-spin" />
           {:else}
             <SearchIcon class="size-4" />
           {/if}
-        </button>
+        </Button></Tooltip>
       </div>
     </div>
 

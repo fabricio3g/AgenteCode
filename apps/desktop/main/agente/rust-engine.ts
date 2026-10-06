@@ -20,6 +20,7 @@ import { emitCodeAgentEvent, getCodeMainWindow } from './event-bridge.ts';
 import { createProviderPreflight, RuntimeNoModelError } from './provider-preflight.ts';
 import { resolveContextWindow, resolveTransport, transportSeesImages } from './transport.ts';
 import { createBrowserTools } from './tools/browser.ts';
+import { createDomainTools, domainService } from '../domains/desktop.ts';
 import { serveDesktopTools, type DesktopToolServer } from './desktop-tools-mcp.ts';
 import { RustProcessBridge } from './rust-processes.ts';
 import { RustTurnTranslator } from './rust-events.ts';
@@ -83,16 +84,16 @@ export const rustProcesses = new RustProcessBridge(
  */
 async function registerDesktopTools(client: AgenteClient): Promise<void> {
   desktopTools ??= serveDesktopTools(
-    createBrowserTools({
+    [...createBrowserTools({
       canSeeImages: async (context) => {
         const chat = [...chats.values()].find((owner) => owner.sessionId === context.sessionId);
         const choice = chat ?? botBrowserModels.get(context.sessionId ?? '');
         return !!choice && (await modelSeesImages(choice.provider, choice.model));
       }
-    }),
+    }), ...createDomainTools()],
     { resolveContext: async (meta) => {
       const chat = [...chats.values()].find((owner) => owner.sessionId === meta['agente/sessionId']);
-      if (chat) return { sessionId: chat.sessionId, browserScope: conversationScope(chat.chatId) };
+      if (chat) return { sessionId: chat.sessionId, browserScope: conversationScope(chat.chatId), workspaceRoot: chat.projectRoot };
       const sessionId = meta['agente/sessionId'];
       if (typeof sessionId !== 'string' || !UUID.test(sessionId)) throw new Error('Browser call has no owning conversation');
       const bots = await client.request<Array<{ handle: string; session_id: string | null }>>('bots.list');
@@ -148,6 +149,7 @@ async function openConnection(): Promise<AgenteClient> {
       if (listening !== client) return;
       listening = null;
       connectionPromise = null;
+      configured.clear();
       for (const chat of chats.values()) {
         if (!chat.turnId) continue;
         chat.turnId = null;
@@ -207,10 +209,46 @@ export async function useProvider(client: AgenteClient, providerName: string, mo
   if (await coreRuns(client, transport.providerName)) return { id: transport.providerName, model: provider.model };
   const info = await client.request<{ capabilities: Record<string, unknown>; cost: unknown; limits: unknown; reasoning_options?: unknown; reasoning_stream_field?: string; transport?: ModelTransport }>('models.info', { provider: transport.providerName, model: provider.model });
   const capabilities = providerCapabilities(transport, info.capabilities);
+  const limit = transport.providerName === 'local' ? localLimits(info.limits, Number(getLlamaStatus().n_ctx) || await resolveContextWindow(transport)) : info.limits;
   provider.config.transport = providerTransportPolicy(transport.baseUrl, info.transport);
-  provider.config.models = { [provider.model]: { name: provider.model, ...modelTransportConfig(transport.baseUrl, provider.config.api_format, info.transport), capabilities, cost: info.cost, limit: info.limits, reasoning_options: info.reasoning_options, reasoning_stream_field: info.reasoning_stream_field } };
-  await client.request('runtime.configure', { provider: { [provider.id]: provider.config } });
+  provider.config.models = { [provider.model]: { name: provider.model, ...modelTransportConfig(transport.baseUrl, provider.config.api_format, info.transport), capabilities, cost: info.cost, limit, reasoning_options: info.reasoning_options, reasoning_stream_field: info.reasoning_stream_field } };
+  await configureDesktopProvider(client, provider.id, provider.config);
   return { id: provider.id, model: provider.model };
+}
+
+/** Desktop provider entries the runtime holds, by id; a new daemon starts without them. */
+const configured = new Map<string, Record<string, unknown>>();
+
+/**
+ * Hand the runtime a Desktop provider entry. It replaces an entry whole, so
+ * this one keeps every model the provider was configured with — otherwise a
+ * subagent, compaction or bot model pinned there lost its route, window and
+ * thinking options at the next prompt. `held` keeps the richer entries
+ * already there (bots only know model names); by default the new ones win.
+ * Every configure rebuilds the runtime's provider registry, so an unchanged
+ * entry is not sent again.
+ */
+export async function configureDesktopProvider(client: Pick<AgenteClient, 'request'>, id: string, config: Record<string, unknown>, prefer: 'new' | 'held' = 'new'): Promise<void> {
+  const held = configured.get(id);
+  const fresh = (config.models ?? {}) as Record<string, unknown>;
+  const kept = (held?.models ?? {}) as Record<string, unknown>;
+  const next = prefer === 'held' && held
+    ? { ...held, options: config.options, models: { ...fresh, ...kept } }
+    : { ...config, models: { ...kept, ...fresh } };
+  if (held && JSON.stringify(held) === JSON.stringify(next)) return;
+  await client.request('runtime.configure', { provider: { [id]: next } });
+  configured.set(id, next);
+}
+
+/**
+ * A local model's real window (llama-server's per-slot `n_ctx`, else the
+ * configured context length). The runtime has no other source and assumed
+ * 128k, so it never compacted and an 8k–32k server overflowed and dropped turns.
+ */
+function localLimits(limits: unknown, context: number): unknown {
+  const current = (limits && typeof limits === 'object' ? limits : {}) as { output?: unknown };
+  const output = Number(current.output) || 0;
+  return { ...current, context, output: output && output < context ? output : Math.floor(context / 4) };
 }
 
 async function coreRuns(client: AgenteClient, providerId: string): Promise<boolean> {
@@ -496,6 +534,8 @@ const STOP_GRACE_MS = 4_000;
 async function abort(chatId: string): Promise<{ ok: boolean }> {
   const chat = chats.get(chatId);
   if (!chat) return { ok: false };
+  domainService().jobs.cancelOwner(chat.sessionId);
+  void desktopTools?.then(server => server.cancelSession(chat.sessionId));
   chat.followUps = [];
   const turnId = chat.turnId;
   if (!turnId) {

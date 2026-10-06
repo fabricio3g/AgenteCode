@@ -1,52 +1,31 @@
 <svelte:options runes={true} />
 
+<!--
+  Search conversations: a command palette, not a second app. One field, a
+  "new conversation" row, then the matches — title, where the query matched,
+  and when. Arrows move, Enter opens, Escape or a click outside closes.
+
+  It used to carry a live preview pane and per-row rename/delete buttons; the
+  sidebar already owns those, and the extra surface made the dialog read as a
+  different program.
+-->
+
 <script lang="ts">
-  import { displayChatTitle } from '$lib/features/shared/session-title';
-  import { copy } from '$lib/copy';
-  import { codeStore } from '$lib/features/code/code.svelte';
+  import { onMount, tick } from 'svelte';
   import { t } from 'svelte-i18n';
+  import { MessageSquare, Plus, Search } from 'lucide-svelte';
   import { modalLayer } from '$lib/components/ui/modal-layer';
-  import { Search, X, MessageSquare, Plus, ExternalLink, Pencil, Trash2 } from 'lucide-svelte';
-  import Message from '$lib/features/chat/thread/Message.svelte';
+  import { displayChatTitle } from '$lib/features/shared/session-title';
+  import { codeStore } from '$lib/features/code/code.svelte';
   import { appStore } from '$lib/stores/app.svelte';
   import { countOf } from '$lib/utils/format';
-  import { confirmStore } from '$lib/stores/confirm.svelte';
   import type { ChatSession } from '$lib/types/chat';
-  import { getSpaceForSession } from '$lib/features/shared/session-guards';
-  import { onMount, tick } from 'svelte';
 
-  let searchInput: HTMLInputElement | undefined = $state();
+  let searchInput = $state<HTMLInputElement>();
+  let list = $state<HTMLDivElement>();
   let query = $state('');
-  let selectedIndex = $state(-1);
-  let resultsContainer: HTMLDivElement | undefined = $state();
-  let previewContainer: HTMLDivElement | undefined = $state();
-  let renamingChatId = $state<string | null>(null);
-  let renameValue = $state('');
-  let renameOriginal = $state('');
-  let renameInputEl = $state<HTMLInputElement | undefined>(undefined);
-
-  /** Rename in place, matching the sidebar, rather than stacking a second modal. */
-  function startRename(chat: ChatSession) {
-    renamingChatId = chat.id;
-    renameOriginal = chat.title || '';
-    renameValue = chat.title || '';
-    void tick().then(() => {
-      renameInputEl?.focus();
-      renameInputEl?.select();
-    });
-  }
-
-  function closeRename() {
-    renamingChatId = null;
-    renameValue = '';
-    renameOriginal = '';
-  }
-
-  function commitRename(chatId: string) {
-    const trimmed = renameValue.trim();
-    if (trimmed && trimmed !== renameOriginal) appStore.renameChat(chatId, trimmed);
-    closeRename();
-  }
+  /** -1 is the "new conversation" row; 0.. are results. */
+  let selectedIndex = $state(0);
 
   function startOfDay(ts: number) {
     const date = new Date(ts);
@@ -62,72 +41,51 @@
     return new Date(ts).toLocaleDateString([], { month: 'short', day: 'numeric' });
   }
 
-  // Scope search to active space only via store boundary, not inline filter.
-  // Bots hold no chats of any space: nothing from Home or Roleplay leaks in.
-  const spaceChats = $derived.by(() => {
-    return appStore.botsOpen ? [] : appStore.getSessionsForSpace(appStore.activeSpace);
-  });
+  // The open space's conversations only; Bots hold no chats.
+  const spaceChats = $derived(appStore.botsOpen ? [] : appStore.getSessionsForSpace(appStore.activeSpace));
 
   interface SearchHit {
     chat: ChatSession;
-    /** First message containing the query — the jump target. */
+    /** First message containing the query — where opening it scrolls to. */
     matchMessageId: string | null;
     snippet: string | null;
   }
 
   const results = $derived.by((): SearchHit[] => {
     const q = query.trim().toLowerCase();
-    if (!q) {
-      return [...spaceChats]
-        .sort((a, b) => (b.updatedAt || b.createdAt) - (a.updatedAt || a.createdAt))
-        .map((chat) => ({ chat, matchMessageId: null, snippet: null }));
-    }
     const hits: SearchHit[] = [];
     for (const chat of spaceChats) {
-      const titleHit = chat.title.toLowerCase().includes(q);
-      const msg = chat.messages.find((m) => m.content.toLowerCase().includes(q));
+      if (!q) {
+        hits.push({ chat, matchMessageId: null, snippet: null });
+        continue;
+      }
+      const titleHit = (chat.title || '').toLowerCase().includes(q);
+      const msg = chat.messages.find((m) => (m.content || '').toLowerCase().includes(q));
       if (!titleHit && !msg) continue;
       let snippet: string | null = null;
       if (msg) {
         const at = msg.content.toLowerCase().indexOf(q);
-        const start = Math.max(0, at - 48);
-        const end = at + q.length + 90;
-        snippet = (start > 0 ? '…' : '') + msg.content.slice(start, end).trim() + (end < msg.content.length ? '…' : '');
+        const start = Math.max(0, at - 40);
+        const end = at + q.length + 80;
+        snippet = (start > 0 ? '…' : '') + msg.content.slice(start, end).replace(/\s+/g, ' ').trim() + (end < msg.content.length ? '…' : '');
       }
       hits.push({ chat, matchMessageId: msg?.id ?? null, snippet });
     }
     return hits.sort((a, b) => (b.chat.updatedAt || b.chat.createdAt) - (a.chat.updatedAt || a.chat.createdAt));
   });
 
-  const previewChat = $derived(selectedIndex >= 0 ? results[selectedIndex]?.chat ?? null : null);
-
-  // Reset selection when results change
+  // A new query starts at the first match. Keyed on the query alone: a running
+  // agent updates its chat constantly, and keying on results reset the highlight.
   $effect(() => {
     query;
-    results[0]?.chat.id;
-    selectedIndex = -1;
+    selectedIndex = 0;
   });
-
   $effect(() => {
-    previewChat?.id;
-    void tick().then(() => {
-      if (previewContainer) previewContainer.scrollTop = 0;
-    });
+    if (selectedIndex >= results.length) selectedIndex = results.length - 1;
   });
-
-  function selectChat(id: string, messageId?: string | null) {
-    appStore.selectChat(id);
-    appStore.chatSearchOpen = false;
-    if (!messageId) return;
-    // Slots register after the thread renders; then the existing registry
-    // scrolls the matched message to center and pins its actions.
-    setTimeout(() => {
-      window.dispatchEvent(new CustomEvent('scroll-to-chat-message', { detail: { messageId } }));
-    }, 450);
-  }
 
   // In Code a conversation lives in a project: start one in the active
-  // project, or fall back to adding a project when there is none.
+  // project, or add a project when there is none.
   const codeProject = $derived(
     appStore.activeSpace === 'code'
       ? codeStore.projectById(codeStore.activeProjectId) ?? codeStore.projects[0] ?? null
@@ -141,378 +99,196 @@
         : $t('code.addProject')
   );
 
+  function close() {
+    appStore.chatSearchOpen = false;
+  }
+
   function createChat() {
+    close();
     if (appStore.activeSpace === 'code') {
       if (codeProject) codeStore.newConversation(codeProject);
       else void codeStore.addProject();
     } else {
       appStore.createChat(appStore.activeSpace);
     }
+  }
+
+  function open(hit: SearchHit) {
     close();
+    appStore.selectChat(hit.chat.id);
+    if (!hit.matchMessageId) return;
+    const messageId = hit.matchMessageId;
+    // The thread registers its messages after it renders; then it scrolls the match into view.
+    setTimeout(() => window.dispatchEvent(new CustomEvent('scroll-to-chat-message', { detail: { messageId } })), 450);
   }
 
-  function deleteChat(chat: ChatSession) {
-    confirmStore.show({
-      title: copy.confirm.deleteChat.title,
-      message: `“${displayChatTitle(chat)}” — ${copy.confirm.deleteChat.message}`,
-      confirmLabel: copy.actions.delete,
-      danger: true,
-      onConfirm: () => appStore.deleteChat(chat.id)
-    });
+  function move(step: number) {
+    selectedIndex = Math.max(-1, Math.min(results.length - 1, selectedIndex + step));
+    void tick().then(() => list?.querySelector<HTMLElement>('[data-selected="true"]')?.scrollIntoView({ block: 'nearest' }));
   }
 
-  function close() {
-    appStore.chatSearchOpen = false;
-  }
-
-  function scrollSelectedIntoView() {
-    void tick().then(() => {
-      const el = resultsContainer?.querySelector('[data-selected="true"]') as HTMLElement | null;
-      el?.scrollIntoView({ block: 'nearest' });
-    });
-  }
-
-  function handleKeydown(event: KeyboardEvent) {
-    if (event.key === 'ArrowDown') {
+  function onKeydown(event: KeyboardEvent) {
+    if (event.key === 'ArrowDown') { event.preventDefault(); move(1); }
+    else if (event.key === 'ArrowUp') { event.preventDefault(); move(-1); }
+    else if (event.key === 'Enter') {
       event.preventDefault();
-      if (results.length > 0) {
-        selectedIndex = selectedIndex < 0 ? 0 : (selectedIndex + 1) % results.length;
-        scrollSelectedIntoView();
-      }
-      return;
-    }
-    if (event.key === 'ArrowUp') {
-      event.preventDefault();
-      if (results.length > 0) {
-        selectedIndex = selectedIndex < 0 ? results.length - 1 : (selectedIndex - 1 + results.length) % results.length;
-        scrollSelectedIntoView();
-      }
-      return;
-    }
-    if (event.key === 'Enter') {
-      if (event.target instanceof HTMLButtonElement) return;
-      event.preventDefault();
-      // Enter with no explicit selection opens the top result.
-      const idx = selectedIndex >= 0 ? selectedIndex : 0;
-      const hit = results[idx];
-      if (hit) selectChat(hit.chat.id, hit.matchMessageId);
-      return;
+      if (selectedIndex < 0) createChat();
+      else if (results[selectedIndex]) open(results[selectedIndex]);
     }
   }
 
-  onMount(() => {
-    searchInput?.focus();
-  });
+  onMount(() => searchInput?.focus());
 </script>
 
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div
-  class="chat-search-backdrop ui-modal-backdrop items-start px-4 pt-[8vh]"
-  use:modalLayer={{ onclose: close }}
-  onclick={close}
-  onkeydown={handleKeydown}
->
+<div class="ui-modal-backdrop search-backdrop" use:modalLayer={{ onclose: close }} onclick={close}>
   <div
-    class="chat-search-dialog ui-menu flex w-full max-w-5xl flex-col overflow-hidden !p-0"
+    class="search-dialog"
     role="dialog"
     aria-modal="true"
     aria-label={$t('shortcuts.search')}
     tabindex="-1"
-    onclick={(e) => e.stopPropagation()}
+    onclick={(event) => event.stopPropagation()}
   >
-    <div class="search-header flex shrink-0 items-center gap-3 border-b border-[var(--border-subtle)] px-4 py-3">
+    <div class="search-field">
       <Search class="size-4 shrink-0 text-muted-foreground" />
       <input
         bind:this={searchInput}
         bind:value={query}
-        class="flex-1 bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground"
-        placeholder={appStore.activeSpace === 'code'
-          ? $t('search.placeholderCode')
-          : $t('search.placeholderChats')}
         type="text"
+        placeholder={appStore.activeSpace === 'code' ? $t('search.placeholderCode') : $t('search.placeholderChats')}
+        aria-label={$t('shortcuts.search')}
+        aria-controls="search-results"
+        onkeydown={onKeydown}
       />
-      {#if query}
-        <button
-          type="button"
-          class="ui-icon-button is-sm"
-          onclick={() => (query = '')}
-          aria-label={$t('search.clear')}
-        >
-          <X class="size-3.5" />
-        </button>
-      {/if}
-      <span class="hidden shrink-0 text-xs text-muted-foreground sm:block">
-        {countOf(results.length, 'conversation')}
-      </span>
+      <span class="shrink-0 text-xs tabular-nums text-muted-foreground">{countOf(results.length, 'conversation')}</span>
     </div>
 
-    <div class="flex min-h-0 flex-1">
-      <div class="results-pane flex w-80 shrink-0 flex-col border-r border-[var(--border-subtle)]">
-        <div class="shrink-0 p-2">
-          <button type="button" class="new-chat-row" onclick={createChat}>
-            <Plus class="size-3.5" />
-            <span class="truncate">{newRowLabel}</span>
-          </button>
-        </div>
-        <div bind:this={resultsContainer} class="min-h-0 flex-1 overflow-y-auto p-2">
-          {#if results.length === 0}
-            <div class="flex h-full min-h-56 flex-col items-center justify-center px-6 text-center">
-              <div class="mb-3 flex size-10 items-center justify-center rounded-full bg-muted">
-                <MessageSquare class="size-5 text-muted-foreground" />
-              </div>
-              <p class="text-sm font-medium text-foreground">
-                {query ? $t('search.noMatches') : $t('search.empty')}
-              </p>
-              <p class="mt-1 text-xs text-muted-foreground">
-                {query ? $t('search.noMatchesHint') : $t('search.emptyHint')}
-              </p>
-            </div>
-          {:else}
-            <div class="space-y-1">
-              {#each results as hit, i (hit.chat.id)}
-                <div
-                  class="search-result"
-                  class:is-selected={i === selectedIndex}
-                  data-selected={i === selectedIndex}
-                  onmouseenter={() => (selectedIndex = i)}
-                  onclick={() => selectChat(hit.chat.id, hit.matchMessageId)}
-                >
-                  {#if renamingChatId === hit.chat.id}
-                    <input
-                      bind:this={renameInputEl}
-                      class="chat-rename-input min-w-0 flex-1"
-                      bind:value={renameValue}
-                      onclick={(event) => event.stopPropagation()}
-                      onkeydown={(event) => {
-                        event.stopPropagation();
-                        if (event.key === 'Enter') {
-                          event.preventDefault();
-                          commitRename(hit.chat.id);
-                        }
-                        if (event.key === 'Escape') {
-                          event.preventDefault();
-                          closeRename();
-                        }
-                      }}
-                      onblur={() => commitRename(hit.chat.id)}
-                    />
-                  {:else}
-                    <div class="min-w-0 flex-1">
-                      <p class="truncate text-sm font-medium text-foreground">{displayChatTitle(hit.chat)}</p>
-                      {#if hit.snippet}
-                        <p class="result-snippet mt-0.5 line-clamp-2 text-[12px] leading-snug text-muted-foreground">{hit.snippet}</p>
-                      {/if}
-                    </div>
-                  {/if}
-                  <div class="result-trailing">
-                    <span class="result-date text-[12px] text-muted-foreground">{relativeDate(hit.chat.updatedAt || hit.chat.createdAt)}</span>
-                    <div class="result-actions flex items-center gap-0.5">
-                      <button type="button" class="result-action" onclick={(e) => { e.stopPropagation(); selectChat(hit.chat.id, hit.matchMessageId); }} aria-label={`${copy.actions.open}: ${displayChatTitle(hit.chat)}`} title={copy.actions.open}>
-                        <ExternalLink class="size-3.5" />
-                      </button>
-                      <button type="button" class="result-action" onclick={(e) => { e.stopPropagation(); startRename(hit.chat); }} aria-label={`${copy.actions.rename}: ${displayChatTitle(hit.chat)}`} title={copy.actions.rename}>
-                        <Pencil class="size-3.5" />
-                      </button>
-                      <button type="button" class="result-action danger" onclick={(e) => { e.stopPropagation(); deleteChat(hit.chat); }} aria-label={`${copy.actions.delete}: ${displayChatTitle(hit.chat)}`} title={copy.actions.delete}>
-                        <Trash2 class="size-3.5" />
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              {/each}
-            </div>
-          {/if}
-        </div>
-      </div>
+    <div bind:this={list} id="search-results" class="search-list" role="listbox" aria-label={$t('shortcuts.search')}>
+      <button
+        type="button"
+        class="ui-row"
+        class:is-highlighted={selectedIndex === -1}
+        data-selected={selectedIndex === -1}
+        role="option"
+        aria-selected={selectedIndex === -1}
+        onmouseenter={() => (selectedIndex = -1)}
+        onclick={createChat}
+      >
+        <Plus />
+        <span class="min-w-0 flex-1 truncate">{newRowLabel}</span>
+      </button>
 
-      <section class="chat-preview relative flex min-w-0 flex-1 flex-col bg-background" aria-label="Conversation preview">
-        {#if previewChat}
-          <div bind:this={previewContainer} class="preview-transcript min-h-0 flex-1 overflow-y-auto px-5 pb-20 pt-5">
-            {#if previewChat.messages.length === 0}
-              <div class="flex h-full items-center justify-center text-sm text-muted-foreground">{$t('search.previewEmpty')}</div>
-            {:else}
-              <div class="preview-conversation mx-auto flex max-w-[55rem] flex-col gap-7">
-                {#each previewChat.messages as message (message.id)}
-                  <Message {message} contextMode={getSpaceForSession(previewChat)} />
-                {/each}
-              </div>
-            {/if}
-          </div>
-          <!-- Floats over the transcript: a bordered footer strip cut the
-               preview in half for a single action. -->
+      {#if results.length}
+        <p class="ui-menu-label">{query.trim() ? $t('search.matches') : $t('search.recent')}</p>
+        {#each results as hit, index (hit.chat.id)}
           <button
             type="button"
-            class="open-chat-button open-chat-floating"
-            onclick={() => selectChat(previewChat.id)}
+            class="ui-row search-hit"
+            class:is-highlighted={selectedIndex === index}
+            data-selected={selectedIndex === index}
+            role="option"
+            aria-selected={selectedIndex === index}
+            onmouseenter={() => (selectedIndex = index)}
+            onclick={() => open(hit)}
           >
-            Open conversation
+            <MessageSquare />
+            <span class="min-w-0 flex-1">
+              <span class="block truncate">{displayChatTitle(hit.chat)}</span>
+              {#if hit.snippet}<span class="block truncate text-xs text-muted-foreground">{hit.snippet}</span>{/if}
+            </span>
+            <span class="shrink-0 text-xs text-muted-foreground">{relativeDate(hit.chat.updatedAt || hit.chat.createdAt)}</span>
           </button>
-        {:else}
-          <div class="flex h-full flex-col items-center justify-center px-6 text-center">
-            <div class="mb-3 flex size-11 items-center justify-center rounded-lg bg-muted">
-              <MessageSquare class="size-5 text-muted-foreground" />
-            </div>
-            <p class="text-sm font-medium text-foreground">{$t('search.previewPick')}</p>
-            <p class="mt-1 text-xs text-muted-foreground">{$t('search.previewHint')}</p>
-          </div>
-        {/if}
-      </section>
+        {/each}
+      {:else}
+        <div class="search-empty">
+          <p class="text-[13px] font-medium text-foreground">{query ? $t('search.noMatches') : $t('search.empty')}</p>
+          <p class="mt-0.5 text-xs text-muted-foreground">{query ? $t('search.noMatchesHint') : $t('search.emptyHint')}</p>
+        </div>
+      {/if}
     </div>
+
+    <footer class="search-footer">
+      <span><kbd>↑</kbd><kbd>↓</kbd> {$t('search.keysMove')}</span>
+      <span><kbd>Enter</kbd> {$t('search.keysOpen')}</span>
+      <span><kbd>Esc</kbd> {$t('search.keysClose')}</span>
+    </footer>
   </div>
 </div>
 
-
-
 <style>
-  .chat-search-dialog {
-    height: min(76vh, 46rem);
-    border-radius: var(--radius-2xl);
-    background: var(--popover);
-    box-shadow: var(--shadow-xl);
+  .search-backdrop {
+    align-items: flex-start;
+    padding-top: 12vh;
   }
 
-  .new-chat-row {
-    display: inline-flex;
-    height: 2rem;
-    align-items: center;
-    gap: 0.45rem;
-    border: none;
-    border-radius: var(--radius-full);
-    background: transparent;
-    padding: 0 0.75rem;
-    color: var(--foreground);
-    font-size: 0.75rem;
-    font-weight: 500;
-    transition: background-color var(--motion-fast) var(--motion-ease);
-  }
-
-  .new-chat-row:hover {
-    background: var(--surface-hover);
-  }
-
-  .search-result {
+  .search-dialog {
     display: flex;
     width: 100%;
-    min-height: 2.5rem;
-    align-items: center;
-    gap: 0.5rem;
-    border: none;
-    border-radius: var(--radius-full);
-    background: transparent;
-    padding: 0.35rem 0.5rem 0.35rem 0.85rem;
-    text-align: left;
-    transition: background-color var(--motion-fast) var(--motion-ease);
+    max-width: 38rem;
+    max-height: min(32rem, 76vh);
+    flex-direction: column;
+    overflow: hidden;
+    border: 1px solid var(--float-border);
+    border-radius: var(--float-radius);
+    background: var(--float-bg);
+    box-shadow: var(--float-shadow);
+    outline: none;
   }
 
-  .search-result:hover,
-  .search-result.is-selected,
-  .search-result:focus-within {
-    background: var(--surface-hover);
-  }
-
-  .result-trailing {
-    position: relative;
+  .search-field {
     display: flex;
-    width: 5.5rem;
-    min-height: 1.75rem;
-    flex-shrink: 0;
     align-items: center;
-    justify-content: flex-end;
+    gap: 0.625rem;
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid var(--border-subtle);
   }
 
-  .result-date {
-    transition: opacity var(--motion-fast) var(--motion-ease);
-  }
-
-  .result-actions {
-    position: absolute;
-    right: 0;
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity var(--motion-fast) var(--motion-ease);
-  }
-
-  .search-result:hover .result-date,
-  .search-result.is-selected .result-date,
-  .search-result:focus-within .result-date {
-    opacity: 0;
-  }
-
-  .search-result:hover .result-actions,
-  .search-result.is-selected .result-actions,
-  .search-result:focus-within .result-actions {
-    opacity: 1;
-    pointer-events: auto;
-  }
-
-  .result-action {
-    display: inline-flex;
-    width: 1.75rem;
-    height: 1.75rem;
-    align-items: center;
-    justify-content: center;
-    border: none;
-    border-radius: var(--radius-full);
+  .search-field input {
+    min-width: 0;
+    flex: 1;
+    border: 0;
     background: transparent;
-    color: var(--muted-foreground);
-    transition: background-color var(--motion-fast) var(--motion-ease);
-  }
-
-  .result-action:hover {
-    background: var(--surface-active);
     color: var(--foreground);
+    font-size: var(--text-base);
+    outline: none;
   }
 
-  .result-action.danger:hover {
-    background: var(--error-bg);
-    color: var(--error);
+  .search-field input::placeholder { color: var(--muted-foreground); }
+
+  .search-list {
+    min-height: 0;
+    flex: 1;
+    overflow-y: auto;
+    padding: var(--float-pad);
   }
 
-  .result-action:focus-visible {
-    outline: 2px solid var(--ring);
-    outline-offset: -1px;
+  .search-hit { min-height: 2.5rem; }
+
+  .search-empty {
+    padding: 1.5rem 1rem;
+    text-align: center;
   }
 
-  .preview-conversation {
-    pointer-events: none;
+  .search-footer {
+    display: flex;
+    gap: 1rem;
+    padding: 0.5rem 1rem;
+    border-top: 1px solid var(--border-subtle);
+    color: var(--muted-foreground);
+    font-size: var(--text-xs);
   }
 
-  .open-chat-floating {
-    position: absolute;
-    right: 1.25rem;
-    bottom: 1.25rem;
-    z-index: 2;
-    box-shadow: var(--shadow-lg);
-  }
-
-  .open-chat-button {
-    height: 2.25rem;
-    border: none;
-    border-radius: var(--radius-full);
-    background: var(--primary);
-    padding: 0 1rem;
-    color: var(--primary-foreground);
-    font-size: 0.75rem;
-    font-weight: 500;
-  }
-
-  @media (max-width: 760px) {
-    .chat-search-backdrop {
-      padding: 1rem;
-    }
-
-    .chat-search-dialog {
-      height: calc(100vh - 2rem);
-    }
-
-    .results-pane {
-      width: 100%;
-      border-right: none;
-    }
-
-    .chat-preview {
-      display: none;
-    }
+  kbd {
+    display: inline-flex;
+    min-width: 1.25rem;
+    justify-content: center;
+    margin-right: 0.125rem;
+    padding: 0 0.25rem;
+    border: 1px solid var(--float-border);
+    border-radius: 0.25rem;
+    font-family: inherit;
+    font-size: 0.6875rem;
   }
 </style>

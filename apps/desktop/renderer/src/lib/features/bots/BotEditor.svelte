@@ -10,7 +10,7 @@
   import { untrack } from 'svelte';
   import { t } from 'svelte-i18n';
   import { Dices } from 'lucide-svelte';
-  import { Button, Dialog, Disclosure, Field } from '$lib/components/ui';
+  import { Button, Dialog, Disclosure, Field, Tooltip } from '$lib/components/ui';
   import { confirmStore } from '$lib/stores/confirm.svelte';
   import BotAvatar from './BotAvatar.svelte';
   import BotModelPicker from './BotModelPicker.svelte';
@@ -145,9 +145,9 @@
         {/each}
       </div>
       {#if !bot?.avatar.image}
-        <button type="button" class="ui-icon-button shuffle" onclick={() => (seed = newSeed())} title={$t('bots.shuffleFace')} aria-label={$t('bots.shuffleFace')}>
+        <Tooltip label={$t('bots.shuffleFace')} position="bottom"><button type="button" class="ui-icon-button shuffle" onclick={() => (seed = newSeed())} aria-label={$t('bots.shuffleFace')}>
           <Dices class="size-4" />
-        </button>
+        </button></Tooltip>
       {/if}
     </div>
     <Field label={$t('bots.name')} htmlFor="bot-name">

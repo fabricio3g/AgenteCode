@@ -15,6 +15,8 @@
  * - The page behind does not scroll while any layer is open.
  */
 
+import { dimCaption } from '$lib/services/caption-dim';
+
 export interface ModalLayerOptions {
   /** Called on Escape. Omit to make Escape a no-op (e.g. a blocking step). */
   onclose?: () => void;
@@ -22,6 +24,9 @@ export interface ModalLayerOptions {
   zToken?: '--z-modal' | '--z-confirm' | '--z-drawer';
   /** Skip moving focus in (e.g. a drawer that should not steal the caret). */
   autoFocus?: boolean;
+  /** The layer dims the page, so the OS caption buttons dim with it. On by
+      default for `.ui-modal-backdrop`; set it for a backdrop drawn by a child. */
+  dim?: boolean;
 }
 
 interface Layer {
@@ -31,6 +36,15 @@ interface Layer {
 }
 
 const stack: Layer[] = [];
+let captionDimmed = false;
+
+/** Dim the OS caption buttons while any layer draws a backdrop over the page. */
+function syncCaption() {
+  const dim = stack.some((layer) => layer.options.dim ?? layer.node.classList.contains('ui-modal-backdrop'));
+  if (dim === captionDimmed) return;
+  captionDimmed = dim;
+  dimCaption(dim);
+}
 let savedOverflow: string | null = null;
 
 const FOCUSABLE = [
@@ -120,6 +134,11 @@ function focusInto(layer: Layer) {
 }
 
 export function modalLayer(node: HTMLElement, options: ModalLayerOptions = {}) {
+  // A layer rendered in place sits inside whatever stacking context its parent
+  // opened (a workspace panel, a transformed card), so the app chrome could
+  // paint over its backdrop. Hoist it to <body>; Dialog's Portal already did.
+  const hoisted = !node.closest('[data-portal]') && node.parentElement !== document.body;
+  if (hoisted) document.body.appendChild(node);
   const layer: Layer = {
     node,
     options,
@@ -128,6 +147,7 @@ export function modalLayer(node: HTMLElement, options: ModalLayerOptions = {}) {
   stack.push(layer);
   lockScroll();
   applyDepth();
+  syncCaption();
   // Content renders in the same tick; focus once it is in the DOM.
   queueMicrotask(() => {
     if (isTop(layer)) focusInto(layer);
@@ -143,6 +163,12 @@ export function modalLayer(node: HTMLElement, options: ModalLayerOptions = {}) {
       if (index >= 0) stack.splice(index, 1);
       applyDepth();
       unlockScroll();
+      syncCaption();
+      // Svelte removes a block's DOM by walking from its anchors; a node moved
+      // to <body> is no longer between them and would stay behind — an
+      // invisible backdrop over the whole window that eats every click.
+      // Destroy runs after the outro, so removing it here cuts nothing short.
+      if (hoisted) node.remove();
       const target = layer.restoreFocus;
       if (target && target.isConnected) target.focus({ preventScroll: true });
     }

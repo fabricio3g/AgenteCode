@@ -416,7 +416,7 @@ pub(crate) async fn execute_prepared_tool(
                             })
                         })
                         .collect();
-                    if !parsed.is_empty() {
+                    if todos_arr.is_empty() || !parsed.is_empty() {
                         todos = Some(parsed);
                     }
                 }
@@ -825,6 +825,22 @@ mod tests {
             args,
             file_before: None,
         }
+    }
+
+    #[tokio::test]
+    async fn empty_todo_write_announces_an_explicit_clear() {
+        let registry = ToolRegistry::new("/tmp");
+        let mut prepared = prepared_read(serde_json::json!({"todos": []}));
+        prepared.tool_call.function.name = "todo_write".into();
+        let (sender, receiver) = std::sync::mpsc::channel();
+        let outcome =
+            execute_prepared_tool(prepared, &registry, &AbortSignal::never(), &sender, 1).await;
+        assert!(!outcome.is_error, "{}", outcome.content);
+        assert!(outcome.todos.as_ref().is_some_and(Vec::is_empty));
+        super::finalize_tool_result(&outcome, &sender, 1);
+        assert!(receiver.try_iter().any(|event| matches!(
+            event.event, crate::agent::AgentEvent::TodoUpdate { todos, .. } if todos.is_empty()
+        )));
     }
 
     /// A denied tool must be rejected during preparation, before any

@@ -5,7 +5,7 @@ import { createServer } from 'node:http';
 import { app, BrowserWindow, WebContentsView, nativeImage } from 'electron';
 import { setMainWindow } from '../../main/window-manager.ts';
 import { runBrowserAction } from '../../main/browser-actions.ts';
-import { panelTab, panelSelectScope, panelListTabs, panelSetTakeover, panelSetOccluded, panelIsTakenOver, withBrowserScope, panelOpenTab, panelSetPresentation, panelSetVisible, panelCloseAll } from '../../main/browser-panel.ts';
+import { panelTab, panelSetHost, panelSelectScope, panelListTabs, panelSetTakeover, panelSetOccluded, panelIsTakenOver, withBrowserScope, panelOpenTab, panelSetPresentation, panelSetVisible, panelCloseAll } from '../../main/browser-panel.ts';
 
 app.disableHardwareAcceleration();
 app.on('window-all-closed', () => {});
@@ -72,13 +72,23 @@ async function run() {
     assert.equal(a.view.getVisible(), true); assert.equal(b.view.getVisible(), false);
     await runBrowserAction('open', { url: url + '?background=b' }, 'chat:b');
     await withBrowserScope('chat:b', () => panelSetPresentation({ bounds: rect, exposed: true, occluded: false }));
-    assert.equal(a.view.getVisible(), true, 'Background navigation cannot steal presentation'); assert.equal(b.view.getVisible(), false);
+    assert.equal(a.view.getVisible(), true, 'Background navigation cannot steal presentation'); assert.equal(b.view.getVisible(), true, 'A renderer may expose both split browsers');
     assert.match(a.view.webContents.getURL(), /owner=a/);
     withBrowserScope('chat:a', () => panelSetTakeover(true)); assert.equal(withBrowserScope('chat:b', panelIsTakenOver), false);
     panelSelectScope('chat:b'); assert.equal(a.view.getVisible(), false);
     await withBrowserScope('chat:b', () => panelSetPresentation({ bounds: rect, exposed: true, occluded: false })); assert.equal(b.view.getVisible(), true);
     panelSelectScope('chat:a'); await withBrowserScope('chat:a', () => panelSetPresentation({ bounds: rect, exposed: true, occluded: false }));
     assert.equal(await a.view.webContents.executeJavaScript('document.getElementById("value").value'), 'chat-a', 'Switching keeps the page and its input');
+    const second = new BrowserWindow({show:false,width:960,height:640});
+    try {
+      await second.loadURL('data:text/html,second-window'); second.webContents.setZoomFactor(1.25);
+      withBrowserScope('chat:b', () => panelSetHost(second.webContents));
+      await withBrowserScope('chat:b', () => panelSetPresentation({bounds:rect,exposed:true,occluded:false}));
+      const activeB = withBrowserScope('chat:b', () => panelTab());
+      assert.ok(second.contentView.children.includes(activeB.view));
+      assert.deepEqual(activeB.view.getBounds(),{x:50,y:75,width:375,height:150});
+      assert.equal(a.view.getVisible(),true,'Other window keeps its own native browser');
+    } finally { second.destroy(); }
     withBrowserScope('chat:b', panelCloseAll); assert.equal(withBrowserScope('chat:a', panelListTabs).length, 1); assert.equal(a.view.getVisible(), true);
     console.log('workspace-panels smoke: ok (five UI scales, overlap, isolated tabs/storage, background tools, preserved page)');
   } finally { for (const scope of ['unassigned', 'chat:a', 'chat:b']) withBrowserScope(scope, panelCloseAll); server.closeAllConnections(); server.close(); win.destroy(); }

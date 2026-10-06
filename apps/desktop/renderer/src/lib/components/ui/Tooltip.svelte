@@ -11,18 +11,23 @@
   import type { Snippet } from 'svelte';
   import { motionFly } from '$lib/utils/transitions';
   import Portal from './Portal.svelte';
+  import { shortcutKeys } from '$lib/utils/shortcuts';
 
   type Position = 'top' | 'bottom' | 'left' | 'right';
 
   interface Props {
     label: string;
+    /** A keyboard shortcut for the same action (`mod+shift+k`), shown as key caps after the label. */
+    shortcut?: string;
+    content?: Snippet;
+    class?: string;
     position?: Position;
     /** Delay before showing, in ms. Keeps quick pointer passes quiet. */
     delay?: number;
     children?: Snippet;
   }
 
-  let { label, position = 'right', delay = 120, children }: Props = $props();
+  let { label, shortcut, content, class: className = '', position = 'right', delay = 120, children }: Props = $props();
 
   const GAP = 8;
 
@@ -104,8 +109,10 @@
 
 <span
   bind:this={anchorEl}
-  class="tooltip-anchor inline-flex"
+  class="tooltip-anchor inline-flex {className}"
   role="presentation"
+  onpointerdown={hide}
+  ondragstart={hide}
   onmouseenter={show}
   onmouseleave={hide}
   onfocusin={show}
@@ -114,7 +121,7 @@
   {@render children?.()}
 </span>
 
-{#if visible && label}
+{#if visible && (label || content)}
   <Portal>
     <div
       bind:this={tipEl}
@@ -123,7 +130,12 @@
       style={`top:${top}px; left:${left}px;`}
       transition:motionFly={{ x: position === 'left' ? 4 : position === 'right' ? -4 : 0, duration: 100 }}
     >
-      {label}
+      {#if content}{@render content()}{:else}{label}{/if}
+      {#if shortcut}
+        <span class="tooltip-keys" aria-label={shortcut}>
+          {#each shortcutKeys(shortcut) as key, i (i)}<kbd>{key}</kbd>{/each}
+        </span>
+      {/if}
     </div>
   </Portal>
 {/if}
@@ -136,13 +148,36 @@
     max-width: min(22rem, calc(100vw - 16px));
     overflow-wrap: anywhere;
     padding: 0.45rem 0.7rem;
-    background: var(--popover);
-    border: 0;
+    background: var(--float-bg);
+    border: 1px solid var(--float-border);
     color: var(--popover-foreground);
-    border-radius: 0.5rem;
-    box-shadow: 0 5px 14px rgb(0 0 0 / 0.28);
+    border-radius: var(--float-row-radius);
+    box-shadow: var(--float-shadow);
     pointer-events: none;
     font-size: var(--text-sm);
     line-height: 1.5;
+  }
+
+  /* Quiet key caps after the label: the shortcut, never louder than the name. */
+  .tooltip-keys {
+    display: inline-flex;
+    gap: 0.1875rem;
+    margin-inline-start: 0.5rem;
+    vertical-align: 0.0625rem;
+  }
+
+  .tooltip-keys kbd {
+    display: inline-flex;
+    min-width: 1.125rem;
+    height: 1.125rem;
+    align-items: center;
+    justify-content: center;
+    padding: 0 0.25rem;
+    border: 1px solid var(--float-border);
+    border-radius: 0.3125rem;
+    color: var(--muted-foreground);
+    font-family: inherit;
+    font-size: var(--text-xs);
+    line-height: 1;
   }
 </style>

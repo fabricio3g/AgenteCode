@@ -1,6 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+  import { Tooltip } from '$lib/components/ui';
   import { t } from 'svelte-i18n';
   import { FileDown, FileQuestion } from 'lucide-svelte';
   import Button from '$lib/components/ui/Button.svelte';
@@ -15,7 +16,7 @@
 <div class="flex h-full min-h-0 flex-col">
   {#if chrome}<div class="flex h-10 shrink-0 items-center justify-between border-b border-border px-3">
     <span class="truncate text-[12px] text-muted-foreground">{path || $t('artifacts.studio.noFile')}</span>
-    <Button variant="ghost" size="icon-sm" onclick={ondownload} disabled={!path} aria-label={$t('artifacts.studio.downloadFile')}><FileDown /></Button>
+    <Tooltip label={$t('artifacts.studio.downloadFile')} position="bottom"><Button variant="ghost" size="icon-sm" onclick={ondownload} disabled={!path} aria-label={$t('artifacts.studio.downloadFile')}><FileDown /></Button></Tooltip>
   </div>
   {/if}
   {#if !path}

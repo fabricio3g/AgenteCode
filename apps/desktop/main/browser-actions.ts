@@ -19,6 +19,8 @@ export type BrowserActionName =
   | 'back'
   | 'forward'
   | 'reload'
+  | 'read'
+  | 'tabs'
   | 'console'
   | 'screenshot';
 
@@ -56,6 +58,16 @@ const ACTIONS: Record<BrowserActionName, (args: Args) => Promise<BrowserActionRe
   back: () => page(driver.history('back')),
   forward: () => page(driver.history('forward')),
   reload: () => page(driver.history('reload')),
+  read: async (args) => {
+    const r = await driver.read(str(args.ref) || undefined);
+    return { ok: true, url: r.url, text: `${r.title} (${r.url})\n\n${r.text || '(no text)'}${r.truncated ? '\n… truncated; scroll and read again, or read a specific element by ref.' : ''}` };
+  },
+  tabs: async (args) => {
+    const action = args.action === 'switch' || args.action === 'close' ? args.action : 'list';
+    const r = await driver.tabs(action, str(args.tab_id) || undefined);
+    const lines = r.tabs.map((t) => `${t.active ? '*' : ' '} ${t.id} ${t.title || '(untitled)'} — ${t.url || 'about:blank'}`);
+    return { ok: true, text: [r.message, lines.length ? `Tabs (* = active):\n${lines.join('\n')}` : 'No tabs open.'].filter(Boolean).join('\n') };
+  },
   console: async (args) => {
     const level = args.level === 'error' || args.level === 'warning' ? args.level : 'all';
     return { ok: true, text: formatConsole(driver.consoleEntries({ level })) };

@@ -8,6 +8,7 @@
 -->
 
 <script lang="ts">
+  import { Button } from '$lib/components/ui';
   import { Plus } from 'lucide-svelte';
   import type { CharacterCard, RoleplayWorld, UserPersona } from '$lib/types/chat';
   import CharacterGallery from './CharacterGallery.svelte';
@@ -51,14 +52,14 @@
   ];
 </script>
 
-<div class="flex min-h-0 flex-1 flex-col">
+<div class="roleplay-library flex min-h-0 min-w-0 flex-1 flex-col">
   <div class="mx-auto flex w-full flex-wrap items-center gap-2 px-6 pt-4" style="max-width: var(--thread-width);">
     <SegmentedControl value={shelf} options={tabs.map((tab) => ({ value: tab.id, label: tab.label }))} label="Roleplay library" variant="tabs" onchange={(value) => (shelf = value as Shelf)} />
     <span class="flex-1"></span>
-    <button type="button" class="ui-chip is-primary new-scene" onclick={onnewScene}><Plus /> New scene</button>
+    <Button variant="default" size="sm" type="button" onclick={onnewScene}><Plus /> New scene</Button>
   </div>
 
-  <div class="min-h-0 flex-1 overflow-y-auto pt-3">
+  <div class="library-scroll min-h-0 flex-1 overflow-y-auto pt-3">
     {#if shelf === 'worlds'}
       <WorldGallery onpick={onpickWorld} onedit={oneditWorld} onnew={onnewWorld} />
     {:else if shelf === 'characters'}
@@ -70,9 +71,9 @@
 </div>
 
 <style>
-  .new-scene {
-    height: 1.875rem;
-    padding: 0 0.85rem;
-    font-size: 12.5px;
-  }
+  .roleplay-library { container-type:inline-size; }
+  .library-scroll { display:flex;flex-direction:column; }
+  :global(.library-shelf) { display:flex;flex-direction:column;flex:1;min-height:0; }
+  :global(.library-grid) { display:grid;grid-template-columns:minmax(0,1fr);gap:0.625rem; }
+  @container (min-width:38rem) { :global(.library-grid) { grid-template-columns:repeat(2,minmax(0,1fr)); } }
 </style>

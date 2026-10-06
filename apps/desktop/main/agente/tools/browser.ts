@@ -16,7 +16,7 @@ export interface BrowserToolOptions {
   canSeeImages: (context: ToolExecContext) => boolean | Promise<boolean>;
 }
 
-const ref = z.string().describe('Element ref from the latest browser_snapshot, e.g. "e12"');
+const ref = z.string().describe('Element ref from the latest browser_snapshot, e.g. "e12", or a "css:<selector>" the user picked in the browser');
 
 function tool<T extends z.ZodType>(name: string, description: string, schema: T, action: BrowserActionName, extra: Partial<{ requiresApproval: (args: z.output<T>) => boolean }> = {}): AgentTool {
   return defineTool({
@@ -89,6 +89,13 @@ export function createBrowserTools(options: BrowserToolOptions): AgentTool[] {
     ),
     tool('browser_back', 'Go back in the browser history.', z.object({}), 'back'),
     tool('browser_reload', 'Reload the page (after changing code, if the dev server does not hot-reload).', z.object({}), 'reload'),
+    tool('browser_read', 'Read the page text (main content), or one element\'s text/value by ref. Long output is truncated.', z.object({ ref: ref.optional() }), 'read'),
+    tool(
+      'browser_tabs',
+      'List the browser tabs, or switch to / close one by tab_id.',
+      z.object({ action: z.enum(['list', 'switch', 'close']), tab_id: z.string().optional() }),
+      'tabs'
+    ),
     tool(
       'browser_console',
       "Read the page's console output, uncaught exceptions and failed network requests since the last check. Use level 'error' to see only problems.",

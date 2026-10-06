@@ -15,7 +15,7 @@
   import { motionFade, flyAndScale } from '$lib/utils/transitions';
   import { modalLayer } from '$lib/components/ui/modal-layer';
   import { dirtyGuard } from '$lib/components/ui/dirty-guard';
-  import { Button } from '$lib/components/ui';
+  import { Button, Tooltip } from '$lib/components/ui';
   import type { CharacterCard, RoleplayWorld } from '$lib/types/chat';
   import { emptyWorld, normalizeWorld, worldsStore } from './worlds.svelte';
   import { charactersStore } from './characters.svelte';
@@ -145,9 +145,9 @@
         <div class="ui-modal-title">{isNew ? 'New world' : draft.name || 'Edit world'}</div>
         <div class="text-xs text-muted-foreground">Setting, canon and cast shared by every scene started here.</div>
       </div>
-      <button type="button" class="ui-icon-button" onclick={() => guard.close(onclose)} aria-label={copy.actions.close}>
+      <Tooltip label={copy.actions.close} position="bottom"><button type="button" class="ui-icon-button" onclick={() => guard.close(onclose)} aria-label={copy.actions.close}>
         <X class="size-4" />
-      </button>
+      </button></Tooltip>
     </div>
 
     <div class="flex gap-1 border-b border-[var(--border-subtle)] px-5 py-2">
@@ -225,15 +225,15 @@
                   <Avatar size="fill" name={card.name ?? ''} image={card.avatar} />
                 </span>
                 <span class="min-w-0 flex-1 truncate text-[13px] text-foreground">{card.name}</span>
-                <button type="button" class="ui-icon-button is-sm" disabled={index === 0} onclick={() => moveCast(index, -1)} aria-label="Move up">
+                <Tooltip label="Move up" position="bottom"><button type="button" class="ui-icon-button is-sm" disabled={index === 0} onclick={() => moveCast(index, -1)} aria-label="Move up">
                   <ArrowUp class="size-3.5" />
-                </button>
-                <button type="button" class="ui-icon-button is-sm" disabled={index === cast.length - 1} onclick={() => moveCast(index, 1)} aria-label="Move down">
+                </button></Tooltip>
+                <Tooltip label="Move down" position="bottom"><button type="button" class="ui-icon-button is-sm" disabled={index === cast.length - 1} onclick={() => moveCast(index, 1)} aria-label="Move down">
                   <ArrowDown class="size-3.5" />
-                </button>
-                <button type="button" class="ui-icon-button is-sm text-error" onclick={() => removeFromCast(card.id)} aria-label="Remove from cast">
+                </button></Tooltip>
+                <Tooltip label="Remove from cast" position="bottom"><button type="button" class="ui-icon-button is-sm text-error" onclick={() => removeFromCast(card.id)} aria-label="Remove from cast">
                   <X class="size-3.5" />
-                </button>
+                </button></Tooltip>
               </div>
             {/each}
           {/if}
@@ -261,9 +261,9 @@
               <div class="text-sm font-medium text-muted-foreground">Openings</div>
               <div class="text-xs text-muted-foreground">Scenes can start with one of these instead of a character greeting.</div>
             </div>
-            <button type="button" class="ui-btn ui-btn-ghost shrink-0" onclick={addStarter}>
+            <Button variant="outline" size="sm" class="shrink-0" type="button" onclick={addStarter}>
               <Plus class="size-3.5" /> Add
-            </button>
+            </Button>
           </div>
           {#if !draft.starters.length}
             <p class="rounded-[var(--radius-md)] border border-dashed border-[var(--border)] px-3 py-4 text-center text-xs text-muted-foreground">
@@ -278,9 +278,9 @@
                   oninput={(e) => updateStarter(index, e.currentTarget.value)}
                   placeholder="The lanterns rise over the harbor as…"
                 ></textarea>
-                <button type="button" class="ui-icon-button mt-1 text-error" onclick={() => removeStarter(index)} aria-label="Remove opening">
+                <Tooltip label="Remove opening" position="bottom"><button type="button" class="ui-icon-button mt-1 text-error" onclick={() => removeStarter(index)} aria-label="Remove opening">
                   <Trash2 class="size-4" />
-                </button>
+                </button></Tooltip>
               </div>
             {/each}
           {/if}
@@ -295,9 +295,9 @@
     <div class="ui-modal-footer">
       {#if world && worldsStore.getById(world.id)}
         <!-- Deleting skips the unsaved-changes guard: the item is going away. -->
-        <button type="button" class="ui-btn ui-btn-ghost mr-auto text-error" onclick={() => world && deleteWorld(world, onclose)}>{copy.actions.delete}</button>
+        <Button variant="outline" size="sm" class="mr-auto text-error" type="button" onclick={() => world && deleteWorld(world, onclose)}>{copy.actions.delete}</Button>
       {/if}
-      <button type="button" class="ui-btn ui-btn-ghost" onclick={() => guard.close(onclose)}>{copy.actions.cancel}</button>
+      <Button variant="outline" size="sm" type="button" onclick={() => guard.close(onclose)}>{copy.actions.cancel}</Button>
       <Button onclick={() => void save()} disabled={saving}>{saving ? 'Saving…' : copy.actions.save}</Button>
     </div>
   </div>

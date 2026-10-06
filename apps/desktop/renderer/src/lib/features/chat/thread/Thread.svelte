@@ -11,7 +11,9 @@
 
 <script lang="ts">
   import { tick } from 'svelte';
-  import { threadJump } from './thread-jump.svelte';
+  import JumpToLatest from './JumpToLatest.svelte';
+  import { meterMode } from '$lib/features/code/tile-meter';
+  import { approvalsStore } from '$lib/stores/approvals.svelte';
   import { appStore } from '$lib/stores/app.svelte';
   import { reducedMotion } from '$lib/utils/motion.svelte';
   import { conversationTimelinePreview } from '$lib/utils/conversation-timeline';
@@ -46,8 +48,12 @@
    * back to the bottom resumes it. Programmatic jumps land at the bottom, so
    * they converge on the same state without special-casing. */
   let followingLatest = true;
-  /** Past this distance from the bottom the composer offers a way back. */
-  const JUMP_BUTTON_PX = 320;
+  /**
+   * Past this distance from the live edge the thread offers a way back. The same
+   * 80px the Code transcript treats as "pinned", so both spaces raise the button
+   * at the same point instead of each inventing a threshold.
+   */
+  const JUMP_BUTTON_PX = 80;
 
   const messages = $derived(appStore.currentChat?.messages || []);
   const timelineMarkers = $derived<TimelineMarker[]>(messages.map(message => ({
@@ -62,6 +68,28 @@
   let scrollAwake = $state(false);
   let scrollAwakeTimer: ReturnType<typeof setTimeout> | null = null;
 
+  /** The way back is on screen (see JUMP_BUTTON_PX). */
+  let jumpVisible = $state(false);
+  /**
+   * The run behind that way back. While the agent works the button wears the
+   * tile meter, in the weather the Code status row would show — one helper
+   * resolves the mode, so the two spaces cannot drift apart.
+   */
+  const jumpWorking = $derived(appStore.currentChatGenerating);
+  let jumpNow = $state(Date.now());
+  const jumpMode = $derived(meterMode({
+    attention: approvalsStore.forChat(appStore.currentChatId || '').length > 0,
+    working: jumpWorking,
+    lastEventAt: appStore.currentRun?.lastEventAt
+  }, jumpNow));
+  // Only a live run needs the clock; an idle window must not wake twice a second.
+  $effect(() => {
+    if (!jumpWorking) return;
+    jumpNow = Date.now();
+    const timer = setInterval(() => (jumpNow = Date.now()), 500);
+    return () => clearInterval(timer);
+  });
+
   function distanceToBottom(): number {
     if (!container) return 0;
     return container.scrollHeight - (container.scrollTop + container.clientHeight);
@@ -73,7 +101,7 @@
 
   function snapToBottom() {
     followingLatest = true;
-    threadJump.visible = false;
+    jumpVisible = false;
     if (container) container.scrollTop = container.scrollHeight;
   }
 
@@ -97,7 +125,7 @@
     const distance = distanceToBottom();
     if (distance <= FOLLOW_RESUME_PX) followingLatest = true;
     else if (distance > BOTTOM_THRESHOLD_PX) followingLatest = false;
-    threadJump.visible = distance > JUMP_BUTTON_PX;
+    jumpVisible = distance > JUMP_BUTTON_PX;
     queueTimelineRefresh();
     scrollAwake = true;
     if (scrollAwakeTimer) clearTimeout(scrollAwakeTimer);
@@ -278,14 +306,6 @@
     });
   });
 
-  $effect(() => {
-    threadJump.jump = () => scrollToBottom('smooth');
-    return () => {
-      threadJump.jump = null;
-      threadJump.visible = false;
-    };
-  });
-
   $effect(() => () => {
     if (pinTimer) clearTimeout(pinTimer);
     cancelAnimationFrame(timelineRafId);
@@ -346,6 +366,22 @@
             </div>
           {/each}
         </div>
+
+        {#if jumpVisible}
+          <!-- Back to the live edge: centred above the composer and floating over
+               the transcript, the same button the Code space raises. While a run
+               works it wears the tile meter, so a thread scrolled away from the
+               live line still says the agent is working. -->
+          <div class="pointer-events-none sticky bottom-2 z-10 flex justify-center">
+            <JumpToLatest
+              variant="float"
+              class="pointer-events-auto"
+              working={jumpWorking}
+              mode={jumpMode}
+              onclick={() => scrollToBottom('smooth')}
+            />
+          </div>
+        {/if}
       </div>
 
       {#if showTimeline}

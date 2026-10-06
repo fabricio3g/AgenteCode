@@ -1,6 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+  import { Button } from '$lib/components/ui';
   import { motionFade, flyAndScale } from '$lib/utils/transitions';
   import { confirmStore } from '$lib/stores/confirm.svelte';
   import { modalLayer } from '$lib/components/ui/modal-layer';
@@ -53,18 +54,19 @@
           {/if}
         </div>
         <div class="ui-modal-footer">
-          <button type="button" class="ui-btn ui-btn-ghost" onclick={() => confirmStore.cancel()}>
+          <Button variant="outline" size="sm" type="button" onclick={() => confirmStore.cancel()}>
             {options.cancelLabel || copy.actions.cancel}
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
+            size="sm"
             data-confirm
             data-autofocus
-            class="ui-btn {options.danger ? 'ui-btn-danger' : 'ui-btn-primary'}"
+            variant={options.danger ? 'destructive' : 'default'}
             onclick={() => confirmStore.confirm()}
           >
             {options.confirmLabel || copy.actions.confirm}
-          </button>
+          </Button>
         </div>
       </div>
     </div>

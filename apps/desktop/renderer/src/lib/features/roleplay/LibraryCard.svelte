@@ -8,6 +8,7 @@
 -->
 
 <script lang="ts">
+  import { Tooltip } from '$lib/components/ui';
   import type { Snippet } from 'svelte';
   import { Copy as CopyIcon, MoreHorizontal, Pencil, Trash2 } from 'lucide-svelte';
   import Menu from '$lib/components/ui/Menu.svelte';
@@ -59,7 +60,7 @@
   </button>
 
   <div class="actions">
-    <button type="button" class="ui-icon-button is-sm" onclick={onedit} aria-label={`Edit ${kind}`} title={`Edit ${kind}`}><Pencil /></button>
+    <Tooltip label={`Edit ${kind}`} position="bottom"><button type="button" class="ui-icon-button is-sm" onclick={onedit} aria-label={`Edit ${kind}`}><Pencil /></button></Tooltip>
     <Menu bind:open={menuOpen} bind:anchorPoint placement="bottom-end" label={`${kind} options`}>
       {#snippet trigger(props)}
         <button type="button" class="ui-icon-button is-sm" aria-label={`${kind} options`} {...props}><MoreHorizontal /></button>

@@ -105,6 +105,8 @@ impl Provider for OpenAIProvider {
             })
             .collect();
 
+        repair_tool_call_arguments(&mut messages_json);
+
         // pi-style compat knobs (mirrors pi packages/ai/src/types.ts):
         // - reasoning_stream_field: which delta field carries interleaved reasoning
         //   (DeepSeek `reasoning_content`, Qwen/Kimi `reasoning`, …)
@@ -259,13 +261,17 @@ impl Provider for OpenAIProvider {
             super::send_with_cache_fallback(&self.info, model, "chat/completions", &body, context)
                 .await?;
 
-        let mut stream = super::sse::EventStream::new(response.bytes_stream());
+        let mut stream =
+            super::sse::EventStream::for_completion(response.bytes_stream(), &self.info.base_url);
         let mut usage = Usage::default();
         let mut stop_reason = StopReason::Unknown;
         let mut tool_calls_in_progress: HashMap<usize, PendingToolCall> = HashMap::new();
         let mut details = BTreeMap::new();
+        let mut observed_reasoning: BTreeMap<String, String> = BTreeMap::new();
         let mut content = String::new();
         let mut completed_calls = Vec::new();
+        let mut text_filter = super::text_tools::TextToolFilter::default();
+        let mut text_calls = 0usize;
         let mut finished = false;
         let mut done_marker = false;
         let mut event_count = 0usize;
@@ -288,16 +294,20 @@ impl Provider for OpenAIProvider {
             // Handle choices
             if let Some(choice) = json["choices"].as_array().and_then(|a| a.first()) {
                 if let Some(delta) = choice.get("delta") {
-                    // Content
-                    if let Some(content) = delta["content"].as_str() {
-                        if !content.is_empty() {
-                            let _ = sender
-                                .send(StreamEvent::TextDelta(content.to_string()))
-                                .await;
-                        }
-                    }
+                    // Content. A model whose gateway skips the tool parser
+                    // writes its calls here as text; they are lifted out.
                     if let Some(text) = delta["content"].as_str() {
-                        content.push_str(text);
+                        if !text.is_empty() {
+                            let filtered = text_filter.push(text);
+                            emit_filtered(
+                                filtered,
+                                &sender,
+                                &mut content,
+                                &mut completed_calls,
+                                &mut text_calls,
+                            )
+                            .await;
+                        }
                     }
 
                     // Interleaved reasoning (DeepSeek `reasoning_content`,
@@ -307,8 +317,13 @@ impl Provider for OpenAIProvider {
                             .get(field)
                             .and_then(|v| v.as_str())
                             .filter(|s| !s.is_empty())
+                            .map(|text| (field, text))
                     });
-                    if let Some(reasoning) = reasoning {
+                    if let Some((field, reasoning)) = reasoning {
+                        observed_reasoning
+                            .entry(field.clone())
+                            .or_default()
+                            .push_str(reasoning);
                         let _ = sender
                             .send(StreamEvent::ReasoningDelta(reasoning.to_string()))
                             .await;
@@ -442,15 +457,37 @@ impl Provider for OpenAIProvider {
             }
         }
 
+        let tail = text_filter.finish();
+        emit_filtered(
+            tail,
+            &sender,
+            &mut content,
+            &mut completed_calls,
+            &mut text_calls,
+        )
+        .await;
+        if text_calls > 0 && matches!(stop_reason, StopReason::Stop | StopReason::Unknown) {
+            stop_reason = StopReason::ToolUse;
+        }
+
         if !finished || !tool_calls_in_progress.is_empty() {
             tracing::warn!(provider = %self.info.id, model = %model.api_id, event_count, done_marker, finish_reason_seen = finished, pending_tool_calls = tool_calls_in_progress.len(), "Chat stream ended before completion");
             return Err(LlmError::StreamError(
                 "Chat stream ended before completion".into(),
             ));
         }
-        if !details.is_empty() {
-            let mut message = serde_json::json!({"role": "assistant", "content": content,
-                "reasoning_details": details.into_values().collect::<Vec<_>>()});
+        // Preserve the fields the endpoint actually returned, even if live
+        // discovery has not learned the model's reasoning capability yet.
+        // Native continuations replay only to the same provider and model.
+        if !details.is_empty() || !observed_reasoning.is_empty() {
+            let mut message = serde_json::json!({"role": "assistant", "content": content});
+            if !details.is_empty() {
+                message["reasoning_details"] =
+                    serde_json::json!(details.into_values().collect::<Vec<_>>());
+            }
+            for (field, text) in observed_reasoning {
+                message[&field] = serde_json::json!(text);
+            }
             if !completed_calls.is_empty() {
                 message["tool_calls"] = serde_json::json!(completed_calls);
             }
@@ -864,6 +901,86 @@ fn merge_reasoning_detail(
     }
 }
 
+/// Send filtered text and any calls lifted out of it as ordinary stream events.
+async fn emit_filtered(
+    filtered: super::text_tools::Filtered,
+    sender: &Sender<StreamEvent>,
+    content: &mut String,
+    completed_calls: &mut Vec<serde_json::Value>,
+    text_calls: &mut usize,
+) {
+    if !filtered.text.is_empty() {
+        content.push_str(&filtered.text);
+        let _ = sender.send(StreamEvent::TextDelta(filtered.text)).await;
+    }
+    for call in filtered.calls {
+        *text_calls += 1;
+        let id = text_call_id(*text_calls);
+        completed_calls.push(serde_json::json!({"id": id, "type": "function",
+            "function": {"name": call.name, "arguments": call.args}}));
+        let _ = sender
+            .send(StreamEvent::ToolCallStart {
+                name: call.name,
+                id: id.clone(),
+            })
+            .await;
+        let _ = sender
+            .send(StreamEvent::ToolCallDelta {
+                id: id.clone(),
+                args_delta: call.args,
+            })
+            .await;
+        let _ = sender.send(StreamEvent::ToolCallEnd { id }).await;
+    }
+}
+
+/// Replay only well-formed call arguments. A call whose arguments never
+/// parsed (a gateway that half-parsed a text call sent an empty or cut-off
+/// object) already failed as a tool error the model saw; resending the broken
+/// string made strict upstreams (MiMo behind OpenCode Go) reject every later
+/// request in the conversation with HTTP 400. It goes back as `{}`.
+fn repair_tool_call_arguments(messages: &mut [serde_json::Value]) {
+    for message in messages {
+        let Some(calls) = message
+            .get_mut("tool_calls")
+            .and_then(|calls| calls.as_array_mut())
+        else {
+            continue;
+        };
+        for call in calls {
+            let Some(arguments) = call
+                .get_mut("function")
+                .and_then(|function| function.get_mut("arguments"))
+            else {
+                continue;
+            };
+            let text = match &*arguments {
+                serde_json::Value::String(text) => well_formed_arguments(text),
+                serde_json::Value::Object(_) => arguments.to_string(),
+                _ => "{}".into(),
+            };
+            *arguments = serde_json::Value::String(text);
+        }
+    }
+}
+
+/// `text` when it is a JSON object, else `{}` (see [`repair_tool_call_arguments`]).
+pub(super) fn well_formed_arguments(text: &str) -> String {
+    match serde_json::from_str::<serde_json::Value>(text) {
+        Ok(value) if value.is_object() => text.to_string(),
+        _ => "{}".into(),
+    }
+}
+
+/// Ids must not repeat across turns: the history keys results by them.
+fn text_call_id(n: usize) -> String {
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    format!("call_text_{nanos:x}_{n}")
+}
+
 fn tool_arguments_to_string(value: &serde_json::Value) -> String {
     value
         .as_str()
@@ -881,6 +998,37 @@ fn truncate_error_body(text: &str) -> String {
 
 #[cfg(test)]
 mod discovery_tests {
+    #[test]
+    fn broken_call_arguments_replay_as_an_empty_object() {
+        let call = |arguments: serde_json::Value| serde_json::json!({"id": "c", "type": "function", "function": {"name": "grep", "arguments": arguments}});
+        let mut messages = vec![
+            serde_json::json!({"role": "assistant", "content": "", "tool_calls": [
+                call(serde_json::json!("")),
+                call(serde_json::json!("{\"pattern\": \"fo")),
+                call(serde_json::json!("\"text\"")),
+                call(serde_json::json!({"pattern": "foo"})),
+                call(serde_json::json!("{\"pattern\":\"foo\"}")),
+            ]}),
+        ];
+        super::repair_tool_call_arguments(&mut messages);
+        let arguments: Vec<&str> = messages[0]["tool_calls"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|call| call["function"]["arguments"].as_str().unwrap())
+            .collect();
+        assert_eq!(
+            arguments,
+            [
+                "{}",
+                "{}",
+                "{}",
+                "{\"pattern\":\"foo\"}",
+                "{\"pattern\":\"foo\"}"
+            ]
+        );
+    }
+
     #[test]
     fn live_openrouter_pricing_converts_per_token_strings() {
         let raw = serde_json::json!({"pricing": {"prompt": "0.000003", "completion": "0.000015", "input_cache_read": "0.0000003"}});

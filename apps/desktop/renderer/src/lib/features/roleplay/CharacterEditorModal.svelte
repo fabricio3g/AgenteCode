@@ -15,7 +15,7 @@
   import { motionFade, flyAndScale } from '$lib/utils/transitions';
   import { modalLayer } from '$lib/components/ui/modal-layer';
   import { dirtyGuard } from '$lib/components/ui/dirty-guard';
-  import { Button } from '$lib/components/ui';
+  import { Button, Tooltip } from '$lib/components/ui';
   import type { CharacterCard } from '$lib/types/chat';
   import { charactersStore, emptyCharacter } from './characters.svelte';
   import LorebookEditor from './LorebookEditor.svelte';
@@ -125,9 +125,9 @@
         <div class="ui-modal-title">{isNew ? 'New character' : draft.name || 'Edit character'}</div>
         <div class="text-xs text-muted-foreground">Character card fields follow the V2/V3 spec.</div>
       </div>
-      <button type="button" class="ui-icon-button" onclick={() => guard.close(onclose)} aria-label={copy.actions.close}>
+      <Tooltip label={copy.actions.close} position="bottom"><button type="button" class="ui-icon-button" onclick={() => guard.close(onclose)} aria-label={copy.actions.close}>
         <X class="size-4" />
-      </button>
+      </button></Tooltip>
     </div>
 
     <div class="flex flex-wrap gap-1 border-b border-[var(--border-subtle)] px-5 py-2">
@@ -222,9 +222,9 @@
         <div class="space-y-2">
           <div class="flex items-center justify-between">
             <span class="text-sm font-medium text-muted-foreground">Alternate greetings</span>
-            <button type="button" class="ui-btn ui-btn-ghost" onclick={addGreeting}>
+            <Button variant="outline" size="sm" type="button" onclick={addGreeting}>
               <Plus class="size-3.5" /> Add
-            </button>
+            </Button>
           </div>
           {#each draft.alternateGreetings as greeting, index (index)}
             <div class="flex items-start gap-2">
@@ -234,9 +234,9 @@
                 oninput={(e) => updateGreeting(index, e.currentTarget.value)}
                 placeholder="Another opening scene…"
               ></textarea>
-              <button type="button" class="ui-icon-button mt-1" onclick={() => removeGreeting(index)} aria-label="Remove greeting">
+              <Tooltip label="Remove greeting" position="bottom"><button type="button" class="ui-icon-button mt-1" onclick={() => removeGreeting(index)} aria-label="Remove greeting">
                 <Trash2 class="size-4" />
-              </button>
+              </button></Tooltip>
             </div>
           {/each}
         </div>
@@ -286,9 +286,9 @@
     <div class="ui-modal-footer">
       {#if character && charactersStore.getById(character.id)}
         <!-- Deleting skips the unsaved-changes guard: the item is going away. -->
-        <button type="button" class="ui-btn ui-btn-ghost mr-auto text-error" onclick={() => character && deleteCharacter(character, onclose)}>{copy.actions.delete}</button>
+        <Button variant="outline" size="sm" class="mr-auto text-error" type="button" onclick={() => character && deleteCharacter(character, onclose)}>{copy.actions.delete}</Button>
       {/if}
-      <button type="button" class="ui-btn ui-btn-ghost" onclick={() => guard.close(onclose)}>{copy.actions.cancel}</button>
+      <Button variant="outline" size="sm" type="button" onclick={() => guard.close(onclose)}>{copy.actions.cancel}</Button>
       <Button onclick={() => void save()} disabled={saving}>{saving ? 'Saving…' : copy.actions.save}</Button>
     </div>
   </div>

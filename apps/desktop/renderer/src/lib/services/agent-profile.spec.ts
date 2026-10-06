@@ -8,7 +8,7 @@ describe('agent profiles', () => {
     expect(names).toContain('web_search');
     expect(names).toContain('fetch_url');
     expect(names).toContain('calculator');
-    for (const tool of ['browser_open', 'browser_snapshot', 'browser_click', 'browser_fill', 'browser_press', 'browser_wait', 'browser_console', 'browser_screenshot']) {
+    for (const tool of ['browser_open', 'browser_snapshot', 'browser_click', 'browser_fill', 'browser_press', 'browser_wait', 'browser_console', 'browser_screenshot', 'browser_hover', 'browser_select', 'browser_forward', 'browser_reload', 'browser_read', 'browser_tabs']) {
       expect(names).toContain(tool);
     }
     // Replaced by ref-based tools (the dispatcher still accepts the old names).

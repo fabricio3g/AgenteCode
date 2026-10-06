@@ -29,6 +29,7 @@ vi.mock('$lib/services/bridge', () => ({
 
 import { appStore } from '$lib/stores/app.svelte';
 import { codeStore } from './code.svelte';
+import { conversationTodos } from './code-run';
 import { approvalsStore } from '$lib/stores/approvals.svelte';
 
 const CHAT_ID = 'chat-1';
@@ -130,6 +131,70 @@ describe('queued input accounting', () => {
     await codeStore.followUp(CHAT_ID, 'then do this');
 
     expect(codeStore.runFor(CHAT_ID)?.queuedCount).toBe(0);
+  });
+});
+
+describe('conversation todos', () => {
+  const todos = [
+    { content: 'Read files', status: 'completed' as const },
+    { content: 'Implement change', status: 'in_progress' as const }
+  ];
+
+  it('keeps unfinished tasks across Stop and a new prompt until the agent updates them', async () => {
+    await startRun();
+    emit({ type: 'todo_update', chatId: CHAT_ID, todos });
+    await codeStore.stop(CHAT_ID);
+    expect(codeStore.runFor(CHAT_ID)?.stopping).toBe(true);
+    emit({ type: 'agent_end', chatId: CHAT_ID, stopReason: 'aborted' });
+    await codeStore.send(CHAT_ID, 'Continue');
+    const run = codeStore.runFor(CHAT_ID)!;
+    expect(run.todos).toEqual(todos);
+    expect(run.todosUpdated).toBe(false);
+    emit({ type: 'todo_update', chatId: CHAT_ID, todos });
+    expect(run.todosUpdated).toBe(true);
+    emit({ type: 'agent_end', chatId: CHAT_ID, stopReason: 'stop' });
+    await codeStore.send(CHAT_ID, 'A question without a todo update');
+    emit({ type: 'agent_end', chatId: CHAT_ID, stopReason: 'stop' });
+    expect(conversationTodos(appStore.chats[0].messages)).toEqual(todos);
+  });
+
+  it('persists live updates and restores them after the run cache is lost', async () => {
+    await startRun();
+    emit({ type: 'todo_update', chatId: CHAT_ID, todos });
+    expect(appStore.chats[0].messages.at(-1)?.metadata?.codeTodos).toEqual(todos);
+    emit({ type: 'agent_end', chatId: CHAT_ID, stopReason: 'aborted' });
+    codeStore.evictChat(CHAT_ID, { force: true });
+    await codeStore.send(CHAT_ID, 'Continue after reload');
+    expect(codeStore.runFor(CHAT_ID)?.todos).toEqual(todos);
+  });
+
+  it('lets the agent clear or replace the list without resurrecting older tasks', async () => {
+    await startRun();
+    emit({ type: 'todo_update', chatId: CHAT_ID, todos });
+    emit({ type: 'agent_end', chatId: CHAT_ID, stopReason: 'aborted' });
+    await codeStore.send(CHAT_ID, 'Do something else');
+    const replacement = [{ content: 'New task', status: 'pending' as const }];
+    emit({ type: 'todo_update', chatId: CHAT_ID, todos: replacement });
+    expect(codeStore.runFor(CHAT_ID)?.todos).toEqual(replacement);
+    emit({ type: 'todo_update', chatId: CHAT_ID, todos: [] });
+    emit({ type: 'agent_end', chatId: CHAT_ID, stopReason: 'stop' });
+    expect(appStore.chats[0].messages.at(-1)?.metadata?.codeTodos).toEqual([]);
+    codeStore.evictChat(CHAT_ID, { force: true });
+    await codeStore.send(CHAT_ID, 'Next task');
+    expect(codeStore.runFor(CHAT_ID)?.todos).toEqual([]);
+  });
+
+  it('carries tasks into a queued follow-up and retains older legacy snapshots', async () => {
+    await startRun();
+    emit({ type: 'todo_update', chatId: CHAT_ID, todos });
+    await codeStore.followUp(CHAT_ID, 'Then verify');
+    emit({ type: 'agent_end', chatId: CHAT_ID, stopReason: 'stop' });
+    emit({ type: 'agent_start', chatId: CHAT_ID });
+    expect(codeStore.runFor(CHAT_ID)?.todos).toEqual(todos);
+    expect(codeStore.runFor(CHAT_ID)?.todosUpdated).toBe(false);
+    emit({ type: 'agent_end', chatId: CHAT_ID, stopReason: 'aborted' });
+    delete appStore.chats[0].messages.at(-1)!.metadata!.codeTodos;
+    expect(conversationTodos(appStore.chats[0].messages)).toEqual(todos);
   });
 });
 

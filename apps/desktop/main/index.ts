@@ -6,10 +6,13 @@ import net from 'node:net';
 import path from 'node:path';
 import { chatDatabase } from './chat-db-client.ts';
 import { registerIpcHandlers, disposeAllAgenteSessions, disposeCodeWorkspace } from './ipc-handlers.ts';
+import { registerDomainHandlers } from './domains/desktop.ts';
+import { registerDomainScheme, registerDomainMediaProtocol } from './domains/media-protocol.ts';
+registerDomainScheme();
 import { stopAllInstances } from './instances.ts';
 import { moduleDirname } from './module-env.ts';
 import { APP_NAME } from '../shared/brand.ts';
-import { setMainWindow, setPreloadPath, getMainWindow, requestMainWindowClose, setActiveWorkState, TITLEBAR_HEIGHT, initialWindowColors, flushWindowTheme, usesCaptionOverlay } from './window-manager.ts';
+import { setMainWindow, setConversationWindowFactory, setPreloadPath, getMainWindow, requestMainWindowClose, setActiveWorkState, TITLEBAR_HEIGHT, initialWindowColors, flushWindowTheme, usesCaptionOverlay } from './window-manager.ts';
 import { registerWindowZoom } from './window-zoom.ts';
 
 // Resolves under both the esbuild CJS bundle and tsx's ESM loader.
@@ -53,7 +56,7 @@ if (smokeMode) app.once('quit', () => {
   disposeCodeWorkspace();
 });
 
-function createWindow() {
+function createWindow(chatId?: string) {
   const colors = initialWindowColors();
   const mainWindow = new BrowserWindow({
     width: 1280,
@@ -86,20 +89,20 @@ function createWindow() {
     }
   });
 
-  setMainWindow(mainWindow);
+  if (!getMainWindow()) setMainWindow(mainWindow);
 
   attachStartupDiagnostics(mainWindow);
 
   if (IS_DEV) {
-    void mainWindow.loadURL(RENDERER_DEV_URL).catch(failStartup);
+    void mainWindow.loadURL(chatId ? `${RENDERER_DEV_URL}?conversation=${encodeURIComponent(chatId)}&window=${mainWindow.id}` : RENDERER_DEV_URL).catch(failStartup);
     mainWindow.webContents.openDevTools({ mode: 'detach' });
   } else {
     const missing = smokeMode && process.env.AGENTE_SMOKE_CASE === 'missing-assets';
-    void mainWindow.loadFile(missing ? `${RENDERER_PROD_PATH}.missing` : RENDERER_PROD_PATH, { query: smokeMode ? { smoke: '1', fault: process.env.AGENTE_SMOKE_CASE || '' } : {} }).catch(failStartup);
+    void mainWindow.loadFile(missing ? `${RENDERER_PROD_PATH}.missing` : RENDERER_PROD_PATH, { query: { ...(smokeMode ? { smoke: '1', fault: process.env.AGENTE_SMOKE_CASE || '' } : {}), ...(chatId ? { conversation: chatId, window: String(mainWindow.id) } : {}) } }).catch(failStartup);
   }
 
   mainWindow.on('closed', () => {
-    setMainWindow(null);
+    if (getMainWindow() === mainWindow) setMainWindow(BrowserWindow.getAllWindows().find((win) => win !== mainWindow && !win.isDestroyed()) ?? null);
   });
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
@@ -117,7 +120,9 @@ function createWindow() {
 
   // Saved interface scale and Ctrl/Cmd +/-/0 share the same controls.
   registerWindowZoom(mainWindow.webContents);
+  return mainWindow;
 }
+setConversationWindowFactory((chatId) => createWindow(chatId));
 
 function createTray() {
   const icon = fs.existsSync(APP_ICON_PATH)
@@ -160,6 +165,8 @@ app.whenReady().then(async () => {
   });
 
   registerIpcHandlers();
+  registerDomainHandlers();
+  registerDomainMediaProtocol();
   createWindow();
 
   // Preload Kokoro TTS model in background while app finishes booting

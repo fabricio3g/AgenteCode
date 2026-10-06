@@ -80,10 +80,10 @@
     z-index: 30;
     display: flex;
     overflow: hidden;
-    border: 1px solid var(--panel-border);
+    border: 1px solid var(--float-border);
     border-radius: var(--radius-2xl);
-    background: var(--popover);
-    box-shadow: var(--shadow-xl);
+    background: var(--float-bg);
+    box-shadow: var(--float-shadow);
     transform-origin: right center;
     will-change: transform, opacity;
   }
