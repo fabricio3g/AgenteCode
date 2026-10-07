@@ -72,16 +72,16 @@
   --popover-foreground: #0d0d0d;
   --primary: #0d0d0d;
   --primary-foreground: #ffffff;
-  --secondary: rgb(0 0 0 / 0.05);
+  --secondary: #f3f3f4;
   --secondary-foreground: #0d0d0d;
-  --muted: rgb(0 0 0 / 0.04);
+  --muted: #f3f3f4;
   /* 6.4:1 on white (4.9:1 was too faint on chips and at small sizes). */
-  --muted-foreground: #5f5f5f;
+  --muted-foreground: #666666;
   --accent: rgb(0 0 0 / 0.06);
   --accent-foreground: #0d0d0d;
   --destructive: oklch(0.577 0.245 27.325);
   --destructive-foreground: oklch(0.985 0 0);
-  --border: rgb(0 0 0 / 0.07);
+  --border: #00000021;
   --input: rgb(0 0 0 / 0.1);
   --ring: rgb(0 0 0 / 0.2);
   /* Startup tile field — the landing page's mosaic, read by site/js/tiles.js
@@ -100,7 +100,7 @@
   /* The rail is its own plane, not more sidebar: a step off the sidebar surface
      in the direction this theme has headroom for, closed by the 1px seam
      `.activity-rail` draws with --border. Derived, so a theme moves it too. */
-  --rail-bg: color-mix(in srgb, var(--sidebar) 93%, var(--foreground) 7%);
+  --rail-bg: #ececee;
   --sidebar-foreground: #0d0d0d;
   --sidebar-primary: #0d0d0d;
   --sidebar-primary-foreground: #ffffff;
@@ -122,8 +122,8 @@
 
   /* Compatibility aliases (legacy Chatea vars) */
   --surface: var(--card);
-  --surface-hover: rgb(0 0 0 / 0.05);
-  --surface-active: rgb(0 0 0 / 0.09);
+  --surface-hover: #e9e9ea;
+  --surface-active: #f3f3f4;
   --surface-overlay: var(--popover);
   --text: var(--foreground);
   --text-secondary: #525252;
@@ -135,7 +135,7 @@
   --border-active: rgb(0 0 0 / 0.2);
   /* Internal dividers inside an already-bordered surface. Full --border on every
      seam turns a panel into a grid of lines. */
-  --border-subtle: rgb(0 0 0 / 0.04);
+  --border-subtle: #00000012;
   --border-inverse: rgb(0 0 0 / 0.15);
   --primary-hover: #171717;
   --primary-fg: var(--primary-foreground);
@@ -166,7 +166,7 @@
      dusty rose for the human/secondary ones. Orange stays the only warm accent. */
   --accent-cyan: #049dbf;
   --accent-rose: #bf8f84;
-  --companion-soft: color-mix(in srgb, var(--companion) 10%, transparent);
+  --companion-soft: #03588c12;
   --control-bg: var(--card);
   --control-inset: inset 0 1px 0 rgb(255 255 255 / 0.65);
   --control-shadow: 0 1px 2px rgb(16 28 44 / 0.08);
@@ -181,7 +181,7 @@
   --work-glint: rgb(0 0 0 / 0.04);
 
   /* Layout */
-  --user-bubble: rgb(0 0 0 / 0.05);
+  --user-bubble: #f3f3f4;
   --user-bubble-text: var(--foreground);
   --user-bubble-border: transparent;
   /* The composer is a white card on the page, separated by its ring rather
@@ -256,9 +256,9 @@
   /* The activity rail: one width, one button, one icon for the strip the whole
      window hangs off. It is the one place the 14px chrome icon scale does not
      apply — a column of 14px marks reads as decoration. */
-  --rail-w: 3.25rem;
-  --rail-btn: 2.25rem;
-  --rail-icon: 18px;
+  --rail-w: 2.75rem;
+  --rail-btn: 2rem;
+  --rail-icon: 16px;
   /* One height for every row in the sidebar rail (.sidebar-row), and one size
      for the mark that leads it. Rows stepped up to 2rem with the activity rail
      so the whole left edge reads at one scale. */
@@ -275,24 +275,21 @@
    * different right edges. One dial if blocks should ever inset from prose.
    */
   --inline-block-width: 100%;
-  --thread-top-pad: 4rem;
+  --thread-top-pad: 2.25rem;
   /* A rounded card, not a pill: the shell is two rows tall now, and a 2rem
      corner on that height reads as a lozenge. */
-  --composer-radius: 1.5rem;
+  --composer-radius: 1.125rem;
   /* A large corner everywhere except the bottom-right, which tucks in to point
      the bubble at its author. */
-  --bubble-radius: 1.5rem;
+  --bubble-radius: 0.75rem;
   --bubble-tail-radius: var(--radius-lg);
 
   /* Shadows — light only, quiet */
   --shadow-xs: 0 1px 2px rgb(0 0 0 / 0.05);
-  /* Lifts side panels and the composer off the page, like the browser card. */
-  --panel-shadow: 0 1px 2px rgb(0 0 0 / 0.04), 0 6px 18px -6px rgb(0 0 0 / 0.1);
-  /* A docked sidebar is a groove, not a card: its depth is drawn inside the
-     rail, where the trailing edge darkens inward across the padding gutter,
-     and nothing is cast onto the conversation. The floating ghost is the
-     other way round — it lifts on --shadow-xl and takes no inset. */
-  --sidebar-inner-shadow: inset -10px 0 14px -12px rgb(0 0 0 / 0.16);
+  /* Lifts the composer off the page: the one surface that floats on the
+     conversation, at a whisper of a shadow (the study's `0 6px 22px`). */
+  --panel-shadow: 0 6px 22px rgb(0 0 0 / 0.05);
+  /* The docked sidebar is flat: a surface and a hairline, no groove. */
   --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.05);
   --shadow-md: 0 1px 3px rgb(0 0 0 / 0.08);
   --shadow-lg: 0 8px 24px rgb(0 0 0 / 0.08);
@@ -311,12 +308,12 @@
   --float-shadow: 0 1px 2px rgb(0 0 0 / 0.05), 0 10px 28px -8px rgb(0 0 0 / 0.18);
   --float-row-h: 2.125rem;
   --float-row-radius: 0.5rem;
-  --float-row-hover: rgb(0 0 0 / 0.05);
+  --float-row-hover: #e9e9ea;
   --float-row-selected: rgb(0 0 0 / 0.07);
-  /* "You are here" in the chrome (activity rail, sidebar rows): a raised chip
-     on the card surface with the floating hairline, not a grey tint. */
-  --nav-current-bg: var(--card);
-  --nav-current-ring: inset 0 0 0 1px var(--float-border), 0 1px 2px rgb(0 0 0 / 0.06);
+  /* "You are here" in the chrome (activity rail, titlebar toggles): the raised
+     surface plus the hairline the study draws on its active rail button. */
+  --nav-current-bg: #f3f3f4;
+  --nav-current-ring: inset 0 0 0 1px var(--border-subtle);
 
   /* Neutral badges (was blue-tinted) */
   --accent-red-bg: #fef2f2;
@@ -368,15 +365,15 @@
   --popover-foreground: var(--foreground);
   --primary: #ececec;
   --primary-foreground: #161616;
-  --secondary: rgb(255 255 255 / 0.06);
+  --secondary: #252525;
   --secondary-foreground: var(--foreground);
-  --muted: rgb(255 255 255 / 0.05);
-  --muted-foreground: #b2b2b2;
-  --accent: rgb(255 255 255 / 0.07);
+  --muted: #252525;
+  --muted-foreground: #a5a5a5;
+  --accent: #2e2e2e;
   --accent-foreground: var(--foreground);
   --destructive: #f07b72;
   --destructive-foreground: #161616;
-  --border: rgb(255 255 255 / 0.12);
+  --border: #ffffff24;
   --input: rgb(255 255 255 / 0.18);
   --ring: rgb(255 255 255 / 0.24);
   /* Startup tile field — the landing page's mosaic, read by site/js/tiles.js.
@@ -392,7 +389,7 @@
   --sidebar: #0f0f0f;
   /* Dark has no room to recede further, so the rail steps the other way: one
      shade lighter than the sidebar, still under --card. */
-  --rail-bg: color-mix(in srgb, var(--sidebar) 90%, var(--foreground) 10%);
+  --rail-bg: #242424;
   --sidebar-foreground: var(--foreground);
   --sidebar-primary: var(--primary);
   --sidebar-primary-foreground: var(--primary-foreground);
@@ -410,8 +407,8 @@
 
   /* Aliases */
   --surface: var(--card);
-  --surface-hover: rgb(255 255 255 / 0.08);
-  --surface-active: rgb(255 255 255 / 0.14);
+  --surface-hover: #2e2e2e;
+  --surface-active: #252525;
   --surface-overlay: var(--popover);
   --text: var(--foreground);
   --text-secondary: #c8c8c8;
@@ -419,9 +416,9 @@
   --text-muted: var(--muted-foreground);
   --text-inverse: var(--primary-foreground);
   --split-line: rgb(255 255 255 / 0.24);
-  --border-hover: rgb(255 255 255 / 0.21);
+  --border-hover: #ffffff24;
   --border-active: rgb(255 255 255 / 0.2);
-  --border-subtle: rgb(255 255 255 / 0.09);
+  --border-subtle: #ffffff14;
   --border-inverse: rgb(255 255 255 / 0.3);
   --primary-hover: #ffffff;
   --primary-fg: var(--primary-foreground);
@@ -452,18 +449,18 @@
   --companion-strong: #9bd9ec;
   --accent-cyan: #36bfdc;
   --accent-rose: #d3aaa0;
-  --companion-soft: color-mix(in srgb, var(--companion) 14%, transparent);
+  --companion-soft: #4bb4d61a;
   --control-bg: color-mix(in srgb, var(--card) 94%, #fff 6%);
   --control-inset: inset 0 1px 0 rgb(255 255 255 / 0.07);
   --control-shadow: 0 1px 2px rgb(0 0 0 / 0.22);
   --brand-accent: #e8793a;
   --brand-accent-strong: #f29a64;
 
-  --user-bubble: rgb(255 255 255 / 0.07);
+  --user-bubble: #252525;
   --user-bubble-text: var(--foreground);
   --user-bubble-border: transparent;
   --composer-surface: var(--card);
-  --composer-ring: var(--border-hover);
+  --composer-ring: var(--border);
   --composer-ring-focus: rgb(232 121 58 / 0.55);
   --chat-bg: var(--background);
   --titlebar-bg: var(--background);
@@ -494,10 +491,7 @@
      1px var(--border), var(--shadow-xs)`), where `none` would invalidate the
      whole declaration. Floating things (menus, dialogs) keep a real shadow. */
   --shadow-xs: 0 0 #0000;
-  --panel-shadow: inset 0 1px 0 rgb(255 255 255 / 0.03), 0 10px 28px -8px rgb(0 0 0 / 0.55);
-  /* Same geometry as the light theme, darker: the rail and the canvas are both
-     near-black, so the inner edge needs the extra contrast to register. */
-  --sidebar-inner-shadow: inset -10px 0 14px -12px rgb(0 0 0 / 0.55);
+  --panel-shadow: 0 0 #0000;
   --shadow-sm: 0 0 #0000;
   --shadow-md: 0 0 #0000;
   --shadow-lg: 0 12px 32px rgb(0 0 0 / 0.45);
@@ -505,10 +499,10 @@
 
   --float-border: rgb(255 255 255 / 0.11);
   --float-shadow: 0 1px 2px rgb(0 0 0 / 0.35), 0 14px 36px -10px rgb(0 0 0 / 0.7);
-  --float-row-hover: rgb(255 255 255 / 0.07);
+  --float-row-hover: #2e2e2e;
   --float-row-selected: rgb(255 255 255 / 0.1);
-  --nav-current-bg: rgb(255 255 255 / 0.07);
-  --nav-current-ring: inset 0 0 0 1px var(--float-border);
+  --nav-current-bg: #252525;
+  --nav-current-ring: inset 0 0 0 1px var(--border-subtle);
 
   --accent-red-bg: var(--error-bg);
   --accent-red-text: var(--error);
@@ -785,7 +779,7 @@ textarea {
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
-  padding: 0.875rem 0.75rem 0.5rem;
+  padding: 1rem 1rem 0.75rem;
 }
 
 .composer-textarea {
@@ -794,7 +788,7 @@ textarea {
   min-height: 2.25rem;
   max-height: 13rem;
   padding: 0 0.25rem;
-  font-size: var(--text-prose);
+  font-size: var(--text-sm);
   line-height: 1.55;
   letter-spacing: 0;
   font-weight: var(--reading-weight, 400);
@@ -813,6 +807,7 @@ textarea {
   align-items: center;
   justify-content: space-between;
   gap: 0.375rem;
+  flex-wrap: nowrap;
 }
 
 .composer-bar-leading,
@@ -823,8 +818,10 @@ textarea {
   gap: 0.25rem;
 }
 
-.composer-bar-leading { flex: 1 1 auto; }
-.composer-bar-trailing { flex: 0 0 auto; justify-content: flex-end; }
+/* The bar never wraps: a wrapped row starts on a divider and the send button
+   drifts. Narrow composers shed labels instead (see the ladder below). */
+.composer-bar-leading { flex: 1 1 auto; flex-wrap: nowrap; }
+.composer-bar-trailing { flex: 0 0 auto; justify-content: flex-end; margin-left: auto; }
 
 /* A secondary action beside send ("Continue", "Choose a model"). */
 .composer-chip {
@@ -991,7 +988,8 @@ textarea {
   display: inline-flex;
   align-items: center;
   gap: 2px;
-  border: none;
+  /* A hairline track, so the control reads as one object on any surface. */
+  border: 1px solid var(--border);
   /* Pill track, so the selected item can be a pill inside it. */
   border-radius: var(--radius-full);
   background: var(--muted);
@@ -2020,11 +2018,12 @@ textarea {
   color: var(--foreground);
 }
 
-/* The open item: the same raised chip the activity rail uses. */
+/* The open item. The study draws the sidebar's current row as a flat raised
+   fill — the hairline belongs to the rail, not here. */
 .sidebar-row.is-current,
 .sidebar-row.is-current:hover {
   background: var(--nav-current-bg);
-  box-shadow: var(--nav-current-ring);
+  box-shadow: none;
   color: var(--foreground);
   font-weight: 500;
 }
@@ -2219,7 +2218,9 @@ button.sidebar-section:hover {
   .sidebar-dot { animation: none; }
 }
 
-.ui-legacy-user-bubble {
+/* The user's own words, in both spaces: a rounded card with the bottom-right
+   corner tucked in to point the bubble at its author. */
+.user-bubble {
   width: fit-content;
   min-width: 0;
   max-width: 90%;
@@ -3197,7 +3198,7 @@ html.a11y-relaxed body {
   letter-spacing: 0.01em;
 }
 html.a11y-relaxed .markdown-body,
-html.a11y-relaxed .ui-legacy-user-bubble,
+html.a11y-relaxed .user-bubble,
 html.a11y-relaxed .composer-textarea {
   line-height: 1.9;
   letter-spacing: 0.02em;
@@ -3343,20 +3344,35 @@ html.a11y-reduce-motion *::after {
 .sidebar-row.is-drop-target { background: var(--companion-soft); box-shadow: inset 0 2px 0 var(--companion); }
 @media (prefers-reduced-motion: reduce) { .ui-button, .ui-icon-button { transition: none; } }
 
-/* Secondary composer controls belong below the input, with room to wrap. */
-.composer-secondary { display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.25rem 0.5rem;min-width:0;padding:0.375rem 0.25rem 0; }
-.composer-secondary-options, .composer-secondary-status { display:flex;align-items:center;flex-wrap:wrap;gap:0.25rem;min-width:0; }
-.composer-secondary-options { flex:1 1 12rem; }
-.composer-secondary-options .model-slot { min-width:0;flex:1 1 8rem;max-width:18rem; }
-.composer-secondary-options .model-trigger { max-width:100%; }
-.composer-secondary-status { margin-left:auto; }
-.composer-bar { flex-wrap:wrap; }
-.composer-bar-leading { min-width:0; }
-.composer-bar-trailing { margin-left:auto; }
+/* Screenshot reference: inline controls and one inset context strip. */
+.composer-meta-item { display:flex;align-items:center;min-width:0;padding-inline-start:0.5rem;margin-inline-start:0.125rem;border-inline-start:1px solid var(--border); }
+.composer-meta-item.is-reasoning:not(:has(.thinking-trigger)) { display:none; }
+.composer-bar .model-slot { min-width:4rem;max-width:14rem;flex:0 1 11rem; }
+.composer-bar .model-trigger { height:1.75rem;padding-inline:0.375rem; }
+.composer-bar .trigger-label { font-size:var(--text-xs);font-weight:400; }
+.composer-secondary { display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.25rem 0.5rem;min-width:0;margin:-1px 0.75rem 0;padding:0.375rem 0.625rem;border:1px solid var(--border-subtle);border-radius:0 0 var(--radius-lg) var(--radius-lg);background:var(--composer-surface);font-size:var(--text-xs);color:var(--muted-foreground); }
+.composer-secondary-status { display:flex;align-items:center;flex-wrap:wrap;gap:0.375rem;min-width:0;margin-left:auto; }
+.composer-checkout { display:inline-flex;align-items:center;gap:0.375rem;min-width:0; }
+.composer-checkout svg { width:0.75rem;height:0.75rem;flex-shrink:0; }
+.composer-checkout { flex:0 1 auto; }
+.composer-checkout span { overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
+.composer-secondary-status { flex-wrap:nowrap; }
+/* Narrow ladder: dividers tighten, then the secondary controls (thinking,
+   mode) fold into their icons, and the model name takes whatever they free —
+   it is the one label worth reading, so it is never capped short of the room
+   left. Nothing wraps under the bar. */
+@container composer (max-width:620px) { .composer-bar .model-slot { max-width:10rem; } }
+@container composer (max-width:480px) {
+  .composer-meta-item { padding-inline-start:0.25rem;margin-inline-start:0; }
+  .composer-bar .model-slot { min-width:3rem;max-width:none;flex:1 1 auto; }
+  .composer-bar .model-trigger { max-width:100%; }
+}
+@container composer (max-width:380px) {
+  .composer-meta-item { border-inline-start:0;padding-inline-start:0; }
+}
 .message-action-bar { flex-wrap:wrap;max-width:100%;min-width:0; }
 .user-message-stack { width:100%;min-width:0; }
 .prompt-actions { isolation:isolate; }
-@media (max-width:640px) { .composer-secondary { padding-inline:0; } }
 
 /* ─── Title bar buttons ──────────────────────────────────────────────────── */
 /*

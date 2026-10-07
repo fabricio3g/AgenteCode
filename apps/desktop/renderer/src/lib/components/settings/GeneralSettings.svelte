@@ -39,7 +39,6 @@
   <SettingsSection title={$t('generalSettings.profile')}>
     <SettingsRow
       label={$t('generalSettings.yourName')}
-      description={$t('generalSettings.shownOnWelcome')}
       htmlFor="profile-name"
     >
       <Input
@@ -53,7 +52,6 @@
 
     <SettingsRow
       label={$t('generalSettings.language')}
-      description={$t('generalSettings.languageDesc')}
       htmlFor="interface-language"
     >
       <Select
@@ -90,7 +88,6 @@
   <SettingsSection title={$t('generalSettings.appearance')}>
     <SettingsRow
       label={$t('generalSettings.theme')}
-      description={$t('generalSettings.themeDesc')}
       control="auto"
     >
       <SegmentedControl

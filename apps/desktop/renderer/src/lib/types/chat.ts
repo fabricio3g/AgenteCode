@@ -850,6 +850,8 @@ export interface ChatSession {
   greetingIndex?: number;
   /** Roleplay: per-session settings (roster, sampling, author note). */
   roleplay?: RoleplaySettings | null;
+  /** Where the conversation started: the browser extension's chat panel. */
+  origin?: 'browser';
   messages: ChatMessage[];
 }
 

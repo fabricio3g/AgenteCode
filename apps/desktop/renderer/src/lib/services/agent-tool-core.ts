@@ -142,26 +142,37 @@ export async function handleFetchUrl(params: {
 export async function handleQueryKnowledge(params: {
   args: Record<string, unknown>;
   ctx: ToolContext;
-  queryDocuments: (args: { query: string; chat_id: string; top_k: number }) => Promise<{ results: Array<{ chunk: { text: string }; score: number }>; context?: string }>;
+  queryDocuments: (args: { query: string; chat_id: string; top_k: number; scope?: string; file_type?: string; files?: string[] }) => Promise<{
+    results: Array<{ ref?: number; chunk: { text: string }; score: number; citation?: string }>;
+    context?: string;
+    retrieval?: string;
+    notice?: string;
+  }>;
   ok: (output: unknown, extra?: Record<string, unknown>) => ToolResult;
   failFromError: (err: unknown, note?: string) => ToolResult;
 }): Promise<ToolResult> {
   try {
-    // No tight token budget on attached knowledge — return full chunks (hard safety only).
+    // The main process clips chunks and enforces the context budget; results only
+    // carry the citation so the model can name the source next to each `[n]`.
     const topK = Math.min(Math.max(Number(params.args.topK) || 16, 1), 40);
+    const scope = String(params.args.scope || '').toLowerCase() === 'library' ? 'library' : 'chat';
     const result = await params.queryDocuments({
       query: String(params.args.query || ''),
       chat_id: params.ctx.chatId,
-      top_k: topK
+      top_k: topK,
+      scope,
+      file_type: params.args.file_type ? String(params.args.file_type) : undefined,
+      files: Array.isArray(params.args.files) ? params.args.files.map((entry) => String(entry)) : undefined
     });
-    const MAX_CHUNK = 4000;
-    const MAX_CONTEXT = 120_000;
     return params.ok({
-      results: result.results.map((entry) => ({
-        text: String(entry.chunk.text || '').slice(0, MAX_CHUNK),
+      results: result.results.map((entry, index) => ({
+        ref: entry.ref ?? index + 1,
+        citation: entry.citation,
         score: entry.score
       })),
-      context: result.context ? String(result.context).slice(0, MAX_CONTEXT) : undefined
+      context: result.context || undefined,
+      retrieval: result.retrieval,
+      notice: result.notice
     });
   } catch (err: unknown) {
     return params.failFromError(err);

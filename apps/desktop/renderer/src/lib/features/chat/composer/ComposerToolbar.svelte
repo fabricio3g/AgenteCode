@@ -12,7 +12,6 @@
   import { t } from 'svelte-i18n';
   import { appStore } from '$lib/stores/app.svelte';
   import { copy, say } from '$lib/copy';
-  import ContextUsageRing from './ContextUsageRing.svelte';
   import SendButton from '$lib/features/shared/composer/SendButton.svelte';
   import type { Dictation } from './use-dictation.svelte';
 
@@ -27,10 +26,6 @@
 
   let { dictation, generating, sendDisabled, oncall, onsubmit, onstop }: Props = $props();
 
-  const contextBudget = $derived(appStore.contextBudget);
-  // An empty ring reads as a broken control, so it only appears once there is
-  // actual context to report.
-  const showContextRing = $derived(!!contextBudget && (contextBudget.usedTokens ?? 0) > 0);
   const hasDraft = $derived(!!appStore.composer.trim());
 
   const micTitle = $derived(
@@ -45,20 +40,6 @@
 </script>
 
 <div class="composer-bar-trailing">
-  {#if showContextRing && contextBudget}
-    <ContextUsageRing
-      usedTokens={contextBudget.usedTokens ?? 0}
-      maxTokens={contextBudget.maxContext ?? Number(appStore.config.llm?.local?.context_length || 4096)}
-      reservedTokens={contextBudget.reservedForCompletion ?? 0}
-      promptCostPerMillionUsd={contextBudget.promptCostPerMillionUsd}
-      completionCostPerMillionUsd={contextBudget.completionCostPerMillionUsd}
-      estimatedInputCostUsd={contextBudget.estimatedInputCostUsd}
-      remaining={contextBudget.remaining}
-      estimated={contextBudget.estimated}
-      usagePercent={contextBudget.usagePercent}
-    />
-  {/if}
-
   <div class="mic-control">
     <button
       type="button"

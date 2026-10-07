@@ -5,6 +5,7 @@ use agente_core::config::AppConfig;
 use agente_tui::App;
 
 mod attach;
+mod bridge_cli;
 mod logging;
 mod telegram_cli;
 
@@ -102,6 +103,13 @@ enum Command {
         /// Token of the remote server.
         #[arg(long, global = true, env = "AGENTE_TOKEN", hide_env_values = true)]
         token: Option<String>,
+    },
+    /// Your real browser and your Google Docs/Sheets/Drive as agent tools.
+    /// Bare `agente bridge` is the MCP server a session spawns; run
+    /// `agente bridge install` once to register it.
+    Bridge {
+        #[command(subcommand)]
+        action: Option<bridge_cli::BridgeAction>,
     },
     /// Join a live session, or a bot's chat, on a running `agente serve`:
     /// its turns stream here and what you type is sent to it.
@@ -250,6 +258,10 @@ fn main() -> anyhow::Result<()> {
         let server = std::sync::Arc::new(agente_tui::web_inspector::InspectorServer::new());
         runtime.block_on(server.run(cli.inspect_port))?;
         return Ok(());
+    }
+
+    if let Some(Command::Bridge { action }) = cli.command {
+        return bridge_cli::run(action);
     }
 
     if let Some(Command::Attach {

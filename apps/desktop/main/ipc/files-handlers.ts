@@ -1,0 +1,54 @@
+import type { IpcMain } from 'electron';
+import { storedPathIn } from '../attachment-store.ts';
+
+type StoredFileRow = { hash: string; storedPath?: string | null; name?: string } | null;
+
+type FilesHandlerDeps = {
+  ipcMain: IpcMain;
+  listFiles: () => unknown;
+  getFile: (hash: string) => StoredFileRow;
+  listFileRefs: (hash: string) => unknown;
+  setFilePinned: (hash: string, pinned: boolean) => unknown;
+  deleteFile: (hash: string) => unknown;
+  fileStats: () => unknown;
+  /** Electron's `shell.trashItem`: the OS trash, never a hard delete. */
+  trashItem: (path: string) => Promise<void>;
+};
+
+export function registerFilesHandlers({
+  ipcMain,
+  listFiles,
+  getFile,
+  listFileRefs,
+  setFilePinned,
+  deleteFile,
+  fileStats,
+  trashItem,
+}: FilesHandlerDeps): void {
+  ipcMain.handle('files_list', () => listFiles());
+  ipcMain.handle('files_get', (_e, { hash }) => getFile(hash));
+  ipcMain.handle('files_refs', (_e, { hash }) => listFileRefs(hash));
+  ipcMain.handle('files_pin', (_e, { hash, pinned }) => setFilePinned(hash, !!pinned));
+  ipcMain.handle('files_stats', () => fileStats());
+
+  /**
+   * Moves a stored file to the OS trash and forgets its registry row. Only paths
+   * inside the attachment store are trashed; a row pointing anywhere else (a
+   * generated document, say) just leaves the registry, because that file belongs
+   * to its project and is deleted from there.
+   */
+  ipcMain.handle('files_trash', async (_e, { hash }) => {
+    const file = getFile(hash);
+    if (!file) return { ok: false, error: 'unknown file' };
+    const stored = storedPathIn(String(file.storedPath || ''));
+    if (stored) {
+      try {
+        await trashItem(stored);
+      } catch (err: unknown) {
+        return { ok: false, error: err instanceof Error ? err.message : String(err) };
+      }
+    }
+    deleteFile(hash);
+    return { ok: true };
+  });
+}

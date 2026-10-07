@@ -196,7 +196,8 @@ app.on('before-quit', async event => {
   try { await flushWindowTheme(); } catch (error) { console.warn('[window theme] shutdown:', error); }
   try { await chatDatabase.close(); } catch (error) { console.warn('[database] shutdown:', error); }
   try {
-    const { disposeAllAgenteSessions, disposeCodeWorkspace } = await import('./ipc-handlers.js');
+    const { disposeAllAgenteSessions, disposeCodeWorkspace, stopBrowserChat } = await import('./ipc-handlers.js');
+    stopBrowserChat();
     disposeAllAgenteSessions();
     disposeCodeWorkspace();
   } catch { /* ignore cleanup errors */ }

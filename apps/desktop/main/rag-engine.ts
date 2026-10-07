@@ -6,11 +6,15 @@ import { getEmbedding, getEmbeddings } from './embedding-client.ts';
 import { rerankChunks } from './reranker.ts';
 import { vectorStore } from './vector-store.ts';
 import { loadConfig } from './config.ts';
+import { storeAttachmentFile } from './attachment-store.ts';
 import { convertFileToMarkdown } from './document-markdown.ts';
 import { ensureRagEmbeddingRuntime } from './rag/embedding-runtime.ts';
+import { chunkMarkdown, searchableText } from './rag/chunking.ts';
+import { Bm25, blendScores, buildContext, citationOf, selectDiverse, type Candidate } from './rag/ranking.ts';
 import {
   saveRagDocument, listRagDocumentsDb, deleteRagDocumentDb,
-  deleteRagDocumentsByChat
+  deleteRagDocumentsByChat, upsertFileRecord, getFileRecord, getFileRecordByDocId,
+  listFileRecords, linkFileRef, setFileStatus
 } from './chat-db.ts';
 import { createLogger } from './utils/logger.ts';
 
@@ -27,6 +31,12 @@ async function ensureVectorStore(): Promise<void> {
   try {
     await vectorStore.init();
     vectorStoreReady = true;
+    // The store used to keep one table per chat. Its rows move into the shared
+    // table once, keyed by the chat ids the JSON store knows: the old table name
+    // is a lossy transform of the id and cannot be turned back into it.
+    ensureStoreLoaded();
+    const migrated = await vectorStore.migrateLegacyTables([...chatDocuments.keys()]).catch(() => 0);
+    if (migrated) log.info(`Moved ${migrated} per-chat vector table(s) into ${'agente_chunks'}`);
   } catch (err: unknown) {
     log.warn('LanceDB init failed, falling back to JSON store:', toErrorMessage(err));
   }
@@ -42,6 +52,42 @@ const queryEmbeddingCache = new Map<string, QueryCacheEntry>();
 const QUERY_EMBEDDING_CACHE_TTL_MS = 2 * 60 * 1000;
 const QUERY_EMBEDDING_CACHE_MAX = 200;
 const SMALL_DATASET_FAST_PATH_CHUNKS = 200;
+const DEFAULT_CHUNK_SIZE = 900;
+/** Hard ceilings on what a query hands the model, whatever top_k asks for. */
+const MAX_CONTEXT_CHARS = 120_000;
+const MAX_CHUNK_CHARS = 4_000;
+
+/** Registry kind by extension; the parser refines it once the text is out. */
+const FILE_KINDS: Record<string, string> = {
+  '.pdf': 'pdf', '.docx': 'docx', '.xlsx': 'xlsx', '.xlsm': 'xlsx', '.pptx': 'pptx',
+  '.csv': 'csv', '.tsv': 'csv', '.html': 'html', '.htm': 'html',
+  '.md': 'markdown', '.markdown': 'markdown', '.txt': 'text', '.json': 'json', '.jsonl': 'json'
+};
+
+/**
+ * The name a file is shown under.
+ *
+ * The composer writes attachments to a temp file named `<timestamp>_<original>`,
+ * so the timestamp is an implementation detail of the upload path, not part of
+ * the file's name — citations used to read `1759801234567_report.pdf`.
+ */
+function displayName(filePath: string, given?: string): string {
+  const name = String(given || '').trim() || path.basename(filePath);
+  return name.replace(/^\d{10,}_/, '');
+}
+
+function kindForPath(filePath: string): string {
+  return FILE_KINDS[path.extname(filePath).toLowerCase()] || 'file';
+}
+
+/** The loaded copy of a document, whichever chat first indexed it. */
+function findStoredDocument(docId: string): { chatId: string; doc: Record<string, unknown>; chunks: Array<Record<string, unknown>> } | null {
+  for (const [chatId, store] of chatDocuments) {
+    const entry = store.get(docId);
+    if (entry) return { chatId, doc: entry.doc, chunks: entry.chunks };
+  }
+  return null;
+}
 
 function getRagRuntimeSettings() {
   try {
@@ -92,9 +138,11 @@ async function getCachedQueryEmbedding(query: string, chatId: string): Promise<n
   return embedding;
 }
 
-async function indexRecordEmbeddings(chatId: string, record: { doc: Record<string, unknown>; chunks: Array<{ text: string }> }): Promise<void> {
-  const chunkTexts = record.chunks.map((chunk) => chunk.text).filter((text) => text.trim());
-  if (chunkTexts.length === 0) return;
+async function indexRecordEmbeddings(chatId: string, record: { doc: Record<string, unknown>; chunks: Array<{ text: string; heading?: string }> }): Promise<void> {
+  if (!record.chunks.some((chunk) => searchableText(chunk).trim())) return;
+  // The heading trail is embedded with the text: "Page 3 › Results" is context the
+  // chunk body alone does not carry. Order must match `record.chunks` for addChunks.
+  const chunkTexts = record.chunks.map((chunk) => searchableText(chunk));
 
   await ensureRagEmbeddingRuntime().catch(() => {});
 
@@ -116,128 +164,6 @@ async function indexRecordEmbeddings(chatId: string, record: { doc: Record<strin
 function getStorePath() {
   const { cacheRoot } = getAppPaths();
   return path.join(cacheRoot, 'rag-store-v2.json');
-}
-
-function chunkTextSemantic(text: string, chunkSize = 512): string[] {
-  const targetSize = Math.max(128, Number(chunkSize) || 512);
-
-  // Phase 1: Split on structural boundaries
-  const structuralParts = splitByStructure(text);
-
-  // Phase 2: Split each structural part on paragraph boundaries
-  const paragraphs = [];
-  for (const part of structuralParts) {
-    if (part.length <= targetSize) {
-      paragraphs.push(part);
-    } else {
-      const subParts = part.split(/\n\n+/).filter(p => p.trim());
-      for (const sp of subParts) {
-        paragraphs.push(sp.trim());
-      }
-    }
-  }
-
-  // Phase 3: Merge paragraphs up to target chunk size
-  const chunks = [];
-  let current = '';
-  for (const para of paragraphs) {
-    if (!para.trim()) continue;
-    if (current.length + para.length + 2 > targetSize && current.length > 0) {
-      chunks.push(current.trim());
-      current = para;
-    } else {
-      current = current ? `${current}\n\n${para}` : para;
-    }
-  }
-  if (current.trim()) chunks.push(current.trim());
-
-  // Phase 4: Split any remaining oversized chunks on sentence boundaries
-  const finalChunks = [];
-  for (const chunk of chunks) {
-    if (chunk.length <= targetSize) {
-      finalChunks.push(chunk);
-    } else {
-      const sentences = chunk.split(/(?<=[.!?])\s+/);
-      let subChunk = '';
-      for (const sentence of sentences) {
-        if (subChunk.length + sentence.length + 1 > targetSize && subChunk.length > 0) {
-          finalChunks.push(subChunk.trim());
-          subChunk = sentence;
-        } else {
-          subChunk = subChunk ? `${subChunk} ${sentence}` : sentence;
-        }
-      }
-      if (subChunk.trim()) finalChunks.push(subChunk.trim());
-    }
-  }
-
-  return finalChunks.length > 0 ? finalChunks : [text.slice(0, targetSize)];
-}
-
-function splitByStructure(text: string): string[] {
-  const parts = [];
-  let current = '';
-  let inCodeBlock = false;
-
-  const lines = text.split('\n');
-  for (const line of lines) {
-    if (line.trimStart().startsWith('```')) {
-      inCodeBlock = !inCodeBlock;
-      current += (current ? '\n' : '') + line;
-      if (!inCodeBlock) {
-        parts.push(current.trim());
-        current = '';
-      }
-      continue;
-    }
-
-    if (inCodeBlock) {
-      current += (current ? '\n' : '') + line;
-      continue;
-    }
-
-    const isHeader = /^#{1,6}\s/.test(line.trimStart());
-    const isHr = /^(---+|\*\*\*+|___+)\s*$/.test(line.trim());
-
-    if (isHeader || isHr) {
-      if (current.trim()) parts.push(current.trim());
-      current = line;
-    } else {
-      current += (current ? '\n' : '') + line;
-    }
-  }
-
-  if (current.trim()) parts.push(current.trim());
-  return parts.filter(p => p.length > 0);
-}
-
-function tokenize(text: string): string[] {
-  return String(text || '').toLowerCase().match(/[a-z0-9]+/g) || [];
-}
-
-function scoreChunk(queryTokens: string[], chunkText: string): number {
-  if (!queryTokens.length) return 0;
-  const tokens = tokenize(chunkText);
-  if (!tokens.length) return 0;
-
-  const counts = new Map<string, number>();
-  for (const token of tokens) {
-    counts.set(token, (counts.get(token) || 0) + 1);
-  }
-
-  let matched = 0;
-  let weighted = 0;
-  for (const token of queryTokens) {
-    const count = counts.get(token) || 0;
-    if (!count) continue;
-    matched += 1;
-    weighted += 1 + Math.log2(count + 1) * 0.3;
-  }
-
-  const coverage = matched / queryTokens.length;
-  const density = weighted / Math.sqrt(tokens.length + 4);
-  const phrase = queryTokens.length > 1 && String(chunkText || '').toLowerCase().includes(queryTokens.join(' ')) ? 1.5 : 0;
-  return (coverage * 3) + (density * 2) + phrase;
 }
 
 function requireChatId(chatId: string | unknown): string {
@@ -301,12 +227,16 @@ function hydrateStore(raw: unknown): void {
         },
         chunks: Array.isArray(docEntry?.chunks)
           ? docEntry.chunks.map((chunk: unknown, index: number) => {
-              const c = chunk as { id?: string; doc_id?: string; text?: string; index?: number };
+              const c = chunk as { id?: string; doc_id?: string; text?: string; index?: number; heading?: string; line_start?: number; line_end?: number };
               return {
                 id: String(c.id || `${doc.id}_${index}`),
                 doc_id: String(c.doc_id || doc.id),
                 text: String(c.text || ''),
-                index: Number.isFinite(c.index) ? Number(c.index) : index
+                index: Number.isFinite(c.index) ? Number(c.index) : index,
+                // Chunks indexed before citations existed carry none of these.
+                heading: String(c.heading || ''),
+                line_start: Number(c.line_start) || 0,
+                line_end: Number(c.line_end) || 0
               };
             })
           : []
@@ -364,7 +294,7 @@ function makeDocumentFingerprint(source: string, text: string, fileType: string)
 function buildDocumentRecord({ source, text, chat_id, file_type, chunk_size }: { source: string; text: string; chat_id: string; file_type: string; chunk_size?: number }): { doc: Record<string, unknown>; chunks: Array<Record<string, unknown>> } {
   const chatId = requireChatId(chat_id);
   const normalizedText = String(text || '').trim();
-  const chunks = chunkTextSemantic(normalizedText, chunk_size || 512);
+  const chunks = chunkMarkdown(normalizedText, { size: chunk_size || DEFAULT_CHUNK_SIZE });
   const docId = randomUUID();
   const fingerprint = makeDocumentFingerprint(source, normalizedText, file_type);
   const now = Date.now();
@@ -384,8 +314,11 @@ function buildDocumentRecord({ source, text, chat_id, file_type, chunk_size }: {
     chunks: chunks.map((chunk, index) => ({
       id: `${docId}_${index}`,
       doc_id: docId,
-      text: chunk,
-      index
+      text: chunk.text,
+      index,
+      heading: chunk.heading,
+      line_start: chunk.lineStart,
+      line_end: chunk.lineEnd
     }))
   };
 }
@@ -395,6 +328,15 @@ async function ingestTextInternal({ source, text, chat_id, file_type, chunk_size
   const chatId = requireChatId(chat_id);
   const store = ensureChatStore(chatId);
   const record = buildDocumentRecord({ source, text, chat_id: chatId, file_type, chunk_size });
+
+  // The same file (same name, type and text) dropped into the chat again is the
+  // document already indexed — inserting it twice doubled its chunks in every result.
+  for (const existing of store.values()) {
+    if (existing.doc.fingerprint && existing.doc.fingerprint === record.doc.fingerprint) {
+      return { ...existing.doc, deduplicated: true };
+    }
+  }
+
   store.set(record.doc.id as string, record);
   persistStore();
 
@@ -417,17 +359,89 @@ async function ingestTextInternal({ source, text, chat_id, file_type, chunk_size
   return record.doc;
 }
 
-export async function ingestDocument({ file_path, chat_id, chunk_size }: { file_path: string; chat_id: string; chunk_size?: number }): Promise<Record<string, unknown>> {
+export async function ingestDocument({ file_path, chat_id, message_id, name, chunk_size }: { file_path: string; chat_id: string; message_id?: string; name?: string; chunk_size?: number }): Promise<Record<string, unknown>> {
   const chatId = requireChatId(chat_id);
-  const fileName = path.basename(file_path);
-  const { text, fileType } = await extractText(file_path);
-  return ingestTextInternal({
+  const fileName = displayName(file_path, name);
+  // Kept in this app's content-addressed store, so the file outlives the temp
+  // copy the composer wrote and reveal/re-index still have something to point at.
+  const { hash, storedPath, bytes } = storeAttachmentFile(file_path);
+
+  // Already indexed somewhere on this machine: reuse the parsed chunks, and the
+  // vectors too when the first ingest got that far. Re-parsing a 200-page PDF
+  // because it was attached in a second chat is the cost this avoids.
+  const known = getFileRecord(hash);
+  if (known?.ragDocId) {
+    const reused = await adoptStoredDocument(String(known.ragDocId), chatId);
+    if (reused) {
+      upsertFileRecord({ hash, name: fileName, bytes, kind: known.kind, storedPath });
+      linkFileRef({ hash, chatId, messageId: message_id || '' });
+      return { ...reused, hash, stored_path: storedPath };
+    }
+  }
+
+  let extracted: { text: string; fileType: string };
+  try {
+    extracted = await extractText(storedPath);
+  } catch (err: unknown) {
+    upsertFileRecord({
+      hash, name: fileName, bytes, kind: kindForPath(filePath),
+      storedPath, extractStatus: 'failed'
+    });
+    throw err;
+  }
+
+  upsertFileRecord({
+    hash, name: fileName, bytes, kind: extracted.fileType || kindForPath(filePath),
+    storedPath
+  });
+
+  const doc = await ingestTextInternal({
     source: fileName,
-    text,
+    text: extracted.text,
     chat_id: chatId,
-    file_type: fileType,
+    file_type: extracted.fileType,
     chunk_size
   });
+
+  setFileStatus(hash, {
+    extractStatus: 'ready',
+    extractedChars: extracted.text.length,
+    ragDocId: String(doc.id)
+  });
+  linkFileRef({ hash, chatId, messageId: message_id || '' });
+  return { ...doc, hash, stored_path: storedPath };
+}
+
+/**
+ * Points a second chat at a document that is already indexed, and embeds it only
+ * if the first ingest never got vectors (the embedding model was not running).
+ * The vectors are stored per document, so one copy serves every chat.
+ */
+async function adoptStoredDocument(docId: string, chatId: string): Promise<Record<string, unknown> | null> {
+  ensureStoreLoaded();
+  const found = findStoredDocument(docId);
+  if (!found) return null;
+
+  const store = ensureChatStore(chatId);
+  if (!store.has(docId)) {
+    store.set(docId, { doc: { ...found.doc, chat_id: chatId }, chunks: found.chunks });
+    persistStore();
+  }
+
+  if (vectorStoreReady) {
+    const hasVectors = await vectorStore.hasVectors(docId).catch(() => true);
+    if (!hasVectors) {
+      const indexable = found.chunks.filter((chunk) => searchableText(chunk as { text: string; heading?: string }).trim()) as Array<{ id: string; text: string; index: number; heading?: string; line_start?: number; line_end?: number }>;
+      const embeddings = await getEmbeddings(indexable.map((chunk) => searchableText(chunk))).catch(() => null);
+      if (embeddings) {
+        await vectorStore.addChunks(chatId, found.doc, indexable, embeddings).catch((err: unknown) => {
+          log.warn('Re-embedding a shared document failed:', toErrorMessage(err));
+        });
+      }
+    }
+  }
+
+  return { ...found.doc, chat_id: chatId, reused: true };
 }
 
 export async function ingestText({ source, text, chat_id, file_type, chunk_size }: { source: string; text: string; chat_id: string; file_type: string; chunk_size?: number }): Promise<Record<string, unknown>> {
@@ -440,171 +454,162 @@ export async function ingestTextFast({ source, text, chat_id, file_type, chunk_s
   return ingestTextInternal({ source, text, chat_id, file_type, chunk_size, background: true });
 }
 
-export async function queryDocuments({ query, chat_id, top_k }: { query: string; chat_id: string; top_k?: number }): Promise<Record<string, unknown>> {
+export async function queryDocuments({ query, chat_id, top_k, scope, files, file_type }: { query: string; chat_id: string; top_k?: number; scope?: string; files?: string[]; file_type?: string }): Promise<Record<string, unknown>> {
   requireChatId(chat_id);
-  return queryDocumentsHybrid({ query, chat_id, top_k });
+  return queryDocumentsHybrid({ query, chat_id, top_k, scope, files, file_type });
 }
 
-async function queryDocumentsHybrid({ query, chat_id, top_k }: { query: string; chat_id: string; top_k?: number }): Promise<Record<string, unknown>> {
+type StoredChunk = { id: string; doc_id: string; text: string; index: number; heading?: string; line_start?: number; line_end?: number };
+type ChunkHit = { chunk: StoredChunk; doc: Record<string, unknown> };
+
+async function queryDocumentsHybrid({ query, chat_id, top_k, scope, files, file_type }: { query: string; chat_id: string; top_k?: number; scope?: string; files?: string[]; file_type?: string }): Promise<Record<string, unknown>> {
   const chatId = requireChatId(chat_id);
   await ensureVectorStore().catch(() => {});
   await ensureRagEmbeddingRuntime().catch(() => {});
   ensureStoreLoaded();
-  const store = ensureChatStore(chatId);
   const settings = getRagRuntimeSettings();
   const k = Math.max(1, Number(top_k) || 5);
-  const queryTokens = tokenize(query);
-  const allChunks = [];
 
-  // Gather all chunks from in-memory store
-  for (const { doc, chunks } of store.values()) {
-    for (const chunk of chunks) {
-      allChunks.push({ chunk, doc, text: chunk.text });
+  // `chat` is this conversation's files plus anything pinned to the project;
+  // `library` is every file indexed on this machine. A pinned file is one the
+  // user marked as shared knowledge, so it answers in every chat.
+  const libraryScope = String(scope || '').toLowerCase() === 'library';
+  const pinnedDocIds = new Set<string>();
+  try {
+    for (const file of listFileRecords()) {
+      if (file.pinned && file.ragDocId) pinnedDocIds.add(String(file.ragDocId));
     }
+  } catch {
+    // The registry is an optimisation here; without it the chat scope still works.
   }
-
-  if (!allChunks.length) {
-    return { results: [], context: '' };
-  }
-
-  // Fast path for smaller datasets: keyword scoring only
-  if (allChunks.length <= SMALL_DATASET_FAST_PATH_CHUNKS) {
-    const scored = allChunks.map((entry) => ({
-      chunk: entry.chunk,
-      doc: entry.doc,
-      score: scoreChunk(queryTokens, entry.text) + scoreChunk(queryTokens, entry.doc.source) * 0.5
-    }));
-    scored.sort((left, right) => right.score - left.score);
-    const perDocCount = new Map();
-    const selected = [];
-    for (const entry of scored) {
-      const docId = entry.chunk.doc_id;
-      const seenCount = perDocCount.get(docId) || 0;
-      if (seenCount >= 2) continue;
-      perDocCount.set(docId, seenCount + 1);
-      selected.push(entry);
-      if (selected.length >= k) break;
-    }
-
-    return {
-      results: selected.map((entry) => ({
-        chunk: entry.chunk,
-        score: entry.score,
-        document: entry.doc
-      })),
-      context: selected
-        .map((entry) => {
-          const header = entry.doc?.source ? `### ${entry.doc.source}` : '### Document';
-          return [header, entry.chunk.text].join('\n');
-        })
-        .join('\n\n---\n\n')
-    };
-  }
-
-  // Try LanceDB vector search first
-  let vectorResults = [];
-  const queryEmbedding = await getCachedQueryEmbedding(query, chatId);
-  if (vectorStoreReady && queryEmbedding) {
+  // `files` comes from a model, so it accepts a file name as readily as a hash.
+  const wanted = Array.isArray(files) ? files.map((entry) => String(entry)).filter(Boolean) : [];
+  let wantedDocIds: Set<string> | null = null;
+  if (wanted.length) {
+    wantedDocIds = new Set<string>();
     try {
-      vectorResults = await vectorStore.search(chatId, queryEmbedding, Math.max(k * 2, 8));
-    } catch (err: unknown) {
-      log.warn('LanceDB search failed, using in-memory scoring:', toErrorMessage(err));
-    }
-  }
-
-  // If LanceDB returned results, use them for vector scoring
-  const scored = [];
-  const vectorResultMap = new Map();
-  for (const vr of vectorResults) {
-    vectorResultMap.set(vr.id, vr._distance != null ? 1 - vr._distance : 0);
-  }
-
-  // If vector results are available, score only that candidate set for speed.
-  if (vectorResultMap.size > 0) {
-    const chunkById = new Map(allChunks.map((entry) => [entry.chunk.id, entry]));
-    for (const [chunkId, vectorScore] of vectorResultMap.entries()) {
-      const entry = chunkById.get(chunkId);
-      if (!entry) continue;
-      const keywordScore = scoreChunk(queryTokens, entry.text) + scoreChunk(queryTokens, entry.doc.source) * 0.5;
-      const hybridScore = (keywordScore * 0.25) + (vectorScore * 10 * 0.75);
-      scored.push({
-        chunk: entry.chunk,
-        doc: entry.doc,
-        text: entry.text,
-        score: hybridScore,
-        keywordScore,
-        vectorScore
-      });
-    }
-  }
-
-  // Fallback path when vector retrieval is unavailable.
-  if (!scored.length) {
-    for (let i = 0; i < allChunks.length; i++) {
-      const entry = allChunks[i];
-      const keywordScore = scoreChunk(queryTokens, entry.text) + scoreChunk(queryTokens, entry.doc.source) * 0.5;
-      scored.push({
-        chunk: entry.chunk,
-        doc: entry.doc,
-        text: entry.text,
-        score: keywordScore,
-        keywordScore,
-        vectorScore: 0
-      });
-    }
-  }
-
-  scored.sort((left, right) => right.score - left.score);
-
-  // Rerank top candidates if reranker available
-  const topCandidates = scored.slice(0, Math.min(Math.max(k * 2, 6), scored.length));
-  let finalRanked = topCandidates;
-  if (settings.rerank && topCandidates.length > 1) {
-    try {
-      const reranked = await rerankChunks(query, topCandidates.map(c => c.text), Math.min(k, topCandidates.length));
-      if (reranked.length > 0 && reranked[0].rerankScore != null) {
-        const rerankMap = new Map();
-        for (const r of reranked) {
-          rerankMap.set(r.text, r.rerankScore);
-        }
-        for (const entry of topCandidates) {
-          if (rerankMap.has(entry.text)) {
-            entry.rerankScore = rerankMap.get(entry.text);
-          }
-        }
-        finalRanked = topCandidates.sort((a, b) => {
-          if (a.rerankScore != null && b.rerankScore != null) return b.rerankScore - a.rerankScore;
-          return b.score - a.score;
-        });
+      const records = listFileRecords();
+      const byHash = new Map(records.map((file) => [String(file.hash), file]));
+      const byName = new Map(records.map((file) => [String(file.name).toLowerCase(), file]));
+      for (const entry of wanted) {
+        const file = byHash.get(entry) || byName.get(entry.toLowerCase());
+        if (file?.ragDocId) wantedDocIds.add(String(file.ragDocId));
       }
     } catch {
-    // Reranker unavailable, use hybrid scores
+      // Without the registry a name filter cannot be resolved; the other
+      // filters and the scope still apply.
+    }
   }
+  const wantedType = file_type ? String(file_type) : '';
+
+  const hits: ChunkHit[] = [];
+  const seenChunks = new Set<string>();
+  for (const [docChatId, store] of chatDocuments) {
+    for (const { doc, chunks } of store.values()) {
+      const docId = String(doc.id);
+      if (wantedDocIds && !wantedDocIds.has(docId)) continue;
+      if (wantedType && String(doc.file_type || '') !== wantedType) continue;
+      if (!libraryScope && docChatId !== chatId && !pinnedDocIds.has(docId)) continue;
+      for (const chunk of chunks) {
+        // A document adopted by a second chat keeps the same chunk ids; without
+        // this it would be scored twice and crowd out other sources.
+        const chunkId = String((chunk as { id?: string }).id || '');
+        if (chunkId) {
+          if (seenChunks.has(chunkId)) continue;
+          seenChunks.add(chunkId);
+        }
+        hits.push({ chunk: chunk as unknown as StoredChunk, doc });
+      }
+    }
+  }
+  if (!hits.length) {
+    return { results: [], context: '', retrieval: 'none' };
   }
 
-  const perDocCount = new Map();
-  const selected = [];
-  for (const entry of finalRanked) {
-    const docId = entry.chunk.doc_id;
-    const seenCount = perDocCount.get(docId) || 0;
-    if (seenCount >= 2) continue;
-    perDocCount.set(docId, seenCount + 1);
-    selected.push(entry);
-    if (selected.length >= k) break;
+  // Keyword evidence for every chunk; BM25 over a few thousand chunks is cheap.
+  const keyword = new Bm25(hits.map((hit) => `${hit.doc.source}\n${searchableText(hit.chunk)}`)).scores(query);
+
+  // Vector evidence only past the small-dataset fast path, and only if the
+  // embedding model actually answered — otherwise say so instead of degrading quietly.
+  const vectorById = new Map<string, number>();
+  let retrieval: 'hybrid' | 'keyword' = 'keyword';
+  let notice: string | undefined;
+  if (hits.length > SMALL_DATASET_FAST_PATH_CHUNKS) {
+    const queryEmbedding = await getCachedQueryEmbedding(query, chatId);
+    if (vectorStoreReady && queryEmbedding) {
+      try {
+        const docIds = [...new Set(hits.map((hit) => String(hit.chunk.doc_id)))];
+        const rows = await vectorStore.search(docIds, queryEmbedding, Math.max(k * 4, 20));
+        for (const row of rows) vectorById.set(String(row.id), row._distance != null ? Math.max(0, 1 - row._distance) : 0);
+        retrieval = 'hybrid';
+      } catch (err: unknown) {
+        log.warn('LanceDB search failed, using keyword scoring:', toErrorMessage(err));
+      }
+    }
+    if (retrieval === 'keyword') {
+      notice = 'Semantic search unavailable (embedding model not installed or not running); results are keyword matches only.';
+    }
   }
+
+  const candidates: Candidate<ChunkHit>[] = hits.map((hit, i) => ({
+    item: hit,
+    docId: String(hit.chunk.doc_id),
+    text: hit.chunk.text,
+    keyword: keyword[i],
+    vector: retrieval === 'hybrid' ? (vectorById.get(hit.chunk.id) ?? 0) : null,
+    score: 0
+  }));
+  blendScores(candidates);
+  candidates.sort((a, b) => b.score - a.score);
+
+  let ranked = candidates;
+  if (settings.rerank) {
+    const top = candidates.slice(0, Math.min(Math.max(k * 2, 6), candidates.length)).filter((c) => c.score > 0);
+    if (top.length > 1) {
+      try {
+        const reranked = await rerankChunks(query, top.map((c) => c.text), Math.min(k, top.length));
+        if (reranked.length > 0 && reranked[0].rerankScore != null) {
+          const byText = new Map(reranked.map((r: { text: string; rerankScore: number }) => [r.text, r.rerankScore]));
+          const maxRerank = Math.max(...reranked.map((r: { rerankScore: number }) => r.rerankScore)) || 1;
+          for (const c of top) if (byText.has(c.text)) c.score = 1 + byText.get(c.text)! / maxRerank;
+          ranked = [...top.sort((a, b) => b.score - a.score), ...candidates.slice(top.length)];
+        }
+      } catch {
+        // Reranker unavailable; keep the blended order.
+      }
+    }
+  }
+
+  let selected = selectDiverse(ranked, k);
+  // Nothing matched ("summarize this"): hand back the opening of each document
+  // rather than an empty answer.
+  if (!selected.length) {
+    selected = candidates
+      .filter((c) => c.item.chunk.index < 2)
+      .sort((a, b) => a.item.chunk.index - b.item.chunk.index)
+      .slice(0, k);
+  }
+
+  const cited = selected.map((c) => ({
+    source: String(c.item.doc.source || 'Document'),
+    heading: c.item.chunk.heading || undefined,
+    lineStart: c.item.chunk.line_start || undefined,
+    lineEnd: c.item.chunk.line_end || undefined,
+    text: c.item.chunk.text
+  }));
+  const { context, included } = buildContext(cited, { maxChars: MAX_CONTEXT_CHARS, maxChunkChars: MAX_CHUNK_CHARS });
 
   return {
-    results: selected.map((entry) => ({
-      chunk: entry.chunk,
-      score: entry.score,
-      document: entry.doc
+    results: selected.slice(0, included).map((c, i) => ({
+      ref: i + 1,
+      chunk: c.item.chunk,
+      score: c.score,
+      document: c.item.doc,
+      citation: citationOf(cited[i])
     })),
-    context: selected
-      .map((entry) => {
-        const header = entry.doc?.source ? `### ${entry.doc.source}` : '### Document';
-        return [header, entry.chunk.text].join('\n');
-      })
-      .join('\n\n---\n\n')
+    context,
+    retrieval,
+    ...(notice ? { notice } : {})
   };
 }
 
@@ -622,12 +627,20 @@ export async function removeRagDocument(docId: string, chatId: string): Promise<
   const removed = store.delete(docId);
   if (removed) {
     persistStore();
-    // Clean up LanceDB
-    if (vectorStoreReady) {
-      try { await vectorStore.deleteDocument(key, docId); } catch {}
+    // The same file can be attached to several chats, and its chunks and vectors
+    // are shared. They only go when the last chat lets go of the document.
+    const stillHeld = [...chatDocuments].some(([otherChat, otherStore]) => otherChat !== key && otherStore.has(docId));
+    if (!stillHeld) {
+      if (vectorStoreReady) {
+        try { await vectorStore.deleteDocument(docId); } catch {}
+      }
+      // Let a later attach of the same file index it from scratch.
+      try {
+        const file = getFileRecordByDocId(docId);
+        if (file) setFileStatus(file.hash, { ragDocId: null });
+      } catch {}
+      try { deleteRagDocumentDb(docId); } catch {}
     }
-    // Clean up SQLite
-    try { deleteRagDocumentDb(docId); } catch {}
   }
   return removed;
 }
@@ -635,14 +648,21 @@ export async function removeRagDocument(docId: string, chatId: string): Promise<
 export async function clearRagDocuments(chatId: string): Promise<boolean> {
   const key = requireChatId(chatId);
   ensureStoreLoaded();
+  const ownDocIds = [...(chatDocuments.get(key)?.keys() || [])];
   const removed = chatDocuments.delete(key);
   if (removed) {
     persistStore();
-    // Clean up LanceDB
-    if (vectorStoreReady) {
-      try { await vectorStore.deleteChat(key); } catch {}
+    const stillHeld = new Set<string>();
+    for (const [otherChat, otherStore] of chatDocuments) {
+      if (otherChat === key) continue;
+      for (const docId of otherStore.keys()) stillHeld.add(docId);
     }
-    // Clean up SQLite
+    if (vectorStoreReady) {
+      for (const docId of ownDocIds) {
+        if (stillHeld.has(docId)) continue;
+        try { await vectorStore.deleteDocument(docId); } catch {}
+      }
+    }
     try { deleteRagDocumentsByChat(key); } catch {}
   }
   return removed;
@@ -679,14 +699,16 @@ async function migrateFromJsonStore() {
   let migrated = 0;
   for (const [chatId, docs] of chatDocuments.entries()) {
     for (const { doc, chunks } of docs.values()) {
-      const chunkTexts = chunks.map(c => c.text).filter(t => t.trim());
-      if (chunkTexts.length === 0) continue;
+      // Embeddings are positional, so the text list and the chunk list must be
+      // the same length — a heading-only chunk still indexes by its heading.
+      const indexable = chunks.filter((chunk) => searchableText(chunk as { text: string; heading?: string }).trim()) as Array<{ id: string; text: string; index: number; heading?: string; line_start?: number; line_end?: number }>;
+      if (!indexable.length) continue;
 
-      const embeddings = await getEmbeddings(chunkTexts).catch(() => null);
+      const embeddings = await getEmbeddings(indexable.map((chunk) => searchableText(chunk))).catch(() => null);
       if (!embeddings) continue;
 
       try {
-        await vectorStore.addChunks(chatId, doc, chunks, embeddings);
+        await vectorStore.addChunks(chatId, doc, indexable, embeddings);
         saveRagDocument(doc);
         migrated++;
       } catch (err: unknown) {

@@ -194,6 +194,43 @@ function migrate(database) {
     );
 
     CREATE INDEX IF NOT EXISTS idx_worlds_updated_at ON worlds(updated_at);
+
+    -- Electron's file registry, keyed by content hash (sha256 hex). The copies
+    -- live in this app's own attachment store (main/attachment-store.ts) — the
+    -- TUI/CLI is a separate front end and the Rust core owns its own store, so
+    -- these rows describe this app's files, not the machine's.
+    -- spec_path/version carry the source spec of generated documents (Phase 4)
+    -- and exist now so the schema never needs a second migration.
+    CREATE TABLE IF NOT EXISTS files (
+      hash TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      mime TEXT,
+      bytes INTEGER NOT NULL DEFAULT 0,
+      kind TEXT NOT NULL DEFAULT 'file',
+      stored_path TEXT,
+      created_at INTEGER NOT NULL,
+      last_used_at INTEGER NOT NULL,
+      extract_status TEXT NOT NULL DEFAULT 'pending',
+      extracted_chars INTEGER NOT NULL DEFAULT 0,
+      rag_doc_id TEXT,
+      pinned INTEGER NOT NULL DEFAULT 0,
+      origin TEXT NOT NULL DEFAULT 'upload',
+      spec_path TEXT,
+      version INTEGER NOT NULL DEFAULT 1
+    );
+
+    -- Which chat (and which message) uses a file. Deliberately no chat FK: a
+    -- generated document can be linked before its chat row exists, and
+    -- deleting a chat must not silently drop the file from the library.
+    CREATE TABLE IF NOT EXISTS file_refs (
+      hash TEXT NOT NULL REFERENCES files(hash) ON DELETE CASCADE,
+      chat_id TEXT NOT NULL,
+      message_id TEXT NOT NULL DEFAULT '',
+      PRIMARY KEY (hash, chat_id, message_id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_file_refs_chat_id ON file_refs(chat_id);
+    CREATE INDEX IF NOT EXISTS idx_file_refs_hash ON file_refs(hash);
   `);
 
   // Migrations for older chat-history.db files.
@@ -227,6 +264,8 @@ function migrate(database) {
   addColumn(database, 'chats', 'world_id', 'TEXT');
   addColumn(database, 'chats', 'greeting_index', 'INTEGER');
   addColumn(database, 'chats', 'roleplay', 'TEXT');
+  // Where a conversation came from: 'browser' for the extension's chat panel.
+  addColumn(database, 'chats', 'origin', 'TEXT');
   addColumn(database, 'messages', 'speaker_id', 'TEXT');
   addColumn(database, 'messages', 'choices', 'TEXT');
   addColumn(database, 'messages', 'props', 'TEXT');
@@ -242,8 +281,8 @@ export function saveChatDraft(chatId: string, draft: string, codeAgent: unknown,
 export function saveChatSession(session) {
   const database = getDb();
   const upsertChat = database.prepare(`
-    INSERT INTO chats (id, title, folder_id, draft, context_mode, code_agent, home_runtime, project_id, workspace, composer_mode, search_mode, reasoning_level, model_selection, pending_prompts, character_id, world_id, persona_id, greeting_index, roleplay, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO chats (id, title, folder_id, draft, context_mode, code_agent, home_runtime, project_id, workspace, composer_mode, search_mode, reasoning_level, model_selection, pending_prompts, character_id, world_id, persona_id, greeting_index, roleplay, origin, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET
       title = excluded.title,
       folder_id = excluded.folder_id,
@@ -263,6 +302,7 @@ export function saveChatSession(session) {
       persona_id = excluded.persona_id,
       greeting_index = excluded.greeting_index,
       roleplay = excluded.roleplay,
+      origin = excluded.origin,
       updated_at = excluded.updated_at
   `);
 
@@ -342,6 +382,7 @@ export function saveChatSession(session) {
       session.personaId || null,
       session.greetingIndex != null ? session.greetingIndex : null,
       stringifyJson(session.roleplay),
+      session.origin || null,
       session.createdAt || Date.now(),
       session.updatedAt || Date.now()
     );
@@ -576,6 +617,7 @@ export function loadAllChats() {
       personaId: chat.persona_id || null,
       greetingIndex: chat.greeting_index != null ? chat.greeting_index : 0,
       roleplay: parseJson(chat.roleplay, null),
+      origin: chat.origin || undefined,
       messages
     };
     return session;
@@ -761,6 +803,10 @@ export function deleteWorld(worldId) {
 export function deleteChat(chatId) {
   const database = getDb();
   database.prepare('DELETE FROM chats WHERE id = ?').run(chatId);
+  // The file itself outlives the chat (it may be attached elsewhere, and the
+  // Files screen still lists it), but this chat no longer holds a reference —
+  // which is what makes an unreferenced file "unused" for cleanup.
+  database.prepare('DELETE FROM file_refs WHERE chat_id = ?').run(chatId);
   for (const id of chatMessageIds.get(chatId) ?? []) messageFingerprints.delete(`${chatId}\0${id}`);
   chatMessageIds.delete(chatId);
 }
@@ -824,4 +870,149 @@ export function deleteRagDocumentDb(docId) {
 export function deleteRagDocumentsByChat(chatId) {
   const database = getDb();
   return database.prepare('DELETE FROM rag_documents WHERE chat_id = ?').run(chatId).changes;
+}
+
+// --- Global file registry ---
+// One row per sha256 (`files`), one row per (file, chat, message) use
+// (`file_refs`). Rows survive the chats that reference them: a file is only
+// "unused" when nothing links it and it is not pinned.
+
+const FILE_COLUMNS = 'hash, name, mime, bytes, kind, stored_path, created_at, last_used_at, extract_status, extracted_chars, rag_doc_id, pinned, origin, spec_path, version';
+
+function fileRecordFromRow(row) {
+  return {
+    hash: row.hash,
+    name: row.name,
+    mime: row.mime || null,
+    bytes: row.bytes || 0,
+    kind: row.kind || 'file',
+    storedPath: row.stored_path || null,
+    createdAt: row.created_at,
+    lastUsedAt: row.last_used_at,
+    extractStatus: row.extract_status || 'pending',
+    extractedChars: row.extracted_chars || 0,
+    ragDocId: row.rag_doc_id || null,
+    pinned: !!row.pinned,
+    origin: row.origin || 'upload',
+    specPath: row.spec_path || null,
+    version: row.version || 1
+  };
+}
+
+function fileRefFromRow(row) {
+  return { hash: row.hash, chatId: row.chat_id, messageId: row.message_id || '' };
+}
+
+/**
+ * Insert or refresh a file. Identity (name, mime, size, kind, path) and the
+ * last use time follow the caller; everything the store learned on its own —
+ * when it first arrived, pinning, extraction state, origin, spec version —
+ * is only written on the first insert and never overwritten.
+ */
+export function upsertFileRecord(record) {
+  if (!record?.hash) return null;
+  const database = getDb();
+  const now = Date.now();
+  database.prepare(`
+    INSERT INTO files (${FILE_COLUMNS})
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(hash) DO UPDATE SET
+      name = excluded.name,
+      mime = excluded.mime,
+      bytes = excluded.bytes,
+      kind = excluded.kind,
+      stored_path = excluded.stored_path,
+      last_used_at = excluded.last_used_at
+  `).run(
+    record.hash,
+    record.name || '',
+    record.mime || null,
+    record.bytes || 0,
+    record.kind || 'file',
+    record.storedPath || null,
+    record.createdAt || now,
+    record.lastUsedAt || now,
+    record.extractStatus || 'pending',
+    record.extractedChars || 0,
+    record.ragDocId || null,
+    record.pinned ? 1 : 0,
+    record.origin || 'upload',
+    record.specPath || null,
+    record.version || 1
+  );
+  return getFileRecord(record.hash);
+}
+
+export function getFileRecord(hash) {
+  const row = getDb().prepare('SELECT * FROM files WHERE hash = ?').get(hash);
+  return row ? fileRecordFromRow(row) : null;
+}
+
+/** The file a RAG document came from; null for text that arrived without one. */
+export function getFileRecordByDocId(docId) {
+  if (!docId) return null;
+  const row = getDb().prepare('SELECT * FROM files WHERE rag_doc_id = ?').get(docId);
+  return row ? fileRecordFromRow(row) : null;
+}
+
+export function listFileRecords() {
+  return getDb().prepare('SELECT * FROM files ORDER BY last_used_at DESC, created_at DESC').all().map(fileRecordFromRow);
+}
+
+/** Links a file to a chat message and marks it as used. */
+export function linkFileRef({ hash, chatId, messageId = '' } = {}) {
+  const database = getDb();
+  const linked = database.prepare('INSERT OR IGNORE INTO file_refs (hash, chat_id, message_id) VALUES (?, ?, ?)')
+    .run(hash, chatId, messageId || '').changes > 0;
+  database.prepare('UPDATE files SET last_used_at = ? WHERE hash = ?').run(Date.now(), hash);
+  return linked;
+}
+
+export function unlinkFileRef({ hash, chatId, messageId = '' } = {}) {
+  return getDb().prepare('DELETE FROM file_refs WHERE hash = ? AND chat_id = ? AND message_id = ?')
+    .run(hash, chatId, messageId || '').changes > 0;
+}
+
+/** Drops every file a message carried (message edits and deletes). */
+export function unlinkFileRefsForMessage(messageId) {
+  return getDb().prepare('DELETE FROM file_refs WHERE message_id = ?').run(messageId).changes;
+}
+
+export function listFileRefs(hash) {
+  return getDb().prepare('SELECT * FROM file_refs WHERE hash = ? ORDER BY chat_id ASC, message_id ASC').all(hash).map(fileRefFromRow);
+}
+
+/** Partial update: fields left undefined keep their stored value. */
+export function setFileStatus(hash, status = {}) {
+  const sets = [];
+  const params = [];
+  if (status.extractStatus !== undefined) { sets.push('extract_status = ?'); params.push(status.extractStatus); }
+  if (status.extractedChars !== undefined) { sets.push('extracted_chars = ?'); params.push(status.extractedChars); }
+  if (status.ragDocId !== undefined) { sets.push('rag_doc_id = ?'); params.push(status.ragDocId); }
+  if (!sets.length) return getFileRecord(hash);
+  params.push(hash);
+  getDb().prepare(`UPDATE files SET ${sets.join(', ')} WHERE hash = ?`).run(...params);
+  return getFileRecord(hash);
+}
+
+export function setFilePinned(hash, pinned) {
+  getDb().prepare('UPDATE files SET pinned = ? WHERE hash = ?').run(pinned ? 1 : 0, hash);
+  return getFileRecord(hash);
+}
+
+/** Removes the file; its `file_refs` rows go with it (ON DELETE CASCADE). */
+export function deleteFileRecord(hash) {
+  return getDb().prepare('DELETE FROM files WHERE hash = ?').run(hash).changes > 0;
+}
+
+/** Unused = never pinned and referenced by no chat. */
+export function fileStoreStats() {
+  const database = getDb();
+  const total = database.prepare('SELECT COUNT(*) AS count, COALESCE(SUM(bytes), 0) AS bytes FROM files').get();
+  const unused = database.prepare(`
+    SELECT COUNT(*) AS count, COALESCE(SUM(f.bytes), 0) AS bytes
+    FROM files f
+    WHERE f.pinned = 0 AND NOT EXISTS (SELECT 1 FROM file_refs r WHERE r.hash = f.hash)
+  `).get();
+  return { count: total.count, bytes: total.bytes, unusedCount: unused.count, unusedBytes: unused.bytes };
 }

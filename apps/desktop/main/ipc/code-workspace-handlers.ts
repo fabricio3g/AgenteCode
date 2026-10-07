@@ -6,7 +6,7 @@ import { processRegistry, type ProcessEvent } from '../agente/processes.ts';
 import { fileDiff, listChanges, revertFile } from '../agente/changes.ts';
 import { branchState, switchBranch } from '../agente/git-branches.ts';
 import { openInEditor } from '../agente/open-editor.ts';
-import { revealPath } from '../agente/reveal.ts';
+import { revealPath, trashPath } from '../agente/reveal.ts';
 import { rustProcesses } from '../agente/rust-engine.ts';
 import { isRustProcessId } from '../agente/rust-processes.ts';
 
@@ -69,6 +69,9 @@ export function registerCodeWorkspaceHandlers(ipcMain: IpcMain): void {
   );
   ipcMain.handle('agente_reveal_path', (_e, args: { projectRoot: string; path: string }) =>
     revealPath(args.projectRoot, args.path)
+  );
+  ipcMain.handle('agente_trash_path', (_e, args: { projectRoot: string; path: string }) =>
+    trashPath(args.projectRoot, args.path)
   );
 }
 

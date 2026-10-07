@@ -11,7 +11,7 @@
 <script lang="ts">
   import { t } from 'svelte-i18n';
   import { copy } from '$lib/copy';
-  import { formatToolDuration, toolTarget } from '$lib/utils/tool-ui';
+  import { formatToolDuration, titleCaseToolName, toolTarget } from '$lib/utils/tool-ui';
   import { codeRunElapsed, type CodeRunState } from './code-run';
   import { toolKind } from '$shared/tool-kinds';
   import TileMeter from './TileMeter.svelte';
@@ -58,6 +58,9 @@
     retry: (status) => $t('code.retrying', { values: { n: status.attempt } }),
     preparing: (status) => preparingLabel(status.toolName, status.bytes),
     running: (status) => {
+      // A wait on a subagent names the agent, not its id.
+      const child = status.step.toolName === 'task_output' ? run.children.find((candidate) => candidate.id === status.step.subagentId) : undefined;
+      if (child) return $t('code.live.waitingFor', { values: { agent: [titleCaseToolName(child.kind || 'subagent'), child.description].filter(Boolean).join(' · ') } });
       const target = toolTarget(status.step.toolName, status.step.detail);
       return target ? `${status.step.label} ${target}` : status.step.label;
     },

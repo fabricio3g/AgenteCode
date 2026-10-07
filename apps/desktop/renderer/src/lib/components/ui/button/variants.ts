@@ -2,7 +2,7 @@ import { type VariantProps, cva } from 'class-variance-authority';
 
 /**
  * The app's one button. A rounded rectangle (`--radius-sm`) with body-size
- * text; the outline variant carries a visible hairline on the card fill.
+ * text; outline and secondary carry a hairline so they never read as plain text.
  * Icon-only buttons use the same radius at a square size. Everything that
  * looks like a button should be this component, not a styled <button>.
  */
@@ -14,7 +14,7 @@ export const buttonVariants = cva(
         default: 'ui-button-solid border border-transparent bg-primary text-primary-fg hover:bg-primary-hover',
         destructive: 'ui-button-solid border border-transparent bg-error text-primary-fg hover:opacity-90',
         outline: 'ui-button-outline border border-[var(--border-hover)] bg-[var(--card)] text-foreground hover:bg-[var(--float-row-hover)]',
-        secondary: 'ui-button-secondary border border-transparent bg-[var(--surface-hover)] text-foreground hover:bg-[var(--surface-active)]',
+        secondary: 'ui-button-secondary border border-[var(--border)] bg-[var(--surface-hover)] text-foreground hover:bg-[var(--surface-active)]',
         ghost: 'ui-button-ghost border border-transparent text-foreground hover:bg-[var(--float-row-hover)]',
         link: 'border border-transparent text-foreground underline-offset-4 hover:underline'
       },

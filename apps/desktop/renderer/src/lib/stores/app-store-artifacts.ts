@@ -54,6 +54,24 @@ export function upsertArtifactOnMessage(
 }
 
 /**
+ * Delete one artifact from a turn, by its position in `artifactsForMessage`.
+ * The others on the same message stay (and the legacy `artifact` field follows
+ * the new last one). Artifact content lives inline on the message, so nothing
+ * is left behind on disk.
+ */
+export function removeArtifactFromMessage(
+  chat: ChatSession | null,
+  messageId: string | null,
+  index: number
+): boolean {
+  if (!chat || !messageId) return false;
+  const message = chat.messages.find((entry) => entry.id === messageId);
+  const existing = artifactsForMessage(message);
+  if (index < 0 || index >= existing.length) return false;
+  return applyArtifactsToMessage(chat, messageId, existing.filter((_, position) => position !== index));
+}
+
+/**
  * Every artifact on a message, oldest first. Messages persisted before artifacts
  * became a list carry only the singular field, so it is promoted to a one-item list.
  */

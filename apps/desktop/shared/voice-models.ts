@@ -40,6 +40,8 @@ export interface VoiceModel {
   needsReference?: boolean;
   /** Can speak in a voice cloned from a short recording (audio.cpp `voice_ref`). */
   canClone?: boolean;
+  /** The audio.cpp server task it loads under: `clon` for models that only speak in a cloned voice. */
+  serverTask?: 'tts' | 'clon';
 
   sizeMb: number;
   /** Language codes the model speaks. */

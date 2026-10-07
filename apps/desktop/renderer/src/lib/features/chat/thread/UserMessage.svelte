@@ -149,7 +149,7 @@
   {/if}
 
   <div
-    class="ui-legacy-user-bubble leading-relaxed"
+    class="user-bubble leading-relaxed"
     data-chat-message-content
     data-chat-message-id={ctx.message.id}
   >

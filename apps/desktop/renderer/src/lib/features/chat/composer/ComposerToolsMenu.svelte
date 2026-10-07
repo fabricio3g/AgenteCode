@@ -7,12 +7,13 @@
 -->
 
 <script lang="ts">
-  import { Check, Wrench } from 'lucide-svelte';
+  import { Check, MoreHorizontal, Wrench } from 'lucide-svelte';
   import { t } from 'svelte-i18n';
   import { Menu } from '$lib/components/ui';
   import { appStore } from '$lib/stores/app.svelte';
   import { HOME_TOOL_GROUPS, isToolDisabled, toggleGroup, type HomeToolGroupId } from '$lib/services/agent-tool-registry';
 
+  let { compact = false }: { compact?: boolean } = $props();
   let open = $state(false);
 
   const disabled = $derived(appStore.homeToolsDisabled);
@@ -32,9 +33,8 @@
 
 <Menu bind:open placement="top-start" minWidth="15rem" label={$t('home.tools.title')}>
   {#snippet trigger(props)}
-    <button type="button" class="tools-trigger" class:is-open={open} title={$t('home.tools.title')} aria-label={$t('home.tools.title')} {...props}>
-      <Wrench class="size-3.5" />
-      <span>{$t('home.tools.button', { values: { on: totalOn, total } })}</span>
+    <button type="button" class="tools-trigger" class:is-compact={compact} class:is-open={open} title={$t('home.tools.title')} aria-label={`${$t('home.tools.title')} · ${$t('home.tools.button', { values: { on: totalOn, total } })}`} {...props}>
+      {#if compact}<MoreHorizontal class="size-3.5" />{:else}<Wrench class="size-3.5" /><span>{$t('home.tools.button', { values: { on: totalOn, total } })}</span>{/if}
     </button>
   {/snippet}
 
@@ -72,6 +72,8 @@
     font-size: var(--text-xs);
     white-space: nowrap;
   }
+
+  .tools-trigger.is-compact { width:1.75rem;justify-content:center;padding:0; }
 
   .tools-trigger:hover,
   .tools-trigger.is-open {

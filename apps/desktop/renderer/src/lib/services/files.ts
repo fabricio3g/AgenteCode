@@ -1,4 +1,4 @@
-import type { LocalModel, WorkspaceIndexResult } from '$lib/types/bridge';
+import type { FileRef, FileStoreStats, LocalModel, StoredFile, WorkspaceIndexResult } from '$lib/types/bridge';
 import { invoke } from './bridge';
 
 export async function pathExists(path: string): Promise<boolean> {
@@ -103,4 +103,39 @@ export async function openWorkspaceFile(absolutePath: string, workspaceRoot?: st
 
 export async function createWorkspaceFolder(workspaceRoot: string, relativePath: string): Promise<void> {
   return invoke<void>('create_workspace_folder', { workspaceRoot, relativePath });
+}
+
+// --- File registry (main/chat-db.ts `files` table) ---
+// One row per sha256 of the file's content, rather than one row per chat. The
+// TUI/CLI is a separate front end on the Rust core and has its own store, so
+// this registry describes the files this app holds.
+
+export async function listFiles(): Promise<StoredFile[]> {
+  return invoke<StoredFile[]>('files_list');
+}
+
+export async function getFile(hash: string): Promise<StoredFile | null> {
+  return invoke<StoredFile | null>('files_get', { hash });
+}
+
+/** Every chat message that uses this file. */
+export async function listFileRefs(hash: string): Promise<FileRef[]> {
+  return invoke<FileRef[]>('files_refs', { hash });
+}
+
+/** Returns the updated row, or null when the hash is unknown. */
+export async function setFilePinned(hash: string, pinned: boolean): Promise<StoredFile | null> {
+  return invoke<StoredFile | null>('files_pin', { hash, pinned });
+}
+
+export async function fileStats(): Promise<FileStoreStats> {
+  return invoke<FileStoreStats>('files_stats');
+}
+
+/**
+ * Moves the app's stored copy to the OS trash and forgets the row. Only files
+ * inside this app's attachment store are trashed.
+ */
+export async function trashStoredFile(hash: string): Promise<{ ok: boolean; error?: string }> {
+  return invoke<{ ok: boolean; error?: string }>('files_trash', { hash });
 }

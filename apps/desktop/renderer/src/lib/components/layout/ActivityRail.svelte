@@ -125,8 +125,8 @@
     flex-shrink: 0;
     flex-direction: column;
     align-items: center;
-    padding-block: 0.75rem;
-    background: var(--sidebar);
+    padding-block: 0.625rem;
+    background: var(--rail-bg);
     border-right: 1px solid var(--border);
   }
 
@@ -134,7 +134,7 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 0.25rem;
+    gap: 0.375rem;
     outline: none;
   }
 
@@ -165,24 +165,38 @@
     color: var(--foreground);
   }
 
-  /* Lucide scales its stroke with the glyph; 2.1 reads at ~1.6px on 18px. */
+  /* Lucide scales its stroke with the glyph; 1.9 reads at ~1.3px on 16px. */
   .rail-button :global(svg) {
-    stroke-width: 2.1;
+    stroke-width: 1.9;
   }
 
-  /* The current space: the raised chip the sidebar's open row uses too. */
+  /* The current space: a tinted chip plus an accent tick on the rail's edge.
+     --nav-current-bg sits a shade off --rail-bg, too close to read here. */
   .rail-button.is-active,
   .rail-button.is-active:hover {
-    background: var(--nav-current-bg);
+    background: color-mix(in srgb, var(--foreground) 9%, transparent);
     border-color: transparent;
-    box-shadow: var(--nav-current-ring);
+    box-shadow: inset 0 0 0 1px var(--border-subtle);
     color: var(--foreground);
+  }
+  .rail-button.is-active::before {
+    content: '';
+    position: absolute;
+    left: calc((var(--rail-btn) - var(--rail-w)) / 2 + 1px);
+    top: 25%;
+    bottom: 25%;
+    width: 2px;
+    border-radius: 0 2px 2px 0;
+    background: var(--brand-accent);
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .rail-button { transition: background-color var(--motion-fast), color var(--motion-fast); }
   }
 
   .busy-dot {
     position: absolute;
-    top: 0.4375rem;
-    right: 0.4375rem;
+    top: 0.3125rem;
+    right: 0.3125rem;
     inline-size: 0.375rem;
     block-size: 0.375rem;
     border-radius: 9999px;

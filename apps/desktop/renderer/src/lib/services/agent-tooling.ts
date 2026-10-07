@@ -244,12 +244,15 @@ function buildToolDefinitions(
     {
       type: 'function', function: {
         name: 'query_knowledge',
-        description: 'Search indexed documents attached to the conversation.',
+        description: 'Search indexed documents. The default scope is the conversation\'s own files plus anything pinned to the project; scope "library" searches every file indexed on this machine. Each passage in `context` is numbered `[n]` with its source, section/page and line range; cite claims as [n].',
         parameters: {
           type: 'object',
           properties: {
             query: { type: 'string', description: 'Search query' },
-            topK: { type: 'number', description: 'Max results (default 16, max 40) — full chunks, no short token budget' }
+            topK: { type: 'number', description: 'Max results (default 16, max 40) — full chunks, no short token budget' },
+            scope: { type: 'string', enum: ['chat', 'library'], description: 'chat (default) = this conversation\'s files and pinned files; library = every indexed file' },
+            file_type: { type: 'string', description: 'Only documents of this type, e.g. pdf, xlsx, markdown' },
+            files: { type: 'array', items: { type: 'string' }, description: 'Only these files, by name or hash' }
           },
           required: ['query']
         }

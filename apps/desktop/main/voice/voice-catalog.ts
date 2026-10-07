@@ -17,6 +17,8 @@ import { VOICE_MODELS, type VoiceModel } from '../../shared/voice-models.ts';
 
 const log = createLogger('[VoiceCatalog]');
 const SIZE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+/** Specs that list `tts` though the engine refuses the task ("Chatterbox supports VoiceCloning and VoiceConversion"). */
+const CLONE_ONLY_FAMILIES = new Set(['chatterbox']);
 
 type Spec = {
   family: string;
@@ -26,7 +28,7 @@ type Spec = {
   status?: string;
   tasks?: string[];
   languages?: string[];
-  capabilities?: { tts?: string[] };
+  capabilities?: { tts?: string[]; clone?: string[] };
   package_defaults?: { download?: { repo?: string } };
   packages?: Array<{ id: string; default?: boolean; precision?: string; files?: string[]; strip_prefix?: string }>;
   ui?: { recommended_package?: string; builtin_voices?: string[] };
@@ -54,6 +56,9 @@ function fromSpec(spec: Spec): VoiceModel | null {
   if (!files.length) return null;
   const voices = (spec.ui?.builtin_voices ?? []).map((id) => ({ id, label: id, language: '*' }));
   const caps = spec.capabilities?.tts ?? [];
+  const canClone = caps.includes('speaker_reference') || !!spec.capabilities?.clone?.includes('speaker_reference');
+  // Loaded as `tts`, a clone-only model fails the whole server's start.
+  const cloneOnly = canClone && (!spec.tasks?.includes('tts') || CLONE_ONLY_FAMILIES.has(spec.family));
   return {
     id: spec.family,
     family: spec.family,
@@ -69,8 +74,9 @@ function fromSpec(spec: Spec): VoiceModel | null {
     espeakLanguages: [],
     description: spec.description,
     status: spec.status,
-    needsReference: caps.includes('speaker_reference') && !voices.length,
-    canClone: caps.includes('speaker_reference')
+    needsReference: (cloneOnly || caps.includes('speaker_reference')) && !voices.length,
+    canClone,
+    serverTask: cloneOnly ? 'clon' : 'tts'
   };
 }
 

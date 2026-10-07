@@ -10,8 +10,45 @@ use std::path::PathBuf;
 pub enum AuthEntry {
     #[serde(rename = "api")]
     ApiKey { key: String },
+    /// An OAuth grant. `token` alone is enough for a provider that hands out
+    /// long-lived tokens; the rest lets a caller renew one that expires
+    /// (Google, for instance).
     #[serde(rename = "oauth")]
-    OAuth { token: String },
+    OAuth {
+        token: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        refresh_token: Option<String>,
+        /// Unix seconds. Absent = the provider never said when it dies.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        expires_at: Option<i64>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        scope: Option<String>,
+    },
+}
+
+/// A stored OAuth grant, with what it takes to renew it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OAuthGrant {
+    pub token: String,
+    pub refresh_token: Option<String>,
+    pub expires_at: Option<i64>,
+    pub scope: Option<String>,
+}
+
+impl OAuthGrant {
+    /// Whether the token is dead or about to be — one minute of slack so a
+    /// call never starts on a token that expires while it is in flight.
+    pub fn expired(&self) -> bool {
+        self.expires_at
+            .is_some_and(|expires_at| expires_at <= now_seconds() + 60)
+    }
+}
+
+fn now_seconds() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|elapsed| elapsed.as_secs() as i64)
+        .unwrap_or(0)
 }
 
 /// Persistent auth store for API keys and OAuth tokens.
@@ -79,9 +116,40 @@ impl AuthStore {
     pub fn get_key(&self, provider: &str) -> Option<String> {
         self.entries.get(provider).and_then(|e| match e {
             AuthEntry::ApiKey { key } if !key.is_empty() => Some(key.clone()),
-            AuthEntry::OAuth { token } if !token.is_empty() => Some(token.clone()),
+            AuthEntry::OAuth { token, .. } if !token.is_empty() => Some(token.clone()),
             _ => None,
         })
+    }
+
+    /// The stored OAuth grant for a provider, if there is one.
+    pub fn oauth(&self, provider: &str) -> Option<OAuthGrant> {
+        match self.entries.get(provider) {
+            Some(AuthEntry::OAuth {
+                token,
+                refresh_token,
+                expires_at,
+                scope,
+            }) if !token.is_empty() => Some(OAuthGrant {
+                token: token.clone(),
+                refresh_token: refresh_token.clone(),
+                expires_at: *expires_at,
+                scope: scope.clone(),
+            }),
+            _ => None,
+        }
+    }
+
+    /// Store an OAuth grant.
+    pub fn set_oauth(&mut self, provider: &str, grant: OAuthGrant) {
+        self.entries.insert(
+            provider.to_string(),
+            AuthEntry::OAuth {
+                token: grant.token,
+                refresh_token: grant.refresh_token,
+                expires_at: grant.expires_at,
+                scope: grant.scope,
+            },
+        );
     }
 
     /// Set (or overwrite) the API key for a provider.

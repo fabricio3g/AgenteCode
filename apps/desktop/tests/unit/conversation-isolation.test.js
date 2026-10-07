@@ -26,11 +26,13 @@ describe('conversation isolation guards', () => {
     );
   });
 
-  it('sanitizes vector-store table names per chat', async () => {
+  it('keeps ids that cannot be escaped out of vector-store predicates', async () => {
     const { vectorStore } = await import('../../main/vector-store.ts');
 
-    assert.strictEqual(vectorStore._tableName('chat-123'), 'chat_chat_123');
-    assert.strictEqual(vectorStore._tableName('chat:with/slashes'), 'chat_chat_with_slashes');
-    assert.throws(() => vectorStore._tableName(''), /chatId is required/i);
+    // Chunks live in one table now, so isolation comes from validated ids and a
+    // `doc_id IN (…)` filter rather than from a table name per chat.
+    await assert.rejects(() => vectorStore.deleteChat("chat' OR '1'='1"), /Invalid id/i);
+    await assert.rejects(() => vectorStore.deleteDocument("doc' OR '1'='1"), /Invalid id/i);
+    await assert.rejects(() => vectorStore.search(["doc' OR '1'='1"], [1, 0], 1), /Invalid id/i);
   });
 });

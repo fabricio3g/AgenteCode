@@ -322,6 +322,17 @@ function subagentTypeOf(args: unknown): string {
 }
 
 /**
+ * The child a `task_output` call waits on: the runtime names a child's run by
+ * its subagent id, so the row can carry that child's live card instead of a
+ * bare id.
+ */
+function awaitedChildOf(toolName: string, args: unknown): { subagentId: string } | Record<string, never> {
+  if (toolName !== 'task_output') return {};
+  const id = (args && typeof args === 'object' ? args : {}) as Record<string, unknown>;
+  return typeof id.task_id === 'string' && id.task_id.trim() ? { subagentId: id.task_id.trim() } : {};
+}
+
+/**
  * What a tool call is about, in one short line: a path, a command, a search.
  *
  * Every tool that ships with the agent has a case here, and the fallback for an
@@ -444,6 +455,7 @@ export function eventToStep(event: CodeAgentEvent): AgentStep | null {
         // A spawn names its kind on its own row before the child registers, so
         // the row reads "Explore · …" from the first frame.
         ...(event.toolName === 'task' ? { subagentType: subagentTypeOf(event.args) } : {}),
+        ...awaitedChildOf(event.toolName, event.args),
         startedAt: Date.now()
       };
     case 'approval_request':

@@ -1,5 +1,5 @@
 // Page behaviour: theme (with Desktop's circle reveal), segmented controls,
-// copy buttons, scroll reveals, nav + hero scroll state.
+// copy buttons, scroll reveals, nav scroll state, the card stack.
 
 const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)");
 const systemLight = matchMedia("(prefers-color-scheme: light)");
@@ -146,19 +146,89 @@ export function initReveal() {
   els.forEach((el) => io.observe(el));
 }
 
-// ---------- Nav + hero scroll state ----------
+// ---------- Nav + scroll state ----------
+// On wide screens the right pane is its own scroller and the hero never moves,
+// so the header has to watch that pane. Below 1000px the
+// pane is not a scroller at all and the window takes over again.
 export function initScroll() {
   const nav = document.querySelector(".nav");
-  const hero = document.querySelector(".hero");
+  const pane = document.querySelector(".scroll");
   let queued = false;
+
   function apply() {
     queued = false;
-    const y = scrollY;
+    const y = Math.max(scrollY, pane ? pane.scrollTop : 0);
     nav?.classList.toggle("scrolled", y > 8);
-    if (!hero || reduceMotion.matches) return;
-    const p = Math.min(1, Math.max(0, y / hero.offsetHeight));
-    hero.style.setProperty("--hero-p", p.toFixed(4));
   }
-  addEventListener("scroll", () => { if (!queued) { queued = true; requestAnimationFrame(apply); } }, { passive: true });
+
+  const ask = () => { if (!queued) { queued = true; requestAnimationFrame(apply); } };
+  addEventListener("scroll", ask, { passive: true });
+  pane?.addEventListener("scroll", ask, { passive: true });
   apply();
+
+  // On wide screens the window never scrolls, so fragment links route into the
+  // pane. Cards are sticky, so their on-screen top is not where they sit in
+  // the flow: measure each one unstuck, then land it at its own sticky top.
+  document.querySelectorAll('a[href^="#"]').forEach((link) => {
+    link.addEventListener("click", (e) => {
+      const target = document.querySelector(link.getAttribute("href"));
+      if (!target || target.id === "top") return;
+      e.preventDefault();
+      const inPane = pane && getComputedStyle(pane).overflowY === "auto";
+      const sticky = target.style.position;
+      target.style.position = "static";
+      const top = inPane
+        ? target.getBoundingClientRect().top - pane.getBoundingClientRect().top + pane.scrollTop
+        : target.getBoundingClientRect().top + scrollY;
+      target.style.position = sticky;
+      const to = Math.max(0, top - (parseFloat(target.style.top) || 0));
+      (inPane ? pane : window).scrollTo({ top: to, behavior: reduceMotion.matches ? "auto" : "smooth" });
+    });
+  });
+}
+
+// ---------- Card stack ----------
+// Each card sticks a step below the one before it. A card taller than the room
+// left sticks by its bottom instead (a negative top), so all of it scrolls past
+// before the next one covers it. --cover is how much of a card the next one
+// hides; the CSS sinks and dims it by that much.
+export function initStack() {
+  const cards = [...document.querySelectorAll(".stack-card")];
+  const pane = document.querySelector(".scroll");
+  if (!cards.length) return;
+  const STEP = 10;
+  let queued = false;
+
+  const inPane = () => pane && getComputedStyle(pane).overflowY === "auto";
+
+  function place() {
+    const wide = inPane();
+    const room = wide ? pane.clientHeight : innerHeight;
+    const base = wide ? 4 : 72;
+    cards.forEach((card, i) => {
+      const top = Math.min(base + i * STEP, room - card.offsetHeight - 12);
+      card.style.top = `${top}px`;
+    });
+    cover();
+  }
+
+  function cover() {
+    queued = false;
+    if (reduceMotion.matches) return;
+    cards.forEach((card, i) => {
+      const next = cards[i + 1];
+      if (!next) return;
+      const a = card.getBoundingClientRect(), b = next.getBoundingClientRect();
+      const p = Math.min(1, Math.max(0, (a.bottom - b.top) / a.height));
+      card.style.setProperty("--cover", p.toFixed(3));
+    });
+  }
+
+  const ask = () => { if (!queued) { queued = true; requestAnimationFrame(cover); } };
+  addEventListener("scroll", ask, { passive: true });
+  pane?.addEventListener("scroll", ask, { passive: true });
+  const ro = new ResizeObserver(place);
+  cards.forEach((c) => ro.observe(c));
+  addEventListener("resize", place);
+  place();
 }

@@ -46,7 +46,7 @@
 
   const CONTROL: Record<'auto' | 'md' | 'lg', string> = {
     auto: '',
-    md: 'sm:w-64',
+    md: 'sm:w-60',
     lg: 'sm:w-80'
   };
 </script>
@@ -73,7 +73,7 @@
     min-height: 3.25rem;
     flex-direction: column;
     gap: 0.75rem;
-    padding: 0.75rem 1rem;
+    padding: 0.875rem 0.125rem;
   }
 
   .settings-row-label {
@@ -122,7 +122,7 @@
     flex-shrink: 0;
     align-items: center;
     justify-content: center;
-    border: 1px solid var(--border-subtle);
+    border: 0;
     border-radius: var(--float-row-radius);
     background: var(--muted);
     color: var(--muted-foreground);

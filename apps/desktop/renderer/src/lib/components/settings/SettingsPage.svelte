@@ -91,16 +91,16 @@
     flex-shrink: 0;
     align-items: center;
     justify-content: center;
-    border: 1px solid var(--float-border);
+    border: 0;
     border-radius: var(--float-radius);
-    background: var(--card);
+    background: transparent;
     color: var(--foreground);
   }
 
   .settings-page-title {
     color: var(--foreground);
-    font-size: calc(18px * var(--reading-scale));
-    font-weight: 600;
+    font-size: calc(24px * var(--reading-scale));
+    font-weight: 500;
     letter-spacing: -0.015em;
     line-height: 1.3;
   }

@@ -1,0 +1,62 @@
+<!doctype html><meta charset="utf-8"><title>glfx fx check</title>
+<body style="margin:0;background:#222;color:#eee;font:12px monospace">
+<script type="module">
+// Temporary: mounts only the effects named in ?fx=a,b,c at ?w x ?h, and reports.
+const P = new URLSearchParams(location.search);
+const names = P.get("fx")?.split(",").filter(Boolean) ?? [];
+const W = +(P.get("w") || 320), H = +(P.get("h") || 180);
+const theme = P.get("theme") || "dark", palName = P.get("pal") || "agente";
+const lines = [];
+try {
+  const { mountGL } = await import("../glfx/glfx.js?v=" + Date.now());
+  const { FX } = await import("../glfx/effects.js?v=" + Date.now());
+  const PAL = {
+    agente: {
+      light: { bg: "#ffffff", accent: "#e76d1f", hi: "#ffb27a", ink: "#0d0d0d", faint: "#f8d8c2",
+        paper: "#f4eee2", sepia: "#2a1f17", sea: "#2f6f7a", abyss: "#d7e4e0", kelp: "#5f7d43", ochre: "#b97a2c",
+        ivory: "#f7f2e8", clay: "#e76d1f", kraft: "#b98a5a", sage: "#6d7f57",
+        deep: "#dfe7f2", cyan: "#0f8ea3", plum: "#6a4fc4", poppy: "#dc4a2e" },
+      dark: { bg: "#161616", accent: "#e8793a", hi: "#ffbe98", ink: "#ececec", faint: "#3a2418",
+        paper: "#15130f", sepia: "#e6dbc4", sea: "#1f5560", abyss: "#08161a", kelp: "#4f6b3a", ochre: "#c98a3c",
+        ivory: "#1b1815", clay: "#e8793a", kraft: "#a97c50", sage: "#6f7f5a",
+        deep: "#101a2e", cyan: "#3fc6d6", plum: "#8a63d8", poppy: "#f2593d" },
+    },
+    claude: {
+      light: { bg: "#faf9f5", accent: "#d97757", hi: "#ebc9b7", ink: "#141413", faint: "#e8e6dc",
+        paper: "#f5f4ed", sepia: "#3d3d3a", sea: "#6a9bcc", abyss: "#dedcd1", kelp: "#788c5d", ochre: "#d4a27f",
+        ivory: "#faf9f5", clay: "#d97757", kraft: "#d4a27f", sage: "#788c5d",
+        deep: "#c5d3e0", cyan: "#4a7f70", plum: "#6f6ab0", poppy: "#c94f4f" },
+      dark: { bg: "#141413", accent: "#d97757", hi: "#ebc9b7", ink: "#faf9f5", faint: "#262624",
+        paper: "#1a1918", sepia: "#e8e6dc", sea: "#4f7ba6", abyss: "#1f1e1d", kelp: "#8ea06c", ochre: "#c9956c",
+        ivory: "#1a1918", clay: "#d97757", kraft: "#c9956c", sage: "#8ea06c",
+        deep: "#33506e", cyan: "#629987", plum: "#827dbd", poppy: "#de6262" },
+    },
+  };
+  const pal = PAL[palName][theme];
+  document.body.style.background = pal.bg;
+  for (const k of names) {
+    const fx = FX[k];
+    if (!fx) { lines.push(k + ": MISSING"); continue; }
+    const cv = document.createElement("canvas");
+    cv.style.cssText = `width:${W}px;height:${H}px;display:block;margin:4px`;
+    document.body.append(cv);
+    const t0 = performance.now();
+    const inst = mountGL(cv, fx, pal);
+    const ms = Math.round(performance.now() - t0);
+    await new Promise((r) => setTimeout(r, 300));
+    let px = "null";
+    if (inst) {
+      const gl = cv.getContext("webgl2");
+      const b = new Uint8Array(4);
+      gl.readPixels(W >> 1, H >> 1, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, b);
+      px = [...b].join(",") + " err=" + gl.getError();
+    }
+    lines.push(k + ": " + (inst ? px : "MOUNT FAILED") + " compile=" + ms + "ms");
+  }
+} catch (e) { lines.push("FATAL " + e.message); }
+document.title = "check done";
+const pre = document.createElement("pre");
+pre.id = "out";
+pre.textContent = lines.join("\n");
+document.body.prepend(pre);
+</script>

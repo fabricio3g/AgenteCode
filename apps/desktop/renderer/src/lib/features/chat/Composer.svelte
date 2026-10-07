@@ -28,6 +28,7 @@
   import ComposerAddMenu from './composer/ComposerAddMenu.svelte';
   import ComposerToolsMenu from './composer/ComposerToolsMenu.svelte';
   import ComposerToolbar from './composer/ComposerToolbar.svelte';
+  import HomeContextStatus from './composer/HomeContextStatus.svelte';
   import ModeSelector from './composer/ModeSelector.svelte';
   import SelectedTextCard from './composer/SelectedTextCard.svelte';
   import VoiceCallPanel from './composer/VoiceCallPanel.svelte';
@@ -418,6 +419,9 @@
           {:else}
             <div class="composer-bar-leading">
               <ComposerAddMenu onattach={() => fileInput?.click()} />
+              <div class="model-slot"><ModelSwitcher compact /></div>
+              <div class="composer-meta-item is-reasoning"><ReasoningLevelSelector inline /></div>
+              <ComposerToolsMenu compact />
 
             </div>
             <ComposerToolbar
@@ -433,7 +437,7 @@
       </div>
     </div>
 
-    <div class="composer-secondary"><div class="composer-secondary-options"><div class="model-slot"><ModelSwitcher compact /></div><ReasoningLevelSelector /><ComposerToolsMenu /></div></div>
+    <HomeContextStatus />
 
     {#if threadIsEmpty}
       <!-- await tick() so the textarea holds the inserted prompt before we

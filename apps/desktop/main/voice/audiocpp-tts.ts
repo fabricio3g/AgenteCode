@@ -177,7 +177,7 @@ async function ensureServer(): Promise<number> {
       lazy_load: true,
       max_loaded_models: 1,
       idle_unload_ms: IDLE_UNLOAD_MS,
-      models: models.map((model) => ({ id: model.id, family: model.family, path: modelPath(model), task: 'tts', mode: 'offline', lazy: model.id !== selected }))
+      models: models.map((model) => ({ id: model.id, family: model.family, path: modelPath(model), task: model.serverTask ?? 'tts', mode: 'offline', lazy: model.id !== selected }))
     };
     const configPath = path.join(getAppPaths().voiceModelsRoot, 'audiocpp', 'server.json');
     fs.mkdirSync(path.dirname(configPath), { recursive: true });

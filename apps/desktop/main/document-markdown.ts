@@ -69,24 +69,35 @@ function escapeTableCell(value: unknown): string {
     .trim();
 }
 
-function toMarkdownTable(rows: unknown[][]): string {
-  const cleaned = rows.filter((row) => row.some((cell) => String(cell ?? '').trim() !== ''));
+/**
+ * `options.rowNumbers` prepends a `#` column holding each row's own number — the
+ * coordinate a reader of a spreadsheet actually uses, and what lets a retrieved
+ * chunk be cited as `sheet Sales · rows 4–9`.
+ */
+function toMarkdownTable(rows: unknown[][], options: { rowNumbers?: number[] } = {}): string {
+  const numbers = options.rowNumbers;
+  const cleaned = rows
+    .map((cells, index) => ({ cells, number: numbers?.[index] }))
+    .filter((entry) => entry.cells.some((cell) => String(cell ?? '').trim() !== ''));
   if (!cleaned.length) return '';
 
-  const width = Math.max(...cleaned.map((row) => row.length));
-  const pad = (row: unknown[]) => {
-    const cells = row.map(escapeTableCell);
-    while (cells.length < width) cells.push('');
-    return cells;
+  const width = Math.max(...cleaned.map((entry) => entry.cells.length)) + (numbers ? 1 : 0);
+  const pad = (cells: string[]) => {
+    const padded = [...cells];
+    while (padded.length < width) padded.push('');
+    return `| ${padded.join(' | ')} |`;
   };
+  const body = (entry: { cells: unknown[]; number?: number }) => pad([
+    ...(numbers ? [String(entry.number ?? '')] : []),
+    ...entry.cells.map(escapeTableCell)
+  ]);
 
-  const [header, ...body] = cleaned;
-  const lines = [
-    `| ${pad(header).join(' | ')} |`,
-    `| ${Array.from({ length: width }, () => '---').join(' | ')} |`,
-    ...body.map((row) => `| ${pad(row).join(' | ')} |`)
-  ];
-  return lines.join('\n');
+  const [header, ...rest] = cleaned;
+  return [
+    pad([...(numbers ? ['#'] : []), ...header.cells.map(escapeTableCell)]),
+    pad(Array.from({ length: width }, () => '---')),
+    ...rest.map(body)
+  ].join('\n');
 }
 
 function parseDelimited(text: string, delimiter: string): unknown[][] {
@@ -141,10 +152,12 @@ async function convertXlsx(filePath: string): Promise<MarkdownConversion> {
   await workbook.xlsx.readFile(filePath);
 
   const sections: string[] = [];
-  workbook.eachSheet((sheet) => {
+  workbook.eachSheet((sheet, sheetId) => {
     const rows: unknown[][] = [];
+    const rowNumbers: number[] = [];
     sheet.eachRow((row) => {
       const values = Array.isArray(row.values) ? row.values.slice(1) : [];
+      rowNumbers.push(row.number);
       rows.push(values.map((cell) => {
         if (cell && typeof cell === 'object') {
           const rich = cell as { text?: string; result?: unknown; hyperlink?: string };
@@ -153,8 +166,8 @@ async function convertXlsx(filePath: string): Promise<MarkdownConversion> {
         return cell ?? '';
       }));
     });
-    const table = toMarkdownTable(rows);
-    if (table) sections.push(`## ${sheet.name}\n\n${table}`);
+    const table = toMarkdownTable(rows, { rowNumbers });
+    if (table) sections.push(`## Sheet ${sheetId}: ${sheet.name}\n\n${table}`);
   });
 
   return {
@@ -264,13 +277,36 @@ async function convertHtml(filePath: string): Promise<MarkdownConversion> {
   return { markdown: htmlToMarkdown(fs.readFileSync(filePath, 'utf8')), fileType: 'html' };
 }
 
+type PdfTextPage = { getTextContent: (options?: unknown) => Promise<{ items: Array<{ str: string; transform: number[] }> }> };
+
+/** pdf.js lays text out run by run; a new y coordinate is a new line. */
+async function pdfPageText(page: PdfTextPage): Promise<string> {
+  const content = await page.getTextContent({ normalizeWhitespace: false, disableCombineTextItems: false });
+  let lastY: number | undefined;
+  let text = '';
+  for (const item of content.items) {
+    text += lastY === undefined || lastY === item.transform[5] ? item.str : `\n${item.str}`;
+    lastY = item.transform[5];
+  }
+  return text;
+}
+
 async function convertPdf(filePath: string): Promise<MarkdownConversion> {
   const pdfParse = (await import('pdf-parse')).default;
-  const data = await pdfParse(fs.readFileSync(filePath));
+  // The pdf.js build inside pdf-parse duck-types a Node Buffer as an ArrayBuffer
+  // and reads its whole backing pool, so a classic xref table fails with
+  // "bad XRef entry"; a Uint8Array of exactly the file's bytes parses cleanly.
+  // pdf-parse 1.1.x also joins the pages with a blank line and inserts no separator
+  // of its own, so the page headings below never appeared and every citation
+  // carried Markdown line numbers that mean nothing inside a PDF. Marking the
+  // boundary inside `pagerender` is the only seam the library leaves open.
+  const data = await pdfParse(new Uint8Array(fs.readFileSync(filePath)), {
+    pagerender: async (page: PdfTextPage) => `\f${await pdfPageText(page)}`
+  });
   const raw = String(data?.text || '').replace(/ /g, ' ');
 
-  // pdf-parse emits form feeds between pages; turn those into page headings so
-  // retrieved chunks carry a locatable citation instead of drifting pages.
+  // Each marked page becomes a heading, so a retrieved chunk is cited as
+  // `page 3` instead of a line range that does not exist in the document.
   const pages = raw.split('\f').map((page) => page.trim()).filter(Boolean);
   const markdown = pages.length > 1
     ? pages.map((page, i) => `## Page ${i + 1}\n\n${page}`).join('\n\n')
@@ -280,7 +316,14 @@ async function convertPdf(filePath: string): Promise<MarkdownConversion> {
   if (markdown.length < 80 || words.length < 20) {
     throw new Error('PDF parser returned insufficient readable text');
   }
-  return { markdown, fileType: 'pdf' };
+  const expectedPages = Number(data?.numpages) || 0;
+  return {
+    markdown,
+    fileType: 'pdf',
+    warning: expectedPages > pages.length
+      ? `Read ${pages.length} of ${expectedPages} pages; the rest had no extractable text.`
+      : undefined
+  };
 }
 
 function convertPlainText(filePath: string, ext: string): MarkdownConversion {

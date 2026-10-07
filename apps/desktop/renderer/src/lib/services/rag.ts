@@ -10,6 +10,8 @@ function requireChatId(chatId: string): string {
 export async function ingestDocument(payload: {
   file_path: string;
   chat_id: string;
+  /** The name the user knows the file by; the temp path's timestamp prefix is not it. */
+  name?: string;
   chunk_size?: number;
   overlap?: number;
 }): Promise<IndexedDocument> {
@@ -44,6 +46,11 @@ export async function queryDocuments(payload: {
   top_k?: number;
 }): Promise<QueryResponse> {
   return invoke<QueryResponse>('query_documents', { payload: { ...payload, chat_id: requireChatId(payload.chat_id) } });
+}
+
+/** Whether the local embedding server is up: without it retrieval is keyword-only. */
+export async function getEmbeddingStatus(): Promise<{ state: string; port: number | null }> {
+  return invoke<{ state: string; port: number | null }>('get_embedding_status');
 }
 
 export async function listRagDocuments(chat_id: string): Promise<IndexedDocument[]> {

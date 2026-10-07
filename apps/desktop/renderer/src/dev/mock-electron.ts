@@ -839,6 +839,7 @@ const handlers: Record<string, (args?: Record<string, unknown>) => unknown> = {
     'vite.config.ts'
   ],
   agente_reveal_path: () => ({ ok: true }),
+  agente_trash_path: () => ({ ok: true }),
   // The project dialogs read this for their skills, agents and commands lists.
   agente_project_info: () => ({
     skills: [{ name: 'find-skills', description: 'Discover installable agent skills.' }],

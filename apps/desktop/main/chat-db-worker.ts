@@ -11,6 +11,10 @@ const operations = {
   loadAllCharacters: database.loadAllCharacters, saveCharacter: database.saveCharacter, deleteCharacter: database.deleteCharacter,
   loadAllPersonas: database.loadAllPersonas, savePersona: database.savePersona, deletePersona: database.deletePersona,
   loadAllWorlds: database.loadAllWorlds, saveWorld: database.saveWorld, deleteWorld: database.deleteWorld,
+  upsertFileRecord: database.upsertFileRecord, getFileRecord: database.getFileRecord, getFileRecordByDocId: database.getFileRecordByDocId, listFileRecords: database.listFileRecords,
+  linkFileRef: database.linkFileRef, unlinkFileRef: database.unlinkFileRef, unlinkFileRefsForMessage: database.unlinkFileRefsForMessage,
+  listFileRefs: database.listFileRefs, setFileStatus: database.setFileStatus, setFilePinned: database.setFilePinned,
+  deleteFileRecord: database.deleteFileRecord, fileStoreStats: database.fileStoreStats,
   close: database.closeDb
 };
 parentPort!.on('message', ({ id, operation, args }) => {

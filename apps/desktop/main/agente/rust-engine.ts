@@ -134,13 +134,17 @@ function connect(): Promise<AgenteClient> {
   return connectionPromise;
 }
 
+/** The `agente` binary this app runs: bundled, or the repo's own build. */
+export function desktopAgenteBinary(): string | null {
+  return resolveAgenteBinary({
+    resourcesPath: typeof process.resourcesPath === 'string' ? process.resourcesPath : undefined,
+    repoRoot: findRepoRoot(moduleDirname(import.meta.url))
+  });
+}
+
 async function openConnection(): Promise<AgenteClient> {
   if (!daemon) {
-    const binary = resolveAgenteBinary({
-      resourcesPath: typeof process.resourcesPath === 'string' ? process.resourcesPath : undefined,
-      repoRoot: findRepoRoot(moduleDirname(import.meta.url))
-    });
-    daemon = new AgenteDaemon({ binary, socketPath: process.env.AGENTE_SMOKE_SOCKET });
+    daemon = new AgenteDaemon({ binary: desktopAgenteBinary(), socketPath: process.env.AGENTE_SMOKE_SOCKET });
   }
   const client = await daemon.connect();
   if (listening !== client) {

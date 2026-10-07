@@ -11,7 +11,7 @@
   import { flip } from 'svelte/animate';
   import { smoothEase } from '$lib/utils/transitions';
   import { formatShortcut } from '$lib/utils/shortcuts';
-  import { Drama, MessageSquare, Plus, Puzzle, Search } from 'lucide-svelte';
+  import { Drama, FolderOpen, MessageSquare, Plus, Puzzle, Search } from 'lucide-svelte';
   import { copy } from '$lib/copy';
   import SessionRow from '$lib/features/shared/SessionRow.svelte';
   import BotRoster from '$lib/features/bots/BotRoster.svelte';
@@ -30,8 +30,12 @@
     return d.getTime();
   }
 
+  /** Conversations started in the browser extension's chat panel. */
+  const BROWSER_GROUP = -1;
+
   function groupLabel(key: number): string {
     switch (key) {
+      case BROWSER_GROUP: return $t('sidebar.browser');
       case 0: return $t('sidebar.today');
       case 1: return $t('sidebar.yesterday');
       case 2: return $t('sidebar.previous7Days');
@@ -42,6 +46,7 @@
 
   const groupedChats = $derived.by(() => {
     // Home and Roleplay share this date-grouped list; Code uses CodeSidebar.
+    // Browser conversations get their own group, above the dates.
     type ChatGroup = { key: number; label: string; chats: typeof appStore.visibleHomeChats };
     const groups: ChatGroup[] = [];
     const groupMap = new Map<number, ChatGroup>();
@@ -51,7 +56,7 @@
     for (const chat of listChats) {
       const day = startOfDay(chat.updatedAt || chat.createdAt);
       const diff = Math.floor((now - day) / 86400000);
-      const bucket = diff <= 0 ? 0 : diff === 1 ? 1 : diff <= 6 ? 2 : diff <= 29 ? 3 : 4;
+      const bucket = chat.origin === 'browser' ? BROWSER_GROUP : diff <= 0 ? 0 : diff === 1 ? 1 : diff <= 6 ? 2 : diff <= 29 ? 3 : 4;
       if (!groupMap.has(bucket)) {
         groupMap.set(bucket, { key: bucket, label: groupLabel(bucket), chats: [] });
       }
@@ -126,6 +131,19 @@
         >
           <Puzzle class="sidebar-row-icon" />
           <span class="sidebar-row-label">{$t('sidebar.artifacts')}</span>
+        </button>
+      {/if}
+      <!-- Files spans every space: Code uploads and the documents its agent writes live here too. -->
+      {#if !inBots}
+        <button
+          class="sidebar-row"
+          class:is-current={appStore.homeView === 'files'}
+          aria-current={appStore.homeView === 'files' ? 'page' : undefined}
+          onclick={() => appStore.showFileLibrary()}
+          title={$t('sidebar.files')}
+        >
+          <FolderOpen class="sidebar-row-icon" />
+          <span class="sidebar-row-label">{$t('sidebar.files')}</span>
         </button>
       {/if}
     </div>

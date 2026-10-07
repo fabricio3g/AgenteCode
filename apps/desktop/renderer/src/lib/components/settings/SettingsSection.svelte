@@ -61,9 +61,9 @@
   }
 
   .settings-section-title {
-    color: var(--foreground);
+    color: var(--text-secondary);
     font-size: var(--text-sm);
-    font-weight: 600;
+    font-weight: 500;
   }
 
   .settings-section-description {
@@ -77,18 +77,16 @@
      pages cannot disagree about the gutter. `flush` adds the small vertical
      padding custom content (tile grids) still needs. */
   .settings-card {
-    overflow: hidden;
-    border: 1px solid var(--float-border);
-    border-radius: var(--float-radius);
-    background: var(--card);
+    overflow: visible;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
   }
 
   .settings-card.is-danger {
-    border-color: var(--error-border);
+    border:1px solid var(--error-border);
+    border-radius:var(--float-radius);
+    background:var(--error-bg);
   }
 
-  /* Direct children are rows; a hairline separates each from the next. */
-  .settings-rows > :global(* + *) {
-    border-top: 1px solid var(--border-subtle);
-  }
 </style>

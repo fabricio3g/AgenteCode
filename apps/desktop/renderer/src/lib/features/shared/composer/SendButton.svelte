@@ -65,11 +65,11 @@
     justify-content: center;
     border: none;
     border-radius: 9999px;
-    background: var(--primary);
-    color: var(--primary-foreground);
+    background: var(--brand-accent);
+    color: #ffffff;
     transition: opacity var(--motion-fast) var(--motion-ease), transform var(--motion-fast) var(--motion-ease), background-color var(--motion-fast) var(--motion-ease);
   }
-  .composer-send.is-compact {width:1.5rem;height:1.5rem;}
+  .composer-send.is-compact {width:1.75rem;height:1.75rem;}
   .composer-send:hover:not(:disabled) { opacity: 0.88; }
   .composer-send:active:not(:disabled) { transform: scale(0.96); }
   .composer-send:disabled {

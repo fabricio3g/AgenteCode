@@ -161,7 +161,7 @@
       {#if message.role === 'user'}
         {@const queued = !!message.metadata?.codeQueued && !!run?.running}
         <div class="group relative flex flex-col items-end gap-1">
-          <div class="max-w-[85%] break-words whitespace-pre-wrap rounded-3xl bg-muted px-5 py-2.5 text-sm leading-relaxed text-foreground" class:opacity-60={queued}>
+          <div class="user-bubble whitespace-pre-wrap" class:opacity-60={queued}>
             {message.content}
             {#if message.metadata?.codeAttachments?.length}
               <div class="mt-2 flex flex-wrap gap-2 text-xs text-muted-foreground">

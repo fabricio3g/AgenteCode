@@ -9,10 +9,10 @@
 
 <script lang="ts">
   import { t } from 'svelte-i18n';
-  import { ArrowLeft, MessageSquare, Plus, Search, Sparkles, X } from 'lucide-svelte';
+  import { ArrowLeft, MessageSquare, Plus, Sparkles, Trash2 } from 'lucide-svelte';
   import { appStore } from '$lib/stores/app.svelte';
   import { confirmStore } from '$lib/stores/confirm.svelte';
-  import { Button } from '$lib/components/ui';
+  import { Button, FilterChip, SearchField } from '$lib/components/ui';
   import ArtifactStudio from '$lib/components/agent/ArtifactStudio.svelte';
   import ArtifactCard from './ArtifactCard.svelte';
   import { collectArtifacts, filterArtifacts, type ArtifactGroup, type LibraryEntry } from './artifact-library';
@@ -54,6 +54,21 @@
     leaveOpen(() => appStore.selectChat(entry.chatId));
   }
 
+  function confirmDelete(entry: LibraryEntry) {
+    confirmStore.show({
+      title: $t('artifacts.deleteTitle'),
+      message: $t('artifacts.deleteMessage', { values: { title: entry.artifact.title || $t('artifacts.untitled') } }),
+      confirmLabel: $t('artifacts.deleteConfirm'),
+      danger: true,
+      onConfirm: () => {
+        const leaving = open?.key === entry.key ? returnChat : null;
+        dirty = false;
+        if (!appStore.deleteArtifact(entry.chatId, entry.messageId, entry.index)) return;
+        if (leaving) appStore.selectChat(leaving.id);
+      }
+    });
+  }
+
   function newChat() {
     appStore.createChat('home');
   }
@@ -70,6 +85,7 @@
         <p class="truncate text-[12px] text-muted-foreground">{$t(`artifacts.group.${open.group}`)} · {open.chatTitle}</p>
       </div>
       {#if !returnChat}<Button variant="outline" size="sm" onclick={() => goToChat(open)}><MessageSquare /> {$t('artifacts.openChat')}</Button>{/if}
+      <Button variant="ghost" size="sm" aria-label={$t('artifacts.delete')} title={$t('artifacts.delete')} onclick={() => confirmDelete(open)}><Trash2 /></Button>
     </header>
     <div class="min-h-0 flex-1">
       {#key open.key}
@@ -96,34 +112,19 @@
           {:else}
             <!-- Search and filters -->
             <div class="mt-6 flex flex-wrap items-center gap-2">
-              <div class="relative min-w-[14rem] flex-1">
-                <Search class="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-                <input
-                  class="h-10 w-full rounded-full border border-border bg-background pl-10 pr-9 text-sm text-foreground outline-none transition focus:border-[var(--border-hover)]"
-                  bind:value={query}
-                  placeholder={$t('artifacts.search')}
-                  aria-label={$t('artifacts.search')}
-                />
-                {#if query}
-                  <button type="button" class="absolute right-2 top-1/2 flex size-7 -translate-y-1/2 items-center justify-center rounded-full text-muted-foreground hover:bg-[var(--surface-hover)]" aria-label={$t('artifacts.clearSearch')} onclick={() => (query = '')}><X class="size-3.5" /></button>
-                {/if}
-              </div>
+              <SearchField bind:value={query} placeholder={$t('artifacts.search')} clearLabel={$t('artifacts.clearSearch')} />
             </div>
             <div class="mt-3 flex flex-wrap gap-1.5" role="group" aria-label={$t('artifacts.filter')}>
-              <button type="button" class="chip" class:is-on={group === 'all'} aria-pressed={group === 'all'} onclick={() => (group = 'all')}>
-                {$t('artifacts.all')} <span class="chip-count">{entries.length}</span>
-              </button>
+              <FilterChip on={group === 'all'} count={entries.length} onclick={() => (group = 'all')}>{$t('artifacts.all')}</FilterChip>
               {#each groups as item (item.id)}
-                <button type="button" class="chip" class:is-on={group === item.id} aria-pressed={group === item.id} onclick={() => (group = item.id)}>
-                  {$t(`artifacts.group.${item.id}`)} <span class="chip-count">{item.count}</span>
-                </button>
+                <FilterChip on={group === item.id} count={item.count} onclick={() => (group = item.id)}>{$t(`artifacts.group.${item.id}`)}</FilterChip>
               {/each}
             </div>
 
             {#if visible.length}
               <div class="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 {#each visible as entry (entry.key)}
-                  <ArtifactCard {entry} onopen={() => appStore.openArtifactScreen(entry.chatId, entry.messageId, entry.index, null)} />
+                  <ArtifactCard {entry} onopen={() => appStore.openArtifactScreen(entry.chatId, entry.messageId, entry.index, null)} ondelete={() => confirmDelete(entry)} />
                 {/each}
               </div>
             {:else}
@@ -136,32 +137,3 @@
   {/if}
 </section>
 
-<style>
-  .chip {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.375rem;
-    height: 2rem;
-    padding: 0 0.875rem;
-    border: 1px solid var(--border);
-    border-radius: 9999px;
-    font-size: 12.5px;
-    color: var(--muted-foreground);
-    background: var(--background);
-    transition: background-color var(--motion-fast) var(--motion-ease), color var(--motion-fast) var(--motion-ease), border-color var(--motion-fast) var(--motion-ease);
-  }
-  .chip:hover {
-    color: var(--foreground);
-    background: var(--surface-hover);
-  }
-  .chip.is-on {
-    border-color: var(--foreground);
-    background: var(--foreground);
-    color: var(--background);
-  }
-  .chip-count {
-    font-size: 11px;
-    opacity: 0.6;
-    font-variant-numeric: tabular-nums;
-  }
-</style>

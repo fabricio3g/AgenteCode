@@ -12,7 +12,7 @@
 
 <script lang="ts">
   import { onDestroy, untrack } from 'svelte';
-  import { ArrowDownToLine, ArrowUp, ChevronDown, ClipboardList, Eye, EyeOff, File as FileIcon, MoreHorizontal, Paperclip, Play, Plus, ShieldCheck, Settings2, X, Zap } from 'lucide-svelte';
+  import { ArrowDownToLine, ArrowUp, ChevronDown, ClipboardList, Eye, EyeOff, Folder, File as FileIcon, MoreHorizontal, Paperclip, Play, Plus, ShieldCheck, Settings2, X, Zap } from 'lucide-svelte';
   import { toastStore } from '$lib/stores/toast.svelte';
   import { codeWorkspace } from './workspace.svelte';
   import { exactSlashCommand, matchSlashCommands, slashQuery } from './slash-commands';
@@ -638,6 +638,15 @@
               <button type="button" class="ui-icon-button" aria-label={$t('code.attach')} disabled={attaching} onclick={() => mediaPicker?.click()}><Plus class="size-3.5" /></button>
             </Tooltip>
 
+<div class="model-slot"><ModelSwitcher compact {chat} /></div>
+        {#if ownBackend === 'local'}
+          <Tooltip label={copy.model.browseAll} position="top"><button type="button" class="ui-icon-button local-model-library" aria-label={copy.model.browseAll} onclick={()=>appStore.openSettings('explore')}><ArrowDownToLine class="size-3" /></button></Tooltip>
+        {:else if !modelReady}
+          <Tooltip label={copy.model.configureProvider} position="top"><button type="button" class="ui-icon-button provider-setup" aria-label={copy.model.configureProvider} onclick={()=>appStore.openSettings('providers')}><Settings2 class="size-3" /></button></Tooltip>
+        {/if}
+        <div class="composer-meta-item is-reasoning"><ReasoningLevelSelector inline capabilities={ownThinking} value={chat.reasoningLevel} onchange={setThinking} /></div>
+
+            <div class="composer-meta-item">
             <!-- Runtime mode gate — plan / supervised / full-auto. -->
             <Menu bind:open={modeMenuOpen} placement="top-start" minWidth="16rem" label={$t('code.modeSelector')} class="mode-menu">
               {#snippet trigger(props)}
@@ -651,7 +660,7 @@
                 >
                   <ModeIcon class="h-3 w-3 shrink-0 text-[var(--text-muted)]" />
                   <span class="trigger-label truncate">{activeMode.label}</span>
-                  <ChevronDown class={`h-3 w-3 shrink-0 text-[var(--text-muted)] transition-transform duration-150${modeMenuOpen ? ' rotate-180' : ''}`} />
+                  <ChevronDown class={`mode-chevron h-3 w-3 shrink-0 text-[var(--text-muted)] transition-transform duration-150${modeMenuOpen ? ' rotate-180' : ''}`} />
                 </button>
               {/snippet}
               <p class="px-2.5 pb-1.5 pt-1 text-xs font-medium text-muted-foreground">{$t('code.modeTitle')}</p>
@@ -660,7 +669,7 @@
                 <MenuItem class="mode-option" icon={mode.icon} label={mode.label} description={mode.hint} active={selected} onselect={() => selectMode(mode.id)} />
               {/each}
             </Menu>
-
+            </div>
 
           </div>
 
@@ -697,13 +706,7 @@
     </div>
 
     <div class="composer-secondary">
-      <div class="composer-secondary-options"><div class="model-slot"><ModelSwitcher compact {chat} /></div>
-        {#if ownBackend === 'local'}
-          <Tooltip label={copy.model.browseAll} position="top"><button type="button" class="ui-icon-button local-model-library" aria-label={copy.model.browseAll} onclick={()=>appStore.openSettings('explore')}><ArrowDownToLine class="size-3" /></button></Tooltip>
-        {:else if !modelReady}
-          <Tooltip label={copy.model.configureProvider} position="top"><button type="button" class="ui-icon-button provider-setup" aria-label={copy.model.configureProvider} onclick={()=>appStore.openSettings('providers')}><Settings2 class="size-3" /></button></Tooltip>
-        {/if}
-        <ReasoningLevelSelector capabilities={ownThinking} value={chat.reasoningLevel} onchange={setThinking} /></div>
+      {#if project}<span class="composer-checkout" title={project.rootPath}><Folder class="size-3" /><span>{project.rootName}</span></span>{/if}
       <div class="composer-secondary-status">            {#if running && queuedCount > 0}<span class="queued-status" role="status">{$t('code.queued', { values: { n: queuedCount } })}</span>{/if}
             {#if modelReady && modelInputs}
               <!-- Capability and policy in one glyph: what the model sees, and
@@ -714,12 +717,12 @@
                 </button>
               </Tooltip>
             {/if}
-            {#if showContextRing && usage}<ContextUsageRing usedTokens={usage.promptTokens} maxTokens={usage.contextWindow ?? 0} {spend} />{/if}
+            {#if showContextRing && usage}<ContextUsageRing showLabel usedTokens={usage.promptTokens} maxTokens={usage.contextWindow ?? 0} {spend} />{/if}
 
 </div>
     </div>
 
-    <p class="composer-hint mx-auto mt-[var(--dock-gap)] px-1 text-center text-xs text-muted-foreground opacity-70">
+    <p class="composer-hint sr-only mx-auto mt-[var(--dock-gap)] px-1 text-center text-xs text-muted-foreground opacity-70">
       {#if hint}
         {hint}
       {/if}
@@ -728,9 +731,11 @@
 </div>
 
 <style>
-  .composer-bar {min-height:1.5rem;flex-wrap:nowrap;}
-  .composer-bar :global(.ui-icon-button), .composer-secondary :global(.ui-icon-button) {width:1.5rem;height:1.5rem;}
-  .composer-secondary :global(.model-trigger), .composer-secondary :global(.thinking-trigger) {height:1.5rem;font-size:var(--text-xs);}
+  .composer-bar {min-height:1.75rem;}
+  /* The labelled context ring keeps its own width; squeezing it to an icon
+     slot spilled the ring over the media glyph beside it. */
+  .composer-bar :global(.ui-icon-button), .composer-secondary :global(.ui-icon-button:not(.has-label)) {width:1.5rem;height:1.5rem;}
+  .composer-bar :global(.model-trigger), .composer-bar :global(.thinking-trigger) {height:1.5rem;font-size:var(--text-xs);}
   .composer-bar :global(.ui-icon-button svg) {width:0.75rem;height:0.75rem;}
 
   .approval-pill {
@@ -830,6 +835,12 @@
     font-size: var(--text-xs);
     font-weight: 500;
     letter-spacing: -0.01em;
+  }
+  .mode-trigger {flex-shrink:0;}
+  @container composer (max-width:480px) {
+    .mode-trigger .trigger-label, .mode-trigger :global(.mode-chevron) {display:none;}
+    .mode-trigger {padding-inline:0.375rem;}
+    .model-slot {flex:1 1 auto;max-width:none;}
   }
 
 </style>

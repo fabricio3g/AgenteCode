@@ -1,7 +1,6 @@
 [workspace]
 members = [
     "crates/agente-audio",
-    "apps/desktop-egui-port",
     "crates/agente-protocol",
     "crates/agente-session",
     "crates/agente-runtime",
@@ -11,6 +10,7 @@ members = [
     "crates/agente-core",
     "crates/agente-tui",
     "crates/agente-cli",
+    "crates/agente-bridge",
     "crates/agente-node",
 ]
 resolver = "2"
@@ -93,4 +93,5 @@ agente-runtime = { path = "crates/agente-runtime" }
 agente-bot = { path = "crates/agente-bot" }
 agente-acp = { path = "crates/agente-acp" }
 agente-daemon = { path = "crates/agente-daemon" }
+agente-bridge = { path = "crates/agente-bridge" }
 agente-tui = { path = "crates/agente-tui" }

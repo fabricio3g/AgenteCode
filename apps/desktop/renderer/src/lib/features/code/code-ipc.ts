@@ -124,6 +124,16 @@ export function switchGitBranch(projectRoot: string, name: string, create = fals
   return invoke('agente_git_switch_branch', { projectRoot, name, create });
 }
 
+/** Show `path` (relative to, or inside, `projectRoot`) selected in the OS file manager. */
+export function revealPath(projectRoot: string, path: string): Promise<{ ok: boolean; error?: string }> {
+  return invoke('agente_reveal_path', { projectRoot, path });
+}
+
+/** Move `path` inside `projectRoot` to the OS trash. */
+export function trashPath(projectRoot: string, path: string): Promise<{ ok: boolean; error?: string }> {
+  return invoke('agente_trash_path', { projectRoot, path });
+}
+
 /** Open `path` in the user's editor, at `line` when the editor understands it. */
 export function openInEditor(args: OpenInEditorArgs): Promise<OpenInEditorResult> {
   return invoke('agente_open_in_editor', args as unknown as Record<string, unknown>);

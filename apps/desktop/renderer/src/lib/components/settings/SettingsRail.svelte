@@ -162,7 +162,7 @@
     {/snippet}
 
     {#each visibleGroups as group (group.id)}
-      <div class="min-w-max md:min-w-0 md:mt-1 md:border-t md:border-[var(--border-subtle)] md:first:mt-0 md:first:border-t-0">
+      <div class="min-w-max md:min-w-0 md:mt-3 md:first:mt-0">
         <div class="flex items-center justify-between gap-2 pr-2.5">
           <span class="sidebar-section min-w-0 truncate whitespace-nowrap">{group.title}</span>
           {#if group.id === 'providers'}

@@ -3,6 +3,7 @@ import type { ChatSession } from '$lib/types/chat';
 import {
   applyArtifactsToMessage,
   artifactsForMessage,
+  removeArtifactFromMessage,
   resolveArtifactForMessage,
   upsertArtifactOnMessage
 } from './app-store-artifacts';
@@ -65,5 +66,26 @@ describe('app store artifact helpers', () => {
     const session = chat();
     session.messages[1].artifact = { title: 'old', files: { 'a.md': '# a' } };
     expect(artifactsForMessage(session.messages[1])).toHaveLength(1);
+  });
+
+  it('deletes one artifact and keeps the rest of the turn', () => {
+    const session = chat();
+    applyArtifactsToMessage(session, 'message-b', [
+      { title: 'chart.json', files: { 'chart.json': '{}' }, manifest: { schemaVersion: 1, kind: 'chart', presentation: 'inline', entryPath: 'chart.json', status: 'ready' } },
+      { title: 'diagram.json', files: { 'diagram.json': '{}' }, manifest: { schemaVersion: 1, kind: 'diagram', presentation: 'inline', entryPath: 'diagram.json', status: 'ready' } }
+    ]);
+    expect(removeArtifactFromMessage(session, 'message-b', 1)).toBe(true);
+    expect(artifactsForMessage(session.messages[1]).map((a) => a.title)).toEqual(['chart.json']);
+    expect(session.messages[1].artifact?.title).toBe('chart.json');
+
+    expect(removeArtifactFromMessage(session, 'message-b', 0)).toBe(true);
+    expect(artifactsForMessage(session.messages[1])).toEqual([]);
+    expect(session.messages[1].artifact).toBeNull();
+  });
+
+  it('refuses an out-of-range index or missing message', () => {
+    const session = chat();
+    expect(removeArtifactFromMessage(session, 'message-b', 0)).toBe(false);
+    expect(removeArtifactFromMessage(session, 'missing', 0)).toBe(false);
   });
 });

@@ -16,6 +16,7 @@
 
 <script lang="ts">
   import { t } from 'svelte-i18n';
+  import { Brain, ChevronDown } from 'lucide-svelte';
   import ComposerCard from '$lib/features/shared/composer/ComposerCard.svelte';
   import { appStore } from '$lib/stores/app.svelte';
   import type { ReasoningCapabilities, ReasoningLevel } from '$lib/types/chat';
@@ -25,11 +26,13 @@
   let {
     capabilities: given,
     value,
-    onchange
+    onchange,
+    inline = false
   }: {
     capabilities?: ReasoningCapabilities;
     value?: ReasoningLevel | null;
     onchange?: (level: ReasoningLevel | null) => void;
+    inline?: boolean;
   } = $props();
   const controlled = $derived(!!given);
 
@@ -130,11 +133,13 @@
 </script>
 
 {#if visible}
-  <button bind:this={anchor} type="button" class="thinking-trigger" class:is-open={open}
+  <button bind:this={anchor} type="button" class="thinking-trigger" class:is-inline={inline} class:is-open={open}
     aria-haspopup="dialog" aria-expanded={open} aria-controls={open ? id : undefined}
     aria-label={$t('composer.thinking.trigger', { values: { level: labelFor(current) } })} title={$t('composer.thinking.title')}
     onclick={() => (open = !open)}>
-    <span>{labelFor(current)}</span>
+    {#if inline}<Brain class="thinking-icon size-3 shrink-0" /><span class="thinking-prefix">{$t('composer.thinking.title')} ·</span>{/if}
+    <span class="thinking-level">{labelFor(current)}</span>
+    {#if inline}<ChevronDown class="thinking-chevron size-3 shrink-0" />{/if}
   </button>
   {#if open}
     <ComposerCard {anchor} {id} bright label={$t('composer.thinking.title')} onclose={() => (open = false)}>
@@ -206,6 +211,15 @@
     color: var(--muted-foreground);
     font-size: 12px;
     white-space: nowrap;
+  }
+
+  .thinking-trigger.is-inline { height:1.75rem;gap:0.25rem;font-size:var(--text-xs);padding-inline:0.25rem; }
+  .thinking-trigger :global(.thinking-icon) { display:none; }
+  @container composer (max-width:620px) { .thinking-prefix { display:none; } }
+  /* Narrow: the level folds into its icon (the label and tooltip still name it). */
+  @container composer (max-width:480px) {
+    .thinking-level, .thinking-trigger :global(.thinking-chevron) { display:none; }
+    .thinking-trigger :global(.thinking-icon) { display:block; }
   }
 
   .thinking-trigger:not(.is-static):hover,

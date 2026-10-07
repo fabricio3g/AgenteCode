@@ -712,11 +712,14 @@ impl RuntimeInner {
         }
     }
 
+    /// A child's run id: its subagent id when that is a UUID (it always is
+    /// for spawned children), so a client can match `task_output` /
+    /// `kill_task` calls, which name the subagent id, to the child's card.
     fn child_id(&self, legacy_id: &str) -> RunId {
         *self
             .lock_children()
             .entry(legacy_id.to_string())
-            .or_default()
+            .or_insert_with(|| legacy_id.parse().unwrap_or_default())
     }
 }
 

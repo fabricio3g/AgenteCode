@@ -56,6 +56,8 @@
   /** A spawn: the row belongs to the agent it started. */
   const isSpawn = $derived(step.toolName === 'task');
   const child = $derived(children?.find((candidate) => candidate.id === step.subagentId));
+  /** A wait on a child shows that child's live card, not its bare id. */
+  const awaitsChild = $derived(step.toolName === 'task_output' && !!child);
 
   const kind = $derived(stepKind(step));
   const running = $derived(isRunning(step));
@@ -117,6 +119,8 @@
 
 {#if isSpawn}
   <SubagentCard child={child ?? childFromStep(step)} {id} {chatId} pending={!child && running} />
+{:else if awaitsChild && child}
+  <SubagentCard {child} {id} {chatId} />
 {:else if !(step.type === 'approval' && !isApproval)}
   <!-- A settled approval says nothing the tool's own row doesn't: hide it. -->
   <Disclosure

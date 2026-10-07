@@ -60,7 +60,7 @@ import {
   type ProviderUpdate,
   type LocalSettingsUpdate,
 } from '$lib/stores/app-store-config';
-import { findLatestArtifactMessage, resolveArtifactForMessage, upsertArtifactOnMessage } from '$lib/stores/app-store-artifacts';
+import { findLatestArtifactMessage, removeArtifactFromMessage, resolveArtifactForMessage, upsertArtifactOnMessage } from '$lib/stores/app-store-artifacts';
 import {
   buildLocalModelRuntimeRequest,
   buildLocalModelSettingsPatch,
@@ -174,7 +174,7 @@ class AppStore {
   agentWorkspaceOpen = $state(false);
   artifactStudioOpen = $state(false);
   /** What the Home surface shows: the chat, or the Artifacts screen. */
-  homeView = $state<'chat' | 'artifacts'>('chat');
+  homeView = $state<'chat' | 'artifacts' | 'files'>('chat');
   /**
    * The Bots tab is showing. Bots aren't chats, so it sits beside the spaces
    * instead of being one: opening any chat or space closes it.
@@ -730,6 +730,11 @@ class AppStore {
     this.homeView = 'artifacts';
   }
 
+  /** Show the Files library: uploads and the documents the Code agent made, across every chat. */
+  showFileLibrary() {
+    this.homeView = 'files';
+  }
+
   /** Open one artifact full-screen; Back goes to `returnChatId` when given. */
   openArtifactScreen(chatId: string, messageId: string, index: number, returnChatId: string | null = chatId) {
     this.artifactScreenKey = `${chatId}:${messageId}:${index}`;
@@ -758,6 +763,62 @@ class AppStore {
       this.currentArtifact = resolveArtifactForMessage(chat, messageId);
       this.currentArtifactMessageId = messageId;
     }
+    this.persist();
+    return true;
+  }
+
+  /**
+   * Delete one artifact everywhere it shows: its message, the side panel, the
+   * full-screen view and the studio. Positions after it shift down, so any open
+   * view of the same message is closed rather than left pointing at a neighbour.
+   */
+  deleteArtifact(chatId: string, messageId: string, index: number): boolean {
+    const chat = this.findChat(chatId);
+    if (!removeArtifactFromMessage(chat, messageId, index)) return false;
+
+    if (this.artifactPanels[chatId]?.messageId === messageId) {
+      const next = { ...this.artifactPanels };
+      delete next[chatId];
+      this.artifactPanels = next;
+    }
+    if (this.artifactScreenKey?.startsWith(`${chatId}:${messageId}:`)) {
+      this.artifactScreenKey = null;
+    }
+    if (this.currentChatId === chatId && this.currentArtifactMessageId === messageId) {
+      this.currentArtifact = null;
+      this.currentArtifactMessageId = null;
+      this.artifactStudioOpen = false;
+    }
+
+    this.markChatDirty(chatId);
+    this.touchChats(chatId);
+    this.persist();
+    return true;
+  }
+
+  /**
+   * Delete a file the user attached in a Home chat: it leaves its message and,
+   * unless another message of the chat still carries the same indexed document
+   * (re-uploads share one), its knowledge-base entry.
+   */
+  async deleteUpload(chatId: string, messageId: string, attachmentId: string): Promise<boolean> {
+    const chat = this.findChat(chatId);
+    const message = chat?.messages.find((entry) => entry.id === messageId);
+    const attachment = message?.attachments?.find((entry) => entry.id === attachmentId);
+    if (!chat || !message || !attachment) return false;
+
+    message.attachments = message.attachments!.filter((entry) => entry.id !== attachmentId);
+    if (attachment.preview?.startsWith('blob:')) URL.revokeObjectURL(attachment.preview);
+
+    const docStillUsed = !!attachment.docId && chat.messages.some((entry) =>
+      entry.attachments?.some((other) => other.docId === attachment.docId));
+    if (attachment.docId && !docStillUsed && isElectron()) {
+      await removeRagDocument(attachment.docId, chatId).catch(() => {});
+      this.refreshRagDocuments(chatId).catch(() => {});
+    }
+
+    this.markChatDirty(chatId);
+    this.touchChats(chatId);
     this.persist();
     return true;
   }
@@ -1374,30 +1435,7 @@ class AppStore {
     this.homeView = 'chat';
     this.botsOpen = false;
     const contextMode = normalizeContextMode(mode);
-    const now = Date.now();
-    const composerMode = this.defaultComposerModeFor(contextMode);
-    const chat: ChatSession = {
-      id: createId('chat'),
-      title: this.defaultTitleForMode(contextMode),
-      createdAt: now,
-      updatedAt: now,
-      folderId: null,
-      draft: '',
-      contextMode,
-      codeAgent: null,
-      projectId: null,
-      workspace: contextMode === 'code' ? (options.workspace || null) : null,
-      modelSelection: captureChatModel(this.config, this.backendMode),
-      reasoningLevel: null,
-      composerMode,
-      searchMode: 'chat',
-      characterId: null,
-      worldId: null,
-      personaId: null,
-      greetingIndex: 0,
-      roleplay: contextMode === 'roleplay' ? {} : null,
-      messages: []
-    };
+    const chat = this.newChatSession(contextMode, options.workspace);
     this.chats = [chat, ...this.chats];
     this.activeSpace = contextMode;
     this.currentChatId = chat.id;
@@ -1408,6 +1446,47 @@ class AppStore {
     }
     this.pendingAttachments = [];
     this.hydrateUiFromChat(chat);
+    this.persist();
+    return chat;
+  }
+
+  /** A fresh, unsaved conversation for a space, with this app's model. */
+  private newChatSession(contextMode: ChatContextMode, workspace?: ChatSession['workspace']): ChatSession {
+    const now = Date.now();
+    return {
+      id: createId('chat'),
+      title: this.defaultTitleForMode(contextMode),
+      createdAt: now,
+      updatedAt: now,
+      folderId: null,
+      draft: '',
+      contextMode,
+      codeAgent: null,
+      projectId: null,
+      workspace: contextMode === 'code' ? (workspace || null) : null,
+      modelSelection: captureChatModel(this.config, this.backendMode),
+      reasoningLevel: null,
+      composerMode: this.defaultComposerModeFor(contextMode),
+      searchMode: 'chat',
+      characterId: null,
+      worldId: null,
+      personaId: null,
+      greetingIndex: 0,
+      roleplay: contextMode === 'roleplay' ? {} : null,
+      messages: []
+    };
+  }
+
+  /**
+   * A Home conversation started from the browser extension's chat panel.
+   * Unlike createChat it leaves the window where it is: the person is
+   * working in their browser, not here.
+   */
+  createBrowserChat(title?: string) {
+    const chat: ChatSession = { ...this.newChatSession('home'), origin: 'browser' };
+    if (title?.trim()) chat.title = title.trim().slice(0, 80);
+    this.chats = [chat, ...this.chats];
+    this.markChatDirty(chat.id);
     this.persist();
     return chat;
   }
@@ -2011,7 +2090,8 @@ class AppStore {
         const tempPath = await writeTempFile(`${Date.now()}_${file.name}`, bytes);
         const doc = await ingestDocument({
           file_path: tempPath,
-          chat_id: targetChatId
+          chat_id: targetChatId,
+          name: file.name
         });
         attachment.docId = doc.id;
         attachment.status = 'ready';

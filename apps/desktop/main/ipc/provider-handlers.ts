@@ -5,6 +5,8 @@ import { mergeModelLists, type CatalogEntry } from '../providers/model-list-merg
 
 type Provider = {
   name: string;
+  /** Local servers (llama.cpp, Ollama, LM Studio, custom) take no key. */
+  dialect: { group: 'cloud' | 'local' };
   fetchModels: (apiKey: string, baseUrl?: string) => Promise<unknown>;
   fetchModelMetadata: (apiKey: string, baseUrl: string, modelId: string) => Promise<unknown>;
   checkToolSupport: (args: {
@@ -27,7 +29,7 @@ export function registerProviderHandlers({ ipcMain, resolveProvider, resolveApiK
   ipcMain.handle('fetch_provider_models', async (_e, { baseUrl, apiKey, providerName }) => {
     const provider = resolveProvider(providerName, baseUrl);
     const realKey = resolveApiKey(apiKey, baseUrl, providerName);
-    if (!realKey && provider.name !== 'local') {
+    if (!realKey && provider.dialect.group === 'cloud') {
       throw new Error(`No API key configured for ${providerName || 'the selected provider'}. Please add your API key in Settings > LLM Providers.`);
     }
     const live = await provider.fetchModels(realKey, baseUrl);
@@ -56,7 +58,7 @@ export function registerProviderHandlers({ ipcMain, resolveProvider, resolveApiK
     if (fromCore) return fromCore;
     const provider = resolveProvider(providerName, baseUrl);
     const realKey = resolveApiKey(apiKey, baseUrl, providerName);
-    if (!realKey && provider.name !== 'local') {
+    if (!realKey && provider.dialect.group === 'cloud') {
       return null;
     }
     return provider.fetchModelMetadata(realKey, baseUrl, modelId);

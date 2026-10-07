@@ -272,6 +272,44 @@ export interface QueryResponse {
   context: string;
 }
 
+/** How far the extracted text of a stored file has come. */
+export type FileExtractStatus = 'pending' | 'extracting' | 'ready' | 'failed' | 'keyword-only';
+
+/** A row of the global content-addressed store (`chat-db.ts` `files`). */
+export interface StoredFile {
+  hash: string;
+  name: string;
+  mime: string | null;
+  bytes: number;
+  kind: string;
+  storedPath: string | null;
+  createdAt: number;
+  lastUsedAt: number;
+  extractStatus: FileExtractStatus;
+  extractedChars: number;
+  ragDocId: string | null;
+  pinned: boolean;
+  origin: 'upload' | 'generated';
+  /** Source spec of a generated document (Phase 4); null for uploads. */
+  specPath: string | null;
+  version: number;
+}
+
+/** One chat message that uses a stored file. */
+export interface FileRef {
+  hash: string;
+  chatId: string;
+  messageId: string;
+}
+
+export interface FileStoreStats {
+  count: number;
+  bytes: number;
+  /** Never pinned and referenced by no chat — the cleanup candidates. */
+  unusedCount: number;
+  unusedBytes: number;
+}
+
 export interface SearchResult {
   title: string;
   url: string;

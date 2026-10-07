@@ -12,6 +12,7 @@
   import HomeSurface from '$lib/features/home/HomeSurface.svelte';
   import ConversationPanes from '$lib/features/code/ConversationPanes.svelte';
   import ArtifactsScreen from '$lib/features/artifacts/ArtifactsScreen.svelte';
+  import FilesScreen from '$lib/features/files/FilesScreen.svelte';
   import BotsScreen from '$lib/features/bots/BotsScreen.svelte';
   import BotRoutines from '$lib/features/bots/BotRoutines.svelte';
   import { botsStore } from '$lib/features/bots/bots.svelte';
@@ -346,6 +347,14 @@
       </WorkspaceHost>
       {/if}
 
+      <!-- Files covers whichever space is underneath instead of replacing it, so
+           opening it from Code never unmounts a running session or a terminal. -->
+      {#if appStore.homeView === 'files' && !inBots && !settingsShowing}
+        <div data-overlay="files" class="absolute inset-0 z-20 flex min-h-0 min-w-0 flex-col bg-background">
+          <FilesScreen />
+        </div>
+      {/if}
+
       <!-- Settings sits over the workspace rather than in the branch above it:
            the surface underneath stays mounted, so a trip to Settings costs no
            scroll position and no streaming turn, and leaving lands you exactly
@@ -452,14 +461,6 @@
   }
   .sidebar-outer.resizing {
     transition: none;
-  }
-
-  /* The docked rail's depth, drawn inside it (--sidebar-inner-shadow). Scoped
-     to .expanded on purpose: the floating ghost below is not a groove — it is
-     a panel over the page, so it takes its depth from the cast outside and no
-     inset at all. The aside lives in Sidebar.svelte, hence the :global. */
-  .sidebar-outer.expanded :global(.sidebar) {
-    box-shadow: var(--sidebar-inner-shadow);
   }
 
   .sidebar-view-full {

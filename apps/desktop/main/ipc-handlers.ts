@@ -75,6 +75,7 @@ import { registerProviderHandlers } from './ipc/provider-handlers.ts';
 import { invalidateProviderDiscovery } from './agente/thinking.ts';
 import { registerChatHandlers } from './ipc/chat-handlers.ts';
 import { registerChatDbHandlers } from './ipc/chat-db-handlers.ts';
+import { registerFilesHandlers } from './ipc/files-handlers.ts';
 import { registerTokenHandlers } from './ipc/token-handlers.ts';
 import { registerDownloadHandlers } from './ipc/download-handlers.ts';
 import { registerRagHandlers } from './ipc/rag-handlers.ts';
@@ -88,6 +89,7 @@ import { registerBrowserAgentHandlers } from './ipc/browser-agent-handlers.ts';
 import { registerCodeWorkspaceHandlers, disposeCodeWorkspace } from './ipc/code-workspace-handlers.ts';
 import { registerAgenteHandlers, disposeAgenteSessions as disposeAllAgenteSessions } from './ipc/agente-handlers.ts';
 import { registerBotHandlers } from './agente/bots.ts';
+import { registerBrowserChat, stopBrowserChat } from './agente/browser-chat.ts';
 import type { ErrorMessageFn } from './ipc/types.ts';
 import { createLogger } from './utils/logger.ts';
 
@@ -242,6 +244,18 @@ export function registerIpcHandlers() {
     deleteWorld: (...args) => chatDatabase.request('deleteWorld', ...args),
   });
 
+  // ── File registry (global content-addressed store, shared with the TUI) ──
+  registerFilesHandlers({
+    ipcMain,
+    listFiles: () => chatDatabase.request('listFileRecords'),
+    getFile: (hash) => chatDatabase.request('getFileRecord', hash),
+    listFileRefs: (hash) => chatDatabase.request('listFileRefs', hash),
+    setFilePinned: (hash, pinned) => chatDatabase.request('setFilePinned', hash, pinned),
+    deleteFile: (hash) => chatDatabase.request('deleteFileRecord', hash),
+    fileStats: () => chatDatabase.request('fileStoreStats'),
+    trashItem: (target) => shell.trashItem(target),
+  });
+
   // ── Token counting / context budget ──
   registerTokenHandlers({
     ipcMain,
@@ -384,6 +398,9 @@ export function registerIpcHandlers() {
 
   // ── Agente Bot (the bots living in the same runtime) ──
   registerBotHandlers(ipcMain, getMainWindow);
+
+  // ── Browser chat (the extension's side panel, answered with Home turns) ──
+  registerBrowserChat(ipcMain, getMainWindow);
 }
 
-export { disposeAllAgenteSessions, disposeCodeWorkspace };
+export { disposeAllAgenteSessions, disposeCodeWorkspace, stopBrowserChat };

@@ -2,6 +2,7 @@ const { contextBridge, ipcRenderer, webFrame } = require('electron');
 
 const ALLOWED_INVOKE_CHANNELS = new Set([
   'desktop_renderer_ready',
+  'browser_chat_ready', 'browser_chat_reply',
   'domains_status', 'domains_config', 'domains_set_enabled', 'domains_pick_runtime', 'domains_projects', 'domains_project', 'domains_import', 'domains_preview', 'domains_jobs', 'domains_cancel', 'domains_call',
   'window:open-conversation', 'window:minimize', 'window:toggle-maximize', 'window:is-maximized', 'window:close', 'window:request-close', 'window:set-active-work',
   'get_hardware_limits', 'get_desktop_capabilities', 'get_runtime_recommendations', 'is_first_run',
@@ -29,6 +30,7 @@ const ALLOWED_INVOKE_CHANNELS = new Set([
   'pause_download_job', 'clear_finished_downloads', 'remove_download_job',
   'ingest_document', 'ingest_text', 'ingest_text_fast', 'query_documents', 'list_rag_documents',
   'remove_rag_document', 'clear_rag_documents', 'has_rag_documents',
+  'files_list', 'files_get', 'files_refs', 'files_pin', 'files_stats', 'files_trash',
   'web_search', 'search:get-catalog', 'search:probe-engines',
   'ingest_search_context', 'fetch_model_catalog',
   'search_hf_models', 'hf_repo_gguf', 'fetch_hf_readme', 'open_url_window', 'open_webviewer',
@@ -62,7 +64,7 @@ const ALLOWED_INVOKE_CHANNELS = new Set([
   'terminal_create', 'terminal_write', 'terminal_resize', 'terminal_kill',
   'agente_process_list', 'agente_process_output', 'agente_process_start', 'agente_process_stop', 'agente_process_clear',
   'agente_changes', 'agente_file_diff', 'agente_revert_file',
-  'agente_git_branches', 'agente_git_switch_branch', 'agente_open_in_editor', 'agente_reveal_path',
+  'agente_git_branches', 'agente_git_switch_branch', 'agente_open_in_editor', 'agente_reveal_path', 'agente_trash_path',
    'agente_exec', 'agente_undo', 'agente_redo', 'agente_project_info', 'agente_project_init', 'agente_mcp_status', 'agente_project_files',
    'agente_message_action', 'agente_session_snapshot', 'agente_session_list', 'agente_session_history', 'agente_runtime_configure', 'agente_runtime_settings', 'agente_model_inputs', 'agente_child_cancel', 'agente_subagent_model', 'agente_media_import', 'agente_media_preview', 'agente_mcp_control'
 ]);
@@ -72,7 +74,7 @@ const ALLOWED_EVENT_CHANNELS = new Set([
   'supervisor-event', 'download-progress', 'runtime-download-progress', 'whisper-runtime-download-progress', 'voice-setup-progress', 'instances-changed',
   'search-result', 'search-progress', 'agent-event', 'tts-event', 'chat-stream-event',
   'tts-chunk', 'tts-done', 'tts-start', 'tts-error',
-  'home_runtime_event', 'code_agent_event', 'browser_panel_state', 'code_process_event', 'terminal_event', 'bot_event',
+  'home_runtime_event', 'code_agent_event', 'browser_panel_state', 'code_process_event', 'terminal_event', 'bot_event', 'browser_chat_request',
   'ui-zoom'
 ]);
 

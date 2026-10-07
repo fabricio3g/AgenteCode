@@ -128,8 +128,8 @@
           cannot guess from a glyph — while Terminal, Processes, Canvas and
           Browser are instruments you go looking for by name anyway.
         -->
-        {@render pane('changes', $t('codeWs.changes'), workspaceLayout.isOpen('changes'), () => workspaceLayout.toggle('changes'), GitCompareArrows, changesBadge)}
-        {@render pane('files', $t('codeWs.files'), workspaceLayout.isOpen('files'), () => workspaceLayout.toggle('files'), FolderTree)}
+        {@render pane('changes', $t('codeWs.changes'), workspaceLayout.isOpen('changes'), () => workspaceLayout.toggle('changes'), GitCompareArrows, changesBadge, $t('codeWs.changes'))}
+        {@render pane('files', $t('codeWs.files'), workspaceLayout.isOpen('files'), () => workspaceLayout.toggle('files'), FolderTree, null, $t('codeWs.files'))}
         {@render pane('terminal', $t('codeWs.terminal'), terminalOpen, () => void toggleTerminal(), SquareTerminal)}
       {/if}
     </div>

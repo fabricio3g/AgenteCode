@@ -258,15 +258,16 @@
   .workspace-main { position: absolute; z-index: 0; display: flex; max-width:100%;max-height:100%; min-width: 0; min-height: 0; overflow: hidden; }
   /* Quiet surfaces: one hairline and a soft shadow, no inner highlight. A docked
      panel is flat; a floating one lifts a little. */
-  .workspace-panel { position: absolute; display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; border-radius: var(--float-radius); background: var(--card); }
+  .workspace-panel { position: absolute; display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; border-radius: var(--radius-sm); background: var(--background); }
   /* The edge is drawn on top of the content: an inset shadow sat under children
      with their own fill (the canvas board, the browser), so those panels lost it. */
-  .workspace-panel::after { content: ''; position: absolute; inset: 0; z-index: 30; border: 1px solid var(--border-hover); border-radius: inherit; pointer-events: none; }
+  .workspace-panel::after { content: ''; position: absolute; inset: 0; z-index: 30; border: 1px solid var(--border-subtle); border-radius: inherit; pointer-events: none; }
   .workspace-panel[hidden] { display: none; }
-  .workspace-panel.floating { box-shadow: var(--float-shadow); }
+  .workspace-panel.floating { background:var(--card);border-radius:var(--float-radius);box-shadow:var(--float-shadow); }
+  .workspace-panel.floating::after { border-color:var(--border); }
   .workspace-panel.resize-ready::after { border-color: var(--split-line); }
   /* The strip owns the panel's top edge: no fill, just a hairline under it. */
-  .workspace-header { display: flex; align-items: center; flex-shrink: 0; gap: 2px; height: 32px; padding: 0 6px 0 8px; cursor: grab; touch-action: none; box-shadow: inset 0 -1px 0 var(--border-subtle); }
+  .workspace-header { display: flex; align-items: center; flex-shrink: 0; gap: 2px; height: 32px; padding: 0 6px 0 8px; cursor: grab; touch-action: none; box-shadow: none; }
   .workspace-header :global(.ui-icon-button) { border-color: transparent; background: transparent; box-shadow: none; }
   .workspace-header :global(.ui-icon-button:hover) { background: var(--surface-hover); border-color: transparent; }
   .workspace-tabs { display: flex; min-width: 0; flex: 1; gap: 2px; overflow-x: auto; scrollbar-width: none; }

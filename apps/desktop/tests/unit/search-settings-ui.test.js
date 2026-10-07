@@ -9,15 +9,16 @@ const preload = fs.readFileSync(new URL('../../preload/preload.cjs', import.meta
 describe('aggregator engine settings UI', () => {
   it('shows the engine pool only for the aggregator provider', () => {
     assert.match(source, /\{#if searchProvider === 'aggregator'\}/);
-    assert.match(source, />Engine pool</);
+    // The copy lives in the locale catalogs now, so pin the key, not the English.
+    assert.match(source, /searchSettings\.enginePool/);
   });
 
   it('provides individual and bulk engine controls', () => {
     assert.match(source, /toggleEngine\(item\)/);
-    assert.match(source, />Enable recommended</);
-    assert.match(source, />Enable all configured</);
-    assert.match(source, />Disable all</);
-    assert.match(source, />Reset(?: to recommended)?</);
+    assert.match(source, /searchSettings\.enableRecommended/);
+    assert.match(source, /searchSettings\.enableAll/);
+    assert.match(source, /searchSettings\.disableAll/);
+    assert.match(source, /searchSettings\.resetRecommended/);
   });
 
   it('binds and persists the enabled engine list', () => {

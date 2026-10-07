@@ -1,7 +1,7 @@
 // The Bots section: Desktop's own animated faces (js/faces.js, bundled from
 // the app) acting out a small handoff loop, the way they do in the app.
 
-import { mountFace } from "./faces.js";
+import { mountFace } from "./faces.js?v=12";
 
 // Scripted like real activity: a request, a handoff, the work, the answer.
 const SCRIPT = [
