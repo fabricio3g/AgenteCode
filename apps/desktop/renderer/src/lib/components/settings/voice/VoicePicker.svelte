@@ -7,6 +7,9 @@
 -->
 
 <script lang="ts">
+  import UiButton from '$lib/components/ui/Button.svelte';
+  import { cn as uiClass } from '$lib/utils/cn';
+
   import { t, locale } from 'svelte-i18n';
   import { Check, LoaderCircle, Play, Square } from 'lucide-svelte';
   import { Select } from '$lib/components/ui';
@@ -82,9 +85,9 @@
       {#each voices as voice (voice.id)}
         {@const selected = !chosenClone && chosen === voice.id}
         <div class="voice" class:is-selected={selected}>
-          <button
+          <UiButton variant="plain"
             type="button"
-            class="voice-pick"
+            class={uiClass("voice-pick", "ui-local-99dccfce")}
             role="radio"
             aria-checked={selected}
             onclick={() => void appStore.updateTtsSettings({ voice: voice.id, voice_model: model.id, language, cloned_voice: '' })}
@@ -94,12 +97,12 @@
               <span class="block truncate text-[length:var(--text-sm)] text-foreground">{voice.label}</span>
               {#if voice.gender}<span class="block text-xs text-muted-foreground">{$t(`voice.engine.${voice.gender}`)}</span>{/if}
             </span>
-          </button>
-          <button type="button" class="voice-play" onclick={() => void preview(voice.id)} aria-label={$t('voice.preview')} title={$t('voice.preview')}>
+          </UiButton>
+          <UiButton variant="plain" type="button" class={uiClass("voice-play", "ui-local-99dccfce")} onclick={() => void preview(voice.id)} aria-label={$t('voice.preview')} title={$t('voice.preview')}>
             {#if previewing === voice.id}
               {#if ttsStore.audioStarted}<Square class="size-3" />{:else}<LoaderCircle class="size-3.5 animate-spin" />{/if}
             {:else}<Play class="size-3.5" />{/if}
-          </button>
+          </UiButton>
         </div>
       {/each}
     </div>
@@ -110,16 +113,16 @@
         {#each clones as clone (clone.id)}
           {@const selected = chosenClone === clone.id}
           <div class="voice" class:is-selected={selected}>
-            <button type="button" class="voice-pick" role="radio" aria-checked={selected}
+            <UiButton variant="plain" type="button" class={uiClass("voice-pick", "ui-local-99dccfce")} role="radio" aria-checked={selected}
               onclick={() => void appStore.updateTtsSettings({ cloned_voice: clone.id, voice_model: model.id, language })}>
               <span class="voice-mark">{#if selected}<Check class="size-3" />{/if}</span>
               <span class="block min-w-0 truncate text-[length:var(--text-sm)] text-foreground">{clone.name}</span>
-            </button>
-            <button type="button" class="voice-play" onclick={() => void preview(`clone:${clone.id}`, clone.id)} aria-label={$t('voice.preview')} title={$t('voice.preview')}>
+            </UiButton>
+            <UiButton variant="plain" type="button" class={uiClass("voice-play", "ui-local-99dccfce")} onclick={() => void preview(`clone:${clone.id}`, clone.id)} aria-label={$t('voice.preview')} title={$t('voice.preview')}>
               {#if previewing === `clone:${clone.id}`}
                 {#if ttsStore.audioStarted}<Square class="size-3" />{:else}<LoaderCircle class="size-3.5 animate-spin" />{/if}
               {:else}<Play class="size-3.5" />{/if}
-            </button>
+            </UiButton>
           </div>
         {/each}
       </div>
@@ -167,7 +170,7 @@
     box-shadow: var(--nav-current-ring);
   }
 
-  .voice-pick {
+  :global(.voice-pick.ui-local-99dccfce) {
     display: flex;
     min-width: 0;
     flex: 1;
@@ -185,7 +188,7 @@
     color: var(--foreground);
   }
 
-  .voice-play {
+  :global(.voice-play.ui-local-99dccfce) {
     display: inline-flex;
     width: 1.75rem;
     height: 1.75rem;
@@ -197,10 +200,10 @@
     color: var(--muted-foreground);
   }
 
-  .voice-play:hover { background: var(--float-row-hover); color: var(--foreground); }
+  :global(.voice-play:hover.ui-local-99dccfce) { background: var(--float-row-hover); color: var(--foreground); }
 
-  .voice-pick:focus-visible,
-  .voice-play:focus-visible {
+  :global(.voice-pick:focus-visible.ui-local-99dccfce),
+  :global(.voice-play:focus-visible.ui-local-99dccfce) {
     outline: 2px solid var(--brand-accent);
     outline-offset: -2px;
     border-radius: var(--float-row-radius);

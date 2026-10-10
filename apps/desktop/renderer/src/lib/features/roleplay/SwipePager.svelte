@@ -7,6 +7,10 @@
 -->
 
 <script lang="ts">
+  import IconButton from '$lib/components/ui/IconButton.svelte';
+
+  import { cn as uiClass } from '$lib/utils/cn';
+
   import { ChevronLeft, ChevronRight } from 'lucide-svelte';
   import { t } from 'svelte-i18n';
 
@@ -41,20 +45,20 @@
 </script>
 
 <div class="swipe-pager" role="group" aria-label={label}>
-  <button type="button" class="pager-btn" aria-label={$t('roleplay.swipe.previous')} title={$t('roleplay.swipe.previous')} disabled={disabled || (atStart && !wrap)} onclick={previous}>
+  <IconButton label={$t('roleplay.swipe.previous')} size="xs" variant="ghost" type="button" class={uiClass("pager-btn", "ui-local-33a6f1d7")}  title={$t('roleplay.swipe.previous')} disabled={disabled || (atStart && !wrap)} onclick={previous}>
     <ChevronLeft class="size-3.5" />
-  </button>
+  </IconButton>
   <span class="pager-count" aria-live="polite">{index + 1} / {count}</span>
-  <button
+  <IconButton label={atEnd && oncreate ? $t('roleplay.swipe.new') : $t('roleplay.swipe.next')} size="xs" variant="ghost"
     type="button"
-    class="pager-btn"
-    aria-label={atEnd && oncreate ? $t('roleplay.swipe.new') : $t('roleplay.swipe.next')}
+    class={uiClass("pager-btn", "ui-local-33a6f1d7")}
+
     title={atEnd && oncreate ? $t('roleplay.swipe.new') : $t('roleplay.swipe.next')}
     disabled={disabled || (atEnd && !oncreate && !wrap)}
     onclick={next}
   >
     <ChevronRight class="size-3.5" />
-  </button>
+  </IconButton>
 </div>
 
 <style>
@@ -66,7 +70,7 @@
     color: var(--muted-foreground);
   }
 
-  .pager-btn {
+  :global(.pager-btn.ui-local-33a6f1d7) {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -77,19 +81,19 @@
     transition: background-color var(--motion-fast) var(--motion-ease), color var(--motion-fast) var(--motion-ease);
   }
 
-  .pager-btn:hover:not(:disabled) {
+  :global(.pager-btn:hover:not(:disabled).ui-local-33a6f1d7) {
     background: var(--surface-hover);
     color: var(--foreground);
   }
 
-  .pager-btn:disabled {
+  :global(.pager-btn:disabled.ui-local-33a6f1d7) {
     opacity: 0.35;
   }
 
   .pager-count {
     min-width: 2.25rem;
     text-align: center;
-    font-size: 11px;
+    font-size: var(--text-xs);
     font-variant-numeric: tabular-nums;
   }
 </style>

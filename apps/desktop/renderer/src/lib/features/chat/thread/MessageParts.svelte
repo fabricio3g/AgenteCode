@@ -163,7 +163,7 @@
     <div class="mb-2 text-xs text-muted-foreground">{part.detail}</div>
   {:else if part.kind === 'pending'}
     <div class="my-2 flex items-center gap-2">
-      <WritingIndicator />
+      <WritingIndicator label={part.status || 'Writing'} />
       {#if part.status}
         <span class="pending-label text-xs text-muted-foreground">{part.status}</span>
       {/if}

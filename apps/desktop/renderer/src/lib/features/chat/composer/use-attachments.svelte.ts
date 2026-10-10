@@ -9,7 +9,7 @@ import { appStore } from '$lib/stores/app.svelte';
  * files on their way into a message.
  */
 
-type OcrPhase = 'rendering' | 'recognizing' | 'done';
+type OcrPhase = 'rendering' | 'recognizing' | 'done' | 'error';
 
 interface OcrProgress {
   phase: OcrPhase;
@@ -120,6 +120,7 @@ export class ComposerAttachments {
       }
 
       const phase = detail.phase || 'recognizing';
+      if (phase === 'error') { this.clearOcr(); return; }
       this.ocr = {
         phase,
         page: Number.isFinite(detail.page) ? Number(detail.page) : 0,

@@ -89,10 +89,10 @@
   });
 </script>
 
-<section class="html-card" aria-label={payload.title || 'HTML card'}>
+<section class="viz-surface html-card" aria-label={payload.title || 'HTML card'}>
   {#if payload.title}
-    <header class="html-card-header">
-      <h3>{payload.title}</h3>
+    <header class="viz-header">
+      <h3 class="viz-title">{payload.title}</h3>
     </header>
   {/if}
   <div class="html-card-frame-wrap" style:height={`${height}px`}>
@@ -124,25 +124,6 @@
 </section>
 
 <style>
-  .html-card {
-    width: var(--inline-block-width);
-    max-width: 100%;
-    margin-top: 0.65rem;
-    padding: 0.75rem 0.85rem 0.85rem;
-    border: 0;
-    border-radius: var(--artifact-radius);
-    background: var(--artifact-surface);
-    box-shadow: var(--artifact-elev);
-    color: var(--text);
-  }
-
-  .html-card-header h3 {
-    margin: 0 0 0.55rem;
-    font-size: 0.95rem;
-    font-weight: 600;
-    color: var(--text);
-  }
-
   .html-card-frame-wrap {
     width: 100%;
     overflow: hidden;
@@ -159,7 +140,7 @@
 
   .html-card-error {
     margin: 0.4rem 0 0;
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     color: var(--muted-foreground);
   }
 

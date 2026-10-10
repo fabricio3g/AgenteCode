@@ -11,6 +11,9 @@
 -->
 
 <script lang="ts">
+  import UiButton from '$lib/components/ui/Button.svelte';
+  import { cn as uiClass } from '$lib/utils/cn';
+
   import { onMount } from 'svelte';
   import { t } from 'svelte-i18n';
   import { Copy, Minus, Square, X } from 'lucide-svelte';
@@ -46,15 +49,15 @@
 
 {#if shown}
 <div class="window-controls titlebar-no-drag" role="group" aria-label={$t('titlebar.window')}>
-  <button type="button" class="window-control" aria-label={$t('titlebar.minimize')} onclick={() => void appWindow.minimize()}>
+  <UiButton variant="plain" type="button" class={uiClass("window-control", "ui-local-df895937")} aria-label={$t('titlebar.minimize')} onclick={() => void appWindow.minimize()}>
     <Minus aria-hidden="true" />
-  </button>
-  <button type="button" class="window-control" aria-label={maximized ? $t('titlebar.restore') : $t('titlebar.maximize')} onclick={() => void appWindow.toggleMaximize().then(sync)}>
+  </UiButton>
+  <UiButton variant="plain" type="button" class={uiClass("window-control", "ui-local-df895937")} aria-label={maximized ? $t('titlebar.restore') : $t('titlebar.maximize')} onclick={() => void appWindow.toggleMaximize().then(sync)}>
     {#if maximized}<Copy class="is-restore" aria-hidden="true" />{:else}<Square class="is-max" aria-hidden="true" />{/if}
-  </button>
-  <button type="button" class="window-control is-close" aria-label={$t('titlebar.close')} onclick={() => void appWindow.close()}>
+  </UiButton>
+  <UiButton variant="plain" type="button" class={uiClass("window-control is-close", "ui-local-df895937")} aria-label={$t('titlebar.close')} onclick={() => void appWindow.close()}>
     <X aria-hidden="true" />
-  </button>
+  </UiButton>
 </div>
 {/if}
 
@@ -67,7 +70,7 @@
   }
 
   /* The title bar's button: same square, same radius, same neutral hover. */
-  .window-control {
+  :global(.window-control.ui-local-df895937) {
     display: inline-flex;
     inline-size: 1.75rem;
     block-size: 1.625rem;
@@ -78,34 +81,34 @@
     transition: background-color var(--motion-fast) var(--motion-ease), color var(--motion-fast) var(--motion-ease);
   }
 
-  .window-control :global(svg) {
+  :global(.window-control.ui-local-df895937) :global(svg) {
     inline-size: 0.875rem;
     block-size: 0.875rem;
     stroke-width: 1.75;
   }
 
-  .window-control :global(svg.is-max) {
+  :global(.window-control.ui-local-df895937) :global(svg.is-max) {
     inline-size: 0.75rem;
     block-size: 0.75rem;
   }
 
-  .window-control :global(svg.is-restore) {
+  :global(.window-control.ui-local-df895937) :global(svg.is-restore) {
     inline-size: 0.75rem;
     block-size: 0.75rem;
     transform: scaleX(-1);
   }
 
-  .window-control:hover {
+  :global(.window-control:hover.ui-local-df895937) {
     background: var(--float-row-hover);
     color: var(--foreground);
   }
 
-  .window-control.is-close:hover {
+  :global(.window-control.is-close:hover.ui-local-df895937) {
     background: var(--error);
     color: #fff;
   }
 
-  .window-control:focus-visible {
+  :global(.window-control:focus-visible.ui-local-df895937) {
     outline: 2px solid var(--brand-accent);
     outline-offset: -2px;
   }

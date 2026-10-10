@@ -26,6 +26,25 @@ class Child extends EventEmitter {
 const tick = () => new Promise((resolve) => setImmediate(resolve));
 const config = (model) => ({ binaryPath: 'llama-server', args: ['-m', model], healthPort: 11435, statusFields: { model_path: model } });
 
+test('a healthy cold CPU load can exceed the old 50-second deadline', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'setInterval', 'Date'] });
+  const child = new Child();
+  let ready = false;
+  const managed = new ManagedProcess({ spawn: () => child, fetch: async () => ({ ok: ready }) });
+  const loading = managed.start(config('cold-cpu.gguf'));
+  await tick();
+  child.stderr.write("0.00.316.131 I srv load_model: loading model 'cold-cpu.gguf'\n");
+  assert.equal(managed.status.load_phase, 'Loading weights');
+  t.mock.timers.tick(60_000);
+  await tick();
+  assert.equal(managed.status.state, 'starting');
+  assert.deepEqual(child.signals, []);
+  ready = true;
+  t.mock.timers.tick(1000);
+  assert.equal(await loading, 'started');
+  await managed.stop();
+});
+
 test('identical model loads share one launch; switching cancels only the old launch', async () => {
   const children = [];
   const statuses = [];

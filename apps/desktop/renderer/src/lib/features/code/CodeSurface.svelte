@@ -10,9 +10,12 @@
 -->
 
 <script lang="ts">
+  import { cn as uiClass } from '$lib/utils/cn';
+
   import { onMount } from 'svelte';
   import { t } from 'svelte-i18n';
-  import { Bug, FlaskConical, Globe, Telescope } from 'lucide-svelte';
+  import { Bug, FlaskConical, FolderOpen, Globe, Telescope } from 'lucide-svelte';
+  import { Button } from '$lib/components/ui';
   import { appStore } from '$lib/stores/app.svelte';
   import { codeStore } from './code.svelte';
   import { codeWorkspace } from './workspace.svelte';
@@ -102,19 +105,13 @@
   {#if !codeStore.loaded && codeStore.loading}
     <div class="flex flex-1 items-center justify-center"></div>
   {:else if !codeStore.projects.length}
-    <!-- Calm default: one headline, one action. -->
+    <!-- Calm default: one headline, one action (it opens the folder browser). -->
     <div class="flex flex-1 flex-col items-center justify-center gap-5 px-6 text-center">
       <div class="max-w-md space-y-2">
         <h1 class="text-2xl font-semibold tracking-tight text-foreground">{$t('code.surfaceTitle')}</h1>
         <p class="text-sm leading-relaxed text-muted-foreground">{$t('code.noProjectsHint')}</p>
       </div>
-      <button
-        type="button"
-        class="inline-flex items-center gap-2 rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:opacity-90"
-        onclick={() => void codeStore.addProject()}
-      >
-        {$t('code.addProject')}
-      </button>
+      <Button onclick={() => void codeStore.addProject()}><FolderOpen />{$t('code.addProject')}</Button>
     </div>
   {:else if chat}
     <div class="flex min-h-0 flex-1">
@@ -123,14 +120,14 @@
         <div class="flex min-h-0 flex-1 flex-col">
           {#if !chat.messages.length && !unlinked}
             <div class="starter-area">
-              <div class="starter-content"><p class="text-sm text-muted-foreground">{$t('code.startersTitle')}</p>
+              <div class="starter-content">
               <div class="starter-grid">
                 {#each starters as starter (starter.text)}
                   {@const Icon = starter.icon}
-                  <button type="button" class="starter flex items-center gap-2.5 rounded-xl border border-border px-3.5 py-3 text-left text-[13px] text-foreground transition" onclick={() => useStarter(starter.text)}>
+                  <Button variant="plain" type="button" class={uiClass("starter flex items-center gap-2.5 rounded-xl border border-border px-3.5 py-3 text-left text-[13px] text-foreground transition", "ui-local-c4cff7cc")} onclick={() => useStarter(starter.text)}>
                     <Icon class="size-4 shrink-0 text-muted-foreground" />
                     <span class="min-w-0 flex-1">{starter.text.trim()}{starter.text.endsWith(' ') ? '…' : ''}</span>
-                  </button>
+                  </Button>
                 {/each}
               </div></div>
             </div>
@@ -140,7 +137,7 @@
             </div>
           {/if}
           {#if unlinked}
-            <p class="mx-auto mb-4 max-w-3xl rounded-lg border border-border bg-muted/50 px-4 py-2.5 text-center text-xs text-muted-foreground">
+            <p class="mx-auto mb-4 max-w-3xl rounded-lg border border-border bg-muted/50 px-4 py-2.5 text-xs text-muted-foreground">
               {$t('code.unlinkedHint')}
             </p>
           {:else}
@@ -158,13 +155,13 @@
         <p class="max-w-md text-sm leading-relaxed text-muted-foreground">
           {$t('code.startConversation')}
         </p>
-        <button
+        <Button variant="plain"
           type="button"
-          class="inline-flex items-center gap-2 rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:opacity-90"
+          class={uiClass("inline-flex items-center gap-2 rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:opacity-90", "ui-local-c4cff7cc")}
           onclick={() => void codeStore.newConversation(activeProject)}
         >
           {$t('code.newConversation')}
-        </button>
+        </Button>
       {:else}
         <p class="max-w-md text-sm leading-relaxed text-muted-foreground">{$t('code.surfacePickProject')}</p>
       {/if}
@@ -176,14 +173,14 @@
   .code-surface { container-type: inline-size; }
   .starter-grid { display:grid; grid-template-columns:minmax(0,1fr);gap:0.5rem;width:100%;max-width:36rem; }
   @container (min-width: 38rem) { .starter-grid {grid-template-columns:repeat(2,minmax(0,1fr));} }
-  .starter { min-width:0; background:var(--control-bg);box-shadow:var(--control-inset); }
+  :global(.starter.ui-local-c4cff7cc) { min-width:0; background:var(--control-bg);box-shadow:var(--control-inset); }
   .starter-area { min-height:0;flex:1;overflow-y:auto;display:flex;padding:1rem; }
-  .starter-content { width:100%;max-width:36rem;margin:auto;display:flex;flex-direction:column;align-items:center;gap:1rem; }
-  .starter {
+  .starter-content { width:100%;max-width:36rem;margin:auto;display:flex;flex-direction:column;align-items:stretch;gap:1rem; }
+  :global(.starter.ui-local-c4cff7cc) {
     background: var(--control-bg);
   }
 
-  .starter:hover {
+  :global(.starter:hover.ui-local-c4cff7cc) {
     background: var(--muted);
     border-color: color-mix(in srgb, var(--foreground) 25%, transparent);
   }

@@ -15,10 +15,14 @@
 -->
 
 <script lang="ts">
+  import UiButton from '$lib/components/ui/Button.svelte';
+  import { cn as uiClass } from '$lib/utils/cn';
+
   import { t } from 'svelte-i18n';
   import { Brain, ChevronDown } from 'lucide-svelte';
   import ComposerCard from '$lib/features/shared/composer/ComposerCard.svelte';
   import { appStore } from '$lib/stores/app.svelte';
+  import { reasoningRouteIdentity } from '$lib/services/reasoning-route';
   import type { ReasoningCapabilities, ReasoningLevel } from '$lib/types/chat';
   import { normalizeThinkingMode } from '$lib/stores/app-store-local-model';
   import { formatBudget } from './reasoning-effort';
@@ -45,7 +49,9 @@
   let sheenKey = $state(0);
   let changed = $state(false);
   const id = $props.id();
-  const capabilities = $derived(given ?? appStore.reasoningCapabilities);
+  const appCapabilities = $derived(appStore.reasoningCapabilities);
+  const routeMatches = $derived(!appCapabilities.route || appCapabilities.route === reasoningRouteIdentity(appStore.config));
+  const capabilities = $derived(given ?? (routeMatches ? appCapabilities : { supported: false, levels: [], source: 'unknown' } as ReasoningCapabilities));
   const known = $derived(capabilities.source !== 'unknown');
   // Auto plus at least one level is a choice.
   const visible = $derived(known && capabilities.supported && capabilities.levels.length > 0);
@@ -133,14 +139,14 @@
 </script>
 
 {#if visible}
-  <button bind:this={anchor} type="button" class="thinking-trigger" class:is-inline={inline} class:is-open={open}
+  <UiButton variant="plain" bind:ref={anchor} type="button" class={uiClass("thinking-trigger", "ui-local-efeab109", {"is-inline": inline, "is-open": open})}
     aria-haspopup="dialog" aria-expanded={open} aria-controls={open ? id : undefined}
     aria-label={$t('composer.thinking.trigger', { values: { level: labelFor(current) } })} title={$t('composer.thinking.title')}
     onclick={() => (open = !open)}>
     {#if inline}<Brain class="thinking-icon size-3 shrink-0" /><span class="thinking-prefix">{$t('composer.thinking.title')} ·</span>{/if}
     <span class="thinking-level">{labelFor(current)}</span>
     {#if inline}<ChevronDown class="thinking-chevron size-3 shrink-0" />{/if}
-  </button>
+  </UiButton>
   {#if open}
     <ComposerCard {anchor} {id} bright label={$t('composer.thinking.title')} onclose={() => (open = false)}>
       <div class="effort">
@@ -200,7 +206,7 @@
 {/if}
 
 <style>
-  .thinking-trigger {
+  :is(.thinking-trigger, :global(.thinking-trigger.ui-local-efeab109)) {
     display: inline-flex;
     height: 26px;
     flex-shrink: 0;
@@ -213,21 +219,21 @@
     white-space: nowrap;
   }
 
-  .thinking-trigger.is-inline { height:1.75rem;gap:0.25rem;font-size:var(--text-xs);padding-inline:0.25rem; }
-  .thinking-trigger :global(.thinking-icon) { display:none; }
+  :global(.thinking-trigger.is-inline.ui-local-efeab109) { height:1.75rem;gap:0.25rem;font-size:var(--text-xs);padding-inline:0.25rem; }
+  :is(.thinking-trigger, :global(.thinking-trigger.ui-local-efeab109)) :global(.thinking-icon) { display:none; }
   @container composer (max-width:620px) { .thinking-prefix { display:none; } }
   /* Narrow: the level folds into its icon (the label and tooltip still name it). */
   @container composer (max-width:480px) {
-    .thinking-level, .thinking-trigger :global(.thinking-chevron) { display:none; }
-    .thinking-trigger :global(.thinking-icon) { display:block; }
+    .thinking-level, :is(.thinking-trigger, :global(.thinking-trigger.ui-local-efeab109)) :global(.thinking-chevron) { display:none; }
+    :is(.thinking-trigger, :global(.thinking-trigger.ui-local-efeab109)) :global(.thinking-icon) { display:block; }
   }
 
-  .thinking-trigger:not(.is-static):hover,
-  .thinking-trigger.is-open {
+  :is(.thinking-trigger:not(.is-static):hover, :global(.thinking-trigger:not(.is-static):hover.ui-local-efeab109)),
+  :global(.thinking-trigger.is-open.ui-local-efeab109) {
     color: var(--foreground);
   }
 
-  .thinking-trigger:focus-visible {
+  :is(.thinking-trigger:focus-visible, :global(.thinking-trigger:focus-visible.ui-local-efeab109)) {
     outline: 2px solid var(--ring);
     outline-offset: 2px;
   }

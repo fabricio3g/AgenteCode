@@ -1,6 +1,8 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+  import { cn as uiClass } from '$lib/utils/cn';
+
   import { ChevronDown, ChevronRight, FileCode2, Folder } from 'lucide-svelte';
   import type { CodeAgentDiffStat } from '$lib/types/chat';
   import Button from '$lib/components/ui/Button.svelte';
@@ -71,20 +73,20 @@
     {#each n.children as c (c.path)}
       {#if c.isDir}
         <div class="nr">
-          <button class="tr {depth(d)}" onclick={() => toggle(c.path)}>
+          <Button variant="plain" class={uiClass(`tr ${depth(d)}`, "ui-local-9cb339f3")} onclick={() => toggle(c.path)}>
             {#if expanded.has(c.path)}<ChevronDown class="ci" />{:else}<ChevronRight class="ci" />{/if}
             <Folder class="ci" /><span class="nm">{c.name}</span>
             {#if c.ca || c.cd}<span class="cnt"><span class="a">+{c.ca}</span><span class="d">-{c.cd}</span></span>{/if}
-          </button>
+          </Button>
           {#if expanded.has(c.path)}{@render tree(c, d + 1)}{/if}
         </div>
       {:else}
         <div class="nr">
-          <button class="tr {depth(d)}" onclick={() => toggle(c.path)}>
+          <Button variant="plain" class={uiClass(`tr ${depth(d)}`, "ui-local-9cb339f3")} onclick={() => toggle(c.path)}>
             <FileCode2 class="ci" /><span class="nm">{c.name}</span>
             <span class="kind {c.stat?.kind}">{c.stat?.kind}</span>
             {#if c.stat}<span class="cnt"><span class="a">+{c.stat.additions}</span><span class="d">-{c.stat.deletions}</span></span>{/if}
-          </button>
+          </Button>
           {#if expanded.has(c.path) && c.stat}
             <pre class="diff">{c.stat.kind === 'deleted' ? (c.stat.before || '') : (c.stat.after || '')}</pre>
           {/if}
@@ -107,13 +109,13 @@
   .title { flex: 1; }
   .cnt { display: inline-flex; gap: 0.25rem; font-variant-numeric: tabular-nums; font-size: var(--text-xs); font-weight: 700; }
   .a { color: var(--success); }
-  .d { color: var(--error); }
+  :is(.d, :global(.d.ui-local-9cb339f3)) { color: var(--error); }
   .list { max-height: 28rem; overflow-y: auto; }
   .nr { border-top: 1px solid var(--border-subtle); }
   /* Not pilled: these are full-bleed rows separated by rules, so a pill would
      float free of the separators. */
-  .tr { display: flex; align-items: center; gap: 0.3rem; width: 100%; border: 0; background: transparent; color: var(--muted-foreground); padding: 0.3rem 0.5rem; text-align: left; font-size: 0.74rem; cursor: pointer; transition: background-color var(--motion-fast) var(--motion-ease), color var(--motion-fast) var(--motion-ease); }
-  .tr:hover { background: var(--surface-hover); color: var(--foreground); }
+  :is(.tr, :global(.tr.ui-local-9cb339f3)) { display: flex; align-items: center; gap: 0.3rem; width: 100%; border: 0; background: transparent; color: var(--muted-foreground); padding: 0.3rem 0.5rem; text-align: left; font-size: 0.74rem; cursor: pointer; transition: background-color var(--motion-fast) var(--motion-ease), color var(--motion-fast) var(--motion-ease); }
+  :is(.tr:hover, :global(.tr:hover.ui-local-9cb339f3)) { background: var(--surface-hover); color: var(--foreground); }
   .ci { width: 0.85rem; height: 0.85rem; flex-shrink: 0; }
   .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.75rem; flex: 1; }
   .kind { border-radius: var(--radius-full); background: var(--muted); padding: 0.1rem 0.35rem; font-size: var(--text-xs); font-weight: 650; letter-spacing: 0.01em; }

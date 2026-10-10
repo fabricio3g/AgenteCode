@@ -1,3 +1,12 @@
+// Chat facade: discovery and transport orchestration live here; pure wire code lives in chat/.
+import type { CompletionResult, RequestMessage, ToolDefinition } from './chat/types';
+import { normalizeRuntimeUsage, readCompletionPayload } from './chat/completion';
+import { toRequestMessages } from './chat/messages';
+export type { ContentPart, RequestMessage, ToolParameterSchema, ToolDefinition, NativeToolCall, CompletionResult } from './chat/types';
+export { normalizeRuntimeUsage, readCompletionWithTools } from './chat/completion';
+export { toRequestMessages } from './chat/messages';
+export { extractJsonFromResponse, type StructuredExtractionResult } from './chat/structured-response';
+
 import { isVisionModel } from '$shared/model-capabilities';
 import { listedModels } from './listed-models';
 import OpenAI from 'openai';
@@ -191,22 +200,7 @@ export async function detectToolSupport(): Promise<boolean> {
   }
 }
 
-/**
- * Identity of the route a reasoning-capabilities probe belongs to. The store
- * skips re-probing when the identity is unchanged, so every settings save
- * doesn't hit the provider catalog — and a stale probe can never pass as
- * the current route's levels after a backend/provider/model switch.
- */
-export function reasoningRouteIdentity(config: AppConfig | null | undefined): string {
-  const backendMode = config?.llm?.backend_mode || 'local';
-  if (backendMode === 'local') {
-    const local = config?.llm?.local || {};
-    return `local:${local.model || ''}:${local.selected_model_path || ''}`;
-  }
-  const providerName = config?.llm?.provider || DEFAULT_PROVIDER_ID;
-  const provider = (config?.llm?.providers?.[providerName] || {}) as { base_url?: string; model?: string };
-  return `api:${providerName}:${provider.base_url || ''}:${provider.model || ''}`;
-}
+export { reasoningRouteIdentity } from './reasoning-route';
 
 /**
  * Ask the active provider what reasoning levels it supports for the current
@@ -261,100 +255,6 @@ function resolveLocalModels(localModels: LocalModel[]): ModelOption[] {
 }
 
 // Multimodal content part for vision APIs
-export type ContentPart =
-  | { type: 'text'; text: string }
-  | { type: 'image_url'; image_url: { url: string; detail?: 'low' | 'high' | 'auto' } };
-
-export interface RequestMessage {
-  providerState?: { provider: string; blocks: Array<Record<string, unknown>> };
-  role: 'system' | 'user' | 'assistant' | 'tool';
-  content: string | ContentPart[] | null;
-  /** DeepSeek / OpenAI-compatible chain-of-thought; required when echoing tool-call turns. */
-  reasoning_content?: string | null;
-  attachments?: Array<{ kind?: string; base64?: string; name?: string; ocrText?: string }>;
-  tool_calls?: Array<{ id: string; type: 'function'; function: { name: string; arguments: string } }>;
-  tool_call_id?: string;
-  name?: string;
-}
-
-export interface ToolParameterSchema {
-  type: string;
-  description?: string;
-  properties?: Record<string, ToolParameterSchema>;
-  items?: ToolParameterSchema;
-  required?: string[];
-  enum?: Array<string | number | boolean>;
-  minLength?: number;
-  maxLength?: number;
-  minItems?: number;
-  maxItems?: number;
-  minimum?: number;
-  maximum?: number;
-  additionalProperties?: boolean | ToolParameterSchema;
-}
-
-export interface ToolDefinition {
-  type: 'function';
-  function: {
-    name: string;
-    description: string;
-    parameters: {
-      type: 'object';
-      properties: Record<string, ToolParameterSchema>;
-      required?: string[];
-      additionalProperties?: boolean;
-    };
-  };
-}
-
-export interface NativeToolCall {
-  id: string;
-  name: string;
-  arguments: Record<string, unknown>;
-}
-
-export interface CompletionResult {
-  providerState?: RequestMessage['providerState'];
-  content: string;
-  reasoning: string;
-  toolCalls?: NativeToolCall[];
-  usage?: {
-    input_tokens?: number;
-    output_tokens?: number;
-    prompt_tokens?: number;
-    completion_tokens?: number;
-    total_tokens?: number;
-    eval_count?: number;
-    eval_duration?: number;
-    prompt_eval_count?: number;
-    prompt_eval_duration?: number;
-    timings?: {
-      prompt_n?: number;
-      prompt_ms?: number;
-      prompt_per_second?: number;
-      predicted_n?: number;
-      predicted_ms?: number;
-      predicted_per_second?: number;
-      total_ms?: number;
-    };
-  } | null;
-}
-
-/** Preserve llama.cpp's top-level runtime timings alongside OpenAI usage. */
-export function normalizeRuntimeUsage(usage: unknown, timings?: unknown): CompletionResult['usage'] {
-  const usageRecord = usage && typeof usage === 'object' ? usage as Record<string, unknown> : {};
-  const timingRecord = timings && typeof timings === 'object'
-    ? timings as Record<string, unknown>
-    : usageRecord.timings && typeof usageRecord.timings === 'object'
-      ? usageRecord.timings as Record<string, unknown>
-      : null;
-  if (!Object.keys(usageRecord).length && !timingRecord) return null;
-  return {
-    ...usageRecord,
-    ...(timingRecord ? { timings: timingRecord } : {})
-  } as CompletionResult['usage'];
-}
-
 interface ChatStreamEvent {
   streamId: string;
   type: 'delta' | 'done' | 'error' | 'cancelled';
@@ -388,83 +288,6 @@ export async function hasConfiguredVisionModel(config: AppConfig): Promise<boole
   // The core knows what the model takes; the name guess is the fallback.
   if (!isElectron() || !model) return isVisionModel(model);
   return invoke<boolean>('model_sees_images', { providerName, model }).catch(() => isVisionModel(model));
-}
-
-const MAX_REQUEST_IMAGES = 20;
-
-export function toRequestMessages(messages: RequestMessage[], modelName?: string, hasMmproj?: boolean) {
-  const visionCapable = hasMmproj !== undefined ? hasMmproj : isVisionModel(modelName || '');
-
-  // Count images from newest to oldest so we keep the newest MAX_REQUEST_IMAGES
-  let imagesAllowed = MAX_REQUEST_IMAGES;
-  const allowedImageKeys = new Set<string>();
-  if (visionCapable) {
-    for (let m = messages.length - 1; m >= 0; m--) {
-      const msg = messages[m];
-      if (msg.role === 'user' && msg.attachments) {
-        for (let a = msg.attachments.length - 1; a >= 0; a--) {
-          const att = msg.attachments[a];
-          if (att.kind === 'image' && att.base64 && String(att.base64).startsWith('data:')) {
-            if (imagesAllowed > 0) {
-              allowedImageKeys.add(`${m}:${a}`);
-              imagesAllowed--;
-            }
-          }
-        }
-      }
-    }
-  }
-
-  return messages.map((message, mIndex) => {
-    const base: Record<string, unknown> = { role: message.role };
-
-    const activeImageAttachments: Array<{ kind?: string; base64?: string; name?: string; ocrText?: string }> = [];
-    const omittedImageNotes: string[] = [];
-
-    const rawAttachments = message.attachments || [];
-    for (let aIndex = 0; aIndex < rawAttachments.length; aIndex++) {
-      const a = rawAttachments[aIndex];
-      if (a.kind === 'image' && a.base64 && String(a.base64).startsWith('data:')) {
-        if (visionCapable) {
-          if (allowedImageKeys.has(`${mIndex}:${aIndex}`)) {
-            activeImageAttachments.push(a);
-          } else {
-            omittedImageNotes.push(`[Image: ${a.name || 'image'} (omitted from earlier history to stay under provider image limit)]`);
-          }
-        }
-      }
-    }
-
-    const ocrTexts: string[] = [];
-    for (const att of rawAttachments) {
-      if (att.ocrText) ocrTexts.push(`[${att.name}]: ${att.ocrText}`);
-    }
-    const ocrContext = [
-      ...ocrTexts,
-      ...omittedImageNotes
-    ].length ? '\n\n--- Attached file contents ---\n' + [...ocrTexts, ...omittedImageNotes].join('\n\n') : '';
-
-    if (message.role === 'user' && activeImageAttachments.length && visionCapable) {
-      const parts: ContentPart[] = [];
-      const textContent = (message.content || '') + ocrContext;
-      if (textContent) parts.push({ type: 'text', text: String(textContent) });
-      for (const img of activeImageAttachments) {
-        parts.push({ type: 'image_url', image_url: { url: img.base64!, detail: 'auto' } });
-      }
-      base.content = parts;
-    } else {
-      base.content = Array.isArray(message.content)
-        ? [...message.content, ...(ocrContext ? [{ type: 'text' as const, text: ocrContext }] : [])]
-        : (message.content || '') + ocrContext;
-    }
-
-    if (message.tool_calls) base.tool_calls = message.tool_calls;
-    if (message.tool_call_id) base.tool_call_id = message.tool_call_id;
-    if (message.name) base.name = message.name;
-    if (message.reasoning_content != null) base.reasoning_content = message.reasoning_content;
-    if (message.providerState) base.providerState = message.providerState;
-    return base;
-  });
 }
 
 export async function loadChatConfig(): Promise<AppConfig> {
@@ -692,6 +515,8 @@ async function streamLocalReply(args: {
   reasoning?: ReasoningRequest;
   sampling?: RoleplaySampling;
   stop?: string[];
+  /** Local sampler fields llama-server reads beyond the OpenAI body (min_p, DRY…). Main forwards them as `extra_params`. */
+  extraParams?: Record<string, number | string>;
 }): Promise<void> {
   const config = args.config ?? await loadChatConfig();
   // Proxied through the main process (chat_stream_start), not fetched from
@@ -713,7 +538,8 @@ async function streamLocalReply(args: {
       ...mergeSampling(args.sampling, {
         temperature: config.llm?.local?.temperature, maxTokens: config.llm?.local?.max_tokens
       }),
-      ...(args.stop?.length ? { stop: args.stop } : {})
+      ...(args.stop?.length ? { stop: args.stop } : {}),
+      ...(args.extraParams && Object.keys(args.extraParams).length ? { extra_params: args.extraParams } : {})
     }
   }, args, true);
 }
@@ -729,6 +555,8 @@ export async function streamAssistantReply(args: {
   reasoningLevel?: ReasoningLevel | null;
   sampling?: RoleplaySampling;
   stop?: string[];
+  /** Local-only sampler fields (see streamLocalReply). Ignored by cloud providers. */
+  extraParams?: Record<string, number | string>;
 }): Promise<void> {
   const config = args.config ?? await loadChatConfig();
   const reasoning = buildReasoningRequest(args.reasoningLevel);
@@ -769,22 +597,6 @@ export async function streamAssistantReply(args: {
   }
 }
 
-function firstCompletionMessage(payload: UnknownRecord): UnknownRecord {
-  const choices = Array.isArray(payload?.choices) ? payload.choices as UnknownRecord[] : [];
-  return (choices[0]?.message as UnknownRecord | undefined) || {};
-}
-
-function readCompletionPayload(payload: UnknownRecord): CompletionResult {
-  const flat = typeof payload?.content === 'string';
-  const message = flat ? payload : firstCompletionMessage(payload);
-  const reasoning = flat ? message.reasoning : message.reasoning_content ?? message.reasoning ?? message.thinking;
-  return {
-    content: message.content != null ? String(message.content) : '',
-    reasoning: reasoning != null ? String(reasoning) : '',
-    usage: payload?.usage || null
-  };
-}
-
 async function invokeProviderCompletion(
   route: ReturnType<typeof resolveProvider>, apiKey: string, body: UnknownRecord
 ): Promise<UnknownRecord> {
@@ -809,6 +621,8 @@ export async function completeAssistantReply(args: {
    * completion budget so long professional reports are not cut short.
    */
   omitMaxTokens?: boolean;
+  /** A completion cap for this call alone (side calls such as summaries). Wins over the configured budget. */
+  maxTokens?: number;
 }): Promise<CompletionResult> {
   const config = args.config ?? await loadChatConfig();
 
@@ -830,7 +644,7 @@ export async function completeAssistantReply(args: {
         messages: toRequestMessages(args.messages, model, hasVisionModel),
         ...(reasoning ? { reasoning } : {}),
         ...(Number.isFinite(config.llm?.local?.temperature) ? { temperature: config.llm!.local!.temperature } : {}),
-        ...(!omitMaxTokens && config.llm?.local?.max_tokens ? { max_tokens: config.llm.local.max_tokens } : {})
+        ...(args.maxTokens ? { max_tokens: args.maxTokens } : !omitMaxTokens && config.llm?.local?.max_tokens ? { max_tokens: config.llm.local.max_tokens } : {})
       }
     });
     const result = readCompletionPayload(payload);
@@ -846,7 +660,7 @@ export async function completeAssistantReply(args: {
     stream: false,
     messages: toRequestMessages(args.messages),
     ...(Number.isFinite(provider.temperature) ? { temperature: provider.temperature } : {}),
-    ...(!omitMaxTokens && provider.max_tokens ? { max_tokens: provider.max_tokens } : {}),
+    ...(args.maxTokens ? { max_tokens: args.maxTokens } : !omitMaxTokens && provider.max_tokens ? { max_tokens: provider.max_tokens } : {}),
     ...(Number.isFinite(provider.top_p) ? { top_p: provider.top_p } : {})
   };
   if (isElectron()) {
@@ -861,373 +675,4 @@ export async function completeAssistantReply(args: {
     total_tokens: response.usage.total_tokens
   } : null;
   return result;
-}
-
-function tryParseJsonObject(value: unknown): Record<string, unknown> {
-  try {
-    const parsed = JSON.parse(String(value || '{}'));
-    return (parsed && typeof parsed === 'object') ? parsed as Record<string, unknown> : {};
-  } catch {
-    return {};
-  }
-}
-
-function tryParseJsonValue<T>(value: unknown): T | null {
-  try {
-    return JSON.parse(String(value)) as T;
-  } catch {
-    return null;
-  }
-}
-
-function readToolCall(value: unknown, flat: boolean): NativeToolCall {
-  const call = (value || {}) as UnknownRecord;
-  const fn = (call.function as UnknownRecord | undefined) || {};
-  const args = flat ? call.arguments : undefined;
-  return {
-    id: String(call.id || `call_${Math.random().toString(36).slice(2, 9)}`),
-    name: String(fn.name || (flat ? call.name : '') || ''),
-    arguments: args && typeof args === 'object'
-      ? args as UnknownRecord
-      : tryParseJsonObject(fn.arguments || args || '{}')
-  };
-}
-
-export function readCompletionWithTools(payload: UnknownRecord): CompletionResult {
-  const flat = typeof payload?.content === 'string';
-  const message = flat ? payload : firstCompletionMessage(payload);
-  const rawCalls = flat ? payload.toolCalls : message.tool_calls;
-  const toolCalls = (Array.isArray(rawCalls) ? rawCalls : [])
-    .map((call) => readToolCall(call, flat)).filter((call) => !!call.name);
-  return {
-    ...readCompletionPayload(payload),
-    ...(flat && payload.providerState ? { providerState: payload.providerState as CompletionResult['providerState'] } : {}),
-    toolCalls: toolCalls.length ? toolCalls : undefined
-  };
-}
-
-// ── Phase 5: Structured Output ─────────────────────────────────────────────
-
-export interface JsonSchemaProperty {
-  type: 'string' | 'number' | 'integer' | 'boolean' | 'array' | 'object';
-  description?: string;
-  enum?: string[];
-  items?: JsonSchemaProperty;
-  properties?: Record<string, JsonSchemaProperty>;
-  required?: string[];
-}
-
-export interface JsonSchemaDefinition {
-  name: string;
-  description?: string;
-  schema: {
-    type: 'object';
-    properties: Record<string, JsonSchemaProperty>;
-    required?: string[];
-  };
-  strict?: boolean;
-}
-
-export interface StructuredExtractionResult<T = Record<string, unknown>> {
-  data: T | null;
-  raw: string;
-  parsed: boolean;
-  error?: string;
-}
-
-export function extractJsonFromResponse<T = Record<string, unknown>>(raw: string): StructuredExtractionResult<T> {
-  const trimmed = String(raw || '').trim();
-  if (!trimmed) {
-    return { data: null, raw: trimmed, parsed: false, error: 'Empty response' };
-  }
-
-  try {
-    const data = JSON.parse(trimmed) as T;
-    return { data, raw: trimmed, parsed: true };
-  } catch {
-    // Continue to extraction strategies
-  }
-
-  const codeBlockMatch = trimmed.match(/```(?:json)?\s*\n?([\s\S]*?)\n?\s*```/);
-  if (codeBlockMatch) {
-    try {
-      const data = JSON.parse(codeBlockMatch[1].trim()) as T;
-      return { data, raw: trimmed, parsed: true };
-    } catch {
-      // Continue
-    }
-  }
-
-  const firstBrace = trimmed.indexOf('{');
-  const lastBrace = trimmed.lastIndexOf('}');
-  if (firstBrace !== -1 && lastBrace > firstBrace) {
-    try {
-      const data = JSON.parse(trimmed.slice(firstBrace, lastBrace + 1)) as T;
-      return { data, raw: trimmed, parsed: true };
-    } catch {
-      // Continue
-    }
-  }
-
-  const firstBracket = trimmed.indexOf('[');
-  const lastBracket = trimmed.lastIndexOf(']');
-  if (firstBracket !== -1 && lastBracket > firstBracket) {
-    try {
-      const data = JSON.parse(trimmed.slice(firstBracket, lastBracket + 1)) as T;
-      return { data, raw: trimmed, parsed: true };
-    } catch {
-      // Continue
-    }
-  }
-
-  return { data: null, raw: trimmed, parsed: false, error: 'Could not extract valid JSON from response' };
-}
-
-export function buildJsonSystemPrompt(schema: JsonSchemaDefinition): string {
-  const propertiesDesc = Object.entries(schema.schema.properties)
-    .map(([key, prop]) => {
-      let desc = `  "${key}" (${prop.type})`;
-      if (prop.description) desc += `: ${prop.description}`;
-      if (prop.enum) desc += `. Allowed values: ${prop.enum.map(v => `"${v}"`).join(', ')}`;
-      if (prop.type === 'array' && prop.items) {
-        desc += `. Items: { type: "${prop.items.type}"${prop.items.description ? `, description: "${prop.items.description}"` : ''} }`;
-      }
-      if (prop.type === 'object' && prop.properties) {
-        const nestedFields = Object.entries(prop.properties)
-          .map(([k, v]) => `"${k}": ${v.type}`)
-          .join(', ');
-        desc += `. Fields: { ${nestedFields} }`;
-      }
-      return desc;
-    })
-    .join('\n');
-
-  const requiredFields = schema.schema.required?.length
-    ? `\nRequired fields: ${schema.schema.required.join(', ')}`
-    : '';
-
-  return [
-    `You are a structured data extraction assistant.`,
-    schema.description ? `Task: ${schema.description}` : '',
-    `You MUST respond with a valid JSON object matching this schema:`,
-    `{`,
-    propertiesDesc,
-    `}`,
-    requiredFields,
-    ``,
-    `IMPORTANT: Respond ONLY with the JSON object. No markdown, no explanation, no code fences.`,
-    `The response must be valid JSON that can be parsed directly.`
-  ].filter(Boolean).join('\n');
-}
-
-export async function extractStructured<T = Record<string, unknown>>(args: {
-  messages: RequestMessage[];
-  schema: JsonSchemaDefinition;
-  signal?: AbortSignal;
-}): Promise<StructuredExtractionResult<T>> {
-  const config = await loadChatConfig();
-  const { provider, providerName } = resolveProvider(config);
-
-  const schemaPrompt = buildJsonSystemPrompt(args.schema);
-
-  const messagesWithSystem: RequestMessage[] = [
-    { role: 'system', content: schemaPrompt },
-    ...args.messages.filter((m) => m.role !== 'system')
-  ];
-
-  const bodyBase: Record<string, unknown> = {
-    model: provider.model,
-    stream: false,
-    messages: toRequestMessages(messagesWithSystem, provider.model)
-  };
-
-  const isLocalMode = config.llm?.backend_mode === 'local' && isElectron();
-  const supportsNativeJson =
-    !isLocalMode &&
-    (/\bgpt-4o\b|\bgpt-4\.1\b|\bclaude-3\b|\bgemini\b|\bo1\b|\bo3\b|\bo4\b/i.test(provider.model || '') ||
-     providerName === 'openrouter');
-
-  if (supportsNativeJson) {
-    try {
-      const result = await completeAssistantReply({
-        messages: messagesWithSystem,
-        signal: args.signal
-      });
-
-      if (result.content) {
-        const extracted = extractJsonFromResponse<T>(result.content);
-        if (extracted.parsed) return extracted;
-      }
-    } catch {
-      // Fall through to prompt-based approach
-    }
-  }
-
-  const result = await completeAssistantReply({
-    messages: messagesWithSystem,
-    signal: args.signal
-  });
-
-  return extractJsonFromResponse<T>(result.content);
-}
-
-export function validateStructuredOutput<T = Record<string, unknown>>(
-  data: unknown,
-  schema: JsonSchemaDefinition
-): { valid: true; data: T } | { valid: false; errors: string[] } {
-  if (typeof data !== 'object' || data === null || Array.isArray(data)) {
-    return { valid: false, errors: ['Root must be a JSON object'] };
-  }
-
-  const errors: string[] = [];
-  const obj = data as Record<string, unknown>;
-  const required = schema.schema.required || [];
-
-  for (const field of required) {
-    if (!(field in obj) || obj[field] === undefined || obj[field] === null) {
-      errors.push(`Missing required field: "${field}"`);
-    }
-  }
-
-  for (const [key, propSchema] of Object.entries(schema.schema.properties)) {
-    if (!(key in obj)) continue;
-    const value = obj[key];
-    const typeError = checkType(value, propSchema, key);
-    if (typeError) errors.push(typeError);
-  }
-
-  if (errors.length > 0) {
-    return { valid: false, errors };
-  }
-
-  return { valid: true, data: data as T };
-}
-
-function checkType(value: unknown, prop: JsonSchemaProperty, path: string): string | null {
-  if (value === undefined || value === null) {
-    return null;
-  }
-
-  switch (prop.type) {
-    case 'string':
-      if (typeof value !== 'string') return `"${path}" must be a string`;
-      if (prop.enum && !prop.enum.includes(value)) {
-        return `"${path}" must be one of: ${prop.enum.join(', ')}`;
-      }
-      return null;
-    case 'number':
-      if (typeof value !== 'number') return `"${path}" must be a number`;
-      return null;
-    case 'integer':
-      if (typeof value !== 'number' || !Number.isInteger(value)) return `"${path}" must be an integer`;
-      return null;
-    case 'boolean':
-      if (typeof value !== 'boolean') return `"${path}" must be a boolean`;
-      return null;
-    case 'array':
-      if (!Array.isArray(value)) return `"${path}" must be an array`;
-      if (prop.items) {
-        for (let i = 0; i < value.length; i++) {
-          const err = checkType(value[i], prop.items, `${path}[${i}]`);
-          if (err) return err;
-        }
-      }
-      return null;
-    case 'object':
-      if (typeof value !== 'object' || value === null || Array.isArray(value)) {
-        return `"${path}" must be an object`;
-      }
-      if (prop.properties) {
-        const nested = value as Record<string, unknown>;
-        for (const [k, subSchema] of Object.entries(prop.properties)) {
-          if (k in nested) {
-            const err = checkType(nested[k], subSchema, `${path}.${k}`);
-            if (err) return err;
-          }
-        }
-      }
-      return null;
-    default:
-      return null;
-  }
-}
-
-export async function extractStructuredWithRetry<T = Record<string, unknown>>(args: {
-  messages: RequestMessage[];
-  schema: JsonSchemaDefinition;
-  signal?: AbortSignal;
-  maxRetries?: number;
-}): Promise<StructuredExtractionResult<T>> {
-  const maxRetries = Math.min(Math.max(args.maxRetries ?? 1, 0), 3);
-  let lastResult: StructuredExtractionResult<T> = {
-    data: null,
-    raw: '',
-    parsed: false,
-    error: 'No attempts made'
-  };
-
-  let currentMessages = [...args.messages];
-
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    const result = await extractStructured<T>({
-      messages: currentMessages,
-      schema: args.schema,
-      signal: args.signal
-    });
-    lastResult = result;
-
-    if (!result.parsed || !result.data) {
-      currentMessages = [
-        ...currentMessages,
-        { role: 'assistant', content: result.raw || '[no response]' },
-        { role: 'user', content: 'Your previous response was not valid JSON. Please respond with ONLY the JSON object, no markdown or explanation.' }
-      ];
-      continue;
-    }
-
-    const validation = validateStructuredOutput<T>(result.data, args.schema);
-    if (validation.valid) {
-      return { ...result, data: validation.data };
-    }
-
-    currentMessages = [
-      ...currentMessages,
-      { role: 'assistant', content: result.raw },
-      { role: 'user', content: `The JSON had validation errors: ${validation.errors.join('; ')}. Please fix and return the corrected JSON object only.` }
-    ];
-  }
-
-  return lastResult;
-}
-
-export async function completeStructuredOutput<T>(
-  args: {
-    messages: RequestMessage[];
-    schema: Record<string, unknown>;
-    signal?: AbortSignal;
-  },
-  config?: AppConfig
-): Promise<T | null> {
-  const cfg = config || await loadChatConfig();
-  const route = resolveProvider(cfg);
-  const { provider } = route;
-  const apiKey = provider.api_key || '';
-  const body = {
-    model: provider.model,
-    stream: false,
-    messages: toRequestMessages(args.messages, provider.model),
-    response_format: { type: 'json_schema', json_schema: args.schema }
-  };
-  if (isElectron()) {
-    const payload = await invokeProviderCompletion(route, apiKey, body);
-    const content = firstCompletionMessage(payload).content;
-    return content ? tryParseJsonValue<T>(content) : null;
-  }
-  try {
-    const response = await fetchProviderCompletion(provider, apiKey, body);
-    const content = response?.choices?.[0]?.message?.content;
-    return content ? tryParseJsonValue<T>(content) : null;
-  } catch {
-    return null;
-  }
 }

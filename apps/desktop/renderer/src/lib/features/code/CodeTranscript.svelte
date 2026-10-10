@@ -13,6 +13,9 @@
 -->
 
 <script lang="ts">
+  import UiButton from '$lib/components/ui/Button.svelte';
+  import { cn as uiClass } from '$lib/utils/cn';
+
   import CompactionReport from './CompactionReport.svelte';
   import { onDestroy } from 'svelte';
   import { writeToClipboard } from '$lib/utils/clipboard';
@@ -172,18 +175,18 @@
           {#if queued}<span class="flex items-center gap-1 text-xs text-muted-foreground"><Clock class="size-3" />{$t('code.message.queued')}</span>{/if}
           <!-- Actions occupy their own line below the prompt, including in narrow panes. -->
           <div class="prompt-actions flex min-h-6 max-w-full flex-wrap items-center justify-end gap-2 px-2 py-0.5 text-xs text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
-            <button type="button" class="flex items-center gap-1" onclick={() => messageAction(message, 'copy')}><Copy class="size-3" />{$t('code.message.copy')}</button>
+            <UiButton variant="plain" type="button" class={uiClass("flex items-center gap-1", "ui-local-7965b84d")} onclick={() => messageAction(message, 'copy')}><Copy class="size-3" />{$t('code.message.copy')}</UiButton>
             {#if message.metadata?.codeConversationIndex !== undefined && !run?.running}
-              <button type="button" class="flex items-center gap-1" onclick={() => messageAction(message, 'fork')}><GitFork class="size-3" />{$t('code.message.fork')}</button>
-              <button type="button" class="flex items-center gap-1" onclick={() => messageAction(message, 'rewind')}><RotateCcw class="size-3" />{$t('code.message.revert')}</button>
+              <UiButton variant="plain" type="button" class={uiClass("flex items-center gap-1", "ui-local-7965b84d")} onclick={() => messageAction(message, 'fork')}><GitFork class="size-3" />{$t('code.message.fork')}</UiButton>
+              <UiButton variant="plain" type="button" class={uiClass("flex items-center gap-1", "ui-local-7965b84d")} onclick={() => messageAction(message, 'rewind')}><RotateCcw class="size-3" />{$t('code.message.revert')}</UiButton>
             {/if}
           </div>
         </div>
       {:else if message.metadata?.codeCompaction}
         <CompactionReport report={message.metadata.codeCompaction} />
       {:else if message.metadata?.codeNote && !message.content && !message.agentSteps?.length}
-        <!-- A system note (restore, …): centered, quiet. -->
-        <div class="flex items-center justify-center gap-1.5 text-xs text-muted-foreground">
+        <!-- A system note (restore, …): quiet, on the transcript's left edge. -->
+        <div class="flex items-center gap-1.5 text-xs text-muted-foreground">
           <History class="size-3" />
           <span>{noteText(message.metadata.codeNote)}</span>
         </div>
@@ -257,18 +260,18 @@
               </div>
             {/if}
           {/if}
-          {#if message.content.trim()}<button type="button" class="flex items-center gap-1 self-start text-xs text-muted-foreground opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100 focus-visible:opacity-100" onclick={() => messageAction(message, 'copy')}><Copy class="size-3" />{$t('code.message.copy')}</button>{/if}
+          {#if message.content.trim()}<UiButton variant="plain" type="button" class={uiClass("flex items-center gap-1 self-start text-xs text-muted-foreground opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100 focus-visible:opacity-100", "ui-local-7965b84d")} onclick={() => messageAction(message, 'copy')}><Copy class="size-3" />{$t('code.message.copy')}</UiButton>{/if}
         </div>
       {/if}
       </DeferredMessage>
       </div>
     {/each}
     {#if plan && !run?.running && codeWorkspace.plan?.chatId !== chatId}
-      <button type="button" class="plan-reopen self-start" onclick={() => codeWorkspace.showPlan(chatId, plan)}>
+      <UiButton variant="plain" type="button" class={uiClass("plan-reopen self-start", "ui-local-7965b84d")} onclick={() => codeWorkspace.showPlan(chatId, plan)}>
         <ClipboardList class="size-3.5" />
         <span class="truncate">{plan.title}</span>
         <span class="text-muted-foreground">· {$t('code.plan.open')}</span>
-      </button>
+      </UiButton>
     {/if}
   </div>
   {#if !pinnedToBottom}
@@ -292,7 +295,7 @@
     opacity: 0.85;
   }
 
-  .plan-reopen {
+  :global(.plan-reopen.ui-local-7965b84d) {
     display: inline-flex;
     max-width: 100%;
     align-items: center;
@@ -304,7 +307,7 @@
     color: var(--foreground);
     transition: background-color var(--motion-fast) var(--motion-ease);
   }
-  .plan-reopen:hover {
+  :global(.plan-reopen:hover.ui-local-7965b84d) {
     background: var(--surface-hover);
   }
 

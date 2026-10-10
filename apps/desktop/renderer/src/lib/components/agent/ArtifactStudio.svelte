@@ -7,6 +7,10 @@
 -->
 
 <script lang="ts">
+  import IconButton from '$lib/components/ui/IconButton.svelte';
+
+  import UiInput from '$lib/components/ui/Input.svelte';
+
   import { Tooltip } from '$lib/components/ui';
   import JSZip from 'jszip';
   import { Download, RotateCcw, Save } from 'lucide-svelte';
@@ -211,10 +215,10 @@
         <SegmentedControl bind:value={activeView} options={[{ value: 'preview', label: $t('artifacts.studio.preview') }, { value: 'source', label: $t('artifacts.studio.source') }]} label={$t('artifacts.studio.view')} />
       {/if}
       {#if dirty}
-        <Tooltip label={$t('artifacts.studio.discard')} position="bottom"><Button variant="ghost" size="icon-sm" onclick={discard} aria-label={$t('artifacts.studio.discard')}><RotateCcw /></Button></Tooltip>
+        <Tooltip label={$t('artifacts.studio.discard')} position="bottom"><IconButton label={$t('artifacts.studio.discard')} variant="ghost" size="sm" onclick={discard} ><RotateCcw /></IconButton></Tooltip>
         <Button size="sm" onclick={save}><Save /> {$t('artifacts.studio.save')}</Button>
       {/if}
-      <Tooltip label={files.length === 1 ? $t('artifacts.card.download') : $t('artifacts.studio.zipHint')} position="bottom"><Button variant="ghost" size="icon-sm" onclick={downloadAll} loading={downloading} disabled={!files.length} aria-label={files.length === 1 ? $t('artifacts.card.download') : $t('artifacts.studio.zipHint')}><Download /></Button></Tooltip>
+      <Tooltip label={files.length === 1 ? $t('artifacts.card.download') : $t('artifacts.studio.zipHint')} position="bottom"><IconButton label={files.length === 1 ? $t('artifacts.card.download') : $t('artifacts.studio.zipHint')} variant="ghost" size="sm" onclick={downloadAll} loading={downloading} disabled={!files.length} ><Download /></IconButton></Tooltip>
       {@render trail?.()}
     </div>
   {:else}
@@ -257,7 +261,7 @@
 {#if pathMode}
   <Dialog title={pathMode === 'create' ? $t('artifacts.studio.createTitle') : $t('artifacts.studio.renameTitle')} description={$t('artifacts.studio.pathHint')} size="sm" onclose={() => (pathMode = null)}>
     <div class="space-y-4 p-4">
-      <input class="ui-input" aria-label={$t('artifacts.studio.path')} bind:value={pathValue} placeholder={pathMode === 'create' ? 'src/file.ext' : 'new/path.ext'} onkeydown={(event) => { if (event.key === 'Enter') applyPathDialog(); }} />
+      <UiInput  aria-label={$t('artifacts.studio.path')} bind:value={pathValue} placeholder={pathMode === 'create' ? 'src/file.ext' : 'new/path.ext'} onkeydown={(event) => { if (event.key === 'Enter') applyPathDialog(); }} />
       <div class="flex justify-end gap-2">
         <Button variant="ghost" onclick={() => (pathMode = null)}>{$t('artifacts.studio.cancel')}</Button>
         <Button onclick={applyPathDialog}>{pathMode === 'create' ? $t('artifacts.studio.create') : $t('artifacts.studio.rename')}</Button>

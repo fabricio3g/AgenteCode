@@ -1,6 +1,10 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+  import TileMeter from '$lib/components/ui/TileMeter.svelte';
+  import UiButton from '$lib/components/ui/Button.svelte';
+  import { cn as uiClass } from '$lib/utils/cn';
+
   import {
     AlertCircle,
     Bot,
@@ -10,7 +14,6 @@
     FilePen,
     FileSearch,
     Globe,
-    Loader2,
     Terminal,
     XCircle
   } from 'lucide-svelte';
@@ -46,7 +49,6 @@
   const preview = $derived((step.detail || '').replace(/\s+/g, ' ').trim().slice(0, 160));
 
   const Icon = $derived.by(() => {
-    if (isRunning) return Loader2;
     if (isApproval) return AlertCircle;
     if (isError) return XCircle;
     if (step.status === 'done') return Check;
@@ -102,14 +104,14 @@
 </script>
 
 <div class="ui-tool-row" data-awaiting-approval={isApproval} class:has-body={hasBody || showApproval} class:is-resting={step.status === 'done' && !expanded}>
-  <button
+  <UiButton variant="plain"
     type="button"
-    class="ui-tool-fallback-trigger w-full max-w-none"
+    class={uiClass("ui-tool-fallback-trigger w-full max-w-none", "ui-local-5bb5c13e")}
     onclick={toggle}
     aria-expanded={hasBody || showApproval ? expanded : undefined}
     disabled={!hasBody && !showApproval}
   >
-    <Icon class="ui-tool-fallback-trigger-icon {isRunning ? 'is-running' : ''}" />
+    {#if isRunning}<TileMeter mode="busy" />{:else}<Icon class="ui-tool-fallback-trigger-icon" />{/if}
     <span class="min-w-0 flex-1 text-left">
       <span class="block truncate">
         {#if statusLabel}<span class="opacity-70">{statusLabel} · </span>{/if}<b>{heading}</b>
@@ -130,7 +132,7 @@
     {#if hasBody || showApproval}
       <ChevronDown class={`ui-tool-fallback-chevron ${expanded ? '' : 'is-closed'}`} />
     {/if}
-  </button>
+  </UiButton>
 
   {#if expanded && (hasBody || showApproval)}
     <div
@@ -156,8 +158,8 @@
 
       {#if showApproval}
         <div class="ui-tool-fallback-approval">
-          <button type="button" class="ui-tool-fallback-approval-btn" onclick={deny}>{copy.tool.deny}</button>
-          <button type="button" class="ui-tool-fallback-approval-btn primary" onclick={allow}>{copy.tool.allow}</button>
+          <UiButton variant="plain" type="button" class={uiClass("ui-tool-fallback-approval-btn", "ui-local-5bb5c13e")} onclick={deny}>{copy.tool.deny}</UiButton>
+          <UiButton variant="plain" type="button" class={uiClass("ui-tool-fallback-approval-btn primary", "ui-local-5bb5c13e")} onclick={allow}>{copy.tool.allow}</UiButton>
         </div>
       {/if}
     </div>
@@ -170,22 +172,22 @@
     overflow: hidden;
   }
 
-  .ui-tool-row :global(.ui-tool-fallback-trigger) { border-radius: var(--radius-md); background: transparent; padding: 0.5rem 0.625rem; font-size: 0.75rem; }
-  .ui-tool-row :global(.ui-tool-fallback-trigger:hover) { background: var(--muted); }
+  .ui-tool-row :global(:is(.ui-tool-fallback-trigger, :global(.ui-tool-fallback-trigger.ui-local-5bb5c13e))) { border-radius: var(--radius-md); background: transparent; padding: 0.5rem 0.625rem; font-size: 0.75rem; }
+  .ui-tool-row :global(:is(.ui-tool-fallback-trigger:hover, :global(.ui-tool-fallback-trigger:hover.ui-local-5bb5c13e))) { background: var(--muted); }
   .ui-tool-row :global(.ui-tool-fallback-content) { margin: 0 0.625rem 0.5rem; border-left: 1px solid var(--border); padding: 0.5rem 0.75rem; background: transparent; }
   .ui-tool-row :global(pre) { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 18rem; overflow-y: auto; font-size: var(--text-xs); }
 
   /* Completed, collapsed work steps back so the answer leads; hover restores
      full contrast. Running / error / expanded rows stay at full weight. */
-  .ui-tool-row.is-resting :global(.ui-tool-fallback-trigger) {
+  .ui-tool-row.is-resting :global(:is(.ui-tool-fallback-trigger, :global(.ui-tool-fallback-trigger.ui-local-5bb5c13e))) {
     opacity: 0.72;
   }
 
-  .ui-tool-row.is-resting:hover :global(.ui-tool-fallback-trigger) {
+  .ui-tool-row.is-resting:hover :global(:is(.ui-tool-fallback-trigger, :global(.ui-tool-fallback-trigger.ui-local-5bb5c13e))) {
     opacity: 1;
   }
 
-  .ui-tool-row :global(.ui-tool-fallback-trigger:disabled) {
+  .ui-tool-row :global(:is(.ui-tool-fallback-trigger:disabled, :global(.ui-tool-fallback-trigger:disabled.ui-local-5bb5c13e))) {
     cursor: default;
   }
 

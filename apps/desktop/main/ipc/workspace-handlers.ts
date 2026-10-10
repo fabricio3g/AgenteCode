@@ -1,5 +1,39 @@
 import type { IpcMain } from 'electron';
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import nodePath from 'node:path';
 import { readWorkspaceBinary } from '../filesystem.ts';
+
+/** Files that mark a folder as a project root in the folder browser. */
+const PROJECT_MARKERS = ['.git', 'package.json', 'Cargo.toml', 'pyproject.toml', 'go.mod', 'pom.xml', 'build.gradle', 'deno.json', 'composer.json', 'Gemfile'];
+
+/**
+ * One level of the in-app folder browser: the folder's subfolders (hidden ones
+ * left out, project roots flagged), its parent, and the user's usual places.
+ * Folders only, never file contents, so it reveals no more than a native
+ * folder picker would.
+ */
+async function browseFolders(requested?: string) {
+  const home = os.homedir();
+  const target = nodePath.resolve(requested || home);
+  const entries = await fs.readdir(target, { withFileTypes: true });
+  const folders = await Promise.all(entries
+    .filter((entry) => entry.isDirectory() && !entry.name.startsWith('.'))
+    .map(async (entry) => {
+      const full = nodePath.join(target, entry.name);
+      const inside = await fs.readdir(full).catch(() => [] as string[]);
+      return { name: entry.name, path: full, isProject: inside.some((name) => PROJECT_MARKERS.includes(name)) };
+    }));
+  folders.sort((a, b) => Number(b.isProject) - Number(a.isProject) || a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+  const candidates = ['Desktop', 'Documents', 'Downloads', 'Projects', 'projects', 'Code', 'code', 'src', 'dev', 'repos', 'workspace'];
+  const places = [{ name: 'Home', path: home }];
+  for (const name of candidates) {
+    const full = nodePath.join(home, name);
+    if (await fs.stat(full).then((stat) => stat.isDirectory(), () => false)) places.push({ name, path: full });
+  }
+  const parent = nodePath.dirname(target);
+  return { path: target, parent: parent === target ? null : parent, home, sep: nodePath.sep, places, folders };
+}
 
 type WorkspaceHandlerDeps = {
   ipcMain: IpcMain;
@@ -45,6 +79,7 @@ export function registerWorkspaceHandlers({
   resetMediaPermissions,
 }: WorkspaceHandlerDeps): void {
   ipcMain.handle('path_exists', (_e, { path }) => pathExists(path));
+  ipcMain.handle('browse_folders', (_e, { path } = {}) => browseFolders(typeof path === 'string' ? path : undefined));
   ipcMain.handle('open_models_folder', () => openModelsFolder());
   ipcMain.handle('pick_workspace_folder', () => pickWorkspaceFolder());
   ipcMain.handle('pick_model_file', () => pickModelFile());

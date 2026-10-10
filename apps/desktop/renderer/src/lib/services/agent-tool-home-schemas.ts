@@ -1,4 +1,4 @@
-import type { ToolDefinition } from '$lib/services/chat-api';
+import type { ToolDefinition } from '$lib/services/chat/types';
 
 const fn = (name: string, description: string, properties: Record<string, unknown>, required: string[] = []): ToolDefinition => ({
   type: 'function',
@@ -11,11 +11,12 @@ const SOURCE = 'Attachment file name (or id), or a workspace file path. Omit whe
 export const HOME_EXTRA_TOOL_DEFS: ToolDefinition[] = [
   fn(
     'read_document',
-    'Read an attached or workspace document as plain text: PDF, DOCX, XLSX/CSV, PPTX, TXT/MD. Select pages (PDF), sheets (XLSX/CSV, by number or name) or slides (PPTX) with `range`; long output is truncated with a pointer to continue. To create a report or spreadsheet, use the create_* artifact tools instead.',
+    'Read an attached or workspace document, including indexed OCR scans, recording transcripts, PDF, DOCX, XLSX/CSV, PPTX, HTML, RTF, OpenDocument and EPUB. Select pages, sheets or slides with range; long output is truncated with a pointer to continue. Read all relevant ranges before producing a deliverable. To create a report or spreadsheet, use the create_* artifact tools.',
     {
       source: { type: 'string', description: SOURCE },
       range: { type: 'string', description: 'Pages/slides/sheets: "3", "2-5", "1,4-6" or a sheet name. Default: from the start.' },
-      max_chars: { type: 'number', description: 'Output cap (default 8000, max 10000)' }
+      max_chars: { type: 'number', description: 'Output cap (default 8000, max 10000)' },
+      offset: { type: 'number', description: 'Character offset within the selected range; continue using next_offset from a truncated result. Default 0.' }
     }
   ),
   fn(
@@ -24,7 +25,8 @@ export const HOME_EXTRA_TOOL_DEFS: ToolDefinition[] = [
     {
       source: { type: 'string', description: SOURCE },
       range: { type: 'string', description: 'Pages/slides/sheets to search (same syntax as read_document)' },
-      max_rows: { type: 'number', description: 'Rows per table (default 60, max 200)' }
+      max_rows: { type: 'number', description: 'Rows per table (default 60, max 200)' },
+      row_offset: { type: 'number', description: 'Rows to skip per table; continue using nextRowOffset from a truncated table. Default 0.' }
     }
   ),
   fn(

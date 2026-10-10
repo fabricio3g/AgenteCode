@@ -7,6 +7,10 @@
 -->
 
 <script lang="ts">
+  import IconButton from '$lib/components/ui/IconButton.svelte';
+
+  import { cn as uiClass } from '$lib/utils/cn';
+
   import { onMount } from 'svelte';
   import { t } from 'svelte-i18n';
   import { X } from 'lucide-svelte';
@@ -57,16 +61,15 @@
 >
   <div class="head">
     <h3>{$t('voice.setup.title')}</h3>
-    <button type="button" class="close" onclick={() => dictation.closeChoice()} aria-label={$t('voice.recorder.cancel')}><X class="size-4" /></button>
+    <IconButton label={$t('voice.recorder.cancel')} size="xs" variant="ghost" type="button" class={uiClass("close", "ui-local-4f93a808")} onclick={() => dictation.closeChoice()} ><X class="size-4" /></IconButton>
   </div>
-  <p class="lead">{$t('voice.setup.lead')}</p>
 
   {#if models.length}
     <SpeechModelPicker {models} bind:selected mode="select" />
   {/if}
 
   <div class="foot">
-    <button type="button" class="link" onclick={useCloud}>{$t('voice.setup.cloud')}</button>
+    <Button variant="plain" type="button" class={uiClass("link", "ui-local-4f93a808")} onclick={useCloud}>{$t('voice.setup.cloud')}</Button>
     <Button size="sm" disabled={!choice} onclick={() => choice && void dictation.installAndStart(choice.quality)}>
       {choice?.installed ? $t('voice.setup.start') : $t('voice.setup.download', { values: { size: formatBytes(choice?.bytes ?? 0) } })}
     </Button>
@@ -105,7 +108,7 @@
     font-weight: 600;
   }
 
-  .close {
+  :global(.close.ui-local-4f93a808) {
     display: inline-flex;
     width: 1.75rem;
     height: 1.75rem;
@@ -117,17 +120,11 @@
     color: var(--muted-foreground);
   }
 
-  .close:hover {
+  :global(.close:hover.ui-local-4f93a808) {
     background: var(--muted);
     color: var(--foreground);
   }
 
-  .lead {
-    margin: 0;
-    font-size: 0.8rem;
-    line-height: 1.45;
-    color: var(--muted-foreground);
-  }
 
   .foot {
     display: flex;
@@ -137,7 +134,7 @@
     margin-top: 0.15rem;
   }
 
-  .link {
+  :global(.link.ui-local-4f93a808) {
     border: 0;
     background: none;
     padding: 0;
@@ -147,7 +144,7 @@
     text-underline-offset: 2px;
   }
 
-  .link:hover {
+  :global(.link:hover.ui-local-4f93a808) {
     color: var(--foreground);
   }
 

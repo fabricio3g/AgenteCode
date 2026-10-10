@@ -8,7 +8,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "check": "svelte-check --tsconfig ./tsconfig.json",
-    "test": "vitest run"
+    "test": "vitest run",
+    "audit:ui": "npm --prefix .. run audit:ui"
   },
   "dependencies": {
     "@fontsource-variable/atkinson-hyperlegible-mono": "^5.3.0",
@@ -17,12 +18,11 @@
     "@fontsource/ibm-plex-mono": "^5.3.0",
     "@office-kit/pptx": "^0.21.0",
     "@office-kit/pptx-preview": "^0.11.0",
+    "@tesseract.js-data/eng": "^1.0.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
-    "d3-axis": "^3.0.0",
     "d3-geo": "^3.1.1",
     "d3-scale": "^4.0.2",
-    "d3-selection": "^3.0.0",
     "d3-shape": "^3.2.0",
     "docx-preview": "^0.4.0",
     "dompurify": "^3.2.7",

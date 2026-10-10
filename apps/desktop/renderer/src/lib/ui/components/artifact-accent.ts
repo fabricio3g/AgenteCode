@@ -11,6 +11,32 @@
  * arbitrary declarations.
  */
 
+import type { ArtifactKind } from '$lib/types/chat';
+
+/** Every file card uses this theme-aware palette, in chat and the library. */
+const KIND_ACCENTS: Record<ArtifactKind, string> = {
+  report: 'var(--chart-1)',
+  work_product: 'var(--chart-1)',
+  document: 'var(--chart-1)',
+  spreadsheet: 'var(--accent-green)',
+  presentation: 'var(--accent-amber)',
+  pdf: 'var(--accent-red)',
+  research_package: 'var(--accent-violet)',
+  web: 'var(--accent-sky)',
+  html_card: 'var(--accent-sky)',
+  widget: 'var(--accent-sky)',
+  files: 'var(--accent-violet)',
+  chart: 'var(--accent-violet)',
+  diagram: 'var(--accent-sky)',
+  map: 'var(--accent-green)',
+  dashboard: 'var(--accent-violet)',
+  info_card: 'var(--chart-1)'
+};
+
+export function artifactKindAccent(kind: ArtifactKind): string {
+  return KIND_ACCENTS[kind];
+}
+
 /** Named accents the artifact tools advertise, mapped onto real tokens. */
 const NAMED_ACCENTS: Record<string, string> = {
   sky: 'var(--accent-sky)',

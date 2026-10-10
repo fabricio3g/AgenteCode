@@ -12,4 +12,8 @@ describe('describeLocalLoadError', () => {
   it('keeps the reason when it does not recognise the failure', () => {
     expect(describeLocalLoadError('something odd')).toBe('The model failed to load: something odd');
   });
+
+  it('points unsupported architectures to the runtime instead of blaming the GGUF', () => {
+    expect(describeLocalLoadError('failed to load model: unknown model architecture: future_arch')).toMatch(/runtime/);
+  });
 });

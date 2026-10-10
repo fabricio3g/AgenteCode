@@ -1,429 +1,215 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
-  import { select } from 'd3-selection';
-  import { scaleBand, scaleLinear } from 'd3-scale';
-  import { axisLeft, axisBottom } from 'd3-axis';
-  import { line, curveMonotoneX, pie as d3pie, arc as d3arc } from 'd3-shape';
-  import type { NumberValue } from 'd3-scale';
-  import type { PieArcDatum } from 'd3-shape';
-  import type { Selection } from 'd3-selection';
-  import { Download } from 'lucide-svelte';
+  import { cn as uiClass } from '$lib/utils/cn';
+
+  import { onMount } from 'svelte';
+  import { Download, Table2 } from 'lucide-svelte';
+  import { Button } from '$lib/components/ui';
   import { parseChartData, type ChartData } from '$lib/utils/chart-data';
+  import { CHART_NAMES, resolveChartType, type ChartType } from '$lib/utils/chart-types';
+  import { validateChartData } from '$lib/utils/chart-math';
+  import { drawCartesian } from './charts/chart-cartesian';
+  import { drawSpecial } from './charts/chart-special';
+  import type { ChartScene, TipRow } from './charts/chart-scene';
+  import { visualizationFonts } from '$lib/ui/components/visualization-fonts';
 
   interface Props {
-    type: 'bar' | 'line' | 'pie' | 'donut';
+    type: ChartType;
     title?: string;
     xlabel?: string;
     ylabel?: string;
-    raw: string; // raw JSON string from model
+    raw: string;
     variant?: 'block' | 'artifact';
   }
-
   let { type, title, xlabel, ylabel, raw, variant = 'block' }: Props = $props();
+  let host = $state<HTMLDivElement>();
+  let svgEl = $state<SVGSVGElement>();
+  let typeProbe = $state<HTMLSpanElement>();
+  let width = $state(600);
+  let appearance = $state(0);
+  let hidden = $state<number[]>([]);
+  let tableOpen = $state(false);
+  let focusedPoint = $state(-1);
+  let tooltip = $state<{ x: number; y: number; title: string; rows: TipRow[] } | null>(null);
+  const data = $derived(parseChartData(raw));
+  const kind = $derived(resolveChartType(type));
+  const error = $derived(!kind ? 'Unsupported chart type.' : !data ? 'Invalid chart data.' : validateChartData(kind, data));
+  const categories = $derived(['pie', 'donut', 'treemap', 'funnel'].includes(kind ?? ''));
+  const legend = $derived(data ? (categories ? data.labels.map((name, index) => ({ name, index })) : (kind === 'histogram' || kind === 'gauge' ? data.datasets.slice(0, 1) : data.datasets).map((ds, index) => ({ name: ds.label, index }))) : []);
+  const height = $derived(kind === 'heatmap' ? Math.max(160, (data?.datasets.length ?? 1) * 26 + 54)
+    : kind === 'horizontal_bar' || kind === 'funnel' ? Math.max(260, Math.min(800, (data?.labels.length ?? 1) * 32 + 48)) : 280);
 
-  let svgEl = $state<SVGSVGElement | undefined>(undefined);
-  let tooltipEl = $state<HTMLDivElement | undefined>(undefined);
-  let error = $state('');
-  let parsed = $state<ChartData | null>(null);
-
-  // Tooltip state
-  let tooltip = $state<{ visible: boolean; x: number; y: number; label: string; value: string; series?: string }>({
-    visible: false, x: 0, y: 0, label: '', value: '', series: ''
-  });
-
-  const W = 520;
-  const H = 320;
-  const margin = $derived({ top: title ? 36 : 16, right: 20, bottom: xlabel ? 48 : 36, left: ylabel ? 60 : 44 });
-  const iw = $derived(W - margin.left - margin.right);
-  const ih = $derived(H - margin.top - margin.bottom);
-
-  $effect(() => {
-    const nextParsed = parseChartData(raw);
-    let nextError = '';
-
-    if (!nextParsed) {
-      nextError = 'Invalid chart data';
-    } else if (!nextParsed.labels.length || !nextParsed.datasets.length) {
-      nextError = 'Missing labels or datasets';
-    } else if (nextParsed.datasets.some((dataset) => dataset.data.length !== nextParsed.labels.length)) {
-      nextError = 'Chart labels and data length do not match';
-    }
-
-    parsed = nextParsed;
-    error = nextError;
-  });
-
-  $effect(() => {
-    if (!svgEl) return;
-    if (!parsed || error) {
-      select(svgEl).selectAll('*').remove();
-      if (!parsed) {
-        tooltip = { visible: false, x: 0, y: 0, label: '', value: '', series: '' };
-      }
-      return;
-    }
-    draw();
-  });
-
-  /**
-   * d3's `.attr()` writes an SVG presentation attribute, and those do not
-   * substitute CSS custom properties. Passing a raw `var(--surface)` string here
-   * produced an invalid value that was simply ignored, so line-chart dot halos and
-   * pie-slice separators had no stroke at all. Tokens have to be resolved to
-   * concrete values before they reach d3.
-   */
   function token(name: string, fallback: string) {
-    if (!svgEl) return fallback;
-    return getComputedStyle(svgEl).getPropertyValue(name).trim() || fallback;
+    return svgEl ? getComputedStyle(svgEl).getPropertyValue(name).trim() || fallback : fallback;
+  }
+  function ink(index: number) { void appearance; return token(`--chart-${index % 6 + 1}`, '#2563eb'); }
+  function format(value: number, compact = false): string {
+    try {
+      if (data?.valueFormat === 'percent') return `${new Intl.NumberFormat(undefined, { maximumFractionDigits: 1 }).format(value)}%`;
+      return new Intl.NumberFormat(undefined, {
+        ...(data?.valueFormat === 'currency' ? { style: 'currency', currency: data.currency || 'USD' } : {}),
+        notation: compact ? 'compact' : 'standard', maximumFractionDigits: compact ? 1 : 2
+      }).format(value);
+    } catch { return value.toLocaleString(); }
   }
 
-  function draw() {
-    if (!svgEl || !parsed) return;
-    const svg = select(svgEl);
-    svg.selectAll('*').remove();
+  $effect(() => { void raw; void type; hidden = []; tooltip = null; focusedPoint = -1; });
+  onMount(() => {
+    const resize = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(([entry]) => { width = Math.max(220, Math.round(entry.contentRect.width)); });
+    if (host) resize?.observe(host);
+    const theme = new MutationObserver(() => { appearance++; });
+    theme.observe(document.documentElement, { attributes: true, attributeFilter: ['class', 'style', 'data-theme'] });
+    return () => { resize?.disconnect(); theme.disconnect(); };
+  });
 
-    const surface = token('--surface', '#ffffff');
-    const colors = [
-      token('--chart-1', '#3B82F6'),
-      token('--chart-2', '#10B981'),
-      token('--chart-3', '#F59E0B'),
-      token('--chart-4', '#EF4444'),
-      token('--chart-5', '#8B5CF6'),
-      token('--chart-6', '#06B6D4')
-    ];
-    const g = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`);
-
-    if (type === 'bar' || type === 'line') {
-      drawCartesian(svg, g, colors, surface);
-    } else if (type === 'pie' || type === 'donut') {
-      drawPie(svg, g, colors, surface);
-    }
-  }
-
-  function drawCartesian(svg: Selection<SVGSVGElement, unknown, null, undefined>, g: Selection<SVGGElement, unknown, null, undefined>, colors: string[], surface: string) {
-    if (!parsed) return;
-
-    const allValues = parsed.datasets.flatMap(d => d.data);
-    const yMin = Math.min(0, ...allValues);
-    const yMax = Math.max(...allValues);
-
-    const xScale = scaleBand()
-      .domain(parsed.labels)
-      .range([0, iw])
-      .padding(type === 'bar' ? 0.2 : 0.1);
-
-    const yScale = scaleLinear()
-      .domain([yMin, yMax * 1.1])
-      .range([ih, 0])
-      .nice();
-
-    // Grid lines
-    g.append('g')
-      .attr('class', 'grid')
-      .call(axisLeft(yScale).tickSize(-iw).tickFormat('' as unknown as (d: NumberValue) => string))
-      .call(gg => {
-        gg.select('.domain').remove();
-        gg.selectAll('.tick line')
-          .attr('stroke', 'rgba(156,163,175,0.25)')
-          .attr('stroke-dasharray', '3,3');
-        gg.selectAll('.tick text').remove();
-      });
-
-    // Axes
-    g.append('g')
-      .attr('transform', `translate(0,${ih})`)
-      .call(axisBottom(xScale).tickSizeOuter(0))
-      .call(gg => {
-        gg.select('.domain').attr('stroke', 'rgba(156,163,175,0.4)');
-        gg.selectAll('.tick text')
-          .attr('fill', 'currentColor')
-          .attr('font-size', '11')
-          .attr('opacity', '0.7');
-      });
-
-    g.append('g')
-      .call(axisLeft(yScale).ticks(5).tickSizeOuter(0))
-      .call(gg => {
-        gg.select('.domain').attr('stroke', 'rgba(156,163,175,0.4)');
-        gg.selectAll('.tick text')
-          .attr('fill', 'currentColor')
-          .attr('font-size', '11')
-          .attr('opacity', '0.7');
-      });
-
-    const nSeries = parsed!.datasets.length;
-    const bandWidth = xScale.bandwidth();
-    const barW = bandWidth / nSeries;
-
-    parsed!.datasets.forEach((ds, si) => {
-      const color = colors[si % colors.length];
-      if (type === 'bar') {
-        g.selectAll(`.bar-${si}`)
-          .data(ds.data)
-          .join('rect')
-          .attr('x', (_, i) => (xScale(parsed!.labels[i]) ?? 0) + si * barW)
-          .attr('y', d => yScale(d))
-          .attr('width', barW - 2)
-          .attr('height', d => ih - yScale(d))
-          .attr('fill', color)
-          .attr('rx', 3)
-          .attr('opacity', 0.85)
-          .style('cursor', 'pointer')
-          .on('mousemove', (event, d) => showTip(event, parsed!.labels[ds.data.indexOf(d)] ?? '', d, nSeries > 1 ? ds.label : undefined))
-          .on('mouseleave', hideTip);
-      } else {
-        const lineGen = line<number>()
-          .x((_, i) => (xScale(parsed!.labels[i]) ?? 0) + bandWidth / 2)
-          .y(d => yScale(d))
-          .curve(curveMonotoneX);
-
-        g.append('path')
-          .datum(ds.data)
-          .attr('fill', 'none')
-          .attr('stroke', color)
-          .attr('stroke-width', 2.5)
-          .attr('d', lineGen);
-
-        g.selectAll(`.dot-${si}`)
-          .data(ds.data)
-          .join('circle')
-          .attr('cx', (_, i) => (xScale(parsed!.labels[i]) ?? 0) + bandWidth / 2)
-          .attr('cy', d => yScale(d))
-          .attr('r', 4)
-          .attr('fill', color)
-          .attr('stroke', surface)
-          .attr('stroke-width', 1.5)
-          .style('cursor', 'pointer')
-          .on('mousemove', (event, d) => showTip(event, parsed!.labels[ds.data.indexOf(d)] ?? '', d, nSeries > 1 ? ds.label : undefined))
-          .on('mouseleave', hideTip);
-      }
-    });
-
-    // Axis labels
-    if (xlabel) {
-      svg.append('text')
-        .attr('x', margin.left + iw / 2)
-        .attr('y', H - 6)
-        .attr('text-anchor', 'middle')
-        .attr('font-size', '11')
-        .attr('opacity', '0.6')
-        .attr('fill', 'currentColor')
-        .text(xlabel);
-    }
-    if (ylabel) {
-      svg.append('text')
-        .attr('transform', `rotate(-90)`)
-        .attr('x', -(margin.top + ih / 2))
-        .attr('y', 14)
-        .attr('text-anchor', 'middle')
-        .attr('font-size', '11')
-        .attr('opacity', '0.6')
-        .attr('fill', 'currentColor')
-        .text(ylabel);
-    }
-
-    // Legend (if multiple series)
-    if (nSeries > 1) {
-      const legend = svg.append('g').attr('transform', `translate(${margin.left}, 2)`);
-      parsed!.datasets.forEach((ds, si) => {
-        legend.append('rect')
-          .attr('x', si * 110)
-          .attr('y', 0)
-          .attr('width', 10).attr('height', 10)
-          .attr('fill', colors[si % colors.length])
-          .attr('rx', 2);
-        legend.append('text')
-          .attr('x', si * 110 + 14)
-          .attr('y', 9)
-          .attr('font-size', '11')
-          .attr('fill', 'currentColor')
-          .attr('opacity', '0.7')
-          .text(ds.label);
-      });
-    }
-  }
-
-  function drawPie(svg: Selection<SVGSVGElement, unknown, null, undefined>, g: Selection<SVGGElement, unknown, null, undefined>, colors: string[], surface: string) {
-    if (!parsed) return;
-    const radius = Math.min(iw, ih) / 2 - 10;
-    const cx = iw / 2;
-    const cy = ih / 2;
-    const data = parsed.datasets[0].data;
-    const labels = parsed.labels;
-
-    const pieData = d3pie<number>().sort(null)(data);
-    const arc = d3arc<PieArcDatum<number>>()
-      .innerRadius(type === 'donut' ? radius * 0.55 : 0)
-      .outerRadius(radius);
-    const labelArc = d3arc<PieArcDatum<number>>()
-      .innerRadius(radius * 0.75)
-      .outerRadius(radius * 0.75);
-
-    const pieG = g.append('g').attr('transform', `translate(${cx},${cy})`);
-
-    pieData.forEach((slice, i) => {
-      pieG.append('path')
-        .attr('d', arc(slice) ?? '')
-        .attr('fill', colors[i % colors.length])
-        .attr('stroke', surface)
-        .attr('stroke-width', 2)
-        .attr('opacity', 0.88)
-        .style('cursor', 'pointer')
-        .on('mousemove', (event) => showTip(event, labels[i], data[i]))
-        .on('mouseleave', hideTip);
-
-      const [lx, ly] = labelArc.centroid(slice);
-      const pct = ((slice.endAngle - slice.startAngle) / (2 * Math.PI) * 100).toFixed(0);
-      if (parseFloat(pct) > 4) {
-        pieG.append('text')
-          .attr('x', lx).attr('y', ly)
-          .attr('text-anchor', 'middle')
-          .attr('font-size', '11')
-          .attr('fill', token('--chart-label-on-fill', '#ffffff'))
-          .attr('font-weight', '600')
-          .text(`${pct}%`);
-      }
-    });
-
-    // Legend on the right
-    const legendG = g.append('g').attr('transform', `translate(${cx + radius + 12}, 0)`);
-    labels.forEach((lbl, i) => {
-      legendG.append('rect')
-        .attr('x', 0).attr('y', i * 18)
-        .attr('width', 10).attr('height', 10)
-        .attr('fill', colors[i % colors.length]).attr('rx', 2);
-      legendG.append('text')
-        .attr('x', 14).attr('y', i * 18 + 9)
-        .attr('font-size', '11')
-        .attr('fill', 'currentColor')
-        .attr('opacity', '0.7')
-        .text(lbl);
-    });
-  }
-
-  function showTip(event: MouseEvent, label: string, value: number | string, series?: string) {
-    const container = (event.target as SVGElement).closest('.chart-container') as HTMLElement;
-    const rect = container?.getBoundingClientRect();
-    const x = event.clientX - (rect?.left ?? 0);
-    const y = event.clientY - (rect?.top ?? 0);
-    tooltip = { visible: true, x, y, label, value: typeof value === 'number' ? value.toLocaleString() : String(value), series };
-  }
-
-  function hideTip() {
-    tooltip = { ...tooltip, visible: false };
-  }
-
-  function downloadSvg() {
+  $effect(() => {
+    appearance;
     if (!svgEl) return;
-    const serializer = new XMLSerializer();
-    const svgStr = serializer.serializeToString(svgEl);
-    const blob = new Blob([svgStr], { type: 'image/svg+xml' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = `${(title || 'chart').replace(/\s+/g, '-').toLowerCase()}.svg`;
-    a.click();
-    URL.revokeObjectURL(a.href);
-  }
-
-  function downloadPng() {
-    if (!svgEl) return;
-    const surfaceColor = getComputedStyle(document.documentElement).getPropertyValue('--surface').trim() || '#ffffff';
-    const serializer = new XMLSerializer();
-    const svgStr = serializer.serializeToString(svgEl);
-    const canvas = document.createElement('canvas');
-    canvas.width = W * 2;
-    canvas.height = H * 2;
-    const ctx = canvas.getContext('2d')!;
-    ctx.scale(2, 2);
-    const img = new Image();
-    const blob = new Blob([svgStr], { type: 'image/svg+xml;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    img.onload = () => {
-      ctx.fillStyle = surfaceColor;
-      ctx.fillRect(0, 0, W, H);
-      ctx.drawImage(img, 0, 0, W, H);
-      const a = document.createElement('a');
-      a.href = canvas.toDataURL('image/png');
-      a.download = `${(title || 'chart').replace(/\s+/g, '-').toLowerCase()}.png`;
-      a.click();
-      URL.revokeObjectURL(url);
+    svgEl.replaceChildren();
+    if (!data || !kind || error) return;
+    const active = legend.filter((entry) => !hidden.includes(entry.index));
+    const filtered: ChartData = categories
+      ? { ...data, labels: active.map((entry) => data.labels[entry.index]), datasets: [{ ...data.datasets[0], data: active.map((entry) => data.datasets[0].data[entry.index]) }] }
+      : { ...data, datasets: active.map((entry) => data.datasets[entry.index]) };
+    const scene: ChartScene = {
+      svg: svgEl, data: filtered, type: kind, width, height,
+      colors: active.map((entry) => ink(entry.index)),
+      surface: token('--background', '#fff'), foreground: token('--foreground', '#111'),
+      muted: token('--muted-foreground', '#666'), grid: token('--border-subtle', '#eee'),
+      font: getComputedStyle(svgEl).fontFamily,
+      fontSize: typeProbe ? Number.parseFloat(getComputedStyle(typeProbe).fontSize) || 12 : 12,
+      format: (v) => format(v, true),
+      tip: (event, title, rows) => {
+        const rect = host?.getBoundingClientRect();
+        tooltip = { x: Math.max(0, Math.min(width - Math.min(240, width), event.clientX - (rect?.left ?? 0) + 12)), y: Math.max(0, Math.min(height - 64, event.clientY - (rect?.top ?? 0) - 48)), title, rows };
+      },
+      hide: () => { tooltip = null; }
     };
-    img.src = url;
+    if (['pie', 'donut', 'heatmap', 'radar', 'funnel', 'treemap', 'gauge'].includes(kind)) drawSpecial(scene);
+    else drawCartesian(scene);
+  });
+
+  function toggle(index: number) {
+    if (!hidden.includes(index) && !canHide(index)) return;
+    hidden = hidden.includes(index) ? hidden.filter((i) => i !== index) : [...hidden, index];
+    tooltip = null;
+  }
+  function canHide(index: number) {
+    const remaining = legend.filter((entry) => entry.index !== index && !hidden.includes(entry.index));
+    return remaining.length > 0 && (!categories || remaining.some((entry) => (data?.datasets[0].data[entry.index] ?? 0) > 0));
+  }
+  function inspect(event: KeyboardEvent) {
+    if (!data || error) return;
+    if (event.key === 'Escape') { tooltip = null; focusedPoint = -1; return; }
+    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+    event.preventDefault();
+    focusedPoint = event.key === 'Home' ? 0 : event.key === 'End' ? data.labels.length - 1
+      : (focusedPoint + (event.key === 'ArrowLeft' ? -1 : 1) + data.labels.length) % data.labels.length;
+    tooltip = { x: Math.max(0, width / 2 - 100), y: 8, title: data.labels[focusedPoint], rows: data.datasets.map((ds, i) => ({ label: ds.label, value: ds.data[focusedPoint], color: ink(i) })) };
+  }
+
+  function save(blob: Blob, extension: string) {
+    const url = URL.createObjectURL(blob), link = document.createElement('a');
+    link.href = url; link.download = `${(title || 'chart').replace(/[^\p{L}\p{N}-]+/gu, '-').toLowerCase()}.${extension}`; link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+  function serializedSvg() {
+    if (!svgEl) return '';
+    const clone = svgEl.cloneNode(true) as SVGSVGElement;
+    clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+    const fontStyle = document.createElementNS('http://www.w3.org/2000/svg', 'style');
+    fontStyle.textContent = visualizationFonts(getComputedStyle(svgEl).fontFamily);
+    clone.prepend(fontStyle);
+    clone.style.color = token('--foreground', '#111');
+    return new XMLSerializer().serializeToString(clone);
+  }
+  function downloadSvg() { save(new Blob([serializedSvg()], { type: 'image/svg+xml' }), 'svg'); }
+  function downloadPng() {
+    const url = URL.createObjectURL(new Blob([serializedSvg()], { type: 'image/svg+xml' }));
+    const image = new Image();
+    image.onload = () => {
+      const canvas = document.createElement('canvas'); canvas.width = width * 2; canvas.height = height * 2;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) { URL.revokeObjectURL(url); return; }
+      ctx.scale(2, 2); ctx.fillStyle = token('--background', '#fff'); ctx.fillRect(0, 0, width, height); ctx.drawImage(image, 0, 0, width, height);
+      canvas.toBlob((blob) => { if (blob) save(blob, 'png'); }); URL.revokeObjectURL(url);
+    };
+    image.onerror = () => URL.revokeObjectURL(url); image.src = url;
   }
 </script>
 
-<!-- One shell for both variants. The inline variant used to carry
-     `bg-[var(--surface-alt)]`, a token defined nowhere in the app, so inline
-     charts rendered with no background at all while their artifact twin had
-     one — and with a different radius. -->
-<div class="artifact-chart">
-  {#if variant === 'artifact' && title}
-    <div class="artifact-chart-title">{title}</div>
-  {:else if title}
-    <div class="flex items-center justify-between border-b border-border/60 px-4 py-2">
-      <span class="text-sm font-medium text-[var(--text)]">{title}</span>
-      <div class="flex items-center gap-1">
-        <button onclick={downloadSvg} class="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--surface-hover)] transition-colors">
-          <Download class="h-3.5 w-3.5" /> SVG
-        </button>
-        <button onclick={downloadPng} class="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--surface-hover)] transition-colors">
-          <Download class="h-3.5 w-3.5" /> PNG
-        </button>
-      </div>
+<section class="viz-surface artifact-chart" aria-label={title || (kind ? CHART_NAMES[kind] : 'Chart')} data-chart-type={type} data-variant={variant}>
+  <header class="viz-header">
+    <div class="min-w-0">
+      {#if title}<h3 class="viz-title">{title}</h3>{/if}
+      {#if data?.subtitle}<p class="viz-subtitle">{data.subtitle}</p>{/if}
     </div>
-  {:else if variant !== 'artifact'}
-    <div class="flex justify-end gap-1 px-3 pt-2">
-      <button onclick={downloadSvg} class="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--surface-hover)] transition-colors">
-        <Download class="h-3.5 w-3.5" /> SVG
-      </button>
-      <button onclick={downloadPng} class="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--surface-hover)] transition-colors">
-        <Download class="h-3.5 w-3.5" /> PNG
-      </button>
+    <div class="chart-actions">
+      <Button variant="ghost" size="xs" aria-label="Show chart data" aria-pressed={tableOpen} onclick={() => (tableOpen = !tableOpen)}><Table2 /><span>Data</span></Button>
+      <Button variant="ghost" size="xs" aria-label="Download chart as SVG" disabled={!!error} onclick={downloadSvg}><Download /> SVG</Button>
+      <Button variant="ghost" size="xs" aria-label="Download chart as PNG" disabled={!!error} onclick={downloadPng}>PNG</Button>
     </div>
-  {/if}
-
+  </header>
   {#if error}
-    <div class="px-4 py-3 text-sm text-error">{error}</div>
+    <p class="viz-error" role="status">{error}</p>
   {:else}
-    <!-- Not centred: an assistant turn is left-aligned, so a chart narrower
-         than the column must start on the same edge as the prose around it.
-         `relative` stays — the tooltip positions against it. -->
-    <div class="chart-container relative p-2 pb-3">
-      <svg bind:this={svgEl} width={W} height={H} viewBox="0 0 {W} {H}" class="text-[var(--text)]" style="max-width:100%;height:auto;"></svg>
-      <!-- Tooltip -->
-      {#if tooltip.visible}
-        <div
-          bind:this={tooltipEl}
-          class="ui-float pointer-events-none absolute z-20 px-3 py-2 text-xs"
-          style="left:{tooltip.x + 10}px;top:{tooltip.y - 36}px"
-        >
-          {#if tooltip.series}<span class="font-semibold" style="color:var(--work-accent)">{tooltip.series}: </span>{/if}
-          <span class="font-medium">{tooltip.label}</span>
-          <span class="ml-1.5 font-bold">{tooltip.value}</span>
+    {#if legend.length > 1 && kind !== 'heatmap' && kind !== 'boxplot'}
+      <div class="chart-legend" aria-label="Chart legend">
+        {#each legend as entry (entry.index)}
+          <Button variant="plain" class={uiClass('', "ui-local-647a5dec", {"is-hidden": hidden.includes(entry.index)})}  aria-pressed={!hidden.includes(entry.index)} disabled={!hidden.includes(entry.index) && !canHide(entry.index)} onclick={() => toggle(entry.index)}>
+            <span class="legend-swatch" style:background={ink(entry.index)}></span>{entry.name}
+          </Button>
+        {/each}
+      </div>
+    {/if}
+    <div class="chart-container" bind:this={host} role="slider" tabindex="0"
+      aria-label="Inspect chart values. Use left and right arrows."
+      aria-valuemin="0" aria-valuemax={Math.max(0, (data?.labels.length ?? 1) - 1)} aria-valuenow={Math.max(0, focusedPoint)}
+      aria-valuetext={data ? `${data.labels[Math.max(0, focusedPoint)]}: ${data.datasets.map((ds) => `${ds.label} ${format(ds.data[Math.max(0, focusedPoint)])}`).join(', ')}` : undefined}
+      onkeydown={inspect}>
+      <span class="type-probe" bind:this={typeProbe} aria-hidden="true"></span>
+      <svg bind:this={svgEl} {width} {height} viewBox="0 0 {width} {height}" role="img" aria-label={title || (kind ? CHART_NAMES[kind] : 'Chart')}></svg>
+      {#if tooltip}
+        <div class="chart-tooltip ui-float" style:left={`${tooltip.x}px`} style:top={`${tooltip.y}px`} role="status">
+          <strong>{tooltip.title}</strong>
+          {#each tooltip.rows as row, index (index)}
+            <div><span class="legend-swatch" style:background={row.color}></span><span class="tip-label">{row.label}</span><span class="tip-value">{format(row.value)}</span></div>
+          {/each}
         </div>
       {/if}
     </div>
+    {#if xlabel || ylabel}<p class="axis-caption">{[xlabel, ylabel].filter(Boolean).join(' · ')}</p>{/if}
+    {#if tableOpen && data}
+      <!-- svelte-ignore a11y_no_noninteractive_tabindex (The scrolling data region needs keyboard focus so users can scroll the full table.) -->
+      <div class="chart-table" tabindex="0" role="region" aria-label="Chart data">
+        <table><thead><tr><th scope="col">{xlabel || 'Label'}</th>{#each data.datasets as ds, index (index)}<th scope="col">{ds.label}</th>{/each}</tr></thead>
+          <tbody>{#each data.labels as name, index (index)}<tr><th scope="row">{name}</th>{#each data.datasets as ds, series (series)}<td>{format(ds.data[index])}</td>{/each}</tr>{/each}</tbody>
+        </table>
+      </div>
+    {/if}
   {/if}
-</div>
+</section>
 
 <style>
-  .artifact-chart {
-    margin: 0.65rem 0 0;
-    width: var(--inline-block-width);
-    max-width: 100%;
-    overflow: hidden;
-    border: 0;
-    border-radius: var(--artifact-radius);
-    background: var(--artifact-surface);
-    box-shadow: var(--artifact-elev);
-    padding: 0.65rem 0.75rem 0.45rem;
-  }
-
-  .artifact-chart-title {
-    margin-bottom: 0.35rem;
-    color: var(--text);
-    font-size: 0.95rem;
-    font-weight: 650;
-  }
+  .chart-actions { display: flex; flex-shrink: 0; align-items: center; gap: 0.125rem; }
+  .chart-legend { display: flex; flex-wrap: wrap; gap: 0.25rem 0.875rem; margin: 0 0 0.75rem; }
+  .chart-legend :global(button.ui-local-647a5dec) { display: inline-flex; align-items: center; gap: 0.375rem; min-height: 1.5rem; color: var(--text-secondary); font-size: var(--text-xs); }
+  .chart-legend :global(button.is-hidden.ui-local-647a5dec) { opacity: 0.4; text-decoration: line-through; }
+  .chart-legend :global(button:focus-visible.ui-local-647a5dec), .chart-container:focus-visible { outline: 2px solid var(--ring); outline-offset: 3px; border-radius: var(--radius-sm); }
+  .legend-swatch { display: inline-block; width: 0.5rem; height: 0.5rem; flex-shrink: 0; border-radius: 2px; }
+  .chart-container { position: relative; min-width: 0; width: 100%; font-family: var(--font-sans); }
+  svg { display: block; max-width: 100%; height: auto; overflow: visible; font-family: var(--font-sans); }
+  .type-probe { position: absolute; visibility: hidden; font-size: var(--text-xs); }
+  .chart-tooltip { position: absolute; pointer-events: none; z-index: 20; width: max-content; min-width: 10rem; max-width: min(15rem, 100%); padding: 0.625rem 0.75rem; color: var(--foreground); font-size: var(--text-xs); }
+  .chart-tooltip strong { display: block; font-weight: 500; margin-bottom: 0.375rem; overflow-wrap: anywhere; }
+  .chart-tooltip > div { display: flex; align-items: baseline; gap: 0.375rem; padding: 0.125rem 0; }
+  .tip-label { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); }
+  .tip-value { font-variant-numeric: tabular-nums; font-weight: 500; }
+  .axis-caption { margin: 0.25rem 0 0; font-size: var(--text-xs); color: var(--text-muted); }
+  .chart-table { overflow: auto; max-height: 20rem; margin-top: 0.75rem; }
+  table { width: 100%; border-collapse: collapse; font-size: var(--text-xs); font-variant-numeric: tabular-nums; }
+  th, td { border-bottom: 1px solid var(--border-subtle); padding: 0.5rem 0.625rem; text-align: right; white-space: nowrap; }
+  th { font-weight: 500; color: var(--text-secondary); } th:first-child { text-align: left; }
+  @container (max-width: 30rem) { .chart-actions :global(:is(button, :global(button.ui-local-647a5dec))) { padding-inline: 0.375rem; } }
 </style>

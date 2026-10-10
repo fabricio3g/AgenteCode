@@ -113,9 +113,9 @@ describe('buildRoleplaySystemPrompt', () => {
       '## Scenario',
       '## Sam',
       '## Example dialogue',
+      'Keep replies under 120 words.',
       '## Lore',
-      "## Author's note",
-      'Keep replies under 120 words.'
+      "## Author's note"
     ].map((marker) => prompt.indexOf(marker));
 
     expect(order.every((index) => index >= 0)).toBe(true);
@@ -355,5 +355,41 @@ describe('world sections', () => {
     });
     expect(prompt).toContain('Card scene.');
     expect(prompt).not.toContain('World scene.');
+  });
+});
+
+describe('buildRoleplaySystemPrompt macros', () => {
+  it('names the persona in the fallback line instead of leaking the macro', () => {
+    const prompt = buildRoleplaySystemPrompt({ characters: [card()], userName: 'Sam' });
+    expect(prompt).toContain('## Sam\nSam is the person Aiko is talking to.');
+    expect(prompt).not.toContain('{{');
+  });
+
+  it('resolves {{original}} to the default instructions a card override replaces', () => {
+    const prompt = buildRoleplaySystemPrompt({ characters: [card({ systemPrompt: 'Stay terse. {{original}}' })] });
+    expect(prompt).toContain("Stay terse. Write Aiko's next reply in a fictional chat between Aiko and User.");
+  });
+
+  it('holds time and random macros for the chat, so the prompt is byte-stable across turns', () => {
+    const input = {
+      characters: [card({ description: 'Opened at {{time}}. Mood: {{random::calm::wry::tired}}. Luck {{roll:1d1000}}.' })],
+      macros: { now: new Date(2026, 0, 2, 9, 5), seed: 'chat-1' }
+    };
+    const prompt = buildRoleplaySystemPrompt(input);
+    const time = new Date(2026, 0, 2, 9, 5).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+    expect(prompt).toContain(`Opened at ${time}.`);
+    expect(buildRoleplaySystemPrompt(input)).toBe(prompt);
+  });
+
+  it('resolves macros in the room and memory the prompt carries', () => {
+    const prompt = buildRoleplaySystemPrompt({
+      characters: [card()],
+      persona: { id: 'p1', name: 'Sam', description: '', createdAt: 0, updatedAt: 0 },
+      sceneContext: "Location: {{user}}'s flat.",
+      memoryContext: 'Story so far: {{user}} owes {{char}} money.',
+      settings: resolveRoleplaySettings({})
+    });
+    expect(prompt).toContain("## Current room\nLocation: Sam's flat.");
+    expect(prompt).toContain('## Relevant memory\nStory so far: Sam owes Aiko money.');
   });
 });

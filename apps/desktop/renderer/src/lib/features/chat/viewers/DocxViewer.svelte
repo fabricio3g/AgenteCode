@@ -10,13 +10,16 @@
 -->
 
 <script lang="ts">
+  import { observeViewerSize } from './viewer-layout';
   import { t } from 'svelte-i18n';
   import ViewerStatus from './ViewerStatus.svelte';
   import { fitZoom, loadDocxInto } from './docx-pages';
   import { panScroll, zoomAroundCenter } from './pan-scroll';
+  import { createViewerFind } from './viewer-find.svelte';
   import { tick } from 'svelte';
   import { registerViewerControls, useViewerControls } from './viewer-controls.svelte';
   import { readerScrollBehavior } from './pan-scroll';
+  import INTER_FONT from '@fontsource-variable/inter/files/inter-latin-wght-normal.woff2?url';
 
   interface Props {
     src: string;
@@ -28,9 +31,6 @@
   let { src, filename, query = '' }: Props = $props();
 
   const controls = useViewerControls();
-  const highlightId = crypto.randomUUID();
-  const HIGHLIGHT = `docx-find-${highlightId}`;
-  const HIGHLIGHT_ACTIVE = `docx-find-active-${highlightId}`;
   let revision = $state(0);
 
   let loading = $state(true);
@@ -41,17 +41,16 @@
   let manualZoom = $state<number | null>(null);
   let fit = $state(1);
 
-  let findIndex = $state(0);
-  let hits = $state<Range[]>([]);
   let host: HTMLDivElement | undefined = $state();
   let canvas: HTMLDivElement | undefined = $state();
 
   const zoom = $derived(manualZoom ?? fit);
   const term = $derived((query || controls?.query || '').trim());
+  const find = createViewerFind(() => loading ? null : host, () => term);
   registerViewerControls(controls, () => ({
     page, pages: pageCount, goToPage, zoom: manualZoom === null ? $t('viewer.fitShort') : `${Math.round(zoom * 100)}%`,
     zoomBy: direction => setZoom(zoom + direction * 0.1), fit: () => setZoom(null),
-    search: { matches: hits.length, index: findIndex, step },
+    search: { matches: find.state.matches, index: find.state.index, step: find.step },
     retry: error ? () => { revision += 1; } : undefined
   }));
 
@@ -100,9 +99,17 @@
 
   $effect(() => {
     if (!canvas || typeof ResizeObserver === 'undefined') return;
-    const observer = new ResizeObserver(() => recalcFit());
-    observer.observe(canvas);
-    return () => observer.disconnect();
+    return observeViewerSize(canvas, recalcFit);
+  });
+
+  $effect(() => {
+    if (typeof FontFace === 'undefined' || !document.fonts) return;
+    // Exported documents call the bundled typeface Inter; the app's ladder
+    // uses Inter Variable. Supply the alias without overriding uploaded fonts.
+    const font = new FontFace('Inter', `url(${INTER_FONT})`, { weight: '100 900' });
+    document.fonts.add(font);
+    void font.load().catch(() => {});
+    return () => { document.fonts.delete(font); };
   });
 
   /** Which page sits under the middle of the canvas. */
@@ -127,68 +134,13 @@
     void zoomAroundCenter(canvas, () => (manualZoom = value), tick);
   }
 
-  // Find: collect a Range per hit and paint them with the CSS Highlight API.
-  $effect(() => {
-    const needle = term.toLowerCase();
-    const registry = typeof CSS !== 'undefined' && 'highlights' in CSS ? CSS.highlights : null;
-    registry?.delete(HIGHLIGHT);
-    registry?.delete(HIGHLIGHT_ACTIVE);
-    if (!host || loading || !needle) {
-      hits = [];
-      return;
-    }
-    const found: Range[] = [];
-    const walker = document.createTreeWalker(host, NodeFilter.SHOW_TEXT);
-    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-      const text = (node.textContent || '').toLowerCase();
-      let at = text.indexOf(needle);
-      while (at >= 0) {
-        const range = document.createRange();
-        range.setStart(node, at);
-        range.setEnd(node, at + needle.length);
-        found.push(range);
-        at = text.indexOf(needle, at + needle.length);
-      }
-    }
-    hits = found;
-    findIndex = 0;
-    if (registry && found.length) registry.set(HIGHLIGHT, new Highlight(...found));
-    showHit(0);
-  });
-
-  function showHit(index: number) {
-    const range = hits[index];
-    if (!range) return;
-    if (typeof CSS !== 'undefined' && 'highlights' in CSS) CSS.highlights.set(HIGHLIGHT_ACTIVE, new Highlight(range));
-    range.startContainer.parentElement?.scrollIntoView({ block: 'center', behavior: readerScrollBehavior() });
-  }
-
-  function step(direction: 1 | -1) {
-    if (!hits.length) return;
-    findIndex = (findIndex + direction + hits.length) % hits.length;
-    showHit(findIndex);
-  }
-
-  $effect(() => {
-    const style = document.createElement('style');
-    style.textContent = `::highlight(${HIGHLIGHT}) { background: color-mix(in srgb, var(--primary) 25%, transparent); } ::highlight(${HIGHLIGHT_ACTIVE}) { background: color-mix(in srgb, var(--primary) 45%, transparent); }`;
-    document.head.append(style);
-    return () => style.remove();
-  });
-
-  $effect(() => () => {
-    if (typeof CSS !== 'undefined' && 'highlights' in CSS) {
-      CSS.highlights.delete(HIGHLIGHT);
-      CSS.highlights.delete(HIGHLIGHT_ACTIVE);
-    }
-  });
 </script>
 
 <div class="docx-viewer">
   <div class="docx-canvas" bind:this={canvas} onscroll={trackPage} use:panScroll={{ onzoom: (dir) => setZoom(zoom + dir * 0.1) }}>
     {#if loading || error}
       <div class="docx-status">
-        <ViewerStatus {loading} {error} label={$t('viewer.doc.loading')} variant="card" errorTitle={$t('viewer.doc.failed')} />
+        <ViewerStatus {loading} {error} label={$t('viewer.doc.loading')} variant="card" errorTitle={$t('viewer.doc.failed')} retry={error ? () => { revision += 1; } : undefined} />
       </div>
     {/if}
     <!-- CSS zoom (not a transform) so the scroll height follows the zoom. -->

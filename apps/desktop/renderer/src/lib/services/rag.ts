@@ -1,5 +1,6 @@
 import type { IndexedDocument, QueryResponse } from '$lib/types/bridge';
 import { invoke } from './bridge';
+import type { DocumentIngestPayload } from '$shared/document-ingestion';
 
 function requireChatId(chatId: string): string {
   const value = String(chatId || '').trim();
@@ -7,14 +8,7 @@ function requireChatId(chatId: string): string {
   return value;
 }
 
-export async function ingestDocument(payload: {
-  file_path: string;
-  chat_id: string;
-  /** The name the user knows the file by; the temp path's timestamp prefix is not it. */
-  name?: string;
-  chunk_size?: number;
-  overlap?: number;
-}): Promise<IndexedDocument> {
+export async function ingestDocument(payload: DocumentIngestPayload): Promise<IndexedDocument> {
   return invoke<IndexedDocument>('ingest_document', { payload: { ...payload, chat_id: requireChatId(payload.chat_id) } });
 }
 

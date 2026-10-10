@@ -1,5 +1,10 @@
 <svelte:options runes={true} />
 <script lang="ts">
+  import UiListRow from '$lib/components/ui/ListRow.svelte';
+
+  import UiInput from '$lib/components/ui/Input.svelte';
+  import { cn as uiClass } from '$lib/utils/cn';
+
   import { tick } from 'svelte';
   import { t } from 'svelte-i18n';
   import { ArrowDown, ArrowUp, Folder, FolderOpen, MoreHorizontal, Pencil, Plus, Trash2 } from 'lucide-svelte';
@@ -79,7 +84,7 @@
 
 {#if organization.creatingIn===project.id}
   <form class="folder-form" onsubmit={(event)=>{event.preventDefault();void create();}}>
-    <input use:focusNewFolder class="chat-rename-input" bind:value={newName} maxlength="80" aria-label={$t('sidebarOrganize.folderName')} placeholder={$t('sidebarOrganize.folderName')} onkeydown={(event)=>{if(event.key==='Escape')organization.creatingIn=null;}} />
+    <UiInput action={focusNewFolder} class={uiClass("chat-rename-input", "ui-local-01f39bb9")} bind:value={newName} maxlength={80} aria-label={$t('sidebarOrganize.folderName')} placeholder={$t('sidebarOrganize.folderName')} onkeydown={(event)=>{if(event.key==='Escape')organization.creatingIn=null;}} />
     <Button size="xs" type="submit" disabled={!newName.trim()}>{$t('sidebarOrganize.create')}</Button>
   </form>
 {/if}
@@ -97,7 +102,7 @@
       >
         {#if expanded}<FolderOpen class="sidebar-row-icon" />{:else}<Folder class="sidebar-row-icon" />{/if}
         {#if editing===folder.id}
-          <input bind:this={input} bind:value={rename} class="chat-rename-input sidebar-row-label" aria-label={$t('sidebarOrganize.folderName')} onclick={(event)=>event.stopPropagation()} onkeydown={(event)=>{event.stopPropagation();if(event.key==='Enter')void commit(folder);if(event.key==='Escape')editing='';}} onblur={()=>void commit(folder)} />
+          <UiInput bind:ref={input} bind:value={rename} class={uiClass("chat-rename-input sidebar-row-label", "ui-local-01f39bb9")} aria-label={$t('sidebarOrganize.folderName')} onclick={(event)=>event.stopPropagation()} onkeydown={(event)=>{event.stopPropagation();if(event.key==='Enter')void commit(folder);if(event.key==='Escape')editing='';}} onblur={()=>void commit(folder)} />
         {:else}<span class="sidebar-row-label">{folder.name}</span><span class="folder-count">{chats.length}</span>{/if}
         <Menu placement="bottom-end" label={$t('sidebarOrganize.folderOptions')}>
           {#snippet trigger(props)}<IconButton {...props} class="sidebar-row-action" label={$t('sidebarOrganize.folderOptions')}><MoreHorizontal /></IconButton>{/snippet}
@@ -112,11 +117,11 @@
   {:else if entry.chat}{@render conversation(entry.chat)}{/if}
 {/each}
 {#if !missing}
-  <button type="button" class="sidebar-row is-muted" onclick={()=>codeStore.newConversation(project)}><Plus class="sidebar-row-icon" /><span class="sidebar-row-label">{$t('code.newConversation')}</span></button>
+  <UiListRow  type="button" class={uiClass("sidebar-row is-muted", "ui-local-01f39bb9")} onclick={()=>codeStore.newConversation(project)}><Plus class="sidebar-row-icon" /><span class="sidebar-row-label">{$t('code.newConversation')}</span></UiListRow>
 {/if}
 
 <style>
-  .folder-form { display:flex;gap:0.375rem;align-items:center;padding:0.375rem; } .folder-form input { min-width:0;flex:1; }
+  .folder-form { display:flex;gap:0.375rem;align-items:center;padding:0.375rem; } .folder-form :global(input.ui-local-01f39bb9) { min-width:0;flex:1; }
   .folder-count { font-size:var(--text-xs);color:var(--muted-foreground);font-variant-numeric:tabular-nums; }
   .folder-children { margin-left:0.875rem;padding-left:0.25rem;border-left:1px solid var(--border-subtle); }
   .folder-empty { padding:0.5rem;font-size:var(--text-xs);color:var(--muted-foreground); }

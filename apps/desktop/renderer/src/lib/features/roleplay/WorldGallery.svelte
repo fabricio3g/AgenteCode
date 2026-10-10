@@ -8,8 +8,11 @@
 <script lang="ts">
   import { Button } from '$lib/components/ui';
   import { Globe2, Plus } from 'lucide-svelte';
+  import { t } from 'svelte-i18n';
+  import { copy } from '$lib/copy';
   import type { RoleplayWorld } from '$lib/types/chat';
   import { worldsStore } from './worlds.svelte';
+  import { roleplayStore } from './roleplay.svelte';
   import { deleteWorld, duplicateWorld } from './library-actions.svelte';
   import LibraryCard from './LibraryCard.svelte';
   import LibraryEmpty from './LibraryEmpty.svelte';
@@ -33,31 +36,36 @@
     );
   });
 
-  const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
-
+  /** "2 characters · 3 lore entries · 2 openings": every count names what it counts. */
   function meta(world: RoleplayWorld): string[] {
     const lore = world.book?.entries?.length || 0;
     const openings = world.starters?.length || 0;
-    return [plural(world.castIds?.length || 0, 'character', 'characters'), lore ? `${lore} lore` : '', openings ? plural(openings, 'opening', 'openings') : ''].filter(Boolean);
+    const cast = world.castIds?.length || 0;
+    return [
+      cast ? $t('roleplay.library.countCharacters', { values: { n: cast } }) : $t('roleplay.library.countNoCast'),
+      lore ? $t('roleplay.library.countLore', { values: { n: lore } }) : '',
+      openings ? $t('roleplay.library.countOpenings', { values: { n: openings } }) : ''
+    ].filter(Boolean);
   }
 </script>
 
-<div class="library-shelf mx-auto w-full px-6 pb-6" style="max-width: var(--thread-width);">
-  <LibraryToolbar bind:query placeholder={worldsStore.worlds.length ? 'Search worlds' : ''}>
-    <Button variant="outline" size="sm" type="button" onclick={onnew}><Plus /> New world</Button>
+<div class="library-shelf">
+  <LibraryToolbar bind:query placeholder={worldsStore.worlds.length ? $t('roleplay.library.searchWorlds') : ''}>
+    <Button variant="outline" type="button" onclick={onnew}><Plus /> {$t('roleplay.library.newWorld')}</Button>
   </LibraryToolbar>
 
   {#if !worldsStore.worlds.length}
-    <LibraryEmpty title="No worlds yet" hint="A world bundles a setting, a lorebook and a cast, so scenes start consistent." action="New world" onaction={onnew} />
+    <LibraryEmpty title={$t('roleplay.library.noWorlds')} hint={$t('roleplay.library.noWorldsHint')} action={$t('roleplay.library.newWorld')} onaction={onnew} />
   {:else if !filtered.length}
-    <LibraryEmpty title="No matches" action="Clear search" onaction={() => (query = '')} />
+    <LibraryEmpty title={copy.empty.noMatches} action={$t('roleplay.library.clearSearch')} onaction={() => (query = '')} />
   {:else}
     <div class="library-grid">
       {#each filtered as world (world.id)}
         <LibraryCard
-          kind="world"
           title={world.name}
-          subtitle={world.tagline || world.overview}
+          editLabel={$t('roleplay.library.editWorld')}
+          optionsLabel={$t('roleplay.library.worldOptions')}
+          subtitle={roleplayStore.previewText(world.tagline || world.overview || '', { seed: world.id })}
           meta={meta(world)}
           onopen={() => onpick(world)}
           onedit={() => onedit(world)}

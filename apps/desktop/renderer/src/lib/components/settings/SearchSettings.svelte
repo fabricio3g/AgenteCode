@@ -1,6 +1,8 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+  import IconButton from '$lib/components/ui/IconButton.svelte';
+
   import { t } from 'svelte-i18n';
   import { onMount } from 'svelte';
   import { ChevronDown, MoreHorizontal, Search, TestTube2 } from 'lucide-svelte';
@@ -305,9 +307,9 @@
           </Button>
           <Menu bind:open={actionsOpen} placement="bottom-end">
             {#snippet trigger(props)}
-              <Button {...props} variant="ghost" size="icon-sm" aria-label={$t('searchSettings.poolActions')}>
+              <IconButton label={$t('searchSettings.poolActions')} {...props} variant="ghost" size="sm" >
                 <MoreHorizontal />
-              </Button>
+              </IconButton>
             {/snippet}
             <MenuItem label={$t('searchSettings.enableRecommended')} onselect={enableRecommended} />
             <MenuItem label={$t('searchSettings.enableAll')} onselect={enableAll} />
@@ -348,16 +350,9 @@
                   {@const configurationOpen = Boolean(openConfigurations[item.id])}
                   <div class="px-4">
                     <div class="flex min-h-[62px] items-center gap-3 py-3">
-                      <Switch
-                        checked={selected}
-                        label={$t(selected ? 'searchSettings.disable' : 'searchSettings.enable', { values: { name: item.label } })}
-                        disabled={!selected && missing.length > 0}
-                        onchange={() => toggleEngine(item)}
-                      />
                       <div class="min-w-0 flex-1">
                         <div class="flex flex-wrap items-center gap-1.5">
                           <span class="text-[length:var(--text-sm)] font-medium text-foreground">{item.label}</span>
-                          {#if item.recommended}<Badge tone="success">{$t('searchSettings.group.recommended')}</Badge>{/if}
                           {#if item.stability === 'experimental'}<Badge tone="warning">{$t('searchSettings.experimental')}</Badge>{/if}
                         </div>
                         <div class="mt-0.5 flex flex-wrap items-center gap-1 text-[length:var(--text-xs)] text-muted-foreground">
@@ -389,6 +384,12 @@
                           <ChevronDown class={`transition-transform duration-[var(--motion-normal)] ${configurationOpen ? 'rotate-180' : ''}`} />
                         </Button>
                       {/if}
+                      <Switch
+                        checked={selected}
+                        label={$t(selected ? 'searchSettings.disable' : 'searchSettings.enable', { values: { name: item.label } })}
+                        disabled={!selected && missing.length > 0}
+                        onchange={() => toggleEngine(item)}
+                      />
                     </div>
 
                     {#if configurationOpen && item.requires.length}

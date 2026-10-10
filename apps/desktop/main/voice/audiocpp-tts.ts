@@ -282,6 +282,9 @@ async function speak(port: number, model: VoiceModel, request: SpeechRequest, se
   // Catalog models without built-in voices speak in their default voice: send none.
   const ref = model.canClone && request.voiceRef?.file ? request.voiceRef : undefined;
   if (model.needsReference && !ref) throw new Error('This model needs a cloned voice. Add one in Settings → Voice.');
+  if (ref && !fs.existsSync(ref.file)) throw new Error('The recording for this cloned voice is missing. Add the voice again in Settings → Voice.');
+  if (ref && model.needsTranscript && !ref.transcript?.trim()) throw new Error(`${model.title} clones only with the transcript of the recording. Add the voice again with what it says.`);
+  if (ref) log.info(`voice_ref ${ref.file} → ${model.id}${ref.transcript ? ' (with transcript)' : ''}`);
   const voice = ref ? undefined : request.voice && model.voices.some((option) => option.id === request.voice) ? request.voice : model.voices[0]?.id;
   const res = await fetch(`http://127.0.0.1:${port}/v1/audio/speech`, {
     method: 'POST',

@@ -11,6 +11,9 @@
 -->
 
 <script lang="ts">
+  import UiButton from '$lib/components/ui/Button.svelte';
+  import { cn as uiClass } from '$lib/utils/cn';
+
   import { t } from 'svelte-i18n';
   import type { CodeChild } from '$shared/agente-protocol';
   import { approvalsStore } from '$lib/stores/approvals.svelte';
@@ -116,11 +119,11 @@
     {#if files.length && !open}
       <div class="files">
         {#each files as file (file.path)}
-          <button type="button" class="file-chip" title={file.path} onclick={() => codeWorkspace.showFileInChanges(file.path)}>
+          <UiButton variant="plain" type="button" class={uiClass("file-chip", "ui-local-670661b4")} title={file.path} onclick={() => codeWorkspace.showFileInChanges(file.path)}>
             <span>{file.name}</span>
             {#if file.additions}<span class="text-success">+{file.additions}</span>{/if}
             {#if file.deletions}<span class="text-error">−{file.deletions}</span>{/if}
-          </button>
+          </UiButton>
         {/each}
       </div>
     {/if}
@@ -141,7 +144,7 @@
     gap: 0.375rem;
     padding: var(--group-gap, 6px) var(--dock-gap, 8px) 0 var(--step-indent, 19px);
   }
-  .file-chip {
+  :global(.file-chip.ui-local-670661b4) {
     display: inline-flex;
     align-items: center;
     gap: 0.375rem;
@@ -153,7 +156,7 @@
     color: var(--foreground);
     transition: background-color var(--motion-fast) var(--motion-ease);
   }
-  .file-chip:hover {
+  :global(.file-chip:hover.ui-local-670661b4) {
     background: var(--surface-hover);
   }
 </style>

@@ -5,7 +5,7 @@ import type { ChatSession } from '$lib/types/chat';
  * Session space guards.
  *
  * Boundary module: only place allowed to branch on
- * home vs code vs roleplay besides AppShell/Sidebar space switch.
+ * home vs code vs roleplay vs design besides AppShell/Sidebar space switch.
  * All other modules use these guards instead of
  * inline `contextMode === 'code'` checks.
  */
@@ -21,6 +21,10 @@ export function isCodeSession(chat: Pick<ChatSession, 'contextMode' | 'workspace
 
 export function isRoleplaySession(chat: Pick<ChatSession, 'contextMode' | 'workspace'> | null | undefined): boolean {
   return getSpaceForSession(chat) === 'roleplay';
+}
+
+export function isDesignSession(chat: Pick<ChatSession, 'contextMode' | 'workspace'> | null | undefined): boolean {
+  return getSpaceForSession(chat) === 'design';
 }
 
 export function isHomeSession(chat: Pick<ChatSession, 'contextMode' | 'workspace'> | null | undefined): boolean {

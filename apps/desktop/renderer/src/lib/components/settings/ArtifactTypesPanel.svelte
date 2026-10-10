@@ -64,6 +64,23 @@
     sparkles: Sparkles
   };
 
+  /** One muted hue per kind, so the list scans by colour as well as glyph. */
+  const iconHues: Record<ArtifactIconName, number> = {
+    'file-text': 250,
+    briefcase: 40,
+    table: 150,
+    presentation: 20,
+    file: 270,
+    'bar-chart': 200,
+    workflow: 300,
+    map: 130,
+    'layout-dashboard': 230,
+    'layout-list': 180,
+    code: 280,
+    library: 60,
+    sparkles: 330
+  };
+
   function isEnabled(artifact: ArtifactTypeEntry): boolean {
     return toggles[artifact.id] ?? artifact.defaultEnabled;
   }
@@ -109,11 +126,12 @@
       {#each artifacts.filter((artifact) => artifact.category === category) as artifact (artifact.id)}
         {@const Icon = iconComponents[artifact.icon]}
         {@const enabled = isEnabled(artifact)}
-        <!-- The switch states on/off unambiguously, so the tile only lifts: a
-             filled --primary disc turned the list into a column of blobs. The
-             tile keeps --muted either way; only the glyph brightens. -->
+        <!-- Each kind has its own muted hue: a soft wash and a matching glyph.
+             The switch carries on/off, so an off type only fades its colour. -->
         {#snippet tile()}
-          <Icon class="size-4 {enabled ? 'text-foreground' : 'opacity-70'}" />
+          <span class="type-tile" class:is-off={!enabled} style:--hue={iconHues[artifact.icon] ?? 250}>
+            <Icon class="size-4" />
+          </span>
         {/snippet}
         <SettingsRow
           label={typeText(artifact, 'name')}
@@ -127,3 +145,9 @@
     </SettingsSection>
   {/each}
 </div>
+
+<style>
+  .type-tile { display:flex;width:100%;height:100%;align-items:center;justify-content:center;border-radius:inherit;background:oklch(0.62 0.09 var(--hue) / 0.14);color:oklch(0.72 0.11 var(--hue));transition:opacity var(--motion-fast); }
+  :global(html:not(.dark)) .type-tile { color:oklch(0.5 0.12 var(--hue)); }
+  .type-tile.is-off { opacity:0.45;filter:saturate(0.4); }
+</style>

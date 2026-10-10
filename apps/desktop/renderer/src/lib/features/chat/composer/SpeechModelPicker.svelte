@@ -77,7 +77,7 @@
       {/if}
     </svelte:element>
   {/each}
-  <p class="license">{$t('voice.tier.license')}</p>
+  {#if mode === 'manage'}<p class="license">{$t('voice.tier.license')}</p>{/if}
 </div>
 
 <style>
@@ -93,20 +93,20 @@
     align-items: center;
     gap: 0.7rem;
     padding: 0.6rem 0.75rem;
-    border: 1px solid var(--border);
-    border-radius: 0.75rem;
-    background: var(--background);
+    border: 0;
+    border-radius: var(--radius-md);
+    background: transparent;
     color: var(--foreground);
     text-align: left;
     transition: border-color var(--motion-fast) var(--motion-ease), background-color var(--motion-fast) var(--motion-ease);
   }
 
   button.option:hover {
-    background: var(--muted);
+    background: var(--surface-hover);
   }
 
   .option.on {
-    border-color: var(--foreground);
+    background: var(--muted);
   }
 
   .radio {

@@ -9,8 +9,16 @@
 -->
 
 <script lang="ts">
+  import DialogActions from '$lib/components/ui/DialogActions.svelte';
+
+  import DialogFooter from '$lib/components/ui/DialogFooter.svelte';
+
+  import UiIconButton from '$lib/components/ui/IconButton.svelte';
+  import { cn as uiClass } from '$lib/utils/cn';
+
   import { untrack } from 'svelte';
-  import { Globe2, X } from 'lucide-svelte';
+  import { Globe2, Info, X } from 'lucide-svelte';
+  import { t } from 'svelte-i18n';
   import { motionFade, flyAndScale } from '$lib/utils/transitions';
   import { modalLayer } from '$lib/components/ui/modal-layer';
   import { Button, Select, Tooltip } from '$lib/components/ui';
@@ -19,6 +27,7 @@
   import { roleplayPreferences } from './roleplay-presets.svelte';
   import { resolveRoleplaySettings } from './roleplay-settings';
   import { charactersStore, greetingsFor } from './characters.svelte';
+  import { roleplayStore } from './roleplay.svelte';
   import CastPicker from './CastPicker.svelte';
   import { copy } from '$lib/copy';
 
@@ -46,8 +55,9 @@
   });
 
   let castIds = $state<string[]>(initialCast);
+  // The persona is the last one a scene used (or the world's own); none otherwise.
   let personaId = $state<string>(
-    untrack(() => world?.defaultPersonaId || charactersStore.defaultPersona?.id || '')
+    untrack(() => world?.defaultPersonaId || roleplayPreferences.lastPersonaId(charactersStore.personas) || '')
   );
   let openingKey = $state<string>('0');
   let sceneSettings = $state<RoleplaySettings>({});
@@ -80,13 +90,28 @@
 
   const selectedOpening = $derived(openings.find((opening) => opening.key === openingKey) || openings[0] || null);
 
+  /** An opening as the scene will read it: {{char}} the primary, {{user}} the persona picked here. */
+  function previewOf(text: string): string {
+    // A one-line preview: the markdown marks are dropped, the names resolved.
+    return roleplayStore.previewText(text, {
+      char: primary?.name,
+      personaId: personaId || null,
+      group: cast.map((card) => card.name),
+      seed: primary?.id
+    }).replace(/[*_~`#]+/g, '').replace(/\s+/g, ' ').trim();
+  }
+
   const personaOptions = $derived([
-    { value: '', label: 'No persona' },
+    { value: '', label: $t('roleplay.header.noPersona') },
     ...charactersStore.personas.map((persona) => ({ value: persona.id, label: persona.name }))
   ]);
 
+  /** Why Start is off, in words: the one thing missing. */
+  const blocker = $derived(!cast.length ? $t('roleplay.setup.needCast') : !selectedOpening ? $t('roleplay.setup.needOpening') : '');
+  const modeName = $derived($t(`roleplay.settings.option.${sceneSettings.interactionMode ?? inherited.interactionMode ?? 'chat'}`));
+
   function start() {
-    if (!primary || !selectedOpening) return;
+    if (blocker || !primary || !selectedOpening) return;
     onstart({
       characters: cast,
       world,
@@ -117,95 +142,103 @@
   >
     <div class="ui-modal-header">
       <div class="min-w-0">
-        <div class="ui-modal-title">{world ? world.name : 'New scene'}</div>
+        <div class="ui-modal-title">{world ? world.name : $t('roleplay.setup.newScene')}</div>
         <div class="text-xs text-muted-foreground">
-          {group ? `Group scene · ${cast.length} characters` : 'One-on-one scene'}
-          {world ? ' · world canon active' : ''}
+          {group ? $t('roleplay.setup.groupScene', { values: { n: cast.length } }) : $t('roleplay.setup.oneOnOne')}
+          {world ? ` · ${$t('roleplay.setup.worldCanon')}` : ''}
         </div>
       </div>
-      <Tooltip label={copy.actions.close} position="bottom"><button type="button" class="ui-icon-button" onclick={onclose} aria-label={copy.actions.close}>
+      <Tooltip label={copy.actions.close} position="bottom"><UiIconButton label={copy.actions.close} size="sm" type="button" class={uiClass("", "ui-local-fd4911dc")} onclick={onclose} >
         <X class="size-4" />
-      </button></Tooltip>
+      </UiIconButton></Tooltip>
     </div>
 
     <div class="ui-modal-body max-h-[64vh] space-y-5 overflow-y-auto">
-      <details><summary class="cursor-pointer text-sm text-muted-foreground">Conversation settings · Chat / Dynamic</summary><div class="pt-4"><RoleplaySettingsEditor value={sceneSettings} {inherited} onchange={(next) => (sceneSettings = next)} /></div></details>
+      <details class="more-options">
+        <summary>
+          <span>{$t('roleplay.setup.moreOptions')}</span>
+          <span class="more-mode">{modeName}</span>
+        </summary>
+        <div class="pt-4"><RoleplaySettingsEditor value={sceneSettings} {inherited} onchange={(next) => (sceneSettings = next)} /></div>
+      </details>
       <div class="space-y-2">
-        <div class="flex items-center justify-between">
-          <span class="text-sm font-medium text-muted-foreground">Cast</span>
+        <div class="flex items-center justify-between gap-2">
+          <span class="text-sm font-medium text-muted-foreground">{$t('roleplay.setup.cast')}</span>
           {#if cast.length}
-            <span class="text-[12px] text-muted-foreground">First speaks first</span>
+            <span class="text-[12px] text-muted-foreground">{$t('roleplay.setup.castOrderHint')}</span>
           {/if}
         </div>
         <CastPicker value={castIds} onchange={(ids) => (castIds = ids)} />
       </div>
 
       <div class="space-y-1.5">
-        <span class="text-sm font-medium text-muted-foreground">Your persona</span>
+        <span class="text-sm font-medium text-muted-foreground">{$t('roleplay.setup.persona')}</span>
         <Select
           variant="surface"
           value={personaId}
           options={personaOptions}
-          aria-label="Your persona"
+          aria-label={$t('roleplay.setup.persona')}
           onchange={(value) => (personaId = value)}
         />
       </div>
 
       <div class="space-y-3">
-        <span class="text-sm font-medium text-muted-foreground">Opening</span>
+        <span class="text-sm font-medium text-muted-foreground">{$t('roleplay.setup.opening')}</span>
         {#if worldOpenings.length}
           <div class="space-y-1.5">
-            <span class="text-[12px] text-muted-foreground">World openings</span>
+            <span class="text-[12px] text-muted-foreground">{$t('roleplay.setup.worldOpenings')}</span>
             {#each worldOpenings as opening (opening.key)}
-              <button
+              <Button variant="plain"
                 type="button"
-                class="opening-option {selectedOpening?.key === opening.key ? 'is-on' : ''}"
+                class={uiClass(`opening-option ${selectedOpening?.key === opening.key ? 'is-on' : ''}`, "ui-local-fd4911dc")}
                 onclick={() => (openingKey = opening.key)}
                 aria-pressed={selectedOpening?.key === opening.key}
               >
                 <span class="opening-source"><Globe2 class="size-3" /></span>
-                <span class="line-clamp-3 text-left text-[12px] text-foreground">{opening.text}</span>
-              </button>
+                <span class="line-clamp-3 text-left text-[12px] text-foreground">{previewOf(opening.text)}</span>
+              </Button>
             {/each}
           </div>
         {/if}
         {#if greetingOpenings.length}
           <div class="space-y-1.5">
-            <span class="text-[12px] text-muted-foreground">{primary?.name || 'Character'} greetings</span>
+            <span class="text-[12px] text-muted-foreground">{$t('roleplay.setup.greetingsOf', { values: { name: primary?.name || $t('roleplay.setup.character') } })}</span>
             {#each greetingOpenings as opening (opening.key)}
-              <button
+              <Button variant="plain"
                 type="button"
-                class="opening-option {selectedOpening?.key === opening.key ? 'is-on' : ''}"
+                class={uiClass(`opening-option ${selectedOpening?.key === opening.key ? 'is-on' : ''}`, "ui-local-fd4911dc")}
                 onclick={() => (openingKey = opening.key)}
                 aria-pressed={selectedOpening?.key === opening.key}
               >
                 <span class="opening-source"><span class="opening-index">{opening.index + 1}</span></span>
-                <span class="line-clamp-3 text-left text-[12px] text-foreground">{opening.text}</span>
-              </button>
+                <span class="line-clamp-3 text-left text-[12px] text-foreground">{previewOf(opening.text)}</span>
+              </Button>
             {/each}
           </div>
         {/if}
-        <button
+        <Button variant="plain"
           type="button"
-          class="opening-option {selectedOpening?.source === 'none' ? 'is-on' : ''}"
+          class={uiClass(`opening-option ${selectedOpening?.source === 'none' ? 'is-on' : ''}`, "ui-local-fd4911dc")}
           onclick={() => (openingKey = noOpening.key)}
           aria-pressed={selectedOpening?.source === 'none'}
         >
           <span class="opening-source"><X class="size-3" /></span>
-          <span class="text-left text-[12px] text-muted-foreground">No opening — start with your first message</span>
-        </button>
+          <span class="text-left text-[12px] text-muted-foreground">{$t('roleplay.setup.noOpening')}</span>
+        </Button>
       </div>
     </div>
 
-    <div class="ui-modal-footer">
-      <Button variant="outline" size="sm" type="button" onclick={onclose}>{copy.actions.cancel}</Button>
-      <Button onclick={start} disabled={!primary}>{group ? 'Start group scene' : 'Start scene'}</Button>
-    </div>
+    <DialogFooter >
+      {#if blocker}
+        <span class="blocker" role="status"><Info class="size-3.5 shrink-0" /><span>{blocker}</span></span>
+      {/if}
+      <DialogActions cancelLabel={copy.actions.cancel} confirmLabel={group ? $t('roleplay.setup.startGroup') : $t('roleplay.setup.start')} oncancel={onclose} onconfirm={start} disabled={!!blocker} confirmTitle={blocker || undefined} />
+    </DialogFooter>
   </div>
 </div>
 
 <style>
-  .opening-option {
+  :global(.opening-option.ui-local-fd4911dc) {
     display: flex;
     align-items: flex-start;
     gap: 0.5rem;
@@ -220,11 +253,11 @@
       background-color var(--motion-fast) var(--motion-ease);
   }
 
-  .opening-option:hover {
+  :global(.opening-option:hover.ui-local-fd4911dc) {
     background: var(--surface-hover);
   }
 
-  .opening-option.is-on {
+  :global(.opening-option.is-on.ui-local-fd4911dc) {
     border-color: var(--border-hover);
     background: var(--surface-active);
   }
@@ -238,6 +271,32 @@
     flex-shrink: 0;
     margin-top: 0.0625rem;
     color: var(--text-muted);
+  }
+
+  .more-options summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    cursor: pointer;
+    color: var(--text-secondary);
+    font-size: var(--text-sm);
+  }
+
+  .more-mode {
+    color: var(--text-muted);
+    font-size: var(--text-xs);
+  }
+
+  .blocker {
+    display: inline-flex;
+    flex: 1;
+    align-items: center;
+    gap: 0.35rem;
+    min-width: 0;
+    margin-right: auto;
+    color: var(--text-muted);
+    font-size: var(--text-xs);
   }
 
   .opening-index {

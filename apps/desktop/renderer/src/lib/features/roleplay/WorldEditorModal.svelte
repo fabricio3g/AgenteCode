@@ -8,6 +8,15 @@
 -->
 
 <script lang="ts">
+  import DialogActions from '$lib/components/ui/DialogActions.svelte';
+
+  import DialogFooter from '$lib/components/ui/DialogFooter.svelte';
+
+  import UiIconButton from '$lib/components/ui/IconButton.svelte';
+  import UiFileInput from '$lib/components/ui/FileInput.svelte';
+  import UiInput from '$lib/components/ui/Input.svelte';
+  import { cn as uiClass } from '$lib/utils/cn';
+
   import { deleteWorld } from './library-actions.svelte';
   import Avatar from '$lib/components/ui/Avatar.svelte';
   import { untrack } from 'svelte';
@@ -16,6 +25,7 @@
   import { modalLayer } from '$lib/components/ui/modal-layer';
   import { dirtyGuard } from '$lib/components/ui/dirty-guard';
   import { Button, Tooltip } from '$lib/components/ui';
+  import SegmentedControl from '$lib/components/ui/SegmentedControl.svelte';
   import type { CharacterCard, RoleplayWorld } from '$lib/types/chat';
   import { emptyWorld, normalizeWorld, worldsStore } from './worlds.svelte';
   import { charactersStore } from './characters.svelte';
@@ -23,6 +33,8 @@
   import RoleplaySettingsEditor from './RoleplaySettingsEditor.svelte';
   import { toastStore } from '$lib/stores/toast.svelte';
   import { copy } from '$lib/copy';
+  import MacroField from './MacroField.svelte';
+  import { t } from 'svelte-i18n';
 
   interface Props {
     /** null = create a new world. */
@@ -37,7 +49,8 @@
   // Backdrop, Escape, X and Cancel all ask before throwing edits away.
   const guard = dirtyGuard(() => draft);
   let saving = $state(false);
-  let section = $state<'overview' | 'lore' | 'cast' | 'openings' | 'defaults'>('overview');
+  let section = $state<'basics' | 'cast' | 'openings' | 'lore' | 'defaults'>('basics');
+  const userName = $derived($t('roleplay.you'));
 
   const isNew = $derived(!world);
   const cast = $derived(
@@ -57,7 +70,7 @@
     input.value = '';
     if (!file) return;
     if (file.size > 2 * 1024 * 1024) {
-      toastStore.error('Cover images must be under 2 MB.');
+      toastStore.error($t('roleplay.world.coverTooLarge'));
       return;
     }
     const reader = new FileReader();
@@ -98,8 +111,8 @@
 
   async function save() {
     if (!draft.name.trim()) {
-      toastStore.error('Give the world a name first.');
-      section = 'overview';
+      toastStore.error($t('roleplay.world.nameRequired'));
+      section = 'basics';
       return;
     }
     saving = true;
@@ -112,13 +125,13 @@
     }
   }
 
-  const sections: Array<{ id: typeof section; label: string }> = [
-    { id: 'overview', label: 'Overview' },
-    { id: 'lore', label: 'Lore' },
-    { id: 'cast', label: 'Cast' },
-    { id: 'openings', label: 'Openings' },
-    { id: 'defaults', label: 'Defaults' }
-  ];
+  const sections = $derived<Array<{ value: typeof section; label: string }>>([
+    { value: 'basics', label: $t('roleplay.world.tab.basics') },
+    { value: 'cast', label: $t('roleplay.world.tab.cast') },
+    { value: 'openings', label: $t('roleplay.world.tab.openings') },
+    { value: 'lore', label: $t('roleplay.world.tab.lore') },
+    { value: 'defaults', label: $t('roleplay.world.tab.defaults') }
+  ]);
 
 </script>
 
@@ -142,81 +155,79 @@
   >
     <div class="ui-modal-header">
       <div class="min-w-0">
-        <div class="ui-modal-title">{isNew ? 'New world' : draft.name || 'Edit world'}</div>
-        <div class="text-xs text-muted-foreground">Setting, canon and cast shared by every scene started here.</div>
+        <div class="ui-modal-title">{isNew ? $t('roleplay.world.newTitle') : draft.name || $t('roleplay.world.editTitle')}</div>
+        <div class="text-xs text-muted-foreground">{$t('roleplay.world.subtitle')}</div>
       </div>
-      <Tooltip label={copy.actions.close} position="bottom"><button type="button" class="ui-icon-button" onclick={() => guard.close(onclose)} aria-label={copy.actions.close}>
+      <Tooltip label={copy.actions.close} position="bottom"><UiIconButton label={copy.actions.close} size="sm" type="button" class={uiClass("", "ui-local-8924758d")} onclick={() => guard.close(onclose)} >
         <X class="size-4" />
-      </button></Tooltip>
+      </UiIconButton></Tooltip>
     </div>
 
-    <div class="flex gap-1 border-b border-[var(--border-subtle)] px-5 py-2">
-      {#each sections as item (item.id)}
-        <button
-          type="button"
-          class="rounded-full px-3 py-1.5 text-[12px] font-medium transition {section === item.id
-            ? 'bg-[var(--surface-active)] text-foreground'
-            : 'text-muted-foreground hover:bg-[var(--surface-hover)] hover:text-foreground'}"
-          onclick={() => (section = item.id)}
-        >
-          {item.label}
-        </button>
-      {/each}
+    <div class="tabs-row">
+      <SegmentedControl value={section} options={sections} label={$t('roleplay.world.title')} variant="tabs" shape="rect" onchange={(value) => (section = value as typeof section)} />
     </div>
 
     <div class="ui-modal-body max-h-[62vh] space-y-4 overflow-y-auto">
-      {#if section === 'overview'}
+      {#if section === 'basics'}
         <div class="flex items-start gap-4">
           <div class="flex flex-col items-center gap-2">
             <div class="cover-preview">
               {#if draft.avatar}
-                <img src={draft.avatar} alt={draft.name || 'World cover'} />
+                <img src={draft.avatar} alt={draft.name || $t('roleplay.world.cover')} />
               {:else}
                 <span>{draft.name?.trim()?.[0]?.toUpperCase() || '?'}</span>
               {/if}
             </div>
             <label class="avatar-upload">
               <Upload class="size-3.5" />
-              <span>Cover</span>
-              <input class="hidden" type="file" accept="image/*" onchange={onAvatarPicked} />
+              <span>{$t('roleplay.world.cover')}</span>
+              <UiFileInput class={uiClass("hidden", "ui-local-8924758d")}  accept="image/*" onchange={onAvatarPicked} />
             </label>
           </div>
 
           <div class="grid min-w-0 flex-1 gap-3">
             <label class="block space-y-1.5 text-sm">
-              <span class="font-medium text-muted-foreground">Name</span>
-              <input class="ui-input" bind:value={draft.name} placeholder="e.g. Eldoria" />
+              <span class="font-medium text-muted-foreground">{$t('roleplay.world.name')}</span>
+              <UiInput class={uiClass("", "ui-local-8924758d")} bind:value={draft.name} placeholder={$t('roleplay.world.namePlaceholder')} />
             </label>
             <label class="block space-y-1.5 text-sm">
-              <span class="font-medium text-muted-foreground">Tagline</span>
-              <input class="ui-input" bind:value={draft.tagline} placeholder="One line shown in the gallery" />
+              <span class="font-medium text-muted-foreground">{$t('roleplay.character.tagline')}</span>
+              <UiInput class={uiClass("", "ui-local-8924758d")} bind:value={draft.tagline} placeholder={$t('roleplay.world.taglinePlaceholder')} />
             </label>
           </div>
         </div>
 
-        <label class="block space-y-1.5 text-sm">
-          <span class="font-medium text-muted-foreground">Overview</span>
-          <span class="block text-xs text-muted-foreground">Always present in the prompt: setting, rules, tone.</span>
-          <textarea class="ui-input min-h-28 resize-y" bind:value={draft.overview} placeholder="A floating city above a drowned world…"></textarea>
-        </label>
-        <label class="block space-y-1.5 text-sm">
-          <span class="font-medium text-muted-foreground">Scenario</span>
-          <span class="block text-xs text-muted-foreground">Used when the primary character defines no scenario of their own.</span>
-          <textarea class="ui-input min-h-20 resize-y" bind:value={draft.scenario} placeholder="The festival of lanterns begins tonight…"></textarea>
-        </label>
+        <MacroField
+          label={$t('roleplay.world.overview')}
+          hint={$t('roleplay.world.overviewHint')}
+          value={draft.overview}
+          char={$t('roleplay.world.charPreview')}
+          user={userName}
+          rows={5}
+          placeholder={$t('roleplay.world.overviewPlaceholder')}
+          onchange={(value) => set('overview', value)}
+        />
+        <MacroField
+          label={$t('roleplay.world.scenario')}
+          hint={$t('roleplay.world.scenarioHint')}
+          value={draft.scenario ?? ''}
+          char={$t('roleplay.world.charPreview')}
+          user={userName}
+          rows={3}
+          placeholder={$t('roleplay.world.scenarioPlaceholder')}
+          onchange={(value) => set('scenario', value)}
+        />
       {/if}
 
       {#if section === 'lore'}
-        <LorebookEditor book={draft.book} onchange={(book) => set('book', book)} />
+        <LorebookEditor book={draft.book} onchange={(book) => set('book', book)} heightClass="h-[46vh]" />
       {/if}
 
       {#if section === 'cast'}
         <div class="space-y-2">
-          <div class="text-sm font-medium text-muted-foreground">Cast order</div>
+          <div class="text-sm font-medium text-muted-foreground">{$t('roleplay.world.castOrder')}</div>
           {#if !cast.length}
-            <p class="rounded-[var(--radius-md)] border border-dashed border-[var(--border)] px-3 py-4 text-center text-xs text-muted-foreground">
-              No cast yet. Add characters below — the first one opens scenes.
-            </p>
+            <p class="py-2 text-xs text-muted-foreground">{$t('roleplay.world.castEmpty')}</p>
           {:else}
             {#each cast as card, index (card.id)}
               <div class="cast-row">
@@ -225,15 +236,15 @@
                   <Avatar size="fill" name={card.name ?? ''} image={card.avatar} />
                 </span>
                 <span class="min-w-0 flex-1 truncate text-[13px] text-foreground">{card.name}</span>
-                <Tooltip label="Move up" position="bottom"><button type="button" class="ui-icon-button is-sm" disabled={index === 0} onclick={() => moveCast(index, -1)} aria-label="Move up">
+                <Tooltip label={$t('roleplay.world.moveUp')} position="bottom"><UiIconButton label={$t('roleplay.world.moveUp')} size="xs" type="button" class={uiClass(" ", "ui-local-8924758d")} disabled={index === 0} onclick={() => moveCast(index, -1)} >
                   <ArrowUp class="size-3.5" />
-                </button></Tooltip>
-                <Tooltip label="Move down" position="bottom"><button type="button" class="ui-icon-button is-sm" disabled={index === cast.length - 1} onclick={() => moveCast(index, 1)} aria-label="Move down">
+                </UiIconButton></Tooltip>
+                <Tooltip label={$t('roleplay.world.moveDown')} position="bottom"><UiIconButton label={$t('roleplay.world.moveDown')} size="xs" type="button" class={uiClass(" ", "ui-local-8924758d")} disabled={index === cast.length - 1} onclick={() => moveCast(index, 1)} >
                   <ArrowDown class="size-3.5" />
-                </button></Tooltip>
-                <Tooltip label="Remove from cast" position="bottom"><button type="button" class="ui-icon-button is-sm text-error" onclick={() => removeFromCast(card.id)} aria-label="Remove from cast">
+                </UiIconButton></Tooltip>
+                <Tooltip label={$t('roleplay.world.removeFromCast')} position="bottom"><UiIconButton label={$t('roleplay.world.removeFromCast')} size="xs" type="button" class={uiClass("  hover:text-error", "ui-local-8924758d")} onclick={() => removeFromCast(card.id)} >
                   <X class="size-3.5" />
-                </button></Tooltip>
+                </UiIconButton></Tooltip>
               </div>
             {/each}
           {/if}
@@ -241,13 +252,13 @@
 
         {#if available.length}
           <div class="space-y-2">
-            <div class="text-sm font-medium text-muted-foreground">Add from your library</div>
+            <div class="text-sm font-medium text-muted-foreground">{$t('roleplay.world.addFromLibrary')}</div>
             <div class="flex flex-wrap gap-1.5">
               {#each available as card (card.id)}
-                <button type="button" class="cast-add" onclick={() => addToCast(card.id)}>
+                <Button variant="plain" type="button" class={uiClass("cast-add", "ui-local-8924758d")} onclick={() => addToCast(card.id)}>
                   <Plus class="size-3" />
                   <span class="truncate">{card.name}</span>
-                </button>
+                </Button>
               {/each}
             </div>
           </div>
@@ -258,29 +269,32 @@
         <div class="space-y-2">
           <div class="flex items-center justify-between">
             <div class="min-w-0">
-              <div class="text-sm font-medium text-muted-foreground">Openings</div>
-              <div class="text-xs text-muted-foreground">Scenes can start with one of these instead of a character greeting.</div>
+              <div class="text-sm font-medium text-muted-foreground">{$t('roleplay.world.tab.openings')}</div>
+              <div class="text-xs text-muted-foreground">{$t('roleplay.world.openingsHint')}</div>
             </div>
             <Button variant="outline" size="sm" class="shrink-0" type="button" onclick={addStarter}>
-              <Plus class="size-3.5" /> Add
+              <Plus class="size-3.5" /> {$t('roleplay.character.addOpening')}
             </Button>
           </div>
           {#if !draft.starters.length}
-            <p class="rounded-[var(--radius-md)] border border-dashed border-[var(--border)] px-3 py-4 text-center text-xs text-muted-foreground">
-              No openings yet. Add one to set the scene before anyone speaks.
-            </p>
+            <p class="py-2 text-xs text-muted-foreground">{$t('roleplay.world.openingsEmpty')}</p>
           {:else}
             {#each draft.starters as starter, index (index)}
               <div class="flex items-start gap-2">
-                <textarea
-                  class="ui-input min-h-16 flex-1 resize-y"
-                  value={starter}
-                  oninput={(e) => updateStarter(index, e.currentTarget.value)}
-                  placeholder="The lanterns rise over the harbor as…"
-                ></textarea>
-                <Tooltip label="Remove opening" position="bottom"><button type="button" class="ui-icon-button mt-1 text-error" onclick={() => removeStarter(index)} aria-label="Remove opening">
+                <div class="min-w-0 flex-1">
+                  <MacroField
+                    label={$t('roleplay.character.openingN', { values: { n: index + 1 } })}
+                    value={starter}
+                    char={$t('roleplay.world.charPreview')}
+                    user={userName}
+                    rows={3}
+                    placeholder={$t('roleplay.world.openingPlaceholder')}
+                    onchange={(value) => updateStarter(index, value)}
+                  />
+                </div>
+                <Tooltip label={$t('roleplay.character.removeOpening')} position="bottom"><UiIconButton label={$t('roleplay.character.removeOpening')} size="sm" type="button" class={uiClass(" mt-6 hover:text-error", "ui-local-8924758d")} onclick={() => removeStarter(index)} >
                   <Trash2 class="size-4" />
-                </button></Tooltip>
+                </UiIconButton></Tooltip>
               </div>
             {/each}
           {/if}
@@ -292,18 +306,22 @@
       {/if}
     </div>
 
-    <div class="ui-modal-footer">
+    <DialogFooter >
       {#if world && worldsStore.getById(world.id)}
         <!-- Deleting skips the unsaved-changes guard: the item is going away. -->
-        <Button variant="outline" size="sm" class="mr-auto text-error" type="button" onclick={() => world && deleteWorld(world, onclose)}>{copy.actions.delete}</Button>
+        <Button variant="outline" size="sm" class="mr-auto hover:text-error" type="button" onclick={() => world && deleteWorld(world, onclose)}>{copy.actions.delete}</Button>
       {/if}
-      <Button variant="outline" size="sm" type="button" onclick={() => guard.close(onclose)}>{copy.actions.cancel}</Button>
-      <Button onclick={() => void save()} disabled={saving}>{saving ? 'Saving…' : copy.actions.save}</Button>
-    </div>
+      <DialogActions cancelLabel={copy.actions.cancel} confirmLabel={saving ? $t('roleplay.saving') : copy.actions.save} oncancel={() => guard.close(onclose)} onconfirm={() => void save()} busy={saving} />
+    </DialogFooter>
   </div>
 </div>
 
 <style>
+  .tabs-row {
+    padding: 0.5rem 1.25rem 0.25rem;
+    border-bottom: 1px solid var(--border-subtle);
+  }
+
   .cover-preview {
     display: flex;
     align-items: center;
@@ -374,7 +392,7 @@
     font-weight: 600;
   }
 
-  .cast-add {
+  :global(.cast-add.ui-local-8924758d) {
     display: inline-flex;
     align-items: center;
     gap: 0.25rem;
@@ -390,7 +408,7 @@
       color var(--motion-fast) var(--motion-ease);
   }
 
-  .cast-add:hover {
+  :global(.cast-add:hover.ui-local-8924758d) {
     border-color: var(--border-hover);
     color: var(--foreground);
   }

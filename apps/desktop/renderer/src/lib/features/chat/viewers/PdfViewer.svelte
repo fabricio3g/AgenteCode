@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { observeViewerSize } from './viewer-layout';
   import { tick } from 'svelte';
   import type { PDFDocumentLoadingTask } from 'pdfjs-dist';
   import { t } from 'svelte-i18n';
@@ -7,6 +8,9 @@
   import { readArrayBuffer } from './viewer-source';
   import { registerViewerControls, useViewerControls } from './viewer-controls.svelte';
   import { pageAtOffset, pageOffset, PdfRenderer, type PdfPageSize } from './pdf-renderer';
+  import type { PDFDocumentProxy } from 'pdfjs-dist';
+  import { createViewerFind } from './viewer-find.svelte';
+  import { pdfTextLines } from '$shared/pdf-text';
 
   let { src, filename }: { src: string; filename: string } = $props();
   const controls = useViewerControls();
@@ -19,6 +23,48 @@
   let pageContainer = $state<HTMLDivElement>();
   let revision = $state(0);
   let renderer = $state.raw<PdfRenderer>();
+  let searchDocument = $state.raw<PDFDocumentProxy>();
+  let matches = $state<Array<{ page: number; local: number }>>([]);
+  let findIndex = $state(0);
+  let searching = $state(false);
+  const textCache = new Map<number, string>();
+  const term = $derived(controls?.query.trim() || '');
+  const find = createViewerFind(() => pageContainer?.querySelector<HTMLElement>(`[data-page="${matches[findIndex]?.page || currentPage}"] .textLayer`), () => term);
+  function step(direction: 1 | -1) {
+    if (!matches.length) return;
+    findIndex = (findIndex + direction + matches.length) % matches.length; goToPage(matches[findIndex].page);
+  }
+  $effect(() => {
+    const hit = matches[findIndex];
+    if (hit && find.state.matches) find.select(hit.local, true);
+  });
+  $effect(() => {
+    const pdf = searchDocument, needle = term;
+    let live = true;
+    matches = []; findIndex = 0; searching = !!pdf && !!needle;
+    const timer = setTimeout(() => { void (async () => {
+      if (!pdf || !needle) return;
+      const expression = new RegExp(needle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'giu');
+      const found: Array<{ page: number; local: number }> = [];
+      try {
+        for (let number = 1; number <= pdf.numPages; number++) {
+          if (!live) return;
+          let text = textCache.get(number);
+          if (text === undefined) {
+            const page = await pdf.getPage(number), content = await page.getTextContent();
+            if (!live) return;
+            text = pdfTextLines(content.items.flatMap((item) => 'str' in item ? [{ str: item.str, transform: item.transform, width: item.width }] : [])).join('\n');
+            textCache.set(number, text);
+          }
+          let local = 0;
+          for (const _hit of text.matchAll(expression)) found.push({ page: number, local: local++ });
+        }
+        if (live) { matches = found; if (found.length) goToPage(found[0].page); }
+      } catch { /* A search failure does not prevent reading the PDF. */ }
+      finally { if (live) searching = false; }
+    })(); }, 150);
+    return () => { live = false; clearTimeout(timer); };
+  });
   let frame = 0;
   let layoutRevision = 0;
   const scale = (page: PdfPageSize) => manualZoom ?? Math.max(0.05, (width - 24) / page.width);
@@ -27,7 +73,8 @@
     page: currentPage, pages: pages.length, goToPage,
     zoom: manualZoom === null ? $t('viewer.fitShort') : `${Math.round(manualZoom * 100)}%`,
     zoomBy: direction => changeZoom((manualZoom ?? scale(pages[currentPage - 1] ?? { width: 612, height: 792, pageNumber: 1 })) + direction * 0.1),
-    fit: () => changeZoom(null), retry: error ? () => { revision += 1; } : undefined
+    fit: () => changeZoom(null), retry: error ? () => { revision += 1; } : undefined,
+    search: { matches: matches.length, index: findIndex, step, loading: searching }
   }));
 
   $effect(() => {
@@ -42,6 +89,7 @@
     currentPage = 1;
     manualZoom = null;
     renderer = undefined;
+    searchDocument = undefined; textCache.clear();
     async function load() {
       try {
         const pdfjs = await import('pdfjs-dist');
@@ -54,6 +102,7 @@
         task = pdfjs.getDocument({ data: bytes });
         const document = await task.promise;
         if (!live) return;
+        searchDocument = document;
         const sizes: PdfPageSize[] = [];
         for (let number = 1; number <= document.numPages; number += 1) {
           const page = await document.getPage(number);
@@ -138,12 +187,11 @@
     width = node.clientWidth;
     schedule();
     if (typeof ResizeObserver === 'undefined') return;
-    const observer = new ResizeObserver(() => {
+    return observeViewerSize(node, () => {
       if (node.clientWidth === width) { schedule(); return; }
       void reflow(() => { width = node.clientWidth; });
     });
-    observer.observe(node);
-    return () => observer.disconnect();
+
   });
 </script>
 

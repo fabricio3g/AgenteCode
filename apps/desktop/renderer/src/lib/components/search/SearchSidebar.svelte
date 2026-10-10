@@ -1,6 +1,10 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+  import UiIconButton from '$lib/components/ui/IconButton.svelte';
+  import UiInput from '$lib/components/ui/Input.svelte';
+  import { cn as uiClass } from '$lib/utils/cn';
+
   import { Button, Tooltip } from '$lib/components/ui';
   import { modalLayer } from '$lib/components/ui/modal-layer';
   import { LoaderCircle, Search as SearchIcon, X } from 'lucide-svelte';
@@ -32,13 +36,14 @@
 </script>
 
 <div class="fixed inset-0" use:modalLayer={{ onclose: closeSidebar, zToken: '--z-drawer' }}>
-  <button
+  <div class="absolute inset-0" transition:motionFade={{ duration: 160 }}>
+  <Button variant="plain"
     type="button"
     class="absolute inset-0 h-full w-full bg-overlay"
     aria-label={$t('search.source.closeLabel')}
-    transition:motionFade={{ duration: 160 }}
     onclick={closeSidebar}
-  ></button>
+  ></Button>
+  </div>
 
   <aside
     class="absolute right-0 top-0 flex h-full w-full max-w-[420px] flex-col border-l border-border bg-background shadow-lg"
@@ -46,16 +51,16 @@
   >
     <header class="flex shrink-0 items-center justify-between px-4 py-3">
       <h2 class="text-sm font-semibold text-foreground">{$t('search.source.title')}</h2>
-      <Tooltip label={$t('common.close')} position="bottom"><button type="button" class="ui-icon-button" onclick={closeSidebar} aria-label={$t('common.close')}>
+      <Tooltip label={$t('common.close')} position="bottom"><UiIconButton label={$t('common.close')} size="sm" type="button"  onclick={closeSidebar} >
         <X class="size-4" />
-      </button></Tooltip>
+      </UiIconButton></Tooltip>
     </header>
 
     <div class="shrink-0 px-3 pb-3">
       <div class="flex items-center gap-2">
-        <input
+        <UiInput
           type="text"
-          class="ui-input flex-1"
+          class={uiClass(" flex-1")}
           placeholder={$t('search.source.placeholder')}
           bind:value={query}
           onkeydown={(event) => {
@@ -85,15 +90,15 @@
           {$t('search.source.searching')}
         </div>
       {:else if !currentSearchState.results.length}
-        <p class="px-2 py-8 text-center text-sm text-muted-foreground">
+        <p class="px-2 py-3 text-sm text-muted-foreground">
           {$t('search.source.empty')}
         </p>
       {:else}
         <div class="flex flex-col gap-0.5">
           {#each currentSearchState.results as result (result.url)}
-            <button
+            <Button variant="plain"
               type="button"
-              class="w-full rounded-md px-3 py-2.5 text-left transition-colors hover:bg-muted"
+              class={uiClass("w-full rounded-md px-3 py-2.5 text-left transition-colors hover:bg-muted")}
               onclick={() => openResult(result.url)}
             >
               <p class="line-clamp-2 text-sm font-medium text-foreground">{result.title || result.url}</p>
@@ -101,7 +106,7 @@
                 <p class="mt-1 line-clamp-3 text-xs text-muted-foreground">{result.snippet}</p>
               {/if}
               <p class="mt-1.5 truncate text-[12px] text-muted-foreground">{result.url}</p>
-            </button>
+            </Button>
           {/each}
         </div>
       {/if}

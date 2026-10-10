@@ -12,6 +12,9 @@
 -->
 
 <script lang="ts">
+  import UiRange from '$lib/components/ui/Range.svelte';
+  import { cn as uiClass } from '$lib/utils/cn';
+
   import { onMount } from 'svelte';
   import { locale, t } from 'svelte-i18n';
   import { LoaderCircle, Play, Square } from 'lucide-svelte';
@@ -187,13 +190,13 @@
       {/snippet}
       <SettingsRow label={$t('voice.speed')}>
         <div class="flex items-center gap-3">
-          <input type="range" min="0.5" max="2" step="0.05" bind:value={speed} onchange={() => void appStore.updateTtsSettings({ speed })} class="flex-1 accent-[var(--foreground)]" aria-label={$t('voice.speed')} />
+          <UiRange  min="0.5" max="2" step="0.05" bind:value={speed} onchange={() => void appStore.updateTtsSettings({ speed })} class={uiClass("flex-1 accent-[var(--foreground)]")} aria-label={$t('voice.speed')} />
           <span class="w-11 text-right text-xs tabular-nums text-muted-foreground">{speed.toFixed(2)}×</span>
         </div>
       </SettingsRow>
       <SettingsRow label={$t('voice.volume')}>
         <div class="flex items-center gap-3">
-          <input type="range" min="0" max="100" step="5" bind:value={volume} onchange={() => void appStore.updateTtsSettings({ volume: volume / 100 })} class="flex-1 accent-[var(--foreground)]" aria-label={$t('voice.volume')} />
+          <UiRange  min="0" max="100" step="5" bind:value={volume} onchange={() => void appStore.updateTtsSettings({ volume: volume / 100 })} class={uiClass("flex-1 accent-[var(--foreground)]")} aria-label={$t('voice.volume')} />
           <span class="w-11 text-right text-xs tabular-nums text-muted-foreground">{volume}%</span>
         </div>
       </SettingsRow>

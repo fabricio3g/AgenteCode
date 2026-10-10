@@ -61,17 +61,7 @@
   :global(.ui-root) {
     width: 100%;
   }
-  :global(.ui-stack) {
-    display: flex;
-    flex-direction: column;
-    gap: 1rem;
-  }
-  :global(.ui-panel) {
-    border: 1px solid var(--border);
-    background: var(--surface);
-    border-radius: var(--radius-md);
-    padding: 1rem;
-  }
+
   :global(.ui-chat-card) {
     background: var(--surface);
   }
@@ -100,29 +90,15 @@
     font-size: 0.92rem;
     line-height: 1.5;
   }
-  :global(.ui-callout) {
-    border-radius: var(--radius-md);
-    padding: 0.85rem 1rem;
-    border: 1px solid var(--border);
-    background: var(--surface-hover);
+  /* A callout is a rail, not another box: it usually sits inside a panel already. */
+  /* Collapsible sections are rows on a divider, not stacked boxes. */
+
+  /* A panel inside a panel drops its frame; the outer one already draws the edge. */
+
+  :global(.ui-choice input) {
+    accent-color: var(--foreground);
   }
-  :global(.ui-callout-info) {
-    border-color: var(--info-border);
-  }
-  :global(.ui-callout-success) {
-    border-color: var(--success-border);
-  }
-  :global(.ui-callout-warning) {
-    border-color: var(--warning-border);
-  }
-  :global(.ui-callout-neutral) {
-    border-color: var(--border);
-  }
-  :global(.ui-callout-title) {
-    margin: 0 0 0.35rem;
-    color: var(--text);
-    font-weight: 650;
-  }
+
   :global(.ui-image-block img), :global(.ui-gallery-image) {
     width: 100%;
     display: block;
@@ -139,25 +115,7 @@
     grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
     gap: 0.75rem;
   }
-  :global(.ui-table-wrap) {
-    overflow-x: auto;
-  }
-  :global(.ui-table) {
-    width: 100%;
-    border-collapse: collapse;
-    min-width: 28rem;
-  }
-  :global(.ui-table th), :global(.ui-table td) {
-    border-bottom: 1px solid var(--border);
-    padding: 0.7rem 0.8rem;
-    text-align: left;
-    color: var(--text);
-    font-size: 0.92rem;
-  }
-  :global(.ui-table th) {
-    color: var(--text-secondary);
-    font-weight: 650;
-  }
+
   :global(.ui-tags), :global(.ui-buttons) {
     display: flex;
     gap: 0.6rem;
@@ -170,40 +128,8 @@
     background: var(--surface-hover);
     color: var(--text-secondary);
     font-size: 0.82rem;
-    border: 1px solid var(--border);
   }
-  :global(.ui-root .ui-button) {
-    border: 1px solid var(--border-hover);
-    border-radius: var(--radius-sm);
-    padding: 0.65rem 1rem;
-    font: inherit;
-    cursor: pointer;
-    box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), 0 1px 2px rgba(0,0,0,0.04);
-    transition: transform 0.1s ease, opacity 0.12s ease, border-color 0.12s ease;
-  }
-  :global(.ui-root .ui-button:hover) {
-    opacity: 0.88;
-    border-color: var(--text);
-  }
-  :global(.ui-root .ui-button:active) {
-    transform: scale(0.98);
-  }
-  :global(.ui-artifact-button-primary) {
-    background: var(--primary);
-    color: var(--primary-fg);
-  }
-  :global(.ui-artifact-button-secondary), :global(.ui-button-tertiary) {
-    background: var(--surface);
-    color: var(--text);
-    border: 1px solid var(--border);
-  }
-  :global(.ui-artifact-button-secondary:hover), :global(.ui-button-tertiary:hover) {
-    background: var(--surface-hover);
-    border-color: var(--fg-tertiary);
-  }
-  :global(.dark .ui-root .ui-button) {
-    box-shadow: inset 0 1px 0 rgba(255,255,255,0.04), 0 1px 2px rgba(0,0,0,0.2);
-  }
+
   :global(.ui-form), :global(.ui-artifact-field) {
     display: flex;
     flex-direction: column;
@@ -214,23 +140,7 @@
     font-weight: 600;
     color: var(--text);
   }
-  :global(.ui-artifact-input), :global(.ui-textarea) {
-    width: 100%;
-    border-radius: var(--radius-md);
-    border: 1px solid var(--border);
-    background: var(--surface);
-    color: var(--text);
-    padding: 0.75rem 0.85rem;
-    font: inherit;
-    transition: border-color 0.15s ease;
-  }
-  :global(.ui-artifact-input:focus), :global(.ui-textarea:focus) {
-    outline: none;
-    border-color: var(--border-hover);
-  }
-  :global(.ui-range) {
-    width: 100%;
-  }
+
   :global(.ui-choice) {
     display: flex;
     align-items: center;
@@ -240,36 +150,7 @@
   :global(.ui-switch) {
     justify-content: space-between;
   }
-  :global(.ui-tab-list) {
-    display: flex;
-    gap: 0.5rem;
-    flex-wrap: wrap;
-    margin-bottom: 0.8rem;
-  }
-  :global(.ui-tab-trigger) {
-    border: 1px solid var(--border);
-    background: var(--surface-hover);
-    color: var(--text-secondary);
-    border-radius: var(--radius-full);
-    padding: 0.45rem 0.8rem;
-    cursor: pointer;
-    font: inherit;
-    transition: all 0.12s ease;
-  }
-  :global(.ui-tab-trigger:hover) {
-    background: var(--surface);
-    color: var(--text);
-  }
-  :global(.ui-tab-trigger.active) {
-    background: var(--primary);
-    color: var(--primary-fg);
-    border-color: transparent;
-  }
-  :global(.ui-summary) {
-    cursor: pointer;
-    color: var(--text);
-    font-weight: 650;
-  }
+
   :global(.ui-steps) {
     list-style: none;
     padding: 0;
@@ -289,41 +170,40 @@
     display: grid;
     place-items: center;
     border-radius: var(--radius-full);
-    background: var(--primary);
-    color: var(--primary-fg);
-    font-weight: 700;
+    background: var(--surface-hover);
+    color: var(--text-secondary);
+    font-weight: 600;
   }
   :global(.ui-step-title) {
     color: var(--text);
     font-weight: 650;
     margin-bottom: 0.35rem;
   }
-  :global(.ui-separator) {
-    border: 0;
-    border-top: 1px solid var(--border);
-    margin: 0.2rem 0;
-  }
+
   :global(.ui-list-block) {
     display: flex;
     flex-direction: column;
-    gap: 0.6rem;
+    gap: 0;
   }
   :global(.ui-list-item) {
     text-align: left;
     display: flex;
     flex-direction: column;
     gap: 0.2rem;
-    border: 1px solid var(--border);
-    background: var(--surface-hover);
-    border-radius: var(--radius-md);
-    padding: 0.85rem 1rem;
+    border: 0;
+    border-top: 1px solid var(--border-subtle);
+    background: transparent;
+    border-radius: 0;
+    padding: 0.6rem 0.25rem;
     cursor: pointer;
     font: inherit;
     transition: all 0.15s ease;
   }
+  :global(.ui-list-item:first-child) {
+    border-top: 0;
+  }
   :global(.ui-list-item:hover) {
-    background: var(--surface);
-    border-color: var(--border-hover);
+    background: var(--surface-hover);
   }
   :global(.ui-list-label) {
     color: var(--text);
@@ -354,9 +234,7 @@
     color: var(--text-secondary);
   }
   @media (max-width: 640px) {
-    :global(.ui-panel) {
-      padding: 0.85rem;
-    }
+
     :global(.ui-chart-row) {
       grid-template-columns: 1fr;
     }

@@ -1,7 +1,12 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
-  import { ArrowRight, Loader2, SkipForward, Square } from 'lucide-svelte';
+  import TileMeter from '$lib/components/ui/TileMeter.svelte';
+  import UiButton from '$lib/components/ui/Button.svelte';
+  import UiTextarea from '$lib/components/ui/Textarea.svelte';
+  import { cn as uiClass } from '$lib/utils/cn';
+
+  import { ArrowRight, SkipForward, Square } from 'lucide-svelte';
   import { cancelDeepResearchTask, deepResearchStore } from '$lib/stores/deep-research.svelte';
   import { appStore } from '$lib/stores/app.svelte';
   import { activityLabel } from '$lib/utils/tool-ui';
@@ -80,7 +85,7 @@
   <section class="research-card" aria-label="Deep research">
     <div class="status-row">
       {#if isWorking}
-        <Loader2 class="size-3.5 shrink-0 animate-spin motion-reduce:animate-none" aria-hidden="true" />
+        <TileMeter mode="busy" />
       {/if}
       <span class="status-text">{stageLabel}</span>
       {#if activeTask.mode === 'max' || activeTask.mode === 'deep'}
@@ -99,57 +104,57 @@
     {#if activeTask.status === 'awaiting_input' && activeTask.questions?.length}
       <div class="questions">
         <div class="selector-row">
-          <button type="button" class="selector-chip {!useCustom ? 'is-active' : ''}" onclick={() => (useCustom = false)}>
+          <UiButton variant="plain" type="button" class={uiClass(`selector-chip ${!useCustom ? 'is-active' : ''}`, "ui-local-f6d100e7")} onclick={() => (useCustom = false)}>
             Suggested
-          </button>
-          <button type="button" class="selector-chip {useCustom ? 'is-active' : ''}" onclick={() => (useCustom = true)}>
+          </UiButton>
+          <UiButton variant="plain" type="button" class={uiClass(`selector-chip ${useCustom ? 'is-active' : ''}`, "ui-local-f6d100e7")} onclick={() => (useCustom = true)}>
             Custom
-          </button>
+          </UiButton>
         </div>
 
         {#if !useCustom}
           <div class="options">
             {#each activeTask.questions as question (question.id)}
-              <button
+              <UiButton variant="plain"
                 type="button"
-                class="option {selectedOptionId === question.id ? 'is-active' : ''}"
+                class={uiClass(`option ${selectedOptionId === question.id ? 'is-active' : ''}`, "ui-local-f6d100e7")}
                 onclick={() => (selectedOptionId = question.id)}
                 disabled={!question.suggestedAnswer}
               >
                 {question.suggestedAnswer || question.question}
-              </button>
+              </UiButton>
             {/each}
           </div>
         {:else}
-          <textarea
+          <UiTextarea
             rows={3}
-            class="input"
+            class={uiClass("input", "ui-local-f6d100e7")}
             bind:value={customText}
             placeholder="Write your research direction"
-          ></textarea>
+          ></UiTextarea>
         {/if}
 
         <div class="actions">
-          <button type="button" class="btn" onclick={stopActiveTask}>
+          <UiButton variant="plain" type="button" class={uiClass("btn", "ui-local-f6d100e7")} onclick={stopActiveTask}>
             <Square class="h-3 w-3 fill-current" />
             Stop
-          </button>
-          <button type="button" class="btn" onclick={() => submitAnswers(true)}>
+          </UiButton>
+          <UiButton variant="plain" type="button" class={uiClass("btn", "ui-local-f6d100e7")} onclick={() => submitAnswers(true)}>
             <SkipForward class="h-3.5 w-3.5" />
             Skip
-          </button>
-          <button type="button" class="btn primary" onclick={() => submitAnswers(false)}>
+          </UiButton>
+          <UiButton variant="plain" type="button" class={uiClass("btn primary", "ui-local-f6d100e7")} onclick={() => submitAnswers(false)}>
             <ArrowRight class="h-3.5 w-3.5" />
             Continue
-          </button>
+          </UiButton>
         </div>
       </div>
     {:else if isWorking}
       <div class="actions always">
-        <button type="button" class="btn" onclick={stopActiveTask}>
+        <UiButton variant="plain" type="button" class={uiClass("btn", "ui-local-f6d100e7")} onclick={stopActiveTask}>
           <Square class="h-3 w-3 fill-current" />
           Stop
-        </button>
+        </UiButton>
       </div>
     {/if}
   </section>
@@ -213,7 +218,7 @@
     gap: 0.3rem;
   }
 
-  .selector-chip {
+  :global(.selector-chip.ui-local-f6d100e7) {
     border: 0;
     border-radius: 999px;
     background: transparent;
@@ -225,12 +230,12 @@
     transition: background 120ms ease, color 120ms ease;
   }
 
-  .selector-chip:hover {
+  :global(.selector-chip:hover.ui-local-f6d100e7) {
     background: var(--artifact-surface-hover, var(--surface-hover));
     color: var(--text);
   }
 
-  .selector-chip.is-active {
+  :global(.selector-chip.is-active.ui-local-f6d100e7) {
     background: var(--artifact-surface-hover, var(--surface-hover));
     color: var(--text);
   }
@@ -240,7 +245,7 @@
     gap: 0.3rem;
   }
 
-  .option {
+  :global(.option.ui-local-f6d100e7) {
     text-align: left;
     border: 0;
     border-radius: var(--radius-sm);
@@ -254,23 +259,23 @@
     transition: background 120ms ease, color 120ms ease;
   }
 
-  .option:hover:not(:disabled) {
+  :global(.option:hover:not(:disabled).ui-local-f6d100e7) {
     background: var(--artifact-surface-hover, var(--surface-hover));
     color: var(--text);
   }
 
-  .option.is-active {
+  :global(.option.is-active.ui-local-f6d100e7) {
     background: var(--artifact-surface-hover, var(--surface-hover));
     color: var(--text);
     font-weight: 550;
   }
 
-  .option:disabled {
+  :global(.option:disabled.ui-local-f6d100e7) {
     opacity: 0.5;
     cursor: default;
   }
 
-  .input {
+  :global(.input.ui-local-f6d100e7) {
     border: 0;
     border-radius: var(--radius-sm);
     background: color-mix(in srgb, var(--chat-bg) 45%, transparent);
@@ -283,7 +288,7 @@
     outline: none;
   }
 
-  .input:focus {
+  :global(.input:focus.ui-local-f6d100e7) {
     box-shadow: var(--artifact-focus, 0 0 0 2px color-mix(in srgb, var(--primary) 30%, transparent));
   }
 
@@ -298,7 +303,7 @@
     margin-top: 0.5rem;
   }
 
-  .btn {
+  :global(.btn.ui-local-f6d100e7) {
     border: 0;
     border-radius: var(--radius-sm);
     background: transparent;
@@ -313,12 +318,12 @@
     transition: background 120ms ease, color 120ms ease;
   }
 
-  .btn:hover {
+  :global(.btn:hover.ui-local-f6d100e7) {
     background: var(--artifact-surface-hover, var(--surface-hover));
     color: var(--text);
   }
 
-  .btn.primary {
+  :global(.btn.primary.ui-local-f6d100e7) {
     color: var(--text);
     background: color-mix(in srgb, var(--artifact-surface-hover, var(--surface-hover)) 80%, transparent);
   }

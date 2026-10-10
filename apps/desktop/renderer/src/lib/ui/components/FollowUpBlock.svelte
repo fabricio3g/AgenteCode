@@ -1,4 +1,7 @@
 <script lang="ts">
+  import UiButton from '$lib/components/ui/Button.svelte';
+  import { cn as uiClass } from '$lib/utils/cn';
+
   import { useUI } from '../context';
   let { props = {} } = $props<{ props?: Record<string, any> }>();
   const { triggerAction } = useUI();
@@ -7,6 +10,6 @@
 
 <div class="ui-buttons">
   {#each items as item}
-    <button class="ui-button ui-artifact-button-secondary" onclick={() => triggerAction(String(item?.props?.text || item?.text || 'Continue'))}>{String(item?.props?.text || item?.text || '')}</button>
+    <UiButton variant="outline" class={uiClass(" ui-artifact-button-secondary")} onclick={() => triggerAction(String(item?.props?.text || item?.text || 'Continue'))}>{String(item?.props?.text || item?.text || '')}</UiButton>
   {/each}
 </div>

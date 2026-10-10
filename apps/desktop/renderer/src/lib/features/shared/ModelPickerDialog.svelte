@@ -13,6 +13,12 @@
 -->
 
 <script lang="ts">
+  import UiListRow from '$lib/components/ui/ListRow.svelte';
+
+  import UiIconButton from '$lib/components/ui/IconButton.svelte';
+  import UiInput from '$lib/components/ui/Input.svelte';
+  import { cn as uiClass } from '$lib/utils/cn';
+
   import { Button } from '$lib/components/ui';
   import type { Snippet } from 'svelte';
   import { Check, ChevronRight, LoaderCircle, RefreshCw, Search, Settings2, X } from 'lucide-svelte';
@@ -169,31 +175,31 @@
           {#if bar}{@render bar()}{:else}<span class="picker-title">{title ?? $t('modelPicker.title')}</span>{/if}
           <span class="flex-1"></span>
           <Tooltip label={$t('modelPicker.refresh')} position="bottom">
-            <button type="button" class="ui-icon-button is-sm" onclick={refresh} aria-label={$t('modelPicker.refresh')} disabled={refreshing}>
+            <UiIconButton label={$t('modelPicker.refresh')} size="xs" type="button" class={uiClass(" ", "ui-local-6cbfdb91")} onclick={refresh}  disabled={refreshing}>
               <RefreshCw class={refreshing ? 'animate-spin' : ''} />
-            </button>
+            </UiIconButton>
           </Tooltip>
           {#if onmanage}
             <Tooltip label={$t('modelPicker.manageProviders')} position="bottom">
-              <button type="button" class="ui-icon-button is-sm" onclick={onmanage} aria-label={$t('modelPicker.manageProviders')}>
+              <UiIconButton label={$t('modelPicker.manageProviders')} size="xs" type="button" class={uiClass(" ", "ui-local-6cbfdb91")} onclick={onmanage} >
                 <Settings2 />
-              </button>
+              </UiIconButton>
             </Tooltip>
           {/if}
-          <Tooltip label={$t('modelPicker.close')} position="bottom"><button type="button" class="ui-icon-button is-sm" onclick={() => (open = false)} aria-label={$t('modelPicker.close')}><X /></button></Tooltip>
+          <Tooltip label={$t('modelPicker.close')} position="bottom"><UiIconButton label={$t('modelPicker.close')} size="xs" type="button" class={uiClass(" ", "ui-local-6cbfdb91")} onclick={() => (open = false)} ><X /></UiIconButton></Tooltip>
         </div>
 
         <label class="ui-pill-field picker-search">
           <Search class="size-3.5 shrink-0 text-muted-foreground" />
-          <input
-            bind:this={searchInput}
+          <UiInput class={uiClass('', "ui-local-6cbfdb91")}
+            bind:ref={searchInput}
             bind:value={search}
             type="search"
             aria-label={$t('modelPicker.search')}
             placeholder={$t('modelPicker.searchPlaceholder')}
           />
           {#if search}
-            <Tooltip label={$t('modelPicker.clearSearch')} position="bottom"><button type="button" class="ui-icon-button is-xs -mr-1.5" aria-label={$t('modelPicker.clearSearch')} onclick={() => (search = '')}><X /></button></Tooltip>
+            <Tooltip label={$t('modelPicker.clearSearch')} position="bottom"><UiIconButton label={$t('modelPicker.clearSearch')} size="xs" type="button" class={uiClass("  -mr-1.5", "ui-local-6cbfdb91")}  onclick={() => (search = '')}><X /></UiIconButton></Tooltip>
           {/if}
         </label>
 
@@ -220,7 +226,7 @@
               {@const list = modelsFor(provider.id)}
               {@const loading = !!providerModels.loading[provider.id]}
               <div class="provider-group">
-                <button type="button" class="group-head" onclick={() => toggleProvider(provider.id)} aria-expanded={openGroup}>
+                <Button variant="plain" type="button" class={uiClass("group-head", "ui-local-6cbfdb91")} onclick={() => toggleProvider(provider.id)} aria-expanded={openGroup}>
                   <ProviderIcon provider={provider.id} size={14} />
                   <span class="group-name">{provider.label}</span>
                   {#if provider.isActive}<span class="group-meta">· {$t('modelPicker.connected')}</span>{/if}
@@ -228,7 +234,7 @@
                   {#if loading}<LoaderCircle class="size-3 shrink-0 animate-spin" />{/if}
                   {#if provider.model && !openGroup}<span class="group-current">{provider.model}</span>{/if}
                   <ChevronRight class="group-chevron size-3.5 shrink-0 {openGroup ? 'rotate-90' : ''}" />
-                </button>
+                </Button>
 
                 {#if openGroup}
                   <div class="group-models">
@@ -243,10 +249,10 @@
                     {:else}
                       {#each (showAll[provider.id] ? list : list.slice(0, 50)) as model (model.id)}
                         {@const isSelected = selected?.provider === provider.id && selected.model === model.id}
-                        <button
+                        <UiListRow
                           type="button"
-                          class="model-row"
-                          class:is-selected={isSelected}
+                          class={uiClass("model-row", "ui-local-6cbfdb91", {"is-selected": isSelected})}
+
                           data-model-option
                           aria-pressed={isSelected}
                           onclick={() => pick(provider.id, model.id)}
@@ -255,10 +261,10 @@
                           <span class="min-w-0 flex-1 truncate">{model.name}</span>
                           {#if model.id !== model.name}<span class="row-id">{model.id}</span>{/if}
                           {#if isSelected}<span class="row-tag">{$t('modelPicker.inUse')}</span>{/if}
-                        </button>
+                        </UiListRow>
                       {/each}
                       {#if list.length > 50 && !showAll[provider.id]}
-                        <button type="button" class="group-head" onclick={() => { showAll = { ...showAll, [provider.id]: true }; }}>{$t('code.showAll')} · {list.length}</button>
+                        <Button variant="plain" type="button" class={uiClass("group-head", "ui-local-6cbfdb91")} onclick={() => { showAll = { ...showAll, [provider.id]: true }; }}>{$t('code.showAll')} · {list.length}</Button>
                       {/if}
                     {/if}
                   </div>
@@ -270,7 +276,6 @@
 
         <footer class="picker-footer">
           <span aria-live="polite">{$t(search ? 'modelPicker.countFound' : 'modelPicker.countAvailable', { values: { n: resultCount } })}</span>
-          <span class="picker-key-hint"><kbd>↑</kbd><kbd>↓</kbd> {$t('modelPicker.navigate')} <kbd>esc</kbd> {$t('modelPicker.close')}</span>
         </footer>
       </div>
     </div>
@@ -298,7 +303,7 @@
     transform-origin: 50% 40%;
   }
 
-  .model-modal button:focus-visible {
+  .model-modal :global(button:focus-visible.ui-local-6cbfdb91) {
     outline: 2px solid var(--ring);
     outline-offset: 2px;
   }
@@ -324,10 +329,10 @@
     margin: 0 1rem 0.5rem;
     padding: 0 0.875rem;
   }
-  .picker-search input {
+  .picker-search :global(input.ui-local-6cbfdb91) {
     font-size: var(--text-base);
   }
-  .picker-search input::-webkit-search-cancel-button {
+  .picker-search :global(input.ui-local-6cbfdb91::-webkit-search-cancel-button) {
     display: none;
   }
 
@@ -361,7 +366,7 @@
   }
 
   /* A provider is a label over its models, not a row competing with them. */
-  .group-head {
+  :global(.group-head.ui-local-6cbfdb91) {
     display: flex;
     width: 100%;
     height: 2.25rem;
@@ -374,7 +379,7 @@
     text-align: left;
     transition: color var(--motion-fast) var(--motion-ease);
   }
-  .group-head:hover {
+  :global(.group-head:hover.ui-local-6cbfdb91) {
     color: var(--foreground);
   }
   .group-name {
@@ -393,7 +398,7 @@
     font-family: var(--font-mono, ui-monospace, monospace);
     font-size: var(--text-xs);
   }
-  .group-head :global(.group-chevron) {
+  :global(.group-head.ui-local-6cbfdb91) :global(.group-chevron) {
     transition: transform var(--motion-fast) var(--motion-ease);
   }
   .group-models {
@@ -405,7 +410,7 @@
     font-size: var(--text-xs);
   }
 
-  .model-row {
+  :global(.model-row.ui-local-6cbfdb91) {
     display: flex;
     width: 100%;
     min-height: 2.625rem;
@@ -418,9 +423,9 @@
     text-align: left;
     transition: background-color var(--motion-fast) var(--motion-ease);
   }
-  .model-row:hover,
-  .model-row:focus-visible,
-  .model-row.is-selected {
+  :global(.model-row:hover.ui-local-6cbfdb91),
+  :global(.model-row:focus-visible.ui-local-6cbfdb91),
+  :global(.model-row.is-selected.ui-local-6cbfdb91) {
     background: var(--surface-hover);
   }
   .row-mark {
@@ -450,12 +455,11 @@
   .picker-empty {
     display: flex;
     flex-direction: column;
-    align-items: center;
+    align-items: flex-start;
     gap: 0.375rem;
-    padding: 2.5rem 1rem;
+    padding: 1.5rem 0.625rem;
     color: var(--muted-foreground);
     font-size: var(--text-xs);
-    text-align: center;
   }
   .picker-empty p {
     color: var(--foreground);
@@ -473,20 +477,8 @@
     color: var(--muted-foreground);
     font-size: var(--text-sm);
   }
-  .picker-key-hint {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.25rem;
-  }
-  .picker-key-hint kbd {
-    padding: 0 4px;
-    border-radius: 4px;
-    background: var(--muted);
-    font: inherit;
-  }
 
   @media (max-width: 560px) {
-    .picker-key-hint,
     .row-id {
       display: none;
     }

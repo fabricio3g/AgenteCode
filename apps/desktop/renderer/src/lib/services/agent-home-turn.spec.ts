@@ -147,6 +147,93 @@ describe('Home turn on the Rust runtime', () => {
     expect(cancels).toBeGreaterThan(0);
     expect(result.outcome).toBe('stopped');
   });
+
+  describe('when the iteration budget runs out', () => {
+    const notice = 'Reached the iteration limit (4) for this turn. The task is paused; send another message to continue.';
+    const wrapUp = 'Finished the summary. Left: the second source. Ask me to continue.';
+    const streamed = (onContent: ReturnType<typeof vi.fn>) => onContent.mock.calls.map((call) => String(call[0]));
+
+    it('replaces the notice with one tool-less wrap-up on the same session', async () => {
+      script = async ({ emit }) => {
+        if (starts.length === 1) {
+          emit(say('Checking the second source.'));
+          emit({ type: 'assistant_message', text: notice } as RuntimeEvent);
+        } else {
+          emit(say(wrapUp));
+        }
+        return { status: 'completed' };
+      };
+      const onContent = vi.fn();
+      const result = await run('hi', { onContent });
+      expect(starts).toHaveLength(2);
+      expect(starts[0].tools.length).toBeGreaterThan(0);
+      expect(starts[1]).toMatchObject({ sessionId: 's1', tools: [], policy: { max_iterations: 1, max_tool_calls: 0 } });
+      expect(starts[1].prompt.content).toMatch(/step budget\. Do not call tools/);
+      expect(starts[1]).not.toHaveProperty('wrapUp');
+      const texts = streamed(onContent);
+      expect(texts.indexOf(notice)).toBeLessThan(texts.lastIndexOf(''));
+      expect(texts.at(-1)).toBe(wrapUp);
+      expect(result).toMatchObject({ content: wrapUp, outcome: 'completed', stopReason: 'iteration_limit' });
+    });
+
+    it('never starts a second wrap-up, even when the wrap-up runs out too', async () => {
+      script = async ({ emit }) => {
+        emit({ type: 'assistant_message', text: notice } as RuntimeEvent);
+        return { status: 'completed' };
+      };
+      const result = await run('hi');
+      expect(starts).toHaveLength(2);
+      expect(result).toMatchObject({ content: notice, outcome: 'completed', stopReason: 'iteration_limit' });
+    });
+
+    it('keeps the notice as the reply when the provider refuses the wrap-up', async () => {
+      const onContent = vi.fn();
+      script = async ({ emit }) => {
+        if (starts.length > 1) return { status: 'failed', error: 'The provider rejected the request.' };
+        emit({ type: 'assistant_message', text: notice } as RuntimeEvent);
+        return { status: 'completed' };
+      };
+      const result = await run('hi', { onContent });
+      expect(starts).toHaveLength(2);
+      expect(result).toMatchObject({ content: notice, outcome: 'completed', stopReason: 'iteration_limit' });
+      expect(result.error).toBeUndefined();
+      expect(streamed(onContent).at(-1)).toBe(notice);
+    });
+
+    it('keeps the notice as the reply when the wrap-up comes back empty', async () => {
+      const onContent = vi.fn();
+      script = async ({ emit }) => {
+        if (starts.length === 1) emit({ type: 'assistant_message', text: notice } as RuntimeEvent);
+        return { status: 'completed' };
+      };
+      const result = await run('hi', { onContent });
+      expect(starts).toHaveLength(2);
+      expect(result).toMatchObject({ content: notice, outcome: 'completed', stopReason: 'iteration_limit' });
+      expect(streamed(onContent).at(-1)).toBe(notice);
+    });
+
+    it('does not wrap up a run the user stopped', async () => {
+      const controller = new AbortController();
+      script = async ({ emit }) => {
+        emit({ type: 'assistant_message', text: notice } as RuntimeEvent);
+        controller.abort();
+        return { status: 'cancelled' };
+      };
+      const result = await run('hi', { signal: controller.signal });
+      expect(starts).toHaveLength(1);
+      expect(result.outcome).toBe('stopped');
+    });
+
+    it('leaves an ordinary completed reply alone', async () => {
+      script = async ({ emit }) => {
+        emit(say('All done.'));
+        return { status: 'completed' };
+      };
+      const result = await run('hi');
+      expect(starts).toHaveLength(1);
+      expect(result).toMatchObject({ content: 'All done.', outcome: 'completed', stopReason: 'none' });
+    });
+  });
 });
 
 describe('Home routing', () => {

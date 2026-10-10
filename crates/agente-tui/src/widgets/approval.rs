@@ -36,6 +36,14 @@ pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState) {
         .map(|view| view.rendered_height().clamp(3, 12) as u16)
         .unwrap_or(0);
     let action_rows = if area.width >= 64 { 1 } else { 2 };
+    // The full target is shown: a long command wrapped over several rows, never
+    // cut off where its tail (`; rm -rf …`) would go unread before approving.
+    let target = request_target(request);
+    let target_lines = target
+        .as_deref()
+        .map(|text| wrap_target(text, (panel_inner_width(area) as usize).saturating_sub(8)))
+        .unwrap_or_default();
+    let extra = target_lines.len().saturating_sub(1) as u16;
     // Border(2) + gap + tool + target + gap + [diff|warning + gap] + actions.
     let middle = if diff.is_some() {
         desired_diff_height + 1
@@ -44,7 +52,7 @@ pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState) {
     } else {
         0
     };
-    let desired_height = 6 + middle + action_rows;
+    let desired_height = 6 + middle + action_rows + extra;
     let panel = super::centered_panel(
         area,
         area.width.saturating_sub(4).min(76),
@@ -132,28 +140,27 @@ pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState) {
             style::text(),
         ),
     );
-    if let Some(target) = request_target(request) {
+    for (index, line) in target_lines.iter().enumerate() {
         field(
             frame,
-            2,
-            "target",
-            Span::styled(
-                truncate_cells(&target, value_w),
-                Style::default().fg(SECONDARY()),
-            ),
+            2 + index as u16,
+            if index == 0 { "target" } else { "" },
+            Span::styled(line.clone(), Style::default().fg(SECONDARY())),
         );
     }
 
     if let Some(view) = &diff {
-        let diff_height = actions_dy.saturating_sub(5).min(desired_diff_height);
+        let diff_height = actions_dy
+            .saturating_sub(5 + extra)
+            .min(desired_diff_height);
         if diff_height > 0 {
             frame.render_widget(
                 view,
-                Rect::new(inner.x, inner.y + 4, inner.width, diff_height),
+                Rect::new(inner.x, inner.y + 4 + extra, inner.width, diff_height),
             );
         }
     } else if request.is_dangerous {
-        if let Some(row_area) = row(4) {
+        if let Some(row_area) = row(4 + extra) {
             frame.render_widget(
                 Paragraph::new("This operation can modify or remove data.")
                     .style(style::error().bg(BG_PANEL())),
@@ -223,18 +230,16 @@ const ACTIONS: &[ActionButton] = &[
 ];
 
 /// Paint `buttons` left to right in `row`, registering each one's hit rect
-/// from its drawn width, centered in `row`. The hovered button's label gets
-/// a lifted band.
+/// from its drawn width, from `row`'s left edge (the edge the tool and target
+/// rows share). The hovered button's label gets a lifted band.
 fn render_actions(frame: &mut Frame, state: &AppState, row: Rect, buttons: &[ActionButton]) {
     const GAP: u16 = 3;
     frame.render_widget(Paragraph::new("").style(style::panel()), row);
-    // Centered like every modal footer.
     let widths: Vec<u16> = buttons
         .iter()
         .map(|b| (display_width(b.key) + display_width(b.label)) as u16)
         .collect();
-    let total = widths.iter().sum::<u16>() + GAP * (widths.len() as u16).saturating_sub(1);
-    let mut x = row.x + row.width.saturating_sub(total) / 2;
+    let mut x = row.x;
     for (button, width) in buttons.iter().zip(widths) {
         let rect = Rect::new(x, row.y, width.min(row.right().saturating_sub(x)), 1);
         if rect.width == 0 {
@@ -262,6 +267,44 @@ fn render_actions(frame: &mut Frame, state: &AppState, row: Rect, buttons: &[Act
     }
 }
 
+/// Inner width of the review card for an `area` (mirrors the panel sizing in
+/// [`render`]: the card is at most 76 wide with a 1-cell gutter each side).
+fn panel_inner_width(area: Rect) -> u16 {
+    area.width.saturating_sub(4).min(76).saturating_sub(4)
+}
+
+/// Hard-wrap `text` into at most six rows of `width` cells (the last row
+/// ends in `…` when more remains). Newlines in a command start a new row.
+fn wrap_target(text: &str, width: usize) -> Vec<String> {
+    const MAX_ROWS: usize = 6;
+    let width = width.max(8);
+    let mut rows: Vec<String> = Vec::new();
+    for raw in text.lines() {
+        let mut current = String::new();
+        let mut cells = 0;
+        for ch in raw.chars() {
+            let w = display_width(&ch.to_string());
+            if cells + w > width {
+                rows.push(std::mem::take(&mut current));
+                cells = 0;
+            }
+            current.push(ch);
+            cells += w;
+        }
+        rows.push(current);
+    }
+    if rows.len() > MAX_ROWS {
+        rows.truncate(MAX_ROWS);
+        if let Some(last) = rows.last_mut() {
+            *last = truncate_cells(&format!("{last}…"), width);
+            if !last.ends_with('…') {
+                last.push('…');
+            }
+        }
+    }
+    rows
+}
+
 fn request_target(request: &agente_core::types::ApprovalRequest) -> Option<String> {
     if let Some(path) = &request.file_path {
         return Some(path.clone());
@@ -282,7 +325,18 @@ fn request_target(request: &agente_core::types::ApprovalRequest) -> Option<Strin
     {
         return Some(path.to_string());
     }
-    None
+    // Other tools (MCP, patches): the arguments themselves, so the person
+    // approves what will actually be sent, not just a tool name.
+    let obj = val.as_object().filter(|obj| !obj.is_empty())?;
+    Some(
+        obj.iter()
+            .map(|(key, value)| match value.as_str() {
+                Some(text) => format!("{key}={}", text.replace('\n', " ")),
+                None => format!("{key}={value}"),
+            })
+            .collect::<Vec<_>>()
+            .join(" "),
+    )
 }
 
 #[cfg(test)]
@@ -316,7 +370,19 @@ mod tests {
         assert_eq!(request_target(&alias).as_deref(), Some("ls"));
         let path = request(None, r#"{"path":"src/lib.rs"}"#);
         assert_eq!(request_target(&path).as_deref(), Some("src/lib.rs"));
-        let none = request(None, r#"{"other":1}"#);
+        let other = request(None, r#"{"other":1}"#);
+        assert_eq!(request_target(&other).as_deref(), Some("other=1"));
+        let none = request(None, "{}");
         assert_eq!(request_target(&none), None);
+    }
+
+    #[test]
+    fn wrap_target_keeps_the_whole_short_command_and_flags_overflow() {
+        let rows = wrap_target("ls -la; rm -rf build", 10);
+        assert_eq!(rows.concat(), "ls -la; rm -rf build");
+        let long = "x".repeat(500);
+        let rows = wrap_target(&long, 20);
+        assert_eq!(rows.len(), 6);
+        assert!(rows[5].ends_with('…'));
     }
 }

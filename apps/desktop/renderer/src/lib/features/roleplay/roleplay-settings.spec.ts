@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { compactStoredScene, resolveRoleplaySettings, sceneOverrides, sceneState } from './roleplay-settings';
+import { compactStoredScene, resolveRoleplaySettings, roleplayReasoningLevel, sceneOverrides, sceneState } from './roleplay-settings';
 
 describe('scene options as overrides', () => {
   const inherited = resolveRoleplaySettings({ interactionMode: 'narrative' });
@@ -18,5 +18,22 @@ describe('scene options as overrides', () => {
     const compact = { characterIds: ['a'], surprise: 40 };
     expect(compactStoredScene(compact)).toBe(compact);
     expect(compactStoredScene(null)).toBeNull();
+  });
+});
+
+describe('roleplayReasoningLevel', () => {
+  it('turns thinking off everywhere when the Settings toggle is off', () => {
+    expect(roleplayReasoningLevel({ chatLevel: 'high', thinkingEnabled: false, local: false })).toBe('off');
+    expect(roleplayReasoningLevel({ chatLevel: null, thinkingEnabled: false, local: true })).toBe('off');
+  });
+
+  it('defaults local roleplay to off, and cloud roleplay to the provider default', () => {
+    expect(roleplayReasoningLevel({ chatLevel: null, thinkingEnabled: true, local: true })).toBe('off');
+    expect(roleplayReasoningLevel({ chatLevel: null, thinkingEnabled: true, local: false })).toBeNull();
+  });
+
+  it("keeps a chat's own level when thinking is on", () => {
+    expect(roleplayReasoningLevel({ chatLevel: 'medium', thinkingEnabled: true, local: true })).toBe('medium');
+    expect(roleplayReasoningLevel({ chatLevel: 'low', thinkingEnabled: true, local: false })).toBe('low');
   });
 });

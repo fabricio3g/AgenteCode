@@ -7,6 +7,10 @@
 -->
 
 <script lang="ts">
+  import IconButton from '$lib/components/ui/IconButton.svelte';
+
+  import { cn as uiClass } from '$lib/utils/cn';
+
   import { Check, Download, ExternalLink, LoaderCircle, X } from 'lucide-svelte';
   import { t } from 'svelte-i18n';
   import { Badge, Button, Disclosure, Tooltip } from '$lib/components/ui';
@@ -74,7 +78,7 @@
       <h3 class="truncate text-[15px] font-semibold tracking-[-0.01em] text-foreground">{detail.title}</h3>
       <p class="truncate text-xs text-muted-foreground">{detail.repoId}</p>
     </div>
-    <Tooltip label={$t('modelHub.closeProfile')} position="bottom"><Button variant="ghost" size="icon-sm" onclick={onclose} aria-label={$t('modelHub.closeProfile')}><X /></Button></Tooltip>
+    <Tooltip label={$t('modelHub.closeProfile')} position="bottom"><IconButton label={$t('modelHub.closeProfile')} variant="ghost" size="sm" onclick={onclose} ><X /></IconButton></Tooltip>
   </div>
 
   <div class="flex flex-wrap items-center gap-1.5 px-4 pb-3 text-[length:var(--text-xs)] text-muted-foreground">
@@ -113,11 +117,11 @@
         {#each detail.files as file (file.filename)}
           {@const chosen = selectedFile?.filename === file.filename}
           <li>
-            <button
+            <Button variant="plain"
               type="button"
               role="radio"
               aria-checked={chosen}
-              class="flex w-full items-center gap-2.5 rounded-lg px-1.5 py-1.5 text-left hover:bg-[var(--surface-hover)]"
+              class={uiClass("flex w-full items-center gap-2.5 rounded-lg px-1.5 py-1.5 text-left hover:bg-[var(--surface-hover)]")}
               title={file.filename}
               onclick={() => onselectfile(file.filename)}
             >
@@ -127,7 +131,7 @@
               <span class="w-16 shrink-0 text-[length:var(--text-xs)] text-foreground">{file.quantization || 'GGUF'}</span>
               <span class="flex-1 text-[length:var(--text-xs)] tabular-nums text-muted-foreground">{file.sizeHuman}</span>
               <Badge tone={file.fitTone}>{file.fitLabel}</Badge>
-            </button>
+            </Button>
           </li>
         {/each}
       </ul>

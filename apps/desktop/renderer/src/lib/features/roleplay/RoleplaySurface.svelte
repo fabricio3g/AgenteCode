@@ -27,7 +27,7 @@
   import WorldEditorModal from './WorldEditorModal.svelte';
   import SceneSetupModal from './SceneSetupModal.svelte';
   import CastEditorModal from './CastEditorModal.svelte';
-  import SceneJournal from './SceneJournal.svelte';
+  import SceneMemory from './SceneMemory.svelte';
   import RoleplaySceneHeader from './RoleplaySceneHeader.svelte';
   import RoleplaySettingsModal from './RoleplaySettingsModal.svelte';
   import RoleplaySteerBar from './RoleplaySteerBar.svelte';
@@ -52,7 +52,7 @@
   const room = $derived(roleplayStore.room(currentChat));
   const completion = $derived.by(() => {
     if (settings.autocomplete === 'off') return undefined;
-    const candidates = [...cast.filter((card) => room.presentIds.includes(card.id)).map((card) => ({ ...card, description: card.tagline || card.nickname || card.id.slice(-8) })), ...room.npcs];
+    const candidates = [...cast.filter((card) => room.presentIds.includes(card.id)).map((card) => ({ ...card, description: roleplayStore.previewText(card.tagline || card.nickname || card.id.slice(-8), { char: card.name, seed: card.id }) })), ...room.npcs];
     return {
       candidates: candidates.map((candidate) => ({ ...candidate, disambiguate: candidates.some((other) => other.id !== candidate.id && other.name.toLocaleLowerCase() === candidate.name.toLocaleLowerCase()) })),
       automatic: settings.autocomplete === 'automatic', nickname: settings.nameInsertion === 'nickname'
@@ -83,18 +83,13 @@
   let journalOpen = $state(false);
   let settingsOpen = $state(false);
   /** Scene setup target: a world, or null for a world-less quick scene. */
-  let sceneSetup = $state<{ world: RoleplayWorld | null } | null>(null);
+  /** Scene setup: a world, or a bare start (optionally from one character). */
+  let sceneSetup = $state<{ world: RoleplayWorld | null; character?: CharacterCard | null } | null>(null);
 
-  function startWith(card: CharacterCard, greetingIndex: number) {
-    roleplayStore.startSolo(card, {
-      personaId: charactersStore.defaultPersona?.id ?? null,
-      greetingIndex
-    });
-  }
-
+  /** One tap starts a 1:1 scene with the first greeting; the persona is the last one used. */
   function pickCharacter(card: CharacterCard) {
     // The in-chat pager flips openings; no picker on the way in.
-    startWith(card, 0);
+    roleplayStore.startSolo(card, { greetingIndex: 0 });
   }
 
   function openNewCharacter() {
@@ -153,6 +148,7 @@
       <RoleplayLibrary
         bind:shelf
         onpickCharacter={pickCharacter}
+        oncustomizeCharacter={(card) => (sceneSetup = { world: null, character: card })}
         oneditCharacter={openEditCharacter}
         onnewCharacter={openNewCharacter}
         onpickWorld={(world) => (sceneSetup = { world })}
@@ -203,7 +199,7 @@
             <Button variant="outline" size="sm" type="button" onclick={() => (castEditorOpen = true)}>
               {$t('roleplay.hint.chooseCharacter')}
             </Button>
-            <Button variant="outline" size="sm" class="text-error" type="button" onclick={confirmDeleteScene}>
+            <Button variant="outline" size="sm" class="hover:text-error" type="button" onclick={confirmDeleteScene}>
               {$t('roleplay.hint.deleteScene')}
             </Button>
           {:else}
@@ -256,7 +252,7 @@
 {/if}
 
 {#if journalOpen}
-  <SceneJournal onclose={() => (journalOpen = false)} />
+  <SceneMemory onclose={() => (journalOpen = false)} />
 {/if}
 
 {#if settingsOpen}
@@ -266,6 +262,7 @@
 {#if sceneSetup}
   <SceneSetupModal
     world={sceneSetup.world}
+    initialCharacter={sceneSetup.character ?? null}
     onstart={startScene}
     onclose={() => (sceneSetup = null)}
   />
@@ -288,19 +285,19 @@
     border-radius: var(--radius-md);
     background: var(--card);
     color: var(--text-muted);
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     pointer-events: auto;
   }
 
   .scene-hint {
     display: flex;
     flex-direction: column;
-    align-items: center;
+    align-items: flex-start;
     gap: 0.125rem;
-    margin: auto auto 0.75rem;
+    margin: auto 0 0.75rem;
+    padding-inline: 0.625rem;
     color: var(--text-muted);
-    font-size: 0.8125rem;
-    text-align: center;
+    font-size: var(--text-sm);
   }
 
   .scene-hint-strong {

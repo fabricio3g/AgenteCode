@@ -1,8 +1,13 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+  import TileMeter from '$lib/components/ui/TileMeter.svelte';
+  import UiButton from '$lib/components/ui/Button.svelte';
+  import UiIconButton from '$lib/components/ui/IconButton.svelte';
+  import { cn as uiClass } from '$lib/utils/cn';
+
   import { Tooltip } from '$lib/components/ui';
-  import { ExternalLink, Loader2, X } from 'lucide-svelte';
+  import { ExternalLink, X } from 'lucide-svelte';
   import { appStore } from '$lib/stores/app.svelte';
   import type { ChatMessage } from '$lib/types/chat';
   import { domainLabel } from '$lib/ui/message-utils';
@@ -93,25 +98,25 @@
     {/if}
     <div class="flex items-center gap-2">
       <div class="ui-segmented min-w-0 flex-1">
-        <button
+        <UiButton variant="plain"
           type="button"
-          class="ui-segmented-item flex-1 py-1.5 {activeTab === 'activity' ? 'is-active' : ''}"
+          class={uiClass(`ui-segmented-item flex-1 py-1.5 ${activeTab === 'activity' ? 'is-active' : ''}`)}
           onclick={() => (appStore.activityDrawerTab = 'activity')}
         >
           {copy.thread.activity}
-        </button>
-        <button
+        </UiButton>
+        <UiButton variant="plain"
           type="button"
-          class="ui-segmented-item flex-1 py-1.5 {activeTab === 'sources' ? 'is-active' : ''}"
+          class={uiClass(`ui-segmented-item flex-1 py-1.5 ${activeTab === 'sources' ? 'is-active' : ''}`)}
           onclick={() => (appStore.activityDrawerTab = 'sources')}
           disabled={!sourceCount}
         >
           {countOf(sourceCount, 'Source')}
-        </button>
+        </UiButton>
       </div>
-      <Tooltip label={copy.actions.close} position="bottom"><button type="button" class="ui-icon-button shrink-0" onclick={close} aria-label={copy.actions.close}>
+      <Tooltip label={copy.actions.close} position="bottom"><UiIconButton label={copy.actions.close} size="sm" type="button" class={uiClass(" shrink-0")} onclick={close} >
         <X class="size-3.5" />
-      </button></Tooltip>
+      </UiIconButton></Tooltip>
     </div>
   </header>
 
@@ -152,7 +157,7 @@
     {:else}
       {#if isStreaming && !steps.length}
         <div class="flex items-center gap-2 px-1 py-2 text-xs text-muted-foreground">
-          <Loader2 class="size-3 animate-spin" style="animation-duration: 0.75s" />
+          <TileMeter mode="busy" />
           <span>{copy.status.working}</span>
         </div>
       {/if}

@@ -8,7 +8,11 @@
 -->
 
 <script lang="ts">
-  import { ChevronDown, Download, FileText, Loader2, Search } from 'lucide-svelte';
+  import TileMeter from '$lib/components/ui/TileMeter.svelte';
+  import UiButton from '$lib/components/ui/Button.svelte';
+  import { cn as uiClass } from '$lib/utils/cn';
+
+  import { ChevronDown, Download, FileText, Search } from 'lucide-svelte';
   import { t } from 'svelte-i18n';
   import { slide } from 'svelte/transition';
   import type { AgentStep } from '$lib/types/chat';
@@ -139,8 +143,8 @@
 {/snippet}
 
 <section class="research" class:is-open={open}>
-  <button type="button" class="research-head" onclick={toggle} aria-expanded={open}>
-    {#if running}<Loader2 class="size-3.5 shrink-0 animate-spin text-muted-foreground" />{/if}
+  <UiButton variant="plain" type="button" class={uiClass("research-head", "ui-local-97fdd24b")} onclick={toggle} aria-expanded={open}>
+    {#if running}<TileMeter mode="busy" />{/if}
     <span class="research-title">{$t(`research.mode.${mode}`)}</span>
     <span class="research-meta">
       {#if running}
@@ -155,7 +159,7 @@
       </span>
     {/if}
     <ChevronDown class="size-3.5 shrink-0 text-muted-foreground transition-transform {open ? 'rotate-180' : ''}" />
-  </button>
+  </UiButton>
 
   {#if open}
     <div class="research-body" transition:slide={{ duration: 160 }}>
@@ -164,7 +168,7 @@
           {#each rows as row (row.id)}
             <li class="step" class:is-failed={row.failed}>
               <span class="step-icon" aria-hidden="true">
-                {#if row.running}<Loader2 class="size-3 animate-spin" />
+                {#if row.running}<TileMeter mode="busy" />
                 {:else if row.kind === 'search'}<Search class="size-3" />
                 {:else if row.kind === 'read'}<FileText class="size-3" />
                 {:else}<span class="dot"></span>{/if}
@@ -182,9 +186,6 @@
             </li>
           {/each}
         </ol>
-        <p class="summary-line">
-          {$t('research.summary', { values: { searches, reads, sources: sources.length } })}
-        </p>
       {/if}
 
       {#if sources.length}
@@ -203,9 +204,9 @@
           {/each}
         </ol>
         {#if sources.length > SOURCES_SHOWN}
-          <button type="button" class="link-btn" onclick={() => (showAll = !showAll)}>
+          <UiButton variant="plain" type="button" class={uiClass("link-btn", "ui-local-97fdd24b")} onclick={() => (showAll = !showAll)}>
             {showAll ? $t('research.showFewer') : $t('research.showAll', { values: { n: sources.length } })}
-          </button>
+          </UiButton>
         {/if}
       {/if}
 
@@ -220,7 +221,7 @@
         <div class="exports">
           <Download class="size-3.5 shrink-0 text-muted-foreground" />
           {#each exportKinds as kind (kind)}
-            <button type="button" class="chip" onclick={() => exportFiles(kind)}>{$t(`research.export.${kind}`)}</button>
+            <UiButton variant="plain" type="button" class={uiClass("chip", "ui-local-97fdd24b")} onclick={() => exportFiles(kind)}>{$t(`research.export.${kind}`)}</UiButton>
           {/each}
         </div>
         {#if exportError}<p class="export-error">{exportError}</p>{/if}
@@ -238,7 +239,7 @@
     background: var(--background);
     overflow: hidden;
   }
-  .research-head {
+  :is(.research-head, :global(.research-head.ui-local-97fdd24b)) {
     display: flex;
     width: 100%;
     min-height: 2.5rem;
@@ -248,7 +249,7 @@
     text-align: left;
     transition: background-color var(--motion-fast) var(--motion-ease);
   }
-  .research-head:hover {
+  :is(.research-head:hover, :global(.research-head:hover.ui-local-97fdd24b)) {
     background: var(--surface-hover);
   }
   .research-title {
@@ -351,11 +352,6 @@
     color: var(--muted-foreground);
     font-variant-numeric: tabular-nums;
   }
-  .summary-line {
-    margin: 0.5rem 0 0;
-    font-size: 11.5px;
-    color: var(--muted-foreground);
-  }
 
   .sources {
     display: grid;
@@ -402,14 +398,14 @@
     font-size: 11px;
     color: var(--muted-foreground);
   }
-  .link-btn {
+  :is(.link-btn, :global(.link-btn.ui-local-97fdd24b)) {
     margin-top: 0.4rem;
     font-size: 12px;
     color: var(--muted-foreground);
     text-decoration: underline;
     text-underline-offset: 2px;
   }
-  .link-btn:hover {
+  :is(.link-btn:hover, :global(.link-btn:hover.ui-local-97fdd24b)) {
     color: var(--foreground);
   }
 
@@ -435,7 +431,7 @@
     gap: 0.375rem;
     margin-top: 0.75rem;
   }
-  .chip {
+  :is(.chip, :global(.chip.ui-local-97fdd24b)) {
     height: 1.625rem;
     padding: 0 0.625rem;
     border: 1px solid var(--border);
@@ -444,7 +440,7 @@
     color: var(--muted-foreground);
     transition: background-color var(--motion-fast) var(--motion-ease), color var(--motion-fast) var(--motion-ease);
   }
-  .chip:hover {
+  :is(.chip:hover, :global(.chip:hover.ui-local-97fdd24b)) {
     background: var(--surface-hover);
     color: var(--foreground);
   }

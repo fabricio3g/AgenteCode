@@ -314,58 +314,52 @@ fn truncate_spans(spans: Vec<Span<'static>>, budget: usize) -> Vec<Span<'static>
     result
 }
 
-/// Modal card: opaque bordered surface with the title
-/// riding on the top border. The border IS the chrome — there is no separate
-/// header rule row, so callers gain one content row back (account for it in
-/// the panel height: +2 border rows, −1 header row).
+/// Modal card: a borderless opaque panel with the title on its first row.
+/// The panel's background is the edge — no frame, so nothing inside it is a
+/// box within a box.
 ///
-/// Returns the inner rect. Derive rows with `panel_row(inner, dy, 1)` (one
-/// column of pad — the border supplies the other) and pin hints with
-/// [`modal_footer`]. Panels too small for a border fall back to the
-/// borderless [`panel_bg`] + [`panel_header`] sandwich.
+/// Returns the inner rect (one row and column in from each side, where a frame
+/// used to sit). Derive rows with `panel_row(inner, dy, 1)` and pin hints with
+/// [`modal_footer`]. Panels too small fall back to the [`panel_bg`] +
+/// [`panel_header`] sandwich.
 pub fn modal_card(frame: &mut ratatui::Frame, panel: Rect, title: Vec<Span<'static>>) -> Rect {
     modal_card_tinted(frame, panel, title, crate::style::BORDER_RULE())
 }
 
-/// [`modal_card`] whose border carries a status color (running subagent,
-/// destructive approval, …). The tint is blended toward the quiet rule tone
-/// so it reads as a colored edge, never a bright frame.
+/// [`modal_card`] carrying a status color (running subagent, destructive
+/// approval, …) as one mark before the title, never a coloured frame.
 pub fn modal_card_tinted(
     frame: &mut ratatui::Frame,
     panel: Rect,
     title: Vec<Span<'static>>,
     border: ratatui::style::Color,
 ) -> Rect {
-    use ratatui::widgets::{Block, BorderType, Borders};
     if panel.width < 10 || panel.height < 4 {
         panel_bg(frame, panel);
         return panel_header(frame, panel, title);
     }
-    let pad = || {
-        s(
-            " ",
-            ratatui::style::Style::default().bg(crate::style::BG_PANEL()),
-        )
-    };
-    let titled = if title.is_empty() {
-        Vec::new()
-    } else {
-        std::iter::once(pad())
-            .chain(title)
-            .chain(std::iter::once(pad()))
-            .collect()
-    };
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .border_type(BorderType::Rounded)
-        .border_style(
-            ratatui::style::Style::default()
-                .fg(border)
-                .bg(crate::style::BG_PANEL()),
-        )
-        .style(ratatui::style::Style::default().bg(crate::style::BG_PANEL()))
-        .title(ratatui::text::Line::from(titled));
-    panel_block(frame, panel, block);
+    // Borderless: the panel's own background is the edge. The title sits on
+    // the row a frame used to occupy, so the content rect is unchanged.
+    panel_bg(frame, panel);
+    let bg = ratatui::style::Style::default().bg(crate::style::BG_PANEL());
+    let mut spans = Vec::new();
+    if border != crate::style::BORDER_RULE() {
+        // A status tint (running, destructive, …) survives as one mark before
+        // the title instead of a coloured frame.
+        spans.push(s("● ", bg.fg(border)));
+    }
+    spans.extend(title);
+    let title_row = Rect::new(
+        panel.x.saturating_add(1),
+        panel.y,
+        panel.width.saturating_sub(2),
+        1,
+    );
+    let spans = truncate_spans(spans, title_row.width as usize);
+    frame.render_widget(
+        ratatui::widgets::Paragraph::new(ratatui::text::Line::from(spans)).style(bg),
+        title_row,
+    );
     Rect::new(
         panel.x.saturating_add(1),
         panel.y.saturating_add(1),
@@ -374,20 +368,16 @@ pub fn modal_card_tinted(
     )
 }
 
-/// Centered footer hints on the last row of a [`modal_card`] inner rect.
+/// Footer hints on the last row of a [`modal_card`] inner rect.
 ///
-/// Modals center their shortcuts; content rows stay left-aligned.
+/// Hints start on the content rows' left edge, so the footer shares their edge.
 /// Over-wide hints truncate with `…` (clamp-safe: zero-sized rects skip).
 pub fn modal_footer(frame: &mut ratatui::Frame, inner: Rect, hint_spans: Vec<Span<'static>>) {
     if inner.width == 0 || inner.height == 0 {
         return;
     }
     let spans = truncate_spans(hint_spans, inner.width as usize);
-    let used: usize = spans
-        .iter()
-        .map(|span| display_width(span.content.as_ref()))
-        .sum();
-    let pad = (inner.width as usize).saturating_sub(used) / 2;
+    let pad = 1;
     let row = Rect::new(inner.x, inner.y + inner.height - 1, inner.width, 1);
     let mut padded = vec![s(
         " ".repeat(pad),

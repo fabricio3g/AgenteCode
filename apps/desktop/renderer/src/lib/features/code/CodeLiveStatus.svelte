@@ -14,7 +14,7 @@
   import { formatToolDuration, titleCaseToolName, toolTarget } from '$lib/utils/tool-ui';
   import { codeRunElapsed, type CodeRunState } from './code-run';
   import { toolKind } from '$shared/tool-kinds';
-  import TileMeter from './TileMeter.svelte';
+  import TileMeter from '$lib/components/ui/TileMeter.svelte';
   import { liveStatus, QUIET_MS, type LiveStatus } from './work-blocks';
   import { runMeterMode } from './tile-meter';
 

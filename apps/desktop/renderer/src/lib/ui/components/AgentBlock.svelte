@@ -1,8 +1,12 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+  import TileMeter from '$lib/components/ui/TileMeter.svelte';
+  import UiButton from '$lib/components/ui/Button.svelte';
+  import { cn as uiClass } from '$lib/utils/cn';
+
   import type { AgentActivity, AgentOutcome, AgentStopReason, ChatMessage } from '$lib/types/chat';
-  import { Check, ChevronDown, CircleAlert, CircleStop, LoaderCircle } from 'lucide-svelte';
+  import { Check, ChevronDown, CircleAlert, CircleStop } from 'lucide-svelte';
   import { t } from 'svelte-i18n';
   import ToolCallRow from '$lib/components/agent/ToolCallRow.svelte';
   import { appStore } from '$lib/stores/app.svelte';
@@ -169,9 +173,9 @@
 
 {#if hasRelevance}
   <div class="agent-status">
-    <button type="button" class="agent-line" onclick={() => expanded = !expanded} aria-expanded={expanded} aria-label={expanded ? $t('thread.hideActivity') : $t('thread.showActivity')}>
+    <UiButton variant="plain" type="button" class={uiClass("agent-line", "ui-local-336916d4")} onclick={() => expanded = !expanded} aria-expanded={expanded} aria-label={expanded ? $t('thread.hideActivity') : $t('thread.showActivity')}>
       {#if isStreaming}
-        <LoaderCircle class="size-3.5 motion-safe:animate-spin" />
+        <TileMeter mode={awaitingApproval ? 'attention' : 'busy'} />
         <span class="agent-line-text">
           <span>{line}</span>
         </span>
@@ -188,7 +192,7 @@
         <span class="agent-line-text">{line}</span>
       {/if}
       <ChevronDown class={`size-3 shrink-0 transition-transform ${expanded ? 'rotate-180' : ''}`} />
-    </button>
+    </UiButton>
     {#if expanded}
       <div class="activity-steps">
         {#if reasoning}
@@ -198,7 +202,7 @@
           <ToolCallRow {step} />
         {/each}
         {#if messageId}
-          <button type="button" class="activity-link" onclick={openActivity}>{$t('thread.viewFullActivity')}</button>
+          <UiButton variant="plain" type="button" class={uiClass("activity-link", "ui-local-336916d4")} onclick={openActivity}>{$t('thread.viewFullActivity')}</UiButton>
         {/if}
       </div>
     {/if}
@@ -213,7 +217,7 @@
   }
 
   /* The line is as wide as its text, so the chevron sits right after it. */
-  .agent-line {
+  :global(.agent-line.ui-local-336916d4) {
     display: flex;
     width: fit-content;
     max-width: 100%;
@@ -230,11 +234,11 @@
     transition: color var(--motion-fast) var(--motion-ease);
   }
 
-  .agent-line:hover {
+  :global(.agent-line:hover.ui-local-336916d4) {
     color: var(--foreground);
   }
 
-  .agent-line:focus-visible {
+  :global(.agent-line:focus-visible.ui-local-336916d4) {
     outline: none;
     box-shadow: var(--artifact-focus, 0 0 0 2px color-mix(in srgb, var(--primary) 35%, transparent));
     border-radius: var(--radius-sm);
@@ -266,6 +270,6 @@
   .activity-steps { border-left: 1px solid var(--border); padding: 0.375rem 0.75rem; margin-top: 0.25rem; }
   .thinking-text { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 0.8125rem; line-height: 1.6; color: var(--muted-foreground); padding: 0.25rem 0 0.75rem; }
   .activity-steps { max-height: 24rem; overflow-y: auto; }
-  .activity-link { margin: 0.375rem; padding: 0.25rem; border: 0; background: transparent; color: var(--muted-foreground); font-size: 0.75rem; }
-  .activity-link:hover { color: var(--foreground); }
+  :global(.activity-link.ui-local-336916d4) { margin: 0.375rem; padding: 0.25rem; border: 0; background: transparent; color: var(--muted-foreground); font-size: 0.75rem; }
+  :global(.activity-link:hover.ui-local-336916d4) { color: var(--foreground); }
 </style>

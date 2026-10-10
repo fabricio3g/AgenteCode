@@ -1,3 +1,4 @@
+import { CHART_TYPES } from '$lib/utils/chart-types';
 import { describe, expect, it } from 'vitest';
 import {
   ARTIFACT_ICON_NAMES,
@@ -253,6 +254,6 @@ describe('create_chart chart types', () => {
     expect(doughnut.success && doughnut.data.chart_type).toBe('donut');
     const definition = getToolDefinitions('sandbox', {}, 'work').find((tool) => tool.function.name === 'create_chart');
     const property = (definition?.function.parameters as { properties: Record<string, { enum?: string[] }> }).properties.chart_type;
-    expect(property.enum).toEqual(['bar', 'line', 'pie', 'donut']);
+    expect(property.enum).toEqual([...CHART_TYPES]);
   });
 });

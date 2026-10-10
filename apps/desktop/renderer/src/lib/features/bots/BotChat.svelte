@@ -8,6 +8,12 @@
 -->
 
 <script lang="ts">
+  import TileMeter from '$lib/components/ui/TileMeter.svelte';
+  import UiIconButton from '$lib/components/ui/IconButton.svelte';
+  import UiButton from '$lib/components/ui/Button.svelte';
+  import UiTextarea from '$lib/components/ui/Textarea.svelte';
+  import { cn as uiClass } from '$lib/utils/cn';
+
   import { Tooltip } from '$lib/components/ui';
   import { tick } from 'svelte';
   import { t } from 'svelte-i18n';
@@ -113,15 +119,15 @@
       <p class="truncate text-[13px] font-medium text-foreground">{bot.title}</p>
       <p class="truncate text-[13px] text-muted-foreground">@{bot.handle}{bot.role ? ` · ${bot.role}` : ''}{bot.model ? ` · ${bot.model.model}` : ''}</p>
     </div>
-    <Tooltip label={$t('bots.compactHint')} position="bottom"><button type="button" class="ui-icon-button head-btn" onclick={() => void botsStore.compact(bot.handle)} aria-label={$t('bots.compact')} disabled={bot.working || !turns.length}>
+    <Tooltip label={$t('bots.compactHint')} position="bottom"><UiIconButton label={$t('bots.compact')} size="sm" type="button" class={uiClass(" head-btn", "ui-local-661b2b78")} onclick={() => void botsStore.compact(bot.handle)}  disabled={bot.working || !turns.length}>
       <Eraser class="size-4" />
-    </button></Tooltip>
-    <Tooltip label={$t('bots.edit')} position="bottom"><button type="button" class="ui-icon-button head-btn" onclick={onedit} aria-label={$t('bots.edit')}>
+    </UiIconButton></Tooltip>
+    <Tooltip label={$t('bots.edit')} position="bottom"><UiIconButton label={$t('bots.edit')} size="sm" type="button" class={uiClass(" head-btn", "ui-local-661b2b78")} onclick={onedit} >
       <Pencil class="size-4" />
-    </button></Tooltip>
-    <Tooltip label={$t('bots.routines')} position="bottom"><button type="button" class="ui-icon-button head-btn" class:on={routinesOpen} onclick={ontoggleroutines} aria-label={$t('bots.routines')} aria-pressed={routinesOpen}>
+    </UiIconButton></Tooltip>
+    <Tooltip label={$t('bots.routines')} position="bottom"><UiIconButton label={$t('bots.routines')} size="sm" type="button" class={uiClass(" head-btn", "ui-local-661b2b78", {"on": routinesOpen})}  onclick={ontoggleroutines}  aria-pressed={routinesOpen}>
       <CalendarClock class="size-4" />
-    </button></Tooltip>
+    </UiIconButton></Tooltip>
   </header>
 
   <div class="ui-top-fade flex min-h-0 min-w-0 flex-1 flex-col" class:justify-center={!turns.length}>
@@ -157,7 +163,7 @@
               {/if}
             {/each}
             {#if !turn.run.done && !turn.run.content && !turn.run.steps.length}
-              <span class="text-xs text-muted-foreground">{$t('bots.working')}</span>
+              <span class="flex items-center gap-2 text-xs text-muted-foreground"><TileMeter mode="busy" />{$t('bots.working')}</span>
             {/if}
             {#if turn.run.error}
               <div class="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
@@ -177,12 +183,12 @@
         <ul class="mentions" role="listbox" id="bot-mentions" aria-label={$t('bots.mentionLabel')}>
           {#each suggestions as option, index (option.handle)}
             <li role="option" aria-selected={index === highlighted} id={`bot-mention-${option.handle}`}>
-              <button type="button" class="mention" class:on={index === highlighted} onmousedown={(event) => event.preventDefault()} onclick={() => pick(option.handle)} onmouseenter={() => (highlighted = index)}>
+              <UiButton variant="plain" type="button" class={uiClass("mention", "ui-local-661b2b78", {"on": index === highlighted})}  onmousedown={(event) => event.preventDefault()} onclick={() => pick(option.handle)} onmouseenter={() => (highlighted = index)}>
                 <BotAvatar bot={option} size="sm" />
                 <span class="truncate text-[13px] text-foreground">{option.title}</span>
                 <span class="truncate text-[12px] text-muted-foreground">@{option.handle}</span>
                 {#if option.role}<span class="ml-auto truncate pl-2 text-[13px] text-muted-foreground">{option.role}</span>{/if}
-              </button>
+              </UiButton>
             </li>
           {/each}
         </ul>
@@ -190,9 +196,9 @@
       <!-- The same shell and send/stop button as Home and Code. -->
       <div class="composer-shell ui-composer">
         <div class="composer-body">
-              <textarea
-                class="composer-textarea w-full resize-none bg-transparent text-foreground outline-none"
-            bind:this={input}
+              <UiTextarea variant="composer"
+                class={uiClass("composer-textarea w-full resize-none bg-transparent text-foreground outline-none", "ui-local-661b2b78")}
+            bind:ref={input}
             bind:value={draft}
             oninput={trackMention}
             onclick={trackMention}
@@ -202,11 +208,11 @@
             aria-controls="bot-mentions"
             aria-autocomplete="list"
             aria-activedescendant={suggestions.length ? `bot-mention-${suggestions[highlighted]?.handle}` : undefined}
-            rows="1"
+            rows={1}
             placeholder={$t('bots.placeholder', { values: { name: bot.title } })}
             aria-label={$t('bots.placeholder', { values: { name: bot.title } })}
             onkeydown={onKeydown}
-          ></textarea>
+          ></UiTextarea>
           <div class="composer-bar">
             <div class="composer-bar-leading">
               <span class="truncate px-1 text-[12px] text-muted-foreground" title={$t('bots.model')}>{bot.model?.model ?? $t('bots.modelSame')}</span>
@@ -232,8 +238,8 @@
   .bot-transcript.is-empty { display:flex;align-items:center;justify-content:center; }
   .bot-transcript.is-empty > div {width:100%;}
 
-  .head-btn.on { background: var(--surface-hover); color: var(--foreground); }
-  .head-btn:disabled { opacity: 0.45; }
+  :global(.head-btn.on.ui-local-661b2b78) { background: var(--surface-hover); color: var(--foreground); }
+  :global(.head-btn:disabled.ui-local-661b2b78) { opacity: 0.45; }
   .empty {
     display: flex;
     flex-direction: column;
@@ -271,7 +277,7 @@
     box-shadow: var(--float-shadow);
     padding: var(--float-pad);
   }
-  .mention {
+  :global(.mention.ui-local-661b2b78) {
     display: flex;
     width: 100%;
     min-width: 0;
@@ -283,5 +289,5 @@
     font-size: var(--text-sm);
     text-align: left;
   }
-  .mention:hover, .mention.on { background: var(--float-row-hover); }
+  :global(.mention:hover.ui-local-661b2b78), :global(.mention.on.ui-local-661b2b78) { background: var(--float-row-hover); }
 </style>

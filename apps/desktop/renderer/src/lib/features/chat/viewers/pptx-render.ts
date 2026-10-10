@@ -10,6 +10,7 @@ export interface RenderedSlide {
   url: string;
   title: string;
   notes: string;
+  text: string;
 }
 
 export interface RenderedDeck {
@@ -36,7 +37,8 @@ export async function renderPptx(source: string): Promise<RenderedDeck> {
     const svg = renderSlideToSvg(pres, slide).replace(/^<svg /, '<svg width="1920" height="' + Math.round(1920 / (width / height)) + '" ');
     const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }));
     urls.push(url);
-    return { url, title: getSlideTitle(slide) || '', notes: (getSlideNotes(slide) || '').trim() };
+    const text = [...new DOMParser().parseFromString(svg, 'image/svg+xml').querySelectorAll('text')].map((node) => node.textContent || '').join('\n');
+    return { url, title: getSlideTitle(slide) || '', notes: (getSlideNotes(slide) || '').trim(), text };
   });
   return {
     slides,

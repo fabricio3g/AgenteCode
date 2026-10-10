@@ -25,6 +25,10 @@ export interface PendingApproval {
   chatId: string;
   command: string;
   cwd: string;
+  /** Destructive call (recursive delete, force push, pipes to the network…): the card says so. */
+  dangerous?: boolean;
+  /** Why a call asks beyond its kind, e.g. a shell command that reaches outside the project. */
+  reason?: string;
 }
 
 interface ApprovalRecord extends PendingApproval {

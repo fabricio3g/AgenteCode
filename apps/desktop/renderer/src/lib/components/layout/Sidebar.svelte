@@ -1,6 +1,13 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+  import UiListRow from '$lib/components/ui/ListRow.svelte';
+
+  import UiButton from '$lib/components/ui/Button.svelte';
+  import UiInput from '$lib/components/ui/Input.svelte';
+  import UiIconButton from '$lib/components/ui/IconButton.svelte';
+  import { cn as uiClass } from '$lib/utils/cn';
+
   let { onNavigate }: { onNavigate?: () => void } = $props();
   import SidebarInstances from './SidebarInstances.svelte';
   import { appStore } from '$lib/stores/app.svelte';
@@ -11,7 +18,11 @@
   import { flip } from 'svelte/animate';
   import { smoothEase } from '$lib/utils/transitions';
   import { formatShortcut } from '$lib/utils/shortcuts';
-  import { Drama, FolderOpen, MessageSquare, Plus, Puzzle, Search } from 'lucide-svelte';
+  import { ChevronsDownUp, ChevronsUpDown, Drama, FolderOpen, MessageSquare, MoreHorizontal, PenTool, Plus, Puzzle, Search, Trash2 } from 'lucide-svelte';
+  import Menu from '$lib/components/ui/Menu.svelte';
+  import MenuItem from '$lib/components/ui/MenuItem.svelte';
+  import { confirmStore } from '$lib/stores/confirm.svelte';
+  import { toastStore } from '$lib/stores/toast.svelte';
   import { copy } from '$lib/copy';
   import SessionRow from '$lib/features/shared/SessionRow.svelte';
   import BotRoster from '$lib/features/bots/BotRoster.svelte';
@@ -21,7 +32,9 @@
 
   /** The session list for the active space (home and roleplay share a layout). */
   const listChats = $derived(
-    appStore.activeSpace === 'roleplay' ? appStore.visibleRoleplayChats : appStore.visibleHomeChats
+    appStore.activeSpace === 'roleplay' ? appStore.visibleRoleplayChats
+      : appStore.activeSpace === 'design' ? appStore.visibleDesignChats
+        : appStore.visibleHomeChats
   );
 
   function startOfDay(ts: number) {
@@ -45,7 +58,7 @@
   }
 
   const groupedChats = $derived.by(() => {
-    // Home and Roleplay share this date-grouped list; Code uses CodeSidebar.
+    // Home, Roleplay and Design share this date-grouped list; Code uses CodeSidebar.
     // Browser conversations get their own group, above the dates.
     type ChatGroup = { key: number; label: string; chats: typeof appStore.visibleHomeChats };
     const groups: ChatGroup[] = [];
@@ -78,12 +91,31 @@
       ? $t('code.addProject')
       : appStore.activeSpace === 'roleplay'
         ? copy.roleplay.newRoleplay
-        : $t('sidebar.newChat')
+        : appStore.activeSpace === 'design'
+          ? copy.design.newDesign
+          : $t('sidebar.newChat')
   );
 
   const searchLabel = $derived(
     appStore.activeSpace === 'code' ? $t('code.searchConversations') : $t('sidebar.searchChats')
   );
+
+  let listMenuOpen = $state(false);
+  const allCollapsed = $derived(groupedChats.length > 0 && groupedChats.every((group) => collapsedGroups.has(group.key)));
+  function setAllGroups(collapsed: boolean) {
+    collapsedGroups = collapsed ? new Set(groupedChats.map((group) => group.key)) : new Set();
+  }
+
+  async function clearHistory() {
+    const accepted = await confirmStore.ask({
+      title: $t('sidebar.clearHistoryTitle'),
+      message: $t('sidebar.clearHistoryMessage'),
+      confirmLabel: $t('sidebar.clearHistoryConfirm'),
+      danger: true
+    });
+    if (!accepted) return;
+    if (appStore.clearChatHistory()) toastStore.info($t('sidebar.clearHistoryDone'), 2500);
+  }
 
   function toggleGroup(key: number) {
     const next = new Set(collapsedGroups);
@@ -102,6 +134,10 @@
       void codeStore.addProject();
       return;
     }
+    if (appStore.activeSpace === 'roleplay') {
+      appStore.openRoleplayLibrary();
+      return;
+    }
     appStore.createChat(appStore.activeSpace);
   }
 
@@ -110,59 +146,77 @@
 <aside class="sidebar relative isolate flex h-full w-full flex-col overflow-hidden bg-sidebar text-sidebar-foreground">
   <div class="relative z-10 flex min-h-0 flex-1 flex-col px-3 pb-1 pt-2">
     <div class="flex flex-col gap-1.5 pb-3 pt-1">
-      <button
+      <UiListRow
         type="button"
-        class="sidebar-row is-emphasis"
+        class={uiClass("sidebar-row is-emphasis", "ui-local-0456fb2e")}
         onclick={createForActiveSpace}
       >
         <Plus class="sidebar-row-icon" />
         <span class="sidebar-row-label">{newButtonLabel}</span>
-      </button>
+      </UiListRow>
 
       <!-- The Code agent does not produce artifacts; the toggle list only
            concerns Home and Roleplay. -->
       {#if appStore.activeSpace !== 'code' && !inBots}
-        <button
-          class="sidebar-row"
-          class:is-current={appStore.homeView === 'artifacts'}
+        <UiListRow
+          class={uiClass("sidebar-row", "ui-local-0456fb2e", {"is-current": appStore.homeView === 'artifacts'})}
+
           aria-current={appStore.homeView === 'artifacts' ? 'page' : undefined}
           onclick={() => appStore.showArtifactLibrary()}
           title={$t('sidebar.artifacts')}
         >
           <Puzzle class="sidebar-row-icon" />
           <span class="sidebar-row-label">{$t('sidebar.artifacts')}</span>
-        </button>
+        </UiListRow>
       {/if}
       <!-- Files spans every space: Code uploads and the documents its agent writes live here too. -->
       {#if !inBots}
-        <button
-          class="sidebar-row"
-          class:is-current={appStore.homeView === 'files'}
+        <UiListRow
+          class={uiClass("sidebar-row", "ui-local-0456fb2e", {"is-current": appStore.homeView === 'files'})}
+
           aria-current={appStore.homeView === 'files' ? 'page' : undefined}
           onclick={() => appStore.showFileLibrary()}
           title={$t('sidebar.files')}
         >
           <FolderOpen class="sidebar-row-icon" />
           <span class="sidebar-row-label">{$t('sidebar.files')}</span>
-        </button>
+        </UiListRow>
       {/if}
     </div>
 
     {#if inBots}
       <label class="sidebar-row bot-filter">
         <Search class="sidebar-row-icon" />
-        <input data-bot-search bind:value={botsStore.query} placeholder={$t('bots.search')} aria-label={$t('bots.search')} />
+        <UiInput class={uiClass('', "ui-local-0456fb2e")} data-bot-search bind:value={botsStore.query} placeholder={$t('bots.search')} aria-label={$t('bots.search')} />
       </label>
     {:else}
-    <button
-      type="button"
-      class="sidebar-row"
-      onclick={() => { appStore.chatSearchOpen = true; }}
-      title={`${searchLabel} (${formatShortcut('mod+shift+k')})`}
-    >
-      <Search class="sidebar-row-icon" />
-      <span class="sidebar-row-label">{searchLabel}</span>
-    </button>
+    <div class="search-line">
+      <UiListRow
+        type="button"
+        class={uiClass("sidebar-row min-w-0 flex-1", "ui-local-0456fb2e")}
+        onclick={() => { appStore.chatSearchOpen = true; }}
+        title={`${searchLabel} (${formatShortcut('mod+shift+k')})`}
+      >
+        <Search class="sidebar-row-icon" />
+        <span class="sidebar-row-label">{searchLabel}</span>
+      </UiListRow>
+      {#if appStore.activeSpace !== 'code' && groupedChats.length}
+        <!-- List options stay behind one small button: clearing history is
+             rare and destructive, so it never gets a row of its own. -->
+        <Menu bind:open={listMenuOpen} placement="bottom-end" minWidth="12rem" label={$t('sidebar.listOptions')}>
+          {#snippet trigger(props)}
+            <UiIconButton label={$t('sidebar.listOptions')} size="xs" type="button" class={uiClass("list-options  ", "ui-local-0456fb2e", {"is-open": listMenuOpen})}   title={$t('sidebar.listOptions')} {...props}><MoreHorizontal /></UiIconButton>
+          {/snippet}
+          {#if allCollapsed}
+            <MenuItem icon={ChevronsUpDown} label={$t('sidebar.expandAll')} onselect={() => setAllGroups(false)} />
+          {:else}
+            <MenuItem icon={ChevronsDownUp} label={$t('sidebar.collapseAll')} onselect={() => setAllGroups(true)} />
+          {/if}
+          <div class="ui-menu-separator" role="separator"></div>
+          <MenuItem icon={Trash2} danger label={$t('sidebar.clearHistory')} onselect={() => void clearHistory()} />
+        </Menu>
+      {/if}
+    </div>
     {/if}
 
     <div class="chat-list flex-1 overflow-y-auto">
@@ -176,16 +230,16 @@
         {#each groupedChats as group (group.key)}
           {@const isCollapsed = collapsedGroups.has(group.key)}
           <div class="mb-1.5">
-            <button
+            <UiButton variant="plain"
               type="button"
-              class="sidebar-section"
+              class={uiClass("sidebar-section", "ui-local-0456fb2e")}
               aria-expanded={!isCollapsed}
               onclick={() => toggleGroup(group.key)}
             >
               {group.label}
-            </button>
+            </UiButton>
             {#if !isCollapsed}
-            <div class="space-y-0.5" transition:slide={{ duration: 140 }}>
+            <div class="chat-group-rows space-y-0.5" transition:slide={{ duration: 140 }}>
               {#each group.chats as chat (chat.id)}
                 <div animate:flip={{ duration: 220, easing: smoothEase }}>
                   <SessionRow
@@ -205,6 +259,8 @@
           <div class="sidebar-empty-icon">
             {#if appStore.activeSpace === 'roleplay'}
               <Drama class="h-4 w-4" />
+            {:else if appStore.activeSpace === 'design'}
+              <PenTool class="h-4 w-4" />
             {:else}
               <MessageSquare class="h-4 w-4" />
             {/if}
@@ -212,6 +268,9 @@
           {#if appStore.activeSpace === 'roleplay'}
             <p>{copy.roleplay.noRoleplays}</p>
             <p class="sidebar-empty-hint">{copy.roleplay.noRoleplaysHint}</p>
+          {:else if appStore.activeSpace === 'design'}
+            <p>{copy.design.noDesigns}</p>
+            <p class="sidebar-empty-hint">{copy.design.noDesignsHint}</p>
           {:else}
             <p>{$t('sidebar.noConversations')}</p>
             <p class="sidebar-empty-hint">{$t('sidebar.emptyHint')}</p>
@@ -231,7 +290,15 @@
 </aside>
 
 <style>
-  .bot-filter input {
+  /* Chats sit one step in from their date, so the list reads as groups. */
+  .chat-group-rows { padding-inline-start: 0.5rem; }
+
+  .search-line { display: flex; align-items: center; gap: 0.25rem; }
+  /* A bare glyph until hovered or open, so the row stays quiet. */
+  :global(.list-options.ui-local-0456fb2e) { flex-shrink: 0; border-color: transparent; background: transparent; box-shadow: none; opacity: 0.7; }
+  :global(.list-options:hover.ui-local-0456fb2e), :global(.list-options.is-open.ui-local-0456fb2e) { opacity: 1; background: var(--float-row-hover); }
+
+  .bot-filter :global(input.ui-local-0456fb2e) {
     min-width: 0;
     flex: 1;
     background: transparent;
@@ -239,7 +306,7 @@
     outline: none;
   }
 
-  .bot-filter input::placeholder {
+  .bot-filter :global(input.ui-local-0456fb2e::placeholder) {
     color: inherit;
   }
 

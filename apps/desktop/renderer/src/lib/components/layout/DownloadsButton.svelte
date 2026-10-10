@@ -7,6 +7,10 @@
 -->
 
 <script lang="ts">
+  import UiIconButton from '$lib/components/ui/IconButton.svelte';
+  import UiButton from '$lib/components/ui/Button.svelte';
+  import { cn as uiClass } from '$lib/utils/cn';
+
   import { locale, t } from 'svelte-i18n';
   import { Brain, Cpu, Download, FolderOpen, Loader2, Mic, Pause, Play, RotateCcw, Volume2, X } from 'lucide-svelte';
   import { Menu } from '$lib/components/ui';
@@ -62,11 +66,11 @@
 
 <Menu bind:open placement="bottom-end" minWidth="22rem" label={$t('downloads.title')}>
   {#snippet trigger(props)}
-    <button
+    <UiIconButton label={$t('downloads.title')} size="sm"
       type="button"
-      class="ui-icon-button download-btn relative {className}"
-      class:is-active={downloadsStore.hasActive}
-      aria-label={$t('downloads.title')}
+      class={uiClass(` download-btn relative ${className}`, "ui-local-cad44b90", {"is-active": downloadsStore.hasActive})}
+
+
       title={downloadsStore.activeCount ? $t('downloads.active', { values: { n: downloadsStore.activeCount } }) : $t('downloads.title')}
       {...props}
     >
@@ -76,13 +80,13 @@
       {:else}
         <Download class="size-4" />
       {/if}
-    </button>
+    </UiIconButton>
   {/snippet}
 
   <div class="panel">
     <div class="head">
       <span class="title">{$t('downloads.title')}</span>
-      <button type="button" class="link" onclick={() => void invoke('open_data_folder')}><FolderOpen class="size-3.5" />{$t('downloads.openFolder')}</button>
+      <UiButton variant="plain" type="button" class={uiClass("link", "ui-local-cad44b90")} onclick={() => void invoke('open_data_folder')}><FolderOpen class="size-3.5" />{$t('downloads.openFolder')}</UiButton>
     </div>
 
     {#if !current.length && !earlier.length}
@@ -100,16 +104,16 @@
         </div>
         <div class="actions">
           {#if resumable(job) && (job.status === 'running' || job.status === 'queued')}
-            <button type="button" class="act" onclick={() => void downloadsStore.pauseJob(job.id)} aria-label={$t('downloads.pause')} title={$t('downloads.pause')}><Pause class="size-3.5" /></button>
+            <UiIconButton label={$t('downloads.pause')} size="xs" variant="ghost" type="button" class={uiClass("act", "ui-local-cad44b90")} onclick={() => void downloadsStore.pauseJob(job.id)}  title={$t('downloads.pause')}><Pause class="size-3.5" /></UiIconButton>
           {:else if resumable(job) && (job.status === 'paused' || job.status === 'interrupted')}
-            <button type="button" class="act" onclick={() => void downloadsStore.resumeJob(job)} aria-label={$t('downloads.resume')} title={$t('downloads.resume')}><Play class="size-3.5" /></button>
+            <UiIconButton label={$t('downloads.resume')} size="xs" variant="ghost" type="button" class={uiClass("act", "ui-local-cad44b90")} onclick={() => void downloadsStore.resumeJob(job)}  title={$t('downloads.resume')}><Play class="size-3.5" /></UiIconButton>
           {:else if resumable(job) && job.status === 'error'}
-            <button type="button" class="act" onclick={() => void downloadsStore.retryJob(job.id)} aria-label={$t('downloads.retry')} title={$t('downloads.retry')}><RotateCcw class="size-3.5" /></button>
+            <UiIconButton label={$t('downloads.retry')} size="xs" variant="ghost" type="button" class={uiClass("act", "ui-local-cad44b90")} onclick={() => void downloadsStore.retryJob(job.id)}  title={$t('downloads.retry')}><RotateCcw class="size-3.5" /></UiIconButton>
           {/if}
           {#if job.status === 'running' || job.status === 'queued' || job.status === 'starting' || job.status === 'paused'}
-            <button type="button" class="act" onclick={() => void downloadsStore.cancelJob(job.id)} aria-label={$t('downloads.cancel')} title={$t('downloads.cancel')}><X class="size-3.5" /></button>
+            <UiIconButton label={$t('downloads.cancel')} size="xs" variant="ghost" type="button" class={uiClass("act", "ui-local-cad44b90")} onclick={() => void downloadsStore.cancelJob(job.id)}  title={$t('downloads.cancel')}><X class="size-3.5" /></UiIconButton>
           {:else}
-            <button type="button" class="act" onclick={() => void downloadsStore.removeJob(job.id)} aria-label={$t('downloads.remove')} title={$t('downloads.remove')}><X class="size-3.5" /></button>
+            <UiIconButton label={$t('downloads.remove')} size="xs" variant="ghost" type="button" class={uiClass("act", "ui-local-cad44b90")} onclick={() => void downloadsStore.removeJob(job.id)}  title={$t('downloads.remove')}><X class="size-3.5" /></UiIconButton>
           {/if}
         </div>
       </div>
@@ -118,7 +122,7 @@
     {#if earlier.length}
       <div class="section">
         <span>{$t('downloads.earlier')}</span>
-        <button type="button" class="link" onclick={() => void downloadsStore.clearFinished()}>{$t('downloads.clear')}</button>
+        <UiButton variant="plain" type="button" class={uiClass("link", "ui-local-cad44b90")} onclick={() => void downloadsStore.clearFinished()}>{$t('downloads.clear')}</UiButton>
       </div>
       {#each earlier as job (job.id)}
         {@const Icon = ICONS[job.category ?? 'chat']}
@@ -128,7 +132,7 @@
             <p class="name" title={name(job)}>{name(job)}</p>
             <p class="meta">{[$t(`downloads.status.${job.status}`), job.total_bytes ? formatBytes(job.total_bytes) : '', ago(job.timestamp)].filter(Boolean).join(' · ')}</p>
           </div>
-          <button type="button" class="act ghost" onclick={() => void downloadsStore.removeJob(job.id)} aria-label={$t('downloads.remove')} title={$t('downloads.remove')}><X class="size-3.5" /></button>
+          <UiIconButton label={$t('downloads.remove')} size="xs" variant="ghost" type="button" class={uiClass("act ghost", "ui-local-cad44b90")} onclick={() => void downloadsStore.removeJob(job.id)}  title={$t('downloads.remove')}><X class="size-3.5" /></UiIconButton>
         </div>
       {/each}
     {/if}
@@ -182,7 +186,7 @@
     color: var(--muted-foreground);
   }
 
-  .link {
+  :global(.link.ui-local-cad44b90) {
     display: inline-flex;
     align-items: center;
     gap: 0.3rem;
@@ -193,7 +197,7 @@
     color: var(--muted-foreground);
   }
 
-  .link:hover {
+  :global(.link:hover.ui-local-cad44b90) {
     color: var(--foreground);
   }
 
@@ -291,7 +295,7 @@
     gap: 0.1rem;
   }
 
-  .act {
+  :global(.act.ui-local-cad44b90) {
     display: inline-flex;
     width: 1.6rem;
     height: 1.6rem;
@@ -303,17 +307,17 @@
     color: var(--muted-foreground);
   }
 
-  .act:hover {
+  :global(.act:hover.ui-local-cad44b90) {
     background: var(--background);
     color: var(--foreground);
   }
 
-  .act.ghost {
+  :global(.act.ghost.ui-local-cad44b90) {
     opacity: 0;
   }
 
-  .job:hover .act.ghost,
-  .act.ghost:focus-visible {
+  .job:hover :global(.act.ghost.ui-local-cad44b90),
+  :global(.act.ghost:focus-visible.ui-local-cad44b90) {
     opacity: 1;
   }
 </style>

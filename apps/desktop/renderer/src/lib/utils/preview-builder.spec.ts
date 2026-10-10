@@ -3,6 +3,13 @@ import { describe, expect, it } from 'vitest';
 import { buildPreviewHtml } from './preview-builder';
 
 describe('private artifact previews', () => {
+  it('keeps fragment links inside the srcdoc document', () => {
+    const { html } = buildPreviewHtml('<html><head></head><body><a href="#pricing">Pricing</a><section id="pricing"></section></body></html>', {}, 'index.html', true);
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    expect(doc.head.firstElementChild?.outerHTML).toBe('<base href="about:srcdoc">');
+    expect(doc.querySelector('a')?.getAttribute('href')).toBe('#pricing');
+  });
+
   it('blocks active content and navigation in embedded previews', () => {
     const { html } = buildPreviewHtml(`<html><head>
       <base href="https://example.com/"><meta http-equiv="refresh" content="0;url=https://example.com/secret">
@@ -11,14 +18,17 @@ describe('private artifact previews', () => {
       <svg><a xlink:href="https://example.com/secret">SVG link<set attributeName="href" to="https://example.com/secret" /></a></svg>
       <iframe srcdoc="secret"></iframe><script>fetch('/secret')</script><form action="https://example.com"></form></body></html>`, {}, 'index.html');
     const doc = new DOMParser().parseFromString(html, 'text/html');
-    expect(doc.querySelector('base, iframe, object, set, animate')).toBeNull();
+    expect(doc.querySelector('iframe, object, set, animate')).toBeNull();
+    // The author's base is gone; only ours remains, so nothing resolves against a remote origin.
+    expect([...doc.querySelectorAll('base')].map((node) => node.getAttribute('href'))).toEqual(['about:srcdoc']);
     expect(doc.querySelector('a[href], a[ping], a[xlink\\:href]')).toBeNull();
     const policies = doc.querySelectorAll('meta[http-equiv]');
     expect(policies).toHaveLength(1);
     expect(policies[0].getAttribute('content')).toContain("script-src 'none'");
     expect(policies[0].getAttribute('content')).toContain("connect-src 'none'");
     expect(policies[0].getAttribute('content')).toContain("form-action 'none'");
-    expect(doc.head.firstElementChild).toBe(policies[0]);
+    // Only our fixed base precedes the policy; everything the author wrote comes after it.
+    expect(doc.head.firstElementChild?.nextElementSibling).toBe(policies[0]);
   });
 
   it('keeps local CSS, JS and Unicode assets available to the native runner', () => {

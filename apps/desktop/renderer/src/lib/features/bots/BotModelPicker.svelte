@@ -10,6 +10,9 @@
 -->
 
 <script lang="ts">
+  import UiButton from '$lib/components/ui/Button.svelte';
+  import { cn as uiClass } from '$lib/utils/cn';
+
   import { untrack } from 'svelte';
   import { t } from 'svelte-i18n';
   import { ChevronDown } from 'lucide-svelte';
@@ -86,10 +89,10 @@
 </script>
 
 <div class={compact ? 'picker is-compact' : 'space-y-2'}>
-  <button type="button" class="model-trigger" onclick={() => (open = true)} aria-haspopup="dialog" aria-expanded={open}>
+  <UiButton variant="plain" type="button" class={uiClass("model-trigger", "ui-local-80672c10")} onclick={() => (open = true)} aria-haspopup="dialog" aria-expanded={open}>
     <span class="min-w-0 flex-1 truncate">{label}</span>
     <ChevronDown class="size-3.5 shrink-0 text-muted-foreground" />
-  </button>
+  </UiButton>
 
   <ModelPickerDialog
     bind:open
@@ -109,7 +112,7 @@
 <style>
   /* The same field shape as the inputs beside it: a row that says what it holds
      and opens the list. */
-  .model-trigger {
+  :global(.model-trigger.ui-local-80672c10) {
     display: flex;
     width: 100%;
     height: 2.75rem;
@@ -124,8 +127,8 @@
     text-align: left;
     transition: border-color var(--motion-fast) var(--motion-ease), background-color var(--motion-fast) var(--motion-ease);
   }
-  .model-trigger:hover,
-  .model-trigger:focus-visible {
+  :global(.model-trigger:hover.ui-local-80672c10),
+  :global(.model-trigger:focus-visible.ui-local-80672c10) {
     background: var(--surface-hover);
   }
   .thinking-row {
@@ -135,6 +138,6 @@
     gap: 0.5rem;
   }
   .picker.is-compact { display: flex; min-width: 0; max-width: 100%; align-items: center; justify-content: flex-end; gap: 0.25rem; }
-  .is-compact .model-trigger { width: auto; min-width: 0; max-width: 100%; height: 1.75rem; gap: 0.375rem; padding: 0 0.625rem; border-radius: var(--radius-full); background: transparent; font-size: var(--text-sm); }
+  .is-compact :global(.model-trigger.ui-local-80672c10) { width: auto; min-width: 0; max-width: 100%; height: 1.75rem; gap: 0.375rem; padding: 0 0.625rem; border-radius: var(--radius-full); background: transparent; font-size: var(--text-sm); }
   .is-compact .thinking-row { flex-shrink: 0; }
 </style>

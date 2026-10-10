@@ -7,7 +7,7 @@
  */
 
 import { describe, expect, it, vi } from 'vitest';
-import type { RequestMessage } from '$lib/services/chat-api';
+import type { RequestMessage } from '$lib/services/chat/types';
 import { ensureToolCallPairs } from '$lib/services/agent-message-context';
 import { executeWithTimeoutAndRetries } from '$lib/services/agent-tool-runtime';
 

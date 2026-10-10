@@ -8,6 +8,10 @@
 -->
 
 <script lang="ts">
+  import TileMeter from '$lib/components/ui/TileMeter.svelte';
+  import UiButton from '$lib/components/ui/Button.svelte';
+  import { cn as uiClass } from '$lib/utils/cn';
+
   import { slide } from 'svelte/transition';
   import { quintOut } from 'svelte/easing';
   import { ChevronRight } from 'lucide-svelte';
@@ -49,10 +53,10 @@
 
 {#if reasoning}
   <div class="reasoning" data-state={isOpen ? 'open' : 'closed'}>
-    <button type="button" class="reasoning-line ui-quiet-disclosure" aria-expanded={isOpen} onclick={() => (userOpen = !isOpen)}>
-      <ChevronRight class="size-3 shrink-0 transition-transform {isOpen ? 'rotate-90' : ''}" />
-      <span class="ui-shimmer-text" class:shimmer={streaming}>{label}</span>
-    </button>
+    <UiButton variant="plain" type="button" class={uiClass("reasoning-line ui-quiet-disclosure", "ui-local-cf933285")} aria-expanded={isOpen} onclick={() => (userOpen = !isOpen)}>
+      {#if streaming}<TileMeter mode="busy" />{:else}<ChevronRight class="size-3 shrink-0 transition-transform {isOpen ? 'rotate-90' : ''}" />{/if}
+      <span>{label}</span>
+    </UiButton>
     {#if isOpen}
       <div bind:this={textEl} class="reasoning-text" transition:slide={{ duration: 180, easing: quintOut }} aria-busy={streaming}>
         {reasoning}
@@ -63,7 +67,7 @@
 
 <style>
   .reasoning { min-width: 0; }
-  .reasoning-line {
+  :global(.reasoning-line.ui-local-cf933285) {
     display: inline-flex;
     max-width: 100%;
     align-items: center;
@@ -74,8 +78,8 @@
     font-size: 12.5px;
     transition: color var(--motion-fast);
   }
-  .reasoning-line:hover,
-  .reasoning-line:focus-visible {
+  :global(.reasoning-line:hover.ui-local-cf933285),
+  :global(.reasoning-line:focus-visible.ui-local-cf933285) {
     color: var(--foreground);
   }
   .reasoning-text {
@@ -88,9 +92,5 @@
     font-size: 13px;
     line-height: 1.55;
     white-space: pre-wrap;
-  }
-  /* The running label shimmers through the one shared rule (app.css). */
-  .shimmer {
-    --shimmer-duration: 1.6s;
   }
 </style>

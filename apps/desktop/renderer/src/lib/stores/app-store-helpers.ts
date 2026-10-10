@@ -1,13 +1,13 @@
 import type { AgentActivity, AgentOutcome, AgentStopReason, ChatContextMode, ChatFolder, ChatMessage, ChatSession, MessageVersion, SearchMeta } from '$lib/types/chat';
 import { compactStoredScene } from '$lib/features/roleplay/roleplay-settings';
 import type { SearchResult } from '$lib/types/bridge';
-import type { CompletionResult, RequestMessage } from '$lib/services/chat-api';
+import type { CompletionResult, RequestMessage } from '$lib/services/chat/types';
 import { runAgentTask } from '$lib/services/agent';
 import { normalizeStreamingReasoningDelta } from '$lib/services/streaming';
 import { isElectron } from '$lib/services/bridge';
 import { createId } from '$lib/utils/id';
 import { activityLabel } from '$lib/utils/tool-ui';
-import { normalizeSpace, SPACES } from '$lib/spaces';
+import { normalizeSpace, resolveSpaceComposerMode } from '$lib/spaces';
 import type { GenerationBackendMode } from '$lib/stores/app-store-types';
 import type { ApiModelMetadataValue, ContextBudgetValue } from '$lib/stores/app-context-budget';
 
@@ -507,15 +507,7 @@ export function normalizeSessionComposerMode(
   mode: unknown,
   contextMode: ChatContextMode
 ): 'chat' | 'instant' | 'agent' {
-  // Code space runs the full loop unconditionally — there is no fast path there.
-  if (contextMode === 'code') return 'agent';
-  // Roleplay streams directly; Instant/Agent tabs are Home-only.
-  if (contextMode === 'roleplay') return 'chat';
-  if (mode === 'instant' || mode === 'agent') return mode;
-  // Legacy stored values converge on Instant: the old Chat tab is gone and
-  // Instant is its fast successor. (Pre-merge Ask builds: 'ask'.)
-  if (mode === 'chat' || mode === 'ask') return 'instant';
-  return SPACES[contextMode].defaultComposerMode;
+  return resolveSpaceComposerMode(mode, contextMode);
 }
 
 export function normalizeSessionSearchMode(mode: unknown): 'chat' | 'search' | 'deep' | 'max' {
@@ -551,6 +543,7 @@ export function isDefaultChatTitle(title: string): boolean {
     || title === 'New conversation'
     || title === 'New Work'
     || title === 'New roleplay'
+    || title === 'New design'
     || title === 'Codebase overview'
   );
 }
@@ -561,6 +554,7 @@ export function resolveImmutableContextMode(chat: Partial<ChatSession>): ChatCon
   if (mode === 'code') return 'code';
   if (chat.workspace) return 'code';
   if (mode === 'roleplay') return 'roleplay';
+  if (mode === 'design') return 'design';
   return 'home';
 }
 
@@ -775,4 +769,17 @@ export function buildContextualPrompt(args: {
   if (!guidance.length) guidance.push('Answer the user using the supplemental context when it is relevant. Cite concrete details from the context instead of inventing facts.');
 
   return [guidance.join(' '), extras.join('\n\n'), `User question:\n${args.content}`].join('\n\n');
+}
+
+/**
+ * A reply that failed: its text is an error notice, not something the character
+ * said. The model must never read it back as history.
+ */
+export function isFailedReply(message: ChatMessage): boolean {
+  return message.role === 'assistant' && (message.status === 'error' || message.metadata?.error === true);
+}
+
+/** The roleplay history the model is sent: every message except failed replies. */
+export function dropFailedReplies(messages: ChatMessage[]): ChatMessage[] {
+  return messages.filter((message) => !isFailedReply(message));
 }

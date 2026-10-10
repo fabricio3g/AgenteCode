@@ -41,6 +41,9 @@ const DOCUMENT_SURFACE_EXTS = new Set([
   'xlsx',
   'pptx',
   'csv',
+  'tsv',
+  'html',
+  'htm',
   // `export_research_package` emits citations as .bib (BibTeX) and .ris. They are
   // plain text and were being dropped from the reader, so a citations-only export
   // showed one .txt file and silently hid the other two.
@@ -67,7 +70,7 @@ export function fileTypeLabel(name: string, kind?: DocumentSurfaceKind) {
   return ext.length <= 4 ? ext.toUpperCase() : ext;
 }
 
-const TEXT_DOCUMENT_EXTS = new Set(['md', 'markdown', 'txt', 'csv', 'bib', 'ris']);
+const TEXT_DOCUMENT_EXTS = new Set(['md', 'markdown', 'txt', 'csv', 'tsv', 'html', 'htm', 'bib', 'ris']);
 
 /** The artifact's readable files, as items the reader and studio can draw. */
 export function artifactDocumentItems(resolved: ResolvedArtifact): DocumentSurfaceItem[] {
@@ -83,7 +86,7 @@ export function artifactDocumentItems(resolved: ResolvedArtifact): DocumentSurfa
       title: baseName(path),
       dataUrl: binary ? content : undefined,
       content: !binary && TEXT_DOCUMENT_EXTS.has(ext) ? content : undefined,
-      previewHtml: resolved.artifact.files[viewerPathFor(path)] || '',
+      previewHtml: resolved.artifact.files[viewerPathFor(path)] || (!binary && (ext === 'html' || ext === 'htm') ? content : ''),
       kind: slides ? 'slides' : ext === 'md' || ext === 'markdown' ? 'report' : 'document',
       ...(slides ? { slides } : {}),
       ...(deck ? { deck } : {}),

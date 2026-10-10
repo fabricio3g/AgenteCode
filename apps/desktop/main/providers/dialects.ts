@@ -145,7 +145,7 @@ export function resolveDialect(providerName?: string, baseUrl?: string): Dialect
   let hostname = '';
   try { hostname = new URL(url).hostname; } catch { /* no usable URL */ }
   if (hostname === '127.0.0.1' || hostname === 'localhost' || hostname === '[::1]') {
-    return getDialect('local')!;
+    return getDialect(name ? 'custom' : 'local')!;
   }
 
   for (const dialect of DIALECTS) {

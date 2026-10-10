@@ -7,6 +7,10 @@
 -->
 
 <script lang="ts">
+  import IconButton from '$lib/components/ui/IconButton.svelte';
+
+  import { cn as uiClass } from '$lib/utils/cn';
+
   import { t } from 'svelte-i18n';
   import { FileSpreadsheet, FileText, Files, Globe, Library, Presentation, X } from 'lucide-svelte';
   import type { ArtifactKind } from '$lib/types/chat';
@@ -82,9 +86,9 @@
             </div>
           {/snippet}
           {#snippet trail()}
-            {#if !embedded}<button type="button" class="panel-close" onclick={close} aria-label={$t('artifacts.reader.close')} title={$t('artifacts.reader.close')}>
+            {#if !embedded}<IconButton label={$t('artifacts.reader.close')} size="xs" variant="ghost" type="button" class={uiClass("panel-close", "ui-local-3e1431df")} onclick={close}  title={$t('artifacts.reader.close')}>
               <X class="size-4" />
-            </button>{/if}
+            </IconButton>{/if}
           {/snippet}
         </ArtifactStudio>
       {/key}
@@ -133,7 +137,7 @@
     font-size: 11.5px;
     color: var(--muted-foreground);
   }
-  .panel-close {
+  :global(.panel-close.ui-local-3e1431df) {
     display: inline-flex;
     width: 2rem;
     height: 2rem;
@@ -142,7 +146,7 @@
     border-radius: 0.5rem;
     color: var(--muted-foreground);
   }
-  .panel-close:hover {
+  :global(.panel-close:hover.ui-local-3e1431df) {
     background: var(--surface-hover);
     color: var(--foreground);
   }

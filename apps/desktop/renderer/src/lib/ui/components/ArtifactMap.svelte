@@ -279,9 +279,9 @@
   }
 </script>
 
-<div class="artifact-map">
+<div class="viz-surface artifact-map">
   {#if payload.title}
-    <div class="artifact-map-title">{payload.title}</div>
+    <header class="viz-header"><h3 class="viz-title">{payload.title}</h3></header>
   {/if}
 
   <svg
@@ -427,25 +427,6 @@
 </div>
 
 <style>
-  .artifact-map {
-    width: var(--inline-block-width);
-    max-width: 100%;
-    margin-top: 0.65rem;
-    padding: 0.75rem 0.85rem;
-    border: 0;
-    border-radius: var(--artifact-radius);
-    background: var(--artifact-surface);
-    box-shadow: var(--artifact-elev);
-    color: var(--text);
-  }
-
-  .artifact-map-title {
-    margin-bottom: 0.45rem;
-    font-size: 0.95rem;
-    font-weight: 650;
-    color: var(--text);
-  }
-
   .artifact-map-svg {
     display: block;
     width: 100%;
@@ -483,7 +464,7 @@
 
   .country-label {
     fill: var(--text-muted);
-    font-size: 10px;
+    font-size: var(--text-xs);
     font-weight: 500;
     letter-spacing: 0.04em;
     text-transform: uppercase;
@@ -503,7 +484,7 @@
    */
   .city-label {
     fill: var(--text-secondary);
-    font-size: 10px;
+    font-size: var(--text-xs);
     font-weight: 500;
     text-anchor: middle;
     paint-order: stroke;
@@ -535,7 +516,7 @@
 
   .marker text {
     fill: var(--text);
-    font-size: 12px;
+    font-size: var(--text-xs);
     font-weight: 600;
     paint-order: stroke;
     stroke: var(--surface);
@@ -549,7 +530,7 @@
 
   .scale-bar text {
     fill: var(--text-secondary);
-    font-size: 10px;
+    font-size: var(--text-xs);
   }
 
   .map-popup {
@@ -560,19 +541,19 @@
     padding: 0.5rem 0.65rem;
     border-radius: var(--radius-sm);
     background: var(--surface-hover);
-    font-size: 0.78rem;
+    font-size: var(--text-sm);
   }
 
   .map-popup-title { font-weight: 650; }
   .map-popup-body { color: var(--text-secondary); }
-  .map-popup-coords { color: var(--text-muted); font-size: 0.7rem; font-variant-numeric: tabular-nums; }
+  .map-popup-coords { color: var(--text-muted); font-size: var(--text-xs); font-variant-numeric: tabular-nums; }
 
   .map-legend {
     display: flex;
     flex-wrap: wrap;
     gap: 0.65rem;
     margin-top: 0.5rem;
-    font-size: 0.72rem;
+    font-size: var(--text-xs);
     color: var(--text-secondary);
   }
 
@@ -596,7 +577,7 @@
   .map-note {
     margin: 0.4rem 0 0;
     color: var(--text-muted);
-    font-size: 0.72rem;
+    font-size: var(--text-xs);
   }
 
   .map-note-error { color: var(--error); }

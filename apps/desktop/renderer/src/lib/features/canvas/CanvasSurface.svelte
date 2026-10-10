@@ -238,7 +238,7 @@
       />
       {#if pointed}
         <circle cx={live.x + live.w / 2} cy={live.y - 10} r="5" fill="var(--card)" stroke={live.color} stroke-width="2" />
-        <text x={live.x + live.w / 2} y={live.y - 10} text-anchor="middle" dominant-baseline="central" font-size="9" font-weight="700" fill="var(--foreground)">{markNumber(live.id)}</text>
+        <text x={live.x + live.w / 2} y={live.y - 10} text-anchor="middle" dominant-baseline="central" font-size={9} font-weight="700" fill="var(--foreground)">{markNumber(live.id)}</text>
       {/if}
     {/if}
   {/each}

@@ -7,6 +7,9 @@
 -->
 
 <script lang="ts">
+  import UiButton from '$lib/components/ui/Button.svelte';
+  import { cn as uiClass } from '$lib/utils/cn';
+
   import { ArrowRight, LoaderCircle } from 'lucide-svelte';
   import { appStore } from '$lib/stores/app.svelte';
   import { modelsStore } from '$lib/stores/models.svelte';
@@ -52,27 +55,27 @@
   <div class="notice notice-empty pointer-events-auto">
     <p class="notice-label notice-empty-label">{copy.model.none}</p>
     <div class="notice-actions">
-    <button
+    <UiButton variant="plain"
       type="button"
-      class="notice-btn primary"
+      class={uiClass("notice-btn primary", "ui-local-214c33bf")}
       onclick={() => openModelHub('explore')}
     >
       {copy.model.browseAll}
       <ArrowRight class="size-3" />
-    </button>
-    <button type="button" class="notice-btn" onclick={() => openModelHub('runtime')}>
+    </UiButton>
+    <UiButton variant="plain" type="button" class={uiClass("notice-btn", "ui-local-214c33bf")} onclick={() => openModelHub('runtime')}>
       {copy.model.changeRuntime}
-    </button>
+    </UiButton>
     </div>
   </div>
 {:else if state === 'no-provider'}
-  <div class="notice pointer-events-auto justify-center">
+  <div class="notice pointer-events-auto">
     <p class="notice-label">
       {copy.model.none}
-      <button type="button" class="notice-link" onclick={() => openModelHub('providers')}>
+      <UiButton variant="plain" type="button" class={uiClass("notice-link", "ui-local-214c33bf")} onclick={() => openModelHub('providers')}>
         {copy.model.configureProvider}
         <ArrowRight class="size-3" />
-      </button>
+      </UiButton>
     </p>
   </div>
 {/if}
@@ -84,20 +87,25 @@
     margin-bottom: 0.625rem;
   }
 
+  /* Label and link wrap as two items on one left edge; an inline margin pushed a wrapped link off it. */
   .notice-label {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    column-gap: 0.25rem;
     color: var(--text-secondary);
     font-size: 0.8125rem;
     font-weight: 500;
     letter-spacing: -0.005em;
   }
-  .notice-empty { flex-direction: column; justify-content: center; gap: 0.5rem; }
+  .notice-empty { flex-direction: column; align-items: flex-start; gap: 0.5rem; }
   .notice-empty-label { font-size: var(--text-xs); font-weight: 400; color: var(--muted-foreground); }
-  .notice-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 0.5rem; }
+  .notice-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
 
   /* Pill buttons sized to sit level with the composer's own controls. Both
      actions carry the same visual weight — a solid black button next to a
      hairline one read as a warning rather than a choice. */
-  .notice-btn {
+  :global(.notice-btn.ui-local-214c33bf) {
     display: inline-flex;
     align-items: center;
     gap: 0.375rem;
@@ -117,38 +125,37 @@
       transform 150ms var(--motion-ease);
   }
 
-  .notice-btn:hover {
+  :global(.notice-btn:hover.ui-local-214c33bf) {
     border-color: var(--border-hover, var(--border));
     background: var(--muted);
   }
 
-  .notice-btn:active {
+  :global(.notice-btn:active.ui-local-214c33bf) {
     transform: scale(0.97);
   }
 
-  .notice-btn:focus-visible {
+  :global(.notice-btn:focus-visible.ui-local-214c33bf) {
     outline: none;
     box-shadow: 0 0 0 2px color-mix(in oklch, var(--ring) 35%, transparent);
   }
 
   /* The recommended path stays distinguishable by weight, not by inverting
      into a heavy black slab. */
-  .notice-btn.primary {
+  :global(.notice-btn.primary.ui-local-214c33bf) {
     border-color: color-mix(in srgb, var(--foreground) 22%, transparent);
     background: var(--card);
     font-weight: 600;
   }
 
-  .notice-btn.primary:hover {
+  :global(.notice-btn.primary:hover.ui-local-214c33bf) {
     border-color: color-mix(in srgb, var(--foreground) 38%, transparent);
     background: var(--muted);
   }
 
-  .notice-link {
+  :global(.notice-link.ui-local-214c33bf) {
     display: inline-flex;
     align-items: center;
     gap: 0.25rem;
-    margin-left: 0.25rem;
     color: var(--text-secondary);
     font-weight: 500;
     text-decoration: underline;
@@ -157,11 +164,11 @@
     transition: color 150ms ease;
   }
 
-  .notice-link:hover {
+  :global(.notice-link:hover.ui-local-214c33bf) {
     color: var(--foreground);
   }
 
-  .notice-link:focus-visible {
+  :global(.notice-link:focus-visible.ui-local-214c33bf) {
     outline: none;
     color: var(--foreground);
     box-shadow: 0 0 0 2px color-mix(in oklch, var(--ring) 35%, transparent);

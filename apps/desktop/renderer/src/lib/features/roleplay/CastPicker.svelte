@@ -9,9 +9,13 @@
 -->
 
 <script lang="ts">
+  import UiButton from '$lib/components/ui/Button.svelte';
+  import { cn as uiClass } from '$lib/utils/cn';
+
   import Avatar from '$lib/components/ui/Avatar.svelte';
   import { Check } from 'lucide-svelte';
   import { charactersStore } from './characters.svelte';
+  import { t } from 'svelte-i18n';
 
   interface Props {
     /** Selected character ids, in speaking order. */
@@ -20,11 +24,7 @@
     emptyHint?: string;
   }
 
-  let {
-    value,
-    onchange,
-    emptyHint = 'No characters yet. Create or import one from the Characters tab first.'
-  }: Props = $props();
+  let { value, onchange, emptyHint = '' }: Props = $props();
 
   function toggle(id: string) {
     onchange(value.includes(id) ? value.filter((entry) => entry !== id) : [...value, id]);
@@ -32,16 +32,16 @@
 </script>
 
 {#if !charactersStore.characters.length}
-  <p class="rounded-[var(--radius-md)] border border-dashed border-[var(--border)] px-3 py-4 text-center text-xs text-muted-foreground">
-    {emptyHint}
+  <p class="py-2 text-xs text-muted-foreground">
+    {emptyHint || $t('roleplay.setup.noCharacters')}
   </p>
 {:else}
   <div class="cast-grid">
     {#each charactersStore.characters as card (card.id)}
       {@const order = value.indexOf(card.id)}
-      <button
+      <UiButton variant="plain"
         type="button"
-        class="cast-option {order >= 0 ? 'is-on' : ''}"
+        class={uiClass(`cast-option ${order >= 0 ? 'is-on' : ''}`, "ui-local-5da35dd3")}
         onclick={() => toggle(card.id)}
         aria-pressed={order >= 0}
       >
@@ -53,9 +53,9 @@
         </span>
         <span class="min-w-0 flex-1 truncate text-left text-[12px] text-foreground">{card.name}</span>
         {#if order >= 0}
-          <span class="cast-order">{order + 1}</span>
+          <span class="cast-order" title={$t('roleplay.setup.speakingOrder', { values: { n: order + 1 } })}>#{order + 1}</span>
         {/if}
-      </button>
+      </UiButton>
     {/each}
   </div>
 {/if}
@@ -70,7 +70,7 @@
     padding: 0.125rem;
   }
 
-  .cast-option {
+  :global(.cast-option.ui-local-5da35dd3) {
     display: flex;
     align-items: center;
     gap: 0.5rem;
@@ -84,11 +84,11 @@
       background-color var(--motion-fast) var(--motion-ease);
   }
 
-  .cast-option:hover {
+  :global(.cast-option:hover.ui-local-5da35dd3) {
     background: var(--surface-hover);
   }
 
-  .cast-option.is-on {
+  :global(.cast-option.is-on.ui-local-5da35dd3) {
     border-color: var(--border-hover);
     background: var(--surface-active);
   }

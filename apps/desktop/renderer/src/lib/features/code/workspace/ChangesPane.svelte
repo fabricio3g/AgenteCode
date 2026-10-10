@@ -7,6 +7,11 @@
 -->
 
 <script lang="ts">
+  import UiListRow from '$lib/components/ui/ListRow.svelte';
+
+  import UiIconButton from '$lib/components/ui/IconButton.svelte';
+  import { cn as uiClass } from '$lib/utils/cn';
+
   import { Button, Tooltip } from '$lib/components/ui';
   import { conversationScope } from '$shared/workspace-scope';
   import { t } from 'svelte-i18n';
@@ -104,7 +109,7 @@
 
   const KIND_MARK: Record<ChangeKind, { letter: string; tone: string }> = {
     created: { letter: 'A', tone: 'text-success' },
-    modified: { letter: 'M', tone: 'text-warning' },
+    modified: { letter: 'M', tone: 'text-muted-foreground' },
     deleted: { letter: 'D', tone: 'text-error' },
     renamed: { letter: 'R', tone: 'text-muted-foreground' }
   };
@@ -133,7 +138,7 @@
 <aside class="changes" aria-label={$t('codeWs.changes')}>
   <!-- The same slim bar as the browser panel's. -->
   <header class="changes-bar">
-    <p class="min-w-0 flex-1 truncate">
+    <p class="min-w-0 flex-1 truncate" title={list?.source === 'checkpoints' ? $t('codeWs.checkpointNote') : undefined}>
       {#if !embedded}<span class="font-medium text-foreground">{$t('codeWs.changes')}</span>{/if}
       {#if branch}
         <span class="branch-label" title={$t('codeWs.branch')}><GitBranch class="size-3" aria-hidden="true" />{branch}</span>
@@ -143,10 +148,10 @@
         <span class="ml-1 tabular-nums"><span class="text-success">+{totals.add}</span> <span class="text-error">−{totals.del}</span></span>
       {/if}
     </p>
-    <Tooltip label={$t('codeWs.refresh')} position="bottom"><button type="button" class="ui-icon-button is-sm" onclick={refresh} disabled={codeWorkspace.changeLoading[chatId]} aria-label={$t('codeWs.refresh')}>
+    <Tooltip label={$t('codeWs.refresh')} position="bottom"><UiIconButton label={$t('codeWs.refresh')} size="xs" type="button" class={uiClass(" ", "ui-local-8f978f5f")} onclick={refresh} disabled={codeWorkspace.changeLoading[chatId]} >
       <RefreshCw class={codeWorkspace.changeLoading[chatId] ? 'animate-spin' : ''} />
-    </button></Tooltip>
-    {#if !embedded}<Tooltip label={$t('codeWs.close')} position="bottom"><button type="button" class="ui-icon-button is-sm" onclick={() => codeWorkspace.toggleChanges(false)} aria-label={$t('codeWs.close')}><X /></button></Tooltip>{/if}
+    </UiIconButton></Tooltip>
+    {#if !embedded}<Tooltip label={$t('codeWs.close')} position="bottom"><UiIconButton label={$t('codeWs.close')} size="xs" type="button" class={uiClass(" ", "ui-local-8f978f5f")} onclick={() => codeWorkspace.toggleChanges(false)} ><X /></UiIconButton></Tooltip>{/if}
   </header>
 
   {#if !list && codeWorkspace.changeLoading[chatId]}
@@ -157,7 +162,6 @@
       <FileCode2 class="mt-0.5 size-3.5 shrink-0" />
       <div class="min-w-0">
         <p class="text-foreground">{$t('codeWs.noChanges')}</p>
-        <p>{list?.source === 'git' ? $t('codeWs.noChangesGit') : $t('codeWs.noChangesHint')}</p>
       </div>
     </div>
   {:else}
@@ -166,17 +170,17 @@
         {@const parts = split(file.path)}
         {@const mark = KIND_MARK[file.kind] ?? KIND_MARK.modified}
         <li role="option" aria-selected={selectedPath === file.path}>
-          <button type="button" class="file-row" class:is-active={selectedPath === file.path} onclick={() => (selectedPath = file.path)} title={file.path}>
+          <UiListRow  type="button" class={uiClass("file-row", "ui-local-8f978f5f", {"is-active": selectedPath === file.path})}  onclick={() => (selectedPath = file.path)} title={file.path}>
             <span class="w-3 shrink-0 text-center text-[12px] font-semibold {mark.tone}">{mark.letter}</span>
             <span class="min-w-0 flex-1 truncate">
               <span class="text-foreground">{parts.name}</span>
               {#if parts.dir}<span class="ml-1.5 text-muted-foreground">{parts.dir}</span>{/if}
             </span>
-            <span class="shrink-0 text-[12px] tabular-nums">
-              {#if file.additions}<span class="text-success">+{file.additions}</span>{/if}
-              {#if file.deletions}<span class="ml-1 text-error">−{file.deletions}</span>{/if}
+            <span class="shrink-0 text-[12px] tabular-nums text-muted-foreground">
+              {#if file.additions}<span>+{file.additions}</span>{/if}
+              {#if file.deletions}<span class="ml-1">−{file.deletions}</span>{/if}
             </span>
-          </button>
+          </UiListRow>
         </li>
       {/each}
     </ul>
@@ -211,9 +215,6 @@
       </div>
     {/if}
 
-    {#if list?.source === 'checkpoints'}
-      <p class="changes-foot">{$t('codeWs.checkpointNote')}</p>
-    {/if}
   {/if}
 </aside>
 
@@ -271,7 +272,7 @@
     padding: 0.25rem 4px 4px;
   }
 
-  .file-row {
+  :is(.file-row, :global(.file-row.ui-local-8f978f5f)) {
     display: flex;
     width: 100%;
     height: 1.625rem;
@@ -284,8 +285,8 @@
     text-align: left;
     transition: background-color var(--motion-fast) var(--motion-ease);
   }
-  .file-row:hover,
-  .file-row.is-active {
+  :is(.file-row:hover, :global(.file-row:hover.ui-local-8f978f5f)),
+  :is(.file-row.is-active, :global(.file-row.is-active.ui-local-8f978f5f)) {
     background: var(--surface-hover);
   }
 
@@ -320,17 +321,9 @@
   }
 
   .diff-note {
-    padding: 1.5rem 1rem;
+    padding: 0.75rem;
     color: var(--muted-foreground);
     font-size: 12px;
-    text-align: center;
   }
 
-  .changes-foot {
-    flex-shrink: 0;
-    padding: 0.25rem 0.75rem 0.5rem;
-    color: var(--muted-foreground);
-    font-size: 11px;
-    line-height: 1.5;
-  }
 </style>

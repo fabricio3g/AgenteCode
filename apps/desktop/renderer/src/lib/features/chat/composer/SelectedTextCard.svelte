@@ -6,6 +6,12 @@
 -->
 
 <script lang="ts">
+  import IconButton from '$lib/components/ui/IconButton.svelte';
+
+  import UiButton from '$lib/components/ui/Button.svelte';
+  import UiTextarea from '$lib/components/ui/Textarea.svelte';
+  import { cn as uiClass } from '$lib/utils/cn';
+
   import { X } from 'lucide-svelte';
 
   interface Props {
@@ -20,26 +26,26 @@
 </script>
 
 <div class="selected-text-card" class:expanded>
-  <button
+  <IconButton label={"Discard selected text"} size="xs" variant="ghost"
     type="button"
-    class="card-close"
-    aria-label="Discard selected text"
+    class={uiClass("card-close", "ui-local-8b67dee0")}
+
     onclick={ondiscard}
   >
     <X class="size-3" />
-  </button>
+  </IconButton>
   <div class="card-body">
     {#if expanded}
-      <textarea
-        class="card-textarea"
+      <UiTextarea variant="composer"
+        class={uiClass("card-textarea", "ui-local-8b67dee0")}
         bind:value={text}
-        rows="3"
+        rows={3}
         onblur={() => (expanded = false)}
-      ></textarea>
+      ></UiTextarea>
     {:else}
-      <button type="button" class="card-preview" onclick={() => (expanded = true)}>
+      <UiButton variant="plain" type="button" class={uiClass("card-preview", "ui-local-8b67dee0")} onclick={() => (expanded = true)}>
         {text}
-      </button>
+      </UiButton>
     {/if}
   </div>
 </div>
@@ -54,10 +60,10 @@
   }
 
   .card-body {
-    padding: 0.65rem 0.75rem;
+    padding: 0.65rem 2rem 0.65rem 0.75rem;
   }
 
-  .card-preview {
+  :global(.card-preview.ui-local-8b67dee0) {
     width: 100%;
     padding: 0;
     overflow: hidden;
@@ -72,7 +78,7 @@
     white-space: nowrap;
   }
 
-  .card-textarea {
+  :global(.card-textarea.ui-local-8b67dee0) {
     width: 100%;
     padding: 0;
     border: 0;
@@ -85,7 +91,7 @@
     line-height: 1.4;
   }
 
-  .card-close {
+  :global(.card-close.ui-local-8b67dee0) {
     position: absolute;
     top: 0.35rem;
     right: 0.35rem;
@@ -105,7 +111,7 @@
       color 0.12s ease;
   }
 
-  .card-close:hover {
+  :global(.card-close:hover.ui-local-8b67dee0) {
     background: var(--surface-hover);
     color: var(--foreground);
   }

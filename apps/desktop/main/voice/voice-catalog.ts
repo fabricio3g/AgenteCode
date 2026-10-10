@@ -30,8 +30,9 @@ type Spec = {
   languages?: string[];
   capabilities?: { tts?: string[]; clone?: string[] };
   package_defaults?: { download?: { repo?: string } };
-  packages?: Array<{ id: string; default?: boolean; precision?: string; files?: string[]; strip_prefix?: string }>;
+  packages?: Array<{ id: string; default?: boolean; precision?: string; files?: string[]; strip_prefix?: string; display_name?: string; description?: string; download?: { repo?: string } }>;
   ui?: { recommended_package?: string; builtin_voices?: string[] };
+  options?: { request?: Array<{ name?: string; required?: boolean }> };
 };
 
 let specCache: VoiceModel[] | null = null;
@@ -43,6 +44,55 @@ function specsDir(): string | null {
     if (fs.existsSync(dir)) return dir;
   }
   return null;
+}
+
+type Package = NonNullable<Spec['packages']>[number];
+
+/** GGUF packages only: `native` ones are safetensors trees the engine converts, not something to download here. */
+const isGguf = (pkg: Package) => pkg.precision !== 'native' && !!pkg.files?.some((file) => file.endsWith('.gguf'));
+/** The package id without the family prefix: `qwen3_tts_0_6b_base_q8_0` → `0_6b_base_q8_0`. */
+const packageRest = (spec: Spec, pkg: Package) => pkg.id.startsWith(`${spec.family}_`) ? pkg.id.slice(spec.family.length + 1) : pkg.id;
+
+/**
+ * Parts some specs list beside the model, not something that speaks: F5's
+ * standalone vocoder, AuK's VAE and the Qwen it loads through a `qwen_gguf` option.
+ */
+function isComponent(spec: Spec, pkg: Package): boolean {
+  if (/\bvocoder\b|\bVAE\b/i.test(pkg.display_name ?? '')) return true;
+  return JSON.stringify(spec).includes(`"${packageRest(spec, pkg).split('_')[0]}_gguf"`);
+}
+
+/** `qwen3_tts_0_6b_base_q8_0` → `0.6b base · Q8_0`; `orig` packages read `original`. */
+function variantLabel(spec: Spec, pkg: Package): string {
+  const precision = pkg.precision && pkg.precision !== 'native' ? pkg.precision : '';
+  const rest = precision ? packageRest(spec, pkg).replace(new RegExp(`(^|_)${precision}(?=_|$)`), '') : packageRest(spec, pkg);
+  const words = rest.replace(/(\d)_(\d)/g, '$1.$2').split('_').filter(Boolean).join(' ');
+  return [words, precision === 'orig' ? 'original' : precision.toUpperCase()].filter(Boolean).join(' · ');
+}
+
+/**
+ * The spec's other GGUF packages as entries of their own (id = package id), so
+ * download, load and delete work unchanged; a low-memory machine can take the
+ * Q4 or the 0.6B where the recommended package is too heavy.
+ */
+function variantsOf(primary: VoiceModel, spec: Spec): VoiceModel[] {
+  return (spec.packages ?? [])
+    .filter((pkg) => isGguf(pkg) && !isComponent(spec, pkg) && pkg.id !== primary.id && !pkg.files!.includes(primary.file))
+    .map((pkg) => {
+      const files = pkg.files!.filter(Boolean);
+      return {
+        ...primary,
+        id: pkg.id,
+        repo: pkg.download?.repo || primary.repo,
+        file: files[0],
+        files: files.length > 1 ? files : undefined,
+        stripPrefix: pkg.strip_prefix,
+        sizeMb: 0,
+        featured: false,
+        variantOf: primary.id,
+        variant: variantLabel(spec, pkg)
+      };
+    });
 }
 
 /** A spec as a catalog entry, or null when it is not a usable text-to-speech model. */
@@ -76,6 +126,8 @@ function fromSpec(spec: Spec): VoiceModel | null {
     status: spec.status,
     needsReference: (cloneOnly || caps.includes('speaker_reference')) && !voices.length,
     canClone,
+    variant: chosen ? variantLabel(spec, chosen) : undefined,
+    needsTranscript: canClone && !!spec.options?.request?.some((option) => option.name === 'reference_text' && option.required),
     serverTask: cloneOnly ? 'clon' : 'tts'
   };
 }
@@ -83,22 +135,31 @@ function fromSpec(spec: Spec): VoiceModel | null {
 /** Every text-to-speech model, featured ones first. Read once per process. */
 export function voiceCatalog(): VoiceModel[] {
   if (specCache) return specCache;
-  const featuredFamilies = new Set(VOICE_MODELS.map((model) => model.family));
+  const featured = VOICE_MODELS.map((model) => ({ ...model }));
+  const featuredVariants: VoiceModel[] = [];
   const fromSpecs: VoiceModel[] = [];
   const dir = specsDir();
   if (dir) {
     for (const name of fs.readdirSync(dir).filter((file) => file.endsWith('.json')).sort()) {
       try {
         const spec = JSON.parse(fs.readFileSync(path.join(dir, name), 'utf8')) as Spec;
-        if (featuredFamilies.has(spec.family)) continue;
+        // Featured models keep their hand-written entry (voices, languages);
+        // the spec still supplies their other packages.
+        const hand = featured.find((model) => model.family === spec.family);
+        if (hand) {
+          const own = spec.packages?.find((pkg) => pkg.files?.includes(hand.file));
+          if (own) hand.variant = variantLabel(spec, own);
+          featuredVariants.push(...variantsOf(hand, spec));
+          continue;
+        }
         const model = fromSpec(spec);
-        if (model) fromSpecs.push(model);
+        if (model) fromSpecs.push(model, ...variantsOf(model, spec));
       } catch (error) {
         log.warn(`skipped ${name}:`, error);
       }
     }
   }
-  specCache = [...VOICE_MODELS, ...fromSpecs];
+  specCache = [...featured, ...featuredVariants, ...fromSpecs];
   return specCache;
 }
 

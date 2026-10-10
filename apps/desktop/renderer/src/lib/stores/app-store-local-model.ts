@@ -158,7 +158,7 @@ export function resolveLocalModelLoadState(params: {
     runtimePath,
     flashAttention: remembered.flash_attention != null ? Boolean(remembered.flash_attention) : (local?.flash_attention ?? recommended?.flash_attention ?? true),
     offloadKvCache: remembered.offload_kv_cache != null ? Boolean(remembered.offload_kv_cache) : (local?.offload_kv_cache ?? recommended?.offload_kv ?? true),
-    keepInMemory: remembered.keep_in_memory != null ? Boolean(remembered.keep_in_memory) : (local?.keep_in_memory ?? true),
+    keepInMemory: remembered.keep_in_memory != null ? Boolean(remembered.keep_in_memory) : (local?.keep_in_memory ?? false),
     mmap: remembered.mmap != null ? Boolean(remembered.mmap) : (local?.mmap ?? recommended?.use_mmap ?? true),
     seed: remembered.seed != null ? String(remembered.seed) : String(local?.seed || ''),
     parallel: String(Number(remembered.parallel || local?.parallel || 1)),

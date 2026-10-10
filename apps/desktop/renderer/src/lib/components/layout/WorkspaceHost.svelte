@@ -1,5 +1,9 @@
 <svelte:options runes={true} />
 <script lang="ts">
+  import UiButton from '$lib/components/ui/Button.svelte';
+  import UiIconButton from '$lib/components/ui/IconButton.svelte';
+  import { cn as uiClass } from '$lib/utils/cn';
+
   import { Tooltip } from '$lib/components/ui';
   import { onMount, type Snippet } from 'svelte';
   import { t } from 'svelte-i18n';
@@ -200,18 +204,18 @@
             {@const item = byId.get(id)}
             {#if item}
               {@const TabIcon = item.icon}
-              <button type="button" role="tab" class="workspace-tab" class:active={id === panel.id} aria-selected={id === panel.id} tabindex={id === panel.id ? 0 : -1} onclick={() => activate(id)} onpointerdown={(event) => movePanel(event, id)} onkeydown={(event) => {
+              <UiButton variant="plain" type="button" role="tab" class={uiClass("workspace-tab", "ui-local-c24761b3", {"active": id === panel.id})}  aria-selected={id === panel.id} tabindex={id === panel.id ? 0 : -1} onclick={() => activate(id)} onpointerdown={(event) => movePanel(event, id)} onkeydown={(event) => {
                 if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key) || !placement) return;
                 event.preventDefault(); const ids = placement.group.panels, index = ids.indexOf(id);
                 const next = event.key === 'Home' ? 0 : event.key === 'End' ? ids.length - 1 : (index + (event.key === 'ArrowRight' ? 1 : -1) + ids.length) % ids.length;
                 workspaceLayout.activate(ids[next]); requestAnimationFrame(() => host?.querySelector<HTMLButtonElement>(`section:not([hidden]) [data-tab="${ids[next]}"]`)?.focus());
-              }} data-tab={id} title={item.title}><TabIcon class="size-3" /><span>{item.title}</span></button>
+              }} data-tab={id} title={item.title}><TabIcon class="size-3" /><span>{item.title}</span></UiButton>
             {/if}
           {/each}
         </div>
-        {#if placement?.region === null}<Tooltip label={$t(placement.maximized ? 'workspace.restore' : 'workspace.maximize')} position="bottom"><button type="button" class="ui-icon-button is-xs" aria-label={$t(placement.maximized ? 'workspace.restore' : 'workspace.maximize')} onclick={() => workspaceLayout.maximize(panel.id)}>{#if placement.maximized}<Minimize2 />{:else}<Maximize2 />{/if}</button></Tooltip>{/if}
+        {#if placement?.region === null}<Tooltip label={$t(placement.maximized ? 'workspace.restore' : 'workspace.maximize')} position="bottom"><UiIconButton label={$t(placement.maximized ? 'workspace.restore' : 'workspace.maximize')} size="xs" type="button" class={uiClass(" ", "ui-local-c24761b3")}  onclick={() => workspaceLayout.maximize(panel.id)}>{#if placement.maximized}<Minimize2 />{:else}<Maximize2 />{/if}</UiIconButton></Tooltip>{/if}
         <Menu placement="bottom-end" label={$t('workspace.actions')} minWidth="12rem">
-          {#snippet trigger(props)}<button type="button" class="ui-icon-button is-xs" aria-label={$t('workspace.actions')} {...props}><MoreHorizontal /></button>{/snippet}
+          {#snippet trigger(props)}<UiIconButton label={$t('workspace.actions')} size="xs" type="button" class={uiClass(" ", "ui-local-c24761b3")}  {...props}><MoreHorizontal /></UiIconButton>{/snippet}
           <MenuItem icon={PanelsTopLeft} label={$t('workspace.float')} onselect={() => float(panel.id)} />
           <MenuItem icon={PanelRight} label={$t('workspace.dockRight')} onselect={() => workspaceLayout.dock(panel.id, 'right')} />
           <MenuItem icon={PanelBottom} label={$t('workspace.dockBottom')} onselect={() => workspaceLayout.dock(panel.id, 'bottom')} />
@@ -225,7 +229,7 @@
           <div class="ui-menu-separator" role="separator"></div>
           <MenuItem icon={RotateCcw} label={$t('workspace.reset')} onselect={() => workspaceLayout.reset()} />
         </Menu>
-        <Tooltip label={$t('workspace.hide', { values: { name: panel.title } })} position="bottom"><button type="button" class="ui-icon-button is-xs" aria-label={$t('workspace.hide', { values: { name: panel.title } })} onclick={() => hide(panel)}><X /></button></Tooltip>
+        <Tooltip label={$t('workspace.hide', { values: { name: panel.title } })} position="bottom"><UiIconButton label={$t('workspace.hide', { values: { name: panel.title } })} size="xs" type="button" class={uiClass(" ", "ui-local-c24761b3")}  onclick={() => hide(panel)}><X /></UiIconButton></Tooltip>
       </header>
       <div class="workspace-content">{@render panel.content({ id: panel.id, exposed, focused: exposed && workspaceLayout.focused === panel.id, rect })}</div>
     </section>
@@ -268,14 +272,14 @@
   .workspace-panel.resize-ready::after { border-color: var(--split-line); }
   /* The strip owns the panel's top edge: no fill, just a hairline under it. */
   .workspace-header { display: flex; align-items: center; flex-shrink: 0; gap: 2px; height: 32px; padding: 0 6px 0 8px; cursor: grab; touch-action: none; box-shadow: none; }
-  .workspace-header :global(.ui-icon-button) { border-color: transparent; background: transparent; box-shadow: none; }
-  .workspace-header :global(.ui-icon-button:hover) { background: var(--surface-hover); border-color: transparent; }
+
+
   .workspace-tabs { display: flex; min-width: 0; flex: 1; gap: 2px; overflow-x: auto; scrollbar-width: none; }
-  .workspace-tab { display: inline-flex; align-items: center; gap: 5px; min-width: 0; max-width: 180px; height: 22px; padding: 0 8px; flex-shrink: 0; border-radius: var(--radius-full); font-size: var(--text-xs); color: var(--muted-foreground); cursor: grab; touch-action: none; transition: color var(--motion-fast) var(--motion-ease), background-color var(--motion-fast) var(--motion-ease); }
-  .workspace-tab span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .workspace-tab:hover { color: var(--foreground); }
-  .workspace-tab.active { color: var(--foreground); background: var(--surface-active); font-weight: 500; }
-  .workspace-tab:focus-visible { outline: 1px solid var(--ring); outline-offset: -1px; }
+  :global(.workspace-tab.ui-local-c24761b3) { display: inline-flex; align-items: center; gap: 5px; min-width: 0; max-width: 180px; height: 22px; padding: 0 8px; flex-shrink: 0; border-radius: var(--radius-full); font-size: var(--text-xs); color: var(--muted-foreground); cursor: grab; touch-action: none; transition: color var(--motion-fast) var(--motion-ease), background-color var(--motion-fast) var(--motion-ease); }
+  :global(.workspace-tab.ui-local-c24761b3) span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  :global(.workspace-tab:hover.ui-local-c24761b3) { color: var(--foreground); }
+  :global(.workspace-tab.active.ui-local-c24761b3) { color: var(--foreground); background: var(--surface-active); font-weight: 500; }
+  :global(.workspace-tab:focus-visible.ui-local-c24761b3) { outline: 1px solid var(--ring); outline-offset: -1px; }
   .workspace-content { display: flex; flex: 1; flex-direction: column; min-height: 0; min-width: 0; overflow: hidden; }
   .workspace-divider { position: absolute; }
   .workspace-panel.resize-ready { box-shadow: inset 0 0 0 1px var(--muted-foreground), 0 8px 30px #0002; }

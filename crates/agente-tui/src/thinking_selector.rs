@@ -294,15 +294,11 @@ fn render_scale(frame: &mut Frame, body: Rect, state: &AppState) {
         if level == active {
             spans.push(s("  ◈ in effect", style::dim()));
         }
-        frame.render_widget(
-            Paragraph::new(Line::from(spans)).alignment(ratatui::layout::Alignment::Center),
-            row,
-        );
+        frame.render_widget(Paragraph::new(Line::from(spans)), row);
     }
     if let Some(row) = panel_row(body, 7, 2) {
         frame.render_widget(
-            Paragraph::new(Line::from(s(level_hint(level), style::dim())))
-                .alignment(ratatui::layout::Alignment::Center),
+            Paragraph::new(Line::from(s(level_hint(level), style::dim()))),
             row,
         );
     }

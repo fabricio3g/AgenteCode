@@ -1,5 +1,9 @@
 <svelte:options runes={true} />
 <script lang="ts">
+  import UiListRow from '$lib/components/ui/ListRow.svelte';
+
+  import { cn as uiClass } from '$lib/utils/cn';
+
   import { onMount } from 'svelte';
   import { Button, Switch } from '$lib/components/ui';
   import SettingsPage from './SettingsPage.svelte';
@@ -28,7 +32,7 @@
         <div class="actions"><Button variant="outline" size="sm" disabled={!pack.enabled} onclick={() => void domainsStore.create(pack.id, `Untitled ${pack.name}`)}>New project</Button><span>Disabling preserves projects and finished results.</span></div>
       </section>
     {/each}
-    {#if domainsStore.projects.length}<section class="domain"><h3>Saved projects</h3>{#each domainsStore.projects as project}<button class="project ui-row" onclick={() => void domainsStore.select(project)}><span>{project.title}</span><small>{domainsStore.packs.find(p => p.id === project.domain)?.name ?? project.domain} · revision {project.revision}</small></button>{/each}</section>{/if}
+    {#if domainsStore.projects.length}<section class="domain"><h3>Saved projects</h3>{#each domainsStore.projects as project}<UiListRow  class={uiClass("project ui-row", "ui-local-ddac653d")} onclick={() => void domainsStore.select(project)}><span>{project.title}</span><small>{domainsStore.packs.find(p => p.id === project.domain)?.name ?? project.domain} · revision {project.revision}</small></UiListRow>{/each}</section>{/if}
     {#if domainsStore.jobs.length}<section class="domain"><h3>Local processing</h3>{#each [...domainsStore.jobs].reverse().slice(0, 10) as job}<div class="dependency"><div><span>{job.domain} · {job.operation}</span><small>{job.phase}{job.progress !== undefined ? ` · ${Math.round(job.progress * 100)}%` : ''}</small></div>{#if job.state === 'running' || job.state === 'queued'}<Button variant="ghost" size="sm" onclick={() => void domainsStore.cancel(job)}>Stop</Button>{/if}</div>{/each}</section>{/if}
   </div>
 </SettingsPage>
@@ -44,5 +48,5 @@
   ul { padding: 0; list-style: none; } li { display: flex; flex-direction: column; gap: 0.15rem; padding: 0.35rem 0; font-size: var(--text-xs); } li span { color: var(--muted-foreground); }
   .dependencies { margin: 0.75rem 0; }.dependency { display: flex; gap: 0.75rem; align-items: center; padding: 0.35rem 0; flex-wrap: wrap; } .dependency > div { flex: 1; min-width: 10rem; display: flex; flex-direction: column; font-size: var(--text-sm); }
   small, .actions span { font-size: var(--text-xs); color: var(--muted-foreground); }
-  .actions { display: flex; align-items: center; gap: 0.75rem; margin-top: 0.75rem; flex-wrap: wrap; }.project { display: flex; width: 100%; justify-content: space-between; gap: 0.75rem; }
+  .actions { display: flex; align-items: center; gap: 0.75rem; margin-top: 0.75rem; flex-wrap: wrap; }:global(.project.ui-local-ddac653d) { display: flex; width: 100%; justify-content: space-between; gap: 0.75rem; }
 </style>

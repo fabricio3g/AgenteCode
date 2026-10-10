@@ -195,6 +195,8 @@ function ashgrove(): RoleplayWorld {
         '*Down the hill a door opens, and a voice carries: short, sharp, and not at all unfriendly.*'
     ],
     settings: {
+      // Simple chat by default; Dynamic is an explicit choice in the scene header.
+      interactionMode: 'chat',
       replyOrder: 'natural',
       adventureChoices: true,
       showSpeakerLabels: false

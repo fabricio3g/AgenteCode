@@ -35,7 +35,7 @@
 
   const chartRaw = $derived.by(() => {
     if (artifact.inline?.kind !== 'chart') return '';
-    return JSON.stringify({ labels: artifact.inline.labels, datasets: artifact.inline.datasets });
+    return JSON.stringify(artifact.inline);
   });
 </script>
 

@@ -1,6 +1,6 @@
 import type { HomeRuntimeMeta } from '$shared/home-runtime';
 import type { AgentArtifact, AppConfig, AgentOutcome, AgentStep, AgentStopReason, ArtifactManifest, ReasoningLevel, WorkspaceFile } from '$lib/types/chat';
-import type { CompletionResult, RequestMessage } from '$lib/services/chat-api';
+import type { CompletionResult, RequestMessage } from '$lib/services/chat/types';
 import type { SearchResult } from '$lib/types/bridge';
 
 export type ToolCall = {

@@ -1,5 +1,5 @@
 import type { AppConfig, ChatMessage } from '$lib/types/chat';
-import type { RequestMessage } from '$lib/services/chat-api';
+import type { RequestMessage } from '$lib/services/chat/types';
 import {
   attributeRoleplayContent,
   getMessageRequestContent,

@@ -201,14 +201,10 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
                 },
             );
         let lines = if in_progress {
-            vec![
-                Line::from(vec![
-                    s("  ◌ ", style::accent()),
-                    s("Discovering models…", style::text()),
-                ]),
-                Line::from(""),
-                Line::from(s("  This closes when models load", style::dim())),
-            ]
+            vec![Line::from(vec![
+                s("  ◌ ", style::accent()),
+                s("Discovering models…", style::text()),
+            ])]
         } else if let Some(error) = failure {
             vec![
                 Line::from(vec![
@@ -222,11 +218,7 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
                 )),
             ]
         } else {
-            vec![
-                Line::from(s("  No models yet", style::dim())),
-                Line::from(""),
-                Line::from(s("  /provider to switch or reconnect", style::muted())),
-            ]
+            vec![Line::from(s("  No models yet", style::dim()))]
         };
         frame.render_widget(Paragraph::new(lines), list_area);
     } else {

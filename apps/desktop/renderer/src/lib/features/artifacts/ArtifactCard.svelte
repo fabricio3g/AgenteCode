@@ -7,11 +7,17 @@
 -->
 
 <script lang="ts">
+  import IconButton from '$lib/components/ui/IconButton.svelte';
+
+  import UiButton from '$lib/components/ui/Button.svelte';
+  import { cn as uiClass } from '$lib/utils/cn';
+
   import { t } from 'svelte-i18n';
   import { locale } from 'svelte-i18n';
   import { BarChart3, FileSpreadsheet, FileText, Globe, Presentation, Trash2 } from 'lucide-svelte';
   import ArtifactThumb from './ArtifactThumb.svelte';
   import type { LibraryEntry } from './artifact-library';
+  import { artifactKindAccent } from '$lib/ui/components/artifact-accent';
 
   let { entry, onopen, ondelete }: { entry: LibraryEntry; onopen: () => void; ondelete: () => void } = $props();
 
@@ -41,23 +47,23 @@
   }
 </script>
 
-<div class="card group" bind:this={card}>
-  <button type="button" class="open" onclick={onopen}>
+<div class="card group" bind:this={card} style:--artifact-accent={artifactKindAccent(entry.kind)}>
+  <UiButton variant="plain" type="button" class={uiClass("open", "ui-local-b2856088")} onclick={onopen}>
     <div class="thumb" data-group={entry.group}>
       <ArtifactThumb artifact={entry.artifact} {visible} />
     </div>
     <div class="min-w-0 px-3.5 pb-3 pt-2.5 text-left">
-      <p class="flex items-center gap-1.5 text-[12px] text-muted-foreground">
+      <p class="kind flex items-center gap-1.5 text-[length:var(--text-xs)]">
         <Icon class="size-3.5 shrink-0" />
         <span class="truncate">{$t(`artifacts.group.${entry.group}`)}</span>
       </p>
       <p class="mt-1 line-clamp-2 text-sm font-medium leading-snug text-foreground">{entry.artifact.title || $t('artifacts.untitled')}</p>
       <p class="mt-1 truncate text-[12px] text-muted-foreground">{entry.chatTitle} · {when(entry.createdAt)}</p>
     </div>
-  </button>
-  <button type="button" class="delete" aria-label={$t('artifacts.delete')} title={$t('artifacts.delete')} onclick={ondelete}>
+  </UiButton>
+  <IconButton label={$t('artifacts.delete')} size="xs" variant="ghost" type="button" class={uiClass("delete", "ui-local-b2856088")}  title={$t('artifacts.delete')} onclick={ondelete}>
     <Trash2 class="size-3.5" />
-  </button>
+  </IconButton>
 </div>
 
 <style>
@@ -66,26 +72,27 @@
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    border: 1px solid var(--border);
+    border: 1px solid color-mix(in srgb, var(--artifact-accent) 24%, var(--border));
     border-radius: 1rem;
     background: var(--background);
     text-align: left;
     transition: border-color var(--motion-fast) var(--motion-ease), box-shadow var(--motion-fast) var(--motion-ease), transform var(--motion-fast) var(--motion-ease);
   }
   .card:hover {
-    border-color: color-mix(in srgb, var(--foreground) 22%, var(--border));
+    border-color: color-mix(in srgb, var(--artifact-accent) 45%, var(--border));
     box-shadow: var(--shadow-md);
   }
-  .card:has(.open:focus-visible) {
+  .card:has(:is(.open:focus-visible, :global(.open:focus-visible.ui-local-b2856088))) {
     box-shadow: 0 0 0 3px color-mix(in srgb, var(--ring) 35%, transparent);
   }
-  .open {
+  :global(.open.ui-local-b2856088) {
     display: flex;
     flex-direction: column;
     text-align: left;
     outline: none;
   }
-  .delete {
+  .kind { color: var(--artifact-accent); }
+  :global(.delete.ui-local-b2856088) {
     position: absolute;
     top: 0.5rem;
     right: 0.5rem;
@@ -100,12 +107,12 @@
     opacity: 0;
     transition: opacity var(--motion-fast) var(--motion-ease), color var(--motion-fast) var(--motion-ease), background-color var(--motion-fast) var(--motion-ease);
   }
-  .card:hover .delete,
-  .card:focus-within .delete {
+  .card:hover :global(.delete.ui-local-b2856088),
+  .card:focus-within :global(.delete.ui-local-b2856088) {
     opacity: 1;
   }
-  .delete:hover,
-  .delete:focus-visible {
+  :global(.delete:hover.ui-local-b2856088),
+  :global(.delete:focus-visible.ui-local-b2856088) {
     color: var(--destructive);
     background: var(--background);
     outline: none;
@@ -118,7 +125,7 @@
     justify-content: center;
     overflow: hidden;
     border-bottom: 1px solid var(--border-subtle);
-    background: var(--muted);
+    background: color-mix(in srgb, var(--artifact-accent) 6%, var(--muted));
     color: var(--muted-foreground);
   }
 </style>

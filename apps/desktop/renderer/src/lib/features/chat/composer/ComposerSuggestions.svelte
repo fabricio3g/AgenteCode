@@ -5,10 +5,14 @@
 
   Selecting one fills the composer and focuses it rather than sending, so a
   mis-tap costs nothing and the prompt can be edited before it goes anywhere.
+  The Design dock lists its own starters, so the composer is told to skip these.
 -->
 
 <script lang="ts">
-  import { BarChart3, CloudSun, Code, Lightbulb, PenLine } from 'lucide-svelte';
+  import UiButton from '$lib/components/ui/Button.svelte';
+  import { cn as uiClass } from '$lib/utils/cn';
+
+  import { CloudSun, Code, Lightbulb, PenLine, BarChart3 } from 'lucide-svelte';
   import { appStore } from '$lib/stores/app.svelte';
   import { copy } from '$lib/copy';
 
@@ -27,6 +31,9 @@
     brainstorm: Lightbulb
   } as const;
 
+  /** The artifact list's muted hues: each starter's glyph carries its own. */
+  const HUES: Record<string, number> = { weather: 230, code: 280, write: 40, analyze: 200, brainstorm: 85 };
+
   function pick(prompt: string) {
     appStore.composer = prompt;
     onpick();
@@ -36,10 +43,10 @@
 <div class="suggestions">
   {#each copy.emptyState.suggestions as suggestion (suggestion.id)}
     {@const Icon = ICONS[suggestion.id as keyof typeof ICONS]}
-    <button type="button" class="suggestion" onclick={() => pick(suggestion.prompt)}>
-      <Icon class="size-3.5 shrink-0" />
+    <UiButton variant="plain" style={`--hue:${HUES[suggestion.id] ?? 250}`} type="button" class={uiClass("suggestion", "ui-local-c934f14f")}  onclick={() => pick(suggestion.prompt)}>
+      <Icon class="suggestion-icon size-3.5 shrink-0" />
       {suggestion.label}
-    </button>
+    </UiButton>
   {/each}
 </div>
 
@@ -55,7 +62,7 @@
     pointer-events: auto;
   }
 
-  .suggestion {
+  :global(.suggestion.ui-local-c934f14f) {
     display: inline-flex;
     align-items: center;
     gap: 0.4375rem;
@@ -74,16 +81,20 @@
       transform 150ms var(--motion-ease);
   }
 
-  .suggestion:hover {
-    border-color: color-mix(in srgb, var(--foreground) 22%, transparent);
-    background: var(--muted);
+  :global(.suggestion.ui-local-c934f14f) :global(.suggestion-icon) { color: oklch(0.72 0.11 var(--hue)); }
+  :global(html:not(.dark)) :global(.suggestion.ui-local-c934f14f) :global(.suggestion-icon) { color: oklch(0.5 0.12 var(--hue)); }
+
+  /* Hover tints the chip with its own hue instead of plain gray. */
+  :global(.suggestion:hover.ui-local-c934f14f) {
+    border-color: oklch(0.65 0.1 var(--hue) / 0.45);
+    background: oklch(0.62 0.09 var(--hue) / 0.1);
   }
 
-  .suggestion:active {
+  :global(.suggestion:active.ui-local-c934f14f) {
     transform: scale(0.97);
   }
 
-  .suggestion:focus-visible {
+  :global(.suggestion:focus-visible.ui-local-c934f14f) {
     outline: none;
     box-shadow: 0 0 0 2px color-mix(in oklch, var(--ring) 35%, transparent);
   }
@@ -96,12 +107,10 @@
       justify-content: flex-start;
       scrollbar-width: none;
     }
-
     .suggestions::-webkit-scrollbar {
       display: none;
     }
-
-    .suggestion {
+    :global(.suggestion.ui-local-c934f14f) {
       flex: 0 0 auto;
     }
   }

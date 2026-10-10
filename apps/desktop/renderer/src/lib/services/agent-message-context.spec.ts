@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { ensureToolCallPairs, injectEvidenceSummary, trimContext } from '$lib/services/agent-message-context';
 import { compactText } from '$lib/services/agent-evidence';
-import type { RequestMessage } from '$lib/services/chat-api';
+import type { RequestMessage } from '$lib/services/chat/types';
 import { humanizeAgentError } from '$lib/utils/errors';
 
 describe('agent-message-context', () => {

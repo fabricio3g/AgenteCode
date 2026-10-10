@@ -2,11 +2,13 @@
 
 <!--
   Voices cloned from a recording: a few seconds of clean speech the local
-  model imitates. Record from the microphone or pick an audio file; it is
+  model imitates. Record from the microphone or pick an audio file (through main's dialog); it is
   converted to a mono 24 kHz WAV here and kept in the app's voice folder.
 -->
 
 <script lang="ts">
+  import IconButton from '$lib/components/ui/IconButton.svelte';
+
   import { onDestroy } from 'svelte';
   import { t } from 'svelte-i18n';
   import { LoaderCircle, Mic, Play, Square, Trash2, Upload } from 'lucide-svelte';
@@ -80,11 +82,15 @@
     }
   }
 
-  async function pickFile(event: Event) {
-    const input = event.currentTarget as HTMLInputElement;
-    const file = input.files?.[0];
-    input.value = '';
-    if (file) await load(file, file.name);
+  async function pickFile() {
+    try {
+      const picked = await invoke<{ name: string; base64: string } | null>('voice_clone_pick');
+      if (!picked) return;
+      const bytes = Uint8Array.from(atob(picked.base64), (c) => c.charCodeAt(0));
+      await load(new Blob([bytes]), picked.name);
+    } catch (error) {
+      toastStore.error((error as Error)?.message || $t('voice.clone.unreadable'));
+    }
   }
 
   function endRecording() {
@@ -139,21 +145,31 @@
     await appStore.updateTtsSettings({ cloned_voices: left, cloned_voice: appStore.config.tts?.cloned_voice === voice.id ? '' : appStore.config.tts?.cloned_voice });
   }
 
-  function play(voice: ClonedVoice) {
-    const same = playing === voice.id;
+  function stopPreview() {
     audio?.pause();
+    if (audio?.src.startsWith('blob:')) URL.revokeObjectURL(audio.src);
+    audio = null;
+  }
+
+  async function play(voice: ClonedVoice) {
+    const same = playing === voice.id;
+    stopPreview();
     playing = null;
     if (same) return;
-    audio = new Audio(`file://${voice.file}`);
+    playing = voice.id;
+    const base64 = await invoke<string | null>('voice_clone_read', { file: voice.file }).catch(() => null);
+    if (playing !== voice.id) return;
+    if (!base64) { playing = null; toastStore.error($t('voice.clone.unreadable')); return; }
+    const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+    audio = new Audio(URL.createObjectURL(new Blob([bytes], { type: 'audio/wav' })));
     audio.onended = () => { if (playing === voice.id) playing = null; };
     audio.onerror = () => { playing = null; toastStore.error($t('voice.clone.unreadable')); };
-    playing = voice.id;
     void audio.play().catch(() => { playing = null; });
   }
 
   onDestroy(() => {
     endRecording();
-    audio?.pause();
+    stopPreview();
   });
 </script>
 
@@ -164,25 +180,21 @@
         <p class="truncate text-[length:var(--text-sm)] text-foreground">{voice.name}</p>
         {#if voice.seconds}<p class="text-xs text-muted-foreground">{voice.seconds.toFixed(1)} s</p>{/if}
       </div>
-      <Tooltip label={$t('voice.preview')} position="bottom"><Button variant="ghost" size="icon-sm" onclick={() => play(voice)} aria-label={$t('voice.preview')}>
+      <Tooltip label={$t('voice.preview')} position="bottom"><Button variant="ghost" size="icon-sm" onclick={() => void play(voice)} aria-label={$t('voice.preview')}>
         {#if playing === voice.id}<Square />{:else}<Play />{/if}
       </Button></Tooltip>
-      <Tooltip label={$t('voice.clone.delete')} position="bottom"><Button variant="ghost" size="icon-sm" onclick={() => void remove(voice)} aria-label={$t('voice.clone.delete')}><Trash2 /></Button></Tooltip>
+      <Tooltip label={$t('voice.clone.delete')} position="bottom"><IconButton label={$t('voice.clone.delete')} variant="ghost" size="sm" onclick={() => void remove(voice)} ><Trash2 /></IconButton></Tooltip>
     </div>
   {/each}
 
-  <p class="text-[length:var(--text-sm)] font-medium text-foreground">{$t('voice.clone.add')}</p>
-  <p class="text-xs text-muted-foreground">{$t('voice.clone.addHint')}</p>
+  <p class="text-[length:var(--text-sm)] font-medium text-foreground" title={$t('voice.clone.addHint')}>{$t('voice.clone.add')}</p>
 
   <div class="flex flex-wrap items-center gap-2">
     {#if recording}
       <Button variant="outline" size="sm" onclick={endRecording}><Square /> {$t('voice.clone.stop')} · {elapsed.toFixed(1)} / {MAX_SECONDS} s</Button>
     {:else}
       <Button variant="outline" size="sm" onclick={() => void record()}><Mic /> {$t('voice.clone.record')}</Button>
-      <label class="file-pick">
-        <Upload class="size-3.5" /> {$t('voice.clone.choose')}
-        <input type="file" accept="audio/*" class="sr-only" onchange={(event) => void pickFile(event)} />
-      </label>
+      <Button variant="outline" size="sm" onclick={() => void pickFile()}><Upload /> {$t('voice.clone.choose')}</Button>
     {/if}
     {#if samples}<span class="text-xs text-muted-foreground">{source} · {seconds.toFixed(1)} s</span>{/if}
   </div>
@@ -204,9 +216,4 @@
     display: flex; align-items: center; gap: 0.25rem; padding: 0.375rem 0.5rem 0.375rem 0.75rem;
     border: 1px solid var(--border-subtle); border-radius: var(--float-row-radius);
   }
-  .file-pick {
-    display: inline-flex; cursor: pointer; align-items: center; gap: 0.375rem; height: 2rem; padding: 0 0.75rem;
-    border: 1px solid var(--float-border); border-radius: var(--float-row-radius); font-size: var(--text-xs); color: var(--foreground);
-  }
-  .file-pick:hover { background: var(--float-row-hover); }
 </style>

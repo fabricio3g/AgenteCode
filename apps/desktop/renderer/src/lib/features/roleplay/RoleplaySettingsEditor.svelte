@@ -1,5 +1,10 @@
 <svelte:options runes={true} />
 <script lang="ts">
+  import UiInput from '$lib/components/ui/Input.svelte';
+  import UiTextarea from '$lib/components/ui/Textarea.svelte';
+  import UiFileInput from '$lib/components/ui/FileInput.svelte';
+  import { cn as uiClass } from '$lib/utils/cn';
+
   import { Select, Switch, Button } from '$lib/components/ui';
   import SegmentedControl from '$lib/components/ui/SegmentedControl.svelte';
   import type { RoleplaySettings } from '$lib/types/chat';
@@ -18,7 +23,7 @@
   let section = $state('conversation');
   let presetName = $state('');
   let selectedPreset = $state('');
-  let importInput: HTMLInputElement;
+  let importInput = $state<HTMLInputElement | undefined>();
   const tabs = ['conversation', 'scene', 'decisions', 'suggestions', 'memory', 'presentation', 'advanced'];
   const selects: Array<{ section: string; key: keyof RoleplaySettings; options: string[] }> = [
     { section: 'conversation', key: 'interactionMode', options: ['chat', 'narrative', 'dynamic'] },
@@ -33,7 +38,9 @@
     { section: 'presentation', key: 'messageDensity', options: ['comfortable', 'compact'] },
     { section: 'presentation', key: 'actionFormatting', options: ['emphasis', 'plain'] },
     { section: 'advanced', key: 'choiceExpiry', options: ['pause', 'silence', 'event'] },
-    { section: 'advanced', key: 'contentRating', options: ['sfw', 'unrestricted'] }
+    { section: 'advanced', key: 'contentRating', options: ['sfw', 'unrestricted'] },
+    { section: 'advanced', key: 'localSampler', options: ['roleplay', 'server'] },
+    { section: 'advanced', key: 'repetition', options: ['dry', 'repeat'] }
   ];
   const toggles: Array<{ section: string; key: keyof RoleplaySettings }> = [
     { section: 'scene', key: 'npcDialogue' },
@@ -121,43 +128,41 @@
     {/each}
     {#each numbers.filter((entry) => entry.section === section) as item (item.key)}
       <label class="space-y-1.5"><span class="text-xs text-muted-foreground">{field(item.key)}</span>
-        <input class="ui-input" type="number" min={item.min} max={item.max} step={item.step ?? 1} value={settings[item.key] as number ?? ''} oninput={(event) => set(item.key, event.currentTarget.value === '' && item.nullable ? null : Number(event.currentTarget.value))} />
+        <UiInput  type="number" min={item.min} max={item.max} step={item.step ?? 1} value={settings[item.key] as number ?? ''} oninput={(event) => set(item.key, event.currentTarget.value === '' && item.nullable ? null : Number(event.currentTarget.value))} />
       </label>
     {/each}
   </div>
   {#each toggles.filter((entry) => entry.section === section) as item (item.key)}
-    <div class="flex items-center justify-between gap-4"><div><div class="text-[13px] text-foreground">{field(item.key)}</div><p class="text-xs text-muted-foreground">{$t(`roleplay.settings.hint.${item.key}`)}</p></div>
+    <div class="flex items-center justify-between gap-4" title={$t(`roleplay.settings.hint.${item.key}`)}><div class="text-[13px] text-foreground">{field(item.key)}</div>
       <Switch checked={!!settings[item.key]} aria-label={field(item.key)} onchange={(next) => set(item.key, next)} />
     </div>
   {/each}
   {#if section === 'conversation'}
-    <p class="text-xs text-muted-foreground">{$t('roleplay.settings.modesHint')}</p>
-    <label class="block space-y-1.5"><span class="text-xs text-muted-foreground">{$t('roleplay.settings.genre')}</span><input class="ui-input" value={settings.genre ?? ''} placeholder={$t('roleplay.settings.genrePlaceholder')} oninput={(event) => set('genre', event.currentTarget.value)} /></label>
-    <label class="block space-y-1.5"><span class="text-xs text-muted-foreground">{$t('roleplay.settings.authorNote')}</span><textarea class="ui-input min-h-24 resize-y" value={settings.authorNote ?? ''} oninput={(event) => set('authorNote', event.currentTarget.value)}></textarea></label>
+    <label class="block space-y-1.5" title={$t('roleplay.settings.modesHint')}><span class="text-xs text-muted-foreground">{$t('roleplay.settings.genre')}</span><UiInput  value={settings.genre ?? ''} placeholder={$t('roleplay.settings.genrePlaceholder')} oninput={(event) => set('genre', event.currentTarget.value)} /></label>
+    <label class="block space-y-1.5"><span class="text-xs text-muted-foreground">{$t('roleplay.settings.authorNote')}</span><UiTextarea class={uiClass(" min-h-24 resize-y")} value={settings.authorNote ?? ''} oninput={(event) => set('authorNote', event.currentTarget.value)}></UiTextarea></label>
   {:else if section === 'decisions'}
-    <p class="text-xs text-muted-foreground">{$t('roleplay.settings.decisionsHint')}</p>
-    <div class="grid gap-3 sm:grid-cols-2">
+    <div class="grid gap-3 sm:grid-cols-2" title={$t('roleplay.settings.decisionsHint')}>
       {#each Object.entries(DECISION_DIRECTIONS) as [key, description]}
-        <label class="space-y-1"><span class="text-xs text-muted-foreground" title={description}>{$t('roleplay.settings.directionWeight', { values: { name: $t(`roleplay.direction.${key}`) } })}</span><input class="ui-input" type="number" min="0" max="100" value={settings.decisionWeights?.[key] ?? 0} oninput={(event) => set('decisionWeights', { ...settings.decisionWeights, [key]: Number(event.currentTarget.value) })} /></label>
+        <label class="space-y-1"><span class="text-xs text-muted-foreground" title={description}>{$t('roleplay.settings.directionWeight', { values: { name: $t(`roleplay.direction.${key}`) } })}</span><UiInput  type="number" min="0" max="100" value={settings.decisionWeights?.[key] ?? 0} oninput={(event) => set('decisionWeights', { ...settings.decisionWeights, [key]: Number(event.currentTarget.value) })} /></label>
       {/each}
       {#each ['success', 'cost', 'setback'] as key}
-        <label class="space-y-1"><span class="text-xs text-muted-foreground">{$t('roleplay.settings.outcomeWeight', { values: { name: $t(`roleplay.outcome.${key}`) } })}</span><input class="ui-input" type="number" min="0" max="100" value={settings.outcomeWeights?.[key as 'success' | 'cost' | 'setback'] ?? 0} oninput={(event) => set('outcomeWeights', { ...settings.outcomeWeights, [key]: Number(event.currentTarget.value) })} /></label>
+        <label class="space-y-1"><span class="text-xs text-muted-foreground">{$t('roleplay.settings.outcomeWeight', { values: { name: $t(`roleplay.outcome.${key}`) } })}</span><UiInput  type="number" min="0" max="100" value={settings.outcomeWeights?.[key as 'success' | 'cost' | 'setback'] ?? 0} oninput={(event) => set('outcomeWeights', { ...settings.outcomeWeights, [key]: Number(event.currentTarget.value) })} /></label>
       {/each}
     </div>
   {/if}
   <details class="text-xs text-muted-foreground">
     <summary class="cursor-pointer py-2">{$t('roleplay.settings.presets')}</summary>
     <div class="space-y-2 pt-2">
-      <input class="ui-input" aria-label={$t('roleplay.settings.presetName')} placeholder={$t('roleplay.settings.presetNamePlaceholder')} bind:value={presetName} />
+      <UiInput  aria-label={$t('roleplay.settings.presetName')} placeholder={$t('roleplay.settings.presetNamePlaceholder')} bind:value={presetName} />
       <div class="flex flex-wrap gap-2">
         <Button variant="outline" size="sm" type="button" onclick={savePreset}>{$t('roleplay.settings.saveNew')}</Button>
         <Button variant="outline" size="sm" type="button" onclick={exportPreset}>{$t('roleplay.settings.export')}</Button>
-        <Button variant="outline" size="sm" type="button" onclick={() => importInput.click()}>{$t('roleplay.settings.import')}</Button>
+        <Button variant="outline" size="sm" type="button" onclick={() => importInput?.click()}>{$t('roleplay.settings.import')}</Button>
         {#if roleplayPreferences.saved.some((entry) => entry.id === selectedPreset)}<Button variant="outline" size="sm" type="button" onclick={() => { roleplayPreferences.remove(selectedPreset); selectedPreset = ''; }}>{$t('roleplay.settings.deletePreset')}</Button>{/if}
         <Button variant="outline" size="sm" type="button" onclick={() => { roleplayPreferences.setDefaults(settings); toastStore.info($t('roleplay.settings.defaultsSaved')); }}>{$t('roleplay.settings.useDefaults')}</Button>
         <Button variant="outline" size="sm" type="button" onclick={() => roleplayPreferences.resetDefaults()}>{$t('roleplay.settings.resetDefaults')}</Button>
       </div>
-      <input class="hidden" type="file" accept="application/json,.json" bind:this={importInput} onchange={importPreset} />
+      <UiFileInput class={uiClass("hidden")}  accept="application/json,.json" bind:ref={importInput} onchange={importPreset} />
       <p>{$t('roleplay.settings.inheritHint')}</p>
     </div>
   </details>

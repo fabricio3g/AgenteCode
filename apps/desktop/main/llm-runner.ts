@@ -184,7 +184,7 @@ function templateStatusFor(modelPath: string | null | undefined): { source: stri
 
 export function startLlama(config: Record<string, unknown>, win: BrowserWindow | null | undefined): Promise<string> {
   const signature = JSON.stringify(Object.fromEntries(Object.entries(config).sort(([a], [b]) => a.localeCompare(b))));
-  if (mainLaunch?.signature === signature && (llama.status.state === 'starting' || llama.status.state === 'ready')) return mainLaunch.promise;
+  if (mainLaunch?.signature === signature && (!mainLaunch.settled || llama.status.state === 'ready')) return mainLaunch.promise;
   const previous = mainLaunch;
   const generation = ++launchGeneration;
   // Stop the old child before its credential is replaced; identical callers

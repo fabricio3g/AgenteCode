@@ -1,5 +1,5 @@
 /**
- * The three top-level spaces of the app.
+ * The top-level spaces of the app.
  *
  * Every session (chat) belongs to exactly one space, and a space decides what
  * the UI offers and what the model may do:
@@ -11,13 +11,16 @@
  * - `roleplay` — the character surface: character cards, user personas,
  *   lorebooks and immersive scenes. Direct streaming, no tools. Enabled by
  *   default and always available in the top-bar tabs.
+ * - `design` — the design surface: an agent that writes plain HTML + CSS
+ *   into a per-chat workspace, previewed live on a canvas. No shell, no
+ *   project folder, no network from the preview.
  *
  * This module is the single source of truth for that split. Components read
  * labels and defaults from here; services consult it instead of hard-coding
  * space checks.
  */
 
-export type SpaceId = 'home' | 'code' | 'roleplay';
+export type SpaceId = 'home' | 'code' | 'roleplay' | 'design';
 
 export interface SpaceDefinition {
   id: SpaceId;
@@ -61,10 +64,18 @@ export const SPACES: Record<SpaceId, SpaceDefinition> = {
     defaultComposerMode: 'chat',
     agentProfiles: ['chat'],
     searchModes: ['chat']
+  },
+  design: {
+    id: 'design',
+    label: 'Design',
+    description: 'Design with an agent: HTML and CSS screens, tokens, variants and versions.',
+    defaultComposerMode: 'agent',
+    agentProfiles: ['chat'],
+    searchModes: ['chat']
   }
 };
 
-export const SPACE_IDS: readonly SpaceId[] = ['home', 'code', 'roleplay'];
+export const SPACE_IDS: readonly SpaceId[] = ['home', 'code', 'roleplay', 'design'];
 
 /**
  * Map any persisted or legacy value onto a valid SpaceId.
@@ -78,5 +89,15 @@ export const SPACE_IDS: readonly SpaceId[] = ['home', 'code', 'roleplay'];
 export function normalizeSpace(value: unknown): SpaceId {
   if (value === 'work' || value === 'code') return 'code';
   if (value === 'roleplay') return 'roleplay';
+  if (value === 'design') return 'design';
   return 'home';
+}
+
+/** Resolve persisted composer choices through the space's policy. */
+export function resolveSpaceComposerMode(mode: unknown, space: SpaceId): 'chat' | 'instant' | 'agent' {
+  if (space !== 'home') return SPACES[space].defaultComposerMode;
+  if (mode === 'instant' || mode === 'agent') return mode;
+  // Legacy Chat and Ask converge on Home's Instant mode.
+  if (mode === 'chat' || mode === 'ask') return 'instant';
+  return SPACES[space].defaultComposerMode;
 }

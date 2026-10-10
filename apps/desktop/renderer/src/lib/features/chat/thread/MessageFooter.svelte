@@ -16,6 +16,9 @@
 -->
 
 <script lang="ts">
+  import UiButton from '$lib/components/ui/Button.svelte';
+  import { cn as uiClass } from '$lib/utils/cn';
+
   import { AlertCircle, BriefcaseBusiness, ChevronDown, Download, Globe } from 'lucide-svelte';
   import { slide } from 'svelte/transition';
   import { appStore } from '$lib/stores/app.svelte';
@@ -143,24 +146,24 @@
       {/if}
 
       {#if sourceCount > 0 && !isResearch}
-        <button type="button" class="footer-action" onclick={openSources}>
+        <UiButton variant="plain" type="button" class={uiClass("footer-action", "ui-local-ad308a1a")} onclick={openSources}>
           <Globe class="size-3.5 shrink-0 opacity-70" />
           {#if searchModeLabel}<span class="footer-strong">{searchModeLabel}</span>
             <span class="footer-sep" aria-hidden="true">·</span>{/if}
           <span>{say.sources(sourceCount)}</span>
-        </button>
+        </UiButton>
       {/if}
 
       {#if researchBrief && !isResearch}
-        <button
+        <UiButton variant="plain"
           type="button"
-          class="footer-action"
+          class={uiClass("footer-action", "ui-local-ad308a1a")}
           aria-expanded={briefOpen}
           onclick={() => (briefOpen = !briefOpen)}
         >
           <span class="footer-strong">Research brief</span>
           <ChevronDown class="size-3 shrink-0 opacity-60 transition-transform {briefOpen ? 'rotate-180' : ''}" />
-        </button>
+        </UiButton>
       {/if}
 
       {#if status}
@@ -173,10 +176,10 @@
       {#if exportKinds.length && !isResearch}
         <Menu bind:open={exportMenuOpen} placement="top-start" label="Research exports" minWidth="11rem">
           {#snippet trigger(props)}
-            <button type="button" class="footer-action" {...props}>
+            <UiButton variant="plain" type="button" class={uiClass("footer-action", "ui-local-ad308a1a")} {...props}>
               <Download class="size-3 shrink-0 opacity-70" />
               {copy.actions.export}
-            </button>
+            </UiButton>
           {/snippet}
           {#each exportKinds as kind (kind)}
             <MenuItem label={EXPORT_LABELS[kind]} onselect={() => runExport(kind)} />
@@ -212,7 +215,7 @@
     color: var(--muted-foreground);
   }
 
-  .footer-action {
+  :global(.footer-action.ui-local-ad308a1a) {
     display: inline-flex;
     align-items: center;
     gap: 0.3rem;
@@ -225,8 +228,8 @@
     transition: color 0.15s ease;
   }
 
-  .footer-action:hover,
-  .footer-action:focus-visible {
+  :global(.footer-action:hover.ui-local-ad308a1a),
+  :global(.footer-action:focus-visible.ui-local-ad308a1a) {
     color: var(--foreground);
     outline: none;
   }
@@ -251,8 +254,8 @@
   }
 
   .footer-pill.work {
-    color: var(--work-accent-strong);
-    background: var(--work-accent-soft);
+    color: var(--muted-foreground);
+    background: var(--muted);
   }
 
   .footer-warning {

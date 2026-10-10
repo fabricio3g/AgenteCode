@@ -12,6 +12,11 @@
 -->
 
 <script lang="ts">
+  import IconButton from '$lib/components/ui/IconButton.svelte';
+
+  import UiButton from '$lib/components/ui/Button.svelte';
+  import { cn as uiClass } from '$lib/utils/cn';
+
   import { t } from 'svelte-i18n';
   import { Bot, Copy, ListChecks, Square, Telescope } from 'lucide-svelte';
   import type { CodeChild } from '$shared/agente-protocol';
@@ -27,7 +32,7 @@
   import CodeStepRow from './CodeStepRow.svelte';
   import CodeErrorNotice from './CodeErrorNotice.svelte';
   import Disclosure from './Disclosure.svelte';
-  import TileMeter from './TileMeter.svelte';
+  import TileMeter from '$lib/components/ui/TileMeter.svelte';
   import { childActivity, childElapsedMs } from './subagent-row';
   import { spendCostLabel, spendLabel } from './accounting';
 
@@ -147,13 +152,13 @@
 
   {#snippet actions()}
     {#if running && !pending && !stopping}
-      <button
+      <IconButton label={$t('code.stopSubagent')} size="xs" variant="ghost"
         type="button"
-        class="card-action stop-action"
+        class={uiClass("card-action stop-action", "ui-local-b304b300")}
         title={$t('code.stopSubagent')}
-        aria-label={$t('code.stopSubagent')}
+
         onclick={stop}
-      ><Square class="size-3" /></button>
+      ><Square class="size-3" /></IconButton>
     {/if}
   {/snippet}
 
@@ -165,7 +170,7 @@
           <RichContent content={reply} status={streamStatus} />
         </ClampedBlock>
         {#if !running}
-          <button type="button" class="card-action" onclick={copyText}><Copy class="size-3" />{copy.actions.copy}</button>
+          <UiButton variant="plain" type="button" class={uiClass("card-action", "ui-local-b304b300")} onclick={copyText}><Copy class="size-3" />{copy.actions.copy}</UiButton>
         {/if}
       </div>
     {/if}
@@ -229,7 +234,7 @@
   .live.text-error {
     color: var(--error);
   }
-  .live:not(.text-error) :global(.tile-meter) {
+  .live:not(.text-error) :global(.tile-rain) {
     color: var(--work-accent);
   }
   /* The footer: how much work, on what, at what cache rate. */
@@ -256,7 +261,7 @@
     background: currentColor;
     opacity: 0.45;
   }
-  .card-action {
+  :global(.card-action.ui-local-b304b300) {
     display: inline-flex;
     align-items: center;
     gap: 0.375rem;
@@ -266,19 +271,18 @@
     font-size: var(--text-xs);
     transition: color var(--motion-fast) var(--motion-ease);
   }
-  .card-action:hover,
-  .card-action:focus-visible {
+  :global(.card-action:hover.ui-local-b304b300),
+  :global(.card-action:focus-visible.ui-local-b304b300) {
     color: var(--foreground);
   }
   /* Stop is an action, not a row: an icon with a button's edges, on the card's
      first line, so a runaway child dies without opening it. */
-  .stop-action {
+  :global(.stop-action.ui-local-b304b300) {
     align-self: flex-start;
-    border: 1px solid var(--border);
     padding: 0.1875rem;
   }
-  .stop-action:hover,
-  .stop-action:focus-visible {
+  :global(.stop-action:hover.ui-local-b304b300),
+  :global(.stop-action:focus-visible.ui-local-b304b300) {
     background: var(--surface-hover);
   }
 </style>

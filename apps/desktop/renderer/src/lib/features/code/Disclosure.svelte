@@ -15,6 +15,9 @@
 -->
 
 <script lang="ts">
+  import UiButton from '$lib/components/ui/Button.svelte';
+  import { cn as uiClass } from '$lib/utils/cn';
+
   import type { Snippet } from 'svelte';
   import { ChevronRight } from 'lucide-svelte';
   import { disclosure } from './disclosure.svelte';
@@ -66,9 +69,9 @@
 
 <div class="disclosure level-{level}" class:is-card={variant === 'card'}>
   <div class="row">
-    <button
+    <UiButton variant="plain"
       type="button"
-      class="head"
+      class={uiClass("head", "ui-local-2c22291d")}
       aria-expanded={expandable ? open : undefined}
       disabled={!expandable && !onActivate}
       onclick={toggle}
@@ -76,7 +79,7 @@
       {#if expandable && chevron === 'leading'}<ChevronRight class="chev size-3.5 shrink-0 {open ? 'rotate-90' : ''}" />{/if}
       {@render header()}
       {#if expandable && chevron === 'trailing'}<ChevronRight class="chev size-3.5 shrink-0 {open ? 'rotate-90' : ''}" />{/if}
-    </button>
+    </UiButton>
     {#if actions}{@render actions()}{/if}
   </div>
   {#if expandable && open && body}
@@ -90,7 +93,7 @@
     min-width: 0;
     align-items: center;
   }
-  .head {
+  :is(.head, :global(.head.ui-local-2c22291d)) {
     display: flex;
     min-width: 0;
     flex: 1;
@@ -99,22 +102,22 @@
     color: var(--muted-foreground);
     transition: color var(--motion-fast) var(--motion-ease);
   }
-  .head:not(:disabled):hover,
-  .head:focus-visible {
+  :is(.head:not(:disabled):hover, :global(.head:not(:disabled):hover.ui-local-2c22291d)),
+  :is(.head:focus-visible, :global(.head:focus-visible.ui-local-2c22291d)) {
     color: var(--foreground);
   }
-  .head:disabled {
+  :is(.head:disabled, :global(.head:disabled.ui-local-2c22291d)) {
     cursor: default;
   }
   /* The chevron is a lucide component: its svg carries no scope class of ours,
      so every rule that reaches it goes through :global. */
-  .head :global(.chev) {
+  :is(.head, :global(.head.ui-local-2c22291d)) :global(.chev) {
     opacity: 0;
     transition: transform var(--motion-fast) var(--motion-ease), opacity var(--motion-fast) var(--motion-ease);
   }
-  .head:hover :global(.chev),
-  .head:focus-visible :global(.chev),
-  .head[aria-expanded='true'] :global(.chev) {
+  :is(.head:hover, :global(.head:hover.ui-local-2c22291d)) :global(.chev),
+  :is(.head:focus-visible, :global(.head:focus-visible.ui-local-2c22291d)) :global(.chev),
+  :global(.head[aria-expanded='true'].ui-local-2c22291d) :global(.chev) {
     opacity: 1;
   }
   /* A block and a subagent are structural: their chevron is always in view. */
@@ -122,17 +125,17 @@
   .level-subagent :global(.chev) {
     opacity: 0.55;
   }
-  .level-block .head:hover :global(.chev),
-  .level-block .head:focus-visible :global(.chev),
-  .level-block .head[aria-expanded='true'] :global(.chev),
-  .level-subagent .head:hover :global(.chev),
-  .level-subagent .head:focus-visible :global(.chev),
-  .level-subagent .head[aria-expanded='true'] :global(.chev) {
+  .level-block :is(.head:hover, :global(.head:hover.ui-local-2c22291d)) :global(.chev),
+  .level-block :is(.head:focus-visible, :global(.head:focus-visible.ui-local-2c22291d)) :global(.chev),
+  .level-block :global(.head[aria-expanded='true'].ui-local-2c22291d) :global(.chev),
+  .level-subagent :is(.head:hover, :global(.head:hover.ui-local-2c22291d)) :global(.chev),
+  .level-subagent :is(.head:focus-visible, :global(.head:focus-visible.ui-local-2c22291d)) :global(.chev),
+  .level-subagent :global(.head[aria-expanded='true'].ui-local-2c22291d) :global(.chev) {
     opacity: 1;
   }
   /* ── L1: the run of work between two pieces of prose ─────────────────── */
   /* A header, not a row: smaller and dimmer than everything it holds. */
-  .level-block > .row > .head {
+  .level-block > .row > :global(.head.ui-local-2c22291d) {
     gap: 0.375rem;
     padding: 0.3125rem 0.5rem;
     border-radius: 0.5rem;
@@ -151,7 +154,7 @@
   }
 
   /* ── L2: one tool call ───────────────────────────────────────────────── */
-  .level-step > .row > .head {
+  .level-step > .row > :global(.head.ui-local-2c22291d) {
     gap: 0.5rem;
     padding: 0.3125rem 0.5rem;
     border-radius: 0.5rem;
@@ -165,7 +168,7 @@
   }
 
   /* ── L2: a subagent, which is an agent and not a call ────────────────── */
-  .level-subagent > .row > .head {
+  .level-subagent > .row > :global(.head.ui-local-2c22291d) {
     gap: 0.5rem;
     padding: 0.375rem 0.5rem;
     border-radius: 0.5rem;
@@ -200,7 +203,7 @@
     gap: 0.5rem;
   }
   /* The action column and the head are one line of the card's own column. */
-  .disclosure.is-card > .row > .head {
+  .disclosure.is-card > .row > :global(.head.ui-local-2c22291d) {
     padding: 0;
     border-radius: 0;
   }
@@ -211,7 +214,7 @@
   }
 
   /* ── Lq: what the model thought, the quietest row on the page ────────── */
-  .level-thought > .row > .head {
+  .level-thought > .row > :global(.head.ui-local-2c22291d) {
     gap: 0.5rem;
     padding: 0.3125rem 0.5rem;
     border-radius: 0.5rem;

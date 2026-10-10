@@ -9,6 +9,8 @@
 -->
 
 <script lang="ts">
+  import { cn as uiClass } from '$lib/utils/cn';
+
   import { onMount } from 'svelte';
   import { t } from 'svelte-i18n';
   import { RefreshCw } from 'lucide-svelte';
@@ -145,10 +147,10 @@
       <p class="empty">{$t('code.project.needsProject')}</p>
     {:else if section === 'skills' && info}
       {#each [...info.skills, ...info.commands] as item (item.name)}
-        <button type="button" class="row w-full text-left" onclick={() => insert(item.name)}>
+        <Button variant="plain" type="button" class={uiClass("row w-full text-left", "ui-local-323c2339")} onclick={() => insert(item.name)}>
           <span class="text-[12.5px] text-foreground">/{item.name}</span>
           <span class="row-detail">{item.description}</span>
-        </button>
+        </Button>
       {:else}
         <p class="empty">{$t('code.project.skills.empty')}</p>
       {/each}
@@ -166,7 +168,7 @@
           </div>
           <div class="agent-pick">
             <BotModelPicker compact value={pin} onchange={(next) => chooseModel(agent.name, next)} />
-            {#if pin}<button type="button" class="agent-reset" onclick={() => chooseModel(agent.name, null)}>{$t('code.project.agents.reset')}</button>{/if}
+            {#if pin}<Button variant="plain" type="button" class={uiClass("agent-reset", "ui-local-323c2339")} onclick={() => chooseModel(agent.name, null)}>{$t('code.project.agents.reset')}</Button>{/if}
           </div>
         </div>
       {/each}
@@ -192,33 +194,30 @@
       <div class="flex justify-end px-2 pt-2"><Button size="sm" variant="ghost" onclick={() => load()}><RefreshCw /> {$t('code.project.mcp.refresh')}</Button></div>
     {:else if section === 'sessions'}
       {#each sessions.filter((session) => !session.profile) as session (session.session_id)}
-        <button type="button" class="row w-full text-left" onclick={() => { void codeStore.importSession(session).then(onclose).catch((cause) => (error = String(cause))); }}>
+        <Button variant="plain" type="button" class={uiClass("row w-full text-left", "ui-local-323c2339")} onclick={() => { void codeStore.importSession(session).then(onclose).catch((cause) => (error = String(cause))); }}>
           <span class="block truncate text-[13px] font-medium text-foreground">{session.title || session.first_prompt || session.session_id}</span>
           <span class="row-detail block truncate">{session.project_dir} · {$t('code.project.sessions.messages', { values: { n: session.message_count || 0 } })}</span>
-        </button>
+        </Button>
       {:else}
         <p class="empty">{$t('code.project.sessions.empty')}</p>
       {/each}
     {:else if section === 'settings'}
       <h3 class="group">{$t('code.project.settings.context')}</h3>
-      <div class="row">
+      <div class="row" title={$t('code.project.settings.smartCompactionHint')}>
         <span class="min-w-0 flex-1">
           <span class="row-title">{$t('code.project.settings.smartCompaction')}</span>
-          <span class="row-detail block">{$t('code.project.settings.smartCompactionHint')}</span>
         </span>
         <Switch label={$t('code.project.settings.smartCompaction')} bind:checked={settings.smart_compaction} />
       </div>
-      <div class="row">
+      <div class="row" title={$t('code.compaction.modelHint')}>
         <span class="min-w-0 flex-1">
           <span class="row-title">{$t('code.compaction.model')}</span>
-          <span class="row-detail block">{$t('code.compaction.modelHint')}</span>
         </span>
         <div class="model-cell"><BotModelPicker compact bind:value={settings.compaction_model} /></div>
       </div>
-      <div class="row">
+      <div class="row" title={$t('code.compaction.settingsHint')}>
         <span class="min-w-0 flex-1">
           <span class="row-title">{$t('code.project.settings.compactNow')}</span>
-          <span class="row-detail block">{$t('code.compaction.settingsHint')}</span>
         </span>
         <div class="flex shrink-0 gap-1.5">
           <Button size="sm" variant="outline" disabled={compacting || !!run?.running} loading={compacting} onclick={() => compactNow(true)}>{$t('code.compaction.smartNow')}</Button>
@@ -240,7 +239,7 @@
           <Switch label={$t(`code.project.settings.${kind}`)} checked={settings.allow_media.includes(kind)} onchange={(on) => toggleMedia(kind, on)} />
         </div>
       {/each}
-      <p class="save-state" role="status" aria-live="polite">{saveState === 'saving' ? $t('code.project.settings.saving') : saveState === 'saved' ? $t('code.project.settings.saved') : $t('code.project.settings.auto')}</p>
+      <p class="save-state" role="status" aria-live="polite">{saveState === 'saving' ? $t('code.project.settings.saving') : saveState === 'saved' ? $t('code.project.settings.saved') : ''}</p>
     {/if}
   </div>
 </Dialog>
@@ -255,14 +254,14 @@
   .agent-row.is-default + .agent-row { border-top: 0; }
   .agent-name { font-size: 13px; font-weight: 500; color: var(--foreground); }
   .agent-pick { display: flex; min-width: 0; flex-direction: column; align-items: flex-end; gap: 0.125rem; }
-  .agent-reset { font-size: var(--text-xs); color: var(--muted-foreground); }
-  .agent-reset:hover { color: var(--foreground); text-decoration: underline; text-underline-offset: 2px; }
+  :global(.agent-reset.ui-local-323c2339) { font-size: var(--text-xs); color: var(--muted-foreground); }
+  :global(.agent-reset:hover.ui-local-323c2339) { color: var(--foreground); text-decoration: underline; text-underline-offset: 2px; }
   .clamp-2 { display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
   @media (max-width: 560px) { .agent-row { grid-template-columns: minmax(0, 1fr); } .agent-pick { justify-items: stretch; } }
   .row-title { font-size: 13px; color: var(--foreground); }
   .save-state { padding: 1rem 0.625rem 0.25rem; font-size: var(--text-xs); color: var(--muted-foreground); }
 
-  .row {
+  :is(.row, :global(.row.ui-local-323c2339)) {
     display: flex;
     min-width: 0;
     align-items: center;
@@ -270,12 +269,12 @@
     border-radius: 0.625rem;
     padding: 0.5rem 0.625rem;
   }
-  button.row {
+  :global(button.row.ui-local-323c2339) {
     flex-direction: column;
     align-items: flex-start;
     gap: 0.125rem;
   }
-  button.row:hover { background: var(--surface-hover); }
+  :global(button.row:hover.ui-local-323c2339) { background: var(--surface-hover); }
   .row-detail {
     font-size: 12px;
     line-height: 1.45;

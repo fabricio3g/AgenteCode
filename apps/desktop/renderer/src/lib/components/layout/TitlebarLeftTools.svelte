@@ -7,6 +7,9 @@
 -->
 
 <script lang="ts">
+  import UiIconButton from '$lib/components/ui/IconButton.svelte';
+  import { cn as uiClass } from '$lib/utils/cn';
+
   import { t } from 'svelte-i18n';
   import { PanelLeftClose, PanelLeftOpen, Search, SlidersHorizontal } from 'lucide-svelte';
   import Tooltip from '$lib/components/ui/Tooltip.svelte';
@@ -26,8 +29,8 @@
 
 <div class="flex min-w-0 items-center gap-0.5 pl-1.5" style={isMac ? 'padding-left: 78px;' : ''}>
   <Tooltip label={toggleLabel} shortcut="mod+b">
-    <button
-      class="ui-icon-button titlebar-no-drag"
+    <UiIconButton label={toggleLabel} size="sm"
+      class={uiClass(" titlebar-no-drag")}
       data-sidebar-toggle
       onclick={onToggle}
       onpointerenter={onEnter}
@@ -35,22 +38,22 @@
       aria-controls="app-sidebar"
       aria-expanded={expanded}
       aria-pressed={appStore.sidebarOpen}
-      aria-label={toggleLabel}
+
     >
       {#if appStore.sidebarOpen}<PanelLeftClose class="size-4" />{:else}<PanelLeftOpen class="size-4" />{/if}
-    </button>
+    </UiIconButton>
   </Tooltip>
   <Tooltip label={$t('titlebar.search')} shortcut="mod+shift+k">
-    <button class="ui-icon-button titlebar-no-drag titlebar-secondary" onclick={() => appStore.openSearch()} aria-label={$t('titlebar.search')}>
+    <UiIconButton label={$t('titlebar.search')} size="sm" class={uiClass(" titlebar-no-drag titlebar-secondary")} onclick={() => appStore.openSearch()} >
       <Search class="size-4" />
-    </button>
+    </UiIconButton>
   </Tooltip>
   <!-- Local-engine tuning (context length, GPU layers…): a cloud model has none. -->
   {#if appStore.backendMode !== 'api'}
     <Tooltip label={$t('titlebar.llmSettings')}>
-      <button class="ui-icon-button titlebar-no-drag titlebar-secondary" onclick={() => (appStore.llmDrawerOpen = true)} aria-label={$t('titlebar.llmSettings')}>
+      <UiIconButton label={$t('titlebar.llmSettings')} size="sm" class={uiClass(" titlebar-no-drag titlebar-secondary")} onclick={() => (appStore.llmDrawerOpen = true)} >
         <SlidersHorizontal class="size-4" />
-      </button>
+      </UiIconButton>
     </Tooltip>
   {/if}
 </div>

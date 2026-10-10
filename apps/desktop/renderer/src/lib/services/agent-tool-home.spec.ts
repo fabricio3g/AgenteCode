@@ -22,6 +22,29 @@ function deps(attachments: HomeAttachment[], over: Partial<HomeToolDeps> = {}): 
 }
 
 describe('documents', () => {
+  it('reads the saved OCR extraction instead of reparsing the original scan', async () => {
+    const dataUrlBytes = vi.fn(async () => new ArrayBuffer(0));
+    const d = deps([{ id: 'scan', name: 'scan.pdf', type: 'application/pdf', docId: 'indexed-scan', data: 'data:pdf,invalid' }], {
+      dataUrlBytes,
+      readIngested: async () => ({ text: '## Page 1\n\nFirst page\n\n## Page 2\n\nInvoice total 42', file_type: 'pdf', warning: 'Some visual content is unreadable' })
+    });
+    const result = await runHomeTool('read_document', { range: '2' }, ctx, d);
+    expect(result?.success).toBe(true);
+    expect(result?.output).toMatchObject({ returned: ['page 2'], warning: 'Some visual content is unreadable' });
+    expect((result?.output as { content: string }).content).toContain('Invoice total 42');
+    expect(dataUrlBytes).not.toHaveBeenCalled();
+  });
+
+  it('reads an indexed transcript as a source document and reuses it for transcription', async () => {
+    const transcribe = vi.fn(async () => 'must not be called');
+    const d = deps([{ id: 'audio', name: 'meeting.mp3', type: 'audio/mpeg', docId: 'transcript', data: 'data:audio,bytes' }], {
+      transcribe, readIngested: async () => ({ text: '## Transcript 00:00:30\n\nDelivery date is Monday.', file_type: 'audio' })
+    });
+    expect((await runHomeTool('read_document', {}, ctx, d))?.success).toBe(true);
+    expect((await runHomeTool('transcribe_audio', {}, ctx, d))?.output).toMatchObject({ source: 'meeting.mp3', text: '## Transcript 00:00:30\n\nDelivery date is Monday.' });
+    expect(transcribe).not.toHaveBeenCalled();
+  });
+
   it('reads CSV with sheet selection and extracts its table', async () => {
     const att = [{ id: 'a', name: 'sales.csv', type: 'text/csv', data: 'data:text/csv,a%2Cb%0A1%2C2%0A3%2C4' }];
     const read = await runHomeTool('read_document', {}, ctx, deps(att));
@@ -38,6 +61,27 @@ describe('documents', () => {
     const out = r?.output as { content: string; truncated: boolean };
     expect(out.truncated).toBe(true);
     expect(out.content.length).toBeLessThanOrEqual(500);
+  });
+
+  it('continues inside a long document instead of repeating its first unit', async () => {
+    const body = 'First part '.repeat(100) + 'Last source fact: 42.';
+    const d = deps([{ id: 'long', name: 'long.txt', type: 'text/plain', docId: 'long' }], {
+      readIngested: async () => ({ text: body, file_type: 'text' })
+    });
+    const first = (await runHomeTool('read_document', { max_chars: 500 }, ctx, d))?.output as { content: string; next_offset: number };
+    const second = (await runHomeTool('read_document', { max_chars: 1000, offset: first.next_offset }, ctx, d))?.output as { content: string; truncated: boolean };
+    expect(first.next_offset).toBe(500);
+    expect(first.content + second.content).toBe(body);
+    expect(second.truncated).toBe(false);
+  });
+
+  it('continues spreadsheet rows past the first output window', async () => {
+    const csv = 'Row,Total\n' + Array.from({ length: 100 }, (_, i) => `${i + 1},${i + 1}`).join('\n');
+    const d = deps([{ id: 'data', name: 'data.csv', type: 'text/csv', data: `data:text/csv,${encodeURIComponent(csv)}` }]);
+    const first = (await runHomeTool('extract_tables', { max_rows: 60 }, ctx, d))?.output as { tables: Array<{ nextRowOffset: number }> };
+    const second = (await runHomeTool('extract_tables', { max_rows: 60, row_offset: first.tables[0].nextRowOffset }, ctx, d))?.output as { tables: Array<{ rows: string[][]; rowsTruncated: boolean }> };
+    expect(second.tables[0].rows.at(-1)).toEqual(['100', '100']);
+    expect(second.tables[0].rowsTruncated).toBe(false);
   });
 
   it('reads docx paragraphs and tables', async () => {

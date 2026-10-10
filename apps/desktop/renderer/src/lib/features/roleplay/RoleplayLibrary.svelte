@@ -10,6 +10,7 @@
 <script lang="ts">
   import { Button } from '$lib/components/ui';
   import { Plus } from 'lucide-svelte';
+  import { t } from 'svelte-i18n';
   import type { CharacterCard, RoleplayWorld, UserPersona } from '$lib/types/chat';
   import CharacterGallery from './CharacterGallery.svelte';
   import WorldGallery from './WorldGallery.svelte';
@@ -20,6 +21,7 @@
 
   interface Props {
     onpickCharacter: (character: CharacterCard) => void;
+    oncustomizeCharacter: (character: CharacterCard) => void;
     oneditCharacter: (character: CharacterCard) => void;
     onnewCharacter: () => void;
     onpickWorld: (world: RoleplayWorld) => void;
@@ -34,6 +36,7 @@
 
   let {
     onpickCharacter,
+    oncustomizeCharacter,
     oneditCharacter,
     onnewCharacter,
     onpickWorld,
@@ -45,25 +48,25 @@
     shelf = $bindable<Shelf>('characters')
   }: Props = $props();
 
-  const tabs: Array<{ id: Shelf; label: string }> = [
-    { id: 'worlds', label: 'Worlds' },
-    { id: 'characters', label: 'Characters' },
-    { id: 'personas', label: 'Personas' }
-  ];
+  const tabs = $derived<Array<{ id: Shelf; label: string }>>([
+    { id: 'worlds', label: $t('roleplay.library.shelf.worlds') },
+    { id: 'characters', label: $t('roleplay.library.shelf.characters') },
+    { id: 'personas', label: $t('roleplay.library.shelf.personas') }
+  ]);
 </script>
 
 <div class="roleplay-library flex min-h-0 min-w-0 flex-1 flex-col">
-  <div class="mx-auto flex w-full flex-wrap items-center gap-2 px-6 pt-4" style="max-width: var(--thread-width);">
-    <SegmentedControl value={shelf} options={tabs.map((tab) => ({ value: tab.id, label: tab.label }))} label="Roleplay library" variant="tabs" onchange={(value) => (shelf = value as Shelf)} />
+  <div class="library-header">
+    <SegmentedControl value={shelf} options={tabs.map((tab) => ({ value: tab.id, label: tab.label }))} label={$t('roleplay.library.title')} variant="tabs" shape="rect" onchange={(value) => (shelf = value as Shelf)} />
     <span class="flex-1"></span>
-    <Button variant="default" size="sm" type="button" onclick={onnewScene}><Plus /> New scene</Button>
+    <Button variant="outline" type="button" onclick={onnewScene}><Plus /> {$t('roleplay.library.newScene')}</Button>
   </div>
 
-  <div class="library-scroll min-h-0 flex-1 overflow-y-auto pt-3">
+  <div class="library-scroll min-h-0 flex-1 overflow-y-auto">
     {#if shelf === 'worlds'}
       <WorldGallery onpick={onpickWorld} onedit={oneditWorld} onnew={onnewWorld} />
     {:else if shelf === 'characters'}
-      <CharacterGallery onpick={onpickCharacter} onedit={oneditCharacter} onnew={onnewCharacter} />
+      <CharacterGallery onpick={onpickCharacter} oncustomize={oncustomizeCharacter} onedit={oneditCharacter} onnew={onnewCharacter} />
     {:else}
       <PersonaGallery onedit={oneditPersona} onnew={onnewPersona} />
     {/if}
@@ -71,9 +74,45 @@
 </div>
 
 <style>
-  .roleplay-library { container-type:inline-size; }
-  .library-scroll { display:flex;flex-direction:column; }
-  :global(.library-shelf) { display:flex;flex-direction:column;flex:1;min-height:0; }
-  :global(.library-grid) { display:grid;grid-template-columns:minmax(0,1fr);gap:0.625rem; }
-  @container (min-width:38rem) { :global(.library-grid) { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+  .roleplay-library { container-type: inline-size; }
+  .library-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.75rem;
+    width: 100%;
+    max-width: var(--thread-width);
+    margin: 0 auto;
+    padding: 1rem 1.5rem;
+    flex-shrink: 0;
+  }
+  .library-scroll {
+    display: flex;
+    flex-direction: column;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable both-edges;
+  }
+  .roleplay-library :global(.library-shelf) {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+    width: 100%;
+    max-width: var(--thread-width);
+    margin: 0 auto;
+    padding: 0 1.5rem 1.5rem;
+  }
+  .roleplay-library :global(.library-grid) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.75rem;
+  }
+  @container (min-width: 38rem) {
+    .roleplay-library :global(.library-grid) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
+  @container (max-width: 28rem) {
+    .library-header { padding-inline: 1rem; }
+    .roleplay-library :global(.library-shelf) { padding-inline: 1rem; }
+  }
 </style>

@@ -1,143 +1,43 @@
 <svelte:options runes={true} />
-
 <script lang="ts">
   import type { DashboardArtifactPayload } from '$lib/types/chat';
   import { resolveArtifactAccent } from './artifact-accent';
-
-  interface Props {
-    payload: DashboardArtifactPayload;
-  }
-
-  let { payload }: Props = $props();
+  import ChartBlock from '$lib/features/chat/ChartBlock.svelte';
+  let { payload }: { payload: DashboardArtifactPayload } = $props();
 </script>
-
-<section class="artifact-dashboard" aria-label={payload.title || 'Dashboard'}>
-  <header class="dashboard-header">
-    <h3>{payload.title}</h3>
-    {#if payload.subtitle}<p>{payload.subtitle}</p>{/if}
-  </header>
-
+<section class="viz-surface artifact-dashboard" aria-label={payload.title || 'Dashboard'}>
+  <header class="viz-header"><div><h3 class="viz-title">{payload.title}</h3>{#if payload.subtitle}<p class="viz-subtitle">{payload.subtitle}</p>{/if}</div></header>
   {#if payload.metrics?.length}
-    <div class="metrics-grid">
-      {#each payload.metrics as metric}
-        <div class="metric" style={`--metric-accent:${resolveArtifactAccent(metric.color)}`}>
-          <div class="metric-label">{metric.label || 'Metric'}</div>
-          <div class="metric-value">
-            {metric.value ?? '-'}{#if metric.unit}<span>{metric.unit}</span>{/if}
-          </div>
-          {#if metric.trend}<div class="metric-trend">{metric.trend}</div>{/if}
+    <dl class="metrics-strip">
+      {#each payload.metrics as metric, index (index)}
+        <div class="metric" style:--metric-accent={resolveArtifactAccent(metric.color)}>
+          <dd class="metric-value">{metric.value ?? '—'}{#if metric.unit}<span>{metric.unit}</span>{/if}</dd>
+          <dt class="metric-label">{metric.label || 'Metric'}</dt>
+          {#if metric.trend}<dd class="metric-trend">{metric.trend}</dd>{/if}
         </div>
       {/each}
-    </div>
+    </dl>
   {/if}
-
+  {#each payload.charts ?? [] as chart, index (index)}
+    <ChartBlock type={chart.chartType} title={chart.title} raw={JSON.stringify(chart)} variant="artifact" />
+  {/each}
   {#if payload.sections?.length}
     <div class="dashboard-sections">
-      {#each payload.sections as section}
-        <article class="dashboard-section">
-          {#if section.heading}<h4>{section.heading}</h4>{/if}
-          {#if section.content}<p>{section.content}</p>{/if}
-        </article>
+      {#each payload.sections as section, index (index)}
+        <article>{#if section.heading}<h4 class="viz-title">{section.heading}</h4>{/if}{#if section.content}<p>{section.content}</p>{/if}</article>
       {/each}
     </div>
   {/if}
 </section>
-
 <style>
-  .artifact-dashboard {
-    width: var(--inline-block-width);
-    max-width: 100%;
-    margin-top: 0.65rem;
-    padding: 0.85rem 0.95rem;
-    border: 0;
-    border-radius: var(--artifact-radius);
-    background: var(--artifact-surface);
-    box-shadow: var(--artifact-elev);
-    color: var(--text);
-  }
-
-  .dashboard-header {
-    margin-bottom: 0.85rem;
-  }
-
-  .dashboard-header h3 {
-    margin: 0;
-    font-size: 1rem;
-    font-weight: 700;
-    color: var(--text);
-  }
-
-  .dashboard-header p {
-    margin: 0.18rem 0 0;
-    color: var(--text-secondary);
-    font-size: 0.82rem;
-  }
-
-  .metrics-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr));
-    gap: 0.65rem;
-  }
-
-  .metric {
-    position: relative;
-    padding: 0.7rem 0.65rem;
-    border-radius: var(--radius-sm);
-    background: color-mix(in srgb, var(--chat-bg) 45%, transparent);
-  }
-
-  .metric::before {
-    content: '';
-    display: block;
-    width: 2.1rem;
-    height: 2px;
-    margin-bottom: 0.5rem;
-    background: var(--metric-accent);
-  }
-
-  .metric-label {
-    color: var(--text-secondary);
-    font-size: var(--text-xs);
-    font-weight: 650;
-  }
-
-  .metric-value {
-    margin-top: 0.18rem;
-    font-size: 1.45rem;
-    font-weight: 760;
-    line-height: 1.05;
-  }
-
-  .metric-value span {
-    margin-left: 0.25rem;
-    color: var(--text-muted);
-    font-size: 0.75rem;
-    font-weight: 600;
-  }
-
-  .metric-trend {
-    margin-top: 0.25rem;
-    color: var(--text-secondary);
-    font-size: 0.75rem;
-    font-weight: 600;
-  }
-
-  .dashboard-sections {
-    display: grid;
-    gap: 0.8rem;
-    margin-top: 0.95rem;
-  }
-
-  .dashboard-section h4 {
-    margin: 0 0 0.25rem;
-    font-size: 0.86rem;
-    font-weight: 680;
-  }
-
-  .dashboard-section p {
-    margin: 0;
-    color: var(--text-secondary);
-    font-size: 0.86rem;
-    line-height: 1.55;
-  }
+  .metrics-strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(6.5rem, 1fr)); margin: 0; border-block: 1px solid var(--border-subtle); }
+  .metric { min-width: 0; padding: 0.75rem 0.875rem; border-right: 1px solid var(--border-subtle); border-radius: 0; background: transparent; }
+  .metric:first-child { padding-left: 0; } .metric:last-child { border-right: 0; }
+  .metric dd { margin: 0; }
+  .metric-value { color: var(--foreground); font-size: calc(var(--text-base) * 1.4); font-weight: 600; letter-spacing: -0.035em; line-height: 1.2; overflow-wrap: anywhere; }
+  .metric-value span { margin-left: 0.2rem; font-size: var(--text-sm); font-weight: 400; color: var(--text-secondary); }
+  .metric-label { margin-top: 0.3rem; color: var(--text-secondary); font-size: var(--text-xs); line-height: 1.4; }
+  .metric .metric-trend { margin-top: 0.375rem; color: var(--metric-accent); font-size: var(--text-xs); font-weight: 500; }
+  .dashboard-sections { display: grid; gap: 1rem; margin-top: 1.125rem; }
+  .dashboard-sections p { margin: 0.3rem 0 0; color: var(--text-secondary); font-size: var(--text-sm); line-height: 1.6; }
 </style>

@@ -10,6 +10,7 @@
   import type { ChatContextMode, ChatMessage, SearchMeta } from '$lib/types/chat';
   import { appStore } from '$lib/stores/app.svelte';
   import { deepResearchStore } from '$lib/stores/deep-research.svelte';
+  import { roleplayStore } from '$lib/features/roleplay/roleplay.svelte';
   import { sanitizeAssistantVisibleText } from '$lib/utils/assistant-visible';
   import AssistantMessage from './AssistantMessage.svelte';
   import UserMessage from './UserMessage.svelte';
@@ -42,11 +43,13 @@
   const rawContent = $derived(voiceBuffered ? voiceText.visible[message.id] ?? '' : activeVersion?.content || message.content || '');
   // Assistant text is sanitized once settled; mid-stream it is left alone so the
   // sanitizer never truncates a partial construct it hasn't seen the end of.
-  const displayContent = $derived(
+  // Roleplay macros resolve last, against this message: stored text stays raw.
+  const displayContent = $derived(roleplayStore.displayText(
     message.role === 'assistant' && !isStreaming
       ? sanitizeAssistantVisibleText(rawContent)
-      : rawContent
-  );
+      : rawContent,
+    { messageId: message.id }
+  ));
   const displayReasoning = $derived(activeVersion?.reasoning || message.reasoning || '');
   const displayMetadata = $derived(activeVersion?.metadata || message.metadata || null);
 

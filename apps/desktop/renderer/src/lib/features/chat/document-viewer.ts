@@ -32,6 +32,7 @@ export function pickDocumentViewer(doc: DocumentSurfaceItem | null | undefined):
   if (!doc) return 'unsupported';
   const source = documentSource(doc);
   const kind = getViewerKind(doc.name, doc.type || '');
+  if ((documentExtension(doc.name) === 'html' || documentExtension(doc.name) === 'htm') && (doc.previewHtml || doc.content || source)) return 'html';
   // A real .pptx is drawn from the file itself; the saved deck outline is
   // only the fallback when there are no bytes to draw.
   if (kind === 'pptx' && doc.dataUrl) return 'pptx';

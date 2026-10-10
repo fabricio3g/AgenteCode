@@ -14,6 +14,9 @@ export type ModelHubRoute = {
   modelTab?: ModelHubTab;
 };
 
+/** Model tabs and settings share the navigation rail, but have distinct identities. */
+export type SettingsNavigationSection = ModelHubRoute['section'];
+
 const MODEL_HUB_SECTIONS = new Set<ModelHubSection>([
   'models',
   'explore',

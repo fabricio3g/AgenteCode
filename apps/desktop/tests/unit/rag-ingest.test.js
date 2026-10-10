@@ -84,6 +84,35 @@ after(() => {
 });
 
 describe('document ingest', () => {
+  it('stores OCR with the original file, reuses it, and keeps reading warnings', async (t) => {
+    if (sqliteUnavailable) { t.skip(`better-sqlite3 unavailable: ${sqliteUnavailable}`); return; }
+    const scan = path.join(tempDir, 'scan.pdf');
+    fs.writeFileSync(scan, 'synthetic scan bytes');
+    const extracted = '## Page 1\n\nInvoice revenue 42\n\n## Page 2\n\n[No readable text on this page]';
+    const first = await rag.ingestDocument({ file_path: scan, chat_id: 'ocr-a', extracted_text: extracted, extraction_method: 'ocr', extraction_warning: 'No text recognized on page 2.' });
+    assert.equal(first.extraction_method, 'ocr');
+    assert.equal(first.file_type, 'pdf');
+    assert.equal(chatDb.getFileRecord(sha256(scan)).extractStatus, 'ready');
+    assert.equal(rag.readIngestedDocument({ chat_id: 'ocr-a', doc_id: first.id }).text, extracted);
+    assert.throws(() => rag.readIngestedDocument({ chat_id: 'another-chat', doc_id: first.id }), /not attached/);
+    const second = await rag.ingestDocument({ file_path: scan, chat_id: 'ocr-b' });
+    assert.equal(second.reused, true);
+    assert.equal(second.extraction_warning, 'No text recognized on page 2.');
+    assert.equal(rag.readIngestedDocument({ chat_id: 'ocr-b', doc_id: first.id }).text, extracted);
+    const retrieved = await rag.queryDocuments({ query: 'invoice revenue', chat_id: 'ocr-b' });
+    assert.match(retrieved.context, /Reading limitation: No text recognized on page 2/);
+    assert.match(retrieved.context, /scan\.pdf · page 1/);
+  });
+
+  it('marks an unreadable document failed and indexes no empty record', async (t) => {
+    if (sqliteUnavailable) { t.skip(`better-sqlite3 unavailable: ${sqliteUnavailable}`); return; }
+    const empty = path.join(tempDir, 'empty.txt'); fs.writeFileSync(empty, ' ');
+    await assert.rejects(rag.ingestDocument({ file_path: empty, chat_id: 'empty-chat' }), /No readable content/);
+    assert.equal(chatDb.getFileRecord(sha256(empty)).extractStatus, 'failed');
+    assert.equal((await rag.listRagDocuments('empty-chat')).length, 0);
+    await assert.rejects(rag.ingestText({ source: 'empty', text: '', chat_id: 'empty-chat', file_type: 'text' }), /No readable content/);
+  });
+
   it('records the file in the registry and links it to the chat', async (t) => {
     if (sqliteUnavailable) { t.skip(`better-sqlite3 unavailable: ${sqliteUnavailable}`); return; }
 

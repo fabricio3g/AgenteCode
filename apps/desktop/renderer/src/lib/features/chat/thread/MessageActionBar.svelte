@@ -8,6 +8,9 @@
 -->
 
 <script lang="ts">
+  import UiButton from '$lib/components/ui/Button.svelte';
+  import { cn as uiClass } from '$lib/utils/cn';
+
   import type { Snippet } from 'svelte';
   import { Check } from 'lucide-svelte';
   import Tooltip from '$lib/components/ui/Tooltip.svelte';
@@ -69,11 +72,11 @@
     {@const Icon = action.active && action.activeIcon ? action.activeIcon : action.icon}
     {@const label = action.active && action.activeLabel ? action.activeLabel : action.label}
     <Tooltip {label} position="top">
-    <button
+    <UiButton variant="plain"
       type="button"
-      class="msg-action-btn"
-      class:copied={confirmedId === action.id}
-      class:danger={action.danger}
+      class={uiClass("msg-action-btn", {"copied": confirmedId === action.id, "danger": action.danger})}
+
+
       disabled={action.disabled}
       onclick={() => run(action)}
       aria-label={label}
@@ -83,7 +86,7 @@
       {:else}
         <Icon class="size-3" />
       {/if}
-    </button>
+    </UiButton>
     </Tooltip>
   {/each}
 

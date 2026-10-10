@@ -8,6 +8,13 @@ import {
 } from '$lib/stores/app-store-local-model';
 
 describe('app-store-local-model', () => {
+  it('defaults to mmap without memory locking and retains an explicit lock choice', () => {
+    const params = { remembered: {}, config: {}, model: { id: 'cpu', name: 'CPU model' }, runtimePath: '' };
+    const state = resolveLocalModelLoadState(params);
+    expect(state.keepInMemory).toBe(false);
+    expect(state.mmap).toBe(true);
+    expect(resolveLocalModelLoadState({ ...params, remembered: { keep_in_memory: true } }).keepInMemory).toBe(true);
+  });
   it('prefers remembered values, then recommended values, then config fallbacks', () => {
     const state = resolveLocalModelLoadState({
       remembered: { context_length: 16384, gpu_offload: 24, flash_attention: false },

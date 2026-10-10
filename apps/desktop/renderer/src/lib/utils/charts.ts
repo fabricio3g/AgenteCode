@@ -1,3 +1,4 @@
+import { resolveChartType } from './chart-types';
 import { inferChartTitle, inferChartType, looksLikeChartData, parseChartData, type ChartType } from './chart-data';
 
 /** Parsed segment from LLM output — either plain markdown text or a chart block */
@@ -41,9 +42,7 @@ export function parseContentSegments(content: string): ContentSegment[] {
     const raw = (match[2] ?? '').trim();
     const parsed = parseChartData(raw);
     const typeRaw = attr(attrsStr, 'type') ?? 'bar';
-    const chartType = ['bar', 'line', 'pie', 'donut'].includes(typeRaw)
-      ? (typeRaw as ChartType)
-      : 'bar';
+    const chartType = resolveChartType(typeRaw) ?? 'bar';
 
     if (!parsed) {
       const fallbackTitle = attr(attrsStr, 'title');

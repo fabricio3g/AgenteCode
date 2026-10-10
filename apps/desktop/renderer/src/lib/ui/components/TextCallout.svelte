@@ -1,7 +1,5 @@
 <script lang="ts">
+  import Callout from '$lib/components/ui/Callout.svelte';
   let { props = {} } = $props<{ props?: Record<string, any> }>();
 </script>
-
-<div class="ui-callout ui-callout-neutral">
-  <div class="ui-copy">{String(props.text || props.content || '')}</div>
-</div>
+<Callout text={String(props.text || props.content || '')} />

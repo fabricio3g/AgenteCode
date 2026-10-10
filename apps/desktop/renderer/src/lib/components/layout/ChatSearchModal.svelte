@@ -11,6 +11,11 @@
 -->
 
 <script lang="ts">
+  import UiListRow from '$lib/components/ui/ListRow.svelte';
+
+  import UiInput from '$lib/components/ui/Input.svelte';
+  import { cn as uiClass } from '$lib/utils/cn';
+
   import { onMount, tick } from 'svelte';
   import { t } from 'svelte-i18n';
   import { MessageSquare, Plus, Search } from 'lucide-svelte';
@@ -153,8 +158,8 @@
   >
     <div class="search-field">
       <Search class="size-4 shrink-0 text-muted-foreground" />
-      <input
-        bind:this={searchInput}
+      <UiInput class={uiClass('', "ui-local-63f6f05b")}
+        bind:ref={searchInput}
         bind:value={query}
         type="text"
         placeholder={appStore.activeSpace === 'code' ? $t('search.placeholderCode') : $t('search.placeholderChats')}
@@ -166,10 +171,10 @@
     </div>
 
     <div bind:this={list} id="search-results" class="search-list" role="listbox" aria-label={$t('shortcuts.search')}>
-      <button
+      <UiListRow
         type="button"
-        class="ui-row"
-        class:is-highlighted={selectedIndex === -1}
+        class={uiClass("ui-row", "ui-local-63f6f05b", {"is-highlighted": selectedIndex === -1})}
+
         data-selected={selectedIndex === -1}
         role="option"
         aria-selected={selectedIndex === -1}
@@ -178,15 +183,15 @@
       >
         <Plus />
         <span class="min-w-0 flex-1 truncate">{newRowLabel}</span>
-      </button>
+      </UiListRow>
 
       {#if results.length}
         <p class="ui-menu-label">{query.trim() ? $t('search.matches') : $t('search.recent')}</p>
         {#each results as hit, index (hit.chat.id)}
-          <button
+          <UiListRow
             type="button"
-            class="ui-row search-hit"
-            class:is-highlighted={selectedIndex === index}
+            class={uiClass("ui-row search-hit", "ui-local-63f6f05b", {"is-highlighted": selectedIndex === index})}
+
             data-selected={selectedIndex === index}
             role="option"
             aria-selected={selectedIndex === index}
@@ -199,7 +204,7 @@
               {#if hit.snippet}<span class="block truncate text-xs text-muted-foreground">{hit.snippet}</span>{/if}
             </span>
             <span class="shrink-0 text-xs text-muted-foreground">{relativeDate(hit.chat.updatedAt || hit.chat.createdAt)}</span>
-          </button>
+          </UiListRow>
         {/each}
       {:else}
         <div class="search-empty">
@@ -245,7 +250,7 @@
     border-bottom: 1px solid var(--border-subtle);
   }
 
-  .search-field input {
+  .search-field :global(input.ui-local-63f6f05b) {
     min-width: 0;
     flex: 1;
     border: 0;
@@ -255,7 +260,7 @@
     outline: none;
   }
 
-  .search-field input::placeholder { color: var(--muted-foreground); }
+  .search-field :global(input.ui-local-63f6f05b::placeholder) { color: var(--muted-foreground); }
 
   .search-list {
     min-height: 0;
@@ -264,7 +269,7 @@
     padding: var(--float-pad);
   }
 
-  .search-hit { min-height: 2.5rem; }
+  :global(.search-hit.ui-local-63f6f05b) { min-height: 2.5rem; }
 
   .search-empty {
     padding: 1.5rem 1rem;

@@ -1,332 +1,148 @@
-// Agente - OCR Engine (Tesseract.js + PDF.js)
-// Ported from legacy web/components/ocr.js
-
-interface OcrResult {
-  text: string;
-  confidence: number;
-}
-
-interface PdfPageResult {
-  pageNum: number;
-  text: string;
-}
-
-interface PdfOcrResult {
-  pages: PdfPageResult[];
-  fullText: string;
-}
-
-interface DocxImageResult {
-  name: string;
-  text: string;
-}
-
-interface DocxOcrResult {
-  images: DocxImageResult[];
-  fullText: string;
-}
-
-/*
- * `?url` imports, not `new URL(bare-specifier, import.meta.url)`.
- *
- * The latter resolves to `/node_modules/...` — which the dev server happens to
- * serve, so OCR works in `npm run dev` and then 404s in a packaged build, where
- * node_modules is not shipped. `?url` makes Vite emit these as real bundled
- * assets with hashed paths that survive the build.
- */
+// Shared attachment/tool extraction. PDF pages are read first, then OCR'd only
+// where needed; one worker is serialized across simultaneous uploads/tool calls.
 import TESSERACT_WORKER_PATH from 'tesseract.js/dist/worker.min.js?url';
 import TESSERACT_CORE_PATH from 'tesseract.js-core/tesseract-core.wasm.js?url';
 import PDF_WORKER_PATH from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
+import ENGLISH_DATA_PATH from '@tesseract.js-data/eng/4.0.0_best_int/eng.traineddata.gz?url';
+import type { ExtractedFileText } from '$shared/document-ingestion';
+import { ingestionFileType } from '$shared/document-ingestion';
+import { extractPdfContent } from './pdf-ingestion';
+import { pdfTextLines } from '$shared/pdf-text';
 
-type OcrProgressPhase = 'rendering' | 'recognizing' | 'done';
+let worker: Awaited<ReturnType<typeof import('tesseract.js')['createWorker']>> | null = null;
+let queue: Promise<unknown> = Promise.resolve();
 
-function emitProgress(page: number, total: number, phase: OcrProgressPhase) {
-  window.dispatchEvent(
-    new CustomEvent('ocr-progress', { detail: { page, total, phase } })
-  );
+async function bounded<T>(task: Promise<T>, message: string, timeoutMs = 120_000): Promise<T> {
+  let timer: ReturnType<typeof setTimeout>;
+  try {
+    return await Promise.race([task, new Promise<never>((_resolve, reject) => {
+      timer = setTimeout(() => reject(new Error(message)), timeoutMs);
+    })]);
+  } finally { clearTimeout(timer!); }
 }
 
-// Minimal ZIP reader — extracts images from DOCX word/media/
-async function extractZipImages(
-  arrayBuffer: ArrayBuffer
-): Promise<{ name: string; blob: Blob }[]> {
-  const images: { name: string; blob: Blob }[] = [];
-  const view = new DataView(arrayBuffer);
-  const bytes = new Uint8Array(arrayBuffer);
-  const len = bytes.length;
-
-  // Find End of Central Directory (0x06054b50)
-  let eocdOffset = -1;
-  for (let i = len - 22; i >= 0 && i >= len - 65557; i--) {
-    if (view.getUint32(i, true) === 0x06054b50) {
-      eocdOffset = i;
-      break;
-    }
-  }
-  if (eocdOffset === -1) return images;
-
-  const cdOffset = view.getUint32(eocdOffset + 16, true);
-  const cdEntries = view.getUint16(eocdOffset + 10, true);
-  const imageExts = /\.(png|jpe?g|gif|bmp)$/i;
-  let offset = cdOffset;
-
-  for (let i = 0; i < cdEntries; i++) {
-    if (offset + 46 > len) break;
-    if (view.getUint32(offset, true) !== 0x02014b50) break;
-
-    const nameLen = view.getUint16(offset + 28, true);
-    const extraLen = view.getUint16(offset + 30, true);
-    const commentLen = view.getUint16(offset + 32, true);
-    const localHeaderOffset = view.getUint32(offset + 42, true);
-
-    const nameBytes = bytes.slice(offset + 46, offset + 46 + nameLen);
-    const name = new TextDecoder().decode(nameBytes);
-
-    if (name.startsWith('word/media/') && imageExts.test(name)) {
-      const lh = localHeaderOffset;
-      if (lh + 30 <= len) {
-        const lhNameLen = view.getUint16(lh + 26, true);
-        const lhExtraLen = view.getUint16(lh + 28, true);
-        const compSize = view.getUint32(lh + 18, true);
-        const compMethod = view.getUint16(lh + 8, true);
-        const dataStart = lh + 30 + lhNameLen + lhExtraLen;
-
-        if (dataStart + compSize <= len) {
-          const raw = bytes.slice(dataStart, dataStart + compSize);
-          let blob: Blob | null = null;
-          if (compMethod === 0) {
-            blob = new Blob([raw]);
-          } else if (compMethod === 8) {
-            try {
-              const ds = new DecompressionStream('deflate-raw');
-              const writer = ds.writable.getWriter();
-              void writer.write(raw);
-              void writer.close();
-              const reader = ds.readable.getReader();
-              const chunks: BlobPart[] = [];
-              for (;;) {
-                const { done, value } = await reader.read();
-                if (done) break;
-                chunks.push(value);
-              }
-              blob = new Blob(chunks);
-            } catch {
-              continue;
-            }
-          }
-          if (blob) {
-            images.push({ name: name.split('/').pop() || name, blob });
-          }
-        }
-      }
-    }
-    offset += 46 + nameLen + extraLen + commentLen;
-  }
-  return images;
+type ProgressPhase = 'rendering' | 'recognizing' | 'done' | 'error';
+function progress(page: number, total: number, phase: ProgressPhase) {
+  window.dispatchEvent(new CustomEvent('ocr-progress', { detail: { page, total, phase } }));
 }
 
-class OcrEngine {
-  private worker: { recognize: (imageSource: string | Blob | File | HTMLCanvasElement) => Promise<{ data: { text: string; confidence: number } }>; reinitialize: (lang: string) => Promise<void>; terminate: () => Promise<void> } | null = null;
-  private ready = false;
-  private busy = false;
-  private lang = 'eng';
-
-  async init(lang = 'eng') {
-    if (this.worker && this.lang === lang) return;
-    if (this.worker && this.lang !== lang) {
-      await this.worker.reinitialize(lang);
-      this.lang = lang;
-      return;
-    }
-    const Tesseract = await import('tesseract.js');
-    this.worker = await Tesseract.createWorker(lang, undefined, {
-      workerBlobURL: false,
-      workerPath: TESSERACT_WORKER_PATH,
-      corePath: TESSERACT_CORE_PATH,
-    }) as unknown as typeof this.worker;
-    this.lang = lang;
-    this.ready = true;
-  }
-
-  async recognize(imageSource: string | Blob | File): Promise<OcrResult> {
-    try {
-      this.busy = true;
-      emitProgress(0, 1, 'recognizing');
-      await this.init();
-      const result = await this.worker!.recognize(imageSource);
-      emitProgress(1, 1, 'done');
-      return { text: result.data.text, confidence: result.data.confidence };
-    } catch (err: unknown) {
-      console.error('[OcrEngine] recognize failed:', err);
-      return { text: '', confidence: 0 };
-    } finally {
-      this.busy = false;
+async function recognize(image: File | Blob | HTMLCanvasElement): Promise<string> {
+  if (!worker) {
+    const { createWorker } = await import('tesseract.js');
+    // Language names stay strings: Tesseract 7's Lang[] initialization reads
+    // the byte payload as a language name. A bundled directory uses its normal
+    // supported path instead. Vite retains this asset's expected filename.
+    const langPath = new URL('.', new URL(ENGLISH_DATA_PATH, window.location.href)).href;
+    const initializing = createWorker('eng', undefined, {
+      workerBlobURL: false, workerPath: TESSERACT_WORKER_PATH, corePath: TESSERACT_CORE_PATH,
+      langPath, cacheMethod: 'none',
+    });
+    try { worker = await bounded(initializing, 'OCR engine initialization timed out. Try attaching the file again.'); }
+    catch (error) {
+      // A worker that comes up after its deadline must not outlive the upload.
+      void initializing.then((late) => late.terminate(), () => {}).catch(() => {});
+      throw error;
     }
   }
-
-  async ocrPdfPages(file: File): Promise<PdfOcrResult> {
-    try {
-      this.busy = true;
-      // Dynamic import to keep bundle small until needed
-      const pdfjsLib = await import('pdfjs-dist');
-      pdfjsLib.GlobalWorkerOptions.workerSrc = PDF_WORKER_PATH;
-
-      await this.init();
-      const arrayBuffer = await file.arrayBuffer();
-      const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-      const total = pdf.numPages;
-      const pages: PdfPageResult[] = [];
-
-      for (let i = 1; i <= total; i++) {
-        emitProgress(i, total, 'rendering');
-        const page = await pdf.getPage(i);
-        const viewport = page.getViewport({ scale: 2.0 });
-
-        const canvas = document.createElement('canvas');
-        canvas.width = viewport.width;
-        canvas.height = viewport.height;
-        const ctx = canvas.getContext('2d')!;
-        await page.render({ canvasContext: ctx, viewport, canvas }).promise;
-
-        emitProgress(i, total, 'recognizing');
-        const result = await this.worker!.recognize(canvas);
-        pages.push({ pageNum: i, text: result.data.text });
-      }
-
-      emitProgress(total, total, 'done');
-      return { pages, fullText: pages.map((p) => p.text).join('\n\n') };
-    } catch (err: unknown) {
-      console.error('[OcrEngine] ocrPdfPages failed:', err);
-      return { pages: [], fullText: '' };
-    } finally {
-      this.busy = false;
-    }
+  try {
+    return (await bounded(worker.recognize(image), 'OCR recognition timed out. Try a smaller image or split the PDF.')).data.text.trim();
+  } catch (error) {
+    const failed = worker; worker = null;
+    void failed.terminate().catch(() => {});
+    throw error;
   }
+}
 
-  // Extract text from PDF using PDF.js text layer (no OCR needed for digital PDFs)
-  async extractPdfText(file: File): Promise<{ text: string; pageCount: number }> {
-    try {
-      const pdfjsLib = await import('pdfjs-dist');
-      pdfjsLib.GlobalWorkerOptions.workerSrc = PDF_WORKER_PATH;
-
-      const arrayBuffer = await file.arrayBuffer();
-      const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-      const pageCount = pdf.numPages;
-      const texts: string[] = [];
-
-      for (let i = 1; i <= pageCount; i++) {
-        const page = await pdf.getPage(i);
+async function extractPdf(file: File): Promise<ExtractedFileText> {
+  const pdfjs = await import('pdfjs-dist');
+  pdfjs.GlobalWorkerOptions.workerSrc = PDF_WORKER_PATH;
+  const pdf = await pdfjs.getDocument({ data: await file.arrayBuffer() }).promise;
+  try {
+    const result = await extractPdfContent({
+      pages: pdf.numPages,
+      readPage: async (number) => {
+        const page = await pdf.getPage(number);
         const content = await page.getTextContent();
-        const pageText = content.items
-          .map((item) => ('str' in item ? (item as { str: string }).str : ''))
-          .join(' ');
-        texts.push(pageText);
-      }
-
-      return { text: texts.join('\n\n'), pageCount };
-    } catch (err: unknown) {
-      console.error('[OcrEngine] extractPdfText failed:', err);
-      return { text: '', pageCount: 0 };
-    }
-  }
-
-  async ocrDocxImages(file: File): Promise<DocxOcrResult> {
-    try {
-      this.busy = true;
-      await this.init();
-
-      const arrayBuffer = await file.arrayBuffer();
-      const entries = await extractZipImages(arrayBuffer);
-      const total = entries.length;
-      const images: DocxImageResult[] = [];
-
-      for (let i = 0; i < total; i++) {
-        emitProgress(i + 1, total, 'recognizing');
-        const url = URL.createObjectURL(entries[i].blob);
+        return pdfTextLines(content.items.flatMap((item) => 'str' in item
+          ? [{ str: item.str, transform: item.transform, width: item.width }] : [])).join('\n');
+      },
+      recognizePage: async (number) => {
+        progress(number, pdf.numPages, 'rendering');
+        const page = await pdf.getPage(number);
+        const base = page.getViewport({ scale: 1 });
+        // Bound OCR canvas memory for posters/oversized pages, while ordinary
+        // pages render at 2x for character recognition.
+        const scale = Math.min(2, Math.sqrt(16_000_000 / (base.width * base.height)));
+        const viewport = page.getViewport({ scale });
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.ceil(viewport.width); canvas.height = Math.ceil(viewport.height);
+        const context = canvas.getContext('2d');
+        if (!context) throw new Error('Could not render this PDF page for OCR.');
         try {
-          const result = await this.worker!.recognize(url);
-          images.push({ name: entries[i].name, text: result.data.text });
-        } finally {
-          URL.revokeObjectURL(url);
-        }
-      }
-
-      emitProgress(total, total, 'done');
-      return { images, fullText: images.map((img) => img.text).join('\n\n') };
-    } catch (err: unknown) {
-      console.error('[OcrEngine] ocrDocxImages failed:', err);
-      return { images: [], fullText: '' };
-    } finally {
-      this.busy = false;
-    }
-  }
-
-  isScannedPdf(extractedText: string, pageCount: number): boolean {
-    if (!pageCount || pageCount <= 0) return false;
-    return extractedText.length / pageCount < 100;
-  }
-
-  async terminate() {
-    if (this.worker) {
-      await this.worker.terminate();
-      this.worker = null;
-      this.ready = false;
-      this.busy = false;
-    }
-  }
-
-  getStatus() {
-    return { ready: this.ready, lang: this.lang, busy: this.busy };
-  }
+          // OCR has no animation frame to paint. Print intent makes PDF.js
+          // render through microtasks even in a hidden/minimized app window.
+          const rendering = page.render({ canvasContext: context, viewport, canvas, intent: 'print' });
+          try { await bounded(rendering.promise, `Rendering PDF page ${number} timed out. Try exporting or splitting this PDF.`); }
+          catch (error) { rendering.cancel(); throw error; }
+          progress(number, pdf.numPages, 'recognizing');
+          return await recognize(canvas);
+        } finally { canvas.width = 0; canvas.height = 0; page.cleanup(); }
+      },
+    });
+    progress(pdf.numPages, pdf.numPages, 'done');
+    return result;
+  } finally { await pdf.destroy(); }
 }
 
-const ocrEngine = new OcrEngine();
+async function extract(file: File): Promise<ExtractedFileText> {
+  const { kind } = ingestionFileType(file.name, file.type);
+  if (kind === 'image') {
+    progress(0, 1, 'recognizing');
+    const text = await recognize(file);
+    if (!text) throw new Error('No text recognized in this image. Select a vision model to analyze its visual content.');
+    progress(1, 1, 'done');
+    return { text, method: 'ocr', warning: 'OCR reads text only; visual details are not analyzed.' };
+  }
+  if (/\.pdf$/i.test(file.name) || file.type === 'application/pdf') return extractPdf(file);
+  if (kind === 'audio' || kind === 'video') throw new Error('Recording transcription requires the desktop app and a configured Whisper engine.');
 
-/**
- * Process a file for text extraction — auto-selects best method:
- * - Images → OCR
- * - PDFs → parser text extraction
- * - DOCX → OCR embedded images
- * - Text files → direct read
- */
+  const { docKindOf, parseDocument } = await import('./agent-doc-reader');
+  const type = docKindOf(file.name, file.type);
+  if (!type) throw new Error('This format needs the desktop document reader.');
+  if (/\.(rtf|html?|epub|od[stp])$/i.test(file.name)) throw new Error('This format needs the desktop structured document reader.');
+  const bytes = await file.arrayBuffer();
+  const doc = await parseDocument(file.name, bytes, file.type);
+  let text = doc.units.map((unit) => {
+    const tables = unit.tables.map((rows) => rows.map((row) => row.join('\t')).join('\n')).join('\n\n');
+    return `## ${unit.label}\n\n${unit.text}${tables ? `\n\n${tables}` : ''}`;
+  }).join('\n\n');
+  let method: ExtractedFileText['method'] = 'parser';
+  if (type === 'docx' && !doc.units.some((unit) => unit.text.trim() || unit.tables.length)) {
+    const { default: JSZip } = await import('jszip');
+    const zip = await JSZip.loadAsync(bytes);
+    const images = Object.values(zip.files).filter((entry) => /^word\/media\/.*\.(png|jpe?g|gif|bmp)$/i.test(entry.name));
+    const sections: string[] = [];
+    for (const [i, entry] of images.entries()) {
+      progress(i + 1, images.length, 'recognizing');
+      const recognized = await recognize(await entry.async('blob'));
+      if (recognized) sections.push(`## Image ${i + 1}\n\n${recognized}`);
+    }
+    text = sections.join('\n\n'); method = 'ocr';
+    progress(images.length, images.length, 'done');
+  } else if (!doc.units.some((unit) => unit.text.trim() || unit.tables.length)) {
+    throw new Error('No readable content in this document.');
+  }
+  if (!text.trim()) throw new Error('No readable content in this document.');
+  return { text, method };
+}
+
+export function extractFileContent(file: File): Promise<ExtractedFileText> {
+  const task = queue.then(() => extract(file));
+  queue = task.catch(() => { progress(0, 0, 'error'); });
+  return task;
+}
+
+/** Compatibility for tools that consume only text. Errors remain visible. */
 export async function extractTextFromFile(file: File): Promise<string> {
-  const type = file.type;
-  const name = file.name.toLowerCase();
-
-  // Plain text files
-  if (
-    type.startsWith('text/') ||
-    name.endsWith('.txt') ||
-    name.endsWith('.md') ||
-    name.endsWith('.csv') ||
-    name.endsWith('.json') ||
-    name.endsWith('.xml') ||
-    name.endsWith('.html') ||
-    name.endsWith('.rtf')
-  ) {
-    return await file.text();
-  }
-
-  // Images → OCR
-  if (type.startsWith('image/')) {
-    const result = await ocrEngine.recognize(file);
-    return result.text;
-  }
-
-  // PDFs → parser only (no OCR fallback)
-  if (type === 'application/pdf' || name.endsWith('.pdf')) {
-    const { text } = await ocrEngine.extractPdfText(file);
-    return text;
-  }
-
-  // DOCX → extract text + OCR embedded images
-  if (
-    type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
-    name.endsWith('.docx')
-  ) {
-    const ocrResult = await ocrEngine.ocrDocxImages(file);
-    return ocrResult.fullText;
-  }
-
-  return '';
+  return (await extractFileContent(file)).text;
 }

@@ -15,6 +15,10 @@
 -->
 
 <script lang="ts">
+  import IconButton from '$lib/components/ui/IconButton.svelte';
+
+  import { cn as uiClass } from '$lib/utils/cn';
+
   import { copy } from '$lib/copy';
   import { locale, t } from 'svelte-i18n';
   import { get } from 'svelte/store';
@@ -493,7 +497,7 @@
   {@const job = downloadsStore.jobFor(repoId, filename)}
   {#if job && ['queued', 'running', 'paused'].includes(job.status)}
     <span class="text-xs tabular-nums text-muted-foreground">{Math.round(job.progress)}%</span>
-    <Tooltip label={$t('modelHub.cancelDownload')} position="bottom"><Button variant="ghost" size="icon-sm" aria-label={$t('modelHub.cancelDownload')} onclick={() => void downloadsStore.cancelJob(job.id)}><Ban /></Button></Tooltip>
+    <Tooltip label={$t('modelHub.cancelDownload')} position="bottom"><IconButton label={$t('modelHub.cancelDownload')} variant="ghost" size="sm"  onclick={() => void downloadsStore.cancelJob(job.id)}><Ban /></IconButton></Tooltip>
   {/if}
 {/snippet}
 
@@ -518,6 +522,7 @@
           <Select
             bind:value={searchSort}
             class="w-40"
+            size="sm"
             aria-label={$t('modelHub.sort')}
             options={[
               { value: 'likes', label: $t('modelHub.sortLikes') },
@@ -528,6 +533,7 @@
           <Select
             bind:value={parameterFilter}
             class="w-40"
+            size="sm"
             aria-label={$t('modelHub.size')}
             options={[
               { value: 'all', label: $t('modelHub.sizeAny') },
@@ -557,16 +563,16 @@
               <SettingsSection title={$t('modelHub.pickedTitle')} description={hardwareStore.info ? $t('modelHub.pickedHint') : $t('modelHub.pickedNoHardware')}>
                 <div class="pick-grid">
                   {#each recommendationCards as card (card.label)}
-                    <button
+                    <Button variant="plain"
                       type="button"
-                      class="pick-cell"
+                      class={uiClass("pick-cell", "ui-local-2f53538a")}
                       disabled={!card.model}
                       onclick={() => card.model && (selectedRepoId = card.model.ggufRepository)}
                     >
                       <p class="text-[length:var(--text-xs)] text-muted-foreground">{card.label}</p>
                       <p class="mt-1 truncate text-sm font-medium text-foreground">{card.model?.name ?? $t('modelHub.nothingFits')}</p>
                       {#if card.model}<p class="truncate text-[length:var(--text-xs)] text-muted-foreground">{roleOf(card.model)} · {formatBytes(defaultArtifact(card.model).sizeBytes)}</p>{/if}
-                    </button>
+                    </Button>
                   {/each}
                 </div>
               </SettingsSection>
@@ -580,7 +586,7 @@
                       {@const job = downloadsStore.jobFor(model.ggufRepository, primary.filename)}
                       {@const selected = selectedRepoId === model.ggufRepository}
                       <li class="flex items-center gap-3 rounded-xl px-2 py-2 transition-colors {selected ? 'bg-[var(--surface-active)]' : 'hover:bg-[var(--surface-hover)]'}">
-                        <button type="button" class="min-w-0 flex-1 text-left" onclick={() => (selectedRepoId = selected ? null : model.ggufRepository)}>
+                        <Button variant="plain" type="button" class={uiClass("min-w-0 flex-1 text-left", "ui-local-2f53538a")} onclick={() => (selectedRepoId = selected ? null : model.ggufRepository)}>
                           <span class="flex flex-wrap items-baseline gap-x-2">
                             <span class="text-sm font-medium text-foreground">{model.name}</span>
                             <span class="text-xs text-muted-foreground">{roleOf(model)}</span>
@@ -590,7 +596,7 @@
                             {@render licenseBadge(model.license)}
                             <span class="tabular-nums">{primary.quantization} · {formatBytes(primary.sizeBytes)}</span>
                           </span>
-                        </button>
+                        </Button>
                         <div class="flex shrink-0 items-center gap-1.5">
                           {#if job && ['queued', 'running', 'paused'].includes(job.status)}
                             {@render jobProgress(model.ggufRepository, primary.filename)}
@@ -613,9 +619,9 @@
                   {#each filteredSearchItems as item (item.repo_id)}
                     {@const selected = selectedRepoId === item.repo_id}
                     <li>
-                      <button
+                      <Button variant="plain"
                         type="button"
-                        class="flex w-full items-center gap-3 rounded-xl px-2 py-2 text-left outline-none transition-colors focus-visible:ring-[3px] focus-visible:ring-inset focus-visible:ring-ring/25 {selected ? 'bg-[var(--surface-active)]' : 'hover:bg-[var(--surface-hover)]'}"
+                        class={uiClass(`flex w-full items-center gap-3 rounded-xl px-2 py-2 text-left outline-none transition-colors focus-visible:ring-[3px] focus-visible:ring-inset focus-visible:ring-ring/25 ${selected ? 'bg-[var(--surface-active)]' : 'hover:bg-[var(--surface-hover)]'}`, "ui-local-2f53538a")}
                         aria-pressed={selected}
                         onclick={() => selectRepo(item.repo_id)}
                       >
@@ -636,7 +642,7 @@
                           </span>
                         </span>
                         <ChevronRight class="size-4 shrink-0 text-muted-foreground" />
-                      </button>
+                      </Button>
                     </li>
                   {/each}
                 </ul>
@@ -741,7 +747,7 @@
                     {:else}
                       <Button variant="outline" size="sm" onclick={() => appStore.openLocalModelLoadDialog(model)}>{$t('modelHub.load')}</Button>
                     {/if}
-                    <Tooltip label={$t('modelHub.deleteTitle', { values: { name: model.name } })} position="bottom"><Button variant="ghost" size="icon-sm" class="text-muted-foreground hover:text-error" aria-label={$t('modelHub.deleteTitle', { values: { name: model.name } })} onclick={() => removeModel(model)}><Trash2 /></Button></Tooltip>
+                    <Tooltip label={$t('modelHub.deleteTitle', { values: { name: model.name } })} position="bottom"><IconButton label={$t('modelHub.deleteTitle', { values: { name: model.name } })} variant="ghost" size="sm" class="text-muted-foreground hover:text-error"  onclick={() => removeModel(model)}><Trash2 /></IconButton></Tooltip>
                   </div>
                 </li>
               {/each}
@@ -786,17 +792,17 @@
 
   /* Three picks side by side in one card, split by hairlines. */
   .pick-grid { display: grid; }
-  .pick-cell {
+  :global(.pick-cell.ui-local-2f53538a) {
     min-width: 0;
     padding: 0.75rem 1rem;
     text-align: left;
     transition: background-color var(--motion-fast) var(--motion-ease);
   }
-  .pick-cell + .pick-cell { border-top: 1px solid var(--border-subtle); }
-  .pick-cell:hover:not(:disabled) { background: var(--float-row-hover); }
-  .pick-cell:disabled { cursor: default; opacity: 0.6; }
+  :global(.pick-cell.ui-local-2f53538a) + :global(.pick-cell.ui-local-2f53538a) { border-top: 1px solid var(--border-subtle); }
+  :global(.pick-cell:hover:not(:disabled).ui-local-2f53538a) { background: var(--float-row-hover); }
+  :global(.pick-cell:disabled.ui-local-2f53538a) { cursor: default; opacity: 0.6; }
   @media (min-width: 640px) {
     .pick-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-    .pick-cell + .pick-cell { border-top: 0; border-left: 1px solid var(--border-subtle); }
+    :global(.pick-cell.ui-local-2f53538a) + :global(.pick-cell.ui-local-2f53538a) { border-top: 0; border-left: 1px solid var(--border-subtle); }
   }
 </style>

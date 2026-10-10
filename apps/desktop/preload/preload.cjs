@@ -28,7 +28,7 @@ const ALLOWED_INVOKE_CHANNELS = new Set([
   'count_tokens', 'build_context_budget', 'truncate_messages',
   'start_download_hf', 'get_download_jobs', 'cancel_download_job',
   'pause_download_job', 'clear_finished_downloads', 'remove_download_job',
-  'ingest_document', 'ingest_text', 'ingest_text_fast', 'query_documents', 'list_rag_documents',
+  'ingest_document', 'read_ingested_document', 'ingest_text', 'ingest_text_fast', 'query_documents', 'list_rag_documents',
   'remove_rag_document', 'clear_rag_documents', 'has_rag_documents',
   'files_list', 'files_get', 'files_refs', 'files_pin', 'files_stats', 'files_trash',
   'web_search', 'search:get-catalog', 'search:probe-engines',
@@ -36,7 +36,7 @@ const ALLOWED_INVOKE_CHANNELS = new Set([
   'search_hf_models', 'hf_repo_gguf', 'fetch_hf_readme', 'open_url_window', 'open_webviewer',
   'live_get_weather', 'live_convert_currency', 'live_get_quote', 'live_geocode_place',
 
-  'path_exists', 'open_models_folder', 'pick_workspace_folder', 'pick_model_file', 'pick_whisper_runtime_file',
+  'path_exists', 'browse_folders', 'open_models_folder', 'pick_workspace_folder', 'pick_model_file', 'pick_whisper_runtime_file',
   'index_workspace_folder', 'snapshot_workspace_files', 'write_workspace_file', 'write_workspace_binary', 'read_workspace_file', 'read_workspace_binary',
   'create_workspace_document', 'rename_workspace_file', 'delete_workspace_file',
   'open_workspace_file', 'create_workspace_folder', 'workspace_exec', 'write_temp_file',
@@ -50,6 +50,7 @@ const ALLOWED_INVOKE_CHANNELS = new Set([
   'generate_pptx', 'parse_slides_from_markdown', 'slides_to_markdown',
   'generate_docx', 'generate_xlsx', 'generate_pdf',
   'fetch_url_content', 'crawl_web',
+  'design_tool', 'design_files', 'design_render', 'design_manage', 'design_handoff', 'design_systems', 'design_reference', 'design_view',
   'home_runtime_start', 'home_runtime_result', 'home_runtime_cancel', 'home_runtime_update', 'home_runtime_steer',
   'agente_start_session', 'agente_prompt',
   'agente_steer', 'agente_follow_up', 'agente_abort',
@@ -60,7 +61,7 @@ const ALLOWED_INVOKE_CHANNELS = new Set([
   'bots_history', 'bots_cancel', 'bots_chat', 'bots_respond_approval', 'bots_toolsets', 'bots_sandbox',
   'bots_telegram', 'bots_telegram_connect', 'bots_telegram_disconnect', 'bots_telegram_pair', 'bots_telegram_unpair',
   'routines_list', 'routines_save', 'routines_delete', 'routines_run_now',
-  'voice_models_status', 'voice_model_download', 'voice_model_delete', 'voice_engine_restart', 'voice_catalog', 'voice_clone_save', 'voice_clone_delete',
+  'voice_models_status', 'voice_model_download', 'voice_model_delete', 'voice_engine_restart', 'voice_catalog', 'voice_clone_pick', 'voice_clone_read', 'voice_clone_save', 'voice_clone_delete',
   'terminal_create', 'terminal_write', 'terminal_resize', 'terminal_kill',
   'agente_process_list', 'agente_process_output', 'agente_process_start', 'agente_process_stop', 'agente_process_clear',
   'agente_changes', 'agente_file_diff', 'agente_revert_file',
@@ -74,7 +75,7 @@ const ALLOWED_EVENT_CHANNELS = new Set([
   'supervisor-event', 'download-progress', 'runtime-download-progress', 'whisper-runtime-download-progress', 'voice-setup-progress', 'instances-changed',
   'search-result', 'search-progress', 'agent-event', 'tts-event', 'chat-stream-event',
   'tts-chunk', 'tts-done', 'tts-start', 'tts-error',
-  'home_runtime_event', 'code_agent_event', 'browser_panel_state', 'code_process_event', 'terminal_event', 'bot_event', 'browser_chat_request',
+  'home_runtime_event', 'design_changed', 'code_agent_event', 'browser_panel_state', 'code_process_event', 'terminal_event', 'bot_event', 'browser_chat_request',
   'ui-zoom'
 ]);
 

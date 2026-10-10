@@ -7,6 +7,11 @@
 -->
 
 <script lang="ts">
+  import UiListRow from '$lib/components/ui/ListRow.svelte';
+
+  import UiButton from '$lib/components/ui/Button.svelte';
+  import { cn as uiClass } from '$lib/utils/cn';
+
   import { Check, MoreHorizontal, Wrench } from 'lucide-svelte';
   import { t } from 'svelte-i18n';
   import { Menu } from '$lib/components/ui';
@@ -33,21 +38,21 @@
 
 <Menu bind:open placement="top-start" minWidth="15rem" label={$t('home.tools.title')}>
   {#snippet trigger(props)}
-    <button type="button" class="tools-trigger" class:is-compact={compact} class:is-open={open} title={$t('home.tools.title')} aria-label={`${$t('home.tools.title')} · ${$t('home.tools.button', { values: { on: totalOn, total } })}`} {...props}>
+    <UiButton variant="plain" type="button" class={uiClass("tools-trigger", "ui-local-69ee6147", {"is-compact": compact, "is-open": open})}   title={$t('home.tools.title')} aria-label={`${$t('home.tools.title')} · ${$t('home.tools.button', { values: { on: totalOn, total } })}`} {...props}>
       {#if compact}<MoreHorizontal class="size-3.5" />{:else}<Wrench class="size-3.5" /><span>{$t('home.tools.button', { values: { on: totalOn, total } })}</span>{/if}
-    </button>
+    </UiButton>
   {/snippet}
 
   <div class="tools-head">{$t('home.tools.title')}</div>
   {#each groups as group (group.id)}
     {@const enabled = group.on > 0}
-    <button
+    <UiListRow
       type="button"
       role="menuitemcheckbox"
       aria-checked={enabled}
       data-keep-open
-      class="ui-menu-item"
-      class:is-active={enabled}
+      class={uiClass("ui-menu-item", "ui-local-69ee6147", {"is-active": enabled})}
+
       onclick={() => flip(group.id, !enabled)}
     >
       <span class="ui-menu-item-text">
@@ -55,12 +60,12 @@
         <span class="ui-menu-item-hint">{$t('home.tools.count', { values: { on: group.on, total: group.total } })}</span>
       </span>
       {#if enabled}<Check class="ui-menu-check size-3.5" />{/if}
-    </button>
+    </UiListRow>
   {/each}
 </Menu>
 
 <style>
-  .tools-trigger {
+  :global(.tools-trigger.ui-local-69ee6147) {
     display: inline-flex;
     height: 26px;
     flex-shrink: 0;
@@ -73,14 +78,14 @@
     white-space: nowrap;
   }
 
-  .tools-trigger.is-compact { width:1.75rem;justify-content:center;padding:0; }
+  :global(.tools-trigger.is-compact.ui-local-69ee6147) { width:1.75rem;justify-content:center;padding:0; }
 
-  .tools-trigger:hover,
-  .tools-trigger.is-open {
+  :global(.tools-trigger:hover.ui-local-69ee6147),
+  :global(.tools-trigger.is-open.ui-local-69ee6147) {
     color: var(--foreground);
   }
 
-  .tools-trigger:focus-visible {
+  :global(.tools-trigger:focus-visible.ui-local-69ee6147) {
     outline: 2px solid var(--ring);
     outline-offset: 2px;
   }

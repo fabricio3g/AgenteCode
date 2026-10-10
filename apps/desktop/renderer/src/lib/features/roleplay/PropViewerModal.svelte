@@ -10,6 +10,9 @@
 -->
 
 <script lang="ts">
+  import UiIconButton from '$lib/components/ui/IconButton.svelte';
+
+  import { t } from 'svelte-i18n';
   import { Button, Tooltip } from '$lib/components/ui';
   import { Copy, X } from 'lucide-svelte';
   import { BookMarked } from 'lucide-svelte';
@@ -30,12 +33,16 @@
 
   let { prop, messageId = null, onclose }: Props = $props();
 
+  // Shown and copied with macros resolved; keeping it to the journal stores the raw prop.
+  const title = $derived(roleplayStore.displayText(prop.title, { messageId }));
+  const body = $derived(roleplayStore.displayText(prop.body, { messageId }));
+
   const kept = $derived(
     !!appStore.currentChat?.roleplay?.journal?.some((entry) => entry.messageId === messageId && entry.title === prop.title)
   );
 
   async function copyBody() {
-    await writeToClipboard(prop.body);
+    await writeToClipboard(body);
     toastStore.info(copyText.actions.copied || 'Copied.', 2000);
   }
 
@@ -63,33 +70,33 @@
     class="ui-modal-surface max-w-xl prop-surface"
     role="dialog"
     aria-modal="true"
-    aria-label={prop.title}
+    aria-label={title}
     tabindex="-1"
     transition:flyAndScale={{ y: -12, start: 0.96, duration: 200 }}
     onclick={(e) => e.stopPropagation()}
   >
     <div class="ui-modal-header">
       <div class="min-w-0">
-        <div class="ui-modal-title">{prop.title}</div>
+        <div class="ui-modal-title">{title}</div>
         <div class="text-xs text-muted-foreground">{prop.kind}</div>
       </div>
-      <Tooltip label={copyText.actions.close} position="bottom"><button type="button" class="ui-icon-button" onclick={onclose} aria-label={copyText.actions.close}>
+      <Tooltip label={copyText.actions.close} position="bottom"><UiIconButton label={copyText.actions.close} size="sm" type="button"  onclick={onclose} >
         <X class="size-4" />
-      </button></Tooltip>
+      </UiIconButton></Tooltip>
     </div>
 
     <div class="ui-modal-body max-h-[58vh] overflow-y-auto">
-      <div class="prop-body">{prop.body}</div>
+      <div class="prop-body">{body}</div>
     </div>
 
     <div class="prop-actions">
       <Button variant="outline" size="sm" type="button" onclick={copyBody}>
         <Copy class="size-3.5" />
-        <span>Copy</span>
+        <span>{$t('roleplay.prop.copy')}</span>
       </Button>
       <Button variant="outline" size="sm" type="button" disabled={kept} onclick={keep}>
         <BookMarked class="size-3.5" />
-        <span>{kept ? 'In journal' : 'Keep in journal'}</span>
+        <span>{kept ? $t('roleplay.prop.inJournal') : $t('roleplay.prop.keep')}</span>
       </Button>
     </div>
   </div>

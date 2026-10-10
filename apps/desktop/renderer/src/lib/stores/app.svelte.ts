@@ -1,3 +1,6 @@
+import { ModelDiscoveryController } from './models/model-discovery.svelte';
+import { ThinkingCapabilitiesController } from './models/thinking-capabilities.svelte';
+import { ModelSettingsController, type ConfigCommitOptions } from './models/model-settings';
 import type { AgentArtifact, AppConfig, Attachment, ChatContextMode, ChatFolder, ChatMessage, ChatSession, LocalThinkingMode, MessageVersion, QueuedPrompt, ModelOption, ReasoningCapabilities, ReasoningLevel, WorkspaceFile } from '$lib/types/chat';
 import type { Attachment as CodeAttachment } from '$shared/agente-protocol.gen';
 import { captureChatModel, configForChatModel, homeRuntimeMatchesModel } from './chat-model';
@@ -7,14 +10,22 @@ import { approvalsStore } from '$lib/stores/approvals.svelte';
 import type { IndexedDocument, SearchResult } from '$lib/types/bridge';
 import { countOf } from '$lib/utils/format';
 import { runAgentTask } from '$lib/services/agent';
+import { runDesignTask } from '$lib/services/agent-design-runtime';
 import { applyHomeAgentResult, homeAgentCallbacks, initialHomeActivity, planHomeAgentRun, settleAgentSteps } from '$lib/features/home/home-turn';
 import { roleplayStore } from '$lib/features/roleplay/roleplay.svelte';
 import { messageSpeechParts } from '$lib/features/roleplay/roleplay-voice';
 import { CONTINUE_INSTRUCTION, joinContinuation } from '$lib/features/roleplay/roleplay-steer';
+import { roleplayReasoningLevel } from '$lib/features/roleplay/roleplay-settings';
+import type { RoleplayTurn } from '$lib/features/roleplay/roleplay-turn';
 import { charactersStore } from '$lib/features/roleplay/characters.svelte';
+import { completionReserve, fitRoleplayRequest, FALLBACK_CONTEXT_TOKENS } from '$lib/services/roleplay-budget';
+import { localRoleplaySampling, type RoleplaySampling } from '$lib/services/roleplay-prompts';
+import { getSupervisorStatus } from '$lib/services/runtime';
 import { resolveComposerRoute, shouldUseToolLoop } from '$lib/services/composer-route';
 import { parseSlidesFromMarkdown } from '$lib/services/slides';
 import { writeTempFile, pathExists, pickWorkspaceFolder as pickWorkspaceFolderDialog, indexWorkspaceFolder, createWorkspaceDocument, renameWorkspaceFile, deleteWorkspaceFile, readWorkspaceFile, openWorkspaceFile, createWorkspaceFolder } from '$lib/services/files';
+import { ingestAttachment } from '$lib/services/attachment-ingestion';
+import { INGESTED_DOCUMENT_GUIDANCE, ingestionFileType } from '$shared/document-ingestion';
 import { clearRagDocuments, ingestDocument, ingestText, ingestTextFast, listRagDocuments, queryDocuments, removeRagDocument } from '$lib/services/rag';
 import { webSearch } from '$lib/services/search';
 import { getRecommendedSettings, loadLocalModel, onSupervisorEvent, stopLlama } from '$lib/services/runtime';
@@ -29,7 +40,7 @@ import { toastStore } from '$lib/stores/toast.svelte';
 import { confirmStore } from '$lib/stores/confirm.svelte';
 import { get } from 'svelte/store';
 import { _ as translate } from 'svelte-i18n';
-import type { CompletionResult, RequestMessage } from '$lib/services/chat-api';
+import type { CompletionResult, RequestMessage } from '$lib/services/chat/types';
 import { cachedModels, completeAssistantReply, detectToolSupport, fetchModels, fetchReasoningCapabilities, hasConfiguredVisionModel, invalidateModels, loadChatConfig, reasoningRouteIdentity, streamAssistantReply } from '$lib/services/chat-api';
 import { loadChatState, saveChatState, saveAppConfig, saveChatDraftToDb, saveChatStateToDb, loadChatStateFromDb, deleteChatFromDb } from '$lib/utils/storage';
 import { toErrorMessage } from '$lib/utils/errors';
@@ -48,14 +59,12 @@ import {
   fetchApiModelMetadataFromProvider,
   getCachedOrFetchApiModelMetadata
 } from '$lib/stores/app-model-metadata';
+import { inferContextWindowFromModel } from '$lib/stores/app-context-budget';
 import {
-  mergeLocalSettingsConfig,
   mergePromptSettingsConfig,
-  mergeProviderConfig,
   mergeSearchSettingsConfig,
   mergeTtsSettingsConfig,
   mergeUiSettingsConfig,
-  setBackendModeConfig,
   setLocalModelConfig,
   type ProviderUpdate,
   type LocalSettingsUpdate,
@@ -129,7 +138,9 @@ import {
   type ApiModelMetadata,
   type AssistantMetadata,
   type ContextBudget,
-  type ElectronApi
+  type ElectronApi,
+  dropFailedReplies,
+  isFailedReply
 } from '$lib/stores/app-store-helpers';
 import { DEFAULT_PROVIDER_ID } from '$shared/providers';
 import { loadProviderDirectory } from '$lib/utils/provider-directory.svelte';
@@ -153,11 +164,30 @@ class AppStore {
   folders = $state<ChatFolder[]>([]);
   currentChatId = $state<string | null>(null);
   activeSpace = $state<ChatContextMode>('home');
-  currentChatIdBySpace = $state<Record<ChatContextMode, string | null>>({ home: null, code: null, roleplay: null });
+  currentChatIdBySpace = $state<Record<ChatContextMode, string | null>>({ home: null, code: null, roleplay: null, design: null });
   composer = $state('');
-  models = $state<ModelOption[]>([]);
-  modelsRefreshing = $state(false);
-  private modelsRefreshSequence = 0;
+  private readonly modelDiscovery = new ModelDiscoveryController({
+    getConfig: () => this.config,
+    isNative: isElectron,
+    cached: cachedModels,
+    fetch: (config, force) => fetchModels(config, undefined, force),
+    loadLocal: async () => {
+      await modelsStore.refreshIndex();
+      return Promise.all(modelsStore.availableModels.map(async model =>
+        buildLocalModelOption(model, !!(model.path && await this.detectMmprojForModel(model.path)))
+      ));
+    }
+  });
+  get models() { return this.modelDiscovery.models; }
+  set models(value: ModelOption[]) { this.modelDiscovery.models = value; }
+  get modelsRefreshing() { return this.modelDiscovery.refreshing; }
+  set modelsRefreshing(value: boolean) { this.modelDiscovery.refreshing = value; }
+
+  private readonly modelSettings = new ModelSettingsController({
+    getConfig: () => this.config,
+    isNative: isElectron,
+    commit: (config, options) => this.commitConfig(config, options)
+  });
   modelMenuOpen = $state(false);
   /** Legacy: something outside the renderer asks for Settings; AppShell maps it to a section. */
   settingsOpen = $state(false);
@@ -219,7 +249,16 @@ class AppStore {
   editingMessageContent = $state('');
   searchMode = $state<'chat' | 'search' | 'deep' | 'max'>('chat');
   reasoningLevel = $state<ReasoningLevel | null>(null);
-  reasoningCapabilities = $state<ReasoningCapabilities>({ supported: false, levels: [], source: 'unknown' });
+  private readonly thinkingCapabilities = new ThinkingCapabilitiesController({
+    getConfig: () => this.config,
+    isNative: isElectron,
+    fetch: fetchReasoningCapabilities,
+    onResolved: capabilities => {
+      if (!capabilities.supported || (this.reasoningLevel && !capabilities.levels.includes(this.reasoningLevel))) this.setReasoningLevel(null);
+    }
+  });
+  get reasoningCapabilities() { return this.thinkingCapabilities.capabilities; }
+  set reasoningCapabilities(value: ReasoningCapabilities) { this.thinkingCapabilities.capabilities = value; }
   composerMode = $state<'chat' | 'instant' | 'agent'>('agent');
   pendingAttachments = $state<Attachment[]>([]);
   workspaceIndexing = $state(false);
@@ -246,7 +285,7 @@ class AppStore {
   localModelLoadRuntimePath = $state('');
   localModelLoadFlashAttention = $state(true);
   localModelLoadOffloadKvCache = $state(true);
-  localModelLoadKeepInMemory = $state(true);
+  localModelLoadKeepInMemory = $state(false);
   localModelLoadMmap = $state(true);
   localModelLoadSeed = $state('');
   localModelLoadParallel = $state('1');
@@ -460,6 +499,11 @@ class AppStore {
   /** Roleplay sessions only. */
   get visibleRoleplayChats() {
     return this.getSessionsForSpace('roleplay');
+  }
+
+  /** Design sessions only. */
+  get visibleDesignChats() {
+    return this.getSessionsForSpace('design');
   }
 
   getSessionsForSpace(space: ChatContextMode) {
@@ -1298,13 +1342,15 @@ class AppStore {
       // code space at different times.
       home: typeof raw.home === 'string' ? raw.home : (typeof raw.chat === 'string' ? raw.chat : null),
       code: typeof raw.code === 'string' ? raw.code : (typeof raw.work === 'string' ? raw.work : null),
-      roleplay: typeof raw.roleplay === 'string' ? raw.roleplay : null
+      roleplay: typeof raw.roleplay === 'string' ? raw.roleplay : null,
+      design: typeof raw.design === 'string' ? raw.design : null
     };
   }
 
   private defaultTitleForMode(mode: ChatContextMode) {
     if (mode === 'code') return 'New session';
     if (mode === 'roleplay') return 'New roleplay';
+    if (mode === 'design') return 'New design';
     return 'New chat';
   }
 
@@ -1387,12 +1433,14 @@ class AppStore {
   }
 
   /**
-   * Give a space something to show. Home and Roleplay get a fresh chat; Code
-   * does not — its conversations are created inside a project, so an empty
-   * Code space shows the project picker instead of an invisible stray chat.
+   * Give a space something to show. Home gets a fresh chat. Code and Roleplay
+   * do not: a Code conversation is created inside a project, and a Roleplay
+   * scene starts from the library, so an empty space shows its landing page
+   * instead of an invisible stray chat.
    */
   private ensureChatForSpace(mode: ChatContextMode) {
-    if (normalizeContextMode(mode) !== 'code') {
+    const normalized = normalizeContextMode(mode);
+    if (normalized !== 'code' && normalized !== 'roleplay') {
       this.createChat(mode);
       return;
     }
@@ -1400,8 +1448,28 @@ class AppStore {
     this.hydrateUiFromChat(null);
   }
 
+  /**
+   * Roleplay's "New roleplay": the library, with no chat created. A scene is
+   * made when a character or a setup is started, so this never leaves an
+   * empty "New roleplay" row behind.
+   */
+  openRoleplayLibrary() {
+    this.settingsScreenOpen = false;
+    this.homeView = 'chat';
+    this.botsOpen = false;
+    if (this.currentChat) {
+      const currentMode = normalizeContextMode(this.currentChat.contextMode);
+      this.currentChatIdBySpace = { ...this.currentChatIdBySpace, [currentMode]: this.currentChat.id };
+    }
+    this.activeSpace = 'roleplay';
+    this.currentChatIdBySpace = { ...this.currentChatIdBySpace, roleplay: null };
+    this.currentChatId = null;
+    this.hydrateUiFromChat(null);
+    this.persist();
+  }
+
   private rebuildChatIdBySpace() {
-    const next: Record<ChatContextMode, string | null> = { home: null, code: null, roleplay: null };
+    const next: Record<ChatContextMode, string | null> = { home: null, code: null, roleplay: null, design: null };
     for (const chat of this.chats) {
       const mode = normalizeContextMode(chat.contextMode);
       if (!next[mode]) next[mode] = chat.id;
@@ -1705,6 +1773,13 @@ class AppStore {
     if (!options.silent) toastStore.info(`Chat deleted${title ? `: ${title}` : ''}`, 2500);
   }
 
+  /** Deletes every conversation in a space (the sidebar's "Clear history"); returns how many. */
+  clearChatHistory(space: ChatContextMode = this.activeSpace): number {
+    const ids = this.getSessionsForSpace(space).map((chat) => chat.id);
+    for (const id of ids) this.deleteChat(id, { silent: true });
+    return ids.length;
+  }
+
   renameChat(chatId: string, title: string) {
     const chat = this.chats.find((c) => c.id === chatId);
     if (!chat) return;
@@ -1870,61 +1945,7 @@ class AppStore {
     }
   }
 
-  /** Route identity the reasoning capabilities were last probed for. */
-  private reasoningCapabilitiesKey = '';
-  /** Monotonic guard so a slow probe cannot overwrite a newer route's result. */
-  private reasoningCapabilitiesSeq = 0;
-
-  async refreshReasoningCapabilities(force = false) {
-    if (!isElectron()) {
-      this.reasoningCapabilities = { supported: false, levels: [], source: 'unknown' };
-      return;
-    }
-    const seq = ++this.reasoningCapabilitiesSeq;
-    try {
-      const config = this.config;
-      if (seq !== this.reasoningCapabilitiesSeq) return; // superseded while loading
-      const identity = reasoningRouteIdentity(config);
-      if (!force && identity === this.reasoningCapabilitiesKey && this.reasoningCapabilities.source !== 'unknown') {
-        return; // already probed for this exact route — skip probe spam
-      }
-      const backendMode = config.llm?.backend_mode || (isElectron() ? 'local' : 'api');
-      let capabilities: ReasoningCapabilities;
-      if (backendMode === 'local') {
-        const local = config.llm?.local || {};
-        capabilities = await fetchReasoningCapabilities({
-          providerName: 'local',
-          model: local.model || 'local-model',
-          modelPath: local.selected_model_path || ''
-        });
-      } else {
-        const providerName = config.llm?.provider || DEFAULT_PROVIDER_ID;
-        const provider = (config.llm?.providers?.[providerName] || {}) as { base_url?: string; api_key?: string; model?: string };
-        capabilities = await fetchReasoningCapabilities({
-          baseUrl: provider.base_url,
-          apiKey: provider.api_key,
-          providerName,
-          model: provider.model || ''
-        });
-      }
-      if (seq !== this.reasoningCapabilitiesSeq) return; // stale response — a newer refresh won
-      this.reasoningCapabilitiesKey = identity;
-      this.reasoningCapabilities = capabilities;
-      // The level resets only on a successful probe that excludes it. A
-      // failed probe keeps the previous capabilities and level — transient
-      // failures must not wipe the user's choice.
-      if (this.reasoningCapabilities.supported && this.reasoningLevel &&
-          !this.reasoningCapabilities.levels.includes(this.reasoningLevel)) {
-        this.setReasoningLevel(null);
-      }
-      if (!this.reasoningCapabilities.supported) {
-        this.setReasoningLevel(null);
-      }
-    } catch {
-      if (seq !== this.reasoningCapabilitiesSeq) return;
-      // Keep previous capabilities and level on transient failure.
-    }
-  }
+  refreshReasoningCapabilities(force = false) { return this.thinkingCapabilities.refresh(force); }
 
   async performWebSearch(query: string, chatId = this.currentChatId || '') {
     const trimmed = String(query || '').trim();
@@ -2004,6 +2025,13 @@ class AppStore {
     await this.refreshRagDocuments(targetChatId);
   }
 
+  private documentStillReferenced(chatId: string, docId: string): boolean {
+    const chat = this.findChat(chatId);
+    return (this.currentChatId === chatId && this.pendingAttachments.some((item) => item.docId === docId))
+      || !!chat?.messages.some((message) => message.attachments?.some((item) => item.docId === docId))
+      || !!chat?.workspace?.files.some((file) => file.docId === docId);
+  }
+
   removeAttachment(attachmentId: string) {
     const attachment = this.pendingAttachments.find((a) => a.id === attachmentId);
     this.pendingAttachments = this.pendingAttachments.filter((a) => a.id !== attachmentId);
@@ -2012,7 +2040,7 @@ class AppStore {
       URL.revokeObjectURL(attachment.preview);
     }
     // If it's a RAG document, remove from backend too
-    if (attachment?.docId && isElectron() && this.currentChatId) {
+    if (attachment?.docId && isElectron() && this.currentChatId && !this.documentStillReferenced(this.currentChatId, attachment.docId)) {
       removeRagDocument(attachment.docId, this.currentChatId).catch(() => {});
       this.refreshRagDocuments().catch(() => {});
     }
@@ -2043,99 +2071,37 @@ class AppStore {
     const targetChatId = this.currentChatId;
     if (!files.length || !targetChatId) return;
 
-    const nextAttachments: Attachment[] = [];
-
-    for (const file of files) {
-      const attachment: Attachment = {
-        id: createId('attachment'),
-        name: file.name,
-        size: file.size,
-        type: file.type || 'application/octet-stream',
-        kind: file.type.startsWith('image/') && !/\.pdf$/i.test(file.name) ? 'image' : 'document',
-        status: 'processing'
+    const attachments: Attachment[] = files.map((file) => {
+      const { kind, mime } = ingestionFileType(file.name, file.type);
+      return {
+        id: createId('attachment'), name: file.name, size: file.size, type: mime,
+        kind: kind === 'image' ? 'image' : 'document', status: 'processing',
+        processingMode: kind === 'audio' || kind === 'video' ? 'transcription' : kind === 'image' ? 'ocr' : 'document_text'
       };
-
-      if (attachment.kind === 'image') {
-        attachment.preview = URL.createObjectURL(file);
-        // Read base64 for vision API calls.
-        attachment.base64 = await readBlobAsDataUrl(file);
-        const visionReady = await hasConfiguredVisionModel(this.config);
-        attachment.visionReady = visionReady;
-        attachment.processingMode = visionReady ? 'vision' : 'ocr';
-
-        if (!visionReady) {
-          try {
-            const { extractTextFromFile } = await import('$lib/services/ocr');
-            const ocrText = await extractTextFromFile(file);
-            if (ocrText.trim()) attachment.ocrText = ocrText.trim();
-          } catch (err: unknown) {
-            console.warn('[addFiles] OCR failed for image:', err);
-          }
+    });
+    // Publish before reading so progress/errors are visible and Enter cannot
+    // send a draft while one of its files is still being extracted.
+    this.pendingAttachments = [...this.pendingAttachments, ...attachments];
+    const uploadConfig = this.configForChat(this.findChat(targetChatId)!);
+    for (let i = 0; i < files.length; i++) {
+      const result = await ingestAttachment(files[i], { ...attachments[i] }, targetChatId, {
+        visionAvailable: () => hasConfiguredVisionModel(uploadConfig),
+        dataUrl: readBlobAsDataUrl,
+        writeFile: (name, bytes) => writeTempFile(`${Date.now()}_${name}`, bytes),
+        ingest: ingestDocument,
+        extractFallback: async (file) => (await import('$lib/services/ocr')).extractFileContent(file)
+      });
+      if (this.currentChatId === targetChatId) {
+        // A removed processing chip must not leave hidden source context behind.
+        if (!this.pendingAttachments.some((item) => item.id === result.id) && result.docId && !this.documentStillReferenced(targetChatId, result.docId)) {
+          await removeRagDocument(result.docId, targetChatId);
         }
-        attachment.status = 'ready';
-        nextAttachments.push(attachment);
-        continue;
-      }
-
-      // Create blob URL for document preview
-      const fileBuffer = await file.arrayBuffer();
-      const fileBlob = new Blob([fileBuffer], { type: file.type });
-      attachment.data = await readBlobAsDataUrl(fileBlob);
-      attachment.size = fileBlob.size;
-      attachment.processingMode = 'document_text';
-
-      // Documents: try backend RAG ingestion, fallback to client-side extraction
-      try {
-        const bytes = new Uint8Array(fileBuffer);
-        const tempPath = await writeTempFile(`${Date.now()}_${file.name}`, bytes);
-        const doc = await ingestDocument({
-          file_path: tempPath,
-          chat_id: targetChatId,
-          name: file.name
-        });
-        attachment.docId = doc.id;
-        attachment.status = 'ready';
-        nextAttachments.push(attachment);
-      } catch (error) {
-        // Backend RAG failed — try client-side text extraction (OCR/PDF.js)
-        console.warn('[addFiles] Backend ingest failed, trying client-side extraction:', error);
-
-        const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
-        const errorMessage = toErrorMessage(error) || 'Failed to process file';
-        const parserFailed = isPdf && /could not parse pdf text|pdf parser returned insufficient readable text/i.test(errorMessage);
-
-        if (parserFailed) {
-          attachment.status = 'error';
-          attachment.error = 'PDF parser could not extract readable text. Please upload a text-based PDF export.';
-          nextAttachments.push(attachment);
-          continue;
-        }
-
-        try {
-          const { extractTextFromFile } = await import('$lib/services/ocr');
-          const text = await extractTextFromFile(file);
-          if (text.trim()) {
-            attachment.ocrText = text.trim();
-            attachment.status = 'ready';
-          } else {
-            attachment.status = 'error';
-            attachment.error = 'Could not extract text from file';
-          }
-        } catch (ocrErr) {
-          attachment.status = 'error';
-          attachment.error = toErrorMessage(error) || 'Failed to process file';
-        }
-        nextAttachments.push(attachment);
+        // Publish ready only once the turn's document context has caught up.
+        await this.refreshRagDocuments(targetChatId);
+        this.pendingAttachments = this.pendingAttachments.map((item) => item.id === result.id ? result : item);
       }
     }
 
-    if (this.currentChatId === targetChatId) {
-      this.pendingAttachments = [...this.pendingAttachments, ...nextAttachments];
-    } else {
-      for (const attachment of nextAttachments) {
-        if (attachment.preview?.startsWith('blob:')) URL.revokeObjectURL(attachment.preview);
-      }
-    }
     await this.refreshRagDocuments(targetChatId);
   }
 
@@ -2415,6 +2381,14 @@ class AppStore {
     }
 
     const inputAttachments = (options.queuedPrompt ? options.queuedPrompt.attachments ?? [] : this.pendingAttachments);
+    if (!silent && inputAttachments.some((attachment) => attachment.status === 'processing')) {
+      toastStore.info('Wait for the attached files to finish reading.', 2800);
+      return;
+    }
+    if (!silent && inputAttachments.some((attachment) => attachment.status === 'error')) {
+      toastStore.info('Remove files that could not be read before sending.', 2800);
+      return;
+    }
     if (!silent && this.isChatGenerating(targetChatId)) {
       if (content || inputAttachments.length) {
         this.queuePrompt(targetChatId, content || 'Please review the attached media.', { attachments: [...inputAttachments] });
@@ -2432,7 +2406,9 @@ class AppStore {
     const activeContextMode = normalizeContextMode(targetChat.contextMode);
     const activeSearchMode = normalizeSessionSearchMode(targetChat.searchMode ?? this.searchMode);
     const activeComposerMode = normalizeSessionComposerMode(targetChat.composerMode ?? this.composerMode, activeContextMode);
-    const activeReasoningLevel = targetChat.reasoningLevel ?? this.reasoningLevel;
+    const activeReasoningLevel = activeContextMode === 'roleplay'
+      ? this.roleplayThinking(targetChat, activeBackendMode)
+      : targetChat.reasoningLevel ?? this.reasoningLevel;
     const targetRagDocuments = this.ragDocumentsByChat[targetChatId] || [];
 
     if (!this.canStartGeneration({
@@ -2637,12 +2613,17 @@ class AppStore {
       syncMsg(true);
       this.persist();
 
+      // Roleplay history reaches the model as the viewer reads it (macros resolved
+      // per message, for this turn's persona); other chats pass through unchanged.
+      const history = roleplayStore.resolveHistory(targetChat, targetChat.messages, { user: turn.attribution?.userName });
+      // A failed reply is an error notice, never the character's words: the model does not read it back.
+      const wireHistory = activeContextMode === 'roleplay' ? dropFailedReplies(history) : history;
       const requestMessages = userMessage
         ? buildRequestMessagesWithPatchedUser({
-            messages: targetChat.messages,
+            messages: wireHistory,
             assistantMessageId: assistantMessage.id,
             userMessageId: userMessage.id,
-            userContent: content,
+            userContent: history.find((message) => message.id === userMessage.id)?.content ?? content,
             attribution: turn.attribution,
             buildContextualPrompt: (userContent) => this.buildContextualPrompt({
               content: userContent,
@@ -2655,12 +2636,16 @@ class AppStore {
             })
           })
         : buildRequestMessagesFromHistory(
-            targetChat.messages,
-            targetChat.messages.length - 1,
+            wireHistory,
+            wireHistory.length - 1,
             turn.attribution
           );
 
-      const systemPrompt = this.buildSystemPromptForMode({
+      // A roleplay request is composed by its turn (stable block, history, volatile tail) and fitted to the window.
+      const roleplayRequest = activeContextMode === 'roleplay'
+        ? await this.roleplayRequest(turn, targetChat, requestMessages, activeBackendMode)
+        : null;
+      let systemPrompt = roleplayRequest ? '' : this.buildSystemPromptForMode({
         backendMode: activeBackendMode,
         providerPrompt: activeProvider?.system_prompt,
         includeChartHint: activeComposerMode !== 'agent',
@@ -2668,10 +2653,14 @@ class AppStore {
         speakerId: turn.speakerId,
         roleplaySnapshot: { roleplay: turn.snapshot }
       });
+      if (targetRagDocuments.length && !roleplayRequest && activeContextMode !== 'design') {
+        const sources = targetRagDocuments.map((doc) => ({ name: doc.source, method: doc.extraction_method, warning: doc.extraction_warning }));
+        systemPrompt += `\n\n${INGESTED_DOCUMENT_GUIDANCE}\n<attached_sources>\n${JSON.stringify(sources)}\n</attached_sources>`;
+      }
 
-      const outboundMessages = turn.decorate(buildOutboundMessages({ messages: requestMessages, systemPrompt }));
-      // Context window budget check (local mode only)
-      if (!useToolLoop && activeBackendMode === 'local' && isElectron()) {
+      const outboundMessages = roleplayRequest?.messages ?? buildOutboundMessages({ messages: requestMessages, systemPrompt });
+      // Context window budget check (local mode only). Roleplay fits its own budget above.
+      if (!useToolLoop && activeBackendMode === 'local' && isElectron() && !roleplayRequest) {
         try {
           const electronApi = getElectronApi();
           if (electronApi) {
@@ -2696,7 +2685,8 @@ class AppStore {
       // Home answers through the Rust runtime on every provider; a plain
       // Instant reply is just a turn without tools. Roleplay keeps its stream.
       if (useToolLoop || normalizeSpace(activeContextMode) === 'home') {
-        const agentResult = await runAgentTask({
+        // Design turns share Home's runtime; they swap in the design tools and prompt.
+        const agentResult = await (activeContextMode === 'design' ? runDesignTask : runAgentTask)({
           chatId: targetChatId,
           ...this.homeRuntimeArgs(targetChat, assistantMessage, targetChat.messages.filter((entry) => entry.id !== assistantMessage.id).map((entry) => entry.id)),
           systemPrompt,
@@ -2766,8 +2756,9 @@ class AppStore {
           signal: controller.signal,
           apiKey: activeProviderApiKey,
           reasoningLevel: activeReasoningLevel,
-          sampling: turn.sampling,
+          sampling: roleplayRequest?.sampling ?? turn.sampling,
           stop: turn.stop,
+          extraParams: roleplayRequest?.extraParams,
           onChunk: (value) => {
             reasoningTimer.markStopped();
             turn.record(value);
@@ -2843,7 +2834,7 @@ class AppStore {
       if (!this.voiceModeActive && selectedConfig.tts?.enable_voice_output && selectedConfig.tts?.auto_play_voice && assistantMessage.content
         && (activeContextMode !== 'roleplay' || roleplayStore.settings(targetChat).voicePlayback !== false)) {
         try {
-          if (activeContextMode === 'roleplay') ttsStore.speakSequence(messageSpeechParts(assistantMessage, charactersStore.characters, this.config));
+          if (activeContextMode === 'roleplay') ttsStore.speakSequence(messageSpeechParts(roleplayStore.resolveMessage(targetChat, assistantMessage), charactersStore.characters, this.config));
           else void ttsStore.speak(assistantMessage.id, assistantMessage.content, this.config);
         } catch {
           // ignore TTS auto-play failures
@@ -3002,10 +2993,89 @@ class AppStore {
     }
   }
 
-  /** One non-streamed completion on the active model (roleplay drafts and summaries). */
-  async completeText(messages: RequestMessage[]): Promise<string> {
-    const result = await completeAssistantReply({ apiKey: this.activeProvider?.api_key, messages });
+  /**
+   * One non-streamed completion on the active model (roleplay drafts and summaries).
+   * Side calls skip thinking on a local model, where it is decoded at local speed.
+   */
+  async completeText(messages: RequestMessage[], options: { maxTokens?: number } = {}): Promise<string> {
+    const result = await completeAssistantReply({
+      apiKey: this.activeProvider?.api_key,
+      messages,
+      reasoningLevel: roleplayReasoningLevel({ thinkingEnabled: this.config.ui?.enable_thinking !== false, local: this.backendMode === 'local' }),
+      maxTokens: options.maxTokens
+    });
     return result.content || '';
+  }
+
+  /** The active model runs on this machine (the roleplay side calls key off it). */
+  get localBackend(): boolean {
+    return this.backendMode === 'local';
+  }
+
+  /** The thinking level a roleplay request asks for: the Settings toggle, the chat's choice, then the backend's default. */
+  private roleplayThinking(chat: ChatSession, backend: GenerationBackendMode): ReasoningLevel | null {
+    return roleplayReasoningLevel({
+      chatLevel: chat.reasoningLevel ?? this.reasoningLevel,
+      thinkingEnabled: this.config.ui?.enable_thinking !== false,
+      local: backend === 'local'
+    });
+  }
+
+  /**
+   * The window a roleplay request must fit: the local runtime's per-request
+   * context (llama-server's n_ctx, else the configured size), or the cloud
+   * model's window from its catalog. Null when a cloud window is unknown.
+   */
+  private async roleplayContextWindow(backend: GenerationBackendMode): Promise<number | null> {
+    if (backend === 'local') {
+      try {
+        const nCtx = Number((await getSupervisorStatus())?.n_ctx);
+        if (Number.isFinite(nCtx) && nCtx > 0) return nCtx;
+      } catch {
+        // The runtime is not answering: the configured size stands in for it.
+      }
+      return Number(this.config.llm?.local?.context_length) || FALLBACK_CONTEXT_TOKENS;
+    }
+    const providerName = this.activeProviderName;
+    const model = this.activeProvider?.model;
+    if (!model) return null;
+    const cached = this.apiModelMetadataByKey[buildApiModelMetadataCacheKey(providerName, model)];
+    const metadata = cached ?? await this.fetchApiModelMetadata(providerName, model).catch(() => null);
+    return metadata?.context_window || inferContextWindowFromModel(providerName, model);
+  }
+
+  /**
+   * A roleplay request for one turn: the turn's stable block, history and
+   * volatile tail, fitted to the window when the window is known. Local turns
+   * carry the sampler preset and never exceed a quarter of the window. The
+   * used record lands on the turn's snapshot, so the reply keeps it.
+   */
+  private async roleplayRequest(
+    turn: RoleplayTurn,
+    chat: ChatSession,
+    history: RequestMessage[],
+    backend: GenerationBackendMode
+  ): Promise<{ messages: RequestMessage[]; sampling: RoleplaySampling; extraParams?: Record<string, number> }> {
+    const contextTokens = await this.roleplayContextWindow(backend);
+    const local = backend === 'local';
+    const tuned = local
+      ? localRoleplaySampling(turn.sampling, turn.snapshot?.settings ?? roleplayStore.settings(chat), contextTokens ?? undefined)
+      : { sampling: turn.sampling, extra: {} };
+    const extraParams = local && Object.keys(tuned.extra).length ? tuned.extra : undefined;
+    if (!contextTokens) {
+      const composed = turn.compose(history);
+      turn.noteUsed(composed.used);
+      return { messages: composed.messages, sampling: tuned.sampling, extraParams };
+    }
+    const reserve = completionReserve({ contextTokens, maxTokens: tuned.sampling.maxTokens, backend });
+    const fitted = fitRoleplayRequest({
+      contextTokens,
+      reserve,
+      history,
+      compose: (messages, trim) => turn.compose(messages, trim)
+    });
+    turn.noteUsed(fitted.used);
+    return { messages: fitted.messages, sampling: tuned.sampling, extraParams };
   }
 
   get contextRatio(): number {
@@ -3017,7 +3087,7 @@ class AppStore {
   private continuable(messageId: string) {
     const chat = this.currentChat;
     const message = chat?.messages.at(-1);
-    const ok = chat?.contextMode === 'roleplay' && message?.id === messageId && message.role === 'assistant' && !!message.content.trim();
+    const ok = chat?.contextMode === 'roleplay' && message?.id === messageId && message.role === 'assistant' && !!message.content.trim() && !isFailedReply(message);
     return ok && this.currentChatId ? { chat: chat!, message: message!, index: chat!.messages.length - 1, targetChatId: this.currentChatId } : null;
   }
 
@@ -3031,7 +3101,8 @@ class AppStore {
 
     const snapshot = message.versions?.[message.activeVersion ?? 0]?.metadata?.roleplay ?? message.metadata?.roleplay;
     const turn = roleplayStore.prepareTurn(chat, { speakerId: message.speakerId, snapshot, historyEnd: index });
-    const history = buildRequestMessagesFromHistory(chat.messages, index, roleplayStore.attribution(chat, message.speakerId));
+    const wire = dropFailedReplies(roleplayStore.resolveHistory(chat, chat.messages, { user: turn.attribution?.userName }));
+    const history = buildRequestMessagesFromHistory(wire, wire.length - 1, roleplayStore.attribution(chat, message.speakerId));
     const prefix = message.content;
     const version = message.versions?.[message.activeVersion ?? 0];
     const controller = new AbortController();
@@ -3041,15 +3112,16 @@ class AppStore {
     this.touchChats();
     try {
       this.beginGenerationRun(targetChatId, { controller, messageId: message.id, backendMode: activeBackendMode, mode: 'chat', startedAt: Date.now() });
-      const systemPrompt = this.buildSystemPromptForMode({ backendMode: activeBackendMode, providerPrompt: activeProvider?.system_prompt, chat, speakerId: turn.speakerId, roleplaySnapshot: { roleplay: snapshot } });
+      const request = await this.roleplayRequest(turn, chat, history, activeBackendMode);
       await streamAssistantReply({
         config: this.configForChat(chat),
-        messages: [...turn.decorate(buildOutboundMessages({ messages: history, systemPrompt })), { role: 'system', content: CONTINUE_INSTRUCTION }],
+        messages: [...request.messages, { role: 'system', content: CONTINUE_INSTRUCTION }],
         signal: controller.signal,
         apiKey: activeProvider?.api_key,
-        reasoningLevel: chat.reasoningLevel ?? this.reasoningLevel,
-        sampling: turn.sampling,
+        reasoningLevel: this.roleplayThinking(chat, activeBackendMode),
+        sampling: request.sampling,
         stop: turn.stop,
+        extraParams: request.extraParams,
         onChunk: (value) => {
           added += value;
           const tail = turn.sanitize ? turn.sanitize(added) : added;
@@ -3078,9 +3150,13 @@ class AppStore {
     const message = index >= 0 ? chat.messages[index] : null;
     if (!message || message.role !== 'assistant') return;
 
+    // The regenerate keeps the persona its turn was built with, so {{user}} matches that prompt.
+    const turnUser = (message.versions?.[message.activeVersion ?? 0]?.metadata?.roleplay ?? message.metadata?.roleplay)?.persona?.name;
+    const resolvedBefore = roleplayStore.resolveHistory(chat, chat.messages, { user: turnUser }).slice(0, index);
+    const wireBefore = chat.contextMode === 'roleplay' ? dropFailedReplies(resolvedBefore) : resolvedBefore;
     const previousMessages = buildRequestMessagesFromHistory(
-      chat.messages,
-      index - 1,
+      wireBefore,
+      wireBefore.length - 1,
       roleplayStore.attribution(chat, message.speakerId)
     );
     if (!previousMessages.length) return;
@@ -3199,9 +3275,9 @@ class AppStore {
         speakerId: turn.speakerId,
         roleplaySnapshot: { roleplay: turn.snapshot }
       });
-      const reasoningLevel = chat.reasoningLevel ?? this.reasoningLevel;
+      const reasoningLevel = this.roleplayThinking(chat, activeBackendMode);
       if (agentic) {
-        const agentResult = await runAgentTask({
+        const agentResult = await (getSpaceForSession(chat) === 'design' ? runDesignTask : runAgentTask)({
           chatId: targetChatId,
           ...this.homeRuntimeArgs(chat, message, chat.messages.slice(0, index).map((entry) => entry.id)),
           forkIndex: message.metadata?.homeSessionId === chat.homeRuntime?.sessionId && message.metadata?.homeRevision === chat.homeRuntime?.revision ? message.metadata?.homeConversationIndex : undefined,
@@ -3248,14 +3324,19 @@ class AppStore {
         this.touchChats();
         this.persist();
       } else {
+        // Regenerate serves every chat: only a roleplay turn composes its own request.
+        const request = chat.contextMode === 'roleplay'
+          ? await this.roleplayRequest(turn, chat, previousMessages, activeBackendMode)
+          : { messages: turn.decorate(buildOutboundMessages({ messages: previousMessages, systemPrompt })), sampling: turn.sampling, extraParams: undefined };
         await streamAssistantReply({
           config: this.configForChat(chat),
-          messages: turn.decorate(buildOutboundMessages({ messages: previousMessages, systemPrompt })),
+          messages: request.messages,
           signal: controller.signal,
           apiKey: activeProvider?.api_key,
           reasoningLevel,
-          sampling: turn.sampling,
+          sampling: request.sampling,
           stop: turn.stop,
+          extraParams: request.extraParams,
           onChunk: (value) => {
             reasoningTimer.markStopped();
             turn.record(value);
@@ -3384,12 +3465,7 @@ class AppStore {
     this.persist();
   }
 
-  private async commitConfig(next: AppConfig, options: {
-    invalidateModels?: boolean;
-    refreshModels?: boolean;
-    refreshLocalStatus?: boolean;
-    detectTools?: boolean;
-  } = {}) {
+  private async commitConfig(next: AppConfig, options: ConfigCommitOptions = {}) {
     // Capture the owner before asynchronous persistence: switching chats while
     // saving must never pin the choice onto the newly visible conversation.
     const chat = this.currentChat;
@@ -3427,121 +3503,15 @@ class AppStore {
     }
   }
 
-  async refreshModels(force?: boolean) {
-    const sequence = ++this.modelsRefreshSequence;
-    const config = this.config;
-    const isCurrent = () => sequence === this.modelsRefreshSequence;
-    if (config.llm?.backend_mode === 'local' && isElectron()) {
-      this.modelsRefreshing = true;
-      this.models = [];
-      try {
-        await modelsStore.refreshIndex();
-        const localModels = await Promise.all(modelsStore.availableModels.map(async (m) =>
-          buildLocalModelOption(m, !!(m.path && await this.detectMmprojForModel(m.path)))
-        ));
-        if (isCurrent()) this.models = localModels;
-      } catch {
-        if (isCurrent()) this.models = [];
-      } finally {
-        if (isCurrent()) this.modelsRefreshing = false;
-      }
-      return;
-    }
+  refreshModels(force?: boolean) { return this.modelDiscovery.refresh(force); }
 
-    this.modelsRefreshing = true;
-    this.models = cachedModels(config) ?? [];
-    try {
-      const data = await fetchModels(config, undefined, force);
-      if (isCurrent()) this.models = data;
-    } catch {
-      if (isCurrent()) this.models = [];
-    } finally {
-      if (isCurrent()) this.modelsRefreshing = false;
-    }
-  }
-
-  async updateProvider(partial: ProviderUpdate, opts: { activate?: boolean } = {}) {
-    const previous = this.config.llm?.providers?.[partial.provider];
-    const credentialsChanged = partial.api_key !== undefined
-      || (partial.base_url !== undefined && partial.base_url !== previous?.base_url);
-    const next = mergeProviderConfig(this.config, partial, opts);
-    await this.commitConfig(next, {
-      invalidateModels: credentialsChanged,
-      refreshModels: true,
-      detectTools: true,
-      refreshLocalStatus: next.llm?.backend_mode === 'local'
-    });
-  }
-
-  /**
-   * Register a user-added OpenAI-compatible endpoint. The key and model are
-   * stored through updateProvider under llm.providers[id] as usual; only the
-   * directory entry lives in llm.custom_providers.
-   */
-  async addCustomProvider(input: { label: string; base_url: string }): Promise<string> {
-    const slug = input.label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'endpoint';
-    const existing = this.config.llm?.custom_providers ?? [];
-    let id = `custom-${slug}`;
-    let n = 2;
-    while (existing.some((p) => p.id === id)) id = `custom-${slug}-${n++}`;
-    await this.commitConfig({
-      ...this.config,
-      llm: { ...this.config.llm, custom_providers: [...existing, { id, label: input.label.trim(), base_url: input.base_url.trim() }] }
-    }, { refreshModels: false });
-    return id;
-  }
-
-  /** Remove a custom endpoint and its stored credential/model entry. */
-  async removeCustomProvider(id: string): Promise<void> {
-    const list = (this.config.llm?.custom_providers ?? []).filter((p) => p.id !== id);
-    const providers = { ...(this.config.llm?.providers ?? {}) };
-    delete providers[id];
-    const wasActive = this.config.llm?.provider === id;
-    await this.commitConfig({
-      ...this.config,
-      llm: {
-        ...this.config.llm,
-        custom_providers: list,
-        providers,
-        ...(wasActive ? { provider: '' } : {})
-      }
-    }, { refreshModels: true, invalidateModels: true });
-  }
-
-  async setBackendMode(mode: 'local' | 'api') {
-    const current = this.config.llm?.backend_mode || (isElectron() ? 'local' : 'api');
-    if (current === mode) return;
-    await this.commitConfig(setBackendModeConfig(this.config, mode), {
-      refreshModels: true,
-      detectTools: true,
-      refreshLocalStatus: true
-    });
-  }
-
-  /**
-   * Point chats at a provider id ('' = none active) without touching its
-   * stored fields — the settings toggle's primitive.
-   */
-  async setActiveProvider(id: string) {
-    await this.commitConfig({
-      ...this.config,
-      llm: { ...this.config.llm, provider: id }
-    }, { refreshModels: true, detectTools: true });
-  }
-
-  async updateLocalModel(model: ModelOption) {
-    await this.commitConfig(setLocalModelConfig(this.config, model), {
-      refreshModels: true,
-      detectTools: true,
-      refreshLocalStatus: true
-    });
-  }
-
-  async updateLocalSettings(partial: LocalSettingsUpdate) {
-    await this.commitConfig(mergeLocalSettingsConfig(this.config, partial), {
-      refreshLocalStatus: true
-    });
-  }
+  updateProvider(partial: ProviderUpdate, opts: { activate?: boolean } = {}) { return this.modelSettings.updateProvider(partial, opts); }
+  addCustomProvider(input: { label: string; base_url: string }) { return this.modelSettings.addCustomProvider(input); }
+  removeCustomProvider(id: string) { return this.modelSettings.removeCustomProvider(id); }
+  setBackendMode(mode: 'local' | 'api') { return this.modelSettings.setBackendMode(mode); }
+  setActiveProvider(id: string) { return this.modelSettings.setActiveProvider(id); }
+  updateLocalModel(model: ModelOption) { return this.modelSettings.updateLocalModel(model); }
+  updateLocalSettings(partial: LocalSettingsUpdate) { return this.modelSettings.updateLocalSettings(partial); }
 
   async stopLocalModel() {
     if (!isElectron()) return;

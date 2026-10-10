@@ -1,10 +1,11 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+  import IconButton from '$lib/components/ui/IconButton.svelte';
+
   import { Tooltip } from '$lib/components/ui';
   import { t } from 'svelte-i18n';
   import { FileDown, FileQuestion } from 'lucide-svelte';
-  import Button from '$lib/components/ui/Button.svelte';
   import CodeEditor from '$lib/ui/components/CodeEditor.svelte';
   import { isDataUrlFile } from '$lib/utils/artifact-files';
 
@@ -16,7 +17,7 @@
 <div class="flex h-full min-h-0 flex-col">
   {#if chrome}<div class="flex h-10 shrink-0 items-center justify-between border-b border-border px-3">
     <span class="truncate text-[12px] text-muted-foreground">{path || $t('artifacts.studio.noFile')}</span>
-    <Tooltip label={$t('artifacts.studio.downloadFile')} position="bottom"><Button variant="ghost" size="icon-sm" onclick={ondownload} disabled={!path} aria-label={$t('artifacts.studio.downloadFile')}><FileDown /></Button></Tooltip>
+    <Tooltip label={$t('artifacts.studio.downloadFile')} position="bottom"><IconButton label={$t('artifacts.studio.downloadFile')} variant="ghost" size="sm" onclick={ondownload} disabled={!path} ><FileDown /></IconButton></Tooltip>
   </div>
   {/if}
   {#if !path}

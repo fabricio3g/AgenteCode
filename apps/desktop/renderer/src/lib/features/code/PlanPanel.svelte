@@ -9,6 +9,8 @@
 -->
 
 <script lang="ts">
+  import IconButton from '$lib/components/ui/IconButton.svelte';
+
   import { t } from 'svelte-i18n';
   import { ClipboardList, MessageSquare, RefreshCw, Hammer, X } from 'lucide-svelte';
   import { Button, Tooltip } from '$lib/components/ui';
@@ -44,7 +46,7 @@
   {#if !embedded}<header class="flex h-11 shrink-0 items-center gap-2 border-b border-[var(--border-subtle)] pl-4 pr-2">
     <ClipboardList class="size-4 shrink-0 text-muted-foreground" />
     <p class="min-w-0 flex-1 truncate text-[13px] font-medium text-foreground" title={plan.path || plan.title}>{plan.title}</p>
-    <Tooltip label={$t('codeWs.close')} position="bottom"><Button variant="ghost" size="icon-sm" onclick={() => codeWorkspace.closePlan()} aria-label={$t('codeWs.close')}><X /></Button></Tooltip>
+    <Tooltip label={$t('codeWs.close')} position="bottom"><IconButton label={$t('codeWs.close')} variant="ghost" size="sm" onclick={() => codeWorkspace.closePlan()} ><X /></IconButton></Tooltip>
   </header>{/if}
   <div class="min-h-0 flex-1 overflow-y-auto px-5 py-4 text-sm leading-relaxed text-foreground">
     {#if plan.path}<p class="mb-3 truncate text-xs text-muted-foreground" title={plan.path}>{plan.path}</p>{/if}
@@ -52,12 +54,11 @@
   </div>
   {#if waiting}
     <footer class="flex shrink-0 flex-col gap-2 border-t border-[var(--border-subtle)] px-5 py-3">
-      <div class="flex flex-wrap items-center gap-2">
+      <div class="flex flex-wrap items-center gap-2" title={$t('code.plan.hint')}>
         <Button size="sm" disabled={busy} onclick={() => void answer('supervised', acceptMessage(plan))}><Hammer /> {$t('code.plan.accept')}</Button>
         <Button size="sm" variant="outline" disabled={busy} onclick={() => void answer('plan', REDO_MESSAGE)}><RefreshCw /> {$t('code.plan.redo')}</Button>
         <Button size="sm" variant="ghost" disabled={busy} onclick={comment}><MessageSquare /> {$t('code.plan.comment')}</Button>
       </div>
-      <p class="text-xs text-muted-foreground">{$t('code.plan.hint')}</p>
     </footer>
   {/if}
 </aside>

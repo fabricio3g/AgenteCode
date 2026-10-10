@@ -13,6 +13,8 @@
 -->
 
 <script lang="ts">
+  import UiIconButton from '$lib/components/ui/IconButton.svelte';
+
   import { Tooltip } from '$lib/components/ui';
   import { t } from 'svelte-i18n';
   import { FolderTree, LoaderCircle, RefreshCw, X } from 'lucide-svelte';
@@ -131,10 +133,10 @@
       {#if !embedded}<span class="font-medium text-foreground">{$t('codeWs.files')}</span>{/if}
       {#if files}<span class="ml-1.5 text-muted-foreground">{$t('codeWs.fileCount', { values: { n: files.length } })}</span>{/if}
     </p>
-    <Tooltip label={$t('codeWs.refresh')} position="bottom"><button type="button" class="ui-icon-button is-sm" onclick={refresh} disabled={loading} aria-label={$t('codeWs.refresh')}>
+    <Tooltip label={$t('codeWs.refresh')} position="bottom"><UiIconButton label={$t('codeWs.refresh')} size="xs" type="button"  onclick={refresh} disabled={loading} >
       <RefreshCw class={loading ? 'animate-spin' : ''} />
-    </button></Tooltip>
-    {#if !embedded}<Tooltip label={$t('codeWs.close')} position="bottom"><button type="button" class="ui-icon-button is-sm" onclick={hide} aria-label={$t('codeWs.close')}><X /></button></Tooltip>{/if}
+    </UiIconButton></Tooltip>
+    {#if !embedded}<Tooltip label={$t('codeWs.close')} position="bottom"><UiIconButton label={$t('codeWs.close')} size="xs" type="button"  onclick={hide} ><X /></UiIconButton></Tooltip>{/if}
   </header>
 
   {#if loading}

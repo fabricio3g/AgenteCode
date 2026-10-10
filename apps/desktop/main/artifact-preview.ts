@@ -4,7 +4,8 @@ import { protectedArtifactHtml } from '../shared/artifact-preview-policy.ts';
 import { getMainWindow } from './window-manager.ts';
 
 /** A fresh, memory-only guest for each document; no preload or app session. */
-export function createArtifactWindow(interactive = false): BrowserWindow {
+/** `offscreen` paints without a visible window, so a stage can be captured frame after frame (a hidden window stops painting). */
+export function createArtifactWindow(interactive = false, options: { offscreen?: boolean } = {}): BrowserWindow {
   const guest = session.fromPartition(`artifact-${randomUUID()}`, { cache: false });
   guest.setPermissionRequestHandler((_wc, _permission, callback) => callback(false));
   guest.setPermissionCheckHandler(() => false);
@@ -26,7 +27,7 @@ export function createArtifactWindow(interactive = false): BrowserWindow {
       nodeIntegration: false, nodeIntegrationInSubFrames: false,
       webviewTag: false, webSecurity: true, allowRunningInsecureContent: false,
       javascript: interactive, spellcheck: false, devTools: false,
-      navigateOnDragDrop: false
+      navigateOnDragDrop: false, offscreen: options.offscreen === true
     }
   });
   win.setMenu(null);

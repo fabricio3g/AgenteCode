@@ -8,6 +8,15 @@
 -->
 
 <script lang="ts">
+  import DialogActions from '$lib/components/ui/DialogActions.svelte';
+
+  import DialogFooter from '$lib/components/ui/DialogFooter.svelte';
+
+  import UiIconButton from '$lib/components/ui/IconButton.svelte';
+  import UiFileInput from '$lib/components/ui/FileInput.svelte';
+  import UiInput from '$lib/components/ui/Input.svelte';
+  import { cn as uiClass } from '$lib/utils/cn';
+
   import { deletePersona } from './library-actions.svelte';
   import { untrack } from 'svelte';
   import { X, Upload } from 'lucide-svelte';
@@ -19,6 +28,8 @@
   import { charactersStore, emptyPersona } from './characters.svelte';
   import { toastStore } from '$lib/stores/toast.svelte';
   import { copy } from '$lib/copy';
+  import MacroField from './MacroField.svelte';
+  import { t } from 'svelte-i18n';
 
   interface Props {
     /** null = create a new persona. */
@@ -47,7 +58,7 @@
     input.value = '';
     if (!file) return;
     if (file.size > 2 * 1024 * 1024) {
-      toastStore.error('Avatar images must be under 2 MB.');
+      toastStore.error($t('roleplay.character.avatarTooLarge'));
       return;
     }
     const reader = new FileReader();
@@ -57,7 +68,7 @@
 
   async function save() {
     if (!draft.name.trim()) {
-      toastStore.error('Give the persona a name first.');
+      toastStore.error($t('roleplay.persona.nameRequired'));
       return;
     }
     saving = true;
@@ -91,12 +102,12 @@
   >
     <div class="ui-modal-header">
       <div class="min-w-0">
-        <div class="ui-modal-title">{isNew ? 'New persona' : draft.name || 'Edit persona'}</div>
-        <div class="text-xs text-muted-foreground">Who you are inside the story.</div>
+        <div class="ui-modal-title">{isNew ? $t('roleplay.persona.newTitle') : draft.name || $t('roleplay.persona.editTitle')}</div>
+        <div class="text-xs text-muted-foreground">{$t('roleplay.persona.subtitle')}</div>
       </div>
-      <Tooltip label={copy.actions.close} position="bottom"><button type="button" class="ui-icon-button" onclick={() => guard.close(onclose)} aria-label={copy.actions.close}>
+      <Tooltip label={copy.actions.close} position="bottom"><UiIconButton label={copy.actions.close} size="sm" type="button"  onclick={() => guard.close(onclose)} >
         <X class="size-4" />
-      </button></Tooltip>
+      </UiIconButton></Tooltip>
     </div>
 
     <div class="ui-modal-body max-h-[62vh] space-y-4 overflow-y-auto">
@@ -104,38 +115,40 @@
         <div class="flex flex-col items-center gap-2">
           <div class="avatar-preview">
             {#if draft.avatar}
-              <img src={draft.avatar} alt={draft.name || 'Persona avatar'} />
+              <img src={draft.avatar} alt={draft.name || $t('roleplay.persona.avatar')} />
             {:else}
               <span>{draft.name?.trim()?.[0]?.toUpperCase() || '?'}</span>
             {/if}
           </div>
           <label class="avatar-upload">
             <Upload class="size-3.5" />
-            <span>Upload</span>
-            <input class="hidden" type="file" accept="image/*" onchange={onAvatarPicked} />
+            <span>{$t('roleplay.character.upload')}</span>
+            <UiFileInput class={uiClass("hidden")}  accept="image/*" onchange={onAvatarPicked} />
           </label>
         </div>
 
         <div class="grid min-w-0 flex-1 gap-3">
           <label class="block space-y-1.5 text-sm">
-            <span class="font-medium text-muted-foreground">Name</span>
-            <input class="ui-input" bind:value={draft.name} placeholder="e.g. Sam" />
+            <span class="font-medium text-muted-foreground">{$t('roleplay.persona.name')}</span>
+            <UiInput  bind:value={draft.name} placeholder={$t('roleplay.persona.namePlaceholder')} />
           </label>
-          <label class="block space-y-1.5 text-sm">
-            <span class="font-medium text-muted-foreground">Description</span>
-            <textarea
-              class="ui-input min-h-24 resize-y"
-              bind:value={draft.description}
-              placeholder="Who &#123;&#123;user&#125;&#125; is: role, traits, relationship to the cast…"
-            ></textarea>
-          </label>
+          <MacroField
+            label={$t('roleplay.persona.description')}
+            hint={$t('roleplay.persona.descriptionHint')}
+            value={draft.description}
+            char={$t('roleplay.persona.charPreview')}
+            user={draft.name?.trim() || $t('roleplay.you')}
+            rows={4}
+            placeholder={$t('roleplay.persona.descriptionPlaceholder')}
+            onchange={(value) => set('description', value)}
+          />
         </div>
       </div>
 
       <div class="flex items-center justify-between gap-3 rounded-[var(--radius-md)] border border-[var(--border-subtle)] px-3 py-2">
         <div class="min-w-0">
-          <div class="text-xs font-medium text-foreground">Default persona</div>
-          <div class="text-[12px] text-muted-foreground">New scenes start with this persona selected.</div>
+          <div class="text-xs font-medium text-foreground">{$t('roleplay.persona.default')}</div>
+          <div class="text-[12px] text-muted-foreground">{$t('roleplay.persona.defaultHint')}</div>
         </div>
         <Button
           type="button"
@@ -143,19 +156,18 @@
           variant={draft.isDefault ? 'default' : 'outline'}
           onclick={() => set('isDefault', !draft.isDefault)}
         >
-          {draft.isDefault ? 'Default' : 'Make default'}
+          {draft.isDefault ? $t('roleplay.persona.isDefault') : $t('roleplay.persona.makeDefault')}
         </Button>
       </div>
     </div>
 
-    <div class="ui-modal-footer">
+    <DialogFooter >
       {#if persona && charactersStore.getPersonaById(persona.id)}
         <!-- Deleting skips the unsaved-changes guard: the item is going away. -->
-        <Button variant="outline" size="sm" class="mr-auto text-error" type="button" onclick={() => persona && deletePersona(persona, onclose)}>{copy.actions.delete}</Button>
+        <Button variant="outline" size="sm" class="mr-auto hover:text-error" type="button" onclick={() => persona && deletePersona(persona, onclose)}>{copy.actions.delete}</Button>
       {/if}
-      <Button variant="outline" size="sm" type="button" onclick={() => guard.close(onclose)}>{copy.actions.cancel}</Button>
-      <Button onclick={() => void save()} disabled={saving}>{saving ? 'Saving…' : copy.actions.save}</Button>
-    </div>
+      <DialogActions cancelLabel={copy.actions.cancel} confirmLabel={saving ? $t('roleplay.saving') : copy.actions.save} oncancel={() => guard.close(onclose)} onconfirm={() => void save()} busy={saving} />
+    </DialogFooter>
   </div>
 </div>
 

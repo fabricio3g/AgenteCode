@@ -9,6 +9,10 @@
 -->
 
 <script lang="ts">
+  import DialogFooter from '$lib/components/ui/DialogFooter.svelte';
+
+  import UiIconButton from '$lib/components/ui/IconButton.svelte';
+
   import { Button, Tooltip } from '$lib/components/ui';
   import { untrack } from 'svelte';
   import { X } from 'lucide-svelte';
@@ -58,9 +62,9 @@
           {parts.speaker ? $t('roleplay.inspector.turn', { values: { name: parts.speaker.name } }) : $t('roleplay.inspector.scene')} · {$t('roleplay.inspector.tokens', { values: { n: estimatedTokens } })}
         </div>
       </div>
-      <Tooltip label={copy.actions.close} position="bottom"><button type="button" class="ui-icon-button" onclick={onclose} aria-label={copy.actions.close}>
+      <Tooltip label={copy.actions.close} position="bottom"><UiIconButton label={copy.actions.close} size="sm" type="button"  onclick={onclose} >
         <X class="size-4" />
-      </button></Tooltip>
+      </UiIconButton></Tooltip>
     </div>
 
     <div class="ui-modal-body space-y-4">
@@ -73,7 +77,7 @@
         {:else}
           <div class="flex flex-wrap gap-1.5">
             {#each parts.loreEntries as entry (entry.id)}
-              <span class="prompt-chip">{entry.comment || entry.keys[0] || 'Entry'}</span>
+              <span class="prompt-chip">{roleplayStore.displayText(entry.comment || entry.keys[0] || 'Entry', { messageId, seed: entry.id })}</span>
             {/each}
           </div>
         {/if}
@@ -84,16 +88,16 @@
         {#if parts.systemPrompt}
           <pre class="prompt-block">{parts.systemPrompt}</pre>
         {:else}
-          <p class="rounded-[var(--radius-md)] border border-dashed border-[var(--border)] px-3 py-4 text-center text-xs text-muted-foreground">
+          <p class="py-2 text-xs text-muted-foreground">
             This scene resolved no character, so no prompt was sent. Choose a character first.
           </p>
         {/if}
       </div>
     </div>
 
-    <div class="ui-modal-footer">
+    <DialogFooter >
       <Button variant="outline" size="sm" type="button" onclick={onclose}>{copy.actions.close}</Button>
-    </div>
+    </DialogFooter>
   </div>
 </div>
 </Portal>

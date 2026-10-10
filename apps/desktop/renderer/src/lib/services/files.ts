@@ -28,11 +28,25 @@ export async function downloadRuntime(payload: {
 }
 
 export async function writeTempFile(name: string, data: Uint8Array): Promise<string> {
-  return invoke<string>('write_temp_file', { name, data: Array.from(data) });
+  return invoke<string>('write_temp_file', { name, data });
 }
 
 async function resetMediaPermissions(): Promise<{ removed: string[]; failed: string[] }> {
   return invoke<{ removed: string[]; failed: string[] }>('reset_media_permissions');
+}
+
+export type FolderListing = {
+  path: string;
+  parent: string | null;
+  home: string;
+  sep: string;
+  places: Array<{ name: string; path: string }>;
+  folders: Array<{ name: string; path: string; isProject: boolean }>;
+};
+
+/** One level of the in-app folder browser (the home folder when no path). */
+export async function browseFolders(path?: string): Promise<FolderListing> {
+  return invoke<FolderListing>('browse_folders', { path });
 }
 
 export async function pickWorkspaceFolder(): Promise<string | null> {

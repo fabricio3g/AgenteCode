@@ -1,6 +1,10 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+  import UiButton from '$lib/components/ui/Button.svelte';
+  import UiIconButton from '$lib/components/ui/IconButton.svelte';
+  import { cn as uiClass } from '$lib/utils/cn';
+
   import { Tooltip } from '$lib/components/ui';
   import { motionFly, motionFade } from '$lib/utils/transitions';
   import { X } from 'lucide-svelte';
@@ -29,16 +33,16 @@
     >
       <span class="text-[13px] font-medium leading-none text-foreground">{toast.message}</span>
       {#if toast.action}
-        <button type="button" class="toast-action" onclick={toast.action.run}>{toast.action.label}</button>
+        <UiButton variant="plain" type="button" class={uiClass("toast-action", "ui-local-2a4781e7")} onclick={toast.action.run}>{toast.action.label}</UiButton>
       {/if}
-      <Tooltip label="Dismiss" position="bottom"><button
+      <Tooltip label="Dismiss" position="bottom"><UiIconButton label={"Dismiss"} size="xs"
         type="button"
-        class="ui-icon-button is-xs shrink-0"
+        class={uiClass("  shrink-0", "ui-local-2a4781e7")}
         onclick={() => toastStore.dismiss(toast.id)}
-        aria-label="Dismiss"
+
       >
         <X class="size-3" />
-      </button></Tooltip>
+      </UiIconButton></Tooltip>
     </div>
   {/each}
 </div>
@@ -51,7 +55,7 @@
     border-radius: var(--float-radius);
     max-width: 22rem;
   }
-  .toast-action {
+  :global(.toast-action.ui-local-2a4781e7) {
     flex-shrink: 0;
     padding: 0.125rem 0.5rem;
     border-radius: var(--radius-full);
@@ -59,7 +63,7 @@
     font-size: 12.5px;
     font-weight: 600;
   }
-  .toast-action:hover {
+  :global(.toast-action:hover.ui-local-2a4781e7) {
     background: var(--surface-hover);
   }
 </style>

@@ -6,6 +6,10 @@
 -->
 
 <script lang="ts">
+  import UiInput from '$lib/components/ui/Input.svelte';
+  import UiIconButton from '$lib/components/ui/IconButton.svelte';
+  import { cn as uiClass } from '$lib/utils/cn';
+
   import { Button, Tooltip } from '$lib/components/ui';
   import { conversationScope } from '$shared/workspace-scope';
   import { t } from 'svelte-i18n';
@@ -76,40 +80,40 @@
   <div class="proc-list">
     <form class="ui-pill-field" onsubmit={(e) => { e.preventDefault(); void run(); }}>
       <ChevronRight class="size-3 shrink-0 text-muted-foreground" />
-      <input
-        class="font-mono"
+      <UiInput
+        class={uiClass("font-mono", "ui-local-7dc5fc69")}
         bind:value={command}
         placeholder={$t('codeWs.runPlaceholder')}
         spellcheck="false"
         aria-label={$t('codeWs.runPlaceholder')}
       />
       {#if command.trim()}
-        <Tooltip label={$t('codeWs.run')} position="bottom"><button type="submit" class="ui-icon-button is-xs -mr-1.5" aria-label={$t('codeWs.run')}><Play /></button></Tooltip>
+        <Tooltip label={$t('codeWs.run')} position="bottom"><UiIconButton label={$t('codeWs.run')} size="xs" type="submit" class={uiClass("  -mr-1.5", "ui-local-7dc5fc69")} ><Play /></UiIconButton></Tooltip>
       {/if}
     </form>
     <ul class="proc-items">
       {#each processes as p (p.id)}
         <li>
-          <button
+          <Button variant="plain"
             type="button"
-            class="proc-row"
-            class:is-active={selected?.id === p.id}
+            class={uiClass("proc-row", "ui-local-7dc5fc69", {"is-active": selected?.id === p.id})}
+
             title={`${p.command}\n${status(p)} · ${elapsed(p)}`}
             onclick={() => (codeWorkspace.selectedProcesses[conversationScope(chatId)] = p.id)}
           >
             <span class="proc-dot {p.status === 'running' ? 'is-running' : p.status === 'exited' && p.exitCode ? 'is-failed' : ''}"></span>
             <span class="min-w-0 flex-1 truncate font-mono">{p.command}</span>
             <span class="proc-time">{elapsed(p)}</span>
-          </button>
+          </Button>
         </li>
       {:else}
         <li class="proc-empty">{$t('codeWs.noProcesses')}</li>
       {/each}
     </ul>
     {#if processes.some((p) => p.status !== 'running')}
-      <button type="button" class="proc-clear" onclick={() => void codeWorkspace.clearFinished(chatId)}>
+      <Button variant="plain" type="button" class={uiClass("proc-clear", "ui-local-7dc5fc69")} onclick={() => void codeWorkspace.clearFinished(chatId)}>
         <Trash2 class="size-3" /> {$t('codeWs.clearFinished')}
-      </button>
+      </Button>
     {/if}
   </div>
 
@@ -125,7 +129,7 @@
           </Button>
         {/each}
         {#if selected.status === 'running'}
-          <Button variant="outline" size="sm" class="text-error" type="button" onclick={() => void codeWorkspace.stopProcess(selected.id)}>
+          <Button variant="outline" size="sm" class="hover:text-error" type="button" onclick={() => void codeWorkspace.stopProcess(selected.id)}>
             <Square /> {$t('codeWs.stop')}
           </Button>
         {/if}
@@ -170,7 +174,7 @@
     overflow-y: auto;
   }
 
-  .proc-row {
+  :global(.proc-row.ui-local-7dc5fc69) {
     display: flex;
     width: 100%;
     height: 1.625rem;
@@ -183,8 +187,8 @@
     text-align: left;
     transition: background-color var(--motion-fast) var(--motion-ease), color var(--motion-fast) var(--motion-ease);
   }
-  .proc-row:hover,
-  .proc-row.is-active {
+  :global(.proc-row:hover.ui-local-7dc5fc69),
+  :global(.proc-row.is-active.ui-local-7dc5fc69) {
     background: var(--surface-hover);
     color: var(--foreground);
   }
@@ -220,7 +224,7 @@
     line-height: 1.55;
   }
 
-  .proc-clear {
+  :global(.proc-clear.ui-local-7dc5fc69) {
     display: inline-flex;
     height: 1.5rem;
     align-items: center;
@@ -231,7 +235,7 @@
     font-size: 11px;
     transition: background-color var(--motion-fast) var(--motion-ease), color var(--motion-fast) var(--motion-ease);
   }
-  .proc-clear:hover {
+  :global(.proc-clear:hover.ui-local-7dc5fc69) {
     background: var(--surface-hover);
     color: var(--foreground);
   }
@@ -257,7 +261,7 @@
     color: var(--muted-foreground);
     font-size: 11px;
   }
-  .proc-head .font-mono {
+  .proc-head :is(.font-mono, :global(.font-mono.ui-local-7dc5fc69)) {
     font-size: 11.5px;
   }
 
@@ -279,11 +283,9 @@
   .proc-hint {
     display: flex;
     flex: 1;
-    align-items: center;
-    justify-content: center;
-    padding: 0 1.5rem;
+    align-items: flex-start;
+    padding: 0.5rem 0.75rem;
     color: var(--muted-foreground);
     font-size: 11.5px;
-    text-align: center;
   }
 </style>

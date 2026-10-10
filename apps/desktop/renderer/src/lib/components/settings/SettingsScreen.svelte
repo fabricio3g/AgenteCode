@@ -18,15 +18,17 @@
   import type { ModelHubTab } from '$lib/types/model-hub';
   // The rail owns the section vocabulary; the module script's types are in
   // scope for the instance script below.
-  import type { SettingsSection } from './SettingsRail.svelte';
+  import type { SettingsNavigationSection } from '$lib/utils/model-hub-routing';
 
   // Where the screen reopens. Kept across mounts so Ctrl+, returns you to the
   // section you left, not always General.
-  let rememberedSection: SettingsSection = 'general';
+  let rememberedSection: SettingsNavigationSection = 'general';
   let rememberedModelTab: ModelHubTab = 'discover';
 </script>
 
 <script lang="ts">
+  import DialogActions from '$lib/components/ui/DialogActions.svelte';
+
   import { Accessibility, Box, Compass, Cpu, Layers, Search as SearchIcon, Settings as SettingsIcon, Shapes, Volume2 } from 'lucide-svelte';
   import { onMount, untrack } from 'svelte';
   import { t } from 'svelte-i18n';
@@ -52,7 +54,7 @@
 
   const MODEL_AUTO_LOAD_KEY = 'flaxeo_modelhub_autoload';
 
-  let activeSection = $state<SettingsSection>(rememberedSection);
+  let activeSection = $state<SettingsNavigationSection>(rememberedSection);
   let modelTab = $state<ModelHubTab>(rememberedModelTab);
   let voiceMode = $state<'tts' | 'stt'>('tts');
   let hasRuntime = $state(false);
@@ -300,10 +302,7 @@
       </label>
     </form>
     {#snippet footer()}
-      <Button variant="ghost" onclick={() => (addModalOpen = false)}>{$t('providers.cancel')}</Button>
-      <Button type="submit" form="add-endpoint-form" loading={addingEndpoint} disabled={!newEndpointLabel.trim() || !newEndpointUrl.trim()}>
-        {$t('settingsNav.addEndpointAction')}
-      </Button>
+      <DialogActions cancelLabel={$t('providers.cancel')} confirmLabel={$t('settingsNav.addEndpointAction')} oncancel={() => (addModalOpen = false)} disabled={!newEndpointLabel.trim() || !newEndpointUrl.trim()} busy={addingEndpoint} confirmType={"submit"} form={"add-endpoint-form"} />
     {/snippet}
   </Dialog>
 {/if}

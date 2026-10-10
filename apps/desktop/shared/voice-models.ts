@@ -40,6 +40,12 @@ export interface VoiceModel {
   needsReference?: boolean;
   /** Can speak in a voice cloned from a short recording (audio.cpp `voice_ref`). */
   canClone?: boolean;
+  /** Cloning needs the clip's transcript (audio.cpp `reference_text`, e.g. F5-TTS, GLM-TTS, ZipVoice). */
+  needsTranscript?: boolean;
+  /** Another package (quantization or size) of the model with this id; the list shows them as one row. */
+  variantOf?: string;
+  /** Which package this is, e.g. `Q4_K` or `0.6b base · Q8_0`. */
+  variant?: string;
   /** The audio.cpp server task it loads under: `clon` for models that only speak in a cloned voice. */
   serverTask?: 'tts' | 'clon';
 

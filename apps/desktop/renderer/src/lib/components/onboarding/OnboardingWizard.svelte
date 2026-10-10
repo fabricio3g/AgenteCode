@@ -11,6 +11,8 @@
 -->
 
 <script lang="ts">
+  import UiIconButton from '$lib/components/ui/IconButton.svelte';
+
   import { Tooltip } from '$lib/components/ui';
   import { t } from 'svelte-i18n';
   import { X } from 'lucide-svelte';
@@ -59,9 +61,9 @@
           {/each}
         </ol>
       </div>
-      <Tooltip label={$t('onboarding.skipSetup')} position="bottom"><button type="button" class="ui-icon-button" onclick={close} aria-label={$t('onboarding.skipSetup')}>
+      <Tooltip label={$t('onboarding.skipSetup')} position="bottom"><UiIconButton label={$t('onboarding.skipSetup')} size="sm" type="button"  onclick={close} >
         <X />
-      </button></Tooltip>
+      </UiIconButton></Tooltip>
     </header>
 
     <div class="setup-body">

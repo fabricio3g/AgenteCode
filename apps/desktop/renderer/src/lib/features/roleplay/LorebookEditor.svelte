@@ -9,12 +9,18 @@
 -->
 
 <script lang="ts">
+  import UiIconButton from '$lib/components/ui/IconButton.svelte';
+  import UiInput from '$lib/components/ui/Input.svelte';
+  import UiTextarea from '$lib/components/ui/Textarea.svelte';
+  import { cn as uiClass } from '$lib/utils/cn';
+
   import { untrack } from 'svelte';
   import { BookOpen, Copy, Plus, Trash2 } from 'lucide-svelte';
   import { Button, Select, Switch, Tooltip } from '$lib/components/ui';
   import type { CharacterBook, LorebookEntry } from '$lib/types/chat';
   import { emptyLoreEntry, normalizeBook } from '$lib/services/character-card';
   import { createId } from '$lib/utils/id';
+  import { t } from 'svelte-i18n';
 
   interface Props {
     book?: CharacterBook | null;
@@ -62,7 +68,7 @@
     const copy: LorebookEntry = {
       ...source,
       id: createId('lore'),
-      comment: `${source.comment || 'Entry'} copy`
+      comment: `${source.comment || $t('roleplay.lore.entry')} ${$t('roleplay.lore.copySuffix')}`
     };
     draft = { ...draft, entries: [...draft.entries, copy] };
     selectedId = copy.id;
@@ -87,7 +93,7 @@
   }
 
   function entryTitle(entry: LorebookEntry): string {
-    return entry.comment?.trim() || entry.keys[0] || 'Untitled entry';
+    return entry.comment?.trim() || entry.keys[0] || $t('roleplay.lore.untitled');
   }
 
   function numberValue(event: Event): number | null {
@@ -95,240 +101,240 @@
     return Number.isFinite(value) ? value : null;
   }
 
-  const logicOptions = [
-    { value: 'and_any', label: 'Any secondary key' },
-    { value: 'and_all', label: 'All secondary keys' },
-    { value: 'not_any', label: 'No secondary key' },
-    { value: 'not_all', label: 'Not all secondary keys' }
-  ];
+  const logicOptions = $derived([
+    { value: 'and_any', label: $t('roleplay.lore.logic.andAny') },
+    { value: 'and_all', label: $t('roleplay.lore.logic.andAll') },
+    { value: 'not_any', label: $t('roleplay.lore.logic.notAny') },
+    { value: 'not_all', label: $t('roleplay.lore.logic.notAll') }
+  ]);
 </script>
 
 <div class="lorebook-editor flex min-h-0 flex-col gap-3">
-  <div class="flex flex-wrap items-end gap-3">
-    <label class="block min-w-0 flex-1 space-y-1.5 text-sm">
-      <span class="text-xs font-medium text-muted-foreground">Book name</span>
-      <input
-        class="ui-input"
-        value={draft.name || ''}
-        oninput={(event) => updateBook({ name: event.currentTarget.value })}
-        placeholder="Optional"
-      />
-    </label>
-    <label class="block w-28 space-y-1.5 text-sm">
-      <span class="text-xs font-medium text-muted-foreground">Scan depth</span>
-      <input
-        class="ui-input"
-        type="number"
-        min="1"
-        value={draft.scanDepth ?? 4}
-        oninput={(event) => updateBook({ scanDepth: numberValue(event) ?? 4 })}
-      />
-    </label>
-    <label class="block w-32 space-y-1.5 text-sm">
-      <span class="text-xs font-medium text-muted-foreground">Token budget</span>
-      <input
-        class="ui-input"
-        type="number"
-        min="0"
-        value={draft.tokenBudget ?? 1024}
-        oninput={(event) => updateBook({ tokenBudget: numberValue(event) ?? 0 })}
-      />
-    </label>
-  </div>
-
-  <div class="{heightClass} grid min-h-0 gap-3 md:grid-cols-[minmax(0,15rem)_minmax(0,1fr)]">
+  <div class="{heightClass} grid min-h-0 gap-3 md:grid-cols-[minmax(0,14rem)_minmax(0,1fr)]">
     <!-- Entry list -->
-    <div class="flex min-h-0 flex-col overflow-hidden rounded-[var(--radius-lg)] border border-[var(--border)]">
-      <div class="flex items-center justify-between border-b border-[var(--border-subtle)] px-2.5 py-1.5">
+    <div class="flex min-h-0 flex-col overflow-hidden rounded-[var(--radius-lg)] border border-[var(--border-subtle)]">
+      <div class="flex items-center justify-between px-3 py-2">
         <span class="text-xs font-medium text-muted-foreground">
-          Entries {draft.entries.length ? `(${draft.entries.length})` : ''}
+          {$t('roleplay.lore.entries')}{draft.entries.length ? ` · ${draft.entries.length}` : ''}
         </span>
-        <Tooltip label="Add entry" position="bottom"><button type="button" class="ui-icon-button is-xs" onclick={addEntry} aria-label="Add entry">
+        <Tooltip label={$t('roleplay.lore.add')} position="bottom"><UiIconButton label={$t('roleplay.lore.add')} size="xs" type="button" class={uiClass(" ", "ui-local-fa92d110")} onclick={addEntry} >
           <Plus class="size-3.5" />
-        </button></Tooltip>
+        </UiIconButton></Tooltip>
       </div>
-      <div class="min-h-0 flex-1 overflow-y-auto p-1">
+      <div class="min-h-0 flex-1 overflow-y-auto px-1 pb-1">
         {#if !draft.entries.length}
           <div class="flex h-full flex-col items-center justify-center gap-2 px-3 text-center">
             <BookOpen class="size-5 text-[var(--text-muted)]" />
-            <p class="text-xs text-muted-foreground">No entries yet. Add one to teach the scene a fact.</p>
+            <p class="text-xs text-muted-foreground">{$t('roleplay.lore.empty')}</p>
           </div>
         {:else}
           {#each draft.entries as entry (entry.id)}
-            <button
+            <Button variant="plain"
               type="button"
-              class="lore-entry-row {entry.id === selectedId ? 'is-active' : ''} {entry.enabled ? '' : 'is-off'}"
+              class={uiClass(`lore-entry-row ${entry.id === selectedId ? 'is-active' : ''} ${entry.enabled ? '' : 'is-off'}`, "ui-local-fa92d110")}
+              aria-current={entry.id === selectedId ? 'true' : undefined}
               onclick={() => (selectedId = entry.id)}
             >
               <span class="lore-entry-title">{entryTitle(entry)}</span>
               <span class="lore-entry-meta">
-                {#if entry.constant}<span class="lore-badge">always</span>{/if}
-                {#if entry.selective}<span class="lore-badge">filter</span>{/if}
+                {#if entry.constant}<span class="lore-badge">{$t('roleplay.lore.always')}</span>{/if}
+                {#if entry.selective}<span class="lore-badge">{$t('roleplay.lore.needsSecond')}</span>{/if}
                 {#if entry.keys.length && !entry.constant}
                   <span class="truncate">{entry.keys.slice(0, 3).join(', ')}</span>
                 {/if}
               </span>
-            </button>
+            </Button>
           {/each}
         {/if}
       </div>
     </div>
 
     <!-- Entry form -->
-    <div class="min-h-0 overflow-y-auto rounded-[var(--radius-lg)] border border-[var(--border)] p-3">
+    <div class="min-h-0 overflow-y-auto rounded-[var(--radius-lg)] border border-[var(--border-subtle)] p-3">
       {#if selected}
         <div class="space-y-3">
           <div class="flex items-start gap-2">
             <label class="block min-w-0 flex-1 space-y-1.5 text-sm">
-              <span class="text-xs font-medium text-muted-foreground">Title</span>
-              <input
-                class="ui-input"
+              <span class="text-xs font-medium text-muted-foreground">{$t('roleplay.lore.entryName')}</span>
+              <UiInput
+                class={uiClass("", "ui-local-fa92d110")}
                 value={selected.comment || ''}
                 oninput={(event) => updateEntry(selected.id, { comment: event.currentTarget.value })}
-                placeholder="What is this entry about?"
+                placeholder={$t('roleplay.lore.entryNamePlaceholder')}
               />
             </label>
             <div class="flex items-center gap-1 pt-6">
-              <Tooltip label="Duplicate entry" position="bottom"><button
-                type="button"
-                class="ui-icon-button"
-                onclick={() => duplicateEntry(selected.id)}
-                aria-label="Duplicate entry"
-               
-              >
+              <Tooltip label={$t('roleplay.lore.duplicate')} position="bottom"><UiIconButton label={$t('roleplay.lore.duplicate')} size="sm" type="button" class={uiClass("", "ui-local-fa92d110")} onclick={() => duplicateEntry(selected.id)} >
                 <Copy class="size-3.5" />
-              </button></Tooltip>
-              <Tooltip label="Delete entry" position="bottom"><button
-                type="button"
-                class="ui-icon-button text-error"
-                onclick={() => removeEntry(selected.id)}
-                aria-label="Delete entry"
-               
-              >
+              </UiIconButton></Tooltip>
+              <Tooltip label={$t('roleplay.lore.delete')} position="bottom"><UiIconButton label={$t('roleplay.lore.delete')} size="sm" type="button" class={uiClass(" hover:text-error", "ui-local-fa92d110")} onclick={() => removeEntry(selected.id)} >
                 <Trash2 class="size-3.5" />
-              </button></Tooltip>
+              </UiIconButton></Tooltip>
             </div>
           </div>
 
           <label class="block space-y-1.5 text-sm">
-            <span class="text-xs font-medium text-muted-foreground">Keys</span>
-            <input
-              class="ui-input"
+            <span class="text-xs font-medium text-muted-foreground">{$t('roleplay.lore.triggers')}</span>
+            <UiInput
+              class={uiClass("", "ui-local-fa92d110")}
               value={keysToText(selected.keys)}
               oninput={(event) => updateEntry(selected.id, { keys: parseKeys(event.currentTarget.value) })}
-              placeholder="comma, separated, words"
+              placeholder={$t('roleplay.lore.triggersPlaceholder')}
             />
-            <span class="block text-[12px] text-muted-foreground">Injected when any key appears in the last messages.</span>
+            <span class="block text-[12px] text-muted-foreground">{$t('roleplay.lore.triggersHint')}</span>
           </label>
 
           <label class="block space-y-1.5 text-sm">
-            <span class="text-xs font-medium text-muted-foreground">Content</span>
-            <textarea
-              class="ui-input min-h-28 resize-y"
+            <span class="text-xs font-medium text-muted-foreground">{$t('roleplay.lore.content')}</span>
+            <UiTextarea
+              class={uiClass(" min-h-28 resize-y", "ui-local-fa92d110")}
               value={selected.content}
               oninput={(event) => updateEntry(selected.id, { content: event.currentTarget.value })}
-              placeholder="The fact to inject into the prompt."
-            ></textarea>
+              placeholder={$t('roleplay.lore.contentPlaceholder')}
+            ></UiTextarea>
           </label>
 
-          <div class="grid gap-3 sm:grid-cols-2">
-            <label class="block space-y-1.5 text-sm">
-              <span class="text-xs font-medium text-muted-foreground">Insertion order</span>
-              <input
-                class="ui-input"
-                type="number"
-                value={selected.insertionOrder ?? 100}
-                oninput={(event) => updateEntry(selected.id, { insertionOrder: numberValue(event) ?? 100 })}
-              />
-            </label>
-            <div class="flex flex-col justify-end gap-2 pb-0.5">
-              <div class="flex items-center justify-between gap-3">
-                <span class="text-xs font-medium text-muted-foreground">Always inject</span>
-                <Switch
-                  checked={!!selected.constant}
-                  label="Always inject"
-                  onchange={(checked) => updateEntry(selected.id, { constant: checked })}
-                />
+          <div class="flex flex-col gap-2">
+            <div class="flex items-center justify-between gap-3">
+              <div class="min-w-0">
+                <div class="text-xs font-medium text-foreground">{$t('roleplay.lore.always')}</div>
+                <div class="text-[12px] text-muted-foreground">{$t('roleplay.lore.alwaysHint')}</div>
               </div>
-              <div class="flex items-center justify-between gap-3">
-                <span class="text-xs font-medium text-muted-foreground">Enabled</span>
-                <Switch
-                  checked={selected.enabled !== false}
-                  label="Enabled"
-                  onchange={(checked) => updateEntry(selected.id, { enabled: checked })}
-                />
+              <Switch checked={!!selected.constant} label={$t('roleplay.lore.always')} onchange={(checked) => updateEntry(selected.id, { constant: checked })} />
+            </div>
+            <div class="flex items-center justify-between gap-3">
+              <div class="min-w-0">
+                <div class="text-xs font-medium text-foreground">{$t('roleplay.lore.needsSecond')}</div>
+                <div class="text-[12px] text-muted-foreground">{$t('roleplay.lore.needsSecondHint')}</div>
               </div>
+              <Switch checked={!!selected.selective} label={$t('roleplay.lore.needsSecond')} onchange={(checked) => updateEntry(selected.id, { selective: checked })} />
             </div>
-          </div>
-
-          <div class="flex items-center justify-between gap-3 rounded-[var(--radius-md)] border border-[var(--border-subtle)] px-3 py-2">
-            <div class="min-w-0">
-              <div class="text-xs font-medium text-foreground">Require a secondary key</div>
-              <div class="text-[12px] text-muted-foreground">Only inject when the filter keys also match.</div>
+            <div class="flex items-center justify-between gap-3">
+              <span class="text-xs font-medium text-foreground">{$t('roleplay.lore.enabled')}</span>
+              <Switch checked={selected.enabled !== false} label={$t('roleplay.lore.enabled')} onchange={(checked) => updateEntry(selected.id, { enabled: checked })} />
             </div>
-            <Switch
-              checked={!!selected.selective}
-              label="Require a secondary key"
-              onchange={(checked) => updateEntry(selected.id, { selective: checked })}
-            />
           </div>
 
           {#if selected.selective}
             <div class="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,11rem)]">
               <label class="block space-y-1.5 text-sm">
-                <span class="text-xs font-medium text-muted-foreground">Secondary keys</span>
-                <input
-                  class="ui-input"
+                <span class="text-xs font-medium text-muted-foreground">{$t('roleplay.lore.also')}</span>
+                <UiInput
+                  class={uiClass("", "ui-local-fa92d110")}
                   value={keysToText(selected.secondaryKeys)}
                   oninput={(event) => updateEntry(selected.id, { secondaryKeys: parseKeys(event.currentTarget.value) })}
-                  placeholder="comma, separated, words"
+                  placeholder={$t('roleplay.lore.triggersPlaceholder')}
                 />
               </label>
               <div class="space-y-1.5">
-                <span class="text-xs font-medium text-muted-foreground">Logic</span>
+                <span class="text-xs font-medium text-muted-foreground">{$t('roleplay.lore.logicLabel')}</span>
                 <Select
                   variant="surface"
                   value={selected.secondaryLogic || 'and_any'}
                   options={logicOptions}
-                  aria-label="Secondary key logic"
+                  aria-label={$t('roleplay.lore.logicLabel')}
                   onchange={(value) => updateEntry(selected.id, { secondaryLogic: value as LorebookEntry['secondaryLogic'] })}
                 />
               </div>
             </div>
           {/if}
 
-          <div class="flex flex-wrap items-center gap-4">
-            <div class="flex items-center gap-2">
-              <Switch
-                checked={!!selected.useRegex}
-                label="Keys are regular expressions"
-                onchange={(checked) => updateEntry(selected.id, { useRegex: checked })}
-              />
-              <span class="text-xs text-muted-foreground">Keys are regex</span>
+          <details class="advanced">
+            <summary>{$t('roleplay.advanced')}</summary>
+            <div class="advanced-body">
+              <label class="block space-y-1.5 text-sm">
+                <span class="text-xs font-medium text-muted-foreground">{$t('roleplay.lore.order')}</span>
+                <UiInput
+                  class={uiClass(" max-w-40", "ui-local-fa92d110")}
+                  type="number"
+                  value={selected.insertionOrder ?? 100}
+                  oninput={(event) => updateEntry(selected.id, { insertionOrder: numberValue(event) ?? 100 })}
+                />
+              </label>
+              <div class="flex flex-wrap items-center gap-4">
+                <div class="flex items-center gap-2">
+                  <Switch checked={!!selected.useRegex} label={$t('roleplay.lore.regex')} onchange={(checked) => updateEntry(selected.id, { useRegex: checked })} />
+                  <span class="text-xs text-muted-foreground">{$t('roleplay.lore.regex')}</span>
+                </div>
+                <div class="flex items-center gap-2">
+                  <Switch checked={!!selected.caseSensitive} label={$t('roleplay.lore.caseSensitive')} onchange={(checked) => updateEntry(selected.id, { caseSensitive: checked })} />
+                  <span class="text-xs text-muted-foreground">{$t('roleplay.lore.caseSensitive')}</span>
+                </div>
+              </div>
             </div>
-            <div class="flex items-center gap-2">
-              <Switch
-                checked={!!selected.caseSensitive}
-                label="Case sensitive keys"
-                onchange={(checked) => updateEntry(selected.id, { caseSensitive: checked })}
-              />
-              <span class="text-xs text-muted-foreground">Case sensitive</span>
-            </div>
-          </div>
+          </details>
         </div>
       {:else}
         <div class="flex h-full flex-col items-center justify-center gap-2 text-center">
           <BookOpen class="size-5 text-[var(--text-muted)]" />
-          <p class="text-xs text-muted-foreground">Select an entry to edit it, or add a new one.</p>
-          <Button variant="secondary" onclick={addEntry}>Add entry</Button>
+          <p class="text-xs text-muted-foreground">{$t('roleplay.lore.pick')}</p>
+          <Button variant="secondary" onclick={addEntry}>{$t('roleplay.lore.add')}</Button>
         </div>
       {/if}
     </div>
   </div>
+
+  <details class="advanced">
+    <summary>{$t('roleplay.advanced')}</summary>
+    <div class="advanced-body grid gap-3 sm:grid-cols-3">
+      <label class="block space-y-1.5 text-sm sm:col-span-3">
+        <span class="text-xs font-medium text-muted-foreground">{$t('roleplay.lore.bookName')}</span>
+        <UiInput
+          class={uiClass("", "ui-local-fa92d110")}
+          value={draft.name || ''}
+          oninput={(event) => updateBook({ name: event.currentTarget.value })}
+          placeholder={$t('roleplay.optional')}
+        />
+      </label>
+      <label class="block space-y-1.5 text-sm">
+        <span class="text-xs font-medium text-muted-foreground">{$t('roleplay.lore.scanDepth')}</span>
+        <UiInput
+          class={uiClass("", "ui-local-fa92d110")}
+          type="number"
+          min="1"
+          value={draft.scanDepth ?? 4}
+          oninput={(event) => updateBook({ scanDepth: numberValue(event) ?? 4 })}
+        />
+        <span class="block text-[12px] text-muted-foreground">{$t('roleplay.lore.scanDepthHint')}</span>
+      </label>
+      <label class="block space-y-1.5 text-sm">
+        <span class="text-xs font-medium text-muted-foreground">{$t('roleplay.lore.tokenBudget')}</span>
+        <UiInput
+          class={uiClass("", "ui-local-fa92d110")}
+          type="number"
+          min="0"
+          value={draft.tokenBudget ?? 1024}
+          oninput={(event) => updateBook({ tokenBudget: numberValue(event) ?? 0 })}
+        />
+      </label>
+    </div>
+  </details>
 </div>
 
 <style>
-  .lore-entry-row {
+  .advanced {
+    border-top: 1px solid var(--border-subtle);
+    padding-top: 0.5rem;
+  }
+
+  .advanced summary {
+    cursor: pointer;
+    color: var(--text-muted);
+    font-size: var(--text-xs);
+  }
+
+  .advanced summary:hover {
+    color: var(--foreground);
+  }
+
+  .advanced-body {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    padding: 0.625rem 0 0.25rem;
+  }
+
+  :is(.lore-entry-row, :global(.lore-entry-row.ui-local-fa92d110)) {
     display: flex;
     flex-direction: column;
     gap: 0.125rem;
@@ -342,16 +348,16 @@
     transition: background-color var(--motion-fast) var(--motion-ease);
   }
 
-  .lore-entry-row:hover {
+  :is(.lore-entry-row:hover, :global(.lore-entry-row:hover.ui-local-fa92d110)) {
     background: var(--surface-hover);
   }
 
-  .lore-entry-row.is-active {
+  :is(.lore-entry-row.is-active, :global(.lore-entry-row.is-active.ui-local-fa92d110)) {
     border-color: var(--border);
     background: var(--surface-active);
   }
 
-  .lore-entry-row.is-off {
+  :is(.lore-entry-row.is-off, :global(.lore-entry-row.is-off.ui-local-fa92d110)) {
     opacity: 0.5;
   }
 

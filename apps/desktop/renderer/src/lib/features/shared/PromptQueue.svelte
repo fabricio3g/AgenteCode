@@ -10,6 +10,10 @@
 -->
 
 <script lang="ts">
+  import UiTextarea from '$lib/components/ui/Textarea.svelte';
+  import UiIconButton from '$lib/components/ui/IconButton.svelte';
+  import { cn as uiClass } from '$lib/utils/cn';
+
   import { Button, Tooltip } from '$lib/components/ui';
   import { tick } from 'svelte';
   import { ArrowUp, Paperclip, Pencil, X } from 'lucide-svelte';
@@ -50,9 +54,9 @@
 <section class="prompt-queue" aria-label={$t('promptQueue.title')}>
   <div class="queue-heading">
     <span class="queue-title">{$t('promptQueue.title')} <span class="tabular-nums">{items.length}</span></span>
-    <span class="queue-hint">{$t('promptQueue.hint')}</span>
-    <Button variant="outline" size="sm" class="ml-1"
+    <Button variant="outline" size="sm" class="ml-auto"
       type="button"
+      title={$t('promptQueue.hint')}
       aria-label={$t('promptQueue.sendNow')}
       disabled={!waiting.length || (!!editing && !draft.trim())}
       onclick={() => sendNow(waiting.length > 1 && !canSendAll ? waiting[0]!.id : undefined)}
@@ -64,16 +68,16 @@
         <span class="queue-number" aria-hidden="true">{index + 1}</span>
         {#if editing === item.id && !item.sending}
           <form onsubmit={(event) => { event.preventDefault(); save(item.id); }}>
-            <textarea
-              bind:this={editor}
+            <UiTextarea class={uiClass('', "ui-local-7f791877")}
+              bind:ref={editor}
               aria-label={$t('promptQueue.edit')}
-              rows="2"
+              rows={2}
               bind:value={draft}
               onkeydown={(event) => {
                 if (event.key === 'Escape') { event.preventDefault(); editing = null; }
                 else if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) { event.preventDefault(); save(item.id); }
               }}
-            ></textarea>
+            ></UiTextarea>
             <div class="edit-actions">
               <Button variant="outline" size="sm" type="button" onclick={() => (editing = null)}>{$t('promptQueue.cancel')}</Button>
               <Button variant="default" size="sm" type="submit" disabled={!draft.trim()}>{$t('promptQueue.save')}</Button>
@@ -85,9 +89,9 @@
           {#if item.sending}
             <span class="queue-status">{$t('promptQueue.sending')}</span>
           {:else}
-            {#if waiting.length > 1}<Tooltip label={$t('promptQueue.sendOne')} position="top"><button type="button" class="ui-icon-button is-xs queue-action" aria-label={$t('promptQueue.sendOne')} onclick={() => sendNow(item.id)}><ArrowUp /></button></Tooltip>{/if}
-            <Tooltip label={$t('promptQueue.edit')} position="top"><button type="button" class="ui-icon-button is-xs queue-action" aria-label={$t('promptQueue.edit')} onclick={() => void edit(item)}><Pencil /></button></Tooltip>
-            <Tooltip label={$t('promptQueue.remove')} position="top"><button type="button" class="ui-icon-button is-xs queue-action" aria-label={$t('promptQueue.remove')} onclick={() => onremove(item.id)}><X /></button></Tooltip>
+            {#if waiting.length > 1}<Tooltip label={$t('promptQueue.sendOne')} position="top"><UiIconButton label={$t('promptQueue.sendOne')} size="xs" type="button" class={uiClass("  queue-action", "ui-local-7f791877")}  onclick={() => sendNow(item.id)}><ArrowUp /></UiIconButton></Tooltip>{/if}
+            <Tooltip label={$t('promptQueue.edit')} position="top"><UiIconButton label={$t('promptQueue.edit')} size="xs" type="button" class={uiClass("  queue-action", "ui-local-7f791877")}  onclick={() => void edit(item)}><Pencil /></UiIconButton></Tooltip>
+            <Tooltip label={$t('promptQueue.remove')} position="top"><UiIconButton label={$t('promptQueue.remove')} size="xs" type="button" class={uiClass("  queue-action", "ui-local-7f791877")}  onclick={() => onremove(item.id)}><X /></UiIconButton></Tooltip>
           {/if}
         {/if}
       </li>
@@ -110,7 +114,6 @@
   li { display: flex; align-items: center; gap: 0.4rem; min-width: 0; }
   .queue-heading { padding: 0 0.35rem 0.25rem; font-size: var(--text-xs); color: var(--muted-foreground); }
   .queue-title { font-weight: 500; color: var(--foreground); }
-  .queue-hint { margin-left: auto; }
 
   ol { max-height: min(12rem, 30vh); overflow-y: auto; margin: 0; padding: 0; list-style: none; }
   li {
@@ -132,12 +135,12 @@
   .queue-status { flex-shrink: 0; font-size: var(--text-xs); color: var(--muted-foreground); }
 
   /* Row actions follow the app's hover-reveal rule: present, never shouting. */
-  .queue-action { opacity: 0; transition: opacity var(--motion-fast) var(--motion-ease); }
-  li:hover .queue-action, li:focus-within .queue-action { opacity: 1; }
+  :global(.queue-action.ui-local-7f791877) { opacity: 0; transition: opacity var(--motion-fast) var(--motion-ease); }
+  li:hover :global(.queue-action.ui-local-7f791877), li:focus-within :global(.queue-action.ui-local-7f791877) { opacity: 1; }
 
   form { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 0.375rem; }
   .edit-actions { display: flex; justify-content: flex-end; gap: 0.375rem; }
-  textarea {
+  :global(textarea.ui-local-7f791877) {
     min-width: 0;
     width: 100%;
     max-height: 10rem;
@@ -151,12 +154,11 @@
     font-size: 12.5px;
     line-height: 1.5;
   }
-  textarea:focus-visible { outline: 1px solid var(--border-hover); }
+  :global(textarea:focus-visible.ui-local-7f791877) { outline: 1px solid var(--border-hover); }
 
   @media (prefers-reduced-motion: reduce) {
-    li, .queue-action { transition: none; }
+    li, :global(.queue-action.ui-local-7f791877) { transition: none; }
   }
   @media (max-width: 600px) {
-    .queue-hint { display: none; }
   }
 </style>

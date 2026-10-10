@@ -101,6 +101,7 @@ export const COPY_EN = {
   tool: {
     needsApproval: 'Needs approval',
     approvalLede: 'The run is paused until you decide.',
+    approvalDestructive: 'This can modify or remove data.',
     allow: 'Allow',
     deny: 'Deny',
     failed: 'Failed',
@@ -159,7 +160,8 @@ export const COPY_EN = {
   untitled: {
     home: 'New chat',
     code: 'New conversation',
-    roleplay: 'New roleplay'
+    roleplay: 'New roleplay',
+    design: 'New design'
   },
 
   /** The top-bar tabs: the three spaces (keys mirror SpaceId), then Bots. */
@@ -168,6 +170,7 @@ export const COPY_EN = {
     home: 'Home',
     code: 'Code',
     roleplay: 'Roleplay',
+    design: 'Design',
     bots: 'Bots'
   },
 
@@ -183,6 +186,112 @@ export const COPY_EN = {
     noRoleplays: 'No roleplay sessions yet',
     noRoleplaysHint: 'Start a scene with a character and it will appear here.',
     enableInSettings: 'Enable Roleplay in Settings → General.'
+  },
+
+  /** Design space: HTML/CSS screens built by an agent, previewed on a canvas. */
+  design: {
+    newDesign: 'New design', noDesigns: 'No designs yet', noDesignsHint: 'Describe a screen and it will take shape here.',
+    steps: { design_list: 'List files', design_read: 'Read', design_write: 'Write', design_edit: 'Edit', design_snapshot: 'Save version', design_preview: 'Preview', design_inspect: 'Inspect', design_motion: 'Motion', design_reference: 'Study reference', design_view: 'View image' },
+    canvas: { empty: 'Start with a screen', emptyHint: 'Describe it in the chat — or pick a starter. The page appears here as soon as it is written.', reload: 'Reload preview', openFolder: 'Open design folder', hideChat: 'Hide chat', showChat: 'Show chat', previewLabel: 'Design preview', viewport: 'Viewport', page: 'Page' },
+    suggestions: [
+      { id: 'landing', label: 'Landing page', prompt: 'Design a landing page for a product. Hero, three feature blocks, pricing and a footer.' },
+      { id: 'dashboard', label: 'Dashboard', prompt: 'Design an analytics dashboard with a sidebar, KPI cards, a chart and a recent-activity table.' },
+      { id: 'mobile', label: 'Mobile app', prompt: 'Design a mobile onboarding flow: welcome, permissions and sign-up screens, 390px wide.' },
+      { id: 'pricing', label: 'Pricing', prompt: 'Design a pricing page with three tiers, a monthly/yearly toggle and an FAQ.' },
+      { id: 'login', label: 'Sign in', prompt: 'Design a clean sign-in screen with email, password and social options.' },
+      { id: 'micro', label: 'Micro-interactions', prompt: 'Design the micro-interactions of a small UI. A button in its hover, pressed and focus states, a sliding toggle, and a toast that enters and leaves, all on the motion tokens, with a reduced-motion version.' },
+    ],
+    timeline: {
+      title: 'Timeline', play: 'Play', pause: 'Pause', replay: 'Replay', speed: 'Playback speed', reduced: 'Reduced motion preview',
+      reducedHint: 'A preview: durations are cut here the way a reduce block cuts them', close: 'Close timeline', scrub: 'Scrub the timeline', change: 'Change this animation',
+      none: 'No animations on this page.', noneHint: 'Add a transition or an animation, then open the timeline again.'
+    },
+    motion: {
+      presets: { standard: 'Standard', decelerate: 'Decelerate', accelerate: 'Accelerate', emphasized: 'Emphasized', spring: 'Spring' },
+      custom: 'Custom'
+    },
+    viewports: { mobile: 'Mobile', tablet: 'Tablet', desktop: 'Desktop', fit: 'Fit' },
+    variants: { title: 'Variants', none: 'No variants yet', noneHint: 'Ask for options, for example "three directions for the hero".', use: 'Use this variant', current: 'Current design', close: 'Close' },
+    versions: { title: 'Versions', none: 'No versions yet', restore: 'Restore', auto: 'Saved after a turn', files: 'files', restored: 'Version restored' },
+    select: {
+      hint: 'Click an element · Shift+click adds · Double-click text to edit · Esc to finish',
+      element: 'Element', remove: 'Remove', clear: 'Clear', clearAll: 'Clear all', showMore: 'Show all', showFewer: 'Show fewer'
+    },
+    comments: {
+      pin: 'Comment', placeholder: 'What should change here?', hint: 'Enter saves · Esc cancels',
+      save: 'Save', cancel: 'Cancel', chip: 'Comment'
+    },
+    zoom: { label: 'Zoom', fit: 'Fit to pane', actual: 'Actual size', in: 'Zoom in', out: 'Zoom out' },
+    empty: { title: 'Start with a screen', hint: 'Describe it in the chat, or pick a starter below. The page takes shape here as soon as it is written.', sketching: 'Sketching the first screen…' },
+    resize: { dock: 'Resize the chat · double-click to reset', inspector: 'Resize the inspector · double-click to reset' },
+    dock: { title: 'What should we design?', hint: 'A screen, a flow or a whole product. Describe it, or start from a starter.', placeholder: 'Describe a screen, or select an element to change it', starters: 'Starters' },
+    toolbar: {
+      viewport: { mobile: 'Mobile · 390px', tablet: 'Tablet · 834px', desktop: 'Desktop · 1440px', fit: 'Fit to pane' },
+      zoom: 'Zoom', zoomIn: 'Zoom in', zoomOut: 'Zoom out', zoomFit: 'Fit to pane', zoomReset: 'Actual size',
+      scheme: { label: 'Preview color scheme', auto: 'Auto', light: 'Light', dark: 'Dark' },
+      inspector: 'Inspector', showInspector: 'Show inspector', hideInspector: 'Hide inspector', more: 'More', fit: 'Fit'
+    },
+    tools: {
+      label: 'Canvas tools', browse: 'Browse', select: 'Select element', comment: 'Comment on the canvas',
+      comments: 'Comments', sendComments: 'Send comments', commentsSent: 'Comments added to the next message'
+    },
+    inspector: {
+      element: 'Element', tokens: 'Tokens', code: 'Code', none: 'Select an element on the canvas',
+      noneHint: 'Its text, box and styles appear here, and quick changes go to the chat.',
+      text: 'Text', box: 'Box', styles: 'Styles', changes: 'Quick changes',
+      prominent: 'Make this more prominent', tighten: 'Tighten spacing', variants: 'Try 3 variants of this',
+      noTokens: 'No tokens yet', tokensHint: 'Ask for a token file, for example "define color, spacing and radius tokens".',
+      colors: 'Colors', space: 'Spacing', radius: 'Radius', type: 'Type', shadow: 'Shadows', other: 'Other',
+      moreSelected: 'more selected', motion: 'Motion', updateFailed: 'Could not update the token', noSource: 'Nothing to show yet', file: 'File', copy: 'Copy', copied: 'Copied'
+    },
+    export: { button: 'Export', copyHtml: 'Copy HTML', download: 'Download HTML', openBrowser: 'Open in browser', copied: 'HTML copied', failed: 'Export failed' },
+    systems: {
+      label: 'Design system',
+      intro: 'Start from a system',
+      none: 'No system',
+      saveAs: 'Save design as system…',
+      import: 'Import from a folder…',
+      specimenAction: 'Generate specimen',
+      specimenPrompt: 'Write components.html: a specimen page for this design system with the type scale, colors, buttons, inputs and cards. Use only the tokens in tokens.css and no external URLs.',
+      manage: 'Manage systems…',
+      title: 'Design systems',
+      description: 'Tokens, guidance and a specimen page that designs can reuse',
+      saveTitle: 'Save this design as a system',
+      nameLabel: 'System name',
+      namePlaceholder: 'e.g. Studio brand',
+      descriptionLabel: 'What it is for',
+      descriptionPlaceholder: 'Optional',
+      save: 'Save system',
+      saved: 'Design system saved',
+      noSave: 'Open a design to save it as a system.',
+      listTitle: 'Saved systems',
+      empty: 'No design systems yet',
+      emptyHint: 'Save a design as a system, or import the tokens of a project folder.',
+      noSpecimen: 'No specimen yet',
+      tokens: 'tokens',
+      specimen: 'specimen',
+      fromDesign: 'From a design',
+      fromFolder: 'From a folder',
+      apply: 'Use here',
+      applied: 'System applied. The earlier files are saved as a version.',
+      inUse: 'In use',
+      rename: 'Rename',
+      delete: 'Delete',
+      deleteTitle: 'Delete this system?',
+      deleteMessage: 'Its files leave the library. Designs that already use it keep their copies.',
+      deleteConfirm: 'Delete system',
+      imported: 'System imported from the folder'
+    },
+    handoff: {
+      bundle: 'Download bundle (.zip)', toCode: 'Hand off to Code…', copyPrompt: 'Copy build prompt', copyDoc: 'Copy HANDOFF.md', bundled: 'Bundle saved', copied: 'Copied',
+      dialog: {
+        keepHtml: 'Keep HTML/CSS',
+        title: 'Hand off to Code', description: 'Copies the design into a project, then opens a Code conversation with the build prompt. Nothing runs until you send it.', project: 'Project',
+        noProjects: 'No projects yet. Choose a folder to add one.', choose: 'Choose folder…', stack: 'Build with', stackCustom: 'Another stack, e.g. Next.js + Tailwind',
+        copies: 'Copies the design and its HANDOFF.md into a new folder under', confirm: 'Hand off', working: 'Copying…',
+        cancel: 'Cancel', needProject: 'Choose a project folder first.', failed: 'Could not hand off the design'
+      }
+    }
   },
 
   thread: {

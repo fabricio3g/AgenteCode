@@ -1,6 +1,11 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+  import DialogActions from '$lib/components/ui/DialogActions.svelte';
+
+  import UiTextarea from '$lib/components/ui/Textarea.svelte';
+  import { cn as uiClass } from '$lib/utils/cn';
+
   import { t } from 'svelte-i18n';
   import { Button, Dialog } from '$lib/components/ui';
   import { dirtyGuard } from '$lib/components/ui/dirty-guard';
@@ -42,23 +47,23 @@
   <div class="space-y-4 px-4 py-4 sm:px-5">
     <label class="block space-y-1.5">
       <span class="text-[length:var(--text-xs)] font-medium text-muted-foreground">{isLocal ? $t('promptSettings.fallbackLabel') : $t('promptSettings.systemLabel')}</span>
-      <textarea
+      <UiTextarea
         bind:value={systemPrompt}
-        rows="6"
-        class="ui-input resize-y text-[length:var(--text-sm)]"
+        rows={6}
+        class={uiClass(" resize-y text-[length:var(--text-sm)]")}
         placeholder={APP_SYSTEM_PROMPT_DEFAULT}
-      ></textarea>
+      ></UiTextarea>
     </label>
 
     {#if isLocal}
       <label class="block space-y-1.5">
         <span class="text-[length:var(--text-xs)] font-medium text-muted-foreground">{$t('promptSettings.localLabel')}</span>
-        <textarea
+        <UiTextarea
           bind:value={localSystemPrompt}
-          rows="6"
-          class="ui-input resize-y text-[length:var(--text-sm)]"
+          rows={6}
+          class={uiClass(" resize-y text-[length:var(--text-sm)]")}
           placeholder={$t('promptSettings.localPlaceholder')}
-        ></textarea>
+        ></UiTextarea>
       </label>
     {:else}
       <label class="block space-y-1.5">
@@ -66,18 +71,17 @@
           <MessageSquareText class="size-3.5" />
           {$t('promptSettings.userLabel')}
         </span>
-        <textarea
+        <UiTextarea
           bind:value={userPrompt}
-          rows="4"
-          class="ui-input resize-y text-[length:var(--text-sm)]"
+          rows={4}
+          class={uiClass(" resize-y text-[length:var(--text-sm)]")}
           placeholder={$t('promptSettings.userPlaceholder')}
-        ></textarea>
+        ></UiTextarea>
       </label>
     {/if}
   </div>
 
   {#snippet footer()}
-    <Button variant="ghost" onclick={() => requestClose()}>{$t('promptSettings.cancel')}</Button>
-    <Button onclick={save} loading={saving} loadingLabel={$t('promptSettings.saving')}>{$t('promptSettings.save')}</Button>
+    <DialogActions cancelLabel={$t('promptSettings.cancel')} confirmLabel={$t('promptSettings.save')} oncancel={() => requestClose()} onconfirm={save} busy={saving} busyLabel={$t('promptSettings.saving')} />
   {/snippet}
 </Dialog>

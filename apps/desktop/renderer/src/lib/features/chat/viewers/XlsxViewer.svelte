@@ -10,6 +10,10 @@
 -->
 
 <script lang="ts">
+  import { writeToClipboard } from '$lib/utils/clipboard';
+  import TabBar from '$lib/components/ui/TabBar.svelte';
+
+  import { tick } from 'svelte';
   import { t, locale } from 'svelte-i18n';
   import { readArrayBuffer } from './viewer-source';
   import ViewerStatus from './ViewerStatus.svelte';
@@ -32,11 +36,21 @@
   const ROWNUM_W = 46;
   const OVERSCAN = 12;
 
+  let revision = $state(0);
   let loading = $state(true);
   let error = $state<string | null>(null);
   let sheets = $state<GridSheet[]>([]);
   let active = $state(0);
   let zoom = $state(1);
+  let readingScale = $state(1);
+  const renderZoom = $derived(zoom * readingScale);
+  $effect(() => {
+    const root = document.documentElement;
+    const update = () => { readingScale = Number.parseFloat(getComputedStyle(root).getPropertyValue('--reading-scale')) || 1; };
+    update();
+    const observer = new MutationObserver(update); observer.observe(root, { attributes: true, attributeFilter: ['style', 'class'] });
+    return () => observer.disconnect();
+  });
 
   let findIndex = $state(0);
   let scroller = $state<HTMLDivElement>();
@@ -68,8 +82,8 @@
   });
   const visibleRows = $derived.by(() => {
     if (!sheet) return { start: 0, end: 0 };
-    const y = scrollTop / zoom - HEADER_H;
-    const h = viewportH / zoom;
+    const y = scrollTop / renderZoom - HEADER_H;
+    const h = viewportH / renderZoom;
     let start = 0;
     while (start < sheet.rows && rowTops[start + 1] < y) start += 1;
     let end = start;
@@ -101,21 +115,21 @@
 
   registerViewerControls(controls, () => ({
     zoom: `${Math.round(zoom * 100)}%`, zoomBy: direction => setZoom(zoom + direction * 0.1), fit: () => setZoom(1),
-    search: { matches: matches.length, index: findIndex, step }, retry: error ? () => void load() : undefined
+    search: { matches: matches.length, index: findIndex, step }, retry: error ? () => { revision += 1; } : undefined
   }));
 
   function number(value: number): string {
     return new Intl.NumberFormat($locale || 'en', { maximumFractionDigits: 2 }).format(value);
   }
 
-  async function load() {
+  async function load(source: string, language: string, current: () => boolean) {
     loading = true;
     error = null;
     sheets = [];
     try {
       const ExcelJS = await import('exceljs');
       // Not fetch(): the app's CSP blocks fetching data: URLs.
-      const buffer = await readArrayBuffer(src, 'spreadsheet');
+      const buffer = await readArrayBuffer(source, 'spreadsheet');
       const workbook = new ExcelJS.Workbook();
       await workbook.xlsx.load(buffer);
       // Formulas saved without results (common from scripts) get computed.
@@ -124,23 +138,32 @@
       workbook.eachSheet((worksheet) => {
         if (worksheet.state === 'hidden' || worksheet.state === 'veryHidden') return;
         const resolve = (formula: string, row: number, col: number) => evaluator.evaluateCell(formula, worksheet.name, row, col);
-        next.push(sheetToGrid(worksheet, $locale || 'en', { minRows: 60, minCols: 14 }, resolve));
+        next.push(sheetToGrid(worksheet, language, { minRows: 60, minCols: 14 }, resolve));
       });
+      if (!current()) return;
+      if (!next.length) throw new Error('This workbook has no visible sheets.');
       sheets = next;
       active = 0;
       select(0, 0);
     } catch (err) {
       console.error('[XlsxViewer] Failed to read workbook:', err);
-      error = $t('viewer.sheet.failed');
+      if (current()) error = $t('viewer.sheet.failed');
     } finally {
-      loading = false;
+      if (current()) loading = false;
     }
   }
 
   $effect(() => {
-    if (src) void load();
+    const source = src, language = $locale || 'en'; revision;
+    let current = true;
+    void load(source, language, () => current);
+    return () => { current = false; };
   });
-
+  function changeSheet(index: number) {
+    active = Math.max(0, Math.min(sheets.length - 1, index));
+    if (scroller) { scroller.scrollTop = 0; scroller.scrollLeft = 0; }
+    select(0, 0);
+  }
   function select(row: number, col: number, extend = false) {
     if (!sheet) return;
     const next = { row: Math.max(0, Math.min(sheet.rows - 1, row)), col: Math.max(0, Math.min(sheet.cols - 1, col)) };
@@ -151,14 +174,14 @@
 
   function reveal(row: number, col: number) {
     if (!scroller || !sheet) return;
-    const cellTop = (rowTops[row] + HEADER_H) * zoom;
-    const cellBottom = (rowTops[row + 1] + HEADER_H) * zoom;
-    const frozenH = (rowTops[sheet.frozenRows] + HEADER_H) * zoom;
+    const cellTop = (rowTops[row] + HEADER_H) * renderZoom;
+    const cellBottom = (rowTops[row + 1] + HEADER_H) * renderZoom;
+    const frozenH = (rowTops[sheet.frozenRows] + HEADER_H) * renderZoom;
     if (cellTop < scroller.scrollTop + frozenH && row >= sheet.frozenRows) scroller.scrollTop = cellTop - frozenH;
     else if (cellBottom > scroller.scrollTop + scroller.clientHeight) scroller.scrollTop = cellBottom - scroller.clientHeight;
-    const cellLeft = (colLefts[col] + ROWNUM_W) * zoom;
-    const cellRight = (colLefts[col + 1] + ROWNUM_W) * zoom;
-    const frozenW = (colLefts[sheet.frozenCols] + ROWNUM_W) * zoom;
+    const cellLeft = (colLefts[col] + ROWNUM_W) * renderZoom;
+    const cellRight = (colLefts[col + 1] + ROWNUM_W) * renderZoom;
+    const frozenW = (colLefts[sheet.frozenCols] + ROWNUM_W) * renderZoom;
     if (cellLeft < scroller.scrollLeft + frozenW && col >= sheet.frozenCols) scroller.scrollLeft = cellLeft - frozenW;
     else if (cellRight > scroller.scrollLeft + scroller.clientWidth) scroller.scrollLeft = cellRight - scroller.clientWidth;
   }
@@ -189,7 +212,7 @@
   async function copySelection() {
     if (!sheet) return;
     try {
-      await navigator.clipboard.writeText(selectionToTsv(sheet, top, left, bottom, right));
+      await writeToClipboard(selectionToTsv(sheet, top, left, bottom, right));
     } catch {
       /* clipboard unavailable: nothing to do */
     }
@@ -259,7 +282,7 @@
       s.align ? `text-align:${s.align}` : '',
       s.valign ? `vertical-align:${s.valign}` : '',
       s.wrap ? 'white-space:pre-wrap' : '',
-      s.fontSize ? `font-size:${Math.round((s.fontSize * 4) / 3)}px` : '',
+      s.fontSize ? `font-size:max(calc(var(--text-xs) / var(--reading-scale, 1)), ${Math.round((s.fontSize * 4) / 3)}px)` : '',
       s.borderBottom ? 'box-shadow:inset 0 -1px 0 currentColor' : ''
     ];
     if (sheet && row < sheet.frozenRows) parts.push(`position:sticky;top:${rowTops[row] + HEADER_H}px;z-index:2`);
@@ -290,7 +313,7 @@
 
 <div class="sheet-viewer">
   {#if loading || error}
-    <ViewerStatus {loading} {error} label={$t('viewer.sheet.loading')} />
+    <ViewerStatus {loading} {error} label={$t('viewer.sheet.loading')} retry={error ? () => { revision += 1; } : undefined} />
   {:else if sheet}
     <!-- Name box · formula bar · find -->
     <div class="sheet-bar">
@@ -314,7 +337,7 @@
       aria-colcount={sheet.cols}
       onkeydown={onKeydown}
     >
-      <table class="sheet-grid" style:zoom={zoom} style:width={`${ROWNUM_W + colLefts[sheet.cols]}px`}>
+      <table class="sheet-grid" style:zoom={renderZoom} style:width={`${ROWNUM_W + colLefts[sheet.cols]}px`}>
         <colgroup>
           <col style:width={`${ROWNUM_W}px`} />
           {#each sheet.colWidths as width, index (index)}<col style:width={`${width}px`} />{/each}
@@ -367,11 +390,7 @@
 
     <!-- Sheet tabs · selection stats · zoom -->
     <div class="sheet-foot">
-      <div class="tabs" role="tablist" aria-label={$t('viewer.sheet.sheets')}>
-        {#each sheets as item, index (item.name)}
-          <button type="button" role="tab" aria-selected={index === active} class="tab" class:on={index === active} onclick={() => { active = index; select(0, 0); }}>{item.name}</button>
-        {/each}
-      </div>
+      <TabBar value={String(active)} options={sheets.map((item, index) => ({ value: String(index), label: item.name }))} label={$t('viewer.sheet.sheets')} onchange={value => changeSheet(Number(value))} class="min-w-0 flex-1" />
       <div class="stats" aria-live="polite">
         {#if selectionStats}
           {#if selectionStats.numbers}
@@ -404,13 +423,13 @@
 
   .sheet-bar {
     display: flex;
-    height: 1.75rem;
+    height: max(1.75rem, calc(var(--text-base) * 1.8));
     flex-shrink: 0;
     align-items: center;
     gap: 0.5rem;
     padding: 0 0.5rem;
     border-bottom: 1px solid var(--border);
-    font-size: 12.5px;
+    font-size: var(--text-sm);
   }
   .name-box {
     width: 5.5rem;
@@ -435,7 +454,7 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     font-variant-numeric: tabular-nums;
-    font-size: 12px;
+    font-size: var(--text-xs);
   }
   .sheet-scroll {
     position: relative;
@@ -449,9 +468,9 @@
     table-layout: fixed;
     border-collapse: separate;
     border-spacing: 0;
-    font-size: 13px;
+    font-size: calc(var(--text-base) / var(--reading-scale, 1));
     line-height: 1.35;
-    font-family: Calibri, Carlito, 'Segoe UI', Inter, system-ui, sans-serif;
+    font-family: var(--font-sans);
   }
   .sheet-grid th,
   .sheet-grid td {
@@ -474,7 +493,7 @@
     z-index: 6;
     background: var(--muted);
     color: var(--muted-foreground);
-    font-size: 11px;
+    font-size: calc(var(--text-xs) / var(--reading-scale, 1));
     font-weight: 500;
     text-align: center;
     vertical-align: middle;
@@ -491,19 +510,19 @@
     z-index: 3;
     background: var(--muted);
     color: var(--muted-foreground);
-    font-size: 11px;
+    font-size: calc(var(--text-xs) / var(--reading-scale, 1));
     font-weight: 500;
     text-align: center !important;
     vertical-align: middle !important;
     cursor: e-resize;
   }
-  .col-head.on,
-  .row-head.on {
+  :is(.col-head.on, :global(.col-head.on.ui-local-044facd2)),
+  :is(.row-head.on, :global(.row-head.on.ui-local-044facd2)) {
     background: color-mix(in srgb, var(--sheet-accent) 16%, var(--muted));
     color: var(--foreground);
     box-shadow: inset 0 -2px 0 var(--sheet-accent);
   }
-  .row-head.on {
+  :is(.row-head.on, :global(.row-head.on.ui-local-044facd2)) {
     box-shadow: inset -2px 0 0 var(--sheet-accent);
   }
   .sheet-grid td.sel {
@@ -524,43 +543,25 @@
   }
   .truncated {
     padding: 0.5rem 0.75rem;
-    font-size: 12px;
+    font-size: var(--text-xs);
     color: var(--muted-foreground);
   }
 
   .sheet-foot {
     display: flex;
-    height: 2rem;
+    height: max(2rem, calc(var(--text-base) * 2));
     flex-shrink: 0;
     align-items: center;
     gap: 0.75rem;
     padding: 0 0.5rem 0 0;
     border-top: 1px solid var(--border);
     background: var(--muted);
-    font-size: 12px;
+    font-size: var(--text-xs);
   }
-  .tabs {
-    display: flex;
-    min-width: 0;
-    flex: 1;
-    align-self: stretch;
-    overflow-x: auto;
-  }
-  .tab {
-    flex-shrink: 0;
-    padding: 0 0.875rem;
-    color: var(--muted-foreground);
-    border-right: 1px solid var(--border);
-  }
-  .tab:hover {
-    color: var(--foreground);
-  }
-  .tab.on {
-    background: var(--background);
-    color: var(--sheet-accent);
-    font-weight: 600;
-    box-shadow: inset 0 -2px 0 var(--sheet-accent);
-  }
+
+
+
+
   .stats {
     display: flex;
     gap: 0.875rem;

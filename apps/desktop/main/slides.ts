@@ -7,8 +7,8 @@ import { normalizeDeck, type DeckSpec } from '../shared/deck.ts';
 const W = 13.333;
 const H = 7.5;
 const MARGIN = 0.75;
-const FONT = 'Aptos';
-const FONT_DISPLAY = 'Aptos Display';
+const FONT = 'Inter';
+const FONT_DISPLAY = 'Inter';
 
 /**
  * A deck (see shared/deck.ts) as a real .pptx: one quiet design — neutral

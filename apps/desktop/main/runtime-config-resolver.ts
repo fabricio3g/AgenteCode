@@ -585,17 +585,6 @@ export function resolveRuntimeConfig(options = {}) {
     backend = 'auto';
   }
 
-  // If user requested 'cpu' but we have a runtime with GPU backends, switch to 'auto'
-  // This handles the case where getRecommendedSettings couldn't find a runtime (returned cpu)
-  // but buildLlamaArgs now has access to a valid runtime
-  if (backend === 'cpu' && effectiveRuntimePath && fs.existsSync(effectiveRuntimePath)) {
-    const hasGpuBackends = runtimeCaps.availableBackends.some(b => b !== 'cpu');
-    if (hasGpuBackends) {
-      reasonLog.push(`user_requested=cpu_but_runtime_has_gpu,reconsidering`);
-      backend = 'auto';
-    }
-  }
-
   if (backend === 'auto') {
     const result = doAutoDetection(runtimeBackends, runtimeCaps);
     if (typeof result === 'string') {

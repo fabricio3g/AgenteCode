@@ -12,7 +12,7 @@ export const buttonVariants = cva(
     variants: {
       variant: {
         default: 'ui-button-solid border border-transparent bg-primary text-primary-fg hover:bg-primary-hover',
-        destructive: 'ui-button-solid border border-transparent bg-error text-primary-fg hover:opacity-90',
+        destructive: 'ui-button-solid border border-transparent bg-[var(--button-danger-bg)] text-[var(--button-danger-fg)] hover:bg-[var(--button-danger-hover)]',
         outline: 'ui-button-outline border border-[var(--border-hover)] bg-[var(--card)] text-foreground hover:bg-[var(--float-row-hover)]',
         secondary: 'ui-button-secondary border border-[var(--border)] bg-[var(--surface-hover)] text-foreground hover:bg-[var(--surface-active)]',
         ghost: 'ui-button-ghost border border-transparent text-foreground hover:bg-[var(--float-row-hover)]',
@@ -22,6 +22,7 @@ export const buttonVariants = cva(
         default: 'h-8 px-3.5',
         xs: 'h-6 gap-1 px-2 text-[length:var(--text-xs)] [&_svg]:size-3',
         sm: 'h-7 px-3',
+        dialog: 'h-auto min-h-7 px-3 py-1.5',
         lg: 'h-9 px-4',
         icon: 'size-8',
         'icon-sm': 'size-7',

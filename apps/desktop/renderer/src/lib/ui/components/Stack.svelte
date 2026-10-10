@@ -1,4 +1,6 @@
 <script lang="ts">
+  import UiStack from '$lib/components/ui/Stack.svelte';
+
   import RenderNode from '../RenderNode.svelte';
   let { props = {} } = $props<{ props?: Record<string, any> }>();
   const direction = $derived(props.direction === 'row' ? 'row' : 'column');
@@ -7,6 +9,6 @@
   const gap = $derived(gapMap[String(props.gap || 'm')] || String(props.gap || '1rem'));
 </script>
 
-<div class="ui-stack" style={`flex-direction:${direction};flex-wrap:${wrap ? 'wrap' : 'nowrap'};gap:${gap};align-items:${props.align || 'stretch'};justify-content:${props.justify || 'flex-start'};`}>
+<UiStack  style={`flex-direction:${direction};flex-wrap:${wrap ? 'wrap' : 'nowrap'};gap:${gap};align-items:${props.align || 'stretch'};justify-content:${props.justify || 'flex-start'};`}>
   <RenderNode value={props.children || []} />
-</div>
+</UiStack>

@@ -7,6 +7,11 @@
 -->
 
 <script lang="ts">
+  import UiIconButton from '$lib/components/ui/IconButton.svelte';
+  import UiInput from '$lib/components/ui/Input.svelte';
+  import UiTextarea from '$lib/components/ui/Textarea.svelte';
+  import { cn as uiClass } from '$lib/utils/cn';
+
   import { untrack } from 'svelte';
   import { t } from 'svelte-i18n';
   import { Dices } from 'lucide-svelte';
@@ -125,64 +130,64 @@
   }
 </script>
 
-<Dialog title={bot ? $t('bots.editTitle', { values: { name: bot.title } }) : $t('bots.new')} description={$t('bots.editorHint')} size="md" {onclose}>
+<Dialog title={bot ? $t('bots.editTitle', { values: { name: bot.title } }) : $t('bots.new')} size="md" {onclose}>
   <div class="space-y-4 p-4">
     <div class="flex items-center gap-3">
       <BotAvatar bot={preview} size="xl" />
       <div class="flex gap-1.5" role="radiogroup" aria-label={$t('bots.color')}>
         {#each TINTS as option (option)}
-          <button
+          <Button variant="plain" style={`background:var(--accent-${option}-bg);color:var(--accent-${option}-text)`}
             type="button"
             role="radio"
             aria-checked={tint === option}
             aria-label={$t(`bots.tints.${option}`)}
-            class="swatch"
-            class:selected={tint === option}
-            style:background={`var(--accent-${option}-bg)`}
-            style:color={`var(--accent-${option}-text)`}
+            class={uiClass("swatch", "ui-local-93ef8bbd", {"selected": tint === option})}
+
+
+
             onclick={() => (tint = option)}
-          >●</button>
+          >●</Button>
         {/each}
       </div>
       {#if !bot?.avatar.image}
-        <Tooltip label={$t('bots.shuffleFace')} position="bottom"><button type="button" class="ui-icon-button shuffle" onclick={() => (seed = newSeed())} aria-label={$t('bots.shuffleFace')}>
+        <Tooltip label={$t('bots.shuffleFace')} position="bottom"><UiIconButton label={$t('bots.shuffleFace')} size="sm" type="button" class={uiClass(" shuffle", "ui-local-93ef8bbd")} onclick={() => (seed = newSeed())} >
           <Dices class="size-4" />
-        </button></Tooltip>
+        </UiIconButton></Tooltip>
       {/if}
     </div>
     <Field label={$t('bots.name')} htmlFor="bot-name">
-      <input id="bot-name" class="ui-input" bind:value={title} placeholder={$t('bots.namePlaceholder')} />
+      <UiInput id="bot-name" class={uiClass("", "ui-local-93ef8bbd")} bind:value={title} placeholder={$t('bots.namePlaceholder')} />
     </Field>
     <Field label={$t('bots.role')} htmlFor="bot-role">
-      <input id="bot-role" class="ui-input" bind:value={role} placeholder={$t('bots.rolePlaceholder')} />
+      <UiInput id="bot-role" class={uiClass("", "ui-local-93ef8bbd")} bind:value={role} placeholder={$t('bots.rolePlaceholder')} />
     </Field>
 
-    <Field label={$t('bots.model')} description={$t('bots.modelHint')}>
+    <Field label={$t('bots.model')}>
       <BotModelPicker bind:value={modelPin} />
     </Field>
 
-    <Disclosure bind:open={advanced} title={$t('bots.advanced')} description={$t('bots.advancedHint')}>
+    <Disclosure bind:open={advanced} title={$t('bots.advanced')}>
       <div class="space-y-4 pt-2">
         {#if toolsets.length}
           <Field label={$t('bots.tools')} description={`${$t('bots.toolsHint')} ${sandbox ? $t(sandbox.available ? 'bots.sandboxOn' : 'bots.sandboxOff') : ''}`.trim()}>
             <div class="flex flex-wrap gap-1.5" role="group" aria-label={$t('bots.tools')}>
               {#each toolsets as set (set.id)}
-                <button type="button" class="toolset" class:on={isOn(set.id)} aria-pressed={isOn(set.id)} title={set.tools.join(', ')} onclick={() => toggleSet(set.id)}>
+                <Button variant="plain" type="button" class={uiClass("toolset", "ui-local-93ef8bbd", {"on": isOn(set.id)})}  aria-pressed={isOn(set.id)} title={set.tools.join(', ')} onclick={() => toggleSet(set.id)}>
                   {$t(`bots.toolsets.${set.id}`, { default: set.id })}
-                </button>
+                </Button>
               {/each}
             </div>
           </Field>
         {/if}
         <Field label={$t('bots.soul')} description={$t('bots.soulHint')} htmlFor="bot-soul">
-          <textarea id="bot-soul" class="ui-input min-h-28" bind:value={soul}></textarea>
+          <UiTextarea id="bot-soul" class={uiClass(" min-h-28", "ui-local-93ef8bbd")} bind:value={soul}></UiTextarea>
         </Field>
         <Field label={$t('bots.aboutYou')} description={$t('bots.aboutYouHint')} htmlFor="bot-user">
-          <textarea id="bot-user" class="ui-input min-h-20" bind:value={user}></textarea>
+          <UiTextarea id="bot-user" class={uiClass(" min-h-20", "ui-local-93ef8bbd")} bind:value={user}></UiTextarea>
         </Field>
         {#if bot}
           <Field label={$t('bots.memory')} description={$t('bots.memoryHint')} htmlFor="bot-memory">
-            <textarea id="bot-memory" class="ui-input min-h-24 text-[12px]" bind:value={memory}></textarea>
+            <UiTextarea id="bot-memory" class={uiClass(" min-h-24 text-[12px]", "ui-local-93ef8bbd")} bind:value={memory}></UiTextarea>
           </Field>
         {/if}
         <Field
@@ -193,7 +198,7 @@
         >
           <div class="flex items-center gap-2">
             <span class="text-[13px] text-muted-foreground">$</span>
-            <input id="bot-budget" class="ui-input budget-input" type="text" inputmode="decimal" bind:value={budget} placeholder={$t('bots.noLimit')} />
+            <UiInput id="bot-budget" class={uiClass(" budget-input", "ui-local-93ef8bbd")} type="text" inputmode="decimal" bind:value={budget} placeholder={$t('bots.noLimit')} />
             <span class="whitespace-nowrap text-[12px] text-muted-foreground">{$t('bots.perDay')}</span>
           </div>
         </Field>
@@ -212,7 +217,7 @@
     {#if error}<p class="text-[12px] text-destructive">{error}</p>{/if}
     <div class="flex items-center gap-2">
       {#if bot && !bot.builtin}
-        <Button variant="ghost" class="text-destructive" onclick={remove}>{$t('bots.delete')}</Button>
+        <Button variant="ghost" class="hover:text-destructive" onclick={remove}>{$t('bots.delete')}</Button>
       {/if}
       <span class="flex-1"></span>
       <Button variant="ghost" onclick={onclose}>{$t('bots.cancel')}</Button>
@@ -222,7 +227,7 @@
 </Dialog>
 
 <style>
-  .swatch {
+  :global(.swatch.ui-local-93ef8bbd) {
     display: inline-flex;
     height: 1.6rem;
     width: 1.6rem;
@@ -232,9 +237,9 @@
     font-size: 10px;
     box-shadow: inset 0 0 0 1px var(--border-subtle);
   }
-  .budget-input { width: 8rem; }
-  .shuffle { margin-left: 0.25rem; }
-  .toolset {
+  :global(.budget-input.ui-local-93ef8bbd) { width: 8rem; }
+  :global(.shuffle.ui-local-93ef8bbd) { margin-left: 0.25rem; }
+  :global(.toolset.ui-local-93ef8bbd) {
     height: 1.75rem;
     padding: 0 0.75rem;
     border-radius: 9999px;
@@ -244,7 +249,7 @@
     box-shadow: inset 0 0 0 1px var(--border);
     transition: background 150ms var(--motion-ease), color 150ms var(--motion-ease);
   }
-  .toolset:hover { color: var(--foreground); }
-  .toolset.on { color: var(--foreground); background: var(--muted); box-shadow: inset 0 0 0 1px var(--border-hover); }
-  .swatch.selected { box-shadow: 0 0 0 2px var(--background), 0 0 0 3.5px var(--foreground); }
+  :global(.toolset:hover.ui-local-93ef8bbd) { color: var(--foreground); }
+  :global(.toolset.on.ui-local-93ef8bbd) { color: var(--foreground); background: var(--muted); box-shadow: inset 0 0 0 1px var(--border-hover); }
+  :global(.swatch.selected.ui-local-93ef8bbd) { box-shadow: 0 0 0 2px var(--background), 0 0 0 3.5px var(--foreground); }
 </style>

@@ -44,9 +44,9 @@ function apiTransport(providerName: string, provider: Record<string, any>, model
   return { providerName, baseUrl: provider.base_url || DEFAULT_PROVIDER_BASE_URL, model: model || provider.model || '' };
 }
 
-/** Local when asked for, or when no model is named and Desktop runs locally. */
+/** An explicit provider always owns its route, even before its model is chosen. */
 function usesLocal(llm: LlmConfig, providerName: string, modelOverride?: string): boolean {
-  return providerName === 'local' || (!modelOverride && llm.backend_mode === 'local');
+  return providerName === 'local' || (!providerName && !modelOverride && llm.backend_mode === 'local');
 }
 
 export function resolveTransport(providerName: string, modelOverride?: string, selection?: LocalModelSelection): AgenteTransport {

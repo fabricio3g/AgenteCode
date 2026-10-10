@@ -1,4 +1,8 @@
 <script lang="ts">
+  import UiStack from '$lib/components/ui/Stack.svelte';
+
+  import Switch from '$lib/components/ui/Switch.svelte';
+
   import { getContext } from 'svelte';
   import { useUI } from '../context';
   let { props = {} } = $props<{ props?: Record<string, any> }>();
@@ -11,10 +15,10 @@
   }
 </script>
 
-<div class="ui-stack" style="gap:0.45rem;">
+<UiStack  style="gap:0.45rem;">
   {#each items as item}
     {@const value = String(item?.props?.value || item?.value || item?.props?.name || '')}
     {@const label = String(item?.props?.label || item?.label || value)}
-    <label class="ui-choice ui-switch"><span>{label}</span><input type="checkbox" checked={!!selected[value]} onchange={(event) => update(value, (event.currentTarget as HTMLInputElement).checked)} /></label>
+    <label class="ui-choice ui-switch"><span>{label}</span><Switch label={label} checked={!!selected[value]} onchange={checked => update(value, checked)} /></label>
   {/each}
-</div>
+</UiStack>

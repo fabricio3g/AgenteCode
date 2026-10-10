@@ -11,6 +11,10 @@
 -->
 
 <script lang="ts">
+  import UiListRow from '$lib/components/ui/ListRow.svelte';
+
+  import { cn as uiClass } from '$lib/utils/cn';
+
   import { onMount } from 'svelte';
   import { t } from 'svelte-i18n';
   import { Wifi } from 'lucide-svelte';
@@ -32,12 +36,12 @@
   <div class="running">
     <p class="sidebar-section">{$t('instances.sidebarTitle')}</p>
     {#each instancesStore.running as instance (instance.id)}
-      <button type="button" class="sidebar-row" onclick={open} title={instance.model_path}>
+      <UiListRow  type="button" class={uiClass("sidebar-row")} onclick={open} title={instance.model_path}>
         <StatusDot tone={tone(instance.state)} />
         <span class="sidebar-row-label">{instance.model_id.replace(/\.gguf$/i, '')}</span>
         {#if instance.shared}<Wifi class="size-3 shrink-0 opacity-60" aria-label={$t('instances.shared')} />{/if}
         {#if instancesStore.inChat(instance)}<span class="tag">{$t('instances.inChatShort')}</span>{:else if instance.port}<span class="port">:{instance.port}</span>{/if}
-      </button>
+      </UiListRow>
     {/each}
   </div>
 {/if}

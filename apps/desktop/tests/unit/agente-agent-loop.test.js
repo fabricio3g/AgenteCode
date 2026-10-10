@@ -2,7 +2,6 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert';
 
 import { runAgentLoop } from '../../shared/agent-core/agent-loop.ts';
-import { Agent } from '../../shared/agent-core/agent.ts';
 import { defineTool } from '../../main/agente/tools/define-tool.ts';
 import { z } from 'zod';
 
@@ -220,34 +219,6 @@ describe('agente agent loop', () => {
     const streamFn = fakeStreamFn([{ content: 'x', stopReason: 'stop' }]);
     const result = await runAgentLoop(baseArgs({ streamFn, signal: controller.signal }));
     assert.strictEqual(result.stopReason, 'aborted');
-  });
-});
-
-describe('agente Agent wrapper', () => {
-  it('converts a second prompt into a follow-up while streaming', async () => {
-    let release;
-    const gate = new Promise((r) => (release = r));
-    const streamFn = async (request) => {
-      if (request.messages.filter((m) => m.role === 'user').length === 1) {
-        await gate;
-        return { role: 'assistant', content: 'first', stopReason: 'stop', ts: Date.now() };
-      }
-      return { role: 'assistant', content: 'second', stopReason: 'stop', ts: Date.now() };
-    };
-    const agent = new Agent({
-      systemPrompt: 's',
-      tools: new Map(),
-      enabledTools: new Set(),
-      streamFn,
-      maxTurns: 5
-    });
-
-    const first = agent.prompt({ role: 'user', content: 'one', ts: 1 });
-    await agent.prompt({ role: 'user', content: 'two', ts: 2 }); // queued, not run
-    assert.strictEqual(agent.messages.filter((m) => m.role === 'user').length, 1);
-    release();
-    await first;
-    assert.ok(agent.messages.some((m) => m.role === 'assistant' && m.content === 'second'));
   });
 });
 

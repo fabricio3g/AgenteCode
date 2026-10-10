@@ -7,7 +7,7 @@
  * config, so the loop never re-derives it and tests can assert it directly.
  */
 
-import type { RequestMessage } from '$lib/services/chat-api';
+import type { RequestMessage } from '$lib/services/chat/types';
 import type { RunAgentTaskArgs } from '$lib/services/agent-types';
 import type { AppConfig } from '$lib/types/chat';
 import { supportsNativeTools } from '$lib/services/agent-llm';

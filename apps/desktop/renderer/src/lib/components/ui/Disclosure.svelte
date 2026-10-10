@@ -28,7 +28,7 @@
   <div class={className}>
     <button
       type="button"
-      class="group flex w-full items-center gap-1.5 py-1.5 text-left text-[12.5px] text-muted-foreground outline-none transition-colors duration-[var(--motion-fast)] hover:text-foreground focus-visible:text-foreground disabled:opacity-50"
+      class="group flex w-full items-center gap-1.5 py-1.5 text-left text-[length:var(--text-xs)] text-muted-foreground outline-none transition-colors duration-[var(--motion-fast)] hover:text-foreground focus-visible:text-foreground disabled:opacity-50"
       aria-expanded={open}
       {disabled}
       onclick={() => (open = !open)}
@@ -53,7 +53,7 @@
     onclick={() => (open = !open)}
   >
     <span class="min-w-0">
-      <span class="block text-[13px] font-medium text-foreground">{title}</span>
+      <span class="block text-[length:var(--text-sm)] font-medium text-foreground">{title}</span>
       {#if description}<span class="mt-0.5 block text-xs text-muted-foreground">{description}</span>{/if}
     </span>
     <ChevronDown class={cn('size-4 shrink-0 text-muted-foreground transition-transform duration-[var(--motion-normal)] ease-[var(--motion-ease)]', open && 'rotate-180')} />

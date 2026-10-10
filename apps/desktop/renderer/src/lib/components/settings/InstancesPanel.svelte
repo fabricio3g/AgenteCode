@@ -7,6 +7,9 @@
 -->
 
 <script lang="ts">
+  import { writeToClipboard } from '$lib/utils/clipboard';
+  import { cn as uiClass } from '$lib/utils/cn';
+
   import { onMount } from 'svelte';
   import { t } from 'svelte-i18n';
   import { Check, Copy, Cpu, Eye, EyeOff, Plus, Square, Wifi } from 'lucide-svelte';
@@ -55,7 +58,7 @@
 
   async function copy(text: string, id: string) {
     try {
-      await navigator.clipboard.writeText(text);
+      if (!await writeToClipboard(text)) return;
       copied = id;
       setTimeout(() => { if (copied === id) copied = ''; }, 1400);
     } catch { /* clipboard blocked */ }
@@ -86,9 +89,9 @@
   <div class="endpoint">
     <span class="endpoint-label">{label}</span>
     <code class="endpoint-value" title={value}>{value}</code>
-    <button type="button" class="endpoint-btn" onclick={() => void copy(value, id)} aria-label={$t('instances.copy')} title={$t('instances.copy')}>
+    <Button variant="plain" type="button" class={uiClass("endpoint-btn", "ui-local-5540e50e")} onclick={() => void copy(value, id)} aria-label={$t('instances.copy')} title={$t('instances.copy')}>
       {#if copied === id}<Check class="size-3.5" />{:else}<Copy class="size-3.5" />{/if}
-    </button>
+    </Button>
   </div>
 {/snippet}
 
@@ -159,12 +162,12 @@
         <div class="endpoint">
           <span class="endpoint-label">{$t('instances.apiKey')}</span>
           <code class="endpoint-value">{revealed[instance.id] || '••••••••••••••••••••••••'}</code>
-          <button type="button" class="endpoint-btn" onclick={() => void toggleKey(instance)} aria-label={$t('instances.showKey')} title={$t('instances.showKey')}>
+          <Button variant="plain" type="button" class={uiClass("endpoint-btn", "ui-local-5540e50e")} onclick={() => void toggleKey(instance)} aria-label={$t('instances.showKey')} title={$t('instances.showKey')}>
             {#if revealed[instance.id]}<EyeOff class="size-3.5" />{:else}<Eye class="size-3.5" />{/if}
-          </button>
-          <button type="button" class="endpoint-btn" onclick={async () => void copy(revealed[instance.id] || await instancesStore.key(instance.id), `${instance.id}-key`)} aria-label={$t('instances.copy')} title={$t('instances.copy')}>
+          </Button>
+          <Button variant="plain" type="button" class={uiClass("endpoint-btn", "ui-local-5540e50e")} onclick={async () => void copy(revealed[instance.id] || await instancesStore.key(instance.id), `${instance.id}-key`)} aria-label={$t('instances.copy')} title={$t('instances.copy')}>
             {#if copied === `${instance.id}-key`}<Check class="size-3.5" />{:else}<Copy class="size-3.5" />{/if}
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -214,8 +217,6 @@
     font-weight: 500;
   }
 
-  .chip.good { background: var(--accent-green-bg); color: var(--accent-green-text); }
-  .chip.info { background: var(--accent-blue-bg); color: var(--accent-blue-text); }
 
   .endpoint {
     display: flex;
@@ -244,7 +245,7 @@
     color: var(--foreground);
   }
 
-  .endpoint-btn {
+  :is(.endpoint-btn, :global(.endpoint-btn.ui-local-5540e50e)) {
     display: inline-flex;
     width: 1.6rem;
     height: 1.6rem;
@@ -257,7 +258,7 @@
     color: var(--muted-foreground);
   }
 
-  .endpoint-btn:hover {
+  :is(.endpoint-btn:hover, :global(.endpoint-btn:hover.ui-local-5540e50e)) {
     background: var(--background);
     color: var(--foreground);
   }

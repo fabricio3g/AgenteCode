@@ -9,6 +9,8 @@
 -->
 
 <script lang="ts">
+  import UiIconButton from '$lib/components/ui/IconButton.svelte';
+
   import { Tooltip } from '$lib/components/ui';
   import { LoaderCircle, Pause, Play, X } from 'lucide-svelte';
   import { t } from 'svelte-i18n';
@@ -82,43 +84,43 @@
 
   <div class="flex shrink-0 items-center gap-1">
     {#if running}
-      <Tooltip label={$t('modelHub.pauseHint')} position="bottom"><button
+      <Tooltip label={$t('modelHub.pauseHint')} position="bottom"><UiIconButton label={$t('modelHub.pause')} size="xs"
         type="button"
-        class="ui-icon-button is-sm"
+
         onclick={() => void downloadsStore.pauseJob(job.id).then(() => downloadsStore.refresh())}
-        aria-label={$t('modelHub.pause')}
-       
+
+
       >
         <Pause class="size-3.5" />
-      </button></Tooltip>
-      <Tooltip label={$t('modelHub.cancelHint')} position="bottom"><button
+      </UiIconButton></Tooltip>
+      <Tooltip label={$t('modelHub.cancelHint')} position="bottom"><UiIconButton label={$t('modelHub.cancelDownload')} size="xs"
         type="button"
-        class="ui-icon-button is-sm"
+
         onclick={() => void downloadsStore.cancelJob(job.id)}
-        aria-label={$t('modelHub.cancelDownload')}
-       
+
+
       >
         <X class="size-3.5" />
-      </button></Tooltip>
+      </UiIconButton></Tooltip>
     {:else if resumable}
-      <Tooltip label={$t('modelHub.resumeHint')} position="bottom"><button
+      <Tooltip label={$t('modelHub.resumeHint')} position="bottom"><UiIconButton label={$t('modelHub.resume')} size="xs"
         type="button"
-        class="ui-icon-button is-sm"
+
         onclick={() => void downloadsStore.resumeJob(job)}
-        aria-label={$t('modelHub.resume')}
-       
+
+
       >
         <Play class="size-3.5" />
-      </button></Tooltip>
-      <Tooltip label={$t('modelHub.dismiss')} position="bottom"><button
+      </UiIconButton></Tooltip>
+      <Tooltip label={$t('modelHub.dismiss')} position="bottom"><UiIconButton label={$t('modelHub.dismiss')} size="xs"
         type="button"
-        class="ui-icon-button is-sm"
+
         onclick={() => void downloadsStore.removeJob(job.id)}
-        aria-label={$t('modelHub.dismiss')}
-       
+
+
       >
         <X class="size-3.5" />
-      </button></Tooltip>
+      </UiIconButton></Tooltip>
     {/if}
   </div>
 </div>

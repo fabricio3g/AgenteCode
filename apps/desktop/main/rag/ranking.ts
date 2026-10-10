@@ -113,6 +113,7 @@ export type CitedChunk = {
   lineStart?: number;
   lineEnd?: number;
   text: string;
+  warning?: string;
 };
 
 /**
@@ -153,7 +154,7 @@ export function buildContext(chunks: CitedChunk[], { maxChars = 120_000, maxChun
   let used = 0;
 
   for (let i = 0; i < chunks.length; i++) {
-    const header = `[${i + 1}] ${citationOf(chunks[i])}\n`;
+    const header = `[${i + 1}] ${citationOf(chunks[i])}\n${chunks[i].warning ? `Reading limitation: ${chunks[i].warning.slice(0, 800)}\n` : ''}`;
     const room = maxChars - used - (sections.length ? separator.length : 0) - header.length;
     if (room < 200) break;
     const limit = Math.min(maxChunkChars, room);

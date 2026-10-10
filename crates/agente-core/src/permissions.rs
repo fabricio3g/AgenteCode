@@ -378,6 +378,11 @@ impl PermissionEngine {
                 if is_dangerous_command(command) {
                     return Some(Permission::Ask);
                 }
+                // A safe command pointed outside the project (`ls /etc`,
+                // `cat ~/.ssh/id_rsa`, `git -C ..`) is no longer safe.
+                if !shell_outside_paths(command, self.project_dir.as_deref()).is_empty() {
+                    return Some(Permission::Ask);
+                }
                 if !shell_composes(command)
                     && config.safe_commands.iter().any(|safe| {
                         command == safe
@@ -389,6 +394,18 @@ impl PermissionEngine {
                 {
                     return Some(Permission::Allow);
                 }
+                Some(Permission::Ask)
+            }
+            // Files that configure what runs next (git hooks, MCP servers,
+            // agent/skill definitions, project config) never ride on the
+            // small-edit or new-file allowance: a few lines there are code
+            // execution on the next start.
+            "write_file" | "edit_file" | "apply_patch"
+                if args
+                    .get("path")
+                    .and_then(|v| v.as_str())
+                    .is_some_and(is_protected_path) =>
+            {
                 Some(Permission::Ask)
             }
             "write_file" => {
@@ -611,11 +628,129 @@ pub fn is_destructive_command(cmd: &str) -> bool {
         || lower.replace(' ', "").contains(":(){:|:&};:")
 }
 
+/// Project files that decide what code runs later; edits to them always ask.
+fn is_protected_path(path: &str) -> bool {
+    path.replace('\\', "/")
+        .split('/')
+        .any(|part| {
+            matches!(
+                part,
+                ".git" | ".agente" | ".claude" | ".agents" | ".mcp.json" | "agente.json" | ".envrc"
+            ) || part.starts_with(".env")
+        })
+}
+
+/// Prefix of an approval description when a shell call may act outside the
+/// project; the UIs show it as the reason for asking.
+pub const OUTSIDE_PROJECT_PREFIX: &str = "Runs outside the project: ";
+
+/// Paths (or constructs) in a shell command that leave `project_dir` or cannot
+/// be decided statically: absolute paths outside the root, `..` past it, `~`,
+/// `$VARS`, command substitution, bare `cd`/`pushd`, and redirect targets.
+/// Empty means every path in the command stays inside the project. Purely
+/// lexical (no I/O, symlinks are not followed), and conservative: a word that
+/// might be a path outside is reported. `/dev/null` is always fine.
+pub fn shell_outside_paths(cmd: &str, project_dir: Option<&std::path::Path>) -> Vec<String> {
+    const MAX_REPORTED: usize = 4;
+    let mut found: Vec<String> = Vec::new();
+    let mut report = |what: &str| {
+        if found.len() < MAX_REPORTED && !found.iter().any(|seen| seen == what) {
+            found.push(what.to_string());
+        }
+    };
+    if cmd.contains('`') || cmd.contains("$(") {
+        report("command substitution");
+    }
+    let root = project_dir.map(lexical_normalize);
+    for segment in cmd.split([';', '|', '&', '\n', '\r', '(', ')']) {
+        let words: Vec<&str> = segment.split_whitespace().collect();
+        if words.len() == 1 && matches!(words[0], "cd" | "pushd") {
+            report("~");
+        }
+        for word in words {
+            let clean = word.replace(['\'', '"'], "");
+            // `$(` is reported above; a lone trailing `$` is not a variable.
+            if clean.trim_end_matches('$').contains('$') {
+                report(&clean);
+                continue;
+            }
+            // `2>file`, `>>file`, `<file`: the target is what matters.
+            let after_fd = clean.trim_start_matches(|c: char| c.is_ascii_digit() || c == '&');
+            let target = if after_fd.starts_with(['<', '>']) {
+                after_fd.trim_start_matches(['<', '>'])
+            } else {
+                clean.as_str()
+            };
+            for piece in target.split(['=', ',', '{', '}']) {
+                // `-I/usr/include`, `-C/path`: a short flag glued to its value.
+                let piece = match piece.char_indices().nth(2) {
+                    Some((value_at, _)) if piece.starts_with('-') && !piece.starts_with("--") => {
+                        &piece[value_at..]
+                    }
+                    _ => piece,
+                };
+                if piece_leaves_project(piece, root.as_deref()) {
+                    report(piece);
+                }
+            }
+        }
+    }
+    found
+}
+
+fn piece_leaves_project(piece: &str, root: Option<&std::path::Path>) -> bool {
+    if piece.starts_with('~') {
+        return true;
+    }
+    let bytes = piece.as_bytes();
+    let absolute = piece.starts_with('/')
+        || piece.starts_with('\\')
+        || std::path::Path::new(piece).is_absolute()
+        || (bytes.len() > 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':' && matches!(bytes[2], b'/' | b'\\'));
+    if absolute {
+        if piece == "/dev/null" {
+            return false;
+        }
+        return !root.is_some_and(|root| lexical_normalize(std::path::Path::new(piece)).starts_with(root));
+    }
+    // Relative: only a `..` that climbs past the project root escapes.
+    let mut depth = 0usize;
+    for part in piece.split(['/', '\\']) {
+        match part {
+            "" | "." => {}
+            ".." if depth == 0 => return true,
+            ".." => depth -= 1,
+            _ => depth += 1,
+        }
+    }
+    false
+}
+
+/// Resolve `.` and `..` without touching the filesystem.
+fn lexical_normalize(path: &std::path::Path) -> std::path::PathBuf {
+    use std::path::Component;
+    let mut out = std::path::PathBuf::new();
+    for component in path.components() {
+        match component {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                if !out.pop() {
+                    out.push("..");
+                }
+            }
+            other => out.push(other.as_os_str()),
+        }
+    }
+    out
+}
+
 /// True when a command chains or substitutes other commands. Safe-command
 /// auto-approval only covers a single simple command: `cargo check && curl x`
 /// must not inherit the `cargo check` allowance.
 fn shell_composes(cmd: &str) -> bool {
-    const TOKENS: [&str; 7] = ["&&", "||", ";", "|", "`", "$(", "\n"];
+    // A lone `&` backgrounds the first command and starts another; `<(`/`>(`
+    // substitute processes; `\r` can hide a second line from the prompt.
+    const TOKENS: [&str; 10] = ["&", "||", ";", "|", "`", "$(", "<(", ">(", "\n", "\r"];
     TOKENS.iter().any(|token| cmd.contains(token))
 }
 
@@ -1031,6 +1166,36 @@ mod tests {
     }
 
     #[test]
+    fn config_edits_of_protected_files_always_ask() {
+        let engine = PermissionEngine::from_config(AgentMode::Build, &AutoApproveConfig::default());
+        let tiny = serde_json::json!({"path": ".mcp.json", "search": "a", "replace": "b"});
+        assert_eq!(
+            engine.check_tool_with_facts(
+                "edit_file",
+                &tiny,
+                &ToolFsFacts { target_exists: true, target_line_count: Some(3) }
+            ),
+            Permission::Ask
+        );
+        let plain = serde_json::json!({"path": "src/a.rs", "search": "a", "replace": "b"});
+        assert_eq!(
+            engine.check_tool_with_facts(
+                "edit_file",
+                &plain,
+                &ToolFsFacts { target_exists: true, target_line_count: Some(3) }
+            ),
+            Permission::Allow
+        );
+    }
+
+    #[test]
+    fn background_ampersand_is_not_a_safe_command() {
+        let engine = PermissionEngine::from_config(AgentMode::Build, &AutoApproveConfig::default());
+        let args = serde_json::json!({"command": "git status & ./evil.sh"});
+        assert_eq!(engine.check_tool("shell", &args), Permission::Ask);
+    }
+
+    #[test]
     fn approval_broker_routes_responses_by_id() {
         let broker = ApprovalBroker::new();
         let mut req1 = ApprovalRequest {
@@ -1115,5 +1280,94 @@ mod tests {
             Permission::Ask
         );
         assert_eq!(engine.check_tool("shell", &args("ls")), Permission::Allow);
+    }
+
+    fn build_engine_at(root: &str) -> PermissionEngine {
+        let mut config = crate::config::AutoApproveConfig::default();
+        config.safe_commands.push("cat".to_string());
+        PermissionEngine::from_config(AgentMode::Build, &config).with_project_dir(root)
+    }
+
+    /// A safe-listed command stays unasked only while its paths stay inside
+    /// the project; anything outside, or undecidable, asks.
+    #[test]
+    fn safe_commands_reaching_outside_the_project_ask() {
+        let engine = build_engine_at("/work/proj");
+        let decide =
+            |command: &str| engine.check_tool("shell", &serde_json::json!({ "command": command }));
+        for command in [
+            "ls",
+            "ls src",
+            "ls ./src/../tests",
+            "ls /work/proj/src",
+            "git status",
+            "git diff -- src/lib.rs",
+            "cat README.md",
+            "cargo test -- --nocapture",
+        ] {
+            assert_eq!(decide(command), Permission::Allow, "{command}");
+        }
+        for command in [
+            "ls /etc",
+            "ls -la /",
+            "ls ..",
+            "ls ../other",
+            "ls src/../../x",
+            "cat ~/.ssh/id_rsa",
+            "ls ~",
+            "ls $HOME",
+            "ls \"$HOME/x\"",
+            "ls ${TMPDIR}",
+            "cat /etc/passwd",
+            "ls /work/proj/../other",
+            "ls /work/project2",
+            "git diff --output=/tmp/x",
+            "git -C /elsewhere status",
+            "cargo test --manifest-path=/x/Cargo.toml",
+            "ls -I/usr",
+            "cat 'a b' /etc/hosts",
+            "cat x > /tmp/x",
+            "cat x >> ~/.bashrc",
+            "cat x 2>/tmp/err",
+            "cat </etc/passwd",
+            "cd /elsewhere",
+            "cd",
+            "ls \\windows",
+        ] {
+            assert_eq!(decide(command), Permission::Ask, "{command}");
+        }
+    }
+
+    #[test]
+    fn outside_paths_name_what_is_outside() {
+        let root = std::path::Path::new("/work/proj");
+        assert_eq!(
+            shell_outside_paths("ls /etc ../x src", Some(root)),
+            vec!["/etc".to_string(), "../x".to_string()]
+        );
+        assert_eq!(
+            shell_outside_paths("echo $(whoami)", Some(root)),
+            vec!["command substitution".to_string()]
+        );
+        assert_eq!(shell_outside_paths("pushd", Some(root)), vec!["~".to_string()]);
+        assert!(shell_outside_paths("cargo test 2>/dev/null", Some(root)).is_empty());
+        assert!(shell_outside_paths("ls /work/proj/a", Some(root)).is_empty());
+        // Unknown root: absolute paths cannot be shown to be inside.
+        assert_eq!(shell_outside_paths("ls /work/proj/a", None).len(), 1);
+        assert!(shell_outside_paths("ls src", None).is_empty());
+    }
+
+    /// Auto mode still approves an outside-project call (the user chose to
+    /// skip prompts); Plan mode still denies shell outright.
+    #[test]
+    fn outside_project_shell_keeps_auto_and_plan_behaviour() {
+        let args = serde_json::json!({ "command": "ls /etc" });
+        let mut engine = build_engine_at("/work/proj");
+        assert_eq!(engine.check_tool("shell", &args), Permission::Ask);
+        engine.set_auto_approve(true);
+        assert_eq!(engine.check_tool("shell", &args), Permission::Allow);
+
+        let plan = PermissionEngine::new(AgentMode::Plan).with_project_dir("/work/proj");
+        assert_eq!(plan.check_tool("shell", &args), Permission::Deny);
     }
 }

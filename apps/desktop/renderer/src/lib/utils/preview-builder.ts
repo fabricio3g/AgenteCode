@@ -246,6 +246,12 @@ export function buildPreviewHtml(
   policy.setAttribute('http-equiv', 'Content-Security-Policy');
   policy.setAttribute('content', artifactPreviewCsp(interactive));
   head.insertBefore(policy, head.firstChild);
+  // A srcdoc frame resolves URLs against its parent, so `#section` would load the
+  // app itself inside the sandbox. This base keeps fragment links in the document;
+  // it sits ahead of the policy because `base-uri 'none'` ignores any base after it.
+  const base = doc.createElement('base');
+  base.setAttribute('href', 'about:srcdoc');
+  head.insertBefore(base, policy);
   const referrer = doc.createElement('meta');
   referrer.setAttribute('name', 'referrer');
   referrer.setAttribute('content', 'no-referrer');

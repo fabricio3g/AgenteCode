@@ -23,6 +23,8 @@
     options?: SelectOption[];
     placeholder?: string;
     variant?: 'default' | 'surface';
+    /** The Button sizes, so a dropdown beside a button matches its height. */
+    size?: 'default' | 'sm';
     id?: string;
     name?: string;
     disabled?: boolean;
@@ -39,6 +41,7 @@
     options = [],
     placeholder = 'Select…',
     variant = 'default',
+    size = 'default',
     id,
     name,
     disabled = false,
@@ -248,10 +251,13 @@
   aria-activedescendant={open && activeIndex >= 0 ? optionId(activeIndex) : undefined}
   aria-required={required || undefined}
   class={cn(
-    'flex h-8 w-full items-center justify-between gap-2 rounded-[var(--float-row-radius)] px-2.5 text-left text-[length:var(--text-sm)] text-foreground outline-none disabled:cursor-not-allowed disabled:opacity-50',
+    'flex w-full items-center justify-between gap-2 rounded-[var(--radius-sm)] px-3 text-left text-[length:var(--text-sm)] text-foreground outline-none disabled:cursor-not-allowed disabled:opacity-50',
+    size === 'sm' ? 'h-7' : 'h-8',
     variant === 'surface'
       ? 'border-0 bg-[var(--card)] transition-[background-color,box-shadow] duration-[var(--motion-fast)] hover:bg-[var(--surface-hover)] focus-visible:bg-[var(--card)] focus-visible:ring-[3px] focus-visible:ring-ring/25'
-      : 'border border-[var(--float-border)] bg-background transition-[border-color,box-shadow] duration-[var(--motion-fast)] focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/20',
+      // The outline button's face (hairline, card fill, hover row), so a
+      // dropdown and a button side by side read as one family.
+      : 'border border-[var(--border-hover)] bg-[var(--card)] shadow-[var(--control-shadow)] transition-[background-color,border-color,box-shadow] duration-[var(--motion-fast)] hover:bg-[var(--float-row-hover)] aria-expanded:bg-[var(--float-row-hover)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--brand-accent)]',
     className,
   )}
   onclick={() => open ? closeMenu({ restoreFocus: true }) : void openMenu()}
@@ -262,7 +268,7 @@
   </span>
   <ChevronDown
     class={cn(
-      'h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-[var(--motion-fast)] ease-[var(--motion-ease)]',
+      'h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform duration-[var(--motion-fast)] ease-[var(--motion-ease)]',
       open && 'rotate-180',
     )}
     aria-hidden="true"

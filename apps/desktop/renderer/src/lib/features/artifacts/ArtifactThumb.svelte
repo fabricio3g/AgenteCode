@@ -152,8 +152,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    color: var(--muted-foreground);
-    opacity: 0.6;
+    color: var(--artifact-accent, var(--muted-foreground));
   }
   .scaled {
     width: 200%;

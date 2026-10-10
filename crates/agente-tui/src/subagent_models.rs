@@ -37,9 +37,9 @@ pub fn type_label(key: &str) -> &str {
 fn model_summary(state: &AppState, key: &str) -> (String, bool) {
     let models = &state.config.config.subagent_models;
     match models.get(key) {
-        Some(SubagentModel { provider, model, .. }) => {
-            (state.get_model_display_name(provider, model), true)
-        }
+        Some(SubagentModel {
+            provider, model, ..
+        }) => (state.get_model_display_name(provider, model), true),
         None if key != ALL_SUBAGENTS && models.contains_key(ALL_SUBAGENTS) => {
             ("same as All subagents".to_string(), false)
         }
@@ -55,14 +55,7 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
     let list_rows = types.len().clamp(1, 12) as u16;
     // gap + list + gap + footer inside the border.
     let panel = centered_panel(area, area.width.saturating_sub(4).min(64), list_rows + 5);
-    let body = modal_card(
-        frame,
-        panel,
-        vec![
-            s("Subagent models", style::bold()),
-            s(" · children run on the main model unless set", style::dim()),
-        ],
-    );
+    let body = modal_card(frame, panel, vec![s("Subagent models", style::bold())]);
     if let Some(top) = panel_row(body, 1, 1) {
         let list_area = Rect {
             height: body.height.saturating_sub(3),

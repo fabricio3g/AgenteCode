@@ -5,7 +5,18 @@
     "main/tts-worker.ts",
     "renderer/src/main.ts",
     "shared/agente-protocol.gen.ts",
-    "scripts/roleplay-smoke-entry.ts"
+    "scripts/roleplay-smoke-entry.ts",
+    "main/chat-db-worker.ts",
+    "extension/src/background.ts",
+    "extension/src/page.ts",
+    "extension/src/console-hook.ts",
+    "extension/src/panel/panel.ts",
+    "scripts/audit-ui-components.mjs",
+    "scripts/smoke-document-ingestion.ts",
+    "scripts/smoke-local-model.mjs",
+    "scripts/verify-package.cjs",
+    "scripts/packaging.cjs",
+    "extension/src/panel/panel.css"
   ],
   "ignorePatterns": [
     "dist/**",
@@ -18,11 +29,14 @@
     "renderer/src/lib/wasm/**",
     "renderer/public/tts-worker.cjs",
     "preload/preload.cjs",
-    "renderer/svelte.config.js"
+    "renderer/svelte.config.js",
+    "renderer/src/**/test-fixtures/**"
   ],
   "ignoreDependencies": [
     "@lancedb/lancedb-win32-x64-msvc",
-    "sherpa-onnx-win-x64"
+    "sherpa-onnx-win-x64",
+    "ffprobe-static",
+    "agente:snapshot"
   ],
   "rules": {
     "unused-files": "error",

@@ -1,6 +1,9 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+  import UiIconButton from '$lib/components/ui/IconButton.svelte';
+  import { cn as uiClass } from '$lib/utils/cn';
+
   import { t } from 'svelte-i18n';
   import DownloadsButton from './DownloadsButton.svelte';
   import { onMount } from 'svelte';
@@ -138,35 +141,35 @@
          Code reaches it from the project card, on the conversation's own browser. -->
     {#if !codeChat}
       <Tooltip label={$t('browser.title')} position="bottom">
-        <button
+        <UiIconButton label={$t('browser.title')} size="sm"
           type="button"
-          class="ui-icon-button titlebar-no-drag"
-          class:selected={browserPanelStore.open}
+          class={uiClass(" titlebar-no-drag", {"selected": browserPanelStore.open})}
+
           aria-pressed={browserPanelStore.open}
-          aria-label={$t('browser.title')}
+
           data-panel-tab="browser"
           onclick={() => void browserPanelStore.toggle().catch((error) => toastStore.error(String(error)))}
         >
           <Globe class="size-4" />
-        </button>
+        </UiIconButton>
       </Tooltip>
     {/if}
     <DownloadsButton />
     <Tooltip label={$t('titlebar.theme')} position="bottom">
-      <button
-        class="ui-icon-button"
+      <UiIconButton label={$t('titlebar.theme')} size="sm"
+
         onclick={(e) => {
           const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
           themeStore.toggle({ x: r.left + r.width / 2, y: r.top + r.height / 2 });
         }}
-        aria-label={$t('titlebar.theme')}
+
       >
         {#if themeStore.current === 'dark'}
           <SunMedium class="size-4" />
         {:else}
           <MoonStar class="size-4" />
         {/if}
-      </button>
+      </UiIconButton>
     </Tooltip>
   </div>
 {/snippet}
@@ -190,14 +193,14 @@
       {:else}
         <div class="flex items-center gap-1.5 pl-1.5">
           <Tooltip label={$t('shortcuts.backToConversation')} shortcut="escape">
-            <button
+            <UiIconButton label={$t('shortcuts.backToConversation')} size="sm"
               type="button"
-              class="ui-icon-button titlebar-no-drag"
+              class={uiClass(" titlebar-no-drag")}
               onclick={() => appStore.closeSettings()}
-              aria-label={$t('shortcuts.backToConversation')}
+
             >
               <ArrowLeft class="size-4" />
-            </button>
+            </UiIconButton>
           </Tooltip>
           <span class="px-1 text-[length:var(--text-sm)] font-semibold text-foreground">{$t('sidebar.settings')}</span>
         </div>

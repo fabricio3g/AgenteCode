@@ -11,6 +11,7 @@
   import { copy } from '$lib/copy';
   import Button from './Button.svelte';
   import Portal from './Portal.svelte';
+  import DialogFooter from './DialogFooter.svelte';
   import { modalLayer } from './modal-layer';
 
   type DialogSize = 'sm' | 'md' | 'lg' | 'xl' | 'full';
@@ -112,9 +113,9 @@
         {@render children()}
       </div>
       {#if footer}
-        <footer class="flex shrink-0 flex-wrap items-center justify-end gap-2 border-t border-[var(--border-subtle)] px-4 py-3 sm:px-5">
+        <DialogFooter separated>
           {@render footer()}
-        </footer>
+        </DialogFooter>
       {/if}
     </div>
   </div>

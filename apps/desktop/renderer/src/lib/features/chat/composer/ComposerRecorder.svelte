@@ -8,6 +8,11 @@
 -->
 
 <script lang="ts">
+  import IconButton from '$lib/components/ui/IconButton.svelte';
+
+  import UiButton from '$lib/components/ui/Button.svelte';
+  import { cn as uiClass } from '$lib/utils/cn';
+
   import { t } from 'svelte-i18n';
   import { Check, Loader2, X } from 'lucide-svelte';
   import type { Dictation } from './use-dictation.svelte';
@@ -28,14 +33,14 @@
     <span class="shimmer ui-shimmer-text">{$t('voice.recorder.transcribing')}</span>
   {:else if phase === 'error'}
     <span class="label">{$t('voice.recorder.failed')}</span>
-    <button type="button" class="text-btn" onclick={() => dictation.toggle(false)}>{$t('voice.recorder.retry')}</button>
-    <button type="button" class="icon-btn" onclick={() => dictation.dismiss()} aria-label={$t('voice.recorder.cancel')} title={$t('voice.recorder.cancel')}>
+    <UiButton variant="plain" type="button" class={uiClass("text-btn", "ui-local-053710f5")} onclick={() => dictation.toggle(false)}>{$t('voice.recorder.retry')}</UiButton>
+    <IconButton label={$t('voice.recorder.cancel')} size="xs" variant="ghost" type="button" class={uiClass("icon-btn", "ui-local-053710f5")} onclick={() => dictation.dismiss()}  title={$t('voice.recorder.cancel')}>
       <X class="size-4" />
-    </button>
+    </IconButton>
   {:else}
-    <button type="button" class="icon-btn" onclick={() => dictation.cancel()} aria-label={$t('voice.recorder.cancel')} title={$t('voice.recorder.cancel')}>
+    <IconButton label={$t('voice.recorder.cancel')} size="xs" variant="ghost" type="button" class={uiClass("icon-btn", "ui-local-053710f5")} onclick={() => dictation.cancel()}  title={$t('voice.recorder.cancel')}>
       <X class="size-4" />
-    </button>
+    </IconButton>
     {#if phase === 'permission'}
       <span class="label">{$t('voice.recorder.waitingMic')}</span>
     {:else}
@@ -47,9 +52,9 @@
       </div>
       <span class="time">{time}</span>
     {/if}
-    <button type="button" class="done-btn" onclick={() => dictation.toggle(false)} disabled={phase !== 'recording'} aria-label={$t('voice.recorder.done')} title={$t('voice.recorder.done')}>
+    <IconButton label={$t('voice.recorder.done')} size="xs" variant="ghost" type="button" class={uiClass("done-btn", "ui-local-053710f5")} onclick={() => dictation.toggle(false)} disabled={phase !== 'recording'}  title={$t('voice.recorder.done')}>
       <Check class="size-4" />
-    </button>
+    </IconButton>
   {/if}
 </div>
 
@@ -64,8 +69,8 @@
     animation: rec-in var(--motion-fast) var(--motion-ease);
   }
 
-  .icon-btn,
-  .done-btn {
+  :global(.icon-btn.ui-local-053710f5),
+  :global(.done-btn.ui-local-053710f5) {
     display: inline-flex;
     width: 2rem;
     height: 2rem;
@@ -77,23 +82,23 @@
     transition: background-color var(--motion-fast) var(--motion-ease), opacity var(--motion-fast) var(--motion-ease);
   }
 
-  .icon-btn {
+  :global(.icon-btn.ui-local-053710f5) {
     background: transparent;
     color: var(--muted-foreground);
   }
 
-  .icon-btn:hover {
+  :global(.icon-btn:hover.ui-local-053710f5) {
     background: var(--muted);
     color: var(--foreground);
   }
 
-  .done-btn {
+  :global(.done-btn.ui-local-053710f5) {
     margin-left: auto;
     background: var(--foreground);
     color: var(--background);
   }
 
-  .done-btn:disabled {
+  :global(.done-btn:disabled.ui-local-053710f5) {
     opacity: 0.35;
   }
 
@@ -159,7 +164,7 @@
     transition: width 200ms var(--motion-ease);
   }
 
-  .text-btn {
+  :global(.text-btn.ui-local-053710f5) {
     margin-left: auto;
     border: 0;
     background: transparent;

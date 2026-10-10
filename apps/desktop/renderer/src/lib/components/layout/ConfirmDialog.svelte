@@ -1,7 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
-  import { Button } from '$lib/components/ui';
+  import { DialogActions, DialogFooter } from '$lib/components/ui';
   import { motionFade, flyAndScale } from '$lib/utils/transitions';
   import { confirmStore } from '$lib/stores/confirm.svelte';
   import { modalLayer } from '$lib/components/ui/modal-layer';
@@ -44,30 +44,25 @@
           <h2 id="confirm-title" class="ui-modal-title">{options.title}</h2>
         </div>
         <div class="ui-modal-body !pt-0">
-          <p id="confirm-message" class="m-0 text-sm leading-6 text-muted-foreground">{options.message}</p>
+          <p id="confirm-message" class="m-0 text-sm leading-relaxed text-muted-foreground">{options.message}</p>
           {#if options.details?.length}
-            <ul class="mt-3 max-h-40 space-y-0.5 overflow-auto rounded-lg bg-muted/60 px-3 py-2 text-[13px] leading-5 text-foreground">
+            <ul class="mt-3 max-h-40 space-y-0.5 overflow-auto rounded-lg bg-muted/60 px-3 py-2 text-[length:var(--text-sm)] leading-5 text-foreground">
               {#each options.details as line (line)}
                 <li class="truncate" title={line}>{line}</li>
               {/each}
             </ul>
           {/if}
         </div>
-        <div class="ui-modal-footer">
-          <Button variant="outline" size="sm" type="button" onclick={() => confirmStore.cancel()}>
-            {options.cancelLabel || copy.actions.cancel}
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            data-confirm
-            data-autofocus
-            variant={options.danger ? 'destructive' : 'default'}
-            onclick={() => confirmStore.confirm()}
-          >
-            {options.confirmLabel || copy.actions.confirm}
-          </Button>
-        </div>
+        <DialogFooter>
+          <DialogActions
+            cancelLabel={options.cancelLabel || copy.actions.cancel}
+            confirmLabel={options.confirmLabel || copy.actions.confirm}
+            danger={options.danger}
+            autofocusConfirm
+            oncancel={() => confirmStore.cancel()}
+            onconfirm={() => confirmStore.confirm()}
+          />
+        </DialogFooter>
       </div>
     </div>
   </Portal>

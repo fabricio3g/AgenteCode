@@ -1,3 +1,4 @@
+import { VISUALIZATION_DEMO } from './mock-visualizations';
 // Dev-only browser harness (?mock=1): installs a scripted window.electronAPI
 // so the renderer can be exercised in a plain browser without Electron.
 // Never imported unless the query flag is present (see src/main.ts).
@@ -22,7 +23,7 @@ if (requestedChat) {
     localStorage.setItem(`${CHAT_STATE_KEY}.navigation`, JSON.stringify({
       currentChatId: requestedChat,
       activeSpace: space,
-      currentChatIdBySpace: { home: space === 'home' ? requestedChat : null, code: space === 'code' ? requestedChat : null, roleplay: null }
+      currentChatIdBySpace: { home: space === 'home' ? requestedChat : null, code: space === 'code' ? requestedChat : null, roleplay: null, design: null }
     }));
   } catch {
     /* private mode: the default fixture still loads */
@@ -101,6 +102,12 @@ const savedSessions: unknown[] = [
     ]
   }
 ];
+savedSessions.push({
+  id: 'chat-visualizations', title: 'Visualization studio', contextMode: 'home',
+  createdAt: Date.now() - 600_000, updatedAt: Date.now() - 600_000, folderId: null, draft: '', projectId: null,
+  messages: [{ id: 'viz-demo', role: 'assistant', content: 'An interactive chart catalog, with illustrative sample data.', done: true, createdAt: Date.now() - 600_000, artifacts: VISUALIZATION_DEMO }]
+});
+
 // One artifact of every type, for checking viewers (see the "Artifact showcase" chat).
 function inlineArtifact(kind: string, file: string, payload: Record<string, unknown>) {
   return {
@@ -146,12 +153,12 @@ const showcaseArtifacts: Array<Record<string, unknown>> = [
   }),
   inlineArtifact('html_card', 'html-card.json', {
     title: 'Pricing card',
-    html: '<style>.p{font-family:system-ui;padding:16px;border-radius:12px;background:#f4f4f5}.p b{font-size:28px}</style><div class="p"><div>Pro</div><b>$12</b><span>/month</span></div>'
+    html: '<div class="fx-card"><div class="fx-label">Pro</div><div class="fx-value">$12 <span class="fx-small fx-muted">/month</span></div></div>'
   }),
   inlineArtifact('html_card', 'widget.json', {
     title: 'Mortgage calculator',
     html: `<div class="fx-stack">
-  <div class="fx-grid">
+  <div class="fx-metrics">
     <div class="fx-card"><div class="fx-label">Monthly payment</div><div class="fx-value" id="pay">–</div></div>
     <div class="fx-card"><div class="fx-label">Total interest</div><div class="fx-value" id="int">–</div></div>
   </div>
@@ -709,6 +716,30 @@ const botHandlers: Record<string, (args?: Record<string, unknown>) => unknown> =
   }
 };
 
+const designWorkspaces = new Map<string, Record<string, string>>();
+function designWorkspace(chatId: string): Record<string, string> {
+  let files = designWorkspaces.get(chatId);
+  if (!files) {
+    files = {
+      'tokens.css': ':root{--bg:#f7f6f3;--surface:#fff;--text:#1d1d1b;--muted:#6b6a65;--accent:#3b5bdb;--radius:14px;--space:16px;--duration-fast:150ms;--duration-base:250ms;--duration-slow:400ms;--ease-out:cubic-bezier(0.2,0,0,1)}\n@media (prefers-color-scheme:dark){:root{--bg:#161614;--surface:#1f1f1c;--text:#f1f0ec;--muted:#9a988f;--accent:#8aa2ff}}',
+      'index.html': '<!doctype html><html lang="en"><head><meta charset="utf-8"><link rel="stylesheet" href="tokens.css"><style>body{margin:0;font:16px/1.5 system-ui,sans-serif;background:var(--bg);color:var(--text)}main{max-width:720px;margin:0 auto;padding:calc(var(--space)*4) var(--space)}h1{font-size:2.25rem;letter-spacing:-.02em;margin:0 0 var(--space)}p{color:var(--muted)}a{display:inline-block;margin-top:var(--space);padding:12px 20px;border-radius:var(--radius);background:var(--accent);color:#fff;text-decoration:none}@keyframes rise{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}@media (prefers-reduced-motion:no-preference){h1{animation:rise var(--duration-slow) var(--ease-out) both}p{animation:rise var(--duration-base) var(--ease-out) 120ms both}a{transition:transform var(--duration-fast) var(--ease-out)}a:hover{transform:translateY(-2px)}}</style></head><body><main><h1>A calmer way to plan</h1><p>This is a sample page in the mock workspace.</p><a href="#">Get started</a></main></body></html>'
+    };
+    designWorkspaces.set(chatId, files);
+  }
+  return files;
+}
+
+interface MockSystem { id: string; name: string; description: string; createdAt: number; updatedAt: number; origin: 'design' | 'folder'; files: Record<string, string> }
+const mockSystems: MockSystem[] = [{
+  id: 'mock-calm', name: 'Calm studio', description: 'Quiet neutrals, one blue accent', createdAt: Date.now(), updatedAt: Date.now(), origin: 'folder',
+  files: {
+    'tokens.css': ':root{--bg:#f7f6f3;--surface:#fff;--text:#1d1d1b;--muted:#6b6a65;--accent:#3b5bdb;--radius:14px;--space:16px}',
+    'DESIGN.md': '# Calm studio\n\nOne accent colour. Generous space. Soft edges, no heavy borders.',
+    'components.html': '<!doctype html><html lang="en"><head><meta charset="utf-8"><link rel="stylesheet" href="tokens.css"><style>body{margin:0;padding:24px;font:16px/1.5 system-ui,sans-serif;background:var(--bg);color:var(--text)}button{padding:10px 18px;border:0;border-radius:var(--radius);background:var(--accent);color:#fff}</style></head><body><h1>Calm studio</h1><p>Type, colour and components.</p><button>Continue</button></body></html>'
+  }
+}];
+const designLinks = new Map<string, string>();
+
 const handlers: Record<string, (args?: Record<string, unknown>) => unknown> = {
   'search:get-catalog': () => [
     { id: 'duckduckgo', label: 'DuckDuckGo', category: 'general', transport: 'html', stability: 'stable', requires: [], supports_safe_search: true, timeout_ms: 8000, recommended: true },
@@ -782,6 +813,20 @@ const handlers: Record<string, (args?: Record<string, unknown>) => unknown> = {
   },
 
   pick_workspace_folder: () => '/home/work/Code/another-demo',
+  browse_folders: (args) => {
+    const home = '/home/demo';
+    const path = String((args as { path?: string } | undefined)?.path || home);
+    const tree: Record<string, Array<[string, boolean]>> = {
+      [home]: [['Code', false], ['Desktop', false], ['Documents', false], ['Downloads', false], ['Music', false], ['Pictures', false]],
+      [`${home}/Code`]: [['agente', true], ['dotfiles', true], ['website', true], ['experiments', false], ['notes', false]]
+    };
+    const parent = path === '/' ? null : path.slice(0, path.lastIndexOf('/')) || '/';
+    return {
+      path, parent, home, sep: '/',
+      places: [{ name: 'Home', path: home }, { name: 'Desktop', path: `${home}/Desktop` }, { name: 'Documents', path: `${home}/Documents` }, { name: 'Downloads', path: `${home}/Downloads` }, { name: 'Code', path: `${home}/Code` }],
+      folders: (tree[path] ?? []).map(([name, isProject]) => ({ name, path: `${path}/${name}`, isProject })).sort((a, b) => Number(b.isProject) - Number(a.isProject))
+    };
+  },
   path_exists: (args) => !String((args as { path?: string } | undefined)?.path ?? '').includes('missing'),
   open_workspace_file: () => undefined,
   agente_delete_session_data: () => ({ ok: true, removed: 1 }),
@@ -887,6 +932,8 @@ const handlers: Record<string, (args?: Record<string, unknown>) => unknown> = {
   fetch_provider_models: () => ['deepseek/deepseek-v4-flash', 'moonshotai/kimi-k3', 'qwen/qwen3.8-max', 'z-ai/glm-5.3'],
   voice_models_status: () => ({ version: 'v0.8.2', backends: ['cpu', 'vulkan'], backend: 'cpu', threads: 8, cores: 12, running: false, installed: ['kokoro-82m'], espeak: true, binaryPath: '/opt/agente/bin/audio/cpu/audiocpp_server', port: null, specs: 6, modelsDir: '~/.agente/models/voices' }),
   voice_engine_restart: () => undefined,
+  voice_clone_pick: () => null,
+  voice_clone_read: () => null,
   voice_clone_save: (args) => ({ id: `mock-${Date.now()}`, name: String(args?.name ?? ''), file: '/tmp/mock.wav', transcript: args?.transcript, seconds: args?.seconds }),
   voice_clone_delete: () => true,
   voice_catalog: async () => {
@@ -942,6 +989,126 @@ const handlers: Record<string, (args?: Record<string, unknown>) => unknown> = {
   },
   'agente_steer': () => ({ ok: true }),
   'agente_model_inputs': () => ['text', 'image'],
+  // Design space: one in-memory workspace per chat, seeded with a small page so the canvas has something to show.
+  'design_tool': (args) => {
+    const { chatId, name, args: toolArgs = {} } = (args ?? {}) as { chatId?: string; name?: string; args?: Record<string, unknown> };
+    const files = designWorkspace(String(chatId ?? ''));
+    const path = String(toolArgs.path ?? '');
+    if (name === 'design_list') return { ok: true, content: Object.keys(files).map((file) => `${file} (${files[file].length} bytes)`).join('\n') };
+    if (name === 'design_read') return path in files ? { ok: true, content: files[path] } : { ok: false, content: `No such file: ${path}` };
+    if (name === 'design_write') { files[path] = String(toolArgs.content ?? ''); emit('design_changed', { chatId, paths: [path] }); return { ok: true, content: `Wrote ${path}.`, changed: [path] }; }
+    if (name === 'design_edit' && path in files) { files[path] = files[path].replace(String(toolArgs.old_text ?? ''), String(toolArgs.new_text ?? '')); emit('design_changed', { chatId, paths: [path] }); return { ok: true, content: `Edited ${path}.`, changed: [path] }; }
+    return { ok: false, content: `Unknown design tool: ${String(name)}` };
+  },
+  'design_files': (args) => {
+    const files = designWorkspace(String((args as { chatId?: string } | undefined)?.chatId ?? ''));
+    const html = Object.keys(files).filter((file) => file.endsWith('.html'));
+    return {
+      files: { ...files },
+      pages: html.filter((file) => !file.startsWith('variants/')),
+      variants: html.filter((file) => file.startsWith('variants/')).map((file) => ({ name: file.split('/')[1], entry: file }))
+    };
+  },
+  'design_render': () => ({ ok: false, error: 'Rendering needs the desktop app.', width: 1440, height: 900, consoleErrors: [] }),
+  'design_manage': (args) => {
+    const request = (args ?? {}) as { action?: string; chatId?: string; name?: string };
+    if (request.action === 'add_reference') {
+      // The browser mock keeps no bytes: the reference appears in the listing as a placeholder.
+      const path = `references/${String(request.name ?? 'image').replace(/\.[^.]*$/, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'image'}.png`;
+      designWorkspace(String(request.chatId ?? ''))[path] = '[image]';
+      return { path, existed: false };
+    }
+    return request.action === 'versions' ? [] : null;
+  },
+  // One pixel: a valid PNG, so a vision path has real bytes to attach in the browser mock.
+  'design_view': (args) => {
+    const { path } = (args ?? {}) as { path?: string };
+    return { path: path ?? 'references/image.png', mimeType: 'image/png', data: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', bytes: 68 };
+  },
+  'design_reference': (args) => {
+    const { url, saveScreenshot, saveAsSystem, image } = (args ?? {}) as { url?: string; saveScreenshot?: boolean; saveAsSystem?: string; image?: boolean };
+    if (!/^https?:\/\/[^/\s@]+/i.test(String(url ?? ''))) {
+      return { ok: false, error: 'Only public http(s) pages can be read: no localhost, private network addresses or credentials in the URL.', text: '' };
+    }
+    const host = String(url).replace(/^https?:\/\//i, '').split('/')[0].replace(/^www\./, '').toLowerCase();
+    const stem = host.replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'page';
+    const saved = saveScreenshot ? `references/${stem}-1.png` : undefined;
+    let system: { id: string; name: string } | undefined;
+    if (saveAsSystem) {
+      const name = String(saveAsSystem).trim() || 'Reference';
+      system = { id: `mock-reference-${mockSystems.length + 1}`, name };
+      mockSystems.push({
+        id: system.id, name, description: `Read from ${String(url)} by design_reference.`, createdAt: Date.now(), updatedAt: Date.now(), origin: 'design',
+        files: { 'tokens.css': ':root {\n  --bg: #ffffff;\n  --text: #111827;\n  --accent: #2563eb;\n  --border: #e5e7eb;\n}\n', 'DESIGN.md': `# Reference: ${host}\n` }
+      });
+    }
+    const text = [
+      `Reference: ${String(url)} — "Mock page" at 1440px wide (412 elements read).`,
+      'Palette: text #111827, background #ffffff, surface #f5f5f4, muted #6b7280, accent #2563eb, border #e5e7eb.',
+      'Fonts: body "Inter", headings "Playfair Display"; in use: Inter (380), Playfair Display (24).',
+      'Type: h1 56px/700/1.1; h2 40px/700/1.2; h3 24px/600/1.3; body 16px/400/1.6; small 14px/400/1.5; button 15px/600/1.2.',
+      'Spacing (px): 4, 8, 12, 16, 24, 32, 48, 64.',
+      'Radii: 6px, 12px, 999px. Shadows: 0 1px 2px rgba(0, 0, 0, 0.05).',
+      'Layout: content about 1200px wide; grids of 3 and 2 columns; 5 sections, navigation, footer.',
+      ...(saved ? [`Saved: ${saved}.`] : []),
+      ...(system ? [`Design system: saved as "${system.name}". Apply it from the systems list to reuse these tokens.`] : []),
+      'Borrow the structure and principles, not the logo, copy or imagery.'
+    ].join('\n');
+    return { ok: true, text, ...(image ? { image: { data: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', mimeType: 'image/png' } } : {}), ...(saved ? { saved } : {}), ...(system ? { system } : {}) };
+  },
+  'design_handoff': (args) => {
+    const { action } = (args ?? {}) as { action?: string };
+    return action === 'deliver' ? { slug: 'mock-design', dir: '/mock/project/.agente/designs/mock-design', files: 0 } : { saved: false };
+  },
+  // Design systems: an in-memory library seeded with one system, so the chip, picker and dialog have something to show.
+  'design_systems': (args) => {
+    const request = (args ?? {}) as { action?: string; id?: string; chatId?: string; name?: string; description?: string };
+    const summaryOf = (system: MockSystem) => ({ id: system.id, name: system.name, description: system.description, createdAt: system.createdAt, updatedAt: system.updatedAt, origin: system.origin, hasTokens: 'tokens.css' in system.files, hasSpecimen: 'components.html' in system.files });
+    const find = (id?: string) => mockSystems.find((system) => system.id === id);
+    const sorted = () => [...mockSystems].sort((a, b) => b.updatedAt - a.updatedAt).map(summaryOf);
+    switch (request.action) {
+      case 'list': return sorted();
+      case 'get': {
+        const system = find(request.id);
+        if (!system) throw new Error('Unknown design system.');
+        return { ...summaryOf(system), files: { files: { ...system.files }, pages: Object.keys(system.files).filter((file) => file.endsWith('.html')), variants: [] } };
+      }
+      case 'create': {
+        const files = designWorkspace(String(request.chatId ?? ''));
+        const system: MockSystem = { id: `mock-${mockSystems.length + 1}`, name: String(request.name ?? 'System'), description: String(request.description ?? ''), createdAt: Date.now(), updatedAt: Date.now(), origin: 'design', files: { ...files } };
+        mockSystems.push(system);
+        return summaryOf(system);
+      }
+      case 'rename': {
+        const system = find(request.id);
+        if (system) { system.name = String(request.name ?? system.name); system.updatedAt = Date.now(); }
+        return system ? summaryOf(system) : null;
+      }
+      case 'delete': {
+        const index = mockSystems.findIndex((system) => system.id === request.id);
+        if (index >= 0) mockSystems.splice(index, 1);
+        return { deleted: true };
+      }
+      case 'apply': {
+        const system = find(request.id);
+        if (!system || !request.chatId) throw new Error('Unknown design system.');
+        const files = designWorkspace(request.chatId);
+        const paths = Object.keys(system.files).filter((file) => file.endsWith('.css') || file.endsWith('.md') || file.endsWith('.html'));
+        for (const file of paths) files[file] = system.files[file];
+        designLinks.set(request.chatId, system.id);
+        emit('design_changed', { chatId: request.chatId, paths });
+        return { before: null, paths };
+      }
+      case 'unlink': designLinks.delete(String(request.chatId)); return { ok: true };
+      case 'current': { const system = find(designLinks.get(String(request.chatId))); return system ? summaryOf(system) : null; }
+      case 'brief': {
+        const system = find(designLinks.get(String(request.chatId)));
+        return system ? { name: system.name, designMd: system.files['DESIGN.md'] ?? '', tokens: system.files['tokens.css'] ?? '' } : null;
+      }
+      case 'import': return null;
+      default: throw new Error('Unknown design system action.');
+    }
+  },
   'agente_follow_up': () => ({ ok: true }),
   'agente_abort': () => ({ ok: true }),
   'agente_compact': () => ({ ok: true }),

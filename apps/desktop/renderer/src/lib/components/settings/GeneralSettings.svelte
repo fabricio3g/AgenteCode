@@ -61,6 +61,18 @@
         onchange={setLocale}
       />
     </SettingsRow>
+
+    <SettingsRow
+      label={$t('generalSettings.theme')}
+      control="auto"
+    >
+      <SegmentedControl
+        label={$t('generalSettings.theme')}
+        value={themeStore.current}
+        options={[{ value: 'light', label: $t('generalSettings.light') }, { value: 'dark', label: $t('generalSettings.dark') }]}
+        onchange={(value) => themeStore.set(value as 'light' | 'dark')}
+      />
+    </SettingsRow>
   </SettingsSection>
 
   <SettingsSection title={$t('generalSettings.chatBehavior')}>
@@ -85,21 +97,7 @@
     </SettingsRow>
   </SettingsSection>
 
-  <SettingsSection title={$t('generalSettings.appearance')}>
-    <SettingsRow
-      label={$t('generalSettings.theme')}
-      control="auto"
-    >
-      <SegmentedControl
-        label={$t('generalSettings.theme')}
-        value={themeStore.current}
-        options={[{ value: 'light', label: $t('generalSettings.light') }, { value: 'dark', label: $t('generalSettings.dark') }]}
-        onchange={(value) => themeStore.set(value as 'light' | 'dark')}
-      />
-    </SettingsRow>
-  </SettingsSection>
-
-  <SettingsSection title={$t('generalSettings.editor')}>
+  <SettingsSection title={$t('generalSettings.setup')}>
     <SettingsRow
       label={$t('generalSettings.editorCommand')}
       description={$t('generalSettings.editorDesc')}
@@ -119,10 +117,8 @@
         }}
       />
     </SettingsRow>
-  </SettingsSection>
 
-  <SettingsSection title={$t('generalSettings.huggingFaceAccess')} description={$t('generalSettings.huggingFaceDesc')}>
-    <SettingsRow label={$t('generalSettings.accessToken')} htmlFor="hf-access-token">
+    <SettingsRow label={$t('generalSettings.huggingFaceAccess')} htmlFor="hf-access-token">
       <div class="flex flex-col gap-2 sm:flex-row">
         <Input
           id="hf-access-token"
@@ -134,9 +130,7 @@
         <Button variant="outline" onclick={onsaveHfToken}>{$t('generalSettings.save')}</Button>
       </div>
     </SettingsRow>
-  </SettingsSection>
 
-  <SettingsSection title={$t('generalSettings.setup')}>
     <SettingsRow label={$t('generalSettings.setupWizard')} description={$t('onboarding.setupHint')} control="auto">
       <Button variant="outline" size="sm" onclick={() => { appStore.onboardingOpen = true; }}>{$t('onboarding.reopenSetup')}</Button>
     </SettingsRow>

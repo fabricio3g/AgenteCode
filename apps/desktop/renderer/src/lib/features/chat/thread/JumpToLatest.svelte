@@ -21,10 +21,13 @@
 -->
 
 <script lang="ts">
+  import UiButton from '$lib/components/ui/Button.svelte';
+  import { cn as uiClass } from '$lib/utils/cn';
+
   import { ArrowDown } from 'lucide-svelte';
   import { t } from 'svelte-i18n';
-  import TileMeter from '$lib/features/code/TileMeter.svelte';
-  import type { TileMeterMode } from '$lib/features/code/tile-meter';
+  import TileMeter from '$lib/components/ui/TileMeter.svelte';
+  import type { TileMeterMode } from '$lib/utils/activity-meter';
 
   let {
     working = false,
@@ -44,20 +47,20 @@
   } = $props();
 </script>
 
-<button
+<UiButton variant="plain"
   type="button"
-  class="jump-latest is-{variant} {className}"
-  class:is-working={working}
+  class={uiClass(`jump-latest is-${variant} ${className}`, "ui-local-71a96189", {"is-working": working})}
+
   aria-label={$t('chat.jumpToLatest')}
   title={$t('chat.jumpToLatest')}
   {onclick}
 >
   {#if working}<span class="meter"><TileMeter {mode} /></span>{/if}
   <span class="arrow"><ArrowDown class="size-4" /></span>
-</button>
+</UiButton>
 
 <style>
-  .jump-latest {
+  :global(.jump-latest.ui-local-71a96189) {
     /* 1: the arrow is the button. Whichever glyph the pointer is on wins. */
     --jump-arrow: 1;
     display: inline-grid;
@@ -84,7 +87,7 @@
   }
 
   /* Over the transcript it has to read as floating; on the composer it is chrome. */
-  .jump-latest.is-float {
+  :global(.jump-latest.is-float.ui-local-71a96189) {
     background: var(--popover);
     box-shadow: var(--shadow-lg);
   }
@@ -93,13 +96,13 @@
      lifts it onto its own surface so the arrow arriving reads as an invitation,
      not as a fade. The edge stays the app's own hover border: a brand-orange
      ring here read as a state the button does not have. */
-  .jump-latest:is(:hover, :focus-visible) {
+  :global(.jump-latest:is(:hover, :focus-visible).ui-local-71a96189) {
     background: var(--popover);
     border-color: var(--border-hover, var(--border));
     color: var(--foreground);
   }
 
-  .jump-latest:focus-visible {
+  :global(.jump-latest:focus-visible.ui-local-71a96189) {
     outline: none;
     box-shadow: 0 0 0 3px color-mix(in srgb, var(--ring) 35%, transparent);
   }
@@ -120,7 +123,7 @@
     opacity: var(--jump-arrow);
   }
 
-  .jump-latest.is-working {
+  :global(.jump-latest.is-working.ui-local-71a96189) {
     --jump-arrow: 0;
   }
 
@@ -128,8 +131,8 @@
      to click" state, so the informative glyph keeps the circle and the label
      still spells out the action. */
   @media (hover: hover) {
-    .jump-latest:hover,
-    .jump-latest:focus-visible {
+    :global(.jump-latest:hover.ui-local-71a96189),
+    :global(.jump-latest:focus-visible.ui-local-71a96189) {
       --jump-arrow: 1;
     }
   }
@@ -146,7 +149,7 @@
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .jump-latest {
+    :global(.jump-latest.ui-local-71a96189) {
       animation: none;
       transition: none;
     }

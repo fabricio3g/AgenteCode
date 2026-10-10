@@ -72,6 +72,9 @@ class CodeStore {
   /** Projects whose folder was not found on disk at the last check. */
   missingProjects = $state<Record<string, boolean>>({});
   activeProjectId = $state<string | null>(null);
+  /** The "Add project" folder browser modal (FolderBrowserDialog, mounted once in AppShell). */
+  folderBrowserOpen = $state(false);
+  #folderPick: ((path: string | null) => void) | null = null;
 
   /** Live runs keyed by chatId. */
   runs = $state<Record<string, AgenteRun>>({});
@@ -153,8 +156,12 @@ class CodeStore {
     this.missingProjects = Object.fromEntries(entries.filter(([, missing]) => missing));
   }
 
-  async addProject(): Promise<CodeProject | null> {
-    const rootPath = (await pickWorkspaceFolder()) || null;
+  /**
+   * Adds the given folder; with none, opens the folder browser modal and adds
+   * what is picked there (its "Browse…" falls back to the system dialog).
+   */
+  async addProject(folder?: string): Promise<CodeProject | null> {
+    const rootPath = folder || (await this.#askForFolder());
     if (!rootPath) return null;
     // The same folder twice is one project: select the one that exists.
     const existing = this.projects.find((project) => samePath(project.rootPath, rootPath));
@@ -176,6 +183,26 @@ class CodeStore {
     this.activeProjectId = project.id;
     this.expandedProjects[project.id] = true;
     return project;
+  }
+
+  #askForFolder(): Promise<string | null> {
+    this.#folderPick?.(null);
+    this.folderBrowserOpen = true;
+    return new Promise((resolve) => { this.#folderPick = resolve; });
+  }
+
+  /** The folder browser's answer: a path, or null when it was closed. */
+  resolveFolderBrowser(path: string | null): void {
+    this.folderBrowserOpen = false;
+    const pick = this.#folderPick;
+    this.#folderPick = null;
+    pick?.(path);
+  }
+
+  /** "Browse…" in the folder browser: the system dialog instead. */
+  async pickWithSystemDialog(): Promise<void> {
+    const path = (await pickWorkspaceFolder()) || null;
+    if (path) this.resolveFolderBrowser(path);
   }
 
   /**
@@ -512,7 +539,9 @@ class CodeStore {
           command: isPlan
             ? `Approve plan — ${summarizeArgs(event.args) || event.toolName}`
             : `${event.toolName} ${summarizeArgs(event.args)}`.trim(),
-          cwd: project?.rootPath || 'project'
+          cwd: project?.rootPath || 'project',
+          dangerous: event.dangerous,
+          reason: event.reason
         });
         if (this.#engineSettled.delete(event.requestId)) return;
         await respondToCodeAgentApproval(event.chatId, event.requestId, allow ? 'allow' : 'deny').catch(() => {});
@@ -1021,6 +1050,9 @@ function summarizeArgs(args: unknown): string {
     const record = args as Record<string, unknown>;
     if (typeof record.command === 'string') return record.command;
     if (typeof record.path === 'string') return record.path;
+    // Any other tool (MCP, patches): show the arguments, not just a name.
+    const pairs = Object.entries(record).map(([key, value]) => `${key}=${typeof value === 'string' ? value.replace(/\s+/g, ' ') : JSON.stringify(value)}`);
+    return pairs.join(' ').slice(0, 600);
   }
   return '';
 }

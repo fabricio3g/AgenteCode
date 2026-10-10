@@ -1,6 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+  import FolderBrowserDialog from '$lib/features/code/FolderBrowserDialog.svelte';
   import { modalLayer } from '$lib/components/ui/modal-layer';
   import { onMount, untrack } from 'svelte';
   import { motionFade } from '$lib/utils/transitions';
@@ -18,6 +19,7 @@
   import { botsStore } from '$lib/features/bots/bots.svelte';
   import ArtifactPanel from '$lib/features/artifacts/ArtifactPanel.svelte';
   import RoleplaySurface from '$lib/features/roleplay/RoleplaySurface.svelte';
+  import DesignSurface from '$lib/features/design/DesignSurface.svelte';
   import { charactersStore } from '$lib/features/roleplay/characters.svelte';
   import { worldsStore } from '$lib/features/roleplay/worlds.svelte';
   import { ensureStarterKit, starterKitStore } from '$lib/features/roleplay/starter-kit';
@@ -97,11 +99,12 @@
     return panels;
   });
   const inRoleplaySpace = $derived(appStore.activeTab === 'roleplay');
+  const inDesignSpace = $derived(appStore.activeTab === 'design');
   /** The screen to leave: Settings is open, or nothing is. */
   const settingsShowing = $derived(appStore.settingsScreenOpen);
   /** Ctrl/⌘+K means "new" in every space — a chat, a roleplay, or a project. */
   const shortcutRows = $derived<Array<[string, string]>>([
-    ['mod+k', inBots ? $t('bots.new') : inCodeSpace ? $t('shortcuts.addProject') : inRoleplaySpace ? copy.roleplay.newRoleplay : $t('shortcuts.newChat')],
+    ['mod+k', inBots ? $t('bots.new') : inCodeSpace ? $t('shortcuts.addProject') : inRoleplaySpace ? copy.roleplay.newRoleplay : inDesignSpace ? copy.design.newDesign : $t('shortcuts.newChat')],
     ['mod+shift+k', $t('shortcuts.search')],
     ['mod+,', $t('shortcuts.settings')],
     ['mod+b', $t('shortcuts.sidebar')],
@@ -121,6 +124,10 @@
     }
     if (inCodeSpace) {
       void codeStore.addProject();
+      return;
+    }
+    if (appStore.activeSpace === 'roleplay') {
+      appStore.openRoleplayLibrary();
       return;
     }
     appStore.createChat(appStore.activeSpace);
@@ -340,6 +347,8 @@
             <ArtifactsScreen />
           {:else if inRoleplaySpace}
             <RoleplaySurface />
+          {:else if inDesignSpace}
+            <DesignSurface />
           {:else}
             <HomeSurface />
           {/if}
@@ -432,6 +441,9 @@
     </div>
   </div>
 {/if}
+
+
+<FolderBrowserDialog />
 
 <style>
   .sidebar-outer {

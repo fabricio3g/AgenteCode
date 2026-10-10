@@ -1,6 +1,13 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+  import { writeToClipboard } from '$lib/utils/clipboard';
+  import DialogActions from '$lib/components/ui/DialogActions.svelte';
+  import IconButton from '$lib/components/ui/IconButton.svelte';
+
+  import UiRange from '$lib/components/ui/Range.svelte';
+  import { cn as uiClass } from '$lib/utils/cn';
+
   import type { GgufMeta, HardwareInfo, RecommendedSettings } from '$lib/types/bridge';
   import { AlertTriangle, CircleCheck, Info, LoaderCircle, Sparkles } from 'lucide-svelte';
   import { untrack } from 'svelte';
@@ -230,7 +237,7 @@
   async function copyCommandPreview() {
     if (!commandPreview) return;
     try {
-      await navigator.clipboard.writeText(commandPreview);
+      if (!await writeToClipboard(commandPreview)) return;
       copiedPreview = true;
       setTimeout(() => (copiedPreview = false), 1600);
     } catch { /* clipboard unavailable */ }
@@ -351,7 +358,7 @@
         {title}
         {#if hint}
           <Tooltip label={hint} position="top">
-            <button type="button" class="load-hint" aria-label={hint}><Info class="size-3" /></button>
+            <IconButton label={hint} size="xs" variant="ghost" type="button" class={uiClass("load-hint", "ui-local-a6eab888")} ><Info class="size-3" /></IconButton>
           </Tooltip>
         {/if}
       </span>
@@ -381,7 +388,7 @@
         {#if headerMetaLine}<span class="text-xs text-muted-foreground">{headerMetaLine}</span>{/if}
         <div class="flex flex-wrap gap-1.5">
           {#each capabilities as cap (cap.label)}
-            <Badge tone={cap.on ? 'success' : 'neutral'} title={cap.known ? '' : $t('localLoad.capUnknown')}>
+            <Badge tone="neutral" class={cap.on ? '' : 'opacity-50 line-through'} title={cap.known ? '' : $t('localLoad.capUnknown')}>
               {cap.label}{cap.known ? '' : ' ?'}
             </Badge>
           {/each}
@@ -419,9 +426,9 @@
               {:else}<AlertTriangle class="size-4 shrink-0" />{/if}
               <span class="min-w-0">{fit.text}</span>
             </div>
-            <button type="button" class="ui-chip" onclick={applyRecommendedPreset} disabled={!recommended}>
+            <Button variant="outline" size="xs" onclick={applyRecommendedPreset} disabled={!recommended}>
               <Sparkles /> {$t('localLoad.useRecommended')}
-            </button>
+            </Button>
           </div>
           <div class="mt-2.5 space-y-2">
             {#each meterRows as meter (meter.label)}
@@ -454,17 +461,20 @@
           />
         {/snippet}
         {#snippet gpuSlider()}
-          <input
-            type="range"
+          <div class="flex items-center gap-3">
+          <UiRange
+
             min="0"
             max={gpuLayersMax}
             value={localGpuLayers}
             aria-label={$t('localLoad.gpuLayers')}
             oninput={(e) => { localGpuLayers = Number(e.currentTarget.value); }}
             onchange={commitGpuLayers}
-            class="load-range w-full"
-            class:is-auto={gpuLayersIsAuto}
+            class={uiClass("load-range min-w-0 flex-1", "ui-local-a6eab888", {"is-auto": gpuLayersIsAuto})}
+
           />
+            <span class="w-14 shrink-0 text-right text-xs tabular-nums text-muted-foreground">{gpuLayersIsAuto ? $t('localLoad.auto') : `${localGpuLayers} / ${gpuLayersMax}`}</span>
+          </div>
         {/snippet}
         {@render row($t('localLoad.gpuLayers'), $t('localLoad.gpuLayersHint'), gpuControl, gpuSlider)}
 
@@ -482,8 +492,8 @@
         {/snippet}
         {#snippet contextSlider()}
           <div class="flex items-center gap-3">
-            <input
-              type="range"
+            <UiRange
+
               min="512"
               max={maxContext}
               step="512"
@@ -491,8 +501,8 @@
               aria-label={$t('localLoad.context')}
               oninput={(e) => { localContextLength = Number(e.currentTarget.value); }}
               onchange={commitContext}
-              class="load-range min-w-0 flex-1"
-              class:is-auto={contextIsAuto}
+              class={uiClass("load-range min-w-0 flex-1", "ui-local-a6eab888", {"is-auto": contextIsAuto})}
+
             />
             <span class="w-14 shrink-0 text-right text-xs tabular-nums text-muted-foreground">{contextIsAuto ? $t('localLoad.auto') : contextLength.toLocaleString()}</span>
           </div>
@@ -517,19 +527,19 @@
           <div class="flex min-w-0 shrink-0 items-center gap-1.5">
             {#if visionSelectedName}
               <span class="max-w-[16rem] truncate font-mono text-[length:var(--text-sm)] text-muted-foreground" title={visionSelectedName}>{visionSelectedName}</span>
-              <button type="button" class="ui-chip" onclick={() => { appStore.localModelLoadMmprojPath = ''; }}>{$t('localLoad.clear')}</button>
+              <Button variant="ghost" size="xs" onclick={() => { appStore.localModelLoadMmprojPath = ''; }}>{$t('localLoad.clear')}</Button>
             {/if}
-            <button type="button" class="ui-chip" onclick={pickProjector}>
+            <Button variant="outline" size="xs" onclick={pickProjector}>
               {visionSelectedName ? $t('localLoad.change') : $t('localLoad.chooseFile')}
-            </button>
+            </Button>
           </div>
         {/snippet}
         {#snippet visionCandidates()}
           <div class="flex flex-wrap gap-1.5">
             {#each projectorCandidates as candidate (candidate)}
-              <button type="button" class="ui-chip font-mono" title={candidate} onclick={() => { appStore.localModelLoadMmprojPath = candidate; }}>
+              <Button variant="outline" size="xs" class="font-mono" title={candidate} onclick={() => { appStore.localModelLoadMmprojPath = candidate; }}>
                 {candidate.split(/[/\\]/).pop()}
-              </button>
+              </Button>
             {/each}
           </div>
         {/snippet}
@@ -547,8 +557,8 @@
           {#snippet moeLayers()}
             <div class="flex items-center gap-2 text-xs text-muted-foreground">
               <span>{$t('localLoad.moeLayers')}</span>
-              <input
-                class="load-input w-20"
+              <Input
+                class={uiClass("load-input w-20", "ui-local-a6eab888")}
                 type="number"
                 min="0"
                 max={blockCount || 999}
@@ -575,8 +585,8 @@
         {/snippet}
         {#snippet mtpDraft()}
           <div class="flex flex-wrap items-center gap-2">
-            <input
-              class="load-input min-w-0 flex-1"
+            <Input
+              class={uiClass("load-input min-w-0 flex-1", "ui-local-a6eab888")}
               type="text"
               bind:value={appStore.localModelLoadMtpDraftPath}
               placeholder={$t('localLoad.mtpDraftPlaceholder')}
@@ -627,7 +637,7 @@
           <div class="grid gap-3 sm:grid-cols-2">
             {#snippet threads()}
               <div class="flex items-center gap-3">
-                <input type="range" min="1" max={cpuThreadsMax} bind:value={localCpuThreads} onchange={commitCpuThreads} class="load-range flex-1" />
+                <UiRange  min="1" max={cpuThreadsMax} bind:value={localCpuThreads} onchange={commitCpuThreads} class={uiClass("load-range flex-1", "ui-local-a6eab888")} />
                 <span class="w-8 text-right text-xs tabular-nums text-muted-foreground">{localCpuThreads}</span>
               </div>
             {/snippet}
@@ -707,8 +717,7 @@
             <div class="mt-1 truncate text-xs text-muted-foreground">{appStore.localModelLoadPhase || $t('localLoad.loading')}</div>
           </div>
         </div>
-        <Button variant="outline" onclick={() => appStore.closeLocalModelLoadDialog()}>{$t('localLoad.hide')}</Button>
-        <Button variant="destructive" onclick={() => appStore.stopLocalModel()}>{$t('localLoad.stop')}</Button>
+        <DialogActions cancelLabel={$t('localLoad.hide')} confirmLabel={$t('localLoad.stop')} danger oncancel={() => appStore.closeLocalModelLoadDialog()} onconfirm={() => appStore.stopLocalModel()} />
       {:else}
         <div class="mr-auto flex items-center gap-2 text-xs text-muted-foreground">
           <Switch label={$t('localLoad.remember')} bind:checked={appStore.localModelRememberSettings} />
@@ -722,20 +731,19 @@
         {#if loadBlockedReason}
           <span class="text-xs text-error">{loadBlockedReason}</span>
         {/if}
-        <Button variant="ghost" onclick={() => appStore.closeLocalModelLoadDialog()}>{$t('localLoad.cancel')}</Button>
-        <Button onclick={() => appStore.confirmLocalModelLoad()} disabled={Boolean(loadBlockedReason)}>{appStore.localModelLoadAsInstance ? $t('instances.start') : $t('localLoad.load')}</Button>
+        <DialogActions cancelLabel={$t('localLoad.cancel')} confirmLabel={appStore.localModelLoadAsInstance ? $t('instances.start') : $t('localLoad.load')} disabled={Boolean(loadBlockedReason)} oncancel={() => appStore.closeLocalModelLoadDialog()} onconfirm={() => appStore.confirmLocalModelLoad()} />
       {/if}
     {/snippet}
   </Dialog>
 {/if}
 
 <style>
-  .load-range {
+  :global(.load-range.ui-local-a6eab888) {
     height: 0.25rem;
     cursor: pointer;
     accent-color: var(--primary);
   }
-  .load-range.is-auto {
+  :global(.load-range.is-auto.ui-local-a6eab888) {
     opacity: 0.4;
   }
   .load-row + .load-row {
@@ -749,7 +757,7 @@
     font-weight: 500;
     color: var(--foreground);
   }
-  .load-hint {
+  :global(.load-hint.ui-local-a6eab888) {
     display: inline-flex;
     padding: 0.125rem;
     border-radius: var(--radius-full);
@@ -757,11 +765,11 @@
     cursor: help;
     outline: none;
   }
-  .load-hint:hover,
-  .load-hint:focus-visible {
+  :global(.load-hint:hover.ui-local-a6eab888),
+  :global(.load-hint:focus-visible.ui-local-a6eab888) {
     color: var(--foreground);
   }
-  .load-input {
+  :global(.load-input.ui-local-a6eab888) {
     height: 2.25rem;
     border-radius: var(--radius-md);
     border: 1px solid var(--border);
@@ -771,7 +779,7 @@
     color: var(--text);
     outline: none;
   }
-  .load-input:focus {
+  :global(.load-input:focus.ui-local-a6eab888) {
     border-color: var(--border-hover);
   }
 </style>

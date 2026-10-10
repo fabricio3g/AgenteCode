@@ -1,5 +1,8 @@
 <svelte:options runes={true} />
 <script lang="ts">
+  import UiIconButton from '$lib/components/ui/IconButton.svelte';
+  import { cn as uiClass } from '$lib/utils/cn';
+
   import { t, locale } from 'svelte-i18n';
   import type { CodeSpend } from '$shared/agente-protocol';
   import ComposerCard from '$lib/features/shared/composer/ComposerCard.svelte';
@@ -33,7 +36,7 @@
   function usd(value: number) { return value.toFixed(value >= 1 ? 2 : value >= 0.01 ? 4 : 6); }
 </script>
 
-<button bind:this={anchor} type="button" class="ui-icon-button context-ring" class:has-label={showLabel} aria-label={label}
+<UiIconButton label={label} size="sm" bind:ref={anchor} type="button" class={uiClass(" context-ring", "ui-local-e4609396", {"has-label": showLabel})}
   aria-describedby={open ? id : undefined}
   onmouseenter={() => (open = true)} onmouseleave={() => (open = false)}
   onfocus={() => (open = true)} onblur={() => (open = false)} onclick={() => (open = true)}>
@@ -44,7 +47,7 @@
       style:stroke-dashoffset={circumference * (1 - percent / 100)}></circle>
   </svg>
   {#if showLabel}<span class="context-usage-label">{estimated ? '~' : ''}{percentLabel}%</span>{/if}
-</button>
+</UiIconButton>
 {#if open}
   <ComposerCard {anchor} {id} label={label} tooltip placement="top-end" onclose={() => (open = false)}>
     <div>{label}</div>
@@ -58,10 +61,10 @@
 {/if}
 
 <style>
-  .context-ring { flex-shrink: 0; }
-  .context-ring.has-label { width:auto;gap:0.375rem;padding-inline:0.25rem;border:0;box-shadow:none;background:transparent; }
+  :global(.context-ring.ui-local-e4609396) { flex-shrink: 0; }
+  :global(.context-ring.has-label.ui-local-e4609396) { width:auto;gap:0.375rem;padding-inline:0.25rem;border:0;box-shadow:none;background:transparent; }
   .context-usage-label { font-size:var(--text-xs);color:var(--muted-foreground);white-space:nowrap; }
-  .context-ring:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+  :global(.context-ring:focus-visible.ui-local-e4609396) { outline: 2px solid var(--ring); outline-offset: 2px; }
   .track { fill: none; stroke: color-mix(in srgb, var(--muted-foreground) 20%, transparent); }
   .progress { fill: none; stroke-linecap: round; transform: rotate(-90deg); transform-origin: center; transition: stroke-dashoffset 140ms ease, stroke 140ms ease; }
   @media (prefers-reduced-motion: reduce) { .progress { transition: none; } }

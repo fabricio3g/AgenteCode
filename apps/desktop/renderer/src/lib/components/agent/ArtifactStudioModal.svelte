@@ -3,6 +3,8 @@
 <!-- The in-chat artifact studio: the inline studio in a large dialog. -->
 
 <script lang="ts">
+  import UiIconButton from '$lib/components/ui/IconButton.svelte';
+
   import { Tooltip } from '$lib/components/ui';
   import { t } from 'svelte-i18n';
   import { appStore } from '$lib/stores/app.svelte';
@@ -44,7 +46,7 @@
 <Dialog hideHeader={resolveArtifactPresentation(artifact).manifest.presentation === 'document'} title={artifact.title || $t('artifacts.untitled')} onclose={requestClose} class="artifact-studio-dialog h-[88vh] w-[96vw] max-w-6xl">
   <div class="min-h-0 flex-1">
     <ArtifactStudio {artifact} chatId={originChatId} messageId={originMessageId} bind:dirty>
-      {#snippet trail()}{#if resolveArtifactPresentation(artifact).manifest.presentation === 'document'}<Tooltip label={$t('artifacts.reader.close')} position="bottom"><button type="button" class="ui-icon-button is-sm" aria-label={$t('artifacts.reader.close')} onclick={requestClose}><X /></button></Tooltip>{/if}{/snippet}
+      {#snippet trail()}{#if resolveArtifactPresentation(artifact).manifest.presentation === 'document'}<Tooltip label={$t('artifacts.reader.close')} position="bottom"><UiIconButton label={$t('artifacts.reader.close')} size="xs" type="button"   onclick={requestClose}><X /></UiIconButton></Tooltip>{/if}{/snippet}
     </ArtifactStudio>
   </div>
 </Dialog>

@@ -1,4 +1,4 @@
-import type { RequestMessage } from '$lib/services/chat-api';
+import type { RequestMessage } from '$lib/services/chat/types';
 
 export interface ContextBudgetValue {
   estimated?: boolean;

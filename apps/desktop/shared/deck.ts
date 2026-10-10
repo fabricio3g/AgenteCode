@@ -5,7 +5,22 @@
 // stats slide, and so on, even when the model didn't name the layout.
 
 import { resolveAccent, resolveTheme, type ArtifactAccent, type ArtifactTheme } from './artifact-theme.ts';
-import { text } from './work-product.ts';
+import { text, tableData, type SheetInput } from './work-product.ts';
+import { Lexer, type Token } from 'marked';
+
+/** PowerPoint text boxes use plain text; keep evidence URLs while removing markup. */
+function prose(value: unknown): string {
+  const plain = (tokens: Token[]): string => tokens.map((token) => {
+    if (token.type === 'br') return '\n';
+    if (token.type === 'link') {
+      const link = token as { tokens: Token[]; href: string };
+      const label = plain(link.tokens); return label === link.href ? label : `${label} (${link.href})`;
+    }
+    if ('tokens' in token && Array.isArray(token.tokens)) return plain(token.tokens);
+    return 'text' in token ? String(token.text) : token.raw;
+  }).join('');
+  return plain(Lexer.lexInline(text(value)));
+}
 
 export const DECK_LAYOUTS = ['title', 'section', 'bullets', 'two-column', 'quote', 'stats', 'table', 'chart'] as const;
 export type DeckLayout = (typeof DECK_LAYOUTS)[number];
@@ -42,10 +57,10 @@ export interface DeckSpec {
 }
 
 function list(value: unknown): string[] {
-  if (Array.isArray(value)) return value.map((item) => text(item).replace(/^[-*•]\s*/, '')).filter(Boolean);
+  if (Array.isArray(value)) return value.map((item) => prose(item).replace(/^[-*•]\s*/, '')).filter(Boolean);
   const single = text(value);
   if (!single) return [];
-  return single.split(/\n+/).map((line) => line.replace(/^[-*•]\s*/, '').trim()).filter(Boolean);
+  return single.split(/\n+/).map((line) => prose(line).replace(/^[-*•]\s*/, '').trim()).filter(Boolean);
 }
 
 function column(value: unknown): DeckColumn | undefined {
@@ -60,13 +75,8 @@ function column(value: unknown): DeckColumn | undefined {
 function table(value: unknown): DeckSlide['table'] {
   if (!value || typeof value !== 'object') return undefined;
   const item = value as Record<string, unknown>;
-  const rows = Array.isArray(item.rows) ? item.rows : [];
-  let columns = Array.isArray(item.columns) ? item.columns.map((col) => text(typeof col === 'object' && col ? (col as { header?: string; name?: string }).header ?? (col as { name?: string }).name : col)) : [];
-  if (!columns.length && rows[0] && typeof rows[0] === 'object' && !Array.isArray(rows[0])) columns = Object.keys(rows[0] as object);
-  const cells = rows.map((row) => Array.isArray(row)
-    ? row.map((cell) => text(cell))
-    : columns.map((key) => text((row as Record<string, unknown>)?.[key])));
-  return columns.length && cells.length ? { columns, rows: cells.slice(0, 12) } : undefined;
+  const { headers, rows } = tableData(item as SheetInput);
+  return headers.length && rows.length ? { columns: headers, rows } : undefined;
 }
 
 function chart(value: unknown): DeckSlide['chart'] {
@@ -76,11 +86,13 @@ function chart(value: unknown): DeckSlide['chart'] {
   const rawSeries = Array.isArray(item.series) ? item.series : Array.isArray(item.datasets) ? item.datasets : [];
   const series = rawSeries.map((entry, index) => {
     const s = (entry ?? {}) as Record<string, unknown>;
-    const values = (Array.isArray(s.values) ? s.values : Array.isArray(s.data) ? s.data : []).map(Number).filter(Number.isFinite);
+    const values = (Array.isArray(s.values) ? s.values : Array.isArray(s.data) ? s.data : []).map(Number);
+    if (values.length !== labels.length || values.some((value) => !Number.isFinite(value))) throw new Error('Every chart series must contain one finite number per label.');
     return { name: text(s.name ?? s.label, `Series ${index + 1}`), values };
   }).filter((s) => s.values.length);
   if (!labels.length || !series.length) return undefined;
   const type = text(item.type ?? item.chart_type, 'column').toLowerCase();
+  if (['pie', 'donut', 'doughnut'].includes(type) && series.some((entry) => entry.values.some((value) => value < 0))) throw new Error('Pie charts require non-negative values.');
   const known: Record<string, DeckChartType> = { bar: 'bar', column: 'column', line: 'line', pie: 'pie', donut: 'doughnut', doughnut: 'doughnut' };
   return { type: known[type] ?? 'column', labels, series };
 }
@@ -90,7 +102,7 @@ function stats(value: unknown): DeckSlide['stats'] {
   const out = value.map((entry) => {
     const s = (entry ?? {}) as Record<string, unknown>;
     return { value: text(s.value ?? s.number), label: text(s.label ?? s.caption) };
-  }).filter((s) => s.value).slice(0, 4);
+  }).filter((s) => s.value);
   return out.length ? out : undefined;
 }
 
@@ -140,6 +152,28 @@ export function normalizeDeck(input: Record<string, unknown>): DeckSpec {
     ...(text(input.subtitle) ? { subtitle: text(input.subtitle) } : {}),
     theme: resolveTheme(input.theme),
     accent: resolveAccent(input.accent ?? 'blue'),
-    slides
+    slides: slides.flatMap((slide) => {
+      if (slide.stats && slide.stats.length > 4) {
+        const pages = Math.ceil(slide.stats.length / 4);
+        return Array.from({ length: pages }, (_, index) => ({ ...slide, title: `${slide.title} (${index + 1}/${pages})`, stats: slide.stats!.slice(index * 4, index * 4 + 4) }));
+      }
+      const rows = slide.table?.rows;
+      if (!rows || rows.length <= 10) return [slide];
+      const pages = Math.ceil(rows.length / 10);
+      return Array.from({ length: pages }, (_, index) => ({ ...slide,
+        title: `${slide.title} (${index + 1}/${pages})`,
+        table: { columns: slide.table!.columns, rows: rows.slice(index * 10, (index + 1) * 10) },
+      }));
+    })
   };
+}
+
+/** Text people can find, including data and notes, without implementation keys. */
+export function deckSlideText(slide: DeckSlide): string {
+  return [slide.title, slide.subtitle, ...slide.bullets, slide.quote, slide.attribution,
+    slide.left?.heading, ...(slide.left?.bullets || []), slide.right?.heading, ...(slide.right?.bullets || []),
+    ...(slide.stats || []).flatMap((item) => [item.label, item.value]),
+    ...(slide.table?.columns || []), ...(slide.table?.rows.flat() || []),
+    ...(slide.chart?.labels || []), ...(slide.chart?.series.flatMap((item) => [item.name, ...item.values]) || []), slide.notes,
+  ].filter((value) => value !== undefined && value !== null).join('\n');
 }

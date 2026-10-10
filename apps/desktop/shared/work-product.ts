@@ -18,7 +18,7 @@ export type SectionInput = {
 
 export type SheetInput = {
   name?: string;
-  columns?: Array<string | { header?: string; key?: string; width?: number }>;
+  columns?: Array<string | { header?: string; key?: string; width?: number; numFmt?: string }>;
   rows?: Array<Record<string, unknown> | unknown[]>;
 };
 
@@ -39,9 +39,22 @@ export function tableData(sheet: SheetInput): { headers: string[]; rows: string[
     rows: rows.map((row) => headers.map((_header, index) => {
       const column = columns[index];
       const key = typeof column === 'string' ? column : text(column?.key || column?.header);
-      return text(Array.isArray(row) ? row[index] : row?.[key]);
+      return displayCell(Array.isArray(row) ? row[index] : row?.[key]);
     }))
   };
+}
+
+/** Readable scalar values for report tables without losing cached formula results. */
+export function displayCell(value: unknown): string {
+  if (value instanceof Date) return value.toISOString().replace(/T00:00:00\.000Z$/, '');
+  if (value && typeof value === 'object') {
+    const cell = value as { formula?: string; result?: unknown; text?: string; richText?: Array<{ text: string }> };
+    if (cell.result !== undefined) return displayCell(cell.result);
+    if (cell.formula) return `=${cell.formula} [result not stored]`;
+    if (cell.richText) return cell.richText.map((run) => run.text).join('');
+    if (cell.text !== undefined) return cell.text;
+  }
+  return text(value);
 }
 
 /** Trimmed string, with a fallback for nullish input. */

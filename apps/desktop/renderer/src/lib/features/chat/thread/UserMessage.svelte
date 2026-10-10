@@ -1,8 +1,12 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+  import UiButton from '$lib/components/ui/Button.svelte';
+  import { cn as uiClass } from '$lib/utils/cn';
+
   import Avatar from '$lib/components/ui/Avatar.svelte';
-  import { CornerDownLeft, Copy, Pencil, Trash2 } from 'lucide-svelte';
+  import { CornerDownLeft, Copy, Pencil, Pin, Trash2 } from 'lucide-svelte';
+  import { t } from 'svelte-i18n';
   import { appStore } from '$lib/stores/app.svelte';
   import { confirmStore } from '$lib/stores/confirm.svelte';
   import { copy, say } from '$lib/copy';
@@ -62,7 +66,7 @@
    * opposite default so its own hard wrapping reflows into the reading column.
    */
   const bodyHtml = $derived.by(() => {
-    const content = quoted?.question || ctx.message.content || '';
+    const content = roleplayStore.displayText(quoted?.question || ctx.message.content || '', { messageId: ctx.message.id });
     if (ctx.contextMode !== 'roleplay') return renderMarkdown(content, { breaks: true });
     const chat = appStore.currentChat;
     const names = (chat?.roleplay?.characterIds ?? (chat?.characterId ? [chat.characterId] : [])).flatMap((id) => {
@@ -71,7 +75,7 @@
     });
     return highlightRoleplayMentions(renderMarkdown(content.replace(/\s*\[character:[^\]]+\]/g, ''), { breaks: true }), [...names, ...roleplayStore.room().npcs.map((npc) => npc.name)]);
   });
-  const quoteHtml = $derived(quoted ? renderMarkdown(quoted.selectedText, { breaks: true }) : '');
+  const quoteHtml = $derived(quoted ? renderMarkdown(roleplayStore.displayText(quoted.selectedText, { messageId: quoted.sourceMessageId || ctx.message.id }), { breaks: true }) : '');
   const workContext = $derived(ctx.message.workContext);
 
   /** Roleplay: the persona this turn speaks as, for chat-app identity. */
@@ -80,6 +84,10 @@
     if (chat?.contextMode !== 'roleplay') return null;
     return ctx.message.metadata?.roleplayPersona ?? charactersStore.getPersonaById(chat.personaId);
   });
+  /** No persona chosen: the chip says "You", never the placeholder "User". */
+  const personaLabel = $derived(
+    !roleplayPersona ? '' : roleplayPersona.id || roleplayPersona.name !== 'User' ? roleplayPersona.name : $t('roleplay.you')
+  );
 
   function scrollToSelectedSource() {
     const sourceMessageId = quoted?.sourceMessageId;
@@ -97,7 +105,13 @@
         icon: Copy,
         primary: true,
         confirms: true,
-        run: () => void writeToClipboard(ctx.message.content || '')
+        run: () => void writeToClipboard(roleplayStore.displayText(ctx.message.content || '', { messageId: ctx.message.id }))
+      },
+      ctx.contextMode === 'roleplay' && {
+        id: 'pin',
+        label: $t('roleplay.memory.pinAction'),
+        icon: Pin,
+        run: () => roleplayStore.pinToMemory(ctx.message.content || '')
       },
       {
         id: 'edit',
@@ -123,9 +137,9 @@
 </script>
 
 {#if quoted}
-  <button
+  <UiButton variant="plain"
     type="button"
-    class="selected-text-message-bubble"
+    class={uiClass("selected-text-message-bubble")}
     data-chat-message-content
     data-chat-message-id={ctx.message.id}
     onclick={scrollToSelectedSource}
@@ -133,16 +147,16 @@
   >
     <CornerDownLeft class="selected-text-message-icon h-4 w-4" />
     <div class="markdown-body selected-text-message-markdown">{@html quoteHtml}</div>
-  </button>
+  </UiButton>
 {/if}
 
 <div class="user-message-stack max-w-full space-y-3">
   {#if roleplayPersona}
     <div class="persona-chip">
-      <span class="persona-name">{roleplayPersona.name}</span>
+      <span class="persona-name">{personaLabel}</span>
       {#if roleplayStore.settings().showAvatars !== false}
       <span class="persona-avatar">
-        <Avatar size="fill" name={roleplayPersona.name ?? ''} image={roleplayPersona.avatar} />
+        <Avatar size="fill" name={personaLabel} image={roleplayPersona.avatar} />
       </span>
       {/if}
     </div>
@@ -209,17 +223,14 @@
     align-items: center;
     gap: 0.375rem;
     padding: 0.25rem 0.625rem;
-    border: 1px solid var(--work-accent-border);
     border-radius: var(--radius-full);
-    background: var(--work-accent-soft);
-    color: var(--work-accent-strong);
+    background: var(--muted);
+    color: var(--muted-foreground);
     font-size: 0.75rem;
     font-weight: 500;
   }
 
   .work-pill.muted {
-    border-color: var(--border);
-    background: var(--card);
-    color: var(--muted-foreground);
+    background: transparent;
   }
 </style>

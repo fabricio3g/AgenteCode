@@ -178,23 +178,24 @@ fn render_session_list(frame: &mut Frame, folder_area: Rect, list_area: Rect, st
     let selected = picker.session_picker_selected;
 
     // Row 0 is the "new" action (or the delete confirmation); sessions follow.
+    // The action row only takes colour while it is the selected row: at rest it
+    // is one more option, so the sessions under it are what the eye finds.
+    let action = if selected == 0 {
+        style::success().add_modifier(Modifier::BOLD)
+    } else {
+        style::muted()
+    };
     let first = if picker.session_picker_confirm_delete && selected > 0 {
-        Span::styled(
-            "Delete this session? Del=confirm  Esc/Up/Down=cancel",
-            style::error(),
+        PickItem::row_with_trail(
+            vec![Span::styled("Delete this session?", style::error())],
+            vec![Span::styled("Del confirm", style::dim())],
         )
     } else if picker.session_picker_project_select {
-        Span::styled(
-            "+ Use This Folder",
-            style::success().add_modifier(Modifier::BOLD),
-        )
+        PickItem::row(vec![Span::styled("+ Use This Folder", action)])
     } else {
-        Span::styled(
-            "+ New Session",
-            style::success().add_modifier(Modifier::BOLD),
-        )
+        PickItem::row(vec![Span::styled("+ New Session", action)])
     };
-    let mut items = vec![PickItem::row(vec![first])];
+    let mut items = vec![first];
     if filtered.is_empty() && (!folder.is_empty() || !query.is_empty()) {
         items.push(PickItem::Header("No matching sessions".into()));
     }
@@ -204,15 +205,20 @@ fn render_session_list(frame: &mut Frame, folder_area: Rect, list_area: Rect, st
             1 => "1 msg".to_string(),
             n => format!("{n} msgs"),
         };
-        let details = format!(
-            " · {} · {msgs} · {}",
-            shorten_path(&meta.project_dir),
-            session::format_time_ago(&meta.last_active)
-        );
-        items.push(PickItem::row(vec![
-            Span::styled(title, row_label(i + 1 == selected)),
-            Span::styled(details, style::dim()),
-        ]));
+        // Title and folder on the left edge; count and age on the right edge.
+        items.push(PickItem::row_with_trail(
+            vec![
+                Span::styled(title, row_label(i + 1 == selected)),
+                Span::styled(
+                    format!("  {}", shorten_path(&meta.project_dir)),
+                    style::dim(),
+                ),
+            ],
+            vec![Span::styled(
+                format!("{msgs} · {}", session::format_time_ago(&meta.last_active)),
+                style::dim(),
+            )],
+        ));
     }
     pick_list(
         frame,

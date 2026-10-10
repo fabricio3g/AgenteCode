@@ -12,6 +12,9 @@
 -->
 
 <script lang="ts">
+  import UiButton from '$lib/components/ui/Button.svelte';
+  import { cn as uiClass } from '$lib/utils/cn';
+
   import { t } from 'svelte-i18n';
   import { Check, ChevronDown, GitBranch, Plus } from 'lucide-svelte';
   import Menu from '$lib/components/ui/Menu.svelte';
@@ -73,10 +76,10 @@
   <Menu bind:open placement="bottom-start" minWidth="16rem" label={$t('codeWs.branch')} onclose={() => (open = false)}>
     {#snippet trigger(props)}
       <Tooltip label={$t('codeWs.branchHint')} position="bottom">
-        <button
+        <UiButton variant="plain"
           type="button"
-          class="branch-chip titlebar-no-drag"
-          class:is-dirty={info.dirty}
+          class={uiClass("branch-chip titlebar-no-drag", "ui-local-4a309ef6", {"is-dirty": info.dirty})}
+
           aria-label={$t('codeWs.branch')}
           {...props}
         >
@@ -84,7 +87,7 @@
           <span class="branch-name">{info.current}</span>
           {#if info.dirty}<span class="branch-dot" aria-hidden="true"></span>{/if}
           <ChevronDown class="size-3 shrink-0 opacity-60" aria-hidden="true" />
-        </button>
+        </UiButton>
       </Tooltip>
     {/snippet}
 
@@ -119,7 +122,7 @@
 {/if}
 
 <style>
-  .branch-chip {
+  :global(.branch-chip.ui-local-4a309ef6) {
     display: inline-flex;
     max-width: 14rem;
     align-items: center;
@@ -131,7 +134,7 @@
     color: var(--muted-foreground);
     transition: background-color var(--motion-fast) var(--motion-ease), color var(--motion-fast) var(--motion-ease);
   }
-  .branch-chip:hover, .branch-chip[aria-expanded='true'] { background: var(--surface-hover); color: var(--foreground); }
+  :global(.branch-chip:hover.ui-local-4a309ef6), :global(.branch-chip[aria-expanded='true'].ui-local-4a309ef6) { background: var(--surface-hover); color: var(--foreground); }
   .branch-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .branch-dot { width: 5px; height: 5px; flex-shrink: 0; border-radius: 999px; background: var(--warning); }
   .branch-menu { min-width: 0; }
@@ -141,6 +144,6 @@
   .branch-divider { height: 1px; margin: 0.25rem 0; background: var(--border-subtle); }
 
   @media (prefers-reduced-motion: reduce) {
-    .branch-chip { transition: none; }
+    :global(.branch-chip.ui-local-4a309ef6) { transition: none; }
   }
 </style>

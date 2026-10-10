@@ -4,8 +4,9 @@
   import { copy } from '$lib/copy';
   import ViewerStatus from './ViewerStatus.svelte';
   import { readArrayBuffer } from './viewer-source';
-  import { escapeHtml, highlightTerm } from './viewer-text';
+  import { escapeHtml } from './viewer-text';
 
+  import { createViewerFind } from './viewer-find.svelte';
   import { registerViewerControls, useViewerControls } from './viewer-controls.svelte';
   const controls = useViewerControls();
   let wrap = $state(false);
@@ -20,8 +21,11 @@
 
   let { src, filename, lang = '', query = '' }: Props = $props();
   const term = $derived(query || controls?.query || '');
+  let contentNode = $state<HTMLElement>();
+  let revision = $state(0);
+  const find = createViewerFind(() => contentNode, () => term);
   registerViewerControls(controls, () => ({
-    search: { matches: term.trim() ? textContent.toLowerCase().split(term.trim().toLowerCase()).length - 1 : 0, index: 0 },
+    search: { matches: find.state.matches, index: find.state.index, step: find.step }, retry: error ? () => { revision += 1; } : undefined,
     actions: [{ label: $t('viewer.wrap'), active: wrap, run: () => { wrap = !wrap; } }]
   }));
 
@@ -33,36 +37,23 @@
 
   // With a search term the raw text is escaped and marked; without one the
   // syntax-highlighted HTML from hljs is preferred when it is available.
-  const renderedHtml = $derived.by(() => {
-    if (!term.trim()) return highlightedHtml || escapeHtml(textContent);
-    return highlightTerm(textContent, term);
-  });
-
-  async function loadText() {
-    loading = true;
-    error = null;
-    textContent = '';
-    highlightedHtml = '';
+  const renderedHtml = $derived(highlightedHtml || escapeHtml(textContent));
+  async function loadText(source: string, language: string, current: () => boolean) {
+    loading = true; error = null; textContent = ''; highlightedHtml = '';
     try {
-      // Not fetch(): the app's CSP blocks fetching data: URLs.
-      const text = new TextDecoder().decode(await readArrayBuffer(src, 'file'));
+      const bytes = new Uint8Array(await readArrayBuffer(source, 'file'));
+      const encoding = bytes[0] === 255 && bytes[1] === 254 ? 'utf-16le' : bytes[0] === 254 && bytes[1] === 255 ? 'utf-16be' : 'utf-8';
+      const text = new TextDecoder(encoding).decode(bytes);
+      if (!current()) return;
       textContent = text;
-
-      if (lang && text) {
-          try {
-            const { default: hljs } = await import('highlight.js');
-            const result = hljs.highlight(text, { language: lang, ignoreIllegals: true });
-            highlightedHtml = result.value;
-          } catch {
-            highlightedHtml = '';
-          }
+      if (language && text && text.length < 500_000) {
+        try {
+          const { default: hljs } = await import('highlight.js/lib/common');
+          if (current() && hljs.getLanguage(language)) highlightedHtml = hljs.highlight(text, { language, ignoreIllegals: true }).value;
+        } catch { /* Plain text remains readable. */ }
       }
-    } catch (err) {
-      console.error('[TextViewer] Failed to load text:', err);
-      error = 'Failed to load file';
-    } finally {
-      loading = false;
-    }
+    } catch (failure) { if (current()) error = failure instanceof Error ? failure.message : 'Failed to load file'; }
+    finally { if (current()) loading = false; }
   }
 
   function guessLanguage(name: string, mime: string): string {
@@ -85,19 +76,19 @@
   }
 
   $effect(() => {
-    if (src) {
-      if (!lang) lang = guessLanguage(filename, '');
-      loadText();
-    }
+    const source = src, language = lang || guessLanguage(filename, ''); revision;
+    let current = true;
+    void loadText(source, language, () => current);
+    return () => { current = false; };
   });
 </script>
 
 <div class="text-viewer">
   {#if loading || error}
-    <ViewerStatus {loading} {error} label={copy.viewer.loadingFile} />
+    <ViewerStatus {loading} {error} label={copy.viewer.loadingFile} retry={error ? () => { revision += 1; } : undefined} />
   {:else}
     <div class="text-frame">
-      <pre class="text-pre" class:wrap><code>{@html renderedHtml}</code></pre>
+      <pre class="text-pre" class:wrap><code bind:this={contentNode} data-viewer-text>{@html renderedHtml}</code></pre>
     </div>
 
   {/if}
@@ -125,8 +116,8 @@
   .text-pre {
     margin: 0;
     padding: 1rem;
-    font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
-    font-size: 0.75rem;
+    font-family: var(--font-mono);
+    font-size: var(--text-code);
     line-height: 1.55;
     color: var(--foreground);
     white-space: pre;

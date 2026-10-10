@@ -1,4 +1,4 @@
-import type { RequestMessage } from '$lib/services/chat-api';
+import type { RequestMessage } from '$lib/services/chat/types';
 import type { ApiModelMetadataValue, ContextBudgetValue, InvokeFn } from '$lib/stores/app-context-budget';
 import { buildApiContextBudgetFromMessages, buildFallbackContextBudget, buildLocalContextBudget, inferContextWindowFromModel } from '$lib/stores/app-context-budget';
 

@@ -14,6 +14,9 @@
 -->
 
 <script lang="ts">
+  import UiInput from '$lib/components/ui/Input.svelte';
+  import { cn as uiClass } from '$lib/utils/cn';
+
   import type { ComponentType, Snippet } from 'svelte';
   import type { Icon as LucideIcon } from 'lucide-svelte';
   import { t } from 'svelte-i18n';
@@ -32,6 +35,7 @@
   import { copy } from '$lib/copy';
   import type { ChatSession } from '$lib/types/chat';
   import { downloadSessionMarkdown, sessionExportFilename } from './export-session';
+  import { roleplayStore } from '$lib/features/roleplay/roleplay.svelte';
   import { displayChatTitle } from './session-title';
 
   interface Props {
@@ -85,7 +89,7 @@
 
   function exportChat() {
     try {
-      downloadSessionMarkdown(chat);
+      downloadSessionMarkdown(roleplayStore.forExport(chat));
       toastStore.success(`${copy.actions.export}: ${sessionExportFilename(chat.title, new Date().toISOString().slice(0, 10))}`, 2500);
     } catch {
       toastStore.error(`${copy.actions.export}: ${copy.tool.failed}`);
@@ -137,11 +141,11 @@
   {#if Icon}<Icon class="sidebar-row-icon" />{/if}
 
   {#if renaming}
-    <input
-      bind:this={inputEl}
-      class="chat-rename-input sidebar-row-label"
+    <UiInput
+      bind:ref={inputEl}
+      class={uiClass("chat-rename-input sidebar-row-label")}
       bind:value={renameValue}
-      maxlength="120"
+      maxlength={120}
       aria-label={copy.actions.rename}
       onclick={(event) => event.stopPropagation()}
       onkeydown={(event) => {

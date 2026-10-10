@@ -11,9 +11,10 @@
  * turn unconditionally.
  */
 
-import type { ChatMessage, RoleplayTurnSnapshot } from '$lib/types/chat';
-import type { RequestMessage } from '$lib/services/chat-api';
-import type { RoleplaySampling } from '$lib/services/roleplay-prompts';
+import type { ChatMessage, PromptTrim, RoleplayTurnSnapshot, RoleplayUsed } from '$lib/types/chat';
+import type { RequestMessage } from '$lib/services/chat/types';
+import type { RoleplayPromptParts, RoleplaySampling } from '$lib/services/roleplay-prompts';
+import type { ComposedRequest } from '$lib/services/roleplay-budget';
 import {
   appendRoleplayNudge,
   appendRoleplayStoryTurn,
@@ -34,8 +35,19 @@ export interface RoleplayTurn {
   snapshot?: RoleplayTurnSnapshot;
   /** Live display cleaner for streamed text; undefined when nothing to clean. */
   sanitize?: (content: string) => string;
+  /**
+   * The full request for a history: the stable block first, the history, then
+   * the volatile tail (lore, memory, room, steering, twists) and the speaker
+   * nudge, just before the reply. `trim` is the budget's trim level.
+   */
+  compose(history: RequestMessage[], trim?: PromptTrim): ComposedRequest;
   /** Add the story turn and the group speaker nudge to the outbound request. */
   decorate(messages: RequestMessage[]): RequestMessage[];
+  /**
+   * Make the snapshot's `recall` honest for the prompt that was actually sent:
+   * only the memories, lore and summary the budget kept, plus what it trimmed.
+   */
+  noteUsed(used: RoleplayUsed): void;
   /** Keep the raw stream: the only faithful source for choices and props. */
   record(chunk: string): void;
   /** Settle the stored reply from the final content. */
@@ -51,9 +63,18 @@ export function createRoleplayTurn(parts: {
   choices: boolean;
   storyTurn?: StoryTurn;
   snapshot?: RoleplayTurnSnapshot;
+  /** The prompt at a trim level. Absent for turns that carry no prompt. */
+  prompt?: (trim: PromptTrim) => RoleplayPromptParts;
 }): RoleplayTurn {
   let raw = '';
   const { sanitize, stop, storyTurn } = parts;
+  /** Every memory and lore entry the scene could draw on; `noteUsed` narrows a copy of it, never itself. */
+  const fullRecall = parts.snapshot?.recall;
+  /** The per-turn tail: volatile prompt sections, the story turn, the steering line, then the speaker nudge. */
+  const withTail = (messages: RequestMessage[], volatile: string | undefined): RequestMessage[] => appendRoleplayNudge(
+    appendRoleplayStoryTurn(messages, [volatile, storyTurn?.instruction, parts.snapshot?.instruction].filter(Boolean).join('\n\n')),
+    parts.attribution
+  );
   return {
     speakerId: parts.speakerId,
     attribution: parts.attribution,
@@ -61,10 +82,23 @@ export function createRoleplayTurn(parts: {
     stop,
     snapshot: parts.snapshot,
     sanitize,
-    decorate: (messages) => appendRoleplayNudge(
-      appendRoleplayStoryTurn(messages, [storyTurn?.instruction, parts.snapshot?.instruction].filter(Boolean).join('\n\n')),
-      parts.attribution
-    ),
+    decorate: (messages) => withTail(messages, undefined),
+    compose(history, trim = {}) {
+      const prompt = parts.prompt?.(trim);
+      const system: RequestMessage[] = prompt?.stable ? [{ role: 'system', content: prompt.stable }] : [];
+      return { messages: withTail([...system, ...history], prompt?.volatile), used: prompt?.used ?? EMPTY_USED() };
+    },
+    noteUsed(used) {
+      const snapshot = parts.snapshot;
+      if (!snapshot) return;
+      const recall = fullRecall ?? { memories: [], lore: [], summary: false };
+      snapshot.recall = {
+        memories: recall.memories.filter((memory) => used.journal.includes(memory.id)),
+        lore: recall.lore.filter((entry) => used.lore.includes(entry.id)),
+        summary: recall.summary && used.memories.includes('summary'),
+        ...(used.trimmed.length ? { trimmed: used.trimmed } : {})
+      };
+    },
     record(chunk) {
       if (stop.length || parts.snapshot) raw += chunk;
     },
@@ -108,6 +142,8 @@ export function createRoleplayTurn(parts: {
     }
   };
 }
+
+const EMPTY_USED = (): RoleplayUsed => ({ lore: [], memories: [], journal: [], trimmed: [] });
 
 /** The turn for chats outside the roleplay space: changes nothing. */
 export const PASSTHROUGH_TURN: RoleplayTurn = createRoleplayTurn({

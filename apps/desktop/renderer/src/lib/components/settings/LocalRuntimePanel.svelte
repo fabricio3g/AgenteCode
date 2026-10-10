@@ -7,6 +7,8 @@
 -->
 
 <script lang="ts">
+  import IconButton from '$lib/components/ui/IconButton.svelte';
+
   import { onMount, onDestroy } from 'svelte';
   import { t } from 'svelte-i18n';
   import { get } from 'svelte/store';
@@ -162,7 +164,7 @@
 <!-- Installed builds + the running server -->
 <SettingsSection title={$t('runtime.installed')} description={$t('runtime.installedHint')}>
   {#snippet actions()}
-    <Tooltip label={$t('runtime.refresh')} position="bottom"><Button variant="ghost" size="icon-sm" onclick={() => void refresh()} aria-label={$t('runtime.refresh')}><RefreshCw /></Button></Tooltip>
+    <Tooltip label={$t('runtime.refresh')} position="bottom"><IconButton label={$t('runtime.refresh')} variant="ghost" size="sm" onclick={() => void refresh()} ><RefreshCw /></IconButton></Tooltip>
   {/snippet}
 
   {#if !runtimes.length}
@@ -185,9 +187,9 @@
         {:else}
           <Button variant="outline" size="sm" onclick={() => appStore.setLocalRuntimePath(rt.path)}>{$t('runtime.use')}</Button>
         {/if}
-        <Tooltip label={$t('runtime.deleteTitle', { values: { name: rt.name } })} position="bottom"><Button variant="ghost" size="icon-sm" class="text-muted-foreground hover:text-error" onclick={() => void removeRuntime(rt)} aria-label={$t('runtime.deleteTitle', { values: { name: rt.name } })}>
+        <Tooltip label={$t('runtime.deleteTitle', { values: { name: rt.name } })} position="bottom"><IconButton label={$t('runtime.deleteTitle', { values: { name: rt.name } })} variant="ghost" size="sm" class="text-muted-foreground hover:text-error" onclick={() => void removeRuntime(rt)} >
           <Trash2 />
-        </Button></Tooltip>
+        </IconButton></Tooltip>
       </SettingsRow>
     {/each}
   {/if}
@@ -235,9 +237,9 @@
 <SettingsSection title={$t('runtime.install')} description={$t('runtime.installHint', { values: { platform: platformLabel } })}>
   {#snippet actions()}
     {#if releaseTag}<span class="text-xs tabular-nums text-muted-foreground">{releaseTag}</span>{/if}
-    <Tooltip label={$t('runtime.checkReleases')} position="bottom"><Button variant="ghost" size="icon-sm" onclick={() => void fetchLatestRelease()} disabled={loadingRelease} aria-label={$t('runtime.checkReleases')}>
+    <Tooltip label={$t('runtime.checkReleases')} position="bottom"><IconButton label={$t('runtime.checkReleases')} variant="ghost" size="sm" onclick={() => void fetchLatestRelease()} disabled={loadingRelease} >
       <RefreshCw class={loadingRelease ? 'animate-spin' : ''} />
-    </Button></Tooltip>
+    </IconButton></Tooltip>
   {/snippet}
 
   {#if releaseNotice}

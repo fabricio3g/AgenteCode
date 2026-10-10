@@ -1,6 +1,10 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+  import UiTextarea from '$lib/components/ui/Textarea.svelte';
+  import UiButton from '$lib/components/ui/Button.svelte';
+  import { cn as uiClass } from '$lib/utils/cn';
+
   import { t } from 'svelte-i18n';
   import { appStore } from '$lib/stores/app.svelte';
   import { onMount, tick, untrack } from 'svelte';
@@ -15,7 +19,7 @@
 
   let { messageId, initialContent, role, onCancel, onDone }: Props = $props();
 
-  let textarea: HTMLTextAreaElement | undefined;
+  let textarea = $state<HTMLTextAreaElement | undefined>();
   // Edited draft starts from the message and must not be clobbered if the
   // prop changes while the editor is open (same message is saved on done).
   let content = $state(untrack(() => initialContent));
@@ -74,20 +78,19 @@
 </script>
 
 <div class={`edit-card ${role === 'user' ? 'is-user' : 'is-assistant'}`}>
-  <textarea
-    bind:this={textarea}
-    class="edit-input"
+  <UiTextarea variant="composer"
+    bind:ref={textarea}
+    class={uiClass("edit-input", "ui-local-3458897b")}
     value={content}
-    rows="1"
+    rows={1}
     oninput={handleInput}
     onkeydown={onKeydown}
     aria-label={$t('chat.editor.label')}
-  ></textarea>
+  ></UiTextarea>
 
-  <div class="edit-footer">
-    <span class="edit-hint">{$t('chat.editor.hint')}</span>
-    <button class="edit-btn" type="button" onclick={onCancel}>{$t('chat.editor.cancel')}</button>
-    <button class="edit-btn is-primary" type="button" onclick={save} disabled={!content.trim()}>{$t('chat.editor.save')}</button>
+  <div class="edit-footer" title={$t('chat.editor.hint')}>
+    <UiButton variant="plain" class={uiClass("edit-btn", "ui-local-3458897b")} type="button" onclick={onCancel}>{$t('chat.editor.cancel')}</UiButton>
+    <UiButton variant="plain" class={uiClass("edit-btn is-primary", "ui-local-3458897b")} type="button" onclick={save} disabled={!content.trim()}>{$t('chat.editor.save')}</UiButton>
   </div>
 </div>
 
@@ -110,7 +113,7 @@
     box-shadow: 0 1px 2px rgb(0 0 0 / 0.04), 0 4px 14px -6px rgb(0 0 0 / 0.1);
   }
 
-  .edit-input {
+  :is(.edit-input, :global(.edit-input.ui-local-3458897b)) {
     display: block;
     width: 100%;
     min-height: 44px;
@@ -129,22 +132,13 @@
   .edit-footer {
     display: flex;
     align-items: center;
+    justify-content: flex-end;
     gap: 0.35rem;
     margin-top: 0.4rem;
   }
 
-  .edit-hint {
-    min-width: 0;
-    flex: 1;
-    overflow: hidden;
-    padding-left: 0.25rem;
-    color: var(--muted-foreground);
-    font-size: 11.5px;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
 
-  .edit-btn {
+  :is(.edit-btn, :global(.edit-btn.ui-local-3458897b)) {
     height: 2rem;
     padding: 0 0.85rem;
     border: 0;
@@ -156,22 +150,22 @@
     transition: background-color var(--motion-fast) var(--motion-ease), color var(--motion-fast) var(--motion-ease), opacity var(--motion-fast) var(--motion-ease);
   }
 
-  .edit-btn:hover:not(:disabled) {
+  :is(.edit-btn:hover:not(:disabled), :global(.edit-btn:hover:not(:disabled).ui-local-3458897b)) {
     background: var(--muted);
     color: var(--foreground);
   }
 
-  .edit-btn.is-primary {
+  :is(.edit-btn.is-primary, :global(.edit-btn.is-primary.ui-local-3458897b)) {
     background: var(--foreground);
     color: var(--background);
   }
 
-  .edit-btn.is-primary:hover:not(:disabled) {
+  :is(.edit-btn.is-primary:hover:not(:disabled), :global(.edit-btn.is-primary:hover:not(:disabled).ui-local-3458897b)) {
     background: color-mix(in srgb, var(--foreground) 88%, var(--background));
     color: var(--background);
   }
 
-  .edit-btn:disabled {
+  :is(.edit-btn:disabled, :global(.edit-btn:disabled.ui-local-3458897b)) {
     cursor: default;
     opacity: 0.35;
   }

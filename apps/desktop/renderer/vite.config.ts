@@ -57,6 +57,14 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     sourcemap: false,
+    rollupOptions: {
+      output: {
+        // Tesseract requests <language>.traineddata.gz below langPath. Unlike
+        // JS/CSS assets, that filename is part of its protocol and stays exact.
+        assetFileNames: (asset) => asset.names.some((name) => name.endsWith('.traineddata.gz'))
+          ? 'assets/ocr/[name][extname]' : 'assets/[name]-[hash][extname]',
+      },
+    },
     // Local Electron assets include Monaco and office libraries. Keep a
     // 5 MiB chunk budget; CI still rejects build diagnostics and regressions.
     chunkSizeWarningLimit: 5 * 1024,

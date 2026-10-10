@@ -3,6 +3,7 @@ import type { IpcMain } from 'electron';
 type RagHandlerDeps = {
   ipcMain: IpcMain;
   ingestDocument: (payload: unknown) => unknown;
+  readIngestedDocument: (payload: { chat_id: string; doc_id: string }) => unknown;
   ingestText: (payload: unknown) => unknown;
   ingestTextFast: (payload: unknown) => unknown;
   queryDocuments: (payload: unknown) => unknown;
@@ -15,6 +16,7 @@ type RagHandlerDeps = {
 export function registerRagHandlers({
   ipcMain,
   ingestDocument,
+  readIngestedDocument,
   ingestText,
   ingestTextFast,
   queryDocuments,
@@ -24,6 +26,7 @@ export function registerRagHandlers({
   hasRagDocuments,
 }: RagHandlerDeps): void {
   ipcMain.handle('ingest_document', (_e, { payload }) => ingestDocument(payload));
+  ipcMain.handle('read_ingested_document', (_e, { payload }) => readIngestedDocument(payload));
   ipcMain.handle('ingest_text', (_e, { payload }) => ingestText(payload));
   ipcMain.handle('ingest_text_fast', (_e, { payload }) => ingestTextFast(payload));
   ipcMain.handle('query_documents', (_e, { payload }) => queryDocuments(payload));

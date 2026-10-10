@@ -70,11 +70,7 @@ impl Setting {
             (if on { on_text } else { off_text }.to_string(), on)
         };
         match self {
-            Self::SmartCompaction => on_off(
-                state.config.config.smart_compaction,
-                "on · model summary",
-                "off · trims old turns",
-            ),
+            Self::SmartCompaction => on_off(state.config.config.smart_compaction, "on", "off"),
             Self::ParallelSubagents => (
                 format!("{} at once", state.config.config.parallel_subagents()),
                 false,
@@ -84,8 +80,8 @@ impl Setting {
             Self::MediaImages | Self::MediaAudio | Self::MediaVideo => on_off(
                 self.media_kind()
                     .is_some_and(|kind| state.config.config.allow_media.contains(&kind)),
-                "open without asking",
-                "ask first",
+                "allow",
+                "ask",
             ),
             Self::Theme => (
                 match crate::style::current_theme() {
@@ -187,7 +183,7 @@ mod tests {
             .map(|c| c.symbol())
             .collect();
         assert!(text.contains("Smart compaction"), "{text}");
-        assert!(text.contains("off · trims old turns"), "{text}");
+        assert!(text.contains("off"), "{text}");
         assert!(text.contains("Subagent models"), "{text}");
         assert!(text.contains("8 at once"), "default parallelism: {text}");
     }

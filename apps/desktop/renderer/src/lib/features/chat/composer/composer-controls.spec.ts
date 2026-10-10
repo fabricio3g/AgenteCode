@@ -19,6 +19,7 @@ beforeEach(() => {
   vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
   store.reasoningCapabilities = { supported: true, source: 'catalog', levels: ['low', 'medium', 'high'] };
   store.reasoningLevel = null;
+  store.config = {};
   // The real store keeps the choice, so the arrows read their own result.
   store.setReasoningLevel = vi.fn((level: ReasoningLevel | null) => { store.reasoningLevel = level; });
 });
@@ -70,7 +71,7 @@ describe('context details', () => {
     expect(view.queryByRole('tooltip')).toBeNull();
   });
 
-  it.each([[79, '--ring'], [80, '--warning'], [95, '--destructive']])('uses the threshold colour at %s%%', (used, colour) => {
+  it.each([[79, '--work-accent'], [80, '--warning'], [95, '--destructive']])('uses the threshold colour at %s%%', (used, colour) => {
     const view = render(ContextUsageRing, { props: { usedTokens: Number(used), maxTokens: 100 } });
     expect(view.container.querySelector('.progress')?.getAttribute('style')).toContain(String(colour));
   });
@@ -85,6 +86,13 @@ describe('context details', () => {
 });
 
 describe('thinking level', () => {
+  it('never renders a local profile for a cloud configuration before a new probe starts', () => {
+    store.reasoningCapabilities = { supported: true, source: 'template', levels: ['off', 'on'], route: 'local:placeholder.gguf:/tmp/placeholder.gguf' };
+    store.config = { llm: { backend_mode: 'api', provider: 'openrouter', providers: { openrouter: { model: 'cloud-reasoner', base_url: 'https://openrouter.ai/api/v1' } } } };
+    const view = render(ReasoningLevelSelector);
+    expect(view.queryByRole('button')).toBeNull();
+  });
+
   it('marks one stop per level between the named ends of the scale', async () => {
     store.reasoningCapabilities = {
       supported: true,

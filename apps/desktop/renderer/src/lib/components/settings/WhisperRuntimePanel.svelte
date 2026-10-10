@@ -3,6 +3,8 @@
 <!-- whisper.cpp builds on this machine: pick the one dictation uses, add a custom build, delete old ones. -->
 
 <script lang="ts">
+  import IconButton from '$lib/components/ui/IconButton.svelte';
+
   import { onMount } from 'svelte';
   import { t } from 'svelte-i18n';
   import { Check, FolderInput, LoaderCircle, Trash2 } from 'lucide-svelte';
@@ -74,9 +76,9 @@
         {:else}
           <Button variant="outline" size="sm" onclick={() => void use(runtime.path)}>{$t('voice.use')}</Button>
         {/if}
-        <Tooltip label={$t('voice.deleteRuntimeTitle', { values: { name: runtime.variant } })} position="bottom"><Button variant="ghost" size="icon-sm" class="text-muted-foreground hover:text-error" onclick={() => void remove(runtime)} aria-label={$t('voice.deleteRuntimeTitle', { values: { name: runtime.variant } })}>
+        <Tooltip label={$t('voice.deleteRuntimeTitle', { values: { name: runtime.variant } })} position="bottom"><IconButton label={$t('voice.deleteRuntimeTitle', { values: { name: runtime.variant } })} variant="ghost" size="sm" class="text-muted-foreground hover:text-error" onclick={() => void remove(runtime)} >
           <Trash2 />
-        </Button></Tooltip>
+        </IconButton></Tooltip>
       </div>
     {/each}
   {/if}

@@ -7,6 +7,9 @@
 -->
 
 <script lang="ts">
+  import UiIconButton from '$lib/components/ui/IconButton.svelte';
+  import { cn as uiClass } from '$lib/utils/cn';
+
   import { Tooltip } from '$lib/components/ui';
   import { Mic, Phone, Settings2 } from 'lucide-svelte';
   import { t } from 'svelte-i18n';
@@ -41,14 +44,14 @@
 
 <div class="composer-bar-trailing">
   <div class="mic-control">
-    <button
+    <UiIconButton label={dictation.listening ? $t('chat.dictation.stop') : copy.composer.dictate} size="sm"
       type="button"
-      class="ui-icon-button mic-btn"
-      class:is-listening={dictation.uiActive}
-      class:unavailable={!dictation.supported}
+      class={uiClass(" mic-btn", "ui-local-b54fdc09", {"is-listening": dictation.uiActive, "unavailable": !dictation.supported})}
+
+
       onclick={dictation.supported ? () => appStore.voiceModeActive ? oncall() : dictation.toggle(false) : undefined}
       disabled={!dictation.supported}
-      aria-label={dictation.listening ? $t('chat.dictation.stop') : copy.composer.dictate}
+
       aria-describedby="home-microphone-preview"
     >
       {#if dictation.listening}
@@ -60,16 +63,16 @@
       {:else}
         <Mic class="size-3.5" />
       {/if}
-    </button>
+    </UiIconButton>
     <div class="mic-preview" id="home-microphone-preview" role="group" aria-label={$t('voice.call.title')}>
       <Tooltip label={appStore.voiceModeActive ? $t('voice.call.end') : $t('voice.call.start')} position="top">
-        <button type="button" class="ui-icon-button" class:selected={appStore.voiceModeActive} aria-label={appStore.voiceModeActive ? $t('voice.call.end') : $t('voice.call.start')} onclick={oncall} disabled={!dictation.supported}><Phone class="size-4" /></button>
+        <UiIconButton label={appStore.voiceModeActive ? $t('voice.call.end') : $t('voice.call.start')} size="sm" type="button" class={uiClass("", "ui-local-b54fdc09", {"selected": appStore.voiceModeActive})}   onclick={oncall} disabled={!dictation.supported}><Phone class="size-4" /></UiIconButton>
       </Tooltip>
       <Tooltip label={micTitle} position="top">
-        <button type="button" class="ui-icon-button" class:selected={dictation.listening} aria-label={copy.composer.dictate} onclick={() => { if (appStore.voiceModeActive) oncall(); dictation.toggle(false); }} disabled={!dictation.supported}><Mic class="size-4" /></button>
+        <UiIconButton label={copy.composer.dictate} size="sm" type="button" class={uiClass("", "ui-local-b54fdc09", {"selected": dictation.listening})}   onclick={() => { if (appStore.voiceModeActive) oncall(); dictation.toggle(false); }} disabled={!dictation.supported}><Mic class="size-4" /></UiIconButton>
       </Tooltip>
       <Tooltip label={$t('voice.call.settings')} position="top">
-        <button type="button" class="ui-icon-button" aria-label={$t('voice.call.settings')} onclick={() => appStore.openSettings('voice')}><Settings2 class="size-4" /></button>
+        <UiIconButton label={$t('voice.call.settings')} size="sm" type="button" class={uiClass("", "ui-local-b54fdc09")}  onclick={() => appStore.openSettings('voice')}><Settings2 class="size-4" /></UiIconButton>
       </Tooltip>
     </div>
   </div>
@@ -90,11 +93,11 @@
   /* Bridges the gap to the button so the pointer can travel up into the card. */
   .mic-preview::after { content: ''; position: absolute; inset-inline: 0; top: 100%; height: 0.5rem; }
   .mic-control:hover .mic-preview, .mic-control:focus-within .mic-preview { display: flex; }
-  .mic-preview .selected { background: var(--muted); color: var(--foreground); }
-  .mic-btn { color: var(--text-secondary); }
-  .mic-btn.unavailable { opacity: 0.4; cursor: not-allowed; }
-  .mic-btn.is-listening { background: var(--primary); color: var(--primary-foreground); }
-  .mic-btn.is-listening:hover { opacity: 0.9; }
+  .mic-preview :global(.selected.ui-local-b54fdc09) { background: var(--muted); color: var(--foreground); }
+  :global(.mic-btn.ui-local-b54fdc09) { color: var(--text-secondary); }
+  :global(.mic-btn.unavailable.ui-local-b54fdc09) { opacity: 0.4; cursor: not-allowed; }
+  :global(.mic-btn.is-listening.ui-local-b54fdc09) { background: var(--primary); color: var(--primary-foreground); }
+  :global(.mic-btn.is-listening:hover.ui-local-b54fdc09) { opacity: 0.9; }
 
   .mic-lines {
     display: flex;

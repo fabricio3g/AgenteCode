@@ -7,6 +7,10 @@
 -->
 
 <script lang="ts">
+  import UiListRow from '$lib/components/ui/ListRow.svelte';
+
+  import { cn as uiClass } from '$lib/utils/cn';
+
   import { onMount } from 'svelte';
   import { t } from 'svelte-i18n';
   import { Bot as BotIcon } from 'lucide-svelte';
@@ -23,10 +27,10 @@
 </script>
 
 {#snippet row(bot: Bot)}
-  <button
+  <UiListRow
     type="button"
-    class="sidebar-row"
-    class:is-current={botsStore.selected === bot.handle}
+    class={uiClass("sidebar-row", {"is-current": botsStore.selected === bot.handle})}
+
     aria-current={botsStore.selected === bot.handle ? 'true' : undefined}
     title={bot.role || `@${bot.handle}`}
     onclick={() => void botsStore.select(bot.handle)}
@@ -34,7 +38,7 @@
     <BotAvatar {bot} size="sm" />
     <span class="sidebar-row-label">{bot.title}</span>
     {#if bot.working}<StatusDot tone="active" label={$t('bots.working')} />{/if}
-  </button>
+  </UiListRow>
 {/snippet}
 
 <nav aria-label={$t('bots.roster')}>

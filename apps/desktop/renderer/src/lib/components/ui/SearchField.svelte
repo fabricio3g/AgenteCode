@@ -1,25 +1,13 @@
-<svelte:options runes={true} />
-
-<!--
-  The library screens' search box: a rounded field with a leading search icon
-  and a clear button once something is typed.
--->
-
 <script lang="ts">
+  import type { HTMLInputAttributes } from 'svelte/elements';
   import { Search, X } from 'lucide-svelte';
-
-  let { value = $bindable(''), placeholder, clearLabel }: { value?: string; placeholder: string; clearLabel: string } = $props();
+  import Input from './Input.svelte';
+  import IconButton from './IconButton.svelte';
+  import { cn } from '$lib/utils/cn';
+  let { value = $bindable(''), ref = $bindable(), placeholder, clearLabel, class: className = '', variant = 'default', ...rest }: Omit<HTMLInputAttributes, 'value'> & { value?: string; ref?: HTMLInputElement; placeholder: string; clearLabel: string; variant?: 'default' | 'surface' | 'inline' } = $props();
 </script>
-
-<div class="relative min-w-[14rem] flex-1">
-  <Search class="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-  <input
-    class="h-10 w-full rounded-full border border-border bg-background pl-10 pr-9 text-sm text-foreground outline-none transition focus:border-[var(--border-hover)]"
-    bind:value
-    {placeholder}
-    aria-label={placeholder}
-  />
-  {#if value}
-    <button type="button" class="absolute right-2 top-1/2 flex size-7 -translate-y-1/2 items-center justify-center rounded-full text-muted-foreground hover:bg-[var(--surface-hover)]" aria-label={clearLabel} onclick={() => (value = '')}><X class="size-3.5" /></button>
-  {/if}
+<div class={cn('relative min-w-0 flex-1', className)}>
+  <Search class="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+  <Input type="search" bind:value bind:ref {placeholder} {variant} aria-label={placeholder} class="pl-8 pr-8 [&::-webkit-search-cancel-button]:appearance-none" {...rest} />
+  {#if value}<div class="absolute right-1 top-1/2 -translate-y-1/2"><IconButton label={clearLabel} size="xs" onclick={() => { value = ''; ref?.focus(); }}><X /></IconButton></div>{/if}
 </div>

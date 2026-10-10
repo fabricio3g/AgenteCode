@@ -1,10 +1,11 @@
 import { copy } from '$lib/copy';
 
 const PATTERNS: Array<[RegExp, keyof typeof copy.model.loadFailed]> = [
+  [/unknown model architecture|unsupported (?:model|architecture|tensor type)|not supported (?:by|in) this (?:version|build)|GGUF.*software only supports/i, 'runtime'],
   [/out of memory|\boom\b|cudaMalloc|failed to allocate|insufficient memory|not enough memory/i, 'oom'],
   [/address already in use|EADDRINUSE|port .*in use/i, 'port'],
   [/runtime (?:not found|missing)|ENOENT.*llama-server|no runtime|spawn .*ENOENT|exited before|crashed/i, 'runtime'],
-  [/failed to (?:load|read) model|invalid (?:magic|gguf)|gguf_init|unknown model architecture|file (?:not found|is corrupt)/i, 'file']
+  [/failed to (?:load|read) model|invalid (?:magic|gguf)|gguf_init|file (?:not found|is corrupt)/i, 'file']
 ];
 
 /** Turns a llama-server / supervisor failure into a sentence a person can act on. */

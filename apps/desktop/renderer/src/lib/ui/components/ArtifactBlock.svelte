@@ -1,4 +1,9 @@
 <script lang="ts">
+  import IconButton from '$lib/components/ui/IconButton.svelte';
+
+  import UiButton from '$lib/components/ui/Button.svelte';
+  import { cn as uiClass } from '$lib/utils/cn';
+
   /*
    * An artifact in the chat. Visuals that are the answer itself (charts,
    * diagrams, maps, dashboards, cards) render inline with a quiet "open"
@@ -13,6 +18,7 @@
   import { resolveArtifactPresentation } from '$lib/services/artifact-model';
   import { artifactFileBlob } from '$lib/utils/artifact-files';
   import InlineArtifactPreview from './InlineArtifactPreview.svelte';
+  import { artifactKindAccent } from './artifact-accent';
 
   interface Props {
     artifact?: AgentArtifact | null;
@@ -72,23 +78,23 @@
   {#if inline}
     <section class="art-inline" data-status={resolved.manifest.status}>
       <InlineArtifactPreview artifact={resolved.artifact} />
-      <button type="button" class="art-expand" onclick={onOpen} aria-label={$t('artifacts.card.expand')} title={$t('artifacts.card.expand')}>
+      <IconButton label={$t('artifacts.card.expand')} size="xs" variant="ghost" type="button" class={uiClass("art-expand", "ui-local-51be238f")} onclick={onOpen}  title={$t('artifacts.card.expand')}>
         <Maximize2 class="size-3.5" />
-      </button>
+      </IconButton>
     </section>
   {:else}
-    <div class="art-card" data-status={resolved.manifest.status}>
-      <button type="button" class="art-open" onclick={onOpen} title={$t('artifacts.card.open')}>
+    <div class="art-card" data-status={resolved.manifest.status} style:--artifact-accent={artifactKindAccent(resolved.manifest.kind)}>
+      <UiButton variant="plain" type="button" class={uiClass("art-open", "ui-local-51be238f")} onclick={onOpen} title={$t('artifacts.card.open')}>
         <span class="art-icon" aria-hidden="true"><CardIcon class="size-[18px]" /></span>
         <span class="min-w-0 flex-1">
           <span class="art-title">{artifact.title || $t('artifacts.untitled')}</span>
           <span class="art-meta">{meta}</span>
         </span>
-      </button>
+      </UiButton>
       {#if resolved.visibleFiles.length === 1}
-        <button type="button" class="art-action" onclick={downloadOnlyFile} aria-label={$t('artifacts.card.download')} title={$t('artifacts.card.download')}>
+        <IconButton label={$t('artifacts.card.download')} size="xs" variant="ghost" type="button" class={uiClass("art-action", "ui-local-51be238f")} onclick={downloadOnlyFile}  title={$t('artifacts.card.download')}>
           <Download class="size-4" />
-        </button>
+        </IconButton>
       {/if}
     </div>
     {#if resolved.manifest.status === 'invalid'}
@@ -105,18 +111,18 @@
     align-items: center;
     gap: 0.25rem;
     padding: 0.375rem 0.5rem 0.375rem 0.375rem;
-    border: 1px solid var(--border);
+    border: 1px solid color-mix(in srgb, var(--artifact-accent) 24%, var(--border));
     border-radius: 0.875rem;
-    background: var(--background);
+    background: color-mix(in srgb, var(--artifact-accent) 3%, var(--background));
     transition: border-color var(--motion-fast) var(--motion-ease);
   }
   .art-card:hover {
-    border-color: color-mix(in srgb, var(--foreground) 20%, var(--border));
+    border-color: color-mix(in srgb, var(--artifact-accent) 45%, var(--border));
   }
   .art-card[data-status='invalid'] {
     border-color: color-mix(in srgb, var(--error) 40%, var(--border));
   }
-  .art-open {
+  :global(.art-open.ui-local-51be238f) {
     display: flex;
     min-width: 0;
     flex: 1;
@@ -127,9 +133,9 @@
     text-align: left;
     cursor: pointer;
   }
-  .art-open:focus-visible,
-  .art-action:focus-visible,
-  .art-expand:focus-visible {
+  :global(.art-open:focus-visible.ui-local-51be238f),
+  :global(.art-action:focus-visible.ui-local-51be238f),
+  :global(.art-expand:focus-visible.ui-local-51be238f) {
     outline: none;
     box-shadow: 0 0 0 2px color-mix(in srgb, var(--ring) 40%, transparent);
   }
@@ -141,8 +147,8 @@
     align-items: center;
     justify-content: center;
     border-radius: 0.625rem;
-    background: var(--muted);
-    color: var(--muted-foreground);
+    background: color-mix(in srgb, var(--artifact-accent) 12%, var(--card));
+    color: var(--artifact-accent);
   }
   .art-title,
   .art-meta {
@@ -161,7 +167,7 @@
     font-size: 12px;
     color: var(--muted-foreground);
   }
-  .art-action {
+  :global(.art-action.ui-local-51be238f) {
     display: inline-flex;
     width: 2rem;
     height: 2rem;
@@ -172,7 +178,7 @@
     color: var(--muted-foreground);
     transition: background-color var(--motion-fast) var(--motion-ease), color var(--motion-fast) var(--motion-ease);
   }
-  .art-action:hover {
+  :global(.art-action:hover.ui-local-51be238f) {
     background: var(--surface-hover);
     color: var(--foreground);
   }
@@ -188,7 +194,7 @@
     max-width: 100%;
     margin-top: 0.75rem;
   }
-  .art-expand {
+  :global(.art-expand.ui-local-51be238f) {
     position: absolute;
     top: 0.5rem;
     right: 0.5rem;
@@ -204,15 +210,15 @@
     opacity: 0;
     transition: opacity var(--motion-fast) var(--motion-ease), color var(--motion-fast) var(--motion-ease);
   }
-  .art-inline:hover .art-expand,
-  .art-expand:focus-visible {
+  .art-inline:hover :global(.art-expand.ui-local-51be238f),
+  :global(.art-expand:focus-visible.ui-local-51be238f) {
     opacity: 1;
   }
-  .art-expand:hover {
+  :global(.art-expand:hover.ui-local-51be238f) {
     color: var(--foreground);
   }
   @media (hover: none) {
-    .art-expand {
+    :global(.art-expand.ui-local-51be238f) {
       opacity: 1;
     }
   }

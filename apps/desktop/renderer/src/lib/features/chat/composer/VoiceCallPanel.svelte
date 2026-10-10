@@ -1,5 +1,8 @@
 <svelte:options runes={true} />
 <script lang="ts">
+  import UiIconButton from '$lib/components/ui/IconButton.svelte';
+  import { cn as uiClass } from '$lib/utils/cn';
+
   import { onMount, onDestroy } from 'svelte';
   import { Mic, MicOff, PhoneOff, Volume2, VolumeX, Settings2 } from 'lucide-svelte';
   import { t } from 'svelte-i18n';
@@ -65,9 +68,9 @@
 <section class="call-panel" aria-label={$t('voice.call.title')}>
   <div class="call-row">
     <Tooltip label={call.muted ? $t('voice.call.unmute') : $t('voice.call.mute')} position="top">
-      <button type="button" class="ui-icon-button input-toggle" class:hearing={call.speech} aria-label={call.muted ? $t('voice.call.unmute') : $t('voice.call.mute')} aria-pressed={call.muted} onclick={() => call.toggleMute()}>
+      <UiIconButton label={call.muted ? $t('voice.call.unmute') : $t('voice.call.mute')} size="sm" type="button" class={uiClass(" input-toggle", "ui-local-3fee7e8a", {"hearing": call.speech})}   aria-pressed={call.muted} onclick={() => call.toggleMute()}>
         {#if call.muted}<MicOff class="size-4" />{:else}<Mic class="size-4" />{/if}
-      </button>
+      </UiIconButton>
     </Tooltip>
     <div class="call-status">
       <span role="status">{title}</span>
@@ -78,13 +81,13 @@
     </div>
     <div class="call-controls">
       <Tooltip label={outputMuted ? $t('voice.call.enableOutput') : $t('voice.call.silenceOutput')} position="top">
-        <button type="button" class="ui-icon-button" aria-label={outputMuted ? $t('voice.call.enableOutput') : $t('voice.call.silenceOutput')} aria-pressed={outputMuted} onclick={() => { outputMuted = !outputMuted; if (outputMuted) ttsStore.stop(); }}>{#if outputMuted}<VolumeX class="size-4" />{:else}<Volume2 class="size-4" />{/if}</button>
+        <UiIconButton label={outputMuted ? $t('voice.call.enableOutput') : $t('voice.call.silenceOutput')} size="sm" type="button" class={uiClass("", "ui-local-3fee7e8a")}  aria-pressed={outputMuted} onclick={() => { outputMuted = !outputMuted; if (outputMuted) ttsStore.stop(); }}>{#if outputMuted}<VolumeX class="size-4" />{:else}<Volume2 class="size-4" />{/if}</UiIconButton>
       </Tooltip>
       <Tooltip label={`${$t('voice.call.settings')} · ${model} · ${call.deviceLabel || inputRoute} → ${outputRoute}`} position="top">
-        <button type="button" class="ui-icon-button" aria-label={$t('voice.call.settings')} onclick={() => { onend(); appStore.openSettings('voice'); }}><Settings2 class="size-4" /></button>
+        <UiIconButton label={$t('voice.call.settings')} size="sm" type="button" class={uiClass("", "ui-local-3fee7e8a")}  onclick={() => { onend(); appStore.openSettings('voice'); }}><Settings2 class="size-4" /></UiIconButton>
       </Tooltip>
       <Tooltip label={$t('voice.call.end')} position="top">
-        <button type="button" class="ui-icon-button end-call" aria-label={$t('voice.call.end')} onclick={onend}><PhoneOff class="size-4" /></button>
+        <UiIconButton label={$t('voice.call.end')} size="sm" type="button" class={uiClass(" end-call", "ui-local-3fee7e8a")}  onclick={onend}><PhoneOff class="size-4" /></UiIconButton>
       </Tooltip>
     </div>
   </div>
@@ -99,12 +102,12 @@
   .call-status { display: grid; flex: 1; min-width: 0; gap: .15rem; padding-inline: .25rem; }
   .call-status > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .activity { color: var(--muted-foreground); font-size: var(--text-xs); }
-  .input-toggle.hearing { color: var(--accent-strong); background: var(--accent-soft); }
+  :global(.input-toggle.hearing.ui-local-3fee7e8a) { color: var(--accent-strong); background: var(--accent-soft); }
   .input-meter { display: flex; gap: 2px; align-items: center; margin-inline: .35rem; }
   .input-meter i { width: 2px; height: 12px; border-radius: 2px; background: var(--muted); }
   .input-meter i.lit { background: var(--muted-foreground); }
-  .input-meter.hearing i.lit { background: var(--accent-strong); }
+  :is(.input-meter.hearing, :global(.input-meter.hearing.ui-local-3fee7e8a)) i.lit { background: var(--accent-strong); }
   .call-controls { gap: .1rem; flex-shrink: 0; }
-  .end-call { background: var(--muted); }
+  :global(.end-call:hover.ui-local-3fee7e8a) { color: var(--error); }
   .call-error { color: var(--warning); line-height: 1.5; margin: .4rem .25rem; font-size: var(--text-xs); }
 </style>

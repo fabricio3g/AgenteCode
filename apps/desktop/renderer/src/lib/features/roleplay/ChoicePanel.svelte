@@ -14,6 +14,11 @@
 -->
 
 <script lang="ts">
+  import IconButton from '$lib/components/ui/IconButton.svelte';
+
+  import UiButton from '$lib/components/ui/Button.svelte';
+  import { cn as uiClass } from '$lib/utils/cn';
+
   import { X } from 'lucide-svelte';
   import { t } from 'svelte-i18n';
   import { appStore } from '$lib/stores/app.svelte';
@@ -131,24 +136,24 @@
 
   <div class="rows">
     {#each choices as choice, index (index)}
-      <button
+      <UiButton variant="plain"
         type="button"
-        class="row {picked === index ? 'is-picked' : ''} {picked != null && picked !== index ? 'is-dropped' : ''}"
+        class={uiClass(`row ${picked === index ? 'is-picked' : ''} ${picked != null && picked !== index ? 'is-dropped' : ''}`, "ui-local-7c16d68f")}
         {disabled}
         onclick={() => pick(index)}
       >
         <span class="row-index">{index + 1}</span>
         <span class="min-w-0 flex-1">{choice}</span>
-      </button>
+      </UiButton>
     {/each}
   </div>
 
   <div class="foot">
     <span class="hint">{$t('roleplay.choices.hint', { values: { keys: choices.length > 1 ? `1–${choices.length}` : '1' } })}</span>
     {#if ondismiss}
-      <button type="button" class="dismiss" aria-label={$t('roleplay.choices.dismiss')} onclick={ondismiss}>
+      <IconButton label={$t('roleplay.choices.dismiss')} size="xs" variant="ghost" type="button" class={uiClass("dismiss", "ui-local-7c16d68f")}  onclick={ondismiss}>
         <X class="size-3" />
-      </button>
+      </IconButton>
     {/if}
   </div>
 </div>
@@ -190,7 +195,7 @@
     flex-direction: column;
   }
 
-  .row {
+  :global(.row.ui-local-7c16d68f) {
     display: flex;
     align-items: center;
     gap: 0.5rem;
@@ -209,25 +214,25 @@
       transform var(--motion-smooth) var(--motion-ease-out);
   }
 
-  .row:first-child {
+  :global(.row:first-child.ui-local-7c16d68f) {
     border-top: 0;
   }
 
-  .row:hover:not(:disabled) {
+  :global(.row:hover:not(:disabled).ui-local-7c16d68f) {
     background: var(--surface-hover);
   }
 
-  .row:disabled {
+  :global(.row:disabled.ui-local-7c16d68f) {
     cursor: default;
     opacity: 0.5;
   }
 
   /* The pick holds; the rest fall away before the turn sends. */
-  .row.is-picked {
+  :global(.row.is-picked.ui-local-7c16d68f) {
     background: var(--accent-soft);
   }
 
-  .row.is-dropped {
+  :global(.row.is-dropped.ui-local-7c16d68f) {
     opacity: 0;
     transform: translateY(0.125rem);
   }
@@ -247,7 +252,7 @@
     font-variant-numeric: tabular-nums;
   }
 
-  .row.is-picked .row-index {
+  :global(.row.is-picked.ui-local-7c16d68f) .row-index {
     border-color: var(--primary);
     background: var(--primary);
     color: var(--primary-foreground);
@@ -267,7 +272,7 @@
     font-size: var(--text-xs);
   }
 
-  .dismiss {
+  :global(.dismiss.ui-local-7c16d68f) {
     display: flex;
     align-items: center;
     justify-content: center;
@@ -280,7 +285,7 @@
     cursor: pointer;
   }
 
-  .dismiss:hover {
+  :global(.dismiss:hover.ui-local-7c16d68f) {
     background: var(--surface-hover);
     color: var(--foreground);
   }

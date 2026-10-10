@@ -1,10 +1,24 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createWorkProductArtifactFiles, validateGeneratedDocumentArgs } from './generated-documents';
+import { createWorkProductArtifactFiles, validateGeneratedDocumentArgs, reportToSlides } from './generated-documents';
+import { normalizeReportDocument } from '$shared/report-document';
 import { invoke } from './bridge';
 
 vi.mock('./bridge', () => ({ invoke: vi.fn(async (command: string) => command === 'generate_pptx' ? [80, 75] : { bytes: [80, 75], mime: '' }) }));
 
 describe('generated document validation', () => {
+  it('retains late sections, decimal values, tables and appendix in slide conversion', () => {
+    const report = normalizeReportDocument({ title: 'Annual report',
+      sections: Array.from({ length: 14 }, (_, i) => ({ title: `Section ${i}`, content: `Revenue grew 12.5% in section ${i}.` })),
+      tables: [{ name: 'Ledger', columns: ['USD'], rows: [[12.5]] }], appendix: [{ title: 'Appendix', content: 'Final evidence.' }] });
+    const slides = reportToSlides(report);
+    expect(JSON.stringify(slides)).toContain('12.5%'); expect(JSON.stringify(slides)).toContain('Section 13');
+    expect(slides).toContainEqual(expect.objectContaining({ title: 'Ledger', layout: 'table' }));
+    expect(slides).toContainEqual(expect.objectContaining({ title: 'Appendix' }));
+  });
+  it('reports when a workbook contains only a narrative summary', async () => {
+    const output = await createWorkProductArtifactFiles({ title: 'Summary', executiveSummary: 'A useful narrative summary without any extracted data rows. It describes the available evidence and the scope of this document clearly.', formats: ['xlsx'] });
+    expect(output.warnings).toHaveLength(1);
+  });
   it('preserves raw spreadsheet rows and slides through multi-format dispatch', async () => {
     await createWorkProductArtifactFiles({ title: 'Data', formats: ['xlsx'], columns: ['amount'], rows: [[42]] });
     expect(invoke).toHaveBeenCalledWith('generate_xlsx', { data: expect.objectContaining({ sheets: expect.arrayContaining([expect.objectContaining({ columns: ['amount'], rows: [[42]] })]) }) });

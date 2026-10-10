@@ -1,6 +1,10 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+  import IconButton from '$lib/components/ui/IconButton.svelte';
+
+  import { cn as uiClass } from '$lib/utils/cn';
+
   import { X } from 'lucide-svelte';
   import { getFileIcon } from '$lib/utils/doc-utils';
   import { fileTypeLabel } from '$lib/features/chat/document-surface';
@@ -27,17 +31,17 @@
 {#if appStore.pendingAttachments.length > 0}
   <div class="attachment-row">
     {#each appStore.pendingAttachments as file (file.id)}
-      {#if file.kind === 'image' && (file.preview || file.base64)}
+      {#if file.kind === 'image' && file.status === 'ready' && (file.preview || file.base64)}
         <div class="group relative">
           <img src={file.base64 || file.preview} alt={file.name} class="attachment-thumb" />
-          <button
-            aria-label="Remove image"
-            class="remove-btn"
+          <IconButton label={"Remove image"} size="xs" variant="ghost"
+
+            class={uiClass("remove-btn", "ui-local-6833b011")}
             type="button"
             onclick={(e) => { e.stopPropagation(); appStore.removeAttachment(file.id); }}
           >
             <X class="h-3 w-3" />
-          </button>
+          </IconButton>
         </div>
       {:else}
         <div class="attachment-card group relative" class:is-error={file.status === 'error'}>
@@ -53,25 +57,25 @@
 
           <span class="attachment-copy">
             <span class="attachment-name" title={file.name}>{file.name}</span>
-            <span class="attachment-detail">
+            <span class="attachment-detail" title={file.error || file.warning || undefined}>
               {#if file.status === 'error'}
                 <span class="text-error">{file.error || 'Could not read this file'}</span>
               {:else if file.status === 'processing'}
-                Reading…
+                {file.processingMode === 'transcription' ? 'Transcribing…' : file.processingMode === 'ocr' ? 'Reading text…' : 'Reading…'}
               {:else}
-                {detailLine(file)}
+                {detailLine(file)}{file.warning ? ' · Partial reading' : ''}
               {/if}
             </span>
           </span>
 
-          <button
-            aria-label="Remove file"
-            class="remove-btn"
+          <IconButton label={"Remove file"} size="xs" variant="ghost"
+
+            class={uiClass("remove-btn", "ui-local-6833b011")}
             type="button"
             onclick={(e) => { e.stopPropagation(); appStore.removeAttachment(file.id); }}
           >
             <X class="h-3 w-3" />
-          </button>
+          </IconButton>
         </div>
       {/if}
     {/each}
@@ -100,7 +104,7 @@
   }
 
   .attachment-card:hover {
-    box-shadow: inset 0 0 0 1px var(--composer-ring-focus);
+    box-shadow: inset 0 0 0 1px var(--ring);
   }
 
   .attachment-card.is-error {
@@ -152,7 +156,7 @@
     box-shadow: inset 0 0 0 1px var(--composer-ring);
   }
 
-  .remove-btn {
+  :global(.remove-btn.ui-local-6833b011) {
     position: absolute;
     top: -0.375rem;
     right: -0.375rem;
@@ -169,12 +173,12 @@
     transition: opacity 150ms ease, color 150ms ease;
   }
 
-  .group:hover .remove-btn,
-  .remove-btn:focus-visible {
+  .group:hover :global(.remove-btn.ui-local-6833b011),
+  :global(.remove-btn:focus-visible.ui-local-6833b011) {
     opacity: 1;
   }
 
-  .remove-btn:hover {
+  :global(.remove-btn:hover.ui-local-6833b011) {
     color: var(--text);
   }
 

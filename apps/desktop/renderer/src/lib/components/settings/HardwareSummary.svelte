@@ -1,6 +1,8 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+  import IconButton from '$lib/components/ui/IconButton.svelte';
+
   import { Cpu, LoaderCircle, MemoryStick, MonitorCheck, RefreshCw } from 'lucide-svelte';
   import { t } from 'svelte-i18n';
   import { Badge, Button, Tooltip } from '$lib/components/ui';
@@ -10,16 +12,16 @@
 
 <SettingsSection title={$t('runtime.hardware')} description={$t('runtime.hardwareHint')}>
   {#snippet actions()}
-    <Tooltip label={$t('runtime.refresh')} position="bottom"><Button
+    <Tooltip label={$t('runtime.refresh')} position="bottom"><IconButton label={$t('runtime.refresh')}
       variant="ghost"
-      size="icon-sm"
+      size="sm"
       loading={hardwareStore.loading}
       onclick={() => void hardwareStore.refresh()}
-      aria-label={$t('runtime.refresh')}
-     
+
+
     >
       <RefreshCw />
-    </Button></Tooltip>
+    </IconButton></Tooltip>
   {/snippet}
 
   {#if hardwareStore.loading && !hardwareStore.info}

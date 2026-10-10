@@ -1,5 +1,6 @@
+import { CHART_TYPES, resolveChartType } from '$lib/utils/chart-types';
 import { z } from 'zod';
-import type { ToolDefinition } from '$lib/services/chat-api';
+import type { ToolDefinition } from '$lib/services/chat/types';
 import type { ArtifactKind, ArtifactPresentation } from '$lib/types/chat';
 
 export const ARTIFACT_ICON_NAMES = [
@@ -46,11 +47,6 @@ function toToolParameters(schema: ArtifactArgsSchema): ToolDefinition['function'
   return json as ToolDefinition['function']['parameters'];
 }
 
-const CHART_TYPE_ALIASES: Record<string, string> = {
-  column: 'bar', columns: 'bar', 'stacked-bar': 'bar', stacked: 'bar', histogram: 'bar', horizontal: 'bar', 'horizontal-bar': 'bar',
-  area: 'line', spline: 'line', 'line-chart': 'line', trend: 'line',
-  doughnut: 'donut', ring: 'donut', 'pie-chart': 'pie'
-};
 
 function defineArtifact<const T extends ArtifactDefinitionInput>(input: T): T & Pick<ArtifactTypeEntry, 'toolDefinition'> {
   return {
@@ -68,6 +64,10 @@ function defineArtifact<const T extends ArtifactDefinitionInput>(input: T): T & 
 
 const infoCardAccentSchema = z.enum(['sky', 'green', 'amber', 'red', 'violet']);
 const pathSchema = z.string().min(1).optional().describe('Output file path');
+const spreadsheetColumn = z.union([z.string(), z.object({
+  header: z.string().optional(), key: z.string().optional(), width: z.number().positive().optional(),
+  numFmt: z.string().optional().describe('Excel number format, for example $#,##0.00, 0.0%, or yyyy-mm-dd'),
+})]);
 const sectionSchema = z.object({
   title: z.string().optional(),
   heading: z.string().optional(),
@@ -115,6 +115,23 @@ function repairInfoCardArgs(args: Record<string, unknown>): Record<string, unkno
   };
 }
 
+const chartArgsSchema = z.object({
+      title: z.string().min(1),
+      // Models reach for the chart vocabulary they know; map the common names.
+      chart_type: z.preprocess(
+        (value) => (resolveChartType(value) ?? value),
+        z.enum(CHART_TYPES)
+      ).default('bar'),
+      labels: z.array(z.coerce.string()).min(1),
+      datasets: z.array(z.object({ label: z.coerce.string().optional(), data: z.array(z.coerce.number().finite()).min(1).max(1000), sizes: z.array(z.coerce.number().positive()).max(1000).optional() })).min(1).max(24),
+      subtitle: z.string().optional(),
+      valueFormat: z.enum(['number', 'percent', 'currency']).optional().describe('percent values are percentage points (18 = 18%)'),
+      currency: z.string().optional().describe('ISO currency code, e.g. USD'),
+      max: z.number().positive().optional().describe('Gauge upper bound'),
+      annotations: z.array(z.object({ label: z.string(), index: z.number().int().nonnegative() })).optional().describe('Events marked at a zero-based label index'),
+      path: pathSchema
+    });
+
 const builtinArtifacts = [
   defineArtifact({
     id: 'report', name: 'Reports', description: 'HTML or Markdown formatted report documents', icon: 'file-text', category: 'documents', presentation: 'document', defaultEnabled: true,
@@ -138,7 +155,7 @@ const builtinArtifacts = [
     argsSchema: z.object({
       title: z.string().min(1), subtitle: z.string().optional(), executiveSummary: z.string().optional(),
       sections: z.array(sectionSchema).min(1).optional(),
-      tables: z.array(z.object({ name: z.string().optional(), columns: z.array(z.string()).optional(), rows: z.array(z.unknown()).optional() }).passthrough()).optional(),
+      tables: z.array(z.object({ name: z.string().optional(), columns: z.array(spreadsheetColumn).optional(), rows: z.array(z.unknown()).optional() }).passthrough()).optional(),
       sources: z.array(z.object({ id: z.string().optional(), title: z.string().optional(), url: z.string().optional(), provider: z.string().optional(), snippet: z.string().optional() }).passthrough()).optional(),
       limitations: z.array(z.string()).optional(),
       // Defaulted: omitting it used to fail the call outright.
@@ -156,8 +173,8 @@ const builtinArtifacts = [
     toolName: 'create_spreadsheet', toolDescription: 'Create a real XLSX workbook with a built-in table viewer.',
     argsSchema: z.object({
       title: z.string().min(1),
-      sheets: z.array(z.object({ name: z.string().optional(), columns: z.array(z.string()).optional(), rows: z.array(z.unknown()).optional() }).passthrough()).optional(),
-      columns: z.array(z.string()).optional(), rows: z.array(z.unknown()).optional(), path: pathSchema
+      sheets: z.array(z.object({ name: z.string().optional(), columns: z.array(spreadsheetColumn).optional(), rows: z.array(z.unknown()).optional() }).passthrough()).optional(),
+      columns: z.array(spreadsheetColumn).optional(), rows: z.array(z.unknown()).optional(), path: pathSchema
     })
   }),
   defineArtifact({
@@ -197,18 +214,9 @@ const builtinArtifacts = [
     argsSchema: z.object({ title: z.string().min(1), sections: z.array(sectionSchema).optional(), content: z.string().optional(), path: pathSchema })
   }),
   defineArtifact({
-    id: 'chart', name: 'Charts', description: 'Native inline bar, line, pie, and donut charts', icon: 'bar-chart', category: 'visuals', presentation: 'inline', defaultEnabled: true,
-    toolName: 'create_chart', toolDescription: 'Create a deterministic inline chart artifact rendered locally.',
-    argsSchema: z.object({
-      title: z.string().min(1),
-      // Models reach for the chart vocabulary they know; map the common names.
-      chart_type: z.preprocess(
-        (value) => (typeof value === 'string' ? (CHART_TYPE_ALIASES[value.trim().toLowerCase()] ?? value.trim().toLowerCase()) : value),
-        z.enum(['bar', 'line', 'pie', 'donut'])
-      ).default('bar'),
-      labels: z.array(z.coerce.string()).min(1),
-      datasets: z.array(z.object({ label: z.coerce.string().optional(), data: z.array(z.coerce.number()) })).min(1), path: pathSchema
-    })
+    id: 'chart', name: 'Charts', description: '23 interactive chart types, from trends and distributions to heatmaps', icon: 'bar-chart', category: 'visuals', presentation: 'inline', defaultEnabled: true,
+    toolName: 'create_chart', toolDescription: 'Create an interactive chart rendered locally. Choose the chart that answers the question; use an insight as the title and a concise subtitle with units and timeframe. Types: grouped/horizontal/stacked/100% bars; line/step/area/stacked/100% area; pie/donut; scatter/bubble; heatmap; histogram; waterfall; radar; lollipop/dot; boxplot; funnel; treemap; gauge. Standard data: labels and equal-length datasets. Scatter/bubble labels are numeric x values; bubble sizes are optional positive values. Heatmap: labels are columns, datasets are rows. Histogram and boxplot: supply raw samples, not pre-binned counts. Waterfall: data are sequential changes. Pie/donut/funnel/treemap/histogram use the first dataset. Gauge uses the first value and max (default 100). Percent stacks and area stacks require non-negative values. Do not invent data.',
+    argsSchema: chartArgsSchema
   }),
   defineArtifact({
     id: 'diagram', name: 'Diagrams', description: 'Native inline Mermaid diagrams', icon: 'workflow', category: 'visuals', presentation: 'inline', defaultEnabled: true,
@@ -240,11 +248,12 @@ const builtinArtifacts = [
   }),
   defineArtifact({
     id: 'dashboard', name: 'Dashboards', description: 'Metric cards, KPIs, and summary panels', icon: 'layout-dashboard', category: 'visuals', presentation: 'inline', defaultEnabled: true,
-    toolName: 'create_dashboard', toolDescription: 'Create a deterministic inline dashboard artifact.',
+    toolName: 'create_dashboard', toolDescription: 'Create an analytical dashboard with a compact metric strip and optional native charts. Write specific insight titles, a concise units/timeframe subtitle, and short interpretation sections. charts accept the same fields and 23 types as create_chart.',
     argsSchema: z.object({
       title: z.string().min(1), subtitle: z.string().optional(),
       metrics: z.array(z.object({ label: z.coerce.string(), value: z.union([z.string(), z.number()]), trend: z.string().optional(), unit: z.string().optional(), color: z.string().optional() }).passthrough()).min(1),
-      sections: z.array(z.object({ heading: z.string().optional(), content: z.string().optional() }).passthrough()).optional(), path: pathSchema
+      sections: z.array(z.object({ heading: z.string().optional(), content: z.string().optional() }).passthrough()).optional(),
+      charts: z.array(chartArgsSchema.omit({ path: true })).max(12).optional(), path: pathSchema
     })
   }),
   defineArtifact({
@@ -268,7 +277,7 @@ const builtinArtifacts = [
     toolDescription: [
       'Build a small interactive view inline in chat (dynamic view): a calculator with sliders, a comparison with toggles, a quiz or flashcards, a checklist, a timeline, a step-by-step explainer with tabs, a what-if simulation.',
       'html: the markup. script: plain JavaScript that makes it interactive (optional). Runs offline in a sealed frame: no network, no external libraries, no storage.',
-      'Style with the built-in classes, not your own colors: fx-stack, fx-row, fx-between, fx-grid, fx-card, fx-label, fx-value, fx-muted, fx-small, fx-btn (primary, ghost), fx-seg (buttons with class on), fx-tabs, fx-chip (good, bad, warn, info), fx-bar > span, fx-list, fx-timeline, fx-up, fx-down, fx-divider; plain table, details/summary, input[type=range] are styled too.',
+      'Style with the built-in classes, not your own colors: fx-stack, fx-row, fx-between, fx-grid, fx-metrics (compact KPI strip), fx-card, fx-chart, fx-insight, fx-caption, fx-label, fx-value, fx-muted, fx-small, fx-btn (primary, ghost), fx-seg (buttons with class on), fx-tabs, fx-chip (good, bad, warn, info), fx-bar > span, fx-list, fx-timeline, fx-up, fx-down, fx-divider; plain table, details/summary, input[type=range] are styled too.',
       'Helpers in script: fx.$(sel), fx.$$(sel), fx.num(n), fx.money(n, "EUR"), fx.pct(0.12), fx.ask("follow-up question") to suggest a next question.',
       'Use real numbers from the conversation or tools. Keep it compact.'
     ].join(' '),

@@ -48,7 +48,7 @@ fn status_trail(server: &ServerSnapshot) -> (String, Style) {
                 1 => "● 1 tool".to_string(),
                 n => format!("● {n} tools"),
             },
-            style::success(),
+            style::dim(),
         ),
         ServerStatus::Connecting => ("connecting…".to_string(), style::dim()),
         ServerStatus::Failed(_) => ("failed".to_string(), style::error()),
@@ -67,10 +67,6 @@ fn status_detail(server: &ServerSnapshot) -> Option<(String, Style)> {
             }
             Some((text, style::error()))
         }
-        ServerStatus::NeedsApproval => Some((
-            "From this project's .mcp.json — Enter runs it and remembers the approval".to_string(),
-            style::muted(),
-        )),
         _ => None,
     }
 }

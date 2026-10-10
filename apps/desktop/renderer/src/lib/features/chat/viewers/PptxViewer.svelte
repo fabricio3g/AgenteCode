@@ -8,13 +8,20 @@
 -->
 
 <script lang="ts">
+  import IconButton from '$lib/components/ui/IconButton.svelte';
+
+  import UiButton from '$lib/components/ui/Button.svelte';
+  import { cn as uiClass } from '$lib/utils/cn';
+
+  import { observeViewerSize } from './viewer-layout';
   import { X } from 'lucide-svelte';
+  import { tick } from 'svelte';
   import { t } from 'svelte-i18n';
   import ViewerStatus from './ViewerStatus.svelte';
   import { renderPptx, type RenderedDeck } from './pptx-render';
   import DeckSlideView from './DeckSlideView.svelte';
   import Portal from '$lib/ui/components/Portal.svelte';
-  import type { DeckSpec } from '$shared/deck';
+  import { deckSlideText, type DeckSpec } from '$shared/deck';
 
   import { registerViewerControls, useViewerControls } from './viewer-controls.svelte';
   const controls = useViewerControls();
@@ -32,6 +39,8 @@
   let { src, filename, spec = null }: Props = $props();
 
   let loading = $state(true);
+  let revision = $state(0);
+  let findIndex = $state(0);
   let error = $state<string | null>(null);
   let deck = $state<RenderedDeck | null>(null);
   let current = $state(0);
@@ -50,9 +59,24 @@
   );
   const slide = $derived(slides[current] ?? null);
   const aspect = $derived(spec ? 16 / 9 : (deck?.aspect ?? 16 / 9));
+  const term = $derived(controls?.query.trim().toLowerCase() || '');
+  const matches = $derived.by(() => {
+    if (!term) return [] as number[];
+    return slides.flatMap((item, index) => {
+      const text = spec ? deckSlideText(spec.slides[index]) : `${item.title}\n${deck?.slides[index]?.text || ''}\n${item.notes}`;
+      return text.toLowerCase().includes(term) ? [index] : [];
+    });
+  });
+  function findStep(direction: 1 | -1) {
+    if (!matches.length) return;
+    findIndex = (findIndex + direction + matches.length) % matches.length; go(matches[findIndex]);
+  }
+  $effect(() => { term; const found = matches; findIndex = 0; if (found.length) go(found[0]); });
 
   $effect(() => {
+    revision;
     if (spec) {
+      current = 0;
       loading = false;
       error = null;
       return;
@@ -85,6 +109,8 @@
 
   registerViewerControls(controls, () => ({
     page: current + 1, pages: slides.length, goToPage: page => go(page - 1),
+    retry: error ? () => { revision += 1; } : undefined,
+    search: { matches: matches.length, index: findIndex, step: findStep },
     actions: [
       { label: showNotes ? $t('viewer.slides.hideNotes') : $t('viewer.slides.showNotes'), run: () => { showNotes = !showNotes; }, active: showNotes },
       { label: $t('viewer.slides.present'), run: () => void present(), disabled: !slides.length }
@@ -94,9 +120,7 @@
   // Narrow panels hide the rail; the stage matters more.
   $effect(() => {
     if (!root || typeof ResizeObserver === 'undefined') return;
-    const observer = new ResizeObserver(() => (narrow = (root?.clientWidth ?? 0) < 560));
-    observer.observe(root);
-    return () => observer.disconnect();
+    return observeViewerSize(root, () => { narrow = (root?.clientWidth ?? 0) < 560; });
   });
 
   function go(index: number) {
@@ -106,6 +130,8 @@
   }
 
   function onKeydown(event: KeyboardEvent) {
+    if (event.key === 'Escape' && presenting) { event.preventDefault(); event.stopPropagation(); void exitPresent(); return; }
+    if (event.key === 'Tab' && presenting) { event.preventDefault(); presenter?.querySelector<HTMLButtonElement>('button')?.focus(); return; }
     if ((event.target as HTMLElement).closest('input, textarea, button')) return;
     const next = ['ArrowRight', 'ArrowDown', 'PageDown', ' '];
     const previous = ['ArrowLeft', 'ArrowUp', 'PageUp'];
@@ -130,7 +156,7 @@
 
   async function present() {
     presenting = true;
-    await Promise.resolve();
+    await tick();
     presenter?.focus();
     try {
       await presenter?.requestFullscreen?.();
@@ -146,7 +172,7 @@
   }
 
   function onFullscreenChange() {
-    if (!document.fullscreenElement && presenting) presenting = false;
+    if (!document.fullscreenElement && presenting) { presenting = false; root?.focus(); }
   }
 </script>
 
@@ -156,16 +182,16 @@
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 <div class="deck" bind:this={root} tabindex="-1" role="region" aria-label={filename} onkeydown={onKeydown} style:--aspect={aspect}>
   {#if loading || error}
-    <div class="deck-status"><ViewerStatus {loading} {error} label={$t('viewer.slides.loading')} variant="card" errorTitle={$t('viewer.slides.failed')} /></div>
+    <div class="deck-status"><ViewerStatus {loading} {error} label={$t('viewer.slides.loading')} variant="card" errorTitle={$t('viewer.slides.failed')} retry={error ? () => { revision += 1; } : undefined} /></div>
   {:else if slide}
     <div class="deck-main">
       {#if !narrow}
         <div class="rail" bind:this={rail} role="listbox" aria-label={$t('viewer.slides.list')}>
           {#each slides as item, index (item.key)}
-            <button
+            <UiButton variant="plain"
               type="button"
-              class="thumb"
-              class:on={index === current}
+              class={uiClass("thumb", "ui-local-ca576e1d", {"on": index === current})}
+
               data-slide={index}
               role="option"
               aria-selected={index === current}
@@ -178,7 +204,7 @@
               {:else}
                 <img class="thumb-img" src={item.url} alt="" draggable="false" />
               {/if}
-            </button>
+            </UiButton>
           {/each}
         </div>
       {/if}
@@ -223,7 +249,7 @@
       {:else}
         <img class="presenter-slide" src={slide.url} alt={slide.title} draggable="false" />
       {/if}
-      <button type="button" class="presenter-exit" onclick={(event) => { event.stopPropagation(); void exitPresent(); }} aria-label={$t('viewer.slides.exit')}><X class="size-4" /></button>
+      <IconButton label={$t('viewer.slides.exit')} size="xs" variant="ghost" type="button" class={uiClass("presenter-exit", "ui-local-ca576e1d")} onclick={(event) => { event.stopPropagation(); void exitPresent(); }} ><X class="size-4" /></IconButton>
       <span class="presenter-count">{current + 1} / {slides.length}</span>
     </div>
   </Portal>
@@ -264,7 +290,7 @@
     border-right: 1px solid var(--border);
     background: var(--background);
   }
-  .thumb {
+  :global(.thumb.ui-local-ca576e1d) {
     display: flex;
     align-items: flex-start;
     gap: 0.375rem;
@@ -273,7 +299,7 @@
   .thumb-num {
     width: 1rem;
     padding-top: 0.125rem;
-    font-size: 11px;
+    font-size: var(--text-xs);
     text-align: right;
     color: var(--muted-foreground);
     font-variant-numeric: tabular-nums;
@@ -287,17 +313,17 @@
     box-shadow: 0 0 0 1px var(--border);
     transition: box-shadow var(--motion-fast) var(--motion-ease);
   }
-  .thumb:hover .thumb-img {
+  :global(.thumb:hover.ui-local-ca576e1d) .thumb-img {
     box-shadow: 0 0 0 1px color-mix(in srgb, var(--foreground) 30%, var(--border));
   }
-  .thumb.on .thumb-img {
+  :global(.thumb.on.ui-local-ca576e1d) .thumb-img {
     box-shadow: 0 0 0 2px var(--primary);
   }
   .thumb-spec {
     display: block;
     overflow: hidden;
   }
-  .thumb.on .thumb-num {
+  :global(.thumb.on.ui-local-ca576e1d) .thumb-num {
     color: var(--foreground);
     font-weight: 600;
   }
@@ -332,7 +358,7 @@
     padding: 0.625rem 1rem;
     border-top: 1px solid var(--border);
     background: var(--background);
-    font-size: 13px;
+    font-size: var(--text-sm);
     line-height: 1.5;
     white-space: pre-wrap;
     color: var(--foreground);
@@ -357,7 +383,7 @@
     aspect-ratio: var(--aspect);
     background: #fff;
   }
-  .presenter-exit {
+  :global(.presenter-exit.ui-local-ca576e1d) {
     position: absolute;
     top: 1rem;
     right: 1rem;
@@ -372,14 +398,14 @@
     opacity: 0.4;
     transition: opacity 150ms ease;
   }
-  .presenter:hover .presenter-exit {
+  .presenter:hover :global(.presenter-exit.ui-local-ca576e1d) {
     opacity: 1;
   }
   .presenter-count {
     position: absolute;
     bottom: 1rem;
     right: 1.25rem;
-    font-size: 12px;
+    font-size: var(--text-xs);
     color: rgb(255 255 255 / 0.5);
     font-variant-numeric: tabular-nums;
   }

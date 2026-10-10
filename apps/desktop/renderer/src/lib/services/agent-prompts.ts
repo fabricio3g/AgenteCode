@@ -1,4 +1,4 @@
-import type { ToolDefinition } from '$lib/services/chat-api';
+import type { ToolDefinition } from '$lib/services/chat/types';
 
 /**
  * Rules that apply identically to the native tool-calling and XML tool-calling

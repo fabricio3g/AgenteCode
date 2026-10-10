@@ -1,6 +1,11 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+  import UiIconButton from '$lib/components/ui/IconButton.svelte';
+  import UiRange from '$lib/components/ui/Range.svelte';
+  import UiTextarea from '$lib/components/ui/Textarea.svelte';
+  import { cn as uiClass } from '$lib/utils/cn';
+
   import { Button, Tooltip } from '$lib/components/ui';
   import { modalLayer } from '$lib/components/ui/modal-layer';
   import { motionFade, motionFly } from '$lib/utils/transitions';
@@ -102,14 +107,14 @@
       </div>
       <span class="text-sm font-semibold text-foreground">Generation</span>
     </div>
-    <Tooltip label="Close" position="bottom"><button
+    <Tooltip label="Close" position="bottom"><UiIconButton label={"Close"} size="sm"
       type="button"
-      class="ui-icon-button"
+
       onclick={() => (appStore.llmDrawerOpen = false)}
-      aria-label="Close"
+
     >
       <X class="size-4" />
-    </button></Tooltip>
+    </UiIconButton></Tooltip>
   </div>
 
   <!-- ── Body ───────────────────────────────────────────────────── -->
@@ -118,17 +123,17 @@
     <!-- Backend pill tabs -->
     <div class="px-4 pt-2">
       <div class="ui-segmented w-full">
-        <button
+        <Button variant="plain"
           type="button"
-          class="ui-segmented-item flex-1 py-1.5 {mode === 'api' ? 'is-active' : ''}"
+          class={uiClass(`ui-segmented-item flex-1 py-1.5 ${mode === 'api' ? 'is-active' : ''}`)}
           onclick={() => { mode = 'api'; }}
-        >API</button>
+        >API</Button>
         {#if isElectron()}
-          <button
+          <Button variant="plain"
             type="button"
-            class="ui-segmented-item flex-1 py-1.5 {mode === 'local' ? 'is-active' : ''}"
+            class={uiClass(`ui-segmented-item flex-1 py-1.5 ${mode === 'local' ? 'is-active' : ''}`)}
             onclick={() => { mode = 'local'; }}
-          >Local</button>
+          >Local</Button>
         {/if}
       </div>
     </div>
@@ -136,13 +141,13 @@
     <!-- Status -->
     <div class="mx-4 mt-3 pb-3">
       {#if mode === 'api'}
-        <button
+        <Button variant="plain"
           type="button"
-          class="flex w-full items-center gap-3 rounded-xl bg-[var(--muted)] px-3 py-3 text-left transition hover:bg-[var(--surface-hover)]"
+          class={uiClass("flex w-full items-center gap-3 rounded-xl bg-[var(--muted)] px-3 py-3 text-left transition hover:bg-[var(--surface-hover)]")}
           onclick={() => { appStore.llmDrawerOpen = false; appStore.openSettings('providers'); }}
-          title="Configure providers"
+          title="Providers, keys and models are set in Settings and shared with Agente Code in the terminal."
         >
-          <span class="flex size-8 shrink-0 items-center justify-center rounded-full bg-muted text-foreground">
+          <span class="flex size-8 shrink-0 items-center justify-center text-foreground">
             <Zap class="size-4" />
           </span>
           <span class="min-w-0 flex-1">
@@ -150,10 +155,7 @@
             <span class="block truncate text-xs text-muted-foreground">{activeModelShort}</span>
           </span>
           <ExternalLink class="size-3.5 shrink-0 text-muted-foreground" />
-        </button>
-        <p class="mt-3 px-1 text-xs leading-relaxed text-muted-foreground">
-          Providers, keys and models are set in Settings and shared with Agente Code in the terminal.
-        </p>
+        </Button>
       {:else}
         <div class="px-3.5 py-3">
           <div class="flex items-center justify-between gap-2 mb-2">
@@ -197,15 +199,15 @@
           {/if}
 
           <div class="mt-3 flex items-center gap-3">
-            <button
-              class="text-[12px] font-medium text-[var(--text-secondary)] transition hover:text-[var(--text)]"
+            <Button variant="plain"
+              class={uiClass("text-[12px] font-medium text-[var(--text-secondary)] transition hover:text-[var(--text)]")}
               onclick={() => { appStore.llmDrawerOpen = false; appStore.openSettings('models'); }}
-            >Manage models</button>
-            <button
-              class="inline-flex items-center gap-1 text-[12px] font-medium text-[var(--text-secondary)] transition hover:text-[var(--text)]"
+            >Manage models</Button>
+            <Button variant="plain"
+              class={uiClass("inline-flex items-center gap-1 text-[12px] font-medium text-[var(--text-secondary)] transition hover:text-[var(--text)]")}
               onclick={() => { appStore.llmDrawerOpen = false; appStore.openSettings('runtime'); }}
               title="Runtime settings"
-            ><ExternalLink class="h-3.5 w-3.5" />Runtime</button>
+            ><ExternalLink class="h-3.5 w-3.5" />Runtime</Button>
           </div>
         </div>
       {/if}
@@ -224,7 +226,7 @@
             <span class="min-w-[2.5rem] px-1 text-center text-[12px] font-semibold tabular-nums text-[var(--text)]">{temperature.toFixed(2)}</span>
           </div>
         </div>
-        <input type="range" bind:value={temperature} min="0" max="2" step="0.05" class="w-full accent-[var(--primary)] cursor-pointer" />
+        <UiRange  bind:value={temperature} min="0" max="2" step="0.05" class={uiClass("w-full accent-[var(--primary)] cursor-pointer")} />
         <div class="mt-1 flex justify-between text-[12px] text-[var(--text-muted)]">
           <span>Precise</span><span>Creative</span>
         </div>
@@ -236,19 +238,19 @@
           <span class="text-[12px] font-semibold r text-[var(--text-muted)]">Max tokens</span>
           <span class="min-w-[2.5rem] px-1 text-center text-[12px] font-semibold tabular-nums text-[var(--text)]">{maxTokens > 0 ? maxTokens.toLocaleString() : 'Auto'}</span>
         </div>
-        <input type="range" bind:value={maxTokens} min="0" max="32768" step="256" class="w-full accent-[var(--primary)] cursor-pointer" />
+        <UiRange  bind:value={maxTokens} min="0" max="32768" step="256" class={uiClass("w-full accent-[var(--primary)] cursor-pointer")} />
       </div>
 
       <!-- System prompt -->
       <div>
         <label for="llm-system-prompt" class="mb-1.5 block text-[12px] font-semibold r text-[var(--text-muted)]">System prompt</label>
-        <textarea
+        <UiTextarea
           id="llm-system-prompt"
           bind:value={systemPrompt}
-          rows="5"
-          class="ui-input resize-none text-[12px] leading-relaxed"
+          rows={5}
+          class={uiClass(" resize-none text-[12px] leading-relaxed")}
           placeholder="You are a helpful AI assistant."
-        ></textarea>
+        ></UiTextarea>
       </div>
 
     </div>
@@ -277,12 +279,10 @@
     border: none;
     border-radius: var(--radius-sm);
   }
+  /* Running is the normal state: the dot says it, the pill stays quiet. */
   .runtime-status.running {
-    color: var(--status-success);
-    background: var(--success-bg);
-  }
-  :global(.dark) .runtime-status.running {
-    color: var(--status-success-dark);
+    color: var(--muted-foreground);
+    background: transparent;
   }
   .status-dot {
     background: var(--status-success);
@@ -291,7 +291,7 @@
     background: var(--status-success-dark);
   }
   .ram-bar {
-    background: var(--success);
+    background: var(--muted-foreground);
     border-radius: var(--radius-full);
   }
   :global(.dark) .ram-bar {

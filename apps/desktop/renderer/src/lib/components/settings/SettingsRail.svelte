@@ -23,16 +23,13 @@
 <script module lang="ts">
   import { Compass } from 'lucide-svelte';
   import type { ModelHubTab } from '$lib/types/model-hub';
-  import type { ModelHubSection } from '$lib/utils/model-hub-routing';
+  import type { SettingsNavigationSection } from '$lib/utils/model-hub-routing';
 
   /** lucide-svelte ships one component shape; any icon fits. */
   export type RailIcon = typeof Compass;
 
-  /** The sections the rail holds; the model tabs ride on `models`. */
-  export type SettingsSection = Exclude<ModelHubSection, 'explore' | 'library' | 'loaded'>;
-
   export type RailItem =
-    | { kind: 'section'; id: SettingsSection; label: string; icon: RailIcon; dot?: boolean }
+    | { kind: 'section'; id: SettingsNavigationSection; label: string; icon: RailIcon; dot?: boolean }
     | { kind: 'tab'; id: ModelHubTab; label: string; icon: RailIcon; count?: number; dot?: boolean }
     | { kind: 'provider'; id: string; label: string; status: 'in-use' | 'ready' | 'none' };
 
@@ -46,6 +43,12 @@
 </script>
 
 <script lang="ts">
+  import IconButton from '$lib/components/ui/IconButton.svelte';
+
+  import UiListRow from '$lib/components/ui/ListRow.svelte';
+
+  import { cn as uiClass } from '$lib/utils/cn';
+
   import { Plus } from 'lucide-svelte';
   import { t } from 'svelte-i18n';
   import ModelSearchField from './ModelSearchField.svelte';
@@ -132,11 +135,11 @@
     {#snippet row(item: RailItem)}
       {@const active = selected === key(item)}
       {@const status = item.kind === 'provider' ? item.status : item.dot ? 'in-use' : 'none'}
-      <button
+      <UiListRow
         type="button"
         data-nav-row
-        class="sidebar-row"
-        class:is-current={active}
+        class={uiClass("sidebar-row", {"is-current": active})}
+
         aria-current={active ? 'page' : undefined}
         onclick={() => onselect(item)}
       >
@@ -154,7 +157,7 @@
         {:else if status === 'ready'}
           <span class="sidebar-dot is-idle" title={$t('settingsNav.connected')}></span>
         {/if}
-      </button>
+      </UiListRow>
     {/snippet}
 
     {#snippet groupRows(items: RailItem[])}
@@ -166,16 +169,16 @@
         <div class="flex items-center justify-between gap-2 pr-2.5">
           <span class="sidebar-section min-w-0 truncate whitespace-nowrap">{group.title}</span>
           {#if group.id === 'providers'}
-            <button
+            <IconButton label={$t('settingsNav.addEndpoint')} size="xs" variant="ghost"
               type="button"
               data-nav-row
-              class="flex size-5 items-center justify-center rounded-md text-muted-foreground transition hover:bg-[var(--surface-hover)] hover:text-foreground"
+              class={uiClass("flex size-5 items-center justify-center rounded-md text-muted-foreground transition hover:bg-[var(--surface-hover)] hover:text-foreground")}
               onclick={onaddendpoint}
               title={$t('settingsNav.addEndpoint')}
-              aria-label={$t('settingsNav.addEndpoint')}
+
             >
               <Plus class="size-3.5" />
-            </button>
+            </IconButton>
           {/if}
         </div>
         {#if group.subgroups}

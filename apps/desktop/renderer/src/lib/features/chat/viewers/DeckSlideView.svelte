@@ -32,13 +32,15 @@
   // Chart geometry: viewBox 1000 × 383 matches the chart box (88.75 × 34 cqw).
   const chart = $derived(slide.chart);
   const round = $derived(chart?.type === 'pie' || chart?.type === 'doughnut');
-  const maxValue = $derived(chart ? Math.max(1, ...chart.series.flatMap((s) => s.values)) : 1);
-  const niceMax = $derived.by(() => {
-    const step = 10 ** Math.floor(Math.log10(maxValue));
-    return Math.ceil(maxValue / step) * step;
+  const domain = $derived.by(() => {
+    const values = chart?.series.flatMap((series) => series.values) || [0];
+    const low = Math.min(0, ...values), high = Math.max(0, ...values);
+    const span = high - low || 1, step = 10 ** Math.floor(Math.log10(span));
+    return { low: Math.floor(low / step) * step, high: Math.ceil((high || (low === 0 ? 1 : 0)) / step) * step };
   });
   const PLOT = { x: 70, y: 14, w: 910, h: 320 };
-  const ticks = $derived(Array.from({ length: 6 }, (_, i) => (niceMax / 5) * i));
+  const fraction = (value: number) => (value - domain.low) / Math.max(1e-12, domain.high - domain.low);
+  const ticks = $derived(Array.from({ length: 6 }, (_, i) => domain.low + (domain.high - domain.low) * i / 5));
 
   function bars() {
     if (!chart) return [];
@@ -46,8 +48,9 @@
     const groupW = PLOT.w / groups;
     const barW = (groupW * 0.62) / chart.series.length;
     return chart.series.flatMap((series, s) => series.values.slice(0, groups).map((value, g) => {
-      const h = (value / niceMax) * PLOT.h;
-      return { x: PLOT.x + g * groupW + groupW * 0.19 + s * barW, y: PLOT.y + PLOT.h - h, w: barW, h, color: palette[s % palette.length] };
+      const baseline = PLOT.y + PLOT.h * (1 - fraction(0));
+      const y = PLOT.y + PLOT.h * (1 - fraction(value));
+      return { x: PLOT.x + g * groupW + groupW * 0.19 + s * barW, y: Math.min(y, baseline), w: barW, h: Math.abs(baseline - y), color: palette[s % palette.length] };
     }));
   }
 
@@ -57,7 +60,7 @@
     const groupH = PLOT.h / groups;
     const barH = (groupH * 0.62) / chart.series.length;
     return chart.series.flatMap((series, s) => series.values.slice(0, groups).map((value, g) => ({
-      x: PLOT.x, y: PLOT.y + g * groupH + groupH * 0.19 + s * barH, w: (value / niceMax) * PLOT.w, h: barH, color: palette[s % palette.length]
+      x: PLOT.x + Math.min(fraction(0), fraction(value)) * PLOT.w, y: PLOT.y + g * groupH + groupH * 0.19 + s * barH, w: Math.abs(fraction(value) - fraction(0)) * PLOT.w, h: barH, color: palette[s % palette.length]
     })));
   }
 
@@ -66,7 +69,7 @@
     const step = chart.labels.length > 1 ? PLOT.w / (chart.labels.length - 1) : 0;
     return chart.series.map((series, s) => ({
       color: palette[s % palette.length],
-      points: series.values.map((value, i) => `${PLOT.x + i * step},${PLOT.y + PLOT.h - (value / niceMax) * PLOT.h}`).join(' ')
+      points: series.values.map((value, i) => `${PLOT.x + i * step},${PLOT.y + PLOT.h - fraction(value) * PLOT.h}`).join(' ')
     }));
   }
 
@@ -90,7 +93,7 @@
   }
 
   function formatTick(value: number): string {
-    return Math.abs(value) >= 1000 ? `${Math.round(value / 100) / 10}k` : String(Math.round(value * 10) / 10);
+    return new Intl.NumberFormat(undefined, { maximumSignificantDigits: 4 }).format(value);
   }
 </script>
 
@@ -143,11 +146,11 @@
         {:else}
           {#each ticks as tick, i (i)}
             {#if chart.type === 'bar'}
-              <line x1={PLOT.x + (tick / niceMax) * PLOT.w} x2={PLOT.x + (tick / niceMax) * PLOT.w} y1={PLOT.y} y2={PLOT.y + PLOT.h} stroke="var(--line)" stroke-width="1" />
-              <text x={PLOT.x + (tick / niceMax) * PLOT.w} y={PLOT.y + PLOT.h + 26} text-anchor="middle" class="axis">{formatTick(tick)}</text>
+              <line x1={PLOT.x + fraction(tick) * PLOT.w} x2={PLOT.x + fraction(tick) * PLOT.w} y1={PLOT.y} y2={PLOT.y + PLOT.h} stroke="var(--line)" stroke-width="1" />
+              <text x={PLOT.x + fraction(tick) * PLOT.w} y={PLOT.y + PLOT.h + 26} text-anchor="middle" class="axis">{formatTick(tick)}</text>
             {:else}
-              <line x1={PLOT.x} x2={PLOT.x + PLOT.w} y1={PLOT.y + PLOT.h - (tick / niceMax) * PLOT.h} y2={PLOT.y + PLOT.h - (tick / niceMax) * PLOT.h} stroke="var(--line)" stroke-width="1" />
-              <text x={PLOT.x - 12} y={PLOT.y + PLOT.h - (tick / niceMax) * PLOT.h + 5} text-anchor="end" class="axis">{formatTick(tick)}</text>
+              <line x1={PLOT.x} x2={PLOT.x + PLOT.w} y1={PLOT.y + PLOT.h - fraction(tick) * PLOT.h} y2={PLOT.y + PLOT.h - fraction(tick) * PLOT.h} stroke="var(--line)" stroke-width="1" />
+              <text x={PLOT.x - 12} y={PLOT.y + PLOT.h - fraction(tick) * PLOT.h + 5} text-anchor="end" class="axis">{formatTick(tick)}</text>
             {/if}
           {/each}
           {#if chart.type === 'line'}

@@ -1,5 +1,5 @@
 import type { AgentStep } from '$lib/types/chat';
-import type { ToolDefinition } from '$lib/services/chat-api';
+import type { ToolDefinition } from '$lib/services/chat/types';
 import { HOME_EXTRA_TOOL_DEFS } from '$lib/services/agent-tool-home-schemas';
 import { DOMAIN_TOOL_DEFS } from '$shared/domains';
 import { filterEnabledTools } from '$lib/services/agent-tool-registry';
@@ -17,7 +17,8 @@ export const CODE_AGENT_TOOL_NAMES = new Set([
   'web_search',
   'fetch_url',
   'query_knowledge',
-  'get_diagnostics'
+  'get_diagnostics',
+  ...DOMAIN_TOOL_DEFS.map(def => def.name)
 ]);
 
 /** Simple Chat Agent: research + calc + sandbox files (no host bash). */
@@ -72,7 +73,8 @@ export const CHAT_AGENT_TOOL_NAMES = new Set([
   'convert_time',
   'ocr_image',
   'describe_image',
-  'transcribe_audio'
+  'transcribe_audio',
+  ...DOMAIN_TOOL_DEFS.map(def => def.name)
 ]);
 
 export type AgentProfile = 'chat' | 'code' | 'search' | 'work';

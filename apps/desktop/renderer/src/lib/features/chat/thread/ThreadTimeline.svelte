@@ -7,6 +7,9 @@
 -->
 
 <script lang="ts">
+  import UiButton from '$lib/components/ui/Button.svelte';
+  import { cn as uiClass } from '$lib/utils/cn';
+
   import { t } from 'svelte-i18n';
   import { conversationDialWindow } from '$lib/utils/conversation-timeline';
   import type { TimelineMarker } from './timeline';
@@ -84,10 +87,10 @@
       role="presentation"
       onmouseenter={() => (hoveredId = marker.id)}
     >
-      <button
+      <UiButton variant="plain"
         type="button"
-        class="dial-tick"
-        class:is-user={marker.role === 'user'}
+        class={uiClass("dial-tick", "ui-local-844057af", {"is-user": marker.role === 'user'})}
+
         data-distance={Math.min(3, Math.abs(marker.distance))}
         data-dial-index={marker.index}
         aria-label={$t('chat.dial.jumpTo', { values: { role: roleLabel(marker.role), text: previewOf(marker) } })}
@@ -98,7 +101,7 @@
         onkeydown={(event) => handleKeydown(event, marker.index)}
       >
         <span class="dial-line" aria-hidden="true"></span>
-      </button>
+      </UiButton>
 
       {#if hoveredId === marker.id}
         <div class="dial-tip" role="tooltip">
@@ -143,7 +146,7 @@
     transition: top 140ms var(--motion-ease);
   }
 
-  .dial-tick {
+  :global(.dial-tick.ui-local-844057af) {
     position: absolute;
     top: 0;
     right: 0.3rem;
@@ -172,24 +175,24 @@
       opacity 120ms ease,
       background-color 120ms ease;
   }
-  .dial-tick.is-user .dial-line {
+  :global(.dial-tick.is-user.ui-local-844057af) .dial-line {
     width: 0.625rem;
   }
-  .dial-tick[data-distance='1'] .dial-line { opacity: 0.55; }
-  .dial-tick[data-distance='2'] .dial-line { opacity: 0.35; }
-  .dial-tick[data-distance='3'] .dial-line { opacity: 0.2; }
-  .dial-tick[aria-current='true'] .dial-line {
+  :global(.dial-tick[data-distance='1'].ui-local-844057af) .dial-line { opacity: 0.55; }
+  :global(.dial-tick[data-distance='2'].ui-local-844057af) .dial-line { opacity: 0.35; }
+  :global(.dial-tick[data-distance='3'].ui-local-844057af) .dial-line { opacity: 0.2; }
+  :global(.dial-tick[aria-current='true'].ui-local-844057af) .dial-line {
     width: 0.875rem;
     height: 2px;
     background: var(--foreground);
   }
-  .dial-tick:hover .dial-line,
-  .dial-tick:focus-visible .dial-line {
+  :global(.dial-tick:hover.ui-local-844057af) .dial-line,
+  :global(.dial-tick:focus-visible.ui-local-844057af) .dial-line {
     width: 0.875rem;
     opacity: 1;
     background: var(--foreground);
   }
-  .dial-tick:focus-visible {
+  :global(.dial-tick:focus-visible.ui-local-844057af) {
     box-shadow: 0 0 0 2px color-mix(in srgb, var(--ring) 35%, transparent);
   }
 

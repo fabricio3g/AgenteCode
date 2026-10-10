@@ -25,7 +25,7 @@
     padding: 0 0.875rem;
     border: 1px solid var(--border);
     border-radius: 9999px;
-    font-size: 12.5px;
+    font-size: var(--text-xs);
     color: var(--muted-foreground);
     background: var(--background);
     transition: background-color var(--motion-fast) var(--motion-ease), color var(--motion-fast) var(--motion-ease), border-color var(--motion-fast) var(--motion-ease);
@@ -40,7 +40,7 @@
     color: var(--background);
   }
   .chip-count {
-    font-size: 11px;
+    font-size: var(--text-xs);
     opacity: 0.6;
     font-variant-numeric: tabular-nums;
   }

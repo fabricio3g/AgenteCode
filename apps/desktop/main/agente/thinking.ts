@@ -155,6 +155,7 @@ function llamaServing(): boolean {
 
 /** The thinking choices for a Desktop provider + model. */
 export async function reasoningCapabilities(providerName: string, model: string): Promise<ReasoningCapabilities> {
+  if (providerName !== 'local' && !model.trim()) return UNKNOWN_CAPABILITIES;
   try {
     if (providerName === 'local' && !llamaServing()) {
       return await localTemplateCapabilities(await runtimeConnection());

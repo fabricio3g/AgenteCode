@@ -215,7 +215,7 @@ export function requestedVisualArtifacts(prompt: string): VisualArtifactKind[] {
   if (!/\b(make|create|build|generate|show|display|draw|plot|chart|graph|visualize|visualise|give|produce|pin|mark)\b/.test(text)) return [];
   if (/^(what|why|how)\b/.test(text) && !/\b(and|then)\s+(show|create|draw|make)\b/.test(text)) return [];
   const kinds: VisualArtifactKind[] = [];
-  if (/\b(bar charts?|line charts?|pie charts?|donut charts?|histograms?|plots?|graphs?|visualiz\w+|visualis\w+|trend charts?)\b/.test(text)) kinds.push('chart');
+  if (/\b(bar charts?|line charts?|pie charts?|donut charts?|heatmaps?|scatterplots?|waterfalls?|box plots?|radar charts?|treemaps?|funnels?|histograms?|plots?|graphs?|visualiz\w+|visualis\w+|trend charts?)\b/.test(text)) kinds.push('chart');
   else if ((/\bcharts?\b/.test(text) && /\b(make|create|build|generate|show|draw|plot|compare)\b/.test(text)) || /^(chart|graph|plot)\s+(my|this|that|these|those|the|our|your)\b/.test(text)) kinds.push('chart');
   if (/\b(flowcharts?|flow charts?|sequence diagrams?|architecture diagrams?|mindmaps?|mind maps?|mermaid|diagrams?|er diagrams?)\b/.test(text)) kinds.push('diagram');
   if (/\b(show|display|draw|create|make|build|generate|plot|pin|mark)\b[^.]{0,60}\b((?<!mind\s)maps?|markers?|locations?|routes?|geograph\w+|coordinates?)\b/.test(text)) kinds.push('map');

@@ -285,9 +285,9 @@ fn provider_item(entry: &ProviderEntry, is_selected: bool, state: &AppState) -> 
     let badge = if is_connected {
         s("✓", style::success())
     } else if has_env_only {
-        s("env", style::success())
+        s("env", style::muted())
     } else if needs_key {
-        s("key", style::warning())
+        s("key", style::dim())
     } else {
         s("local", style::dim())
     };

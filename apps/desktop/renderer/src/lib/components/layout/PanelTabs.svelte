@@ -16,6 +16,9 @@
 -->
 
 <script lang="ts">
+  import UiIconButton from '$lib/components/ui/IconButton.svelte';
+  import { cn as uiClass } from '$lib/utils/cn';
+
   import { t } from 'svelte-i18n';
   import type { Snippet } from 'svelte';
   import { Activity, ClipboardList, FolderTree, GitCompareArrows, Globe, History, Image, SquareTerminal } from 'lucide-svelte';
@@ -95,11 +98,11 @@
 {#snippet pane(id: string, label: string, pressed: boolean, onclick: () => void, icon: typeof Activity, badge: Snippet | null = null, text: string | null = null)}
   {@const Icon = icon}
   <Tooltip {label} position="bottom">
-    <button type="button" class="ui-icon-button is-sm pane-tab titlebar-no-drag" class:has-badge={!!badge} class:has-label={!!text} class:is-on={pressed} aria-pressed={pressed} aria-label={label} data-panel-tab={id} {onclick}>
+    <UiIconButton label={label} size="xs" type="button" class={uiClass("  pane-tab titlebar-no-drag", "ui-local-4e9e0cd8", {"has-badge": !!badge, "has-label": !!text, "is-on": pressed})}    aria-pressed={pressed}  data-panel-tab={id} {onclick}>
       <Icon class="size-3.5" aria-hidden="true" />
       {#if text}<span class="pane-tab-label">{text}</span>{/if}
       {#if badge}{@render badge()}{/if}
-    </button>
+    </UiIconButton>
   </Tooltip>
 {/snippet}
 
@@ -139,9 +142,9 @@
       <Menu bind:open={historyOpen} placement="bottom-end" minWidth="16rem" label={$t('code.history')}>
         {#snippet trigger(props)}
           <Tooltip label={$t('code.history')} position="bottom">
-            <button type="button" class="ui-icon-button is-sm pane-tab titlebar-no-drag" aria-label={$t('code.history')} {...props}>
+            <UiIconButton label={$t('code.history')} size="xs" type="button" class={uiClass("  pane-tab titlebar-no-drag", "ui-local-4e9e0cd8")}  {...props}>
               <History class="size-3.5" aria-hidden="true" />
-            </button>
+            </UiIconButton>
           </Tooltip>
         {/snippet}
         <p class="px-2.5 pb-1 pt-1.5 text-xs font-semibold text-muted-foreground">{$t('code.historyTitle')}</p>
@@ -203,12 +206,12 @@
    * one addition: a pane that carries a live count — or its name — widens into
    * a pill so the text has a home instead of overprinting the glyph.
    */
-  .pane-tab {
+  :global(.pane-tab.ui-local-4e9e0cd8) {
     position: relative;
     transition: width var(--motion-fast) var(--motion-ease), background-color var(--motion-fast) var(--motion-ease), color var(--motion-fast) var(--motion-ease);
   }
-  .pane-tab.has-badge,
-  .pane-tab.has-label {
+  :global(.pane-tab.has-badge.ui-local-4e9e0cd8),
+  :global(.pane-tab.has-label.ui-local-4e9e0cd8) {
     width: auto;
     gap: 0.3rem;
     padding-inline: 0.4rem;
@@ -242,6 +245,6 @@
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .pane-tab { transition: none; }
+    :global(.pane-tab.ui-local-4e9e0cd8) { transition: none; }
   }
 </style>

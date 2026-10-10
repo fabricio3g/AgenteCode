@@ -28,7 +28,7 @@ export function resolveComposerRoute(input: {
   if (searchMode === 'search' || searchMode === 'deep' || searchMode === 'max') {
     return 'tools';
   }
-  if (contextMode === 'code') {
+  if (contextMode === 'code' || contextMode === 'design') {
     return 'agent';
   }
   if (input.hasAttachments) {
@@ -96,5 +96,6 @@ export function shouldUseToolLoop(params: {
   // Home is one conversational agent: the model can answer directly or call
   // tools on any turn, including follow-ups with no routing keywords. Legacy
   // mode preferences no longer disconnect tools. Code uses its workspace loop.
-  return normalizeSpace(params.contextMode) === 'home' || normalizeSpace(params.contextMode) === 'code';
+  const space = normalizeSpace(params.contextMode);
+  return space === 'home' || space === 'code' || space === 'design';
 }

@@ -6,6 +6,7 @@
   export type SegmentOption = {
     value: string;
     label: string;
+    title?: string;
     disabled?: boolean;
   };
 
@@ -15,6 +16,7 @@
     label,
     onchange,
     variant = 'segmented',
+    shape = 'pill',
     id,
     class: className = '',
   }: {
@@ -23,6 +25,7 @@
     label: string;
     onchange?: (value: string) => void;
     variant?: 'segmented' | 'tabs';
+    shape?: 'pill' | 'rect';
     id?: string;
     class?: string;
   } = $props();
@@ -107,9 +110,12 @@
     // Wraps rather than clips: the interface-size track has seven steps, and
     // the people who need the top of it are the ones running a large text
     // scale, which is exactly when the row stops fitting.
-    'relative inline-flex flex-wrap rounded-full p-[3px]',
+    'relative inline-flex flex-wrap p-[2px]',
     variant === 'tabs' && 'flex-nowrap',
-    'bg-[var(--muted)]',
+    // Same hairline track as .ui-segmented: on a dialog the --muted fill alone vanishes.
+    shape === 'rect'
+      ? 'rounded-[var(--radius-sm)] border border-[var(--border-hover)] bg-[var(--card)]'
+      : 'rounded-full border border-[var(--border)] bg-[var(--muted)]',
     className,
   )}
   role={variant === 'tabs' ? 'tablist' : 'radiogroup'}
@@ -119,7 +125,10 @@
     <span
       aria-hidden="true"
       class={cn(
-        'pointer-events-none absolute bottom-[3px] top-[3px] rounded-full bg-[var(--segment-active-bg)] shadow-[var(--segment-active-shadow)]',
+        'pointer-events-none absolute bottom-[2px] top-[2px]',
+        shape === 'rect'
+          ? 'rounded-[var(--radius-sm)] bg-primary'
+          : 'rounded-full bg-[var(--segment-active-bg)] shadow-[var(--segment-active-shadow)]',
         indicatorReady && !reducedMotion.value && 'transition-[left,width] duration-200 ease-[var(--motion-ease)]',
       )}
       style={`left:${indicatorLeft}px;width:${indicatorWidth}px;opacity:${indicatorReady ? 1 : 0};`}
@@ -135,12 +144,16 @@
       aria-controls={variant === 'tabs' ? panelId(option.value) : undefined}
       tabindex={variant === 'tabs' ? (value === option.value ? 0 : -1) : undefined}
       disabled={option.disabled}
+      title={option.title}
       class={cn(
         // One control height for the whole settings screen: the 26px segment
-        // inside a 3px track lands on 32px, level with Input and Select.
-        'relative z-10 inline-flex h-[26px] items-center rounded-full px-3 text-[12.5px] font-medium outline-none transition-[color,box-shadow,transform] duration-[var(--motion-fast)] ease-[var(--motion-ease)] focus-visible:ring-[3px] focus-visible:ring-ring/20 active:scale-[0.98] disabled:opacity-50',
+        // inside a 2px track and its hairline lands on 32px, level with Input and Select.
+        'relative z-10 inline-flex h-[26px] items-center px-3 font-medium outline-none transition-[color,box-shadow,transform] duration-[var(--motion-fast)] ease-[var(--motion-ease)] focus-visible:ring-[3px] focus-visible:ring-ring/20 active:scale-[0.98] disabled:opacity-50',
+        shape === 'rect' ? 'rounded-[var(--radius-sm)] text-[length:var(--text-sm)]' : 'rounded-full text-[length:var(--text-xs)]',
         value === option.value
-          ? variant === 'tabs' ? 'text-foreground' : 'bg-[var(--segment-active-bg)] shadow-[var(--segment-active-shadow)] text-foreground'
+          ? shape === 'rect'
+            ? variant === 'tabs' ? 'text-primary-fg' : 'bg-primary text-primary-fg'
+            : variant === 'tabs' ? 'text-foreground' : 'bg-[var(--segment-active-bg)] shadow-[var(--segment-active-shadow)] text-foreground'
           : 'text-muted-foreground hover:text-foreground',
       )}
       onclick={() => select(option.value)}

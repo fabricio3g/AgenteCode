@@ -1,18 +1,26 @@
-export type ChartType = 'bar' | 'line' | 'pie' | 'donut';
+import type { ChartType } from './chart-types';
+export type { ChartType } from './chart-types';
 
 export interface Dataset {
   label: string;
   data: number[];
+  sizes?: number[];
 }
 
 export interface ChartData {
   labels: string[];
   datasets: Dataset[];
+  subtitle?: string;
+  valueFormat?: 'number' | 'percent' | 'currency';
+  currency?: string;
+  max?: number;
+  annotations?: Array<{ label: string; index: number }>;
 }
 
 function normalizeDataset(entry: unknown, fallbackLabel: string): Dataset | null {
   if (Array.isArray(entry)) {
-    const data = entry.map((value) => Number(value)).filter((value) => Number.isFinite(value));
+    const data = entry.map((value) => Number(value));
+    if (data.some((value) => !Number.isFinite(value))) return null;
     return data.length ? { label: fallbackLabel, data } : null;
   }
   if (!entry || typeof entry !== 'object') return null;
@@ -23,11 +31,13 @@ function normalizeDataset(entry: unknown, fallbackLabel: string): Dataset | null
       ? record.values
       : null;
   if (!rawData) return null;
-  const data = rawData.map((value) => Number(value)).filter((value) => Number.isFinite(value));
+  const data = rawData.map((value) => Number(value));
+  if (data.some((value) => !Number.isFinite(value))) return null;
   if (!data.length) return null;
   return {
     label: String(record.label || record.name || fallbackLabel),
-    data
+    data,
+    ...(Array.isArray(record.sizes) ? { sizes: record.sizes.map(Number) } : {})
   };
 }
 
@@ -68,7 +78,14 @@ function normalizeChartData(value: unknown): ChartData | null {
   }
 
   if (!labels?.length || !datasets.length) return null;
-  return { labels, datasets };
+  return {
+    labels, datasets,
+    ...(typeof record.subtitle === 'string' ? { subtitle: record.subtitle } : {}),
+    ...(record.valueFormat === 'number' || record.valueFormat === 'percent' || record.valueFormat === 'currency' ? { valueFormat: record.valueFormat } : {}),
+    ...(typeof record.currency === 'string' ? { currency: record.currency } : {}),
+    ...(typeof record.max === 'number' ? { max: record.max } : {}),
+    ...(Array.isArray(record.annotations) ? { annotations: record.annotations.filter((a): a is { label: string; index: number } => !!a && typeof a.label === 'string' && Number.isInteger(a.index)) } : {})
+  };
 }
 
 function extractJsonObjects(input: string): string[] {
@@ -231,6 +248,15 @@ export function looksLikeChartData(input: string): boolean {
 
 export function inferChartType(context: string, data?: ChartData | null): ChartType {
   const lower = context.toLowerCase();
+  if (/\bheat\s?map\b/.test(lower)) return 'heatmap';
+  if (/\b100%.*area\b/.test(lower)) return 'percent_area';
+  if (/\bstacked.area\b/.test(lower)) return 'stacked_area';
+  if (/\bstacked.bar\b/.test(lower)) return 'stacked_bar';
+  if (/\bhistogram\b/.test(lower)) return 'histogram';
+  if (/\bscatter\b/.test(lower)) return 'scatter';
+  if (/\bwaterfall\b/.test(lower)) return 'waterfall';
+  if (/\bbox.plot\b/.test(lower)) return 'boxplot';
+  if (/\barea\b/.test(lower)) return 'area';
   if (/\bdonut\b/.test(lower)) return 'donut';
   if (/\bpie\b/.test(lower)) return 'pie';
   if (/\bline\b|\btrend\b|\bhistory\b|\bhistorical\b|\bover time\b|\btimeline\b/.test(lower)) return 'line';

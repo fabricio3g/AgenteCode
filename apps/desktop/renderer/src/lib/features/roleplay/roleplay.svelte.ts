@@ -14,7 +14,9 @@ import type {
   ChatMessage,
   ChatSession,
   LorebookEntry,
+  PromptTrim,
   RoleplayJournalEntry,
+  RoleplayRecall,
   RoleplaySettings,
   RoleplaySceneState,
   RoleplayTurnSnapshot,
@@ -22,12 +24,17 @@ import type {
 } from '$lib/types/chat';
 import type { RoleplayAttribution } from '$lib/stores/app-message-pipeline';
 import {
-  buildRoleplaySystemPrompt as composeRoleplayPrompt,
+  buildRoleplayPromptParts,
   resolveLorebooks,
   resolveRoleplaySampling,
+  type RoleplayPromptParts,
   type RoleplaySampling
 } from '$lib/services/roleplay-prompts';
+import { resolveMacros, type MacroContext } from '$lib/services/roleplay-macros';
+import { getMessageRequestContent } from '$lib/stores/app-store-helpers';
 import { toastStore } from '$lib/stores/toast.svelte';
+import { get } from 'svelte/store';
+import { t } from 'svelte-i18n';
 import { createId } from '$lib/utils/id';
 import { charactersStore, emptyCharacter, greetingsFor } from './characters.svelte';
 import { worldsStore } from './worlds.svelte';
@@ -40,7 +47,7 @@ import { ensembleEnabled, resolveRoleplaySettings, sceneOverrides, sceneState } 
 import { copyScene, decideTurn, sceneForChat, seededRandom, stripSceneBlock, turnSnapshot, restrictContributions } from './roleplay-scene';
 import { roleplayPreferences } from './roleplay-presets.svelte';
 import { cleanDraft, impersonationMessages, summaryDue, summaryMessages, transcript, unsummarized } from './roleplay-steer';
-import type { RequestMessage } from '$lib/services/chat-api';
+import type { RequestMessage } from '$lib/services/chat/types';
 
 /** What the roleplay store needs from the app store. */
 interface RoleplayHost {
@@ -56,13 +63,30 @@ interface RoleplayHost {
   persist(): void;
   sendCurrentMessage(options?: { silent?: boolean }): Promise<void>;
   /** One non-streamed completion on the active model; the reply text. */
-  completeText(messages: RequestMessage[]): Promise<string>;
+  completeText(messages: RequestMessage[], options?: { maxTokens?: number }): Promise<string>;
   /** How full the current context is, 0–1. */
   readonly contextRatio: number;
+  /** The active model runs locally: side calls are rare there, so they wait for a full context. */
+  readonly localBackend: boolean;
 }
+
+/** Completion caps for the side calls, in tokens. */
+const IMPERSONATE_MAX_TOKENS = 220;
 
 /** The journal rides on the chat's roleplay JSON, so it stays bounded. */
 const MAX_JOURNAL_ENTRIES = 200;
+
+/** What one pass of macro resolution reads from: built once, so a history resolves in linear time. */
+interface MacroScene {
+  chat: ChatSession;
+  messages: ChatMessage[];
+  /** {{user}} for this pass: the turn's persona, else the chat's active one. */
+  user: string;
+  /** {{char}} for a message whose speaker is unknown. */
+  fallback: string;
+  /** Cast names in roster order, for {{group}}. */
+  roster: string[];
+}
 
 function isRoleplay(chat: ChatSession | null | undefined): chat is ChatSession {
   return chat?.contextMode === 'roleplay';
@@ -128,10 +152,10 @@ class RoleplayStore {
     try {
       const draft = await this.host.completeText(impersonationMessages({
         userName,
-        persona: persona?.description,
+        persona: resolveMacros(persona?.description ?? '', this.chatScope(chat, userName)),
         characters: this.cast(chat).map((card) => card.name),
-        transcript: transcript(chat.messages, (message) => this.transcriptName(chat, message))
-      }));
+        transcript: transcript(this.resolveHistory(chat, chat.messages, { user: userName }), (message) => this.transcriptName(chat, message))
+      }), { maxTokens: IMPERSONATE_MAX_TOKENS });
       const line = cleanDraft(draft, userName);
       if (line && this.host.currentChatId === chat.id) this.host.composer = line;
     } catch (cause) {
@@ -146,16 +170,16 @@ class RoleplayStore {
     const chat = this.host.findChat(chatId);
     if (!isRoleplay(chat) || this.summarizing[chatId]) return;
     const previous = chat.roleplay?.storySummary;
-    const turns = unsummarized(chat.messages, previous);
+    const turns = unsummarized(this.resolveHistory(chat), previous);
     if (!turns.length) return;
     this.summarizing = { ...this.summarizing, [chatId]: true };
     try {
       const words = Math.max(60, Math.round((this.settings(chat).memoryBudget ?? 800) * 0.5));
       const text = (await this.host.completeText(summaryMessages({
-        previous: previous?.text,
+        previous: previous?.text ? resolveMacros(previous.text, this.chatScope(chat)) : undefined,
         transcript: transcript(turns, (message) => this.transcriptName(chat, message)),
         words
-      }))).trim();
+      }), { maxTokens: Math.min(1500, words * 2) })).trim();
       if (text) this.patchSettings(chat, { storySummary: { text, throughId: turns.at(-1)!.id, updatedAt: Date.now() } });
     } catch {
       // Best effort: the next turn tries again.
@@ -177,9 +201,11 @@ class RoleplayStore {
     const chat = this.host.findChat(chatId);
     if (failed || !isRoleplay(chat)) return;
     const settings = this.settings(chat);
-    if (settings.memoryEnabled && summaryDue(chat.messages, chat.roleplay?.storySummary, settings.summaryEvery ?? 8, this.host.contextRatio)) {
-      void this.summarize(chatId);
-    }
+    // Local: a side call evicts the chat's cached prompt, so the summary waits until the window is nearly full (the trim is coming anyway).
+    const due = this.host.localBackend
+      ? summaryDue(chat.messages, chat.roleplay?.storySummary, settings.summaryEvery ?? 8, this.host.contextRatio, { onlyWhenFull: true })
+      : summaryDue(chat.messages, chat.roleplay?.storySummary, settings.summaryEvery ?? 8, this.host.contextRatio);
+    if (settings.memoryEnabled && due) void this.summarize(chatId);
   }
 
   // ── Cast and speakers ─────────────────────────────────────────────────
@@ -263,7 +289,8 @@ class RoleplayStore {
     return selectNextSpeaker({
       strategy,
       cast,
-      messages,
+      // Mentions are read from the text the viewer sees, so {{char}} routes too.
+      messages: this.resolveHistory(chat, messages),
       mutedIds: chat.roleplay?.mutedIds || [],
       allowSelfReplies: false,
       // Preview and send share a stable routing roll for this history boundary.
@@ -398,12 +425,12 @@ class RoleplayStore {
     if (!isRoleplay(chat)) return true;
     const cast = [...this.cast(chat), ...this.presentCast(chat).filter((card) => card.id.startsWith('npc-'))];
     if (!cast.length) {
-      toastStore.info('This scene has no character. Choose one to continue.', 4000);
+      toastStore.info(get(t)('roleplay.route.noCharacter'), 4000);
       return false;
     }
     const speaker = this.routeSpeaker(chat, messages);
     if (!speaker) {
-      toastStore.info('No available character in this room — adjust presence or unmute a character.', 4000);
+      toastStore.info(get(t)('roleplay.route.noneAvailable'), 4000);
       return false;
     }
     if (speaker) this.speakerOverrides[chat.id] = speaker;
@@ -428,8 +455,9 @@ class RoleplayStore {
       const available = [...this.cast(history).filter((card) => snapshot.sceneBefore.presentIds.includes(card.id)),
         ...snapshot.sceneBefore.npcs.map((npc) => emptyCharacter({ id: npc.id, name: npc.name, description: npc.description }))]
         .filter((card) => !settings.mutedIds?.includes(card.id));
-      const user = [...history.messages].reverse().find((message) => message.role === 'user');
-      snapshot.participantIds = selectTurnParticipants(user?.content ?? '', available, speakerId, ensembleEnabled(settings));
+      const latest = [...history.messages].reverse().find((message) => message.role === 'user');
+      const latestText = latest ? this.resolveMessage(history, latest).content : '';
+      snapshot.participantIds = selectTurnParticipants(latestText, available, speakerId, ensembleEnabled(settings));
     }
     speakerId = snapshot.participantIds[0] ?? speakerId;
     if (!snapshot.persona) {
@@ -437,11 +465,13 @@ class RoleplayStore {
       snapshot.persona = { id: persona?.id ?? null, name: persona?.name || this.host.userName || 'User', avatar: persona?.avatar };
     }
     const parts = this.promptParts(history, speakerId, snapshot);
+    snapshot.recall = parts.recall;
     const turn = createRoleplayTurn({
       speakerId,
       attribution: this.attribution(history, speakerId, snapshot),
       sampling: parts.sampling,
       stop: parts.stop,
+      prompt: parts.build,
       sanitize: this.outputSanitizer(chat, settings, snapshot.sceneBefore, snapshot.participantIds, speakerId),
       choices: !!settings.adventureChoices,
       storyTurn: this.takeStoryTurn(chat.id),
@@ -494,6 +524,9 @@ class RoleplayStore {
       for (const npc of room.npcs) names.add(npc.name);
       const persona = charactersStore.getPersonaById(chat.personaId) ?? charactersStore.defaultPersona;
       if (persona?.name) names.add(persona.name);
+      // Replies are stored raw, so a label the model wrote as a macro is stripped too.
+      names.add('{{char}}');
+      names.add('{{user}}');
     }
     // Nothing to clean: no prefixes to strip and no choices block to lift.
     return (content: string) => {
@@ -511,7 +544,7 @@ class RoleplayStore {
     const chat = this.scene;
     if (!chat) return;
     if (enabled && this.settings(chat).replyOrder === 'manual') {
-      toastStore.info('Auto mode needs a speaker order. Switch off Manual first.', 4000);
+      toastStore.info(get(t)('roleplay.route.autoNeedsOrder'), 4000);
       return;
     }
     this.patchSettings(chat, { autoMode: enabled });
@@ -628,6 +661,20 @@ class RoleplayStore {
     this.save();
   }
 
+  /** Pin a message's text as a key memory for this scene. The text is stored raw, so macros resolve as usual. */
+  pinToMemory(text: string) {
+    const body = text.trim();
+    if (!body) return;
+    // A title is a plain label: the markdown of the line it came from is dropped, the body keeps it.
+    const firstLine = (body.split('\n').find((line) => line.trim())?.trim() || body).replace(/[*_`#>~]+/g, '').replace(/\s+/g, ' ').trim() || body;
+    const title = firstLine.length > 60 ? `${firstLine.slice(0, 57).trimEnd()}…` : firstLine;
+    this.addJournalEntry({ kind: 'note', title, body, pinned: true });
+  }
+
+  editJournalEntry(entryId: string, patch: { title?: string; body?: string }) {
+    this.patchJournal((journal) => journal.map((entry) => (entry.id === entryId ? { ...entry, ...patch } : entry)));
+  }
+
   removeJournalEntry(entryId: string) {
     this.patchJournal((journal) => journal.filter((entry) => entry.id !== entryId));
   }
@@ -655,42 +702,200 @@ class RoleplayStore {
     };
   }
 
+  // ── Macros ────────────────────────────────────────────────────────────
+  // Stored text stays raw. These resolve it in the context it is read in; the
+  // policy and the grammar live in services/roleplay-macros.
+
+  /** The pieces one resolution pass reads from. Cheap: no history scan. */
+  private macroScene(chat: ChatSession, messages: ChatMessage[] = chat.messages, user?: string): MacroScene {
+    const current = this.names(chat);
+    return {
+      chat,
+      messages,
+      user: user?.trim() || current.user,
+      fallback: current.char,
+      roster: this.cast(chat).map((card) => card.name)
+    };
+  }
+
+  /** A speaker's name: a card, else the scene NPC the turn that spoke it recorded, else the room. */
+  private speakerName(chat: ChatSession, speakerId: string | null | undefined, near?: ChatMessage): string | undefined {
+    if (!speakerId) return undefined;
+    const card = charactersStore.getById(speakerId);
+    if (card?.name) return card.name;
+    const npc = near ? turnSnapshot(near)?.sceneAfter?.npcs?.find((entry) => entry.id === speakerId) : undefined;
+    return npc?.name || this.cardForId(chat, speakerId)?.name || undefined;
+  }
+
+  /**
+   * The line a user message is spoken to: the next reply that has a speaker.
+   * Nothing answered yet (a turn being written) falls back to the routed speaker.
+   */
+  private answererOf(messages: ChatMessage[], index: number): ChatMessage | undefined {
+    for (let next = index + 1; next < messages.length; next += 1) {
+      const message = messages[next];
+      if (message?.role === 'assistant' && message.speakerId) return message;
+    }
+    return undefined;
+  }
+
+  /** The context one stored message resolves in, without {{lastMessage}}. */
+  private baseScope(scene: MacroScene, index: number): MacroContext {
+    const message = scene.messages[index]!;
+    const speaker = message.role === 'assistant' ? message : this.answererOf(scene.messages, index);
+    const scope: MacroContext = {
+      char: this.speakerName(scene.chat, speaker?.speakerId, speaker) ?? scene.fallback,
+      user: scene.user,
+      group: scene.roster,
+      seed: message.id
+    };
+    if (Number.isFinite(message.createdAt)) scope.now = new Date(message.createdAt);
+    return scope;
+  }
+
+  /** A stored message's text as the viewer reads it, for use as another message's {{lastMessage}}. */
+  private readMessage(scene: MacroScene, index: number): string {
+    const message = scene.messages[index];
+    return message ? resolveMacros(getMessageRequestContent(message), this.baseScope(scene, index)) : '';
+  }
+
+  /** The full context one stored message resolves in: its base scope plus the message before it. */
+  private messageScope(scene: MacroScene, index: number): MacroContext {
+    return { ...this.baseScope(scene, index), lastMessage: index > 0 ? this.readMessage(scene, index - 1) : '' };
+  }
+
+  /** The context for text that belongs to the chat, not to one message: its start, its id, its speaker. */
+  private chatScope(chat: ChatSession, user?: string): MacroContext {
+    const scene = this.macroScene(chat, [], user);
+    return {
+      char: scene.fallback,
+      user: scene.user,
+      group: scene.roster,
+      seed: chat.id,
+      ...(Number.isFinite(chat.createdAt) ? { now: new Date(chat.createdAt) } : {})
+    };
+  }
+
+  /** The chat's last finished message as the model reads it: the system prompt's {{lastMessage}}. */
+  private lastFinishedText(chat: ChatSession, user: string): string {
+    const scene = this.macroScene(chat, chat.messages, user);
+    for (let index = chat.messages.length - 1; index >= 0; index -= 1) {
+      const message = chat.messages[index]!;
+      if (message.done === false || !getMessageRequestContent(message).trim()) continue;
+      return this.readMessage(scene, index);
+    }
+    return '';
+  }
+
+  /**
+   * A roleplay message's text as the viewer reads it: macros resolved against
+   * that message. Text outside a message (a journal note, say) takes `seed` and
+   * `at` instead. Non-roleplay text passes through untouched.
+   */
+  displayText(text: string, anchor: { messageId?: string | null; seed?: string; at?: number } = {}): string {
+    const chat = this.host.currentChat;
+    if (!text || !isRoleplay(chat)) return text;
+    const index = anchor.messageId ? chat.messages.findIndex((message) => message.id === anchor.messageId) : -1;
+    if (index >= 0) return resolveMacros(text, this.messageScope(this.macroScene(chat), index));
+    return resolveMacros(text, {
+      ...this.chatScope(chat),
+      ...(anchor.seed !== undefined ? { seed: anchor.seed } : {}),
+      ...(anchor.at !== undefined && Number.isFinite(anchor.at) ? { now: new Date(anchor.at) } : {})
+    });
+  }
+
+  /**
+   * The history as the model reads it: a copy of every message whose content
+   * and versions are resolved in that message's context. Stored messages are
+   * untouched. `user` pins {{user}} to a turn's persona, so the history matches
+   * the prompt that was built with it.
+   */
+  resolveHistory(chat: ChatSession, messages: ChatMessage[] = chat.messages, options: { user?: string } = {}): ChatMessage[] {
+    if (!isRoleplay(chat)) return messages;
+    const scene = this.macroScene(chat, messages, options.user);
+    return messages.map((message, index) => {
+      const scope = this.messageScope(scene, index);
+      const resolve = (text: string) => resolveMacros(text, scope);
+      return {
+        ...message,
+        content: resolve(message.content),
+        ...(message.versions ? { versions: message.versions.map((version) => ({ ...version, content: resolve(version.content) })) } : {})
+      };
+    });
+  }
+
+  /** One message as the model reads it, for flows that hold a message rather than the thread. */
+  resolveMessage(chat: ChatSession, message: ChatMessage): ChatMessage {
+    const messages = chat.messages.some((entry) => entry.id === message.id) ? chat.messages : [message];
+    return this.resolveHistory(chat, messages).find((entry) => entry.id === message.id) ?? message;
+  }
+
+  /** A chat as it reads on screen, for export. Only roleplay chats change. */
+  forExport(chat: ChatSession): ChatSession {
+    return isRoleplay(chat) ? { ...chat, messages: this.resolveHistory(chat) } : chat;
+  }
+
+  /**
+   * Text shown outside any chat: a card, a world, a persona, a scene about to
+   * start. {{char}} is `char`; {{user}} is the given persona, else the default.
+   */
+  previewText(text: string, options: { char?: string; personaId?: string | null; group?: string[]; seed?: string } = {}): string {
+    if (!text) return text;
+    const persona = charactersStore.getPersonaById(options.personaId) ?? charactersStore.defaultPersona;
+    return resolveMacros(text, {
+      char: options.char?.trim() || 'the character',
+      user: persona?.name?.trim() || this.host.userName?.trim() || 'User',
+      group: options.group,
+      seed: options.seed,
+      now: new Date()
+    });
+  }
+
   /**
    * Roleplay sessions never receive the assistant system prompt: character
    * card, persona, lorebook and author's note compose the whole instruction
    * block (see services/roleplay-prompts).
+   *
+   * Everything the prompt reads is resolved here once. `build(trim)` then makes
+   * the stable block and the volatile tail at a budget's trim level.
    */
   private promptParts(chat: ChatSession | null, speakerId?: string | null, snapshot?: RoleplayTurnSnapshot): {
+    build: (trim?: PromptTrim) => RoleplayPromptParts;
     systemPrompt: string;
     loreEntries: LorebookEntry[];
     speaker: CharacterCard | null;
     sampling: RoleplaySampling;
     stop: string[];
+    recall: RoleplayRecall;
   } {
     const primary = charactersStore.getById(chat?.characterId);
-    const characters = chat ? this.cast(snapshot ? { ...chat, roleplay: { ...chat.roleplay, ...snapshot.settings } } : chat) : [];
-    if (!characters.length && primary) characters.push(primary);
-
+    const cast = chat ? this.cast(snapshot ? { ...chat, roleplay: { ...chat.roleplay, ...snapshot.settings } } : chat) : [];
+    const characters = cast.length ? cast : primary ? [primary] : [];
     const personaCard = snapshot?.persona
       ? charactersStore.getPersonaById(snapshot.persona.id)
       : charactersStore.getPersonaById(chat?.personaId) ?? charactersStore.defaultPersona;
     const persona = personaCard && snapshot?.persona ? { ...personaCard, name: snapshot.persona.name } : personaCard;
+    // The same {{user}} the prompt builder uses, so every macro in one request agrees.
+    const user = snapshot?.persona?.name?.trim() || persona?.name?.trim() || this.host.userName?.trim() || 'User';
     const world = worldsStore.getById(chat?.worldId);
     const settings = snapshot?.settings ?? this.settings(chat);
     const room = snapshot?.sceneBefore ?? this.room(chat);
-    for (const npc of room.npcs) characters.push(emptyCharacter({ id: npc.id, name: npc.name, description: npc.description }));
+    // Scene NPCs are per-turn: they travel in the volatile tail, not the cast.
+    const npcs = room.npcs.map((npc) => emptyCharacter({ id: npc.id, name: npc.name, description: npc.description }));
+    const everyone = [...characters, ...npcs];
     const memoryLimit = (settings.memoryBudget ?? 800) * 4;
     const journal = (settings.journal ?? []).filter((entry) => entry.pinned && (!entry.messageId || chat?.messages.some((message) => message.id === entry.messageId)));
     const summary = chat?.roleplay?.storySummary?.text?.trim();
-    const memoryContext = settings.memoryEnabled
-      ? [...(summary ? [`Story so far: ${summary}`] : []), ...journal.map((entry) => `${entry.title}: ${entry.body}`), ...room.facts, ...room.goals.map((goal) => `Goal: ${goal}`), ...room.relationships].join('\n').slice(0, memoryLimit) : '';
+    const memory = this.memoryBlock(settings, summary, journal, room, memoryLimit);
     const sceneContext = [
       `Location: ${room.location || 'as established in conversation'}`,
-      ...characters.map((card) => `${card.id}: ${card.name} — ${room.presentIds.includes(card.id) || room.npcs.some((npc) => npc.id === card.id) ? settings.mutedIds?.includes(card.id) ? 'present, silent' : 'present' : 'absent'}`)
+      ...everyone.map((card) => `${card.id}: ${card.name} — ${room.presentIds.includes(card.id) || npcs.some((npc) => npc.id === card.id) ? settings.mutedIds?.includes(card.id) ? 'present, silent' : 'present' : 'absent'}`)
     ].join('\n');
 
     const scanDepth = Math.max(1, primary?.book?.scanDepth || 0, world?.book?.scanDepth || 0) || 4;
-    const scanText = (chat?.messages || [])
+    // Keys match the text the viewer and the model see, so a key can name {{user}}.
+    const scanned: ChatMessage[] = chat ? this.resolveHistory(chat, chat.messages, { user }) : [];
+    const scanText = scanned
       .slice(-scanDepth)
       .map((message) => message.content || '')
       .join('\n');
@@ -698,7 +903,7 @@ class RoleplayStore {
     const loreEntries = resolveLorebooks(
       [
         { book: world?.book, source: 'world' },
-        ...characters.map((character) => ({
+        ...everyone.map((character) => ({
           book: character.book,
           source: 'character' as const,
           characterId: character.id
@@ -707,15 +912,18 @@ class RoleplayStore {
       scanText
     );
 
-    const speaker = characters.find((card) => card.id === (speakerId ?? this.speakerId(chat))) || primary;
-    const systemPrompt = composeRoleplayPrompt({
+    const speaker = everyone.find((card) => card.id === (speakerId ?? this.speakerId(chat))) || primary || null;
+    const group = characters.length > 1 || npcs.length > 0;
+    const base = {
       characters,
+      // The scene's primary, never the turn's speaker: the stable block must not change when the speaker does.
+      primary: primary ?? characters[0] ?? null,
       speaker,
       persona,
       userName: snapshot?.persona?.name || this.host.userName,
       loreEntries,
       authorNote: settings.authorNote,
-      group: characters.length > 1 || room.npcs.length > 0,
+      group,
       allowMultiSpeaker: snapshot?.participantIds ? snapshot.participantIds.length > 1 : ensembleEnabled(settings),
       participantIds: snapshot?.participantIds,
       adventureChoices: !!settings.adventureChoices,
@@ -724,8 +932,20 @@ class RoleplayStore {
       worldOverview: world?.overview,
       worldScenario: world?.scenario,
       contentRating: settings.contentRating,
-      settings, sceneContext, memoryContext
-    });
+      settings,
+      npcs,
+      sceneContext,
+      memoryContext: memory.text,
+      memoryUsed: { memories: memory.memories, journal: memory.journal },
+      // Time and random draws hold for the whole chat: the prompt stays byte-stable across turns.
+      macros: {
+        now: chat && Number.isFinite(chat.createdAt) ? new Date(chat.createdAt) : undefined,
+        seed: chat?.id,
+        lastMessage: chat ? this.lastFinishedText(chat, user) : undefined
+      }
+    };
+    const build = (trim: PromptTrim = {}) => buildRoleplayPromptParts({ ...base, trim });
+    const whole = build();
 
     const sampling = resolveRoleplaySampling({
       speaker: speaker || null,
@@ -743,10 +963,66 @@ class RoleplayStore {
       userName: snapshot?.persona?.name || persona?.name?.trim() || this.host.userName?.trim() || 'User',
       speakerName: speaker?.name,
       allowMultiSpeaker: false,
-      castNames: characters.filter((card) => snapshot?.participantIds && !snapshot.participantIds.includes(card.id)).map((card) => card.name)
+      castNames: everyone.filter((card) => snapshot?.participantIds && !snapshot.participantIds.includes(card.id)).map((card) => card.name)
     });
 
-    return { systemPrompt, loreEntries, speaker: speaker || null, sampling, stop };
+    // What this prompt drew on, for the "remembered" line under the reply. Read-only: the prompt builder is untouched.
+    const recall: RoleplayRecall = {
+      memories: settings.memoryEnabled ? journal.map((entry) => ({ id: entry.id, title: entry.title })) : [],
+      lore: loreEntries.map((entry) => ({ id: entry.id, title: entry.comment?.trim() || entry.keys[0] || '' })),
+      summary: !!settings.memoryEnabled && !!summary
+    };
+
+    return {
+      build,
+      systemPrompt: [whole.stable, whole.volatile].filter(Boolean).join('\n\n'),
+      loreEntries,
+      speaker: speaker || null,
+      sampling,
+      stop,
+      recall
+    };
+  }
+
+  /**
+   * The story-so-far block: whole items in priority order (summary, pinned
+   * journal, facts, goals, relationships), up to the memory budget. An item that
+   * does not fit ends the block, so no memory is cut in half.
+   */
+  private memoryBlock(
+    settings: RoleplaySettings,
+    summary: string | undefined,
+    journal: RoleplayJournalEntry[],
+    room: RoleplaySceneState,
+    limit: number
+  ): { text: string; memories: string[]; journal: string[] } {
+    const out = { text: '', memories: [] as string[], journal: [] as string[] };
+    if (!settings.memoryEnabled) return out;
+    const items: Array<{ id: string; text: string; kind: 'memory' | 'journal' }> = [
+      ...(summary ? [{ id: 'summary', text: `Story so far: ${summary}`, kind: 'memory' as const }] : []),
+      ...journal.map((entry) => ({ id: entry.id, text: `${entry.title}: ${entry.body}`, kind: 'journal' as const })),
+      ...room.facts.map((fact, index) => ({ id: `fact:${index}`, text: fact, kind: 'memory' as const })),
+      ...room.goals.map((goal, index) => ({ id: `goal:${index}`, text: `Goal: ${goal}`, kind: 'memory' as const })),
+      ...room.relationships.map((relationship, index) => ({ id: `relationship:${index}`, text: relationship, kind: 'memory' as const }))
+    ];
+    const lines: string[] = [];
+    let length = 0;
+    for (const item of items) {
+      const cost = (lines.length ? 1 : 0) + item.text.length;
+      if (length + cost > limit) {
+        // The first item alone over the budget is cut short rather than dropped.
+        if (!lines.length && limit > 0) {
+          lines.push(item.text.slice(0, limit));
+          (item.kind === 'journal' ? out.journal : out.memories).push(item.id);
+        }
+        break;
+      }
+      lines.push(item.text);
+      length += cost;
+      (item.kind === 'journal' ? out.journal : out.memories).push(item.id);
+    }
+    out.text = lines.join('\n');
+    return out;
   }
 
   /** The composed system prompt for a scene reply. */
@@ -823,6 +1099,7 @@ class RoleplayStore {
       ...sceneOverrides(options.settings || {}, resolveRoleplaySettings(roleplayPreferences.defaults, worldSettings))
     };
     chat.title = world?.name || (group ? `${primary.name} +${cast.length - 1}` : primary.name) || chat.title;
+    roleplayPreferences.noteLastPersona(chat.personaId);
 
     const opening = openings[openingIndex];
     if (opening) {
@@ -850,7 +1127,7 @@ class RoleplayStore {
   startSolo(character: CharacterCard, options: { personaId?: string | null; greetingIndex?: number } = {}) {
     return this.startScene({
       characters: [character],
-      personaId: options.personaId ?? null,
+      personaId: options.personaId !== undefined ? options.personaId : roleplayPreferences.lastPersonaId(charactersStore.personas),
       openingSource: 'greeting',
       openingIndex: options.greetingIndex ?? 0
     }) as ChatSession;

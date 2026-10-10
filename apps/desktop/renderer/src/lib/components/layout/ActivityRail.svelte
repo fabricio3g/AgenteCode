@@ -13,7 +13,10 @@
 -->
 
 <script lang="ts">
-  import { Bot, Code2, Drama, House, Settings as SettingsIcon } from 'lucide-svelte';
+  import UiIconButton from '$lib/components/ui/IconButton.svelte';
+  import { cn as uiClass } from '$lib/utils/cn';
+
+  import { Bot, Code2, Drama, House, PenTool, Settings as SettingsIcon } from 'lucide-svelte';
   import { t } from 'svelte-i18n';
   import Tooltip from '$lib/components/ui/Tooltip.svelte';
   import { appStore } from '$lib/stores/app.svelte';
@@ -27,12 +30,14 @@
     { id: 'home', label: copy.spaces.home, icon: House },
     { id: 'code', label: copy.spaces.code, icon: Code2 },
     { id: 'roleplay', label: copy.spaces.roleplay, icon: Drama },
+    { id: 'design', label: copy.spaces.design, icon: PenTool },
     { id: 'bots', label: copy.spaces.bots, icon: Bot }
   ];
 
   /** A space with work going on in it shows a quiet dot, so the rail reports as well as navigates. */
   const busy = $derived<Partial<Record<TabId, boolean>>>({
     code: Object.values(codeStore.runs).some((run) => run.running),
+    design: appStore.chats.some((chat) => chat.contextMode === 'design' && appStore.isChatGenerating(chat.id)),
     bots: botsStore.working.length > 0
   });
 
@@ -79,20 +84,20 @@
            one, so the rail never shows two active rows at once. -->
       {@const active = !appStore.settingsScreenOpen && appStore.activeTab === tab.id}
       <Tooltip label={tab.label} position="right">
-        <button
+        <UiIconButton label={tab.label} size="sm"
           type="button"
-          class="rail-button ui-icon-button"
-          class:is-active={active}
+          class={uiClass("rail-button ", "ui-local-e822ba2f", {"is-active": active})}
+
           role="tab"
           id={`space-tab-${tab.id}`}
           tabindex={active ? 0 : -1}
           aria-selected={active}
-          aria-label={tab.label}
+
           onclick={() => activate(tab.id)}
         >
           <Icon aria-hidden="true" />
           {#if busy[tab.id] && !active}<span class="busy-dot" aria-hidden="true"></span>{/if}
-        </button>
+        </UiIconButton>
       </Tooltip>
     {/each}
   </div>
@@ -100,17 +105,17 @@
   <!-- Settings anchors the rail bottom, one click away from anywhere. -->
   <div class="rail-bottom">
     <Tooltip label={$t('sidebar.settings')} shortcut="mod+," position="right">
-      <button
+      <UiIconButton label={$t('sidebar.settings')} size="sm"
         type="button"
-        class="rail-button ui-icon-button"
-        class:is-active={appStore.settingsScreenOpen}
+        class={uiClass("rail-button ", "ui-local-e822ba2f", {"is-active": appStore.settingsScreenOpen})}
+
         data-activity-settings
-        aria-label={$t('sidebar.settings')}
+
         aria-pressed={appStore.settingsScreenOpen}
         onclick={toggleSettings}
       >
         <SettingsIcon aria-hidden="true" />
-      </button>
+      </UiIconButton>
     </Tooltip>
   </div>
 </nav>
@@ -146,7 +151,7 @@
     gap: 0.25rem;
   }
 
-  .rail-button {
+  :global(.rail-button.ui-local-e822ba2f) {
     position: relative;
     width: var(--rail-btn);
     height: var(--rail-btn);
@@ -159,38 +164,40 @@
     color: var(--muted-foreground);
     --icon: var(--rail-icon);
   }
-  .rail-button:hover {
+  :global(.rail-button:hover.ui-local-e822ba2f) {
     background: var(--float-row-hover);
     border-color: transparent;
     color: var(--foreground);
   }
 
   /* Lucide scales its stroke with the glyph; 1.9 reads at ~1.3px on 16px. */
-  .rail-button :global(svg) {
+  :global(.rail-button.ui-local-e822ba2f) :global(svg) {
+    width:var(--rail-icon);
+    height:var(--rail-icon);
     stroke-width: 1.9;
   }
 
   /* The current space: a tinted chip plus an accent tick on the rail's edge.
      --nav-current-bg sits a shade off --rail-bg, too close to read here. */
-  .rail-button.is-active,
-  .rail-button.is-active:hover {
+  :global(.rail-button.is-active.ui-local-e822ba2f),
+  :global(.rail-button.is-active:hover.ui-local-e822ba2f) {
     background: color-mix(in srgb, var(--foreground) 9%, transparent);
     border-color: transparent;
     box-shadow: inset 0 0 0 1px var(--border-subtle);
     color: var(--foreground);
   }
-  .rail-button.is-active::before {
+  :global(.rail-button.is-active.ui-local-e822ba2f::before) {
     content: '';
     position: absolute;
     left: calc((var(--rail-btn) - var(--rail-w)) / 2 + 1px);
     top: 25%;
     bottom: 25%;
-    width: 2px;
+    width: var(--rail-mark-width);
     border-radius: 0 2px 2px 0;
     background: var(--brand-accent);
   }
   @media (prefers-reduced-motion: no-preference) {
-    .rail-button { transition: background-color var(--motion-fast), color var(--motion-fast); }
+    :global(.rail-button.ui-local-e822ba2f) { transition: background-color var(--motion-fast), color var(--motion-fast); }
   }
 
   .busy-dot {
@@ -207,7 +214,7 @@
   @keyframes rail-pulse { 50% { opacity: 0.45; } }
   @media (prefers-reduced-motion: reduce) { .busy-dot { animation: none; } }
 
-  .rail-button:focus-visible {
+  :global(.rail-button:focus-visible.ui-local-e822ba2f) {
     outline: 2px solid var(--brand-accent);
     outline-offset: -2px;
   }

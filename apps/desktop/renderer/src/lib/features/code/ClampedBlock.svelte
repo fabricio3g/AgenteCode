@@ -8,6 +8,9 @@
 -->
 
 <script lang="ts">
+  import UiButton from '$lib/components/ui/Button.svelte';
+  import { cn as uiClass } from '$lib/utils/cn';
+
   import type { Snippet } from 'svelte';
   import { t } from 'svelte-i18n';
 
@@ -35,9 +38,9 @@
     <div bind:this={inner}>{@render children()}</div>
   </div>
   {#if overflows}
-    <button type="button" class="clamp-toggle" aria-expanded={expanded} onclick={() => (expanded = !expanded)}>
+    <UiButton variant="plain" type="button" class={uiClass("clamp-toggle", "ui-local-f02028b9")} aria-expanded={expanded} onclick={() => (expanded = !expanded)}>
       {expanded ? $t('code.showLess') : $t('code.showAll')}
-    </button>
+    </UiButton>
   {/if}
 </div>
 
@@ -58,15 +61,15 @@
     -webkit-mask-image: linear-gradient(to top, #000 calc(100% - 2.5rem), transparent);
     mask-image: linear-gradient(to top, #000 calc(100% - 2.5rem), transparent);
   }
-  .clamp-toggle {
+  :global(.clamp-toggle.ui-local-f02028b9) {
     display: block;
     padding: 0.25rem 0.625rem 0.375rem;
     font-size: 12px;
     color: var(--muted-foreground);
     transition: color var(--motion-fast) var(--motion-ease);
   }
-  .clamp-toggle:hover,
-  .clamp-toggle:focus-visible {
+  :global(.clamp-toggle:hover.ui-local-f02028b9),
+  :global(.clamp-toggle:focus-visible.ui-local-f02028b9) {
     color: var(--foreground);
   }
 </style>

@@ -14,8 +14,14 @@
 -->
 
 <script lang="ts">
+  import TileMeter from '$lib/components/ui/TileMeter.svelte';
+  import IconButton from '$lib/components/ui/IconButton.svelte';
+
+  import UiButton from '$lib/components/ui/Button.svelte';
+  import { cn as uiClass } from '$lib/utils/cn';
+
   import { t } from 'svelte-i18n';
-  import { AlertCircle, FilePen, FileText, FolderOpen, Globe, ListChecks, Loader2, Search, Square, SquareTerminal, Wrench, XCircle } from 'lucide-svelte';
+  import { AlertCircle, FilePen, FileText, FolderOpen, Globe, ListChecks, Search, Square, SquareTerminal, Wrench, XCircle } from 'lucide-svelte';
   import type { AgentStep } from '$lib/types/chat';
   import type { CodeChild } from '$shared/agente-protocol';
   import { approvalsStore } from '$lib/stores/approvals.svelte';
@@ -101,7 +107,7 @@
   /** Live while it runs, frozen once it ends, so a settled row still says how long it took. */
   const duration = $derived(running ? elapsed : step.durationMs);
 
-  const Icon = $derived(running ? Loader2 : isApproval ? AlertCircle : isError ? XCircle : plan ? ListChecks : KIND_ICON[kind]);
+  const Icon = $derived(isApproval ? AlertCircle : isError ? XCircle : plan ? ListChecks : KIND_ICON[kind]);
 
   function openPlan() {
     if (chatId && plan) codeWorkspace.showPlan(chatId, plan);
@@ -132,7 +138,7 @@
     onActivate={plan ? openPlan : undefined}
   >
     {#snippet header()}
-      <Icon class="step-icon size-3.5 shrink-0 {running ? 'is-running' : ''} {isError ? 'is-error' : ''} {isApproval ? 'is-approval' : ''}" />
+      {#if running}<TileMeter mode="busy" />{:else}<Icon class="step-icon size-3.5 shrink-0 {isError ? 'is-error' : ''} {isApproval ? 'is-approval' : ''}" />{/if}
       <span class="verb shrink-0" class:ui-shimmer-text={running}>{step.label}</span>
       {#if target}<code class="chip min-w-0 truncate">{target}</code>{/if}
       {#if step.model}<code class="chip model-chip shrink-0" title={step.model}>{shortModel(step.model)}</code>{/if}
@@ -149,7 +155,7 @@
 
     {#snippet actions()}
       {#if running && isCommand && chatId}
-        <button type="button" class="stop" aria-label={$t('code.stopCommand')} title={$t('code.stopCommand')} onclick={stopCommand}><Square class="size-3" /></button>
+        <IconButton label={$t('code.stopCommand')} size="xs" variant="ghost" type="button" class={uiClass("stop", "ui-local-af21c610")}  title={$t('code.stopCommand')} onclick={stopCommand}><Square class="size-3" /></IconButton>
       {/if}
     {/snippet}
 
@@ -182,13 +188,13 @@
             <p class="term-note">{$t('codeWs.noOutput')}</p>
           {/if}
           {#if kind === 'edit' && step.status === 'done' && step.fileChanges?.length}
-            <button type="button" class="view-link self-start" onclick={() => codeWorkspace.showFileInChanges(step.fileChanges?.[0]?.path ?? '')}>{$t('codeWs.viewChanges')}</button>
+            <UiButton variant="plain" type="button" class={uiClass("view-link self-start", "ui-local-af21c610")} onclick={() => codeWorkspace.showFileInChanges(step.fileChanges?.[0]?.path ?? '')}>{$t('codeWs.viewChanges')}</UiButton>
           {/if}
         {/if}
         {#if isApproval}
           <div class="flex items-center gap-2 pt-1">
-            <button type="button" class="approve-btn" onclick={() => approvalsStore.resolve(pending?.id ?? step.id, false)}>{copy.tool.deny}</button>
-            <button type="button" class="approve-btn primary" onclick={() => approvalsStore.resolve(pending?.id ?? step.id, true)}>{copy.tool.allow}</button>
+            <UiButton variant="plain" type="button" class={uiClass("approve-btn", "ui-local-af21c610")} onclick={() => approvalsStore.resolve(pending?.id ?? step.id, false)}>{copy.tool.deny}</UiButton>
+            <UiButton variant="plain" type="button" class={uiClass("approve-btn primary", "ui-local-af21c610")} onclick={() => approvalsStore.resolve(pending?.id ?? step.id, true)}>{copy.tool.allow}</UiButton>
           </div>
         {/if}
       </div>
@@ -216,25 +222,18 @@
     font-size: var(--text-xs);
     color: var(--muted-foreground);
   }
-  /* The icon is a lucide component, so it carries no scope class of ours. */
-  :global(.step-icon.is-running) {
-    animation: spin 1s linear infinite;
-  }
-  @keyframes spin {
-    to { rotate: 360deg; }
-  }
   :global(.step-icon.is-error) {
     color: var(--error);
   }
   :global(.step-icon.is-approval) {
     color: var(--warning);
   }
-  .stop {
+  :global(.stop.ui-local-af21c610) {
     display: inline-flex;
     padding: 0.25rem 0.5rem;
     color: var(--muted-foreground);
   }
-  .stop:hover {
+  :global(.stop:hover.ui-local-af21c610) {
     color: var(--foreground);
   }
   .step-inner {
@@ -242,11 +241,12 @@
     flex-direction: column;
     gap: 0.375rem;
   }
-  /* An approval is the one row that asks for an answer: give it a surface. */
+  /* An approval is the one row that asks for an answer: a tinted band on a warning rail,
+     not a bordered box — the terminal and diff cards inside it bring their own edges. */
   .step-inner.is-approval {
     padding: 0.5rem 0.625rem 0.625rem;
-    border-radius: 0.625rem;
-    border: 1px solid color-mix(in srgb, var(--warning) 35%, var(--border));
+    border-radius: 0 0.5rem 0.5rem 0;
+    border-left: 2px solid color-mix(in srgb, var(--warning) 60%, transparent);
     background: color-mix(in srgb, var(--warning) 5%, transparent);
   }
   .section-label {
@@ -300,13 +300,13 @@
     font-size: var(--text-xs);
     color: var(--muted-foreground);
   }
-  .view-link {
+  :global(.view-link.ui-local-af21c610) {
     font-size: var(--text-xs);
     color: var(--muted-foreground);
     text-decoration: underline;
     text-underline-offset: 2px;
   }
-  .view-link:hover {
+  :global(.view-link:hover.ui-local-af21c610) {
     color: var(--foreground);
   }
   .caret {
@@ -321,7 +321,7 @@
   @keyframes blink {
     50% { opacity: 0; }
   }
-  .approve-btn {
+  :global(.approve-btn.ui-local-af21c610) {
     height: 1.75rem;
     padding: 0 0.75rem;
     border-radius: 9999px;
@@ -331,15 +331,15 @@
     border: 1px solid var(--border);
     background: var(--background);
   }
-  .approve-btn:hover {
+  :global(.approve-btn:hover.ui-local-af21c610) {
     background: var(--surface-hover);
   }
-  .approve-btn.primary {
+  :global(.approve-btn.primary.ui-local-af21c610) {
     border-color: var(--primary);
     background: var(--primary);
     color: var(--primary-fg);
   }
-  .approve-btn.primary:hover {
+  :global(.approve-btn.primary:hover.ui-local-af21c610) {
     opacity: 0.9;
   }
   @media (prefers-reduced-motion: reduce) {

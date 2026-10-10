@@ -4,7 +4,7 @@ import { createBufferedStreamDispatcher } from '$lib/services/streaming';
 import { loadAppConfig } from '$lib/utils/storage';
 import { buildReasoningRequest, createChatStreamWatchdog, hasConfiguredVisionModel, readCompletionWithTools, toRequestMessages } from '$lib/services/chat-api';
 import type { AppConfig, ReasoningLevel } from '$lib/types/chat';
-import type { RequestMessage, ToolDefinition, CompletionResult } from '$lib/services/chat-api';
+import type { RequestMessage, ToolDefinition, CompletionResult } from '$lib/services/chat/types';
 import { toErrorMessage } from '$lib/utils/errors';
 import { samplingParams } from '$shared/llm-params';
 import { DEFAULT_PROVIDER_BASE_URL, DEFAULT_PROVIDER_ID } from '$shared/providers';

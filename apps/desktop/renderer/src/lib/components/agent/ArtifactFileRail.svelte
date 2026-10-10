@@ -1,6 +1,12 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+  import IconButton from '$lib/components/ui/IconButton.svelte';
+
+  import UiListRow from '$lib/components/ui/ListRow.svelte';
+
+  import { cn as uiClass } from '$lib/utils/cn';
+
   import { Tooltip } from '$lib/components/ui';
   import { t } from 'svelte-i18n';
   import { ChevronLeft, ChevronRight, Pencil, Plus, Trash2 } from 'lucide-svelte';
@@ -25,9 +31,9 @@
 <div class="mobile-files border-b border-[var(--border-subtle)] p-2">
   <Select value={selectedPath} options={files.map(([path]) => ({ value: path, label: path }))} onchange={onselect} aria-label={$t('artifacts.studio.file')} variant="surface" class="w-full" />
   <div class="mt-1 flex gap-1">
-    <Tooltip label={$t('artifacts.studio.createFile')} position="bottom"><Button variant="ghost" size="icon-sm" onclick={oncreate} aria-label={$t('artifacts.studio.createFile')}><Plus /></Button></Tooltip>
-    <Tooltip label={$t('artifacts.studio.renameFile')} position="bottom"><Button variant="ghost" size="icon-sm" onclick={onrename} disabled={!selectedPath} aria-label={$t('artifacts.studio.renameFile')}><Pencil /></Button></Tooltip>
-    <Tooltip label={$t('artifacts.studio.deleteFile')} position="bottom"><Button variant="ghost" size="icon-sm" onclick={ondelete} disabled={!selectedPath} aria-label={$t('artifacts.studio.deleteFile')}><Trash2 /></Button></Tooltip>
+    <Tooltip label={$t('artifacts.studio.createFile')} position="bottom"><IconButton label={$t('artifacts.studio.createFile')} variant="ghost" size="sm" onclick={oncreate} ><Plus /></IconButton></Tooltip>
+    <Tooltip label={$t('artifacts.studio.renameFile')} position="bottom"><IconButton label={$t('artifacts.studio.renameFile')} variant="ghost" size="sm" onclick={onrename} disabled={!selectedPath} ><Pencil /></IconButton></Tooltip>
+    <Tooltip label={$t('artifacts.studio.deleteFile')} position="bottom"><IconButton label={$t('artifacts.studio.deleteFile')} variant="ghost" size="sm" onclick={ondelete} disabled={!selectedPath} ><Trash2 /></IconButton></Tooltip>
   </div>
 </div>
 
@@ -40,16 +46,16 @@
   </div>
   {#if !collapsed}
     <div class="flex items-center gap-0.5 border-b border-[var(--border-subtle)] p-1.5">
-      <Tooltip label={$t('artifacts.studio.createFile')} position="bottom"><Button variant="ghost" size="icon-sm" onclick={oncreate} aria-label={$t('artifacts.studio.createFile')}><Plus /></Button></Tooltip>
-      <Tooltip label={$t('artifacts.studio.renameFile')} position="bottom"><Button variant="ghost" size="icon-sm" onclick={onrename} disabled={!selectedPath} aria-label={$t('artifacts.studio.renameFile')}><Pencil /></Button></Tooltip>
-      <Tooltip label={$t('artifacts.studio.deleteFile')} position="bottom"><Button variant="ghost" size="icon-sm" onclick={ondelete} disabled={!selectedPath} aria-label={$t('artifacts.studio.deleteFile')}><Trash2 /></Button></Tooltip>
+      <Tooltip label={$t('artifacts.studio.createFile')} position="bottom"><IconButton label={$t('artifacts.studio.createFile')} variant="ghost" size="sm" onclick={oncreate} ><Plus /></IconButton></Tooltip>
+      <Tooltip label={$t('artifacts.studio.renameFile')} position="bottom"><IconButton label={$t('artifacts.studio.renameFile')} variant="ghost" size="sm" onclick={onrename} disabled={!selectedPath} ><Pencil /></IconButton></Tooltip>
+      <Tooltip label={$t('artifacts.studio.deleteFile')} position="bottom"><IconButton label={$t('artifacts.studio.deleteFile')} variant="ghost" size="sm" onclick={ondelete} disabled={!selectedPath} ><Trash2 /></IconButton></Tooltip>
     </div>
     <div class="min-h-0 overflow-auto p-1.5">
       {#each files as [path] (path)}
         {@const FileIcon = getFileIcon(path)}
-        <button type="button" class:active={path === selectedPath} aria-current={path === selectedPath ? 'true' : undefined} class="file-row" onclick={() => onselect(path)} title={path}>
+        <UiListRow  type="button"  aria-current={path === selectedPath ? 'true' : undefined} class={uiClass("file-row", "ui-local-0faf53e4", {"active": path === selectedPath})} onclick={() => onselect(path)} title={path}>
           <FileIcon class="size-3.5 shrink-0" /><span class="truncate">{path}</span>
-        </button>
+        </UiListRow>
       {/each}
     </div>
   {/if}
@@ -58,7 +64,7 @@
 <style>
   .file-rail { display: flex; width: 13.5rem; flex-direction: column; transition: width 160ms var(--motion-ease); }
   .file-rail.collapsed { width: 2.8rem; }
-  .file-row {
+  :global(.file-row.ui-local-0faf53e4) {
     display: flex;
     width: 100%;
     align-items: center;
@@ -74,12 +80,12 @@
       background-color var(--motion-fast) var(--motion-ease),
       color var(--motion-fast) var(--motion-ease);
   }
-  .file-row:hover {
+  :global(.file-row:hover.ui-local-0faf53e4) {
     background: var(--surface-hover);
     color: var(--foreground);
   }
 
-  .file-row.active {
+  :global(.file-row.active.ui-local-0faf53e4) {
     background: var(--surface-active);
     color: var(--foreground);
   }

@@ -3,7 +3,7 @@
 // the story so long scenes stay consistent. Pure prompt builders; the store
 // runs them.
 
-import type { RequestMessage } from '$lib/services/chat-api';
+import type { RequestMessage } from '$lib/services/chat/types';
 import type { ChatMessage, RoleplayStorySummary } from '$lib/types/chat';
 import { getMessageRequestContent } from '$lib/stores/app-store-helpers';
 
@@ -63,11 +63,22 @@ export function unsummarized(messages: ChatMessage[], summary: RoleplayStorySumm
   return messages.slice(Math.max(0, from)).filter((message) => message.done !== false);
 }
 
-/** Time to update the summary: `every` replies since the last one, or the context is getting full. */
-export function summaryDue(messages: ChatMessage[], summary: RoleplayStorySummary | null | undefined, every: number, contextRatio = 0): boolean {
-  if (every <= 0) return false;
+/**
+ * Time to update the summary: `every` replies since the last one, or the context is getting full.
+ * `onlyWhenFull` waits for the full context alone (local models, where a side call costs the cached prompt).
+ */
+export function summaryDue(
+  messages: ChatMessage[],
+  summary: RoleplayStorySummary | null | undefined,
+  every: number,
+  contextRatio = 0,
+  options: { onlyWhenFull?: boolean } = {}
+): boolean {
   const pending = unsummarized(messages, summary).filter((message) => message.role === 'assistant').length;
-  return pending >= every || (contextRatio >= 0.7 && pending >= 2);
+  const full = contextRatio >= 0.7 && pending >= 2;
+  if (options.onlyWhenFull) return full;
+  if (every <= 0) return false;
+  return pending >= every || full;
 }
 
 /** A model's draft, cleaned: no name label, no wrapping quotes. */

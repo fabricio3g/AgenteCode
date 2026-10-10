@@ -8,6 +8,8 @@
 -->
 
 <script lang="ts">
+  import IconButton from '$lib/components/ui/IconButton.svelte';
+
   import { t } from 'svelte-i18n';
   import { ArrowLeft, MessageSquare, Plus, Sparkles, Trash2 } from 'lucide-svelte';
   import { appStore } from '$lib/stores/app.svelte';
@@ -85,7 +87,7 @@
         <p class="truncate text-[12px] text-muted-foreground">{$t(`artifacts.group.${open.group}`)} · {open.chatTitle}</p>
       </div>
       {#if !returnChat}<Button variant="outline" size="sm" onclick={() => goToChat(open)}><MessageSquare /> {$t('artifacts.openChat')}</Button>{/if}
-      <Button variant="ghost" size="sm" aria-label={$t('artifacts.delete')} title={$t('artifacts.delete')} onclick={() => confirmDelete(open)}><Trash2 /></Button>
+      <IconButton label={$t('artifacts.delete')} variant="ghost" size="sm"  title={$t('artifacts.delete')} onclick={() => confirmDelete(open)}><Trash2 /></IconButton>
     </header>
     <div class="min-h-0 flex-1">
       {#key open.key}
@@ -97,8 +99,7 @@
       <div class="min-h-0 flex-1 overflow-y-auto">
         <div class="mx-auto w-full max-w-[1100px] px-5 pb-10 pt-8 sm:px-8">
           <header>
-            <h1 class="text-2xl font-semibold tracking-[-0.02em] text-foreground">{$t('artifacts.title')}</h1>
-            <p class="mt-1 text-sm text-muted-foreground">{$t('artifacts.description')}</p>
+            <h1 class="text-2xl font-semibold tracking-[-0.02em] text-foreground" title={$t('artifacts.description')}>{$t('artifacts.title')}</h1>
           </header>
 
           {#if !entries.length}

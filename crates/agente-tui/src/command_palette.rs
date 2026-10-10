@@ -54,43 +54,82 @@ pub enum Command {
 }
 
 impl Command {
+    /// Every command, grouped (see [`Command::group`]) so the unfiltered
+    /// palette reads as sections rather than one wall of rows.
     pub fn all() -> Vec<Self> {
         vec![
-            Self::ShowHelp,
-            Self::ShowHotkeys,
+            Self::NewSession,
+            Self::OpenSession,
+            Self::OpenProject,
+            Self::ClearConversation,
+            Self::CompactContext,
+            Self::ExportChat,
+            Self::Undo,
+            Self::Redo,
+            Self::StopRun,
+            Self::InitProject,
             Self::ConnectProvider,
             Self::SwitchModel,
             Self::RefreshModels,
+            Self::CycleThinking,
             Self::ToggleMode,
-            Self::OpenProject,
-            Self::NewSession,
+            Self::ToggleAutoApprove,
+            Self::SubagentModels,
             Self::NewTab,
             Self::CloseTab,
             Self::NextTab,
             Self::PrevTab,
-            Self::OpenSession,
-            Self::ClearConversation,
-            Self::CompactContext,
-            Self::ToggleAutoApprove,
-            Self::OpenEditor,
-            Self::ExportChat,
             Self::ViewTodos,
-            Self::CycleThinking,
-            Self::ToggleTheme,
-            Self::StopRun,
-            Self::Undo,
-            Self::Redo,
-            Self::InitProject,
+            Self::ViewPlan,
+            Self::ViewChanges,
             Self::ListSubagents,
-            Self::SubagentModels,
+            Self::OpenEditor,
+            Self::ToggleTheme,
+            Self::ShowHelp,
+            Self::ShowHotkeys,
             Self::Settings,
             Self::Skills,
             Self::Mcp,
             Self::Doctor,
-            Self::ViewPlan,
-            Self::ViewChanges,
             Self::Quit,
         ]
+    }
+
+    /// The section this command is listed under in the unfiltered palette.
+    pub fn group(self) -> &'static str {
+        match self {
+            Self::NewSession
+            | Self::OpenSession
+            | Self::OpenProject
+            | Self::ClearConversation
+            | Self::CompactContext
+            | Self::ExportChat
+            | Self::Undo
+            | Self::Redo
+            | Self::StopRun
+            | Self::InitProject => "Session",
+            Self::ConnectProvider
+            | Self::SwitchModel
+            | Self::RefreshModels
+            | Self::CycleThinking
+            | Self::ToggleMode
+            | Self::ToggleAutoApprove
+            | Self::SubagentModels => "Model",
+            Self::NewTab | Self::CloseTab | Self::NextTab | Self::PrevTab => "Tabs",
+            Self::ViewTodos
+            | Self::ViewPlan
+            | Self::ViewChanges
+            | Self::ListSubagents
+            | Self::OpenEditor
+            | Self::ToggleTheme => "View",
+            Self::ShowHelp
+            | Self::ShowHotkeys
+            | Self::Settings
+            | Self::Skills
+            | Self::Mcp
+            | Self::Doctor
+            | Self::Quit => "System",
+        }
     }
 
     pub fn label(self) -> &'static str {
@@ -571,11 +610,18 @@ pub fn render_command_list(
         return;
     }
     let selected = selected.min(commands.len() - 1);
-    let items = commands
-        .iter()
-        .enumerate()
-        .map(|(index, command)| command_item(*command, index == selected))
-        .collect();
+    // Section headers only on the full list: a filtered list is ranked by
+    // match, and headers there would split the best hits apart.
+    let grouped = commands.len() == Command::all().len();
+    let mut items = Vec::with_capacity(commands.len() + 5);
+    let mut current = "";
+    for (index, command) in commands.iter().enumerate() {
+        if grouped && command.group() != current {
+            current = command.group();
+            items.push(PickItem::Header(current.into()));
+        }
+        items.push(command_item(*command, index == selected));
+    }
     pick_list(frame, area, &state.ui.hits, list, items, selected);
 }
 

@@ -9,11 +9,16 @@
 -->
 
 <script lang="ts">
+  import UiFileInput from '$lib/components/ui/FileInput.svelte';
+  import { cn as uiClass } from '$lib/utils/cn';
+
   import { Button } from '$lib/components/ui';
   import Avatar from '$lib/components/ui/Avatar.svelte';
   import { Plus, Upload } from 'lucide-svelte';
+  import { t } from 'svelte-i18n';
   import type { CharacterCard } from '$lib/types/chat';
   import { charactersStore } from './characters.svelte';
+  import { roleplayStore } from './roleplay.svelte';
   import { parseCharacterCardFile } from '$lib/services/character-card';
   import { toastStore } from '$lib/stores/toast.svelte';
   import { copy } from '$lib/copy';
@@ -24,14 +29,16 @@
 
   interface Props {
     onpick: (character: CharacterCard) => void;
+    /** Scene setup for this character: cast, persona and opening before it starts. */
+    oncustomize: (character: CharacterCard) => void;
     onedit: (character: CharacterCard) => void;
     onnew: () => void;
   }
 
-  let { onpick, onedit, onnew }: Props = $props();
+  let { onpick, oncustomize, onedit, onnew }: Props = $props();
 
   let query = $state('');
-  let importInput: HTMLInputElement | undefined;
+  let importInput = $state<HTMLInputElement | undefined>();
   let importing = $state(false);
 
   async function onImportFile(event: Event) {
@@ -44,9 +51,9 @@
     try {
       const card = await parseCharacterCardFile(file);
       const saved = await charactersStore.save(card);
-      toastStore.success(`Imported ${saved.name}`);
+      toastStore.success($t('roleplay.library.imported', { values: { name: saved.name } }));
     } catch (error) {
-      toastStore.error(error instanceof Error ? error.message : 'Import failed.');
+      toastStore.error(error instanceof Error ? error.message : $t('roleplay.library.importFailed'));
     } finally {
       importing = false;
     }
@@ -63,28 +70,30 @@
   });
 </script>
 
-<div class="library-shelf mx-auto w-full px-6 pb-6" style="max-width: var(--thread-width);">
-  <LibraryToolbar bind:query placeholder={charactersStore.characters.length ? 'Search characters' : ''}>
-    <Button variant="outline" size="sm" type="button" disabled={importing} onclick={() => importInput?.click()}>
-      <Upload /> {importing ? 'Importing…' : copy.roleplay.importCharacter}
+<div class="library-shelf">
+  <LibraryToolbar bind:query placeholder={charactersStore.characters.length ? $t('roleplay.library.searchCharacters') : ''}>
+    <Button variant="outline" type="button" disabled={importing} onclick={() => importInput?.click()}>
+      <Upload /> {importing ? $t('roleplay.library.importing') : $t('roleplay.library.import')}
     </Button>
-    <Button variant="outline" size="sm" type="button" onclick={onnew}><Plus /> {copy.roleplay.newCharacter}</Button>
+    <Button variant="outline" type="button" onclick={onnew}><Plus /> {$t('roleplay.library.newCharacter')}</Button>
   </LibraryToolbar>
-  <input bind:this={importInput} class="hidden" type="file" accept=".json,.png,application/json,image/png" onchange={onImportFile} />
+  <UiFileInput bind:ref={importInput} class={uiClass("hidden")}  accept=".json,.png,application/json,image/png" onchange={onImportFile} />
 
   {#if !charactersStore.characters.length}
-    <LibraryEmpty title={copy.roleplay.pickCharacter} hint={copy.roleplay.pickCharacterHint} action={copy.roleplay.newCharacter} onaction={onnew} />
+    <LibraryEmpty title={$t('roleplay.library.noCharacters')} hint={$t('roleplay.library.noCharactersHint')} action={$t('roleplay.library.newCharacter')} onaction={onnew} />
   {:else if !filtered.length}
-    <LibraryEmpty title={copy.empty.noMatches} action="Clear search" onaction={() => (query = '')} />
+    <LibraryEmpty title={copy.empty.noMatches} action={$t('roleplay.library.clearSearch')} onaction={() => (query = '')} />
   {:else}
     <div class="library-grid">
       {#each filtered as card (card.id)}
         <LibraryCard
-          kind="character"
           title={card.name}
-          subtitle={card.tagline}
-          meta={card.creator ? [`by ${card.creator}`] : []}
+          subtitle={roleplayStore.previewText(card.tagline ?? '', { char: card.name, seed: card.id })}
           tags={card.tags ?? []}
+          editLabel={$t('roleplay.library.editCharacter')}
+          optionsLabel={$t('roleplay.library.characterOptions')}
+          customizeLabel={$t('roleplay.library.customize')}
+          oncustomize={() => oncustomize(card)}
           onopen={() => onpick(card)}
           onedit={() => onedit(card)}
           onduplicate={() => void duplicateCharacter(card)}

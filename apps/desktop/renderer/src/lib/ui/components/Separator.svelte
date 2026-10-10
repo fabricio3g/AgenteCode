@@ -1,1 +1,2 @@
-<hr class="ui-separator" />
+<script lang="ts">import Separator from '$lib/components/ui/Separator.svelte';</script>
+<Separator />

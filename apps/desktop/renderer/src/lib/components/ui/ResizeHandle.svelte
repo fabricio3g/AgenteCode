@@ -16,6 +16,7 @@
     onresize,
     onend,
     oncancel,
+    onreset,
     fill = false,
     visible = false
   }: {
@@ -27,6 +28,8 @@
     onresize: (delta: number) => void;
     onend?: () => void;
     oncancel?: () => void;
+    /** Double-click: put the pane back at its default size. */
+    onreset?: () => void;
     /** Occupy an absolutely positioned splitter hit area. */
     fill?: boolean;
     /** Keep a quiet line and grip visible for conversation splits. */
@@ -81,6 +84,7 @@
   class:persistent={visible}
   onpointerdown={down}
   onkeydown={key}
+  ondblclick={() => onreset?.()}
 ></div>
 
 <style>

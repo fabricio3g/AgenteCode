@@ -8,12 +8,16 @@
 -->
 
 <script lang="ts">
-  import { Tooltip } from '$lib/components/ui';
+  import UiButton from '$lib/components/ui/Button.svelte';
+  import { cn as uiClass } from '$lib/utils/cn';
+
+  import { IconButton, Tooltip } from '$lib/components/ui';
   import type { Snippet } from 'svelte';
-  import { Copy as CopyIcon, MoreHorizontal, Pencil, Trash2 } from 'lucide-svelte';
+  import { Copy as CopyIcon, MoreHorizontal, Pencil, SlidersHorizontal, Trash2 } from 'lucide-svelte';
   import Menu from '$lib/components/ui/Menu.svelte';
   import MenuItem from '$lib/components/ui/MenuItem.svelte';
   import { copy } from '$lib/copy';
+  import { t } from 'svelte-i18n';
 
   interface Props {
     title: string;
@@ -22,8 +26,12 @@
     tags?: string[];
     /** A small mark beside the name, e.g. "Default". */
     badge?: string;
-    /** What the item is, for labels: "world", "character", "persona". */
-    kind: string;
+    /** Labels for the edit button and the options menu, already translated. */
+    editLabel: string;
+    optionsLabel: string;
+    /** A second way in: opens the scene setup for this item instead of starting it. */
+    oncustomize?: () => void;
+    customizeLabel?: string;
     cover: Snippet;
     onopen: () => void;
     onedit: () => void;
@@ -31,7 +39,10 @@
     ondelete: () => void;
   }
 
-  let { title, subtitle = '', meta = [], tags = [], badge = '', kind, cover, onopen, onedit, onduplicate, ondelete }: Props = $props();
+  let {
+    title, subtitle = '', meta = [], tags = [], badge = '', editLabel, optionsLabel,
+    oncustomize, customizeLabel = '', cover, onopen, onedit, onduplicate, ondelete
+  }: Props = $props();
 
   let menuOpen = $state(false);
   let anchorPoint = $state<{ x: number; y: number } | null>(null);
@@ -44,11 +55,11 @@
 </script>
 
 <div class="lib-card group" class:is-open={menuOpen} role="group" aria-label={title} oncontextmenu={openContextMenu}>
-  <button type="button" class="card-hit" onclick={onopen}>
+  <UiButton variant="plain" type="button" class={uiClass("card-hit", "ui-local-ed503038")} onclick={onopen}>
     <span class="cover">{@render cover()}</span>
     <span class="body">
       <span class="title-row">
-        <span class="title">{title || 'Untitled'}</span>
+        <span class="title">{title || $t('roleplay.library.untitled')}</span>
         {#if badge}<span class="badge">{badge}</span>{/if}
       </span>
       {#if subtitle}<span class="subtitle">{subtitle}</span>{/if}
@@ -57,16 +68,19 @@
         <span class="tags">{#each tags.slice(0, 3) as tag (tag)}<span class="tag">{tag}</span>{/each}</span>
       {/if}
     </span>
-  </button>
+  </UiButton>
 
   <div class="actions">
-    <Tooltip label={`Edit ${kind}`} position="bottom"><button type="button" class="ui-icon-button is-sm" onclick={onedit} aria-label={`Edit ${kind}`}><Pencil /></button></Tooltip>
-    <Menu bind:open={menuOpen} bind:anchorPoint placement="bottom-end" label={`${kind} options`}>
+    <Tooltip label={editLabel} position="bottom"><IconButton label={editLabel} title="" onclick={onedit}><Pencil /></IconButton></Tooltip>
+    <Menu bind:open={menuOpen} bind:anchorPoint placement="bottom-end" label={optionsLabel}>
       {#snippet trigger(props)}
-        <button type="button" class="ui-icon-button is-sm" aria-label={`${kind} options`} {...props}><MoreHorizontal /></button>
+        <IconButton label={optionsLabel} title="" {...props}><MoreHorizontal /></IconButton>
       {/snippet}
-      <MenuItem icon={Pencil} label={`Edit ${kind}`} onselect={onedit} />
-      <MenuItem icon={CopyIcon} label="Duplicate" onselect={onduplicate} />
+      {#if oncustomize}
+        <MenuItem icon={SlidersHorizontal} label={customizeLabel} onselect={oncustomize} />
+      {/if}
+      <MenuItem icon={Pencil} label={editLabel} onselect={onedit} />
+      <MenuItem icon={CopyIcon} label={$t('roleplay.library.duplicate')} onselect={onduplicate} />
       <MenuItem icon={Trash2} label={copy.actions.delete} danger onselect={ondelete} />
     </Menu>
   </div>
@@ -75,23 +89,21 @@
 <style>
   .lib-card {
     position: relative;
-    border-radius: 0.875rem;
-    background: var(--muted);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    background: var(--card);
     transition:
       background-color var(--motion-fast) var(--motion-ease),
-      transform var(--motion-fast) var(--motion-ease),
-      box-shadow var(--motion-fast) var(--motion-ease);
+      border-color var(--motion-fast) var(--motion-ease);
   }
   .lib-card:hover,
   .lib-card:focus-within,
   .lib-card.is-open {
-    background: var(--surface-active);
-  }
-  .lib-card:hover {
-    transform: translateY(-1px);
+    border-color: var(--border-hover);
+    background: var(--float-row-hover);
   }
 
-  .card-hit {
+  :global(.card-hit.ui-local-ed503038) {
     display: flex;
     width: 100%;
     align-items: flex-start;
@@ -101,7 +113,7 @@
     text-align: left;
     cursor: pointer;
   }
-  .card-hit:focus-visible {
+  :global(.card-hit:focus-visible.ui-local-ed503038) {
     outline: 2px solid var(--ring);
     outline-offset: 2px;
   }
@@ -114,8 +126,8 @@
     align-items: center;
     justify-content: center;
     overflow: hidden;
-    border-radius: 0.75rem;
-    background: var(--card);
+    border-radius: var(--radius-md);
+    background: var(--muted);
     color: var(--muted-foreground);
     font-size: 1.125rem;
     font-weight: 600;
@@ -147,14 +159,14 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     color: var(--foreground);
-    font-size: 13.5px;
+    font-size: var(--text-sm);
     font-weight: 600;
     letter-spacing: -0.01em;
   }
   .badge {
     flex-shrink: 0;
     color: var(--muted-foreground);
-    font-size: 10.5px;
+    font-size: var(--text-xs);
     font-weight: 500;
   }
   .subtitle {
@@ -164,13 +176,13 @@
     -webkit-line-clamp: 2;
     line-clamp: 2;
     color: var(--text-secondary);
-    font-size: 12.5px;
+    font-size: var(--text-sm);
     line-height: 1.45;
   }
   .meta {
     margin-top: 0.25rem;
     color: var(--muted-foreground);
-    font-size: 11px;
+    font-size: var(--text-xs);
   }
   .tags {
     display: flex;
@@ -180,10 +192,10 @@
   }
   .tag {
     padding: 0.0625rem 0.45rem;
-    border-radius: var(--radius-full);
-    background: var(--card);
+    border-radius: var(--radius-sm);
+    background: var(--muted);
     color: var(--muted-foreground);
-    font-size: 10.5px;
+    font-size: var(--text-xs);
   }
 
   .actions {
@@ -201,9 +213,7 @@
     opacity: 1;
   }
 
-  @media (prefers-reduced-motion: reduce) {
-    .lib-card:hover {
-      transform: none;
-    }
+  @media (hover: none) {
+    .actions { opacity: 1; }
   }
 </style>

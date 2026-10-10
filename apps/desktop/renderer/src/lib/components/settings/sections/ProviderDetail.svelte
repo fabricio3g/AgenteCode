@@ -10,6 +10,12 @@
 -->
 
 <script lang="ts">
+  import UiListRow from '$lib/components/ui/ListRow.svelte';
+
+  import UiTextarea from '$lib/components/ui/Textarea.svelte';
+  import UiRange from '$lib/components/ui/Range.svelte';
+  import { cn as uiClass } from '$lib/utils/cn';
+
   import { listedModels } from '$lib/services/listed-models';
   import { untrack } from 'svelte';
   import { t } from 'svelte-i18n';
@@ -295,7 +301,7 @@
   {#snippet icon()}<ProviderIcon provider={providerId} size={26} />{/snippet}
   {#snippet actions()}
     {#if inUse}
-      <Badge tone="success" class="gap-1.5"><CircleCheck class="size-3.5" /> {$t('providers.inUse')}</Badge>
+      <Badge tone="neutral" class="gap-1.5"><CircleCheck class="size-3.5" /> {$t('providers.inUse')}</Badge>
     {:else}
       <Button onclick={() => void useForChats()} disabled={!canUse} title={canUse ? '' : $t('providers.needsKey')}>
         {$t('providers.useForChats')}
@@ -404,11 +410,11 @@
         {#each visibleRoster as entry (entry.id)}
           {@const isDefault = saved?.model === entry.id}
           <li class="group flex items-center gap-1 rounded-[var(--float-row-radius)] pr-1 hover:bg-[var(--float-row-hover)]">
-            <button
+            <UiListRow
               type="button"
               role="radio"
               aria-checked={isDefault}
-              class="ui-row min-w-0 flex-1 text-left hover:!bg-transparent"
+              class={uiClass("ui-row min-w-0 flex-1 text-left hover:!bg-transparent")}
               onclick={() => void setDefaultModel(entry.id)}
             >
               <span class="min-w-0 flex-1 truncate {isDefault ? 'font-medium' : 'text-[var(--text-secondary)]'}" title={entry.id}>{entry.id}</span>
@@ -418,7 +424,7 @@
               {/if}
               {#if entry.added}<Badge class="shrink-0">{$t('providers.added')}</Badge>{/if}
               {#if isDefault}<span class="shrink-0 text-[length:var(--text-xs)] text-muted-foreground">{$t('providers.default')}</span><Check class="size-4 shrink-0" />{/if}
-            </button>
+            </UiListRow>
             {#if entry.added}
               <IconButton
                 label={$t('providers.removeModel', { values: { model: entry.id } })}
@@ -441,21 +447,21 @@
     <div class="space-y-4 text-sm">
       <label class="block space-y-1.5">
         <span class="text-xs font-medium text-muted-foreground">{$t('providers.systemPrompt')}</span>
-        <textarea
-          class="ui-input h-20 w-full resize-none"
+        <UiTextarea
+          class={uiClass(" h-20 w-full resize-none")}
           bind:value={draft.systemPrompt}
           onchange={() => void saveSampling()}
           placeholder={$t('providers.systemPromptPlaceholder')}
-        ></textarea>
+        ></UiTextarea>
       </label>
       <div class="grid gap-4 sm:grid-cols-2">
         <label class="block space-y-1.5">
           <span class="flex justify-between text-xs font-medium text-muted-foreground">{$t('providers.temperature')} <span class="tabular-nums">{draft.temperature.toFixed(2)}</span></span>
-          <input type="range" min="0" max="2" step="0.05" bind:value={draft.temperature} onchange={() => void saveSampling()} class="w-full accent-[var(--primary)]" />
+          <UiRange  min="0" max="2" step="0.05" bind:value={draft.temperature} onchange={() => void saveSampling()} class={uiClass("w-full accent-[var(--primary)]")} />
         </label>
         <label class="block space-y-1.5">
           <span class="flex justify-between text-xs font-medium text-muted-foreground">{$t('providers.topP')} <span class="tabular-nums">{draft.topP.toFixed(2)}</span></span>
-          <input type="range" min="0" max="1" step="0.05" bind:value={draft.topP} onchange={() => void saveSampling()} class="w-full accent-[var(--primary)]" />
+          <UiRange  min="0" max="1" step="0.05" bind:value={draft.topP} onchange={() => void saveSampling()} class={uiClass("w-full accent-[var(--primary)]")} />
         </label>
       </div>
       <label class="block space-y-1.5">
@@ -478,7 +484,7 @@
           <p class="text-sm font-medium text-foreground">{$t('providers.removeEndpoint')}</p>
           <p class="text-xs text-muted-foreground">{$t('providers.removeMessage')}</p>
         </div>
-        <Button variant="outline" size="sm" class="text-error" onclick={() => void removeEndpoint()}>
+        <Button variant="outline" size="sm" class="hover:text-error" onclick={() => void removeEndpoint()}>
           <Trash2 /> {$t('providers.remove')}
         </Button>
       </div>

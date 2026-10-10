@@ -1,11 +1,11 @@
+import { normalizeReportDocument, reportSections, reportEndmatter, type ReportDocument } from '$shared/report-document';
+export type { ReportDocument } from '$shared/report-document';
 import type { PresentationData, SlideData } from '$lib/types/bridge';
 import {
   escapeHtml,
-  normalizeSections,
   tableData,
   text,
-  type SectionInput,
-  type SheetInput
+  type SheetInput, type SectionInput
 } from '$shared/work-product';
 import { ARTIFACT_BRAND, artifactDocumentHtml, type ArtifactAccent, type ArtifactTheme } from '$shared/artifact-theme';
 import { renderMarkdown } from '$lib/utils/markdown';
@@ -33,28 +33,6 @@ export type GeneratedArtifactFile = {
 
 export type WorkProductFormat = 'md' | 'html' | 'docx' | 'xlsx' | 'pdf' | 'pptx';
 
-type SourceInput = {
-  id?: string;
-  title?: string;
-  url?: string;
-  provider?: string;
-  snippet?: string;
-};
-
-export type ReportDocument = {
-  title: string;
-  subtitle?: string;
-  author?: string;
-  date?: string;
-  executiveSummary?: string;
-  sections?: SectionInput[];
-  tables?: Array<SheetInput & { title?: string; description?: string }>;
-  metrics?: Array<{ label?: string; value?: string | number; note?: string }>;
-  sources?: SourceInput[];
-  limitations?: string[];
-  appendix?: SectionInput[];
-};
-
 const MIME_BY_EXT: Record<string, string> = {
   docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -70,54 +48,6 @@ function normalizePath(path: unknown, fallback: string): string {
 
 function ensureExt(path: string, ext: string): string {
   return path.toLowerCase().endsWith(`.${ext}`) ? path : `${path}.${ext}`;
-}
-
-function normalizeSources(sources: unknown): SourceInput[] {
-  if (!Array.isArray(sources)) return [];
-  return sources.map((source, index) => {
-    const item = (source && typeof source === 'object') ? source as Record<string, unknown> : {};
-    return {
-      id: text(item.id, String(index + 1)),
-      title: text(item.title, text(item.name, `Source ${index + 1}`)),
-      url: text(item.url),
-      provider: text(item.provider),
-      snippet: text(item.snippet, text(item.content))
-    };
-  }).filter((source) => source.title || source.url || source.snippet);
-}
-
-function normalizeTables(tables: unknown, fallbackSheets?: unknown): ReportDocument['tables'] {
-  const raw = Array.isArray(tables) ? tables : (Array.isArray(fallbackSheets) ? fallbackSheets : []);
-  return raw.map((table, index) => {
-    const item = (table && typeof table === 'object') ? table as Record<string, unknown> : {};
-    return {
-      title: text(item.title),
-      description: text(item.description),
-      name: text(item.name, text(item.title, `Table ${index + 1}`)),
-      columns: Array.isArray(item.columns) ? item.columns as SheetInput['columns'] : undefined,
-      rows: Array.isArray(item.rows) ? item.rows as SheetInput['rows'] : []
-    };
-  }).filter((table) => table.name || table.rows?.length || table.columns?.length);
-}
-
-function normalizeReportDocument(args: Record<string, unknown>): ReportDocument {
-  const title = text(args.title, 'Report');
-  const sections = normalizeSections(args.sections, text(args.content));
-  const sources = normalizeSources(args.sources);
-  const limitations = Array.isArray(args.limitations) ? args.limitations.map((item) => text(item)).filter(Boolean) : [];
-  return {
-    title,
-    subtitle: text(args.subtitle),
-    author: text(args.author, ARTIFACT_BRAND),
-    date: text(args.date, new Date().toISOString().slice(0, 10)),
-    executiveSummary: text(args.executiveSummary, text(args.summary)),
-    sections,
-    tables: normalizeTables(args.tables, args.sheets),
-    metrics: Array.isArray(args.metrics) ? args.metrics as ReportDocument['metrics'] : [],
-    sources,
-    limitations,
-    appendix: normalizeSections(args.appendix)
-  };
 }
 
 function wordCount(value: unknown): number {
@@ -219,28 +149,11 @@ function assertValidGeneratedDocument(args: Record<string, unknown>, formats: st
   if (!result.ok) throw new Error(result.error || 'Document content is too thin.');
 }
 
-function reportSections(report: ReportDocument): SectionInput[] {
-  const sections: SectionInput[] = [];
-  if (report.executiveSummary) sections.push({ title: 'Executive summary', content: report.executiveSummary });
-  sections.push(...(report.sections || []));
-  if (report.limitations?.length) sections.push({ title: 'Limitations', bullets: report.limitations });
-  if (report.sources?.length) {
-    sections.push({
-      title: 'Sources',
-      bullets: report.sources.map((source, index) =>
-        `[${source.id || index + 1}] ${source.title || source.url}${source.url ? ` - ${source.url}` : ''}${source.snippet ? `\n${source.snippet}` : ''}`
-      )
-    });
-  }
-  sections.push(...(report.appendix || []));
-  return sections;
-}
-
 function markdownReport(report: ReportDocument): string {
   const lines = [`# ${report.title}`];
   if (report.subtitle) lines.push('', report.subtitle);
   lines.push('', `_${reportMeta(report)}_`);
-  for (const section of reportSections(report)) {
+  const addSection = (section: SectionInput) => {
     const heading = section.title || section.heading;
     lines.push('');
     if (heading) lines.push(`## ${heading}`, '');
@@ -248,6 +161,7 @@ function markdownReport(report: ReportDocument): string {
     for (const bullet of section.bullets || []) lines.push(`- ${bullet}`);
     if (section.citations?.length) lines.push('', `Sources: ${section.citations.join(', ')}`);
   }
+  for (const section of reportSections(report, true, false)) addSection(section);
   const cell = (value: string) => value.replace(/\|/g, '\\|').replace(/\r?\n/g, '<br>');
   for (const table of report.tables || []) {
     const { headers, rows } = tableData(table);
@@ -258,6 +172,7 @@ function markdownReport(report: ReportDocument): string {
       for (const row of rows) lines.push(`| ${row.map(cell).join(' | ')} |`);
     }
   }
+  for (const section of reportEndmatter(report)) addSection(section);
   return lines.join('\n').replace(/\n{3,}/g, '\n\n').trim() + '\n';
 }
 
@@ -276,7 +191,7 @@ export function htmlReport(
     const heading = table.title || table.name;
     return `<section>${heading ? `<h2>${escapeHtml(heading)}</h2>` : ''}${table.description ? `<p>${escapeHtml(table.description)}</p>` : ''}<div class="table-wrap"><table><thead><tr>${headers.map((header) => `<th>${escapeHtml(header)}</th>`).join('')}</tr></thead><tbody>${rows.map((row) => `<tr>${row.map((cell) => `<td>${escapeHtml(cell)}</td>`).join('')}</tr>`).join('')}</tbody></table></div></section>`;
   }).join('');
-  const sections = reportSections(report).map((section) => {
+  const sectionHtml = (section: SectionInput) => {
     const heading = section.title || section.heading;
     const body = section.content ? sectionBodyHtml(section.content) : '';
     const bullets = section.bullets?.length
@@ -286,7 +201,9 @@ export function htmlReport(
       ? `<p class="citations">${section.citations.map(escapeHtml).join(' · ')}</p>`
       : '';
     return `<section>${heading ? `<h2>${escapeHtml(heading)}</h2>` : ''}${body}${bullets}${citations}</section>`;
-  }).join('');
+  };
+  const sections = reportSections(report, false, false).map(sectionHtml).join('');
+  const endmatter = reportEndmatter(report).map(sectionHtml).join('');
   const metrics = report.metrics?.length
     ? `<div class="metrics">${report.metrics.map((metric) => `<div><strong>${escapeHtml(metric.value ?? '')}</strong><span>${escapeHtml(metric.label || '')}</span>${metric.note ? `<small>${escapeHtml(metric.note)}</small>` : ''}</div>`).join('')}</div>`
     : '';
@@ -295,7 +212,7 @@ export function htmlReport(
     eyebrow: label,
     subtitle: report.subtitle,
     meta: reportMeta(report),
-    body: `${metrics}${sections}${tables}`,
+    body: `${metrics}${sections}${tables}${endmatter}`,
     theme: options.theme,
     accent: options.accent
   });
@@ -387,9 +304,8 @@ export async function createDocxArtifactFile(args: Record<string, unknown>): Pro
   assertValidGeneratedDocument(args, ['docx']);
   const report = normalizeReportDocument(args);
   const title = report.title;
-  const sections = reportSections(report);
   const path = ensureExt(normalizePath(args.path, `${title || 'document'}.docx`), 'docx');
-  const generated = await invoke<GeneratedBinary>('generate_docx', { data: { ...report, sections } });
+  const generated = await invoke<GeneratedBinary>('generate_docx', { data: report });
   return { ...buildFile(path, generated.mime || MIME_BY_EXT.docx, generated.bytes, documentPreviewFromReport(report, '')), spec: { kind: 'report', report } };
 }
 
@@ -425,9 +341,8 @@ export async function createPdfArtifactFile(args: Record<string, unknown>): Prom
   assertValidGeneratedDocument(args, ['pdf']);
   const report = normalizeReportDocument(args);
   const title = report.title;
-  const sections = reportSections(report);
   const path = ensureExt(normalizePath(args.path, `${title || 'document'}.pdf`), 'pdf');
-  const generated = await invoke<GeneratedBinary>('generate_pdf', { data: { ...report, sections, html: htmlReport(report) } });
+  const generated = await invoke<GeneratedBinary>('generate_pdf', { data: { ...report, html: htmlReport(report) } });
   const dataUrl = bytesToDataUrl(generated.bytes, generated.mime || MIME_BY_EXT.pdf);
   return { path, mime: generated.mime || MIME_BY_EXT.pdf, dataUrl, previewHtml: pdfPreview(title, dataUrl), spec: { kind: 'report', report } };
 }
@@ -457,27 +372,48 @@ function buildWorkbookSheets(report: ReportDocument, fallbackSheets: SheetInput[
   return [
     { name: 'Summary', columns: ['field', 'value'], rows: summaryRows },
     ...tableSheets,
+    ...(report.metrics?.length ? [{ name: 'Key figures', columns: ['Metric', 'Value', 'Note'], rows: report.metrics.map((metric) => [metric.label || '', metric.value ?? '', metric.note || '']) }] : []),
     ...(rowsFromSources.length ? [{ name: 'Sources', columns: ['#', 'title', 'url', 'provider', 'snippet'], rows: rowsFromSources }] : []),
     ...(report.limitations?.length ? [{ name: 'Methodology', columns: ['note'], rows: report.limitations.map((note) => ({ note })) }] : [])
   ];
 }
 
-function reportToSlides(report: ReportDocument): Array<Record<string, unknown>> {
-  const slides: Array<Record<string, unknown>> = [
-    { title: report.title, content: [report.subtitle, report.executiveSummary].filter(Boolean), notes: reportMeta(report) }
-  ];
-  for (const section of (report.sections || []).slice(0, 8)) {
-    slides.push({
-      title: section.title || section.heading || 'Section',
-      content: section.bullets?.length ? section.bullets.slice(0, 5) : text(section.content).split(/[.\n]/).map((item) => item.trim()).filter(Boolean).slice(0, 5)
+/** Paginate the entire report; decimals and long sections are never discarded. */
+export function reportToSlides(report: ReportDocument): Array<Record<string, unknown>> {
+  const slides: Array<Record<string, unknown>> = [{ title: report.title, subtitle: report.subtitle, layout: 'title', notes: reportMeta(report) }];
+  const split = (value: string) => {
+    const parts: string[] = [];
+    for (const paragraph of value.split(/\n+/).map((line) => line.trim()).filter(Boolean)) {
+      let part = '';
+      for (const word of paragraph.split(/\s+/)) {
+        if (part && part.length + word.length + 1 > 240) { parts.push(part); part = ''; }
+        part += (part ? ' ' : '') + word;
+      }
+      if (part) parts.push(part);
+    }
+    return parts;
+  };
+  const add = (title: string, items: string[], notes = '') => {
+    for (let start = 0; start < items.length; start += 5) slides.push({
+      title: start ? `${title} (${Math.floor(start / 5) + 1})` : title, layout: 'bullets', content: items.slice(start, start + 5), notes
     });
+  };
+  if (report.executiveSummary) add('Executive summary', split(report.executiveSummary));
+  for (const section of [...(report.sections || []), ...(report.appendix || [])]) {
+    const items = [...split(text(section.content)), ...(section.bullets || []).flatMap(split)];
+    if (items.length) add(section.title || section.heading || 'Section', items, section.citations?.join(' · '));
+    else if (section.title || section.heading) slides.push({ title: section.title || section.heading, layout: 'section' });
   }
-  if (report.sources?.length) {
-    slides.push({ title: 'Sources', content: report.sources.slice(0, 6).map((source, index) => `${index + 1}. ${source.title || source.url}`) });
+  for (const table of report.tables || []) {
+    const { headers, rows } = tableData(table);
+    if (rows.length) slides.push({ title: table.name || table.title || 'Table', layout: 'table', table: { columns: headers, rows }, notes: table.description });
   }
-  if (report.limitations?.length) {
-    slides.push({ title: 'Limitations', content: report.limitations.slice(0, 5) });
+  if (report.metrics?.length) {
+    for (let i = 0; i < report.metrics.length; i += 4) slides.push({ title: 'Key figures', layout: 'stats',
+      stats: report.metrics.slice(i, i + 4), notes: report.metrics.slice(i, i + 4).map((metric) => metric.note).filter(Boolean).join('\n') });
   }
+  if (report.sources?.length) add('Sources', report.sources.map((source, index) => `[${source.id || index + 1}] ${source.title || source.url}${source.url && source.title !== source.url ? ` — ${source.url}` : ''}`));
+  if (report.limitations?.length) add('Limitations', report.limitations.flatMap(split));
   return slides;
 }
 
@@ -505,7 +441,7 @@ export async function createWorkProductArtifactFiles(args: Record<string, unknow
       files.push(await createDocxArtifactFile({ ...args, ...report, path: `${base}.docx` }));
     } else if (format === 'xlsx') {
       const xlsx = await createXlsxArtifactFile({ ...args, ...report, path: `${base}.xlsx` });
-      if (!buildWorkbookSheets(report, []).some((sheet) => sheet.rows?.length)) warnings.push('Spreadsheet contains summary/source structure but no extracted data rows.');
+      if (!report.tables?.some((table) => table.rows?.length) && !(Array.isArray(args.rows) && args.rows.length) && !(Array.isArray(args.sheets) && args.sheets.some((sheet) => sheet.rows?.length))) warnings.push('Spreadsheet contains summary/source structure but no extracted data rows.');
       files.push(xlsx);
     } else if (format === 'pptx') {
       files.push(await createPptxArtifactFile({ ...args, ...report, path: `${base}.pptx` }));

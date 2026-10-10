@@ -33,7 +33,7 @@
 </script>
 
 {#if !rows.length}
-  <p class="px-4 py-6 text-center text-xs text-muted-foreground">{$t('codeWs.noDifferences')}</p>
+  <p class="px-3 py-3 text-xs text-muted-foreground">{$t('codeWs.noDifferences')}</p>
 {:else}
   <DiffRows {rows} {path} />
 {/if}

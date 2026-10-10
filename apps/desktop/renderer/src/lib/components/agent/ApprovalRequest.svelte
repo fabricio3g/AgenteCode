@@ -22,13 +22,17 @@
 </script>
 
 {#each approvals as approval (approval.id)}
-  <section class="approval" aria-label={copy.tool.needsApproval}>
+  <section class="approval" class:dangerous={approval.dangerous} aria-label={copy.tool.needsApproval}>
     <header class="head">
       <ShieldQuestion class="size-3.5 shrink-0" />
       <span class="title">{copy.tool.needsApproval}</span>
     </header>
 
-    <p class="lede">{copy.tool.approvalLede}</p>
+    {#if approval.dangerous}<p class="lede">{copy.tool.approvalDestructive}</p>{/if}
+
+    {#if approval.reason}
+      <p class="reason">{approval.reason}</p>
+    {/if}
 
     <pre class="ui-tool-fallback-args-value">{approval.command}</pre>
 
@@ -60,6 +64,10 @@
     padding: 0.75rem;
   }
 
+  .approval.dangerous {
+    border-color: color-mix(in srgb, var(--destructive, #c0392b) 35%, var(--border-subtle));
+  }
+
   .head {
     display: flex;
     align-items: center;
@@ -79,6 +87,14 @@
     color: var(--muted-foreground);
     font-size: 0.75rem;
     line-height: 1.5;
+  }
+
+  .reason {
+    margin: 0 0 0.5rem;
+    color: var(--destructive, #c0392b);
+    font-size: 0.75rem;
+    line-height: 1.5;
+    overflow-wrap: anywhere;
   }
 
   .cwd {

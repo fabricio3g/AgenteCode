@@ -11,6 +11,7 @@
 -->
 
 <script lang="ts">
+  import TileMeter from '$lib/components/ui/TileMeter.svelte';
   import { onDestroy } from 'svelte';
   import { t } from 'svelte-i18n';
   import Disclosure from './Disclosure.svelte';
@@ -36,6 +37,7 @@
 
 <Disclosure {id} level="thought" chevron="trailing" defaultOpen={false}>
   {#snippet header()}
+    {#if live}<TileMeter mode="busy" />{/if}
     <span class="shrink-0">{live ? $t('code.thinking') : $t('code.thought')}</span>
     <span class="preview min-w-0 flex-1 truncate">{preview}</span>
   {/snippet}

@@ -7,7 +7,8 @@ import { rerankChunks } from './reranker.ts';
 import { vectorStore } from './vector-store.ts';
 import { loadConfig } from './config.ts';
 import { storeAttachmentFile } from './attachment-store.ts';
-import { convertFileToMarkdown } from './document-markdown.ts';
+import { extractIngestionText, type IngestionText } from './document-ingestion.ts';
+import type { DocumentIngestPayload } from '../shared/document-ingestion.ts';
 import { ensureRagEmbeddingRuntime } from './rag/embedding-runtime.ts';
 import { chunkMarkdown, searchableText } from './rag/chunking.ts';
 import { Bm25, blendScores, buildContext, citationOf, selectDiverse, type Candidate } from './rag/ranking.ts';
@@ -273,10 +274,9 @@ function ensureStoreLoaded(): void {
  * indexed as decoded binary. Conversion now lives in `document-markdown.ts`,
  * which refuses formats it cannot actually read instead of guessing.
  */
-async function extractText(filePath: string): Promise<{ text: string; fileType: string }> {
+async function extractText(filePath: string, supplied: DocumentIngestPayload): Promise<IngestionText> {
   try {
-    const { markdown, fileType } = await convertFileToMarkdown(filePath);
-    return { text: markdown.trim(), fileType };
+    return await extractIngestionText(filePath, supplied);
   } catch (err: unknown) {
     if (path.extname(filePath).toLowerCase() === '.pdf') {
       throw new Error(`Could not parse PDF text: ${toErrorMessage(err)}`);
@@ -294,6 +294,7 @@ function makeDocumentFingerprint(source: string, text: string, fileType: string)
 function buildDocumentRecord({ source, text, chat_id, file_type, chunk_size }: { source: string; text: string; chat_id: string; file_type: string; chunk_size?: number }): { doc: Record<string, unknown>; chunks: Array<Record<string, unknown>> } {
   const chatId = requireChatId(chat_id);
   const normalizedText = String(text || '').trim();
+  if (!normalizedText) throw new Error('No readable content to index.');
   const chunks = chunkMarkdown(normalizedText, { size: chunk_size || DEFAULT_CHUNK_SIZE });
   const docId = randomUUID();
   const fingerprint = makeDocumentFingerprint(source, normalizedText, file_type);
@@ -359,7 +360,8 @@ async function ingestTextInternal({ source, text, chat_id, file_type, chunk_size
   return record.doc;
 }
 
-export async function ingestDocument({ file_path, chat_id, message_id, name, chunk_size }: { file_path: string; chat_id: string; message_id?: string; name?: string; chunk_size?: number }): Promise<Record<string, unknown>> {
+export async function ingestDocument(payload: DocumentIngestPayload): Promise<Record<string, unknown>> {
+  const { file_path, chat_id, message_id, name, chunk_size } = payload;
   const chatId = requireChatId(chat_id);
   const fileName = displayName(file_path, name);
   // Kept in this app's content-addressed store, so the file outlives the temp
@@ -379,19 +381,19 @@ export async function ingestDocument({ file_path, chat_id, message_id, name, chu
     }
   }
 
-  let extracted: { text: string; fileType: string };
+  let extracted: IngestionText;
   try {
-    extracted = await extractText(storedPath);
+    extracted = await extractText(storedPath, payload);
   } catch (err: unknown) {
     upsertFileRecord({
-      hash, name: fileName, bytes, kind: kindForPath(filePath),
+      hash, name: fileName, bytes, kind: kindForPath(file_path),
       storedPath, extractStatus: 'failed'
     });
     throw err;
   }
 
   upsertFileRecord({
-    hash, name: fileName, bytes, kind: extracted.fileType || kindForPath(filePath),
+    hash, name: fileName, bytes, kind: extracted.fileType || kindForPath(file_path),
     storedPath
   });
 
@@ -402,6 +404,20 @@ export async function ingestDocument({ file_path, chat_id, message_id, name, chu
     file_type: extracted.fileType,
     chunk_size
   });
+
+  // Persist provenance beside the chunks so reuse, library queries and later
+  // turns retain the same extraction method and limitations.
+  Object.assign(doc, { extraction_method: extracted.method, extraction_warning: extracted.warning });
+  const extractionDir = path.join(getAppPaths().cacheRoot, 'ingestion');
+  fs.mkdirSync(extractionDir, { recursive: true });
+  const extractionPath = path.join(extractionDir, `${hash}.md`);
+  const extractionTemp = `${extractionPath}.${randomUUID()}.tmp`;
+  fs.writeFileSync(extractionTemp, extracted.text, 'utf8');
+  fs.renameSync(extractionTemp, extractionPath);
+  Object.assign(doc, { attachment_hash: hash });
+  const indexed = ensureChatStore(chatId).get(String(doc.id));
+  if (indexed) Object.assign(indexed.doc, doc);
+  persistStore();
 
   setFileStatus(hash, {
     extractStatus: 'ready',
@@ -595,7 +611,8 @@ async function queryDocumentsHybrid({ query, chat_id, top_k, scope, files, file_
     heading: c.item.chunk.heading || undefined,
     lineStart: c.item.chunk.line_start || undefined,
     lineEnd: c.item.chunk.line_end || undefined,
-    text: c.item.chunk.text
+    text: c.item.chunk.text,
+    warning: c.item.doc.extraction_warning ? String(c.item.doc.extraction_warning) : undefined
   }));
   const { context, included } = buildContext(cited, { maxChars: MAX_CONTEXT_CHARS, maxChunkChars: MAX_CHUNK_CHARS });
 
@@ -618,6 +635,21 @@ export async function listRagDocuments(chatId: string): Promise<Record<string, u
   ensureStoreLoaded();
   const store = ensureChatStore(key);
   return Array.from(store.values()).map((entry) => entry.doc);
+}
+
+/** Read the canonical extraction, scoped to a chat holding this document. */
+export function readIngestedDocument({ chat_id, doc_id }: { chat_id: string; doc_id: string }): { text: string; source: string; file_type: string; warning?: string } {
+  const chatId = requireChatId(chat_id);
+  ensureStoreLoaded();
+  const found = ensureChatStore(chatId).get(doc_id);
+  if (!found) throw new Error('This document is not attached to the chat.');
+  const hash = String(found.doc.attachment_hash || '');
+  const cachePath = /^[a-f0-9]{64}$/.test(hash) ? path.join(getAppPaths().cacheRoot, 'ingestion', `${hash}.md`) : '';
+  // Older documents lack a canonical cache. Their indexed chunks still work.
+  const text = cachePath && fs.existsSync(cachePath) ? fs.readFileSync(cachePath, 'utf8')
+    : found.chunks.map((chunk) => `${chunk.heading ? `## ${chunk.heading}\n\n` : ''}${chunk.text}`).join('\n\n');
+  return { text, source: String(found.doc.source || 'Document'), file_type: String(found.doc.file_type || 'text'),
+    warning: found.doc.extraction_warning ? String(found.doc.extraction_warning) : undefined };
 }
 
 export async function removeRagDocument(docId: string, chatId: string): Promise<boolean> {

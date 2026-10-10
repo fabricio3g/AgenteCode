@@ -86,7 +86,7 @@ pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState) {
             break;
         }
         let line = Line::from(vec![
-            Span::styled(format!("{key:<18}"), Style::default().fg(PRIMARY())),
+            Span::styled(format!("{key:<18}"), crate::style::hint_key()),
             Span::styled(action.to_string(), Style::default().fg(FG())),
         ]);
         frame.render_widget(

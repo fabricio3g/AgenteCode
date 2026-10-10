@@ -7,6 +7,8 @@
 -->
 
 <script lang="ts">
+  import { cn as uiClass } from '$lib/utils/cn';
+
   import { onMount } from 'svelte';
   import { t } from 'svelte-i18n';
   import { Check, Cloud, Download, HardDrive, LoaderCircle, TriangleAlert } from 'lucide-svelte';
@@ -186,16 +188,16 @@
       <p class="setup-lead">{$t('onboarding.models.lead')}</p>
     </div>
     <div class="setup-choices" role="radiogroup" aria-label={$t('onboarding.models.title')}>
-      <button type="button" class="setup-choice" class:is-selected={choice === 'cloud'} role="radio" aria-checked={choice === 'cloud'} onclick={() => (choice = 'cloud')}>
+      <Button variant="plain" type="button" class={uiClass("setup-choice", {"is-selected": choice === 'cloud'})}  role="radio" aria-checked={choice === 'cloud'} onclick={() => (choice = 'cloud')}>
         <Cloud class="size-5" />
         <span class="setup-choice-title">{$t('onboarding.models.cloud')}</span>
         <span class="setup-choice-text">{$t('onboarding.models.cloudHint')}</span>
-      </button>
-      <button type="button" class="setup-choice" class:is-selected={choice === 'local'} role="radio" aria-checked={choice === 'local'} onclick={() => (choice = 'local')}>
+      </Button>
+      <Button variant="plain" type="button" class={uiClass("setup-choice", {"is-selected": choice === 'local'})}  role="radio" aria-checked={choice === 'local'} onclick={() => (choice = 'local')}>
         <HardDrive class="size-5" />
         <span class="setup-choice-title">{$t('onboarding.models.local')}</span>
         <span class="setup-choice-text">{$t('onboarding.models.localHint')}</span>
-      </button>
+      </Button>
     </div>
   </div>
   <SetupFooter {onback} skipLabel={$t('onboarding.later')} onskip={onnext} primaryLabel={$t('onboarding.continue')} onprimary={() => (view = choice)} />
@@ -270,9 +272,9 @@
         {@const job = jobOf(entry)}
         {@const downloading = !file && job && ['queued', 'running'].includes(job.status)}
         <div class="setup-row">
-          <button type="button" class="setup-radio" role="radio" aria-checked={chosen === entry.id} aria-label={entry.label} onclick={() => (chosen = entry.id)}>
+          <Button variant="plain" type="button" class={uiClass("setup-radio")} role="radio" aria-checked={chosen === entry.id} aria-label={entry.label} onclick={() => (chosen = entry.id)}>
             {#if chosen === entry.id}<span></span>{/if}
-          </button>
+          </Button>
           <div class="min-w-0 flex-1">
             <p class="flex items-center gap-1.5 text-[length:var(--text-sm)] font-medium text-foreground">
               {entry.label}

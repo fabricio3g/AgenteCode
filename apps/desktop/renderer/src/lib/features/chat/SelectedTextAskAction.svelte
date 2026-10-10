@@ -1,6 +1,9 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+  import UiButton from '$lib/components/ui/Button.svelte';
+  import { cn as uiClass } from '$lib/utils/cn';
+
   import { onDestroy, onMount } from 'svelte';
   import { Quote } from 'lucide-svelte';
   import { t } from 'svelte-i18n';
@@ -161,23 +164,23 @@
   <!-- Portaled: the thread wrapper's `contain: layout` would otherwise make
        fixed coordinates relative to it, offsetting the pill by the sidebar. -->
   <Portal>
-  <button
+  <UiButton variant="plain"
     type="button"
-    class="selected-text-ask-action"
-    class:below={placement === 'below'}
+    class={uiClass("selected-text-ask-action", "ui-local-60c0608c", {"below": placement === 'below'})}
+
     style={`left:${x}px; top:${y}px;`}
     onclick={askSelectedText}
     aria-label={$t('chat.selection.addLabel')}
   >
     <Quote class="size-3.5" />
     <span>{$t('chat.selection.add')}</span>
-  </button>
+  </UiButton>
   </Portal>
 {/if}
 
 <style>
   /* A small pill that floats over the text, centered on the selection. */
-  .selected-text-ask-action {
+  :global(.selected-text-ask-action.ui-local-60c0608c) {
     position: fixed;
     z-index: 80;
     display: inline-flex;
@@ -198,11 +201,11 @@
     transition: background-color var(--motion-fast) var(--motion-ease);
   }
 
-  .selected-text-ask-action :global(svg) {
+  :global(.selected-text-ask-action.ui-local-60c0608c) :global(svg) {
     color: var(--muted-foreground);
   }
 
-  .selected-text-ask-action:hover {
+  :global(.selected-text-ask-action:hover.ui-local-60c0608c) {
     background: color-mix(in srgb, var(--foreground) 5%, var(--popover, var(--background)));
   }
 
@@ -211,7 +214,7 @@
     to { opacity: 1; transform: translate(-50%, 0); }
   }
 
-  .selected-text-ask-action.below {
+  :global(.selected-text-ask-action.below.ui-local-60c0608c) {
     animation-name: selectedAskInBelow;
   }
 
@@ -221,6 +224,6 @@
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .selected-text-ask-action { animation: none; }
+    :global(.selected-text-ask-action.ui-local-60c0608c) { animation: none; }
   }
 </style>

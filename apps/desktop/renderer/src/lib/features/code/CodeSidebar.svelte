@@ -12,6 +12,12 @@
 -->
 
 <script lang="ts">
+  import UiListRow from '$lib/components/ui/ListRow.svelte';
+
+  import UiButton from '$lib/components/ui/Button.svelte';
+  import UiInput from '$lib/components/ui/Input.svelte';
+  import { cn as uiClass } from '$lib/utils/cn';
+
   import { onMount, tick } from 'svelte';
   import { slide } from 'svelte/transition';
   import {
@@ -208,14 +214,14 @@
     <p class="px-2.5 py-2 text-[13px] leading-relaxed text-[var(--text-muted)]">
       {$t('code.noProjects')}
     </p>
-    <button
+    <UiListRow
       type="button"
-      class="sidebar-row is-emphasis"
+      class={uiClass("sidebar-row is-emphasis")}
       onclick={() => void codeStore.addProject()}
     >
       <Plus class="sidebar-row-icon" />
       <span class="sidebar-row-label">{$t('code.addProject')}</span>
-    </button>
+    </UiListRow>
   {:else}
     {#each organization.list('projects',codeStore.projects) as project (project.id)}
       {@const expanded = !!codeStore.expandedProjects[project.id]}
@@ -264,11 +270,11 @@
           {/if}
 
           {#if renamingId === project.id}
-            <input
-              bind:this={renameInput}
-              class="chat-rename-input sidebar-row-label"
+            <UiInput
+              bind:ref={renameInput}
+              class={uiClass("chat-rename-input sidebar-row-label")}
               bind:value={renameValue}
-              maxlength="80"
+              maxlength={80}
               aria-label={copy.actions.rename}
               onclick={(event) => event.stopPropagation()}
               onkeydown={(event) => {
@@ -345,14 +351,14 @@
           <!-- Conversations hang from a hairline under the folder icon. -->
           <div class="tree-children" transition:slide={{ duration: 140 }}>
             {#if missing}
-              <button
+              <UiListRow
                 type="button"
-                class="sidebar-row is-warning"
+                class={uiClass("sidebar-row is-warning")}
                 onclick={() => void codeStore.locateProject(project.id)}
               >
                 <FolderSearch class="sidebar-row-icon" />
                 <span class="sidebar-row-label">{$t('code.locateFolder')}</span>
-              </button>
+              </UiListRow>
             {/if}
             <ProjectConversations {project} {sessions} {missing} {statusFor} onsplit={splitWith} />
           </div>
@@ -364,16 +370,16 @@
   {#if unlinked.length}
     <div class="mt-3">
       <div class="flex items-center gap-1">
-        <button
+        <UiButton variant="plain"
           type="button"
-          class="sidebar-section min-w-0 flex-1"
+          class={uiClass("sidebar-section min-w-0 flex-1")}
           aria-expanded={unlinkedOpen}
           title={$t('code.unlinkedHint')}
           onclick={() => (unlinkedOpen = !unlinkedOpen)}
         >
           <ChevronRight class={`size-3 shrink-0 transition-transform duration-150${unlinkedOpen ? ' rotate-90' : ''}`} />
           <span class="truncate">{$t('code.unlinked')} · {unlinked.length}</span>
-        </button>
+        </UiButton>
         <IconButton
           class="sidebar-row-action"
           label={$t('code.deleteAll')}

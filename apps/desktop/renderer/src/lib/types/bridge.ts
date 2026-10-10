@@ -241,6 +241,10 @@ export interface IndexedDocument {
   file_type: string;
   chunk_count: number;
   char_count: number;
+  extraction_method?: import('$shared/document-ingestion').ExtractionMethod;
+  extraction_warning?: string;
+  stored_path?: string;
+  hash?: string;
 }
 
 export interface WorkspaceIndexedFile {

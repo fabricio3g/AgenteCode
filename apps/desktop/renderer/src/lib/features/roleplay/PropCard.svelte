@@ -9,9 +9,13 @@
 -->
 
 <script lang="ts">
+  import UiButton from '$lib/components/ui/Button.svelte';
+  import { cn as uiClass } from '$lib/utils/cn';
+
   import { Box, FileText, Image as ImageIcon, Mail, Map, StickyNote } from 'lucide-svelte';
   import type { RoleplayProp } from './roleplay-props';
   import PropViewerModal from './PropViewerModal.svelte';
+  import { roleplayStore } from './roleplay.svelte';
 
   interface Props {
     prop: RoleplayProp;
@@ -33,26 +37,29 @@
   } as const;
 
   const Icon = $derived(KIND_ICONS[prop.kind] || Box);
-  const preview = $derived(prop.body.split('\n')[0] || '');
+  // Shown with the reply's macros resolved; the prop itself stays raw for the journal.
+  const title = $derived(roleplayStore.displayText(prop.title, { messageId }));
+  const body = $derived(roleplayStore.displayText(prop.body, { messageId }));
+  const preview = $derived(body.split('\n')[0] || '');
 </script>
 
-<button type="button" class="prop" onclick={() => (open = true)} aria-label={`Open ${prop.title}`}>
+<UiButton variant="plain" type="button" class={uiClass("prop", "ui-local-5b680c05")} onclick={() => (open = true)} aria-label={`Open ${title}`}>
   <span class="prop-icon"><Icon class="size-3.5" /></span>
   <span class="min-w-0 flex-1">
-    <span class="prop-title">{prop.title}</span>
+    <span class="prop-title">{title}</span>
     {#if preview}
       <span class="prop-preview">{preview}</span>
     {/if}
   </span>
   <span class="prop-kind">{prop.kind}</span>
-</button>
+</UiButton>
 
 {#if open}
   <PropViewerModal {prop} {messageId} onclose={() => (open = false)} />
 {/if}
 
 <style>
-  .prop {
+  :global(.prop.ui-local-5b680c05) {
     display: flex;
     align-items: center;
     gap: 0.5rem;
@@ -71,7 +78,7 @@
       background-color var(--motion-fast) var(--motion-ease);
   }
 
-  .prop:hover {
+  :global(.prop:hover.ui-local-5b680c05) {
     border-color: var(--border-hover);
     background: var(--surface-hover);
   }
@@ -83,7 +90,6 @@
     width: 1.75rem;
     height: 1.75rem;
     flex-shrink: 0;
-    border: 1px solid var(--border-subtle);
     border-radius: var(--radius-input);
     background: var(--muted);
     color: var(--text-muted);

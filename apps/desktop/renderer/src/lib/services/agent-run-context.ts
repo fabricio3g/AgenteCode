@@ -9,7 +9,7 @@
 
 import type { AgentArtifact, AgentStep, AgentStopReason, AppConfig } from '$lib/types/chat';
 import type { SearchResult } from '$lib/types/bridge';
-import type { CompletionResult, RequestMessage } from '$lib/services/chat-api';
+import type { CompletionResult, RequestMessage } from '$lib/services/chat/types';
 import type { RunAgentTaskArgs, ToolContext, ToolObservation, ToolResult } from '$lib/services/agent-types';
 import { normalizeHomeRuntimeMode } from '$shared/agente-protocol';
 import type { AgentMessage, UserMessage } from '$shared/agent-core/types';

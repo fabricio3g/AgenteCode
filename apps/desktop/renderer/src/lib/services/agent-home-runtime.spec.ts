@@ -8,7 +8,7 @@ vi.mock('./agent-run-context', () => ({ createAgentRun: vi.fn(), emitSteps: vi.f
 vi.mock('./agent-home-tools', () => ({ createHomeTools: vi.fn() }));
 vi.mock('./agent-home-policy', () => ({ createHomeHooks: vi.fn(), createPolicyState: vi.fn(), startThinkStep: vi.fn() }));
 vi.mock('./agent-research-bootstrap', () => ({ runResearchBootstrap: vi.fn() }));
-import { canContinueHomeHistory } from './agent-home-runtime';
+import { canContinueHomeHistory, ITERATION_LIMIT_NOTICE } from './agent-home-runtime';
 
 const meta: HomeRuntimeMeta = { sessionId: 'session', revision: 2, provider: 'opencode-go', model: 'deepseek-v4.1-flash', contextWindow: 128_000, contextTokens: 64_000, historyIds: ['user-1', 'answer-1'] };
 describe('Home runtime history and context', () => {
@@ -27,5 +27,14 @@ describe('Home runtime history and context', () => {
     expect(homeRuntimeBudget({ ...meta, contextWindow: NaN })).toBeNull();
     expect(homeRuntimeBudget({ ...meta, contextTokens: Infinity })).toBeNull();
     expect(homeRuntimeBudget({ ...meta, contextTokens: 200_000 })).toMatchObject({ remaining: 0, usagePercent: 100, isOverflow: true });
+  });
+});
+
+describe('Home runtime iteration budget notice', () => {
+  it('recognizes the core notice that ends a turn on its iteration budget, and nothing near it', () => {
+    expect(ITERATION_LIMIT_NOTICE.test('Reached the iteration limit (24) for this turn. The task is paused; send another message to continue.')).toBe(true);
+    expect(ITERATION_LIMIT_NOTICE.test('I reached the iteration limit (24) for this turn.')).toBe(false);
+    expect(ITERATION_LIMIT_NOTICE.test('Reached the iteration limit for this turn.')).toBe(false);
+    expect(ITERATION_LIMIT_NOTICE.test('Reached the tool limit (70) for this turn.')).toBe(false);
   });
 });

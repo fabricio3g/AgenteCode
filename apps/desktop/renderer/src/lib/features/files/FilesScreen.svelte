@@ -9,6 +9,11 @@
 -->
 
 <script lang="ts">
+  import IconButton from '$lib/components/ui/IconButton.svelte';
+
+  import UiButton from '$lib/components/ui/Button.svelte';
+  import { cn as uiClass } from '$lib/utils/cn';
+
   import { t } from 'svelte-i18n';
   import { locale } from 'svelte-i18n';
   import {
@@ -221,15 +226,14 @@
       <div class="mx-auto w-full max-w-[1100px] px-5 pb-10 pt-8 sm:px-8">
         <header class="flex flex-wrap items-end justify-between gap-2">
           <div>
-            <h1 class="text-2xl font-semibold tracking-[-0.02em] text-foreground">{$t('files.title')}</h1>
-            <p class="mt-1 text-sm text-muted-foreground">{$t('files.description')}</p>
+            <h1 class="text-2xl font-semibold tracking-[-0.02em] text-foreground" title={$t('files.description')}>{$t('files.title')}</h1>
           </div>
           {#if entries.length}
             <div class="flex items-center gap-3">
               {#if unused.length}
-                <button type="button" class="cleanup" onclick={confirmCleanup}>
+                <UiButton variant="plain" type="button" class={uiClass("cleanup", "ui-local-818ad885")} onclick={confirmCleanup}>
                   {$t('files.cleanup', { values: { count: unused.length, size: formatBytes(unusedBytes) } })}
-                </button>
+                </UiButton>
               {/if}
               <p class="text-[12px] tabular-nums text-muted-foreground">{$t('files.summary', { values: { count: entries.length, size: formatBytes(totalBytes(entries)) } })}</p>
             </div>
@@ -294,28 +298,28 @@
                   </div>
                   <div class="actions">
                     {#if canOpen(entry)}
-                      <button type="button" class="action" aria-label={$t('files.open')} title={$t('files.open')} onclick={() => open(entry)}><ExternalLink class="size-3.5" /></button>
+                      <IconButton label={$t('files.open')} size="xs" variant="ghost" type="button" class={uiClass("action", "ui-local-818ad885")}  title={$t('files.open')} onclick={() => open(entry)}><ExternalLink class="size-3.5" /></IconButton>
                     {/if}
                     {#if entry.origin === 'created' && entry.projectRoot}
-                      <button type="button" class="action" aria-label={$t('files.reveal')} title={$t('files.reveal')} onclick={() => reveal(entry)}><FolderSearch class="size-3.5" /></button>
+                      <IconButton label={$t('files.reveal')} size="xs" variant="ghost" type="button" class={uiClass("action", "ui-local-818ad885")}  title={$t('files.reveal')} onclick={() => reveal(entry)}><FolderSearch class="size-3.5" /></IconButton>
                     {/if}
                     {#if entry.path}
-                      <button type="button" class="action" aria-label={$t('files.copyPath')} title={$t('files.copyPath')} onclick={() => copyPath(entry)}><Copy class="size-3.5" /></button>
+                      <IconButton label={$t('files.copyPath')} size="xs" variant="ghost" type="button" class={uiClass("action", "ui-local-818ad885")}  title={$t('files.copyPath')} onclick={() => copyPath(entry)}><Copy class="size-3.5" /></IconButton>
                     {/if}
                     {#if entry.hash}
-                      <button
+                      <UiButton variant="plain"
                         type="button"
-                        class="action"
+                        class={uiClass("action", "ui-local-818ad885")}
                         aria-label={$t(entry.pinned ? 'files.unpin' : 'files.pin')}
                         title={$t(entry.pinned ? 'files.unpin' : 'files.pin')}
                         onclick={() => togglePin(entry)}
                       >
                         {#if entry.pinned}<PinOff class="size-3.5" />{:else}<Pin class="size-3.5" />{/if}
-                      </button>
+                      </UiButton>
                     {/if}
-                    <button type="button" class="action" aria-label={$t('files.openChat')} title={$t('files.openChat')} onclick={() => appStore.selectChat(entry.chatId)}><MessageSquare class="size-3.5" /></button>
+                    <IconButton label={$t('files.openChat')} size="xs" variant="ghost" type="button" class={uiClass("action", "ui-local-818ad885")}  title={$t('files.openChat')} onclick={() => appStore.selectChat(entry.chatId)}><MessageSquare class="size-3.5" /></IconButton>
                     {#if canDelete(entry)}
-                      <button type="button" class="action is-danger" aria-label={$t('files.delete')} title={$t('files.delete')} onclick={() => confirmDelete(entry)}><Trash2 class="size-3.5" /></button>
+                      <IconButton label={$t('files.delete')} size="xs" variant="ghost" type="button" class={uiClass("action is-danger", "ui-local-818ad885")}  title={$t('files.delete')} onclick={() => confirmDelete(entry)}><Trash2 class="size-3.5" /></IconButton>
                     {/if}
                   </div>
                 </li>
@@ -382,7 +386,7 @@
   .row:focus-within .actions {
     opacity: 1;
   }
-  .action {
+  :global(.action.ui-local-818ad885) {
     display: flex;
     width: 1.875rem;
     height: 1.875rem;
@@ -392,17 +396,17 @@
     color: var(--muted-foreground);
     transition: color var(--motion-fast) var(--motion-ease), background-color var(--motion-fast) var(--motion-ease);
   }
-  .action:hover,
-  .action:focus-visible {
+  :global(.action:hover.ui-local-818ad885),
+  :global(.action:focus-visible.ui-local-818ad885) {
     color: var(--foreground);
     background: var(--background);
     outline: none;
   }
-  .action.is-danger:hover,
-  .action.is-danger:focus-visible {
+  :global(.action.is-danger:hover.ui-local-818ad885),
+  :global(.action.is-danger:focus-visible.ui-local-818ad885) {
     color: var(--destructive);
   }
-  .cleanup {
+  :global(.cleanup.ui-local-818ad885) {
     border-radius: 9999px;
     padding: 0.25rem 0.75rem;
     font-size: var(--text-xs, 12px);
@@ -410,8 +414,8 @@
     background: var(--muted);
     transition: color var(--motion-fast) var(--motion-ease), background-color var(--motion-fast) var(--motion-ease);
   }
-  .cleanup:hover,
-  .cleanup:focus-visible {
+  :global(.cleanup:hover.ui-local-818ad885),
+  :global(.cleanup:focus-visible.ui-local-818ad885) {
     color: var(--foreground);
     background: var(--surface-hover);
     outline: none;

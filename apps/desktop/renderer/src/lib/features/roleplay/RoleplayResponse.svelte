@@ -1,6 +1,9 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+  import UiButton from '$lib/components/ui/Button.svelte';
+  import { cn as uiClass } from '$lib/utils/cn';
+
   import Avatar from '$lib/components/ui/Avatar.svelte';
   import RichContent from '$lib/ui/components/RichContent.svelte';
   import { appStore } from '$lib/stores/app.svelte';
@@ -63,16 +66,16 @@
             {/if}
             <span class="bubble-name">{character.name}</span>
             {#if canSpeak}
-              <button
+              <UiButton variant="plain"
                 type="button"
-                class="bubble-play"
-                class:is-on={ttsStore.isSpeaking(audioId)}
+                class={uiClass("bubble-play", "ui-local-b904d26d", {"is-on": ttsStore.isSpeaking(audioId)})}
+
                 aria-label={ttsStore.isSpeaking(audioId) ? $t('roleplay.voice.stop') : $t('roleplay.voice.play', { values: { name: character.name } })}
                 title={ttsStore.isSpeaking(audioId) ? $t('roleplay.voice.stop') : $t('roleplay.voice.play', { values: { name: character.name } })}
                 onclick={() => (ttsStore.isSpeaking(audioId) ? ttsStore.stop() : void ttsStore.speak(audioId, spoken, voiceConfig(appStore.config, character.voice)))}
               >
                 {#if ttsStore.isSpeaking(audioId)}<Square class="size-2.5" />{:else}<Volume2 class="size-3" />{/if}
-              </button>
+              </UiButton>
             {/if}
           </div>
         {/if}
@@ -123,7 +126,7 @@
     border-radius: var(--radius-full);
     background: var(--muted);
     color: var(--text-secondary);
-    font-size: 11px;
+    font-size: var(--text-xs);
     font-weight: 600;
   }
 
@@ -137,7 +140,7 @@
     white-space: nowrap;
   }
 
-  .bubble-play {
+  :global(.bubble-play.ui-local-b904d26d) {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -150,13 +153,13 @@
     transition: opacity var(--motion-fast), background-color var(--motion-fast), color var(--motion-fast);
   }
 
-  .bubble:hover .bubble-play,
-  .bubble-play:focus-visible,
-  .bubble-play.is-on {
+  .bubble:hover :global(.bubble-play.ui-local-b904d26d),
+  :global(.bubble-play:focus-visible.ui-local-b904d26d),
+  :global(.bubble-play.is-on.ui-local-b904d26d) {
     opacity: 1;
   }
 
-  .bubble-play:hover {
+  :global(.bubble-play:hover.ui-local-b904d26d) {
     background: var(--surface-hover);
     color: var(--foreground);
   }

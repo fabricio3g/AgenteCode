@@ -1,4 +1,7 @@
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { describe, it } from 'node:test';
 
 import { isLlamaServerBinary, supportsLlamaFlag } from '../../main/llama-runtime.ts';
@@ -8,6 +11,17 @@ import { parsePrometheusMetrics } from '../../main/llm-runner.ts';
 import { resolveLlamaSessionKey, startLlamaSession, endLlamaSession } from '../../main/llama-session.ts';
 
 describe('llama.cpp runtime compatibility', () => {
+  it('honors CPU selection even when the runtime advertises a GPU', (t) => {
+    if (process.platform === 'win32') { t.skip('POSIX probe fixture'); return; }
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'agente-runtime-cpu-'));
+    try {
+      const runtime = path.join(root, 'llama-server');
+      fs.writeFileSync(runtime, '#!/bin/sh\necho "Vulkan0: Test GPU (8192 MiB)"\n', { mode: 0o755 });
+      const args = buildLlamaArgs({ model_path: '', backend_mode: 'cpu' }, runtime, { total_ram_gb: 16 });
+      assert.equal(args.includes('--device'), false);
+      assert.deepEqual(args.slice(args.indexOf('--n-gpu-layers'), args.indexOf('--n-gpu-layers') + 2), ['--n-gpu-layers', '0']);
+    } finally { fs.rmSync(root, { recursive: true, force: true }); }
+  });
   it('only accepts llama-server as an HTTP runtime', () => {
     assert.equal(isLlamaServerBinary('C:/tools/llama-server.exe'), true);
     assert.equal(isLlamaServerBinary('/opt/llama-server'), true);

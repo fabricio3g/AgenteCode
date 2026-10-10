@@ -51,6 +51,7 @@ describe('provider endpoint contracts', () => {
     for (const id of ['ollama', 'lmstudio', 'custom']) {
       assert.equal(resolveDialect(id, 'http://localhost:1234/v1').id, id);
     }
+    assert.equal(resolveDialect('cloud-vendor', 'http://localhost:8080/v1').id, 'custom');
     assert.equal(resolveDialect(undefined, 'http://localhost:8080/v1').id, 'local');
     assert.equal(resolveDialect(undefined, 'https://localhost.example.test/v1').id, 'custom');
   });

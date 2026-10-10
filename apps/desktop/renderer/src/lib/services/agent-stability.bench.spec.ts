@@ -14,7 +14,7 @@ import {
   shouldUseToolLoop
 } from '$lib/services/composer-route';
 import { humanizeAgentError } from '$lib/utils/errors';
-import type { RequestMessage } from '$lib/services/chat-api';
+import type { RequestMessage } from '$lib/services/chat/types';
 
 function bench(name: string, iterations: number, fn: () => void): { name: string; iterations: number; totalMs: number; perOpUs: number; opsPerSec: number } {
   // Warmup

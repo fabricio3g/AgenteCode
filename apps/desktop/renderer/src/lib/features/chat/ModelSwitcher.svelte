@@ -1,6 +1,12 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+  import UiListRow from '$lib/components/ui/ListRow.svelte';
+
+  import UiIconButton from '$lib/components/ui/IconButton.svelte';
+  import UiInput from '$lib/components/ui/Input.svelte';
+  import { cn as uiClass } from '$lib/utils/cn';
+
   import { Button } from '$lib/components/ui';
   import { untrack } from 'svelte';
   import { get } from 'svelte/store';
@@ -315,12 +321,12 @@
 </script>
 
 <!-- Trigger: compact model selector -->
-<button
-  bind:this={triggerEl}
+<Button variant="plain"
+  bind:ref={triggerEl}
   type="button"
-  class="model-trigger titlebar-no-drag flex h-8 max-w-[18rem] items-center gap-1.5 px-2.5 transition"
-  class:is-open={menuOpen}
-  class:is-compact={compact}
+  class={uiClass("model-trigger titlebar-no-drag flex h-8 max-w-[18rem] items-center gap-1.5 px-2.5 transition", "ui-local-8157c6d7", {"is-open": menuOpen, "is-compact": compact})}
+
+
   style="-webkit-app-region: no-drag; pointer-events: auto;"
   onclick={toggleMenu}
   aria-haspopup="dialog"
@@ -343,7 +349,7 @@
     {/if}
   </span>
   <ChevronDown class="h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform duration-150 {menuOpen ? 'rotate-180' : ''}" />
-</button>
+</Button>
 
 <!-- Modal: portaled to body so Electron titlebar drag region cannot swallow clicks.
      Gray backdrop fills the window; square panel sits centered with fade/scale. -->
@@ -377,24 +383,24 @@
           {/if}
           <span class="flex-1"></span>
           <Tooltip label={$t('modelPicker.refresh')} position="bottom">
-            <button type="button" class="ui-icon-button is-sm" onclick={refresh} aria-label={$t('modelPicker.refresh')} disabled={refreshing}>
+            <UiIconButton label={$t('modelPicker.refresh')} size="xs" type="button" class={uiClass(" ", "ui-local-8157c6d7")} onclick={refresh}  disabled={refreshing}>
               <RefreshCw class={refreshing ? 'animate-spin' : ''} />
-            </button>
+            </UiIconButton>
           </Tooltip>
           {#if appStore.backendMode === 'api'}
             <Tooltip label={$t('modelPicker.manageProviders')} position="bottom">
-              <button type="button" class="ui-icon-button is-sm" onclick={() => openManager('providers')} aria-label={$t('modelPicker.manageProviders')}>
+              <UiIconButton label={$t('modelPicker.manageProviders')} size="xs" type="button" class={uiClass(" ", "ui-local-8157c6d7")} onclick={() => openManager('providers')} >
                 <Settings2 />
-              </button>
+              </UiIconButton>
             </Tooltip>
           {/if}
-          <Tooltip label={$t('modelPicker.close')} position="bottom"><button type="button" class="ui-icon-button is-sm" onclick={() => (setOpen(false))} aria-label={$t('modelPicker.close')}><X /></button></Tooltip>
+          <Tooltip label={$t('modelPicker.close')} position="bottom"><UiIconButton label={$t('modelPicker.close')} size="xs" type="button" class={uiClass(" ", "ui-local-8157c6d7")} onclick={() => (setOpen(false))} ><X /></UiIconButton></Tooltip>
         </div>
 
         <label class="ui-pill-field picker-search">
           <Search class="size-3.5 shrink-0 text-muted-foreground" />
-          <input
-            bind:this={searchInput}
+          <UiInput class={uiClass('', "ui-local-8157c6d7")}
+            bind:ref={searchInput}
             bind:value={modelSearch}
             type="search"
             aria-label={$t('modelPicker.search')}
@@ -402,7 +408,7 @@
             onclick={(e) => e.stopPropagation()}
           />
           {#if modelSearch}
-            <Tooltip label={$t('modelPicker.clearSearch')} position="bottom"><button type="button" class="ui-icon-button is-xs -mr-1.5" aria-label={$t('modelPicker.clearSearch')} onclick={() => (modelSearch = '')}><X /></button></Tooltip>
+            <Tooltip label={$t('modelPicker.clearSearch')} position="bottom"><UiIconButton label={$t('modelPicker.clearSearch')} size="xs" type="button" class={uiClass("  -mr-1.5", "ui-local-8157c6d7")}  onclick={() => (modelSearch = '')}><X /></UiIconButton></Tooltip>
           {/if}
         </label>
 
@@ -441,9 +447,9 @@
                 {@const list = modelsForProvider(prov.id)}
                 {@const loading = !!providerModels.loading[prov.id]}
                 <div class="provider-group">
-                  <button
+                  <Button variant="plain"
                     type="button"
-                    class="group-head"
+                    class={uiClass("group-head", "ui-local-8157c6d7")}
                     onclick={(e) => {
                       e.stopPropagation();
                       toggleProvider(prov.id);
@@ -457,7 +463,7 @@
                     {#if loading}<LoaderCircle class="size-3 shrink-0 animate-spin" />{/if}
                     {#if prov.model && !open}<span class="group-current">{prov.model}</span>{/if}
                     <ChevronRight class="group-chevron size-3.5 shrink-0 {open ? 'rotate-90' : ''}" />
-                  </button>
+                  </Button>
 
                   {#if open}
                     <div class="group-models" >
@@ -472,10 +478,10 @@
                       {:else}
                         {#each (showAll[prov.id] ? list : list.slice(0, 50)) as model (model.id)}
                           {@const selected = appStore.activeProviderName === prov.id && activeProvider?.model === model.id}
-                          <button
+                          <UiListRow
                             type="button"
-                            class="model-row"
-                            class:is-selected={selected}
+                            class={uiClass("model-row", "ui-local-8157c6d7", {"is-selected": selected})}
+
                             data-model-option
                             aria-pressed={selected}
                             disabled={!!selectingModel || changingMode}
@@ -493,10 +499,10 @@
                             {#if model.availability === 'retired'}<span class="row-id" title={$t('modelPicker.retiredHint')}>{$t('modelPicker.retired')}</span>
                             {:else if model.availability === 'catalog'}<span class="row-id" title={$t('modelPicker.notListedHint')}>{$t('modelPicker.notListed')}</span>{/if}
                             {#if selected}<span class="row-tag">{$t('modelPicker.inUse')}</span>{/if}
-                          </button>
+                          </UiListRow>
                         {/each}
                         {#if list.length > 50 && !showAll[prov.id]}
-                          <button type="button" class="group-head" onclick={() => { showAll = { ...showAll, [prov.id]: true }; }}>{$t('code.showAll')} · {list.length}</button>
+                          <Button variant="plain" type="button" class={uiClass("group-head", "ui-local-8157c6d7")} onclick={() => { showAll = { ...showAll, [prov.id]: true }; }}>{$t('code.showAll')} · {list.length}</Button>
                         {/if}
                       {/if}
                     </div>
@@ -518,7 +524,7 @@
                 {#if metaLine(model)}<span class="row-id">{metaLine(model)}</span>{/if}
                 {#if model.path}
                   {#if loaded}
-                    <Button variant="outline" size="sm" class="text-error" type="button" onclick={handleUnload} disabled={unloading}>
+                    <Button variant="outline" size="sm" class="hover:text-error" type="button" onclick={handleUnload} disabled={unloading}>
                       {#if unloading}<LoaderCircle class="animate-spin" />{:else}<Square />{/if}
                       {$t('modelPicker.unload')}
                     </Button>
@@ -543,7 +549,6 @@
 
         <footer class="picker-footer">
           <span aria-live="polite">{$t(modelSearch ? 'modelPicker.countFound' : 'modelPicker.countAvailable', { values: { n: resultCount } })}</span>
-          <span class="picker-key-hint"><kbd>↑</kbd><kbd>↓</kbd> {$t('modelPicker.navigate')} <kbd>esc</kbd> {$t('modelPicker.close')}</span>
         </footer>
       </div>
     </div>
@@ -552,7 +557,7 @@
 
 <style>
   /* Borderless, like the add button beside it: a soft fill only on hover. */
-  .model-trigger {
+  :global(.model-trigger.ui-local-8157c6d7) {
     color: var(--text-secondary);
     background: transparent;
     border: 1px solid transparent;
@@ -564,13 +569,13 @@
       color var(--motion-fast) var(--motion-ease);
   }
 
-  .model-trigger:hover,
-  .model-trigger.is-open {
+  :global(.model-trigger:hover.ui-local-8157c6d7),
+  :global(.model-trigger.is-open.ui-local-8157c6d7) {
     background: var(--muted);
     color: var(--foreground);
   }
 
-  .model-trigger.is-compact {
+  :global(.model-trigger.is-compact.ui-local-8157c6d7) {
     min-width: 0;
     max-width: 100%;
     width: 100%;
@@ -578,7 +583,7 @@
     padding-inline: 0.375rem;
   }
 
-  .model-trigger.is-compact .trigger-label { min-width: 0; }
+  :global(.model-trigger.is-compact.ui-local-8157c6d7) .trigger-label { min-width: 0; }
 
   .trigger-label {
     color: inherit;
@@ -614,8 +619,8 @@
     background: var(--muted);
   }
 
-  .model-trigger:focus-visible,
-  .model-modal button:focus-visible {
+  :global(.model-trigger:focus-visible.ui-local-8157c6d7),
+  .model-modal :global(button:focus-visible.ui-local-8157c6d7) {
     outline: 2px solid var(--ring);
     outline-offset: 2px;
   }
@@ -641,10 +646,10 @@
     margin: 0 0.75rem 0.375rem;
     padding: 0 0.75rem;
   }
-  .picker-search input {
+  .picker-search :global(input.ui-local-8157c6d7) {
     font-size: var(--text-sm);
   }
-  .picker-search input::-webkit-search-cancel-button {
+  .picker-search :global(input.ui-local-8157c6d7::-webkit-search-cancel-button) {
     display: none;
   }
 
@@ -678,7 +683,7 @@
   }
 
   /* A provider is a label over its models, not a row competing with them. */
-  .group-head {
+  :global(.group-head.ui-local-8157c6d7) {
     display: flex;
     width: 100%;
     height: 2rem;
@@ -691,7 +696,7 @@
     text-align: left;
     transition: color var(--motion-fast) var(--motion-ease);
   }
-  .group-head:hover {
+  :global(.group-head:hover.ui-local-8157c6d7) {
     color: var(--foreground);
   }
   .group-name {
@@ -710,7 +715,7 @@
     font-family: var(--font-mono, ui-monospace, monospace);
     font-size: var(--text-xs);
   }
-  .group-head :global(.group-chevron) {
+  :global(.group-head.ui-local-8157c6d7) :global(.group-chevron) {
     transition: transform var(--motion-fast) var(--motion-ease);
   }
   .group-models {
@@ -722,7 +727,7 @@
     font-size: var(--text-xs);
   }
 
-  .model-row {
+  :is(.model-row, :global(.model-row.ui-local-8157c6d7)) {
     display: flex;
     width: 100%;
     min-height: 2.25rem;
@@ -735,16 +740,16 @@
     text-align: left;
     transition: background-color var(--motion-fast) var(--motion-ease);
   }
-  .model-row:hover,
-  .model-row:focus-visible,
-  .model-row.is-selected {
+  :is(.model-row:hover, :global(.model-row:hover.ui-local-8157c6d7)),
+  :is(.model-row:focus-visible, :global(.model-row:focus-visible.ui-local-8157c6d7)),
+  :is(.model-row.is-selected, :global(.model-row.is-selected.ui-local-8157c6d7)) {
     background: var(--surface-hover);
   }
-  .model-row:disabled {
+  :is(.model-row:disabled, :global(.model-row:disabled.ui-local-8157c6d7)) {
     cursor: wait;
     opacity: 0.65;
   }
-  .model-row.is-local {
+  :is(.model-row.is-local, :global(.model-row.is-local.ui-local-8157c6d7)) {
     height: 2.125rem;
   }
   .row-mark {
@@ -774,12 +779,11 @@
   .picker-empty {
     display: flex;
     flex-direction: column;
-    align-items: center;
+    align-items: flex-start;
     gap: 0.375rem;
-    padding: 2.5rem 1rem;
+    padding: 1.5rem 0.625rem;
     color: var(--muted-foreground);
     font-size: var(--text-xs);
-    text-align: center;
   }
   .picker-empty p {
     color: var(--foreground);
@@ -797,20 +801,8 @@
     color: var(--muted-foreground);
     font-size: var(--text-xs);
   }
-  .picker-key-hint {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.25rem;
-  }
-  .picker-key-hint kbd {
-    padding: 0 4px;
-    border-radius: 4px;
-    background: var(--muted);
-    font: inherit;
-  }
 
   @media (max-width: 560px) {
-    .picker-key-hint,
     .row-id {
       display: none;
     }

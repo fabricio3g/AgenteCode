@@ -1,6 +1,9 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+  import UiTextarea from '$lib/components/ui/Textarea.svelte';
+  import { cn as uiClass } from '$lib/utils/cn';
+
   import { onMount, onDestroy } from 'svelte';
   import type * as Monaco from 'monaco-editor';
   import { accessibilityStore } from '$lib/stores/accessibility.svelte';
@@ -184,7 +187,7 @@
 </script>
 
 {#if loadError}
-  <textarea class="h-full w-full resize-none bg-background p-3 font-mono text-xs text-foreground" aria-label="Source code" {value} readonly={readOnly} oninput={(event) => onchange?.(event.currentTarget.value)} spellcheck="false"></textarea>
+  <UiTextarea class={uiClass("h-full w-full resize-none bg-background p-3 font-mono text-xs text-foreground")} aria-label="Source code" {value} readonly={readOnly} oninput={(event) => onchange?.(event.currentTarget.value)} spellcheck="false"></UiTextarea>
 {:else}
   <div bind:this={containerEl} class="monaco-container"></div>
 {/if}

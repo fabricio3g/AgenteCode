@@ -10,7 +10,7 @@
   import { Files } from 'lucide-svelte';
   import { t } from 'svelte-i18n';
   import { renderMarkdown } from '$lib/utils/markdown';
-  import { buildPreviewHtml } from '$lib/utils/preview-builder';
+  import HtmlViewer from './viewers/HtmlViewer.svelte';
   import { parseContentSegments } from '$lib/utils/charts';
   import ChartBlock from './ChartBlock.svelte';
   import PdfViewer from './viewers/PdfViewer.svelte';
@@ -23,6 +23,7 @@
   import { downloadFromDataUrl, downloadFromSrc } from '$lib/utils/doc-utils';
   import { documentSource, pickDocumentViewer } from './document-viewer';
 
+  import { createViewerFind } from './viewers/viewer-find.svelte';
   import ViewerToolbar from './viewers/ViewerToolbar.svelte';
   import { createViewerControls, provideViewerControls, registerViewerControls, useViewerControls, viewerShortcuts } from './viewers/viewer-controls.svelte';
 
@@ -50,8 +51,11 @@
   const source = $derived(documentSource(doc));
   const term = $derived(controls.query.trim());
   const effectiveQuery = $derived(controls.query);
-  registerViewerControls(controls, () => viewer === 'markdown' ? { search: { matches: term ? (doc.content || '').toLowerCase().split(term.toLowerCase()).length - 1 : 0, index: 0 } } : null);
-  const previewHtml = $derived(viewer === 'html' && doc.previewHtml ? buildPreviewHtml(doc.previewHtml, {}, doc.name).html : '');
+  let article = $state<HTMLElement>();
+  const find = createViewerFind(() => article, () => viewer === 'markdown' ? term : '');
+  registerViewerControls(controls, () => viewer === 'markdown' ? {
+    search: { matches: find.state.matches, index: find.state.index, step: find.step }
+  } : null);
 
   function downloadFile() {
     if (doc.kind === 'slides' && onDownloadSlides) { onDownloadSlides(); return; }
@@ -60,18 +64,7 @@
     else downloadFromSrc(source, baseName(doc.name));
   }
 
-  function markdownHtml(content: string): string {
-    const html = renderMarkdown(content || '');
-    if (!term) return html;
-    const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    return html.replace(new RegExp(`(${escaped})`, 'gi'), '<mark>$1</mark>');
-  }
-
-  // Bring the first search hit into view.
-  $effect(() => {
-    if (!term || !root || viewer !== 'markdown') return;
-    requestAnimationFrame(() => root?.querySelector('mark')?.scrollIntoView({ block: 'center', behavior: window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' }));
-  });
+  function markdownHtml(content: string): string { return renderMarkdown(content || ''); }
 </script>
 
 <div class="doc-viewer" bind:this={root} use:viewerShortcuts={controls}>
@@ -88,7 +81,7 @@
   {:else if viewer === 'xlsx'}
     <XlsxViewer src={source} filename={doc.name} query={effectiveQuery} />
   {:else if viewer === 'markdown'}
-    <div class="doc-reading"><article class="doc-article">
+    <div class="doc-reading"><article class="doc-article" bind:this={article} data-viewer-text>
       {#each parseContentSegments(doc.content || '') as segment, index (index)}
         {#if segment.kind === 'text'}
           {#if segment.content.trim()}
@@ -106,7 +99,7 @@
       <img class="doc-image" src={source} alt={doc.title || baseName(doc.name)} />
     </div>
   {:else if viewer === 'html'}
-    <iframe class="doc-iframe" srcdoc={previewHtml} sandbox="" referrerpolicy="no-referrer" title={doc.title || baseName(doc.name)}></iframe>
+    <HtmlViewer html={doc.previewHtml || doc.content || ''} src={source} filename={doc.name} />
   {:else if viewer === 'pptx-missing'}
     <div class="doc-empty"><Files class="size-5" /><span>{$t('artifacts.viewer.pptxMissing')}</span></div>
   {:else}
@@ -130,23 +123,15 @@
     padding: 0 0.08rem;
   }
   .doc-reading { min-height:0; flex:1; overflow:auto; }
+  .doc-article :global(h1), .doc-article :global(h2), .doc-article :global(h3),
+  .doc-article :global(h4), .doc-article :global(h5), .doc-article :global(h6) { color:var(--foreground) !important; }
   .doc-article {
     width: min(48rem, 100%);
     margin: 0 auto;
     padding: 1.5rem 0.5rem 2.5rem;
     color: var(--text);
-    font-size: 0.95rem;
+    font-size: var(--text-prose);
     line-height: 1.68;
-  }
-  .doc-iframe {
-    display: block;
-    width: 100%;
-    min-height: 0;
-    flex: 1 1 auto;
-    height: 100%;
-    border: 0;
-    border-radius: 0.5rem;
-    background: var(--card);
   }
   .doc-image-stage {
     display: flex;
@@ -166,12 +151,10 @@
   .doc-empty {
     display: flex;
     min-height: 18rem;
-    align-items: center;
-    justify-content: center;
+    align-items: flex-start;
     gap: 0.55rem;
     padding: 1rem;
-    text-align: center;
     color: var(--muted-foreground);
-    font-size: 13px;
+    font-size: var(--text-sm);
   }
 </style>

@@ -86,8 +86,10 @@ export function resolveChatTemplateForModel(
   }
 }
 
-const DEFAULT_STARTUP_TIMEOUT = 30000;
-const DEFAULT_HEALTH_TIMEOUT = 20000;
+// Cold CPU loads, large KV caches and warmup can each take minutes. The old
+// combined 50-second deadline killed a healthy child while it read weights.
+// Keep a bounded watchdog; Stop still cancels immediately during every stage.
+const DEFAULT_STARTUP_TIMEOUT = 10 * 60_000;
 const GRACEFUL_SHUTDOWN_MS = 5000;
 const HEALTH_CHECK_INTERVAL = 1000;
 
@@ -97,8 +99,8 @@ const HEALTH_CHECK_INTERVAL = 1000;
  * rather than a timer, so the bar only moves when the server actually moved.
  */
 const LOAD_PHASES = [
-  { id: 'reading_metadata', label: 'Reading model metadata', progress: 15, match: /llama_model_loader:|^load: /i },
-  { id: 'loading_weights', label: 'Loading weights', progress: 45, match: /load_tensors:/i },
+  { id: 'reading_metadata', label: 'Reading model metadata', progress: 15, match: /llama_model_loader:|\bload: /i },
+  { id: 'loading_weights', label: 'Loading weights', progress: 45, match: /load_tensors:|load_model:\s+loading model|loading model weights/i },
   { id: 'allocating_cache', label: 'Allocating KV cache', progress: 70, match: /llama_kv_cache|KV self size|llama_context:/i },
   { id: 'warming_up', label: 'Warming up', progress: 88, match: /warming up|warmup/i },
   { id: 'starting_server', label: 'Starting server', progress: 95, match: /model loaded|server is listening|starting the main loop/i }
@@ -125,7 +127,7 @@ export class ManagedProcess {
     this._onStatusChange = options.onStatusChange || (() => {});
     this._spawn = options.spawn || spawn;
     this._fetch = options.fetch || fetch;
-    this._startupTimeoutMs = options.startupTimeoutMs ?? DEFAULT_STARTUP_TIMEOUT + DEFAULT_HEALTH_TIMEOUT;
+    this._startupTimeoutMs = options.startupTimeoutMs ?? DEFAULT_STARTUP_TIMEOUT;
     this._healthIntervalMs = options.healthIntervalMs ?? HEALTH_CHECK_INTERVAL;
     this._shutdownMs = options.shutdownMs ?? GRACEFUL_SHUTDOWN_MS;
     this._generation = 0;

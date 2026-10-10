@@ -1,4 +1,4 @@
-import type { RoleplaySettings, WorldSettings } from '$lib/types/chat';
+import type { ReasoningLevel, RoleplaySettings, WorldSettings } from '$lib/types/chat';
 
 export const DECISION_DIRECTIONS = {
   reaction: 'a character responds through a small, revealing reaction',
@@ -21,7 +21,8 @@ const CHAT: RoleplaySettings = {
   showAvatars: true, messageDensity: 'comfortable', actionFormatting: 'emphasis', voicePlayback: true,
   replyOrder: 'natural', autoMode: false, autoModeMaxTurns: 4, autoModeDelayMs: 8000,
   adventureChoices: false, choiceTimerSeconds: null, props: false, showSpeakerLabels: false,
-  temperature: null, topP: null, maxTokens: null, authorNote: '', contentRating: 'sfw'
+  temperature: null, topP: null, maxTokens: null, authorNote: '', contentRating: 'sfw',
+  localSampler: 'roleplay', repetition: 'dry'
 };
 
 export const ROLEPLAY_PRESETS: Array<{ id: string; name: string; settings: RoleplaySettings }> = [
@@ -42,8 +43,9 @@ export function resolveRoleplaySettings(...layers: Array<Partial<RoleplaySetting
   const merged = Object.assign({}, CHAT, ...layers.filter(Boolean)) as RoleplaySettings;
   merged.decisionWeights = Object.assign({}, CHAT.decisionWeights, ...layers.map((layer) => layer?.decisionWeights));
   merged.outcomeWeights = Object.assign({}, CHAT.outcomeWeights, ...layers.map((layer) => layer?.outcomeWeights));
-  // Sessions written before modes keep their established prose/ensemble behavior.
-  if (!layers.some((layer) => layer?.interactionMode) && layers.some((layer) => layer?.allowMultiSpeaker || layer?.adventureChoices)) {
+  // Sessions written before modes keep their established ensemble behavior. Only the
+  // old multi-speaker flag says so: suggestions alone never meant Dynamic.
+  if (!layers.some((layer) => layer?.interactionMode) && layers.some((layer) => layer?.allowMultiSpeaker)) {
     merged.interactionMode = 'dynamic';
     merged.replyStyle = 'balanced';
   }
@@ -54,7 +56,8 @@ export function resolveRoleplaySettings(...layers: Array<Partial<RoleplaySetting
     autocomplete: ['off', 'mention', 'automatic'], nameInsertion: ['name', 'nickname'],
     choiceExpiry: ['pause', 'silence', 'event'], replyOrder: ['list', 'natural', 'mention', 'manual'],
     contentRating: ['sfw', 'unrestricted'], stakes: ['gentle', 'balanced', 'high'],
-    messageDensity: ['comfortable', 'compact'], actionFormatting: ['emphasis', 'plain']
+    messageDensity: ['comfortable', 'compact'], actionFormatting: ['emphasis', 'plain'],
+    localSampler: ['roleplay', 'server'], repetition: ['dry', 'repeat']
   };
   for (const [key, values] of Object.entries(enums)) {
     const field = key as keyof typeof enums;
@@ -122,4 +125,16 @@ export function compactStoredScene(roleplay: RoleplaySettings | null | undefined
   if (!roleplay) return null;
   if (!OPTION_KEYS.every((key) => key in roleplay)) return roleplay;
   return { ...sceneState(roleplay), ...sceneOverrides(roleplay, CHAT) } as RoleplaySettings;
+}
+
+/**
+ * The thinking level a roleplay request asks for. The Settings toggle off means
+ * off everywhere. Otherwise the chat's own level wins, and with none set a local
+ * model thinks off: its template usually thinks before every reply, decoded at
+ * local speed. Cloud models keep their provider default (null).
+ */
+export function roleplayReasoningLevel(input: { chatLevel?: ReasoningLevel | null; thinkingEnabled: boolean; local: boolean }): ReasoningLevel | null {
+  if (!input.thinkingEnabled) return 'off';
+  if (input.chatLevel) return input.chatLevel;
+  return input.local ? 'off' : null;
 }

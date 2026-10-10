@@ -35,7 +35,7 @@ describe('activity rail', () => {
 
     // Spaces stay icon-only tabs with hover tooltips, like the titlebar tabs did.
     const tabs = view.getAllByRole('tab');
-    expect(tabs).toHaveLength(4);
+    expect(tabs).toHaveLength(5);
     const home = view.getByRole('tab', { name: 'Home' });
     const code = view.getByRole('tab', { name: 'Code' });
     const roleplay = view.getByRole('tab', { name: 'Roleplay' });

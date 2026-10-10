@@ -8,6 +8,10 @@
 -->
 
 <script lang="ts">
+  import IconButton from '$lib/components/ui/IconButton.svelte';
+
+  import { cn as uiClass } from '$lib/utils/cn';
+
   import { onDestroy, onMount } from 'svelte';
   import { t } from 'svelte-i18n';
   import { ExternalLink, LoaderCircle, Send, X } from 'lucide-svelte';
@@ -118,13 +122,13 @@
             <li>
               <span class="min-w-0 flex-1 truncate text-[13px] text-foreground">{chat.name}</span>
               <span class="badge">{chat.trust === 'owner' ? $t('bots.telegram.full') : $t('bots.telegram.readOnly')}</span>
-              <button
+              <IconButton label={$t('bots.telegram.unpair', { values: { name: chat.name } })} size="xs" variant="ghost"
                 type="button"
-                class="remove"
-                aria-label={$t('bots.telegram.unpair', { values: { name: chat.name } })}
+                class={uiClass("remove", "ui-local-f8c24190")}
+
                 title={$t('bots.telegram.unpair', { values: { name: chat.name } })}
                 onclick={() => run(() => botsIpc.telegramUnpair(handle, chat.chat_id))}
-              ><X class="size-3.5" /></button>
+              ><X class="size-3.5" /></IconButton>
             </li>
           {/each}
         </ul>
@@ -177,8 +181,6 @@
   .people {
     display: flex;
     flex-direction: column;
-    border-radius: 0.6rem;
-    border: 1px solid var(--border-subtle);
   }
   .people li {
     display: flex;
@@ -195,7 +197,7 @@
     font-size: 11px;
     color: var(--muted-foreground);
   }
-  .remove {
+  :global(.remove.ui-local-f8c24190) {
     display: inline-flex;
     height: 1.5rem;
     width: 1.5rem;
@@ -204,7 +206,7 @@
     border-radius: 9999px;
     color: var(--muted-foreground);
   }
-  .remove:hover { background: var(--surface-hover); color: var(--foreground); }
+  :global(.remove:hover.ui-local-f8c24190) { background: var(--surface-hover); color: var(--foreground); }
   .code-card {
     display: flex;
     flex-direction: column;

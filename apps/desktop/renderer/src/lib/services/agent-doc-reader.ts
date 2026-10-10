@@ -1,3 +1,5 @@
+import { pdfTextLines } from '$shared/pdf-text';
+
 /**
  * Document → text/rows for the Home agent's read_document / extract_tables.
  *
@@ -7,9 +9,47 @@
  * ask for a range instead of a whole file.
  */
 
-export type DocKind = 'pdf' | 'docx' | 'xlsx' | 'csv' | 'pptx' | 'text';
+export type DocKind = 'pdf' | 'docx' | 'xlsx' | 'csv' | 'pptx' | 'text' | 'html' | 'odt' | 'ods' | 'odp' | 'epub' | 'rtf' | 'audio' | 'video' | 'image';
 export type DocUnit = { label: string; text: string; tables: string[][][] };
-export type ParsedDocument = { kind: DocKind; unitName: 'page' | 'sheet' | 'slide' | 'document'; units: DocUnit[] };
+export type ParsedDocument = { kind: DocKind; unitName: 'page' | 'sheet' | 'slide' | 'document'; units: DocUnit[]; warning?: string };
+
+/** Canonical extraction powers tools too; scans/transcripts must not be reparsed. */
+export function parseIngestedDocument(text: string, fileType: string): ParsedDocument {
+  const kinds: DocKind[] = ['pdf', 'docx', 'xlsx', 'csv', 'pptx', 'html', 'odt', 'ods', 'odp', 'epub', 'rtf', 'audio', 'video', 'image'];
+  const kind = kinds.includes(fileType as DocKind) ? fileType as DocKind : 'text';
+  const unitName = kind === 'pdf' ? 'page' : kind === 'xlsx' || kind === 'ods' ? 'sheet'
+    : kind === 'pptx' || kind === 'odp' ? 'slide' : 'document';
+  const units: DocUnit[] = [];
+  const primary = unitName === 'page' ? /^## Page (\d+)\s*$/m : unitName === 'sheet'
+    ? /^## Sheet (\d+): (.+)$/m : unitName === 'slide' ? /^## Slide (\d+): (.+)$/m : null;
+  let current = { label: 'document', text: '', tables: [] as string[][][] };
+  for (const line of text.split('\n')) {
+    const heading = primary?.exec(line);
+    if (heading) {
+      if (current.text.trim() || current.label !== 'document') units.push(current);
+      current = { label: unitName === 'sheet' ? heading[2].trim() : `${unitName} ${heading[1]}`, text: '', tables: [] };
+    } else current.text += `${line}\n`;
+  }
+  if (current.text.trim() || !units.length) units.push(current);
+  const rowCells = (line: string) => line.trim().replace(/^\|/, '').replace(/\|$/, '').split(/(?<!\\)\|/).map((cell) => cell.trim().replace(/\\\|/g, '|'));
+  for (const unit of units) {
+    unit.text = unit.text.trim();
+    const lines = unit.text.split('\n');
+    let fenced = false;
+    for (let i = 0; i < lines.length - 1; i++) {
+      if (/^\s*(```|~~~)/.test(lines[i])) { fenced = !fenced; continue; }
+      if (fenced || !/^\s*\|/.test(lines[i]) || !/^\s*\|?\s*:?-{3,}/.test(lines[i + 1])) continue;
+      const table = [rowCells(lines[i])];
+      i += 2;
+      while (i < lines.length && /^\s*\|/.test(lines[i])) table.push(rowCells(lines[i++]));
+      unit.tables.push(table); i--;
+    }
+  }
+  if (kind === 'pdf') for (const unit of units) {
+    if (!unit.tables.length) unit.tables = tablesFromLines(unit.text.split('\n'));
+  }
+  return { kind, unitName, units };
+}
 
 export function docKindOf(name: string, mime = ''): DocKind | null {
   const lower = name.toLowerCase();
@@ -148,30 +188,7 @@ async function parseXlsx(bytes: ArrayBuffer): Promise<ParsedDocument> {
 }
 
 /** Lines of one PDF page from positioned text items; wide gaps become tabs so columns survive. */
-function pdfPageLines(items: Array<{ str?: string; transform?: number[]; width?: number }>): string[] {
-  const rows = new Map<number, Array<{ x: number; w: number; s: string }>>();
-  for (const item of items) {
-    if (!item.str || !item.transform) continue;
-    const y = Math.round(item.transform[5] / 3);
-    const list = rows.get(y) ?? [];
-    list.push({ x: item.transform[4], w: item.width ?? 0, s: item.str });
-    rows.set(y, list);
-  }
-  return [...rows.entries()]
-    .sort((a, b) => b[0] - a[0])
-    .map(([, list]) => {
-      list.sort((a, b) => a.x - b.x);
-      let line = '';
-      let end = 0;
-      for (const part of list) {
-        if (line) line += part.x - end > 12 ? '\t' : part.x - end > 1 ? ' ' : '';
-        line += part.s;
-        end = part.x + part.w;
-      }
-      return line.trim();
-    })
-    .filter(Boolean);
-}
+const pdfPageLines = pdfTextLines;
 
 /** Runs of 2+ consecutive lines with 2+ tab-separated cells read as a table (best effort for PDFs). */
 export function tablesFromLines(lines: string[]): string[][][] {

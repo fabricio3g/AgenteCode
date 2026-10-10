@@ -9,6 +9,10 @@
 -->
 
 <script lang="ts">
+  import UiIconButton from '$lib/components/ui/IconButton.svelte';
+  import UiInput from '$lib/components/ui/Input.svelte';
+  import { cn as uiClass } from '$lib/utils/cn';
+
   import { Button, Tooltip } from '$lib/components/ui';
   import { onMount, tick } from 'svelte';
   import { X, Plus, ArrowLeft, ArrowRight, RotateCw, LoaderCircle, Monitor, Laptop, Tablet, Smartphone, PanelRight, Hand, MoreHorizontal, Pencil, Globe, SquareDashedMousePointer } from 'lucide-svelte';
@@ -202,14 +206,14 @@
 >
   <!-- One slim row: back, the address, reload, everything else in "…". -->
   <div class="browser-bar">
-    <Tooltip label={$t('browser.back')} position="bottom"><button type="button" class="ui-icon-button" onclick={() => void browserPanelStore.history('back')} aria-label={$t('browser.back')}>
+    <Tooltip label={$t('browser.back')} position="bottom"><UiIconButton label={$t('browser.back')} size="sm" type="button" class={uiClass("", "ui-local-b510f76f")} onclick={() => void browserPanelStore.history('back')} >
       <ArrowLeft />
-    </button></Tooltip>
+    </UiIconButton></Tooltip>
     <label class="ui-pill-field browser-url" class:driving={browserPanelStore.agentDriving}>
       {#if browserPanelStore.agentDriving}
         <span class="driving-dot" title={$t('browser.agentUsing')} aria-label={$t('browser.agentUsing')}></span>
       {/if}
-      <input
+      <UiInput class={uiClass('', "ui-local-b510f76f")}
         id="browser-address-input"
         placeholder={$t('browser.address')}
         aria-label={$t('browser.address')}
@@ -220,27 +224,27 @@
       />
       {#if browserPanelStore.loading}<LoaderCircle class="size-3 shrink-0 animate-spin text-muted-foreground" />{/if}
     </label>
-    <Tooltip label={$t('browser.reload')} position="bottom"><button type="button" class="ui-icon-button" onclick={() => void browserPanelStore.history('reload')} aria-label={$t('browser.reload')}>
+    <Tooltip label={$t('browser.reload')} position="bottom"><UiIconButton label={$t('browser.reload')} size="sm" type="button" class={uiClass("", "ui-local-b510f76f")} onclick={() => void browserPanelStore.history('reload')} >
       <RotateCw />
-    </button></Tooltip>
-    <Tooltip label={$t('browser.pick')} position="bottom"><button type="button" class="ui-icon-button" aria-label={$t('browser.pick')} aria-pressed={picking} disabled={!hasPage || !chatId || annotating} onclick={() => void togglePick()}>
+    </UiIconButton></Tooltip>
+    <Tooltip label={$t('browser.pick')} position="bottom"><UiIconButton label={$t('browser.pick')} size="sm" type="button" class={uiClass("", "ui-local-b510f76f")}  aria-pressed={picking} disabled={!hasPage || !chatId || annotating} onclick={() => void togglePick()}>
       <SquareDashedMousePointer />
-    </button></Tooltip>
-    <Tooltip label={$t(annotating ? 'browser.browse' : 'browser.annotate')} position="bottom"><button type="button" class="ui-icon-button" aria-label={$t(annotating ? 'browser.browse' : 'browser.annotate')} aria-pressed={annotating} disabled={!hasPage || !chatId || capturing} onclick={() => { if (annotating) annotating = false; else void annotate(); }}>
+    </UiIconButton></Tooltip>
+    <Tooltip label={$t(annotating ? 'browser.browse' : 'browser.annotate')} position="bottom"><UiIconButton label={$t(annotating ? 'browser.browse' : 'browser.annotate')} size="sm" type="button" class={uiClass("", "ui-local-b510f76f")}  aria-pressed={annotating} disabled={!hasPage || !chatId || capturing} onclick={() => { if (annotating) annotating = false; else void annotate(); }}>
       {#if capturing}<LoaderCircle class="size-3 animate-spin" />{:else if annotating}<Globe />{:else}<Pencil />{/if}
-    </button></Tooltip>
+    </UiIconButton></Tooltip>
     <Menu placement="bottom-end" label={$t('browser.more')} minWidth="12rem">
       {#snippet trigger(props)}
-        <button type="button" class="ui-icon-button" aria-label={$t('browser.more')} title={$t('browser.more')} {...props}>
+        <UiIconButton label={$t('browser.more')} size="sm" type="button" class={uiClass("", "ui-local-b510f76f")}  title={$t('browser.more')} {...props}>
           <MoreHorizontal />
-        </button>
+        </UiIconButton>
       {/snippet}
       <MenuItem icon={ArrowRight} label={$t('browser.forward')} onselect={() => void browserPanelStore.history('forward')} />
       <MenuItem icon={Plus} label={$t('browser.newTab')} onselect={() => void browserPanelStore.newTab().then(() => syncBounds())} />
     </Menu>
-    {#if !embedded}    <Tooltip label={$t('browser.closePanel')} position="bottom"><button type="button" class="ui-icon-button" onclick={() => void browserPanelStore.hide()} aria-label={$t('browser.closePanel')}>
+    {#if !embedded}    <Tooltip label={$t('browser.closePanel')} position="bottom"><UiIconButton label={$t('browser.closePanel')} size="sm" type="button" class={uiClass("", "ui-local-b510f76f")} onclick={() => void browserPanelStore.hide()} >
       <X />
-    </button></Tooltip>{/if}
+    </UiIconButton></Tooltip>{/if}
   </div>
 
   <div class="browser-status-bar">
@@ -263,7 +267,7 @@
         />
       {/each}
     </Menu>
-    <span class="browser-driver-note" title={$t('browser.pointerHint')}>{browserPanelStore.userTakeover?$t('browser.youHaveControl'):browserPanelStore.agentDriving?$t('browser.agentUsing'):$t('browser.pointerHint')}</span>
+    <span class="browser-driver-note" title={$t('browser.pointerHint')}>{browserPanelStore.userTakeover?$t('browser.youHaveControl'):browserPanelStore.agentDriving?$t('browser.agentUsing'):''}</span>
     {#if browserPanelStore.userTakeover}
       <Button variant="outline" size="sm" class="ml-auto" type="button" onclick={() => void browserPanelStore.setTakeover(false)} title={$t('browser.youHaveControl')} aria-label={$t('browser.handBack')}>
         <Hand class="size-3" /> <span class="control-label">{$t('browser.handBack')}</span>
@@ -280,17 +284,17 @@
     <div class="browser-tabs" role="tablist" aria-label={$t('browser.tabs')}>
       {#each browserPanelStore.tabs as tab (tab.id)}
         <div class="browser-tab" class:active={tab.id === browserPanelStore.activeTabId} role="tab" aria-selected={tab.id === browserPanelStore.activeTabId}>
-          <button
+          <Button variant="plain"
             type="button"
-            class="browser-tab-label"
+            class={uiClass("browser-tab-label", "ui-local-b510f76f")}
             onclick={() => { annotating = false; void browserPanelStore.selectTab(tab.id).then(() => syncBounds()); }}
             title={tab.url || $t('browser.newTab')}
           >
             {shortLabel(tab)}
-          </button>
-          <button type="button" class="browser-tab-close" onclick={() => void browserPanelStore.closeTab(tab.id)} aria-label={$t('browser.closeTab')} tabindex="-1">
+          </Button>
+          <UiIconButton label={$t('browser.closeTab')} size="xs" variant="ghost" type="button" class={uiClass("browser-tab-close", "ui-local-b510f76f")} onclick={() => void browserPanelStore.closeTab(tab.id)}  tabindex={-1}>
             <X class="size-2.5" />
-          </button>
+          </UiIconButton>
         </div>
       {/each}
     </div>
@@ -383,13 +387,13 @@
     color: var(--foreground);
   }
 
-  .browser-tab-label {
+  :global(.browser-tab-label.ui-local-b510f76f) {
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
   }
 
-  .browser-tab-close {
+  :global(.browser-tab-close.ui-local-b510f76f) {
     display: inline-flex;
     padding: 0.15rem;
     border-radius: 9999px;
@@ -397,12 +401,12 @@
     opacity: 0;
   }
 
-  .browser-tab:hover .browser-tab-close,
-  .browser-tab.active .browser-tab-close {
+  .browser-tab:hover :global(.browser-tab-close.ui-local-b510f76f),
+  .browser-tab.active :global(.browser-tab-close.ui-local-b510f76f) {
     opacity: 0.7;
   }
 
-  .browser-tab-close:hover {
+  :global(.browser-tab-close:hover.ui-local-b510f76f) {
     opacity: 1;
     background: color-mix(in srgb, var(--foreground) 10%, transparent);
   }

@@ -8,6 +8,8 @@
 -->
 
 <script lang="ts">
+  import DialogActions from '$lib/components/ui/DialogActions.svelte';
+
   import { t } from 'svelte-i18n';
   import { Button, Dialog, Input } from '$lib/components/ui';
 
@@ -46,7 +48,6 @@
     <p class="mt-2 text-[12px] text-muted-foreground">{$t('codeWs.newBranchFrom', { values: { root: projectRoot } })}</p>
   </div>
   {#snippet footer()}
-    <Button variant="ghost" onclick={onclose}>{$t('codeWs.cancel')}</Button>
-    <Button disabled={busy || !name.trim()} onclick={submit}>{$t('codeWs.createBranch')}</Button>
+    <DialogActions cancelLabel={$t('codeWs.cancel')} confirmLabel={$t('codeWs.createBranch')} oncancel={onclose} onconfirm={submit} disabled={busy || !name.trim()} />
   {/snippet}
 </Dialog>

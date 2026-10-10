@@ -1,9 +1,5 @@
 <script lang="ts">
+  import Callout from '$lib/components/ui/Callout.svelte';
   let { props = {} } = $props<{ props?: Record<string, any> }>();
-  const tone = $derived(String(props.tone || 'info'));
 </script>
-
-<div class={`ui-callout ui-callout-${tone}`}>
-  {#if props.title}<div class="ui-callout-title">{String(props.title)}</div>{/if}
-  <div class="ui-copy">{String(props.content || props.text || '')}</div>
-</div>
+<Callout title={props.title ? String(props.title) : undefined} text={String(props.content || props.text || '')} tone={props.tone === 'warning' ? 'warning' : props.tone === 'error' ? 'error' : 'neutral'} />

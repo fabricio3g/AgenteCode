@@ -60,8 +60,8 @@
     probe.remove();
     return {
       background: 'transparent',
-      fontFamily: 'inherit',
-      fontSize: '13px',
+      fontFamily: getComputedStyle(root).fontFamily,
+      fontSize: getComputedStyle(root).fontSize,
       primaryColor: node,
       primaryTextColor: ink,
       primaryBorderColor: border,
@@ -131,9 +131,9 @@
   });
 </script>
 
-<section class="artifact-diagram" aria-label={payload.title || 'Diagram'}>
+<section class="viz-surface artifact-diagram" aria-label={payload.title || 'Diagram'}>
   {#if payload.title}
-    <h3>{payload.title}</h3>
+    <header class="viz-header"><h3 class="viz-title">{payload.title}</h3></header>
   {/if}
   <div bind:this={diagramEl} class="diagram-output"></div>
   {#if loading}
@@ -147,25 +147,6 @@
 </section>
 
 <style>
-  .artifact-diagram {
-    width: var(--inline-block-width);
-    max-width: 100%;
-    margin-top: 0.65rem;
-    padding: 0.75rem 0.85rem;
-    border: 0;
-    border-radius: var(--artifact-radius);
-    background: var(--artifact-surface);
-    box-shadow: var(--artifact-elev);
-    color: var(--text);
-  }
-
-  .artifact-diagram h3 {
-    margin: 0 0 0.45rem;
-    font-size: 0.95rem;
-    font-weight: 650;
-    color: var(--text);
-  }
-
   .diagram-output {
     overflow-x: auto;
   }
@@ -178,7 +159,7 @@
   .diagram-loading {
     margin: 0.35rem 0 0;
     color: var(--text-secondary);
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
   }
 
   .diagram-error {
@@ -186,13 +167,13 @@
     overflow-x: auto;
     color: var(--text-secondary);
     font-family: var(--font-mono);
-    font-size: 0.8rem;
+    font-size: var(--text-code);
     white-space: pre-wrap;
   }
 
   .diagram-error-text {
     margin: 0.35rem 0 0;
     color: var(--error);
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
   }
 </style>

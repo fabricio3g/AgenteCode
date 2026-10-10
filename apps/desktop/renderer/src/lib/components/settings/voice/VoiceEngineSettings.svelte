@@ -7,6 +7,8 @@
 -->
 
 <script lang="ts">
+  import IconButton from '$lib/components/ui/IconButton.svelte';
+
   import { t } from 'svelte-i18n';
   import { RotateCcw, Volume2 } from 'lucide-svelte';
   import { Badge, Button, Select, Tooltip } from '$lib/components/ui';
@@ -48,9 +50,9 @@
   {#if status?.backends.length}
     <div class="flex items-center gap-1.5">
       <Badge>{status.running ? $t('computer.running') : $t('voice.engine.idle')}</Badge>
-      <Tooltip label={$t('voice.engine.restart')} position="bottom"><Button variant="ghost" size="icon-sm" onclick={() => void restart()} loading={restarting} aria-label={$t('voice.engine.restart')}>
+      <Tooltip label={$t('voice.engine.restart')} position="bottom"><IconButton label={$t('voice.engine.restart')} variant="ghost" size="sm" onclick={() => void restart()} loading={restarting} >
         <RotateCcw />
-      </Button></Tooltip>
+      </IconButton></Tooltip>
     </div>
   {/if}
 </SettingsRow>

@@ -7,7 +7,7 @@
  * one) is always offered.
  */
 
-import type { ToolDefinition } from '$lib/services/chat-api';
+import type { ToolDefinition } from '$lib/services/chat/types';
 
 export type HomeToolGroupId = 'web' | 'browser' | 'files' | 'productivity' | 'media' | 'data' | 'code';
 
@@ -35,6 +35,7 @@ export const HOME_TOOL_GROUPS: readonly HomeToolGroup[] = [
     tools: [
       'read_file', 'write_file', 'edit_file', 'delete_file', 'list_files', 'search_files', 'query_knowledge',
       'read_document', 'extract_tables',
+      'domain_catalog', 'domain_tools', 'domain_read', 'domain_write',
       'create_report', 'create_work_product', 'create_document', 'create_spreadsheet', 'create_presentation', 'create_pdf'
     ]
   },

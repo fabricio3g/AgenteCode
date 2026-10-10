@@ -12,6 +12,8 @@
 -->
 
 <script lang="ts">
+  import IconButton from '$lib/components/ui/IconButton.svelte';
+
   import { onDestroy, onMount } from 'svelte';
   import { t } from 'svelte-i18n';
   import { get } from 'svelte/store';
@@ -215,7 +217,7 @@
         onchange={onpick}
       />
       {#if pick === current}
-        <Badge tone="success"><Check class="size-2.5" />{$t('computer.inUse')}</Badge>
+        <Badge tone="neutral"><Check class="size-2.5" />{$t('computer.inUse')}</Badge>
       {:else}
         <Button variant="outline" size="sm" onclick={oninstall}>
           {installed.some((b) => b.tag === pick) ? $t('computer.switch') : $t('computer.install')}
@@ -232,9 +234,9 @@
 
   <SettingsSection title={$t('computer.engines')} description={$t('computer.enginesHint')}>
     {#snippet actions()}
-      <Tooltip label={$t('computer.checkUpdates')} position="bottom"><Button variant="ghost" size="icon-sm" onclick={() => void loadReleases()} disabled={checking} aria-label={$t('computer.checkUpdates')}>
+      <Tooltip label={$t('computer.checkUpdates')} position="bottom"><IconButton label={$t('computer.checkUpdates')} variant="ghost" size="sm" onclick={() => void loadReleases()} disabled={checking} >
         <RefreshCw class={checking ? 'animate-spin' : ''} />
-      </Button></Tooltip>
+      </IconButton></Tooltip>
     {/snippet}
 
     <SettingsRow label="llama.cpp" description={`MIT · ${llamaMeta}`} control="auto" align="start">

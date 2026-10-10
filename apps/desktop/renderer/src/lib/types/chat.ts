@@ -1,3 +1,5 @@
+import type { ChartData } from '$lib/utils/chart-data';
+import type { ChartType } from '$lib/utils/chart-types';
 import type { HomeRuntimeMeta } from '$shared/home-runtime';
 import type { IndexedDocument, SearchResult, SlideData } from '$lib/types/bridge';
 import type { AgentActivityKey, CodeChild, CodeRunSummary, CodeSpend, CodeStopReason, CodeTodoItem, HomeStopReason } from '$shared/agente-protocol';
@@ -20,7 +22,8 @@ export interface Attachment {
   status?: 'ready' | 'processing' | 'error';
   docId?: string;
   ocrText?: string;  // Extracted text from OCR (images, scanned PDFs)
-  processingMode?: 'vision' | 'ocr' | 'document_text';
+  processingMode?: 'vision' | 'ocr' | 'document_text' | 'transcription';
+  warning?: string;
   visionReady?: boolean;
   error?: string;
 }
@@ -180,12 +183,10 @@ export interface AgentStep {
   model?: string;
 }
 
-export type ChartArtifactPayload = {
+export type ChartArtifactPayload = ChartData & {
   kind: 'chart';
   title: string;
-  chartType: 'bar' | 'line' | 'pie' | 'donut';
-  labels: string[];
-  datasets: Array<{ label: string; data: number[] }>;
+  chartType: ChartType;
 };
 
 export type MapArtifactPayload = {
@@ -211,6 +212,7 @@ export type DashboardArtifactPayload = {
   subtitle?: string;
   metrics: Array<{ label?: string; value?: string | number; trend?: string; unit?: string; color?: string }>;
   sections: Array<{ heading?: string; content?: string }>;
+  charts?: ChartArtifactPayload[];
 };
 
 /** Weather / status / short fact packs — chart-style in-chat card. */
@@ -452,6 +454,8 @@ export type ReasoningLevel =
   | 'default'; // Groq Qwen reasoning_effort
 
 export interface ReasoningCapabilities {
+  /** Renderer-only provenance; prevents a prior route's scale appearing. */
+  route?: string;
   /** Auto plus at least one level to choose. */
   supported: boolean;
   /** Concrete choices, low → high; Auto is implied. */
@@ -743,6 +747,10 @@ export interface RoleplayOptions {
   messageDensity?: 'comfortable' | 'compact';
   actionFormatting?: 'emphasis' | 'plain';
   voicePlayback?: boolean;
+  /** Local models: `roleplay` applies the roleplay sampler preset, `server` keeps llama-server's defaults. */
+  localSampler?: 'roleplay' | 'server';
+  /** Local repetition control under the roleplay preset: DRY, or a plain repeat penalty for older builds. */
+  repetition?: 'dry' | 'repeat';
 }
 
 export interface RoleplaySceneState {
@@ -778,6 +786,51 @@ export interface RoleplayTurnSnapshot {
   choices: string[];
   props: RoleplayProp[];
   storyTurn?: RoleplayStoryTurn;
+  /** What the prompt of this turn drew on: the memory the viewer can inspect. */
+  recall?: RoleplayRecall;
+}
+
+/**
+ * What a prompt build carries besides its text. `used` is what the turn drew
+ * on: the viewer's "remembered" line and the trims the budget made.
+ */
+export interface RoleplayUsed {
+  /** Lore entry ids that fired and were kept. */
+  lore: string[];
+  /** Memory items from the story-so-far block: `summary`, `fact:N`, `goal:N`, `relationship:N`. */
+  memories: string[];
+  /** Pinned journal entry ids that were included. */
+  journal: string[];
+  /** What the budget removed for this request. Empty when nothing was trimmed. */
+  trimmed: RoleplayTrimNote[];
+}
+
+export interface RoleplayTrimNote {
+  kind: 'examples' | 'lore' | 'descriptions' | 'history';
+  /** How many items were removed (characters-shortened cards, dropped lore entries, dropped messages). */
+  count?: number;
+}
+
+/**
+ * Optional trims a budget applies to one build, cheapest first. Absent fields
+ * change nothing, so the untrimmed prompt is the one a chat normally sends.
+ */
+export interface PromptTrim {
+  /** Drop the primary's example dialogue. */
+  examples?: boolean;
+  /** Keep only the first N lore entries, in priority order. */
+  loreLimit?: number;
+  /** Cut each description and personality to this many characters, plus an ellipsis. */
+  descriptionChars?: number;
+}
+
+/** The memory one reply was written from: pinned memories, lore that fired, the story summary. */
+export interface RoleplayRecall {
+  memories: Array<{ id: string; title: string }>;
+  lore: Array<{ id: string; title: string }>;
+  summary: boolean;
+  /** What the budget cut to fit the window, when anything was cut. Only what the prompt actually carried is listed above. */
+  trimmed?: RoleplayTrimNote[];
 }
 
 /**
@@ -787,7 +840,7 @@ export interface RoleplayTurnSnapshot {
  * `'work'`/`'code'` (old ids of code) — and are normalized on read via
  * `normalizeSpace()` in `$lib/spaces`.
  */
-export type ChatContextMode = 'home' | 'code' | 'roleplay';
+export type ChatContextMode = 'home' | 'code' | 'roleplay' | 'design';
 
 export interface CodeProject {
   id: string;

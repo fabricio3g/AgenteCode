@@ -1,4 +1,8 @@
 <script lang="ts">
+  import IconButton from '$lib/components/ui/IconButton.svelte';
+
+  import { cn as uiClass } from '$lib/utils/cn';
+
   import { Search, X } from 'lucide-svelte';
   import { Input } from '$lib/components/ui';
   import { cn } from '$lib/utils/cn';
@@ -41,13 +45,13 @@
     onkeydown={handleKeydown}
   />
   {#if value}
-    <button
+    <IconButton label={clearLabel} size="xs" variant="ghost"
       type="button"
-      class="absolute right-1 top-1/2 z-10 inline-flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-[var(--float-row-radius)] text-[var(--text-muted)] outline-none transition-colors hover:bg-[var(--surface-active)] hover:text-[var(--text)] focus-visible:ring-[3px] focus-visible:ring-ring/25"
-      aria-label={clearLabel}
+      class={uiClass("absolute right-1 top-1/2 z-10 inline-flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-[var(--float-row-radius)] text-[var(--text-muted)] outline-none transition-colors hover:bg-[var(--surface-active)] hover:text-[var(--text)] focus-visible:ring-[3px] focus-visible:ring-ring/25")}
+
       onclick={clear}
     >
       <X class="h-3.5 w-3.5" aria-hidden="true" />
-    </button>
+    </IconButton>
   {/if}
 </div>

@@ -1,5 +1,8 @@
 <svelte:options runes={true} />
 <script lang="ts">
+  import UiButton from '$lib/components/ui/Button.svelte';
+  import { cn as uiClass } from '$lib/utils/cn';
+
   import { tick } from 'svelte';
   import { t } from 'svelte-i18n';
   import Avatar from '$lib/components/ui/Avatar.svelte';
@@ -80,20 +83,18 @@
 {#if matches.length}
   <div class="name-completion" role="listbox" aria-label={$t('completion.label')}>
     {#each matches as candidate, row (candidate.id)}
-      <button type="button" role="option" aria-selected={row === index} class="completion-row" class:is-selected={row === index}
+      <UiButton variant="plain" type="button" role="option" aria-selected={row === index} class={uiClass("completion-row", "ui-local-49b82f7a", {"is-selected": row === index})}
         onpointerdown={(event) => event.preventDefault()} onclick={() => void complete(candidate)}>
         <span class="size-7 shrink-0"><Avatar size="fill" name={candidate.name} image={candidate.avatar} /></span>
         <span class="min-w-0 flex-1 truncate">{candidate.name}<small>{candidate.description || candidate.nickname || candidate.id.slice(-8)}</small></span>
-      </button>
+      </UiButton>
     {/each}
-    <div class="completion-hint">{$t('completion.hint')}</div>
   </div>
 {/if}
 
 <style>
   .name-completion { position: absolute; bottom: calc(100% + 0.4rem); left: 0; z-index: var(--z-float); width: min(24rem, 100%); max-height: 20rem; overflow-y: auto; padding: var(--float-pad); border: 1px solid var(--float-border); border-radius: var(--float-radius); background: var(--float-bg); box-shadow: var(--float-shadow); pointer-events: auto; }
-  .completion-row { display: flex; align-items: center; gap: 0.65rem; width: 100%; min-height: var(--float-row-h); padding: 0.3125rem 0.625rem; border-radius: var(--float-row-radius); text-align: left; color: var(--foreground); font-size: var(--text-sm); }
-  .completion-row:hover, .is-selected { background: var(--float-row-hover); }
+  :global(.completion-row.ui-local-49b82f7a) { display: flex; align-items: center; gap: 0.65rem; width: 100%; min-height: var(--float-row-h); padding: 0.3125rem 0.625rem; border-radius: var(--float-row-radius); text-align: left; color: var(--foreground); font-size: var(--text-sm); }
+  :global(.completion-row:hover.ui-local-49b82f7a), :global(.is-selected.ui-local-49b82f7a) { background: var(--float-row-hover); }
   small { display: block; color: var(--muted-foreground); font-size: var(--text-xs); overflow: hidden; text-overflow: ellipsis; }
-  .completion-hint { padding: 0.4rem 0.5rem 0.2rem; color: var(--muted-foreground); font-size: var(--text-xs); }
 </style>

@@ -1,7 +1,7 @@
 //! Approval-request construction and missing-argument validation.
 
 use super::ToolCallOutcome;
-use crate::permissions::is_dangerous_command;
+use crate::permissions::{is_dangerous_command, shell_outside_paths, OUTSIDE_PROJECT_PREFIX};
 use crate::types::{ApprovalRequest, ToolCall};
 
 pub(crate) async fn build_approval_request(
@@ -28,7 +28,16 @@ pub(crate) async fn build_approval_request(
         "shell" => args
             .get("command")
             .and_then(|v| v.as_str())
-            .map(|cmd| format!("Run command: {cmd}"))
+            .map(|cmd| {
+                // Say why a safe-looking command is asking: it reaches past
+                // the project root, or a path in it cannot be decided.
+                let outside = shell_outside_paths(cmd, Some(std::path::Path::new(project_dir)));
+                if outside.is_empty() {
+                    format!("Run command: {cmd}")
+                } else {
+                    format!("{OUTSIDE_PROJECT_PREFIX}{} · Run command: {cmd}", outside.join(", "))
+                }
+            })
             .unwrap_or_else(|| "Run shell command".to_string()),
         "write_file" => file_path
             .as_ref()

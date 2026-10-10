@@ -6,12 +6,19 @@
   progress), use, or the mark that it is in use — and delete for an installed
   one. Installed and featured models come first; the rest of the catalog is a
   search or a "show all" away. Settings and the setup wizard share it.
+  A model's other packages (Q4/Q8/F16, smaller sizes) share its row through a
+  variant menu; a machine short on memory starts on the lightest that fits.
 -->
 
 <script lang="ts">
+  import IconButton from '$lib/components/ui/IconButton.svelte';
+
+  import Progress from '$lib/components/ui/Progress.svelte';
+  import { cn as uiClass } from '$lib/utils/cn';
+
   import { t, locale } from 'svelte-i18n';
   import { Check, Download, RotateCcw, Trash2, X } from 'lucide-svelte';
-  import { Badge, Button, Tooltip } from '$lib/components/ui';
+  import { Badge, Button, Select, Tooltip } from '$lib/components/ui';
   import { appStore } from '$lib/stores/app.svelte';
   import { confirmStore } from '$lib/stores/confirm.svelte';
   import { downloadsStore } from '$lib/stores/downloads.svelte';
@@ -36,8 +43,47 @@
   const STATUS_RANK: Record<string, number> = { supported: 0, community: 1, testing: 2, experimental: 3 };
   const FIT_RANK: Record<VoiceModelFit, number> = { good: 0, slow: 1, unknown: 1, no: 2 };
 
+  /** Each model with its other packages, the recommended one first. */
+  const groups = $derived.by(() => {
+    const map = new Map<string, VoiceModel[]>();
+    for (const model of speechEngine.models) {
+      const key = model.variantOf ?? model.id;
+      map.set(key, [...(map.get(key) ?? []), model]);
+    }
+    return map;
+  });
+
+  /** Variants picked in the menu, by group. */
+  let picked = $state<Record<string, string>>({});
+
+  /**
+   * The package a row stands for: the one picked, else the one in use or on
+   * disk or downloading, else the recommended one — or, where that one would
+   * not run well here, the smallest that does.
+   */
+  function shown(members: VoiceModel[]): VoiceModel {
+    const key = members[0].variantOf ?? members[0].id;
+    const chosen = members.find((model) => model.id === picked[key])
+      ?? members.find((model) => model.id === active?.id)
+      ?? members.find((model) => speechEngine.state(model) !== 'available');
+    if (chosen) return chosen;
+    const primary = members[0];
+    if (FIT_RANK[speechEngine.fit(primary)] === 0) return primary;
+    const lighter = members.filter((model) => model.sizeMb && speechEngine.fit(model) === 'good').sort((a, b) => a.sizeMb - b.sizeMb);
+    return lighter[0] ?? primary;
+  }
+
+  const rows = $derived([...groups.values()].map((members) => ({ members, model: shown(members) })));
+
+  function variantOptions(members: VoiceModel[]) {
+    return members.map((model) => ({
+      value: model.id,
+      label: [model.variant ?? model.id, size(model), speechEngine.state(model) === 'installed' ? $t('voice.catalog.onDisk') : ''].filter(Boolean).join(' · ')
+    }));
+  }
+
   const sorted = $derived(
-    [...speechEngine.models].sort((a, b) => {
+    [...rows].sort(({ model: a }, { model: b }) => {
       const installed = Number(speechEngine.state(b) === 'installed') - Number(speechEngine.state(a) === 'installed');
       if (installed) return installed;
       const featured = Number(!!b.featured) - Number(!!a.featured);
@@ -53,15 +99,15 @@
   const matches = $derived.by(() => {
     const needle = query.trim().toLowerCase();
     if (!needle) return sorted;
-    return sorted.filter((model) =>
-      [model.title, model.description ?? '', model.id, ...model.languages].some((text) => text.toLowerCase().includes(needle))
-    );
+    return sorted.filter(({ members }) => members.some((model) =>
+      [model.title, model.description ?? '', model.id, model.variant ?? '', ...model.languages].some((text) => text.toLowerCase().includes(needle))
+    ));
   });
 
   const visible = $derived(
     showAll || query.trim()
       ? matches
-      : matches.filter((model, index) => index < limit || speechEngine.state(model) !== 'available')
+      : matches.filter(({ model }, index) => index < limit || speechEngine.state(model) !== 'available')
   );
 
   // A finished download is only "installed" once the main process sees the
@@ -125,11 +171,11 @@
 
 {#if searchable}
   <div class="px-4 pb-1 pt-3">
-    <ModelSearchField bind:value={query} placeholder={$t('voice.catalog.search', { values: { n: speechEngine.models.length } })} label={$t('voice.catalog.searchLabel')} clearLabel={$t('modelHub.clearSearch')} />
+    <ModelSearchField bind:value={query} placeholder={$t('voice.catalog.search', { values: { n: groups.size } })} label={$t('voice.catalog.searchLabel')} clearLabel={$t('modelHub.clearSearch')} />
   </div>
 {/if}
 
-{#each visible as model (model.id)}
+{#each visible as { members, model } (members[0].id)}
   {@const state = speechEngine.state(model)}
   {@const fit = speechEngine.fit(model)}
   {@const inUse = active?.id === model.id}
@@ -137,11 +183,17 @@
     <div class="min-w-0 flex-1">
       <p class="flex flex-wrap items-center gap-1.5 text-[length:var(--text-sm)] font-medium text-foreground">
         {model.title}
-        {#if inUse}<Badge tone="success"><Check class="size-2.5" />{$t('voice.inUse')}</Badge>
+        {#if inUse}<Badge tone="neutral"><Check class="size-2.5" />{$t('voice.inUse')}</Badge>
         {:else if model.featured}<Badge>{$t('voice.catalog.featured')}</Badge>{/if}
         {#if model.status && model.status !== 'supported' && model.status !== 'community'}<Badge tone="warning">{$t(`voice.catalog.status.${model.status}`, { default: model.status })}</Badge>{/if}
       </p>
       {#if description(model)}<p class="line-clamp-2 text-xs text-muted-foreground">{description(model)}</p>{/if}
+      {#if members.length > 1}
+        <div class="mt-1.5 max-w-xs">
+          <Select size="sm" aria-label={$t('voice.catalog.variant', { values: { name: model.title } })} options={variantOptions(members)} value={model.id}
+            onchange={(id) => (picked = { ...picked, [members[0].variantOf ?? members[0].id]: id })} />
+        </div>
+      {/if}
       <p class="mt-0.5 text-xs text-muted-foreground">
         {[languages(model), model.voices.length ? `${model.voices.length} ${$t('voice.engine.voices')}` : '', size(model), model.license].filter(Boolean).join(' · ')}
       </p>
@@ -151,9 +203,7 @@
       </p>
       {#if state === 'downloading'}
         <div class="mt-2 flex items-center gap-2">
-          <div class="progress" role="progressbar" aria-label={model.title} aria-valuemin="0" aria-valuemax="100" aria-valuenow={speechEngine.progress(model)}>
-            <span style:width={`${Math.max(3, speechEngine.progress(model))}%`}></span>
-          </div>
+          <Progress label={model.title} value={speechEngine.progress(model)} />
           <span class="w-9 text-right text-xs tabular-nums text-muted-foreground">{speechEngine.progress(model)}%</span>
         </div>
       {:else if state === 'failed'}
@@ -167,9 +217,9 @@
         <Button variant="outline" size="sm" onclick={() => void download(model)}><RotateCcw /> {$t('voice.retry')}</Button>
       {:else if state === 'installed'}
         {#if !inUse && (!model.needsReference || hasClones)}<Button variant="outline" size="sm" onclick={() => void speechEngine.use(model)}>{$t('voice.engine.use')}</Button>{/if}
-        <Tooltip label={$t('voice.engine.delete')} position="bottom"><Button variant="ghost" size="icon-sm" onclick={() => remove(model)} aria-label={$t('voice.engine.deleteTitle', { values: { name: model.title } })}>
+        <Tooltip label={$t('voice.engine.delete')} position="bottom"><IconButton label={$t('voice.engine.deleteTitle', { values: { name: model.title } })} variant="ghost" size="sm" onclick={() => remove(model)} >
           <Trash2 />
-        </Button></Tooltip>
+        </IconButton></Tooltip>
       {:else}
         <Button variant="outline" size="sm" disabled={!speechEngine.bundled || fit === 'no'} onclick={() => void download(model)}>
           <Download /> {size(model) ? $t('voice.engine.download', { values: { size: size(model) } }) : $t('voice.download')}
@@ -182,9 +232,9 @@
 {/each}
 
 {#if !showAll && !query.trim() && matches.length > visible.length}
-  <button type="button" class="show-all" onclick={() => (showAll = true)}>
+  <Button variant="plain" type="button" class={uiClass("show-all", "ui-local-06938eeb")} onclick={() => (showAll = true)}>
     {$t('voice.catalog.showAll', { values: { n: matches.length } })}
-  </button>
+  </Button>
 {/if}
 
 <style>
@@ -217,22 +267,11 @@
   .fit[data-fit='no'] { color: var(--error); }
   .fit[data-fit='no'] .fit-dot { background: var(--error); }
 
-  .progress {
-    height: 0.25rem;
-    flex: 1;
-    overflow: hidden;
-    border-radius: var(--radius-full);
-    background: var(--surface-active);
-  }
 
-  .progress span {
-    display: block;
-    height: 100%;
-    background: var(--foreground);
-    transition: width 300ms var(--motion-ease);
-  }
 
-  .show-all {
+
+
+  :global(.show-all.ui-local-06938eeb) {
     display: block;
     width: 100%;
     padding: 0.625rem 1rem;
@@ -242,5 +281,5 @@
     transition: background-color var(--motion-fast) var(--motion-ease), color var(--motion-fast) var(--motion-ease);
   }
 
-  .show-all:hover { background: var(--float-row-hover); color: var(--foreground); }
+  :global(.show-all:hover.ui-local-06938eeb) { background: var(--float-row-hover); color: var(--foreground); }
 </style>

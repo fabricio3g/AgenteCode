@@ -1,5 +1,10 @@
 <svelte:options runes={true} />
 <script lang="ts">
+  import UiListRow from '$lib/components/ui/ListRow.svelte';
+
+  import UiInput from '$lib/components/ui/Input.svelte';
+  import { cn as uiClass } from '$lib/utils/cn';
+
   import { t } from 'svelte-i18n';
   import { Code, FolderOpen, PanelsTopLeft, Play, Plus, Upload, X } from 'lucide-svelte';
   import { Button, IconButton, Menu, MenuItem } from '$lib/components/ui';
@@ -46,15 +51,15 @@
     <div class="project-tools">{@render children()}</div>
     <div class="project-divider"></div>
     {#each scripts[project.id]??[] as script,index(index)}
-      <div class="script-row"><button type="button" disabled={busy} title={script.command} onclick={()=>void run(script.command)}><Play class="size-3" /><span>{script.name}</span></button><IconButton quiet size="xs" label={copy.actions.remove} onclick={()=>{scripts[project.id]=scripts[project.id].filter((_,i)=>i!==index);save();}}><X /></IconButton></div>
+      <div class="script-row"><Button variant="plain" class={uiClass('', "ui-local-7b76bc47")} type="button" disabled={busy} title={script.command} onclick={()=>void run(script.command)}><Play class="size-3" /><span>{script.name}</span></Button><IconButton quiet size="xs" label={copy.actions.remove} onclick={()=>{scripts[project.id]=scripts[project.id].filter((_,i)=>i!==index);save();}}><X /></IconButton></div>
     {/each}
     {#if adding}
       <form class="script-form" onsubmit={(event)=>{event.preventDefault();add();}}>
-        <input class="ui-legacy-field" bind:value={name} placeholder={$t('projectControls.scriptName')} aria-label={$t('projectControls.scriptName')} />
-        <input class="ui-legacy-field" bind:value={command} placeholder="npm run dev" aria-label={$t('projectControls.command')} />
+        <UiInput class={uiClass("ui-legacy-field", "ui-local-7b76bc47")} bind:value={name} placeholder={$t('projectControls.scriptName')} aria-label={$t('projectControls.scriptName')} />
+        <UiInput class={uiClass("ui-legacy-field", "ui-local-7b76bc47")} bind:value={command} placeholder="npm run dev" aria-label={$t('projectControls.command')} />
         <div><Button size="xs" variant="ghost" onclick={()=>adding=false}>{copy.actions.cancel}</Button><Button size="xs" type="submit" disabled={!name.trim()||!command.trim()}>{copy.actions.save}</Button></div>
       </form>
-    {:else}<button type="button" role="menuitem" data-keep-open class="ui-menu-item" onclick={()=>adding=true}><Plus class="size-4" /><span>{$t('projectControls.addScript')}</span></button>{/if}
+    {:else}<UiListRow  type="button" role="menuitem" data-keep-open class={uiClass("ui-menu-item", "ui-local-7b76bc47")} onclick={()=>adding=true}><Plus class="size-4" /><span>{$t('projectControls.addScript')}</span></UiListRow>{/if}
   </div>
 </Menu>
 <style>
@@ -63,6 +68,6 @@
   .project-divider { height:1px;background:var(--border-subtle);margin:0.375rem 0; }
   .project-tools { display:flex;flex-wrap:wrap;gap:0.25rem;padding:0.375rem; }
   .project-changes { display:flex;gap:0.375rem;padding:0.375rem 0.625rem;font-size:var(--text-xs); } .project-changes span:first-child { margin-right:auto; }
-  .script-row { display:flex;align-items:center;gap:0.375rem; } .script-row>button { display:flex;align-items:center;gap:0.5rem;padding:0.5rem;min-width:0;flex:1;border-radius:var(--radius-md);font-size:var(--text-sm); } .script-row>button:hover { background:var(--companion-soft); }
-  .script-form { display:grid;gap:0.375rem;padding:0.5rem; } .script-form input { width:100%;min-width:0;padding:0.375rem 0.5rem;font-size:var(--text-sm); } .script-form>div { display:flex;justify-content:flex-end;gap:0.375rem; }
+  .script-row { display:flex;align-items:center;gap:0.375rem; } .script-row>:global(button.ui-local-7b76bc47) { display:flex;align-items:center;gap:0.5rem;padding:0.5rem;min-width:0;flex:1;border-radius:var(--radius-md);font-size:var(--text-sm); } .script-row>:global(button:hover.ui-local-7b76bc47) { background:var(--companion-soft); }
+  .script-form { display:grid;gap:0.375rem;padding:0.5rem; } .script-form :global(input.ui-local-7b76bc47) { width:100%;min-width:0;padding:0.375rem 0.5rem;font-size:var(--text-sm); } .script-form>div { display:flex;justify-content:flex-end;gap:0.375rem; }
 </style>

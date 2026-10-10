@@ -6,11 +6,12 @@
  */
 
 import type { ToolContext, ToolResult } from '$lib/services/agent-types';
-import { docKindOf, parseDocument, selectUnits, type ParsedDocument } from '$lib/services/agent-doc-reader';
+import { docKindOf, parseDocument, parseIngestedDocument, selectUnits, type ParsedDocument } from '$lib/services/agent-doc-reader';
+import { ingestionFileType } from '$shared/document-ingestion';
 import { convertTimeZone, convertUnits, dateMath, supportedUnits } from '$lib/services/agent-units';
 import * as productivity from '$lib/services/home-productivity';
 
-export type HomeAttachment = { id: string; name: string; type: string; kind?: string; data?: string; base64?: string; ocrText?: string };
+export type HomeAttachment = { id: string; name: string; type: string; kind?: string; data?: string; base64?: string; ocrText?: string; docId?: string };
 
 export interface HomeToolDeps {
   attachments: (chatId: string) => HomeAttachment[];
@@ -21,23 +22,20 @@ export interface HomeToolDeps {
   visionAvailable: () => Promise<boolean>;
   ocr: (name: string, type: string, bytes: ArrayBuffer) => Promise<string>;
   transcribe: (bytes: ArrayBuffer, mime: string) => Promise<string>;
+  readIngested?: (chatId: string, docId: string) => Promise<{ text: string; file_type: string; warning?: string }>;
 }
 
-type Source = { name: string; type: string; bytes: ArrayBuffer; ocrText?: string; base64?: string };
+type Source = { name: string; type: string; bytes: ArrayBuffer; ocrText?: string; base64?: string; docId?: string };
 
-const AUDIO_EXT = /\.(mp3|wav|m4a|ogg|oga|opus|flac|webm|aac|mp4)$/i;
-const IMAGE_EXT = /\.(png|jpe?g|gif|webp|bmp|tiff?)$/i;
 type Want = 'document' | 'image' | 'audio';
 
-const isImage = (a: HomeAttachment) => a.kind === 'image' || a.type.startsWith('image/') || IMAGE_EXT.test(a.name);
-const isAudio = (a: HomeAttachment) => a.type.startsWith('audio/') || AUDIO_EXT.test(a.name);
+const isImage = (a: HomeAttachment) => a.kind === 'image' || ingestionFileType(a.name, a.type).kind === 'image';
+const isAudio = (a: HomeAttachment) => ['audio', 'video'].includes(ingestionFileType(a.name, a.type).kind);
 const matches = (a: HomeAttachment, want: Want) =>
-  want === 'image' ? isImage(a) : want === 'audio' ? isAudio(a) : !isImage(a) && !isAudio(a);
+  want === 'image' ? isImage(a) : want === 'audio' ? isAudio(a) : !!a.docId || (!isImage(a) && !isAudio(a));
 
 function mimeFor(name: string): string {
-  const ext = name.slice(name.lastIndexOf('.') + 1).toLowerCase();
-  const map: Record<string, string> = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', mp3: 'audio/mpeg', wav: 'audio/wav', m4a: 'audio/mp4', ogg: 'audio/ogg', flac: 'audio/flac', webm: 'audio/webm', opus: 'audio/ogg' };
-  return map[ext] ?? 'application/octet-stream';
+  return ingestionFileType(name).mime;
 }
 
 function base64ToBuffer(b64: string): ArrayBuffer {
@@ -67,10 +65,11 @@ async function resolveSource(args: Record<string, unknown>, ctx: ToolContext, de
   }
   if (hit) {
     let bytes: ArrayBuffer | undefined;
-    if (hit.data) bytes = await deps.dataUrlBytes(hit.data);
+    if (hit.docId && deps.readIngested && (want === 'document' || want === 'audio')) bytes = new ArrayBuffer(0);
+    else if (hit.data) bytes = await deps.dataUrlBytes(hit.data);
     else if (hit.base64) bytes = base64ToBuffer(stripDataUrl(hit.base64));
     if (bytes || hit.ocrText) {
-      return { name: hit.name, type: hit.type || mimeFor(hit.name), bytes: bytes ?? new TextEncoder().encode(hit.ocrText).buffer as ArrayBuffer, ocrText: hit.ocrText, base64: hit.base64 ? stripDataUrl(hit.base64) : undefined };
+      return { name: hit.name, type: hit.type || mimeFor(hit.name), bytes: bytes ?? new TextEncoder().encode(hit.ocrText).buffer as ArrayBuffer, ocrText: hit.ocrText, base64: hit.base64 ? stripDataUrl(hit.base64) : undefined, docId: hit.docId };
     }
   }
   if (requested && ctx.executionMode === 'workspace' && ctx.workspaceRoot) {
@@ -95,6 +94,11 @@ const clampInt = (value: unknown, fallback: number, min: number, max: number) =>
 
 async function readDocument(args: Record<string, unknown>, ctx: ToolContext, deps: HomeToolDeps): Promise<ParsedDocument & { name: string }> {
   const source = await resolveSource(args, ctx, deps, 'document');
+  if (source.docId && deps.readIngested) {
+    const result = await deps.readIngested(ctx.chatId, source.docId);
+    return { name: source.name, ...parseIngestedDocument(result.text, result.file_type), warning: result.warning };
+  }
+  if (source.ocrText) return { name: source.name, ...parseIngestedDocument(source.ocrText, docKindOf(source.name, source.type) || 'text') };
   if (!docKindOf(source.name, source.type)) {
     if (source.ocrText) return { name: source.name, kind: 'text', unitName: 'document', units: [{ label: 'document', text: source.ocrText, tables: [] }] };
     throw new Error(`Unsupported document type: ${source.name}. Supported: PDF, DOCX, XLSX, CSV, PPTX, TXT/MD.`);
@@ -107,44 +111,37 @@ async function readDocument(args: Record<string, unknown>, ctx: ToolContext, dep
   }
 }
 
-export function readDocumentText(doc: ParsedDocument & { name: string }, range: unknown, maxChars: number) {
+export function readDocumentText(doc: ParsedDocument & { name: string }, range: unknown, maxChars: number, offset = 0) {
   const indexes = selectUnits(doc.units, range);
-  const parts: string[] = [];
+  const blocks = indexes.map((index) => ({ index, label: doc.units[index].label,
+    text: doc.unitName === 'document' ? doc.units[index].text : `--- ${doc.units[index].label} ---\n${doc.units[index].text}` }));
+  const text = blocks.map((block) => block.text).join('\n\n');
+  const start = Math.max(0, offset), end = Math.min(text.length, start + maxChars);
+  let cursor = 0;
   const returned: string[] = [];
-  let used = 0;
-  let truncated = false;
   let stoppedAt: number | undefined;
-  for (const index of indexes) {
-    const unit = doc.units[index];
-    const block = doc.unitName === 'document' ? unit.text : `--- ${unit.label} ---\n${unit.text}`;
-    const room = maxChars - used;
-    if (room <= 0) { truncated = true; stoppedAt = index + 1; break; }
-    if (block.length > room) {
-      parts.push(block.slice(0, room));
-      returned.push(unit.label);
-      truncated = true;
-      stoppedAt = index + 1;
-      break;
-    }
-    parts.push(block);
-    returned.push(unit.label);
-    used += block.length + 2;
+  for (const block of blocks) {
+    const blockEnd = cursor + block.text.length;
+    if (blockEnd > start && cursor < end) returned.push(block.label);
+    if (stoppedAt === undefined && blockEnd > end) stoppedAt = block.index + 1;
+    cursor = blockEnd + 2;
   }
-  return { content: parts.join('\n\n'), returned, truncated, stoppedAt, total: doc.units.length };
+  return { content: text.slice(start, end), returned, truncated: end < text.length, stoppedAt,
+    nextOffset: end < text.length ? end : undefined, total: doc.units.length, ...(doc.warning ? { warning: doc.warning } : {}) };
 }
 
-export function tablesOf(doc: ParsedDocument, range: unknown, maxRows: number, budget = 9000) {
-  const out: Array<{ unit: string; index: number; columns: number; rowCount: number; rows: string[][]; rowsTruncated: boolean }> = [];
+export function tablesOf(doc: ParsedDocument, range: unknown, maxRows: number, budget = 9000, rowOffset = 0) {
+  const out: Array<{ unit: string; index: number; columns: number; rowCount: number; rows: string[][]; rowsTruncated: boolean; rowOffset: number; nextRowOffset?: number }> = [];
   let chars = 0;
   let omitted = 0;
   for (const unitIndex of selectUnits(doc.units, range)) {
     const unit = doc.units[unitIndex];
     unit.tables.forEach((table, i) => {
-      const rows = table.slice(0, maxRows);
+      const rows = table.slice(rowOffset, rowOffset + maxRows);
       const size = JSON.stringify(rows).length;
       if (chars + size > budget && out.length) { omitted++; return; }
       chars += size;
-      out.push({ unit: unit.label, index: i + 1, columns: Math.max(0, ...rows.map((r) => r.length)), rowCount: table.length, rows, rowsTruncated: table.length > rows.length });
+      out.push({ unit: unit.label, index: i + 1, columns: Math.max(0, ...rows.map((r) => r.length)), rowCount: table.length, rows, rowsTruncated: table.length > rowOffset + rows.length, rowOffset, nextRowOffset: table.length > rowOffset + rows.length ? rowOffset + rows.length : undefined });
     });
   }
   return { tables: out, omitted };
@@ -240,18 +237,19 @@ export async function runHomeTool(name: string, args: Record<string, unknown>, c
     switch (name) {
       case 'read_document': {
         const doc = await readDocument(args, ctx, d);
-        const r = readDocumentText(doc, args.range, clampInt(args.max_chars, 8000, 500, 10000));
+        const r = readDocumentText(doc, args.range, clampInt(args.max_chars, 8000, 500, 10000), clampInt(args.offset, 0, 0, 10_000_000));
         return ok({
           source: doc.name, kind: doc.kind, unit: doc.unitName, total_units: r.total, returned: r.returned, truncated: r.truncated,
           content: r.content || '(no extractable text; a scanned PDF needs OCR on its page images)',
-          ...(r.truncated && r.stoppedAt ? { next_step: `Output truncated. Continue with range="${r.stoppedAt}-${r.total}".` } : {})
+          ...(r.warning ? { warning: r.warning } : {}),
+          ...(r.truncated ? { next_offset: r.nextOffset, next_step: `Output truncated. Keep the same source and range; continue with offset=${r.nextOffset}.` } : {})
         });
       }
       case 'extract_tables': {
         const doc = await readDocument(args, ctx, d);
-        const { tables, omitted } = tablesOf(doc, args.range, clampInt(args.max_rows, 60, 1, 200));
+        const { tables, omitted } = tablesOf(doc, args.range, clampInt(args.max_rows, 60, 1, 200), 9000, clampInt(args.row_offset, 0, 0, 1_000_000));
         if (!tables.length) return ok({ source: doc.name, kind: doc.kind, tables: [], note: 'No tables found in the selected range.' });
-        return ok({ source: doc.name, kind: doc.kind, tables, ...(omitted ? { omitted_tables: omitted, note: 'More tables exist; narrow with range.' } : {}) });
+        return ok({ source: doc.name, kind: doc.kind, tables, ...(doc.warning ? { warning: doc.warning } : {}), ...(omitted ? { omitted_tables: omitted, note: 'More tables exist; narrow with range.' } : {}) });
       }
       case 'ocr_image': {
         const src = await resolveSource(args, ctx, d, 'image');
@@ -266,7 +264,9 @@ export async function runHomeTool(name: string, args: Record<string, unknown>, c
       }
       case 'transcribe_audio': {
         const src = await resolveSource(args, ctx, d, 'audio');
-        const text = (await d.transcribe(src.bytes, src.type.startsWith('audio/') ? src.type : mimeFor(src.name))).trim();
+        const text = (src.docId && d.readIngested ? (await d.readIngested(ctx.chatId, src.docId)).text
+          : src.ocrText || await d.transcribe(src.bytes, ingestionFileType(src.name, src.type).mime)).trim();
+        if (!text) return fail('No speech recognized in this recording.');
         return ok({ source: src.name, text: text.slice(0, 10000), truncated: text.length > 10000 });
       }
     }
@@ -299,6 +299,7 @@ async function defaultDeps(): Promise<HomeToolDeps> {
     },
     readWorkspaceBinary: async (root, path) => readArrayBuffer(await invoke<string>('read_workspace_binary', { workspaceRoot: root, relativePath: path }), 'file'),
     dataUrlBytes: (dataUrl) => readArrayBuffer(dataUrl, 'attachment'),
+    readIngested: (chatId, docId) => invoke('read_ingested_document', { payload: { chat_id: chatId, doc_id: docId } }),
     visionAvailable: async () => (await import('$lib/services/chat-api')).hasConfiguredVisionModel(appStore.config),
     ocr: async (name, type, bytes) => (await import('$lib/services/ocr')).extractTextFromFile(new File([bytes], name, { type })),
     transcribe: async (bytes, mime) => (await import('$lib/services/stt')).sttTranscribe(new Uint8Array(bytes), mime).then((r) => r.text)

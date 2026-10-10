@@ -11,11 +11,11 @@
 
 </script>
 
-<section class="info-card" aria-label={payload.title || 'Info card'}>
-  <header class="info-header">
-    <h3>{payload.title}</h3>
+<section class="viz-surface info-card" aria-label={payload.title || 'Info card'}>
+  <header class="viz-header">
+    <h3 class="viz-title">{payload.title}</h3>
     {#if payload.subtitle}
-      <p>{payload.subtitle}</p>
+      <p class="viz-subtitle">{payload.subtitle}</p>
     {/if}
   </header>
 
@@ -39,35 +39,6 @@
 </section>
 
 <style>
-  .info-card {
-    width: var(--inline-block-width);
-    max-width: 100%;
-    margin-top: 0.65rem;
-    padding: 1rem;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-xl);
-    background: var(--card);
-    color: var(--foreground);
-  }
-
-  .info-header {
-    margin-bottom: 0.75rem;
-  }
-
-  .info-header h3 {
-    margin: 0;
-    font-size: 0.875rem;
-    font-weight: 600;
-    letter-spacing: -0.01em;
-    color: var(--text);
-  }
-
-  .info-header p {
-    margin: 0.2rem 0 0;
-    font-size: 0.82rem;
-    color: var(--text-secondary);
-  }
-
   .info-rows {
     margin: 0;
     display: flex;
@@ -81,12 +52,12 @@
     gap: 0.55rem 0.85rem;
     align-items: baseline;
     padding: 0.625rem 0;
-    border-top: 1px solid var(--border);
+    border-top: 1px solid var(--border-subtle);
   }
 
   .info-row dt {
     margin: 0;
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     font-weight: 400;
     color: var(--text-tertiary, var(--text-secondary));
     text-transform: none;
@@ -104,21 +75,21 @@
   }
 
   .value {
-    font-size: 0.95rem;
-    font-weight: 600;
+    font-size: var(--text-base);
+    font-weight: 500;
     color: var(--text);
   }
 
   .hint {
-    font-size: 0.72rem;
+    font-size: var(--text-xs);
     color: var(--text-tertiary, var(--text-secondary));
   }
 
   .info-footer {
     margin-top: 0.75rem;
     padding-top: 0.55rem;
-    border-top: 1px solid var(--border);
-    font-size: 0.72rem;
+    border-top: 1px solid var(--border-subtle);
+    font-size: var(--text-xs);
     color: var(--text-tertiary, var(--text-secondary));
   }
 

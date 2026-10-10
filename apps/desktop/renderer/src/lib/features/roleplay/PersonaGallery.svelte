@@ -8,9 +8,11 @@
 <script lang="ts">
   import { Button } from '$lib/components/ui';
   import { Plus } from 'lucide-svelte';
+  import { t } from 'svelte-i18n';
   import Avatar from '$lib/components/ui/Avatar.svelte';
   import type { UserPersona } from '$lib/types/chat';
   import { charactersStore } from './characters.svelte';
+  import { roleplayStore } from './roleplay.svelte';
   import { deletePersona, duplicatePersona } from './library-actions.svelte';
   import LibraryCard from './LibraryCard.svelte';
   import LibraryEmpty from './LibraryEmpty.svelte';
@@ -24,21 +26,22 @@
   let { onedit, onnew }: Props = $props();
 </script>
 
-<div class="library-shelf mx-auto w-full px-6 pb-6" style="max-width: var(--thread-width);">
+<div class="library-shelf">
   <LibraryToolbar>
-    <Button variant="outline" size="sm" type="button" onclick={onnew}><Plus /> New persona</Button>
+    <Button variant="outline" type="button" onclick={onnew}><Plus /> {$t('roleplay.library.newPersona')}</Button>
   </LibraryToolbar>
 
   {#if !charactersStore.personas.length}
-    <LibraryEmpty title="No personas yet" hint="Create one to tell the cast who you are in the story." action="New persona" onaction={onnew} />
+    <LibraryEmpty title={$t('roleplay.library.noPersonas')} hint={$t('roleplay.library.noPersonasHint')} action={$t('roleplay.library.newPersona')} onaction={onnew} />
   {:else}
     <div class="library-grid">
       {#each charactersStore.personas as persona (persona.id)}
         <LibraryCard
-          kind="persona"
           title={persona.name}
-          subtitle={persona.description}
-          badge={persona.isDefault ? 'Default' : ''}
+          editLabel={$t('roleplay.library.editPersona')}
+          optionsLabel={$t('roleplay.library.personaOptions')}
+          subtitle={roleplayStore.previewText(persona.description ?? '', { personaId: persona.id, seed: persona.id })}
+          badge={persona.isDefault ? $t('roleplay.library.defaultBadge') : ''}
           onopen={() => onedit(persona)}
           onedit={() => onedit(persona)}
           onduplicate={() => void duplicatePersona(persona)}

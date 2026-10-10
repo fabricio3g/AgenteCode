@@ -10,6 +10,12 @@
 -->
 
 <script lang="ts">
+  import IconButton from '$lib/components/ui/IconButton.svelte';
+
+  import UiListRow from '$lib/components/ui/ListRow.svelte';
+
+  import { cn as uiClass } from '$lib/utils/cn';
+
   import { Check, Globe2, Layers, MessageSquare, Paperclip, Plus, Radar, X } from 'lucide-svelte';
   import { Menu } from '$lib/components/ui';
   import { appStore } from '$lib/stores/app.svelte';
@@ -37,47 +43,47 @@
 
 <Menu bind:open placement="top-start" minWidth="16.5rem" label="Composer options">
   {#snippet trigger(props)}
-    <button
+    <IconButton label={copy.composer.attach} size="xs" variant="ghost"
       type="button"
-      class="add-trigger"
-      class:is-open={open}
-      aria-label={copy.composer.attach}
+      class={uiClass("add-trigger", "ui-local-0d4ea47c", {"is-open": open})}
+
+
       title={copy.composer.attach}
       {...props}
     >
       <Plus class="size-4" />
-    </button>
+    </IconButton>
   {/snippet}
 
-  <button
+  <UiListRow
     type="button"
     role="menuitem"
-    class="ui-menu-item"
+    class={uiClass("ui-menu-item", "ui-local-0d4ea47c")}
     onclick={() => { open = false; onattach(); }}
   >
     <Paperclip class="size-4" />
     <span class="ui-menu-item-text">{copy.composer.attach}</span>
-  </button>
+  </UiListRow>
 
   {#if availableModes.length > 1}
     <div class="ui-menu-divider" role="separator"></div>
     {#each availableModes as id (id)}
       {@const Icon = MODE_ICONS[id]}
-      <button
+      <UiListRow
         type="button"
         role="menuitemradio"
         aria-checked={searchMode === id}
-        class="ui-menu-item"
-        class:is-active={searchMode === id}
+        class={uiClass("ui-menu-item", "ui-local-0d4ea47c", {"is-active": searchMode === id})}
+
+        title={copy.searchModes[id].description}
         onclick={() => { appStore.setSearchMode(id); open = false; }}
       >
         <Icon class="size-4" />
         <span class="ui-menu-item-text">
           <span>{copy.searchModes[id].label}</span>
-          <span class="ui-menu-item-hint">{copy.searchModes[id].description}</span>
         </span>
         {#if searchMode === id}<Check class="ui-menu-check size-3.5" />{/if}
-      </button>
+      </UiListRow>
     {/each}
   {/if}
 </Menu>
@@ -88,20 +94,20 @@
   <span class="mode-chip" title={copy.searchModes[searchMode].description}>
     <ActiveIcon class="size-3.5 shrink-0" />
     <span>{copy.searchModes[searchMode].label}</span>
-    <button
+    <IconButton label={`${copy.actions.remove}: ${copy.searchModes[searchMode].label}`} size="xs" variant="ghost"
       type="button"
-      class="mode-chip-clear"
-      aria-label={`${copy.actions.remove}: ${copy.searchModes[searchMode].label}`}
+      class={uiClass("mode-chip-clear", "ui-local-0d4ea47c")}
+
       onclick={() => appStore.setSearchMode('chat')}
     >
       <X class="size-3" />
-    </button>
+    </IconButton>
   </span>
 {/if}
 
 <style>
   /* Matches the model chip beside it: same height, borderless until hovered. */
-  .add-trigger {
+  :global(.add-trigger.ui-local-0d4ea47c) {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -117,8 +123,8 @@
       color var(--motion-fast) var(--motion-ease);
   }
 
-  .add-trigger:hover,
-  .add-trigger.is-open {
+  :global(.add-trigger:hover.ui-local-0d4ea47c),
+  :global(.add-trigger.is-open.ui-local-0d4ea47c) {
     background: var(--muted);
     color: var(--foreground);
   }
@@ -138,7 +144,7 @@
     white-space: nowrap;
   }
 
-  .mode-chip-clear {
+  :global(.mode-chip-clear.ui-local-0d4ea47c) {
     display: inline-flex;
     width: 1.25rem;
     height: 1.25rem;
@@ -152,12 +158,12 @@
     transition: opacity var(--motion-fast) var(--motion-ease), background-color var(--motion-fast) var(--motion-ease);
   }
 
-  .mode-chip-clear:hover {
+  :global(.mode-chip-clear:hover.ui-local-0d4ea47c) {
     opacity: 1;
     background: color-mix(in srgb, var(--primary) 14%, transparent);
   }
 
-  .add-trigger:focus-visible {
+  :global(.add-trigger:focus-visible.ui-local-0d4ea47c) {
     outline: none;
     box-shadow: 0 0 0 2px color-mix(in oklch, var(--ring) 35%, transparent);
   }

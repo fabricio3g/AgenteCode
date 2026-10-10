@@ -8,6 +8,13 @@
 -->
 
 <script lang="ts">
+  import DialogActions from '$lib/components/ui/DialogActions.svelte';
+
+  import DialogFooter from '$lib/components/ui/DialogFooter.svelte';
+
+  import UiIconButton from '$lib/components/ui/IconButton.svelte';
+
+  import { t } from 'svelte-i18n';
   import { untrack } from 'svelte';
   import { X } from 'lucide-svelte';
   import { motionFade, flyAndScale } from '$lib/utils/transitions';
@@ -56,27 +63,26 @@
   >
     <div class="ui-modal-header">
       <div class="min-w-0">
-        <div class="ui-modal-title">Scene cast</div>
+        <div class="ui-modal-title">{$t('roleplay.cast.title')}</div>
         <div class="text-xs text-muted-foreground">
           {castIds.length > 1 ? `Group scene · ${castIds.length} characters` : 'One-on-one scene'}
           · the first member speaks first
         </div>
       </div>
-      <Tooltip label={copy.actions.close} position="bottom"><button type="button" class="ui-icon-button" onclick={() => guard.close(onclose)} aria-label={copy.actions.close}>
+      <Tooltip label={copy.actions.close} position="bottom"><UiIconButton label={copy.actions.close} size="sm" type="button"  onclick={() => guard.close(onclose)} >
         <X class="size-4" />
-      </button></Tooltip>
+      </UiIconButton></Tooltip>
     </div>
 
     <div class="ui-modal-body max-h-[62vh] space-y-3 overflow-y-auto">
       <CastPicker value={castIds} onchange={(ids) => (castIds = ids)} />
       {#if !castIds.length}
-        <p class="text-center text-xs text-muted-foreground">Pick at least one character to keep the scene alive.</p>
+        <p class="text-xs text-muted-foreground">{$t('roleplay.cast.hint')}</p>
       {/if}
     </div>
 
-    <div class="ui-modal-footer">
-      <Button variant="outline" size="sm" type="button" onclick={() => guard.close(onclose)}>{copy.actions.cancel}</Button>
-      <Button onclick={save} disabled={!castIds.length}>Save cast</Button>
-    </div>
+    <DialogFooter >
+      <DialogActions cancelLabel={copy.actions.cancel} confirmLabel={$t('roleplay.cast.save')} oncancel={() => guard.close(onclose)} onconfirm={save} disabled={!castIds.length} />
+    </DialogFooter>
   </div>
 </div>

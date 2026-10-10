@@ -50,7 +50,8 @@
     "test": "npx tsx --test tests/**/*.test.js",
     "build:cities": "node scripts/build-cities.mjs",
     "smoke:packaged": "node scripts/smoke-packaged.mjs",
-    "report:package": "node scripts/package-report.mjs"
+    "report:package": "node scripts/package-report.mjs",
+    "audit:ui": "node scripts/audit-ui-components.mjs"
   },
   "dependencies": {
     "@lancedb/lancedb": "^0.27.2",
@@ -69,6 +70,7 @@
     "linkedom": "^0.18.12",
     "lucide-svelte": "^1.0.1",
     "mammoth": "^1.8.0",
+    "marked": "^16.4.2",
     "node-pty": "^1.1.0",
     "openai": "^6.49.0",
     "pdf-parse": "^1.1.1",
@@ -98,7 +100,8 @@
     "patch-package": "^8.0.1",
     "tsx": "^4.21.0",
     "typescript": "^6.0.3",
-    "wait-on": "^8.0.2"
+    "wait-on": "^8.0.2",
+    "@electron/asar": "3.4.1"
   },
   "build": {
     "appId": "dev.agente.desktop",

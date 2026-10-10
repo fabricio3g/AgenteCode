@@ -14,7 +14,7 @@ import { humanizeAgentError } from '$lib/utils/errors';
 import { stripToolCallArtifacts } from './agent-parsing';
 import { uid } from './agent-tool-dispatch';
 
-const MUTATING = /^(?:write_|edit_|delete_|create_|domain_write$|preview_project$|browser_(?:open|click|fill|press|back|scroll))/;
+const MUTATING = /^(?:write_|edit_|delete_|create_|domain_write$|preview_project$|browser_(?:open|click|fill|press|back|scroll)|design_(?:write|edit|snapshot)$)/;
 function emptyMessage(role: Message['role'], content: string): Message { return { role, content }; }
 export function canContinueHomeHistory(meta: HomeRuntimeMeta | undefined, ids: string[]): boolean {
   return !!meta && meta.historyIds.length === ids.length - 1 && meta.historyIds.every((id, index) => id === ids[index]);
@@ -61,12 +61,25 @@ async function wireMessages(args: RunAgentTaskArgs): Promise<Message[]> {
 }
 type Settled = { outcome: TurnOutcome; snapshot: SessionSnapshot };
 type HomeTools = ReturnType<typeof createHomeTools>['tools'];
+/**
+ * What another space swaps into Home's runtime: its own tools and system
+ * prompt. The events, budgets, cancellation and retry stay shared; Home's
+ * research bootstrap and reply review do not run.
+ */
+export interface SpaceRuntime {
+  systemPrompt: string;
+  tools(run: ReturnType<typeof createAgentRun>): HomeTools;
+  /** Runs once after the turn settles, whatever its outcome. */
+  finished?(status: TurnOutcome['status']): Promise<void>;
+}
 type Hooks = ReturnType<typeof createHomeHooks>;
 type ToolReply = { content: string; isError?: boolean; images?: Array<{ data: string; mimeType: string }> };
 
 /** Tool images go to the runtime as stored attachments, never inline bytes. */
+/** The core reads an image's type from the file name, so the extension must match the bytes (a design reference can be a GIF or WebP). */
+const IMAGE_EXTENSION: Record<string, string> = { 'image/jpeg': 'jpg', 'image/webp': 'webp', 'image/gif': 'gif' };
 async function importImages(images: ToolReply['images']): Promise<Attachment[]> {
-  return Promise.all((images || []).map(async (image) => (await invoke<{ attachment: Attachment }>('agente_media_import', { name: image.mimeType === 'image/jpeg' ? 'screenshot.jpg' : 'screenshot.png', data: image.data })).attachment));
+  return Promise.all((images || []).map(async (image) => (await invoke<{ attachment: Attachment }>('agente_media_import', { name: `screenshot.${IMAGE_EXTENSION[image.mimeType] ?? 'png'}`, data: image.data })).attachment));
 }
 
 /**
@@ -83,6 +96,8 @@ class HomeTurn {
   activeRunId = '';
   hooks: Hooks | undefined;
   state: ReturnType<typeof createPolicyState> | undefined;
+  /** Replaces Home's system prompt for a space that brings its own. */
+  systemPrompt: string | undefined;
   #waiting: { resolve: (settled: Settled) => void; reject: (error: Error) => void } | undefined;
   readonly #calls = new Map<string, AbortController>();
 
@@ -229,16 +244,25 @@ function homeResult(turn: HomeTurn): AgentTaskResult {
   };
 }
 
-type Attempt = { sessionId?: string; forkIndex?: number; conversation?: Message[]; prompt?: Message; systemPrompt: string };
+type Attempt = { sessionId?: string; forkIndex?: number; conversation?: Message[]; prompt?: Message; systemPrompt: string; wrapUp?: boolean };
 
-/** Turn budgets: what is left of the run's iterations, tool calls and time. */
-function remainingPolicy(turn: HomeTurn) {
+/** The core's reply when a turn runs out of iterations while the model still wants tools. Its text is the only budget signal the runtime sends. */
+export const ITERATION_LIMIT_NOTICE = /^Reached the iteration limit \(\d+\) for this turn\./;
+/** The one tool-less step that replaces the notice; its reply says where the turn stands. */
+const WRAP_UP_PROMPT = "You've used this turn's step budget. Do not call tools. In a short reply, say what you finished, what is left, and what the user should ask next to continue.";
+/** The runtime cancels a turn at max_time_ms, so a wrap-up keeps this floor even when the run's clock is spent. */
+const WRAP_UP_MIN_TIME_MS = 2 * 60 * 1000;
+
+/** Turn budgets: what is left of the run's iterations, tool calls and time. A wrap-up is one step with no tools. */
+function remainingPolicy(turn: HomeTurn, wrapUp = false) {
   const { run, args } = turn;
   const plan = run.plan;
+  const leftMs = plan.maxTimeMs - (Date.now() - run.startTime);
+  if (wrapUp) return { max_iterations: 1, max_tool_calls: 0, max_time_ms: Math.max(WRAP_UP_MIN_TIME_MS, leftMs) };
   return {
     max_iterations: args.noTools ? 1 : Math.max(1, plan.maxIterations - run.turn),
     max_tool_calls: Math.max(0, plan.maxToolCalls - run.totalToolCalls),
-    max_time_ms: Math.max(1, plan.maxTimeMs - (Date.now() - run.startTime))
+    max_time_ms: Math.max(1, leftMs)
   };
 }
 
@@ -247,11 +271,12 @@ async function startAttempt(turn: HomeTurn, attempt: Attempt): Promise<{ session
   const { run, args } = turn;
   const plan = run.plan;
   const provider = plan.localMode ? 'local' : plan.providerName;
+  const { wrapUp, ...start } = attempt;
   turn.activeRunId = crypto.randomUUID();
   const started = await invoke<{ sessionId: string; turnId: string; conversationIndex?: number; contextWindow: number }>('home_runtime_start', {
-    runId: turn.activeRunId, ...attempt, provider, model: plan.activeModel, thinkingLevel: args.reasoningLevel || 'auto',
+    runId: turn.activeRunId, ...start, provider, model: plan.activeModel, thinkingLevel: args.reasoningLevel || 'auto',
     localSelection: plan.localMode ? { modelPath: run.config.llm?.local?.selected_model_path || '', baseUrl: run.config.llm?.local?.base_url || '' } : undefined,
-    policy: remainingPolicy(turn), tools: toolManifest(turn.tools)
+    policy: remainingPolicy(turn, wrapUp), tools: wrapUp ? [] : toolManifest(turn.tools)
   });
   turn.meta = { sessionId: started.sessionId, revision: turn.meta?.revision || args.homeRuntime?.revision || 0, provider, model: plan.activeModel, contextWindow: started.contextWindow, historyIds: args.historyIds || [], files: run.ctx.files };
   if (run.usage?.prompt_tokens) Object.assign(turn.meta, { contextTokens: run.usage.prompt_tokens, estimated: false });
@@ -279,27 +304,57 @@ async function retryPrompt(turn: HomeTurn, attempt: number): Promise<Message | u
   return emptyMessage('user', review.retry.map((message) => message.content).join('\n\n'));
 }
 
-/** Start runtime turns until Home's review is satisfied (at most three attempts). */
+/**
+ * The attempt ended on the core's iteration budget: a completed turn whose reply
+ * is the notice, not an answer. Records that as the run's stop reason. A run the
+ * user stopped is not wrapped up.
+ */
+function endedOnBudget(turn: HomeTurn): boolean {
+  if (turn.status !== 'completed' || turn.controller.signal.aborted || !ITERATION_LIMIT_NOTICE.test(turn.text)) return false;
+  turn.run.stopReason = 'iteration_limit';
+  return true;
+}
+
+/**
+ * Start runtime turns until the reply settles. Home's review may ask for another
+ * attempt (at most three). An attempt that ran out of iterations gets one
+ * tool-less wrap-up on the same session instead, and the wrap-up is the last word.
+ */
 async function driveTurns(turn: HomeTurn, onIndex: (index: number | undefined) => void): Promise<void> {
   const { args, run, controller } = turn;
   const history = await wireMessages(args);
   injectLiveEvidence(run);
   const resume = canContinueHomeHistory(args.homeRuntime, args.historyIds || []) || args.forkIndex !== undefined;
   const sessionId = resume ? args.homeRuntime?.sessionId : undefined;
-  let next: Attempt | undefined = { sessionId, forkIndex: args.forkIndex, conversation: sessionId ? undefined : history, prompt: history.at(-1), systemPrompt: homeSystemPrompt(run) };
+  let next: Attempt | undefined = { sessionId, forkIndex: args.forkIndex, conversation: sessionId ? undefined : history, prompt: history.at(-1), systemPrompt: turn.systemPrompt ?? homeSystemPrompt(run) };
+  let budgetNotice = '';
   for (let attempt = 0; next; attempt += 1) {
     const done = turn.settled();
     const started = await startAttempt(turn, next);
     onIndex(started.conversationIndex);
     if (controller.signal.aborted) turn.cancel();
     recordOutcome(turn, await done);
-    const prompt = await retryPrompt(turn, attempt);
-    next = prompt ? { sessionId: started.sessionId, prompt, systemPrompt: next.systemPrompt } : undefined;
-    if (prompt) { turn.text = ''; args.onContent?.(''); }
+    let following: Attempt | undefined;
+    if (next.wrapUp) {
+      // A wrap-up that left no reply (refused, cut short or empty) leaves the core's notice as the reply.
+      if (!turn.text.trim()) {
+        turn.text = budgetNotice;
+        args.onContent?.(budgetNotice);
+        if (turn.status === 'failed') { turn.status = 'completed'; turn.error = undefined; }
+      }
+    } else if (endedOnBudget(turn)) {
+      budgetNotice = turn.text;
+      following = { sessionId: started.sessionId, prompt: emptyMessage('user', WRAP_UP_PROMPT), systemPrompt: next.systemPrompt, wrapUp: true };
+    } else {
+      const prompt = await retryPrompt(turn, attempt);
+      if (prompt) following = { sessionId: started.sessionId, prompt, systemPrompt: next.systemPrompt };
+    }
+    next = following;
+    if (next) { turn.text = ''; args.onContent?.(''); }
   }
 }
 
-export async function runHomeRuntime(args: RunAgentTaskArgs): Promise<AgentTaskResult> {
+export async function runHomeRuntime(args: RunAgentTaskArgs, space?: SpaceRuntime): Promise<AgentTaskResult> {
   const config = args.config ?? await loadAppConfig();
   const plan = resolveAgentRunPlan(args, config, { isElectron: true });
   const controller = new AbortController();
@@ -308,11 +363,14 @@ export async function runHomeRuntime(args: RunAgentTaskArgs): Promise<AgentTaskR
   if (args.signal?.aborted) abort();
   const run = createAgentRun({ ...args, signal: controller.signal }, config, plan);
   run.ctx.files = { ...(args.homeRuntime?.files || {}) };
-  const turn = new HomeTurn(args, run, args.noTools ? new Map() : createHomeTools(run, true).tools, controller);
+  const turn = new HomeTurn(args, run, args.noTools ? new Map() : space ? space.tools(run) : createHomeTools(run, true).tools, controller);
+  turn.systemPrompt = space?.systemPrompt;
   let bootstrapped = false;
-  try { bootstrapped = args.noTools ? false : await runResearchBootstrap(run); } catch (error) { args.signal?.removeEventListener('abort', abort); throw error; }
-  turn.state = createPolicyState(run, bootstrapped, plan.isResearchChat && bootstrapped && hasEnoughResearchEvidence(plan.researchMode, run.sources));
-  turn.hooks = createHomeHooks(run, turn.state);
+  try { bootstrapped = args.noTools || space ? false : await runResearchBootstrap(run); } catch (error) { args.signal?.removeEventListener('abort', abort); throw error; }
+  if (!space) {
+    turn.state = createPolicyState(run, bootstrapped, plan.isResearchChat && bootstrapped && hasEnoughResearchEvidence(plan.researchMode, run.sources));
+    turn.hooks = createHomeHooks(run, turn.state);
+  }
   const unlisten = await listen<HomeRuntimeEvent>('home_runtime_event', (event) => turn.onRuntimeEvent(event));
   controller.signal.addEventListener('abort', turn.cancel, { once: true });
   let conversationIndex: number | undefined;
@@ -326,6 +384,7 @@ export async function runHomeRuntime(args: RunAgentTaskArgs): Promise<AgentTaskR
     turn.cancel(); unlisten(); args.signal?.removeEventListener('abort', abort); controller.signal.removeEventListener('abort', turn.cancel);
     for (const step of run.steps) if (step.status === 'running') step.status = turn.status === 'failed' ? 'error' : 'done';
   }
+  await space?.finished?.(turn.status).catch(() => {});
   if (turn.meta && conversationIndex !== undefined) args.onConversationIndex?.(conversationIndex, turn.meta.sessionId, turn.meta.revision);
   return homeResult(turn);
 }

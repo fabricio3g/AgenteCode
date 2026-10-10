@@ -6,6 +6,10 @@
 -->
 
 <script lang="ts">
+  import UiInput from '$lib/components/ui/Input.svelte';
+  import UiTextarea from '$lib/components/ui/Textarea.svelte';
+  import { cn as uiClass } from '$lib/utils/cn';
+
   import { untrack } from 'svelte';
   import { t } from 'svelte-i18n';
   import { Button, Dialog, Field, SegmentedControl, Select } from '$lib/components/ui';
@@ -54,20 +58,20 @@
 <Dialog title={routine ? $t('bots.editRoutine') : $t('bots.newRoutine')} description={$t('bots.routineHint')} size="md" {onclose}>
   <div class="space-y-4 p-4">
     <Field label={$t('bots.routineTitle')} htmlFor="routine-title">
-      <input id="routine-title" class="ui-input" bind:value={title} placeholder={$t('bots.routineTitlePlaceholder')} />
+      <UiInput id="routine-title"  bind:value={title} placeholder={$t('bots.routineTitlePlaceholder')} />
     </Field>
     <Field label={$t('bots.routinePrompt')} htmlFor="routine-prompt">
-      <textarea id="routine-prompt" class="ui-input min-h-24" bind:value={prompt} placeholder={$t('bots.routinePromptPlaceholder')}></textarea>
+      <UiTextarea id="routine-prompt" class={uiClass(" min-h-24")} bind:value={prompt} placeholder={$t('bots.routinePromptPlaceholder')}></UiTextarea>
     </Field>
     <SegmentedControl label={$t('bots.frequency')} options={frequencies} bind:value={form.every} />
     <div class="flex flex-wrap items-end gap-3">
       {#if form.every === 'hour'}
         <Field label={$t('bots.minutePast')} htmlFor="routine-minute">
-          <input id="routine-minute" class="ui-input w-24" type="number" min="0" max="59" bind:value={form.minute} />
+          <UiInput id="routine-minute" class={uiClass(" w-24")} type="number" min="0" max="59" bind:value={form.minute} />
         </Field>
       {:else if form.every === 'cron'}
         <Field label={$t('bots.cron')} description={$t('bots.cronHint')} htmlFor="routine-cron">
-          <input id="routine-cron" class="ui-input w-56 " bind:value={form.expr} />
+          <UiInput id="routine-cron" class={uiClass(" w-56 ")} bind:value={form.expr} />
         </Field>
       {:else}
         {#if form.every === 'week'}
@@ -81,7 +85,7 @@
           </Field>
         {/if}
         <Field label={$t('bots.at')} htmlFor="routine-at">
-          <input id="routine-at" class="ui-input w-32" type="time" bind:value={form.at} />
+          <UiInput id="routine-at" class={uiClass(" w-32")} type="time" bind:value={form.at} />
         </Field>
       {/if}
     </div>

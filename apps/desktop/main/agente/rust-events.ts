@@ -38,6 +38,12 @@ function parseArgs(raw: string): unknown {
   }
 }
 
+/** Why a shell call asks, read from the core description ("Runs outside the project: /etc · Run command: …"). */
+function outsideProjectReason(description: string): { reason?: string } {
+  const match = /^(Runs outside the project: .*?) · Run command: /s.exec(description);
+  return match ? { reason: match[1] } : {};
+}
+
 function lineCounts(text: string): Map<string, number> {
   const counts = new Map<string, number>();
   for (const line of text.split('\n')) counts.set(line, (counts.get(line) ?? 0) + 1);
@@ -224,7 +230,9 @@ export class RustTurnTranslator {
       toolName: uiToolName(event.tool_name),
       args: parseArgs(event.tool_args),
       diff: approvalDiff(event.file_path, event.old_content, event.new_content) ?? event.description,
-      kind: 'action'
+      kind: 'action',
+      ...(event.is_dangerous ? { dangerous: true } : {}),
+      ...outsideProjectReason(event.description)
     }],
     todo_changed: (event) => [{ type: 'todo_update', chatId: this.chatId, todos: todos(event.todos) }],
     compaction_started: (event) => [{ type: 'compaction_start', chatId: this.chatId, reason: 'auto', model: event.model ?? null }],

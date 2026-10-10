@@ -9,6 +9,8 @@
 -->
 
 <script lang="ts">
+  import IconButton from '$lib/components/ui/IconButton.svelte';
+
   import { ArrowUp, Square } from 'lucide-svelte';
   import Tooltip from '$lib/components/ui/Tooltip.svelte';
 
@@ -38,47 +40,15 @@
 </script>
 
 <Tooltip label={stopping ? stopLabel : sendLabel} shortcut={stopping ? stopShortcut : 'enter'} position="top">
-<button
-  type="button"
-  class="composer-send"
-  class:is-stop={stopping}
-  class:is-compact={compact}
+<IconButton
+  variant="default"
+  size={compact ? 'xs' : 'md'}
+  label={stopping ? stopLabel : sendLabel}
+  title=""
+  class={`composer-send rounded-full${stopping ? ' is-stop' : ''}`}
   disabled={!running && disabled}
   onclick={() => (stopping ? onstop() : onsend())}
-  aria-label={stopping ? stopLabel : sendLabel}
 >
-  {#if stopping}
-    <Square class="size-3 fill-current stroke-[2.75]" />
-  {:else}
-    <ArrowUp class="size-3.5 stroke-[2.75]" />
-  {/if}
-</button>
+  {#if stopping}<Square class="size-3 fill-current stroke-[2.75]" />{:else}<ArrowUp class="size-3.5 stroke-[2.75]" />{/if}
+</IconButton>
 </Tooltip>
-
-<style>
-  .composer-send {
-    display: inline-flex;
-    width: 1.75rem;
-    height: 1.75rem;
-    flex-shrink: 0;
-    align-items: center;
-    justify-content: center;
-    border: none;
-    border-radius: 9999px;
-    background: var(--brand-accent);
-    color: #ffffff;
-    transition: opacity var(--motion-fast) var(--motion-ease), transform var(--motion-fast) var(--motion-ease), background-color var(--motion-fast) var(--motion-ease);
-  }
-  .composer-send.is-compact {width:1.75rem;height:1.75rem;}
-  .composer-send:hover:not(:disabled) { opacity: 0.88; }
-  .composer-send:active:not(:disabled) { transform: scale(0.96); }
-  .composer-send:disabled {
-    background: color-mix(in srgb, var(--foreground) 22%, transparent);
-    color: var(--background);
-    cursor: default;
-  }
-  .composer-send:focus-visible {
-    outline: none;
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--ring) 45%, transparent);
-  }
-</style>

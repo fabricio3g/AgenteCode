@@ -16,7 +16,7 @@ export interface ViewerCapabilities {
   zoom?: string;
   zoomBy?: (direction: 1 | -1) => void;
   fit?: () => void;
-  search?: { matches: number; index: number; step?: (direction: 1 | -1) => void };
+  search?: { matches: number; index: number; loading?: boolean; step?: (direction: 1 | -1) => void };
   actions?: ViewerAction[];
   retry?: () => void;
 }

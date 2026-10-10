@@ -10,9 +10,11 @@
 -->
 
 <script lang="ts">
+  import { cn as uiClass } from '$lib/utils/cn';
+
   import Avatar from '$lib/components/ui/Avatar.svelte';
   import { Ban, BookOpen, Pause, Pencil, Play, Plus, Settings2 } from 'lucide-svelte';
-  import { Select, Tooltip } from '$lib/components/ui';
+  import { Button, IconButton, Select, Tooltip } from '$lib/components/ui';
   import SegmentedControl from '$lib/components/ui/SegmentedControl.svelte';
   import { appStore } from '$lib/stores/app.svelte';
   import { roleplayStore } from '$lib/features/roleplay/roleplay.svelte';
@@ -105,52 +107,55 @@
 
 {#if showBar}
   <div class="scene-header">
-    <SegmentedControl value={mode} options={['chat', 'narrative', 'dynamic'].map((value) => ({ value, label: $t(`roleplay.settings.option.${value}`), disabled }))} label={$t('roleplay.settings.field.interactionMode')} variant="tabs" class="shrink-0" onchange={(value) => onmode?.(value as 'chat' | 'narrative' | 'dynamic')} />
+    <div class="mode-group">
+      <SegmentedControl value={mode} options={['chat', 'narrative', 'dynamic'].map((value) => ({ value, label: $t(`roleplay.settings.option.${value}`), disabled }))} label={$t('roleplay.settings.field.interactionMode')} variant="tabs" shape="rect" class="shrink-0" onchange={(value) => onmode?.(value as 'chat' | 'narrative' | 'dynamic')} />
+      <span class="mode-hint" title={$t(`roleplay.modeHint.${mode}`)}>{$t(`roleplay.modeHint.${mode}`)}</span>
+    </div>
     {#if characters.length}
       <div class="cast-strip" role="group" aria-label={$t('roleplay.header.cast')}>
         {#each characters as character (character.id)}
           <div class="cast-member {character.id === nextSpeakerId ? 'is-next' : ''} {isMuted(character.id) || (presentIds && !presentIds.includes(character.id)) ? 'is-muted' : ''}">
-            <button
+            <Button variant="plain"
               type="button"
-              class="cast-avatar"
+              class={uiClass("cast-avatar", "ui-local-0298d9bd")}
               title={isMuted(character.id) ? $t('roleplay.header.muted', { values: { name: character.name } }) : $t('roleplay.header.speakNow', { values: { name: character.name } })}
               aria-label={isMuted(character.id) ? $t('roleplay.header.muted', { values: { name: character.name } }) : $t('roleplay.header.speakNow', { values: { name: character.name } })}
               onclick={() => onspeak?.(character.id)}
               disabled={disabled || (presentIds && !presentIds.includes(character.id))}
             >
               <Avatar size="fill" name={character.name ?? ''} image={character.avatar} />
-            </button>
+            </Button>
             {#if isMuted(character.id)}
               <span class="muted-badge"><Ban class="size-2.5" /></span>
             {/if}
-            <button
+            <IconButton label={isMuted(character.id) ? $t('roleplay.header.unmute', { values: { name: character.name } }) : $t('roleplay.header.mute', { values: { name: character.name } })} size="xs" variant="ghost"
               type="button"
-              class="mute-btn"
-              aria-label={isMuted(character.id) ? `Unmute ${character.name}` : `Mute ${character.name}`}
+              class={uiClass("mute-btn", "ui-local-0298d9bd")}
+
+              title={isMuted(character.id) ? $t('roleplay.header.unmute', { values: { name: character.name } }) : $t('roleplay.header.mute', { values: { name: character.name } })}
               onclick={() => onmute?.(character.id)}
             >
               <Ban class="size-2.5" />
-            </button>
+            </IconButton>
           </div>
         {/each}
         {#if oncastedit}
-          <button
-            type="button"
-            class="cast-add"
-            aria-label={$t('roleplay.header.editCast')}
+          <IconButton
+            variant="outline"
+            label={$t('roleplay.header.editCast')}
             title={$t('roleplay.header.editCast')}
             onclick={oncastedit}
           >
-            <Plus class="size-3.5" />
-          </button>
+            <Plus />
+          </IconButton>
         {/if}
       </div>
     {/if}
 
     {#if group && (autoMode || deadline)}
-      <button
-        type="button"
-        class="auto-pill {autoMode || deadline ? 'is-on' : ''}"
+      <Button
+        variant="secondary"
+        size="sm"
         aria-pressed={autoMode || !!deadline}
         title={deadline ? $t('roleplay.header.stopPending') : autoMode ? $t('roleplay.header.pauseAuto') : $t('roleplay.header.startAuto')}
         onclick={toggleAuto}
@@ -163,22 +168,21 @@
           <Play class="size-3" />
         {/if}
         <span>{$t('roleplay.header.auto')}</span>
-      </button>
+      </Button>
     {/if}
 
     {#if onjournal}
-      <Tooltip label={$t('roleplay.journal.title')} position="bottom"><button type="button" class="ui-icon-button is-sm" aria-label={$t('roleplay.journal.title')} onclick={onjournal}>
-        <BookOpen class="size-3.5" />
-      </button></Tooltip>
+      <Tooltip label={$t('roleplay.memory.title')} position="bottom"><IconButton label={$t('roleplay.memory.title')} title="" onclick={onjournal}>
+        <BookOpen />
+      </IconButton></Tooltip>
     {/if}
 
-    <Tooltip label={$t('roleplay.settings.title')} position="bottom"><button type="button" class="ui-icon-button is-sm" aria-label={$t('roleplay.settings.title')} disabled={disabled} onclick={() => onsettings?.()}><Settings2 class="size-3.5" /></button></Tooltip>
+    <Tooltip label={$t('roleplay.settings.title')} position="bottom"><IconButton label={$t('roleplay.settings.title')} title="" disabled={disabled} onclick={() => onsettings?.()}><Settings2 /></IconButton></Tooltip>
 
     <div class="persona-group">
       {#if personas.length && onpersona}
         <div class="bar-select">
           <Select
-            variant="surface"
             value={activePersonaId || ''}
             options={personaOptions}
             aria-label={$t('roleplay.header.persona')}
@@ -186,21 +190,20 @@
           />
         </div>
         {#if onpersonaedit}
-          <Tooltip label={activePersonaId ? $t('roleplay.header.editPersona') : $t('roleplay.header.newPersona')} position="bottom"><button
-            type="button"
-            class="ui-icon-button is-sm"
-            aria-label={activePersonaId ? $t('roleplay.header.editPersona') : $t('roleplay.header.newPersona')}
-           
+          <Tooltip label={activePersonaId ? $t('roleplay.header.editPersona') : $t('roleplay.header.newPersona')} position="bottom"><IconButton
+            title=""
+            label={activePersonaId ? $t('roleplay.header.editPersona') : $t('roleplay.header.newPersona')}
+
             onclick={editActivePersona}
           >
-            <Pencil class="size-3.5" />
-          </button></Tooltip>
+            <Pencil />
+          </IconButton></Tooltip>
         {/if}
       {:else if onpersonaedit}
-        <button type="button" class="persona-add" onclick={() => onpersonaedit?.(null)}>
+        <Button variant="outline" size="sm" onclick={() => onpersonaedit?.(null)}>
           <Plus class="size-3" />
           <span>{$t('roleplay.header.newPersona')}</span>
-        </button>
+        </Button>
       {/if}
     </div>
   </div>
@@ -211,9 +214,9 @@
     display: flex;
     align-items: center;
     flex-wrap: wrap;
-    gap: 0.375rem;
+    gap: 0.5rem;
     flex-shrink: 0;
-    padding: 0.375rem 0.75rem;
+    padding: 0.75rem 1rem;
     border-bottom: 1px solid var(--border-subtle);
     background: var(--chat-bg);
   }
@@ -234,7 +237,7 @@
     flex-shrink: 0;
   }
 
-  .cast-avatar {
+  :global(.cast-avatar.ui-local-0298d9bd) {
     display: flex;
     align-items: center;
     justify-content: center;
@@ -255,16 +258,21 @@
   }
 
 
-  .cast-avatar:hover {
+  :global(.cast-avatar:focus-visible.ui-local-0298d9bd) {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+
+  :global(.cast-avatar:hover.ui-local-0298d9bd) {
     border-color: var(--border-hover);
   }
 
-  .cast-member.is-next .cast-avatar {
+  .cast-member.is-next :global(.cast-avatar.ui-local-0298d9bd) {
     border-color: var(--primary);
     box-shadow: 0 0 0 1px var(--primary);
   }
 
-  .cast-member.is-muted .cast-avatar {
+  .cast-member.is-muted :global(.cast-avatar.ui-local-0298d9bd) {
     opacity: 0.45;
   }
 
@@ -284,7 +292,7 @@
   }
 
   /* Revealed on hover: quiet until you need it. */
-  .mute-btn {
+  :global(.mute-btn.ui-local-0298d9bd) {
     position: absolute;
     right: -0.25rem;
     top: -0.25rem;
@@ -300,68 +308,35 @@
     cursor: pointer;
   }
 
-  .cast-member:hover .mute-btn,
-  .cast-member:focus-within .mute-btn {
+  .cast-member:hover :global(.mute-btn.ui-local-0298d9bd),
+  .cast-member:focus-within :global(.mute-btn.ui-local-0298d9bd) {
     display: flex;
   }
 
-  .mute-btn:hover {
+  :global(.mute-btn:hover.ui-local-0298d9bd) {
     color: var(--foreground);
-  }
-
-  .cast-add {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 1.5rem;
-    height: 1.5rem;
-    flex-shrink: 0;
-    border: 1px dashed var(--border);
-    border-radius: var(--radius-full);
-    background: transparent;
-    color: var(--text-muted);
-    cursor: pointer;
-    transition:
-      border-color var(--motion-fast) var(--motion-ease),
-      color var(--motion-fast) var(--motion-ease);
-  }
-
-  .cast-add:hover {
-    border-color: var(--border-hover);
-    color: var(--foreground);
-  }
-
-  .auto-pill {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.25rem;
-    flex-shrink: 0;
-    padding: 0.1875rem 0.5rem;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-full);
-    background: var(--card);
-    color: var(--text-muted);
-    font-size: var(--text-xs);
-    font-weight: 500;
-    cursor: pointer;
-    transition:
-      border-color var(--motion-fast) var(--motion-ease),
-      color var(--motion-fast) var(--motion-ease),
-      background-color var(--motion-fast) var(--motion-ease);
-  }
-
-  .auto-pill:hover {
-    color: var(--foreground);
-  }
-
-  .auto-pill.is-on {
-    border-color: var(--primary);
-    background: var(--primary);
-    color: var(--primary-foreground);
   }
 
   .auto-count {
     font-variant-numeric: tabular-nums;
+  }
+
+  .mode-group {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+    min-width: 0;
+    flex-shrink: 0;
+  }
+
+  .mode-hint {
+    min-width: 0;
+    max-width: 13rem;
+    overflow: hidden;
+    color: var(--text-muted);
+    font-size: var(--text-xs);
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .persona-group {
@@ -377,24 +352,4 @@
     min-width: 0;
   }
 
-  .persona-add {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.25rem;
-    padding: 0.1875rem 0.5rem;
-    border: 1px dashed var(--border);
-    border-radius: var(--radius-full);
-    background: transparent;
-    color: var(--text-muted);
-    font-size: var(--text-xs);
-    cursor: pointer;
-    transition:
-      border-color var(--motion-fast) var(--motion-ease),
-      color var(--motion-fast) var(--motion-ease);
-  }
-
-  .persona-add:hover {
-    border-color: var(--border-hover);
-    color: var(--foreground);
-  }
 </style>

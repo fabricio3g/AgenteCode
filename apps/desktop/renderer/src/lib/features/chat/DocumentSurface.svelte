@@ -1,6 +1,11 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+  import IconButton from '$lib/components/ui/IconButton.svelte';
+
+  import UiButton from '$lib/components/ui/Button.svelte';
+  import { cn as uiClass } from '$lib/utils/cn';
+
   import { AlertCircle, Download, ExternalLink, FileText, X } from 'lucide-svelte';
   import { motionFade } from '$lib/utils/transitions';
   import Portal from '$lib/ui/components/Portal.svelte';
@@ -174,15 +179,15 @@
               <span class="attachment-type">{typeLabel(doc)}</span>
             </span>
             {#if allowDownload && viewerKind(doc) !== 'image' && (docSource(doc) || doc.kind === 'slides')}
-              <button
+              <IconButton label={`Download ${baseName(doc.name)}`} size="xs" variant="ghost"
                 type="button"
-                class="attachment-download"
+                class={uiClass("attachment-download", "ui-local-77e16915")}
                 onclick={(event) => downloadDoc(doc, event)}
                 title={`Download ${baseName(doc.name)}`}
-                aria-label={`Download ${baseName(doc.name)}`}
+
               >
                 <Download class="h-3.5 w-3.5" />
-              </button>
+              </IconButton>
             {/if}
           </div>
         {/each}
@@ -207,13 +212,13 @@
         </span>
         <span class="document-actions">
           {#if allowDownload && activeDoc && (docSource(activeDoc) || activeDoc.kind === 'slides')}
-            <button type="button" class="document-action" onclick={(event) => downloadDoc(activeDoc, event)} title="Download {baseName(activeDoc.name)}">
+            <IconButton label={`Download ${baseName(activeDoc.name)}`} size="xs" variant="ghost" type="button" class={uiClass("document-action", "ui-local-77e16915")} onclick={(event) => downloadDoc(activeDoc, event)} title="Download {baseName(activeDoc.name)}">
               <Download class="h-3.5 w-3.5" />
-            </button>
+            </IconButton>
           {/if}
-          <button type="button" class="document-action" onclick={openReader} title={$t('artifacts.reader.open')}>
+          <IconButton label={$t('artifacts.reader.open')} size="xs" variant="ghost" type="button" class={uiClass("document-action", "ui-local-77e16915")} onclick={openReader} title={$t('artifacts.reader.open')}>
             <ExternalLink class="h-3.5 w-3.5" />
-          </button>
+          </IconButton>
         </span>
       </div>
     {/if}
@@ -221,7 +226,7 @@
     {#if open}
       <Portal className="document-reader-portal">
         <div class="document-reader-layer" use:modalLayer={{ onclose: closeReader }} transition:motionFade={{ duration: 120 }}>
-          <button class="document-reader-scrim" aria-label={$t('artifacts.reader.close')} onclick={closeReader}></button>
+          <UiButton variant="plain" class={uiClass("document-reader-scrim", "ui-local-77e16915")} aria-label={$t('artifacts.reader.close')} onclick={closeReader}></UiButton>
         <!-- svelte-ignore a11y_no_static_element_interactions -->
         <div
           class={`document-workspace ${viewerKind(activeDoc) === 'image' ? 'image-workspace' : ''}`}
@@ -237,9 +242,9 @@
           {#if viewerKind(activeDoc) !== 'image'}
             <ViewerToolbar title={activeDoc?.title || baseName(activeDoc?.name || '') || surfaceTitle} onclose={closeReader} ondownload={allowDownload ? () => downloadDoc(activeDoc) : undefined} />
           {:else}
-            <button type="button" class="image-viewer-close" onclick={closeReader} aria-label={$t('artifacts.reader.close')} title={$t('artifacts.reader.close')}>
+            <IconButton label={$t('artifacts.reader.close')} size="xs" variant="ghost" type="button" class={uiClass("image-viewer-close", "ui-local-77e16915")} onclick={closeReader}  title={$t('artifacts.reader.close')}>
               <X class="h-5 w-5" />
-            </button>
+            </IconButton>
           {/if}
 
           {#if warnings.length}
@@ -301,7 +306,7 @@
 
   .attachment-launcher:hover {
     background: var(--muted);
-    box-shadow: inset 0 0 0 1px var(--composer-ring-focus);
+    box-shadow: inset 0 0 0 1px var(--ring);
   }
 
   .attachment-launcher:focus-visible {
@@ -380,7 +385,7 @@
     font-size: var(--text-xs);
   }
 
-  .attachment-download {
+  :is(.attachment-download, :global(.attachment-download.ui-local-77e16915)) {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -392,7 +397,7 @@
     transition: background 150ms ease, color 150ms ease;
   }
 
-  .attachment-download:hover {
+  :is(.attachment-download:hover, :global(.attachment-download:hover.ui-local-77e16915)) {
     background: var(--surface-hover);
     color: var(--text);
   }
@@ -464,7 +469,7 @@
     gap: 0.15rem;
   }
 
-  .document-action,
+  :is(.document-action, :global(.document-action.ui-local-77e16915)),
   .reader-icon-btn {
     display: inline-flex;
     align-items: center;
@@ -478,12 +483,12 @@
     transition: background 150ms ease, color 150ms ease;
   }
 
-  .document-action:hover {
+  :is(.document-action:hover, :global(.document-action:hover.ui-local-77e16915)) {
     color: var(--text);
     background: var(--artifact-surface-hover);
   }
 
-  .document-action:focus-visible {
+  :is(.document-action:focus-visible, :global(.document-action:focus-visible.ui-local-77e16915)) {
     outline: none;
     box-shadow: var(--artifact-focus);
   }
@@ -495,7 +500,7 @@
     pointer-events: none;
   }
 
-  .document-reader-scrim {
+  :is(.document-reader-scrim, :global(.document-reader-scrim.ui-local-77e16915)) {
     position: absolute;
     inset: 0;
     pointer-events: auto;
@@ -548,7 +553,7 @@
     padding: 0;
   }
 
-  .image-viewer-close {
+  :is(.image-viewer-close, :global(.image-viewer-close.ui-local-77e16915)) {
     position: absolute;
     top: 0.75rem;
     right: 0.75rem;
@@ -565,7 +570,7 @@
     transition: background 0.15s ease, transform 0.15s ease;
   }
 
-  .image-viewer-close:hover {
+  :is(.image-viewer-close:hover, :global(.image-viewer-close:hover.ui-local-77e16915)) {
     background: color-mix(in srgb, black 62%, transparent);
     transform: scale(1.03);
   }

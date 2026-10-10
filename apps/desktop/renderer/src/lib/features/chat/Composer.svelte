@@ -10,6 +10,10 @@
 -->
 
 <script lang="ts">
+  import UiFileInput from '$lib/components/ui/FileInput.svelte';
+  import UiTextarea from '$lib/components/ui/Textarea.svelte';
+  import { cn as uiClass } from '$lib/utils/cn';
+
   import type { Snippet } from 'svelte';
   import { onDestroy, tick } from 'svelte';
   import { Paperclip } from 'lucide-svelte';
@@ -41,11 +45,15 @@
   import PromptQueue from '$lib/features/shared/PromptQueue.svelte';
   import type { NameCandidate } from '$lib/features/shared/name-completion';
 
-  let { placeholder: customPlaceholder, nameCompletion, above }: {
+  let { placeholder: customPlaceholder, nameCompletion, above, suggestions = true, statusBelow = false }: {
     placeholder?: string;
     nameCompletion?: { candidates: NameCandidate[]; automatic?: boolean; nickname?: boolean };
     /** A row above the input, inside the composer's width (roleplay steering). */
     above?: Snippet;
+    /** Starter prompts under an empty thread's composer; a surface that lists its own starters turns them off. */
+    suggestions?: boolean;
+    /** Context usage on a strip under the input, as Code draws it, so a narrow composer keeps its bar for the controls. */
+    statusBelow?: boolean;
   } = $props();
 
   /** Textarea grows with content up to this height, then scrolls. */
@@ -63,7 +71,7 @@
   // undefined, so a plain `let` meant it ran once during mount and never again,
   // leaving the input stuck at whatever height was last written to it.
   let textarea = $state<HTMLTextAreaElement | undefined>(undefined);
-  let fileInput: HTMLInputElement | undefined;
+  let fileInput = $state<HTMLInputElement | undefined>();
   let showErrorPlaceholder = $state(false);
   let errorPlaceholderTimer: ReturnType<typeof setTimeout> | null = null;
   let budgetTimer: ReturnType<typeof setTimeout> | null = null;
@@ -310,12 +318,12 @@
   ondragover={(event) => attachments.handleDragOver(event)}
   ondragleave={(event) => attachments.handleDragLeave(event)}
 >
-  <input
-    bind:this={fileInput}
-    class="hidden"
-    type="file"
+  <UiFileInput
+    bind:ref={fileInput}
+    class={uiClass("hidden")}
+
     multiple
-    accept="image/*,.pdf,.docx,.doc,.txt,.md,.csv,.json,.html,.xml,.rtf,.epub"
+    accept="*/*"
     oninput={(event) => void attachments.handleFileInput(event)}
   />
 
@@ -324,7 +332,6 @@
       <div class="text-center">
         <Paperclip class="mx-auto mb-2 size-8 text-muted-foreground" />
         <p class="text-sm font-medium text-foreground">{copy.composer.dropFiles}</p>
-        <p class="text-xs text-muted-foreground">{copy.composer.dropHint}</p>
       </div>
     </div>
   {/if}
@@ -402,15 +409,15 @@
         caret next to icons that have nothing to do with typing.
       -->
       <div class="composer-body {quotedText ? 'pt-1' : ''}">
-        <textarea
-          bind:this={textarea}
-          class="composer-textarea w-full resize-none bg-transparent text-foreground outline-none"
+        <UiTextarea variant="composer"
+          bind:ref={textarea}
+          class={uiClass("composer-textarea w-full resize-none bg-transparent text-foreground outline-none")}
           {placeholder}
-          rows="1"
+          rows={1}
           value={appStore.composer}
           oninput={onInput}
           onkeydown={onKeydown}
-        ></textarea>
+        ></UiTextarea>
 
         <div class="composer-bar">
           {#if dictation.uiActive && !voiceMode && dictation.phase !== 'choose'}
@@ -424,6 +431,7 @@
               <ComposerToolsMenu compact />
 
             </div>
+            {#if !statusBelow}<HomeContextStatus inline />{/if}
             <ComposerToolbar
               {dictation}
               {generating}
@@ -436,10 +444,9 @@
         </div>
       </div>
     </div>
+    {#if statusBelow}<HomeContextStatus />{/if}
 
-    <HomeContextStatus />
-
-    {#if threadIsEmpty}
+    {#if threadIsEmpty && suggestions}
       <!-- await tick() so the textarea holds the inserted prompt before we
            focus it; otherwise the caret lands at the pre-insert length. -->
       <ComposerSuggestions onpick={async () => { await tick(); focusComposer(); }} />

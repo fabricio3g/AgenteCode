@@ -1,5 +1,5 @@
 import type { SearchResult } from '$lib/types/bridge';
-import type { RequestMessage } from '$lib/services/chat-api';
+import type { RequestMessage } from '$lib/services/chat/types';
 import type { ToolObservation } from '$lib/services/agent-types';
 
 function clean(value: unknown, max = 900): string {

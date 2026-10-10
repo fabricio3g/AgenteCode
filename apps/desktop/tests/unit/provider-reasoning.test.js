@@ -72,3 +72,46 @@ describe('core thinking profile → renderer capabilities', () => {
     assert.equal(caps.source, 'live');
   });
 });
+
+describe('llama-server sampler fields', () => {
+  const sampler = { min_p: 0.05, dry_multiplier: 0.8, dry_base: 1.75, dry_allowed_length: 2, repeat_penalty: undefined };
+
+  it('reaches the local body, with the OpenAI fields kept', () => {
+    const body = buildBody(getDialect('local'), { ...params(undefined), temperature: 0.8, max_tokens: 400, ...sampler }, true);
+    assert.equal(body.min_p, 0.05);
+    assert.equal(body.dry_multiplier, 0.8);
+    assert.equal(body.dry_base, 1.75);
+    assert.equal(body.dry_allowed_length, 2);
+    assert.equal(body.temperature, 0.8);
+    assert.equal(body.max_tokens, 400);
+    assert.equal('repeat_penalty' in body, false);
+  });
+
+  it('never reaches a cloud body', () => {
+    const body = buildBody(getDialect('openrouter'), { ...params(undefined), ...sampler }, true);
+    assert.equal('min_p' in body, false);
+    assert.equal('dry_multiplier' in body, false);
+  });
+});
+
+describe('cloud and local thinking isolation', () => {
+  it('cloud requests cannot inherit llama.cpp template knobs or budgets', () => {
+    for (const id of ['openrouter', 'deepseek', 'opencode-go', 'custom']) {
+      const body = buildBody(getDialect(id), params({ level: 'high', body: {
+        reasoning: { effort: 'high' }, chat_template_kwargs: { enable_thinking: true },
+        thinking_budget_tokens: 2048, disable_thinking: false
+      } }), true);
+      assert.deepEqual(body.reasoning, { effort: 'high' }, id);
+      assert.ok(!('chat_template_kwargs' in body), id);
+      assert.ok(!('thinking_budget_tokens' in body), id);
+      assert.ok(!('disable_thinking' in body), id);
+    }
+  });
+  it('retains cloud-native enable_thinking and local llama.cpp fields', () => {
+    const cloud = buildBody(getDialect('custom'), params({ level: 'on', body: { enable_thinking: true } }), false);
+    assert.equal(cloud.enable_thinking, true);
+    const local = buildBody(getDialect('local'), params({ level: 'high', body: { chat_template_kwargs: { enable_thinking: true }, thinking_budget_tokens: 2048 } }), true);
+    assert.deepEqual(local.chat_template_kwargs, { enable_thinking: true });
+    assert.equal(local.thinking_budget_tokens, 2048);
+  });
+});

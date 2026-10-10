@@ -1,10 +1,12 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { createHash } from 'node:crypto';
 import { getAppPaths } from './paths.ts';
-import { loadConfig } from './config.ts';
+import { loadConfig, saveConfig } from './config.ts';
 import { slugify } from './config.utils.ts';
 import { readGgufContextLength, readGgufMetadataFields } from './runtime-config-resolver.ts';
 import { resolveEffectiveTemplate, detectTemplateThinkingSupport, detectTemplateToolSupport } from './chat-templates.ts';
+import { expandShards, SHARD_PATTERN } from './download-planning.ts';
 
 type GgufMetadata = {
   architecture: string;
@@ -98,11 +100,28 @@ function collectGgufFilesRecursive(rootDir: string): string[] {
       if (!entry.isFile()) continue;
       if (!entry.name.toLowerCase().endsWith('.gguf')) continue;
       if (isMmprojFile(entry.name)) continue;
+      const shard = entry.name.match(SHARD_PATTERN);
+      if (shard && Number(shard[1]) !== 1) continue;
       out.push(fullPath);
     }
   }
 
   return out;
+}
+
+/** Imports stay where the user put them; discovery must include that registry. */
+function collectModelFiles(modelsDir: string): string[] {
+  const files = new Set(collectGgufFilesRecursive(modelsDir).map((file) => fs.realpathSync(file)));
+  for (const model of loadConfig().llm?.local?.models || []) {
+    const candidate = String(model.path || '');
+    try {
+      if (!/\.gguf$/i.test(candidate) || isMmprojFile(path.basename(candidate)) || !fs.statSync(candidate).isFile()) continue;
+      const canonical = fs.realpathSync(candidate);
+      const first = expandShards(canonical)[0];
+      if (fs.existsSync(first)) files.add(fs.realpathSync(first));
+    } catch { /* A disconnected drive does not prevent reading other models. */ }
+  }
+  return [...files];
 }
 
 const ggufMetaCache = new Map<string, GgufMetadata>();
@@ -121,7 +140,7 @@ function readGgufMetadata(filePath: string): GgufMetadata {
   const fd = fs.openSync(filePath, 'r');
   try {
     const headerBuf = Buffer.alloc(24);
-    fs.readSync(fd, headerBuf, 0, 24, 0);
+    if (fs.readSync(fd, headerBuf, 0, 24, 0) !== 24) throw new Error('GGUF header is incomplete. Finish downloading the model before importing it.');
 
     const magic = headerBuf.readUInt32LE(0);
     if (magic !== GGUF_MAGIC) {
@@ -129,8 +148,7 @@ function readGgufMetadata(filePath: string): GgufMetadata {
     }
 
     const version = headerBuf.readUInt32LE(4);
-    const tensorCount = Number(headerBuf.readBigUInt64LE(8));
-    const metadataKvCount = Number(headerBuf.readBigUInt64LE(16));
+    if (version !== 2 && version !== 3) throw new Error(`Unsupported GGUF version ${version}. Use a GGUF v2 or v3 model.`);
 
     // Use the proper GGUF metadata parser
     const ggufContext = readGgufContextLength(filePath);
@@ -226,11 +244,14 @@ export async function getLocalModels({ offset = 0, limit = 50, sort = 'modified'
 
   if (!fs.existsSync(modelsDir)) {
     fs.mkdirSync(modelsDir, { recursive: true });
-    return { models: [], total: 0, offset, limit };
   }
 
   const allModels: LocalModel[] = [];
-  const ggufFiles = collectGgufFilesRecursive(modelsDir);
+  const ggufFiles = collectModelFiles(modelsDir);
+  const registered = new Map<string, string>();
+  for (const model of loadConfig().llm?.local?.models || []) {
+    try { registered.set(fs.realpathSync(model.path), model.id); } catch { /* Missing external file. */ }
+  }
 
   for (const fullPath of ggufFiles) {
     const fileName = path.basename(fullPath);
@@ -240,7 +261,7 @@ export async function getLocalModels({ offset = 0, limit = 50, sort = 'modified'
     try {
       const meta = readGgufMetadata(fullPath);
       allModels.push({
-        id: slugify(relativePath.replace(/\.gguf$/i, '')),
+        id: registered.get(fullPath) || slugify(relativePath.replace(/\.gguf$/i, '')),
         name: fileName,
         path: fullPath,
         size_gb: Math.round(stat.size / (1024 ** 3) * 100) / 100,
@@ -255,7 +276,7 @@ export async function getLocalModels({ offset = 0, limit = 50, sort = 'modified'
       });
     } catch {
       allModels.push({
-        id: slugify(relativePath.replace(/\.gguf$/i, '')),
+        id: registered.get(fullPath) || slugify(relativePath.replace(/\.gguf$/i, '')),
         name: fileName,
         path: fullPath,
         size_gb: Math.round(stat.size / (1024 ** 3) * 100) / 100,
@@ -322,6 +343,12 @@ export async function deleteLocalModel(modelPath: string): Promise<void> {
   if (fs.existsSync(modelPath)) {
     fs.unlinkSync(modelPath);
   }
+  const cfg = loadConfig();
+  if (cfg.llm?.local?.models) {
+    cfg.llm.local.models = cfg.llm.local.models.filter((model) => path.resolve(String(model.path || '')) !== path.resolve(modelPath));
+    saveConfig(cfg);
+  }
+  await invalidateModelCache(modelPath);
 }
 
 export async function getModelsDirPath(): Promise<string> {
@@ -333,19 +360,17 @@ let modelIndexCache: ModelIndexEntry[] = [];
 let modelIndexSignature = '';
 
 function buildModelIndexSignature(modelsDir: string): string {
-  const ggufFiles = collectGgufFilesRecursive(modelsDir);
-  let newestMtime = 0;
-  let totalSize = 0;
+  const ggufFiles = collectModelFiles(modelsDir);
+  const signature = createHash('sha256').update(modelsDir);
   for (const fullPath of ggufFiles) {
     try {
       const stat = fs.statSync(fullPath);
-      newestMtime = Math.max(newestMtime, Number(stat.mtimeMs || 0));
-      totalSize += Number(stat.size || 0);
+      signature.update(`${fullPath}:${stat.mtimeMs}:${stat.size}\n`);
     } catch {
       // ignore unreadable entries in signature pass
     }
   }
-  return `${modelsDir}:${ggufFiles.length}:${Math.floor(newestMtime)}:${Math.floor(totalSize / 1024)}`;
+  return signature.digest('hex');
 }
 
 export async function getIndexedModels(): Promise<ModelIndexEntry[]> {
@@ -390,10 +415,19 @@ export async function invalidateModelCache(modelPath: string): Promise<void> {
  * If copy_to_managed is true, copies the file to the managed models directory first.
  */
 export async function importLocalModel({ filePath, copy_to_managed = false }: { filePath: string; copy_to_managed?: boolean }): Promise<{ success: boolean; model: Record<string, unknown> }> {
-  const { loadConfig, saveConfig, slugify } = await import('./config.js');
   if (!filePath || typeof filePath !== 'string') throw new Error('filePath is required');
   if (!fs.existsSync(filePath)) throw new Error(`File not found: ${filePath}`);
   if (!filePath.toLowerCase().endsWith('.gguf')) throw new Error('File must be a .gguf model');
+  if (!fs.statSync(filePath).isFile()) throw new Error('Select a GGUF file, not a folder.');
+
+  filePath = fs.realpathSync(filePath);
+  const shards = expandShards(filePath);
+  const missing = shards.filter((shard) => !fs.existsSync(shard));
+  if (missing.length) throw new Error(`Split GGUF is incomplete. Put all shards in the same folder. Missing: ${missing.map((file) => path.basename(file)).join(', ')}`);
+  for (const shard of shards) readGgufMetadata(shard);
+  filePath = shards[0];
+  const metadata = readGgufMetadata(filePath);
+  if (metadata.is_mmproj) throw new Error('This GGUF is a vision projector. Choose the language model, then attach its projector in load settings.');
 
   const cfg = loadConfig();
   let finalPath = filePath;
@@ -402,11 +436,24 @@ export async function importLocalModel({ filePath, copy_to_managed = false }: { 
     const modelsDir = getModelsDir();
     fs.mkdirSync(modelsDir, { recursive: true });
     const target = path.join(modelsDir, path.basename(filePath));
-    if (filePath !== target) fs.copyFileSync(filePath, target);
+    // Never overwrite another model with the same filename during import.
+    for (const shard of shards) {
+      const destination = path.join(modelsDir, path.basename(shard));
+      if (fs.existsSync(destination) && fs.realpathSync(destination) !== fs.realpathSync(shard)) {
+        throw new Error(`A model named ${path.basename(shard)} is already in the model folder. Rename it or import without copying.`);
+      }
+    }
+    for (const shard of shards) {
+      const destination = path.join(modelsDir, path.basename(shard));
+      if (path.resolve(shard) !== path.resolve(destination)) await fs.promises.copyFile(shard, destination);
+    }
     finalPath = target;
   }
 
-  const id = slugify(path.basename(finalPath, path.extname(finalPath)));
+  const existingRecord = cfg.llm?.local?.models?.find((model) => path.resolve(String(model.path || '')) === path.resolve(finalPath));
+  const baseId = slugify(path.basename(finalPath, path.extname(finalPath)));
+  const collision = cfg.llm?.local?.models?.some((model) => model.id === baseId && path.resolve(String(model.path || '')) !== path.resolve(finalPath));
+  const id = existingRecord?.id || (collision ? `${baseId}-${createHash('sha256').update(finalPath).digest('hex').slice(0, 8)}` : baseId);
   const stat = fs.statSync(finalPath);
   const meta = readGgufMetadata(finalPath);
 

@@ -8,6 +8,9 @@
 -->
 
 <script lang="ts">
+  import UiButton from '$lib/components/ui/Button.svelte';
+  import { cn as uiClass } from '$lib/utils/cn';
+
   import { untrack } from 'svelte';
   import { fly, slide } from 'svelte/transition';
   import { ChevronUp } from 'lucide-svelte';
@@ -65,7 +68,7 @@
       {/each}
     </ul>
   {/if}
-  <button type="button" class="todo-bar" aria-expanded={open} onclick={() => (open = !open)}>
+  <UiButton variant="plain" type="button" class={uiClass("todo-bar", "ui-local-8e8c3602")} aria-expanded={open} onclick={() => (open = !open)}>
     <span class="mark">
       {#if allDone}
         <svg class="check is-fresh" viewBox="0 0 16 16" aria-hidden="true"><circle class="check-disc" cx="8" cy="8" r="6.5" /><path class="check-tick" d="M5 8.2 7.1 10.3 11 6" /></svg>
@@ -80,7 +83,7 @@
     </span>
     <span class="count tabular-nums">{done}/{todos.length}</span>
     <ChevronUp class="chev size-3.5 shrink-0 transition-transform {open ? 'rotate-180' : ''}" />
-  </button>
+  </UiButton>
 </div>
 
 <style>
@@ -104,7 +107,7 @@
   }
   .all-done .todo-progress span { opacity: 0.5; }
 
-  .todo-bar {
+  :global(.todo-bar.ui-local-8e8c3602) {
     display: flex;
     width: 100%;
     align-items: center;
@@ -114,7 +117,7 @@
     color: var(--muted-foreground);
     transition: color var(--motion-fast) var(--motion-ease);
   }
-  .todo-bar:hover { color: var(--foreground); }
+  :global(.todo-bar:hover.ui-local-8e8c3602) { color: var(--foreground); }
   .bar-label { position: relative; display: block; min-width: 0; flex: 1; height: 1.2em; overflow: hidden; text-align: left; line-height: 1.2; }
   .bar-text { position: absolute; inset: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--foreground); }
   .all-done .bar-text { color: var(--muted-foreground); }
@@ -124,7 +127,7 @@
   .todo-list li .mark { margin-top: 0.1875rem; }
   .pending-indicator, .check { width: 0.875rem; height: 0.875rem; overflow: visible; }
   .pending-indicator circle { fill: none; stroke: var(--muted-foreground); stroke-width: 1.4; opacity: 0.7; }
-  .check-disc { fill: var(--work-accent); stroke: none; }
+  .check-disc { fill: var(--muted-foreground); stroke: none; }
   .check-tick { fill: none; stroke: var(--background); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
   .check.is-fresh { animation: todo-pop 360ms cubic-bezier(0.34, 1.56, 0.64, 1); }
   .check.is-fresh .check-tick { stroke-dasharray: 10; stroke-dashoffset: 10; animation: todo-draw 300ms 120ms ease-out forwards; }

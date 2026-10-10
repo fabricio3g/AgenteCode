@@ -12,14 +12,13 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import { convertOpenDocument, convertEpub, rtfToText } from './document-formats.ts';
+import { loadHtmlParser, htmlToMarkdown } from './document-html.ts';
+import { toMarkdownTable } from './document-tables.ts';
+import { pdfTextLines } from '../shared/pdf-text.ts';
 
-export type MarkdownConversion = {
-  markdown: string;
-  /** Coarse type recorded on the RAG document row. */
-  fileType: string;
-  /** Set when a format was recognised but yielded nothing useful. */
-  warning?: string;
-};
+import type { MarkdownConversion } from './document-conversion-types.ts';
+export type { MarkdownConversion } from './document-conversion-types.ts';
 
 /** Extensions we can read as text without mangling them. */
 const TEXT_EXTENSIONS = new Set([
@@ -59,45 +58,20 @@ export function looksBinary(buffer: Buffer): boolean {
     // Control characters outside tab/newline/carriage-return/form-feed/escape.
     if (byte < 0x09 || (byte > 0x0d && byte < 0x20 && byte !== 0x1b)) suspicious++;
   }
-  return suspicious / sample.length > 0.1;
+  if (suspicious / sample.length > 0.1) return true;
+  try { new TextDecoder('utf-8', { fatal: true }).decode(sample, { stream: true }); }
+  catch { return true; }
+  return false;
 }
 
-function escapeTableCell(value: unknown): string {
-  return String(value ?? '')
-    .replace(/\r?\n/g, ' ')
-    .replace(/\|/g, '\\|')
-    .trim();
-}
-
-/**
- * `options.rowNumbers` prepends a `#` column holding each row's own number — the
- * coordinate a reader of a spreadsheet actually uses, and what lets a retrieved
- * chunk be cited as `sheet Sales · rows 4–9`.
- */
-function toMarkdownTable(rows: unknown[][], options: { rowNumbers?: number[] } = {}): string {
-  const numbers = options.rowNumbers;
-  const cleaned = rows
-    .map((cells, index) => ({ cells, number: numbers?.[index] }))
-    .filter((entry) => entry.cells.some((cell) => String(cell ?? '').trim() !== ''));
-  if (!cleaned.length) return '';
-
-  const width = Math.max(...cleaned.map((entry) => entry.cells.length)) + (numbers ? 1 : 0);
-  const pad = (cells: string[]) => {
-    const padded = [...cells];
-    while (padded.length < width) padded.push('');
-    return `| ${padded.join(' | ')} |`;
-  };
-  const body = (entry: { cells: unknown[]; number?: number }) => pad([
-    ...(numbers ? [String(entry.number ?? '')] : []),
-    ...entry.cells.map(escapeTableCell)
-  ]);
-
-  const [header, ...rest] = cleaned;
-  return [
-    pad([...(numbers ? ['#'] : []), ...header.cells.map(escapeTableCell)]),
-    pad(Array.from({ length: width }, () => '---')),
-    ...rest.map(body)
-  ].join('\n');
+function readText(filePath: string): string {
+  const buffer = fs.readFileSync(filePath);
+  // UTF-16 exports are common in Excel and Windows. Detect the BOM before the
+  // binary check; a UTF-16 CSV's NUL bytes are not evidence of a binary file.
+  if (buffer[0] === 0xff && buffer[1] === 0xfe) return new TextDecoder('utf-16le').decode(buffer.subarray(2));
+  if (buffer[0] === 0xfe && buffer[1] === 0xff) return new TextDecoder('utf-16be').decode(buffer.subarray(2));
+  if (looksBinary(buffer)) throw new Error(`Unsupported binary file: ${path.basename(filePath)}`);
+  return new TextDecoder('utf-8', { fatal: true }).decode(buffer);
 }
 
 function parseDelimited(text: string, delimiter: string): unknown[][] {
@@ -136,7 +110,8 @@ async function convertDocx(filePath: string): Promise<MarkdownConversion> {
   // The HTML walker below reconstructs real Markdown tables.
   const html = await mammoth.convertToHtml({ path: filePath });
   const markdown = htmlToMarkdown(String(html?.value || '')).trim();
-  if (markdown) return { markdown, fileType: 'docx' };
+  if (markdown) return { markdown, fileType: 'docx', warning: /<img\b/i.test(String(html?.value || ''))
+    ? 'Embedded images were not analyzed; the extraction contains document text and tables.' : undefined };
 
   const fallback = await mammoth.extractRawText({ path: filePath });
   return {
@@ -160,8 +135,10 @@ async function convertXlsx(filePath: string): Promise<MarkdownConversion> {
       rowNumbers.push(row.number);
       rows.push(values.map((cell) => {
         if (cell && typeof cell === 'object') {
-          const rich = cell as { text?: string; result?: unknown; hyperlink?: string };
-          return rich.text ?? rich.result ?? rich.hyperlink ?? '';
+          if (cell instanceof Date) return cell.toISOString();
+          const rich = cell as { text?: string; result?: unknown; hyperlink?: string; richText?: Array<{ text: string }>; formula?: string; error?: string };
+          return rich.text ?? rich.result ?? rich.richText?.map((run) => run.text).join('') ??
+            (rich.formula ? `=${rich.formula} [result not stored]` : rich.hyperlink ?? rich.error ?? '');
         }
         return cell ?? '';
       }));
@@ -190,21 +167,25 @@ async function convertPptx(filePath: string): Promise<MarkdownConversion> {
     });
 
   const sections: string[] = [];
+  const { DOMParser } = await import('linkedom');
   for (let i = 0; i < slideNames.length; i++) {
     const xml = await zip.files[slideNames[i]].async('string');
-    const runs = [...xml.matchAll(/<a:t>([\s\S]*?)<\/a:t>/g)]
-      .map((m) => m[1]
-        .replace(/&lt;/g, '<').replace(/&gt;/g, '>')
-        .replace(/&quot;/g, '"').replace(/&apos;/g, "'")
-        .replace(/&amp;/g, '&')
-        .trim())
-      .filter(Boolean);
-    if (!runs.length) continue;
+    const document = new DOMParser().parseFromString(xml, 'text/xml');
+    const tables = [...document.getElementsByTagName('a:tbl')].map((table) => {
+      const rows = [...table.getElementsByTagName('a:tr')].map((row) =>
+        [...row.getElementsByTagName('a:tc')].map((cell) =>
+          [...cell.getElementsByTagName('a:t')].map((run) => run.textContent || '').join(' ')));
+      table.remove();
+      return toMarkdownTable(rows);
+    }).filter(Boolean);
+    const runs = [...document.getElementsByTagName('a:t')].map((run) => (run.textContent || '').trim()).filter(Boolean);
+    if (!runs.length && !tables.length) continue;
 
     // First run on a slide is nearly always its title.
-    const [title, ...body] = runs;
+    const [title = `Slide ${i + 1}`, ...body] = runs;
     const lines = [`## Slide ${i + 1}: ${title}`];
     if (body.length) lines.push('', ...body.map((line) => `- ${line}`));
+    if (tables.length) lines.push('', tables.join('\n\n'));
     sections.push(lines.join('\n'));
   }
 
@@ -215,80 +196,17 @@ async function convertPptx(filePath: string): Promise<MarkdownConversion> {
   };
 }
 
-/**
- * HTML → Markdown. Shared by .html files and by DOCX, which mammoth renders to
- * HTML first. Handles the block structure that matters for retrieval —
- * headings, lists, tables, code, quotes — and flattens everything else to text.
- */
-let cachedParseHTML: ((html: string) => { document: Document }) | null = null;
-
-function htmlToMarkdown(html: string): string {
-  if (!cachedParseHTML) throw new Error('htmlToMarkdown called before linkedom was loaded');
-
-  // mammoth hands back a bare fragment (`<h1>…</h1><p>…</p>`). Parsed as-is,
-  // `documentElement` is just the first element, so every following sibling is
-  // dropped. Wrapping guarantees a real body to walk.
-  const wrapped = /<body[\s>]/i.test(html) ? html : `<body>${html}</body>`;
-  const { document } = cachedParseHTML(wrapped);
-
-  document.querySelectorAll('script, style, noscript').forEach((node) => node.remove());
-
-  const walk = (node: Element): string => {
-    const tag = node.tagName?.toLowerCase();
-    const text = () => (node.textContent || '').replace(/\s+/g, ' ').trim();
-
-    if (/^h[1-6]$/.test(tag || '')) {
-      const value = text();
-      return value ? `${'#'.repeat(Number(tag!.slice(1)))} ${value}\n\n` : '';
-    }
-    if (tag === 'li') { const v = text(); return v ? `- ${v}\n` : ''; }
-    if (tag === 'pre') {
-      const v = (node.textContent || '').trim();
-      return v ? `\`\`\`\n${v}\n\`\`\`\n\n` : '';
-    }
-    if (tag === 'table') {
-      const rows = [...node.querySelectorAll('tr')]
-        .map((tr) => [...tr.children].map((cell) => escapeTableCell(cell.textContent)))
-        .filter((cells) => cells.length);
-      return rows.length ? `${toMarkdownTable(rows)}\n\n` : '';
-    }
-    if (tag === 'p' || tag === 'blockquote') {
-      const v = text();
-      return v ? `${tag === 'blockquote' ? '> ' : ''}${v}\n\n` : '';
-    }
-    if (tag === 'br') return '\n';
-
-    return [...node.children].map(walk).join('') ||
-      (node.children.length === 0 && text() ? `${text()}\n\n` : '');
-  };
-
-  const body = document.querySelector('body') || document.documentElement;
-  return walk(body as unknown as Element).replace(/\n{3,}/g, '\n\n').trim();
-}
-
-async function loadHtmlParser(): Promise<void> {
-  if (cachedParseHTML) return;
-  const { parseHTML } = await import('linkedom');
-  cachedParseHTML = parseHTML as unknown as (html: string) => { document: Document };
-}
-
 async function convertHtml(filePath: string): Promise<MarkdownConversion> {
   await loadHtmlParser();
   return { markdown: htmlToMarkdown(fs.readFileSync(filePath, 'utf8')), fileType: 'html' };
 }
 
-type PdfTextPage = { getTextContent: (options?: unknown) => Promise<{ items: Array<{ str: string; transform: number[] }> }> };
+type PdfTextPage = { getTextContent: (options?: unknown) => Promise<{ items: Array<{ str: string; transform: number[]; width?: number }> }> };
 
 /** pdf.js lays text out run by run; a new y coordinate is a new line. */
 async function pdfPageText(page: PdfTextPage): Promise<string> {
   const content = await page.getTextContent({ normalizeWhitespace: false, disableCombineTextItems: false });
-  let lastY: number | undefined;
-  let text = '';
-  for (const item of content.items) {
-    text += lastY === undefined || lastY === item.transform[5] ? item.str : `\n${item.str}`;
-    lastY = item.transform[5];
-  }
-  return text;
+  return pdfTextLines(content.items).join('\n');
 }
 
 async function convertPdf(filePath: string): Promise<MarkdownConversion> {
@@ -303,19 +221,17 @@ async function convertPdf(filePath: string): Promise<MarkdownConversion> {
   const data = await pdfParse(new Uint8Array(fs.readFileSync(filePath)), {
     pagerender: async (page: PdfTextPage) => `\f${await pdfPageText(page)}`
   });
-  const raw = String(data?.text || '').replace(/ /g, ' ');
+  const raw = String(data?.text || '').replace(/\u0000/g, ' ');
 
   // Each marked page becomes a heading, so a retrieved chunk is cited as
   // `page 3` instead of a line range that does not exist in the document.
-  const pages = raw.split('\f').map((page) => page.trim()).filter(Boolean);
-  const markdown = pages.length > 1
-    ? pages.map((page, i) => `## Page ${i + 1}\n\n${page}`).join('\n\n')
-    : (pages[0] || '');
-
-  const words = markdown.match(/[\p{L}\p{N}]{2,}/gu) || [];
-  if (markdown.length < 80 || words.length < 20) {
-    throw new Error('PDF parser returned insufficient readable text');
+  const pages = raw.split('\f').slice(1).map((page) => page.trim());
+  // A single scan in an otherwise digital PDF still needs OCR. Do not drop
+  // blank pages then renumber the remaining ones: that corrupts citations.
+  if (!pages.length || pages.some((page) => !/[\p{L}\p{N}]/u.test(page))) {
+    throw new Error('PDF contains pages without readable text; OCR is needed.');
   }
+  const markdown = pages.map((page, i) => `## Page ${i + 1}\n\n${page}`).join('\n\n');
   const expectedPages = Number(data?.numpages) || 0;
   return {
     markdown,
@@ -327,11 +243,7 @@ async function convertPdf(filePath: string): Promise<MarkdownConversion> {
 }
 
 function convertPlainText(filePath: string, ext: string): MarkdownConversion {
-  const buffer = fs.readFileSync(filePath);
-  if (looksBinary(buffer)) {
-    throw new Error(`Unsupported binary file: ${path.basename(filePath)}`);
-  }
-  const text = buffer.toString('utf8');
+  const text = readText(filePath);
 
   if (ext === '.md' || ext === '.markdown') return { markdown: text, fileType: 'markdown' };
 
@@ -369,21 +281,24 @@ export async function convertFileToMarkdown(filePath: string): Promise<MarkdownC
   if (ext === '.pptx') return convertPptx(filePath);
   if (ext === '.html' || ext === '.htm') return convertHtml(filePath);
   if (ext === '.pdf') return convertPdf(filePath);
+  if (['.odt', '.ods', '.odp'].includes(ext)) return convertOpenDocument(filePath);
+  if (ext === '.epub') return convertEpub(filePath);
+  if (ext === '.rtf') return { markdown: rtfToText(fs.readFileSync(filePath, 'latin1')), fileType: 'rtf' };
+  if (['.doc', '.xls', '.ppt'].includes(ext)) {
+    throw new Error(`Legacy ${ext.slice(1).toUpperCase()} needs an export as ${ext}x, PDF, CSV or OpenDocument before it can be read.`);
+  }
 
   if (TEXT_EXTENSIONS.has(ext) || CODE_EXTENSIONS.has(ext)) {
     return convertPlainText(filePath, ext);
   }
 
   // Unknown extension: allow it only if it really is text.
-  const buffer = fs.readFileSync(filePath);
-  if (looksBinary(buffer)) {
-    throw new Error(`Unsupported file type: ${ext || path.basename(filePath)}`);
-  }
-  return { markdown: buffer.toString('utf8'), fileType: 'text' };
+  try { return { markdown: readText(filePath), fileType: 'text' }; }
+  catch { throw new Error(`Unsupported file type: ${ext || path.basename(filePath)}`); }
 }
 
 /** Extensions `convertFileToMarkdown` handles as a structured format. */
 export const SUPPORTED_DOCUMENT_EXTENSIONS = [
-  '.pdf', '.docx', '.xlsx', '.xlsm', '.pptx', '.html', '.htm',
+  '.pdf', '.docx', '.xlsx', '.xlsm', '.pptx', '.html', '.htm', '.odt', '.ods', '.odp', '.epub', '.rtf',
   ...TEXT_EXTENSIONS, ...CODE_EXTENSIONS
 ];

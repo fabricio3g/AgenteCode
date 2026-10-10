@@ -1,5 +1,7 @@
 <svelte:options runes={true} />
 <script lang="ts">
+  import UiInput from '$lib/components/ui/Input.svelte';
+
   import { Globe, SquareTerminal, GitBranch, Image } from 'lucide-svelte';
   import WorkspaceHost from '../WorkspaceHost.svelte';
   import TerminalView from '$lib/features/code/workspace/TerminalView.svelte';
@@ -15,4 +17,4 @@
 {#snippet content(state: PanelRenderState)}
   {#if state.id === 'terminal:test'}<TerminalView id="test" active={state.exposed} focused={state.focused} />{:else}<div>Browser content</div>{/if}
 {/snippet}
-<WorkspaceHost {panels}><input aria-label="Chat" /></WorkspaceHost>
+<WorkspaceHost {panels}><UiInput  aria-label="Chat" /></WorkspaceHost>

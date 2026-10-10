@@ -1,4 +1,6 @@
 <script lang="ts">
+  import UiTextarea from '$lib/components/ui/Textarea.svelte';
+
   let { value, onchange }: { value: string; onchange: (value: string) => void } = $props();
 </script>
-<textarea aria-label="Source editor" {value} oninput={event => onchange(event.currentTarget.value)}></textarea>
+<UiTextarea  aria-label="Source editor" {value} oninput={event => onchange(event.currentTarget.value)}></UiTextarea>

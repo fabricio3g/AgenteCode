@@ -217,15 +217,18 @@ pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState) {
 
     for check in checks {
         let (badge_text, badge_color) = check.status.badge();
+        // A pass is the expected state: it stays quiet so warnings and failures find the eye.
+        let badge_style = if matches!(check.status, CheckStatus::Pass) {
+            Style::default().fg(FG_DIM()).bg(BG_PANEL())
+        } else {
+            Style::default()
+                .fg(badge_color)
+                .add_modifier(Modifier::BOLD)
+                .bg(BG_PANEL())
+        };
         let row_spans = vec![
             s(" ", dim()),
-            Span::styled(
-                format!("{badge_text:<7}"),
-                Style::default()
-                    .fg(badge_color)
-                    .add_modifier(Modifier::BOLD)
-                    .bg(BG_PANEL()),
-            ),
+            Span::styled(format!("{badge_text:<7}"), badge_style),
             s(" ", dim()),
             Span::styled(
                 format!("{:<20}", check.name),

@@ -1,4 +1,6 @@
 <script lang="ts">
+  import UiStack from '$lib/components/ui/Stack.svelte';
+
   import { setContext, untrack } from 'svelte';
   import RenderNode from '../RenderNode.svelte';
   import Buttons from './Buttons.svelte';
@@ -10,9 +12,9 @@
 </script>
 
 <form class="ui-form" onsubmit={(event) => event.preventDefault()}>
-  <div class="ui-stack">
+  <UiStack >
     <RenderNode value={props.fields || []} />
-  </div>
+  </UiStack>
   {#if props.buttons}
     <Buttons props={props.buttons as any} formName={name} />
   {/if}

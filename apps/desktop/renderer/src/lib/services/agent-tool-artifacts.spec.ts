@@ -1,6 +1,7 @@
+import { CHART_TYPES } from '$lib/utils/chart-types';
 import { describe, expect, it } from 'vitest';
 import type { ToolContext } from '$lib/services/agent-types';
-import { handleCreateMap, handleCreateReport } from '$lib/services/agent-tool-artifacts';
+import { handleCreateChart, handleCreateDashboard, handleCreateMap, handleCreateReport } from '$lib/services/agent-tool-artifacts';
 import { validateGeneratedDocumentArgs } from '$lib/services/generated-documents';
 
 function makeCtx(): ToolContext {
@@ -66,5 +67,30 @@ describe('create_map', () => {
     expect(payload.latitude).toBe(44);
     expect(payload.longitude).toBe(-0.5);
     expect(payload.zoom).toBeGreaterThanOrEqual(2);
+  });
+});
+
+
+describe('chart and dashboard deliverables', () => {
+  const chart = { title: 'Trend', labels: ['1', '2', '3', '4'], datasets: [{ label: 'Series', data: [10, 20, 30, 40], sizes: [1, 2, 3, 4] }] };
+  it.each(CHART_TYPES)('persists %s through the creation tool', async (chart_type) => {
+    const ctx = makeCtx();
+    const result = await handleCreateChart({ args: { ...chart, chart_type, subtitle: 'Sample', annotations: [{ index: 2, label: 'Release' }] }, ctx, normPath: (v) => String(v || ''), ok, fail });
+    expect(result.success).toBe(true);
+    const payload = JSON.parse(ctx.files['chart.json']);
+    expect(payload.chartType).toBe(chart_type);
+    expect(payload.datasets[0].sizes).toEqual([1, 2, 3, 4]);
+    expect(payload.annotations[0].label).toBe('Release');
+  });
+  it('keeps nested dashboard charts and rejects invalid charts before writing', async () => {
+    const ctx = makeCtx();
+    const params = { ctx, normPath: (v: unknown) => String(v || ''), ok, fail };
+    const result = await handleCreateDashboard({ ...params, args: { title: 'Metrics', metrics: [{ label: 'Total', value: 10 }], charts: [{ ...chart, chart_type: 'stacked_area' }] } });
+    expect(result.success).toBe(true);
+    expect(JSON.parse(ctx.files['dashboard.json']).charts[0].chartType).toBe('stacked_area');
+    const before = { ...ctx.files };
+    const bad = await handleCreateDashboard({ ...params, args: { title: 'Bad', path: 'bad.json', metrics: [{ label: 'Total', value: 10 }], charts: [{ ...chart, labels: ['1'], chart_type: 'line' }] } });
+    expect(bad.success).toBe(false);
+    expect(ctx.files).toEqual(before);
   });
 });

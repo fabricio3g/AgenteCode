@@ -23,6 +23,16 @@ import { probeToolSupport, type ToolProbeArgs } from './tool-probe.ts';
 /** Known request extras passed through to the wire, in one place. */
 const PASSTHROUGH_PARAMS = ['temperature', 'max_tokens', 'top_p', 'stop'] as const;
 
+/**
+ * llama-server sampler fields outside the OpenAI body (min_p, DRY, repeat
+ * penalty, slot pinning). The renderer sends them as `extra_params`; only the
+ * local dialect carries them, so no cloud request ever receives one.
+ */
+const LOCAL_SAMPLER_PARAMS = [
+  'min_p', 'top_k', 'repeat_penalty', 'dry_multiplier', 'dry_base', 'dry_allowed_length', 'dry_penalty_last_n',
+  'cache_prompt', 'id_slot'
+] as const;
+
 const clients = new Map<string, { client: unknown }>();
 
 function sdkClient(dialect: Dialect, apiKey: string, baseUrl?: string): OpenAI {
@@ -135,6 +145,14 @@ function choiceToChunks(
 }
 
 export function buildBody(dialect: Dialect, params: StreamParams, stream: boolean): Record<string, unknown> {
+  const thinking = { ...params.reasoning?.body };
+  if (dialect.id !== 'local') {
+    // llama-server extensions belong only to its explicit dialect, never
+    // to cloud or generic OpenAI-compatible provider requests.
+    delete thinking.chat_template_kwargs;
+    delete thinking.thinking_budget_tokens;
+    delete thinking.disable_thinking;
+  }
   const body: Record<string, unknown> = {
     model: params.model,
     messages: params.messages.map(({ providerState, ...message }) => ({
@@ -147,13 +165,19 @@ export function buildBody(dialect: Dialect, params: StreamParams, stream: boolea
     ...dialect.baseBody,
     // Thinking fields come from the shared core (agente/thinking.ts), already
     // shaped for this provider and model; Auto sends none.
-    ...params.reasoning?.body,
+    ...thinking,
     ...(stream && dialect.streamUsage ? { stream_options: { include_usage: true } } : {}),
     stream
   };
   for (const key of PASSTHROUGH_PARAMS) {
     const value = params[key];
     if (value !== undefined) body[key] = value;
+  }
+  if (dialect.id === 'local') {
+    for (const key of LOCAL_SAMPLER_PARAMS) {
+      const value = params[key];
+      if (value !== undefined) body[key] = value;
+    }
   }
   return body;
 }

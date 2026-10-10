@@ -1,4 +1,12 @@
 <script lang="ts">
+  import UiToolbar from '$lib/components/ui/Toolbar.svelte';
+
+  import UiIconButton from '$lib/components/ui/IconButton.svelte';
+  import UiInput from '$lib/components/ui/Input.svelte';
+  import UiButton from '$lib/components/ui/Button.svelte';
+  import { cn as uiClass } from '$lib/utils/cn';
+
+  import { observeViewerSize } from './viewer-layout';
   import { Tooltip } from '$lib/components/ui';
   import { tick, type Snippet } from 'svelte';
   import { ChevronLeft, ChevronRight, Download, Ellipsis, Minus, Plus, Search, X } from 'lucide-svelte';
@@ -32,9 +40,7 @@
   $effect(() => { pageInput = String(caps?.page ?? 1); });
   $effect(() => {
     if (!root || typeof ResizeObserver === 'undefined') return;
-    const observer = new ResizeObserver(() => { narrow = (root?.clientWidth ?? 0) < 480; });
-    observer.observe(root);
-    return () => observer.disconnect();
+    return observeViewerSize(root, () => { narrow = (root?.clientWidth ?? 0) < 480; });
   });
   $effect(() => {
     if (controls.searchOpen && searchable) { searchWasOpen = true; void tick().then(() => field?.focus()); }
@@ -47,25 +53,25 @@
   }
 </script>
 
-<header class="viewer-toolbar" bind:this={root} aria-label={title}>
+<UiToolbar wrap={false} as="header" density="compact" class={uiClass("viewer-toolbar", "ui-local-eaba586c")} bind:ref={root} aria-label={title}>
   <span class="viewer-title" title={title}>{controls.title || title}</span>
   {#if caps?.goToPage && caps.pages}
     <div class="page-controls">
-      <Tooltip label={$t('viewer.previous')} position="bottom"><button type="button" class="ui-icon-button is-sm" onclick={() => caps?.goToPage?.((caps.page ?? 1) - 1)} disabled={(caps.page ?? 1) <= 1} aria-label={$t('viewer.previous')}><ChevronLeft /></button></Tooltip>
-      <input class="page-number" aria-label={$t('viewer.page', { values: { n: caps.page, total: caps.pages } })} inputmode="numeric" bind:value={pageInput} onblur={commitPage} onkeydown={(event) => { if (event.key === 'Enter') { event.preventDefault(); commitPage(); } else if (event.key === 'Escape') { event.stopPropagation(); pageInput = String(caps?.page ?? 1); event.currentTarget.blur(); } }} />
+      <Tooltip label={$t('viewer.previous')} position="bottom"><UiIconButton label={$t('viewer.previous')} size="xs" type="button" class={uiClass(" ", "ui-local-eaba586c")} onclick={() => caps?.goToPage?.((caps.page ?? 1) - 1)} disabled={(caps.page ?? 1) <= 1} ><ChevronLeft /></UiIconButton></Tooltip>
+      <UiInput variant="inline" class={uiClass("page-number", "ui-local-eaba586c")} aria-label={$t('viewer.page', { values: { n: caps.page, total: caps.pages } })} inputmode="numeric" bind:value={pageInput} onblur={commitPage} onkeydown={(event) => { if (event.key === 'Enter') { event.preventDefault(); commitPage(); } else if (event.key === 'Escape') { event.stopPropagation(); pageInput = String(caps?.page ?? 1); event.currentTarget.blur(); } }} />
       <span class="page-total">/ {caps.pages}</span>
-      <Tooltip label={$t('viewer.next')} position="bottom"><button type="button" class="ui-icon-button is-sm" onclick={() => caps?.goToPage?.((caps.page ?? 1) + 1)} disabled={(caps.page ?? 1) >= caps.pages} aria-label={$t('viewer.next')}><ChevronRight /></button></Tooltip>
+      <Tooltip label={$t('viewer.next')} position="bottom"><UiIconButton label={$t('viewer.next')} size="xs" type="button" class={uiClass(" ", "ui-local-eaba586c")} onclick={() => caps?.goToPage?.((caps.page ?? 1) + 1)} disabled={(caps.page ?? 1) >= caps.pages} ><ChevronRight /></UiIconButton></Tooltip>
     </div>
   {/if}
   {#if caps?.zoomBy}
-    {#if !narrow}<Tooltip label={$t('viewer.zoomOut')} position="bottom"><button type="button" class="ui-icon-button is-sm" onclick={() => caps?.zoomBy?.(-1)} aria-label={$t('viewer.zoomOut')}><Minus /></button></Tooltip>{/if}
-    <button type="button" class="zoom-label" onclick={() => caps?.fit?.()} disabled={!caps.fit} title={$t('viewer.fit')}>{caps.zoom}</button>
-    {#if !narrow}<Tooltip label={$t('viewer.zoomIn')} position="bottom"><button type="button" class="ui-icon-button is-sm" onclick={() => caps?.zoomBy?.(1)} aria-label={$t('viewer.zoomIn')}><Plus /></button></Tooltip>{/if}
+    {#if !narrow}<Tooltip label={$t('viewer.zoomOut')} position="bottom"><UiIconButton label={$t('viewer.zoomOut')} size="xs" type="button" class={uiClass(" ", "ui-local-eaba586c")} onclick={() => caps?.zoomBy?.(-1)} ><Minus /></UiIconButton></Tooltip>{/if}
+    <UiButton variant="ghost" size="xs" type="button" class={uiClass("zoom-label", "ui-local-eaba586c")} onclick={() => caps?.fit?.()} disabled={!caps.fit} title={$t('viewer.fit')}>{caps.zoom}</UiButton>
+    {#if !narrow}<Tooltip label={$t('viewer.zoomIn')} position="bottom"><UiIconButton label={$t('viewer.zoomIn')} size="xs" type="button" class={uiClass(" ", "ui-local-eaba586c")} onclick={() => caps?.zoomBy?.(1)} ><Plus /></UiIconButton></Tooltip>{/if}
   {/if}
-  {#if caps?.search}<Tooltip label={$t('artifacts.reader.search')} position="bottom"><button type="button" class="ui-icon-button is-sm" aria-label={$t('artifacts.reader.search')} aria-expanded={controls.searchOpen} bind:this={searchToggle} onclick={() => { controls.searchOpen = !controls.searchOpen; }}><Search /></button></Tooltip>{/if}
+  {#if caps?.search}<Tooltip label={$t('artifacts.reader.search')} position="bottom"><UiIconButton label={$t('artifacts.reader.search')} size="xs" type="button" class={uiClass(" ", "ui-local-eaba586c")}  aria-expanded={controls.searchOpen} bind:ref={searchToggle} onclick={() => { controls.searchOpen = !controls.searchOpen; }}><Search /></UiIconButton></Tooltip>{/if}
   {@render beforeMenu?.()}
   <Menu label={$t('browser.more')} placement="bottom-end">
-    {#snippet trigger(props)}<button type="button" class="ui-icon-button is-sm" {...props} aria-label={$t('browser.more')}><Ellipsis /></button>{/snippet}
+    {#snippet trigger(props)}<UiIconButton label={$t('browser.more')} size="xs" type="button" class={uiClass(" ", "ui-local-eaba586c")} {...props} ><Ellipsis /></UiIconButton>{/snippet}
     {#if ondownload}<MenuItem label={$t('artifacts.card.download')} icon={Download} onselect={ondownload} />{/if}
     {#if narrow && caps?.zoomBy}
       <MenuItem label={$t('viewer.zoomOut')} icon={Minus} onselect={() => caps?.zoomBy?.(-1)} />
@@ -76,32 +82,32 @@
     {#each menuActions as action (action.label)}<MenuItem label={action.label} active={action.active} disabled={action.disabled} onselect={action.run} />{/each}
   </Menu>
   {@render trail?.()}
-  {#if onclose}<Tooltip label={$t('artifacts.reader.close')} position="bottom"><button type="button" class="ui-icon-button is-sm" onclick={onclose} aria-label={$t('artifacts.reader.close')}><X /></button></Tooltip>{/if}
-</header>
+  {#if onclose}<Tooltip label={$t('artifacts.reader.close')} position="bottom"><UiIconButton label={$t('artifacts.reader.close')} size="xs" type="button" class={uiClass(" ", "ui-local-eaba586c")} onclick={onclose} ><X /></UiIconButton></Tooltip>{/if}
+</UiToolbar>
 {#if controls.searchOpen && caps?.search}
   <div class="viewer-find">
     <Search class="size-3.5" />
-    <input bind:this={field} bind:value={controls.query} aria-label={$t('artifacts.reader.search')} placeholder={$t('artifacts.reader.search')} onkeydown={findKeydown} />
-    <span aria-live="polite">{caps.search.matches ? caps.search.index + 1 : 0}/{caps.search.matches}</span>
+    <UiInput class={uiClass('', "ui-local-eaba586c")} bind:ref={field} bind:value={controls.query} aria-label={$t('artifacts.reader.search')} placeholder={$t('artifacts.reader.search')} onkeydown={findKeydown} />
+    <span aria-live="polite">{#if caps.search.loading}…{:else}{caps.search.matches ? caps.search.index + 1 : 0}/{caps.search.matches}{/if}</span>
     {#if caps.search.step}
-      <Tooltip label={$t('viewer.previous')} position="bottom"><button type="button" class="ui-icon-button is-xs" onclick={() => caps?.search?.step?.(-1)} aria-label={$t('viewer.previous')}><ChevronLeft /></button></Tooltip>
-      <Tooltip label={$t('viewer.next')} position="bottom"><button type="button" class="ui-icon-button is-xs" onclick={() => caps?.search?.step?.(1)} aria-label={$t('viewer.next')}><ChevronRight /></button></Tooltip>
+      <Tooltip label={$t('viewer.previous')} position="bottom"><UiIconButton label={$t('viewer.previous')} size="xs" type="button" class={uiClass(" ", "ui-local-eaba586c")} disabled={!caps.search.matches} onclick={() => caps?.search?.step?.(-1)} ><ChevronLeft /></UiIconButton></Tooltip>
+      <Tooltip label={$t('viewer.next')} position="bottom"><UiIconButton label={$t('viewer.next')} size="xs" type="button" class={uiClass(" ", "ui-local-eaba586c")} disabled={!caps.search.matches} onclick={() => caps?.search?.step?.(1)} ><ChevronRight /></UiIconButton></Tooltip>
     {/if}
-    <Tooltip label={$t('artifacts.clearSearch')} position="bottom"><button type="button" class="ui-icon-button is-xs" onclick={() => { controls.query = ''; controls.searchOpen = false; }} aria-label={$t('artifacts.clearSearch')}><X /></button></Tooltip>
+    <Tooltip label={$t('artifacts.clearSearch')} position="bottom"><UiIconButton label={$t('artifacts.clearSearch')} size="xs" type="button" class={uiClass(" ", "ui-local-eaba586c")} onclick={() => { controls.query = ''; controls.searchOpen = false; }} ><X /></UiIconButton></Tooltip>
   </div>
 {/if}
 
 <style>
-  .viewer-toolbar { display:flex; height:36px; min-height:36px; flex-shrink:0; min-width:0; align-items:center; gap:2px; padding:0 5px; background:var(--card); color:var(--muted-foreground); font-size:12px; }
+  :global(.viewer-toolbar.ui-local-eaba586c) { display:flex; height:max(36px,calc(var(--text-xs) * 1.5 + 12px)); min-height:36px; flex-shrink:0; min-width:0; align-items:center; gap:2px; padding:0 5px; background:var(--card); color:var(--muted-foreground); font-size:var(--text-xs); }
   .viewer-title { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; padding:0 5px; color:var(--foreground); }
   .page-controls { display:flex; align-items:center; flex-shrink:0; gap:2px; font-variant-numeric:tabular-nums; }
-  .page-number { width:3ch; max-width:40px; padding:2px 0; border:0; border-radius:4px; background:transparent; color:var(--foreground); text-align:center; font:inherit; }
-  .page-number:focus { background:var(--muted); }
-  .page-total { white-space:nowrap; font-size:11px; }
-  .zoom-label { min-width:36px; padding:4px; font-size:11px; font-variant-numeric:tabular-nums; border-radius:999px; }
-  .zoom-label:hover { background:var(--surface-hover); color:var(--foreground); }
-  .viewer-find { display:flex; align-items:center; flex-shrink:0; gap:4px; margin:0 5px 4px; padding:2px 5px 2px 8px; height:28px; border-radius:999px; background:var(--muted); color:var(--muted-foreground); font-size:11px; }
-  .viewer-find input { flex:1; width:0; min-width:0; border:0; outline:0; background:transparent; font:inherit; color:var(--foreground); }
-  .viewer-toolbar :global(button:focus-visible), .page-number:focus-visible, .viewer-find:focus-within { outline:1px solid var(--muted-foreground); outline-offset:-1px; }
-  .viewer-toolbar :global(button) { flex-shrink:0; }
+  :global(.page-number.ui-local-eaba586c) { width:3ch; max-width:40px; padding:2px 0; border:0; border-radius:4px; background:transparent; color:var(--foreground); text-align:center; font:inherit; }
+  :global(.page-number:focus.ui-local-eaba586c) { background:var(--muted); }
+  .page-total { white-space:nowrap; font-size:var(--text-xs); }
+  :global(.zoom-label.ui-local-eaba586c) { min-width:36px; padding:4px; font-size:var(--text-xs); font-variant-numeric:tabular-nums; border-radius:999px; }
+  :global(.zoom-label:hover.ui-local-eaba586c) { background:var(--surface-hover); color:var(--foreground); }
+  .viewer-find { display:flex; align-items:center; flex-shrink:0; gap:4px; margin:0 5px 4px; padding:2px 5px 2px 8px; height:max(28px,calc(var(--text-xs) * 1.5 + 8px)); border-radius:999px; background:var(--muted); color:var(--muted-foreground); font-size:var(--text-xs); }
+  .viewer-find :global(input.ui-local-eaba586c) { flex:1; width:0; min-width:0; border:0; outline:0; background:transparent; font:inherit; color:var(--foreground); }
+  :global(.viewer-toolbar.ui-local-eaba586c) :global(:is(button:focus-visible, :global(button:focus-visible.ui-local-eaba586c))), :global(.page-number:focus-visible.ui-local-eaba586c), .viewer-find:focus-within { outline:1px solid var(--muted-foreground); outline-offset:-1px; }
+  :global(.viewer-toolbar.ui-local-eaba586c) :global(:is(button, :global(button.ui-local-eaba586c))) { flex-shrink:0; }
 </style>

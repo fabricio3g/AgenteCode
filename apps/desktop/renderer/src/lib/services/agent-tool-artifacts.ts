@@ -1,3 +1,7 @@
+import type { ChartArtifactPayload } from '$lib/types/chat';
+import { CHART_TYPES, resolveChartType } from '$lib/utils/chart-types';
+import { validateChartData } from '$lib/utils/chart-math';
+import type { ChartData, Dataset } from '$lib/utils/chart-data';
 import type { AgentArtifact } from '$lib/types/chat';
 import { renderReportHtml, renderReportMarkdown, type GeneratedArtifactFile } from '$lib/services/generated-documents';
 import { resolveAccent, resolveTheme } from '$shared/artifact-theme';
@@ -120,6 +124,25 @@ export async function handleCreateWorkProduct(params: {
   }
 }
 
+function buildChartPayload(args: Record<string, unknown>): ChartArtifactPayload | string {
+  const chartType = resolveChartType(args.chart_type || 'bar');
+  if (!chartType) return `Unknown chart type. Use ${CHART_TYPES.join(', ')}.`;
+  const labels = Array.isArray(args.labels) ? args.labels.map(String) : [];
+  const datasets = (Array.isArray(args.datasets) ? args.datasets as Dataset[] : []).map((ds, i) => ({
+    label: String(ds.label || `Series ${i + 1}`),
+    data: Array.isArray(ds.data) ? ds.data.map(Number) : [],
+    ...(ds.sizes ? { sizes: ds.sizes.map(Number) } : {})
+  }));
+  const options: Partial<ChartData> = {};
+  if (typeof args.subtitle === 'string') options.subtitle = args.subtitle;
+  if (['number', 'percent', 'currency'].includes(String(args.valueFormat))) options.valueFormat = args.valueFormat as ChartData['valueFormat'];
+  if (typeof args.currency === 'string') options.currency = args.currency;
+  if (typeof args.max === 'number') options.max = args.max;
+  if (Array.isArray(args.annotations)) options.annotations = args.annotations as ChartData['annotations'];
+  const invalid = validateChartData(chartType, { labels, datasets, ...options });
+  return invalid || { kind: 'chart', title: String(args.title || 'Chart'), chartType, labels, datasets, ...options };
+}
+
 export async function handleCreateChart(params: {
   args: Record<string, unknown>;
   ctx: ToolContext;
@@ -127,34 +150,11 @@ export async function handleCreateChart(params: {
   ok: (output: unknown, extra?: Record<string, unknown>) => ToolResult;
   fail: (error: string, note?: string) => ToolResult;
 }): Promise<ToolResult> {
-  const title = String(params.args.title || 'Chart');
-  const chartType = String(params.args.chart_type || 'bar');
-  const labels = Array.isArray(params.args.labels) ? params.args.labels.map((l) => String(l)) : [];
-  const datasets = Array.isArray(params.args.datasets) ? params.args.datasets as Array<{ label?: string; data?: number[] }> : [];
+  const payload = buildChartPayload(params.args);
+  if (typeof payload === 'string') return params.fail(payload);
   const path = artifactDataPath(params.normPath(params.args.path), 'chart.json');
-
-  if (labels.length < 1) return params.fail('Chart requires at least one label.');
-  if (datasets.length < 1) return params.fail('Chart requires at least one dataset.');
-  if (!['bar', 'line', 'pie', 'donut'].includes(chartType)) {
-    return params.fail(`Unknown chart type "${chartType}". Use bar, line, pie, or donut.`);
-  }
-
-  const sanitizedDatasets = datasets.map((ds, i) => ({
-    label: String(ds.label || `Series ${i + 1}`),
-    data: Array.isArray(ds.data) ? ds.data.map(Number).filter(Number.isFinite) : []
-  }));
-
-  const payload = {
-    kind: 'chart',
-    title,
-    chartType,
-    labels,
-    datasets: sanitizedDatasets
-  };
-
-  writeInlineArtifact(params.ctx, path, payload);
-
-  return params.ok({ title, chartType, labels, datasets: sanitizedDatasets.length, path }, { createdFiles: [path] });
+  writeInlineArtifact(params.ctx, path, { ...payload });
+  return params.ok({ title: payload.title, chartType: payload.chartType, labels: payload.labels, datasets: payload.datasets.length, path }, { createdFiles: [path] });
 }
 
 function artifactDataPath(path: string, fallback: string): string {
@@ -297,12 +297,20 @@ export async function handleCreateDashboard(params: {
 
   if (metrics.length < 1) return params.fail('Dashboard requires at least one metric.');
 
+  const charts: ChartArtifactPayload[] = [];
+  for (const args of Array.isArray(params.args.charts) ? params.args.charts as Record<string, unknown>[] : []) {
+    const chart = buildChartPayload(args);
+    if (typeof chart === 'string') return params.fail(`Dashboard chart: ${chart}`);
+    charts.push(chart);
+  }
+
   const payload = {
     kind: 'dashboard',
     title,
     subtitle,
     metrics,
-    sections
+    sections,
+    ...(charts.length ? { charts } : {})
   };
 
   writeInlineArtifact(params.ctx, path, payload);
@@ -466,4 +474,3 @@ export function handleCreateHtmlCard(params: {
   writeInlineArtifact(params.ctx, path, payload);
   return params.ok({ title, path, htmlLength: html.length }, { createdFiles: [path] });
 }
-

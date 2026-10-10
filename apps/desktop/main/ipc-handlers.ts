@@ -24,7 +24,7 @@ import {
   restorePersistedJobs, setAutoLoadHandler
 } from './model-download.ts';
 import {
-  ingestDocument, ingestText, ingestTextFast, queryDocuments,
+  ingestDocument, readIngestedDocument, ingestText, ingestTextFast, queryDocuments,
   listRagDocuments, removeRagDocument, clearRagDocuments, hasRagDocuments
 } from './rag-engine.ts';
 import {
@@ -90,6 +90,8 @@ import { registerCodeWorkspaceHandlers, disposeCodeWorkspace } from './ipc/code-
 import { registerAgenteHandlers, disposeAgenteSessions as disposeAllAgenteSessions } from './ipc/agente-handlers.ts';
 import { registerBotHandlers } from './agente/bots.ts';
 import { registerBrowserChat, stopBrowserChat } from './agente/browser-chat.ts';
+import { registerDesignHandlers } from './ipc/design-handlers.ts';
+import { registerDesignReferenceHandlers } from './ipc/design-reference-handlers.ts';
 import type { ErrorMessageFn } from './ipc/types.ts';
 import { createLogger } from './utils/logger.ts';
 
@@ -305,6 +307,7 @@ export function registerIpcHandlers() {
   registerRagHandlers({
     ipcMain,
     ingestDocument,
+    readIngestedDocument,
     ingestText,
     ingestTextFast,
     queryDocuments,
@@ -401,6 +404,10 @@ export function registerIpcHandlers() {
 
   // ── Browser chat (the extension's side panel, answered with Home turns) ──
   registerBrowserChat(ipcMain, getMainWindow);
+
+  // ── Design (per-chat HTML/CSS workspaces, path-jailed) ──
+  registerDesignHandlers(ipcMain);
+  registerDesignReferenceHandlers(ipcMain);
 }
 
 export { disposeAllAgenteSessions, disposeCodeWorkspace, stopBrowserChat };

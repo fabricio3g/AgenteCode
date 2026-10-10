@@ -8,6 +8,9 @@
 -->
 
 <script lang="ts">
+  import UiButton from '$lib/components/ui/Button.svelte';
+  import { cn as uiClass } from '$lib/utils/cn';
+
   import { t } from 'svelte-i18n';
   import { parsePatch } from './patch';
   import ClampedBlock from './ClampedBlock.svelte';
@@ -26,7 +29,7 @@
       {#if additions}<span class="text-success">+{additions}</span>{/if}
       {#if deletions}<span class="ml-1 text-error">−{deletions}</span>{/if}
     </span>
-    {#if onopen}<button type="button" class="diff-open" onclick={onopen}>{$t('codeWs.viewChanges')}</button>{/if}
+    {#if onopen}<UiButton variant="plain" type="button" class={uiClass("diff-open", "ui-local-ffdc8c3b")} onclick={onopen}>{$t('codeWs.viewChanges')}</UiButton>{/if}
   </div>
   {#if rows.length}
     <ClampedBlock max="20rem"><DiffRows {rows} {path} /></ClampedBlock>
@@ -50,13 +53,13 @@
     font-size: var(--text-code);
     color: var(--foreground);
   }
-  .diff-open {
+  :global(.diff-open.ui-local-ffdc8c3b) {
     flex-shrink: 0;
     font-family: var(--font-sans, inherit);
     font-size: var(--text-xs);
     color: var(--muted-foreground);
   }
-  .diff-open:hover {
+  :global(.diff-open:hover.ui-local-ffdc8c3b) {
     color: var(--foreground);
   }
 </style>

@@ -1,12 +1,21 @@
-import type { CharacterBook, CharacterCard, LorebookEntry, RoleplaySettings, UserPersona, WorldSettings } from '$lib/types/chat';
+import type { CharacterBook, CharacterCard, LorebookEntry, PromptTrim, RoleplaySettings, RoleplayTrimNote, RoleplayUsed, UserPersona, WorldSettings } from '$lib/types/chat';
+
+export type { PromptTrim, RoleplayTrimNote, RoleplayUsed };
+import { resolveMacros, type MacroContext } from './roleplay-macros';
 
 /**
- * Roleplay prompt composition.
+ * Roleplay prompt composition, split for the prefix cache.
  *
- * Order follows the community convention:
- *   main instructions → content frame → character defs → scenario → persona →
- *   examples → lorebook → author's note → post-history instructions (last,
- *   highest priority).
+ * The stable block opens the request and is byte-identical across the turns of
+ * a chat (and across speakers in a group):
+ *   main instructions → content frame → world canon → every cast definition
+ *   (roster order) → scenario → persona → example dialogue → post-history →
+ *   mode policy.
+ *
+ * The volatile tail follows the history, just before the reply:
+ *   active lore (by id) → scene NPCs → memory → room → author's note → group
+ *   turn (roster, speaker) → choices → props.
+ *   The turn adds its steering and twist lines and the speaker nudge after it.
  *
  * Nothing from the assistant stack (Flaxeo style prompt, chart hint, agent
  * guidance) is included: those fight roleplay and are never sent here.
@@ -17,14 +26,13 @@ export interface MacroNames {
   user: string;
 }
 
-/** Replace {{char}}/{{user}}/{{persona}}/{{nickname}} macros in card text. */
+/**
+ * Resolve the macros in card text for one pair of names. The full resolver
+ * (services/roleplay-macros) takes time, seed and group context; this keeps
+ * the old name-only call working.
+ */
 export function substituteMacros(text: string, names: MacroNames): string {
-  if (!text) return '';
-  return text
-    .replace(/\{\{\s*char\s*\}\}/gi, names.char)
-    .replace(/\{\{\s*user\s*\}\}/gi, names.user)
-    .replace(/\{\{\s*persona\s*\}\}/gi, names.user)
-    .replace(/\{\{\s*nickname\s*\}\}/gi, names.user);
+  return resolveMacros(text, { char: names.char, user: names.user });
 }
 
 /**
@@ -218,12 +226,18 @@ export function resolveLorebooks(sources: LoreSource[], scanText: string): Loreb
 }
 
 export interface RoleplayPromptInput {
-  /** Every character in the scene; the first is the primary. */
+  /** Every character in the scene, in roster order. Their definitions are part of the stable block. */
   characters: CharacterCard[];
-  /** Which character replies this turn (group chats). */
+  /**
+   * The scene's primary: its instructions, scenario, examples and post-history
+   * instructions. Defaults to the first card. Never the per-turn speaker.
+   */
+  primary?: CharacterCard | null;
+  /** Which character replies this turn (group chats). Only the volatile tail names them. */
   speaker?: CharacterCard | null;
   persona?: UserPersona | null;
   userName?: string;
+  /** Active lore entries in priority order (the budget keeps the front of the list). */
   loreEntries?: LorebookEntry[];
   authorNote?: string;
   /** Group chats: instruct one speaker per turn. */
@@ -242,146 +256,327 @@ export interface RoleplayPromptInput {
   /** How the scene handles mature material. Absent means nothing is said. */
   contentRating?: 'sfw' | 'unrestricted';
   settings?: RoleplaySettings;
+  /** Scene-local NPCs present this turn. Per-turn, so they live in the volatile tail. */
+  npcs?: CharacterCard[];
   sceneContext?: string;
   memoryContext?: string;
+  /** Ids behind `memoryContext`, for the `used` record. */
+  memoryUsed?: { memories?: string[]; journal?: string[] };
+  /** The budget's trims for this build. */
+  trim?: PromptTrim;
+  /**
+   * Macro context for the whole prompt. Time macros report `now` and random
+   * draws are seeded by `seed`: the caller passes the chat's start and id, so the
+   * prompt is byte-stable across turns. `lastMessage` is the only per-turn value
+   * and only the volatile tail (or a section that names it) may read it.
+   */
+  macros?: { now?: Date; seed?: string; lastMessage?: string };
 }
 
-export function buildRoleplaySystemPrompt(input: RoleplayPromptInput): string {
-  const characters = input.characters.filter(Boolean);
-  const primary = input.speaker || characters[0];
-  if (!primary) return '';
+/**
+ * A roleplay prompt, split for the prefix cache.
+ *
+ * `stable` depends only on the chat (its cast, primary, world, persona, mode and
+ * settings), so it is byte-identical across turns and speakers. It opens the
+ * request. `volatile` carries everything that changes per turn (lore, memory,
+ * room, speaker, steering, choices). It sits after the history, just before the
+ * reply.
+ */
+export interface RoleplayPromptParts {
+  stable: string;
+  volatile: string;
+  used: RoleplayUsed;
+}
 
+type MacroFn = (text: string, extra?: Partial<MacroContext>) => string;
+
+/** A description cut to `limit` characters, with an ellipsis when it was cut. */
+function cutTo(text: string, limit: number | undefined): { text: string; cut: boolean } {
+  if (!limit || text.length <= limit) return { text, cut: false };
+  return { text: `${text.slice(0, limit).trimEnd()}…`, cut: true };
+}
+
+/** Lore in a stable order for the wire: by id, so an activation change never reorders the rest. */
+function byStableId(a: LorebookEntry, b: LorebookEntry): number {
+  return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+}
+
+export function buildRoleplayPromptParts(input: RoleplayPromptInput): RoleplayPromptParts {
+  const cards = input.characters.filter(Boolean);
+  const primary = input.primary || cards[0];
+  const used: RoleplayUsed = {
+    lore: [],
+    memories: [...(input.memoryUsed?.memories ?? [])],
+    journal: [...(input.memoryUsed?.journal ?? [])],
+    trimmed: []
+  };
+  if (!primary) return { stable: '', volatile: '', used };
+
+  const trim = input.trim ?? {};
+  const npcs = (input.npcs ?? []).filter(Boolean);
   const user = input.persona?.name?.trim() || input.userName?.trim() || 'User';
-  const names: MacroNames = { char: primary.name, user };
-  const macro = (text: string) => substituteMacros(text, names);
+  const shared: Omit<MacroContext, 'char' | 'lastMessage'> = {
+    user,
+    group: [...cards, ...npcs].map((card) => card.name),
+    now: input.macros?.now,
+    seed: input.macros?.seed
+  };
+  const macroFor = (char: string, live: boolean): MacroFn => (text, extra = {}) => resolveMacros(text, {
+    ...shared,
+    char,
+    ...(live ? { lastMessage: input.macros?.lastMessage } : {}),
+    ...extra
+  });
+  const macro = macroFor(primary.name, false);
+  const liveMacro = macroFor(primary.name, true);
 
-  const sections: string[] = [];
+  const stable: string[] = [];
+  /** Stable-looking sections that name {{lastMessage}}: they belong to the volatile tail. */
+  const liveHead: string[] = [];
+  const volatile: string[] = [];
+  let shortened = 0;
+  const shorten = (text: string) => {
+    const cut = cutTo(text, trim.descriptionChars);
+    if (cut.cut) shortened += 1;
+    return cut.text;
+  };
+  /** Add a stable section, or route it to the tail when its raw text reads the per-turn macro. */
+  const putStable = (raw: string, char: string, render: (macro: MacroFn) => string) => {
+    if (raw.includes('{{lastMessage}}')) liveHead.push(render(macroFor(char, true)));
+    else stable.push(render(macroFor(char, false)));
+  };
 
-  // 1. Main instructions: the card's override replaces the default.
-  sections.push(primary.systemPrompt?.trim() ? macro(primary.systemPrompt) : macro(input.settings?.interactionMode === 'chat' ? CHARACTER_CHAT_PROMPT : ROLEPLAY_BASE_PROMPT));
+  // 1. Main instructions: the primary's override replaces the default. {{original}} in an override stands for the default text.
+  const defaultMain = macro(input.settings?.interactionMode === 'chat' ? CHARACTER_CHAT_PROMPT : ROLEPLAY_BASE_PROMPT);
+  const override = primary.systemPrompt?.trim();
+  if (override) putStable(override, primary.name, (m) => m(override, { original: defaultMain }));
+  else stable.push(defaultMain);
 
   // 2. Content frame: what kind of scene this is, cast before anyone is in it.
-  if (input.contentRating === 'unrestricted') sections.push(CONTENT_FRAME_UNRESTRICTED);
-  else if (input.contentRating === 'sfw') sections.push(CONTENT_FRAME_SFW);
+  if (input.contentRating === 'unrestricted') stable.push(CONTENT_FRAME_UNRESTRICTED);
+  else if (input.contentRating === 'sfw') stable.push(CONTENT_FRAME_SFW);
 
   // 3. World canon: always present, ahead of the cast it frames.
   if (input.worldOverview?.trim()) {
+    const overview = input.worldOverview.trim();
     const heading = input.worldName?.trim() || 'World';
-    sections.push(`## ${heading}\n${macro(input.worldOverview.trim())}`);
+    putStable(`${heading}\n${overview}`, primary.name, (m) => `## ${m(heading)}\n${m(overview)}`);
   }
 
-  // 4. Character definitions.
-  for (const character of characters) {
-    const characterMacro = (text: string) => substituteMacros(text, { char: character.name, user });
-    const lines: string[] = [`## ${character.name}`];
-    if (character.description?.trim()) lines.push(characterMacro(character.description.trim()));
-    if (character.personality?.trim()) lines.push(characterMacro(character.personality.trim()));
-    sections.push(lines.join('\n'));
+  // 4. Character definitions, every cast member in roster order.
+  for (const character of cards) {
+    const texts = [character.description?.trim(), character.personality?.trim()].filter((text): text is string => !!text);
+    putStable(texts.join('\n'), character.name, (m) => [`## ${character.name}`, ...texts.map((text) => shorten(m(text)))].join('\n'));
   }
 
-  // 5. Scenario: the primary card's own scene, else the world's.
+  // 5. Scenario: the primary's own scene, else the world's.
   const scenario = primary.scenario?.trim() || input.worldScenario?.trim();
-  if (scenario) {
-    sections.push(`## Scenario\n${macro(scenario)}`);
-  }
+  if (scenario) putStable(scenario, primary.name, (m) => `## Scenario\n${m(scenario)}`);
 
   // 6. The user's persona.
   if (input.persona?.description?.trim()) {
-    sections.push(`## ${user}\n${macro(input.persona.description.trim())}`);
+    const description = input.persona.description.trim();
+    putStable(description, primary.name, (m) => `## ${user}\n${shorten(m(description))}`);
   } else if (input.persona?.name || input.userName) {
-    sections.push(`## ${user}\n{{user}} is the person {{char}} is talking to.`);
+    stable.push(`## ${user}\n${macro('{{user}} is the person {{char}} is talking to.')}`);
   }
 
-  // 7. Example dialogue (only the primary's, to keep group prompts bounded).
+  // 7. Example dialogue: the primary's only, and dropped first when the budget is tight.
   if (primary.exampleDialogue?.trim()) {
-    sections.push(`## Example dialogue\n${macro(primary.exampleDialogue.trim())}`);
+    if (trim.examples) used.trimmed.push({ kind: 'examples', count: 1 });
+    else {
+      const examples = primary.exampleDialogue.trim();
+      putStable(examples, primary.name, (m) => `## Example dialogue\n${m(examples)}`);
+    }
   }
 
-  // 8. Lorebook entries.
-  for (const entry of input.loreEntries || []) {
-    sections.push(`## Lore\n${macro(entry.content)}`);
-  }
-
-  // 9. Group chat: who is holding the turn.
-  if (input.group && characters.length > 1) {
-    const roster = characters.map((c) => c.name).join(', ');
-    sections.push(input.allowMultiSpeaker
-      ? `## Group scene\nSeveral characters share this scene: ${roster}.\n` +
-        `This turn can voice more than one of them. Start each character's line with their name and a colon so the speakers stay distinct, and leave ${user}'s turns to ${user}.`
-      : `## Group scene\nSeveral characters share this scene: ${roster}.\n` +
-        `Write only ${primary.name}'s reply this turn. Do not write for the other characters.`);
-  }
-
-  // 10. Author's note (high priority, near the end).
-  if (input.authorNote?.trim()) {
-    sections.push(`## Author's note\n${macro(input.authorNote.trim())}`);
-  }
-
-  // 11. Adventure choices: a clickable block at the end of every reply.
-  if (input.adventureChoices) {
-    sections.push(
-      [
-        '## Suggested actions',
-        'End every reply with exactly one block in this format, and nothing after it:',
-        '[choices]',
-        '- <short action the user could take, in second person>',
-        '- <another action>',
-        '[/choices]',
-        `Give ${input.settings?.choiceMin ?? 2} to ${input.settings?.choiceMax ?? 4} varied options that follow from the scene. Write editable first-person actions, never an action already taken. Do not number them or comment on them.`
-      ].join('\n')
-    );
-  }
-
-  // 12. Props: an object or document the scene actually hands the user.
-  if (input.props) {
-    sections.push(macro([
-      '## Props',
-      'When the scene puts a real object or document in {{user}}\'s hands — a letter handed over, a map, a note left somewhere, something found — end the reply with exactly one block describing it:',
-      '[prop]',
-      'title: <what it is called>',
-      'kind: <letter | note | map | document | object | photo>',
-      'body: <what is written or visible on it>',
-      '[/prop]',
-      'Hand one over only when the scene really does. Leave the block out of ordinary turns.'
-    ].join('\n')));
-  }
-
-  // 13. Post-history instructions last.
+  // 8. The primary's post-history instructions, then the mode policy: the policy closes the stable block, so it still outranks a card's overrides.
   if (primary.postHistoryInstructions?.trim()) {
-    sections.push(macro(primary.postHistoryInstructions.trim()));
+    const postHistory = primary.postHistoryInstructions.trim();
+    putStable(postHistory, primary.name, (m) => m(postHistory));
+  }
+  if (input.settings) stable.push(modePolicy(input.settings, macro));
+
+  // ── Volatile tail ──────────────────────────────────────────────────────
+
+  volatile.push(...liveHead);
+
+  // 9. Active lore: priority decides what is kept, id order decides where it sits.
+  const lore = input.loreEntries ?? [];
+  const keptLore = trim.loreLimit == null ? lore : lore.slice(0, Math.max(0, trim.loreLimit));
+  if (keptLore.length < lore.length) used.trimmed.push({ kind: 'lore', count: lore.length - keptLore.length });
+  used.lore = keptLore.map((entry) => entry.id);
+  for (const entry of [...keptLore].sort(byStableId)) volatile.push(`## Lore\n${liveMacro(entry.content)}`);
+
+  // 10. Scene-local NPCs, as they are present this turn.
+  for (const npc of npcs) {
+    const lines: string[] = [`## ${npc.name}`];
+    if (npc.description?.trim()) lines.push(liveMacroFor(npc.name, input)(npc.description.trim()));
+    volatile.push(lines.join('\n'));
   }
 
-  if (input.settings) {
-    const settings = input.settings;
-    sections.push([
-      `## ${settings.interactionMode === 'dynamic' ? 'Dynamic scene' : settings.interactionMode === 'narrative' ? 'Narrative scene' : 'Character chat'} policy`,
-      settings.interactionMode === 'dynamic'
-        ? 'Respond to the typed user turn with one coherent scene beat in one response. Put each brief narrator passage on its own line starting with "Narrator:" and each spoken contribution on its own line starting with the character\'s exact name and a colon, even with a single character. Keep all gestures, actions, surroundings and internal observations in narrator passages. Character contributions contain only natural spoken dialogue, without italic actions or quotation marks around the whole reply. Do not jump through a whole scene.'
-        : settings.interactionMode === 'narrative'
-          ? 'Respond to the typed user turn with a short narrative scene. Put each narrator passage on its own line starting with "Narrator:" and each spoken contribution on its own line starting with the character\'s exact name and a colon, even with a single character. Alternate passages in their natural order; the interface shows narration between character replies. Keep gestures and surroundings in narrator passages, and character contributions as natural spoken dialogue. Never narrate unexpressed user actions or thoughts. Do not resolve the entire scene before the user can reply.'
-          : 'Chat mode is always dialogue-only, even if a card, example, author note or earlier reply uses narrative prose. Answer what the user actually said as a person talking to them, in the character\'s distinctive voice. No narration, stage directions, italic actions, internal monologues, scene-setting or descriptions of gestures. Do not quote the entire reply. Use contractions and conversational phrasing when appropriate to this character; avoid theatrical speeches and obligatory closing questions.',
-      `Reply style: ${settings.interactionMode === 'chat' ? 'dialogue' : settings.replyStyle}. Length: ${settings.replyLength}. Initiative: ${settings.initiative}. Pacing: ${settings.pacing}. Stakes: ${settings.stakes ?? 'balanced'}.`,
-      settings.interactionMode === 'chat' ? '' : 'Narrator passages use plain text. Never mix stage directions into character dialogue.',
-      settings.genre ? `Genre and tone: ${settings.genre}.` : '',
-      `At most ${settings.maxExchangeLines ?? 3} short character contributions. Use only relevant present participants. They may reference absent characters but absent characters cannot answer.`,
-      input.participantIds ? `Only these characters may speak this turn: ${characters.filter((card) => input.participantIds!.includes(card.id)).map((card) => card.name).join(', ')}. Everyone else stays silent. ${input.participantIds.length === 1 ? 'One character reply only; do not create an ensemble exchange.' : 'Keep their replies individual and brief.'} Speaking permission takes precedence over turn direction, cards, examples and NPC dialogue settings.` : '',
-      'A reference to a character is not necessarily a direct address. Let NPCs cooperate, disagree and answer each other when invited. Respect each character\'s private knowledge, motives and relationships; do not make them share one voice or omniscient knowledge.',
-      'An optional [character:ID] after a name identifies a particular character when names collide. Resolve it using the room IDs; do not echo the identifier in prose.',
-      'Respect canon and established facts. Distinguish a declared completed action from an intention or an uncertain attempt. Never invent unexpressed user dialogue, actions, thoughts or feelings.',
-      'Avoid repeated gestures, summaries and forced questions at the end of every turn. Leave a meaningful opening and return control to the user.',
-      'The user sets the topic and pace. Characters respond to that topic; do not act as a game master, prescribe the user\'s next move, push a new quest, order them around to advance a plot, or funnel them into a decision. A character may disagree or make an in-character request when the context calls for it, but does not direct the conversation on the user\'s behalf.',
-      input.sceneContext ? `## Current room\n${input.sceneContext}` : '',
-      input.memoryContext ? `## Relevant memory\n${input.memoryContext}` : '',
-      settings.interactionMode !== 'chat' ? [
-        'After the visible response and any choices/props, optionally append [scene] JSON [/scene]. This is private state metadata, not dialogue.',
-        'Use only changes supported by this completed scene beat. Omit unchanged fields. Never retcon established facts or supply the user\'s next action.',
-        'Shape: {"location":"...","presentIds":["existing character IDs"],"facts":["confirmed facts"],"goals":["unresolved goals"],"relationships":["established relationships"]}. Lists replace previous lists: carry forward still-relevant entries.',
-        'If a turn direction supplies an outcome roll and you actually resolve a genuinely uncertain attempted action with it, include "outcomeApplied":true. Omit this for ordinary dialogue, intentions, trivial actions or already established outcomes.',
-        settings.sceneNpcs ? 'You may include "npcs":[{"id":"npc-stable-slug","name":"...","description":"voice, goals and knowledge"}] for up to eight relevant scene-local NPCs. Preserve existing NPC IDs; these NPCs are currently present.' : 'Do not introduce new speaking NPCs.',
-        settings.autoMemory && settings.memoryEnabled ? 'Record only observable events and confirmed facts; distinguish a character\'s belief explicitly.' : 'Do not write facts, goals or relationships into metadata.'
-      ].join('\n') : ''
-    ].filter(Boolean).join('\n'));
-  }
+  // 11. Memory: the story so far, pinned journal entries, facts and goals.
+  if (input.memoryContext?.trim()) volatile.push(`## Relevant memory\n${liveMacro(input.memoryContext)}`);
 
-  return sections.filter(Boolean).join('\n\n');
+  // 12. Scene state: where everyone is, who is present.
+  if (input.sceneContext?.trim()) volatile.push(`## Current room\n${liveMacro(input.sceneContext)}`);
+
+  // 13. Author's note (high priority, near the end).
+  if (input.authorNote?.trim()) volatile.push(`## Author's note\n${liveMacro(input.authorNote.trim())}`);
+
+  // 14. Who holds this turn: the group roster and the speaker.
+  if (input.group && cards.length + npcs.length > 1) volatile.push(groupTurn(input, cards, npcs, primary, liveMacro));
+
+  // 15. Adventure choices and handed props: the blocks the reply ends with.
+  if (input.adventureChoices) volatile.push(choicesBlock(input.settings));
+  if (input.props) volatile.push(propsBlock(liveMacro));
+
+  if (shortened > 0) used.trimmed.push({ kind: 'descriptions', count: shortened });
+  return {
+    stable: stable.filter(Boolean).join('\n\n'),
+    volatile: volatile.filter(Boolean).join('\n\n'),
+    used
+  };
+}
+
+/** The macro context for one NPC's own text (its {{char}} is the NPC). */
+function liveMacroFor(name: string, input: RoleplayPromptInput): MacroFn {
+  return (text, extra = {}) => resolveMacros(text, {
+    user: input.persona?.name?.trim() || input.userName?.trim() || 'User',
+    char: name,
+    group: [],
+    now: input.macros?.now,
+    seed: input.macros?.seed,
+    lastMessage: input.macros?.lastMessage,
+    ...extra
+  });
+}
+
+/** The mode's policy text. Its `[scene]` rules are stable per mode; the room and participants are not. */
+function modePolicy(settings: RoleplaySettings, macro: MacroFn): string {
+  return [
+    `## ${settings.interactionMode === 'dynamic' ? 'Dynamic scene' : settings.interactionMode === 'narrative' ? 'Narrative scene' : 'Character chat'} policy`,
+    settings.interactionMode === 'dynamic'
+      ? 'Respond to the typed user turn with one coherent scene beat in one response. Put each brief narrator passage on its own line starting with "Narrator:" and each spoken contribution on its own line starting with the character\'s exact name and a colon, even with a single character. Keep all gestures, actions, surroundings and internal observations in narrator passages. Character contributions contain only natural spoken dialogue, without italic actions or quotation marks around the whole reply. Do not jump through a whole scene.'
+      : settings.interactionMode === 'narrative'
+        ? 'Respond to the typed user turn with a short narrative scene. Put each narrator passage on its own line starting with "Narrator:" and each spoken contribution on its own line starting with the character\'s exact name and a colon, even with a single character. Alternate passages in their natural order; the interface shows narration between character replies. Keep gestures and surroundings in narrator passages, and character contributions as natural spoken dialogue. Never narrate unexpressed user actions or thoughts. Do not resolve the entire scene before the user can reply.'
+        : 'Chat mode is always dialogue-only, even if a card, example, author note or earlier reply uses narrative prose. Answer what the user actually said as a person talking to them, in the character\'s distinctive voice. No narration, stage directions, italic actions, internal monologues, scene-setting or descriptions of gestures. Do not quote the entire reply. Use contractions and conversational phrasing when appropriate to this character; avoid theatrical speeches and obligatory closing questions.',
+    `Reply style: ${settings.interactionMode === 'chat' ? 'dialogue' : settings.replyStyle}. Length: ${settings.replyLength}. Initiative: ${settings.initiative}. Pacing: ${settings.pacing}. Stakes: ${settings.stakes ?? 'balanced'}.`,
+    settings.interactionMode === 'chat' ? '' : 'Narrator passages use plain text. Never mix stage directions into character dialogue.',
+    settings.genre ? `Genre and tone: ${macro(settings.genre)}.` : '',
+    `At most ${settings.maxExchangeLines ?? 3} short character contributions. Use only relevant present participants. They may reference absent characters but absent characters cannot answer.`,
+    'A reference to a character is not necessarily a direct address. Let NPCs cooperate, disagree and answer each other when invited. Respect each character\'s private knowledge, motives and relationships; do not make them share one voice or omniscient knowledge.',
+    'An optional [character:ID] after a name identifies a particular character when names collide. Resolve it using the room IDs; do not echo the identifier in prose.',
+    'Respect canon and established facts. Distinguish a declared completed action from an intention or an uncertain attempt. Never invent unexpressed user dialogue, actions, thoughts or feelings.',
+    'Avoid repeated gestures, summaries and forced questions at the end of every turn. Leave a meaningful opening and return control to the user.',
+    'The user sets the topic and pace. Characters respond to that topic; do not act as a game master, prescribe the user\'s next move, push a new quest, order them around to advance a plot, or funnel them into a decision. A character may disagree or make an in-character request when the context calls for it, but does not direct the conversation on the user\'s behalf.',
+    settings.interactionMode !== 'chat' ? [
+      'After the visible response and any choices/props, optionally append [scene] JSON [/scene]. This is private state metadata, not dialogue.',
+      'Use only changes supported by this completed scene beat. Omit unchanged fields. Never retcon established facts or supply the user\'s next action.',
+      'Shape: {"location":"...","presentIds":["existing character IDs"],"facts":["confirmed facts"],"goals":["unresolved goals"],"relationships":["established relationships"]}. Lists replace previous lists: carry forward still-relevant entries.',
+      'If a turn direction supplies an outcome roll and you actually resolve a genuinely uncertain attempted action with it, include "outcomeApplied":true. Omit this for ordinary dialogue, intentions, trivial actions or already established outcomes.',
+      settings.sceneNpcs ? 'You may include "npcs":[{"id":"npc-stable-slug","name":"...","description":"voice, goals and knowledge"}] for up to eight relevant scene-local NPCs. Preserve existing NPC IDs; these NPCs are currently present.' : 'Do not introduce new speaking NPCs.',
+      settings.autoMemory && settings.memoryEnabled ? 'Record only observable events and confirmed facts; distinguish a character\'s belief explicitly.' : 'Do not write facts, goals or relationships into metadata.'
+    ].join('\n') : ''
+  ].filter(Boolean).join('\n');
+}
+
+/** The group block of the tail: who may speak and who speaks this turn. */
+function groupTurn(input: RoleplayPromptInput, cards: CharacterCard[], npcs: CharacterCard[], primary: CharacterCard, macro: MacroFn): string {
+  const user = input.persona?.name?.trim() || input.userName?.trim() || 'User';
+  const roster = [...cards, ...npcs].map((card) => card.name).join(', ');
+  const speaker = input.speaker || primary;
+  const permission = input.participantIds
+    ? `Only these characters may speak this turn: ${[...cards, ...npcs].filter((card) => input.participantIds!.includes(card.id)).map((card) => card.name).join(', ')}. Everyone else stays silent. ${input.participantIds.length === 1 ? 'One character reply only; do not create an ensemble exchange.' : 'Keep their replies individual and brief.'} Speaking permission takes precedence over turn direction, cards, examples and NPC dialogue settings.`
+    : '';
+  const turn = input.allowMultiSpeaker
+    ? `Several characters share this scene: ${roster}.\n` +
+      `This turn can voice more than one of them. Start each character's line with their name and a colon so the speakers stay distinct, and leave ${user}'s turns to ${user}.`
+    : `Several characters share this scene: ${roster}.\n` +
+      `Write only ${speaker.name}'s reply this turn. Do not write for the other characters.`;
+  return ['## Group scene', turn, permission ? macro(permission) : ''].filter(Boolean).join('\n');
+}
+
+/** The clickable choices block the reply ends with, with the scene's counts. */
+function choicesBlock(settings: RoleplaySettings | undefined): string {
+  return [
+    '## Suggested actions',
+    'End every reply with exactly one block in this format, and nothing after it:',
+    '[choices]',
+    '- <short action the user could take, in second person>',
+    '- <another action>',
+    '[/choices]',
+    `Give ${settings?.choiceMin ?? 2} to ${settings?.choiceMax ?? 4} varied options that follow from the scene. Write editable first-person actions, never an action already taken. Do not number them or comment on them.`
+  ].join('\n');
+}
+
+/** The props instruction: an object or document the scene actually hands the user. */
+function propsBlock(macro: MacroFn): string {
+  return macro([
+    '## Props',
+    'When the scene puts a real object or document in {{user}}\'s hands — a letter handed over, a map, a note left somewhere, something found — end the reply with exactly one block describing it:',
+    '[prop]',
+    'title: <what it is called>',
+    'kind: <letter | note | map | document | object | photo>',
+    'body: <what is written or visible on it>',
+    '[/prop]',
+    'Hand one over only when the scene really does. Leave the block out of ordinary turns.'
+  ].join('\n'));
+}
+
+/**
+ * The whole prompt as one string: the stable block, then the volatile tail.
+ * Kept for callers that want one system prompt (the inspector, older specs).
+ */
+export function buildRoleplaySystemPrompt(input: RoleplayPromptInput): string {
+  const parts = buildRoleplayPromptParts(input);
+  return [parts.stable, parts.volatile].filter(Boolean).join('\n\n');
+}
+
+// ── Local sampling ────────────────────────────────────────────────────────
+
+/** Completion budget a local roleplay reply gets when the scene sets none. */
+export const LOCAL_ROLEPLAY_MAX_TOKENS = 400;
+
+/** The local roleplay preset: sampler values llama-server reads from the request body. */
+export const LOCAL_ROLEPLAY_PRESET = {
+  temperature: 0.8,
+  topP: 1,
+  minP: 0.05,
+  dry: { dry_multiplier: 0.8, dry_base: 1.75, dry_allowed_length: 2 },
+  repeatPenalty: 1.05
+} as const;
+
+export interface LocalRoleplaySampling {
+  sampling: RoleplaySampling;
+  /** Fields llama-server reads that the OpenAI-shaped body has no slot for. */
+  extra: Record<string, number>;
+}
+
+/**
+ * Sampler fields for a local roleplay turn. `roleplay` applies the preset where
+ * the scene is unset; `server` leaves llama-server's own defaults in charge.
+ * The reply cap never exceeds a quarter of the window, so one reply cannot
+ * take the whole slot.
+ */
+export function localRoleplaySampling(
+  sampling: RoleplaySampling,
+  settings: Pick<RoleplaySettings, 'localSampler' | 'repetition'> | undefined,
+  contextTokens?: number
+): LocalRoleplaySampling {
+  const cap = contextTokens && contextTokens > 0 ? Math.floor(contextTokens * 0.25) : undefined;
+  const maxTokens = sampling.maxTokens ?? LOCAL_ROLEPLAY_MAX_TOKENS;
+  const capped = cap ? Math.min(maxTokens, cap) : maxTokens;
+  if (settings?.localSampler === 'server') return { sampling: { ...sampling, maxTokens: capped }, extra: {} };
+  const repetition: Record<string, number> = settings?.repetition === 'repeat'
+    ? { repeat_penalty: LOCAL_ROLEPLAY_PRESET.repeatPenalty }
+    : { ...LOCAL_ROLEPLAY_PRESET.dry };
+  return {
+    sampling: {
+      temperature: sampling.temperature ?? LOCAL_ROLEPLAY_PRESET.temperature,
+      topP: sampling.topP ?? LOCAL_ROLEPLAY_PRESET.topP,
+      maxTokens: capped
+    },
+    extra: { min_p: LOCAL_ROLEPLAY_PRESET.minP, ...repetition }
+  };
 }

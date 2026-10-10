@@ -11,6 +11,11 @@
 -->
 
 <script lang="ts">
+  import UiFileInput from '$lib/components/ui/FileInput.svelte';
+  import UiInput from '$lib/components/ui/Input.svelte';
+  import UiTextarea from '$lib/components/ui/Textarea.svelte';
+  import { cn as uiClass } from '$lib/utils/cn';
+
   import { t } from 'svelte-i18n';
   import { ArrowRight, Check, EyeOff, Highlighter, ChevronLeft, ChevronRight, Circle, ImagePlus, Minus, MousePointer2, Move, Pencil, Plus, RotateCcw, RotateCw, Square, SquareDashed, Trash2, Type, Upload, X } from 'lucide-svelte';
   import { Button, IconButton, Menu, Tooltip } from '$lib/components/ui';
@@ -209,7 +214,7 @@
   ondragleave={() => (dragOver = false)}
   ondrop={onDrop}
 >
-  <input bind:this={picker} type="file" accept={IMAGE_ACCEPT} class="hidden" multiple onchange={onPick} />
+  <UiFileInput bind:ref={picker}  accept={IMAGE_ACCEPT} class={uiClass("hidden", "ui-local-ad62cefe")} multiple onchange={onPick} />
 
   <div class="canvas-stage">
     {#if !image}
@@ -235,15 +240,15 @@
       {#if boards.length > 1}
         <div class="canvas-boards" role="tablist" aria-label={$t('canvas.boards')}>
           {#each boards as board (board.id)}
-            <button
+            <Button variant="plain"
               type="button"
               role="tab"
               aria-selected={image.id === board.id}
-              class="canvas-board-chip"
-              class:is-on={image.id === board.id}
+              class={uiClass("canvas-board-chip", "ui-local-ad62cefe", {"is-on": image.id === board.id})}
+
               title={board.name}
               onclick={() => canvasBoard.selectImage(board.id)}
-            >{board.name}</button>
+            >{board.name}</Button>
           {/each}
         </div>
         <span class="canvas-sep" aria-hidden="true"></span>
@@ -277,14 +282,14 @@
         {#each group as tool (tool.id)}
           {@const Icon = tool.icon}
           <Tooltip label={$t(`canvas.tools.${tool.id}`)} shortcut={tool.key === '␣' ? 'space' : tool.key} position="top">
-            <button
+            <IconButton label={$t(`canvas.tools.${tool.id}`)} size="xs" variant="ghost"
               type="button"
-              class="canvas-tool"
-              class:is-on={canvasBoard.tool === tool.id}
-              aria-label={$t(`canvas.tools.${tool.id}`)}
+              class={uiClass("canvas-tool", "ui-local-ad62cefe", {"is-on": canvasBoard.tool === tool.id})}
+
+
               aria-pressed={canvasBoard.tool === tool.id}
               onclick={() => (canvasBoard.tool = tool.id)}
-            ><Icon /></button>
+            ><Icon /></IconButton>
           </Tooltip>
         {/each}
       {/each}
@@ -292,37 +297,37 @@
       <Menu bind:open={styleOpen} placement="top-end" minWidth="11rem" label={$t('canvas.style')}>
         {#snippet trigger(props)}
           <Tooltip label={$t('canvas.style')} position="top">
-            <button type="button" class="canvas-tool canvas-style" {...props} aria-label={$t('canvas.style')}>
+            <Button variant="plain" type="button" class={uiClass("canvas-tool canvas-style", "ui-local-ad62cefe")} {...props} aria-label={$t('canvas.style')}>
               <span class="canvas-dot" style="background: {activeColor}"></span>
               <span class="canvas-line" style="height: {Math.max(1, activeWidth / 2)}px"></span>
-            </button>
+            </Button>
           </Tooltip>
         {/snippet}
         <div class="canvas-style-pop">
           <div class="canvas-swatches" role="radiogroup" aria-label={$t('canvas.color')}>
             {#each canvasBoard.colors as tone (tone)}
-              <button
+              <Button variant="plain"
                 type="button"
                 role="radio"
                 aria-checked={activeColor === tone}
                 aria-label={tone}
-                class="canvas-swatch"
+                class={uiClass("canvas-swatch", "ui-local-ad62cefe")}
                 style="background: {tone}"
                 onclick={() => setStyle(tone, activeWidth)}
-              >{#if activeColor === tone}<Check />{/if}</button>
+              >{#if activeColor === tone}<Check />{/if}</Button>
             {/each}
           </div>
           <div class="canvas-widths" role="radiogroup" aria-label={$t('canvas.stroke')}>
             {#each WIDTHS as width (width)}
-              <button
+              <Button variant="plain"
                 type="button"
                 role="radio"
                 aria-checked={activeWidth === width}
                 aria-label={$t('canvas.strokeWidth', { values: { n: String(width) } })}
-                class="canvas-stroke"
-                class:is-on={activeWidth === width}
+                class={uiClass("canvas-stroke", "ui-local-ad62cefe", {"is-on": activeWidth === width})}
+
                 onclick={() => setStyle(activeColor, width)}
-              ><span style="height: {Math.max(1, width / 2)}px"></span></button>
+              ><span style="height: {Math.max(1, width / 2)}px"></span></Button>
             {/each}
           </div>
         </div>
@@ -337,16 +342,16 @@
         </div>
         {#if selected}
           <label class="canvas-field">{$t(selected.kind === 'text' ? 'canvas.textContent' : 'canvas.markInstruction')}
-            <input class="ui-input" value={selected.text ?? ''} placeholder={$t('canvas.markInstructionHint')} oninput={(event) => canvasBoard.previewMark({ ...selected, text: event.currentTarget.value })} onchange={(event) => { canvasBoard.label(selected.id, event.currentTarget.value); canvasBoard.previewMark(null); }} />
+            <UiInput class={uiClass("", "ui-local-ad62cefe")} value={selected.text ?? ''} placeholder={$t('canvas.markInstructionHint')} oninput={(event) => canvasBoard.previewMark({ ...selected, text: event.currentTarget.value })} onchange={(event) => { canvasBoard.label(selected.id, event.currentTarget.value); canvasBoard.previewMark(null); }} />
           </label>
         {/if}
         <ul class="canvas-points" aria-label={$t('canvas.pointsList')}>
           {#each points as mark, index (mark.id)}
             {@const owner = canvasBoard.doc.images.find((item) => item.id === mark.imageId) as CanvasImage}
             <li class="canvas-point" class:is-on={canvasBoard.selectedId === mark.id}>
-              <button type="button" class="canvas-point-hit" aria-label={$t('canvas.selectPoint', { values: { n: String(index + 1) } })} onclick={() => canvasBoard.select(mark.id)}>{numberOf(mark)}</button>
-              <input
-                class="canvas-point-label"
+              <Button variant="plain" type="button" class={uiClass("canvas-point-hit", "ui-local-ad62cefe")} aria-label={$t('canvas.selectPoint', { values: { n: String(index + 1) } })} onclick={() => canvasBoard.select(mark.id)}>{numberOf(mark)}</Button>
+              <UiInput
+                class={uiClass("canvas-point-label", "ui-local-ad62cefe")}
                 value={mark.text || ''}
                 placeholder={pointName(index)}
                 aria-label={pointName(index)}
@@ -358,12 +363,12 @@
             </li>
           {/each}
         </ul>
-        <textarea class="canvas-instructions ui-input" rows="2" aria-label={$t('canvas.instructions')} placeholder={$t('canvas.instructionsHint')} value={canvasBoard.doc.instructions ?? ''} oninput={(event) => canvasBoard.setInstructions(event.currentTarget.value)} onblur={() => canvasBoard.save()}></textarea>
+        <UiTextarea class={uiClass("canvas-instructions ", "ui-local-ad62cefe")} rows={2} aria-label={$t('canvas.instructions')} placeholder={$t('canvas.instructionsHint')} value={canvasBoard.doc.instructions ?? ''} oninput={(event) => canvasBoard.setInstructions(event.currentTarget.value)} onblur={() => canvasBoard.save()}></UiTextarea>
       </aside>
     {:else}
-      <button type="button" class="canvas-float canvas-chip" aria-expanded="false" onclick={() => (showPoints = true)}>
+      <Button variant="plain" type="button" class={uiClass("canvas-float canvas-chip", "ui-local-ad62cefe")} aria-expanded="false" onclick={() => (showPoints = true)}>
         <ChevronLeft />{$t('canvas.points', { values: { n: String(points.length) } })}
-      </button>
+      </Button>
     {/if}
   {/if}
 </section>
@@ -379,7 +384,7 @@
   .canvas-drop-text { font-size: var(--text-sm); color: var(--foreground); }
   .canvas-drop-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.5rem; }
 
-  .canvas-float { position: absolute; z-index: 2; display: flex; align-items: center; gap: 0.125rem; padding: var(--float-pad); background: var(--float-bg); border: 1px solid var(--float-border); border-radius: var(--float-radius); box-shadow: var(--float-shadow); }
+  :is(.canvas-float, :global(.canvas-float.ui-local-ad62cefe)) { position: absolute; z-index: 2; display: flex; align-items: center; gap: 0.125rem; padding: var(--float-pad); background: var(--float-bg); border: 1px solid var(--float-border); border-radius: var(--float-radius); box-shadow: var(--float-shadow); }
   .canvas-top-left { top: 0.625rem; left: 0.625rem; max-width: calc(100% - 17rem); }
   .canvas-top-right { top: 0.625rem; right: 0.625rem; }
   /* One row always; a narrow panel scrolls the dock sideways rather than stacking it. */
@@ -390,38 +395,38 @@
   @container (max-width: 34rem) {
     .canvas-send-label { display: none; }
     .canvas-top-left { max-width: calc(100% - 12rem); }
-    .canvas-chip { bottom: 3.75rem; }
+    :global(.canvas-chip.ui-local-ad62cefe) { bottom: 3.75rem; }
   }
   .canvas-sep { width: 1px; height: 1.125rem; margin: 0 0.25rem; flex-shrink: 0; background: var(--float-border); }
 
-  .canvas-tool { display: inline-flex; width: 1.75rem; height: 1.75rem; flex-shrink: 0; align-items: center; justify-content: center; gap: 0.125rem; border-radius: var(--float-row-radius); color: var(--muted-foreground); transition: background var(--motion-fast) var(--motion-ease-out), color var(--motion-fast) var(--motion-ease-out); }
-  .canvas-tool :global(svg) { width: 1rem; height: 1rem; }
-  .canvas-tool:hover { background: var(--float-row-hover); color: var(--foreground); }
-  .canvas-tool.is-on { background: var(--nav-current-bg); box-shadow: var(--nav-current-ring); color: var(--foreground); }
-  .canvas-style { width: auto; padding: 0 0.375rem; }
+  :global(.canvas-tool.ui-local-ad62cefe) { display: inline-flex; width: 1.75rem; height: 1.75rem; flex-shrink: 0; align-items: center; justify-content: center; gap: 0.125rem; border-radius: var(--float-row-radius); color: var(--muted-foreground); transition: background var(--motion-fast) var(--motion-ease-out), color var(--motion-fast) var(--motion-ease-out); }
+  :global(.canvas-tool.ui-local-ad62cefe) :global(svg) { width: 1rem; height: 1rem; }
+  :global(.canvas-tool:hover.ui-local-ad62cefe) { background: var(--float-row-hover); color: var(--foreground); }
+  :global(.canvas-tool.is-on.ui-local-ad62cefe) { background: var(--nav-current-bg); box-shadow: var(--nav-current-ring); color: var(--foreground); }
+  :global(.canvas-style.ui-local-ad62cefe) { width: auto; padding: 0 0.375rem; }
   .canvas-dot { width: 0.875rem; height: 0.875rem; border-radius: 999px; box-shadow: inset 0 0 0 1px var(--float-border); }
   .canvas-line { display: block; width: 0.5rem; border-radius: 999px; background: var(--foreground); }
 
   .canvas-style-pop { display: flex; flex-direction: column; gap: 0.5rem; padding: 0.25rem; }
   .canvas-swatches { display: grid; grid-template-columns: repeat(4, 1.5rem); gap: 0.375rem; }
-  .canvas-swatch { display: inline-flex; width: 1.5rem; height: 1.5rem; align-items: center; justify-content: center; border-radius: 999px; box-shadow: inset 0 0 0 1px var(--float-border); color: white; transition: transform var(--motion-fast) var(--motion-ease-out); }
-  .canvas-swatch :global(svg) { width: 0.875rem; height: 0.875rem; filter: drop-shadow(0 0 1px rgb(0 0 0 / 0.6)); }
-  .canvas-swatch:hover { transform: scale(1.1); }
+  :global(.canvas-swatch.ui-local-ad62cefe) { display: inline-flex; width: 1.5rem; height: 1.5rem; align-items: center; justify-content: center; border-radius: 999px; box-shadow: inset 0 0 0 1px var(--float-border); color: white; transition: transform var(--motion-fast) var(--motion-ease-out); }
+  :global(.canvas-swatch.ui-local-ad62cefe) :global(svg) { width: 0.875rem; height: 0.875rem; filter: drop-shadow(0 0 1px rgb(0 0 0 / 0.6)); }
+  :global(.canvas-swatch:hover.ui-local-ad62cefe) { transform: scale(1.1); }
   .canvas-widths { display: flex; gap: 0.25rem; }
-  .canvas-stroke { display: inline-flex; flex: 1; height: 1.75rem; align-items: center; justify-content: center; border-radius: var(--float-row-radius); }
-  .canvas-stroke span { display: block; width: 1.25rem; border-radius: 999px; background: var(--muted-foreground); }
-  .canvas-stroke:hover { background: var(--float-row-hover); }
-  .canvas-stroke.is-on { background: var(--nav-current-bg); box-shadow: var(--nav-current-ring); }
-  .canvas-stroke.is-on span { background: var(--foreground); }
+  :global(.canvas-stroke.ui-local-ad62cefe) { display: inline-flex; flex: 1; height: 1.75rem; align-items: center; justify-content: center; border-radius: var(--float-row-radius); }
+  :global(.canvas-stroke.ui-local-ad62cefe) span { display: block; width: 1.25rem; border-radius: 999px; background: var(--muted-foreground); }
+  :global(.canvas-stroke:hover.ui-local-ad62cefe) { background: var(--float-row-hover); }
+  :global(.canvas-stroke.is-on.ui-local-ad62cefe) { background: var(--nav-current-bg); box-shadow: var(--nav-current-ring); }
+  :global(.canvas-stroke.is-on.ui-local-ad62cefe) span { background: var(--foreground); }
 
   .canvas-boards { display: flex; min-width: 0; gap: 0.25rem; overflow-x: auto; }
-  .canvas-board-chip { max-width: 10rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0.125rem 0.5rem; border-radius: var(--float-row-radius); font-size: var(--text-xs); color: var(--muted-foreground); }
-  .canvas-board-chip:hover { background: var(--float-row-hover); color: var(--foreground); }
-  .canvas-board-chip.is-on { background: var(--nav-current-bg); box-shadow: var(--nav-current-ring); color: var(--foreground); }
+  :global(.canvas-board-chip.ui-local-ad62cefe) { max-width: 10rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0.125rem 0.5rem; border-radius: var(--float-row-radius); font-size: var(--text-xs); color: var(--muted-foreground); }
+  :global(.canvas-board-chip:hover.ui-local-ad62cefe) { background: var(--float-row-hover); color: var(--foreground); }
+  :global(.canvas-board-chip.is-on.ui-local-ad62cefe) { background: var(--nav-current-bg); box-shadow: var(--nav-current-ring); color: var(--foreground); }
 
-  .canvas-chip { right: 0.625rem; bottom: 0.75rem; gap: 0.25rem; padding: 0.25rem 0.625rem; font-size: var(--text-xs); color: var(--muted-foreground); }
-  .canvas-chip:hover { background: var(--float-row-hover); color: var(--foreground); }
-  .canvas-chip :global(svg) { width: 0.875rem; height: 0.875rem; }
+  :global(.canvas-chip.ui-local-ad62cefe) { right: 0.625rem; bottom: 0.75rem; gap: 0.25rem; padding: 0.25rem 0.625rem; font-size: var(--text-xs); color: var(--muted-foreground); }
+  :global(.canvas-chip:hover.ui-local-ad62cefe) { background: var(--float-row-hover); color: var(--foreground); }
+  :global(.canvas-chip.ui-local-ad62cefe) :global(svg) { width: 0.875rem; height: 0.875rem; }
   .canvas-sheet { top: 3.75rem; right: 0.625rem; bottom: 0.75rem; width: min(17rem, 40%); flex-direction: column; align-items: stretch; gap: 0.5rem; overflow-y: auto; padding: 0.5rem; }
   @media (max-height: 30rem) { .canvas-sheet { top: 3.75rem; bottom: 3.5rem; } }
   .canvas-sheet-head { display: flex; align-items: center; justify-content: space-between; }
@@ -430,14 +435,14 @@
   .canvas-points { display: flex; min-height: 0; flex-direction: column; gap: 0.0625rem; }
   .canvas-point { display: flex; align-items: center; gap: 0.375rem; padding: 0.125rem 0.25rem; border-radius: var(--float-row-radius); }
   .canvas-point:hover { background: var(--float-row-hover); }
-  .canvas-point.is-on { background: var(--float-row-selected); }
-  .canvas-point-hit { display: inline-flex; width: 1.25rem; height: 1.25rem; flex-shrink: 0; align-items: center; justify-content: center; border-radius: 999px; background: var(--muted); font-size: var(--text-xs); font-weight: 700; }
-  .canvas-point-label { min-width: 0; flex: 1; background: transparent; font-size: var(--text-xs); outline: none; }
+  :is(.canvas-point.is-on, :global(.canvas-point.is-on.ui-local-ad62cefe)) { background: var(--float-row-selected); }
+  :global(.canvas-point-hit.ui-local-ad62cefe) { display: inline-flex; width: 1.25rem; height: 1.25rem; flex-shrink: 0; align-items: center; justify-content: center; border-radius: 999px; background: var(--muted); font-size: var(--text-xs); font-weight: 700; }
+  :global(.canvas-point-label.ui-local-ad62cefe) { min-width: 0; flex: 1; background: transparent; font-size: var(--text-xs); outline: none; }
   .canvas-point-where { flex-shrink: 0; font-size: var(--text-xs); color: var(--muted-foreground); font-variant-numeric: tabular-nums; }
-  .canvas-instructions { flex-shrink: 0; resize: vertical; max-height: 8rem; font-size: var(--text-xs); }
+  :global(.canvas-instructions.ui-local-ad62cefe) { flex-shrink: 0; resize: vertical; max-height: 8rem; font-size: var(--text-xs); }
 
   @media (prefers-reduced-motion: reduce) {
-    .canvas-tool, .canvas-swatch, .canvas-drop { transition: none; }
-    .canvas-swatch:hover { transform: none; }
+    :global(.canvas-tool.ui-local-ad62cefe), :global(.canvas-swatch.ui-local-ad62cefe), .canvas-drop { transition: none; }
+    :global(.canvas-swatch:hover.ui-local-ad62cefe) { transform: none; }
   }
 </style>

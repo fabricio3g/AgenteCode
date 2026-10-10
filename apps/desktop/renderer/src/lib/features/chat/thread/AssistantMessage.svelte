@@ -2,7 +2,9 @@
 
 <script lang="ts">
   import Avatar from '$lib/components/ui/Avatar.svelte';
-  import { Copy, Dices, FileSearch, GitBranch, Pencil, RefreshCcw, Trash2, Volume2, X } from 'lucide-svelte';
+  import { AlertTriangle, Copy, Dices, FileSearch, GitBranch, Pencil, Pin, RefreshCcw, Trash2, Volume2, X } from 'lucide-svelte';
+  import { Button } from '$lib/components/ui';
+  import RecallLine from '$lib/features/roleplay/RecallLine.svelte';
   import { t } from 'svelte-i18n';
   import { appStore } from '$lib/stores/app.svelte';
   import { roleplayStore } from '$lib/features/roleplay/roleplay.svelte';
@@ -64,7 +66,7 @@
   });
   /** Roleplay: the latest reply can be swiped to another version, or a new one. */
   const swipeable = $derived(
-    chat?.contextMode === 'roleplay' && !isGreetingMessage && !ctx.isStreaming
+    chat?.contextMode === 'roleplay' && !isGreetingMessage && !ctx.isStreaming && !ctx.message.metadata?.error
       && chat.messages.at(-1)?.id === ctx.message.id
   );
   const greetingCharacter = $derived(
@@ -81,7 +83,7 @@
     const choices = snapshot?.choices ?? ctx.message.choices ?? [];
     if (!choices.length || chat?.contextMode !== 'roleplay' || ctx.isStreaming) return [];
     const last = chat.messages?.[chat.messages.length - 1];
-    return last?.id === ctx.message.id ? choices : [];
+    return last?.id === ctx.message.id ? choices.map((choice) => roleplayStore.displayText(choice, { messageId: ctx.message.id })) : [];
   });
   /** Props the turn put in the user's hands — roleplay's own artifacts. */
   // Not called `props`: Svelte would read `$props` in this scope as a store
@@ -93,6 +95,14 @@
     !!deepResearchStore.getActiveTaskForMessage(ctx.message.id)
   );
 
+  /**
+   * A roleplay reply whose generation failed: the error is written into the
+   * message, so it shows as an error row with Retry, never as the character's line.
+   */
+  const roleplayFailed = $derived(chat?.contextMode === 'roleplay' && !!ctx.message.metadata?.error && !ctx.isStreaming);
+  const recall = $derived(chat?.contextMode === 'roleplay' && !roleplayFailed ? snapshot?.recall : undefined);
+  const retryBusy = $derived(appStore.currentChatGenerating || appStore.currentChatBlockedByOtherLocalRun);
+
   const ttsEnabled = $derived(!!appStore.config.tts?.enable_voice_output && presentation?.voicePlayback !== false);
   const ttsBusy = $derived(
     ttsStore.currentMessageId === ctx.message.id && (ttsStore.isGenerating || ttsStore.playing || ttsStore.paused)
@@ -103,7 +113,8 @@
   );
 
   // Charts render as their own blocks, so the copyable text is the prose only.
-  const copyableText = $derived(stripChartBlocks(ctx.displayContent) || ctx.message.content || '');
+  // Roleplay copies what is shown; the raw text would carry unresolved macros.
+  const copyableText = $derived(stripChartBlocks(ctx.displayContent) || (ctx.contextMode === 'roleplay' ? '' : ctx.message.content) || '');
 
   function toggleTts() {
     if (ttsBusy || (separateSpeakers && ttsStore.currentMessageId?.startsWith(`${ctx.message.id}:voice:`))) {
@@ -154,6 +165,12 @@
         id: 'reroll', label: $t('roleplay.newDirection'), icon: Dices,
         disabled: appStore.currentChatGenerating || appStore.currentChatBlockedByOtherLocalRun,
         run: () => appStore.regenerateMessage(ctx.message.id, { reroll: true })
+      },
+      chat?.contextMode === 'roleplay' && {
+        id: 'pin',
+        label: $t('roleplay.memory.pinAction'),
+        icon: Pin,
+        run: () => roleplayStore.pinToMemory(ctx.message.content || '')
       },
       chat?.contextMode === 'roleplay' && {
         id: 'prompt',
@@ -226,9 +243,20 @@
         <span>{decision}</span>
       </div>
     {/if}
-    <div data-chat-message-content data-chat-message-id={ctx.message.id}>
-      <MessageParts />
-    </div>
+    {#if roleplayFailed}
+      <div class="rp-error" role="alert" data-roleplay-error>
+        <AlertTriangle class="size-3.5 shrink-0" />
+        <span class="min-w-0 flex-1 truncate">{copy.thread.generationFailed}{ctx.message.metadata?.errorMessage ? ` · ${ctx.message.metadata.errorMessage}` : ''}</span>
+        <Button variant="outline" size="xs" type="button" disabled={retryBusy} onclick={() => appStore.regenerateMessage(ctx.message.id)}>
+          <RefreshCcw class="size-3" />
+          <span>{copy.actions.retry}</span>
+        </Button>
+      </div>
+    {:else}
+      <div data-chat-message-content data-chat-message-id={ctx.message.id}>
+        <MessageParts />
+      </div>
+    {/if}
 
     {#each handedProps as prop, index (index)}
       <PropCard {prop} messageId={ctx.message.id} />
@@ -253,7 +281,7 @@
       />
     {/if}
 
-    {#if adventureChoices.length && !choicesDismissed}
+    {#if adventureChoices.length && !choicesDismissed && !roleplayFailed}
       <ChoicePanel
         choices={adventureChoices}
         disabled={appStore.currentChatGenerating}
@@ -268,7 +296,11 @@
       <FileChangesCard stats={diffStats} />
     {/if}
 
-    <MessageFooter />
+    {#if !roleplayFailed}<MessageFooter />{/if}
+
+    {#if recall}
+      <RecallLine {recall} />
+    {/if}
 
     {#if showTtsPlayer && !separateSpeakers}
       <div class="mt-2"><TtsAudioPlayer message={ctx.message} /></div>
@@ -309,6 +341,21 @@
     font-weight: 600;
   }
 
+
+  .rp-error {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0.625rem;
+    border-radius: var(--radius-lg);
+    background: color-mix(in srgb, var(--error) 5%, transparent);
+    color: var(--text-secondary);
+    font-size: var(--text-sm);
+  }
+
+  .rp-error :global(svg) {
+    color: var(--error);
+  }
 
   .decision {
     display: flex;

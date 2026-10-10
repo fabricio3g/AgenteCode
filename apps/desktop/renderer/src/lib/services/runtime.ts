@@ -139,7 +139,8 @@ async function waitForLocalServer(baseUrl: string, timeoutMs = 60_000, signal?: 
   while (Date.now() - startedAt < timeoutMs) {
     if (signal?.aborted) throw new Error('Aborted');
     try {
-      const response = await fetch(modelsUrl, { method: 'GET', signal });
+      const timeout = AbortSignal.timeout(2000);
+      const response = await fetch(modelsUrl, { method: 'GET', signal: signal ? AbortSignal.any([signal, timeout]) : timeout });
       // Newer llama.cpp builds protect /models with the API key: a 401 still
       // means the server is up and answering.
       if (response.ok || response.status === 401) return;
@@ -189,7 +190,7 @@ export async function ensureLocalRuntime(config: AppConfig): Promise<string> {
     flash_attention: settings.flash_attention,
     offload_kv_cache: settings.offload_kv,
     mmap: settings.use_mmap,
-    keep_in_memory: true,
+    keep_in_memory: config.llm?.local?.keep_in_memory ?? false,
     runtime_path: config.llm?.local?.runtime_path
   });
 
@@ -274,7 +275,7 @@ async function performLocalModelLoad(args: Parameters<typeof loadLocalModel>[0],
     flash_attention: args.flashAttention ?? args.config.llm?.local?.flash_attention ?? settings.flash_attention,
     offload_kv_cache: args.offloadKvCache ?? args.config.llm?.local?.offload_kv_cache ?? settings.offload_kv,
     mmap: args.mmap ?? args.config.llm?.local?.mmap ?? settings.use_mmap,
-    keep_in_memory: args.keepInMemory ?? args.config.llm?.local?.keep_in_memory ?? true,
+    keep_in_memory: args.keepInMemory ?? args.config.llm?.local?.keep_in_memory ?? false,
     cpu_moe: args.cpuMoe ?? args.config.llm?.local?.cpu_moe ?? false,
     n_cpu_moe: args.nCpuMoe ?? args.config.llm?.local?.n_cpu_moe ?? undefined,
     context_shift: args.contextShift ?? args.config.llm?.local?.context_shift ?? false,

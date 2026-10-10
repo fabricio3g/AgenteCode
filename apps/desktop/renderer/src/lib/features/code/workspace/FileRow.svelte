@@ -10,6 +10,10 @@
 -->
 
 <script lang="ts">
+  import UiListRow from '$lib/components/ui/ListRow.svelte';
+
+  import { cn as uiClass } from '$lib/utils/cn';
+
   import { t } from 'svelte-i18n';
   import { ChevronDown, ChevronRight, Copy, File as FileIcon, Folder, FolderOpen, MoreHorizontal, PenLine, AtSign } from 'lucide-svelte';
   import IconButton from '$lib/components/ui/IconButton.svelte';
@@ -88,7 +92,7 @@
   data-path={entry.path}
   oncontextmenu={openContextMenu}
 >
-  <button type="button" class="file-row" title={entry.path} onclick={activate}>
+  <UiListRow  type="button" class={uiClass("file-row", "ui-local-7a0637fc")} title={entry.path} onclick={activate}>
     <span class="file-indent" style="width: {entry.depth * 0.65}rem"></span>
     {#if entry.dir}
       {#if entry.expanded}<ChevronDown class="size-3 shrink-0 opacity-70" aria-hidden="true" />{:else}<ChevronRight class="size-3 shrink-0 opacity-70" aria-hidden="true" />{/if}
@@ -98,7 +102,7 @@
     {/if}
     <span class="file-name">{entry.name}</span>
     {#if mark}<span class="file-mark {mark.tone}" aria-hidden="true">{mark.letter}</span>{/if}
-  </button>
+  </UiListRow>
 
   <Menu bind:open={menuOpen} bind:anchorPoint placement="bottom-end" minWidth="12rem" label={$t('codeWs.fileActions')}>
     {#snippet trigger(props)}
@@ -122,7 +126,7 @@
      the same `size-3.5` the sidebar uses — and 12px copy, so the tree reads as
      the sidebar's sibling list rather than as a second, heavier one. */
   .file-node { position: relative; display: flex; height: 1.375rem; align-items: center; }
-  .file-row {
+  :is(.file-row, :global(.file-row.ui-local-7a0637fc)) {
     display: flex;
     flex: 1;
     min-width: 0;
@@ -136,8 +140,8 @@
     color: var(--muted-foreground);
     transition: background-color var(--motion-fast) var(--motion-ease);
   }
-  .file-row:hover,
-  .file-node.is-selected .file-row { background: var(--surface-hover); }
+  :is(.file-row:hover, :global(.file-row:hover.ui-local-7a0637fc)),
+  .file-node.is-selected :is(.file-row, :global(.file-row.ui-local-7a0637fc)) { background: var(--surface-hover); }
   .file-indent { flex-shrink: 0; }
   .file-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--foreground); }
   .file-mark { flex-shrink: 0; margin-left: auto; font-size: 10px; font-weight: 600; font-variant-numeric: tabular-nums; }
@@ -157,7 +161,7 @@
   .file-node :global(.file-action:focus-visible) { opacity: 1; }
 
   @media (prefers-reduced-motion: reduce) {
-    .file-row { transition: none; }
+    :is(.file-row, :global(.file-row.ui-local-7a0637fc)) { transition: none; }
     .file-node :global(.file-action) { transition: none; }
   }
 </style>
