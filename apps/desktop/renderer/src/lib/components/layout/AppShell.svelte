@@ -456,20 +456,35 @@
     width: var(--sidebar-w, 15rem);
   }
 
-  /* The sidebar's edge, drawn above the panel inside it (whose fixed width
-     would otherwise paint over a border). A step quieter than the preview's:
-     the inset inside the rail already darkens this boundary, so a hard line
-     here would read as a doubled edge. */
+  /* Interior edge shadows on both vertical seams: the surface falls away
+     from the rail's hairline on the left and from the content seam on the
+     right, so the sidebar reads as a plane between two others rather than
+     one line on a flat wall. Painted above the panel inside it, for the
+     same reason as the edge line below (its fixed width would otherwise
+     paint over a border). Gated on .expanded: a hidden sidebar must not
+     leave a ghost at the window edge, and the floating peek preview
+     carries its own elevation (--shadow-xl) already. */
+  .sidebar-outer.expanded::before,
   .sidebar-outer.expanded::after {
     content: '';
     position: absolute;
     top: 0;
-    right: 0;
     bottom: 0;
     z-index: 1;
-    width: 1px;
-    background: var(--border);
+    width: 0.75rem;
     pointer-events: none;
+  }
+  .sidebar-outer.expanded::before {
+    left: 0;
+    background: linear-gradient(to right, var(--sidebar-edge-shadow), transparent);
+  }
+  /* The right edge keeps its seam: the 1px --border line sits on top of
+     the shadow, so the boundary stays crisp with depth under it. */
+  .sidebar-outer.expanded::after {
+    right: 0;
+    background:
+      linear-gradient(to right, transparent calc(100% - 1px), var(--border) calc(100% - 1px)),
+      linear-gradient(to left, var(--sidebar-edge-shadow), transparent);
   }
   .sidebar-outer.resizing {
     transition: none;

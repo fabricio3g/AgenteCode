@@ -45,10 +45,69 @@
   size={compact ? 'xs' : 'md'}
   label={stopping ? stopLabel : sendLabel}
   title=""
-  class={`composer-send rounded-full${stopping ? ' is-stop' : ''}`}
+  class={`composer-send ui-local-2f6b41d9 rounded-full${stopping ? ' is-stop' : ''}`}
   disabled={!running && disabled}
   onclick={() => (stopping ? onstop() : onsend())}
 >
   {#if stopping}<Square class="size-3 fill-current stroke-[2.75]" />{:else}<ArrowUp class="size-3.5 stroke-[2.75]" />{/if}
 </IconButton>
 </Tooltip>
+
+<style>
+  /*
+    The one primary control wears the brand orange when it is live — there is
+    something to send — and stays quiet when it is not, so the eye finds the
+    action, not the chrome. A slow grain of dots drifts across the fill (one
+    tile step per loop, so the pattern never seams), the same tile motif the
+    app's live status surfaces carry. Stop keeps the neutral fill: only a
+    send is orange.
+  */
+  :global(.composer-send.ui-local-2f6b41d9) {
+    position: relative;
+    overflow: hidden;
+    background: var(--brand-accent);
+    color: #fff;
+    box-shadow: 0 1px 2px color-mix(in srgb, var(--brand-accent) 40%, transparent);
+  }
+
+  :global(.composer-send.ui-local-2f6b41d9:not(:disabled):not(.is-stop):hover) {
+    background: color-mix(in srgb, var(--brand-accent) 86%, #000);
+  }
+
+  :global(.composer-send.ui-local-2f6b41d9:disabled),
+  :global(.composer-send.is-stop.ui-local-2f6b41d9) {
+    background: var(--primary);
+    color: var(--primary-foreground);
+    box-shadow: none;
+  }
+
+  :global(.composer-send.ui-local-2f6b41d9:not(:disabled):not(.is-stop))::before {
+    content: '';
+    position: absolute;
+    inset: -60%;
+    background-image: radial-gradient(rgb(255 255 255 / 0.6) 1px, transparent 1.2px);
+    background-size: 5px 5px;
+    opacity: 0.35;
+    animation: sendDots 6s linear infinite;
+    pointer-events: none;
+  }
+
+  :global(.composer-send.ui-local-2f6b41d9:not(:disabled):not(.is-stop):hover)::before {
+    opacity: 0.55;
+  }
+
+  /* The glyph rides above the grain. */
+  :global(.composer-send.ui-local-2f6b41d9 svg) {
+    position: relative;
+  }
+
+  @keyframes sendDots {
+    to { transform: translate3d(-5px, -5px, 0); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    :global(.composer-send.ui-local-2f6b41d9:not(:disabled):not(.is-stop))::before {
+      animation: none;
+    }
+  }
+</style>

@@ -18,6 +18,7 @@
   import { confirmStore } from '$lib/stores/confirm.svelte';
   import { artifactsForMessage } from '$lib/stores/app-store-artifacts';
   import { resolveArtifactPresentation } from '$lib/services/artifact-model';
+  import { artifactKindAccent } from '$lib/ui/components/artifact-accent';
   import ArtifactStudio from '$lib/components/agent/ArtifactStudio.svelte';
   let { embedded = false, exposed = true }: { embedded?: boolean; exposed?: boolean } = $props();
 
@@ -78,7 +79,7 @@
         <ArtifactStudio {artifact} chatId={ref.chatId} messageId={ref.messageId} bind:dirty compact>
           {#snippet lead()}
             <div class="flex min-w-0 items-center gap-2.5">
-              <span class="panel-icon" aria-hidden="true"><Icon class="size-4" /></span>
+              <span class="panel-icon" style:--artifact-accent={artifactKindAccent(resolved.manifest.kind)} aria-hidden="true"><Icon class="size-4" /></span>
               <span class="min-w-0">
                 <span class="panel-title">{artifact.title || $t('artifacts.untitled')}</span>
                 <span class="panel-meta">{$t(`artifacts.kind.${resolved.manifest.kind}`)}</span>
@@ -118,8 +119,8 @@
     align-items: center;
     justify-content: center;
     border-radius: 0.5rem;
-    background: var(--muted);
-    color: var(--muted-foreground);
+    background: var(--artifact-accent);
+    color: #fff;
   }
   .panel-title,
   .panel-meta {

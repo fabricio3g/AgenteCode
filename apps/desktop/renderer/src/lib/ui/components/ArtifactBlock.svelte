@@ -139,6 +139,9 @@
     outline: none;
     box-shadow: 0 0 0 2px color-mix(in srgb, var(--ring) 40%, transparent);
   }
+  /* The tile carries the kind's accent at full strength and the glyph stays
+     white, the same read as the design starters: colour in the card, not in
+     the icon. */
   .art-icon {
     display: inline-flex;
     width: 2.5rem;
@@ -147,8 +150,8 @@
     align-items: center;
     justify-content: center;
     border-radius: 0.625rem;
-    background: color-mix(in srgb, var(--artifact-accent) 12%, var(--card));
-    color: var(--artifact-accent);
+    background: var(--artifact-accent);
+    color: #fff;
   }
   .art-title,
   .art-meta {

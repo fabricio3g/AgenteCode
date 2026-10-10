@@ -4,7 +4,8 @@
   Mode tabs. Home offers Agent | Instant above the input shell; the Code
   toolbar passes a single mode, which hides the control (a one-tab tablist
   is furniture, not a choice). The Code space always runs the full loop.
-  Shares the rectangular tabs and selected fill with the Roleplay library.
+  A rounded pill track with a raised active segment — the quiet composer-chip
+  look, not a boxed control.
 -->
 
 <script lang="ts">
@@ -32,7 +33,6 @@
     {options}
     label={copy.composer.selectMode}
     variant="tabs"
-    shape="rect"
     class="mode-tabs"
     onchange={(value) => appStore.setComposerMode(value as 'agent' | 'instant')}
   />

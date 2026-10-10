@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { getFileIcon } from './doc-utils';
+import { fileAccent, getFileIcon } from './doc-utils';
 import {
   File,
   FileArchive,
@@ -35,5 +35,26 @@ describe('getFileIcon', () => {
     expect(getFileIcon('data.unknownext')).toBe(File);
     expect(getFileIcon('notes.txt')).toBe(FileText);
     expect(getFileIcon('')).toBe(File);
+  });
+});
+
+describe('fileAccent', () => {
+  it('groups accents like the artifact cards', () => {
+    expect(fileAccent('report.docx')).toBe('var(--chart-1)');
+    expect(fileAccent('paper.pdf')).toBe('var(--accent-red)');
+    expect(fileAccent('data.xlsx')).toBe('var(--accent-green)');
+    expect(fileAccent('deck.pptx')).toBe('var(--accent-amber)');
+  });
+
+  it('sends code, markup, media and archives to their hues', () => {
+    expect(fileAccent('app.ts')).toBe('var(--accent-sky)');
+    expect(fileAccent('page.html')).toBe('var(--accent-sky)');
+    expect(fileAccent('photo.png')).toBe('var(--accent-violet)');
+    expect(fileAccent('backup.zip')).toBe('var(--accent-violet)');
+  });
+
+  it('defaults to the document blue', () => {
+    expect(fileAccent('notes.txt')).toBe('var(--chart-1)');
+    expect(fileAccent('blob')).toBe('var(--chart-1)');
   });
 });

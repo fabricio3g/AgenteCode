@@ -108,6 +108,11 @@
   --sidebar-accent: rgb(0 0 0 / 0.05);
   --sidebar-accent-foreground: #0d0d0d;
   --sidebar-border: rgb(0 0 0 / 0.07);
+  /* The fall of both vertical seams onto the sidebar surface: what separates
+     it from the rail's hairline on the left and the canvas seam on the right,
+     read as depth rather than another line. One value per theme — the dark
+     plane has no room to darken with white, so it deepens. */
+  --sidebar-edge-shadow: rgb(0 0 0 / 0.07);
   --sidebar-ring: rgb(0 0 0 / 0.2);
   --surface-shadow: 0 1px 2px rgb(0 0 0 / 0.05);
   --surface-shadow-focus: 0 1px 3px rgb(0 0 0 / 0.08);
@@ -276,9 +281,10 @@
    */
   --inline-block-width: 100%;
   --thread-top-pad: 2.25rem;
-  /* A rounded card, not a pill: the shell is two rows tall now, and a 2rem
-     corner on that height reads as a lozenge. */
-  --composer-radius: 1.125rem;
+  /* A large soft card, the modern chat-input corner: generous enough to read
+     as one rounded surface, short of the lozenge a full pill would make of a
+     two-row shell. */
+  --composer-radius: 1.5rem;
   /* A large corner everywhere except the bottom-right, which tucks in to point
      the bubble at its author. */
   --bubble-radius: 0.75rem;
@@ -396,6 +402,10 @@
   --sidebar-accent: var(--secondary);
   --sidebar-accent-foreground: var(--foreground);
   --sidebar-border: var(--border);
+  /* Same depth cue as the light theme, deeper: the sidebar is already the
+     darkest plane, so the seams darken it one more step instead of lighting
+     it. */
+  --sidebar-edge-shadow: rgb(0 0 0 / 0.35);
   --sidebar-ring: var(--ring);
   --surface-shadow: none;
   /* A transparent shadow rather than `none`: this token is composed into a
@@ -3314,13 +3324,10 @@ html.a11y-reduce-motion *::after {
   color: var(--foreground);
 }
 
-/* The sidebar toggle is exempt: its icon already says open or closed, and a
-   chip there made it look unlike the search button beside it. */
-.titlebar-row .ui-button[aria-expanded='true'] {
-  background: var(--nav-current-bg);
-  box-shadow: var(--nav-current-ring);
-  color: var(--foreground);
-}
+/* No chip for the sidebar toggle: its icon already says open or closed, and
+   the raised fill made it look unlike the search button beside it. The rule
+   used to apply the nav-current chip to [aria-expanded='true'] — which only
+   the toggle carries — against its own comment. */
 
 .titlebar-row .ui-button:active:not(:disabled) {
   transform: none;

@@ -66,6 +66,34 @@ export function getFileIcon(name: string, type = ''): FileIcon {
   return KIND_ICONS[getViewerKind(name, type)];
 }
 
+/**
+ * The accent a file's tile carries, matching the artifact cards' kind palette:
+ * documents blue, sheets green, decks amber, pdfs red, media violet, code and
+ * web sky. Same priority order as `EXT_ICON_GROUPS` — first match wins.
+ */
+const EXT_ACCENT_GROUPS: Array<[exts: Set<string>, accent: string]> = [
+  [new Set(['pdf']), 'var(--accent-red)'],
+  [sheetExts, 'var(--accent-green)'],
+  [slideExts, 'var(--accent-amber)'],
+  [docExts, 'var(--chart-1)'],
+  [codeExts, 'var(--accent-sky)'],
+  [markupExts, 'var(--accent-sky)'],
+  [imageExts, 'var(--accent-violet)'],
+  [archiveExts, 'var(--accent-violet)'],
+  [audioExts, 'var(--accent-violet)'],
+  [videoExts, 'var(--accent-violet)'],
+  [textExts, 'var(--chart-1)']
+];
+
+export function fileAccent(name: string, type = ''): string {
+  const ext = name.split('.').pop()?.toLowerCase() || '';
+  for (const [exts, accent] of EXT_ACCENT_GROUPS) {
+    if (exts.has(ext)) return accent;
+  }
+  if (type.startsWith('audio/') || type.startsWith('video/') || type.startsWith('image/')) return 'var(--accent-violet)';
+  return 'var(--chart-1)';
+}
+
 export async function downloadFromSrc(src: string, name: string) {
   try {
     const response = await fetch(src);

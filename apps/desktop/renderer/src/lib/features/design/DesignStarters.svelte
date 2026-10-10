@@ -65,7 +65,9 @@
 
   :global(.starter.ui-local-ac9f1bb9) { min-height: 2.5rem; }
 
-  /* The glyph sits on a soft tint of its own hue, the same tile the composer's starters carry, in both themes. */
+  /* The card carries its own hue at full strength — a soft tint washed the
+     white glyph out — and the glyph stays white in both themes. Same hue
+     family as the composer's starters, one solid step up from their tint. */
   .tile {
     display: inline-flex;
     width: 1.75rem;
@@ -74,11 +76,9 @@
     align-items: center;
     justify-content: center;
     border-radius: 0.5rem;
-    background: oklch(0.62 0.09 var(--hue) / 0.12);
-    color: oklch(0.72 0.11 var(--hue));
+    background: oklch(0.62 0.09 var(--hue));
+    color: #fff;
   }
-
-  :global(html:not(.dark)) .tile { color: oklch(0.5 0.12 var(--hue)); }
 
   .tile :global(svg) { width: 0.875rem; height: 0.875rem; }
 

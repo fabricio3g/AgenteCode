@@ -6,6 +6,7 @@
   import { cn as uiClass } from '$lib/utils/cn';
 
   import { X } from 'lucide-svelte';
+  import Button from '$lib/components/ui/Button.svelte';
   import { getFileIcon } from '$lib/utils/doc-utils';
   import { fileTypeLabel } from '$lib/features/chat/document-surface';
   import { formatBytes } from '$lib/utils/format';
@@ -26,68 +27,129 @@
     if (size) parts.push(size);
     return parts.join(' · ');
   }
+
+  /**
+   * Forty documents must not push the composer off the window. Collapsed shows
+   * the first six cards and a "+N more" chip; expanding shows every card in a
+   * bounded, scrollable row. The chip sits below the grid, so it stays
+   * reachable at both ends.
+   */
+  const COLLAPSED_LIMIT = 6;
+  let expanded = $state(false);
+  const total = $derived(appStore.pendingAttachments.length);
+  const hidden = $derived(Math.max(0, total - COLLAPSED_LIMIT));
+  const visible = $derived(
+    expanded || hidden === 0 ? appStore.pendingAttachments : appStore.pendingAttachments.slice(0, COLLAPSED_LIMIT)
+  );
 </script>
 
-{#if appStore.pendingAttachments.length > 0}
-  <div class="attachment-row">
-    {#each appStore.pendingAttachments as file (file.id)}
-      {#if file.kind === 'image' && file.status === 'ready' && (file.preview || file.base64)}
-        <div class="group relative">
-          <img src={file.base64 || file.preview} alt={file.name} class="attachment-thumb" />
-          <IconButton label={"Remove image"} size="xs" variant="ghost"
+{#if total > 0}
+  <div class="attachment-area">
+    <div class="attachment-row" class:is-scroll={expanded && hidden > 0}>
+      {#each visible as file (file.id)}
+        {#if file.kind === 'image' && file.status === 'ready' && (file.preview || file.base64)}
+          <div class="group relative">
+            <img src={file.base64 || file.preview} alt={file.name} class="attachment-thumb" />
+            <IconButton label={"Remove image"} size="xs" variant="ghost"
 
-            class={uiClass("remove-btn", "ui-local-6833b011")}
-            type="button"
-            onclick={(e) => { e.stopPropagation(); appStore.removeAttachment(file.id); }}
-          >
-            <X class="h-3 w-3" />
-          </IconButton>
-        </div>
-      {:else}
-        <div class="attachment-card group relative" class:is-error={file.status === 'error'}>
-          <span class="attachment-icon">
-            {#if file.status === 'processing'}
-              <span class="spinner"></span>
-            {:else}
-              {#each [getFileIcon(file.name, file.type)] as Icon}
-                <Icon class="h-4 w-4" />
-              {/each}
-            {/if}
-          </span>
-
-          <span class="attachment-copy">
-            <span class="attachment-name" title={file.name}>{file.name}</span>
-            <span class="attachment-detail" title={file.error || file.warning || undefined}>
-              {#if file.status === 'error'}
-                <span class="text-error">{file.error || 'Could not read this file'}</span>
-              {:else if file.status === 'processing'}
-                {file.processingMode === 'transcription' ? 'Transcribing…' : file.processingMode === 'ocr' ? 'Reading text…' : 'Reading…'}
+              class={uiClass("remove-btn", "ui-local-6833b011")}
+              type="button"
+              onclick={(e) => { e.stopPropagation(); appStore.removeAttachment(file.id); }}
+            >
+              <X class="h-3 w-3" />
+            </IconButton>
+          </div>
+        {:else}
+          <div class="attachment-card group relative" class:is-error={file.status === 'error'}>
+            <span class="attachment-icon">
+              {#if file.status === 'processing'}
+                <span class="spinner"></span>
               {:else}
-                {detailLine(file)}{file.warning ? ' · Partial reading' : ''}
+                {#each [getFileIcon(file.name, file.type)] as Icon}
+                  <Icon class="h-4 w-4" />
+                {/each}
               {/if}
             </span>
-          </span>
 
-          <IconButton label={"Remove file"} size="xs" variant="ghost"
+            <span class="attachment-copy">
+              <span class="attachment-name" title={file.name}>{file.name}</span>
+              <span class="attachment-detail" title={file.error || file.warning || undefined}>
+                {#if file.status === 'error'}
+                  <span class="text-error">{file.error || 'Could not read this file'}</span>
+                {:else if file.status === 'processing'}
+                  {file.processingMode === 'transcription' ? 'Transcribing…' : file.processingMode === 'ocr' ? 'Reading text…' : 'Reading…'}
+                {:else}
+                  {detailLine(file)}{file.warning ? ' · Partial reading' : ''}
+                {/if}
+              </span>
+            </span>
 
-            class={uiClass("remove-btn", "ui-local-6833b011")}
-            type="button"
-            onclick={(e) => { e.stopPropagation(); appStore.removeAttachment(file.id); }}
-          >
-            <X class="h-3 w-3" />
-          </IconButton>
-        </div>
-      {/if}
-    {/each}
+            <IconButton label={"Remove file"} size="xs" variant="ghost"
+
+              class={uiClass("remove-btn", "ui-local-6833b011")}
+              type="button"
+              onclick={(e) => { e.stopPropagation(); appStore.removeAttachment(file.id); }}
+            >
+              <X class="h-3 w-3" />
+            </IconButton>
+          </div>
+        {/if}
+      {/each}
+    </div>
+    {#if hidden > 0}
+      <Button variant="plain" type="button" class={uiClass("more-chip", "ui-local-6833b011")} aria-expanded={expanded} onclick={() => (expanded = !expanded)}>
+        {expanded ? 'Show less' : `+${hidden} more`}
+      </Button>
+    {/if}
   </div>
 {/if}
 
 <style>
+  .attachment-area {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    padding: 0.75rem 0.875rem 0;
+  }
+
   .attachment-row {
     display: flex;
     flex-wrap: wrap;
     gap: 0.5rem;
-    padding: 0.75rem 0.875rem 0;
+  }
+
+  /* Expanded: every card is reachable, but the row can never grow past a few
+     lines — the composer keeps its place on screen. */
+  .attachment-row.is-scroll {
+    max-height: 11rem;
+    overflow-y: auto;
+    padding-right: 0.25rem;
+  }
+
+  /* Below the grid, not inside it: reachable whether the list is collapsed or
+     scrolled. Same muted pill as the composer's other chips. */
+  :global(.more-chip.ui-local-6833b011) {
+    align-self: flex-start;
+    display: inline-flex;
+    align-items: center;
+    height: 1.5rem;
+    padding: 0 0.5rem;
+    border-radius: var(--radius-full);
+    background: var(--muted);
+    color: var(--text-secondary);
+    font-size: 0.75rem;
+    font-weight: 500;
+    transition: background-color 150ms ease, color 150ms ease;
+  }
+
+  :global(.more-chip:hover.ui-local-6833b011) {
+    background: var(--surface-hover);
+    color: var(--text);
+  }
+
+  :global(.more-chip:focus-visible.ui-local-6833b011) {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
   }
 
   /* The composer's own card language: white, hairline ring, generous corner. */

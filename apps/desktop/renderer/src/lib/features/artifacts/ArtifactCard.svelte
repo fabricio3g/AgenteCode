@@ -54,7 +54,7 @@
     </div>
     <div class="min-w-0 px-3.5 pb-3 pt-2.5 text-left">
       <p class="kind flex items-center gap-1.5 text-[length:var(--text-xs)]">
-        <Icon class="size-3.5 shrink-0" />
+        <span class="kind-tile" aria-hidden="true"><Icon class="size-3" /></span>
         <span class="truncate">{$t(`artifacts.group.${entry.group}`)}</span>
       </p>
       <p class="mt-1 line-clamp-2 text-sm font-medium leading-snug text-foreground">{entry.artifact.title || $t('artifacts.untitled')}</p>
@@ -92,6 +92,19 @@
     outline: none;
   }
   .kind { color: var(--artifact-accent); }
+  /* The kind's glyph rides its accent tile, white on colour, like every other
+     artifact surface. */
+  .kind-tile {
+    display: inline-flex;
+    width: 1.125rem;
+    height: 1.125rem;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    border-radius: 0.3125rem;
+    background: var(--artifact-accent);
+    color: #fff;
+  }
   :global(.delete.ui-local-b2856088) {
     position: absolute;
     top: 0.5rem;

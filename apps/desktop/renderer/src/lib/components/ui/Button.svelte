@@ -44,7 +44,12 @@
 </button>
 
 <style>
-  .ui-action { font:inherit; color:inherit; border-radius:var(--radius-sm); transition:background-color var(--motion-fast), color var(--motion-fast); }
-  .ui-action:focus-visible { outline:2px solid var(--ring); outline-offset:2px; }
-  .ui-action:disabled { opacity:0.5; cursor:not-allowed; }
+  /* Zero specificity (`:where`): this reset must lose to the utilities and
+     caller classes on the same element. Scoped as `.ui-action` it carried
+     (0,2,0) and beat every Tailwind class (0,1,0), so a plain button whose
+     fill differed from the text around it — bg-primary + text-primary-foreground
+     — rendered its label in the inherited colour, invisible on its own fill. */
+  :global(:where(.ui-action)) { font:inherit; color:inherit; border-radius:var(--radius-sm); transition:background-color var(--motion-fast), color var(--motion-fast); }
+  :global(:where(.ui-action:focus-visible)) { outline:2px solid var(--ring); outline-offset:2px; }
+  :global(:where(.ui-action:disabled)) { opacity:0.5; cursor:not-allowed; }
 </style>
