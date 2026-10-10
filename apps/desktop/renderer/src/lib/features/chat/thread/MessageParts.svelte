@@ -35,6 +35,7 @@
   import WritingIndicator from './WritingIndicator.svelte';
   import { useMessage } from './message-context';
   import { buildMessageParts, resolveTotalElapsed } from './message-parts';
+  import { activityColor } from '$lib/utils/tool-ui';
 
   const ctx = useMessage();
 
@@ -163,7 +164,7 @@
     <div class="mb-2 text-xs text-muted-foreground">{part.detail}</div>
   {:else if part.kind === 'pending'}
     <div class="my-2 flex items-center gap-2">
-      <WritingIndicator label={part.status || 'Writing'} />
+      <WritingIndicator label={part.status || 'Writing'} color={activityColor(ctx.displayMetadata?.currentActivity)} />
       {#if part.status}
         <span class="pending-label text-xs text-muted-foreground">{part.status}</span>
       {/if}

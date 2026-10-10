@@ -12,6 +12,10 @@
   · `stopped`  the reader asked to stop: the rain freezes on the still frame
                 while the engine unwinds, so a stopped run stops looking busy
 
+  An optional `color` names the task's hue for the head of the fall (the Home
+  activity line passes one per activity); the trail derives from it against
+  the page. Unset, the rain keeps the brand tiles.
+
   Decorative: the row's own label says what is happening, so this stays out of
   the accessibility tree. Under reduced motion the base styles hold a designed
   still — a drizzle frozen mid-fall, not a frozen animation.
@@ -20,7 +24,7 @@
 <script lang="ts">
   import type { TileMeterMode } from '$lib/utils/activity-meter';
 
-  let { mode = 'quiet' }: { mode?: TileMeterMode } = $props();
+  let { mode = 'quiet', color = '' }: { mode?: TileMeterMode; color?: string } = $props();
 
   /**
    * All eight tiles take the same five-step trip (dark → dim → trail → head →
@@ -38,6 +42,8 @@
   class:is-busy={mode === 'busy'}
   class:is-attention={mode === 'attention'}
   class:is-stopped={mode === 'stopped'}
+  class:is-tinted={!!color}
+  style={color ? `--rain-color: ${color}` : ''}
   aria-hidden="true"
 >
   {#each PHASES as phase (phase)}

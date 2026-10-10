@@ -13,7 +13,7 @@
   import { copy } from '$lib/copy';
   import { ActiveDuration } from '$lib/utils/active-duration';
   import { formatDuration, plural } from '$lib/utils/format';
-  import { activityLabel as resolveActivityLabel, searchModeChip } from '$lib/utils/tool-ui';
+  import { activityLabel as resolveActivityLabel, activityColor, searchModeChip } from '$lib/utils/tool-ui';
 
   interface Props {
     steps?: ChatMessage['agentSteps'];
@@ -169,13 +169,20 @@
     if (reasoning) return copy.status.reasoning;
     return copy.tool.done;
   });
+
+  /*
+   * The rain wears the task's hue: what the run is doing is read before the
+   * label is. An approval keeps its amber blink instead — the still says
+   * "answer me", not "searching".
+   */
+  const rainColor = $derived(awaitingApproval ? '' : activityColor(currentActivity));
 </script>
 
 {#if hasRelevance}
   <div class="agent-status">
     <UiButton variant="plain" type="button" class={uiClass("agent-line", "ui-local-336916d4")} onclick={() => expanded = !expanded} aria-expanded={expanded} aria-label={expanded ? $t('thread.hideActivity') : $t('thread.showActivity')}>
       {#if isStreaming}
-        <TileMeter mode={awaitingApproval ? 'attention' : 'busy'} />
+        <TileMeter mode={awaitingApproval ? 'attention' : 'busy'} color={rainColor} />
         <span class="agent-line-text">
           <span>{line}</span>
         </span>

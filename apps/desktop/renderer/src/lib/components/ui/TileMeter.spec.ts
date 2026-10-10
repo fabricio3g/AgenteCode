@@ -18,4 +18,16 @@ describe('shared chat rain indicator', () => {
     expect(container.querySelectorAll('.tile-rain .tile')).toHaveLength(8);
     expect(container.querySelector('.feather')).toBeNull();
   });
+  it('a task colour tints the rain and leaves the brand default otherwise', () => {
+    const tinted = render(TileMeter, { mode: 'busy', color: 'var(--accent-sky)' });
+    const rain = tinted.container.querySelector('.tile-rain')!;
+    expect(rain.classList.contains('is-tinted')).toBe(true);
+    expect(rain.getAttribute('style')).toContain('--rain-color: var(--accent-sky)');
+
+    cleanup();
+    const plain = render(TileMeter, { mode: 'busy' });
+    const plainRain = plain.container.querySelector('.tile-rain')!;
+    expect(plainRain.classList.contains('is-tinted')).toBe(false);
+    expect(plainRain.getAttribute('style')).toBe('');
+  });
 });

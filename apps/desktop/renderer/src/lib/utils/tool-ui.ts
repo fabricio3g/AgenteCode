@@ -28,6 +28,27 @@ export function activityLabel(activity: AgentActivity | undefined | null): strin
   return (activity && ACTIVITY_LABELS[activity]?.()) || copy.status.working;
 }
 
+/**
+ * The rain's hue for the task at hand — searching cyan, reading green,
+ * writing violet, planning amber — so the live meter says *what* is happening
+ * before the label is read. Unknown, stopped and completed runs return '' and
+ * keep the brand tiles. One table, so every surface that shows the meter
+ * agrees on the colour.
+ */
+const ACTIVITY_COLORS: Record<AgentActivity, string> = {
+  planning: 'var(--accent-amber)',
+  searching: 'var(--accent-sky)',
+  reading: 'var(--accent-green)',
+  creating_files: 'var(--accent-violet)',
+  writing: 'var(--accent-violet)',
+  stopped: '',
+  completed: ''
+};
+
+export function activityColor(activity: AgentActivity | undefined | null): string {
+  return (activity && ACTIVITY_COLORS[activity]) || '';
+}
+
 export function titleCaseToolName(name: string): string {
   const text = String(name || '');
   // Only raw tool ids (`web_search`) are prettified; a label that is already

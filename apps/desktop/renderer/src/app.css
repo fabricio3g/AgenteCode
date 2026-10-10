@@ -1318,11 +1318,21 @@ textarea {
   --rain-cell: 0.3em;
   --rain-step: 1.25s;
   --rain-peak: 0.62;
+  /* The rain's two ends: the saturated head and the pale trail it came from.
+     Defaults are the brand tiles; a caller that names a task colour (the Home
+     activity line does) overrides --rain-color, and the trail derives from it
+     against the page so one hue works in both themes. */
+  --rain-color: rgb(var(--tile-hi));
+  --rain-tint: rgb(var(--tile-accent));
   display: grid;
   grid-template-columns: repeat(2, var(--rain-cell));
   grid-template-rows: repeat(4, var(--rain-cell));
   place-items: center;
   flex-shrink: 0;
+}
+
+.tile-rain.is-tinted {
+  --rain-tint: color-mix(in srgb, var(--rain-color) 30%, var(--background));
 }
 
 .tile-rain.is-busy {
@@ -1334,7 +1344,7 @@ textarea {
   width: calc(var(--rain-cell) * 0.8);
   aspect-ratio: 1;
   border-radius: calc(var(--tile-radius, 0.2) * 100%);
-  background: color-mix(in oklab, rgb(var(--tile-hi)) 100%, rgb(var(--tile-accent)));
+  background: color-mix(in oklab, var(--rain-color) 100%, var(--rain-tint));
   opacity: 0;
   animation: tile-rain calc(var(--rain-step) * 5) steps(1, end) infinite;
   animation-delay: calc(var(--p) * var(--rain-step));
@@ -1346,15 +1356,15 @@ textarea {
   }
   40%, 59.9% {
     opacity: calc(var(--rain-peak) * 0.39);
-    background: color-mix(in oklab, rgb(var(--tile-hi)) 5%, rgb(var(--tile-accent)));
+    background: color-mix(in oklab, var(--rain-color) 5%, var(--rain-tint));
   }
   60%, 79.9% {
     opacity: calc(var(--rain-peak) * 0.53);
-    background: color-mix(in oklab, rgb(var(--tile-hi)) 22%, rgb(var(--tile-accent)));
+    background: color-mix(in oklab, var(--rain-color) 22%, var(--rain-tint));
   }
   80%, 100% {
     opacity: var(--rain-peak);
-    background: color-mix(in oklab, rgb(var(--tile-hi)) 100%, rgb(var(--tile-accent)));
+    background: color-mix(in oklab, var(--rain-color) 100%, var(--rain-tint));
   }
 }
 
@@ -1362,17 +1372,17 @@ textarea {
 .tile-rain .tile:nth-child(3),
 .tile-rain .tile:nth-child(8) {
   opacity: var(--rain-peak);
-  background: color-mix(in oklab, rgb(var(--tile-hi)) 100%, rgb(var(--tile-accent)));
+  background: color-mix(in oklab, var(--rain-color) 100%, var(--rain-tint));
 }
 
 .tile-rain .tile:nth-child(5) {
   opacity: calc(var(--rain-peak) * 0.53);
-  background: color-mix(in oklab, rgb(var(--tile-hi)) 22%, rgb(var(--tile-accent)));
+  background: color-mix(in oklab, var(--rain-color) 22%, var(--rain-tint));
 }
 
 .tile-rain .tile:nth-child(7) {
   opacity: calc(var(--rain-peak) * 0.39);
-  background: color-mix(in oklab, rgb(var(--tile-hi)) 5%, rgb(var(--tile-accent)));
+  background: color-mix(in oklab, var(--rain-color) 5%, var(--rain-tint));
 }
 
 /*
@@ -1383,7 +1393,7 @@ textarea {
 .tile-rain.is-attention .tile {
   animation: none;
   opacity: calc(var(--rain-peak) * 0.55);
-  background: color-mix(in oklab, var(--warning) 62%, rgb(var(--tile-accent)));
+  background: color-mix(in oklab, var(--warning) 62%, var(--rain-tint));
 }
 
 .tile-rain.is-attention .tile:nth-child(odd) {
