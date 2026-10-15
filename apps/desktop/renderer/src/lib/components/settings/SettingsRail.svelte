@@ -53,6 +53,7 @@
   import { t } from 'svelte-i18n';
   import ModelSearchField from './ModelSearchField.svelte';
   import ProviderIcon from '$lib/components/ui/ProviderIcon.svelte';
+  import { APP_NAME, versionLabel } from '$lib/app-meta';
 
   let {
     groups,
@@ -197,6 +198,10 @@
       </div>
     {/each}
   </nav>
+  {#if versionLabel()}
+    <!-- What is running, for bug reports: selectable, the TUI's welcome line. -->
+    <p class="rail-version hidden select-text px-2 pt-1 text-xs tabular-nums text-muted-foreground md:block">{APP_NAME} {versionLabel()}</p>
+  {/if}
 </aside>
 
 

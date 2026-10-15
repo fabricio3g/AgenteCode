@@ -5,6 +5,13 @@ plugins {
     id("com.google.devtools.ksp")
 }
 
+// One release number for every surface: the Cargo workspace's, which the TUI,
+// the CLI and (through app-meta.spec.ts) the desktop already share.
+val workspaceVersion: String = Regex("""(?ms)^\[workspace\.package\].*?^version\s*=\s*"([^"]+)"""")
+    .find(rootDir.resolve("../../Cargo.toml").readText())
+    ?.groupValues?.get(1)
+    ?: error("no [workspace.package] version in Cargo.toml")
+
 android {
     namespace = "dev.agente.android"
     compileSdk = 35
@@ -14,7 +21,7 @@ android {
         minSdk = 26
         targetSdk = 35
         versionCode = 1
-        versionName = "0.1.0-dev"
+        versionName = workspaceVersion
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         ndk { abiFilters += providers.gradleProperty("agenteAbi").orElse("arm64-v8a").get() }
     }

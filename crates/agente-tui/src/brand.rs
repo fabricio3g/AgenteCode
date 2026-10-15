@@ -6,7 +6,7 @@
 /// Product name, used for the terminal title and page titles.
 pub const PRODUCT_NAME: &str = "Agente Code";
 
-/// Tile icon (ink tile, tilde "A"), outlined SVG.
+/// Tile icon (ember tile, split "A" in orbit), as SVG.
 const ICON_SVG: &str = include_str!("../../../assets/brand/agente-code-icon.svg");
 
 /// `<link rel="icon">` carrying the tile icon as an inline SVG data URL, so

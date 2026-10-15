@@ -78,7 +78,7 @@
   <div class="setup" role="dialog" aria-modal="true" aria-labelledby="setup-title">
     <nav class="setup-nav" aria-label={$t('onboarding.progress')}>
       <div class="setup-brand">
-        <img src="./app-icon.svg" alt="" aria-hidden="true" draggable="false" />
+        <img src="./app-icon-small.svg" alt="" aria-hidden="true" draggable="false" />
         <h2 id="setup-title">{$t('onboarding.setupTitle')}</h2>
       </div>
       <ol class="setup-progress">

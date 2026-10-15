@@ -1,8 +1,11 @@
 //! Generator for the Agente Code brand set in `assets/brand/`.
 //!
-//! The mark is a solid "A" whose crossbar is a ñ-style tilde — Spanish
-//! "agente" meets the `~` of a shell — on an ink app tile. Everything is
-//! built from the geometry below, so the set is reproducible:
+//! The mark is an "A" split down its spine — ink on the left, cream on the
+//! right — on an ember tile whose right half is a step lighter, so the split
+//! runs through the tile too. An orbit circles it: dotted where it passes
+//! behind the apex, solid where it crosses in front of the legs, with a cream
+//! moon riding it. Everything is built from the geometry below, so the set is
+//! reproducible:
 //!
 //! ```sh
 //! AGENTE_BRAND_FONT=/path/to/SpaceGrotesk-Medium.ttf \
@@ -22,22 +25,37 @@ use resvg::{tiny_skia, usvg};
 
 const OUT: &str = "assets/brand";
 
-// Ink tile palette (matches the TUI's dark canvas).
-const TILE: &str = "#111317";
-const EDGE: &str = "#23262d";
-const MARK: &str = "#f2f2f3";
-const TILDE: &str = "#e5a445";
+// Ember palette.
+const TILE: &str = "#e76d1f";
+const TILE_LIGHT: &str = "#f08a43";
+const INK: &str = "#1a1208";
+const CREAM: &str = "#fff4e6";
+
+/// The orbit: an ellipse around (60, 64), tilted -18°, drawn as two arcs so it
+/// can be dashed and clipped as one path.
+const ORBIT: &str = "M14.35 78.83 A48 16 -18 1 1 105.65 49.17 A48 16 -18 1 1 14.35 78.83 Z";
 
 /// Tile + mark on a 120-unit grid. `small` is the optical variant for
-/// 16–32 px: a larger mark and a heavier tilde, or the tilde vanishes.
+/// 16–32 px: the dotted back of the orbit would turn to noise, so it goes,
+/// and the front of the orbit and the moon get heavier.
 fn icon_body(small: bool) -> String {
-    let (scale, tilde_w) = if small { (0.86, 12.0) } else { (0.78, 9.0) };
+    let (front_w, moon_r) = if small { (7.0, 8.0) } else { (5.0, 6.0) };
+    let back = if small {
+        String::new()
+    } else {
+        format!(
+            r##"<path d="{ORBIT}" fill="none" stroke="{INK}" stroke-width="4" stroke-dasharray="5 7" stroke-linecap="round" opacity="0.6"/>"##
+        )
+    };
     format!(
-        r##"<rect x="1" y="1" width="118" height="118" rx="27" fill="{TILE}" stroke="{EDGE}" stroke-width="1.5"/>
-<g transform="translate(60 60) scale({scale}) translate(-60 -60)">
-<path d="M22 98 L50 22 H70 L98 98 H79 L60 44 L41 98 Z" fill="{MARK}"/>
-<path d="M36 77 C44 67 52 67 60 73 C68 79 76 79 84 69" fill="none" stroke="{TILDE}" stroke-width="{tilde_w}" stroke-linecap="round"/>
-</g>"##
+        r##"<defs><clipPath id="orbit-front"><rect x="0" y="66" width="120" height="54"/></clipPath></defs>
+<rect x="0" y="0" width="120" height="120" rx="27" fill="{TILE}"/>
+<path d="M60 0 H93 A27 27 0 0 1 120 27 V93 A27 27 0 0 1 93 120 H60 Z" fill="{TILE_LIGHT}"/>
+{back}
+<path d="M26 98 L52 22 H60 V44 L42 98 Z" fill="{INK}"/>
+<path d="M60 22 H68 L94 98 H78 L60 44 Z" fill="{CREAM}"/>
+<path d="{ORBIT}" fill="none" stroke="{INK}" stroke-width="{front_w}" clip-path="url(#orbit-front)"/>
+<circle cx="104" cy="49" r="{moon_r}" fill="{CREAM}"/>"##
     )
 }
 

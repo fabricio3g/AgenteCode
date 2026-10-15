@@ -1,6 +1,6 @@
 //! Welcome screen — the Agente Code hero.
 //!
-//! A rounded card with the pixel-art tilde-A mark, the wordmark and the
+//! A rounded card with the pixel-art split-A mark, the wordmark and the
 //! quick actions, floating on the landing page's tile field: a mosaic of
 //! dim amber squares that drifts, rolls rings out of a horizon glow and
 //! twinkles on a few embers. The field is ambient (repainted ~15 fps only
@@ -183,36 +183,39 @@ pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState) {
 
 // ── Mark ────────────────────────────────────────────────────────────────────
 
-/// The tilde-A mark as 12×10 pixels: `W` the A, `T` the tilde crossbar,
-/// `.` the ink tile, ` ` outside its rounded corners. Two pixels stack per
-/// cell (half blocks), so it paints as 12×5 cells.
+/// The split-A mark as 12×10 pixels: the ember tile in two halves (`O`
+/// left, `P` the lighter right), the A split down its spine (`K` ink, `C`
+/// cream) with the cream moon at the top right, and ` ` outside the rounded
+/// corners. The orbit is a hairline at this size, so it stays out — the same
+/// call the 16 px icon makes. Two pixels stack per cell (half blocks), so it
+/// paints as 12×5 cells.
 const ICON: [&str; 10] = [
-    " .......... ",
-    ".....WW.....",
-    "....WWWW....",
-    "...WW..WW...",
-    // Tilde rows share one cell row, so the wave paints as `▄▀▀▄`, not a
-    // checkerboard across two rows.
-    "...WTT.WTT..",
-    "..TT..TTWW..",
-    "..WW....WW..",
-    ".WW......WW.",
-    ".WW......WW.",
-    " .......... ",
+    " OOOOOPPPPP ",
+    "OOOOOKCPPPPP",
+    "OOOOKKCCPPCP",
+    "OOOKKOPCCPPP",
+    "OOOKKOPCCPPP",
+    "OOKKOOPPCCPP",
+    "OOKKOOPPCCPP",
+    "OKKOOOPPPCCP",
+    "OKKOOOPPPCCP",
+    " OOOOOPPPPP ",
 ];
 const ICON_COLS: u16 = 12;
 const ICON_ROWS: u16 = 5;
 
 /// Brand colors, fixed across themes: the icon is the app icon, not chrome.
-const ICON_TILE: Color = Color::Rgb(0x11, 0x13, 0x17);
-const ICON_MARK: Color = Color::Rgb(0xf2, 0xf2, 0xf3);
-const ICON_TILDE: Color = Color::Rgb(0xe5, 0xa4, 0x45);
+const ICON_TILE: Color = Color::Rgb(0xe7, 0x6d, 0x1f);
+const ICON_TILE_LIGHT: Color = Color::Rgb(0xf0, 0x8a, 0x43);
+const ICON_INK: Color = Color::Rgb(0x1a, 0x12, 0x08);
+const ICON_CREAM: Color = Color::Rgb(0xff, 0xf4, 0xe6);
 
 fn paint_icon(buf: &mut Buffer, x: u16, y: u16) {
     let pixel = |row: usize, col: usize| match ICON[row].as_bytes()[col] {
-        b'W' => ICON_MARK,
-        b'T' => ICON_TILDE,
-        b'.' => ICON_TILE,
+        b'O' => ICON_TILE,
+        b'P' => ICON_TILE_LIGHT,
+        b'K' => ICON_INK,
+        b'C' => ICON_CREAM,
         _ => style::BG_PANEL(),
     };
     for cy in 0..ICON_ROWS as usize {
@@ -461,13 +464,17 @@ fn smoothstep(edge0: f32, edge1: f32, x: f32) -> f32 {
     t * t * (3.0 - 2.0 * t)
 }
 
-/// The version on the welcome panel. Tests show a fixed one so a release
-/// bump doesn't rewrite every screen snapshot.
-fn shown_version() -> &'static str {
+/// The version on the welcome panel: the release and, when the build knew
+/// it, the commit (`0.2.3 · a1b2c3d`) — the desktop's Settings rail shows the
+/// same line. Tests show a fixed one so a release bump doesn't rewrite every
+/// screen snapshot.
+fn shown_version() -> String {
     if cfg!(test) {
-        "0.0.0"
-    } else {
-        env!("CARGO_PKG_VERSION")
+        return "0.0.0".to_string();
+    }
+    match env!("AGENTE_BUILD") {
+        "" => env!("CARGO_PKG_VERSION").to_string(),
+        build => format!("{} · {build}", env!("CARGO_PKG_VERSION")),
     }
 }
 
@@ -514,7 +521,7 @@ mod tests {
         // The only block glyphs are the half-block pixel mark, never block
         // letters spelling the name.
         assert!(!text.contains('█'), "no block letter art");
-        assert!(text.contains('▀'), "pixel tilde-A mark beside the wordmark");
+        assert!(text.contains('▀'), "pixel split-A mark beside the wordmark");
         assert!(
             !text.contains('~'),
             "the hero field is squares, not drifting glyphs"

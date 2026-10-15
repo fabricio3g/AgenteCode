@@ -2,10 +2,28 @@ import { defineConfig } from 'vite';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
 import path from 'node:path';
 import monacoEditorModule from 'vite-plugin-monaco-editor';
+import { execSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import { windowThemeBootstrap, windowThemeCss } from '../shared/window-theme';
+
+// The release (package.json, kept equal to the Cargo workspace by
+// app-meta.spec.ts) and the commit it was built from, shown in Settings the
+// way the TUI shows them on its welcome card.
+const release = JSON.parse(readFileSync(path.resolve(__dirname, '../package.json'), 'utf8')).version as string;
+function commit(): string {
+  try {
+    return execSync('git rev-parse --short HEAD', { cwd: __dirname, stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
+  } catch {
+    return '';
+  }
+}
 
 export default defineConfig({
   base: './',
+  define: {
+    __AGENTE_VERSION__: JSON.stringify(release),
+    __AGENTE_BUILD__: JSON.stringify(commit())
+  },
   plugins: [
     {
       name: 'window-theme-bootstrap',

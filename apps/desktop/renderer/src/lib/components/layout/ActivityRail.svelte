@@ -85,7 +85,7 @@
 </script>
 
 <nav class="activity-rail" class:is-mac={isMac} data-activity-rail aria-label={copy.spaces.label}>
-  <img class="rail-mark" src="./app-icon.svg" alt="" aria-hidden="true" draggable="false" />
+  <img class="rail-mark" src="./app-icon-small.svg" alt="" aria-hidden="true" draggable="false" />
   <div class="rail-group" role="tablist" tabindex="-1" aria-label={copy.spaces.label} onkeydown={onSpacesKeydown}>
     {#each tabs as tab (tab.id)}
       {@const Icon = tab.icon}

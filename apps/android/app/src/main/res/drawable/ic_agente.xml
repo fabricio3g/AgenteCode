@@ -1,4 +1,17 @@
 <vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
-    <path android:fillColor="#202426" android:pathData="M0,0h108v108h-108z" />
-    <path android:fillColor="#B6C9C1" android:pathData="M29,77L47,34L61,34L79,77L66,77L62,65L45,65L41,77ZM49,55L58,55L54,43ZM35,26L42,20L49,23L56,26L63,23L70,20L75,26L68,32L61,33L49,29L42,30Z" />
+    <!-- The brand tile (assets/brand/agente-code-icon-small.svg) at launcher scale:
+         the ember halves fill the canvas and the launcher masks the corners; the
+         mark sits in the safe zone. The small variant, since a vector drawable
+         cannot dash the back of the orbit. -->
+    <path android:fillColor="#E76D1F" android:pathData="M0,0h54v108h-54z" />
+    <path android:fillColor="#F08A43" android:pathData="M54,0h54v108h-54z" />
+    <group android:translateX="21" android:translateY="19" android:scaleX="0.55" android:scaleY="0.55">
+        <path android:fillColor="#1A1208" android:pathData="M26,98L52,22H60V44L42,98Z" />
+        <path android:fillColor="#FFF4E6" android:pathData="M60,22H68L94,98H78L60,44Z" />
+        <group>
+            <clip-path android:pathData="M0,66h120v54h-120z" />
+            <path android:strokeColor="#1A1208" android:strokeWidth="7" android:pathData="M14.35,78.83A48,16,-18,1,1,105.65,49.17A48,16,-18,1,1,14.35,78.83Z" />
+        </group>
+        <path android:fillColor="#FFF4E6" android:pathData="M96,49a8,8 0,1 0,16 0a8,8 0,1 0,-16 0z" />
+    </group>
 </vector>
