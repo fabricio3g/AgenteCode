@@ -148,7 +148,7 @@
       <div class="flex items-center justify-between gap-3 rounded-[var(--radius-md)] border border-[var(--border-subtle)] px-3 py-2">
         <div class="min-w-0">
           <div class="text-xs font-medium text-foreground">{$t('roleplay.persona.default')}</div>
-          <div class="text-[12px] text-muted-foreground">{$t('roleplay.persona.defaultHint')}</div>
+          <div class="text-[length:var(--text-xs)] text-muted-foreground">{$t('roleplay.persona.defaultHint')}</div>
         </div>
         <Button
           type="button"

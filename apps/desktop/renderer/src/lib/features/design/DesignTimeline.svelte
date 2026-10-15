@@ -177,8 +177,8 @@
   .what code { overflow: hidden; min-width: 0; font-family: var(--font-mono); text-overflow: ellipsis; white-space: nowrap; }
   .name { flex-shrink: 0; color: var(--muted-foreground); }
 
-  .track { position: relative; height: 0.5rem; border-radius: 999px; background: color-mix(in srgb, var(--foreground) 6%, transparent); }
-  .bar { position: absolute; top: 0; bottom: 0; min-width: 2px; border-radius: 999px; background: var(--muted-foreground); opacity: 0.6; }
+  .track { position: relative; height: 0.5rem; border-radius: var(--radius-full); background: color-mix(in srgb, var(--foreground) 6%, transparent); }
+  .bar { position: absolute; top: 0; bottom: 0; min-width: 2px; border-radius: var(--radius-full); background: var(--muted-foreground); opacity: 0.6; }
   .head { position: absolute; top: -0.1875rem; bottom: -0.1875rem; width: 1px; background: var(--foreground); opacity: 0.6; }
   .length { color: var(--muted-foreground); font-variant-numeric: tabular-nums; text-align: right; }
 

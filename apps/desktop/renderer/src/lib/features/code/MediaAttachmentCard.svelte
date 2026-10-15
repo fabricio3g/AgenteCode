@@ -37,7 +37,7 @@
   :global(.media-open.ui-local-e7d332d2) { display: flex; align-items: center; gap: 0.5rem; min-width: 0; text-align: left; }
   .media-thumb { display: flex; align-items: center; justify-content: center; flex-shrink: 0; width: 3rem; height: 3rem; border-radius: 0.375rem; overflow: hidden; color: var(--muted-foreground); }
   img { width: 100%; height: 100%; object-fit: cover; }
-  .media-caption { display: flex; flex-direction: column; min-width: 0; padding-right: 0.25rem; font-size: 12px; }
+  .media-caption { display: flex; flex-direction: column; min-width: 0; padding-right: 0.25rem; font-size: var(--text-xs); }
   .media-name { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--foreground); }
   .media-kind { color: var(--muted-foreground); }
   :global(.media-remove.ui-local-e7d332d2) { flex-shrink: 0; }

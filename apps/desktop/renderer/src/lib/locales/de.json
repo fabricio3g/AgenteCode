@@ -696,7 +696,18 @@
     "browseProject": "Projekt",
     "browsePlaces": "Orte",
     "browseUnreadable": "Dieser Ordner kann nicht geöffnet werden",
-    "browseHint": "Ordner wählen: Doppelklick zum Navigieren, Eingabetaste zum Öffnen."
+    "browseHint": "Ordner wählen: Doppelklick zum Navigieren, Eingabetaste zum Öffnen.",
+    "modeShort": {
+      "plan": "Planen",
+      "supervised": "Überwacht",
+      "full": "Auto"
+    },
+    "modeBrief": {
+      "plan": "Plant vor dem Bearbeiten",
+      "supervised": "Fragt zuerst",
+      "full": "Fragt nie"
+    },
+    "modeCycle": "Umschalt+Tab zum Wechseln"
   },
   "searchModal": {
     "inMessages": "In Nachrichten",
@@ -917,7 +928,43 @@
     "unloaded": "Modell entladen",
     "unloadFailed": "Modell konnte nicht entladen werden",
     "notListed": "Not listed",
-    "notListedHint": "Listed by models.dev but not by the provider's own model list."
+    "notListedHint": "Listed by models.dev but not by the provider's own model list.",
+    "recent": "Zuletzt",
+    "forAllChats": "Für alle Chats",
+    "loaded": "Geladen",
+    "noneLoaded": "Keins geladen",
+    "wontFit": "Passt nicht",
+    "tight": "Knapp",
+    "loadingPct": "Lädt {pct} %",
+    "downloadModels": "Modelle herunterladen…",
+    "serverSettings": "Server-Einstellungen…",
+    "allModels": "Alle Modelle…",
+    "filterAll": "Alle",
+    "filter": "Modelle anzeigen aus",
+    "chatsUsing": "{n, plural, one {# Chat nutzt es} other {# Chats nutzen es}}",
+    "switchBusy": "Der Wechsel betrifft {n, plural, one {# Chat} other {# Chats}}, die es gerade nutzen.",
+    "confirmKeys": "Enter wechselt · Esc behält",
+    "card": {
+      "context": "Kontext",
+      "output": "Max. Ausgabe",
+      "input": "Eingabe",
+      "outputCost": "Ausgabe",
+      "cache": "Cache",
+      "perMillion": "{price} / M",
+      "free": "Kostenlos",
+      "image": "Bild",
+      "audio": "Audio",
+      "video": "Video",
+      "pdf": "PDF",
+      "tools": "Werkzeuge",
+      "reasoning": "Denkt nach",
+      "size": "Größe",
+      "memory": "Speicher",
+      "fits": "Passt",
+      "perChat": "{ctx} pro Chat",
+      "quant": "Quantisierung",
+      "unknown": "Der Katalog kennt dieses Modell nicht."
+    }
   },
   "settingsNav": {
     "label": "Einstellungsbereiche",
@@ -1921,7 +1968,20 @@
     "llamaBuildsHint": "Installed builds, the running server and installing from a URL",
     "whisperBuilds": "whisper.cpp builds",
     "whisperBuildsHint": "Choose which build dictation runs on, or add your own",
-    "audioEngineHint": "The bundled voice engine: status, backend and files"
+    "audioEngineHint": "The bundled voice engine: status, backend and files",
+    "server": {
+      "title": "Lokaler Server",
+      "hint": "Ein lokales Modell bedient alle Chats. Diese Einstellungen gelten für alle.",
+      "parallel": "Gespräche gleichzeitig",
+      "parallelHint": "Jedes erhält {ctx} Kontext",
+      "parallelShared": "Das Kontextfenster wird aufgeteilt",
+      "apply": "Anwenden und neu starten",
+      "applyHint": "Lädt das Modell neu, sobald laufende Antworten fertig sind",
+      "slots": "Slots jetzt",
+      "slotBusy": "Antwortet",
+      "slotFree": "Frei",
+      "noModel": "Kein Modell geladen"
+    }
   },
   "downloads": {
     "title": "Downloads",

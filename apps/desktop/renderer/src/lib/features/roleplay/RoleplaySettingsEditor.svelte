@@ -133,7 +133,7 @@
     {/each}
   </div>
   {#each toggles.filter((entry) => entry.section === section) as item (item.key)}
-    <div class="flex items-center justify-between gap-4" title={$t(`roleplay.settings.hint.${item.key}`)}><div class="text-[13px] text-foreground">{field(item.key)}</div>
+    <div class="flex items-center justify-between gap-4" title={$t(`roleplay.settings.hint.${item.key}`)}><div class="text-[length:var(--text-sm)] text-foreground">{field(item.key)}</div>
       <Switch checked={!!settings[item.key]} aria-label={field(item.key)} onchange={(next) => set(item.key, next)} />
     </div>
   {/each}

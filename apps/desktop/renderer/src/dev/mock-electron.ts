@@ -974,6 +974,16 @@ const handlers: Record<string, (args?: Record<string, unknown>) => unknown> = {
     { id: 'llamacpp', name: 'llama.cpp (local)', group: 'local', base_url: 'http://127.0.0.1:8080/v1', api_format: 'openai', aliases: ['local'], order: 80, models: 'llamacpp' },
     { id: 'custom', name: 'Custom / Other', group: 'local', base_url: 'http://127.0.0.1:8080/v1', api_format: 'openai', order: 90, models: 'openai_models' }
   ],
+  get_model_card: (args?: Record<string, unknown>) => {
+    const model = String(args?.model ?? '');
+    const cards: Record<string, unknown> = {
+      'deepseek/deepseek-v4-flash': { context: 131072, output: 16384, cost: { input: 0.14, output: 0.28, cacheRead: 0.014 }, inputs: ['text'], tools: true, reasoning: true },
+      'moonshotai/kimi-k3': { context: 262144, output: 32768, cost: { input: 0.6, output: 2.5, cacheRead: 0.15 }, inputs: ['text', 'image'], tools: true, reasoning: true },
+      'qwen/qwen3.8-max': { context: 1000000, output: 65536, cost: { input: 1.2, output: 6, cacheRead: null }, inputs: ['text', 'image', 'video'], tools: true, reasoning: true },
+      'z-ai/glm-5.3': { context: 131072, output: null, cost: { input: 0.3, output: 1.1, cacheRead: null }, inputs: ['text'], tools: true, reasoning: false }
+    };
+    return cards[model] ?? { context: null, output: null, cost: null, inputs: [], tools: false, reasoning: false };
+  },
   get_reasoning_capabilities: () => ({ supported: true, levels: ['off', 'low', 'medium', 'high', 'max'], source: 'catalog', default: 'medium', budgets: { low: 2048, medium: 8192, high: 24576 } }),
   count_tokens: () => 0,
   build_context_budget: () => ({}),

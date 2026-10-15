@@ -184,7 +184,7 @@
   .mode-chip {
     margin-left: 0.15rem;
     padding: 0.1rem 0.4rem;
-    border-radius: 999px;
+    border-radius: var(--radius-full);
     background: var(--artifact-surface-hover, var(--surface-hover));
     color: var(--foreground);
     font-size: var(--text-xs);
@@ -220,14 +220,14 @@
 
   :global(.selector-chip.ui-local-f6d100e7) {
     border: 0;
-    border-radius: 999px;
+    border-radius: var(--radius-full);
     background: transparent;
     color: var(--muted-foreground);
     font-size: 0.7rem;
     font-weight: 550;
     padding: 0.3rem 0.65rem;
     cursor: pointer;
-    transition: background 120ms ease, color 120ms ease;
+    transition: background var(--motion-fast) var(--motion-ease), color var(--motion-fast) var(--motion-ease);
   }
 
   :global(.selector-chip:hover.ui-local-f6d100e7) {
@@ -256,7 +256,7 @@
     font-weight: 450;
     padding: 0.55rem 0.65rem;
     cursor: pointer;
-    transition: background 120ms ease, color 120ms ease;
+    transition: background var(--motion-fast) var(--motion-ease), color var(--motion-fast) var(--motion-ease);
   }
 
   :global(.option:hover:not(:disabled).ui-local-f6d100e7) {
@@ -315,7 +315,7 @@
     align-items: center;
     gap: 0.3rem;
     cursor: pointer;
-    transition: background 120ms ease, color 120ms ease;
+    transition: background var(--motion-fast) var(--motion-ease), color var(--motion-fast) var(--motion-ease);
   }
 
   :global(.btn:hover.ui-local-f6d100e7) {

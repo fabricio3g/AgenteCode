@@ -68,6 +68,9 @@
    * so they cannot live in a chat-scoped layout; the space owns them, and the
    * dock below still belongs to the conversation being read.
    */
+  /** Windows paints its caption buttons over the window's top-right corner in the
+   *  canvas colour, so there the sheet runs to that corner instead of leaving a gap. */
+  const captionOverlay = typeof window !== 'undefined' && window.electronAPI?.platform === 'win32';
   const windowId = new URLSearchParams(window.location.search).get('window');
   const spaceKey = $derived(inBots ? `space:bots:${botsStore.current?.handle ?? 'none'}` : inCodeSpace ? `space:code${windowId ? ':' + windowId : ''}` : `space:${appStore.activeTab}`);
   $effect.pre(() => {
@@ -127,7 +130,7 @@
       return;
     }
     if (appStore.activeSpace === 'roleplay') {
-      appStore.openRoleplayLibrary();
+      appStore.startRoleplayScene();
       return;
     }
     appStore.createChat(appStore.activeSpace);
@@ -281,7 +284,9 @@
   }
 </script>
 
-<div data-desktop-shell class="relative flex h-full overflow-hidden bg-background text-foreground">
+<!-- The window is the sidebar's plane; the title bar and content are one
+     sheet resting on it (see .canvas-sheet). -->
+<div data-desktop-shell class="relative flex h-full overflow-hidden bg-sidebar text-foreground" class:caption-overlay={captionOverlay}>
   <!-- The activity rail is always on: spaces, Settings, downloads and theme
        stay one click away even while Settings owns the content area. Only the
        collapsible sidebar hides. -->
@@ -322,8 +327,9 @@
     {/if}
   {/if}
 
-  <!-- No overflow-hidden on this column: titlebar fade hangs below h-9. -->
-  <div class="relative flex min-h-0 min-w-0 flex-1 flex-col bg-background">
+  <!-- The sheet clips to its own rounded corners; the titlebar fade hangs
+       below h-9 but inside it, so the clip never cuts it. -->
+  <div class="canvas-sheet relative flex min-h-0 min-w-0 flex-1 flex-col bg-background">
     <Titlebar
       sidebarPreview={peek.open}
       settingsOpen={settingsShowing}
@@ -456,35 +462,21 @@
     width: var(--sidebar-w, 15rem);
   }
 
-  /* Interior edge shadows on both vertical seams: the surface falls away
-     from the rail's hairline on the left and from the content seam on the
-     right, so the sidebar reads as a plane between two others rather than
-     one line on a flat wall. Painted above the panel inside it, for the
-     same reason as the edge line below (its fixed width would otherwise
-     paint over a border). Gated on .expanded: a hidden sidebar must not
-     leave a ghost at the window edge, and the floating peek preview
-     carries its own elevation (--shadow-xl) already. */
-  .sidebar-outer.expanded::before,
-  .sidebar-outer.expanded::after {
-    content: '';
-    position: absolute;
-    top: 0;
-    bottom: 0;
-    z-index: 1;
-    width: 0.75rem;
-    pointer-events: none;
+  /* The canvas sheet: inset from the window on the top, right and bottom, flush
+     against the sidebar, lifted by its shadow. The sidebar and rail are the
+     ground it rests on, so no seam line is drawn between them. */
+  .canvas-sheet {
+    margin: var(--sheet-gap) var(--sheet-gap) var(--sheet-gap) 0;
+    border-radius: var(--sheet-radius);
+    box-shadow: var(--sheet-shadow);
+    overflow: hidden;
+    isolation: isolate;
   }
-  .sidebar-outer.expanded::before {
-    left: 0;
-    background: linear-gradient(to right, var(--sidebar-edge-shadow), transparent);
-  }
-  /* The right edge keeps its seam: the 1px --border line sits on top of
-     the shadow, so the boundary stays crisp with depth under it. */
-  .sidebar-outer.expanded::after {
-    right: 0;
-    background:
-      linear-gradient(to right, transparent calc(100% - 1px), var(--border) calc(100% - 1px)),
-      linear-gradient(to left, var(--sidebar-edge-shadow), transparent);
+  .caption-overlay .canvas-sheet {
+    margin-top: 0;
+    margin-right: 0;
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
   }
   .sidebar-outer.resizing {
     transition: none;
@@ -505,25 +497,26 @@
     pointer-events: auto;
   }
 
-  /* The preview is the same sidebar floating over the content: full height
-     to the top of the window, starting beside the always-on activity rail
-     (--rail-w) so it never covers it, with the title bar's left buttons redrawn
-     in place (TitlebarLeftTools). It reads as a panel, not as the docked rail:
-     the same surface, but the outer corners round like the workspace cards, the
-     seam steps up to --border-hover and the elevation comes from --shadow-xl. */
+  /* The preview is the same sidebar floating inside the canvas sheet: it
+     takes the sheet's own top-left corner, gap and radius, so it nests in the
+     interior instead of running the window's height, and its top lines up with
+     the sheet's, which keeps the title bar's left buttons (redrawn in place by
+     TitlebarLeftTools) exactly where they were. No seam line: the ground's tone
+     and --shadow-xl lift it. */
   .sidebar-view-full.preview {
     position: fixed;
     z-index: var(--z-float);
-    top: 0;
-    bottom: 0;
+    top: var(--sheet-gap);
+    bottom: var(--sheet-gap);
     left: var(--rail-w);
     right: auto;
-    max-width: calc(100vw - 1rem);
+    max-width: calc(100vw - var(--rail-w) - 1rem);
     background: var(--sidebar);
-    border-right: 1px solid var(--border-hover);
-    border-radius: 0 0.875rem 0.875rem 0;
+    border-radius: var(--sheet-radius);
     box-shadow: var(--shadow-xl);
   }
+  /* Windows: the sheet runs to the window's top edge, so the preview does too. */
+  .caption-overlay .sidebar-view-full.preview { top: 0; }
 
   .preview-bar {
     display: flex;

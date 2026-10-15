@@ -139,16 +139,16 @@
 
 <Dialog title={$t(`code.project.${section}.title`)} description={$t(`code.project.${section}.hint`)} {onclose} size="lg">
   <div class="space-y-1 p-3 text-sm">
-    {#if error}<p class="px-2 pb-2 text-[13px] text-error" role="alert">{error}</p>{/if}
+    {#if error}<p class="px-2 pb-2 text-[length:var(--text-sm)] text-error" role="alert">{error}</p>{/if}
 
     {#if loading}
-      <p class="px-2 py-3 text-[13px] text-muted-foreground">{$t('code.project.loading')}</p>
+      <p class="px-2 py-3 text-[length:var(--text-sm)] text-muted-foreground">{$t('code.project.loading')}</p>
     {:else if needsProject && !projectRoot}
       <p class="empty">{$t('code.project.needsProject')}</p>
     {:else if section === 'skills' && info}
       {#each [...info.skills, ...info.commands] as item (item.name)}
         <Button variant="plain" type="button" class={uiClass("row w-full text-left", "ui-local-323c2339")} onclick={() => insert(item.name)}>
-          <span class="text-[12.5px] text-foreground">/{item.name}</span>
+          <span class="text-[length:var(--text-sm)] text-foreground">/{item.name}</span>
           <span class="row-detail">{item.description}</span>
         </Button>
       {:else}
@@ -176,7 +176,7 @@
       {#each servers as server (server.name)}
         <div class="row">
           <div class="min-w-0 flex-1">
-            <p class="text-[13px] font-medium text-foreground">{server.name} <span class="font-normal text-muted-foreground">· {$t(`code.project.mcp.status.${server.status}`)} · {$t('code.project.mcp.tools', { values: { n: server.tools } })}</span></p>
+            <p class="text-[length:var(--text-sm)] font-medium text-foreground">{server.name} <span class="font-normal text-muted-foreground">· {$t(`code.project.mcp.status.${server.status}`)} · {$t('code.project.mcp.tools', { values: { n: server.tools } })}</span></p>
             <p class="row-detail break-all">{server.error || server.target}</p>
           </div>
           <div class="flex shrink-0 gap-1">
@@ -195,7 +195,7 @@
     {:else if section === 'sessions'}
       {#each sessions.filter((session) => !session.profile) as session (session.session_id)}
         <Button variant="plain" type="button" class={uiClass("row w-full text-left", "ui-local-323c2339")} onclick={() => { void codeStore.importSession(session).then(onclose).catch((cause) => (error = String(cause))); }}>
-          <span class="block truncate text-[13px] font-medium text-foreground">{session.title || session.first_prompt || session.session_id}</span>
+          <span class="block truncate text-[length:var(--text-sm)] font-medium text-foreground">{session.title || session.first_prompt || session.session_id}</span>
           <span class="row-detail block truncate">{session.project_dir} · {$t('code.project.sessions.messages', { values: { n: session.message_count || 0 } })}</span>
         </Button>
       {:else}
@@ -252,13 +252,13 @@
   .agent-row + .agent-row { border-top: 1px solid var(--border-subtle); border-radius: 0; }
   .agent-row.is-default { background: var(--surface-hover); border-radius: 0.625rem; margin-bottom: 0.25rem; }
   .agent-row.is-default + .agent-row { border-top: 0; }
-  .agent-name { font-size: 13px; font-weight: 500; color: var(--foreground); }
+  .agent-name { font-size: var(--text-sm); font-weight: 500; color: var(--foreground); }
   .agent-pick { display: flex; min-width: 0; flex-direction: column; align-items: flex-end; gap: 0.125rem; }
   :global(.agent-reset.ui-local-323c2339) { font-size: var(--text-xs); color: var(--muted-foreground); }
   :global(.agent-reset:hover.ui-local-323c2339) { color: var(--foreground); text-decoration: underline; text-underline-offset: 2px; }
   .clamp-2 { display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
   @media (max-width: 560px) { .agent-row { grid-template-columns: minmax(0, 1fr); } .agent-pick { justify-items: stretch; } }
-  .row-title { font-size: 13px; color: var(--foreground); }
+  .row-title { font-size: var(--text-sm); color: var(--foreground); }
   .save-state { padding: 1rem 0.625rem 0.25rem; font-size: var(--text-xs); color: var(--muted-foreground); }
 
   :is(.row, :global(.row.ui-local-323c2339)) {
@@ -276,13 +276,13 @@
   }
   :global(button.row:hover.ui-local-323c2339) { background: var(--surface-hover); }
   .row-detail {
-    font-size: 12px;
+    font-size: var(--text-xs);
     line-height: 1.45;
     color: var(--muted-foreground);
   }
   .empty {
     padding: 0.75rem 0.625rem;
-    font-size: 13px;
+    font-size: var(--text-sm);
     color: var(--muted-foreground);
   }
 </style>

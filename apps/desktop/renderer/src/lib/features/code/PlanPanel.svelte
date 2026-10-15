@@ -45,7 +45,7 @@
 <aside class="flex min-h-0 flex-1 flex-col" aria-label={$t('code.plan.title')}>
   {#if !embedded}<header class="flex h-11 shrink-0 items-center gap-2 border-b border-[var(--border-subtle)] pl-4 pr-2">
     <ClipboardList class="size-4 shrink-0 text-muted-foreground" />
-    <p class="min-w-0 flex-1 truncate text-[13px] font-medium text-foreground" title={plan.path || plan.title}>{plan.title}</p>
+    <p class="min-w-0 flex-1 truncate text-[length:var(--text-sm)] font-medium text-foreground" title={plan.path || plan.title}>{plan.title}</p>
     <Tooltip label={$t('codeWs.close')} position="bottom"><IconButton label={$t('codeWs.close')} variant="ghost" size="sm" onclick={() => codeWorkspace.closePlan()} ><X /></IconButton></Tooltip>
   </header>{/if}
   <div class="min-h-0 flex-1 overflow-y-auto px-5 py-4 text-sm leading-relaxed text-foreground">

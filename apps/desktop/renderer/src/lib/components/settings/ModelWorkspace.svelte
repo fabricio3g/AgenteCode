@@ -486,6 +486,18 @@
   });
 </script>
 
+<!-- A model that runs well says nothing; only a problem earns a word and a colour. -->
+{#snippet fitNote(fit: ModelFitAssessment)}
+  {#if fitTone(fit) === 'warning' || fitTone(fit) === 'error' || fit.status === 'runtime_update'}
+    <span class="fit-note" class:is-error={fitTone(fit) === 'error'} title={fit.reason}>{fitLabel(fit)}</span>
+  {/if}
+{/snippet}
+
+{#snippet licenseText(raw: string | undefined)}
+  {@const info = licenseInfo(raw)}
+  {#if info}<span class:license-restricted={info.tone === 'restricted'} title={raw}>{info.label}</span>{/if}
+{/snippet}
+
 {#snippet licenseBadge(raw: string | undefined)}
   {@const info = licenseInfo(raw)}
   {#if info}
@@ -585,27 +597,27 @@
                       {@const fit = fitForCurated(model, primary)}
                       {@const job = downloadsStore.jobFor(model.ggufRepository, primary.filename)}
                       {@const selected = selectedRepoId === model.ggufRepository}
-                      <li class="flex items-center gap-3 rounded-xl px-2 py-2 transition-colors {selected ? 'bg-[var(--surface-active)]' : 'hover:bg-[var(--surface-hover)]'}">
+                      <li class="model-line" class:is-selected={selected}>
                         <Button variant="plain" type="button" class={uiClass("min-w-0 flex-1 text-left", "ui-local-2f53538a")} onclick={() => (selectedRepoId = selected ? null : model.ggufRepository)}>
-                          <span class="flex flex-wrap items-baseline gap-x-2">
-                            <span class="text-sm font-medium text-foreground">{model.name}</span>
-                            <span class="text-xs text-muted-foreground">{roleOf(model)}</span>
+                          <span class="flex min-w-0 items-baseline gap-2">
+                            <span class="shrink-0 text-sm font-medium text-foreground">{model.name}</span>
+                            <span class="truncate text-xs text-muted-foreground">{roleOf(model)}</span>
                           </span>
-                          <span class="mt-0.5 flex flex-wrap items-center gap-1.5 text-[length:var(--text-xs)] text-muted-foreground" title={fit.reason}>
-                            <Badge tone={fitTone(fit)}>{fitLabel(fit)}</Badge>
-                            {@render licenseBadge(model.license)}
+                          <span class="model-meta">
                             <span class="tabular-nums">{primary.quantization} · {formatBytes(primary.sizeBytes)}</span>
+                            {#if licenseInfo(model.license)}<span aria-hidden="true">·</span>{@render licenseText(model.license)}{/if}
+                            {@render fitNote(fit)}
                           </span>
                         </Button>
-                        <div class="flex shrink-0 items-center gap-1.5">
+                        <div class="flex shrink-0 items-center gap-1">
                           {#if job && ['queued', 'running', 'paused'].includes(job.status)}
                             {@render jobProgress(model.ggufRepository, primary.filename)}
                           {:else if downloadedForRepo(model.ggufRepository)}
-                            <Badge tone="success">{$t('modelHub.downloaded')}</Badge>
+                            <span class="row-state"><Check class="size-3.5" />{$t('modelHub.downloaded')}</span>
                           {:else}
-                            <Button size="sm" variant="outline" onclick={() => downloadArtifact(model.ggufRepository, primary, fit, autoLoad)}>
-                              <Download /> {$t('modelHub.download')}
-                            </Button>
+                            <Tooltip label={`${$t('modelHub.download')} · ${formatBytes(primary.sizeBytes)}`} position="bottom">
+                              <IconButton label={$t('modelHub.download')} variant="ghost" size="sm" onclick={() => downloadArtifact(model.ggufRepository, primary, fit, autoLoad)}><Download /></IconButton>
+                            </Tooltip>
                           {/if}
                         </div>
                       </li>
@@ -730,22 +742,22 @@
               {#each downloadedModels as model (model.id)}
                 {@const fit = fitForLocal(model)}
                 {@const loaded = isLoaded(model)}
-                <li class="group flex items-center gap-3 rounded-xl px-2 py-2 hover:bg-[var(--surface-hover)]">
+                <li class="model-line group">
                   <div class="min-w-0 flex-1">
                     <p class="flex items-center gap-2">
                       <span class="truncate text-sm font-medium text-foreground">{model.name}</span>
-                      {#if loaded}<Badge tone="success" class="shrink-0">{$t('modelHub.loaded')}</Badge>{/if}
+                      {#if loaded}<span class="row-state is-live"><span class="live-dot" aria-hidden="true"></span>{$t('modelHub.loaded')}</span>{/if}
                     </p>
-                    <p class="mt-0.5 flex flex-wrap items-center gap-1.5 text-[length:var(--text-xs)] text-muted-foreground" title={fit.reason}>
-                      <Badge tone={fitTone(fit)}>{fitLabel(fit)}</Badge>
+                    <p class="model-meta">
                       <span class="truncate">{[model.architecture, model.quantization_name, formatBytes(Number(model.size_gb || 0) * 1024 ** 3)].filter(Boolean).join(' · ')}</span>
+                      {@render fitNote(fit)}
                     </p>
                   </div>
                   <div class="flex shrink-0 items-center gap-1">
                     {#if loaded}
                       <Button variant="ghost" size="sm" onclick={() => appStore.stopLocalModel()}>{$t('modelHub.unload')}</Button>
                     {:else}
-                      <Button variant="outline" size="sm" onclick={() => appStore.openLocalModelLoadDialog(model)}>{$t('modelHub.load')}</Button>
+                      <Button variant="ghost" size="sm" onclick={() => appStore.openLocalModelLoadDialog(model)}>{$t('modelHub.load')}</Button>
                     {/if}
                     <Tooltip label={$t('modelHub.deleteTitle', { values: { name: model.name } })} position="bottom"><IconButton label={$t('modelHub.deleteTitle', { values: { name: model.name } })} variant="ghost" size="sm" class="text-muted-foreground hover:text-error"  onclick={() => removeModel(model)}><Trash2 /></IconButton></Tooltip>
                   </div>
@@ -765,6 +777,46 @@
 {/key}
 
 <style>
+  /* One model per line: name and role, then one grey line of facts. Rows are
+     separated by the hover band alone, not boxes. */
+  .model-line {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.375rem 0.5rem;
+    border-radius: var(--float-row-radius);
+    transition: background-color var(--motion-instant) var(--motion-ease);
+  }
+  .model-line:hover { background: var(--surface-hover); }
+  .model-line.is-selected { background: var(--surface-active); }
+  .model-meta {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 0.375rem;
+    margin-top: 0.125rem;
+    color: var(--muted-foreground);
+    font-size: var(--text-xs);
+    white-space: nowrap;
+  }
+  .license-restricted { color: var(--warning); }
+  .fit-note { color: var(--warning); }
+  .fit-note::before { content: '·'; margin-right: 0.375rem; color: var(--muted-foreground); }
+  .fit-note.is-error { color: var(--error); }
+  .row-state {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3125rem;
+    color: var(--muted-foreground);
+    font-size: var(--text-xs);
+  }
+  .live-dot {
+    width: 0.375rem;
+    height: 0.375rem;
+    border-radius: var(--radius-full);
+    background: var(--success);
+  }
+
   /* License chip: permissive licenses get the quiet green, restrictive ones amber. */
   .license-badge {
     display: inline-flex;

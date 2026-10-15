@@ -211,7 +211,7 @@
   <span class="sidebar-section">{$t('code.projects')}</span>
 
   {#if !codeStore.loading && !codeStore.projects.length}
-    <p class="px-2.5 py-2 text-[13px] leading-relaxed text-[var(--text-muted)]">
+    <p class="px-2.5 py-2 text-[length:var(--text-sm)] leading-relaxed text-[var(--text-muted)]">
       {$t('code.noProjects')}
     </p>
     <UiListRow

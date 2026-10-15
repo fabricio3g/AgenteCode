@@ -225,7 +225,7 @@
     color: inherit;
     cursor: pointer;
     line-height: 1.35;
-    transition: color 0.15s ease;
+    transition: color var(--motion-fast) var(--motion-ease);
   }
 
   :global(.footer-action:hover.ui-local-ad308a1a),

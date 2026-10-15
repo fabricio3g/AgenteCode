@@ -124,7 +124,7 @@
     resize: none;
     background: transparent;
     color: var(--foreground);
-    font-size: 14px;
+    font-size: var(--text-base);
     line-height: 1.55;
     scrollbar-width: thin;
   }
@@ -142,10 +142,10 @@
     height: 2rem;
     padding: 0 0.85rem;
     border: 0;
-    border-radius: 999px;
+    border-radius: var(--radius-full);
     background: transparent;
     color: var(--muted-foreground);
-    font-size: 13px;
+    font-size: var(--text-sm);
     font-weight: 500;
     transition: background-color var(--motion-fast) var(--motion-ease), color var(--motion-fast) var(--motion-ease), opacity var(--motion-fast) var(--motion-ease);
   }

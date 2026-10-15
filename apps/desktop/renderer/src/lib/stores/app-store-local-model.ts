@@ -161,7 +161,8 @@ export function resolveLocalModelLoadState(params: {
     keepInMemory: remembered.keep_in_memory != null ? Boolean(remembered.keep_in_memory) : (local?.keep_in_memory ?? false),
     mmap: remembered.mmap != null ? Boolean(remembered.mmap) : (local?.mmap ?? recommended?.use_mmap ?? true),
     seed: remembered.seed != null ? String(remembered.seed) : String(local?.seed || ''),
-    parallel: String(Number(remembered.parallel || local?.parallel || 1)),
+    // Shared by every chat, so it is the app's setting, not one model's (Settings › This computer).
+    parallel: String(Number(local?.parallel || 1)),
     ropeFreqBase: remembered.rope_freq_base != null ? String(remembered.rope_freq_base) : String(local?.rope_freq_base || ''),
     ropeFreqScale: remembered.rope_freq_scale != null ? String(remembered.rope_freq_scale) : String(local?.rope_freq_scale || ''),
     cacheTypeK: String(remembered.cache_type_k || local?.cache_type_k || 'f16'),

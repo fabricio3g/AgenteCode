@@ -139,7 +139,7 @@
     color: var(--text-secondary);
     font-size: 0.75rem;
     font-weight: 500;
-    transition: background-color 150ms ease, color 150ms ease;
+    transition: background-color var(--motion-fast) var(--motion-ease), color var(--motion-fast) var(--motion-ease);
   }
 
   :global(.more-chip:hover.ui-local-6833b011) {
@@ -162,7 +162,7 @@
     border-radius: var(--radius-xl);
     background: var(--card);
     box-shadow: inset 0 0 0 1px var(--composer-ring);
-    transition: box-shadow 150ms ease, background-color 150ms ease;
+    transition: box-shadow var(--motion-fast) var(--motion-ease), background-color var(--motion-fast) var(--motion-ease);
   }
 
   .attachment-card:hover {
@@ -232,7 +232,7 @@
     background: var(--card);
     color: var(--text-secondary);
     opacity: 0;
-    transition: opacity 150ms ease, color 150ms ease;
+    transition: opacity var(--motion-fast) var(--motion-ease), color var(--motion-fast) var(--motion-ease);
   }
 
   .group:hover :global(.remove-btn.ui-local-6833b011),

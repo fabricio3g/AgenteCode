@@ -130,12 +130,12 @@
     white-space: nowrap;
   }
   .panel-title {
-    font-size: 13px;
+    font-size: var(--text-sm);
     font-weight: 500;
     color: var(--foreground);
   }
   .panel-meta {
-    font-size: 11.5px;
+    font-size: var(--text-xs);
     color: var(--muted-foreground);
   }
   :global(.panel-close.ui-local-3e1431df) {

@@ -103,7 +103,7 @@
     display: block;
     height: 100%;
     background: var(--work-accent);
-    transition: width 420ms cubic-bezier(0.22, 1, 0.36, 1), opacity 300ms ease;
+    transition: width var(--motion-smooth) var(--motion-ease-out), opacity var(--motion-smooth) var(--motion-ease);
   }
   .all-done .todo-progress span { opacity: 0.5; }
 
@@ -113,7 +113,7 @@
     align-items: center;
     gap: 0.5rem;
     padding: 0.4375rem 0.75rem 0.375rem;
-    font-size: 12px;
+    font-size: var(--text-xs);
     color: var(--muted-foreground);
     transition: color var(--motion-fast) var(--motion-ease);
   }
@@ -145,17 +145,17 @@
     display: flex;
     align-items: flex-start;
     gap: 0.5rem;
-    font-size: 13px;
+    font-size: var(--text-sm);
     line-height: 1.45;
     color: var(--muted-foreground);
-    transition: color 300ms ease;
+    transition: color var(--motion-smooth) var(--motion-ease);
   }
   .todo-list li.is-active { color: var(--foreground); font-weight: 500; }
   .todo-list li.is-done { color: color-mix(in srgb, var(--muted-foreground) 80%, transparent); }
   /* The strike draws left to right instead of appearing. */
   .label {
     background: linear-gradient(currentColor, currentColor) no-repeat 0 55% / 0% 1px;
-    transition: background-size 380ms cubic-bezier(0.22, 1, 0.36, 1);
+    transition: background-size var(--motion-smooth) var(--motion-ease-out);
   }
   .is-done .label { background-size: 100% 1px; }
   .is-fresh .label { animation: none; }
@@ -164,7 +164,7 @@
     display: block;
     width: 0.75rem;
     height: 0.75rem;
-    border-radius: 9999px;
+    border-radius: var(--radius-full);
     border: 1.5px solid color-mix(in srgb, var(--work-accent) 25%, transparent);
     border-top-color: var(--work-accent);
     animation: todo-spin 0.9s linear infinite;

@@ -404,17 +404,17 @@
   :global(.canvas-tool:hover.ui-local-ad62cefe) { background: var(--float-row-hover); color: var(--foreground); }
   :global(.canvas-tool.is-on.ui-local-ad62cefe) { background: var(--nav-current-bg); box-shadow: var(--nav-current-ring); color: var(--foreground); }
   :global(.canvas-style.ui-local-ad62cefe) { width: auto; padding: 0 0.375rem; }
-  .canvas-dot { width: 0.875rem; height: 0.875rem; border-radius: 999px; box-shadow: inset 0 0 0 1px var(--float-border); }
-  .canvas-line { display: block; width: 0.5rem; border-radius: 999px; background: var(--foreground); }
+  .canvas-dot { width: 0.875rem; height: 0.875rem; border-radius: var(--radius-full); box-shadow: inset 0 0 0 1px var(--float-border); }
+  .canvas-line { display: block; width: 0.5rem; border-radius: var(--radius-full); background: var(--foreground); }
 
   .canvas-style-pop { display: flex; flex-direction: column; gap: 0.5rem; padding: 0.25rem; }
   .canvas-swatches { display: grid; grid-template-columns: repeat(4, 1.5rem); gap: 0.375rem; }
-  :global(.canvas-swatch.ui-local-ad62cefe) { display: inline-flex; width: 1.5rem; height: 1.5rem; align-items: center; justify-content: center; border-radius: 999px; box-shadow: inset 0 0 0 1px var(--float-border); color: white; transition: transform var(--motion-fast) var(--motion-ease-out); }
+  :global(.canvas-swatch.ui-local-ad62cefe) { display: inline-flex; width: 1.5rem; height: 1.5rem; align-items: center; justify-content: center; border-radius: var(--radius-full); box-shadow: inset 0 0 0 1px var(--float-border); color: white; transition: transform var(--motion-fast) var(--motion-ease-out); }
   :global(.canvas-swatch.ui-local-ad62cefe) :global(svg) { width: 0.875rem; height: 0.875rem; filter: drop-shadow(0 0 1px rgb(0 0 0 / 0.6)); }
   :global(.canvas-swatch:hover.ui-local-ad62cefe) { transform: scale(1.1); }
   .canvas-widths { display: flex; gap: 0.25rem; }
   :global(.canvas-stroke.ui-local-ad62cefe) { display: inline-flex; flex: 1; height: 1.75rem; align-items: center; justify-content: center; border-radius: var(--float-row-radius); }
-  :global(.canvas-stroke.ui-local-ad62cefe) span { display: block; width: 1.25rem; border-radius: 999px; background: var(--muted-foreground); }
+  :global(.canvas-stroke.ui-local-ad62cefe) span { display: block; width: 1.25rem; border-radius: var(--radius-full); background: var(--muted-foreground); }
   :global(.canvas-stroke:hover.ui-local-ad62cefe) { background: var(--float-row-hover); }
   :global(.canvas-stroke.is-on.ui-local-ad62cefe) { background: var(--nav-current-bg); box-shadow: var(--nav-current-ring); }
   :global(.canvas-stroke.is-on.ui-local-ad62cefe) span { background: var(--foreground); }
@@ -436,7 +436,7 @@
   .canvas-point { display: flex; align-items: center; gap: 0.375rem; padding: 0.125rem 0.25rem; border-radius: var(--float-row-radius); }
   .canvas-point:hover { background: var(--float-row-hover); }
   :is(.canvas-point.is-on, :global(.canvas-point.is-on.ui-local-ad62cefe)) { background: var(--float-row-selected); }
-  :global(.canvas-point-hit.ui-local-ad62cefe) { display: inline-flex; width: 1.25rem; height: 1.25rem; flex-shrink: 0; align-items: center; justify-content: center; border-radius: 999px; background: var(--muted); font-size: var(--text-xs); font-weight: 700; }
+  :global(.canvas-point-hit.ui-local-ad62cefe) { display: inline-flex; width: 1.25rem; height: 1.25rem; flex-shrink: 0; align-items: center; justify-content: center; border-radius: var(--radius-full); background: var(--muted); font-size: var(--text-xs); font-weight: 700; }
   :global(.canvas-point-label.ui-local-ad62cefe) { min-width: 0; flex: 1; background: transparent; font-size: var(--text-xs); outline: none; }
   .canvas-point-where { flex-shrink: 0; font-size: var(--text-xs); color: var(--muted-foreground); font-variant-numeric: tabular-nums; }
   :global(.canvas-instructions.ui-local-ad62cefe) { flex-shrink: 0; resize: vertical; max-height: 8rem; font-size: var(--text-xs); }

@@ -64,7 +64,7 @@
   :global(.clamp-toggle.ui-local-f02028b9) {
     display: block;
     padding: 0.25rem 0.625rem 0.375rem;
-    font-size: 12px;
+    font-size: var(--text-xs);
     color: var(--muted-foreground);
     transition: color var(--motion-fast) var(--motion-ease);
   }

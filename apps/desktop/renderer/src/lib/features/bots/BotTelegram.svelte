@@ -89,7 +89,7 @@
 
 <div class="space-y-3">
   {#if !status}
-    <p class="flex items-center gap-2 text-[12.5px] text-muted-foreground"><LoaderCircle class="size-3.5 animate-spin" /> {$t('bots.telegram.loading')}</p>
+    <p class="flex items-center gap-2 text-[length:var(--text-sm)] text-muted-foreground"><LoaderCircle class="size-3.5 animate-spin" /> {$t('bots.telegram.loading')}</p>
   {:else if !status.connected}
     <ol class="steps">
       <li>{$t('bots.telegram.step1')}</li>
@@ -102,7 +102,7 @@
   {:else}
     <div class="flex items-center gap-2">
       <span class="dot" class:ok={!!status.username} class:bad={!!status.error}></span>
-      <p class="min-w-0 flex-1 truncate text-[13px] text-foreground">
+      <p class="min-w-0 flex-1 truncate text-[length:var(--text-sm)] text-foreground">
         {#if status.error}
           <span class="text-destructive">{status.error}</span>
         {:else if status.username}
@@ -115,12 +115,12 @@
     </div>
 
     <div class="space-y-2">
-      <p class="text-[12px] font-medium text-muted-foreground">{$t('bots.telegram.people')}</p>
+      <p class="text-[length:var(--text-xs)] font-medium text-muted-foreground">{$t('bots.telegram.people')}</p>
       {#if status.paired.length}
         <ul class="people">
           {#each status.paired as chat (chat.chat_id)}
             <li>
-              <span class="min-w-0 flex-1 truncate text-[13px] text-foreground">{chat.name}</span>
+              <span class="min-w-0 flex-1 truncate text-[length:var(--text-sm)] text-foreground">{chat.name}</span>
               <span class="badge">{chat.trust === 'owner' ? $t('bots.telegram.full') : $t('bots.telegram.readOnly')}</span>
               <IconButton label={$t('bots.telegram.unpair', { values: { name: chat.name } })} size="xs" variant="ghost"
                 type="button"
@@ -133,16 +133,16 @@
           {/each}
         </ul>
       {:else}
-        <p class="text-[12.5px] text-muted-foreground">{$t('bots.telegram.nobody')}</p>
+        <p class="text-[length:var(--text-sm)] text-muted-foreground">{$t('bots.telegram.nobody')}</p>
       {/if}
 
       {#if status.pairing}
         <div class="code-card" role="status">
-          <p class="text-[12.5px] text-muted-foreground">
+          <p class="text-[length:var(--text-sm)] text-muted-foreground">
             {$t('bots.telegram.sendCode', { values: { bot: status.username ? `@${status.username}` : $t('bots.telegram.theBot'), minutes: minutesLeft(status.pairing.expires_at) } })}
           </p>
           <p class="code">/pair {status.pairing.code}</p>
-          <p class="text-[13px] text-muted-foreground">{status.pairing.trust === 'owner' ? $t('bots.telegram.fullHint') : $t('bots.telegram.readOnlyHint')}</p>
+          <p class="text-[length:var(--text-sm)] text-muted-foreground">{status.pairing.trust === 'owner' ? $t('bots.telegram.fullHint') : $t('bots.telegram.readOnlyHint')}</p>
         </div>
       {:else}
         <div class="flex flex-wrap items-center gap-2">
@@ -157,7 +157,7 @@
       {/if}
     </div>
   {/if}
-  {#if error}<p class="text-[12px] text-destructive" role="alert">{error}</p>{/if}
+  {#if error}<p class="text-[length:var(--text-xs)] text-destructive" role="alert">{error}</p>{/if}
 </div>
 
 <style>
@@ -165,7 +165,7 @@
     margin: 0;
     padding-left: 1.1rem;
     list-style: decimal;
-    font-size: 12.5px;
+    font-size: var(--text-sm);
     color: var(--muted-foreground);
   }
   .steps li + li { margin-top: 0.2rem; }
@@ -173,7 +173,7 @@
     width: 0.5rem;
     height: 0.5rem;
     flex-shrink: 0;
-    border-radius: 9999px;
+    border-radius: var(--radius-full);
     background: var(--warning);
   }
   .dot.ok { background: var(--success); }
@@ -191,10 +191,10 @@
   .people li + li { border-top: 1px solid var(--border-subtle); }
   .badge {
     flex-shrink: 0;
-    border-radius: 9999px;
+    border-radius: var(--radius-full);
     background: var(--surface-hover);
     padding: 0.05rem 0.5rem;
-    font-size: 11px;
+    font-size: var(--text-xs);
     color: var(--muted-foreground);
   }
   :global(.remove.ui-local-f8c24190) {
@@ -203,7 +203,7 @@
     width: 1.5rem;
     align-items: center;
     justify-content: center;
-    border-radius: 9999px;
+    border-radius: var(--radius-full);
     color: var(--muted-foreground);
   }
   :global(.remove:hover.ui-local-f8c24190) { background: var(--surface-hover); color: var(--foreground); }

@@ -2,11 +2,12 @@
 
 <script lang="ts">
   import type { ComponentType, Snippet } from 'svelte';
+  import type { HTMLButtonAttributes } from 'svelte/elements';
   import type { Icon as LucideIcon } from 'lucide-svelte';
   import { Check } from 'lucide-svelte';
   import { cn } from '$lib/utils/cn';
 
-  interface Props {
+  interface Props extends Omit<HTMLButtonAttributes, 'role' | 'class' | 'children'> {
     label?: string;
     /** A quieter second line under the label. */
     description?: string;
@@ -16,6 +17,10 @@
     active?: boolean;
     disabled?: boolean;
     class?: string;
+    /** `menuitem` inside a Menu; a plain `button` when the row sits in a panel. */
+    role?: 'menuitem' | 'button';
+    /** Choosing it leaves the menu open (a row that asks to confirm first). */
+    keepOpen?: boolean;
     onselect?: () => void;
     children?: Snippet;
   }
@@ -28,17 +33,22 @@
     active = false,
     disabled = false,
     class: className = '',
+    role = 'menuitem',
+    keepOpen = false,
     onselect,
-    children
+    children,
+    ...rest
   }: Props = $props();
 </script>
 
 <button
   type="button"
-  role="menuitem"
+  {role}
   class={cn('ui-menu-item', danger && 'is-danger', active && 'is-active', className)}
   aria-current={active ? 'true' : undefined}
   {disabled}
+  data-keep-open={keepOpen ? '' : undefined}
+  {...rest}
   onclick={onselect}
 >
   {#if Icon}<Icon class="size-4" />{/if}

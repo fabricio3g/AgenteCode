@@ -58,7 +58,7 @@
         <span class="truncate">{$t(`artifacts.group.${entry.group}`)}</span>
       </p>
       <p class="mt-1 line-clamp-2 text-sm font-medium leading-snug text-foreground">{entry.artifact.title || $t('artifacts.untitled')}</p>
-      <p class="mt-1 truncate text-[12px] text-muted-foreground">{entry.chatTitle} · {when(entry.createdAt)}</p>
+      <p class="mt-1 truncate text-[length:var(--text-xs)] text-muted-foreground">{entry.chatTitle} · {when(entry.createdAt)}</p>
     </div>
   </UiButton>
   <IconButton label={$t('artifacts.delete')} size="xs" variant="ghost" type="button" class={uiClass("delete", "ui-local-b2856088")}  title={$t('artifacts.delete')} onclick={ondelete}>
@@ -114,7 +114,7 @@
     height: 1.75rem;
     align-items: center;
     justify-content: center;
-    border-radius: 9999px;
+    border-radius: var(--radius-full);
     background: color-mix(in srgb, var(--background) 88%, transparent);
     color: var(--muted-foreground);
     opacity: 0;

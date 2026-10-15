@@ -72,7 +72,7 @@
     align-items: center;
     justify-content: center;
     overflow: hidden;
-    border-radius: 9999px;
+    border-radius: var(--radius-full);
     font-weight: 600;
     letter-spacing: 0.01em;
     line-height: 1;

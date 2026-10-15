@@ -301,7 +301,7 @@
     background: var(--card);
     box-shadow: inset 0 0 0 1px var(--composer-ring);
     text-align: left;
-    transition: background 150ms ease, box-shadow 150ms ease;
+    transition: background var(--motion-fast) var(--motion-ease), box-shadow var(--motion-fast) var(--motion-ease);
   }
 
   .attachment-launcher:hover {
@@ -394,7 +394,7 @@
     flex-shrink: 0;
     border-radius: var(--radius-sm);
     color: var(--text-tertiary);
-    transition: background 150ms ease, color 150ms ease;
+    transition: background var(--motion-fast) var(--motion-ease), color var(--motion-fast) var(--motion-ease);
   }
 
   :is(.attachment-download:hover, :global(.attachment-download:hover.ui-local-77e16915)) {
@@ -415,7 +415,7 @@
     box-shadow: var(--artifact-elev);
     padding: 0.6rem 0.7rem;
     text-align: left;
-    transition: background 150ms ease, box-shadow 150ms ease;
+    transition: background var(--motion-fast) var(--motion-ease), box-shadow var(--motion-fast) var(--motion-ease);
   }
 
   .work-product-tile:hover {
@@ -480,7 +480,7 @@
     border-radius: var(--radius-sm);
     color: var(--text-secondary);
     background: transparent;
-    transition: background 150ms ease, color 150ms ease;
+    transition: background var(--motion-fast) var(--motion-ease), color var(--motion-fast) var(--motion-ease);
   }
 
   :is(.document-action:hover, :global(.document-action:hover.ui-local-77e16915)) {
@@ -525,7 +525,7 @@
       var(--shadow-xl);
   }
 
-  .workspace-warning { display:flex; align-items:center; gap:6px; padding:5px 10px; color:var(--muted-foreground); font-size:11px; }
+  .workspace-warning { display:flex; align-items:center; gap:6px; padding:5px 10px; color:var(--muted-foreground); font-size:var(--text-xs); }
   .reader-body { display:flex; flex-direction:column; min-height:0; flex:1; }
   .reader-preview { display:flex; min-width:0; min-height:0; flex:1; overflow:hidden; margin:0 4px 4px; border-radius:8px; background:var(--muted); }
 
@@ -563,11 +563,11 @@
     justify-content: center;
     width: 2.35rem;
     height: 2.35rem;
-    border-radius: 9999px;
+    border-radius: var(--radius-full);
     background: color-mix(in srgb, black 48%, transparent);
     color: white;
     backdrop-filter: blur(10px);
-    transition: background 0.15s ease, transform 0.15s ease;
+    transition: background var(--motion-fast) var(--motion-ease), transform var(--motion-fast) var(--motion-ease);
   }
 
   :is(.image-viewer-close:hover, :global(.image-viewer-close:hover.ui-local-77e16915)) {

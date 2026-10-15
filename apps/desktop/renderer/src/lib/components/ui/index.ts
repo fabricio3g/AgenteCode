@@ -9,6 +9,7 @@ export { default as IconButton } from './IconButton.svelte';
 export { default as Input } from './Input.svelte';
 export { default as Menu } from './Menu.svelte';
 export { default as MenuItem } from './MenuItem.svelte';
+export { default as SubMenu, submenuGroup, type SubMenuGroup } from './SubMenu.svelte';
 export type { MenuPlacement } from './menu';
 export { default as Portal } from './Portal.svelte';
 export { default as ResizeHandle } from './ResizeHandle.svelte';

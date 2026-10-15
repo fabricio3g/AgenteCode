@@ -127,7 +127,7 @@
     align-items: center;
     justify-content: center;
     border: 1px solid var(--float-border);
-    border-radius: 9999px;
+    border-radius: var(--radius-full);
     font-size: 0.6875rem;
     font-variant-numeric: tabular-nums;
   }

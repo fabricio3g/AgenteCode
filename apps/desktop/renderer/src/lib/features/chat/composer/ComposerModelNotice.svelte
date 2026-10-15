@@ -161,7 +161,7 @@
     text-decoration: underline;
     text-decoration-color: color-mix(in srgb, var(--foreground) 30%, transparent);
     text-underline-offset: 2px;
-    transition: color 150ms ease;
+    transition: color var(--motion-fast) var(--motion-ease);
   }
 
   :global(.notice-link:hover.ui-local-214c33bf) {

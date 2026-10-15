@@ -392,11 +392,11 @@
     height: 2.25rem;
     align-items: center;
     justify-content: center;
-    border-radius: 9999px;
+    border-radius: var(--radius-full);
     background: rgb(255 255 255 / 0.12);
     color: #fff;
     opacity: 0.4;
-    transition: opacity 150ms ease;
+    transition: opacity var(--motion-fast) var(--motion-ease);
   }
   .presenter:hover :global(.presenter-exit.ui-local-ca576e1d) {
     opacity: 1;

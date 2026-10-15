@@ -103,7 +103,7 @@
 
   {#if showThinking && capabilities.supported && capabilities.levels.length}
     <div class="thinking-row">
-      {#if !compact}<span class="text-[12px] text-muted-foreground">{$t('bots.thinking')}</span>{/if}
+      {#if !compact}<span class="text-[length:var(--text-xs)] text-muted-foreground">{$t('bots.thinking')}</span>{/if}
       <ReasoningLevelSelector {capabilities} value={thinking} onchange={(level) => (thinking = level)} />
     </div>
   {/if}

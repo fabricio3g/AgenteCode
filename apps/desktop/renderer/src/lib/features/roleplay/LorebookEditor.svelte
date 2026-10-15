@@ -181,7 +181,7 @@
               oninput={(event) => updateEntry(selected.id, { keys: parseKeys(event.currentTarget.value) })}
               placeholder={$t('roleplay.lore.triggersPlaceholder')}
             />
-            <span class="block text-[12px] text-muted-foreground">{$t('roleplay.lore.triggersHint')}</span>
+            <span class="block text-[length:var(--text-xs)] text-muted-foreground">{$t('roleplay.lore.triggersHint')}</span>
           </label>
 
           <label class="block space-y-1.5 text-sm">
@@ -198,14 +198,14 @@
             <div class="flex items-center justify-between gap-3">
               <div class="min-w-0">
                 <div class="text-xs font-medium text-foreground">{$t('roleplay.lore.always')}</div>
-                <div class="text-[12px] text-muted-foreground">{$t('roleplay.lore.alwaysHint')}</div>
+                <div class="text-[length:var(--text-xs)] text-muted-foreground">{$t('roleplay.lore.alwaysHint')}</div>
               </div>
               <Switch checked={!!selected.constant} label={$t('roleplay.lore.always')} onchange={(checked) => updateEntry(selected.id, { constant: checked })} />
             </div>
             <div class="flex items-center justify-between gap-3">
               <div class="min-w-0">
                 <div class="text-xs font-medium text-foreground">{$t('roleplay.lore.needsSecond')}</div>
-                <div class="text-[12px] text-muted-foreground">{$t('roleplay.lore.needsSecondHint')}</div>
+                <div class="text-[length:var(--text-xs)] text-muted-foreground">{$t('roleplay.lore.needsSecondHint')}</div>
               </div>
               <Switch checked={!!selected.selective} label={$t('roleplay.lore.needsSecond')} onchange={(checked) => updateEntry(selected.id, { selective: checked })} />
             </div>
@@ -295,7 +295,7 @@
           value={draft.scanDepth ?? 4}
           oninput={(event) => updateBook({ scanDepth: numberValue(event) ?? 4 })}
         />
-        <span class="block text-[12px] text-muted-foreground">{$t('roleplay.lore.scanDepthHint')}</span>
+        <span class="block text-[length:var(--text-xs)] text-muted-foreground">{$t('roleplay.lore.scanDepthHint')}</span>
       </label>
       <label class="block space-y-1.5 text-sm">
         <span class="text-xs font-medium text-muted-foreground">{$t('roleplay.lore.tokenBudget')}</span>

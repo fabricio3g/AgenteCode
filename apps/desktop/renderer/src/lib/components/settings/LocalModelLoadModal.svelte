@@ -375,7 +375,7 @@
   </label>
 {/snippet}
 
-{#if target}
+{#if target && !appStore.localModelLoadQuiet}
   <Dialog
     title={target.name}
     description={appStore.localModelLoadAsInstance ? $t('instances.startTitle') : $t('localLoad.title')}
@@ -648,8 +648,11 @@
             {@render field($t('localLoad.cacheTypeK'), cacheK)}
             {#snippet cacheV()}<Select class="h-9 w-full text-[length:var(--text-sm)]" bind:value={appStore.localModelLoadCacheTypeV} options={cacheTypes.map((type) => ({ value: type, label: type }))} />{/snippet}
             {@render field($t('localLoad.cacheTypeV'), cacheV)}
-            {#snippet parallel()}<Input class="w-full" bind:value={appStore.localModelLoadParallel} inputmode="numeric" />{/snippet}
-            {@render field($t('localLoad.parallel'), parallel)}
+            <!-- The main server's slots are an app setting (Settings › This computer); an extra instance keeps its own. -->
+            {#if appStore.localModelLoadAsInstance}
+              {#snippet parallel()}<Input class="w-full" bind:value={appStore.localModelLoadParallel} inputmode="numeric" />{/snippet}
+              {@render field($t('localLoad.parallel'), parallel)}
+            {/if}
             {#snippet split()}<Select class="h-9 w-full text-[length:var(--text-sm)]" bind:value={appStore.localModelLoadSplitMode} options={splitModes.map((mode) => ({ value: mode, label: mode || $t('localLoad.auto') }))} />{/snippet}
             {@render field($t('localLoad.splitMode'), split)}
             {#snippet seed()}<Input class="w-full" bind:value={appStore.localModelLoadSeed} inputmode="numeric" placeholder={$t('localLoad.optional')} />{/snippet}

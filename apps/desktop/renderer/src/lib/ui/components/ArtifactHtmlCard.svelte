@@ -127,7 +127,7 @@
   .html-card-frame-wrap {
     width: 100%;
     overflow: hidden;
-    transition: height 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
+    transition: height var(--motion-normal) var(--motion-ease-out);
   }
 
   .html-card-frame {

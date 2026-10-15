@@ -16,7 +16,7 @@
 
 <div class="flex h-full min-h-0 flex-col">
   {#if chrome}<div class="flex h-10 shrink-0 items-center justify-between border-b border-border px-3">
-    <span class="truncate text-[12px] text-muted-foreground">{path || $t('artifacts.studio.noFile')}</span>
+    <span class="truncate text-[length:var(--text-xs)] text-muted-foreground">{path || $t('artifacts.studio.noFile')}</span>
     <Tooltip label={$t('artifacts.studio.downloadFile')} position="bottom"><IconButton label={$t('artifacts.studio.downloadFile')} variant="ghost" size="sm" onclick={ondownload} disabled={!path} ><FileDown /></IconButton></Tooltip>
   </div>
   {/if}

@@ -28,4 +28,14 @@ describe('viewport-constrained menus', () => {
     expect(result.top + result.maxHeight).toBeLessThanOrEqual(144);
     expect(result.left + result.maxWidth).toBeLessThanOrEqual(194);
   });
+
+  it('opens a submenu beside its row, flipping left when the right has no room', () => {
+    const row = { top: 150, bottom: 180, left: 20, right: 200 };
+    const right = placePanel(row, { width: 120, height: 100 }, 'right-end', viewport);
+    expect(right.left).toBe(206);
+    expect(right.top + 100).toBe(180);
+    const flipped = placePanel({ top: 150, bottom: 180, left: 230, right: 350 }, { width: 120, height: 100 }, 'right-start', viewport);
+    expect(flipped.left + 120).toBeLessThanOrEqual(224);
+    expect(flipped.top).toBe(150);
+  });
 });

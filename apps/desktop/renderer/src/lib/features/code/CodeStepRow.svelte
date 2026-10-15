@@ -324,7 +324,7 @@
   :global(.approve-btn.ui-local-af21c610) {
     height: 1.75rem;
     padding: 0 0.75rem;
-    border-radius: 9999px;
+    border-radius: var(--radius-full);
     font-size: var(--text-xs);
     font-weight: 500;
     color: var(--foreground);

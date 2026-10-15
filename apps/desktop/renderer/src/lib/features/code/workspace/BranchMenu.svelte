@@ -136,7 +136,7 @@
   }
   :global(.branch-chip:hover.ui-local-4a309ef6), :global(.branch-chip[aria-expanded='true'].ui-local-4a309ef6) { background: var(--surface-hover); color: var(--foreground); }
   .branch-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .branch-dot { width: 5px; height: 5px; flex-shrink: 0; border-radius: 999px; background: var(--warning); }
+  .branch-dot { width: 5px; height: 5px; flex-shrink: 0; border-radius: var(--radius-full); background: var(--warning); }
   .branch-menu { min-width: 0; }
   .branch-row { display: flex; min-width: 0; align-items: center; gap: 0.4rem; }
   .branch-track { flex-shrink: 0; font-size: var(--text-xs); font-variant-numeric: tabular-nums; color: var(--muted-foreground); }

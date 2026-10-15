@@ -283,7 +283,7 @@
   .swatch {
     width: 1.25rem;
     height: 1.25rem;
-    border-radius: 999px;
+    border-radius: var(--radius-full);
     box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--foreground) 12%, transparent);
   }
 

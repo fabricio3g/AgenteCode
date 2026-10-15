@@ -7,6 +7,8 @@ const APP_CONFIG_KEY = 'chatealm_app_config';
 export const CHAT_STATE_KEY = 'chatealm_chat_state_v2';
 const THEME_KEY = THEME_STORAGE_KEY;
 const DB_MIGRATED_KEY = 'chatealm_db_migrated';
+/** Set once the legacy localStorage backup's extra payloads were copied into SQLite. */
+const DB_BACKFILLED_KEY = 'chatealm_db_backfilled';
 const CHARACTERS_KEY = 'chatealm_characters_v1';
 const PERSONAS_KEY = 'chatealm_personas_v1';
 const WORLDS_KEY = 'chatealm_worlds_v1';
@@ -133,10 +135,25 @@ export async function saveAppConfig(next: AppConfig): Promise<void> {
   }
 }
 
+/**
+ * Navigation state (current chat, space, …). In Electron that is the small
+ * `.navigation` key alone: the legacy key under CHAT_STATE_KEY is a pre-SQLite
+ * backup of every transcript — tens of MB on an old profile — and parsing it
+ * on the UI thread is what made startup slow. It is read only to migrate or
+ * backfill (`loadLegacyChats`), never on the startup path.
+ */
 export function loadChatState<T>(fallback: T): T {
-  const legacy = safeParse<T>(localStorage.getItem(CHAT_STATE_KEY), fallback);
-  const navigation = safeParse<Record<string, unknown> | null>(localStorage.getItem(`${CHAT_STATE_KEY}.navigation`), null);
-  return navigation && isElectronEnv() ? { ...legacy, ...navigation } : legacy;
+  const navigation = isElectronEnv()
+    ? safeParse<Record<string, unknown> | null>(localStorage.getItem(`${CHAT_STATE_KEY}.navigation`), null)
+    : null;
+  if (navigation) return { ...fallback, ...navigation };
+  return safeParse<T>(localStorage.getItem(CHAT_STATE_KEY), fallback);
+}
+
+/** The pre-SQLite transcript backup, for migration and the one-time backfill only. */
+function loadLegacyChats(): { chats: ChatSession[]; folders: ChatFolder[] } {
+  const legacy = safeParse<{ chats?: ChatSession[]; folders?: ChatFolder[] }>(localStorage.getItem(CHAT_STATE_KEY), {});
+  return { chats: Array.isArray(legacy.chats) ? legacy.chats : [], folders: Array.isArray(legacy.folders) ? legacy.folders : [] };
 }
 
 export function saveChatState<T>(value: T): void {
@@ -151,13 +168,15 @@ export function saveChatState<T>(value: T): void {
 export async function loadChatStateFromDb(): Promise<{ chats: ChatSession[]; folders: ChatFolder[]; migrated: boolean } | null> {
   if (!isElectronEnv()) return null;
   try {
-    const chats = await (window as any).electronAPI.invoke('chat_db_load_all') as ChatSession[];
-    const folders = await (window as any).electronAPI.invoke('chat_db_load_folders') as ChatFolder[];
-    const localState = loadChatState<{ chats: ChatSession[]; folders: ChatFolder[] }>({ chats: [], folders: [] });
+    const [chats, folders] = await Promise.all([
+      (window as any).electronAPI.invoke('chat_db_load_all') as Promise<ChatSession[]>,
+      (window as any).electronAPI.invoke('chat_db_load_folders') as Promise<ChatFolder[]>
+    ]);
 
     // If DB is empty, try migration from localStorage
     if ((!chats || chats.length === 0) && !localStorage.getItem(DB_MIGRATED_KEY)) {
-      if (localState.chats?.length > 0 || localState.folders?.length > 0) {
+      const localState = loadLegacyChats();
+      if (localState.chats.length > 0 || localState.folders.length > 0) {
         const migrated = await (window as any).electronAPI.invoke('chat_db_migrate', { persistedState: localState }) as number;
         console.log(`[chat-db] Migrated ${migrated} chats from localStorage to SQLite`);
         localStorage.setItem(DB_MIGRATED_KEY, '1');
@@ -174,7 +193,7 @@ export async function loadChatStateFromDb(): Promise<{ chats: ChatSession[]; fol
 
     if (!chats || chats.length === 0) return null;
     return {
-      chats: mergeDocumentPayloadsFromLocal(chats, localState.chats || []),
+      chats: await backfillFromLegacy(chats),
       folders: folders || [],
       migrated: false
     };
@@ -182,6 +201,41 @@ export async function loadChatStateFromDb(): Promise<{ chats: ChatSession[]; fol
     console.error('[loadChatStateFromDb] Failed:', err);
     return null;
   }
+}
+
+/**
+ * Older SQLite rows can lack payloads (agent steps, sources, attachment data)
+ * that only the legacy localStorage backup kept. They used to be merged back on
+ * every startup, which meant parsing the whole backup every time. Now the merge
+ * runs once: chats that had a twin in the backup are written back to SQLite,
+ * then the backup itself is removed — SQLite holds everything it had, and
+ * Chromium loads an origin's whole localStorage into memory on first use, so a
+ * stale tens-of-MB value slows every launch even unread. Only reached with a
+ * non-empty database, so a failed migration never loses the backup.
+ */
+async function backfillFromLegacy(chats: ChatSession[]): Promise<ChatSession[]> {
+  if (localStorage.getItem(DB_BACKFILLED_KEY)) {
+    localStorage.removeItem(CHAT_STATE_KEY);
+    return chats;
+  }
+  const legacy = loadLegacyChats().chats;
+  const merged = mergeDocumentPayloadsFromLocal(chats, legacy);
+  const changed = merged.filter((chat, index) => chat !== chats[index]);
+  let complete = true;
+  for (const chat of changed) {
+    try {
+      await (window as any).electronAPI.invoke('chat_db_save_session', { session: JSON.parse(JSON.stringify(chat)) });
+    } catch (err) {
+      complete = false;
+      console.error('[backfillFromLegacy] Failed:', err);
+    }
+  }
+  // A failed write leaves the flag and the backup in place, so the next startup tries again.
+  if (complete) {
+    localStorage.setItem(DB_BACKFILLED_KEY, '1');
+    localStorage.removeItem(CHAT_STATE_KEY);
+  }
+  return merged;
 }
 
 export async function saveChatDraftToDb(session: ChatSession): Promise<void> {

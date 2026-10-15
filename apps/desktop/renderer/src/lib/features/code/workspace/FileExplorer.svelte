@@ -173,11 +173,11 @@
     align-items: center;
     gap: 0.125rem;
     padding: 0 0.3rem 0 0.75rem;
-    font-size: 12.5px;
+    font-size: var(--text-sm);
   }
   /* Rows are 1.375rem tiles: the gap keeps a hovered row from touching the next,
      and the top inset keeps the first one off the bar. */
   .files-tree { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 0.125rem; padding: 0.25rem 4px 4px; outline: none; }
   .files-tree:focus-visible { outline: 1px solid var(--border-hover); outline-offset: -1px; }
-  .files-empty { display: flex; align-items: flex-start; gap: 0.5rem; padding: 0.5rem 0.75rem; color: var(--muted-foreground); font-size: 12px; line-height: 1.55; }
+  .files-empty { display: flex; align-items: flex-start; gap: 0.5rem; padding: 0.5rem 0.75rem; color: var(--muted-foreground); font-size: var(--text-xs); line-height: 1.55; }
 </style>

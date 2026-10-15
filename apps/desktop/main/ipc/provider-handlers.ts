@@ -82,6 +82,10 @@ export function registerProviderHandlers({ ipcMain, resolveProvider, resolveApiK
     return listProviderSpecs();
   });
 
+  // What the model picker's card shows: window, output cap, prices and what the
+  // model accepts, all from the core's catalog (models.dev + live lists).
+  ipcMain.handle('get_model_card', async (_e, { providerName, model }) => modelCard(String(providerName || ''), String(model || '')));
+
   // Levels come from the shared core, the same profile the TUI shows.
   ipcMain.handle('get_reasoning_capabilities', async (_e, { providerName, model }) => {
     const { reasoningCapabilities } = await import('../agente/thinking.ts');
@@ -110,5 +114,31 @@ async function coreModelContext(providerName: string, modelId: string) {
     max_completion_tokens: Number(info.limits?.output) || undefined,
     prompt_cost_per_million: Number(info.cost?.input) || undefined,
     completion_cost_per_million: Number(info.cost?.output) || undefined
+  };
+}
+
+type CoreModelCard = {
+  limits?: { context?: number | null; output?: number | null };
+  cost?: { input?: number | null; output?: number | null; cache_read?: number | null } | null;
+  capabilities?: { reasoning?: boolean; toolcall?: boolean; vision?: boolean; input_modalities?: string[] } | null;
+};
+
+/** Numbers the core does not know come back null, never 0, so the card can leave them out. */
+async function modelCard(providerName: string, modelId: string) {
+  const { runtimeConnection } = await import('../agente/rust-engine.ts');
+  const client = await runtimeConnection();
+  const info = await client.request<CoreModelCard>('models.info', { provider: providerName, model: modelId });
+  const known = (value: unknown) => (Number.isFinite(Number(value)) && Number(value) > 0 ? Number(value) : null);
+  const caps = info.capabilities ?? {};
+  const inputs = Array.isArray(caps.input_modalities) && caps.input_modalities.length
+    ? caps.input_modalities.map(String)
+    : caps.vision ? ['text', 'image'] : [];
+  return {
+    context: known(info.limits?.context),
+    output: known(info.limits?.output),
+    cost: info.cost ? { input: info.cost.input ?? null, output: info.cost.output ?? null, cacheRead: known(info.cost.cache_read) } : null,
+    inputs,
+    tools: caps.toolcall === true,
+    reasoning: caps.reasoning === true
   };
 }

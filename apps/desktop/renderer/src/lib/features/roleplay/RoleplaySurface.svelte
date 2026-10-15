@@ -86,6 +86,16 @@
   /** Scene setup: a world, or a bare start (optionally from one character). */
   let sceneSetup = $state<{ world: RoleplayWorld | null; character?: CharacterCard | null } | null>(null);
 
+  // The sidebar's "New" starts a scene; a request made before this surface
+  // mounted is not replayed.
+  let seenSceneRequest = appStore.roleplaySceneRequest;
+  $effect(() => {
+    const request = appStore.roleplaySceneRequest;
+    if (request === seenSceneRequest) return;
+    seenSceneRequest = request;
+    sceneSetup = { world: null };
+  });
+
   /** One tap starts a 1:1 scene with the first greeting; the persona is the last one used. */
   function pickCharacter(card: CharacterCard) {
     // The in-chat pager flips openings; no picker on the way in.
@@ -156,7 +166,6 @@
         onnewWorld={openNewWorld}
         oneditPersona={openEditPersona}
         onnewPersona={openNewPersona}
-        onnewScene={() => (sceneSetup = { world: null })}
       />
     {:else}
       <RoleplaySceneHeader

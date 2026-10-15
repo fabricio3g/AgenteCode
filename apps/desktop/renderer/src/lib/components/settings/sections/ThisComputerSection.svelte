@@ -35,6 +35,7 @@
   import SettingsRow from '../SettingsRow.svelte';
   import HardwareSummary from '../HardwareSummary.svelte';
   import LocalRuntimePanel from '../LocalRuntimePanel.svelte';
+  import LocalServerSettings from '../LocalServerSettings.svelte';
   import WhisperRuntimePanel from '../WhisperRuntimePanel.svelte';
   import AudioEnginePanel from '../AudioEnginePanel.svelte';
 
@@ -231,6 +232,8 @@
 
 <SettingsPage title={$t('computer.title')} description={$t('computer.description')}>
   <HardwareSummary />
+
+  <LocalServerSettings />
 
   <SettingsSection title={$t('computer.engines')} description={$t('computer.enginesHint')}>
     {#snippet actions()}

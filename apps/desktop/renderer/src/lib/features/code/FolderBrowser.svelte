@@ -208,7 +208,7 @@
   :global(.row.ui-local-2ec0e574) :global(.row-icon) { width: 1rem; height: 1rem; flex-shrink: 0; color: var(--muted-foreground); }
   :global(.row.ui-local-2ec0e574) :global(.row-icon.is-project) { color: var(--brand-accent); }
   .row-name { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .row-tag { flex-shrink: 0; padding: 0 0.375rem; border-radius: 9999px; background: var(--muted); color: var(--muted-foreground); font-size: var(--text-xs); }
+  .row-tag { flex-shrink: 0; padding: 0 0.375rem; border-radius: var(--radius-full); background: var(--muted); color: var(--muted-foreground); font-size: var(--text-xs); }
 
   .footer {
     display: flex; align-items: center; justify-content: flex-end; gap: 0.5rem;

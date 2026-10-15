@@ -289,6 +289,8 @@ class AppStore {
   localModelLoadMmap = $state(true);
   localModelLoadSeed = $state('');
   localModelLoadParallel = $state('1');
+  /** A load started from the model menu runs without its dialog; a failure brings the dialog back. */
+  localModelLoadQuiet = $state(false);
   localModelLoadRopeFreqBase = $state('');
   localModelLoadRopeFreqScale = $state('');
   localModelLoadCacheTypeK = $state('f16');
@@ -1095,6 +1097,17 @@ class AppStore {
     }
   }
 
+  /** Load with the remembered/recommended settings and no dialog (the model menu's path). */
+  async loadLocalModelQuietly(model: LocalModelLoadTarget) {
+    this.localModelLoadQuiet = true;
+    try {
+      await this.openLocalModelLoadDialog(model);
+      await this.confirmLocalModelLoad();
+    } finally {
+      this.localModelLoadQuiet = false;
+    }
+  }
+
   async confirmLocalModelLoad() {
     // The dialog can be hidden mid-load, which clears localModelLoadTarget.
     const target = this.localModelLoadTarget;
@@ -1214,6 +1227,8 @@ class AppStore {
 
     try {
       const CONFIG_TIMEOUT_SENTINEL = Symbol('timeout');
+      // Config and the chat database are independent: load them side by side.
+      const dbLoad = loadChatStateFromDb();
       const configResult = await withTimeout<AppConfig | typeof CONFIG_TIMEOUT_SENTINEL>(loadChatConfig(), 5000, CONFIG_TIMEOUT_SENTINEL);
       if (configResult === CONFIG_TIMEOUT_SENTINEL) {
         console.warn('[appStore.init] Config load timed out after 5s — using empty config fallback. Backend mode will default to local.');
@@ -1222,7 +1237,7 @@ class AppStore {
         this.config = configResult;
       }
       // In Electron: load from SQLite (primary). Falls back to localStorage migration.
-      const dbResult = await loadChatStateFromDb();
+      const dbResult = await dbLoad;
       let chats: ChatSession[];
       let folders: ChatFolder[];
       let currentChatId: string | null;
@@ -1453,6 +1468,15 @@ class AppStore {
    * made when a character or a setup is started, so this never leaves an
    * empty "New roleplay" row behind.
    */
+  /** Bumped by `startRoleplayScene`; the roleplay surface opens scene setup when it changes. */
+  roleplaySceneRequest = $state(0);
+
+  /** The space's "New": go to the library and open scene setup there. */
+  startRoleplayScene() {
+    this.openRoleplayLibrary();
+    this.roleplaySceneRequest += 1;
+  }
+
   openRoleplayLibrary() {
     this.settingsScreenOpen = false;
     this.homeView = 'chat';
@@ -3536,6 +3560,17 @@ class AppStore {
     next.llm = { ...next.llm, local: { ...(next.llm?.local || {}), base_url: instance.base_url } };
     await this.commitConfig(next, {});
     this.localModelActive = { name: instance.name, path: instance.path, hasMmproj: false };
+  }
+
+  /**
+   * How many chats the on-device server answers at once (`--parallel`). One
+   * value for the whole app — the server is shared — so it lives in config,
+   * not in a model's remembered load settings. Takes effect on the next load.
+   */
+  async setLocalParallel(slots: number) {
+    const value = Math.max(1, Math.min(16, Math.floor(slots) || 1));
+    this.localModelLoadParallel = String(value);
+    await this.commitConfig({ ...this.config, llm: { ...this.config.llm, local: { ...(this.config.llm?.local ?? {}), parallel: value } } });
   }
 
   async setLocalRuntimePath(path: string) {

@@ -63,9 +63,8 @@ async function run() {
     assert.equal(await js(`(async () => (await import('/src/lib/stores/app.svelte.ts')).appStore.currentChatId)()`), 'split-a', 'Keyboard focus activates its conversation');
     // Both browsers stay mounted and exposed in the two split docks.
     for (const id of ['a','b']) {
-      await js(`document.querySelector('[data-conversation-workspace="split-${id}"] [aria-label="Project controls"]').click()`); await pause();
-      await js(`document.querySelector('[data-project-controls="split-${id}"] [data-panel-tab="browser"]').click()`); await pause();
-      await js(`document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))`);
+      // The browser toggle lives in each pane's own strip, not in the project card.
+      await js(`document.querySelector('[data-conversation-workspace="split-${id}"] [data-panel-tab="browser"]').click()`); await pause();
     }
     assert.equal(await js(`document.querySelectorAll('[data-workspace-panel="browser"]:not([hidden])').length`), 2);
     const browsers = await js<string[]>(`[...document.querySelectorAll('[data-workspace-panel="browser"] input')].map(input=>input.value)`);

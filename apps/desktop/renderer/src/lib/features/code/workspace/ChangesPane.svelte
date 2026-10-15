@@ -171,12 +171,12 @@
         {@const mark = KIND_MARK[file.kind] ?? KIND_MARK.modified}
         <li role="option" aria-selected={selectedPath === file.path}>
           <UiListRow  type="button" class={uiClass("file-row", "ui-local-8f978f5f", {"is-active": selectedPath === file.path})}  onclick={() => (selectedPath = file.path)} title={file.path}>
-            <span class="w-3 shrink-0 text-center text-[12px] font-semibold {mark.tone}">{mark.letter}</span>
+            <span class="w-3 shrink-0 text-center text-[length:var(--text-xs)] font-semibold {mark.tone}">{mark.letter}</span>
             <span class="min-w-0 flex-1 truncate">
               <span class="text-foreground">{parts.name}</span>
               {#if parts.dir}<span class="ml-1.5 text-muted-foreground">{parts.dir}</span>{/if}
             </span>
-            <span class="shrink-0 text-[12px] tabular-nums text-muted-foreground">
+            <span class="shrink-0 text-[length:var(--text-xs)] tabular-nums text-muted-foreground">
               {#if file.additions}<span>+{file.additions}</span>{/if}
               {#if file.deletions}<span class="ml-1">−{file.deletions}</span>{/if}
             </span>
@@ -235,7 +235,7 @@
     align-items: center;
     gap: 0.125rem;
     padding: 0 0.3rem 0 0.75rem;
-    font-size: 12.5px;
+    font-size: var(--text-sm);
   }
 
   /* The branch sits beside the file count, quiet enough to not read as a count. */
@@ -256,7 +256,7 @@
     gap: 0.5rem;
     padding: 0.5rem 0.75rem;
     color: var(--muted-foreground);
-    font-size: 12px;
+    font-size: var(--text-xs);
     line-height: 1.55;
   }
 
@@ -281,7 +281,7 @@
     padding: 0 0.6rem;
     border-radius: var(--radius-full);
     color: var(--muted-foreground);
-    font-size: 12px;
+    font-size: var(--text-xs);
     text-align: left;
     transition: background-color var(--motion-fast) var(--motion-ease);
   }
@@ -311,7 +311,7 @@
     gap: 0.375rem;
     padding: 0 0.4rem 0 0.75rem;
     color: var(--muted-foreground);
-    font-size: 11px;
+    font-size: var(--text-xs);
   }
 
   .diff-scroll {
@@ -323,7 +323,7 @@
   .diff-note {
     padding: 0.75rem;
     color: var(--muted-foreground);
-    font-size: 12px;
+    font-size: var(--text-xs);
   }
 
 </style>

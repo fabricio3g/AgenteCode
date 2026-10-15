@@ -120,7 +120,7 @@
     height: 1.75rem;
     border-radius: var(--radius-full);
     padding: 0 0.25rem 0 0.6rem;
-    font-size: 12px;
+    font-size: var(--text-xs);
     transition: background-color var(--motion-fast) var(--motion-ease);
   }
   li:hover, li:focus-within { background: var(--surface-hover); }
@@ -151,7 +151,7 @@
     background: var(--muted);
     color: var(--foreground);
     font: inherit;
-    font-size: 12.5px;
+    font-size: var(--text-sm);
     line-height: 1.5;
   }
   :global(textarea:focus-visible.ui-local-7f791877) { outline: 1px solid var(--border-hover); }

@@ -122,7 +122,7 @@
     width: 1.5rem;
     height: min(9rem, calc(100% - 3rem));
     transform: translateY(-50%);
-    border-radius: 9999px;
+    border-radius: var(--radius-full);
     opacity: 0.45;
     transition:
       opacity var(--motion-fast) var(--motion-ease),
@@ -158,7 +158,7 @@
     align-items: center;
     justify-content: flex-end;
     border: 0;
-    border-radius: 9999px;
+    border-radius: var(--radius-full);
     background: transparent;
     cursor: pointer;
     outline: none;
@@ -168,7 +168,7 @@
     display: block;
     width: 0.375rem;
     height: 1px;
-    border-radius: 9999px;
+    border-radius: var(--radius-full);
     background: var(--muted-foreground);
     transition:
       width 120ms ease,
@@ -216,14 +216,14 @@
     animation: dial-tip-in 120ms ease-out;
   }
   .dial-tip-role {
-    font-size: 11px;
+    font-size: var(--text-xs);
     font-weight: 500;
     color: var(--muted-foreground);
   }
   .dial-tip-text {
     display: -webkit-box;
     overflow: hidden;
-    font-size: 12.5px;
+    font-size: var(--text-sm);
     line-height: 1.45;
     overflow-wrap: anywhere;
     -webkit-box-orient: vertical;

@@ -165,7 +165,7 @@
         <div class="flex items-center justify-between gap-2">
           <span class="text-sm font-medium text-muted-foreground">{$t('roleplay.setup.cast')}</span>
           {#if cast.length}
-            <span class="text-[12px] text-muted-foreground">{$t('roleplay.setup.castOrderHint')}</span>
+            <span class="text-[length:var(--text-xs)] text-muted-foreground">{$t('roleplay.setup.castOrderHint')}</span>
           {/if}
         </div>
         <CastPicker value={castIds} onchange={(ids) => (castIds = ids)} />
@@ -186,7 +186,7 @@
         <span class="text-sm font-medium text-muted-foreground">{$t('roleplay.setup.opening')}</span>
         {#if worldOpenings.length}
           <div class="space-y-1.5">
-            <span class="text-[12px] text-muted-foreground">{$t('roleplay.setup.worldOpenings')}</span>
+            <span class="text-[length:var(--text-xs)] text-muted-foreground">{$t('roleplay.setup.worldOpenings')}</span>
             {#each worldOpenings as opening (opening.key)}
               <Button variant="plain"
                 type="button"
@@ -195,14 +195,14 @@
                 aria-pressed={selectedOpening?.key === opening.key}
               >
                 <span class="opening-source"><Globe2 class="size-3" /></span>
-                <span class="line-clamp-3 text-left text-[12px] text-foreground">{previewOf(opening.text)}</span>
+                <span class="line-clamp-3 text-left text-[length:var(--text-xs)] text-foreground">{previewOf(opening.text)}</span>
               </Button>
             {/each}
           </div>
         {/if}
         {#if greetingOpenings.length}
           <div class="space-y-1.5">
-            <span class="text-[12px] text-muted-foreground">{$t('roleplay.setup.greetingsOf', { values: { name: primary?.name || $t('roleplay.setup.character') } })}</span>
+            <span class="text-[length:var(--text-xs)] text-muted-foreground">{$t('roleplay.setup.greetingsOf', { values: { name: primary?.name || $t('roleplay.setup.character') } })}</span>
             {#each greetingOpenings as opening (opening.key)}
               <Button variant="plain"
                 type="button"
@@ -211,7 +211,7 @@
                 aria-pressed={selectedOpening?.key === opening.key}
               >
                 <span class="opening-source"><span class="opening-index">{opening.index + 1}</span></span>
-                <span class="line-clamp-3 text-left text-[12px] text-foreground">{previewOf(opening.text)}</span>
+                <span class="line-clamp-3 text-left text-[length:var(--text-xs)] text-foreground">{previewOf(opening.text)}</span>
               </Button>
             {/each}
           </div>
@@ -223,7 +223,7 @@
           aria-pressed={selectedOpening?.source === 'none'}
         >
           <span class="opening-source"><X class="size-3" /></span>
-          <span class="text-left text-[12px] text-muted-foreground">{$t('roleplay.setup.noOpening')}</span>
+          <span class="text-left text-[length:var(--text-xs)] text-muted-foreground">{$t('roleplay.setup.noOpening')}</span>
         </Button>
       </div>
     </div>

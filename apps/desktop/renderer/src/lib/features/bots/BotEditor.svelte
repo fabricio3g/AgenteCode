@@ -187,7 +187,7 @@
         </Field>
         {#if bot}
           <Field label={$t('bots.memory')} description={$t('bots.memoryHint')} htmlFor="bot-memory">
-            <UiTextarea id="bot-memory" class={uiClass(" min-h-24 text-[12px]", "ui-local-93ef8bbd")} bind:value={memory}></UiTextarea>
+            <UiTextarea id="bot-memory" class={uiClass(" min-h-24 text-[length:var(--text-xs)]", "ui-local-93ef8bbd")} bind:value={memory}></UiTextarea>
           </Field>
         {/if}
         <Field
@@ -197,12 +197,12 @@
           htmlFor="bot-budget"
         >
           <div class="flex items-center gap-2">
-            <span class="text-[13px] text-muted-foreground">$</span>
+            <span class="text-[length:var(--text-sm)] text-muted-foreground">$</span>
             <UiInput id="bot-budget" class={uiClass(" budget-input", "ui-local-93ef8bbd")} type="text" inputmode="decimal" bind:value={budget} placeholder={$t('bots.noLimit')} />
-            <span class="whitespace-nowrap text-[12px] text-muted-foreground">{$t('bots.perDay')}</span>
+            <span class="whitespace-nowrap text-[length:var(--text-xs)] text-muted-foreground">{$t('bots.perDay')}</span>
           </div>
         </Field>
-        {#if tooLong}<p class="text-[12px] text-destructive">{$t('bots.tooLong', { values: { n: DOC_CAP } })}</p>{/if}
+        {#if tooLong}<p class="text-[length:var(--text-xs)] text-destructive">{$t('bots.tooLong', { values: { n: DOC_CAP } })}</p>{/if}
       </div>
     </Disclosure>
 
@@ -214,7 +214,7 @@
       </Disclosure>
     {/if}
 
-    {#if error}<p class="text-[12px] text-destructive">{error}</p>{/if}
+    {#if error}<p class="text-[length:var(--text-xs)] text-destructive">{error}</p>{/if}
     <div class="flex items-center gap-2">
       {#if bot && !bot.builtin}
         <Button variant="ghost" class="hover:text-destructive" onclick={remove}>{$t('bots.delete')}</Button>
@@ -233,8 +233,8 @@
     width: 1.6rem;
     align-items: center;
     justify-content: center;
-    border-radius: 9999px;
-    font-size: 10px;
+    border-radius: var(--radius-full);
+    font-size: var(--text-xs);
     box-shadow: inset 0 0 0 1px var(--border-subtle);
   }
   :global(.budget-input.ui-local-93ef8bbd) { width: 8rem; }
@@ -242,8 +242,8 @@
   :global(.toolset.ui-local-93ef8bbd) {
     height: 1.75rem;
     padding: 0 0.75rem;
-    border-radius: 9999px;
-    font-size: 12.5px;
+    border-radius: var(--radius-full);
+    font-size: var(--text-sm);
     color: var(--muted-foreground);
     background: transparent;
     box-shadow: inset 0 0 0 1px var(--border);

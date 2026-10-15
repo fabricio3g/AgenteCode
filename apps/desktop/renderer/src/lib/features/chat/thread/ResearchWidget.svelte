@@ -253,7 +253,7 @@
     background: var(--surface-hover);
   }
   .research-title {
-    font-size: 13px;
+    font-size: var(--text-sm);
     font-weight: 500;
     color: var(--foreground);
     white-space: nowrap;
@@ -264,7 +264,7 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font-size: 12px;
+    font-size: var(--text-xs);
     color: var(--muted-foreground);
   }
   .fav-stack {
@@ -277,7 +277,7 @@
   .fav {
     flex-shrink: 0;
     padding: 1px;
-    border-radius: 9999px;
+    border-radius: var(--radius-full);
     /* Site icons are drawn for light backgrounds; give them one in dark mode too. */
     background: #fff;
     box-shadow: 0 0 0 1.5px var(--background);
@@ -309,7 +309,7 @@
     display: flex;
     align-items: baseline;
     gap: 0.5rem;
-    font-size: 12.5px;
+    font-size: var(--text-sm);
     color: var(--foreground);
   }
   .step.is-failed {
@@ -327,7 +327,7 @@
   .dot {
     width: 0.3rem;
     height: 0.3rem;
-    border-radius: 9999px;
+    border-radius: var(--radius-full);
     background: currentColor;
   }
   .step-text {
@@ -348,7 +348,7 @@
   }
   .step-meta {
     flex-shrink: 0;
-    font-size: 11.5px;
+    font-size: var(--text-xs);
     color: var(--muted-foreground);
     font-variant-numeric: tabular-nums;
   }
@@ -378,7 +378,7 @@
   .source-num {
     width: 1rem;
     flex-shrink: 0;
-    font-size: 11px;
+    font-size: var(--text-xs);
     color: var(--muted-foreground);
     font-variant-numeric: tabular-nums;
     text-align: right;
@@ -391,16 +391,16 @@
     white-space: nowrap;
   }
   .source-title {
-    font-size: 12.5px;
+    font-size: var(--text-sm);
     color: var(--foreground);
   }
   .source-host {
-    font-size: 11px;
+    font-size: var(--text-xs);
     color: var(--muted-foreground);
   }
   :is(.link-btn, :global(.link-btn.ui-local-97fdd24b)) {
     margin-top: 0.4rem;
-    font-size: 12px;
+    font-size: var(--text-xs);
     color: var(--muted-foreground);
     text-decoration: underline;
     text-underline-offset: 2px;
@@ -414,12 +414,12 @@
     padding: 0.6rem 0.75rem;
     border-radius: 0.6rem;
     background: var(--muted);
-    font-size: 12.5px;
+    font-size: var(--text-sm);
     line-height: 1.55;
   }
   .brief-label {
     margin: 0 0 0.25rem;
-    font-size: 11.5px;
+    font-size: var(--text-xs);
     font-weight: 500;
     color: var(--muted-foreground);
   }
@@ -435,8 +435,8 @@
     height: 1.625rem;
     padding: 0 0.625rem;
     border: 1px solid var(--border);
-    border-radius: 9999px;
-    font-size: 12px;
+    border-radius: var(--radius-full);
+    font-size: var(--text-xs);
     color: var(--muted-foreground);
     transition: background-color var(--motion-fast) var(--motion-ease), color var(--motion-fast) var(--motion-ease);
   }
@@ -446,7 +446,7 @@
   }
   .export-error {
     margin: 0.35rem 0 0;
-    font-size: 11.5px;
+    font-size: var(--text-xs);
     color: var(--error);
   }
 </style>

@@ -17,7 +17,7 @@
   import { cn as uiClass } from '$lib/utils/cn';
 
   import { onDestroy, untrack } from 'svelte';
-  import { ArrowDownToLine, ArrowUp, ChevronDown, ClipboardList, Eye, EyeOff, Folder, File as FileIcon, MoreHorizontal, Paperclip, Play, Plus, ShieldCheck, Settings2, X, Zap } from 'lucide-svelte';
+  import { ArrowUp, ChevronDown, ClipboardList, Eye, EyeOff, Folder, File as FileIcon, MoreHorizontal, Paperclip, Play, Plus, ShieldCheck, Settings2, X, Zap } from 'lucide-svelte';
   import { toastStore } from '$lib/stores/toast.svelte';
   import { codeWorkspace } from './workspace.svelte';
   import { exactSlashCommand, matchSlashCommands, slashQuery } from './slash-commands';
@@ -28,7 +28,7 @@
   import { fetchReasoningCapabilities } from '$lib/services/chat-api';
   import { isElectron } from '$lib/services/bridge';
   import { ThinkingCapabilitiesController } from '$lib/stores/models/thinking-capabilities.svelte';
-  import ModelSwitcher from '$lib/features/chat/ModelSwitcher.svelte';
+  import ModelMenu from '$lib/features/chat/model-menu/ModelMenu.svelte';
   import GenerationSpeed from '$lib/features/shared/composer/GenerationSpeed.svelte';
   import { latestGenerationSpeed } from '$lib/utils/generation-speed';
   import ContextUsageRing from '$lib/features/chat/composer/ContextUsageRing.svelte';
@@ -50,7 +50,6 @@
   import MenuItem from '$lib/components/ui/MenuItem.svelte';
   import Tooltip from '$lib/components/ui/Tooltip.svelte';
   import SendButton from '$lib/features/shared/composer/SendButton.svelte';
-  import ReasoningLevelSelector from '$lib/features/chat/composer/ReasoningLevelSelector.svelte';
   import { approvalsStore } from '$lib/stores/approvals.svelte';
   import { copy } from '$lib/copy';
   import { MAX_COMPOSER_TEXTAREA_PX, autogrowTextarea } from '$lib/features/shared/composer-autogrow';
@@ -133,9 +132,11 @@
   });
 
   const modes = $derived([
-    { id: 'plan' as const, icon: ClipboardList, label: $t('code.modePlan'), hint: $t('code.modePlanHint') },
-    { id: 'supervised' as const, icon: ShieldCheck, label: $t('code.modeSupervised'), hint: $t('code.modeSupervisedHint') },
-    { id: 'full' as const, icon: Zap, label: $t('code.modeFull'), hint: $t('code.modeFullHint') }
+    // Short names and one-line hints: the menu is read at a glance; the full
+    // sentence stays on the trigger's tooltip and in the slash commands.
+    { id: 'plan' as const, icon: ClipboardList, label: $t('code.modeShort.plan'), brief: $t('code.modeBrief.plan'), hint: $t('code.modePlanHint') },
+    { id: 'supervised' as const, icon: ShieldCheck, label: $t('code.modeShort.supervised'), brief: $t('code.modeBrief.supervised'), hint: $t('code.modeSupervisedHint') },
+    { id: 'full' as const, icon: Zap, label: $t('code.modeShort.full'), brief: $t('code.modeBrief.full'), hint: $t('code.modeFullHint') }
   ]);
   const activeMode = $derived(modes.find((m) => m.id === runtimeMode) ?? modes[1]!);
   // Svelte 5 dynamic components: a capitalized reference renders directly.
@@ -624,7 +625,7 @@
             onclick={() => void runCommand(command)}
           >
             <Icon class="size-4 shrink-0 text-muted-foreground" />
-            <span class="text-[13px] text-foreground">/{command.name}</span>
+            <span class="text-[length:var(--text-sm)] text-foreground">/{command.name}</span>
             <span class="min-w-0 flex-1 truncate text-xs text-muted-foreground">{command.hint}</span>
           </Button>
         {/each}
@@ -667,7 +668,7 @@
 
             <div class="composer-meta-item">
             <!-- Runtime mode gate — plan / supervised / full-auto. -->
-            <Menu bind:open={modeMenuOpen} placement="top-start" minWidth="16rem" label={$t('code.modeSelector')} class="mode-menu">
+            <Menu bind:open={modeMenuOpen} placement="top-start" minWidth="18rem" label={$t('code.modeSelector')} class="mode-menu">
               {#snippet trigger(props)}
                 <Button variant="plain"
                   type="button"
@@ -684,18 +685,19 @@
               {/snippet}
               {#each modes as mode (mode.id)}
                 {@const selected = mode.id === runtimeMode}
-                <MenuItem class="mode-option" icon={mode.icon} label={mode.label} description={mode.hint} active={selected} onselect={() => selectMode(mode.id)} />
+                <MenuItem class="mode-option" icon={mode.icon} active={selected} title={mode.hint} onselect={() => selectMode(mode.id)}>
+                  <span class="mode-label">{mode.label}</span>
+                  <span class="mode-brief">{mode.brief}</span>
+                </MenuItem>
               {/each}
+              <p class="mode-cycle">{$t('code.modeCycle')}</p>
             </Menu>
             </div>
 
-            <div class="model-slot"><ModelSwitcher compact {chat} /></div>
-        {#if ownBackend === 'local'}
-          <Tooltip label={copy.model.browseAll} position="top"><UiIconButton label={copy.model.browseAll} size="xs" type="button" class={uiClass(" local-model-library", "ui-local-49e9c79c")}  onclick={()=>appStore.openSettings('explore')}><ArrowDownToLine class="size-3" /></UiIconButton></Tooltip>
-        {:else if !modelReady}
+            <div class="model-slot"><ModelMenu compact {chat} capabilities={ownThinking} level={chat.reasoningLevel} onlevel={setThinking} /></div>
+        {#if ownBackend !== 'local' && !modelReady}
           <Tooltip label={copy.model.configureProvider} position="top"><UiIconButton label={copy.model.configureProvider} size="xs" type="button" class={uiClass(" provider-setup", "ui-local-49e9c79c")}  onclick={()=>appStore.openSettings('providers')}><Settings2 class="size-3" /></UiIconButton></Tooltip>
         {/if}
-        <div class="composer-meta-item is-reasoning"><ReasoningLevelSelector inline capabilities={ownThinking} value={chat.reasoningLevel} onchange={setThinking} /></div>
 
           </div>
 
@@ -830,12 +832,12 @@
     display: inline-flex;
     align-items: center;
     gap: 0.25rem;
-    border-radius: 9999px;
+    border-radius: var(--radius-full);
     padding: 0.25rem 0.375rem;
     color: var(--muted-foreground);
     font-size: var(--text-xs);
     white-space: nowrap;
-    transition: background-color 120ms ease, color 120ms ease;
+    transition: background-color var(--motion-fast) var(--motion-ease), color var(--motion-fast) var(--motion-ease);
   }
   :global(.media-status:hover.ui-local-49e9c79c) { background: var(--surface-hover); color: var(--foreground); }
   .slash-menu {
@@ -869,7 +871,10 @@
   }
   /* Compact rectangle: clear edges, quiet depth, no pill or glyph motion. */
   :global(.mode-menu) {width:16rem;max-width:calc(100vw - 1.5rem);}
-  :global(.mode-menu .mode-option) {padding:0.4375rem 0.625rem;}
+  :global(.mode-menu .mode-option) {padding:0.3125rem 0.625rem;}
+  .mode-label {flex-shrink:0;}
+  .mode-brief {min-width:0;margin-left:auto;padding-left:0.75rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted-foreground);font-size:var(--text-xs);}
+  .mode-cycle {margin:0.25rem 0 0;padding:0.375rem 0.625rem 0.125rem;border-top:1px solid var(--border-subtle);color:var(--muted-foreground);font-size:var(--text-xs);}
   :global(.mode-menu :is(.mode-option.is-active, :global(.mode-option.is-active.ui-local-49e9c79c))) {background:var(--float-row-selected);}
   :global(.mode-menu .ui-menu-item-hint) {white-space:normal;overflow-wrap:anywhere;}
   :global(.mode-menu .ui-menu-check) {color:var(--brand-accent-strong);}

@@ -3,6 +3,9 @@ module.exports = {
   darkMode: 'class',
   theme: {
     extend: {
+      // A bare `ring-*` (or one whose /opacity cannot apply to a var colour)
+      // falls back to this, not to Tailwind's stock blue-500.
+      ringColor: { DEFAULT: 'var(--ring)' },
       fontFamily: {
         sans: ['var(--font-sans)'],
         serif: ['var(--font-serif)'],

@@ -1,6 +1,15 @@
 <svelte:options runes={true} />
 
+<!--
+  Every model, cloud and on-device, in one searchable list. The composer's
+  model menu opens it from "All models…" (and from a provider in "Cloud ›").
+  The filter at the top only narrows the list: what a chat runs on is decided
+  by the model you pick, never by the filter, so browsing Cloud does not stop
+  the model loaded on this computer.
+-->
+
 <script lang="ts">
+  import EmptyState from '$lib/components/ui/EmptyState.svelte';
   import UiListRow from '$lib/components/ui/ListRow.svelte';
 
   import UiIconButton from '$lib/components/ui/IconButton.svelte';
@@ -10,7 +19,7 @@
   import { Button } from '$lib/components/ui';
   import { untrack } from 'svelte';
   import { get } from 'svelte/store';
-  import { Check, ChevronDown, ChevronRight, Cpu, LoaderCircle, Play, Power, RefreshCw, Search, Settings2, Square, X } from 'lucide-svelte';
+  import { Check, ChevronRight, Cpu, LoaderCircle, Power, RefreshCw, Search, Settings2, Square, X } from 'lucide-svelte';
   import { backdropIn, backdropOut, dialogIn, dialogOut } from '$lib/utils/transitions';
   import { appStore } from '$lib/stores/app.svelte';
   import { modelsStore } from '$lib/stores/models.svelte';
@@ -25,15 +34,29 @@
   import type { ModelOption, ChatSession } from '$lib/types/chat';
   import { buildLocalModelSecondaryText, formatContextLength, localModelMatchesSearch } from '$lib/utils/local-models';
   import { configuredProviders, defaultBaseUrl } from '$lib/utils/providers';
+  import { recentModels } from '$lib/stores/recent-models.svelte';
 
-  let { compact = false, chat = null }: { compact?: boolean; chat?: ChatSession | null } = $props();
+  type Source = 'all' | 'cloud' | 'local';
 
-  let ownOpen = $state(false);
-  const menuOpen = $derived(chat ? ownOpen : appStore.modelMenuOpen);
-  function setOpen(value: boolean) { if(chat)ownOpen=value;else appStore.modelMenuOpen=value; }
-  const ownSelection = $derived(chat?.modelSelection);
-  const ownBackend = $derived(ownSelection?.backendMode ?? appStore.backendMode);
-  const ownProvider = $derived(ownSelection?.provider ?? appStore.activeProviderName);
+  let {
+    open = $bindable(false),
+    chat = null,
+    source: initialSource = 'all',
+    provider: focusProvider = null
+  }: {
+    open?: boolean;
+    chat?: ChatSession | null;
+    /** Which models the list starts on; the filter changes it, nothing else. */
+    source?: Source;
+    /** A provider group to open first (from "Cloud › <provider>"). */
+    provider?: string | null;
+  } = $props();
+
+  const menuOpen = $derived(open);
+  function setOpen(value: boolean) { open = value; }
+  let source = $state<Source>('all');
+  const showCloud = $derived(source !== 'local');
+  const showLocal = $derived(source !== 'cloud' && isElectron());
   const isAnyModelLoaded = $derived(!!appStore.localModelActive);
   const loadedModelName = $derived(appStore.localModelActive?.name || '');
   const loadedModelPath = $derived(appStore.localModelActive?.path?.toLowerCase() || '');
@@ -43,7 +66,6 @@
       : ''
   );
 
-  let triggerEl: HTMLButtonElement | undefined = $state();
   let modelSearch = $state('');
   let searchInput = $state<HTMLInputElement | undefined>(undefined);
   let unloading = $state(false);
@@ -56,7 +78,6 @@
   const dialogId = $props.id();
 
   const activeProvider = $derived(appStore.activeProvider);
-  const displayLabel = $derived(ownSelection ? ownSelection.backendMode === 'local' ? ownSelection.localModel : ownSelection.model : appStore.activeModelLabel);
   const localLoading = $derived(appStore.localModelLoading);
   // Re-read nested provider flags reactively (has_api_key / model / active).
   const configured = $derived.by(() => {
@@ -69,16 +90,9 @@
     return configuredProviders(appStore.config, { includeActiveAlways: true });
   });
 
-  const filteredModels = $derived(
-    modelSearch.trim()
-      ? appStore.models.filter((m) =>
-          appStore.backendMode === 'local'
-            ? localModelMatchesSearch(m, modelSearch)
-            : (m.name.toLowerCase().includes(modelSearch.toLowerCase()) ||
-              m.id.toLowerCase().includes(modelSearch.toLowerCase()))
-        )
-      : appStore.models
-  );
+  // The models on this computer, whatever the chat runs on right now.
+  const localModels = $derived<ModelOption[]>((modelsStore.availableModels ?? []).map((m) => ({ ...m, source: 'local' as const })));
+  const filteredModels = $derived(modelSearch.trim() ? localModels.filter((m) => localModelMatchesSearch(m, modelSearch)) : localModels);
 
   // Filter/sort each provider once per change, not again for every header,
   // count, expansion check and rendered row.
@@ -95,7 +109,7 @@
   function modelsForProvider(id: string): ModelOption[] { return groupedModels.get(id) ?? []; }
 
   const visibleProviders = $derived(configured.filter((provider) => !modelSearch.trim() || modelsForProvider(provider.id).length || providerModels.loading[provider.id] || providerModels.errors[provider.id]));
-  const resultCount = $derived(appStore.backendMode === 'api' ? visibleProviders.reduce((sum, provider) => sum + modelsForProvider(provider.id).length, 0) : filteredModels.length);
+  const resultCount = $derived((showCloud ? visibleProviders.reduce((sum, provider) => sum + modelsForProvider(provider.id).length, 0) : 0) + (showLocal ? filteredModels.length : 0));
 
   function isProviderExpanded(id: string): boolean {
     if (modelSearch.trim()) {
@@ -111,20 +125,24 @@
     if (nextOpen) void providerModels.load(id);
   }
 
-  async function selectCloudModel(providerId: string, modelId: string) {
+  async function selectCloudModel(providerId: string, modelId: string, name = modelId) {
     if (selectingModel || changingMode) return;
-    if (providerId === appStore.activeProviderName && modelId === activeProvider?.model) {
+    if (chat && appStore.currentChatId !== chat.id) appStore.selectChat(chat.id);
+    const already = providerId === appStore.activeProviderName && modelId === activeProvider?.model;
+    if (already && appStore.backendMode === 'api') {
       setOpen(false);
       return;
     }
     selectingModel = `${providerId}/${modelId}`;
     const saved = appStore.config.llm?.providers?.[providerId];
     try {
-      await appStore.updateProvider({
+      if (appStore.backendMode !== 'api') await appStore.setBackendMode('api');
+      if (!already) await appStore.updateProvider({
         provider: providerId,
         base_url: saved?.base_url || defaultBaseUrl(providerId),
         model: modelId
       });
+      recentModels.remember({ kind: 'cloud', provider: providerId, model: modelId, name });
     } catch (err) {
       toastStore.error(get(t)('modelPicker.switchFailed'));
       return;
@@ -132,19 +150,6 @@
       selectingModel = '';
     }
     setOpen(false);
-  }
-
-  async function changeBackend(mode: string) {
-    if (changingMode || selectingModel || mode === appStore.backendMode) return;
-    changingMode = true;
-    try {
-      await appStore.setBackendMode(mode as 'api' | 'local');
-      initCloudListWhenOpen();
-    } catch {
-      toastStore.error(get(t)('modelPicker.sourceFailed'));
-    } finally {
-      changingMode = false;
-    }
   }
 
   /** Portal fixed menus out of the titlebar drag region so clicks work on Windows/Electron. */
@@ -175,12 +180,6 @@
     return !!(localLoading && appStore.localModelLoadTarget?.id === model.id);
   }
 
-  function modelStatusLabel(model: ModelOption) {
-    if (isLoaded(model)) return 'Loaded';
-    if (isLoadingModel(model)) return 'Loading';
-    return 'Available';
-  }
-
   function secondaryText(model: ModelOption) {
     return buildLocalModelSecondaryText(model);
   }
@@ -195,20 +194,30 @@
       secondaryText(model),
       contextBadge(model),
       model.has_mmproj ? 'vision' : '',
-      model.chat_template_uses_tools === true ? 'tools' : '',
-      modelStatusLabel(model).toLowerCase()
+      model.chat_template_uses_tools === true ? 'tools' : ''
     ]
       .filter(Boolean);
     return parts.join(' • ');
   }
 
-  async function handleLoad(model: ModelOption) {
-    if (isAnyModelLoaded && !isLoaded(model)) {
+  /** A local row: the loaded model is picked at once, another one loads (after a confirm if it replaces one). */
+  async function pickLocal(model: ModelOption) {
+    if (!model.path || localLoading) return;
+    if (chat && appStore.currentChatId !== chat.id) appStore.selectChat(chat.id);
+    if (isLoaded(model)) {
+      if (appStore.backendMode !== 'local') await appStore.setBackendMode('local');
+      recentModels.remember({ kind: 'local', id: model.id, name: model.name, path: model.path });
+      setOpen(false);
+      return;
+    }
+    if (isAnyModelLoaded && confirmSwitch?.id !== model.id) {
       confirmSwitch = model;
       return;
     }
-    await appStore.openLocalModelLoadDialog(model);
+    confirmSwitch = null;
     setOpen(false);
+    recentModels.remember({ kind: 'local', id: model.id, name: model.name, path: model.path });
+    await appStore.loadLocalModelQuietly(model);
   }
 
   async function handleUnload(e: MouseEvent) {
@@ -226,24 +235,19 @@
   }
 
   async function confirmSwitchModel() {
-    if (!confirmSwitch) return;
-    const model = confirmSwitch;
-    confirmSwitch = null;
-    setOpen(false);
-    await appStore.openLocalModelLoadDialog(model);
+    if (confirmSwitch) await pickLocal(confirmSwitch);
   }
 
   /** Cloud refreshes every configured group shown by this picker. */
-  const refreshing = $derived(appStore.backendMode === 'api' ? configured.some(provider => providerModels.loading[provider.id]) : appStore.modelsRefreshing);
+  const refreshing = $derived(configured.some(provider => providerModels.loading[provider.id]) || appStore.modelsRefreshing);
 
   function refresh() {
     modelsStore.refreshStatus();
-    if (appStore.backendMode === 'api') {
+    if (showLocal) void modelsStore.refreshIndex?.();
+    if (showCloud) {
       void Promise.all(configured.map(provider => providerModels.load(provider.id, true)))
         .then(() => appStore.refreshModels())
         .then(() => appStore.refreshReasoningCapabilities(true));
-    } else if (isElectron()) {
-      void appStore.refreshModels(true);
     }
   }
 
@@ -252,20 +256,11 @@
     appStore.openSettings(section);
   }
 
-  function toggleMenu() {
-    if(chat && appStore.currentChatId!==chat.id)appStore.selectChat(chat.id);
-    if (menuOpen) {
-      setOpen(false);
-      return;
-    }
-    setOpen(true);
-  }
-
   function initCloudListWhenOpen() {
     // Must not be tracked by the open/close effect (would re-run forever).
     untrack(() => {
-      if (appStore.backendMode !== 'api') return;
-      const active = appStore.activeProviderName;
+      source = initialSource;
+      const active = focusProvider || appStore.activeProviderName;
       if (!active) return;
       expandedProviders = { [active]: true };
       showAll = {};
@@ -312,44 +307,13 @@
 
   // Search all configured providers, including groups that haven't been opened.
   $effect(() => {
-    if (!menuOpen || appStore.backendMode !== 'api' || !modelSearch.trim()) return;
+    if (!menuOpen || !showCloud || !modelSearch.trim()) return;
     const timer = setTimeout(() => untrack(() => {
       for (const provider of configured) void providerModels.load(provider.id);
     }), 180);
     return () => clearTimeout(timer);
   });
 </script>
-
-<!-- Trigger: compact model selector -->
-<Button variant="plain"
-  bind:ref={triggerEl}
-  type="button"
-  class={uiClass("model-trigger titlebar-no-drag flex h-8 max-w-[18rem] items-center gap-1.5 px-2.5 transition", "ui-local-8157c6d7", {"is-open": menuOpen, "is-compact": compact, "composer-selector": compact})}
-
-
-  style="-webkit-app-region: no-drag; pointer-events: auto;"
-  onclick={toggleMenu}
-  aria-haspopup="dialog"
-  aria-expanded={menuOpen}
-  aria-controls={dialogId}
-  aria-label={$t('modelPicker.triggerLabel', { values: { model: displayLabel || $t('modelPicker.onDevice') } })}
->
-  {#if ownBackend === 'local'}
-    <Cpu class="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-  {:else}
-    <ProviderIcon provider={ownProvider} size={15} />
-  {/if}
-  <span class="trigger-label truncate">
-    {#if ownBackend === 'local' && isAnyModelLoaded}
-      {chat ? displayLabel || loadedModelFilename : loadedModelFilename}
-    {:else if ownBackend === 'local'}
-      {$t('modelPicker.onDevice')}
-    {:else}
-      {displayLabel || $t('modelPicker.selectModel')}
-    {/if}
-  </span>
-  <ChevronDown class="h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform duration-150 {menuOpen ? 'rotate-180' : ''}" />
-</Button>
 
 <!-- Modal: portaled to body so Electron titlebar drag region cannot swallow clicks.
      Gray backdrop fills the window; square panel sits centered with fade/scale. -->
@@ -377,7 +341,7 @@
         <!-- One slim bar: where models come from, refresh, providers, close. -->
         <div class="picker-bar">
           {#if isElectron()}
-            <SegmentedControl value={appStore.backendMode} options={[{ value: 'api', label: $t('modelPicker.cloud'), disabled: changingMode || !!selectingModel }, { value: 'local', label: $t('modelPicker.onDevice'), disabled: changingMode || !!selectingModel }]} label={$t('modelPicker.source')} onchange={(mode) => void changeBackend(mode)} />
+            <SegmentedControl value={source} options={[{ value: 'all', label: $t('modelPicker.filterAll') }, { value: 'cloud', label: $t('modelPicker.cloud') }, { value: 'local', label: $t('modelPicker.onDevice') }]} label={$t('modelPicker.filter')} onchange={(value) => (source = value as Source)} />
           {:else}
             <span class="picker-title">{$t('modelPicker.title')}</span>
           {/if}
@@ -387,7 +351,7 @@
               <RefreshCw class={refreshing ? 'animate-spin' : ''} />
             </UiIconButton>
           </Tooltip>
-          {#if appStore.backendMode === 'api'}
+          {#if showCloud}
             <Tooltip label={$t('modelPicker.manageProviders')} position="bottom">
               <UiIconButton label={$t('modelPicker.manageProviders')} size="xs" type="button" class={uiClass(" ", "ui-local-8157c6d7")} onclick={() => openManager('providers')} >
                 <Settings2 />
@@ -412,7 +376,7 @@
           {/if}
         </label>
 
-        {#if appStore.backendMode === 'local' && localLoading}
+        {#if localLoading}
           <div class="picker-note" role="status">
             <LoaderCircle class="size-3.5 shrink-0 animate-spin" />
             <span>{$t('modelPicker.loadingModel')}</span>
@@ -428,15 +392,58 @@
         {/if}
 
         {#snippet empty(title: string, hint: string, action: string, onaction: () => void)}
-          <div class="picker-empty">
-            <p>{title}</p>
-            <span>{hint}</span>
-            <Button variant="outline" size="sm" type="button" onclick={onaction}>{action}</Button>
-          </div>
+          <EmptyState align="start" size="compact" {title} description={hint} {action} {onaction} />
         {/snippet}
 
         <div class="model-list" aria-label={$t('modelPicker.available')} aria-busy={changingMode}>
-          {#if appStore.backendMode === 'api'}
+          <!-- This computer first: private, free, and shared by every chat. -->
+          {#if showLocal && (localModels.length || source === 'local')}
+            <div class="provider-group">
+              <div class={uiClass("group-head is-static", "ui-local-8157c6d7")}>
+                <Cpu class="size-3.5 shrink-0" />
+                <span class="group-name">{$t('modelPicker.onDevice')}</span>
+                <span class="group-meta">· {$t('modelPicker.forAllChats')}</span>
+              </div>
+              {#if !localModels.length}
+                {@render empty($t('modelPicker.noLocal'), $t('modelPicker.noLocalHint'), $t('modelPicker.explore'), () => openManager('explore'))}
+              {:else if filteredModels.length === 0}
+                <p class="group-hint">{$t('modelPicker.noMatches')}</p>
+              {:else}
+                <div class="group-models">
+                  {#each filteredModels as model (model.id)}
+                    {@const loaded = isLoaded(model)}
+                    {@const loadingTarget = isLoadingModel(model)}
+                    <div class="local-line">
+                      <UiListRow
+                        type="button"
+                        class={uiClass("model-row", "ui-local-8157c6d7", {"is-selected": loaded})}
+                        data-model-option
+                        aria-pressed={loaded}
+                        disabled={localLoading || !model.path}
+                        onclick={(e) => { e.stopPropagation(); void pickLocal(model); }}
+                      >
+                        <span class="row-mark">
+                          {#if loadingTarget}<LoaderCircle class="size-3.5 animate-spin" />
+                          {:else if loaded}<Check class="size-3.5" />{/if}
+                        </span>
+                        <span class="min-w-0 flex-1 truncate">{model.name}</span>
+                        {#if metaLine(model)}<span class="row-id">{metaLine(model)}</span>{/if}
+                      </UiListRow>
+                      {#if loaded}
+                        <Tooltip label={$t('modelPicker.unload')} position="bottom">
+                          <UiIconButton label={$t('modelPicker.unload')} size="xs" type="button" class={uiClass("hover:text-error", "ui-local-8157c6d7")} onclick={handleUnload} disabled={unloading}>
+                            {#if unloading}<LoaderCircle class="animate-spin" />{:else}<Square />{/if}
+                          </UiIconButton>
+                        </Tooltip>
+                      {/if}
+                    </div>
+                  {/each}
+                </div>
+              {/if}
+            </div>
+          {/if}
+
+          {#if showCloud}
             {#if !configured.length}
               {@render empty($t('modelPicker.noProviders'), $t('modelPicker.noProvidersHint'), $t('modelPicker.configureProvider'), () => openManager('providers'))}
             {:else if !visibleProviders.length}
@@ -509,40 +516,6 @@
                 </div>
               {/each}
             {/if}
-          {:else if !appStore.models.length}
-            {@render empty($t('modelPicker.noLocal'), $t('modelPicker.noLocalHint'), $t('modelPicker.explore'), () => openManager('explore'))}
-          {:else if filteredModels.length === 0}
-            {@render empty($t('modelPicker.noResults'), $t('modelPicker.noResultsHint'), $t('modelPicker.clearSearch'), () => (modelSearch = ''))}
-          {:else}
-            {#each filteredModels as model (model.id)}
-              {@const loaded = isLoaded(model)}
-              {@const loadingTarget = isLoadingModel(model)}
-              <div class="model-row is-local" class:is-selected={loaded}>
-                <span class="row-mark">{#if loaded}<Check class="size-3.5" />{/if}</span>
-                <span class="min-w-0 flex-1 truncate">{model.name}</span>
-                {#if metaLine(model)}<span class="row-id">{metaLine(model)}</span>{/if}
-                {#if model.path}
-                  {#if loaded}
-                    <Button variant="outline" size="sm" class="hover:text-error" type="button" onclick={handleUnload} disabled={unloading}>
-                      {#if unloading}<LoaderCircle class="animate-spin" />{:else}<Square />{/if}
-                      {$t('modelPicker.unload')}
-                    </Button>
-                  {:else}
-                    <Button variant="outline" size="sm"
-                      type="button"
-                      onclick={async (e) => {
-                        e.stopPropagation();
-                        await handleLoad(model);
-                      }}
-                      disabled={localLoading}
-                      data-model-option
-                    >
-                      {#if loadingTarget}<LoaderCircle class="animate-spin" /> {$t('modelPicker.loading')}{:else}<Play /> {$t('modelPicker.load')}{/if}
-                    </Button>
-                  {/if}
-                {/if}
-              </div>
-            {/each}
           {/if}
         </div>
 
@@ -555,42 +528,6 @@
 {/if}
 
 <style>
-  /* Borderless, like the add button beside it: a soft fill only on hover. */
-  :global(.model-trigger.ui-local-8157c6d7) {
-    color: var(--text-secondary);
-    background: transparent;
-    border: 1px solid transparent;
-    border-radius: var(--radius-full);
-    box-shadow: none;
-    transition:
-      background-color var(--motion-fast) var(--motion-ease),
-      border-color var(--motion-fast) var(--motion-ease),
-      color var(--motion-fast) var(--motion-ease);
-  }
-
-  :global(.model-trigger:hover.ui-local-8157c6d7),
-  :global(.model-trigger.is-open.ui-local-8157c6d7) {
-    background: var(--muted);
-    color: var(--foreground);
-  }
-
-  :global(.model-trigger.is-compact.ui-local-8157c6d7) {
-    min-width: 0;
-    max-width: 100%;
-    width: 100%;
-    justify-content: flex-start;
-    padding-inline: 0.375rem;
-  }
-
-  :global(.model-trigger.is-compact.ui-local-8157c6d7) .trigger-label { min-width: 0; }
-
-  .trigger-label {
-    color: inherit;
-    font-size: var(--text-sm);
-    font-weight: 500;
-    letter-spacing: -0.01em;
-  }
-
   /* Centered over the backdrop, wide enough for long model ids; its height
      follows the list up to the window. */
   .model-modal-root {
@@ -618,7 +555,6 @@
     background: var(--muted);
   }
 
-  :global(.model-trigger:focus-visible.ui-local-8157c6d7),
   .model-modal :global(button:focus-visible.ui-local-8157c6d7) {
     outline: 2px solid var(--ring);
     outline-offset: 2px;
@@ -698,6 +634,13 @@
   :global(.group-head:hover.ui-local-8157c6d7) {
     color: var(--foreground);
   }
+  :global(.group-head.is-static.ui-local-8157c6d7) { cursor: default; }
+  .local-line {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+  }
+  .local-line > :global(.model-row) { flex: 1; min-width: 0; }
   .group-name {
     font-weight: 600;
     color: var(--foreground);
@@ -775,20 +718,6 @@
     font-size: var(--text-xs);
   }
 
-  .picker-empty {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 0.375rem;
-    padding: 1.5rem 0.625rem;
-    color: var(--muted-foreground);
-    font-size: var(--text-xs);
-  }
-  .picker-empty p {
-    color: var(--foreground);
-    font-size: var(--text-sm);
-    font-weight: 500;
-  }
 
   .picker-footer {
     display: flex;

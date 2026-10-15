@@ -696,7 +696,18 @@
       "queued": "Queued"
     },
     "stopSubagent": "Stop subagent",
-    "stopCommand": "Stop the running command"
+    "stopCommand": "Stop the running command",
+    "modeShort": {
+      "plan": "Plan",
+      "supervised": "Supervised",
+      "full": "Auto"
+    },
+    "modeBrief": {
+      "plan": "Plans before editing",
+      "supervised": "Asks first",
+      "full": "Never asks"
+    },
+    "modeCycle": "Shift+Tab to switch"
   },
   "searchModal": {
     "inMessages": "In messages",
@@ -917,7 +928,43 @@
     "unloaded": "Model unloaded",
     "unloadFailed": "Couldn't unload the model",
     "notListed": "Not listed",
-    "notListedHint": "Listed by models.dev but not by the provider's own model list."
+    "notListedHint": "Listed by models.dev but not by the provider's own model list.",
+    "recent": "Recent",
+    "forAllChats": "For all chats",
+    "loaded": "Loaded",
+    "noneLoaded": "None loaded",
+    "wontFit": "Won't fit",
+    "tight": "Tight",
+    "loadingPct": "Loading {pct}%",
+    "downloadModels": "Download models…",
+    "serverSettings": "Server settings…",
+    "allModels": "All models…",
+    "filterAll": "All",
+    "filter": "Show models from",
+    "chatsUsing": "{n, plural, one {# chat using it} other {# chats using it}}",
+    "switchBusy": "Switching affects {n, plural, one {# chat} other {# chats}} using it now.",
+    "confirmKeys": "Enter to switch · Esc to keep",
+    "card": {
+      "context": "Context",
+      "output": "Max output",
+      "input": "Input",
+      "outputCost": "Output",
+      "cache": "Cache read",
+      "perMillion": "{price} / M",
+      "free": "Free",
+      "image": "Image",
+      "audio": "Audio",
+      "video": "Video",
+      "pdf": "PDF",
+      "tools": "Tools",
+      "reasoning": "Reasons",
+      "size": "Size",
+      "memory": "Memory",
+      "fits": "Fits",
+      "perChat": "{ctx} per chat",
+      "quant": "Quantization",
+      "unknown": "The catalog has no details for this model."
+    }
   },
   "settingsNav": {
     "label": "Settings sections",
@@ -1921,7 +1968,20 @@
     "llamaBuildsHint": "Installed builds, the running server and installing from a URL",
     "whisperBuilds": "whisper.cpp builds",
     "whisperBuildsHint": "Choose which build dictation runs on, or add your own",
-    "audioEngineHint": "The bundled voice engine: status, backend and files"
+    "audioEngineHint": "The bundled voice engine: status, backend and files",
+    "server": {
+      "title": "Local server",
+      "hint": "One on-device model serves every chat. These settings apply to all of them.",
+      "parallel": "Conversations at once",
+      "parallelHint": "Each one gets {ctx} of context",
+      "parallelShared": "The context window is split between them",
+      "apply": "Apply and restart",
+      "applyHint": "Reloads the model once current replies finish",
+      "slots": "Slots now",
+      "slotBusy": "Replying",
+      "slotFree": "Free",
+      "noModel": "No model loaded"
+    }
   },
   "downloads": {
     "title": "Downloads",

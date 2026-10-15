@@ -696,7 +696,18 @@
     "browseProject": "项目",
     "browsePlaces": "位置",
     "browseUnreadable": "无法打开此文件夹",
-    "browseHint": "选择文件夹：双击进入，按 Enter 打开。"
+    "browseHint": "选择文件夹：双击进入，按 Enter 打开。",
+    "modeShort": {
+      "plan": "规划",
+      "supervised": "监督",
+      "full": "自动"
+    },
+    "modeBrief": {
+      "plan": "编辑前先规划",
+      "supervised": "先询问",
+      "full": "从不询问"
+    },
+    "modeCycle": "Shift+Tab 切换"
   },
   "searchModal": {
     "inMessages": "在消息中",
@@ -917,7 +928,43 @@
     "unloaded": "模型已卸载",
     "unloadFailed": "无法卸载模型",
     "notListed": "Not listed",
-    "notListedHint": "Listed by models.dev but not by the provider's own model list."
+    "notListedHint": "Listed by models.dev but not by the provider's own model list.",
+    "recent": "最近",
+    "forAllChats": "所有聊天共用",
+    "loaded": "已加载",
+    "noneLoaded": "未加载",
+    "wontFit": "内存不足",
+    "tight": "勉强",
+    "loadingPct": "加载中 {pct}%",
+    "downloadModels": "下载模型…",
+    "serverSettings": "服务器设置…",
+    "allModels": "全部模型…",
+    "filterAll": "全部",
+    "filter": "显示模型来源",
+    "chatsUsing": "{n, plural, other {# 个聊天在用}}",
+    "switchBusy": "切换会影响正在使用的 {n, plural, other {# 个聊天}}。",
+    "confirmKeys": "Enter 切换 · Esc 保留",
+    "card": {
+      "context": "上下文",
+      "output": "最大输出",
+      "input": "输入",
+      "outputCost": "输出",
+      "cache": "缓存",
+      "perMillion": "{price} / M",
+      "free": "免费",
+      "image": "图片",
+      "audio": "音频",
+      "video": "视频",
+      "pdf": "PDF",
+      "tools": "工具",
+      "reasoning": "推理",
+      "size": "大小",
+      "memory": "内存",
+      "fits": "可容纳",
+      "perChat": "每个聊天 {ctx}",
+      "quant": "量化",
+      "unknown": "目录中没有此模型的信息。"
+    }
   },
   "settingsNav": {
     "label": "设置分区",
@@ -1921,7 +1968,20 @@
     "llamaBuildsHint": "Installed builds, the running server and installing from a URL",
     "whisperBuilds": "whisper.cpp builds",
     "whisperBuildsHint": "Choose which build dictation runs on, or add your own",
-    "audioEngineHint": "The bundled voice engine: status, backend and files"
+    "audioEngineHint": "The bundled voice engine: status, backend and files",
+    "server": {
+      "title": "本地服务器",
+      "hint": "一个本地模型服务所有聊天，这些设置对全部生效。",
+      "parallel": "同时处理的对话",
+      "parallelHint": "每个对话可用 {ctx} 上下文",
+      "parallelShared": "上下文在它们之间平分",
+      "apply": "应用并重启",
+      "applyHint": "当前回复结束后重新加载模型",
+      "slots": "当前槽位",
+      "slotBusy": "回复中",
+      "slotFree": "空闲",
+      "noModel": "未加载模型"
+    }
   },
   "downloads": {
     "title": "下载",

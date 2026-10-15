@@ -105,7 +105,7 @@
               {#if result.snippet}
                 <p class="mt-1 line-clamp-3 text-xs text-muted-foreground">{result.snippet}</p>
               {/if}
-              <p class="mt-1.5 truncate text-[12px] text-muted-foreground">{result.url}</p>
+              <p class="mt-1.5 truncate text-[length:var(--text-xs)] text-muted-foreground">{result.url}</p>
             </Button>
           {/each}
         </div>

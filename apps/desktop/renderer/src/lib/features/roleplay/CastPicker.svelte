@@ -51,7 +51,7 @@
             <span class="cast-check"><Check class="size-2.5" /></span>
           {/if}
         </span>
-        <span class="min-w-0 flex-1 truncate text-left text-[12px] text-foreground">{card.name}</span>
+        <span class="min-w-0 flex-1 truncate text-left text-[length:var(--text-xs)] text-foreground">{card.name}</span>
         {#if order >= 0}
           <span class="cast-order" title={$t('roleplay.setup.speakingOrder', { values: { n: order + 1 } })}>#{order + 1}</span>
         {/if}

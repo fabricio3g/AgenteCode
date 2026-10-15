@@ -25,8 +25,7 @@
   import { copy, say } from '$lib/copy';
 
   import AttachmentCards from './composer/AttachmentCards.svelte';
-  import ModelSwitcher from './ModelSwitcher.svelte';
-  import ReasoningLevelSelector from './composer/ReasoningLevelSelector.svelte';
+  import ModelMenu from './model-menu/ModelMenu.svelte';
   import ComposerModelNotice from './composer/ComposerModelNotice.svelte';
   import ComposerSuggestions from './composer/ComposerSuggestions.svelte';
   import ComposerAddMenu from './composer/ComposerAddMenu.svelte';
@@ -377,7 +376,7 @@
       {/if}
       {#if attachments.ocrLabel}
         <div class="px-3 pt-1">
-          <div class="inline-flex items-center gap-1.5 px-2 py-1 text-[12px] font-medium text-muted-foreground">
+          <div class="inline-flex items-center gap-1.5 px-2 py-1 text-[length:var(--text-xs)] font-medium text-muted-foreground">
             <span
               class="size-1.5 rounded-[2px] bg-muted-foreground"
               class:animate-pulse={!attachments.ocrSettled}
@@ -390,7 +389,7 @@
       <AttachmentCards />
 
       {#if localBusyElsewhere}
-        <div class="px-4 pt-1 text-[12px] text-muted-foreground">
+        <div class="px-4 pt-1 text-[length:var(--text-xs)] text-muted-foreground">
           {$t('chat.localBusy')}
         </div>
       {/if}
@@ -425,8 +424,7 @@
           {:else}
             <div class="composer-bar-leading">
               <ComposerAddMenu onattach={() => fileInput?.click()} />
-              <div class="model-slot"><ModelSwitcher compact /></div>
-              <div class="composer-meta-item is-reasoning"><ReasoningLevelSelector inline /></div>
+              <div class="model-slot"><ModelMenu compact /></div>
               <ComposerToolsMenu compact />
 
             </div>

@@ -26,7 +26,8 @@ describe('settings UI primitives', () => {
     const input = inputView.getByRole('textbox', { name: 'Search' });
     expect(input.className).toContain('border-0');
     expect(input.className).toContain('bg-[var(--card)]');
-    expect(input.className).toContain('focus-visible:ring-ring/25');
+    expect(input.className).toContain('focus-visible:bg-[var(--surface-hover)]');
+    expect(input.className).not.toContain('focus-visible:ring');
     inputView.unmount();
 
     const selectView = render(Select, {
@@ -39,7 +40,8 @@ describe('settings UI primitives', () => {
     const select = selectView.getByRole('combobox', { name: 'Sort' });
     expect(select.className).toContain('border-0');
     expect(select.className).toContain('bg-[var(--card)]');
-    expect(select.className).toContain('focus-visible:ring-ring/25');
+    expect(select.className).toContain('focus-visible:bg-[var(--surface-hover)]');
+    expect(select.className).not.toContain('focus-visible:ring');
   });
 
   it('selects animated listbox options and reports the new value', async () => {

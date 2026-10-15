@@ -258,7 +258,7 @@
     width: 0.375rem;
     height: 0.375rem;
     flex-shrink: 0;
-    border-radius: 9999px;
+    border-radius: var(--radius-full);
     background: var(--muted-foreground);
   }
 

@@ -89,7 +89,7 @@
         </Field>
       {/if}
     </div>
-    {#if error}<p class="text-[12px] text-destructive">{error}</p>{/if}
+    {#if error}<p class="text-[length:var(--text-xs)] text-destructive">{error}</p>{/if}
     <div class="flex justify-end gap-2">
       <Button variant="ghost" onclick={onclose}>{$t('bots.cancel')}</Button>
       <Button onclick={save} loading={saving}>{$t('bots.save')}</Button>

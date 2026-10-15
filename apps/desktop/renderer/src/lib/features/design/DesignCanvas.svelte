@@ -279,7 +279,7 @@
     align-items: center;
     justify-content: center;
     padding: 0 0.3rem;
-    border-radius: 999px;
+    border-radius: var(--radius-full);
     background: color-mix(in srgb, var(--brand-accent) 88%, var(--background));
     color: var(--background);
     font-size: var(--text-xs);

@@ -13,6 +13,7 @@
 -->
 
 <script lang="ts">
+  import EmptyState from '$lib/components/ui/EmptyState.svelte';
   import UiListRow from '$lib/components/ui/ListRow.svelte';
 
   import UiIconButton from '$lib/components/ui/IconButton.svelte';
@@ -209,17 +210,9 @@
           {#if rows}
             {@render rows()}
           {:else if !providers.length}
-            <div class="picker-empty">
-              <p>{$t('modelPicker.noProviders')}</p>
-              <span>{$t('modelPicker.noProvidersHint')}</span>
-              {#if onmanage}<Button variant="outline" size="sm" type="button" onclick={onmanage}>{$t('modelPicker.configureProvider')}</Button>{/if}
-            </div>
+            <EmptyState align="start" size="compact" title={$t('modelPicker.noProviders')} description={$t('modelPicker.noProvidersHint')} action={$t('modelPicker.configureProvider')} onaction={onmanage} />
           {:else if !visible.length}
-            <div class="picker-empty">
-              <p>{$t('modelPicker.noResults')}</p>
-              <span>{$t('modelPicker.noResultsHint')}</span>
-              <Button variant="outline" size="sm" type="button" onclick={() => (search = '')}>{$t('modelPicker.clearSearch')}</Button>
-            </div>
+            <EmptyState align="start" size="compact" title={$t('modelPicker.noResults')} description={$t('modelPicker.noResultsHint')} action={$t('modelPicker.clearSearch')} onaction={() => (search = '')} />
           {:else}
             {#each visible as provider (provider.id)}
               {@const openGroup = isExpanded(provider.id)}
@@ -452,20 +445,6 @@
     font-size: var(--text-xs);
   }
 
-  .picker-empty {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 0.375rem;
-    padding: 1.5rem 0.625rem;
-    color: var(--muted-foreground);
-    font-size: var(--text-xs);
-  }
-  .picker-empty p {
-    color: var(--foreground);
-    font-size: var(--text-sm);
-    font-weight: 500;
-  }
 
   .picker-footer {
     display: flex;

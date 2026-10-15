@@ -18,7 +18,7 @@ vi.mock('$lib/services/bridge', () => ({ isElectron: () => true, invoke: vi.fn()
 vi.mock('$lib/stores/toast.svelte', () => ({ toastStore: { error: vi.fn(), success: vi.fn() } }));
 afterEach(() => { cleanup(); mocks.app.modelMenuOpen = true; vi.clearAllMocks(); });
 it('opens the active provider and bounds initial rows, while search reaches every model', async () => {
-  const { container } = render(ModelSwitcher);
+  const { container } = render(ModelSwitcher, { props: { open: true } });
   await waitFor(() => expect(container.ownerDocument.querySelectorAll('[data-model-option]')).toHaveLength(50));
   const input = document.querySelector<HTMLInputElement>('input[type="search"]')!;
   await fireEvent.input(input, { target: { value: 'Model 99' } });
@@ -27,7 +27,7 @@ it('opens the active provider and bounds initial rows, while search reaches ever
   await waitFor(() => expect(mocks.app.updateProvider).toHaveBeenCalledWith({ provider: 'test', base_url: 'https://provider.test', model: 'model-99' }));
 });
 it('arrow navigation reaches an immediately available model row', async () => {
-  render(ModelSwitcher);
+  render(ModelSwitcher, { props: { open: true } });
   await waitFor(() => expect(document.querySelectorAll('[data-model-option]')).toHaveLength(50));
   const input = document.querySelector<HTMLInputElement>('input[type="search"]')!;
   input.focus();

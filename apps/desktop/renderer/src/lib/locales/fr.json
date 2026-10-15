@@ -696,7 +696,18 @@
     "browseProject": "projet",
     "browsePlaces": "Emplacements",
     "browseUnreadable": "Impossible d’ouvrir ce dossier",
-    "browseHint": "Choisissez un dossier : double-cliquez pour y accéder, Entrée pour l’ouvrir."
+    "browseHint": "Choisissez un dossier : double-cliquez pour y accéder, Entrée pour l’ouvrir.",
+    "modeShort": {
+      "plan": "Planifier",
+      "supervised": "Supervisé",
+      "full": "Auto"
+    },
+    "modeBrief": {
+      "plan": "Planifie avant de modifier",
+      "supervised": "Demande d’abord",
+      "full": "Ne demande jamais"
+    },
+    "modeCycle": "Maj+Tab pour changer"
   },
   "searchModal": {
     "inMessages": "Dans les messages",
@@ -917,7 +928,43 @@
     "unloaded": "Modèle déchargé",
     "unloadFailed": "Impossible de décharger le modèle",
     "notListed": "Not listed",
-    "notListedHint": "Listed by models.dev but not by the provider's own model list."
+    "notListedHint": "Listed by models.dev but not by the provider's own model list.",
+    "recent": "Récents",
+    "forAllChats": "Pour toutes les discussions",
+    "loaded": "Chargé",
+    "noneLoaded": "Aucun chargé",
+    "wontFit": "Trop lourd",
+    "tight": "Juste",
+    "loadingPct": "Chargement {pct} %",
+    "downloadModels": "Télécharger des modèles…",
+    "serverSettings": "Réglages du serveur…",
+    "allModels": "Tous les modèles…",
+    "filterAll": "Tous",
+    "filter": "Afficher les modèles de",
+    "chatsUsing": "{n, plural, one {# discussion l’utilise} other {# discussions l’utilisent}}",
+    "switchBusy": "Changer touche {n, plural, one {# discussion} other {# discussions}} qui l’utilisent.",
+    "confirmKeys": "Entrée pour changer · Échap pour garder",
+    "card": {
+      "context": "Contexte",
+      "output": "Sortie max.",
+      "input": "Entrée",
+      "outputCost": "Sortie",
+      "cache": "Cache",
+      "perMillion": "{price} / M",
+      "free": "Gratuit",
+      "image": "Image",
+      "audio": "Audio",
+      "video": "Vidéo",
+      "pdf": "PDF",
+      "tools": "Outils",
+      "reasoning": "Raisonne",
+      "size": "Taille",
+      "memory": "Mémoire",
+      "fits": "Tient",
+      "perChat": "{ctx} par discussion",
+      "quant": "Quantification",
+      "unknown": "Le catalogue n’a pas de détails sur ce modèle."
+    }
   },
   "settingsNav": {
     "label": "Sections des réglages",
@@ -1921,7 +1968,20 @@
     "llamaBuildsHint": "Installed builds, the running server and installing from a URL",
     "whisperBuilds": "whisper.cpp builds",
     "whisperBuildsHint": "Choose which build dictation runs on, or add your own",
-    "audioEngineHint": "The bundled voice engine: status, backend and files"
+    "audioEngineHint": "The bundled voice engine: status, backend and files",
+    "server": {
+      "title": "Serveur local",
+      "hint": "Un seul modèle local sert toutes les discussions. Ces réglages valent pour toutes.",
+      "parallel": "Discussions simultanées",
+      "parallelHint": "Chacune reçoit {ctx} de contexte",
+      "parallelShared": "La fenêtre de contexte est partagée",
+      "apply": "Appliquer et redémarrer",
+      "applyHint": "Recharge le modèle une fois les réponses en cours terminées",
+      "slots": "Emplacements",
+      "slotBusy": "Répond",
+      "slotFree": "Libre",
+      "noModel": "Aucun modèle chargé"
+    }
   },
   "downloads": {
     "title": "Téléchargements",

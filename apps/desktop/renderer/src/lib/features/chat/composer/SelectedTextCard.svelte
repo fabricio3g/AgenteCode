@@ -71,7 +71,7 @@
     background: transparent;
     color: var(--foreground);
     cursor: pointer;
-    font-size: 12px;
+    font-size: var(--text-xs);
     line-height: 1.4;
     text-align: left;
     text-overflow: ellipsis;
@@ -87,7 +87,7 @@
     background: transparent;
     color: var(--foreground);
     font-family: inherit;
-    font-size: 12px;
+    font-size: var(--text-xs);
     line-height: 1.4;
   }
 
@@ -102,7 +102,7 @@
     align-items: center;
     justify-content: center;
     border: 0;
-    border-radius: 9999px;
+    border-radius: var(--radius-full);
     background: var(--card);
     color: var(--muted-foreground);
     cursor: pointer;

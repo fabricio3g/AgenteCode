@@ -6,8 +6,6 @@
 -->
 
 <script lang="ts">
-  import { Button } from '$lib/components/ui';
-  import { Plus } from 'lucide-svelte';
   import { t } from 'svelte-i18n';
   import Avatar from '$lib/components/ui/Avatar.svelte';
   import type { UserPersona } from '$lib/types/chat';
@@ -27,9 +25,6 @@
 </script>
 
 <div class="library-shelf">
-  <LibraryToolbar>
-    <Button variant="outline" type="button" onclick={onnew}><Plus /> {$t('roleplay.library.newPersona')}</Button>
-  </LibraryToolbar>
 
   {#if !charactersStore.personas.length}
     <LibraryEmpty title={$t('roleplay.library.noPersonas')} hint={$t('roleplay.library.noPersonasHint')} action={$t('roleplay.library.newPersona')} onaction={onnew} />

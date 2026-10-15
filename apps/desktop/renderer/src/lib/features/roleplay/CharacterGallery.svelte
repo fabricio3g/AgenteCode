@@ -14,7 +14,7 @@
 
   import { Button } from '$lib/components/ui';
   import Avatar from '$lib/components/ui/Avatar.svelte';
-  import { Plus, Upload } from 'lucide-svelte';
+  import { Upload } from 'lucide-svelte';
   import { t } from 'svelte-i18n';
   import type { CharacterCard } from '$lib/types/chat';
   import { charactersStore } from './characters.svelte';
@@ -75,7 +75,6 @@
     <Button variant="outline" type="button" disabled={importing} onclick={() => importInput?.click()}>
       <Upload /> {importing ? $t('roleplay.library.importing') : $t('roleplay.library.import')}
     </Button>
-    <Button variant="outline" type="button" onclick={onnew}><Plus /> {$t('roleplay.library.newCharacter')}</Button>
   </LibraryToolbar>
   <UiFileInput bind:ref={importInput} class={uiClass("hidden")}  accept=".json,.png,application/json,image/png" onchange={onImportFile} />
 

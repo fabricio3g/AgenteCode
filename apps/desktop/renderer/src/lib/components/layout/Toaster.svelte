@@ -31,7 +31,7 @@
       in:motionFly={{ y: 12, duration: 200 }}
       out:motionFade={{ duration: 150 }}
     >
-      <span class="text-[13px] font-medium leading-none text-foreground">{toast.message}</span>
+      <span class="text-[length:var(--text-sm)] font-medium leading-none text-foreground">{toast.message}</span>
       {#if toast.action}
         <UiButton variant="plain" type="button" class={uiClass("toast-action", "ui-local-2a4781e7")} onclick={toast.action.run}>{toast.action.label}</UiButton>
       {/if}
@@ -60,7 +60,7 @@
     padding: 0.125rem 0.5rem;
     border-radius: var(--radius-full);
     color: var(--brand-accent, var(--foreground));
-    font-size: 12.5px;
+    font-size: var(--text-sm);
     font-weight: 600;
   }
   :global(.toast-action:hover.ui-local-2a4781e7) {

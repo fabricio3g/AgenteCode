@@ -24,7 +24,7 @@
     height: 2rem;
     padding: 0 0.875rem;
     border: 1px solid var(--border);
-    border-radius: 9999px;
+    border-radius: var(--radius-full);
     font-size: var(--text-xs);
     color: var(--muted-foreground);
     background: var(--background);

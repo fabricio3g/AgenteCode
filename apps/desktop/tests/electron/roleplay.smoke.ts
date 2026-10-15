@@ -145,7 +145,9 @@ async function run() {
         await pause(400);
         const after = await app$(`return a.chats.filter((c)=>c.contextMode==='roleplay').length`);
         console.log(`sidebar New roleplay: roleplay chats ${before} -> ${after}`);
+        // The sidebar's "New" opens scene setup over the library.
         await capture(`${tag}-02-new-roleplay`);
+        await closeFloating();
 
         // Card options: "Customize scene…" opens the setup with the character already in the cast.
         await clickSelector('character options', 'button[aria-label="Character options"]', 0);

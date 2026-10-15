@@ -147,7 +147,7 @@
     min-width: 16px;
     height: 16px;
     padding: 0 3px;
-    border-radius: 999px;
+    border-radius: var(--radius-full);
     background: var(--sidebar-primary);
     color: var(--sidebar-primary-foreground);
     font-size: var(--text-xs);
@@ -269,7 +269,7 @@
     height: 3px;
     margin-top: 0.35rem;
     overflow: hidden;
-    border-radius: 999px;
+    border-radius: var(--radius-full);
     background: var(--muted);
   }
 
@@ -302,7 +302,7 @@
     align-items: center;
     justify-content: center;
     border: 0;
-    border-radius: 999px;
+    border-radius: var(--radius-full);
     background: transparent;
     color: var(--muted-foreground);
   }

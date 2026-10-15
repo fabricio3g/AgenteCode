@@ -10,6 +10,11 @@
   owns the content area, so every space stays one click away from anywhere.
   Icon-only throughout: every button carries its label in the shared Tooltip
   on hover and focus.
+
+  It is the sidebar's own plane, not a strip beside it: same surface, same
+  hover band, and the current space wears the sidebar's current-row face, so
+  rail and list read as one column. The app mark heads it, as an app's
+  identity, not a button.
 -->
 
 <script lang="ts">
@@ -24,6 +29,9 @@
   import type { ChatContextMode } from '$lib/types/chat';
   import { codeStore } from '$lib/features/code/code.svelte';
   import { botsStore } from '$lib/features/bots/bots.svelte';
+
+  /** macOS draws its traffic lights over the window's top-left: the mark starts below them. */
+  const isMac = typeof window !== 'undefined' && window.electronAPI?.platform === 'darwin';
 
   type TabId = ChatContextMode | 'bots';
   const tabs: Array<{ id: TabId; label: string; icon: typeof House }> = [
@@ -76,7 +84,8 @@
 
 </script>
 
-<nav class="activity-rail" data-activity-rail aria-label={copy.spaces.label}>
+<nav class="activity-rail" class:is-mac={isMac} data-activity-rail aria-label={copy.spaces.label}>
+  <img class="rail-mark" src="./app-icon.svg" alt="" aria-hidden="true" draggable="false" />
   <div class="rail-group" role="tablist" tabindex="-1" aria-label={copy.spaces.label} onkeydown={onSpacesKeydown}>
     {#each tabs as tab (tab.id)}
       {@const Icon = tab.icon}
@@ -121,25 +130,37 @@
 </nav>
 
 <style>
-  /* One continuous plane with the sidebar, split by a single hairline. Nothing
-     in it is boxed: a glyph is muted until hovered, and the current space is the
-     only filled thing on the strip. */
+  /* The sidebar's plane, the ground the canvas sheet rests on. Nothing in it is boxed:
+     a glyph is muted until hovered, and the current space is the only raised
+     thing on the strip — the same raised row the sidebar uses for its current
+     conversation. */
   .activity-rail {
     display: flex;
     width: var(--rail-w);
     flex-shrink: 0;
     flex-direction: column;
     align-items: center;
+    gap: 0.875rem;
     padding-block: 0.625rem;
-    background: var(--rail-bg);
-    border-right: 1px solid var(--border);
+    background: var(--sidebar);
+    -webkit-app-region: drag;
+  }
+  .activity-rail.is-mac { padding-top: 2.5rem; }
+  .activity-rail :global(button) { -webkit-app-region: no-drag; }
+
+  /* Brand colours are fixed across themes, like the hero's mark. */
+  .rail-mark {
+    inline-size: var(--rail-logo);
+    block-size: var(--rail-logo);
+    flex-shrink: 0;
+    user-select: none;
   }
 
   .rail-group {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 0.375rem;
+    gap: 0.25rem;
     outline: none;
   }
 
@@ -170,34 +191,24 @@
     color: var(--foreground);
   }
 
-  /* Lucide scales its stroke with the glyph; 1.9 reads at ~1.3px on 16px. */
+  /* Lucide scales its stroke with the glyph; 1.75 reads at ~1.2px on 16px. */
   :global(.rail-button.ui-local-e822ba2f) :global(svg) {
     width:var(--rail-icon);
     height:var(--rail-icon);
-    stroke-width: 1.9;
+    stroke-width: 1.75;
   }
 
-  /* The current space: a tinted chip plus an accent tick on the rail's edge.
-     --nav-current-bg sits a shade off --rail-bg, too close to read here. */
+  /* The current space: the sidebar's current-row face, nothing extra. */
   :global(.rail-button.is-active.ui-local-e822ba2f),
   :global(.rail-button.is-active:hover.ui-local-e822ba2f) {
-    background: color-mix(in srgb, var(--foreground) 9%, transparent);
+    background: var(--nav-current-bg);
     border-color: transparent;
-    box-shadow: inset 0 0 0 1px var(--border-subtle);
+    box-shadow: var(--nav-current-ring), var(--control-shadow);
     color: var(--foreground);
   }
-  :global(.rail-button.is-active.ui-local-e822ba2f::before) {
-    content: '';
-    position: absolute;
-    left: calc((var(--rail-btn) - var(--rail-w)) / 2 + 1px);
-    top: 25%;
-    bottom: 25%;
-    width: var(--rail-mark-width);
-    border-radius: 0 2px 2px 0;
-    background: var(--brand-accent);
-  }
+  :global(.rail-button.is-active.ui-local-e822ba2f) :global(svg) { stroke-width: 2; }
   @media (prefers-reduced-motion: no-preference) {
-    :global(.rail-button.ui-local-e822ba2f) { transition: background-color var(--motion-fast), color var(--motion-fast); }
+    :global(.rail-button.ui-local-e822ba2f) { transition: background-color var(--motion-instant) var(--motion-ease), color var(--motion-instant) var(--motion-ease); }
   }
 
   .busy-dot {
@@ -206,7 +217,7 @@
     right: 0.3125rem;
     inline-size: 0.375rem;
     block-size: 0.375rem;
-    border-radius: 9999px;
+    border-radius: var(--radius-full);
     background: var(--brand-accent);
     box-shadow: 0 0 0 2px var(--sidebar);
     animation: rail-pulse 1.6s ease-in-out infinite;

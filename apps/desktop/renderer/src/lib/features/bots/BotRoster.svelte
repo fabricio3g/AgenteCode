@@ -8,6 +8,7 @@
 
 <script lang="ts">
   import UiListRow from '$lib/components/ui/ListRow.svelte';
+  import EmptyState from '$lib/components/ui/EmptyState.svelte';
 
   import { cn as uiClass } from '$lib/utils/cn';
 
@@ -50,9 +51,6 @@
     <p class="sidebar-section">{$t('bots.all')}</p>
     <div class="space-y-0.5">{#each botsStore.matches as bot (bot.handle)}{@render row(bot)}{/each}</div>
   {:else if botsStore.loaded}
-    <div class="sidebar-empty">
-      <div class="sidebar-empty-icon"><BotIcon class="size-4" /></div>
-      <p>{botsStore.query.trim() ? $t('bots.noMatch') : $t('bots.none')}</p>
-    </div>
+    <EmptyState size="compact" icon={BotIcon} title={botsStore.query.trim() ? $t('bots.noMatch') : $t('bots.none')} />
   {/if}
 </nav>

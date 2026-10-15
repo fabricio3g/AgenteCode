@@ -53,7 +53,6 @@ object AgenteTokens {
         card = Color(0xFFFFFFFF),
         panel = Color(0xFFFFFFFF),
         plane = Color(0xFFF5F5F6),
-        rail = Color(0xFFF0F0F2),
         muted = Color(0xFFF3F3F4),
         mutedForeground = Color(0xFF666666),
         secondary = Color(0xFF525252),
@@ -69,12 +68,11 @@ object AgenteTokens {
     )
 
     val darkPalette = AgentePalette(
-        canvas = Color(0xFF161616),
+        canvas = Color(0xFF1A1A1A),
         foreground = Color(0xFFECECEC),
-        card = Color(0xFF1B1B1B),
+        card = Color(0xFF1F1F1F),
         panel = Color(0xFF252525),
-        plane = Color(0xFF0F0F0F),
-        rail = Color(0xFF1D1D1D),
+        plane = Color(0xFF050505),
         muted = Color(0xFF252525),
         mutedForeground = Color(0xFFA5A5A5),
         secondary = Color(0xFFC8C8C8),
@@ -127,7 +125,7 @@ object AgenteTokens {
     /** Desktop geometry the phone keeps: glyph size, row recipe, thread measure. */
     object Geometry {
         val icon: Dp = 16.dp
-        val rowHeight: Dp = 32.dp
+        val rowHeight: Dp = 28.dp
         val rowGap: Dp = 10.dp
         val threadWidth: Dp = 768.dp
     }

@@ -89,7 +89,7 @@
 <style>
   .lib-card {
     position: relative;
-    border: 1px solid var(--border);
+    border: 1px solid transparent;
     border-radius: var(--radius-lg);
     background: var(--card);
     transition:
@@ -99,7 +99,6 @@
   .lib-card:hover,
   .lib-card:focus-within,
   .lib-card.is-open {
-    border-color: var(--border-hover);
     background: var(--float-row-hover);
   }
 

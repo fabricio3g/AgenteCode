@@ -11,6 +11,7 @@
 -->
 
 <script lang="ts">
+  import EmptyState from '$lib/components/ui/EmptyState.svelte';
   import UiListRow from '$lib/components/ui/ListRow.svelte';
 
   import UiInput from '$lib/components/ui/Input.svelte';
@@ -207,10 +208,7 @@
           </UiListRow>
         {/each}
       {:else}
-        <div class="search-empty">
-          <p class="text-[13px] font-medium text-foreground">{query ? $t('search.noMatches') : $t('search.empty')}</p>
-          <p class="mt-0.5 text-xs text-muted-foreground">{query ? $t('search.noMatchesHint') : $t('search.emptyHint')}</p>
-        </div>
+        <EmptyState size="compact" title={query ? $t('search.noMatches') : $t('search.empty')} description={query ? $t('search.noMatchesHint') : $t('search.emptyHint')} />
       {/if}
     </div>
 
@@ -271,10 +269,6 @@
 
   :global(.search-hit.ui-local-63f6f05b) { min-height: 2.5rem; }
 
-  .search-empty {
-    padding: 1.5rem 1rem;
-    text-align: center;
-  }
 
   .search-footer {
     display: flex;

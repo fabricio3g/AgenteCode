@@ -8,6 +8,7 @@
 -->
 
 <script lang="ts">
+  import EmptyState from '$lib/components/ui/EmptyState.svelte';
   import TileMeter from '$lib/components/ui/TileMeter.svelte';
   import UiIconButton from '$lib/components/ui/IconButton.svelte';
   import UiButton from '$lib/components/ui/Button.svelte';
@@ -116,8 +117,8 @@
   <header class="flex h-12 shrink-0 items-center gap-2.5 px-4">
     <BotAvatar {bot} size="sm" />
     <div class="min-w-0 flex-1">
-      <p class="truncate text-[13px] font-medium text-foreground">{bot.title}</p>
-      <p class="truncate text-[13px] text-muted-foreground">@{bot.handle}{bot.role ? ` · ${bot.role}` : ''}{bot.model ? ` · ${bot.model.model}` : ''}</p>
+      <p class="truncate text-[length:var(--text-sm)] font-medium text-foreground">{bot.title}</p>
+      <p class="truncate text-[length:var(--text-sm)] text-muted-foreground">@{bot.handle}{bot.role ? ` · ${bot.role}` : ''}{bot.model ? ` · ${bot.model.model}` : ''}</p>
     </div>
     <Tooltip label={$t('bots.compactHint')} position="bottom"><UiIconButton label={$t('bots.compact')} size="sm" type="button" class={uiClass(" head-btn", "ui-local-661b2b78")} onclick={() => void botsStore.compact(bot.handle)}  disabled={bot.working || !turns.length}>
       <Eraser class="size-4" />
@@ -134,11 +135,9 @@
     <div bind:this={viewport} class="bot-transcript min-h-0 flex-1 overflow-y-auto px-4 py-6" class:is-empty={!turns.length} onscroll={onScroll}>
       <div class="mx-auto flex max-w-3xl flex-col gap-5">
         {#if !turns.length}
-          <div class="empty">
-            <BotAvatar {bot} size="xl" />
-            <p class="text-[13px] font-medium text-foreground">{$t('bots.emptyTitle', { values: { name: bot.title } })}</p>
-            <p class="max-w-sm text-center text-[12.5px] text-muted-foreground">{$t('bots.emptyHint')}</p>
-          </div>
+          <EmptyState title={$t('bots.emptyTitle', { values: { name: bot.title } })} description={$t('bots.emptyHint')} class="pt-16">
+            {#snippet illustration()}<BotAvatar {bot} size="xl" />{/snippet}
+          </EmptyState>
         {/if}
 
         {#each turns as turn (turn.key)}
@@ -185,9 +184,9 @@
             <li role="option" aria-selected={index === highlighted} id={`bot-mention-${option.handle}`}>
               <UiButton variant="plain" type="button" class={uiClass("mention", "ui-local-661b2b78", {"on": index === highlighted})}  onmousedown={(event) => event.preventDefault()} onclick={() => pick(option.handle)} onmouseenter={() => (highlighted = index)}>
                 <BotAvatar bot={option} size="sm" />
-                <span class="truncate text-[13px] text-foreground">{option.title}</span>
-                <span class="truncate text-[12px] text-muted-foreground">@{option.handle}</span>
-                {#if option.role}<span class="ml-auto truncate pl-2 text-[13px] text-muted-foreground">{option.role}</span>{/if}
+                <span class="truncate text-[length:var(--text-sm)] text-foreground">{option.title}</span>
+                <span class="truncate text-[length:var(--text-xs)] text-muted-foreground">@{option.handle}</span>
+                {#if option.role}<span class="ml-auto truncate pl-2 text-[length:var(--text-sm)] text-muted-foreground">{option.role}</span>{/if}
               </UiButton>
             </li>
           {/each}
@@ -215,7 +214,7 @@
           ></UiTextarea>
           <div class="composer-bar">
             <div class="composer-bar-leading">
-              <span class="truncate px-1 text-[12px] text-muted-foreground" title={$t('bots.model')}>{bot.model?.model ?? $t('bots.modelSame')}</span>
+              <span class="truncate px-1 text-[length:var(--text-xs)] text-muted-foreground" title={$t('bots.model')}>{bot.model?.model ?? $t('bots.modelSame')}</span>
             </div>
             <div class="composer-bar-trailing">
               <SendButton
@@ -240,25 +239,18 @@
 
   :global(.head-btn.on.ui-local-661b2b78) { background: var(--surface-hover); color: var(--foreground); }
   :global(.head-btn:disabled.ui-local-661b2b78) { opacity: 0.45; }
-  .empty {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 0.6rem;
-    padding: 4rem 0 2rem;
-  }
   .source {
     display: flex;
     align-items: center;
     gap: 0.4rem;
-    font-size: 11.5px;
+    font-size: var(--text-xs);
     color: var(--muted-foreground);
   }
   .quoted {
     margin-top: -0.6rem;
     border-left: 2px solid var(--border);
     padding-left: 0.75rem;
-    font-size: 13px;
+    font-size: var(--text-sm);
     color: var(--muted-foreground);
     white-space: pre-wrap;
   }

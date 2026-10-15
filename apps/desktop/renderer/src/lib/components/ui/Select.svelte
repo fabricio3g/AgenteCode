@@ -254,10 +254,10 @@
     'flex w-full items-center justify-between gap-2 rounded-[var(--radius-sm)] px-3 text-left text-[length:var(--text-sm)] text-foreground outline-none disabled:cursor-not-allowed disabled:opacity-50',
     size === 'sm' ? 'h-7' : 'h-8',
     variant === 'surface'
-      ? 'border-0 bg-[var(--card)] transition-[background-color,box-shadow] duration-[var(--motion-fast)] hover:bg-[var(--surface-hover)] focus-visible:bg-[var(--card)] focus-visible:ring-[3px] focus-visible:ring-ring/25'
+      ? 'border-0 bg-[var(--card)] transition-[background-color,box-shadow] duration-[var(--motion-fast)] hover:bg-[var(--surface-hover)] focus-visible:bg-[var(--surface-hover)]'
       // The outline button's face (hairline, card fill, hover row), so a
       // dropdown and a button side by side read as one family.
-      : 'border border-[var(--border-hover)] bg-[var(--card)] shadow-[var(--control-shadow)] transition-[background-color,border-color,box-shadow] duration-[var(--motion-fast)] hover:bg-[var(--float-row-hover)] aria-expanded:bg-[var(--float-row-hover)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--brand-accent)]',
+      : 'border border-[var(--border-hover)] bg-[var(--card)] shadow-[var(--control-shadow)] transition-[background-color,border-color,box-shadow] duration-[var(--motion-fast)] hover:bg-[var(--float-row-hover)] aria-expanded:bg-[var(--float-row-hover)] focus-visible:bg-[var(--float-row-hover)]',
     className,
   )}
   onclick={() => open ? closeMenu({ restoreFocus: true }) : void openMenu()}

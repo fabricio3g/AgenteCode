@@ -696,7 +696,18 @@
       "queued": "En cola"
     },
     "stopSubagent": "Detener subagente",
-    "stopCommand": "Detener el comando en curso"
+    "stopCommand": "Detener el comando en curso",
+    "modeShort": {
+      "plan": "Planificar",
+      "supervised": "Supervisado",
+      "full": "Auto"
+    },
+    "modeBrief": {
+      "plan": "Plan antes de editar",
+      "supervised": "Pide permiso",
+      "full": "Sin preguntar"
+    },
+    "modeCycle": "Shift+Tab para cambiar"
   },
   "searchModal": {
     "inMessages": "En los mensajes",
@@ -917,7 +928,43 @@
     "unloaded": "Modelo descargado",
     "unloadFailed": "No se pudo descargar el modelo",
     "notListed": "No listado",
-    "notListedHint": "Lo lista models.dev, pero no la lista de modelos del proveedor."
+    "notListedHint": "Lo lista models.dev, pero no la lista de modelos del proveedor.",
+    "recent": "Recientes",
+    "forAllChats": "Para todos los chats",
+    "loaded": "Cargado",
+    "noneLoaded": "Ninguno cargado",
+    "wontFit": "No cabe",
+    "tight": "Justo",
+    "loadingPct": "Cargando {pct}%",
+    "downloadModels": "Descargar modelos…",
+    "serverSettings": "Ajustes del servidor…",
+    "allModels": "Todos los modelos…",
+    "filterAll": "Todos",
+    "filter": "Mostrar modelos de",
+    "chatsUsing": "{n, plural, one {# chat lo usa} other {# chats lo usan}}",
+    "switchBusy": "Cambiar afecta a {n, plural, one {# chat} other {# chats}} que lo usan ahora.",
+    "confirmKeys": "Enter para cambiar · Esc para no",
+    "card": {
+      "context": "Contexto",
+      "output": "Salida máx.",
+      "input": "Entrada",
+      "outputCost": "Salida",
+      "cache": "Caché",
+      "perMillion": "{price} / M",
+      "free": "Gratis",
+      "image": "Imagen",
+      "audio": "Audio",
+      "video": "Vídeo",
+      "pdf": "PDF",
+      "tools": "Herramientas",
+      "reasoning": "Razona",
+      "size": "Peso",
+      "memory": "Memoria",
+      "fits": "Cabe",
+      "perChat": "{ctx} por chat",
+      "quant": "Cuantización",
+      "unknown": "El catálogo no tiene datos de este modelo."
+    }
   },
   "settingsNav": {
     "label": "Secciones de ajustes",
@@ -1921,7 +1968,20 @@
     "llamaBuildsHint": "Compilaciones instaladas, el servidor en ejecución e instalación desde una URL",
     "whisperBuilds": "Compilaciones de whisper.cpp",
     "whisperBuildsHint": "Elige qué compilación usa el dictado, o añade la tuya",
-    "audioEngineHint": "El motor de voz incluido: estado, backend y archivos"
+    "audioEngineHint": "El motor de voz incluido: estado, backend y archivos",
+    "server": {
+      "title": "Servidor local",
+      "hint": "Un solo modelo del equipo atiende todos los chats. Estos ajustes valen para todos.",
+      "parallel": "Conversaciones a la vez",
+      "parallelHint": "Cada una recibe {ctx} de contexto",
+      "parallelShared": "El contexto se reparte entre ellas",
+      "apply": "Aplicar y reiniciar",
+      "applyHint": "Recarga el modelo cuando terminen las respuestas en curso",
+      "slots": "Ranuras ahora",
+      "slotBusy": "Respondiendo",
+      "slotFree": "Libre",
+      "noModel": "Ningún modelo cargado"
+    }
   },
   "downloads": {
     "title": "Descargas",

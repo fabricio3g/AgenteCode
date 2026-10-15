@@ -45,7 +45,7 @@
         }
       }}
     />
-    <p class="mt-2 text-[12px] text-muted-foreground">{$t('codeWs.newBranchFrom', { values: { root: projectRoot } })}</p>
+    <p class="mt-2 text-[length:var(--text-xs)] text-muted-foreground">{$t('codeWs.newBranchFrom', { values: { root: projectRoot } })}</p>
   </div>
   {#snippet footer()}
     <DialogActions cancelLabel={$t('codeWs.cancel')} confirmLabel={$t('codeWs.createBranch')} oncancel={onclose} onconfirm={submit} disabled={busy || !name.trim()} />

@@ -138,7 +138,7 @@
       <span class="mx-1 h-4 w-px bg-[var(--border)]" aria-hidden="true"></span>
     {/if}
     <!-- Home, Roleplay and Bots have no pane strip, so the browser opens from here.
-         Code reaches it from the project card, on the conversation's own browser. -->
+         Code draws the same globe in its strip, on the conversation's own browser. -->
     {#if !codeChat}
       <Tooltip label={$t('browser.title')} position="bottom">
         <UiIconButton label={$t('browser.title')} size="sm"

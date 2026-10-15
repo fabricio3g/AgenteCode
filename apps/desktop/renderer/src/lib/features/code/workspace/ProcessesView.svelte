@@ -183,7 +183,7 @@
     padding: 0 0.6rem;
     border-radius: var(--radius-full);
     color: var(--muted-foreground);
-    font-size: 11.5px;
+    font-size: var(--text-xs);
     text-align: left;
     transition: background-color var(--motion-fast) var(--motion-ease), color var(--motion-fast) var(--motion-ease);
   }
@@ -197,7 +197,7 @@
     width: 0.375rem;
     height: 0.375rem;
     flex-shrink: 0;
-    border-radius: 9999px;
+    border-radius: var(--radius-full);
     background: var(--muted-foreground);
     opacity: 0.5;
   }
@@ -220,7 +220,7 @@
   .proc-empty {
     padding: 0.5rem 0.6rem;
     color: var(--muted-foreground);
-    font-size: 11.5px;
+    font-size: var(--text-xs);
     line-height: 1.55;
   }
 
@@ -232,7 +232,7 @@
     padding: 0 0.6rem;
     border-radius: var(--radius-full);
     color: var(--muted-foreground);
-    font-size: 11px;
+    font-size: var(--text-xs);
     transition: background-color var(--motion-fast) var(--motion-ease), color var(--motion-fast) var(--motion-ease);
   }
   :global(.proc-clear:hover.ui-local-7dc5fc69) {
@@ -259,10 +259,10 @@
     gap: 0.5rem;
     padding: 0 0.4rem 0 0.75rem;
     color: var(--muted-foreground);
-    font-size: 11px;
+    font-size: var(--text-xs);
   }
   .proc-head :is(.font-mono, :global(.font-mono.ui-local-7dc5fc69)) {
-    font-size: 11.5px;
+    font-size: var(--text-xs);
   }
 
   .proc-log {
@@ -276,7 +276,7 @@
     white-space: pre;
     color: var(--foreground);
     font-family: var(--font-mono, ui-monospace, monospace);
-    font-size: 11.5px;
+    font-size: var(--text-xs);
     line-height: 1.6;
   }
 
@@ -286,6 +286,6 @@
     align-items: flex-start;
     padding: 0.5rem 0.75rem;
     color: var(--muted-foreground);
-    font-size: 11.5px;
+    font-size: var(--text-xs);
   }
 </style>

@@ -164,6 +164,14 @@
         (anchorEl?.querySelector('button') as HTMLElement | null)?.focus();
         return;
       }
+      // A side panel (submenu) steps back to its row with the arrow pointing home.
+      if (event.key === 'ArrowLeft' && placement.startsWith('right')) {
+        event.preventDefault();
+        event.stopPropagation();
+        close();
+        (anchorEl?.querySelector('button') as HTMLElement | null)?.focus();
+        return;
+      }
       if (event.key === 'ArrowDown') {
         event.preventDefault();
         focusItem(1);
@@ -198,14 +206,14 @@
       role="menu"
       aria-label={label}
       tabindex="-1"
-      style:transform-origin={`${placement.startsWith('top') ? 'bottom' : 'top'} ${placement.endsWith('end') ? 'right' : 'left'}`}
+      style:transform-origin={placement.startsWith('right') ? `left ${placement.endsWith('end') ? 'bottom' : 'top'}` : `${placement.startsWith('top') ? 'bottom' : 'top'} ${placement.endsWith('end') ? 'right' : 'left'}`}
       style={`top:${top}px; left:${left}px; max-width:${maxWidth === undefined ? 'calc(100vw - 12px)' : `${maxWidth}px`}; min-width:min(max(${minWidth}, ${anchorWidth}px), ${maxWidth === undefined ? 'calc(100vw - 12px)' : `${maxWidth}px`}); max-height:${maxHeight === undefined ? 'calc(100dvh - 12px)' : `${maxHeight}px`};`}
       onclick={(event) => {
         // Choosing an item closes the menu; callers no longer each have to.
         const item = (event.target as HTMLElement).closest('[role="menuitem"]');
         if (item && !item.hasAttribute('disabled') && !item.hasAttribute('data-keep-open')) queueMicrotask(close);
       }}
-      transition:flyAndScale={{ y: placement.startsWith('top') ? 4 : -4, start: 0.97, duration: 130 }}
+      transition:flyAndScale={{ y: placement.startsWith('right') ? 0 : placement.startsWith('top') ? 4 : -4, start: 0.97, duration: 130 }}
     >
       {@render children()}
     </div>

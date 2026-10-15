@@ -235,7 +235,7 @@
                   {$t('files.cleanup', { values: { count: unused.length, size: formatBytes(unusedBytes) } })}
                 </UiButton>
               {/if}
-              <p class="text-[12px] tabular-nums text-muted-foreground">{$t('files.summary', { values: { count: entries.length, size: formatBytes(totalBytes(entries)) } })}</p>
+              <p class="text-[length:var(--text-xs)] tabular-nums text-muted-foreground">{$t('files.summary', { values: { count: entries.length, size: formatBytes(totalBytes(entries)) } })}</p>
             </div>
           {/if}
         </header>
@@ -292,7 +292,7 @@
                       {#if entry.pinned}<span class="badge">{$t('files.pin')}</span>{/if}
                       {#if entry.attachment?.status === 'error'}<span class="badge is-error" title={entry.attachment.error}>{$t('files.failed')}</span>{/if}
                     </p>
-                    <p class="mt-0.5 truncate text-[12px] text-muted-foreground">
+                    <p class="mt-0.5 truncate text-[length:var(--text-xs)] text-muted-foreground">
                       {[entry.chatTitle, when(entry.createdAt), entry.size ? formatBytes(entry.size) : '', ragState(entry)].filter(Boolean).join(' · ')}
                     </p>
                   </div>
@@ -365,7 +365,7 @@
   }
   .badge {
     flex-shrink: 0;
-    border-radius: 9999px;
+    border-radius: var(--radius-full);
     padding: 0 0.5rem;
     font-size: var(--text-xs, 12px);
     line-height: 1.25rem;
@@ -392,7 +392,7 @@
     height: 1.875rem;
     align-items: center;
     justify-content: center;
-    border-radius: 9999px;
+    border-radius: var(--radius-full);
     color: var(--muted-foreground);
     transition: color var(--motion-fast) var(--motion-ease), background-color var(--motion-fast) var(--motion-ease);
   }
@@ -407,7 +407,7 @@
     color: var(--destructive);
   }
   :global(.cleanup.ui-local-818ad885) {
-    border-radius: 9999px;
+    border-radius: var(--radius-full);
     padding: 0.25rem 0.75rem;
     font-size: var(--text-xs, 12px);
     color: var(--muted-foreground);

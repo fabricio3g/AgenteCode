@@ -144,7 +144,7 @@
   .file-node.is-selected :is(.file-row, :global(.file-row.ui-local-7a0637fc)) { background: var(--surface-hover); }
   .file-indent { flex-shrink: 0; }
   .file-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--foreground); }
-  .file-mark { flex-shrink: 0; margin-left: auto; font-size: 10px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .file-mark { flex-shrink: 0; margin-left: auto; font-size: var(--text-xs); font-weight: 600; font-variant-numeric: tabular-nums; }
   /* The actions replace the change letter on hover rather than stacking on it. */
   .file-node:hover .file-mark,
   .file-node:focus-within .file-mark { opacity: 0; }

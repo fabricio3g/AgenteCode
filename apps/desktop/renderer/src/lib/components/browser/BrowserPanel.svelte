@@ -9,6 +9,7 @@
 -->
 
 <script lang="ts">
+  import EmptyState from '$lib/components/ui/EmptyState.svelte';
   import UiIconButton from '$lib/components/ui/IconButton.svelte';
   import UiInput from '$lib/components/ui/Input.svelte';
   import { cn as uiClass } from '$lib/utils/cn';
@@ -306,7 +307,7 @@
     {#if annotating && chatId}
       <CanvasPanel {chatId} />
     {:else if !hasPage}
-      <div class="browser-empty"><Globe class="size-5" /><p>{$t('browser.emptyTitle')}</p><span>{$t('browser.emptyHint')}</span></div>
+      <EmptyState size="compact" icon={Globe} title={$t('browser.emptyTitle')} description={$t('browser.emptyHint')} class="h-full" />
     {:else if still}<img class="viewport-still" src={still} alt="" onerror={() => (still = null)} />{/if}
   </div>
 </div>
@@ -347,7 +348,7 @@
     width: 0.375rem;
     height: 0.375rem;
     flex-shrink: 0;
-    border-radius: 9999px;
+    border-radius: var(--radius-full);
     background: var(--brand-accent);
     animation: browser-drive-pulse 1.6s ease-in-out infinite;
   }
@@ -396,7 +397,7 @@
   :global(.browser-tab-close.ui-local-b510f76f) {
     display: inline-flex;
     padding: 0.15rem;
-    border-radius: 9999px;
+    border-radius: var(--radius-full);
     color: inherit;
     opacity: 0;
   }
@@ -433,9 +434,6 @@
   }
 
   .browser-viewport-box.annotating { display: flex; margin: 0; border-radius: 0; }
-  .browser-empty { display: flex; height: 100%; flex-direction: column; align-items: center; justify-content: center; gap: .5rem; padding: 1.5rem; text-align: center; color: var(--muted-foreground); }
-  .browser-empty p { margin: 0; font-size: var(--text-sm); color: var(--foreground); }
-  .browser-empty span { max-width: 24rem; font-size: var(--text-xs); }
 
   /* A narrow card keeps the address readable: the chip becomes its icon. */
   @container (max-width: 380px) {

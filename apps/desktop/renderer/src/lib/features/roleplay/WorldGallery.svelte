@@ -6,8 +6,7 @@
 -->
 
 <script lang="ts">
-  import { Button } from '$lib/components/ui';
-  import { Globe2, Plus } from 'lucide-svelte';
+  import { Globe2 } from 'lucide-svelte';
   import { t } from 'svelte-i18n';
   import { copy } from '$lib/copy';
   import type { RoleplayWorld } from '$lib/types/chat';
@@ -50,9 +49,7 @@
 </script>
 
 <div class="library-shelf">
-  <LibraryToolbar bind:query placeholder={worldsStore.worlds.length ? $t('roleplay.library.searchWorlds') : ''}>
-    <Button variant="outline" type="button" onclick={onnew}><Plus /> {$t('roleplay.library.newWorld')}</Button>
-  </LibraryToolbar>
+  <LibraryToolbar bind:query placeholder={worldsStore.worlds.length ? $t('roleplay.library.searchWorlds') : ''} />
 
   {#if !worldsStore.worlds.length}
     <LibraryEmpty title={$t('roleplay.library.noWorlds')} hint={$t('roleplay.library.noWorldsHint')} action={$t('roleplay.library.newWorld')} onaction={onnew} />

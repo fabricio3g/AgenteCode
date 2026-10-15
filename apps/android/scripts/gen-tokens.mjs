@@ -147,7 +147,6 @@ const COLORS = [
   ['card', '--card'],
   ['panel', '--popover'],
   ['plane', '--sidebar'],
-  ['rail', '--rail-bg'],
   ['muted', '--muted'],
   ['mutedForeground', '--muted-foreground'],
   ['secondary', '--text-secondary'],

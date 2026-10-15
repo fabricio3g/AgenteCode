@@ -134,7 +134,7 @@
     min-width: 0;
     overflow: hidden;
     color: var(--text-secondary);
-    font-size: 12px;
+    font-size: var(--text-xs);
     font-weight: 600;
     text-overflow: ellipsis;
     white-space: nowrap;

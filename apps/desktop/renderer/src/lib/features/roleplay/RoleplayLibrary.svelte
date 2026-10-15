@@ -3,8 +3,8 @@
 <!--
   Roleplay library: the space's home when no scene is active.
 
-  Three shelves — worlds, characters, personas — plus a direct "New scene"
-  entry point for a quick group or one-on-one without a world.
+  Three shelves — worlds, characters, personas — and one create button for
+  the shelf in view. A new scene starts from the sidebar's "New".
 -->
 
 <script lang="ts">
@@ -29,7 +29,6 @@
     onnewWorld: () => void;
     oneditPersona: (persona: UserPersona) => void;
     onnewPersona: () => void;
-    onnewScene: () => void;
     /** The active shelf; the parent switches it after a save. */
     shelf?: Shelf;
   }
@@ -44,7 +43,6 @@
     onnewWorld,
     oneditPersona,
     onnewPersona,
-    onnewScene,
     shelf = $bindable<Shelf>('characters')
   }: Props = $props();
 
@@ -53,13 +51,19 @@
     { id: 'characters', label: $t('roleplay.library.shelf.characters') },
     { id: 'personas', label: $t('roleplay.library.shelf.personas') }
   ]);
+
+  const create = $derived(
+    shelf === 'worlds' ? { label: $t('roleplay.library.newWorld'), run: onnewWorld }
+      : shelf === 'personas' ? { label: $t('roleplay.library.newPersona'), run: onnewPersona }
+        : { label: $t('roleplay.library.newCharacter'), run: onnewCharacter }
+  );
 </script>
 
 <div class="roleplay-library flex min-h-0 min-w-0 flex-1 flex-col">
   <div class="library-header">
     <SegmentedControl value={shelf} options={tabs.map((tab) => ({ value: tab.id, label: tab.label }))} label={$t('roleplay.library.title')} variant="tabs" shape="rect" onchange={(value) => (shelf = value as Shelf)} />
     <span class="flex-1"></span>
-    <Button variant="outline" type="button" onclick={onnewScene}><Plus /> {$t('roleplay.library.newScene')}</Button>
+    <Button variant="outline" type="button" onclick={() => create.run()}><Plus /> {create.label}</Button>
   </div>
 
   <div class="library-scroll min-h-0 flex-1 overflow-y-auto">

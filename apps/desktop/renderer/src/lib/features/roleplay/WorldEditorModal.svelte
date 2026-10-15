@@ -235,7 +235,7 @@
                 <span class="cast-avatar">
                   <Avatar size="fill" name={card.name ?? ''} image={card.avatar} />
                 </span>
-                <span class="min-w-0 flex-1 truncate text-[13px] text-foreground">{card.name}</span>
+                <span class="min-w-0 flex-1 truncate text-[length:var(--text-sm)] text-foreground">{card.name}</span>
                 <Tooltip label={$t('roleplay.world.moveUp')} position="bottom"><UiIconButton label={$t('roleplay.world.moveUp')} size="xs" type="button" class={uiClass(" ", "ui-local-8924758d")} disabled={index === 0} onclick={() => moveCast(index, -1)} >
                   <ArrowUp class="size-3.5" />
                 </UiIconButton></Tooltip>

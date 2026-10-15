@@ -197,7 +197,7 @@
     padding: 0.6rem 0.25rem;
     cursor: pointer;
     font: inherit;
-    transition: all 0.15s ease;
+    transition: all var(--motion-fast) var(--motion-ease);
   }
   :global(.ui-list-item:first-child) {
     border-top: 0;

@@ -120,7 +120,6 @@
         {@render pane('plan', $t('code.plan.title'), workspaceLayout.isOpen('plan'), () => codeWorkspace.togglePlan(chat!.id, latestPlan(chat!.messages), workspaceLayout), ClipboardList)}
         {@render pane('processes', $t('codeWs.processes'), processesOpen, () => void codeWorkspace.toggleBottom('processes', cwd, workspaceLayout), Activity)}
         {@render pane('canvas', $t('canvas.title'), workspaceLayout.isOpen('canvas'), () => workspaceLayout.toggle('canvas'), Image)}
-        {@render pane('browser', $t('browser.title'), browserPanelStore.open, () => void browserPanelStore.toggle().catch((error) => toastStore.error(String(error))), Globe)}
       </ProjectControls>
     {/if}
     <div class="pane-strip-tabs">
@@ -128,12 +127,14 @@
         <!--
           Three panes are named and four stay icons. Changes, Files and Plan are
           the surfaces a conversation is read through — the ones a new reader
-          cannot guess from a glyph — while Terminal, Processes, Canvas and
-          Browser are instruments you go looking for by name anyway.
+          cannot guess from a glyph — while Terminal and Browser are instruments
+          you go looking for by name anyway. Browser sits here, not in the
+          project card, so it is the same top-bar globe in every space.
         -->
         {@render pane('changes', $t('codeWs.changes'), workspaceLayout.isOpen('changes'), () => workspaceLayout.toggle('changes'), GitCompareArrows, changesBadge, $t('codeWs.changes'))}
         {@render pane('files', $t('codeWs.files'), workspaceLayout.isOpen('files'), () => workspaceLayout.toggle('files'), FolderTree, null, $t('codeWs.files'))}
         {@render pane('terminal', $t('codeWs.terminal'), terminalOpen, () => void toggleTerminal(), SquareTerminal)}
+        {@render pane('browser', $t('browser.title'), browserPanelStore.open, () => void browserPanelStore.toggle().catch((error) => toastStore.error(String(error))), Globe)}
       {/if}
     </div>
 

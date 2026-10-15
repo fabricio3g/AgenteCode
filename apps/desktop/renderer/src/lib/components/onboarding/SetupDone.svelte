@@ -62,7 +62,7 @@
     align-items: center;
     justify-content: center;
     border: 1px solid var(--float-border);
-    border-radius: 9999px;
+    border-radius: var(--radius-full);
     color: var(--muted-foreground);
   }
 

@@ -696,7 +696,18 @@
     "browseProject": "projeto",
     "browsePlaces": "Locais",
     "browseUnreadable": "Não foi possível abrir esta pasta",
-    "browseHint": "Escolha uma pasta: clique duas vezes para entrar, Enter para abrir."
+    "browseHint": "Escolha uma pasta: clique duas vezes para entrar, Enter para abrir.",
+    "modeShort": {
+      "plan": "Planejar",
+      "supervised": "Supervisionado",
+      "full": "Auto"
+    },
+    "modeBrief": {
+      "plan": "Planeja antes de editar",
+      "supervised": "Pede antes",
+      "full": "Nunca pergunta"
+    },
+    "modeCycle": "Shift+Tab para trocar"
   },
   "searchModal": {
     "inMessages": "Nas mensagens",
@@ -917,7 +928,43 @@
     "unloaded": "Modelo descarregado",
     "unloadFailed": "Não foi possível descarregar o modelo",
     "notListed": "Not listed",
-    "notListedHint": "Listed by models.dev but not by the provider's own model list."
+    "notListedHint": "Listed by models.dev but not by the provider's own model list.",
+    "recent": "Recentes",
+    "forAllChats": "Para todas as conversas",
+    "loaded": "Carregado",
+    "noneLoaded": "Nenhum carregado",
+    "wontFit": "Não cabe",
+    "tight": "Justo",
+    "loadingPct": "Carregando {pct}%",
+    "downloadModels": "Baixar modelos…",
+    "serverSettings": "Ajustes do servidor…",
+    "allModels": "Todos os modelos…",
+    "filterAll": "Todos",
+    "filter": "Mostrar modelos de",
+    "chatsUsing": "{n, plural, one {# conversa usando} other {# conversas usando}}",
+    "switchBusy": "Trocar afeta {n, plural, one {# conversa} other {# conversas}} que o usam agora.",
+    "confirmKeys": "Enter para trocar · Esc para manter",
+    "card": {
+      "context": "Contexto",
+      "output": "Saída máx.",
+      "input": "Entrada",
+      "outputCost": "Saída",
+      "cache": "Cache",
+      "perMillion": "{price} / M",
+      "free": "Grátis",
+      "image": "Imagem",
+      "audio": "Áudio",
+      "video": "Vídeo",
+      "pdf": "PDF",
+      "tools": "Ferramentas",
+      "reasoning": "Raciocina",
+      "size": "Tamanho",
+      "memory": "Memória",
+      "fits": "Cabe",
+      "perChat": "{ctx} por conversa",
+      "quant": "Quantização",
+      "unknown": "O catálogo não tem dados deste modelo."
+    }
   },
   "settingsNav": {
     "label": "Seções de configurações",
@@ -1921,7 +1968,20 @@
     "llamaBuildsHint": "Installed builds, the running server and installing from a URL",
     "whisperBuilds": "whisper.cpp builds",
     "whisperBuildsHint": "Choose which build dictation runs on, or add your own",
-    "audioEngineHint": "The bundled voice engine: status, backend and files"
+    "audioEngineHint": "The bundled voice engine: status, backend and files",
+    "server": {
+      "title": "Servidor local",
+      "hint": "Um só modelo do computador atende todas as conversas. Estes ajustes valem para todas.",
+      "parallel": "Conversas ao mesmo tempo",
+      "parallelHint": "Cada uma recebe {ctx} de contexto",
+      "parallelShared": "O contexto é dividido entre elas",
+      "apply": "Aplicar e reiniciar",
+      "applyHint": "Recarrega o modelo quando as respostas em curso terminarem",
+      "slots": "Slots agora",
+      "slotBusy": "Respondendo",
+      "slotFree": "Livre",
+      "noModel": "Nenhum modelo carregado"
+    }
   },
   "downloads": {
     "title": "Downloads",

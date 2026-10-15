@@ -22,7 +22,7 @@ const ALLOWED_INVOKE_CHANNELS = new Set([
   'get_installed_runtimes', 'delete_runtime_binary', 'download_runtime',
   'generate_tts', 'generate_tts_stream', 'cancel_tts_stream', 'unload_tts', 'check_espeak_data', 'preload_tts', 'list_tts_voices', 'list_speech_voices', 'read_file_base64',
   'stt_transcribe', 'preload_whisper', 'get_stt_status', 'unload_whisper', 'voice_setup_plan', 'setup_voice', 'list_speech_models', 'use_speech_model', 'remove_speech_model', 'get_engine_overview', 'list_instances', 'start_instance', 'stop_instance', 'set_instance_sharing', 'get_instance_key', 'check_whisper_update', 'update_whisper_engine', 'list_whisper_releases', 'cleanup_engines', 'open_data_folder',   'fetch_provider_models', 'test_provider_connection', 'get_api_model_context', 'detect_tool_support',
-  'get_reasoning_capabilities', 'list_provider_specs',
+  'get_reasoning_capabilities', 'list_provider_specs', 'get_model_card',
   'get_whisper_runtimes', 'delete_whisper_runtime', 'download_whisper_runtime',
   'chat_complete', 'chat_stream_start', 'chat_stream_cancel',
   'count_tokens', 'build_context_budget', 'truncate_messages',

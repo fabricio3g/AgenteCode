@@ -189,11 +189,11 @@
     gap: 0.4rem;
     padding: 0 0.75rem 0 0.65rem;
     border: 1px solid var(--border);
-    border-radius: 9999px;
+    border-radius: var(--radius-full);
     background: var(--popover, var(--background));
     color: var(--foreground);
     box-shadow: 0 1px 2px rgb(0 0 0 / 0.05), 0 6px 16px -4px rgb(0 0 0 / 0.14);
-    font-size: 12.5px;
+    font-size: var(--text-sm);
     font-weight: 500;
     white-space: nowrap;
     transform: translateX(-50%);

@@ -6,6 +6,7 @@
   import UiButton from '$lib/components/ui/Button.svelte';
   import UiInput from '$lib/components/ui/Input.svelte';
   import UiIconButton from '$lib/components/ui/IconButton.svelte';
+  import EmptyState from '$lib/components/ui/EmptyState.svelte';
   import { cn as uiClass } from '$lib/utils/cn';
 
   let { onNavigate }: { onNavigate?: () => void } = $props();
@@ -135,7 +136,7 @@
       return;
     }
     if (appStore.activeSpace === 'roleplay') {
-      appStore.openRoleplayLibrary();
+      appStore.startRoleplayScene();
       return;
     }
     appStore.createChat(appStore.activeSpace);
@@ -144,8 +145,8 @@
 </script>
 
 <aside class="sidebar relative isolate flex h-full w-full flex-col overflow-hidden bg-sidebar text-sidebar-foreground">
-  <div class="relative z-10 flex min-h-0 flex-1 flex-col px-3 pb-1 pt-2">
-    <div class="flex flex-col gap-1.5 pb-3 pt-1">
+  <div class="relative z-10 flex min-h-0 flex-1 flex-col px-2 pb-1 pt-2">
+    <div class="flex flex-col gap-0.5 pb-2 pt-1">
       <UiListRow
         type="button"
         class={uiClass("sidebar-row is-emphasis", "ui-local-0456fb2e")}
@@ -185,9 +186,11 @@
     </div>
 
     {#if inBots}
+      <!-- Filters the roster in place, but wears the same row as every other
+           space's search so the sidebar reads the same everywhere. -->
       <label class="sidebar-row bot-filter">
         <Search class="sidebar-row-icon" />
-        <UiInput class={uiClass('', "ui-local-0456fb2e")} data-bot-search bind:value={botsStore.query} placeholder={$t('bots.search')} aria-label={$t('bots.search')} />
+        <UiInput variant="inline" class={uiClass('h-auto px-0', "ui-local-0456fb2e")} data-bot-search bind:value={botsStore.query} placeholder={$t('bots.search')} aria-label={$t('bots.search')} />
       </label>
     {:else}
     <div class="search-line">
@@ -255,27 +258,13 @@
           </div>
         {/each}
       {:else}
-        <div class="sidebar-empty">
-          <div class="sidebar-empty-icon">
-            {#if appStore.activeSpace === 'roleplay'}
-              <Drama class="h-4 w-4" />
-            {:else if appStore.activeSpace === 'design'}
-              <PenTool class="h-4 w-4" />
-            {:else}
-              <MessageSquare class="h-4 w-4" />
-            {/if}
-          </div>
-          {#if appStore.activeSpace === 'roleplay'}
-            <p>{copy.roleplay.noRoleplays}</p>
-            <p class="sidebar-empty-hint">{copy.roleplay.noRoleplaysHint}</p>
-          {:else if appStore.activeSpace === 'design'}
-            <p>{copy.design.noDesigns}</p>
-            <p class="sidebar-empty-hint">{copy.design.noDesignsHint}</p>
-          {:else}
-            <p>{$t('sidebar.noConversations')}</p>
-            <p class="sidebar-empty-hint">{$t('sidebar.emptyHint')}</p>
-          {/if}
-        </div>
+        {#if appStore.activeSpace === 'roleplay'}
+          <EmptyState size="compact" icon={Drama} title={copy.roleplay.noRoleplays} description={copy.roleplay.noRoleplaysHint} />
+        {:else if appStore.activeSpace === 'design'}
+          <EmptyState size="compact" icon={PenTool} title={copy.design.noDesigns} description={copy.design.noDesignsHint} />
+        {:else}
+          <EmptyState size="compact" icon={MessageSquare} title={$t('sidebar.noConversations')} description={$t('sidebar.emptyHint')} />
+        {/if}
       {/if}
     </div>
 
@@ -291,7 +280,7 @@
 
 <style>
   /* Chats sit one step in from their date, so the list reads as groups. */
-  .chat-group-rows { padding-inline-start: 0.5rem; }
+  .chat-group-rows { padding-inline-start: 0.25rem; }
 
   .search-line { display: flex; align-items: center; gap: 0.25rem; }
   /* A bare glyph until hovered or open, so the row stays quiet. */
