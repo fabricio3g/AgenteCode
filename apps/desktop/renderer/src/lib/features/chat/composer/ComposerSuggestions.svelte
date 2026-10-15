@@ -67,27 +67,27 @@
     align-items: center;
     gap: 0.4375rem;
     min-height: 2rem;
-    padding: 0.375rem 0.875rem;
-    border: 1px solid var(--border);
+    padding: 0.375rem 0.75rem;
+    border: 0;
     border-radius: var(--radius-full);
-    background: var(--card);
-    color: var(--foreground);
-    font-size: 0.8125rem;
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: var(--text-sm);
     font-weight: 500;
     letter-spacing: -0.005em;
     transition:
-      background-color 150ms ease,
-      border-color 150ms ease,
-      transform 150ms var(--motion-ease);
+      background-color var(--motion-instant) var(--motion-ease),
+      color var(--motion-instant) var(--motion-ease),
+      transform var(--motion-fast) var(--motion-ease);
   }
 
   :global(.suggestion.ui-local-c934f14f) :global(.suggestion-icon) { color: oklch(0.72 0.11 var(--hue)); }
   :global(html:not(.dark)) :global(.suggestion.ui-local-c934f14f) :global(.suggestion-icon) { color: oklch(0.5 0.12 var(--hue)); }
 
-  /* Hover tints the chip with its own hue instead of plain gray. */
+  /* No outline at rest: the glyph's hue is the only colour; hover tints the chip with it. */
   :global(.suggestion:hover.ui-local-c934f14f) {
-    border-color: oklch(0.65 0.1 var(--hue) / 0.45);
     background: oklch(0.62 0.09 var(--hue) / 0.1);
+    color: var(--foreground);
   }
 
   :global(.suggestion:active.ui-local-c934f14f) {

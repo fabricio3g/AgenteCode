@@ -7,7 +7,6 @@
   import ActivityDrawer from '$lib/components/agent/ActivityDrawer.svelte';
   import { appStore } from '$lib/stores/app.svelte';
   import { copy } from '$lib/copy';
-  import GreetingTiles from './GreetingTiles.svelte';
 
   const threadIsEmpty = $derived(!(appStore.currentChat?.messages?.length));
 
@@ -22,7 +21,7 @@
     class:justify-center={threadIsEmpty}
   >
     {#if threadIsEmpty}
-      <div class="greeting-stage"><GreetingTiles /><h1 class="empty-greeting">{copy.emptyState.greeting}</h1></div>
+      <h1 class="empty-greeting">{copy.emptyState.greeting}</h1>
     {/if}
     <Thread />
     <Composer />
@@ -40,24 +39,13 @@
 <style>
   /* Anchors the centred empty state. Sized to lead the composer without
      competing with it — the composer is still where the eye should land. */
-  /* The tiles sit behind the heading, not inside it: the heading's text is a
-     clipped gradient, and anything inside it would paint over the letters. */
-  .greeting-stage {
-    position: relative;
-    isolation: isolate;
-  }
-
   .empty-greeting {
     position: relative;
     z-index: 1;
     margin: 0 auto 1.5rem;
     padding: 0 1rem;
     max-width: 48rem;
-    /* The text itself carries a faint top-to-bottom tone, not a flat fill. */
-    background: linear-gradient(180deg, var(--foreground) 35%, color-mix(in srgb, var(--foreground) 62%, var(--brand-accent)));
-    -webkit-background-clip: text;
-    background-clip: text;
-    color: transparent;
+    color: var(--foreground);
     font-size: 1.5rem;
     font-weight: 600;
     letter-spacing: -0.02em;

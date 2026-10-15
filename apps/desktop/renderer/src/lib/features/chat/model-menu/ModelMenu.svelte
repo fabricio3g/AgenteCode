@@ -81,10 +81,20 @@
   });
   const providerLabel = (id: string) => providers.find((item) => item.id === id)?.label ?? id;
 
+  /**
+   * Nothing to answer with yet: no provider key, or no model on this computer.
+   * The pill itself says so (an accent dot and the next step) instead of a
+   * notice line above the composer.
+   */
+  const needsSetup = $derived(
+    backend === 'local'
+      ? !loading && !appStore.localModelActive
+      : !provider || !cloudModel || !(appStore.config.llm?.providers?.[provider]?.has_api_key || appStore.config.llm?.providers?.[provider]?.api_key)
+  );
   const label = $derived(
     backend === 'local'
-      ? loading ? shortModelName(appStore.localModelLoadTarget?.name) || loadedName : loadedName || $t('modelPicker.noneLoaded')
-      : shortModelName(cloudModel) || $t('modelPicker.selectModel')
+      ? loading ? shortModelName(appStore.localModelLoadTarget?.name) || loadedName : loadedName || $t('modelPicker.selectModel')
+      : needsSetup && !(appStore.config.llm?.providers?.[provider]?.has_api_key) ? $t('modelPicker.configureProvider') : shortModelName(cloudModel) || $t('modelPicker.selectModel')
   );
 
   // ── Thinking: the same profile and words as ReasoningLevelSelector ────
@@ -272,11 +282,13 @@
       variant="plain"
       {...props}
       type="button"
-      class={['model-pill titlebar-no-drag', open && 'is-open', compact && 'is-compact'].filter(Boolean).join(' ')}
+      class={['model-pill titlebar-no-drag', open && 'is-open', compact && 'is-compact', needsSetup && 'is-setup'].filter(Boolean).join(' ')}
       aria-label={$t('modelPicker.triggerLabel', { values: { model: label } })}
     >
       {#if backend === 'local' && loading}
         <TileMeter mode="busy" />
+      {:else if needsSetup}
+        <span class="setup-dot" aria-hidden="true"></span>
       {:else if backend === 'local'}
         <Cpu class="pill-icon" />
       {:else}
@@ -403,6 +415,14 @@
     color: inherit;
     font-weight: 500;
     letter-spacing: -0.01em;
+  }
+  :global(.model-pill.is-setup) { color: var(--foreground); }
+  .setup-dot {
+    width: 0.4375rem;
+    height: 0.4375rem;
+    flex-shrink: 0;
+    border-radius: var(--radius-full);
+    background: var(--brand-accent);
   }
   .pill-level {
     flex-shrink: 0;

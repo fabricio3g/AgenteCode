@@ -26,7 +26,6 @@
 
   import AttachmentCards from './composer/AttachmentCards.svelte';
   import ModelMenu from './model-menu/ModelMenu.svelte';
-  import ComposerModelNotice from './composer/ComposerModelNotice.svelte';
   import ComposerSuggestions from './composer/ComposerSuggestions.svelte';
   import ComposerAddMenu from './composer/ComposerAddMenu.svelte';
   import ComposerToolsMenu from './composer/ComposerToolsMenu.svelte';
@@ -340,19 +339,11 @@
   >
     <!-- The dock ignores the pointer so the thread scrolls behind it; what
          sits above the input opts back in, or it renders but never clicks. -->
+    <!-- Nothing sits above the input by default: the model pill says when a
+         model is missing or loading, so there is no notice line here. -->
     <div class="composer-above">
-      <ComposerModelNotice />
       {@render above?.()}
     </div>
-
-    {#if appStore.activeSpace === 'home'}
-      <!-- The mode tab lives above the input shell on Home: Instant for fast
-           grounded answers, Agent for the full tool loop. Code space always
-           runs the full loop, so it offers no tab. -->
-      <div class="mode-tab-row">
-        <ModeSelector />
-      </div>
-    {/if}
 
     {#if dictation.phase === 'choose'}
       <DictationSetupPopover {dictation} />
@@ -425,6 +416,9 @@
             <div class="composer-bar-leading">
               <ComposerAddMenu onattach={() => fileInput?.click()} />
               <div class="model-slot"><ModelMenu compact /></div>
+              <!-- Agent runs the tool loop, Instant answers at once. Home only:
+                   Code always runs the full loop. -->
+              {#if appStore.activeSpace === 'home'}<ModeSelector />{/if}
               <ComposerToolsMenu compact />
 
             </div>
@@ -479,11 +473,11 @@
   .composer-frame > :global(*) {
     pointer-events: auto;
   }
-  .mode-tab-row {
-    display: flex;
-    justify-content: flex-start;
-    padding: 0 0 0.35rem;
-    pointer-events: auto;
+  /* In the bar the mode switch is one more quiet control: a soft track, no outline. */
+  .composer-bar :global(.mode-tabs) {
+    border-color: transparent;
+    box-shadow: none;
+    background: var(--muted);
   }
   .drop-overlay {
     position: absolute;
