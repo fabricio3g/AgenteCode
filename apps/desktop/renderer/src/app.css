@@ -270,6 +270,11 @@
   /* Thread geometry. The message column and the composer share one width so
      they line up as a single column, and the composer is a full pill. */
   --thread-width: 48rem;
+  /* The reading measure inside that column: text blocks stop near 72
+     characters a line (Baymard 50–75, Bringhurst 45–75; the full 48rem column
+     fits ~93 in Inter at 16px), while code, tables and widgets keep the whole
+     column. In `ch`, so it follows Text size. */
+  --prose-measure: 56ch;
   /*
    * The conversation's spacing ladder. `--thread-gap` is the only distance
    * between entries in the column; inside a work block it steps down to
@@ -2453,6 +2458,13 @@ kbd {
 
 .markdown-body > :where(p, ul, ol, pre, blockquote, table, h1, h2, h3, h4, h5, h6) {
   contain: layout;
+}
+
+/* Text stops at the reading measure, left-aligned so the column keeps one
+   edge; code, tables, math and widgets still span the full column. */
+.markdown-body > :where(p, ul, ol, blockquote, dl, h1, h2, h3, h4, h5, h6),
+.markdown-body > :where(.stream-settled, .stream-tail) > :where(p, ul, ol, blockquote, dl, h1, h2, h3, h4, h5, h6) {
+  max-width: var(--prose-measure);
 }
 
 .markdown-body > *:first-child {
