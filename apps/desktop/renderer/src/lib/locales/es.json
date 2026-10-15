@@ -2679,7 +2679,9 @@
       "noPersonas": "Aún no hay personajes propios",
       "noPersonasHint": "Crea uno para que el reparto sepa quién eres en la historia.",
       "noWorlds": "Aún no hay mundos",
-      "noWorldsHint": "Un mundo reúne escenario, lore y reparto, para que las escenas sean coherentes."
+      "noWorldsHint": "Un mundo reúne escenario, lore y reparto, para que las escenas sean coherentes.",
+      "description": "Personajes, mundos y tus personajes propios para cada escena.",
+      "searchPersonas": "Buscar personajes propios"
     },
     "setup": {
       "newScene": "Escena nueva",

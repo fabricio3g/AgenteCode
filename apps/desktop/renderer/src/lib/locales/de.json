@@ -2679,7 +2679,9 @@
       "noPersonas": "Noch keine Personas",
       "noPersonasHint": "Lege eine an, damit die Besetzung weiß, wer du in der Geschichte bist.",
       "noWorlds": "Noch keine Welten",
-      "noWorldsHint": "Eine Welt bündelt Schauplatz, Lore und Besetzung, damit Szenen stimmig beginnen."
+      "noWorldsHint": "Eine Welt bündelt Schauplatz, Lore und Besetzung, damit Szenen stimmig beginnen.",
+      "description": "Figuren, Welten und deine Personas für jede Szene.",
+      "searchPersonas": "Personas durchsuchen"
     },
     "setup": {
       "newScene": "Neue Szene",

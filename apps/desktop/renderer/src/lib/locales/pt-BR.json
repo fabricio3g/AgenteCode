@@ -2679,7 +2679,9 @@
       "noPersonas": "Ainda sem personas",
       "noPersonasHint": "Crie uma para que o elenco saiba quem você é na história.",
       "noWorlds": "Ainda sem mundos",
-      "noWorldsHint": "Um mundo reúne cenário, lore e elenco, para que as cenas sejam consistentes."
+      "noWorldsHint": "Um mundo reúne cenário, lore e elenco, para que as cenas sejam consistentes.",
+      "description": "Personagens, mundos e suas personas para cada cena.",
+      "searchPersonas": "Buscar personas"
     },
     "setup": {
       "newScene": "Nova cena",

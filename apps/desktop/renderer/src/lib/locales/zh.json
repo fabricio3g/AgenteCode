@@ -2679,7 +2679,9 @@
       "noPersonas": "暂无人设",
       "noPersonasHint": "创建一个，让角色们知道你在故事中是谁。",
       "noWorlds": "暂无世界",
-      "noWorldsHint": "世界集合了场景设定、设定集和角色，使场景始终保持一致。"
+      "noWorldsHint": "世界集合了场景设定、设定集和角色，使场景始终保持一致。",
+      "description": "角色、世界观和你的人设。",
+      "searchPersonas": "搜索人设"
     },
     "setup": {
       "newScene": "新场景",

@@ -1,8 +1,9 @@
 <svelte:options runes={true} />
 
 <!--
-  A pill-shaped filter toggle with an optional count — the library screens'
-  type filters (Artifacts, Files). Inverts when on.
+  A filter toggle with an optional count — the library screens' type
+  filters. No outline: off is plain grey text, on is a soft fill and the
+  label in full colour, so the one chosen filter is the only marked thing.
 -->
 
 <script lang="ts">
@@ -21,27 +22,29 @@
     display: inline-flex;
     align-items: center;
     gap: 0.375rem;
-    height: 2rem;
-    padding: 0 0.875rem;
-    border: 1px solid var(--border);
+    height: 1.75rem;
+    padding: 0 0.625rem;
+    border: 0;
     border-radius: var(--radius-full);
-    font-size: var(--text-xs);
+    background: transparent;
     color: var(--muted-foreground);
-    background: var(--background);
-    transition: background-color var(--motion-fast) var(--motion-ease), color var(--motion-fast) var(--motion-ease), border-color var(--motion-fast) var(--motion-ease);
+    font-size: var(--text-xs);
+    font-weight: 500;
+    transition: background-color var(--motion-instant) var(--motion-ease), color var(--motion-instant) var(--motion-ease);
   }
   .chip:hover {
     color: var(--foreground);
     background: var(--surface-hover);
   }
   .chip.is-on {
-    border-color: var(--foreground);
-    background: var(--foreground);
-    color: var(--background);
+    background: var(--muted);
+    color: var(--foreground);
+    font-weight: 600;
   }
   .chip-count {
-    font-size: var(--text-xs);
-    opacity: 0.6;
+    color: var(--muted-foreground);
+    font-weight: 400;
     font-variant-numeric: tabular-nums;
   }
+  .chip:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
 </style>

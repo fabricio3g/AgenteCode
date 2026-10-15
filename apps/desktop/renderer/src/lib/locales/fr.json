@@ -2679,7 +2679,9 @@
       "noPersonas": "Aucune persona pour l’instant",
       "noPersonasHint": "Créez-en une pour dire au casting qui vous êtes dans l’histoire.",
       "noWorlds": "Aucun monde pour l’instant",
-      "noWorldsHint": "Un monde regroupe décor, lore et casting, pour des scènes cohérentes."
+      "noWorldsHint": "Un monde regroupe décor, lore et casting, pour des scènes cohérentes.",
+      "description": "Personnages, mondes et vos personas pour chaque scène.",
+      "searchPersonas": "Rechercher des personas"
     },
     "setup": {
       "newScene": "Nouvelle scène",

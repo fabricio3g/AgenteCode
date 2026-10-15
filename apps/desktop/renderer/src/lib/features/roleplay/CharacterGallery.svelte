@@ -12,9 +12,7 @@
   import UiFileInput from '$lib/components/ui/FileInput.svelte';
   import { cn as uiClass } from '$lib/utils/cn';
 
-  import { Button } from '$lib/components/ui';
   import Avatar from '$lib/components/ui/Avatar.svelte';
-  import { Upload } from 'lucide-svelte';
   import { t } from 'svelte-i18n';
   import type { CharacterCard } from '$lib/types/chat';
   import { charactersStore } from './characters.svelte';
@@ -25,7 +23,6 @@
   import { deleteCharacter, duplicateCharacter } from './library-actions.svelte';
   import LibraryCard from './LibraryCard.svelte';
   import LibraryEmpty from './LibraryEmpty.svelte';
-  import LibraryToolbar from './LibraryToolbar.svelte';
 
   interface Props {
     onpick: (character: CharacterCard) => void;
@@ -33,11 +30,17 @@
     oncustomize: (character: CharacterCard) => void;
     onedit: (character: CharacterCard) => void;
     onnew: () => void;
+    /** The library's search, applied to this shelf. */
+    query?: string;
+    onclear?: () => void;
   }
 
-  let { onpick, oncustomize, onedit, onnew }: Props = $props();
+  let { onpick, oncustomize, onedit, onnew, query = '', onclear }: Props = $props();
 
-  let query = $state('');
+  /** The page header's Import button opens the file picker this shelf owns. */
+  export function pickImport() {
+    if (!importing) importInput?.click();
+  }
   let importInput = $state<HTMLInputElement | undefined>();
   let importing = $state(false);
 
@@ -71,17 +74,12 @@
 </script>
 
 <div class="library-shelf">
-  <LibraryToolbar bind:query placeholder={charactersStore.characters.length ? $t('roleplay.library.searchCharacters') : ''}>
-    <Button variant="outline" type="button" disabled={importing} onclick={() => importInput?.click()}>
-      <Upload /> {importing ? $t('roleplay.library.importing') : $t('roleplay.library.import')}
-    </Button>
-  </LibraryToolbar>
   <UiFileInput bind:ref={importInput} class={uiClass("hidden")}  accept=".json,.png,application/json,image/png" onchange={onImportFile} />
 
   {#if !charactersStore.characters.length}
     <LibraryEmpty title={$t('roleplay.library.noCharacters')} hint={$t('roleplay.library.noCharactersHint')} action={$t('roleplay.library.newCharacter')} onaction={onnew} />
   {:else if !filtered.length}
-    <LibraryEmpty title={copy.empty.noMatches} action={$t('roleplay.library.clearSearch')} onaction={() => (query = '')} />
+    <LibraryEmpty title={copy.empty.noMatches} action={$t('roleplay.library.clearSearch')} onaction={() => onclear?.()} />
   {:else}
     <div class="library-grid">
       {#each filtered as card (card.id)}

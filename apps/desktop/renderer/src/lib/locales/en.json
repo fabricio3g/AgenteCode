@@ -2679,7 +2679,9 @@
       "noPersonas": "No personas yet",
       "noPersonasHint": "Create one to tell the cast who you are in the story.",
       "noWorlds": "No worlds yet",
-      "noWorldsHint": "A world bundles a setting, a lorebook and a cast, so scenes start consistent."
+      "noWorldsHint": "A world bundles a setting, a lorebook and a cast, so scenes start consistent.",
+      "description": "Characters, worlds and the personas you play, for every scene.",
+      "searchPersonas": "Search personas"
     },
     "setup": {
       "newScene": "New scene",

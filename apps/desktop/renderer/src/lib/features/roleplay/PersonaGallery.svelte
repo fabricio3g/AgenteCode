@@ -14,23 +14,36 @@
   import { deletePersona, duplicatePersona } from './library-actions.svelte';
   import LibraryCard from './LibraryCard.svelte';
   import LibraryEmpty from './LibraryEmpty.svelte';
-  import LibraryToolbar from './LibraryToolbar.svelte';
+  import { copy } from '$lib/copy';
 
   interface Props {
     onedit: (persona: UserPersona) => void;
     onnew: () => void;
+    /** The library's search, applied to this shelf. */
+    query?: string;
+    onclear?: () => void;
   }
 
-  let { onedit, onnew }: Props = $props();
+  let { onedit, onnew, query = '', onclear }: Props = $props();
+
+  const filtered = $derived.by(() => {
+    const needle = query.trim().toLowerCase();
+    if (!needle) return charactersStore.personas;
+    return charactersStore.personas.filter((persona) =>
+      [persona.name, persona.description].filter(Boolean).some((field) => String(field).toLowerCase().includes(needle))
+    );
+  });
 </script>
 
 <div class="library-shelf">
 
   {#if !charactersStore.personas.length}
     <LibraryEmpty title={$t('roleplay.library.noPersonas')} hint={$t('roleplay.library.noPersonasHint')} action={$t('roleplay.library.newPersona')} onaction={onnew} />
+  {:else if !filtered.length}
+    <LibraryEmpty title={copy.empty.noMatches} action={$t('roleplay.library.clearSearch')} onaction={() => onclear?.()} />
   {:else}
     <div class="library-grid">
-      {#each charactersStore.personas as persona (persona.id)}
+      {#each filtered as persona (persona.id)}
         <LibraryCard
           title={persona.name}
           editLabel={$t('roleplay.library.editPersona')}

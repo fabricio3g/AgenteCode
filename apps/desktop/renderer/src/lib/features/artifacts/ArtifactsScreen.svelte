@@ -14,7 +14,7 @@
   import { ArrowLeft, MessageSquare, Plus, Sparkles, Trash2 } from 'lucide-svelte';
   import { appStore } from '$lib/stores/app.svelte';
   import { confirmStore } from '$lib/stores/confirm.svelte';
-  import { Button, FilterChip, SearchField } from '$lib/components/ui';
+  import { Button, FilterBar, FilterChip, PageHeader } from '$lib/components/ui';
   import ArtifactStudio from '$lib/components/agent/ArtifactStudio.svelte';
   import ArtifactCard from './ArtifactCard.svelte';
   import { collectArtifacts, filterArtifacts, type ArtifactGroup, type LibraryEntry } from './artifact-library';
@@ -98,9 +98,7 @@
     <div class="ui-top-fade flex min-h-0 min-w-0 flex-1 flex-col">
       <div class="min-h-0 flex-1 overflow-y-auto">
         <div class="mx-auto w-full max-w-[1100px] px-5 pb-10 pt-8 sm:px-8">
-          <header>
-            <h1 class="text-2xl font-semibold tracking-[-0.02em] text-foreground" title={$t('artifacts.description')}>{$t('artifacts.title')}</h1>
-          </header>
+          <PageHeader title={$t('artifacts.title')} description={$t('artifacts.description')} />
 
           {#if !entries.length}
             <!-- Nothing made yet: say what this place is for and how to fill it. -->
@@ -111,16 +109,14 @@
               <Button class="mt-5" onclick={newChat}><Plus /> {$t('artifacts.newChat')}</Button>
             </div>
           {:else}
-            <!-- Search and filters -->
-            <div class="mt-6 flex flex-wrap items-center gap-2">
-              <SearchField bind:value={query} placeholder={$t('artifacts.search')} clearLabel={$t('artifacts.clearSearch')} />
-            </div>
-            <div class="mt-3 flex flex-wrap gap-1.5" role="group" aria-label={$t('artifacts.filter')}>
-              <FilterChip on={group === 'all'} count={entries.length} onclick={() => (group = 'all')}>{$t('artifacts.all')}</FilterChip>
-              {#each groups as item (item.id)}
-                <FilterChip on={group === item.id} count={item.count} onclick={() => (group = item.id)}>{$t(`artifacts.group.${item.id}`)}</FilterChip>
-              {/each}
-            </div>
+            <FilterBar class="mt-5" bind:query placeholder={$t('artifacts.search')} clearLabel={$t('artifacts.clearSearch')} label={$t('artifacts.filter')}>
+              {#snippet chips()}
+                <FilterChip on={group === 'all'} count={entries.length} onclick={() => (group = 'all')}>{$t('artifacts.all')}</FilterChip>
+                {#each groups as item (item.id)}
+                  <FilterChip on={group === item.id} count={item.count} onclick={() => (group = item.id)}>{$t(`artifacts.group.${item.id}`)}</FilterChip>
+                {/each}
+              {/snippet}
+            </FilterBar>
 
             {#if visible.length}
               <div class="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">

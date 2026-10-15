@@ -27,7 +27,7 @@
   import { revealPath, trashPath } from '$lib/features/code/code-ipc';
   import { openWorkspaceFile, pathExists, listFiles, setFilePinned, trashStoredFile } from '$lib/services/files';
   import { getEmbeddingStatus, listRagDocuments } from '$lib/services/rag';
-  import { FilterChip, SearchField, Select } from '$lib/components/ui';
+  import { FilterBar, FilterChip, PageHeader, Select } from '$lib/components/ui';
   import { writeToClipboard } from '$lib/utils/clipboard';
   import { formatBytes } from '$lib/utils/format';
   import {
@@ -49,7 +49,8 @@
   let registry = $state<StoredFileInfo[]>([]);
 
   async function refreshRegistry() {
-    registry = await listFiles().catch(() => []);
+    // Anything but a list (an older main process, a test harness) reads as an empty registry.
+    registry = await listFiles().then((files) => (Array.isArray(files) ? files : [])).catch(() => []);
   }
 
   $effect(() => { void refreshRegistry(); });
@@ -224,21 +225,17 @@
   <div class="ui-top-fade flex min-h-0 min-w-0 flex-1 flex-col">
     <div class="min-h-0 flex-1 overflow-y-auto">
       <div class="mx-auto w-full max-w-[1100px] px-5 pb-10 pt-8 sm:px-8">
-        <header class="flex flex-wrap items-end justify-between gap-2">
-          <div>
-            <h1 class="text-2xl font-semibold tracking-[-0.02em] text-foreground" title={$t('files.description')}>{$t('files.title')}</h1>
-          </div>
-          {#if entries.length}
-            <div class="flex items-center gap-3">
-              {#if unused.length}
-                <UiButton variant="plain" type="button" class={uiClass("cleanup", "ui-local-818ad885")} onclick={confirmCleanup}>
-                  {$t('files.cleanup', { values: { count: unused.length, size: formatBytes(unusedBytes) } })}
-                </UiButton>
-              {/if}
-              <p class="text-[length:var(--text-xs)] tabular-nums text-muted-foreground">{$t('files.summary', { values: { count: entries.length, size: formatBytes(totalBytes(entries)) } })}</p>
-            </div>
-          {/if}
-        </header>
+        <!-- The count and size are the page's description: what this library holds. -->
+        <PageHeader title={$t('files.title')}
+          description={entries.length ? `${$t('files.summary', { values: { count: entries.length, size: formatBytes(totalBytes(entries)) } })} · ${$t('files.description')}` : $t('files.description')}>
+          {#snippet actions()}
+            {#if unused.length}
+              <UiButton variant="ghost" size="sm" type="button" onclick={confirmCleanup}>
+                {$t('files.cleanup', { values: { count: unused.length, size: formatBytes(unusedBytes) } })}
+              </UiButton>
+            {/if}
+          {/snippet}
+        </PageHeader>
 
         {#if !entries.length}
           <div class="mt-16 flex flex-col items-center text-center">
@@ -247,34 +244,35 @@
             <p class="mt-1 max-w-sm text-sm text-muted-foreground">{$t('files.emptyHint')}</p>
           </div>
         {:else}
-          <div class="mt-6 flex flex-wrap items-center gap-2">
-            <SearchField bind:value={query} placeholder={$t('files.search')} clearLabel={$t('files.clearSearch')} />
-            {#if chats.length > 1}
-              <Select
-                bind:value={chat}
-                aria-label={$t('files.chat')}
-                options={[{ value: 'all', label: $t('files.allChats') }, ...chats.map((item) => ({ value: item.id, label: item.title }))]}
-              />
-            {/if}
-            {#if entries.length > 1}
-              <Select
-                bind:value={sort}
-                aria-label={$t('files.sortLabel')}
-                options={FILE_SORTS.map((id) => ({ value: id, label: $t(`files.sort.${id}`) }))}
-              />
-            {/if}
-          </div>
-          <div class="mt-3 flex flex-wrap gap-1.5" role="group" aria-label={$t('files.origin')}>
-            <FilterChip on={origin === 'all'} count={counts.all} onclick={() => (origin = 'all')}>{$t('files.all')}</FilterChip>
-            {#if counts.uploaded}<FilterChip on={origin === 'uploaded'} count={counts.uploaded} onclick={() => (origin = 'uploaded')}>{$t('files.uploaded')}</FilterChip>{/if}
-            {#if counts.created}<FilterChip on={origin === 'created'} count={counts.created} onclick={() => (origin = 'created')}>{$t('files.created')}</FilterChip>{/if}
-            {#if groups.length > 1}
-              <span class="mx-1 h-8 w-px bg-[var(--border)]" aria-hidden="true"></span>
-              {#each groups as item (item.id)}
-                <FilterChip on={group === item.id} count={item.count} onclick={() => (group = group === item.id ? 'all' : item.id)}>{$t(`files.group.${item.id}`)}</FilterChip>
-              {/each}
-            {/if}
-          </div>
+          <FilterBar class="mt-5" bind:query placeholder={$t('files.search')} clearLabel={$t('files.clearSearch')} label={$t('files.origin')}>
+            {#snippet chips()}
+              <FilterChip on={origin === 'all'} count={counts.all} onclick={() => (origin = 'all')}>{$t('files.all')}</FilterChip>
+              {#if counts.uploaded}<FilterChip on={origin === 'uploaded'} count={counts.uploaded} onclick={() => (origin = 'uploaded')}>{$t('files.uploaded')}</FilterChip>{/if}
+              {#if counts.created}<FilterChip on={origin === 'created'} count={counts.created} onclick={() => (origin = 'created')}>{$t('files.created')}</FilterChip>{/if}
+              {#if groups.length > 1}
+                <span class="mx-1 h-4 w-px bg-[var(--border)]" aria-hidden="true"></span>
+                {#each groups as item (item.id)}
+                  <FilterChip on={group === item.id} count={item.count} onclick={() => (group = group === item.id ? 'all' : item.id)}>{$t(`files.group.${item.id}`)}</FilterChip>
+                {/each}
+              {/if}
+            {/snippet}
+            {#snippet trailing()}
+              {#if chats.length > 1}
+                <Select variant="surface" size="sm"
+                  bind:value={chat}
+                  aria-label={$t('files.chat')}
+                  options={[{ value: 'all', label: $t('files.allChats') }, ...chats.map((item) => ({ value: item.id, label: item.title }))]}
+                />
+              {/if}
+              {#if entries.length > 1}
+                <Select variant="surface" size="sm"
+                  bind:value={sort}
+                  aria-label={$t('files.sortLabel')}
+                  options={FILE_SORTS.map((id) => ({ value: id, label: $t(`files.sort.${id}`) }))}
+                />
+              {/if}
+            {/snippet}
+          </FilterBar>
 
           {#if visible.length}
             <ul class="mt-6 flex flex-col divide-y divide-[var(--border-subtle)] overflow-hidden rounded-2xl border border-border">
@@ -405,20 +403,6 @@
   :global(.action.is-danger:hover.ui-local-818ad885),
   :global(.action.is-danger:focus-visible.ui-local-818ad885) {
     color: var(--destructive);
-  }
-  :global(.cleanup.ui-local-818ad885) {
-    border-radius: var(--radius-full);
-    padding: 0.25rem 0.75rem;
-    font-size: var(--text-xs, 12px);
-    color: var(--muted-foreground);
-    background: var(--muted);
-    transition: color var(--motion-fast) var(--motion-ease), background-color var(--motion-fast) var(--motion-ease);
-  }
-  :global(.cleanup:hover.ui-local-818ad885),
-  :global(.cleanup:focus-visible.ui-local-818ad885) {
-    color: var(--foreground);
-    background: var(--surface-hover);
-    outline: none;
   }
   @media (hover: none) {
     .actions { opacity: 1; }

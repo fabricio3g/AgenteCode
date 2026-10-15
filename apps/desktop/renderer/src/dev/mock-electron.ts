@@ -974,6 +974,7 @@ const handlers: Record<string, (args?: Record<string, unknown>) => unknown> = {
     { id: 'llamacpp', name: 'llama.cpp (local)', group: 'local', base_url: 'http://127.0.0.1:8080/v1', api_format: 'openai', aliases: ['local'], order: 80, models: 'llamacpp' },
     { id: 'custom', name: 'Custom / Other', group: 'local', base_url: 'http://127.0.0.1:8080/v1', api_format: 'openai', order: 90, models: 'openai_models' }
   ],
+  files_list: () => [],
   get_model_card: (args?: Record<string, unknown>) => {
     const model = String(args?.model ?? '');
     const cards: Record<string, unknown> = {

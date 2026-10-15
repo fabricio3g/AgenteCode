@@ -15,17 +15,17 @@
   import { deleteWorld, duplicateWorld } from './library-actions.svelte';
   import LibraryCard from './LibraryCard.svelte';
   import LibraryEmpty from './LibraryEmpty.svelte';
-  import LibraryToolbar from './LibraryToolbar.svelte';
 
   interface Props {
     onpick: (world: RoleplayWorld) => void;
     onedit: (world: RoleplayWorld) => void;
     onnew: () => void;
+    /** The library's search, applied to this shelf. */
+    query?: string;
+    onclear?: () => void;
   }
 
-  let { onpick, onedit, onnew }: Props = $props();
-
-  let query = $state('');
+  let { onpick, onedit, onnew, query = '', onclear }: Props = $props();
 
   const filtered = $derived.by(() => {
     const needle = query.trim().toLowerCase();
@@ -49,12 +49,10 @@
 </script>
 
 <div class="library-shelf">
-  <LibraryToolbar bind:query placeholder={worldsStore.worlds.length ? $t('roleplay.library.searchWorlds') : ''} />
-
   {#if !worldsStore.worlds.length}
     <LibraryEmpty title={$t('roleplay.library.noWorlds')} hint={$t('roleplay.library.noWorldsHint')} action={$t('roleplay.library.newWorld')} onaction={onnew} />
   {:else if !filtered.length}
-    <LibraryEmpty title={copy.empty.noMatches} action={$t('roleplay.library.clearSearch')} onaction={() => (query = '')} />
+    <LibraryEmpty title={copy.empty.noMatches} action={$t('roleplay.library.clearSearch')} onaction={() => onclear?.()} />
   {:else}
     <div class="library-grid">
       {#each filtered as world (world.id)}
