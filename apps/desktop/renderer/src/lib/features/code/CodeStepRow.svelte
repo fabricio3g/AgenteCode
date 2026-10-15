@@ -1,7 +1,7 @@
 <svelte:options runes={true} />
 
 <!--
-  One tool call in a work block, read like assistant-ui's tool timeline: an
+  One tool call in a work block: an
   icon for the kind of work, the verb, and what it touched as a mono chip —
   "Run  npm test", "Edit  src/app.ts  +14 −3". It opens to what it did:
   commands as a terminal block (the command, its streaming output), edits as
@@ -273,7 +273,7 @@
   .out.text-error pre {
     color: var(--error);
   }
-  /* assistant-ui's terminal block: the command on top, output below. */
+  /* Terminal block: the command on top, output below. */
   .term {
     overflow: hidden;
     border-radius: 0.625rem;

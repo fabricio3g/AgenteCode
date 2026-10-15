@@ -13,6 +13,7 @@
 
   import { ArrowUp, Square } from 'lucide-svelte';
   import Tooltip from '$lib/components/ui/Tooltip.svelte';
+  import { motionFly } from '$lib/utils/transitions';
 
   let {
     running,
@@ -49,65 +50,30 @@
   disabled={!running && disabled}
   onclick={() => (stopping ? onstop() : onsend())}
 >
-  {#if stopping}<Square class="size-3 fill-current stroke-[2.75]" />{:else}<ArrowUp class="size-3.5 stroke-[2.75]" />{/if}
+  {#key stopping}
+    <span class="send-glyph" in:motionFly={{ y: 3, duration: 150 }}>
+      {#if stopping}<Square class="size-3 fill-current stroke-[2.75]" />{:else}<ArrowUp class="size-3.5 stroke-[2.75]" />{/if}
+    </span>
+  {/key}
 </IconButton>
 </Tooltip>
 
 <style>
-  /*
-    The one primary control wears the brand orange when it is live — there is
-    something to send — and stays quiet when it is not, so the eye finds the
-    action, not the chrome. A slow grain of dots drifts across the fill (one
-    tile step per loop, so the pattern never seams), the same tile motif the
-    app's live status surfaces carry. Stop keeps the neutral fill: only a
-    send is orange.
-  */
   :global(.composer-send.ui-local-2f6b41d9) {
     position: relative;
-    overflow: hidden;
-    background: var(--brand-accent);
-    color: #fff;
-    box-shadow: 0 1px 2px color-mix(in srgb, var(--brand-accent) 40%, transparent);
-  }
-
-  :global(.composer-send.ui-local-2f6b41d9:not(:disabled):not(.is-stop):hover) {
-    background: color-mix(in srgb, var(--brand-accent) 86%, #000);
-  }
-
-  :global(.composer-send.ui-local-2f6b41d9:disabled),
-  :global(.composer-send.is-stop.ui-local-2f6b41d9) {
     background: var(--primary);
     color: var(--primary-foreground);
     box-shadow: none;
+    transition: opacity var(--motion-instant) var(--motion-ease),
+      background-color var(--motion-instant) var(--motion-ease);
   }
-
-  :global(.composer-send.ui-local-2f6b41d9:not(:disabled):not(.is-stop))::before {
-    content: '';
-    position: absolute;
-    inset: -60%;
-    background-image: radial-gradient(rgb(255 255 255 / 0.6) 1px, transparent 1.2px);
-    background-size: 5px 5px;
-    opacity: 0.35;
-    animation: sendDots 6s linear infinite;
-    pointer-events: none;
+  :global(.composer-send.ui-local-2f6b41d9:not(:disabled):hover) {
+    background: var(--primary-hover);
   }
-
-  :global(.composer-send.ui-local-2f6b41d9:not(:disabled):not(.is-stop):hover)::before {
-    opacity: 0.55;
+  :global(.composer-send.ui-local-2f6b41d9:disabled) {
+    opacity: 1;
+    background: color-mix(in srgb, var(--foreground) 22%, var(--composer-surface));
+    color: var(--composer-surface);
   }
-
-  /* The glyph rides above the grain. */
-  :global(.composer-send.ui-local-2f6b41d9 svg) {
-    position: relative;
-  }
-
-  @keyframes sendDots {
-    to { transform: translate3d(-5px, -5px, 0); }
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    :global(.composer-send.ui-local-2f6b41d9:not(:disabled):not(.is-stop))::before {
-      animation: none;
-    }
-  }
+  .send-glyph { display: inline-flex; align-items: center; justify-content: center; }
 </style>

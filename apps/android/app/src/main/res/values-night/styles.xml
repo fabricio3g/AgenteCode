@@ -1,0 +1,10 @@
+<resources>
+    <!-- The same window at night: the canvas colour, and system bar icons that
+         read on it. -->
+    <style name="Theme.Agente" parent="android:style/Theme.DeviceDefault.NoActionBar">
+        <item name="android:fontFamily">sans</item>
+        <item name="android:windowBackground">@color/window_background</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowActionModeOverlay">true</item>
+    </style>
+</resources>

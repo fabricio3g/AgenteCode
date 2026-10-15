@@ -16,6 +16,9 @@
   import { t } from 'svelte-i18n';
   import { Bug, FlaskConical, FolderOpen, Globe, Telescope } from 'lucide-svelte';
   import { Button } from '$lib/components/ui';
+  import StarterList from '$lib/components/ui/StarterList.svelte';
+  import type { Starter } from '$lib/components/ui/starter-list';
+  import { formatShortcut } from '$lib/utils/shortcuts';
   import { appStore } from '$lib/stores/app.svelte';
   import { codeStore } from './code.svelte';
   import { codeWorkspace } from './workspace.svelte';
@@ -28,6 +31,17 @@
     void codeStore.load();
     codeWorkspace.wire();
   });
+
+  /** The four starters, in key order; their copy lives in `code.starters.<id>`. */
+  const STARTER_IDS = ['explain', 'bug', 'tests', 'run'] as const;
+  const STARTER_ICONS = { explain: Telescope, bug: Bug, tests: FlaskConical, run: Globe };
+  /** Hue identifies the kind — understand · fix · verify · see it — not emphasis.
+   *  The four are 105–120° apart and stay four apart under protanopia and
+   *  deuteranopia (min ΔEok 6.9 / 7.0, against 5.3 / 0.5 for the set this
+   *  replaced: crimson and green used to collapse into one colour). */
+  const STARTER_HUES = { explain: 325, bug: 8, tests: 130, run: 250 };
+  /** Only the prompts that are the start of a sentence carry a slot. */
+  const STARTER_SLOTS = new Set<string>(['bug', 'tests']);
 
   let {
     /**
@@ -89,16 +103,48 @@
     return () => window.removeEventListener('focus', onFocus);
   });
 
-  const starters = $derived([
-    { icon: Telescope, text: $t('code.starterExplain') },
-    { icon: Bug, text: $t('code.starterBug') },
-    { icon: FlaskConical, text: $t('code.starterTests') },
-    { icon: Globe, text: $t('code.starterRun') }
-  ]);
+  const starters = $derived<Starter[]>(STARTER_IDS.map((id, index) => ({
+    id,
+    icon: STARTER_ICONS[id],
+    hue: STARTER_HUES[id],
+    label: $t(`code.starters.${id}.label`),
+    hint: $t(`code.starters.${id}.hint`),
+    slot: STARTER_SLOTS.has(id) ? $t(`code.starters.${id}.slot`) : undefined,
+    key: formatShortcut(`mod+alt+${index + 1}`)
+  })));
 
-  function useStarter(text: string) {
-    window.dispatchEvent(new CustomEvent('code-composer-draft', { detail: { chatId: chat?.id, text } }));
+  /**
+   * Picking a starter fills the composer and focuses it; it never sends. The
+   * prompt is a fragment the user may finish (that is what `slot` names), and
+   * it is never rendered as a label — see the `code.starters` locale block.
+   */
+  function useStarter(id: string) {
+    const index = STARTER_IDS.indexOf(id as (typeof STARTER_IDS)[number]);
+    if (index < 0) return;
+    window.dispatchEvent(new CustomEvent('code-composer-draft', {
+      detail: {
+        chatId: chat?.id,
+        text: $t(`code.starters.${id}.prompt`),
+        slot: STARTER_SLOTS.has(id) ? $t(`code.starters.${id}.slot`) : undefined
+      }
+    }));
   }
+
+  /** The starters are on screen, so their keys are live. */
+  const startersShowing = $derived(!!chat && !chat.messages.length && !unlinked);
+
+  $effect(() => {
+    if (!startersShowing) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey) || !event.altKey || event.shiftKey) return;
+      const index = ['Digit1', 'Digit2', 'Digit3', 'Digit4'].indexOf(event.code);
+      if (index < 0 || index >= starters.length) return;
+      event.preventDefault();
+      useStarter(starters[index].id);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  });
 </script>
 
 <div class="code-surface relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
@@ -119,17 +165,16 @@
       <div class="flex min-h-0 min-w-0 flex-1 flex-col">
         <div class="flex min-h-0 flex-1 flex-col">
           {#if !chat.messages.length && !unlinked}
-            <div class="starter-area">
-              <div class="starter-content">
-              <div class="starter-grid">
-                {#each starters as starter (starter.text)}
-                  {@const Icon = starter.icon}
-                  <Button variant="plain" type="button" class={uiClass("starter flex items-center gap-2.5 rounded-xl border border-border px-3.5 py-3 text-left text-[13px] text-foreground transition", "ui-local-c4cff7cc")} onclick={() => useStarter(starter.text)}>
-                    <Icon class="size-4 shrink-0 text-muted-foreground" />
-                    <span class="min-w-0 flex-1">{starter.text.trim()}{starter.text.endsWith(' ') ? '…' : ''}</span>
-                  </Button>
-                {/each}
-              </div></div>
+            <!-- Before the first message: the four things this agent is for,
+                 anchored to the composer's edge rather than floating in the
+                 middle of the canvas. Picking one fills the composer. -->
+            <div class="starters-zone">
+              <div class="starters-col">
+                <div class="starters-head">
+                  <span class="starters-title">{$t('code.starters.title')}</span>
+                </div>
+                <StarterList {starters} label={$t('code.starters.title')} onpick={useStarter} />
+              </div>
             </div>
           {:else}
             <div class="ui-top-fade flex min-h-0 min-w-0 flex-1 flex-col">
@@ -171,17 +216,15 @@
 
 <style>
   .code-surface { container-type: inline-size; }
-  .starter-grid { display:grid; grid-template-columns:minmax(0,1fr);gap:0.5rem;width:100%;max-width:36rem; }
-  @container (min-width: 38rem) { .starter-grid {grid-template-columns:repeat(2,minmax(0,1fr));} }
-  :global(.starter.ui-local-c4cff7cc) { min-width:0; background:var(--control-bg);box-shadow:var(--control-inset); }
-  .starter-area { min-height:0;flex:1;overflow-y:auto;display:flex;padding:1rem; }
-  .starter-content { width:100%;max-width:36rem;margin:auto;display:flex;flex-direction:column;align-items:stretch;gap:1rem; }
-  :global(.starter.ui-local-c4cff7cc) {
-    background: var(--control-bg);
-  }
 
-  :global(.starter:hover.ui-local-c4cff7cc) {
-    background: var(--muted);
-    border-color: color-mix(in srgb, var(--foreground) 25%, transparent);
-  }
+  /* The block hangs off the composer: the composer is what the eye should land
+     on, and the starters explain it. It scrolls rather than clipping when the
+     window is short. */
+  .starters-zone { display:flex;min-height:0;flex:1;overflow-y:auto;flex-direction:column;justify-content:flex-end;padding:1.5rem 1.5rem 0.5rem; }
+  .starters-col { width:100%;max-width:var(--thread-width);margin:0 auto; }
+
+  /* One label, hard left. The keys each row answers to are on the rows
+     themselves — a range in the header said the same thing four times. */
+  .starters-head { display:flex;align-items:baseline;gap:0.5rem;padding:0 0.5rem 0.5rem; }
+  .starters-title { color:var(--muted-foreground);font-size:var(--text-xs);font-weight:500;letter-spacing:0.02em;text-transform:uppercase; }
 </style>

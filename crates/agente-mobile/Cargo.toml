@@ -1,0 +1,25 @@
+[package]
+name = "agente-mobile"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Native Android adapter over Agente providers and synchronization"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+agente-core = { path = "../agente-core", default-features = false }
+agente-protocol.workspace = true
+agente-sync = { path = "../agente-sync" }
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+uuid.workspace = true
+
+[target.'cfg(target_os = "android")'.dependencies]
+jni = "0.21"
+
+[lints]
+workspace = true

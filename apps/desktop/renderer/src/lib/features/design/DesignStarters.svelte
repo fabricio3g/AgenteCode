@@ -1,15 +1,17 @@
 <svelte:options runes={true} />
 
 <!--
-  Starter screens for the empty dock: one quiet list row per screen, in the same
-  row idiom as the app's menus. Picking one fills the composer and focuses it,
-  so a mis-tap costs nothing and the prompt can still be edited before sending.
+  Starter screens for the empty dock: one row per screen, rendered through the
+  shared list look so the Design dock and the Code space's first conversation
+  teach the same grammar.
+
+  Picking one fills the composer and focuses it, so a mis-tap costs nothing and
+  the prompt can still be edited before sending.
 -->
 
 <script lang="ts">
-  import UiListRow from '$lib/components/ui/ListRow.svelte';
-
-  import { cn as uiClass } from '$lib/utils/cn';
+  import StarterList from '$lib/components/ui/StarterList.svelte';
+  import type { Starter } from '$lib/components/ui/starter-list';
 
   import { BadgeDollarSign, LayoutDashboard, LayoutTemplate, LogIn, MousePointerClick, Smartphone } from 'lucide-svelte';
   import { appStore } from '$lib/stores/app.svelte';
@@ -24,85 +26,27 @@
     micro: MousePointerClick
   } as const;
 
-
-  /** Each starter's glyph carries its own muted hue, the way the artifact list's glyphs do. */
-  const HUES: Record<string, number> = { landing: 250, dashboard: 200, mobile: 160, pricing: 40, login: 300, micro: 340 };
+  /** Each starter's glyph carries its own muted hue, the way the artifact list's glyphs do.
+   *  Kept clear of the brand's own hue (47°) so a tile never reads as the accent. */
+  const HUES: Record<string, number> = { landing: 250, dashboard: 200, mobile: 165, pricing: 62, login: 300, micro: 340 };
 
   /** A starter's description: its first clause, so the row says what the screen is. */
   const firstClause = (prompt: string) => prompt.split(/[.,]\s/)[0].replace(/\.$/, '');
 
-  function pick(prompt: string) {
-    appStore.composer = prompt;
+  const starters = $derived<Starter[]>(copy.design.suggestions.map((suggestion) => ({
+    id: suggestion.id,
+    hue: HUES[suggestion.id] ?? 250,
+    icon: ICONS[suggestion.id as keyof typeof ICONS],
+    label: suggestion.label,
+    hint: firstClause(suggestion.prompt)
+  })));
+
+  function pick(id: string) {
+    const suggestion = copy.design.suggestions.find((item) => item.id === id);
+    if (!suggestion) return;
+    appStore.composer = suggestion.prompt;
     window.dispatchEvent(new Event('focus-composer'));
   }
 </script>
 
-<ul class="starters" aria-label={copy.design.dock.starters}>
-  {#each copy.design.suggestions as suggestion (suggestion.id)}
-    {@const Icon = ICONS[suggestion.id as keyof typeof ICONS]}
-    <li>
-      <UiListRow  type="button" class={uiClass("ui-row starter", "ui-local-ac9f1bb9")} onclick={() => pick(suggestion.prompt)}>
-        <span class="tile" style:--hue={HUES[suggestion.id] ?? 250}><Icon aria-hidden="true" /></span>
-        <span class="text">
-          <span class="label">{suggestion.label}</span>
-          <span class="hint">{firstClause(suggestion.prompt)}</span>
-        </span>
-      </UiListRow>
-    </li>
-  {/each}
-</ul>
-
-<style>
-  .starters {
-    display: flex;
-    width: 100%;
-    margin: 0;
-    padding: 0;
-    flex-direction: column;
-    gap: 0.0625rem;
-    list-style: none;
-  }
-
-  :global(.starter.ui-local-ac9f1bb9) { min-height: 2.5rem; }
-
-  /* The card carries its own hue at full strength — a soft tint washed the
-     white glyph out — and the glyph stays white in both themes. Same hue
-     family as the composer's starters, one solid step up from their tint. */
-  .tile {
-    display: inline-flex;
-    width: 1.75rem;
-    height: 1.75rem;
-    flex-shrink: 0;
-    align-items: center;
-    justify-content: center;
-    border-radius: 0.5rem;
-    background: oklch(0.62 0.09 var(--hue));
-    color: #fff;
-  }
-
-  .tile :global(svg) { width: 0.875rem; height: 0.875rem; }
-
-  .text {
-    display: flex;
-    min-width: 0;
-    flex: 1;
-    flex-direction: column;
-    gap: 0.0625rem;
-  }
-
-  .label {
-    overflow: hidden;
-    color: var(--foreground);
-    font-size: var(--text-sm);
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .hint {
-    overflow: hidden;
-    color: var(--muted-foreground);
-    font-size: var(--text-xs);
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-</style>
+<StarterList {starters} label={copy.design.dock.starters} onpick={pick} />

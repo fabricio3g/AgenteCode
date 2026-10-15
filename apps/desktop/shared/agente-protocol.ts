@@ -162,6 +162,7 @@ export type CodeAgentEvent =
   | { type: 'turn_end'; chatId: string; turnIndex: number }
   | { type: 'text_delta'; chatId: string; delta: string }
   | { type: 'thinking_delta'; chatId: string; delta: string }
+  | { type: 'generation_stats'; chatId: string; tokensPerSecond: number }
   | { type: 'runtime_event'; chatId: string; event: RuntimeEvent; parentRunId?: string | null }
   | { type: 'tool_start'; chatId: string; toolCallId: string; toolName: string; args: unknown; label?: string; detail?: string }
   | { type: 'tool_update'; chatId: string; toolCallId: string; partialResult: unknown }

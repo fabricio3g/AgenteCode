@@ -68,6 +68,8 @@ export interface CompletionResult {
     prompt_eval_count?: number;
     prompt_eval_duration?: number;
     timings?: {
+      /** Measured interval from first output to completion, excluding request setup. */
+      output_stream_ms?: number;
       prompt_n?: number;
       prompt_ms?: number;
       prompt_per_second?: number;
@@ -78,4 +80,3 @@ export interface CompletionResult {
     };
   } | null;
 }
-

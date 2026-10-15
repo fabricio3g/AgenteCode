@@ -472,11 +472,31 @@
     "workedFor": "工作了 {time}",
     "selectModel": "选择一个模型开始编码",
     "steerHint": "Enter 转向 · Alt+Enter 排队 · Esc 停止",
-    "startersTitle": "试试这些",
-    "starterExplain": "解释这个代码库的组织结构",
-    "starterBug": "找出并修复这里的一个 bug：",
-    "starterTests": "为这里添加测试：",
-    "starterRun": "运行应用并在浏览器中检查",
+    "starters": {
+      "title": "试试这些",
+      "explain": {
+        "label": "解释代码结构",
+        "hint": "文件夹、入口和数据的流向",
+        "prompt": "解释这个代码库的组织结构"
+      },
+      "bug": {
+        "label": "找出并修复一个 bug",
+        "hint": "先复现，再给出改动",
+        "slot": "现象或文件",
+        "prompt": "找出并修复这里的一个 bug："
+      },
+      "tests": {
+        "label": "添加测试",
+        "hint": "补上测试，以及顺带发现的缺口",
+        "slot": "文件或模块",
+        "prompt": "为这里添加测试："
+      },
+      "run": {
+        "label": "运行应用并检查",
+        "hint": "启动应用、操作浏览器并汇报",
+        "prompt": "运行应用并在浏览器中检查"
+      }
+    },
     "restoredNoteUnknown": "已将文件恢复到之前的检查点。",
     "slash": {
       "compact": "压缩上下文",
@@ -896,8 +916,6 @@
     "sourceFailed": "无法更改模型来源，请重试。",
     "unloaded": "模型已卸载",
     "unloadFailed": "无法卸载模型",
-    "retired": "Retired",
-    "retiredHint": "The provider no longer lists this model; it may stop working.",
     "notListed": "Not listed",
     "notListedHint": "Listed by models.dev but not by the provider's own model list."
   },

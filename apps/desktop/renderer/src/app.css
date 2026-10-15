@@ -28,7 +28,7 @@
      emphasis. `--text-xs` (12px) is a floor, not a target: it is the smallest
      size regular text stays legible at, and no surface may hardcode below it.
      `--text-code` carries code, diffs and the terminal. */
-  --text-prose: calc(15px * var(--reading-scale));
+  --text-prose: calc(16px * var(--reading-scale));
   --text-base: calc(14px * var(--reading-scale));
   --text-sm: calc(13px * var(--reading-scale));
   --text-xs: calc(12px * var(--reading-scale));
@@ -82,8 +82,8 @@
   --accent-foreground: #0d0d0d;
   --destructive: oklch(0.577 0.245 27.325);
   --destructive-foreground: oklch(0.985 0 0);
-  --border: #00000021;
-  --input: rgb(0 0 0 / 0.1);
+  --border: #00000017;
+  --input: var(--border-hover);
   --ring: rgb(0 0 0 / 0.2);
   /* Startup tile field — the landing page's mosaic, read by site/js/tiles.js
      (space-separated channels, the syntax that module parses). On white the
@@ -101,7 +101,7 @@
   /* The rail is its own plane, not more sidebar: a step off the sidebar surface
      in the direction this theme has headroom for, closed by the 1px seam
      `.activity-rail` draws with --border. Derived, so a theme moves it too. */
-  --rail-bg: #ececee;
+  --rail-bg: #f0f0f2;
   --sidebar-foreground: #0d0d0d;
   --sidebar-primary: #0d0d0d;
   --sidebar-primary-foreground: #ffffff;
@@ -116,15 +116,38 @@
   --sidebar-ring: rgb(0 0 0 / 0.2);
   --surface-shadow: 0 1px 2px rgb(0 0 0 / 0.05);
   --surface-shadow-focus: 0 1px 3px rgb(0 0 0 / 0.08);
-  /* Motion matches the reference surface: a single standard curve for hover and
-     colour changes, and a decelerating curve for things that enter. */
+  /* ── Motion ladder ───────────────────────────────────────────────────────
+     Five steps, and every animation picks one. The numbers are the average of
+     the published enterprise systems, rounded to steps a person can hold in
+     their head:
+
+       system              fastest        middle          largest
+       IBM Carbon          70 / 110ms     150 / 240ms     400 / 700ms
+       Microsoft Fluent    83 / 167ms     250ms           —
+       Material            ~100ms         200ms           300ms
+
+     That average lands at 90 / 150 / 200 / 300, which is what these tokens
+     are; `--motion-smooth` is the one value of our own, for a dock panel.
+
+     Three rules travel with them (Carbon's evaluation checklist, and Emil
+     Kowalski's practical animation notes): feedback on something touched tens
+     of times a day runs at `instant` or not at all; anything entering the
+     screen uses an ease-out curve, never an ease-in; and nothing here exceeds
+     the 300ms a dialog is allowed. */
+  --motion-instant: 90ms;   /* hover band, chip colour — repeat feedback */
+  --motion-fast: 150ms;     /* a small thing arriving: chip, tooltip, row */
+  --motion-normal: 200ms;   /* a surface arriving: popover, menu */
+  --motion-smooth: 280ms;   /* a panel: dock, drawer */
+  --motion-dialog: 300ms;   /* a modal, the one moment that may take this long */
+
+  /* Standard: the element is on screen for the whole move (colour, size,
+     position). Material's `standard` curve. */
   --motion-ease: cubic-bezier(0.4, 0, 0.2, 1);
-  /* Expo-out: fast attack, long settle — the smooth-UI signature curve. */
+  /* Entering: fast attack, long settle — the smooth-UI signature curve. */
   --motion-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
-  --motion-fast: 150ms;
-  --motion-normal: 200ms;
-  --motion-smooth: 280ms;
-  --motion-dialog: 300ms;
+  /* Leaving: accelerates away, so a dismissal reads as final. Carbon's exit
+     curve, which is the one place an ease-in belongs. */
+  --motion-ease-in: cubic-bezier(0.2, 0, 1, 0.9);
 
   /* Compatibility aliases (legacy Chatea vars) */
   --surface: var(--card);
@@ -141,7 +164,7 @@
   --border-active: rgb(0 0 0 / 0.2);
   /* Internal dividers inside an already-bordered surface. Full --border on every
      seam turns a panel into a grid of lines. */
-  --border-subtle: #00000012;
+  --border-subtle: #0000000d;
   --border-inverse: rgb(0 0 0 / 0.15);
   --primary-hover: #171717;
   --primary-fg: var(--primary-foreground);
@@ -190,10 +213,15 @@
   --user-bubble: #f3f3f4;
   --user-bubble-text: var(--foreground);
   --user-bubble-border: transparent;
-  /* The composer is a white card on the page, separated by its ring rather
-     than by a grey fill. */
+  /* A soft fill gives the input its own plane without a heavy outline. */
   --composer-surface: var(--card);
-  --composer-ring: var(--border);
+  --composer-ring: color-mix(in srgb, var(--foreground) 16%, transparent);
+  --composer-ring-hover: color-mix(in srgb, var(--composer-ring) 92%, var(--foreground));
+  --composer-ring-focus: color-mix(in srgb, var(--composer-ring) 84%, var(--foreground));
+  --composer-control-bg: color-mix(in srgb, var(--foreground) 3%, transparent);
+  --composer-control-ring: color-mix(in srgb, var(--foreground) 8%, transparent);
+  --composer-control-hover: color-mix(in srgb, var(--foreground) 7%, transparent);
+  --composer-shadow: 0 4px 16px rgb(0 0 0 / 0.04);
   --chat-bg: var(--background);
   --titlebar-bg: var(--background);
   --sidebar-bg: var(--sidebar);
@@ -287,14 +315,14 @@
   --composer-radius: 1.5rem;
   /* A large corner everywhere except the bottom-right, which tucks in to point
      the bubble at its author. */
-  --bubble-radius: 0.75rem;
-  --bubble-tail-radius: var(--radius-lg);
+  --bubble-radius: 1.125rem;
+  --bubble-tail-radius: var(--bubble-radius);
 
   /* Shadows — light only, quiet */
   --shadow-xs: 0 1px 2px rgb(0 0 0 / 0.05);
   /* Lifts the composer off the page: the one surface that floats on the
      conversation, at a whisper of a shadow (the study's `0 6px 22px`). */
-  --panel-shadow: 0 6px 22px rgb(0 0 0 / 0.05);
+  --panel-shadow: 0 2px 8px rgb(0 0 0 / 0.025);
   /* The docked sidebar is flat: a surface and a hairline, no groove. */
   --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.05);
   --shadow-md: 0 1px 3px rgb(0 0 0 / 0.08);
@@ -308,7 +336,7 @@
    * Rows inside them share one height, one inset radius and one hover fill.
    */
   --float-bg: var(--popover);
-  --float-border: rgb(0 0 0 / 0.12);
+  --float-border: var(--border);
   --float-radius: 0.75rem;
   --float-pad: 0.3125rem;
   --float-shadow: 0 1px 2px rgb(0 0 0 / 0.05), 0 10px 28px -8px rgb(0 0 0 / 0.18);
@@ -379,8 +407,8 @@
   --accent-foreground: var(--foreground);
   --destructive: #f07b72;
   --destructive-foreground: #161616;
-  --border: #ffffff24;
-  --input: rgb(255 255 255 / 0.18);
+  --border: #ffffff14;
+  --input: var(--border-hover);
   --ring: rgb(255 255 255 / 0.24);
   /* Startup tile field — the landing page's mosaic, read by site/js/tiles.js.
      One brand orange at shifting intensity, dim end first. */
@@ -395,7 +423,7 @@
   --sidebar: #0f0f0f;
   /* Dark has no room to recede further, so the rail steps the other way: one
      shade lighter than the sidebar, still under --card. */
-  --rail-bg: #242424;
+  --rail-bg: #1d1d1d;
   --sidebar-foreground: var(--foreground);
   --sidebar-primary: var(--primary);
   --sidebar-primary-foreground: var(--primary-foreground);
@@ -428,7 +456,7 @@
   --split-line: rgb(255 255 255 / 0.24);
   --border-hover: #ffffff24;
   --border-active: rgb(255 255 255 / 0.2);
-  --border-subtle: #ffffff14;
+  --border-subtle: #ffffff0f;
   --border-inverse: rgb(255 255 255 / 0.3);
   --primary-hover: #ffffff;
   --primary-fg: var(--primary-foreground);
@@ -469,8 +497,9 @@
   --user-bubble: #252525;
   --user-bubble-text: var(--foreground);
   --user-bubble-border: transparent;
-  --composer-surface: var(--card);
-  --composer-ring: var(--border);
+  --composer-surface: color-mix(in srgb, var(--background) 96%, var(--foreground));
+  --composer-ring: color-mix(in srgb, var(--foreground) 20%, transparent);
+  --composer-shadow: 0 4px 16px rgb(0 0 0 / 0.16);
   --chat-bg: var(--background);
   --titlebar-bg: var(--background);
   --sidebar-bg: var(--sidebar);
@@ -506,7 +535,7 @@
   --shadow-lg: 0 12px 32px rgb(0 0 0 / 0.45);
   --shadow-xl: 0 16px 40px rgb(0 0 0 / 0.5);
 
-  --float-border: rgb(255 255 255 / 0.11);
+  --float-border: var(--border);
   --float-shadow: 0 1px 2px rgb(0 0 0 / 0.35), 0 14px 36px -10px rgb(0 0 0 / 0.7);
   --float-row-hover: #2e2e2e;
   --float-row-selected: rgb(255 255 255 / 0.1);
@@ -549,7 +578,7 @@ html {
   mix-blend-mode: normal;
 }
 ::view-transition-new(root) {
-  animation: vt-circle-reveal 420ms cubic-bezier(0.16, 1, 0.3, 1);
+  animation: vt-circle-reveal var(--motion-dialog) var(--motion-ease-out);
 }
 ::view-transition-old(root) {
   z-index: -1;
@@ -709,26 +738,23 @@ textarea {
 }
 
 /* ─── ui-* utilities (ported from Flaxeo) ──────────────────────────────── */
+/* One frame around the whole input; focus changes its edge, never its size. */
 .ui-composer {
-  /* A rounded card on its own surface, held by a hairline ring rather than a
-     border so the radius stays clean at any height. Now that the controls sit
-     on their own row the shell is a two-line card, not a pill. */
-  border: 0;
+  border: 1px solid var(--composer-ring);
   border-radius: var(--composer-radius);
   background: var(--composer-surface);
-  box-shadow: inset 0 0 0 1px var(--composer-ring), var(--panel-shadow);
-  transition:
-    box-shadow var(--motion-fast) var(--motion-ease),
-    background-color var(--motion-fast) var(--motion-ease);
+  box-shadow: var(--composer-shadow);
+  transition: border-color var(--motion-instant) var(--motion-ease),
+    box-shadow var(--motion-instant) var(--motion-ease);
 }
-
-/* Typing keeps the composer surface and its neutral edge unchanged. */
+.ui-composer:hover { border-color: var(--composer-ring-hover); }
+.ui-composer:focus-within { border-color: var(--composer-ring-focus); }
 
 .ui-dialog-backdrop {
   background-color: var(--overlay);
 }
 
-/* ─── Selectors / menus / modals (assistant-ui quiet chrome) ─────────────── */
+/* ─── Selectors / menus / modals (quiet chrome) ─────────────── */
 /*
  * Pill variant, for the controls that sit inside the composer. They read as
  * chips on the composer surface rather than as buttons on the page.
@@ -764,7 +790,7 @@ textarea {
   /* --text-secondary over --muted-foreground: 7.5:1 against the composer
      surface instead of 5.2:1, which is what made these read as disabled. */
   color: var(--text-secondary);
-  font-size: 0.8125rem;
+  font-size: var(--text-sm);
   font-weight: 500;
   cursor: pointer;
   transition: background-color var(--motion-fast) var(--motion-ease), color var(--motion-fast) var(--motion-ease);
@@ -794,33 +820,31 @@ textarea {
 .composer-body {
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
-  padding: 1rem 1rem 0.75rem;
+  gap: 0.625rem;
+  padding: 0.875rem 0.75rem 0.625rem;
 }
 
 .composer-textarea {
   display: block;
   margin: 0;
-  min-height: 2.25rem;
+  min-height: 1.75rem;
   max-height: 13rem;
-  padding: 0 0.25rem;
-  /* The reading size, not the chrome size: what you type is the content. */
-  font-size: var(--text-prose);
+  padding: 0 0.1875rem;
+  font-size: var(--text-base);
   line-height: 1.55;
   letter-spacing: 0;
   font-weight: var(--reading-weight, 400);
 }
 
-/* --muted-foreground put the placeholder near 4:1 on the composer fill, which
-   is under AA and read as a disabled field. */
+/* The placeholder stays legible on the input's own surface in both themes. */
 .composer-textarea::placeholder {
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
   opacity: 1;
 }
 
 .composer-bar {
   display: flex;
-  min-height: 2rem;
+  min-height: 1.75rem;
   align-items: center;
   justify-content: space-between;
   gap: 0.375rem;
@@ -851,7 +875,7 @@ textarea {
   border-radius: 9999px;
   padding: 0 0.75rem;
   color: var(--muted-foreground);
-  font-size: 12px;
+  font-size: var(--text-xs);
   font-weight: 500;
   transition: color var(--motion-fast) var(--motion-ease), border-color var(--motion-fast) var(--motion-ease), background-color var(--motion-fast) var(--motion-ease);
 }
@@ -865,7 +889,6 @@ textarea {
 @media (max-width: 640px) {
   .composer-textarea {
     max-height: 10rem;
-    font-size: var(--text-prose);
   }
 }
 
@@ -1238,7 +1261,7 @@ textarea {
   scrollbar-width: none;
 }
 
-/* ─── assistant-ui patterns (ported) ─────────────────────────────────────── */
+/* ─── Conversation patterns ─────────────────────────────────────── */
 /* Shimmer overlay for running labels — pair with .ui-shimmer-host on the wrapper */
 .ui-shimmer-host {
   position: relative;
@@ -1539,7 +1562,7 @@ textarea {
   border: 1px solid var(--border);
   background: var(--background);
   color: var(--foreground);
-  font-size: 0.8125rem;
+  font-size: var(--text-sm);
   font-weight: 500;
   cursor: pointer;
   transition: background-color var(--motion-fast) var(--motion-ease), opacity var(--motion-fast) var(--motion-ease);
@@ -2230,17 +2253,20 @@ kbd {
 /* ─── Message action bar (T3-style ghost row under bubbles) ───────────── */
 .message-action-bar {
   display: flex;
+  flex-wrap: wrap;
+  max-width: 100%;
+  min-width: 0;
   align-items: center;
   gap: 0.125rem;
   margin-top: 0.375rem;
   opacity: 0;
-  visibility: hidden;
-  transition: opacity var(--motion-fast) var(--motion-ease), visibility var(--motion-fast) var(--motion-ease);
+  pointer-events: none;
+  transition: opacity var(--motion-instant) var(--motion-ease);
 }
 .message-action-bar.visible,
 .group\/msg:focus-within .message-action-bar {
   opacity: 1;
-  visibility: visible;
+  pointer-events: auto;
 }
 
 .msg-action-btn {
@@ -3004,28 +3030,24 @@ input[type="range"]::-moz-range-thumb {
 .dark .hljs-addition { color: #aff5b4; background-color: #033a16; }
 .dark .hljs-deletion { color: #ffdcd7; background-color: #67060c; }
 
-/* ── Scroll entry animations ───────────────────────────────────────────── */
-@keyframes scroll-fade-in {
-  from {
-    opacity: 0;
-    transform: translateY(12px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+/* Only a newly sent prompt enters; history and streamed replies stay still. */
+@keyframes message-enter {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: none; }
+}
+.message-enter {
+  animation: message-enter var(--motion-fast) var(--motion-ease-out) both;
 }
 
-.scroll-animate {
-  opacity: 0;
-  animation: scroll-fade-in 600ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+/* Both conversation surfaces contain scroll and keep their column steady. */
+.conversation-scroll {
+  overscroll-behavior-y: contain;
+  overflow-anchor: none;
+  scrollbar-gutter: stable;
 }
-
-.scroll-animate-delay-1 { animation-delay: 80ms; }
-.scroll-animate-delay-2 { animation-delay: 160ms; }
-.scroll-animate-delay-3 { animation-delay: 240ms; }
-.scroll-animate-delay-4 { animation-delay: 320ms; }
-.scroll-animate-delay-5 { animation-delay: 400ms; }
+@media (hover: none) {
+  .message-action-bar { opacity: 1; pointer-events: auto; }
+}
 
 /* Ambient gradient disabled — Flaxeo calm flat chrome */
 .ambient-gradient {
@@ -3044,7 +3066,7 @@ input[type="range"]::-moz-range-thumb {
   .ui-legacy-shimmer-text { animation: none !important; }
   .ui-legacy-message-loading { animation: none !important; }
   .loader-pulse { animation: none !important; }
-  .scroll-animate { animation: none !important; opacity: 1; }
+  .message-enter { animation: none !important; }
   .work-composer-generating { animation: none !important; }
 
   /*
@@ -3263,43 +3285,52 @@ html.a11y-reduce-motion *::after {
 .markdown-body .file-reference { --reference-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.5' stroke-linejoin='round'%3E%3Cpath d='M5 3h9l5 5v13H5V3Zm9 0v6h5M8 13h8M8 17h6'/%3E%3C/svg%3E"); }
 @media (forced-colors: active) { .markdown-body .inline-reference::before, .markdown-body .link-site-icon::before { background: CanvasText; opacity: 1; } }
 
-.markdown-body :is(h1, h2, h3),
-.markdown-body p > strong:first-child { color: var(--brand-accent-strong); }
-.markdown-body .inline-reference { color: color-mix(in srgb, var(--brand-accent-strong) 45%, var(--foreground)); }
+.markdown-body :is(h1, h2, h3) { color: var(--foreground); }
 
 .sidebar-row[draggable=true] { cursor: grab; }
 .sidebar-row[draggable=true]:active { cursor: grabbing; }
 .sidebar-row.is-drop-target { background: var(--companion-soft); box-shadow: inset 0 2px 0 var(--companion); }
 @media (prefers-reduced-motion: reduce) { .ui-button, .ui-action, .ui-field { transition: none; } }
 
-/* Screenshot reference: inline controls and one inset context strip. */
-.composer-meta-item { display:flex;align-items:center;min-width:0;padding-inline-start:0.5rem;margin-inline-start:0.125rem;border-inline-start:1px solid var(--border); }
+/* Shared composer controls and the inset data strip below the input. */
+.composer-meta-item { display:flex;align-items:center;min-width:0; }
 .composer-meta-item.is-reasoning:not(:has(.thinking-trigger)) { display:none; }
 .composer-bar .model-slot { min-width:4rem;max-width:14rem;flex:0 1 11rem; }
-.composer-bar .model-trigger { height:1.75rem;padding-inline:0.375rem; }
+.composer-bar .composer-selector {
+  height:1.75rem; gap:0.25rem; padding-inline:0.375rem;
+  border:1px solid transparent; border-radius:var(--radius-full);
+  background:transparent; box-shadow:none;
+  color:var(--muted-foreground); font-size:var(--text-xs); font-weight:400;
+  transition:background-color var(--motion-instant) var(--motion-ease), color var(--motion-instant) var(--motion-ease);
+}
+.composer-bar .composer-selector:is(:hover, [aria-expanded='true']) {
+  background:var(--composer-control-hover); color:var(--foreground);
+}
 .composer-bar .trigger-label { font-size:var(--text-xs);font-weight:400; }
-.composer-secondary { display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.25rem 0.5rem;min-width:0;margin:-1px 0.75rem 0;padding:0.375rem 0.625rem;border:1px solid var(--border-subtle);border-radius:0 0 var(--radius-lg) var(--radius-lg);background:var(--composer-surface);font-size:var(--text-xs);color:var(--muted-foreground); }
-.composer-secondary-status { display:flex;align-items:center;flex-wrap:wrap;gap:0.375rem;min-width:0;margin-left:auto; }
+.composer-secondary {
+  position:relative; display:flex; align-items:center; justify-content:space-between;
+  gap:0.25rem 0.5rem; min-width:0; margin:-0.875rem 1rem 0;
+  padding:1.125rem 0.625rem 0.375rem;
+  border:1px solid var(--border); border-top:0;
+  border-radius:0 0 var(--radius-lg) var(--radius-lg);
+  background:var(--composer-surface); color:var(--muted-foreground); font-size:var(--text-xs);
+}
+/* The input sits over the strip's open seam, so there is only one edge there. */
+.composer-shell { z-index:1; }
+.composer-secondary-status { display:flex;align-items:center;flex-wrap:nowrap;gap:0.375rem;min-width:0;margin-left:auto; }
 .composer-checkout { display:inline-flex;align-items:center;gap:0.375rem;min-width:0; }
 .composer-checkout svg { width:0.75rem;height:0.75rem;flex-shrink:0; }
 .composer-checkout { flex:0 1 auto; }
 .composer-checkout span { overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
-.composer-secondary-status { flex-wrap:nowrap; }
 /* Narrow ladder: dividers tighten, then the secondary controls (thinking,
    mode) fold into their icons, and the model name takes whatever they free —
    it is the one label worth reading, so it is never capped short of the room
    left. Nothing wraps under the bar. */
 @container composer (max-width:620px) { .composer-bar .model-slot { max-width:10rem; } }
 @container composer (max-width:480px) {
-  .composer-meta-item { padding-inline-start:0.25rem;margin-inline-start:0; }
   .composer-bar .model-slot { min-width:3rem;max-width:none;flex:1 1 auto; }
   .composer-bar .model-trigger { max-width:100%; }
 }
-@container composer (max-width:380px) {
-  .composer-meta-item { border-inline-start:0;padding-inline-start:0; }
-}
-.message-action-bar { flex-wrap:wrap;max-width:100%;min-width:0; }
-.user-message-stack { width:100%;min-width:0; }
 .prompt-actions { isolation:isolate; }
 
 /* ─── Title bar buttons ──────────────────────────────────────────────────── */
@@ -3496,4 +3527,13 @@ html.a11y-reduce-motion *::after {
 }
 
 /* Compact composer controls use the shared icon-size token. */
-.composer-bar, .composer-secondary { --ui-icon-button-size:1.5rem; }
+.composer-bar, .composer-secondary { --ui-icon-button-size:1.75rem; }
+.composer-bar .composer-icon-control {
+  width:var(--ui-icon-button-size); height:var(--ui-icon-button-size); padding:0;
+  border:1px solid var(--composer-control-ring); border-radius:var(--radius-full);
+  background:var(--composer-control-bg); color:var(--muted-foreground); box-shadow:none;
+  transition:background-color var(--motion-instant) var(--motion-ease), color var(--motion-instant) var(--motion-ease);
+}
+.composer-bar .composer-icon-control:is(:hover, [aria-expanded='true']) {
+  background:var(--composer-control-hover); color:var(--foreground);
+}

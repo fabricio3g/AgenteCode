@@ -11,6 +11,7 @@
 
 <script lang="ts">
   import { tick } from 'svelte';
+  import { ConversationFollow, distanceFromLatest, LATEST_BUTTON_DISTANCE, pauseOnScrollIntent } from '$lib/utils/conversation-scroll';
   import JumpToLatest from './JumpToLatest.svelte';
   import { meterMode } from '$lib/utils/activity-meter';
   import { approvalsStore } from '$lib/stores/approvals.svelte';
@@ -27,8 +28,6 @@
 
   /** Treat anything within this many pixels of the bottom as "at the bottom". */
   const BOTTOM_THRESHOLD_PX = 96;
-  /** Resume following once the user scrolls back this close to the live edge. */
-  const FOLLOW_RESUME_PX = 32;
   /** How long the action bar stays pinned after jumping to a message. */
   const ACTION_PIN_MS = 1400;
 
@@ -47,13 +46,13 @@
   /** Stick to the live edge while true. Any user scroll away pauses it; scrolling
    * back to the bottom resumes it. Programmatic jumps land at the bottom, so
    * they converge on the same state without special-casing. */
-  let followingLatest = true;
+  const follow = new ConversationFollow();
   /**
    * Past this distance from the live edge the thread offers a way back. The same
    * 80px the Code transcript treats as "pinned", so both spaces raise the button
    * at the same point instead of each inventing a threshold.
    */
-  const JUMP_BUTTON_PX = 80;
+  const JUMP_BUTTON_PX = LATEST_BUTTON_DISTANCE;
 
   const messages = $derived(appStore.currentChat?.messages || []);
   const timelineMarkers = $derived<TimelineMarker[]>(messages.map(message => ({
@@ -92,7 +91,7 @@
 
   function distanceToBottom(): number {
     if (!container) return 0;
-    return container.scrollHeight - (container.scrollTop + container.clientHeight);
+    return distanceFromLatest(container);
   }
 
   function isNearBottom(): boolean {
@@ -100,13 +99,13 @@
   }
 
   function snapToBottom() {
-    followingLatest = true;
     jumpVisible = false;
     if (container) container.scrollTop = container.scrollHeight;
+    follow.resume(container?.scrollTop ?? 0);
   }
 
   function scrollToBottom(behavior: ScrollBehavior = 'smooth') {
-    followingLatest = true;
+    follow.resume(container?.scrollTop ?? 0);
     container?.scrollTo({
       top: container.scrollHeight,
       behavior: reducedMotion.value ? 'auto' : behavior
@@ -116,15 +115,15 @@
   /** Content grew mid-stream: stay pinned instantly when following, never ease.
    * Easing perpetually lags a fast stream and fights the user's own scrolling. */
   function followContentGrowth() {
-    if (!followingLatest || appStore.editingMessageId || !container) return;
+    if (!follow.following || appStore.editingMessageId || !container) return;
     container.scrollTop = container.scrollHeight;
+    follow.resume(container.scrollTop);
   }
 
   function handleScroll() {
     if (!container) return;
     const distance = distanceToBottom();
-    if (distance <= FOLLOW_RESUME_PX) followingLatest = true;
-    else if (distance > BOTTOM_THRESHOLD_PX) followingLatest = false;
+    follow.observe(container);
     jumpVisible = distance > JUMP_BUTTON_PX;
     queueTimelineRefresh();
     scrollAwake = true;
@@ -144,7 +143,7 @@
   function scrollMessageIntoView(messageId: string, block: ScrollLogicalPosition) {
     const slot = slotRefs.get(messageId);
     if (!slot) return;
-    followingLatest = false;
+    follow.pause();
     slot.scrollIntoView({ behavior: reducedMotion.value ? 'auto' : 'smooth', block });
     pinActionsFor(messageId);
   }
@@ -260,6 +259,7 @@
       typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(() => {
         queueTimelineRefresh();
         followContentGrowth();
+        jumpVisible = distanceToBottom() > JUMP_BUTTON_PX;
       });
     observer?.observe(scrollContainer);
     const content = scrollContainer.firstElementChild;
@@ -295,7 +295,7 @@
       if (chatChanged) {
         timelineBrowsing = false;
         snapToBottom();
-      } else if (followingLatest) {
+      } else if (follow.following) {
         timelineBrowsing = false;
         if (isStreaming) snapToBottom();
         else scrollToBottom('smooth');
@@ -308,6 +308,7 @@
 
   $effect(() => () => {
     if (pinTimer) clearTimeout(pinTimer);
+    if (scrollAwakeTimer) clearTimeout(scrollAwakeTimer);
     cancelAnimationFrame(timelineRafId);
     scrollTicket++;
   });
@@ -330,10 +331,11 @@
       <div
         bind:this={container}
         id="conversation-message-scroll"
-        class="thread-scroll h-full overflow-y-auto px-4 pb-12 md:px-8"
+        class="conversation-scroll h-full overflow-y-auto px-4 pb-12 md:px-8"
         style="padding-top: var(--thread-top-pad);"
         role="region"
         aria-label="Conversation messages"
+        use:pauseOnScrollIntent={follow}
         onscroll={handleScroll}
       >
         <div
@@ -403,18 +405,6 @@
     contain: layout style;
   }
 
-  /* No smooth scrolling here: programmatic jumps choose their own behavior and
-     instant follow updates must not be eased, or the live edge lags the stream. */
-  .thread-scroll {
-    scrollbar-width: none;
-  }
-
-
-  .thread-scroll::-webkit-scrollbar {
-    width: 0;
-    height: 0;
-  }
-
   .message-slot {
     position: relative;
     content-visibility: auto;
@@ -426,7 +416,7 @@
   }
 
   .edit-inline-container {
-    animation: editFadeSlide 180ms ease-out forwards;
+    animation: editFadeSlide var(--motion-fast) var(--motion-ease-out) both;
   }
 
   .edit-inline-container.is-user {

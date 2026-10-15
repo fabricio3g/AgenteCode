@@ -105,3 +105,28 @@ test('compaction forwards the real model checkpoint but does not label trimming 
   const [trimmed] = run(translator, [{ type: 'context_compacted', summary: '4 messages compacted', revision: 4, tokens_before: 4000, tokens_after: 3000, smart: false }]);
   assert.equal(trimmed.summary, undefined);
 });
+
+test('generation speed uses each parent model stream and excludes tools, retries and child calls', () => {
+  const translator = new RustTurnTranslator('chat-speed', () => 64_000);
+  const send = (event, ms, extra = {}) => translator.translate(envelope(event, { timestamp:new Date(ms).toISOString(), ...extra }));
+  const usage = { type:'call_usage', cost_usd:null, cost_estimated:false, usage:{ prompt_tokens:10, completion_tokens:100, cache_read_tokens:0, cache_creation_tokens:0 } };
+  send({ type:'turn_started' }, 0);
+  send({ type:'assistant_delta', text:'First' }, 1000);
+  send({ type:'assistant_delta', text:' reply' }, 2000);
+  assert.deepEqual(send(usage, 3000).at(-1), { type:'generation_stats', chatId:'chat-speed', tokensPerSecond:50 });
+  send({ type:'tool_proposed', id:'tool', name:'read_file', arguments:'{}' }, 4000);
+  send({ type:'tool_result', id:'tool', name:'read_file', content:'read', is_error:false }, 40_000);
+  send({ type:'assistant_delta', text:'Retry' }, 41_000);
+  send({ type:'retry', attempt:1, max_attempts:2, delay_ms:1000 }, 42_000);
+  send({ type:'assistant_delta', text:'Final' }, 50_000);
+  send({ type:'assistant_delta', text:' reply' }, 51_000);
+  assert.equal(send(usage, 51_500, { parent_run_id:'child' }).some(event => event.type === 'generation_stats'), false);
+  assert.deepEqual(send(usage, 52_000).at(-1), { type:'generation_stats', chatId:'chat-speed', tokensPerSecond:50 });
+});
+
+test('generation speed stays absent for a response buffered into one output event', () => {
+  const translator = new RustTurnTranslator('chat-speed', () => 64_000);
+  translator.translate(envelope({ type:'assistant_delta', text:'Buffered response' }, { timestamp:new Date(1000).toISOString() }));
+  const out=translator.translate(envelope({ type:'call_usage', cost_usd:null, cost_estimated:false, usage:{ prompt_tokens:10, completion_tokens:100, cache_read_tokens:0, cache_creation_tokens:0 } }, { timestamp:new Date(2000).toISOString() }));
+  assert.equal(out.some(event => event.type === 'generation_stats'), false);
+});

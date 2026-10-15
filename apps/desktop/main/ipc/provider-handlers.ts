@@ -35,8 +35,8 @@ export function registerProviderHandlers({ ipcMain, resolveProvider, resolveApiK
     const live = await provider.fetchModels(realKey, baseUrl);
     if (providerName) onModelsRefreshed?.(providerName);
     if (!providerName || providerName === 'local' || !Array.isArray(live)) return live;
-    // What the provider no longer lists (retired) or never listed still shows,
-    // from models.dev, marked as such.
+    // Models.dev rows the provider does not list follow, marked; retired ones
+    // never show (the core's `catalog_extras` decides which).
     const catalog = await coreCatalogModels(providerName).catch(() => []);
     return mergeModelLists(live.map(String), catalog);
   });

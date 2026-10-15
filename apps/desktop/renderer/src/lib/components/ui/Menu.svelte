@@ -198,6 +198,7 @@
       role="menu"
       aria-label={label}
       tabindex="-1"
+      style:transform-origin={`${placement.startsWith('top') ? 'bottom' : 'top'} ${placement.endsWith('end') ? 'right' : 'left'}`}
       style={`top:${top}px; left:${left}px; max-width:${maxWidth === undefined ? 'calc(100vw - 12px)' : `${maxWidth}px`}; min-width:min(max(${minWidth}, ${anchorWidth}px), ${maxWidth === undefined ? 'calc(100vw - 12px)' : `${maxWidth}px`}); max-height:${maxHeight === undefined ? 'calc(100dvh - 12px)' : `${maxHeight}px`};`}
       onclick={(event) => {
         // Choosing an item closes the menu; callers no longer each have to.

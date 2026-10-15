@@ -2,8 +2,7 @@
 
 <!--
   The one line under a live reply that says what is happening right now,
-  with how long the run has taken — the TUI's activity strip, assistant-ui's
-  thinking indicator. It names what is otherwise invisible: a tool call the
+  with how long the run has taken, matching the TUI's activity strip. It names what is otherwise invisible: a tool call the
   model is still writing ("Writing changes · 3.2 KB"), a command running, a
   quiet model, an approval waiting on you.
 -->

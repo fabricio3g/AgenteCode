@@ -99,7 +99,9 @@ impl Provider for RoutedProvider {
     }
 
     async fn list_models(&self) -> Result<Vec<ModelInfo>, LlmError> {
-        if self.info.id == "minimax" {
+        // A spec that lists live (MiniMax's Anthropic API) asks the provider
+        // even though its format alone would answer from the static models.
+        if crate::models::live_membership(&self.info.id) {
             return super::openai::OpenAIProvider::from_info(self.info.clone())
                 .list_models()
                 .await;

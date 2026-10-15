@@ -12,6 +12,8 @@ members = [
     "crates/agente-cli",
     "crates/agente-bridge",
     "crates/agente-node",
+    "crates/agente-sync",
+    "crates/agente-mobile",
 ]
 resolver = "2"
 

@@ -324,7 +324,7 @@
 <Button variant="plain"
   bind:ref={triggerEl}
   type="button"
-  class={uiClass("model-trigger titlebar-no-drag flex h-8 max-w-[18rem] items-center gap-1.5 px-2.5 transition", "ui-local-8157c6d7", {"is-open": menuOpen, "is-compact": compact})}
+  class={uiClass("model-trigger titlebar-no-drag flex h-8 max-w-[18rem] items-center gap-1.5 px-2.5 transition", "ui-local-8157c6d7", {"is-open": menuOpen, "is-compact": compact, "composer-selector": compact})}
 
 
   style="-webkit-app-region: no-drag; pointer-events: auto;"
@@ -496,8 +496,7 @@
                             </span>
                             <span class="min-w-0 flex-1 truncate">{model.name}</span>
                             {#if model.id !== model.name}<span class="row-id">{model.id}</span>{/if}
-                            {#if model.availability === 'retired'}<span class="row-id" title={$t('modelPicker.retiredHint')}>{$t('modelPicker.retired')}</span>
-                            {:else if model.availability === 'catalog'}<span class="row-id" title={$t('modelPicker.notListedHint')}>{$t('modelPicker.notListed')}</span>{/if}
+                            {#if model.availability === 'catalog'}<span class="row-id" title={$t('modelPicker.notListedHint')}>{$t('modelPicker.notListed')}</span>{/if}
                             {#if selected}<span class="row-tag">{$t('modelPicker.inUse')}</span>{/if}
                           </UiListRow>
                         {/each}

@@ -256,7 +256,7 @@
           <DesignStarters />
         </div>
       {/if}
-      <Composer placeholder={copy.design.dock.placeholder} suggestions={false} statusBelow>
+      <Composer placeholder={copy.design.dock.placeholder} suggestions={false}>
         {#snippet above()}
           <DesignSelectionChips />
         {/snippet}

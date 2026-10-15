@@ -139,7 +139,7 @@
 </script>
 
 {#if visible}
-  <UiButton variant="plain" bind:ref={anchor} type="button" class={uiClass("thinking-trigger", "ui-local-efeab109", {"is-inline": inline, "is-open": open})}
+  <UiButton variant="plain" bind:ref={anchor} type="button" class={uiClass("thinking-trigger", "ui-local-efeab109", {"is-inline": inline, "composer-selector": inline, "is-open": open})}
     aria-haspopup="dialog" aria-expanded={open} aria-controls={open ? id : undefined}
     aria-label={$t('composer.thinking.trigger', { values: { level: labelFor(current) } })} title={$t('composer.thinking.title')}
     onclick={() => (open = !open)}>
@@ -215,13 +215,14 @@
     padding: 0 0.5rem;
     border-radius: var(--radius-full);
     color: var(--muted-foreground);
-    font-size: 12px;
+    font-size: var(--text-xs);
     white-space: nowrap;
   }
 
   :global(.thinking-trigger.is-inline.ui-local-efeab109) { height:1.75rem;gap:0.25rem;font-size:var(--text-xs);padding-inline:0.25rem; }
   :is(.thinking-trigger, :global(.thinking-trigger.ui-local-efeab109)) :global(.thinking-icon) { display:none; }
-  @container composer (max-width:620px) { .thinking-prefix { display:none; } }
+  .thinking-prefix { display:none; }
+  :global(.thinking-trigger.is-inline.ui-local-efeab109) :global(.thinking-icon) { display:block; }
   /* Narrow: the level folds into its icon (the label and tooltip still name it). */
   @container composer (max-width:480px) {
     .thinking-level, :is(.thinking-trigger, :global(.thinking-trigger.ui-local-efeab109)) :global(.thinking-chevron) { display:none; }

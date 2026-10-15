@@ -260,6 +260,7 @@ const PLAN_RESTRICTION_SUFFIX: &str = "When the plan is ready, call present_plan
 /// Replace our generated footer, including duplicates saved by older versions.
 /// Only complete, generated footers at the end are removed; project/user text
 /// elsewhere in the prompt remains intact. Build mode clears the old footer.
+#[cfg(feature = "execution")]
 pub(crate) fn set_plan_restriction(
     messages: &mut Vec<crate::types::Message>,
     restriction: Option<&str>,
@@ -331,7 +332,7 @@ pub fn plan_mode_restriction(allowed: &[String], blocked: &[String]) -> String {
     format!("\n\n{PLAN_RESTRICTION_PREFIX}{allowed_text}. Do NOT use {blocked_text}. {PLAN_RESTRICTION_SUFFIX}")
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "execution"))]
 mod prompt_budget_tests {
     use super::*;
 
@@ -634,7 +635,7 @@ fn system_prompt_for(
     )
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "execution"))]
 mod tests {
     use super::*;
     use crate::types::{FunctionCall, Message, Role, ToolCall, ToolDefinition};

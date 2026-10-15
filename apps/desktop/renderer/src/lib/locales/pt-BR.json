@@ -472,11 +472,31 @@
     "workedFor": "Trabalhou por {time}",
     "selectModel": "Escolha um modelo para começar a programar",
     "steerHint": "Enter redireciona · Alt+Enter enfileira · Esc para",
-    "startersTitle": "Experimente uma destas",
-    "starterExplain": "Explique como este código está organizado",
-    "starterBug": "Encontre e corrija um bug em ",
-    "starterTests": "Adicione testes para ",
-    "starterRun": "Rode o app e confira no navegador",
+    "starters": {
+      "title": "Experimente uma destas",
+      "explain": {
+        "label": "Explique o código",
+        "hint": "Um mapa das pastas, pontos de entrada e fluxos",
+        "prompt": "Explique como este código está organizado"
+      },
+      "bug": {
+        "label": "Encontre e corrija um bug",
+        "hint": "Reproduz o bug primeiro e depois mostra o diff",
+        "slot": "sintoma ou arquivo",
+        "prompt": "Encontre e corrija um bug em "
+      },
+      "tests": {
+        "label": "Adicione testes",
+        "hint": "Testes novos e as lacunas que aparecerem",
+        "slot": "arquivo ou módulo",
+        "prompt": "Adicione testes para "
+      },
+      "run": {
+        "label": "Rode o app e confira",
+        "hint": "Inicia o app, dirige o navegador e relata",
+        "prompt": "Rode o app e confira no navegador"
+      }
+    },
     "restoredNoteUnknown": "Arquivos restaurados para um ponto de controle anterior.",
     "slash": {
       "compact": "Compactar contexto",
@@ -896,8 +916,6 @@
     "sourceFailed": "Não foi possível mudar a origem do modelo. Tente de novo.",
     "unloaded": "Modelo descarregado",
     "unloadFailed": "Não foi possível descarregar o modelo",
-    "retired": "Retired",
-    "retiredHint": "The provider no longer lists this model; it may stop working.",
     "notListed": "Not listed",
     "notListedHint": "Listed by models.dev but not by the provider's own model list."
   },

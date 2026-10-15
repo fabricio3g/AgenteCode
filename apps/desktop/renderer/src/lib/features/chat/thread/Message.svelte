@@ -6,6 +6,7 @@
 -->
 
 <script lang="ts">
+  import { sentPromptEntry } from '$lib/utils/transitions';
   import { voiceText } from '../composer/voice-text.svelte';
   import type { ChatContextMode, ChatMessage, SearchMeta } from '$lib/types/chat';
   import { appStore } from '$lib/stores/app.svelte';
@@ -137,16 +138,9 @@
   createMessageContext(context);
 </script>
 
-<!--
-  The entry animation is skipped while streaming. It fades from opacity 0 and
-  slides 12px over 600ms on mount — which for an assistant turn means it runs
-  through the first ~35 content flushes, at the same time as the thread's
-  scroll-to-bottom. Three motions competing for the first half-second of every
-  answer read as jank. A streamed message is already announced by the typing
-  indicator, so it just appears and starts filling in.
--->
 <article
-  class="group/msg flex flex-col {isStreaming ? '' : 'scroll-animate'} {message.role === 'user' ? 'items-end' : 'items-start'}"
+  class="group/msg flex flex-col {message.role === 'user' ? 'items-end' : 'items-start'}"
+  use:sentPromptEntry={message.role === 'user' ? message.createdAt : 0}
   onmouseenter={() => (hovering = true)}
   onmouseleave={() => {
     hovering = false;

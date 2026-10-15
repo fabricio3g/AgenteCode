@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Backups are off (`android:allowBackup="false"`), and these rules say so for
+  both eras: nothing leaves the device, including the credential vault, drafts
+  and the sync journal. Export and sync are deliberate actions, never a cloud
+  backup that quietly carried a key along.
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="root" path="." />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="root" path="." />
+    </device-transfer>
+</data-extraction-rules>

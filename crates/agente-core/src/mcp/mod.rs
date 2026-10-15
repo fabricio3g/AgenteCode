@@ -11,13 +11,17 @@
 //! without approval and is available in Plan mode; anything else asks first
 //! unless the server is configured with `trust: true`.
 
+#[cfg(feature = "execution")]
 pub mod client;
+#[cfg(feature = "execution")]
 pub mod tool_adapter;
 
 use std::collections::HashMap;
 use std::path::Path;
 
+#[cfg(feature = "execution")]
 pub use client::{McpManager, ServerSnapshot, ServerStatus};
+#[cfg(feature = "execution")]
 pub use tool_adapter::McpToolAdapter;
 
 use crate::types::ToolDefinition;

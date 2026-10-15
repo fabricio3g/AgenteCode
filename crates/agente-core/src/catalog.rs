@@ -723,9 +723,8 @@ impl ModelCatalog {
     }
 
     /// Every model models.dev records for a provider — retired ones included,
-    /// with their status — sorted by id. A provider's own `/models` lists only
-    /// what it serves today and often not even all of that, so pickers merge
-    /// this in to show the rest.
+    /// with their status — sorted by id. Pickers go through
+    /// [`crate::models::catalog_extras`], which drops the retired ones.
     pub fn provider_models(&self, provider_id: &str) -> Vec<&CatalogModel> {
         let provider_id = crate::providers::spec::catalog_id(provider_id);
         let Some(provider) = self

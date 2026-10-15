@@ -38,7 +38,7 @@
 
 <Menu bind:open placement="top-start" minWidth="15rem" label={$t('home.tools.title')}>
   {#snippet trigger(props)}
-    <UiButton variant="plain" type="button" class={uiClass("tools-trigger", "ui-local-69ee6147", {"is-compact": compact, "is-open": open})}   title={$t('home.tools.title')} aria-label={`${$t('home.tools.title')} · ${$t('home.tools.button', { values: { on: totalOn, total } })}`} {...props}>
+    <UiButton variant="plain" type="button" class={uiClass("tools-trigger", "ui-local-69ee6147", {"is-compact": compact, "composer-icon-control": compact, "is-open": open})}   title={$t('home.tools.title')} aria-label={`${$t('home.tools.title')} · ${$t('home.tools.button', { values: { on: totalOn, total } })}`} {...props}>
       {#if compact}<MoreHorizontal class="size-3.5" />{:else}<Wrench class="size-3.5" /><span>{$t('home.tools.button', { values: { on: totalOn, total } })}</span>{/if}
     </UiButton>
   {/snippet}

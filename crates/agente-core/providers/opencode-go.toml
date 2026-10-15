@@ -29,6 +29,7 @@ session_header = "x-opencode-session"
 prompt_cache_key = true
 
 [transport.model_routes]
+"cat-jam-free" = "openai"
 "deepseek-v4-flash" = "openai"
 "deepseek-v4-flash-vision-exp" = "openai"
 "deepseek-v4-pro" = "openai"
@@ -57,9 +58,12 @@ prompt_cache_key = true
 "minimax-m3" = "anthropic"
 "muse-spark-1.2-contributor" = "responses"
 "muse-spark-1.3-contributor" = "responses"
+"omen-alpha" = "openai"
 "qwen3.6-plus" = "anthropic"
 "qwen3.7-max" = "anthropic"
 "qwen3.7-plus" = "anthropic"
 "qwen3.8-flash" = "anthropic"
 "qwen3.8-max" = "anthropic"
+"space-bunny" = "openai"
 "space-bunny-free" = "openai"
+"step-5-preview-free" = "openai"

@@ -4,7 +4,10 @@ import { flushSync } from 'svelte';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import SubagentCard from './SubagentCard.svelte';
 import { disclosure } from './disclosure.svelte';
-vi.mock('$lib/services/bridge', () => ({ invoke: vi.fn() }));
+vi.mock('$lib/services/bridge', async (importOriginal) => ({
+  ...await importOriginal<typeof import('$lib/services/bridge')>(),
+  invoke: vi.fn()
+}));
 
 const spend = { costUsd: 0, estimated: false, unpriced: true, promptTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 };
 const child = (extra: Record<string, unknown> = {}) => ({ id: 'child', kind: 'explore', description: 'Inspect files', status: 'done', text: '', tools: [], spend, ...extra }) as never;

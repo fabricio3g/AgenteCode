@@ -347,7 +347,7 @@ class CodeStore {
       for (const event of turn.events) applyCodeAgentEvent(run, event);
       chat.messages.push(
         { id: createId('msg'), role: 'user', content: turn.prompt, createdAt: Date.now(), metadata: { codeConversationIndex: turn.conversationIndex } },
-        { id: createId('msg'), role: 'assistant', content: run.content, reasoning: run.reasoning, createdAt: Date.now(), done: true, status: 'idle', agentSteps: run.steps, metadata: { codeTimeline: run.timeline, codeTodos: run.todos, codeChildren: run.children, codeSpend: run.spend, codeUsage: run.usage, codeDiagnostics: run.diagnostics } }
+        { id: createId('msg'), role: 'assistant', content: run.content, reasoning: run.reasoning, createdAt: Date.now(), done: true, status: 'idle', agentSteps: run.steps, metadata: { codeTimeline: run.timeline, codeTodos: run.todos, codeChildren: run.children, codeSpend: run.spend, codeUsage: run.usage, tokensPerSecond: run.tokensPerSecond, codeDiagnostics: run.diagnostics } }
       );
     }
     appStore.markChatDirty(chat.id);
@@ -597,6 +597,7 @@ class CodeStore {
       codeSpend: { ...run.spend },
       codeTodos: run.todos.map((todo) => ({ ...todo })),
       ...(run.usage ? { codeUsage: { ...run.usage } } : {}),
+      ...(run.tokensPerSecond ? { tokensPerSecond: run.tokensPerSecond } : {}),
       codeDiagnostics: [...run.diagnostics]
     };
     if (run.done) {

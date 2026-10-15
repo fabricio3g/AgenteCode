@@ -1,5 +1,4 @@
-// How an agent reply reads, top to bottom, the way assistant-ui's tool
-// timeline and the TUI lay it out: what it said, and between the words one
+// How an agent reply reads, top to bottom, in the same order as the TUI: what it said, and between the words one
 // block of work — thoughts and tool calls in the order they happened — that
 // folds to "3 steps · 2 files changed" once it is done. Under a live reply,
 // one status line says what is happening right now, next to the composer.

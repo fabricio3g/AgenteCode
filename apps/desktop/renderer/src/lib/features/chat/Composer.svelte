@@ -45,7 +45,7 @@
   import PromptQueue from '$lib/features/shared/PromptQueue.svelte';
   import type { NameCandidate } from '$lib/features/shared/name-completion';
 
-  let { placeholder: customPlaceholder, nameCompletion, above, suggestions = true, statusBelow = false }: {
+  let { placeholder: customPlaceholder, nameCompletion, above, suggestions = true }: {
     placeholder?: string;
     nameCompletion?: { candidates: NameCandidate[]; automatic?: boolean; nickname?: boolean };
     /** A row above the input, inside the composer's width (roleplay steering). */
@@ -53,7 +53,6 @@
     /** Starter prompts under an empty thread's composer; a surface that lists its own starters turns them off. */
     suggestions?: boolean;
     /** Context usage on a strip under the input, as Code draws it, so a narrow composer keeps its bar for the controls. */
-    statusBelow?: boolean;
   } = $props();
 
   /** Textarea grows with content up to this height, then scrolls. */
@@ -431,7 +430,6 @@
               <ComposerToolsMenu compact />
 
             </div>
-            {#if !statusBelow}<HomeContextStatus inline />{/if}
             <ComposerToolbar
               {dictation}
               {generating}
@@ -444,7 +442,7 @@
         </div>
       </div>
     </div>
-    {#if statusBelow}<HomeContextStatus />{/if}
+    <HomeContextStatus />
 
     {#if threadIsEmpty && suggestions}
       <!-- await tick() so the textarea holds the inserted prompt before we

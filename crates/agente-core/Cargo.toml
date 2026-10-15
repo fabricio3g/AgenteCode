@@ -6,6 +6,11 @@ authors.workspace = true
 license.workspace = true
 description = "Core business logic for Agente - agent runtime, providers, and tool system"
 
+[features]
+default = ["execution"]
+# Native phone hosts share provider policy without project/process execution.
+execution = ["dep:processkit", "dep:rmcp", "dep:landlock", "dep:libc"]
+
 [dependencies]
 agente-protocol = { workspace = true }
 tokio = { workspace = true }
@@ -31,18 +36,22 @@ parking_lot = { workspace = true }
 tokio-util = { workspace = true }
 tempfile = { workspace = true }
 similar = { workspace = true }
-processkit = { workspace = true }
+processkit = { workspace = true, optional = true }
 ignore = { workspace = true }
 http = "1"
-rmcp = { version = "3.4", default-features = false, features = ["client", "transport-child-process", "transport-streamable-http-client-reqwest", "reqwest"] }
+rmcp = { version = "3.4", optional = true, default-features = false, features = ["client", "transport-child-process", "transport-streamable-http-client-reqwest", "reqwest"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 # The bot sandbox (src/sandbox/linux.rs): Landlock rules and the seccomp filter.
-landlock = "0.4.4"
-libc = "0.2"
+landlock = { version = "0.4.4", optional = true }
+libc = { version = "0.2", optional = true }
 
 [dev-dependencies]
 tokio-test = "0.4"
+
+[[example]]
+name = "tool_performance"
+required-features = ["execution"]
 
 [lints]
 workspace = true

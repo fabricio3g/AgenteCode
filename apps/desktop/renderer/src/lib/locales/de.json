@@ -472,11 +472,31 @@
     "workedFor": "Hat {time} gearbeitet",
     "selectModel": "Wähle ein Modell, um mit dem Coden zu beginnen",
     "steerHint": "Enter lenkt um · Alt+Enter reiht ein · Esc stoppt",
-    "startersTitle": "Probier eins davon",
-    "starterExplain": "Erkläre, wie diese Codebasis aufgebaut ist",
-    "starterBug": "Finde und behebe einen Fehler in ",
-    "starterTests": "Schreibe Tests für ",
-    "starterRun": "Starte die App und prüfe sie im Browser",
+    "starters": {
+      "title": "Probier eins davon",
+      "explain": {
+        "label": "Erkläre die Codebasis",
+        "hint": "Ordner, Einstiegspunkte und wie alles zusammenspielt",
+        "prompt": "Erkläre, wie diese Codebasis aufgebaut ist"
+      },
+      "bug": {
+        "label": "Finde und behebe einen Fehler",
+        "hint": "Reproduziert ihn zuerst, zeigt dann den Diff",
+        "slot": "Symptom oder Datei",
+        "prompt": "Finde und behebe einen Fehler in "
+      },
+      "tests": {
+        "label": "Schreibe Tests",
+        "hint": "Neue Tests und die Lücken, die dabei auffallen",
+        "slot": "Datei oder Modul",
+        "prompt": "Schreibe Tests für "
+      },
+      "run": {
+        "label": "Starte die App und prüfe sie",
+        "hint": "Startet sie, steuert den Browser, berichtet",
+        "prompt": "Starte die App und prüfe sie im Browser"
+      }
+    },
     "restoredNoteUnknown": "Dateien auf einen früheren Checkpoint zurückgesetzt.",
     "slash": {
       "compact": "Kontext verdichten",
@@ -896,8 +916,6 @@
     "sourceFailed": "Modellquelle konnte nicht geändert werden. Versuche es erneut.",
     "unloaded": "Modell entladen",
     "unloadFailed": "Modell konnte nicht entladen werden",
-    "retired": "Retired",
-    "retiredHint": "The provider no longer lists this model; it may stop working.",
     "notListed": "Not listed",
     "notListedHint": "Listed by models.dev but not by the provider's own model list."
   },

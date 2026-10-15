@@ -29,6 +29,8 @@
   import { isElectron } from '$lib/services/bridge';
   import { ThinkingCapabilitiesController } from '$lib/stores/models/thinking-capabilities.svelte';
   import ModelSwitcher from '$lib/features/chat/ModelSwitcher.svelte';
+  import GenerationSpeed from '$lib/features/shared/composer/GenerationSpeed.svelte';
+  import { latestGenerationSpeed } from '$lib/utils/generation-speed';
   import ContextUsageRing from '$lib/features/chat/composer/ContextUsageRing.svelte';
   import { codeStore } from './code.svelte';
   import { codeEdits, initProject, projectFiles, setAgenteModel } from './code-ipc';
@@ -73,6 +75,13 @@
   let pendingMedia = $state<Attachment[]>([]);
   let allowMedia = $state<AttachmentKind[]>([]);
   let attaching = $state(false);
+  /**
+   * A starter whose prompt is only the start of a sentence leaves a blank to
+   * fill. The chip sits above the composer while the draft is still exactly
+   * that prefix, and leaves the moment the user types the subject.
+   */
+  let starterSlot = $state<string | null>(null);
+  let starterPrefix = $state('');
 
   const run = $derived(codeStore.runFor(chat.id));
   const running = $derived(!!run?.running);
@@ -100,6 +109,7 @@
   // context footprint. Hidden until the first report, like Home's ring.
   const usage = $derived(run?.usage ?? [...chat.messages].reverse().find((message) => message.metadata?.codeUsage)?.metadata?.codeUsage);
   const showContextRing = $derived(!!usage && usage.promptTokens > 0 && (usage.contextWindow ?? 0) > 0);
+  const speed = $derived(run?.tokensPerSecond ?? latestGenerationSpeed(chat.messages));
   const spend = $derived(conversationSpend(chat.messages, run ?? undefined));
   /** Input handed off but not yet consumed by a turn. */
   const queuedCount = $derived(run?.queuedCount ?? 0);
@@ -411,6 +421,7 @@
   async function submit() {
     const value = text.trim() || (attachments.length ? 'Please review the attached media.' : '');
     if (attaching) return;
+    starterSlot = null;
     if (!value) { await codeStore.sendQueuedNow(chat.id, chat.pendingPrompts?.find((item) => !item.sending)?.id); return; }
     // "/compact" typed out and sent runs the command, it is not a message.
     const command = exactSlashCommand(commands, value);
@@ -492,6 +503,8 @@
     caret = element.selectionStart;
     fileDismissed = false;
     slashDismissed = false;
+    // The subject landed: the blank is no longer blank.
+    if (starterSlot && element.value !== starterPrefix) starterSlot = null;
     autoGrow(element);
   }
 
@@ -522,11 +535,16 @@
 
   $effect(() => {
     const onFocusComposer = () => { if (appStore.currentChatId === chat.id) focusComposer(); };
-    // Starter prompts fill the composer; they never send on their own.
+    // Starter prompts fill the composer; they never send on their own, and they
+    // never throw away a draft — a second pick lands under the first.
     const onDraft = (event: Event) => {
-      const detail = (event as CustomEvent<string | { chatId?: string; text?: string }>).detail;
+      const detail = (event as CustomEvent<string | { chatId?: string; text?: string; slot?: string }>).detail;
       if ((typeof detail === 'object' ? detail.chatId : appStore.currentChatId) !== chat.id) return;
-      text = typeof detail === 'string' ? detail : detail?.text ?? '';
+      const value = typeof detail === 'string' ? detail : detail?.text ?? '';
+      const slot = typeof detail === 'object' ? detail?.slot : undefined;
+      starterPrefix = slot ? value : '';
+      starterSlot = slot ?? null;
+      text = mergeDraft(text, value);
       void Promise.resolve().then(focusComposer);
     };
     // The canvas panel hands over a rendered image plus the instruction that
@@ -616,6 +634,9 @@
       <PromptQueue items={chat.pendingPrompts} onupdate={(id, content) => appStore.updateQueuedPrompt(chat.id, id, content)} onremove={(id) => { appStore.removeQueuedPrompt(chat.id, id); }} onsend={(id) => void codeStore.sendQueuedNow(chat.id, id)} />
     {/if}
     {#if todos.length}<TodoDock {todos} running={running && !run?.stopping && !!run?.todosUpdated} />{/if}
+    {#if starterSlot}
+      <p class="starter-slot"><span class="slot">{starterSlot}</span></p>
+    {/if}
     <div class="composer-shell ui-composer pointer-events-auto transition">
       <div class="composer-body">
         {#if attachments.length}
@@ -641,16 +662,8 @@
           <div class="composer-bar-leading">
             <UiFileInput bind:ref={mediaPicker}  class={uiClass("hidden", "ui-local-49e9c79c")} accept={MEDIA_ACCEPT} multiple onchange={(event) => { void attachFiles([...((event.currentTarget as HTMLInputElement).files || [])]); event.currentTarget.value = ''; }} />
             <Tooltip label={$t('code.attach')} position="top">
-              <UiIconButton label={$t('code.attach')} size="xs" type="button" class={uiClass("", "ui-local-49e9c79c")}  disabled={attaching} onclick={() => mediaPicker?.click()}><Plus class="size-3.5" /></UiIconButton>
+              <UiIconButton label={$t('code.attach')} size="xs" type="button" class={uiClass("composer-icon-control", "ui-local-49e9c79c")}  disabled={attaching} onclick={() => mediaPicker?.click()}><Plus class="size-3.5" /></UiIconButton>
             </Tooltip>
-
-<div class="model-slot"><ModelSwitcher compact {chat} /></div>
-        {#if ownBackend === 'local'}
-          <Tooltip label={copy.model.browseAll} position="top"><UiIconButton label={copy.model.browseAll} size="xs" type="button" class={uiClass(" local-model-library", "ui-local-49e9c79c")}  onclick={()=>appStore.openSettings('explore')}><ArrowDownToLine class="size-3" /></UiIconButton></Tooltip>
-        {:else if !modelReady}
-          <Tooltip label={copy.model.configureProvider} position="top"><UiIconButton label={copy.model.configureProvider} size="xs" type="button" class={uiClass(" provider-setup", "ui-local-49e9c79c")}  onclick={()=>appStore.openSettings('providers')}><Settings2 class="size-3" /></UiIconButton></Tooltip>
-        {/if}
-        <div class="composer-meta-item is-reasoning"><ReasoningLevelSelector inline capabilities={ownThinking} value={chat.reasoningLevel} onchange={setThinking} /></div>
 
             <div class="composer-meta-item">
             <!-- Runtime mode gate — plan / supervised / full-auto. -->
@@ -658,7 +671,7 @@
               {#snippet trigger(props)}
                 <Button variant="plain"
                   type="button"
-                  class={uiClass("mode-trigger flex h-6 items-center gap-1 px-2 transition", "ui-local-49e9c79c", {"is-open": modeMenuOpen})}
+                  class={uiClass("mode-trigger composer-selector flex h-6 items-center gap-1 px-2 transition", "ui-local-49e9c79c", {"is-open": modeMenuOpen})}
 
                   aria-label={$t('code.modeSelector')}
                   title={activeMode.hint}
@@ -676,6 +689,14 @@
             </Menu>
             </div>
 
+            <div class="model-slot"><ModelSwitcher compact {chat} /></div>
+        {#if ownBackend === 'local'}
+          <Tooltip label={copy.model.browseAll} position="top"><UiIconButton label={copy.model.browseAll} size="xs" type="button" class={uiClass(" local-model-library", "ui-local-49e9c79c")}  onclick={()=>appStore.openSettings('explore')}><ArrowDownToLine class="size-3" /></UiIconButton></Tooltip>
+        {:else if !modelReady}
+          <Tooltip label={copy.model.configureProvider} position="top"><UiIconButton label={copy.model.configureProvider} size="xs" type="button" class={uiClass(" provider-setup", "ui-local-49e9c79c")}  onclick={()=>appStore.openSettings('providers')}><Settings2 class="size-3" /></UiIconButton></Tooltip>
+        {/if}
+        <div class="composer-meta-item is-reasoning"><ReasoningLevelSelector inline capabilities={ownThinking} value={chat.reasoningLevel} onchange={setThinking} /></div>
+
           </div>
 
           <div class="composer-bar-trailing">
@@ -690,7 +711,7 @@
             {/if}
 
             <Menu bind:open={toolsMenuOpen} placement="top-end" minWidth="14rem" label={$t('code.toolsMenu')}>
-              {#snippet trigger(props)}<Tooltip label={$t('code.toolsMenu')} position="top"><UiIconButton label={$t('code.toolsMenu')} size="xs" type="button" class={uiClass("", "ui-local-49e9c79c")}  {...props}><MoreHorizontal class="size-3.5" /></UiIconButton></Tooltip>{/snippet}
+              {#snippet trigger(props)}<Tooltip label={$t('code.toolsMenu')} position="top"><UiIconButton label={$t('code.toolsMenu')} size="xs" type="button" class={uiClass("composer-icon-control", "ui-local-49e9c79c")}  {...props}><MoreHorizontal class="size-3.5" /></UiIconButton></Tooltip>{/snippet}
               {#each menuGroups as group, index (index)}
                 {#if index > 0}<div class="ui-menu-separator" role="separator"></div>{/if}
                 {#each group as command (command.name)}<MenuItem icon={command.icon} label={command.label} disabled={command.disabled} onselect={() => void runCommand(command)} />{/each}
@@ -710,9 +731,12 @@
       </div>
     </div>
 
+    {#if project || (running && queuedCount > 0) || (modelReady && modelInputs) || showContextRing || speed !== undefined}
     <div class="composer-secondary">
       {#if project}<span class="composer-checkout" title={project.rootPath}><Folder class="size-3" /><span>{project.rootName}</span></span>{/if}
-      <div class="composer-secondary-status">            {#if running && queuedCount > 0}<span class="queued-status" role="status">{$t('code.queued', { values: { n: queuedCount } })}</span>{/if}
+      <div class="composer-secondary-status">
+            <GenerationSpeed value={speed} />
+            {#if running && queuedCount > 0}<span class="queued-status" role="status">{$t('code.queued', { values: { n: queuedCount } })}</span>{/if}
             {#if modelReady && modelInputs}
               <!-- Capability and policy in one glyph: what the model sees, and
                    the door to the toggles that decide what gets attached. -->
@@ -727,6 +751,8 @@
 </div>
     </div>
 
+    {/if}
+
     <p class="composer-hint sr-only mx-auto mt-[var(--dock-gap)] px-1 text-center text-xs text-muted-foreground opacity-70">
       {#if hint}
         {hint}
@@ -736,11 +762,31 @@
 </div>
 
 <style>
-  .composer-bar {min-height:1.75rem;}
+
+  /* The blank a starter left in the prompt: a token, on the composer's own left
+     edge, where the missing words will land. Same chip as the row's, so the one
+     the user clicked and the one above the composer read as the same object.
+
+     It arrives with the pick, so it enters: 150ms, ease-out, two pixels of
+     rise — never a scale from zero, which reads as appearing out of nowhere.
+     It leaves with no animation at all: the user has already typed the subject
+     and does not need to watch the chip go. */
+  .starter-slot { display:flex;margin:0 0 0.375rem;padding:0 0.25rem;animation:slot-in var(--motion-fast) var(--motion-ease-out) both; }
+  @keyframes slot-in { from { opacity:0;transform:translateY(2px); } to { opacity:1;transform:none; } }
+  .slot {
+    display:inline-flex;align-items:center;gap:0.25rem;
+    padding:0.0625rem 0.375rem;
+    border:1px dashed color-mix(in srgb, var(--foreground) 34%, transparent);
+    border-radius:5px;
+    color:var(--text-secondary);
+    font-family:var(--font-mono);
+    font-size:var(--text-xs);
+    white-space:nowrap;
+  }
+  .slot::before { content:"+";opacity:0.7; }
   /* The labelled context ring keeps its own width; squeezing it to an icon
      slot spilled the ring over the media glyph beside it. */
 
-  .composer-bar :global(.model-trigger), .composer-bar :global(.thinking-trigger) {height:1.5rem;font-size:var(--text-xs);}
 
 
   :global(.approval-pill.ui-local-49e9c79c) {
@@ -827,14 +873,13 @@
   :global(.mode-menu :is(.mode-option.is-active, :global(.mode-option.is-active.ui-local-49e9c79c))) {background:var(--float-row-selected);}
   :global(.mode-menu .ui-menu-item-hint) {white-space:normal;overflow-wrap:anywhere;}
   :global(.mode-menu .ui-menu-check) {color:var(--brand-accent-strong);}
-  :global(.mode-trigger.ui-local-49e9c79c) {color:var(--text-secondary);min-width:0;max-width:9rem;background:var(--control-bg);border:1px solid var(--border);border-radius:var(--radius-sm);box-shadow:var(--control-inset);transition:background-color var(--motion-fast),border-color var(--motion-fast),color var(--motion-fast);}
-  :global(.mode-trigger:hover.ui-local-49e9c79c),:global(.mode-trigger.is-open.ui-local-49e9c79c) {background:var(--float-row-hover);border-color:var(--border-hover);color:var(--foreground);}
+  :global(.mode-trigger.ui-local-49e9c79c) {min-width:0;max-width:9rem;}
   :global(.mode-trigger:focus-visible.ui-local-49e9c79c) {outline:2px solid var(--brand-accent);outline-offset:2px;}
   :global(.mode-trigger.ui-local-49e9c79c) .trigger-label {
     color: inherit;
     font-size: var(--text-xs);
-    font-weight: 500;
-    letter-spacing: -0.01em;
+    font-weight: 400;
+    letter-spacing: 0;
   }
   :global(.mode-trigger.ui-local-49e9c79c) {flex-shrink:0;}
   @container composer (max-width:480px) {

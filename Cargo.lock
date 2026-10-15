@@ -152,6 +152,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "agente-mobile"
+version = "0.2.3"
+dependencies = [
+ "agente-core",
+ "agente-protocol",
+ "agente-sync",
+ "jni 0.21.1",
+ "serde",
+ "serde_json",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
 name = "agente-node"
 version = "0.2.3"
 dependencies = [
@@ -201,6 +215,17 @@ dependencies = [
  "serde_json",
  "thiserror 1.0.69",
  "tracing",
+]
+
+[[package]]
+name = "agente-sync"
+version = "0.2.3"
+dependencies = [
+ "schemars 0.8.22",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+ "uuid",
 ]
 
 [[package]]

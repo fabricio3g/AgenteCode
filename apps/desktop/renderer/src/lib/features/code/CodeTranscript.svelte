@@ -18,6 +18,9 @@
 
   import CompactionReport from './CompactionReport.svelte';
   import { onDestroy } from 'svelte';
+  import { ConversationFollow, distanceFromLatest, LATEST_BUTTON_DISTANCE, pauseOnScrollIntent } from '$lib/utils/conversation-scroll';
+  import { reducedMotion } from '$lib/utils/motion.svelte';
+  import { sentPromptEntry } from '$lib/utils/transitions';
   import { writeToClipboard } from '$lib/utils/clipboard';
   import { CircleCheck, ClipboardList, Clock, Copy, GitFork, History, RotateCcw, TriangleAlert } from 'lucide-svelte';
   import type { ChatMessage } from '$lib/types/chat';
@@ -46,7 +49,8 @@
   let { messages, chatId }: { messages: ChatMessage[]; chatId: string } = $props();
 
   let viewport = $state<HTMLDivElement | undefined>(undefined);
-  let pinnedToBottom = $state(true);
+  const follow = new ConversationFollow();
+  let jumpVisible = $state(false);
 
   /** Live run state for retry + todo visibility while streaming. */
   const run = $derived(codeStore.runFor(chatId));
@@ -90,30 +94,53 @@
     for (const step of run?.steps ?? []) void step.output?.length;
     void run?.timeline.length;
     void run?.preparing;
-    if (pinnedToBottom && !scrollFrame) {
+    if (follow.following && !scrollFrame) {
       scrollFrame = requestAnimationFrame(() => {
         scrollFrame = 0;
-        if (viewport && pinnedToBottom) viewport.scrollTop = viewport.scrollHeight;
+        if (viewport && follow.following) snapToBottom();
       });
     }
   });
 
   function followContentGrowth(node: HTMLElement) {
     const observer = new ResizeObserver(() => {
-      if (!pinnedToBottom || scrollFrame) return;
+      if (viewport) jumpVisible = distanceFromLatest(viewport) > LATEST_BUTTON_DISTANCE;
+      if (!follow.following || scrollFrame) return;
       scrollFrame = requestAnimationFrame(() => {
         scrollFrame = 0;
-        if (viewport && pinnedToBottom) viewport.scrollTop = viewport.scrollHeight;
+        if (viewport && follow.following) snapToBottom();
       });
     });
     observer.observe(node);
+    if (node.parentElement) observer.observe(node.parentElement);
     return { destroy: () => observer.disconnect() };
   }
 
   function onScroll() {
     if (!viewport) return;
-    pinnedToBottom = viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight < 80;
+    follow.observe(viewport);
+    jumpVisible = distanceFromLatest(viewport) > LATEST_BUTTON_DISTANCE;
   }
+
+  function snapToBottom() {
+    if (!viewport) return;
+    viewport.scrollTop = viewport.scrollHeight;
+    follow.resume(viewport.scrollTop);
+    jumpVisible = false;
+  }
+
+  function jumpToLatest() {
+    if (!viewport) return;
+    follow.resume(viewport.scrollTop);
+    viewport.scrollTo({ top: viewport.scrollHeight, behavior: reducedMotion.value ? 'auto' : 'smooth' });
+  }
+
+  $effect(() => {
+    void chatId;
+    follow.resume(0);
+    const frame = requestAnimationFrame(snapToBottom);
+    return () => cancelAnimationFrame(frame);
+  });
 
   async function messageAction(message: ChatMessage, action: 'copy' | 'fork' | 'rewind') {
     try {
@@ -156,14 +183,14 @@
      fully visible when scrolled to the end; text only fades while it scrolls
      past. Both are `--dock-gap`-sized: the 64px that used to sit here was dead
      air between every prompt and the composer. -->
-<div bind:this={viewport} class="relative min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden px-4 pb-4 pt-6" onscroll={onScroll}>
+<div bind:this={viewport} class="conversation-scroll relative min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden px-4 pb-4 pt-6" use:pauseOnScrollIntent={follow} onscroll={onScroll}>
   <div class="mx-auto flex min-w-0 flex-col gap-[var(--thread-gap)]" style="max-width: var(--thread-width);" use:followContentGrowth>
     {#each messages as message, messageIndex (message.id)}
       <div class="code-message-slot" class:is-live={message.status === 'streaming'}>
       <DeferredMessage content={message.content} immediate={messages.length < 60 || messageIndex >= messages.length - 6 || message.status === 'streaming'}>
       {#if message.role === 'user'}
         {@const queued = !!message.metadata?.codeQueued && !!run?.running}
-        <div class="group relative flex flex-col items-end gap-1">
+        <div class="group relative flex flex-col items-end gap-1" use:sentPromptEntry={queued ? 0 : message.createdAt}>
           <div class="user-bubble whitespace-pre-wrap" class:opacity-60={queued}>
             {message.content}
             {#if message.metadata?.codeAttachments?.length}
@@ -274,7 +301,7 @@
       </UiButton>
     {/if}
   </div>
-  {#if !pinnedToBottom}
+  {#if jumpVisible}
     <!-- Back to the latest output: centred, above the composer, never over text.
          While the run is live it wears the meter, so being scrolled away from
          the status row no longer hides that the run is still working. -->
@@ -284,7 +311,7 @@
         class="pointer-events-auto"
         working={!!run?.running}
         mode={jumpMode}
-        onclick={() => { pinnedToBottom = true; if (viewport) viewport.scrollTop = viewport.scrollHeight; }}
+        onclick={jumpToLatest}
       />
     </div>
   {/if}

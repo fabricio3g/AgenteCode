@@ -12,7 +12,7 @@ use super::types::{SubagentCapabilityMode, SubagentSpawnRequest};
 /// Default nesting depth for subagents (parent = depth 0).
 pub const DEFAULT_MAX_SUBAGENT_DEPTH: u32 = 3;
 /// Default max concurrently running subagents per session.
-pub const DEFAULT_MAX_CONCURRENT_SUBAGENTS: usize = 8;
+pub use crate::config::DEFAULT_MAX_CONCURRENT_SUBAGENTS;
 /// Default wall-clock budget per spawn. A stuck child (silent provider stall,
 /// runaway tool loop inside its iteration budget) is aborted and reported as
 /// a timeout failure with its partial transcript kept for `resume_from`.

@@ -3,7 +3,10 @@ import { cleanup, fireEvent, render } from '@testing-library/svelte';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import CodeWorkBlock from './CodeWorkBlock.svelte';
 import { disclosure } from './disclosure.svelte';
-vi.mock('$lib/services/bridge',()=>({invoke:vi.fn()}));
+vi.mock('$lib/services/bridge', async (importOriginal) => ({
+  ...await importOriginal<typeof import('$lib/services/bridge')>(),
+  invoke: vi.fn()
+}));
 beforeEach(()=>{vi.stubGlobal('ResizeObserver',class{observe(){} disconnect(){}});});
 afterEach(()=>{cleanup();disclosure.clear();vi.unstubAllGlobals();});
 it.each(['running','error','done'] as const)('keeps a %s work block closed until opened',async status=>{

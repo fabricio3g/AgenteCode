@@ -39,6 +39,7 @@ export interface CodeRunState {
   diffStats: CodeAgentDiffStat[];
   fileChanges: CodeAgentFileChange[];
   usage?: AgenteUsage;
+  tokensPerSecond?: number;
   error?: string;
   done: boolean;
   /** Why the run ended — drives the end-of-run status chip. */
@@ -494,6 +495,10 @@ export function applyCodeAgentEvent(state: CodeRunState, event: CodeAgentEvent):
       state.startedAt ??= Date.now();
       state.activeStartedAt ??= Date.now();
       state.endedAt = undefined;
+      return false;
+    }
+    case 'generation_stats': {
+      if (Number.isFinite(event.tokensPerSecond) && event.tokensPerSecond > 0) state.tokensPerSecond = event.tokensPerSecond;
       return false;
     }
     case 'text_delta': {

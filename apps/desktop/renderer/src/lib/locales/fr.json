@@ -472,11 +472,31 @@
     "workedFor": "A travaillé {time}",
     "selectModel": "Choisissez un modèle pour commencer à coder",
     "steerHint": "Entrée réoriente · Alt+Entrée met en file · Échap arrête",
-    "startersTitle": "Essayez l’une de ces idées",
-    "starterExplain": "Explique comment ce code est organisé",
-    "starterBug": "Trouve et corrige un bug dans ",
-    "starterTests": "Ajoute des tests pour ",
-    "starterRun": "Lance l’application et vérifie-la dans le navigateur",
+    "starters": {
+      "title": "Essayez l’une de ces idées",
+      "explain": {
+        "label": "Explique le code",
+        "hint": "Un plan des dossiers, des points d’entrée et des flux",
+        "prompt": "Explique comment ce code est organisé"
+      },
+      "bug": {
+        "label": "Trouve et corrige un bug",
+        "hint": "Il le reproduit d’abord, puis montre le diff",
+        "slot": "symptôme ou fichier",
+        "prompt": "Trouve et corrige un bug dans "
+      },
+      "tests": {
+        "label": "Ajoute des tests",
+        "hint": "De nouveaux tests et les trous repérés au passage",
+        "slot": "fichier ou module",
+        "prompt": "Ajoute des tests pour "
+      },
+      "run": {
+        "label": "Lance l’app et vérifie-la",
+        "hint": "La démarre, pilote le navigateur, fait un rapport",
+        "prompt": "Lance l’application et vérifie-la dans le navigateur"
+      }
+    },
     "restoredNoteUnknown": "Fichiers restaurés à un point de contrôle antérieur.",
     "slash": {
       "compact": "Compacter le contexte",
@@ -896,8 +916,6 @@
     "sourceFailed": "Impossible de changer la source du modèle. Réessayez.",
     "unloaded": "Modèle déchargé",
     "unloadFailed": "Impossible de décharger le modèle",
-    "retired": "Retired",
-    "retiredHint": "The provider no longer lists this model; it may stop working.",
     "notListed": "Not listed",
     "notListedHint": "Listed by models.dev but not by the provider's own model list."
   },

@@ -9,6 +9,7 @@ import { structuredPatch } from 'diff';
 import type { RuntimeEvent, RuntimeEventEnvelope } from '../../shared/agente-protocol.gen.ts';
 import type { CodeAgentEvent, CodeTodoItem } from '../../shared/agente-protocol.ts';
 import { lineCount } from './text-lines.ts';
+import { GenerationTimer, generationRate } from '../../shared/generation-speed.ts';
 
 /** Rust tool name → the name the Code UI renders (commands, edits, reads…). */
 const UI_TOOL_NAMES: Record<string, string> = {
@@ -114,6 +115,7 @@ type FileChange = { path: string; kind: string; additions: number; deletions: nu
  * right after it, and the turn's changed files close the turn.
  */
 export class RustTurnTranslator {
+  private readonly generationTimer = new GenerationTimer();
   private turnIndex = 0;
   private readonly output = new Map<string, string>();
   private pendingEnd: Extract<CodeAgentEvent, { type: 'tool_end' }> | null = null;
@@ -134,6 +136,16 @@ export class RustTurnTranslator {
     }
     const out = this.flushPendingEnd();
     out.push(...this.map(event));
+    const at = Date.parse(envelope.timestamp);
+    if (event.type === 'assistant_delta' && event.text || event.type === 'reasoning_delta' && event.text || event.type === 'generation_progress' && event.output_bytes > 0) {
+      this.generationTimer.record(at);
+    } else if (event.type === 'call_usage') {
+      const rate = generationRate(event.usage.completion_tokens, this.generationTimer.duration(at));
+      this.generationTimer.reset();
+      if (rate !== undefined) out.push({ type: 'generation_stats', chatId: this.chatId, tokensPerSecond: rate });
+    } else if (['turn_started', 'turn_finished', 'turn_cancelled', 'turn_failed', 'retry', 'compaction_started', 'tool_proposed'].includes(event.type)) {
+      this.generationTimer.reset();
+    }
     return out;
   }
 

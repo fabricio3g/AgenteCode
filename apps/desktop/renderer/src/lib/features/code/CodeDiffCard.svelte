@@ -1,7 +1,7 @@
 <svelte:options runes={true} />
 
 <!--
-  One file's change, sized for the transcript (assistant-ui's code diff): the
+  One file's change, sized for the transcript: the
   file name with its +/− counts, then the hunks with old/new line numbers,
   additions and removals tinted. "View changes" opens the file in the
   Changes pane.

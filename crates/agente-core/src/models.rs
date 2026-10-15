@@ -9,8 +9,29 @@
 
 use std::time::Duration;
 
-use crate::catalog::ModelCatalog;
+use crate::catalog::{CatalogModel, ModelCatalog, ModelStatus};
+use crate::providers::spec::ModelSource;
 use crate::providers::{enrich_discovered_model, ModelInfo, ProviderRegistry};
+
+/// Whether a provider's own model list decides what it offers. For these a
+/// model it stops listing is retired in every picker, seeds and models.dev
+/// rows included; `catalog` providers are listed from models.dev alone.
+pub fn live_membership(provider_id: &str) -> bool {
+    crate::providers::spec::get(provider_id).is_some_and(|spec| spec.models != ModelSource::Catalog)
+}
+
+/// The models.dev rows a picker may list beside a provider's live answer:
+/// none where the live list decides membership, and never a deprecated one.
+pub fn catalog_extras<'a>(catalog: &'a ModelCatalog, provider_id: &str) -> Vec<&'a CatalogModel> {
+    if live_membership(provider_id) {
+        return Vec::new();
+    }
+    catalog
+        .provider_models(provider_id)
+        .into_iter()
+        .filter(|model| model.status != ModelStatus::Deprecated)
+        .collect()
+}
 
 /// Bound discovery so a hung models endpoint cannot leave a client
 /// "discovering…" forever.
@@ -105,4 +126,37 @@ pub fn transport_json(model: &ModelInfo) -> serde_json::Value {
         "policy": model.api.resolved_policy,
         "error": model.api.route_error,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pickers_never_list_retired_models() {
+        let catalog = ModelCatalog::parse_json(
+            &serde_json::json!({
+                "deepseek": {"id": "deepseek", "name": "DeepSeek", "models": {
+                    "served": {"id": "served", "name": "Served"},
+                    "old": {"id": "old", "name": "Old", "status": "deprecated"}
+                }},
+                "opencode-go": {"id": "opencode-go", "name": "OpenCode Go", "models": {
+                    "dropped-from-go": {"id": "dropped-from-go", "name": "Dropped"}
+                }}
+            })
+            .to_string(),
+        )
+        .unwrap();
+        let ids = |provider| {
+            catalog_extras(&catalog, provider)
+                .into_iter()
+                .map(|model| model.id.clone())
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(ids("deepseek"), ["served"]);
+        // Go's own list decides membership, so models.dev adds nothing.
+        assert!(live_membership("desktop-opencode-go"));
+        assert!(live_membership("minimax"));
+        assert!(ids("opencode-go").is_empty());
+    }
 }

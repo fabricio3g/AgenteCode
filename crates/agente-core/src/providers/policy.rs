@@ -4,7 +4,7 @@ use crate::llm::LlmError;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct TransportPolicy {
     pub require_model_route: Option<bool>,
@@ -12,7 +12,7 @@ pub struct TransportPolicy {
     pub cache: CachePolicy,
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct CachePolicy {
     /// Unset uses the protocol default: markers on Messages, otherwise off.
@@ -23,7 +23,7 @@ pub struct CachePolicy {
     pub session_header: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CacheRule {
     #[serde(default)]
@@ -36,6 +36,22 @@ pub struct CacheRule {
 }
 
 impl TransportPolicy {
+    /// What this policy says beyond `defaults`, or `None` when it adds
+    /// nothing. Saved configs keep only this, so a spec's new or corrected
+    /// routes reach installs that saved an older copy.
+    pub fn beyond(&self, defaults: &Self) -> Option<Self> {
+        let mut own = self.clone();
+        own.model_routes
+            .retain(|id, format| defaults.model_routes.get(id) != Some(format));
+        if own.require_model_route == defaults.require_model_route {
+            own.require_model_route = None;
+        }
+        if own.cache == defaults.cache {
+            own.cache = CachePolicy::default();
+        }
+        (own != Self::default()).then_some(own)
+    }
+
     /// Partial configuration overrides defaults without erasing unrelated fields.
     pub fn overlay(&mut self, other: &Self) {
         if other.require_model_route.is_some() {
@@ -133,4 +149,29 @@ pub enum MetadataSource {
     Catalog,
     Live,
     Configured,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn saved_policy_keeps_only_what_differs_from_the_spec() {
+        let mut defaults = TransportPolicy {
+            require_model_route: Some(true),
+            ..Default::default()
+        };
+        defaults.model_routes.insert("a".into(), ApiFormat::OpenAI);
+        assert_eq!(defaults.beyond(&defaults), None);
+
+        let mut saved = defaults.clone();
+        saved.model_routes.insert("a".into(), ApiFormat::Anthropic);
+        saved
+            .model_routes
+            .insert("mine".into(), ApiFormat::Responses);
+        let own = saved.beyond(&defaults).unwrap();
+        assert_eq!(own.require_model_route, None);
+        assert_eq!(own.model_routes.len(), 2);
+        assert_eq!(own.cache, CachePolicy::default());
+    }
 }

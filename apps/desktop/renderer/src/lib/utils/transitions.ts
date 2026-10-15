@@ -8,6 +8,12 @@ import { reducedMotion } from '$lib/utils/motion.svelte'
  */
 export const smoothEase = (t: number): number => (t === 1 ? 1 : 1 - Math.pow(2, -10 * t))
 
+/** Only a prompt just sent enters. Opening history never replays the motion. */
+export function sentPromptEntry(node: HTMLElement, createdAt: number) {
+  const age = Date.now() - createdAt
+  if (age >= 0 && age < 1000 && !reducedMotion.value) node.classList.add('message-enter')
+}
+
 interface FlyAndScaleParams {
   y?: number
   x?: number

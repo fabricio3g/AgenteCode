@@ -1,0 +1,14 @@
+<resources>
+    <!--
+      The window before Compose paints: light by day. The parent has no action
+      bar and no styling of its own, and the system bar icons follow this theme —
+      the dark pair lives in values-night/styles.xml, so a dark-mode launch never
+      flashes a white window with dark icons on it.
+    -->
+    <style name="Theme.Agente" parent="android:style/Theme.DeviceDefault.Light.NoActionBar">
+        <item name="android:fontFamily">sans</item>
+        <item name="android:windowBackground">@color/window_background</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowActionModeOverlay">true</item>
+    </style>
+</resources>

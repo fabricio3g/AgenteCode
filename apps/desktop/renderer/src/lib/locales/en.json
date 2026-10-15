@@ -481,11 +481,31 @@
     "workedFor": "Worked for {time}",
     "selectModel": "Select a model to start coding",
     "steerHint": "Enter steers · Alt+Enter queues · Esc stops",
-    "startersTitle": "Try one of these",
-    "starterExplain": "Explain how this codebase is organized",
-    "starterBug": "Find and fix a bug in ",
-    "starterTests": "Add tests for ",
-    "starterRun": "Run the app and check it in the browser",
+    "starters": {
+      "title": "Try one of these",
+      "explain": {
+        "label": "Explain the codebase",
+        "hint": "A map of the folders, entry points and data flow",
+        "prompt": "Explain how this codebase is organized"
+      },
+      "bug": {
+        "label": "Find and fix a bug",
+        "hint": "It reproduces the bug first, then shows the diff",
+        "slot": "symptom or file",
+        "prompt": "Find and fix a bug in "
+      },
+      "tests": {
+        "label": "Add tests",
+        "hint": "New tests, plus the gaps it found on the way",
+        "slot": "file or module",
+        "prompt": "Add tests for "
+      },
+      "run": {
+        "label": "Run the app and check it",
+        "hint": "Starts it, drives the browser, reports back",
+        "prompt": "Run the app and check it in the browser"
+      }
+    },
     "restoredNoteUnknown": "Restored files to an earlier checkpoint.",
     "slash": {
       "compact": "Compact context",
@@ -896,8 +916,6 @@
     "sourceFailed": "Couldn't change the model source. Try again.",
     "unloaded": "Model unloaded",
     "unloadFailed": "Couldn't unload the model",
-    "retired": "Retired",
-    "retiredHint": "The provider no longer lists this model; it may stop working.",
     "notListed": "Not listed",
     "notListedHint": "Listed by models.dev but not by the provider's own model list."
   },

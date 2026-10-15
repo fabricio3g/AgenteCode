@@ -4,7 +4,7 @@ type Listed = string | { id?: unknown; name?: unknown; availability?: unknown };
 
 /**
  * `fetch_provider_models` answers with the provider's live ids merged with
- * models.dev's record (retired and unlisted models marked). Older builds and
+ * the models.dev rows it does not list (marked `catalog`). Older builds and
  * keyless local runtimes still answer with plain ids; both shapes land here.
  */
 export function listedModels(raw: unknown): ModelOption[] {
@@ -15,10 +15,8 @@ export function listedModels(raw: unknown): ModelOption[] {
     const id = String(typeof entry === 'string' ? entry : entry?.id ?? '').trim();
     if (!id || seen.has(id)) continue;
     seen.add(id);
-    const availability = typeof entry === 'object' && (entry.availability === 'retired' || entry.availability === 'catalog')
-      ? entry.availability
-      : undefined;
-    out.push({ id, name: id, source: 'api', ...(availability ? { availability } : {}) });
+    const availability = typeof entry === 'object' && entry.availability === 'catalog';
+    out.push({ id, name: id, source: 'api', ...(availability ? { availability: 'catalog' as const } : {}) });
   }
   return out;
 }

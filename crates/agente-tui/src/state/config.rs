@@ -592,9 +592,33 @@ impl ConfigState {
             }
         }
 
+        // Until this session's list arrives, a provider whose own list decides
+        // membership shows its last saved answer — what it retired since
+        // models.dev or the seeds recorded stays out.
+        if has_discovered.is_none() && agente_core::models::live_membership(provider) {
+            let saved = self.config.discovered_models.get(provider);
+            if let Some(saved) = saved.filter(|ids| !ids.is_empty()) {
+                for id in saved {
+                    let resolved = self.resolve_model(provider, id);
+                    entries.push(ModelEntry {
+                        provider: provider.to_string(),
+                        model_id: id.clone(),
+                        display_name: resolved
+                            .as_ref()
+                            .map_or_else(|| humanize_model_id(id), |m| m.name.clone()),
+                        discovered: true,
+                        context_window: resolved
+                            .and_then(|m| (m.limits.context > 0).then_some(m.limits.context)),
+                    });
+                }
+                return entries;
+            }
+        }
+
         if let Some(provider_config) = has_config {
             for (id, model) in &provider_config.models {
-                if !entries.iter().any(|e| e.model_id == *id) {
+                let retired = model.status == Some(agente_core::catalog::ModelStatus::Deprecated);
+                if !retired && !entries.iter().any(|e| e.model_id == *id) {
                     let context_window = self
                         .resolve_model(provider, id)
                         .and_then(|m| (m.limits.context > 0).then_some(m.limits.context));

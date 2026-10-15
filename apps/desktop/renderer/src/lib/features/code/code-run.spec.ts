@@ -9,6 +9,14 @@ function run(events: CodeAgentEvent[]) {
 }
 
 describe('agente run reducer', () => {
+  it('keeps measured generation speed available without adding transcript rows', () => {
+    const state = createCodeRunState();
+    expect(applyCodeAgentEvent(state, { type:'generation_stats', chatId:'c', tokensPerSecond:55.2 })).toBe(false);
+    expect(state.tokensPerSecond).toBe(55.2);
+    expect(state.timeline).toEqual([]);
+    applyCodeAgentEvent(state, { type:'generation_stats', chatId:'c', tokensPerSecond:NaN });
+    expect(state.tokensPerSecond).toBe(55.2);
+  });
   it('keeps subagent text and tool output separate, counting child spend once in the session', () => {
     const state = run([
       { type: 'runtime_event', chatId: 'c', event: { type: 'child_started', run_id: 'child', kind: 'explore', description: 'Check tests', model: 'test-model' } },

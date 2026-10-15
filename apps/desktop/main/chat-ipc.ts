@@ -3,6 +3,7 @@ import { getCachedConfig, resolveApiKey } from './provider-auth.ts';
 import { resolveProvider } from './providers/registry.ts';
 import { safeParseJson } from './providers/helpers.ts';
 import { classifyError, LlmStreamError } from './providers/protocol.ts';
+import { GenerationTimer } from '../shared/generation-speed.ts';
 
 const activeStreams = new Map();
 
@@ -154,13 +155,17 @@ export async function startChatStream({ baseUrl, apiKey, providerName, body }, w
 
       const toolCallAccumulator = new Map();
       let finalUsage = null;
+      const generationTimer = new GenerationTimer();
       let providerState;
 
       // One normalized chunk protocol for every provider — the renderer
-      // events below are the frozen wire and stay byte-identical.
+      // events keep their shape; usage may carry additive stream timing.
       for await (const chunk of provider.stream(streamParams)) {
         if (abortController.signal.aborted) {
           break;
+        }
+        if ((chunk.type === 'text-delta' || chunk.type === 'reasoning-delta') && chunk.text || chunk.type === 'tool-call-delta' && chunk.delta.argumentsDelta) {
+          generationTimer.record(performance.now());
         }
 
         switch (chunk.type) {
@@ -196,6 +201,10 @@ export async function startChatStream({ baseUrl, apiKey, providerName, body }, w
       }
 
       const finalToolCalls = finalizeToolCalls(toolCallAccumulator);
+      const outputStreamMs = generationTimer.duration(performance.now());
+      if (finalUsage && outputStreamMs !== undefined) {
+        finalUsage = { ...finalUsage, timings: { ...finalUsage.timings, output_stream_ms: outputStreamMs } };
+      }
       emit({ type: 'done', toolCalls: finalToolCalls, usage: finalUsage, providerState });
     } catch (error) {
       if (abortController.signal.aborted) {

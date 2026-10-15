@@ -57,7 +57,7 @@ export function titleCaseToolName(name: string): string {
   return text.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-/** Format elapsed tool duration (ms) like assistant-ui ToolFallback. */
+/** Format elapsed tool duration (ms) for the transcript. */
 export function formatToolDuration(ms: number): string {
   if (!Number.isFinite(ms) || ms < 0) return '';
   if (ms < 1000) return '<1s';

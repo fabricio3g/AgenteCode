@@ -1,6 +1,7 @@
 <svelte:options runes={true} />
 <script lang="ts">
   import type { Snippet } from 'svelte';
+  import { flyAndScale } from '$lib/utils/transitions';
   import Portal from '$lib/components/ui/Portal.svelte';
   import { placePanel, type MenuPlacement } from '$lib/components/ui/menu';
 
@@ -66,6 +67,8 @@
 
 <Portal>
   <div bind:this={panel} {id} role={tooltip ? 'tooltip' : 'dialog'} aria-label={label}
+    in:flyAndScale={{ y: placement.startsWith('top') ? 3 : -3, start: 0.98, duration: 150 }}
+    style:transform-origin={`${placement.startsWith('top') ? 'bottom' : 'top'} ${placement.endsWith('end') ? 'right' : 'left'}`}
     class="composer-card" class:is-tooltip={tooltip} class:is-bright={bright}
     style:visibility={position ? 'visible' : 'hidden'}
     style:top={`${position?.top ?? 0}px`} style:left={`${position?.left ?? 0}px`}
@@ -87,7 +90,7 @@
     border: 1px solid var(--float-border);
     border-radius: var(--float-radius);
     box-shadow: var(--float-shadow);
-    font-size: 12px;
+    font-size: var(--text-xs);
     line-height: 1.5;
   }
   .is-tooltip { pointer-events: none; }

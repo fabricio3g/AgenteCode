@@ -45,7 +45,7 @@
   {#snippet trigger(props)}
     <IconButton label={copy.composer.attach} size="xs" variant="ghost"
       type="button"
-      class={uiClass("add-trigger", "ui-local-0d4ea47c", {"is-open": open})}
+      class={uiClass("add-trigger composer-icon-control", "ui-local-0d4ea47c", {"is-open": open})}
 
 
       title={copy.composer.attach}

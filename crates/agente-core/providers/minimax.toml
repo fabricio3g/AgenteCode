@@ -6,7 +6,10 @@ base_url = "https://api.minimax.io/anthropic/v1"
 api_format = "anthropic"
 env = ["MINIMAX_API_KEY"]
 match_hosts = ["api.minimax.io"]
-models = "catalog"
+# GET /anthropic/v1/models (x-api-key, Anthropic paging) lists what the key
+# can use; /v1/models is the same list for OpenAI clients. models.dev fills
+# the metadata.
+models = "openai_models"
 thinking = "default"
 offered = true
 order = 40

@@ -176,14 +176,14 @@
   }
 
   // ── Models ───────────────────────────────────────────────────────────
-  const modelFetch = $state({ fetched: [] as string[], availability: {} as Record<string, 'catalog' | 'retired' | undefined>, loading: false, error: '', loaded: false });
+  const modelFetch = $state({ fetched: [] as string[], availability: {} as Record<string, 'catalog' | undefined>, loading: false, error: '', loaded: false });
   let modelQuery = $state('');
 
   const extraModels = $derived(saved?.extra_models ?? []);
   /** Default model first, then fetched ids, then hand-added ids. */
   const roster = $derived.by(() => {
     const seen = new Set<string>();
-    const list: Array<{ id: string; added: boolean; availability?: 'catalog' | 'retired' }> = [];
+    const list: Array<{ id: string; added: boolean; availability?: 'catalog' }> = [];
     for (const id of [saved?.model, ...modelFetch.fetched, ...extraModels]) {
       const value = String(id || '').trim();
       if (!value || seen.has(value)) continue;
@@ -418,8 +418,7 @@
               onclick={() => void setDefaultModel(entry.id)}
             >
               <span class="min-w-0 flex-1 truncate {isDefault ? 'font-medium' : 'text-[var(--text-secondary)]'}" title={entry.id}>{entry.id}</span>
-              {#if entry.availability === 'retired'}<span class="shrink-0 text-[length:var(--text-xs)] text-warning" title={$t('modelPicker.retiredHint')}>{$t('modelPicker.retired')}</span>
-              {:else if entry.availability === 'catalog'}
+              {#if entry.availability === 'catalog'}
                 <span class="shrink-0 text-[length:var(--text-xs)] text-muted-foreground" title={$t('modelPicker.notListedHint')}>{$t('modelPicker.notListed')}</span>
               {/if}
               {#if entry.added}<Badge class="shrink-0">{$t('providers.added')}</Badge>{/if}

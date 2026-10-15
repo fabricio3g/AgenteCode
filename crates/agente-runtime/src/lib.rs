@@ -366,6 +366,23 @@ fn known_provider(id: &str) -> Result<(), RuntimeError> {
     }
 }
 
+/// Save a fresh live list where the TUI's picker reads it, so a model a
+/// provider retires leaves both surfaces whichever one refreshed.
+fn remember_listing(provider: &str, models: &[agente_core::providers::ModelInfo]) {
+    let Some(spec) = agente_core::providers::spec::get(provider) else {
+        return;
+    };
+    if !spec.offered || !agente_core::models::live_membership(&spec.id) {
+        return;
+    }
+    let ids: Vec<String> = models.iter().map(|model| model.id.clone()).collect();
+    if let Err(error) = AppConfig::edit_global(|config| {
+        config.discovered_models.insert(spec.id.clone(), ids);
+    }) {
+        tracing::warn!(provider = %spec.id, %error, "Could not save the model list");
+    }
+}
+
 #[derive(Clone)]
 struct SessionContext {
     project_dir: String,
@@ -1306,8 +1323,9 @@ impl RuntimeHandle {
         )
     }
 
-    /// The models.dev record of a provider's models, retired ones included:
-    /// `(id, name, status)`. Empty when the catalog has not loaded.
+    /// The models.dev rows a picker lists beside the provider's live ids
+    /// ([`agente_core::models::catalog_extras`]): `(id, name, status)`.
+    /// Empty when the catalog has not loaded.
     pub fn catalog_models(
         &self,
         provider: &str,
@@ -1316,8 +1334,7 @@ impl RuntimeHandle {
         live.catalog
             .as_deref()
             .map(|catalog| {
-                catalog
-                    .provider_models(provider)
+                agente_core::models::catalog_extras(catalog, provider)
                     .into_iter()
                     .map(|model| (model.id.clone(), model.name.clone(), model.status.clone()))
                     .collect()
@@ -1333,14 +1350,16 @@ impl RuntimeHandle {
     ) -> Result<Vec<agente_core::providers::ModelInfo>, RuntimeError> {
         let live = self.inner.live();
         let baseline = ProviderRegistry::from_config(&live.app_config);
-        agente_core::models::discover(
+        let models = agente_core::models::discover(
             &live.provider_registry,
             &baseline,
             live.catalog.as_deref(),
             provider,
         )
         .await
-        .map_err(RuntimeError::Config)
+        .map_err(RuntimeError::Config)?;
+        remember_listing(provider, &models);
+        Ok(models)
     }
 
     /// The thinking choices a model offers (see `agente_core::thinking`).

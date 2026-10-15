@@ -5,6 +5,7 @@ import type { CompletionResult, RequestMessage } from '$lib/services/chat/types'
 import { runAgentTask } from '$lib/services/agent';
 import { normalizeStreamingReasoningDelta } from '$lib/services/streaming';
 import { isElectron } from '$lib/services/bridge';
+import { generationRate } from '$shared/generation-speed';
 import { createId } from '$lib/utils/id';
 import { activityLabel } from '$lib/utils/tool-ui';
 import { normalizeSpace, resolveSpaceComposerMode } from '$lib/spaces';
@@ -89,9 +90,9 @@ export function reliableUsageMetadata(
     : 0;
   const timing = predictedMs > 0 ? predictedMs / 1000 : legacyEvalDurationSeconds || undefined;
   const nativeTokensPerSecond = Number(runtimeTimings?.predicted_per_second || 0);
-  const tokensPerSecond = nativeTokensPerSecond > 0
+  const tokensPerSecond = Number.isFinite(nativeTokensPerSecond) && nativeTokensPerSecond > 0
     ? nativeTokensPerSecond
-    : outputTokens && timing && timing > 0 ? outputTokens / timing : undefined;
+    : generationRate(outputTokens, timing ? timing * 1000 : runtimeTimings?.output_stream_ms);
   if (!inputTokens && !outputTokens && !totalTokens && !timing) return null;
   return {
     usageSource: source,

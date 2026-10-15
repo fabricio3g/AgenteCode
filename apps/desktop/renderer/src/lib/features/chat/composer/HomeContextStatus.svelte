@@ -1,13 +1,13 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+  import GenerationSpeed from '$lib/features/shared/composer/GenerationSpeed.svelte';
+  import { latestGenerationSpeed } from '$lib/utils/generation-speed';
   import { appStore } from '$lib/stores/app.svelte';
   import ContextUsageRing from './ContextUsageRing.svelte';
 
-  /** `inline` sits in the composer bar beside send; otherwise a strip under the composer. */
-  let { inline = false }: { inline?: boolean } = $props();
-
   const budget = $derived(appStore.contextBudget);
+  const speed = $derived(latestGenerationSpeed(appStore.currentChat?.messages ?? []));
   const visible = $derived(!!budget && (budget.usedTokens ?? 0) > 0);
 </script>
 
@@ -25,16 +25,11 @@
       />
 {/snippet}
 
-{#if visible && budget}
-  {#if inline}
-    <div class="inline-context">{@render ring(budget)}</div>
-  {:else}
-    <div class="composer-secondary">
-      <div class="composer-secondary-status">{@render ring(budget)}</div>
+{#if visible || speed !== undefined}
+  <div class="composer-secondary">
+    <div class="composer-secondary-status">
+      <GenerationSpeed value={speed} />
+      {#if visible && budget}{@render ring(budget)}{/if}
     </div>
-  {/if}
+  </div>
 {/if}
-
-<style>
-  .inline-context { display: flex; flex-shrink: 0; align-items: center; color: var(--muted-foreground); }
-</style>

@@ -1,8 +1,7 @@
 <svelte:options runes={true} />
 
 <!--
-  The work between two pieces of the reply, as one timeline (assistant-ui's
-  tool timeline): thoughts and tool calls in the order they happened. It starts folded and opens when the reader asks; the header
+  The work between two pieces of the reply, as one timeline: thoughts and tool calls in the order they happened. It starts folded and opens when the reader asks; the header
   updates as work progresses. It folds to "4 steps · 2 files changed · 12.4s" with the touched files as
   chips — each opens its diff in the Changes pane. The live status line still names pending approvals and failures.
 

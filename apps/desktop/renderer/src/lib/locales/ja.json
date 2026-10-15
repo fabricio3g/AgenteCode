@@ -472,11 +472,31 @@
     "workedFor": "{time} 作業しました",
     "selectModel": "コーディングを始めるにはモデルを選択してください",
     "steerHint": "Enter で方向修正 · Alt+Enter でキュー · Esc で停止",
-    "startersTitle": "例えばこんな依頼",
-    "starterExplain": "このコードベースの構成を説明して",
-    "starterBug": "次のバグを見つけて修正して: ",
-    "starterTests": "次のテストを追加して: ",
-    "starterRun": "アプリを起動してブラウザで確認して",
+    "starters": {
+      "title": "例えばこんな依頼",
+      "explain": {
+        "label": "コードベースを説明して",
+        "hint": "フォルダ構成・入口・データの流れを地図にする",
+        "prompt": "このコードベースの構成を説明して"
+      },
+      "bug": {
+        "label": "バグを見つけて修正して",
+        "hint": "まず再現し、それから差分を見せる",
+        "slot": "症状かファイル",
+        "prompt": "次のバグを見つけて修正して: "
+      },
+      "tests": {
+        "label": "テストを追加して",
+        "hint": "新しいテストと、途中で見つけた穴",
+        "slot": "ファイルかモジュール",
+        "prompt": "次のテストを追加して: "
+      },
+      "run": {
+        "label": "アプリを起動して確認して",
+        "hint": "起動し、ブラウザを操作して結果を報告",
+        "prompt": "アプリを起動してブラウザで確認して"
+      }
+    },
     "restoredNoteUnknown": "ファイルを以前のチェックポイントに復元しました。",
     "slash": {
       "compact": "コンテキストを圧縮",
@@ -896,8 +916,6 @@
     "sourceFailed": "モデルの提供元を変更できませんでした。もう一度お試しください。",
     "unloaded": "モデルを解放しました",
     "unloadFailed": "モデルを解放できませんでした",
-    "retired": "Retired",
-    "retiredHint": "The provider no longer lists this model; it may stop working.",
     "notListed": "Not listed",
     "notListedHint": "Listed by models.dev but not by the provider's own model list."
   },

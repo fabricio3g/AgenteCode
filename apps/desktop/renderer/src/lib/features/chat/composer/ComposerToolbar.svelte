@@ -46,7 +46,7 @@
   <div class="mic-control">
     <UiIconButton label={dictation.listening ? $t('chat.dictation.stop') : copy.composer.dictate} size="sm"
       type="button"
-      class={uiClass(" mic-btn", "ui-local-b54fdc09", {"is-listening": dictation.uiActive, "unavailable": !dictation.supported})}
+      class={uiClass("mic-btn composer-icon-control", "ui-local-b54fdc09", {"is-listening": dictation.uiActive, "unavailable": !dictation.supported})}
 
 
       onclick={dictation.supported ? () => appStore.voiceModeActive ? oncall() : dictation.toggle(false) : undefined}

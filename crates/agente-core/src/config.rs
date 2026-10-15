@@ -6,6 +6,8 @@ use crate::auth::AuthStore;
 use crate::catalog::{ModelCapabilities, ModelCost, ModelLimits, ModelStatus};
 use crate::mcp::McpConfig;
 
+pub const DEFAULT_MAX_CONCURRENT_SUBAGENTS: usize = 8;
+
 /// Provider configuration options
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ProviderOptions {
@@ -268,7 +270,7 @@ impl AppConfig {
     /// Subagents that may run at once (at least one).
     pub fn parallel_subagents(&self) -> usize {
         self.max_parallel_subagents
-            .unwrap_or(crate::subagent::DEFAULT_MAX_CONCURRENT_SUBAGENTS)
+            .unwrap_or(DEFAULT_MAX_CONCURRENT_SUBAGENTS)
             .max(1)
     }
 
@@ -452,6 +454,15 @@ impl AppConfig {
         let mut stripped = self.strip_secrets();
         // `strip_secrets` drops the catalog handle, so pass ours in.
         stripped.strip_catalog_derived(self.catalog.as_ref());
+        // Spec transport defaults are re-seeded on every load; a saved copy
+        // would freeze them and hide the spec's later route changes.
+        let builtin = Self::default();
+        for (id, provider) in stripped.provider.iter_mut() {
+            let defaults = builtin.provider.get(id).and_then(|p| p.transport.as_ref());
+            if let (Some(own), Some(defaults)) = (&provider.transport, defaults) {
+                provider.transport = own.beyond(defaults);
+            }
+        }
         let content = serde_json::to_string_pretty(&stripped)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
 

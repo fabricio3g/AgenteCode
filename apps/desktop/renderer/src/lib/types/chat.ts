@@ -936,9 +936,9 @@ export interface ModelOption {
   id: string;
   name: string;
   source: 'local' | 'api';
-  /** Not in the provider's own list: `catalog` (models.dev lists it) or
-      `retired` (models.dev marks it deprecated). Absent = served today. */
-  availability?: 'catalog' | 'retired';
+  /** `catalog`: models.dev lists it, the provider's own list does not.
+      Absent = served today. */
+  availability?: 'catalog';
   path?: string;
   details?: string;
   architecture?: string;

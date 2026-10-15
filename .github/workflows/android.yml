@@ -1,0 +1,46 @@
+name: Android
+
+on:
+  push:
+    branches: [main]
+    paths: ['apps/android/**', 'apps/desktop/renderer/src/app.css', 'apps/desktop/shared/window-theme.ts', 'apps/desktop/renderer/src/lib/copy/**', 'apps/desktop/renderer/src/lib/locales/**', 'crates/**', 'Cargo.toml', 'Cargo.lock', '.github/workflows/android.yml']
+  pull_request:
+    paths: ['apps/android/**', 'apps/desktop/renderer/src/app.css', 'apps/desktop/shared/window-theme.ts', 'apps/desktop/renderer/src/lib/copy/**', 'apps/desktop/renderer/src/lib/locales/**', 'crates/**', 'Cargo.toml', 'Cargo.lock', '.github/workflows/android.yml']
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - name: Android dependencies
+        run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0' 'ndk;28.2.13676358'
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: gradle/actions/setup-gradle@v4
+      # The phone's tokens, glyphs and copy are generated from the desktop's own
+      # sources, so a desktop change the phone has not picked up fails here
+      # instead of shipping a second palette or a second wording.
+      - name: Generated phone design sources are current
+        run: |
+          node apps/android/scripts/gen-tokens.mjs --check
+          node apps/android/scripts/gen-icons.mjs --check
+          node apps/android/scripts/gen-strings.mjs --check
+      - name: Shared tests
+        run: cargo test --locked -p agente-sync -p agente-mobile
+      - name: Native Android build, unit tests and lint
+        working-directory: apps/android
+        run: ./gradlew --no-daemon :app:assembleDebug :app:testDebugUnitTest :app:lintDebug
+      - uses: actions/upload-artifact@v4
+        with:
+          name: agente-android-debug
+          path: apps/android/app/build/outputs/apk/debug/app-debug.apk

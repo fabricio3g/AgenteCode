@@ -194,7 +194,8 @@
       "artifactName": "AgenteDesktop-linux-x64.AppImage"
     },
     "deb": {
-      "artifactName": "AgenteDesktop-linux-${arch}.deb"
+      "artifactName": "AgenteDesktop-linux-${arch}.deb",
+      "afterInstall": "scripts/deb-after-install.sh"
     },
     "beforePack": "scripts/packaging.cjs",
     "afterPack": "scripts/verify-package.cjs"
