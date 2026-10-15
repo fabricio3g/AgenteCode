@@ -339,6 +339,30 @@
       "voice": "{model}",
       "noModel": "Sin configurar — añade un proveedor o un modelo local en Ajustes",
       "noVoice": "Desactivado — descarga una voz en Ajustes → Voz"
+    },
+    "rail": {
+      "notSet": "Sin configurar",
+      "optional": "Opcional"
+    },
+    "prefs": {
+      "languageDesc": "Menús, etiquetas y formato de fecha",
+      "themeDesc": "Puedes cambiarlo cuando quieras desde la barra de título",
+      "smaller": "Más pequeño",
+      "default": "Normal",
+      "larger": "Más grande",
+      "legibleFont": "Fuente legible"
+    },
+    "startIn": {
+      "title": "Empezar en",
+      "home": "Preguntar, investigar y escribir",
+      "code": "Trabajar dentro de una carpeta",
+      "design": "Pantallas y páginas en HTML",
+      "roleplay": "Personajes y escenas",
+      "open": "Abrir {space}"
+    },
+    "keys": {
+      "skip": "Esc para omitir",
+      "pick": "1–4 para elegir"
     }
   },
   "common": {

@@ -339,6 +339,30 @@
       "voice": "{model}",
       "noModel": "Not set up — add a provider or a local model in Settings",
       "noVoice": "Off — download a voice in Settings → Voice"
+    },
+    "rail": {
+      "notSet": "Not set",
+      "optional": "Optional"
+    },
+    "prefs": {
+      "languageDesc": "Menus, labels and the date format",
+      "themeDesc": "Change it any time from the title bar",
+      "smaller": "Smaller",
+      "default": "Default",
+      "larger": "Larger",
+      "legibleFont": "Legible font"
+    },
+    "startIn": {
+      "title": "Start in",
+      "home": "Ask, research and write",
+      "code": "Work inside a project folder",
+      "design": "Screens and pages as HTML",
+      "roleplay": "Characters and scenes",
+      "open": "Open {space}"
+    },
+    "keys": {
+      "skip": "Esc to skip",
+      "pick": "1–4 to pick"
     }
   },
   "common": {

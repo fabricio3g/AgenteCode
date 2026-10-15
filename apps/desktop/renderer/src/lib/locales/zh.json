@@ -339,6 +339,30 @@
       "voice": "{model}",
       "noModel": "Not set up — add a provider or a local model in Settings",
       "noVoice": "Off — download a voice in Settings → Voice"
+    },
+    "rail": {
+      "notSet": "未设置",
+      "optional": "可选"
+    },
+    "prefs": {
+      "languageDesc": "菜单、标签和日期格式",
+      "themeDesc": "随时可在标题栏更改",
+      "smaller": "较小",
+      "default": "默认",
+      "larger": "较大",
+      "legibleFont": "易读字体"
+    },
+    "startIn": {
+      "title": "从这里开始",
+      "home": "提问、研究和写作",
+      "code": "在项目文件夹中工作",
+      "design": "用 HTML 做界面和页面",
+      "roleplay": "角色和场景",
+      "open": "打开{space}"
+    },
+    "keys": {
+      "skip": "Esc 跳过",
+      "pick": "1–4 选择"
     }
   },
   "common": {

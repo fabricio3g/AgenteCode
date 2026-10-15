@@ -1,9 +1,10 @@
 <svelte:options runes={true} />
 
 <!--
-  How chats think: a cloud provider (paste a key, test it, pick a model) or a
-  model on this computer (llama.cpp at the tested version, plus a model sized
-  for this hardware). Either can be skipped and set up later in Settings.
+  How chats think, on one page: a switch between a cloud provider (pick it
+  from the list, paste a key, test it, pick a model) and a model on this
+  computer (llama.cpp at the tested version, plus a model sized for this
+  hardware). Either can be skipped and set up later in Settings.
 -->
 
 <script lang="ts">
@@ -11,8 +12,9 @@
 
   import { onMount } from 'svelte';
   import { t } from 'svelte-i18n';
-  import { Check, Cloud, Download, HardDrive, LoaderCircle, TriangleAlert } from 'lucide-svelte';
-  import { Badge, Button, Input, Select } from '$lib/components/ui';
+  import { Check, Download, LoaderCircle, TriangleAlert } from 'lucide-svelte';
+  import { Button, Input, SegmentedControl, Select } from '$lib/components/ui';
+  import ProviderIcon from '$lib/components/ui/ProviderIcon.svelte';
   import { invoke, listen } from '$lib/services/bridge';
   import { appStore } from '$lib/stores/app.svelte';
   import { downloadsStore } from '$lib/stores/downloads.svelte';
@@ -30,8 +32,6 @@
 
   let { onback, onnext }: { onback: () => void; onnext: () => void } = $props();
 
-  type View = 'choose' | 'cloud' | 'local';
-  let view = $state<View>('choose');
   let choice = $state<'cloud' | 'local'>(appStore.backendMode === 'local' ? 'local' : 'cloud');
 
   // ── Cloud ────────────────────────────────────────────────────────────
@@ -181,38 +181,34 @@
   }
 </script>
 
-{#if view === 'choose'}
-  <div class="setup-step">
-    <div>
-      <h3 class="setup-title">{$t('onboarding.models.title')}</h3>
-      <p class="setup-lead">{$t('onboarding.models.lead')}</p>
-    </div>
-    <div class="setup-choices" role="radiogroup" aria-label={$t('onboarding.models.title')}>
-      <Button variant="plain" type="button" class={uiClass("setup-choice", {"is-selected": choice === 'cloud'})}  role="radio" aria-checked={choice === 'cloud'} onclick={() => (choice = 'cloud')}>
-        <Cloud class="size-5" />
-        <span class="setup-choice-title">{$t('onboarding.models.cloud')}</span>
-        <span class="setup-choice-text">{$t('onboarding.models.cloudHint')}</span>
-      </Button>
-      <Button variant="plain" type="button" class={uiClass("setup-choice", {"is-selected": choice === 'local'})}  role="radio" aria-checked={choice === 'local'} onclick={() => (choice = 'local')}>
-        <HardDrive class="size-5" />
-        <span class="setup-choice-title">{$t('onboarding.models.local')}</span>
-        <span class="setup-choice-text">{$t('onboarding.models.localHint')}</span>
-      </Button>
-    </div>
+<div class="setup-step">
+  <div>
+    <h3 class="setup-title">{$t('onboarding.models.title')}</h3>
+    <p class="setup-lead">{choice === 'cloud' ? $t('onboarding.cloud.lead') : hardware
+      ? $t('onboarding.local.lead', { values: { ram: Math.round(hardware.total_ram_gb), gpu: hardware.gpu_name || $t('runtime.noGpu') } })
+      : $t('onboarding.local.leadUnknown')}</p>
   </div>
-  <SetupFooter {onback} skipLabel={$t('onboarding.later')} onskip={onnext} primaryLabel={$t('onboarding.continue')} onprimary={() => (view = choice)} />
 
-{:else if view === 'cloud'}
-  <div class="setup-step">
-    <div>
-      <h3 class="setup-title">{$t('onboarding.cloud.title')}</h3>
-      <p class="setup-lead">{$t('onboarding.cloud.lead')}</p>
+  <SegmentedControl
+    class="self-start"
+    label={$t('onboarding.models.title')}
+    value={choice}
+    options={[{ value: 'cloud', label: $t('onboarding.models.cloud') }, { value: 'local', label: $t('onboarding.models.local') }]}
+    onchange={(value) => (choice = value as 'cloud' | 'local')}
+  />
+
+  {#if choice === 'cloud'}
+    <div class="setup-card" role="radiogroup" aria-label={$t('onboarding.cloud.provider')}>
+      {#each providers as item (item.id)}
+        <Button variant="plain" type="button" class={uiClass('setup-row setup-pick', { 'is-current': providerId === item.id })} role="radio" aria-checked={providerId === item.id} onclick={() => pickProvider(item.id)}>
+          <span class="pick-mark" aria-hidden="true">{providerId === item.id ? '›' : ''}</span>
+          <ProviderIcon provider={item.id} size={16} />
+          <span class="pick-label">{item.label}</span>
+          {#if isProviderConfigured(appStore.config, item.id)}<span class="setup-state"><span class="setup-dot" aria-hidden="true"></span>{$t('providers.keySaved')}</span>{/if}
+        </Button>
+      {/each}
     </div>
     <div class="setup-fields">
-      <label class="setup-field">
-        <span>{$t('onboarding.cloud.provider')}</span>
-        <Select class="w-full" value={providerId} options={providers.map((p) => ({ value: p.id, label: p.label }))} onchange={pickProvider} />
-      </label>
       <label class="setup-field">
         <span class="flex items-center justify-between gap-2">
           {$t('providers.apiKey')}
@@ -221,7 +217,7 @@
         <Input type="password" autocomplete="off" bind:value={apiKey} placeholder={hasSavedKey ? $t('onboarding.cloud.keySaved') : 'sk-…'} oninput={() => (connection = null)} />
       </label>
       <div class="flex items-center gap-2">
-        <Button variant="outline" size="sm" loading={testing} disabled={!apiKey.trim() && !hasSavedKey} onclick={() => void connect()}>{$t('onboarding.cloud.connect')}</Button>
+        <Button variant="ghost" size="sm" loading={testing} disabled={!apiKey.trim() && !hasSavedKey} onclick={() => void connect()}>{$t('onboarding.cloud.connect')}</Button>
         {#if connection?.ok}
           <span class="flex items-center gap-1 text-xs text-success"><Check class="size-3.5" /> {$t('providers.testOk', { values: { n: connection.models.length } })}</span>
         {:else if connection}
@@ -235,19 +231,7 @@
         </label>
       {/if}
     </div>
-  </div>
-  <SetupFooter onback={() => (view = 'choose')} primaryLabel={$t('onboarding.continue')} primaryDisabled={!connection?.ok || !model} primaryLoading={saving} onprimary={() => void saveCloud()} />
-
-{:else}
-  <div class="setup-step">
-    <div>
-      <h3 class="setup-title">{$t('onboarding.local.title')}</h3>
-      <p class="setup-lead">
-        {hardware
-          ? $t('onboarding.local.lead', { values: { ram: Math.round(hardware.total_ram_gb), gpu: hardware.gpu_name || $t('runtime.noGpu') } })
-          : $t('onboarding.local.leadUnknown')}
-      </p>
-    </div>
+  {:else}
 
     <div class="setup-card">
       <div class="setup-row">
@@ -257,11 +241,11 @@
           {#if engineError}<p class="mt-1 text-xs text-error">{engineError}</p>{/if}
         </div>
         {#if hasEngine}
-          <Badge tone="success"><Check class="size-2.5" />{$t('onboarding.installed')}</Badge>
+          <span class="setup-state"><span class="setup-dot" aria-hidden="true"></span>{$t('onboarding.installed')}</span>
         {:else if engineBusy}
           <span class="text-xs tabular-nums text-muted-foreground"><LoaderCircle class="mr-1 inline size-3.5 animate-spin" />{Math.round(engineProgress)}%</span>
         {:else}
-          <Button variant="outline" size="sm" onclick={() => void installEngine()}><Download /> {$t('onboarding.install')}</Button>
+          <Button variant="ghost" size="sm" onclick={() => void installEngine()}><Download /> {$t('onboarding.install')}</Button>
         {/if}
       </div>
     </div>
@@ -278,7 +262,7 @@
           <div class="min-w-0 flex-1">
             <p class="flex items-center gap-1.5 text-[length:var(--text-sm)] font-medium text-foreground">
               {entry.label}
-              {#if entry.recommended}<Badge>{$t('voice.catalog.featured')}</Badge>{/if}
+              {#if entry.recommended}<span class="setup-tag">{$t('voice.catalog.featured')}</span>{/if}
             </p>
             <p class="text-xs text-muted-foreground">{sizeOf(entry)} · {$t('onboarding.local.minRam', { values: { n: entry.minRamGb } })}</p>
             {#if downloading}
@@ -286,15 +270,20 @@
             {/if}
           </div>
           {#if file}
-            <Badge tone="success"><Check class="size-2.5" />{$t('onboarding.installed')}</Badge>
+            <span class="setup-state"><span class="setup-dot" aria-hidden="true"></span>{$t('onboarding.installed')}</span>
           {:else if downloading}
             <span class="text-xs tabular-nums text-muted-foreground">{Math.round(Number(job.progress ?? 0))}%</span>
           {:else}
-            <Button variant="outline" size="sm" onclick={() => void downloadModel(entry)}><Download /> {$t('onboarding.download')}</Button>
+            <Button variant="ghost" size="sm" onclick={() => void downloadModel(entry)}><Download /> {$t('onboarding.download')}</Button>
           {/if}
         </div>
       {/each}
     </div>
-  </div>
-  <SetupFooter onback={() => (view = 'choose')} primaryLabel={$t('onboarding.continue')} primaryDisabled={!hasEngine || !chosenFile} primaryLoading={localSaving} onprimary={() => void saveLocal()} />
+  {/if}
+</div>
+
+{#if choice === 'cloud'}
+  <SetupFooter {onback} skipLabel={$t('onboarding.later')} onskip={onnext} primaryLabel={$t('onboarding.continue')} primaryDisabled={!connection?.ok || !model} primaryLoading={saving} onprimary={() => void saveCloud()} />
+{:else}
+  <SetupFooter {onback} skipLabel={$t('onboarding.later')} onskip={onnext} primaryLabel={$t('onboarding.continue')} primaryDisabled={!hasEngine || !chosenFile} primaryLoading={localSaving} onprimary={() => void saveLocal()} />
 {/if}

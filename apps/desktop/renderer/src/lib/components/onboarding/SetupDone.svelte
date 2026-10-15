@@ -1,11 +1,16 @@
 <svelte:options runes={true} />
 
-<!-- What setup left in place, and the way in. Anything skipped is one click
-     away in Settings, which is where each line points. -->
+<!-- What setup left in place, and the way in: where to start, picked from
+     the four spaces (keys 1–4), and one button that opens it. Anything
+     skipped is one click away in Settings. -->
 
 <script lang="ts">
   import { t } from 'svelte-i18n';
-  import { Check, Minus } from 'lucide-svelte';
+  import { Check, Code2, Drama, House, Minus, PenTool } from 'lucide-svelte';
+  import { Button } from '$lib/components/ui';
+  import { copy } from '$lib/copy';
+  import { cn } from '$lib/utils/cn';
+  import type { ChatContextMode } from '$lib/types/chat';
   import { appStore } from '$lib/stores/app.svelte';
   import { speechEngine } from '$lib/stores/speech-engine.svelte';
   import { providerLabel } from '$lib/utils/providers';
@@ -24,6 +29,30 @@
   });
 
   const voiceLine = $derived(speechEngine.active ? $t('onboarding.done.voice', { values: { model: speechEngine.active.title } }) : null);
+
+  const spaces = $derived([
+    { id: 'home' as const, icon: House, label: copy.spaces.home, desc: $t('onboarding.startIn.home') },
+    { id: 'code' as const, icon: Code2, label: copy.spaces.code, desc: $t('onboarding.startIn.code') },
+    { id: 'design' as const, icon: PenTool, label: copy.spaces.design, desc: $t('onboarding.startIn.design') },
+    { id: 'roleplay' as const, icon: Drama, label: copy.spaces.roleplay, desc: $t('onboarding.startIn.roleplay') }
+  ]);
+  let space = $state<ChatContextMode>('home');
+  const spaceLabel = $derived(spaces.find((item) => item.id === space)?.label ?? '');
+
+  function open() {
+    appStore.setActiveSpace(space);
+    onfinish();
+  }
+
+  function onkeydown(event: KeyboardEvent) {
+    const target = event.target as HTMLElement | null;
+    if (event.ctrlKey || event.metaKey || event.altKey || target?.closest('input, textarea, [contenteditable]')) return;
+    const pick = spaces[Number(event.key) - 1];
+    if (pick) {
+      event.preventDefault();
+      space = pick.id;
+    }
+  }
 
   const lines = $derived([
     { label: $t('onboarding.stage.models'), value: modelLine, missing: $t('onboarding.done.noModel') },
@@ -49,9 +78,26 @@
       </div>
     {/each}
   </div>
+
+  <div class="flex flex-col gap-1.5">
+    <p class="setup-section">{$t('onboarding.startIn.title')}</p>
+    <div class="setup-card" role="radiogroup" aria-label={$t('onboarding.startIn.title')}>
+      {#each spaces as item, i (item.id)}
+        {@const Icon = item.icon}
+        <Button variant="plain" type="button" class={cn('setup-row setup-pick', { 'is-current': space === item.id })} role="radio" aria-checked={space === item.id} onclick={() => (space = item.id)} ondblclick={open}>
+          <span class="pick-mark" aria-hidden="true">{space === item.id ? '›' : ''}</span>
+          <Icon class="size-4 text-muted-foreground" />
+          <span class="pick-label">{item.label}<small>{item.desc}</small></span>
+          <kbd class="pick-key">{i + 1}</kbd>
+        </Button>
+      {/each}
+    </div>
+  </div>
 </div>
 
-<SetupFooter {onback} primaryLabel={$t('onboarding.start')} onprimary={onfinish} />
+<svelte:window {onkeydown} />
+
+<SetupFooter {onback} primaryLabel={$t('onboarding.startIn.open', { values: { space: spaceLabel } })} onprimary={open} hint={$t('onboarding.keys.pick')} />
 
 <style>
   .done-mark {

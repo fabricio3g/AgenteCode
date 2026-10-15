@@ -17,7 +17,7 @@
   import { cn as uiClass } from '$lib/utils/cn';
 
   import { t, locale } from 'svelte-i18n';
-  import { Check, Download, RotateCcw, Trash2, X } from 'lucide-svelte';
+  import { Download, RotateCcw, Trash2, X } from 'lucide-svelte';
   import { Badge, Button, Select, Tooltip } from '$lib/components/ui';
   import { appStore } from '$lib/stores/app.svelte';
   import { confirmStore } from '$lib/stores/confirm.svelte';
@@ -183,8 +183,9 @@
     <div class="min-w-0 flex-1">
       <p class="flex flex-wrap items-center gap-1.5 text-[length:var(--text-sm)] font-medium text-foreground">
         {model.title}
-        {#if inUse}<Badge tone="neutral"><Check class="size-2.5" />{$t('voice.inUse')}</Badge>
-        {:else if model.featured}<Badge>{$t('voice.catalog.featured')}</Badge>{/if}
+        <!-- Plain grey words, not chips: in use and recommended are facts about the row. -->
+        {#if inUse}<span class="row-note is-live"><span class="live-dot" aria-hidden="true"></span>{$t('voice.inUse')}</span>
+        {:else if model.featured}<span class="row-note">· {$t('voice.catalog.featured')}</span>{/if}
         {#if model.status && model.status !== 'supported' && model.status !== 'community'}<Badge tone="warning">{$t(`voice.catalog.status.${model.status}`, { default: model.status })}</Badge>{/if}
       </p>
       {#if description(model)}<p class="line-clamp-2 text-xs text-muted-foreground">{description(model)}</p>{/if}
@@ -197,10 +198,13 @@
       <p class="mt-0.5 text-xs text-muted-foreground">
         {[languages(model), model.voices.length ? `${model.voices.length} ${$t('voice.engine.voices')}` : '', size(model), model.license].filter(Boolean).join(' · ')}
       </p>
+      <!-- A model that runs well says nothing; only a problem earns a line. -->
+      {#if needsClone(model) || fit !== 'good'}
       <p class="fit" data-fit={needsClone(model) ? 'no' : fit}>
         <span class="fit-dot" aria-hidden="true"></span>
         {needsClone(model) ? $t('voice.catalog.needsReference') : $t(`voice.catalog.fit.${fit}`)}
       </p>
+      {/if}
       {#if state === 'downloading'}
         <div class="mt-2 flex items-center gap-2">
           <Progress label={model.title} value={speechEngine.progress(model)} />
@@ -214,14 +218,14 @@
       {#if state === 'downloading'}
         <Button variant="ghost" size="sm" onclick={() => void cancel(model)}><X /> {$t('voice.cancel')}</Button>
       {:else if state === 'failed'}
-        <Button variant="outline" size="sm" onclick={() => void download(model)}><RotateCcw /> {$t('voice.retry')}</Button>
+        <Button variant="ghost" size="sm" onclick={() => void download(model)}><RotateCcw /> {$t('voice.retry')}</Button>
       {:else if state === 'installed'}
-        {#if !inUse && (!model.needsReference || hasClones)}<Button variant="outline" size="sm" onclick={() => void speechEngine.use(model)}>{$t('voice.engine.use')}</Button>{/if}
+        {#if !inUse && (!model.needsReference || hasClones)}<Button variant="ghost" size="sm" onclick={() => void speechEngine.use(model)}>{$t('voice.engine.use')}</Button>{/if}
         <Tooltip label={$t('voice.engine.delete')} position="bottom"><IconButton label={$t('voice.engine.deleteTitle', { values: { name: model.title } })} variant="ghost" size="sm" onclick={() => remove(model)} >
           <Trash2 />
         </IconButton></Tooltip>
       {:else}
-        <Button variant="outline" size="sm" disabled={!speechEngine.bundled || fit === 'no'} onclick={() => void download(model)}>
+        <Button variant="ghost" size="sm" disabled={!speechEngine.bundled || fit === 'no'} onclick={() => void download(model)}>
           <Download /> {size(model) ? $t('voice.engine.download', { values: { size: size(model) } }) : $t('voice.download')}
         </Button>
       {/if}
@@ -245,6 +249,20 @@
     padding: 0.75rem 1rem;
   }
 
+  .row-note {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3125rem;
+    color: var(--muted-foreground);
+    font-size: var(--text-xs);
+    font-weight: 400;
+  }
+  .live-dot {
+    width: 0.375rem;
+    height: 0.375rem;
+    border-radius: var(--radius-full);
+    background: var(--success);
+  }
   .fit {
     display: flex;
     align-items: center;

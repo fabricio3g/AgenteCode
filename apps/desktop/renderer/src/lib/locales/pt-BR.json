@@ -339,6 +339,30 @@
       "voice": "{model}",
       "noModel": "Not set up — add a provider or a local model in Settings",
       "noVoice": "Off — download a voice in Settings → Voice"
+    },
+    "rail": {
+      "notSet": "Não configurado",
+      "optional": "Opcional"
+    },
+    "prefs": {
+      "languageDesc": "Menus, rótulos e formato de data",
+      "themeDesc": "Mude quando quiser pela barra de título",
+      "smaller": "Menor",
+      "default": "Padrão",
+      "larger": "Maior",
+      "legibleFont": "Fonte legível"
+    },
+    "startIn": {
+      "title": "Começar em",
+      "home": "Perguntar, pesquisar e escrever",
+      "code": "Trabalhar em uma pasta de projeto",
+      "design": "Telas e páginas em HTML",
+      "roleplay": "Personagens e cenas",
+      "open": "Abrir {space}"
+    },
+    "keys": {
+      "skip": "Esc para pular",
+      "pick": "1–4 para escolher"
     }
   },
   "common": {

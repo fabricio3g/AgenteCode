@@ -9,8 +9,8 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { t } from 'svelte-i18n';
-  import { Check, Download, LoaderCircle } from 'lucide-svelte';
-  import { Badge, Button } from '$lib/components/ui';
+  import { Download, LoaderCircle } from 'lucide-svelte';
+  import { Button } from '$lib/components/ui';
   import { listen } from '$lib/services/bridge';
   import { speechEngine } from '$lib/stores/speech-engine.svelte';
   import { toastStore } from '$lib/stores/toast.svelte';
@@ -36,7 +36,7 @@
     });
     try {
       await setupSpeech(recommended.quality);
-      speech = await listSpeechModels().catch(() => speech);
+      speech = (await listSpeechModels().catch(() => speech)) ?? [];
     } catch (error) {
       toastStore.error((error as Error)?.message || String(error));
     } finally {
@@ -47,7 +47,7 @@
 
   onMount(() => {
     void speechEngine.refresh();
-    void listSpeechModels().then((list) => (speech = list)).catch(() => {});
+    void listSpeechModels().then((list) => (speech = list ?? [])).catch(() => {});
   });
 </script>
 
@@ -79,11 +79,11 @@
           <p class="text-xs text-muted-foreground">{dictation ? $t('onboarding.voice.dictationReady') : $t('onboarding.voice.dictationHint')}</p>
         </div>
         {#if dictation}
-          <Badge tone="success"><Check class="size-2.5" />{$t('onboarding.installed')}</Badge>
+          <span class="setup-state"><span class="setup-dot" aria-hidden="true"></span>{$t('onboarding.installed')}</span>
         {:else if dictationBusy}
           <span class="text-xs tabular-nums text-muted-foreground"><LoaderCircle class="mr-1 inline size-3.5 animate-spin" />{Math.round(dictationProgress)}%</span>
         {:else}
-          <Button variant="outline" size="sm" disabled={!recommended} onclick={() => void setUpDictation()}>
+          <Button variant="ghost" size="sm" disabled={!recommended} onclick={() => void setUpDictation()}>
             <Download /> {recommended ? $t('onboarding.voice.dictationDownload', { values: { size: Math.round(recommended.bytes / 1e6) } }) : $t('onboarding.download')}
           </Button>
         {/if}

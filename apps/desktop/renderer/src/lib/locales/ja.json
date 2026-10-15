@@ -339,6 +339,30 @@
       "voice": "{model}",
       "noModel": "Not set up — add a provider or a local model in Settings",
       "noVoice": "Off — download a voice in Settings → Voice"
+    },
+    "rail": {
+      "notSet": "未設定",
+      "optional": "任意"
+    },
+    "prefs": {
+      "languageDesc": "メニュー、ラベル、日付の形式",
+      "themeDesc": "タイトルバーからいつでも変更できます",
+      "smaller": "小さく",
+      "default": "標準",
+      "larger": "大きく",
+      "legibleFont": "読みやすいフォント"
+    },
+    "startIn": {
+      "title": "最初に開く場所",
+      "home": "質問・調査・執筆",
+      "code": "プロジェクトフォルダで作業",
+      "design": "画面やページをHTMLで",
+      "roleplay": "キャラクターとシーン",
+      "open": "{space}を開く"
+    },
+    "keys": {
+      "skip": "Escでスキップ",
+      "pick": "1–4で選択"
     }
   },
   "common": {
