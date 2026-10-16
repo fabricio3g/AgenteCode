@@ -10,7 +10,7 @@
   import UiIconButton from '$lib/components/ui/IconButton.svelte';
   import { cn as uiClass } from '$lib/utils/cn';
 
-  import { Button, Tooltip } from '$lib/components/ui';
+  import { Button, PaneHeader, Tooltip } from '$lib/components/ui';
   import { conversationScope } from '$shared/workspace-scope';
   import { t } from 'svelte-i18n';
   import { ChevronRight, ExternalLink, Play, Square, Trash2 } from 'lucide-svelte';
@@ -120,20 +120,22 @@
   <!-- The selected process, inset like the browser's page -->
   <div class="proc-output">
     {#if selected}
-      <div class="proc-head">
+      <PaneHeader class="proc-head">
         <span class="min-w-0 flex-1 truncate font-mono text-foreground" title={selected.command}>{selected.command}</span>
         <span class="shrink-0 tabular-nums">{status(selected)} · {elapsed(selected)}</span>
-        {#each selected.urls as url (url)}
-          <Button variant="outline" size="sm" type="button" onclick={() => openUrl(url)} title={$t('codeWs.openInBrowser')}>
-            <ExternalLink /> {url.replace(/^https?:\/\//, '')}
-          </Button>
-        {/each}
-        {#if selected.status === 'running'}
-          <Button variant="outline" size="sm" class="hover:text-error" type="button" onclick={() => void codeWorkspace.stopProcess(selected.id)}>
-            <Square /> {$t('codeWs.stop')}
-          </Button>
-        {/if}
-      </div>
+        {#snippet actions()}
+          {#each selected.urls as url (url)}
+            <Button variant="outline" size="sm" type="button" onclick={() => openUrl(url)} title={$t('codeWs.openInBrowser')}>
+              <ExternalLink /> {url.replace(/^https?:\/\//, '')}
+            </Button>
+          {/each}
+          {#if selected.status === 'running'}
+            <Button variant="outline" size="sm" class="hover:text-error" type="button" onclick={() => void codeWorkspace.stopProcess(selected.id)}>
+              <Square /> {$t('codeWs.stop')}
+            </Button>
+          {/if}
+        {/snippet}
+      </PaneHeader>
       <pre
         class="proc-log"
         bind:this={viewport}
@@ -251,26 +253,14 @@
     background: var(--muted);
   }
 
-  .proc-head {
-    display: flex;
-    height: 2rem;
-    flex-shrink: 0;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0 0.4rem 0 0.75rem;
-    color: var(--muted-foreground);
-    font-size: var(--text-xs);
-  }
-  .proc-head :is(.font-mono, :global(.font-mono.ui-local-7dc5fc69)) {
-    font-size: var(--text-xs);
-  }
+  :global(.proc-head) { font-size: var(--text-xs); }
 
   .proc-log {
     min-height: 0;
     flex: 1;
     overflow: auto;
     margin: 0;
-    /* The head above is a chip row with no padding of its own, so the first log
+    /* The head above carries no padding below it, so the first log
        line needs the top inset it never had. */
     padding: 0.35rem 0.75rem 0.6rem;
     white-space: pre;

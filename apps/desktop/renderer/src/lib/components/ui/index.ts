@@ -7,6 +7,7 @@ export { default as Field } from './Field.svelte';
 export { default as FilterChip } from './FilterChip.svelte';
 export { default as FilterBar } from './FilterBar.svelte';
 export { default as PageHeader } from './PageHeader.svelte';
+export { default as PaneHeader } from './PaneHeader.svelte';
 export { default as IconButton } from './IconButton.svelte';
 export { default as Input } from './Input.svelte';
 export { default as Menu } from './Menu.svelte';

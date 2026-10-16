@@ -18,7 +18,7 @@
 
   import { t } from 'svelte-i18n';
   import { ArrowRight, Check, EyeOff, Highlighter, ChevronLeft, ChevronRight, Circle, ImagePlus, Minus, MousePointer2, Move, Pencil, Plus, RotateCcw, RotateCw, Square, SquareDashed, Trash2, Type, Upload, X } from 'lucide-svelte';
-  import { Button, IconButton, Menu, Tooltip } from '$lib/components/ui';
+  import { Button, IconButton, Menu, PaneHeader, Tooltip } from '$lib/components/ui';
   import CanvasSurface from './CanvasSurface.svelte';
   import { getCanvasBoard } from './canvas-context';
   const canvasBoard = getCanvasBoard();
@@ -336,10 +336,9 @@
 
     {#if showPoints}
       <aside class="canvas-float canvas-sheet" aria-label={$t('canvas.pointsList')}>
-        <div class="canvas-sheet-head">
-          <span class="canvas-sheet-title">{$t('canvas.points', { values: { n: String(points.length) } })}</span>
-          <IconButton label={$t('canvas.hidePoints')} size="sm" onclick={() => (showPoints = false)}><ChevronRight /></IconButton>
-        </div>
+        <PaneHeader title={$t('canvas.points', { values: { n: String(points.length) } })}>
+          {#snippet actions()}<IconButton label={$t('canvas.hidePoints')} size="sm" onclick={() => (showPoints = false)}><ChevronRight /></IconButton>{/snippet}
+        </PaneHeader>
         {#if selected}
           <label class="canvas-field">{$t(selected.kind === 'text' ? 'canvas.textContent' : 'canvas.markInstruction')}
             <UiInput class={uiClass("", "ui-local-ad62cefe")} value={selected.text ?? ''} placeholder={$t('canvas.markInstructionHint')} oninput={(event) => canvasBoard.previewMark({ ...selected, text: event.currentTarget.value })} onchange={(event) => { canvasBoard.label(selected.id, event.currentTarget.value); canvasBoard.previewMark(null); }} />
@@ -429,8 +428,6 @@
   :global(.canvas-chip.ui-local-ad62cefe) :global(svg) { width: 0.875rem; height: 0.875rem; }
   .canvas-sheet { top: 3.75rem; right: 0.625rem; bottom: 0.75rem; width: min(17rem, 40%); flex-direction: column; align-items: stretch; gap: 0.5rem; overflow-y: auto; padding: 0.5rem; }
   @media (max-height: 30rem) { .canvas-sheet { top: 3.75rem; bottom: 3.5rem; } }
-  .canvas-sheet-head { display: flex; align-items: center; justify-content: space-between; }
-  .canvas-sheet-title { font-size: var(--text-xs); font-weight: 600; color: var(--muted-foreground); }
   .canvas-field { display: flex; flex-direction: column; gap: 0.25rem; font-size: var(--text-xs); color: var(--muted-foreground); }
   .canvas-points { display: flex; min-height: 0; flex-direction: column; gap: 0.0625rem; }
   .canvas-point { display: flex; align-items: center; gap: 0.375rem; padding: 0.125rem 0.25rem; border-radius: var(--float-row-radius); }

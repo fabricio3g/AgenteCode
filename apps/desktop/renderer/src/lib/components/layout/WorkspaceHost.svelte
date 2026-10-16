@@ -4,7 +4,7 @@
   import UiIconButton from '$lib/components/ui/IconButton.svelte';
   import { cn as uiClass } from '$lib/utils/cn';
 
-  import { Tooltip } from '$lib/components/ui';
+  import { PaneHeader, Tooltip } from '$lib/components/ui';
   import { onMount, type Snippet } from 'svelte';
   import { t } from 'svelte-i18n';
   import { Maximize2, Minimize2, MoreHorizontal, PanelBottom, PanelRight, PanelsTopLeft, RotateCcw, X } from 'lucide-svelte';
@@ -197,8 +197,7 @@
     <!-- All content has one stable owner. Changing groups only changes geometry/visibility. -->
     <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
     <section class="workspace-panel" class:floating={placement?.region === null} class:resize-ready={resizeHover === panel.id || resizeActive === panel.id} hidden={!exposed} style="{position(rect)}z-index:{placement?.z ?? 1}" data-workspace-panel={panel.id} data-workspace-z={placement?.z ?? 1} aria-label={panel.title} onpointerdown={() => { if (workspaceLayout.focused !== panel.id) workspaceLayout.activate(panel.id); }}>
-      <!-- svelte-ignore a11y_no_static_element_interactions -->
-      <header class="workspace-header" onpointerdown={(event) => { if (!(event.target as HTMLElement).closest('button,input')) movePanel(event, panel.id, true); }}>
+      <PaneHeader class="workspace-header" onpointerdown={(event) => { if (!(event.target as HTMLElement).closest('button,input')) movePanel(event, panel.id, true); }}>
         <div class="workspace-tabs" role="tablist" aria-label={$t('workspace.panels')}>
           {#each placement?.group.panels ?? [panel.id] as id (id)}
             {@const item = byId.get(id)}
@@ -213,6 +212,7 @@
             {/if}
           {/each}
         </div>
+        {#snippet actions()}
         {#if placement?.region === null}<Tooltip label={$t(placement.maximized ? 'workspace.restore' : 'workspace.maximize')} position="bottom"><UiIconButton label={$t(placement.maximized ? 'workspace.restore' : 'workspace.maximize')} size="xs" type="button" class={uiClass(" ", "ui-local-c24761b3")}  onclick={() => workspaceLayout.maximize(panel.id)}>{#if placement.maximized}<Minimize2 />{:else}<Maximize2 />{/if}</UiIconButton></Tooltip>{/if}
         <Menu placement="bottom-end" label={$t('workspace.actions')} minWidth="12rem">
           {#snippet trigger(props)}<UiIconButton label={$t('workspace.actions')} size="xs" type="button" class={uiClass(" ", "ui-local-c24761b3")}  {...props}><MoreHorizontal /></UiIconButton>{/snippet}
@@ -230,7 +230,8 @@
           <MenuItem icon={RotateCcw} label={$t('workspace.reset')} onselect={() => workspaceLayout.reset()} />
         </Menu>
         <Tooltip label={$t('workspace.hide', { values: { name: panel.title } })} position="bottom"><UiIconButton label={$t('workspace.hide', { values: { name: panel.title } })} size="xs" type="button" class={uiClass(" ", "ui-local-c24761b3")}  onclick={() => hide(panel)}><X /></UiIconButton></Tooltip>
-      </header>
+        {/snippet}
+      </PaneHeader>
       <div class="workspace-content">{@render panel.content({ id: panel.id, exposed, focused: exposed && workspaceLayout.focused === panel.id, rect })}</div>
     </section>
   {/each}
@@ -271,7 +272,7 @@
   .workspace-panel.floating::after { border-color:var(--border); }
   .workspace-panel.resize-ready::after { border-color: var(--split-line); }
   /* The strip owns the panel's top edge: no fill, just a hairline under it. */
-  .workspace-header { display: flex; align-items: center; flex-shrink: 0; gap: 2px; height: 32px; padding: 0 6px 0 8px; cursor: grab; touch-action: none; box-shadow: none; }
+  :global(.workspace-header) { cursor: grab; touch-action: none; }
 
 
   .workspace-tabs { display: flex; min-width: 0; flex: 1; gap: 2px; overflow-x: auto; scrollbar-width: none; }

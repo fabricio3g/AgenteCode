@@ -12,7 +12,7 @@
   import UiIconButton from '$lib/components/ui/IconButton.svelte';
   import { cn as uiClass } from '$lib/utils/cn';
 
-  import { Button, Tooltip } from '$lib/components/ui';
+  import { Button, PaneHeader, Tooltip } from '$lib/components/ui';
   import { conversationScope } from '$shared/workspace-scope';
   import { t } from 'svelte-i18n';
   import { FileCode2, FolderOpen, GitBranch, LoaderCircle, RefreshCw, Undo2, X } from 'lucide-svelte';
@@ -136,8 +136,7 @@
 </script>
 
 <aside class="changes" aria-label={$t('codeWs.changes')}>
-  <!-- The same slim bar as the browser panel's. -->
-  <header class="changes-bar">
+  <PaneHeader>
     <p class="min-w-0 flex-1 truncate" title={list?.source === 'checkpoints' ? $t('codeWs.checkpointNote') : undefined}>
       {#if !embedded}<span class="font-medium text-foreground">{$t('codeWs.changes')}</span>{/if}
       {#if branch}
@@ -148,11 +147,13 @@
         <span class="ml-1 tabular-nums"><span class="text-success">+{totals.add}</span> <span class="text-error">−{totals.del}</span></span>
       {/if}
     </p>
+    {#snippet actions()}
     <Tooltip label={$t('codeWs.refresh')} position="bottom"><UiIconButton label={$t('codeWs.refresh')} size="xs" type="button" class={uiClass(" ", "ui-local-8f978f5f")} onclick={refresh} disabled={codeWorkspace.changeLoading[chatId]} >
       <RefreshCw class={codeWorkspace.changeLoading[chatId] ? 'animate-spin' : ''} />
     </UiIconButton></Tooltip>
     {#if !embedded}<Tooltip label={$t('codeWs.close')} position="bottom"><UiIconButton label={$t('codeWs.close')} size="xs" type="button" class={uiClass(" ", "ui-local-8f978f5f")} onclick={() => codeWorkspace.toggleChanges(false)} ><X /></UiIconButton></Tooltip>{/if}
-  </header>
+    {/snippet}
+  </PaneHeader>
 
   {#if !list && codeWorkspace.changeLoading[chatId]}
     <div class="flex flex-1 items-center justify-center"><LoaderCircle class="size-4 animate-spin text-muted-foreground" /></div>
@@ -228,15 +229,6 @@
     background: var(--card);
   }
 
-  .changes-bar {
-    display: flex;
-    height: 2.25rem;
-    flex-shrink: 0;
-    align-items: center;
-    gap: 0.125rem;
-    padding: 0 0.3rem 0 0.75rem;
-    font-size: var(--text-sm);
-  }
 
   /* The branch sits beside the file count, quiet enough to not read as a count. */
   .branch-label {

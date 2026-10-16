@@ -15,7 +15,7 @@
 <script lang="ts">
   import UiIconButton from '$lib/components/ui/IconButton.svelte';
 
-  import { Tooltip } from '$lib/components/ui';
+  import { PaneHeader, Tooltip } from '$lib/components/ui';
   import { t } from 'svelte-i18n';
   import { FolderTree, LoaderCircle, RefreshCw, X } from 'lucide-svelte';
   import { workspaceLayout as defaultLayout, type WorkspaceLayoutStore } from '$lib/stores/workspace-layout.svelte';
@@ -128,16 +128,18 @@
 </script>
 
 <aside class="files" aria-label={$t('codeWs.files')}>
-  <header class="files-bar">
+  <PaneHeader>
     <p class="min-w-0 flex-1 truncate">
       {#if !embedded}<span class="font-medium text-foreground">{$t('codeWs.files')}</span>{/if}
       {#if files}<span class="ml-1.5 text-muted-foreground">{$t('codeWs.fileCount', { values: { n: files.length } })}</span>{/if}
     </p>
+    {#snippet actions()}
     <Tooltip label={$t('codeWs.refresh')} position="bottom"><UiIconButton label={$t('codeWs.refresh')} size="xs" type="button"  onclick={refresh} disabled={loading} >
       <RefreshCw class={loading ? 'animate-spin' : ''} />
     </UiIconButton></Tooltip>
     {#if !embedded}<Tooltip label={$t('codeWs.close')} position="bottom"><UiIconButton label={$t('codeWs.close')} size="xs" type="button"  onclick={hide} ><X /></UiIconButton></Tooltip>{/if}
-  </header>
+    {/snippet}
+  </PaneHeader>
 
   {#if loading}
     <div class="flex flex-1 items-center justify-center"><LoaderCircle class="size-4 animate-spin text-muted-foreground" /></div>
@@ -165,16 +167,6 @@
 
 <style>
   .files { display: flex; min-height: 0; width: 100%; height: 100%; flex: 1; flex-direction: column; background: var(--card); }
-  /* The Changes pane's bar, to the pixel: the two panels sit in the same dock. */
-  .files-bar {
-    display: flex;
-    height: 2.25rem;
-    flex-shrink: 0;
-    align-items: center;
-    gap: 0.125rem;
-    padding: 0 0.3rem 0 0.75rem;
-    font-size: var(--text-sm);
-  }
   /* Rows are 1.375rem tiles: the gap keeps a hovered row from touching the next,
      and the top inset keeps the first one off the bar. */
   .files-tree { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 0.125rem; padding: 0.25rem 4px 4px; outline: none; }

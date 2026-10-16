@@ -10,6 +10,7 @@
   import { browserPanelStore } from '$lib/stores/browser-panel.svelte';
   import WorkspaceHost from '$lib/components/layout/WorkspaceHost.svelte';
   import IconButton from '$lib/components/ui/IconButton.svelte';
+  import { PaneHeader } from '$lib/components/ui';
   import { displayChatTitle } from '$lib/features/shared/session-title';
   import PanelTabs from '$lib/components/layout/PanelTabs.svelte';
   import type { WorkspacePanel, PanelRenderState } from '$lib/components/layout/workspace-panel';
@@ -60,11 +61,12 @@
        A split gives every pane its own header, since each needs its own tools. -->
   {#if split}
     <!-- svelte-ignore a11y_no_static_element_interactions -->
-    <header class="conversation-header pane-head" {oncontextmenu} data-conversation-header={chat.id}>
-      <span class="title truncate" title={displayChatTitle(chat)}>{displayChatTitle(chat)}</span>
-      <div class="conversation-tools"><PanelTabs inline {chat} {project} {layout} {browser} /></div>
-      <IconButton class="close" label={$t('code.pane.close')} onclick={onclose}><X /></IconButton>
-    </header>
+    <PaneHeader class="conversation-header" {oncontextmenu} data-conversation-header={chat.id} title={displayChatTitle(chat)}>
+      {#snippet actions()}
+        <div class="conversation-tools"><PanelTabs inline {chat} {project} {layout} {browser} /></div>
+        <IconButton class="close" label={$t('code.pane.close')} onclick={onclose}><X /></IconButton>
+      {/snippet}
+    </PaneHeader>
   {/if}
   <WorkspaceHost {panels} {layout}><CodeSurface {chat} /></WorkspaceHost>
 </div>
@@ -91,9 +93,8 @@
 
 <style>
   .conversation-workspace { display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; }
-  .conversation-header { display:flex;align-items:center;gap:0.375rem;height:36px;flex-shrink:0;min-width:0;padding-inline:0.5rem;container-type:inline-size; }
-  .conversation-header .title {flex:1;min-width:0;color:var(--foreground);font-weight:500;font-size:var(--text-sm);}
+  :global(.conversation-header) { container-type:inline-size; }
   .conversation-tools {display:flex;justify-content:flex-end;min-width:0;flex:0 0 auto;margin-left:auto;}
-  @container (max-width:26rem) { .conversation-header :global(.changes-badge) {display:none;} }
+  @container (max-width:26rem) { :global(.conversation-header .changes-badge) {display:none;} }
 
 </style>
