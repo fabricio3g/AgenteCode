@@ -137,6 +137,8 @@
     "languageDesc": "Elige el idioma de la interfaz.",
     "roleplay": "Roleplay",
     "roleplayDesc": "Activa el espacio de Roleplay: fichas de personaje, personas y escenas inmersivas.",
+    "bots": "Bots",
+    "botsDesc": "Activa el espacio de Bots: agentes con sus propios chats y rutinas.",
     "title": "General",
     "description": "Tu nombre, el idioma y cómo se comportan los chats.",
     "profile": "Perfil",

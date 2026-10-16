@@ -137,6 +137,8 @@
     "languageDesc": "Wählen Sie die Anzeigesprache für die Oberfläche.",
     "roleplay": "Rollenspiel",
     "roleplayDesc": "Zeigt den Rollenspiel-Bereich mit Figuren, Welten und Szenen.",
+    "bots": "Bots",
+    "botsDesc": "Zeigt den Bots-Bereich mit Agenten, eigenen Chats und Routinen.",
     "title": "Allgemein",
     "description": "Dein Name, die Sprache und das Chatverhalten.",
     "profile": "Profil",

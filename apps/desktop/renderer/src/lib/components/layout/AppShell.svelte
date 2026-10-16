@@ -8,7 +8,6 @@
   import { conversationScope } from '$shared/workspace-scope';
   import { t } from 'svelte-i18n';
   import Titlebar from '$lib/components/layout/Titlebar.svelte';
-  import ActivityRail from '$lib/components/layout/ActivityRail.svelte';
   import Sidebar from '$lib/components/layout/Sidebar.svelte';
   import HomeSurface from '$lib/features/home/HomeSurface.svelte';
   import ConversationPanes from '$lib/features/code/ConversationPanes.svelte';
@@ -145,7 +144,7 @@
   function closeSettings() {
     appStore.closeSettings();
     // The sidebar is hidden while Settings is up, so the way back is the space
-    // tab: whatever surface returns to already knows where to put the caret.
+    // tab (when the sidebar returns with it): the surface knows where the caret goes.
     const tab = appStore.activeTab === 'bots' ? 'home' : appStore.activeTab;
     requestAnimationFrame(() => document.getElementById(`space-tab-${tab}`)?.focus());
   }
@@ -286,13 +285,9 @@
 
 <!-- The window is the sidebar's plane; the title bar and content are one
      sheet resting on it (see .canvas-sheet). -->
-<div data-desktop-shell class="relative flex h-full overflow-hidden bg-sidebar text-foreground" class:caption-overlay={captionOverlay}>
-  <!-- The activity rail is always on: spaces, Settings, downloads and theme
-       stay one click away even while Settings owns the content area. Only the
-       collapsible sidebar hides. -->
-  <ActivityRail />
-  <!-- Full-height sidebar (Flaxeo pattern): rail | sidebar | titlebar+main.
-       Settings hides the sidebar, never the rail. -->
+<div data-desktop-shell class="relative flex h-full overflow-hidden bg-sidebar text-foreground" class:caption-overlay={captionOverlay} class:sheet-alone={!appStore.sidebarOpen || settingsShowing}>
+  <!-- Full-height sidebar: sidebar | titlebar+main. The spaces head it
+       (SpaceSwitcher) and Settings is its footer row; Settings hides it. -->
   {#if !settingsShowing}
     <div
       class="sidebar-outer relative flex shrink-0 flex-col bg-sidebar"
@@ -307,12 +302,10 @@
         class:preview={!appStore.sidebarOpen && peek.open}
         inert={!appStore.sidebarOpen && !peek.open}
       >
-        {#if !appStore.sidebarOpen && peek.open}
-          <!-- The preview runs to the top of the window, over the title bar's
-               corner, so it carries the bar's own buttons in the same spot. -->
-          <div class="preview-bar"><TitlebarLeftTools expanded onToggle={toggleSidebar} /></div>
-        {/if}
-        <Sidebar onNavigate={() => peek.toggled()} />
+        <!-- The preview floats over the title bar's corner, so its head row
+             carries the bar's toggle in the same spot, before the spaces. -->
+        {#snippet previewLead()}<TitlebarLeftTools expanded onToggle={toggleSidebar} />{/snippet}
+        <Sidebar onNavigate={() => peek.toggled()} lead={!appStore.sidebarOpen && peek.open ? previewLead : undefined} />
       </div>
     </div>
 
@@ -463,8 +456,9 @@
   }
 
   /* The canvas sheet: inset from the window on the top, right and bottom, flush
-     against the sidebar, lifted by its shadow. The sidebar and rail are the
-     ground it rests on, so no seam line is drawn between them. */
+     against the sidebar, lifted by its shadow. The sidebar is the ground it
+     rests on, so no seam line is drawn between them; with the sidebar away
+     the sheet takes the gap on its left too. */
   .canvas-sheet {
     margin: var(--sheet-gap) var(--sheet-gap) var(--sheet-gap) 0;
     border-radius: var(--sheet-radius);
@@ -472,6 +466,7 @@
     overflow: hidden;
     isolation: isolate;
   }
+  .sheet-alone .canvas-sheet { margin-left: var(--sheet-gap); }
   .caption-overlay .canvas-sheet {
     margin-top: 0;
     margin-right: 0;
@@ -508,22 +503,15 @@
     z-index: var(--z-float);
     top: var(--sheet-gap);
     bottom: var(--sheet-gap);
-    left: var(--rail-w);
+    left: var(--sheet-gap);
     right: auto;
-    max-width: calc(100vw - var(--rail-w) - 1rem);
+    max-width: calc(100vw - 1rem);
     background: var(--sidebar);
     border-radius: var(--sheet-radius);
     box-shadow: var(--shadow-xl);
   }
   /* Windows: the sheet runs to the window's top edge, so the preview does too. */
   .caption-overlay .sidebar-view-full.preview { top: 0; }
-
-  .preview-bar {
-    display: flex;
-    height: 2.25rem;
-    flex-shrink: 0;
-    align-items: center;
-  }
 
   @media (prefers-reduced-motion: reduce) {
     .sidebar-outer { transition: none; will-change: auto; }

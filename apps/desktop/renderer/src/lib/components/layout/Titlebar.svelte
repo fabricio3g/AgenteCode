@@ -128,7 +128,7 @@
 -->
 
 <!-- Downloads and theme ride the titlebar right; spaces and Settings live in
-     the activity rail. Code pane toggles live with each conversation. -->
+     the sidebar (SpaceSwitcher heads it). Code pane toggles live with each conversation. -->
 {#snippet appTools()}
   <div class="flex items-center gap-0.5">
     {#if toolsHere && codeChat && codeProject}
@@ -181,7 +181,7 @@
   {#if settingsOpen}
     <!-- Seamless sidebar continuation to topbar -->
     <div
-      class="pointer-events-none absolute inset-y-0 left-0 w-[236px] border-r border-[var(--border)] bg-sidebar"
+      class="pointer-events-none absolute inset-y-0 left-0 w-[236px] border-r border-[var(--border)] bg-[var(--sheet-rail)]"
       aria-hidden="true"
     ></div>
   {/if}

@@ -1112,6 +1112,8 @@ export interface AppConfig {
     home_tools_disabled?: string[];
     /** Enables the Roleplay space (tab, surface and settings section). */
     roleplay_enabled?: boolean;
+    /** Enables the Bots space (tab and screen). */
+    bots_enabled?: boolean;
     /** Set once the starter kit has been offered, so deleting it stays deleted. */
     roleplay_starter_kit?: boolean;
     /**

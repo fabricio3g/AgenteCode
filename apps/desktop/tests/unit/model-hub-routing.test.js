@@ -42,17 +42,14 @@ describe('manager routing', () => {
 describe('models and settings shell integration', () => {
   // Models, providers and preferences are all sections of the Settings screen,
   // so the shell has one door to that room, not two — and no Runtime either.
-  // The door lives in the always-on activity rail, not the collapsible sidebar.
-  it('leaves one settings entry in the activity rail and none in the sidebar', () => {
-    const rail = readFileSync('renderer/src/lib/components/layout/ActivityRail.svelte', 'utf8');
+  // The door is the sidebar footer's row; the space switcher heading the
+  // sidebar carries none.
+  it('leaves one settings entry in the sidebar footer and none in the space switcher', () => {
+    const spaces = readFileSync('renderer/src/lib/components/layout/SpaceSwitcher.svelte', 'utf8');
     const sidebar = readFileSync('renderer/src/lib/components/layout/Sidebar.svelte', 'utf8');
-    // Labels are translated: one settings button, its tooltip and accessible
-    // name sharing the message key.
-    assert.equal((rail.match(/data-activity-settings/g) || []).length, 1);
-    assert.ok(rail.includes("$t('sidebar.settings')"));
-    assert.equal((sidebar.match(/sidebar\.settings/g) || []).length, 0);
-    assert.equal((rail.match(/sidebar\.models|>Models</g) || []).length, 0);
-    assert.equal((rail.match(/sidebar\.runtime|>Runtime</g) || []).length, 0);
+    assert.equal((sidebar.match(/data-sidebar-settings/g) || []).length, 1);
+    assert.ok(sidebar.includes("$t('sidebar.settings')"));
+    assert.equal((spaces.match(/sidebar\.settings|openSettings/g) || []).length, 0);
     assert.equal((sidebar.match(/sidebar\.models|>Models</g) || []).length, 0);
     assert.equal((sidebar.match(/sidebar\.runtime|>Runtime</g) || []).length, 0);
   });
@@ -77,13 +74,9 @@ describe('models and settings shell integration', () => {
     assert.ok(host > 0 && screen > host, 'the screen is layered above the workspace, not inside it');
   });
 
-  it('opens Settings from the activity rail through the screen, not the old modal flags', () => {
-    const rail = readFileSync('renderer/src/lib/components/layout/ActivityRail.svelte', 'utf8');
+  it('opens Settings from the sidebar through the screen, not the old modal flags', () => {
     const sidebar = readFileSync('renderer/src/lib/components/layout/Sidebar.svelte', 'utf8');
-    assert.equal((rail.match(/appStore\.openSettings\('/g) || []).length, 1);
-    assert.equal((sidebar.match(/appStore\.openSettings\('/g) || []).length, 0);
-    assert.doesNotMatch(rail, /modelManagerOpen/);
-    // The rail never collapses: its settings button is always there to return to.
-    assert.match(rail, /data-activity-settings/);
+    assert.equal((sidebar.match(/appStore\.openSettings\('/g) || []).length, 1);
+    assert.doesNotMatch(sidebar, /modelManagerOpen/);
   });
 });

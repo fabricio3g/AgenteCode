@@ -227,7 +227,8 @@ class AppStore {
 
   /** The top-bar tab that is showing: a space, or Bots. */
   get activeTab(): ChatContextMode | 'bots' {
-    return this.botsOpen ? 'bots' : this.activeSpace;
+    // A Bots tab persisted before the space was switched off falls back to the space.
+    return this.botsOpen && this.botsEnabled ? 'bots' : this.activeSpace;
   }
   /** The artifact open on the Artifacts screen (`chatId:messageId:index`), or the library. */
   artifactScreenKey = $state<string | null>(null);
@@ -3585,6 +3586,7 @@ class AppStore {
     home_tools_disabled?: string[];
     composer_mode_control?: 'tabs' | 'auto';
     roleplay_enabled?: boolean;
+    bots_enabled?: boolean;
     editor?: string;
   }) {
     await this.commitConfig(mergeUiSettingsConfig(this.config, partial));
@@ -3613,6 +3615,19 @@ class AppStore {
     // Leaving the space while it is disabled must not strand the user in it.
     if (!enabled && this.activeSpace === 'roleplay') {
       this.setActiveSpace('home');
+    }
+  }
+
+  /** Whether the Bots space is enabled (Settings → General). */
+  get botsEnabled(): boolean {
+    return this.config.ui?.bots_enabled !== false;
+  }
+
+  async setBotsEnabled(enabled: boolean) {
+    await this.updateUiSettings({ bots_enabled: enabled });
+    if (!enabled && this.botsOpen) {
+      this.botsOpen = false;
+      this.persist();
     }
   }
 

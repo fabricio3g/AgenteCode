@@ -9,9 +9,9 @@
   else. Switching between "Library" and "General" no longer swaps the whole
   left column.
 
-  It is a sidebar, not a second nav language: the column carries the sidebar's
-  own plane (--sidebar) closed by the same 1px seam as the app sidebar, and
-  every row rides app.css `.sidebar-row` — one height, one radius, one hover
+  It is a sidebar, not a second nav language: the column carries the rail
+  plane (--sheet-rail: the sidebar's grey in light, one step under the sheet
+  in dark) closed by the same 1px seam as the app sidebar, and every row rides app.css `.sidebar-row` — one height, one radius, one hover
   and current fill, one focus ring, shared with the conversation list next
   door. Group titles use `.sidebar-section`, status dots use `.sidebar-dot`.
 
@@ -112,7 +112,7 @@
 
 <aside
   bind:this={rail}
-  class="flex shrink-0 flex-col gap-2 overflow-hidden border-b border-[var(--border)] bg-sidebar px-3 py-2.5 md:w-[236px] md:border-b-0 md:border-r md:pt-2 md:pb-4"
+  class="flex shrink-0 flex-col gap-2 overflow-hidden border-b border-[var(--border)] bg-[var(--sheet-rail)] px-3 py-2.5 md:w-[236px] md:border-b-0 md:border-r md:pt-2 md:pb-4"
   aria-label={$t('settingsNav.label')}
 >
   <div class="px-1">

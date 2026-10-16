@@ -135,6 +135,7 @@ export function mergeUiSettingsConfig(
     home_tools_disabled?: string[];
     composer_mode_control?: 'tabs' | 'auto';
     roleplay_enabled?: boolean;
+    bots_enabled?: boolean;
     editor?: string;
   }
 ): AppConfig {

@@ -137,6 +137,8 @@
     "languageDesc": "Choose the display language for the interface.",
     "roleplay": "Roleplay",
     "roleplayDesc": "Enable the Roleplay space: character cards, personas and immersive scenes.",
+    "bots": "Bots",
+    "botsDesc": "Enable the Bots space: agents with their own chats and routines.",
     "title": "General",
     "description": "Your name, language and how chats behave.",
     "profile": "Profile",

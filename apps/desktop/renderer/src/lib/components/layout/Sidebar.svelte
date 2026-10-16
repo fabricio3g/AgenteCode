@@ -9,7 +9,9 @@
   import EmptyState from '$lib/components/ui/EmptyState.svelte';
   import { cn as uiClass } from '$lib/utils/cn';
 
-  let { onNavigate }: { onNavigate?: () => void } = $props();
+  let { onNavigate, lead }: { onNavigate?: () => void; lead?: Snippet } = $props();
+  import type { Snippet } from 'svelte';
+  import SpaceSwitcher from './SpaceSwitcher.svelte';
   import SidebarInstances from './SidebarInstances.svelte';
   import { appStore } from '$lib/stores/app.svelte';
   import CodeSidebar from '$lib/features/code/CodeSidebar.svelte';
@@ -19,7 +21,7 @@
   import { flip } from 'svelte/animate';
   import { smoothEase } from '$lib/utils/transitions';
   import { formatShortcut } from '$lib/utils/shortcuts';
-  import { ChevronsDownUp, ChevronsUpDown, Drama, FolderOpen, MessageSquare, MoreHorizontal, PenTool, Plus, Puzzle, Search, Trash2 } from 'lucide-svelte';
+  import { Settings as SettingsIcon, ChevronsDownUp, ChevronsUpDown, Drama, FolderOpen, MessageSquare, MoreHorizontal, PenTool, Plus, Puzzle, Search, Trash2 } from 'lucide-svelte';
   import Menu from '$lib/components/ui/Menu.svelte';
   import MenuItem from '$lib/components/ui/MenuItem.svelte';
   import { confirmStore } from '$lib/stores/confirm.svelte';
@@ -145,7 +147,8 @@
 </script>
 
 <aside class="sidebar relative isolate flex h-full w-full flex-col overflow-hidden bg-sidebar text-sidebar-foreground">
-  <div class="relative z-10 flex min-h-0 flex-1 flex-col px-2 pb-1 pt-2">
+  <SpaceSwitcher {lead} />
+  <div class="relative z-10 flex min-h-0 flex-1 flex-col px-2 pb-1">
     <div class="flex flex-col gap-0.5 pb-2 pt-1">
       <UiListRow
         type="button"
@@ -268,12 +271,21 @@
       {/if}
     </div>
 
-    <!-- Settings lives in the activity rail now; the footer keeps only the
-         running-model list. It sits here rather than above the search field:
+    <!-- The running-model list sits here rather than above the search field:
          a model loading must not push the search field and every conversation
-         below it down the rail. -->
+         below it down the column. Settings closes the column, one door. -->
     <div class="sidebar-footer">
       <SidebarInstances />
+      <UiListRow
+        type="button"
+        class={uiClass("sidebar-row", "ui-local-0456fb2e")}
+        data-sidebar-settings
+        onclick={() => { onNavigate?.(); appStore.openSettings('general'); }}
+        title={`${$t('sidebar.settings')} (${formatShortcut('mod+,')})`}
+      >
+        <SettingsIcon class="sidebar-row-icon" />
+        <span class="sidebar-row-label">{$t('sidebar.settings')}</span>
+      </UiListRow>
     </div>
   </div>
 </aside>

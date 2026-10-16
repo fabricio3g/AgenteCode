@@ -95,6 +95,18 @@
         onchange={(checked) => void appStore.setRoleplayEnabled(checked)}
       />
     </SettingsRow>
+
+    <SettingsRow
+      label={$t('generalSettings.bots')}
+      description={$t('generalSettings.botsDesc')}
+      control="auto"
+    >
+      <Switch
+        checked={appStore.botsEnabled}
+        label={$t('generalSettings.bots')}
+        onchange={(checked) => void appStore.setBotsEnabled(checked)}
+      />
+    </SettingsRow>
   </SettingsSection>
 
   <SettingsSection title={$t('generalSettings.setup')}>

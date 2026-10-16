@@ -137,6 +137,8 @@
     "languageDesc": "选择界面的显示语言。",
     "roleplay": "角色扮演",
     "roleplayDesc": "显示包含角色、世界和场景的角色扮演空间。",
+    "bots": "机器人",
+    "botsDesc": "显示机器人空间：拥有独立对话和例行任务的智能体。",
     "title": "通用",
     "description": "你的名字、语言和聊天行为。",
     "profile": "个人资料",

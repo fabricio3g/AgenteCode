@@ -137,6 +137,8 @@
     "languageDesc": "Choisir la langue d'affichage de l'interface.",
     "roleplay": "Jeu de rôle",
     "roleplayDesc": "Affiche l’espace Jeu de rôle avec personnages, mondes et scènes.",
+    "bots": "Bots",
+    "botsDesc": "Affiche l’espace Bots, des agents avec leurs propres discussions et routines.",
     "title": "Général",
     "description": "Votre nom, la langue et le comportement des discussions.",
     "profile": "Profil",

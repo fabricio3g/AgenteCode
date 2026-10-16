@@ -98,6 +98,9 @@
   --glow: rgb(231 109 31 / 0.1);
   /* Sidebars sit a step behind the canvas, so the layout reads in layers. */
   --sidebar: #f5f5f6;
+  /* A rail inside the sheet (Settings): one step off the sheet, not the
+     ground — in light the two happen to be the same grey. */
+  --sheet-rail: var(--sidebar);
   --sidebar-foreground: #0d0d0d;
   --sidebar-primary: #0d0d0d;
   --sidebar-primary-foreground: #ffffff;
@@ -290,16 +293,14 @@
   /* Icon buttons across the chrome: one size, one icon size. */
   --icon-btn: 1.5rem;
   --icon: 14px;
-  /* The activity rail: one width, one button, one icon for the strip the whole
-     window hangs off. It is the one place the 14px chrome icon scale does not
-     apply — a column of 14px marks reads as decoration. */
-  --rail-w: 2.75rem;
-  --rail-logo: 1.5rem;
-  --rail-btn: 2rem;
-  --rail-icon: 16px;
+  /* The space switcher at the sidebar's head: one button, one icon. It is the
+     one place the 14px chrome icon scale does not apply — a row of 14px marks
+     reads as decoration. */
+  --space-btn: 1.625rem;
+  --space-icon: 16px;
   /* One height for every row in the sidebar rail (.sidebar-row), and one size
-     for the mark that leads it. Rows stepped up to 2rem with the activity rail
-     so the whole left edge reads at one scale. */
+     for the mark that leads it. Rows stepped up to 2rem so the whole left edge
+     reads at one scale. */
   --sidebar-row-h: 1.75rem;
   --sidebar-icon: 16px;
   /*
@@ -428,6 +429,9 @@
      so in dark the depth comes from tone: the ground is almost black, well
      under the #1a1a1a canvas, so the two never read as the same grey. */
   --sidebar: #050505;
+  /* The ground is far under the canvas, so a rail inside the sheet would read
+     as a hole; it takes the same small step light takes (#fff → #f5f5f6). */
+  --sheet-rail: #141414;
   --sidebar-foreground: var(--foreground);
   --sidebar-primary: var(--primary);
   --sidebar-primary-foreground: var(--primary-foreground);
