@@ -4,6 +4,12 @@
   A drag edge between two panes. It reports the pointer's travel since the
   drag began; the owner turns that into a size and clamps it. Arrow keys
   nudge by 16px so it is usable without a mouse.
+
+  At rest it draws nothing. Hovered, a short hairline (120px, fading at both
+  ends) and a 3×20px grip appear on the seam at the pointer, not a line the
+  whole height of the window; while dragging both turn ember, so the one thing
+  moving is the one thing coloured. No `title`: the browser's tooltip was a
+  bigger box than the handle. `visible` splits keep their full line.
 -->
 
 <script lang="ts">
@@ -37,6 +43,15 @@
   } = $props();
 
   let dragging = $state(false);
+  let handle = $state<HTMLDivElement>();
+  /** Where along the seam the grip sits, in px from the handle's start; unset = middle. */
+  let at = $state<number | null>(null);
+
+  function track(event: PointerEvent) {
+    if (!handle) return;
+    const rect = handle.getBoundingClientRect();
+    at = axis === 'x' ? event.clientY - rect.top : event.clientX - rect.left;
+  }
   let stopGesture: (() => void) | undefined;
   onDestroy(() => stopGesture?.());
 
@@ -47,7 +62,8 @@
     const start = axis === 'x' ? event.clientX : event.clientY;
     dragging = true;
     onstart?.();
-    stopGesture = startPointerGesture(event, (next) => onresize((axis === 'x' ? next.clientX : next.clientY) - start), (cancelled) => {
+    track(event);
+    stopGesture = startPointerGesture(event, (next) => { track(next); onresize((axis === 'x' ? next.clientX : next.clientY) - start); }, (cancelled) => {
       dragging = false;
       stopGesture = undefined;
       if (cancelled && oncancel) oncancel(); else onend?.();
@@ -74,7 +90,6 @@
   role="separator"
   aria-orientation={axis === 'x' ? 'vertical' : 'horizontal'}
   aria-label={label}
-  title={label}
   tabindex="0"
   class="resize-handle"
   class:is-x={axis === 'x'}
@@ -82,6 +97,9 @@
   class:is-dragging={dragging}
   class:fill
   class:persistent={visible}
+  bind:this={handle}
+  style:--grip-at={at === null ? null : `${at}px`}
+  onpointermove={(event) => { if (!dragging) track(event); }}
   onpointerdown={down}
   onkeydown={key}
   ondblclick={() => onreset?.()}
@@ -94,43 +112,61 @@
     z-index: 5;
     outline: none;
     touch-action: none;
+    --seam: color-mix(in srgb, var(--muted-foreground) 70%, transparent);
+    --grip: color-mix(in srgb, var(--foreground) 70%, transparent);
   }
   .resize-handle.is-x {
-    width: 14px;
-    margin: 0 -7px;
+    width: 10px;
+    margin: 0 -5px;
     cursor: col-resize;
   }
   .resize-handle.is-y {
-    height: 14px;
-    margin: -7px 0;
+    height: 10px;
+    margin: -5px 0;
     cursor: row-resize;
   }
   .resize-handle.fill { width: 100%; height: 100%; margin: 0; }
-  .resize-handle::after {
+
+  /* ::after is the hairline segment, ::before the grip; both centred on the
+     seam at --grip-at. */
+  .resize-handle::after,
+  .resize-handle::before {
     content: '';
     position: absolute;
-    background: transparent;
-    transition: background-color var(--motion-fast) var(--motion-ease);
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity var(--motion-instant) var(--motion-ease);
   }
-  .resize-handle::before { content: ''; position: absolute; z-index: 1; border-radius: 4px; background: var(--muted-foreground); opacity: 0; transition: opacity var(--motion-fast) var(--motion-ease); }
-  .resize-handle.is-x::before { width: 3px; height: 28px; left: calc(50% - 1.5px); top: calc(50% - 14px); }
-  .resize-handle.is-y::before { height: 3px; width: 28px; top: calc(50% - 1.5px); left: calc(50% - 14px); }
+  .resize-handle::before { z-index: 1; border-radius: 2px; background: var(--grip); }
   .resize-handle.is-x::after {
-    inset: 0 auto 0 50%;
+    left: calc(50% - 0.5px);
+    top: calc(var(--grip-at, 50%) - 60px);
     width: 1px;
+    height: 120px;
+    background: linear-gradient(transparent, var(--seam) 30%, var(--seam) 70%, transparent);
   }
   .resize-handle.is-y::after {
-    inset: 50% 0 auto;
+    top: calc(50% - 0.5px);
+    left: calc(var(--grip-at, 50%) - 60px);
     height: 1px;
+    width: 120px;
+    background: linear-gradient(90deg, transparent, var(--seam) 30%, var(--seam) 70%, transparent);
   }
-  .resize-handle.persistent::after { background: var(--split-line); }
-  .resize-handle.persistent::before { opacity: .6; background: var(--companion); }
-  .resize-handle:hover::after,
-  .resize-handle:focus-visible::after,
-  .resize-handle.is-dragging::after {
-    background: color-mix(in srgb, var(--muted-foreground) 40%, transparent);
-  }
-  .resize-handle:hover::before, .resize-handle:focus-visible::before, .resize-handle.is-dragging::before { opacity: .85; }
+  .resize-handle.is-x::before { width: 3px; height: 20px; left: calc(50% - 1.5px); top: calc(var(--grip-at, 50%) - 10px); }
+  .resize-handle.is-y::before { height: 3px; width: 20px; top: calc(50% - 1.5px); left: calc(var(--grip-at, 50%) - 10px); }
+
+  .resize-handle:hover::after, .resize-handle:hover::before,
+  .resize-handle:focus-visible::after, .resize-handle:focus-visible::before,
+  .resize-handle.is-dragging::after, .resize-handle.is-dragging::before { opacity: 1; }
+  .resize-handle.is-dragging { --seam: var(--brand-accent); --grip: var(--brand-accent); }
+
+  /* Conversation splits keep a quiet full-length line and a resting grip. */
+  .resize-handle.persistent::after { opacity: 1; background: var(--split-line); }
+  .resize-handle.persistent.is-x::after { top: 0; height: 100%; }
+  .resize-handle.persistent.is-y::after { left: 0; width: 100%; }
+  .resize-handle.persistent::before { opacity: .6; --grip: var(--companion); }
+  .resize-handle.persistent:hover::before, .resize-handle.persistent.is-dragging::before { opacity: 1; }
+
   @media (prefers-reduced-motion: reduce) { .resize-handle::before, .resize-handle::after { transition: none; } }
   :global(.a11y-reduce-motion) .resize-handle::before, :global(.a11y-reduce-motion) .resize-handle::after { transition: none; }
 </style>
