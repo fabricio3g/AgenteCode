@@ -49,8 +49,14 @@
     chat = null,
     capabilities: givenCapabilities,
     level: givenLevel,
-    onlevel
+    onlevel,
+    name,
+    pinned
   }: {
+    /** Text for the pill when it follows the app's model by another name ("Same as chat"). */
+    name?: string;
+    /** A model fixed elsewhere (a bot's pin): the pill shows it and opens no menu. */
+    pinned?: { provider: string; model: string };
     compact?: boolean;
     chat?: ChatSession | null;
     capabilities?: ReasoningCapabilities;
@@ -92,6 +98,7 @@
       : !provider || !cloudModel || !(appStore.config.llm?.providers?.[provider]?.has_api_key || appStore.config.llm?.providers?.[provider]?.api_key)
   );
   const label = $derived(
+    pinned ? shortModelName(pinned.model) : name ? name :
     backend === 'local'
       ? loading ? shortModelName(appStore.localModelLoadTarget?.name) || loadedName : loadedName || $t('modelPicker.selectModel')
       : needsSetup && !(appStore.config.llm?.providers?.[provider]?.has_api_key) ? $t('modelPicker.configureProvider') : shortModelName(cloudModel) || $t('modelPicker.selectModel')
@@ -276,6 +283,12 @@
   });
 </script>
 
+{#if pinned}
+  <Button variant="plain" type="button" class={['model-pill', compact && 'is-compact'].filter(Boolean).join(' ')} disabled title={$t('bots.model')} aria-label={$t('modelPicker.triggerLabel', { values: { model: label } })}>
+    <ProviderIcon provider={pinned.provider} size={15} />
+    <span class="pill-label">{label}</span>
+  </Button>
+{:else}
 <Menu bind:open placement="top-start" minWidth="16rem" label={$t('modelPicker.title')}>
   {#snippet trigger(props)}
     <Button
@@ -376,6 +389,7 @@
 
 <ModelCard target={open ? cardTarget : null} anchor={cardAnchor} />
 <ModelSwitcher bind:open={allOpen} {chat} source={allSource} provider={allProvider} />
+{/if}
 
 <style>
   /* Borderless, like the add button beside it: a soft fill only on hover. */

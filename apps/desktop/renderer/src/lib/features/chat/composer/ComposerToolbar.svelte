@@ -42,50 +42,48 @@
   );
 </script>
 
-<div class="composer-bar-trailing">
-  <div class="mic-control">
-    <UiIconButton label={dictation.listening ? $t('chat.dictation.stop') : copy.composer.dictate} size="sm"
-      type="button"
-      class={uiClass("mic-btn composer-icon-control", "ui-local-b54fdc09", {"is-listening": dictation.uiActive, "unavailable": !dictation.supported})}
+<div class="mic-control">
+  <UiIconButton label={dictation.listening ? $t('chat.dictation.stop') : copy.composer.dictate} size="sm"
+    type="button"
+    class={uiClass("mic-btn composer-icon-control", "ui-local-b54fdc09", {"is-listening": dictation.uiActive, "unavailable": !dictation.supported})}
 
 
-      onclick={dictation.supported ? () => appStore.voiceModeActive ? oncall() : dictation.toggle(false) : undefined}
-      disabled={!dictation.supported}
+    onclick={dictation.supported ? () => appStore.voiceModeActive ? oncall() : dictation.toggle(false) : undefined}
+    disabled={!dictation.supported}
 
-      aria-describedby="home-microphone-preview"
-    >
-      {#if dictation.listening}
-        <span class="mic-lines">
-          {#each [0, 1, 2, 3, 4] as index (index)}
-            <span class="mic-line" style={`animation-delay: ${index * 0.12}s;`}></span>
-          {/each}
-        </span>
-      {:else}
-        <Mic class="size-3.5" />
-      {/if}
-    </UiIconButton>
-    <div class="mic-preview" id="home-microphone-preview" role="group" aria-label={$t('voice.call.title')}>
-      <Tooltip label={appStore.voiceModeActive ? $t('voice.call.end') : $t('voice.call.start')} position="top">
-        <UiIconButton label={appStore.voiceModeActive ? $t('voice.call.end') : $t('voice.call.start')} size="sm" type="button" class={uiClass("", "ui-local-b54fdc09", {"selected": appStore.voiceModeActive})}   onclick={oncall} disabled={!dictation.supported}><Phone class="size-4" /></UiIconButton>
-      </Tooltip>
-      <Tooltip label={micTitle} position="top">
-        <UiIconButton label={copy.composer.dictate} size="sm" type="button" class={uiClass("", "ui-local-b54fdc09", {"selected": dictation.listening})}   onclick={() => { if (appStore.voiceModeActive) oncall(); dictation.toggle(false); }} disabled={!dictation.supported}><Mic class="size-4" /></UiIconButton>
-      </Tooltip>
-      <Tooltip label={$t('voice.call.settings')} position="top">
-        <UiIconButton label={$t('voice.call.settings')} size="sm" type="button" class={uiClass("", "ui-local-b54fdc09")}  onclick={() => appStore.openSettings('voice')}><Settings2 class="size-4" /></UiIconButton>
-      </Tooltip>
-    </div>
+    aria-describedby="home-microphone-preview"
+  >
+    {#if dictation.listening}
+      <span class="mic-lines">
+        {#each [0, 1, 2, 3, 4] as index (index)}
+          <span class="mic-line" style={`animation-delay: ${index * 0.12}s;`}></span>
+        {/each}
+      </span>
+    {:else}
+      <Mic class="size-3.5" />
+    {/if}
+  </UiIconButton>
+  <div class="mic-preview" id="home-microphone-preview" role="group" aria-label={$t('voice.call.title')}>
+    <Tooltip label={appStore.voiceModeActive ? $t('voice.call.end') : $t('voice.call.start')} position="top">
+      <UiIconButton label={appStore.voiceModeActive ? $t('voice.call.end') : $t('voice.call.start')} size="sm" type="button" class={uiClass("", "ui-local-b54fdc09", {"selected": appStore.voiceModeActive})}   onclick={oncall} disabled={!dictation.supported}><Phone class="size-4" /></UiIconButton>
+    </Tooltip>
+    <Tooltip label={micTitle} position="top">
+      <UiIconButton label={copy.composer.dictate} size="sm" type="button" class={uiClass("", "ui-local-b54fdc09", {"selected": dictation.listening})}   onclick={() => { if (appStore.voiceModeActive) oncall(); dictation.toggle(false); }} disabled={!dictation.supported}><Mic class="size-4" /></UiIconButton>
+    </Tooltip>
+    <Tooltip label={$t('voice.call.settings')} position="top">
+      <UiIconButton label={$t('voice.call.settings')} size="sm" type="button" class={uiClass("", "ui-local-b54fdc09")}  onclick={() => appStore.openSettings('voice')}><Settings2 class="size-4" /></UiIconButton>
+    </Tooltip>
   </div>
-
-  <SendButton
-    running={generating}
-    disabled={sendDisabled || !hasDraft}
-    sendLabel={copy.composer.send}
-    stopLabel={copy.composer.stop}
-    onsend={onsubmit}
-    {onstop}
-  />
 </div>
+
+<SendButton
+  running={generating}
+  disabled={sendDisabled || !hasDraft}
+  sendLabel={copy.composer.send}
+  stopLabel={copy.composer.stop}
+  onsend={onsubmit}
+  {onstop}
+/>
 
 <style>
   .mic-control { position: relative; }

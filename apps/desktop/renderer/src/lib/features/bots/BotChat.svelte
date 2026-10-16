@@ -23,6 +23,8 @@
   import CodeStepRow from '$lib/features/code/CodeStepRow.svelte';
   import { orderedEntries } from '$lib/features/code/code-run';
   import BotAvatar from './BotAvatar.svelte';
+  import ComposerBar from '$lib/features/chat/composer/ComposerBar.svelte';
+  import ModelMenu from '$lib/features/chat/model-menu/ModelMenu.svelte';
   import SendButton from '$lib/features/shared/composer/SendButton.svelte';
   import { botsStore, type BotTurnView } from './bots.svelte';
   import type { Bot } from './bots-ipc';
@@ -212,11 +214,12 @@
             aria-label={$t('bots.placeholder', { values: { name: bot.title } })}
             onkeydown={onKeydown}
           ></UiTextarea>
-          <div class="composer-bar">
-            <div class="composer-bar-leading">
-              <span class="truncate px-1 text-[length:var(--text-xs)] text-muted-foreground" title={$t('bots.model')}>{bot.model?.model ?? $t('bots.modelSame')}</span>
-            </div>
-            <div class="composer-bar-trailing">
+          <ComposerBar>
+            {#snippet model()}
+              <!-- The bot's own pin, or the chat's model under its own name. -->
+              <ModelMenu compact pinned={bot.model ?? undefined} name={bot.model ? undefined : $t('bots.modelSame')} />
+            {/snippet}
+            {#snippet trailing()}
               <SendButton
                 running={bot.working}
                 disabled={bot.working || !draft.trim()}
@@ -225,8 +228,8 @@
                 onsend={send}
                 onstop={() => botsStore.stop(bot.handle)}
               />
-            </div>
-          </div>
+            {/snippet}
+          </ComposerBar>
         </div>
       </div>
     </div>

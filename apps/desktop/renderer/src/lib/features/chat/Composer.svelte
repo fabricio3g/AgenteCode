@@ -29,6 +29,7 @@
   import ComposerSuggestions from './composer/ComposerSuggestions.svelte';
   import ComposerAddMenu from './composer/ComposerAddMenu.svelte';
   import ComposerToolsMenu from './composer/ComposerToolsMenu.svelte';
+  import ComposerBar from './composer/ComposerBar.svelte';
   import ComposerToolbar from './composer/ComposerToolbar.svelte';
   import HomeContextStatus from './composer/HomeContextStatus.svelte';
   import ModeSelector from './composer/ModeSelector.svelte';
@@ -408,30 +409,31 @@
           onkeydown={onKeydown}
         ></UiTextarea>
 
-        <div class="composer-bar">
-          {#if dictation.uiActive && !voiceMode && dictation.phase !== 'choose'}
-            <!-- Dictation takes over the bar: waveform, timer, cancel, done. -->
-            <ComposerRecorder {dictation} />
-          {:else}
-            <div class="composer-bar-leading">
-              <ComposerAddMenu onattach={() => fileInput?.click()} />
-              <div class="model-slot"><ModelMenu compact /></div>
+        {#if dictation.uiActive && !voiceMode && dictation.phase !== 'choose'}
+          <!-- Dictation takes over the bar: waveform, timer, cancel, done. -->
+          <div class="composer-bar"><ComposerRecorder {dictation} /></div>
+        {:else}
+          <ComposerBar>
+            {#snippet attach()}<ComposerAddMenu onattach={() => fileInput?.click()} />{/snippet}
+            {#snippet model()}<ModelMenu compact />{/snippet}
+            {#snippet extras()}
               <!-- Agent runs the tool loop, Instant answers at once. Home only:
                    Code always runs the full loop. -->
               {#if appStore.activeSpace === 'home'}<ModeSelector />{/if}
               <ComposerToolsMenu compact />
-
-            </div>
-            <ComposerToolbar
-              {dictation}
-              {generating}
-              {sendDisabled}
-              oncall={() => void enterVoiceMode()}
-              onsubmit={() => void submit()}
-              onstop={() => appStore.stopStreaming()}
-            />
-          {/if}
-        </div>
+            {/snippet}
+            {#snippet trailing()}
+              <ComposerToolbar
+                {dictation}
+                {generating}
+                {sendDisabled}
+                oncall={() => void enterVoiceMode()}
+                onsubmit={() => void submit()}
+                onstop={() => appStore.stopStreaming()}
+              />
+            {/snippet}
+          </ComposerBar>
+        {/if}
       </div>
     </div>
     <HomeContextStatus />
@@ -491,8 +493,4 @@
     background: var(--surface-hover);
   }
 
-  .model-slot { min-width: 0; max-width: 18rem; flex: 0 1 auto; }
-  @container composer (max-width: 620px) {
-    .model-slot { max-width: 12rem; }
-  }
 </style>

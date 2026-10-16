@@ -29,6 +29,7 @@
   import { isElectron } from '$lib/services/bridge';
   import { ThinkingCapabilitiesController } from '$lib/stores/models/thinking-capabilities.svelte';
   import ModelMenu from '$lib/features/chat/model-menu/ModelMenu.svelte';
+  import ComposerBar from '$lib/features/chat/composer/ComposerBar.svelte';
   import GenerationSpeed from '$lib/features/shared/composer/GenerationSpeed.svelte';
   import { latestGenerationSpeed } from '$lib/utils/generation-speed';
   import ContextUsageRing from '$lib/features/chat/composer/ContextUsageRing.svelte';
@@ -659,14 +660,20 @@
           onselect={() => { if (textarea) caret = textarea.selectionStart; }}
         ></UiTextarea>
 
-        <div class="composer-bar is-compact">
-          <div class="composer-bar-leading">
+        <ComposerBar>
+          {#snippet attach()}
             <UiFileInput bind:ref={mediaPicker}  class={uiClass("hidden", "ui-local-49e9c79c")} accept={MEDIA_ACCEPT} multiple onchange={(event) => { void attachFiles([...((event.currentTarget as HTMLInputElement).files || [])]); event.currentTarget.value = ''; }} />
             <Tooltip label={$t('code.attach')} position="top">
               <UiIconButton label={$t('code.attach')} size="xs" type="button" class={uiClass("composer-icon-control", "ui-local-49e9c79c")}  disabled={attaching} onclick={() => mediaPicker?.click()}><Plus class="size-3.5" /></UiIconButton>
             </Tooltip>
-
-            <div class="composer-meta-item">
+          {/snippet}
+          {#snippet model()}
+            <ModelMenu compact {chat} capabilities={ownThinking} level={chat.reasoningLevel} onlevel={setThinking} />
+          {/snippet}
+          {#snippet extras()}
+        {#if ownBackend !== 'local' && !modelReady}
+          <Tooltip label={copy.model.configureProvider} position="top"><UiIconButton label={copy.model.configureProvider} size="xs" type="button" class={uiClass(" provider-setup", "ui-local-49e9c79c")}  onclick={()=>appStore.openSettings('providers')}><Settings2 class="size-3" /></UiIconButton></Tooltip>
+        {/if}
             <!-- Runtime mode gate — plan / supervised / full-auto. -->
             <Menu bind:open={modeMenuOpen} placement="top-start" minWidth="18rem" label={$t('code.modeSelector')} class="mode-menu">
               {#snippet trigger(props)}
@@ -692,16 +699,16 @@
               {/each}
               <p class="mode-cycle">{$t('code.modeCycle')}</p>
             </Menu>
-            </div>
-
-            <div class="model-slot"><ModelMenu compact {chat} capabilities={ownThinking} level={chat.reasoningLevel} onlevel={setThinking} /></div>
-        {#if ownBackend !== 'local' && !modelReady}
-          <Tooltip label={copy.model.configureProvider} position="top"><UiIconButton label={copy.model.configureProvider} size="xs" type="button" class={uiClass(" provider-setup", "ui-local-49e9c79c")}  onclick={()=>appStore.openSettings('providers')}><Settings2 class="size-3" /></UiIconButton></Tooltip>
-        {/if}
-
-          </div>
-
-          <div class="composer-bar-trailing">
+            <!-- The tools menu sits with the space's own controls, as in Home. -->
+            <Menu bind:open={toolsMenuOpen} placement="top-start" minWidth="14rem" label={$t('code.toolsMenu')}>
+              {#snippet trigger(props)}<Tooltip label={$t('code.toolsMenu')} position="top"><UiIconButton label={$t('code.toolsMenu')} size="xs" type="button" class={uiClass("composer-icon-control", "ui-local-49e9c79c")}  {...props}><MoreHorizontal class="size-3.5" /></UiIconButton></Tooltip>{/snippet}
+              {#each menuGroups as group, index (index)}
+                {#if index > 0}<div class="ui-menu-separator" role="separator"></div>{/if}
+                {#each group as command (command.name)}<MenuItem icon={command.icon} label={command.label} disabled={command.disabled} onselect={() => void runCommand(command)} />{/each}
+              {/each}
+            </Menu>
+          {/snippet}
+          {#snippet trailing()}
             {#if modelReady && canContinue && !text.trim()}
               <!-- The run stopped short: one click picks the work back up. -->
               <Tooltip label={$t('code.continue')} position="top">
@@ -712,13 +719,6 @@
               </Tooltip>
             {/if}
 
-            <Menu bind:open={toolsMenuOpen} placement="top-end" minWidth="14rem" label={$t('code.toolsMenu')}>
-              {#snippet trigger(props)}<Tooltip label={$t('code.toolsMenu')} position="top"><UiIconButton label={$t('code.toolsMenu')} size="xs" type="button" class={uiClass("composer-icon-control", "ui-local-49e9c79c")}  {...props}><MoreHorizontal class="size-3.5" /></UiIconButton></Tooltip>{/snippet}
-              {#each menuGroups as group, index (index)}
-                {#if index > 0}<div class="ui-menu-separator" role="separator"></div>{/if}
-                {#each group as command (command.name)}<MenuItem icon={command.icon} label={command.label} disabled={command.disabled} onselect={() => void runCommand(command)} />{/each}
-              {/each}
-            </Menu>
 
             <SendButton compact stopShortcut="escape"
               {running}
@@ -728,8 +728,8 @@
               onsend={() => void submit()}
               onstop={() => void codeStore.stop(chat.id)}
             />
-          </div>
-        </div>
+          {/snippet}
+        </ComposerBar>
       </div>
     </div>
 
@@ -820,11 +820,6 @@
     position: relative;
     min-width: 0;
   }
-  .model-slot {
-    flex: 0 1 auto;
-    min-width: 0;
-    max-width: 18rem;
-  }
   .queued-status { color: var(--muted-foreground); font-size: var(--text-xs); white-space: nowrap; }
   /* One muted base for both states: "Text only" is a quiet note, not the
      brightest thing on the bar. */
@@ -890,7 +885,6 @@
   @container composer (max-width:480px) {
     :global(.mode-trigger.ui-local-49e9c79c) .trigger-label, :global(.mode-trigger.ui-local-49e9c79c) :global(.mode-chevron) {display:none;}
     :global(.mode-trigger.ui-local-49e9c79c) {padding-inline:0.375rem;}
-    .model-slot {flex:1 1 auto;max-width:none;}
   }
 
 </style>
