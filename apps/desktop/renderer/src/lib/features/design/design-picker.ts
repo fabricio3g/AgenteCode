@@ -4,7 +4,8 @@
  * postMessage. This file holds that script, the parent-side reader for what
  * it sends, and the pure helpers that turn picks into agent context.
  */
-import type { DesignComment, DesignPick, DesignSelection } from '$shared/design';
+import type { DesignComment, DesignPick, DesignSelection, DesignStroke } from '$shared/design';
+import { formatMarks, PROBE_POINTS } from './design-strokes';
 
 export const FRAME_SOURCE = 'agente-design-frame';
 export const HOST_SOURCE = 'agente-design';
@@ -445,6 +446,42 @@ export const PICKER_SOURCE = `(function () {
     }
   }
 
+  /** Selects an element by selector (the Layers panel); reveal scrolls it into view first. */
+  function pickBySelector(selector, reveal) {
+    if (typeof selector !== 'string' || selector.length > 300) return;
+    var el = null;
+    try { el = document.querySelector(selector); } catch (e) { el = null; }
+    if (!el || el.nodeType !== 1) return;
+    if (reveal === true && el.scrollIntoView) {
+      try { el.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'instant' }); } catch (e2) { el.scrollIntoView(); }
+    }
+    post({ type: 'select', element: describe(el), additive: false });
+    layout();
+  }
+
+  /** What sits under each point (viewport px): drawn marks are described by the elements they cross. */
+  function probe(id, points) {
+    if (typeof id !== 'string' || Object.prototype.toString.call(points) !== '[object Array]') return;
+    var hits = [];
+    for (var i = 0; i < points.length && i < 16; i++) {
+      var p = points[i];
+      var list = [];
+      if (p && isFinite(p.x) && isFinite(p.y)) {
+        var found = document.elementFromPoint(p.x, p.y);
+        if (found && found.nodeType === 1) list.push(selectorFor(found));
+      }
+      hits.push(list);
+    }
+    post({ type: 'probe', id: id, hits: hits });
+  }
+
+  /** Live preview of a design token: the custom property is set on the root until the page reloads with the saved value. */
+  function setVar(name, value) {
+    if (typeof name !== 'string' || !/^--[A-Za-z0-9_-]+$/.test(name)) return;
+    if (value === null) root.style.removeProperty(name);
+    else if (typeof value === 'string' && value.length < 200 && !/[;{}<>]/.test(value)) root.style.setProperty(name, value);
+  }
+
   window.addEventListener('message', function (event) {
     if (event.source !== window.parent) return;
     var data = event.data;
@@ -452,6 +489,10 @@ export const PICKER_SOURCE = `(function () {
     if (data.type === 'tool') setMode(data.tool, data.cursor);
     else if (data.type === 'highlight') setHighlights(data.selectors);
     else if (data.type === 'anim') animCommand(data);
+    else if (data.type === 'pick') pickBySelector(data.selector, data.reveal);
+    else if (data.type === 'probe') probe(data.id, data.points);
+    else if (data.type === 'cssvar') setVar(data.name, data.value);
+    else if (data.type === 'scrollTo') window.scrollTo(isFinite(data.x) ? data.x : 0, isFinite(data.y) ? data.y : 0);
     else if (data.type === 'clear') {
       finishEdit(false);
       setHighlights([]);
@@ -579,6 +620,8 @@ export type FrameMessage =
   | { type: 'scroll'; x: number; y: number }
   /** Ctrl/⌘+wheel inside the page; x/y are the pointer in the frame's own px, when it sent them. */
   | { type: 'wheel'; deltaY: number; x?: number; y?: number }
+  /** What sat under each point of a `probe`: selectors per point, in the order sent. */
+  | { type: 'probe'; id: string; hits: string[][] }
   | { type: 'animations'; items: MotionItem[]; reduced: boolean }
   | { type: 'animTick'; time: number; playing: boolean; count: number };
 
@@ -654,6 +697,11 @@ export function readFrameMessage(data: unknown): FrameMessage | null {
       return isNum(data.x) && isNum(data.y) ? { type: 'scroll', x: data.x, y: data.y } : null;
     case 'wheel':
       return isNum(data.deltaY) ? { type: 'wheel', deltaY: data.deltaY, ...(isNum(data.x) && isNum(data.y) ? { x: data.x, y: data.y } : {}) } : null;
+    case 'probe': {
+      if (!isStr(data.id) || !Array.isArray(data.hits) || data.hits.length > PROBE_POINTS) return null;
+      const hits = data.hits.map((point) => (Array.isArray(point) ? point.filter(isStr).slice(0, 3).map((selector) => selector.slice(0, 300)) : []));
+      return { type: 'probe', id: data.id.slice(0, 60), hits };
+    }
     case 'animations': {
       if (!Array.isArray(data.items) || data.items.length > MOTION_LIMIT) return null;
       const items = data.items.map(readMotionItem);
@@ -716,10 +764,10 @@ const fenceFor = (text: string) => {
  * The markdown block a turn carries: what the user pointed at and what they
  * pinned. Empty when there is neither.
  */
-export function formatTurnContext(selection: DesignSelection[], comments: DesignComment[]): string {
-  if (!selection.length && !comments.length) return '';
+export function formatTurnContext(selection: DesignSelection[], comments: DesignComment[], strokes: DesignStroke[] = []): string {
+  if (!selection.length && !comments.length && !strokes.length) return '';
   const lines = [
-    'The user selected the canvas elements and pinned the comments below. Change only what they name, unless the request asks for more. Edit each element surgically with design_edit (copy old_text exactly from design_read), and keep everything else unchanged.'
+    'The user selected the canvas elements, pinned the comments and drew the marks below. Change only what they name, unless the request asks for more. Edit each element surgically with design_edit (copy old_text exactly from design_read), and keep everything else unchanged.'
   ];
   const pages = [...new Set(selection.map((pick) => pick.page))];
   for (const page of pages) {
@@ -743,5 +791,6 @@ export function formatTurnContext(selection: DesignSelection[], comments: Design
       lines.push(`${index + 1}. ${comment.page}${comment.width ? ` at ${comment.width}px` : ''}, near \`${comment.selector}\`: ${comment.note}`);
     });
   }
+  if (strokes.length) lines.push(...formatMarks(strokes));
   return lines.join('\n');
 }

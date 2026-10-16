@@ -1,14 +1,26 @@
-import type { DesignCanvasTool, DesignComment, DesignFiles, DesignPick, DesignSelection, DesignToolResult, DesignVersion } from '$shared/design';
+import type { DesignCanvasTool, DesignComment, DesignFiles, DesignPick, DesignSelection, DesignStroke, DesignToolResult, DesignVersion } from '$shared/design';
 import { invoke, listen } from '$lib/services/bridge';
 import { DesignWorkspaceController } from './design-workspace.svelte';
 import { boardLayout, clampZoom, DOCK_WIDTH, FRAME_SIZE_IDS, fitView, frameKey, INSPECTOR_WIDTH, resolveSelected, zoomAt, type Board, type BoardFrame, type BoardView, type FramePositions, type FrameSizeId } from './design-view';
 import { decideTextEdit, formatTurnContext, type AnimCommand, type MotionItem } from './design-picker';
+import { startsBurst } from './design-edit-ops';
+import { planStyleEdit, styleEditNote } from './design-source';
+import { MAX_STROKES } from './design-strokes';
+import { tokenEdit, type TokenDecl } from './design-tokens';
 
 const PREFS_KEY = 'agente.design.prefs';
 const SCHEMES = ['auto', 'light', 'dark'] as const;
 export type DesignScheme = (typeof SCHEMES)[number];
 /** The resizable side panes: the chat dock on the left, the inspector on the right. */
 export type PaneId = 'dock' | 'inspector';
+export type InspectorTab = 'element' | 'tokens' | 'code';
+export const TOKENS_FILE = 'tokens.css';
+
+/** The active frame's page, as the store reaches it: one frame, or every frame at once. */
+export interface FrameHost {
+  post(message: Record<string, unknown>): void;
+  broadcast(message: Record<string, unknown>): void;
+}
 
 interface DesignPrefs {
   /** Before the board: the one width the canvas showed. Read once to seed `sizes`. */
@@ -18,6 +30,7 @@ interface DesignPrefs {
   chatOpen?: boolean;
   scheme?: DesignScheme;
   inspectorOpen?: boolean;
+  layersOpen?: boolean;
   dockWidth?: number;
   inspectorWidth?: number;
 }
@@ -109,6 +122,15 @@ class DesignStore {
   pane = $state({ width: 0, height: 0 });
   scheme = $state<DesignScheme>(this.initialPrefs.scheme ?? 'auto');
   inspectorOpen = $state(this.initialPrefs.inspectorOpen ?? false);
+  inspectorTab = $state<InspectorTab>('element');
+  /** The Layers panel over the canvas's left edge. */
+  layersOpen = $state(this.initialPrefs.layersOpen ?? false);
+  /** The layer row under the pointer; the frame outlines that element. */
+  layerHover = $state('');
+  /** Freehand marks; they go to the agent with the next message. */
+  strokes = $state.raw<DesignStroke[]>([]);
+  /** Set after a direct edit: the page reloads, so its selection is picked again and its scroll kept. */
+  repick = $state<{ page: string; selector: string; at: number } | null>(null);
   /** Requested widths of the side panes; the layout clamps them to the room each one has. */
   dockWidth = $state(this.initialPrefs.dockWidth ?? DOCK_WIDTH.default);
   inspectorWidth = $state(this.initialPrefs.inspectorWidth ?? INSPECTOR_WIDTH.default);
@@ -118,6 +140,9 @@ class DesignStore {
   motion = $state.raw<MotionState>(NO_MOTION);
   #timer: ReturnType<typeof setTimeout> | undefined;
   #send: ((command: AnimCommand) => void) | null = null;
+  #frames: FrameHost | null = null;
+  #queue: Promise<unknown> = Promise.resolve();
+  #lastEditAt: number | null = null;
 
   #savePrefs() {
     const prefs: DesignPrefs = {
@@ -125,6 +150,7 @@ class DesignStore {
       chatOpen: this.chatOpen,
       scheme: this.scheme,
       inspectorOpen: this.inspectorOpen,
+      layersOpen: this.layersOpen,
       dockWidth: this.dockWidth,
       inspectorWidth: this.inspectorWidth
     };
@@ -163,6 +189,10 @@ class DesignStore {
 
   /** The canvas hands over its way to talk to the page; a null sender means no frame is on screen. */
   bindFrame(send: ((command: AnimCommand) => void) | null) { this.#send = send; }
+  /** The canvas hands over the frames it can message (null when none is on screen). */
+  bindFrames(host: FrameHost | null) { this.#frames = host; }
+  /** Sets a custom property on every frame's root, a live preview until the saved value reloads the page. */
+  previewVar(name: string, value: string | null) { this.#frames?.broadcast({ type: 'cssvar', name, value }); }
   /** Sends one animation command to the open page; nothing happens when no page is on screen. */
   sendAnim(command: AnimCommand) { this.#send?.(command); }
   /** The page reported its animations (on open, on a change, or after a reduced-motion switch). */
@@ -250,6 +280,7 @@ class DesignStore {
     await invoke('design_manage', { chatId, action: 'remove', page });
     if (this.chatId !== chatId) return;
     this.selection = this.selection.filter((item) => item.page !== page);
+    this.strokes = this.strokes.filter((item) => item.page !== page);
     this.comments = this.comments.filter((item) => item.page !== page);
     if (this.selected === page) this.select(this.data.pages[0] ?? '');
   }
@@ -261,6 +292,96 @@ class DesignStore {
 
   setScheme(scheme: DesignScheme) { this.scheme = scheme; this.#savePrefs(); }
   toggleInspector() { this.inspectorOpen = !this.inspectorOpen; this.#savePrefs(); }
+  toggleLayers() { this.layersOpen = !this.layersOpen; this.#savePrefs(); }
+  /** Opens the inspector on a tab (the edit toolbar's "show in Code"). */
+  showInInspector(tab: InspectorTab) {
+    this.inspectorTab = tab;
+    if (!this.inspectorOpen) this.toggleInspector();
+  }
+
+  /** Selects an element in the active frame by selector (the Layers panel); the Select tool takes over so its toolbar shows. */
+  pickSelector(selector: string) {
+    this.tool = 'select';
+    this.#frames?.post({ type: 'pick', selector, reveal: true });
+  }
+
+  /** Escape, one step at a time: the last mark first while drawing, then the tool back to Browse. False when there was nothing to undo. */
+  escape(): boolean {
+    if (this.tool === 'draw' && this.strokes.length) { this.removeLastStroke(); return true; }
+    if (this.tool !== 'browse') { this.tool = 'browse'; return true; }
+    return false;
+  }
+
+  addStroke(stroke: Omit<DesignStroke, 'id'>): string {
+    const id = nextId('mark');
+    this.strokes = [...this.strokes, { ...stroke, id }].slice(-MAX_STROKES);
+    return id;
+  }
+  setStrokeHits(id: string, hits: string[]) { this.strokes = this.strokes.map((item) => (item.id === id ? { ...item, hits } : item)); }
+  removeLastStroke() { this.strokes = this.strokes.slice(0, -1); }
+  clearStrokes() { this.strokes = []; }
+
+  #enqueue<T>(job: () => Promise<T>): Promise<T> {
+    const run = this.#queue.then(job, job);
+    this.#queue = run.catch(() => undefined);
+    return run;
+  }
+
+  /**
+   * A change the edit toolbar made to one element's inline style. It is
+   * written straight into the page source with design_edit (one at a time, so
+   * a run of clicks never edits stale text); a version is saved before the
+   * first edit of a burst, so Versions can undo it. When the element cannot
+   * be found exactly once, it becomes a comment for the agent instead.
+   */
+  applyStyleEdit(pick: DesignSelection, set: Record<string, string | null>): Promise<void> {
+    return this.#enqueue(async () => {
+      const chatId = this.chatId;
+      if (!chatId) return;
+      const plan = planStyleEdit(this.data.files[pick.page], pick.selector, set);
+      if (plan.kind === 'none') return;
+      if (plan.kind === 'apply') {
+        try {
+          if (startsBurst(this.#lastEditAt, Date.now())) {
+            try { await invoke('design_manage', { chatId, action: 'snapshot', label: 'Before direct edits', auto: true }); } catch { /* the edit is still worth making */ }
+          }
+          const result = await invoke<DesignToolResult>('design_tool', { chatId, name: 'design_edit', args: { path: pick.page, old_text: plan.oldText, new_text: plan.newText } });
+          if (result.ok) {
+            this.#lastEditAt = Date.now();
+            const styles = { ...pick.styles };
+            for (const [name, value] of Object.entries(set)) { if (value === null) delete styles[name]; else styles[name] = value; }
+            this.selection = this.selection.map((item) => (item.id === pick.id ? { ...item, styles } : item));
+            this.repick = { page: pick.page, selector: pick.selector, at: Date.now() };
+            await this.refresh();
+            return;
+          }
+        } catch {
+          // Fall through: the agent gets the edit as a comment instead.
+        }
+      }
+      if (this.chatId !== chatId) return;
+      this.addComment({ page: pick.page, selector: pick.selector, x: pick.box.x, y: pick.box.y, note: plan.kind === 'comment' ? plan.note : styleEditNote(pick.selector, set), ...(pick.width ? { width: pick.width } : {}) });
+    });
+  }
+
+  /** Rewrites one token declaration in tokens.css; returns an error message, or '' when it was written. */
+  writeToken(decl: TokenDecl, value: string): Promise<string> {
+    return this.#enqueue(async () => {
+      const chatId = this.chatId;
+      const text = this.data.files[TOKENS_FILE];
+      if (!chatId || text === undefined) return '';
+      const edit = tokenEdit(text, decl, value);
+      if (!edit || edit.old_text === edit.new_text) return '';
+      try {
+        const result = await invoke<DesignToolResult>('design_tool', { chatId, name: 'design_edit', args: { path: TOKENS_FILE, old_text: edit.old_text, new_text: edit.new_text } });
+        if (!result?.ok) return result?.content || 'failed';
+        await this.refresh();
+        return '';
+      } catch {
+        return 'failed';
+      }
+    });
+  }
 
   /**
    * Records a pick. Replace mode (a plain click) makes it the whole selection;
@@ -314,9 +435,10 @@ class DesignStore {
    * which clears them. Empty when the user pointed at nothing.
    */
   takeTurnContext(): string {
-    const context = formatTurnContext(this.selection, this.comments);
+    const context = formatTurnContext(this.selection, this.comments, this.strokes);
     this.selection = [];
     this.comments = [];
+    this.strokes = [];
     return context;
   }
 
@@ -332,6 +454,9 @@ class DesignStore {
     this.positions = readPositions(chatId);
     this.selection = [];
     this.comments = [];
+    this.strokes = [];
+    this.repick = null;
+    this.layerHover = '';
     this.motion = NO_MOTION;
     if (chatId) await this.refresh();
   }

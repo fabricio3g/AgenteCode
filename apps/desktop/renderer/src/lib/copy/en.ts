@@ -236,6 +236,10 @@ export const COPY_EN = {
       comments: 'Comments', sendComments: 'Send comments', commentsSent: 'Comments added to the next message'
     },
     prompt: { placeholder: 'Describe a change to this', send: 'Send change' },
+    edit: { label: 'Edit the selected element', smaller: 'Smaller text', larger: 'Larger text', bold: 'Bold', textColor: 'Text color', background: 'Background color', radiusLess: 'Less rounded', radiusMore: 'More rounded', paddingLess: 'Less padding', paddingMore: 'More padding', more: 'More', copySelector: 'Copy selector', openCode: 'Show in Code', designColors: 'Colors of this design', reset: 'Remove override' },
+    layers: { title: 'Layers', show: 'Show layers', hide: 'Hide layers', empty: 'No elements on this page' },
+    draw: { tool: 'Draw on the canvas', mark: 'Mark' },
+    tweaks: { title: 'Tweaks' },
     /** The menu on a board frame's label; `{page}` is filled in by the caller. */
     frame: { actions: 'Frame actions', zoom: 'Zoom to frame', variant: 'Ask for a variant', variantPrompt: 'Make a variant of {page} in variants/: ', remove: 'Delete page', removeVariant: 'Delete variant', removeTitle: 'Delete {page}?', removeMessage: 'A version is saved first, so Versions can bring it back.', removeConfirm: 'Delete', tidy: 'Tidy up board', drag: 'Drag to move' },
     inspector: {

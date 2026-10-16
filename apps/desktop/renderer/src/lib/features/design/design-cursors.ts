@@ -18,7 +18,10 @@ const BADGES: Record<Exclude<DesignCanvasTool, 'browse'>, string> = {
     '<rect x="20" y="20" width="7" height="7" rx="1" fill="none" stroke="#fff" stroke-width="1.3" stroke-dasharray="2 1.5"/>',
   comment:
     `<path d="M18.5 29.5L19.4 26.6A6.5 6.5 0 1 1 21.4 28.6Z" fill="${EMBER}" stroke="#fff" stroke-width="1" stroke-linejoin="round"/>` +
-    '<path d="M21 23.5H27M24 20.5V26.5" stroke="#fff" stroke-width="1.4" stroke-linecap="round"/>'
+    '<path d="M21 23.5H27M24 20.5V26.5" stroke="#fff" stroke-width="1.4" stroke-linecap="round"/>',
+  draw:
+    `<rect x="17" y="17" width="13" height="13" rx="3" fill="${EMBER}" stroke="#fff" stroke-width="1"/>` +
+    '<path d="M20.5 27L21.2 24.3L25.9 19.6L27.9 21.6L23.2 26.3Z" fill="#fff"/>'
 };
 
 /** The CSS `cursor` value for a tool; empty for Browse, which leaves the page's own. */

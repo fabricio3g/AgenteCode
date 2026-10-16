@@ -8,7 +8,7 @@
   controls into More. The agent writes plain HTML and CSS into the design's
   workspace; the canvas reloads when it does. Keys are Ctrl/⌘+Alt+ so they never
   fight the composer: 1–3 add or remove a size on the board, 4 fits it, R reload, V variants, T versions, C chat,
-  I inspector, M timeline. Plain V / S / C pick a canvas tool, and a plain M
+  I inspector, L layers, M timeline. Plain V / S / C / D pick a canvas tool, and a plain M
   opens the timeline, when no text field has focus.
 -->
 
@@ -18,7 +18,7 @@
   import { cn as uiClass } from '$lib/utils/cn';
 
   import { onMount, untrack } from 'svelte';
-  import { Copy, Download, ExternalLink, Film, FolderOpen, LayoutGrid, GalleryHorizontal, History, Maximize2, Monitor, MoreHorizontal, PanelLeftClose, PanelLeftOpen, PanelRight, RotateCw, Smartphone, Tablet } from 'lucide-svelte';
+  import { Copy, Download, ExternalLink, Film, FolderOpen, LayoutGrid, GalleryHorizontal, History, Layers, Maximize2, Monitor, MoreHorizontal, PanelLeftClose, PanelLeftOpen, PanelRight, RotateCw, Smartphone, Tablet } from 'lucide-svelte';
   import Thread from '$lib/features/chat/thread/Thread.svelte';
   import Composer from '$lib/features/chat/Composer.svelte';
   import Button from '$lib/components/ui/Button.svelte';
@@ -35,6 +35,7 @@
   import DesignHandoffDialog from './DesignHandoffDialog.svelte';
   import DesignHandoffItems from './DesignHandoffItems.svelte';
   import DesignInspector from './DesignInspector.svelte';
+  import DesignLayers from './DesignLayers.svelte';
   import DesignSelectionChips from './DesignSelectionChips.svelte';
   import DesignStarters from './DesignStarters.svelte';
   import DesignSystemChip from './DesignSystemChip.svelte';
@@ -157,6 +158,7 @@
       else if (action.kind === 'fit') designStore.setZoom(null);
       else if (action.kind === 'reload') designStore.reload();
       else if (action.kind === 'chat') toggleDock();
+      else if (action.kind === 'layers') designStore.toggleLayers();
       else designStore.toggleTray(action.kind);
       return;
     }
@@ -177,11 +179,14 @@
       designStore.toggleTray('timeline');
       return;
     }
-    // Esc returns to Browse first, then closes the tray; neither applies inside a text field (the composer interrupts on Esc).
-    if (event.key === 'Escape' && !isEditing(event.target)) {
-      if (designStore.tool !== 'browse') designStore.setTool('browse');
-      else if (designStore.tray) designStore.tray = null;
+    // Backspace takes back the last mark while drawing.
+    if (designStore.tool === 'draw' && (event.key === 'Backspace' || event.key === 'Delete') && !isEditing(event.target)) {
+      event.preventDefault();
+      designStore.removeLastStroke();
+      return;
     }
+    // Esc takes back the last mark, then returns to Browse, then closes the tray; none applies inside a text field (the composer interrupts on Esc).
+    if (event.key === 'Escape' && !isEditing(event.target) && !designStore.escape() && designStore.tray) designStore.tray = null;
   }
 
   /** The inlined single-file document of the page on screen. */
@@ -340,6 +345,13 @@
         onclick={() => designStore.toggleTray('versions')}
       />
       <DesignToolButton
+        icon={Layers}
+        label={designStore.layersOpen ? copy.design.layers.hide : copy.design.layers.show}
+        shortcut="mod+alt+l"
+        pressed={designStore.layersOpen}
+        onclick={() => designStore.toggleLayers()}
+      />
+      <DesignToolButton
         icon={PanelRight}
         label={designStore.inspectorOpen ? copy.design.toolbar.hideInspector : copy.design.toolbar.showInspector}
         shortcut="mod+alt+i"
@@ -390,6 +402,7 @@
 
     <div class="stage-wrap">
       <DesignCanvas />
+      {#if designStore.layersOpen}<div class="layers-slot"><DesignLayers /></div>{/if}
       {#if exportNote}<p class="note" role="status">{exportNote}</p>{/if}
       <div class="pill-slot" bind:clientWidth={pillWidth} style:left="{pillLeft}px"><DesignToolPill compact={visibleWidth < 260} /></div>
     </div>
@@ -549,6 +562,19 @@
     bottom: 0.875rem;
     z-index: 3;
   }
+
+  /* Over the canvas's left edge, under the toolbar, clear of the tool dock. */
+  .layers-slot {
+    position: absolute;
+    top: 0.5rem;
+    bottom: 4rem;
+    left: 0.5rem;
+    z-index: 3;
+    display: flex;
+    flex-direction: column;
+    pointer-events: none;
+  }
+  .layers-slot > :global(*) { pointer-events: auto; }
 
   .note {
     position: absolute;

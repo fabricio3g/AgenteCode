@@ -319,7 +319,7 @@ export interface DesignImageResult { path: string; mimeType: string; data: strin
 export interface DesignChangedEvent { chatId: string; paths: string[] }
 
 /** The canvas's pointer mode: browse the page as-is, pick elements, or pin comments. */
-export type DesignCanvasTool = 'browse' | 'select' | 'comment';
+export type DesignCanvasTool = 'browse' | 'select' | 'comment' | 'draw';
 
 /** An element the user picked on the canvas, as the picker script reports it. */
 export interface DesignPick {
@@ -340,6 +340,17 @@ export interface DesignSelection extends DesignPick {
   page: string;
   /** The width of the canvas frame it was picked in (the board can show a page at several). */
   width?: number;
+}
+
+/** A freehand mark drawn over a frame. `points` are page coordinates, so the mark follows the page's scroll. */
+export interface DesignStroke {
+  id: string;
+  page: string;
+  /** The width of the canvas frame it was drawn on; its mark shows only on that frame. */
+  width?: number;
+  points: { x: number; y: number }[];
+  /** Selectors of the elements the mark crosses, most-crossed first; filled in by the frame after the mark is drawn. */
+  hits?: string[];
 }
 
 /** A note pinned to a point on a page. `x`/`y` are page coordinates. */

@@ -21,19 +21,17 @@
   import Select from '$lib/components/ui/Select.svelte';
   import { appStore } from '$lib/stores/app.svelte';
   import { copy } from '$lib/copy';
-  import { invoke } from '$lib/services/bridge';
   import { isColorValue, colorToHex, parseTokens, tokenEdit, tokensFor, type TokenDecl, type TokenGroup } from './design-tokens';
   import { curvePath, durationMs, EASING_PRESETS, formatDurationToken } from './design-motion';
-  import { designStore } from './design.svelte';
-  import type { DesignSelection, DesignToolResult } from '$shared/design';
+  import { designStore, TOKENS_FILE, type InspectorTab } from './design.svelte';
+  import DesignTweaks from './DesignTweaks.svelte';
+  import type { DesignSelection } from '$shared/design';
 
-  type Tab = 'element' | 'tokens' | 'code';
-  let tab = $state<Tab>('element');
+  const tab = $derived(designStore.inspectorTab);
   let error = $state('');
   let copied = $state(false);
   let codeFile = $state('');
 
-  const TOKENS_FILE = 'tokens.css';
   const css = $derived(designStore.data.files[TOKENS_FILE] ?? '');
   const decls = $derived(parseTokens(css));
   const lightTokens = $derived(tokensFor(decls, 'light'));
@@ -102,22 +100,9 @@
 
   /** One token edit: the declaration is rewritten in place, and main's change event refreshes the canvas. */
   async function commit(decl: TokenDecl, value: string) {
-    const chatId = designStore.chatId;
-    const text = designStore.data.files[TOKENS_FILE];
-    if (!chatId || text === undefined) return;
-    const edit = tokenEdit(text, decl, value);
-    if (!edit || edit.old_text === edit.new_text) return;
     error = '';
-    try {
-      const result = await invoke<DesignToolResult>('design_tool', {
-        chatId,
-        name: 'design_edit',
-        args: { path: TOKENS_FILE, old_text: edit.old_text, new_text: edit.new_text }
-      });
-      if (!result?.ok) error = result?.content || copy.design.inspector.updateFailed;
-    } catch {
-      error = copy.design.inspector.updateFailed;
-    }
+    const failure = await designStore.writeToken(decl, value);
+    if (failure) error = failure === 'failed' ? copy.design.inspector.updateFailed : failure;
   }
 
   function commitColor(decl: TokenDecl, event: Event) {
@@ -147,7 +132,7 @@
   </header>
 
   <div class="tabs">
-    <SegmentedControl label={copy.design.toolbar.inspector} options={tabOptions} value={tab} variant="tabs" shape="rect" onchange={(value) => (tab = value as Tab)} />
+    <SegmentedControl label={copy.design.toolbar.inspector} options={tabOptions} value={tab} variant="tabs" shape="rect" onchange={(value) => (designStore.inspectorTab = value as InspectorTab)} />
   </div>
 
   <div class="body">
@@ -210,6 +195,7 @@
         </div>
       {:else}
         {#if error}<p class="error" role="alert">{error}</p>{/if}
+        <DesignTweaks light={lightTokens} />
         {#each groups as group (group)}
           {@const items = lightTokens.filter((decl) => decl.group === group)}
           {#if items.length}

@@ -1,3 +1,4 @@
+import { parseTweaks } from '$lib/features/design/design-tweaks';
 import { describe, expect, it } from 'vitest';
 import { DESIGN_SYSTEM_PROMPT, attachedReferencesBlock, designWorkspaceBriefing, referenceLines } from './design-prompts';
 
@@ -28,5 +29,12 @@ describe('system prompt', () => {
     expect(DESIGN_SYSTEM_PROMPT).toContain('## Research');
     expect(DESIGN_SYSTEM_PROMPT).toContain('design_reference');
     expect(DESIGN_SYSTEM_PROMPT).toMatch(/never copy a logo/i);
+  });
+
+  it('teaches tweaks.json, and its example parses as tweaks', () => {
+    expect(DESIGN_SYSTEM_PROMPT).toContain('## Tweaks');
+    const example = /\n(\[\{"id":"radius".*\}\])\n/.exec(DESIGN_SYSTEM_PROMPT)?.[1] ?? '';
+    expect(parseTweaks(example).map((tweak) => tweak.type)).toEqual(['range', 'color', 'choice']);
+    expect(DESIGN_SYSTEM_PROMPT).toContain('Marks drawn on the canvas');
   });
 });

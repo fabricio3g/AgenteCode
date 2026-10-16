@@ -18,20 +18,26 @@
   over it; Ctrl/⌘+wheel and pinch zoom around the pointer, over the desk or
   inside a frame. Click a label to make that page the selected one, double-
   click it to zoom to the frame. In Select, a prompt opens under the last pick
-  (DesignSelectionPrompt), and each tool has its own pointer (design-cursors).
+  (DesignSelectionPrompt) and, for one picked element, the edit toolbar above it
+  (DesignEditBar); each tool has its own pointer (design-cursors). Draw lays an
+  SVG over the frames: a mark is kept in page coordinates, so it follows the
+  frame's scroll, and the frame is asked what it crosses.
 -->
 
 <script lang="ts">
   import { untrack } from 'svelte';
+  import Button from '$lib/components/ui/Button.svelte';
   import Input from '$lib/components/ui/Input.svelte';
   import DesignFrameMenu from './DesignFrameMenu.svelte';
   import { copy } from '$lib/copy';
   import { buildPreviewHtml } from '$lib/utils/preview-builder';
   import { designStore } from './design.svelte';
-  import { frameOnScreen, nextZoomPreset, pageLabel, PIN_GAP, PIN_SIZE, pinOrigin, screenBox, type BoardFrame } from './design-view';
+  import { editBarPlacement, frameOnScreen, nextZoomPreset, pageLabel, PIN_GAP, PIN_SIZE, pinOrigin, screenBox, type BoardFrame } from './design-view';
+  import { isMark, POINT_GAP, rankHits, samplePoints, screenPoints, type Pt } from './design-strokes';
   import { HOST_SOURCE, pickLabel, readFrameMessage, withPicker, type FrameMessage } from './design-picker';
   import { toolCursor } from './design-cursors';
   import DesignEmpty from './DesignEmpty.svelte';
+  import DesignEditBar from './DesignEditBar.svelte';
   import DesignSelectionPrompt from './DesignSelectionPrompt.svelte';
 
   /** A comment being written: the frame it is on, where it was clicked (page px) and where its field sits (screen px). */
@@ -77,6 +83,10 @@
   const selectorsByPage = $derived.by(() => {
     const out: Record<string, string[]> = {};
     for (const pick of designStore.selection) (out[pick.page] ??= []).push(pick.selector);
+    // The Layers row under the pointer is outlined on the page it lists.
+    const hover = designStore.layerHover;
+    const page = designStore.activeFrame?.page;
+    if (hover && page) (out[page] ??= []).push(hover);
     return out;
   });
 
@@ -87,11 +97,21 @@
     frameEls[key]?.contentWindow?.postMessage({ source: HOST_SOURCE, ...message }, '*');
   }
 
-  /** A freshly loaded frame starts at the top, in the current tool, with its page's selection outlined. */
+  /**
+   * A freshly loaded frame starts at the top, in the current tool, with its page's selection outlined. After a
+   * direct edit the page reloads under the user: it keeps its scroll and picks the edited element again, so the
+   * toolbar follows the new size.
+   */
   function syncFrame(frame: BoardFrame) {
-    scrolls = { ...scrolls, [frame.key]: { x: 0, y: 0 } };
+    const again = designStore.repick;
+    const fresh = !!again && again.page === frame.page && Date.now() - again.at < 4000;
+    const keep = fresh ? scrollOf(frame.key) : { x: 0, y: 0 };
+    scrolls = { ...scrolls, [frame.key]: keep };
+    if (fresh && (keep.x || keep.y)) post(frame.key, { type: 'scrollTo', x: keep.x, y: keep.y });
     post(frame.key, { type: 'tool', tool: designStore.tool, cursor: toolCursor(designStore.tool) });
     post(frame.key, { type: 'highlight', selectors: selectorsByPage[frame.page] ?? [] });
+    const only = designStore.selection.length === 1 ? designStore.selection[0] : null;
+    if (fresh && again && only && only.selector === again.selector && (!only.width || only.width === frame.width)) post(frame.key, { type: 'pick', selector: again.selector });
     if (frame.key === activeKey && designStore.tray === 'timeline') designStore.sendAnim({ action: 'open' });
   }
 
@@ -108,6 +128,16 @@
     const key = activeKey;
     designStore.bindFrame(key ? (command) => post(key, { type: 'anim', ...command }) : null);
     return () => designStore.bindFrame(null);
+  });
+
+  // The store reaches the active frame (a Layers pick) and every frame (a live token preview) through the canvas.
+  $effect(() => {
+    const key = activeKey;
+    designStore.bindFrames({
+      post: (message) => { if (key) post(key, message); },
+      broadcast: (message) => { for (const frame of untrack(() => frames)) post(frame.key, message); }
+    });
+    return () => designStore.bindFrames(null);
   });
 
   /** The note field opens beside the pin it will become, vertically centred on it. */
@@ -160,6 +190,9 @@
       case 'escape':
         designStore.setTool('browse');
         break;
+      case 'probe':
+        designStore.setStrokeHits(message.id, rankHits(message.hits));
+        break;
       case 'scroll':
         scrolls = { ...scrolls, [frame.key]: { x: message.x, y: message.y } };
         break;
@@ -188,14 +221,9 @@
     return target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName);
   }
 
-  /** Ctrl/⌘ +, −, 0 zoom the board (0 fits it); Escape leaves a pick or comment mode. */
+  /** Ctrl/⌘ +, −, 0 zoom the board (0 fits it). Escape belongs to the surface (marks first, then the tool). */
   function onKeydown(event: KeyboardEvent) {
     if (isEditable(event.target)) return;
-    if (event.key === 'Escape' && designStore.tool !== 'browse') {
-      designStore.setTool('browse');
-      draft = null;
-      return;
-    }
     if (!(event.ctrlKey || event.metaKey) || event.altKey) return;
     if (event.key === '=' || event.key === '+') {
       event.preventDefault();
@@ -297,14 +325,18 @@
       })
   ));
 
-  /** Width of the selection prompt (17rem) and its gap from the element, for placing it inside the frame. */
+  /** Width of the selection prompt (17rem), its gap from the element, its height, and the edit toolbar's height. */
   const PROMPT_WIDTH = 272;
   const PROMPT_GAP = 10;
+  const PROMPT_HEIGHT = 80;
+  const BAR_HEIGHT = 34;
+  let barWidth = $state(340);
+
   /**
-   * Where the selection prompt opens: under the last element picked, on the frame it was picked in, left edges
-   * aligned, kept inside the frame; above the element when there is no room below it.
+   * The last element picked, on the frame it was picked in, in screen px: the prompt and the edit toolbar both
+   * hang off it. `flip` is set when the prompt has no room below and goes above.
    */
-  const prompt = $derived.by(() => {
+  const target = $derived.by(() => {
     if (designStore.tool !== 'select' || draft) return null;
     const last = designStore.selection.at(-1);
     if (!last) return null;
@@ -315,12 +347,106 @@
     const box = screenBox(frame, view);
     const scroll = scrollOf(frame.key);
     const s = view.scale;
-    const left = Math.max(box.left, Math.min(box.left + box.width - PROMPT_WIDTH, box.left + (last.box.x - scroll.x) * s));
-    const below = box.top + (last.box.y + last.box.height - scroll.y) * s + PROMPT_GAP;
-    const flip = below + 80 > Math.min(box.top + box.height, paneHeight);
-    const top = flip ? box.top + (last.box.y - scroll.y) * s - PROMPT_GAP : below;
-    const more = designStore.selection.filter((pick) => pick.page === last.page).length - 1;
-    return { left, top, flip, label: pickLabel(last), more };
+    const el = { left: box.left + (last.box.x - scroll.x) * s, top: box.top + (last.box.y - scroll.y) * s, width: last.box.width * s, height: last.box.height * s };
+    const below = el.top + el.height + PROMPT_GAP;
+    return { last, box, el, below, flip: below + PROMPT_HEIGHT > Math.min(box.top + box.height, paneHeight) };
+  });
+
+  /** The edit toolbar: one element picked, just above it, or below it when the top is out of room. */
+  const editBar = $derived.by(() => {
+    const t = target;
+    if (!t || designStore.selection.length !== 1) return null;
+    const place = editBarPlacement(t.el, { width: barWidth, height: BAR_HEIGHT }, { width: paneWidth, height: paneHeight });
+    // A prompt that flipped above the element takes that room; the toolbar goes above the prompt.
+    const top = t.flip && !place.below ? Math.max(4, place.top - PROMPT_HEIGHT - 6) : place.top;
+    return { left: place.left, top, below: place.below, pick: t.last };
+  });
+
+  /**
+   * Where the selection prompt opens: under the last element picked, left edges aligned, kept inside the frame;
+   * above the element when there is no room below it, and under the edit toolbar when that sits below.
+   */
+  const prompt = $derived.by(() => {
+    const t = target;
+    if (!t) return null;
+    const left = Math.max(t.box.left, Math.min(t.box.left + t.box.width - PROMPT_WIDTH, t.el.left));
+    const top = t.flip ? t.el.top - PROMPT_GAP : t.below + (editBar?.below ? BAR_HEIGHT + PROMPT_GAP : 0);
+    const more = designStore.selection.filter((pick) => pick.page === t.last.page).length - 1;
+    return { left, top, flip: t.flip, label: pickLabel(t.last), more };
+  });
+
+  // Marks: drawn in page coordinates on the frame under the pointer's first point.
+  let drawing = $state<{ id: number; key: string; points: Pt[]; last: Pt } | null>(null);
+
+  /** The live frame under a point of the stage, the topmost one. */
+  function frameAt(point: Pt): BoardFrame | undefined {
+    return frames.filter((frame) => live.has(frame.key)).reverse().find((frame) => {
+      const box = screenBox(frame, view);
+      return point.x >= box.left && point.x <= box.left + box.width && point.y >= box.top && point.y <= box.top + box.height;
+    });
+  }
+
+  /** A screen point as a point of the frame's page (clamped to the frame). */
+  function pagePoint(frame: BoardFrame, point: Pt): Pt {
+    const box = screenBox(frame, view);
+    const scroll = scrollOf(frame.key);
+    const x = Math.min(box.left + box.width, Math.max(box.left, point.x));
+    const y = Math.min(box.top + box.height, Math.max(box.top, point.y));
+    return { x: Math.round(((x - box.left) / view.scale + scroll.x) * 10) / 10, y: Math.round(((y - box.top) / view.scale + scroll.y) * 10) / 10 };
+  }
+
+  function onDrawDown(event: PointerEvent) {
+    if (event.button !== 0) return;
+    const at = localPoint(event);
+    const frame = frameAt(at);
+    if (!frame) return;
+    event.preventDefault();
+    (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+    designStore.select(frame.page, frame.key);
+    const first = pagePoint(frame, at);
+    drawing = { id: event.pointerId, key: frame.key, points: [first], last: at };
+  }
+
+  function onDrawMove(event: PointerEvent) {
+    if (!drawing || event.pointerId !== drawing.id) return;
+    const frame = frameByKey(drawing.key);
+    if (!frame) return;
+    const at = localPoint(event);
+    if (Math.hypot(at.x - drawing.last.x, at.y - drawing.last.y) < POINT_GAP) return;
+    drawing = { ...drawing, points: [...drawing.points, pagePoint(frame, at)], last: at };
+  }
+
+  /** A finished mark is kept when it is more than a click, and the frame is asked which elements it crosses. */
+  function onDrawUp(event: PointerEvent) {
+    if (!drawing || event.pointerId !== drawing.id) return;
+    const { key, points } = drawing;
+    drawing = null;
+    const frame = frameByKey(key);
+    if (!frame || !isMark(points)) return;
+    const id = designStore.addStroke({ page: frame.page, width: frame.width, points });
+    const scroll = scrollOf(key);
+    post(key, { type: 'probe', id, points: samplePoints(points).map((p) => ({ x: Math.round(p.x - scroll.x), y: Math.round(p.y - scroll.y) })) });
+  }
+
+  /** Each live frame's marks, as SVG point lists relative to the frame's top-left; the mark being drawn is one of them. */
+  const marks = $derived.by(() => {
+    const out: { id: string; frameKey: string; left: number; top: number; width: number; height: number; points: string }[] = [];
+    const strokes = [...designStore.strokes.map((item) => ({ id: item.id, page: item.page, width: item.width, points: item.points }))];
+    if (drawing) {
+      const frame = frameByKey(drawing.key);
+      if (frame) strokes.push({ id: 'drawing', page: frame.page, width: frame.width, points: drawing.points });
+    }
+    for (const frame of frames) {
+      if (!live.has(frame.key)) continue;
+      const box = screenBox(frame, view);
+      const scroll = scrollOf(frame.key);
+      for (const stroke of strokes) {
+        if (stroke.page !== frame.page || (stroke.width && stroke.width !== frame.width)) continue;
+        if (stroke.id === 'drawing' && drawing?.key !== frame.key) continue;
+        out.push({ id: `${stroke.id}:${frame.key}`, frameKey: frame.key, left: box.left, top: box.top, width: box.width, height: box.height, points: screenPoints(stroke.points, scroll, view.scale) });
+      }
+    }
+    return out;
   });
 </script>
 
@@ -376,12 +502,9 @@
         {@const box = screenBox(frame, view)}
         {#if box.width >= 28}
           <div class="head" data-board-float style:left="{box.left}px" style:top="{box.top - 24}px" style:width="{Math.max(28, box.width)}px">
-            <button
-              type="button"
-              class="label"
-              class:active={frame.page === designStore.selected}
-              class:current={frame.key === activeKey}
-              class:moving={moving?.key === frame.key && moving.dragged}
+            <Button
+              variant="plain"
+              class={`label${frame.page === designStore.selected ? ' active' : ''}${frame.key === activeKey ? ' current' : ''}${moving?.key === frame.key && moving.dragged ? ' moving' : ''}`}
               title={`${pageLabel(frame.page)} · ${frame.width}px — ${copy.design.frame.drag}`}
               onpointerdown={(event) => onLabelDown(event, frame)}
               onpointermove={onLabelMove}
@@ -390,7 +513,7 @@
               onkeydown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); designStore.select(frame.page, frame.key); } }}
               ondblclick={() => designStore.focusFrame(frame.key)}
               oncontextmenu={(event) => openMenu(event, frame)}
-            >{labelFor(frame, index)}</button>
+            >{labelFor(frame, index)}</Button>
             <DesignFrameMenu {frame} bind:this={menus[frame.key]} />
           </div>
         {/if}
@@ -399,12 +522,35 @@
         {@const ring = screenBox(designStore.activeFrame, view)}
         <span class="ring" style:left="{ring.left}px" style:top="{ring.top}px" style:width="{ring.width}px" style:height="{ring.height}px"></span>
       {/if}
+      {#each marks as mark (mark.id)}
+        <svg class="marks" style:left="{mark.left}px" style:top="{mark.top}px" style:width="{mark.width}px" style:height="{mark.height}px" aria-hidden="true">
+          <polyline points={mark.points} />
+        </svg>
+      {/each}
       {#each pins as pin (pin.id)}
         <span class="pin" title={pin.note} style:left="{pin.left}px" style:top="{pin.top}px">{pin.number}</span>
       {/each}
     </div>
   {:else if !designStore.loading}
     <DesignEmpty />
+  {/if}
+
+  {#if designStore.tool === 'draw' && frames.length}
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <div
+      class="draw-layer"
+      style:cursor={cursor || 'crosshair'}
+      onpointerdown={onDrawDown}
+      onpointermove={onDrawMove}
+      onpointerup={onDrawUp}
+      onpointercancel={onDrawUp}
+    ></div>
+  {/if}
+
+  {#if editBar}
+    <div class="edit-slot" data-board-float style:left="{editBar.left}px" style:top="{editBar.top}px" bind:clientWidth={barWidth}>
+      <DesignEditBar pick={editBar.pick} />
+    </div>
   {/if}
 
   {#if prompt}
@@ -503,7 +649,7 @@
   .head :global(.frame-menu[aria-expanded='true']),
   .head :global(.frame-menu:focus-visible) { opacity: 1; }
 
-  .label {
+  .head :global(.label) {
     min-width: 0;
     overflow: hidden;
     padding: 0 0.125rem;
@@ -520,11 +666,11 @@
     pointer-events: auto;
     touch-action: none;
   }
-  .label.moving { cursor: grabbing; }
-  .label:hover { color: var(--foreground); }
-  .label.active { color: var(--foreground); }
-  .label.current { color: var(--brand-accent); }
-  .label:focus-visible { outline: 2px solid var(--brand-accent); outline-offset: 1px; border-radius: 4px; }
+  .head :global(.label.moving) { cursor: grabbing; }
+  .head :global(.label:hover) { color: var(--foreground); }
+  .head :global(.label.active) { color: var(--foreground); }
+  .head :global(.label.current) { color: var(--brand-accent); }
+  .head :global(.label:focus-visible) { outline: 2px solid var(--brand-accent); outline-offset: 1px; border-radius: 4px; }
 
   /* The frame the inspector, export and timeline act on. */
   .ring {
@@ -549,6 +695,21 @@
     /* A thin ring of the page's own background keeps the disc legible over any colour it lands on. */
     box-shadow: 0 0 0 2px var(--background);
   }
+
+  /* Marks: ember, 2px, clipped to the frame they belong to. */
+  .marks { position: absolute; overflow: hidden; pointer-events: none; }
+  .marks polyline {
+    fill: none;
+    stroke: var(--brand-accent);
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  /* Catches the pointer while drawing, above the frames and the screen layer, below the floats. */
+  .draw-layer { position: absolute; inset: 0; z-index: 1; touch-action: none; }
+
+  .edit-slot { position: absolute; z-index: 2; }
 
   /* Under the element, or above it when flipped. */
   .prompt-slot {

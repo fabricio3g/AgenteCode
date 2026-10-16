@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BOARD_GAP, boardLayout, CANVAS_MIN, clampZoom, DOCK_WIDTH, FIT_PAD, fitView, frameOnScreen, INSPECTOR_WIDTH, itemsInRows, nextZoomPreset, pageLabel, paneLayout, PIN_SIZE, pinOrigin, resolveSelected, screenBox, SHEET_PEEK, shortcutFor, toolbarPlan, ZOOM_MIN, zoomAt, zoomLabel } from './design-view';
+import { BOARD_GAP, boardLayout, CANVAS_MIN, clampZoom, DOCK_WIDTH, editBarPlacement, FIT_PAD, fitView, frameOnScreen, INSPECTOR_WIDTH, itemsInRows, nextZoomPreset, pageLabel, paneLayout, PIN_SIZE, pinOrigin, resolveSelected, screenBox, SHEET_PEEK, shortcutFor, toolbarPlan, ZOOM_MIN, zoomAt, zoomLabel } from './design-view';
 
 describe('boardLayout', () => {
   it('lays a row per page then per variant, one frame per size, widest first', () => {
@@ -256,5 +256,26 @@ describe('the timeline shortcut', () => {
   it('opens the timeline with Ctrl/⌘+Alt+M', () => {
     expect(shortcutFor({ code: 'KeyM', ctrlKey: true, metaKey: false, altKey: true, shiftKey: false })).toEqual({ kind: 'timeline' });
     expect(shortcutFor({ code: 'KeyM', ctrlKey: false, metaKey: false, altKey: false, shiftKey: false })).toBeNull();
+  });
+});
+
+describe('editBarPlacement', () => {
+  const bar = { width: 300, height: 34 };
+  const pane = { width: 800, height: 600 };
+  it('floats above the element, left edges aligned', () => {
+    expect(editBarPlacement({ left: 100, top: 200, width: 50, height: 20 }, bar, pane)).toEqual({ left: 100, top: 158, below: false });
+  });
+  it('stays inside the pane sideways', () => {
+    expect(editBarPlacement({ left: 700, top: 200, width: 50, height: 20 }, bar, pane).left).toBe(496);
+    expect(editBarPlacement({ left: -40, top: 200, width: 50, height: 20 }, bar, pane).left).toBe(4);
+  });
+  it('drops below the element when there is no room above', () => {
+    expect(editBarPlacement({ left: 100, top: 20, width: 50, height: 30 }, bar, pane)).toEqual({ left: 100, top: 58, below: true });
+  });
+});
+
+describe('shortcutFor layers', () => {
+  it('maps Ctrl/Cmd+Alt+L to the layers panel', () => {
+    expect(shortcutFor({ code: 'KeyL', ctrlKey: true, metaKey: false, altKey: true, shiftKey: false })).toEqual({ kind: 'layers' });
   });
 });

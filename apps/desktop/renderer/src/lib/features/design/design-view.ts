@@ -143,10 +143,10 @@ export function resolveSelected(selected: string, data: Pick<DesignFiles, 'pages
   return data.pages[0] ?? '';
 }
 
-export type DesignShortcut = { kind: 'size'; size: FrameSizeId } | { kind: 'fit' | 'reload' | 'variants' | 'versions' | 'chat' | 'timeline' };
+export type DesignShortcut = { kind: 'size'; size: FrameSizeId } | { kind: 'fit' | 'reload' | 'variants' | 'versions' | 'chat' | 'timeline' | 'layers' };
 
 const DIGITS: Record<string, FrameSizeId> = { Digit1: 'mobile', Digit2: 'tablet', Digit3: 'desktop' };
-const LETTERS: Record<string, Exclude<DesignShortcut['kind'], 'size'>> = { Digit4: 'fit', KeyR: 'reload', KeyV: 'variants', KeyT: 'versions', KeyC: 'chat', KeyM: 'timeline' };
+const LETTERS: Record<string, Exclude<DesignShortcut['kind'], 'size'>> = { Digit4: 'fit', KeyR: 'reload', KeyV: 'variants', KeyT: 'versions', KeyC: 'chat', KeyM: 'timeline', KeyL: 'layers' };
 
 /** Ctrl/⌘+Alt+key. `code` is used because Alt changes `key` on macOS. 1–3 toggle a size on the board, 4 fits it. */
 export function shortcutFor(event: Pick<KeyboardEvent, 'code' | 'ctrlKey' | 'metaKey' | 'altKey' | 'shiftKey'>): DesignShortcut | null {
@@ -299,4 +299,19 @@ export function pinOrigin(anchor: { x: number; y: number }, scroll: { x: number;
     left: clampTo((anchor.x - scroll.x) * scale - PIN_SIZE - PIN_GAP, frame.width),
     top: clampTo((anchor.y - scroll.y) * scale - PIN_SIZE - PIN_GAP, frame.height)
   };
+}
+
+export interface Rect { left: number; top: number; width: number; height: number }
+
+/**
+ * Where the edit toolbar floats: left edges aligned with the selected element
+ * (kept inside the pane), just above it, or below it when there is no room
+ * above. `below` tells the selection prompt to step out of its way.
+ */
+export function editBarPlacement(el: Rect, bar: Size, pane: Size, gap = 8, edge = 4): { left: number; top: number; below: boolean } {
+  const left = Math.max(edge, Math.min(el.left, pane.width - bar.width - edge));
+  const above = el.top - gap - bar.height;
+  if (above >= edge) return { left, top: above, below: false };
+  const top = Math.min(el.top + el.height + gap, Math.max(edge, pane.height - bar.height - edge));
+  return { left, top, below: true };
 }

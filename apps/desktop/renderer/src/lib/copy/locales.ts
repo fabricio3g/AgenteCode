@@ -109,6 +109,10 @@ const es: CopyOverride = {
       comments: 'Comentarios', sendComments: 'Enviar comentarios', commentsSent: 'Comentarios añadidos al próximo mensaje'
     },
     prompt: { placeholder: 'Describe un cambio para esto', send: 'Enviar cambio' },
+    edit: { label: 'Editar el elemento seleccionado', smaller: 'Texto más pequeño', larger: 'Texto más grande', bold: 'Negrita', textColor: 'Color del texto', background: 'Color de fondo', radiusLess: 'Menos redondeo', radiusMore: 'Más redondeo', paddingLess: 'Menos relleno', paddingMore: 'Más relleno', more: 'Más', copySelector: 'Copiar selector', openCode: 'Ver en Código', designColors: 'Colores de este diseño', reset: 'Quitar el cambio' },
+    layers: { title: 'Capas', show: 'Mostrar capas', hide: 'Ocultar capas', empty: 'No hay elementos en esta página' },
+    draw: { tool: 'Dibujar en el lienzo', mark: 'Trazo' },
+    tweaks: { title: 'Ajustes' },
     frame: { actions: 'Acciones del marco', zoom: 'Acercar al marco', variant: 'Pedir una variante', variantPrompt: 'Haz una variante de {page} en variants/: ', remove: 'Eliminar página', removeVariant: 'Eliminar variante', removeTitle: '¿Eliminar {page}?', removeMessage: 'Antes se guarda una versión, así que Versiones puede recuperarla.', removeConfirm: 'Eliminar', tidy: 'Ordenar el tablero', drag: 'Arrastra para mover' },
     inspector: {
       element: 'Elemento', tokens: 'Tokens', code: 'Código', none: 'Selecciona un elemento en el lienzo',
@@ -293,6 +297,10 @@ const ptBR: CopyOverride = {
       comments: 'Comentários', sendComments: 'Enviar comentários', commentsSent: 'Comentários adicionados à próxima mensagem'
     },
     prompt: { placeholder: 'Descreva uma mudança para isto', send: 'Enviar mudança' },
+    edit: { label: 'Editar o elemento selecionado', smaller: 'Texto menor', larger: 'Texto maior', bold: 'Negrito', textColor: 'Cor do texto', background: 'Cor de fundo', radiusLess: 'Menos arredondado', radiusMore: 'Mais arredondado', paddingLess: 'Menos preenchimento', paddingMore: 'Mais preenchimento', more: 'Mais', copySelector: 'Copiar seletor', openCode: 'Ver no Código', designColors: 'Cores deste design', reset: 'Remover alteração' },
+    layers: { title: 'Camadas', show: 'Mostrar camadas', hide: 'Ocultar camadas', empty: 'Nenhum elemento nesta página' },
+    draw: { tool: 'Desenhar na tela', mark: 'Traço' },
+    tweaks: { title: 'Ajustes' },
     frame: { actions: 'Ações do quadro', zoom: 'Aproximar do quadro', variant: 'Pedir uma variante', variantPrompt: 'Crie uma variante de {page} em variants/: ', remove: 'Excluir página', removeVariant: 'Excluir variante', removeTitle: 'Excluir {page}?', removeMessage: 'Uma versão é salva antes, então Versões pode trazê-la de volta.', removeConfirm: 'Excluir', tidy: 'Organizar o quadro', drag: 'Arraste para mover' },
     inspector: {
       element: 'Elemento', tokens: 'Tokens', code: 'Código', none: 'Selecione um elemento na tela',
@@ -477,6 +485,10 @@ const fr: CopyOverride = {
       comments: 'Commentaires', sendComments: 'Envoyer les commentaires', commentsSent: 'Commentaires ajoutés au prochain message'
     },
     prompt: { placeholder: 'Décrivez une modification', send: 'Envoyer la modification' },
+    edit: { label: 'Modifier l’élément sélectionné', smaller: 'Texte plus petit', larger: 'Texte plus grand', bold: 'Gras', textColor: 'Couleur du texte', background: 'Couleur de fond', radiusLess: 'Moins arrondi', radiusMore: 'Plus arrondi', paddingLess: 'Moins de marge intérieure', paddingMore: 'Plus de marge intérieure', more: 'Plus', copySelector: 'Copier le sélecteur', openCode: 'Voir dans Code', designColors: 'Couleurs de ce design', reset: 'Retirer la modification' },
+    layers: { title: 'Calques', show: 'Afficher les calques', hide: 'Masquer les calques', empty: 'Aucun élément sur cette page' },
+    draw: { tool: 'Dessiner sur le canevas', mark: 'Tracé' },
+    tweaks: { title: 'Réglages' },
     frame: { actions: 'Actions du cadre', zoom: 'Zoomer sur le cadre', variant: 'Demander une variante', variantPrompt: 'Crée une variante de {page} dans variants/ : ', remove: 'Supprimer la page', removeVariant: 'Supprimer la variante', removeTitle: 'Supprimer {page} ?', removeMessage: 'Une version est enregistrée avant, donc Versions peut la restaurer.', removeConfirm: 'Supprimer', tidy: 'Ranger le tableau', drag: 'Glisser pour déplacer' },
     inspector: {
       element: 'Élément', tokens: 'Jetons', code: 'Code', none: 'Sélectionnez un élément sur le canevas',
@@ -661,6 +673,10 @@ const de: CopyOverride = {
       comments: 'Kommentare', sendComments: 'Kommentare senden', commentsSent: 'Kommentare der nächsten Nachricht hinzugefügt'
     },
     prompt: { placeholder: 'Beschreibe eine Änderung', send: 'Änderung senden' },
+    edit: { label: 'Ausgewähltes Element bearbeiten', smaller: 'Kleinerer Text', larger: 'Größerer Text', bold: 'Fett', textColor: 'Textfarbe', background: 'Hintergrundfarbe', radiusLess: 'Weniger gerundet', radiusMore: 'Stärker gerundet', paddingLess: 'Weniger Innenabstand', paddingMore: 'Mehr Innenabstand', more: 'Mehr', copySelector: 'Selektor kopieren', openCode: 'Im Code zeigen', designColors: 'Farben dieses Designs', reset: 'Änderung entfernen' },
+    layers: { title: 'Ebenen', show: 'Ebenen anzeigen', hide: 'Ebenen ausblenden', empty: 'Keine Elemente auf dieser Seite' },
+    draw: { tool: 'Auf der Arbeitsfläche zeichnen', mark: 'Markierung' },
+    tweaks: { title: 'Anpassungen' },
     frame: { actions: 'Rahmenaktionen', zoom: 'Auf Rahmen zoomen', variant: 'Variante anfragen', variantPrompt: 'Erstelle eine Variante von {page} in variants/: ', remove: 'Seite löschen', removeVariant: 'Variante löschen', removeTitle: '{page} löschen?', removeMessage: 'Vorher wird eine Version gespeichert, Versionen kann sie zurückholen.', removeConfirm: 'Löschen', tidy: 'Board aufräumen', drag: 'Zum Verschieben ziehen' },
     inspector: {
       element: 'Element', tokens: 'Tokens', code: 'Code', none: 'Wähle ein Element auf dem Canvas aus',
@@ -845,6 +861,10 @@ const ja: CopyOverride = {
       comments: 'コメント', sendComments: 'コメントを送信', commentsSent: 'コメントを次のメッセージに追加しました'
     },
     prompt: { placeholder: 'この要素への変更を入力', send: '変更を送信' },
+    edit: { label: '選択した要素を編集', smaller: '文字を小さく', larger: '文字を大きく', bold: '太字', textColor: '文字色', background: '背景色', radiusLess: '角丸を小さく', radiusMore: '角丸を大きく', paddingLess: '余白を減らす', paddingMore: '余白を増やす', more: 'その他', copySelector: 'セレクターをコピー', openCode: 'コードで表示', designColors: 'このデザインの色', reset: '上書きを削除' },
+    layers: { title: 'レイヤー', show: 'レイヤーを表示', hide: 'レイヤーを隠す', empty: 'このページに要素はありません' },
+    draw: { tool: 'キャンバスに描く', mark: 'マーク' },
+    tweaks: { title: '調整' },
     frame: { actions: 'フレームの操作', zoom: 'フレームにズーム', variant: 'バリエーションを依頼', variantPrompt: '{page} のバリエーションを variants/ に作成: ', remove: 'ページを削除', removeVariant: 'バリエーションを削除', removeTitle: '{page} を削除しますか？', removeMessage: '先にバージョンが保存されるので、バージョンから戻せます。', removeConfirm: '削除', tidy: 'ボードを整理', drag: 'ドラッグで移動' },
     inspector: {
       element: '要素', tokens: 'トークン', code: 'コード', none: 'キャンバス上の要素を選択してください',
@@ -1029,6 +1049,10 @@ const zh: CopyOverride = {
       comments: '评论', sendComments: '发送评论', commentsSent: '评论已添加到下一条消息'
     },
     prompt: { placeholder: '描述要做的修改', send: '发送修改' },
+    edit: { label: '编辑所选元素', smaller: '缩小文字', larger: '放大文字', bold: '粗体', textColor: '文字颜色', background: '背景颜色', radiusLess: '减小圆角', radiusMore: '增大圆角', paddingLess: '减小内边距', paddingMore: '增大内边距', more: '更多', copySelector: '复制选择器', openCode: '在代码中查看', designColors: '此设计的颜色', reset: '移除覆盖' },
+    layers: { title: '图层', show: '显示图层', hide: '隐藏图层', empty: '此页面没有元素' },
+    draw: { tool: '在画布上绘制', mark: '标记' },
+    tweaks: { title: '微调' },
     frame: { actions: '框架操作', zoom: '缩放到框架', variant: '请求一个变体', variantPrompt: '在 variants/ 中为 {page} 制作一个变体：', remove: '删除页面', removeVariant: '删除变体', removeTitle: '删除 {page}？', removeMessage: '删除前会先保存一个版本，可在版本中恢复。', removeConfirm: '删除', tidy: '整理画板', drag: '拖动以移动' },
     inspector: {
       element: '元素', tokens: '令牌', code: '代码', none: '在画布上选择一个元素',

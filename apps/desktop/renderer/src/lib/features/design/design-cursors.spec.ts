@@ -10,12 +10,14 @@ describe('canvas cursors', () => {
   it('gives each pointing tool its own badge on the same arrow, tip as the hotspot', () => {
     const select = toolCursor('select');
     const comment = toolCursor('comment');
-    for (const cursor of [select, comment]) {
+    const draw = toolCursor('draw');
+    for (const cursor of [select, comment, draw]) {
       expect(cursor).toMatch(/^url\("data:image\/svg\+xml,[^"]+"\) 4 3, crosshair$/);
       // The value travels into the frame's stylesheet: nothing in it may close the rule.
       expect(cursor).not.toMatch(/[;{}]/);
     }
     expect(select).not.toBe(comment);
+    expect(draw).not.toBe(select);
     expect(decodeURIComponent(select)).toContain('#e76d1f');
   });
 

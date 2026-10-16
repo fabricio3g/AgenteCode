@@ -3,20 +3,21 @@
 <!--
   The tool dock, floating over the bottom of the canvas: Browse to move around
   the page, Select to pick elements for the next message, Comment to pin a
-  note, then the zoom. V / S / C switch tools, but only while focus is outside
+  note, Draw to mark up the frame, then the zoom. V / S / C / D switch tools, but only while focus is outside
   any text field, so typing in the composer never changes the tool. The tool in
   hand is the one ember thing on the dock.
 -->
 
 <script lang="ts" module>
-  import { MessageSquarePlus, MousePointer2, SquareDashedMousePointer } from 'lucide-svelte';
+  import { MessageSquarePlus, MousePointer2, Pencil, SquareDashedMousePointer } from 'lucide-svelte';
   import { copy } from '$lib/copy';
   import type { DesignCanvasTool } from '$shared/design';
 
   export const TOOLS: { id: DesignCanvasTool; key: string; icon: typeof MousePointer2; label: string }[] = [
     { id: 'browse', key: 'v', icon: MousePointer2, label: copy.design.tools.browse },
     { id: 'select', key: 's', icon: SquareDashedMousePointer, label: copy.design.tools.select },
-    { id: 'comment', key: 'c', icon: MessageSquarePlus, label: copy.design.tools.comment }
+    { id: 'comment', key: 'c', icon: MessageSquarePlus, label: copy.design.tools.comment },
+    { id: 'draw', key: 'd', icon: Pencil, label: copy.design.draw.tool }
   ];
 
   /**

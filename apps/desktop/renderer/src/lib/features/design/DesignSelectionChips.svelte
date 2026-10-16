@@ -9,7 +9,7 @@
 
 <script lang="ts">
   import { tick, untrack } from 'svelte';
-  import { MessageSquare, MousePointer2, X } from 'lucide-svelte';
+  import { MessageSquare, MousePointer2, Pencil, X } from 'lucide-svelte';
   import Badge from '$lib/components/ui/Badge.svelte';
   import Button from '$lib/components/ui/Button.svelte';
   import IconButton from '$lib/components/ui/IconButton.svelte';
@@ -21,11 +21,12 @@
   /** The chip row never runs past this many lines before the +N chip takes over. */
   const ROWS = 2;
 
-  interface Chip { id: string; kind: 'pick' | 'note'; label: string; title: string }
+  interface Chip { id: string; kind: 'pick' | 'note' | 'mark'; label: string; title: string }
 
   const chips = $derived<Chip[]>([
     ...designStore.selection.map((pick) => ({ id: pick.id, kind: 'pick' as const, label: pickLabel(pick), title: pick.selector })),
-    ...designStore.comments.map((comment) => ({ id: comment.id, kind: 'note' as const, label: comment.note, title: comment.selector }))
+    ...designStore.comments.map((comment) => ({ id: comment.id, kind: 'note' as const, label: comment.note, title: comment.selector })),
+    ...designStore.strokes.map((stroke, index) => ({ id: stroke.id, kind: 'mark' as const, label: `${copy.design.draw.mark} ${index + 1}`, title: stroke.hits?.join(', ') ?? stroke.page }))
   ]);
 
   let expanded = $state(false);
@@ -68,12 +69,14 @@
 
   function remove(chip: Chip) {
     if (chip.kind === 'pick') designStore.removeSelection(chip.id);
+    else if (chip.kind === 'mark') designStore.strokes = designStore.strokes.filter((stroke) => stroke.id !== chip.id);
     else designStore.removeComment(chip.id);
   }
 
   function clearAll() {
     designStore.clearSelection();
     designStore.clearComments();
+    designStore.clearStrokes();
   }
 </script>
 
@@ -83,6 +86,8 @@
       <Badge class="design-chip" role="listitem" title={chip.title}>
         {#if chip.kind === 'pick'}
           <MousePointer2 class="chip-icon" aria-hidden="true" />
+        {:else if chip.kind === 'mark'}
+          <Pencil class="chip-icon" aria-hidden="true" />
         {:else}
           <MessageSquare class="chip-icon" aria-hidden="true" />
         {/if}
