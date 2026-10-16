@@ -306,12 +306,15 @@ export interface Rect { left: number; top: number; width: number; height: number
 /**
  * Where the edit toolbar floats: left edges aligned with the selected element
  * (kept inside the pane), just above it, or below it when there is no room
- * above. `below` tells the selection prompt to step out of its way.
+ * above. `minTop` is the highest the bar may sit: the top edge of the frame
+ * the element is in, so the bar never covers the frame's label above it (it
+ * goes below the element instead). `below` tells the selection prompt to step
+ * out of its way.
  */
-export function editBarPlacement(el: Rect, bar: Size, pane: Size, gap = 8, edge = 4): { left: number; top: number; below: boolean } {
+export function editBarPlacement(el: Rect, bar: Size, pane: Size, gap = 8, edge = 4, minTop = edge): { left: number; top: number; below: boolean } {
   const left = Math.max(edge, Math.min(el.left, pane.width - bar.width - edge));
   const above = el.top - gap - bar.height;
-  if (above >= edge) return { left, top: above, below: false };
+  if (above >= Math.max(edge, minTop)) return { left, top: above, below: false };
   const top = Math.min(el.top + el.height + gap, Math.max(edge, pane.height - bar.height - edge));
   return { left, top, below: true };
 }

@@ -7,6 +7,8 @@ import { startsBurst } from './design-edit-ops';
 import { planStyleEdit, styleEditNote } from './design-source';
 import { MAX_STROKES } from './design-strokes';
 import { tokenEdit, type TokenDecl } from './design-tokens';
+import { DESIGN_FLOWS_FILE, parseFlows, toggleLink, type DesignFlowLink } from '$shared/design-flows';
+import { isReferencePath, readFileBase64, referencePaths } from './design-references';
 
 const PREFS_KEY = 'agente.design.prefs';
 const SCHEMES = ['auto', 'light', 'dark'] as const;
@@ -283,6 +285,63 @@ class DesignStore {
     this.strokes = this.strokes.filter((item) => item.page !== page);
     this.comments = this.comments.filter((item) => item.page !== page);
     if (this.selected === page) this.select(this.data.pages[0] ?? '');
+  }
+
+  /** Every page and variant the board draws, the names a link can use. */
+  readonly boardPages: string[] = $derived([...this.data.pages, ...this.data.variants.map((variant) => variant.entry)]);
+  /** Page links from `flows.json`, with links to pages that are gone dropped. */
+  readonly links: DesignFlowLink[] = $derived(parseFlows(this.data.files[DESIGN_FLOWS_FILE], this.boardPages));
+  /** The images in `references/`, as data URLs the tray shows. */
+  readonly references: Array<{ path: string; src: string }> = $derived(referencePaths(Object.keys(this.data.files)).map((path) => ({ path, src: this.data.files[path] })));
+
+  /** Links `from` to `to`, or unlinks when it is already linked; main validates and writes `flows.json`. */
+  async toggleLink(from: string, to: string) {
+    const chatId = this.chatId;
+    if (!chatId) return;
+    await invoke('design_manage', { chatId, action: 'set_flows', links: toggleLink(this.links, from, to) });
+  }
+
+  /** Opens a file dialog in main and adds the chosen images to `references/`. Returns how many were added and how many were refused. */
+  async pickReferences(): Promise<{ added: number; failed: number }> {
+    const chatId = this.chatId;
+    if (!chatId) return { added: 0, failed: 0 };
+    const result = await invoke<{ added: string[]; failed?: number }>('design_manage', { chatId, action: 'pick_references' });
+    return { added: result?.added?.length ?? 0, failed: result?.failed ?? 0 };
+  }
+
+  /** Adds an image the user pasted or dropped. Main checks the bytes; a refusal throws with its reason. */
+  async addReferenceBlob(name: string, data: string): Promise<void> {
+    const chatId = this.chatId;
+    if (!chatId) return;
+    await invoke('design_manage', { chatId, action: 'add_reference', name, data });
+  }
+
+  /** Adds dropped or pasted image files; one that main refuses is counted, not fatal. */
+  async addReferenceFiles(files: File[]): Promise<{ added: number; failed: number }> {
+    let added = 0;
+    let failed = 0;
+    for (const file of files.slice(0, 8)) {
+      try {
+        await this.addReferenceBlob(file.name || 'image', await readFileBase64(file));
+        added += 1;
+      } catch { failed += 1; }
+    }
+    return { added, failed };
+  }
+
+  async removeReference(path: string) {
+    const chatId = this.chatId;
+    if (!chatId || !isReferencePath(path)) return;
+    await invoke('design_manage', { chatId, action: 'remove_reference', path });
+  }
+
+  /** Main opens the public page in a private window and keeps a screenshot of it in `references/`. */
+  async captureSite(url: string): Promise<{ ok: boolean; error?: string }> {
+    const chatId = this.chatId;
+    if (!chatId) return { ok: false };
+    const result = await invoke<{ ok: boolean; error?: string; saved?: string }>('design_reference', { chatId, url, saveScreenshot: true });
+    if (result.ok && !result.saved) return { ok: false, error: result.error };
+    return { ok: result.ok, error: result.error };
   }
 
   /** The frame that draws `page` at `size`, if it is on the board. */

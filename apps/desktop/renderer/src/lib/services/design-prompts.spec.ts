@@ -1,6 +1,6 @@
 import { parseTweaks } from '$lib/features/design/design-tweaks';
 import { describe, expect, it } from 'vitest';
-import { DESIGN_SYSTEM_PROMPT, attachedReferencesBlock, designWorkspaceBriefing, referenceLines } from './design-prompts';
+import { DESIGN_SYSTEM_PROMPT, attachedReferencesBlock, designWorkspaceBriefing, matchReferencesBlock, referenceLines } from './design-prompts';
 
 describe('design briefing', () => {
   it('lists the references first and leaves the section out when there are none', () => {
@@ -36,5 +36,27 @@ describe('system prompt', () => {
     const example = /\n(\[\{"id":"radius".*\}\])\n/.exec(DESIGN_SYSTEM_PROMPT)?.[1] ?? '';
     expect(parseTweaks(example).map((tweak) => tweak.type)).toEqual(['range', 'color', 'choice']);
     expect(DESIGN_SYSTEM_PROMPT).toContain('Marks drawn on the canvas');
+  });
+});
+
+describe('matchReferencesBlock', () => {
+  it('is empty with no references, or when every one was just attached', () => {
+    expect(matchReferencesBlock([])).toBe('');
+    expect(matchReferencesBlock(['references/a.png'], ['references/a.png'])).toBe('');
+  });
+
+  it('names the collected references the message did not attach', () => {
+    const block = matchReferencesBlock(['references/a.png', 'references/b.png'], ['references/a.png']);
+    expect(block).toContain('## Match the references');
+    expect(block).toContain('- references/b.png');
+    expect(block).not.toContain('- references/a.png');
+  });
+});
+
+describe('flows in the system prompt', () => {
+  it('teaches flows.json with a parseable example', () => {
+    expect(DESIGN_SYSTEM_PROMPT).toContain('## Flows');
+    const example = /(\{"links":\[.*?\]\})/.exec(DESIGN_SYSTEM_PROMPT)?.[1] ?? '';
+    expect(JSON.parse(example).links[0]).toEqual({ from: 'index.html', to: 'pricing.html' });
   });
 });

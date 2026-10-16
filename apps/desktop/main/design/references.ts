@@ -94,6 +94,17 @@ export function addReference(root: string, name: unknown, data: unknown): Design
   throw new DesignPathError('Too many references share this name.');
 }
 
+/**
+ * Add an image the user chose in a file dialog. The size is checked before the
+ * file is read, and the bytes (never the name) decide whether it is an image.
+ */
+export function addReferenceFile(root: string, file: string): DesignReferenceAdded {
+  const stat = fs.lstatSync(file);
+  if (!stat.isFile()) throw new DesignPathError('Choose an image file.');
+  if (stat.size > REFERENCE_IMAGE_MAX_BYTES) throw new DesignPathError(`The image is too large (the limit is ${megabytes(REFERENCE_IMAGE_MAX_BYTES)} MB).`);
+  return addReference(root, path.basename(file), fs.readFileSync(file).toString('base64'));
+}
+
 /** Keep a screenshot the agent took of a page, named `<host>-<n>.png`. Returns the workspace path. */
 export function saveReferenceScreenshot(root: string, stem: string, png: Buffer): string {
   const file = nextReferenceName(stem, referenceFileNames(root));
@@ -120,4 +131,16 @@ export function readReferenceImage(root: string, rel: unknown): DesignImageResul
   const image = sniffImage(bytes);
   if (!image || image.ext === 'avif') throw new DesignPathError(`${normal} is not a PNG, JPEG, WebP or GIF image.`);
   return { path: normal, mimeType: image.mimeType, data: bytes.toString('base64'), bytes: bytes.length };
+}
+
+/** Delete one file directly inside `references/`; nothing else in the workspace can be removed this way. */
+export function removeReference(root: string, rel: unknown): string {
+  if (typeof rel !== 'string') throw new DesignPathError('A path is required.');
+  const normal = rel.replace(/\\/g, '/').replace(/^\.\//, '');
+  const prefix = `${DESIGN_REFERENCES_DIR}/`;
+  if (!normal.startsWith(prefix) || normal.slice(prefix.length).includes('/')) throw new DesignPathError('Only images in references/ can be removed.');
+  const file = resolveInside(root, normal);
+  if (!fs.existsSync(file) || !fs.statSync(file).isFile()) throw new DesignPathError(`No such image: ${normal}`);
+  fs.unlinkSync(file);
+  return normal;
 }

@@ -281,7 +281,17 @@ export type DesignManageRequest =
   /** Write the inlined HTML to a temp file and open it in the default browser. */
   | { chatId: string; action: 'open_external'; page: string; html: string }
   /** Copy an image the user attached into `references/`. `data` is base64 (a data URL is accepted). */
-  | { chatId: string; action: 'add_reference'; name: string; data: string };
+  | { chatId: string; action: 'add_reference'; name: string; data: string }
+  /** Open a file dialog in main and copy the chosen images into `references/`. */
+  | { chatId: string; action: 'pick_references' }
+  /** Delete one image from `references/` (the user took it off the tray). */
+  | { chatId: string; action: 'remove_reference'; path: string }
+  /** Replace the page links in `flows.json`; main checks every link against the pages that exist. */
+  | { chatId: string; action: 'set_flows'; links: Array<{ from: string; to: string }> }
+  /** Render the page's inlined HTML at `width` in the offline guest and save the full-length PNG through a save dialog. */
+  | { chatId: string; action: 'export_png'; page: string; html: string; width?: number }
+  /** Render the page's inlined HTML at `width` and save it as one PDF page as tall as the content. */
+  | { chatId: string; action: 'export_pdf'; page: string; html: string; width?: number };
 
 /** What `add_reference` answers: where the image is, and whether an identical one was already there. */
 export interface DesignReferenceAdded { path: string; existed: boolean }

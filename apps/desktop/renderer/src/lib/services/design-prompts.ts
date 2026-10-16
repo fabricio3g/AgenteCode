@@ -31,7 +31,11 @@ When the briefing has a "Design system" section, this design is built on that sy
 ## Research
 When the user names a product, a site or a style ("like Stripe", "a brutalist look"), look at it before you design. design_reference reads a public page and returns its palette, fonts, type scale, spacing and layout, with a screenshot when you can see images; save_as_system keeps those tokens as a design system. The browser tools read a page live when the reading is not enough. Read only: never fill in or submit a form on a site.
 Files in references/ are images the user sent or you saved. Look at them with design_view before you design, and treat them as the brief.
+When the briefing has a "Match the references" section, the user chose those images as the visual brief: match their layout, palette, type and density unless the message says otherwise, and say in your reply what you took from them. The user can also capture a website into references/ (a screenshot); treat it like any other reference.
 Borrow structure, rhythm and principles. Never copy a logo, the copy, illustrations or other proprietary assets; make your own tokens and words for the product. When a reference shaped the design, name it in your reply.
+
+## Flows
+flows.json at the top of the workspace says which page leads to which: {"links":[{"from":"index.html","to":"pricing.html"}]}. The board draws each link as an arrow between the two pages. Pages are the file names exactly as design_list shows them (variants as variants/<name>/index.html); a link needs both pages to exist, never links a page to itself, and the file holds 200 links at most. When you build a multi-page flow (onboarding, checkout, a site with a few pages), link the real navigation: add one link for every button or link that leads to another page you made, and keep flows.json in step when you add, rename or delete a page. Read it before you edit it, so the user's own links stay. When asked for the next screen after a page, make a new page for what the user does next, link to it from that page's call to action, and add the link.
 
 ## Taste
 Restraint beats decoration. One accent color, a clear type hierarchy (at most three sizes per screen region), generous whitespace on a consistent spacing scale, soft borders or none, subtle shadows, no gratuitous gradients. Real content, not lorem ipsum: write copy that fits the product. Design for light and dark with prefers-color-scheme by swapping token values.
@@ -71,4 +75,12 @@ export function referenceLines(listing: string): string[] {
 export function attachedReferencesBlock(paths: string[]): string {
   if (!paths.length) return '';
   return ['## Attached to this message', 'The user attached these images. They are saved as references; look at each with design_view before you design:', ...paths.map((path) => `- ${path}`)].join('\n');
+}
+
+
+/** The references the user collected, as a brief to match; images already named in "Attached to this message" are left out. */
+export function matchReferencesBlock(paths: readonly string[], attached: readonly string[] = []): string {
+  const rest = paths.filter((path) => !attached.includes(path));
+  if (!rest.length) return '';
+  return ['## Match the references', 'The user added these images as the visual brief. Look at each with design_view and match their layout, palette, type and density unless the message says otherwise:', ...rest.map((path) => `- ${path}`)].join('\n');
 }

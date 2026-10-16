@@ -6,12 +6,14 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { dialog, shell, type IpcMain, type IpcMainInvokeEvent } from 'electron';
 import { getAppPaths } from '../paths.ts';
-import { renderDesign } from '../design/render.ts';
+import { renderDesign, renderPdf } from '../design/render.ts';
+import { clampExportWidth, exportImageName, pngBytes } from '../design/export.ts';
+import { setFlows } from '../design/flows.ts';
 import { isDesignFileTool, runDesignFileTool } from '../design/tools.ts';
 import { checkExportHtml, collectFiles, DesignPathError, ensureWorkspace, exportFileName, listVersions, promoteVariant, removePage, restore, snapshot, workspaceRoot } from '../design/workspace.ts';
 import { buildHandoffBundle, checkHandoffPages, checkHandoffText, deliverToProject, slugify } from '../design/handoff.ts';
 import { runDesignSystemRequest } from '../design/systems.ts';
-import { addReference } from '../design/references.ts';
+import { addReference, addReferenceFile, removeReference } from '../design/references.ts';
 import type { DesignChangedEvent, DesignHandoffRequest, DesignHandoffResult, DesignManageRequest, DesignRenderRequest, DesignSystemRequest, DesignToolResult } from '../../shared/design.ts';
 
 const designsRoot = () => path.join(getAppPaths().appData, 'designs');
@@ -66,6 +68,52 @@ export function registerDesignHandlers(ipcMain: IpcMain): void {
         const result = addReference(root, request.name, request.data);
         if (!result.existed) changed(event, request.chatId, [result.path]);
         return result;
+      }
+      case 'pick_references': {
+        const picked = await dialog.showOpenDialog({
+          properties: ['openFile', 'multiSelections'],
+          filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif', 'avif'] }]
+        });
+        if (picked.canceled) return { added: [] as string[] };
+        const added: string[] = [];
+        let failed = 0;
+        for (const file of picked.filePaths.slice(0, 8)) {
+          try {
+            const result = addReferenceFile(root, file);
+            added.push(result.path);
+          } catch { failed += 1; }
+        }
+        if (added.length) changed(event, request.chatId, added);
+        return { added, failed };
+      }
+      case 'remove_reference': {
+        const removed = removeReference(root, request.path);
+        changed(event, request.chatId, [removed]);
+        return { path: removed };
+      }
+      case 'set_flows': {
+        const result = setFlows(root, request.links);
+        changed(event, request.chatId, [result.path]);
+        return result;
+      }
+      case 'export_png': {
+        const html = checkExportHtml(request.html);
+        const width = clampExportWidth(request.width);
+        const shot = await renderDesign({ html, mode: 'screenshot', width, fullPage: true });
+        if (!shot.ok) throw new Error(shot.error || 'The page could not be rendered.');
+        const bytes = pngBytes(shot.png);
+        const result = await dialog.showSaveDialog({ defaultPath: exportImageName(request.page, 'png', width), filters: [{ name: 'PNG', extensions: ['png'] }] });
+        if (result.canceled || !result.filePath) return { saved: false };
+        await fs.writeFile(result.filePath, bytes);
+        return { saved: true, path: result.filePath };
+      }
+      case 'export_pdf': {
+        const html = checkExportHtml(request.html);
+        const bytes = await renderPdf(html, request.width);
+        const result = await dialog.showSaveDialog({ defaultPath: exportImageName(request.page, 'pdf'), filters: [{ name: 'PDF', extensions: ['pdf'] }] });
+        if (result.canceled || !result.filePath) return { saved: false };
+        await fs.writeFile(result.filePath, bytes);
+        return { saved: true, path: result.filePath };
       }
       case 'export': {
         const html = checkExportHtml(request.html);

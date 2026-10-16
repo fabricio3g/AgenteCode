@@ -241,7 +241,8 @@ export const COPY_EN = {
     draw: { tool: 'Draw on the canvas', mark: 'Mark' },
     tweaks: { title: 'Tweaks' },
     /** The menu on a board frame's label; `{page}` is filled in by the caller. */
-    frame: { actions: 'Frame actions', zoom: 'Zoom to frame', variant: 'Ask for a variant', variantPrompt: 'Make a variant of {page} in variants/: ', remove: 'Delete page', removeVariant: 'Delete variant', removeTitle: 'Delete {page}?', removeMessage: 'A version is saved first, so Versions can bring it back.', removeConfirm: 'Delete', tidy: 'Tidy up board', drag: 'Drag to move' },
+    frame: { actions: 'Frame actions', zoom: 'Zoom to frame', variant: 'Ask for a variant', variantPrompt: 'Make a variant of {page} in variants/: ', remove: 'Delete page', removeVariant: 'Delete variant', removeTitle: 'Delete {page}?', removeMessage: 'A version is saved first, so Versions can bring it back.', removeConfirm: 'Delete', tidy: 'Tidy up board', drag: 'Drag to move', link: 'Link to…', nextScreen: 'Generate next screen', nextPrompt: 'Design the logical next screen after {page}: a new page linked from it. Add the link to flows.json. ', linkFailed: 'Could not save the link', exportPng: 'Export frame as PNG', exportPdf: 'Export page as PDF' },
+    references: { title: 'Reference', add: 'Add image…', capture: 'Capture a website…', tray: 'References', remove: 'Remove reference', dropHint: 'Drop an image to add it as a reference', addFailed: 'Could not add that image', someRefused: '{n} could not be added', siteTitle: 'Capture a website', siteDescription: 'A screenshot of the page is saved as a reference. The agent looks at it before it designs.', siteLabel: 'Website address', sitePlaceholder: 'example.com', siteConfirm: 'Capture', siteWorking: 'Capturing…', siteCancel: 'Cancel', siteInvalid: 'Enter a public web address, like example.com', siteFailed: 'Could not capture that page' },
     inspector: {
       element: 'Element', tokens: 'Tokens', code: 'Code', none: 'Select an element on the canvas',
       noneHint: 'Its text, box and styles appear here, and quick changes go to the chat.',
@@ -251,7 +252,7 @@ export const COPY_EN = {
       colors: 'Colors', space: 'Spacing', radius: 'Radius', type: 'Type', shadow: 'Shadows', other: 'Other',
       moreSelected: 'more selected', motion: 'Motion', updateFailed: 'Could not update the token', noSource: 'Nothing to show yet', file: 'File', copy: 'Copy', copied: 'Copied'
     },
-    export: { button: 'Export', copyHtml: 'Copy HTML', download: 'Download HTML', openBrowser: 'Open in browser', copied: 'HTML copied', failed: 'Export failed' },
+    export: { button: 'Export', copyHtml: 'Copy HTML', download: 'Download HTML', openBrowser: 'Open in browser', copied: 'HTML copied', failed: 'Export failed', png: 'Export as PNG', pdf: 'Export as PDF', rendering: 'Rendering…' },
     systems: {
       label: 'Design system',
       intro: 'Start from a system',

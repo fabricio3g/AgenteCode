@@ -9,6 +9,7 @@ import type { BrowserWindow } from 'electron';
 import { createArtifactWindow, loadArtifactHtml, withArtifactTimeout } from '../artifact-preview.ts';
 import type { DesignAnimation, DesignFrame, DesignMotionSample, DesignRenderRequest, DesignRenderResult } from '../../shared/design.ts';
 import { frameOutline, frameTimes, motionReport } from './motion.ts';
+import { clampExportWidth, pdfBytes, pdfPageSize } from './export.ts';
 
 const MAX_FULL_PAGE = 4000;
 const clamp = (value: unknown, min: number, max: number, fallback: number) =>
@@ -297,6 +298,29 @@ export async function renderDesign(request: DesignRenderRequest): Promise<Design
     })(), 30_000);
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : String(error), width, height, consoleErrors: [] };
+  } finally {
+    if (!win.isDestroyed()) win.destroy();
+  }
+}
+
+/**
+ * A page as one PDF page, as wide as `width` and as tall as its content, printed
+ * by the same offline guest that renders previews (no network, no preload).
+ */
+export async function renderPdf(html: string, width: unknown): Promise<Buffer> {
+  const wide = clampExportWidth(width);
+  if (typeof html !== 'string' || !html) throw new Error('Nothing to render.');
+  const win = createArtifactWindow(true);
+  win.webContents.setBackgroundThrottling(false);
+  try {
+    return await withArtifactTimeout((async () => {
+      win.setContentSize(wide, 900);
+      const probed = html.replace(/<head[^>]*>/i, (open) => open + ERROR_PROBE);
+      await loadArtifactHtml(win, probed.includes(ERROR_PROBE) ? probed : ERROR_PROBE + probed, true);
+      const state = await settle(win);
+      const data = await win.webContents.printToPDF({ printBackground: true, pageSize: pdfPageSize(wide, state.height), margins: { top: 0, bottom: 0, left: 0, right: 0 } });
+      return pdfBytes(data);
+    })(), 30_000);
   } finally {
     if (!win.isDestroyed()) win.destroy();
   }

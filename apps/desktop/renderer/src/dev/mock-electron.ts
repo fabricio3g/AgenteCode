@@ -1036,13 +1036,26 @@ const handlers: Record<string, (args?: Record<string, unknown>) => unknown> = {
   },
   'design_render': () => ({ ok: false, error: 'Rendering needs the desktop app.', width: 1440, height: 900, consoleErrors: [] }),
   'design_manage': (args) => {
+    const MOCK_PIXEL = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
     const request = (args ?? {}) as { action?: string; chatId?: string; name?: string };
     if (request.action === 'add_reference') {
       // The browser mock keeps no bytes: the reference appears in the listing as a placeholder.
       const path = `references/${String(request.name ?? 'image').replace(/\.[^.]*$/, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'image'}.png`;
-      designWorkspace(String(request.chatId ?? ''))[path] = '[image]';
+      designWorkspace(String(request.chatId ?? ''))[path] = MOCK_PIXEL;
       return { path, existed: false };
     }
+    if (request.action === 'remove_reference') {
+      const { path } = request as { path?: string };
+      delete designWorkspace(String(request.chatId ?? ''))[String(path)];
+      return { path };
+    }
+    if (request.action === 'set_flows') {
+      const { links } = request as { links?: unknown[] };
+      designWorkspace(String(request.chatId ?? ''))['flows.json'] = JSON.stringify({ links }, null, 2);
+      return { path: 'flows.json', links };
+    }
+    if (request.action === 'pick_references') return { added: [], failed: 0 };
+    if (request.action === 'export_png' || request.action === 'export_pdf') return { saved: false };
     return request.action === 'versions' ? [] : null;
   },
   // One pixel: a valid PNG, so a vision path has real bytes to attach in the browser mock.
@@ -1058,6 +1071,7 @@ const handlers: Record<string, (args?: Record<string, unknown>) => unknown> = {
     const host = String(url).replace(/^https?:\/\//i, '').split('/')[0].replace(/^www\./, '').toLowerCase();
     const stem = host.replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'page';
     const saved = saveScreenshot ? `references/${stem}-1.png` : undefined;
+    if (saved) designWorkspace(String((args as { chatId?: string }).chatId ?? ''))[saved] = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
     let system: { id: string; name: string } | undefined;
     if (saveAsSystem) {
       const name = String(saveAsSystem).trim() || 'Reference';

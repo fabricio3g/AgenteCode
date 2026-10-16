@@ -34,11 +34,14 @@
 </script>
 
 <script lang="ts">
-  import { Minus, Plus, Send } from 'lucide-svelte';
+  import { Globe, ImagePlus, Minus, Plus, Send, Upload } from 'lucide-svelte';
   import Badge from '$lib/components/ui/Badge.svelte';
   import Button from '$lib/components/ui/Button.svelte';
   import Menu from '$lib/components/ui/Menu.svelte';
   import MenuItem from '$lib/components/ui/MenuItem.svelte';
+  import IconButton from '$lib/components/ui/IconButton.svelte';
+  import { toastStore } from '$lib/stores/toast.svelte';
+  import DesignCaptureDialog from './DesignCaptureDialog.svelte';
   import DesignToolButton from './DesignToolButton.svelte';
   import { designStore } from './design.svelte';
   import { ZOOM_PRESETS, zoomLabel } from './design-view';
@@ -53,6 +56,19 @@
   const zoomText = $derived(designStore.zoom === null ? copy.design.toolbar.fit : zoomLabel(designStore.zoom));
   let zoomMenu = $state(false);
 
+  let refMenu = $state(false);
+  let captureOpen = $state(false);
+
+  /** Main opens the file dialog and copies the chosen images into references/. */
+  async function addImages() {
+    try {
+      const { failed } = await designStore.pickReferences();
+      if (failed) toastStore.error(copy.design.references.someRefused.replace('{n}', String(failed)));
+    } catch (error) {
+      toastStore.error(error instanceof Error ? error.message : copy.design.references.addFailed);
+    }
+  }
+
   function sendComments() {
     window.dispatchEvent(new Event('focus-composer'));
   }
@@ -63,6 +79,14 @@
     <DesignToolButton icon={tool.icon} label={tool.label} shortcut={tool.key} position="top" class="dock-tool" pressed={designStore.tool === tool.id} onclick={() => designStore.setTool(tool.id)} />
   {/each}
 
+  <span class="sep" aria-hidden="true"></span>
+  <Menu bind:open={refMenu} placement="top-start" minWidth="13rem" label={copy.design.references.title}>
+    {#snippet trigger(props)}
+      <IconButton label={copy.design.references.title} class="design-tool" {...props}><ImagePlus aria-hidden="true" /></IconButton>
+    {/snippet}
+    <MenuItem icon={Upload} label={copy.design.references.add} onselect={() => void addImages()} />
+    <MenuItem icon={Globe} label={copy.design.references.capture} onselect={() => (captureOpen = true)} />
+  </Menu>
   <span class="sep" aria-hidden="true"></span>
   <div class="zoom" role="group" aria-label={copy.design.toolbar.zoom}>
     {#if !compact}
@@ -90,6 +114,7 @@
     </Button>
   {/if}
 </div>
+{#if captureOpen}<DesignCaptureDialog onclose={() => (captureOpen = false)} />{/if}
 
 <style>
   .pill {

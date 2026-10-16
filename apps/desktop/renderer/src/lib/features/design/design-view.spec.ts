@@ -272,6 +272,15 @@ describe('editBarPlacement', () => {
   it('drops below the element when there is no room above', () => {
     expect(editBarPlacement({ left: 100, top: 20, width: 50, height: 30 }, bar, pane)).toEqual({ left: 100, top: 58, below: true });
   });
+  it('never rises above the frame it is in, where the frame label sits', () => {
+    // The frame starts at y=100 (its label is the 24px above that); an element 30px into it has 8+34px of bar above it.
+    const el = { left: 100, top: 130, width: 50, height: 20 };
+    expect(editBarPlacement(el, bar, pane)).toEqual({ left: 100, top: 88, below: false });
+    expect(editBarPlacement(el, bar, pane, 8, 4, 100)).toEqual({ left: 100, top: 158, below: true });
+  });
+  it('keeps the bar above when the frame leaves room', () => {
+    expect(editBarPlacement({ left: 100, top: 300, width: 50, height: 20 }, bar, pane, 8, 4, 100)).toEqual({ left: 100, top: 258, below: false });
+  });
 });
 
 describe('shortcutFor layers', () => {

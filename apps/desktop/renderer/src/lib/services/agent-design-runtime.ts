@@ -17,7 +17,7 @@ import { copy } from '$lib/copy';
 import { createDesignTools, type DesignToolHost } from '$lib/features/design/design-tools';
 import { designStore } from '$lib/features/design/design.svelte';
 import { systemBriefing } from '$lib/features/design/design-systems';
-import { DESIGN_SYSTEM_PROMPT, attachedReferencesBlock, designWorkspaceBriefing } from './design-prompts';
+import { DESIGN_SYSTEM_PROMPT, attachedReferencesBlock, designWorkspaceBriefing, matchReferencesBlock } from './design-prompts';
 import { saveReferenceImages } from './design-references';
 
 /** A design turn writes several files and previews them at two widths; Home's budget is too tight for that. */
@@ -83,9 +83,13 @@ export async function runDesignTask(args: RunAgentTaskArgs): Promise<AgentTaskRe
   // What the user pointed at on the canvas belongs to this send, so take it before any await.
   const pointed = designStore.chatId === chatId ? designStore.takeTurnContext() : '';
   // Images sent with this message become references first, so the briefing lists them.
-  const attached = attachedReferencesBlock(await saveReferenceImages(chatId, args.messages));
+  const attachedPaths = await saveReferenceImages(chatId, args.messages);
+  const attached = attachedReferencesBlock(attachedPaths);
+  // Whatever the user collected in the tray is the brief to match (read after the attachments landed).
+  await designStore.refresh();
+  const matching = designStore.chatId === chatId ? matchReferencesBlock(designStore.references.map((item) => item.path), attachedPaths) : '';
   const space: SpaceRuntime = {
-    systemPrompt: [DESIGN_SYSTEM_PROMPT, await briefing(chatId), await systemBrief(chatId), pointed, attached].filter(Boolean).join('\n\n'),
+    systemPrompt: [DESIGN_SYSTEM_PROMPT, await briefing(chatId), await systemBrief(chatId), pointed, matching, attached].filter(Boolean).join('\n\n'),
     tools(run) {
       // Only read-only web access is borrowed from Home; the names are an allow-list.
       const home = createHomeTools(run, true).tools;

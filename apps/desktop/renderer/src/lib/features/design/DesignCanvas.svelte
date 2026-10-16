@@ -33,6 +33,7 @@
   import { buildPreviewHtml } from '$lib/utils/preview-builder';
   import { designStore } from './design.svelte';
   import { editBarPlacement, frameOnScreen, nextZoomPreset, pageLabel, PIN_GAP, PIN_SIZE, pinOrigin, screenBox, type BoardFrame } from './design-view';
+  import { flowPath } from '$shared/design-flows';
   import { isMark, POINT_GAP, rankHits, samplePoints, screenPoints, type Pt } from './design-strokes';
   import { HOST_SOURCE, pickLabel, readFrameMessage, withPicker, type FrameMessage } from './design-picker';
   import { toolCursor } from './design-cursors';
@@ -315,6 +316,19 @@
     return first ? `${pageLabel(frame.page)} · ${frame.width}` : String(frame.width);
   }
 
+  /** Page links as quiet arrows, one per size on the board (the same size of each page), in screen px. */
+  const arrows = $derived(designStore.links.flatMap((link) =>
+    designStore.sizes.flatMap((size) => {
+      const from = designStore.frame(link.from, size);
+      const to = designStore.frame(link.to, size);
+      if (!from || !to) return [];
+      const a = screenBox(from, view);
+      const b = screenBox(to, view);
+      if (a.width < 28 || b.width < 28) return [];
+      return [{ id: `${link.from}>${link.to}:${size}`, ...flowPath(a, b) }];
+    })
+  ));
+
   const pins = $derived(designStore.comments.flatMap((comment, index) =>
     frames
       .filter((frame) => frame.page === comment.page && (!comment.width || comment.width === frame.width) && live.has(frame.key))
@@ -356,9 +370,10 @@
   const editBar = $derived.by(() => {
     const t = target;
     if (!t || designStore.selection.length !== 1) return null;
-    const place = editBarPlacement(t.el, { width: barWidth, height: BAR_HEIGHT }, { width: paneWidth, height: paneHeight });
-    // A prompt that flipped above the element takes that room; the toolbar goes above the prompt.
-    const top = t.flip && !place.below ? Math.max(4, place.top - PROMPT_HEIGHT - 6) : place.top;
+    // The frame's top edge is the bar's ceiling: its label sits just above, and the bar must not cover it.
+    const place = editBarPlacement(t.el, { width: barWidth, height: BAR_HEIGHT }, { width: paneWidth, height: paneHeight }, 8, 4, t.box.top + 4);
+    // A prompt that flipped above the element takes that room; the toolbar goes above the prompt, never above the frame.
+    const top = t.flip && !place.below ? Math.max(4, t.box.top + 4, place.top - PROMPT_HEIGHT - 6) : place.top;
     return { left: place.left, top, below: place.below, pick: t.last };
   });
 
@@ -518,6 +533,14 @@
           </div>
         {/if}
       {/each}
+      {#if arrows.length}
+        <svg class="flows" aria-hidden="true">
+          {#each arrows as arrow (arrow.id)}
+            <path d={arrow.d} />
+            <path class="head-mark" d="M-7 -4L0 0L-7 4" transform="translate({arrow.x} {arrow.y}) rotate({arrow.angle})" />
+          {/each}
+        </svg>
+      {/if}
       {#if designStore.activeFrame}
         {@const ring = screenBox(designStore.activeFrame, view)}
         <span class="ring" style:left="{ring.left}px" style:top="{ring.top}px" style:width="{ring.width}px" style:height="{ring.height}px"></span>
@@ -628,6 +651,20 @@
     z-index: 1;
     pointer-events: none;
     overflow: hidden;
+  }
+
+  /* Page links: a thin muted line that never competes with the frames it joins. */
+  .flows {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+    fill: none;
+    stroke: color-mix(in srgb, var(--foreground) 38%, transparent);
+    stroke-width: 1.5;
+    stroke-linecap: round;
+    stroke-linejoin: round;
   }
 
   /* A frame's head: the label (drag it to move the frame) and, on hover, its menu. */

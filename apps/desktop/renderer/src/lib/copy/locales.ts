@@ -113,7 +113,8 @@ const es: CopyOverride = {
     layers: { title: 'Capas', show: 'Mostrar capas', hide: 'Ocultar capas', empty: 'No hay elementos en esta página' },
     draw: { tool: 'Dibujar en el lienzo', mark: 'Trazo' },
     tweaks: { title: 'Ajustes' },
-    frame: { actions: 'Acciones del marco', zoom: 'Acercar al marco', variant: 'Pedir una variante', variantPrompt: 'Haz una variante de {page} en variants/: ', remove: 'Eliminar página', removeVariant: 'Eliminar variante', removeTitle: '¿Eliminar {page}?', removeMessage: 'Antes se guarda una versión, así que Versiones puede recuperarla.', removeConfirm: 'Eliminar', tidy: 'Ordenar el tablero', drag: 'Arrastra para mover' },
+    frame: { actions: 'Acciones del marco', zoom: 'Acercar al marco', variant: 'Pedir una variante', variantPrompt: 'Haz una variante de {page} en variants/: ', remove: 'Eliminar página', removeVariant: 'Eliminar variante', removeTitle: '¿Eliminar {page}?', removeMessage: 'Antes se guarda una versión, así que Versiones puede recuperarla.', removeConfirm: 'Eliminar', tidy: 'Ordenar el tablero', drag: 'Arrastra para mover', link: 'Enlazar con…', nextScreen: 'Generar la pantalla siguiente', nextPrompt: 'Diseña la siguiente pantalla lógica después de {page}: una página nueva enlazada desde ella. Añade el enlace a flows.json. ', linkFailed: 'No se pudo guardar el enlace', exportPng: 'Exportar marco como PNG', exportPdf: 'Exportar página como PDF' },
+    references: { title: 'Referencia', add: 'Añadir imagen…', capture: 'Capturar un sitio web…', tray: 'Referencias', remove: 'Quitar referencia', dropHint: 'Suelta una imagen para añadirla como referencia', addFailed: 'No se pudo añadir esa imagen', someRefused: 'No se pudieron añadir {n}', siteTitle: 'Capturar un sitio web', siteDescription: 'Se guarda una captura de la página como referencia. El agente la mira antes de diseñar.', siteLabel: 'Dirección del sitio', sitePlaceholder: 'ejemplo.com', siteConfirm: 'Capturar', siteWorking: 'Capturando…', siteCancel: 'Cancelar', siteInvalid: 'Escribe una dirección web pública, como ejemplo.com', siteFailed: 'No se pudo capturar esa página' },
     inspector: {
       element: 'Elemento', tokens: 'Tokens', code: 'Código', none: 'Selecciona un elemento en el lienzo',
       noneHint: 'Su texto, caja y estilos aparecen aquí, y los cambios rápidos van al chat.',
@@ -123,7 +124,7 @@ const es: CopyOverride = {
       colors: 'Colores', space: 'Espaciado', radius: 'Radio', type: 'Tipografía', shadow: 'Sombras', other: 'Otros',
       moreSelected: 'más en la selección', motion: 'Movimiento', updateFailed: 'No se pudo actualizar el token', noSource: 'Nada que mostrar todavía', file: 'Archivo', copy: 'Copiar', copied: 'Copiado'
     },
-    export: { button: 'Exportar', copyHtml: 'Copiar HTML', download: 'Descargar HTML', openBrowser: 'Abrir en el navegador', copied: 'HTML copiado', failed: 'La exportación falló' },
+    export: { button: 'Exportar', copyHtml: 'Copiar HTML', download: 'Descargar HTML', openBrowser: 'Abrir en el navegador', copied: 'HTML copiado', failed: 'La exportación falló', png: 'Exportar como PNG', pdf: 'Exportar como PDF', rendering: 'Renderizando…' },
     systems: {
       label: 'Sistema de diseño',
       intro: 'Empezar desde un sistema',
@@ -301,7 +302,8 @@ const ptBR: CopyOverride = {
     layers: { title: 'Camadas', show: 'Mostrar camadas', hide: 'Ocultar camadas', empty: 'Nenhum elemento nesta página' },
     draw: { tool: 'Desenhar na tela', mark: 'Traço' },
     tweaks: { title: 'Ajustes' },
-    frame: { actions: 'Ações do quadro', zoom: 'Aproximar do quadro', variant: 'Pedir uma variante', variantPrompt: 'Crie uma variante de {page} em variants/: ', remove: 'Excluir página', removeVariant: 'Excluir variante', removeTitle: 'Excluir {page}?', removeMessage: 'Uma versão é salva antes, então Versões pode trazê-la de volta.', removeConfirm: 'Excluir', tidy: 'Organizar o quadro', drag: 'Arraste para mover' },
+    frame: { actions: 'Ações do quadro', zoom: 'Aproximar do quadro', variant: 'Pedir uma variante', variantPrompt: 'Crie uma variante de {page} em variants/: ', remove: 'Excluir página', removeVariant: 'Excluir variante', removeTitle: 'Excluir {page}?', removeMessage: 'Uma versão é salva antes, então Versões pode trazê-la de volta.', removeConfirm: 'Excluir', tidy: 'Organizar o quadro', drag: 'Arraste para mover', link: 'Vincular a…', nextScreen: 'Gerar a próxima tela', nextPrompt: 'Projete a próxima tela lógica depois de {page}: uma nova página vinculada a partir dela. Adicione o vínculo ao flows.json. ', linkFailed: 'Não foi possível salvar o vínculo', exportPng: 'Exportar quadro como PNG', exportPdf: 'Exportar página como PDF' },
+    references: { title: 'Referência', add: 'Adicionar imagem…', capture: 'Capturar um site…', tray: 'Referências', remove: 'Remover referência', dropHint: 'Solte uma imagem para adicioná-la como referência', addFailed: 'Não foi possível adicionar essa imagem', someRefused: '{n} não puderam ser adicionadas', siteTitle: 'Capturar um site', siteDescription: 'Uma captura da página é salva como referência. O agente a vê antes de projetar.', siteLabel: 'Endereço do site', sitePlaceholder: 'exemplo.com', siteConfirm: 'Capturar', siteWorking: 'Capturando…', siteCancel: 'Cancelar', siteInvalid: 'Digite um endereço web público, como exemplo.com', siteFailed: 'Não foi possível capturar essa página' },
     inspector: {
       element: 'Elemento', tokens: 'Tokens', code: 'Código', none: 'Selecione um elemento na tela',
       noneHint: 'Texto, caixa e estilos aparecem aqui, e ajustes rápidos vão para o chat.',
@@ -311,7 +313,7 @@ const ptBR: CopyOverride = {
       colors: 'Cores', space: 'Espaçamento', radius: 'Raio', type: 'Tipografia', shadow: 'Sombras', other: 'Outros',
       moreSelected: 'a mais na seleção', motion: 'Movimento', updateFailed: 'Não foi possível atualizar o token', noSource: 'Nada para mostrar ainda', file: 'Arquivo', copy: 'Copiar', copied: 'Copiado'
     },
-    export: { button: 'Exportar', copyHtml: 'Copiar HTML', download: 'Baixar HTML', openBrowser: 'Abrir no navegador', copied: 'HTML copiado', failed: 'Falha na exportação' },
+    export: { button: 'Exportar', copyHtml: 'Copiar HTML', download: 'Baixar HTML', openBrowser: 'Abrir no navegador', copied: 'HTML copiado', failed: 'Falha na exportação', png: 'Exportar como PNG', pdf: 'Exportar como PDF', rendering: 'Renderizando…' },
     systems: {
       label: 'Sistema de design',
       intro: 'Começar de um sistema',
@@ -489,7 +491,8 @@ const fr: CopyOverride = {
     layers: { title: 'Calques', show: 'Afficher les calques', hide: 'Masquer les calques', empty: 'Aucun élément sur cette page' },
     draw: { tool: 'Dessiner sur le canevas', mark: 'Tracé' },
     tweaks: { title: 'Réglages' },
-    frame: { actions: 'Actions du cadre', zoom: 'Zoomer sur le cadre', variant: 'Demander une variante', variantPrompt: 'Crée une variante de {page} dans variants/ : ', remove: 'Supprimer la page', removeVariant: 'Supprimer la variante', removeTitle: 'Supprimer {page} ?', removeMessage: 'Une version est enregistrée avant, donc Versions peut la restaurer.', removeConfirm: 'Supprimer', tidy: 'Ranger le tableau', drag: 'Glisser pour déplacer' },
+    frame: { actions: 'Actions du cadre', zoom: 'Zoomer sur le cadre', variant: 'Demander une variante', variantPrompt: 'Crée une variante de {page} dans variants/ : ', remove: 'Supprimer la page', removeVariant: 'Supprimer la variante', removeTitle: 'Supprimer {page} ?', removeMessage: 'Une version est enregistrée avant, donc Versions peut la restaurer.', removeConfirm: 'Supprimer', tidy: 'Ranger le tableau', drag: 'Glisser pour déplacer', link: 'Lier à…', nextScreen: 'Générer l\'écran suivant', nextPrompt: 'Conçois l\'écran suivant logique après {page} : une nouvelle page liée depuis celle-ci. Ajoute le lien à flows.json. ', linkFailed: 'Impossible d\'enregistrer le lien', exportPng: 'Exporter le cadre en PNG', exportPdf: 'Exporter la page en PDF' },
+    references: { title: 'Référence', add: 'Ajouter une image…', capture: 'Capturer un site web…', tray: 'Références', remove: 'Retirer la référence', dropHint: 'Déposez une image pour l’ajouter comme référence', addFailed: 'Impossible d\'ajouter cette image', someRefused: '{n} n’ont pas pu être ajoutées', siteTitle: 'Capturer un site web', siteDescription: 'Une capture de la page est enregistrée comme référence. L\'agent la regarde avant de concevoir.', siteLabel: 'Adresse du site', sitePlaceholder: 'exemple.com', siteConfirm: 'Capturer', siteWorking: 'Capture…', siteCancel: 'Annuler', siteInvalid: 'Saisissez une adresse web publique, comme exemple.com', siteFailed: 'Impossible de capturer cette page' },
     inspector: {
       element: 'Élément', tokens: 'Jetons', code: 'Code', none: 'Sélectionnez un élément sur le canevas',
       noneHint: 'Son texte, sa boîte et ses styles apparaissent ici, et les modifications rapides partent dans le chat.',
@@ -499,7 +502,7 @@ const fr: CopyOverride = {
       colors: 'Couleurs', space: 'Espacement', radius: 'Rayon', type: 'Typographie', shadow: 'Ombres', other: 'Autres',
       moreSelected: 'de plus dans la sélection', motion: 'Mouvement', updateFailed: 'Impossible de mettre à jour le jeton', noSource: 'Rien à afficher pour l’instant', file: 'Fichier', copy: 'Copier', copied: 'Copié'
     },
-    export: { button: 'Exporter', copyHtml: 'Copier le HTML', download: 'Télécharger le HTML', openBrowser: 'Ouvrir dans le navigateur', copied: 'HTML copié', failed: 'Échec de l’exportation' },
+    export: { button: 'Exporter', copyHtml: 'Copier le HTML', download: 'Télécharger le HTML', openBrowser: 'Ouvrir dans le navigateur', copied: 'HTML copié', failed: 'Échec de l’exportation', png: 'Exporter en PNG', pdf: 'Exporter en PDF', rendering: 'Rendu en cours…' },
     systems: {
       label: 'Système de design',
       intro: 'Partir d’un système',
@@ -677,7 +680,8 @@ const de: CopyOverride = {
     layers: { title: 'Ebenen', show: 'Ebenen anzeigen', hide: 'Ebenen ausblenden', empty: 'Keine Elemente auf dieser Seite' },
     draw: { tool: 'Auf der Arbeitsfläche zeichnen', mark: 'Markierung' },
     tweaks: { title: 'Anpassungen' },
-    frame: { actions: 'Rahmenaktionen', zoom: 'Auf Rahmen zoomen', variant: 'Variante anfragen', variantPrompt: 'Erstelle eine Variante von {page} in variants/: ', remove: 'Seite löschen', removeVariant: 'Variante löschen', removeTitle: '{page} löschen?', removeMessage: 'Vorher wird eine Version gespeichert, Versionen kann sie zurückholen.', removeConfirm: 'Löschen', tidy: 'Board aufräumen', drag: 'Zum Verschieben ziehen' },
+    frame: { actions: 'Rahmenaktionen', zoom: 'Auf Rahmen zoomen', variant: 'Variante anfragen', variantPrompt: 'Erstelle eine Variante von {page} in variants/: ', remove: 'Seite löschen', removeVariant: 'Variante löschen', removeTitle: '{page} löschen?', removeMessage: 'Vorher wird eine Version gespeichert, Versionen kann sie zurückholen.', removeConfirm: 'Löschen', tidy: 'Board aufräumen', drag: 'Zum Verschieben ziehen', link: 'Verknüpfen mit…', nextScreen: 'Nächsten Bildschirm erzeugen', nextPrompt: 'Entwirf den logisch nächsten Bildschirm nach {page}: eine neue Seite, die von dort verlinkt ist. Trage die Verknüpfung in flows.json ein. ', linkFailed: 'Die Verknüpfung konnte nicht gespeichert werden', exportPng: 'Rahmen als PNG exportieren', exportPdf: 'Seite als PDF exportieren' },
+    references: { title: 'Referenz', add: 'Bild hinzufügen…', capture: 'Website erfassen…', tray: 'Referenzen', remove: 'Referenz entfernen', dropHint: 'Bild ablegen, um es als Referenz hinzuzufügen', addFailed: 'Dieses Bild konnte nicht hinzugefügt werden', someRefused: '{n} konnten nicht hinzugefügt werden', siteTitle: 'Website erfassen', siteDescription: 'Ein Screenshot der Seite wird als Referenz gespeichert. Der Agent sieht ihn sich vor dem Entwerfen an.', siteLabel: 'Website-Adresse', sitePlaceholder: 'beispiel.de', siteConfirm: 'Erfassen', siteWorking: 'Erfasse…', siteCancel: 'Abbrechen', siteInvalid: 'Gib eine öffentliche Webadresse ein, z. B. beispiel.de', siteFailed: 'Diese Seite konnte nicht erfasst werden' },
     inspector: {
       element: 'Element', tokens: 'Tokens', code: 'Code', none: 'Wähle ein Element auf dem Canvas aus',
       noneHint: 'Text, Box und Stile erscheinen hier, schnelle Änderungen gehen an den Chat.',
@@ -687,7 +691,7 @@ const de: CopyOverride = {
       colors: 'Farben', space: 'Abstände', radius: 'Radius', type: 'Typografie', shadow: 'Schatten', other: 'Sonstiges',
       moreSelected: 'weitere ausgewählt', motion: 'Bewegung', updateFailed: 'Das Token konnte nicht aktualisiert werden', noSource: 'Noch nichts anzuzeigen', file: 'Datei', copy: 'Kopieren', copied: 'Kopiert'
     },
-    export: { button: 'Exportieren', copyHtml: 'HTML kopieren', download: 'HTML herunterladen', openBrowser: 'Im Browser öffnen', copied: 'HTML kopiert', failed: 'Export fehlgeschlagen' },
+    export: { button: 'Exportieren', copyHtml: 'HTML kopieren', download: 'HTML herunterladen', openBrowser: 'Im Browser öffnen', copied: 'HTML kopiert', failed: 'Export fehlgeschlagen', png: 'Als PNG exportieren', pdf: 'Als PDF exportieren', rendering: 'Wird gerendert…' },
     systems: {
       label: 'Designsystem',
       intro: 'Mit einem System beginnen',
@@ -865,7 +869,8 @@ const ja: CopyOverride = {
     layers: { title: 'レイヤー', show: 'レイヤーを表示', hide: 'レイヤーを隠す', empty: 'このページに要素はありません' },
     draw: { tool: 'キャンバスに描く', mark: 'マーク' },
     tweaks: { title: '調整' },
-    frame: { actions: 'フレームの操作', zoom: 'フレームにズーム', variant: 'バリエーションを依頼', variantPrompt: '{page} のバリエーションを variants/ に作成: ', remove: 'ページを削除', removeVariant: 'バリエーションを削除', removeTitle: '{page} を削除しますか？', removeMessage: '先にバージョンが保存されるので、バージョンから戻せます。', removeConfirm: '削除', tidy: 'ボードを整理', drag: 'ドラッグで移動' },
+    frame: { actions: 'フレームの操作', zoom: 'フレームにズーム', variant: 'バリエーションを依頼', variantPrompt: '{page} のバリエーションを variants/ に作成: ', remove: 'ページを削除', removeVariant: 'バリエーションを削除', removeTitle: '{page} を削除しますか？', removeMessage: '先にバージョンが保存されるので、バージョンから戻せます。', removeConfirm: '削除', tidy: 'ボードを整理', drag: 'ドラッグで移動', link: 'リンク先…', nextScreen: '次の画面を生成', nextPrompt: '{page} の次に来る論理的な画面をデザインしてください。そこからリンクされる新しいページです。リンクを flows.json に追加してください。', linkFailed: 'リンクを保存できませんでした', exportPng: 'フレームを PNG で書き出す', exportPdf: 'ページを PDF で書き出す' },
+    references: { title: '参考画像', add: '画像を追加…', capture: 'Web サイトを取り込む…', tray: '参考画像', remove: '参考画像を削除', dropHint: '画像をドロップして参考画像に追加', addFailed: 'その画像を追加できませんでした', someRefused: '{n} 件を追加できませんでした', siteTitle: 'Web サイトを取り込む', siteDescription: 'ページのスクリーンショットを参考画像として保存します。エージェントはデザイン前にそれを見ます。', siteLabel: 'サイトのアドレス', sitePlaceholder: 'example.com', siteConfirm: '取り込む', siteWorking: '取り込み中…', siteCancel: 'キャンセル', siteInvalid: 'example.com のような公開 Web アドレスを入力してください', siteFailed: 'そのページを取り込めませんでした' },
     inspector: {
       element: '要素', tokens: 'トークン', code: 'コード', none: 'キャンバス上の要素を選択してください',
       noneHint: 'テキスト、ボックス、スタイルがここに表示され、簡単な変更はチャットに送られます。',
@@ -875,7 +880,7 @@ const ja: CopyOverride = {
       colors: '色', space: '余白', radius: '角丸', type: 'タイプ', shadow: '影', other: 'その他',
       moreSelected: '件を追加で選択', motion: 'モーション', updateFailed: 'トークンを更新できませんでした', noSource: 'まだ表示するものがありません', file: 'ファイル', copy: 'コピー', copied: 'コピーしました'
     },
-    export: { button: '書き出す', copyHtml: 'HTMLをコピー', download: 'HTMLをダウンロード', openBrowser: 'ブラウザで開く', copied: 'HTMLをコピーしました', failed: '書き出しに失敗しました' },
+    export: { button: '書き出す', copyHtml: 'HTMLをコピー', download: 'HTMLをダウンロード', openBrowser: 'ブラウザで開く', copied: 'HTMLをコピーしました', failed: '書き出しに失敗しました', png: 'PNG として書き出す', pdf: 'PDF として書き出す', rendering: 'レンダリング中…' },
     systems: {
       label: 'デザインシステム',
       intro: 'システムから始める',
@@ -1053,7 +1058,8 @@ const zh: CopyOverride = {
     layers: { title: '图层', show: '显示图层', hide: '隐藏图层', empty: '此页面没有元素' },
     draw: { tool: '在画布上绘制', mark: '标记' },
     tweaks: { title: '微调' },
-    frame: { actions: '框架操作', zoom: '缩放到框架', variant: '请求一个变体', variantPrompt: '在 variants/ 中为 {page} 制作一个变体：', remove: '删除页面', removeVariant: '删除变体', removeTitle: '删除 {page}？', removeMessage: '删除前会先保存一个版本，可在版本中恢复。', removeConfirm: '删除', tidy: '整理画板', drag: '拖动以移动' },
+    frame: { actions: '框架操作', zoom: '缩放到框架', variant: '请求一个变体', variantPrompt: '在 variants/ 中为 {page} 制作一个变体：', remove: '删除页面', removeVariant: '删除变体', removeTitle: '删除 {page}？', removeMessage: '删除前会先保存一个版本，可在版本中恢复。', removeConfirm: '删除', tidy: '整理画板', drag: '拖动以移动', link: '链接到…', nextScreen: '生成下一屏', nextPrompt: '设计 {page} 之后合乎逻辑的下一屏：一个由它链接过去的新页面。请把链接添加到 flows.json。', linkFailed: '无法保存链接', exportPng: '将框架导出为 PNG', exportPdf: '将页面导出为 PDF' },
+    references: { title: '参考图', add: '添加图片…', capture: '抓取网站…', tray: '参考图', remove: '移除参考图', dropHint: '拖入图片即可添加为参考图', addFailed: '无法添加该图片', someRefused: '有 {n} 张无法添加', siteTitle: '抓取网站', siteDescription: '页面截图会保存为参考图，智能体在设计前会先查看。', siteLabel: '网站地址', sitePlaceholder: 'example.com', siteConfirm: '抓取', siteWorking: '抓取中…', siteCancel: '取消', siteInvalid: '请输入公开的网址，例如 example.com', siteFailed: '无法抓取该页面' },
     inspector: {
       element: '元素', tokens: '令牌', code: '代码', none: '在画布上选择一个元素',
       noneHint: '它的文字、盒模型和样式会显示在这里，快速修改会发送到聊天。',
@@ -1063,7 +1069,7 @@ const zh: CopyOverride = {
       colors: '颜色', space: '间距', radius: '圆角', type: '字体', shadow: '阴影', other: '其他',
       moreSelected: '个已选中', motion: '动效', updateFailed: '无法更新令牌', noSource: '暂无内容', file: '文件', copy: '复制', copied: '已复制'
     },
-    export: { button: '导出', copyHtml: '复制 HTML', download: '下载 HTML', openBrowser: '在浏览器中打开', copied: 'HTML 已复制', failed: '导出失败' },
+    export: { button: '导出', copyHtml: '复制 HTML', download: '下载 HTML', openBrowser: '在浏览器中打开', copied: 'HTML 已复制', failed: '导出失败', png: '导出为 PNG', pdf: '导出为 PDF', rendering: '渲染中…' },
     systems: {
       label: '设计系统',
       intro: '从一个系统开始',

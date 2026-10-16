@@ -18,7 +18,7 @@
   import { cn as uiClass } from '$lib/utils/cn';
 
   import { onMount, untrack } from 'svelte';
-  import { Copy, Download, ExternalLink, Film, FolderOpen, LayoutGrid, GalleryHorizontal, History, Layers, Maximize2, Monitor, MoreHorizontal, PanelLeftClose, PanelLeftOpen, PanelRight, RotateCw, Smartphone, Tablet } from 'lucide-svelte';
+  import { Copy, Download, ExternalLink, FileImage, FileText, Film, FolderOpen, LayoutGrid, GalleryHorizontal, History, Layers, Maximize2, Monitor, MoreHorizontal, PanelLeftClose, PanelLeftOpen, PanelRight, RotateCw, Smartphone, Tablet } from 'lucide-svelte';
   import Thread from '$lib/features/chat/thread/Thread.svelte';
   import Composer from '$lib/features/chat/Composer.svelte';
   import Button from '$lib/components/ui/Button.svelte';
@@ -30,7 +30,6 @@
   import { appStore } from '$lib/stores/app.svelte';
   import { copy } from '$lib/copy';
   import { invoke } from '$lib/services/bridge';
-  import { buildPreviewHtml } from '$lib/utils/preview-builder';
   import DesignCanvas from './DesignCanvas.svelte';
   import DesignHandoffDialog from './DesignHandoffDialog.svelte';
   import DesignHandoffItems from './DesignHandoffItems.svelte';
@@ -46,6 +45,9 @@
   import DesignToolPill, { toolForKey } from './DesignToolPill.svelte';
   import DesignTimeline from './DesignTimeline.svelte';
   import DesignTray from './DesignTray.svelte';
+  import DesignReferences from './DesignReferences.svelte';
+  import { imageFilesOf } from './design-references';
+  import { exportRendered, exportWidthOf, pageHtml } from './design-export';
   import { designSystems } from './design-systems.svelte';
   import { designStore, type DesignScheme, type PaneId } from './design.svelte';
   import { clampWidth, DOCK_WIDTH, FRAME_SIZES, INSPECTOR_WIDTH, paneLayout, pageLabel, shortcutFor, toolbarPlan, type FrameSizeId, type ToolbarItem } from './design-view';
@@ -140,6 +142,29 @@
     systemsOpen = true;
   }
 
+  /** Images dropped on the canvas, or pasted while no field has focus, become references. */
+  async function takeImages(files: File[]) {
+    if (!files.length) return;
+    const { failed } = await designStore.addReferenceFiles(files);
+    if (failed) note(copy.design.references.someRefused.replace('{n}', String(failed)));
+  }
+  function onDragOver(event: DragEvent) {
+    if (event.dataTransfer?.types.includes('Files')) event.preventDefault();
+  }
+  function onDrop(event: DragEvent) {
+    const files = imageFilesOf(event.dataTransfer?.files);
+    if (!files.length) return;
+    event.preventDefault();
+    void takeImages(files);
+  }
+  function onPaste(event: ClipboardEvent) {
+    if (isEditing(event.target)) return;
+    const files = imageFilesOf(event.clipboardData?.files);
+    if (!files.length) return;
+    event.preventDefault();
+    void takeImages(files);
+  }
+
   function isEditing(target: EventTarget | null): boolean {
     return !!(target as HTMLElement | null)?.closest?.('textarea, input, select, [contenteditable="true"]');
   }
@@ -191,11 +216,17 @@
 
   /** The inlined single-file document of the page on screen. */
   function currentHtml(): string | null {
-    const page = designStore.selected;
-    const { files } = designStore.data;
-    const source = files[page];
-    if (source === undefined) return null;
-    try { return buildPreviewHtml(source, files, page, true).html; } catch { return null; }
+    return pageHtml(designStore.data.files, designStore.selected);
+  }
+
+  /** The page on screen as a PNG of the active frame's width, or as a PDF, rendered in main. */
+  async function exportRenderedPage(kind: 'png' | 'pdf') {
+    const chatId = designStore.chatId;
+    if (!chatId || !designStore.selected) return;
+    note(copy.design.export.rendering);
+    const outcome = await exportRendered(chatId, designStore.data.files, designStore.selected, kind, exportWidthOf(designStore.activeFrame));
+    if (outcome === 'failed') note(copy.design.export.failed);
+    else note('');
   }
 
   async function exportPage(action: 'copy' | 'download' | 'open') {
@@ -217,7 +248,7 @@
   }
 </script>
 
-<svelte:window onkeydown={onKeydown} />
+<svelte:window onkeydown={onKeydown} onpaste={onPaste} />
 
 {#snippet schemeItems()}
   {#each SCHEMES as scheme (scheme)}
@@ -235,6 +266,8 @@
   <MenuItem icon={Copy} label={copy.design.export.copyHtml} onselect={() => void exportPage('copy')} />
   <MenuItem icon={Download} label={copy.design.export.download} onselect={() => void exportPage('download')} />
   <MenuItem icon={ExternalLink} label={copy.design.export.openBrowser} onselect={() => void exportPage('open')} />
+  <MenuItem icon={FileImage} label={copy.design.export.png} onselect={() => void exportRenderedPage('png')} />
+  <MenuItem icon={FileText} label={copy.design.export.pdf} onselect={() => void exportRenderedPage('pdf')} />
   <DesignHandoffItems onhandoff={() => (handoffOpen = true)} note={note} />
 {/snippet}
 
@@ -261,6 +294,7 @@
       {/if}
       <Composer placeholder={copy.design.dock.placeholder} suggestions={false}>
         {#snippet above()}
+          <DesignReferences />
           <DesignSelectionChips />
         {/snippet}
       </Composer>
@@ -400,7 +434,8 @@
       {/if}
     </UiToolbar>
 
-    <div class="stage-wrap">
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <div class="stage-wrap" ondragover={onDragOver} ondrop={onDrop}>
       <DesignCanvas />
       {#if designStore.layersOpen}<div class="layers-slot"><DesignLayers /></div>{/if}
       {#if exportNote}<p class="note" role="status">{exportNote}</p>{/if}
