@@ -278,6 +278,7 @@ async function startAttempt(turn: HomeTurn, attempt: Attempt): Promise<{ session
     localSelection: plan.localMode ? { modelPath: run.config.llm?.local?.selected_model_path || '', baseUrl: run.config.llm?.local?.base_url || '' } : undefined,
     policy: remainingPolicy(turn, wrapUp), tools: wrapUp ? [] : toolManifest(turn.tools)
   });
+  if (!started) throw new Error('The agent runtime did not start the turn.');
   turn.meta = { sessionId: started.sessionId, revision: turn.meta?.revision || args.homeRuntime?.revision || 0, provider, model: plan.activeModel, contextWindow: started.contextWindow, historyIds: args.historyIds || [], files: run.ctx.files };
   if (run.usage?.prompt_tokens) Object.assign(turn.meta, { contextTokens: run.usage.prompt_tokens, estimated: false });
   turn.updateMeta();

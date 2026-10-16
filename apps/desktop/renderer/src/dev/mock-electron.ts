@@ -1001,6 +1001,20 @@ const handlers: Record<string, (args?: Record<string, unknown>) => unknown> = {
   'agente_steer': () => ({ ok: true }),
   'agente_model_inputs': () => ['text', 'image'],
   // Design space: one in-memory workspace per chat, seeded with a small page so the canvas has something to show.
+  // Home-runtime turns (Home, Design): a canned streamed reply so a turn completes without the Rust core.
+  'home_runtime_start': (args) => {
+    const runId = String(args?.runId ?? '');
+    const sessionId = String(args?.sessionId ?? `mock-session-${Date.now()}`);
+    const reply = 'This is the mock reply: the desktop runtime is not running, so nothing was generated.';
+    const send = (payload: Record<string, unknown>, delay: number) => setTimeout(() => emit('home_runtime_event', { runId, ...payload }), delay);
+    const envelope = (event: Record<string, unknown>) => ({ type: 'event', envelope: { event } });
+    send(envelope({ type: 'assistant_delta', text: reply.slice(0, 40) }), 60);
+    send(envelope({ type: 'assistant_delta', text: reply.slice(40) }), 120);
+    send({ type: 'outcome', outcome: { status: 'completed' }, snapshot: { revision: 1 } }, 180);
+    return { sessionId, turnId: `mock-turn-${Date.now()}`, contextWindow: 128000 };
+  },
+  'home_runtime_cancel': () => ({ ok: true }),
+  'home_runtime_result': () => ({ ok: true }),
   'design_tool': (args) => {
     const { chatId, name, args: toolArgs = {} } = (args ?? {}) as { chatId?: string; name?: string; args?: Record<string, unknown> };
     const files = designWorkspace(String(chatId ?? ''));
