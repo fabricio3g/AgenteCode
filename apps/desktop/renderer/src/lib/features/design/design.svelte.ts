@@ -1,7 +1,7 @@
 import type { DesignCanvasTool, DesignComment, DesignFiles, DesignPick, DesignSelection, DesignStroke, DesignToolResult, DesignVersion } from '$shared/design';
 import { invoke, listen } from '$lib/services/bridge';
 import { DesignWorkspaceController } from './design-workspace.svelte';
-import { boardLayout, clampZoom, DOCK_WIDTH, FRAME_SIZE_IDS, fitView, frameKey, INSPECTOR_WIDTH, resolveSelected, zoomAt, type Board, type BoardFrame, type BoardView, type FramePositions, type FrameSizeId } from './design-view';
+import { boardLayout, nearestFree, clampZoom, DOCK_WIDTH, FRAME_SIZE_IDS, fitView, frameKey, INSPECTOR_WIDTH, resolveSelected, zoomAt, type Board, type BoardFrame, type BoardView, type FramePositions, type FrameSizeId } from './design-view';
 import { decideTextEdit, formatTurnContext, type AnimCommand, type MotionItem } from './design-picker';
 import { startsBurst } from './design-edit-ops';
 import { planStyleEdit, styleEditNote } from './design-source';
@@ -210,7 +210,9 @@ class DesignStore {
   /** Every page, then every variant, at each chosen size. */
   /** Frames the user dragged, by key; saved per design when a drag ends. */
   positions = $state.raw<FramePositions>({});
-  readonly board: Board = $derived(boardLayout(this.data.pages, this.data.variants.map((variant) => variant.entry), this.sizes, this.positions));
+  /** The frame being dragged: it floats over the board until it is dropped. */
+  moving = $state<string | null>(null);
+  readonly board: Board = $derived(boardLayout(this.data.pages, this.data.variants.map((variant) => variant.entry), this.sizes, this.positions, this.moving));
   /** Where the board sits on screen now: fitted, or the explicit zoom and pan. */
   readonly view: BoardView = $derived(this.zoom === null ? fitView(this.board, this.pane, this.board) : { scale: this.zoom, x: this.pan.x, y: this.pan.y });
   /** The frame last picked in, focused or clicked; it wins over the page's other sizes while its page stays selected. */
@@ -258,9 +260,20 @@ class DesignStore {
   moveFrame(key: string, x: number, y: number) {
     // A fitted board would refit under the pointer as the bounds grow; hold the view still while a frame moves.
     if (this.zoom === null) this.#setView(this.view);
+    this.moving = key;
     this.positions = { ...this.positions, [key]: { x: Math.round(x), y: Math.round(y) } };
   }
-  endMove() { this.#savePositions(); }
+  /** A dropped frame never lands on another: it snaps to the nearest free spot, then the place is kept. */
+  endMove(key: string) {
+    const frame = this.board.frames.find((item) => item.key === key);
+    const want = this.positions[key];
+    this.moving = null;
+    if (frame && want) {
+      const spot = nearestFree({ ...frame, x: want.x, y: want.y }, this.board.frames.filter((item) => item.key !== key));
+      this.positions = { ...this.positions, [key]: { x: Math.round(spot.x), y: Math.round(spot.y) } };
+    }
+    this.#savePositions();
+  }
   /** Puts every frame back in its row. */
   tidyBoard() {
     this.positions = {};

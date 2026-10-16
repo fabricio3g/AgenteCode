@@ -300,7 +300,7 @@
     if (!moving || event.pointerId !== moving.id) return;
     const dragged = moving.dragged;
     moving = null;
-    if (dragged) designStore.endMove();
+    if (dragged) designStore.endMove(frame.key);
     else designStore.select(frame.page, frame.key);
   }
 

@@ -11,7 +11,7 @@ vi.mock('$lib/services/bridge', () => ({
 
 const { designStore } = await import('./design.svelte');
 const { formatTurnContext } = await import('./design-picker');
-const { BOARD_GAP } = await import('./design-view');
+const { BOARD_GAP, framesOverlap } = await import('./design-view');
 
 beforeEach(async () => {
   await designStore.open(null);
@@ -64,11 +64,25 @@ describe('the board in the store', () => {
     expect(designStore.activeFrame?.key).toBe('desktop:index.html');
   });
 
+  it('snaps a frame dropped on another to the nearest free spot, and holds the others still while it moves', () => {
+    const before = designStore.board.frames.map((frame) => ({ key: frame.key, x: frame.x, y: frame.y }));
+    const index = before.find((frame) => frame.key === 'desktop:index.html')!;
+    designStore.moveFrame('desktop:pricing.html', index.x + 40, index.y + 40);
+    // Mid-drag the dragged frame floats; nothing else moves out of its way.
+    for (const frame of designStore.board.frames.filter((item) => item.key !== 'desktop:pricing.html')) {
+      expect(before.find((item) => item.key === frame.key)).toMatchObject({ x: frame.x, y: frame.y });
+    }
+    designStore.endMove('desktop:pricing.html');
+    const frames = designStore.board.frames;
+    for (const a of frames) for (const b of frames) if (a !== b) expect(framesOverlap(a, b)).toBe(false);
+    designStore.tidyBoard();
+  });
+
   it('keeps a dragged frame where it was left, per design, until the board is tidied', () => {
     designStore.moveFrame('desktop:pricing.html', 1800, -400);
     // A fitted board holds still while a frame moves instead of refitting under the pointer.
     expect(designStore.zoom).not.toBeNull();
-    designStore.endMove();
+    designStore.endMove('desktop:pricing.html');
     expect(designStore.board.frames[1]).toMatchObject({ x: 1800, y: -400 });
     expect(designStore.board.y).toBe(-400);
     expect(JSON.parse(localStorage.getItem(`agente.design.board.${designStore.chatId}`) || '{}')).toEqual({ 'desktop:pricing.html': { x: 1800, y: -400 } });

@@ -40,17 +40,60 @@ export type FramePositions = Record<string, { x: number; y: number }>;
 /** The key of the frame that draws `page` at `size`. */
 export const frameKey = (page: string, size: FrameSizeId) => `${size}:${page}`;
 
+/** Clear space two frames keep: beside each other, and above one (its label sits there). */
+export const FRAME_CLEARANCE = { x: 24, y: 48 } as const;
+/** Spacing used when a frame is moved out of another's way. */
+const FREE_SPACING = { x: 80, y: 120 } as const;
+
+type FrameBox = { x: number; y: number; width: number; height: number };
+
+/** Whether two frames sit closer than FRAME_CLEARANCE (touching counts). */
+export function framesOverlap(a: FrameBox, b: FrameBox): boolean {
+  return a.x < b.x + b.width + FRAME_CLEARANCE.x && b.x < a.x + a.width + FRAME_CLEARANCE.x &&
+    a.y < b.y + b.height + FRAME_CLEARANCE.y && b.y < a.y + a.height + FRAME_CLEARANCE.y;
+}
+
+/**
+ * The free spot nearest to where `rect` wants to be: its own place when nothing
+ * is in the way, otherwise beside, above or below one of the frames, whichever
+ * free candidate is closest. Never on top of another frame.
+ */
+export function nearestFree<T extends FrameBox>(rect: T, others: readonly FrameBox[]): { x: number; y: number } {
+  const clear = (x: number, y: number) => !others.some((other) => framesOverlap({ ...rect, x, y }, other));
+  if (clear(rect.x, rect.y)) return { x: rect.x, y: rect.y };
+  const candidates: Array<{ x: number; y: number }> = [];
+  for (const other of others) {
+    candidates.push(
+      { x: other.x + other.width + FREE_SPACING.x, y: rect.y },
+      { x: other.x - rect.width - FREE_SPACING.x, y: rect.y },
+      { x: rect.x, y: other.y + other.height + FREE_SPACING.y },
+      { x: rect.x, y: other.y - rect.height - FREE_SPACING.y },
+      { x: other.x + other.width + FREE_SPACING.x, y: other.y }
+    );
+  }
+  const free = candidates.filter((spot) => clear(spot.x, spot.y));
+  if (free.length) {
+    const distance = (spot: { x: number; y: number }) => Math.hypot(spot.x - rect.x, spot.y - rect.y);
+    return free.reduce((best, spot) => (distance(spot) < distance(best) ? spot : best));
+  }
+  // Boxed in on every side: past the right edge of everything.
+  return { x: Math.max(...others.map((other) => other.x + other.width)) + FREE_SPACING.x, y: rect.y };
+}
+
 /**
  * Lays the board out: a row per page, then a row per variant, each row holding
  * one frame per chosen size, widest first. Sizes keep FRAME_SIZES order however
  * they were picked, and an empty or unknown choice falls back to desktop. A
- * frame the user dragged sits where they left it.
+ * frame the user dragged sits where they left it. No two frames ever overlap:
+ * dragged frames are placed first, then every other frame takes its row spot
+ * or, when something is already there, the nearest free one. The `floating`
+ * frame (the one being dragged) follows the pointer and pushes nothing.
  */
-export function boardLayout(pages: readonly string[], variants: readonly string[], sizes: readonly FrameSizeId[], positions: FramePositions = {}): Board {
+export function boardLayout(pages: readonly string[], variants: readonly string[], sizes: readonly FrameSizeId[], positions: FramePositions = {}, floating: string | null = null): Board {
   const chosen = FRAME_SIZES.filter((size) => sizes.includes(size.id));
   const row = chosen.length ? chosen : [FRAME_SIZES[0]];
   const rowHeight = Math.max(...row.map((size) => size.height));
-  const frames: BoardFrame[] = [];
+  const wanted: Array<BoardFrame & { pinned: boolean }> = [];
   const entries = [...pages.map((page) => ({ page, variant: false })), ...variants.map((page) => ({ page, variant: true }))];
   entries.forEach((entry, index) => {
     const y = index * (rowHeight + BOARD_GAP.row);
@@ -58,10 +101,23 @@ export function boardLayout(pages: readonly string[], variants: readonly string[
     for (const size of row) {
       const key = frameKey(entry.page, size.id);
       const moved = positions[key];
-      const place = moved && Number.isFinite(moved.x) && Number.isFinite(moved.y) ? moved : { x, y };
-      frames.push({ key, page: entry.page, size: size.id, variant: entry.variant, x: place.x, y: place.y, width: size.width, height: size.height });
+      const pinned = !!moved && Number.isFinite(moved.x) && Number.isFinite(moved.y);
+      const place = pinned ? moved : { x, y };
+      wanted.push({ key, page: entry.page, size: size.id, variant: entry.variant, x: place.x, y: place.y, width: size.width, height: size.height, pinned });
       x += size.width + BOARD_GAP.column;
     }
+  });
+  const placed = new Map<string, BoardFrame>();
+  for (const frame of [...wanted.filter((item) => item.pinned), ...wanted.filter((item) => !item.pinned)]) {
+    const { pinned: _pinned, ...rest } = frame;
+    if (rest.key === floating) continue;
+    const spot = nearestFree(rest, [...placed.values()]);
+    placed.set(rest.key, { ...rest, ...spot });
+  }
+  const frames = wanted.map((item) => {
+    if (item.key !== floating) return placed.get(item.key)!;
+    const { pinned: _pinned, ...rest } = item;
+    return rest;
   });
   if (!frames.length) return { frames, x: 0, y: 0, width: 0, height: 0 };
   const left = Math.min(...frames.map((frame) => frame.x));

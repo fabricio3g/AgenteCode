@@ -1,7 +1,26 @@
 import { describe, expect, it } from 'vitest';
-import { BOARD_GAP, boardLayout, CANVAS_MIN, clampZoom, DOCK_WIDTH, editBarPlacement, FIT_PAD, fitView, frameOnScreen, INSPECTOR_WIDTH, itemsInRows, nextZoomPreset, pageLabel, paneLayout, PIN_SIZE, pinOrigin, resolveSelected, screenBox, SHEET_PEEK, shortcutFor, toolbarPlan, ZOOM_MIN, zoomAt, zoomLabel } from './design-view';
+import { BOARD_GAP, boardLayout, framesOverlap, nearestFree, CANVAS_MIN, clampZoom, DOCK_WIDTH, editBarPlacement, FIT_PAD, fitView, frameOnScreen, INSPECTOR_WIDTH, itemsInRows, nextZoomPreset, pageLabel, paneLayout, PIN_SIZE, pinOrigin, resolveSelected, screenBox, SHEET_PEEK, shortcutFor, toolbarPlan, ZOOM_MIN, zoomAt, zoomLabel } from './design-view';
 
 describe('boardLayout', () => {
+  it('never lays a frame on top of another, even when saved places collide', () => {
+    // The user's case: the 390 frame left over the 1440 one, and a size switched on over a dragged frame.
+    const board = boardLayout(['index.html'], [], ['desktop', 'tablet', 'mobile'], {
+      'mobile:index.html': { x: 900, y: -100 },
+      'desktop:index.html': { x: 0, y: 0 }
+    });
+    for (const a of board.frames) for (const b of board.frames) if (a !== b) expect(framesOverlap(a, b)).toBe(false);
+    // The dragged frames keep their places; the auto-placed tablet frame moves out of the way.
+    expect(board.frames.find((frame) => frame.key === 'desktop:index.html')).toMatchObject({ x: 0, y: 0 });
+  });
+
+  it('finds the nearest free spot beside a frame in the way', () => {
+    const other = { x: 0, y: 0, width: 1440, height: 900 };
+    expect(nearestFree({ x: 2000, y: 0, width: 390, height: 844 }, [other])).toEqual({ x: 2000, y: 0 });
+    const spot = nearestFree({ x: 1300, y: 50, width: 390, height: 844 }, [other]);
+    expect(framesOverlap({ ...spot, width: 390, height: 844 }, other)).toBe(false);
+    expect(spot.y).toBe(50);
+  });
+
   it('lays a row per page then per variant, one frame per size, widest first', () => {
     const board = boardLayout(['index.html', 'pricing.html'], ['variants/bold/index.html'], ['mobile', 'desktop']);
     expect(board.frames.map((frame) => frame.key)).toEqual([
