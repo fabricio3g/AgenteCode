@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {
-  DesignPathError, collectFiles, editText, ensureWorkspace, listFiles, listVersions, promoteVariant,
+  DesignPathError, collectFiles, editText, ensureWorkspace, listFiles, listVersions, promoteVariant, removePage,
   readText, resolveInside, restore, snapshot, workspaceRoot, writeText
 } from '../../../../../main/design/workspace';
 import { isDesignFileTool, runDesignFileTool } from '../../../../../main/design/tools';
@@ -160,5 +160,25 @@ describe('versions and variants', () => {
     expect(collectFiles(root).variants.map((variant) => variant.name)).toEqual(['bold']);
     expect(() => promoteVariant(root, '../bold')).toThrow(DesignPathError);
     expect(() => promoteVariant(root, 'missing')).toThrow(/no index.html/);
+  });
+
+  it('removes a page or a whole variant after saving a version, never the entry page', () => {
+    writeText(root, 'index.html', 'home');
+    writeText(root, 'pricing.html', 'prices');
+    writeText(root, 'variants/bold/index.html', 'bold');
+    writeText(root, 'variants/bold/extra.css', 'a{}');
+    const page = removePage(root, 'pricing.html');
+    expect(page.before?.auto).toBe(true);
+    expect(page.paths).toEqual(['pricing.html']);
+    removePage(root, 'variants/bold/index.html');
+    expect(listFiles(root).map((file) => file.path)).toEqual(['index.html']);
+    // Versions can bring both back.
+    expect(listVersions(root).length).toBeGreaterThanOrEqual(2);
+    expect(() => removePage(root, 'index.html')).toThrow(/entry page/);
+    expect(() => removePage(root, '../outside/secret.html')).toThrow(DesignPathError);
+    expect(() => removePage(root, 'tokens.css')).toThrow(DesignPathError);
+    expect(() => removePage(root, 'variants/../index.html')).toThrow(DesignPathError);
+    expect(() => removePage(root, 'gone.html')).toThrow(/does not exist/);
+    expect(fs.existsSync(path.join(outside, 'secret.html'))).toBe(true);
   });
 });

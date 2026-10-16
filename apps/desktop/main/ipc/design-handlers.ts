@@ -8,7 +8,7 @@ import { dialog, shell, type IpcMain, type IpcMainInvokeEvent } from 'electron';
 import { getAppPaths } from '../paths.ts';
 import { renderDesign } from '../design/render.ts';
 import { isDesignFileTool, runDesignFileTool } from '../design/tools.ts';
-import { checkExportHtml, collectFiles, DesignPathError, ensureWorkspace, exportFileName, listVersions, promoteVariant, restore, snapshot, workspaceRoot } from '../design/workspace.ts';
+import { checkExportHtml, collectFiles, DesignPathError, ensureWorkspace, exportFileName, listVersions, promoteVariant, removePage, restore, snapshot, workspaceRoot } from '../design/workspace.ts';
 import { buildHandoffBundle, checkHandoffPages, checkHandoffText, deliverToProject, slugify } from '../design/handoff.ts';
 import { runDesignSystemRequest } from '../design/systems.ts';
 import { addReference } from '../design/references.ts';
@@ -51,6 +51,12 @@ export function registerDesignHandlers(ipcMain: IpcMain): void {
       }
       case 'promote': {
         const result = promoteVariant(root, request.variant);
+        changed(event, request.chatId, result.paths);
+        return result;
+      }
+      case 'remove': {
+        // A page or variant deleted from the board; removePage saves a version first.
+        const result = removePage(root, request.page);
         changed(event, request.chatId, result.paths);
         return result;
       }

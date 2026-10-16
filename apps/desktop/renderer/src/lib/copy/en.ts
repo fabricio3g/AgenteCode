@@ -236,6 +236,8 @@ export const COPY_EN = {
       comments: 'Comments', sendComments: 'Send comments', commentsSent: 'Comments added to the next message'
     },
     prompt: { placeholder: 'Describe a change to this', send: 'Send change' },
+    /** The menu on a board frame's label; `{page}` is filled in by the caller. */
+    frame: { actions: 'Frame actions', zoom: 'Zoom to frame', variant: 'Ask for a variant', variantPrompt: 'Make a variant of {page} in variants/: ', remove: 'Delete page', removeVariant: 'Delete variant', removeTitle: 'Delete {page}?', removeMessage: 'A version is saved first, so Versions can bring it back.', removeConfirm: 'Delete', tidy: 'Tidy up board', drag: 'Drag to move' },
     inspector: {
       element: 'Element', tokens: 'Tokens', code: 'Code', none: 'Select an element on the canvas',
       noneHint: 'Its text, box and styles appear here, and quick changes go to the chat.',

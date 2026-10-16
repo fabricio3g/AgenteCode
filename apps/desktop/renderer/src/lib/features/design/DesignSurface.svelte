@@ -7,7 +7,7 @@
   over the canvas's edge as a sheet instead, and the toolbar folds its secondary
   controls into More. The agent writes plain HTML and CSS into the design's
   workspace; the canvas reloads when it does. Keys are Ctrl/⌘+Alt+ so they never
-  fight the composer: 1–4 viewport, R reload, V variants, T versions, C chat,
+  fight the composer: 1–3 add or remove a size on the board, 4 fits it, R reload, V variants, T versions, C chat,
   I inspector, M timeline. Plain V / S / C pick a canvas tool, and a plain M
   opens the timeline, when no text field has focus.
 -->
@@ -18,7 +18,7 @@
   import { cn as uiClass } from '$lib/utils/cn';
 
   import { onMount, untrack } from 'svelte';
-  import { Copy, Download, ExternalLink, Film, FolderOpen, GalleryHorizontal, History, Maximize2, Monitor, MoreHorizontal, PanelLeftClose, PanelLeftOpen, PanelRight, RotateCw, Smartphone, Tablet } from 'lucide-svelte';
+  import { Copy, Download, ExternalLink, Film, FolderOpen, LayoutGrid, GalleryHorizontal, History, Maximize2, Monitor, MoreHorizontal, PanelLeftClose, PanelLeftOpen, PanelRight, RotateCw, Smartphone, Tablet } from 'lucide-svelte';
   import Thread from '$lib/features/chat/thread/Thread.svelte';
   import Composer from '$lib/features/chat/Composer.svelte';
   import Button from '$lib/components/ui/Button.svelte';
@@ -47,12 +47,14 @@
   import DesignTray from './DesignTray.svelte';
   import { designSystems } from './design-systems.svelte';
   import { designStore, type DesignScheme, type PaneId } from './design.svelte';
-  import { clampWidth, DOCK_WIDTH, INSPECTOR_WIDTH, paneLayout, pageLabel, shortcutFor, toolbarPlan, VIEWPORTS, type ToolbarItem, type ViewportId } from './design-view';
+  import { clampWidth, DOCK_WIDTH, FRAME_SIZES, INSPECTOR_WIDTH, paneLayout, pageLabel, shortcutFor, toolbarPlan, type FrameSizeId, type ToolbarItem } from './design-view';
   import type { DesignManageRequest } from '$shared/design';
 
   const SCHEMES: DesignScheme[] = ['auto', 'light', 'dark'];
-  const VIEWPORT_ICONS = { mobile: Smartphone, tablet: Tablet, desktop: Monitor, fit: Maximize2 } as const;
-  const VIEWPORT_KEYS: Record<ViewportId, string> = { mobile: '1', tablet: '2', desktop: '3', fit: '4' };
+  const SIZE_ICONS = { mobile: Smartphone, tablet: Tablet, desktop: Monitor } as const;
+  const SIZE_KEYS: Record<FrameSizeId, string> = { mobile: '1', tablet: '2', desktop: '3' };
+  /** The size switch reads small to large, like the device it names; the board lays rows out widest first. */
+  const SIZE_ORDER = [...FRAME_SIZES].reverse();
 
   const chat = $derived(appStore.currentChat?.contextMode === 'design' ? appStore.currentChat : null);
   const threadIsEmpty = $derived(!(appStore.currentChat?.messages?.length));
@@ -151,7 +153,8 @@
     const action = shortcutFor(event);
     if (action) {
       event.preventDefault();
-      if (action.kind === 'viewport') designStore.setViewport(action.viewport);
+      if (action.kind === 'size') designStore.toggleSize(action.size);
+      else if (action.kind === 'fit') designStore.setZoom(null);
       else if (action.kind === 'reload') designStore.reload();
       else if (action.kind === 'chat') toggleDock();
       else designStore.toggleTray(action.kind);
@@ -295,17 +298,26 @@
 
       <span class="spacer"></span>
 
+      <!-- Which sizes every page is drawn at on the board: toggles, any mix, never none. Fit frames the whole board. -->
       <div class="viewports" role="group" aria-label={copy.design.canvas.viewport}>
-        {#each VIEWPORTS as item (item.id)}
+        {#each SIZE_ORDER as item (item.id)}
           <DesignToolButton
-            icon={VIEWPORT_ICONS[item.id]}
+            icon={SIZE_ICONS[item.id]}
             label={copy.design.toolbar.viewport[item.id]}
-            shortcut={`mod+alt+${VIEWPORT_KEYS[item.id]}`}
+            shortcut={`mod+alt+${SIZE_KEYS[item.id]}`}
             class="viewport"
-            pressed={designStore.viewport === item.id}
-            onclick={() => designStore.setViewport(item.id)}
+            pressed={designStore.sizes.includes(item.id)}
+            onclick={() => designStore.toggleSize(item.id)}
           />
         {/each}
+        <DesignToolButton
+          icon={Maximize2}
+          label={copy.design.toolbar.viewport.fit}
+          shortcut="mod+alt+4"
+          class="viewport"
+          pressed={designStore.zoom === null}
+          onclick={() => designStore.setZoom(null)}
+        />
       </div>
 
       <span class="spacer"></span>
@@ -344,6 +356,9 @@
           {@render pageItems()}
         {/if}
         <MenuItem icon={Film} label={copy.design.timeline.title} active={designStore.tray === 'timeline'} onselect={() => designStore.toggleTray('timeline')} />
+        {#if Object.keys(designStore.positions).length}
+          <MenuItem icon={LayoutGrid} label={copy.design.frame.tidy} onselect={() => designStore.tidyBoard()} />
+        {/if}
         {#if inMore('reload')}
           <MenuItem icon={RotateCw} label={copy.design.canvas.reload} onselect={() => designStore.reload()} />
         {/if}

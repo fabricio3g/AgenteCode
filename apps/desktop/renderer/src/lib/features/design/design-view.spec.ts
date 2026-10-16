@@ -1,22 +1,78 @@
 import { describe, expect, it } from 'vitest';
-import { CANVAS_MIN, clampZoom, DOCK_WIDTH, frameGeometry, INSPECTOR_WIDTH, itemsInRows, nextZoomPreset, pageLabel, paneLayout, PIN_SIZE, pinOrigin, resolveSelected, SHEET_PEEK, shortcutFor, toolbarPlan, zoomLabel } from './design-view';
+import { BOARD_GAP, boardLayout, CANVAS_MIN, clampZoom, DOCK_WIDTH, FIT_PAD, fitView, frameOnScreen, INSPECTOR_WIDTH, itemsInRows, nextZoomPreset, pageLabel, paneLayout, PIN_SIZE, pinOrigin, resolveSelected, screenBox, SHEET_PEEK, shortcutFor, toolbarPlan, ZOOM_MIN, zoomAt, zoomLabel } from './design-view';
 
-describe('explicit zoom', () => {
-  it('sets the scale outright, above 1 included, and keeps the viewport width', () => {
-    expect(frameGeometry('desktop', { width: 1048, height: 700 }, 0.5)).toEqual({ width: 1440, height: (700 - 48) / 0.5, scale: 0.5 });
-    expect(frameGeometry('mobile', { width: 1048, height: 700 }, 2)).toMatchObject({ width: 390, scale: 2 });
+describe('boardLayout', () => {
+  it('lays a row per page then per variant, one frame per size, widest first', () => {
+    const board = boardLayout(['index.html', 'pricing.html'], ['variants/bold/index.html'], ['mobile', 'desktop']);
+    expect(board.frames.map((frame) => frame.key)).toEqual([
+      'desktop:index.html', 'mobile:index.html',
+      'desktop:pricing.html', 'mobile:pricing.html',
+      'desktop:variants/bold/index.html', 'mobile:variants/bold/index.html'
+    ]);
+    const [desktop, mobile, nextRow] = board.frames;
+    expect(desktop).toMatchObject({ x: 0, y: 0, width: 1440, height: 900, variant: false });
+    expect(mobile).toMatchObject({ x: 1440 + BOARD_GAP.column, y: 0, width: 390, height: 844 });
+    // Rows are as tall as their tallest size, so every row starts on the same rhythm.
+    expect(nextRow.y).toBe(900 + BOARD_GAP.row);
+    expect(board.frames.at(-1)?.variant).toBe(true);
+    expect(board).toMatchObject({ x: 0, y: 0, width: 1440 + BOARD_GAP.column + 390, height: 3 * 900 + 2 * BOARD_GAP.row });
   });
 
-  it('fit viewport keeps the pane width visible at any zoom', () => {
-    const geometry = frameGeometry('fit', { width: 900, height: 600 }, 2);
-    expect(geometry.width * geometry.scale).toBeCloseTo(852, 5);
+  it('keeps a dragged frame where it was left and grows the bounds around it', () => {
+    const board = boardLayout(['index.html'], [], ['desktop', 'mobile'], { 'mobile:index.html': { x: -600, y: 1200 }, 'desktop:gone.html': { x: 9, y: 9 } });
+    expect(board.frames[1]).toMatchObject({ x: -600, y: 1200 });
+    expect(board).toMatchObject({ x: -600, y: 0, width: 600 + 1440, height: 1200 + 844 });
   });
 
-  it('clamps to the preset range and ignores non-finite input', () => {
+  it('falls back to desktop when no size is chosen, and is empty with no pages', () => {
+    expect(boardLayout(['index.html'], [], []).frames.map((frame) => frame.size)).toEqual(['desktop']);
+    expect(boardLayout([], [], ['desktop'])).toEqual({ frames: [], x: 0, y: 0, width: 0, height: 0 });
+  });
+});
+
+describe('board view', () => {
+  it('fits the board inside the pane with padding, centred, never above 100%', () => {
+    const view = fitView({ width: 2000, height: 1000 }, { width: 1096, height: 696 });
+    expect(view.scale).toBeCloseTo(0.5, 5);
+    expect(view.x).toBe(48);
+    expect(view.y).toBe(98);
+    expect(fitView({ width: 300, height: 200 }, { width: 1000, height: 800 }).scale).toBe(1);
+  });
+
+  it('fits one frame by its own origin', () => {
+    const view = fitView({ width: 390, height: 844 }, { width: 600, height: 944 }, { x: 1560, y: 0 });
+    expect(view.scale).toBe(1);
+    expect(screenBox({ x: 1560, y: 0, width: 390, height: 844 }, view)).toEqual({ left: 105, top: 50, width: 390, height: 844 });
+  });
+
+  it('survives a pane or board that has not been measured', () => {
+    expect(fitView({ width: 0, height: 0 }, { width: 800, height: 600 })).toEqual({ scale: 1, x: FIT_PAD, y: FIT_PAD });
+    expect(fitView({ width: 800, height: 600 }, { width: 0, height: 0 }).scale).toBe(1);
+  });
+
+  it('zooms around a point, which stays over the same spot of the board', () => {
+    const view = { scale: 0.5, x: 100, y: 40 };
+    const point = { x: 300, y: 240 };
+    const before = { x: (point.x - view.x) / view.scale, y: (point.y - view.y) / view.scale };
+    const next = zoomAt(view, 1, point);
+    expect(next.scale).toBe(1);
+    expect((point.x - next.x) / next.scale).toBeCloseTo(before.x, 6);
+    expect((point.y - next.y) / next.scale).toBeCloseTo(before.y, 6);
+  });
+
+  it('runs only the frames on screen or near it', () => {
+    const pane = { width: 800, height: 600 };
+    const view = { scale: 0.5, x: 0, y: 0 };
+    expect(frameOnScreen({ x: 0, y: 0, width: 1440, height: 900 }, view, pane)).toBe(true);
+    expect(frameOnScreen({ x: 4000, y: 0, width: 1440, height: 900 }, view, pane)).toBe(false);
+    expect(frameOnScreen({ x: 0, y: -2400, width: 1440, height: 900 }, view, pane)).toBe(false);
+  });
+
+  it('clamps zoom to its range, lets a fitted board go below the presets, and ignores non-finite input', () => {
     expect(clampZoom(9)).toBe(2);
-    expect(clampZoom(0.01)).toBe(0.25);
+    expect(clampZoom(0.01)).toBe(ZOOM_MIN);
+    expect(clampZoom(0.08)).toBe(0.08);
     expect(clampZoom(Number.NaN)).toBe(1);
-    expect(frameGeometry('desktop', { width: 1048, height: 700 }, 10).scale).toBe(2);
   });
 });
 
@@ -27,31 +83,13 @@ describe('zoom presets', () => {
     expect(nextZoomPreset(0.7, 1)).toBe(0.75);
     expect(nextZoomPreset(0.7, -1)).toBe(0.5);
     expect(nextZoomPreset(2, 1)).toBe(2);
-    expect(nextZoomPreset(0.25, -1)).toBe(0.25);
+    expect(nextZoomPreset(0.1, -1)).toBe(0.1);
+    expect(nextZoomPreset(0.08, 1)).toBe(0.1);
   });
 
   it('labels a scale as a whole percentage', () => {
     expect(zoomLabel(0.75)).toBe('75%');
     expect(zoomLabel(1.5)).toBe('150%');
-  });
-});
-
-describe('frameGeometry', () => {
-  it('scales a wide viewport down to the pane and never up', () => {
-    const desktop = frameGeometry('desktop', { width: 1048, height: 700 });
-    expect(desktop.width).toBe(1440);
-    expect(desktop.scale).toBeCloseTo(1000 / 1440, 5);
-    expect(frameGeometry('mobile', { width: 1048, height: 700 })).toMatchObject({ width: 390, scale: 1, height: 652 });
-  });
-
-  it('fit uses the pane itself', () => {
-    expect(frameGeometry('fit', { width: 900, height: 600 })).toEqual({ width: 852, height: 552, scale: 1 });
-  });
-
-  it('survives a pane that has not been measured', () => {
-    const geometry = frameGeometry('desktop', { width: 0, height: 0 });
-    expect(geometry.scale).toBeGreaterThan(0);
-    expect(Number.isFinite(geometry.height)).toBe(true);
   });
 });
 
@@ -68,8 +106,9 @@ describe('resolveSelected', () => {
 describe('shortcutFor', () => {
   const key = (code: string, extra: Partial<KeyboardEvent> = {}) => ({ code, ctrlKey: true, metaKey: false, altKey: true, shiftKey: false, ...extra });
   it('maps Ctrl/Cmd+Alt combos', () => {
-    expect(shortcutFor(key('Digit1'))).toEqual({ kind: 'viewport', viewport: 'mobile' });
-    expect(shortcutFor(key('Digit4', { ctrlKey: false, metaKey: true }))).toEqual({ kind: 'viewport', viewport: 'fit' });
+    expect(shortcutFor(key('Digit1'))).toEqual({ kind: 'size', size: 'mobile' });
+    expect(shortcutFor(key('Digit3'))).toEqual({ kind: 'size', size: 'desktop' });
+    expect(shortcutFor(key('Digit4', { ctrlKey: false, metaKey: true }))).toEqual({ kind: 'fit' });
     expect(shortcutFor(key('KeyR'))).toEqual({ kind: 'reload' });
     expect(shortcutFor(key('KeyV'))).toEqual({ kind: 'variants' });
     expect(shortcutFor(key('KeyT'))).toEqual({ kind: 'versions' });

@@ -520,7 +520,7 @@ export const PICKER_SOURCE = `(function () {
   window.addEventListener('wheel', function (event) {
     if (!(event.ctrlKey || event.metaKey)) return;
     event.preventDefault();
-    post({ type: 'wheel', deltaY: event.deltaY });
+    post({ type: 'wheel', deltaY: event.deltaY, x: Math.round(event.clientX), y: Math.round(event.clientY) });
   }, { capture: true, passive: false });
 
   function onScroll(event) {
@@ -577,7 +577,8 @@ export type FrameMessage =
   | { type: 'hover'; selector: string; tag: string }
   | { type: 'escape' }
   | { type: 'scroll'; x: number; y: number }
-  | { type: 'wheel'; deltaY: number }
+  /** Ctrl/⌘+wheel inside the page; x/y are the pointer in the frame's own px, when it sent them. */
+  | { type: 'wheel'; deltaY: number; x?: number; y?: number }
   | { type: 'animations'; items: MotionItem[]; reduced: boolean }
   | { type: 'animTick'; time: number; playing: boolean; count: number };
 
@@ -652,7 +653,7 @@ export function readFrameMessage(data: unknown): FrameMessage | null {
     case 'scroll':
       return isNum(data.x) && isNum(data.y) ? { type: 'scroll', x: data.x, y: data.y } : null;
     case 'wheel':
-      return isNum(data.deltaY) ? { type: 'wheel', deltaY: data.deltaY } : null;
+      return isNum(data.deltaY) ? { type: 'wheel', deltaY: data.deltaY, ...(isNum(data.x) && isNum(data.y) ? { x: data.x, y: data.y } : {}) } : null;
     case 'animations': {
       if (!Array.isArray(data.items) || data.items.length > MOTION_LIMIT) return null;
       const items = data.items.map(readMotionItem);
@@ -728,7 +729,7 @@ export function formatTurnContext(selection: DesignSelection[], comments: Design
       const box = pick.box;
       lines.push(
         '',
-        `${index + 1}. \`${pick.selector}\` (${pick.tag}), ${Math.round(box.width)}×${Math.round(box.height)} at ${Math.round(box.x)},${Math.round(box.y)}`
+        `${index + 1}. \`${pick.selector}\` (${pick.tag}), ${Math.round(box.width)}×${Math.round(box.height)} at ${Math.round(box.x)},${Math.round(box.y)}${pick.width ? ` in the ${pick.width}px frame` : ''}`
       );
       if (pick.text) lines.push(`Text: "${pick.text}"`);
       lines.push(`${fence}html`, pick.html, fence);
@@ -739,7 +740,7 @@ export function formatTurnContext(selection: DesignSelection[], comments: Design
   if (comments.length) {
     lines.push('', '## Comments pinned on the canvas');
     comments.forEach((comment, index) => {
-      lines.push(`${index + 1}. ${comment.page}, near \`${comment.selector}\`: ${comment.note}`);
+      lines.push(`${index + 1}. ${comment.page}${comment.width ? ` at ${comment.width}px` : ''}, near \`${comment.selector}\`: ${comment.note}`);
     });
   }
   return lines.join('\n');

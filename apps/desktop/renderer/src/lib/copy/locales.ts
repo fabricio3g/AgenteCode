@@ -109,6 +109,7 @@ const es: CopyOverride = {
       comments: 'Comentarios', sendComments: 'Enviar comentarios', commentsSent: 'Comentarios añadidos al próximo mensaje'
     },
     prompt: { placeholder: 'Describe un cambio para esto', send: 'Enviar cambio' },
+    frame: { actions: 'Acciones del marco', zoom: 'Acercar al marco', variant: 'Pedir una variante', variantPrompt: 'Haz una variante de {page} en variants/: ', remove: 'Eliminar página', removeVariant: 'Eliminar variante', removeTitle: '¿Eliminar {page}?', removeMessage: 'Antes se guarda una versión, así que Versiones puede recuperarla.', removeConfirm: 'Eliminar', tidy: 'Ordenar el tablero', drag: 'Arrastra para mover' },
     inspector: {
       element: 'Elemento', tokens: 'Tokens', code: 'Código', none: 'Selecciona un elemento en el lienzo',
       noneHint: 'Su texto, caja y estilos aparecen aquí, y los cambios rápidos van al chat.',
@@ -292,6 +293,7 @@ const ptBR: CopyOverride = {
       comments: 'Comentários', sendComments: 'Enviar comentários', commentsSent: 'Comentários adicionados à próxima mensagem'
     },
     prompt: { placeholder: 'Descreva uma mudança para isto', send: 'Enviar mudança' },
+    frame: { actions: 'Ações do quadro', zoom: 'Aproximar do quadro', variant: 'Pedir uma variante', variantPrompt: 'Crie uma variante de {page} em variants/: ', remove: 'Excluir página', removeVariant: 'Excluir variante', removeTitle: 'Excluir {page}?', removeMessage: 'Uma versão é salva antes, então Versões pode trazê-la de volta.', removeConfirm: 'Excluir', tidy: 'Organizar o quadro', drag: 'Arraste para mover' },
     inspector: {
       element: 'Elemento', tokens: 'Tokens', code: 'Código', none: 'Selecione um elemento na tela',
       noneHint: 'Texto, caixa e estilos aparecem aqui, e ajustes rápidos vão para o chat.',
@@ -475,6 +477,7 @@ const fr: CopyOverride = {
       comments: 'Commentaires', sendComments: 'Envoyer les commentaires', commentsSent: 'Commentaires ajoutés au prochain message'
     },
     prompt: { placeholder: 'Décrivez une modification', send: 'Envoyer la modification' },
+    frame: { actions: 'Actions du cadre', zoom: 'Zoomer sur le cadre', variant: 'Demander une variante', variantPrompt: 'Crée une variante de {page} dans variants/ : ', remove: 'Supprimer la page', removeVariant: 'Supprimer la variante', removeTitle: 'Supprimer {page} ?', removeMessage: 'Une version est enregistrée avant, donc Versions peut la restaurer.', removeConfirm: 'Supprimer', tidy: 'Ranger le tableau', drag: 'Glisser pour déplacer' },
     inspector: {
       element: 'Élément', tokens: 'Jetons', code: 'Code', none: 'Sélectionnez un élément sur le canevas',
       noneHint: 'Son texte, sa boîte et ses styles apparaissent ici, et les modifications rapides partent dans le chat.',
@@ -658,6 +661,7 @@ const de: CopyOverride = {
       comments: 'Kommentare', sendComments: 'Kommentare senden', commentsSent: 'Kommentare der nächsten Nachricht hinzugefügt'
     },
     prompt: { placeholder: 'Beschreibe eine Änderung', send: 'Änderung senden' },
+    frame: { actions: 'Rahmenaktionen', zoom: 'Auf Rahmen zoomen', variant: 'Variante anfragen', variantPrompt: 'Erstelle eine Variante von {page} in variants/: ', remove: 'Seite löschen', removeVariant: 'Variante löschen', removeTitle: '{page} löschen?', removeMessage: 'Vorher wird eine Version gespeichert, Versionen kann sie zurückholen.', removeConfirm: 'Löschen', tidy: 'Board aufräumen', drag: 'Zum Verschieben ziehen' },
     inspector: {
       element: 'Element', tokens: 'Tokens', code: 'Code', none: 'Wähle ein Element auf dem Canvas aus',
       noneHint: 'Text, Box und Stile erscheinen hier, schnelle Änderungen gehen an den Chat.',
@@ -841,6 +845,7 @@ const ja: CopyOverride = {
       comments: 'コメント', sendComments: 'コメントを送信', commentsSent: 'コメントを次のメッセージに追加しました'
     },
     prompt: { placeholder: 'この要素への変更を入力', send: '変更を送信' },
+    frame: { actions: 'フレームの操作', zoom: 'フレームにズーム', variant: 'バリエーションを依頼', variantPrompt: '{page} のバリエーションを variants/ に作成: ', remove: 'ページを削除', removeVariant: 'バリエーションを削除', removeTitle: '{page} を削除しますか？', removeMessage: '先にバージョンが保存されるので、バージョンから戻せます。', removeConfirm: '削除', tidy: 'ボードを整理', drag: 'ドラッグで移動' },
     inspector: {
       element: '要素', tokens: 'トークン', code: 'コード', none: 'キャンバス上の要素を選択してください',
       noneHint: 'テキスト、ボックス、スタイルがここに表示され、簡単な変更はチャットに送られます。',
@@ -1024,6 +1029,7 @@ const zh: CopyOverride = {
       comments: '评论', sendComments: '发送评论', commentsSent: '评论已添加到下一条消息'
     },
     prompt: { placeholder: '描述要做的修改', send: '发送修改' },
+    frame: { actions: '框架操作', zoom: '缩放到框架', variant: '请求一个变体', variantPrompt: '在 variants/ 中为 {page} 制作一个变体：', remove: '删除页面', removeVariant: '删除变体', removeTitle: '删除 {page}？', removeMessage: '删除前会先保存一个版本，可在版本中恢复。', removeConfirm: '删除', tidy: '整理画板', drag: '拖动以移动' },
     inspector: {
       element: '元素', tokens: '令牌', code: '代码', none: '在画布上选择一个元素',
       noneHint: '它的文字、盒模型和样式会显示在这里，快速修改会发送到聊天。',

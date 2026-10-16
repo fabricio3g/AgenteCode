@@ -1,22 +1,80 @@
-/** Pure view logic for the Design canvas: viewport geometry, which page is showing, shortcut mapping. */
+/** Pure view logic for the Design canvas: the board of frames, zoom and pan, which page is showing, shortcut mapping. */
 import type { DesignFiles } from '$shared/design';
 
-export const VIEWPORTS = [
-  { id: 'mobile', width: 390 },
-  { id: 'tablet', width: 834 },
-  { id: 'desktop', width: 1440 },
-  { id: 'fit', width: null }
+/**
+ * The sizes a page can be drawn at on the board, widest first (the order a row
+ * lays them out in). Each frame is a screen of that device: content scrolls
+ * inside it, so a long page never stretches the board.
+ */
+export const FRAME_SIZES = [
+  { id: 'desktop', width: 1440, height: 900 },
+  { id: 'tablet', width: 834, height: 1112 },
+  { id: 'mobile', width: 390, height: 844 }
 ] as const;
-export type ViewportId = (typeof VIEWPORTS)[number]['id'];
+export type FrameSizeId = (typeof FRAME_SIZES)[number]['id'];
+export const FRAME_SIZE_IDS: readonly FrameSizeId[] = FRAME_SIZES.map((size) => size.id);
 
-/** Breathing room around the frame inside the canvas, in px. */
-export const CANVAS_GUTTER = 24;
+/** Space between frames on the board, in page px: beside each other in a row, and between rows (room for the labels). */
+export const BOARD_GAP = { column: 120, row: 240 } as const;
+/** Room kept around the board when it is fitted to the pane, in screen px. */
+export const FIT_PAD = 48;
 
-export interface FrameGeometry { width: number; height: number; scale: number }
+/** One frame on the board: a page (or variant entry) at one size, placed in page px. */
+export interface BoardFrame {
+  key: string;
+  page: string;
+  size: FrameSizeId;
+  variant: boolean;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
 
-/** Zoom levels the canvas steps through; 100% is the page at its real size. */
-export const ZOOM_PRESETS = [0.25, 0.5, 0.75, 1, 1.5, 2] as const;
-export const ZOOM_MIN = ZOOM_PRESETS[0];
+/** The board's frames and its bounds in page px (a frame dragged up or left moves the origin below zero). */
+export interface Board { frames: BoardFrame[]; x: number; y: number; width: number; height: number }
+
+/** Where the user dragged frames to, by frame key, in page px; anything else keeps its laid-out place. */
+export type FramePositions = Record<string, { x: number; y: number }>;
+
+/** The key of the frame that draws `page` at `size`. */
+export const frameKey = (page: string, size: FrameSizeId) => `${size}:${page}`;
+
+/**
+ * Lays the board out: a row per page, then a row per variant, each row holding
+ * one frame per chosen size, widest first. Sizes keep FRAME_SIZES order however
+ * they were picked, and an empty or unknown choice falls back to desktop. A
+ * frame the user dragged sits where they left it.
+ */
+export function boardLayout(pages: readonly string[], variants: readonly string[], sizes: readonly FrameSizeId[], positions: FramePositions = {}): Board {
+  const chosen = FRAME_SIZES.filter((size) => sizes.includes(size.id));
+  const row = chosen.length ? chosen : [FRAME_SIZES[0]];
+  const rowHeight = Math.max(...row.map((size) => size.height));
+  const frames: BoardFrame[] = [];
+  const entries = [...pages.map((page) => ({ page, variant: false })), ...variants.map((page) => ({ page, variant: true }))];
+  entries.forEach((entry, index) => {
+    const y = index * (rowHeight + BOARD_GAP.row);
+    let x = 0;
+    for (const size of row) {
+      const key = frameKey(entry.page, size.id);
+      const moved = positions[key];
+      const place = moved && Number.isFinite(moved.x) && Number.isFinite(moved.y) ? moved : { x, y };
+      frames.push({ key, page: entry.page, size: size.id, variant: entry.variant, x: place.x, y: place.y, width: size.width, height: size.height });
+      x += size.width + BOARD_GAP.column;
+    }
+  });
+  if (!frames.length) return { frames, x: 0, y: 0, width: 0, height: 0 };
+  const left = Math.min(...frames.map((frame) => frame.x));
+  const top = Math.min(...frames.map((frame) => frame.y));
+  const right = Math.max(...frames.map((frame) => frame.x + frame.width));
+  const bottom = Math.max(...frames.map((frame) => frame.y + frame.height));
+  return { frames, x: left, y: top, width: right - left, height: bottom - top };
+}
+
+/** Zoom levels the zoom menu offers; 100% is the page at its real size. */
+export const ZOOM_PRESETS = [0.1, 0.25, 0.5, 0.75, 1, 1.5, 2] as const;
+/** A fitted board of many frames may go below the smallest preset, never below this. */
+export const ZOOM_MIN = 0.05;
 export const ZOOM_MAX = ZOOM_PRESETS[ZOOM_PRESETS.length - 1];
 
 export function clampZoom(zoom: number): number {
@@ -37,22 +95,46 @@ export function zoomLabel(zoom: number): string {
   return `${Math.round(zoom * 100)}%`;
 }
 
+/** Where the board sits on screen: its scale and the screen position of its top-left corner. */
+export interface BoardView { scale: number; x: number; y: number }
+type Size = { width: number; height: number };
+
 /**
- * The frame renders at its viewport's real width, scaled down to fit the pane
- * (never up), so breakpoints behave as they would on that device. Fit uses the
- * pane's own width at scale 1. An explicit zoom (null = fit) sets the scale
- * outright, even above 1, and the frame then grows past the pane so it scrolls.
+ * The view that shows a box of the board (the whole board, or one frame) in
+ * the pane: as large as fits with FIT_PAD around it, never above 100%, centred.
+ * `origin` is the box's top-left in page px.
  */
-export function frameGeometry(viewport: ViewportId, container: { width: number; height: number }, zoom: number | null = null): FrameGeometry {
-  const room = { width: Math.max(160, container.width - CANVAS_GUTTER * 2), height: Math.max(160, container.height - CANVAS_GUTTER * 2) };
-  const width = VIEWPORTS.find((item) => item.id === viewport)?.width ?? null;
-  if (zoom !== null) {
-    const scale = clampZoom(zoom);
-    return { width: width ?? room.width / scale, height: room.height / scale, scale };
-  }
-  if (width === null) return { width: room.width, height: room.height, scale: 1 };
-  const scale = Math.min(1, room.width / width);
-  return { width, height: Math.round(room.height / scale), scale };
+export function fitView(box: Size, pane: Size, origin = { x: 0, y: 0 }): BoardView {
+  if (box.width <= 0 || box.height <= 0 || pane.width <= 0 || pane.height <= 0) return { scale: 1, x: FIT_PAD, y: FIT_PAD };
+  const room = { width: Math.max(1, pane.width - FIT_PAD * 2), height: Math.max(1, pane.height - FIT_PAD * 2) };
+  const scale = clampZoom(Math.min(1, room.width / box.width, room.height / box.height));
+  return {
+    scale,
+    x: Math.round((pane.width - box.width * scale) / 2 - origin.x * scale),
+    y: Math.round((pane.height - box.height * scale) / 2 - origin.y * scale)
+  };
+}
+
+/** The view after zooming to `scale` around a screen point, which stays over the same spot of the board. */
+export function zoomAt(view: BoardView, scale: number, point: { x: number; y: number }): BoardView {
+  const next = clampZoom(scale);
+  const ratio = next / view.scale;
+  return { scale: next, x: point.x - (point.x - view.x) * ratio, y: point.y - (point.y - view.y) * ratio };
+}
+
+/** A frame's box on screen under a view. */
+export function screenBox(frame: Pick<BoardFrame, 'x' | 'y' | 'width' | 'height'>, view: BoardView) {
+  return { left: view.x + frame.x * view.scale, top: view.y + frame.y * view.scale, width: frame.width * view.scale, height: frame.height * view.scale };
+}
+
+/**
+ * Whether a frame is on screen, or within `margin` px of it. Frames far off
+ * screen draw a blank sheet instead of running the page, so a board of many
+ * frames costs what the pane shows.
+ */
+export function frameOnScreen(frame: Pick<BoardFrame, 'x' | 'y' | 'width' | 'height'>, view: BoardView, pane: Size, margin = 200): boolean {
+  const box = screenBox(frame, view);
+  return box.left < pane.width + margin && box.top < pane.height + margin && box.left + box.width > -margin && box.top + box.height > -margin;
 }
 
 /** The HTML file to show: the current one if it still exists, else the entry page, else nothing. */
@@ -61,17 +143,17 @@ export function resolveSelected(selected: string, data: Pick<DesignFiles, 'pages
   return data.pages[0] ?? '';
 }
 
-export type DesignShortcut = { kind: 'viewport'; viewport: ViewportId } | { kind: 'reload' | 'variants' | 'versions' | 'chat' | 'timeline' };
+export type DesignShortcut = { kind: 'size'; size: FrameSizeId } | { kind: 'fit' | 'reload' | 'variants' | 'versions' | 'chat' | 'timeline' };
 
-const DIGITS: Record<string, ViewportId> = { Digit1: 'mobile', Digit2: 'tablet', Digit3: 'desktop', Digit4: 'fit' };
-const LETTERS: Record<string, DesignShortcut['kind']> = { KeyR: 'reload', KeyV: 'variants', KeyT: 'versions', KeyC: 'chat', KeyM: 'timeline' };
+const DIGITS: Record<string, FrameSizeId> = { Digit1: 'mobile', Digit2: 'tablet', Digit3: 'desktop' };
+const LETTERS: Record<string, Exclude<DesignShortcut['kind'], 'size'>> = { Digit4: 'fit', KeyR: 'reload', KeyV: 'variants', KeyT: 'versions', KeyC: 'chat', KeyM: 'timeline' };
 
-/** Ctrl/⌘+Alt+key. `code` is used because Alt changes `key` on macOS. */
+/** Ctrl/⌘+Alt+key. `code` is used because Alt changes `key` on macOS. 1–3 toggle a size on the board, 4 fits it. */
 export function shortcutFor(event: Pick<KeyboardEvent, 'code' | 'ctrlKey' | 'metaKey' | 'altKey' | 'shiftKey'>): DesignShortcut | null {
   if (!(event.ctrlKey || event.metaKey) || !event.altKey || event.shiftKey) return null;
-  if (DIGITS[event.code]) return { kind: 'viewport', viewport: DIGITS[event.code] };
+  if (DIGITS[event.code]) return { kind: 'size', size: DIGITS[event.code] };
   const kind = LETTERS[event.code];
-  return kind && kind !== 'viewport' ? ({ kind } as DesignShortcut) : null;
+  return kind ? { kind } : null;
 }
 
 /** "variants/bold/index.html" → "bold"; a plain page keeps its file name. */

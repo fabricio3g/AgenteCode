@@ -273,6 +273,8 @@ export type DesignManageRequest =
   | { chatId: string; action: 'snapshot'; label?: string; auto?: boolean }
   | { chatId: string; action: 'restore'; version: number }
   | { chatId: string; action: 'promote'; variant: string }
+  /** Delete a top-level page or a `variants/<name>/index.html` variant (never the entry page); a version is saved first. */
+  | { chatId: string; action: 'remove'; page: string }
   | { chatId: string; action: 'reveal' }
   /** Save the page's inlined HTML through a save dialog. */
   | { chatId: string; action: 'export'; page: string; html: string }
@@ -336,6 +338,8 @@ export interface DesignPick {
 export interface DesignSelection extends DesignPick {
   id: string;
   page: string;
+  /** The width of the canvas frame it was picked in (the board can show a page at several). */
+  width?: number;
 }
 
 /** A note pinned to a point on a page. `x`/`y` are page coordinates. */
@@ -346,6 +350,8 @@ export interface DesignComment {
   x: number;
   y: number;
   note: string;
+  /** The width of the canvas frame it was pinned in; its pin shows only on that frame. */
+  width?: number;
 }
 
 /**

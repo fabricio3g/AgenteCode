@@ -257,6 +257,27 @@ export function promoteVariant(root: string, name: string): { before: DesignVers
   return { before, paths };
 }
 
+/**
+ * Removes a page or a variant the user deleted from the board: a top-level
+ * `.html` page, or a whole `variants/<name>/` folder. The entry page stays (a
+ * design always has one). The workspace is saved as a version first, so
+ * Versions can bring it back. Symlinks inside a variant are unlinked, never
+ * followed.
+ */
+export function removePage(root: string, page: unknown): { before: DesignVersion | null; paths: string[] } {
+  if (typeof page !== 'string') throw new DesignPathError('A page is required.');
+  const variant = /^variants\/([A-Za-z0-9_-]{1,60})\/index\.html$/.exec(page);
+  if (!variant && !/^[A-Za-z0-9_.-]+\.html?$/.test(page)) throw new DesignPathError('Only a page or a variant can be removed.');
+  if (page === DESIGN_ENTRY) throw new DesignPathError(`The entry page ${DESIGN_ENTRY} cannot be removed.`);
+  const target = resolveInside(root, variant ? `${DESIGN_VARIANTS_DIR}/${variant[1]}` : page);
+  const stat = fs.lstatSync(target, { throwIfNoEntry: false });
+  if (!stat) throw new DesignPathError(`${page} does not exist.`);
+  if (variant ? !stat.isDirectory() : !stat.isFile()) throw new DesignPathError(`${page} is not a ${variant ? 'variant' : 'page'}.`);
+  const before = snapshot(root, `before removing ${variant ? variant[1] : page}`, true);
+  fs.rmSync(target, { recursive: !!variant, force: false });
+  return { before, paths: [page] };
+}
+
 /** The file name an export gets: "pricing.html", or the variant's folder for "variants/bold/index.html". */
 export function exportFileName(page: string): string {
   const parts = page.split('/').filter(Boolean);
