@@ -18,7 +18,7 @@
   import { cn as uiClass } from '$lib/utils/cn';
 
   import { onMount, untrack } from 'svelte';
-  import { Copy, Download, ExternalLink, Film, FolderOpen, GalleryHorizontal, History, Maximize2, Minus, Monitor, Moon, MoreHorizontal, PanelLeftClose, PanelLeftOpen, PanelRight, Plus, RotateCw, Smartphone, Sun, SunMoon, Tablet } from 'lucide-svelte';
+  import { Copy, Download, ExternalLink, Film, FolderOpen, GalleryHorizontal, History, Maximize2, Monitor, MoreHorizontal, PanelLeftClose, PanelLeftOpen, PanelRight, RotateCw, Smartphone, Tablet } from 'lucide-svelte';
   import Thread from '$lib/features/chat/thread/Thread.svelte';
   import Composer from '$lib/features/chat/Composer.svelte';
   import Button from '$lib/components/ui/Button.svelte';
@@ -47,7 +47,7 @@
   import DesignTray from './DesignTray.svelte';
   import { designSystems } from './design-systems.svelte';
   import { designStore, type DesignScheme, type PaneId } from './design.svelte';
-  import { clampWidth, DOCK_WIDTH, INSPECTOR_WIDTH, paneLayout, pageLabel, shortcutFor, toolbarPlan, VIEWPORTS, ZOOM_PRESETS, zoomLabel, type ToolbarItem, type ViewportId } from './design-view';
+  import { clampWidth, DOCK_WIDTH, INSPECTOR_WIDTH, paneLayout, pageLabel, shortcutFor, toolbarPlan, VIEWPORTS, type ToolbarItem, type ViewportId } from './design-view';
   import type { DesignManageRequest } from '$shared/design';
 
   const SCHEMES: DesignScheme[] = ['auto', 'light', 'dark'];
@@ -67,9 +67,6 @@
     ...designStore.data.variants.map((variant) => ({ value: variant.entry, label: `${variant.name} · ${copy.design.variants.title.toLowerCase()}` }))
   ]);
 
-  const zoomText = $derived(designStore.zoom === null ? copy.design.toolbar.fit : zoomLabel(designStore.zoom));
-  const schemeLabel = $derived(copy.design.toolbar.scheme[designStore.scheme]);
-  const SchemeIcon = $derived(designStore.scheme === 'light' ? Sun : designStore.scheme === 'dark' ? Moon : SunMoon);
 
   // Where the panes sit. The surface's width is measured; the canvas column's width picks the toolbar's plan.
   let surfaceWidth = $state(0);
@@ -123,8 +120,6 @@
     designStore.endResize();
   }
 
-  let zoomMenu = $state(false);
-  let schemeMenu = $state(false);
   let exportMenu = $state(false);
   let moreMenu = $state(false);
   let handoffOpen = $state(false);
@@ -280,6 +275,8 @@
   {/if}
 
   <section class="canvas-column" aria-label={copy.spaces.design} bind:clientWidth={canvasWidth} style:left="{layout.canvasLeft}px" style:right="{layout.canvasRight}px">
+    <!-- One quiet line: where you are on the left, the viewport in the middle, the panels and Export on the right.
+         Zoom and the pointer tools live in the dock at the bottom of the canvas. -->
     <UiToolbar wrap={false} class={uiClass("toolbar", "ui-local-46947eff", {"tight": plan.tight})} >
       <DesignToolButton
         icon={dockShown ? PanelLeftClose : PanelLeftOpen}
@@ -288,40 +285,9 @@
         pressed={dockShown}
         onclick={toggleDock}
       />
-
-      <div class="group" role="group" aria-label={copy.design.canvas.viewport}>
-        {#each VIEWPORTS as item (item.id)}
-          <DesignToolButton
-            icon={VIEWPORT_ICONS[item.id]}
-            label={copy.design.toolbar.viewport[item.id]}
-            shortcut={`mod+alt+${VIEWPORT_KEYS[item.id]}`}
-            pressed={designStore.viewport === item.id}
-            onclick={() => designStore.setViewport(item.id)}
-          />
-        {/each}
-      </div>
-
-      <div class="group" role="group" aria-label={copy.design.toolbar.zoom}>
-        {#if plan.zoomSteps}
-          <DesignToolButton icon={Minus} label={copy.design.toolbar.zoomOut} shortcut="mod+alt+-" onclick={() => designStore.zoomBy(-0.1)} />
-        {/if}
-        <Menu bind:open={zoomMenu} placement="bottom-start" minWidth="8.5rem" label={copy.design.toolbar.zoom}>
-          {#snippet trigger(props)}
-            <Button variant="ghost" size="sm" class="h-[1.625rem] min-w-[3.25rem] px-2 text-xs tabular-nums" aria-label={copy.design.toolbar.zoom} title={copy.design.toolbar.zoom} {...props}>{zoomText}</Button>
-          {/snippet}
-          {#each ZOOM_PRESETS as preset (preset)}
-            <MenuItem label={zoomLabel(preset)} active={designStore.zoom === preset} onselect={() => designStore.setZoom(preset)} />
-          {/each}
-          <MenuItem label={copy.design.toolbar.zoomFit} active={designStore.zoom === null} onselect={() => designStore.setZoom(null)} />
-        </Menu>
-        {#if plan.zoomSteps}
-          <DesignToolButton icon={Plus} label={copy.design.toolbar.zoomIn} shortcut="mod+alt+=" onclick={() => designStore.zoomBy(0.1)} />
-        {/if}
-      </div>
-
       {#if inline('page')}
         {#if pageOptions.length > 1}
-          <Select size="sm" aria-label={copy.design.canvas.page} options={pageOptions} value={designStore.selected} onchange={(value) => designStore.select(value)} />
+          <Select size="sm" class="page-select w-auto max-w-[12rem]" aria-label={copy.design.canvas.page} options={pageOptions} value={designStore.selected} onchange={(value) => designStore.select(value)} />
         {:else if designStore.selected}
           <span class="page-name">{pageLabel(designStore.selected)}</span>
         {/if}
@@ -329,29 +295,23 @@
 
       <span class="spacer"></span>
 
+      <div class="viewports" role="group" aria-label={copy.design.canvas.viewport}>
+        {#each VIEWPORTS as item (item.id)}
+          <DesignToolButton
+            icon={VIEWPORT_ICONS[item.id]}
+            label={copy.design.toolbar.viewport[item.id]}
+            shortcut={`mod+alt+${VIEWPORT_KEYS[item.id]}`}
+            class="viewport"
+            pressed={designStore.viewport === item.id}
+            onclick={() => designStore.setViewport(item.id)}
+          />
+        {/each}
+      </div>
+
+      <span class="spacer"></span>
+
       {#if inline('system')}
         <DesignSystemChip showName={plan.systemName} onmanage={openSystems} />
-      {/if}
-      {#if inline('scheme')}
-        <Menu bind:open={schemeMenu} placement="bottom-end" minWidth="11rem" label={copy.design.toolbar.scheme.label}>
-          {#snippet trigger(props)}
-            <IconButton label={`${copy.design.toolbar.scheme.label}: ${schemeLabel}`} title="" class={designStore.scheme === 'auto' ? 'design-tool' : 'design-tool is-on'} {...props}>
-              <SchemeIcon aria-hidden="true" />
-            </IconButton>
-          {/snippet}
-          {@render schemeItems()}
-        </Menu>
-      {/if}
-
-      <DesignToolButton
-        icon={PanelRight}
-        label={designStore.inspectorOpen ? copy.design.toolbar.hideInspector : copy.design.toolbar.showInspector}
-        shortcut="mod+alt+i"
-        pressed={designStore.inspectorOpen}
-        onclick={() => designStore.toggleInspector()}
-      />
-      {#if inline('reload')}
-        <DesignToolButton icon={RotateCw} label={copy.design.canvas.reload} shortcut="mod+alt+r" onclick={() => designStore.reload()} />
       {/if}
       <DesignToolButton
         icon={GalleryHorizontal}
@@ -368,51 +328,47 @@
         onclick={() => designStore.toggleTray('versions')}
       />
       <DesignToolButton
-        icon={Film}
-        label={copy.design.timeline.title}
-        shortcut="m"
-        pressed={designStore.tray === 'timeline'}
-        onclick={() => designStore.toggleTray('timeline')}
+        icon={PanelRight}
+        label={designStore.inspectorOpen ? copy.design.toolbar.hideInspector : copy.design.toolbar.showInspector}
+        shortcut="mod+alt+i"
+        pressed={designStore.inspectorOpen}
+        onclick={() => designStore.toggleInspector()}
       />
-      {#if inline('folder')}
-        <DesignToolButton icon={FolderOpen} label={copy.design.canvas.openFolder} onclick={() => designStore.reveal()} />
-      {/if}
+
+      <Menu bind:open={moreMenu} placement="bottom-end" minWidth="14rem" label={copy.design.toolbar.more}>
+        {#snippet trigger(props)}
+          <IconButton label={copy.design.toolbar.more} class="design-tool" {...props}><MoreHorizontal aria-hidden="true" /></IconButton>
+        {/snippet}
+        {#if inMore('page') && pageOptions.length > 1}
+          <div class="ui-menu-label">{copy.design.canvas.page}</div>
+          {@render pageItems()}
+        {/if}
+        <MenuItem icon={Film} label={copy.design.timeline.title} active={designStore.tray === 'timeline'} onselect={() => designStore.toggleTray('timeline')} />
+        {#if inMore('reload')}
+          <MenuItem icon={RotateCw} label={copy.design.canvas.reload} onselect={() => designStore.reload()} />
+        {/if}
+        {#if inMore('folder')}
+          <MenuItem icon={FolderOpen} label={copy.design.canvas.openFolder} onselect={() => designStore.reveal()} />
+        {/if}
+        {#if inMore('scheme')}
+          <div class="ui-menu-label">{copy.design.toolbar.scheme.label}</div>
+          {@render schemeItems()}
+        {/if}
+        {#if inMore('system')}
+          <div class="ui-menu-label">{copy.design.systems.label}</div>
+          <DesignSystemItems onmanage={openSystems} />
+        {/if}
+        {#if inMore('export')}
+          <div class="ui-menu-label">{copy.design.export.button}</div>
+          {@render exportItems()}
+        {/if}
+      </Menu>
       {#if inline('export')}
         <Menu bind:open={exportMenu} placement="bottom-end" minWidth="11rem" label={copy.design.export.button}>
           {#snippet trigger(props)}
-            <Button variant="outline" size="sm" class="h-[1.625rem] text-xs" {...props}><Download aria-hidden="true" />{copy.design.export.button}</Button>
+            <Button variant="default" size="sm" class="export h-[1.625rem] rounded-full px-3 text-xs" {...props}>{copy.design.export.button}</Button>
           {/snippet}
           {@render exportItems()}
-        </Menu>
-      {/if}
-
-      {#if plan.more.length}
-        <Menu bind:open={moreMenu} placement="bottom-end" minWidth="14rem" label={copy.design.toolbar.more}>
-          {#snippet trigger(props)}
-            <IconButton label={copy.design.toolbar.more} class="design-tool" {...props}><MoreHorizontal aria-hidden="true" /></IconButton>
-          {/snippet}
-          {#if inMore('page') && pageOptions.length > 1}
-            <div class="ui-menu-label">{copy.design.canvas.page}</div>
-            {@render pageItems()}
-          {/if}
-          {#if inMore('scheme')}
-            <div class="ui-menu-label">{copy.design.toolbar.scheme.label}</div>
-            {@render schemeItems()}
-          {/if}
-          {#if inMore('system')}
-            <div class="ui-menu-label">{copy.design.systems.label}</div>
-            <DesignSystemItems onmanage={openSystems} />
-          {/if}
-          {#if inMore('reload')}
-            <MenuItem icon={RotateCw} label={copy.design.canvas.reload} onselect={() => designStore.reload()} />
-          {/if}
-          {#if inMore('folder')}
-            <MenuItem icon={FolderOpen} label={copy.design.canvas.openFolder} onselect={() => designStore.reveal()} />
-          {/if}
-          {#if inMore('export')}
-            <div class="ui-menu-label">{copy.design.export.button}</div>
-            {@render exportItems()}
-          {/if}
         </Menu>
       {/if}
     </UiToolbar>
@@ -534,10 +490,20 @@
   :global(.toolbar.ui-local-46947eff) > :global(*) { flex-shrink: 0; }
   .spacer { flex: 1 1 0; min-width: 0; }
 
-  .group {
+  /* The viewport switch: the app's segmented track, the current size a raised pill. */
+  .viewports {
     display: inline-flex;
     align-items: center;
-    gap: 0.125rem;
+    gap: 0.0625rem;
+    padding: 0.125rem;
+    border-radius: var(--radius-full);
+    background: var(--muted);
+  }
+  .viewports :global(.viewport) { border-radius: var(--radius-full); }
+  .viewports :global(.viewport.is-on),
+  .viewports :global(.viewport.is-on:hover) {
+    background: var(--segment-active-bg);
+    box-shadow: var(--segment-active-shadow);
   }
 
   /* The page path reads as a quiet address pill, ellipsized when the toolbar is tight. */

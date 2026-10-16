@@ -108,6 +108,7 @@ const es: CopyOverride = {
       label: 'Herramientas del lienzo', browse: 'Explorar', select: 'Seleccionar elemento', comment: 'Comentar en el lienzo',
       comments: 'Comentarios', sendComments: 'Enviar comentarios', commentsSent: 'Comentarios añadidos al próximo mensaje'
     },
+    prompt: { placeholder: 'Describe un cambio para esto', send: 'Enviar cambio' },
     inspector: {
       element: 'Elemento', tokens: 'Tokens', code: 'Código', none: 'Selecciona un elemento en el lienzo',
       noneHint: 'Su texto, caja y estilos aparecen aquí, y los cambios rápidos van al chat.',
@@ -290,6 +291,7 @@ const ptBR: CopyOverride = {
       label: 'Ferramentas da tela', browse: 'Navegar', select: 'Selecionar elemento', comment: 'Comentar na tela',
       comments: 'Comentários', sendComments: 'Enviar comentários', commentsSent: 'Comentários adicionados à próxima mensagem'
     },
+    prompt: { placeholder: 'Descreva uma mudança para isto', send: 'Enviar mudança' },
     inspector: {
       element: 'Elemento', tokens: 'Tokens', code: 'Código', none: 'Selecione um elemento na tela',
       noneHint: 'Texto, caixa e estilos aparecem aqui, e ajustes rápidos vão para o chat.',
@@ -472,6 +474,7 @@ const fr: CopyOverride = {
       label: 'Outils du canevas', browse: 'Parcourir', select: 'Sélectionner un élément', comment: 'Commenter le canevas',
       comments: 'Commentaires', sendComments: 'Envoyer les commentaires', commentsSent: 'Commentaires ajoutés au prochain message'
     },
+    prompt: { placeholder: 'Décrivez une modification', send: 'Envoyer la modification' },
     inspector: {
       element: 'Élément', tokens: 'Jetons', code: 'Code', none: 'Sélectionnez un élément sur le canevas',
       noneHint: 'Son texte, sa boîte et ses styles apparaissent ici, et les modifications rapides partent dans le chat.',
@@ -654,6 +657,7 @@ const de: CopyOverride = {
       label: 'Canvas-Werkzeuge', browse: 'Durchsuchen', select: 'Element auswählen', comment: 'Auf dem Canvas kommentieren',
       comments: 'Kommentare', sendComments: 'Kommentare senden', commentsSent: 'Kommentare der nächsten Nachricht hinzugefügt'
     },
+    prompt: { placeholder: 'Beschreibe eine Änderung', send: 'Änderung senden' },
     inspector: {
       element: 'Element', tokens: 'Tokens', code: 'Code', none: 'Wähle ein Element auf dem Canvas aus',
       noneHint: 'Text, Box und Stile erscheinen hier, schnelle Änderungen gehen an den Chat.',
@@ -836,6 +840,7 @@ const ja: CopyOverride = {
       label: 'キャンバスツール', browse: '閲覧', select: '要素を選択', comment: 'キャンバスにコメント',
       comments: 'コメント', sendComments: 'コメントを送信', commentsSent: 'コメントを次のメッセージに追加しました'
     },
+    prompt: { placeholder: 'この要素への変更を入力', send: '変更を送信' },
     inspector: {
       element: '要素', tokens: 'トークン', code: 'コード', none: 'キャンバス上の要素を選択してください',
       noneHint: 'テキスト、ボックス、スタイルがここに表示され、簡単な変更はチャットに送られます。',
@@ -1018,6 +1023,7 @@ const zh: CopyOverride = {
       label: '画布工具', browse: '浏览', select: '选择元素', comment: '在画布上评论',
       comments: '评论', sendComments: '发送评论', commentsSent: '评论已添加到下一条消息'
     },
+    prompt: { placeholder: '描述要做的修改', send: '发送修改' },
     inspector: {
       element: '元素', tokens: '令牌', code: '代码', none: '在画布上选择一个元素',
       noneHint: '它的文字、盒模型和样式会显示在这里，快速修改会发送到聊天。',

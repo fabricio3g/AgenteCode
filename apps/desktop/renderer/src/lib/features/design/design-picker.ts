@@ -35,9 +35,9 @@ export const PICKER_SOURCE = `(function () {
   var shadow = host.attachShadow({ mode: 'closed' });
   var style = document.createElement('style');
   // The outline is drawn outside the element's box, so it never sits on the text it marks.
-  style.textContent = '.box{position:fixed;left:0;top:0;display:none;box-sizing:border-box;pointer-events:none;outline:1.5px solid #4f6bed;outline-offset:2px;border-radius:3px}' +
-    '.target{position:fixed;left:0;top:0;display:none;box-sizing:border-box;pointer-events:none;outline:2px dashed #4f6bed;outline-offset:3px;border-radius:3px}' +
-    '.tag{position:absolute;left:-3.5px;top:-24px;padding:2px 6px;border-radius:4px;background:#4f6bed;color:#fff;font:500 11px/1.4 system-ui,sans-serif;white-space:nowrap}';
+  style.textContent = '.box{position:fixed;left:0;top:0;display:none;box-sizing:border-box;pointer-events:none;outline:1.5px solid #e76d1f;outline-offset:2px;border-radius:3px}' +
+    '.target{position:fixed;left:0;top:0;display:none;box-sizing:border-box;pointer-events:none;outline:2px dashed #e76d1f;outline-offset:3px;border-radius:3px}' +
+    '.tag{position:absolute;left:-3.5px;top:-24px;padding:2px 6px;border-radius:4px;background:#e76d1f;color:#fff;font:500 11px/1.4 system-ui,sans-serif;white-space:nowrap}';
   shadow.appendChild(style);
   var hoverBox = document.createElement('div');
   hoverBox.className = 'box';
@@ -234,12 +234,14 @@ export const PICKER_SOURCE = `(function () {
       el.children.length === 0 && clean(el.textContent).length > 0 && !el.isContentEditable;
   }
 
-  function setMode(next) {
+  function setMode(next, cursor) {
     if (next !== 'select' && next !== 'comment') next = 'browse';
     if (editing && next !== mode) finishEdit(true);
     mode = next;
     hoverEl = null;
-    cursorStyle.textContent = mode === 'browse' ? '' : 'html, html * { cursor: crosshair !important; }';
+    // The host sends the tool's pointer (design-cursors.ts); crosshair if it sends none.
+    var pointer = typeof cursor === 'string' && cursor.indexOf(';') < 0 && cursor.indexOf('}') < 0 ? cursor : 'crosshair';
+    cursorStyle.textContent = mode === 'browse' ? '' : 'html, html * { cursor: ' + pointer + ' !important; }';
     layout();
   }
 
@@ -447,7 +449,7 @@ export const PICKER_SOURCE = `(function () {
     if (event.source !== window.parent) return;
     var data = event.data;
     if (!data || data.source !== HOST) return;
-    if (data.type === 'tool') setMode(data.tool);
+    if (data.type === 'tool') setMode(data.tool, data.cursor);
     else if (data.type === 'highlight') setHighlights(data.selectors);
     else if (data.type === 'anim') animCommand(data);
     else if (data.type === 'clear') {

@@ -1,10 +1,11 @@
 <svelte:options runes={true} />
 
 <!--
-  The canvas tools, floating over the bottom of the canvas: Browse to move
-  around the page, Select to pick elements for the next message, Comment to
-  pin a note. V / S / C switch tools, but only while focus is outside any
-  text field, so typing in the composer never changes the tool.
+  The tool dock, floating over the bottom of the canvas: Browse to move around
+  the page, Select to pick elements for the next message, Comment to pin a
+  note, then the zoom. V / S / C switch tools, but only while focus is outside
+  any text field, so typing in the composer never changes the tool. The tool in
+  hand is the one ember thing on the dock.
 -->
 
 <script lang="ts" module>
@@ -32,11 +33,14 @@
 </script>
 
 <script lang="ts">
-  import { Send } from 'lucide-svelte';
+  import { Minus, Plus, Send } from 'lucide-svelte';
   import Badge from '$lib/components/ui/Badge.svelte';
   import Button from '$lib/components/ui/Button.svelte';
+  import Menu from '$lib/components/ui/Menu.svelte';
+  import MenuItem from '$lib/components/ui/MenuItem.svelte';
   import DesignToolButton from './DesignToolButton.svelte';
   import { designStore } from './design.svelte';
+  import { ZOOM_PRESETS, zoomLabel } from './design-view';
 
   /**
    * A narrow canvas (an inspector sheet over it) drops the send: it only moves focus to the composer, and the
@@ -45,6 +49,8 @@
   let { compact = false }: { compact?: boolean } = $props();
 
   const comments = $derived(designStore.comments.length);
+  const zoomText = $derived(designStore.zoom === null ? copy.design.toolbar.fit : zoomLabel(designStore.zoom));
+  let zoomMenu = $state(false);
 
   function sendComments() {
     window.dispatchEvent(new Event('focus-composer'));
@@ -53,8 +59,27 @@
 
 <div class="pill ui-float" role="toolbar" aria-label={copy.design.tools.label}>
   {#each TOOLS as tool (tool.id)}
-    <DesignToolButton icon={tool.icon} label={tool.label} shortcut={tool.key} position="top" pressed={designStore.tool === tool.id} onclick={() => designStore.setTool(tool.id)} />
+    <DesignToolButton icon={tool.icon} label={tool.label} shortcut={tool.key} position="top" class="dock-tool" pressed={designStore.tool === tool.id} onclick={() => designStore.setTool(tool.id)} />
   {/each}
+
+  <span class="sep" aria-hidden="true"></span>
+  <div class="zoom" role="group" aria-label={copy.design.toolbar.zoom}>
+    {#if !compact}
+      <DesignToolButton icon={Minus} label={copy.design.toolbar.zoomOut} shortcut="mod+alt+-" position="top" onclick={() => designStore.zoomBy(-0.1)} />
+    {/if}
+    <Menu bind:open={zoomMenu} placement="top-start" minWidth="8.5rem" label={copy.design.toolbar.zoom}>
+      {#snippet trigger(props)}
+        <Button variant="ghost" size="sm" class="h-[1.625rem] min-w-[3rem] px-1.5 text-xs tabular-nums" aria-label={copy.design.toolbar.zoom} title={copy.design.toolbar.zoom} {...props}>{zoomText}</Button>
+      {/snippet}
+      {#each ZOOM_PRESETS as preset (preset)}
+        <MenuItem label={zoomLabel(preset)} active={designStore.zoom === preset} onselect={() => designStore.setZoom(preset)} />
+      {/each}
+      <MenuItem label={copy.design.toolbar.zoomFit} active={designStore.zoom === null} onselect={() => designStore.setZoom(null)} />
+    </Menu>
+    {#if !compact}
+      <DesignToolButton icon={Plus} label={copy.design.toolbar.zoomIn} shortcut="mod+alt+=" position="top" onclick={() => designStore.zoomBy(0.1)} />
+    {/if}
+  </div>
 
   {#if comments > 0 && !compact}
     <Button variant="ghost" size="sm" class="ml-1 h-[1.625rem] rounded-full px-2.5 text-xs" onclick={sendComments}>
@@ -70,8 +95,24 @@
     display: inline-flex;
     align-items: center;
     gap: 0.125rem;
-    padding: var(--float-pad);
-    border-radius: var(--radius-full);
+    padding: 0.1875rem;
+    border-radius: var(--radius-lg, 0.75rem);
     backdrop-filter: blur(12px);
   }
+
+  /* The tool in hand: a filled ember square, not the toggle tint the bar's buttons use. */
+  .pill :global(.dock-tool.is-on),
+  .pill :global(.dock-tool.is-on:hover) {
+    background: var(--brand-accent);
+    color: #fff;
+  }
+
+  .sep {
+    align-self: stretch;
+    width: 1px;
+    margin: 0.3125rem 0.25rem;
+    background: var(--border);
+  }
+
+  .zoom { display: inline-flex; align-items: center; gap: 0.0625rem; }
 </style>

@@ -6,7 +6,8 @@
   an opaque origin. The page can run its own scripts but cannot reach the
   app, the network or the workspace folder. The picker script rides in the
   frame (never in the agent's render) and reports picks, comments and text
-  edits back over postMessage.
+  edits back over postMessage. In Select, a prompt opens under the last pick
+  (DesignSelectionPrompt), and each tool has its own pointer (design-cursors).
 -->
 
 <script lang="ts">
@@ -17,8 +18,10 @@
   import { buildPreviewHtml } from '$lib/utils/preview-builder';
   import { designStore } from './design.svelte';
   import { frameGeometry, nextZoomPreset, PIN_GAP, PIN_SIZE, pinOrigin } from './design-view';
-  import { HOST_SOURCE, readFrameMessage, withPicker, type FrameMessage } from './design-picker';
+  import { HOST_SOURCE, pickLabel, readFrameMessage, withPicker, type FrameMessage } from './design-picker';
+  import { toolCursor } from './design-cursors';
   import DesignEmpty from './DesignEmpty.svelte';
+  import DesignSelectionPrompt from './DesignSelectionPrompt.svelte';
 
   /** A comment being written: where it was clicked, in page and stage coordinates. */
   interface Draft { x: number; y: number; selector: string; left: number; top: number }
@@ -44,6 +47,29 @@
   const frameSize = $derived({ width: geometry.width * geometry.scale, height: geometry.height * geometry.scale });
   const highlights = $derived(designStore.selection.filter((pick) => pick.page === designStore.selected).map((pick) => pick.selector));
   const pins = $derived(designStore.comments.filter((comment) => comment.page === designStore.selected));
+  const cursor = $derived(toolCursor(designStore.tool));
+
+  /** Width of the selection prompt (17rem) and its gap from the element, for placing it inside the frame. */
+  const PROMPT_WIDTH = 272;
+  const PROMPT_GAP = 10;
+  /**
+   * Where the selection prompt opens: under the last element picked on this page, left edges aligned, kept inside
+   * the frame; above the element when there is no room below it.
+   */
+  const prompt = $derived.by(() => {
+    if (designStore.tool !== 'select' || !frameBox || draft) return null;
+    const picks = designStore.selection.filter((pick) => pick.page === designStore.selected);
+    const last = picks.at(-1);
+    if (!last) return null;
+    const s = geometry.scale;
+    const frameLeft = frameBox.offsetLeft;
+    const frameTop = frameBox.offsetTop;
+    const left = Math.max(frameLeft, Math.min(frameLeft + frameSize.width - PROMPT_WIDTH, frameLeft + (last.box.x - scroll.x) * s));
+    const below = frameTop + (last.box.y + last.box.height - scroll.y) * s + PROMPT_GAP;
+    const flip = below + 80 > frameTop + frameSize.height;
+    const top = flip ? frameTop + (last.box.y - scroll.y) * s - PROMPT_GAP : below;
+    return { left, top, flip, label: pickLabel(last), more: picks.length - 1 };
+  });
 
   function post(message: Record<string, unknown>) {
     frame?.contentWindow?.postMessage({ source: HOST_SOURCE, ...message }, '*');
@@ -52,7 +78,7 @@
   /** A freshly loaded frame starts at the top, browsing, with the current selection outlined; the timeline re-reads it. */
   function syncFrame() {
     scroll = { x: 0, y: 0 };
-    post({ type: 'tool', tool: designStore.tool });
+    post({ type: 'tool', tool: designStore.tool, cursor: toolCursor(designStore.tool) });
     post({ type: 'highlight', selectors: highlights });
     if (designStore.tray === 'timeline') designStore.sendAnim({ action: 'open' });
   }
@@ -60,7 +86,7 @@
   $effect(() => {
     const tool = designStore.tool;
     untrack(() => { if (tool !== 'comment') draft = null; });
-    post({ type: 'tool', tool });
+    post({ type: 'tool', tool, cursor: toolCursor(tool) });
   });
   $effect(() => { post({ type: 'highlight', selectors: highlights }); });
   // The timeline's commands reach the page through this frame; they stop when the canvas unmounts.
@@ -181,8 +207,8 @@
     <div
       class="frame"
       class:animated={!reducedMotion.value && !designStore.resizing}
-      class:pick={designStore.tool !== 'browse'}
       bind:this={frameBox}
+      style:cursor={cursor || undefined}
       style:width="{geometry.width * geometry.scale}px"
       style:height="{geometry.height * geometry.scale}px"
     >
@@ -207,6 +233,14 @@
     </div>
   {:else if !designStore.loading}
     <DesignEmpty />
+  {/if}
+
+  {#if prompt}
+    {#key prompt.label}
+      <div class="prompt-slot" class:flip={prompt.flip} style:left="{prompt.left}px" style:top="{prompt.top}px">
+        <DesignSelectionPrompt label={prompt.label} more={prompt.more} />
+      </div>
+    {/key}
   {/if}
 
   {#if draft}
@@ -254,10 +288,6 @@
     box-shadow: 0 1px 2px rgb(0 0 0 / 0.06), 0 8px 28px rgb(0 0 0 / 0.1);
   }
 
-  .frame.pick {
-    cursor: crosshair;
-  }
-
   .frame.animated {
     transition: width 220ms var(--motion-ease-out), height 220ms var(--motion-ease-out);
   }
@@ -288,6 +318,13 @@
     box-shadow: 0 0 0 2px var(--background);
     pointer-events: none;
   }
+
+  /* Under the element, or above it when flipped; the canvas's own pins and draft sit above it. */
+  .prompt-slot {
+    position: absolute;
+    z-index: 2;
+  }
+  .prompt-slot.flip { transform: translateY(-100%); }
 
   /* A float like the app's other popovers: the note field and its hint, beside the pin. */
   .draft {

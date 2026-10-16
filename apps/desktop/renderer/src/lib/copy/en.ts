@@ -235,6 +235,7 @@ export const COPY_EN = {
       label: 'Canvas tools', browse: 'Browse', select: 'Select element', comment: 'Comment on the canvas',
       comments: 'Comments', sendComments: 'Send comments', commentsSent: 'Comments added to the next message'
     },
+    prompt: { placeholder: 'Describe a change to this', send: 'Send change' },
     inspector: {
       element: 'Element', tokens: 'Tokens', code: 'Code', none: 'Select an element on the canvas',
       noneHint: 'Its text, box and styles appear here, and quick changes go to the chat.',

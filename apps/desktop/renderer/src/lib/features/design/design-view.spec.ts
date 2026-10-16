@@ -157,22 +157,24 @@ describe('paneLayout', () => {
 });
 
 describe('toolbarPlan', () => {
-  it('keeps every control on the row when the canvas is wide', () => {
-    expect(toolbarPlan(1000)).toMatchObject({ zoomSteps: true, systemName: true, more: [] });
-    expect(toolbarPlan(1000).inline).toHaveLength(6);
+  it('keeps the page, the system and Export on the row when the canvas is wide', () => {
+    const plan = toolbarPlan(1000);
+    expect(plan).toMatchObject({ tight: false, systemName: true });
+    expect(plan.inline).toEqual(['page', 'system', 'export']);
+    // The bar stays one quiet line: these never sit on it.
+    expect(plan.more).toEqual(['scheme', 'reload', 'folder']);
   });
 
-  it('folds the secondary controls into More when the canvas is narrower', () => {
+  it('moves the system chip into More when the canvas is narrower', () => {
     const plan = toolbarPlan(600);
-    expect(plan.inline).toEqual(['system', 'reload']);
-    expect(plan.more).toEqual(['page', 'scheme', 'folder', 'export']);
+    expect(plan.inline).toEqual(['page', 'export']);
+    expect(plan.more).toEqual(['system', 'scheme', 'reload', 'folder']);
     expect(plan.systemName).toBe(false);
   });
 
-  it('keeps the zoom to its percentage and packs the row when the canvas is cramped', () => {
+  it('packs every secondary control into More when the canvas is cramped', () => {
     const plan = toolbarPlan(CANVAS_MIN);
-    expect(plan).toMatchObject({ tight: true, zoomSteps: false, inline: [] });
-    expect(plan.more).toContain('system');
+    expect(plan).toMatchObject({ tight: true, inline: [] });
     expect([...plan.inline, ...plan.more].sort()).toEqual(['export', 'folder', 'page', 'reload', 'scheme', 'system']);
   });
 });

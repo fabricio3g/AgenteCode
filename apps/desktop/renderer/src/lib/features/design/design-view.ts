@@ -148,14 +148,16 @@ export function paneLayout(surface: number, request: PaneRequest): PaneLayout {
   };
 }
 
-/** The toolbar's secondary controls, the ones that fold into its More menu when the canvas is narrow. */
+/**
+ * The top bar's secondary controls. Page, system and export can sit on the row;
+ * the preview scheme, reload and the folder always live in More, so the bar
+ * stays one quiet line. Zoom lives in the tool dock at the bottom.
+ */
 export type ToolbarItem = 'page' | 'scheme' | 'system' | 'reload' | 'folder' | 'export';
 
 export interface ToolbarPlan {
   /** Whether the row is packed tight: its groups sit closer when the canvas is cramped. */
   tight: boolean;
-  /** Whether the − and + zoom steps show beside the percentage (the percentage always does). */
-  zoomSteps: boolean;
   /** Whether the design-system chip shows its name, or only its icon. */
   systemName: boolean;
   /** Controls drawn on the row, in the order the toolbar draws them. */
@@ -165,18 +167,18 @@ export interface ToolbarPlan {
 }
 
 /**
- * Which toolbar controls fit the canvas column. Wide keeps everything on the
- * row; compact moves the page, scheme, folder and export into More; cramped
- * also moves the system chip and reload, and the zoom keeps only its percentage.
+ * Which top-bar controls fit the canvas column. Wide keeps the page, the
+ * system chip and Export on the row; compact moves the system into More;
+ * cramped moves everything into More.
  */
 export function toolbarPlan(canvasWidth: number): ToolbarPlan {
-  if (canvasWidth >= 880) {
-    return { tight: false, zoomSteps: true, systemName: true, inline: ['page', 'scheme', 'system', 'reload', 'folder', 'export'], more: [] };
+  if (canvasWidth >= 760) {
+    return { tight: false, systemName: true, inline: ['page', 'system', 'export'], more: ['scheme', 'reload', 'folder'] };
   }
-  if (canvasWidth >= 480) {
-    return { tight: false, zoomSteps: true, systemName: false, inline: ['system', 'reload'], more: ['page', 'scheme', 'folder', 'export'] };
+  if (canvasWidth >= 520) {
+    return { tight: false, systemName: false, inline: ['page', 'export'], more: ['system', 'scheme', 'reload', 'folder'] };
   }
-  return { tight: true, zoomSteps: false, systemName: false, inline: [], more: ['page', 'scheme', 'system', 'reload', 'folder', 'export'] };
+  return { tight: true, systemName: false, inline: [], more: ['page', 'system', 'scheme', 'reload', 'folder', 'export'] };
 }
 
 /**
