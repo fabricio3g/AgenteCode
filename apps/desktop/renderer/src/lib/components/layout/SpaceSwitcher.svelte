@@ -126,6 +126,9 @@
     min-width: 0;
     outline: none;
   }
+  /* Slim track: as tall as the title bar's icon buttons on the same line
+     (2px inset + hairline around a 20px tab = 26px). */
+  .space-group.ui-segmented { padding: 2px; gap: 1px; }
   .space-group :global(.space-slot) { flex: 1 1 0; min-width: 0; }
 
   :global(.space-button.ui-local-5b1e07c3) {

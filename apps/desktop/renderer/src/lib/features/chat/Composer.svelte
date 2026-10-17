@@ -360,7 +360,7 @@
     <!-- Radius comes from --composer-radius on .ui-composer; the rounded-*
          utilities that used to sit here fought it at equal specificity. -->
     {#if appStore.currentChat?.pendingPrompts?.length && appStore.currentChatId}
-      <PromptQueue canSendAll={false} items={appStore.currentChat.pendingPrompts} onupdate={(id, content) => appStore.updateQueuedPrompt(appStore.currentChatId!, id, content)} onremove={(id) => { appStore.removeQueuedPrompt(appStore.currentChatId!, id); }} onsend={(id) => void appStore.sendQueuedPromptsNow(appStore.currentChatId!, id)} />
+      <PromptQueue running={generating} items={appStore.currentChat.pendingPrompts} onupdate={(id, content) => appStore.updateQueuedPrompt(appStore.currentChatId!, id, content)} onremove={(id) => { appStore.removeQueuedPrompt(appStore.currentChatId!, id); }} onsend={(id) => void appStore.sendQueuedPromptsNow(appStore.currentChatId!, id)} />
     {/if}
     <div class="composer-shell ui-composer pointer-events-auto transition">
       {#if nameCompletion}
@@ -416,12 +416,7 @@
           <ComposerBar>
             {#snippet attach()}<ComposerAddMenu onattach={() => fileInput?.click()} />{/snippet}
             {#snippet model()}<ModelMenu compact />{/snippet}
-            {#snippet extras()}
-              <!-- Agent runs the tool loop, Instant answers at once. Home only:
-                   Code always runs the full loop. -->
-              {#if appStore.activeSpace === 'home'}<ModeSelector />{/if}
-              <ComposerToolsMenu compact />
-            {/snippet}
+            {#snippet extras()}<ComposerToolsMenu compact />{/snippet}
             {#snippet trailing()}
               <ComposerToolbar
                 {dictation}
@@ -436,7 +431,14 @@
         {/if}
       </div>
     </div>
-    <HomeContextStatus />
+    <!-- Agent runs the tool loop, Instant answers at once. Home only (Code
+         always runs the full loop); it sits in the strip under the input, so
+         the bar keeps its room for the model name. -->
+    {#if appStore.activeSpace === 'home'}
+      <HomeContextStatus>{#snippet lead()}<ModeSelector />{/snippet}</HomeContextStatus>
+    {:else}
+      <HomeContextStatus />
+    {/if}
 
     {#if threadIsEmpty && suggestions}
       <!-- await tick() so the textarea holds the inserted prompt before we
@@ -475,11 +477,16 @@
   .composer-frame > :global(*) {
     pointer-events: auto;
   }
-  /* In the bar the mode switch is one more quiet control: a soft track, no outline. */
-  .composer-bar :global(.mode-tabs) {
+  /* In the strip the mode switch is one more quiet control: a soft track, no outline. */
+  .composer-frame :global(.composer-secondary .mode-tabs) {
     border-color: transparent;
     box-shadow: none;
     background: var(--muted);
+  }
+  /* The strip's own line height, so the switch does not make it taller than its status. */
+  .composer-frame :global(.composer-secondary .mode-tabs button) {
+    height: 1.375rem;
+    padding-inline: 0.625rem;
   }
   .drop-overlay {
     position: absolute;

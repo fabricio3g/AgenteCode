@@ -296,8 +296,8 @@
   /* The space switcher at the sidebar's head: one button, one icon. It is the
      one place the 14px chrome icon scale does not apply — a row of 14px marks
      reads as decoration. */
-  --space-btn: 1.625rem;
-  --space-icon: 16px;
+  --space-btn: 1.25rem;
+  --space-icon: 15px;
   /* One height for every row in the sidebar rail (.sidebar-row), and one size
      for the mark that leads it. Rows stepped up to 2rem so the whole left edge
      reads at one scale. */

@@ -4,7 +4,11 @@
   import GenerationSpeed from '$lib/features/shared/composer/GenerationSpeed.svelte';
   import { latestGenerationSpeed } from '$lib/utils/generation-speed';
   import { appStore } from '$lib/stores/app.svelte';
+  import type { Snippet } from 'svelte';
   import ContextUsageRing from './ContextUsageRing.svelte';
+
+  /** `lead` sits hard left in the strip (Home's Agent | Instant switch). */
+  let { lead }: { lead?: Snippet } = $props();
 
   const budget = $derived(appStore.contextBudget);
   const speed = $derived(latestGenerationSpeed(appStore.currentChat?.messages ?? []));
@@ -25,8 +29,9 @@
       />
 {/snippet}
 
-{#if visible || speed !== undefined}
+{#if lead || visible || speed !== undefined}
   <div class="composer-secondary">
+    {@render lead?.()}
     <div class="composer-secondary-status">
       <GenerationSpeed value={speed} />
       {#if visible && budget}{@render ring(budget)}{/if}
