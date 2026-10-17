@@ -7,7 +7,7 @@
 
 <span class="provider-icon" style:width={`${size}px`} style:height={`${size}px`} aria-hidden="true">
   {#if brands.has(provider)}
-    <span class="brand" style:mask-image={`url('/providers/${provider}.svg')`}></span>
+    <span class="brand" style:mask-image={`url('./providers/${provider}.svg')`}></span>
   {:else if provider === 'local'}
     <Cpu size={size} />
   {:else}

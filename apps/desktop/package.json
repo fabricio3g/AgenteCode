@@ -22,7 +22,7 @@
     "prebuild": "npm run rebuild:native && npm run build:agente",
     "build:main": "node scripts/build-bundles.mjs main --minify",
     "build:extension": "node scripts/build-extension.mjs",
-    "build:renderer": "cd renderer && npx vite build",
+    "build:renderer": "cd renderer && node --max-old-space-size=4096 node_modules/vite/bin/vite.js build",
     "fetch:native-runtimes": "node scripts/fetch-native-runtimes.mjs",
     "build:agente": "cargo build --release --bin agente --manifest-path ../../Cargo.toml && node scripts/bundle-agente.mjs",
     "build": "npm run build:main && npm run build:renderer && electron-builder",
@@ -160,6 +160,7 @@
       }
     ],
     "linux": {
+      "maintainer": "Fabricio Medrano <48396639+fabricio3g@users.noreply.github.com>",
       "target": [
         {
           "target": "AppImage",
