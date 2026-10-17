@@ -5,6 +5,8 @@ import {
   saveCodeProjectToDb,
   deleteCodeProjectFromDb
 } from '$lib/utils/storage';
+import { get } from 'svelte/store';
+import { t } from 'svelte-i18n';
 import { invoke } from '$lib/services/bridge';
 import { currentProviderModel } from '$lib/services/current-model';
 import { pathExists, pickWorkspaceFolder } from '$lib/services/files';
@@ -83,6 +85,8 @@ class CodeStore {
   #conversationIndices = new Map<string, number>();
   /** Approvals the engine settled itself (abort, shutdown) — do not answer them again. */
   #engineSettled = new Set<string>();
+  /** The reply opened for a steer the agent just read, by chat: empty at the end means unanswered. */
+  #steerReplies = new Map<string, string>();
   #repairedInterrupted = false;
   #unsubEvents: (() => void) | null = null;
   /** Chats whose streaming message waits for the next frame's flush. */
@@ -466,9 +470,19 @@ class CodeStore {
       // A queued follow-up is a new Rust turn: give its deltas a fresh target.
       const todos = conversationTodos(chat.messages);
       Object.assign(run, createCodeRunState(), { todos, running: true, assistantMessageId: undefined });
-      // It starts the oldest follow-up, which already sits right above.
+      // It starts the oldest follow-up, which already sits right above —
+      // or a steer that reached main after the turn closed, which main sends
+      // as the next turn: it joins the thread now, as the turn it starts.
       const followUp = chat.messages.find((message) => message.metadata?.codeQueued);
       if (followUp) delete followUp.metadata!.codeQueued;
+      else {
+        const steer = chat.pendingPrompts?.find((item) => item.sending);
+        if (steer) {
+          chat.pendingPrompts = chat.pendingPrompts!.filter((item) => item !== steer);
+          this.#appendUserTurn(chat, steer.content, steer.codeAttachments ?? []);
+          appStore.persistDraft(chat.id);
+        }
+      }
       this.#appendAssistant(chat);
     }
 
@@ -502,11 +516,22 @@ class CodeStore {
       run.queuedCount = 0;
       run.stopping = false;
       this.#clearQueued(chat);
+      // A steer the agent never read goes back to the panel, editable.
       for (const item of chat.pendingPrompts ?? []) item.sending = false;
       appStore.persistDraft(chat.id);
+      const normal = event.stopReason !== 'aborted' && event.stopReason !== 'error' && !run.error;
+      // The engine commits a steer that lands as the turn closes to the
+      // history without an answer. Drop the empty reply opened for it; after
+      // a normal end, ask for the answer unless a queued prompt goes next.
+      const steerReply = this.#steerReplies.get(chat.id);
+      this.#steerReplies.delete(chat.id);
+      const unanswered = steerReply !== undefined && steerReply === run.assistantMessageId && this.#dropEmptyReply(chat, run);
+      if (normal && unanswered && !chat.pendingPrompts?.length) {
+        setTimeout(() => { if (!this.runFor(chat.id)?.running) void this.send(chat.id, get(t)('code.continuePrompt')); }, 0);
+      }
       // A normal completion runs the oldest locally queued prompt. A stopped
       // or failed run leaves it editable; it never surprises the user by restarting.
-      if (event.stopReason !== 'aborted' && event.stopReason !== 'error' && !run.error) {
+      else if (normal) {
         setTimeout(() => { if (!this.runFor(chat.id)?.running) void this.sendQueuedNow(chat.id); }, 0);
       }
       void this.refreshCheckpoints(event.chatId);
@@ -646,6 +671,18 @@ class CodeStore {
     // todos, timing) carries on, and still-running subagents stay visible.
     Object.assign(run, { content: '', timeline: [], reasoning: '', reasoningRaw: '', steps: [], children: run.children.filter((child) => child.status === 'running') });
     this.#appendAssistant(chat);
+    if (run.assistantMessageId) this.#steerReplies.set(chat.id, run.assistantMessageId);
+  }
+
+  /** The reply opened for an injected steer, if nothing came of it: remove it. */
+  #dropEmptyReply(chat: ChatSession, run: AgenteRun): boolean {
+    const reply = chat.messages.find((message) => message.id === run.assistantMessageId);
+    // The run, not the message: agent_end lands before the final flush.
+    if (!reply || reply.role !== 'assistant' || run.content.trim() || run.steps.length || run.reasoning.trim() || reply.content.trim()) return false;
+    chat.messages = chat.messages.filter((message) => message !== reply);
+    appStore.markChatDirty(chat.id);
+    appStore.persist();
+    return true;
   }
 
   /** Nothing is waiting once a run ends: whatever it never took stays where it was sent. */
@@ -856,21 +893,24 @@ class CodeStore {
   }
 
   /**
-   * Course-correct mid-run: records the message in the transcript and hands
-   * it to the engine, which injects it after the current tool batch.
+   * Course-correct mid-run: hands the message to the engine, which reads it
+   * after the current tool batch; until then it waits in the panel.
    */
   async steer(chatId: string, text: string, attachments: Attachment[] = []): Promise<void> {
-    const chat = appStore.chats.find((c) => c.id === chatId);
-    if (!chat || !text.trim()) return;
-    this.#appendUserTurn(chat, text, attachments, true);
+    const item = appStore.queuePrompt(chatId, text, { codeAttachments: attachments.map((attachment) => ({ ...attachment })) });
+    if (!item) return;
+    // "Next step" in the waiting panel; it joins the thread when the agent reads it.
+    item.sending = true;
+    appStore.persistDraft(chatId);
     const run = this.#requireRun(chatId);
     run.queuedCount += 1;
     try {
       const result = await steerCodeAgent(chatId, text, attachments);
-      if (!result.ok) this.#rollbackQueued(run);
-    } catch {
-      this.#rollbackQueued(run);
-    }
+      if (result.ok) return;
+    } catch { /* falls through: back to the panel */ }
+    this.#rollbackQueued(run);
+    item.sending = false;
+    appStore.persistDraft(chatId);
   }
 
   /** Queue input that runs only when the agent would otherwise stop. */

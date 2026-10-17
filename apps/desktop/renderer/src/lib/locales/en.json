@@ -431,13 +431,11 @@
     "modePlanHint": "Investigates, presents a plan, and edits only after you approve it",
     "continue": "Continue",
     "continuePrompt": "Continue",
-    "queued": "{n} queued",
     "statusCompleted": "Completed",
     "statusStopped": "Stopped",
     "statusLength": "Hit the output limit — part of the run was cut off",
     "retrying": "Connection hiccup — retrying (attempt {n})…",
     "todosTitle": "Tasks",
-    "todosAllDone": "All tasks done",
     "thinking": "Thinking",
     "thought": "Thought",
     "live": {
@@ -506,7 +504,7 @@
     },
     "workedFor": "Worked for {time}",
     "selectModel": "Select a model to start coding",
-    "steerHint": "Enter steers · Alt+Enter queues · Esc stops",
+    "steerHint": "Enter steers · Tab queues · Esc stops",
     "starters": {
       "title": "Try one of these",
       "explain": {
@@ -733,7 +731,9 @@
       "supervised": "Asks first",
       "full": "Never asks"
     },
-    "modeCycle": "Shift+Tab to switch"
+    "modeCycle": "Shift+Tab to switch",
+    "todosMore": "+{n} more",
+    "todosLess": "Show less"
   },
   "searchModal": {
     "inMessages": "In messages",
@@ -2996,18 +2996,16 @@
     "hidePoints": "Hide points"
   },
   "promptQueue": {
-    "title": "Queued",
-    "hint": "Sent when the run ends",
+    "title": "Waiting for the agent",
     "send": "Send now",
-    "sendAll": "Send all",
-    "sendNext": "Send next",
-    "sendOne": "Send this one now",
-    "sendNow": "Send queued prompts now",
     "edit": "Edit queued prompt",
     "save": "Save",
     "cancel": "Cancel",
-    "sending": "Sending…",
-    "remove": "Remove queued prompt"
+    "remove": "Remove queued prompt",
+    "nextStep": "Next step",
+    "afterRun": "After run",
+    "steerNow": "Steer now",
+    "steerAll": "Steer all"
   },
   "conversationInfo": {
     "created": "Created",

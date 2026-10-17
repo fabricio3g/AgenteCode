@@ -8,15 +8,22 @@ import type { CodeTodoItem } from '$shared/agente-protocol';
 import type { CodeRunState, OrderedEntry } from './code-run';
 
 export type WorkItem = { key: string; step?: AgentStep; thinking?: string };
-export type ReplyBlock = { key: string; items: WorkItem[]; text?: undefined } | { key: string; text: string; items?: undefined };
+export type ReplyBlock =
+  | { key: string; items: WorkItem[]; text?: undefined; plan?: undefined }
+  | { key: string; text: string; items?: undefined; plan?: undefined }
+  | { key: string; plan: true; items?: undefined; text?: undefined };
 
-/** Consecutive thoughts and steps become one work block; text stands between them. */
+/** Consecutive thoughts and steps become one work block; text and the plan card stand between them. */
 export function replyBlocks(entries: OrderedEntry[]): ReplyBlock[] {
   const blocks: ReplyBlock[] = [];
   for (const entry of entries) {
     const last = blocks[blocks.length - 1];
     if (entry.text !== undefined) {
       blocks.push({ key: entry.key, text: entry.text });
+      continue;
+    }
+    if (entry.plan) {
+      blocks.push({ key: entry.key, plan: true });
       continue;
     }
     const item: WorkItem = { key: entry.key, step: entry.step, thinking: entry.thinking };
@@ -113,7 +120,22 @@ export function liveStatus(run: Pick<CodeRunState, 'timeline' | 'steps' | 'prepa
   return { kind: 'starting' };
 }
 
-/** The task the bar above the composer names: the one in progress, else the next, else the last. */
+/** The task a plan is on: the one in progress, else the next, else the last. */
 export function currentTodo(todos: CodeTodoItem[]): CodeTodoItem | undefined {
   return todos.find((todo) => todo.status === 'in_progress') ?? todos.find((todo) => todo.status === 'pending') ?? todos.at(-1);
+}
+
+/** Lists this short show whole on the plan card. */
+const PLAN_FULL = 5;
+
+/**
+ * The rows a folded plan card shows: a short list whole; a long one the task
+ * before the current one, the current one and the next, in list order.
+ */
+export function planRows(todos: CodeTodoItem[], open = false): CodeTodoItem[] {
+  if (open || todos.length <= PLAN_FULL) return todos;
+  const current = currentTodo(todos);
+  const at = current ? todos.indexOf(current) : 0;
+  const start = Math.max(0, Math.min(at - 1, todos.length - 3));
+  return todos.slice(start, start + 3);
 }

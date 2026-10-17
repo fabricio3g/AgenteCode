@@ -422,13 +422,11 @@
     "modePlanHint": "Untersucht, präsentiert einen Plan und bearbeitet erst nach deiner Freigabe",
     "continue": "Fortfahren",
     "continuePrompt": "Mach mit der Aufgabe weiter",
-    "queued": "{n} in Warteschlange",
     "statusCompleted": "Abgeschlossen",
     "statusStopped": "Gestoppt",
     "statusLength": "Ausgabelimit erreicht — ein Teil der Ausführung wurde abgeschnitten",
     "retrying": "Verbindungsproblem — neuer Versuch ({n})…",
     "todosTitle": "Aufgaben",
-    "todosAllDone": "Alle Aufgaben erledigt",
     "thinking": "Denkt nach",
     "thought": "Gedanke",
     "live": {
@@ -497,7 +495,7 @@
     },
     "workedFor": "Hat {time} gearbeitet",
     "selectModel": "Wähle ein Modell, um mit dem Coden zu beginnen",
-    "steerHint": "Enter lenkt um · Alt+Enter reiht ein · Esc stoppt",
+    "steerHint": "Enter lenkt um · Tab reiht ein · Esc stoppt",
     "starters": {
       "title": "Probier eins davon",
       "explain": {
@@ -733,7 +731,9 @@
       "supervised": "Fragt zuerst",
       "full": "Fragt nie"
     },
-    "modeCycle": "Umschalt+Tab zum Wechseln"
+    "modeCycle": "Umschalt+Tab zum Wechseln",
+    "todosMore": "+{n} weitere",
+    "todosLess": "Weniger anzeigen"
   },
   "searchModal": {
     "inMessages": "In Nachrichten",
@@ -2996,18 +2996,16 @@
     "hidePoints": "Hide points"
   },
   "promptQueue": {
-    "title": "In der Warteschlange",
-    "hint": "Enter sendet jetzt",
+    "title": "Wartet auf den Agenten",
     "send": "Jetzt senden",
-    "sendNow": "Nachrichten in der Warteschlange jetzt senden",
     "edit": "Nachricht in der Warteschlange bearbeiten",
     "save": "Speichern",
     "cancel": "Abbrechen",
-    "sending": "Wird gesendet…",
     "remove": "Nachricht aus der Warteschlange entfernen",
-    "sendAll": "Send all",
-    "sendNext": "Send next",
-    "sendOne": "Send this one now"
+    "nextStep": "Nächster Schritt",
+    "afterRun": "Nach dem Lauf",
+    "steerNow": "Jetzt umlenken",
+    "steerAll": "Alle umlenken"
   },
   "conversationInfo": {
     "created": "Erstellt",

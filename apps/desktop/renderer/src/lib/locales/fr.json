@@ -422,13 +422,11 @@
     "modePlanHint": "Investigue, présente un plan et ne modifie qu'après votre approbation",
     "continue": "Continuer",
     "continuePrompt": "Poursuis la tâche",
-    "queued": "{n} en attente",
     "statusCompleted": "Terminé",
     "statusStopped": "Arrêté",
     "statusLength": "Limite de sortie atteinte — une partie de l'exécution a été tronquée",
     "retrying": "Problème de connexion — nouvelle tentative ({n})…",
     "todosTitle": "Tâches",
-    "todosAllDone": "Toutes les tâches terminées",
     "thinking": "Réflexion",
     "thought": "Réflexion",
     "live": {
@@ -497,7 +495,7 @@
     },
     "workedFor": "A travaillé {time}",
     "selectModel": "Choisissez un modèle pour commencer à coder",
-    "steerHint": "Entrée réoriente · Alt+Entrée met en file · Échap arrête",
+    "steerHint": "Entrée réoriente · Tab met en file · Échap arrête",
     "starters": {
       "title": "Essayez l’une de ces idées",
       "explain": {
@@ -733,7 +731,9 @@
       "supervised": "Demande d’abord",
       "full": "Ne demande jamais"
     },
-    "modeCycle": "Maj+Tab pour changer"
+    "modeCycle": "Maj+Tab pour changer",
+    "todosMore": "+{n} de plus",
+    "todosLess": "Afficher moins"
   },
   "searchModal": {
     "inMessages": "Dans les messages",
@@ -2996,18 +2996,16 @@
     "hidePoints": "Hide points"
   },
   "promptQueue": {
-    "title": "En file d’attente",
-    "hint": "Entrée envoie maintenant",
+    "title": "En attente de l’agent",
     "send": "Envoyer maintenant",
-    "sendNow": "Envoyer maintenant les messages en file d’attente",
     "edit": "Modifier le message en file d’attente",
     "save": "Enregistrer",
     "cancel": "Annuler",
-    "sending": "Envoi…",
     "remove": "Retirer le message de la file d'attente",
-    "sendAll": "Send all",
-    "sendNext": "Send next",
-    "sendOne": "Send this one now"
+    "nextStep": "Étape suivante",
+    "afterRun": "Après l’exécution",
+    "steerNow": "Réorienter maintenant",
+    "steerAll": "Tout réorienter"
   },
   "conversationInfo": {
     "created": "Créée",

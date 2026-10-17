@@ -422,13 +422,11 @@
     "modePlanHint": "Investiga, apresenta um plano e só edita após sua aprovação",
     "continue": "Continuar",
     "continuePrompt": "Continue a tarefa",
-    "queued": "{n} na fila",
     "statusCompleted": "Concluído",
     "statusStopped": "Parado",
     "statusLength": "Limite de saída atingido — parte da execução foi cortada",
     "retrying": "Falha de conexão — tentando novamente (tentativa {n})…",
     "todosTitle": "Tarefas",
-    "todosAllDone": "Todas as tarefas concluídas",
     "thinking": "Pensando",
     "thought": "Pensamento",
     "live": {
@@ -497,7 +495,7 @@
     },
     "workedFor": "Trabalhou por {time}",
     "selectModel": "Escolha um modelo para começar a programar",
-    "steerHint": "Enter redireciona · Alt+Enter enfileira · Esc para",
+    "steerHint": "Enter redireciona · Tab enfileira · Esc para",
     "starters": {
       "title": "Experimente uma destas",
       "explain": {
@@ -733,7 +731,9 @@
       "supervised": "Pede antes",
       "full": "Nunca pergunta"
     },
-    "modeCycle": "Shift+Tab para trocar"
+    "modeCycle": "Shift+Tab para trocar",
+    "todosMore": "+{n} mais",
+    "todosLess": "Mostrar menos"
   },
   "searchModal": {
     "inMessages": "Nas mensagens",
@@ -2996,18 +2996,16 @@
     "hidePoints": "Hide points"
   },
   "promptQueue": {
-    "title": "Na fila",
-    "hint": "Enter envia agora",
+    "title": "Aguardando o agente",
     "send": "Enviar agora",
-    "sendNow": "Enviar agora as mensagens na fila",
     "edit": "Editar mensagem na fila",
     "save": "Salvar",
     "cancel": "Cancelar",
-    "sending": "Enviando…",
     "remove": "Remover mensagem da fila",
-    "sendAll": "Send all",
-    "sendNext": "Send next",
-    "sendOne": "Send this one now"
+    "nextStep": "Próximo passo",
+    "afterRun": "Após a execução",
+    "steerNow": "Redirecionar agora",
+    "steerAll": "Redirecionar tudo"
   },
   "conversationInfo": {
     "created": "Criada",

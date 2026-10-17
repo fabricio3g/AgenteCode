@@ -391,12 +391,12 @@ describe('orderedEntries', () => {
     expect(entries.map((entry) => entry.text ?? entry.step?.id)).toEqual(['r', 'answer']);
   });
 
-  it('drops bookkeeping rows: turns, output-cap notes and todo updates', () => {
+  it('drops bookkeeping rows: turns and output-cap notes; the todo update becomes the plan card', () => {
     const turn = { id: 'turn-1', type: 'done' as const, label: 'Turn 1 complete', status: 'done' as const };
     const cap = { id: 'length-2', type: 'planning' as const, label: 'Hit the output cap', status: 'done' as const };
     const todo = { id: 't', type: 'tool' as const, label: 'Update tasks', toolName: 'todo_write', status: 'done' as const };
     const entries = orderedEntries({ agentSteps: [turn, cap, todo, read], content: '' });
-    expect(entries.map((entry) => entry.step?.id)).toEqual(['r']);
+    expect(entries.map((entry) => (entry.plan ? 'plan' : entry.step?.id))).toEqual(['plan', 'r']);
   });
 });
 

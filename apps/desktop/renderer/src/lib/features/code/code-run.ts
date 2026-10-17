@@ -403,7 +403,7 @@ function failRun(state: CodeRunState, message: string): void {
  * timeline; saved runs carry theirs; older messages fall back to steps, then
  * text. Steps whose row is gone and blank text segments are skipped.
  */
-export type OrderedEntry = { key: string; step?: AgentStep; text?: string; thinking?: string };
+export type OrderedEntry = { key: string; step?: AgentStep; text?: string; thinking?: string; plan?: true };
 
 export function orderedEntries(
   message: { agentSteps?: AgentStep[]; content: string; reasoning?: string; metadata?: { codeTimeline?: CodeTimelineEntry[] } },
@@ -421,10 +421,19 @@ export function orderedEntries(
   }
   const out: OrderedEntry[] = [];
   const seenSteps = new Set<string>();
+  // The plan card stands where the model last changed the list, once a reply.
+  let lastTodo = -1;
+  entries.forEach((entry, index) => {
+    if (entry.kind === 'step' && TODO_TOOLS.has(steps.get(entry.id)?.toolName ?? '')) lastTodo = index;
+  });
   entries.forEach((entry, index) => {
     const step = entry.kind === 'step' ? steps.get(entry.id) : undefined;
+    if (index === lastTodo && step) {
+      out.push({ key: `p-${step.id}`, plan: true });
+      return;
+    }
     // Engine bookkeeping, not work to show: turn rows and output-cap notes
-    // (saved by older runs), and todo updates (the task bar shows those).
+    // (saved by older runs), and earlier todo updates (the plan card shows the last).
     if (step && (step.id.startsWith('turn-') || step.id.startsWith('length-') || TODO_TOOLS.has(step.toolName ?? ''))) return;
     if (step) {
       if (seenSteps.has(step.id)) return;
@@ -440,7 +449,7 @@ export function orderedEntries(
   return out;
 }
 
-/** The todo tool under its names: the task bar above the composer shows it, not a row. */
+/** The todo tool under its names: a plan card in the reply shows it, not a step row. */
 const TODO_TOOLS = new Set(['todo_write', 'todo']);
 
 export function eventToStep(event: CodeAgentEvent): AgentStep | null {

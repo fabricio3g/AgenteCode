@@ -422,13 +422,11 @@
     "modePlanHint": "調査して計画を提示し、承認後にのみ編集します",
     "continue": "続行",
     "continuePrompt": "タスクを続けてください",
-    "queued": "{n} 件待機中",
     "statusCompleted": "完了",
     "statusStopped": "停止しました",
     "statusLength": "出力上限に達しました — 実行の一部が切断されました",
     "retrying": "接続エラー — 再試行中（{n} 回目）…",
     "todosTitle": "タスク",
-    "todosAllDone": "すべてのタスクが完了",
     "thinking": "考え中",
     "thought": "思考",
     "live": {
@@ -497,7 +495,7 @@
     },
     "workedFor": "{time} 作業しました",
     "selectModel": "コーディングを始めるにはモデルを選択してください",
-    "steerHint": "Enter で方向修正 · Alt+Enter でキュー · Esc で停止",
+    "steerHint": "Enter で方向修正 · Tab でキュー · Esc で停止",
     "starters": {
       "title": "例えばこんな依頼",
       "explain": {
@@ -733,7 +731,9 @@
       "supervised": "先に確認",
       "full": "確認なし"
     },
-    "modeCycle": "Shift+Tabで切り替え"
+    "modeCycle": "Shift+Tabで切り替え",
+    "todosMore": "ほか {n} 件",
+    "todosLess": "折りたたむ"
   },
   "searchModal": {
     "inMessages": "メッセージ内",
@@ -2996,18 +2996,16 @@
     "hidePoints": "Hide points"
   },
   "promptQueue": {
-    "title": "キュー",
-    "hint": "Enter で今すぐ送信",
+    "title": "エージェント待ち",
     "send": "今すぐ送信",
-    "sendNow": "キューのメッセージを今すぐ送信",
     "edit": "キューのメッセージを編集",
     "save": "保存",
     "cancel": "キャンセル",
-    "sending": "送信中…",
     "remove": "キューのメッセージを削除",
-    "sendAll": "Send all",
-    "sendNext": "Send next",
-    "sendOne": "Send this one now"
+    "nextStep": "次のステップ",
+    "afterRun": "実行後",
+    "steerNow": "今すぐ方向修正",
+    "steerAll": "すべて方向修正"
   },
   "conversationInfo": {
     "created": "作成日時",

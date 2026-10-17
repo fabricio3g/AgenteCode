@@ -43,6 +43,9 @@
   const approvals = $derived(new Set(approvalsStore.items.map((item) => item.requestId)));
   /** Settled approvals repeat their tool's row: leave them out. */
   const visible = $derived(items.filter((item) => !(item.step?.type === 'approval' && !needsAttention(item.step, approvals))));
+  /** A step waiting on you never folds away: its Allow / Deny stay on screen, under the block. */
+  const waiting = $derived(visible.filter((item) => !!item.step && (item.step.status === 'awaiting_approval' || approvals.has(item.step.id))));
+  const folded = $derived(visible.filter((item) => !waiting.includes(item)));
   const files = $derived(changedFiles(visible));
   const steps = $derived(visible.flatMap((item) => (item.step ? [item.step] : [])));
   const running = $derived(steps.some(isRunning));
@@ -74,7 +77,7 @@
       const text = activitySummary(steps).counts.map(({ kind, count, running }) => $t(`code.activity.${running ? 'running' : 'done'}.${kind}`, { values: { n: count } })).join(' · ');
       if (text) return text.charAt(0).toUpperCase() + text.slice(1);
     }
-    const parts = [$t('code.work.steps', { values: { n: visible.length } })];
+    const parts = [$t('code.work.steps', { values: { n: folded.length } })];
     if (files.length) parts.push($t('code.work.files', { values: { n: files.length } }));
     return parts.join(' · ');
   });
@@ -99,9 +102,9 @@
   {/if}
 {/snippet}
 
-{#if visible.length === 1}
-  <div class="min-w-0">{@render row(visible[0])}</div>
-{:else if visible.length}
+{#if folded.length === 1}
+  <div class="min-w-0">{@render row(folded[0])}</div>
+{:else if folded.length}
   <div class="work min-w-0">
     <Disclosure {id} level="block" chevron="leading" defaultOpen={false}>
       {#snippet header()}
@@ -111,7 +114,7 @@
       {/snippet}
 
       {#snippet body()}
-        {#each visible as item (item.key)}{@render row(item)}{/each}
+        {#each folded as item (item.key)}{@render row(item)}{/each}
       {/snippet}
     </Disclosure>
     <!-- Folded, the chips are the one-click way to a file's diff. -->
@@ -128,6 +131,7 @@
     {/if}
   </div>
 {/if}
+{#each waiting as item (item.key)}<div class="min-w-0">{@render row(item)}</div>{/each}
 
 <style>
   .line {

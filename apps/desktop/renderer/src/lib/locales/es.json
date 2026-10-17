@@ -431,13 +431,11 @@
     "modePlanHint": "Investiga, presenta un plan y solo edita tras tu aprobación",
     "continue": "Continuar",
     "continuePrompt": "Continúa con la tarea",
-    "queued": "{n} en cola",
     "statusCompleted": "Completado",
     "statusStopped": "Detenido",
     "statusLength": "Se alcanzó el límite de salida — parte de la ejecución se cortó",
     "retrying": "Fallo de conexión — reintentando (intento {n})…",
     "todosTitle": "Tareas",
-    "todosAllDone": "Todas las tareas hechas",
     "thinking": "Pensando",
     "thought": "Pensamiento",
     "live": {
@@ -506,7 +504,7 @@
     },
     "workedFor": "Trabajó {time}",
     "selectModel": "Elige un modelo para empezar a programar",
-    "steerHint": "Enter redirige · Alt+Enter encola · Esc detiene",
+    "steerHint": "Enter redirige · Tab encola · Esc detiene",
     "starters": {
       "title": "Prueba una de estas",
       "explain": {
@@ -733,7 +731,9 @@
       "supervised": "Pide permiso",
       "full": "Sin preguntar"
     },
-    "modeCycle": "Shift+Tab para cambiar"
+    "modeCycle": "Shift+Tab para cambiar",
+    "todosMore": "+{n} más",
+    "todosLess": "Mostrar menos"
   },
   "searchModal": {
     "inMessages": "En los mensajes",
@@ -2996,18 +2996,16 @@
     "hidePoints": "Ocultar puntos"
   },
   "promptQueue": {
-    "title": "En cola",
-    "hint": "Se envía al terminar la ejecución",
+    "title": "Esperando al agente",
     "send": "Enviar ahora",
-    "sendNow": "Enviar ahora los mensajes en cola",
     "edit": "Editar mensaje en cola",
     "save": "Guardar",
     "cancel": "Cancelar",
-    "sending": "Enviando…",
     "remove": "Quitar mensaje de la cola",
-    "sendAll": "Enviar todo",
-    "sendNext": "Enviar siguiente",
-    "sendOne": "Enviar este ahora"
+    "nextStep": "Siguiente paso",
+    "afterRun": "Al terminar",
+    "steerNow": "Redirigir ya",
+    "steerAll": "Redirigir todo"
   },
   "conversationInfo": {
     "created": "Creada",

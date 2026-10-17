@@ -545,10 +545,21 @@ async function scriptAgentRun(chatId: string): Promise<void> {
   }
   send({ type: 'usage', promptTokens: 3240, completionTokens: 42, totalTokens: 3282, contextWindow: 200_000 });
 
+  // A task list, so the plan card has something to draw.
+  const todos = (current: number) => ['Read the entry point', 'Find the boot call', 'Add a verbose flag to boot()', 'Wire the flag through the CLI', 'Update the README', 'Run the tests']
+    .map((content, index) => ({ content, status: index < current ? 'completed' : index === current ? 'in_progress' : 'pending' }));
+  await wait(150);
+  send({ type: 'tool_start', toolCallId: 'tc-todo-1', toolName: 'todo_write', args: {} });
+  send({ type: 'todo_update', todos: todos(0) });
+  send({ type: 'tool_end', toolCallId: 'tc-todo-1', result: 'ok', isError: false });
+
   await wait(150);
   send({ type: 'tool_start', toolCallId: 'tc-read-1', toolName: 'read', args: { path: 'src/index.ts' } });
   await wait(400);
   send({ type: 'tool_end', toolCallId: 'tc-read-1', result: '1  import { boot } from "./app";\n2  boot();', isError: false });
+  send({ type: 'tool_start', toolCallId: 'tc-todo-2', toolName: 'todo_write', args: {} });
+  send({ type: 'todo_update', todos: todos(2) });
+  send({ type: 'tool_end', toolCallId: 'tc-todo-2', result: 'ok', isError: false });
 
   await wait(200);
   send({ type: 'tool_start', toolCallId: 'tc-write-1', toolName: 'edit', args: { path: 'src/index.ts' } });

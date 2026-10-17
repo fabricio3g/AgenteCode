@@ -7,7 +7,7 @@
   Grammar follows the same bar split — scope on the left (runtime-mode gate),
   brain on the right (model), and a send control that only exists when there
   is something shippable. While a run is active the bar switches to steering:
-  Enter course-corrects, Alt+Enter queues a follow-up, the button stops.
+  Enter course-corrects, Tab (or Alt+Enter) queues a follow-up, the button stops.
 -->
 
 <script lang="ts">
@@ -36,8 +36,6 @@
   import { codeStore } from './code.svelte';
   import { codeEdits, initProject, projectFiles, setAgenteModel } from './code-ipc';
   import CodeProjectDialog from './CodeProjectDialog.svelte';
-  import TodoDock from './TodoDock.svelte';
-  import { conversationTodos } from './code-run';
   import MediaAttachmentCard from './MediaAttachmentCard.svelte';
   import PromptQueue from '$lib/features/shared/PromptQueue.svelte';
   import { conversationSpend } from './accounting';
@@ -112,7 +110,6 @@
   const speed = $derived(run?.tokensPerSecond ?? latestGenerationSpeed(chat.messages));
   const spend = $derived(conversationSpend(chat.messages, run ?? undefined));
   /** Input handed off but not yet consumed by a turn. */
-  const queuedCount = $derived(run?.queuedCount ?? 0);
   /**
    * The last run ended on its own terms — offer one-click continuation
    * (dsh's turn-tail action) instead of making the user retype.
@@ -125,12 +122,6 @@
   });
   /** A paused run waiting on the user: point at the row that needs an answer. */
   const awaitingApproval = $derived(approvalsStore.forChat(chat.id).length > 0);
-  /** The task list on the composer: live while a run works, then while tasks are left. */
-  const todos = $derived.by(() => {
-    if (running) return run?.todos ?? [];
-    const saved = conversationTodos(chat.messages);
-    return saved.some((todo) => todo.status !== 'completed') ? saved : [];
-  });
 
   const modes = $derived([
     // Short names and one-line hints: the menu is read at a glance; the full
@@ -474,6 +465,12 @@
     if (event.key === 'Backspace' && !text && attachments.length) { event.preventDefault(); attachments = attachments.slice(0, -1); return; }
     if (onFileKey(event)) return;
     if (onSlashKey(event)) return;
+    // Tab holds the message for after the run (Codex's split: Enter steers now).
+    if (event.key === 'Tab' && !event.shiftKey && running && (text.trim() || attachments.length) && !event.isComposing) {
+      event.preventDefault();
+      void queueFollowUp();
+      return;
+    }
     if (event.key === 'Tab' && event.shiftKey) {
       event.preventDefault();
       selectMode(runtimeMode === 'plan' ? 'supervised' : runtimeMode === 'supervised' ? 'full' : 'plan');
@@ -633,9 +630,8 @@
       </div>
     {/if}
     {#if chat.pendingPrompts?.length}
-      <PromptQueue items={chat.pendingPrompts} onupdate={(id, content) => appStore.updateQueuedPrompt(chat.id, id, content)} onremove={(id) => { appStore.removeQueuedPrompt(chat.id, id); }} onsend={(id) => void codeStore.sendQueuedNow(chat.id, id)} />
+      <PromptQueue {running} steers items={chat.pendingPrompts} onupdate={(id, content) => appStore.updateQueuedPrompt(chat.id, id, content)} onremove={(id) => { appStore.removeQueuedPrompt(chat.id, id); }} onsend={(id) => void codeStore.sendQueuedNow(chat.id, id)} />
     {/if}
-    {#if todos.length}<TodoDock {todos} running={running && !run?.stopping && !!run?.todosUpdated} />{/if}
     {#if starterSlot}
       <p class="starter-slot"><span class="slot">{starterSlot}</span></p>
     {/if}
@@ -733,12 +729,11 @@
       </div>
     </div>
 
-    {#if project || (running && queuedCount > 0) || (modelReady && modelInputs) || showContextRing || speed !== undefined}
+    {#if project || (modelReady && modelInputs) || showContextRing || speed !== undefined}
     <div class="composer-secondary">
       {#if project}<span class="composer-checkout" title={project.rootPath}><Folder class="size-3" /><span>{project.rootName}</span></span>{/if}
       <div class="composer-secondary-status">
             <GenerationSpeed value={speed} />
-            {#if running && queuedCount > 0}<span class="queued-status" role="status">{$t('code.queued', { values: { n: queuedCount } })}</span>{/if}
             {#if modelReady && modelInputs}
               <!-- Capability and policy in one glyph: what the model sees, and
                    the door to the toggles that decide what gets attached. -->
@@ -820,7 +815,6 @@
     position: relative;
     min-width: 0;
   }
-  .queued-status { color: var(--muted-foreground); font-size: var(--text-xs); white-space: nowrap; }
   /* One muted base for both states: "Text only" is a quiet note, not the
      brightest thing on the bar. */
   :global(.media-status.ui-local-49e9c79c) {

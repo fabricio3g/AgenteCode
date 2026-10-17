@@ -422,13 +422,11 @@
     "modePlanHint": "先调查并给出计划，经你批准后才开始编辑",
     "continue": "继续",
     "continuePrompt": "请继续完成这项任务",
-    "queued": "{n} 条排队中",
     "statusCompleted": "已完成",
     "statusStopped": "已停止",
     "statusLength": "达到输出上限 — 部分运行被截断",
     "retrying": "连接中断 — 正在重试（第 {n} 次）…",
     "todosTitle": "任务",
-    "todosAllDone": "所有任务已完成",
     "thinking": "思考中",
     "thought": "思考",
     "live": {
@@ -497,7 +495,7 @@
     },
     "workedFor": "工作了 {time}",
     "selectModel": "选择一个模型开始编码",
-    "steerHint": "Enter 转向 · Alt+Enter 排队 · Esc 停止",
+    "steerHint": "Enter 转向 · Tab 排队 · Esc 停止",
     "starters": {
       "title": "试试这些",
       "explain": {
@@ -733,7 +731,9 @@
       "supervised": "先询问",
       "full": "从不询问"
     },
-    "modeCycle": "Shift+Tab 切换"
+    "modeCycle": "Shift+Tab 切换",
+    "todosMore": "还有 {n} 项",
+    "todosLess": "收起"
   },
   "searchModal": {
     "inMessages": "在消息中",
@@ -2996,18 +2996,16 @@
     "hidePoints": "Hide points"
   },
   "promptQueue": {
-    "title": "队列中",
-    "hint": "Enter 立即发送",
+    "title": "等待智能体",
     "send": "立即发送",
-    "sendNow": "立即发送队列中的消息",
     "edit": "编辑队列中的消息",
     "save": "保存",
     "cancel": "取消",
-    "sending": "发送中…",
     "remove": "从队列中移除消息",
-    "sendAll": "Send all",
-    "sendNext": "Send next",
-    "sendOne": "Send this one now"
+    "nextStep": "下一步",
+    "afterRun": "运行结束后",
+    "steerNow": "立即转向",
+    "steerAll": "全部转向"
   },
   "conversationInfo": {
     "created": "创建时间",

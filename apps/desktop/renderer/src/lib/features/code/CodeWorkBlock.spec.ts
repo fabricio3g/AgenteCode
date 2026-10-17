@@ -18,3 +18,10 @@ it.each(['running','error','done'] as const)('keeps a %s work block closed until
   expect(header.getAttribute('aria-expanded')).toBe('true');
   expect(view.container.textContent).toContain('file.ts');
 });
+it('never folds away a step waiting on your approval', () => {
+  const view=render(CodeWorkBlock,{chatId:'c',messageId:'m',live:true,items:[{key:'s-a',step:{id:'a',type:'tool',toolName:'read',label:'Read',status:'done',detail:'file.ts'}},{key:'s-b',step:{id:'b',type:'tool',toolName:'read',label:'Read',status:'done',detail:'other.ts'}},{key:'s-c',step:{id:'c',type:'tool',toolName:'edit',label:'Edit',status:'awaiting_approval',detail:'index.ts'}}]});
+  const header=view.container.querySelector('.head') as HTMLButtonElement;
+  expect(header.getAttribute('aria-expanded')).toBe('false');
+  expect(view.container.textContent).not.toContain('file.ts');
+  expect(view.container.textContent).toContain('index.ts');
+});

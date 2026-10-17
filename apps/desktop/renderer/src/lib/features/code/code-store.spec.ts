@@ -238,7 +238,7 @@ describe('run finalization', () => {
 const nextFrame = () => new Promise((resolve) => setTimeout(resolve, 50));
 
 describe('streaming targets the last assistant message, not the transcript tail', () => {
-  it('steers land in the original assistant message, not the appended user turn', async () => {
+  it('a steer waits in the panel, not the thread, while the reply keeps streaming', async () => {
     await startRun();
 
     emit({ type: 'text_delta', chatId: CHAT_ID, delta: 'first' });
@@ -246,15 +246,10 @@ describe('streaming targets the last assistant message, not the transcript tail'
     emit({ type: 'text_delta', chatId: CHAT_ID, delta: ' after steer' });
     await nextFrame();
 
-    const messages = appStore.chats[0]!.messages;
-    expect(messages).toHaveLength(3);
-    const userSteer = messages.at(-1)!;
-    expect(userSteer.role).toBe('user');
-    expect(userSteer.content).toBe('course correction');
-    expect(userSteer.status).toBeUndefined();
-
-    const assistant = messages[1]!;
-    expect(assistant.role).toBe('assistant');
+    const chat = appStore.chats[0]!;
+    expect(chat.messages).toHaveLength(2);
+    expect(chat.pendingPrompts?.map((item) => [item.content, item.sending])).toEqual([['course correction', true]]);
+    const assistant = chat.messages[1]!;
     expect(assistant.status).toBe('streaming');
     expect(assistant.content).toBe('first after steer');
   });
@@ -264,42 +259,57 @@ describe('streaming targets the last assistant message, not the transcript tail'
 
     emit({ type: 'text_delta', chatId: CHAT_ID, delta: 'before' });
     await codeStore.steer(CHAT_ID, 'course correction');
-    expect(appStore.chats[0]!.messages.at(-1)!.metadata?.codeQueued).toBe(true);
     emit({ type: 'text_delta', chatId: CHAT_ID, delta: ' still before' });
     emit({ type: 'runtime_event', chatId: CHAT_ID, event: { type: 'user_messages_injected', messages: ['course correction'] } });
     emit({ type: 'text_delta', chatId: CHAT_ID, delta: 'after' });
     emit({ type: 'agent_end', chatId: CHAT_ID, stopReason: 'stop' });
 
-    const messages = appStore.chats[0]!.messages;
-    expect(messages.map((message) => [message.role, message.content])).toEqual([
+    const chat = appStore.chats[0]!;
+    expect(chat.messages.map((message) => [message.role, message.content])).toEqual([
       ['user', 'hello'],
       ['assistant', 'before still before'],
       ['user', 'course correction'],
       ['assistant', 'after']
     ]);
-    expect(messages[1]!.done).toBeFalsy();
-    expect(messages[2]!.metadata?.codeQueued).toBeUndefined();
-    expect(messages[3]!.done).toBe(true);
+    expect(chat.messages[1]!.done).toBeFalsy();
+    expect(chat.messages[3]!.done).toBe(true);
+    expect(chat.pendingPrompts ?? []).toEqual([]);
   });
 
-  it('a steer carrying reasoning deltas finalizes the original assistant message', async () => {
+  it('a steer the turn never read goes back to the panel, editable, and the reply finalizes', async () => {
     await startRun();
 
     await codeStore.steer(CHAT_ID, 'steer after start');
     emit({ type: 'thinking_delta', chatId: CHAT_ID, delta: 'thinking' });
     emit({ type: 'text_delta', chatId: CHAT_ID, delta: 'answer' });
-    emit({ type: 'agent_end', chatId: CHAT_ID, stopReason: 'stop' });
+    emit({ type: 'agent_end', chatId: CHAT_ID, stopReason: 'aborted' });
 
-    const messages = appStore.chats[0]!.messages;
-    const userSteer = messages.at(-1)!;
-    expect(userSteer.role).toBe('user');
-    expect(userSteer.content).toBe('steer after start');
-
-    const assistant = messages[1]!;
+    const chat = appStore.chats[0]!;
+    expect(chat.messages).toHaveLength(2);
+    expect(chat.pendingPrompts?.map((item) => [item.content, !!item.sending])).toEqual([['steer after start', false]]);
+    const assistant = chat.messages[1]!;
     expect(assistant.status).toBe('idle');
     expect(assistant.done).toBe(true);
     expect(assistant.content).toBe('answer');
     expect(assistant.reasoning).toBe('thinking');
+  });
+
+  it('a steer read as the turn closes gets its empty reply removed and an answer asked for', async () => {
+    await startRun();
+
+    emit({ type: 'text_delta', chatId: CHAT_ID, delta: 'done' });
+    await codeStore.steer(CHAT_ID, 'one more thing');
+    emit({ type: 'runtime_event', chatId: CHAT_ID, event: { type: 'user_messages_injected', messages: ['one more thing'] } });
+    emit({ type: 'agent_end', chatId: CHAT_ID, stopReason: 'stop' });
+
+    const chat = appStore.chats[0]!;
+    expect(chat.messages.map((message) => [message.role, message.content])).toEqual([
+      ['user', 'hello'],
+      ['assistant', 'done'],
+      ['user', 'one more thing']
+    ]);
+    await nextFrame();
+    expect(bridge.invokes.some((call) => call.command === 'agente_prompt' && (call.args as { text?: string })?.text === 'Continue')).toBe(true);
   });
 
   it('a follow-up lands in the transcript and finalization reaches the original assistant message', async () => {
@@ -322,17 +332,17 @@ describe('streaming targets the last assistant message, not the transcript tail'
     expect(assistant.content).toBe('queued');
   });
 
-  it('a failed steer keeps the transcript intact and streaming into the assistant message', async () => {
+  it('a failed steer stays in the panel, editable, and the reply keeps streaming', async () => {
     await startRun();
     bridge.responses['agente_steer'] = { ok: false };
     await codeStore.steer(CHAT_ID, 'lost steer');
     emit({ type: 'text_delta', chatId: CHAT_ID, delta: 'kept' });
     await nextFrame();
 
-    const messages = appStore.chats[0]!.messages;
-    expect(messages).toHaveLength(3);
-    expect(messages.at(-1)!.role).toBe('user');
-    const assistant = messages[1]!;
+    const chat = appStore.chats[0]!;
+    expect(chat.messages).toHaveLength(2);
+    expect(chat.pendingPrompts?.map((item) => [item.content, !!item.sending])).toEqual([['lost steer', false]]);
+    const assistant = chat.messages[1]!;
     expect(assistant.status).toBe('streaming');
     expect(assistant.content).toBe('kept');
   });
