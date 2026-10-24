@@ -72,6 +72,17 @@ describe('space switcher', () => {
     expect(view.getAllByRole('tab').map((tab) => tab.getAttribute('aria-label'))).toEqual(['Home', 'Code', 'Design']);
   });
 
+  it('closes the floating preview when a space is chosen', async () => {
+    appStore.activeSpace = 'home';
+    appStore.config = { ...appStore.config, ui: { ...appStore.config.ui, roleplay_enabled: false, bots_enabled: false } };
+    vi.spyOn(appStore, 'setActiveSpace').mockImplementation(() => {});
+    const onNavigate = vi.fn();
+    const view = render(SpaceSwitcher, { onNavigate });
+    await fireEvent.click(view.getByRole('tab', { name: 'Code' }));
+    expect(appStore.setActiveSpace).toHaveBeenCalledWith('code');
+    expect(onNavigate).toHaveBeenCalledTimes(1);
+  });
+
   it('sizes the row from the chrome tokens instead of its own pixels', () => {
     const modules = import.meta.glob<string>('./SpaceSwitcher.svelte', { query: '?raw', import: 'default', eager: true });
     const row = modules['./SpaceSwitcher.svelte'];
@@ -85,6 +96,19 @@ describe('space switcher', () => {
     expect(markup).not.toContain('size-4');
     // `(?:^|[\s;{])` so a hardcoded size is caught but `stroke-width:` is not.
     expect(style).not.toMatch(/(?:^|[\s;{])(?:width|height):\s*[\d.]/m);
+
+    /*
+     * The head is a window drag region (it sits level with the title bar), so
+     * the track has to opt out or a press on a glyph drags the window instead
+     * of switching the space — the bug that made every tab look dead in the
+     * packaged app while a browser tab, which has no drag regions, worked.
+     */
+    expect(style).toMatch(/\.space-group\s*\{[^}]*app-region:\s*no-drag/s);
+
+    // The rail's rows are `--float-row-radius`; a pill track floated above the
+    // list it heads. Both the track and the raised tab come from that one.
+    expect(style).toContain('border-radius: var(--float-row-radius)');
+    expect(style).toContain('border-radius: calc(var(--float-row-radius) - 2px)');
 
     // No rail beside the sidebar any more: the floating preview starts at the
     // sheet's own gap.

@@ -29,7 +29,7 @@
   import { codeStore } from '$lib/features/code/code.svelte';
   import { botsStore } from '$lib/features/bots/bots.svelte';
 
-  let { lead }: { lead?: Snippet } = $props();
+  let { lead, onNavigate }: { lead?: Snippet; onNavigate?: () => void } = $props();
 
   /** macOS draws its traffic lights over the window's top-left: the glyphs start after them. */
   const isMac = typeof window !== 'undefined' && window.electronAPI?.platform === 'darwin';
@@ -53,6 +53,9 @@
   });
 
   function activate(id: TabId) {
+    // A choice in the floating preview is a choice made: close it, the way
+    // every row below closes it, so the space that just opened is visible.
+    onNavigate?.();
     if (appStore.settingsScreenOpen) {
       appStore.closeSettings();
     }
@@ -118,15 +121,26 @@
   .space-head :global(button) { -webkit-app-region: no-drag; }
 
   /* The app's segmented track (app.css .ui-segmented), run the width of the
-     column: five equal tabs, the current one a raised pill. */
+     column: one equal tab per enabled space, the current one raised. */
   .space-group {
     flex: 1;
     min-width: 0;
     outline: none;
+    /* A control, not window chrome. The head is a drag region (it sits level
+       with the title bar), and without this a press anywhere on the track —
+       the glyph included — started moving the window instead of switching the
+       space. Buttons are no-drag on their own; the track has to be too. */
+    -webkit-app-region: no-drag;
   }
   /* Slim track: as tall as the title bar's icon buttons on the same line
      (2px inset + hairline around a 20px tab = 26px). */
-  .space-group.ui-segmented { padding: 2px; gap: 1px; }
+  .space-group.ui-segmented {
+    padding: 2px;
+    gap: 1px;
+    /* The rail's rows are --float-row-radius, not pills. A fully rounded track
+       read as a different surface floating above the list it heads. */
+    border-radius: var(--float-row-radius);
+  }
   .space-group :global(.space-slot) { flex: 1 1 0; min-width: 0; }
 
   :global(.space-button.ui-local-5b1e07c3) {
@@ -134,6 +148,8 @@
     inline-size: 100%;
     height: var(--space-btn);
     border-color: transparent;
+    /* One step inside the track's inset, so the raised tab follows its edge. */
+    border-radius: calc(var(--float-row-radius) - 2px);
     box-shadow: none;
     --icon: var(--space-icon);
   }

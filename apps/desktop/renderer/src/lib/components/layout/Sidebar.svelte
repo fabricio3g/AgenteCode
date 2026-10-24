@@ -147,7 +147,7 @@
 </script>
 
 <aside class="sidebar relative isolate flex h-full w-full flex-col overflow-hidden bg-sidebar text-sidebar-foreground">
-  <SpaceSwitcher {lead} />
+  <SpaceSwitcher {lead} {onNavigate} />
   <div class="relative z-10 flex min-h-0 flex-1 flex-col px-2 pb-1">
     <div class="flex flex-col gap-0.5 pb-2 pt-1">
       <UiListRow
