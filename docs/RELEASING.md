@@ -33,7 +33,10 @@ One version tag builds both products into a shared draft GitHub release:
 
 Both workflows refuse a tag that doesn't match the versions in step 1.
 The release notes are generated from the commits since the previous tag;
-edit them on the Releases page if needed.
+edit them on the Releases page if needed. Each build job uploads its own
+assets straight onto the shared draft release — Actions artifacts are
+not involved, because they share the account's storage quota and a full
+quota failed the CLI upload after its binaries were already verified.
 
 4. Wait for both release workflows to succeed and verify that the draft has
    all three Code binaries, both Code Debian packages, both Linux desktop installers, and the Windows
@@ -63,7 +66,8 @@ edit them on the Releases page if needed.
   from upstream releases (`scripts/fetch-native-runtimes.mjs`). ROCm is available
   through the UI download.
 - To try the build without publishing, run the workflows by hand
-  (Actions → Run workflow): they build and upload artifacts but skip the
+  (Actions → Run workflow): they build, keep their output as workflow
+  artifacts when the storage quota allows it (best effort), and skip the
   release.
 - Desktop manual runs can select Linux or Windows. For verification retries,
   `code_run_id` can reuse a successful Code workflow's binary; checksums and
