@@ -3,7 +3,7 @@ import { cleanup, fireEvent, render } from '@testing-library/svelte';
 import { afterEach, expect, it, vi } from 'vitest';
 import OnboardingWizard from './OnboardingWizard.svelte';
 import GeneralSettings from '../settings/GeneralSettings.svelte';
-const state = vi.hoisted(()=>({onboardingOpen:false,onboardingCompleted:false,userName:'',editorCommand:'',roleplayEnabled:false,config:{}}));
+const state = vi.hoisted(()=>({onboardingOpen:false,onboardingCompleted:false,userName:'',editorCommand:'',roleplayEnabled:false,botsEnabled:false,spaceEnabled:(id:string)=>id!=='roleplay'&&id!=='bots',config:{}}));
 const markComplete = vi.hoisted(()=>vi.fn());
 vi.mock('$lib/stores/app.svelte',()=>({appStore:state}));
 vi.mock('$lib/services/onboarding',()=>({gatherOnboardingHardware:vi.fn(async()=>({hardware:null,runtime:null})),markOnboardingComplete:markComplete}));

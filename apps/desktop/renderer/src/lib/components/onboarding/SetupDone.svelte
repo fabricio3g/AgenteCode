@@ -1,7 +1,7 @@
 <svelte:options runes={true} />
 
 <!-- What setup left in place, and the way in: where to start, picked from
-     the four spaces (keys 1–4), and one button that opens it. Anything
+     the spaces that are on (keys 1–4), and one button that opens it. Anything
      skipped is one click away in Settings. -->
 
 <script lang="ts">
@@ -30,12 +30,13 @@
 
   const voiceLine = $derived(speechEngine.active ? $t('onboarding.done.voice', { values: { model: speechEngine.active.title } }) : null);
 
+  /** The three core spaces, plus the opt-in ones Settings → General has turned on. */
   const spaces = $derived([
     { id: 'home' as const, icon: House, label: copy.spaces.home, desc: $t('onboarding.startIn.home') },
     { id: 'code' as const, icon: Code2, label: copy.spaces.code, desc: $t('onboarding.startIn.code') },
     { id: 'design' as const, icon: PenTool, label: copy.spaces.design, desc: $t('onboarding.startIn.design') },
     { id: 'roleplay' as const, icon: Drama, label: copy.spaces.roleplay, desc: $t('onboarding.startIn.roleplay') }
-  ]);
+  ].filter((item) => appStore.spaceEnabled(item.id)));
   let space = $state<ChatContextMode>('home');
   const spaceLabel = $derived(spaces.find((item) => item.id === space)?.label ?? '');
 

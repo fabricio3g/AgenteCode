@@ -749,6 +749,8 @@ class AppStore {
 
   /** Show the Bots screen (the roster, a bot's chat and its routines). */
   showBots() {
+    // A space switched off is not a place a caller may put the window in.
+    if (!this.botsEnabled) return;
     this.settingsScreenOpen = false;
     this.botsOpen = true;
     this.persist();
@@ -1264,6 +1266,13 @@ class AppStore {
       this.folders = folders.map((folder, index) => normalizeFolder(folder, index));
       this.currentChatId = currentChatId;
 
+      // A space that is switched off leaves nothing behind: a window restored
+      // into Roleplay opens Home instead, and its scene is not carried over.
+      if (!this.spaceEnabled(this.activeSpace)) this.activeSpace = 'home';
+      if (this.currentChat && !this.spaceEnabled(normalizeContextMode(this.currentChat.contextMode))) {
+        this.currentChatId = null;
+      }
+
       if (!this.chats.length) {
         this.ensureChatForSpace(this.activeSpace);
       } else if (!this.currentChat) {
@@ -1274,8 +1283,9 @@ class AppStore {
       this.activeSpace = normalizeContextMode(this.currentChat?.contextMode || this.activeSpace);
       this.rebuildChatIdBySpace();
       this.hydrateUiFromChat(this.currentChat);
-      // Restored last: making the space's chat above closes the tab.
-      this.botsOpen = !!loadChatState<PersistedState>({ chats: [], folders: [], currentChatId: null }).botsOpen;
+      // Restored last: making the space's chat above closes the tab, and a
+      // closed space stays closed.
+      this.botsOpen = this.botsEnabled && !!loadChatState<PersistedState>({ chats: [], folders: [], currentChatId: null }).botsOpen;
     } catch (error) {
       this.error = toErrorMessage(error) || 'Failed to initialize application';
       if (!this.chats.length) {
@@ -1474,11 +1484,13 @@ class AppStore {
 
   /** The space's "New": go to the library and open scene setup there. */
   startRoleplayScene() {
+    if (!this.roleplayEnabled) return;
     this.openRoleplayLibrary();
     this.roleplaySceneRequest += 1;
   }
 
   openRoleplayLibrary() {
+    if (!this.roleplayEnabled) return;
     this.settingsScreenOpen = false;
     this.homeView = 'chat';
     this.botsOpen = false;
@@ -1506,10 +1518,12 @@ class AppStore {
   }
 
   setActiveSpace(mode: ChatContextMode) {
+    const nextMode = normalizeContextMode(mode);
+    // Settings → General is the only door into an opt-in space.
+    if (!this.spaceEnabled(nextMode)) return;
     this.settingsScreenOpen = false;
     this.homeView = 'chat';
     this.botsOpen = false;
-    const nextMode = normalizeContextMode(mode);
     if (this.currentChat) {
       const currentMode = normalizeContextMode(this.currentChat.contextMode);
       this.currentChatIdBySpace = { ...this.currentChatIdBySpace, [currentMode]: this.currentChat.id };
@@ -3605,22 +3619,38 @@ class AppStore {
     return this.config.ui?.composer_mode_control === 'tabs' ? 'tabs' : 'auto';
   }
 
-  /** Whether the Roleplay space is enabled (Settings → General). */
+  /**
+   * Whether Roleplay is on. Home, Code and Design are the app's own spaces;
+   * Roleplay is a niche one, so it ships off and Settings → General turns it on.
+   */
   get roleplayEnabled(): boolean {
-    return this.config.ui?.roleplay_enabled !== false;
+    return this.config.ui?.roleplay_enabled === true;
   }
 
   async setRoleplayEnabled(enabled: boolean) {
     await this.updateUiSettings({ roleplay_enabled: enabled });
-    // Leaving the space while it is disabled must not strand the user in it.
+    // Leaving the space while it is disabled must not strand the user in it —
+    // and must not close the Settings screen the switch lives on.
     if (!enabled && this.activeSpace === 'roleplay') {
+      const settingsOpen = this.settingsScreenOpen;
       this.setActiveSpace('home');
+      this.settingsScreenOpen = settingsOpen;
     }
   }
 
-  /** Whether the Bots space is enabled (Settings → General). */
+  /** Whether Bots is on. Off by default, like Roleplay; Settings → General turns it on. */
   get botsEnabled(): boolean {
-    return this.config.ui?.bots_enabled !== false;
+    return this.config.ui?.bots_enabled === true;
+  }
+
+  /**
+   * The one rule for what the chrome may show and what may be entered: the
+   * three core spaces always, the two opt-in ones only once the person asked.
+   */
+  spaceEnabled(space: ChatContextMode | 'bots'): boolean {
+    if (space === 'roleplay') return this.roleplayEnabled;
+    if (space === 'bots') return this.botsEnabled;
+    return true;
   }
 
   async setBotsEnabled(enabled: boolean) {

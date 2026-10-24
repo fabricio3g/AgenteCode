@@ -135,6 +135,7 @@
     "save": "Save",
     "language": "Language",
     "languageDesc": "Choose the display language for the interface.",
+    "spaces": "Spaces",
     "roleplay": "Roleplay",
     "roleplayDesc": "Enable the Roleplay space: character cards, personas and immersive scenes.",
     "bots": "Bots",

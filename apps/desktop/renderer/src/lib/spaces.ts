@@ -9,8 +9,9 @@
  * - `code` — the coding agent surface: project folders, workspace tools,
  *   file edits, checkpoints. Coding work only.
  * - `roleplay` — the character surface: character cards, user personas,
- *   lorebooks and immersive scenes. Direct streaming, no tools. Enabled by
- *   default and always available in the top-bar tabs.
+ *   lorebooks and immersive scenes. Direct streaming, no tools. Ships off:
+ *   Settings → General turns it on, and only then does the sidebar's space row
+ *   offer it (`appStore.spaceEnabled`).
  * - `design` — the design surface: an agent that writes plain HTML + CSS
  *   into a per-chat workspace, previewed live on a canvas. No shell, no
  *   project folder, no network from the preview.

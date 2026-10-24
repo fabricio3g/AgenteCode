@@ -135,6 +135,7 @@
     "save": "保存",
     "language": "语言",
     "languageDesc": "选择界面的显示语言。",
+    "spaces": "空间",
     "roleplay": "角色扮演",
     "roleplayDesc": "显示包含角色、世界和场景的角色扮演空间。",
     "bots": "机器人",

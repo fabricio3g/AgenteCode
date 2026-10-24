@@ -75,15 +75,9 @@
     </SettingsRow>
   </SettingsSection>
 
-  <SettingsSection title={$t('generalSettings.chatBehavior')}>
-    <SettingsRow
-      label={$t('generalSettings.enableThinking')}
-      description={$t('generalSettings.enableThinkingDesc')}
-      control="auto"
-    >
-      <Switch bind:checked={enableThinking} label={$t('generalSettings.enableThinking')} />
-    </SettingsRow>
-
+  <!-- Off by default: the two opt-in spaces appear in the sidebar's row only
+       once a switch here turns them on. -->
+  <SettingsSection title={$t('generalSettings.spaces')}>
     <SettingsRow
       label={$t('generalSettings.roleplay')}
       description={$t('generalSettings.roleplayDesc')}
@@ -106,6 +100,16 @@
         label={$t('generalSettings.bots')}
         onchange={(checked) => void appStore.setBotsEnabled(checked)}
       />
+    </SettingsRow>
+  </SettingsSection>
+
+  <SettingsSection title={$t('generalSettings.chatBehavior')}>
+    <SettingsRow
+      label={$t('generalSettings.enableThinking')}
+      description={$t('generalSettings.enableThinkingDesc')}
+      control="auto"
+    >
+      <Switch bind:checked={enableThinking} label={$t('generalSettings.enableThinking')} />
     </SettingsRow>
   </SettingsSection>
 

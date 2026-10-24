@@ -88,7 +88,11 @@ and request sequencing move to their respective owners.
 
 `spaces.ts` owns composer-mode policy for Home, Code, Roleplay and Design. The
 legacy normalization facade delegates there so persisted chat choices and new
-sessions cannot acquire separate mode rules. All renderer clipboard writes use
+sessions cannot acquire separate mode rules. Roleplay and Bots are opt-in:
+`ui.roleplay_enabled` / `ui.bots_enabled` ship false, and
+`appStore.spaceEnabled` is the one rule the sidebar's switcher, onboarding's
+"Start in" list and the store's own entry points consult, so a hidden space is
+never drawn or entered. All renderer clipboard writes use
 `utils/clipboard.ts`, including Design export/handoff, spreadsheet selections and
 local-model settings; native and browser fallbacks have one owner.
 

@@ -42,10 +42,8 @@
     { id: 'bots', label: copy.spaces.bots, icon: Bot },
     { id: 'roleplay', label: copy.spaces.roleplay, icon: Drama }
   ];
-  /** The core spaces first; Bots and Roleplay last, since Settings → General can switch them off. */
-  const tabs = $derived(spaces.filter((tab) =>
-    tab.id === 'bots' ? appStore.botsEnabled : tab.id === 'roleplay' ? appStore.roleplayEnabled : true
-  ));
+  /** Home, Code and Design always; Bots and Roleplay only once Settings → General turns them on. */
+  const tabs = $derived(spaces.filter((tab) => appStore.spaceEnabled(tab.id)));
 
   /** A space with work going on in it shows a quiet dot, so the row reports as well as navigates. */
   const busy = $derived<Partial<Record<TabId, boolean>>>({

@@ -64,6 +64,14 @@ describe('space switcher', () => {
     expect(view.getAllByRole('tab').map((tab) => tab.getAttribute('aria-label'))).toEqual(['Home', 'Code', 'Design']);
   });
 
+  it('ships without Bots and Roleplay: a config that never mentioned them is three tabs', () => {
+    appStore.activeSpace = 'home';
+    const { roleplay_enabled, bots_enabled, ...ui } = appStore.config.ui ?? {};
+    appStore.config = { ...appStore.config, ui };
+    const view = render(SpaceSwitcher);
+    expect(view.getAllByRole('tab').map((tab) => tab.getAttribute('aria-label'))).toEqual(['Home', 'Code', 'Design']);
+  });
+
   it('sizes the row from the chrome tokens instead of its own pixels', () => {
     const modules = import.meta.glob<string>('./SpaceSwitcher.svelte', { query: '?raw', import: 'default', eager: true });
     const row = modules['./SpaceSwitcher.svelte'];
