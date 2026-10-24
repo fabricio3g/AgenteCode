@@ -10,7 +10,7 @@ checksum = "320119579fcad9c21884f5c4861d16174d0e06250625266f50fe6898340abefa"
 
 [[package]]
 name = "agente-acp"
-version = "0.2.3"
+version = "0.0.2"
 dependencies = [
  "agente-core",
  "agente-protocol",
@@ -24,7 +24,7 @@ dependencies = [
 
 [[package]]
 name = "agente-audio"
-version = "0.2.3"
+version = "0.0.2"
 dependencies = [
  "anyhow",
  "cpal",
@@ -36,7 +36,7 @@ dependencies = [
 
 [[package]]
 name = "agente-bot"
-version = "0.2.3"
+version = "0.0.2"
 dependencies = [
  "chrono",
  "cron",
@@ -50,7 +50,7 @@ dependencies = [
 
 [[package]]
 name = "agente-bridge"
-version = "0.2.3"
+version = "0.0.2"
 dependencies = [
  "agente-core",
  "anyhow",
@@ -71,7 +71,7 @@ dependencies = [
 
 [[package]]
 name = "agente-cli"
-version = "0.2.3"
+version = "0.0.2"
 dependencies = [
  "agente-acp",
  "agente-bot",
@@ -95,7 +95,7 @@ dependencies = [
 
 [[package]]
 name = "agente-core"
-version = "0.2.3"
+version = "0.0.2"
 dependencies = [
  "agente-protocol",
  "anyhow",
@@ -132,7 +132,7 @@ dependencies = [
 
 [[package]]
 name = "agente-daemon"
-version = "0.2.3"
+version = "0.0.2"
 dependencies = [
  "agente-acp",
  "agente-bot",
@@ -153,7 +153,7 @@ dependencies = [
 
 [[package]]
 name = "agente-mobile"
-version = "0.2.3"
+version = "0.0.2"
 dependencies = [
  "agente-core",
  "agente-protocol",
@@ -167,7 +167,7 @@ dependencies = [
 
 [[package]]
 name = "agente-node"
-version = "0.2.3"
+version = "0.0.2"
 dependencies = [
  "agente-core",
  "napi",
@@ -180,7 +180,7 @@ dependencies = [
 
 [[package]]
 name = "agente-protocol"
-version = "0.2.3"
+version = "0.0.2"
 dependencies = [
  "chrono",
  "schemars 0.8.22",
@@ -191,7 +191,7 @@ dependencies = [
 
 [[package]]
 name = "agente-runtime"
-version = "0.2.3"
+version = "0.0.2"
 dependencies = [
  "agente-core",
  "agente-protocol",
@@ -207,7 +207,7 @@ dependencies = [
 
 [[package]]
 name = "agente-session"
-version = "0.2.3"
+version = "0.0.2"
 dependencies = [
  "agente-protocol",
  "chrono",
@@ -219,7 +219,7 @@ dependencies = [
 
 [[package]]
 name = "agente-sync"
-version = "0.2.3"
+version = "0.0.2"
 dependencies = [
  "schemars 0.8.22",
  "serde",
@@ -230,7 +230,7 @@ dependencies = [
 
 [[package]]
 name = "agente-tui"
-version = "0.2.3"
+version = "0.0.2"
 dependencies = [
  "agente-core",
  "anyhow",
