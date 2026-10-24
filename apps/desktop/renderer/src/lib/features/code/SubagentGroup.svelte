@@ -18,7 +18,7 @@
   import { formatToolDuration } from '$lib/utils/tool-ui';
   import { emptySpend } from './code-run';
   import { spendCostLabel, spendLabel } from './accounting';
-  import { disclosureKey } from './disclosure.svelte';
+  import { disclosureKey } from './disclosure-state.svelte';
   import Disclosure from './Disclosure.svelte';
   import SubagentCard from './SubagentCard.svelte';
   import { childElapsedMs } from './subagent-row';

@@ -1,10 +1,12 @@
 // ── Bundled local runtimes, from the upstream releases ─────────────────
 // By default Desktop bundles only audio.cpp's Vulkan build (the voice engine;
-// a Vulkan build also runs on the CPU). llama.cpp and whisper.cpp stay out of
-// the installer: the app downloads the official release the user picks in
+// a Vulkan build also runs on the CPU). llama.cpp and whisper.cpp stay out of a
+// development build: the app downloads the official release the user picks in
 // Settings → On this computer, so the download stays small. Set
-// NATIVE_RUNTIME_ENGINES / NATIVE_RUNTIME_BACKENDS to bundle more (offline
-// installers, development). Instead of compiling them, the build
+// NATIVE_RUNTIME_ENGINES / NATIVE_RUNTIME_BACKENDS to bundle more — the release
+// workflow names all three engines, because scripts/packaging.cjs refuses a
+// release build whose resources/bin lacks llama's four backends and whisper's
+// CPU build. Instead of compiling them, the build
 // downloads the binaries ggml-org publishes on each project's GitHub
 // releases, checks each archive against the SHA-256 GitHub records for it,
 // and unpacks it into resources/bin/<engine>/<backend>/ (git-ignored), where

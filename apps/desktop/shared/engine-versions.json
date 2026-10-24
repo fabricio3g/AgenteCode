@@ -1,6 +1,5 @@
 {
-  "_comment": "Engine releases Agente is tested against. The build bundles only audio.cpp (Vulkan); llama.cpp and whisper.cpp are downloaded from their official releases when the user asks, and this is the version Settings recommends. scripts/fetch-native-runtimes.mjs reads the same file.",
-  "llama": "b11146",
+  "_comment": "Engine releases Agente is tested against. A development build bundles only audio.cpp (Vulkan); the release workflow sets NATIVE_RUNTIME_ENGINES=audio,llama,whisper so the installers carry llama.cpp (cpu, vulkan, cuda, sycl) and whisper.cpp too — packaging refuses a release without them. Settings recommends these same versions for the runtimes the user downloads instead. scripts/fetch-native-runtimes.mjs reads the same file.",  "llama": "b11146",
   "whisper": "b5130",
   "audio": "v0.8.2"
 }

@@ -20,7 +20,7 @@
   import { activitySummary } from './activity';
   import { codeWorkspace } from './workspace.svelte';
   import { changedFiles, isRunning, needsAttention, workBlockKey, type WorkItem } from './work-blocks';
-  import { disclosure, disclosureKey } from './disclosure.svelte';
+  import { disclosure, disclosureKey } from './disclosure-state.svelte';
   import CodeStepRow from './CodeStepRow.svelte';
   import CodeThoughtRow from './CodeThoughtRow.svelte';
   import Disclosure from './Disclosure.svelte';

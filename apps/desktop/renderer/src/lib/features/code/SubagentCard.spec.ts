@@ -3,7 +3,7 @@ import { cleanup, render } from '@testing-library/svelte';
 import { flushSync } from 'svelte';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import SubagentCard from './SubagentCard.svelte';
-import { disclosure } from './disclosure.svelte';
+import { disclosure } from './disclosure-state.svelte';
 vi.mock('$lib/services/bridge', async (importOriginal) => ({
   ...await importOriginal<typeof import('$lib/services/bridge')>(),
   invoke: vi.fn()

@@ -20,7 +20,7 @@
 
   import type { Snippet } from 'svelte';
   import { ChevronRight } from 'lucide-svelte';
-  import { disclosure } from './disclosure.svelte';
+  import { disclosure } from './disclosure-state.svelte';
 
   let {
     id,

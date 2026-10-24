@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { AgentStep } from '$lib/types/chat';
 import type { CodeTodoItem } from '$shared/agente-protocol';
 import { applyCodeAgentEvent, createCodeRunState, orderedEntries } from './code-run';
-import { disclosureKey, DisclosureStore } from './disclosure.svelte';
+import { disclosureKey, DisclosureStore } from './disclosure-state.svelte';
 import { changedFiles, currentTodo, editedFiles, liveStatus, planRows, replyBlocks, workBlockKey, QUIET_MS } from './work-blocks';
 
 const step = (id: string, extra: Partial<AgentStep> = {}): AgentStep => ({ id, type: 'tool', label: 'Edit', toolName: 'edit', status: 'done', ...extra });

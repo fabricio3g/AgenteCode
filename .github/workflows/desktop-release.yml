@@ -78,10 +78,17 @@ jobs:
       - name: Fetch bundled llama.cpp and whisper.cpp
         # Prebuilt binaries from the upstream GitHub releases, checksum-verified
         # (see scripts/fetch-native-runtimes.mjs); nothing is compiled here.
+        #
+        # Packaging requires llama cpu/vulkan/cuda/sycl, audio/cpu and
+        # whisper/cpu in resources/bin (`scripts/packaging.cjs`, release builds),
+        # and the script bundles only audio unless the engines are named. The
+        # release failed at "Missing release backend: llama/cpu" while this list
+        # was missing, so it is part of the contract, not a convenience.
         run: npm run fetch:native-runtimes
         env:
           NATIVE_RUNTIME_PLATFORM: ${{ matrix.name }}
           NATIVE_RUNTIME_ARCH: ${{ runner.arch == 'ARM64' && 'arm64' || 'x64' }}
+          NATIVE_RUNTIME_ENGINES: 'audio,llama,whisper'
           NATIVE_RUNTIME_BACKENDS: 'cpu,vulkan,cuda,sycl' # ROCm is downloaded through the UI.
           LLAMA_CPP_TAG: ${{ vars.LLAMA_CPP_TAG }}
           WHISPER_CPP_TAG: ${{ vars.WHISPER_CPP_TAG }}

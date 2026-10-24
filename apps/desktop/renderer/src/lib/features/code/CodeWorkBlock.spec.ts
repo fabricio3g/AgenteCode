@@ -2,7 +2,7 @@
 import { cleanup, fireEvent, render } from '@testing-library/svelte';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import CodeWorkBlock from './CodeWorkBlock.svelte';
-import { disclosure } from './disclosure.svelte';
+import { disclosure } from './disclosure-state.svelte';
 vi.mock('$lib/services/bridge', async (importOriginal) => ({
   ...await importOriginal<typeof import('$lib/services/bridge')>(),
   invoke: vi.fn()

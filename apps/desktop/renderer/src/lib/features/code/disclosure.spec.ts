@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, expect, it } from 'vitest';
-import { DisclosureStore, disclosure, disclosureKey } from './disclosure.svelte';
+import { DisclosureStore, disclosure, disclosureKey } from './disclosure-state.svelte';
 
 afterEach(() => disclosure.clear());
 
