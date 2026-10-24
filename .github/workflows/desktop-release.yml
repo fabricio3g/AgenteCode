@@ -267,9 +267,16 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/v')
 
     steps:
+      # `gh release download` resolves the repository through git: without a
+      # checkout it failed here with "fatal: not a git repository" after both
+      # platforms had already uploaded. GH_REPO makes the step independent of
+      # the checkout either way.
+      - uses: actions/checkout@v4
+
       - name: Desktop checksums
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
         run: |
           mkdir -p release-assets
           gh release download "$GITHUB_REF_NAME" --pattern 'SHA256SUMS-*' --dir release-assets
@@ -279,6 +286,7 @@ jobs:
       - name: Verify the required assets are on the release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
         run: |
           names=$(gh release view "$GITHUB_REF_NAME" --json assets --jq '.assets[].name')
           echo "$names"

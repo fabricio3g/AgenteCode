@@ -118,6 +118,7 @@ jobs:
       - name: One checksums file
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
         run: |
           mkdir -p assets
           gh release download "$GITHUB_REF_NAME" --pattern '*.sha256' --dir assets
