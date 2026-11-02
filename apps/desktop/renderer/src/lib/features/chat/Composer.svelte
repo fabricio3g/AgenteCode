@@ -448,13 +448,10 @@
         {:else}
           <ComposerBar>
             {#snippet attach()}<ComposerAddMenu onattach={() => fileInput?.click()} />{/snippet}
-            {#snippet model()}<ModelMenu compact />{/snippet}
             {#snippet extras()}
               {#if appStore.activeSpace === 'home'}<ModeSelector />{/if}
-              <ComposerToolsMenu compact />
             {/snippet}
             {#snippet microphone()}<DictationButton {dictation} oncall={() => void enterVoiceMode()} />{/snippet}
-            {#snippet context()}<HomeContextStatus />{/snippet}
             {#snippet trailing()}
               <SendButton compact running={generating} disabled={sendDisabled || !appStore.composer.trim()}
                 sendLabel={copy.composer.send} stopLabel={copy.composer.stop}
@@ -464,6 +461,7 @@
         {/if}
       </div>
     </div>
+    <div class="composer-footnote"><ComposerToolsMenu compact /><div class="composer-footnote-trailing"><div class="model-slot"><ModelMenu compact /></div><HomeContextStatus /></div></div>
     {#if appStore.currentChat && appStore.currentChat.contextMode !== 'code' && appStore.currentChat.contextMode !== 'roleplay'}
       <div class="pointer-events-auto"><SessionGoal bind:this={goalControl} sessionId={appStore.currentChat.homeRuntime?.sessionId} ensureSession={ensureGoalSession} running={generating} /></div>
     {/if}

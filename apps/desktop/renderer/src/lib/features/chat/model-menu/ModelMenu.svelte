@@ -297,6 +297,7 @@
       type="button"
       class={['model-pill titlebar-no-drag', open && 'is-open', compact && 'is-compact', needsSetup && 'is-setup'].filter(Boolean).join(' ')}
       aria-label={$t('modelPicker.triggerLabel', { values: { model: label } })}
+        title={label}
     >
       {#if backend === 'local' && loading}
         <TileMeter mode="busy" />

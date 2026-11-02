@@ -628,6 +628,17 @@
   </Dialog>
 {/if}
 
+{#snippet overflowMenu()}
+            <!-- The tools menu sits with the space's own controls, as in Home. -->
+            <Menu bind:open={toolsMenuOpen} placement="top-start" minWidth="14rem" label={$t('code.toolsMenu')}>
+              {#snippet trigger(props)}<Tooltip label={$t('code.toolsMenu')} position="top"><UiIconButton label={$t('code.toolsMenu')} size="xs" type="button" class={uiClass("composer-icon-control", "ui-local-49e9c79c")}  {...props}><ComposerGlyph name="more" /></UiIconButton></Tooltip>{/snippet}
+              {#each menuGroups as group, index (index)}
+                {#if index > 0}<div class="ui-menu-separator" role="separator"></div>{/if}
+                {#each group as command (command.name)}<MenuItem icon={command.icon} label={command.label} disabled={command.disabled} onselect={() => void runCommand(command)} />{/each}
+              {/each}
+            </Menu>
+{/snippet}
+
 <div class="composer-dock relative z-20 w-full shrink-0 px-3 pb-2 pt-2 md:px-6 md:pb-3" role="region" aria-label={$t('code.composerRegion')}
   onpaste={onPaste}
   ondragover={(event) => { if (event.dataTransfer?.types.includes('Files')) event.preventDefault(); }}
@@ -706,9 +717,6 @@
               <UiIconButton label={$t('code.attach')} size="xs" type="button" class={uiClass("composer-icon-control", "ui-local-49e9c79c")}  disabled={attaching} onclick={() => mediaPicker?.click()}><ComposerGlyph name="add" /></UiIconButton>
             </Tooltip>
           {/snippet}
-          {#snippet model()}
-            <ModelMenu compact {chat} capabilities={ownThinking} level={chat.reasoningLevel} onlevel={setThinking} />
-          {/snippet}
           {#snippet extras()}
         {#if ownBackend !== 'local' && !modelReady}
           <Tooltip label={copy.model.configureProvider} position="top"><UiIconButton label={copy.model.configureProvider} size="xs" type="button" class={uiClass(" provider-setup", "ui-local-49e9c79c")}  onclick={()=>appStore.openSettings('providers')}><Settings2 class="size-3" /></UiIconButton></Tooltip>
@@ -738,14 +746,7 @@
               {/each}
               <p class="mode-cycle">{$t('code.modeCycle')}</p>
             </Menu>
-            <!-- The tools menu sits with the space's own controls, as in Home. -->
-            <Menu bind:open={toolsMenuOpen} placement="top-start" minWidth="14rem" label={$t('code.toolsMenu')}>
-              {#snippet trigger(props)}<Tooltip label={$t('code.toolsMenu')} position="top"><UiIconButton label={$t('code.toolsMenu')} size="xs" type="button" class={uiClass("composer-icon-control", "ui-local-49e9c79c")}  {...props}><ComposerGlyph name="more" /></UiIconButton></Tooltip>{/snippet}
-              {#each menuGroups as group, index (index)}
-                {#if index > 0}<div class="ui-menu-separator" role="separator"></div>{/if}
-                {#each group as command (command.name)}<MenuItem icon={command.icon} label={command.label} disabled={command.disabled} onselect={() => void runCommand(command)} />{/each}
-              {/each}
-            </Menu>
+
           {/snippet}
           {#snippet status()}
             <GenerationSpeed value={speed} />
@@ -771,7 +772,6 @@
 
           {/snippet}
           {#snippet microphone()}<DictationButton {dictation} />{/snippet}
-          {#snippet context()}{#if showContextRing && usage}<ContextUsageRing showLabel usedTokens={usage.promptTokens} maxTokens={usage.contextWindow ?? 0} breakdown={usage.breakdown} {spend} />{/if}{/snippet}
           {#snippet trailing()}
             <SendButton compact stopShortcut="escape"
               {running}
@@ -787,6 +787,7 @@
       </div>
     </div>
 
+    <div class="composer-footnote">{@render overflowMenu()}<div class="composer-footnote-trailing"><div class="model-slot"><ModelMenu compact {chat} capabilities={ownThinking} level={chat.reasoningLevel} onlevel={setThinking} /></div>{#if showContextRing && usage}<ContextUsageRing showLabel usedTokens={usage.promptTokens} maxTokens={usage.contextWindow ?? 0} breakdown={usage.breakdown} {spend} />{/if}</div></div>
     <SessionGoal bind:this={goalControl} sessionId={chat.codeAgent?.sessionId} ensureSession={ensureGoalSession} {running} />
 
     <p class="composer-hint sr-only mx-auto mt-[var(--dock-gap)] px-1 text-center text-xs text-muted-foreground opacity-70">

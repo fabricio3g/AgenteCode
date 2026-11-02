@@ -13,7 +13,7 @@
 
   interface Props {
     attach?: Snippet;
-    model: Snippet;
+    model?: Snippet;
     extras?: Snippet;
     status?: Snippet;
     microphone: Snippet;
@@ -31,13 +31,13 @@
     {@render extras?.()}
   </div>
   <div class="composer-bar-trailing">
-    <div class="composer-bar-model">
+    {#if model || status}<div class="composer-bar-model">
     {#if status}
       {@render status()}
       <span class="composer-divider" aria-hidden="true"></span>
     {/if}
-    <div class="model-slot">{@render model()}</div>
-    </div>
+    {#if model}<div class="model-slot">{@render model()}</div>{/if}
+    </div>{/if}
     <div class="composer-bar-actions">
     {@render microphone()}
     {#if context}<span class="composer-divider" aria-hidden="true"></span>{/if}
