@@ -39,6 +39,7 @@
   import CodeAttachmentShelf from './CodeAttachmentShelf.svelte';
   import PromptQueue from '$lib/features/shared/PromptQueue.svelte';
   import SessionGoal from '$lib/features/shared/SessionGoal.svelte';
+  import { parseGoalCommand } from '$shared/session-goal';
   import { conversationSpend } from './accounting';
   import { fileMentionAt, insertFile, matchFiles } from './file-mention';
   import { downloadSessionMarkdown } from '$lib/features/shared/export-session';
@@ -61,7 +62,7 @@
   import { mergeDraft } from '$lib/features/canvas/canvas-doc';
 
   let { chat }: { chat: ChatSession } = $props();
-  let goalControl = $state<{ edit: () => Promise<void> }>();
+  let goalControl = $state<{ edit: () => Promise<void>; command:(value:string)=>Promise<boolean> }>();
 
   function ensureGoalSession(): string {
     chat.codeAgent ??= { instanceId: 'agente', driverKind: 'agente', substrate: 'native', updatedAt: Date.now() };
@@ -226,7 +227,7 @@
     openModels: openModelHub,
     openProject: async () => { const selected = await codeStore.addProject(); if (selected) codeStore.newConversation(selected); },
     stop: () => codeStore.stop(chat.id)
-  }), { name: 'goal', icon: Target, label: $t('goal.title'), hint: $t('goal.hint'), run: () => goalControl?.edit() }]);
+  }), { name: 'goal', icon: Target, label: $t('goal.title'), hint: $t('goal.hint'), run: async () => { await goalControl?.command('/goal'); } }]);
   const menuGroups = $derived([commands.filter((command) => command.menu === 'actions'), commands.filter((command) => command.menu === 'project')]);
 
   $effect(() => {
@@ -449,6 +450,7 @@
 
   async function submit() {
     const value = text.trim() || (attachments.length ? 'Please review the attached media.' : '');
+    if(parseGoalCommand(value)){clearComposer();await goalControl?.command(value);return;}
     if (attaching) return;
     starterSlot = null;
     if (!value) { await codeStore.sendQueuedNow(chat.id, chat.pendingPrompts?.find((item) => !item.sending)?.id); return; }
@@ -639,6 +641,34 @@
             </Menu>
 {/snippet}
 
+{#snippet selectedMode()}
+            <!-- Runtime mode gate — plan / supervised / full-auto. -->
+            <Menu bind:open={modeMenuOpen} placement="top-start" minWidth="18rem" label={$t('code.modeSelector')} class="mode-menu">
+              {#snippet trigger(props)}
+                <Button variant="plain"
+                  type="button"
+                  class={uiClass("mode-trigger composer-selector flex h-6 items-center gap-1 px-2 transition", "ui-local-49e9c79c", {"is-open": modeMenuOpen})}
+
+                  aria-label={$t('code.modeSelector')}
+                  title={activeMode.hint}
+                  {...props}
+                >
+                  <ModeIcon class="h-3 w-3 shrink-0 text-[var(--text-muted)]" />
+                  <span class="trigger-label truncate">{activeMode.label}</span>
+                  <ChevronDown class={`mode-chevron h-3 w-3 shrink-0 text-[var(--text-muted)] transition-transform duration-150${modeMenuOpen ? ' rotate-180' : ''}`} />
+                </Button>
+              {/snippet}
+              {#each modes as mode (mode.id)}
+                {@const selected = mode.id === runtimeMode}
+                <MenuItem class="mode-option" icon={mode.icon} active={selected} title={mode.hint} onselect={() => selectMode(mode.id)}>
+                  <span class="mode-label">{mode.label}</span>
+                  <span class="mode-brief">{mode.brief}</span>
+                </MenuItem>
+              {/each}
+              <p class="mode-cycle">{$t('code.modeCycle')}</p>
+            </Menu>
+{/snippet}
+
 <div class="composer-dock relative z-20 w-full shrink-0 px-3 pb-2 pt-2 md:px-6 md:pb-3" role="region" aria-label={$t('code.composerRegion')}
   onpaste={onPaste}
   ondragover={(event) => { if (event.dataTransfer?.types.includes('Files')) event.preventDefault(); }}
@@ -717,31 +747,7 @@
         {#if ownBackend !== 'local' && !modelReady}
           <Tooltip label={copy.model.configureProvider} position="top"><UiIconButton label={copy.model.configureProvider} size="xs" type="button" class={uiClass(" provider-setup", "ui-local-49e9c79c")}  onclick={()=>appStore.openSettings('providers')}><Settings2 class="size-3" /></UiIconButton></Tooltip>
         {/if}
-            <!-- Runtime mode gate — plan / supervised / full-auto. -->
-            <Menu bind:open={modeMenuOpen} placement="top-start" minWidth="18rem" label={$t('code.modeSelector')} class="mode-menu">
-              {#snippet trigger(props)}
-                <Button variant="plain"
-                  type="button"
-                  class={uiClass("mode-trigger composer-selector flex h-6 items-center gap-1 px-2 transition", "ui-local-49e9c79c", {"is-open": modeMenuOpen})}
 
-                  aria-label={$t('code.modeSelector')}
-                  title={activeMode.hint}
-                  {...props}
-                >
-                  <ModeIcon class="h-3 w-3 shrink-0 text-[var(--text-muted)]" />
-                  <span class="trigger-label truncate">{activeMode.label}</span>
-                  <ChevronDown class={`mode-chevron h-3 w-3 shrink-0 text-[var(--text-muted)] transition-transform duration-150${modeMenuOpen ? ' rotate-180' : ''}`} />
-                </Button>
-              {/snippet}
-              {#each modes as mode (mode.id)}
-                {@const selected = mode.id === runtimeMode}
-                <MenuItem class="mode-option" icon={mode.icon} active={selected} title={mode.hint} onselect={() => selectMode(mode.id)}>
-                  <span class="mode-label">{mode.label}</span>
-                  <span class="mode-brief">{mode.brief}</span>
-                </MenuItem>
-              {/each}
-              <p class="mode-cycle">{$t('code.modeCycle')}</p>
-            </Menu>
 
           {/snippet}
           {#snippet status()}
@@ -784,7 +790,8 @@
     </div>
 
     <div class="composer-footnote">{@render overflowMenu()}<div class="composer-footnote-trailing"><div class="model-slot"><ModelMenu compact {chat} capabilities={ownThinking} level={chat.reasoningLevel} onlevel={setThinking} /></div>{#if showContextRing && usage}<ContextUsageRing showLabel usedTokens={usage.promptTokens} maxTokens={usage.contextWindow ?? 0} breakdown={usage.breakdown} {spend} />{/if}</div></div>
-    <SessionGoal bind:this={goalControl} sessionId={chat.codeAgent?.sessionId} ensureSession={ensureGoalSession} {running} />
+    <div class="selected-mode-bar" aria-label="Selected mode"><span class="selected-mode-caption">Mode</span>{@render selectedMode()}</div>
+    <SessionGoal bind:this={goalControl} chatId={chat.id} space="code" sessionId={chat.codeAgent?.sessionId} ensureSession={ensureGoalSession} {running} />
 
     <p class="composer-hint sr-only mx-auto mt-[var(--dock-gap)] px-1 text-center text-xs text-muted-foreground opacity-70">
       {#if hint}

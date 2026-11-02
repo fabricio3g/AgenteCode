@@ -5,6 +5,7 @@
 
 import { nativeImage, type IpcMain, type BrowserWindow } from 'electron';
 import { registerHomeRuntimeHandlers } from '../agente/home-runtime.ts';
+import { registerSessionGoals } from '../session-goals.ts';
 import { modelSeesImages, rustEngine as engine } from '../agente/rust-engine.ts';
 import { setMainWindowGetter } from '../agente/event-bridge.ts';
 import { listProjectFiles } from '../agente/project-files.ts';
@@ -68,9 +69,7 @@ export function registerAgenteHandlers({ ipcMain, getMainWindow }: AgenteHandler
   ipcMain.handle('agente_project_files', (_e, args: { projectRoot: string }) => listProjectFiles(args.projectRoot));
   ipcMain.handle('agente_message_action', (_e, args: { chatId: string; action: 'fork' | 'rewind'; conversationIndex: number }) => engine.messageAction(args.chatId, args.action, args.conversationIndex));
   ipcMain.handle('agente_session_snapshot', (_e, args: { sessionId: string }) => engine.runtimeRequest('session.get', { session_id: args.sessionId }));
-  ipcMain.handle('agente_goal_get', (_e, args: { sessionId: string }) => engine.runtimeRequest('goal.get', { session_id: args.sessionId }));
-  ipcMain.handle('agente_goal_set', (_e, args: { sessionId: string; objective: string; status: 'active' | 'completed' }) => engine.runtimeRequest('goal.set', { session_id: args.sessionId, goal: { objective: args.objective, status: args.status } }));
-  ipcMain.handle('agente_goal_clear', (_e, args: { sessionId: string }) => engine.runtimeRequest('goal.clear', { session_id: args.sessionId }));
+  registerSessionGoals(ipcMain, async () => { const { runtimeConnection } = await import('../agente/rust-engine.ts'); return runtimeConnection(); });
   ipcMain.handle('agente_session_list', () => engine.runtimeRequest('session.list'));
   ipcMain.handle('agente_session_history', async (_e, args: { sessionId: string; chatId: string }) => {
     const { snapshot } = await engine.runtimeRequest<{ snapshot: SessionSnapshot }>('session.get', { session_id: args.sessionId });

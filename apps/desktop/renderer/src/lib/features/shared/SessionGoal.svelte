@@ -1,137 +1,91 @@
-<svelte:options runes={true} />
-
 <script lang="ts">
-  import UiTextarea from '$lib/components/ui/Textarea.svelte';
-  import { Check, Target, X } from 'lucide-svelte';
+  import { Target, Pause, Play, ChevronDown, Check } from 'lucide-svelte';
   import { tick } from 'svelte';
-  import { t } from 'svelte-i18n';
-  import { Button, Dialog } from '$lib/components/ui';
+  import { slide } from 'svelte/transition';
+  import Button from '$lib/components/ui/Button.svelte';
   import IconButton from '$lib/components/ui/IconButton.svelte';
-  import { invoke } from '$lib/services/bridge';
+  import Textarea from '$lib/components/ui/Textarea.svelte';
+  import Select from '$lib/components/ui/Select.svelte';
+  import Dialog from '$lib/components/ui/Dialog.svelte';
+  import { invoke, listen } from '$lib/services/bridge';
   import { toastStore } from '$lib/stores/toast.svelte';
-
-  type Goal = { objective: string; status: 'active' | 'completed' };
-  let { sessionId, ensureSession, running = false }: { sessionId?: string; ensureSession: () => string; running?: boolean } = $props();
-  let goal = $state<Goal | null>(null);
-  let open = $state(false);
-  let objective = $state('');
-  let busy = $state(false);
-  let confirming = $state(false);
-  let editor = $state<HTMLTextAreaElement>();
-  let goalButton = $state<HTMLButtonElement>();
-  let returnFocus: HTMLElement | null = null;
-  let request = 0;
-  let previousSession: string | undefined;
-  let sessionSeen = false;
-
-  async function refresh(id: string | undefined) {
-    const current = ++request;
-    if (!id) { goal = null; return; }
-    try {
-      const value = await invoke<Goal | null>('agente_goal_get', { sessionId: id });
-      if (current === request) goal = value;
-    } catch (error) {
-      if (current === request) toastStore.error(String(error));
-    }
-  }
-  $effect(() => {
-    const id = sessionId;
-    if (sessionSeen && id !== previousSession) open = false;
-    previousSession = id;
-    sessionSeen = true;
-    if (!running) void refresh(id);
+  import { goalElapsed, parseGoalCommand, type SessionGoal } from '$shared/session-goal';
+  let {sessionId,ensureSession,running=false,chatId,space='home'}:{sessionId?:string;ensureSession:()=>string;running?:boolean;chatId:string;space?:'home'|'code'}=$props();
+  let goal=$state<SessionGoal|null>(null),open=$state(false),details=$state(false),busy=$state(false),confirming=$state(false);
+  let objective=$state(''),criteria=$state(''),constraints=$state(''),minutes=$state('30');
+  let startNew=$state(false);
+  let editor=$state<HTMLTextAreaElement>();
+  let now=$state(Date.now());
+  const active=$derived(goal?.phase==='working'||goal?.phase==='evaluating');
+  const stateLabel=$derived(goal?({working:'Working',evaluating:'Checking',paused:'Paused',needs_input:'Needs input',budget_reached:'Budget reached',achieved:'Achieved'})[goal.phase]:'');
+  const latestResult=$derived(goal?.evidence.at(-1)||goal?.reason||(goal?.phase==='achieved'?'Goal achieved.':'No result yet.'));
+  const motionDuration=()=>document.documentElement.classList.contains('a11y-reduce-motion')||matchMedia('(prefers-reduced-motion: reduce)').matches?0:160;
+  $effect(()=>{
+    const id=sessionId;
+    goal=null;open=false;details=false;
+    if(!id)return;
+    let live=true;let off:(()=>void)|undefined;
+    void invoke<SessionGoal|null>('agente_goal_get',{sessionId:id,chatId,space}).then(value=>{if(live)goal=value;}).catch(error=>{if(live)toastStore.error(String(error));});
+    void listen<SessionGoal&{cleared?:boolean}>('session_goal_changed',value=>{if(live&&value.sessionId===id)goal=value.cleared?null:value;}).then(remove=>{if(live)off=remove;else remove();});
+    return()=>{live=false;off?.();};
   });
-
-  export async function edit() {
-    returnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    const id = sessionId;
-    await refresh(id);
-    if (id !== sessionId) return;
-    objective = goal?.objective ?? '';
-    open = true;
-    await tick();
-    editor?.focus();
+  $effect(()=>{if(!active)return;now=Date.now();const timer=setInterval(()=>now=Date.now(),1000);return()=>clearInterval(timer);});
+  export async function edit(){
+    startNew=!goal||goal.phase==='achieved';
+    objective=goal?.objective||'';criteria=goal?.criteria||'';constraints=goal?.constraints||'Keep checks lightweight and avoid parallel heavy processes.';minutes=String(goal?.budgetMinutes||30);open=true;await tick();editor?.focus();
   }
-
-  async function cancelEdit() {
-    open = false;
-    await tick();
-    (returnFocus?.isConnected ? returnFocus : goalButton)?.focus();
+  async function save(){
+    if(busy||!objective.trim())return;busy=true;
+    try{
+      const id=sessionId||ensureSession();
+      goal=await invoke<SessionGoal>('agente_goal_set',{sessionId:id,chatId,space,objective,criteria,constraints,budgetMinutes:Number(minutes),start:startNew});
+      open=false;
+    }catch(error){toastStore.error(String(error));}finally{busy=false;}
   }
-
-  async function save(status: Goal['status']) {
-    if (!objective.trim() || busy) return;
-    busy = true;
-    try {
-      const id = sessionId ?? ensureSession();
-      const saved = await invoke<Goal>('agente_goal_set', { sessionId: id, objective: objective.trim(), status });
-      request += 1;
-      goal = saved;
-      open = false;
-    } catch (error) { toastStore.error(String(error)); }
-    finally { busy = false; }
+  async function action(value:'pause'|'resume'){
+    if(!sessionId||busy)return;busy=true;
+    try{goal=await invoke<SessionGoal>('agente_goal_action',{sessionId,action:value});}
+    catch(error){toastStore.error(String(error));}finally{busy=false;}
   }
-
-  async function clear() {
-    if (!sessionId || busy) return;
-    busy = true;
-    try {
-      await invoke('agente_goal_clear', { sessionId });
-      request += 1;
-      goal = null;
-      open = false;
-      confirming = false;
-    } catch (error) { toastStore.error(String(error)); }
-    finally { busy = false; }
+  async function clear(){
+    if(!sessionId||busy)return;busy=true;
+    try{await invoke('agente_goal_clear',{sessionId});goal=null;confirming=false;details=false;}
+    catch(error){toastStore.error(String(error));}finally{busy=false;}
+  }
+  export async function command(value:string):Promise<boolean>{
+    const command=parseGoalCommand(value);if(!command)return false;
+    if(command.action==='start'){await edit();objective=command.objective;startNew=true;await save();}
+    else if(command.action==='view'){if(goal)details=!details;else await edit();}
+    else if(command.action==='clear')confirming=true;
+    else await action(command.action);
+    return true;
   }
 </script>
-
-{#if open}
-  <div class="goal-edit-row">
-    <Target class="goal-edit-icon size-3.5 shrink-0" aria-hidden="true" />
-    <UiTextarea variant="composer" class="goal-editor" bind:ref={editor} bind:value={objective} aria-label={$t('goal.title')} placeholder={$t('goal.placeholder')} rows={1} maxlength={16384} onkeydown={(event) => {
-      if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); void cancelEdit(); }
-      else if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) { event.preventDefault(); void save('active'); }
-    }}></UiTextarea>
-    {#if goal?.status === 'active'}
-      <Button variant="ghost" size="xs" onclick={() => save('completed')} disabled={busy}>{$t('goal.complete')}</Button>
-    {/if}
-    <IconButton label={$t('goal.save')} size="xs" quiet disabled={busy || !objective.trim()} onclick={() => save('active')}><Check /></IconButton>
-    <IconButton label={$t('goal.cancel')} size="xs" quiet disabled={busy} onclick={() => void cancelEdit()}><X /></IconButton>
-  </div>
-{:else if goal?.status === 'active'}
-  <div class="goal-row">
-    <Button variant="plain" bind:ref={goalButton} type="button" class="goal-main" onclick={edit} title={goal.objective}>
-      <Target class="size-3.5 shrink-0" aria-hidden="true" />
-      <span class="goal-label">{goal.objective}</span>
-      <span class="goal-status">{$t('goal.active')}</span>
-    </Button>
-    <Button variant="plain" type="button" class="goal-remove" aria-label={$t('goal.clear')} title={$t('goal.clear')} onclick={() => (confirming = true)}><X class="size-3.5" aria-hidden="true" /></Button>
-  </div>
+{#if goal}
+  <section class="goal-bar" aria-label="Session goal">
+    <div class="goal-top"><Button variant="plain" class="goal-open" aria-expanded={details} title={goal.objective} onclick={()=>details=!details}><Target class="size-3.5 shrink-0"/><span class="goal-objective">{goal.objective}</span><ChevronDown class="size-3 shrink-0"/></Button><span class="goal-state" aria-live="polite">{stateLabel}</span>{#if goal.phase==='achieved'}<Check class="size-3.5 shrink-0"/>{:else}<IconButton label={active?'Pause goal':'Resume goal'} size="xs" disabled={busy} onclick={()=>goal?.phase==='budget_reached'?edit():action(active?'pause':'resume')}>{#if active}<Pause class="size-3.5"/>{:else}<Play class="size-3.5"/>{/if}</IconButton>{/if}</div>
+    <div class="goal-next"><span class="goal-result" title={latestResult}><span class="goal-caption">Latest result</span> {latestResult}</span><span>{Math.floor(goalElapsed(goal,now)/60_000)}m / {goal.budgetMinutes}m</span></div>
+    {#if details}<div class="goal-details" transition:slide={{duration:motionDuration()}}>
+      <div><span class="goal-caption">Done when</span><p>{goal.criteria||'The requested outcome has been verified with evidence.'}</p></div>
+      {#if goal.constraints}<div><span class="goal-caption">Constraints</span><p>{goal.constraints}</p></div>{/if}
+      <div><span class="goal-caption">Latest evidence</span>{#if goal.evidence.length}<ul>{#each goal.evidence as evidence}<li>{evidence}</li>{/each}</ul>{:else}<p>No verified completion evidence yet.</p>{/if}</div>
+      <div class="goal-stats"><span>{goal.turns} turns · {goal.tokens.toLocaleString()} tokens</span><span>{running?'Turn running':active?'Continuing toward the goal':'No automatic continuation'}</span></div>
+      <div class="goal-actions"><Button variant="ghost" size="xs" disabled={busy} onclick={edit}>Edit goal</Button><Button variant="ghost" size="xs" disabled={busy} onclick={()=>confirming=true}>Clear goal</Button></div>
+    </div>{/if}
+  </section>
 {/if}
-
-{#if confirming}
-  <Dialog title={$t('goal.clear')} description={$t('goal.confirmClear')} size="sm" onclose={() => (confirming = false)}>
-    <p class="goal-confirm-objective">{goal?.objective}</p>
-    {#snippet footer()}
-      <div class="goal-actions">
-        <Button variant="ghost" onclick={() => (confirming = false)}>{$t('goal.cancel')}</Button>
-        <Button onclick={clear} disabled={busy}>{$t('goal.clear')}</Button>
-      </div>
-    {/snippet}
-  </Dialog>
-{/if}
-
+{#if open}<Dialog title={goal?'Edit goal':'Set a goal'} description="Work continues across turns until verified, paused, blocked or out of budget." size="md" onclose={()=>open=false}>
+    <div class="goal-form"><label>Outcome<Textarea bind:ref={editor} bind:value={objective} rows={2} maxlength={4000} placeholder="What should be achieved?" /></label><label>Done when<Textarea bind:value={criteria} rows={2} maxlength={4000} placeholder="How should completion be verified?" /></label><label>Constraints<Textarea bind:value={constraints} rows={2} maxlength={4000} /></label><label>Time budget<Select bind:value={minutes} options={[{value:'15',label:'15 minutes'},{value:'30',label:'30 minutes'},{value:'60',label:'1 hour'},{value:'120',label:'2 hours'}]} /></label><p class="goal-caption">Permissions stay the same. Computer takeover always pauses work.</p></div>
+  {#snippet footer()}<Button variant="ghost" disabled={busy} onclick={()=>open=false}>Cancel</Button><Button disabled={busy||!objective.trim()} onclick={save}>{goal?'Save changes':'Start goal'}</Button>{/snippet}
+</Dialog>{/if}
+{#if confirming}<Dialog title="Clear goal" description="Stop automatic continuation and remove this goal? The chat history remains." size="sm" onclose={()=>confirming=false}>{#snippet footer()}<Button variant="ghost" onclick={()=>confirming=false}>Cancel</Button><Button disabled={busy} onclick={clear}>Clear goal</Button>{/snippet}</Dialog>{/if}
 <style>
-  .goal-row { pointer-events:auto; display:flex; align-items:center; min-width:0; width:100%; padding:0.25rem 0.5rem; color:var(--muted-foreground); font-size:var(--text-xs); }
-  :global(.goal-main) { display:flex; align-items:center; gap:0.5rem; min-width:0; flex:1; text-align:left; }
-  :global(.goal-main):hover, :global(.goal-main):focus-visible, :global(.goal-remove):hover { color:var(--foreground); }
-  :global(.goal-remove) { display:grid; place-items:center; padding:0.25rem; margin-left:0.25rem; }
-  .goal-label { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .goal-status { flex:none; margin-left:auto; }
-  .goal-edit-row { pointer-events:auto; display:flex; align-items:flex-start; gap:0.25rem; min-width:0; padding:0.25rem 0.5rem; color:var(--muted-foreground); }
-  :global(.goal-edit-icon) { margin:0.3rem 0.25rem 0 0; }
-  .goal-confirm-objective { padding:0.5rem 1.25rem; color:var(--muted-foreground); font-size:var(--text-sm); overflow-wrap:anywhere; }
-  :global(.goal-editor) { display:block; flex:1; min-width:0; min-height:1.5rem; max-height:6rem; field-sizing:content; resize:none; padding:0.25rem 0; border:0; background:transparent; color:var(--foreground); font-size:var(--text-xs); line-height:1.4; outline:none; }
-  .goal-actions { display:flex; flex-wrap:wrap; gap:0.5rem; }
+  .goal-bar{pointer-events:auto;min-width:0;padding:0.375rem 0.75rem;font-size:var(--text-xs);color:var(--muted-foreground)}
+  .goal-top{display:flex;align-items:center;gap:0.5rem;min-width:0}
+  :global(.goal-open){display:flex;align-items:center;gap:0.375rem;flex:1;min-width:0;text-align:left;color:var(--foreground)}
+  .goal-objective{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.goal-state{flex-shrink:0}
+  .goal-next{display:flex;justify-content:space-between;gap:1rem;padding-left:1.25rem;margin-top:0.125rem}.goal-result{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}.goal-next>span:last-child{flex-shrink:0;font-variant-numeric:tabular-nums}
+  .goal-details{display:flex;flex-direction:column;gap:0.75rem;padding:0.75rem 0 0.25rem 1.25rem;overflow-wrap:anywhere;color:var(--foreground)}
+  .goal-caption,.goal-stats{font-size:var(--text-xs);color:var(--muted-foreground)}p{margin:0.125rem 0}ul{margin:0.25rem 0;padding-left:1.125rem}.goal-stats{display:flex;flex-wrap:wrap;justify-content:space-between;gap:0.5rem}.goal-actions{display:flex;gap:0.5rem}
+  .goal-form{display:flex;flex-direction:column;gap:1rem;padding:1.25rem}.goal-form label{display:flex;flex-direction:column;gap:0.375rem;font-size:var(--text-sm)}
 </style>

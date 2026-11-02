@@ -34,7 +34,9 @@
   import DictationButton from './composer/DictationButton.svelte';
   import SendButton from '$lib/features/shared/composer/SendButton.svelte';
   import HomeContextStatus from './composer/HomeContextStatus.svelte';
-  import ModeSelector from './composer/ModeSelector.svelte';
+  import SelectedModes from './composer/SelectedModes.svelte';
+  import { parseGoalCommand } from '$shared/session-goal';
+  import { parseHomeModeCommand } from '$shared/composer-command';
   import SelectedTextCard from './composer/SelectedTextCard.svelte';
   import VoiceCallPanel from './composer/VoiceCallPanel.svelte';
   import ComposerRecorder from './composer/ComposerRecorder.svelte';
@@ -59,14 +61,14 @@
 
   /** Textarea grows with content up to this height, then scrolls. */
   const MAX_TEXTAREA_PX = MAX_COMPOSER_TEXTAREA_PX;
-  let goalControl = $state<{ edit: () => Promise<void> }>();
+  let goalControl = $state<{ edit: () => Promise<void>; command:(value:string)=>Promise<boolean> }>();
   let goalSlashDismissed = $state(false);
   const goalSlashOpen = $derived(!goalSlashDismissed && /^\/[a-z]*$/i.test(appStore.composer) && '/goal'.startsWith(appStore.composer.toLowerCase()));
   async function openGoal() {
     appStore.updateComposer('');
     if (!appStore.currentChat) appStore.createChat('home');
     await tick();
-    await goalControl?.edit();
+    await goalControl?.command('/goal');
   }
   function ensureGoalSession(): string {
     const chat = appStore.currentChat;
@@ -155,7 +157,11 @@
   }
 
   async function submit() {
-    if (appStore.composer.trim().toLowerCase() === '/goal') { await openGoal(); return; }
+    if (parseGoalCommand(appStore.composer) && appStore.currentContextMode!=='roleplay') { const value=appStore.composer;if(!appStore.currentChat)appStore.createChat('home');appStore.updateComposer('');await tick();await goalControl?.command(value);return; }
+    if(appStore.activeSpace==='home'){
+      const selected=parseHomeModeCommand(appStore.composer);
+      if(selected){if(selected.mode)appStore.setComposerMode(selected.mode);if(selected.research&&appStore.searchMode!==selected.research)appStore.setSearchMode(selected.research);appStore.updateComposer(selected.prompt);if(!selected.prompt)return;}
+    }
     attachments.clearOcr();
 
     if (localBusyElsewhere) {
@@ -448,9 +454,6 @@
         {:else}
           <ComposerBar>
             {#snippet attach()}<ComposerAddMenu onattach={() => fileInput?.click()} />{/snippet}
-            {#snippet extras()}
-              {#if appStore.activeSpace === 'home'}<ModeSelector />{/if}
-            {/snippet}
             {#snippet microphone()}<DictationButton {dictation} oncall={() => void enterVoiceMode()} />{/snippet}
             {#snippet trailing()}
               <SendButton compact running={generating} disabled={sendDisabled || (!appStore.composer.trim() && !appStore.pendingAttachments.some(item => item.status === 'ready'))}
@@ -463,7 +466,8 @@
     </div>
     <div class="composer-footnote"><ComposerToolsMenu compact /><div class="composer-footnote-trailing"><div class="model-slot"><ModelMenu compact /></div><HomeContextStatus /></div></div>
     {#if appStore.currentChat && appStore.currentChat.contextMode !== 'code' && appStore.currentChat.contextMode !== 'roleplay'}
-      <div class="pointer-events-auto"><SessionGoal bind:this={goalControl} sessionId={appStore.currentChat.homeRuntime?.sessionId} ensureSession={ensureGoalSession} running={generating} /></div>
+      {#if appStore.activeSpace === 'home'}<SelectedModes />{/if}
+      <div class="pointer-events-auto"><SessionGoal bind:this={goalControl} chatId={appStore.currentChat.id} sessionId={appStore.currentChat.homeRuntime?.sessionId} ensureSession={ensureGoalSession} running={generating} /></div>
     {/if}
     {#if threadIsEmpty && suggestions}
       <!-- await tick() so the textarea holds the inserted prompt before we

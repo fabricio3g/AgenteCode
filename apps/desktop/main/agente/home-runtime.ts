@@ -8,6 +8,7 @@ import { COMPUTER_INSTRUCTIONS } from '../../shared/computer.ts';
 import type { AgentTool } from '../../shared/agent-core/types.ts';
 import type { Attachment } from '../../shared/agente-protocol.gen.ts';
 import { notifyActivity } from '../notifications.ts';
+import { trackGoalTurn, goalTurnStarted } from '../session-goals.ts';
 import type { AgenteClient } from '../agente-client.ts';
 import type { ClientToolCall, RuntimeEventEnvelope, SessionSnapshot, TurnOutcome } from '../../shared/agente-protocol.gen.ts';
 import type { HomeRuntimeEvent, HomeStartArgs, HomeToolReply } from '../../shared/home-runtime.ts';
@@ -106,6 +107,7 @@ export function registerHomeRuntimeHandlers(ipcMain: IpcMain) {
     }
     if ([...runs.values()].some((run) => run.sessionId === sessionId)) throw new Error('This Home chat is already working.');
     const provider = await useProvider(client, args.provider, args.model, args.localSelection);
+    trackGoalTurn(sessionId, client, event.sender, provider.id, provider.model, args.prompt?.content);
     const info = await client.request<{ limits?: { context?: number } }>('models.info', { provider: provider.id, model: provider.model });
     const run: Run = { runId: args.runId, sessionId, owner: event.sender, client, pending: new Set(), chatId: args.chatId };
     const computerEnabled = args.computerEnabled && !!args.chatId && await modelSeesImages(args.provider, args.model);
@@ -128,6 +130,7 @@ export function registerHomeRuntimeHandlers(ipcMain: IpcMain) {
         origin: { channel: 'desktop-home', trust: 'owner' }
       });
       run.turnId = result.turn_id;
+      goalTurnStarted(sessionId,result.turn_id);
       const owner = computerOwner(run); if (owner) bindComputerOwner(owner);
       return { sessionId, turnId: result.turn_id, conversationIndex: result.conversation_index, contextWindow: info.limits?.context || 32_768 };
     } catch (error) { release(run); throw error; }

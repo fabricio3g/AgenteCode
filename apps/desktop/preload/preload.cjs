@@ -54,7 +54,7 @@ const ALLOWED_INVOKE_CHANNELS = new Set([
   'fetch_url_content', 'crawl_web',
   'design_tool', 'design_files', 'design_render', 'design_manage', 'design_handoff', 'design_systems', 'design_reference', 'design_view', 'design_3d',
   'home_runtime_start', 'home_runtime_result', 'home_runtime_cancel', 'home_runtime_update', 'home_runtime_steer',
-  'agente_start_session', 'agente_prompt', 'agente_goal_get', 'agente_goal_set', 'agente_goal_clear',
+  'agente_start_session', 'agente_prompt', 'agente_goal_get', 'agente_goal_set', 'agente_goal_clear', 'agente_goal_action',
   'agente_steer', 'agente_follow_up', 'agente_abort',
   'agente_compact', 'model_sees_images', 'agente_set_model', 'agente_set_runtime_mode',
   'agente_respond_approval', 'agente_list_checkpoints', 'agente_rollback',
@@ -70,7 +70,7 @@ const ALLOWED_INVOKE_CHANNELS = new Set([
 
 const ALLOWED_EVENT_CHANNELS = new Set([
   'activity_notifications', 'activity_notification_open',
-  'computer_state', 'computer_resume',
+  'computer_state', 'computer_resume', 'session_goal_changed', 'session_goal_continue',
   'domain_job',
   'supervisor-event', 'download-progress', 'runtime-download-progress', 'whisper-runtime-download-progress', 'voice-setup-progress', 'instances-changed',
   'search-result', 'search-progress', 'agent-event', 'tts-event', 'chat-stream-event',

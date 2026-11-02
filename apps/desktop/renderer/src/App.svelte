@@ -17,6 +17,7 @@
   import { startReminders } from '$lib/services/reminder-notifications';
   import { startBrowserChat } from '$lib/services/browser-chat';
   import { startComputerUseEvents } from '$lib/features/computer/computer.svelte';
+  import { startSessionGoalEvents } from '$lib/services/session-goals';
   // The landing page's tile field, shared verbatim: the startup screen and the
   // site's hero render the same mosaic from the same file.
 
@@ -28,6 +29,7 @@
   let teardownCodeCopy: (() => void) | null = null;
   let teardownBrowserChat: (() => void) | null = null;
   let teardownComputer: (() => void) | null = null;
+  let teardownGoals: (() => void) | null = null;
   // Startup is a progress indicator, not a personality. One verb, from the
   // canonical status vocabulary, plus concrete steps.
   const startupHints = [
@@ -95,6 +97,7 @@
       // The extension's chat panel is answered once the chats are loaded.
       step('browser-chat', () => void startBrowserChat().then((off) => { teardownBrowserChat = off; }));
       step('computer', () => void startComputerUseEvents().then((off) => { teardownComputer = off; }));
+      step('goals', () => void startSessionGoalEvents().then((off) => { teardownGoals = off; }));
       void tick().then(notifyDesktopReady).catch((error) => console.error('[startup]', error));
     });
   });
@@ -113,6 +116,7 @@
     teardownCodeCopy = null;
     teardownBrowserChat?.();
     teardownComputer?.();
+  teardownGoals?.();
   });
 </script>
 

@@ -30,6 +30,7 @@ import { coreProviderStatus, migrateKeysToCore } from './core-providers.ts';
 import { modelTransportConfig, providerTransportPolicy, type ModelTransport } from './model-transport.ts';
 import type { AgenteCheckpointSummary, AgenteRuntimeMode, AgenteStartSessionArgs, ApprovalDecision, CodeAgentEvent, LocalModelSelection } from '../../shared/agente-protocol.ts';
 import type { Attachment, Message, RuntimeEventEnvelope, SessionSnapshot, TurnMode, TurnOutcome } from '../../shared/agente-protocol.gen.ts';
+import { trackGoalTurn, goalTurnStarted } from '../session-goals.ts';
 
 const FALLBACK_CONTEXT_WINDOW = 32_768;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -497,9 +498,11 @@ async function prompt(chatId: string, text: string, images?: Array<{ data: strin
       if (unsupported.length) throw new Error(`The selected model cannot accept ${unsupported.map((item) => item.name).join(', ')}. Choose a model with those input modalities.`);
     }
     const message: Message = { role: 'user', content: expanded.text, attachments: media };
+    if (chat.owner) trackGoalTurn(chat.sessionId, client, chat.owner, provider.id, provider.model, message.content);
     const started = await client.request<{ turn_id: string; conversation_index?: number }>('turn.start', turnParams(chat, provider, message));
     chat.systemPrompt = undefined;
     chat.turnId = started.turn_id;
+    goalTurnStarted(chat.sessionId,started.turn_id);
     const computerOwner = codeComputerOwner(chat); if (computerOwner) bindComputerOwner(computerOwner);
     return { ok: true, conversationIndex: started.conversation_index };
   } catch (error: unknown) {
