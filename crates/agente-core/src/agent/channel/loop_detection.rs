@@ -13,6 +13,14 @@ pub(crate) const DEFAULT_LOOP_NUDGE_AFTER: u32 = 3;
 /// Identical-call repeats before the loop stops the turn.
 pub(crate) const DEFAULT_LOOP_STOP_AFTER: u32 = 6;
 
+/// Native Home tools and the same tools namespaced by Desktop's MCP adapter.
+pub(crate) fn is_computer_tool(name: &str) -> bool {
+    matches!(
+        name.strip_prefix("desktop_").unwrap_or(name),
+        "computer_request" | "computer_observe" | "computer_act" | "computer_finish"
+    )
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum LoopVerdict {
     /// Keep going.
@@ -61,6 +69,14 @@ impl LoopDetector {
             .get(&signature_for(tool_name, arguments))
             .copied()
             .unwrap_or(0)
+    }
+
+    /// Computer observations deliberately have identical arguments, while each
+    /// successful result is fresh progress. Only failures accumulate here.
+    pub(crate) fn record_result(&mut self, tool_name: &str, arguments: &str, is_error: bool) {
+        if !is_error && is_computer_tool(tool_name) {
+            self.counts.remove(&signature_for(tool_name, arguments));
+        }
     }
 }
 
@@ -117,6 +133,43 @@ fn canonical_value(value: &serde_json::Value) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn fresh_computer_observations_do_not_trip_the_repeat_guard() {
+        for name in ["computer_observe", "desktop_computer_observe"] {
+            let mut detector = LoopDetector::new(DEFAULT_LOOP_NUDGE_AFTER, DEFAULT_LOOP_STOP_AFTER);
+            for _ in 0..30 {
+                assert_eq!(detector.record(name, "{}"), LoopVerdict::Normal);
+                detector.record_result(name, "{}", false);
+            }
+        }
+    }
+
+    #[test]
+    fn computer_failures_still_reach_the_limit_and_success_clears_them() {
+        let mut detector = LoopDetector::new(3, 6);
+        for _ in 0..5 {
+            detector.record("computer_observe", "{}");
+            detector.record_result("computer_observe", "{}", true);
+        }
+        assert_eq!(detector.record("computer_observe", "{}"), LoopVerdict::Stop);
+        detector.record_result("computer_observe", "{}", false);
+        assert_eq!(
+            detector.record("computer_observe", "{}"),
+            LoopVerdict::Normal
+        );
+        assert!(!is_computer_tool("untrusted_computer_observe"));
+    }
+
+    #[test]
+    fn ordinary_tools_keep_the_existing_loop_protection() {
+        let mut detector = LoopDetector::new(3, 6);
+        for _ in 0..5 {
+            detector.record("read_file", "{}");
+            detector.record_result("read_file", "{}", false);
+        }
+        assert_eq!(detector.record("read_file", "{}"), LoopVerdict::Stop);
+    }
 
     #[test]
     fn signatures_ignore_json_key_order() {

@@ -23,7 +23,7 @@ use super::config::{send_event, send_turn_usage, AgentRunConfig};
 use super::errors::{categorize_error, is_context_overflow_error};
 use super::execute::execute_tool_calls_batched;
 use super::loop_detection::{
-    LoopDetector, LoopVerdict, DEFAULT_LOOP_NUDGE_AFTER, DEFAULT_LOOP_STOP_AFTER,
+    is_computer_tool, LoopDetector, LoopVerdict, DEFAULT_LOOP_NUDGE_AFTER, DEFAULT_LOOP_STOP_AFTER,
 };
 use super::progress::StreamProgress;
 use super::retry::{is_retryable_error, jittered_backoff, wait_retry_or_cancel};
@@ -345,6 +345,9 @@ pub(crate) async fn run_agent_loop(cfg: AgentRunConfig) -> Result<(), AgentLoopF
 
     // Identical-tool-call ("action stationarity") detection for this turn.
     let mut loop_detector = LoopDetector::new(loop_nudge_after, loop_stop_after);
+    let mut blocked_computer_tools = std::collections::HashSet::<String>::new();
+    let mut max_iterations = max_iterations;
+    let mut computer_budget_granted = false;
 
     // Running context-size estimate for the compaction gate: seeded once here,
     // then incremented per appended message and recomputed only when the
@@ -499,11 +502,13 @@ pub(crate) async fn run_agent_loop(cfg: AgentRunConfig) -> Result<(), AgentLoopF
         apply_thinking_level(&mut model_info, api_format, &thinking_level);
         let price = model_info.cost.clone();
 
-        let tool_defs = if provider.info().capabilities.tools && model_info.capabilities.toolcall {
-            tool_registry.definitions_for_mode(mode)
-        } else {
-            Vec::new()
-        };
+        let mut tool_defs =
+            if provider.info().capabilities.tools && model_info.capabilities.toolcall {
+                tool_registry.definitions_for_mode(mode)
+            } else {
+                Vec::new()
+            };
+        tool_defs.retain(|tool| !blocked_computer_tools.contains(&tool.name));
         // Every request carries the tool schemas as well as the messages.
         let tool_tokens = crate::context::estimate_tool_definition_tokens(&tool_defs);
         let window = model_info.limits.context as usize;
@@ -1310,26 +1315,43 @@ pub(crate) async fn run_agent_loop(cfg: AgentRunConfig) -> Result<(), AgentLoopF
         // the threshold; at the hard limit stop the turn with paired error
         // results so the provider never sees unpaired tool_use blocks.
         let mut hard_stop = false;
+        let mut computer_loop = false;
         let mut nudge_after_batch = false;
         for call in &tool_calls {
+            if blocked_computer_tools.contains(&call.function.name) {
+                computer_loop = true;
+                continue;
+            }
             match loop_detector.record(&call.function.name, &call.function.arguments) {
+                LoopVerdict::Stop if is_computer_tool(&call.function.name) => {
+                    computer_loop = true;
+                    blocked_computer_tools.insert(call.function.name.clone());
+                    // No observations means no safe desktop input either.
+                    if let Some(prefix) = call.function.name.strip_suffix("computer_observe") {
+                        blocked_computer_tools.insert(format!("{prefix}computer_act"));
+                    }
+                }
                 LoopVerdict::Stop => hard_stop = true,
                 LoopVerdict::Nudge => nudge_after_batch = true,
                 LoopVerdict::Normal => {}
             }
         }
 
-        if hard_stop {
-            tracing::warn!(iteration, "Stopping repeated tool-call loop");
+        if hard_stop || computer_loop {
+            tracing::warn!(iteration, hard_stop, "Handling repeated tool-call loop");
             let max_repeats = tool_calls
                 .iter()
                 .map(|call| loop_detector.repeats_of(&call.function.name, &call.function.arguments))
                 .max()
                 .unwrap_or(0);
-            let loop_error = format!(
-                "Error: this exact tool call was repeated {max_repeats} times without \
+            let loop_error = if !hard_stop {
+                format!("Computer tool recovery: this batch was not executed; no input was sent. An identical computer call failed {max_repeats} times. The failing tool is unavailable for the rest of this turn. Continue with other available tools, or release computer control with computer_finish and explain the blocker. Do not repeat the call, act without a fresh observation, or claim the task is complete. The agent turn is still running.")
+            } else {
+                format!(
+                    "Error: this exact tool call was repeated {max_repeats} times without \
                  making progress; the turn was stopped to break the loop."
-            );
+                )
+            };
             for call in &tool_calls {
                 let tool_message = Message {
                     role: Role::Tool,
@@ -1355,6 +1377,13 @@ pub(crate) async fn run_agent_loop(cfg: AgentRunConfig) -> Result<(), AgentLoopF
                     },
                 );
                 messages.push(tool_message);
+            }
+            if !hard_stop {
+                tracing::warn!(
+                    iteration,
+                    "Blocked a repeated computer tool; continuing the agent turn"
+                );
+                continue;
             }
             send_event(
                 &sender,
@@ -1405,6 +1434,27 @@ pub(crate) async fn run_agent_loop(cfg: AgentRunConfig) -> Result<(), AgentLoopF
         // when it takes that kind; otherwise the result's text stands alone.
         let mut tool_images = Vec::new();
         for (i, outcome) in outcomes.into_iter().enumerate() {
+            if let Some(call) = tool_calls
+                .iter()
+                .find(|call| call.id == outcome.tool_call_id)
+                .or_else(|| tool_calls.get(i))
+            {
+                loop_detector.record_result(
+                    &call.function.name,
+                    &call.function.arguments,
+                    outcome.is_error,
+                );
+                if !computer_budget_granted
+                    && !outcome.is_error
+                    && call.function.name == "desktop_computer_request"
+                {
+                    // Code desktop tasks need many observe/act rounds. Extend once
+                    // after the real grant, not on every screenshot or retry.
+                    max_iterations =
+                        max_iterations.map(|limit| limit.max(iteration.saturating_add(300)));
+                    computer_budget_granted = true;
+                }
+            }
             if let Some(todos) = &outcome.todos {
                 current_todos = Some(todos.clone());
             }

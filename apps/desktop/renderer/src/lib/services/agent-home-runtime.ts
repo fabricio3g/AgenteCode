@@ -3,6 +3,7 @@ import type { AgentTaskResult, RunAgentTaskArgs } from './agent-types';
 import type { Attachment, ClientToolCall, Message, RuntimeEvent, SessionSnapshot, TurnOutcome, Usage } from '$shared/agente-protocol.gen';
 import type { HomeRuntimeEvent, HomeRuntimeMeta } from '$shared/home-runtime';
 import { invoke } from './bridge';
+import { COMPUTER_TASK_BUDGET } from '$shared/computer';
 import { watchHomeRun } from './home-runtime-events';
 import { loadAppConfig } from '$lib/utils/storage';
 import { resolveAgentRunPlan } from './agent-run-plan';
@@ -314,11 +315,13 @@ const WRAP_UP_MIN_TIME_MS = 2 * 60 * 1000;
 function remainingPolicy(turn: HomeTurn, wrapUp = false) {
   const { run, args } = turn;
   const plan = run.plan;
-  const leftMs = plan.maxTimeMs - (Date.now() - run.startTime);
+  const longTask = turn.computerEnabled;
+  const elapsed = Date.now() - run.startTime;
+  const leftMs = (longTask && args.maxTimeMs === undefined ? Math.max(plan.maxTimeMs, COMPUTER_TASK_BUDGET.maxTimeMs) : plan.maxTimeMs) - elapsed;
   if (wrapUp) return { max_iterations: 1, max_tool_calls: 0, max_time_ms: Math.max(WRAP_UP_MIN_TIME_MS, leftMs) };
   return {
-    max_iterations: args.noTools ? 1 : Math.max(1, plan.maxIterations - run.turn),
-    max_tool_calls: Math.max(0, plan.maxToolCalls - run.totalToolCalls),
+    max_iterations: args.noTools ? 1 : Math.max(1, (longTask && args.maxIterations === undefined ? Math.max(plan.maxIterations, COMPUTER_TASK_BUDGET.maxIterations) : plan.maxIterations) - run.turn),
+    max_tool_calls: Math.max(0, (longTask && args.maxToolCalls === undefined ? Math.max(plan.maxToolCalls, COMPUTER_TASK_BUDGET.maxToolCalls) : plan.maxToolCalls) - run.totalToolCalls),
     max_time_ms: Math.max(1, leftMs)
   };
 }

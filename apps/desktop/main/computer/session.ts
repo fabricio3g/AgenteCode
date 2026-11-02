@@ -1,5 +1,5 @@
 import type { ComputerAction, ComputerObservation, ComputerState, ComputerSpace } from '../../shared/computer.ts';
-import { EMPTY_COMPUTER_STATE } from '../../shared/computer.ts';
+import { EMPTY_COMPUTER_STATE, COMPUTER_TASK_BUDGET } from '../../shared/computer.ts';
 
 /** The action was rejected before native input; the agent can correct it. */
 export class ComputerActionRejected extends Error {}
@@ -44,7 +44,7 @@ export class ComputerSession {
   }
   private touch() {
     clearTimeout(this.idle);
-    this.idle = setTimeout(() => this.takeover('inactive'), 120_000);
+    this.idle = setTimeout(() => this.takeover('inactive'), COMPUTER_TASK_BUDGET.idleMs);
     this.idle.unref?.();
   }
   private owns(owner: ComputerOwner) {
