@@ -293,11 +293,14 @@ pub const TOOL_MEDIA_NOTE: &str = "Media from the latest tool results.";
 /// that cloud providers took close to a minute to accept. Once the model has
 /// answered past it, it becomes a note; the stored history keeps the file,
 /// and media the user attached is never touched.
-pub fn prune_stale_tool_media(messages: &mut [agente_protocol::Message]) {
+/// Returns the estimated prompt tokens the pruning removed, so the caller's
+/// context arithmetic stops counting media the request no longer carries.
+pub fn prune_stale_tool_media(messages: &mut [agente_protocol::Message]) -> usize {
     let answered = messages
         .iter()
         .rposition(|message| message.role == agente_protocol::Role::Assistant)
         .unwrap_or(0);
+    let mut removed = 0usize;
     for message in &mut messages[..answered] {
         if message.role != agente_protocol::Role::User
             || message.content != TOOL_MEDIA_NOTE
@@ -310,12 +313,18 @@ pub fn prune_stale_tool_media(messages: &mut [agente_protocol::Message]) {
             .iter()
             .map(|a| a.name.as_str())
             .collect();
+        removed += message
+            .attachments
+            .iter()
+            .map(estimated_tokens)
+            .sum::<usize>();
         message.content = format!(
             "[Tool media already shown: {}. Take it again to look at it.]",
             names.join(", ")
         );
         message.attachments.clear();
     }
+    removed
 }
 
 /// `input_audio.format` for the OpenAI chat format.
@@ -352,7 +361,12 @@ pub(crate) mod tests {
         std::fs::create_dir(&root).unwrap();
         let image = root.join("image.png");
         std::fs::write(&image, b"image").unwrap();
-        assert_eq!(stored_image_in(&root, &image).unwrap(), image);
+        // `stored_image_in` answers with the canonical path (on Windows that
+        // carries the `\\?\` prefix), so the expectation is canonical too.
+        assert_eq!(
+            stored_image_in(&root, &image).unwrap(),
+            image.canonicalize().unwrap()
+        );
         let outside = dir.path().join("outside.png");
         std::fs::write(&outside, b"outside").unwrap();
         assert!(stored_image_in(&root, &outside).is_err());
@@ -401,7 +415,7 @@ pub(crate) mod tests {
             message(Tool, "screenshot taken", None),
             message(User, TOOL_MEDIA_NOTE, Some("two.png")),
         ];
-        prune_stale_tool_media(&mut messages);
+        let removed = prune_stale_tool_media(&mut messages);
         assert_eq!(messages[0].attachments.len(), 1, "user media stays");
         assert!(
             messages[3].attachments.is_empty(),
@@ -416,6 +430,17 @@ pub(crate) mod tests {
             messages[6].attachments.len(),
             1,
             "the new screenshot goes once"
+        );
+        // The caller's context arithmetic subtracts what was taken out.
+        assert_eq!(
+            removed,
+            estimated_tokens(&attachment(
+                dir.path(),
+                "one.png",
+                AttachmentKind::Image,
+                "image/png"
+            )),
+            "pruning reports the tokens it removed"
         );
     }
 

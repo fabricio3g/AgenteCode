@@ -1,8 +1,7 @@
 # Agente Server
 
 Agente Server is `agente serve` running headless: the same runtime Agente
-Desktop and Agente Code use, kept alive so bots answer, routines run on time
-and you can connect from anywhere with `agente attach`.
+Desktop and Agente Code use, kept alive so you can reconnect to sessions with `agente attach`.
 
 ## Run it with Docker
 
@@ -29,7 +28,7 @@ What the container keeps:
 
 | Path | What |
 |---|---|
-| `/home/agente/.agente` (volume) | `config.json`, sessions, bots (`bots/<handle>/`), routines, the token file |
+| `/home/agente/.agente` (volume) | `config.json`, sessions, the token file |
 | `/workspace` | the project folder the agent works in |
 
 ## Models
@@ -43,66 +42,17 @@ put a `config.json` in the volume:
 { "default_provider": "openrouter", "default_model": "anthropic/claude-sonnet-5" }
 ```
 
-A bot can also pin its own model (in Desktop: Bots → Edit).
-
 ## Connect
 
 ```bash
-# A bot's chat, or a session (id prefix), or the latest session
-agente attach @colina --remote 127.0.0.1:7420 --token "$AGENTE_TOKEN"
+# A session id prefix, or omit it for the latest session
+agente attach --remote 127.0.0.1:7420 --token "$AGENTE_TOKEN"
 ```
 
 Every client must send the token with its first message (`initialize`);
 anything else is refused. Without `--token` or `AGENTE_TOKEN`, the server
 makes one in `~/.agente/serve-token` (readable only by its user) and says so
 when it starts.
-
-## Bots on Telegram
-
-A bot can answer on Telegram. In Desktop: Bots → Edit → Telegram. On a
-server:
-
-```bash
-export AGENTE_TOKEN=...                 # the server's token, for --remote
-R="--remote 127.0.0.1:7420"
-TELEGRAM_BOT_TOKEN=123456:ABC... agente telegram connect @colina $R   # token from @BotFather
-agente telegram pair @colina --full $R  # prints /pair <code> for you to send the bot
-agente telegram pair @colina $R         # a read-only person (chat and search, no tools)
-agente telegram status @colina $R
-```
-
-Only paired people can talk to the bot, in private chats. A code works
-once, for 10 minutes. Each bot answers on its own model and within its
-daily budget.
-
-## Bot sandbox
-
-A bot's programs (its shell commands and background processes) run in a box:
-- **Files:** they write only the bot's `workspace/` and read only the system's programs and libraries, never your home folder, `~/.agente` or another bot.
-- **Environment:** none of the server's keys or tokens.
-- **Network:** none, unless you allow it for that bot.
-- **Limits:** caps on file size and CPU time.
-
-A boxed bot works unattended (routines, handoffs, Telegram). A bot without a box asks before each change.
-
-On Linux the box is Landlock plus seccomp, applied by the `agente` binary itself; it needs kernel 5.13+ with Landlock enabled. Check what a server has (Desktop's bot editor also says so under Tools):
-
-```bash
-agente serve --status   # … bot sandbox: landlock (programs are boxed)
-```
-
-In Docker, the container's seccomp profile has to allow the `landlock_*` system calls. Current Docker releases do; if yours doesn't, `available` is `false` and bots fall back to asking. For a stronger wall around the whole server, run the container under gVisor (`--runtime=runsc`).
-
-A bot's `bot.toml` can open its box a little:
-
-```toml
-[sandbox]
-network = true                       # outgoing network for its programs
-read = ["~/Documents/Reports"]       # extra folders it may read
-write = ["~/Documents/Drafts"]       # extra folders it may write
-file_mb = 1024                       # largest file it may write
-cpu_secs = 600                       # CPU time per program
-```
 
 ## Reaching it safely
 

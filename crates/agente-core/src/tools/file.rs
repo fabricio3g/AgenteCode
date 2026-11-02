@@ -7,9 +7,9 @@
 //! - list_dir: List files and directories
 
 use super::{
-    atomic_fs, ensure_not_cancelled, fuzzy_find_text, truncate_tool_output,
-    with_file_mutation_queue, ToolCore, ToolError, ToolExecutionContext, ToolExecutionMode,
-    ToolKind, MAX_DIR_ENTRIES, MAX_FILE_LINES,
+    atomic_fs, edit_match, ensure_not_cancelled, truncate_tool_output, with_file_mutation_queue,
+    ToolCore, ToolError, ToolExecutionContext, ToolExecutionMode, ToolKind, MAX_DIR_ENTRIES,
+    MAX_FILE_LINES,
 };
 use std::io::BufRead;
 
@@ -90,7 +90,7 @@ impl ToolCore for ReadFileTool {
                 })?;
                 let mut stream = std::io::BufReader::with_capacity(64 * 1024, file);
                 let mut line = String::new();
-                atomic_fs::record_read_partial(&resolved);
+                atomic_fs::record_read_range(&resolved);
 
                 let mut selected: Vec<String> = Vec::new();
                 let mut total = 0usize;
@@ -305,7 +305,7 @@ pub struct EditFileArgs {
     #[schemars(required)]
     #[serde(alias = "file_path", alias = "filepath", alias = "file")]
     path: Option<String>,
-    /// Legacy single-edit search text (supports fuzzy matching)
+    /// Legacy single-edit search text. Goes through the same matcher as edits[].
     #[serde(default)]
     #[serde(alias = "query", alias = "pattern", alias = "find")]
     search: Option<String>,
@@ -313,7 +313,7 @@ pub struct EditFileArgs {
     #[serde(default)]
     #[serde(alias = "replacement")]
     replace: Option<String>,
-    /// One or more targeted replacements. Each edit is matched against the original file.
+    /// One or more targeted replacements, matched against the original file and applied together
     #[serde(default, deserialize_with = "deserialize_tolerant_edits")]
     edits: Option<Vec<FileEdit>>,
 }
@@ -321,17 +321,26 @@ pub struct EditFileArgs {
 /// One targeted replacement inside `edit_file`'s `edits` array.
 #[derive(Debug, Default, Clone, serde::Deserialize, schemars::JsonSchema)]
 pub struct FileEdit {
-    /// Exact text to find. Must be unique in the file.
+    /// Exact text to find: the lines as they are in the file, with context enough to be unique.
     // Legacy key aliases stay accepted exactly like the old hand parser did.
     // (No `#[serde(default)]`: Option fields are implicitly optional, and a
     // serde default would drop the entry from the schema's required list.)
     #[serde(rename = "oldText", alias = "old_text", alias = "old")]
     #[schemars(required)]
     old_text: Option<String>,
-    /// Replacement text
+    /// Replacement text, with its own indentation
     #[serde(rename = "newText", alias = "new_text", alias = "new")]
     #[schemars(required)]
     new_text: Option<String>,
+    /// Optional 1-based line where this block sits (from read_file). Only breaks ties between otherwise equal matches; it never makes text match.
+    #[serde(
+        rename = "nearLine",
+        alias = "near_line",
+        alias = "line",
+        alias = "startLine",
+        default
+    )]
+    near_line: Option<u32>,
 }
 
 /// The old hand-rolled parser accepted shapes the typed one would reject, so
@@ -377,7 +386,7 @@ impl ToolCore for EditFileTool {
     }
 
     fn description(&self) -> &str {
-        "Edit a file using one or more exact targeted replacements. Every oldText must be unique and non-overlapping. Supports fuzzy matching for a single legacy search/replace call. The file must be read with read_file first and be unchanged on disk since."
+        "Apply edits to one file. Each old text must match exactly one place; whitespace, indentation and quote drift are tolerated and reported, and an ambiguous match is refused with the candidates. Re-sending an edit that already landed is a success. The file must be read first and unchanged on disk since."
     }
 
     async fn run(
@@ -394,9 +403,8 @@ impl ToolCore for EditFileTool {
         } = args;
         let path = path
             .ok_or_else(|| ToolError::InvalidArguments("Missing 'path' parameter".to_string()))?;
-        // Only legacy search/replace permits fuzzy recovery. An edits array
-        // promises exact matching even when it contains just one replacement.
-        let exact = edits.as_ref().is_some_and(|items| !items.is_empty());
+        // Every shape goes through the same ladder: differences in how the
+        // caller phrased the edit cannot change whether it applies.
         let edits = collect_edits(search.as_deref(), replace.as_deref(), edits.as_deref())?;
 
         let resolved = super::resolve_project_path(&path, project_dir)?;
@@ -420,108 +428,114 @@ impl ToolCore for EditFileTool {
             })?;
 
             let multi = edits.len() > 1;
-            let mut matches: Vec<(usize, usize, String, bool)> = Vec::new();
+            // (range in the original file, replacement, level used, line)
+            let mut matches: Vec<(std::ops::Range<usize>, String, edit_match::MatchLevel, usize)> =
+                Vec::new();
+            let mut already_applied = 0usize;
 
-            for (index, (old_text, new_text)) in edits.iter().enumerate() {
-                let (idx, end, fuzzy) = if exact {
-                    let idx = content.find(old_text.as_str()).ok_or_else(|| {
-                        ToolError::ExecutionError(format!(
-                            "Could not find edits[{index}] in {resolved_str}. The oldText must match exactly."
-                        ))
-                    })?;
-                    (idx, idx + old_text.len(), false)
-                } else {
-                    // A silent first-match replacement is how an edit lands in
-                    // the wrong place: exact text must be unique, and the fuzzy
-                    // fallback must be unique after normalization too.
-                    let occurrences = content.match_indices(old_text.as_str()).count();
-                    if occurrences > 1 {
-                        return Err(ToolError::ExecutionError(format!(
-                            "Found {occurrences} occurrences of the search text in {resolved_str}. \
-                             It must be unique; widen the search with more surrounding context."
+            for (index, (old_text, new_text, near_line)) in edits.iter().enumerate() {
+                match edit_match::locate(&content, old_text, *near_line) {
+                    edit_match::EditMatch::Found(found) => {
+                        matches.push((found.range, new_text.clone(), found.level, found.line));
+                    }
+                    edit_match::EditMatch::Ambiguous { level, lines } => {
+                        return Err(ToolError::ExecutionError(edit_match::ambiguous_error(
+                            &resolved_str,
+                            index,
+                            old_text,
+                            &content,
+                            level,
+                            &lines,
                         )));
                     }
-                    if occurrences == 1 {
-                        let idx = content.find(old_text.as_str()).expect("counted above");
-                        (idx, idx + old_text.len(), false)
-                    } else {
-                        let normalized_text = super::normalize_for_fuzzy_match(old_text);
-                        let normalized_occurrences = super::normalize_for_fuzzy_match(&content)
-                            .match_indices(&normalized_text)
-                            .count();
-                        if normalized_occurrences > 1 {
-                            return Err(ToolError::ExecutionError(format!(
-                                "Found {normalized_occurrences} similar occurrences of the search text \
-                                 in {resolved_str}. It must be unique; widen the search with more \
-                                 surrounding context."
-                            )));
+                    edit_match::EditMatch::NotFound => {
+                        // Re-sending an edit that already landed is the most
+                        // common retry after a timeout or a duplicate call:
+                        // it is a success, not a failure.
+                        match edit_match::occurrences(&content, new_text) {
+                            1 => {
+                                already_applied += 1;
+                                continue;
+                            }
+                            n if n > 1 => {
+                                return Err(ToolError::ExecutionError(format!(
+                                    "Could not find edits[{index}] in {resolved_str}: the old text is \
+                                     gone and the new text appears {n} times, so it is unclear whether \
+                                     this edit already ran. Read the file and use more context."
+                                )));
+                            }
+                            _ => {
+                                return Err(ToolError::ExecutionError(edit_match::not_found_error(
+                                    &resolved_str,
+                                    index,
+                                    old_text,
+                                    &content,
+                                )));
+                            }
                         }
-                        let m = fuzzy_find_text(&content, old_text);
-                        if !m.found {
-                            let preview: Vec<&str> = content.lines().take(5).collect();
-                            return Err(ToolError::ExecutionError(format!(
-                                "Search text not found in file {}. File starts with:\n{}",
-                                resolved_str,
-                                preview.join("\n")
-                            )));
-                        }
-                        (m.index, m.end_index, m.used_fuzzy)
-                    }
-                };
-
-                if exact {
-                    let occurrences = content.match_indices(old_text.as_str()).count();
-                    if occurrences != 1 {
-                        return Err(ToolError::ExecutionError(format!(
-                            "Found {occurrences} occurrences of edits[{index}] in {resolved_str}. Each oldText must be unique."
-                        )));
                     }
                 }
-
-                matches.push((idx, end, new_text.clone(), fuzzy));
             }
 
-            if multi {
-                matches.sort_by_key(|m| m.0);
-                for pair in matches.windows(2) {
-                    if pair[0].1 > pair[1].0 {
-                        return Err(ToolError::ExecutionError(format!(
-                            "Overlapping edits are not allowed in {resolved_str}."
-                        )));
-                    }
+            if matches.is_empty() {
+                return Ok(format!(
+                    "Already applied: {resolved_str} already contains {already_applied} requested \
+                     change(s); nothing was written."
+                ));
+            }
+
+            matches.sort_by_key(|(range, ..)| range.start);
+            for pair in matches.windows(2) {
+                if pair[0].0.end > pair[1].0.start {
+                    return Err(ToolError::ExecutionError(format!(
+                        "Edits overlap in {resolved_str} at lines {} and {}; send them as separate calls.",
+                        edit_match::line_of(&content, pair[0].0.start),
+                        edit_match::line_of(&content, pair[1].0.start),
+                    )));
                 }
             }
 
             let mut new_content = content.clone();
-            for (idx, end, replacement, _) in matches.iter().rev() {
-                new_content = format!(
-                    "{}{}{}",
-                    &new_content[..*idx],
-                    replacement,
-                    &new_content[*end..]
-                );
+            for (range, replacement, _, _) in matches.iter().rev() {
+                new_content = edit_match::apply(&new_content, range.clone(), replacement);
             }
 
-            let first_line = matches
-                .first()
-                .map(|(idx, _, _, _)| content[..*idx].lines().count() + 1)
-                .unwrap_or(1);
             atomic_fs::ensure_fresh(&resolved).await?;
             ensure_not_cancelled(&signal)?;
             atomic_fs::write_and_record(&resolved, &new_content).await?;
 
-            if multi {
-                Ok(format!(
-                    "Successfully edited {} with {} replacements",
-                    resolved_str,
-                    edits.len()
-                ))
+            // Say what matched and how, so a whitespace-level match is never
+            // silent: the model (and the transcript) can see the drift.
+            let details: Vec<String> = matches
+                .iter()
+                .map(|(_, _, level, line)| format!("line {line} ({})", level.label()))
+                .collect();
+            let mut report = if multi {
+                format!(
+                    "Successfully edited {resolved_str} with {} replacements:\n  {}",
+                    matches.len(),
+                    details.join("\n  ")
+                )
             } else {
-                let fuzzy_tag = if matches[0].3 { " (fuzzy match)" } else { "" };
-                Ok(format!(
-                    "Successfully edited {resolved_str} at line {first_line}{fuzzy_tag}"
-                ))
+                let (range, replacement, level, line) = &matches[0];
+                let end_line = edit_match::line_of(
+                    &content,
+                    range.end.saturating_sub(1).max(range.start),
+                );
+                let old_lines = content[range.clone()].lines().count().max(1);
+                let new_lines = replacement.lines().count().max(1);
+                format!(
+                    "Successfully edited {resolved_str}:{}-{end_line} ({}) · {old_lines} → {new_lines} lines",
+                    line,
+                    level.label()
+                )
+            };
+            if already_applied > 0 {
+                report.push_str(&format!(
+                    "\n  ({already_applied} further edit(s) were already applied)"
+                ));
             }
+            Ok(report)
         })
         .await
     }
@@ -531,7 +545,7 @@ fn collect_edits(
     search: Option<&str>,
     replace: Option<&str>,
     edits: Option<&[FileEdit]>,
-) -> Result<Vec<(String, String)>, ToolError> {
+) -> Result<Vec<(String, String, Option<usize>)>, ToolError> {
     if let Some(edits) = edits {
         if !edits.is_empty() {
             let mut result = Vec::with_capacity(edits.len());
@@ -546,17 +560,24 @@ fn collect_edits(
                         "Each edits[] entry requires a newText string".to_string(),
                     )
                 })?;
-                result.push((old_text.to_string(), new_text.to_string()));
+                result.push((
+                    old_text.to_string(),
+                    new_text.to_string(),
+                    edit.near_line.map(|line| line as usize),
+                ));
             }
             return Ok(result);
         }
     }
 
+    // The legacy single search/replace shape is the same grammar with one
+    // edit: it goes through the same ladder, so the tool's name can no longer
+    // mean two different things.
     let search = search
         .ok_or_else(|| ToolError::InvalidArguments("Missing 'search' parameter".to_string()))?;
     let replace = replace
         .ok_or_else(|| ToolError::InvalidArguments("Missing 'replace' parameter".to_string()))?;
-    Ok(vec![(search.to_string(), replace.to_string())])
+    Ok(vec![(search.to_string(), replace.to_string(), None)])
 }
 
 #[derive(Default)]
@@ -707,14 +728,28 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn single_array_edit_never_falls_back_to_fuzzy_matching() {
+    async fn both_shapes_use_the_same_matcher() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("a.txt");
         let original = "say “hello”\n";
         std::fs::write(&path, original).unwrap();
         atomic_fs::record_read(&path, original);
+        // The fixture and the matcher must agree before the tool is involved:
+        // otherwise a failure below points at the tool, not at the matcher.
+        let written = std::fs::read_to_string(&path).unwrap();
+        assert_eq!(written, original, "fixture mismatch");
+        match crate::tools::edit_match::locate(&written, "say \"hello\"", None) {
+            crate::tools::edit_match::EditMatch::Found(found) => assert_eq!(
+                found.level,
+                crate::tools::edit_match::MatchLevel::Normalized,
+                "fixture should need quote folding"
+            ),
+            other => panic!("matcher on the fixture: {other:?}"),
+        }
         let tool = TypedTool::new(EditFileTool);
-        let err = tool
+        // The same quote drift succeeds whichever shape carries it: identical
+        // intent must not depend on the argument spelling.
+        let result = tool
             .execute(
                 json!({
                     "path": "a.txt",
@@ -723,20 +758,26 @@ mod tests {
                 dir.path().to_str().unwrap(),
             )
             .await
-            .unwrap_err();
-        assert!(err.to_string().contains("match exactly"), "{err}");
-        assert_eq!(std::fs::read_to_string(&path).unwrap(), original);
+            .expect("edits[] tolerates quote drift too");
+        assert!(result.contains("(normalized)"), "{result}");
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "changed\n");
 
-        // Legacy callers explicitly retain the documented fuzzy behavior.
-        let result = tool
+        // A near miss refuses with the text to retry with, and changes nothing.
+        let err = tool
             .execute(
                 json!({
-                    "path": "a.txt", "search": "say \"hello\"", "replace": "changed"
+                    "path": "a.txt", "search": "changd", "replace": "x"
                 }),
                 dir.path().to_str().unwrap(),
             )
-            .await;
-        assert!(result.is_ok(), "{result:?}");
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("Could not find edits[0]"), "{err}");
+        assert!(
+            err.to_string()
+                .contains("Retry with the exact current text"),
+            "{err}"
+        );
         assert_eq!(std::fs::read_to_string(&path).unwrap(), "changed\n");
     }
 
@@ -835,7 +876,7 @@ mod tests {
             )
             .await
             .unwrap_err();
-        assert!(err.to_string().contains("2 occurrences"), "{err}");
+        assert!(err.to_string().contains("2 place(s) match"), "{err}");
         assert_eq!(
             tokio::fs::read_to_string(&path).await.unwrap(),
             "dup\ndup\n"
@@ -965,7 +1006,7 @@ mod tests {
             )
             .await
             .unwrap();
-        assert!(res.contains("at line 2"), "{}", res);
+        assert!(res.contains(":2-2 (exact)"), "{res}");
         assert_eq!(
             tokio::fs::read_to_string(&path).await.unwrap(),
             "one\n2\nthree\n"
@@ -990,7 +1031,7 @@ mod tests {
             )
             .await
             .unwrap();
-        assert!(res.contains("at line 1"), "{}", res);
+        assert!(res.contains(":1-1 (exact)"), "{res}");
         assert_eq!(
             tokio::fs::read_to_string(&path).await.unwrap(),
             "1\ntwo\nthree\n"
@@ -1070,7 +1111,7 @@ mod tests {
             )
             .await
             .unwrap();
-        assert!(out.contains("at line 2"), "{}", out);
+        assert!(out.contains(":2-2 (exact)"), "{}", out);
 
         // b.txt is pre-created so resolve_project_path can canonicalize it
         // (non-existent paths fall back to a non-verbatim form on Windows).
@@ -1153,11 +1194,11 @@ mod tests {
             .is_some_and(|t| t.contains(&json!("array"))));
         assert_eq!(
             schema["properties"]["edits"]["description"],
-            "One or more targeted replacements. Each edit is matched against the original file."
+            "One or more targeted replacements, matched against the original file and applied together"
         );
         assert_eq!(
             schema["properties"]["search"]["description"],
-            "Legacy single-edit search text (supports fuzzy matching)"
+            "Legacy single-edit search text. Goes through the same matcher as edits[]."
         );
         // Nested entry schemas are hoisted into `definitions` (schemars 0.8).
         let items = &schema["properties"]["edits"]["items"];
@@ -1168,11 +1209,11 @@ mod tests {
         assert!(required.contains(&json!("newText")));
         assert_eq!(
             file_edit["properties"]["oldText"]["description"],
-            "Exact text to find. Must be unique in the file."
+            "Exact text to find: the lines as they are in the file, with context enough to be unique."
         );
         assert_eq!(
             file_edit["properties"]["newText"]["description"],
-            "Replacement text"
+            "Replacement text, with its own indentation"
         );
     }
 

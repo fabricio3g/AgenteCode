@@ -21,7 +21,8 @@ it('reads as the agent it is: kind, description and what it is doing', () => {
   expect(row).toContain('Explore');
   expect(row).toContain('Inspect files');
   expect(row).toContain('Reading');
-  expect(row).toContain('1 tool');
+  expect(container.querySelector('.level-subagent.is-card')).toBeNull();
+  expect(container.querySelectorAll('.tile-rain .tile')).toHaveLength(8);
   expect(container.textContent).not.toContain('{');
 });
 
@@ -54,7 +55,7 @@ it('shows a failed child its diagnostic instead of an answer', () => {
 it('says nothing about spend twice', () => {
   const priced = { costUsd: 0.012, estimated: false, unpriced: false, promptTokens: 900, cacheReadTokens: 0, cacheWriteTokens: 0 };
   const { container } = render(SubagentCard, { child: child({ spend: priced }), id: 'd' });
-  // The header carries the cost; the body only adds what the header cannot.
+  flushSync(() => (container.querySelector('.head') as HTMLButtonElement).click());
   expect(container.textContent?.split('$0.012')).toHaveLength(2);
 });
 

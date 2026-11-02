@@ -183,6 +183,7 @@ pub(crate) fn update_for_event(event: &RuntimeEvent) -> Option<Value> {
         | RuntimeEvent::ChildTool { .. }
         | RuntimeEvent::ChildFinished { .. }
         | RuntimeEvent::ContextCompacted { .. }
+        | RuntimeEvent::ContextBudget { .. }
         | RuntimeEvent::Usage { .. }
         | RuntimeEvent::Retry { .. }
         | RuntimeEvent::SteeringQueued

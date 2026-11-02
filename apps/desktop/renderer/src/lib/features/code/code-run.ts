@@ -1,17 +1,20 @@
 // Agente run state: folds CodeAgentEvent pushes into AgentSteps + streamed
 // content. Pure logic — no Svelte, no IPC — so it is directly testable.
 
-import type { CodeAgentEvent, CodeArtifactRef, CodeChild, CodeRunSummary, CodeSourceRef, CodeSpend, CodeStopReason, CodeTodoItem, AgentActivityKey } from '$shared/agente-protocol';
+import type { CodeAgentEvent, CodeArtifactRef, CodeChild, CodeRunSummary, CodeSourceRef, CodeSpend, CodeStopReason, CodeTodoItem, AgentActivityKey, ContextBreakdown } from '$shared/agente-protocol';
 import type { AgentStep, ChatMessage, CodeAgentDiffStat, CodeAgentFileChange, CodeTimelineEntry } from '$lib/types/chat';
 import { sanitizeAgentVisibleText } from '$lib/services/agent-parsing';
 import { copy } from '$lib/copy';
 import { linkChildToStep } from './subagent-row';
+import { addCallSpend, emptySpend } from '$shared/accounting';
+export { emptySpend } from '$shared/accounting';
 
 export interface AgenteUsage {
   promptTokens: number;
   completionTokens: number;
   totalTokens: number;
   contextWindow: number;
+  breakdown?: ContextBreakdown;
 }
 
 export interface CodeRunState {
@@ -79,10 +82,6 @@ export interface CodeRunState {
    * abort travels.
    */
   stopping?: boolean;
-}
-
-export function emptySpend(): CodeSpend {
-  return { costUsd: 0, estimated: false, unpriced: false, promptTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 };
 }
 
 export function createCodeRunState(): CodeRunState {
@@ -171,12 +170,7 @@ function applyRuntimeEvent(state: CodeRunState, event: Extract<CodeAgentEvent, {
       if (!child && state.phase === 'compacting') state.compactionTokens = (state.compactionTokens ?? 0) + value.usage.prompt_tokens + value.usage.completion_tokens + value.usage.cache_read_tokens + value.usage.cache_creation_tokens;
       // The session includes its children; a child also keeps its own subtotal.
       for (const spend of child ? [state.spend, child.spend] : [state.spend]) {
-        spend.costUsd += value.cost_usd ?? 0;
-        spend.estimated ||= value.cost_estimated;
-        spend.unpriced ||= value.cost_usd == null;
-        spend.promptTokens += value.usage.prompt_tokens;
-        spend.cacheReadTokens += value.usage.cache_read_tokens;
-        spend.cacheWriteTokens += value.usage.cache_creation_tokens;
+        addCallSpend(spend, value);
       }
       return true;
     }
@@ -462,6 +456,7 @@ export function eventToStep(event: CodeAgentEvent): AgentStep | null {
         toolName: event.toolName,
         status: 'running',
         detail: event.detail || describeToolArgs(event.toolName, event.args),
+        ...(event.args != null ? { toolInput: formatTraceInput(event.args) } : {}),
         // A spawn names its kind on its own row before the child registers, so
         // the row reads "Explore · …" from the first frame.
         ...(event.toolName === 'task' ? { subagentType: subagentTypeOf(event.args) } : {}),
@@ -487,6 +482,15 @@ export function eventToStep(event: CodeAgentEvent): AgentStep | null {
     default:
       return null;
   }
+}
+
+/** Preserve the tool's real input for inspection, bounded like streamed output. */
+function formatTraceInput(value: unknown): string {
+  try {
+    const text = typeof value === 'string' ? value : JSON.stringify(value, null, 2);
+    if (!text) return '';
+    return text.length > 32_768 ? `${text.slice(0, 32_768)}\n…` : text;
+  } catch { return ''; }
 }
 
 /**
@@ -633,7 +637,8 @@ export function applyCodeAgentEvent(state: CodeRunState, event: CodeAgentEvent):
         promptTokens: event.promptTokens,
         completionTokens: event.completionTokens,
         totalTokens: event.totalTokens,
-        contextWindow: event.contextWindow
+        contextWindow: event.contextWindow,
+        breakdown: event.breakdown ?? state.usage?.breakdown
       };
       return false; // ring data only — no transcript change
     }

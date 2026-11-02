@@ -10,7 +10,9 @@
  * back to the English here, and the shape is type-checked against this object.
  */
 
+import { DESIGN_3D_COPY } from './design-3d';
 export const COPY_EN = {
+  studio3d: DESIGN_3D_COPY.en,
   actions: {
     copy: 'Copy',
     copied: 'Copied',

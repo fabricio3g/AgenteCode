@@ -21,10 +21,10 @@ export function registerAgenteHandlers({ ipcMain, getMainWindow }: AgenteHandler
   setMainWindowGetter(getMainWindow);
   registerHomeRuntimeHandlers(ipcMain);
 
-  ipcMain.handle('agente_start_session', (_e, args: AgenteStartSessionArgs) => engine.startSession(args));
+  ipcMain.handle('agente_start_session', (event, args: AgenteStartSessionArgs) => engine.startSession(args, event.sender));
 
-  ipcMain.handle('agente_prompt', (_e, args: { chatId: string; text: string; images?: Array<{ data: string; mimeType: string }>; attachments?: Attachment[] }) =>
-    engine.prompt(args.chatId, args.text, args.images, args.attachments)
+  ipcMain.handle('agente_prompt', (event, args: { chatId: string; text: string; images?: Array<{ data: string; mimeType: string }>; attachments?: Attachment[] }) =>
+    engine.prompt(args.chatId, args.text, args.images, args.attachments, event.sender)
   );
 
   ipcMain.handle('agente_steer', (_e, args: { chatId: string; text: string; attachments?: Attachment[] }) => engine.steer(args.chatId, args.text, args.attachments));
@@ -68,6 +68,9 @@ export function registerAgenteHandlers({ ipcMain, getMainWindow }: AgenteHandler
   ipcMain.handle('agente_project_files', (_e, args: { projectRoot: string }) => listProjectFiles(args.projectRoot));
   ipcMain.handle('agente_message_action', (_e, args: { chatId: string; action: 'fork' | 'rewind'; conversationIndex: number }) => engine.messageAction(args.chatId, args.action, args.conversationIndex));
   ipcMain.handle('agente_session_snapshot', (_e, args: { sessionId: string }) => engine.runtimeRequest('session.get', { session_id: args.sessionId }));
+  ipcMain.handle('agente_goal_get', (_e, args: { sessionId: string }) => engine.runtimeRequest('goal.get', { session_id: args.sessionId }));
+  ipcMain.handle('agente_goal_set', (_e, args: { sessionId: string; objective: string; status: 'active' | 'completed' }) => engine.runtimeRequest('goal.set', { session_id: args.sessionId, goal: { objective: args.objective, status: args.status } }));
+  ipcMain.handle('agente_goal_clear', (_e, args: { sessionId: string }) => engine.runtimeRequest('goal.clear', { session_id: args.sessionId }));
   ipcMain.handle('agente_session_list', () => engine.runtimeRequest('session.list'));
   ipcMain.handle('agente_session_history', async (_e, args: { sessionId: string; chatId: string }) => {
     const { snapshot } = await engine.runtimeRequest<{ snapshot: SessionSnapshot }>('session.get', { session_id: args.sessionId });

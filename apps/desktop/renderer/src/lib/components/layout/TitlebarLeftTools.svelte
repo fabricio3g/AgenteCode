@@ -1,9 +1,8 @@
 <svelte:options runes={true} />
 
 <!--
-  The title bar's left group — sidebar toggle, search (only while the sidebar is hidden), and local-model settings (hidden on a cloud model). The
-  sidebar's hover preview reaches the top of the window and draws this same
-  group in the same spot, so the buttons never vanish under it.
+  The title bar's sidebar toggle and local-model settings when the sidebar is
+  hidden. Conversation search lives alongside the space tabs in the title bar.
 -->
 
 <script lang="ts">
@@ -11,7 +10,7 @@
   import { cn as uiClass } from '$lib/utils/cn';
 
   import { t } from 'svelte-i18n';
-  import { PanelLeftClose, PanelLeftOpen, Search, SlidersHorizontal } from 'lucide-svelte';
+  import { PanelLeftClose, PanelLeftOpen, SlidersHorizontal } from 'lucide-svelte';
   import Tooltip from '$lib/components/ui/Tooltip.svelte';
   import { appStore } from '$lib/stores/app.svelte';
 
@@ -43,15 +42,6 @@
       {#if appStore.sidebarOpen}<PanelLeftClose class="size-4" />{:else}<PanelLeftOpen class="size-4" />{/if}
     </UiIconButton>
   </Tooltip>
-  <!-- The sidebar carries its own search row; the bar offers search only
-       while the sidebar is away, so the same action never shows twice. -->
-  {#if !expanded}
-    <Tooltip label={$t('titlebar.search')} shortcut="mod+shift+k">
-      <UiIconButton label={$t('titlebar.search')} size="sm" class={uiClass(" titlebar-no-drag titlebar-secondary")} onclick={() => appStore.openSearch()} >
-        <Search class="size-4" />
-      </UiIconButton>
-    </Tooltip>
-  {/if}
   <!-- Local-engine tuning (context length, GPU layers…): a cloud model has none. -->
   {#if appStore.backendMode !== 'api'}
     <Tooltip label={$t('titlebar.llmSettings')}>

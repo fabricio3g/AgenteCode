@@ -336,6 +336,7 @@
         role="region"
         aria-label="Conversation messages"
         use:pauseOnScrollIntent={follow}
+        onwheel={() => (timelineBrowsing = false)}
         onscroll={handleScroll}
       >
         <div
@@ -404,6 +405,7 @@
     --ui-top-fade-from: var(--chat-bg);
     contain: layout style;
   }
+
 
   .message-slot {
     position: relative;

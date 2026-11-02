@@ -1,4 +1,17 @@
 {
+  "goal": {
+    "confirmClear": "¿Borrar este objetivo? El agente dejará de recibir recordatorios.",
+    "cancel": "Cancelar",
+    "title": "Objetivo",
+    "set": "Definir objetivo",
+    "placeholder": "Describe el objetivo de esta conversación",
+    "save": "Guardar",
+    "complete": "Completar",
+    "clear": "Borrar",
+    "active": "Activo",
+    "completed": "Completado",
+    "hint": "El agente recordará este objetivo entre turnos."
+  },
   "chat": {
     "placeholder": "Mensaje a {{APP_NAME}}...",
     "stop": "Detener respuesta",
@@ -52,10 +65,21 @@
     },
     "localBusy": "El modelo local está ocupado en otro chat",
     "context": {
+      "systemLabel": "Instrucciones del sistema",
+      "messagesLabel": "Mensajes",
+      "resultsLabel": "Resultados de herramientas",
+      "toolsLabel": "Definiciones de herramientas",
+      "overheadLabel": "Sobrecarga del tokenizador",
+      "reserveLabel": "Reserva para respuesta",
+      "runtimeNote": "Las categorías son estimaciones; el total puede venir del proveedor.",
+      "systemTokens": "Instrucciones del sistema: ~{n} tokens",
+      "messageTokens": "Mensajes: ~{n} tokens",
+      "previewNote": "Estimación previa; no incluye herramientas ni datos añadidos durante la ejecución.",
+      "breakdownUnavailable": "El desglose no está disponible para este uso.",
       "usage": "{used} / {max} tokens de contexto ({percent} %)",
       "reserved": "{n} tokens reservados para la respuesta",
-      "priceIn": "Entrada ${price}/1M",
-      "priceOut": "Salida ${price}/1M",
+      "priceIn": "Entrada {price}/1M",
+      "priceOut": "Salida {price}/1M",
       "estimate": "Coste estimado de entrada: ${cost}",
       "remaining": "{n} tokens restantes",
       "spend": "Coste de la conversación: {cost}",
@@ -385,6 +409,10 @@
     "refresh": "Actualizar"
   },
   "code": {
+    "traceCopyInput": "Copiar entrada",
+    "traceCopyOutput": "Copiar resultado",
+    "traceCopyCommand": "Copiar comando",
+    "todoStatus": {"pending": "Pendiente", "in_progress": "En curso", "completed": "Completada", "cancelled": "Cancelada"},
     "pane": {
       "openWindow": "Abrir en una nueva ventana",
       "close": "Cerrar panel",
@@ -721,7 +749,7 @@
       "queued": "En cola"
     },
     "stopSubagent": "Detener subagente",
-    "stopCommand": "Detener el comando en curso",
+    "stopRun": "Detener la ejecución",
     "modeShort": {
       "plan": "Planificar",
       "supervised": "Supervisado",
@@ -1123,6 +1151,7 @@
     "peakContext": "Contexto máximo",
     "slots": "Ranuras",
     "speed": "Velocidad",
+    "speedReply": "Velocidad de salida de esta respuesta",
     "install": "Instalar llama.cpp",
     "installHint": "Versiones para {platform}.",
     "checkReleases": "Buscar nuevas versiones",

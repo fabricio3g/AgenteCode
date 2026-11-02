@@ -1,7 +1,7 @@
 <svelte:options runes={true} />
 
 <!--
-  The work between two pieces of the reply, as one timeline: thoughts and tool calls in the order they happened. It starts folded and opens when the reader asks; the header
+  The work between two pieces of the reply, as one timeline: thoughts and tool calls in the order they happened. Live and failed work opens by default; settled successful work folds unless the reader chose otherwise. The header
   updates as work progresses. It folds to "4 steps · 2 files changed · 12.4s" with the touched files as
   chips — each opens its diff in the Changes pane. The live status line still names pending approvals and failures.
 
@@ -30,7 +30,8 @@
     chatId,
     messageId,
     children,
-    live = false
+    live = false,
+    activeChildIds = new Set<string>()
   }: {
     items: WorkItem[];
     chatId: string;
@@ -38,24 +39,26 @@
     /** The run's children, so a spawn's row finds the agent it started. */
     children?: CodeChild[];
     live?: boolean;
+    activeChildIds?: ReadonlySet<string>;
   } = $props();
 
   const approvals = $derived(new Set(approvalsStore.items.map((item) => item.requestId)));
   /** Settled approvals repeat their tool's row: leave them out. */
-  const visible = $derived(items.filter((item) => !(item.step?.type === 'approval' && !needsAttention(item.step, approvals))));
+  const visible = $derived(items.filter((item) => !(item.step?.type === 'approval' && !needsAttention(item.step, approvals)) && !(item.step?.toolName === 'task' && item.step.subagentId && activeChildIds.has(item.step.subagentId))));
   /** A step waiting on you never folds away: its Allow / Deny stay on screen, under the block. */
   const waiting = $derived(visible.filter((item) => !!item.step && (item.step.status === 'awaiting_approval' || approvals.has(item.step.id))));
   const folded = $derived(visible.filter((item) => !waiting.includes(item)));
   const files = $derived(changedFiles(visible));
   const steps = $derived(visible.flatMap((item) => (item.step ? [item.step] : [])));
   const running = $derived(steps.some(isRunning));
+  const defaultOpen = $derived(live || steps.some((step) => step.status === 'error'));
 
   /**
    * The block's own key: namespaced away from its first row's, which is what
    * the reader's choice for that row (a step, or the card of a spawn) hangs on.
    */
   const id = $derived(disclosureKey(chatId, messageId, workBlockKey(visible[0]?.key)));
-  const open = $derived(disclosure.isOpen(id, false));
+  const open = $derived(disclosure.isOpen(id, defaultOpen));
 
   /**
    * How long the whole run of work took: from the first step that started to the
@@ -106,7 +109,7 @@
   <div class="min-w-0">{@render row(folded[0])}</div>
 {:else if folded.length}
   <div class="work min-w-0">
-    <Disclosure {id} level="block" chevron="leading" defaultOpen={false}>
+    <Disclosure {id} level="block" chevron="leading" {defaultOpen}>
       {#snippet header()}
         <span class="line min-w-0 truncate tabular-nums">{line}</span>
         <span class="flex-1"></span>

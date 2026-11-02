@@ -23,3 +23,10 @@ mkdirSync(path.dirname(target), { recursive: true });
 copyFileSync(source, target);
 chmodSync(target, 0o755);
 console.log(`bundled ${path.relative(root, target)} (${(statSync(target).size / 1e6).toFixed(1)} MB)`);
+if (process.platform === 'win32') {
+  const helper = path.resolve(root, '..', '..', 'target', 'release', 'agente-computer.exe');
+  if (!existsSync(helper)) throw new Error('Build agente-computer before packaging the desktop app.');
+  const helperTarget = path.join(root, 'resources', 'bin', 'agente-computer.exe');
+  copyFileSync(helper, helperTarget);
+  console.log(`bundled ${path.relative(root, helperTarget)}`);
+}

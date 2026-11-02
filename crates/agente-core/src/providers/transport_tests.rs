@@ -95,6 +95,9 @@ fn scripted_server(
                     result => panic!("expected request: {result:?}"),
                 }
             };
+            // Windows inherits the listener's non-blocking mode into the
+            // accepted socket; read/write below are blocking calls.
+            socket.set_nonblocking(false).unwrap();
             let request = read_request(&mut socket);
             tx.send(request).unwrap();
             write!(socket, "{response}").unwrap();
@@ -163,7 +166,10 @@ fn requests_use_declared_session_routing_headers() {
             assert!(router.is_none());
         }
         let header = request.headers().get("x-opencode-session");
-        if super::canonical_provider_id(provider) == "opencode-go" {
+        if matches!(
+            super::canonical_provider_id(provider),
+            "opencode-go" | "opencode" | "opencode-zen"
+        ) {
             assert_eq!(header.unwrap().to_str().unwrap(), session.to_string());
             let fallback = super::wire::session_header(&info, None).unwrap();
             assert!(!uuid::Uuid::parse_str(&fallback.1).unwrap().is_nil());
@@ -301,6 +307,18 @@ async fn request_for(
     format: ApiFormat,
     events: Vec<Value>,
 ) -> (String, Value, Vec<StreamEvent>, Result<Usage, LlmError>) {
+    request_with_policy(provider_id, format, events, None).await
+}
+
+/// Same request, with the transport policy a resolved model carries: the
+/// billing contract decides whether a gateway's upstream charge is separate
+/// money (BYOK) or already inside `usage.cost`.
+async fn request_with_policy(
+    provider_id: &str,
+    format: ApiFormat,
+    events: Vec<Value>,
+    transport: Option<policy::TransportPolicy>,
+) -> (String, Value, Vec<StreamEvent>, Result<Usage, LlmError>) {
     let (url, request) = server(events);
     let mut provider_info = info(url);
     provider_info.id = provider_id.into();
@@ -308,6 +326,7 @@ async fn request_for(
     let (tx, mut rx) = tokio::sync::mpsc::channel(128);
     let mut selected_model = model(format);
     selected_model.provider_id = provider_id.into();
+    selected_model.api.resolved_policy = transport;
     let result = provider
         .stream_completion(
             &[Message::user("inspect")],
@@ -683,7 +702,9 @@ async fn openrouter_claude_routes_get_explicit_breakpoints() {
 /// as `cost_details.upstream_inference_cost`. The spend is their sum.
 #[tokio::test]
 async fn openrouter_byok_cost_adds_the_upstream_charge() {
-    let (_, _, _, result) = request_for(
+    let mut transport = super::policy::TransportPolicy::default();
+    transport.billing.byok = true;
+    let (_, _, _, result) = request_with_policy(
         "openrouter",
         ApiFormat::OpenAI,
         vec![
@@ -692,11 +713,31 @@ async fn openrouter_byok_cost_adds_the_upstream_charge() {
                "usage":{"prompt_tokens":1200,"completion_tokens":40,"cost":0.0001,
                         "cost_details":{"upstream_inference_cost":0.0019}}}),
         ],
+        Some(transport),
     )
     .await;
     let usage = result.expect("stream completes");
     let cost = usage.cost_usd.expect("reported");
     assert!((cost - 0.002).abs() < 1e-12, "{cost}");
+}
+
+/// Without BYOK the gateway's `cost` is the whole charge — adding the
+/// upstream figure (which it may still report) would bill the call twice.
+#[tokio::test]
+async fn openrouter_without_byok_bills_the_reported_charge_once() {
+    let (_, _, _, result) = request_for(
+        "openrouter",
+        ApiFormat::OpenAI,
+        vec![
+            json!({"choices":[{"delta":{"content":"ok"}}]}),
+            json!({"choices":[{"delta":{},"finish_reason":"stop"}],
+               "usage":{"prompt_tokens":1200,"completion_tokens":40,"cost":0.002,
+                        "cost_details":{"upstream_inference_cost":0.0019}}}),
+        ],
+    )
+    .await;
+    let usage = result.expect("stream completes");
+    assert_eq!(usage.cost_usd, Some(0.002));
 }
 
 #[tokio::test]
@@ -719,6 +760,54 @@ async fn openrouter_reported_cost_reaches_usage() {
         body.get("usage").is_none(),
         "deprecated usage.include is not sent"
     );
+}
+
+#[tokio::test]
+async fn subscription_allowance_reaches_usage_on_every_protocol() {
+    let accounting =
+        json!({"cost":0,"opencode":{"billing_source":"go","allowance":0.00412,"list_cost":0.006}});
+    for format in [
+        ApiFormat::OpenAI,
+        ApiFormat::Anthropic,
+        ApiFormat::Responses,
+        ApiFormat::Google,
+    ] {
+        let mut usage = accounting.clone();
+        let events = match format {
+            ApiFormat::OpenAI => {
+                usage["prompt_tokens"] = json!(1200);
+                usage["completion_tokens"] = json!(300);
+                vec![
+                    json!({"choices":[{"delta":{"content":"ok"},"finish_reason":"stop"}],"usage":usage}),
+                ]
+            }
+            ApiFormat::Anthropic => {
+                usage["output_tokens"] = json!(300);
+                vec![
+                    json!({"type":"message_start","message":{"usage":{"input_tokens":1200}}}),
+                    json!({"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":usage}),
+                    json!({"type":"message_stop"}),
+                ]
+            }
+            ApiFormat::Responses => {
+                usage["input_tokens"] = json!(1200);
+                usage["output_tokens"] = json!(300);
+                vec![json!({"type":"response.completed","response":{"output":[],"usage":usage}})]
+            }
+            ApiFormat::Google => {
+                usage["promptTokenCount"] = json!(1200);
+                usage["candidatesTokenCount"] = json!(300);
+                vec![
+                    json!({"candidates":[{"content":{"parts":[{"text":"ok"}]},"finishReason":"STOP"}],"usageMetadata":usage}),
+                ]
+            }
+        };
+        let (_, _, _, result) = request(format, events).await;
+        let usage = result.unwrap_or_else(|error| panic!("{format:?}: {error}"));
+        assert_eq!(usage.cost_usd, Some(0.00412), "{format:?}");
+        assert!(!usage.cost_estimated, "{format:?}");
+        assert_eq!(usage.completion_tokens, 300, "{format:?}");
+    }
 }
 
 fn completion_events(format: ApiFormat) -> Vec<Value> {

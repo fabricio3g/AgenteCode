@@ -70,7 +70,7 @@ export async function failStartup(error: unknown): Promise<void> {
 process.on('uncaughtException', (error) => { void failStartup(error); });
 process.on('unhandledRejection', (error) => { if (!ready) void failStartup(error); else console.error(error); });
 
-export function attachStartupDiagnostics(win: BrowserWindow): void {
+export function attachStartupDiagnostics(win: BrowserWindow, options: { managedLoad?: boolean } = {}): void {
   window = win;
   startupWindows.add(win.id);
   win.once('closed', () => startupWindows.delete(win.id));
@@ -78,7 +78,9 @@ export function attachStartupDiagnostics(win: BrowserWindow): void {
   failed = false;
   record(`Loading ${app.isPackaged ? 'packaged' : 'development'} renderer`);
   win.webContents.on('did-fail-load', (_event, code, description, _url, mainFrame) => {
-    if (mainFrame && code !== -3) void failStartup(new Error(`Page load: ${code} ${description}`));
+    // A managed development load reports its final failure after bounded
+    // retries. Reporting this event too would replace its retry with an error page.
+    if (mainFrame && code !== -3 && !options.managedLoad) void failStartup(new Error(`Page load: ${code} ${description}`));
   });
   win.webContents.on('preload-error', (_event, _file, error) => { void failStartup(error); });
   win.webContents.on('render-process-gone', (_event, details) => { void failStartup(new Error(`Renderer exited: ${details.reason} (${details.exitCode})`)); });
@@ -86,7 +88,14 @@ export function attachStartupDiagnostics(win: BrowserWindow): void {
     if (smokeMode) console.log(`[renderer:${details.level}] ${details.message}`);
     if (!ready && details.level === 'error' && /Uncaught|\[startup\]/.test(details.message)) void failStartup(new Error(`Renderer bootstrap: ${details.message}`));
   });
-  timer = setTimeout(() => { if (!ready) void failStartup(new Error('Renderer startup timed out after 30 seconds')); }, 30_000);
+  // Vite's cold dependency transforms can exceed 30s before the document loads.
+  // Keep a bounded load watchdog, then give the loaded document its own mount budget.
+  const arm = (milliseconds: number, phase: string) => {
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(() => { if (!ready) void failStartup(new Error(`Renderer ${phase} timed out after ${milliseconds / 1000} seconds`)); }, milliseconds);
+  };
+  arm(app.isPackaged ? 60_000 : 180_000, 'document load');
+  win.webContents.once('did-finish-load', () => { if (!ready && !failed) arm(30_000, 'application mount'); });
   win.once('closed', () => { if (timer) clearTimeout(timer); });
 }
 

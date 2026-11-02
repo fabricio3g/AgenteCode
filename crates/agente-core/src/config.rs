@@ -1137,15 +1137,22 @@ mod tests {
     }
 
     #[test]
-    fn default_providers_are_the_five_supported_services() {
+    fn default_providers_include_separate_opencode_plans() {
         let config = AppConfig::default();
         let ids: Vec<String> = config
             .provider_entries()
             .into_iter()
             .map(|p| p.id)
             .collect();
-        assert_eq!(ids.len(), 5);
-        for id in ["deepseek", "minimax", "glm", "opencode-go", "openrouter"] {
+        assert_eq!(ids.len(), 6);
+        for id in [
+            "deepseek",
+            "minimax",
+            "glm",
+            "opencode-go",
+            "opencode",
+            "openrouter",
+        ] {
             assert!(ids.iter().any(|p| p == id), "missing provider {id}");
         }
     }

@@ -438,6 +438,27 @@ pub enum RuntimeEvent {
     Usage {
         usage: Usage,
     },
+    /// How full the context is, sent before each request. `used` over `room`
+    /// is the same arithmetic the compaction gate uses, so a client's meter
+    /// and a compaction agree.
+    ContextBudget {
+        used: u32,
+        /// Window minus tool schemas, the tokenizer gap and the reply reserve.
+        room: u32,
+        window: u32,
+        tool_tokens: u32,
+        gap: u32,
+        #[serde(default)]
+        system_tokens: Option<u32>,
+        #[serde(default)]
+        message_tokens: Option<u32>,
+        #[serde(default)]
+        tool_result_tokens: Option<u32>,
+        #[serde(default)]
+        reserve: Option<u32>,
+        /// `used` came from the provider rather than an estimate.
+        measured: bool,
+    },
     /// One model call finished (the envelope's `parent_run_id` names the
     /// subagent that made it). Summing these gives the session's real spend.
     CallUsage {

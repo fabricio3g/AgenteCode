@@ -24,6 +24,7 @@ const SOURCES: &[(&str, &str)] = &[
     ("lmstudio", include_str!("../../providers/lmstudio.toml")),
     ("minimax", include_str!("../../providers/minimax.toml")),
     ("ollama", include_str!("../../providers/ollama.toml")),
+    ("opencode", include_str!("../../providers/opencode.toml")),
     (
         "opencode-go",
         include_str!("../../providers/opencode-go.toml"),
@@ -107,6 +108,9 @@ pub struct ProviderSpec {
     /// Hosts that identify this provider from a pasted base URL.
     #[serde(default)]
     pub match_hosts: Vec<String>,
+    /// More specific endpoint identities, checked before host-wide matches.
+    #[serde(default)]
+    pub match_base_urls: Vec<String>,
     #[serde(default)]
     pub key_check_path: Option<String>,
     /// Where a person creates an API key (shown as "Get a key").
@@ -291,6 +295,24 @@ pub fn get(id: &str) -> Option<&'static ProviderSpec> {
 
 /// The spec whose `match_hosts` covers this base URL's host.
 pub fn for_base_url(base_url: &str) -> Option<&'static ProviderSpec> {
+    if let Some(spec) = all()
+        .iter()
+        .filter_map(|spec| {
+            spec.match_base_urls
+                .iter()
+                .filter(|prefix| {
+                    base_url
+                        .strip_prefix(prefix.as_str())
+                        .is_some_and(|rest| rest.is_empty() || rest.starts_with(['/', '?', '#']))
+                })
+                .map(|prefix| (prefix.len(), spec))
+                .max_by_key(|(length, _)| *length)
+        })
+        .max_by_key(|(length, _)| *length)
+        .map(|(_, spec)| spec)
+    {
+        return Some(spec);
+    }
     let host = host_of(base_url)?;
     all().iter().find(|s| {
         s.match_hosts
@@ -372,6 +394,19 @@ mod tests {
     #[test]
     fn lookups_follow_ids_aliases_and_hosts() {
         assert_eq!(get("desktop-openrouter").unwrap().id, "openrouter");
+        assert_eq!(get("opencode-zen").unwrap().id, "opencode");
+        assert_eq!(
+            for_base_url("https://opencode.ai/zen/go/v1").unwrap().id,
+            "opencode-go"
+        );
+        assert_eq!(
+            for_base_url("https://opencode.ai/zen/v1").unwrap().id,
+            "opencode"
+        );
+        assert_eq!(
+            for_base_url("https://opencode.ai/zen/goose/v1").unwrap().id,
+            "opencode"
+        );
         assert_eq!(get("local").unwrap().id, "llamacpp");
         assert_eq!(
             for_base_url("https://openrouter.ai/api/v1").unwrap().id,
@@ -395,7 +430,14 @@ mod tests {
             .collect();
         assert_eq!(
             offered,
-            ["opencode-go", "openrouter", "deepseek", "minimax", "glm"]
+            [
+                "opencode-go",
+                "opencode",
+                "openrouter",
+                "deepseek",
+                "minimax",
+                "glm"
+            ]
         );
     }
 

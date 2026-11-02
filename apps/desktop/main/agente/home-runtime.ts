@@ -1,22 +1,60 @@
 /** Home owns its renderer tools; Rust owns the complete model conversation. */
 import crypto from 'node:crypto';
 import type { IpcMain, WebContents } from 'electron';
-import { runtimeConnection, useProvider } from './rust-engine.ts';
+import { runtimeConnection, useProvider, modelSeesImages } from './rust-engine.ts';
+import { createComputerTools } from './tools/computer.ts';
+import { bindComputerOwner, cancelComputerTurn, settleComputerTurn, computerSession, type ComputerOwner } from '../computer/desktop.ts';
+import { COMPUTER_INSTRUCTIONS } from '../../shared/computer.ts';
+import type { AgentTool } from '../../shared/agent-core/types.ts';
+import type { Attachment } from '../../shared/agente-protocol.gen.ts';
+import { notifyActivity } from '../notifications.ts';
 import type { AgenteClient } from '../agente-client.ts';
 import type { ClientToolCall, RuntimeEventEnvelope, SessionSnapshot, TurnOutcome } from '../../shared/agente-protocol.gen.ts';
 import type { HomeRuntimeEvent, HomeStartArgs, HomeToolReply } from '../../shared/home-runtime.ts';
 
-type Run = { runId: string; sessionId: string; turnId?: string; owner: WebContents; client: AgenteClient; pending: Set<string> };
+type Run = { runId: string; sessionId: string; turnId?: string; owner: WebContents; client: AgenteClient; pending: Set<string>; dispose?: () => void; chatId?: string; computerTools?: Map<string, AgentTool>; computerCalls?: Map<string, AbortController> };
 const runs = new Map<string, Run>();
+function release(run: Run) {
+  if (runs.get(run.runId) !== run) return;
+  runs.delete(run.runId);
+  if (run.turnId) settleComputerTurn(run.sessionId, run.turnId);
+  for (const call of run.computerCalls?.values() ?? []) call.abort();
+  run.dispose?.();
+}
 let subscribed: AgenteClient | null = null;
 function send(run: Run, event: HomeRuntimeEvent) {
   if (!run.owner.isDestroyed()) run.owner.send('home_runtime_event', event);
 }
 async function cancel(run: Run) {
+  cancelComputerTurn(run.sessionId);
+  for (const call of run.computerCalls?.values() ?? []) call.abort();
   for (const requestId of run.pending) {
     send(run, { runId: run.runId, type: 'cancel', call: { session_id: run.sessionId, turn_id: run.turnId || '', request_id: requestId, call_id: requestId, name: '', arguments: {} } });
   }
   if (run.turnId) await run.client.request('turn.cancel', { turn_id: run.turnId }).catch(() => {});
+}
+function computerOwner(run: Run): ComputerOwner | undefined {
+  if (!run.chatId || !run.turnId || run.owner.isDestroyed()) return undefined;
+  return { sessionId: run.sessionId, turnId: run.turnId, chatId: run.chatId, space: 'home', webContentsId: run.owner.id,
+    stop: () => { void cancel(run); },
+    resume: () => { if (!run.owner.isDestroyed()) run.owner.send('computer_resume', { chatId: run.chatId, space: 'home' }); },
+  };
+}
+async function executeComputerCall(run: Run, call: ClientToolCall) {
+  const controller = new AbortController();
+  run.computerCalls ??= new Map(); run.computerCalls.set(call.request_id, controller);
+  let content = ''; let isError = false; const attachments: Attachment[] = [];
+  try {
+    const result = await run.computerTools!.get(call.name)!.execute(call.call_id, call.arguments as Record<string, unknown>, { sessionId: run.sessionId, signal: controller.signal });
+    content = result.content; isError = !!result.isError;
+    for (const image of result.images ?? []) {
+      const imported = await run.client.request<{ attachment: Attachment }>('media.import', { name: 'computer-observation.jpg', data: image.data });
+      attachments.push(imported.attachment);
+    }
+  } catch (error) { content = error instanceof Error ? error.message : String(error); isError = true; }
+  finally { run.computerCalls.delete(call.request_id); }
+  if (runs.get(run.runId) !== run || !run.pending.delete(call.request_id)) return;
+  await run.client.request('client_tools.result', { session_id: call.session_id, turn_id: call.turn_id, request_id: call.request_id, content, is_error: isError, attachments }).catch(() => {});
 }
 function connectNotifications(client: AgenteClient) {
   if (subscribed === client) return;
@@ -24,7 +62,7 @@ function connectNotifications(client: AgenteClient) {
   client.onClose(() => {
     for (const run of runs.values()) if (run.client === client) {
       send(run, { runId: run.runId, type: 'error', message: 'The Rust runtime disconnected. Send your request again to reconnect.' });
-      runs.delete(run.runId);
+      release(run);
     }
   });
   client.onNotification((method, params) => {
@@ -34,7 +72,8 @@ function connectNotifications(client: AgenteClient) {
       if (!run) return;
       run.turnId = call.turn_id;
       if (method === 'client_tools.call') run.pending.add(call.request_id);
-      else run.pending.delete(call.request_id);
+      else { run.pending.delete(call.request_id); run.computerCalls?.get(call.request_id)?.abort(); }
+      if (run.computerTools?.has(call.name)) { if (method === 'client_tools.call') void executeComputerCall(run, call); return; }
       send(run, { runId: run.runId, type: method === 'client_tools.call' ? 'call' : 'cancel', call });
     } else if (method === 'event') {
       const envelope = params as RuntimeEventEnvelope;
@@ -46,9 +85,10 @@ function connectNotifications(client: AgenteClient) {
       const outcome = params as TurnOutcome;
       const run = [...runs.values()].find((run) => run.sessionId === outcome.session_id && run.turnId === outcome.turn_id);
       if (!run) return;
+      if (run.chatId && outcome.status !== 'cancelled') notifyActivity({ id: `home-${outcome.turn_id}`, chatId: run.chatId, space: 'home', title: outcome.status === 'completed' ? 'Task finished' : 'Task failed', body: outcome.status === 'completed' ? 'Your result is ready.' : 'Open the chat to review the error.' }, run.owner);
       void client.request<{ snapshot: SessionSnapshot }>('session.get', { session_id: run.sessionId }).then(({ snapshot }) => {
         send(run, { runId: run.runId, type: 'outcome', outcome, snapshot });
-      }).catch((error: unknown) => send(run, { runId: run.runId, type: 'error', message: String(error) })).finally(() => runs.delete(run.runId));
+      }).catch((error: unknown) => send(run, { runId: run.runId, type: 'error', message: String(error) })).finally(() => release(run));
     }
   });
 }
@@ -67,31 +107,30 @@ export function registerHomeRuntimeHandlers(ipcMain: IpcMain) {
     if ([...runs.values()].some((run) => run.sessionId === sessionId)) throw new Error('This Home chat is already working.');
     const provider = await useProvider(client, args.provider, args.model, args.localSelection);
     const info = await client.request<{ limits?: { context?: number } }>('models.info', { provider: provider.id, model: provider.model });
-    await client.request('client_tools.register', { session_id: sessionId, tools: args.tools });
-    const run: Run = { runId: args.runId, sessionId, owner: event.sender, client, pending: new Set() };
+    const run: Run = { runId: args.runId, sessionId, owner: event.sender, client, pending: new Set(), chatId: args.chatId };
+    const computerEnabled = args.computerEnabled && !!args.chatId && await modelSeesImages(args.provider, args.model);
+    if (computerEnabled) run.computerTools = new Map(createComputerTools({ owner: () => computerOwner(run), canSeeImages: () => true }).map(tool => [tool.name, tool]));
+    const computerDefinitions = [...(run.computerTools?.values() ?? [])].map(tool => ({ name: tool.name, description: tool.description, parameters: tool.parameters, sequential: true, mutating: true }));
+    await client.request('client_tools.register', { session_id: sessionId, tools: [...args.tools.filter(tool => !tool.name.startsWith('computer_')), ...computerDefinitions] });
     runs.set(args.runId, run);
-    const disconnect = () => { void cancel(run); };
+    const disconnect = () => { computerSession.releaseOwner(event.sender.id); void cancel(run); };
     event.sender.once('destroyed', disconnect);
     event.sender.once('render-process-gone', disconnect);
+    run.dispose = () => {
+      event.sender.removeListener('destroyed', disconnect);
+      event.sender.removeListener('render-process-gone', disconnect);
+    };
     try {
       const result = await client.request<{ turn_id: string; conversation_index?: number }>('turn.start', {
         session_id: sessionId, conversation: args.conversation || [], prompt: args.prompt,
-        system_prompt: args.systemPrompt, provider: provider.id, model: provider.model,
+        system_prompt: args.systemPrompt + (computerEnabled ? `\n\n${COMPUTER_INSTRUCTIONS}` : ''), provider: provider.id, model: provider.model,
         thinking_level: args.thinkingLevel || 'auto', home: args.policy, mode: 'auto',
         origin: { channel: 'desktop-home', trust: 'owner' }
       });
       run.turnId = result.turn_id;
+      const owner = computerOwner(run); if (owner) bindComputerOwner(owner);
       return { sessionId, turnId: result.turn_id, conversationIndex: result.conversation_index, contextWindow: info.limits?.context || 32_768 };
-    } catch (error) { runs.delete(args.runId); throw error; }
-    finally {
-      // The owner listeners are removed when the turn settles, not when start returns.
-      const remove = client.onNotification((method, params) => {
-        if (method !== 'turn.outcome' || (params as TurnOutcome).turn_id !== run.turnId) return;
-        event.sender.removeListener('destroyed', disconnect);
-        event.sender.removeListener('render-process-gone', disconnect);
-        remove();
-      });
-    }
+    } catch (error) { release(run); throw error; }
   });
   ipcMain.handle('home_runtime_result', async (event, args: HomeToolReply) => {
     const run = runs.get(args.runId);

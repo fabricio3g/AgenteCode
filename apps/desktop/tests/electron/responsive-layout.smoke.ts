@@ -47,16 +47,15 @@ async function run(){
     await js(`(async()=>{const {appStore}=await import('/src/lib/stores/app.svelte.ts');appStore.chats.find(chat=>chat.id==='qa-a').modelSelection.backendMode='local';})()`);await pause();
     assert.equal(await js(`document.querySelectorAll('[data-conversation-workspace="qa-a"] .local-model-library').length`),1,'Local models get a library icon');
     assert.equal(await js(`document.querySelector('[data-conversation-workspace="qa-a"] .local-model-library').textContent.trim()`),'','Local library action stays icon-only');
-    for(const space of ['home','roleplay','bots']){
-      await js(`(async()=>{const {appStore}=await import('/src/lib/stores/app.svelte.ts');if('${space}'==='bots'){appStore.showBots();}else{appStore.createChat('${space}');}})()`);await pause();
-      if(space==='bots')await js(`(async()=>{const {botsStore}=await import('/src/lib/features/bots/bots.svelte.ts');await botsStore.load();if(botsStore.bots.length)await botsStore.select(botsStore.bots[0].handle);botsStore.routinesOpen=false;})()`);
+    for(const space of ['home','roleplay']){
+      await js(`(async()=>{const {appStore}=await import('/src/lib/stores/app.svelte.ts');appStore.createChat('${space}');})()`);await pause();
       for(const theme of ['dark','light']){
         await js(`(async()=>{(await import('/src/lib/stores/theme.svelte.ts')).themeStore.set('${theme}');})()`);await pause();
-        const centered=await js<{delta:number;overflow:number}>(`(()=>{const main=document.querySelector('.workspace-main').getBoundingClientRect();const node=document.querySelector('${space==='home'?'.composer-shell':space==='roleplay'?'.library-shelf':'[data-bots-surface] .bot-transcript > div, [data-bots-surface] > div'}');if(!node)return {delta:999,overflow:999};const r=node.getBoundingClientRect();return{delta:Math.abs(r.x+r.width/2-(main.x+main.width/2)),overflow:Math.max(0,r.right-main.right,main.left-r.left)};})()`);
+        const centered=await js<{delta:number;overflow:number}>(`(()=>{const main=document.querySelector('.workspace-main').getBoundingClientRect();const node=document.querySelector('${space==='home'?'.composer-shell':'.library-shelf'}');if(!node)return {delta:999,overflow:999};const r=node.getBoundingClientRect();return{delta:Math.abs(r.x+r.width/2-(main.x+main.width/2)),overflow:Math.max(0,r.right-main.right,main.left-r.left)};})()`);
         assert.ok(centered.delta<3&&centered.overflow<2,space+':'+JSON.stringify(centered));await capture(space+'-'+theme);
       }
     }
-    assert.equal(errors.length,0,errors.join('\n'));console.log('responsive-layout smoke: ok (narrow splits, separate model pickers, prompt actions, centered Home/Roleplay/Bots, light/dark)');
+    assert.equal(errors.length,0,errors.join('\n'));console.log('responsive-layout smoke: ok (narrow splits, separate model pickers, prompt actions, centered Home/Roleplay, light/dark)');
   }finally{win.destroy();}
 }
 const timer=setTimeout(()=>{console.error('layout smoke timed out');app.exit(1)},180000);run().finally(()=>clearTimeout(timer)).then(()=>app.exit(0),error=>{console.error(error);app.exit(1)});

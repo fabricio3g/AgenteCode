@@ -1,4 +1,5 @@
 import type { HomeRuntimeMeta } from '$shared/home-runtime';
+import type { CodeSpend } from '$shared/agente-protocol';
 import type { AgentArtifact, AppConfig, AgentOutcome, AgentStep, AgentStopReason, ArtifactManifest, ReasoningLevel, WorkspaceFile } from '$lib/types/chat';
 import type { CompletionResult, RequestMessage } from '$lib/services/chat/types';
 import type { SearchResult } from '$lib/types/bridge';
@@ -81,6 +82,7 @@ export type AgentTaskResult = {
   error?: string;
   warning?: string;
   usage?: CompletionResult['usage'];
+  spend?: CodeSpend;
 };
 
 export type RunAgentTaskArgs = {
@@ -88,11 +90,14 @@ export type RunAgentTaskArgs = {
   config?: AppConfig;
   chatId: string;
   homeRuntime?: HomeRuntimeMeta;
+  /** Canvas inputs captured before any asynchronous preparation or navigation. */
+  designContext?: { selection: string; references: string[] };
   historyIds?: string[];
   forkIndex?: number;
   onRuntime?: (meta: HomeRuntimeMeta) => void;
   onConversationIndex?: (index: number, sessionId: string, revision: number) => void;
   onUsage?: (usage: CompletionResult['usage']) => void;
+  onSpend?: (spend: CodeSpend) => void;
   systemPrompt?: string;
   messages: RequestMessage[];
   rawPrompt?: string;

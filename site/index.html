@@ -4,11 +4,11 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Agente — a workbench is more than a chat</title>
-  <meta name="description" content="Agente is an open-source Rust agent platform: a calm desktop, a keyboard-first terminal coding agent, persistent bots, and a runtime you can host yourself." />
+  <meta name="description" content="Agente is an open-source Rust agent platform: a calm desktop, a keyboard-first terminal coding agent, tools, and a runtime you can host yourself." />
   <meta name="color-scheme" content="dark light" />
   <meta name="theme-color" content="#161616" />
   <meta property="og:title" content="Agente — a workbench is more than a chat" />
-  <meta property="og:description" content="One Rust agent core behind a desktop, a terminal, a team of bots, and a server you host. Not a chat box." />
+  <meta property="og:description" content="One Rust agent core behind a desktop, a terminal, and a server you host. Not a chat box." />
   <meta property="og:image" content="assets/og.png" />
   <meta name="twitter:card" content="summary_large_image" />
   <link rel="icon" href="assets/favicon.ico" />
@@ -63,7 +63,7 @@
     <section class="hero" id="top">
       <div class="hero-inner">
         <h1>A workbench is<br />more than a chat.</h1>
-        <p class="lede">One Rust agent core behind a desktop, a terminal, a team of bots, and a server you host.</p>
+        <p class="lede">One Rust agent core behind a desktop, a terminal, and a server you host.</p>
         <div class="actions">
           <a class="ui-btn ui-btn-lg ui-btn-solid" href="#get-started">Get Agente <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14m-7-7 7 7-7 7"/></svg></a>
           <a class="ui-btn ui-btn-lg ui-btn-outline" href="https://github.com/fabricio3g/AgenteCode"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.4 5.4 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4"/></svg>View on GitHub</a>
@@ -91,8 +91,8 @@
         <div class="stage enter" style="--d:400ms">
           <article class="panel is-active" role="tabpanel" id="p-desktop" aria-labelledby="t-desktop">
             <figure class="frame"><img src="assets/desktop.webp" width="1571" height="906" alt="Agente Desktop: a new chat with the composer, Agent and Instant modes, and quick actions" /></figure>
-            <p class="caption"><strong>Desktop.</strong> A workspace for the whole task: Home, Code, Roleplay and Bots in one app, with local models and voice.</p>
-            <ul class="facts"><li>Home, Code, Roleplay and Bots</li><li>Artifacts in the dock</li><li>llama.cpp models, CPU or GPU</li><li>Voice in and out</li><li>Seven languages</li></ul>
+            <p class="caption"><strong>Desktop.</strong> A workspace for the whole task: Home, Code, Design and Roleplay in one app, with local models and voice.</p>
+            <ul class="facts"><li>Home, Code, Design and Roleplay</li><li>Artifacts in the dock</li><li>llama.cpp models, CPU or GPU</li><li>Voice in and out</li><li>Seven languages</li></ul>
           </article>
           <article class="panel" role="tabpanel" id="p-code" aria-labelledby="t-code">
             <figure class="frame"><img src="assets/terminal.webp" width="1566" height="743" alt="Agente Code in a terminal: the welcome card and session menu over the tile field, with the composer below" loading="lazy" /></figure>
@@ -101,13 +101,12 @@
           </article>
           <article class="panel" role="tabpanel" id="p-server" aria-labelledby="t-server">
             <figure class="frame frame-code">
-              <pre><code><span class="c-d"># keep sessions, bots and routines running</span>
+              <pre><code><span class="c-d"># keep sessions running</span>
 <span class="c-p">$</span> agente serve
 <span class="c-p">$</span> agente serve --status
 
 <span class="c-d"># join from any terminal</span>
 <span class="c-p">$</span> agente attach
-<span class="c-p">$</span> agente attach @colina
 
 <span class="c-d"># or host it yourself</span>
 <span class="c-p">$</span> docker run -d --name agente \
@@ -116,27 +115,9 @@
     ghcr.io/fabricio3g/agente-server</code></pre>
             </figure>
             <p class="caption"><strong>Server.</strong> The runtime behind Desktop, running headless on a machine you control. <span class="tag">Preview</span></p>
-            <ul class="facts"><li>Persistent sessions</li><li>Bots and routines</li><li>Token-authenticated</li><li>Docker image</li></ul>
+            <ul class="facts"><li>Persistent sessions</li><li>Shared agent tools</li><li>Token-authenticated</li><li>Docker image</li></ul>
           </article>
         </div>
-      </div>
-    </section>
-
-    <!-- Bots · the team, with Desktop's own animated faces -->
-    <section class="stack-card section team" id="bots" aria-labelledby="team-title">
-      <div class="wrap">
-        <div class="section-head center" data-reveal>
-          <h2 id="team-title">A team that remembers.</h2>
-          <p class="sub">Every bot has its own face, memory, model and routines, and hands work to the others.</p>
-        </div>
-        <ul class="team-row" data-reveal>
-          <li><span class="bot-face" data-face="colina" data-tint="blue"></span><b>Colina</b><span>Everyday assistant</span></li>
-          <li><span class="bot-face" data-face="scout" data-tint="green"></span><b>Scout</b><span>Research</span></li>
-          <li><span class="bot-face" data-face="quill" data-tint="yellow"></span><b>Quill</b><span>Writing</span></li>
-          <li><span class="bot-face" data-face="rook" data-tint="red"></span><b>Rook</b><span>Code review</span></li>
-          <li><span class="bot-face" data-face="juniper" data-tint="green"></span><b>Juniper</b><span>Scheduling</span></li>
-        </ul>
-        <p class="team-status" aria-live="off"><span id="team-line">&nbsp;</span></p>
       </div>
     </section>
 
@@ -154,7 +135,7 @@
           </div>
           <div data-reveal style="--d:160ms">
             <h3>Your machine</h3>
-            <p>Sessions, bots and memory are plain files on your disk. Keep them running on your own server with <code>agente serve</code>.</p>
+            <p>Sessions and project files stay on your disk. Keep them running on your own server with <code>agente serve</code>.</p>
           </div>
         </div>
         <div class="providers" data-reveal>

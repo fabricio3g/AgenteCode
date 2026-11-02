@@ -26,8 +26,14 @@ use crate::util::clean_path;
 struct ReadState {
     modified: Option<SystemTime>,
     len: u64,
-    /// `None` when only part of the file was read, so a full-content compare
-    /// is unavailable and freshness falls back to len+timestamp.
+    /// Lines at record time, for a useful "changed since" message.
+    lines: usize,
+    /// Whether the whole content was seen. A ranged view proves the file's
+    /// identity (hash) but not its tail, so a whole-file overwrite stays
+    /// refused while a targeted edit is allowed.
+    full: bool,
+    /// `None` only when the file is too large to hash; freshness then falls
+    /// back to len+timestamp.
     hash: Option<[u8; 32]>,
 }
 
@@ -61,27 +67,47 @@ pub fn record_read(path: &Path, content: &str) {
         ReadState {
             modified,
             len,
+            lines: line_count(content),
+            full: true,
             hash: Some(hash),
         },
     );
 }
 
-/// Record that only a slice of `path` was seen: freshness degrades to
-/// len+timestamp because the full content is not in hand.
-pub fn record_read_partial(path: &Path) {
+/// Record a ranged read. The whole file is hashed anyway (up to a size cap):
+/// a range read used to leave no hash at all, which made "read a range, then
+/// edit" fail on a file that had not changed.
+pub fn record_read_range(path: &Path) {
+    const MAX_HASH_BYTES: u64 = 8 * 1024 * 1024;
     let (modified, len) = match std::fs::metadata(path) {
         Ok(metadata) => (metadata.modified().ok(), metadata.len()),
         Err(_) => (None, 0),
     };
+    let bytes = (len <= MAX_HASH_BYTES)
+        .then(|| std::fs::read(path).ok())
+        .flatten();
+    let hash = bytes.as_deref().map(content_hash);
+    let lines = bytes
+        .as_deref()
+        .map(|bytes| line_count(&String::from_utf8_lossy(bytes)))
+        .unwrap_or(0);
     let key = state_key(path);
     lock_states().insert(
         key,
         ReadState {
             modified,
             len,
-            hash: None,
+            lines,
+            full: false,
+            hash,
         },
     );
+}
+
+fn line_count(text: &str) -> usize {
+    let newlines = text.bytes().filter(|byte| *byte == b'\n').count();
+    // A trailing newline closes the last line rather than opening a new one.
+    newlines + usize::from(!text.is_empty() && !text.ends_with('\n'))
 }
 
 /// Read-before-write guard. A missing destination is a new file (allowed);
@@ -114,39 +140,51 @@ pub async fn ensure_fresh(path: &Path) -> Result<(), ToolError> {
                     ReadState {
                         modified,
                         len,
+                        lines: recorded.lines,
+                        full: recorded.full,
                         hash: Some(hash),
                     },
                 );
                 Ok(())
             }
-            _ => Err(stale_error(path)),
+            Ok(bytes) => Err(stale_error(path, recorded.lines, &bytes)),
+            _ => Err(stale_error(path, recorded.lines, &[])),
         },
-        // A partial read cannot prove anything beyond an unchanged length.
+        // Only a file too large to hash falls back to length equality.
         None if recorded.len == len => Ok(()),
-        None => Err(stale_error(path)),
+        None => Err(stale_error(path, recorded.lines, &[])),
     }
 }
 
-fn stale_error(path: &Path) -> ToolError {
+/// The file changed since it was read. Say how much: a line count is the one
+/// fact that tells a model whether to re-read a hunk or the whole file.
+fn stale_error(path: &Path, recorded_lines: usize, current: &[u8]) -> ToolError {
+    let now = if current.is_empty() {
+        String::new()
+    } else {
+        let lines = line_count(&String::from_utf8_lossy(current));
+        format!(" It is {lines} lines now, {recorded_lines} when you read it.")
+    };
     ToolError::ExecutionError(format!(
-        "Refusing to modify {}: the file changed on disk since it was last read. \
-         Read it again with read_file.",
+        "Refusing to modify {}: the file changed on disk since it was last read.{now} \
+         Read it again with read_file, then retry the edit.",
         clean_path(&path.to_string_lossy())
     ))
 }
 
-/// [`ensure_fresh`] plus a partial-view guard for whole-file replacement:
-/// overwriting a file whose tail the model never read would silently destroy
-/// it, so a full `write_file` over a partial record is refused.
+/// [`ensure_fresh`] plus a guard for whole-file replacement: overwriting a file
+/// whose tail was never seen would silently destroy it, so a full `write_file`
+/// over a ranged view is refused (a targeted `edit_file` is not: the hash
+/// proves the bytes it matches are current).
 pub async fn ensure_fresh_full_overwrite(path: &Path) -> Result<(), ToolError> {
     ensure_fresh(path).await?;
     if tokio::fs::metadata(path).await.is_err() {
         return Ok(());
     }
-    let is_partial = lock_states()
+    let partial = lock_states()
         .get(&state_key(path))
-        .is_some_and(|state| state.hash.is_none());
-    if is_partial {
+        .is_some_and(|state| !state.full);
+    if partial {
         return Err(ToolError::ExecutionError(format!(
             "Refusing to overwrite {}: only part of the file was read. \
              Read the whole file with read_file first.",
@@ -309,25 +347,57 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn partial_read_degrades_to_length_check() {
+    async fn a_ranged_read_records_a_hash_so_an_unchanged_file_can_be_edited() {
         let dir = temp_dir("partial");
         let path = dir.join("a.txt");
-        tokio::fs::write(&path, "hello").await.unwrap();
-        record_read_partial(&path);
+        tokio::fs::write(&path, "hello\nworld\n").await.unwrap();
+        // A range view still proves the file's identity: the hash covers all
+        // of it, so "read a range, then edit" no longer fails on its own.
+        record_read_range(&path);
         assert!(ensure_fresh(&path).await.is_ok());
+        // A targeted edit is fine; replacing the whole file is not, because the
+        // tail was never seen.
+        let refusal = ensure_fresh_full_overwrite(&path).await.unwrap_err();
+        assert!(
+            refusal
+                .to_string()
+                .contains("only part of the file was read"),
+            "{refusal}"
+        );
 
-        tokio::fs::write(&path, "hello world").await.unwrap();
-        assert!(ensure_fresh(&path).await.is_err());
+        tokio::fs::write(&path, "hello\nworld\nagain\n")
+            .await
+            .unwrap();
+        let err = ensure_fresh(&path).await.unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("It is 3 lines now, 2 when you read it"),
+            "{err}"
+        );
 
         let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[tokio::test]
-    async fn partial_view_blocks_a_full_overwrite() {
+    async fn an_unhashed_record_still_refuses_a_whole_file_overwrite() {
         let dir = temp_dir("partial-overwrite");
         let path = dir.join("a.txt");
         tokio::fs::write(&path, "hello\nworld\n").await.unwrap();
-        record_read_partial(&path);
+        // Simulate a record that could not hash the content (a file beyond the
+        // hash cap): identity degrades to length, and a whole overwrite is
+        // still refused.
+        lock_states().insert(
+            state_key(&path),
+            ReadState {
+                modified: std::fs::metadata(&path)
+                    .ok()
+                    .and_then(|m| m.modified().ok()),
+                len: std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0),
+                lines: 2,
+                full: false,
+                hash: None,
+            },
+        );
 
         let err = ensure_fresh_full_overwrite(&path).await.unwrap_err();
         assert!(
@@ -337,7 +407,6 @@ mod tests {
 
         record_read(&path, "hello\nworld\n");
         assert!(ensure_fresh_full_overwrite(&path).await.is_ok());
-
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

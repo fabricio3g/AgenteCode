@@ -12,7 +12,8 @@
   import UiButton from '$lib/components/ui/Button.svelte';
   import { cn as uiClass } from '$lib/utils/cn';
 
-  import { Check, MoreHorizontal, Wrench } from 'lucide-svelte';
+  import { Check, Wrench } from 'lucide-svelte';
+  import ComposerGlyph from '$lib/features/shared/composer/ComposerGlyph.svelte';
   import { t } from 'svelte-i18n';
   import { Menu } from '$lib/components/ui';
   import { appStore } from '$lib/stores/app.svelte';
@@ -39,7 +40,7 @@
 <Menu bind:open placement="top-start" minWidth="15rem" label={$t('home.tools.title')}>
   {#snippet trigger(props)}
     <UiButton variant="plain" type="button" class={uiClass("tools-trigger", "ui-local-69ee6147", {"is-compact": compact, "composer-icon-control": compact, "is-open": open})}   title={$t('home.tools.title')} aria-label={`${$t('home.tools.title')} · ${$t('home.tools.button', { values: { on: totalOn, total } })}`} {...props}>
-      {#if compact}<MoreHorizontal class="size-3.5" />{:else}<Wrench class="size-3.5" /><span>{$t('home.tools.button', { values: { on: totalOn, total } })}</span>{/if}
+      {#if compact}<ComposerGlyph name="more" />{:else}<Wrench class="size-3.5" /><span>{$t('home.tools.button', { values: { on: totalOn, total } })}</span>{/if}
     </UiButton>
   {/snippet}
 
@@ -78,7 +79,7 @@
     white-space: nowrap;
   }
 
-  :global(.tools-trigger.is-compact.ui-local-69ee6147) { width:1.75rem;justify-content:center;padding:0; }
+  :global(.tools-trigger.is-compact.ui-local-69ee6147) { width:2rem;height:2rem;justify-content:center;padding:0; }
 
   :global(.tools-trigger:hover.ui-local-69ee6147),
   :global(.tools-trigger.is-open.ui-local-69ee6147) {

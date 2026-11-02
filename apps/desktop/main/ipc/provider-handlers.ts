@@ -95,6 +95,10 @@ export function registerProviderHandlers({ ipcMain, resolveProvider, resolveApiK
 
 type CoreModelInfo = { limits?: { context?: number | null; output?: number | null }; cost?: { input?: number | null; output?: number | null } | null };
 
+function optionalPrice(value: number | null | undefined): number | undefined {
+  return value != null && Number.isFinite(value) && value >= 0 ? value : undefined;
+}
+
 /** A model's window, output cap and prices as the core knows them; null when it knows no window. */
 async function coreCatalogModels(providerName: string): Promise<CatalogEntry[]> {
   const { runtimeConnection } = await import('../agente/rust-engine.ts');
@@ -112,8 +116,8 @@ async function coreModelContext(providerName: string, modelId: string) {
   return {
     context_window: contextWindow,
     max_completion_tokens: Number(info.limits?.output) || undefined,
-    prompt_cost_per_million: Number(info.cost?.input) || undefined,
-    completion_cost_per_million: Number(info.cost?.output) || undefined
+    prompt_cost_per_million: optionalPrice(info.cost?.input),
+    completion_cost_per_million: optionalPrice(info.cost?.output)
   };
 }
 

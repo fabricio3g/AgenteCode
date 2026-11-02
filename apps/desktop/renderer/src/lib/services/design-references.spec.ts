@@ -3,6 +3,9 @@ import type { RequestMessage } from './chat-api';
 import { referenceImages } from './design-references';
 
 describe('referenceImages', () => {
+  it('accepts raw image base64 as well as data URLs', () => {
+    expect(referenceImages({ role: 'user', content: '', attachments: [{ kind: 'image', name: 'image.png', base64: 'aGVsbG8=' }] } as unknown as RequestMessage)).toEqual([{ name: 'image.png', data: 'aGVsbG8=' }]);
+  });
   it('takes only the image attachments, as a name and the base64 payload', () => {
     const message = {
       role: 'user',

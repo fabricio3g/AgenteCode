@@ -11,7 +11,7 @@ describe('createDesignTools', () => {
     const borrowed = new Map(offered.map((name) => [name, stub(name)]));
     const names = [...createDesignTools(host, borrowed).keys()].sort();
     expect(names).toEqual([
-      'browser_open', 'browser_read', 'browser_screenshot', 'browser_snapshot', 'browser_tabs', 'design_edit', 'design_inspect', 'design_list',
+      'browser_open', 'browser_read', 'browser_screenshot', 'browser_snapshot', 'browser_tabs', 'design_3d', 'design_edit', 'design_inspect', 'design_list',
       'design_motion', 'design_preview', 'design_read', 'design_reference', 'design_snapshot', 'design_view', 'design_write', 'fetch_url', 'web_search'
     ]);
   });

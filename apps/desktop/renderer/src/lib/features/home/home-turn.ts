@@ -19,7 +19,8 @@ import {
   executionMetadata,
   finalizeAssistantMetadata,
   hasUsableAgentResult,
-  setAgentActivity
+  setAgentActivity,
+  reliableUsageMetadata
 } from '$lib/stores/app-store-helpers';
 
 type SearchMode = 'chat' | 'search' | 'deep' | 'max';
@@ -103,13 +104,21 @@ export function homeAgentCallbacks(args: {
   onArtifacts: (latest: ChatMessage['artifact']) => void;
   /** Punches the run's clock. Without it a live run and a silent one look alike. */
   touch: () => void;
-}): Pick<RunAgentTaskArgs, 'onContent' | 'onStep' | 'onProgress' | 'onReasoning' | 'onArtifact' | 'onSources'> {
+}): Pick<RunAgentTaskArgs, 'onContent' | 'onStep' | 'onProgress' | 'onReasoning' | 'onArtifact' | 'onSources' | 'onUsage' | 'onSpend'> {
   const { message, quiet, sync, persist, touch } = args;
   const showActivity = (label: string) => {
     const mapped = activityFromProgress(label);
     setAgentActivity(message, mapped.currentActivity, mapped.activityLabel);
   };
   return {
+    onUsage: (usage) => {
+      message.metadata = { ...message.metadata, ...reliableUsageMetadata(usage, 0, 'provider') };
+      sync();
+    },
+    onSpend: (spend) => {
+      message.metadata = { ...message.metadata, codeSpend: spend };
+      sync();
+    },
     onContent: (value) => {
       touch();
       message.content = value;
@@ -187,6 +196,7 @@ export function applyHomeAgentResult(
   const stopReason = agentStopReason(result);
   const usable = hasUsableAgentResult(result);
   const shared = {
+    ...(result.spend ? { codeSpend: result.spend } : {}),
     outcome,
     stopReason,
     workProduct: workProductRef(result),

@@ -21,13 +21,19 @@ pub async fn read(google: &Google, id: &str) -> Result<String, String> {
     let doc = google.get_json(&format!("{API}/{}", encode(id))).await?;
     Ok(format!(
         "Document: {} — {}\n\n{}",
-        doc.get("title").and_then(Value::as_str).unwrap_or("(untitled)"),
+        doc.get("title")
+            .and_then(Value::as_str)
+            .unwrap_or("(untitled)"),
         edit_url(id),
         render(&doc)
     ))
 }
 
-pub async fn create(google: &Google, title: &str, markdown: Option<&str>) -> Result<String, String> {
+pub async fn create(
+    google: &Google,
+    title: &str,
+    markdown: Option<&str>,
+) -> Result<String, String> {
     let doc = google.post_json(API, &json!({ "title": title })).await?;
     let id = doc
         .get("documentId")
@@ -67,7 +73,10 @@ impl Op {
                     .filter(|find| !find.is_empty())
                     .ok_or("replace needs a non-empty \"find\"")?,
                 replace: text("replace").unwrap_or_default(),
-                match_case: value.get("match_case").and_then(Value::as_bool).unwrap_or(false),
+                match_case: value
+                    .get("match_case")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false),
             }),
             other => Err(format!(
                 "Unknown op \"{other}\" — use append, prepend or replace"
@@ -87,7 +96,10 @@ pub async fn edit(google: &Google, id: &str, ops: &[Op]) -> Result<String, Strin
 
 async fn apply(google: &Google, id: &str, op: &Op) -> Result<String, String> {
     let doc = google.get_json(&format!("{API}/{}", encode(id))).await?;
-    let revision = doc.get("revisionId").and_then(Value::as_str).map(str::to_string);
+    let revision = doc
+        .get("revisionId")
+        .and_then(Value::as_str)
+        .map(str::to_string);
     let end = body_end(&doc);
     let (requests, summary) = match op {
         Op::Append(markdown) => {
@@ -172,10 +184,18 @@ fn parse_line(raw: &str) -> Line {
     let hashes = trimmed.chars().take_while(|c| *c == '#').count();
     let (body, style, list) = if (1..=6).contains(&hashes) && trimmed[hashes..].starts_with(' ') {
         const HEADINGS: [&str; 6] = [
-            "HEADING_1", "HEADING_2", "HEADING_3", "HEADING_4", "HEADING_5", "HEADING_6",
+            "HEADING_1",
+            "HEADING_2",
+            "HEADING_3",
+            "HEADING_4",
+            "HEADING_5",
+            "HEADING_6",
         ];
         (&trimmed[hashes + 1..], HEADINGS[hashes - 1], None)
-    } else if let Some(rest) = trimmed.strip_prefix("- ").or_else(|| trimmed.strip_prefix("* ")) {
+    } else if let Some(rest) = trimmed
+        .strip_prefix("- ")
+        .or_else(|| trimmed.strip_prefix("* "))
+    {
         (rest, "NORMAL_TEXT", Some("BULLET_DISC_CIRCLE_SQUARE"))
     } else if let Some(rest) = numbered(trimmed) {
         (rest, "NORMAL_TEXT", Some("NUMBERED_DECIMAL_ALPHA_ROMAN"))
@@ -337,7 +357,8 @@ fn render_content(content: &[Value], out: &mut Vec<String>) {
                             .iter()
                             .map(|cell| {
                                 let mut inner = Vec::new();
-                                if let Some(content) = cell.get("content").and_then(Value::as_array) {
+                                if let Some(content) = cell.get("content").and_then(Value::as_array)
+                                {
                                     render_content(content, &mut inner);
                                 }
                                 crate::text::collapse(&inner.join(" ")).replace('|', "\\|")
@@ -366,7 +387,10 @@ fn render_paragraph(paragraph: &Value) -> String {
         let Some(run) = element.get("textRun") else {
             continue;
         };
-        let content = run.get("content").and_then(Value::as_str).unwrap_or_default();
+        let content = run
+            .get("content")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
         let bold = run.pointer("/textStyle/bold").and_then(Value::as_bool) == Some(true);
         let trimmed = content.trim_end_matches('\n');
         if bold && !trimmed.trim().is_empty() {
@@ -388,7 +412,10 @@ fn render_paragraph(paragraph: &Value) -> String {
         }
         _ => match paragraph.get("bullet") {
             Some(bullet) => {
-                let depth = bullet.get("nestingLevel").and_then(Value::as_u64).unwrap_or(0);
+                let depth = bullet
+                    .get("nestingLevel")
+                    .and_then(Value::as_u64)
+                    .unwrap_or(0);
                 format!("{}- ", "  ".repeat(depth as usize))
             }
             None => String::new(),
@@ -439,8 +466,14 @@ mod tests {
             ]}},
         ]}});
         let text = render(&doc);
-        assert!(text.starts_with("# Plan\nShip it\n  - first\nTotal: **42**"), "{text}");
-        assert!(text.contains("| a | b\\|c |\n| --- | --- |\n| 1 | 2 |"), "{text}");
+        assert!(
+            text.starts_with("# Plan\nShip it\n  - first\nTotal: **42**"),
+            "{text}"
+        );
+        assert!(
+            text.contains("| a | b\\|c |\n| --- | --- |\n| 1 | 2 |"),
+            "{text}"
+        );
         assert_eq!(render(&json!({})), "(empty document)");
     }
 
@@ -453,7 +486,10 @@ mod tests {
         assert_eq!(bullet.text, "Revenue up");
         assert_eq!(bullet.list, Some("BULLET_DISC_CIRCLE_SQUARE"));
         assert_eq!(bullet.bold, vec![(0, 7)]);
-        assert_eq!(parse_line("3. third").list, Some("NUMBERED_DECIMAL_ALPHA_ROMAN"));
+        assert_eq!(
+            parse_line("3. third").list,
+            Some("NUMBERED_DECIMAL_ALPHA_ROMAN")
+        );
         assert_eq!(parse_line("#hashtag").style, "NORMAL_TEXT");
         assert_eq!(parse_line("a ** b").text, "a ** b");
     }
@@ -462,16 +498,28 @@ mod tests {
     fn appended_markdown_lands_on_its_own_paragraphs() {
         let requests = markdown_requests("# Title\n- one\n- two\nplain", 10, true, false);
         assert_eq!(requests[0]["insertText"]["location"]["index"], 10);
-        assert_eq!(requests[0]["insertText"]["text"], "\nTitle\none\ntwo\nplain");
+        assert_eq!(
+            requests[0]["insertText"]["text"],
+            "\nTitle\none\ntwo\nplain"
+        );
         let heading = requests
             .iter()
-            .find(|r| r.pointer("/updateParagraphStyle/paragraphStyle/namedStyleType") == Some(&json!("HEADING_1")))
+            .find(|r| {
+                r.pointer("/updateParagraphStyle/paragraphStyle/namedStyleType")
+                    == Some(&json!("HEADING_1"))
+            })
             .expect("heading style");
         // "\n" is index 10, "Title" spans 11..16.
         assert_eq!(heading["updateParagraphStyle"]["range"]["startIndex"], 11);
-        let bullets: Vec<_> = requests.iter().filter(|r| r.get("createParagraphBullets").is_some()).collect();
+        let bullets: Vec<_> = requests
+            .iter()
+            .filter(|r| r.get("createParagraphBullets").is_some())
+            .collect();
         assert_eq!(bullets.len(), 1, "one list for consecutive bullets");
-        assert_eq!(bullets[0]["createParagraphBullets"]["range"]["startIndex"], 17);
+        assert_eq!(
+            bullets[0]["createParagraphBullets"]["range"]["startIndex"],
+            17
+        );
     }
 
     #[test]
@@ -493,6 +541,8 @@ mod tests {
             Op::Append("hi".into())
         );
         assert!(Op::parse(&json!({"op": "replace", "find": ""})).is_err());
-        assert!(Op::parse(&json!({"op": "delete"})).unwrap_err().contains("append, prepend or replace"));
+        assert!(Op::parse(&json!({"op": "delete"}))
+            .unwrap_err()
+            .contains("append, prepend or replace"));
     }
 }

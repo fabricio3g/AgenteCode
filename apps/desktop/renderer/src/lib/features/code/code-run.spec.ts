@@ -88,9 +88,17 @@ describe('agente run reducer', () => {
       { type: 'tool_end', chatId: 'c', toolCallId: 't1', result: 'file body', isError: false }
     ]);
     const step = state.steps.find((s) => s.id === 't1');
+    expect(step?.toolInput).toBe(JSON.stringify({ path: 'a.ts' }, null, 2));
     expect(step?.status).toBe('done');
     expect(step?.output).toBe('file body');
     expect(step?.detail).toContain('a.ts');
+  });
+
+  it('bounds tool input retained in the trace', () => {
+    const state = createCodeRunState();
+    applyCodeAgentEvent(state, { type: 'tool_start', chatId: 'c', toolCallId: 'large', toolName: 'read', args: { text: 'x'.repeat(40_000) } });
+    expect(state.steps[0]?.toolInput?.length).toBeLessThanOrEqual(32_770);
+    expect(state.steps[0]?.toolInput?.endsWith('…')).toBe(true);
   });
 
   it('marks errored tools and surfaces the error message', () => {

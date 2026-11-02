@@ -88,10 +88,10 @@ import { registerToolingHandlers } from './ipc/tooling-handlers.ts';
 import { registerBrowserAgentHandlers } from './ipc/browser-agent-handlers.ts';
 import { registerCodeWorkspaceHandlers, disposeCodeWorkspace } from './ipc/code-workspace-handlers.ts';
 import { registerAgenteHandlers, disposeAgenteSessions as disposeAllAgenteSessions } from './ipc/agente-handlers.ts';
-import { registerBotHandlers } from './agente/bots.ts';
 import { registerBrowserChat, stopBrowserChat } from './agente/browser-chat.ts';
 import { registerDesignHandlers } from './ipc/design-handlers.ts';
 import { registerDesignReferenceHandlers } from './ipc/design-reference-handlers.ts';
+import { registerComputerHandlers } from './computer/desktop.ts';
 import type { ErrorMessageFn } from './ipc/types.ts';
 import { createLogger } from './utils/logger.ts';
 
@@ -364,6 +364,7 @@ export function registerIpcHandlers() {
 
   // ── Sandbox / browser / slides ──
   registerBrowserAgentHandlers(ipcMain);
+  registerComputerHandlers(ipcMain);
   registerCodeWorkspaceHandlers(ipcMain);
   registerToolingHandlers({
     ipcMain,
@@ -398,9 +399,6 @@ export function registerIpcHandlers() {
     ipcMain,
     getMainWindow,
   });
-
-  // ── Agente Bot (the bots living in the same runtime) ──
-  registerBotHandlers(ipcMain, getMainWindow);
 
   // ── Browser chat (the extension's side panel, answered with Home turns) ──
   registerBrowserChat(ipcMain, getMainWindow);

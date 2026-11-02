@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { createRequire } from 'node:module';
+import Database from '../../main/sqlite.ts';
 
 const require = createRequire(import.meta.url);
 const electronPath = require.resolve('electron');
@@ -14,12 +15,11 @@ let chatDb;
 
 function getDatabase() {
   try {
-    const Database = require('better-sqlite3');
     const probe = new Database(':memory:');
     probe.close();
     return Database;
   } catch (error) {
-    sqliteUnavailable = String(error?.message || error || 'better-sqlite3 unavailable');
+    sqliteUnavailable = String(error?.message || error || 'node:sqlite unavailable');
     return null;
   }
 }

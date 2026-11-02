@@ -37,7 +37,7 @@ function mockRailBounds(rail: HTMLElement): void {
 
 describe('context details', () => {
   it('shows exact usage, remaining and pricing on hover, then closes on leave', async () => {
-    const view = render(ContextUsageRing, { props: { usedTokens: 800, maxTokens: 1000, remaining: 150, estimatedInputCostUsd: 0.02 } });
+    const view = render(ContextUsageRing, { props: { usedTokens: 800, maxTokens: 1000, remaining: 150, promptCostPerMillionUsd: 0.02 } });
     const button = view.getByRole('button');
     expect(button.textContent?.trim()).toBe('');
     expect(view.queryByRole('tooltip')).toBeNull();
@@ -46,11 +46,35 @@ describe('context details', () => {
     expect(card.textContent).toContain('800 / 1,000');
     expect(card.textContent).toContain('80%');
     expect(card.textContent).toContain('150 tokens remaining');
-    expect(card.textContent).toContain('$0.0200');
+    expect(card.textContent).toContain('$0.02');
+    expect(card.textContent).not.toContain('$$');
     expect(document.body.contains(card)).toBe(true);
     expect(view.container.contains(card)).toBe(false);
     await fireEvent.mouseLeave(button);
     expect(view.queryByRole('tooltip')).toBeNull();
+  });
+
+  it('labels the available preview categories as estimates', async () => {
+    const view = render(ContextUsageRing, { props: { usedTokens: 120, maxTokens: 1000, estimated: true, breakdown: { system: 40, messages: 80 } } });
+    await fireEvent.mouseEnter(view.getByRole('button'));
+    const card = view.getByRole('tooltip');
+    expect(card.textContent).toContain('System prompt');
+    expect(card.textContent).toContain('~40');
+    expect(card.textContent).toContain('Messages');
+    expect(card.textContent).toContain('~80');
+    expect(card.textContent).toContain('tools and runtime additions are not included');
+  });
+
+  it('shows the runtime categories, tool costs and reply reserve in a bar', async () => {
+    const view = render(ContextUsageRing, { props: { usedTokens: 800, maxTokens: 1000,
+      breakdown: { system: 100, messages: 400, toolResults: 200, tools: 50, overhead: 20, reserve: 100, window: 1200 } } });
+    await fireEvent.mouseEnter(view.getByRole('button'));
+    const card = view.getByRole('tooltip');
+    expect(card.textContent).toContain('Tool results');
+    expect(card.textContent).toContain('Tool definitions');
+    expect(card.textContent).toContain('Reply reserve');
+    expect(card.querySelectorAll('.context-bar span')).toHaveLength(6);
+    expect(card.textContent).toContain('Category values are estimates');
   });
 
   it('opens on keyboard focus and dismisses with Escape or blur', async () => {
@@ -80,7 +104,7 @@ describe('context details', () => {
     const view = render(ContextUsageRing, { props: { usedTokens: 1000, maxTokens: 4000,
       spend: { costUsd: 0.04, promptTokens: 180, cacheReadTokens: 820, cacheWriteTokens: 0, estimated: true, unpriced: false } } });
     await fireEvent.mouseEnter(view.getByRole('button'));
-    expect(view.getByRole('tooltip').textContent).toContain('Estimated conversation cost: $0.040');
+    expect(view.getByRole('tooltip').textContent).toContain('Estimated conversation cost: ~$0.040');
     expect(view.getByRole('tooltip').textContent).toContain('82% from cache');
   });
 });

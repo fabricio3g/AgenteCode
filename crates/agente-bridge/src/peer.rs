@@ -143,15 +143,14 @@ fn client_info() -> ClientInfo {
     }
 }
 
-async fn open(pairing: &Pairing) -> anyhow::Result<(
+async fn open(
+    pairing: &Pairing,
+) -> anyhow::Result<(
     tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>,
     Option<ClientInfo>,
 )> {
-    let (mut socket, _) = tokio_tungstenite::connect_async(format!(
-        "ws://127.0.0.1:{}/",
-        pairing.port
-    ))
-    .await?;
+    let (mut socket, _) =
+        tokio_tungstenite::connect_async(format!("ws://127.0.0.1:{}/", pairing.port)).await?;
     let hello = Frame::hello(&pairing.token, Role::Peer, client_info());
     socket
         .send(Message::text(serde_json::to_string(&hello)?))
@@ -235,13 +234,9 @@ async fn connect_once(peer: &Arc<Peer>) -> anyhow::Result<()> {
                 },
             ),
             Frame::Ping { id } => {
-                let _ = peer
-                    .inner
-                    .lock()
-                    .expect("peer state")
-                    .tx
-                    .clone()
-                    .map(|tx| tx.send(Frame::Pong { id }));
+                if let Some(tx) = peer.inner.lock().expect("peer state").tx.clone() {
+                    let _ = tx.send(Frame::Pong { id });
+                }
             }
             Frame::Error { message } => tracing::debug!(%message, "hub refused a frame"),
             _ => {}

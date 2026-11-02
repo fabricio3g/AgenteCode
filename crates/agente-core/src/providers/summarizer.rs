@@ -94,6 +94,17 @@ async fn complete_text_with_budget(
         model.options.remove("max_completion_tokens");
     }
 
+    // Background completions are one-shot: a compaction checkpoint serializes
+    // the whole transcript under a summarization system prompt, and a title
+    // sends one short exchange. Neither prompt ever recurs, so a cache write
+    // is a 25% surcharge on tokens nothing will ever read (Anthropic prices a
+    // 5-minute write at 1.25x base input). `breakpoints()` honours a forced
+    // model option first, so this turns markers off for this call only and
+    // leaves the provider's transport policy alone.
+    model
+        .options
+        .insert("cache_control".into(), serde_json::json!(false));
+
     let (tx, mut rx) = tokio::sync::mpsc::channel(1024);
     let messages = messages.to_vec();
     let handle = tokio::spawn(async move {

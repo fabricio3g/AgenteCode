@@ -7,7 +7,7 @@
 /** Hover this long on the toggle before the preview opens. */
 export const PEEK_OPEN_MS = 40;
 /** Leave for this long before it closes, so crossing a gap doesn't flicker. */
-export const PEEK_CLOSE_MS = 80;
+export const PEEK_CLOSE_MS = 180;
 /** After a click on the toggle, ignore hover for this long. */
 const TOGGLE_QUIET_MS = 120;
 

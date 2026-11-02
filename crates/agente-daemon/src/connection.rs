@@ -10,7 +10,6 @@ use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
 
 use agente_acp::rpc::{self, FrameError, Incoming};
-use agente_bot::BotStore;
 use agente_protocol::{
     ApprovalDecision, Attachment, Message, RunId, SessionId, StartTurn, Trust, TurnId,
 };
@@ -36,7 +35,6 @@ pub(crate) type Failure = (i32, String);
 
 struct Connection {
     runtime: RuntimeHandle,
-    bots: Arc<BotStore>,
     outbox: mpsc::Sender<Value>,
     /// Turns started here: their events come from the turn's own channel, so
     /// the subscription must not send them a second time.
@@ -51,7 +49,7 @@ pub(crate) fn initialize_result() -> Value {
         "protocol_version": agente_protocol::PROTOCOL_VERSION,
         "server": "agente",
         "version": env!("CARGO_PKG_VERSION"),
-        "capabilities": ["bots", "routines", "project", "processes", "sessions", "turns", "edits", "desktop_v1", "home_turns_v1", "provider_settings_v1"],
+        "capabilities": ["project", "processes", "sessions", "turns", "edits", "desktop_v1", "home_turns_v1", "provider_settings_v1"],
     })
 }
 
@@ -75,7 +73,6 @@ where
 
     let connection = Arc::new(Connection {
         runtime: service.runtime,
-        bots: service.bots,
         outbox,
         own_turns: Mutex::new(HashSet::new()),
         subscription: Mutex::new(None),
@@ -549,6 +546,38 @@ impl Connection {
                 Ok(json!({ "ok": runtime.cancel_child(run_id) }))
             }
             "session.list" => to_json(runtime.session_infos()),
+            "goal.get" => {
+                let SessionParams { session_id } = parse(params)?;
+                let goal = agente_core::goal::GoalStore::user()
+                    .get(session_id.as_uuid())
+                    .map_err(|error| (rpc::INTERNAL_ERROR, error.to_string()))?;
+                to_json(goal)
+            }
+            "goal.set" => {
+                #[derive(Deserialize)]
+                struct GoalParams {
+                    session_id: SessionId,
+                    goal: agente_core::goal::Goal,
+                }
+                let GoalParams { session_id, goal } = parse(params)?;
+                if goal.objective.trim().is_empty() || goal.objective.len() > 16_384 {
+                    return Err((
+                        rpc::INVALID_PARAMS,
+                        "Goal must contain 1–16384 bytes".into(),
+                    ));
+                }
+                agente_core::goal::GoalStore::user()
+                    .put(session_id.as_uuid(), &goal)
+                    .map_err(|error| (rpc::INTERNAL_ERROR, error.to_string()))?;
+                to_json(goal)
+            }
+            "goal.clear" => {
+                let SessionParams { session_id } = parse(params)?;
+                agente_core::goal::GoalStore::user()
+                    .clear(session_id.as_uuid())
+                    .map_err(|error| (rpc::INTERNAL_ERROR, error.to_string()))?;
+                Ok(json!({ "ok": true }))
+            }
             "session.get" => {
                 let SessionParams { session_id } = parse(params)?;
                 Ok(json!({
@@ -593,6 +622,14 @@ impl Connection {
                     ));
                 }
                 let fork = runtime.fork_session(session_id);
+                if let Some(goal) = agente_core::goal::GoalStore::user()
+                    .get(session_id.as_uuid())
+                    .map_err(|error| (rpc::INTERNAL_ERROR, error.to_string()))?
+                {
+                    agente_core::goal::GoalStore::user()
+                        .put(fork.session_id.as_uuid(), &goal)
+                        .map_err(|error| (rpc::INTERNAL_ERROR, error.to_string()))?;
+                }
                 if let Some(index) = conversation_index {
                     runtime
                         .rewind(fork.session_id, index)
@@ -764,29 +801,8 @@ impl Connection {
                 let process = find_process(&params)?;
                 Ok(json!({ "stopped": agente_core::tools::processes::stop(&process) }))
             }
-            "bots.chat" => {
-                let start = crate::bots::chat_turn(&self.bots, params)?;
-                let session_id = start.session_id;
-                let turn = runtime.start_turn(start).map_err(runtime_failure)?;
-                Ok(json!({ "turn_id": self.pump(turn), "session_id": session_id }))
-            }
-            bots if bots.starts_with("bots.") => {
-                crate::bots::handle(&self.bots, runtime, method, params)
-            }
-            "routines.run_now" => {
-                let service = Service {
-                    runtime: self.runtime.clone(),
-                    bots: Arc::clone(&self.bots),
-                };
-                let turn = crate::routines::run_now(&service, params)?;
-                let session_id = turn.session_id();
-                Ok(json!({ "turn_id": self.pump(turn), "session_id": session_id }))
-            }
             "project.info" | "project.init" | "project.expand_prompt" | "mcp.status" => {
                 crate::project::handle(runtime, method, params)
-            }
-            routines if routines.starts_with("routines.") => {
-                crate::routines::handle(&self.bots, method, params)
             }
             _ => Err((rpc::METHOD_NOT_FOUND, format!("unknown method {method}"))),
         }

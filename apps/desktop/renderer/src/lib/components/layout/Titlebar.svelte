@@ -8,7 +8,7 @@
   import DownloadsButton from './DownloadsButton.svelte';
   import { onMount } from 'svelte';
   import { appStore } from '$lib/stores/app.svelte';
-  import { ArrowLeft, Globe, MoonStar, SunMedium } from 'lucide-svelte';
+  import { ArrowLeft, Globe, MoonStar, Search, SunMedium } from 'lucide-svelte';
   import Tooltip from '$lib/components/ui/Tooltip.svelte';
   import { Button } from '$lib/components/ui';
   import { themeStore } from '$lib/stores/theme.svelte';
@@ -22,7 +22,10 @@
   import { isCodeSession } from '$lib/features/shared/session-guards';
   import PanelTabs from './PanelTabs.svelte';
   import TitlebarLeftTools from './TitlebarLeftTools.svelte';
+  import SpaceSwitcher from './SpaceSwitcher.svelte';
   import WindowControls from './WindowControls.svelte';
+  import ComputerButton from '$lib/features/computer/ComputerButton.svelte';
+  import NotificationsButton from '$lib/features/shared/NotificationsButton.svelte';
 
   let { sidebarPreview = false, settingsOpen = false, onSidebarEnter, onSidebarLeave, onSidebarToggle }: {
     sidebarPreview?: boolean;
@@ -57,78 +60,19 @@
   const platform = typeof window !== 'undefined' ? (window.electronAPI?.platform ?? 'linux') : 'linux';
   const isMac = platform === 'darwin';
 
-  let safeEl = $state<HTMLElement | undefined>(undefined);
-
-  type OverlayControls = EventTarget & {
-    visible?: boolean;
-    getTitlebarAreaRect(): { x: number; width: number };
-  };
-  function overlayControls(): OverlayControls | undefined {
-    if (typeof navigator === 'undefined') return undefined;
-    return (navigator as Navigator & { windowControlsOverlay?: OverlayControls }).windowControlsOverlay;
-  }
-
-  /**
-   * Trailing reserve for the OS caption buttons, measured live. The CSS
-   * `titlebar-area-*` env can lag window-state changes, so the overlay rect
-   * is read directly and kept fresh on resize plus the overlay's own
-   * `geometrychange`. Without an overlay the vars stay unset and the bar
-   * falls back to full width with a plain gap.
-   */
-  function syncCaptionReserve() {
-    if (!safeEl || typeof window === 'undefined') return;
-    let rect: { x: number; width: number } | undefined;
-    try {
-      // A window without a caption overlay (Linux draws its own buttons) still
-      // exposes the API, with an empty rect: reserving from it pushed every
-      // button on the right out of the bar.
-      const overlay = overlayControls();
-      rect = overlay?.visible ? overlay.getTitlebarAreaRect() : undefined;
-    } catch {
-      rect = undefined;
-    }
-    if (!rect || rect.width <= 0) {
-      safeEl.style.removeProperty('--caption-inline-start');
-      safeEl.style.removeProperty('--caption-reserve');
-      return;
-    }
-    safeEl.style.setProperty('--caption-inline-start', `${Math.max(0, Math.round(rect.x))}px`);
-    safeEl.style.setProperty(
-      '--caption-reserve',
-      `${Math.max(12, Math.ceil(window.innerWidth - rect.x - rect.width) + 12)}px`
-    );
-  }
-
-  $effect(() => {
-    if (safeEl) syncCaptionReserve();
-  });
-
   onMount(() => {
     void downloadsStore.refresh();
-    syncCaptionReserve();
-    const overlay = overlayControls();
-    window.addEventListener('resize', syncCaptionReserve);
-    overlay?.addEventListener('geometrychange', syncCaptionReserve);
-    return () => {
-      window.removeEventListener('resize', syncCaptionReserve);
-      overlay?.removeEventListener('geometrychange', syncCaptionReserve);
-    };
   });
 </script>
 
 <!--
-  No caption buttons here, on any platform. The window is frameless, so on
-  Windows and Linux the OS draws minimize/maximize/close itself through
-  `titleBarOverlay`, and on macOS `titleBarStyle: 'hiddenInset'` leaves the
-  real traffic lights in place. Both sit outside the web contents, so Electron
-  reports the free area as `env(titlebar-area-*)` and `.titlebar-safe` stays
-  inside it. Hover states, hit areas at every DPI, the Win11 snap-layout
-  flyout, the system menu and the maximized restore glyph all come from the OS
-  that way — none of it survives being hand-drawn as SVG.
+  No OS caption buttons anywhere: Windows and Linux draw minimize/maximize/
+  close in the page (`WindowControls.svelte`), macOS keeps its traffic lights
+  outside the web contents. Nothing here has to reserve space for the platform
+  — only macOS needs its traffic-light inset, set in CSS below.
 -->
 
-<!-- Downloads and theme ride the titlebar right; spaces and Settings live in
-     the sidebar (SpaceSwitcher heads it). Code pane toggles live with each conversation. -->
+<!-- Spaces sit at the start of the titlebar; pane controls, downloads and theme sit at the end. -->
 {#snippet appTools()}
   <div class="flex items-center gap-0.5">
     {#if toolsHere && codeChat && codeProject}
@@ -154,7 +98,11 @@
         </UiIconButton>
       </Tooltip>
     {/if}
+    {#if !settingsOpen && appStore.currentChat && (appStore.activeSpace === 'home' || appStore.activeSpace === 'code')}
+      <ComputerButton />
+    {/if}
     <DownloadsButton />
+    <NotificationsButton />
     <Tooltip label={$t('titlebar.theme')} position="bottom">
       <UiIconButton label={$t('titlebar.theme')} size="sm"
 
@@ -174,7 +122,7 @@
   </div>
 {/snippet}
 <div
-  class="titlebar-row titlebar-drag relative z-20 h-9 shrink-0 select-none bg-background"
+  class="titlebar-row titlebar-drag relative z-20 h-12 shrink-0 select-none bg-background"
   class:is-mac={isMac}
   role="banner"
 >
@@ -186,10 +134,17 @@
     ></div>
   {/if}
 
-  <div class="titlebar-safe" bind:this={safeEl}>
+  <div class="titlebar-safe">
     <div class="titlebar-left flex min-w-0 items-center">
       {#if !settingsOpen}
-        <TitlebarLeftTools expanded={appStore.sidebarOpen || sidebarPreview} onToggle={onSidebarToggle} onEnter={onSidebarEnter} onLeave={onSidebarLeave} />
+        {#if !appStore.sidebarOpen}
+          <TitlebarLeftTools expanded={appStore.sidebarOpen || sidebarPreview} onToggle={onSidebarToggle} onEnter={onSidebarEnter} onLeave={onSidebarLeave} />
+        {/if}
+        <SpaceSwitcher />
+        <Tooltip label={$t('titlebar.search')} shortcut="mod+shift+k" position="bottom">
+          <UiIconButton label={$t('titlebar.search')} title="" size="sm" class="titlebar-no-drag"
+            onclick={() => appStore.openSearch()}><Search /></UiIconButton>
+        </Tooltip>
       {:else}
         <div class="flex items-center gap-1.5 pl-1.5">
           <Tooltip label={$t('shortcuts.backToConversation')} shortcut="escape">
@@ -225,34 +180,27 @@
   }
 
   /*
-   * Clearance for the OS caption buttons, measured live (see
-   * syncCaptionReserve): the overlay rect is read directly and stored as
-   * vars, so the reserve tracks minimize/maximize/close exactly — no fixed
-   * caption width to overshoot narrower setups, and no env measurement to
-   * go stale across window-state changes. Without an overlay the vars stay
-   * unset: full width, plain gap.
+   * The bar spans the whole window: the caption is ours on Windows and Linux,
+   * so nothing has to be reserved for the platform. The trailing padding only
+   * keeps the last mark off the window edge.
    */
   .titlebar-safe {
     /* Above the settings strip (absolute, painted first) so its back button shows. */
     position: relative;
     z-index: 1;
-    width: calc(100% - var(--caption-inline-start, 0px));
-    margin-inline-start: var(--caption-inline-start, 0px);
+    width: 100%;
     height: 100%;
-    padding-inline-end: max(0.75rem, var(--caption-reserve, 0px));
+    padding-inline-end: 0.75rem;
     display: grid;
-    /* Symmetric side tracks so the drag space stays balanced. The `0`
-       minimums matter: `max-content` tracks would refuse to shrink and push
-       content under the native caption controls. */
-    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    /* Keep navigation and window actions visible while the drag space shrinks. */
+    grid-template-columns: auto minmax(0, 1fr) auto;
     align-items: center;
     overflow: hidden;
   }
 
   /*
-   * macOS paints no overlay, so there is no `titlebar-area-*` to inset by. Its
-   * traffic lights still sit on top of the content, so reserve their width
-   * here instead, at the system inset.
+   * macOS keeps its traffic lights, which sit on top of the content outside the
+   * web contents: reserve their width at the system inset.
    */
   .titlebar-row.is-mac .titlebar-safe {
     padding-inline-start: 78px;

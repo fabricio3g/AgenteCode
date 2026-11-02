@@ -4,32 +4,29 @@
   import UiListRow from '$lib/components/ui/ListRow.svelte';
 
   import UiButton from '$lib/components/ui/Button.svelte';
-  import UiInput from '$lib/components/ui/Input.svelte';
   import UiIconButton from '$lib/components/ui/IconButton.svelte';
   import EmptyState from '$lib/components/ui/EmptyState.svelte';
   import { cn as uiClass } from '$lib/utils/cn';
 
-  let { onNavigate, lead }: { onNavigate?: () => void; lead?: Snippet } = $props();
-  import type { Snippet } from 'svelte';
-  import SpaceSwitcher from './SpaceSwitcher.svelte';
+  let { onNavigate, onToggle }: { onNavigate?: () => void; onToggle?: () => void } = $props();
+  import { PanelLeftClose } from 'lucide-svelte';
   import SidebarInstances from './SidebarInstances.svelte';
   import { appStore } from '$lib/stores/app.svelte';
   import CodeSidebar from '$lib/features/code/CodeSidebar.svelte';
+  import PlanCard from '$lib/features/code/PlanCard.svelte';
   import { codeStore } from '$lib/features/code/code.svelte';
   import { t } from 'svelte-i18n';
   import { slide } from 'svelte/transition';
   import { flip } from 'svelte/animate';
   import { smoothEase } from '$lib/utils/transitions';
   import { formatShortcut } from '$lib/utils/shortcuts';
-  import { Settings as SettingsIcon, ChevronsDownUp, ChevronsUpDown, Drama, FolderOpen, MessageSquare, MoreHorizontal, PenTool, Plus, Puzzle, Search, Trash2 } from 'lucide-svelte';
+  import { Settings as SettingsIcon, ChevronsDownUp, ChevronsUpDown, Drama, FolderOpen, MessageSquare, MoreHorizontal, PenTool, Plus, Puzzle, Trash2 } from 'lucide-svelte';
   import Menu from '$lib/components/ui/Menu.svelte';
   import MenuItem from '$lib/components/ui/MenuItem.svelte';
   import { confirmStore } from '$lib/stores/confirm.svelte';
   import { toastStore } from '$lib/stores/toast.svelte';
   import { copy } from '$lib/copy';
   import SessionRow from '$lib/features/shared/SessionRow.svelte';
-  import BotRoster from '$lib/features/bots/BotRoster.svelte';
-  import { botsStore } from '$lib/features/bots/bots.svelte';
 
   let collapsedGroups = $state<Set<number>>(new Set([4]));
 
@@ -86,21 +83,15 @@
     return groups;
   });
 
-  const inBots = $derived(appStore.activeTab === 'bots');
+  const liveCodeRun = $derived(appStore.activeSpace === 'code' && appStore.currentChatId ? codeStore.runFor(appStore.currentChatId) : undefined);
   const newButtonLabel = $derived(
-    inBots
-      ? $t('bots.new')
-      : appStore.activeSpace === 'code'
+    appStore.activeSpace === 'code'
       ? $t('code.addProject')
       : appStore.activeSpace === 'roleplay'
         ? copy.roleplay.newRoleplay
         : appStore.activeSpace === 'design'
           ? copy.design.newDesign
           : $t('sidebar.newChat')
-  );
-
-  const searchLabel = $derived(
-    appStore.activeSpace === 'code' ? $t('code.searchConversations') : $t('sidebar.searchChats')
   );
 
   let listMenuOpen = $state(false);
@@ -129,10 +120,6 @@
 
   function createForActiveSpace() {
     onNavigate?.();
-    if (inBots) {
-      botsStore.editor = 'new';
-      return;
-    }
     if (appStore.activeSpace === 'code') {
       void codeStore.addProject();
       return;
@@ -147,7 +134,16 @@
 </script>
 
 <aside class="sidebar relative isolate flex h-full w-full flex-col overflow-hidden bg-sidebar text-sidebar-foreground">
-  <SpaceSwitcher {lead} {onNavigate} />
+  <div class="sidebar-head" class:is-mac={appStore.sidebarOpen && typeof window !== 'undefined' && window.electronAPI?.platform === 'darwin'}>
+    <span class="sidebar-brand">{'Agente'}</span>
+    {#if onToggle && appStore.sidebarOpen}
+      <UiIconButton label={$t('titlebar.hideSidebar')}
+        size="sm" data-sidebar-toggle aria-controls="app-sidebar" aria-expanded="true"
+        onclick={onToggle}>
+        <PanelLeftClose />
+      </UiIconButton>
+    {/if}
+  </div>
   <div class="relative z-10 flex min-h-0 flex-1 flex-col px-2 pb-1">
     <div class="flex flex-col gap-0.5 pb-2 pt-1">
       <UiListRow
@@ -161,7 +157,7 @@
 
       <!-- The Code agent does not produce artifacts; the toggle list only
            concerns Home and Roleplay. -->
-      {#if appStore.activeSpace !== 'code' && !inBots}
+      {#if appStore.activeSpace !== 'code'}
         <UiListRow
           class={uiClass("sidebar-row", "ui-local-0456fb2e", {"is-current": appStore.homeView === 'artifacts'})}
 
@@ -174,7 +170,6 @@
         </UiListRow>
       {/if}
       <!-- Files spans every space: Code uploads and the documents its agent writes live here too. -->
-      {#if !inBots}
         <UiListRow
           class={uiClass("sidebar-row", "ui-local-0456fb2e", {"is-current": appStore.homeView === 'files'})}
 
@@ -185,28 +180,10 @@
           <FolderOpen class="sidebar-row-icon" />
           <span class="sidebar-row-label">{$t('sidebar.files')}</span>
         </UiListRow>
-      {/if}
     </div>
 
-    {#if inBots}
-      <!-- Filters the roster in place, but wears the same row as every other
-           space's search so the sidebar reads the same everywhere. -->
-      <label class="sidebar-row bot-filter">
-        <Search class="sidebar-row-icon" />
-        <UiInput variant="inline" class={uiClass('h-auto px-0', "ui-local-0456fb2e")} data-bot-search bind:value={botsStore.query} placeholder={$t('bots.search')} aria-label={$t('bots.search')} />
-      </label>
-    {:else}
+    {#if appStore.activeSpace !== 'code' && groupedChats.length}
     <div class="search-line">
-      <UiListRow
-        type="button"
-        class={uiClass("sidebar-row min-w-0 flex-1", "ui-local-0456fb2e")}
-        onclick={() => { appStore.chatSearchOpen = true; }}
-        title={`${searchLabel} (${formatShortcut('mod+shift+k')})`}
-      >
-        <Search class="sidebar-row-icon" />
-        <span class="sidebar-row-label">{searchLabel}</span>
-      </UiListRow>
-      {#if appStore.activeSpace !== 'code' && groupedChats.length}
         <!-- List options stay behind one small button: clearing history is
              rare and destructive, so it never gets a row of its own. -->
         <Menu bind:open={listMenuOpen} placement="bottom-end" minWidth="12rem" label={$t('sidebar.listOptions')}>
@@ -221,16 +198,16 @@
           <div class="ui-menu-separator" role="separator"></div>
           <MenuItem icon={Trash2} danger label={$t('sidebar.clearHistory')} onselect={() => void clearHistory()} />
         </Menu>
-      {/if}
     </div>
     {/if}
 
-    <div class="chat-list flex-1 overflow-y-auto">
+    {#if appStore.sidebarOpen && liveCodeRun?.running && liveCodeRun.todos.length}
+      <div class="sidebar-todos"><PlanCard todos={liveCodeRun.todos} running={!liveCodeRun.stopping} compact /></div>
+    {/if}
+    <div class="chat-list sidebar-scroll flex-1 overflow-y-auto">
       <!-- Code tab: the sidebar is a project-folder tree; each folder holds
            that project's agent conversations. -->
-      {#if inBots}
-        <BotRoster />
-      {:else if appStore.activeSpace === 'code'}
+      {#if appStore.activeSpace === 'code'}
         <CodeSidebar />
       {:else if groupedChats.length}
         {#each groupedChats as group (group.key)}
@@ -291,25 +268,18 @@
 </aside>
 
 <style>
+  .sidebar-todos { flex:none; max-height:min(16rem, 35%); overflow-y:auto; margin-bottom:0.375rem; }
+  .sidebar-head { display: flex; flex-shrink: 0; align-items: center; justify-content: space-between; gap: 0.5rem; height: 3rem; padding: 0 0.5rem 0 1rem; -webkit-app-region: drag; }
+  .sidebar-head :global(button) { -webkit-app-region: no-drag; }
+  .sidebar-head.is-mac { padding-inline-start: 78px; }
+  .sidebar-brand { min-width: 0; font-size: var(--text-sm); font-weight: 600; }
   /* Chats sit one step in from their date, so the list reads as groups. */
   .chat-group-rows { padding-inline-start: 0.25rem; }
 
-  .search-line { display: flex; align-items: center; gap: 0.25rem; }
+  .search-line { display: flex; justify-content: flex-end; align-items: center; }
   /* A bare glyph until hovered or open, so the row stays quiet. */
   :global(.list-options.ui-local-0456fb2e) { flex-shrink: 0; border-color: transparent; background: transparent; box-shadow: none; opacity: 0.7; }
   :global(.list-options:hover.ui-local-0456fb2e), :global(.list-options.is-open.ui-local-0456fb2e) { opacity: 1; background: var(--float-row-hover); }
-
-  .bot-filter :global(input.ui-local-0456fb2e) {
-    min-width: 0;
-    flex: 1;
-    background: transparent;
-    color: inherit;
-    outline: none;
-  }
-
-  .bot-filter :global(input.ui-local-0456fb2e::placeholder) {
-    color: inherit;
-  }
 
   .sidebar-footer {
     display: flex;

@@ -35,8 +35,8 @@ export function resolveAgenteBinary(options: { resourcesPath?: string; repoRoot?
  */
 export function defaultSocketPath(env: NodeJS.ProcessEnv = process.env, platform: NodeJS.Platform = process.platform): string {
   if (platform === 'win32') return `\\\\.\\pipe\\agente-${env.USERNAME ?? 'user'}`;
-  const folder = env.XDG_RUNTIME_DIR ? path.join(env.XDG_RUNTIME_DIR, 'agente') : path.join(env.HOME ?? os.homedir(), '.agente');
-  return path.join(folder, 'agente.sock');
+  const folder = env.XDG_RUNTIME_DIR ? path.posix.join(env.XDG_RUNTIME_DIR, 'agente') : path.posix.join(env.HOME ?? os.homedir(), '.agente');
+  return path.posix.join(folder, 'agente.sock');
 }
 
 type DaemonOptions = {
@@ -46,7 +46,7 @@ type DaemonOptions = {
   env?: NodeJS.ProcessEnv;
 };
 
-export const REQUIRED_CAPABILITIES = ['bots', 'routines', 'project', 'processes', 'sessions', 'turns', 'edits', 'desktop_v1'] as const;
+export const REQUIRED_CAPABILITIES = ['project', 'processes', 'sessions', 'turns', 'edits', 'desktop_v1'] as const;
 
 type RuntimeHello = { protocol_version: number; version: string; capabilities?: string[] };
 

@@ -234,6 +234,7 @@ impl RuntimeSupervisor {
                 sequence: AtomicU64::new(0),
                 task_sequence: AtomicU64::new(0),
                 system_prompts: Mutex::new(HashMap::new()),
+                context_gaps: Mutex::new(HashMap::new()),
                 events,
                 edits: Mutex::new(edits::EditLog::default()),
                 live: RwLock::new(Arc::new(live)),
@@ -263,6 +264,10 @@ struct RuntimeInner {
     /// never appear in it — the legacy loop registers MCP adapters on its
     /// own registry).
     system_prompts: Mutex<HashMap<String, String>>,
+    /// What each session's provider counted beyond our estimate last time.
+    /// Carried into the next turn so its first request is gated on a
+    /// calibrated number instead of a blind char/4 estimate.
+    context_gaps: Mutex<HashMap<SessionId, usize>>,
     /// Every event of every turn, for clients that attach to the runtime
     /// rather than to one turn (a daemon, a second window).
     events: broadcast::Sender<RuntimeEventEnvelope>,
@@ -621,6 +626,24 @@ impl RuntimeInner {
             .clone()
     }
 
+    /// The tokenizer gap the previous turn measured for this session.
+    pub(crate) fn context_gap(&self, session_id: SessionId) -> usize {
+        self.context_gaps
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .get(&session_id)
+            .copied()
+            .unwrap_or(0)
+    }
+
+    /// Remember what the provider counted beyond our estimate, per session.
+    pub(crate) fn remember_context_gap(&self, session_id: SessionId, gap: usize) {
+        self.context_gaps
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .insert(session_id, gap);
+    }
+
     fn lock_edits(&self) -> std::sync::MutexGuard<'_, edits::EditLog> {
         self.edits
             .lock()
@@ -975,13 +998,14 @@ impl RuntimeHandle {
         let thinking = start
             .thinking_level
             .unwrap_or_else(|| live.default_thinking_level.clone());
-        let turn_tools = client_tools.unwrap_or_else(|| {
+        let mut turn_tools = client_tools.unwrap_or_else(|| {
             match (
                 has_persona,
                 start.profile.as_deref(),
                 &self.inner.config.profile_source,
             ) {
                 (true, Some(profile), Some(source)) => agente_core::agent::TurnTools {
+                    mcp_turn_id: None,
                     extra: source.tools(
                         profile,
                         &ProfileTurn {
@@ -1038,6 +1062,7 @@ impl RuntimeHandle {
             .wrapping_add(1);
         let (legacy_tx, legacy_rx) = std::sync::mpsc::channel();
 
+        turn_tools.mcp_turn_id = Some(turn_id.as_uuid());
         let _legacy_task = agente_core::agent::spawn_chat_task(
             session_id.as_uuid(),
             task_id,
@@ -1059,6 +1084,8 @@ impl RuntimeHandle {
             live.subagent_models.clone(),
             live.smart_compaction,
             live.compaction_model.clone(),
+            // The gap this session measured last turn.
+            self.inner.context_gap(session_id),
             live.max_parallel_subagents,
             inbox,
             turn_tools,

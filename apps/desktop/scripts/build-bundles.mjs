@@ -19,7 +19,6 @@ const RUNTIME_EXTERNALS = [
   'sharp',
   'ffmpeg-static',
   'ffprobe-static',
-  'better-sqlite3',
   '@lancedb/*',
   'apache-arrow',
   '@huggingface/transformers',

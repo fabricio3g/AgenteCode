@@ -48,7 +48,7 @@
   }
 
   // The open space's conversations only; Bots hold no chats.
-  const spaceChats = $derived(appStore.botsOpen ? [] : appStore.getSessionsForSpace(appStore.activeSpace));
+  const spaceChats = $derived(appStore.getSessionsForSpace(appStore.activeSpace));
 
   interface SearchHit {
     chat: ChatSession;

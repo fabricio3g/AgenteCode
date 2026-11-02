@@ -1,19 +1,24 @@
-import type { LocalModelSelection } from './agente-protocol.ts';
+import type { ContextBreakdown, LocalModelSelection } from './agente-protocol.ts';
 import type { ClientToolCall, ClientToolDefinition, ClientToolResult, HomeTurnPolicy, Message, RuntimeEventEnvelope, SessionSnapshot, TurnOutcome } from './agente-protocol.gen.ts';
 
 export interface HomeRuntimeMeta {
   sessionId: string;
+  /** A goal was set before this session's first model turn. */
+  goalPending?: boolean;
   revision: number;
   provider: string;
   model: string;
   contextWindow: number;
   contextTokens?: number;
+  contextBreakdown?: ContextBreakdown;
   estimated?: boolean;
   /** Visible message IDs, not model/tool messages; detects edits and branches. */
   historyIds: string[];
   files?: Record<string, string>;
 }
 export interface HomeStartArgs {
+  chatId?: string;
+  computerEnabled?: boolean;
   localSelection?: LocalModelSelection;
   runId: string;
   sessionId?: string;

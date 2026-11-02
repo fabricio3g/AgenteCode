@@ -21,6 +21,7 @@ use crate::types::AgentMode;
 pub struct McpToolAdapter {
     name: String,
     owner_session: Option<uuid::Uuid>,
+    owner_turn: Option<uuid::Uuid>,
     description: String,
     parameters: serde_json::Value,
     plan_mode: bool,
@@ -37,6 +38,7 @@ impl McpToolAdapter {
         Self {
             name: mcp_tool.full_name,
             owner_session: None,
+            owner_turn: None,
             description: mcp_tool.description,
             parameters: mcp_tool.input_schema,
             plan_mode: mcp_tool.plan_mode,
@@ -90,7 +92,31 @@ impl McpToolAdapter {
     fn request_meta(&self) -> Option<serde_json::Value> {
         self.owner_session
             .filter(|_| self.name.starts_with("desktop_"))
-            .map(|session| serde_json::json!({ "agente/sessionId": session.to_string() }))
+            .map(|session| {
+                let mut meta = serde_json::json!({ "agente/sessionId": session.to_string() });
+                if let Some(turn) = self.owner_turn {
+                    meta["agente/turnId"] = serde_json::json!(turn.to_string());
+                }
+                meta
+            })
+    }
+
+    pub fn all_for_turn(
+        manager: &Arc<McpManager>,
+        session: uuid::Uuid,
+        turn: uuid::Uuid,
+    ) -> Vec<Box<dyn Tool>> {
+        manager
+            .tools()
+            .into_iter()
+            .filter(|tool| tool.full_name.starts_with("desktop_computer_"))
+            .map(|tool| {
+                let mut adapter = Self::from_mcp_tool(tool, Arc::clone(manager));
+                adapter.owner_session = Some(session);
+                adapter.owner_turn = Some(turn);
+                Box::new(adapter) as Box<dyn Tool>
+            })
+            .collect()
     }
 
     /// Desktop tools inherit the root conversation, including from children.
@@ -255,6 +281,12 @@ mod tests {
         assert_eq!(
             tool.request_meta().unwrap()["agente/sessionId"],
             session.to_string()
+        );
+        let turn = uuid::Uuid::new_v4();
+        tool.owner_turn = Some(turn);
+        assert_eq!(
+            tool.request_meta().unwrap()["agente/turnId"],
+            turn.to_string()
         );
     }
 

@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import type { ChatMessage } from '$lib/types/chat';
+import { referenceImages } from '$lib/services/design-references';
+import { normalizeAgentHistory } from '$lib/services/agent-run-plan';
+import { buildRequestMessagesFromHistory } from '$lib/stores/app-store-helpers';
 import {
   appendRoleplayNudge,
   appendRoleplayStoryTurn,
@@ -28,6 +31,16 @@ const attribution: RoleplayAttribution = {
 };
 
 describe('buildRequestMessagesWithPatchedUser attribution', () => {
+  it('delivers image-only messages and preserves earlier images for Design and Home', () => {
+    const attachment = { id:'image', name:'reference.png', size:3, type:'image/png', kind:'image' as const, base64:'data:image/png;base64,AAAA' };
+    const rows: ChatMessage[] = [message({id:'old',role:'user',content:'',attachments:[attachment]}),message({id:'current',role:'user',content:'',attachments:[attachment]})];
+    const outbound = buildRequestMessagesWithPatchedUser({messages:rows,assistantMessageId:'answer',userMessageId:'current',userContent:'',buildContextualPrompt: text => text});
+    expect(outbound).toHaveLength(2);
+    expect(referenceImages(outbound[1])).toEqual([{name:'reference.png',data:'AAAA'}]);
+    expect(referenceImages(normalizeAgentHistory(outbound)[1])).toEqual([{name:'reference.png',data:'AAAA'}]);
+    expect(outbound[0].attachments?.[0].base64).toBe(attachment.base64);
+    expect(buildRequestMessagesFromHistory(rows)[0].attachments?.[0].base64).toBe(attachment.base64);
+  });
   it('prefixes group turns with their speaker name', () => {
     const messages = [
       message({ id: 'm1', speakerId: 'aiko', content: '"You again?"' }),

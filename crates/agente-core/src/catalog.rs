@@ -144,8 +144,15 @@ impl ModelCost {
 
     /// USD cost of one call. Rates are per million tokens and each count is
     /// its own bucket (uncached input, output, cache reads, cache writes).
-    /// A catalog without cache rates bills those tokens at the input rate —
-    /// an upper bound, never an undercount.
+    ///
+    /// When a catalog omits a cache rate, that token is billed at the base
+    /// input rate. That is the neutral assumption, not an Anthropic-ism:
+    /// only the Anthropic family sells a cache *write* as a distinct product
+    /// (1.25× for 5 minutes, 2× for an hour) and models.dev already publishes
+    /// `cache_write` for those models. DeepSeek, GLM, OpenCode Go and OpenAI
+    /// cache prefixes automatically with no write charge at all — their
+    /// misses are ordinary input — so inventing a multiplier here would
+    /// overcharge every one of them.
     ///
     /// The request's whole prompt (input + cache read + cache write) picks
     /// the context tier: past a tier's size every bucket bills at its rates.
@@ -161,12 +168,44 @@ impl ModelCost {
             Some(t) => (t.input, t.output, t.cache_read, t.cache_write),
             None => (self.input, self.output, self.cache_read, self.cache_write),
         };
-        let or_input = |rate: f64| if rate > 0.0 { rate } else { rate_in };
+        let read_rate = if rate_read > 0.0 { rate_read } else { rate_in };
+        let write_rate = if rate_write > 0.0 {
+            rate_write
+        } else {
+            rate_in
+        };
         (f64::from(input) * rate_in
             + f64::from(output) * rate_out
-            + f64::from(cache_read) * or_input(rate_read)
-            + f64::from(cache_write) * or_input(rate_write))
+            + f64::from(cache_read) * read_rate
+            + f64::from(cache_write) * write_rate)
             / 1_000_000.0
+    }
+
+    /// What one call cost, and whose number it is.
+    ///
+    /// The one place the rule lives: a provider that reports its own charge
+    /// wins (it is the bill), otherwise the catalog price is our estimate. The
+    /// flag is what the UIs print as `~`, so it has to mean exactly "this
+    /// number is ours" — `true` with no price when the model is unpriced at
+    /// all, which the UIs show as `+`. Subagent calls, compaction checkpoints
+    /// and main-loop calls all price through here.
+    pub fn call_cost(
+        &self,
+        reported: Option<f64>,
+        input: u32,
+        output: u32,
+        cache_read: u32,
+        cache_write: u32,
+    ) -> (Option<f64>, bool) {
+        match reported {
+            Some(cost) if cost.is_finite() => (Some(cost), false),
+            Some(_) => (None, true),
+            None => (
+                self.is_priced()
+                    .then(|| self.cost_usd(input, output, cache_read, cache_write)),
+                true,
+            ),
+        }
     }
 }
 
@@ -915,8 +954,58 @@ pub fn effective_limits(limit: &ModelLimits) -> ModelLimits {
     }
 }
 
+/// An id with its minor versions dropped: `deepseek-v4.1-flash` and
+/// `deepseek-v4-flash` share one key.
+fn family_key(model_id: &str) -> String {
+    let bare = model_id
+        .rsplit('/')
+        .next()
+        .unwrap_or(model_id)
+        .to_lowercase();
+    let mut out = String::with_capacity(bare.len());
+    let mut chars = bare.chars().peekable();
+    let mut prev_digit = false;
+    while let Some(c) = chars.next() {
+        if c == '.' && prev_digit && chars.peek().is_some_and(|n| n.is_ascii_digit()) {
+            while chars.peek().is_some_and(|n| n.is_ascii_digit()) {
+                chars.next();
+            }
+            prev_digit = false;
+            continue;
+        }
+        prev_digit = c.is_ascii_digit();
+        out.push(c);
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_reported_charge_wins_over_the_catalog_price() {
+        let cost = super::ModelCost {
+            input: 2.0,
+            output: 8.0,
+            ..Default::default()
+        };
+        // The provider's own charge: not an estimate.
+        assert_eq!(
+            cost.call_cost(Some(0.25), 1_000_000, 0, 0, 0),
+            (Some(0.25), false)
+        );
+        // No charge reported: our catalog price, flagged as an estimate.
+        let (estimate, estimated) = cost.call_cost(None, 1_000_000, 0, 0, 0);
+        assert!(estimated);
+        assert!((estimate.unwrap() - 2.0).abs() < 1e-9);
+        // Unpriced model: nothing to show, and the flag says why.
+        assert_eq!(
+            super::ModelCost::default().call_cost(None, 10, 10, 0, 0),
+            (None, true)
+        );
+        // A provider that reports a non-finite charge is not a price.
+        assert_eq!(cost.call_cost(Some(f64::NAN), 10, 10, 0, 0), (None, true));
+    }
+
     #[test]
     fn call_cost_prices_each_token_bucket() {
         let cost = super::ModelCost {
@@ -926,10 +1015,30 @@ mod tests {
             cache_write: 0.0,
             tiers: Vec::new(),
         };
-        // 1M uncached in, 0.5M out, 2M cache reads, 1M writes at input rate.
+        // 1M uncached in, 0.5M out, 2M cache reads, 1M writes. With no write
+        // rate published, writes bill at base input: 2.0, not a premium.
         let usd = cost.cost_usd(1_000_000, 500_000, 2_000_000, 1_000_000);
         assert!((usd - (2.0 + 4.0 + 0.4 + 2.0)).abs() < 1e-9, "{usd}");
         assert!(!super::ModelCost::default().is_priced());
+    }
+
+    #[test]
+    fn a_published_write_rate_wins_and_a_missing_one_is_base_input() {
+        // Anthropic-family entries publish a premium write rate.
+        let priced = super::ModelCost {
+            input: 2.0,
+            output: 8.0,
+            cache_write: 2.5,
+            tiers: Vec::new(),
+            ..Default::default()
+        };
+        assert!((priced.cost_usd(0, 0, 0, 1_000_000) - 2.5).abs() < 1e-9);
+        // DeepSeek/GLM/Go publish none: a write is an ordinary input token.
+        let neutral = super::ModelCost {
+            input: 2.0,
+            ..Default::default()
+        };
+        assert!((neutral.cost_usd(0, 0, 0, 1_000_000) - 2.0).abs() < 1e-9);
     }
 
     #[test]
@@ -1134,29 +1243,4 @@ mod tests {
             other => panic!("unexpected options: {other:?}"),
         }
     }
-}
-
-/// An id with its minor versions dropped: `deepseek-v4.1-flash` and
-/// `deepseek-v4-flash` share one key.
-fn family_key(model_id: &str) -> String {
-    let bare = model_id
-        .rsplit('/')
-        .next()
-        .unwrap_or(model_id)
-        .to_lowercase();
-    let mut out = String::with_capacity(bare.len());
-    let mut chars = bare.chars().peekable();
-    let mut prev_digit = false;
-    while let Some(c) = chars.next() {
-        if c == '.' && prev_digit && chars.peek().is_some_and(|n| n.is_ascii_digit()) {
-            while chars.peek().is_some_and(|n| n.is_ascii_digit()) {
-                chars.next();
-            }
-            prev_digit = false;
-            continue;
-        }
-        prev_digit = c.is_ascii_digit();
-        out.push(c);
-    }
-    out
 }

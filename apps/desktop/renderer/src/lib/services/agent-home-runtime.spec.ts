@@ -17,6 +17,7 @@ describe('Home runtime history and context', () => {
     expect(canContinueHomeHistory(meta, ['user-1', 'edited-answer', 'user-2'])).toBe(false);
     expect(canContinueHomeHistory(meta, ['user-1'])).toBe(false);
     expect(canContinueHomeHistory(undefined, ['user-1'])).toBe(false);
+    expect(canContinueHomeHistory({ ...meta, goalPending: true }, ['user-1', 'answer-1', 'user-2'])).toBe(false);
   });
   it('uses reported usage and marks draft or compacted usage as estimates', () => {
     expect(homeRuntimeBudget(meta)).toMatchObject({ maxContext: 128_000, usedTokens: 64_000, usagePercent: 50, estimated: false });

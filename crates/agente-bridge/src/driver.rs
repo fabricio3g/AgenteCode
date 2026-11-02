@@ -110,8 +110,15 @@ impl Driver {
     pub fn describe(&self) -> String {
         match self {
             Self::Local(hub) => match hub.extension() {
-                Some(info) => format!("hub on 127.0.0.1:{} · {} connected", hub.pairing().port, info.label()),
-                None => format!("hub on 127.0.0.1:{} · no browser connected", hub.pairing().port),
+                Some(info) => format!(
+                    "hub on 127.0.0.1:{} · {} connected",
+                    hub.pairing().port,
+                    info.label()
+                ),
+                None => format!(
+                    "hub on 127.0.0.1:{} · no browser connected",
+                    hub.pairing().port
+                ),
             },
             Self::Peer(peer) => match peer.extension() {
                 Some(info) => format!("connected to another bridge · {} attached", info.label()),

@@ -324,7 +324,7 @@ pub fn render(graph: &Graph) -> Result<Audio> {
         let track = tracks[id];
         let mut audio = buffers.remove(id).context("Missing routed track")?;
         apply_effects(&mut audio, rate as u32, &track.effects);
-        for (n, pair) in audio.chunks_exact_mut(2).enumerate() {
+        for (n, pair) in audio.as_chunks_mut::<2>().0.iter_mut().enumerate() {
             let time = n as f64 / rate;
             let gain = if track.mute {
                 0.0
@@ -652,7 +652,7 @@ fn apply_effects(samples: &mut [f32], rate: u32, effects: &[Effect]) {
                 duration,
                 direction,
             } => {
-                for (frame, pair) in samples.chunks_exact_mut(2).enumerate() {
+                for (frame, pair) in samples.as_chunks_mut::<2>().0.iter_mut().enumerate() {
                     let t = frame as f64 / f64::from(rate);
                     let ramp = ((t - start) / duration).clamp(0.0, 1.0) as f32;
                     let gain = if direction == "out" { 1.0 - ramp } else { ramp };
@@ -671,7 +671,7 @@ fn apply_effects(samples: &mut [f32], rate: u32, effects: &[Effect]) {
                 let attack = (-1.0 / (attack.max(0.1) * 0.001 * rate as f32)).exp();
                 let release = (-1.0 / (release.max(1.0) * 0.001 * rate as f32)).exp();
                 let mut envelope = 0_f32;
-                for pair in samples.chunks_exact_mut(2) {
+                for pair in samples.as_chunks_mut::<2>().0 {
                     let peak = pair[0].abs().max(pair[1].abs());
                     let coefficient = if peak > envelope { attack } else { release };
                     envelope = coefficient * envelope + (1.0 - coefficient) * peak;
@@ -715,7 +715,7 @@ fn apply_effects(samples: &mut [f32], rate: u32, effects: &[Effect]) {
 fn biquad(samples: &mut [f32], b: [f32; 3], a: [f32; 3]) {
     for ch in 0..2 {
         let (mut x1, mut x2, mut y1, mut y2) = (0.0, 0.0, 0.0, 0.0);
-        for pair in samples.chunks_exact_mut(2) {
+        for pair in samples.as_chunks_mut::<2>().0 {
             let x = pair[ch];
             let y = (b[0] * x + b[1] * x1 + b[2] * x2 - a[1] * y1 - a[2] * y2) / a[0];
             x2 = x1;
@@ -784,7 +784,7 @@ fn spectral_effect(samples: &mut [f32], rate: u32, effect: &Effect) {
             }
         }
     }
-    for (n, pair) in samples.chunks_exact_mut(2).enumerate() {
+    for (n, pair) in samples.as_chunks_mut::<2>().0.iter_mut().enumerate() {
         if weights[n] > 0.00001 {
             for ch in 0..2 {
                 pair[ch] = result[n * 2 + ch] / weights[n];

@@ -161,38 +161,43 @@
     </div>
   {:else if chat}
     <div class="flex min-h-0 flex-1">
-      <!-- Conversation + bottom dock -->
-      <div class="flex min-h-0 min-w-0 flex-1 flex-col">
-        <div class="flex min-h-0 flex-1 flex-col">
-          {#if !chat.messages.length && !unlinked}
-            <!-- Before the first message: the four things this agent is for,
-                 anchored to the composer's edge rather than floating in the
-                 middle of the canvas. Picking one fills the composer. -->
-            <div class="starters-zone">
-              <div class="starters-col">
-                <div class="starters-head">
-                  <span class="starters-title">{$t('code.starters.title')}</span>
-                </div>
-                <StarterList {starters} label={$t('code.starters.title')} onpick={useStarter} />
-              </div>
-            </div>
-          {:else}
-            <div class="ui-top-fade flex min-h-0 min-w-0 flex-1 flex-col">
-              {#key chat.id}<CodeTranscript messages={chat.messages} chatId={chat.id} />{/key}
-            </div>
-          {/if}
-          {#if unlinked}
-            <p class="mx-auto mb-4 max-w-3xl rounded-lg border border-border bg-muted/50 px-4 py-2.5 text-xs text-muted-foreground">
-              {$t('code.unlinkedHint')}
+      <!-- Conversation + bottom dock. Before the first message the column is
+           centred and the starters sit under the composer as one line of text;
+           the composer itself keeps its slot in both states, so sending the
+           first message never remounts it and never drops the keyboard. -->
+      <div class="flex min-h-0 min-w-0 flex-1 flex-col" class:is-empty={!unlinked && !chat.messages.length}>
+        {#if unlinked}
+          <div class="ui-top-fade flex min-h-0 min-w-0 flex-1 flex-col">
+            {#key chat.id}<CodeTranscript messages={chat.messages} chatId={chat.id} />{/key}
+          </div>
+        {:else if !chat.messages.length}
+          <!-- Which folder the agent touches: the one thing a conversation has
+               not had the chance to say yet. -->
+          {#if chatProject}
+            <p class="empty-project composer-column px-3 md:px-6">
+              <span class="empty-project-name">{chatProject.rootName}</span>
+              <span class="empty-project-path">{chatProject.rootPath}</span>
             </p>
-          {:else}
-            {#key chat.id}<CodeComposer {chat} />{/key}
           {/if}
-        </div>
+        {:else}
+          <div class="ui-top-fade flex min-h-0 min-w-0 flex-1 flex-col">
+            {#key chat.id}<CodeTranscript messages={chat.messages} chatId={chat.id} />{/key}
+          </div>
+        {/if}
 
-
+        {#if unlinked}
+          <p class="mx-auto mb-4 max-w-3xl rounded-lg border border-border bg-muted/50 px-4 py-2.5 text-xs text-muted-foreground">
+            {$t('code.unlinkedHint')}
+          </p>
+        {:else}
+          {#key chat.id}<CodeComposer {chat} />{/key}
+          {#if !chat.messages.length}
+            <div class="empty-links composer-column px-3 md:px-6">
+              <StarterList {starters} label={$t('code.starters.title')} onpick={useStarter} variant="links" />
+            </div>
+          {/if}
+        {/if}
       </div>
-
     </div>
   {:else}
     <div class="flex flex-1 flex-col items-center justify-center gap-5 px-6 text-center">
@@ -217,14 +222,21 @@
 <style>
   .code-surface { container-type: inline-size; }
 
-  /* The block hangs off the composer: the composer is what the eye should land
-     on, and the starters explain it. It scrolls rather than clipping when the
-     window is short. */
-  .starters-zone { display:flex;min-height:0;flex:1;overflow-y:auto;flex-direction:column;justify-content:flex-end;padding:1.5rem 1.5rem 0.5rem; }
-  .starters-col { width:100%;max-width:var(--thread-width);margin:0 auto; }
+  /* Before the first message the column centres instead of docking to the
+     bottom: the composer is the only control on the screen, so it sits where
+     the eye already is, with the folder above it and the four ways in below.
+     The children are the same nodes either way — centring is the only change,
+     so the composer keeps its focus across the first send. */
+  .is-empty { justify-content:center;padding-block:1.5rem; }
 
-  /* One label, hard left. The keys each row answers to are on the rows
-     themselves — a range in the header said the same thing four times. */
-  .starters-head { display:flex;align-items:baseline;gap:0.5rem;padding:0 0.5rem 0.5rem; }
-  .starters-title { color:var(--muted-foreground);font-size:var(--text-xs);font-weight:500;letter-spacing:0.02em;text-transform:uppercase; }
+  /* Which folder the agent will touch — the one piece of context that is not
+     visible from the conversation, because there is no conversation yet.
+     `margin-block`, never the shorthand: the shorthand resets the inline
+     margins `.composer-column` centres this row with, which drops the folder
+     line to the window's edge while the composer and the links stay put. */
+  .empty-project { display:flex;align-items:baseline;gap:0.5rem;min-width:0;margin-block:0 0.75rem;color:var(--muted-foreground);font-size:var(--text-xs); }
+  .empty-project-name { color:var(--text-secondary);font-weight:500; }
+  .empty-project-path { overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:var(--font-mono);font-size:var(--text-xs); }
+
+  .empty-links { margin-top:0.75rem; }
 </style>

@@ -161,9 +161,11 @@ pub struct Usage {
     /// Tokens written to the provider's prompt cache (Anthropic
     /// `cache_creation_input_tokens`). Charged at full price on first write.
     pub cache_creation_tokens: u32,
-    /// What the provider says this call cost in USD (OpenRouter's usage
-    /// accounting). Preferred over a catalog-price estimate when present.
+    /// Reported USD charge or subscription allowance consumed by this call.
+    /// Preferred over a catalog-price estimate when present.
     pub cost_usd: Option<f64>,
+    /// The reported amount is a provider estimate rather than measured spend.
+    pub cost_estimated: bool,
 }
 
 impl Usage {
@@ -394,6 +396,7 @@ mod tests {
             cache_read_tokens: 4_000,
             cache_creation_tokens: 2_000,
             cost_usd: None,
+            cost_estimated: false,
         };
         // prompt + cache_creation (full) + 10% of cache_read
         let effective = usage.effective_input_tokens(0.1);
@@ -409,6 +412,7 @@ mod tests {
             cache_read_tokens: 0,
             cache_creation_tokens: 0,
             cost_usd: None,
+            cost_estimated: false,
         };
         assert_eq!(usage.effective_input_tokens(0.1), 500);
     }

@@ -1,4 +1,17 @@
 {
+  "goal": {
+    "confirmClear": "Dieses Ziel entfernen? Der Agent erhält keine Erinnerungen mehr.",
+    "cancel": "Abbrechen",
+    "title": "Ziel",
+    "set": "Ziel festlegen",
+    "placeholder": "Beschreibe das Ziel dieser Unterhaltung",
+    "save": "Speichern",
+    "complete": "Abschließen",
+    "clear": "Löschen",
+    "active": "Aktiv",
+    "completed": "Abgeschlossen",
+    "hint": "Der Agent merkt sich dieses Ziel über mehrere Schritte."
+  },
   "chat": {
     "placeholder": "Nachricht an {{APP_NAME}}...",
     "stop": "Antwort stoppen",
@@ -52,6 +65,17 @@
     },
     "localBusy": "Das lokale Modell ist in einem anderen Chat beschäftigt",
     "context": {
+      "systemLabel": "Systemanweisung",
+      "messagesLabel": "Nachrichten",
+      "resultsLabel": "Werkzeugergebnisse",
+      "toolsLabel": "Werkzeugdefinitionen",
+      "overheadLabel": "Tokenizer-Overhead",
+      "reserveLabel": "Antwortreserve",
+      "runtimeNote": "Kategorien sind Schätzungen; die Summe kann vom Anbieter stammen.",
+      "systemTokens": "Systemanweisung: ~{n} Token",
+      "messageTokens": "Nachrichten: ~{n} Token",
+      "previewNote": "Vorschau; Werkzeuge und Laufzeitzusätze sind nicht enthalten.",
+      "breakdownUnavailable": "Für diese Laufzeitnutzung ist keine Aufschlüsselung verfügbar.",
       "usage": "{used} / {max} Tokens Kontext ({percent} %)",
       "reserved": "{n} Tokens für die Antwort reserviert",
       "priceIn": "Eingabe {price} $/1M",
@@ -385,6 +409,10 @@
     "refresh": "Aktualisieren"
   },
   "code": {
+    "traceCopyInput": "Eingabe kopieren",
+    "traceCopyOutput": "Ausgabe kopieren",
+    "traceCopyCommand": "Befehl kopieren",
+    "todoStatus": {"pending": "Ausstehend", "in_progress": "In Arbeit", "completed": "Abgeschlossen", "cancelled": "Abgebrochen"},
     "pane": {
       "openWindow": "In einem neuen Fenster öffnen",
       "close": "Bereich schließen",
@@ -712,7 +740,7 @@
       "queued": "In Warteschlange"
     },
     "stopSubagent": "Subagent stoppen",
-    "stopCommand": "Laufenden Befehl stoppen",
+    "stopRun": "Ausführung stoppen",
     "browseOpen": "Öffnen",
     "browseOpenNamed": "{name} öffnen",
     "browseSystem": "Durchsuchen…",
@@ -1123,6 +1151,7 @@
     "peakContext": "Kontext-Spitze",
     "slots": "Slots",
     "speed": "Tempo",
+    "speedReply": "Ausgabegeschwindigkeit dieser Antwort",
     "install": "llama.cpp installieren",
     "installHint": "Builds für {platform}.",
     "checkReleases": "Nach neuen Versionen suchen",

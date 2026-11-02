@@ -161,10 +161,16 @@ impl Hub {
             Ok(Some(Ok(Message::Text(text)))) => serde_json::from_str::<Frame>(&text).ok(),
             _ => None,
         };
-        let Some(Frame::Hello { token, role, client }) = hello else {
+        let Some(Frame::Hello {
+            token,
+            role,
+            client,
+        }) = hello
+        else {
             let _ = sink
                 .send(Message::text(
-                    serde_json::to_string(&Frame::error("Expected a hello frame")).unwrap_or_default(),
+                    serde_json::to_string(&Frame::error("Expected a hello frame"))
+                        .unwrap_or_default(),
                 ))
                 .await;
             let _ = sink.close().await;
@@ -343,7 +349,11 @@ impl Hub {
 
     fn detach_app(&self, connection: u64) {
         let mut inner = self.inner.lock().expect("hub state");
-        if inner.app.as_ref().is_some_and(|link| link.connection == connection) {
+        if inner
+            .app
+            .as_ref()
+            .is_some_and(|link| link.connection == connection)
+        {
             inner.app = None;
             if let Some(extension) = &inner.extension {
                 let _ = extension.tx.send(Frame::Status { app: None });
@@ -354,7 +364,12 @@ impl Hub {
     /// The newest extension socket wins: a restarted service worker
     /// reconnects before the old socket has noticed it is gone, and only the
     /// live one should receive actions.
-    fn attach_extension(&self, connection: u64, info: ClientInfo, tx: mpsc::UnboundedSender<Frame>) {
+    fn attach_extension(
+        &self,
+        connection: u64,
+        info: ClientInfo,
+        tx: mpsc::UnboundedSender<Frame>,
+    ) {
         let mut inner = self.inner.lock().expect("hub state");
         inner.extension = Some(Link {
             connection,
@@ -394,7 +409,9 @@ mod tests {
     type Socket = WebSocketStream<MaybeTlsStream<TcpStream>>;
 
     async fn start() -> (Arc<Hub>, u16) {
-        let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).await.expect("bind");
+        let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0))
+            .await
+            .expect("bind");
         let port = listener.local_addr().expect("addr").port();
         let hub = Hub::new(Pairing::new(port));
         hub.serve(listener);
@@ -423,13 +440,19 @@ mod tests {
     }
 
     async fn join(hub: &Hub, port: u16, role: Role, browser: Option<&str>) -> (Socket, Frame) {
-        let (mut socket, _) = connect_async(format!("ws://127.0.0.1:{port}/")).await.expect("connect");
+        let (mut socket, _) = connect_async(format!("ws://127.0.0.1:{port}/"))
+            .await
+            .expect("connect");
         let client = ClientInfo {
             name: format!("{role:?}"),
             browser: browser.map(str::to_string),
             ..ClientInfo::default()
         };
-        send(&mut socket, &Frame::hello(&hub.pairing().token, role, client)).await;
+        send(
+            &mut socket,
+            &Frame::hello(&hub.pairing().token, role, client),
+        )
+        .await;
         let welcome = next(&mut socket).await;
         (socket, welcome)
     }
@@ -441,7 +464,14 @@ mod tests {
         assert!(matches!(welcome, Frame::Welcome { app: None, .. }));
 
         // Nobody to answer yet: the panel hears why, at once.
-        send(&mut extension, &Frame::Chat { id: "c1".into(), body: json!({"type": "send", "text": "hi"}) }).await;
+        send(
+            &mut extension,
+            &Frame::Chat {
+                id: "c1".into(),
+                body: json!({"type": "send", "text": "hi"}),
+            },
+        )
+        .await;
         match next(&mut extension).await {
             Frame::ChatEvent { id, body } => {
                 assert_eq!(id, "c1");
@@ -454,14 +484,27 @@ mod tests {
         // Desktop attaches; the extension is told.
         let (mut app, welcome) = join(&hub, port, Role::App, None).await;
         match welcome {
-            Frame::Welcome { extension: Some(info), .. } => assert_eq!(info.browser.as_deref(), Some("chrome")),
+            Frame::Welcome {
+                extension: Some(info),
+                ..
+            } => assert_eq!(info.browser.as_deref(), Some("chrome")),
             other => panic!("unexpected {other:?}"),
         }
-        assert!(matches!(next(&mut extension).await, Frame::Status { app: Some(_) }));
+        assert!(matches!(
+            next(&mut extension).await,
+            Frame::Status { app: Some(_) }
+        ));
         assert!(hub.app().is_some());
 
         // A chat goes to Desktop and its events come back.
-        send(&mut extension, &Frame::Chat { id: "c2".into(), body: json!({"type": "send", "text": "sum this"}) }).await;
+        send(
+            &mut extension,
+            &Frame::Chat {
+                id: "c2".into(),
+                body: json!({"type": "send", "text": "sum this"}),
+            },
+        )
+        .await;
         match next(&mut app).await {
             Frame::Chat { id, body } => {
                 assert_eq!(id, "c2");
@@ -469,7 +512,14 @@ mod tests {
             }
             other => panic!("unexpected {other:?}"),
         }
-        send(&mut app, &Frame::ChatEvent { id: "c2".into(), body: json!({"type": "delta", "text": "Sure"}) }).await;
+        send(
+            &mut app,
+            &Frame::ChatEvent {
+                id: "c2".into(),
+                body: json!({"type": "delta", "text": "Sure"}),
+            },
+        )
+        .await;
         match next(&mut extension).await {
             Frame::ChatEvent { id, body } => {
                 assert_eq!(id, "c2");
@@ -480,14 +530,23 @@ mod tests {
 
         // Desktop leaves; the extension is told again.
         drop(app);
-        assert!(matches!(next(&mut extension).await, Frame::Status { app: None }));
+        assert!(matches!(
+            next(&mut extension).await,
+            Frame::Status { app: None }
+        ));
     }
 
     #[tokio::test]
     async fn a_wrong_token_is_refused() {
         let (_hub, port) = start().await;
-        let (mut socket, _) = connect_async(format!("ws://127.0.0.1:{port}/")).await.expect("connect");
-        send(&mut socket, &Frame::hello("wrong", Role::Extension, ClientInfo::default())).await;
+        let (mut socket, _) = connect_async(format!("ws://127.0.0.1:{port}/"))
+            .await
+            .expect("connect");
+        send(
+            &mut socket,
+            &Frame::hello("wrong", Role::Extension, ClientInfo::default()),
+        )
+        .await;
         assert!(matches!(next(&mut socket).await, Frame::Error { .. }));
     }
 

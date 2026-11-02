@@ -166,7 +166,7 @@
 </aside>
 
 <style>
-  .files { display: flex; min-height: 0; width: 100%; height: 100%; flex: 1; flex-direction: column; background: var(--card); }
+  .files { display: flex; min-height: 0; width: 100%; height: 100%; flex: 1; flex-direction: column; background: var(--float-bg); }
   /* Rows are 1.375rem tiles: the gap keeps a hovered row from touching the next,
      and the top inset keeps the first one off the bar. */
   .files-tree { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 0.125rem; padding: 0.25rem 4px 4px; outline: none; }

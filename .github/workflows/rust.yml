@@ -58,6 +58,6 @@ jobs:
           key: windows
       # The Windows-only code (the named-pipe transport) compiles only here.
       - name: Clippy
-        run: cargo clippy -p agente-daemon -p agente-bot -p agente-cli --all-targets -- -D warnings
+        run: cargo clippy -p agente-daemon -p agente-cli --all-targets -- -D warnings
       - name: Test
-        run: cargo test -p agente-daemon -p agente-bot
+        run: cargo test -p agente-daemon

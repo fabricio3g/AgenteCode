@@ -135,9 +135,7 @@ pub enum Frame {
     },
     /// A refusal or a protocol problem; the hub never sends this instead of
     /// a `result` for a well-formed action.
-    Error {
-        message: String,
-    },
+    Error { message: String },
 }
 
 impl Frame {

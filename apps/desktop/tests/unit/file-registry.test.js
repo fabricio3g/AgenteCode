@@ -5,6 +5,7 @@ import { createRequire } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
 import { after, before, describe, it } from 'node:test';
+import Database from '../../main/sqlite.ts';
 
 import {
   closeDb,
@@ -25,17 +26,13 @@ import {
 const require = createRequire(import.meta.url);
 const hashOf = (value) => createHash('sha256').update(value).digest('hex');
 
-// better-sqlite3 is compiled for Electron's ABI in this repo, so under plain
-// node the suite skips (same as tests/unit/chat-db.test.js). Run it for real:
-//   ELECTRON_RUN_AS_NODE=1 npx electron node_modules/tsx/dist/cli.mjs \
-//     --test tests/unit/file-registry.test.js
+// Built-in SQLite works under both Node and Electron without addon rebuilding.
 const sqliteUnavailable = (() => {
   try {
-    const Database = require('better-sqlite3');
     new Database(':memory:').close();
     return '';
   } catch (error) {
-    return String(error?.message || error || 'better-sqlite3 unavailable');
+    return String(error?.message || error || 'node:sqlite unavailable');
   }
 })();
 
@@ -57,7 +54,7 @@ after(() => {
 function itWithSqlite(name, fn) {
   it(name, (t) => {
     if (sqliteUnavailable) {
-      t.skip(`better-sqlite3 unavailable: ${sqliteUnavailable}`);
+      t.skip(`node:sqlite unavailable: ${sqliteUnavailable}`);
       return;
     }
     fn();

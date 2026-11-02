@@ -30,7 +30,7 @@
     pressed?: boolean;
     position?: 'top' | 'bottom';
     class?: string;
-    onclick: () => void;
+    onclick: (event: MouseEvent) => void;
     children?: Snippet;
   } = $props();
 </script>

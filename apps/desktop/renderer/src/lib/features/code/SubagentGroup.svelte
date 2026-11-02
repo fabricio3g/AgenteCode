@@ -30,9 +30,8 @@
   }: { children: CodeChild[]; chatId: string; messageId: string } = $props();
 
   const running = $derived(children.filter((child) => child.status === 'running').length);
-  /** A failure is never folded away: it is the one thing worth reading. */
+  /** Open the group by default when a child needs attention. */
   const failed = $derived(children.filter((child) => child.status === 'error'));
-  const quiet = $derived(children.filter((child) => child.status !== 'error'));
 
   /** Every child's spend, added up the way `conversationSpend` adds up turns. */
   const spend = $derived(
@@ -60,8 +59,11 @@
   const longest = $derived(children.reduce((max, child) => Math.max(max, childElapsedMs(child, now) ?? 0), 0));
 </script>
 
-{#if quiet.length}
-  <Disclosure id={disclosureKey(chatId, messageId, 'subagents')} level="block" chevron="leading" defaultOpen={false}>
+{#if children.length === 1}
+  {@const child = children[0]}
+  <SubagentCard {child} {chatId} id={disclosureKey(chatId, messageId, `child-${child.id}`)} />
+{:else if children.length > 1}
+  <Disclosure id={disclosureKey(chatId, messageId, 'subagents')} level="block" chevron="leading" defaultOpen={failed.length > 0}>
     {#snippet header()}
       <span class="line">{$t(`code.activity.subagents.${running ? 'running' : 'done'}`)}</span>
       <span class="count tabular-nums">{children.length}</span>
@@ -78,16 +80,13 @@
 
     {#snippet body()}
       <div class="cards">
-        {#each quiet as child (child.id)}
+        {#each children as child (child.id)}
           <SubagentCard {child} {chatId} id={disclosureKey(chatId, messageId, `child-${child.id}`)} />
         {/each}
       </div>
     {/snippet}
   </Disclosure>
 {/if}
-{#each failed as child (child.id)}
-  <SubagentCard {child} {chatId} id={disclosureKey(chatId, messageId, `child-${child.id}`)} />
-{/each}
 
 <style>
   .line {

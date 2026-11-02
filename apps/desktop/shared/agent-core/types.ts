@@ -97,6 +97,7 @@ export interface ToolExecContext {
   /** Host-owned conversation routing, never a model argument. */
   browserScope?: string;
   sessionId?: string;
+  computerTurnId?: string;
   workspaceRoot?: string;
   signal: AbortSignal;
   /** Streaming progress for long-running tools (tool_update events). */

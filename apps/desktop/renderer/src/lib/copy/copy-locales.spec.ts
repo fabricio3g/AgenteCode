@@ -118,9 +118,9 @@ describe('locale completeness', () => {
    */
   it('keeps the sidebar rail free of hardcoded copy', () => {
     const rail = Object.entries(SOURCES).filter(([path]) =>
-      /(?:components\/layout\/(?:Sidebar|SidebarInstances)|components\/search\/SearchSidebar|features\/(?:shared\/SessionRow|code\/CodeSidebar|bots\/BotRoster))\.svelte$/.test(path)
+      /(?:components\/layout\/(?:Sidebar|SidebarInstances)|components\/search\/SearchSidebar|features\/(?:shared\/SessionRow|code\/CodeSidebar))\.svelte$/.test(path)
     );
-    expect(rail.map(([path]) => path).sort()).toHaveLength(6);
+    expect(rail.map(([path]) => path).sort()).toHaveLength(5);
 
     const offenders = rail.flatMap(([path, text]) => [
       ...[...text.matchAll(/\s(?:aria-label|placeholder|title|alt)="([^"{][^"]*)"/g)].map((match) => `${path} ${match[0].trim()}`),

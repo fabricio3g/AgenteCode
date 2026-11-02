@@ -15,10 +15,11 @@
   import UiButton from '$lib/components/ui/Button.svelte';
   import { planRows } from './work-blocks';
 
-  let { todos, running = false }: { todos: CodeTodoItem[]; running?: boolean } = $props();
+  let { todos, running = false, compact = false }: { todos: CodeTodoItem[]; running?: boolean; compact?: boolean } = $props();
 
   let open = $state(false);
   const done = $derived(todos.filter((todo) => todo.status === 'completed').length);
+  const total = $derived(todos.filter((todo) => todo.status !== 'cancelled').length);
   const rows = $derived(planRows(todos, open));
   const hidden = $derived(todos.length - rows.length);
 
@@ -39,15 +40,16 @@
   });
 </script>
 
-<section class="plan-card" aria-label={$t('code.todosTitle')} data-plan-card>
+<section class="plan-card" class:compact aria-label={$t('code.todosTitle')} data-plan-card>
   <header class="plan-head">
     <span>{$t('code.todosTitle')}</span>
-    <span class="tabular-nums">{done}/{todos.length}</span>
+    <span class="tabular-nums">{done}/{total}</span>
   </header>
+  <div class="plan-progress" role="progressbar" aria-label={$t('code.todosTitle')} aria-valuemin="0" aria-valuemax={total} aria-valuenow={done}><span style:width={`${total ? done / total * 100 : 0}%`}></span></div>
   <ul>
-    {#each rows as todo (todo.content)}
+    {#each rows as todo, index (index)}
       {@const active = todo.status === 'in_progress'}
-      <li class:is-active={active} class:is-done={todo.status === 'completed'}>
+      <li class:is-active={active} class:is-done={todo.status === 'completed'} class:is-cancelled={todo.status === 'cancelled'} title={$t(`code.todoStatus.${todo.status}`)}>
         <span class="mark">
           {#if todo.status === 'completed'}
             <svg class="check" class:is-fresh={fresh[todo.content]} viewBox="0 0 16 16" aria-hidden="true">
@@ -56,6 +58,8 @@
             </svg>
           {:else if active && running}
             <span class="spinner" aria-hidden="true"></span>
+          {:else if todo.status === 'cancelled'}
+            <svg class="pending" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 4.5l7 7m0-7-7 7" /></svg>
           {:else}
             <svg class="pending" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5" /></svg>
           {/if}
@@ -89,6 +93,9 @@
     color: var(--muted-foreground);
     font-size: var(--text-xs);
   }
+  .plan-card.compact { padding:0.5rem 0.625rem; border:0; background:transparent; }
+  .plan-progress { height:3px; border-radius:99px; background:var(--muted); overflow:hidden; margin:0.125rem 0 0.375rem; }
+  .plan-progress span { display:block; height:100%; background:var(--text-secondary); transition:width var(--motion-smooth) var(--motion-ease-out); }
   ul { display: flex; flex-direction: column; gap: 0.0625rem; margin: 0; padding: 0; list-style: none; }
   li {
     display: flex;
@@ -98,6 +105,7 @@
     color: var(--muted-foreground);
   }
   li.is-active { color: var(--foreground); }
+  li.is-cancelled { opacity:0.65; }
   .label { min-width: 0; overflow-wrap: anywhere; }
   /* The strike draws left to right instead of appearing. */
   .label {
@@ -109,10 +117,11 @@
   .mark { display: flex; width: 0.875rem; height: 1.45em; flex-shrink: 0; align-items: center; justify-content: center; }
   .pending, .check { width: 0.875rem; height: 0.875rem; overflow: visible; }
   .pending circle { fill: none; stroke: currentColor; stroke-width: 1.4; opacity: 0.7; }
+  .pending path { fill:none; stroke:currentColor; stroke-width:1.4; stroke-linecap:round; }
   .check-ring { fill: none; stroke: currentColor; stroke-width: 1.3; }
   .check-tick { fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
-  .check.is-fresh { animation: plan-pop 360ms cubic-bezier(0.34, 1.56, 0.64, 1); }
-  .check.is-fresh .check-tick { stroke-dasharray: 10; stroke-dashoffset: 10; animation: plan-draw 300ms 120ms ease-out forwards; }
+  .check.is-fresh { animation: plan-pop var(--motion-smooth) var(--motion-ease-out); }
+  .check.is-fresh .check-tick { stroke-dasharray: 10; stroke-dashoffset: 10; animation: plan-draw var(--motion-fast) 80ms var(--motion-ease-out) forwards; }
   .spinner {
     display: block;
     width: 0.75rem;
@@ -138,6 +147,6 @@
   @media (prefers-reduced-motion: reduce) {
     .spinner { animation: none; border-top-color: color-mix(in srgb, var(--brand-accent) 60%, transparent); }
     .check.is-fresh, .check.is-fresh .check-tick { animation: none; stroke-dashoffset: 0; }
-    .label { transition: none; }
+    .label, .plan-progress span { transition: none; }
   }
 </style>

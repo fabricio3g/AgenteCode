@@ -21,6 +21,28 @@ beforeEach(async () => {
 });
 
 describe('the board in the store', () => {
+  it('switches to one device and keeps the selected frame fitted when the pane resizes', () => {
+    designStore.select('pricing.html');
+    designStore.setZoom(2);
+    designStore.panBy(-3000, -2000);
+    designStore.showSize('mobile');
+    expect(designStore.sizes).toEqual(['mobile']);
+    expect(designStore.activeFrame?.key).toBe('mobile:pricing.html');
+    const fits = () => {
+      const frame = designStore.activeFrame!;
+      const view = designStore.view;
+      expect(view.x + frame.x * view.scale).toBeGreaterThanOrEqual(0);
+      expect(view.y + frame.y * view.scale).toBeGreaterThanOrEqual(0);
+      expect(view.x + (frame.x + frame.width) * view.scale).toBeLessThanOrEqual(designStore.pane.width);
+      expect(view.y + (frame.y + frame.height) * view.scale).toBeLessThanOrEqual(designStore.pane.height);
+    };
+    fits();
+    designStore.pane = { width: 400, height: 350 };
+    fits();
+    designStore.toggleSize('desktop');
+    expect(designStore.fitSelected).toBe(false);
+    expect(designStore.zoom).toBeNull();
+  });
   it('draws every page at every chosen size and keeps at least one size', () => {
     expect(designStore.board.frames.map((frame) => frame.key)).toEqual(['desktop:index.html', 'desktop:pricing.html']);
     designStore.toggleSize('mobile');

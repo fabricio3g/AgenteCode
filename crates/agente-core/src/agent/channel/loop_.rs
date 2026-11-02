@@ -7,7 +7,7 @@
 use std::sync::Arc;
 
 use crate::cancellation::AbortSignal;
-use crate::context::{CompactionStrategy, ContextCompactor};
+use crate::context::{CompactionStrategy, ContextBudget, ContextCompactor};
 use crate::llm::{StopReason, StreamEvent};
 use crate::permissions::{ApprovalBroker, SharedPermissionEngine};
 use crate::providers::{ProviderRegistry, ProviderSummarizer};
@@ -32,6 +32,24 @@ use std::sync::mpsc::Sender;
 
 const COMPACTION_HEARTBEAT_MS: u64 = 15_000;
 
+fn should_review_todos(
+    todos: Option<&[crate::todo::TodoInput]>,
+    reviewed: bool,
+    cancelled: bool,
+    plan_mode: bool,
+    has_iteration: bool,
+) -> bool {
+    !reviewed
+        && !cancelled
+        && !plan_mode
+        && has_iteration
+        && todos.is_some_and(|items| {
+            items
+                .iter()
+                .any(|todo| !matches!(todo.status.as_str(), "completed" | "cancelled"))
+        })
+}
+
 #[allow(clippy::too_many_arguments)]
 pub fn spawn_chat_task(
     session_id: uuid::Uuid,
@@ -53,16 +71,13 @@ pub fn spawn_chat_task(
     subagent_models: crate::config::SubagentModels,
     smart_compaction: bool,
     compaction_model: Option<crate::config::SubagentModel>,
+    initial_gap: usize,
     max_parallel_subagents: usize,
     user_inbox: super::config::UserInbox,
-    turn_tools: super::config::TurnTools,
+    mut turn_tools: super::config::TurnTools,
 ) -> tokio::task::JoinHandle<()> {
     tracing::info!(%session_id, task_id, provider = %provider_id, model = %model, "Spawning chat task");
     tokio::spawn(async move {
-        let parent_mode = permission_engine
-            .read()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .mode;
         // Load the custom-agent roster once per turn; children reuse it
         // instead of re-scanning their (possibly fresh) worktree checkout.
         let custom_agents = crate::subagent::definition::custom_subagents(&project_dir);
@@ -81,7 +96,6 @@ pub fn spawn_chat_task(
                 project_dir: project_dir.clone(),
                 model: model.clone(),
                 thinking_level: thinking_level.clone(),
-                parent_mode,
                 registry: subagent_registry,
                 shell_env: turn_tools.shell_env.clone(),
                 only_tools: turn_tools.only.clone(),
@@ -90,6 +104,23 @@ pub fn spawn_chat_task(
             max_parallel_subagents,
         )
         .with_mcp_session_id(session_id);
+        if let (Some(manager), Some(turn)) = (
+            &mcp_manager,
+            turn_tools.mcp_turn_id.filter(|_| {
+                turn_tools
+                    .only
+                    .as_ref()
+                    .is_none_or(|only| only.iter().any(|name| name == "mcp"))
+            }),
+        ) {
+            // These override the ordinary adapters below; children never inherit
+            // extra tools, and therefore never inherit desktop input authority.
+            turn_tools
+                .extra
+                .extend(crate::mcp::McpToolAdapter::all_for_turn(
+                    manager, session_id, turn,
+                ));
+        }
         let config = AgentRunConfig {
             session_id,
             task_id,
@@ -117,6 +148,7 @@ pub fn spawn_chat_task(
             loop_stop_after: DEFAULT_LOOP_STOP_AFTER,
             smart_compaction,
             compaction_model,
+            initial_gap,
             user_inbox: Some(user_inbox),
             extra_tools: turn_tools.extra,
             only_tools: turn_tools.only,
@@ -218,6 +250,7 @@ pub(crate) async fn run_agent_loop(cfg: AgentRunConfig) -> Result<(), AgentLoopF
         loop_stop_after,
         smart_compaction,
         compaction_model,
+        initial_gap,
         user_inbox,
         extra_tools,
         only_tools,
@@ -239,16 +272,37 @@ pub(crate) async fn run_agent_loop(cfg: AgentRunConfig) -> Result<(), AgentLoopF
     // join on a later turn (a slow server never delays this one).
     if let Some(manager) = mcp_manager.as_ref().filter(|_| mcp_allowed) {
         manager.refresh_stale_tools().await;
-        tool_registry.register_mcp_adapters(crate::mcp::McpToolAdapter::all_for_session(
+        let mut adapters = crate::mcp::McpToolAdapter::all_for_session(
             manager,
             subagent_host
                 .as_ref()
                 .and_then(SubagentHost::mcp_session_id)
                 .unwrap_or(session_id),
-        ));
+        );
+        // The physical desktop has one owner. Children inherit the root's
+        // browser scope, but never its ability to request/control the computer.
+        if is_subagent {
+            adapters.retain(|tool| !tool.name().starts_with("desktop_computer_"));
+        }
+        tool_registry.register_mcp_adapters(adapters);
     }
+    let has_client_tools = !extra_tools.is_empty();
     for tool in extra_tools {
         tool_registry.register(tool);
+    }
+    // Goal completion is session state, not a project tool. Home uses a
+    // restricted registry too, so include it when a parent starts with a goal.
+    if !is_subagent
+        && (only_tools.is_none() || has_client_tools)
+        && crate::goal::GoalStore::user()
+            .get(session_id)
+            .ok()
+            .flatten()
+            .is_some_and(|goal| goal.status == crate::goal::GoalStatus::Active)
+    {
+        tool_registry.register(Box::new(crate::tools::TypedTool::new(
+            crate::goal::GoalCompleteTool { session_id },
+        )));
     }
 
     // Children get a pruned registry containing only tools their capability and
@@ -296,10 +350,25 @@ pub(crate) async fn run_agent_loop(cfg: AgentRunConfig) -> Result<(), AgentLoopF
     // then incremented per appended message and recomputed only when the
     // conversation is rewritten (normalization repair, compaction).
     let mut running_tokens = crate::context::estimate_message_tokens(&messages);
+    // Whether `running_tokens` is the provider's own count or our heuristic.
+    // It decides the meter's `~` and nothing else.
+    let mut tokens_measured = false;
     // What the provider counted beyond our estimate on the last request (its
-    // tokenizer, framing, the system prompt's template), learned from the
-    // reported prompt size so the compaction gate tracks the real one.
-    let mut tokenizer_gap = 0usize;
+    // tokenizer, framing, the system prompt's template). Carried across turns:
+    // the first request of a turn is where overflow actually happens, so
+    // gating it on an uncalibrated estimate was the one place it could not be
+    // learned from.
+    let mut tokenizer_gap = initial_gap;
+    // True for the single request after a compaction, so the reminder can say
+    // that everything below the summary is gone.
+    let mut compacted_recently = false;
+    // Review a list written in this turn once before finishing. This is a
+    // reminder, not a completion gate: blocked or superseded work may remain.
+    let mut current_todos: Option<Vec<crate::todo::TodoInput>> = None;
+    let mut todo_reviewed = false;
+    // Retain the request-only reminder through the rest of this turn so a
+    // tool call made in response has its initiating user message on replay.
+    let mut todo_review_at: Option<usize> = None;
 
     let provider = registry
         .get(&provider_id)
@@ -378,9 +447,11 @@ pub(crate) async fn run_agent_loop(cfg: AgentRunConfig) -> Result<(), AgentLoopF
                 .filter(|name| !allowed.contains(name))
                 .collect();
             let restriction = crate::context::plan_mode_restriction(&allowed, &blocked);
-            crate::context::set_plan_restriction(&mut messages, Some(&restriction));
-        } else if !is_subagent {
-            crate::context::set_plan_restriction(&mut messages, None);
+            if crate::context::set_plan_restriction(&mut messages, Some(&restriction)) {
+                running_tokens = crate::context::estimate_message_tokens(&messages);
+            }
+        } else if !is_subagent && crate::context::set_plan_restriction(&mut messages, None) {
+            running_tokens = crate::context::estimate_message_tokens(&messages);
         }
 
         tracing::info!(
@@ -435,21 +506,30 @@ pub(crate) async fn run_agent_loop(cfg: AgentRunConfig) -> Result<(), AgentLoopF
         };
         // Every request carries the tool schemas as well as the messages.
         let tool_tokens = crate::context::estimate_tool_definition_tokens(&tool_defs);
+        let window = model_info.limits.context as usize;
+        let output_tokens = model_info.limits.output as usize;
 
-        // Auto-compact before the request when the estimated context is near
-        // the model's window. Mirrors pi's `shouldCompact`, which uses the
-        // model's real context window plus a reserved summary budget.
-        let strategy = CompactionStrategy::for_window(
-            model_info.limits.context as usize,
-            tool_tokens + tokenizer_gap,
+        // Auto-compact before the request when the transcript is near the room
+        // the provider will actually accept: the window minus what every
+        // request carries besides the messages (tool schemas, the tokenizer
+        // gap learned last time) minus the reserve for the reply itself.
+        let budget = ContextBudget::new(
+            window,
+            tool_tokens,
+            tokenizer_gap,
+            running_tokens,
+            output_tokens,
         );
+        let strategy = CompactionStrategy::from_budget(&budget);
         let estimated_tokens = running_tokens;
-        if strategy.should_compact(estimated_tokens) {
+        if budget.should_compact() {
             tracing::info!(
                 iteration,
                 estimated_tokens,
-                message_budget = strategy.max_tokens,
+                room = budget.room(),
                 tool_tokens,
+                gap = tokenizer_gap,
+                used_ratio = budget.ratio(),
                 "Compacting agent context"
             );
             // Smart compaction (user setting) writes an LLM checkpoint,
@@ -574,6 +654,13 @@ pub(crate) async fn run_agent_loop(cfg: AgentRunConfig) -> Result<(), AgentLoopF
                 .and_then(|summarizer| summarizer.usage())
             {
                 total_tokens = total_tokens.saturating_add(usage.total_tokens);
+                let (cost_usd, cost_estimated) = summary_price.call_cost(
+                    usage.cost_usd,
+                    usage.prompt_tokens,
+                    usage.completion_tokens,
+                    usage.cache_read_tokens,
+                    usage.cache_creation_tokens,
+                );
                 send_event(
                     &sender,
                     task_id,
@@ -582,23 +669,33 @@ pub(crate) async fn run_agent_loop(cfg: AgentRunConfig) -> Result<(), AgentLoopF
                         completion_tokens: usage.completion_tokens,
                         cache_read_tokens: usage.cache_read_tokens,
                         cache_creation_tokens: usage.cache_creation_tokens,
-                        cost_usd: usage.cost_usd.or_else(|| {
-                            summary_price.is_priced().then(|| {
-                                summary_price.cost_usd(
-                                    usage.prompt_tokens,
-                                    usage.completion_tokens,
-                                    usage.cache_read_tokens,
-                                    usage.cache_creation_tokens,
-                                )
-                            })
-                        }),
-                        cost_estimated: usage.cost_usd.is_none(),
+                        cost_usd,
+                        cost_estimated: cost_estimated || usage.cost_estimated,
                         subagent_id: None,
                     },
                 );
             }
-            if let Some(result) = compacted {
-                {
+            if let Some(mut result) = compacted {
+                // A compaction that saves nothing must not be announced: the
+                // transcript divider and the model's summary would both be
+                // lies, and the next iteration would compact again. One forced
+                // retry is what actually shrinks a transcript the estimate
+                // already proved wrong.
+                if result.summary.tokens_saved == 0 {
+                    let forced = ContextCompactor::new(strategy.clone())
+                        .compact_forced(result.messages.clone());
+                    if forced.summary.tokens_saved > 0 {
+                        result = forced;
+                    }
+                }
+                if result.summary.tokens_saved == 0 {
+                    tracing::warn!(
+                        iteration,
+                        used = running_tokens,
+                        room = budget.room(),
+                        "Compaction saved nothing; leaving the transcript as it is"
+                    );
+                } else {
                     let smart = matches!(
                         result.summary.metadata.summary_type,
                         crate::context::SummaryType::Semantic
@@ -626,14 +723,83 @@ pub(crate) async fn run_agent_loop(cfg: AgentRunConfig) -> Result<(), AgentLoopF
                     );
                     messages = result.messages;
                     running_tokens = tokens_after;
+                    tokens_measured = false;
+                    compacted_recently = true;
                 }
             }
         }
 
         let mut messages_clone = messages.clone();
-        crate::media::prune_stale_tool_media(&mut messages_clone);
+        // Media the model already answered past is not sent again; its cost
+        // must leave the arithmetic too, or the meter (and the gate) would go
+        // on charging for screenshots no request carries.
+        let pruned_tokens = crate::media::prune_stale_tool_media(&mut messages_clone);
+        let used = running_tokens.saturating_sub(pruned_tokens);
+
+        // The budget the request actually goes out with: compaction may have
+        // shrunk the transcript since the gate above, and pruning may have
+        // taken media out. Every surface draws this and the model is told this.
+        let budget = ContextBudget::new(window, tool_tokens, tokenizer_gap, used, output_tokens);
+        let mut system_tokens = 0usize;
+        let mut message_tokens = 0usize;
+        let mut tool_result_tokens = 0usize;
+        for message in &messages_clone {
+            let cost = crate::context::budget::estimated_message_cost(message);
+            match message.role {
+                crate::types::Role::System => system_tokens += cost,
+                crate::types::Role::Tool => tool_result_tokens += cost,
+                _ => message_tokens += cost,
+            }
+        }
+        send_event(
+            &sender,
+            task_id,
+            AgentEvent::ContextBudget {
+                used: budget.used as u32,
+                room: budget.room() as u32,
+                window: budget.window as u32,
+                tool_tokens: budget.tool_tokens as u32,
+                gap: budget.gap as u32,
+                system_tokens: system_tokens as u32,
+                message_tokens: message_tokens as u32,
+                tool_result_tokens: tool_result_tokens as u32,
+                reserve: budget.reserve as u32,
+                measured: tokens_measured,
+            },
+        );
+
+        // What the model is told about its remaining room. Appended to the
+        // request copy, never to the transcript: appending last keeps the
+        // cached prefix byte-stable, the numbers are always current, and it
+        // never reaches a session file, a fork or a resumed child.
+        let mut reminder_tokens = 0usize;
+        if !is_subagent {
+            match crate::goal::GoalStore::user().get(session_id) {
+                Ok(Some(goal)) => {
+                    if let Some(text) = goal.reminder() {
+                        let note = Message::user(text);
+                        reminder_tokens += crate::context::budget::estimated_message_cost(&note);
+                        messages_clone.push(note);
+                    }
+                }
+                Ok(None) => {}
+                Err(error) => tracing::warn!(%error, "Could not read session goal"),
+            }
+        }
+        if let Some(note) = budget.notice_message(compacted_recently) {
+            reminder_tokens += crate::context::budget::estimated_message_cost(&note);
+            messages_clone.push(note);
+            compacted_recently = false;
+        }
+        if let Some(index) = todo_review_at {
+            let note = Message::user("Before finishing, review the current todo list against the user's request. Complete remaining relevant work if possible, and update each status to reflect what was actually done. If work is blocked, needs user input, or is no longer relevant, say so; never mark it complete without doing it.");
+            reminder_tokens += crate::context::budget::estimated_message_cost(&note);
+            messages_clone.insert(index.min(messages_clone.len()), note);
+        }
         let request_context = crate::providers::RequestContext::new(session_id);
-        let request_estimate = running_tokens + tool_tokens;
+        // What we believe goes on the wire, including the reminder: the gap
+        // learned from the provider's count must not absorb it.
+        let request_estimate = used + tool_tokens + reminder_tokens;
 
         tracing::info!(iteration, format = ?api_format, tool_count = tool_defs.len(), "Starting provider request");
         let request_started = std::time::Instant::now();
@@ -786,26 +952,26 @@ pub(crate) async fn run_agent_loop(cfg: AgentRunConfig) -> Result<(), AgentLoopF
                                 if last_context_tokens > 0 {
                                     tokenizer_gap = (last_context_tokens as usize)
                                         .saturating_sub(request_estimate);
+                                    tokens_measured = true;
                                 }
                                 last_completion_tokens = usage.completion_tokens;
+                                // The provider's own charge wins; the catalog
+                                // price is the estimate. One rule, shared with
+                                // the checkpoint call and every child.
+                                let (cost_usd, cost_estimated) = price.call_cost(
+                                    usage.cost_usd,
+                                    usage.prompt_tokens,
+                                    usage.completion_tokens,
+                                    usage.cache_read_tokens,
+                                    usage.cache_creation_tokens,
+                                );
                                 send_event(&sender, task_id, AgentEvent::CallUsage {
                                     prompt_tokens: usage.prompt_tokens,
                                     completion_tokens: usage.completion_tokens,
                                     cache_read_tokens: usage.cache_read_tokens,
                                     cache_creation_tokens: usage.cache_creation_tokens,
-                                    // The provider's own charge wins; the
-                                    // catalog price is the estimate.
-                                    cost_usd: usage.cost_usd.or_else(|| {
-                                        price.is_priced().then(|| {
-                                            price.cost_usd(
-                                                usage.prompt_tokens,
-                                                usage.completion_tokens,
-                                                usage.cache_read_tokens,
-                                                usage.cache_creation_tokens,
-                                            )
-                                        })
-                                    }),
-                                    cost_estimated: usage.cost_usd.is_none(),
+                                    cost_usd,
+                                    cost_estimated: cost_estimated || usage.cost_estimated,
                                     subagent_id: None,
                                 });
                                 stream_stop_reason = stop_reason;
@@ -910,6 +1076,8 @@ pub(crate) async fn run_agent_loop(cfg: AgentRunConfig) -> Result<(), AgentLoopF
                     );
                     messages = forced.messages;
                     running_tokens = crate::context::estimate_message_tokens(&messages);
+                    tokens_measured = false;
+                    compacted_recently = true;
                     send_event(
                         &sender,
                         task_id,
@@ -1077,6 +1245,17 @@ pub(crate) async fn run_agent_loop(cfg: AgentRunConfig) -> Result<(), AgentLoopF
         }
 
         if tool_calls.is_empty() {
+            if should_review_todos(
+                current_todos.as_deref(),
+                todo_reviewed,
+                cancel_signal.is_aborted(),
+                mode == crate::types::AgentMode::Plan,
+                max_iterations.map(|max| iteration < max).unwrap_or(true),
+            ) {
+                todo_reviewed = true;
+                todo_review_at = Some(messages.len());
+                continue;
+            }
             tracing::info!("Chat task completed, no more tool calls");
             send_turn_usage(
                 &sender,
@@ -1226,6 +1405,9 @@ pub(crate) async fn run_agent_loop(cfg: AgentRunConfig) -> Result<(), AgentLoopF
         // when it takes that kind; otherwise the result's text stands alone.
         let mut tool_images = Vec::new();
         for (i, outcome) in outcomes.into_iter().enumerate() {
+            if let Some(todos) = &outcome.todos {
+                current_todos = Some(todos.clone());
+            }
             tool_images.extend(
                 outcome
                     .attachments
@@ -1334,6 +1516,59 @@ mod tests {
     use crate::agent::channel::args::{normalize_tool_args, parse_tool_args};
     use crate::catalog::{ModelCapabilities, ModelCost, ModelLimits, ModelStatus};
     use crate::providers::ModelInfo;
+
+    #[test]
+    fn todo_review_is_bounded_and_respects_stop_plan_and_terminal_statuses() {
+        let todo = |status: &str| crate::todo::TodoInput {
+            content: "Task".into(),
+            status: status.into(),
+            priority: "medium".into(),
+        };
+        let pending = vec![todo("pending")];
+        assert!(should_review_todos(
+            Some(&pending),
+            false,
+            false,
+            false,
+            true
+        ));
+        assert!(!should_review_todos(
+            Some(&pending),
+            true,
+            false,
+            false,
+            true
+        ));
+        assert!(!should_review_todos(
+            Some(&pending),
+            false,
+            true,
+            false,
+            true
+        ));
+        assert!(!should_review_todos(
+            Some(&pending),
+            false,
+            false,
+            true,
+            true
+        ));
+        assert!(!should_review_todos(
+            Some(&pending),
+            false,
+            false,
+            false,
+            false
+        ));
+        assert!(!should_review_todos(
+            Some(&[todo("completed"), todo("cancelled")]),
+            false,
+            false,
+            false,
+            true
+        ));
+        assert!(!should_review_todos(None, false, false, false, true));
+    }
 
     fn reasoning_model() -> ModelInfo {
         use crate::catalog::ReasoningOption;
@@ -1705,6 +1940,7 @@ mod tests {
             extra_tools: Vec::new(),
             only_tools: None,
             shell_env: Default::default(),
+            initial_gap: 0,
         };
         tokio::time::timeout(std::time::Duration::from_secs(2), run_agent_loop(config))
             .await
@@ -1789,6 +2025,7 @@ mod tests {
             extra_tools: Vec::new(),
             only_tools: None,
             shell_env: Default::default(),
+            initial_gap: 0,
         };
         tokio::time::timeout(std::time::Duration::from_secs(2), run_agent_loop(config))
             .await
@@ -1861,6 +2098,7 @@ mod tests {
             extra_tools: Vec::new(),
             only_tools: None,
             shell_env: Default::default(),
+            initial_gap: 0,
         };
         run_agent_loop(config).await.expect("turn completes");
 
@@ -1947,26 +2185,8 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("agente-overflow-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&dir).unwrap();
 
-        let model = overflow_test_model();
-        let registry = Arc::new(ProviderRegistry::new());
-        let provider = Arc::new(OverflowThenOkProvider {
-            info: crate::providers::ProviderInfo {
-                id: "test-overflow".to_string(),
-                name: "Test Overflow".to_string(),
-                models: vec![model],
-                ..Default::default()
-            },
-            calls: std::sync::Mutex::new(0),
-            first_error: "The request is 265713 tokens long and exceeds this model's context length of 262144 tokens (context_length_exceeded)",
-            fail_calls: 1,
-            partial_event: None,
-        });
-        registry.register("test-overflow", provider.clone());
-
-        // ~5.7k estimated tokens across 12 messages: below the 6.8k
-        // auto-compact gate (which must NOT fire), above the 4.8k forced
-        // target, with the bulk outside the last 8 messages so forced
-        // compaction can bite.
+        // A tool-result-heavy transcript across 12 messages, with the bulk
+        // outside the last 8 so forced compaction can bite.
         let mut messages = vec![Message {
             role: Role::System,
             content: "system prompt".to_string(),
@@ -1991,10 +2211,29 @@ mod tests {
             attachments: Vec::new(),
         });
         let estimate = crate::context::estimate_message_tokens(&messages);
-        assert!(
-            estimate < 6_800,
-            "fixture must stay below the auto-compact gate, got {estimate}"
-        );
+        // Size the window from the fixture: the pre-request estimate has to
+        // stay below the auto-compact gate (or the loop would compact before
+        // sending and the provider would never see an overflow), and the forced
+        // target has to stay below it too (or a forced compaction would find
+        // nothing to reclaim). Tool schemas are out of the picture so the room
+        // is the window minus a small reply reserve.
+        let mut model = overflow_test_model();
+        model.limits.context = (estimate * 16 / 10) as u32;
+        model.limits.output = 0;
+        let registry = Arc::new(ProviderRegistry::new());
+        let provider = Arc::new(OverflowThenOkProvider {
+            info: crate::providers::ProviderInfo {
+                id: "test-overflow".to_string(),
+                name: "Test Overflow".to_string(),
+                models: vec![model],
+                ..Default::default()
+            },
+            calls: std::sync::Mutex::new(0),
+            first_error: "The request is 265713 tokens long and exceeds this model's context length of 262144 tokens (context_length_exceeded)",
+            fail_calls: 1,
+            partial_event: None,
+        });
+        registry.register("test-overflow", provider.clone());
         let original_chars: usize = messages.iter().map(|m| m.content.len()).sum();
 
         let (tx, rx) = std::sync::mpsc::channel();
@@ -2025,8 +2264,10 @@ mod tests {
             compaction_model: None,
             user_inbox: None,
             extra_tools: Vec::new(),
-            only_tools: None,
+            // No tools: the room under test is the window, nothing else.
+            only_tools: Some(Vec::new()),
             shell_env: Default::default(),
+            initial_gap: 0,
         };
         run_agent_loop(config).await.expect("turn recovers");
 
@@ -2155,6 +2396,7 @@ mod tests {
             extra_tools: Vec::new(),
             only_tools: None,
             shell_env: Default::default(),
+            initial_gap: 0,
         };
         let result = run_agent_loop(config).await;
         let calls = *provider.calls.lock().unwrap();
@@ -2324,6 +2566,7 @@ mod tests {
             extra_tools: Vec::new(),
             only_tools: None,
             shell_env: Default::default(),
+            initial_gap: 0,
         };
         (dir, rx, provider, config)
     }

@@ -1,4 +1,5 @@
 import { invoke, isElectron } from '$lib/services/bridge';
+import { formatPricePerMillion } from '$lib/utils/money';
 
 /** What the model picker's card says about a cloud model. Unknown numbers are null. */
 export interface ModelCard {
@@ -38,7 +39,5 @@ export function formatTokens(value: number | null | undefined): string {
 
 /** `$0.60`, `$0.014`, `gratis` when the provider charges nothing. */
 export function formatPrice(value: number | null | undefined, free: string): string {
-  if (value == null) return '';
-  if (value === 0) return free;
-  return `$${value < 0.1 ? value.toFixed(3).replace(/0+$/, '') : value.toFixed(2)}`;
+  return formatPricePerMillion(value, free);
 }

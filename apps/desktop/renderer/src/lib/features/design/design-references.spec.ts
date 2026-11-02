@@ -31,6 +31,9 @@ describe('normalizeSiteUrl', () => {
 });
 
 describe('imageFilesOf', () => {
+  it('accepts OS image drops without MIME types and leaves other files alone', () => {
+    expect(imageFilesOf([{type:'',name:'reference.PNG'},{type:'',name:'brief.pdf'},{type:'text/plain',name:'fake.png'}]).map(file => file.name)).toEqual(['reference.PNG']);
+  });
   it('keeps the image types main accepts', () => {
     const files = [{ type: 'image/png' }, { type: 'image/svg+xml' }, { type: 'text/plain' }, { type: 'image/webp' }, { type: '' }];
     expect(imageFilesOf(files).map((file) => file.type)).toEqual(['image/png', 'image/webp']);

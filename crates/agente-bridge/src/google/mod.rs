@@ -130,10 +130,7 @@ impl Google {
         Ok(renewed.token)
     }
 
-    async fn send(
-        &self,
-        request: reqwest::RequestBuilder,
-    ) -> Result<reqwest::Response, String> {
+    async fn send(&self, request: reqwest::RequestBuilder) -> Result<reqwest::Response, String> {
         let response = request
             .send()
             .await
@@ -148,9 +145,7 @@ impl Google {
 
     pub async fn get_json(&self, url: &str) -> Result<Value, String> {
         let token = self.token().await?;
-        let response = self
-            .send(self.http.get(url).bearer_auth(token))
-            .await?;
+        let response = self.send(self.http.get(url).bearer_auth(token)).await?;
         response
             .json::<Value>()
             .await
@@ -222,9 +217,7 @@ impl Google {
     }
 
     pub async fn post_form(&self, url: &str, form: &[(&str, String)]) -> Result<Value, String> {
-        let response = self
-            .send(self.http.post(url).form(form))
-            .await?;
+        let response = self.send(self.http.post(url).form(form)).await?;
         response
             .json::<Value>()
             .await
@@ -326,7 +319,10 @@ pub fn grant_from_token_response(value: &Value) -> Result<OAuthGrant, String> {
             .and_then(Value::as_str)
             .map(str::to_string),
         expires_at,
-        scope: value.get("scope").and_then(Value::as_str).map(str::to_string),
+        scope: value
+            .get("scope")
+            .and_then(Value::as_str)
+            .map(str::to_string),
     })
 }
 
@@ -375,11 +371,17 @@ mod tests {
     fn ids_come_out_of_every_google_url_shape() {
         let id = "1AbCdEfGhIjKlMnOpQrStUvWxYz0123456789";
         assert_eq!(
-            file_id(&format!("https://docs.google.com/document/d/{id}/edit#heading=h.1")).as_deref(),
+            file_id(&format!(
+                "https://docs.google.com/document/d/{id}/edit#heading=h.1"
+            ))
+            .as_deref(),
             Some(id)
         );
         assert_eq!(
-            file_id(&format!("https://docs.google.com/spreadsheets/u/0/d/{id}/edit?gid=0")).as_deref(),
+            file_id(&format!(
+                "https://docs.google.com/spreadsheets/u/0/d/{id}/edit?gid=0"
+            ))
+            .as_deref(),
             Some(id)
         );
         assert_eq!(

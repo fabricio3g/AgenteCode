@@ -289,7 +289,10 @@ mod tests {
         let code = pairing.code();
         assert!(code.starts_with("7391."));
         assert_eq!(Pairing::parse_code(&code).as_ref(), Some(&pairing));
-        assert_eq!(Pairing::parse_code(&format!(" {code} ")).as_ref(), Some(&pairing));
+        assert_eq!(
+            Pairing::parse_code(&format!(" {code} ")).as_ref(),
+            Some(&pairing)
+        );
     }
 
     #[test]
@@ -316,11 +319,7 @@ mod tests {
     fn installing_the_mcp_entry_keeps_the_rest_of_the_config() {
         let dir = tempfile::tempdir().expect("tempdir");
         let path = dir.path().join("config.json");
-        std::fs::write(
-            &path,
-            r#"{"model":"x","mcp":{"other":{"command":"npx"}}}"#,
-        )
-        .expect("seed");
+        std::fs::write(&path, r#"{"model":"x","mcp":{"other":{"command":"npx"}}}"#).expect("seed");
         install_mcp_entry(&path, Path::new("/usr/local/bin/agente"), "all").expect("install");
         let value: Value =
             serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).expect("json");
@@ -361,8 +360,20 @@ mod tests {
 
     #[test]
     fn tool_sets_parse_from_the_environment_value() {
-        assert_eq!(ToolSet::parse("browser"), ToolSet { browser: true, documents: false });
-        assert_eq!(ToolSet::parse(" DOCS "), ToolSet { browser: false, documents: true });
+        assert_eq!(
+            ToolSet::parse("browser"),
+            ToolSet {
+                browser: true,
+                documents: false
+            }
+        );
+        assert_eq!(
+            ToolSet::parse(" DOCS "),
+            ToolSet {
+                browser: false,
+                documents: true
+            }
+        );
         assert_eq!(ToolSet::parse("anything-else"), ToolSet::ALL);
         assert_eq!(ToolSet::ALL.label(), "all");
     }

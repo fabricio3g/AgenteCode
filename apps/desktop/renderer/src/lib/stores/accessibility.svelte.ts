@@ -8,7 +8,7 @@ import { zoomKeyDirection } from '$shared/zoom-keys';
 export type ReduceMotion = 'system' | 'on' | 'off';
 export type ReadingFont = 'default' | 'system' | 'hyperlegible';
 /**
- * Stroke weight for conversation text. Inter Variable carries the full 100–900
+ * Stroke weight for conversation text. Geist Variable carries the full 100–900
  * axis, so `medium` is a real interpolated weight — never a faux bold.
  */
 export type TextWeight = 'regular' | 'medium';

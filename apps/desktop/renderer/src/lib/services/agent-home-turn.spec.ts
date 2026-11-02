@@ -21,7 +21,7 @@ import { shouldUseToolLoop } from './composer-route';
 import type { RunAgentTaskArgs } from './agent-types';
 
 type Turn = { status: 'completed' | 'failed' | 'cancelled'; error?: string };
-type Runtime = { emit: (event: RuntimeEvent) => void; call: (name: string, args: Record<string, unknown>) => Promise<ClientToolResult> };
+type Runtime = { emit: (event: RuntimeEvent, at?: number, parentRunId?: string) => void; call: (name: string, args: Record<string, unknown>) => Promise<ClientToolResult> };
 
 let script: (runtime: Runtime) => Promise<Turn>;
 let listener: ((event: HomeRuntimeEvent) => void) | undefined;
@@ -34,7 +34,7 @@ async function drive(runId: string) {
   const send = (event: HomeRuntimeEvent) => listener?.(event);
   let calls = 0;
   const runtime: Runtime = {
-    emit: (event) => send({ runId, type: 'event', envelope: { session_id: 's1', turn_id: 't1', seq: 0, event } as never }),
+    emit: (event, at = 0, parentRunId) => send({ runId, type: 'event', envelope: { session_id: 's1', turn_id: 't1', seq: 0, timestamp: new Date(at).toISOString(), parent_run_id: parentRunId, event } as never }),
     call: (name, args) => new Promise((resolve) => {
       const requestId = `request-${++calls}`;
       replies.set(requestId, resolve);
@@ -81,6 +81,74 @@ describe('Home turn on the Rust runtime', () => {
     expect(starts[0]).toMatchObject({ provider: 'opencode-go', model: 'deepseek-v4.1-flash' });
     expect(onContent).toHaveBeenLastCalledWith('Hello there.');
     expect(result).toMatchObject({ content: 'Hello there.', outcome: 'completed' });
+  });
+
+  it('keeps per-call spend and speed through the final usage snapshot', async () => {
+    const usage = { prompt_tokens: 100, completion_tokens: 100, cache_read_tokens: 900, cache_creation_tokens: 0, context_tokens: 1000 };
+    script = async ({ emit }) => {
+      emit(say('First'), 1000);
+      emit(say(' reply.'), 2000);
+      emit({ type: 'call_usage', usage, cost_usd: 0.012, cost_estimated: false }, 9000);
+      // Child costs belong to the conversation; its speed/context/content do not.
+      emit(say('Child reply'), 10_000, 'child');
+      emit({ type: 'call_usage', usage, cost_usd: 0.003, cost_estimated: true }, 11_000, 'child');
+      emit({ type: 'usage', usage: { ...usage, completion_tokens: 0 } }, 12_000);
+      return { status: 'completed' };
+    };
+    const onSpend = vi.fn();
+    const onUsage = vi.fn();
+    const result = await run('hi', { noTools: true, onSpend, onUsage });
+    expect(result.content).toBe('First reply.');
+    expect(result.usage).toMatchObject({ completion_tokens: 100, timings: { output_stream_ms: 1000 } });
+    expect(onUsage).toHaveBeenCalledTimes(1);
+    expect(onSpend).toHaveBeenCalledTimes(2);
+    expect(result.spend).toMatchObject({ costUsd: 0.015, estimated: true, unpriced: false, promptTokens: 200, cacheReadTokens: 1800 });
+  });
+
+  it('resets the output clock across retries and leaves missing prices unpriced', async () => {
+    script = async ({ emit }) => {
+      emit(say('Failed attempt'), 1000);
+      emit({ type: 'retry', attempt: 1, max_attempts: 2, delay_ms: 1000 } as RuntimeEvent, 2000);
+      emit(say('Buffered reply.'), 10_000);
+      emit({ type: 'call_usage', usage: { prompt_tokens: 10, completion_tokens: 100, cache_read_tokens: 0, cache_creation_tokens: 0, context_tokens: 10 }, cost_usd: null, cost_estimated: true }, 20_000);
+      return { status: 'completed' };
+    };
+    const result = await run('hi', { noTools: true });
+    expect(result.usage?.timings).toBeUndefined();
+    expect(result.spend).toMatchObject({ costUsd: 0, unpriced: true });
+  });
+
+  it('starts a goal created before the first turn on its reserved session', async () => {
+    script = async ({ emit }) => { emit(say('Working.')); return { status: 'completed' }; };
+    await run('hi', { homeRuntime: { sessionId: 'goal-session', goalPending: true, revision: 0, provider: '', model: '', contextWindow: 0, historyIds: [] }, historyIds: ['user-1'] });
+    expect(starts[0].sessionId).toBe('goal-session');
+    expect(starts[0].conversation).toBeDefined();
+  });
+
+  it('copies a goal when edited history requires a new session', async () => {
+    script = async ({ emit }) => { emit(say('Working.')); return { status: 'completed' }; };
+    const original = vi.mocked(invoke).getMockImplementation()!;
+    vi.mocked(invoke).mockImplementation(async (command: string, args?: any) => {
+      if (command === 'agente_goal_get') return { objective: 'Finish work', status: 'active' };
+      if (command === 'agente_goal_set') return args;
+      return original(command, args);
+    });
+    await run('hi', { homeRuntime: { sessionId: 'old-session', revision: 1, provider: 'p', model: 'm', contextWindow: 100, historyIds: ['old'] }, historyIds: ['edited', 'new'] });
+    expect(starts[0].sessionId).not.toBe('old-session');
+    expect(vi.mocked(invoke)).toHaveBeenCalledWith('agente_goal_set', expect.objectContaining({ sessionId: starts[0].sessionId, objective: 'Finish work', status: 'active' }));
+    expect(starts[0].conversation).toBeDefined();
+  });
+
+  it('keeps the Rust context budget when provider usage arrives afterward', async () => {
+    script = async ({ emit }) => {
+      emit({ type: 'context_budget', used: 40_000, room: 80_000, window: 100_000, tool_tokens: 8_000, gap: 2_000, reserve: 10_000, system_tokens: 4_000, message_tokens: 30_000, tool_result_tokens: 6_000 } as RuntimeEvent);
+      emit({ type: 'usage', usage: { prompt_tokens: 50_000, completion_tokens: 100, cache_read_tokens: 0, cache_creation_tokens: 0, context_tokens: 50_000 } } as RuntimeEvent);
+      emit(say('Done.'));
+      return { status: 'completed' };
+    };
+    const onRuntime = vi.fn();
+    await run('hi', { onRuntime });
+    expect(onRuntime).toHaveBeenLastCalledWith(expect.objectContaining({ contextWindow: 80_000, contextTokens: 40_000, estimated: true, contextBreakdown: expect.objectContaining({ system: 4_000 }) }));
   });
 
   it('runs a plain Instant answer as one tool-less runtime turn', async () => {
@@ -133,6 +201,19 @@ describe('Home turn on the Rust runtime', () => {
     const result = await run('hi');
     expect(result.outcome).toBe('failed');
     expect(result.error).toContain('provider');
+  });
+
+  it('settles with an error when a tool reply cannot reach the runtime', async () => {
+    const original = vi.mocked(invoke).getMockImplementation()!;
+    vi.mocked(invoke).mockImplementation(async (command: string, args?: any) => {
+      if (command === 'home_runtime_result') throw new Error('Runtime tool reply disconnected');
+      return original(command, args);
+    });
+    script = async ({ call }) => { await call('calculator', { expression: '2+2' }); return { status: 'completed' }; };
+    const result = await run('calculate 2+2');
+    expect(result.outcome).toBe('failed');
+    expect(result.error).toContain('disconnected');
+    expect(cancels).toBeGreaterThan(0);
   });
 
   it('cancels the runtime turn when the user stops it', async () => {

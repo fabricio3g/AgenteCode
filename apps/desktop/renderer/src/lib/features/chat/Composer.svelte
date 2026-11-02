@@ -5,18 +5,19 @@
 
   Speech recognition, drag-and-drop, and OCR progress live in
   `composer/use-dictation.svelte.ts` and `composer/use-attachments.svelte.ts`;
-  the mode selectors and send button live in `composer/ComposerToolbar.svelte`.
+  both conversation surfaces share the toolbar and dictation controls.
   What remains here is the textarea and how a message gets submitted.
 -->
 
 <script lang="ts">
+  import Button from '$lib/components/ui/Button.svelte';
   import UiFileInput from '$lib/components/ui/FileInput.svelte';
   import UiTextarea from '$lib/components/ui/Textarea.svelte';
   import { cn as uiClass } from '$lib/utils/cn';
 
   import type { Snippet } from 'svelte';
   import { onDestroy, tick } from 'svelte';
-  import { Paperclip } from 'lucide-svelte';
+  import { Paperclip, Target } from 'lucide-svelte';
   import { t } from 'svelte-i18n';
   import { appStore } from '$lib/stores/app.svelte';
   import { toastStore } from '$lib/stores/toast.svelte';
@@ -30,7 +31,8 @@
   import ComposerAddMenu from './composer/ComposerAddMenu.svelte';
   import ComposerToolsMenu from './composer/ComposerToolsMenu.svelte';
   import ComposerBar from './composer/ComposerBar.svelte';
-  import ComposerToolbar from './composer/ComposerToolbar.svelte';
+  import DictationButton from './composer/DictationButton.svelte';
+  import SendButton from '$lib/features/shared/composer/SendButton.svelte';
   import HomeContextStatus from './composer/HomeContextStatus.svelte';
   import ModeSelector from './composer/ModeSelector.svelte';
   import SelectedTextCard from './composer/SelectedTextCard.svelte';
@@ -42,6 +44,7 @@
   import { MAX_COMPOSER_TEXTAREA_PX, autogrowTextarea } from '$lib/features/shared/composer-autogrow';
   import NameCompletion from '$lib/features/shared/NameCompletion.svelte';
   import PromptQueue from '$lib/features/shared/PromptQueue.svelte';
+  import SessionGoal from '$lib/features/shared/SessionGoal.svelte';
   import type { NameCandidate } from '$lib/features/shared/name-completion';
 
   let { placeholder: customPlaceholder, nameCompletion, above, suggestions = true }: {
@@ -56,6 +59,23 @@
 
   /** Textarea grows with content up to this height, then scrolls. */
   const MAX_TEXTAREA_PX = MAX_COMPOSER_TEXTAREA_PX;
+  let goalControl = $state<{ edit: () => Promise<void> }>();
+  let goalSlashDismissed = $state(false);
+  const goalSlashOpen = $derived(!goalSlashDismissed && /^\/[a-z]*$/i.test(appStore.composer) && '/goal'.startsWith(appStore.composer.toLowerCase()));
+  async function openGoal() {
+    appStore.updateComposer('');
+    if (!appStore.currentChat) appStore.createChat('home');
+    await tick();
+    await goalControl?.edit();
+  }
+  function ensureGoalSession(): string {
+    const chat = appStore.currentChat;
+    if (!chat) throw new Error('No active conversation');
+    chat.homeRuntime ??= { sessionId: crypto.randomUUID(), revision: 0, provider: '', model: '', contextWindow: 0, historyIds: [], goalPending: true };
+    appStore.markChatDirty(chat.id);
+    appStore.persist();
+    return chat.homeRuntime.sessionId;
+  }
   /** How long an error placeholder stays before reverting. */
   const ERROR_PLACEHOLDER_MS = 12_000;
   /** Debounce before recomputing the context-budget preview. */
@@ -135,6 +155,7 @@
   }
 
   async function submit() {
+    if (appStore.composer.trim().toLowerCase() === '/goal') { await openGoal(); return; }
     attachments.clearOcr();
 
     if (localBusyElsewhere) {
@@ -164,6 +185,8 @@
 
   function onKeydown(event: KeyboardEvent) {
     if (event.isComposing || event.defaultPrevented) return;
+    if (goalSlashOpen && event.key === 'Escape') { event.preventDefault(); goalSlashDismissed = true; return; }
+    if (goalSlashOpen && (event.key === 'Tab' || (event.key === 'Enter' && !event.shiftKey))) { event.preventDefault(); void openGoal(); return; }
     if (event.key === 'ArrowUp' && !appStore.composer && !appStore.pendingAttachments.length) {
       const item = [...(appStore.currentChat?.pendingPrompts ?? [])].reverse().find(item => !item.sending);
       if (item && appStore.currentChatId) {
@@ -178,6 +201,7 @@
   }
 
   function onInput(event: Event) {
+    goalSlashDismissed = false;
     const element = event.currentTarget as HTMLTextAreaElement;
     appStore.updateComposer(element.value);
     autoGrow(element);
@@ -312,6 +336,7 @@
     : 'pointer-events-none'}"
   role="region"
   aria-label="Message composer"
+  onpaste={(event) => attachments.handlePaste(event)}
   ondrop={(event) => attachments.handleDrop(event)}
   ondragover={(event) => attachments.handleDragOver(event)}
   ondragleave={(event) => attachments.handleDragLeave(event)}
@@ -359,6 +384,11 @@
 
     <!-- Radius comes from --composer-radius on .ui-composer; the rounded-*
          utilities that used to sit here fought it at equal specificity. -->
+    {#if goalSlashOpen}
+      <div class="goal-slash" role="listbox" aria-label={$t('code.slash.title')}>
+        <Button variant="plain" type="button" role="option" aria-selected="true" onmousedown={(event) => event.preventDefault()} onclick={() => void openGoal()}><Target class="size-4" /><span>/goal</span><span class="goal-slash-hint">{$t('goal.hint')}</span></Button>
+      </div>
+    {/if}
     {#if appStore.currentChat?.pendingPrompts?.length && appStore.currentChatId}
       <PromptQueue running={generating} items={appStore.currentChat.pendingPrompts} onupdate={(id, content) => appStore.updateQueuedPrompt(appStore.currentChatId!, id, content)} onremove={(id) => { appStore.removeQueuedPrompt(appStore.currentChatId!, id); }} onsend={(id) => void appStore.sendQueuedPromptsNow(appStore.currentChatId!, id)} />
     {/if}
@@ -411,35 +441,32 @@
 
         {#if dictation.uiActive && !voiceMode && dictation.phase !== 'choose'}
           <!-- Dictation takes over the bar: waveform, timer, cancel, done. -->
-          <div class="composer-bar"><ComposerRecorder {dictation} /></div>
+          <div class="composer-bar">
+            <ComposerRecorder {dictation} />
+            {#if generating}<SendButton compact running={true} disabled={false} sendLabel={copy.composer.send} stopLabel={copy.composer.stop} onsend={() => void submit()} onstop={() => appStore.stopStreaming()} />{/if}
+          </div>
         {:else}
           <ComposerBar>
             {#snippet attach()}<ComposerAddMenu onattach={() => fileInput?.click()} />{/snippet}
             {#snippet model()}<ModelMenu compact />{/snippet}
-            {#snippet extras()}<ComposerToolsMenu compact />{/snippet}
+            {#snippet extras()}
+              {#if appStore.activeSpace === 'home'}<ModeSelector />{/if}
+              <ComposerToolsMenu compact />
+            {/snippet}
+            {#snippet microphone()}<DictationButton {dictation} oncall={() => void enterVoiceMode()} />{/snippet}
+            {#snippet context()}<HomeContextStatus />{/snippet}
             {#snippet trailing()}
-              <ComposerToolbar
-                {dictation}
-                {generating}
-                {sendDisabled}
-                oncall={() => void enterVoiceMode()}
-                onsubmit={() => void submit()}
-                onstop={() => appStore.stopStreaming()}
-              />
+              <SendButton compact running={generating} disabled={sendDisabled || !appStore.composer.trim()}
+                sendLabel={copy.composer.send} stopLabel={copy.composer.stop}
+                onsend={() => void submit()} onstop={() => appStore.stopStreaming()} />
             {/snippet}
           </ComposerBar>
         {/if}
       </div>
     </div>
-    <!-- Agent runs the tool loop, Instant answers at once. Home only (Code
-         always runs the full loop); it sits in the strip under the input, so
-         the bar keeps its room for the model name. -->
-    {#if appStore.activeSpace === 'home'}
-      <HomeContextStatus>{#snippet lead()}<ModeSelector />{/snippet}</HomeContextStatus>
-    {:else}
-      <HomeContextStatus />
+    {#if appStore.currentChat && appStore.currentChat.contextMode !== 'code' && appStore.currentChat.contextMode !== 'roleplay'}
+      <div class="pointer-events-auto"><SessionGoal bind:this={goalControl} sessionId={appStore.currentChat.homeRuntime?.sessionId} ensureSession={ensureGoalSession} running={generating} /></div>
     {/if}
-
     {#if threadIsEmpty && suggestions}
       <!-- await tick() so the textarea holds the inserted prompt before we
            focus it; otherwise the caret lands at the pre-insert length. -->
@@ -449,6 +476,9 @@
 </div>
 
 <style>
+  .goal-slash { position:absolute; bottom:100%; left:0; right:0; padding:0.25rem; border:1px solid var(--border); border-radius:var(--radius-md); background:var(--background); box-shadow:var(--shadow-md); }
+  .goal-slash :global(button) { display:flex; align-items:center; gap:0.5rem; width:100%; padding:0.5rem; border-radius:var(--radius-sm); text-align:left; background:var(--surface-hover); font-size:var(--text-sm); }
+  .goal-slash-hint { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--muted-foreground); font-size:var(--text-xs); }
   .composer-dock {
     background: var(--chat-bg);
   }
@@ -476,17 +506,6 @@
      widget at a time left the call panel and the thinking button dead. */
   .composer-frame > :global(*) {
     pointer-events: auto;
-  }
-  /* In the strip the mode switch is one more quiet control: a soft track, no outline. */
-  .composer-frame :global(.composer-secondary .mode-tabs) {
-    border-color: transparent;
-    box-shadow: none;
-    background: var(--muted);
-  }
-  /* The strip's own line height, so the switch does not make it taller than its status. */
-  .composer-frame :global(.composer-secondary .mode-tabs button) {
-    height: 1.375rem;
-    padding-inline: 0.625rem;
   }
   .drop-overlay {
     position: absolute;

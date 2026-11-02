@@ -1,6 +1,7 @@
 // Electron window controls.
 
 import { isElectron } from './bridge';
+import { flushChatSaves } from '$lib/utils/storage';
 
 export const appWindow = {
   async minimize() {
@@ -17,6 +18,7 @@ export const appWindow = {
   },
   async close() {
     if (!isElectron()) return;
+    await flushChatSaves();
     if (window.electronAPI?.windowRequestClose) {
       await window.electronAPI.windowRequestClose();
       return;

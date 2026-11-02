@@ -292,6 +292,7 @@ impl Provider for GoogleProvider {
                 }
             }
             if let Some(u) = event.get("usageMetadata") {
+                super::billing::record_cost(&mut usage, u);
                 usage.prompt_tokens = u["promptTokenCount"].as_u64().unwrap_or(0) as u32;
                 usage.completion_tokens = (u["candidatesTokenCount"].as_u64().unwrap_or(0)
                     + u["thoughtsTokenCount"].as_u64().unwrap_or(0))

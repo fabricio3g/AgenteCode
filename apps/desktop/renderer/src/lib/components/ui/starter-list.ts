@@ -1,7 +1,7 @@
 /**
  * One row of a starter list. The shape is shared so the Code space's first
- * conversation and the Design dock's empty screen cannot drift apart, and so
- * nothing has to re-derive a label from a prompt fragment.
+ * conversation, the Home empty state and the Design dock cannot drift apart,
+ * and so nothing has to re-derive a label from a prompt fragment.
  */
 import type { ComponentType } from 'svelte';
 import type { Icon as LucideIcon } from 'lucide-svelte';
@@ -9,9 +9,10 @@ import type { Icon as LucideIcon } from 'lucide-svelte';
 export interface Starter {
   /** Stable key: the consumer gets it back from `onpick`. */
   id: string;
-  /** Hue that identifies the kind (oklch degrees), never emphasis. */
-  hue: number;
-  icon: StarterIcon;
+  /** Hue that identifies the kind (oklch degrees), never emphasis. Optional
+   *  because the links look paints no tile: it needs neither hue nor icon. */
+  hue?: number;
+  icon?: StarterIcon;
   /** The action, imperative and complete — never a fragment. */
   label: string;
   /** What you get back, one line. */

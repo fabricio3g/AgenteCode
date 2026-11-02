@@ -58,6 +58,7 @@ export class ComposerAttachments {
   // ── Composer-local drag target ────────────────────────────────────────────
 
   handleDragOver(event: DragEvent): void {
+    if (!event.dataTransfer?.types.includes('Files')) return;
     event.preventDefault();
     this.dragOver = true;
   }
@@ -70,10 +71,22 @@ export class ComposerAttachments {
   }
 
   handleDrop(event: DragEvent): void {
-    event.preventDefault();
-    this.dragOver = false;
+    if (event.defaultPrevented) return;
     const files = Array.from(event.dataTransfer?.files || []);
+    if (!files.length) return;
+    event.preventDefault();
+    event.stopPropagation();
+    this.dragOver = false;
+    this.windowDragActive = false;
     if (files.length) void appStore.addFiles(files);
+  }
+
+  handlePaste(event: ClipboardEvent): void {
+    if (event.defaultPrevented) return;
+    const files = Array.from(event.clipboardData?.files || []);
+    if (!files.length) return;
+    event.preventDefault(); event.stopPropagation();
+    void appStore.addFiles(files);
   }
 
   async handleFileInput(event: Event): Promise<void> {
@@ -102,7 +115,8 @@ export class ComposerAttachments {
       }, DRAG_LEAVE_GRACE_MS);
     };
 
-    const onDrop = () => {
+    const onDrop = (event: DragEvent) => {
+      if (!event.defaultPrevented) this.handleDrop(event);
       this.windowDragActive = false;
       if (this.dragLeaveTimer) {
         clearTimeout(this.dragLeaveTimer);
@@ -135,12 +149,15 @@ export class ComposerAttachments {
     };
 
     document.addEventListener('dragenter', onDragEnter);
+    const preventNavigation = (event: DragEvent) => { if (event.dataTransfer?.types.includes('Files')) event.preventDefault(); };
+    document.addEventListener('dragover', preventNavigation);
     document.addEventListener('dragleave', onDragLeave);
     document.addEventListener('drop', onDrop);
     window.addEventListener('ocr-progress', onOcrProgress as EventListener);
 
     return () => {
       document.removeEventListener('dragenter', onDragEnter);
+      document.removeEventListener('dragover', preventNavigation);
       document.removeEventListener('dragleave', onDragLeave);
       document.removeEventListener('drop', onDrop);
       window.removeEventListener('ocr-progress', onOcrProgress as EventListener);

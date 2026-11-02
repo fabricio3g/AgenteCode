@@ -1,7 +1,10 @@
 import type { RequestMessage } from '$lib/services/chat/types';
+import type { ContextBreakdown } from '$shared/agente-protocol';
 
 export interface ContextBudgetValue {
   estimated?: boolean;
+  /** Preview estimates; omitted when the runtime only reports a total. */
+  breakdown?: ContextBreakdown;
   maxContext: number;
   usedTokens: number;
   remaining: number;
@@ -10,7 +13,6 @@ export interface ContextBudgetValue {
   reservedForCompletion: number;
   promptCostPerMillionUsd?: number;
   completionCostPerMillionUsd?: number;
-  estimatedInputCostUsd?: number;
 }
 
 export interface ApiModelMetadataValue {
@@ -61,9 +63,6 @@ export function buildApiContextBudget(params: {
 
   const promptCostPerMillionUsd = params.modelMetadata.prompt_cost_per_million;
   const completionCostPerMillionUsd = params.modelMetadata.completion_cost_per_million;
-  const estimatedInputCostUsd = promptCostPerMillionUsd
-    ? (params.totalTokens / 1_000_000) * promptCostPerMillionUsd
-    : undefined;
 
   return {
     maxContext: params.contextWindow,
@@ -73,8 +72,7 @@ export function buildApiContextBudget(params: {
     isOverflow: params.totalTokens > effectiveMax,
     reservedForCompletion: reserved,
     promptCostPerMillionUsd,
-    completionCostPerMillionUsd,
-    estimatedInputCostUsd
+    completionCostPerMillionUsd
   };
 }
 
@@ -87,6 +85,14 @@ export function estimateTokensFromMessages(messages: RequestMessage[]): number {
     if (reasoning) total += Math.ceil(String(reasoning).length / 4);
   }
   return total;
+}
+
+/** Estimate the supplied request by role; tools and runtime additions are not included. */
+export function estimateContextBreakdown(messages: RequestMessage[]): { system: number; messages: number } {
+  return {
+    system: estimateTokensFromMessages(messages.filter((message) => message.role === 'system')),
+    messages: estimateTokensFromMessages(messages.filter((message) => message.role !== 'system'))
+  };
 }
 
 export function inferContextWindowFromModel(providerName?: string, modelId?: string): number | null {
@@ -214,19 +220,25 @@ export async function buildApiContextBudgetFromMessages(params: {
 export function normalizeApiModelMetadata(input: unknown): ApiModelMetadataValue | null {
   if (!input || typeof input !== 'object') return null;
   const value = input as Partial<ApiModelMetadataValue>;
+  const price = (amount: unknown): number | undefined => {
+    if (amount == null || amount === '') return undefined;
+    const parsed = Number(amount);
+    return Number.isFinite(parsed) && parsed >= 0 ? parsed : undefined;
+  };
   const metadata: ApiModelMetadataValue = {
     context_window: Number(value.context_window) || 0,
     max_completion_tokens: Number(value.max_completion_tokens) || undefined,
-    prompt_cost_per_million: Number(value.prompt_cost_per_million) || undefined,
-    completion_cost_per_million: Number(value.completion_cost_per_million) || undefined
+    prompt_cost_per_million: price(value.prompt_cost_per_million),
+    completion_cost_per_million: price(value.completion_cost_per_million)
   };
   return metadata.context_window > 0 ? metadata : null;
 }
 
 /** Reported runtime usage remains authoritative after compaction. Drafts are estimates. */
-export function homeRuntimeBudget(meta: { contextWindow: number; contextTokens?: number; estimated?: boolean }, draft = ''): ContextBudgetValue | null {
+export function homeRuntimeBudget(meta: { contextWindow: number; contextTokens?: number; estimated?: boolean; contextBreakdown?: ContextBreakdown }, draft = ''): ContextBudgetValue | null {
   if (!Number.isFinite(meta.contextWindow) || meta.contextWindow <= 0 || !Number.isFinite(meta.contextTokens)) return null;
   const maxContext = meta.contextWindow;
   const usedTokens = Math.max(0, meta.contextTokens || 0) + (draft ? Math.ceil(draft.length / 4) + 4 : 0);
-  return { maxContext, usedTokens, remaining: Math.max(0, maxContext - usedTokens), usagePercent: Math.min(100, usedTokens / maxContext * 100), isOverflow: usedTokens > maxContext, reservedForCompletion: 0, estimated: !!draft || !!meta.estimated };
+  const breakdown = meta.contextBreakdown && { ...meta.contextBreakdown, messages: meta.contextBreakdown.messages + (draft ? Math.ceil(draft.length / 4) + 4 : 0) };
+  return { maxContext, usedTokens, remaining: Math.max(0, maxContext - usedTokens), usagePercent: Math.min(100, usedTokens / maxContext * 100), isOverflow: usedTokens > maxContext, reservedForCompletion: breakdown?.reserve ?? 0, estimated: !!draft || !!meta.estimated, breakdown };
 }

@@ -44,12 +44,7 @@ pub fn pkce() -> Pkce {
     }
 }
 
-pub fn authorize_url(
-    client_id: &str,
-    redirect_uri: &str,
-    state: &str,
-    challenge: &str,
-) -> String {
+pub fn authorize_url(client_id: &str, redirect_uri: &str, state: &str, challenge: &str) -> String {
     let scopes = SCOPES.join(" ");
     format!(
         "{AUTH_URL}?client_id={}&redirect_uri={}&response_type=code&scope={}&code_challenge={}&code_challenge_method=S256&state={}&access_type=offline&prompt=consent",
@@ -84,10 +79,9 @@ pub async fn exchange_code(
         .await
         .map_err(|error| format!("Could not reach Google's token endpoint: {error}"))?;
     let status = response.status().as_u16();
-    let body: serde_json::Value = response
-        .json()
-        .await
-        .map_err(|error| format!("Google's token endpoint answered something unreadable: {error}"))?;
+    let body: serde_json::Value = response.json().await.map_err(|error| {
+        format!("Google's token endpoint answered something unreadable: {error}")
+    })?;
     if !(200..300).contains(&status) {
         return Err(crate::google::http_error_text(status, &body.to_string()));
     }
@@ -113,10 +107,9 @@ pub async fn refresh(
         .await
         .map_err(|error| format!("Could not reach Google's token endpoint: {error}"))?;
     let status = response.status().as_u16();
-    let body: serde_json::Value = response
-        .json()
-        .await
-        .map_err(|error| format!("Google's token endpoint answered something unreadable: {error}"))?;
+    let body: serde_json::Value = response.json().await.map_err(|error| {
+        format!("Google's token endpoint answered something unreadable: {error}")
+    })?;
     if !(200..300).contains(&status) {
         return Err(crate::google::http_error_text(status, &body.to_string()));
     }
@@ -290,13 +283,22 @@ mod tests {
         assert!(!one.challenge.contains('='));
         assert!(!one.verifier.contains('='));
         let expected =
-            base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(sha2::Sha256::digest(&base64::engine::general_purpose::URL_SAFE_NO_PAD.decode(&one.verifier).unwrap()));
+            base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(sha2::Sha256::digest(
+                base64::engine::general_purpose::URL_SAFE_NO_PAD
+                    .decode(&one.verifier)
+                    .unwrap(),
+            ));
         assert_eq!(one.challenge, expected);
     }
 
     #[test]
     fn the_authorize_url_carries_everything_google_needs() {
-        let url = authorize_url("client.apps.googleusercontent.com", "http://127.0.0.1:8080/callback", "st4te", "ch4llenge");
+        let url = authorize_url(
+            "client.apps.googleusercontent.com",
+            "http://127.0.0.1:8080/callback",
+            "st4te",
+            "ch4llenge",
+        );
         assert!(url.starts_with(AUTH_URL));
         assert!(url.contains("response_type=code"));
         assert!(url.contains("code_challenge_method=S256"));

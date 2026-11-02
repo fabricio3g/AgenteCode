@@ -45,8 +45,8 @@ export function normalizeSiteUrl(input: string): string | null {
 const IMAGE_TYPE = /^image\/(png|jpeg|webp|gif|avif)$/;
 
 /** The files of a drop or paste that are images main can take; everything else is left alone. */
-export function imageFilesOf(files: ArrayLike<{ type: string }> | null | undefined): File[] {
-  return Array.from((files ?? []) as ArrayLike<File>).filter((file) => IMAGE_TYPE.test(file.type));
+export function imageFilesOf(files: ArrayLike<{ type: string; name?: string }> | null | undefined): File[] {
+  return Array.from((files ?? []) as ArrayLike<File>).filter((file) => IMAGE_TYPE.test(file.type) || (!file.type && IMAGE.test(file.name || '')));
 }
 
 /** A file's bytes as base64, for main to check and write. */

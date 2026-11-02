@@ -1,10 +1,10 @@
-// Keep the OS caption buttons under a dialog's backdrop.
+// Keep the window's own backing colour in step with a dialog's backdrop.
 //
-// On Windows and Linux the minimize/maximize/close buttons are drawn by the
-// OS on a solid patch (`titleBarOverlay`), outside the web contents. A modal
-// backdrop dims the page but cannot reach that patch, so the buttons used to
-// sit in a bright box above a darkened window. While a dimming layer is open
-// the patch is repainted with the colour the backdrop would have produced.
+// The caption (minimize/maximize/close) is drawn in the page, so it dims with
+// everything else under a modal. What is left outside the web contents is the
+// window colour behind the rounded frame: while a dimming layer is open it is
+// repainted with the colour the backdrop would have produced, so the frame
+// does not read brighter than the sheet inside it.
 
 import { WINDOW_THEME_COLORS } from '$shared/window-theme';
 import { appWindow } from './window';

@@ -219,6 +219,22 @@ export type RuntimeEvent =
     type: "usage";
     usage: Usage;
   }
+  /** How full the context is, sent before each request. `used` over `room` is the same arithmetic the compaction gate uses, so a client's meter and a compaction agree. */
+  | {
+    gap: number;
+    /** `used` came from the provider rather than an estimate. */
+    measured: boolean;
+    message_tokens?: number | null;
+    reserve?: number | null;
+    /** Window minus tool schemas, the tokenizer gap and the reply reserve. */
+    room: number;
+    system_tokens?: number | null;
+    tool_result_tokens?: number | null;
+    tool_tokens: number;
+    type: "context_budget";
+    used: number;
+    window: number;
+  }
   /** One model call finished (the envelope's `parent_run_id` names the subagent that made it). Summing these gives the session's real spend. */
   | {
     /** The cost is a catalog-price estimate, not the provider's charge. */

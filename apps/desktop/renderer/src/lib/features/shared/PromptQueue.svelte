@@ -100,19 +100,18 @@
 </section>
 
 <style>
-  /* Its own panel above the composer, not a tab on it: the task list lives
-     in the thread, so this card only says what waits. */
   .prompt-queue {
-    margin: 0 0.75rem 0.5rem;
-    padding: 0.375rem 0.375rem 0.375rem;
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-lg);
-    background: var(--card);
+    margin: 0 0.75rem -0.625rem;
+    padding: 0.5rem 0.625rem 1rem;
+    border: 1px solid var(--composer-ring);
+    border-radius: 0.875rem 0.875rem 0 0;
+    background: var(--composer-surface);
+    box-shadow: var(--composer-shadow);
   }
   .queue-heading,
   li { display: flex; align-items: center; gap: 0.4rem; min-width: 0; }
   .queue-heading { min-height: 1.625rem; padding: 0 0.125rem 0.25rem 0.375rem; font-size: var(--text-xs); color: var(--muted-foreground); }
-  .queue-heading :global(.queue-icon) { width: 0.875rem; height: 0.875rem; flex-shrink: 0; color: var(--brand-accent); }
+  .queue-heading :global(.queue-icon) { width: 0.875rem; height: 0.875rem; flex-shrink: 0; color: var(--muted-foreground); }
   .queue-title { font-weight: 500; color: var(--foreground); }
   .queue-count {
     min-width: 1.125rem;
@@ -131,8 +130,7 @@
     transition: background-color var(--motion-instant) var(--motion-ease);
   }
   li:hover, li:focus-within { background: var(--surface-hover); }
-  /* The step the agent reads next: a quiet ember wash, so the two lanes part at a glance. */
-  li.is-next { background: color-mix(in srgb, var(--brand-accent) 7%, transparent); }
+  li.is-next { background: var(--surface-hover); }
   li:has(form) { height: auto; align-items: flex-start; padding: 0.35rem 0.4rem; }
 
   /* Which lane a row is in: the ember arrow is the one the agent reads next. */
@@ -148,7 +146,7 @@
     font-size: var(--text-xs);
     white-space: nowrap;
   }
-  .queue-kind.is-next { background: transparent; padding-inline-start: 0; color: var(--brand-accent); }
+  .queue-kind.is-next { background: transparent; padding-inline-start: 0; color: var(--text-secondary); }
   .queue-kind :global(svg) { width: 0.75rem; height: 0.75rem; }
   .queue-text { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--foreground); }
   .queue-paperclip { display: inline-flex; flex-shrink: 0; color: var(--muted-foreground); }
@@ -162,16 +160,16 @@
     gap: 0.25rem;
     height: 1.5rem;
     padding: 0 0.5rem 0 0.4375rem;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-full);
-    background: var(--card);
-    color: var(--foreground);
+    border: 0;
+    border-radius: 0.4375rem;
+    background: transparent;
+    color: var(--text-secondary);
     font-size: var(--text-xs);
     white-space: nowrap;
     transition: background-color var(--motion-instant) var(--motion-ease), border-color var(--motion-instant) var(--motion-ease);
   }
-  :global(:is(.queue-now, .queue-all).ui-local-7f791877:hover) { border-color: var(--brand-accent); }
-  :global(:is(.queue-now, .queue-all).ui-local-7f791877) :global(svg) { width: 0.75rem; height: 0.75rem; color: var(--brand-accent); }
+  :global(:is(.queue-now, .queue-all).ui-local-7f791877:hover) { background: var(--surface-hover); color: var(--foreground); }
+  :global(:is(.queue-now, .queue-all).ui-local-7f791877) :global(svg) { width: 0.75rem; height: 0.75rem; color: currentColor; }
   :global(.queue-all.ui-local-7f791877) { margin-inline-start: auto; }
 
   /* Row actions follow the app's hover-reveal rule: present, never shouting. */

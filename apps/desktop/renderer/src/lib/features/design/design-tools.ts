@@ -12,6 +12,7 @@ import {
 import { invoke } from '$lib/services/bridge';
 import { buildPreviewHtml } from '$lib/utils/preview-builder';
 import { composeFilmstrip } from './design-filmstrip';
+import { DESIGN_3D_TOOL, type BlenderState } from '$shared/design-3d';
 
 /** What the tools need from the run around them: a step row, a budget tick, and whether the model can see. */
 export interface DesignToolHost {
@@ -67,6 +68,30 @@ function withVisionGate(tool: AgentTool, host: DesignToolHost): AgentTool {
 
 export function createDesignTools(host: DesignToolHost, borrowed: Map<string, AgentTool> = new Map()): Map<string, AgentTool> {
   const tools = new Map<string, AgentTool>();
+  tools.set('design_3d', {
+    ...DESIGN_3D_TOOL, executionMode: 'sequential',
+    async execute(_id, args, ctx) {
+      const action = asString(args.action);
+      if (!['status', 'build', 'render'].includes(action)) return text('Use status, build or render.', true);
+      if (ctx.signal.aborted) return text('Stopped.', true);
+      const done = host.step('design_3d', action);
+      host.count();
+      // The turn owns cancellation; changing the visible space leaves the job running.
+      const cancel = () => { if (action !== 'status') void invoke('design_3d', { chatId: host.chatId, action: 'cancel', owner: _id }).catch(() => {}); };
+      ctx.signal.addEventListener('abort', cancel, { once: true });
+      try {
+        const state = await invoke<BlenderState>('design_3d', { chatId: host.chatId, action, scene: args.scene, render: args.render, owner: _id });
+        done(!state.error, state.error);
+        const summary = JSON.stringify({ available: state.available, busy: state.busy, model: state.model, render: state.render, scene: state.scene, error: state.error });
+        if (action !== 'status' && state.render && !state.error && await host.vision()) {
+          const image = await invoke<{ data: string; mimeType: string }>('design_3d', { chatId: host.chatId, action: 'asset', asset: 'render' });
+          return { content: summary, images: [image] };
+        }
+        return text(summary, !!state.error);
+      } catch (error) { done(false, String(error)); return text(String(error), true); }
+      finally { ctx.signal.removeEventListener('abort', cancel); }
+    }
+  });
 
   const fileTool = (name: string) => async (_id: string, args: Record<string, unknown>): Promise<ToolResult> => {
     const done = host.step(name, asString(args.path) || asString(args.label));

@@ -8,6 +8,7 @@ describe('providers utils', () => {
     // As `providers.list` sends them (crates/agente-core/providers/*.toml).
     const specs = [
       { id: 'opencode-go', name: 'OpenCode Go', group: 'cloud', base_url: 'https://opencode.ai/zen/go/v1', api_format: 'openai', key_url: 'https://opencode.ai/auth' },
+      { id: 'opencode', name: 'OpenCode', group: 'cloud', base_url: 'https://opencode.ai/zen/v1', api_format: 'openai', key_url: 'https://opencode.ai/auth' },
       { id: 'minimax', name: 'MiniMax', group: 'cloud', base_url: 'https://api.minimax.io/anthropic/v1', api_format: 'anthropic', openai_compatible_url: 'https://api.minimax.io/v1' },
       { id: 'deepseek', name: 'DeepSeek', group: 'cloud', base_url: 'https://api.deepseek.com', api_format: 'anthropic' },
       { id: 'ollama', name: 'Ollama (local)', group: 'local', base_url: 'http://localhost:11434/v1', api_format: 'openai' },
@@ -18,9 +19,11 @@ describe('providers utils', () => {
 
     const ids = cloudProviders().map((p) => p.id);
     // llama.cpp has its own section; an endpoint Desktop cannot speak to is left out.
-    expect(ids).toEqual(['opencode-go', 'minimax', 'ollama', 'custom']);
+    expect(ids).toEqual(['opencode-go', 'opencode', 'minimax', 'ollama', 'custom']);
     expect(providerLabel('ollama')).toBe('Ollama');
     expect(providerLabel('opencode-go')).toBe('OpenCode Go');
+    expect(providerLabel('opencode')).toBe('OpenCode');
+    expect(defaultBaseUrl('opencode')).toBe('https://opencode.ai/zen/v1');
     // Desktop talks OpenAI chat, so an Anthropic-format spec uses its OpenAI endpoint.
     expect(defaultBaseUrl('minimax')).toBe('https://api.minimax.io/v1');
     expect(cloudProviders().find((p) => p.id === 'opencode-go')?.keyUrl).toBe('https://opencode.ai/auth');

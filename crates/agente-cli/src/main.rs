@@ -7,7 +7,6 @@ use agente_tui::App;
 mod attach;
 mod bridge_cli;
 mod logging;
-mod telegram_cli;
 
 #[derive(Parser)]
 #[command(name = "agente", version)]
@@ -89,21 +88,6 @@ enum Command {
         #[arg(long, env = "AGENTE_TOKEN", hide_env_values = true)]
         token: Option<String>,
     },
-    /// Put a bot on Telegram: connect its @BotFather token, pair people,
-    /// see who can message it.
-    Telegram {
-        #[command(subcommand)]
-        action: telegram_cli::TelegramAction,
-        /// Socket path of a local `agente serve`.
-        #[arg(long, global = true, conflicts_with = "remote")]
-        socket: Option<std::path::PathBuf>,
-        /// host:port of a remote `agente serve --listen`.
-        #[arg(long, global = true, value_name = "HOST:PORT")]
-        remote: Option<String>,
-        /// Token of the remote server.
-        #[arg(long, global = true, env = "AGENTE_TOKEN", hide_env_values = true)]
-        token: Option<String>,
-    },
     /// Your real browser and your Google Docs/Sheets/Drive as agent tools.
     /// Bare `agente bridge` is the MCP server a session spawns; run
     /// `agente bridge install` once to register it.
@@ -111,10 +95,10 @@ enum Command {
         #[command(subcommand)]
         action: Option<bridge_cli::BridgeAction>,
     },
-    /// Join a live session, or a bot's chat, on a running `agente serve`:
+    /// Join a live session on a running `agente serve`:
     /// its turns stream here and what you type is sent to it.
     Attach {
-        /// A session id (or a unique prefix), or @handle for a bot. Without
+        /// A session id (or a unique prefix). Without
         /// one, the most recent session.
         target: Option<String>,
         /// Socket path of a local `agente serve`.
@@ -281,23 +265,6 @@ fn main() -> anyhow::Result<()> {
         });
     }
 
-    if let Some(Command::Telegram {
-        action,
-        socket,
-        remote,
-        token,
-    }) = cli.command
-    {
-        return telegram_cli::run(
-            action,
-            attach::ServerOptions {
-                socket,
-                remote,
-                token,
-            },
-        );
-    }
-
     if let Some(Command::Serve {
         socket,
         status,
@@ -392,35 +359,14 @@ fn run_serve(project_dir: &str, config: AppConfig, options: ServeOptions) -> any
                 },
                 socket.display()
             );
-            // Same machine, same binary: what the server's bots get.
-            println!(
-                "bot sandbox: {}",
-                match agente_core::sandbox::backend() {
-                    agente_core::sandbox::Backend::Landlock => "landlock (programs are boxed)",
-                    agente_core::sandbox::Backend::Seatbelt => "seatbelt (programs are boxed)",
-                    agente_core::sandbox::Backend::None =>
-                        "none (bots ask before running programs)",
-                }
-            );
             std::process::exit(if serving { 0 } else { 1 });
         }
         if agente_daemon::is_serving(&socket).await {
             anyhow::bail!("agente is already serving on {}", socket.display());
         }
-        let bots_dir = AppConfig::config_dir()
-            .unwrap_or_else(|| std::path::PathBuf::from(".agente"))
-            .join("bots");
-        let bots = std::sync::Arc::new(
-            agente_bot::BotStore::open(&bots_dir)
-                .map_err(|error| anyhow::anyhow!("bots folder {}: {error}", bots_dir.display()))?,
-        );
-        let profiles = std::sync::Arc::new(agente_daemon::BotProfiles::new(std::sync::Arc::clone(
-            &bots,
-        )));
         let runtime_config = RuntimeConfig::from_app_config(&config, project_dir)
             .with_user_store()
-            .map_err(|error| anyhow::anyhow!("session store unavailable: {error}"))?
-            .with_profile_source(profiles.clone());
+            .map_err(|error| anyhow::anyhow!("session store unavailable: {error}"))?;
         if let Some(store) = runtime_config.session_store.as_ref() {
             let report = agente_runtime::import::import_legacy_sessions(store);
             if report.imported > 0 || report.failed > 0 {
@@ -428,11 +374,7 @@ fn run_serve(project_dir: &str, config: AppConfig, options: ServeOptions) -> any
             }
         }
         let runtime = RuntimeSupervisor::start(runtime_config);
-        profiles.attach(runtime.clone());
-        let service = agente_daemon::Service { runtime, bots };
-        let _routines = agente_daemon::spawn_scheduler(service.clone());
-        let _tracker = agente_daemon::spawn_bot_tracker(service.clone());
-        let _telegram = agente_daemon::spawn_telegram(service.clone());
+        let service = agente_daemon::Service { runtime };
         // One signal stops every listener.
         let (stop, stopped) = tokio::sync::watch::channel(false);
         let stop = std::sync::Arc::new(stop);

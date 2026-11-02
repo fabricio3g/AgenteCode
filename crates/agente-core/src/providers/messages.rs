@@ -289,6 +289,7 @@ impl MessageStream {
             Some("content_block_stop") => self.close(index, sender).await?,
             Some("message_start") => {
                 let u = &json["message"]["usage"];
+                super::billing::record_cost(&mut self.usage, u);
                 self.usage.prompt_tokens = u["input_tokens"].as_u64().unwrap_or(0) as u32;
                 self.usage.cache_creation_tokens =
                     u["cache_creation_input_tokens"].as_u64().unwrap_or(0) as u32;
@@ -300,6 +301,7 @@ impl MessageStream {
                     self.stop = Some(StopReason::parse(reason));
                 }
                 let u = &json["usage"];
+                super::billing::record_cost(&mut self.usage, u);
                 if let Some(tokens) = u["output_tokens"].as_u64() {
                     self.usage.completion_tokens = tokens as u32;
                 }

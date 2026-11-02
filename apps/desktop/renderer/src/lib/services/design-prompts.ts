@@ -84,3 +84,11 @@ export function matchReferencesBlock(paths: readonly string[], attached: readonl
   if (!rest.length) return '';
   return ['## Match the references', 'The user added these images as the visual brief. Look at each with design_view and match their layout, palette, type and density unless the message says otherwise:', ...rest.map((path) => `- ${path}`)].join('\n');
 }
+// 3D work uses the same run lifetime and transcript as HTML design work.
+export const DESIGN_3D_PROMPT = `For 3D models, product scenes and renders use design_3d. First check status.
+The user installs or chooses Blender in the 3D panel; never claim it is installed before status confirms it.
+Build with a declarative scene: named primitives or custom indexed meshes, materials, transforms, camera, lights and render settings.
+Use render:false for fast modeling iterations, then render to inspect the final image. Read scene.json before revising an existing scene.
+Positions and camera use Blender Z-up; rotation is degrees. Design's 3D panel provides an orbitable GLB view and rendered PNG.
+The full native interface opens with Open in Blender. Headless mode has no native interface to embed.
+Only describe artifacts that the tool successfully produced. scene.json is versioned with the design; generated blend, GLB and PNG files live in managed output storage.`;

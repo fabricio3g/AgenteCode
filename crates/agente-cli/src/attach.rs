@@ -1,4 +1,4 @@
-//! `agente attach`: join a live session (or a bot's chat) on a running
+//! `agente attach`: join a live session on a running
 //! `agente serve`, from a second terminal or another machine. Turns started
 //! anywhere stream here; lines typed here become new turns, or steer the
 //! turn that is running. Approvals are answered inline.
@@ -15,7 +15,7 @@ use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt, BufReader
 use tokio::sync::{mpsc, oneshot};
 
 pub struct AttachOptions {
-    /// A session id (or a unique prefix), `@handle` for a bot, or nothing
+    /// A session id (or a unique prefix), or nothing
     /// for the most recent session.
     pub target: Option<String>,
     pub server: ServerOptions,
@@ -162,22 +162,13 @@ async fn connect_local(_path: &std::path::Path) -> std::io::Result<Stream> {
 
 /// What the attached terminal talks to.
 enum Target {
-    Session {
-        id: String,
-        title: String,
-    },
-    Bot {
-        handle: String,
-        title: String,
-        session: Option<String>,
-    },
+    Session { id: String, title: String },
 }
 
 impl Target {
     fn session(&self) -> Option<&str> {
         match self {
             Target::Session { id, .. } => Some(id),
-            Target::Bot { session, .. } => session.as_deref(),
         }
     }
 }
@@ -205,7 +196,7 @@ fn pick_session(sessions: &[Value], query: Option<&str>) -> anyhow::Result<(Stri
                     .unwrap_or_default()
                     .to_string()
             })
-            .ok_or_else(|| anyhow!("there are no sessions yet; name a bot with @handle"))?,
+            .ok_or_else(|| anyhow!("there are no sessions yet"))?,
         Some(query) => {
             let matches: Vec<&Value> = sessions
                 .iter()
@@ -225,14 +216,6 @@ fn pick_session(sessions: &[Value], query: Option<&str>) -> anyhow::Result<(Stri
 }
 
 async fn resolve(client: &Client, target: Option<&str>) -> anyhow::Result<Target> {
-    if let Some(handle) = target.and_then(|target| target.strip_prefix('@')) {
-        let bot = client.call("bots.get", json!({ "handle": handle })).await?;
-        return Ok(Target::Bot {
-            handle: handle.to_string(),
-            title: bot["title"].as_str().unwrap_or(handle).to_string(),
-            session: bot["session_id"].as_str().map(str::to_string),
-        });
-    }
     let sessions = client.call("session.list", Value::Null).await?;
     let sessions = sessions.as_array().cloned().unwrap_or_default();
     let (id, title) = pick_session(&sessions, target)?;
@@ -319,12 +302,8 @@ async fn attach(options: AttachOptions) -> anyhow::Result<()> {
     }
     match &target {
         Target::Session { id, title } => eprintln!("Attached to {title} ({id})."),
-        Target::Bot { handle, title, .. } => eprintln!("Attached to {title} (@{handle})."),
     }
     eprintln!("Type a message and press Enter. /stop cancels the running turn, /quit leaves.");
-    if matches!(target, Target::Bot { .. }) {
-        eprintln!("/activity shows what the bot did lately.");
-    }
 
     let mut stdin = BufReader::new(tokio::io::stdin()).lines();
     let mut running: Option<String> = None;
@@ -349,15 +328,6 @@ async fn attach(options: AttachOptions) -> anyhow::Result<()> {
                 }
                 match text {
                     "/quit" | "/exit" => break,
-                    "/activity" => match &target {
-                        Target::Bot { handle, .. } => {
-                            let entries = client
-                                .call("bots.activity", json!({ "handle": handle, "limit": 20 }))
-                                .await?;
-                            print_activity(&entries);
-                        }
-                        Target::Session { .. } => eprintln!("/activity is for bots (@handle)."),
-                    },
                     "/stop" => {
                         if let Some(turn_id) = &running {
                             client.call("turn.cancel", json!({ "turn_id": turn_id })).await?;
@@ -406,37 +376,6 @@ async fn attach(options: AttachOptions) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// A bot's recent tool calls, one line each: time, ✓/✗, tool, what, how long.
-fn print_activity(entries: &Value) {
-    let entries = entries.as_array().map(Vec::as_slice).unwrap_or_default();
-    if entries.is_empty() {
-        eprintln!("No activity yet.");
-        return;
-    }
-    for entry in entries {
-        let at = entry["at"]
-            .as_str()
-            .and_then(|at| chrono::DateTime::parse_from_rfc3339(at).ok())
-            .map(|at| {
-                at.with_timezone(&chrono::Local)
-                    .format("%H:%M:%S")
-                    .to_string()
-            })
-            .unwrap_or_default();
-        let mark = if entry["ok"].as_bool().unwrap_or(false) {
-            "✓"
-        } else {
-            "✗"
-        };
-        eprintln!(
-            "{at} {mark} {:<12} {}  {}ms",
-            entry["tool"].as_str().unwrap_or("?"),
-            entry["detail"].as_str().unwrap_or(""),
-            entry["ms"].as_u64().unwrap_or(0)
-        );
-    }
-}
-
 /// Start a turn with `text` in the target's session.
 async fn send(client: &Client, target: &mut Target, text: &str) -> anyhow::Result<()> {
     match target {
@@ -447,23 +386,6 @@ async fn send(client: &Client, target: &mut Target, text: &str) -> anyhow::Resul
                     json!({ "session_id": id, "prompt": Message::user(text) }),
                 )
                 .await?;
-        }
-        Target::Bot {
-            handle, session, ..
-        } => {
-            let started = client
-                .call("bots.chat", json!({ "handle": handle, "text": text }))
-                .await?;
-            // A bot's first message makes its session: follow it from now on.
-            if session.is_none() {
-                let id = started["session_id"].as_str().map(str::to_string);
-                if let Some(id) = &id {
-                    client
-                        .call("events.subscribe", json!({ "session_ids": [id] }))
-                        .await?;
-                }
-                *session = id;
-            }
         }
     }
     Ok(())

@@ -75,7 +75,7 @@
     min-height: 3.25rem;
     flex-direction: column;
     gap: 0.75rem;
-    padding: 0.875rem 0.125rem;
+    padding: 0.875rem 0;
   }
 
   .settings-row.is-compact { min-height:0; padding:0; gap:0.5rem; }

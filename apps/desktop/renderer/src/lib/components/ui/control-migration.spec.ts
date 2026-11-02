@@ -23,7 +23,7 @@ describe('shared UI boundary', () => {
       }
     }
     for (const file of files(root)) {
-      if (file.includes('/lib/components/ui/')) continue;
+      if (file.replaceAll('\\', '/').includes('/lib/components/ui/')) continue;
       const ast = parse(readFileSync(file, 'utf8'), { modern: true });
       walk(ast.fragment, file);
     }

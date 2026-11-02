@@ -201,7 +201,10 @@ export async function startChatStream({ baseUrl, apiKey, providerName, body }, w
       }
 
       const finalToolCalls = finalizeToolCalls(toolCallAccumulator);
-      const outputStreamMs = generationTimer.duration(performance.now());
+      // The window between the first and last output event — not the moment the
+      // stream closed, which is later by however long the provider took to
+      // finish talking. Timings read this as generation time.
+      const outputStreamMs = generationTimer.duration();
       if (finalUsage && outputStreamMs !== undefined) {
         finalUsage = { ...finalUsage, timings: { ...finalUsage.timings, output_stream_ms: outputStreamMs } };
       }

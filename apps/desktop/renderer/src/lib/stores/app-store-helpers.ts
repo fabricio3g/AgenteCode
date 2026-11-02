@@ -403,9 +403,10 @@ export function buildRequestMessagesFromHistory(
     const message = messages[index];
     if (!message) continue;
     const content = getMessageRequestContent(message).trim();
-    if (!content) continue;
+    if (!content && !message.attachments?.length) continue;
     outbound.push({
       role: message.role,
+      ...(message.attachments?.length ? { attachments: message.attachments.map(item => ({ ...item })) } : {}),
       content: attributeRoleplayContent(message.role, message.speakerId, content, attribution && message.metadata?.roleplayPersona
         ? { ...attribution, userName: message.metadata.roleplayPersona.name } : attribution),
       ...(getMessageRequestReasoning(message) ? { reasoning_content: getMessageRequestReasoning(message) } : {})

@@ -329,6 +329,7 @@ impl ResponseState {
                     }
                 }
                 let usage = &response["usage"];
+                super::billing::record_cost(&mut self.usage, usage);
                 self.usage.prompt_tokens = usage["input_tokens"].as_u64().unwrap_or(0) as u32;
                 self.usage.completion_tokens = usage["output_tokens"].as_u64().unwrap_or(0) as u32;
                 self.usage.cache_read_tokens = usage["input_tokens_details"]["cached_tokens"]

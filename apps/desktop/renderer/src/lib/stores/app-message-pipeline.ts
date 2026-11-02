@@ -30,20 +30,22 @@ export function buildRequestMessagesWithPatchedUser(params: {
 
     if (message.id === params.userMessageId) {
       const content = params.buildContextualPrompt(params.userContent).trim();
-      if (!content) continue;
+      if (!content && !message.attachments?.length) continue;
       outbound.push({
         role: 'user',
-        content: attributeRoleplayContent('user', null, content, params.attribution)
+        content: attributeRoleplayContent('user', null, content, params.attribution),
+        ...(message.attachments?.length ? { attachments: message.attachments.map(item => ({ ...item })) } : {})
       });
       continue;
     }
 
     const role = message.role === 'assistant' ? 'assistant' : 'user';
     const content = getMessageRequestContent(message).trim();
-    if (!content) continue;
+    if (!content && !message.attachments?.length) continue;
     const reasoning = getMessageRequestReasoning(message);
     outbound.push({
       role,
+      ...(message.attachments?.length ? { attachments: message.attachments.map(item => ({ ...item })) } : {}),
       content: attributeRoleplayContent(role, message.speakerId, content, message.metadata?.roleplayPersona
         ? { ...params.attribution!, userName: message.metadata.roleplayPersona.name } : params.attribution),
       ...(reasoning ? { reasoning_content: reasoning } : {})

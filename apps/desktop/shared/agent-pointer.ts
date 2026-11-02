@@ -1,0 +1,2 @@
+/** Shared desktop/browser pointer: ink tip, cream keyline, quiet ember badge. */
+export const AGENT_POINTER_SVG = '<svg width="25" height="30" viewBox="0 0 25 30" aria-hidden="true"><path d="M3 2.5 20 17l-8 .8-4 7.1z" fill="#292722" stroke="#fff9ee" stroke-width="1.7" stroke-linejoin="round"/><circle cx="18.5" cy="23" r="5" fill="#b96c43" stroke="#fff9ee" stroke-width="1.4"/><path d="M18.5 20.8v4.4M16.3 23h4.4" stroke="#fff9ee" stroke-width="1.3" stroke-linecap="round"/></svg>';

@@ -10,8 +10,8 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { app } from 'electron';
 import { getAppPaths } from '../paths.ts';
+import { moduleRequire } from '../module-env.ts';
 import { createLogger } from '../utils/logger.ts';
 import { VOICE_MODELS, type VoiceModel } from '../../shared/voice-models.ts';
 
@@ -172,6 +172,7 @@ export function findVoiceModel(id: string | undefined): VoiceModel | undefined {
 let sizes: Record<string, number> | null = null;
 
 function sizeCachePath(): string {
+  const { app } = moduleRequire('electron') as typeof import('electron');
   return path.join(app.getPath('userData'), 'voice-catalog-sizes.json');
 }
 

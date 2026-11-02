@@ -1,11 +1,19 @@
 import { describe, expect, it } from 'vitest';
 import {
   conversationDialWindow,
+  conversationDialRadius,
   conversationTimelinePreview
 } from './conversation-timeline';
 import type { ChatMessage } from '$lib/types/chat';
 
 describe('conversationDialWindow', () => {
+  it('keeps tick targets apart as the available height shrinks', () => {
+    for (const height of [32, 64, 96, 144, 192]) {
+      const entries = conversationDialWindow(100, 50, conversationDialRadius(height));
+      for (let i = 1; i < entries.length; i++) expect((entries[i].position - entries[i - 1].position) * height / 100).toBeGreaterThanOrEqual(18);
+      expect(entries.some(entry => entry.index === 50)).toBe(true);
+    }
+  });
   it('keeps the selected turn centered in a bounded message window', () => {
     const window = conversationDialWindow(20, 10, 3);
     expect(window.map(({ index, distance }) => ({ index, distance }))).toEqual([

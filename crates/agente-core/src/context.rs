@@ -1,179 +1,16 @@
-use crate::types::Message;
-
+pub mod budget;
 pub mod compaction;
 
+pub use budget::{
+    estimate_message_tokens, estimate_tool_definition_tokens, format_tokens, Band, ContextBudget,
+    COMPACT_AT,
+};
 pub use compaction::{
     build_summarization_messages, normalize_tool_messages, normalize_tool_messages_tracked,
     serialize_conversation, CompactionResult, CompactionStrategy, ContextCompactor, LlmSummarizer,
     SummarizeError, Summarizer, Summary, SummaryMetadata, SummaryType, SUMMARIZATION_PROMPT,
     SUMMARIZATION_SYSTEM_PROMPT, UPDATE_SUMMARIZATION_PROMPT,
 };
-
-pub struct ContextManager {
-    max_tokens: usize,
-    messages: Vec<Message>,
-    system_prompt: String,
-}
-
-impl ContextManager {
-    pub fn new(max_tokens: usize, system_prompt: String) -> Self {
-        Self {
-            max_tokens,
-            messages: Vec::new(),
-            system_prompt,
-        }
-    }
-
-    pub fn add_message(&mut self, message: Message) {
-        self.messages.push(message);
-    }
-
-    pub fn add_messages(&mut self, messages: Vec<Message>) {
-        self.messages.extend(messages);
-    }
-
-    pub fn compact(&mut self) {
-        let estimated_tokens = self.estimate_tokens();
-
-        if estimated_tokens > self.max_tokens {
-            self.adaptive_compact();
-        }
-    }
-
-    fn estimate_tokens(&self) -> usize {
-        let mut total = self.system_prompt.len() / 4;
-
-        for msg in &self.messages {
-            total += msg.content.len() / 4;
-            if let Some(tool_calls) = &msg.tool_calls {
-                for tc in tool_calls {
-                    total += tc.function.name.len() / 4;
-                    total += tc.function.arguments.len() / 4;
-                }
-            }
-        }
-
-        total
-    }
-
-    fn adaptive_compact(&mut self) {
-        if self.messages.len() <= 4 {
-            return;
-        }
-
-        let mut to_remove = Vec::new();
-        let mut token_budget = self.max_tokens;
-
-        let system_tokens = self.system_prompt.len() / 4;
-        token_budget -= system_tokens;
-
-        let recent_count = 4.min(self.messages.len());
-        for i in (self.messages.len() - recent_count)..self.messages.len() {
-            let msg_tokens = self.messages[i].content.len() / 4;
-            token_budget -= msg_tokens;
-        }
-
-        let mut i = 0;
-        while i < self.messages.len() - recent_count && token_budget == 0 {
-            let msg = &self.messages[i];
-            let msg_tokens = msg.content.len() / 4;
-            let compaction_ratio = if i < self.messages.len() / 3 {
-                0.2
-            } else if i < self.messages.len() * 2 / 3 {
-                0.5
-            } else {
-                0.8
-            };
-
-            if compaction_ratio < 1.0 {
-                let original = self.messages[i].content.clone();
-                let lines: Vec<&str> = original.lines().collect();
-                let keep_count = (lines.len() as f32 * compaction_ratio).ceil() as usize;
-                let kept: Vec<&str> = lines.iter().take(keep_count).cloned().collect();
-                let summary = format!(
-                    "[Compacted: {} lines summarized]\n{}",
-                    lines.len() - keep_count,
-                    kept.join("\n")
-                );
-                let original_len = original.len();
-                self.messages[i].content = summary.clone();
-                token_budget += (original_len - summary.len()) / 4;
-            } else {
-                to_remove.push(i);
-                token_budget += msg_tokens;
-            }
-
-            i += 1;
-        }
-
-        for i in to_remove.into_iter().rev() {
-            self.messages.remove(i);
-        }
-    }
-
-    pub fn get_messages(&self) -> Vec<Message> {
-        let mut messages = vec![Message {
-            role: crate::types::Role::System,
-            content: self.system_prompt.clone(),
-            tool_calls: None,
-            tool_call_id: None,
-            thinking: None,
-            thinking_signature: None,
-            continuation: None,
-            attachments: Vec::new(),
-        }];
-
-        messages.extend(self.messages.clone());
-        messages
-    }
-
-    pub fn clear(&mut self) {
-        self.messages.clear();
-    }
-
-    pub fn message_count(&self) -> usize {
-        self.messages.len()
-    }
-}
-
-/// Tokens the tool schemas add to every request; the message estimate never
-/// sees them, and with dozens of tools they are thousands of tokens.
-pub fn estimate_tool_definition_tokens(tools: &[crate::types::ToolDefinition]) -> usize {
-    tools
-        .iter()
-        .map(|tool| {
-            (tool.name.len() + tool.description.len() + tool.parameters.to_string().len()) / 4 + 8
-        })
-        .sum()
-}
-
-/// Estimate the number of tokens in a slice of messages using the standard
-/// "1 token ≈ 4 characters" heuristic plus a flat 10-token overhead per tool
-/// call. Used by the status bar and the auto-compact strategy; deliberately
-/// cheap and dependency-free so callers can run it on every render.
-pub fn estimate_message_tokens(messages: &[crate::types::Message]) -> usize {
-    messages
-        .iter()
-        .map(|m| {
-            let tool_tokens = m
-                .tool_calls
-                .as_ref()
-                .map(|calls| {
-                    calls
-                        .iter()
-                        .map(|tc| tc.function.name.len() / 4 + tc.function.arguments.len() / 4 + 10)
-                        .sum::<usize>()
-                })
-                .unwrap_or(0);
-            let media: usize = m
-                .attachments
-                .iter()
-                .map(crate::media::estimated_tokens)
-                .sum();
-            m.content.len() / 4 + tool_tokens + media
-        })
-        .sum()
-}
 
 /// Marker embedded in the AGENTS.md reminder message so re-injection can be
 /// idempotent across turns and after compaction.
@@ -260,16 +97,21 @@ const PLAN_RESTRICTION_SUFFIX: &str = "When the plan is ready, call present_plan
 /// Replace our generated footer, including duplicates saved by older versions.
 /// Only complete, generated footers at the end are removed; project/user text
 /// elsewhere in the prompt remains intact. Build mode clears the old footer.
+///
+/// Returns whether the system message changed: the loop's running token count
+/// is only worth recomputing when it did.
 #[cfg(feature = "execution")]
 pub(crate) fn set_plan_restriction(
     messages: &mut Vec<crate::types::Message>,
     restriction: Option<&str>,
-) {
+) -> bool {
     use crate::types::{Message, Role};
+    let mut changed = false;
     if let Some(system) = messages
         .iter_mut()
         .find(|message| message.role == Role::System)
     {
+        let before = system.content.len();
         while system.content.ends_with(PLAN_RESTRICTION_SUFFIX) {
             let Some(start) = system.content.rfind(PLAN_RESTRICTION_PREFIX) else {
                 break;
@@ -297,6 +139,7 @@ pub(crate) fn set_plan_restriction(
                 restriction
             });
         }
+        changed = system.content.len() != before;
     } else if let Some(restriction) = restriction {
         messages.insert(
             0,
@@ -311,7 +154,9 @@ pub(crate) fn set_plan_restriction(
                 attachments: Vec::new(),
             },
         );
+        changed = true;
     }
+    changed
 }
 
 /// Generate the Plan-mode restriction from the ACTUAL filtered toolset
@@ -622,6 +467,7 @@ fn system_prompt_for(
 5. If a tool fails twice, stop using it and work from what you already have.
 6. Make the smallest change that solves the task, in the style of the code around it.
 7. Ask only when blocked; otherwise pick the sensible default and say so.
+8. When the context fills up you are told how much room is left. Keep durable findings in files rather than in the conversation, so a summary never has to carry them.
 
 # Safety
 - Never commit, push, or delete without being asked.

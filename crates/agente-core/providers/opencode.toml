@@ -1,0 +1,20 @@
+# OpenCode (Zen) — pay-as-you-go, separate from the Go subscription.
+id = "opencode"
+name = "OpenCode"
+aliases = ["opencode-zen"]
+group = "cloud"
+base_url = "https://opencode.ai/zen/v1"
+api_format = "openai"
+env = ["OPENCODE_API_KEY"]
+match_hosts = ["opencode.ai"]
+models = "catalog"
+thinking = "default"
+stream_usage = true
+offered = true
+order = 11
+key_url = "https://opencode.ai/auth"
+docs_url = "https://opencode.ai/docs/zen/"
+
+[transport.cache]
+session_header = "x-opencode-session"
+prompt_cache_key = true

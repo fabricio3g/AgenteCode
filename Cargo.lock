@@ -35,20 +35,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "agente-bot"
-version = "0.0.2"
-dependencies = [
- "chrono",
- "cron",
- "serde",
- "serde_json",
- "tempfile",
- "thiserror 1.0.69",
- "toml",
- "uuid",
-]
-
-[[package]]
 name = "agente-bridge"
 version = "0.0.2"
 dependencies = [
@@ -74,7 +60,6 @@ name = "agente-cli"
 version = "0.0.2"
 dependencies = [
  "agente-acp",
- "agente-bot",
  "agente-bridge",
  "agente-core",
  "agente-daemon",
@@ -91,6 +76,15 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "agente-computer"
+version = "0.0.2"
+dependencies = [
+ "serde",
+ "serde_json",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -135,7 +129,6 @@ name = "agente-daemon"
 version = "0.0.2"
 dependencies = [
  "agente-acp",
- "agente-bot",
  "agente-core",
  "agente-protocol",
  "agente-runtime",
@@ -148,20 +141,6 @@ dependencies = [
  "thiserror 1.0.69",
  "tokio",
  "tracing",
- "uuid",
-]
-
-[[package]]
-name = "agente-mobile"
-version = "0.0.2"
-dependencies = [
- "agente-core",
- "agente-protocol",
- "agente-sync",
- "jni 0.21.1",
- "serde",
- "serde_json",
- "tokio",
  "uuid",
 ]
 
@@ -215,17 +194,6 @@ dependencies = [
  "serde_json",
  "thiserror 1.0.69",
  "tracing",
-]
-
-[[package]]
-name = "agente-sync"
-version = "0.0.2"
-dependencies = [
- "schemars 0.8.22",
- "serde",
- "serde_json",
- "thiserror 1.0.69",
- "uuid",
 ]
 
 [[package]]
@@ -800,18 +768,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9481c1c90cbf2ac953f07c8d4a58aa3945c425b7185c9154d67a65e4230da511"
 dependencies = [
  "cfg-if",
-]
-
-[[package]]
-name = "cron"
-version = "0.17.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a5dcd6f69605c2956916ce24e8af637b754964c9a83f4662d3a2361654cdba09"
-dependencies = [
- "chrono",
- "once_cell",
- "phf",
- "winnow 0.7.15",
 ]
 
 [[package]]
@@ -2517,48 +2473,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9b4f627cb1b25917193a259e49bdad08f671f8d9708acfd5fe0a8c1455d87220"
 
 [[package]]
-name = "phf"
-version = "0.11.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1fd6780a80ae0c52cc120a26a1a42c1ae51b247a253e4e06113d23d2c2edd078"
-dependencies = [
- "phf_macros",
- "phf_shared",
-]
-
-[[package]]
-name = "phf_generator"
-version = "0.11.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3c80231409c20246a13fddb31776fb942c38553c51e871f8cbd687a4cfb5843d"
-dependencies = [
- "phf_shared",
- "rand 0.8.8",
-]
-
-[[package]]
-name = "phf_macros"
-version = "0.11.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f84ac04429c13a7ff43785d75ad27569f2951ce0ffd30a3321230db2fc727216"
-dependencies = [
- "phf_generator",
- "phf_shared",
- "proc-macro2",
- "quote",
- "syn 2.0.117",
-]
-
-[[package]]
-name = "phf_shared"
-version = "0.11.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "67eabc2ef2a60eb7faa00097bd1ffdb5bd28e62bf39990626a582201b7a754e5"
-dependencies = [
- "siphasher",
-]
-
-[[package]]
 name = "pico-args"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2808,15 +2722,6 @@ checksum = "f8dcc9c7d52a811697d2151c701e0d08956f92b0e24136cf4cf27b57a6a0d9bf"
 
 [[package]]
 name = "rand"
-version = "0.8.8"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e058c7de0b26af77780c769414d6257830bb240f3c38477dbc2c16e5f54d6d4c"
-dependencies = [
- "rand_core 0.6.4",
-]
-
-[[package]]
-name = "rand"
 version = "0.9.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b9ef1d0d795eb7d84685bca4f72f3649f064e6641543d3a8c415898726a57b41"
@@ -2845,12 +2750,6 @@ dependencies = [
  "ppv-lite86",
  "rand_core 0.9.5",
 ]
-
-[[package]]
-name = "rand_core"
-version = "0.6.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ec0be4795e2f6a28069bec0b5ff3e2ac9bafc99e6a9a7dc3547996c5c816922c"
 
 [[package]]
 name = "rand_core"

@@ -1,4 +1,17 @@
 {
+  "goal": {
+    "confirmClear": "この目標を削除しますか？エージェントへのリマインダーが停止します。",
+    "cancel": "キャンセル",
+    "title": "目標",
+    "set": "目標を設定",
+    "placeholder": "この会話の目標を入力",
+    "save": "保存",
+    "complete": "完了",
+    "clear": "削除",
+    "active": "進行中",
+    "completed": "完了",
+    "hint": "エージェントはターンをまたいでこの目標を記憶します。"
+  },
   "chat": {
     "placeholder": "{{APP_NAME}}にメッセージを送信...",
     "stop": "応答を停止",
@@ -52,10 +65,21 @@
     },
     "localBusy": "ローカルモデルは別のチャットで使用中です",
     "context": {
+      "systemLabel": "システム指示",
+      "messagesLabel": "メッセージ",
+      "resultsLabel": "ツールの結果",
+      "toolsLabel": "ツールの定義",
+      "overheadLabel": "トークン化のオーバーヘッド",
+      "reserveLabel": "応答の予約分",
+      "runtimeNote": "各項目は推定値です。合計はプロバイダーから取得される場合があります。",
+      "systemTokens": "システム指示: 約{n}トークン",
+      "messageTokens": "メッセージ: 約{n}トークン",
+      "previewNote": "プレビューの推定値です。ツールと実行時の追加分は含まれません。",
+      "breakdownUnavailable": "この実行時の内訳は利用できません。",
       "usage": "コンテキスト {used} / {max} トークン（{percent}%）",
       "reserved": "返信用に {n} トークンを確保",
-      "priceIn": "入力 ${price}/1M",
-      "priceOut": "出力 ${price}/1M",
+      "priceIn": "入力 {price}/1M",
+      "priceOut": "出力 {price}/1M",
       "estimate": "推定入力コスト: ${cost}",
       "remaining": "残り {n} トークン",
       "spend": "会話の費用: {cost}",
@@ -385,6 +409,10 @@
     "refresh": "更新"
   },
   "code": {
+    "traceCopyInput": "入力をコピー",
+    "traceCopyOutput": "出力をコピー",
+    "traceCopyCommand": "コマンドをコピー",
+    "todoStatus": {"pending": "未着手", "in_progress": "進行中", "completed": "完了", "cancelled": "キャンセル"},
     "pane": {
       "openWindow": "新しいウィンドウで開く",
       "close": "ペインを閉じる",
@@ -712,7 +740,7 @@
       "queued": "待機中"
     },
     "stopSubagent": "サブエージェントを停止",
-    "stopCommand": "実行中のコマンドを停止",
+    "stopRun": "実行を停止",
     "browseOpen": "開く",
     "browseOpenNamed": "{name} を開く",
     "browseSystem": "参照…",
@@ -1123,6 +1151,7 @@
     "peakContext": "最大使用率",
     "slots": "スロット",
     "speed": "速度",
+    "speedReply": "この返信の出力速度",
     "install": "llama.cpp をインストール",
     "installHint": "{platform} 向けのビルド。",
     "checkReleases": "新しいリリースを確認",

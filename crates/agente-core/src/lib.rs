@@ -6,6 +6,8 @@ pub mod catalog;
 pub mod config;
 pub mod context;
 pub mod extensions;
+#[cfg(feature = "execution")]
+pub mod goal;
 pub mod llm;
 #[cfg(feature = "execution")]
 pub mod lsp;

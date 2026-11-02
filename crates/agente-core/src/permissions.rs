@@ -630,14 +630,12 @@ pub fn is_destructive_command(cmd: &str) -> bool {
 
 /// Project files that decide what code runs later; edits to them always ask.
 fn is_protected_path(path: &str) -> bool {
-    path.replace('\\', "/")
-        .split('/')
-        .any(|part| {
-            matches!(
-                part,
-                ".git" | ".agente" | ".claude" | ".agents" | ".mcp.json" | "agente.json" | ".envrc"
-            ) || part.starts_with(".env")
-        })
+    path.replace('\\', "/").split('/').any(|part| {
+        matches!(
+            part,
+            ".git" | ".agente" | ".claude" | ".agents" | ".mcp.json" | "agente.json" | ".envrc"
+        ) || part.starts_with(".env")
+    })
 }
 
 /// Prefix of an approval description when a shell call may act outside the
@@ -706,12 +704,16 @@ fn piece_leaves_project(piece: &str, root: Option<&std::path::Path>) -> bool {
     let absolute = piece.starts_with('/')
         || piece.starts_with('\\')
         || std::path::Path::new(piece).is_absolute()
-        || (bytes.len() > 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':' && matches!(bytes[2], b'/' | b'\\'));
+        || (bytes.len() > 2
+            && bytes[0].is_ascii_alphabetic()
+            && bytes[1] == b':'
+            && matches!(bytes[2], b'/' | b'\\'));
     if absolute {
         if piece == "/dev/null" {
             return false;
         }
-        return !root.is_some_and(|root| lexical_normalize(std::path::Path::new(piece)).starts_with(root));
+        return !root
+            .is_some_and(|root| lexical_normalize(std::path::Path::new(piece)).starts_with(root));
     }
     // Relative: only a `..` that climbs past the project root escapes.
     let mut depth = 0usize;
@@ -1173,7 +1175,10 @@ mod tests {
             engine.check_tool_with_facts(
                 "edit_file",
                 &tiny,
-                &ToolFsFacts { target_exists: true, target_line_count: Some(3) }
+                &ToolFsFacts {
+                    target_exists: true,
+                    target_line_count: Some(3)
+                }
             ),
             Permission::Ask
         );
@@ -1182,7 +1187,10 @@ mod tests {
             engine.check_tool_with_facts(
                 "edit_file",
                 &plain,
-                &ToolFsFacts { target_exists: true, target_line_count: Some(3) }
+                &ToolFsFacts {
+                    target_exists: true,
+                    target_line_count: Some(3)
+                }
             ),
             Permission::Allow
         );
@@ -1349,7 +1357,10 @@ mod tests {
             shell_outside_paths("echo $(whoami)", Some(root)),
             vec!["command substitution".to_string()]
         );
-        assert_eq!(shell_outside_paths("pushd", Some(root)), vec!["~".to_string()]);
+        assert_eq!(
+            shell_outside_paths("pushd", Some(root)),
+            vec!["~".to_string()]
+        );
         assert!(shell_outside_paths("cargo test 2>/dev/null", Some(root)).is_empty());
         assert!(shell_outside_paths("ls /work/proj/a", Some(root)).is_empty());
         // Unknown root: absolute paths cannot be shown to be inside.

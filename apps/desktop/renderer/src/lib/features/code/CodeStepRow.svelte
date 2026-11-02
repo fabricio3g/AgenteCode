@@ -21,7 +21,7 @@
   import { cn as uiClass } from '$lib/utils/cn';
 
   import { t } from 'svelte-i18n';
-  import { AlertCircle, FilePen, FileText, FolderOpen, Globe, ListChecks, Search, Square, SquareTerminal, Wrench, XCircle } from 'lucide-svelte';
+  import { AlertCircle, Copy, FilePen, FileText, FolderOpen, Globe, ListChecks, Search, Square, SquareTerminal, Wrench, XCircle } from 'lucide-svelte';
   import type { AgentStep } from '$lib/types/chat';
   import type { CodeChild } from '$shared/agente-protocol';
   import { approvalsStore } from '$lib/stores/approvals.svelte';
@@ -30,6 +30,7 @@
   import { copy } from '$lib/copy';
   import { ActiveDuration } from '$lib/utils/active-duration';
   import { toastStore } from '$lib/stores/toast.svelte';
+  import { writeToClipboard } from '$lib/utils/clipboard';
   import { codeWorkspace } from './workspace.svelte';
   import { codeStore } from './code.svelte';
   import { stepKind } from './activity';
@@ -62,9 +63,6 @@
   /** A spawn: the row belongs to the agent it started. */
   const isSpawn = $derived(step.toolName === 'task');
   const child = $derived(children?.find((candidate) => candidate.id === step.subagentId));
-  /** A wait on a child shows that child's live card, not its bare id. */
-  const awaitsChild = $derived(step.toolName === 'task_output' && !!child);
-
   const kind = $derived(stepKind(step));
   const running = $derived(isRunning(step));
   /**
@@ -88,7 +86,7 @@
   /** What the tool was asked, when the chip's one line doesn't say it all. */
   const input = $derived.by(() => {
     const detail = step.detail ?? '';
-    return !isCommand && !isApproval && (detail.length > 60 || detail.includes('\n') || /^(task_output|kill_task)$/.test(step.toolName ?? '')) ? detail : '';
+    return !isCommand && !isApproval ? (step.toolInput || ((detail.length > 60 || detail.includes('\n') || /^(task_output|kill_task)$/.test(step.toolName ?? '')) ? detail : '')) : '';
   });
   /** `cmd | tail` prints nothing until the command ends: say so instead of looking stuck. */
   const tailPipe = $derived(/\|\s*tail\b/.test(step.detail || ''));
@@ -113,8 +111,12 @@
     if (chatId && plan) codeWorkspace.showPlan(chatId, plan);
   }
 
-  function stopCommand() {
+  function stopRun() {
     if (chatId) void codeStore.stop(chatId).catch((error) => toastStore.error(String(error)));
+  }
+
+  async function copyValue(value: string) {
+    if (await writeToClipboard(value)) toastStore.success($t('chat.copied'));
   }
 
   /** The file an approval's diff is about, from its `+++` header. */
@@ -125,8 +127,6 @@
 
 {#if isSpawn}
   <SubagentCard child={child ?? childFromStep(step)} {id} {chatId} pending={!child && running} />
-{:else if awaitsChild && child}
-  <SubagentCard {child} {id} {chatId} />
 {:else if !(step.type === 'approval' && !isApproval)}
   <!-- A settled approval says nothing the tool's own row doesn't: hide it. -->
   <Disclosure
@@ -155,7 +155,7 @@
 
     {#snippet actions()}
       {#if running && isCommand && chatId}
-        <IconButton label={$t('code.stopCommand')} size="xs" variant="ghost" type="button" class={uiClass("stop", "ui-local-af21c610")}  title={$t('code.stopCommand')} onclick={stopCommand}><Square class="size-3" /></IconButton>
+        <IconButton label={$t('code.stopRun')} size="xs" variant="ghost" type="button" class={uiClass("stop", "ui-local-af21c610")}  title={$t('code.stopRun')} onclick={stopRun}><Square class="size-3" /></IconButton>
       {/if}
     {/snippet}
 
@@ -163,8 +163,9 @@
       <div class="step-inner" class:is-approval={isApproval}>
         {#if isCommand}
           <div class="term">
-            <div class="term-head"><span class="text-muted-foreground">$</span> {step.detail}</div>
+            <div class="term-head"><span class="term-command"><span class="text-muted-foreground">$</span> {step.detail}</span>{#if step.detail}<IconButton label={$t('code.traceCopyCommand')} size="xs" onclick={() => void copyValue(step.detail ?? '')}><Copy /></IconButton>{/if}</div>
             {#if output}
+              <div class="trace-label"><span>{$t('code.toolResult')}</span><IconButton label={$t('code.traceCopyOutput')} size="xs" onclick={() => void copyValue(output)}><Copy /></IconButton></div>
               <ClampedBlock tail={running}><pre class="term-out">{running ? output.slice(-OUTPUT_LIMIT) : output}{#if running}<span class="caret"></span>{/if}</pre></ClampedBlock>
             {:else if running}
               <p class="term-note">{tailPipe ? 'This pipe prints its tail when the command finishes.' : $t('codeWs.noOutput')}</p>
@@ -178,11 +179,11 @@
           {/each}
         {:else}
           {#if input}
-            <p class="section-label">{$t('code.toolInput')}</p>
+            <div class="trace-label"><span>{$t('code.toolInput')}</span><IconButton label={$t('code.traceCopyInput')} size="xs" onclick={() => void copyValue(input)}><Copy /></IconButton></div>
             <div class="out"><ClampedBlock><pre>{input}</pre></ClampedBlock></div>
           {/if}
           {#if output}
-            {#if input}<p class="section-label">{$t('code.toolResult')}</p>{/if}
+            <div class="trace-label"><span>{$t('code.toolResult')}</span><IconButton label={$t('code.traceCopyOutput')} size="xs" onclick={() => void copyValue(output)}><Copy /></IconButton></div>
             <div class="out" class:text-error={isError}><ClampedBlock><pre>{running ? output.slice(-OUTPUT_LIMIT) : output}</pre></ClampedBlock></div>
           {:else if running}
             <p class="term-note">{$t('codeWs.noOutput')}</p>
@@ -249,7 +250,8 @@
     border-left: 2px solid color-mix(in srgb, var(--warning) 60%, transparent);
     background: color-mix(in srgb, var(--warning) 5%, transparent);
   }
-  .section-label {
+  .trace-label {
+    display:flex; align-items:center; justify-content:space-between; gap:0.5rem;
     font-size: var(--text-xs);
     color: var(--muted-foreground);
   }
@@ -281,6 +283,7 @@
     background: var(--background);
   }
   .term-head {
+    display:flex; align-items:center; justify-content:space-between; gap:0.5rem;
     padding: 0.375rem 0.625rem;
     border-bottom: 1px solid var(--border-subtle);
     white-space: pre-wrap;
@@ -289,6 +292,8 @@
     font-size: var(--text-xs);
     color: var(--foreground);
   }
+  .term-command { min-width:0; overflow-wrap:anywhere; }
+  .term .trace-label { padding:0.125rem 0.625rem 0; }
   .term-out {
     padding: 0.5rem 0.625rem;
     white-space: pre-wrap;

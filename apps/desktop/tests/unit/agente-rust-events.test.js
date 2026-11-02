@@ -60,6 +60,18 @@ test('child output, spend and consumed steering survive the desktop translation'
   assert.deepEqual(translator.translate(envelope(injected)), [{ type: 'runtime_event', chatId: 'chat-1', event: injected }]);
 });
 
+test('provider usage cannot replace the Rust compaction budget used by the context ring', () => {
+  const translator = new RustTurnTranslator('chat-budget', () => 100_000);
+  const budget = { type: 'context_budget', used: 40_000, room: 80_000, window: 100_000, tool_tokens: 8_000, gap: 2_000, reserve: 10_000, system_tokens: 4_000, message_tokens: 30_000, tool_result_tokens: 6_000 };
+  const [first] = run(translator, [budget]);
+  assert.equal(first.promptTokens, 40_000);
+  assert.equal(first.contextWindow, 80_000);
+  const [reported] = run(translator, [{ type: 'usage', usage: { prompt_tokens: 50_000, completion_tokens: 100, cache_read_tokens: 0, cache_creation_tokens: 0, context_tokens: 50_000 } }]);
+  assert.equal(reported.promptTokens, 40_000);
+  assert.equal(reported.contextWindow, 80_000);
+  assert.equal(reported.breakdown.system, 4_000);
+});
+
 test('approvals, failures and subagent events', () => {
   const translator = new RustTurnTranslator('chat-2', () => 0);
   const [approval] = run(translator, [{
@@ -113,7 +125,10 @@ test('generation speed uses each parent model stream and excludes tools, retries
   send({ type:'turn_started' }, 0);
   send({ type:'assistant_delta', text:'First' }, 1000);
   send({ type:'assistant_delta', text:' reply' }, 2000);
-  assert.deepEqual(send(usage, 3000).at(-1), { type:'generation_stats', chatId:'chat-speed', tokensPerSecond:50 });
+  // One second between the first and last output event, 100 tokens across the
+  // 99 gaps that interval holds; the report arrives a second later and is
+  // never part of the measurement.
+  assert.deepEqual(send(usage, 3000).at(-1), { type:'generation_stats', chatId:'chat-speed', tokensPerSecond:99 });
   send({ type:'tool_proposed', id:'tool', name:'read_file', arguments:'{}' }, 4000);
   send({ type:'tool_result', id:'tool', name:'read_file', content:'read', is_error:false }, 40_000);
   send({ type:'assistant_delta', text:'Retry' }, 41_000);
@@ -121,7 +136,7 @@ test('generation speed uses each parent model stream and excludes tools, retries
   send({ type:'assistant_delta', text:'Final' }, 50_000);
   send({ type:'assistant_delta', text:' reply' }, 51_000);
   assert.equal(send(usage, 51_500, { parent_run_id:'child' }).some(event => event.type === 'generation_stats'), false);
-  assert.deepEqual(send(usage, 52_000).at(-1), { type:'generation_stats', chatId:'chat-speed', tokensPerSecond:50 });
+  assert.deepEqual(send(usage, 52_000).at(-1), { type:'generation_stats', chatId:'chat-speed', tokensPerSecond:99 });
 });
 
 test('generation speed stays absent for a response buffered into one output event', () => {

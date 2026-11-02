@@ -129,8 +129,9 @@ async fn fetch_props(
     response.json().await.ok()
 }
 
-/// Give every listed model the thinking controls the server's template grants.
-/// A server that does not answer `/props` leaves the list untouched.
+/// Give every listed model the thinking controls the server's template grants,
+/// and the window the server is actually serving. A server that does not
+/// answer `/props` leaves the list untouched.
 pub(crate) async fn attach_props(
     client: &reqwest::Client,
     base_url: &str,
@@ -141,18 +142,65 @@ pub(crate) async fn attach_props(
         return;
     };
     let option = option_from_props(&props);
+    // llama-server serves one context size (`n_ctx`). Without it every local
+    // model was measured against the 128k default, so an 8k–32k server never
+    // compacted and overflowed instead.
+    let n_ctx = served_context(&props);
     for model in models {
         model.compat = ThinkingFormat::LlamaCpp;
         if let Some(option) = &option {
             model.capabilities.reasoning = true;
             model.reasoning_options = vec![option.clone()];
         }
+        if let Some(n_ctx) = n_ctx {
+            // The server's own answer wins over the default, but a window a
+            // user configured on purpose (anything that is not the default)
+            // stays theirs.
+            if model.limits.context == 0
+                || model.limits.context == crate::catalog::DEFAULT_CONTEXT_WINDOW
+            {
+                model.limits.context = n_ctx;
+            }
+        }
     }
+}
+
+/// The context size a llama-server is serving, from `/props`.
+pub fn served_context(props: &serde_json::Value) -> Option<u32> {
+    props
+        .get("n_ctx")
+        .and_then(serde_json::Value::as_u64)
+        .or_else(|| {
+            props
+                .get("default_generation_settings")
+                .and_then(|settings| settings.get("n_ctx"))
+                .and_then(serde_json::Value::as_u64)
+        })
+        .filter(|n| *n > 0)
+        .map(|n| n as u32)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_served_window_comes_from_props() {
+        assert_eq!(
+            served_context(&serde_json::json!({ "n_ctx": 8192 })),
+            Some(8_192)
+        );
+        // Older servers only report it under the generation defaults.
+        assert_eq!(
+            served_context(&serde_json::json!({
+                "default_generation_settings": { "n_ctx": 32_768 }
+            })),
+            Some(32_768)
+        );
+        // An absent or meaningless size changes nothing.
+        assert_eq!(served_context(&serde_json::json!({})), None);
+        assert_eq!(served_context(&serde_json::json!({ "n_ctx": 0 })), None);
+    }
 
     #[test]
     fn detects_kwargs_conditionals_and_tags() {

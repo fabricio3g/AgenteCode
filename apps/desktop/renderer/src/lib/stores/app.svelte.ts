@@ -10,7 +10,7 @@ import { approvalsStore } from '$lib/stores/approvals.svelte';
 import type { IndexedDocument, SearchResult } from '$lib/types/bridge';
 import { countOf } from '$lib/utils/format';
 import { runAgentTask } from '$lib/services/agent';
-import { runDesignTask } from '$lib/services/agent-design-runtime';
+import { captureDesignTurnContext, runDesignTask } from '$lib/services/agent-design-runtime';
 import { applyHomeAgentResult, homeAgentCallbacks, initialHomeActivity, planHomeAgentRun, settleAgentSteps } from '$lib/features/home/home-turn';
 import { roleplayStore } from '$lib/features/roleplay/roleplay.svelte';
 import { messageSpeechParts } from '$lib/features/roleplay/roleplay-voice';
@@ -45,7 +45,7 @@ import { cachedModels, completeAssistantReply, detectToolSupport, fetchModels, f
 import { loadChatState, saveChatState, saveAppConfig, saveChatDraftToDb, saveChatStateToDb, loadChatStateFromDb, deleteChatFromDb } from '$lib/utils/storage';
 import { toErrorMessage } from '$lib/utils/errors';
 import { describeLocalLoadError } from '$lib/utils/local-load-errors';
-import { homeRuntimeBudget } from '$lib/stores/app-context-budget';
+import { estimateContextBreakdown, homeRuntimeBudget } from '$lib/stores/app-context-budget';
 import type { RunAgentTaskArgs } from '$lib/services/agent-types';
 import { resolveContextBudgetPreview } from '$lib/stores/app-context-budget-preview';
 import { buildSystemPrompt, selectBaseSystemPrompt } from '$lib/stores/app-prompts';
@@ -205,30 +205,13 @@ class AppStore {
   artifactStudioOpen = $state(false);
   /** What the Home surface shows: the chat, or the Artifacts screen. */
   homeView = $state<'chat' | 'artifacts' | 'files'>('chat');
-  /**
-   * The Bots tab is showing. Bots aren't chats, so it sits beside the spaces
-   * instead of being one: opening any chat or space closes it.
-   */
-  botsOpen = $state(false);
-
-  /**
-   * Search what the open tab holds. Bots aren't chats: there it filters the
-   * roster (the sidebar's box), so no space's chat history shows up in Bots.
-   */
+  /** Open or close search within the current space. */
   openSearch(): void {
-    if (!this.botsOpen) {
-      this.chatSearchOpen = !this.chatSearchOpen;
-      return;
-    }
-    this.sidebarOpen = true;
-    // The box renders with the sidebar; focus it once it is there.
-    requestAnimationFrame(() => document.querySelector<HTMLInputElement>('[data-bot-search]')?.focus());
+    this.chatSearchOpen = !this.chatSearchOpen;
   }
 
-  /** The top-bar tab that is showing: a space, or Bots. */
-  get activeTab(): ChatContextMode | 'bots' {
-    // A Bots tab persisted before the space was switched off falls back to the space.
-    return this.botsOpen && this.botsEnabled ? 'bots' : this.activeSpace;
+  get activeTab(): ChatContextMode {
+    return this.activeSpace;
   }
   /** The artifact open on the Artifacts screen (`chatId:messageId:index`), or the library. */
   artifactScreenKey = $state<string | null>(null);
@@ -628,7 +611,7 @@ class AppStore {
       });
 
       if (requestId !== this.contextBudgetRequestId) return;
-      this.contextBudget = budget ? { ...budget, estimated: true } : this.contextBudget;
+      this.contextBudget = budget ? { ...budget, estimated: true, breakdown: estimateContextBreakdown(outboundMessages) } : this.contextBudget;
     } catch {
       // Keep the last reading when token counting is temporarily unavailable.
     }
@@ -747,14 +730,6 @@ class AppStore {
     this.artifactPanels = next;
   }
 
-  /** Show the Bots screen (the roster, a bot's chat and its routines). */
-  showBots() {
-    // A space switched off is not a place a caller may put the window in.
-    if (!this.botsEnabled) return;
-    this.settingsScreenOpen = false;
-    this.botsOpen = true;
-    this.persist();
-  }
 
   /**
    * Show the Settings screen, at `section` when one is named.
@@ -1283,9 +1258,6 @@ class AppStore {
       this.activeSpace = normalizeContextMode(this.currentChat?.contextMode || this.activeSpace);
       this.rebuildChatIdBySpace();
       this.hydrateUiFromChat(this.currentChat);
-      // Restored last: making the space's chat above closes the tab, and a
-      // closed space stays closed.
-      this.botsOpen = this.botsEnabled && !!loadChatState<PersistedState>({ chats: [], folders: [], currentChatId: null }).botsOpen;
     } catch (error) {
       this.error = toErrorMessage(error) || 'Failed to initialize application';
       if (!this.chats.length) {
@@ -1342,8 +1314,7 @@ class AppStore {
       folders: this.folders,
       currentChatId: this.currentChatId,
       activeSpace: this.activeSpace,
-      currentChatIdBySpace: this.currentChatIdBySpace,
-      botsOpen: this.botsOpen
+      currentChatIdBySpace: this.currentChatIdBySpace
     });
     // Flush current, generating, and any explicitly dirty chats to SQLite.
     const chatIds = new Set<string>(this.dirtyChatIds);
@@ -1493,7 +1464,6 @@ class AppStore {
     if (!this.roleplayEnabled) return;
     this.settingsScreenOpen = false;
     this.homeView = 'chat';
-    this.botsOpen = false;
     if (this.currentChat) {
       const currentMode = normalizeContextMode(this.currentChat.contextMode);
       this.currentChatIdBySpace = { ...this.currentChatIdBySpace, [currentMode]: this.currentChat.id };
@@ -1523,7 +1493,6 @@ class AppStore {
     if (!this.spaceEnabled(nextMode)) return;
     this.settingsScreenOpen = false;
     this.homeView = 'chat';
-    this.botsOpen = false;
     if (this.currentChat) {
       const currentMode = normalizeContextMode(this.currentChat.contextMode);
       this.currentChatIdBySpace = { ...this.currentChatIdBySpace, [currentMode]: this.currentChat.id };
@@ -1540,7 +1509,6 @@ class AppStore {
   createChat(mode: ChatContextMode = this.activeSpace, options: { workspace?: ChatSession['workspace'] } = {}) {
     this.settingsScreenOpen = false;
     this.homeView = 'chat';
-    this.botsOpen = false;
     const contextMode = normalizeContextMode(mode);
     const chat = this.newChatSession(contextMode, options.workspace);
     this.chats = [chat, ...this.chats];
@@ -1602,7 +1570,6 @@ class AppStore {
     this.settingsScreenOpen = false;
     const previousRoute = reasoningRouteIdentity(this.config);
     this.homeView = 'chat';
-    this.botsOpen = false;
     const match = this.chats.find((chat) => chat.id === chatId);
     if (!match) return;
     const mode = normalizeContextMode(match.contextMode);
@@ -2458,6 +2425,7 @@ class AppStore {
     })) return;
 
     this.error = null;
+    const designContext = activeContextMode === 'design' ? captureDesignTurnContext(targetChatId) : undefined;
     const userMessage: ChatMessage | null = silent
       ? null
       : {
@@ -2727,6 +2695,7 @@ class AppStore {
         // Design turns share Home's runtime; they swap in the design tools and prompt.
         const agentResult = await (activeContextMode === 'design' ? runDesignTask : runAgentTask)({
           chatId: targetChatId,
+          designContext,
           ...this.homeRuntimeArgs(targetChat, assistantMessage, targetChat.messages.filter((entry) => entry.id !== assistantMessage.id).map((entry) => entry.id)),
           systemPrompt,
           messages: requestMessages,
@@ -2754,7 +2723,7 @@ class AppStore {
             const index = targetChat.messages.findIndex(message => message.id === assistantMessage.id);
             if (index < 0) return;
             const prefix: ChatMessage[] = assistantMessage.content.trim()
-              ? [{ ...assistantMessage, id: createId('msg'), done: true, status: 'idle', metadata: { ...assistantMessage.metadata }, agentSteps: undefined }]
+              ? [{ ...assistantMessage, id: createId('msg'), done: true, status: 'idle', metadata: { ...assistantMessage.metadata, codeSpend: undefined }, agentSteps: undefined }]
               : [];
             assistantMessage.content = ''; assistantMessage.reasoning = '';
             targetChat.messages.splice(index, 0, ...prefix, ...accepted);
@@ -3600,7 +3569,6 @@ class AppStore {
     home_tools_disabled?: string[];
     composer_mode_control?: 'tabs' | 'auto';
     roleplay_enabled?: boolean;
-    bots_enabled?: boolean;
     editor?: string;
   }) {
     await this.commitConfig(mergeUiSettingsConfig(this.config, partial));
@@ -3638,27 +3606,9 @@ class AppStore {
     }
   }
 
-  /** Whether Bots is on. Off by default, like Roleplay; Settings → General turns it on. */
-  get botsEnabled(): boolean {
-    return this.config.ui?.bots_enabled === true;
-  }
-
-  /**
-   * The one rule for what the chrome may show and what may be entered: the
-   * three core spaces always, the two opt-in ones only once the person asked.
-   */
-  spaceEnabled(space: ChatContextMode | 'bots'): boolean {
-    if (space === 'roleplay') return this.roleplayEnabled;
-    if (space === 'bots') return this.botsEnabled;
-    return true;
-  }
-
-  async setBotsEnabled(enabled: boolean) {
-    await this.updateUiSettings({ bots_enabled: enabled });
-    if (!enabled && this.botsOpen) {
-      this.botsOpen = false;
-      this.persist();
-    }
+  /** The optional Roleplay space is available only when enabled. */
+  spaceEnabled(space: ChatContextMode): boolean {
+    return space !== 'roleplay' || this.roleplayEnabled;
   }
 
   get homeToolsDisabled(): string[] {

@@ -1,4 +1,17 @@
 {
+  "goal": {
+    "confirmClear": "Remove this goal? The agent will stop receiving reminders.",
+    "cancel": "Cancel",
+    "title": "Goal",
+    "set": "Set goal",
+    "placeholder": "Describe the objective for this conversation",
+    "save": "Save",
+    "complete": "Complete",
+    "clear": "Clear",
+    "active": "Active",
+    "completed": "Completed",
+    "hint": "The agent will remember this goal across turns."
+  },
   "chat": {
     "placeholder": "Message {{APP_NAME}}...",
     "stop": "Stop response",
@@ -52,10 +65,21 @@
     },
     "localBusy": "The local model is busy in another chat",
     "context": {
+      "systemLabel": "System prompt",
+      "messagesLabel": "Messages",
+      "resultsLabel": "Tool results",
+      "toolsLabel": "Tool definitions",
+      "overheadLabel": "Tokenizer overhead",
+      "reserveLabel": "Reply reserve",
+      "runtimeNote": "Category values are estimates; the total may come from the provider.",
+      "systemTokens": "System prompt: ~{n} tokens",
+      "messageTokens": "Messages: ~{n} tokens",
+      "previewNote": "Preview estimates; tools and runtime additions are not included.",
+      "breakdownUnavailable": "Detailed categories are not available for this runtime usage.",
       "usage": "{used} / {max} tokens of context ({percent}%)",
       "reserved": "{n} tokens kept for the reply",
-      "priceIn": "In ${price}/1M",
-      "priceOut": "Out ${price}/1M",
+      "priceIn": "In {price}/1M",
+      "priceOut": "Out {price}/1M",
       "estimate": "Estimated input cost: ${cost}",
       "remaining": "{n} tokens remaining",
       "spend": "Conversation cost: {cost}",
@@ -385,6 +409,10 @@
     "refresh": "Refresh"
   },
   "code": {
+    "traceCopyInput": "Copy input",
+    "traceCopyOutput": "Copy output",
+    "traceCopyCommand": "Copy command",
+    "todoStatus": {"pending": "Pending", "in_progress": "In progress", "completed": "Completed", "cancelled": "Cancelled"},
     "pane": {
       "openWindow": "Open in a new window",
       "close": "Close pane",
@@ -721,7 +749,7 @@
       "queued": "Queued"
     },
     "stopSubagent": "Stop subagent",
-    "stopCommand": "Stop the running command",
+    "stopRun": "Stop the run",
     "modeShort": {
       "plan": "Plan",
       "supervised": "Supervised",
@@ -1123,6 +1151,7 @@
     "peakContext": "Peak context",
     "slots": "Slots",
     "speed": "Speed",
+    "speedReply": "Output speed for this reply",
     "install": "Install llama.cpp",
     "installHint": "Builds for {platform}.",
     "checkReleases": "Check for new releases",

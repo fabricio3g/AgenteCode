@@ -18,6 +18,7 @@ use crate::types::ToolDefinition;
 
 // Re-export individual tool modules
 pub mod atomic_fs;
+pub mod edit_match;
 pub mod exec;
 pub mod file;
 pub mod outline;
@@ -555,90 +556,11 @@ where
     }
 }
 
-fn normalize_with_mapping(text: &str) -> (String, Vec<usize>) {
-    let mut normalized = String::new();
-    let mut mapping = Vec::new();
-    let mut offset = 0usize;
-
-    for line in text.lines() {
-        let trimmed = line.trim_end();
-        for (byte_idx, c) in trimmed.char_indices() {
-            let norm_c = match c {
-                '\u{2018}' | '\u{2019}' | '\u{201A}' | '\u{201B}' => '\'',
-                '\u{201C}' | '\u{201D}' | '\u{201E}' | '\u{201F}' => '"',
-                '\u{2010}'..='\u{2015}' | '\u{2212}' => '-',
-                '\u{00A0}' | '\u{2002}'..='\u{200A}' | '\u{202F}' | '\u{205F}' | '\u{3000}' => ' ',
-                _ => c,
-            };
-            normalized.push(norm_c);
-            mapping.push(offset + byte_idx);
-        }
-        offset += line.len();
-        if let Some(rest) = text.get(offset..) {
-            if rest.starts_with("\r\n") {
-                offset += 2;
-                normalized.push('\n');
-                mapping.push(offset - 2);
-            } else if rest.starts_with('\n') {
-                offset += 1;
-                normalized.push('\n');
-                mapping.push(offset - 1);
-            }
-        }
-    }
-
-    (normalized, mapping)
-}
-
-pub fn normalize_for_fuzzy_match(text: &str) -> String {
-    normalize_with_mapping(text).0
-}
-
-#[derive(Debug)]
-pub struct FuzzyMatchResult {
-    pub found: bool,
-    pub index: usize,
-    pub end_index: usize,
-    pub used_fuzzy: bool,
-}
-
-pub fn fuzzy_find_text(content: &str, search: &str) -> FuzzyMatchResult {
-    if let Some(idx) = content.find(search) {
-        return FuzzyMatchResult {
-            found: true,
-            index: idx,
-            end_index: idx + search.len(),
-            used_fuzzy: false,
-        };
-    }
-
-    let (norm_content, content_mapping) = normalize_with_mapping(content);
-    let (norm_search, _) = normalize_with_mapping(search);
-
-    if let Some(idx) = norm_content.find(&norm_search) {
-        let start_char_pos = norm_content[..idx].chars().count();
-        let search_char_len = norm_search.chars().count();
-        let start_byte = content_mapping[start_char_pos];
-        let end_byte = if start_char_pos + search_char_len < content_mapping.len() {
-            content_mapping[start_char_pos + search_char_len]
-        } else {
-            content.len()
-        };
-        return FuzzyMatchResult {
-            found: true,
-            index: start_byte,
-            end_index: end_byte,
-            used_fuzzy: true,
-        };
-    }
-
-    FuzzyMatchResult {
-        found: false,
-        index: 0,
-        end_index: 0,
-        used_fuzzy: false,
-    }
-}
+// Editing matches through `tools::edit_match`, the one ladder (exact →
+// whitespace → normalized → blank-line tolerant → similar). The old
+// `normalize_with_mapping` / `fuzzy_find_text` pair here was a second,
+// materially different matcher: it took the first fuzzy hit instead of
+// refusing on ambiguity, so an edit could land in the wrong place.
 
 /// Metadata for rendering a tool call or result in the UI.
 #[derive(Debug, Clone)]
@@ -1595,30 +1517,29 @@ mod tests {
     }
 
     #[test]
-    fn test_fuzzy_match() {
-        let result = fuzzy_find_text("hello world", "world");
-        assert!(result.found);
-        assert_eq!(result.index, 6);
-        assert_eq!(result.end_index, 11);
-        assert!(!result.used_fuzzy);
+    fn edit_matching_finds_an_exact_replacement() {
+        let content = "hello world";
+        let found = match crate::tools::edit_match::locate(content, "world", None) {
+            crate::tools::edit_match::EditMatch::Found(found) => found,
+            other => panic!("expected a match, got {other:?}"),
+        };
+        assert_eq!(found.range, 6..11);
+        assert!(found.level.is_exact());
     }
 
     #[test]
-    fn test_fuzzy_match_smart_quotes() {
+    fn edit_matching_folds_smart_quotes_without_guessing_bytes() {
         let content = "say \u{201C}hello\u{201D} world";
-        let result = fuzzy_find_text(content, "say \"hello\"");
-        assert!(result.found);
-        assert!(result.used_fuzzy);
-        // Should replace the exact smart-quoted text, not guess byte length
-        assert_eq!(result.index, 0);
-        assert_eq!(result.end_index, 15); // byte length of "say " + 3-byte curly quotes + "hello" + 3-byte curly quote
-        let new_content = format!(
-            "{}{}{}",
-            &content[..result.index],
-            "say \"goodbye\"",
-            &content[result.end_index..]
+        let found = match crate::tools::edit_match::locate(content, "say \"hello\"", None) {
+            crate::tools::edit_match::EditMatch::Found(found) => found,
+            other => panic!("expected a normalized match, got {other:?}"),
+        };
+        assert_eq!(
+            found.level,
+            crate::tools::edit_match::MatchLevel::Normalized
         );
-        assert_eq!(new_content, "say \"goodbye\" world");
+        let updated = crate::tools::edit_match::apply(content, found.range, "say \"goodbye\"");
+        assert_eq!(updated, "say \"goodbye\" world");
     }
 
     /// Every tool Plan mode advertises must also pass the permission engine,

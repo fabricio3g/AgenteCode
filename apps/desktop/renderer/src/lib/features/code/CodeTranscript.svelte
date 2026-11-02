@@ -35,10 +35,15 @@
   import { copy, say } from '$lib/copy';
   import { formatDuration } from '$lib/utils/format';
   import { codeStore } from './code.svelte';
+  import { appStore } from '$lib/stores/app.svelte';
   import { orderedEntries } from './code-run';
   import PlanCard from './PlanCard.svelte';
-  import SubagentGroup from './SubagentGroup.svelte';
+  import SubagentCard from './SubagentCard.svelte';
+  import { disclosureKey } from './disclosure-state.svelte';
   import JumpToLatest from '$lib/features/chat/thread/JumpToLatest.svelte';
+  import ThreadTimeline from '$lib/features/chat/thread/ThreadTimeline.svelte';
+  import { conversationTimelinePreview } from '$lib/utils/conversation-timeline';
+  import type { TimelineMarker } from '$lib/features/chat/thread/timeline';
   import { runMeterMode } from './tile-meter';
   import { pendingPlan } from './plan-review';
   import { codeWorkspace } from './workspace.svelte';
@@ -52,6 +57,11 @@
   let viewport = $state<HTMLDivElement | undefined>(undefined);
   const follow = new ConversationFollow();
   let jumpVisible = $state(false);
+  let timelineIndex = $state(0);
+  let timelineBrowsing = $state(false);
+  let timelineAwake = $state(false);
+  let timelineTimer: ReturnType<typeof setTimeout> | undefined;
+  const timelineMarkers = $derived<TimelineMarker[]>(messages.map(message => ({ id: message.id, role: message.role, preview: conversationTimelinePreview(message) })));
 
   /** Live run state for retry + todo visibility while streaming. */
   const run = $derived(codeStore.runFor(chatId));
@@ -83,7 +93,7 @@
   });
 
   let scrollFrame = 0;
-  onDestroy(() => { if (scrollFrame) cancelAnimationFrame(scrollFrame); });
+  onDestroy(() => { if (scrollFrame) cancelAnimationFrame(scrollFrame); if (timelineTimer) clearTimeout(timelineTimer); });
   $effect(() => {
     void messages.length;
     void messages[messages.length - 1]?.content;
@@ -121,6 +131,32 @@
     if (!viewport) return;
     follow.observe(viewport);
     jumpVisible = distanceFromLatest(viewport) > LATEST_BUTTON_DISTANCE;
+    timelineAwake = true;
+    if (timelineTimer) clearTimeout(timelineTimer);
+    timelineTimer = setTimeout(() => (timelineAwake = false), 1200);
+    if (!timelineBrowsing) {
+      const slots = viewport.querySelectorAll<HTMLElement>('.code-message-slot');
+      const middle = viewport.getBoundingClientRect().top + viewport.clientHeight / 2;
+      let low = 0, high = slots.length - 1;
+      while (low < high) {
+        const mid = Math.floor((low + high) / 2);
+        const rect = slots[mid].getBoundingClientRect();
+        if (rect.top + rect.height / 2 < middle) low = mid + 1; else high = mid;
+      }
+      const center = (index: number) => { const rect = slots[index].getBoundingClientRect(); return rect.top + rect.height / 2; };
+      timelineIndex = slots.length ? (low > 0 && Math.abs(center(low - 1) - middle) < Math.abs(center(low) - middle) ? low - 1 : low) : 0;
+    }
+  }
+
+  function browseTimeline(index: number) {
+    timelineIndex = Math.max(0, Math.min(messages.length - 1, index));
+    timelineBrowsing = timelineIndex !== messages.length - 1;
+  }
+
+  function selectTimelineMessage(index: number) {
+    browseTimeline(index);
+    follow.pause();
+    viewport?.querySelectorAll<HTMLElement>('.code-message-slot')[index]?.scrollIntoView({ behavior: reducedMotion.value ? 'auto' : 'smooth', block: 'start' });
   }
 
   function snapToBottom() {
@@ -133,6 +169,8 @@
   function jumpToLatest() {
     if (!viewport) return;
     follow.resume(viewport.scrollTop);
+    timelineBrowsing = false;
+    timelineIndex = Math.max(0, messages.length - 1);
     viewport.scrollTo({ top: viewport.scrollHeight, behavior: reducedMotion.value ? 'auto' : 'smooth' });
   }
 
@@ -184,7 +222,8 @@
      fully visible when scrolled to the end; text only fades while it scrolls
      past. Both are `--dock-gap`-sized: the 64px that used to sit here was dead
      air between every prompt and the composer. -->
-<div bind:this={viewport} class="conversation-scroll relative min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden px-4 pb-4 pt-6" use:pauseOnScrollIntent={follow} onscroll={onScroll}>
+<div class="thread-wrapper relative flex min-h-0 min-w-0 flex-1">
+<div bind:this={viewport} class="conversation-scroll relative min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden px-4 pb-4 pt-6" use:pauseOnScrollIntent={follow} onwheel={() => (timelineBrowsing = false)} onscroll={onScroll}>
   <div class="mx-auto flex min-w-0 flex-col gap-[var(--thread-gap)]" style="max-width: var(--thread-width);" use:followContentGrowth>
     {#each messages as message, messageIndex (message.id)}
       <div class="code-message-slot" class:is-live={message.status === 'streaming'}>
@@ -225,15 +264,17 @@
         {@const children = live ? run?.children ?? [] : message.metadata?.codeChildren ?? []}
         {@const diagnostics = live ? run?.diagnostics ?? [] : message.metadata?.codeDiagnostics ?? []}
         {@const blocks = replyBlocks(entries)}
-        {@const orphans = unlinkedChildren(children, entries.flatMap((entry) => (entry.step ? [entry.step] : [])))}
+        {@const activeChildren = streaming && live && run?.running ? children.filter((child) => child.status === 'running') : []}
+        {@const activeChildIds = new Set(activeChildren.map((child) => child.id))}
+        {@const orphans = unlinkedChildren(children.filter((child) => !activeChildIds.has(child.id)), entries.flatMap((entry) => (entry.step ? [entry.step] : [])))}
         <div class="group flex min-w-0 flex-col gap-[var(--thread-gap)]">
           {#each blocks as block, index (block.key)}
             {#if block.plan}
               {@const todos = live ? run?.todos ?? [] : message.metadata?.codeTodos ?? []}
-              {#if todos.length}<PlanCard {todos} running={streaming && live && !!run?.running && !run?.stopping} />{/if}
+              {#if todos.length && !(streaming && live && run?.running && appStore.sidebarOpen && appStore.currentChatId === chatId)}<PlanCard {todos} running={streaming && live && !!run?.running && !run?.stopping} />{/if}
             {:else if block.items}
               <div class="-mx-2 min-w-0">
-                <CodeWorkBlock items={block.items} {chatId} messageId={message.id} {children} live={streaming && index === blocks.length - 1} />
+                <CodeWorkBlock items={block.items} {chatId} messageId={message.id} {children} {activeChildIds} live={streaming && index === blocks.length - 1} />
               </div>
             {:else}
               <div class="text-sm leading-relaxed text-foreground">
@@ -242,12 +283,17 @@
             {/if}
           {/each}
 
-          <!-- Background spawns: a child whose `task` step is above already
-               draws on that step's row. -->
-          {#if orphans.length}<SubagentGroup children={orphans} {chatId} messageId={message.id} />{/if}
+          <!-- Unlinked children use the same rows as linked and live children. -->
+          {#each orphans as child (child.id)}
+            <SubagentCard {child} {chatId} id={disclosureKey(chatId, message.id, `child-${child.id}`)} />
+          {/each}
           {#if diagnostics.length}
             <details class="text-xs text-muted-foreground"><summary class="cursor-pointer">{$t('code.runtimeNotes', { values: { n: diagnostics.length } })}</summary><div class="mt-2 space-y-1">{#each diagnostics as note, index (index)}<p>{note}</p>{/each}</div></details>
           {/if}
+
+          {#each activeChildren as child (child.id)}
+            <SubagentCard {child} {chatId} id={disclosureKey(chatId, message.id, `child-${child.id}`)} />
+          {/each}
 
           <!-- What is happening now: always the last line, next to the composer. -->
           {#if streaming && live && run}
@@ -318,6 +364,10 @@
         onclick={jumpToLatest}
       />
     </div>
+  {/if}
+</div>
+  {#if timelineMarkers.length >= 4}
+    <ThreadTimeline markers={timelineMarkers} index={timelineIndex} awake={timelineAwake} onbrowse={browseTimeline} onselect={selectTimelineMessage} />
   {/if}
 </div>
 

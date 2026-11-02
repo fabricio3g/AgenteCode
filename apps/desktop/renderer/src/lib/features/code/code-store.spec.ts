@@ -522,6 +522,26 @@ describe('editable prompt queue', () => {
     expect(appStore.chats[0]?.pendingPrompts?.[0]?.content).toBe('continue later');
     expect(appStore.chats.find(chat => chat.id === 'other')?.pendingPrompts?.[0]?.content).toBe('other task');
   });
+
+  it('keeps queued prompts when Stop races with a normal completion', async () => {
+    await startRun();
+    codeStore.queue(CHAT_ID, 'continue later');
+    await codeStore.stop(CHAT_ID);
+    emit({ type: 'agent_end', chatId: CHAT_ID, stopReason: 'stop' });
+    await nextFrame();
+    expect(appStore.chats[0]?.pendingPrompts?.map(item => item.content)).toEqual(['continue later']);
+    expect(bridge.invokes.filter(call => call.command === 'agente_prompt')).toHaveLength(1);
+  });
+
+  it('cancels an auto-start scheduled immediately before Stop', async () => {
+    await startRun();
+    codeStore.queue(CHAT_ID, 'continue later');
+    emit({ type: 'agent_end', chatId: CHAT_ID, stopReason: 'stop' });
+    await codeStore.stop(CHAT_ID);
+    await nextFrame();
+    expect(appStore.chats[0]?.pendingPrompts?.map(item => item.content)).toEqual(['continue later']);
+    expect(bridge.invokes.filter(call => call.command === 'agente_prompt')).toHaveLength(1);
+  });
 });
 
 describe('manual compaction reporting', () => {

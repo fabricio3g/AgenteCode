@@ -205,7 +205,7 @@ fn grep_blocking(
             return ignore::WalkState::Continue;
         }
         if scanned
-            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |bytes| {
+            .try_update(Ordering::Relaxed, Ordering::Relaxed, |bytes| {
                 bytes
                     .checked_add(metadata.len())
                     .filter(|n| *n <= MAX_SEARCH_SCAN_BYTES)
@@ -230,7 +230,7 @@ fn grep_blocking(
                 continue;
             }
             if matches
-                .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |count| {
+                .try_update(Ordering::Relaxed, Ordering::Relaxed, |count| {
                     (count < limit).then_some(count + 1)
                 })
                 .is_err()

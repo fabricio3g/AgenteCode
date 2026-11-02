@@ -8,6 +8,7 @@
  */
 
 import type { CopyShape } from './en';
+import { DESIGN_3D_COPY } from './design-3d';
 
 type Widen<T> = T extends string
   ? string
@@ -1163,7 +1164,11 @@ const zh: CopyOverride = {
   }
 };
 
-export const COPY_OVERRIDES: Record<string, CopyOverride> = { es, 'pt-BR': ptBR, fr, de, ja, zh };
+export const COPY_OVERRIDES: Record<string, CopyOverride> = {
+  es: { ...es, studio3d: DESIGN_3D_COPY.es }, 'pt-BR': { ...ptBR, studio3d: DESIGN_3D_COPY['pt-BR'] },
+  fr: { ...fr, studio3d: DESIGN_3D_COPY.fr }, de: { ...de, studio3d: DESIGN_3D_COPY.de },
+  ja: { ...ja, studio3d: DESIGN_3D_COPY.ja }, zh: { ...zh, studio3d: DESIGN_3D_COPY.zh }
+};
 
 const SAY_EN: SayStrings = {
   nouns: {

@@ -26,34 +26,32 @@ const HINTS: &[(&str, &str)] = &[
     ("F1", "help"),
 ];
 
-/// `(used, window)` for the context meter, `None` when the model's window
-/// is unknown. `total_tokens` is the live transcript estimate (recomputed
-/// from `session.conversation` on Done/Cancelled/compact — see
-/// `state/agent.rs`), not a cumulative sum.
-pub(crate) fn context_ratio(state: &AppState) -> Option<(usize, usize)> {
+/// `(used, room, estimated)` for the context meter, `None` when nothing is
+/// known yet. Prefers the budget the loop reported — the same arithmetic the
+/// compaction gate uses — so the amber line and the compaction line are the
+/// same place. Before the first request of a session it falls back to the
+/// transcript estimate against the model's window.
+pub(crate) fn context_ratio(state: &AppState) -> Option<(usize, usize, bool)> {
+    let reported = state.agent.context;
+    if reported.is_known() {
+        return Some((
+            reported.used as usize,
+            reported.room as usize,
+            !reported.measured,
+        ));
+    }
     let model = state.resolve_model(&state.config.current_provider, &state.config.current_model)?;
     let limit = model.limits.context as usize;
-    (limit > 0).then_some((state.agent.total_tokens as usize, limit))
+    (limit > 0).then_some((
+        state.agent.total_tokens as usize,
+        limit,
+        !state.agent.context_measured,
+    ))
 }
 
+/// `61k`, `1.5M`: the one token scale, shared with the loop's own counts.
 pub(crate) fn format_token_count(tokens: usize) -> String {
-    if tokens >= 1_000_000 {
-        let v = tokens as f64 / 1_000_000.0;
-        if v == v.trunc() {
-            format!("{}M", v as u64)
-        } else {
-            format!("{v:.1}M")
-        }
-    } else if tokens >= 1_000 {
-        let v = tokens as f64 / 1_000.0;
-        if v == v.trunc() {
-            format!("{}k", v as u64)
-        } else {
-            format!("{v:.1}k")
-        }
-    } else {
-        tokens.to_string()
-    }
+    agente_core::context::format_tokens(tokens)
 }
 
 /// Status segments for the row under the composer, in drop order (first
@@ -71,16 +69,17 @@ fn status_segments(state: &AppState) -> Vec<Vec<Span<'static>>> {
             "compacting…"
         };
         segments.push(vec![on_bg(label.to_string(), PRIMARY())]);
-    } else if let Some((used, limit)) = context_ratio(state) {
-        let estimated = !state.agent.context_measured && used > 0;
-        segments.push(context_meter(used, limit, estimated));
+    } else if let Some((used, room, estimated)) = context_ratio(state) {
+        segments.push(context_meter(used, room, estimated));
     }
     segments
 }
 
-/// `━━━━━━━━ 61k / 262k`: an 8-cell fill meter plus the numbers. Muted
-/// normally, amber past 70%, red past 85% — where auto-compaction starts.
-/// `~61k` when the size is our estimate rather than the provider's count.
+/// `━━━━━━━━ 61k / 100k`: an 8-cell fill meter plus the numbers, measured
+/// against the room the compaction gate uses (window minus tool schemas, the
+/// tokenizer gap and the reply reserve), so 85% is the same line here and in
+/// the loop. Muted normally, amber past 70%, red past 85%. `~61k` when the
+/// size is our estimate rather than the provider's count.
 fn context_meter(used: usize, limit: usize, estimated: bool) -> Vec<Span<'static>> {
     const CELLS: usize = 8;
     let ratio = used as f64 / limit.max(1) as f64;
@@ -203,8 +202,8 @@ mod tests {
         state.config.connected_providers.push("test".to_string());
         state.agent.total_tokens = 9500;
 
-        let (used, limit) = context_ratio(&state).expect("usage");
-        assert_eq!((used, limit), (9_500, 200_000));
+        let (used, limit, estimated) = context_ratio(&state).expect("usage");
+        assert_eq!((used, limit, estimated), (9_500, 200_000, true));
         let text = |spans: Vec<Span<'static>>| -> String {
             spans.iter().map(|s| s.content.as_ref()).collect()
         };

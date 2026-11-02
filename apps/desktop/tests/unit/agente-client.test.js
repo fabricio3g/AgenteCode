@@ -9,12 +9,16 @@ import { AgenteDaemon, defaultSocketPath, resolveAgenteBinary, REQUIRED_CAPABILI
 
 /** Short socket paths: Unix sockets cap the path at ~108 bytes. */
 function socketDir(tag) {
-  return fs.mkdtempSync(path.join('/tmp', `ag-${tag}-`));
+  return fs.mkdtempSync(path.join(process.platform === 'win32' ? os.tmpdir() : '/tmp', `ag-${tag}-`));
+}
+
+function socketIn(dir) {
+  return process.platform === 'win32' ? `\\\\.\\pipe\\agente-test-${path.basename(dir)}` : path.join(dir, 's.sock');
 }
 
 test('the client matches replies, surfaces errors and notifications, and fails pending calls on close', async () => {
   const dir = socketDir('client');
-  const socketPath = path.join(dir, 's.sock');
+  const socketPath = socketIn(dir);
   const server = net.createServer((connection) => {
     connection.setEncoding('utf8');
     let buffer = '';
@@ -68,7 +72,7 @@ test('the default socket follows XDG_RUNTIME_DIR, else ~/.agente', () => {
 
 test('a reused daemon missing desktop methods is rejected during initialization', async () => {
   const dir = socketDir('stale');
-  const socketPath = path.join(dir, 's.sock');
+  const socketPath = socketIn(dir);
   let disconnected;
   const closed = new Promise((resolve) => { disconnected = resolve; });
   const server = net.createServer((connection) => {
@@ -81,7 +85,7 @@ test('a reused daemon missing desktop methods is rejected during initialization'
   await new Promise((resolve) => server.listen(socketPath, resolve));
   try {
     const daemon = new AgenteDaemon({ binary: null, socketPath });
-    await assert.rejects(daemon.connect(), /incompatible.*missing bots.*Restart agente serve/s);
+    await assert.rejects(daemon.connect(), /incompatible.*missing project.*Restart agente serve/s);
     await closed;
     assert.equal(server.listening, true, 'an incompatible external daemon is not stopped');
   } finally {
@@ -97,13 +101,12 @@ test('Desktop starts agente serve, runs a command through it, and reuses a runni
   const dir = socketDir('daemon');
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'agente-daemon-home-'));
   const env = { AGENTE_CONFIG_DIR: path.join(home, 'cfg'), AGENTE_SESSIONS_DIR: path.join(home, 'sessions') };
-  const socketPath = path.join(dir, 'agente.sock');
+  const socketPath = socketIn(dir);
   const daemon = new AgenteDaemon({ binary, socketPath, env });
   try {
     const client = await daemon.connect();
     const hello = await client.request('initialize');
     assert.ok(REQUIRED_CAPABILITIES.every((capability) => hello.capabilities.includes(capability)));
-    assert.ok(Array.isArray(await client.request('bots.list')), 'Bots uses the current backend');
     assert.equal(await daemon.connect(), client, 'one connection is shared');
 
     const notes = [];

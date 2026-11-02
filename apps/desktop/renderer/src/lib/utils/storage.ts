@@ -1,6 +1,13 @@
 import type { AppConfig, ChatSession, ChatFolder, CharacterCard, CodeProject, RoleplayWorld, UserPersona } from '$lib/types/chat';
 import { isElectron } from '$lib/services/bridge';
 import { THEME_STORAGE_KEY } from '$shared/window-theme';
+import { WriteQueue } from './write-queue';
+
+const chatWrites = new WriteQueue<ChatSession>(async session => {
+  const plain = JSON.parse(JSON.stringify(session));
+  await window.electronAPI!.invoke('chat_db_save_session', { session: plain });
+});
+export const flushChatSaves = () => chatWrites.flush();
 
 const APP_CONFIG_KEY = 'chatealm_app_config';
 /** Chat navigation state. Exported so the dev harness can boot into a fixture. */
@@ -240,6 +247,7 @@ async function backfillFromLegacy(chats: ChatSession[]): Promise<ChatSession[]> 
 
 export async function saveChatDraftToDb(session: ChatSession): Promise<void> {
   if (!isElectronEnv()) return;
+  await chatWrites.flush(session.id);
   const saved = await (window as any).electronAPI.invoke('chat_db_save_draft', {
     chatId: session.id, draft: session.draft, updatedAt: session.updatedAt,
     pendingPrompts: JSON.parse(JSON.stringify(session.pendingPrompts ?? [])),
@@ -252,8 +260,7 @@ export async function saveChatDraftToDb(session: ChatSession): Promise<void> {
 export async function saveChatStateToDb(session: ChatSession): Promise<void> {
   if (!isElectronEnv()) return;
   try {
-    const plain = JSON.parse(JSON.stringify(session));
-    await (window as any).electronAPI.invoke('chat_db_save_session', { session: plain });
+    await chatWrites.enqueue(session.id, session);
   } catch (err) {
     console.error('[saveChatStateToDb] Failed:', err);
   }
@@ -262,6 +269,7 @@ export async function saveChatStateToDb(session: ChatSession): Promise<void> {
 export async function deleteChatFromDb(chatId: string): Promise<void> {
   if (!isElectronEnv()) return;
   try {
+    await chatWrites.flush(chatId);
     await (window as any).electronAPI.invoke('chat_db_delete', { chatId });
   } catch (err) {
     console.error('[deleteChatFromDb] Failed:', err);

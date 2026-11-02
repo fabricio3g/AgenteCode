@@ -208,7 +208,7 @@
                 event.preventDefault(); const ids = placement.group.panels, index = ids.indexOf(id);
                 const next = event.key === 'Home' ? 0 : event.key === 'End' ? ids.length - 1 : (index + (event.key === 'ArrowRight' ? 1 : -1) + ids.length) % ids.length;
                 workspaceLayout.activate(ids[next]); requestAnimationFrame(() => host?.querySelector<HTMLButtonElement>(`section:not([hidden]) [data-tab="${ids[next]}"]`)?.focus());
-              }} data-tab={id} title={item.title}><TabIcon class="size-3" /><span>{item.title}</span></UiButton>
+              }} data-tab={id} title={item.title}><TabIcon class="size-4" /><span>{item.title}</span></UiButton>
             {/if}
           {/each}
         </div>
@@ -268,15 +268,15 @@
      with their own fill (the canvas board, the browser), so those panels lost it. */
   .workspace-panel::after { content: ''; position: absolute; inset: 0; z-index: 30; border: 1px solid var(--border-subtle); border-radius: inherit; pointer-events: none; }
   .workspace-panel[hidden] { display: none; }
-  .workspace-panel.floating { background:var(--card);border-radius:var(--float-radius);box-shadow:var(--float-shadow); }
-  .workspace-panel.floating::after { border-color:var(--border); }
+  .workspace-panel.floating { background:var(--float-bg);border-radius:var(--float-radius);box-shadow:var(--float-shadow); }
+  .workspace-panel.floating::after { border-color:var(--float-border); }
   .workspace-panel.resize-ready::after { border-color: var(--split-line); }
   /* The strip owns the panel's top edge: no fill, just a hairline under it. */
   :global(.workspace-header) { cursor: grab; touch-action: none; }
 
 
   .workspace-tabs { display: flex; min-width: 0; flex: 1; gap: 2px; overflow-x: auto; scrollbar-width: none; }
-  :global(.workspace-tab.ui-local-c24761b3) { display: inline-flex; align-items: center; gap: 5px; min-width: 0; max-width: 180px; height: 22px; padding: 0 8px; flex-shrink: 0; border-radius: var(--radius-full); font-size: var(--text-xs); color: var(--muted-foreground); cursor: grab; touch-action: none; transition: color var(--motion-fast) var(--motion-ease), background-color var(--motion-fast) var(--motion-ease); }
+  :global(.workspace-tab.ui-local-c24761b3) { display: inline-flex; align-items: center; gap: 0.5rem; min-width: 0; max-width: 180px; height: var(--sidebar-row-h); padding: 0 0.5rem; flex-shrink: 0; border-radius: var(--float-row-radius); font-family:var(--font-sans); font-size: var(--text-sm); color: var(--text-secondary); cursor: grab; touch-action: none; transition: color var(--motion-instant) var(--motion-ease), background-color var(--motion-instant) var(--motion-ease); }
   :global(.workspace-tab.ui-local-c24761b3) span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   :global(.workspace-tab:hover.ui-local-c24761b3) { color: var(--foreground); }
   :global(.workspace-tab.active.ui-local-c24761b3) { color: var(--foreground); background: var(--surface-active); font-weight: 500; }

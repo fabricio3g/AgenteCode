@@ -10,6 +10,18 @@ pub struct TransportPolicy {
     pub require_model_route: Option<bool>,
     pub model_routes: BTreeMap<String, ApiFormat>,
     pub cache: CachePolicy,
+    pub billing: BillingPolicy,
+}
+
+/// How a gateway reports what a call cost.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct BillingPolicy {
+    /// The user pays the upstream provider separately (OpenRouter's BYOK), so
+    /// `usage.cost_details.upstream_inference_cost` is their money too and is
+    /// added to the gateway's own fee. A gateway whose `usage.cost` already
+    /// includes upstream must leave this false, or every call is billed twice.
+    pub byok: bool,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -49,6 +61,11 @@ impl TransportPolicy {
         if own.cache == defaults.cache {
             own.cache = CachePolicy::default();
         }
+        // The billing contract belongs to the provider too: a saved copy must
+        // not pin today's default and keep a corrected spec from reaching it.
+        if own.billing == defaults.billing {
+            own.billing = BillingPolicy::default();
+        }
         (own != Self::default()).then_some(own)
     }
 
@@ -71,6 +88,11 @@ impl TransportPolicy {
         }
         if other.cache.prompt_cache_key.is_some() {
             self.cache.prompt_cache_key = other.cache.prompt_cache_key;
+        }
+        // Only ever turns BYOK on: a provider spec that already bills it
+        // cannot be switched off by a config that never mentions the field.
+        if other.billing.byok {
+            self.billing.byok = true;
         }
     }
 

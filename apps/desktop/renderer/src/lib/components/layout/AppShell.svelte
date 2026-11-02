@@ -13,9 +13,6 @@
   import ConversationPanes from '$lib/features/code/ConversationPanes.svelte';
   import ArtifactsScreen from '$lib/features/artifacts/ArtifactsScreen.svelte';
   import FilesScreen from '$lib/features/files/FilesScreen.svelte';
-  import BotsScreen from '$lib/features/bots/BotsScreen.svelte';
-  import BotRoutines from '$lib/features/bots/BotRoutines.svelte';
-  import { botsStore } from '$lib/features/bots/bots.svelte';
   import ArtifactPanel from '$lib/features/artifacts/ArtifactPanel.svelte';
   import RoleplaySurface from '$lib/features/roleplay/RoleplaySurface.svelte';
   import DesignSurface from '$lib/features/design/DesignSurface.svelte';
@@ -42,9 +39,8 @@
   import WorkspaceHost from './WorkspaceHost.svelte';
   import type { WorkspacePanel, PanelRenderState } from './workspace-panel';
   import { workspaceLayout } from '$lib/stores/workspace-layout.svelte';
-  import { FileBox, Globe, Image, ListTodo } from 'lucide-svelte';
+  import { FileBox, Globe, Image } from 'lucide-svelte';
   import CanvasPanel from '$lib/features/canvas/CanvasPanel.svelte';
-  import TitlebarLeftTools from './TitlebarLeftTools.svelte';
   import { codeWorkspace } from '$lib/features/code/workspace.svelte';
   import { appStore } from '$lib/stores/app.svelte';
   import { capabilitiesStore } from '$lib/stores/capabilities.svelte';
@@ -58,10 +54,9 @@
   let showShortcutsHelp = $state(false);
   let artifactPanelHandle = $state<{ requestClose: () => void }>();
   // The top-bar tab decides the main view; Bots sits beside the three spaces.
-  const inBots = $derived(appStore.activeTab === 'bots');
   const inCodeSpace = $derived(appStore.activeTab === 'code');
 
-  const scope = $derived(inBots && botsStore.current ? conversationScope(`bot:${botsStore.current.handle}`) : !inBots && appStore.currentChat ? conversationScope(appStore.currentChat.id) : inCodeSpace ? `space:code:${codeStore.activeProjectId ?? 'none'}` : `space:${appStore.activeTab}`);
+  const scope = $derived(appStore.currentChat ? conversationScope(appStore.currentChat.id) : inCodeSpace ? `space:code:${codeStore.activeProjectId ?? 'none'}` : `space:${appStore.activeTab}`);
   /*
    * The centre's home. Panes span conversations — two panes can be two chats —
    * so they cannot live in a chat-scoped layout; the space owns them, and the
@@ -71,7 +66,7 @@
    *  canvas colour, so there the sheet runs to that corner instead of leaving a gap. */
   const captionOverlay = typeof window !== 'undefined' && window.electronAPI?.platform === 'win32';
   const windowId = new URLSearchParams(window.location.search).get('window');
-  const spaceKey = $derived(inBots ? `space:bots:${botsStore.current?.handle ?? 'none'}` : inCodeSpace ? `space:code${windowId ? ':' + windowId : ''}` : `space:${appStore.activeTab}`);
+  const spaceKey = $derived(inCodeSpace ? `space:code${windowId ? ':' + windowId : ''}` : `space:${appStore.activeTab}`);
   $effect.pre(() => {
     const owner = scope;
     const space = spaceKey;
@@ -86,14 +81,12 @@
   // The right dock: Changes and the presented plan (Code), the open artifact
   // (Home chat) and the agent browser, stacked when more than one is open.
   const changesTarget = $derived(codeWorkspace.changesTarget);
-  const showArtifact = $derived(!inCodeSpace && !inBots && appStore.homeView === 'chat' && !!appStore.artifactPanel);
-  const showRoutines = $derived(inBots && !!botsStore.current && botsStore.routinesOpen);
+  const showArtifact = $derived(!inCodeSpace && appStore.homeView === 'chat' && !!appStore.artifactPanel);
   /** The canvas annotates for whichever conversation is open, so it follows the chat. */
-  const canvasAvailable = $derived((inCodeSpace && !!changesTarget) || (!inCodeSpace && !inBots && appStore.homeView === 'chat' && !!appStore.currentChat));
+  const canvasAvailable = $derived((inCodeSpace && !!changesTarget) || (!inCodeSpace && appStore.homeView === 'chat' && !!appStore.currentChat));
   const dockPanels = $derived.by(() => {
     const panels: WorkspacePanel[] = [
       { id: 'artifact', title: $t('artifacts.title'), icon: FileBox, content: artifactPanel, region: 'right', available: showArtifact, open: showArtifact, onhide: () => artifactPanelHandle?.requestClose() },
-      { id: 'routines', title: $t('bots.routines'), icon: ListTodo, content: routinesPanel, region: 'right', available: showRoutines, open: showRoutines, onhide: () => (botsStore.routinesOpen = false) },
       { id: 'browser', title: $t('browser.title'), icon: Globe, content: browserPanel, region: 'right', available: true, open: browserPanelStore.open, onhide: () => void browserPanelStore.hide() },
       { id: 'canvas', title: $t('canvas.title'), icon: Image, content: canvasPanel, region: 'right', available: canvasAvailable, open: workspaceLayout.isOpen('canvas'), onhide: () => workspaceLayout.hide('canvas') }
 
@@ -106,7 +99,7 @@
   const settingsShowing = $derived(appStore.settingsScreenOpen);
   /** Ctrl/⌘+K means "new" in every space — a chat, a roleplay, or a project. */
   const shortcutRows = $derived<Array<[string, string]>>([
-    ['mod+k', inBots ? $t('bots.new') : inCodeSpace ? $t('shortcuts.addProject') : inRoleplaySpace ? copy.roleplay.newRoleplay : inDesignSpace ? copy.design.newDesign : $t('shortcuts.newChat')],
+    ['mod+k', inCodeSpace ? $t('shortcuts.addProject') : inRoleplaySpace ? copy.roleplay.newRoleplay : inDesignSpace ? copy.design.newDesign : $t('shortcuts.newChat')],
     ['mod+shift+k', $t('shortcuts.search')],
     ['mod+,', $t('shortcuts.settings')],
     ['mod+b', $t('shortcuts.sidebar')],
@@ -120,10 +113,6 @@
   ]);
 
   function startNewSession() {
-    if (inBots) {
-      botsStore.editor = 'new';
-      return;
-    }
     if (inCodeSpace) {
       void codeStore.addProject();
       return;
@@ -145,7 +134,7 @@
     appStore.closeSettings();
     // The sidebar is hidden while Settings is up, so the way back is the space
     // tab (when the sidebar returns with it): the surface knows where the caret goes.
-    const tab = appStore.activeTab === 'bots' ? 'home' : appStore.activeTab;
+    const tab = appStore.activeTab;
     requestAnimationFrame(() => document.getElementById(`space-tab-${tab}`)?.focus());
   }
 
@@ -259,6 +248,14 @@
     appStore.sidebarOpen = !appStore.sidebarOpen;
   }
 
+  function hideSidebar() {
+    if (appStore.sidebarOpen) toggleSidebar();
+    else {
+      peek.toggled();
+      requestAnimationFrame(() => document.querySelector<HTMLButtonElement>('.titlebar-row [data-sidebar-toggle]')?.focus());
+    }
+  }
+
   $effect(() => {
     // Settings hides the sidebar; a preview floating over it would be a ghost.
     if (appStore.sidebarOpen || settingsShowing) peek.close();
@@ -266,7 +263,7 @@
 
   $effect(() => {
     if (!peek.open) return;
-    return peek.listen(() => document.querySelector<HTMLButtonElement>('[data-sidebar-toggle]')?.focus());
+    return peek.listen(() => document.querySelector<HTMLButtonElement>('.titlebar-row [data-sidebar-toggle]')?.focus());
   });
 
   function resizeSidebar(delta: number) {
@@ -302,10 +299,7 @@
         class:preview={!appStore.sidebarOpen && peek.open}
         inert={!appStore.sidebarOpen && !peek.open}
       >
-        <!-- The preview floats over the title bar's corner, so its head row
-             carries the bar's toggle in the same spot, before the spaces. -->
-        {#snippet previewLead()}<TitlebarLeftTools expanded onToggle={toggleSidebar} />{/snippet}
-        <Sidebar onNavigate={() => peek.toggled()} lead={!appStore.sidebarOpen && peek.open ? previewLead : undefined} />
+        <Sidebar onNavigate={() => peek.toggled()} onToggle={hideSidebar} />
       </div>
     </div>
 
@@ -340,9 +334,7 @@
              Code hosts the coding agent surface; Roleplay the character surface;
              Home keeps the general chat panel. -->
         <div class="flex min-h-0 min-w-0 flex-1 overflow-hidden">
-          {#if inBots}
-            <BotsScreen />
-          {:else if appStore.homeView === 'artifacts'}
+          {#if appStore.homeView === 'artifacts'}
             <ArtifactsScreen />
           {:else if inRoleplaySpace}
             <RoleplaySurface />
@@ -357,7 +349,7 @@
 
       <!-- Files covers whichever space is underneath instead of replacing it, so
            opening it from Code never unmounts a running session or a terminal. -->
-      {#if appStore.homeView === 'files' && !inBots && !settingsShowing}
+      {#if appStore.homeView === 'files' && !settingsShowing}
         <div data-overlay="files" class="absolute inset-0 z-20 flex min-h-0 min-w-0 flex-col bg-background">
           <FilesScreen />
         </div>
@@ -384,10 +376,7 @@
 </div>
 
 {#snippet artifactPanel(state: PanelRenderState)}<ArtifactPanel embedded exposed={state.exposed} bind:this={artifactPanelHandle} />{/snippet}
-{#snippet browserPanel(state: PanelRenderState)}<BrowserPanel embedded exposed={state.exposed && !settingsShowing} presentationKey={JSON.stringify(state.rect)} chatId={inBots ? undefined : appStore.currentChat?.id} />{/snippet}
-{#snippet routinesPanel()}
-  {#if botsStore.current}<BotRoutines embedded bot={botsStore.current} onclose={() => (botsStore.routinesOpen = false)} />{/if}
-{/snippet}
+{#snippet browserPanel(state: PanelRenderState)}<BrowserPanel embedded exposed={state.exposed && !settingsShowing} presentationKey={JSON.stringify(state.rect)} chatId={appStore.currentChat?.id} />{/snippet}
 {#snippet canvasPanel()}
   {#if appStore.currentChat}<CanvasPanel chatId={appStore.currentChat.id} />{/if}
 {/snippet}
@@ -460,13 +449,14 @@
      rests on, so no seam line is drawn between them; with the sidebar away
      the sheet takes the gap on its left too. */
   .canvas-sheet {
-    margin: var(--sheet-gap) var(--sheet-gap) var(--sheet-gap) 0;
-    border-radius: var(--sheet-radius);
-    box-shadow: var(--sheet-shadow);
+    margin: 0;
+    border-radius: 0;
+    border-inline-start: 1px solid var(--sidebar-border);
+    box-shadow: none;
     overflow: hidden;
     isolation: isolate;
   }
-  .sheet-alone .canvas-sheet { margin-left: var(--sheet-gap); }
+  .sheet-alone .canvas-sheet { border-inline-start: 0; }
   .caption-overlay .canvas-sheet {
     margin-top: 0;
     margin-right: 0;
@@ -492,27 +482,20 @@
     pointer-events: auto;
   }
 
-  /* The preview is the same sidebar floating inside the canvas sheet: it
-     takes the sheet's own top-left corner, gap and radius, so it nests in the
-     interior instead of running the window's height, and its top lines up with
-     the sheet's, which keeps the title bar's left buttons (redrawn in place by
-     TitlebarLeftTools) exactly where they were. No seam line: the ground's tone
-     and --shadow-xl lift it. */
+  /* Keep the title bar and its toggle visible above the floating preview. */
   .sidebar-view-full.preview {
     position: fixed;
     z-index: var(--z-float);
-    top: var(--sheet-gap);
+    top: 3rem;
     bottom: var(--sheet-gap);
     left: var(--sheet-gap);
     right: auto;
     max-width: calc(100vw - 1rem);
     background: var(--sidebar);
+    border: 1px solid var(--sidebar-border);
     border-radius: var(--sheet-radius);
     box-shadow: var(--shadow-xl);
   }
-  /* Windows: the sheet runs to the window's top edge, so the preview does too. */
-  .caption-overlay .sidebar-view-full.preview { top: 0; }
-
   @media (prefers-reduced-motion: reduce) {
     .sidebar-outer { transition: none; will-change: auto; }
     .sidebar-view-full { transition: none; }

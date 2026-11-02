@@ -3425,7 +3425,10 @@ mod tests {
         app.process_agent_events();
         let child = &app.state.agent.subagents["child"].spend;
         assert_eq!(child.cost_label().as_deref(), Some("$0.004"));
-        assert_eq!(app.state.agent.spend.cost_label().as_deref(), Some("$0.01"));
+        assert_eq!(
+            app.state.agent.spend.cost_label().as_deref(),
+            Some("$0.014")
+        );
     }
 
     #[test]

@@ -35,7 +35,10 @@ pub(crate) async fn build_approval_request(
                 if outside.is_empty() {
                     format!("Run command: {cmd}")
                 } else {
-                    format!("{OUTSIDE_PROJECT_PREFIX}{} · Run command: {cmd}", outside.join(", "))
+                    format!(
+                        "{OUTSIDE_PROJECT_PREFIX}{} · Run command: {cmd}",
+                        outside.join(", ")
+                    )
                 }
             })
             .unwrap_or_else(|| "Run shell command".to_string()),

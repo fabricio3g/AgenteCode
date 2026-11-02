@@ -13,7 +13,11 @@ pub fn truncate_chars(text: &str, max: usize) -> String {
         .filter(|index| *index > max / 2)
         .map(|index| head[..index].to_string())
         .unwrap_or(head);
-    format!("{cut}\n… truncated ({} of {} characters shown)", cut.chars().count(), text.chars().count())
+    format!(
+        "{cut}\n… truncated ({} of {} characters shown)",
+        cut.chars().count(),
+        text.chars().count()
+    )
 }
 
 /// Keep the first `max` lines, saying how many were dropped.
@@ -62,7 +66,9 @@ pub fn parse_grid(text: &str) -> Vec<Vec<String>> {
             if delimiter == ',' {
                 split_csv_line(line)
             } else {
-                line.split('\t').map(|cell| cell.trim().to_string()).collect()
+                line.split('\t')
+                    .map(|cell| cell.trim().to_string())
+                    .collect()
             }
         })
         .collect()
@@ -80,7 +86,10 @@ fn split_csv_line(line: &str) -> Vec<String> {
                 chars.next();
             }
             '"' => quoted = !quoted,
-            ',' if !quoted => cells.push(cell.trim().to_string()),
+            ',' if !quoted => {
+                cells.push(cell.trim().to_string());
+                cell.clear();
+            }
             _ => cell.push(ch),
         }
     }

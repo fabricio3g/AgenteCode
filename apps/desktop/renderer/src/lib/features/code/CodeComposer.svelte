@@ -17,7 +17,7 @@
   import { cn as uiClass } from '$lib/utils/cn';
 
   import { onDestroy, untrack } from 'svelte';
-  import { ArrowUp, ChevronDown, ClipboardList, Eye, EyeOff, Folder, File as FileIcon, MoreHorizontal, Paperclip, Play, Plus, ShieldCheck, Settings2, X, Zap } from 'lucide-svelte';
+  import { ArrowUp, ChevronDown, ClipboardList, Eye, EyeOff, File as FileIcon, Paperclip, Play, ShieldCheck, Settings2, Target, X, Zap } from 'lucide-svelte';
   import { toastStore } from '$lib/stores/toast.svelte';
   import { codeWorkspace } from './workspace.svelte';
   import { exactSlashCommand, matchSlashCommands, slashQuery } from './slash-commands';
@@ -38,29 +38,45 @@
   import CodeProjectDialog from './CodeProjectDialog.svelte';
   import MediaAttachmentCard from './MediaAttachmentCard.svelte';
   import PromptQueue from '$lib/features/shared/PromptQueue.svelte';
+  import SessionGoal from '$lib/features/shared/SessionGoal.svelte';
   import { conversationSpend } from './accounting';
   import { fileMentionAt, insertFile, matchFiles } from './file-mention';
   import { downloadSessionMarkdown } from '$lib/features/shared/export-session';
   import { Button, Dialog } from '$lib/components/ui';
   import { invoke } from '$lib/services/bridge';
   import type { Attachment, AttachmentKind } from '$shared/agente-protocol.gen';
-  import { MEDIA_ACCEPT, isMediaPath, mediaData } from './code-media';
+  import { isMediaPath, mediaData } from './code-media';
   import Menu from '$lib/components/ui/Menu.svelte';
   import MenuItem from '$lib/components/ui/MenuItem.svelte';
   import Tooltip from '$lib/components/ui/Tooltip.svelte';
   import SendButton from '$lib/features/shared/composer/SendButton.svelte';
+  import ComposerGlyph from '$lib/features/shared/composer/ComposerGlyph.svelte';
+  import DictationButton from '$lib/features/chat/composer/DictationButton.svelte';
+  import DictationSetupPopover from '$lib/features/chat/composer/DictationSetupPopover.svelte';
+  import ComposerRecorder from '$lib/features/chat/composer/ComposerRecorder.svelte';
+  import { Dictation } from '$lib/features/chat/composer/use-dictation.svelte';
   import { approvalsStore } from '$lib/stores/approvals.svelte';
   import { copy } from '$lib/copy';
   import { MAX_COMPOSER_TEXTAREA_PX, autogrowTextarea } from '$lib/features/shared/composer-autogrow';
   import { mergeDraft } from '$lib/features/canvas/canvas-doc';
 
   let { chat }: { chat: ChatSession } = $props();
+  let goalControl = $state<{ edit: () => Promise<void> }>();
+
+  function ensureGoalSession(): string {
+    chat.codeAgent ??= { instanceId: 'agente', driverKind: 'agente', substrate: 'native', updatedAt: Date.now() };
+    chat.codeAgent.sessionId ??= crypto.randomUUID();
+    appStore.markChatDirty(chat.id);
+    appStore.persist();
+    return chat.codeAgent.sessionId;
+  }
 
   /** Textarea grows with content up to this height, then scrolls (Home parity). */
   const MAX_TEXTAREA_PX = MAX_COMPOSER_TEXTAREA_PX;
 
   let textarea = $state<HTMLTextAreaElement | undefined>(undefined);
   let text = $state(untrack(() => chat.draft || ''));
+  const dictation = new Dictation((addition) => { text = text.trimEnd() ? `${text.trimEnd()} ${addition}` : addition; });
   let modeMenuOpen = $state(false);
   let toolsMenuOpen = $state(false);
   let dialog = $state<CodeDialog | null>(null);
@@ -177,7 +193,7 @@
   // These sections ask the engine about a project directory. The rest —
   // Agent settings and saved sessions — are runtime-wide and work without one.
   const PROJECT_SECTIONS: CodeDialog[] = ['skills', 'agents', 'mcp'];
-  const commands = $derived<Command[]>(codeCommands({
+  const commands = $derived<Command[]>([...codeCommands({
     t: (key) => $t(key),
     running,
     hasProject: !!project,
@@ -210,7 +226,7 @@
     openModels: openModelHub,
     openProject: async () => { const selected = await codeStore.addProject(); if (selected) codeStore.newConversation(selected); },
     stop: () => codeStore.stop(chat.id)
-  }));
+  }), { name: 'goal', icon: Target, label: $t('goal.title'), hint: $t('goal.hint'), run: () => goalControl?.edit() }]);
   const menuGroups = $derived([commands.filter((command) => command.menu === 'actions'), commands.filter((command) => command.menu === 'project')]);
 
   $effect(() => {
@@ -383,14 +399,34 @@
     attaching = true;
     try {
       const imported: Attachment[] = [];
+      const failed: string[] = [];
       for (const file of selected) {
-        const result = await invoke<{ attachment: Attachment }>('agente_media_import', await mediaData(file));
-        if (result.attachment) imported.push(result.attachment);
+        try {
+          if (!isMediaPath(file.name) && (file.type.startsWith('text/') || /\.(txt|md|json|jsonc|csv|tsv|yaml|yml|toml|rs|js|ts|tsx|jsx|py|html|css|svg)$/i.test(file.name))) {
+            if (file.size > 2 * 1024 * 1024) throw new Error('Text files are limited to 2 MB.');
+            text = mergeDraft(text, `Attached file: ${file.name}\n\n${await file.text()}`);
+          } else {
+            const result = await invoke<{ attachment: Attachment }>('agente_media_import', await mediaData(file));
+            if (result.attachment) imported.push(result.attachment);
+          }
+        } catch (error) { failed.push(`${file.name}: ${error instanceof Error ? error.message : String(error)}`); }
       }
       offerMedia(imported);
+      if (failed.length) toastStore.error(failed.join('\n'));
     } catch (error) { toastStore.error(String(error)); }
     finally { attaching = false; }
   }
+  $effect(() => {
+    const over = (event: DragEvent) => { if (appStore.currentChatId === chat.id && event.dataTransfer?.types.includes('Files')) event.preventDefault(); };
+    const drop = (event: DragEvent) => {
+      if (event.defaultPrevented || appStore.currentChatId !== chat.id) return;
+      const files = [...(event.dataTransfer?.files || [])];
+      if (!files.length) return;
+      event.preventDefault(); event.stopPropagation(); void attachFiles(files);
+    };
+    document.addEventListener('dragover', over); document.addEventListener('drop', drop);
+    return () => { document.removeEventListener('dragover', over); document.removeEventListener('drop', drop); };
+  });
   async function attachPath(path: string): Promise<boolean> {
     try {
       const { attachment } = await invoke<{ attachment: Attachment | null }>('agente_media_import', { path, project_dir: project?.rootPath });
@@ -401,7 +437,7 @@
   }
   function onPaste(event: ClipboardEvent) {
     const selected = [...(event.clipboardData?.files || [])];
-    if (selected.length) { event.preventDefault(); void attachFiles(selected); return; }
+    if (selected.length) { event.preventDefault(); event.stopPropagation(); void attachFiles(selected); return; }
     const pasted = event.clipboardData?.getData('text/plain') || '';
     if (isMediaPath(pasted)) {
       event.preventDefault();
@@ -580,7 +616,7 @@
     const timer = setTimeout(() => appStore.persistDraft(id), 300);
     return () => clearTimeout(timer);
   });
-  onDestroy(() => appStore.persist());
+  onDestroy(() => { dictation.dispose(); appStore.persist(); });
 </script>
 
 {#if dialog && (project || !PROJECT_SECTIONS.includes(dialog))}<CodeProjectDialog chatId={chat.id} projectRoot={project?.rootPath} section={dialog} onclose={() => { dialog = null; void refreshSettings(); }} />{/if}
@@ -592,8 +628,12 @@
   </Dialog>
 {/if}
 
-<div class="composer-dock relative z-20 w-full shrink-0 px-3 pb-2 pt-2 md:px-6 md:pb-3" role="region" aria-label={$t('code.composerRegion')}>
+<div class="composer-dock relative z-20 w-full shrink-0 px-3 pb-2 pt-2 md:px-6 md:pb-3" role="region" aria-label={$t('code.composerRegion')}
+  onpaste={onPaste}
+  ondragover={(event) => { if (event.dataTransfer?.types.includes('Files')) event.preventDefault(); }}
+  ondrop={(event) => { const selected = [...(event.dataTransfer?.files || [])]; if (selected.length && !event.defaultPrevented) { event.preventDefault(); event.stopPropagation(); void attachFiles(selected); } }}>
   <div class="composer-frame mx-auto w-full" style="max-width: var(--thread-width);">
+    {#if dictation.phase === 'choose'}<DictationSetupPopover {dictation} />{/if}
     {#if awaitingApproval}
       <Button variant="plain" type="button" class={uiClass("approval-pill mb-2 flex self-start items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium", "ui-local-49e9c79c")} onclick={scrollToApproval}>
         <ShieldCheck class="size-3.5" />
@@ -638,7 +678,7 @@
     <div class="composer-shell ui-composer pointer-events-auto transition">
       <div class="composer-body">
         {#if attachments.length}
-          <div class="mb-2 flex flex-wrap gap-1.5">
+          <div class="mx-3 mt-3 flex flex-wrap gap-1.5">
             {#each attachments as media (media.path)}<MediaAttachmentCard attachment={media} onremove={() => attachments = attachments.filter(item => item.path !== media.path)} />{/each}
           </div>
         {/if}
@@ -650,17 +690,20 @@
           value={text}
           oninput={onInput}
           onkeydown={onKeydown}
-          onpaste={onPaste}
-          ondragover={(event) => { if (event.dataTransfer?.types.includes('Files')) event.preventDefault(); }}
-          ondrop={(event) => { const selected = [...(event.dataTransfer?.files || [])]; if (selected.length) { event.preventDefault(); void attachFiles(selected); } }}
           onselect={() => { if (textarea) caret = textarea.selectionStart; }}
         ></UiTextarea>
 
+        {#if dictation.uiActive && dictation.phase !== 'choose'}
+          <div class="composer-bar">
+            <ComposerRecorder {dictation} />
+            {#if running}<SendButton compact stopShortcut="escape" {running} disabled={false} sendLabel={$t('code.send')} stopLabel={$t('code.stop')} onsend={() => void submit()} onstop={() => void codeStore.stop(chat.id)} />{/if}
+          </div>
+        {:else}
         <ComposerBar>
           {#snippet attach()}
-            <UiFileInput bind:ref={mediaPicker}  class={uiClass("hidden", "ui-local-49e9c79c")} accept={MEDIA_ACCEPT} multiple onchange={(event) => { void attachFiles([...((event.currentTarget as HTMLInputElement).files || [])]); event.currentTarget.value = ''; }} />
+            <UiFileInput bind:ref={mediaPicker}  class={uiClass("hidden", "ui-local-49e9c79c")} accept="*/*" multiple onchange={(event) => { void attachFiles([...((event.currentTarget as HTMLInputElement).files || [])]); event.currentTarget.value = ''; }} />
             <Tooltip label={$t('code.attach')} position="top">
-              <UiIconButton label={$t('code.attach')} size="xs" type="button" class={uiClass("composer-icon-control", "ui-local-49e9c79c")}  disabled={attaching} onclick={() => mediaPicker?.click()}><Plus class="size-3.5" /></UiIconButton>
+              <UiIconButton label={$t('code.attach')} size="xs" type="button" class={uiClass("composer-icon-control", "ui-local-49e9c79c")}  disabled={attaching} onclick={() => mediaPicker?.click()}><ComposerGlyph name="add" /></UiIconButton>
             </Tooltip>
           {/snippet}
           {#snippet model()}
@@ -697,14 +740,24 @@
             </Menu>
             <!-- The tools menu sits with the space's own controls, as in Home. -->
             <Menu bind:open={toolsMenuOpen} placement="top-start" minWidth="14rem" label={$t('code.toolsMenu')}>
-              {#snippet trigger(props)}<Tooltip label={$t('code.toolsMenu')} position="top"><UiIconButton label={$t('code.toolsMenu')} size="xs" type="button" class={uiClass("composer-icon-control", "ui-local-49e9c79c")}  {...props}><MoreHorizontal class="size-3.5" /></UiIconButton></Tooltip>{/snippet}
+              {#snippet trigger(props)}<Tooltip label={$t('code.toolsMenu')} position="top"><UiIconButton label={$t('code.toolsMenu')} size="xs" type="button" class={uiClass("composer-icon-control", "ui-local-49e9c79c")}  {...props}><ComposerGlyph name="more" /></UiIconButton></Tooltip>{/snippet}
               {#each menuGroups as group, index (index)}
                 {#if index > 0}<div class="ui-menu-separator" role="separator"></div>{/if}
                 {#each group as command (command.name)}<MenuItem icon={command.icon} label={command.label} disabled={command.disabled} onselect={() => void runCommand(command)} />{/each}
               {/each}
             </Menu>
           {/snippet}
-          {#snippet trailing()}
+          {#snippet status()}
+            <GenerationSpeed value={speed} />
+            {#if modelReady && modelInputs}
+              <!-- Capability and policy in one glyph: what the model sees, and
+                   the door to the toggles that decide what gets attached. -->
+              <Tooltip label={mediaLabel} position="top">
+                <Button variant="plain" type="button" class={uiClass("media-status", "ui-local-49e9c79c")} aria-label={mediaLabel} onclick={() => (dialog = 'settings')}>
+                  {#if vision}<Eye class="size-3.5" />{:else}<EyeOff class="size-3.5" />{$t('code.media.textOnly')}{/if}
+                </Button>
+              </Tooltip>
+            {/if}
             {#if modelReady && canContinue && !text.trim()}
               <!-- The run stopped short: one click picks the work back up. -->
               <Tooltip label={$t('code.continue')} position="top">
@@ -716,6 +769,10 @@
             {/if}
 
 
+          {/snippet}
+          {#snippet microphone()}<DictationButton {dictation} />{/snippet}
+          {#snippet context()}{#if showContextRing && usage}<ContextUsageRing showLabel usedTokens={usage.promptTokens} maxTokens={usage.contextWindow ?? 0} breakdown={usage.breakdown} {spend} />{/if}{/snippet}
+          {#snippet trailing()}
             <SendButton compact stopShortcut="escape"
               {running}
               disabled={!canSend}
@@ -726,29 +783,11 @@
             />
           {/snippet}
         </ComposerBar>
+        {/if}
       </div>
     </div>
 
-    {#if project || (modelReady && modelInputs) || showContextRing || speed !== undefined}
-    <div class="composer-secondary">
-      {#if project}<span class="composer-checkout" title={project.rootPath}><Folder class="size-3" /><span>{project.rootName}</span></span>{/if}
-      <div class="composer-secondary-status">
-            <GenerationSpeed value={speed} />
-            {#if modelReady && modelInputs}
-              <!-- Capability and policy in one glyph: what the model sees, and
-                   the door to the toggles that decide what gets attached. -->
-              <Tooltip label={mediaLabel} position="top">
-                <Button variant="plain" type="button" class={uiClass("media-status", "ui-local-49e9c79c")} aria-label={mediaLabel} onclick={() => (dialog = 'settings')}>
-                  {#if vision}<Eye class="size-3.5" />{:else}<EyeOff class="size-3.5" />{$t('code.media.textOnly')}{/if}
-                </Button>
-              </Tooltip>
-            {/if}
-            {#if showContextRing && usage}<ContextUsageRing showLabel usedTokens={usage.promptTokens} maxTokens={usage.contextWindow ?? 0} {spend} />{/if}
-
-</div>
-    </div>
-
-    {/if}
+    <SessionGoal bind:this={goalControl} sessionId={chat.codeAgent?.sessionId} ensureSession={ensureGoalSession} {running} />
 
     <p class="composer-hint sr-only mx-auto mt-[var(--dock-gap)] px-1 text-center text-xs text-muted-foreground opacity-70">
       {#if hint}

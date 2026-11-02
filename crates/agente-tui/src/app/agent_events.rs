@@ -406,6 +406,22 @@ impl App {
                 }
                 self.state.ui.needs_render = true;
             }
+            AgentEvent::ContextBudget {
+                used,
+                room,
+                window,
+                tool_tokens,
+                gap,
+                measured,
+                ..
+            } => {
+                // The loop's own arithmetic, so the meter cannot disagree with
+                // the compaction gate.
+                self.state
+                    .agent
+                    .record_budget(used, room, window, tool_tokens, gap, measured);
+                self.state.ui.needs_render = true;
+            }
             AgentEvent::TurnUsage {
                 prompt_tokens,
                 completion_tokens,

@@ -4,6 +4,12 @@ The Rust core resolves transport policy for generation, model metadata, and thin
 
 ## Choosing a route
 
+Desktop offers **OpenCode Go** (`opencode-go`, subscription) and **OpenCode**
+(`opencode`, Zen/pay-as-you-go) separately, each with its own configuration and
+key entry. Go uses `/zen/go/v1`; OpenCode uses `/zen/v1`. Both send the stable
+`x-opencode-session` header. Endpoint identification checks Go's path before
+the shared `opencode.ai` host, so a pasted Zen endpoint cannot inherit Go policy.
+
 Model routes resolve in this order:
 
 1. Explicit model configuration: `provider.<provider>.models.<model>.provider.api_format`.
@@ -73,6 +79,41 @@ OpenRouter's documented Claude and Gemini exceptions live in its provider TOML. 
 A rule can match `model` (exact API model ID), `model_prefix`, and `format`; specified conditions must all match. A configured `breakpoints` value clears inherited rules, and a nonempty configured rule list replaces them. Route maps merge by model ID. Unset fields retain documented defaults.
 
 Agente retains the complete request before inserting cache markers into a separate copy. If it inserted markers and an HTTP 400 or 422 explicitly rejects the `cache_control` parameter as unsupported, it retries the original request once. Tool schemas, tool inputs, continuation blocks, user annotations, content shapes, authentication, session identity, and generation settings stay intact. A mention of caching alone does not trigger a retry. Authentication errors, rate limits, server errors, network failures, cancellation, and stream errors keep their normal handling.
+
+## Billing policy
+
+A gateway's reported charge is not always the whole charge. OpenRouter's
+`usage.cost` is what the call cost including upstream inference; only when the
+user brings their own provider key (BYOK) does the upstream provider bill them
+separately, and OpenRouter then reports that part in
+`usage.cost_details.upstream_inference_cost`.
+
+That contract is data, not a provider branch — `transport.billing.byok`:
+
+```json
+{
+  "provider": {
+    "openrouter": { "transport": { "billing": { "byok": true } } }
+  }
+}
+```
+
+Default is `false`, which bills `usage.cost` once and ignores the upstream
+figure. Setting it adds the two (a BYOK call is paid twice: the gateway's fee
+plus the provider's own charge). A truthy value can only be turned **on** from
+configuration; a provider spec that already sets it is never overridden to
+`false` by a config that omits the field. Whatever a provider does not report
+falls back to the models.dev price as an estimate (`~` in the UIs).
+
+OpenCode's subscription accounting is separate from its balance charge:
+`usage.cost: 0` on Go means no extra balance charge. For a reported
+`opencode.billing_source` of `go`, `go-plus`, or `go-teams`, Agente records
+`opencode.allowance` as usage consumed. If that amount is missing, it uses
+`opencode.list_cost` as an estimate, then the catalog fallback; it never treats
+the subscription's zero balance charge as a free call. `opencode.estimated`
+also marks provider-supplied BYOK estimates. The normalization is shared by
+Chat, Messages, Responses and Gemini adapters. See the
+[OpenCode accounting contract](https://opencode.ai/v2/docs/console/api/inference#cost).
 
 
 ## Official provider audit (2026-10-02)

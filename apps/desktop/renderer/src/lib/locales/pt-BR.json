@@ -1,4 +1,17 @@
 {
+  "goal": {
+    "confirmClear": "Remover este objetivo? O agente deixará de receber lembretes.",
+    "cancel": "Cancelar",
+    "title": "Objetivo",
+    "set": "Definir objetivo",
+    "placeholder": "Descreva o objetivo desta conversa",
+    "save": "Salvar",
+    "complete": "Concluir",
+    "clear": "Limpar",
+    "active": "Ativo",
+    "completed": "Concluído",
+    "hint": "O agente lembrará deste objetivo entre turnos."
+  },
   "chat": {
     "placeholder": "Mensagem para {{APP_NAME}}...",
     "stop": "Parar resposta",
@@ -52,10 +65,21 @@
     },
     "localBusy": "O modelo local está ocupado em outro chat",
     "context": {
+      "systemLabel": "Instruções do sistema",
+      "messagesLabel": "Mensagens",
+      "resultsLabel": "Resultados das ferramentas",
+      "toolsLabel": "Definições das ferramentas",
+      "overheadLabel": "Sobrecarga do tokenizador",
+      "reserveLabel": "Reserva para resposta",
+      "runtimeNote": "As categorias são estimativas; o total pode vir do provedor.",
+      "systemTokens": "Instruções do sistema: ~{n} tokens",
+      "messageTokens": "Mensagens: ~{n} tokens",
+      "previewNote": "Estimativa prévia; ferramentas e acréscimos em execução não estão incluídos.",
+      "breakdownUnavailable": "O detalhamento não está disponível para este uso.",
       "usage": "{used} / {max} tokens de contexto ({percent}%)",
       "reserved": "{n} tokens reservados para a resposta",
-      "priceIn": "Entrada ${price}/1M",
-      "priceOut": "Saída ${price}/1M",
+      "priceIn": "Entrada {price}/1M",
+      "priceOut": "Saída {price}/1M",
       "estimate": "Custo estimado de entrada: ${cost}",
       "remaining": "{n} tokens restantes",
       "spend": "Custo da conversa: {cost}",
@@ -385,6 +409,10 @@
     "refresh": "Atualizar"
   },
   "code": {
+    "traceCopyInput": "Copiar entrada",
+    "traceCopyOutput": "Copiar resultado",
+    "traceCopyCommand": "Copiar comando",
+    "todoStatus": {"pending": "Pendente", "in_progress": "Em andamento", "completed": "Concluída", "cancelled": "Cancelada"},
     "pane": {
       "openWindow": "Abrir em uma nova janela",
       "close": "Fechar painel",
@@ -712,7 +740,7 @@
       "queued": "Na fila"
     },
     "stopSubagent": "Parar subagente",
-    "stopCommand": "Parar o comando em execução",
+    "stopRun": "Parar a execução",
     "browseOpen": "Abrir",
     "browseOpenNamed": "Abrir {name}",
     "browseSystem": "Procurar…",
@@ -1123,6 +1151,7 @@
     "peakContext": "Pico de contexto",
     "slots": "Slots",
     "speed": "Velocidade",
+    "speedReply": "Velocidade de saída desta resposta",
     "install": "Instalar llama.cpp",
     "installHint": "Versões para {platform}.",
     "checkReleases": "Procurar novas versões",

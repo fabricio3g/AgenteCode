@@ -119,6 +119,8 @@ class DesignStore {
    * with `pan` its top-left on screen. Not saved: a design always opens fitted.
    */
   zoom = $state<number | null>(null);
+  /** Device switching fits the selected page; Fit returns to the whole board. */
+  fitSelected = $state(false);
   pan = $state({ x: 0, y: 0 });
   /** The canvas's measured size, which the fitted view and zooming around the centre read. */
   pane = $state({ width: 0, height: 0 });
@@ -181,6 +183,15 @@ class DesignStore {
     const on = this.sizes.includes(size);
     if (on && this.sizes.length === 1) return;
     this.sizes = on ? this.sizes.filter((item) => item !== size) : FRAME_SIZE_IDS.filter((item) => item === size || this.sizes.includes(item));
+    this.fitSelected = false;
+    this.zoom = null;
+    this.#savePrefs();
+  }
+  showSize(size: FrameSizeId) {
+    this.sizes = [size];
+    this.frameKey = '';
+    this.fitSelected = true;
+    this.zoom = null;
     this.#savePrefs();
   }
   toggleChat() { this.chatOpen = !this.chatOpen; this.#savePrefs(); }
@@ -213,8 +224,6 @@ class DesignStore {
   /** The frame being dragged: it floats over the board until it is dropped. */
   moving = $state<string | null>(null);
   readonly board: Board = $derived(boardLayout(this.data.pages, this.data.variants.map((variant) => variant.entry), this.sizes, this.positions, this.moving));
-  /** Where the board sits on screen now: fitted, or the explicit zoom and pan. */
-  readonly view: BoardView = $derived(this.zoom === null ? fitView(this.board, this.pane, this.board) : { scale: this.zoom, x: this.pan.x, y: this.pan.y });
   /** The frame last picked in, focused or clicked; it wins over the page's other sizes while its page stays selected. */
   frameKey = $state('');
   /** The frame the ring, the timeline and the selection prompt act on: that frame, else the selected page at its widest size. */
@@ -223,6 +232,11 @@ class DesignStore {
       ?? this.board.frames.find((frame) => frame.page === this.selected)
       ?? null
   );
+  /** Where the board sits on screen now: fitted, or the explicit zoom and pan. */
+  readonly view: BoardView = $derived.by(() => {
+    const target = this.fitSelected && this.activeFrame ? this.activeFrame : this.board;
+    return this.zoom === null ? fitView(target, this.pane, target) : { scale: this.zoom, x: this.pan.x, y: this.pan.y };
+  });
 
   #setView(view: BoardView) {
     this.zoom = Math.round(clampZoom(view.scale) * 1000) / 1000;
@@ -233,7 +247,7 @@ class DesignStore {
    * when left out), so what is under it stays put. null fits the whole board.
    */
   setZoom(zoom: number | null, point?: { x: number; y: number }) {
-    if (zoom === null) { this.zoom = null; return; }
+    if (zoom === null) { this.fitSelected = false; this.zoom = null; return; }
     this.#setView(zoomAt(this.view, zoom, point ?? { x: this.pane.width / 2, y: this.pane.height / 2 }));
   }
   /** Adds `step` (a fraction, so 0.1 is ten points) to the current zoom. */
@@ -331,11 +345,14 @@ class DesignStore {
 
   /** Adds dropped or pasted image files; one that main refuses is counted, not fatal. */
   async addReferenceFiles(files: File[]): Promise<{ added: number; failed: number }> {
+    const chatId = this.chatId;
+    if (!chatId) return { added: 0, failed: files.length };
     let added = 0;
     let failed = 0;
     for (const file of files.slice(0, 8)) {
       try {
-        await this.addReferenceBlob(file.name || 'image', await readFileBase64(file));
+        const data = await readFileBase64(file);
+        await invoke('design_manage', { chatId, action: 'add_reference', name: file.name || 'image', data });
         added += 1;
       } catch { failed += 1; }
     }
@@ -522,6 +539,7 @@ class DesignStore {
     this.selected = '';
     this.frameKey = '';
     this.tray = null;
+    this.fitSelected = false;
     this.zoom = null;
     this.positions = readPositions(chatId);
     this.selection = [];

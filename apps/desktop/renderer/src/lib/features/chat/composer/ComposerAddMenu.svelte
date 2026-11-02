@@ -16,7 +16,8 @@
 
   import { cn as uiClass } from '$lib/utils/cn';
 
-  import { Check, Globe2, Layers, MessageSquare, Paperclip, Plus, Radar, X } from 'lucide-svelte';
+  import { Check, Globe2, Layers, MessageSquare, Paperclip, Radar, X } from 'lucide-svelte';
+  import ComposerGlyph from '$lib/features/shared/composer/ComposerGlyph.svelte';
   import { Menu } from '$lib/components/ui';
   import { appStore } from '$lib/stores/app.svelte';
   import { copy } from '$lib/copy';
@@ -51,7 +52,7 @@
       title={copy.composer.attach}
       {...props}
     >
-      <Plus class="size-4" />
+      <ComposerGlyph name="add" />
     </IconButton>
   {/snippet}
 

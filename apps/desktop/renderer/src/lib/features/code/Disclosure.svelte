@@ -11,7 +11,7 @@
   a row sits and how loud it is.
 
   The caller supplies a default, and the reader's own choice always wins.
-  Work and reasoning stay folded until the reader asks to see them.
+  Callers choose the initial state; the reader's choice always wins.
 -->
 
 <script lang="ts">
@@ -112,7 +112,7 @@
   /* The chevron is a lucide component: its svg carries no scope class of ours,
      so every rule that reaches it goes through :global. */
   :is(.head, :global(.head.ui-local-2c22291d)) :global(.chev) {
-    opacity: 0;
+    opacity: 0.55;
     transition: transform var(--motion-fast) var(--motion-ease), opacity var(--motion-fast) var(--motion-ease);
   }
   :is(.head:hover, :global(.head:hover.ui-local-2c22291d)) :global(.chev),

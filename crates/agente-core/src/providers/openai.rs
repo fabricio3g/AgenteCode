@@ -433,20 +433,29 @@ impl Provider for OpenAIProvider {
                 usage.total_tokens = usage.prompt_tokens.saturating_add(usage.completion_tokens);
                 // Hits/writes under every dialect (DeepSeek reports
                 // `prompt_cache_hit_tokens`, not `prompt_tokens_details`).
-                // OpenRouter bills the call itself: `usage.cost` in USD.
-                // With your own provider key (BYOK) `cost` is only
-                // OpenRouter's fee; the provider's charge is reported in
-                // `cost_details.upstream_inference_cost`. Both are paid.
-                let upstream = u
-                    .get("cost_details")
-                    .and_then(|d| d.get("upstream_inference_cost"))
-                    .and_then(|v| v.as_f64())
-                    .filter(|v| v.is_finite() && *v > 0.0)
-                    .unwrap_or(0.0);
-                usage.cost_usd = u
-                    .get("cost")
-                    .and_then(|v| v.as_f64())
-                    .map(|cost| cost + upstream);
+                // OpenRouter bills the call itself: `usage.cost` in USD. With
+                // the user's own provider key (BYOK) `cost` is only
+                // OpenRouter's fee and the provider's own charge arrives
+                // separately in `cost_details.upstream_inference_cost`; both
+                // are paid. Without BYOK `cost` already includes upstream, so
+                // adding it would bill every call twice — the provider spec
+                // decides, never the payload alone.
+                let byok = model
+                    .api
+                    .resolved_policy
+                    .as_ref()
+                    .is_some_and(|policy| policy.billing.byok);
+                let upstream = if byok {
+                    u.get("cost_details")
+                        .and_then(|d| d.get("upstream_inference_cost"))
+                        .and_then(|v| v.as_f64())
+                        .filter(|v| v.is_finite() && *v > 0.0)
+                        .unwrap_or(0.0)
+                } else {
+                    0.0
+                };
+                super::billing::record_cost(&mut usage, &json["usage"]);
+                usage.cost_usd = usage.cost_usd.map(|cost| cost + upstream);
                 let (read, write) = super::cache::openai_usage_cache(&json["usage"]);
                 usage.cache_read_tokens = read;
                 usage.cache_creation_tokens = write;

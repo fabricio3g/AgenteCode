@@ -155,6 +155,8 @@ export interface AgentStep {
   toolName?: string;
   status: 'pending' | 'running' | 'awaiting_approval' | 'done' | 'error';
   detail?: string;
+  /** Tool arguments as received from the runtime, for the expandable trace. */
+  toolInput?: string;
   output?: string;
   fileChanges?: CodeAgentFileChange[];
   diffStats?: CodeAgentDiffStat[];
@@ -1113,7 +1115,6 @@ export interface AppConfig {
     /** Enables the Roleplay space (tab, surface and settings section). */
     roleplay_enabled?: boolean;
     /** Enables the Bots space (tab and screen). */
-    bots_enabled?: boolean;
     /** Set once the starter kit has been offered, so deleting it stays deleted. */
     roleplay_starter_kit?: boolean;
     /**

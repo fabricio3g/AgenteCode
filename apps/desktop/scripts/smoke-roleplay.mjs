@@ -15,9 +15,8 @@ try {
   const outfile = path.join(temp, 'probe.mjs');
   const require = createRequire(import.meta.url);
   await build({ entryPoints: [path.join(root, 'scripts/roleplay-smoke-entry.ts')], outfile,
-    bundle: true, platform: 'node', format: 'esm', external: ['electron', require.resolve('better-sqlite3')],
-    banner: { js: `import { createRequire as __createRequire } from 'node:module'; const require = __createRequire(${JSON.stringify(path.join(root, 'package.json'))});` },
-    alias: { 'better-sqlite3': require.resolve('better-sqlite3') } });
+    bundle: true, platform: 'node', format: 'esm', external: ['electron'],
+    banner: { js: `import { createRequire as __createRequire } from 'node:module'; const require = __createRequire(${JSON.stringify(path.join(root, 'package.json'))});` } });
   const child = spawn(require('electron'), ['--no-sandbox', outfile], {
     cwd: root, stdio: 'inherit', env: { ...process.env, ROLEPLAY_PROJECT_ROOT: root }
   });

@@ -7,7 +7,6 @@ export interface PersistedState {
   activeSpace?: ChatContextMode;
   currentChatIdBySpace?: Partial<Record<ChatContextMode, string | null>>;
   /** The Bots tab was open. */
-  botsOpen?: boolean;
 }
 
 export type GenerationBackendMode = 'api' | 'local';

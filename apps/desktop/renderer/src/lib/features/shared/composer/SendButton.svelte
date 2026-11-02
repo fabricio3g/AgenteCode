@@ -11,7 +11,7 @@
 <script lang="ts">
   import IconButton from '$lib/components/ui/IconButton.svelte';
 
-  import { ArrowUp, Square } from 'lucide-svelte';
+  import ComposerGlyph from './ComposerGlyph.svelte';
   import Tooltip from '$lib/components/ui/Tooltip.svelte';
   import { motionFly } from '$lib/utils/transitions';
 
@@ -52,7 +52,7 @@
 >
   {#key stopping}
     <span class="send-glyph" in:motionFly={{ y: 3, duration: 150 }}>
-      {#if stopping}<Square class="size-3 fill-current stroke-[2.75]" />{:else}<ArrowUp class="size-3.5 stroke-[2.75]" />{/if}
+      <ComposerGlyph name={stopping ? 'stop' : 'send'} />
     </span>
   {/key}
 </IconButton>
@@ -64,6 +64,9 @@
     background: var(--primary);
     color: var(--primary-foreground);
     box-shadow: none;
+    width: 1.75rem;
+    height: 1.75rem;
+    margin-inline: 0.125rem;
     transition: opacity var(--motion-instant) var(--motion-ease),
       background-color var(--motion-instant) var(--motion-ease);
   }
@@ -76,4 +79,5 @@
     color: var(--composer-surface);
   }
   .send-glyph { display: inline-flex; align-items: center; justify-content: center; }
+  .send-glyph :global(svg) { width: 0.875rem; height: 0.875rem; stroke-width: 2; }
 </style>

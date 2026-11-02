@@ -48,9 +48,11 @@ test('moves an old Chatea folder into Agente with the new layout and paths', () 
 });
 
 test('leaves unrelated paths alone', () => {
-  const root = '/data/Agente';
-  assert.equal(mapDataPath('/home/me/models/x.gguf', ['/old/Chatea'], root), '/home/me/models/x.gguf');
-  assert.equal(mapDataPath('/old/Chatea/cache/a.db', ['/old/Chatea'], root), '/data/Agente/cache/a.db');
+  const root = path.resolve('data', 'Agente');
+  const old = path.resolve('old', 'Chatea');
+  const unrelated = path.resolve('home', 'models', 'x.gguf');
+  assert.equal(mapDataPath(unrelated, [old], root), unrelated);
+  assert.equal(mapDataPath(path.join(old, 'cache', 'a.db'), [old], root), path.join(root, 'cache', 'a.db'));
 });
 
 test('moves a Flaxeo Chat folder into Agente and rewrites its stored paths', () => {

@@ -104,6 +104,28 @@ pub enum AgentEvent {
         /// before the turn finishes.
         compacted_conversation: Vec<crate::types::Message>,
     },
+    /// How full the context is, sent before each request so every surface
+    /// draws the same numbers the compaction gate uses.
+    ContextBudget {
+        /// The transcript as we count it (estimate or the provider's count).
+        used: u32,
+        /// Room left for messages: window minus tool schemas, tokenizer gap
+        /// and the reply reserve. The meter's denominator.
+        room: u32,
+        /// The model's whole context window.
+        window: u32,
+        /// What the request's tool schemas cost.
+        tool_tokens: u32,
+        /// What the provider counted beyond our estimate last time.
+        gap: u32,
+        /// Estimated shares of the request transcript by role.
+        system_tokens: u32,
+        message_tokens: u32,
+        tool_result_tokens: u32,
+        reserve: u32,
+        /// `used` came from the provider, not our char/4 heuristic.
+        measured: bool,
+    },
     /// Per-turn usage from the provider (prompt / completion / cache fields).
     /// The TUI consumes this for accurate cost accounting on the status bar.
     /// `conversation` is omitted — `Done`/`Cancelled` still carry the full

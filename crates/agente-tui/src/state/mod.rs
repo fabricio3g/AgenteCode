@@ -25,8 +25,8 @@ mod ui;
 pub use session::diff_line_counts;
 
 pub use agent::{
-    format_usd, AgentRuntimeState, ApprovalQueue, LiveToolCall, PendingApproval, QueuedMessage,
-    RetryStatus, Spend, SubagentToolRow, SubagentUiState, WorkMode,
+    format_usd, AgentRuntimeState, ApprovalQueue, ContextState, LiveToolCall, PendingApproval,
+    QueuedMessage, RetryStatus, Spend, SubagentToolRow, SubagentUiState, WorkMode,
 };
 pub use config::{ConfigState, ConnectScreen, DiscoveryStatus, ModelEntry};
 pub use hits::{HitMap, HitTarget, ListId};

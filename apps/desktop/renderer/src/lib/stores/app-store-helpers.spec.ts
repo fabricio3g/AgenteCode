@@ -110,7 +110,8 @@ describe('optimisticAck', () => {
 describe('assistant runtime usage metadata', () => {
   it('uses measured output throughput without labelling request wall time as model timing', () => {
     const metadata = reliableUsageMetadata({ completion_tokens:400, timings:{ output_stream_ms:4000 } }, 90, 'provider');
-    expect(metadata?.tokensPerSecond).toBe(100);
+    // 400 tokens across the 399 gaps a 4s stream holds — not 400 over 4s.
+    expect(metadata?.tokensPerSecond).toBe(99.75);
     expect(metadata?.modelTimingSeconds).toBeUndefined();
   });
   it('uses llama.cpp completion tokens and generation speed instead of total wall time', () => {

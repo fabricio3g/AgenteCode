@@ -6,7 +6,7 @@
 
 <p align="center">
   <strong>Your models. Your workspace. One Rust agent core.</strong><br />
-  Build software, work with documents, and run a team of persistent bots.<br />
+  Build software and work with documents using a shared agent runtime.<br />
   A calm desktop, a keyboard-first terminal, and a runtime you can host yourself.
 </p>
 
@@ -21,7 +21,6 @@
   <a href="#get-started">Get started</a> ·
   <a href="#agente-desktop">Desktop</a> ·
   <a href="#agente-code">Code</a> ·
-  <a href="#agente-bots">Bots</a> ·
   <a href="#agente-server">Server</a> ·
   <a href="#development">Development</a>
 </p>
@@ -37,10 +36,9 @@
 |---|---|---|
 | **Agente Desktop** | Chat, local models, research, voice, artifacts, roleplay, and a visual coding workspace | Download a Linux or Windows installer |
 | **Agente Code** | Working in a repository without leaving your terminal | Download a Linux or Windows binary |
-| **Agente Bots** | Assistants with a persona, memory, teammates, and scheduled routines | Desktop's Bots screen or `agente attach @colina` |
-| **Agente Server** | Keeping sessions and bots running on your own infrastructure | `agente serve` or the Docker image; preview |
+| **Agente Server** | Keeping sessions running on your own infrastructure | `agente serve` or the Docker image; preview |
 
-Use cloud providers with your own keys, or connect local models. The coding agent and bots share the Rust core; Desktop talks to the runtime through a local background service.
+Use cloud providers with your own keys, or connect local models. The coding agent uses the Rust core; Desktop talks to the runtime through a local background service.
 
 ## Get started
 
@@ -108,7 +106,7 @@ The dev command builds `agente` and starts Electron and the renderer. See the [D
 
 ## Agente Desktop
 
-**A workspace for the whole task.** Move between Home, Code, Roleplay, and Bots without juggling separate apps.
+**A workspace for the whole task.** Move between Home, Code, Design, and Roleplay without juggling separate apps.
 
 - **Chat and research.** Use cloud or local models, search the web, and keep conversations organized.
 - **Artifacts beside the conversation.** Preview pages, documents, slides, and spreadsheets, then download the results. Float panels, stack them, or group them as tabs in the workspace.
@@ -202,45 +200,9 @@ The composer status shows `mode │ $spend · cache% │ context`. `~$` marks ca
 
 </details>
 
-## Agente Bots
-
-**A team that remembers.** Each bot has its own persona, memory, model, workspace, and routines. Colina, your everyday assistant, is there from the start; add researchers, reviewers, or writers as you need them.
-
-<p align="center">
-  <img src="assets/screenshots/bots.png" alt="Agente Bots: Colina's conversation includes a handoff to Scout, with scheduled morning-brief and weekly-review routines in the right dock, on a gray-gradient background" width="100%" />
-  <br /><sub>Colina delegates to Scout. Scheduled routines live beside the bot's persistent conversation.</sub>
-</p>
-
-- **Persona and memory:** readable files shape each bot's behavior and carry notes into future conversations.
-- **Handoffs:** `message_bot` asks a teammate to work in its own chat and brings back the result.
-- **Routines:** hourly, daily, weekday, weekly, or cron prompts deliver results into the bot's conversation.
-- **Model and budget:** give each bot its own model, tool permissions, and daily budget.
-- **Telegram:** connect a bot and pair people who can message it. See the [server and Telegram guide](docs/SERVER.md#bots-on-telegram).
-
-Bots run inside `agente serve`. Use Desktop's Bots screen or join from your terminal:
-
-```bash
-agente attach @colina
-```
-
-<details>
-<summary><strong>A bot is a folder you can read and edit</strong></summary>
-
-```text
-~/.agente/bots/colina/
-  bot.toml        # role, avatar, model, tools, daily budget
-  SOUL.md         # persona and working style
-  USER.md         # what the bot knows about you
-  MEMORY.md       # notes carried between turns
-  routines.toml   # scheduled prompts
-  workspace/      # where its tools work
-```
-
-</details>
-
 ## Agente Server
 
-**Keep the runtime running. Connect when you need it.** The local service behind Desktop can also run headless for sessions, bots, and routines.
+**Keep the runtime running. Connect when you need it.** The local service behind Desktop can also run headless for sessions and tools.
 
 ```bash
 agente serve                         # start the local service
@@ -248,17 +210,17 @@ agente serve --status                # check whether it is running
 agente attach                        # join the latest runtime session
 ```
 
-For self-hosting, the preview Docker image is `ghcr.io/fabricio3g/agente-server`. The [Server guide](docs/SERVER.md) covers persistent storage, provider configuration, remote connections, and Telegram pairing.
+For self-hosting, the preview Docker image is `ghcr.io/fabricio3g/agente-server`. The [Server guide](docs/SERVER.md) covers persistent storage, provider configuration, and remote connections.
 
 ## Under the hood
 
-The Rust core handles the agent loop, tools, providers, permissions, subagents, skills, MCP, caching, and compaction. The TUI uses the core directly; Desktop's Code section and bots use the runtime service. Home chat also has Desktop-specific inference and artifact tooling.
+The Rust core handles the agent loop, tools, providers, permissions, subagents, skills, MCP, caching, and compaction. The TUI uses the core directly; Desktop's Code section uses the runtime service. Home chat also has Desktop-specific inference and artifact tooling.
 
 ```mermaid
 flowchart LR
   core["Rust agent core<br/>tools · providers · subagents · skills · MCP"] --> tui["Agente Code<br/>terminal"]
-  core --> runtime["Runtime + agente serve<br/>sessions · events · approvals · bots"]
-  runtime --> desktop["Desktop Code + Bots"]
+  core --> runtime["Runtime + agente serve<br/>sessions · events · approvals"]
+  runtime --> desktop["Desktop Code"]
   runtime --> attach["agente attach"]
   runtime --> server["Agente Server<br/>Docker preview"]
 ```
@@ -270,8 +232,7 @@ flowchart LR
 |---|---|
 | `crates/agente-core` | Agent loop, tools, providers, permissions, subagents, skills, MCP, compaction |
 | `crates/agente-runtime` | Sessions, events, approvals, undo/redo, per-session projects and modes |
-| `crates/agente-daemon` | `agente serve`, transports, bots, and routines |
-| `crates/agente-bot` | Bot definitions, memory, schedules, and Telegram configuration |
+| `crates/agente-daemon` | `agente serve` and its transports |
 | `crates/agente-tui` | Terminal UI |
 | `crates/agente-cli` | The `agente` binary: TUI, headless, ACP, serve, attach |
 | `crates/agente-{protocol,session,acp,node}` | Shared types, persistence, editor protocol, Node bindings |
@@ -311,7 +272,7 @@ node scripts/gen-protocol-types.mjs --check
 |---|---|
 | [Project context](AGENTS.md) | Architecture, UI conventions, and contributor instructions |
 | [Desktop development](apps/desktop/docs/DEVELOPMENT.md) | Toolchain and native-module troubleshooting |
-| [Server](docs/SERVER.md) | Self-hosting, remote sessions, and Telegram |
+| [Server](docs/SERVER.md) | Self-hosting and remote sessions |
 | [Releasing](docs/RELEASING.md) | CLI and desktop build and publication workflow |
 | [0.2.2 release record](docs/RELEASE_PLAN_0.2.2.md) | Coordinated binaries and installers, packaging work, and validation gates |
 

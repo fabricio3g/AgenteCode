@@ -6,6 +6,13 @@ export interface ConversationDialEntry {
   position: number;
 }
 
+/** Keep at least 18px between 12px tick targets, even in a short dock. */
+export function conversationDialRadius(height: number): number {
+  if (!Number.isFinite(height) || height <= 0) return 4;
+  const intervals = Math.floor(height * 0.76 / 18);
+  return Math.max(0, Math.min(4, Math.floor(intervals / 2)));
+}
+
 function clamp(value: number, minimum: number, maximum: number): number {
   return Math.min(maximum, Math.max(minimum, value));
 }

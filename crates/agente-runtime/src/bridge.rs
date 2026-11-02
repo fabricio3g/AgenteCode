@@ -134,6 +134,34 @@ pub(crate) fn forward_legacy_events(
                 });
                 break;
             }
+            AgentEvent::ContextBudget {
+                used,
+                room,
+                window,
+                tool_tokens,
+                gap,
+                system_tokens,
+                message_tokens,
+                tool_result_tokens,
+                reserve,
+                measured,
+            } => {
+                // Per session, not per turn: the next turn's first request is
+                // where overflow happens, so the gap has to outlive this turn.
+                inner.remember_context_gap(session_id, gap as usize);
+                forwarder.emit(RuntimeEvent::ContextBudget {
+                    used,
+                    room,
+                    window,
+                    tool_tokens,
+                    gap,
+                    system_tokens: Some(system_tokens),
+                    message_tokens: Some(message_tokens),
+                    tool_result_tokens: Some(tool_result_tokens),
+                    reserve: Some(reserve),
+                    measured,
+                });
+            }
             AgentEvent::ContextCompacted {
                 summary,
                 compacted_conversation,
@@ -265,7 +293,13 @@ fn map_event(inner: &RuntimeInner, event: AgentEvent) -> Option<(RuntimeEvent, O
                 completion_tokens,
                 cache_read_tokens,
                 cache_creation_tokens,
-                context_tokens: 0,
+                // A call's whole prompt: uncached + cache read + cache write.
+                // Clients read this instead of re-deriving it from three
+                // fields, and `0` here used to be a lie they had to work
+                // around.
+                context_tokens: prompt_tokens
+                    .saturating_add(cache_read_tokens)
+                    .saturating_add(cache_creation_tokens),
             },
             cost_usd,
             cost_estimated,
@@ -412,6 +446,7 @@ fn map_event(inner: &RuntimeInner, event: AgentEvent) -> Option<(RuntimeEvent, O
         },
         AgentEvent::Done { .. }
         | AgentEvent::Cancelled { .. }
+        | AgentEvent::ContextBudget { .. }
         | AgentEvent::ContextCompacted { .. }
         | AgentEvent::Error { .. } => return None,
     };

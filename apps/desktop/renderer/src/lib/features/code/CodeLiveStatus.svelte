@@ -76,7 +76,7 @@
 <div class="live" role="status" aria-live="polite">
   <TileMeter {mode} />
   <span class="min-w-0 truncate">
-    <span class="text-foreground">{label}</span>
+    <span class="text-foreground" class:ui-shimmer-text={mode !== 'stopped' && mode !== 'attention'}>{label}</span>
   </span>
   {#if quietMs >= QUIET_MS}<span class="shrink-0">· {$t('code.live.noUpdate', { values: { seconds: Math.floor(quietMs / 1000) } })}</span>{/if}
   {#if elapsed}<span class="shrink-0 tabular-nums">· {elapsed}</span>{/if}

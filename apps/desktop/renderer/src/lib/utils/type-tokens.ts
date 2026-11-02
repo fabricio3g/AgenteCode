@@ -21,5 +21,5 @@ export function codeFontSize(fallback = 13): number {
 
 /** The code stack, so a user who picks a reading font gets it in code too. */
 export function codeFontFamily(): string {
-  return cssToken('--font-mono', "'IBM Plex Mono', monospace");
+  return cssToken('--font-mono', "'Geist Mono Variable', monospace");
 }

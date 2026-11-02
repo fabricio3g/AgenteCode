@@ -50,7 +50,10 @@ fn parse_tabs(value: &Value) -> (String, Vec<Tab>) {
             Some(Tab {
                 id: props.get("sheetId").and_then(Value::as_i64).unwrap_or(0),
                 title: props.get("title").and_then(Value::as_str)?.to_string(),
-                rows: props.pointer("/gridProperties/rowCount").and_then(Value::as_i64).unwrap_or(0),
+                rows: props
+                    .pointer("/gridProperties/rowCount")
+                    .and_then(Value::as_i64)
+                    .unwrap_or(0),
                 columns: props
                     .pointer("/gridProperties/columnCount")
                     .and_then(Value::as_i64)
@@ -63,7 +66,10 @@ fn parse_tabs(value: &Value) -> (String, Vec<Tab>) {
 
 pub async fn meta(google: &Google, id: &str) -> Result<String, String> {
     let (title, tabs) = tabs(google, id).await?;
-    let mut lines = vec![format!("Spreadsheet: {title} — {}", edit_url(id)), "Tabs:".to_string()];
+    let mut lines = vec![
+        format!("Spreadsheet: {title} — {}", edit_url(id)),
+        "Tabs:".to_string(),
+    ];
     for tab in &tabs {
         lines.push(format!(
             "- {} ({} rows × {} columns)",
@@ -98,7 +104,11 @@ pub async fn read(
             quote_title(&first.title)
         }
     };
-    let render = if formulas { "FORMULA" } else { "FORMATTED_VALUE" };
+    let render = if formulas {
+        "FORMULA"
+    } else {
+        "FORMATTED_VALUE"
+    };
     let value = google
         .get_json(&format!(
             "{API}/{}/values/{}?valueRenderOption={render}",
@@ -164,7 +174,9 @@ pub async fn write(
     let reply = if append {
         google
             .post_json(
-                &format!("{target}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS"),
+                &format!(
+                    "{target}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS"
+                ),
                 &body,
             )
             .await?
@@ -173,9 +185,19 @@ pub async fn write(
             .put_json(&format!("{target}?valueInputOption=USER_ENTERED"), &body)
             .await?
     };
-    let updates = if append { reply.get("updates").cloned().unwrap_or(Value::Null) } else { reply };
-    let written = updates.get("updatedRange").and_then(Value::as_str).unwrap_or(range);
-    let cells = updates.get("updatedCells").and_then(Value::as_i64).unwrap_or(0);
+    let updates = if append {
+        reply.get("updates").cloned().unwrap_or(Value::Null)
+    } else {
+        reply
+    };
+    let written = updates
+        .get("updatedRange")
+        .and_then(Value::as_str)
+        .unwrap_or(range);
+    let cells = updates
+        .get("updatedCells")
+        .and_then(Value::as_i64)
+        .unwrap_or(0);
     Ok(format!(
         "{} {cells} cell(s) in {written}. {}",
         if append { "Appended" } else { "Wrote" },
@@ -202,7 +224,14 @@ pub async fn create(
         .unwrap_or("Sheet1")
         .to_string();
     if let Some(rows) = rows.filter(|rows| !rows.is_empty()) {
-        write(google, &id, &format!("{}!A1", quote_title(&first)), rows, false).await?;
+        write(
+            google,
+            &id,
+            &format!("{}!A1", quote_title(&first)),
+            rows,
+            false,
+        )
+        .await?;
     }
     Ok(format!("Created \"{title}\": {}", edit_url(&id)))
 }
@@ -255,16 +284,28 @@ fn cell(text: &str) -> Option<(Option<i64>, Option<i64>)> {
     if !digits.chars().all(|c| c.is_ascii_digit()) {
         return None;
     }
-    let col = (!letters.is_empty()).then(|| {
-        letters
-            .to_ascii_uppercase()
-            .bytes()
-            .fold(0i64, |acc, b| acc * 26 + i64::from(b - b'A' + 1))
-            - 1
-    });
+    let col = if letters.is_empty() {
+        None
+    } else {
+        Some(
+            letters
+                .to_ascii_uppercase()
+                .bytes()
+                .try_fold(0i64, |acc, b| {
+                    acc.checked_mul(26)?.checked_add(i64::from(b - b'A' + 1))
+                })?
+                - 1,
+        )
+    };
     let row = match digits {
         "" => None,
-        digits => Some(digits.parse::<i64>().ok()?.checked_sub(1)?),
+        digits => Some(
+            digits
+                .parse::<i64>()
+                .ok()?
+                .checked_sub(1)
+                .filter(|row| *row >= 0)?,
+        ),
     };
     if col.is_none() && row.is_none() {
         return None;
@@ -297,16 +338,29 @@ fn grid_range(a1: &A1, tabs: &[Tab]) -> Result<Value, String> {
 /// One formatting op, in the vocabulary `sheet_format` offers.
 #[derive(Debug, Clone, PartialEq)]
 pub enum FormatOp {
-    Bold { range: String, on: bool },
-    NumberFormat { range: String, pattern: String },
-    Freeze { tab: Option<String>, rows: i64, columns: i64 },
-    AutoSize { tab: Option<String> },
+    Bold {
+        range: String,
+        on: bool,
+    },
+    NumberFormat {
+        range: String,
+        pattern: String,
+    },
+    Freeze {
+        tab: Option<String>,
+        rows: i64,
+        columns: i64,
+    },
+    AutoSize {
+        tab: Option<String>,
+    },
 }
 
 impl FormatOp {
     pub fn parse(value: &Value) -> Result<Self, String> {
         let text = |key: &str| value.get(key).and_then(Value::as_str).map(str::to_string);
-        let range = || text("range").ok_or_else(|| "this op needs \"range\" (A1 notation)".to_string());
+        let range =
+            || text("range").ok_or_else(|| "this op needs \"range\" (A1 notation)".to_string());
         match value.get("op").and_then(Value::as_str).unwrap_or_default() {
             "bold" => Ok(FormatOp::Bold {
                 range: range()?,
@@ -314,12 +368,21 @@ impl FormatOp {
             }),
             "number_format" => Ok(FormatOp::NumberFormat {
                 range: range()?,
-                pattern: text("pattern").ok_or("number_format needs \"pattern\", e.g. \"$#,##0.00\" or \"0.0%\"")?,
+                pattern: text("pattern")
+                    .ok_or("number_format needs \"pattern\", e.g. \"$#,##0.00\" or \"0.0%\"")?,
             }),
             "freeze" => Ok(FormatOp::Freeze {
                 tab: text("tab"),
-                rows: value.get("rows").and_then(Value::as_i64).unwrap_or(0).max(0),
-                columns: value.get("columns").and_then(Value::as_i64).unwrap_or(0).max(0),
+                rows: value
+                    .get("rows")
+                    .and_then(Value::as_i64)
+                    .unwrap_or(0)
+                    .max(0),
+                columns: value
+                    .get("columns")
+                    .and_then(Value::as_i64)
+                    .unwrap_or(0)
+                    .max(0),
             }),
             "autosize" => Ok(FormatOp::AutoSize { tab: text("tab") }),
             other => Err(format!(
@@ -335,7 +398,9 @@ fn tab_named<'a>(tabs: &'a [Tab], title: Option<&str>) -> Result<&'a Tab, String
             .iter()
             .find(|tab| tab.title == title)
             .ok_or_else(|| format!("No tab named \"{title}\"")),
-        None => tabs.first().ok_or_else(|| "The spreadsheet has no tabs".to_string()),
+        None => tabs
+            .first()
+            .ok_or_else(|| "The spreadsheet has no tabs".to_string()),
     }
 }
 
@@ -386,7 +451,11 @@ pub async fn format(google: &Google, id: &str, ops: &[FormatOp]) -> Result<Strin
             &json!({ "requests": requests }),
         )
         .await?;
-    Ok(format!("Applied {} formatting op(s). {}", ops.len(), edit_url(id)))
+    Ok(format!(
+        "Applied {} formatting op(s). {}",
+        ops.len(),
+        edit_url(id)
+    ))
 }
 
 #[cfg(test)]
@@ -410,7 +479,10 @@ mod tests {
         assert_eq!((column.start_col, column.end_col), (Some(2), Some(3)));
         assert_eq!((column.start_row, column.end_row), (None, None));
         let row = parse_a1("1:1").expect("row");
-        assert_eq!((row.start_row, row.end_row, row.start_col), (Some(0), Some(1), None));
+        assert_eq!(
+            (row.start_row, row.end_row, row.start_col),
+            (Some(0), Some(1), None)
+        );
         assert_eq!(parse_a1("AA1").expect("cell").start_col, Some(26));
         assert!(parse_a1("Sheet1!").is_none());
         assert!(parse_a1("B0").is_none());
@@ -431,25 +503,76 @@ mod tests {
                 "gridProperties": { "rowCount": 100, "columnCount": 5 } } }]
         }));
         assert_eq!(title, "Budget");
-        assert_eq!(tabs, vec![Tab { id: 7, title: "Data".into(), rows: 100, columns: 5 }]);
+        assert_eq!(
+            tabs,
+            vec![Tab {
+                id: 7,
+                title: "Data".into(),
+                rows: 100,
+                columns: 5
+            }]
+        );
         let rows = grid(&json!({ "values": [["a", 1], [true]] }));
-        assert_eq!(rows, vec![vec!["a".to_string(), "1".to_string()], vec!["true".to_string()]]);
+        assert_eq!(
+            rows,
+            vec![
+                vec!["a".to_string(), "1".to_string()],
+                vec!["true".to_string()]
+            ]
+        );
     }
 
     #[test]
     fn format_ops_build_requests_against_the_right_tab() {
         let tabs = vec![
-            Tab { id: 0, title: "Sheet1".into(), rows: 10, columns: 3 },
-            Tab { id: 9, title: "Totals".into(), rows: 10, columns: 6 },
+            Tab {
+                id: 0,
+                title: "Sheet1".into(),
+                rows: 10,
+                columns: 3,
+            },
+            Tab {
+                id: 9,
+                title: "Totals".into(),
+                rows: 10,
+                columns: 6,
+            },
         ];
-        let bold = format_request(&FormatOp::Bold { range: "Totals!A1:F1".into(), on: true }, &tabs).unwrap();
+        let bold = format_request(
+            &FormatOp::Bold {
+                range: "Totals!A1:F1".into(),
+                on: true,
+            },
+            &tabs,
+        )
+        .unwrap();
         assert_eq!(bold["repeatCell"]["range"]["sheetId"], 9);
         assert_eq!(bold["repeatCell"]["range"]["endColumnIndex"], 6);
-        let freeze = format_request(&FormatOp::Freeze { tab: None, rows: 1, columns: 0 }, &tabs).unwrap();
+        let freeze = format_request(
+            &FormatOp::Freeze {
+                tab: None,
+                rows: 1,
+                columns: 0,
+            },
+            &tabs,
+        )
+        .unwrap();
         assert_eq!(freeze["updateSheetProperties"]["properties"]["sheetId"], 0);
-        let size = format_request(&FormatOp::AutoSize { tab: Some("Totals".into()) }, &tabs).unwrap();
+        let size = format_request(
+            &FormatOp::AutoSize {
+                tab: Some("Totals".into()),
+            },
+            &tabs,
+        )
+        .unwrap();
         assert_eq!(size["autoResizeDimensions"]["dimensions"]["endIndex"], 6);
-        assert!(format_request(&FormatOp::AutoSize { tab: Some("Nope".into()) }, &tabs).is_err());
+        assert!(format_request(
+            &FormatOp::AutoSize {
+                tab: Some("Nope".into())
+            },
+            &tabs
+        )
+        .is_err());
         assert!(FormatOp::parse(&json!({"op": "number_format", "range": "A:A"})).is_err());
     }
 }

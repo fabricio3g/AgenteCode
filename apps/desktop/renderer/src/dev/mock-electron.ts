@@ -430,7 +430,16 @@ savedSessions.push({
   draft: '',
   contextMode: 'code',
   projectId: 'proj-1',
+  pendingPrompts: new URLSearchParams(window.location.search).has('queue') ? [
+    { id: 'queue-one', content: 'Revisa el resultado y ejecuta las pruebas' },
+    { id: 'queue-two', content: 'Resume los cambios cuando termines' }
+  ] : [],
   messages: [
+    ...(bootParams.has('dial') ? Array.from({ length: 8 }, (_, index) => ({
+      id: `dial-${index}`, role: index % 2 ? 'assistant' : 'user',
+      content: `${index % 2 ? 'Checked' : 'Please inspect'} step ${index + 1}. ${'A longer conversation makes the navigation dial scrollable. '.repeat(8)}`,
+      createdAt: Date.now() - 100_000 + index * 1000, done: true
+    })) : []),
     { id: 'sub-user', role: 'user', content: 'Map how the transcript renders and where it re-parses per delta.', createdAt: Date.now() - 30_000 },
     {
       id: 'sub-assistant',
@@ -443,6 +452,8 @@ savedSessions.push({
         { id: 'sub-s3', type: 'executing', label: 'Run', toolName: 'bash', status: 'done', detail: 'npm run check', startedAt: Date.now() - 28_800, durationMs: 9_200, output: 'svelte-check found 0 errors and 0 warnings' }
       ],
       metadata: {
+        codeUsage: { promptTokens: 720_982, completionTokens: 1_200, totalTokens: 722_182, contextWindow: 1_000_000,
+          breakdown: { system: 18_000, messages: 238_000, toolResults: 410_000, tools: 32_000, overhead: 22_982, reserve: 100_000, window: 1_100_000 } },
         codeTimeline: [{ kind: 'step', id: 'sub-s1' }, { kind: 'step', id: 'sub-s2' }, { kind: 'step', id: 'sub-s3' }],
         codeChildren: [
           {
@@ -605,72 +616,7 @@ async function finishApprovedRun(chatId: string, decision: 'allow' | 'deny'): Pr
   send({ type: 'agent_end', stopReason: 'stop' });
 }
 
-// ── Agente Bot (the Bots screen) ────────────────────────────────────────
-type MockBot = { handle: string; title: string; role: string; avatar: { initials?: string; tint: string }; builtin: boolean; working: boolean; session_id: string | null; soul: string; user: string; memory: string; daily_budget?: number; spent_today?: number };
-const mockBots: MockBot[] = [
-  { handle: 'colina', title: 'Colina', role: 'your everyday assistant', avatar: { initials: 'C', tint: 'green' }, builtin: true, working: false, session_id: 's-colina', daily_budget: 2, spent_today: 0.37, soul: 'Colina is warm, direct and practical.', user: 'Works on Agente; prefers short answers.', memory: 'Favorite color: teal.\n' },
-  { handle: 'scout', title: 'Scout', role: 'researches things and reports back', avatar: { initials: 'S', tint: 'blue' }, builtin: false, working: false, session_id: 's-scout', soul: 'Precise and brief.', user: '', memory: '' },
-  { handle: 'quill', title: 'Quill', role: 'writes and edits', avatar: { initials: 'Q', tint: 'yellow' }, builtin: false, working: false, session_id: null, soul: '', user: '', memory: '' }
-];
-const mockTelegram: { connected: boolean; username: string | null; error: string | null; paired: Array<{ chat_id: number; name: string; trust: string; paired_at: string }>; pairing: { code: string; trust: string; expires_at: string } | null } = {
-  connected: true,
-  username: 'colina_agente_bot',
-  error: null,
-  paired: [{ chat_id: 1, name: 'Fabricio (@fab)', trust: 'owner', paired_at: new Date().toISOString() }],
-  pairing: null
-};
-const mockRoutines: Record<string, Record<string, unknown>[]> = {
-  colina: [
-    { id: 'morning-brief', title: 'Morning brief', prompt: 'Summarize what is on my plate today.', schedule: { every: 'weekdays', at: '08:00' }, paused: false, created_at: new Date(Date.now() - 86_400_000 * 3).toISOString(), last_run: { at: new Date(Date.now() - 3_600_000 * 5).toISOString(), status: 'completed' }, next_run: new Date(Date.now() + 3_600_000 * 19).toISOString() },
-    { id: 'weekly-review', title: 'Weekly review', prompt: 'What did we finish this week?', schedule: { every: 'week', day: 'fri', at: '17:00' }, paused: true, created_at: new Date().toISOString(), last_run: null, next_run: null }
-  ]
-};
-const botEvent = (handle: string, event: Record<string, unknown>) => emit('bot_event', { handle, event: { chatId: `bot:${handle}`, ...event } });
-const botHistory: Record<string, unknown[]> = {
-  colina: [
-    { prompt: 'Summarize what is on my plate today.', source: { kind: 'routine', title: 'Morning brief' }, events: [
-      { type: 'agent_start', chatId: 'bot:colina' },
-      { type: 'text_delta', chatId: 'bot:colina', delta: 'Three things today:\n\n1. Review the **Bots screen** PR.\n2. Tag `v0.2.1` once Windows CI is green.\n3. Reply to the release notes thread.' },
-      { type: 'agent_end', chatId: 'bot:colina', stopReason: 'stop' }
-    ] },
-    { prompt: 'What is 17 times 23? Ask Scout.', source: { kind: 'user' }, events: [
-      { type: 'agent_start', chatId: 'bot:colina' },
-      { type: 'text_delta', chatId: 'bot:colina', delta: 'Asking Scout.' },
-      { type: 'tool_start', chatId: 'bot:colina', toolCallId: 'h1', toolName: 'message_bot', args: { to: '@scout', message: 'What is 17 times 23?' } },
-      { type: 'tool_end', chatId: 'bot:colina', toolCallId: 'h1', result: '@scout replied:\n\n391', isError: false, status: 'done' },
-      { type: 'text_delta', chatId: 'bot:colina', delta: '17 × 23 is **391**.' },
-      { type: 'agent_end', chatId: 'bot:colina', stopReason: 'stop' }
-    ] }
-  ],
-  scout: [
-    { prompt: 'What is 17 times 23?', source: { kind: 'handoff', from: 'colina' }, events: [
-      { type: 'agent_start', chatId: 'bot:scout' },
-      { type: 'text_delta', chatId: 'bot:scout', delta: '391' },
-      { type: 'agent_end', chatId: 'bot:scout', stopReason: 'stop' }
-    ] }
-  ]
-};
-const botHandlers: Record<string, (args?: Record<string, unknown>) => unknown> = {
-  bots_list: () => mockBots.map(({ soul: _s, user: _u, memory: _m, ...bot }) => bot),
-  bots_get: (args) => mockBots.find((bot) => bot.handle === args?.handle),
-  bots_history: (args) => botHistory[String(args?.handle)] ?? [],
-  routines_list: (args) => mockRoutines[String(args?.handle)] ?? [],
-  routines_save: (args) => ({ ...(args?.routine as object), id: 'new', created_at: new Date().toISOString(), last_run: null, next_run: null }),
-  routines_delete: () => ({ deleted: true }),
-  routines_run_now: () => ({ turn_id: 't-run' }),
-  bots_create: (args) => {
-    const { title = 'Bot', role = '', soul = '', avatar } = (args ?? {}) as { title?: string; role?: string; soul?: string; avatar?: { tint?: string } };
-    const handle = title.toLowerCase().replace(/[^a-z0-9]+/g, '-');
-    const bot: MockBot = { handle, title, role, soul, avatar: { tint: avatar?.tint ?? 'blue' }, builtin: false, working: false, session_id: null, user: '', memory: '' };
-    mockBots.push(bot);
-    return bot;
-  },
-  bots_update: (args) => {
-    const bot = mockBots.find((item) => item.handle === args?.handle);
-    if (bot) Object.assign(bot, args?.config as object);
-    return bot;
-  },
-  bots_write_doc: () => ({ ok: true }),
+const browserHandlers: Record<string, (args?: Record<string, unknown>) => unknown> = {
   browser_get_state: (args) => browserState(args),
   browser_select_scope: (args) => browserState(args),
   browser_open_tab: (args) => {
@@ -692,39 +638,7 @@ const botHandlers: Record<string, (args?: Record<string, unknown>) => unknown> =
   browser_takeover: (args) => { const state = browserState(args); state.takeover = !!args?.on; pushBrowser(state); },
   browser_viewport: (args) => { const state = browserState(args); const tab = state.tabs.find((tab) => tab.id === (args?.tabId ?? state.activeTabId)); if (tab) tab.preset = args?.preset as typeof tab.preset; pushBrowser(state); },
   browser_navigate: (args) => { const state = browserState(args); const tab = state.tabs.find((tab) => tab.id === (args?.tabId ?? state.activeTabId)); if (tab) tab.url = String(args?.url); pushBrowser(state); },
-  bots_telegram: () => ({ ...mockTelegram }),
-  bots_telegram_connect: () => Object.assign(mockTelegram, { connected: true, username: 'colina_agente_bot', error: null }),
-  bots_telegram_disconnect: () => Object.assign(mockTelegram, { connected: false, username: null, paired: [], pairing: null }),
-  bots_telegram_pair: (args) => {
-    mockTelegram.pairing = { code: '482913', trust: String(args?.trust ?? 'trusted'), expires_at: new Date(Date.now() + 600_000).toISOString() };
-    return mockTelegram.pairing;
-  },
-  bots_telegram_unpair: (args) => Object.assign(mockTelegram, { paired: mockTelegram.paired.filter((chat) => chat.chat_id !== args?.chat_id) }),
-  bots_delete: (args) => {
-    const index = mockBots.findIndex((bot) => bot.handle === args?.handle);
-    if (index >= 0) mockBots.splice(index, 1);
-    return { deleted: true };
-  },
-  bots_compact: () => ({ messages: 3 }),
-  bots_cancel: () => ({ ok: true }),
-  bots_respond_approval: () => ({ ok: true }),
-  bots_chat: (args) => {
-    const handle = String(args?.handle);
-    setTimeout(() => botEvent(handle, { type: 'agent_start' }), 150);
-    setTimeout(() => botEvent(handle, { type: 'text_delta', delta: 'On it. ' }), 500);
-    setTimeout(() => botEvent(handle, { type: 'text_delta', delta: 'Here is a short answer from the mock bot.' }), 900);
-    setTimeout(() => {
-      // The runtime saves the exchange; the reload after agent_end shows it.
-      const chatId = `bot:${handle}`;
-      (botHistory[handle] ??= []).push({ prompt: String(args?.text ?? ''), source: { kind: 'user' }, events: [
-        { type: 'agent_start', chatId },
-        { type: 'text_delta', chatId, delta: 'On it. Here is a short answer from the mock bot.' },
-        { type: 'agent_end', chatId, stopReason: 'stop' }
-      ] });
-      botEvent(handle, { type: 'agent_end', stopReason: 'stop' });
-    }, 1200);
-    return { turn_id: 't-mock', session_id: `s-${handle}` };
-  }
+
 };
 
 const designWorkspaces = new Map<string, Record<string, string>>();
@@ -751,7 +665,15 @@ const mockSystems: MockSystem[] = [{
 }];
 const designLinks = new Map<string, string>();
 
+const mockGoals = new Map<string, { objective: string; status: 'active' | 'completed' }>();
 const handlers: Record<string, (args?: Record<string, unknown>) => unknown> = {
+  agente_goal_get: (args) => mockGoals.get(String(args?.sessionId)) ?? null,
+  agente_goal_set: (args) => {
+    const goal = { objective: String(args?.objective ?? ''), status: args?.status === 'completed' ? 'completed' as const : 'active' as const };
+    mockGoals.set(String(args?.sessionId), goal);
+    return goal;
+  },
+  agente_goal_clear: (args) => { mockGoals.delete(String(args?.sessionId)); return { ok: true }; },
   'search:get-catalog': () => [
     { id: 'duckduckgo', label: 'DuckDuckGo', category: 'general', transport: 'html', stability: 'stable', requires: [], supports_safe_search: true, timeout_ms: 8000, recommended: true },
     { id: 'wikipedia', label: 'Wikipedia', category: 'research', transport: 'json', stability: 'stable', requires: [], supports_safe_search: false, timeout_ms: 8000, recommended: true },
@@ -759,7 +681,7 @@ const handlers: Record<string, (args?: Record<string, unknown>) => unknown> = {
     { id: 'searxng', label: 'SearXNG', category: 'self_hosted', transport: 'json', stability: 'beta', requires: ['base_url'], supports_safe_search: true, timeout_ms: 8000, recommended: false },
     { id: 'brave', label: 'Brave Search', category: 'api', transport: 'json', stability: 'stable', requires: ['api_key'], supports_safe_search: true, timeout_ms: 8000, recommended: false }
   ],
-  ...botHandlers,
+  ...browserHandlers,
   get_config: () => config,
   save_config: () => ({}),
   update_config: () => ({}),
@@ -976,6 +898,7 @@ const handlers: Record<string, (args?: Record<string, unknown>) => unknown> = {
   detect_tool_support: () => ({ supportsTools: true, source: 'mock' }),
   list_provider_specs: () => [
     { id: 'opencode-go', name: 'OpenCode Go', group: 'cloud', base_url: 'https://opencode.ai/zen/go/v1', api_format: 'openai', order: 10, models: 'openai_models', key_url: 'https://opencode.ai/auth', docs_url: 'https://opencode.ai/docs/go/' },
+    { id: 'opencode', name: 'OpenCode', group: 'cloud', base_url: 'https://opencode.ai/zen/v1', api_format: 'openai', order: 11, models: 'catalog', key_url: 'https://opencode.ai/auth', docs_url: 'https://opencode.ai/docs/zen/' },
     { id: 'openrouter', name: 'OpenRouter', group: 'cloud', base_url: 'https://openrouter.ai/api/v1', api_format: 'openai', order: 20, models: 'openrouter', key_url: 'https://openrouter.ai/settings/keys', docs_url: 'https://openrouter.ai/docs/quickstart' },
     { id: 'deepseek', name: 'DeepSeek', group: 'cloud', base_url: 'https://api.deepseek.com', api_format: 'openai', order: 30, models: 'catalog', key_url: 'https://platform.deepseek.com/api_keys' },
     { id: 'minimax', name: 'MiniMax', group: 'cloud', base_url: 'https://api.minimax.io/anthropic/v1', api_format: 'anthropic', openai_compatible_url: 'https://api.minimax.io/v1', order: 40, models: 'openai_models', key_url: 'https://platform.minimax.io/user-center/basic-information/interface-key' },

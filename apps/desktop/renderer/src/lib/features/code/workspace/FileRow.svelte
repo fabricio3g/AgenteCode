@@ -122,20 +122,18 @@
 </li>
 
 <style>
-  /* One sidebar row's density, one step tighter: a 22px pill, 14px glyphs —
-     the same `size-3.5` the sidebar uses — and 12px copy, so the tree reads as
-     the sidebar's sibling list rather than as a second, heavier one. */
-  .file-node { position: relative; display: flex; height: 1.375rem; align-items: center; }
+  /* The file tree follows the same row and type scale as the sidebar. */
+  .file-node { position: relative; display: flex; height: var(--sidebar-row-h); align-items: center; }
   :is(.file-row, :global(.file-row.ui-local-7a0637fc)) {
     display: flex;
     flex: 1;
     min-width: 0;
-    height: 1.375rem;
+    height: var(--sidebar-row-h);
     align-items: center;
     gap: 0.35rem;
-    border-radius: var(--radius-full);
+    border-radius: var(--float-row-radius);
     padding: 0 1.4rem 0 0.45rem;
-    font-size: var(--text-xs);
+    font-size: var(--text-sm);
     text-align: left;
     color: var(--muted-foreground);
     transition: background-color var(--motion-fast) var(--motion-ease);

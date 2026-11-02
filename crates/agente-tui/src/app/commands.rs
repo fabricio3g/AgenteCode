@@ -16,6 +16,7 @@ impl App {
                         command.description()
                     ));
                 }
+                help.push_str("/goal <text> Set a persistent goal · /goal done · /goal clear\n");
                 self.state.add_system_message(help.trim_end().to_string());
             }
             Command::ShowHotkeys => {
@@ -88,7 +89,7 @@ impl App {
                     // briefly, without a transcript entry.
                     let used = crate::widgets::hints::format_token_count(before);
                     let window = crate::widgets::hints::context_ratio(&self.state)
-                        .map(|(_, limit)| {
+                        .map(|(_, limit, _)| {
                             format!(" of {}", crate::widgets::hints::format_token_count(limit))
                         })
                         .unwrap_or_default();

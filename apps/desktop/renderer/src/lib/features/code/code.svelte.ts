@@ -91,6 +91,8 @@ class CodeStore {
   #unsubEvents: (() => void) | null = null;
   /** Chats whose streaming message waits for the next frame's flush. */
   #pendingFlush = new Map<string, () => void>();
+  /** Invalidates an auto-start already scheduled when the user presses Stop. */
+  #stopEpoch = new Map<string, number>();
 
   constructor() {
     // Deleted conversations must not leave run state behind (unbounded growth)
@@ -514,12 +516,15 @@ class CodeStore {
     if (run.done) run.running = false;
     if (event.type === 'agent_end') {
       run.queuedCount = 0;
+      const stoppedByUser = run.stopping;
       run.stopping = false;
       this.#clearQueued(chat);
       // A steer the agent never read goes back to the panel, editable.
       for (const item of chat.pendingPrompts ?? []) item.sending = false;
       appStore.persistDraft(chat.id);
-      const normal = event.stopReason !== 'aborted' && event.stopReason !== 'error' && !run.error;
+      const normal = !stoppedByUser && event.stopReason !== 'aborted' && event.stopReason !== 'error' && !run.error;
+      const stopEpoch = this.#stopEpoch.get(chat.id) ?? 0;
+      const mayContinue = () => (this.#stopEpoch.get(chat.id) ?? 0) === stopEpoch && !this.runFor(chat.id)?.running;
       // The engine commits a steer that lands as the turn closes to the
       // history without an answer. Drop the empty reply opened for it; after
       // a normal end, ask for the answer unless a queued prompt goes next.
@@ -527,12 +532,12 @@ class CodeStore {
       this.#steerReplies.delete(chat.id);
       const unanswered = steerReply !== undefined && steerReply === run.assistantMessageId && this.#dropEmptyReply(chat, run);
       if (normal && unanswered && !chat.pendingPrompts?.length) {
-        setTimeout(() => { if (!this.runFor(chat.id)?.running) void this.send(chat.id, get(t)('code.continuePrompt')); }, 0);
+        setTimeout(() => { if (mayContinue()) void this.send(chat.id, get(t)('code.continuePrompt')); }, 0);
       }
       // A normal completion runs the oldest locally queued prompt. A stopped
       // or failed run leaves it editable; it never surprises the user by restarting.
       else if (normal) {
-        setTimeout(() => { if (!this.runFor(chat.id)?.running) void this.sendQueuedNow(chat.id); }, 0);
+        setTimeout(() => { if (mayContinue()) void this.sendQueuedNow(chat.id); }, 0);
       }
       void this.refreshCheckpoints(event.chatId);
     }
@@ -941,6 +946,7 @@ class CodeStore {
     // Say it now: the engine needs a moment to unwind, and until it does the
     // run would keep animating as if nothing had been asked of it.
     const run = this.runFor(chatId);
+    this.#stopEpoch.set(chatId, (this.#stopEpoch.get(chatId) ?? 0) + 1);
     if (run) run.stopping = true;
     await abortCodeAgent(chatId);
   }

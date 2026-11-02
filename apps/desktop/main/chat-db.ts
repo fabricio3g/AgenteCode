@@ -1,4 +1,4 @@
-import Database from 'better-sqlite3';
+import Database from './sqlite.ts';
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -51,6 +51,8 @@ function getDb() {
   fs.mkdirSync(path.dirname(dbPath), { recursive: true });
   db = new Database(dbPath);
   db.pragma('journal_mode = WAL');
+  db.pragma('synchronous = NORMAL');
+  db.pragma('busy_timeout = 5000');
   db.pragma('foreign_keys = ON');
   migrate(db);
   return db;
@@ -517,13 +519,23 @@ export function searchChatContent(query: string, limit = 30) {
 export function loadAllChats() {
   const database = getDb();
   const chats = database.prepare('SELECT * FROM chats ORDER BY updated_at DESC').all();
-  const msgStmt = database.prepare('SELECT * FROM messages WHERE chat_id = ? ORDER BY created_at ASC');
-  const attStmt = database.prepare('SELECT * FROM attachments WHERE message_id = ?');
-  const verStmt = database.prepare('SELECT * FROM message_versions WHERE message_id = ? ORDER BY created_at ASC');
+  const group = (rows, key) => {
+    const grouped = new Map();
+    for (const row of rows) {
+      const bucket = grouped.get(row[key]) ?? [];
+      bucket.push(row);
+      grouped.set(row[key], bucket);
+    }
+    return grouped;
+  };
+  // Four scans instead of two extra queries for every message at startup.
+  const messageRows = group(database.prepare('SELECT * FROM messages ORDER BY created_at ASC').all(), 'chat_id');
+  const attachmentRows = group(database.prepare('SELECT * FROM attachments').all(), 'message_id');
+  const versionRows = group(database.prepare('SELECT * FROM message_versions ORDER BY created_at ASC').all(), 'message_id');
 
   return chats.map(chat => {
-    const messages = msgStmt.all(chat.id).map(msg => {
-      const attachments = attStmt.all(msg.id).map(att => ({
+    const messages = (messageRows.get(chat.id) ?? []).map(msg => {
+      const attachments = (attachmentRows.get(msg.id) ?? []).map(att => ({
         id: att.id,
         name: att.name || '',
         size: att.size || 0,
@@ -539,7 +551,7 @@ export function loadAllChats() {
         error: att.error || undefined
       }));
 
-      const versions = verStmt.all(msg.id).map(ver => {
+      const versions = (versionRows.get(msg.id) ?? []).map(ver => {
         const metadata = {
           modelName: ver.model_name || undefined,
           tokens: ver.tokens || undefined,
@@ -829,7 +841,8 @@ export function migrateFromLocalStorage(persistedState) {
       migrated++;
     }
   });
-  transaction();
+  try { transaction(); }
+  catch (error) { messageFingerprints.clear(); chatMessageIds.clear(); throw error; }
   return migrated;
 }
 

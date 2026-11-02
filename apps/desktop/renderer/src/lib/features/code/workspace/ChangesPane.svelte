@@ -226,7 +226,7 @@
     min-height: 0;
     width: 100%;
     flex-direction: column;
-    background: var(--card);
+    background: var(--float-bg);
   }
 
 
@@ -267,13 +267,13 @@
   :is(.file-row, :global(.file-row.ui-local-8f978f5f)) {
     display: flex;
     width: 100%;
-    height: 1.625rem;
+    height: var(--sidebar-row-h);
     align-items: center;
     gap: 0.5rem;
     padding: 0 0.6rem;
-    border-radius: var(--radius-full);
+    border-radius: var(--float-row-radius);
     color: var(--muted-foreground);
-    font-size: var(--text-xs);
+    font-size: var(--text-sm);
     text-align: left;
     transition: background-color var(--motion-fast) var(--motion-ease);
   }

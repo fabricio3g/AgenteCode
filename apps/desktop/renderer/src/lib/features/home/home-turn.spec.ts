@@ -1,7 +1,9 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { AgentStep, ChatMessage } from '$lib/types/chat';
 import type { AgentTaskResult } from '$lib/services/agent-types';
-import { applyHomeAgentResult, planHomeAgentRun, settleAgentSteps } from './home-turn';
+import { applyHomeAgentResult, homeAgentCallbacks, planHomeAgentRun, settleAgentSteps } from './home-turn';
+import { finalizeAssistantMetadata } from '$lib/stores/app-store-helpers';
+import { emptySpend } from '$shared/accounting';
 
 function message(overrides: Partial<ChatMessage> = {}): ChatMessage {
   return {
@@ -53,6 +55,18 @@ describe('planHomeAgentRun', () => {
 });
 
 describe('applyHomeAgentResult', () => {
+  it('keeps live accounting and stream speed through finalization', () => {
+    const target = message();
+    const callbacks = homeAgentCallbacks({ message: target, quiet: false, sync: vi.fn(), persist: vi.fn(), onReasoningStart: vi.fn(), onArtifacts: vi.fn(), touch: vi.fn() });
+    const usage = { prompt_tokens: 1000, completion_tokens: 100, timings: { output_stream_ms: 1000 } };
+    const spend = { ...emptySpend(), costUsd: 0.012, promptTokens: 1000 };
+    callbacks.onSpend?.(spend);
+    callbacks.onUsage?.(usage);
+    expect(target.metadata).toMatchObject({ codeSpend: spend, tokensPerSecond: 99 });
+    applyHomeAgentResult(target, result({ usage, spend }), ctx);
+    target.metadata = finalizeAssistantMetadata({ existing: target.metadata, modelName: 'm', backendMode: 'api', usage });
+    expect(target.metadata).toMatchObject({ codeSpend: spend, tokensPerSecond: 99 });
+  });
   it('a failure with nothing usable becomes an error with friendly text', () => {
     const target = message();
     applyHomeAgentResult(target, result({ content: '', outcome: 'failed', error: 'boom' }), ctx);

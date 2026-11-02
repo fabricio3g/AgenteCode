@@ -40,7 +40,10 @@ pub fn run(action: Option<BridgeAction>) -> anyhow::Result<()> {
     let runtime = tokio::runtime::Runtime::new()?;
     let pairing = Pairing::load_or_create()?;
     match action {
-        None => runtime.block_on(agente_bridge::server::run_stdio(pairing, ToolSet::from_env())),
+        None => runtime.block_on(agente_bridge::server::run_stdio(
+            pairing,
+            ToolSet::from_env(),
+        )),
         Some(BridgeAction::Serve) => runtime.block_on(agente_bridge::run_serve(pairing)),
         Some(BridgeAction::Status) => {
             println!("{}", runtime.block_on(agente_bridge::status(&pairing)));
@@ -51,7 +54,11 @@ pub fn run(action: Option<BridgeAction>) -> anyhow::Result<()> {
             let exe = std::env::current_exe()?;
             let tools = ToolSet::parse(&tools);
             pairing::install_mcp_entry(&config, &exe, tools.label())?;
-            println!("Registered the `web` tools ({}) in {}.", tools.label(), config.display());
+            println!(
+                "Registered the `web` tools ({}) in {}.",
+                tools.label(),
+                config.display()
+            );
             println!("Pairing code for the browser extension: {}", pairing.code());
             Ok(())
         }
@@ -60,7 +67,10 @@ pub fn run(action: Option<BridgeAction>) -> anyhow::Result<()> {
             if pairing::remove_mcp_entry(&config)? {
                 println!("Removed the `web` tools from {}.", config.display());
             } else {
-                println!("The `web` tools were not registered in {}.", config.display());
+                println!(
+                    "The `web` tools were not registered in {}.",
+                    config.display()
+                );
             }
             Ok(())
         }

@@ -503,7 +503,15 @@ impl LspManager {
     }
 }
 
-/// Quick validation without full LSP
+/// Syntax checks that are actually parsing, not guessing.
+///
+/// There used to be a hand-rolled Rust brace counter here. It did not skip
+/// comments, raw strings, escapes or lifetimes (`&'a str` opened a "string"
+/// that swallowed braces), so it reported "Unbalanced braces: 2 extra opening"
+/// on files that compiled — a false diagnostic is worse than no diagnostic,
+/// because the model then "fixes" working code. Rust syntax is the compiler's
+/// business (`cargo check`), and a configured language server is the only
+/// source allowed to call something an error.
 pub fn quick_validate_syntax(file_path: &str, content: &str) -> Vec<String> {
     let mut errors = Vec::new();
     let ext = Path::new(file_path)
@@ -511,81 +519,11 @@ pub fn quick_validate_syntax(file_path: &str, content: &str) -> Vec<String> {
         .and_then(|e| e.to_str())
         .unwrap_or("");
 
-    match ext {
-        "rs" => quick_validate_rust(content, &mut errors),
-        "json" => quick_validate_json(content, &mut errors),
-        _ => {}
+    if ext == "json" {
+        quick_validate_json(content, &mut errors);
     }
 
     errors
-}
-
-fn quick_validate_rust(content: &str, errors: &mut Vec<String>) {
-    // Basic checks for common Rust syntax errors
-    let lines: Vec<&str> = content.lines().collect();
-    let mut brace_count: i32 = 0;
-    let mut paren_count: i32 = 0;
-    let mut in_string = false;
-    let mut string_char = '"';
-
-    for (i, line) in lines.iter().enumerate() {
-        let line_num = i + 1;
-
-        for c in line.chars() {
-            if in_string {
-                if c == string_char {
-                    in_string = false;
-                }
-                continue;
-            }
-
-            match c {
-                '"' | '\'' => {
-                    in_string = true;
-                    string_char = c;
-                }
-                '{' => brace_count += 1,
-                '}' => brace_count -= 1,
-                '(' => paren_count += 1,
-                ')' => paren_count -= 1,
-                _ => {}
-            }
-        }
-
-        // Check for obvious issues
-        if line.contains("fn main()")
-            && !line.contains("{")
-            && !lines.get(i + 1).map(|l| l.contains('{')).unwrap_or(false)
-        {
-            errors.push(format!(
-                "Line {line_num}: Function 'main' missing opening brace"
-            ));
-        }
-    }
-
-    if brace_count != 0 {
-        errors.push(format!(
-            "Unbalanced braces: {} extra {}",
-            brace_count.abs(),
-            if brace_count > 0 {
-                "opening"
-            } else {
-                "closing"
-            }
-        ));
-    }
-
-    if paren_count != 0 {
-        errors.push(format!(
-            "Unbalanced parentheses: {} extra {}",
-            paren_count.abs(),
-            if paren_count > 0 {
-                "opening"
-            } else {
-                "closing"
-            }
-        ));
-    }
 }
 
 fn quick_validate_json(content: &str, errors: &mut Vec<String>) {

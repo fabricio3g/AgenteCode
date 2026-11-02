@@ -130,6 +130,9 @@ impl App {
             self.state.config.config.subagent_models.clone(),
             self.state.config.config.smart_compaction,
             self.state.config.config.compaction_model.clone(),
+            // The tokenizer gap the loop learned last turn: the first request
+            // of this one is where overflow actually happens.
+            self.state.agent.context.gap as usize,
             self.state.config.config.parallel_subagents(),
             Arc::clone(&self.state.agent.user_inbox),
             agente_core::agent::TurnTools::default(),
@@ -259,6 +262,43 @@ impl App {
         if let Some(stripped) = text.strip_prefix('/') {
             let parts: Vec<&str> = stripped.splitn(2, char::is_whitespace).collect();
             if let Some(cmd) = parts.first() {
+                if *cmd == "goal" {
+                    use agente_core::goal::{Goal, GoalStatus, GoalStore};
+                    let store = GoalStore::user();
+                    let session = self.state.session.session_id;
+                    let arg = parts.get(1).map(|s| s.trim()).unwrap_or("");
+                    let message = match arg {
+                        "" => match store.get(session)? {
+                            Some(goal) => format!(
+                                "Goal ({:?}): {}\n/goal done · /goal clear",
+                                goal.status, goal.objective
+                            ),
+                            None => "No goal. Set one with /goal <objective>.".to_string(),
+                        },
+                        "done" => match store.get(session)? {
+                            Some(mut goal) => {
+                                goal.status = GoalStatus::Completed;
+                                store.put(session, &goal)?;
+                                format!("Goal completed: {}", goal.objective)
+                            }
+                            None => "No goal to complete.".to_string(),
+                        },
+                        "clear" => {
+                            store.clear(session)?;
+                            "Goal cleared.".to_string()
+                        }
+                        objective => {
+                            let goal = Goal {
+                                objective: objective.to_string(),
+                                status: GoalStatus::Active,
+                            };
+                            store.put(session, &goal)?;
+                            format!("Goal set: {}", goal.objective)
+                        }
+                    };
+                    self.state.add_system_message(message);
+                    return Ok(());
+                }
                 if *cmd == "diff" {
                     let arg = parts.get(1).map(|s| s.trim()).unwrap_or("");
                     if arg.is_empty() {

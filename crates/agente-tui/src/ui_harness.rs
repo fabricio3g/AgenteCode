@@ -1384,7 +1384,7 @@ fn status_row_shows_session_spend_and_cache_rate() {
     let buf = terminal.backend().buffer();
     // The status row sits under the composer: the last row of the frame.
     let status: String = (0..100).map(|x| buf[(x, 19)].symbol()).collect();
-    assert!(status.contains("$0.04 · 80% cached"), "status: {status}");
+    assert!(status.contains("$0.042 · 80% cached"), "status: {status}");
     let header: String = (0..100).map(|x| buf[(x, 0)].symbol()).collect();
     assert!(
         !header.contains('$'),

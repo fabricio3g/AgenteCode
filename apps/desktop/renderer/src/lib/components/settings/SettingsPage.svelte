@@ -65,8 +65,8 @@
     max-width: 44rem;
     flex-direction: column;
     gap: 1.75rem;
-    margin-inline: auto;
-    padding: 1.75rem 1.25rem 3rem;
+    margin-inline: 0;
+    padding: 1.5rem 1rem 3rem;
   }
 
   .settings-column.is-large { max-width: 50rem; }
@@ -100,8 +100,8 @@
   .settings-page-title {
     color: var(--foreground);
     font-size: calc(24px * var(--reading-scale));
-    font-weight: 500;
-    letter-spacing: -0.015em;
+    font-weight: 600;
+    letter-spacing: -0.022em;
     line-height: 1.3;
   }
 

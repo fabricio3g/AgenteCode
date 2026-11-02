@@ -16,6 +16,7 @@ function repoWithTwoBranches() {
   const root = tempDir();
   const git = (...args) => execFileSync('git', args, { cwd: root, stdio: 'pipe' });
   git('init', '-q');
+  git('config', 'core.autocrlf', 'false');
   git('config', 'user.email', 't@t');
   git('config', 'user.name', 't');
   fs.writeFileSync(path.join(root, 'a.txt'), 'one\n');
@@ -110,6 +111,7 @@ describe('branches of a project inside a bigger repository', () => {
     const repo = tempDir();
     const git = (...args) => execFileSync('git', args, { cwd: repo, stdio: 'pipe' });
     git('init', '-q');
+  git('config', 'core.autocrlf', 'false');
     git('config', 'user.email', 't@t');
     git('config', 'user.name', 't');
     const root = path.join(repo, 'apps', 'web');

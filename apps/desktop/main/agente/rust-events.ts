@@ -9,7 +9,8 @@ import { structuredPatch } from 'diff';
 import type { RuntimeEvent, RuntimeEventEnvelope } from '../../shared/agente-protocol.gen.ts';
 import type { CodeAgentEvent, CodeTodoItem } from '../../shared/agente-protocol.ts';
 import { lineCount } from './text-lines.ts';
-import { GenerationTimer, generationRate } from '../../shared/generation-speed.ts';
+import { RuntimeGenerationTimer, generationRate } from '../../shared/generation-speed.ts';
+import { contextBreakdown } from '../../shared/context-breakdown.ts';
 
 /** Rust tool name → the name the Code UI renders (commands, edits, reads…). */
 const UI_TOOL_NAMES: Record<string, string> = {
@@ -102,7 +103,7 @@ function todos(value: unknown): CodeTodoItem[] {
     const status = String(record.status ?? 'pending');
     return {
       content: String(record.content ?? ''),
-      status: status === 'in_progress' || status === 'completed' ? status : 'pending'
+      status: status === 'in_progress' || status === 'completed' || status === 'cancelled' ? status : 'pending'
     };
   });
 }
@@ -115,8 +116,12 @@ type FileChange = { path: string; kind: string; additions: number; deletions: nu
  * right after it, and the turn's changed files close the turn.
  */
 export class RustTurnTranslator {
-  private readonly generationTimer = new GenerationTimer();
+  private readonly generationTimer = new RuntimeGenerationTimer();
   private turnIndex = 0;
+  /** The room the compaction gate uses, for the ring's denominator. */
+  private room: number | undefined;
+  private contextUsed: number | undefined;
+  private breakdown: ReturnType<typeof contextBreakdown>;
   private readonly output = new Map<string, string>();
   private pendingEnd: Extract<CodeAgentEvent, { type: 'tool_end' }> | null = null;
   private turnFiles = new Map<string, FileChange>();
@@ -137,14 +142,12 @@ export class RustTurnTranslator {
     const out = this.flushPendingEnd();
     out.push(...this.map(event));
     const at = Date.parse(envelope.timestamp);
-    if (event.type === 'assistant_delta' && event.text || event.type === 'reasoning_delta' && event.text || event.type === 'generation_progress' && event.output_bytes > 0) {
-      this.generationTimer.record(at);
-    } else if (event.type === 'call_usage') {
-      const rate = generationRate(event.usage.completion_tokens, this.generationTimer.duration(at));
-      this.generationTimer.reset();
+    const duration = this.generationTimer.observe(event, at);
+    if (event.type === 'call_usage') {
+      // Timed to the last output event, never to this report: the provider's
+      // finalise pause after the stream is not generation time.
+      const rate = generationRate(event.usage.completion_tokens, duration);
       if (rate !== undefined) out.push({ type: 'generation_stats', chatId: this.chatId, tokensPerSecond: rate });
-    } else if (['turn_started', 'turn_finished', 'turn_cancelled', 'turn_failed', 'retry', 'compaction_started', 'tool_proposed'].includes(event.type)) {
-      this.generationTimer.reset();
     }
     return out;
   }
@@ -195,16 +198,25 @@ export class RustTurnTranslator {
     return {
       type: 'usage',
       chatId: this.chatId,
-      promptTokens: prompt,
+      promptTokens: this.contextUsed ?? prompt,
       completionTokens: usage.completion_tokens,
       totalTokens: prompt + usage.completion_tokens,
-      contextWindow: this.contextWindow()
+      // The runtime's room (window minus tool schemas, the tokenizer gap and
+      // the reply reserve) rather than the bare window, so the ring's 85% and
+      // the compaction line are the same place.
+      contextWindow: this.room ?? this.contextWindow(),
+      breakdown: this.breakdown
     };
   }
 
   private readonly handlers: { [K in RuntimeEvent['type']]?: (event: Extract<RuntimeEvent, { type: K }>) => CodeAgentEvent[] } = {
     turn_started: () => {
       this.turnIndex += 1;
+      // A new turn may run on another model: its room arrives with its first
+      // request, and until then the old denominator would be a lie.
+      this.room = undefined;
+      this.contextUsed = undefined;
+      this.breakdown = undefined;
       return [
         { type: 'agent_start', chatId: this.chatId },
         { type: 'turn_start', chatId: this.chatId, turnIndex: this.turnIndex }
@@ -250,6 +262,18 @@ export class RustTurnTranslator {
     compaction_started: (event) => [{ type: 'compaction_start', chatId: this.chatId, reason: 'auto', model: event.model ?? null }],
     context_compacted: (event) => [{ type: 'compaction_end', chatId: this.chatId, reason: 'auto', success: true, tokensBefore: event.tokens_before, tokensAfter: event.tokens_after, summary: event.smart ? event.summary : undefined, smart: event.smart }],
     usage: (event) => [this.usage(event.usage)],
+    context_budget: (event) => {
+      this.room = event.room;
+      this.contextUsed = event.used;
+      this.breakdown = contextBreakdown(event);
+      return [this.usage({
+        prompt_tokens: event.used,
+        completion_tokens: 0,
+        cache_read_tokens: 0,
+        cache_creation_tokens: 0,
+        context_tokens: event.used
+      })];
+    },
     retry: (event) => [{ type: 'llm_retry', chatId: this.chatId, attempt: event.attempt, delayMs: event.delay_ms }],
     turn_finished: () => this.finishTurn('stop'),
     turn_cancelled: () => this.finishTurn('aborted'),

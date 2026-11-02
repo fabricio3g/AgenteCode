@@ -57,7 +57,7 @@
     align-items: flex-end;
     justify-content: space-between;
     gap: 0.75rem;
-    padding: 0 0.25rem 0.5rem;
+    padding: 0 0 0.5rem;
   }
 
   .settings-section-title {
@@ -73,17 +73,12 @@
     line-height: 1.5;
   }
 
-  /* SettingsRow owns the inset, so a hairline runs the full card width and two
-     pages cannot disagree about the gutter. `flush` adds the small vertical
-     padding custom content (tile grids) still needs. */
-  /* A faint fill, no outline: a group reads as one object without boxing it.
-     Rows split on a hairline lighter than the page's borders. */
+  /* Keep settings aligned to the page edge, with a quiet divider between rows. */
   .settings-card {
     overflow: visible;
-    padding-inline: 1rem;
     border: 0;
-    border-radius: var(--float-radius);
-    background: color-mix(in srgb, var(--foreground) 2.5%, transparent);
+    border-radius: 0;
+    background: transparent;
   }
   .settings-rows > :global(* + *) {
     border-top: 1px solid color-mix(in srgb, var(--foreground) 5%, transparent);

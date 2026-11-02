@@ -122,31 +122,24 @@
   an answer streaming into it would push the rest of the transcript off the
   screen. A failure stays folded too; its status remains on the card.
 
-  Three rows, because a child is an agent and not a call: who it is and what it
-  cost, what it is doing right now, then the counts that say how far in it is.
-  Stop sits on the first row, so a runaway child dies without opening it first.
+  Identity and live status share a compact row. Stop remains accessible without
+  opening it, and the work and model details stay just below when available.
 -->
-<Disclosure {id} level="subagent" variant="card" chevron="leading" defaultOpen={false}>
+<Disclosure {id} level="subagent" chevron="leading" defaultOpen={false}>
   {#snippet header()}
     <span class="card min-w-0">
-      <span class="identity min-w-0">
-        <Icon class="kind-icon size-3.5 shrink-0" />
-        <span class="kind shrink-0">{kindLabel}</span>
-        {#if child.description}<span class="description min-w-0 truncate">· {child.description}</span>{/if}
-        {#if cost}<span class="cost shrink-0 tabular-nums">{cost}</span>{/if}
-      </span>
-      <span class="live min-w-0" class:text-error={failed}>
-        {#if running}<TileMeter mode={meter} />{:else}<span class="dot" aria-hidden="true"></span>{/if}
-        <span class="state min-w-0" class:ui-shimmer-text={running}>{status}</span>
-        {#if elapsed !== undefined}<span class="elapsed shrink-0 tabular-nums">{formatToolDuration(elapsed)}</span>{/if}
-      </span>
-      {#if toolCount || child.model || spendDetail}
-        <span class="foot min-w-0">
-          {#if toolCount}<span class="tabular-nums">{$t('code.subagent.tools', { values: { n: toolCount } })}</span>{/if}
-          {#if child.model}<span class="model min-w-0 truncate" title={child.model}>{shortModel(child.model)}</span>{/if}
-          {#if spendDetail}<span class="tabular-nums">{spendDetail}</span>{/if}
+      <span class="summary">
+        <span class="identity min-w-0">
+          <Icon class="kind-icon size-3.5 shrink-0" />
+          <span class="kind shrink-0">{kindLabel}</span>
+          {#if child.description}<span class="description min-w-0 truncate">· {child.description}</span>{/if}
         </span>
-      {/if}
+        <span class="live min-w-0" class:text-error={failed}>
+          {#if running}<TileMeter mode={meter} />{:else}<span class="dot" aria-hidden="true"></span>{/if}
+          <span class="state min-w-0" class:ui-shimmer-text={running}>{status}</span>
+          {#if elapsed !== undefined}<span class="elapsed shrink-0 tabular-nums">· {formatToolDuration(elapsed)}</span>{/if}
+        </span>
+      </span>
     </span>
   {/snippet}
 
@@ -163,6 +156,13 @@
   {/snippet}
 
   {#snippet body()}
+    {#if toolCount || child.model || spendDetail || cost}
+      <div class="foot min-w-0">
+        {#if toolCount}<span class="tabular-nums">{$t('code.subagent.tools', { values: { n: toolCount } })}</span>{/if}
+        {#if child.model}<span class="model min-w-0 truncate" title={child.model}>{shortModel(child.model)}</span>{/if}
+        {#if spendDetail}<span class="tabular-nums">{spendDetail}</span>{:else if cost}<span class="tabular-nums">{cost}</span>{/if}
+      </div>
+    {/if}
     {#if failed && errorDetail}<CodeErrorNotice detail={errorDetail} />{/if}
     {#if reply}
       <div>
@@ -186,31 +186,28 @@
     color: var(--foreground);
     font-weight: 500;
   }
-  /* The card's own column: identity, the live line, then the counts. */
   .card {
     display: flex;
     flex-direction: column;
     gap: 0.125rem;
     width: 100%;
   }
+  .summary {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    width: 100%;
+    min-width: 0;
+  }
   .identity {
     display: flex;
     align-items: center;
     gap: 0.375rem;
+    flex: 1 1 auto;
   }
   .description {
     color: var(--muted-foreground);
   }
-  /* Cost is a fact about the whole child, so it ends the line that names it
-     instead of hiding in the body. */
-  .cost {
-    margin-left: auto;
-    padding-left: 0.5rem;
-    font-size: var(--text-xs);
-    color: var(--muted-foreground);
-  }
-  /* The live line is a fact sheet, not a sentence: smallest type, dimmest, and
-     the elapsed time ends the line it describes. */
   .live {
     display: flex;
     align-items: center;
@@ -218,9 +215,8 @@
     overflow: hidden;
     font-size: var(--text-xs);
     color: var(--text-secondary);
-  }
-  .live > span {
-    flex-shrink: 0;
+    flex: 0 1 auto;
+    max-width: 45%;
   }
   .state {
     min-width: 0;
@@ -229,7 +225,7 @@
     white-space: nowrap;
   }
   .elapsed {
-    margin-left: auto;
+    flex-shrink: 0;
   }
   .live.text-error {
     color: var(--error);

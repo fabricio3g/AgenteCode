@@ -51,7 +51,7 @@ impl ToolCore for ApplyPatchTool {
     }
 
     fn description(&self) -> &str {
-        "Apply a unified diff / patch to a file. Supports standard unified diff hunks with context lines. The target file must be read with read_file first and be unchanged on disk since."
+        "Apply a unified diff / patch to one file. Fuzzes the line offset per hunk, tolerates whitespace drift in context lines, and reports every hunk (applied, moved by N lines, or failed with the nearest actual lines). The target file must be read first and unchanged on disk since."
     }
 
     async fn run(
@@ -109,7 +109,7 @@ impl ToolCore for ApplyPatchTool {
                     ))
                 })?;
 
-                let (new_content, added, removed) =
+                let (new_content, added, removed, report) =
                     apply_hunks_to_content(&original_content, &hunks)
                         .map_err(ToolError::ExecutionError)?;
 
@@ -118,11 +118,9 @@ impl ToolCore for ApplyPatchTool {
                 atomic_fs::write_and_record(&resolved, &new_content).await?;
 
                 Ok(format!(
-                "Successfully applied patch to {resolved_str} (applied {} hunks: +{} / -{} lines)",
-                hunks.len(),
-                added,
-                removed
-            ))
+                    "Successfully applied patch to {resolved_str} (+{added} / -{removed} lines):\n  {}",
+                    report.join("\n  ")
+                ))
             },
         )
         .await
@@ -216,33 +214,32 @@ fn parse_hunk_header(header: &str) -> Result<usize, String> {
 fn apply_hunks_to_content(
     content: &str,
     hunks: &[PatchHunk],
-) -> Result<(String, usize, usize), String> {
+) -> Result<(String, usize, usize, Vec<String>), String> {
     let mut file_lines: Vec<String> = content.lines().map(|s| s.to_string()).collect();
     let had_trailing_newline = content.ends_with('\n');
 
     let mut total_added = 0;
     let mut total_removed = 0;
     let mut line_offset: isize = 0;
+    // One line per hunk: what happened to it, so a partially applied patch is
+    // never reported as a success in silence.
+    let mut report: Vec<String> = Vec::new();
 
     for (hunk_idx, hunk) in hunks.iter().enumerate() {
         if hunk.old_lines.is_empty() && hunk.new_lines.is_empty() {
+            report.push(format!("#{} skipped (empty hunk)", hunk_idx + 1));
             continue;
         }
 
         // Target 0-indexed line in current file_lines
         let target_line = ((hunk.old_start as isize - 1) + line_offset).max(0) as usize;
 
-        // Find best matching position around target_line
-        let match_idx =
-            find_hunk_match(&file_lines, &hunk.old_lines, target_line).ok_or_else(|| {
-                format!(
-                    "Hunk #{} failed to match file context around line {}",
-                    hunk_idx + 1,
-                    hunk.old_start
-                )
-            })?;
+        let Some((match_idx, tolerant)) =
+            find_hunk_match(&file_lines, &hunk.old_lines, target_line)
+        else {
+            return Err(hunk_failure(&file_lines, hunk_idx, hunk, target_line));
+        };
 
-        // Replace matched old_lines with new_lines
         let old_count = hunk.old_lines.len();
         let new_count = hunk.new_lines.len();
 
@@ -256,6 +253,16 @@ fn apply_hunks_to_content(
 
         total_added += hunk.new_lines.len().saturating_sub(hunk.old_lines.len());
         total_removed += hunk.old_lines.len().saturating_sub(hunk.new_lines.len());
+
+        let moved = match_idx as isize - target_line as isize;
+        let mut entry = format!("#{} applied at line {}", hunk_idx + 1, match_idx + 1);
+        if moved != 0 {
+            entry.push_str(&format!(" ({moved:+} lines)"));
+        }
+        if tolerant {
+            entry.push_str(" with whitespace tolerance");
+        }
+        report.push(entry);
     }
 
     let mut result = file_lines.join("\n");
@@ -263,13 +270,49 @@ fn apply_hunks_to_content(
         result.push('\n');
     }
 
-    Ok((result, total_added, total_removed))
+    Ok((result, total_added, total_removed, report))
 }
 
-/// Search for hunk match within a fuzz window around target line
-fn find_hunk_match(file_lines: &[String], old_lines: &[String], target: usize) -> Option<usize> {
+/// A failed hunk names the context it wanted and what the file has there, so
+/// the retry can be written without another read.
+fn hunk_failure(
+    file_lines: &[String],
+    hunk_idx: usize,
+    hunk: &PatchHunk,
+    target_line: usize,
+) -> String {
+    let wanted: Vec<String> = hunk
+        .old_lines
+        .iter()
+        .take(3)
+        .map(|line| format!("    | {line}"))
+        .collect();
+    let start = target_line.min(file_lines.len().saturating_sub(1));
+    let actual: Vec<String> = file_lines
+        .iter()
+        .enumerate()
+        .skip(start)
+        .take(3)
+        .map(|(index, line)| format!("  {:>4} | {line}", index + 1))
+        .collect();
+    format!(
+        "Hunk #{} failed to match around line {}.\nWanted:\n{}\nFile has:\n{}",
+        hunk_idx + 1,
+        hunk.old_start,
+        wanted.join("\n"),
+        actual.join("\n")
+    )
+}
+
+/// Search for the hunk within a fuzz window around the target line. Returns
+/// the match position and whether whitespace tolerance was needed.
+fn find_hunk_match(
+    file_lines: &[String],
+    old_lines: &[String],
+    target: usize,
+) -> Option<(usize, bool)> {
     if old_lines.is_empty() {
-        return Some(target.min(file_lines.len()));
+        return Some((target.min(file_lines.len()), false));
     }
 
     let n = old_lines.len();
@@ -280,24 +323,24 @@ fn find_hunk_match(file_lines: &[String], old_lines: &[String], target: usize) -
     let max_start = file_lines.len() - n;
     let target = target.min(max_start);
 
-    // 1. Try exact target line
-    if matches_at(file_lines, old_lines, target) {
-        return Some(target);
+    // 1. Try the exact target line.
+    if let Some(tolerant) = matches_at(file_lines, old_lines, target) {
+        return Some((target, tolerant));
     }
 
-    // 2. Search radiating outward up to 100 lines
+    // 2. Search radiating outward up to 100 lines.
     let fuzz_range = 100usize;
     for offset in 1..=fuzz_range {
         if target >= offset {
             let pos = target - offset;
-            if matches_at(file_lines, old_lines, pos) {
-                return Some(pos);
+            if let Some(tolerant) = matches_at(file_lines, old_lines, pos) {
+                return Some((pos, tolerant));
             }
         }
         if target + offset <= max_start {
             let pos = target + offset;
-            if matches_at(file_lines, old_lines, pos) {
-                return Some(pos);
+            if let Some(tolerant) = matches_at(file_lines, old_lines, pos) {
+                return Some((pos, tolerant));
             }
         }
     }
@@ -305,16 +348,30 @@ fn find_hunk_match(file_lines: &[String], old_lines: &[String], target: usize) -
     None
 }
 
-fn matches_at(file_lines: &[String], old_lines: &[String], start: usize) -> bool {
+/// `Some(tolerant)` when every context line matches at `start`; `tolerant` is
+/// true when indentation or runs of spaces/tabs had to be ignored.
+fn matches_at(file_lines: &[String], old_lines: &[String], start: usize) -> Option<bool> {
     if start + old_lines.len() > file_lines.len() {
-        return false;
+        return None;
     }
+    let mut tolerant = false;
     for (i, expected) in old_lines.iter().enumerate() {
-        if file_lines[start + i].trim_end() != expected.trim_end() {
-            return false;
+        let actual = &file_lines[start + i];
+        if actual == expected {
+            continue;
         }
+        if actual.trim_end() == expected.trim_end() {
+            tolerant = true;
+            continue;
+        }
+        let collapse = |text: &str| text.split_whitespace().collect::<Vec<_>>().join(" ");
+        if collapse(actual) == collapse(expected) {
+            tolerant = true;
+            continue;
+        }
+        return None;
     }
-    true
+    Some(tolerant)
 }
 
 #[cfg(test)]
@@ -346,11 +403,12 @@ mod tests {
 "#;
         let hunks = parse_unified_diff(patch).unwrap();
         assert_eq!(hunks.len(), 1);
-        let (res, _, _) = apply_hunks_to_content(content, &hunks).unwrap();
+        let (res, _, _, report) = apply_hunks_to_content(content, &hunks).unwrap();
         assert_eq!(
             res,
             "fn main() {\n    // greeting\n    println!(\"hello\");\n}\n"
         );
+        assert_eq!(report, vec!["#1 applied at line 1"]);
     }
 
     #[test]
@@ -363,8 +421,36 @@ mod tests {
  }
 "#;
         let hunks = parse_unified_diff(patch).unwrap();
-        let (res, _, _) = apply_hunks_to_content(content, &hunks).unwrap();
+        let (res, _, _, report) = apply_hunks_to_content(content, &hunks).unwrap();
         assert!(res.contains("world();"));
         assert!(!res.contains("hello();"));
+        // The hunk declared line 1 but lives at line 3: say so instead of
+        // moving silently.
+        assert_eq!(report, vec!["#1 applied at line 3 (+2 lines)"]);
+    }
+
+    #[test]
+    fn a_context_line_with_drifted_indentation_still_applies() {
+        let content = "fn main() {\n        hello();\n}\n";
+        let patch = "@@ -1,2 +1,2 @@\n fn main() {\n-    hello();\n+    world();\n";
+        let hunks = parse_unified_diff(patch).unwrap();
+        let (res, _, _, report) = apply_hunks_to_content(content, &hunks).unwrap();
+        assert_eq!(res, "fn main() {\n    world();\n}\n");
+        assert!(
+            report[0].contains("with whitespace tolerance"),
+            "{report:?}"
+        );
+    }
+
+    #[test]
+    fn a_failed_hunk_names_the_context_wanted_and_found() {
+        let content = "fn main() {\n    actual();\n}\n";
+        let patch = "@@ -1,2 +1,2 @@\n fn main() {\n-    missing();\n+    world();\n";
+        let hunks = parse_unified_diff(patch).unwrap();
+        let err = apply_hunks_to_content(content, &hunks).unwrap_err();
+        assert!(err.contains("Hunk #1 failed to match"), "{err}");
+        assert!(err.contains("Wanted:"), "{err}");
+        assert!(err.contains("File has:"), "{err}");
+        assert!(err.contains("actual();"), "{err}");
     }
 }

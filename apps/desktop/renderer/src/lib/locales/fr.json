@@ -1,4 +1,17 @@
 {
+  "goal": {
+    "confirmClear": "Supprimer cet objectif ? L’agent ne recevra plus de rappels.",
+    "cancel": "Annuler",
+    "title": "Objectif",
+    "set": "Définir un objectif",
+    "placeholder": "Décrivez l’objectif de cette conversation",
+    "save": "Enregistrer",
+    "complete": "Terminer",
+    "clear": "Effacer",
+    "active": "Actif",
+    "completed": "Terminé",
+    "hint": "L’agent se souviendra de cet objectif entre les tours."
+  },
   "chat": {
     "placeholder": "Envoyer un message à {{APP_NAME}}...",
     "stop": "Arrêter la réponse",
@@ -52,6 +65,17 @@
     },
     "localBusy": "Le modèle local est occupé dans une autre discussion",
     "context": {
+      "systemLabel": "Instructions système",
+      "messagesLabel": "Messages",
+      "resultsLabel": "Résultats des outils",
+      "toolsLabel": "Définitions des outils",
+      "overheadLabel": "Surcoût du tokenizeur",
+      "reserveLabel": "Réserve de réponse",
+      "runtimeNote": "Les catégories sont estimées ; le total peut provenir du fournisseur.",
+      "systemTokens": "Instructions système : ~{n} jetons",
+      "messageTokens": "Messages : ~{n} jetons",
+      "previewNote": "Estimation : outils et ajouts en cours d’exécution exclus.",
+      "breakdownUnavailable": "Le détail est indisponible pour cette utilisation.",
       "usage": "{used} / {max} jetons de contexte ({percent} %)",
       "reserved": "{n} jetons réservés à la réponse",
       "priceIn": "Entrée {price} $/1M",
@@ -385,6 +409,10 @@
     "refresh": "Actualiser"
   },
   "code": {
+    "traceCopyInput": "Copier l’entrée",
+    "traceCopyOutput": "Copier le résultat",
+    "traceCopyCommand": "Copier la commande",
+    "todoStatus": {"pending": "En attente", "in_progress": "En cours", "completed": "Terminée", "cancelled": "Annulée"},
     "pane": {
       "openWindow": "Ouvrir dans une nouvelle fenêtre",
       "close": "Fermer le volet",
@@ -712,7 +740,7 @@
       "queued": "En attente"
     },
     "stopSubagent": "Arrêter le sous-agent",
-    "stopCommand": "Arrêter la commande en cours",
+    "stopRun": "Arrêter l'exécution",
     "browseOpen": "Ouvrir",
     "browseOpenNamed": "Ouvrir {name}",
     "browseSystem": "Parcourir…",
@@ -1123,6 +1151,7 @@
     "peakContext": "Contexte max.",
     "slots": "Slots",
     "speed": "Vitesse",
+    "speedReply": "Débit de sortie de cette réponse",
     "install": "Installer llama.cpp",
     "installHint": "Versions pour {platform}.",
     "checkReleases": "Chercher de nouvelles versions",

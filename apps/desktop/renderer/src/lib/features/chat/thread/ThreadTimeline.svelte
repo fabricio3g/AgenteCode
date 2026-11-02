@@ -1,9 +1,9 @@
 <svelte:options runes={true} />
 
 <!--
-  The right-rail conversation dial: one hairline tick per turn, wheel or
-  arrow keys to browse, click or Enter to jump. It stays faint until the
-  thread is hovered or scrolled, so it never competes with the messages.
+  The right-rail conversation dial: one notch per turn on a hairline spine,
+  wheel or arrow keys to browse, click or Enter to jump. It stays faint until
+  the thread is hovered or scrolled, so it never competes with the messages.
 -->
 
 <script lang="ts">
@@ -11,7 +11,7 @@
   import { cn as uiClass } from '$lib/utils/cn';
 
   import { t } from 'svelte-i18n';
-  import { conversationDialWindow } from '$lib/utils/conversation-timeline';
+  import { conversationDialRadius, conversationDialWindow } from '$lib/utils/conversation-timeline';
   import type { TimelineMarker } from './timeline';
 
   interface Props {
@@ -30,9 +30,10 @@
 
   let hoveredId = $state<string | null>(null);
   let lastWheelAt = 0;
+  let height = $state(0);
 
   const windowed = $derived.by(() =>
-    conversationDialWindow(markers.length, index).map((entry) => ({
+    conversationDialWindow(markers.length, index, conversationDialRadius(height)).map((entry) => ({
       ...markers[entry.index],
       ...entry
     }))
@@ -66,14 +67,16 @@
     const next = Math.min(markers.length - 1, Math.max(0, markerIndex + (event.key === 'ArrowDown' ? 1 : -1)));
     onbrowse(next);
     // Keep focus on the tick for the turn we moved to once it renders.
+    const dial = (event.currentTarget as HTMLElement).closest('nav');
     requestAnimationFrame(() => {
-      const target = document.querySelector<HTMLElement>(`[data-dial-index="${next}"]`);
+      const target = dial?.querySelector<HTMLElement>(`[data-dial-index="${next}"]`);
       target?.focus();
     });
   }
 </script>
 
 <nav
+  bind:clientHeight={height}
   class="dial"
   class:is-awake={awake || hoveredId !== null}
   aria-label={$t('chat.dial.label')}
@@ -119,15 +122,30 @@
     top: 50%;
     right: 0.375rem;
     z-index: var(--z-sticky);
-    width: 1.5rem;
-    height: min(9rem, calc(100% - 3rem));
+    width: var(--conversation-dial-width, 1.25rem);
+    height: min(12rem, max(1rem, calc(100% - 3rem)));
     transform: translateY(-50%);
     border-radius: var(--radius-full);
-    opacity: 0.45;
+    opacity: 0.55;
     transition:
       opacity var(--motion-fast) var(--motion-ease),
       background-color var(--motion-fast) var(--motion-ease);
   }
+
+  /* The spine the notches hang off. Without it the marks read as stray rules
+     beside the messages — a broken scrollbar; with it the column is one
+     indicator, and the turn in effect is a notch on a line, not a dash in
+     space. 12% is the first and last marker's own position. */
+  .dial::before {
+    content: '';
+    position: absolute;
+    inset-block: 12%;
+    right: 0.3rem;
+    width: 1px;
+    border-radius: 1px;
+    background: color-mix(in srgb, var(--foreground) 13%, transparent);
+  }
+
   /* Wake up when the thread is hovered, the dial is used, or you scroll. */
   :global(.thread-wrapper:hover) .dial,
   .dial:focus-within,
@@ -136,7 +154,7 @@
   }
   .dial:hover,
   .dial:focus-within {
-    background: color-mix(in srgb, var(--muted) 80%, transparent);
+    background: color-mix(in srgb, var(--muted) 60%, transparent);
   }
 
   .dial-marker {
@@ -151,8 +169,8 @@
     top: 0;
     right: 0.3rem;
     display: flex;
-    width: 0.9rem;
-    height: 0.625rem;
+    width: 0.75rem;
+    height: 0.75rem;
     padding: 0;
     transform: translateY(-50%);
     align-items: center;
@@ -164,31 +182,35 @@
     outline: none;
   }
 
+  /* Every notch is the same length: the width said role before, which turned
+     the column into alternating dashes. Role is the colour now, and the turn
+     in effect is the one long mark. */
   .dial-line {
     display: block;
     width: 0.375rem;
-    height: 1px;
-    border-radius: var(--radius-full);
+    height: 1.5px;
+    border-radius: 1px;
     background: var(--muted-foreground);
     transition:
       width 120ms ease,
+      height 120ms ease,
       opacity 120ms ease,
       background-color 120ms ease;
   }
   :global(.dial-tick.is-user.ui-local-844057af) .dial-line {
-    width: 0.625rem;
+    background: var(--foreground);
   }
-  :global(.dial-tick[data-distance='1'].ui-local-844057af) .dial-line { opacity: 0.55; }
-  :global(.dial-tick[data-distance='2'].ui-local-844057af) .dial-line { opacity: 0.35; }
-  :global(.dial-tick[data-distance='3'].ui-local-844057af) .dial-line { opacity: 0.2; }
+  :global(.dial-tick[data-distance='1'].ui-local-844057af) .dial-line { opacity: 0.7; }
+  :global(.dial-tick[data-distance='2'].ui-local-844057af) .dial-line { opacity: 0.5; }
+  :global(.dial-tick[data-distance='3'].ui-local-844057af) .dial-line { opacity: 0.35; }
   :global(.dial-tick[aria-current='true'].ui-local-844057af) .dial-line {
-    width: 0.875rem;
+    width: 0.625rem;
     height: 2px;
     background: var(--foreground);
   }
   :global(.dial-tick:hover.ui-local-844057af) .dial-line,
   :global(.dial-tick:focus-visible.ui-local-844057af) .dial-line {
-    width: 0.875rem;
+    width: 0.625rem;
     opacity: 1;
     background: var(--foreground);
   }

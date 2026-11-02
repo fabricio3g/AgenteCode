@@ -88,8 +88,8 @@ and request sequencing move to their respective owners.
 
 `spaces.ts` owns composer-mode policy for Home, Code, Roleplay and Design. The
 legacy normalization facade delegates there so persisted chat choices and new
-sessions cannot acquire separate mode rules. Roleplay and Bots are opt-in:
-`ui.roleplay_enabled` / `ui.bots_enabled` ship false, and
+sessions cannot acquire separate mode rules. Roleplay is opt-in:
+`ui.roleplay_enabled` ships false, and
 `appStore.spaceEnabled` is the one rule the sidebar's switcher, onboarding's
 "Start in" list and the store's own entry points consult, so a hidden space is
 never drawn or entered. All renderer clipboard writes use
@@ -99,11 +99,19 @@ local-model settings; native and browser fallbacks have one owner.
 `components/ui/TileMeter.svelte` owns the rain animation markup used by every
 chat. `utils/activity-meter.ts` owns its generic busy/quiet/attention/stopped
 policy; Code's adapter supplies its run-specific status. Pending replies,
-reasoning, tool execution, research, Bots and roleplay memory summaries use the
+reasoning, tool execution, research and roleplay memory summaries use the
 same component. The old feather and tool-spinner animations were removed.
 Reduced-motion behavior stays in the existing shared theme styles.
 
 ## Design workspace ownership
+
+Home and Design runtime subscriptions live in `services/home-runtime-events.ts`,
+keyed by run ID and shared across concurrent runs. Their lifetime ends when a run
+settles, independently of the visible space or mounted surface. Design captures
+canvas selections and reference paths before asynchronous send preparation;
+tools and the final version snapshot retain the originating chat ID throughout.
+`tests/electron/home-design-background.smoke.ts` verifies both turns finish while
+Code is visible, including a background Design write and the narrow dial layout.
 
 `design-workspace.svelte.ts` owns workspace files, versions, loading state and
 request ordering through injected read operations. `design.svelte.ts` keeps

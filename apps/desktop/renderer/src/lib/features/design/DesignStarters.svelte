@@ -1,12 +1,13 @@
 <svelte:options runes={true} />
 
 <!--
-  Starter screens for the empty dock: one row per screen, rendered through the
-  shared list look so the Design dock and the Code space's first conversation
-  teach the same grammar.
+  Starter screens for the empty dock: one row per screen, or — in the dock's
+  centred invitation — one line of links, rendered through the shared starter
+  look so the Design dock and the Code space teach the same grammar.
 
   Picking one fills the composer and focuses it, so a mis-tap costs nothing and
-  the prompt can still be edited before sending.
+  the prompt can still be edited before sending. In the links look the hint is
+  a tooltip on the link; the line itself carries only the names.
 -->
 
 <script lang="ts">
@@ -33,6 +34,12 @@
   /** A starter's description: its first clause, so the row says what the screen is. */
   const firstClause = (prompt: string) => prompt.split(/[.,]\s/)[0].replace(/\.$/, '');
 
+  interface Props {
+    variant?: 'rows' | 'links';
+  }
+
+  let { variant = 'rows' }: Props = $props();
+
   const starters = $derived<Starter[]>(copy.design.suggestions.map((suggestion) => ({
     id: suggestion.id,
     hue: HUES[suggestion.id] ?? 250,
@@ -49,4 +56,4 @@
   }
 </script>
 
-<StarterList {starters} label={copy.design.dock.starters} onpick={pick} />
+<StarterList {starters} label={copy.design.dock.starters} onpick={pick} {variant} />

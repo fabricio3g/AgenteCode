@@ -861,6 +861,93 @@
           "type": "object"
         },
         {
+          "description": "How full the context is, sent before each request. `used` over `room` is the same arithmetic the compaction gate uses, so a client's meter and a compaction agree.",
+          "properties": {
+            "gap": {
+              "format": "uint32",
+              "minimum": 0.0,
+              "type": "integer"
+            },
+            "measured": {
+              "description": "`used` came from the provider rather than an estimate.",
+              "type": "boolean"
+            },
+            "message_tokens": {
+              "default": null,
+              "format": "uint32",
+              "minimum": 0.0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "reserve": {
+              "default": null,
+              "format": "uint32",
+              "minimum": 0.0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "room": {
+              "description": "Window minus tool schemas, the tokenizer gap and the reply reserve.",
+              "format": "uint32",
+              "minimum": 0.0,
+              "type": "integer"
+            },
+            "system_tokens": {
+              "default": null,
+              "format": "uint32",
+              "minimum": 0.0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "tool_result_tokens": {
+              "default": null,
+              "format": "uint32",
+              "minimum": 0.0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "tool_tokens": {
+              "format": "uint32",
+              "minimum": 0.0,
+              "type": "integer"
+            },
+            "type": {
+              "enum": [
+                "context_budget"
+              ],
+              "type": "string"
+            },
+            "used": {
+              "format": "uint32",
+              "minimum": 0.0,
+              "type": "integer"
+            },
+            "window": {
+              "format": "uint32",
+              "minimum": 0.0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "gap",
+            "measured",
+            "room",
+            "tool_tokens",
+            "type",
+            "used",
+            "window"
+          ],
+          "type": "object"
+        },
+        {
           "description": "One model call finished (the envelope's `parent_run_id` names the subagent that made it). Summing these gives the session's real spend.",
           "properties": {
             "cost_estimated": {

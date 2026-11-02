@@ -82,7 +82,7 @@ export type CodeStopReason = 'stop' | 'toolUse' | 'length' | 'error' | 'aborted'
 
 export interface CodeTodoItem {
   content: string;
-  status: 'pending' | 'in_progress' | 'completed';
+  status: 'pending' | 'in_progress' | 'completed' | 'cancelled';
 }
 
 export interface CodeSpend {
@@ -150,9 +150,21 @@ export interface CodeRunSummary {
     completionTokens: number;
     totalTokens: number;
     contextWindow?: number;
+    breakdown?: ContextBreakdown;
     /** Engine timings (prompt_ms, predicted_ms, …) when the provider reports them. */
     timings?: Record<string, number>;
   };
+}
+
+/** Estimated request components from Rust, in tokens. */
+export interface ContextBreakdown {
+  system: number;
+  messages: number;
+  toolResults?: number;
+  tools?: number;
+  overhead?: number;
+  reserve?: number;
+  window?: number;
 }
 
 export type CodeAgentEvent =
@@ -189,6 +201,7 @@ export type CodeAgentEvent =
       completionTokens: number;
       totalTokens: number;
       contextWindow: number;
+      breakdown?: ContextBreakdown;
     }
   | { type: 'error'; chatId: string; message: string }
   | { type: 'artifact_created'; chatId: string; artifact: CodeArtifactRef }

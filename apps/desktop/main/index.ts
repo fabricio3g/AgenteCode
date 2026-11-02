@@ -12,8 +12,11 @@ registerDomainScheme();
 import { stopAllInstances } from './instances.ts';
 import { moduleDirname } from './module-env.ts';
 import { APP_NAME } from '../shared/brand.ts';
-import { setMainWindow, setConversationWindowFactory, setPreloadPath, getMainWindow, requestMainWindowClose, setActiveWorkState, TITLEBAR_HEIGHT, initialWindowColors, flushWindowTheme, usesCaptionOverlay } from './window-manager.ts';
+import { setMainWindow, setConversationWindowFactory, setPreloadPath, getMainWindow, requestMainWindowClose, setActiveWorkState, initialWindowColors, flushWindowTheme } from './window-manager.ts';
 import { registerWindowZoom } from './window-zoom.ts';
+import { setTrayAvailable, setQuitting, attachCloseToTray } from './window-manager.ts';
+import { registerActivityNotifications } from './notifications.ts';
+import { loadDevelopmentRenderer } from './renderer-load.ts';
 
 // Resolves under both the esbuild CJS bundle and tsx's ESM loader.
 const moduleDir = moduleDirname(import.meta.url);
@@ -68,15 +71,10 @@ function createWindow(chatId?: string) {
     icon: fs.existsSync(APP_ICON_PATH) ? APP_ICON_PATH : undefined,
     // `titleBarStyle` replaces the old `frame: false`, which on macOS *is*
     // 'hidden' and would silently undo the 'hiddenInset' inset below.
-    // Windows/Linux keep their caption controls when we add the overlay;
-    // macOS keeps its real traffic lights.
+    // macOS keeps its real traffic lights; everywhere else the page draws the
+    // caption itself (`WindowControls.svelte`), so no `titleBarOverlay` here —
+    // that would paint the platform's own buttons over ours.
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'hidden',
-    // Let the OS draw the caption buttons instead of us faking them: correct
-    // hover states, correct hit areas at every DPI, the Win11 snap-layout
-    // flyout, and the system menu. macOS ignores this option entirely.
-    ...(usesCaptionOverlay
-      ? { titleBarOverlay: { ...colors, height: TITLEBAR_HEIGHT } }
-      : {}),
     // Win11 draws the rounded corners and shadow itself once the frame is ours.
     roundedCorners: true,
     webPreferences: {
@@ -90,12 +88,14 @@ function createWindow(chatId?: string) {
   });
 
   if (!getMainWindow()) setMainWindow(mainWindow);
+  attachCloseToTray(mainWindow);
 
-  attachStartupDiagnostics(mainWindow);
+  attachStartupDiagnostics(mainWindow, { managedLoad: IS_DEV });
 
   if (IS_DEV) {
-    void mainWindow.loadURL(chatId ? `${RENDERER_DEV_URL}?conversation=${encodeURIComponent(chatId)}&window=${mainWindow.id}` : RENDERER_DEV_URL).catch(failStartup);
-    mainWindow.webContents.openDevTools({ mode: 'detach' });
+    const url = chatId ? `${RENDERER_DEV_URL}?conversation=${encodeURIComponent(chatId)}&window=${mainWindow.id}` : RENDERER_DEV_URL;
+    void loadDevelopmentRenderer(() => mainWindow.loadURL(url), () => mainWindow.isDestroyed()).catch(failStartup);
+    if (process.env.AGENTE_DEVTOOLS === '1') mainWindow.webContents.openDevTools({ mode: 'detach' });
   } else {
     const missing = smokeMode && process.env.AGENTE_SMOKE_CASE === 'missing-assets';
     void mainWindow.loadFile(missing ? `${RENDERER_PROD_PATH}.missing` : RENDERER_PROD_PATH, { query: { ...(smokeMode ? { smoke: '1', fault: process.env.AGENTE_SMOKE_CASE || '' } : {}), ...(chatId ? { conversation: chatId, window: String(mainWindow.id) } : {}) } }).catch(failStartup);
@@ -132,11 +132,13 @@ function createTray() {
   tray.setToolTip(APP_NAME);
 
   const contextMenu = Menu.buildFromTemplate([
-    { label: 'Show', click: () => getMainWindow()?.show() },
+    { label: 'Show', click: () => { const win = getMainWindow(); if (win) { win.show(); win.focus(); } else createWindow(); } },
     { type: 'separator' },
     { label: 'Quit', click: () => app.quit() }
   ]);
   tray.setContextMenu(contextMenu);
+  setTrayAvailable(true);
+  tray.on('click', () => { getMainWindow()?.show(); getMainWindow()?.focus(); });
   tray.on('double-click', () => getMainWindow()?.show());
 }
 
@@ -167,6 +169,13 @@ app.whenReady().then(async () => {
   registerIpcHandlers();
   registerDomainHandlers();
   registerDomainMediaProtocol();
+  app.setAppUserModelId('dev.agente.desktop');
+  if (!smokeMode) { try { createTray(); } catch (error) { console.warn('[tray]', error); } }
+  registerActivityNotifications(chatId => {
+    const win = getMainWindow();
+    if (win) { win.show(); win.focus(); win.webContents.send('activity_notification_open', { chatId }); }
+    else createWindow(chatId);
+  });
   createWindow();
 
   // Preload Kokoro TTS model in background while app finishes booting
@@ -193,6 +202,7 @@ app.on('before-quit', async event => {
   event.preventDefault();
   if (cleanupStarted) return;
   cleanupStarted = true;
+  setQuitting(true);
   try { await flushWindowTheme(); } catch (error) { console.warn('[window theme] shutdown:', error); }
   try { await chatDatabase.close(); } catch (error) { console.warn('[database] shutdown:', error); }
   try {

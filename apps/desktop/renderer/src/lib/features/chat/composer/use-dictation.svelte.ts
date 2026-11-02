@@ -134,11 +134,12 @@ export class Dictation {
   private analyserRaf: number | null = null;
   private smoothedLevel = 0;
   private disposed = false;
+  private captureGeneration = 0;
 
   readonly hasSpeechRecognition: boolean;
   readonly hasMediaRecorder: boolean;
 
-  constructor() {
+  constructor(private readonly onTranscript?: (text: string) => void) {
     // Inside Electron, always take the local Whisper path.
     this.hasSpeechRecognition =
       !isElectron() && typeof window !== 'undefined' && !!getRecognitionCtor();
@@ -167,6 +168,7 @@ export class Dictation {
    *                 Used by hands-free voice mode.
    */
   toggle(autoSend = false): void {
+    if (this.disposed) return;
     if (!this.supported) {
       toastStore.error('Microphone recording is not available in this environment.');
       return;
@@ -179,6 +181,7 @@ export class Dictation {
   }
 
   stop(): void {
+    this.captureGeneration += 1;
     if (this.speechListening && this.recognition) {
       try {
         this.recognition.stop();
@@ -212,7 +215,7 @@ export class Dictation {
 
   dispose(): void {
     this.disposed = true;
-    this.stop();
+    this.cancel();
   }
 
   // ── Web Speech ────────────────────────────────────────────────────────────
@@ -227,6 +230,8 @@ export class Dictation {
     }
 
     ttsStore.stop();
+    this.discard = false;
+    const generation = ++this.captureGeneration;
 
     if (this.recognition) {
       try {
@@ -243,6 +248,7 @@ export class Dictation {
     // audio input was most recently activated, not the one we configured.
     void requestMicrophone(appStore.config.stt?.audio_input_device_id)
       .then((stream) => {
+        if (this.disposed || generation !== this.captureGeneration) { stream.getTracks().forEach((track) => track.stop()); return; }
         this.micStream = stream;
         this.startAnalyser(stream);
       })
@@ -250,7 +256,7 @@ export class Dictation {
         /* denied or unavailable — recognition may still work */
       })
       .finally(() => {
-        if (this.disposed) return;
+        if (this.disposed || generation !== this.captureGeneration) return;
         const recognition = new Ctor();
         recognition.continuous = false;
         recognition.interimResults = true;
@@ -259,7 +265,7 @@ export class Dictation {
         this.speechListening = true;
         this.phase = 'recording';
         this.interim = '';
-        this.attachRecognitionHandlers(autoSend);
+        this.attachRecognitionHandlers(autoSend, generation);
         try {
           recognition.start();
         } catch {
@@ -268,11 +274,12 @@ export class Dictation {
       });
   }
 
-  private attachRecognitionHandlers(autoSend: boolean): void {
+  private attachRecognitionHandlers(autoSend: boolean, generation: number): void {
     const recognition = this.recognition;
     if (!recognition) return;
 
     recognition.onresult = (event) => {
+      if (this.disposed || this.discard || generation !== this.captureGeneration) return;
       let final = '';
       let interim = '';
       for (let i = 0; i < event.results.length; i++) {
@@ -293,14 +300,16 @@ export class Dictation {
     };
 
     recognition.onerror = () => {
+      if (this.disposed || generation !== this.captureGeneration) return;
       this.speechListening = false;
       this.phase = 'error';
       this.interim = '';
       this.stopAnalyser();
     };
     recognition.onend = () => {
+      if (this.disposed || generation !== this.captureGeneration) return;
       finish();
-      if (autoSend) this.maybeAutoSend();
+      if (autoSend && !this.discard) this.maybeAutoSend();
     };
   }
 
@@ -319,8 +328,9 @@ export class Dictation {
     }
 
     ttsStore.stop();
+    const generation = ++this.captureGeneration;
     // Device enumeration can be empty before capture permission on Linux.
-    if (!(await this.ensureVoiceEngine())) return;
+    if (!(await this.ensureVoiceEngine()) || this.disposed || generation !== this.captureGeneration) return;
     this.phase = 'permission';
     this.interim = '';
     this.recordedChunks = [];
@@ -328,6 +338,7 @@ export class Dictation {
 
     try {
       const stream = await requestMicrophone(appStore.config.stt?.audio_input_device_id);
+      if (this.disposed || generation !== this.captureGeneration) { stream.getTracks().forEach((track) => track.stop()); return; }
       this.whisperListening = true;
       this.phase = 'recording';
       this.micStream = stream;
@@ -346,6 +357,7 @@ export class Dictation {
 
       recorder.onstop = async () => {
         stream.getTracks().forEach((track) => track.stop());
+        if (this.disposed || generation !== this.captureGeneration) return;
         this.whisperListening = false;
         this.stopAnalyser();
         if (this.discard) {
@@ -373,6 +385,7 @@ export class Dictation {
             sentType = mimeType.split(';')[0];
           }
           const result = await sttTranscribe(bytes as never, sentType);
+          if (this.disposed || generation !== this.captureGeneration) return;
           this.phase = 'idle';
           this.interim = '';
 
@@ -393,6 +406,7 @@ export class Dictation {
 
       recorder.onerror = () => {
         stream.getTracks().forEach((track) => track.stop());
+        if (this.disposed || generation !== this.captureGeneration) return;
         this.whisperListening = false;
         this.phase = 'error';
         this.interim = '';
@@ -405,6 +419,7 @@ export class Dictation {
         if (this.recorder && this.recorder.state !== 'inactive') this.recorder.stop();
       }, MAX_RECORDING_MS);
     } catch (err) {
+      if (this.disposed || generation !== this.captureGeneration) return;
       this.whisperListening = false;
       this.phase = 'error';
       this.interim = '';
@@ -472,8 +487,10 @@ export class Dictation {
   // ── Shared ────────────────────────────────────────────────────────────────
 
   private appendToComposer(text: string): void {
+    if (this.disposed) return;
     const addition = text.trim();
     if (!addition) return;
+    if (this.onTranscript) { this.onTranscript(addition); return; }
     const current = appStore.composer.trim();
     appStore.updateComposer(current ? `${current} ${addition}` : addition);
   }

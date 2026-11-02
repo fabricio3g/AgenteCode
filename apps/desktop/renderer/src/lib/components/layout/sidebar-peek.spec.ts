@@ -38,6 +38,18 @@ describe('sidebar hover preview', () => {
     expect(peek.open).toBe(false);
   });
 
+  it('dismisses an open preview and ignores the immediate hover', () => {
+    const peek = new SidebarPeek(() => false, () => now);
+    peek.show();
+    vi.advanceTimersByTime(PEEK_OPEN_MS);
+    expect(peek.open).toBe(true);
+    peek.toggled();
+    expect(peek.open).toBe(false);
+    peek.show();
+    vi.advanceTimersByTime(PEEK_OPEN_MS);
+    expect(peek.open).toBe(false);
+  });
+
   it('never previews when pinned, or right after the toggle was clicked', () => {
     const pinned = new SidebarPeek(() => true, () => now);
     pinned.show();

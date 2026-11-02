@@ -1,22 +1,16 @@
 // Every font is bundled and OFL-1.1 (open source, free for commercial use), so
 // no surface falls back to a licensed platform face and nothing needs a
 // network fetch at runtime:
-//   Inter Variable            (OFL) UI and reading text
-//   IBM Plex Mono             (OFL) code, diffs and the terminal
+//   Geist Variable            (OFL) UI and reading text
+//   Geist Mono Variable       (OFL) code, diffs and the terminal
 //   Atkinson Hyperlegible     (OFL) optional reading font, loaded on demand
 //   Atkinson Hyperlegible Mono(OFL) its code companion, loaded with it
 // A new face only lands here if it is OFL or otherwise free for commercial use.
 //
-// `opsz.css`, not the package entry: the entry ships only the `wght` axis, so
-// `font-optical-sizing: auto` had nothing to read and silently did nothing.
-// The `opsz` build carries both axes and opens the counters at small sizes.
-// The italic faces are loaded because `font-synthesis: none` forbids the
-// browser from slanting one, so without them italic markup renders upright.
-import '@fontsource-variable/inter/opsz.css';
-import '@fontsource-variable/inter/wght-italic.css';
-import '@fontsource/ibm-plex-mono/400.css';
-import '@fontsource/ibm-plex-mono/500.css';
-import '@fontsource/ibm-plex-mono/600.css';
+import '@fontsource-variable/geist';
+import '@fontsource-variable/geist/wght-italic.css';
+import '@fontsource-variable/geist-mono';
+import '@fontsource-variable/geist-mono/wght-italic.css';
 import './app.css';
 import '$lib/i18n/index';
 // Interface size, contrast, motion… before the first paint.

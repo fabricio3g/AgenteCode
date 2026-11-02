@@ -363,9 +363,10 @@ pub(crate) async fn execute_prepared_tool(
                     path_changed = Some(format!("{action} {clean}"));
                     changed_path = Some(clean.clone());
 
-                    // Attach lightweight syntax diagnostics so the model can self-correct
-                    // after an edit. Full LSP servers are optional; this
-                    // always runs for supported extensions and never fails the tool call.
+                    // Attach diagnostics only from real parsers (JSON today, a
+                    // language server when configured). A heuristic here once
+                    // reported "Unbalanced braces" on files that compiled, and
+                    // the model then "fixed" working code.
                     let full_path = {
                         let p = std::path::Path::new(path);
                         if p.is_absolute() {
@@ -504,11 +505,30 @@ async fn execute_tool_calls_sequential(
     host: Option<&SubagentHost>,
 ) -> Vec<ToolCallOutcome> {
     let mut outcomes = Vec::new();
+    // Files this batch already changed. A second edit to the same file is a
+    // real dependency (the text moved), so it is skipped with a stated reason
+    // rather than left to fail on the freshness guard. Anything else runs.
+    let mut mutated: Vec<(String, String)> = Vec::new();
     for tool_call in tool_calls {
         tracing::info!(task_id, tool_id = %tool_call.id, tool = %tool_call.function.name, "Tool started");
         if cancel_signal.is_aborted() {
             tracing::info!("Sequential tool execution cancelled mid-batch");
             break;
+        }
+        if let Some(target) = mutating_target(tool_call) {
+            if let Some((_, earlier)) = mutated.iter().find(|(path, _)| path == &target) {
+                let outcome = ToolCallOutcome::error(
+                    tool_call.id.clone(),
+                    tool_call.function.name.clone(),
+                    format!(
+                        "Not run: an earlier call in this batch ({earlier}) changed {target}. \
+                         Read the file again with read_file, then retry this edit."
+                    ),
+                );
+                finalize_tool_result(&outcome, &sender, task_id);
+                outcomes.push(outcome);
+                continue;
+            }
         }
         let outcome = match prepare_tool_call(
             tool_call,
@@ -540,18 +560,33 @@ async fn execute_tool_calls_sequential(
             Err(outcome) => outcome,
         };
         finalize_tool_result(&outcome, &sender, task_id);
-        let is_error = outcome.is_error;
-        outcomes.push(outcome);
-        // A failed sequential tool is usually a dependency for the remaining
-        // calls in the batch (e.g. write -> edit -> shell). Stop early instead
-        // of cascading more failures (pi-style `shouldTerminateToolBatch`).
-        if is_error {
-            tracing::info!("Sequential tool failed; terminating remaining batch");
-            break;
+        if let Some(path) = outcome.changed_path.clone() {
+            mutated.push((path, tool_call.function.name.clone()));
         }
+        // A failure does not end the batch. Sibling calls are independent, and
+        // stopping here is how one bad edit used to discard the good ones.
+        outcomes.push(outcome);
     }
     finalize_skipped_calls(tool_calls, &mut outcomes, &sender, task_id);
     outcomes
+}
+
+/// The file a mutating call will touch, from its own arguments. Used only to
+/// detect same-file dependencies inside one batch.
+fn mutating_target(tool_call: &ToolCall) -> Option<String> {
+    if !matches!(
+        tool_call.function.name.as_str(),
+        "write_file" | "edit_file" | "apply_patch"
+    ) {
+        return None;
+    }
+    let args: serde_json::Value = serde_json::from_str(&tool_call.function.arguments).ok()?;
+    let path = args
+        .get("path")
+        .or_else(|| args.get("file_path"))
+        .or_else(|| args.get("file"))
+        .and_then(|value| value.as_str())?;
+    Some(crate::util::clean_path(path))
 }
 
 /// Keep assistant `tool_calls` ↔ tool results paired: calls skipped by an

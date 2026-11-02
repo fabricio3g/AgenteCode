@@ -273,11 +273,12 @@ export function normalizeAgentHistory(messages: RequestMessage[] | undefined): R
         ...(message.name ? { name: message.name } : {}),
         ...(message.tool_call_id ? { tool_call_id: message.tool_call_id } : {}),
         ...(message.tool_calls ? { tool_calls: message.tool_calls } : {}),
-        ...(message.providerState ? { providerState: message.providerState } : {})
+        ...(message.providerState ? { providerState: message.providerState } : {}),
+        ...(message.attachments?.length ? { attachments: message.attachments.map(item => ({ ...item })) } : {})
       };
       const rc = message.reasoning_content;
       if (typeof rc === 'string' && rc.trim()) row.reasoning_content = rc;
       return row;
     })
-    .filter((message) => message.role === 'system' || String(message.content || '').trim() || message.tool_calls?.length || message.reasoning_content);
+    .filter((message) => message.role === 'system' || String(message.content || '').trim() || message.tool_calls?.length || message.reasoning_content || message.attachments?.length);
 }

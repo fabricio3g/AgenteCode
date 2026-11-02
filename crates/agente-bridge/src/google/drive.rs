@@ -62,7 +62,11 @@ pub async fn find(google: &Google, query: &str, kind: Option<&str>) -> Result<St
         encode("files(id,name,mimeType,modifiedTime,webViewLink)")
     );
     let value = google.get_json(&url).await?;
-    let files = value.get("files").and_then(Value::as_array).cloned().unwrap_or_default();
+    let files = value
+        .get("files")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
     if files.is_empty() {
         return Ok(format!("No Drive files match \"{query}\"."));
     }
@@ -82,27 +86,47 @@ pub async fn find(google: &Google, query: &str, kind: Option<&str>) -> Result<St
 }
 
 /// The export mime type and file extension for a requested format.
-pub fn export_format(source_mime: &str, format: Option<&str>) -> Result<Option<(&'static str, &'static str)>, String> {
+pub fn export_format(
+    source_mime: &str,
+    format: Option<&str>,
+) -> Result<Option<(&'static str, &'static str)>, String> {
     let format = format.map(|f| f.trim().trim_start_matches('.').to_ascii_lowercase());
     let pick = |default: &'static str| format.clone().unwrap_or_else(|| default.to_string());
     let choice = match source_mime {
         DOC => match pick("docx").as_str() {
-            "docx" => ("application/vnd.openxmlformats-officedocument.wordprocessingml.document", "docx"),
+            "docx" => (
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                "docx",
+            ),
             "md" | "markdown" => ("text/markdown", "md"),
             "pdf" => ("application/pdf", "pdf"),
             "txt" | "text" => ("text/plain", "txt"),
             "html" => ("text/html", "html"),
-            other => return Err(format!("A Doc exports as docx, md, pdf, txt or html — not {other}")),
+            other => {
+                return Err(format!(
+                    "A Doc exports as docx, md, pdf, txt or html — not {other}"
+                ))
+            }
         },
         SHEET => match pick("xlsx").as_str() {
-            "xlsx" => ("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "xlsx"),
+            "xlsx" => (
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                "xlsx",
+            ),
             "csv" => ("text/csv", "csv"),
             "pdf" => ("application/pdf", "pdf"),
             "ods" => ("application/vnd.oasis.opendocument.spreadsheet", "ods"),
-            other => return Err(format!("A Sheet exports as xlsx, csv (first tab), pdf or ods — not {other}")),
+            other => {
+                return Err(format!(
+                    "A Sheet exports as xlsx, csv (first tab), pdf or ods — not {other}"
+                ))
+            }
         },
         SLIDES => match pick("pptx").as_str() {
-            "pptx" => ("application/vnd.openxmlformats-officedocument.presentationml.presentation", "pptx"),
+            "pptx" => (
+                "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                "pptx",
+            ),
             "pdf" => ("application/pdf", "pdf"),
             "txt" | "text" => ("text/plain", "txt"),
             other => return Err(format!("Slides export as pptx, pdf or txt — not {other}")),
@@ -123,24 +147,44 @@ pub async fn pull(google: &Google, id: &str, format: Option<&str>) -> Result<Str
             encode(id)
         ))
         .await?;
-    let name = meta.get("name").and_then(Value::as_str).unwrap_or("file").to_string();
-    let mime = meta.get("mimeType").and_then(Value::as_str).unwrap_or("").to_string();
+    let name = meta
+        .get("name")
+        .and_then(Value::as_str)
+        .unwrap_or("file")
+        .to_string();
+    let mime = meta
+        .get("mimeType")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string();
     let (bytes, file_name) = match export_format(&mime, format)? {
         Some((export_mime, extension)) => {
             let bytes = google
-                .get_bytes(&format!("{API}/{}/export?mimeType={}", encode(id), encode(export_mime)))
+                .get_bytes(&format!(
+                    "{API}/{}/export?mimeType={}",
+                    encode(id),
+                    encode(export_mime)
+                ))
                 .await?;
             (bytes, format!("{}.{extension}", strip_extension(&name)))
         }
         None => {
             let bytes = google
-                .get_bytes(&format!("{API}/{}?alt=media&supportsAllDrives=true", encode(id)))
+                .get_bytes(&format!(
+                    "{API}/{}?alt=media&supportsAllDrives=true",
+                    encode(id)
+                ))
                 .await?;
             (bytes, name.clone())
         }
     };
-    let path = store(&bytes, &file_name).map_err(|error| format!("Could not save the file: {error}"))?;
-    let mut text = format!("Saved \"{name}\" as {} ({} bytes).", path.display(), bytes.len());
+    let path =
+        store(&bytes, &file_name).map_err(|error| format!("Could not save the file: {error}"))?;
+    let mut text = format!(
+        "Saved \"{name}\" as {} ({} bytes).",
+        path.display(),
+        bytes.len()
+    );
     if is_text(&file_name) {
         let body = String::from_utf8_lossy(&bytes);
         text.push_str("\n\nContent (untrusted):\n");
@@ -158,7 +202,9 @@ fn strip_extension(name: &str) -> &str {
 
 fn is_text(name: &str) -> bool {
     let lower = name.to_ascii_lowercase();
-    [".md", ".txt", ".csv", ".tsv", ".html", ".json"].iter().any(|ext| lower.ends_with(ext))
+    [".md", ".txt", ".csv", ".tsv", ".html", ".json"]
+        .iter()
+        .any(|ext| lower.ends_with(ext))
 }
 
 /// Content-addressed under the bridge's files dir, keeping the readable name.
@@ -167,7 +213,13 @@ fn store(bytes: &[u8], name: &str) -> std::io::Result<PathBuf> {
     let prefix: String = hash.iter().take(6).map(|b| format!("{b:02x}")).collect();
     let safe: String = name
         .chars()
-        .map(|c| if c.is_alphanumeric() || matches!(c, '.' | '-' | '_' | ' ') { c } else { '_' })
+        .map(|c| {
+            if c.is_alphanumeric() || matches!(c, '.' | '-' | '_' | ' ') {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect();
     let dir = crate::pairing::files_dir().join(prefix);
     std::fs::create_dir_all(&dir)?;
@@ -184,18 +236,30 @@ fn upload_types(path: &Path) -> (&'static str, Option<&'static str>) {
         .unwrap_or("")
         .to_ascii_lowercase();
     match ext.as_str() {
-        "docx" => ("application/vnd.openxmlformats-officedocument.wordprocessingml.document", Some(DOC)),
+        "docx" => (
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            Some(DOC),
+        ),
         "doc" => ("application/msword", Some(DOC)),
         "md" => ("text/markdown", Some(DOC)),
         "txt" => ("text/plain", Some(DOC)),
         "html" | "htm" => ("text/html", Some(DOC)),
         "odt" => ("application/vnd.oasis.opendocument.text", Some(DOC)),
-        "xlsx" => ("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", Some(SHEET)),
+        "xlsx" => (
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            Some(SHEET),
+        ),
         "xls" => ("application/vnd.ms-excel", Some(SHEET)),
         "csv" => ("text/csv", Some(SHEET)),
         "tsv" => ("text/tab-separated-values", Some(SHEET)),
-        "ods" => ("application/vnd.oasis.opendocument.spreadsheet", Some(SHEET)),
-        "pptx" => ("application/vnd.openxmlformats-officedocument.presentationml.presentation", Some(SLIDES)),
+        "ods" => (
+            "application/vnd.oasis.opendocument.spreadsheet",
+            Some(SHEET),
+        ),
+        "pptx" => (
+            "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            Some(SLIDES),
+        ),
         "pdf" => ("application/pdf", None),
         "png" => ("image/png", None),
         "jpg" | "jpeg" => ("image/jpeg", None),
@@ -226,13 +290,21 @@ pub async fn push(
     let (mime, native) = upload_types(path);
     let name = name
         .map(str::to_string)
-        .or_else(|| path.file_name().map(|name| name.to_string_lossy().to_string()))
+        .or_else(|| {
+            path.file_name()
+                .map(|name| name.to_string_lossy().to_string())
+        })
         .unwrap_or_else(|| "upload".to_string());
     let mut metadata = json!({ "name": if convert && native.is_some() { strip_extension(&name).to_string() } else { name.clone() } });
     if convert {
         match native {
             Some(native) => metadata["mimeType"] = json!(native),
-            None => return Err(format!("{} cannot be converted into a Google file; push it without convert", path.display())),
+            None => {
+                return Err(format!(
+                    "{} cannot be converted into a Google file; push it without convert",
+                    path.display()
+                ))
+            }
         }
     }
     if let Some(folder) = folder.and_then(super::file_id) {
@@ -246,7 +318,13 @@ pub async fn push(
             multipart(&boundary, &metadata, mime, &bytes),
         )
         .await?;
-    let get = |key: &str| reply.get(key).and_then(Value::as_str).unwrap_or("").to_string();
+    let get = |key: &str| {
+        reply
+            .get(key)
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string()
+    };
     Ok(format!(
         "Uploaded {} as \"{}\" [{}] id={} · {}",
         path.display(),
@@ -266,9 +344,14 @@ mod tests {
         assert_eq!(find_query("", None), "trashed = false");
         assert_eq!(
             find_query("Bob's \\ plan", Some("sheet")),
-            format!("trashed = false and name contains 'Bob\\'s \\\\ plan' and mimeType = '{SHEET}'")
+            format!(
+                "trashed = false and name contains 'Bob\\'s \\\\ plan' and mimeType = '{SHEET}'"
+            )
         );
-        assert_eq!(find_query("x", Some("whatever")), "trashed = false and name contains 'x'");
+        assert_eq!(
+            find_query("x", Some("whatever")),
+            "trashed = false and name contains 'x'"
+        );
     }
 
     #[test]
@@ -276,8 +359,12 @@ mod tests {
         assert_eq!(export_format(SHEET, None).unwrap().unwrap().1, "xlsx");
         assert_eq!(export_format(DOC, Some(".MD")).unwrap().unwrap().1, "md");
         assert_eq!(export_format(SLIDES, None).unwrap().unwrap().1, "pptx");
-        assert!(export_format(SHEET, Some("docx")).unwrap_err().contains("xlsx"));
-        assert!(export_format("application/pdf", Some("xlsx")).unwrap().is_none());
+        assert!(export_format(SHEET, Some("docx"))
+            .unwrap_err()
+            .contains("xlsx"));
+        assert!(export_format("application/pdf", Some("xlsx"))
+            .unwrap()
+            .is_none());
         assert!(export_format("application/vnd.google-apps.form", None).is_err());
     }
 
@@ -295,6 +382,8 @@ mod tests {
         let body = multipart("b", &json!({"name": "x"}), "text/csv", b"a,b");
         let text = String::from_utf8(body).unwrap();
         assert!(text.starts_with("--b\r\nContent-Type: application/json"));
-        assert!(text.contains("{\"name\":\"x\"}\r\n--b\r\nContent-Type: text/csv\r\n\r\na,b\r\n--b--"));
+        assert!(
+            text.contains("{\"name\":\"x\"}\r\n--b\r\nContent-Type: text/csv\r\n\r\na,b\r\n--b--")
+        );
     }
 }

@@ -1,11 +1,18 @@
 import { app, BrowserWindow, dialog } from 'electron';
 import path from 'node:path';
 import { APP_NAME } from '../shared/brand.ts';
-import { TITLEBAR_HEIGHT, TITLEBAR_OVERLAY_COLOR, TITLEBAR_SYMBOL_COLOR } from '../shared/titlebar.ts';
 import { WINDOW_THEME_COLORS } from '../shared/window-theme.ts';
 import { WindowThemePreferences } from './window-theme-preferences.ts';
 
 let mainWindow: BrowserWindow | null = null;
+let trayAvailable = false;
+let quitting = false;
+export function setTrayAvailable(value: boolean) { trayAvailable = value; }
+export function setQuitting(value: boolean) { quitting = value; }
+export function hidesToTray() { return trayAvailable && !quitting && (process.platform === 'win32' || process.platform === 'linux'); }
+export function attachCloseToTray(win: BrowserWindow) {
+  win.on('close', event => { if (hidesToTray()) { event.preventDefault(); win.hide(); } });
+}
 let themePreferences: WindowThemePreferences | undefined;
 const paintedColors = new WeakMap<BrowserWindow, string>();
 
@@ -16,34 +23,17 @@ export function initialWindowColors() {
 
 export async function flushWindowTheme(): Promise<void> { await themePreferences?.flush(); }
 
-export { TITLEBAR_HEIGHT };
-
-/**
- * Caption overlay: theme-matched background and glyphs. The native controls
- * live outside the web contents, so the renderer pushes the live CSS colours
- * through `window:set-titlebar-overlay` on every theme change. Dark is the
- * first-frame default.
- */
-export const TITLEBAR_OVERLAY = {
-  color: TITLEBAR_OVERLAY_COLOR,
-  symbolColor: TITLEBAR_SYMBOL_COLOR
-} as const;
-
-/**
- * Windows draws its caption buttons through `titleBarOverlay` (snap layouts,
- * system menu). macOS keeps its traffic lights. Linux gets neither: its
- * overlay does not repaint reliably when the colour changes, so the buttons
- * kept the old theme and never dimmed under a dialog. The renderer draws them
- * there instead (`WindowControls.svelte`), inside the page like everything else.
- */
-export const usesCaptionOverlay = process.platform === 'win32';
-
-// `#rgb`, `#rgba`, `#rrggbb` and `#rrggbbaa`. The overlay background is
-// transparent, so alpha has to be accepted here.
+// `#rgb`, `#rgba`, `#rrggbb` and `#rrggbbaa`. The window background is painted
+// from a CSS colour, so alpha has to be accepted here.
 const HEX_COLOR = /^#(?:[0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i;
 
 /**
- * Update the backing window and native caption together, including on reload.
+ * Paint the window behind the page and remember the theme it belongs to.
+ *
+ * The caption itself is drawn in the page (`WindowControls.svelte`), so there
+ * is no `titleBarOverlay` to recolour: this only keeps the frame's own colour
+ * matching the theme, so a resize or a rounded corner never flashes the
+ * platform's default grey.
  */
 export function applyTitlebarOverlay(win: BrowserWindow | null, overlay: unknown): boolean {
   if (!win || win.isDestroyed()) return false;
@@ -54,7 +44,6 @@ export function applyTitlebarOverlay(win: BrowserWindow | null, overlay: unknown
   const key = `${color}:${symbolColor}`;
   if (paintedColors.get(win) !== key) {
     win.setBackgroundColor(color);
-    if (usesCaptionOverlay) win.setTitleBarOverlay({ color, symbolColor, height: TITLEBAR_HEIGHT });
     paintedColors.set(win, key);
   }
   const theme = color === WINDOW_THEME_COLORS.dark.color ? 'dark' : color === WINDOW_THEME_COLORS.light.color ? 'light' : null;
@@ -99,6 +88,7 @@ export function setActiveWorkState(state: ActiveWorkStateInput = {}, win = getMa
 
 export async function requestMainWindowClose(win = getMainWindow()) {
   if (!win || win.isDestroyed()) return { closed: false, prompted: false };
+  if (hidesToTray()) { win.hide(); return { closed: false, prompted: false, hidden: true }; }
   const work = activeWorkByWindow.get(win.id) ?? activeWorkState;
   if (!work.active) {
     win.close();

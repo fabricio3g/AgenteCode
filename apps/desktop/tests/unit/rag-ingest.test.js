@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import { after, before, describe, it } from 'node:test';
+import Database from '../../main/sqlite.ts';
 
 import { attachmentStoreDir } from '../../main/attachment-store.ts';
 
@@ -67,7 +68,6 @@ before(async () => {
   ].join('\n'));
 
   try {
-    const Database = require('better-sqlite3');
     const probe = new Database(':memory:');
     probe.close();
   } catch (error) {
@@ -79,6 +79,7 @@ before(async () => {
 });
 
 after(() => {
+  chatDb?.closeDb();
   delete process.env.TALAMOLM_HOME;
   if (tempDir) fs.rmSync(tempDir, { recursive: true, force: true });
 });

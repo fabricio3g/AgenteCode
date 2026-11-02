@@ -133,6 +133,8 @@ impl UserInboxState {
 /// the limits (`only`, `shell_env`) but never the extra tools.
 #[derive(Default)]
 pub struct TurnTools {
+    /// Host turn identity carried outside model arguments for desktop input.
+    pub mcp_turn_id: Option<uuid::Uuid>,
     /// Tools only this turn gets (a bot's memory and handoff tools). Always kept.
     pub extra: Vec<Box<dyn crate::tools::Tool>>,
     /// When set, only these built-in tools are kept; the entry `"mcp"` also
@@ -179,6 +181,11 @@ pub(crate) struct AgentRunConfig {
     /// Compact with an LLM summary instead of trimming (user setting).
     pub smart_compaction: bool,
     pub compaction_model: Option<crate::config::SubagentModel>,
+    /// What the provider counted beyond our estimate on the previous turn (its
+    /// tokenizer, framing, the chat template). Carried per session so the
+    /// first request of a turn is gated on a calibrated number instead of a
+    /// blind char/4 estimate.
+    pub initial_gap: usize,
     /// Mid-turn user messages (parent turns only).
     pub user_inbox: Option<UserInbox>,
     /// Tools the host adds for this turn only (a bot's memory and handoff

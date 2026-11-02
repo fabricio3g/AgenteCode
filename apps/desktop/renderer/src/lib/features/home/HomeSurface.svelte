@@ -21,7 +21,10 @@
     class:justify-center={threadIsEmpty}
   >
     {#if threadIsEmpty}
-      <h1 class="empty-greeting">{copy.emptyState.greeting}</h1>
+      <!-- One headline on the composer's own column, the same three-row
+           composition every empty surface uses: what this space is for, the
+           composer, then the starter links under it. -->
+      <h1 class="empty-greeting composer-column px-3 md:px-6">{copy.emptyState.greeting}</h1>
     {/if}
     <Thread />
     <Composer />
@@ -37,27 +40,26 @@
 </div>
 
 <style>
-  /* Anchors the centred empty state. Sized to lead the composer without
-     competing with it — the composer is still where the eye should land. */
+  /* Anchors the centred empty state, on the composer's column so the headline
+     starts on the card's edge instead of floating centred above it. Same size
+     and weight as the Design dock's invitation: the composer stays the largest
+     thing on the screen. */
   .empty-greeting {
     position: relative;
     z-index: 1;
-    margin: 0 auto 1.5rem;
-    padding: 0 1rem;
-    max-width: 48rem;
+    margin-block: 0 0.75rem;
     color: var(--foreground);
-    font-size: 1.5rem;
+    font-size: 1.0625rem;
     font-weight: 600;
-    letter-spacing: -0.02em;
+    letter-spacing: -0.015em;
     line-height: 1.25;
-    text-align: center;
-    text-wrap: balance;
+    text-align: left;
+    text-wrap: pretty;
   }
 
   @media (max-width: 640px) {
     .empty-greeting {
-      margin-bottom: 1.125rem;
-      font-size: 1.25rem;
+      margin-bottom: 0.5rem;
     }
   }
 

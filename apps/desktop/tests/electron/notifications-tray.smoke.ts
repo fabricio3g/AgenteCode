@@ -1,0 +1,31 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import { app, BrowserWindow } from 'electron';
+import { attachCloseToTray, setTrayAvailable, setQuitting, requestMainWindowClose } from '../../main/window-manager.ts';
+import { registerActivityNotifications, notifyActivity, notificationAction } from '../../main/notifications.ts';
+app.disableHardwareAcceleration();
+app.commandLine.appendSwitch('in-process-gpu');
+const profile = path.join(process.cwd(), '.tmp', 'notifications-tray-profile');
+fs.mkdirSync(profile, { recursive: true }); app.setPath('userData', profile);
+app.on('window-all-closed', () => {});
+async function run() {
+  await app.whenReady();
+  let opened = '';
+  registerActivityNotifications(chatId => { opened = chatId; });
+  const win = new BrowserWindow({ show:false, webPreferences:{sandbox:true} });
+  attachCloseToTray(win); setTrayAvailable(true);
+  win.close(); assert.equal(win.isDestroyed(), false); assert.equal(win.isVisible(), false);
+  assert.equal((await requestMainWindowClose(win)).hidden, true);
+  const invoke = (_channel: string, args?: Parameters<typeof notificationAction>[0]) => notificationAction(args ?? {action:'read',id:'missing'});
+  invoke('activity_notifications_action', {action:'enable',enabled:false});
+  notifyActivity({id:'done',chatId:'chat-a',space:'home',title:'Task finished',body:'Your result is ready.'},win.webContents);
+  notifyActivity({id:'done',chatId:'chat-a',space:'home',title:'Task finished',body:'Your result is ready.'},win.webContents);
+  assert.equal(invoke('activity_notifications_list').items.length, 1);
+  invoke('activity_notifications_action',{action:'open',id:'done'});
+  assert.equal(opened,'chat-a'); assert.equal(invoke('activity_notifications_list').items[0].read,true);
+  invoke('activity_notifications_action',{action:'clear'}); assert.equal(invoke('activity_notifications_list').items.length,0);
+  setQuitting(true); await new Promise<void>(resolve => { win.once('closed',()=>resolve()); win.close(); }); assert.equal(win.isDestroyed(),true);
+  console.log('Tray/notifications smoke passed: close hides, explicit quit closes, entries deduplicate, open/read/clear work.');
+}
+run().then(()=>app.exit(0),error=>{console.error(error);app.exit(1);});

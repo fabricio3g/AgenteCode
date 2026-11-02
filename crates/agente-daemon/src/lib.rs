@@ -1,38 +1,27 @@
 //! `agente serve`: the runtime as a long-lived local service.
 //!
-//! Desktop, a second terminal (`agente attach`) and, later, bots talk to one
+//! Desktop and a second terminal (`agente attach`) talk to one
 //! runtime over a Unix socket that only this user can open, with JSON-RPC 2.0
 //! one message per line (see [`serve_connection`] for the methods).
 
-mod bot_tools;
-mod bots;
 mod client_tools;
 mod connection;
 mod project;
-mod routines;
 mod tcp;
-mod telegram;
 
-pub use bots::{spawn_bot_tracker, BotProfiles};
 pub use connection::serve_connection;
-pub use routines::spawn_scheduler;
 pub use tcp::{
     default_token_path, generate_token, load_or_create_token, serve_authenticated, serve_tcp,
 };
-pub use telegram::spawn_telegram;
 
-use std::path::{Path, PathBuf};
-use std::sync::Arc;
-
-use agente_bot::BotStore;
 use agente_runtime::RuntimeHandle;
+use std::path::{Path, PathBuf};
 use thiserror::Error;
 
-/// What a daemon serves: the runtime, and the bots that run on it.
+/// What a daemon serves.
 #[derive(Clone)]
 pub struct Service {
     pub runtime: RuntimeHandle,
-    pub bots: Arc<BotStore>,
 }
 
 #[derive(Debug, Error)]

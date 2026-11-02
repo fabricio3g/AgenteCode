@@ -15,6 +15,8 @@ use crate::extensions::skills;
 use crate::llm::{LlmClient, LlmError};
 use crate::types::{Message, Role};
 
+use super::budget::{estimate_message_tokens, estimated_message_cost, ContextBudget, COMPACT_AT};
+
 /// Error produced when LLM-based summarization fails.
 #[derive(Debug, thiserror::Error)]
 pub enum SummarizeError {
@@ -221,7 +223,10 @@ impl Summarizer for LlmSummarizer {
     }
 }
 
-/// Strategy for context compaction
+/// How a compaction trades window for recent turns.
+///
+/// Sized from a [`ContextBudget`], never from a window assumed on its own:
+/// the gate, the status meter and this strategy all read the same room.
 #[derive(Debug, Clone)]
 pub struct CompactionStrategy {
     /// Maximum allowed tokens in the context
@@ -235,21 +240,6 @@ pub struct CompactionStrategy {
     pub target_reduction: f32,
     /// Tokens reserved for the summary prompt and its output (pi-style).
     pub reserve_tokens: usize,
-    /// Approximate recent-context tokens to keep after compaction (pi-style).
-    pub keep_recent_tokens: usize,
-}
-
-impl Default for CompactionStrategy {
-    fn default() -> Self {
-        Self {
-            max_tokens: 128_000,        // Common for many models
-            keep_recent: 8,             // Keep last 8 messages
-            summarize_threshold: 0.85,  // Compact at 85% of limit
-            target_reduction: 0.6,      // Reduce to 60% when compacting
-            reserve_tokens: 16_384,     // Room for summary prompt + output
-            keep_recent_tokens: 20_000, // Approx recent context kept
-        }
-    }
 }
 
 impl CompactionStrategy {
@@ -261,29 +251,19 @@ impl CompactionStrategy {
             summarize_threshold,
             target_reduction: 0.6,
             reserve_tokens: 16_384,
-            keep_recent_tokens: 20_000,
         }
     }
 
-    /// The strategy for a model's context window, given what every request
-    /// carries besides the messages (tool schemas, the provider's tokenizer
-    /// gap). Thresholds apply to the room left for messages, and the recent
-    /// context kept never exceeds a quarter of it, so a small local window
-    /// compacts before it overflows. An unknown window (0) assumes 8k.
-    pub fn for_window(context_window: usize, overhead: usize) -> Self {
-        let window = if context_window == 0 {
-            8_000
-        } else {
-            context_window
-        };
-        let max_tokens = window.saturating_sub(overhead).max(window / 4).max(1_000);
+    /// The strategy for a budget: thresholds apply to the room left for
+    /// messages, and the summary reserve never exceeds a quarter of it.
+    pub fn from_budget(budget: &ContextBudget) -> Self {
+        let room = budget.room();
         Self {
-            max_tokens,
+            max_tokens: room,
             keep_recent: 8,
-            summarize_threshold: 0.85,
+            summarize_threshold: COMPACT_AT,
             target_reduction: 0.6,
-            reserve_tokens: 16_384usize.min(max_tokens / 4),
-            keep_recent_tokens: 20_000usize.min(max_tokens / 4),
+            reserve_tokens: budget.reserve.min(room / 4),
         }
     }
 
@@ -291,34 +271,11 @@ impl CompactionStrategy {
     /// never more than the window allows. Sized by the window alone, a
     /// conversation below its compaction target would not shrink at all.
     pub fn manual(context_window: usize, current_tokens: usize) -> Self {
-        let mut strategy = Self::for_window(context_window, 0);
+        let budget = ContextBudget::new(context_window, 0, 0, current_tokens, 0);
+        let mut strategy = Self::from_budget(&budget);
         strategy.max_tokens = strategy.max_tokens.min(current_tokens.max(1));
         strategy.keep_recent = 4;
         strategy
-    }
-
-    /// Create a strategy for smaller context windows
-    pub fn small_context() -> Self {
-        Self {
-            max_tokens: 32_000,
-            keep_recent: 6,
-            summarize_threshold: 0.8,
-            target_reduction: 0.5,
-            reserve_tokens: 8_192,
-            keep_recent_tokens: 8_000,
-        }
-    }
-
-    /// Create a strategy for large context windows
-    pub fn large_context() -> Self {
-        Self {
-            max_tokens: 200_000,
-            keep_recent: 12,
-            summarize_threshold: 0.9,
-            target_reduction: 0.7,
-            reserve_tokens: 24_576,
-            keep_recent_tokens: 32_000,
-        }
     }
 
     /// Check if compaction should be triggered
@@ -403,11 +360,6 @@ impl ContextCompactor {
         }
     }
 
-    /// Create with default strategy
-    pub fn default_strategy() -> Self {
-        Self::new(CompactionStrategy::default())
-    }
-
     /// Attach an LLM summarizer. When present, `compact_async` performs
     /// semantic summarization (pi-style); otherwise it falls back to the
     /// heuristic `compact` path.
@@ -418,7 +370,7 @@ impl ContextCompactor {
 
     /// Compact a list of messages according to the strategy
     pub fn compact(&self, messages: Vec<Message>) -> CompactionResult {
-        let original_tokens = self.estimate_tokens(&messages);
+        let original_tokens = estimate_message_tokens(&messages);
         let original_count = messages.len();
 
         // If we're under the threshold, return as-is
@@ -428,7 +380,7 @@ impl ContextCompactor {
 
         // Perform compaction
         let (compacted, summary) =
-            self.perform_compaction(messages, original_tokens, original_count, false);
+            self.perform_compaction(messages, original_tokens, original_count);
 
         CompactionResult {
             messages: compacted,
@@ -440,14 +392,13 @@ impl ContextCompactor {
     ///
     /// Used when the transcript must shrink no matter what the estimate says:
     /// manual `/compact`, and recovery after the provider rejects a request
-    /// the estimate claimed would fit. In forced mode tool results are also
-    /// eligible for truncation — they are usually the bulk of an over-limit
-    /// transcript, and the estimator undercounts them.
+    /// the estimate claimed would fit. Tool results are eligible either way —
+    /// they are usually the bulk of an over-limit transcript.
     pub fn compact_forced(&self, messages: Vec<Message>) -> CompactionResult {
-        let original_tokens = self.estimate_tokens(&messages);
+        let original_tokens = estimate_message_tokens(&messages);
         let original_count = messages.len();
         let (compacted, summary) =
-            self.perform_compaction(messages, original_tokens, original_count, true);
+            self.perform_compaction(messages, original_tokens, original_count);
         CompactionResult {
             messages: compacted,
             summary,
@@ -458,7 +409,7 @@ impl ContextCompactor {
     /// compaction. Falls back to the heuristic path when no summarizer is
     /// attached or when summarization fails, so callers always get a result.
     pub async fn compact_async(&self, messages: Vec<Message>) -> CompactionResult {
-        let original_tokens = self.estimate_tokens(&messages);
+        let original_tokens = estimate_message_tokens(&messages);
         let original_count = messages.len();
 
         if !self.strategy.should_compact(original_tokens) {
@@ -483,7 +434,7 @@ impl ContextCompactor {
         }
 
         let (compacted, summary) =
-            self.perform_compaction(messages, original_tokens, original_count, false);
+            self.perform_compaction(messages, original_tokens, original_count);
         CompactionResult {
             messages: compacted,
             summary,
@@ -494,7 +445,7 @@ impl ContextCompactor {
     /// A failed summarizer still performs the forced local trim.
     pub async fn compact_async_forced(&self, messages: Vec<Message>) -> CompactionResult {
         if let Some(summarizer) = &self.summarizer {
-            let tokens = self.estimate_tokens(&messages);
+            let tokens = estimate_message_tokens(&messages);
             let count = messages.len();
             if let Ok(result) = self
                 .perform_semantic_compaction(summarizer.as_ref(), messages.clone(), tokens, count)
@@ -560,9 +511,8 @@ impl ContextCompactor {
 
         let recent: Vec<Message> = messages[recent_start..].to_vec();
 
-        let retained_tokens = self
-            .estimate_tokens(&system_msgs)
-            .saturating_add(self.estimate_tokens(&recent));
+        let retained_tokens =
+            estimate_message_tokens(&system_msgs).saturating_add(estimate_message_tokens(&recent));
         let summary_budget = self.strategy.summary_budget(retained_tokens);
         if summary_budget == 0 {
             return Err(SummarizeError::Llm(
@@ -579,7 +529,7 @@ impl ContextCompactor {
         result.extend(recent);
         result = carry_skills(&messages, normalize_tool_messages(result));
 
-        let compressed_tokens = self.estimate_tokens(&result);
+        let compressed_tokens = estimate_message_tokens(&result);
         let tokens_saved = original_tokens.saturating_sub(compressed_tokens);
 
         let summary = Summary {
@@ -606,18 +556,13 @@ impl ContextCompactor {
         messages: Vec<Message>,
         original_tokens: usize,
         original_count: usize,
-        forced: bool,
     ) -> (Vec<Message>, Summary) {
         let target = self.strategy.target_tokens();
 
         // Keep complete assistant/tool exchanges even when the boundary falls
         // inside the tool results.
-        let tokens_from = |start: usize| -> usize {
-            messages[start..]
-                .iter()
-                .map(|m| self.estimate_message_tokens(m))
-                .sum()
-        };
+        let tokens_from =
+            |start: usize| -> usize { messages[start..].iter().map(estimated_message_cost).sum() };
         let mut keep = self.strategy.keep_recent.max(1);
         let mut recent_start = compaction_boundary(&messages, keep, 0);
         // A few large messages can hold more than the target on their own:
@@ -637,14 +582,13 @@ impl ContextCompactor {
         let budget_for_older = target.saturating_sub(recent_tokens);
 
         // Compact older messages to fit the budget
-        let (compacted_older, tokens_saved) =
-            self.compact_messages(older, budget_for_older, forced);
+        let (compacted_older, tokens_saved) = self.compact_messages(older, budget_for_older);
 
         let mut result = compacted_older;
         result.extend(recent);
         result = carry_skills(&messages, normalize_tool_messages(result));
 
-        let compressed_tokens = self.estimate_tokens(&result);
+        let compressed_tokens = estimate_message_tokens(&result);
 
         let summary = Summary {
             content: format!(
@@ -671,7 +615,6 @@ impl ContextCompactor {
         &self,
         messages: Vec<Message>,
         target_tokens: usize,
-        forced: bool,
     ) -> (Vec<Message>, usize) {
         if messages.is_empty() {
             return (messages, 0);
@@ -679,20 +622,17 @@ impl ContextCompactor {
 
         // Group messages by type for better summarization
         let mut grouped = messages;
-        let mut current_tokens: usize = grouped
-            .iter()
-            .map(|m| self.estimate_message_tokens(m))
-            .sum();
+        let mut current_tokens: usize = grouped.iter().map(estimated_message_cost).sum();
         let original_tokens = current_tokens;
 
         // Reduce until we fit the budget
         while current_tokens > target_tokens && !grouped.is_empty() {
             // Find the largest message to compact
-            if let Some(idx) = self.find_largest_message(&grouped, forced) {
+            if let Some(idx) = self.find_largest_message(&grouped) {
                 let message = &mut grouped[idx];
-                let before = self.estimate_message_tokens(message);
+                let before = estimated_message_cost(message);
                 self.compress_message(message);
-                let after = self.estimate_message_tokens(message);
+                let after = estimated_message_cost(message);
 
                 current_tokens = current_tokens.saturating_sub(before.saturating_sub(after));
 
@@ -709,7 +649,7 @@ impl ContextCompactor {
         (grouped, original_tokens.saturating_sub(current_tokens))
     }
 
-    fn find_largest_message(&self, messages: &[Message], forced: bool) -> Option<usize> {
+    fn find_largest_message(&self, messages: &[Message]) -> Option<usize> {
         // Loaded skills are durable guidance: never shrink their block, nor
         // the assistant call whose loss would orphan (and drop) the result.
         let skill_calls: HashSet<&str> = messages
@@ -726,12 +666,11 @@ impl ContextCompactor {
                     .as_ref()
                     .is_some_and(|calls| calls.iter().any(|c| skill_calls.contains(c.id.as_str())))
             })
-            // Tool results are the bulk of an over-limit transcript, but the
-            // default path leaves them intact; only a forced compaction (the
-            // estimate already proved wrong) truncates them.
-            .filter(|(_, m)| forced || m.tool_call_id.is_none())
+            // Tool results are the bulk of an over-limit transcript and the
+            // first thing worth shrinking: a grep/read-heavy conversation is
+            // almost all tool output.
             .filter(|(_, m)| !matches!(m.role, Role::System)) // Never remove system messages
-            .max_by_key(|(_, m)| self.estimate_message_tokens(m))
+            .max_by_key(|(_, m)| estimated_message_cost(m))
             .map(|(i, _)| i)
     }
 
@@ -806,30 +745,6 @@ impl ContextCompactor {
                 lines.len()
             );
         }
-    }
-
-    /// Estimate token count for a message
-    fn estimate_message_tokens(&self, message: &Message) -> usize {
-        let mut tokens = message.content.len() / 4; // Rough estimate: 1 token ≈ 4 chars
-
-        // Add overhead for tool calls
-        if let Some(tool_calls) = &message.tool_calls {
-            for tc in tool_calls {
-                tokens += tc.function.name.len() / 4;
-                tokens += tc.function.arguments.len() / 4;
-                tokens += 10; // Overhead per tool call
-            }
-        }
-
-        tokens.max(1) // At least 1 token
-    }
-
-    /// Estimate total token count for a list of messages
-    fn estimate_tokens(&self, messages: &[Message]) -> usize {
-        messages
-            .iter()
-            .map(|m| self.estimate_message_tokens(m))
-            .sum()
     }
 }
 
@@ -996,24 +911,26 @@ mod tests {
         assert_eq!(strategy.summary_budget(3_000), 1_800);
         assert_eq!(strategy.summary_budget(4_800), 0);
         assert_eq!(strategy.summary_budget(usize::MAX), 0);
-        assert_eq!(CompactionStrategy::default().summary_budget(20_000), 16_384);
+        assert_eq!(
+            CompactionStrategy::new(128_000, 8, 0.85).summary_budget(20_000),
+            16_384
+        );
     }
 
     #[test]
     fn a_small_window_leaves_room_for_the_tool_schemas() {
         // 8k window, ~4.5k of tool schemas: compaction must fire well before
         // the messages alone reach 85% of the whole window.
-        let strategy = CompactionStrategy::for_window(8_192, 4_500);
-        assert_eq!(strategy.max_tokens, 3_692);
-        assert!(strategy.should_compact(3_300));
-        assert!(!strategy.should_compact(3_000));
-        assert!(strategy.keep_recent_tokens <= strategy.max_tokens / 4);
-        // A window smaller than the old 8k floor is used as it is.
-        assert_eq!(CompactionStrategy::for_window(4_096, 0).max_tokens, 4_096);
-        // Unknown windows assume 8k; overhead never leaves less than a quarter.
-        assert_eq!(CompactionStrategy::for_window(0, 0).max_tokens, 8_000);
+        let budget = ContextBudget::new(8_192, 4_500, 0, 0, 0);
+        let strategy = CompactionStrategy::from_budget(&budget);
+        assert_eq!(strategy.max_tokens, budget.room());
+        assert!(strategy.should_compact(2_300));
+        assert!(!strategy.should_compact(2_200));
+        // The summary reserve never exceeds a quarter of the room.
+        assert!(strategy.reserve_tokens <= budget.room() / 4);
+        // A window smaller than the tools it carries still leaves a quarter.
         assert_eq!(
-            CompactionStrategy::for_window(8_000, 50_000).max_tokens,
+            CompactionStrategy::from_budget(&ContextBudget::new(8_000, 50_000, 0, 0, 0)).max_tokens,
             2_000
         );
     }
@@ -1031,7 +948,9 @@ mod tests {
             create_message(Role::Assistant, "noted second"),
             create_message(Role::User, "latest question"),
         ];
-        let compactor = ContextCompactor::new(CompactionStrategy::for_window(8_192, 4_500));
+        let compactor = ContextCompactor::new(CompactionStrategy::from_budget(
+            &ContextBudget::new(8_192, 4_500, 0, 0, 0),
+        ));
         let result = compactor.compact_forced(messages);
         assert!(
             result.summary.tokens_saved > 0,
@@ -1129,18 +1048,19 @@ mod tests {
     }
 
     #[test]
-    fn test_compaction_strategy_default() {
-        let strategy = CompactionStrategy::default();
-        assert_eq!(strategy.max_tokens, 128_000);
+    fn a_strategy_is_sized_from_the_budget() {
+        let budget = crate::context::ContextBudget::new(128_000, 20_000, 0, 0, 8_192);
+        let strategy = CompactionStrategy::from_budget(&budget);
+        assert_eq!(strategy.max_tokens, budget.room());
         assert_eq!(strategy.keep_recent, 8);
-        // Should compact at 85% of max_tokens = 108,800
-        assert!(strategy.should_compact(110_000));
-        assert!(!strategy.should_compact(100_000));
+        // The gate and the meter are the same line.
+        assert!(strategy.should_compact((budget.room() as f32 * 0.86) as usize));
+        assert!(!strategy.should_compact((budget.room() as f32 * 0.80) as usize));
     }
 
     #[test]
     fn test_compaction_no_compaction_needed() {
-        let compactor = ContextCompactor::default_strategy();
+        let compactor = ContextCompactor::new(CompactionStrategy::new(128_000, 8, 0.85));
         let messages = vec![
             create_message(Role::User, "Hello"),
             create_message(Role::Assistant, "Hi there!"),
@@ -1159,7 +1079,6 @@ mod tests {
             summarize_threshold: 0.5,
             target_reduction: 0.6,
             reserve_tokens: 256,
-            keep_recent_tokens: 200,
         });
 
         let mut messages = vec![];
@@ -1187,10 +1106,9 @@ mod tests {
 
     #[test]
     fn test_estimate_message_tokens() {
-        let compactor = ContextCompactor::default_strategy();
         let message = create_message(Role::User, "Hello world, this is a test message.");
 
-        let tokens = compactor.estimate_message_tokens(&message);
+        let tokens = estimated_message_cost(&message);
         assert!(tokens > 0);
         assert!(tokens < 100); // Reasonable upper bound
     }
@@ -1207,7 +1125,6 @@ mod tests {
             summarize_threshold: 0.9, // gate at 3.6k: the transcript stays
             target_reduction: 0.5,    // target 2k: forced mode still shrinks
             reserve_tokens: 256,
-            keep_recent_tokens: 200,
         });
         let big_output: String = (0..400)
             .map(|i| format!("src/file{i}.rs:1:match {i}\n"))
@@ -1318,7 +1235,6 @@ mod tests {
             summarize_threshold: 0.9,
             target_reduction: 0.5,
             reserve_tokens: 256,
-            keep_recent_tokens: 200,
         });
         let skill = skill_block("review", 300);
         let grep: String = (0..400).map(|i| format!("src/f{i}.rs:1:x\n")).collect();
@@ -1376,7 +1292,6 @@ mod tests {
             summarize_threshold: 0.9,
             target_reduction: 0.5,
             reserve_tokens: 256,
-            keep_recent_tokens: 200,
         });
         let messages = vec![
             create_message(Role::System, "You are a helpful agent."),
@@ -1446,7 +1361,6 @@ mod tests {
             summarize_threshold: 0.5,
             target_reduction: 0.6,
             reserve_tokens: 256,
-            keep_recent_tokens: 200,
         });
         let mut messages = vec![create_message(Role::System, "You are a helpful agent.")];
         for i in 0..20 {
@@ -1498,7 +1412,7 @@ mod tests {
         let strategy = CompactionStrategy {
             max_tokens: 100_000,
             keep_recent: 2,
-            ..CompactionStrategy::default()
+            ..CompactionStrategy::new(100_000, 2, 0.9)
         };
         assert!(!strategy.should_compact(crate::context::estimate_message_tokens(&messages)));
         let compactor = ContextCompactor::new(strategy).with_summarizer(Arc::new(FakeSummarizer {
@@ -1523,7 +1437,6 @@ mod tests {
             summarize_threshold: 0.5,
             target_reduction: 0.6,
             reserve_tokens: 256,
-            keep_recent_tokens: 200,
         })
         .with_summarizer(Arc::new(FakeSummarizer {
             summary: "STRUCTURED SUMMARY".to_string(),
@@ -1573,7 +1486,6 @@ mod tests {
             summarize_threshold: 0.5,
             target_reduction: 0.6,
             reserve_tokens: 256,
-            keep_recent_tokens: 200,
         })
         .with_summarizer(Arc::new(FakeSummarizer {
             summary: "SUMMARY".to_string(),
@@ -1604,7 +1516,6 @@ mod tests {
             summarize_threshold: 0.5,
             target_reduction: 0.6,
             reserve_tokens: 256,
-            keep_recent_tokens: 200,
         })
         .with_summarizer(Arc::new(FakeSummarizer {
             summary: String::new(),
@@ -1632,11 +1543,13 @@ mod tests {
 
     #[tokio::test]
     async fn empty_semantic_summary_falls_back_without_discarding_recent_context() {
-        let compactor = ContextCompactor::new(CompactionStrategy::for_window(2_000, 0))
-            .with_summarizer(Arc::new(FakeSummarizer {
-                summary: " \n ".into(),
-                fail: false,
-            }));
+        let compactor = ContextCompactor::new(CompactionStrategy::from_budget(
+            &ContextBudget::new(2_000, 0, 0, 0, 0),
+        ))
+        .with_summarizer(Arc::new(FakeSummarizer {
+            summary: " \n ".into(),
+            fail: false,
+        }));
         let mut messages = vec![create_message(
             Role::User,
             &"Earlier evidence. ".repeat(500),

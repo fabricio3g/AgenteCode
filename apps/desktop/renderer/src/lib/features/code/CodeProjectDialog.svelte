@@ -21,7 +21,7 @@
   import { projectInfo, mcpStatus, type ProjectInfo, type McpServer } from './code-ipc';
   import { codeStore } from './code.svelte';
   import type { CodeDialog } from './code-commands';
-  import BotModelPicker from '$lib/features/bots/BotModelPicker.svelte';
+  import ModelOverridePicker from '$lib/features/shared/ModelOverridePicker.svelte';
   import SubagentCard from './SubagentCard.svelte';
   import CompactionReport from './CompactionReport.svelte';
   import { appStore } from '$lib/stores/app.svelte';
@@ -167,7 +167,7 @@
             <p class="row-detail clamp-2">{agent.name === '*' ? $t('code.project.agents.defaultHint') : agent.description}</p>
           </div>
           <div class="agent-pick">
-            <BotModelPicker compact value={pin} onchange={(next) => chooseModel(agent.name, next)} />
+            <ModelOverridePicker compact value={pin} onchange={(next) => chooseModel(agent.name, next)} />
             {#if pin}<Button variant="plain" type="button" class={uiClass("agent-reset", "ui-local-323c2339")} onclick={() => chooseModel(agent.name, null)}>{$t('code.project.agents.reset')}</Button>{/if}
           </div>
         </div>
@@ -213,7 +213,7 @@
         <span class="min-w-0 flex-1">
           <span class="row-title">{$t('code.compaction.model')}</span>
         </span>
-        <div class="model-cell"><BotModelPicker compact bind:value={settings.compaction_model} /></div>
+        <div class="model-cell"><ModelOverridePicker compact bind:value={settings.compaction_model} /></div>
       </div>
       <div class="row" title={$t('code.compaction.settingsHint')}>
         <span class="min-w-0 flex-1">

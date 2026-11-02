@@ -32,7 +32,7 @@ use crate::subagent::types::{
 };
 use crate::subagent::worktree;
 use crate::tools::ToolExecutionContext;
-use crate::types::{AgentMode, Message, Role, ToolCall, ToolDefinition};
+use crate::types::{Message, Role, ToolCall, ToolDefinition};
 
 /// Bounded wait for `task_output` when the model omits `timeout_ms` (or passes
 /// 0, which used to block forever in event silence).
@@ -80,7 +80,6 @@ pub struct SubagentHostConfig {
     pub project_dir: String,
     pub model: String,
     pub thinking_level: String,
-    pub parent_mode: AgentMode,
     /// Shared subagent registry. The TUI holds the same handle so the status
     /// bar counter and `/subagents` popup observe the live set of children.
     pub registry: SubagentRegistry,
@@ -957,6 +956,9 @@ impl SubagentHost {
             // Children always trim: they are short-lived and cheap.
             smart_compaction: false,
             compaction_model: None,
+            // A child starts with no gap of its own: its first request is
+            // calibrated from its own model on the next step.
+            initial_gap: 0,
             user_inbox: None,
             extra_tools: Vec::new(),
             only_tools: host.inner.config.only_tools.clone(),
@@ -1382,10 +1384,12 @@ fn forward_child_events(
                 cost_estimated,
                 subagent_id: nested.or_else(|| Some(subagent_id.clone())),
             }),
-            // Not relevant from a child loop.
+            // Not relevant from a child loop. A child's context budget stays
+            // with the child: the parent's meter measures the parent.
             AgentEvent::Thinking
             | AgentEvent::ReasoningDelta(_)
             | AgentEvent::TurnUsage { .. }
+            | AgentEvent::ContextBudget { .. }
             | AgentEvent::UserMessagesInjected { .. }
             | AgentEvent::Retry { .. }
             | AgentEvent::ModelsDiscovered { .. }
@@ -1534,7 +1538,6 @@ mod tests {
                 project_dir: ".".into(),
                 model: "test-model".into(),
                 thinking_level: "off".into(),
-                parent_mode: crate::types::AgentMode::Build,
                 registry,
             },
             2,
@@ -2214,7 +2217,6 @@ mod tests {
                 project_dir: ".".into(),
                 model: "test-model".into(),
                 thinking_level: "off".into(),
-                parent_mode: crate::types::AgentMode::Build,
                 registry,
             },
             2,

@@ -820,7 +820,6 @@ mod tests {
             summarize_threshold: 0.9,
             target_reduction: 0.5,
             reserve_tokens: 256,
-            keep_recent_tokens: 200,
         };
 
         let (removed, saved) = state.compact_conversation(strategy);

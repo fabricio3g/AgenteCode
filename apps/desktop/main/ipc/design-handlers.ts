@@ -3,6 +3,7 @@
 // main/design/workspace.ts, which jails paths to <app data>/designs/<chatId>.
 
 import fs from 'node:fs/promises';
+import { runBlenderRequest } from '../design/blender.ts';
 import path from 'node:path';
 import { dialog, shell, type IpcMain, type IpcMainInvokeEvent } from 'electron';
 import { getAppPaths } from '../paths.ts';
@@ -26,6 +27,7 @@ function changed(event: IpcMainInvokeEvent, chatId: string, paths: string[]) {
 }
 
 export function registerDesignHandlers(ipcMain: IpcMain): void {
+  ipcMain.handle('design_3d', runBlenderRequest);
   ipcMain.handle('design_tool', (event, args: { chatId?: unknown; name?: unknown; args?: Record<string, unknown> } = {}): DesignToolResult => {
     if (!isDesignFileTool(args.name)) return { ok: false, content: `Unknown design tool: ${String(args.name)}` };
     try {

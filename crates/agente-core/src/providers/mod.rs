@@ -12,6 +12,7 @@ use crate::catalog::{
 use crate::llm::{LlmError, StreamEvent, Usage};
 use crate::types::{Message, ToolDefinition};
 
+mod billing;
 mod cache;
 pub mod google;
 pub mod llamacpp;
@@ -715,6 +716,7 @@ fn resolve_known_model_info(
         m.limits = effective_limits(&m.limits);
         apply_catalog_thinking(&mut m, catalog, provider_id, model_id);
         apply_catalog_inputs(&mut m, catalog, provider_id, model_id);
+        apply_catalog_cost(&mut m, catalog, provider_id, model_id);
         return m;
     }
 
@@ -722,6 +724,7 @@ fn resolve_known_model_info(
         m.limits = effective_limits(&m.limits);
         apply_catalog_thinking(&mut m, catalog, provider_id, model_id);
         apply_catalog_inputs(&mut m, catalog, provider_id, model_id);
+        apply_catalog_cost(&mut m, catalog, provider_id, model_id);
         return m;
     }
 
@@ -736,7 +739,38 @@ fn resolve_known_model_info(
         m.limits = effective_limits(&limits);
     }
     apply_catalog_thinking(&mut m, catalog, provider_id, model_id);
+    apply_catalog_cost(&mut m, catalog, provider_id, model_id);
     m
+}
+
+/// Give a model the price models.dev knows, when nothing else priced it.
+///
+/// A model added by id — the common way to add a new or self-hosted one —
+/// carries `ModelConfig.cost: None`, which the registry turns into
+/// `ModelCost::default()`: unpriced. models.dev usually knows the rate, and
+/// without this overlay every surface had to show `+` (TUI) or nothing
+/// (desktop) for a model that is in fact priced, while the model picker read
+/// the price through its own path. An explicit configured price always wins,
+/// and a price a live `/models` reported is kept as it is.
+fn apply_catalog_cost(
+    m: &mut ModelInfo,
+    catalog: Option<&ModelCatalog>,
+    provider_id: &str,
+    model_id: &str,
+) {
+    if m.cost.is_priced() {
+        return;
+    }
+    let Some(cm) = catalog.and_then(|cat| {
+        cat.find_model(provider_id, model_id)
+            .or_else(|| cat.find_model(provider_id, &m.id))
+            .or_else(|| cat.find_model(provider_id, &m.api_id))
+    }) else {
+        return;
+    };
+    if cm.cost.is_priced() {
+        m.cost = cm.cost.clone();
+    }
 }
 
 /// Add the input kinds models.dev lists to a model the provider described
@@ -890,6 +924,14 @@ pub fn enrich_discovered_model(
 
     // Always re-apply catalog thinking (covers id variants / late-loaded catalog).
     apply_catalog_thinking(
+        &mut resolved,
+        catalog,
+        &discovered.provider_id,
+        &discovered.id,
+    );
+    // A live list that carried no `pricing` (most gateways) is not a free
+    // model: take models.dev's rate rather than reporting no price at all.
+    apply_catalog_cost(
         &mut resolved,
         catalog,
         &discovered.provider_id,

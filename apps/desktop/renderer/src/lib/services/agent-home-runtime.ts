@@ -2,7 +2,8 @@
 import type { AgentTaskResult, RunAgentTaskArgs } from './agent-types';
 import type { Attachment, ClientToolCall, Message, RuntimeEvent, SessionSnapshot, TurnOutcome, Usage } from '$shared/agente-protocol.gen';
 import type { HomeRuntimeEvent, HomeRuntimeMeta } from '$shared/home-runtime';
-import { invoke, listen } from './bridge';
+import { invoke } from './bridge';
+import { watchHomeRun } from './home-runtime-events';
 import { loadAppConfig } from '$lib/utils/storage';
 import { resolveAgentRunPlan } from './agent-run-plan';
 import { createAgentRun, emitSteps, injectLiveEvidence } from './agent-run-context';
@@ -13,11 +14,14 @@ import { hasEnoughResearchEvidence } from './research-pipeline';
 import { humanizeAgentError } from '$lib/utils/errors';
 import { stripToolCallArtifacts } from './agent-parsing';
 import { uid } from './agent-tool-dispatch';
+import { addCallSpend, emptySpend } from '$shared/accounting';
+import { RuntimeGenerationTimer } from '$shared/generation-speed';
+import { contextBreakdown } from '$shared/context-breakdown';
 
 const MUTATING = /^(?:write_|edit_|delete_|create_|domain_write$|preview_project$|browser_(?:open|click|fill|press|back|scroll)|design_(?:write|edit|snapshot)$)/;
 function emptyMessage(role: Message['role'], content: string): Message { return { role, content }; }
 export function canContinueHomeHistory(meta: HomeRuntimeMeta | undefined, ids: string[]): boolean {
-  return !!meta && meta.historyIds.length === ids.length - 1 && meta.historyIds.every((id, index) => id === ids[index]);
+  return !!meta && !meta.goalPending && meta.historyIds.length === ids.length - 1 && meta.historyIds.every((id, index) => id === ids[index]);
 }
 const MAX_REQUEST_IMAGES = 20;
 
@@ -88,11 +92,14 @@ async function importImages(images: ToolReply['images']): Promise<Attachment[]> 
  * context meter's reading current. Rust runs the loop; this only reacts.
  */
 class HomeTurn {
+  computerEnabled = false;
   text = '';
   reasoning = '';
   status: TurnOutcome['status'] = 'completed';
   error: string | undefined;
   meta: HomeRuntimeMeta | undefined;
+  latestContextBreakdown: HomeRuntimeMeta['contextBreakdown'];
+  latestContextBudget: { used: number; room: number } | undefined;
   activeRunId = '';
   hooks: Hooks | undefined;
   state: ReturnType<typeof createPolicyState> | undefined;
@@ -100,6 +107,19 @@ class HomeTurn {
   systemPrompt: string | undefined;
   #waiting: { resolve: (settled: Settled) => void; reject: (error: Error) => void } | undefined;
   readonly #calls = new Map<string, AbortController>();
+  readonly spend = emptySpend();
+  readonly #generationTimer = new RuntimeGenerationTimer();
+  #hasCallUsage = false;
+  #unwatch: (() => void) | undefined;
+
+  async watch(runId: string): Promise<void> {
+    this.#unwatch?.();
+    this.#unwatch = undefined;
+    this.activeRunId = runId;
+    this.#unwatch = await watchHomeRun(runId, event => this.onRuntimeEvent(event));
+  }
+
+  dispose(): void { this.#unwatch?.(); this.#unwatch = undefined; }
 
   constructor(
     readonly args: RunAgentTaskArgs,
@@ -112,11 +132,18 @@ class HomeTurn {
     if (this.meta) this.args.onRuntime?.({ ...this.meta, files: { ...this.run.ctx.files } });
   }
 
-  #usage(usage: Usage): void {
+  #usage(usage: Usage, call = false, outputStreamMs?: number): void {
     const run = this.run;
-    run.usage = { prompt_tokens: usage.context_tokens || usage.prompt_tokens + usage.cache_read_tokens + usage.cache_creation_tokens, completion_tokens: usage.completion_tokens };
+    // A turn snapshot is not another call and cannot replace its output timing.
+    if (!call && this.#hasCallUsage) return;
+    this.#hasCallUsage ||= call;
+    run.usage = {
+      prompt_tokens: usage.context_tokens || usage.prompt_tokens + usage.cache_read_tokens + usage.cache_creation_tokens,
+      completion_tokens: usage.completion_tokens,
+      ...(outputStreamMs === undefined ? {} : { timings: { output_stream_ms: outputStreamMs } })
+    };
     this.args.onUsage?.(run.usage);
-    if (this.meta && run.usage.prompt_tokens) {
+    if (this.meta && !this.latestContextBudget && run.usage.prompt_tokens) {
       Object.assign(this.meta, { contextTokens: run.usage.prompt_tokens, estimated: false });
       this.updateMeta();
     }
@@ -148,10 +175,21 @@ class HomeTurn {
       this.text = '';
       run.turn += 1;
       if (this.state) startThinkStep(run, this.state, run.turn);
+      this.args.onProgress?.('Thinking');
+    },
+    generation_progress: (event) => {
+      if (event.output_bytes > 0) this.args.onProgress?.(event.tool_name ? 'Preparing a tool' : 'Writing response');
     },
     retry: (event) => this.args.onProgress?.(`Retrying (${event.attempt}/${event.max_attempts})`),
+    context_budget: (event) => {
+      this.latestContextBudget = { used: event.used, room: event.room };
+      this.latestContextBreakdown = contextBreakdown(event);
+      if (this.meta) {
+        Object.assign(this.meta, { contextTokens: event.used, contextWindow: event.room, estimated: true, contextBreakdown: this.latestContextBreakdown });
+        this.updateMeta();
+      }
+    },
     usage: (event) => this.#usage(event.usage),
-    call_usage: (event) => this.#usage(event.usage),
     compaction_started: () => {
       this.run.steps.push({ id: uid('compact'), type: 'thinking', label: 'Compacting context', status: 'running' });
       this.args.onProgress?.('Compacting context');
@@ -162,18 +200,37 @@ class HomeTurn {
     turn_cancelled: (event) => { this.status = 'cancelled'; this.text ||= event.partial_text; }
   };
 
-  receive(event: RuntimeEvent): void {
+  recordSpend(event: Extract<RuntimeEvent, { type: 'call_usage' }>): void {
+    addCallSpend(this.spend, event);
+    this.args.onSpend?.({ ...this.spend });
+  }
+
+  receive(event: RuntimeEvent, at: number): void {
+    const duration = this.#generationTimer.observe(event, at);
+    if (event.type === 'call_usage') {
+      this.recordSpend(event);
+      this.#usage(event.usage, true, duration);
+      return;
+    }
     (this.#handlers[event.type] as ((event: RuntimeEvent) => void) | undefined)?.(event);
   }
 
   /** Main's event for this turn (events from an earlier retry attempt are ignored). */
   onRuntimeEvent(event: HomeRuntimeEvent): void {
     if (event.runId !== this.activeRunId) return;
-    if (event.type === 'event') this.receive(event.envelope.event);
+    if (event.type === 'event') {
+      // A child's request has its own context; it must not replace the
+      // parent's breakdown in the composer.
+      if (event.envelope.parent_run_id) {
+        if (event.envelope.event.type === 'call_usage') this.recordSpend(event.envelope.event);
+        return;
+      }
+      this.receive(event.envelope.event, Date.parse(event.envelope.timestamp));
+    }
     else if (event.type === 'outcome') this.#waiting?.resolve(event);
     else if (event.type === 'error') this.#waiting?.reject(new Error(event.message));
     else if (event.type === 'cancel') { this.#calls.get(event.call.request_id)?.abort(); this.#calls.delete(event.call.request_id); }
-    else void this.#answer(event.call);
+    else void this.#answer(event.call).catch(error => this.#waiting?.reject(new Error(humanizeAgentError(error))));
   }
 
   async #execute(call: ClientToolCall, signal: AbortSignal): Promise<ToolReply> {
@@ -191,13 +248,13 @@ class HomeTurn {
     const callController = new AbortController();
     this.#calls.set(call.request_id, callController);
     const runId = this.activeRunId;
-    const live = () => !this.controller.signal.aborted && !callController.signal.aborted;
+    const live = () => runId === this.activeRunId && !this.controller.signal.aborted && !callController.signal.aborted;
     const reply = (content: string, isError: boolean, attachments: Attachment[] = []) => invoke('home_runtime_result', { runId, result: { session_id: call.session_id, turn_id: call.turn_id, request_id: call.request_id, content, is_error: isError, attachments } });
     try {
       const result = await this.#execute(call, callController.signal);
       if (live()) await reply(result.content, !!result.isError, await importImages(result.images));
     } catch (error) {
-      if (live()) await reply(String(error), true).catch(() => {});
+      if (live()) await reply(String(error), true);
     } finally {
       this.#calls.delete(call.request_id);
     }
@@ -240,7 +297,7 @@ function homeResult(turn: HomeTurn): AgentTaskResult {
     content, reasoning: turn.reasoning, steps: run.steps, artifact: run.artifacts.at(-1) || null, artifacts: run.artifacts, sources: run.sources,
     outcome: error ? 'failed' : stopped ? 'stopped' : 'completed',
     stopReason: error ? 'error' : stopped ? (turn.controller.signal.aborted ? 'none' : 'timeout') : run.stopReason,
-    ...(error ? { error } : {}), ...(run.usage ? { usage: run.usage } : {})
+    ...(error ? { error } : {}), ...(run.usage ? { usage: run.usage } : {}), spend: { ...turn.spend }
   };
 }
 
@@ -272,15 +329,22 @@ async function startAttempt(turn: HomeTurn, attempt: Attempt): Promise<{ session
   const plan = run.plan;
   const provider = plan.localMode ? 'local' : plan.providerName;
   const { wrapUp, ...start } = attempt;
-  turn.activeRunId = crypto.randomUUID();
+  await turn.watch(crypto.randomUUID());
+  turn.controller.signal.throwIfAborted();
+  turn.latestContextBudget = undefined;
+  turn.latestContextBreakdown = undefined;
   const started = await invoke<{ sessionId: string; turnId: string; conversationIndex?: number; contextWindow: number }>('home_runtime_start', {
     runId: turn.activeRunId, ...start, provider, model: plan.activeModel, thinkingLevel: args.reasoningLevel || 'auto',
     localSelection: plan.localMode ? { modelPath: run.config.llm?.local?.selected_model_path || '', baseUrl: run.config.llm?.local?.base_url || '' } : undefined,
-    policy: remainingPolicy(turn, wrapUp), tools: wrapUp ? [] : toolManifest(turn.tools)
+    policy: remainingPolicy(turn, wrapUp), tools: wrapUp ? [] : toolManifest(turn.tools),
+    chatId: args.chatId, computerEnabled: !wrapUp && turn.computerEnabled
   });
   if (!started) throw new Error('The agent runtime did not start the turn.');
-  turn.meta = { sessionId: started.sessionId, revision: turn.meta?.revision || args.homeRuntime?.revision || 0, provider, model: plan.activeModel, contextWindow: started.contextWindow, historyIds: args.historyIds || [], files: run.ctx.files };
-  if (run.usage?.prompt_tokens) Object.assign(turn.meta, { contextTokens: run.usage.prompt_tokens, estimated: false });
+  // Runtime events can arrive while the start request is in flight.
+  const budget = turn.latestContextBudget as { used: number; room: number } | undefined;
+  turn.meta = { sessionId: started.sessionId, revision: turn.meta?.revision || args.homeRuntime?.revision || 0, provider, model: plan.activeModel, contextWindow: budget?.room ?? started.contextWindow, historyIds: args.historyIds || [], files: run.ctx.files, contextBreakdown: turn.latestContextBreakdown };
+  if (budget) Object.assign(turn.meta, { contextTokens: budget.used, estimated: true });
+  else if (run.usage?.prompt_tokens) Object.assign(turn.meta, { contextTokens: run.usage.prompt_tokens, estimated: false });
   turn.updateMeta();
   return started;
 }
@@ -326,8 +390,17 @@ async function driveTurns(turn: HomeTurn, onIndex: (index: number | undefined) =
   const history = await wireMessages(args);
   injectLiveEvidence(run);
   const resume = canContinueHomeHistory(args.homeRuntime, args.historyIds || []) || args.forkIndex !== undefined;
-  const sessionId = resume ? args.homeRuntime?.sessionId : undefined;
-  let next: Attempt | undefined = { sessionId, forkIndex: args.forkIndex, conversation: sessionId ? undefined : history, prompt: history.at(-1), systemPrompt: turn.systemPrompt ?? homeSystemPrompt(run) };
+  let sessionId = resume || args.homeRuntime?.goalPending ? args.homeRuntime?.sessionId : undefined;
+  // A history edit starts a fresh runtime session. Carry its goal forward
+  // without changing the original session or rewriting its transcript.
+  if (!sessionId && args.homeRuntime?.sessionId) {
+    const goal = await invoke<{ objective: string; status: 'active' | 'completed' } | null>('agente_goal_get', { sessionId: args.homeRuntime.sessionId });
+    if (goal) {
+      sessionId = crypto.randomUUID();
+      await invoke('agente_goal_set', { sessionId, ...goal });
+    }
+  }
+  let next: Attempt | undefined = { sessionId, forkIndex: args.forkIndex, conversation: resume ? undefined : history, prompt: history.at(-1), systemPrompt: turn.systemPrompt ?? homeSystemPrompt(run) };
   let budgetNotice = '';
   for (let attempt = 0; next; attempt += 1) {
     const done = turn.settled();
@@ -366,13 +439,13 @@ export async function runHomeRuntime(args: RunAgentTaskArgs, space?: SpaceRuntim
   run.ctx.files = { ...(args.homeRuntime?.files || {}) };
   const turn = new HomeTurn(args, run, args.noTools ? new Map() : space ? space.tools(run) : createHomeTools(run, true).tools, controller);
   turn.systemPrompt = space?.systemPrompt;
+  turn.computerEnabled = !space && !args.noTools;
   let bootstrapped = false;
   try { bootstrapped = args.noTools || space ? false : await runResearchBootstrap(run); } catch (error) { args.signal?.removeEventListener('abort', abort); throw error; }
   if (!space) {
     turn.state = createPolicyState(run, bootstrapped, plan.isResearchChat && bootstrapped && hasEnoughResearchEvidence(plan.researchMode, run.sources));
     turn.hooks = createHomeHooks(run, turn.state);
   }
-  const unlisten = await listen<HomeRuntimeEvent>('home_runtime_event', (event) => turn.onRuntimeEvent(event));
   controller.signal.addEventListener('abort', turn.cancel, { once: true });
   let conversationIndex: number | undefined;
   try {
@@ -382,7 +455,7 @@ export async function runHomeRuntime(args: RunAgentTaskArgs, space?: SpaceRuntim
     if (controller.signal.aborted) turn.status = 'cancelled';
     else { turn.status = 'failed'; turn.error = humanizeAgentError(error); }
   } finally {
-    turn.cancel(); unlisten(); args.signal?.removeEventListener('abort', abort); controller.signal.removeEventListener('abort', turn.cancel);
+    turn.cancel(); turn.dispose(); args.signal?.removeEventListener('abort', abort); controller.signal.removeEventListener('abort', turn.cancel);
     for (const step of run.steps) if (step.status === 'running') step.status = turn.status === 'failed' ? 'error' : 'done';
   }
   await space?.finished?.(turn.status).catch(() => {});

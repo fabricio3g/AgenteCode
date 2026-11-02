@@ -176,6 +176,33 @@ impl QueuedMessage {
     }
 }
 
+/// The context budget the loop last reported (`AgentEvent::ContextBudget`).
+///
+/// One source for the status meter: `used` over `room`, where `room` is the
+/// window minus the tool schemas, the tokenizer gap and the reply reserve —
+/// the same room the compaction gate compares against. The meter used to show
+/// a provider prompt over the bare window, so its amber line and the
+/// compaction line never met.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct ContextState {
+    pub used: u32,
+    pub room: u32,
+    pub window: u32,
+    pub tool_tokens: u32,
+    /// What the provider counted beyond our estimate last time. Carried into
+    /// the next turn so its first request is gated on a calibrated number.
+    pub gap: u32,
+    /// `used` came from the provider, not our estimate.
+    pub measured: bool,
+}
+
+impl ContextState {
+    /// The loop reported a budget (a turn has run against this model).
+    pub fn is_known(&self) -> bool {
+        self.room > 0
+    }
+}
+
 /// What the session's model calls cost, summed per call from
 /// `AgentEvent::CallUsage` (parent and subagents alike).
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -261,11 +288,13 @@ impl Spend {
     }
 }
 
-/// `$0.004` below a cent, `$0.42` / `$12.30` above.
+/// `$0.004` below a dollar, `$12.30` above, `<$0.001` under a tenth of a
+/// cent. The same rule as the desktop's `spendCostLabel` — one number, one
+/// rendering per surface, and the two surfaces agree.
 pub fn format_usd(usd: f64) -> String {
     if usd > 0.0 && usd < 0.001 {
         "<$0.001".to_string()
-    } else if usd > 0.0 && usd < 0.01 {
+    } else if usd < 1.0 {
         format!("${usd:.3}")
     } else {
         format!("${usd:.2}")
@@ -393,6 +422,9 @@ pub struct AgentRuntimeState {
     /// Turn-scoped override set by the approval popup's "Approve all".
     /// Reset to `auto_approve_persistent` at the start of every turn.
     pub auto_approve_runtime: bool,
+    /// What the loop last reported about the context: the same numbers the
+    /// compaction gate uses. The status meter draws this and nothing else.
+    pub context: ContextState,
     /// Current context size in tokens (estimated via `estimate_message_tokens`
     /// against `state.session.conversation`). Updated on `Done`/`Cancelled`/
     /// `ContextCompacted` events and after `/compact` so the status bar always
@@ -472,6 +504,7 @@ impl Default for AgentRuntimeState {
             auto_approve_persistent: false,
             auto_approve_runtime: false,
             auto_mode: false,
+            context: ContextState::default(),
             total_tokens: 0,
             context_measured: false,
             last_turn_prompt_tokens: 0,
@@ -741,6 +774,29 @@ impl AgentRuntimeState {
         self.context_measured = false;
     }
 
+    /// Adopt the budget the loop sent before a request: the transcript size,
+    /// the room it is measured against, and whether the number is measured.
+    pub fn record_budget(
+        &mut self,
+        used: u32,
+        room: u32,
+        window: u32,
+        tool_tokens: u32,
+        gap: u32,
+        measured: bool,
+    ) {
+        self.context = ContextState {
+            used,
+            room,
+            window,
+            tool_tokens,
+            gap,
+            measured,
+        };
+        self.total_tokens = used;
+        self.context_measured = measured;
+    }
+
     /// Adopt the provider's size of the last request's whole prompt.
     pub fn record_context(&mut self, context_tokens: u32) {
         if context_tokens > 0 {
@@ -915,6 +971,12 @@ mod tests {
         );
         assert_eq!(super::format_usd(12.3), "$12.30");
         assert_eq!(super::format_usd(0.0004), "<$0.001", "never a fake $0.000");
+        // The same table the desktop asserts in `accounting.spec.ts`: three
+        // decimals below a dollar, two above, so `$0.042` reads the same on
+        // both surfaces.
+        assert_eq!(super::format_usd(0.042), "$0.042");
+        assert_eq!(super::format_usd(0.004), "$0.004");
+        assert_eq!(super::format_usd(1.0), "$1.00");
     }
 
     #[test]
@@ -933,7 +995,7 @@ mod tests {
         let mut estimated = super::Spend::default();
         estimated.record(1_000, 100, 0, 0, Some(0.02));
         estimated.estimated_calls = 1;
-        assert_eq!(estimated.label().as_deref(), Some("~$0.02"));
+        assert_eq!(estimated.label().as_deref(), Some("~$0.020"));
 
         // 100% only when every prompt token really came from the cache.
         let mut all = super::Spend::default();

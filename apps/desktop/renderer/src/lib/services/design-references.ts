@@ -14,14 +14,16 @@ const DATA_IMAGE = /^data:image\/[a-z0-9.+-]+;base64,/i;
 export function referenceImages(message: RequestMessage | undefined): Array<{ name: string; data: string }> {
   return (message?.attachments ?? []).flatMap((attachment) => {
     const prefix = attachment.base64?.match(DATA_IMAGE)?.[0];
-    if (attachment.kind !== 'image' || !prefix || !attachment.base64) return [];
-    return [{ name: attachment.name || 'image', data: attachment.base64.slice(prefix.length) }];
+    if ((attachment.kind !== 'image' && !prefix) || !attachment.base64) return [];
+    const data = prefix ? attachment.base64.slice(prefix.length) : attachment.base64;
+    if (!data || !/^[A-Za-z0-9+/]+={0,2}$/.test(data)) return [];
+    return [{ name: attachment.name || 'image', data }];
   });
 }
 
 /**
  * Copy the images of this turn's message into the chat's `references/` folder.
- * Returns the workspace paths; an image main refuses is skipped, not fatal.
+ * Returns the workspace paths; a refused image stops the turn with its reason.
  */
 export async function saveReferenceImages(chatId: string, messages: RequestMessage[]): Promise<string[]> {
   const latest = [...messages].reverse().find((message) => message.role === 'user');
@@ -30,8 +32,8 @@ export async function saveReferenceImages(chatId: string, messages: RequestMessa
     try {
       const added = await invoke<DesignReferenceAdded>('design_manage', { chatId, action: 'add_reference', name: image.name, data: image.data });
       saved.push(added.path);
-    } catch {
-      // Unreadable or oversized: the message still carries the picture to a vision model.
+    } catch (error) {
+      throw new Error(`Could not attach design reference ${image.name}: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
   return saved;

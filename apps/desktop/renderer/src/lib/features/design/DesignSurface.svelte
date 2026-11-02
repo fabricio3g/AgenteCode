@@ -31,6 +31,7 @@
   import { copy } from '$lib/copy';
   import { invoke } from '$lib/services/bridge';
   import DesignCanvas from './DesignCanvas.svelte';
+  import Design3DPanel from './Design3DPanel.svelte';
   import DesignHandoffDialog from './DesignHandoffDialog.svelte';
   import DesignHandoffItems from './DesignHandoffItems.svelte';
   import DesignInspector from './DesignInspector.svelte';
@@ -61,6 +62,12 @@
 
   const chat = $derived(appStore.currentChat?.contextMode === 'design' ? appStore.currentChat : null);
   const threadIsEmpty = $derived(!(appStore.currentChat?.messages?.length));
+  let studio = $state<'pages' | '3d'>('pages');
+  let livePreview = $state(localStorage.getItem('agente.design.live-preview') !== 'off');
+  function toggleLivePreview() {
+    livePreview = !livePreview;
+    localStorage.setItem('agente.design.live-preview', livePreview ? 'on' : 'off');
+  }
 
   // The canvas follows the open design; the system library follows it too (the toolbar and the intro both read it).
   $effect(() => { const id = chat?.id ?? null; untrack(() => { void designStore.open(id); }); });
@@ -76,10 +83,11 @@
   // Where the panes sit. The surface's width is measured; the canvas column's width picks the toolbar's plan.
   let surfaceWidth = $state(0);
   let canvasWidth = $state(0);
+  const inspectorShown = $derived(studio === 'pages' && designStore.inspectorOpen);
   const layout = $derived(paneLayout(surfaceWidth || window.innerWidth, {
     dockOpen: designStore.chatOpen,
     dockWidth: designStore.dockWidth,
-    inspectorOpen: designStore.inspectorOpen,
+    inspectorOpen: inspectorShown,
     inspectorWidth: designStore.inspectorWidth
   }));
   const plan = $derived(toolbarPlan(canvasWidth || (surfaceWidth - layout.canvasLeft - layout.canvasRight)));
@@ -94,7 +102,7 @@
   const inMore = (item: ToolbarItem) => plan.more.includes(item);
   /** How far an overlaid pane covers the canvas's visible width, so the tool pill can centre on what shows. */
   const coverLeft = $derived(layout.dock.overlay && dockShown ? layout.dock.width : 0);
-  const coverRight = $derived(layout.inspector.overlay && designStore.inspectorOpen ? layout.inspector.width : 0);
+  const coverRight = $derived(layout.inspector.overlay && inspectorShown ? layout.inspector.width : 0);
   const visibleWidth = $derived(canvasWidth - coverLeft - coverRight);
   /**
    * The tool pill centres on the part of the canvas that shows: it stays inside that part when it fits there, and
@@ -152,12 +160,14 @@
     if (event.dataTransfer?.types.includes('Files')) event.preventDefault();
   }
   function onDrop(event: DragEvent) {
+    if (event.defaultPrevented) return;
     const files = imageFilesOf(event.dataTransfer?.files);
     if (!files.length) return;
     event.preventDefault();
     void takeImages(files);
   }
   function onPaste(event: ClipboardEvent) {
+    if (event.defaultPrevented) return;
     if (isEditing(event.target)) return;
     const files = imageFilesOf(event.clipboardData?.files);
     if (!files.length) return;
@@ -281,15 +291,19 @@
     aria-hidden={!dockShown}
     inert={!dockShown}
   >
-    <div class="dock-body">
-      <!-- The dock is narrow and the dial's ticks read as stray rules beside it, so it stays off here. -->
-      <Thread timeline={false} />
+    <div class="dock-body" class:is-empty={threadIsEmpty}>
+      <!-- The transcript shares the adaptive dial and its reserved gutter with Code and Home. -->
+      <Thread />
       {#if threadIsEmpty}
-        <div class="dock-intro">
+        <!-- Before the first message the dock centres instead of docking to
+             the bottom: the composer is the one control on the panel, so it
+             sits where the eye is, with the invitation above it and the six
+             ways in below as one line of text. The composer keeps its node in
+             both states, so nothing remounts on the first send. -->
+        <div class="dock-intro composer-column px-3 md:px-6">
           <h2>{copy.design.dock.title}</h2>
           <p>{copy.design.dock.hint}</p>
           <DesignSystemPicker />
-          <DesignStarters />
         </div>
       {/if}
       <Composer placeholder={copy.design.dock.placeholder} suggestions={false}>
@@ -298,6 +312,11 @@
           <DesignSelectionChips />
         {/snippet}
       </Composer>
+      {#if threadIsEmpty}
+        <div class="dock-links composer-column px-3 md:px-6">
+          <DesignStarters variant="links" />
+        </div>
+      {/if}
     </div>
   </aside>
   {#if dockShown}
@@ -319,7 +338,7 @@
   <section class="canvas-column" aria-label={copy.spaces.design} bind:clientWidth={canvasWidth} style:left="{layout.canvasLeft}px" style:right="{layout.canvasRight}px">
     <!-- One quiet line: where you are on the left, the viewport in the middle, the panels and Export on the right.
          Zoom and the pointer tools live in the dock at the bottom of the canvas. -->
-    <UiToolbar wrap={false} class={uiClass("toolbar", "ui-local-46947eff", {"tight": plan.tight})} >
+    <UiToolbar wrap={true} class={uiClass("toolbar", "ui-local-46947eff", {"tight": plan.tight})} >
       <DesignToolButton
         icon={dockShown ? PanelLeftClose : PanelLeftOpen}
         label={dockShown ? copy.design.canvas.hideChat : copy.design.canvas.showChat}
@@ -327,6 +346,12 @@
         pressed={dockShown}
         onclick={toggleDock}
       />
+      <div class="studio-switch" role="group" aria-label="Design workspace">
+        <Button variant="plain" type="button" class={studio === 'pages' ? 'active' : ''} aria-pressed={studio === 'pages'} onclick={() => studio = 'pages'}>2D</Button>
+        <Button variant="plain" type="button" class={studio === '3d' ? 'active' : ''} aria-pressed={studio === '3d'} onclick={() => studio = '3d'}>3D</Button>
+      </div>
+      <Button variant="plain" type="button" class="preview-toggle" aria-pressed={livePreview} onclick={toggleLivePreview}>Live preview {livePreview ? 'on' : 'off'}</Button>
+      {#if studio === 'pages'}
       {#if inline('page')}
         {#if pageOptions.length > 1}
           <Select size="sm" class="page-select w-auto max-w-[12rem]" aria-label={copy.design.canvas.page} options={pageOptions} value={designStore.selected} onchange={(value) => designStore.select(value)} />
@@ -337,7 +362,7 @@
 
       <span class="spacer"></span>
 
-      <!-- Which sizes every page is drawn at on the board: toggles, any mix, never none. Fit frames the whole board. -->
+      <!-- A normal click switches device and fits the page. Shift keeps a multi-device board. -->
       <div class="viewports" role="group" aria-label={copy.design.canvas.viewport}>
         {#each SIZE_ORDER as item (item.id)}
           <DesignToolButton
@@ -346,7 +371,7 @@
             shortcut={`mod+alt+${SIZE_KEYS[item.id]}`}
             class="viewport"
             pressed={designStore.sizes.includes(item.id)}
-            onclick={() => designStore.toggleSize(item.id)}
+            onclick={(event) => event.shiftKey ? designStore.toggleSize(item.id) : designStore.showSize(item.id)}
           />
         {/each}
         <DesignToolButton
@@ -358,6 +383,7 @@
           onclick={() => designStore.setZoom(null)}
         />
       </div>
+      <span class="viewport-size">{designStore.sizes.map(id => FRAME_SIZES.find(size => size.id === id)?.width).join(' / ')}px</span>
 
       <span class="spacer"></span>
 
@@ -401,6 +427,10 @@
           <div class="ui-menu-label">{copy.design.canvas.page}</div>
           {@render pageItems()}
         {/if}
+        <div class="ui-menu-label">{copy.design.canvas.viewport}</div>
+        {#each SIZE_ORDER as item (item.id)}
+          <MenuItem icon={SIZE_ICONS[item.id]} label={`${copy.design.toolbar.viewport[item.id]} · ${item.width} × ${item.height}`} active={designStore.sizes.includes(item.id)} onselect={() => designStore.toggleSize(item.id)} />
+        {/each}
         <MenuItem icon={Film} label={copy.design.timeline.title} active={designStore.tray === 'timeline'} onselect={() => designStore.toggleTray('timeline')} />
         {#if Object.keys(designStore.positions).length}
           <MenuItem icon={LayoutGrid} label={copy.design.frame.tidy} onselect={() => designStore.tidyBoard()} />
@@ -432,20 +462,29 @@
           {@render exportItems()}
         </Menu>
       {/if}
+      {/if}
     </UiToolbar>
 
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div class="stage-wrap" ondragover={onDragOver} ondrop={onDrop}>
+      {#if !livePreview}
+        <div class="preview-paused"><p>Live preview is off. The agent continues working.</p><Button size="sm" variant="ghost" onclick={toggleLivePreview}>Show preview</Button></div>
+      {:else if studio === '3d' && chat}
+        <Design3DPanel chatId={chat.id} />
+      {:else}
       <DesignCanvas />
       {#if designStore.layersOpen}<div class="layers-slot"><DesignLayers /></div>{/if}
       {#if exportNote}<p class="note" role="status">{exportNote}</p>{/if}
       <div class="pill-slot" bind:clientWidth={pillWidth} style:left="{pillLeft}px"><DesignToolPill compact={visibleWidth < 260} /></div>
+      {/if}
     </div>
-    <DesignTray />
-    {#if designStore.tray === 'timeline'}<DesignTimeline />{/if}
+    {#if studio === 'pages'}
+      <DesignTray />
+      {#if designStore.tray === 'timeline'}<DesignTimeline />{/if}
+    {/if}
   </section>
 
-  {#if designStore.inspectorOpen}
+  {#if inspectorShown}
     <div class="edge" class:overlay={layout.inspector.overlay} style:right="{layout.inspector.width - 7}px">
       <ResizeHandle
         fill
@@ -541,10 +580,10 @@
     flex-shrink: 0;
     align-items: center;
     gap: 0.375rem;
-    height: var(--chrome);
-    padding: 0 0.5rem;
+    min-height: var(--chrome);
+    padding: .35rem 0.5rem;
     min-width: 0;
-    overflow: hidden;
+    overflow: visible;
     white-space: nowrap;
   }
 
@@ -552,6 +591,13 @@
   :global(.toolbar.tight.ui-local-46947eff) { gap: 0.25rem; padding: 0 0.375rem; }
   :global(.toolbar.ui-local-46947eff) > :global(*) { flex-shrink: 0; }
   .spacer { flex: 1 1 0; min-width: 0; }
+  .studio-switch { display: inline-flex; gap: .125rem; padding: .125rem; border-radius: .5rem; background: var(--muted); }
+  :global(.preview-toggle) { padding: .3rem .45rem; color: var(--muted-foreground); font-size: var(--text-xs); }
+  .preview-paused { display: flex; flex: 1; flex-direction: column; align-items: center; justify-content: center; gap: .75rem; font-size: var(--text-sm); color: var(--muted-foreground); }
+  .studio-switch :global(button) { padding: .3rem .45rem; border-radius: .35rem; color: var(--muted-foreground); font-size: var(--text-xs); }
+  .studio-switch :global(button.active) { background: var(--segment-active-bg); color: var(--foreground); }
+  .viewport-size { font-size: var(--text-xs); color: var(--muted-foreground); font-variant-numeric: tabular-nums; }
+  @media (max-width: 900px) { .viewport-size { display: none; } }
 
   /* The viewport switch: the app's segmented track, the current size a raised pill. */
   .viewports {
@@ -637,24 +683,25 @@
     overflow: hidden;
   }
 
-  /* Empty thread: the intro takes the room above the composer, which stays anchored at the bottom. */
+  /* Empty thread: the panel centres as one column — invitation, composer, the
+     six ways in — instead of docking the composer to the bottom edge under a
+     void. Centring is the only change between the two states, so the composer
+     keeps its node (and its focus) across the first send. */
+  .dock-body.is-empty {
+    justify-content: center;
+    padding-block: 1.5rem;
+  }
+
+  /* The invitation sits on the composer's own column, so all three rows share
+     one left edge. No scroll container: the composer's menus are absolutely
+     positioned and would be clipped by one. */
   .dock-intro {
     display: flex;
-    width: 100%;
-    max-width: 22rem;
     min-height: 0;
-    margin: auto;
     flex-direction: column;
     align-items: stretch;
     gap: 0.75rem;
-    padding: 1.25rem 1rem 0.5rem;
-    overflow-y: auto;
-  }
-
-  /* One left edge for the whole intro: the heading and hint start where the starter tiles do, so nothing floats centred over a left-aligned list. */
-  .dock-intro h2,
-  .dock-intro p {
-    padding-inline: 0.625rem;
+    padding-block: 0 0.75rem;
   }
 
   .dock-intro h2 {
@@ -671,5 +718,9 @@
     line-height: 1.5;
     color: var(--muted-foreground);
     text-wrap: pretty;
+  }
+
+  .dock-links {
+    margin-top: 0.75rem;
   }
 </style>

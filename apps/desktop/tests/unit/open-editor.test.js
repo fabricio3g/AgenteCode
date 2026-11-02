@@ -12,7 +12,13 @@ function tempDir() {
 
 /** A fake editor on PATH that records the arguments it was launched with. */
 function fakeEditor(dir, name = 'fake-editor') {
-  const file = path.join(dir, name);
+  const file = path.join(dir, name + (process.platform === 'win32' ? '.cmd' : ''));
+  if (process.platform === 'win32') {
+    const recorder = path.join(dir, `${name}-record.cjs`);
+    fs.writeFileSync(recorder, "require('node:fs').writeFileSync(process.env.OUT, process.argv.slice(2).join('\\n') + '\\n');\n");
+    fs.writeFileSync(file, `@echo off\r\n"${process.execPath}" "${recorder}" %*\r\n`);
+    return file;
+  }
   fs.writeFileSync(file, '#!/bin/sh\nprintf "%s\\n" "$@" > "$OUT"\n');
   fs.chmodSync(file, 0o755);
   return file;

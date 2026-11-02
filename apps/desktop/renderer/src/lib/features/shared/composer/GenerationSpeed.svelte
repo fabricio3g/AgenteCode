@@ -2,12 +2,16 @@
   import { t, locale } from 'svelte-i18n';
   let { value }: { value?: number } = $props();
   const valid = $derived(typeof value === 'number' && Number.isFinite(value) && value > 0);
-  const number = $derived(new Intl.NumberFormat($locale || 'en', { maximumFractionDigits: 1 }).format(value ?? 0));
+  const number = $derived(value != null && value < 0.1 ? '<0.1'
+    : new Intl.NumberFormat($locale || 'en', { maximumFractionDigits: value != null && value < 1 ? 1 : 0 }).format(value ?? 0));
 </script>
 
 {#if valid}
-  <span class="generation-speed" title={$t('runtime.speed')} aria-label={`${$t('runtime.speed')}: ${number} tok/s`}>
-    {value! < 0.1 ? '<0.1' : number} tok/s
+  <!-- `speedReply`, not `speed`: this is what one reply streamed at, observed
+       here. How fast a served model can write is the provider's business — the
+       queue, the batch, the network and the account's limit all sit in it. -->
+  <span class="generation-speed" title={$t('runtime.speedReply')} aria-label={`${$t('runtime.speedReply')}: ${number} tok/s`}>
+    {number} tok/s
   </span>
 {/if}
 

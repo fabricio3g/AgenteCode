@@ -1,61 +1,55 @@
 <svelte:options runes={true} />
 
 <!--
-  Minimize / maximize / close, drawn in the page on Linux.
+  Minimize / maximize / close, drawn in the page on Windows and Linux.
 
-  Windows keeps the OS buttons (`titleBarOverlay`: snap layouts, system menu)
-  and macOS its traffic lights. Linux's overlay did not repaint reliably when
-  its colour changed, so the buttons kept the previous theme and stayed bright
-  under a dialog's backdrop. In the page they follow the theme and dim with
-  everything else.
+  macOS keeps its real traffic lights (`titleBarStyle: 'hiddenInset'`): they sit
+  outside the web contents, follow the system's own colours and are placed where
+  every Mac user's hand already goes. Everywhere else the caption is ours, so it
+  follows the theme, dims with the rest of the app under a dialog's backdrop and
+  shares the title bar's spacing instead of arriving from the platform.
+
+  The cost of drawing them: no Win11 snap-layout flyout on maximize and no
+  system menu on right-click. Aero snap and double-click-to-maximize still work
+  — Electron keeps the caption's double-click behaviour on the drag region.
 -->
 
 <script lang="ts">
   import UiButton from '$lib/components/ui/Button.svelte';
-  import { cn as uiClass } from '$lib/utils/cn';
 
   import { onMount } from 'svelte';
   import { t } from 'svelte-i18n';
   import { Copy, Minus, Square, X } from 'lucide-svelte';
   import { appWindow } from '$lib/services/window';
 
-  type Overlay = EventTarget & { visible?: boolean };
-  const overlay = typeof navigator === 'undefined'
-    ? undefined
-    : (navigator as Navigator & { windowControlsOverlay?: Overlay }).windowControlsOverlay;
+  const platform = typeof window !== 'undefined' ? window.electronAPI?.platform : undefined;
+  const shown = platform !== 'darwin';
 
   let maximized = $state(false);
-  // Only where the OS draws nothing: Linux, and only while no caption overlay
-  // is present (a window created before the switch still has one).
-  let osDrawsThem = $state(!!overlay?.visible);
-  const shown = $derived(window.electronAPI?.platform === 'linux' && !osDrawsThem);
 
   async function sync() {
     maximized = await appWindow.isMaximized().catch(() => false);
   }
 
+  // `resize` covers every way the window changes state — our buttons, a
+  // double-click on the bar, a keyboard shortcut, Aero snap to an edge.
   onMount(() => {
     void sync();
     const onResize = () => void sync();
-    const onGeometry = () => (osDrawsThem = !!overlay?.visible);
     window.addEventListener('resize', onResize);
-    overlay?.addEventListener('geometrychange', onGeometry);
-    return () => {
-      window.removeEventListener('resize', onResize);
-      overlay?.removeEventListener('geometrychange', onGeometry);
-    };
+    return () => window.removeEventListener('resize', onResize);
   });
 </script>
 
 {#if shown}
 <div class="window-controls titlebar-no-drag" role="group" aria-label={$t('titlebar.window')}>
-  <UiButton variant="plain" type="button" class={uiClass("window-control", "ui-local-df895937")} aria-label={$t('titlebar.minimize')} onclick={() => void appWindow.minimize()}>
+  <UiButton variant="plain" type="button" class="window-control" aria-label={$t('titlebar.minimize')} onclick={() => void appWindow.minimize()}>
     <Minus aria-hidden="true" />
   </UiButton>
-  <UiButton variant="plain" type="button" class={uiClass("window-control", "ui-local-df895937")} aria-label={maximized ? $t('titlebar.restore') : $t('titlebar.maximize')} onclick={() => void appWindow.toggleMaximize().then(sync)}>
-    {#if maximized}<Copy class="is-restore" aria-hidden="true" />{:else}<Square class="is-max" aria-hidden="true" />{/if}
+  <UiButton variant="plain" type="button" class="window-control" aria-label={maximized ? $t('titlebar.restore') : $t('titlebar.maximize')} onclick={() => void appWindow.toggleMaximize().then(sync)}>
+    {#if maximized}<Copy class="is-restore" aria-hidden="true" />{:else}<Square aria-hidden="true" />{/if}
   </UiButton>
-  <UiButton variant="plain" type="button" class={uiClass("window-control is-close", "ui-local-df895937")} aria-label={$t('titlebar.close')} onclick={() => void appWindow.close()}>
+  <UiButton variant="plain" type="button" class="window-control is-close" aria-label={$t('titlebar.close')} onclick={() => void appWindow.close()}>
     <X aria-hidden="true" />
   </UiButton>
 </div>
@@ -70,7 +64,7 @@
   }
 
   /* The title bar's button: same square, same radius, same neutral hover. */
-  :global(.window-control.ui-local-df895937) {
+  .window-controls :global(.window-control) {
     display: inline-flex;
     inline-size: 1.75rem;
     block-size: 1.625rem;
@@ -81,34 +75,32 @@
     transition: background-color var(--motion-fast) var(--motion-ease), color var(--motion-fast) var(--motion-ease);
   }
 
-  :global(.window-control.ui-local-df895937) :global(svg) {
-    inline-size: 0.875rem;
-    block-size: 0.875rem;
-    stroke-width: 1.75;
+  /* The same 16px mark as every other lucide icon in the bar (globe,
+     downloads, theme), so the caption reads as part of the tool row. */
+  .window-controls :global(.window-control svg) {
+    inline-size: 1rem;
+    block-size: 1rem;
+    stroke-width: 1.5;
   }
 
-  :global(.window-control.ui-local-df895937) :global(svg.is-max) {
-    inline-size: 0.75rem;
-    block-size: 0.75rem;
-  }
-
-  :global(.window-control.ui-local-df895937) :global(svg.is-restore) {
-    inline-size: 0.75rem;
-    block-size: 0.75rem;
+  /* Two offset squares, mirrored so the back one sits up and to the left. */
+  .window-controls :global(.window-control svg.is-restore) {
     transform: scaleX(-1);
   }
 
-  :global(.window-control:hover.ui-local-df895937) {
+  .window-controls :global(.window-control:hover) {
     background: var(--float-row-hover);
     color: var(--foreground);
   }
 
-  :global(.window-control.is-close:hover.ui-local-df895937) {
-    background: var(--error);
-    color: #fff;
+  /* Close is the one destructive mark in the chrome: a wash of the error
+     hue, never the solid red slab the platform paints. */
+  .window-controls :global(.window-control.is-close:hover) {
+    background: color-mix(in srgb, var(--error) 14%, transparent);
+    color: var(--error);
   }
 
-  :global(.window-control:focus-visible.ui-local-df895937) {
+  .window-controls :global(.window-control:focus-visible) {
     outline: 2px solid var(--brand-accent);
     outline-offset: -2px;
   }

@@ -8,7 +8,9 @@ import crypto from 'node:crypto';
 import { conversationScope } from '../../shared/workspace-scope.ts';
 import fs from 'node:fs';
 import path from 'node:path';
-import { app } from 'electron';
+import { app, type WebContents } from 'electron';
+import { createComputerTools } from './tools/computer.ts';
+import { bindComputerOwner, cancelComputerTurn, settleComputerTurn, computerSession, type ComputerOwner } from '../computer/desktop.ts';
 import { resolveApiKey } from '../provider-auth.ts';
 import { getAppPaths } from '../paths.ts';
 import { forgetProviderKey, loadConfig, saveConfig } from '../config.ts';
@@ -33,6 +35,7 @@ const FALLBACK_CONTEXT_WINDOW = 32_768;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 type ChatState = {
+  owner?: WebContents;
   chatId: string;
   sessionId: string;
   projectRoot: string;
@@ -44,6 +47,7 @@ type ChatState = {
   /** Sent with the first turn of a new session only. */
   systemPrompt?: string;
   turnId: string | null;
+  stopRequested: boolean;
   settlement?: { promise: Promise<void>; resolve: () => void };
   followUps: Array<{ text: string; attachments: Attachment[] }>;
   contextWindow: number;
@@ -53,7 +57,6 @@ type ChatState = {
 
 const chats = new Map<string, ChatState>();
 const manualCompactions = new Set<string>();
-const botBrowserModels = new Map<string, { provider: string; model: string }>();
 let daemon: AgenteDaemon | null = null;
 let listening: AgenteClient | null = null;
 let desktopTools: Promise<DesktopToolServer> | null = null;
@@ -87,24 +90,16 @@ async function registerDesktopTools(client: AgenteClient): Promise<void> {
     [...createBrowserTools({
       canSeeImages: async (context) => {
         const chat = [...chats.values()].find((owner) => owner.sessionId === context.sessionId);
-        const choice = chat ?? botBrowserModels.get(context.sessionId ?? '');
-        return !!choice && (await modelSeesImages(choice.provider, choice.model));
+        return !!chat && (await modelSeesImages(chat.provider, chat.model));
       }
-    }), ...createDomainTools()],
+    }), ...createDomainTools(), ...createComputerTools({
+      owner: context => { const chat = [...chats.values()].find(chat => chat.sessionId === context.sessionId); return chat && context.computerTurnId === chat.turnId ? codeComputerOwner(chat) : undefined; },
+      canSeeImages: async context => { const chat = [...chats.values()].find(chat => chat.sessionId === context.sessionId); return !!chat && await modelSeesImages(chat.provider, chat.model); },
+    })],
     { resolveContext: async (meta) => {
       const chat = [...chats.values()].find((owner) => owner.sessionId === meta['agente/sessionId']);
-      if (chat) return { sessionId: chat.sessionId, browserScope: conversationScope(chat.chatId), workspaceRoot: chat.projectRoot };
-      const sessionId = meta['agente/sessionId'];
-      if (typeof sessionId !== 'string' || !UUID.test(sessionId)) throw new Error('Browser call has no owning conversation');
-      const bots = await client.request<Array<{ handle: string; session_id: string | null }>>('bots.list');
-      const bot = bots.find((owner) => owner.session_id === sessionId);
-      if (!bot) throw new Error('Browser call has no owning conversation');
-      // Session metadata holds the actual turn model, including routine overrides
-      // and unpinned bots using the client's current model.
-      const { meta: sessionMeta } = await client.request<{ meta: { info: { provider: string; model: string } } | null }>('session.get', { session_id: sessionId });
-      if (sessionMeta?.info.provider && sessionMeta.info.model) botBrowserModels.set(sessionId, { model: sessionMeta.info.model, provider: sessionMeta.info.provider.replace(/^desktop-/, '') });
-      else botBrowserModels.delete(sessionId);
-      return { sessionId, browserScope: conversationScope(`bot:${bot.handle}`) };
+      if (chat) return { sessionId: chat.sessionId, computerTurnId: typeof meta['agente/turnId'] === 'string' ? meta['agente/turnId'] : undefined, browserScope: conversationScope(chat.chatId), workspaceRoot: chat.projectRoot };
+      throw new Error('Browser call has no owning conversation');
     } }
   );
   const server = await desktopTools;
@@ -156,6 +151,8 @@ async function openConnection(): Promise<AgenteClient> {
       configured.clear();
       for (const chat of chats.values()) {
         if (!chat.turnId) continue;
+        cancelComputerTurn(chat.sessionId, 'runtime_disconnected');
+        settleComputerTurn(chat.sessionId, chat.turnId);
         chat.turnId = null;
         chat.settlement?.resolve();
         chat.settlement = undefined;
@@ -168,15 +165,14 @@ async function openConnection(): Promise<AgenteClient> {
       if (method === 'turn.outcome') {
         const outcome = params as TurnOutcome;
         const chat = [...chats.values()].find((state) => state.sessionId === outcome.session_id);
-        if (chat && (!chat.turnId || chat.turnId === outcome.turn_id)) continueWithFollowUp(chat);
+        if (chat && (!chat.turnId || chat.turnId === outcome.turn_id)) continueWithFollowUp(chat, outcome.status === 'completed');
         return;
       }
       if (method !== 'event') return;
       const envelope = params as RuntimeEventEnvelope;
       route(envelope);
-      for (const listener of runtimeEventListeners) listener(envelope);
     });
-    // Turns this app didn't start (bot routines, handoffs) arrive this way;
+    // Turns started by another client arrive this way;
     // the runtime never sends a turn twice to the client that started it.
     await client.request('events.subscribe', {}).catch(() => {});
     await registerDesktopTools(client).catch((error: unknown) => {
@@ -226,9 +222,9 @@ const configured = new Map<string, Record<string, unknown>>();
 /**
  * Hand the runtime a Desktop provider entry. It replaces an entry whole, so
  * this one keeps every model the provider was configured with — otherwise a
- * subagent, compaction or bot model pinned there lost its route, window and
+ * subagent or compaction model pinned there lost its route, window and
  * thinking options at the next prompt. `held` keeps the richer entries
- * already there (bots only know model names); by default the new ones win.
+ * already there; by default the new ones win.
  * Every configure rebuilds the runtime's provider registry, so an unchanged
  * entry is not sent again.
  */
@@ -304,15 +300,6 @@ function providerCapabilities(transport: ReturnType<typeof resolveTransport>, so
   return capabilities;
 }
 
-type RuntimeEventListener = (envelope: RuntimeEventEnvelope) => void;
-const runtimeEventListeners = new Set<RuntimeEventListener>();
-
-/** Every runtime event, from any session (bots use it; Code chats route their own). */
-export function onRuntimeEvent(listener: RuntimeEventListener): () => void {
-  runtimeEventListeners.add(listener);
-  return () => runtimeEventListeners.delete(listener);
-}
-
 /** The runtime connection, started on first use. */
 export function runtimeConnection(): Promise<AgenteClient> {
   return connect();
@@ -334,10 +321,12 @@ function recordCheckpoint(chat: ChatState, event: Extract<CodeAgentEvent, { type
 }
 
 /** The turn ended: send the next queued follow-up, if any. */
-function continueWithFollowUp(chat: ChatState): void {
+function continueWithFollowUp(chat: ChatState, completed: boolean): void {
+  if (chat.turnId) settleComputerTurn(chat.sessionId, chat.turnId);
   chat.turnId = null;
   chat.settlement?.resolve();
   chat.settlement = undefined;
+  if (!completed || chat.stopRequested) { chat.followUps = []; return; }
   const next = chat.followUps.shift();
   if (next !== undefined) void prompt(chat.chatId, next.text, undefined, next.attachments);
 }
@@ -438,10 +427,23 @@ function turnParams(chat: ChatState, provider: { id: string; model: string }, me
   };
 }
 
-async function startSession(args: AgenteStartSessionArgs): Promise<{ sessionId: string; resumed: boolean; conversationIndex: number }> {
+function codeComputerOwner(chat: ChatState): ComputerOwner | undefined {
+  if (!chat.owner || chat.owner.isDestroyed() || !chat.turnId) return undefined;
+  return { sessionId: chat.sessionId, turnId: chat.turnId, chatId: chat.chatId, space: 'code', webContentsId: chat.owner.id,
+    stop: () => { void abort(chat.chatId); }, resume: () => { if (chat.owner && !chat.owner.isDestroyed()) chat.owner.send('computer_resume', { chatId: chat.chatId, space: 'code' }); } };
+}
+function bindChatWindow(chat: ChatState, owner?: WebContents) {
+  if (!owner || chat.owner === owner) return;
+  if (chat.owner && (chat.turnId || computerSession.owner?.sessionId === chat.sessionId)) throw new Error('This Code chat is active in another window.');
+  chat.owner = owner;
+  const release = () => { if (chat.owner === owner) { computerSession.releaseOwner(owner.id); void abort(chat.chatId); } };
+  owner.once('destroyed', release); owner.once('render-process-gone', release);
+}
+async function startSession(args: AgenteStartSessionArgs, owner?: WebContents): Promise<{ sessionId: string; resumed: boolean; conversationIndex: number }> {
   await ensureProvider(resolveTransport(args.provider, args.model, args.localSelection));
   const live = chats.get(args.chatId);
   if (live) {
+    bindChatWindow(live, owner);
     Object.assign(live, { provider: args.provider, model: args.model, mode: args.runtimeMode, thinkingLevel: args.thinkingLevel, localSelection: args.localSelection });
     const current = await runtimeRequest<{ snapshot: SessionSnapshot }>('session.get', { session_id: live.sessionId });
     return { sessionId: live.sessionId, resumed: true, conversationIndex: current.snapshot.conversation.length };
@@ -461,6 +463,7 @@ async function startSession(args: AgenteStartSessionArgs): Promise<{ sessionId: 
     mode: args.runtimeMode,
     systemPrompt: resumed ? undefined : args.systemPromptOverride,
     turnId: null,
+    stopRequested: false,
     followUps: [],
     contextWindow: FALLBACK_CONTEXT_WINDOW,
     translator: undefined as unknown as RustTurnTranslator,
@@ -468,13 +471,16 @@ async function startSession(args: AgenteStartSessionArgs): Promise<{ sessionId: 
   };
   chat.translator = new RustTurnTranslator(args.chatId, () => chat.contextWindow);
   chats.set(args.chatId, chat);
+  bindChatWindow(chat, owner);
   refreshContextWindow(chat);
   return { sessionId, resumed, conversationIndex: existing.snapshot.conversation.length };
 }
 
-async function prompt(chatId: string, text: string, images?: Array<{ data: string; mimeType: string }>, attachments: Attachment[] = []): Promise<{ ok: boolean; error?: string; errorKey?: string; conversationIndex?: number }> {
+async function prompt(chatId: string, text: string, images?: Array<{ data: string; mimeType: string }>, attachments: Attachment[] = [], owner?: WebContents): Promise<{ ok: boolean; error?: string; errorKey?: string; conversationIndex?: number }> {
   const chat = chats.get(chatId);
   if (!chat) return { ok: false, error: 'No active agente session for this chat' };
+  bindChatWindow(chat, owner);
+  chat.stopRequested = false;
   try {
     // The terminal event reaches the renderer before the runtime releases its turn slot.
     // Wait for turn.outcome before starting the next queued prompt.
@@ -494,6 +500,7 @@ async function prompt(chatId: string, text: string, images?: Array<{ data: strin
     const started = await client.request<{ turn_id: string; conversation_index?: number }>('turn.start', turnParams(chat, provider, message));
     chat.systemPrompt = undefined;
     chat.turnId = started.turn_id;
+    const computerOwner = codeComputerOwner(chat); if (computerOwner) bindComputerOwner(computerOwner);
     return { ok: true, conversationIndex: started.conversation_index };
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
@@ -508,11 +515,13 @@ function failedPrompt(error: unknown, message: string): { ok: false; error: stri
 
 async function steer(chatId: string, text: string, attachments: Attachment[] = []): Promise<{ ok: boolean }> {
   const chat = chats.get(chatId);
-  if (!chat) return { ok: false };
+  if (!chat || chat.stopRequested) return { ok: false };
   if (!chat.turnId) return queueFollowUp(chat, text, attachments);
+  const turnId = chat.turnId;
   const client = await connect();
   const expanded = await client.request<{ text: string }>('project.expand_prompt', { project_dir: chat.projectRoot, text });
-  return client.request('turn.steer', { turn_id: chat.turnId, content: expanded.text, attachments });
+  if (chat.stopRequested || chat.turnId !== turnId) return { ok: false };
+  return client.request('turn.steer', { turn_id: turnId, content: expanded.text, attachments });
 }
 
 async function followUp(chatId: string, text: string, attachments: Attachment[] = []): Promise<{ ok: boolean }> {
@@ -521,6 +530,7 @@ async function followUp(chatId: string, text: string, attachments: Attachment[] 
 }
 
 async function queueFollowUp(chat: ChatState, text: string, attachments: Attachment[]): Promise<{ ok: boolean }> {
+  if (chat.stopRequested) return { ok: false };
   if (!chat.turnId) return prompt(chat.chatId, text, undefined, attachments);
   chat.followUps.push({ text, attachments });
   return { ok: true };
@@ -538,6 +548,8 @@ const STOP_GRACE_MS = 4_000;
 async function abort(chatId: string): Promise<{ ok: boolean }> {
   const chat = chats.get(chatId);
   if (!chat) return { ok: false };
+  chat.stopRequested = true;
+  cancelComputerTurn(chat.sessionId);
   domainService().jobs.cancelOwner(chat.sessionId);
   void desktopTools?.then(server => server.cancelSession(chat.sessionId));
   chat.followUps = [];
@@ -563,6 +575,7 @@ async function abort(chatId: string): Promise<{ ok: boolean }> {
 }
 
 function settleStopped(chat: ChatState): void {
+  if (chat.turnId) settleComputerTurn(chat.sessionId, chat.turnId);
   chat.turnId = null;
   emit({ type: 'agent_end', chatId: chat.chatId, stopReason: 'aborted' });
 }
@@ -765,12 +778,12 @@ async function deleteSessionData(args: { chatIds?: string[]; sessionIds?: string
 }
 
 function disposeAllSessions(): void {
+  for (const chat of chats.values()) { cancelComputerTurn(chat.sessionId, 'runtime_closed'); if (chat.turnId) settleComputerTurn(chat.sessionId, chat.turnId); }
   chats.clear();
   daemon?.stop();
   daemon = null;
   listening = null;
   connectionPromise = null;
-  botBrowserModels.clear();
   rustProcesses.dispose();
   void desktopTools?.then((server) => server.close());
   desktopTools = null;

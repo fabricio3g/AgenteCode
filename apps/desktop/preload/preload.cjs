@@ -2,6 +2,8 @@ const { contextBridge, ipcRenderer, webFrame } = require('electron');
 
 const ALLOWED_INVOKE_CHANNELS = new Set([
   'desktop_renderer_ready',
+  'activity_notifications_list', 'activity_notifications_action',
+  'computer_status', 'computer_control',
   'browser_chat_ready', 'browser_chat_reply',
   'domains_status', 'domains_config', 'domains_set_enabled', 'domains_pick_runtime', 'domains_projects', 'domains_project', 'domains_import', 'domains_preview', 'domains_jobs', 'domains_cancel', 'domains_call',
   'window:open-conversation', 'window:minimize', 'window:toggle-maximize', 'window:is-maximized', 'window:close', 'window:request-close', 'window:set-active-work',
@@ -50,17 +52,13 @@ const ALLOWED_INVOKE_CHANNELS = new Set([
   'generate_pptx', 'parse_slides_from_markdown', 'slides_to_markdown',
   'generate_docx', 'generate_xlsx', 'generate_pdf',
   'fetch_url_content', 'crawl_web',
-  'design_tool', 'design_files', 'design_render', 'design_manage', 'design_handoff', 'design_systems', 'design_reference', 'design_view',
+  'design_tool', 'design_files', 'design_render', 'design_manage', 'design_handoff', 'design_systems', 'design_reference', 'design_view', 'design_3d',
   'home_runtime_start', 'home_runtime_result', 'home_runtime_cancel', 'home_runtime_update', 'home_runtime_steer',
-  'agente_start_session', 'agente_prompt',
+  'agente_start_session', 'agente_prompt', 'agente_goal_get', 'agente_goal_set', 'agente_goal_clear',
   'agente_steer', 'agente_follow_up', 'agente_abort',
   'agente_compact', 'model_sees_images', 'agente_set_model', 'agente_set_runtime_mode',
   'agente_respond_approval', 'agente_list_checkpoints', 'agente_rollback',
   'agente_delete_session_data', 'agente_live_chats',
-  'bots_list', 'bots_get', 'bots_create', 'bots_update', 'bots_delete', 'bots_write_doc', 'bots_compact',
-  'bots_history', 'bots_cancel', 'bots_chat', 'bots_respond_approval', 'bots_toolsets', 'bots_sandbox',
-  'bots_telegram', 'bots_telegram_connect', 'bots_telegram_disconnect', 'bots_telegram_pair', 'bots_telegram_unpair',
-  'routines_list', 'routines_save', 'routines_delete', 'routines_run_now',
   'voice_models_status', 'voice_model_download', 'voice_model_delete', 'voice_engine_restart', 'voice_catalog', 'voice_clone_pick', 'voice_clone_read', 'voice_clone_save', 'voice_clone_delete',
   'terminal_create', 'terminal_write', 'terminal_resize', 'terminal_kill',
   'agente_process_list', 'agente_process_output', 'agente_process_start', 'agente_process_stop', 'agente_process_clear',
@@ -71,11 +69,13 @@ const ALLOWED_INVOKE_CHANNELS = new Set([
 ]);
 
 const ALLOWED_EVENT_CHANNELS = new Set([
+  'activity_notifications', 'activity_notification_open',
+  'computer_state', 'computer_resume',
   'domain_job',
   'supervisor-event', 'download-progress', 'runtime-download-progress', 'whisper-runtime-download-progress', 'voice-setup-progress', 'instances-changed',
   'search-result', 'search-progress', 'agent-event', 'tts-event', 'chat-stream-event',
   'tts-chunk', 'tts-done', 'tts-start', 'tts-error',
-  'home_runtime_event', 'design_changed', 'code_agent_event', 'browser_panel_state', 'code_process_event', 'terminal_event', 'bot_event', 'browser_chat_request',
+  'home_runtime_event', 'design_changed', 'design_3d_changed', 'code_agent_event', 'browser_panel_state', 'code_process_event', 'terminal_event', 'browser_chat_request',
   'ui-zoom'
 ]);
 

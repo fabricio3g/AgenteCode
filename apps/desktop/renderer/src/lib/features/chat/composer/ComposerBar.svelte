@@ -1,10 +1,9 @@
 <svelte:options runes={true} />
 
 <!--
-  The one bottom toolbar every composer draws (Home, Code, Design, Bots), so the
-  eye finds the same thing in the same place: attach hard left, the model pill
-  beside it, one slot for what only this space has (Home's Agent | Instant,
-  Code's mode menu), and the trailing cluster (mic, send / stop) hard right.
+  The one bottom toolbar every composer draws (Home, Code, Design), so the
+  eye finds the same thing in the same place: attach and mode on the left,
+  status, model, microphone, context ring and send / stop on the right.
   A composer that has no attach button or no extras leaves that snippet out; the
   slot is never filled with something else.
 -->
@@ -16,17 +15,34 @@
     attach?: Snippet;
     model: Snippet;
     extras?: Snippet;
+    status?: Snippet;
+    microphone: Snippet;
+    context?: Snippet;
     trailing: Snippet;
   }
 
-  let { attach, model, extras, trailing }: Props = $props();
+  let { attach, model, extras, status, microphone, context, trailing }: Props = $props();
 </script>
 
 <div class="composer-bar">
   <div class="composer-bar-leading">
     {@render attach?.()}
-    <div class="model-slot">{@render model()}</div>
+    {#if attach && extras}<span class="composer-divider" aria-hidden="true"></span>{/if}
     {@render extras?.()}
   </div>
-  <div class="composer-bar-trailing">{@render trailing()}</div>
+  <div class="composer-bar-trailing">
+    <div class="composer-bar-model">
+    {#if status}
+      {@render status()}
+      <span class="composer-divider" aria-hidden="true"></span>
+    {/if}
+    <div class="model-slot">{@render model()}</div>
+    </div>
+    <div class="composer-bar-actions">
+    {@render microphone()}
+    {#if context}<span class="composer-divider" aria-hidden="true"></span>{/if}
+    {@render context?.()}
+    {@render trailing()}
+    </div>
+  </div>
 </div>

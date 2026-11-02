@@ -90,7 +90,8 @@
     border: 1px solid var(--float-border);
     border-radius: var(--float-radius);
     box-shadow: var(--float-shadow);
-    font-size: var(--text-xs);
+    font-family: var(--font-sans);
+    font-size: var(--text-sm);
     line-height: 1.5;
   }
   .is-tooltip { pointer-events: none; }
