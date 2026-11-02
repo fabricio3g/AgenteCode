@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { app } from 'electron';
 import type { ComputerAction } from '../../shared/computer.ts';
+import { ComputerActionRejected } from './session.ts';
 
 export function computerHelperPath(): string | undefined {
   if (process.platform !== 'win32') return undefined;
@@ -56,7 +57,7 @@ export class ComputerHelper {
             const pending = this.pending.get(event.id);
             if (!pending) return;
             clearTimeout(pending.timer); this.pending.delete(event.id);
-            if (event.ok) pending.resolve(); else pending.reject(new Error(String(event.error || 'Native input failed.')));
+            if (event.ok) pending.resolve(); else pending.reject(event.rejected ? new ComputerActionRejected(String(event.error)) : new Error(String(event.error || 'Native input failed.')));
           }
         } catch { this.onRevoke('helper_protocol_error'); this.close(); }
       });

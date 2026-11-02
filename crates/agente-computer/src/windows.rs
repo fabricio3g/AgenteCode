@@ -291,6 +291,29 @@ fn extended(vk: u16) -> u32 {
     }
 }
 
+fn validate_action(action: &Action) -> Result<(), String> {
+    match action {
+        Action::Key { keys } => {
+            if keys.is_empty() || keys.len() > 5 {
+                return Err("Use one key or a combination of at most five keys".into());
+            }
+            for name in keys {
+                if virtual_key(name).is_none() {
+                    return Err(format!("Unsupported key: {name}. Use separate key names, e.g. [\"Control\",\"L\"]."));
+                }
+            }
+        }
+        Action::Scroll { delta, .. } if !(-1200..=1200).contains(delta) => {
+            return Err("Scroll delta must be between -1200 and 1200".into());
+        }
+        Action::Type { text } if text.chars().count() > 2000 => {
+            return Err("Type at most 2000 characters at once".into());
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
 fn perform(state: &State, lease: u64, action: Action) -> Result<(), String> {
     state.check(lease)?;
     match action {
@@ -475,10 +498,18 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     let worker = state.clone();
     std::thread::spawn(move || {
         for command in work {
-            let result = command
-                .action
-                .ok_or_else(|| "Missing action".to_string())
-                .and_then(|action| perform(&worker, command.lease, action));
+            let action = match command.action {
+                Some(action) => action,
+                None => {
+                    let _ = worker.events.send(json!({"id":command.id,"ok":false,"rejected":true,"error":"No input was sent: missing action. Observe again."}));
+                    continue;
+                }
+            };
+            if let Err(error) = validate_action(&action) {
+                let _ = worker.events.send(json!({"id":command.id,"ok":false,"rejected":true,"error":format!("No input was sent: {error} Observe again before correcting the action.")}));
+                continue;
+            }
+            let result = perform(&worker, command.lease, action);
             let reply = match result {
                 Ok(()) => json!({"id":command.id,"ok":true}),
                 Err(error) => {
@@ -551,6 +582,23 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn unsupported_key_combinations_are_rejected_before_input() {
+        assert!(validate_action(&Action::Key {
+            keys: vec!["Ctrl+L".into()]
+        })
+        .is_err());
+        assert!(validate_action(&Action::Key {
+            keys: vec!["Control".into(), "L".into()]
+        })
+        .is_ok());
+        assert!(validate_action(&Action::Scroll {
+            x: 0,
+            y: 0,
+            delta: 1201
+        })
+        .is_err());
+    }
     #[test]
     fn revoked_generations_cannot_run_or_resume_themselves() {
         let (events, _) = mpsc::channel();

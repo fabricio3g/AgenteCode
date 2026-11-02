@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { ComputerSession } from '../../main/computer/session.ts';
+import { ComputerSession, ComputerActionRejected } from '../../main/computer/session.ts';
 
 const signal = () => new AbortController().signal;
 function deferred() { let resolve; const promise = new Promise(done => { resolve = done; }); return { promise, resolve }; }
@@ -101,6 +101,23 @@ test('a native failure pauses control and is never replayed', async () => {
   const shot = await session.observe(owner, signal());
   await assert.rejects(() => session.act(owner, shot.id, { kind: 'click', x: 20, y: 20 }, signal()), /blocked/);
   assert.equal(session.state.phase, 'paused'); assert.equal(calls.stop, 1); assert.equal(calls.actions, 1); session.end();
+});
+
+test('rejected targets do not stop the agent and require a fresh observation', async () => {
+  let rejected = true;
+  const { session, owner, calls } = setup({ act: async () => {
+    if (rejected) throw new ComputerActionRejected('Control bar covers this target; no input was sent.');
+    calls.actions++;
+  } });
+  await session.request(owner, 'Test app', signal());
+  const shot = await session.observe(owner, signal());
+  await assert.rejects(() => session.act(owner, shot.id, { kind:'click', x:20, y:20 }, signal()), /no input/);
+  assert.equal(session.state.phase, 'active'); assert.equal(calls.stop, 0); assert.equal(calls.revoke, 0);
+  await assert.rejects(() => session.act(owner, shot.id, { kind:'click', x:20, y:20 }, signal()), /fresh/);
+  rejected = false;
+  const fresh = await session.observe(owner, signal());
+  await session.act(owner, fresh.id, { kind:'key', keys:['Control','L'] }, signal());
+  assert.equal(calls.actions, 1); session.end();
 });
 test('turn completion and owner destruction release input/capture', async () => {
   for (const how of ['settled', 'closed']) {

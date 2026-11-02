@@ -1,6 +1,9 @@
 import type { ComputerAction, ComputerObservation, ComputerState, ComputerSpace } from '../../shared/computer.ts';
 import { EMPTY_COMPUTER_STATE } from '../../shared/computer.ts';
 
+/** The action was rejected before native input; the agent can correct it. */
+export class ComputerActionRejected extends Error {}
+
 export interface ComputerOwner {
   sessionId: string;
   turnId: string;
@@ -153,7 +156,10 @@ export class ComputerSession {
         this.state = { ...this.state, actions: this.state.actions + 1, ...(pointer ? { pointer } : {}) };
         this.publish();
         return { ok: true, action: action.kind, next: 'Observe the desktop to verify the result before the next action.' };
-      } catch (error) { if (this.state.phase === 'active') this.takeover('action_failed'); throw error; }
+      } catch (error) {
+        if (this.state.phase === 'active' && !(error instanceof ComputerActionRejected)) this.takeover('action_failed');
+        throw error;
+      }
       finally { signal.removeEventListener('abort', cancel); }
     });
   }

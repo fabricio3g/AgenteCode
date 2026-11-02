@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import { app, BrowserWindow, desktopCapturer, dialog, powerMonitor, screen, webContents, type IpcMain } from 'electron';
 import type { ComputerAction, ComputerObservation, ComputerState } from '../../shared/computer.ts';
-import { ComputerSession, type ComputerOwner } from './session.ts';
+import { ComputerSession, ComputerActionRejected, type ComputerOwner } from './session.ts';
 import { ComputerHelper, computerHelperPath } from './helper.ts';
 import { ComputerOverlayWindows } from './overlay.ts';
 
@@ -68,12 +68,12 @@ export const computerSession = new ComputerSession({
 
 function mapAction(action: ComputerAction, observation: ComputerObservation): ComputerAction {
   const current = geometry && screen.getAllDisplays().find(display => display.id === geometry!.displayId);
-  if (!geometry || !current || observation.displayId !== String(current.id) || JSON.stringify(current.bounds) !== JSON.stringify(geometry.bounds) || current.scaleFactor !== geometry.scale) throw new Error('Display geometry changed. Take another computer_observe.');
+  if (!geometry || !current || observation.displayId !== String(current.id) || JSON.stringify(current.bounds) !== JSON.stringify(geometry.bounds) || current.scaleFactor !== geometry.scale) throw new ComputerActionRejected('Display geometry changed. Take another computer_observe. No input was sent.');
   const rect = geometry.physical;
   const transform = (x: number, y: number) => {
-    if (!Number.isInteger(x) || !Number.isInteger(y) || x < 0 || y < 0 || x >= observation.width || y >= observation.height) throw new Error('Pointer coordinates must be within the latest screenshot.');
+    if (!Number.isInteger(x) || !Number.isInteger(y) || x < 0 || y < 0 || x >= observation.width || y >= observation.height) throw new ComputerActionRejected('Pointer coordinates must be within the latest screenshot. No input was sent. Observe again and correct the coordinates.');
     const point = { x: rect.x + Math.round(x * (rect.width - 1) / Math.max(1, observation.width - 1)), y: rect.y + Math.round(y * (rect.height - 1) / Math.max(1, observation.height - 1)) };
-    if (geometry!.protected && within(point, geometry!.protected)) throw new Error('The agent cannot operate its own control bar. Choose another target.');
+    if (geometry!.protected && within(point, geometry!.protected)) throw new ComputerActionRejected('The control bar covers this target. No input was sent. Use a keyboard shortcut or another target, then observe again.');
     return point;
   };
   if (!('x' in action)) return action;
@@ -121,7 +121,12 @@ export function registerComputerHandlers(ipcMain: IpcMain) {
   });
   ipcMain.handle('computer_overlay_ready', event => { if (!overlay.owns(event.sender)) throw new Error('Not a computer overlay.'); overlay.send(); });
   const displayChanged = () => { computerSession.takeover('display_changed'); overlay.dismiss(); };
-  screen.on('display-added', displayChanged); screen.on('display-removed', displayChanged); screen.on('display-metrics-changed', displayChanged);
+  screen.on('display-added', displayChanged); screen.on('display-removed', displayChanged);
+  // Taskbar/work-area changes do not change screenshot coordinates. Showing
+  // the overlay can cause these events; cancelling here stopped the agent.
+  screen.on('display-metrics-changed', (_event, _display, metrics) => {
+    if (metrics.some(metric => ['bounds', 'scaleFactor', 'rotation'].includes(metric))) displayChanged();
+  });
   powerMonitor.on('lock-screen', () => computerSession.takeover('screen_locked'));
   powerMonitor.on('suspend', () => computerSession.takeover('suspended'));
   app.once('before-quit', disposeComputer);
