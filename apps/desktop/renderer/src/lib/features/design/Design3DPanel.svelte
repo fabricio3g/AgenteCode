@@ -14,6 +14,8 @@
   let tab = $state<'model' | 'render'>('model');
   let model = $state('');
   let image = $state('');
+  let views = $state<string[]>([]);
+  let gallery = $state<Record<string, string>>({});
   let assetKey = '';
   let generation = 0;
   const busy = $derived(pending || engine.busy || engine.installing);
@@ -30,21 +32,27 @@
         next.model ? invoke<{ data: string }>('design_3d', { chatId: owner, action: 'asset', asset: 'model' }) : null,
         next.render ? invoke<{ data: string }>('design_3d', { chatId: owner, action: 'asset', asset: 'render' }) : null
       ]);
+      const names = next.views ?? [];
+      const shots: Record<string, string> = {};
+      await Promise.all(names.map(async view => {
+        const shot = await invoke<{ data: string }>('design_3d', { chatId: owner, action: 'asset', asset: `view:${view}` });
+        shots[view] = `data:image/png;base64,${shot.data}`;
+      }));
       if (owner !== chatId || version !== generation) return;
-      model = glb?.data ?? ''; image = png ? `data:image/png;base64,${png.data}` : ''; assetKey = key;
+      model = glb?.data ?? ''; image = png ? `data:image/png;base64,${png.data}` : ''; views = names; gallery = shots; assetKey = key;
     } catch (reason) { if (owner === chatId && version === generation) error = String(reason); }
   }
-  async function action(name: string) {
+  async function action(name: string, extra: Record<string, unknown> = {}) {
     if (pending) return;
     const owner = chatId;
     pending = true; error = '';
     try {
-      await invoke('design_3d', { chatId: owner, action: name, ...(name === 'build' ? { scene: DEFAULT_SCENE, render: false } : {}), ...(name === 'export' ? { asset: tab } : {}) });
+      await invoke('design_3d', { chatId: owner, action: name, ...(name === 'build' ? { scene: DEFAULT_SCENE, render: false } : {}), ...(name === 'export' ? { asset: tab } : {}), ...extra });
       if (owner === chatId) { await refresh(); if (name === 'render') tab = 'render'; }
     } catch (reason) { if (owner === chatId) error = String(reason); }
     finally { if (owner === chatId) pending = false; }
   }
-  $effect(() => { const id = chatId; assetKey = ''; model = ''; image = ''; error = ''; pending = false; if (id) void refresh(); });
+  $effect(() => { const id = chatId; assetKey = ''; model = ''; image = ''; views = []; gallery = {}; error = ''; pending = false; if (id) void refresh(); });
   onMount(() => {
     let stopped = false, off: (() => void) | undefined;
     void listen<{ chatId: string }>('design_3d_changed', event => { if (event.chatId === chatId) void refresh(); }).then(unlisten => { if (stopped) unlisten(); else off = unlisten; });
@@ -70,7 +78,13 @@
     {#if tab === 'model' && model}
       <DesignModelPreview data={model} scene={engine.scene} />
     {:else if tab === 'render' && image}
-      <img class="render-image" src={image} alt={engine.scene?.title || 'Blender render'} />
+      {#if views.length > 1}
+        <div class="render-grid">
+          {#each views as view}<figure><img src={gallery[view] ?? image} alt={`${engine.scene?.title || 'Blender'} · ${view}`} /><figcaption>{view.replace('_', ' ')}</figcaption></figure>{/each}
+        </div>
+      {:else}
+        <img class="render-image" src={image} alt={engine.scene?.title || 'Blender render'} />
+      {/if}
     {:else}
       <div class="three-empty">
         <Box size={32} strokeWidth={1} />
@@ -96,7 +110,7 @@
     </div>
   {/if}
   {#if engine.log}<details class="job-log"><summary>{copy.studio3d.output}</summary><pre>{engine.log}</pre></details>{/if}
-  {#if engine.available}<div class="engine-footer"><span>{copy.studio3d.engine}</span><Button variant="plain" type="button" disabled={busy} onclick={() => action('choose')}>{copy.studio3d.change}</Button></div>{/if}
+  {#if engine.available}<div class="engine-footer"><span>{copy.studio3d.engine}</span><span class="footer-actions"><Button variant="plain" type="button" disabled={busy} onclick={() => action('allow_script', { allow: !engine.scriptAllowed })}>{engine.scriptAllowed ? copy.studio3d.scriptOn : copy.studio3d.scriptOff}</Button><Button variant="plain" type="button" disabled={busy} onclick={() => action('choose')}>{copy.studio3d.change}</Button></span></div>{/if}
 </section>
 
 <style>
@@ -113,6 +127,11 @@
   .caption { font-size: var(--text-xs); }
   .empty-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: .5rem; }
   .render-image { width: 100%; height: 100%; object-fit: contain; }
+  .render-grid { height: 100%; overflow: auto; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .4rem; padding: .4rem; }
+  .render-grid figure { display: flex; flex-direction: column; gap: .2rem; min-width: 0; }
+  .render-grid img { width: 100%; height: 100%; min-height: 0; object-fit: contain; background: color-mix(in srgb, var(--muted) 45%, var(--background)); border-radius: .35rem; }
+  .render-grid figcaption { font-size: var(--text-xs); color: var(--muted-foreground); text-transform: capitalize; }
+  .footer-actions { display: flex; align-items: center; gap: .75rem; }
   .job-strip { display: flex; gap: .5rem; align-items: center; justify-content: space-between; padding: .5rem .75rem; font-size: var(--text-xs); max-height: 7rem; overflow: auto; overflow-wrap: anywhere; }
   .job-log { padding: .4rem .75rem; font-size: var(--text-xs); max-height: 8rem; overflow: auto; }
   .job-log pre { white-space: pre-wrap; overflow-wrap: anywhere; }

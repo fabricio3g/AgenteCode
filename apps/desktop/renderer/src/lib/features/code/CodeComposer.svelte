@@ -36,7 +36,7 @@
   import { codeStore } from './code.svelte';
   import { codeEdits, initProject, projectFiles, setAgenteModel } from './code-ipc';
   import CodeProjectDialog from './CodeProjectDialog.svelte';
-  import MediaAttachmentCard from './MediaAttachmentCard.svelte';
+  import CodeAttachmentShelf from './CodeAttachmentShelf.svelte';
   import PromptQueue from '$lib/features/shared/PromptQueue.svelte';
   import SessionGoal from '$lib/features/shared/SessionGoal.svelte';
   import { conversationSpend } from './accounting';
@@ -686,13 +686,9 @@
     {#if starterSlot}
       <p class="starter-slot"><span class="slot">{starterSlot}</span></p>
     {/if}
+    <CodeAttachmentShelf {attachments} onremove={path => attachments = attachments.filter(item => item.path !== path)} />
     <div class="composer-shell ui-composer pointer-events-auto transition">
       <div class="composer-body">
-        {#if attachments.length}
-          <div class="mx-3 mt-3 flex flex-wrap gap-1.5">
-            {#each attachments as media (media.path)}<MediaAttachmentCard attachment={media} onremove={() => attachments = attachments.filter(item => item.path !== media.path)} />{/each}
-          </div>
-        {/if}
         <UiTextarea variant="composer"
           bind:ref={textarea}
           class={uiClass("composer-textarea w-full resize-none bg-transparent text-foreground outline-none", "ui-local-49e9c79c")}

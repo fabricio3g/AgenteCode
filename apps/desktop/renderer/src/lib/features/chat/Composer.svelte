@@ -392,6 +392,7 @@
     {#if appStore.currentChat?.pendingPrompts?.length && appStore.currentChatId}
       <PromptQueue running={generating} items={appStore.currentChat.pendingPrompts} onupdate={(id, content) => appStore.updateQueuedPrompt(appStore.currentChatId!, id, content)} onremove={(id) => { appStore.removeQueuedPrompt(appStore.currentChatId!, id); }} onsend={(id) => void appStore.sendQueuedPromptsNow(appStore.currentChatId!, id)} />
     {/if}
+    <AttachmentCards />
     <div class="composer-shell ui-composer pointer-events-auto transition">
       {#if nameCompletion}
         <NameCompletion {textarea} text={appStore.composer} {...nameCompletion} onchange={(text) => appStore.updateComposer(text)} />
@@ -408,7 +409,6 @@
         </div>
       {/if}
 
-      <AttachmentCards />
 
       {#if localBusyElsewhere}
         <div class="px-4 pt-1 text-[length:var(--text-xs)] text-muted-foreground">

@@ -72,7 +72,8 @@ export function createDesignTools(host: DesignToolHost, borrowed: Map<string, Ag
     ...DESIGN_3D_TOOL, executionMode: 'sequential',
     async execute(_id, args, ctx) {
       const action = asString(args.action);
-      if (!['status', 'build', 'render'].includes(action)) return text('Use status, build or render.', true);
+      if (!['status', 'build', 'render', 'inspect', 'script'].includes(action)) return text('Use status, build, render, inspect or script.', true);
+      if (action === 'script' && !asString(args.python).trim()) return text('python is required for the script action.', true);
       if (ctx.signal.aborted) return text('Stopped.', true);
       const done = host.step('design_3d', action);
       host.count();
@@ -80,12 +81,19 @@ export function createDesignTools(host: DesignToolHost, borrowed: Map<string, Ag
       const cancel = () => { if (action !== 'status') void invoke('design_3d', { chatId: host.chatId, action: 'cancel', owner: _id }).catch(() => {}); };
       ctx.signal.addEventListener('abort', cancel, { once: true });
       try {
-        const state = await invoke<BlenderState>('design_3d', { chatId: host.chatId, action, scene: args.scene, render: args.render, owner: _id });
+        const state = await invoke<BlenderState>('design_3d', { chatId: host.chatId, action, scene: args.scene, python: args.python, views: args.views, render: args.render, owner: _id });
         done(!state.error, state.error);
-        const summary = JSON.stringify({ available: state.available, busy: state.busy, model: state.model, render: state.render, scene: state.scene, error: state.error });
+        const summary = JSON.stringify({
+          available: state.available, busy: state.busy, model: state.model, render: state.render,
+            views: state.views, inspection: state.inspection, scriptAllowed: state.scriptAllowed, hardware: state.hardware, scene: state.scene, error: state.error
+        });
+        // The built views are the model's only chance to see its own silhouette.
         if (action !== 'status' && state.render && !state.error && await host.vision()) {
-          const image = await invoke<{ data: string; mimeType: string }>('design_3d', { chatId: host.chatId, action: 'asset', asset: 'render' });
-          return { content: summary, images: [image] };
+          const images = [await invoke<{ data: string; mimeType: string }>('design_3d', { chatId: host.chatId, action: 'asset', asset: 'render' })];
+          for (const view of (state.views ?? []).filter(view => view !== 'three_quarter').slice(0, 3)) {
+            images.push(await invoke<{ data: string; mimeType: string }>('design_3d', { chatId: host.chatId, action: 'asset', asset: `view:${view}` }));
+          }
+          return { content: summary, images };
         }
         return text(summary, !!state.error);
       } catch (error) { done(false, String(error)); return text(String(error), true); }
