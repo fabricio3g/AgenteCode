@@ -25,6 +25,7 @@
   import DeepResearchWidget from '$lib/components/search/DeepResearchWidget.svelte';
   import DocumentSurface from '$lib/features/chat/DocumentSurface.svelte';
   import AgentBlock from '$lib/ui/components/AgentBlock.svelte';
+  import CodeWorkBlock from '$lib/features/code/CodeWorkBlock.svelte';
   import ArtifactBlock from '$lib/ui/components/ArtifactBlock.svelte';
   import FilesCreatedBlock from '$lib/ui/components/FilesCreatedBlock.svelte';
   import ReasoningBlock from '$lib/ui/components/ReasoningBlock.svelte';
@@ -64,6 +65,7 @@
 
   const parts = $derived(
     buildMessageParts({
+      contextMode: ctx.contextMode,
       message: ctx.message,
       displayContent: ctx.displayContent,
       displayReasoning: ctx.displayReasoning,
@@ -132,6 +134,12 @@
     </div>
   {:else if part.kind === 'tool-status'}
     <div class="ui-cot-stack mb-1 w-full">
+      {#if ctx.contextMode === 'design'}
+        <CodeWorkBlock items={[
+          ...(appStore.config.ui?.enable_thinking && ctx.displayReasoning ? [{key:'design-reasoning', thinking:ctx.displayReasoning}] : []),
+          ...(ctx.message.agentSteps || []).filter(step => !step.preface).map(step => ({key:step.id, step}))
+        ]} chatId={appStore.currentChatId || ''} messageId={ctx.message.id} live={ctx.message.status === 'streaming'} />
+      {:else}
       <AgentBlock
         steps={(ctx.message.agentSteps || []).filter((step) => !step.preface)}
         reasoning={appStore.config.ui?.enable_thinking ? ctx.displayReasoning : ''}
@@ -145,6 +153,7 @@
         searchMode={ctx.message.searchMode || null}
         awaitingApproval={pendingApprovals.length > 0}
       />
+      {/if}
     </div>
   {:else if part.kind === 'research'}
     <ResearchWidget />

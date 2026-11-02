@@ -36,6 +36,7 @@ export type MessagePart =
 export type MessagePartKind = MessagePart['kind'];
 
 export interface BuildMessagePartsInput {
+  contextMode?: 'home' | 'code' | 'design' | 'roleplay';
   message: ChatMessage;
   displayContent: string;
   displayReasoning: string;
@@ -128,7 +129,7 @@ export function buildMessageParts(input: BuildMessagePartsInput): MessagePart[] 
   // Instant fast path renders a single quiet status, never the planning chrome:
   // no reasoning trace, no tool-status line. Steps are still recorded on the
   // message (and approvals still render below) — only the surfacing is hushed.
-  const isQuietInstant = message.mode === 'instant';
+  const isQuietInstant = message.mode === 'instant' && input.contextMode !== 'design';
   const hasReasoning = enableThinking && !!displayReasoning && !isQuietInstant;
   const hasSteps = !!message.agentSteps?.some((step) => !step.preface);
 
@@ -222,6 +223,7 @@ export function buildMessageParts(input: BuildMessagePartsInput): MessagePart[] 
 
 /** True when the message has nothing at all to show and should be skipped. */
 export function isAssistantMessageEmpty(input: {
+  contextMode?: string;
   message: ChatMessage;
   displayContent: string;
   displayReasoning: string;
@@ -232,6 +234,7 @@ export function isAssistantMessageEmpty(input: {
   if (message.role !== 'assistant') return false;
   if (hasActiveDeepResearch) return false;
   if (message.status === 'streaming') return false;
+  if (input.contextMode === 'design' && message.agentSteps?.some(step => !step.preface)) return false;
   if (displayContent.trim()) return false;
   if (displayReasoning.trim()) return false;
   if (message.sources?.length) return false;

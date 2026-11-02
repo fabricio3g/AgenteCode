@@ -55,6 +55,10 @@ describe('buildMessageParts', () => {
     expect(kinds.indexOf('approval')).toBe(kinds.indexOf('tool-status') + 1);
   });
 
+  it('shows Design tool work even when the composer selected Instant', () => {
+    expect(build({contextMode:'design',message:message({mode:'instant',agentSteps:[{id:'d1',type:'tool',label:'Blender',toolName:'design_3d',status:'running'}]})})).toContain('tool-status');
+  });
+
   it('suppresses the typing dots while an approval is waiting', () => {
     // Dots next to an unanswered question would imply the agent was still
     // working, when in fact it is blocked on the user.

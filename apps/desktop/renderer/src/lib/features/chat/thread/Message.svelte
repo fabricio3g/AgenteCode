@@ -87,6 +87,7 @@
 
   const isEmpty = $derived(
     isAssistantMessageEmpty({
+      contextMode,
       message,
       displayContent,
       displayReasoning,
