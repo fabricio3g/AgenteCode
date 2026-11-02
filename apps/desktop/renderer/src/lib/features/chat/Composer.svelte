@@ -453,7 +453,7 @@
             {/snippet}
             {#snippet microphone()}<DictationButton {dictation} oncall={() => void enterVoiceMode()} />{/snippet}
             {#snippet trailing()}
-              <SendButton compact running={generating} disabled={sendDisabled || !appStore.composer.trim()}
+              <SendButton compact running={generating} disabled={sendDisabled || (!appStore.composer.trim() && !appStore.pendingAttachments.some(item => item.status === 'ready'))}
                 sendLabel={copy.composer.send} stopLabel={copy.composer.stop}
                 onsend={() => void submit()} onstop={() => appStore.stopStreaming()} />
             {/snippet}
@@ -506,6 +506,7 @@
     pointer-events: auto;
   }
   .drop-overlay {
+    pointer-events: none;
     position: absolute;
     inset: 0;
     z-index: var(--z-float);

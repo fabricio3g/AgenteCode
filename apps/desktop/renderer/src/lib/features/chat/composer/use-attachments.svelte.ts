@@ -31,6 +31,15 @@ export class ComposerAttachments {
   private ocr = $state<OcrProgress | null>(null);
   private ocrHideTimer: ReturnType<typeof setTimeout> | null = null;
   private dragLeaveTimer: ReturnType<typeof setTimeout> | null = null;
+  private dragDepth = 0;
+
+  private clearDrag(): void {
+    if (this.dragLeaveTimer) clearTimeout(this.dragLeaveTimer);
+    this.dragLeaveTimer = null;
+    this.dragDepth = 0;
+    this.dragOver = false;
+    this.windowDragActive = false;
+  }
 
   /** Empty string when there is nothing to report. */
   get ocrLabel(): string {
@@ -67,6 +76,8 @@ export class ComposerAttachments {
     // Ignore moves between children of the drop zone.
     const related = event.relatedTarget as Node | null;
     const zone = event.currentTarget as HTMLElement;
+    const bounds = zone.getBoundingClientRect();
+    if (!related && event.clientX > bounds.left && event.clientX < bounds.right && event.clientY > bounds.top && event.clientY < bounds.bottom) return;
     if (!related || !zone.contains(related)) this.dragOver = false;
   }
 
@@ -76,8 +87,7 @@ export class ComposerAttachments {
     if (!files.length) return;
     event.preventDefault();
     event.stopPropagation();
-    this.dragOver = false;
-    this.windowDragActive = false;
+    this.clearDrag();
     if (files.length) void appStore.addFiles(files);
   }
 
@@ -102,6 +112,7 @@ export class ComposerAttachments {
   listen(): () => void {
     const onDragEnter = (event: DragEvent) => {
       if (!event.dataTransfer?.types?.includes('Files')) return;
+      this.dragDepth++;
       if (this.dragLeaveTimer) {
         clearTimeout(this.dragLeaveTimer);
         this.dragLeaveTimer = null;
@@ -110,18 +121,17 @@ export class ComposerAttachments {
     };
 
     const onDragLeave = () => {
+      this.dragDepth = Math.max(0, this.dragDepth - 1);
+      if (this.dragDepth) return;
+      if (this.dragLeaveTimer) clearTimeout(this.dragLeaveTimer);
       this.dragLeaveTimer = setTimeout(() => {
-        this.windowDragActive = false;
+        this.clearDrag();
       }, DRAG_LEAVE_GRACE_MS);
     };
 
     const onDrop = (event: DragEvent) => {
       if (!event.defaultPrevented) this.handleDrop(event);
-      this.windowDragActive = false;
-      if (this.dragLeaveTimer) {
-        clearTimeout(this.dragLeaveTimer);
-        this.dragLeaveTimer = null;
-      }
+      this.clearDrag();
     };
 
     const onOcrProgress = (event: Event) => {
@@ -149,7 +159,19 @@ export class ComposerAttachments {
     };
 
     document.addEventListener('dragenter', onDragEnter);
-    const preventNavigation = (event: DragEvent) => { if (event.dataTransfer?.types.includes('Files')) event.preventDefault(); };
+    const preventNavigation = (event: DragEvent) => {
+      if (!event.dataTransfer?.types.includes('Files')) return;
+      event.preventDefault();
+      event.dataTransfer.dropEffect = 'copy';
+      if (this.dragLeaveTimer) clearTimeout(this.dragLeaveTimer);
+      this.dragLeaveTimer = null;
+      this.windowDragActive = true;
+    };
+    // Cleanup even when the canvas or composer owns the drop and stops bubbling.
+    const resetDrag = () => this.clearDrag();
+    document.addEventListener('drop', resetDrag, true);
+    document.addEventListener('dragend', resetDrag);
+    window.addEventListener('blur', resetDrag);
     document.addEventListener('dragover', preventNavigation);
     document.addEventListener('dragleave', onDragLeave);
     document.addEventListener('drop', onDrop);
@@ -160,8 +182,11 @@ export class ComposerAttachments {
       document.removeEventListener('dragover', preventNavigation);
       document.removeEventListener('dragleave', onDragLeave);
       document.removeEventListener('drop', onDrop);
+      document.removeEventListener('drop', resetDrag, true);
+      document.removeEventListener('dragend', resetDrag);
+      window.removeEventListener('blur', resetDrag);
       window.removeEventListener('ocr-progress', onOcrProgress as EventListener);
-      if (this.dragLeaveTimer) clearTimeout(this.dragLeaveTimer);
+      this.clearDrag();
       this.clearOcr();
     };
   }
