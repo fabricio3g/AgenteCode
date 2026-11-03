@@ -107,8 +107,8 @@ export const sceneSchema = z.object({
     color: color.default('#ffffff'), energy: number.min(0).max(10000).default(1000), size: number.min(0.01).max(100).default(5)
   }).strict()).max(16).default([]),
   render: z.object({
-    width: z.number().int().min(128).max(2048).default(1024), height: z.number().int().min(128).max(2048).default(1024),
-    engine: z.enum(['eevee', 'cycles']).default('eevee'), samples: z.number().int().min(1).max(128).default(32),
+    width: z.number().int().min(128).default(1024), height: z.number().int().min(128).default(1024),
+    engine: z.enum(['eevee', 'cycles']).default('eevee'), samples: z.number().int().min(1).default(32),
     views: z.array(z.enum(RENDER_VIEWS)).max(4).default(['three_quarter'])
   }).strict().default({ width: 1024, height: 1024, engine: 'eevee', samples: 32, views: ['three_quarter'] })
 }).strict().superRefine((scene, ctx) => {
@@ -159,7 +159,7 @@ export interface BlenderState {
   busy: boolean; jobId?: string; phase?: string; log?: string; error?: string;
   scene?: DesignScene; model?: boolean; render?: boolean; views?: string[];
   inspection?: SceneInspection; scriptAllowed?: boolean;
-  hardware?: import('./blender-budget').BlenderHardwareBudget;
+  hardware?: import('./blender-hardware').BlenderHardwareInfo;
   updatedAt?: number;
 }
 export const DEFAULT_SCENE: DesignScene = sceneSchema.parse({

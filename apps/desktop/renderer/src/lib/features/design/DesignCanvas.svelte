@@ -28,12 +28,13 @@
   import { untrack } from 'svelte';
   import Button from '$lib/components/ui/Button.svelte';
   import Input from '$lib/components/ui/Input.svelte';
+  import { toastStore } from '$lib/stores/toast.svelte';
   import DesignFrameMenu from './DesignFrameMenu.svelte';
   import { copy } from '$lib/copy';
   import { buildPreviewHtml } from '$lib/utils/preview-builder';
   import { designStore } from './design.svelte';
   import { editBarPlacement, frameOnScreen, nextZoomPreset, pageLabel, PIN_GAP, PIN_SIZE, pinOrigin, screenBox, type BoardFrame } from './design-view';
-  import { flowPath } from '$shared/design-flows';
+  import { flowPath, hasLink } from '$shared/design-flows';
   import { isMark, POINT_GAP, rankHits, samplePoints, screenPoints, type Pt } from './design-strokes';
   import { HOST_SOURCE, pickLabel, readFrameMessage, withPicker, type FrameMessage } from './design-picker';
   import { toolCursor } from './design-cursors';
@@ -325,9 +326,26 @@
       const a = screenBox(from, view);
       const b = screenBox(to, view);
       if (a.width < 28 || b.width < 28) return [];
-      return [{ id: `${link.from}>${link.to}:${size}`, ...flowPath(a, b) }];
+      return [{ id: `${link.from}>${link.to}:${size}`, from: link.from, to: link.to, size, ...flowPath(a, b) }];
     })
   ));
+
+  async function removeFlow(arrow: { from: string; to: string }) {
+    try {
+      await designStore.toggleLink(arrow.from, arrow.to);
+      toastStore.undoable(`Removed page flow: ${pageLabel(arrow.from)} → ${pageLabel(arrow.to)}`, () => {
+        if (!hasLink(designStore.links, arrow.from, arrow.to)) void designStore.toggleLink(arrow.from, arrow.to);
+      });
+    } catch (error) {
+      toastStore.error(error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  function onFlowKeydown(event: KeyboardEvent, arrow: { from: string; to: string }) {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    event.preventDefault();
+    void removeFlow(arrow);
+  }
 
   const pins = $derived(designStore.comments.flatMap((comment, index) =>
     frames
@@ -534,10 +552,21 @@
         {/if}
       {/each}
       {#if arrows.length}
-        <svg class="flows" aria-hidden="true">
+        <svg class="flows" role="group" aria-label="Page flows">
           {#each arrows as arrow (arrow.id)}
-            <path d={arrow.d} />
-            <path class="head-mark" d="M-7 -4L0 0L-7 4" transform="translate({arrow.x} {arrow.y}) rotate({arrow.angle})" />
+            <g
+              class="flow-link"
+              role="button"
+              tabindex="0"
+              aria-label={`Remove page flow from ${pageLabel(arrow.from)} to ${pageLabel(arrow.to)}`}
+              title={`Page flow: ${pageLabel(arrow.from)} → ${pageLabel(arrow.to)} · Click to remove · Use frame ⋯ → Link to change`}
+              onclick={() => void removeFlow(arrow)}
+              onkeydown={(event) => onFlowKeydown(event, arrow)}
+            >
+              <path class="flow-line" d={arrow.d} />
+              <path class="head-mark" d="M-7 -4L0 0L-7 4" transform="translate({arrow.x} {arrow.y}) rotate({arrow.angle})" />
+              <path class="flow-hit" d={arrow.d} />
+            </g>
           {/each}
         </svg>
       {/if}
@@ -661,10 +690,20 @@
     height: 100%;
     overflow: visible;
     fill: none;
-    stroke: color-mix(in srgb, var(--foreground) 38%, transparent);
-    stroke-width: 1.5;
+  }
+  .flow-line, .head-mark {
+    stroke: color-mix(in srgb, var(--foreground) 34%, transparent);
+    stroke-width: 1.25;
     stroke-linecap: round;
     stroke-linejoin: round;
+    pointer-events: none;
+    transition: stroke var(--motion-fast) var(--motion-ease), stroke-width var(--motion-fast) var(--motion-ease);
+  }
+  .flow-hit { stroke: transparent; stroke-width: 14; pointer-events: stroke; cursor: pointer; }
+  .flow-link:hover .flow-line, .flow-link:hover .head-mark,
+  .flow-link:focus-visible .flow-line, .flow-link:focus-visible .head-mark {
+    stroke: var(--brand-accent-strong);
+    stroke-width: 2;
   }
 
   /* A frame's head: the label (drag it to move the frame) and, on hover, its menu. */

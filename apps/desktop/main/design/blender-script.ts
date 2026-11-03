@@ -2,8 +2,7 @@
  * Fixed programs: scene data never becomes Python source or a filesystem path.
  * Build args after `--`: scene.json, output directory, render flag.
  */
-import { BLENDER_RESOURCE_SCRIPT } from '../../shared/blender-budget.ts';
-export const BLENDER_SCRIPT = BLENDER_RESOURCE_SCRIPT + String.raw`
+export const BLENDER_SCRIPT = String.raw`
 import bpy, json, math, os, sys, shutil
 from mathutils import Vector
 
@@ -392,7 +391,6 @@ background.inputs[1].default_value = world_strength * max(strength, 0.2)
 
 settings = data['render']
 scene.render.engine = 'CYCLES' if settings['engine'] == 'cycles' else 'BLENDER_EEVEE_NEXT'
-scene.cycles.device = 'CPU'
 scene.cycles.samples = settings['samples']
 scene.render.resolution_x, scene.render.resolution_y = settings['width'], settings['height']
 scene.render.resolution_percentage = 100
@@ -400,7 +398,6 @@ scene.render.image_settings.file_format = 'PNG'
 scene.view_settings.view_transform = 'AgX'
 
 place_camera('three_quarter')
-apply_resource_budget(scene)
 bpy.ops.export_scene.gltf(
     filepath=os.path.join(output, 'model.glb'), export_format='GLB',
     export_cameras=True, export_lights=True, export_apply=True
@@ -466,7 +463,7 @@ print('AGENTE_BLENDER_INSPECTED', flush=True)
  * and the reference folder. The agent's program runs next, unchanged.
  * Args after `--`: output directory, render flag, views JSON, references directory.
  */
-export const BLENDER_SCRIPT_HEAD = BLENDER_RESOURCE_SCRIPT + String.raw`
+export const BLENDER_SCRIPT_HEAD = String.raw`
 import bpy, json, math, os, sys, shutil, random
 from mathutils import Vector, Euler
 
@@ -567,7 +564,6 @@ def frame_camera(view='three_quarter', target=None, distance=None):
  * agent built still comes back as model.glb, scene.blend and the view PNGs.
  */
 export const BLENDER_SCRIPT_TAIL = String.raw`
-apply_resource_budget(bpy.context.scene)
 os.makedirs(os.path.join(output, 'views'), exist_ok=True)
 scene = bpy.context.scene
 if scene.camera is None:

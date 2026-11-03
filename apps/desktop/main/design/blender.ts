@@ -12,10 +12,10 @@ import { workspaceRoot, ensureWorkspace } from './workspace.ts';
 import { runDesignFileTool } from './tools.ts';
 import { BLENDER_INSPECT_SCRIPT, BLENDER_SCRIPT, BLENDER_SCRIPT_HEAD, BLENDER_SCRIPT_TAIL } from './blender-script.ts';
 import { checkBlender, findBlender, installBlender, isInstallingBlender, rememberBlender } from './blender-engine.ts';
-import { blenderBudget } from '../../shared/blender-budget.ts';
+import { blenderHardwareInfo } from '../../shared/blender-hardware.ts';
 
-type Job = { id: string; owner?: string; process?: ChildProcess; log: string; stopped: boolean; phase: string; stopReason?: string };
-const hardwareBudget = () => blenderBudget(os.totalmem(), os.freemem(), os.cpus().length);
+type Job = { id: string; owner?: string; process?: ChildProcess; log: string; stopped: boolean; phase: string };
+const hardwareInfo = () => blenderHardwareInfo(os.totalmem(), os.freemem(), os.cpus().length);
 const jobs = new Map<string, Job>();
 const failures = new Map<string, string>();
 const roots = (chatId: unknown) => {
@@ -77,38 +77,25 @@ export function blenderState(chatId: string): BlenderState {
     model: !!directory && fs.existsSync(path.join(directory, 'model.glb')),
     render: !!directory && fs.existsSync(path.join(directory, 'render.png')),
     views: outputViews(directory), inspection: readInspection(directory), scriptAllowed: scriptAllowed(),
-    hardware: hardwareBudget(), updatedAt: directory ? fs.statSync(directory).mtimeMs : undefined
+    hardware: hardwareInfo(), updatedAt: directory ? fs.statSync(directory).mtimeMs : undefined
   };
 }
 function notify(event: IpcMainInvokeEvent, chatId: string) {
   if (!event.sender.isDestroyed()) event.sender.send('design_3d_changed', { chatId });
 }
 
-/** Runs one program the way a person's Blender would, with the whole tree killable. */
+/** Runs Blender without app-imposed CPU, memory, render-size, sample, vertex or time budgets. */
 function executeJob(job: Job, executable: string, script: string, args: string[], append: (chunk: Buffer | string) => void): Promise<void> {
   return new Promise((resolve, reject) => {
-    const budget = hardwareBudget();
-    if (!budget.canStart) { reject(new Error('Not enough free RAM for Blender. Close other heavy apps and retry.')); return; }
     const child = spawn(executable, [
-      '--background', '--factory-startup', '--disable-autoexec', '--threads', String(budget.threads),
+      '--background', '--factory-startup', '--disable-autoexec',
       '--python-exit-code', '1', '--python', script, '--', ...args
-    ], { cwd: path.dirname(script), windowsHide: true, detached: process.platform !== 'win32', shell: false, env: { ...process.env, AGENTE_BLENDER_BUDGET: JSON.stringify(budget), OMP_NUM_THREADS:String(budget.threads), OPENBLAS_NUM_THREADS:String(budget.threads) }, stdio: ['ignore', 'pipe', 'pipe'] });
+    ], { cwd: path.dirname(script), windowsHide: true, detached: process.platform !== 'win32', shell: false, stdio: ['ignore', 'pipe', 'pipe'] });
     job.process = child;
-    child.once('spawn', () => { try { os.setPriority(child.pid!, os.constants.priority.PRIORITY_BELOW_NORMAL); } catch { /* Some platforms deny priority changes. */ } });
-    const memoryWatch = setInterval(() => {
-      if (!job.stopped && os.freemem() < budget.reserveBytes) {
-        job.stopReason = 'Blender stopped to preserve system RAM. Reduce scene complexity or close heavy apps before retrying.';
-        stop(job);
-      }
-    }, 1000);
-    memoryWatch.unref();
-    const timer = setTimeout(() => { stop(job); }, 10 * 60_000);
     child.stdout?.on('data', append); child.stderr?.on('data', append);
-    child.once('error', error => { clearTimeout(timer); clearInterval(memoryWatch); reject(error); });
+    child.once('error', reject);
     child.once('close', code => {
-      clearTimeout(timer);
-      clearInterval(memoryWatch);
-      if (job.stopped) reject(new Error(job.stopReason || 'Blender job stopped or exceeded its 10-minute limit.'));
+      if (job.stopped) reject(new Error('Blender job was stopped.'));
       else if (code !== 0) reject(new Error(`Blender exited (${code}). ${job.log.slice(-2000)}`));
       else resolve();
     });
@@ -142,7 +129,6 @@ function finishJob(event: IpcMainInvokeEvent, chatId: string, job: Job, director
 function startJob(event: IpcMainInvokeEvent, chatId: string, phase: string, owner?: string) {
   if (jobs.has(chatId)) throw new Error('This design already has a Blender job running.');
   if (jobs.size) throw new Error('One Blender job is already running. Wait for it to finish; jobs are serialized to keep the desktop responsive.');
-  if (!hardwareBudget().canStart) throw new Error('Not enough free RAM for Blender. Close other heavy apps before retrying.');
   const executable = findBlender();
   if (!executable) throw new Error('Install or choose Blender in Design → 3D first.');
   const { output } = roots(chatId);
