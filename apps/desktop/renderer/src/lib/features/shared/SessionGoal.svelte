@@ -5,19 +5,18 @@
   import Button from '$lib/components/ui/Button.svelte';
   import IconButton from '$lib/components/ui/IconButton.svelte';
   import Textarea from '$lib/components/ui/Textarea.svelte';
-  import Select from '$lib/components/ui/Select.svelte';
   import Dialog from '$lib/components/ui/Dialog.svelte';
   import { invoke, listen } from '$lib/services/bridge';
   import { toastStore } from '$lib/stores/toast.svelte';
   import { goalElapsed, parseGoalCommand, type SessionGoal } from '$shared/session-goal';
   let {sessionId,ensureSession,running=false,chatId,space='home'}:{sessionId?:string;ensureSession:()=>string;running?:boolean;chatId:string;space?:'home'|'code'}=$props();
   let goal=$state<SessionGoal|null>(null),open=$state(false),details=$state(false),busy=$state(false),confirming=$state(false);
-  let objective=$state(''),criteria=$state(''),constraints=$state(''),minutes=$state('30');
+  let objective=$state(''),criteria=$state(''),constraints=$state('');
   let startNew=$state(false);
   let editor=$state<HTMLTextAreaElement>();
   let now=$state(Date.now());
   const active=$derived(goal?.phase==='working'||goal?.phase==='evaluating');
-  const stateLabel=$derived(goal?({working:'Working',evaluating:'Checking',paused:'Paused',needs_input:'Needs input',budget_reached:'Budget reached',achieved:'Achieved'})[goal.phase]:'');
+  const stateLabel=$derived(goal?({working:'Working',evaluating:'Checking',paused:'Paused',needs_input:'Needs input',achieved:'Achieved'})[goal.phase]:'');
   const latestResult=$derived(goal?.evidence.at(-1)||goal?.reason||(goal?.phase==='achieved'?'Goal achieved.':'No result yet.'));
   const motionDuration=()=>document.documentElement.classList.contains('a11y-reduce-motion')||matchMedia('(prefers-reduced-motion: reduce)').matches?0:160;
   $effect(()=>{
@@ -32,13 +31,13 @@
   $effect(()=>{if(!active)return;now=Date.now();const timer=setInterval(()=>now=Date.now(),1000);return()=>clearInterval(timer);});
   export async function edit(){
     startNew=!goal||goal.phase==='achieved';
-    objective=goal?.objective||'';criteria=goal?.criteria||'';constraints=goal?.constraints||'Keep checks lightweight and avoid parallel heavy processes.';minutes=String(goal?.budgetMinutes||30);open=true;await tick();editor?.focus();
+    objective=goal?.objective||'';criteria=goal?.criteria||'';constraints=goal?.constraints||'Keep checks lightweight and avoid parallel heavy processes.';open=true;await tick();editor?.focus();
   }
   async function save(){
     if(busy||!objective.trim())return;busy=true;
     try{
       const id=sessionId||ensureSession();
-      goal=await invoke<SessionGoal>('agente_goal_set',{sessionId:id,chatId,space,objective,criteria,constraints,budgetMinutes:Number(minutes),start:startNew});
+      goal=await invoke<SessionGoal>('agente_goal_set',{sessionId:id,chatId,space,objective,criteria,constraints,start:startNew});
       open=false;
     }catch(error){toastStore.error(String(error));}finally{busy=false;}
   }
@@ -54,7 +53,7 @@
   }
   export async function command(value:string):Promise<boolean>{
     const command=parseGoalCommand(value);if(!command)return false;
-    if(command.action==='start'){await edit();objective=command.objective;startNew=true;await save();}
+    if(command.action==='start'){startNew=true;objective=command.objective;criteria='';constraints='Keep checks lightweight and avoid parallel heavy processes.';await save();}
     else if(command.action==='view'){if(goal)details=!details;else await edit();}
     else if(command.action==='clear')confirming=true;
     else await action(command.action);
@@ -63,8 +62,8 @@
 </script>
 {#if goal}
   <section class="goal-bar" aria-label="Session goal">
-    <div class="goal-top"><Button variant="plain" class="goal-open" aria-expanded={details} title={goal.objective} onclick={()=>details=!details}><Target class="size-3.5 shrink-0"/><span class="goal-objective">{goal.objective}</span><ChevronDown class="size-3 shrink-0"/></Button><span class="goal-state" aria-live="polite">{stateLabel}</span>{#if goal.phase==='achieved'}<Check class="size-3.5 shrink-0"/>{:else}<IconButton label={active?'Pause goal':'Resume goal'} size="xs" disabled={busy} onclick={()=>goal?.phase==='budget_reached'?edit():action(active?'pause':'resume')}>{#if active}<Pause class="size-3.5"/>{:else}<Play class="size-3.5"/>{/if}</IconButton>{/if}</div>
-    <div class="goal-next"><span class="goal-result" title={latestResult}><span class="goal-caption">Latest result</span> {latestResult}</span><span>{Math.floor(goalElapsed(goal,now)/60_000)}m / {goal.budgetMinutes}m</span></div>
+    <div class="goal-top"><Button variant="plain" class="goal-open" aria-expanded={details} title={goal.objective} onclick={()=>details=!details}><Target class="size-3.5 shrink-0"/><span class="goal-objective">{goal.objective}</span><ChevronDown class="size-3 shrink-0"/></Button><span class="goal-state" aria-live="polite">{stateLabel}</span>{#if goal.phase==='achieved'}<Check class="size-3.5 shrink-0"/>{:else}<IconButton label={active?'Pause goal':'Resume goal'} size="xs" disabled={busy} onclick={()=>action(active?'pause':'resume')}>{#if active}<Pause class="size-3.5"/>{:else}<Play class="size-3.5"/>{/if}</IconButton>{/if}</div>
+    <div class="goal-next"><span class="goal-result" title={latestResult}><span class="goal-caption">Latest result</span> {latestResult}</span><span>{Math.floor(goalElapsed(goal,now)/60_000)}m elapsed</span></div>
     {#if details}<div class="goal-details" transition:slide={{duration:motionDuration()}}>
       <div><span class="goal-caption">Done when</span><p>{goal.criteria||'The requested outcome has been verified with evidence.'}</p></div>
       {#if goal.constraints}<div><span class="goal-caption">Constraints</span><p>{goal.constraints}</p></div>{/if}
@@ -74,8 +73,8 @@
     </div>{/if}
   </section>
 {/if}
-{#if open}<Dialog title={goal?'Edit goal':'Set a goal'} description="Work continues across turns until verified, paused, blocked or out of budget." size="md" onclose={()=>open=false}>
-    <div class="goal-form"><label>Outcome<Textarea bind:ref={editor} bind:value={objective} rows={2} maxlength={4000} placeholder="What should be achieved?" /></label><label>Done when<Textarea bind:value={criteria} rows={2} maxlength={4000} placeholder="How should completion be verified?" /></label><label>Constraints<Textarea bind:value={constraints} rows={2} maxlength={4000} /></label><label>Time budget<Select bind:value={minutes} options={[{value:'15',label:'15 minutes'},{value:'30',label:'30 minutes'},{value:'60',label:'1 hour'},{value:'120',label:'2 hours'}]} /></label><p class="goal-caption">Permissions stay the same. Computer takeover always pauses work.</p></div>
+{#if open}<Dialog title={goal?'Edit goal':'Set a goal'} description="Work continues across turns until verified, blocked or paused by you." size="md" onclose={()=>open=false}>
+    <div class="goal-form"><label>Outcome<Textarea bind:ref={editor} bind:value={objective} rows={2} maxlength={4000} placeholder="What should be achieved?" /></label><label>Done when<Textarea bind:value={criteria} rows={2} maxlength={4000} placeholder="How should completion be verified?" /></label><label>Constraints<Textarea bind:value={constraints} rows={2} maxlength={4000} /></label><p class="goal-caption">No time limit. Existing permissions and hardware-aware resource limits still apply. Computer takeover pauses work.</p></div>
   {#snippet footer()}<Button variant="ghost" disabled={busy} onclick={()=>open=false}>Cancel</Button><Button disabled={busy||!objective.trim()} onclick={save}>{goal?'Save changes':'Start goal'}</Button>{/snippet}
 </Dialog>{/if}
 {#if confirming}<Dialog title="Clear goal" description="Stop automatic continuation and remove this goal? The chat history remains." size="sm" onclose={()=>confirming=false}>{#snippet footer()}<Button variant="ghost" onclick={()=>confirming=false}>Cancel</Button><Button disabled={busy} onclick={clear}>Clear goal</Button>{/snippet}</Dialog>{/if}

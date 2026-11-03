@@ -16,7 +16,7 @@
   import UiIconButton from '$lib/components/ui/IconButton.svelte';
   import { cn as uiClass } from '$lib/utils/cn';
 
-  import { onDestroy, untrack } from 'svelte';
+  import { onDestroy, tick, untrack } from 'svelte';
   import { ArrowUp, ChevronDown, ClipboardList, Eye, EyeOff, File as FileIcon, Paperclip, Play, ShieldCheck, Settings2, Target, X, Zap } from 'lucide-svelte';
   import { toastStore } from '$lib/stores/toast.svelte';
   import { codeWorkspace } from './workspace.svelte';
@@ -70,6 +70,13 @@
     appStore.markChatDirty(chat.id);
     appStore.persist();
     return chat.codeAgent.sessionId;
+  }
+
+  async function insertGoalCommand() {
+    text = `/goal ${text}`;
+    await tick();
+    textarea?.focus();
+    textarea?.setSelectionRange(textarea.value.length, textarea.value.length);
   }
 
   /** Textarea grows with content up to this height, then scrolls (Home parity). */
@@ -227,7 +234,7 @@
     openModels: openModelHub,
     openProject: async () => { const selected = await codeStore.addProject(); if (selected) codeStore.newConversation(selected); },
     stop: () => codeStore.stop(chat.id)
-  }), { name: 'goal', icon: Target, label: $t('goal.title'), hint: $t('goal.hint'), run: async () => { await goalControl?.command('/goal'); } }]);
+  }), { name: 'goal', icon: Target, label: $t('goal.title'), hint: $t('goal.hint'), run: () => insertGoalCommand() }]);
   const menuGroups = $derived([commands.filter((command) => command.menu === 'actions'), commands.filter((command) => command.menu === 'project')]);
 
   $effect(() => {

@@ -4,10 +4,10 @@ import crypto from 'node:crypto';
 import { app, BrowserWindow, type IpcMain, type WebContents } from 'electron';
 import type { AgenteClient } from './agente-client.ts';
 import type { SessionSnapshot, TurnOutcome, RuntimeEventEnvelope } from '../shared/agente-protocol.gen.ts';
-import { goalElapsed, goalExpired, goalPrompt, parseGoalVerdict, type GoalPhase, type SessionGoal } from '../shared/session-goal.ts';
+import { goalElapsed, goalPrompt, parseGoalVerdict, type GoalPhase, type SessionGoal } from '../shared/session-goal.ts';
 
 type Context={client:AgenteClient;owner:WebContents;provider:string;model:string;turnId?:string;goalRevision?:number};
-const goals=new Map<string,SessionGoal|null>(),contexts=new Map<string,Context>(),timers=new Map<string,ReturnType<typeof setTimeout>>();
+const goals=new Map<string,SessionGoal|null>(),contexts=new Map<string,Context>();
 const clients=new WeakSet<AgenteClient>();
 const owners=new WeakSet<WebContents>();
 const handledTurns=new Set<string>();
@@ -29,7 +29,7 @@ function get(id:string):SessionGoal|null{
   file(id);
   if(goals.has(id))return goals.get(id)||null;
   let goal:SessionGoal|null=null;
-  try{goal=JSON.parse(fs.readFileSync(file(id),'utf8'));if(!goal||goal.sessionId!==id||typeof goal.objective!=='string'||!Number.isFinite(goal.elapsedMs)||goal.elapsedMs<0||!Number.isInteger(goal.budgetMinutes)||goal.budgetMinutes<1||goal.budgetMinutes>120||!Array.isArray(goal.evidence))throw new Error('Invalid saved goal.');if(['working','evaluating'].includes(goal.phase)){goal.elapsedMs=goalElapsed(goal);delete goal.startedAt;goal.phase='paused';goal.reason='App restarted. Resume explicitly to continue.';goal.revision++;}}
+  try{const saved=JSON.parse(fs.readFileSync(file(id),'utf8')) as SessionGoal&{phase:GoalPhase|'budget_reached';budgetMinutes?:number};goal=saved;if(!goal||goal.sessionId!==id||typeof goal.objective!=='string'||!Number.isFinite(goal.elapsedMs)||goal.elapsedMs<0||!Array.isArray(goal.evidence))throw new Error('Invalid saved goal.');if(saved.phase==='budget_reached'){goal.phase='paused';goal.reason='Previous time limit removed. Resume to continue.';goal.revision++;}if(['working','evaluating'].includes(goal.phase)){goal.elapsedMs=goalElapsed(goal);delete goal.startedAt;goal.phase='paused';goal.reason='App restarted. Resume explicitly to continue.';goal.revision++;}}
   catch(error){goal=null;if((error as NodeJS.ErrnoException).code!=='ENOENT')console.warn('[goal] Could not restore goal:',String(error));}
   goals.set(id,goal);if(goal)save(goal);return goal;
 }
@@ -41,19 +41,13 @@ function save(goal:SessionGoal){
 function matches(goal:SessionGoal,revision:number){return get(goal.sessionId)===goal&&goal.revision===revision&&['working','evaluating'].includes(goal.phase);}
 async function cancel(id:string){const context=contexts.get(id);if(context?.turnId)await context.client.request('turn.cancel',{turn_id:context.turnId}).catch(()=>{});const verifier=verifiers.get(id);if(verifier)await verifier.client.request('turn.cancel',{turn_id:verifier.turnId}).catch(()=>{});}
 function stop(goal:SessionGoal,phase:GoalPhase,reason:string){
-  clearTimeout(timers.get(goal.sessionId));timers.delete(goal.sessionId);
   goal.elapsedMs=goalElapsed(goal);delete goal.startedAt;goal.phase=phase;goal.reason=reason;goal.revision++;save(goal);
   void cancel(goal.sessionId);
   const client=contexts.get(goal.sessionId)?.client;if(client&&phase!=='achieved')void syncCore(goal.sessionId,client).catch(()=>{});
 }
-function arm(goal:SessionGoal){
-  clearTimeout(timers.get(goal.sessionId));
-  const timer=setTimeout(()=>{if(['working','evaluating'].includes(goal.phase))stop(goal,'budget_reached','Time budget reached. Extend the budget to continue.');},Math.max(1,goal.budgetMinutes*60_000-goalElapsed(goal)));
-  timer.unref();timers.set(goal.sessionId,timer);
-}
 async function dispatch(goal:SessionGoal,client:AgenteClient){
   const revision=goal.revision;
-  if(!matches(goal,revision)||goalExpired(goal))return;
+  if(!matches(goal,revision))return;
   await syncCore(goal.sessionId,client);
   if(!matches(goal,revision))return;
   const owner=contexts.get(goal.sessionId)?.owner;
@@ -96,7 +90,6 @@ async function ended(outcome:TurnOutcome){
   const context=contexts.get(outcome.session_id);if(!context)return;context.turnId=undefined;
   const goal=get(outcome.session_id);if(!goal||goal.phase!=='working')return;
   if(outcome.status!=='completed'){stop(goal,outcome.status==='cancelled'?'paused':'needs_input',outcome.error||'Work was interrupted. Resume explicitly to continue.');return;}
-  if(goalExpired(goal)){stop(goal,'budget_reached','Time budget reached.');return;}
   goal.turns++;goal.tokens+=outcome.tokens;goal.phase='evaluating';goal.reason='Checking the goal against the latest evidence.';save(goal);
   const revision=goal.revision;
   verificationQueue=verificationQueue.catch(()=>{}).then(async()=>{
@@ -106,14 +99,12 @@ async function ended(outcome:TurnOutcome){
       const answer=await verify(context,goal,snapshot);
       if(!matches(goal,revision))return;
       goal.tokens+=answer.tokens;
-      if(goalExpired(goal)){stop(goal,'budget_reached','Time budget reached.');return;}
       const verdict=parseGoalVerdict(answer.text);goal.evidence=verdict.evidence;goal.reason=verdict.reason;
       if(verdict.verdict==='achieved'){stop(goal,'achieved',verdict.reason);await context.client.request('goal.set',{session_id:goal.sessionId,goal:{objective:goalPrompt(goal),status:'completed'}});return;}
       if(verdict.verdict==='needs_input'){stop(goal,'needs_input',verdict.reason);return;}
       const latest=snapshot.conversation.slice().reverse();let toolEvidence=false;
       for(const message of latest){if(message.role==='user'&&!message.tool_calls&&!message.attachments?.length)break;if(message.role==='tool'){toolEvidence=true;break;}}
       goal.noProgress=toolEvidence?0:goal.noProgress+1;
-      if(goal.noProgress>=3){stop(goal,'needs_input','Three turns produced no tool evidence. Review the blocker before resuming.');return;}
       goal.phase='working';save(goal);await dispatch(goal,context.client);
     }catch(error){if(matches(goal,revision))stop(goal,'needs_input',String(error));}
   });
@@ -152,23 +143,22 @@ export function registerSessionGoals(ipc:IpcMain,connect:()=>Promise<AgenteClien
     try{
       const client=await connect();const old=await client.request<{objective:string;status:string}|null>('goal.get',{session_id:args.sessionId});
       if(get(args.sessionId)||!old?.objective)return get(args.sessionId);
-      const imported:SessionGoal={sessionId:args.sessionId,chatId:args.chatId,space:args.space!,objective:old.objective,criteria:'',constraints:'Keep existing permissions and use focused verification.',budgetMinutes:30,revision:1,phase:'paused',reason:'Previous goal imported. Review and Resume to continue.',evidence:[],turns:0,tokens:0,elapsedMs:0,updatedAt:Date.now(),noProgress:0};
+      const imported:SessionGoal={sessionId:args.sessionId,chatId:args.chatId,space:args.space!,objective:old.objective,criteria:'',constraints:'Keep existing permissions and use focused verification.',revision:1,phase:'paused',reason:'Previous goal imported. Review and Resume to continue.',evidence:[],turns:0,tokens:0,elapsedMs:0,updatedAt:Date.now(),noProgress:0};
       trackGoalTurn(args.sessionId,client,event.sender,'','');save(imported);await syncCore(args.sessionId,client);return imported;
     }catch(error){console.warn('[goal] Legacy goal lookup unavailable:',String(error));return null;}
   });
-  ipc.handle('agente_goal_set',async(event,args:{sessionId:string;chatId:string;space:'home'|'code';objective:string;criteria?:string;constraints?:string;budgetMinutes?:number;start?:boolean})=>{
+  ipc.handle('agente_goal_set',async(event,args:{sessionId:string;chatId:string;space:'home'|'code';objective:string;criteria?:string;constraints?:string;start?:boolean})=>{
     if(!uuid(args.sessionId)||typeof args.chatId!=='string'||!args.chatId||!['home','code'].includes(args.space))throw new Error('Goal requires a chat and session.');
     const text=(value:unknown)=>{if(typeof value!=='string'||value.length>16_384)throw new Error('Goal fields must contain at most 16384 characters.');return value.trim();};
     const objective=text(args.objective);if(!objective)throw new Error('Write a goal first.');
-    const minutes=args.budgetMinutes??30;if(!Number.isInteger(minutes)||minutes<1||minutes>120)throw new Error('Choose a budget between 1 and 120 minutes.');
     const old=get(args.sessionId);
     const fresh=args.start===true||!old;
     const paused=!fresh&&old&&['paused','needs_input'].includes(old.phase);
-    const goal:SessionGoal={sessionId:args.sessionId,chatId:args.chatId,space:args.space,objective,criteria:text(args.criteria||''),constraints:text(args.constraints||''),budgetMinutes:minutes,revision:(old?.revision||0)+1,phase:paused?'paused':'working',reason:'Start with the first verifiable checkpoint.',evidence:[],turns:fresh?0:old?.turns||0,tokens:fresh?0:old?.tokens||0,elapsedMs:!fresh&&old?goalElapsed(old):0,updatedAt:Date.now(),noProgress:0};
+    const goal:SessionGoal={sessionId:args.sessionId,chatId:args.chatId,space:args.space,objective,criteria:text(args.criteria||''),constraints:text(args.constraints||''),revision:(old?.revision||0)+1,phase:paused?'paused':'working',reason:'Start with the first verifiable checkpoint.',evidence:[],turns:fresh?0:old?.turns||0,tokens:fresh?0:old?.tokens||0,elapsedMs:!fresh&&old?goalElapsed(old):0,updatedAt:Date.now(),noProgress:0};
     if(goal.phase==='working')goal.startedAt=Date.now();
     if(Buffer.byteLength(goalPrompt(goal))>16_384)throw new Error('The complete goal must fit within 16384 bytes.');
     const client=await connect();const context=contexts.get(goal.sessionId);trackGoalTurn(goal.sessionId,client,event.sender,context?.provider||'',context?.model||'');
-    save(goal);if(goal.phase==='working'){arm(goal);if(!context?.turnId)await dispatch(goal,client);}
+    save(goal);if(goal.phase==='working'&&!context?.turnId)await dispatch(goal,client);
     return goal;
   });
   ipc.handle('agente_goal_action',async(event,args:{sessionId:string;action:'pause'|'resume'})=>{
@@ -176,9 +166,8 @@ export function registerSessionGoals(ipc:IpcMain,connect:()=>Promise<AgenteClien
     if(args.action==='pause'){stop(goal,'paused','Paused by you.');return goal;}
     if(args.action!=='resume')throw new Error('Unknown goal action.');
     if(contexts.get(goal.sessionId)?.turnId)throw new Error('Wait for the previous turn to stop before resuming.');
-    if(goalExpired(goal))throw new Error('Extend the time budget before resuming.');
     const client=await connect();trackGoalTurn(goal.sessionId,client,event.sender,'','');
-    goal.phase='working';goal.startedAt=Date.now();goal.revision++;goal.noProgress=0;goal.reason='Continue from the last checkpoint.';save(goal);arm(goal);await dispatch(goal,client);return goal;
+    goal.phase='working';goal.startedAt=Date.now();goal.revision++;goal.noProgress=0;goal.reason='Continue from the last checkpoint.';save(goal);await dispatch(goal,client);return goal;
   });
   ipc.handle('agente_goal_clear',async(_event,args:{sessionId:string})=>{const goal=get(args.sessionId);if(goal)stop(goal,'paused','Goal cleared.');await (await connect()).request('goal.clear',{session_id:args.sessionId});goals.set(args.sessionId,null);fs.rmSync(file(args.sessionId),{force:true});for(const win of BrowserWindow.getAllWindows())if(!win.isDestroyed())win.webContents.send('session_goal_changed',{sessionId:args.sessionId,cleared:true});return {ok:true};});
 }

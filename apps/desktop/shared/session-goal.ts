@@ -1,7 +1,7 @@
-export type GoalPhase = 'working' | 'evaluating' | 'paused' | 'needs_input' | 'budget_reached' | 'achieved';
+export type GoalPhase = 'working' | 'evaluating' | 'paused' | 'needs_input' | 'achieved';
 export interface SessionGoal {
   sessionId: string; chatId: string; space: 'home' | 'code'; revision: number;
-  objective: string; criteria: string; constraints: string; budgetMinutes: number;
+  objective: string; criteria: string; constraints: string;
   phase: GoalPhase; reason: string; evidence: string[]; turns: number; tokens: number;
   elapsedMs: number; startedAt?: number; updatedAt: number; noProgress: number;
 }
@@ -17,9 +17,8 @@ export function parseGoalCommand(text: string): GoalCommand | null {
 export function goalElapsed(goal: SessionGoal, now=Date.now()): number {
   return goal.elapsedMs + (goal.startedAt === undefined ? 0 : Math.max(0,now-goal.startedAt));
 }
-export function goalExpired(goal: SessionGoal, now=Date.now()): boolean { return goalElapsed(goal,now)>=goal.budgetMinutes*60_000; }
 export function goalPrompt(goal: SessionGoal): string {
-  return `Objective: ${goal.objective}\nDone when: ${goal.criteria || 'Verify the requested outcome with evidence.'}\nConstraints: ${goal.constraints || 'Keep existing permissions and resource limits.'}\nContinue until verified, blocked, paused or the budget expires. Do not claim success without evidence.`;
+  return `Objective: ${goal.objective}\nDone when: ${goal.criteria || 'Verify the requested outcome with evidence.'}\nConstraints: ${goal.constraints || 'Keep existing permissions and resource limits.'}\nContinue across turns for as long as needed until the goal is verified or a real blocker requires the user's input. Do not claim success without evidence. Do not stop because of elapsed time or turn count. Respect hardware limits and avoid parallel heavy work.`;
 }
 export function parseGoalVerdict(text: string): {verdict:'achieved'|'continue'|'needs_input';reason:string;evidence:string[]} {
   const start=text.indexOf('{'),end=text.lastIndexOf('}');

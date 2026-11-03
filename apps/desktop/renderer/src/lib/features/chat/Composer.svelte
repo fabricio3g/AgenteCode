@@ -65,10 +65,10 @@
   let goalSlashDismissed = $state(false);
   const goalSlashOpen = $derived(!goalSlashDismissed && /^\/[a-z]*$/i.test(appStore.composer) && '/goal'.startsWith(appStore.composer.toLowerCase()));
   async function openGoal() {
-    appStore.updateComposer('');
+    appStore.updateComposer('/goal ');
     if (!appStore.currentChat) appStore.createChat('home');
     await tick();
-    await goalControl?.command('/goal');
+    focusComposer();
   }
   function ensureGoalSession(): string {
     const chat = appStore.currentChat;

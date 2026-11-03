@@ -7,7 +7,7 @@ import vm from 'node:vm';
 import { createRequire } from 'node:module';
 import { EventEmitter } from 'node:events';
 import { buildSync } from 'esbuild';
-import { parseGoalCommand, parseGoalVerdict, goalElapsed, goalExpired } from '../../shared/session-goal.ts';
+import { parseGoalCommand, parseGoalVerdict, goalElapsed, goalPrompt } from '../../shared/session-goal.ts';
 import { parseHomeModeCommand } from '../../shared/composer-command.ts';
 const require=createRequire(import.meta.url);
 const code=buildSync({entryPoints:[new URL('../../main/session-goals.ts',import.meta.url).pathname.replace(/^\/(\w:)/,'$1')],bundle:true,platform:'node',format:'cjs',external:['electron'],write:false}).outputFiles[0].text;
@@ -36,7 +36,7 @@ function setup(t){
   vm.runInNewContext(code,{module,exports:module.exports,require:name=>name==='electron'?{app,BrowserWindow:{getAllWindows:()=>[{isDestroyed:()=>false,webContents:owner}]}}:require(name),console,Buffer,setTimeout,clearTimeout,Date,process},{timeout:3000});
   const api=module.exports;api.registerSessionGoals({handle:(name,handler)=>handlers.set(name,handler)},async()=>client);
   const invoke=(name,args)=>handlers.get(name)({sender:owner},args);
-  const start=()=>invoke('agente_goal_set',{sessionId:id,chatId:'chat',space:'home',objective:'Fix checkout',criteria:'Focused test passes',constraints:'No heavy tests',budgetMinutes:30,start:true});
+  const start=()=>invoke('agente_goal_set',{sessionId:id,chatId:'chat',space:'home',objective:'Fix checkout',criteria:'Focused test passes',constraints:'No heavy tests',start:true});
   api.trackGoalTurn(id,client,owner,'provider','model');
   t.after(async()=>{app.emit('before-quit');await new Promise(resolve=>setImmediate(resolve));fs.rmSync(directory,{recursive:true,force:true});});
   return {api,client,owner,invoke,start,setVerdict:value=>verdict=value,setDelay:value=>delay=value};
@@ -48,15 +48,17 @@ test('slash commands share one parser and selected modes preserve their prompt',
   assert.deepEqual(parseHomeModeCommand('/research max find sources'),{research:'max',prompt:'find sources'});
   assert.deepEqual(parseHomeModeCommand('/plan'),null);
 });
-test('budget excludes time spent paused, and achievement requires evidence',()=>{
-  const goal={elapsedMs:1000,startedAt:2000,budgetMinutes:1};
-  assert.equal(goalElapsed(goal,4000),3000);assert.equal(goalExpired(goal,63000),true);
+test('goal elapsed time is informational only and achievement requires evidence',()=>{
+  const goal={elapsedMs:1000,startedAt:2000};
+  assert.equal(goalElapsed(goal,4000),3000);
   assert.equal(goalElapsed({...goal,startedAt:undefined},90000),1000);
+  assert.match(goalPrompt({objective:'Finish the task',criteria:'',constraints:''}),/Do not stop because of elapsed time or turn count/);
   assert.throws(()=>parseGoalVerdict('{"verdict":"achieved","reason":"done","evidence":[]}'),/evidence/);
 });
 test('starting dispatches work and pause rejects a stale continuation',async t=>{
   const env=setup(t);await env.start();
   const sent=env.owner.sent.find(item=>item.channel==='session_goal_continue');assert(sent);
+  assert.doesNotMatch(sent.args.prompt,/budget expires/);
   await env.invoke('agente_goal_action',{sessionId:id,action:'pause'});
   assert.throws(()=>env.api.trackGoalTurn(id,env.client,env.owner,'provider','model',sent.args.prompt),/paused/);
   assert.equal((await env.invoke('agente_goal_get',{sessionId:id})).phase,'paused');
