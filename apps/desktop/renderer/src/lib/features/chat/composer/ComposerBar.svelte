@@ -27,7 +27,6 @@
 <div class="composer-bar">
   <div class="composer-bar-leading">
     {@render attach?.()}
-    {#if attach && extras}<span class="composer-divider" aria-hidden="true"></span>{/if}
     {@render extras?.()}
   </div>
   <div class="composer-bar-trailing">

@@ -725,11 +725,6 @@
     {/if}
     <CodeAttachmentShelf {attachments} onremove={path => attachments = attachments.filter(item => item.path !== path)} />
     <div class="composer-shell ui-composer pointer-events-auto transition">
-      <div class="composer-controls-row">
-        {@render overflowMenu()}
-        {@render selectedMode()}
-        <div class="model-slot"><ModelMenu compact {chat} capabilities={ownThinking} level={chat.reasoningLevel} onlevel={setThinking} /></div>
-      </div>
       <div class="composer-body">
         <UiTextarea variant="composer"
           bind:ref={textarea}
@@ -756,12 +751,15 @@
             </Tooltip>
           {/snippet}
           {#snippet extras()}
+            {@render overflowMenu()}
+            {@render selectedMode()}
         {#if ownBackend !== 'local' && !modelReady}
           <Tooltip label={copy.model.configureProvider} position="top"><UiIconButton label={copy.model.configureProvider} size="xs" type="button" class={uiClass(" provider-setup", "ui-local-49e9c79c")}  onclick={()=>appStore.openSettings('providers')}><Settings2 class="size-3" /></UiIconButton></Tooltip>
         {/if}
 
 
           {/snippet}
+          {#snippet model()}<ModelMenu compact {chat} capabilities={ownThinking} level={chat.reasoningLevel} onlevel={setThinking} />{/snippet}
           {#snippet status()}
             <GenerationSpeed value={speed} />
             {#if modelReady && modelInputs}

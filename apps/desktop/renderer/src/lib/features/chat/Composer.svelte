@@ -428,12 +428,6 @@
         </div>
       {/if}
 
-      <div class="composer-controls-row">
-        <ComposerToolsMenu compact />
-        {#if appStore.activeSpace === 'home'}<SelectedModes />{/if}
-        <div class="model-slot"><ModelMenu compact /></div>
-      </div>
-
       <!--
         Two rows: the message gets the full width, and every control sits on a
         second line beneath it. Putting the input and the controls on one line
@@ -460,6 +454,8 @@
         {:else}
           <ComposerBar>
             {#snippet attach()}<ComposerAddMenu onattach={() => fileInput?.click()} />{/snippet}
+            {#snippet extras()}<ComposerToolsMenu compact />{#if appStore.activeSpace === 'home'}<SelectedModes />{/if}{/snippet}
+            {#snippet model()}<ModelMenu compact />{/snippet}
             {#snippet microphone()}<DictationButton {dictation} oncall={() => void enterVoiceMode()} />{/snippet}
             {#snippet trailing()}
               <SendButton compact running={generating} disabled={sendDisabled || (!appStore.composer.trim() && !appStore.pendingAttachments.some(item => item.status === 'ready'))}
