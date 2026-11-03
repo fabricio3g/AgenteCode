@@ -428,6 +428,12 @@
         </div>
       {/if}
 
+      <div class="composer-controls-row">
+        <ComposerToolsMenu compact />
+        {#if appStore.activeSpace === 'home'}<SelectedModes />{/if}
+        <div class="model-slot"><ModelMenu compact /></div>
+      </div>
+
       <!--
         Two rows: the message gets the full width, and every control sits on a
         second line beneath it. Putting the input and the controls on one line
@@ -464,9 +470,8 @@
         {/if}
       </div>
     </div>
-    <div class="composer-footnote"><ComposerToolsMenu compact /><div class="composer-footnote-trailing"><div class="model-slot"><ModelMenu compact /></div><HomeContextStatus /></div></div>
+    <div class="composer-footnote"><div class="composer-footnote-trailing"><HomeContextStatus /></div></div>
     {#if appStore.currentChat && appStore.currentChat.contextMode !== 'code' && appStore.currentChat.contextMode !== 'roleplay'}
-      {#if appStore.activeSpace === 'home'}<SelectedModes />{/if}
       <div class="pointer-events-auto"><SessionGoal bind:this={goalControl} chatId={appStore.currentChat.id} sessionId={appStore.currentChat.homeRuntime?.sessionId} ensureSession={ensureGoalSession} running={generating} /></div>
     {/if}
     {#if threadIsEmpty && suggestions}

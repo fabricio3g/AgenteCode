@@ -725,6 +725,11 @@
     {/if}
     <CodeAttachmentShelf {attachments} onremove={path => attachments = attachments.filter(item => item.path !== path)} />
     <div class="composer-shell ui-composer pointer-events-auto transition">
+      <div class="composer-controls-row">
+        {@render overflowMenu()}
+        {@render selectedMode()}
+        <div class="model-slot"><ModelMenu compact {chat} capabilities={ownThinking} level={chat.reasoningLevel} onlevel={setThinking} /></div>
+      </div>
       <div class="composer-body">
         <UiTextarea variant="composer"
           bind:ref={textarea}
@@ -796,8 +801,7 @@
       </div>
     </div>
 
-    <div class="composer-footnote">{@render overflowMenu()}<div class="composer-footnote-trailing"><div class="model-slot"><ModelMenu compact {chat} capabilities={ownThinking} level={chat.reasoningLevel} onlevel={setThinking} /></div>{#if showContextRing && usage}<ContextUsageRing showLabel usedTokens={usage.promptTokens} maxTokens={usage.contextWindow ?? 0} breakdown={usage.breakdown} {spend} />{/if}</div></div>
-    <div class="selected-mode-bar" aria-label="Selected mode"><span class="selected-mode-caption">Mode</span>{@render selectedMode()}</div>
+    {#if showContextRing && usage}<div class="composer-footnote"><div class="composer-footnote-trailing"><ContextUsageRing showLabel usedTokens={usage.promptTokens} maxTokens={usage.contextWindow ?? 0} breakdown={usage.breakdown} {spend} /></div></div>{/if}
     <SessionGoal bind:this={goalControl} chatId={chat.id} space="code" sessionId={chat.codeAgent?.sessionId} ensureSession={ensureGoalSession} {running} />
 
     <p class="composer-hint sr-only mx-auto mt-[var(--dock-gap)] px-1 text-center text-xs text-muted-foreground opacity-70">
