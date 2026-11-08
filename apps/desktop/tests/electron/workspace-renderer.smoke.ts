@@ -81,6 +81,22 @@ async function run() {
       appStore.setActiveSpace('code'); appStore.currentChatId = 'code-a';
     })()`);
     await new Promise(resolve => setTimeout(resolve, 100));
+    await run(`(async () => {
+      const { appStore } = await import('/src/lib/stores/app.svelte.ts');
+      appStore.findChat('code-a').messages.push({
+        id: 'saved-tasks', role: 'assistant', content: 'I made a list.', createdAt: Date.now(), status: 'idle', done: true,
+        metadata: { codeTodos: [{ content: 'Read the code', status: 'completed' }, { content: 'Verify the change', status: 'pending' }] }
+      });
+    })()`);
+    const tasksButton = '[data-panel-tab=tasks]';
+    const tasksPanel = '[data-workspace-panel=tasks]:not([hidden])';
+    await run(`document.querySelector('${tasksButton}').click()`);
+    await new Promise(resolve => setTimeout(resolve, 100));
+    assert.match(await run<string>(`document.querySelector('${tasksPanel}').textContent`), /Verify the change/);
+    assert.equal(await run<string>(`document.querySelector('${tasksPanel} [role=progressbar]').getAttribute('aria-valuenow')`), '1');
+    assert.equal(await run<number>(`document.body.textContent.split('Verify the change').length - 1`), 1, 'Tasks render only in their panel');
+    await run(`document.querySelector('${tasksButton}').click()`);
+    assert.equal(await run<boolean>(`!document.querySelector('${tasksPanel}')`), true, 'Tasks toggle hides its panel');
     await run(`(async () => { const { workspaceLayout } = await import('/src/lib/stores/workspace-layout.svelte.ts'); workspaceLayout.show('changes'); })()`);
     await new Promise(resolve => setTimeout(resolve, 100));
     assert.equal(await run<boolean>('!!document.querySelector("[data-workspace-panel=changes]:not([hidden])")'), true);
@@ -112,14 +128,14 @@ async function run() {
     const resizedCorner = await run<{ x: number; y: number }>('(() => { const r = document.querySelector(".window-resize.edge-nw").getBoundingClientRect(); return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) }; })()');
     await win.webContents.debugger.sendCommand('Input.dispatchMouseEvent', { type: 'mouseMoved', ...resizedCorner });
     await new Promise(resolve => setTimeout(resolve, 100));
-    await capture('/tmp/agente-conversation-panels.png');
+    await capture(join(tmpdir(), 'agente-conversation-panels.png'));
     await win.webContents.debugger.sendCommand('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 400, y: 300 });
     await run(`(async () => { const { themeStore } = await import('/src/lib/stores/theme.svelte.ts'); themeStore.set('light'); })()`);
     await new Promise(resolve => setTimeout(resolve, 500));
     assert.equal(await run<boolean>('document.documentElement.classList.contains("dark")'), false, 'Light theme is applied');
     assert.equal(await run<string>('getComputedStyle(document.querySelector(".window-resize.edge-nw .grip")).opacity'), '0');
     assert.ok(Number.parseFloat(await run<string>('getComputedStyle(document.querySelector(".window-resize.edge-nw .grip")).transitionDuration')) < .001, 'Reduced motion removes visible resize animation');
-    await capture('/tmp/agente-conversation-panels-light.png');
+    await capture(join(tmpdir(), 'agente-conversation-panels-light.png'));
     // Hovering New chat must keep the preview interactive; clicking closes it.
     await run(`(async () => { const { appStore } = await import('/src/lib/stores/app.svelte.ts'); appStore.setActiveSpace('home'); appStore.sidebarOpen = false; })()`);
     const toggle = await run<{x:number;y:number}>(`(() => { const r = document.querySelector('[data-sidebar-toggle]').getBoundingClientRect(); return {x:Math.round(r.x+r.width/2),y:Math.round(r.y+r.height/2)}; })()`);

@@ -131,7 +131,7 @@
     <div class="startup-drag titlebar-drag">
       <WindowControls />
     </div>
-    <img class="startup-mark" src="./app-icon.svg" alt="" aria-hidden="true" />
+    <img class="startup-mark" src="./app-icon.png" alt="" aria-hidden="true" />
     <div class="startup-loading-text" class:text-shimmer={!appStore.error} role="status">
       {appStore.error ? `Recovering from startup issue: ${appStore.error}` : startupHints[startupHintIndex]}
     </div>

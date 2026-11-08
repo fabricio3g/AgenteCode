@@ -13,7 +13,6 @@
   import SidebarInstances from './SidebarInstances.svelte';
   import { appStore } from '$lib/stores/app.svelte';
   import CodeSidebar from '$lib/features/code/CodeSidebar.svelte';
-  import PlanCard from '$lib/features/code/PlanCard.svelte';
   import { codeStore } from '$lib/features/code/code.svelte';
   import { t } from 'svelte-i18n';
   import { slide } from 'svelte/transition';
@@ -83,7 +82,6 @@
     return groups;
   });
 
-  const liveCodeRun = $derived(appStore.activeSpace === 'code' && appStore.currentChatId ? codeStore.runFor(appStore.currentChatId) : undefined);
   const newButtonLabel = $derived(
     appStore.activeSpace === 'code'
       ? $t('code.addProject')
@@ -201,9 +199,6 @@
     </div>
     {/if}
 
-    {#if appStore.sidebarOpen && liveCodeRun?.running && liveCodeRun.todos.length}
-      <div class="sidebar-todos"><PlanCard todos={liveCodeRun.todos} running={!liveCodeRun.stopping} compact /></div>
-    {/if}
     <div class="chat-list sidebar-scroll flex-1 overflow-y-auto">
       <!-- Code tab: the sidebar is a project-folder tree; each folder holds
            that project's agent conversations. -->
@@ -268,7 +263,6 @@
 </aside>
 
 <style>
-  .sidebar-todos { flex:none; max-height:min(16rem, 35%); overflow-y:auto; margin-bottom:0.375rem; }
   .sidebar-head { display: flex; flex-shrink: 0; align-items: center; justify-content: space-between; gap: 0.5rem; height: 3rem; padding: 0 0.5rem 0 1rem; -webkit-app-region: drag; }
   .sidebar-head :global(button) { -webkit-app-region: no-drag; }
   .sidebar-head.is-mac { padding-inline-start: 78px; }

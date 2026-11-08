@@ -161,9 +161,11 @@ describe('conversation todos', () => {
   it('persists live updates and restores them after the run cache is lost', async () => {
     await startRun();
     emit({ type: 'todo_update', chatId: CHAT_ID, todos });
+    expect(codeStore.todosFor(appStore.chats[0])).toEqual(todos);
     expect(appStore.chats[0].messages.at(-1)?.metadata?.codeTodos).toEqual(todos);
     emit({ type: 'agent_end', chatId: CHAT_ID, stopReason: 'aborted' });
     codeStore.evictChat(CHAT_ID, { force: true });
+    expect(codeStore.todosFor(appStore.chats[0])).toEqual(todos);
     await codeStore.send(CHAT_ID, 'Continue after reload');
     expect(codeStore.runFor(CHAT_ID)?.todos).toEqual(todos);
   });
@@ -179,6 +181,7 @@ describe('conversation todos', () => {
     emit({ type: 'todo_update', chatId: CHAT_ID, todos: [] });
     emit({ type: 'agent_end', chatId: CHAT_ID, stopReason: 'stop' });
     expect(appStore.chats[0].messages.at(-1)?.metadata?.codeTodos).toEqual([]);
+    expect(codeStore.todosFor(appStore.chats[0])).toEqual([]);
     codeStore.evictChat(CHAT_ID, { force: true });
     await codeStore.send(CHAT_ID, 'Next task');
     expect(codeStore.runFor(CHAT_ID)?.todos).toEqual([]);

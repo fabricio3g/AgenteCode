@@ -111,9 +111,10 @@ describe('workspace layout', () => {
   it('restores placement, group selection, maximization and stacking order', () => {
     let layout = dockPanel(empty(), 'browser', 'right');
     layout = dockPanel(layout, 'plan', 'right', groups(layout.right)[0].id);
+    layout = dockPanel(layout, 'tasks', 'right', groups(layout.right)[0].id);
     layout = activatePanel(layout, 'browser');
     layout = floatPanel(layout, 'changes', { x: 80, y: 90, width: 400, height: 350 });
-    layout.floating[0].maximized = true; layout.open = ['browser', 'changes'];
+    layout.floating[0].maximized = true; layout.open = ['browser', 'changes', 'tasks'];
     expect(parseWorkspaceLayout(JSON.stringify(layout))).toEqual(layout);
   });
   it('temporarily groups undersized splits without mutating the saved arrangement', () => {

@@ -3,13 +3,6 @@
 <!--
   The workspace pane tabs, in a strip under the title bar.
 
-  They used to sit inside the title bar as icon-only buttons. The Code
-  conversation has five panes (Changes, Plan, Terminal, Processes, Canvas) and
-  the agent browser is a pane in every space, so that row grew into the
-  caption buttons and both groups started competing for the same pixels.
-  Splitting it gives each job its own line: the title bar keeps global chrome
-  (sidebar, spaces, downloads, theme) and this strip owns the panes.
-
   They are toggles, not views — several panes can be open at once — so the
   strip is a toolbar with pressed state rather than a tablist. The arrows move
   focus only; Space and Enter toggle, as they do on any button.
@@ -21,7 +14,7 @@
 
   import { t } from 'svelte-i18n';
   import type { Snippet } from 'svelte';
-  import { Activity, ClipboardList, FolderTree, GitCompareArrows, Globe, History, Image, SquareTerminal } from 'lucide-svelte';
+  import { Activity, ClipboardList, FolderTree, GitCompareArrows, Globe, History, Image, ListChecks, SquareTerminal } from 'lucide-svelte';
   import Menu from '$lib/components/ui/Menu.svelte';
   import Tooltip from '$lib/components/ui/Tooltip.svelte';
   import MenuItem from '$lib/components/ui/MenuItem.svelte';
@@ -39,7 +32,7 @@
 
   let { chat = null, project = null, inline = false, layout: workspaceLayout = defaultLayout, browser: browserPanelStore = defaultBrowser }: { inline?: boolean; layout?: WorkspaceLayoutStore; browser?: BrowserPanelStore; chat?: ChatSession | null; project?: CodeProject | null } = $props();
 
-  /** The Code panes only exist inside an open Code conversation. */
+  /** Repository tools require a linked project. Tasks only need the conversation. */
   const inCode = $derived(!!chat && !!project);
   const cwd = $derived(project?.rootPath ?? '');
   const run = $derived(chat ? codeStore.runFor(chat.id) : null);
@@ -47,6 +40,7 @@
   const changeTotals = $derived((changes?.files ?? []).reduce((acc, f) => ({ add: acc.add + f.additions, del: acc.del + f.deletions }), { add: 0, del: 0 }));
   const terminalOpen = $derived(codeWorkspace.terminalsForScope(workspaceLayout.scope).some((term) => workspaceLayout.isOpen(`terminal:${term.id}`)));
   const processesOpen = $derived(workspaceLayout.isOpen('processes'));
+  const remainingTasks = $derived(chat ? codeStore.todosFor(chat).filter((todo) => todo.status === 'pending' || todo.status === 'in_progress').length : 0);
 
   let historyOpen = $state(false);
 
@@ -108,8 +102,12 @@
 
 {#snippet changesBadge()}
   {#if changes?.files.length}
-    <span class="changes-badge" aria-hidden="true"><span class="text-success">+{groupedNumber(changeTotals.add)}</span><span class="text-error">−{groupedNumber(changeTotals.del)}</span></span>
+    <span class="pane-badge changes-badge" aria-hidden="true"><span class="text-success">+{groupedNumber(changeTotals.add)}</span><span class="text-error">−{groupedNumber(changeTotals.del)}</span></span>
   {/if}
+{/snippet}
+
+{#snippet tasksBadge()}
+  <span class="pane-badge" aria-hidden="true">{groupedNumber(remainingTasks)}</span>
 {/snippet}
 
 <div class="pane-strip" class:inline role="toolbar" tabindex="-1" aria-label={$t('workspace.panels')} onkeydown={onKeydown} ondblclick={(event) => event.stopPropagation()}>
@@ -123,17 +121,15 @@
       </ProjectControls>
     {/if}
     <div class="pane-strip-tabs">
-      {#if inCode && chat}
-        <!--
-          Three panes are named and four stay icons. Changes, Files and Plan are
-          the surfaces a conversation is read through — the ones a new reader
-          cannot guess from a glyph — while Terminal and Browser are instruments
-          you go looking for by name anyway. Browser sits here, not in the
-          project card, so it is the same top-bar globe in every space.
-        -->
-        {@render pane('changes', $t('codeWs.changes'), workspaceLayout.isOpen('changes'), () => workspaceLayout.toggle('changes'), GitCompareArrows, changesBadge, $t('codeWs.changes'))}
-        {@render pane('files', $t('codeWs.files'), workspaceLayout.isOpen('files'), () => workspaceLayout.toggle('files'), FolderTree, null, $t('codeWs.files'))}
-        {@render pane('terminal', $t('codeWs.terminal'), terminalOpen, () => void toggleTerminal(), SquareTerminal)}
+      {#if chat}
+        {#if inCode}
+          {@render pane('changes', $t('codeWs.changes'), workspaceLayout.isOpen('changes'), () => workspaceLayout.toggle('changes'), GitCompareArrows, changesBadge, $t('codeWs.changes'))}
+          {@render pane('files', $t('codeWs.files'), workspaceLayout.isOpen('files'), () => workspaceLayout.toggle('files'), FolderTree, null, $t('codeWs.files'))}
+        {/if}
+        {@render pane('tasks', $t('code.todosTitle'), workspaceLayout.isOpen('tasks'), () => workspaceLayout.toggle('tasks'), ListChecks, remainingTasks ? tasksBadge : null, $t('code.todosTitle'))}
+        {#if inCode}
+          {@render pane('terminal', $t('codeWs.terminal'), terminalOpen, () => void toggleTerminal(), SquareTerminal)}
+        {/if}
         {@render pane('browser', $t('browser.title'), browserPanelStore.open, () => void browserPanelStore.toggle().catch((error) => toastStore.error(String(error))), Globe)}
       {/if}
     </div>
@@ -237,7 +233,7 @@
     }
   }
 
-  .changes-badge {
+  .pane-badge {
     display: inline-flex;
     gap: 0.25rem;
     font-size: var(--text-xs);

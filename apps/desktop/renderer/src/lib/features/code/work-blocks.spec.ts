@@ -1,9 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import type { AgentStep } from '$lib/types/chat';
-import type { CodeTodoItem } from '$shared/agente-protocol';
 import { applyCodeAgentEvent, createCodeRunState, orderedEntries } from './code-run';
 import { disclosureKey, DisclosureStore } from './disclosure-state.svelte';
-import { changedFiles, currentTodo, editedFiles, liveStatus, planRows, replyBlocks, workBlockKey, QUIET_MS } from './work-blocks';
+import { changedFiles, editedFiles, liveStatus, replyBlocks, workBlockKey, QUIET_MS } from './work-blocks';
 
 const step = (id: string, extra: Partial<AgentStep> = {}): AgentStep => ({ id, type: 'tool', label: 'Edit', toolName: 'edit', status: 'done', ...extra });
 
@@ -44,19 +43,10 @@ describe('reply blocks', () => {
     expect(entries.map((entry) => entry.thinking ?? entry.text)).toEqual(['Plan it.', 'Done.']);
   });
 
-  it('puts one plan card where the reply last changed its todos, not a step row', () => {
+  it('keeps work in one block across updates to the Tasks panel', () => {
     const entries = orderedEntries({ content: '', agentSteps: [step('a', { toolName: 'todo' }), step('c'), step('b', { toolName: 'todo_write' }), step('d')] });
-    expect(entries.map((entry) => (entry.plan ? 'plan' : entry.step?.id))).toEqual(['c', 'plan', 'd']);
-    expect(replyBlocks(entries).map((block) => (block.plan ? 'plan' : block.items?.length))).toEqual([1, 'plan', 1]);
-  });
-
-  it('folds a long plan to the task before the current one, the current one and the next', () => {
-    const todo = (content: string, status: 'pending' | 'in_progress' | 'completed') => ({ content, status });
-    const todos = [todo('a', 'completed'), todo('b', 'completed'), todo('c', 'in_progress'), todo('d', 'pending'), todo('e', 'pending'), todo('f', 'pending')];
-    expect(planRows(todos).map((item) => item.content)).toEqual(['b', 'c', 'd']);
-    expect(planRows(todos, true)).toHaveLength(6);
-    expect(planRows(todos.slice(0, 5))).toHaveLength(5);
-    expect(planRows(todos.map((item) => ({ ...item, status: 'completed' as const }))).map((item) => item.content)).toEqual(['d', 'e', 'f']);
+    expect(entries.map((entry) => entry.step?.id)).toEqual(['c', 'd']);
+    expect(replyBlocks(entries).map((block) => block.items?.length)).toEqual([2]);
   });
 });
 
@@ -105,15 +95,5 @@ describe('live status', () => {
     applyCodeAgentEvent(run, { type: 'runtime_event', chatId: 'c', event: { type: 'thinking' } });
     expect(liveStatus(run, false, run.lastEventAt! + QUIET_MS).kind).toBe('requesting');
     expect(liveStatus(run, true, run.lastEventAt!).kind).toBe('approval');
-  });
-});
-
-describe('current todo', () => {
-  const todos = (...states: CodeTodoItem['status'][]): CodeTodoItem[] => states.map((status, index) => ({ content: `t${index}`, status }));
-  it('names the task in progress, else the next one, else the last', () => {
-    expect(currentTodo(todos('completed', 'in_progress', 'pending'))?.content).toBe('t1');
-    expect(currentTodo(todos('completed', 'pending', 'pending'))?.content).toBe('t1');
-    expect(currentTodo(todos('completed', 'completed'))?.content).toBe('t1');
-    expect(currentTodo([])).toBeUndefined();
   });
 });

@@ -390,6 +390,11 @@ class CodeStore {
     return this.runs[chatId] ?? null;
   }
 
+  todosFor(chat: ChatSession) {
+    const run = this.runFor(chat.id);
+    return run?.running ? run.todos : conversationTodos(chat.messages);
+  }
+
   /**
    * Drop cached run/session state for a chat. Live runs are kept unless
    * `force` is set — chat deletion aborts the engine first, and the late

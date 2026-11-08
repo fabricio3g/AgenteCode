@@ -456,6 +456,7 @@
     "statusLength": "出力上限に達しました — 実行の一部が切断されました",
     "retrying": "接続エラー — 再試行中（{n} 回目）…",
     "todosTitle": "タスク",
+    "todosEmpty": "まだタスクはありません。この会話のタスクがここに表示されます。",
     "thinking": "考え中",
     "thought": "思考",
     "live": {

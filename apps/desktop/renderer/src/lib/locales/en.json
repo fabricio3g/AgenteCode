@@ -465,6 +465,7 @@
     "statusLength": "Hit the output limit — part of the run was cut off",
     "retrying": "Connection hiccup — retrying (attempt {n})…",
     "todosTitle": "Tasks",
+    "todosEmpty": "No tasks yet. Tasks for this conversation appear here.",
     "thinking": "Thinking",
     "thought": "Thought",
     "live": {

@@ -39,7 +39,7 @@
   /** The open Code conversation: its tools sit in this bar unless the centre is split. */
   const codeChat = $derived.by(() => {
     const chat = appStore.currentChat;
-    return appStore.activeTab === 'code' && chat && chat.projectId && isCodeSession(chat) ? chat : null;
+    return appStore.activeTab === 'code' && chat && isCodeSession(chat) ? chat : null;
   });
   const codeProject = $derived(codeStore.projectById(codeChat?.projectId ?? null));
   const scope = $derived(codeChat ? conversationScope(codeChat.id) : null);
@@ -55,7 +55,7 @@
     });
   });
   // Settings owns the window: a conversation's pane toggles have nothing to act on there.
-  const toolsHere = $derived(!settingsOpen && !!codeChat && !!codeProject && workspaceLayout.panes.length < 2);
+  const toolsHere = $derived(!settingsOpen && workspaceLayout.panes.length < 2);
 
   const platform = typeof window !== 'undefined' ? (window.electronAPI?.platform ?? 'linux') : 'linux';
   const isMac = platform === 'darwin';
@@ -75,7 +75,7 @@
 <!-- Spaces sit at the start of the titlebar; pane controls, downloads and theme sit at the end. -->
 {#snippet appTools()}
   <div class="flex items-center gap-0.5">
-    {#if toolsHere && codeChat && codeProject}
+    {#if toolsHere && codeChat}
       <div class="titlebar-no-drag flex items-center">
         <PanelTabs inline chat={codeChat} project={codeProject} layout={chatLayout} browser={chatBrowser} />
       </div>

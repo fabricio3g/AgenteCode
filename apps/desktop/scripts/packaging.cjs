@@ -29,26 +29,14 @@ function bundledDuplicates(root, manifest, meta) {
   for (const name of [...external, ...Object.keys(manifest.optionalDependencies || {})]) visit(name, root);
   return Object.keys(manifest.dependencies).filter((name) => !protectedNames.has(name) && Object.keys(meta.inputs).some((file) => file.startsWith(`node_modules/${name}/`)));
 }
-function prepareIcon(root) {
-  const source = path.resolve(root, '../../assets/brand/agente-code-icon-256.png');
-  const png = fs.readFileSync(source);
-  if (png.readUInt32BE(16) !== 256 || png.readUInt32BE(20) !== 256) throw new Error('Packaging icon must be 256×256');
-  // ICO supports a PNG entry; preserve the original artwork without resampling.
-  const header = Buffer.alloc(22);
-  header.writeUInt16LE(1, 2); header.writeUInt16LE(1, 4);
-  header.writeUInt16LE(1, 10); header.writeUInt16LE(32, 12);
-  header.writeUInt32LE(png.length, 14); header.writeUInt32LE(22, 18);
-  fs.writeFileSync(path.join(root, 'build/icon.ico'), Buffer.concat([header, png]));
-}
 function validateRenderer(root) {
   const html = fs.readFileSync(path.join(root, 'renderer/dist/index.html'), 'utf8');
   if (/\b(?:src|href)=["']\/(?!\/)/.test(html)) throw new Error('Packaged renderer contains root-relative asset URLs');
   if (fs.readdirSync(path.join(root, 'renderer/dist/assets')).some((file) => file.endsWith('.map'))) throw new Error('Production renderer must not ship source maps');
-  for (const file of ['preload/preload.cjs', 'dist-electron/main/index.cjs', 'build/icon.png']) if (!fs.statSync(path.join(root, file)).size) throw new Error(`Missing packaging asset: ${file}`);
+  for (const file of ['preload/preload.cjs', 'dist-electron/main/index.cjs', 'renderer/dist/app-icon.png']) if (!fs.statSync(path.join(root, file)).size) throw new Error(`Missing packaging asset: ${file}`);
 }
 async function beforePack(context) {
   const root = context.packager.projectDir;
-  prepareIcon(root);
   validateRenderer(root);
   const manifest = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
   const meta = JSON.parse(fs.readFileSync(path.join(root, 'dist-electron/main/meta.json'), 'utf8'));
@@ -86,4 +74,3 @@ async function beforePack(context) {
 module.exports = beforePack;
 module.exports.bundledDuplicates = bundledDuplicates;
 module.exports.validateRenderer = validateRenderer;
-module.exports.prepareIcon = prepareIcon;

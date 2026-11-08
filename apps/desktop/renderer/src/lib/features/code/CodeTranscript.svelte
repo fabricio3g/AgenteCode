@@ -35,9 +35,7 @@
   import { copy, say } from '$lib/copy';
   import { formatDuration } from '$lib/utils/format';
   import { codeStore } from './code.svelte';
-  import { appStore } from '$lib/stores/app.svelte';
   import { orderedEntries } from './code-run';
-  import PlanCard from './PlanCard.svelte';
   import SubagentCard from './SubagentCard.svelte';
   import { disclosureKey } from './disclosure-state.svelte';
   import JumpToLatest from '$lib/features/chat/thread/JumpToLatest.svelte';
@@ -269,10 +267,7 @@
         {@const orphans = unlinkedChildren(children.filter((child) => !activeChildIds.has(child.id)), entries.flatMap((entry) => (entry.step ? [entry.step] : [])))}
         <div class="group flex min-w-0 flex-col gap-[var(--thread-gap)]">
           {#each blocks as block, index (block.key)}
-            {#if block.plan}
-              {@const todos = live ? run?.todos ?? [] : message.metadata?.codeTodos ?? []}
-              {#if todos.length && !(streaming && live && run?.running && appStore.sidebarOpen && appStore.currentChatId === chatId)}<PlanCard {todos} running={streaming && live && !!run?.running && !run?.stopping} />{/if}
-            {:else if block.items}
+            {#if block.items}
               <div class="-mx-2 min-w-0">
                 <CodeWorkBlock items={block.items} {chatId} messageId={message.id} {children} {activeChildIds} live={streaming && index === blocks.length - 1} />
               </div>

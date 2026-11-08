@@ -456,6 +456,7 @@
     "statusLength": "Ausgabelimit erreicht — ein Teil der Ausführung wurde abgeschnitten",
     "retrying": "Verbindungsproblem — neuer Versuch ({n})…",
     "todosTitle": "Aufgaben",
+    "todosEmpty": "Noch keine Aufgaben. Die Aufgaben dieser Unterhaltung erscheinen hier.",
     "thinking": "Denkt nach",
     "thought": "Gedanke",
     "live": {

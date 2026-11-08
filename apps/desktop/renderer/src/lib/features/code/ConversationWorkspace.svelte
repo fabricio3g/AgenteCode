@@ -2,7 +2,7 @@
 <script lang="ts">
   import { setContext, untrack } from 'svelte';
   import { t } from 'svelte-i18n';
-  import { Activity, ClipboardList, FolderTree, GitCompareArrows, Globe, Image, SquareTerminal, X } from 'lucide-svelte';
+  import { Activity, ClipboardList, FolderTree, GitCompareArrows, Globe, Image, ListChecks, SquareTerminal, X } from 'lucide-svelte';
   import type { ChatSession } from '$lib/types/chat';
   import { conversationScope } from '$shared/workspace-scope';
   import { appStore } from '$lib/stores/app.svelte';
@@ -21,6 +21,7 @@
   import FileExplorer from './workspace/FileExplorer.svelte';
   import ProcessesView from './workspace/ProcessesView.svelte';
   import PlanPanel from './PlanPanel.svelte';
+  import TasksPanel from './TasksPanel.svelte';
   import CodeSurface from './CodeSurface.svelte';
   import { latestPlan } from './plan-review';
   import { codeStore } from './code.svelte';
@@ -42,6 +43,7 @@
       { id: 'changes', title: $t('codeWs.changes'), icon: GitCompareArrows, content: changesPanel, region: 'right', available, open: layout.isOpen('changes'), onhide: () => layout.hide('changes') },
       { id: 'files', title: $t('codeWs.files'), icon: FolderTree, content: filesPanel, region: 'right', available, open: layout.isOpen('files'), onhide: () => layout.hide('files') },
       { id: 'plan', title: plan?.title ?? $t('code.plan.title'), icon: ClipboardList, content: planPanel, region: 'right', available, open: layout.isOpen('plan'), onhide: () => layout.hide('plan') },
+      { id: 'tasks', title: $t('code.todosTitle'), icon: ListChecks, content: tasksPanel, region: 'right', available: true, open: layout.isOpen('tasks'), onhide: () => layout.hide('tasks') },
       { id: 'browser', title: $t('browser.title'), icon: Globe, content: browserPanel, region: 'right', available: true, open: browser.open, onhide: () => void browser.hide() },
       { id: 'canvas', title: $t('canvas.title'), icon: Image, content: canvasPanel, region: 'right', available: true, open: layout.isOpen('canvas'), onhide: () => layout.hide('canvas') },
       { id: 'processes', title: $t('codeWs.processes'), icon: Activity, content: processesPanel, region: 'bottom', available, open: layout.isOpen('processes'), onhide: () => layout.hide('processes') }
@@ -79,6 +81,9 @@
 {/snippet}
 {#snippet planPanel()}
   {#if plan}<PlanPanel embedded chatId={chat.id} {plan} />{:else}<p class="p-5 text-xs text-muted-foreground">{$t('workspace.noPlan')}</p>{/if}
+{/snippet}
+{#snippet tasksPanel()}
+  <TasksPanel {chat} />
 {/snippet}
 {#snippet browserPanel(state: PanelRenderState)}
   <BrowserPanel embedded store={browser} exposed={state.exposed && !appStore.settingsScreenOpen} presentationKey={JSON.stringify(state.rect)} chatId={chat.id} />

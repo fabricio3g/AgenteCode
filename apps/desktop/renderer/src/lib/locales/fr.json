@@ -456,6 +456,7 @@
     "statusLength": "Limite de sortie atteinte — une partie de l'exécution a été tronquée",
     "retrying": "Problème de connexion — nouvelle tentative ({n})…",
     "todosTitle": "Tâches",
+    "todosEmpty": "Aucune tâche pour le moment. Les tâches de cette conversation apparaîtront ici.",
     "thinking": "Réflexion",
     "thought": "Réflexion",
     "live": {

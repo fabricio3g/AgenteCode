@@ -465,6 +465,7 @@
     "statusLength": "Se alcanzó el límite de salida — parte de la ejecución se cortó",
     "retrying": "Fallo de conexión — reintentando (intento {n})…",
     "todosTitle": "Tareas",
+    "todosEmpty": "Todavía no hay tareas. Las tareas de esta conversación aparecerán aquí.",
     "thinking": "Pensando",
     "thought": "Pensamiento",
     "live": {

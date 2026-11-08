@@ -105,6 +105,7 @@
   "build": {
     "appId": "dev.agente.desktop",
     "productName": "Agente",
+    "icon": "renderer/public/app-icon.png",
     "publish": {
       "provider": "github",
       "owner": "fabricio3g",
@@ -179,15 +180,13 @@
       "target": [
         "nsis"
       ],
-      "icon": "build/icon.ico",
       "requestedExecutionLevel": "asInvoker",
       "artifactName": "AgenteDesktop-windows-${arch}.${ext}"
     },
     "mac": {
       "target": [
         "dmg"
-      ],
-      "icon": "build/icon.icns"
+      ]
     },
     "appImage": {
       "artifactName": "AgenteDesktop-linux-x64.AppImage"

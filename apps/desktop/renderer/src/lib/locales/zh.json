@@ -456,6 +456,7 @@
     "statusLength": "达到输出上限 — 部分运行被截断",
     "retrying": "连接中断 — 正在重试（第 {n} 次）…",
     "todosTitle": "任务",
+    "todosEmpty": "暂无任务。此对话中的任务将显示在这里。",
     "thinking": "思考中",
     "thought": "思考",
     "live": {
