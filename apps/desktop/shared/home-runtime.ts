@@ -33,7 +33,7 @@ export interface HomeStartArgs {
   tools: ClientToolDefinition[];
 }
 export type HomeRuntimeEvent =
-  | { runId: string; type: 'event'; envelope: RuntimeEventEnvelope }
+  | { runId: string; type: 'event'; envelope: RuntimeEventEnvelope; serviceName?: string }
   | { runId: string; type: 'call' | 'cancel'; call: ClientToolCall }
   | { runId: string; type: 'outcome'; outcome: TurnOutcome; snapshot: SessionSnapshot }
   | { runId: string; type: 'error'; message: string };

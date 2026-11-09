@@ -336,6 +336,101 @@ async fn home_profile_skips_project_instructions_and_requires_registered_tools()
 }
 
 #[tokio::test]
+async fn home_complement_calls_wait_for_approval_and_use_the_connected_server() {
+    const SERVER: &str = r#"
+import json
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+class Handler(BaseHTTPRequestHandler):
+    def log_message(self, *args): pass
+    def do_GET(self): self.send_error(405)
+    def do_DELETE(self): self.send_response(200); self.end_headers()
+    def do_POST(self):
+        msg = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+        if self.path.endswith("/chat/completions"):
+            if any(m["role"] == "tool" for m in msg["messages"]):
+                delta = {"content": "Saved by the complement."}
+                finish = "stop"
+            else:
+                tool = next(t["function"]["name"] for t in msg["tools"] if t["function"]["name"].startswith("complement_"))
+                delta = {"tool_calls": [{"index": 0, "id": "call_save", "type": "function", "function": {"name": tool, "arguments": "{}"}}]}
+                finish = "tool_calls"
+            frames = [{"choices": [{"index": 0, "delta": delta}]},
+                      {"choices": [{"index": 0, "delta": {}, "finish_reason": finish}]}]
+            body = "".join("data: " + json.dumps(frame) + "\n\n" for frame in frames) + "data: [DONE]\n\n"
+            return self.reply(200, body, "text/event-stream")
+        if self.headers.get("Authorization") != "Bearer test-token":
+            return self.send_error(401)
+        method = msg.get("method")
+        if "id" not in msg:
+            return self.reply(202, "")
+        if method == "initialize":
+            result = {"protocolVersion": msg["params"]["protocolVersion"], "capabilities": {"tools": {}}, "serverInfo": {"name": "fixture", "version": "1"}}
+        elif method == "tools/list":
+            result = {"tools": [{"name": "save", "inputSchema": {"type": "object"}}]}
+        else:
+            result = {"content": [{"type": "text", "text": "fixture saved"}]}
+        self.reply(200, json.dumps({"jsonrpc": "2.0", "id": msg["id"], "result": result}))
+    def reply(self, status, body, content_type="application/json"):
+        data = body.encode()
+        self.send_response(status)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
+server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+print(server.server_port, flush=True)
+server.serve_forever()
+"#;
+    let Some(mut server) = ["python", "python3"].into_iter().find_map(|program| {
+        tokio::process::Command::new(program)
+            .args(["-u", "-c", SERVER])
+            .kill_on_drop(true)
+            .stdout(std::process::Stdio::piped())
+            .spawn()
+            .ok()
+    }) else {
+        eprintln!("Python unavailable; skipping MCP fixture");
+        return;
+    };
+    let mut stdout = BufReader::new(server.stdout.take().unwrap()).lines();
+    let port = stdout.next_line().await.unwrap().unwrap();
+    let base = format!("http://127.0.0.1:{port}");
+    let (service, dir) = runtime("home-complement");
+    service.runtime.configure(json!({"provider":{"complement-fixture":{"api_format":"openai","options":{"base_url":format!("{base}/v1"),"api_key":"test"},"models":{"fixture":{"name":"Fixture"}}}}})).unwrap();
+    let mut desktop = Client::connect(&service);
+    let id = "0123456789ab";
+    let (sync, _) = desktop.request("complements.sync", json!({
+        "servers": {(id): {"name":"Fixture Service","mcp":{"url":format!("{base}/mcp"),"headers":{"Authorization":"Bearer test-token"}}}}
+    })).await;
+    assert!(sync["result"][id]["status"].is_string(), "{sync}");
+    let mut other = Client::connect(&service);
+    let (status, _) = other.request("complements.status", Value::Null).await;
+    assert_eq!(status["result"], json!({}));
+
+    let session = agente_protocol::SessionId::new();
+    desktop.request("client_tools.register", json!({"session_id":session,"tools":[]})).await;
+    let (started, notes) = desktop.request("turn.start", json!({
+        "session_id":session,"provider":"complement-fixture","model":"fixture","mode":"auto",
+        "home":{"max_iterations":3,"max_tool_calls":1,"max_time_ms":9000,"complements":true},
+        "prompt":{"role":"user","content":"Save using the fixture service."}
+    })).await;
+    assert!(started["result"]["turn_id"].is_string(), "{started}");
+    let notes = desktop.until(notes, |message| event_type(message) == Some("approval_requested") || message["method"] == "turn.outcome").await;
+    let approval = &notes.last().unwrap()["params"]["event"];
+    assert_eq!(approval["tool_name"], "complement_0123456789ab_save", "{notes:?}");
+    assert!(!notes.iter().any(|message| event_type(message) == Some("tool_result")));
+    let (response, notes) = desktop.request("approval.respond", json!({"request_id":approval["request_id"],"decision":"approve_once"})).await;
+    assert_eq!(response["result"]["ok"], true);
+    let notes = desktop.until(notes, |message| message["method"] == "turn.outcome").await;
+    assert!(notes.iter().any(|message| message["params"]["event"]["content"] == "fixture saved"), "{notes:?}");
+    let (removed, _) = desktop.request("complements.sync", json!({"servers":{}})).await;
+    assert_eq!(removed["result"], json!({}));
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[tokio::test]
 async fn providers_connect_to_the_shared_key_store_and_disconnect() {
     let (runtime, dir) = runtime("providers");
     // The stores the TUI shares; never the developer's own.

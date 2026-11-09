@@ -218,12 +218,15 @@ pub enum TurnMode {
     Auto,
 }
 
-/// Home turns expose only client-owned tools, never the coding tool registry.
+/// Home turns expose client-owned tools and optionally connected Complements.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct HomeTurnPolicy {
     pub max_iterations: u32,
     pub max_tool_calls: u32,
     pub max_time_ms: u64,
+    /// Include tools from services the Desktop client has connected.
+    #[serde(default)]
+    pub complements: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]

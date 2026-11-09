@@ -5,6 +5,7 @@
 
 import { nativeImage, type IpcMain, type BrowserWindow } from 'electron';
 import { registerHomeRuntimeHandlers } from '../agente/home-runtime.ts';
+import { registerComplementsHandlers } from '../agente/complements.ts';
 import { registerSessionGoals } from '../session-goals.ts';
 import { modelSeesImages, rustEngine as engine } from '../agente/rust-engine.ts';
 import { setMainWindowGetter } from '../agente/event-bridge.ts';
@@ -21,6 +22,7 @@ type AgenteHandlerDeps = {
 export function registerAgenteHandlers({ ipcMain, getMainWindow }: AgenteHandlerDeps): void {
   setMainWindowGetter(getMainWindow);
   registerHomeRuntimeHandlers(ipcMain);
+  registerComplementsHandlers(ipcMain);
 
   ipcMain.handle('agente_start_session', (event, args: AgenteStartSessionArgs) => engine.startSession(args, event.sender));
 

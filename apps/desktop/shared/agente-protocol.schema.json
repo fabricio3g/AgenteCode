@@ -197,8 +197,13 @@
       "type": "object"
     },
     "HomeTurnPolicy": {
-      "description": "Home turns expose only client-owned tools, never the coding tool registry.",
+      "description": "Home turns expose client-owned tools and optionally connected Complements.",
       "properties": {
+        "complements": {
+          "default": false,
+          "description": "Include tools from services the Desktop client has connected.",
+          "type": "boolean"
+        },
         "max_iterations": {
           "format": "uint32",
           "minimum": 0.0,

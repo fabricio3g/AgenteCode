@@ -1,5 +1,7 @@
 //! Client-owned tools are isolated to a session and the connection that registered them.
+use agente_core::mcp::{McpManager, McpTool, McpToolAdapter};
 use agente_core::tools::{Tool, ToolError, ToolExecutionContext, ToolExecutionMode};
+use agente_core::{permissions::Permission, types::AgentMode};
 use agente_protocol::{
     ClientToolCall, ClientToolDefinition, ClientToolResult, HomeTurnPolicy, SessionId, TurnId,
 };
@@ -27,6 +29,7 @@ impl ClientTools {
         if tools.len() > 128
             || tools.iter().any(|tool| {
                 tool.name.is_empty()
+                    || tool.name.starts_with(crate::complements::TOOL_PREFIX)
                     || tool.name.len() > 128
                     || !tool
                         .name
@@ -47,6 +50,7 @@ impl ClientTools {
         turn: TurnId,
         policy: &HomeTurnPolicy,
         outbox: mpsc::Sender<Value>,
+        complements: Vec<(McpTool, Arc<McpManager>)>,
     ) -> Result<Vec<Box<dyn Tool>>, String> {
         let definitions = self
             .definitions
@@ -59,7 +63,18 @@ impl ClientTools {
         self.turns.lock().unwrap().push(turn);
         Ok(definitions
             .into_iter()
-            .map(|definition| {
+            .map(|definition| (definition, None))
+            .chain(complements.into_iter().map(|(tool, manager)| {
+                let definition = ClientToolDefinition {
+                    name: tool.full_name.clone(),
+                    description: tool.description.clone(),
+                    parameters: tool.input_schema.clone(),
+                    mutating: !tool.read_only,
+                    sequential: !tool.read_only,
+                };
+                (definition, Some(McpToolAdapter::from_mcp_tool(tool, manager)))
+            }))
+            .map(|(definition, complement)| {
                 Box::new(ClientTool {
                     definition,
                     session,
@@ -69,6 +84,7 @@ impl ClientTools {
                     count: Arc::clone(&count),
                     limit: policy.max_tool_calls,
                     attachments: Mutex::new(HashMap::new()),
+                    complement,
                 }) as Box<dyn Tool>
             })
             .collect())
@@ -102,6 +118,7 @@ struct ClientTool {
     count: Arc<AtomicU32>,
     limit: u32,
     attachments: Mutex<HashMap<String, Vec<agente_protocol::Attachment>>>,
+    complement: Option<McpToolAdapter>,
 }
 #[async_trait]
 impl Tool for ClientTool {
@@ -125,6 +142,9 @@ impl Tool for ClientTool {
         false
     }
     fn take_result_attachments(&self, call_id: &str) -> Vec<agente_protocol::Attachment> {
+        if let Some(tool) = &self.complement {
+            return tool.take_result_attachments(call_id);
+        }
         self.attachments
             .lock()
             .unwrap()
@@ -132,7 +152,12 @@ impl Tool for ClientTool {
             .unwrap_or_default()
     }
     fn allowed_in_plan(&self) -> bool {
-        !self.definition.mutating
+        self.complement
+            .as_ref()
+            .map_or(!self.definition.mutating, Tool::allowed_in_plan)
+    }
+    fn default_permission(&self, mode: AgentMode) -> Option<Permission> {
+        self.complement.as_ref()?.default_permission(mode)
     }
     async fn execute(&self, _: Value, _: &str) -> Result<String, ToolError> {
         Err(ToolError::ExecutionError(
@@ -142,13 +167,16 @@ impl Tool for ClientTool {
     async fn execute_with_context(
         &self,
         arguments: Value,
-        _: &str,
+        project_dir: &str,
         context: ToolExecutionContext,
     ) -> Result<String, ToolError> {
         if self.count.fetch_add(1, Ordering::Relaxed) >= self.limit {
             return Err(ToolError::ExecutionError(
                 "Home tool budget reached; answer from gathered evidence".into(),
             ));
+        }
+        if let Some(tool) = &self.complement {
+            return tool.execute_with_context(arguments, project_dir, context).await;
         }
         let request_id = uuid::Uuid::new_v4().to_string();
         let call = ClientToolCall {
@@ -222,8 +250,10 @@ mod tests {
                     max_iterations: 2,
                     max_tool_calls: 1,
                     max_time_ms: 1000,
+                    complements: false,
                 },
                 outbox,
+                Vec::new(),
             )
             .unwrap();
         let tool = tools.pop().unwrap();
@@ -271,8 +301,10 @@ mod tests {
                     max_iterations: 2,
                     max_tool_calls: 1,
                     max_time_ms: 1000,
+                    complements: false,
                 },
                 outbox,
+                Vec::new(),
             )
             .unwrap()
             .pop()
@@ -321,9 +353,11 @@ mod tests {
                 &HomeTurnPolicy {
                     max_iterations: 1,
                     max_tool_calls: 1,
-                    max_time_ms: 1
+                    max_time_ms: 1,
+                    complements: false,
                 },
-                outbox
+                outbox,
+                Vec::new(),
             )
             .is_err());
     }

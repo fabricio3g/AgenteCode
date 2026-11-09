@@ -1,5 +1,6 @@
 /** Home's tools and product policy around Rust's turn engine. No renderer model calls. */
 import type { AgentTaskResult, RunAgentTaskArgs } from './agent-types';
+import type { AgentStep } from '$lib/types/chat';
 import type { Attachment, ClientToolCall, Message, RuntimeEvent, SessionSnapshot, TurnOutcome, Usage } from '$shared/agente-protocol.gen';
 import type { HomeRuntimeEvent, HomeRuntimeMeta } from '$shared/home-runtime';
 import { invoke } from './bridge';
@@ -18,6 +19,9 @@ import { uid } from './agent-tool-dispatch';
 import { addCallSpend, emptySpend } from '$shared/accounting';
 import { RuntimeGenerationTimer } from '$shared/generation-speed';
 import { contextBreakdown } from '$shared/context-breakdown';
+import { approvalsStore } from '$lib/stores/approvals.svelte';
+import { parseComplementTool } from '$shared/complements';
+import { titleCaseToolName } from '$lib/utils/tool-ui';
 
 const MUTATING = /^(?:write_|edit_|delete_|create_|domain_write$|preview_project$|browser_(?:open|click|fill|press|back|scroll)|design_(?:write|edit|snapshot)$)/;
 function emptyMessage(role: Message['role'], content: string): Message { return { role, content }; }
@@ -94,6 +98,7 @@ async function importImages(images: ToolReply['images']): Promise<Attachment[]> 
  */
 class HomeTurn {
   computerEnabled = false;
+  complementsEnabled = false;
   text = '';
   reasoning = '';
   status: TurnOutcome['status'] = 'completed';
@@ -108,6 +113,8 @@ class HomeTurn {
   systemPrompt: string | undefined;
   #waiting: { resolve: (settled: Settled) => void; reject: (error: Error) => void } | undefined;
   readonly #calls = new Map<string, AbortController>();
+  readonly #nativeSteps = new Map<string, AgentStep>();
+  readonly #approvals = new Set<string>();
   readonly spend = emptySpend();
   readonly #generationTimer = new RuntimeGenerationTimer();
   #hasCallUsage = false;
@@ -117,6 +124,7 @@ class HomeTurn {
     this.#unwatch?.();
     this.#unwatch = undefined;
     this.activeRunId = runId;
+    this.#nativeSteps.clear();
     this.#unwatch = await watchHomeRun(runId, event => this.onRuntimeEvent(event));
   }
 
@@ -162,7 +170,7 @@ class HomeTurn {
   }
 
   /** What each runtime event means for the message; events not listed change nothing here. */
-  readonly #handlers: { [K in RuntimeEvent['type']]?: (event: Extract<RuntimeEvent, { type: K }>) => void } = {
+  readonly #handlers: { [K in RuntimeEvent['type']]?: (event: Extract<RuntimeEvent, { type: K }>, serviceName?: string) => void } = {
     user_messages_injected: (event) => {
       this.args.onMessagesInjected?.(event.messages);
       this.text = ''; this.reasoning = '';
@@ -170,6 +178,51 @@ class HomeTurn {
     assistant_delta: (event) => { this.text += event.text; this.args.onContent?.(this.text); },
     assistant_message: (event) => { this.text = event.text; this.args.onContent?.(this.text); },
     reasoning_delta: (event) => { this.reasoning += event.text; this.args.onReasoning?.(this.reasoning); },
+    tool_proposed: (event, serviceName) => {
+      const tool = parseComplementTool(event.name);
+      if (!tool && !event.name.startsWith('computer_')) return;
+      const label = serviceName && tool ? `${serviceName} · ${tool.label}` : tool?.label ?? titleCaseToolName(event.name);
+      const step: AgentStep = {
+        id: uid('native-tool'), type: 'tool', toolName: event.name, label,
+        status: 'running', startedAt: Date.now(), toolInput: event.arguments.slice(0, 32_768)
+      };
+      this.#nativeSteps.set(event.id, step);
+      this.run.steps.push(step);
+      emitSteps(this.run);
+    },
+    tool_progress: (event) => {
+      const step = this.#nativeSteps.get(event.id);
+      if (!step) return;
+      step.output = ((step.output ?? '') + event.chunk).slice(-32_768);
+      emitSteps(this.run);
+    },
+    tool_result: (event) => {
+      const step = this.#nativeSteps.get(event.id);
+      if (!step) return;
+      this.#nativeSteps.delete(event.id);
+      this.run.totalToolCalls += 1;
+      step.status = event.is_error ? 'error' : 'done';
+      step.output = event.content.slice(-32_768) || step.output;
+      if (step.startedAt !== undefined) step.durationMs = Math.max(0, Date.now() - step.startedAt);
+      emitSteps(this.run);
+    },
+    approval_requested: (event, serviceName) => {
+      const runId = this.activeRunId;
+      const respond = (allow: boolean) => invoke('home_runtime_approval', { runId, requestId: event.request_id, allow }).catch(() => {});
+      const tool = parseComplementTool(event.tool_name);
+      if (!this.args.chatId || this.controller.signal.aborted || !tool) {
+        void respond(false);
+        return;
+      }
+      this.#approvals.add(event.request_id);
+      void approvalsStore.request({
+        id: event.request_id, chatId: this.args.chatId,
+        command: `${tool.label} ${event.tool_args}`,
+        cwd: serviceName || 'Connected service', dangerous: event.is_dangerous, reason: 'This action may change data in a connected service.',
+      }).then(allow => {
+        if (this.#approvals.delete(event.request_id)) void respond(allow);
+      });
+    },
     thinking: () => {
       const run = this.run;
       if (run.currentStep?.status === 'running') run.currentStep.status = 'done';
@@ -206,14 +259,15 @@ class HomeTurn {
     this.args.onSpend?.({ ...this.spend });
   }
 
-  receive(event: RuntimeEvent, at: number): void {
+  receive(event: RuntimeEvent, at: number, serviceName?: string): void {
+    this.args.onLiveEvent?.(event);
     const duration = this.#generationTimer.observe(event, at);
     if (event.type === 'call_usage') {
       this.recordSpend(event);
       this.#usage(event.usage, true, duration);
       return;
     }
-    (this.#handlers[event.type] as ((event: RuntimeEvent) => void) | undefined)?.(event);
+    (this.#handlers[event.type] as ((event: RuntimeEvent, serviceName?: string) => void) | undefined)?.(event, serviceName);
   }
 
   /** Main's event for this turn (events from an earlier retry attempt are ignored). */
@@ -226,7 +280,7 @@ class HomeTurn {
         if (event.envelope.event.type === 'call_usage') this.recordSpend(event.envelope.event);
         return;
       }
-      this.receive(event.envelope.event, Date.parse(event.envelope.timestamp));
+      this.receive(event.envelope.event, Date.parse(event.envelope.timestamp), event.serviceName);
     }
     else if (event.type === 'outcome') this.#waiting?.resolve(event);
     else if (event.type === 'error') this.#waiting?.reject(new Error(event.message));
@@ -271,6 +325,11 @@ class HomeTurn {
 
   cancel = (): void => {
     for (const call of this.#calls.values()) call.abort();
+    for (const request of this.#approvals) {
+      const approval = approvalsStore.forRequest(request);
+      if (approval) approvalsStore.resolve(approval.id, false);
+    }
+    this.#approvals.clear();
     if (this.activeRunId) void invoke('home_runtime_cancel', { runId: this.activeRunId }).catch(() => {});
   };
 }
@@ -339,7 +398,7 @@ async function startAttempt(turn: HomeTurn, attempt: Attempt): Promise<{ session
   const started = await invoke<{ sessionId: string; turnId: string; conversationIndex?: number; contextWindow: number }>('home_runtime_start', {
     runId: turn.activeRunId, ...start, provider, model: plan.activeModel, thinkingLevel: args.reasoningLevel || 'auto',
     localSelection: plan.localMode ? { modelPath: run.config.llm?.local?.selected_model_path || '', baseUrl: run.config.llm?.local?.base_url || '' } : undefined,
-    policy: remainingPolicy(turn, wrapUp), tools: wrapUp ? [] : toolManifest(turn.tools),
+    policy: { ...remainingPolicy(turn, wrapUp), complements: !wrapUp && turn.complementsEnabled }, tools: wrapUp ? [] : toolManifest(turn.tools),
     chatId: args.chatId, computerEnabled: !wrapUp && turn.computerEnabled
   });
   if (!started) throw new Error('The agent runtime did not start the turn.');
@@ -443,6 +502,7 @@ export async function runHomeRuntime(args: RunAgentTaskArgs, space?: SpaceRuntim
   const turn = new HomeTurn(args, run, args.noTools ? new Map() : space ? space.tools(run) : createHomeTools(run, true).tools, controller);
   turn.systemPrompt = space?.systemPrompt;
   turn.computerEnabled = !space && !args.noTools;
+  turn.complementsEnabled = !space && !args.noTools && plan.toolMode === 'agent';
   let bootstrapped = false;
   try { bootstrapped = args.noTools || space ? false : await runResearchBootstrap(run); } catch (error) { args.signal?.removeEventListener('abort', abort); throw error; }
   if (!space) {

@@ -19,7 +19,7 @@
   import { flip } from 'svelte/animate';
   import { smoothEase } from '$lib/utils/transitions';
   import { formatShortcut } from '$lib/utils/shortcuts';
-  import { Settings as SettingsIcon, ChevronsDownUp, ChevronsUpDown, Drama, FolderOpen, MessageSquare, MoreHorizontal, PenTool, Plus, Puzzle, Trash2 } from 'lucide-svelte';
+  import { Settings as SettingsIcon, Blocks, CalendarDays, ChevronsDownUp, ChevronsUpDown, Drama, FolderOpen, MessageSquare, MoreHorizontal, PenTool, Plus, Puzzle, Trash2 } from 'lucide-svelte';
   import Menu from '$lib/components/ui/Menu.svelte';
   import MenuItem from '$lib/components/ui/MenuItem.svelte';
   import { confirmStore } from '$lib/stores/confirm.svelte';
@@ -152,6 +152,17 @@
         <Plus class="sidebar-row-icon" />
         <span class="sidebar-row-label">{newButtonLabel}</span>
       </UiListRow>
+
+      {#if appStore.activeSpace === 'home'}
+        <UiListRow
+          class={uiClass("sidebar-row", "ui-local-0456fb2e", {"is-current": appStore.homeView === 'complements'})}
+          aria-current={appStore.homeView === 'complements' ? 'page' : undefined}
+          onclick={() => { appStore.showComplements(); onNavigate?.(); }}
+        >
+          <Blocks class="sidebar-row-icon" />
+          <span class="sidebar-row-label">{$t('home.complements.title')}</span>
+        </UiListRow>
+      {/if}
 
       <!-- The Code agent does not produce artifacts; the toggle list only
            concerns Home and Roleplay. -->

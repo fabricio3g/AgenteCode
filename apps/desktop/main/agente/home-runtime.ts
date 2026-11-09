@@ -12,8 +12,10 @@ import { trackGoalTurn, goalTurnStarted } from '../session-goals.ts';
 import type { AgenteClient } from '../agente-client.ts';
 import type { ClientToolCall, RuntimeEventEnvelope, SessionSnapshot, TurnOutcome } from '../../shared/agente-protocol.gen.ts';
 import type { HomeRuntimeEvent, HomeStartArgs, HomeToolReply } from '../../shared/home-runtime.ts';
+import { homeComplements } from './complements.ts';
+import { parseComplementTool } from '../../shared/complements.ts';
 
-type Run = { runId: string; sessionId: string; turnId?: string; owner: WebContents; client: AgenteClient; pending: Set<string>; dispose?: () => void; chatId?: string; computerTools?: Map<string, AgentTool>; computerCalls?: Map<string, AbortController> };
+type Run = { runId: string; sessionId: string; turnId?: string; owner: WebContents; client: AgenteClient; pending: Set<string>; approvals: Set<string>; complementNames?: Map<string, string>; cancelled?: boolean; dispose?: () => void; chatId?: string; computerTools?: Map<string, AgentTool>; computerCalls?: Map<string, AbortController> };
 const runs = new Map<string, Run>();
 function release(run: Run) {
   if (runs.get(run.runId) !== run) return;
@@ -27,6 +29,7 @@ function send(run: Run, event: HomeRuntimeEvent) {
   if (!run.owner.isDestroyed()) run.owner.send('home_runtime_event', event);
 }
 async function cancel(run: Run) {
+  run.cancelled = true;
   cancelComputerTurn(run.sessionId);
   for (const call of run.computerCalls?.values() ?? []) call.abort();
   for (const requestId of run.pending) {
@@ -81,7 +84,11 @@ function connectNotifications(client: AgenteClient) {
       const run = [...runs.values()].find((run) => run.sessionId === envelope.session_id && (!run.turnId || run.turnId === envelope.turn_id));
       if (!run) return;
       run.turnId = envelope.turn_id;
-      send(run, { runId: run.runId, type: 'event', envelope });
+      const event = envelope.event;
+      if (event.type === 'approval_requested') run.approvals.add(event.request_id);
+      const toolName = event.type === 'approval_requested' ? event.tool_name : event.type === 'tool_proposed' ? event.name : '';
+      const complement = parseComplementTool(toolName);
+      send(run, { runId: run.runId, type: 'event', envelope, serviceName: complement && run.complementNames?.get(complement.id) });
     } else if (method === 'turn.outcome') {
       const outcome = params as TurnOutcome;
       const run = [...runs.values()].find((run) => run.sessionId === outcome.session_id && run.turnId === outcome.turn_id);
@@ -109,7 +116,10 @@ export function registerHomeRuntimeHandlers(ipcMain: IpcMain) {
     const provider = await useProvider(client, args.provider, args.model, args.localSelection);
     trackGoalTurn(sessionId, client, event.sender, provider.id, provider.model, args.prompt?.content);
     const info = await client.request<{ limits?: { context?: number } }>('models.info', { provider: provider.id, model: provider.model });
-    const run: Run = { runId: args.runId, sessionId, owner: event.sender, client, pending: new Set(), chatId: args.chatId };
+    const run: Run = { runId: args.runId, sessionId, owner: event.sender, client, pending: new Set(), approvals: new Set(), chatId: args.chatId };
+    if (args.policy.complements && args.chatId && args.policy.max_tool_calls > 0 && hello.capabilities.includes('complements_v1')) {
+      run.complementNames = await homeComplements(client).catch(() => undefined);
+    }
     const computerEnabled = args.computerEnabled && !!args.chatId && await modelSeesImages(args.provider, args.model);
     if (computerEnabled) run.computerTools = new Map(createComputerTools({ owner: () => computerOwner(run), canSeeImages: () => true }).map(tool => [tool.name, tool]));
     const computerDefinitions = [...(run.computerTools?.values() ?? [])].map(tool => ({ name: tool.name, description: tool.description, parameters: tool.parameters, sequential: true, mutating: true }));
@@ -126,14 +136,20 @@ export function registerHomeRuntimeHandlers(ipcMain: IpcMain) {
       const result = await client.request<{ turn_id: string; conversation_index?: number }>('turn.start', {
         session_id: sessionId, conversation: args.conversation || [], prompt: args.prompt,
         system_prompt: args.systemPrompt + (computerEnabled ? `\n\n${COMPUTER_INSTRUCTIONS}` : ''), provider: provider.id, model: provider.model,
-        thinking_level: args.thinkingLevel || 'auto', home: args.policy, mode: 'auto',
+        thinking_level: args.thinkingLevel || 'auto', home: { ...args.policy, complements: !!run.complementNames?.size }, mode: 'auto',
         origin: { channel: 'desktop-home', trust: 'owner' }
       });
       run.turnId = result.turn_id;
+      if (run.cancelled) await cancel(run);
       goalTurnStarted(sessionId,result.turn_id);
       const owner = computerOwner(run); if (owner) bindComputerOwner(owner);
       return { sessionId, turnId: result.turn_id, conversationIndex: result.conversation_index, contextWindow: info.limits?.context || 32_768 };
     } catch (error) { release(run); throw error; }
+  });
+  ipcMain.handle('home_runtime_approval', async (event, args: { runId: string; requestId: string; allow: boolean }) => {
+    const run = runs.get(args.runId);
+    if (!run || run.owner.id !== event.sender.id || !run.approvals.delete(args.requestId)) return { ok: false };
+    return run.client.request('approval.respond', { request_id: args.requestId, decision: args.allow === true ? 'approve_once' : 'deny' });
   });
   ipcMain.handle('home_runtime_result', async (event, args: HomeToolReply) => {
     const run = runs.get(args.runId);

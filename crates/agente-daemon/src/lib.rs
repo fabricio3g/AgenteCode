@@ -5,6 +5,7 @@
 //! one message per line (see [`serve_connection`] for the methods).
 
 mod client_tools;
+mod complements;
 mod connection;
 mod project;
 mod tcp;

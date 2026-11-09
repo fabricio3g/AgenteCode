@@ -6,7 +6,7 @@
 //! their own channel; `events.subscribe` adds every other turn of the chosen
 //! sessions from the runtime-wide stream (how a second window attaches).
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 
 use agente_acp::rpc::{self, FrameError, Incoming};
@@ -41,6 +41,7 @@ struct Connection {
     own_turns: Mutex<HashSet<TurnId>>,
     subscription: Mutex<Option<JoinHandle<()>>>,
     client_tools: Arc<crate::client_tools::ClientTools>,
+    complements: Mutex<crate::complements::Complements>,
 }
 
 /// What `initialize` answers: the protocol and server versions.
@@ -49,7 +50,7 @@ pub(crate) fn initialize_result() -> Value {
         "protocol_version": agente_protocol::PROTOCOL_VERSION,
         "server": "agente",
         "version": env!("CARGO_PKG_VERSION"),
-        "capabilities": ["project", "processes", "sessions", "turns", "edits", "desktop_v1", "home_turns_v1", "provider_settings_v1"],
+        "capabilities": ["project", "processes", "sessions", "turns", "edits", "desktop_v1", "home_turns_v1", "provider_settings_v1", "complements_v1"],
     })
 }
 
@@ -77,6 +78,7 @@ where
         own_turns: Mutex::new(HashSet::new()),
         subscription: Mutex::new(None),
         client_tools: Arc::default(),
+        complements: Mutex::default(),
     });
 
     let mut lines = BufReader::new(reader).lines();
@@ -100,6 +102,21 @@ where
                     let connection = Arc::clone(&connection);
                     tokio::spawn(async move {
                         let outcome = if method == "turn.start" {
+                            if params.pointer("/home/complements").and_then(Value::as_bool) == Some(true) {
+                                let wait = async {
+                                    while connection.complements.lock().unwrap().waiting_for_first_connection() {
+                                        tokio::time::sleep(std::time::Duration::from_millis(75)).await;
+                                    }
+                                };
+                                let _ = tokio::time::timeout(std::time::Duration::from_secs(4), wait).await;
+                                let managers = connection.complements.lock().unwrap().managers();
+                                let refresh = async {
+                                    for manager in managers {
+                                        manager.refresh_stale_tools().await;
+                                    }
+                                };
+                                let _ = tokio::time::timeout(std::time::Duration::from_secs(2), refresh).await;
+                            }
                             let turn_connection = Arc::clone(&connection);
                             tokio::task::spawn_blocking(move || {
                                 turn_connection.handle("turn.start", params)
@@ -647,6 +664,24 @@ impl Connection {
                     .map_err(|error| (rpc::INVALID_PARAMS, error))?;
                 Ok(json!({"ok": true}))
             }
+            "complements.sync" => {
+                #[derive(Deserialize)]
+                struct Params {
+                    servers: HashMap<String, crate::complements::ComplementConfig>,
+                    retry: Option<String>,
+                }
+                let Params { mut servers, retry } = parse(params)?;
+                if servers.len() > 32 || servers.keys().any(|id| id.len() != 12 || !id.bytes().all(|b| b.is_ascii_hexdigit())) {
+                    return Err((rpc::INVALID_PARAMS, "Invalid complement IDs or too many services".into()));
+                }
+                for config in servers.values_mut() {
+                    config.mcp.trust = false;
+                }
+                let mut complements = self.complements.lock().unwrap();
+                complements.sync(servers, retry.as_deref());
+                Ok(complements.status())
+            }
+            "complements.status" => Ok(self.complements.lock().unwrap().status()),
             "client_tools.result" => {
                 self.client_tools
                     .result(parse(params)?)
@@ -654,7 +689,7 @@ impl Connection {
                 Ok(json!({"ok": true}))
             }
             "turn.start" => {
-                let start: StartTurn = parse(params)?;
+                let mut start: StartTurn = parse(params)?;
                 // Nothing to answer: a blank prompt would start a whole turn
                 // of the model exploring on its own.
                 if start.conversation.is_empty()
@@ -674,9 +709,17 @@ impl Connection {
                         return Err((rpc::INVALID_PARAMS, "Invalid Home turn budgets".into()));
                     }
                     let turn_id = TurnId::new();
+                    let complements = if policy.complements && policy.max_tool_calls > 0 {
+                        self.complements.lock().unwrap().tools()
+                    } else {
+                        Vec::new()
+                    };
+                    if !complements.is_empty() && start.mode != Some(agente_protocol::TurnMode::Plan) {
+                        start.mode = Some(agente_protocol::TurnMode::Build);
+                    }
                     let extra = self
                         .client_tools
-                        .tools(start.session_id, turn_id, policy, self.outbox.clone())
+                        .tools(start.session_id, turn_id, policy, self.outbox.clone(), complements)
                         .map_err(|error| (rpc::INVALID_PARAMS, error))?;
                     let timeout = policy.max_time_ms;
                     let turn = runtime

@@ -62,8 +62,10 @@ export interface FunctionCall {
   name: string;
 }
 
-/** Home turns expose only client-owned tools, never the coding tool registry. */
+/** Home turns expose client-owned tools and optionally connected Complements. */
 export interface HomeTurnPolicy {
+  /** Include tools from services the Desktop client has connected. */
+  complements?: boolean;
   max_iterations: number;
   max_time_ms: number;
   max_tool_calls: number;

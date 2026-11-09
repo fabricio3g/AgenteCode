@@ -204,7 +204,8 @@ class AppStore {
   agentWorkspaceOpen = $state(false);
   artifactStudioOpen = $state(false);
   /** What the Home surface shows: the chat, or the Artifacts screen. */
-  homeView = $state<'chat' | 'artifacts' | 'files'>('chat');
+  homeView = $state<'chat' | 'artifacts' | 'files' | 'calendar' | 'complements'>('chat');
+  calendarDay = $state<number | null>(null);
   /** Open or close search within the current space. */
   openSearch(): void {
     this.chatSearchOpen = !this.chatSearchOpen;
@@ -757,6 +758,10 @@ class AppStore {
   /** Show the Files library: uploads and the documents the Code agent made, across every chat. */
   showFileLibrary() {
     this.homeView = 'files';
+  }
+
+  showComplements() {
+    this.homeView = 'complements';
   }
 
   /** Open one artifact full-screen; Back goes to `returnChatId` when given. */
