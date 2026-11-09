@@ -33,8 +33,8 @@ use agente_core::types::{
 
 use crate::state::{AppState, Fold};
 use crate::state::{
-    AskQuestion, ConnectScreen, PendingPlan, PlanAskState, PlanReviewPhase, RetryStatus,
-    SubagentToolRow, SubagentUiState,
+    template_ask_questions, AskQuestion, ConnectScreen, PendingPlan, PlanAskState,
+    PlanReviewPhase, RetryStatus, SubagentToolRow, SubagentUiState,
 };
 
 /// Terminal sizes every scenario must survive. `40x12` is deliberately hostile:
@@ -556,6 +556,23 @@ pub(crate) fn scenarios() -> Vec<(&'static str, Build)> {
                 reask_count: 0,
             });
         }),
+        ("plan_ask_multi", |s| {
+            seed_conversation(s);
+            s.agent.set_mode(AgentMode::Plan);
+            s.plan_review.phase = PlanReviewPhase::Asking;
+            // The real vague-feedback flow: four steps, two of them chips,
+            // two free text. Step 2 is open, step 1 already answered.
+            let mut questions = template_ask_questions("make it better");
+            if let Some(q0) = questions.get_mut(0) {
+                q0.selected = Some(1);
+            }
+            s.plan_review.ask = Some(PlanAskState {
+                original_comment: "make it better".into(),
+                questions,
+                question_index: 1,
+                reask_count: 0,
+            });
+        }),
         ("agent_subagent_card", |s| {
             seed_conversation(s);
             seed_subagent(s);
@@ -1002,6 +1019,10 @@ fn scenario_meta(name: &str) -> (&'static str, &'static str) {
         "plan_ask_questions" => (
             "Planning Mode",
             "Interactive clarification questionnaire with selectable options",
+        ),
+        "plan_ask_multi" => (
+            "Planning Mode",
+            "Four-step clarify flow: answered step marked, chips on the open step, free-text steps below",
         ),
         "agent_subagent_card" => (
             "Subagents & Teams",
