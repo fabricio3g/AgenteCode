@@ -90,17 +90,22 @@ struct Server {
 
 impl Server {
     fn snapshot(&self) -> ServerSnapshot {
-        let tools = self
-            .connection
-            .read()
-            .as_ref()
-            .map_or(0, |c| c.tools.read().len());
+        let connection = self.connection.read().clone();
+        let mut status = self.status.read().clone();
+        let tools = connection.as_ref().map_or(0, |connection| {
+            if connection.service.is_closed() {
+                status = ServerStatus::Failed("connection closed".into());
+                0
+            } else {
+                connection.tools.read().len()
+            }
+        });
         ServerSnapshot {
             name: self.name.clone(),
             source: self.source,
             target: self.config.target(),
             remote: self.config.is_remote(),
-            status: self.status.read().clone(),
+            status,
             tools,
             last_stderr: self.stderr.lock().back().cloned(),
         }
@@ -547,6 +552,7 @@ impl McpManager {
             .servers
             .iter()
             .filter_map(|s| s.connection.read().clone())
+            .filter(|c| !c.service.is_closed())
             .flat_map(|c| c.tools.read().clone())
             .collect();
         tools.sort_by(|a, b| a.full_name.cmp(&b.full_name));
