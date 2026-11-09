@@ -39,10 +39,13 @@ app.commandLine.appendSwitch('disk-cache-size', String((IS_DEV ? 32 : 128) * 102
 
 // Packaged, the main bundle runs from app.asar/dist-electron/main: the
 // renderer and preload are found from the app's root, not from here.
-const RENDERER_PROD_PATH = path.join(app.getAppPath(), 'renderer', 'dist', 'index.html');
-const APP_ICON_PATH = IS_DEV
-  ? path.join(moduleDir, '..', '..', 'renderer', 'public', 'app-icon.png')
-  : path.join(app.getAppPath(), 'renderer', 'dist', 'app-icon.png');
+const APP_ROOT = app.getAppPath();
+const RENDERER_PROD_PATH = path.join(APP_ROOT, 'renderer', 'dist', 'index.html');
+const APP_ICON_PATH = path.join(APP_ROOT, 'renderer', IS_DEV ? 'public' : 'dist', 'app-icon.png');
+const APP_ID = IS_DEV ? 'dev.agente.desktop.dev' : 'dev.agente.desktop';
+const DEV_WINDOWS_ICON = IS_DEV && process.platform === 'win32'
+  ? path.join(APP_ROOT, 'build', 'app-icon-dev.ico')
+  : undefined;
 
 let tray = null;
 
@@ -61,6 +64,7 @@ if (smokeMode) app.once('quit', () => {
 
 function createWindow(chatId?: string) {
   const colors = initialWindowColors();
+  const taskbarIcon = DEV_WINDOWS_ICON && fs.existsSync(DEV_WINDOWS_ICON) ? DEV_WINDOWS_ICON : undefined;
   const mainWindow = new BrowserWindow({
     width: 1280,
     height: 820,
@@ -68,7 +72,7 @@ function createWindow(chatId?: string) {
     minHeight: 640,
     title: APP_NAME,
     backgroundColor: colors.color,
-    icon: fs.existsSync(APP_ICON_PATH) ? APP_ICON_PATH : undefined,
+    icon: taskbarIcon ?? (fs.existsSync(APP_ICON_PATH) ? APP_ICON_PATH : undefined),
     // `titleBarStyle` replaces the old `frame: false`, which on macOS *is*
     // 'hidden' and would silently undo the 'hiddenInset' inset below.
     // macOS keeps its real traffic lights; everywhere else the page draws the
@@ -86,6 +90,9 @@ function createWindow(chatId?: string) {
       webSecurity: true
     }
   });
+  // In development the executable is Electron. Give the Windows shell an
+  // icon resource for Agente's own taskbar group.
+  if (taskbarIcon) mainWindow.setAppDetails({ appId: APP_ID, appIconPath: taskbarIcon });
 
   if (!getMainWindow()) setMainWindow(mainWindow);
   attachCloseToTray(mainWindow);
@@ -169,7 +176,8 @@ app.whenReady().then(async () => {
   registerIpcHandlers();
   registerDomainHandlers();
   registerDomainMediaProtocol();
-  app.setAppUserModelId('dev.agente.desktop');
+  app.setAppUserModelId(APP_ID);
+  if (IS_DEV && app.dock && fs.existsSync(APP_ICON_PATH)) app.dock.setIcon(APP_ICON_PATH);
   if (!smokeMode) { try { createTray(); } catch (error) { console.warn('[tray]', error); } }
   registerActivityNotifications(chatId => {
     const win = getMainWindow();
