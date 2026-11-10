@@ -760,6 +760,11 @@ class AppStore {
     this.homeView = 'files';
   }
 
+  showCalendar(date?: Date) {
+    this.calendarDay = date?.getTime() ?? null;
+    this.homeView = 'calendar';
+  }
+
   showComplements() {
     this.homeView = 'complements';
   }

@@ -3099,6 +3099,72 @@
     "saving": "Saving…"
   },
   "home": {
+    "calendar": {
+      "title": "Calendário",
+      "previous": "Mês anterior",
+      "next": "Próximo mês",
+      "empty": "Nada agendado",
+      "complete": "Concluir {task}",
+      "add": "Adicionar evento",
+      "edit": "Editar evento",
+      "remove": "Remover evento",
+      "removePrompt": "Remover “{title}” do calendário?",
+      "eventTitle": "Título do evento",
+      "date": "Data",
+      "time": "Horário (opcional)",
+      "color": "Cor",
+      "saveError": "Não foi possível salvar a alteração. Confira a data e o horário.",
+      "today": "Hoje",
+      "upcoming": "Em breve",
+      "allDay": "Dia inteiro",
+      "editEntry": "Editar {title}",
+      "entryCount": "{count, plural, one {# item} other {# itens}}",
+      "colors": {
+        "blue": "Azul",
+        "green": "Verde",
+        "amber": "Âmbar",
+        "violet": "Violeta"
+      },
+      "kinds": {
+        "event": "Evento",
+        "todo": "Tarefa",
+        "reminder": "Lembrete"
+      }
+    },
+    "calendarSync": {
+      "add": "Adicionar calendário",
+      "manage": "Calendários conectados",
+      "subscribe": "Assinar por link",
+      "readOnly": "Somente leitura",
+      "description": "Escolha de onde vêm os eventos. Eles aparecerão no Calendário e na tela inicial.",
+      "signInUnavailable": "O login na conta depende desta versão. Você também pode assinar por link.",
+      "link": "Link do calendário",
+      "name": "Nome de exibição (opcional)",
+      "linkHelp": "Cole um link de assinatura iCalendar. O Agente o protege com o cofre do sistema.",
+      "signInBrowser": "Conclua o login no navegador e volte aqui.",
+      "pick": "Escolha os calendários que deseja mostrar",
+      "noCalendars": "Esta conta não tem calendários disponíveis.",
+      "empty": "Ainda não há calendários conectados.",
+      "lastSynced": "Última sincronização {time}",
+      "syncing": "Sincronizando…",
+      "refresh": "Atualizar calendário",
+      "reconnect": "Entrar novamente",
+      "remove": "Remover calendário",
+      "removePrompt": "Remover {name} e os eventos sincronizados do Agente?",
+      "back": "Voltar",
+      "untitled": "Evento sem título",
+      "providers": {
+        "google": "Google Agenda",
+        "outlook": "Outlook",
+        "link": "Link de calendário"
+      },
+      "errors": {
+        "offline": "Não foi possível atualizar. Mostrando a última sincronização.",
+        "signIn": "Verifique o login na conta.",
+        "limited": "O provedor está limitando as solicitações. O Agente tentará novamente.",
+        "unavailable": "Calendário indisponível."
+      }
+    },
     "complements": {
       "title": "Complementos",
       "description": "Conecte serviços para que o agente da tela inicial use as ferramentas deles.",

@@ -1,5 +1,5 @@
 /**
- * Notes, to-dos and reminders the Home agent keeps across chats.
+ * Notes, to-dos, reminders and calendar events shared across Home.
  *
  * One small JSON document in localStorage (the same path the app's other
  * per-device stores use), so it survives restarts and is shared by every chat
@@ -10,14 +10,18 @@
 export type Note = { id: string; title: string; body: string; tags: string[]; createdAt: number; updatedAt: number };
 export type Todo = { id: string; text: string; done: boolean; due?: string; createdAt: number; doneAt?: number };
 export type Reminder = { id: string; text: string; fireAt: number; createdAt: number };
+export const EVENT_COLORS = ['blue', 'green', 'amber', 'violet'] as const;
+export type EventColor = typeof EVENT_COLORS[number];
+export type CalendarEvent = { id: string; text: string; day: string; time?: string; color: EventColor };
 
-type Doc = { notes: Note[]; todos: Todo[]; reminders: Reminder[] };
+type Doc = { notes: Note[]; todos: Todo[]; reminders: Reminder[]; events: CalendarEvent[] };
 
 const STORAGE_KEY = 'agente.home.productivity.v1';
 const MAX_ITEMS = 500;
+export const HOME_PRODUCTIVITY_CHANGED = 'agente:home-productivity-changed';
 
 function emptyDoc(): Doc {
-  return { notes: [], todos: [], reminders: [] };
+  return { notes: [], todos: [], reminders: [], events: [] };
 }
 
 function storage(): Storage | null {
@@ -36,18 +40,23 @@ function load(): Doc {
     return {
       notes: Array.isArray(parsed.notes) ? parsed.notes : [],
       todos: Array.isArray(parsed.todos) ? parsed.todos : [],
-      reminders: Array.isArray(parsed.reminders) ? parsed.reminders : []
+      reminders: Array.isArray(parsed.reminders) ? parsed.reminders : [],
+      events: Array.isArray(parsed.events) ? parsed.events : []
     };
   } catch {
     return emptyDoc();
   }
 }
 
-function save(doc: Doc): void {
+function save(doc: Doc): boolean {
   try {
-    storage()?.setItem(STORAGE_KEY, JSON.stringify(doc));
+    const target = storage();
+    if (!target) return false;
+    target.setItem(STORAGE_KEY, JSON.stringify(doc));
+    if (typeof window !== 'undefined') window.dispatchEvent(new Event(HOME_PRODUCTIVITY_CHANGED));
+    return true;
   } catch {
-    /* quota or private mode: the in-memory call still returned its result */
+    return false;
   }
 }
 
@@ -55,11 +64,51 @@ function newId(prefix: string): string {
   return `${prefix}-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 }
 
-function mutate<T>(fn: (doc: Doc) => T): T {
+function mutate<T>(fn: (doc: Doc) => T, requireStorage = false): T {
   const doc = load();
   const result = fn(doc);
-  save(doc);
+  if (!save(doc) && requireStorage) throw new Error('Could not save calendar changes.');
   return result;
+}
+
+/** Wall-clock values stay on their chosen local day, including all-day events. */
+export function localCalendarDate(day: string, time?: string): Date | null {
+  const date = /^(\d{4})-(\d{2})-(\d{2})$/.exec(day);
+  const clock = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(time ?? '00:00');
+  if (!date || !clock) return null;
+  const [, year, month, dayOfMonth] = date.map(Number);
+  const [, hour, minute] = clock.map(Number);
+  if (year < 1) return null;
+  const result = new Date(0);
+  result.setFullYear(year, month - 1, dayOfMonth);
+  result.setHours(hour, minute, 0, 0);
+  if (result.getFullYear() !== year || result.getMonth() !== month - 1 || result.getDate() !== dayOfMonth) return null;
+  if (time && (result.getHours() !== hour || result.getMinutes() !== minute)) return null;
+  return result;
+}
+
+export function listCalendarEvents(): CalendarEvent[] {
+  return load().events;
+}
+
+export function saveCalendarEvent(input: Omit<CalendarEvent, 'id'>, id?: string): CalendarEvent {
+  const text = input.text.trim();
+  if (!text || !localCalendarDate(input.day, input.time) || !EVENT_COLORS.includes(input.color)) {
+    throw new Error('Invalid calendar event.');
+  }
+  return mutate(doc => {
+    const index = id === undefined ? -1 : doc.events.findIndex(entry => entry.id === id);
+    if (id !== undefined && index === -1) throw new Error('Event was removed.');
+    if (index === -1 && doc.events.length >= MAX_ITEMS) throw new Error('Event limit reached.');
+    const event = { ...input, text, id: id ?? newId('event') };
+    if (index === -1) doc.events.push(event);
+    else doc.events[index] = event;
+    return event;
+  }, true);
+}
+
+export function removeCalendarEvent(id: string): void {
+  mutate(doc => { doc.events = doc.events.filter(entry => entry.id !== id); }, true);
 }
 
 // ── Notes ─────────────────────────────────────────────────────────────────

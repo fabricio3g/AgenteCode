@@ -11,6 +11,8 @@
   let { onNavigate, onToggle }: { onNavigate?: () => void; onToggle?: () => void } = $props();
   import { PanelLeftClose } from 'lucide-svelte';
   import SidebarInstances from './SidebarInstances.svelte';
+  import CalendarPreview from '$lib/features/home/CalendarPreview.svelte';
+  import Tooltip from '$lib/components/ui/Tooltip.svelte';
   import { appStore } from '$lib/stores/app.svelte';
   import CodeSidebar from '$lib/features/code/CodeSidebar.svelte';
   import { codeStore } from '$lib/features/code/code.svelte';
@@ -154,6 +156,17 @@
       </UiListRow>
 
       {#if appStore.activeSpace === 'home'}
+        <Tooltip label={$t('home.calendar.title')} position="right" class="w-full" delay={250}>
+          {#snippet content()}<CalendarPreview />{/snippet}
+        <UiListRow
+          class={uiClass("sidebar-row", "ui-local-0456fb2e", {"is-current": appStore.homeView === 'calendar'})}
+          aria-current={appStore.homeView === 'calendar' ? 'page' : undefined}
+          onclick={() => { appStore.showCalendar(); onNavigate?.(); }}
+        >
+          <CalendarDays class="sidebar-row-icon" />
+          <span class="sidebar-row-label">{$t('home.calendar.title')}</span>
+        </UiListRow>
+        </Tooltip>
         <UiListRow
           class={uiClass("sidebar-row", "ui-local-0456fb2e", {"is-current": appStore.homeView === 'complements'})}
           aria-current={appStore.homeView === 'complements' ? 'page' : undefined}

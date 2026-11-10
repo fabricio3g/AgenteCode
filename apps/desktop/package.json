@@ -2,7 +2,7 @@
   "name": "agente-desktop",
   "version": "0.0.2",
   "private": true,
-  "description": "Agente Desktop \u2013 local AI workspace (Electron)",
+  "description": "Agente Desktop – local AI workspace (Electron)",
   "repository": {
     "type": "git",
     "url": "https://github.com/fabricio3g/AgenteCode.git",
@@ -65,6 +65,7 @@
     "extract-zip": "^2.0.1",
     "ffmpeg-static": "5.3.0",
     "ffprobe-static": "3.1.0",
+    "ical.js": "2.2.1",
     "jszip": "^3.10.1",
     "linkedom": "^0.18.12",
     "lucide-svelte": "^1.0.1",
@@ -86,6 +87,7 @@
     "sherpa-onnx-win-x64": "1.12.29"
   },
   "devDependencies": {
+    "@electron/asar": "3.4.1",
     "@electron/fuses": "^2.1.1",
     "@electron/rebuild": "^4.0.4",
     "@sveltejs/vite-plugin-svelte": "^7.0.0",
@@ -99,8 +101,7 @@
     "patch-package": "^8.0.1",
     "tsx": "^4.21.0",
     "typescript": "^6.0.3",
-    "wait-on": "^8.0.2",
-    "@electron/asar": "3.4.1"
+    "wait-on": "^8.0.2"
   },
   "build": {
     "appId": "dev.agente.desktop",

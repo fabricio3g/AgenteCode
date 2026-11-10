@@ -10,6 +10,7 @@
   import Titlebar from '$lib/components/layout/Titlebar.svelte';
   import Sidebar from '$lib/components/layout/Sidebar.svelte';
   import HomeSurface from '$lib/features/home/HomeSurface.svelte';
+  import CalendarScreen from '$lib/features/home/CalendarScreen.svelte';
   import ComplementsScreen from '$lib/features/home/ComplementsScreen.svelte';
   import ConversationPanes from '$lib/features/code/ConversationPanes.svelte';
   import ArtifactsScreen from '$lib/features/artifacts/ArtifactsScreen.svelte';
@@ -353,6 +354,11 @@
       {#if appStore.homeView === 'files' && !settingsShowing}
         <div data-overlay="files" class="absolute inset-0 z-20 flex min-h-0 min-w-0 flex-col bg-background">
           <FilesScreen />
+        </div>
+      {/if}
+      {#if appStore.homeView === 'calendar' && !settingsShowing}
+        <div data-overlay="calendar" class="absolute inset-0 z-20 flex min-h-0 min-w-0 flex-col bg-background">
+          <CalendarScreen />
         </div>
       {/if}
       {#if appStore.homeView === 'complements' && !settingsShowing}

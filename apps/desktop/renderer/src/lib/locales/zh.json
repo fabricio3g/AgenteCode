@@ -3099,6 +3099,72 @@
     "saving": "Saving…"
   },
   "home": {
+    "calendar": {
+      "title": "日历",
+      "previous": "上个月",
+      "next": "下个月",
+      "empty": "没有安排",
+      "complete": "完成 {task}",
+      "add": "添加日程",
+      "edit": "编辑日程",
+      "remove": "移除日程",
+      "removePrompt": "从日历中移除“{title}”？",
+      "eventTitle": "日程标题",
+      "date": "日期",
+      "time": "时间（可选）",
+      "color": "颜色",
+      "saveError": "无法保存更改。请检查日期和时间。",
+      "today": "今天",
+      "upcoming": "即将到来",
+      "allDay": "全天",
+      "editEntry": "编辑 {title}",
+      "entryCount": "{count} 项",
+      "colors": {
+        "blue": "蓝色",
+        "green": "绿色",
+        "amber": "琥珀色",
+        "violet": "紫色"
+      },
+      "kinds": {
+        "event": "日程",
+        "todo": "任务",
+        "reminder": "提醒"
+      }
+    },
+    "calendarSync": {
+      "add": "添加日历",
+      "manage": "已连接的日历",
+      "subscribe": "通过链接订阅",
+      "readOnly": "只读",
+      "description": "选择日程来源。日程将显示在日历和主页上。",
+      "signInUnavailable": "帐号登录取决于当前版本。你也可以通过链接订阅。",
+      "link": "日历链接",
+      "name": "显示名称（可选）",
+      "linkHelp": "粘贴 iCalendar 订阅链接。Agente 会使用系统密钥环保护它。",
+      "signInBrowser": "在浏览器中完成登录，然后返回这里。",
+      "pick": "选择要显示的日历",
+      "noCalendars": "此帐号没有可用的日历。",
+      "empty": "尚未连接日历。",
+      "lastSynced": "上次同步 {time}",
+      "syncing": "正在同步…",
+      "refresh": "刷新日历",
+      "reconnect": "重新登录",
+      "remove": "移除日历",
+      "removePrompt": "从 Agente 移除 {name} 及其已同步的日程吗？",
+      "back": "返回",
+      "untitled": "无标题日程",
+      "providers": {
+        "google": "Google 日历",
+        "outlook": "Outlook",
+        "link": "日历链接"
+      },
+      "errors": {
+        "offline": "无法刷新，正在显示上次同步的数据。",
+        "signIn": "请检查登录状态。",
+        "limited": "服务正在限制请求，Agente 将重试。",
+        "unavailable": "日历不可用。"
+      }
+    },
     "complements": {
       "title": "扩展组件",
       "description": "连接服务，让主页智能体使用这些服务提供的工具。",

@@ -3099,6 +3099,72 @@
     "saving": "Saving…"
   },
   "home": {
+    "calendar": {
+      "title": "Calendar",
+      "previous": "Previous month",
+      "next": "Next month",
+      "empty": "Nothing scheduled",
+      "complete": "Complete {task}",
+      "add": "Add event",
+      "edit": "Edit event",
+      "remove": "Remove event",
+      "removePrompt": "Remove “{title}” from the calendar?",
+      "eventTitle": "Event title",
+      "date": "Date",
+      "time": "Time (optional)",
+      "color": "Color",
+      "saveError": "Could not save the calendar change. Check the date and time.",
+      "today": "Today",
+      "upcoming": "Upcoming",
+      "allDay": "All day",
+      "editEntry": "Edit {title}",
+      "entryCount": "{count, plural, one {# item} other {# items}}",
+      "colors": {
+        "blue": "Blue",
+        "green": "Green",
+        "amber": "Amber",
+        "violet": "Violet"
+      },
+      "kinds": {
+        "event": "Event",
+        "todo": "Task",
+        "reminder": "Reminder"
+      }
+    },
+    "calendarSync": {
+      "add": "Add calendar",
+      "manage": "Connected calendars",
+      "subscribe": "Subscribe by link",
+      "readOnly": "View only",
+      "description": "Choose where to get events. They’ll appear in Calendar and Home.",
+      "signInUnavailable": "Account sign-in depends on this build. You can also subscribe by link.",
+      "link": "Calendar link",
+      "name": "Display name (optional)",
+      "linkHelp": "Paste an iCalendar subscription link. Agente stores it in your system keyring.",
+      "signInBrowser": "Finish signing in in your browser, then return here.",
+      "pick": "Choose calendars to show",
+      "noCalendars": "No calendars are available for this account.",
+      "empty": "No calendars connected yet.",
+      "lastSynced": "Last synced {time}",
+      "syncing": "Syncing…",
+      "refresh": "Refresh calendar",
+      "reconnect": "Sign in again",
+      "remove": "Remove calendar",
+      "removePrompt": "Remove {name} and its synced events from Agente?",
+      "back": "Back",
+      "untitled": "Untitled event",
+      "providers": {
+        "google": "Google Calendar",
+        "outlook": "Outlook",
+        "link": "Calendar link"
+      },
+      "errors": {
+        "offline": "Could not refresh. Showing the last sync.",
+        "signIn": "Sign-in needs attention.",
+        "limited": "The provider is limiting requests. Agente will retry.",
+        "unavailable": "Calendar is unavailable."
+      }
+    },
     "complements": {
       "title": "Complements",
       "description": "Connect services and let the Home agent use their tools.",

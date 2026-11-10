@@ -4,6 +4,7 @@
   import { motionFly } from '$lib/utils/transitions';
   import Thread from '$lib/features/chat/thread/Thread.svelte';
   import Composer from '$lib/features/chat/Composer.svelte';
+  import UpcomingCalendar from './UpcomingCalendar.svelte';
   import ActivityDrawer from '$lib/components/agent/ActivityDrawer.svelte';
   import { appStore } from '$lib/stores/app.svelte';
   import { copy } from '$lib/copy';
@@ -18,13 +19,14 @@
        as there is a message to read above it. -->
   <div
     class="chat-content-layer relative z-10 flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
-    class:justify-center={threadIsEmpty}
+    class:empty={threadIsEmpty}
   >
     {#if threadIsEmpty}
       <!-- One headline on the composer's own column, the same three-row
            composition every empty surface uses: what this space is for, the
            composer, then the starter links under it. -->
       <h1 class="empty-greeting composer-column px-3 md:px-6">{copy.emptyState.greeting}</h1>
+      <UpcomingCalendar />
     {/if}
     <Thread />
     <Composer />
@@ -40,6 +42,12 @@
 </div>
 
 <style>
+  .chat-content-layer.empty {
+    justify-content: safe center;
+    overflow-y: auto;
+    padding-block: 1rem;
+  }
+
   /* Anchors the centred empty state, on the composer's column so the headline
      starts on the card's edge instead of floating centred above it. Same size
      and weight as the Design dock's invitation: the composer stays the largest
@@ -47,6 +55,7 @@
   .empty-greeting {
     position: relative;
     z-index: 1;
+    flex-shrink: 0;
     margin-block: 0 0.75rem;
     color: var(--foreground);
     font-size: 1.0625rem;

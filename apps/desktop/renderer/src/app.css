@@ -848,6 +848,15 @@ textarea {
   box-shadow: 0 0 0 2px color-mix(in oklch, var(--ring) 30%, transparent);
 }
 
+/* Event colors shared by the month grid, agenda and Home. */
+.calendar-tone {
+  --calendar-tone: light-dark(#3e648e, #88acd8);
+}
+.calendar-tone[data-tone='green'] { --calendar-tone: light-dark(#447259, #86b79b); }
+.calendar-tone[data-tone='amber'] { --calendar-tone: light-dark(#8a622d, #d3aa71); }
+.calendar-tone[data-tone='violet'] { --calendar-tone: light-dark(#725794, #b7a0d6); }
+.calendar-dot { display:inline-block; flex:none; width:0.375rem; height:0.375rem; border-radius:50%; background:var(--calendar-tone); }
+
 /* ─── Composer ────────────────────────────────────────────────────────────
    Home and Code share one shell: the text on top, then one bar — add, mode
    and model on the left; status, extras and send on the right. The shell is

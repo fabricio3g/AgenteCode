@@ -3099,6 +3099,72 @@
     "saving": "Saving…"
   },
   "home": {
+    "calendar": {
+      "title": "カレンダー",
+      "previous": "前の月",
+      "next": "次の月",
+      "empty": "予定はありません",
+      "complete": "{task} を完了",
+      "add": "予定を追加",
+      "edit": "予定を編集",
+      "remove": "予定を削除",
+      "removePrompt": "「{title}」をカレンダーから削除しますか？",
+      "eventTitle": "予定のタイトル",
+      "date": "日付",
+      "time": "時刻（任意）",
+      "color": "色",
+      "saveError": "変更を保存できませんでした。日付と時刻を確認してください。",
+      "today": "今日",
+      "upcoming": "今後の予定",
+      "allDay": "終日",
+      "editEntry": "{title} を編集",
+      "entryCount": "{count} 件",
+      "colors": {
+        "blue": "青",
+        "green": "緑",
+        "amber": "琥珀色",
+        "violet": "紫"
+      },
+      "kinds": {
+        "event": "予定",
+        "todo": "タスク",
+        "reminder": "リマインダー"
+      }
+    },
+    "calendarSync": {
+      "add": "カレンダーを追加",
+      "manage": "接続済みのカレンダー",
+      "subscribe": "リンクで登録",
+      "readOnly": "読み取り専用",
+      "description": "予定の取得元を選びます。予定はカレンダーとホームに表示されます。",
+      "signInUnavailable": "アカウントへのログインはこのビルドの設定によります。リンクでも登録できます。",
+      "link": "カレンダーのリンク",
+      "name": "表示名（任意）",
+      "linkHelp": "iCalendar の登録リンクを貼り付けてください。Agente はシステムのキーチェーンで保護します。",
+      "signInBrowser": "ブラウザーでログインを完了し、ここに戻ってください。",
+      "pick": "表示するカレンダーを選択",
+      "noCalendars": "このアカウントに利用できるカレンダーはありません。",
+      "empty": "接続済みのカレンダーはありません。",
+      "lastSynced": "最終同期 {time}",
+      "syncing": "同期中…",
+      "refresh": "カレンダーを更新",
+      "reconnect": "もう一度ログイン",
+      "remove": "カレンダーを削除",
+      "removePrompt": "{name} と同期した予定を Agente から削除しますか？",
+      "back": "戻る",
+      "untitled": "タイトルなしの予定",
+      "providers": {
+        "google": "Google カレンダー",
+        "outlook": "Outlook",
+        "link": "カレンダーのリンク"
+      },
+      "errors": {
+        "offline": "更新できませんでした。前回の同期結果を表示しています。",
+        "signIn": "ログインを確認してください。",
+        "limited": "サービスがリクエストを制限しています。後で再試行します。",
+        "unavailable": "カレンダーを利用できません。"
+      }
+    },
     "complements": {
       "title": "拡張機能",
       "description": "サービスを接続すると、ホームのエージェントがそのツールを使えます。",

@@ -3099,6 +3099,72 @@
     "saving": "Saving…"
   },
   "home": {
+    "calendar": {
+      "title": "Kalender",
+      "previous": "Vorheriger Monat",
+      "next": "Nächster Monat",
+      "empty": "Nichts geplant",
+      "complete": "{task} abschließen",
+      "add": "Termin hinzufügen",
+      "edit": "Termin bearbeiten",
+      "remove": "Termin entfernen",
+      "removePrompt": "„{title}“ aus dem Kalender entfernen?",
+      "eventTitle": "Termintitel",
+      "date": "Datum",
+      "time": "Uhrzeit (optional)",
+      "color": "Farbe",
+      "saveError": "Die Änderung konnte nicht gespeichert werden. Prüfe Datum und Uhrzeit.",
+      "today": "Heute",
+      "upcoming": "Demnächst",
+      "allDay": "Ganztägig",
+      "editEntry": "{title} bearbeiten",
+      "entryCount": "{count, plural, one {# Eintrag} other {# Einträge}}",
+      "colors": {
+        "blue": "Blau",
+        "green": "Grün",
+        "amber": "Bernstein",
+        "violet": "Violett"
+      },
+      "kinds": {
+        "event": "Termin",
+        "todo": "Aufgabe",
+        "reminder": "Erinnerung"
+      }
+    },
+    "calendarSync": {
+      "add": "Kalender hinzufügen",
+      "manage": "Verbundene Kalender",
+      "subscribe": "Per Link abonnieren",
+      "readOnly": "Nur lesen",
+      "description": "Wähle eine Terminquelle. Die Termine erscheinen im Kalender und auf Home.",
+      "signInUnavailable": "Die Anmeldung hängt von dieser Version ab. Du kannst auch per Link abonnieren.",
+      "link": "Kalenderlink",
+      "name": "Anzeigename (optional)",
+      "linkHelp": "Füge einen iCalendar-Abonnementlink ein. Agente schützt ihn über den Systemschlüsselbund.",
+      "signInBrowser": "Schließe die Anmeldung im Browser ab und kehre hierher zurück.",
+      "pick": "Kalender zur Anzeige auswählen",
+      "noCalendars": "Für dieses Konto sind keine Kalender verfügbar.",
+      "empty": "Noch keine Kalender verbunden.",
+      "lastSynced": "Zuletzt synchronisiert {time}",
+      "syncing": "Wird synchronisiert…",
+      "refresh": "Kalender aktualisieren",
+      "reconnect": "Erneut anmelden",
+      "remove": "Kalender entfernen",
+      "removePrompt": "{name} und seine synchronisierten Termine aus Agente entfernen?",
+      "back": "Zurück",
+      "untitled": "Termin ohne Titel",
+      "providers": {
+        "google": "Google Kalender",
+        "outlook": "Outlook",
+        "link": "Kalenderlink"
+      },
+      "errors": {
+        "offline": "Aktualisierung fehlgeschlagen. Der letzte Stand wird angezeigt.",
+        "signIn": "Überprüfe deine Anmeldung.",
+        "limited": "Der Anbieter begrenzt Anfragen. Agente versucht es erneut.",
+        "unavailable": "Kalender nicht verfügbar."
+      }
+    },
     "complements": {
       "title": "Erweiterungen",
       "description": "Dienste verbinden und ihre Werkzeuge dem Home-Agenten bereitstellen.",

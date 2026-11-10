@@ -55,6 +55,8 @@ const ALLOWED_INVOKE_CHANNELS = new Set([
   'design_tool', 'design_files', 'design_render', 'design_manage', 'design_handoff', 'design_systems', 'design_reference', 'design_view', 'design_3d',
   'home_runtime_start', 'home_runtime_result', 'home_runtime_cancel', 'home_runtime_update', 'home_runtime_steer',
   'home_runtime_approval', 'complements_list', 'complements_change',
+  'calendar_sync_list', 'calendar_sync_add_link', 'calendar_sync_sign_in', 'calendar_sync_cancel_sign_in',
+  'calendar_sync_select', 'calendar_sync_refresh', 'calendar_sync_remove',
   'agente_start_session', 'agente_prompt', 'agente_goal_get', 'agente_goal_set', 'agente_goal_clear', 'agente_goal_action',
   'agente_steer', 'agente_follow_up', 'agente_abort',
   'agente_compact', 'model_sees_images', 'agente_set_model', 'agente_set_runtime_mode',
@@ -77,6 +79,7 @@ const ALLOWED_EVENT_CHANNELS = new Set([
   'search-result', 'search-progress', 'agent-event', 'tts-event', 'chat-stream-event',
   'tts-chunk', 'tts-done', 'tts-start', 'tts-error',
   'home_runtime_event', 'design_changed', 'design_3d_changed', 'code_agent_event', 'browser_panel_state', 'code_process_event', 'terminal_event', 'browser_chat_request',
+  'calendar_sync_changed',
   'ui-zoom'
 ]);
 
