@@ -61,6 +61,18 @@ function toolLoopRules(maxIterations: number, maxToolCalls: number): string[] {
 const DELIVERABLE_RULE =
   'When the user asks for a chart, diagram, map, dashboard, card, document, spreadsheet, slides or any other artifact, call the matching tool with real arguments. Describing it in prose is not delivering it.';
 
+/**
+ * Lessons are opt-in, Home-only, and never a substitute for an answer.
+ *
+ * This is only appended when the user has turned the lesson type on and the run
+ * belongs to Home; every other space and every disabled install never sees it.
+ */
+export const LEARNING_ANSWER_FIRST = [
+  'Lessons are opt-in: build one with create_lesson only when the user asked for it — said "teach me" / "explain interactively" / "quiz me", used /teach or /practice, or clicked the offer to turn an answer into a lesson.',
+  'Otherwise answer in prose and stop. Never replace an answer with a lesson, never follow up an ordinary question with an unsolicited lesson, and never create a second artifact for a follow-up question.',
+  'When you do build one: one concept, a question before any explanation, a reason on every wrong option, real numbers from the conversation, and no scoring of any kind.'
+].join(' ');
+
 /** Artifacts render in the user's app, not on the open web. */
 const ARTIFACTS_SELF_CONTAINED =
   'Artifacts must be self-contained and deterministic: no CDN scripts, remote assets, network map tiles or network-dependent rendering. create_map draws real coastlines and borders from geometry bundled with the app. Prefer the native inline tools (create_chart, create_dashboard, create_diagram, create_map, create_info_card, create_html_card) over raw HTML in markdown.';

@@ -51,6 +51,12 @@ export type ToolContext = {
   workspaceRoot?: string;
   workspaceFiles?: WorkspaceFile[];
   executionMode: 'sandbox' | 'workspace';
+  /**
+   * Which space this run belongs to. Home-only artifact types read it in the
+   * tool dispatcher, so a lesson cannot be created from Code or Design even by
+   * a call composed from earlier context. Absent means "not Home".
+   */
+  contextMode?: string;
   runtimeMode?: 'full' | 'supervised';
   debugLogs?: boolean;
   signal?: AbortSignal;
@@ -144,6 +150,8 @@ export type RunAgentTaskArgs = {
   quietActivity?: boolean;
   /** chat = simple research agent; code = Agente; work = full sandbox; search = search tools */
   agentProfile?: 'chat' | 'code' | 'search' | 'work';
+  /** The space that started this run (home, code, design, roleplay). */
+  contextMode?: string;
   searchMode?: 'search' | 'deep' | 'max';
   reasoningLevel?: ReasoningLevel | null;
   /** When true, skip token-budget trimming so uploaded/RAG document context stays intact. */

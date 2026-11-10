@@ -24,6 +24,7 @@
   import { ttsStore } from '$lib/stores/tts.svelte';
   import { isElectron } from '$lib/services/bridge';
   import { copy, say } from '$lib/copy';
+  import { matchLessonCommand } from './lesson-entry';
 
   import AttachmentCards from './composer/AttachmentCards.svelte';
   import ModelMenu from './model-menu/ModelMenu.svelte';
@@ -158,6 +159,13 @@
 
   async function submit() {
     if (parseGoalCommand(appStore.composer) && appStore.currentContextMode!=='roleplay') { const value=appStore.composer;if(!appStore.currentChat)appStore.createChat('home');appStore.updateComposer('');await tick();await goalControl?.command(value);return; }
+    // `/teach` and `/practice` are Home-only and opt-in: the first use turns the
+    // type on, and the command becomes the directive the agent answers.
+    const lessonAsk = matchLessonCommand(appStore.composer, appStore.currentContextMode);
+    if (lessonAsk) {
+      if (!(appStore.getArtifactToggles().lesson ?? false)) void appStore.updateArtifactToggles({ lesson: true });
+      appStore.updateComposer(lessonAsk.directive);
+    }
     if(appStore.activeSpace==='home'){
       const selected=parseHomeModeCommand(appStore.composer);
       if(selected){if(selected.mode)appStore.setComposerMode(selected.mode);if(selected.research&&appStore.searchMode!==selected.research)appStore.setSearchMode(selected.research);appStore.updateComposer(selected.prompt);if(!selected.prompt)return;}

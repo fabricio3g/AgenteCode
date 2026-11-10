@@ -25,6 +25,7 @@ const KIND_ACCENTS: Record<ArtifactKind, string> = {
   web: 'var(--accent-sky)',
   html_card: 'var(--accent-sky)',
   widget: 'var(--accent-sky)',
+  lesson: 'var(--accent-sky)',
   files: 'var(--accent-violet)',
   chart: 'var(--accent-violet)',
   diagram: 'var(--accent-sky)',

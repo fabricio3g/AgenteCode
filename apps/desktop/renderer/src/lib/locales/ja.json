@@ -1753,12 +1753,14 @@
       "presentations": "プレゼンテーション",
       "spreadsheets": "スプレッドシート",
       "visuals": "ビジュアル",
+      "learning": "学習",
       "web": "ウェブとコード"
     },
     "category": {
       "documents": "ドキュメント",
       "visuals": "ビジュアル",
-      "cards": "カード"
+      "cards": "カード",
+      "learning": "学習"
     },
     "studio": {
       "preview": "プレビュー",
@@ -1845,8 +1847,12 @@
       },
       "widget": {
         "name": "インタラクティブウィジェット",
-        "description": "チャット内で使える計算ツール、比較、クイズ、解説"
-      }
+         "description": "チャット内で使える計算ツール、比較、クイズ、解説"
+       },
+       "lesson": {
+         "name": "レッスン",
+         "description": "頼まれたときだけ作る、インタラクティブな解説と練習"
+       }
     },
     "kind": {
       "report": "レポート",
@@ -1864,7 +1870,20 @@
       "research_package": "リサーチパッケージ",
       "web": "ウェブページ",
       "files": "ファイル",
-      "widget": "ウィジェット"
+      "widget": "ウィジェット",
+      "lesson": "レッスン"
+    },
+    "lesson": {
+      "steps": "ステップ",
+      "exercises": "問題",
+      "yourAnswer": "あなたの答え",
+      "check": "確かめる",
+      "nextStep": "次の行",
+      "stuck": "わからない",
+      "back": "戻る",
+      "continue": "続ける",
+      "teach": "これを教えて",
+      "practice": "これを練習"
     },
     "status": {
       "ready": "完了",
@@ -3215,7 +3234,8 @@
         "files": "Files & documents",
         "productivity": "Productivity",
         "media": "Media",
-        "data": "Data & charts",
+         "data": "Data & charts",
+         "learning": "学習",
         "code": "Code"
       }
     }

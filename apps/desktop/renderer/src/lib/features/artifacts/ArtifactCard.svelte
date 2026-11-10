@@ -14,14 +14,14 @@
 
   import { t } from 'svelte-i18n';
   import { locale } from 'svelte-i18n';
-  import { BarChart3, FileSpreadsheet, FileText, Globe, Presentation, Trash2 } from 'lucide-svelte';
+  import { BarChart3, FileSpreadsheet, FileText, Globe, GraduationCap, Presentation, Trash2 } from 'lucide-svelte';
   import ArtifactThumb from './ArtifactThumb.svelte';
   import type { LibraryEntry } from './artifact-library';
   import { artifactKindAccent } from '$lib/ui/components/artifact-accent';
 
   let { entry, onopen, ondelete }: { entry: LibraryEntry; onopen: () => void; ondelete: () => void } = $props();
 
-  const ICONS = { documents: FileText, presentations: Presentation, spreadsheets: FileSpreadsheet, visuals: BarChart3, web: Globe } as const;
+  const ICONS = { documents: FileText, presentations: Presentation, spreadsheets: FileSpreadsheet, visuals: BarChart3, learning: GraduationCap, web: Globe } as const;
   const Icon = $derived(ICONS[entry.group]);
 
   let card = $state<HTMLElement>();

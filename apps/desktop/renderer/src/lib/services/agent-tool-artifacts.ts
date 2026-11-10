@@ -385,6 +385,39 @@ export function handleCreateWidget(params: {
   return params.ok({ title, path, interactive: !!script }, { createdFiles: [path] });
 }
 
+export function handleCreateLesson(params: {
+  args: Record<string, unknown>;
+  ctx: ToolContext;
+  normPath: (value: unknown) => string;
+  ok: (output: unknown, extra?: Record<string, unknown>) => ToolResult;
+  fail: (error: string, note?: string) => ToolResult;
+}): ToolResult {
+  const title = String(params.args.title || '').trim();
+  if (!title) return params.fail('A lesson needs a title: the concept it teaches.');
+  const blocks = Array.isArray(params.args.blocks) ? params.args.blocks : [];
+  if (!blocks.length) return params.fail('A lesson needs blocks: a question first, a summary last.');
+
+  const mode = String(params.args.mode || 'lesson') === 'practice' ? 'practice' : 'lesson';
+  const subtitle = String(params.args.subtitle || '').trim();
+  const subject = String(params.args.subject || '').trim();
+  const payload = {
+    kind: 'lesson',
+    title,
+    ...(subtitle ? { subtitle } : {}),
+    ...(subject ? { subject } : {}),
+    mode,
+    blocks
+  };
+  const serialized = JSON.stringify(payload, null, 2);
+  if (serialized.length > 220_000) {
+    return params.fail('Lesson is too large. One concept, 4–12 blocks, short prompts.');
+  }
+
+  const path = artifactDataPath(params.normPath(params.args.path), mode === 'practice' ? 'practice.json' : 'lesson.json');
+  writeInlineArtifact(params.ctx, path, payload);
+  return params.ok({ title, path, mode, blocks: blocks.length }, { createdFiles: [path] });
+}
+
 export function handleCreateInfoCard(params: {
   args: Record<string, unknown>;
   ctx: ToolContext;

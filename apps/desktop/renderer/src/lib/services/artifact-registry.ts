@@ -2,6 +2,8 @@ import { CHART_TYPES, resolveChartType } from '$lib/utils/chart-types';
 import { z } from 'zod';
 import type { ToolDefinition } from '$lib/services/chat/types';
 import type { ArtifactKind, ArtifactPresentation } from '$lib/types/chat';
+import { lessonArgsSchema, repairLessonArgs } from '$lib/services/lesson-schema';
+import { lintLesson, pedagogyIssues, type LessonLintIssue } from '$lib/services/lesson-lint';
 
 export const ARTIFACT_ICON_NAMES = [
   'file-text',
@@ -16,11 +18,12 @@ export const ARTIFACT_ICON_NAMES = [
   'layout-list',
   'code',
   'library',
-  'sparkles'
+  'sparkles',
+  'graduation-cap'
 ] as const;
 
 export type ArtifactIconName = typeof ARTIFACT_ICON_NAMES[number];
-export type ArtifactCategory = 'documents' | 'visuals' | 'cards' | 'research';
+export type ArtifactCategory = 'documents' | 'visuals' | 'cards' | 'learning' | 'research';
 
 type ArtifactArgsSchema = z.ZodType<Record<string, unknown>>;
 
@@ -36,6 +39,12 @@ export interface ArtifactTypeEntry {
   toolDescription: string;
   argsSchema: ArtifactArgsSchema;
   repairArgs?: (args: Record<string, unknown>) => Record<string, unknown>;
+  /**
+   * Rules the schema cannot express (they are about pedagogy, not shape). Errors
+   * fail the call with an actionable message; warnings ride on the manifest as
+   * `artifact.pedagogy` issues. Runs after the schema has normalised the args.
+   */
+  lintArgs?: (args: Record<string, unknown>) => { errors: LessonLintIssue[]; warnings: LessonLintIssue[] };
   toolDefinition: ToolDefinition;
 }
 
@@ -282,6 +291,22 @@ const builtinArtifacts = [
       'Use real numbers from the conversation or tools. Keep it compact.'
     ].join(' '),
     argsSchema: z.object({ title: z.string().min(1), html: z.string().min(1), script: z.string().optional(), path: pathSchema })
+  }),
+  defineArtifact({
+    id: 'lesson', name: 'Lessons', description: 'Interactive explanations and practice sets, built only when asked for', icon: 'graduation-cap', category: 'learning', presentation: 'inline', defaultEnabled: false,
+    toolName: 'create_lesson',
+    toolDescription: [
+      'Build an interactive lesson in Home: a guided explanation (mode "lesson") or a scaffold-free practice set (mode "practice").',
+      'Build one only when the user asked for it — said "teach me", "explain interactively", "quiz me", used /teach or /practice, or clicked an offer to turn an answer into a lesson. Never replace a direct answer with a lesson, and never create a second artifact for a follow-up question.',
+      'mode "lesson": blocks in this order — pretest (a question BEFORE any explanation), explore (1–6 sliders, expression-based outputs, optional plot), predict (reader drags a guess, then the true curve appears), steps (worked lines with LaTeX), reveal, figure (one of chart / diagram / infoCard), summary. The first block must be a question, at most two explanation blocks in a row, the last block is summary.',
+      'mode "practice": choice and numeric blocks only, no hints, no visuals, ends with summary. Use it for retrieval practice after a lesson.',
+      'Rules that fail the call: prose before the first question, a wrong option without its own why, a hint or explore block in practice, a fractional answer without tolerance, a last block that is not summary.',
+      'Expressions are evaluated safely (no scripts): + - * / ^, parentheses, sin cos tan sqrt abs exp ln log, pi e tau, variable keys. LaTeX goes in prompt/formula/note fields.',
+      'Shape: { title, subtitle?, subject?: math|physics|chemistry|biology|cs|data|general, mode, blocks: [ { type: "choice", prompt, choices: [{ text, correct?, why }] }, { type: "explore", prompt, model: { variables: [{ key, label, value, min, max, step?, unit? }], outputs: [{ key, label, expression, unit?, format? }], plot?: { expression, variable } } }, { type: "summary", points: [] } ] }. Real numbers only: no invented data, no scores.'
+    ].join(' '),
+    repairArgs: repairLessonArgs,
+    lintArgs: lintLesson,
+    argsSchema: lessonArgsSchema
   })
   // Research exports (citations, evidence matrix, …) are not an artifact: the
   // research widget on Search / Deep / Max answers builds them on demand.
@@ -299,18 +324,35 @@ export function getArtifactDefinitionByToolName(toolName: string): ArtifactTypeE
   return byToolName.get(toolName);
 }
 
-export function parseArtifactToolArgs(toolName: string, rawArgs: Record<string, unknown>): { success: true; data: Record<string, unknown>; repaired: boolean } | { success: false; error: string } {
+export function parseArtifactToolArgs(toolName: string, rawArgs: Record<string, unknown>): { success: true; data: Record<string, unknown>; repaired: boolean; warnings?: Array<{ code: string; severity: 'warning'; message: string; path?: string }> } | { success: false; error: string } {
   const definition = getArtifactDefinitionByToolName(toolName);
   if (!definition) return { success: false, error: `Unknown artifact tool: ${toolName}` };
   const repaired = definition.repairArgs ? definition.repairArgs(rawArgs) : rawArgs;
   const parsed = definition.argsSchema.safeParse(repaired);
-  if (parsed.success) return { success: true, data: parsed.data, repaired: !!definition.repairArgs && JSON.stringify(parsed.data) !== JSON.stringify(rawArgs) };
-  const detail = parsed.error.issues.slice(0, 4).map((issue) => `${issue.path.join('.') || 'arguments'}: ${issue.message}`).join('; ');
   const required = definition.toolDefinition.function.parameters?.required;
   const hint = Array.isArray(required) && required.length
     ? ` Required: ${required.join(', ')}.`
     : '';
-  return { success: false, error: `Invalid ${toolName} arguments: ${detail}.${hint}` };
+  if (!parsed.success) {
+    const detail = parsed.error.issues.slice(0, 4).map((issue) => `${issue.path.join('.') || 'arguments'}: ${issue.message}`).join('; ');
+    return { success: false, error: `Invalid ${toolName} arguments: ${detail}.${hint}` };
+  }
+
+  // Pedagogy rules run on the normalised arguments: shape is the schema's job,
+  // teaching order and feedback are the linter's.
+  let warnings: Array<{ code: string; severity: 'warning'; message: string; path?: string }> | undefined;
+  if (definition.lintArgs) {
+    const lint = definition.lintArgs(parsed.data as Record<string, unknown>);
+    if (lint.errors.length) {
+      const detail = lint.errors.slice(0, 4).map((issue) => `${issue.path}: ${issue.message}`).join('; ');
+      return { success: false, error: `Invalid ${toolName} lesson: ${detail}.${hint}` };
+    }
+    if (lint.warnings.length) warnings = pedagogyIssues(lint.warnings);
+  }
+
+  const data = parsed.data as Record<string, unknown>;
+  const changed = !!definition.repairArgs && JSON.stringify(data) !== JSON.stringify(rawArgs);
+  return { success: true, data, repaired: changed, ...(warnings ? { warnings } : {}) };
 }
 
 export function getEnabledArtifactIds(toggles: Record<string, boolean> = {}): Set<string> {

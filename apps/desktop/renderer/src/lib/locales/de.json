@@ -1753,12 +1753,14 @@
       "presentations": "Präsentationen",
       "spreadsheets": "Tabellen",
       "visuals": "Grafiken",
+      "learning": "Lernen",
       "web": "Web & Code"
     },
     "category": {
       "documents": "Dokumente",
       "visuals": "Grafiken",
-      "cards": "Karten"
+      "cards": "Karten",
+      "learning": "Lernen"
     },
     "studio": {
       "preview": "Vorschau",
@@ -1845,8 +1847,12 @@
       },
       "widget": {
         "name": "Interaktive Widgets",
-        "description": "Rechner, Vergleiche, Quiz und Erklärungen direkt im Chat"
-      }
+         "description": "Rechner, Vergleiche, Quiz und Erklärungen direkt im Chat"
+       },
+       "lesson": {
+         "name": "Lektionen",
+         "description": "Interaktive Erklärungen und Übungen – nur wenn du danach fragst"
+       }
     },
     "kind": {
       "report": "Bericht",
@@ -1864,7 +1870,20 @@
       "research_package": "Recherchepaket",
       "web": "Webseite",
       "files": "Dateien",
-      "widget": "Widget"
+      "widget": "Widget",
+      "lesson": "Lektion"
+    },
+    "lesson": {
+      "steps": "Schritte",
+      "exercises": "Übungen",
+      "yourAnswer": "Deine Antwort",
+      "check": "Prüfen",
+      "nextStep": "Nächste Zeile",
+      "stuck": "Ich hänge",
+      "back": "Zurück",
+      "continue": "Weiter",
+      "teach": "Erklär mir das",
+      "practice": "Damit üben"
     },
     "status": {
       "ready": "Fertig",
@@ -3215,7 +3234,8 @@
         "files": "Files & documents",
         "productivity": "Productivity",
         "media": "Media",
-        "data": "Data & charts",
+         "data": "Data & charts",
+         "learning": "Lernen",
         "code": "Code"
       }
     }

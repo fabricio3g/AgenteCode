@@ -1753,12 +1753,14 @@
       "presentations": "演示文稿",
       "spreadsheets": "电子表格",
       "visuals": "可视化",
+      "learning": "学习",
       "web": "网页与代码"
     },
     "category": {
       "documents": "文档",
       "visuals": "可视化",
-      "cards": "卡片"
+      "cards": "卡片",
+      "learning": "学习"
     },
     "studio": {
       "preview": "预览",
@@ -1845,8 +1847,12 @@
       },
       "widget": {
         "name": "交互式小组件",
-        "description": "可在聊天中使用的计算器、对比、测验和讲解"
-      }
+         "description": "可在聊天中使用的计算器、对比、测验和讲解"
+       },
+       "lesson": {
+         "name": "课程",
+         "description": "只有你主动要求时才生成的互动讲解与练习"
+       }
     },
     "kind": {
       "report": "报告",
@@ -1864,7 +1870,20 @@
       "research_package": "研究资料包",
       "web": "网页",
       "files": "文件",
-      "widget": "小组件"
+      "widget": "小组件",
+      "lesson": "课程"
+    },
+    "lesson": {
+      "steps": "步",
+      "exercises": "题",
+      "yourAnswer": "你的答案",
+      "check": "检查",
+      "nextStep": "下一行",
+      "stuck": "我不明白",
+      "back": "返回",
+      "continue": "继续",
+      "teach": "给我讲讲这个",
+      "practice": "练习一下"
     },
     "status": {
       "ready": "就绪",
@@ -3215,7 +3234,8 @@
         "files": "Files & documents",
         "productivity": "Productivity",
         "media": "Media",
-        "data": "Data & charts",
+         "data": "Data & charts",
+         "learning": "学习",
         "code": "Code"
       }
     }

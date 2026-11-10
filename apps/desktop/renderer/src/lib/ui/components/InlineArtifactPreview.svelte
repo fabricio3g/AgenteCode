@@ -12,6 +12,7 @@
   import ArtifactDashboard from './ArtifactDashboard.svelte';
   import ArtifactInfoCard from './ArtifactInfoCard.svelte';
   import ArtifactHtmlCard from './ArtifactHtmlCard.svelte';
+  import ArtifactLesson from './ArtifactLesson.svelte';
   import { FileQuestion } from 'lucide-svelte';
 
   interface Props {
@@ -55,6 +56,8 @@
   <ArtifactInfoCard payload={artifact.inline} />
 {:else if artifact.inline?.kind === 'html_card'}
   <ArtifactHtmlCard payload={artifact.inline} />
+{:else if artifact.inline?.kind === 'lesson'}
+  <ArtifactLesson payload={artifact.inline} entryKey={artifact.manifest?.entryPath} {poster} {readOnly} />
 {:else if previewSrc}
   <div class="inline-html-artifact">
     <iframe

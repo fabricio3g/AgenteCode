@@ -236,13 +236,81 @@ export type HtmlCardArtifactPayload = {
   script?: string;
 };
 
+/* ── Lessons ────────────────────────────────────────────────────────────────
+ * An interactive teaching artifact (Home only). The model supplies data; the
+ * app owns the interaction, the feedback and the layout. There is deliberately
+ * no score, streak or progress field anywhere in this payload.
+ */
+export type LessonCalloutTone = 'why' | 'try' | 'careful';
+
+export interface LessonChoice {
+  text: string;
+  correct?: boolean;
+  /** Why this option is right/wrong — the only feedback a lesson gives. */
+  why?: string;
+}
+
+export interface LessonVariable {
+  key: string;
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  step?: number;
+  unit?: string;
+}
+
+export interface LessonOutput {
+  key: string;
+  label: string;
+  expression: string;
+  unit?: string;
+  format?: 'number' | 'percent' | 'currency' | 'compact';
+}
+
+export interface LessonModel {
+  variables: LessonVariable[];
+  outputs: LessonOutput[];
+  plot?: {
+    expression: string;
+    variable: string;
+    label?: string;
+    xLabel?: string;
+    yLabel?: string;
+    from?: number;
+    to?: number;
+    samples?: number;
+  };
+}
+
+export type LessonBlock =
+  | { type: 'pretest'; prompt: string; formula?: string; choices?: LessonChoice[]; numeric?: { answer: number; tolerance?: number; unit?: string }; answer?: string; why?: string }
+  | { type: 'explore'; prompt: string; model: LessonModel; insight?: string }
+  | { type: 'predict'; prompt: string; expression?: string; series?: Array<{ x: number; y: number }>; xRange: [number, number]; yRange?: [number, number]; label?: string; insight?: string }
+  | { type: 'choice'; prompt: string; formula?: string; choices: LessonChoice[]; hint?: string }
+  | { type: 'numeric'; prompt: string; formula?: string; answer: number; tolerance?: number; unit?: string; hint?: string }
+  | { type: 'steps'; prompt: string; steps: Array<{ formula?: string; note: string }> }
+  | { type: 'reveal'; prompt: string; body: string; tone?: LessonCalloutTone }
+  | { type: 'figure'; prompt?: string; chart?: ChartArtifactPayload; diagram?: DiagramArtifactPayload; infoCard?: InfoCardArtifactPayload }
+  | { type: 'summary'; points: string[]; next?: string[] };
+
+export type LessonArtifactPayload = {
+  kind: 'lesson';
+  title: string;
+  subtitle?: string;
+  subject?: string;
+  mode: 'lesson' | 'practice';
+  blocks: LessonBlock[];
+};
+
 export type InlineArtifactPayload =
   | ChartArtifactPayload
   | MapArtifactPayload
   | DiagramArtifactPayload
   | DashboardArtifactPayload
   | InfoCardArtifactPayload
-  | HtmlCardArtifactPayload;
+  | HtmlCardArtifactPayload
+  | LessonArtifactPayload;
 
 export type ArtifactKind =
   | 'report'
@@ -258,6 +326,7 @@ export type ArtifactKind =
   | 'info_card'
   | 'html_card'
   | 'widget'
+  | 'lesson'
   | 'research_package'
   | 'web'
   | 'files';

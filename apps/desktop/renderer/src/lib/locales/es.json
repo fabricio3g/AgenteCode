@@ -1753,12 +1753,14 @@
       "presentations": "Presentaciones",
       "spreadsheets": "Hojas de cálculo",
       "visuals": "Visuales",
+      "learning": "Aprendizaje",
       "web": "Web y código"
     },
     "category": {
       "documents": "Documentos",
       "visuals": "Visuales",
-      "cards": "Tarjetas"
+      "cards": "Tarjetas",
+      "learning": "Aprendizaje"
     },
     "studio": {
       "preview": "Vista previa",
@@ -1845,8 +1847,12 @@
       },
       "widget": {
         "name": "Widgets interactivos",
-        "description": "Calculadoras, comparativas, cuestionarios y explicaciones que puedes usar en el chat"
-      }
+         "description": "Calculadoras, comparativas, cuestionarios y explicaciones que puedes usar en el chat"
+       },
+       "lesson": {
+         "name": "Lecciones",
+         "description": "Explicaciones interactivas y ejercicios, solo si los pides"
+       }
     },
     "kind": {
       "report": "Informe",
@@ -1864,7 +1870,20 @@
       "research_package": "Paquete de investigación",
       "web": "Página web",
       "files": "Archivos",
-      "widget": "Widget"
+      "widget": "Widget",
+      "lesson": "Lección"
+    },
+    "lesson": {
+      "steps": "pasos",
+      "exercises": "ejercicios",
+      "yourAnswer": "Tu respuesta",
+      "check": "Comprobar",
+      "nextStep": "Siguiente línea",
+      "stuck": "Estoy atascado",
+      "back": "Atrás",
+      "continue": "Continuar",
+      "teach": "Explícame esto",
+      "practice": "Practicar esto"
     },
     "status": {
       "ready": "Listo",
@@ -3215,7 +3234,8 @@
         "files": "Archivos y documentos",
         "productivity": "Productividad",
         "media": "Multimedia",
-        "data": "Datos y gráficos",
+         "data": "Datos y gráficos",
+         "learning": "Aprendizaje",
         "code": "Código"
       }
     }

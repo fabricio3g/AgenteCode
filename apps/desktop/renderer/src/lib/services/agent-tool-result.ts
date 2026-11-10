@@ -42,8 +42,11 @@ export function createRunningToolStep(
   return {
     id: uid('step'),
     type: stepTypeMap[toolCall.name] || 'tool',
+    toolName: toolCall.name,
     label,
     status: 'running',
+    startedAt: Date.now(),
+    toolInput: JSON.stringify(toolCall.arguments, null, 2)?.slice(0, 32_768),
     detail
   };
 }
@@ -66,6 +69,7 @@ export function displayToolLabel(name: string): string {
     case 'create_info_card': return 'Info card';
     case 'create_html_card': return 'HTML card';
     case 'create_widget': return 'Widget';
+    case 'create_lesson': return 'Lesson';
     case 'create_chart': return 'Chart';
     case 'create_dashboard': return 'Dashboard';
     case 'get_weather': return 'Weather';
@@ -254,6 +258,7 @@ function shortToolStepSummary(toolName: string | undefined, output: Record<strin
 
 export function finalizeToolStep(step: AgentStep, result: ToolResult, toolName?: string): void {
   step.status = result.success ? 'done' : 'error';
+  if (step.startedAt !== undefined) step.durationMs = Math.max(0, Date.now() - step.startedAt);
   const fileChanges = fileChangesFromResult(result);
   if (fileChanges.length) step.fileChanges = fileChanges;
   else delete step.fileChanges;

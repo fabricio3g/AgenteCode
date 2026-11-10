@@ -4,7 +4,7 @@ import type { AgentArtifact, ArtifactKind, ChatSession } from '$lib/types/chat';
 import { artifactsForMessage } from '$lib/stores/app-store-artifacts';
 import { resolveArtifactPresentation } from '$lib/services/artifact-model';
 
-export type ArtifactGroup = 'documents' | 'presentations' | 'spreadsheets' | 'visuals' | 'web';
+export type ArtifactGroup = 'documents' | 'presentations' | 'spreadsheets' | 'visuals' | 'learning' | 'web';
 
 export interface LibraryEntry {
   key: string;
@@ -32,6 +32,7 @@ const GROUP_OF: Partial<Record<ArtifactKind, ArtifactGroup>> = {
   map: 'visuals',
   dashboard: 'visuals',
   info_card: 'visuals',
+  lesson: 'learning',
   html_card: 'web',
   web: 'web',
   files: 'web'

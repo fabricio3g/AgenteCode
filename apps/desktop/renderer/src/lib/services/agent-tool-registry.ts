@@ -9,7 +9,7 @@
 
 import type { ToolDefinition } from '$lib/services/chat/types';
 
-export type HomeToolGroupId = 'web' | 'browser' | 'files' | 'productivity' | 'media' | 'data' | 'code';
+export type HomeToolGroupId = 'web' | 'browser' | 'files' | 'productivity' | 'media' | 'data' | 'learning' | 'code';
 
 export interface HomeToolGroup {
   id: HomeToolGroupId;
@@ -40,6 +40,7 @@ export const HOME_TOOL_GROUPS: readonly HomeToolGroup[] = [
     ]
   },
   { id: 'productivity', label: 'Productivity', tools: ['notes', 'todos', 'reminders', 'convert_units', 'convert_time'] },
+  { id: 'learning', label: 'Learning', tools: ['create_lesson'] },
   { id: 'media', label: 'Media', tools: ['ocr_image', 'describe_image', 'transcribe_audio'] },
   {
     id: 'data',

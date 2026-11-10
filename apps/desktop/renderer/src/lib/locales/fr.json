@@ -1753,12 +1753,14 @@
       "presentations": "Présentations",
       "spreadsheets": "Feuilles de calcul",
       "visuals": "Visuels",
+      "learning": "Apprentissage",
       "web": "Web et code"
     },
     "category": {
       "documents": "Documents",
       "visuals": "Visuels",
-      "cards": "Cartes"
+      "cards": "Cartes",
+      "learning": "Apprentissage"
     },
     "studio": {
       "preview": "Aperçu",
@@ -1845,8 +1847,12 @@
       },
       "widget": {
         "name": "Widgets interactifs",
-        "description": "Calculatrices, comparatifs, quiz et explications à utiliser dans la discussion"
-      }
+         "description": "Calculatrices, comparatifs, quiz et explications à utiliser dans la discussion"
+       },
+       "lesson": {
+         "name": "Leçons",
+         "description": "Explications interactives et exercices, seulement si vous les demandez"
+       }
     },
     "kind": {
       "report": "Rapport",
@@ -1864,7 +1870,20 @@
       "research_package": "Dossier de recherche",
       "web": "Page web",
       "files": "Fichiers",
-      "widget": "Widget"
+      "widget": "Widget",
+      "lesson": "Leçon"
+    },
+    "lesson": {
+      "steps": "étapes",
+      "exercises": "exercices",
+      "yourAnswer": "Votre réponse",
+      "check": "Vérifier",
+      "nextStep": "Ligne suivante",
+      "stuck": "Je bloque",
+      "back": "Retour",
+      "continue": "Continuer",
+      "teach": "M’expliquer ceci",
+      "practice": "M’entraîner"
     },
     "status": {
       "ready": "Prêt",
@@ -3215,7 +3234,8 @@
         "files": "Files & documents",
         "productivity": "Productivity",
         "media": "Media",
-        "data": "Data & charts",
+         "data": "Data & charts",
+         "learning": "Apprentissage",
         "code": "Code"
       }
     }

@@ -100,6 +100,7 @@ export function createAgentRun(args: RunAgentTaskArgs, config: AppConfig, plan: 
       workspaceRoot: args.workspaceRoot,
       workspaceFiles: args.workspaceFiles ? [...args.workspaceFiles] : undefined,
       executionMode: plan.executionMode,
+      ...(args.contextMode ? { contextMode: args.contextMode } : {}),
       runtimeMode: normalizeHomeRuntimeMode(args.runtimeMode),
       debugLogs: plan.debugLogs,
       signal: args.signal,

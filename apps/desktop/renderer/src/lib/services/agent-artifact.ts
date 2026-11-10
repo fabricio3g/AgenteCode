@@ -19,7 +19,7 @@ export type ArtifactContext = {
   artifactManifest: ArtifactManifest | null;
 };
 
-export const INLINE_ARTIFACT_KINDS = ['chart', 'map', 'diagram', 'dashboard', 'info_card', 'html_card'];
+export const INLINE_ARTIFACT_KINDS = ['chart', 'map', 'diagram', 'dashboard', 'info_card', 'html_card', 'lesson'];
 
 function parseInlinePayload(raw: string | undefined): InlineArtifactPayload | null {
   if (!raw) return null;

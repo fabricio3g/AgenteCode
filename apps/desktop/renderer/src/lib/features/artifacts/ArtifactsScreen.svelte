@@ -28,7 +28,7 @@
   const open = $derived(entries.find((entry) => entry.key === appStore.artifactScreenKey) ?? null);
   const returnChat = $derived(appStore.artifactReturnChatId ? appStore.chats.find((chat) => chat.id === appStore.artifactReturnChatId) ?? null : null);
   const groups = $derived(
-    (['documents', 'presentations', 'spreadsheets', 'visuals', 'web'] as ArtifactGroup[])
+    (['documents', 'presentations', 'spreadsheets', 'visuals', 'learning', 'web'] as ArtifactGroup[])
       .map((id) => ({ id, count: entries.filter((entry) => entry.group === id).length }))
       .filter((item) => item.count > 0)
   );

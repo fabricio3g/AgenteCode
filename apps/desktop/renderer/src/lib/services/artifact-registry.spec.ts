@@ -164,7 +164,18 @@ const REALISTIC_CALLS: Record<string, Record<string, unknown>> = {
   create_dashboard: { title: 'KPIs', metrics: [{ label: 'Users', value: 120 }], summary: 'ok' },
   create_info_card: { title: 'Fact', rows: [{ label: 'A', value: 'B' }], source: 'https://x.test' },
   create_html_card: { title: 'Card', html: '<p>hi</p>', description: 'a card' },
-  create_widget: { title: 'Tip calculator', html: '<input type="range" id="t"><div id="out"></div>', script: 'fx.$("#t").oninput = () => {};' }
+  create_widget: { title: 'Tip calculator', html: '<input type="range" id="t"><div id="out"></div>', script: 'fx.$("#t").oninput = () => {};' },
+  create_lesson: {
+    title: 'The chain rule',
+    mode: 'lesson',
+    blocks: [
+      { type: 'pretest', prompt: 'If f(x) = (2x)^3, what does f\'(x) look like at x = 1?', choices: [{ text: 'About 24', correct: true }, { text: 'About 6', why: 'That squares instead of cubing the inner function.' }] },
+      { type: 'explore', prompt: 'Watch how the rate changes with the inner coefficient.', model: { variables: [{ key: 'a', label: 'Inner coefficient', value: 2, min: 1, max: 5 }], outputs: [{ key: 'rate', label: 'Rate at x = 1', expression: '3 * (a * 1) ^ 2 * a' }] } },
+      { type: 'steps', prompt: 'Work it out', steps: [{ formula: '(u^3)\u2019 = 3u^2 u\u2019', note: 'Differentiate the outside, then multiply by the inside derivative.' }] },
+      { type: 'summary', points: ['Multiply the outer derivative by the inner one.'] }
+    ],
+    transcript: 'not part of the schema'
+  }
 };
 
 describe('artifact tool argument schemas', () => {

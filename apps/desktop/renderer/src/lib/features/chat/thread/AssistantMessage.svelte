@@ -2,7 +2,7 @@
 
 <script lang="ts">
   import Avatar from '$lib/components/ui/Avatar.svelte';
-  import { AlertTriangle, Copy, Dices, FileSearch, GitBranch, Pencil, Pin, RefreshCcw, Trash2, Volume2, X } from 'lucide-svelte';
+  import { AlertTriangle, Copy, Dices, FileSearch, GitBranch, GraduationCap, ListChecks, Pencil, Pin, RefreshCcw, Trash2, Volume2, X } from 'lucide-svelte';
   import { Button } from '$lib/components/ui';
   import RecallLine from '$lib/features/roleplay/RecallLine.svelte';
   import { t } from 'svelte-i18n';
@@ -27,6 +27,7 @@
   import MessageFooter from './MessageFooter.svelte';
   import MessageParts from './MessageParts.svelte';
   import { compactActions, type MessageAction } from './message-actions';
+  import { lessonAskAvailable, lessonFromReply } from '$lib/features/chat/lesson-entry';
   import { useMessage } from './message-context';
 
   interface Props {
@@ -146,6 +147,28 @@
         primary: true,
         disabled: appStore.currentChatGenerating || appStore.currentChatBlockedByOtherLocalRun,
         run: () => appStore.regenerateMessage(ctx.message.id)
+      },
+      // Home only, and only when the lesson type is turned on: fills the composer
+      // with the reply quoted plus the directive. Never sends by itself.
+      lessonAskAvailable(chat?.contextMode, appStore.getArtifactToggles().lesson ?? false) && {
+        id: 'teach',
+        label: $t('artifacts.lesson.teach'),
+        icon: GraduationCap,
+        disabled: ctx.isStreaming,
+        run: () => {
+          appStore.updateComposer(lessonFromReply(copyableText, 'lesson').directive);
+          window.dispatchEvent(new Event('focus-composer'));
+        }
+      },
+      lessonAskAvailable(chat?.contextMode, appStore.getArtifactToggles().lesson ?? false) && {
+        id: 'practice',
+        label: $t('artifacts.lesson.practice'),
+        icon: ListChecks,
+        disabled: ctx.isStreaming,
+        run: () => {
+          appStore.updateComposer(lessonFromReply(copyableText, 'practice').directive);
+          window.dispatchEvent(new Event('focus-composer'));
+        }
       },
       {
         id: 'edit',

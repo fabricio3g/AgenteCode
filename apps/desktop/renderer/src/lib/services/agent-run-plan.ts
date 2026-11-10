@@ -167,14 +167,20 @@ const INSTANT_MODE_NOTE = [
   'You cannot create files, artifacts, or visuals in this mode — answer in prose, with sources where they matter.'
 ].join(' ');
 
-function selectToolDefs(toolMode: ToolMode, executionMode: 'workspace' | 'sandbox', toggles: Record<string, boolean>, profile: AgentRunPlan['agentProfile'], disabled: readonly string[] = []) {
+import { lessonsEnabled } from '$lib/services/lesson-surface';
+import { LEARNING_ANSWER_FIRST } from '$lib/services/agent-prompts';
+
+function selectToolDefs(toolMode: ToolMode, executionMode: 'workspace' | 'sandbox', toggles: Record<string, boolean>, profile: AgentRunPlan['agentProfile'], disabled: readonly string[] = [], contextMode?: string) {
   if (toolMode === 'search_chat') {
     return getToolDefinitions(executionMode, toggles, 'search', disabled).filter((tool) => SEARCH_TOOL_NAMES.has(tool.function.name));
   }
   if (toolMode === 'instant') {
     return getToolDefinitions(executionMode, toggles, 'search', disabled).filter((tool) => INSTANT_TOOL_NAMES.has(tool.function.name));
   }
-  return getToolDefinitions(executionMode, toggles, profile, disabled);
+  return getToolDefinitions(executionMode, toggles, profile, disabled)
+    // Home-only artifact types never reach another space's tool list. Design and
+    // Roleplay share the chat profile, so the profile alone is not a gate.
+    .filter((tool) => tool.function.name !== 'create_lesson' || lessonsEnabled(contextMode));
 }
 
 export function resolveAgentRunPlan(args: RunAgentTaskArgs, config: AppConfig, host: { isElectron: boolean }): AgentRunPlan {
@@ -207,12 +213,14 @@ export function resolveAgentRunPlan(args: RunAgentTaskArgs, config: AppConfig, h
     || [...args.messages].reverse().find((message) => message.role === 'user')?.content?.toString?.()
     || '';
   const wantsWebsiteArtifact = !isInstant && isWebsiteBuildRequest(latestUserText);
-  const toolDefs = selectToolDefs(toolMode, executionMode, artifactToggles, agentProfile, config.ui?.home_tools_disabled ?? []);
+  const toolDefs = selectToolDefs(toolMode, executionMode, artifactToggles, agentProfile, config.ui?.home_tools_disabled ?? [], args.contextMode);
 
   const agentExtra = [
     modeNote({ isCodeProfile, isChatProfile, executionMode }, args.workspaceRoot),
     searchModeNote(toolMode, args.searchMode),
     isInstant ? INSTANT_MODE_NOTE : '',
+    // Opt-in, Home-only: the rule ships only when the lesson type is on.
+    lessonsEnabled(args.contextMode) && artifactToggles.lesson ? LEARNING_ANSWER_FIRST : '',
     args.systemPrompt,
     buildCurrentRequestReminder(args.rawPrompt, compactText)
   ].filter(Boolean).join('\n\n');

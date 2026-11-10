@@ -9,6 +9,7 @@
     Code,
     File,
     FileText,
+    GraduationCap,
     LayoutDashboard,
     LayoutList,
     Library,
@@ -39,7 +40,7 @@
 
   const enabledCount = $derived(artifacts.filter((artifact) => isEnabled(artifact)).length);
 
-  const categories: ArtifactCategory[] = ['documents', 'visuals', 'cards'];
+  const categories: ArtifactCategory[] = ['documents', 'visuals', 'cards', 'learning'];
 
   /** Built-in types read in the UI language; unknown ones keep their own text. */
   function typeText(artifact: ArtifactTypeEntry, field: 'name' | 'description'): string {
@@ -61,7 +62,8 @@
     'layout-list': LayoutList,
     code: Code,
     library: Library,
-    sparkles: Sparkles
+    sparkles: Sparkles,
+    'graduation-cap': GraduationCap
   };
 
   /** One muted hue per kind, so the list scans by colour as well as glyph. */
@@ -78,7 +80,8 @@
     'layout-list': 180,
     code: 280,
     library: 60,
-    sparkles: 330
+    sparkles: 330,
+    'graduation-cap': 210
   };
 
   function isEnabled(artifact: ArtifactTypeEntry): boolean {
