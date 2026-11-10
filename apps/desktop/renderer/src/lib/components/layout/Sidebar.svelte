@@ -135,7 +135,7 @@
 
 <aside class="sidebar relative isolate flex h-full w-full flex-col overflow-hidden bg-sidebar text-sidebar-foreground">
   <div class="sidebar-head" class:is-mac={appStore.sidebarOpen && typeof window !== 'undefined' && window.electronAPI?.platform === 'darwin'}>
-    <span class="sidebar-brand"><img src="./app-icon.png" alt="" width="20" height="20" draggable="false" />Agente</span>
+    <span class="sidebar-brand"><img src="./app-icon.png" alt="" width="20" height="20" draggable="false" />{'Agente'}</span>
     {#if onToggle && appStore.sidebarOpen}
       <UiIconButton label={$t('titlebar.hideSidebar')}
         size="sm" data-sidebar-toggle aria-controls="app-sidebar" aria-expanded="true"

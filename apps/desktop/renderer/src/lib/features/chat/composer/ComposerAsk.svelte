@@ -14,6 +14,7 @@
 
 <script lang="ts">
   import type { Snippet } from 'svelte';
+  import Button from '$lib/components/ui/Button.svelte';
 
   let {
     question,
@@ -74,13 +75,13 @@
   <ul class="options">
     {#each options as option, index (option.id)}
       <li>
-        <button class="option" type="button" onclick={() => onanswer(option.id)}>
+        <Button variant="plain" class="option" type="button" onclick={() => onanswer(option.id)}>
           <span class="text">
             <span class="label">{option.label}</span>
             {#if option.desc}<span class="desc">{option.desc}</span>{/if}
           </span>
           <span class="key" aria-hidden="true">{index + 1}</span>
-        </button>
+        </Button>
       </li>
     {/each}
   </ul>
@@ -122,7 +123,7 @@
     padding: 0;
     list-style: none;
   }
-  .option {
+  .options :global(.option) {
     display: flex;
     width: 100%;
     align-items: center;
@@ -137,36 +138,36 @@
     cursor: pointer;
     transition: background-color var(--motion-fast, 150ms) var(--motion-ease, ease);
   }
-  .option:hover,
-  .option:focus-visible {
+  .options :global(.option):hover,
+  .options :global(.option):focus-visible {
     background: var(--surface-hover);
     outline: none;
   }
-  .option .text {
+  .options .text {
     display: flex;
     min-width: 0;
     flex: 1;
     flex-direction: column;
     gap: 1px;
   }
-  .option .label {
+  .options .label {
     font-size: var(--text-sm);
     font-weight: 500;
   }
-  .option .desc {
+  .options .desc {
     color: var(--muted-foreground);
     font-size: var(--text-xs);
   }
-  .option .key {
+  .options .key {
     flex: none;
     font-family: var(--font-mono, ui-monospace, monospace);
-    font-size: 10.5px;
+    font-size: var(--text-xs);
     color: var(--muted-foreground);
     opacity: 0;
     transition: opacity var(--motion-fast, 150ms) var(--motion-ease, ease);
   }
-  .option:hover .key,
-  .option:focus-visible .key {
+  .options :global(.option:hover .key),
+  .options :global(.option:focus-visible .key) {
     opacity: 1;
   }
 

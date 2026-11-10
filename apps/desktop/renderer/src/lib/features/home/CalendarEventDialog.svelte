@@ -5,6 +5,7 @@
   import Button from '$lib/components/ui/Button.svelte';
   import Dialog from '$lib/components/ui/Dialog.svelte';
   import Input from '$lib/components/ui/Input.svelte';
+  import Radio from '$lib/components/ui/Radio.svelte';
   import { EVENT_COLORS, removeCalendarEvent, saveCalendarEvent, type CalendarEvent, type EventColor } from '$lib/services/home-productivity';
 
   let { day, event, onclose, onsave }: {
@@ -49,7 +50,7 @@
         <div class="colors">
           {#each EVENT_COLORS as tone (tone)}
             <label class="color-option calendar-tone" data-tone={tone} title={$t(`home.calendar.colors.${tone}`)}>
-              <input class="sr-only" type="radio" name="event-color" value={tone} bind:group={color} />
+              <Radio class="sr-only" name="event-color" value={tone} checked={color === tone} onchange={() => (color = tone)} />
               <span class="calendar-dot" aria-hidden="true"></span>
               <span class="sr-only">{$t(`home.calendar.colors.${tone}`)}</span>
             </label>

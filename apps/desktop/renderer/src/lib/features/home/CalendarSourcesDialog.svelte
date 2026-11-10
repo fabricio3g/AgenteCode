@@ -3,6 +3,7 @@
   import { locale, t } from 'svelte-i18n';
   import { ArrowLeft, CalendarDays, Link2, Plus, RefreshCw, Trash2 } from 'lucide-svelte';
   import Button from '$lib/components/ui/Button.svelte';
+  import Checkbox from '$lib/components/ui/Checkbox.svelte';
   import Dialog from '$lib/components/ui/Dialog.svelte';
   import IconButton from '$lib/components/ui/IconButton.svelte';
   import Input from '$lib/components/ui/Input.svelte';
@@ -141,7 +142,9 @@
       <fieldset>
         <legend class="text-sm font-medium">{$t('home.calendarSync.pick')}</legend>
         {#each pending.calendars as calendar (calendar.id)}
-          <label class="pick-row"><input type="checkbox" value={calendar.id} bind:group={selected} /> {calendar.name}</label>
+          <label class="pick-row"><Checkbox checked={selected.includes(calendar.id)} onchange={(event) => {
+            selected = event.currentTarget.checked ? [...selected, calendar.id] : selected.filter(id => id !== calendar.id);
+          }} /> {calendar.name}</label>
         {:else}
           <p class="text-sm text-muted-foreground">{$t('home.calendarSync.noCalendars')}</p>
         {/each}
