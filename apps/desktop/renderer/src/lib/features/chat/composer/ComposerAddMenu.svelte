@@ -16,12 +16,14 @@
 
   import { cn as uiClass } from '$lib/utils/cn';
 
-  import { Check, Globe2, Layers, MessageSquare, Paperclip, Radar, X } from 'lucide-svelte';
+  import { t } from 'svelte-i18n';
+  import { Check, Globe2, GraduationCap, Layers, ListChecks, MessageSquare, Paperclip, Radar, X } from 'lucide-svelte';
   import ComposerGlyph from '$lib/features/shared/composer/ComposerGlyph.svelte';
   import { Menu } from '$lib/components/ui';
   import { appStore } from '$lib/stores/app.svelte';
   import { copy } from '$lib/copy';
   import { SPACES } from '$lib/spaces';
+  import { lessonsEnabled } from '$lib/services/lesson-surface';
 
   interface Props {
     /** Opens the file picker owned by the composer. */
@@ -39,6 +41,20 @@
   const availableModes = $derived(
     MODE_IDS.filter((id) => SPACES[appStore.activeSpace].searchModes.includes(id))
   );
+  /** Lessons are asked for, never guessed: these rows start the command in the field. */
+  const LESSON_ROWS = [
+    { command: '/teach ', label: 'artifacts.lesson.teach', icon: GraduationCap },
+    { command: '/practice ', label: 'artifacts.lesson.practice', icon: ListChecks }
+  ] as const;
+  const lessons = $derived(lessonsEnabled(appStore.currentContextMode));
+
+  function startLesson(command: string) {
+    open = false;
+    const draft = appStore.composer.trim();
+    appStore.updateComposer(draft && !draft.startsWith('/') ? `${command}${draft}` : command);
+    window.dispatchEvent(new Event('focus-composer'));
+  }
+
   const searchMode = $derived(MODE_IDS.find((id) => id === appStore.searchMode) || 'chat');
 </script>
 
@@ -65,6 +81,21 @@
     <Paperclip class="size-4" />
     <span class="ui-menu-item-text">{copy.composer.attach}</span>
   </UiListRow>
+
+  {#if lessons}
+    <div class="ui-menu-divider" role="separator"></div>
+    {#each LESSON_ROWS as row (row.command)}
+      <UiListRow
+        type="button"
+        role="menuitem"
+        class={uiClass("ui-menu-item", "ui-local-0d4ea47c")}
+        onclick={() => startLesson(row.command)}
+      >
+        <row.icon class="size-4" />
+        <span class="ui-menu-item-text">{$t(row.label)}</span>
+      </UiListRow>
+    {/each}
+  {/if}
 
   {#if availableModes.length > 1}
     <div class="ui-menu-divider" role="separator"></div>

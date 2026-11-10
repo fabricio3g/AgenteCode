@@ -13,10 +13,12 @@
 
 <script lang="ts">
   import { tick } from 'svelte';
+  import { t } from 'svelte-i18n';
   import StarterList from '$lib/components/ui/StarterList.svelte';
   import type { Starter } from '$lib/components/ui/starter-list';
   import { appStore } from '$lib/stores/app.svelte';
   import { copy } from '$lib/copy';
+  import { lessonsEnabled } from '$lib/services/lesson-surface';
 
   interface Props {
     /** Focuses the composer textarea after the prompt is inserted. */
@@ -27,8 +29,17 @@
 
   let { onpick, onpreview }: Props = $props();
 
+  /* Lessons are Home's, and off until asked for: the starters are the visible
+     way in. They leave the command in the field for the topic to follow, and
+     sending it turns the lesson type on (Composer's `/teach` handling). */
+  const lessonStarters = $derived(lessonsEnabled(appStore.currentContextMode) ? [
+    { id: 'teach', label: $t('artifacts.lesson.teach'), prompt: '/teach ' },
+    { id: 'practice', label: $t('artifacts.lesson.practice'), prompt: '/practice ' }
+  ] : []);
+  const suggestions = $derived([...copy.emptyState.suggestions, ...lessonStarters]);
+
   const starters = $derived<Starter[]>(
-    copy.emptyState.suggestions.map((suggestion) => ({
+    suggestions.map((suggestion) => ({
       id: suggestion.id,
       label: suggestion.label,
       preview: suggestion.prompt
@@ -36,7 +47,7 @@
   );
 
   async function pick(id: string) {
-    const suggestion = copy.emptyState.suggestions.find((item) => item.id === id);
+    const suggestion = suggestions.find((item) => item.id === id);
     if (!suggestion) return;
     appStore.composer = suggestion.prompt;
     // The textarea holds the prompt only once the update lands; focusing before
