@@ -541,6 +541,17 @@ class AppStore {
         run.live ??= {};
         updateHomeLive(run.live, event);
       },
+      onReaction: normalizeSpace(chat.contextMode) === 'home' ? (emoji) => {
+        const current = this.chats.find((entry) => entry.id === chat.id);
+        const index = current?.messages.findIndex((entry) => entry.id === message.id) ?? -1;
+        const userMessage = index >= 0 ? current?.messages.slice(0, index).reverse().find((entry) => entry.role === 'user') : undefined;
+        if (!userMessage) return false;
+        userMessage.metadata = { ...userMessage.metadata, agentReaction: emoji };
+        this.markChatDirty(chat.id);
+        this.touchChats(chat.id);
+        this.persist();
+        return true;
+      } : undefined,
       onRuntime: (meta) => {
         // The model sees history only through this answer. Later edits force a fresh import.
         chat.homeRuntime = { ...meta, historyIds: [...historyIds, message.id] };
@@ -1847,6 +1858,7 @@ class AppStore {
     const message = chat.messages[index];
     if (message.role === 'user') {
       message.content = nextContent;
+      if (message.metadata?.agentReaction) message.metadata = { ...message.metadata, agentReaction: undefined };
       chat.messages = chat.messages.slice(0, index + 1);
     } else {
       if (!Array.isArray(message.versions) || !message.versions.length) {

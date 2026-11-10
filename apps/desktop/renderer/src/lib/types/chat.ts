@@ -33,6 +33,8 @@ export interface MessageVersion {
   reasoning?: string;
   createdAt: number;
   metadata?: {
+    /** Optional reaction chosen by the Home agent for a user message. */
+    agentReaction?: string;
     modelName?: string;
     tokens?: number;
     timing?: number;

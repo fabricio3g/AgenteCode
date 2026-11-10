@@ -170,6 +170,10 @@
     <div class="markdown-body">{@html bodyHtml}</div>
   </div>
 
+  {#if ctx.message.metadata?.agentReaction}
+    <div class="agent-reaction"><span role="img" aria-label={ctx.message.metadata.agentReaction}>{ctx.message.metadata.agentReaction}</span></div>
+  {/if}
+
   {#if ctx.message.attachments?.length}
     <div class="user-attachments-row">
       <AttachmentDocumentsBlock attachments={ctx.message.attachments} />
@@ -187,6 +191,16 @@
 </div>
 
 <style>
+  .agent-reaction { display:flex; justify-content:flex-end; margin-top:0.25rem; padding-inline:0.5rem; font-size:var(--text-base); }
+  .agent-reaction span {
+    display:inline-grid;
+    place-items:center;
+    inline-size:1.85em;
+    block-size:1.85em;
+    border-radius:50%;
+    background:var(--surface-hover);
+    line-height:1;
+  }
   /* Roleplay identity: mirrors the speaker line on assistant replies. */
   .persona-chip {
     display: flex;

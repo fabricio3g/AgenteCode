@@ -68,6 +68,23 @@ export function createHomeTools(run: AgentRun, runtime = false): { tools: Map<st
   for (const definition of definitions) {
     tools.set(definition.name, homeTool(run, definition as { name: string; description: string; parameters: Record<string, unknown> }));
   }
+  if (runtime && run.args.onReaction) {
+    const reactions = ['👍', '❤️', '😊', '🎉', '🤔', '👀', '😂', '😮', '🙏', '✅', '💡', '💪'];
+    tools.set('react_to_message', {
+      name: 'react_to_message',
+      description: 'Optionally react to the latest user message with one emoji when it fits. You may skip this tool. Never use it in place of answering.',
+      parameters: { type: 'object', properties: { emoji: { type: 'string', enum: reactions } }, required: ['emoji'] },
+      executionMode: 'sequential',
+      async execute(_id, args, execution) {
+        execution.signal.throwIfAborted();
+        const emoji = typeof args.emoji === 'string' ? args.emoji : '';
+        if (!reactions.includes(emoji)) return { content: 'Choose one of the offered emoji.', isError: true };
+        return run.args.onReaction?.(emoji)
+          ? { content: 'Reaction added.' }
+          : { content: 'The user message is no longer available.', isError: true };
+      }
+    });
+  }
   for (const name of runtime ? [] : LOOP_ISSUED_TOOLS) {
     if (!tools.has(name)) tools.set(name, homeTool(run, { name, description: name, parameters: { type: 'object' } }));
   }
