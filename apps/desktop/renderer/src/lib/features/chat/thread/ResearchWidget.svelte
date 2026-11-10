@@ -28,12 +28,13 @@
   import { useMessage } from './message-context';
   import { resolveTotalElapsed } from './message-parts';
 
+  let { showActivity = true }: { showActivity?: boolean } = $props();
   const ctx = useMessage();
   const SOURCES_SHOWN = 6;
 
   const mode = $derived(ctx.message.searchMode === 'max' ? 'max' : ctx.message.searchMode === 'deep' ? 'deep' : 'search');
   const running = $derived(ctx.message.status === 'streaming');
-  const steps = $derived((ctx.message.agentSteps || []).filter((step) => !step.preface));
+  const steps = $derived(showActivity ? (ctx.message.agentSteps || []).filter((step) => !step.preface) : []);
 
   // Sources de-duplicated by URL, in the order they were found.
   const sources = $derived.by(() => {
@@ -144,13 +145,13 @@
 
 <section class="research" class:is-open={open}>
   <UiButton variant="plain" type="button" class={uiClass("research-head", "ui-local-97fdd24b")} onclick={toggle} aria-expanded={open}>
-    {#if running}<TileMeter mode="busy" />{/if}
+    {#if running && showActivity}<TileMeter mode="busy" />{/if}
     <span class="research-title">{$t(`research.mode.${mode}`)}</span>
     <span class="research-meta">
-      {#if running}
+      {#if running && showActivity}
         {phase}
       {:else}
-        {$t('research.sourcesCount', { values: { n: sources.length } })}{#if elapsed} · {elapsed}{/if}
+        {$t('research.sourcesCount', { values: { n: sources.length } })}{#if showActivity && elapsed} · {elapsed}{/if}
       {/if}
     </span>
     {#if sources.length}
@@ -163,7 +164,7 @@
 
   {#if open}
     <div class="research-body" transition:slide={{ duration: 160 }}>
-      {#if rows.length}
+      {#if rows.length && showActivity}
         <ol class="timeline" aria-label={$t('research.steps')}>
           {#each rows as row (row.id)}
             <li class="step" class:is-failed={row.failed}>

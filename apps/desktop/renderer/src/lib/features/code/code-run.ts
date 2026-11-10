@@ -190,7 +190,7 @@ function applyRuntimeEvent(state: CodeRunState, event: Extract<CodeAgentEvent, {
 }
 
 /** The tool call being written: its name and how much of it has streamed. */
-function trackPreparing(current: CodeRunState['preparing'], toolName: string | null | undefined, outputBytes: number): CodeRunState['preparing'] {
+export function trackPreparing(current: CodeRunState['preparing'], toolName: string | null | undefined, outputBytes: number): CodeRunState['preparing'] {
   if (!toolName) return null;
   if (current?.toolName !== toolName) return { toolName, bytes: 0, startBytes: outputBytes };
   return { ...current, bytes: Math.max(0, outputBytes - current.startBytes) };

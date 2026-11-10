@@ -67,7 +67,7 @@ export function startThinkStep(run: AgentRun, state: PolicyState, turn: number):
   const first = turn === 1;
   const research = plan.isResearchChat;
   const step: AgentStep = {
-    id: uid('step'),
+    id: uid('turn'),
     type: research ? (state.researchForceWrite ? 'writing' : 'thinking') : 'thinking',
     label: research
       ? state.researchForceWrite

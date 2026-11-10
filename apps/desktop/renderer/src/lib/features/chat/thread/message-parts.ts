@@ -1,6 +1,7 @@
 import type { AgentArtifact, ChatMessage, MessageVersion, SearchMeta } from '$lib/types/chat';
 import type { DocumentSurfaceItem } from '$lib/features/chat/document-surface';
 import { artifactsForMessage } from '$lib/stores/app-store-artifacts';
+import { homeWorkSteps } from '$lib/features/home/home-live';
 
 /**
  * The ordered contents of an assistant message.
@@ -15,6 +16,7 @@ export type MessagePart =
   | { kind: 'deep-research' }
   | { kind: 'reasoning'; reasoning: string; timing: number; totalElapsedSeconds?: number }
   | { kind: 'tool-status' }
+  | { kind: 'live-status' }
   /** Search / Deep / Max runs: the research widget (steps, sources, exports). */
   | { kind: 'research' }
   | { kind: 'approval' }
@@ -49,6 +51,7 @@ export interface BuildMessagePartsInput {
   hasDocumentArtifact: boolean;
   /** The run is blocked on a tool approval the user has not answered yet. */
   hasPendingApproval: boolean;
+  hasLiveRun?: boolean;
 }
 
 function cleanReportTitle(value: string): string {
@@ -123,6 +126,8 @@ export function buildMessageParts(input: BuildMessagePartsInput): MessagePart[] 
 
   const parts: MessagePart[] = [];
   const isStreaming = message.status === 'streaming';
+  const sharedWork = input.contextMode === 'home' || input.contextMode === 'design';
+  const hasLiveStatus = sharedWork && isStreaming && input.hasLiveRun && !hasActiveDeepResearch;
   // The agent's opening sentence ("Let me check…") leads the turn, above its work.
   const preface = message.agentSteps?.find((step) => step.preface)?.detail?.trim() || '';
   const hasContent = !!displayContent && displayContent.trim() !== preface;
@@ -131,13 +136,13 @@ export function buildMessageParts(input: BuildMessagePartsInput): MessagePart[] 
   // message (and approvals still render below) — only the surfacing is hushed.
   const isQuietInstant = message.mode === 'instant' && input.contextMode !== 'design';
   const hasReasoning = enableThinking && !!displayReasoning && !isQuietInstant;
-  const hasSteps = !!message.agentSteps?.some((step) => !step.preface);
+  const hasSteps = sharedWork ? homeWorkSteps(message.agentSteps).length > 0 : !!message.agentSteps?.some((step) => !step.preface);
 
   if (preface) parts.push({ kind: 'preface', content: preface });
   if (hasActiveDeepResearch) parts.push({ kind: 'deep-research' });
 
   const hasAgentActivity = hasSteps || message.mode === 'agent';
-  if (hasReasoning && !hasAgentActivity) {
+  if (hasReasoning && !hasAgentActivity && !sharedWork) {
     parts.push({
       kind: 'reasoning',
       reasoning: displayReasoning,
@@ -146,19 +151,18 @@ export function buildMessageParts(input: BuildMessagePartsInput): MessagePart[] 
     });
   }
 
-  // One status line for the whole tool run. The step-by-step list lives in the
-  // activity drawer; duplicating it inline was the single biggest source of
-  // vertical noise in an agent turn. Before the first step the turn shows the
-  // agent's opening line (or typing dots), not a bare "Planning" row.
   const isResearchRun = message.searchMode === 'search' || message.searchMode === 'deep' || message.searchMode === 'max';
-  if (!isQuietInstant && isResearchRun && !hasActiveDeepResearch) parts.push({ kind: 'research' });
-  else if (!isQuietInstant && (hasSteps || hasReasoning && hasAgentActivity)) parts.push({ kind: 'tool-status' });
+  if (sharedWork && !hasActiveDeepResearch && !isQuietInstant && (hasSteps || hasReasoning)) parts.push({ kind: 'tool-status' });
+  const showResearch = !isQuietInstant && isResearchRun && !hasActiveDeepResearch;
+  if (showResearch && !sharedWork) parts.push({ kind: 'research' });
+  else if (!sharedWork && !isQuietInstant && (hasSteps || hasReasoning && hasAgentActivity)) parts.push({ kind: 'tool-status' });
 
   // Directly under the status line: the run is stopped until this is answered,
   // so it outranks everything else in the turn. Pushing it here also means the
   // `parts.length === 0` guard below suppresses the typing dots, which would
   // otherwise imply the agent was still working.
   if (hasPendingApproval) parts.push({ kind: 'approval' });
+  if (showResearch && sharedWork) parts.push({ kind: 'research' });
 
   if (message.status === 'error' && displayMetadata?.error) {
     parts.push({
@@ -178,7 +182,7 @@ export function buildMessageParts(input: BuildMessagePartsInput): MessagePart[] 
   // condition tested for agent *steps* rather than for the status line, so an
   // agent turn that had started but not yet recorded a step showed the dots
   // underneath its own "Planning…" line.
-  if (isStreaming && !hasContent && parts.length === 0) {
+  if (isStreaming && !hasLiveStatus && !hasContent && parts.length === 0) {
     parts.push(isQuietInstant && displayMetadata?.activityLabel ? { kind: 'pending', status: displayMetadata.activityLabel } : { kind: 'pending' });
   }
 
@@ -217,6 +221,7 @@ export function buildMessageParts(input: BuildMessagePartsInput): MessagePart[] 
   for (const [index, artifact] of artifactsForMessage(message).entries()) {
     parts.push({ kind: 'artifact', artifact, index });
   }
+  if (hasLiveStatus) parts.push({ kind: 'live-status' });
 
   return parts;
 }
@@ -234,7 +239,7 @@ export function isAssistantMessageEmpty(input: {
   if (message.role !== 'assistant') return false;
   if (hasActiveDeepResearch) return false;
   if (message.status === 'streaming') return false;
-  if (input.contextMode === 'design' && message.agentSteps?.some(step => !step.preface)) return false;
+  if ((input.contextMode === 'design' || input.contextMode === 'home' && message.mode !== 'instant') && homeWorkSteps(message.agentSteps).length) return false;
   if (displayContent.trim()) return false;
   if (displayReasoning.trim()) return false;
   if (message.sources?.length) return false;

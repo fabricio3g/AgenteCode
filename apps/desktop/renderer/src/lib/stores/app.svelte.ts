@@ -12,6 +12,7 @@ import { countOf } from '$lib/utils/format';
 import { runAgentTask } from '$lib/services/agent';
 import { captureDesignTurnContext, runDesignTask } from '$lib/services/agent-design-runtime';
 import { applyHomeAgentResult, homeAgentCallbacks, initialHomeActivity, planHomeAgentRun, settleAgentSteps } from '$lib/features/home/home-turn';
+import { updateHomeLive } from '$lib/features/home/home-live';
 import { roleplayStore } from '$lib/features/roleplay/roleplay.svelte';
 import { messageSpeechParts } from '$lib/features/roleplay/roleplay-voice';
 import { CONTINUE_INSTRUCTION, joinContinuation } from '$lib/features/roleplay/roleplay-steer';
@@ -527,11 +528,19 @@ class AppStore {
     };
   }
 
-  private homeRuntimeArgs(chat: ChatSession, message: ChatMessage, historyIds: string[]): Pick<RunAgentTaskArgs, 'config' | 'homeRuntime' | 'historyIds' | 'onRuntime' | 'onConversationIndex'> {
+  private homeRuntimeArgs(chat: ChatSession, message: ChatMessage, historyIds: string[]): Pick<RunAgentTaskArgs, 'config' | 'homeRuntime' | 'historyIds' | 'onRuntime' | 'onConversationIndex' | 'onReaction' | 'onLiveEvent'> {
+    const controller = this.activeRunsByChat[chat.id]?.controller;
     return {
       config: this.configForChat(chat),
       homeRuntime: chat.homeRuntime,
       historyIds,
+      onLiveEvent: (event) => {
+        const run = this.activeRunsByChat[chat.id];
+        if (!run || run.controller !== controller || run.messageId !== message.id) return;
+        run.lastEventAt = Date.now();
+        run.live ??= {};
+        updateHomeLive(run.live, event);
+      },
       onRuntime: (meta) => {
         // The model sees history only through this answer. Later edits force a fresh import.
         chat.homeRuntime = { ...meta, historyIds: [...historyIds, message.id] };
@@ -2523,7 +2532,7 @@ class AppStore {
         : undefined,
       agentSteps: useToolLoop
         ? [{
-            id: createId('step'),
+            id: createId('turn'),
             type: 'thinking',
             label: activityLabel(initial.activity),
             status: 'running',
@@ -3236,8 +3245,8 @@ class AppStore {
     const mirrorVersion = () => {
       nextVersion.content = message.content;
       nextVersion.reasoning = message.reasoning;
-      const { currentActivity, activityLabel: label } = message.metadata || {};
-      if (currentActivity) nextVersion.metadata = { ...(nextVersion.metadata || {}), currentActivity, activityLabel: label };
+      const { currentActivity, activityLabel: label, codeTimeline } = message.metadata || {};
+      if (currentActivity) nextVersion.metadata = { ...(nextVersion.metadata || {}), currentActivity, activityLabel: label, codeTimeline };
     };
 
     // A reply that never recorded its first version keeps it as version 1.
@@ -3255,12 +3264,13 @@ class AppStore {
     if (agentic) {
       const initial = initialHomeActivity(plan, message.mode);
       message.agentSteps = [
-        { id: createId('step'), type: 'thinking', label: activityLabel(initial.activity), status: 'running', detail: initial.detail }
+        { id: createId('turn'), type: 'thinking', label: activityLabel(initial.activity), status: 'running', detail: initial.detail }
       ];
       message.metadata = {
         ...(message.metadata || {}),
         modelName: activeModelLabel,
         ...executionMetadata(activeBackendMode),
+        codeTimeline: undefined,
         currentActivity: initial.activity,
         activityLabel: activityLabel(initial.activity)
       };

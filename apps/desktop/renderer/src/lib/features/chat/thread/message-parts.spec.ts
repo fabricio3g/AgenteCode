@@ -34,6 +34,20 @@ function build(
 }
 
 describe('buildMessageParts', () => {
+  it.each(['home', 'design'] as const)('shows the shared work block and bottom live status in %s', (contextMode) => {
+    expect(build({ contextMode, hasLiveRun: true, message: message({ status: 'streaming' }) })).toEqual(['live-status']);
+    expect(build({
+      contextMode, hasLiveRun: true, hasPendingApproval: true,
+      message: message({ status: 'streaming', searchMode: 'search' }),
+      displayReasoning: 'Reasoning in progress',
+      displayContent: 'An answer'
+    })).toEqual(['tool-status', 'approval', 'research', 'content', 'live-status']);
+    expect(build({
+      contextMode, hasLiveRun: true,
+      message: message({ status: 'idle' }), displayReasoning: 'Finished thinking'
+    })).toEqual(['tool-status']);
+  });
+
   it('shows search, deep and max runs as the research widget, not the step line', () => {
     for (const searchMode of ['search', 'deep', 'max'] as const) {
       const kinds = build({

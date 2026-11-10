@@ -31,7 +31,10 @@
     messageId,
     children,
     live = false,
-    activeChildIds = new Set<string>()
+    thinkingLive,
+    codeActions = true,
+    activeChildIds = new Set<string>(),
+    onstop
   }: {
     items: WorkItem[];
     chatId: string;
@@ -39,7 +42,10 @@
     /** The run's children, so a spawn's row finds the agent it started. */
     children?: CodeChild[];
     live?: boolean;
+    thinkingLive?: boolean;
+    codeActions?: boolean;
     activeChildIds?: ReadonlySet<string>;
+    onstop?: () => void;
   } = $props();
 
   const approvals = $derived(new Set(approvalsStore.items.map((item) => item.requestId)));
@@ -92,7 +98,7 @@
   {#if item.thinking !== undefined}
     <CodeThoughtRow
       text={item.thinking}
-      live={live && item.key === lastKey}
+      live={(thinkingLive ?? live) && item.key === lastKey}
       id={disclosureKey(chatId, messageId, item.key)}
     />
   {:else if item.step}
@@ -100,6 +106,8 @@
       step={item.step}
       {chatId}
       {children}
+      {onstop}
+      {codeActions}
       id={disclosureKey(chatId, messageId, item.key)}
     />
   {/if}
@@ -121,7 +129,7 @@
       {/snippet}
     </Disclosure>
     <!-- Folded, the chips are the one-click way to a file's diff. -->
-    {#if files.length && !open}
+    {#if codeActions && files.length && !open}
       <div class="files">
         {#each files as file (file.path)}
           <UiButton variant="plain" type="button" class={uiClass("file-chip", "ui-local-670661b4")} title={file.path} onclick={() => codeWorkspace.showFileInChanges(file.path)}>

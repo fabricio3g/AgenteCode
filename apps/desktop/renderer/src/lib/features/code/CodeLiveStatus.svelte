@@ -15,9 +15,10 @@
   import { toolKind } from '$shared/tool-kinds';
   import TileMeter from '$lib/components/ui/TileMeter.svelte';
   import { liveStatus, QUIET_MS, type LiveStatus } from './work-blocks';
-  import { runMeterMode } from './tile-meter';
+  import { runMeterMode, type MeterRun } from './tile-meter';
 
-  let { run, awaitingApproval = false }: { run: CodeRunState; awaitingApproval?: boolean } = $props();
+  type LiveRun = MeterRun & Pick<CodeRunState, 'startedAt' | 'endedAt' | 'elapsedMs' | 'activeStartedAt'> & Partial<Pick<CodeRunState, 'children'>>;
+  let { run, awaitingApproval = false }: { run: LiveRun; awaitingApproval?: boolean } = $props();
 
   let now = $state(Date.now());
   $effect(() => {
@@ -58,7 +59,7 @@
     preparing: (status) => preparingLabel(status.toolName, status.bytes),
     running: (status) => {
       // A wait on a subagent names the agent, not its id.
-      const child = status.step.toolName === 'task_output' ? run.children.find((candidate) => candidate.id === status.step.subagentId) : undefined;
+      const child = status.step.toolName === 'task_output' ? run.children?.find((candidate) => candidate.id === status.step.subagentId) : undefined;
       if (child) return $t('code.live.waitingFor', { values: { agent: [titleCaseToolName(child.kind || 'subagent'), child.description].filter(Boolean).join(' · ') } });
       const target = toolTarget(status.step.toolName, status.step.detail);
       return target ? `${status.step.label} ${target}` : status.step.label;

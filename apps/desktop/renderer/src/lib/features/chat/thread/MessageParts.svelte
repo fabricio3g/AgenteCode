@@ -26,6 +26,9 @@
   import DocumentSurface from '$lib/features/chat/DocumentSurface.svelte';
   import AgentBlock from '$lib/ui/components/AgentBlock.svelte';
   import CodeWorkBlock from '$lib/features/code/CodeWorkBlock.svelte';
+  import CodeLiveStatus from '$lib/features/code/CodeLiveStatus.svelte';
+  import { orderedEntries } from '$lib/features/code/code-run';
+  import { homeWorkSteps } from '$lib/features/home/home-live';
   import ArtifactBlock from '$lib/ui/components/ArtifactBlock.svelte';
   import FilesCreatedBlock from '$lib/ui/components/FilesCreatedBlock.svelte';
   import ReasoningBlock from '$lib/ui/components/ReasoningBlock.svelte';
@@ -39,6 +42,27 @@
   import { activityColor } from '$lib/utils/tool-ui';
 
   const ctx = useMessage();
+  const sharedWork = $derived(ctx.contextMode === 'home' || ctx.contextMode === 'design');
+  const chatId = $derived(appStore.currentChatId || '');
+  const activeRun = $derived(appStore.activeRunsByChat[chatId]?.messageId === ctx.message.id ? appStore.activeRunsByChat[chatId] : undefined);
+  const steps = $derived(homeWorkSteps(ctx.message.agentSteps));
+  const workItems = $derived.by(() => {
+    const thinking = !!appStore.config.ui?.enable_thinking;
+    const timeline = ctx.displayMetadata?.codeTimeline?.filter(entry => entry.kind === 'step' || thinking && entry.kind === 'thinking');
+    const seen = new Set(timeline?.flatMap(entry => entry.kind === 'step' ? [entry.id] : []));
+    const complete = timeline ? [...timeline, ...steps.filter(step => !seen.has(step.id)).map(step => ({ kind: 'step' as const, id: step.id }))] : undefined;
+    return orderedEntries({ agentSteps: steps, content: '', reasoning: thinking ? ctx.displayReasoning : '' }, complete)
+      .filter(entry => entry.step || entry.thinking);
+  });
+  const liveRun = $derived(activeRun ? {
+    ...activeRun.live,
+    startedAt: activeRun.startedAt,
+    lastEventAt: activeRun.lastEventAt,
+    steps,
+    timeline: [],
+    stopping: activeRun.controller.signal.aborted,
+    phase: activeRun.live?.phase ?? (ctx.displayReasoning ? 'thinking' as const : undefined)
+  } : undefined);
 
   const hasActiveDeepResearch = $derived(
     !!deepResearchStore.getActiveTaskForMessage(ctx.message.id)
@@ -73,7 +97,8 @@
       enableThinking: !!appStore.config.ui?.enable_thinking,
       hasActiveDeepResearch,
       hasDocumentArtifact,
-      hasPendingApproval: pendingApprovals.length > 0
+      hasPendingApproval: pendingApprovals.length > 0,
+      hasLiveRun: !!liveRun
       // Roleplay has its own artifacts — props — and they live on the reply.
       // Agent work products (reports, spreadsheets) belong to the tool loop,
       // which never runs in a scene, so they are never shown here.
@@ -134,11 +159,10 @@
     </div>
   {:else if part.kind === 'tool-status'}
     <div class="ui-cot-stack mb-1 w-full">
-      {#if ctx.contextMode === 'design'}
-        <CodeWorkBlock items={[
-          ...(appStore.config.ui?.enable_thinking && ctx.displayReasoning ? [{key:'design-reasoning', thinking:ctx.displayReasoning}] : []),
-          ...(ctx.message.agentSteps || []).filter(step => !step.preface).map(step => ({key:step.id, step}))
-        ]} chatId={appStore.currentChatId || ''} messageId={ctx.message.id} live={ctx.message.status === 'streaming'} />
+      {#if sharedWork}
+        <CodeWorkBlock items={workItems} {chatId} messageId={ctx.message.id}
+          live={ctx.isStreaming && liveRun?.phase !== 'writing'} thinkingLive={ctx.isStreaming && liveRun?.phase === 'thinking'}
+          codeActions={false} onstop={() => appStore.stopStreaming(chatId)} />
       {:else}
       <AgentBlock
         steps={(ctx.message.agentSteps || []).filter((step) => !step.preface)}
@@ -156,7 +180,9 @@
       {/if}
     </div>
   {:else if part.kind === 'research'}
-    <ResearchWidget />
+    <ResearchWidget showActivity={!sharedWork} />
+  {:else if part.kind === 'live-status' && liveRun}
+    <div class="-mx-2"><CodeLiveStatus run={liveRun} awaitingApproval={pendingApprovals.length > 0} /></div>
   {:else if part.kind === 'approval'}
     <ApprovalRequest approvals={pendingApprovals} />
   {:else if part.kind === 'error'}

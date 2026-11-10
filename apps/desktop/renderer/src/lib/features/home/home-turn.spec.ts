@@ -4,6 +4,8 @@ import type { AgentTaskResult } from '$lib/services/agent-types';
 import { applyHomeAgentResult, homeAgentCallbacks, planHomeAgentRun, settleAgentSteps } from './home-turn';
 import { finalizeAssistantMetadata } from '$lib/stores/app-store-helpers';
 import { emptySpend } from '$shared/accounting';
+import { updateHomeLive, type HomeLiveState } from './home-live';
+import { liveStatus } from '$lib/features/code/work-blocks';
 
 function message(overrides: Partial<ChatMessage> = {}): ChatMessage {
   return {
@@ -55,6 +57,21 @@ describe('planHomeAgentRun', () => {
 });
 
 describe('applyHomeAgentResult', () => {
+  it('keeps thoughts on either side of a tool call in the shared timeline', () => {
+    const target = message();
+    const callbacks = homeAgentCallbacks({ message: target, quiet: false, sync: vi.fn(), persist: vi.fn(), onReasoningStart: vi.fn(), onArtifacts: vi.fn(), touch: vi.fn() });
+    callbacks.onReasoning?.('First thought.');
+    const step = { id: 'search', type: 'tool', label: 'Search', toolName: 'web_search', status: 'running' } as const;
+    callbacks.onStep([step]);
+    callbacks.onStep([{ ...step, status: 'done' }]);
+    callbacks.onReasoning?.('First thought.Second thought.');
+    expect(target.metadata?.codeTimeline).toEqual([
+      { kind: 'thinking', text: 'First thought.' },
+      { kind: 'step', id: 'search' },
+      { kind: 'thinking', text: 'Second thought.' }
+    ]);
+  });
+
   it('keeps live accounting and stream speed through finalization', () => {
     const target = message();
     const callbacks = homeAgentCallbacks({ message: target, quiet: false, sync: vi.fn(), persist: vi.fn(), onReasoningStart: vi.fn(), onArtifacts: vi.fn(), touch: vi.fn() });
@@ -106,6 +123,19 @@ describe('applyHomeAgentResult', () => {
     applyHomeAgentResult(target, result({ steps: [{ id: 's1', label: 'Search', status: 'done' } as AgentStep] }), ctx);
     expect(target.agentSteps?.map((step) => step.id)).toEqual(['s1', 'edit']);
   });
+});
+
+it('uses the Code status rules for runtime progress and approvals', () => {
+  const state: HomeLiveState = {};
+  const status = (approval = false) => liveStatus({ ...state, steps: [], timeline: [] }, approval);
+  updateHomeLive(state, { type: 'thinking' });
+  expect(status()).toEqual({ kind: 'requesting' });
+  updateHomeLive(state, { type: 'generation_progress', output_bytes: 100, tool_name: 'design_write' });
+  updateHomeLive(state, { type: 'generation_progress', output_bytes: 200, tool_name: 'design_write' });
+  expect(status()).toEqual({ kind: 'preparing', toolName: 'design_write', bytes: 100 });
+  expect(status(true)).toEqual({ kind: 'approval' });
+  updateHomeLive(state, { type: 'assistant_delta', text: 'Done' });
+  expect(status()).toEqual({ kind: 'writing' });
 });
 
 describe('settleAgentSteps', () => {

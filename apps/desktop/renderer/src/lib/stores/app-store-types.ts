@@ -1,4 +1,5 @@
 import type { ChatContextMode, ChatFolder, ChatSession, ModelOption } from '$lib/types/chat';
+import type { HomeLiveState } from '$lib/features/home/home-live';
 
 export interface PersistedState {
   chats: ChatSession[];
@@ -26,6 +27,7 @@ export interface ActiveGenerationRun {
    * off `CodeRunState.lastEventAt`.
    */
   lastEventAt?: number;
+  live?: HomeLiveState;
   researchTaskId?: string | null;
 }
 

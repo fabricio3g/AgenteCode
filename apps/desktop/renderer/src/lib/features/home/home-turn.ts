@@ -7,11 +7,12 @@
  * Instant fast path — and fails, warns or completes with the same wording.
  */
 
-import type { AgentStep, ChatMessage, MessageVersion } from '$lib/types/chat';
+import type { AgentStep, ChatMessage, CodeTimelineEntry, MessageVersion } from '$lib/types/chat';
 import type { SearchResult } from '$lib/types/bridge';
 import type { AgentTaskResult, RunAgentTaskArgs } from '$lib/services/agent-types';
 import type { GenerationBackendMode } from '$lib/stores/app-store-types';
 import { humanizeAgentError } from '$lib/utils/errors';
+import { homeWorkSteps } from './home-live';
 import {
   activityFromProgress,
   agentOutcome,
@@ -106,6 +107,13 @@ export function homeAgentCallbacks(args: {
   touch: () => void;
 }): Pick<RunAgentTaskArgs, 'onContent' | 'onStep' | 'onProgress' | 'onReasoning' | 'onArtifact' | 'onSources' | 'onUsage' | 'onSpend'> {
   const { message, quiet, sync, persist, touch } = args;
+  let timeline: CodeTimelineEntry[] = [];
+  let previousReasoning = '';
+  const knownSteps = new Set<string>();
+  const recordWork = (entries: CodeTimelineEntry[]) => {
+    timeline = entries;
+    message.metadata = { ...message.metadata, codeTimeline: entries };
+  };
   const showActivity = (label: string) => {
     const mapped = activityFromProgress(label);
     setAgentActivity(message, mapped.currentActivity, mapped.activityLabel);
@@ -127,6 +135,9 @@ export function homeAgentCallbacks(args: {
     onStep: (steps) => {
       touch();
       message.agentSteps = steps;
+      const added = homeWorkSteps(steps).filter(step => !knownSteps.has(step.id));
+      for (const step of added) knownSteps.add(step.id);
+      if (added.length) recordWork([...timeline, ...added.map(step => ({ kind: 'step' as const, id: step.id }))]);
       const running = quiet ? undefined : steps.find((step) => step.status === 'running');
       if (running) showActivity(running.label);
       sync(true);
@@ -141,6 +152,15 @@ export function homeAgentCallbacks(args: {
       touch();
       args.onReasoningStart();
       message.reasoning = value;
+      const continued = value.startsWith(previousReasoning);
+      const delta = continued ? value.slice(previousReasoning.length) : value;
+      previousReasoning = value;
+      const last = timeline.at(-1);
+      if (delta && continued && last?.kind === 'thinking') {
+        recordWork([...timeline.slice(0, -1), { kind: 'thinking', text: last.text + delta }]);
+      } else if (delta) {
+        recordWork([...timeline, { kind: 'thinking', text: delta }]);
+      }
       sync();
     },
     onArtifact: (artifacts) => {
@@ -284,6 +304,7 @@ export function settleAgentSteps(steps: AgentStep[], metadata: MessageVersion['m
   const failed = metadata?.error;
   const warning = metadata?.warning;
   return steps.map((step, index, all) => {
+    if (step.toolName && step.status !== 'running' && step.status !== 'pending') return step;
     if (index === all.length - 1) {
       if (failed) return { ...step, status: 'error', detail: step.detail || 'Agent encountered an error' };
       if (warning) return { ...step, status: 'done', detail: warning };
