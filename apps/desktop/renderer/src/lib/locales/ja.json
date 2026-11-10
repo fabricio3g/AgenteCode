@@ -3087,6 +3087,15 @@
     "command": "コマンド"
   },
   "audioEngine": {
+    "build": {
+      "cpu": "CPU 版",
+      "vulkan": "Vulkan 版 (GPU)"
+    },
+    "installed": "インストール済み",
+    "notInstalled": "未インストール",
+    "download": "ダウンロード",
+    "reinstall": "再インストール",
+    "downloading": "audio.cpp をダウンロード中",
     "version": "Version",
     "backends": "Bundled backends",
     "inUse": "In use",

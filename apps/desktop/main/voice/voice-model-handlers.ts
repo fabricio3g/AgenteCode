@@ -9,7 +9,8 @@ import { getAppPaths } from '../paths.ts';
 import { startDownloadHf } from '../model-download.ts';
 import { voiceFileRelPath, voiceModelFiles } from '../../shared/voice-models.ts';
 import { speechEngineStatus, unloadTts } from './audiocpp-tts.ts';
-import { findVoiceModel, voiceCatalogWithSizes } from './voice-catalog.ts';
+import { findVoiceModel, resetVoiceCatalog, voiceCatalogWithSizes } from './voice-catalog.ts';
+import { downloadableAudioBackends, installAudioEngine, type AudioBackend } from './audiocpp-engine.ts';
 
 /** A source clip is trimmed to 30 s in the renderer; anything past this is not a voice sample. */
 const MAX_CLIP_BYTES = 200 * 1024 * 1024;
@@ -74,6 +75,22 @@ export function registerVoiceModelHandlers(ipcMain: IpcMain): void {
 
   // Apply a backend or thread change now rather than on the next reply.
   ipcMain.handle('voice_engine_restart', () => unloadTts());
+
+  // Fetch the tested audio.cpp release for one backend (Settings → On this
+  // computer). The server stops first: a running exe cannot be replaced.
+  let installing: Promise<unknown> | null = null;
+  ipcMain.handle('voice_engine_download', async (event, args: { backend?: string }) => {
+    const backend = downloadableAudioBackends().find((entry) => entry === args?.backend) as AudioBackend | undefined;
+    if (!backend) throw new Error('audio.cpp publishes no build of that kind for this computer.');
+    if (installing) throw new Error('audio.cpp is already being downloaded.');
+    installing = (async () => {
+      await unloadTts();
+      const result = await installAudioEngine(backend, event.sender);
+      resetVoiceCatalog();
+      return result;
+    })();
+    try { return await installing; } finally { installing = null; }
+  });
 
   ipcMain.handle('voice_model_download', async (_e, args: { id: string }) => {
     const model = findVoiceModel(args.id);

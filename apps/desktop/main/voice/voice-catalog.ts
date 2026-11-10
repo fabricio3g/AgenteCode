@@ -10,7 +10,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { getAppPaths } from '../paths.ts';
+import { audioSpecsDir } from './audiocpp-engine.ts';
 import { moduleRequire } from '../module-env.ts';
 import { createLogger } from '../utils/logger.ts';
 import { VOICE_MODELS, type VoiceModel } from '../../shared/voice-models.ts';
@@ -37,13 +37,9 @@ type Spec = {
 
 let specCache: VoiceModel[] | null = null;
 
-function specsDir(): string | null {
-  const root = path.join(getAppPaths().nativeBinRoot, 'audio');
-  for (const backend of ['vulkan', 'cpu']) {
-    const dir = path.join(root, backend, 'model_specs');
-    if (fs.existsSync(dir)) return dir;
-  }
-  return null;
+/** Forget the specs read so far: a newly installed engine brings its own. */
+export function resetVoiceCatalog(): void {
+  specCache = null;
 }
 
 type Package = NonNullable<Spec['packages']>[number];
@@ -138,7 +134,7 @@ export function voiceCatalog(): VoiceModel[] {
   const featured = VOICE_MODELS.map((model) => ({ ...model }));
   const featuredVariants: VoiceModel[] = [];
   const fromSpecs: VoiceModel[] = [];
-  const dir = specsDir();
+  const dir = audioSpecsDir();
   if (dir) {
     for (const name of fs.readdirSync(dir).filter((file) => file.endsWith('.json')).sort()) {
       try {

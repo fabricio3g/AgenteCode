@@ -25,7 +25,7 @@
   import { downloadRuntime } from '$lib/services/files';
   import { getRuntimeRecommendations } from '$lib/services/system-info';
   import { fetchLlamaReleaseList, toDownloadPayload, type ReleaseAsset } from '$lib/services/llama-releases';
-  import { speechEngineStatus, type SpeechEngineStatus } from '$lib/services/speech-engine';
+  import { downloadSpeechEngine, speechEngineStatus, type SpeechEngineStatus } from '$lib/services/speech-engine';
   import { formatBytes } from '$lib/utils/format';
   import { speechEngine } from '$lib/stores/speech-engine.svelte';
   import TESTED from '$shared/engine-versions.json';
@@ -54,7 +54,7 @@
   let whisperPick = $state('');
   let checking = $state(false);
   let listError = $state('');
-  let busy = $state<'llama' | 'whisper' | 'cleanup' | null>(null);
+  let busy = $state<'llama' | 'whisper' | 'audio' | 'cleanup' | null>(null);
   let progress = $state(0);
 
   const llamaSelected = $derived(overview?.llama.builds.find((b) => b.selected) ?? null);
@@ -76,7 +76,7 @@
 
   /** "v0.8.2 · Vulkan · Kokoro 82M · reads replies aloud". */
   const speechMeta = $derived.by(() => {
-    if (!speech?.backends.length) return $t('computer.notBundled');
+    if (!speech?.backends.length) return speech?.downloadable.length ? $t('computer.notInstalled') : $t('computer.notBundled');
     const accel = speech.backend === 'vulkan' ? 'Vulkan' : 'CPU';
     const inUse = speechEngine.active?.title ?? speech.installed[0];
     return [speech.version, accel, inUse ?? $t('computer.noVoiceModel'), $t('computer.runsVoice')].filter(Boolean).join(' · ');
@@ -157,6 +157,23 @@
     }
   }
 
+  /** Fetch the tested audio.cpp: Vulkan where it is published (it also runs on the CPU). */
+  async function installAudio() {
+    const backend = speech?.downloadable.includes('vulkan') ? 'vulkan' : speech?.downloadable[0];
+    if (!backend) return;
+    busy = 'audio';
+    progress = 0;
+    try {
+      await downloadSpeechEngine(backend);
+      await Promise.all([refresh(), speechEngine.refresh()]);
+      toastStore.success(get(t)('computer.updated', { values: { name: 'audio.cpp', tag: TESTED.audio } }));
+    } catch (error) {
+      toastStore.error((error as Error)?.message || String(error));
+    } finally {
+      busy = null;
+    }
+  }
+
   async function installWhisper() {
     busy = 'whisper';
     progress = 0;
@@ -197,6 +214,7 @@
     unlisteners = await Promise.all([
       listen<{ progress?: number }>('runtime-download-progress', (e) => (progress = Number(e?.progress ?? 0))),
       listen<{ progress?: number }>('whisper-runtime-download-progress', (e) => (progress = Number(e?.progress ?? 0))),
+      listen<{ progress?: number }>('audio-runtime-download-progress', (e) => (progress = Number(e?.progress ?? 0))),
       listen<{ progress?: number }>('voice-setup-progress', (e) => (progress = Number(e?.progress ?? 0)))
     ]);
   });
@@ -256,7 +274,11 @@
          Supertonic are voice models it loads, chosen in Settings → Voice. -->
     <SettingsRow label="audio.cpp" description={`Apache-2.0 · ${speechMeta}`} control="auto" align="start">
       {#snippet tile()}<Volume2 class="size-4" />{/snippet}
-      {#if speech?.backends.length && !speech.installed.length}
+      {#if busy === 'audio'}
+        <span class="text-xs tabular-nums text-muted-foreground">{progress}%</span>
+      {:else if speech && !speech.backends.length && speech.downloadable.length}
+        <Button variant="outline" size="sm" onclick={() => void installAudio()} disabled={!!busy}>{$t('computer.install')}</Button>
+      {:else if speech?.backends.length && !speech.installed.length}
         <Button variant="outline" size="sm" onclick={() => appStore.openSettings('voice')}>{$t('computer.setUpVoice')}</Button>
       {:else if speech?.backends.length}
         <Badge>{speech.running ? $t('computer.running') : $t('computer.bundled')}</Badge>

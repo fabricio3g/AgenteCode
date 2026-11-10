@@ -7,8 +7,10 @@ import { invoke } from './bridge';
 export interface SpeechEngineStatus {
   /** Bundled audio.cpp release, e.g. `v0.8.2`; null when the build has no info. */
   version: string | null;
-  /** Backends this build ships (`cpu`, `vulkan`). Empty: no engine bundled. */
+  /** Backends on this machine, bundled or downloaded (`cpu`, `vulkan`). Empty: no engine yet. */
   backends: string[];
+  /** Backends audio.cpp publishes for this machine, installable from Settings. */
+  downloadable: string[];
   /** The backend the server runs with. */
   backend: 'cpu' | 'vulkan';
   /** Threads it runs with (the setting, or the automatic choice). */
@@ -32,13 +34,18 @@ export interface SpeechEngineStatus {
 }
 
 const FALLBACK: SpeechEngineStatus = {
-  version: null, backends: [], backend: 'cpu', threads: 0, cores: 0, running: false, installed: [], espeak: true,
+  version: null, backends: [], downloadable: [], backend: 'cpu', threads: 0, cores: 0, running: false, installed: [], espeak: true,
   binaryPath: null, port: null, specs: 0, modelsDir: ''
 };
 
 export async function speechEngineStatus(): Promise<SpeechEngineStatus> {
   const status = await invoke<Partial<SpeechEngineStatus>>('voice_models_status').catch(() => null);
   return { ...FALLBACK, ...(status ?? {}) };
+}
+
+/** Download and install the tested audio.cpp release for one backend. */
+export async function downloadSpeechEngine(backend: string): Promise<void> {
+  await invoke('voice_engine_download', { backend });
 }
 
 /** Restart the engine so a backend or thread change applies now. */

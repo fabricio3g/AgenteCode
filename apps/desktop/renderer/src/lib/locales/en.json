@@ -3087,6 +3087,15 @@
     "command": "Command"
   },
   "audioEngine": {
+    "build": {
+      "cpu": "CPU build",
+      "vulkan": "Vulkan build (GPU)"
+    },
+    "installed": "Installed",
+    "notInstalled": "Not installed",
+    "download": "Download",
+    "reinstall": "Reinstall",
+    "downloading": "Downloading audio.cpp",
     "version": "Version",
     "backends": "Bundled backends",
     "inUse": "In use",

@@ -42,6 +42,7 @@ export function getAppPaths() {
     localBinVersionsRoot: path.join(appData, 'engines', 'llama.cpp'),
     whisperBinRoot: path.join(appData, 'engines', 'whisper.cpp', 'default'),
     whisperBinVersionsRoot: path.join(appData, 'engines', 'whisper.cpp'),
+    audioBinRoot: path.join(appData, 'engines', 'audio.cpp'),
     nativeBinRoot: isDev
       ? path.join(projectRoot, 'resources', 'bin')
       : path.join(process.resourcesPath, 'bin'),

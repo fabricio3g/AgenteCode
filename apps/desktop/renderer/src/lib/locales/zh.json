@@ -3087,6 +3087,15 @@
     "command": "命令"
   },
   "audioEngine": {
+    "build": {
+      "cpu": "CPU 版本",
+      "vulkan": "Vulkan 版本 (GPU)"
+    },
+    "installed": "已安装",
+    "notInstalled": "未安装",
+    "download": "下载",
+    "reinstall": "重新安装",
+    "downloading": "正在下载 audio.cpp",
     "version": "Version",
     "backends": "Bundled backends",
     "inUse": "In use",

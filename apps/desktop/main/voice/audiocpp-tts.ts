@@ -17,6 +17,7 @@ import { getAppPaths } from '../paths.ts';
 import { createLogger } from '../utils/logger.ts';
 import { voiceFileRelPath, voiceLanguage, voiceModelFiles, voiceModelRelPath, type VoiceModel } from '../../shared/voice-models.ts';
 import { findVoiceModel, voiceCatalog } from './voice-catalog.ts';
+import { audioEngineBinary, audioEngineVersion, downloadableAudioBackends, installedAudioBackends } from './audiocpp-engine.ts';
 
 type TtsMessage = (
   | { type: 'start'; id: number; total: number }
@@ -46,22 +47,14 @@ export function onWorkerMessage(handler: (msg: TtsMessage) => void): void {
   listeners.add(handler);
 }
 
+/** Backends on this machine, bundled or downloaded (audiocpp-engine.ts). */
 export function availableSpeechBackends(): string[] {
-  const root = path.join(getAppPaths().nativeBinRoot, 'audio');
-  const name = process.platform === 'win32' ? 'audiocpp_server.exe' : 'audiocpp_server';
-  return ['cpu', 'vulkan'].filter(backend => fs.existsSync(path.join(root, backend, name)));
+  return installedAudioBackends();
 }
 
-/** The bundled audio.cpp release (`BUILD_INFO.txt`, written by fetch-native-runtimes). */
+/** The installed audio.cpp release (`BUILD_INFO.txt`). */
 export function speechEngineVersion(): string | null {
-  for (const backend of availableSpeechBackends()) {
-    const info = path.join(getAppPaths().nativeBinRoot, 'audio', backend, 'BUILD_INFO.txt');
-    try {
-      const release = fs.readFileSync(info, 'utf8').match(/^release=(.+)$/m)?.[1]?.trim();
-      if (release) return release;
-    } catch { /* older bundles have no build info */ }
-  }
-  return null;
+  return audioEngineVersion();
 }
 
 /** The backend to run: the chosen one when this build has it, else whatever is bundled (Vulkan by default). */
@@ -84,6 +77,7 @@ export function speechEngineStatus() {
   return {
     version: speechEngineVersion(),
     backends: availableSpeechBackends(),
+    downloadable: downloadableAudioBackends(),
     backend: speechBackend(tts?.local_backend),
     threads: speechThreads(tts?.num_threads),
     cores: availableParallelism(),
@@ -98,10 +92,7 @@ export function speechEngineStatus() {
 }
 
 function binary(backend: string): string | null {
-  const name = process.platform === 'win32' ? 'audiocpp_server.exe' : 'audiocpp_server';
-  const root = path.join(getAppPaths().nativeBinRoot, 'audio');
-  const candidate = path.join(root, backend, name);
-  return fs.existsSync(candidate) ? candidate : null;
+  return audioEngineBinary(backend);
 }
 
 export function modelPath(model: VoiceModel): string {
