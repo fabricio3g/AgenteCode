@@ -867,6 +867,22 @@ textarea {
   container: composer / inline-size;
 }
 
+.artifact-preview-frame {
+  display: block;
+  border: 0;
+  background: var(--artifact-surface);
+  color-scheme: inherit;
+}
+
+.artifact-kind-tile {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--artifact-accent) 18%, var(--background));
+  color: var(--artifact-accent);
+}
+
 /* The column the composer lives in. Any row that has to start on the card's
    own edge — the folder line of an empty Code thread, the starter links under
    a composer — takes this frame plus the dock's padding utilities

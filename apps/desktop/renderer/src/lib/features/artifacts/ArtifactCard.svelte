@@ -54,7 +54,7 @@
     </div>
     <div class="min-w-0 px-3.5 pb-3 pt-2.5 text-left">
       <p class="kind flex items-center gap-1.5 text-[length:var(--text-xs)]">
-        <span class="kind-tile" aria-hidden="true"><Icon class="size-3" /></span>
+        <span class="artifact-kind-tile size-[1.125rem] rounded-[0.3125rem]" aria-hidden="true"><Icon class="size-3" /></span>
         <span class="truncate">{$t(`artifacts.group.${entry.group}`)}</span>
       </p>
       <p class="mt-1 line-clamp-2 text-sm font-medium leading-snug text-foreground">{entry.artifact.title || $t('artifacts.untitled')}</p>
@@ -72,15 +72,15 @@
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    border: 1px solid color-mix(in srgb, var(--artifact-accent) 24%, var(--border));
+    border: 1px solid var(--border-subtle);
     border-radius: 1rem;
     background: var(--background);
     text-align: left;
-    transition: border-color var(--motion-fast) var(--motion-ease), box-shadow var(--motion-fast) var(--motion-ease), transform var(--motion-fast) var(--motion-ease);
+    transition: border-color var(--motion-fast) var(--motion-ease), background-color var(--motion-fast) var(--motion-ease);
   }
   .card:hover {
-    border-color: color-mix(in srgb, var(--artifact-accent) 45%, var(--border));
-    box-shadow: var(--shadow-md);
+    border-color: var(--border);
+    background: var(--surface-hover);
   }
   .card:has(:is(.open:focus-visible, :global(.open:focus-visible.ui-local-b2856088))) {
     box-shadow: 0 0 0 3px color-mix(in srgb, var(--ring) 35%, transparent);
@@ -92,19 +92,6 @@
     outline: none;
   }
   .kind { color: var(--artifact-accent); }
-  /* The kind's glyph rides its accent tile, white on colour, like every other
-     artifact surface. */
-  .kind-tile {
-    display: inline-flex;
-    width: 1.125rem;
-    height: 1.125rem;
-    flex-shrink: 0;
-    align-items: center;
-    justify-content: center;
-    border-radius: 0.3125rem;
-    background: var(--artifact-accent);
-    color: #fff;
-  }
   :global(.delete.ui-local-b2856088) {
     position: absolute;
     top: 0.5rem;
@@ -138,7 +125,7 @@
     justify-content: center;
     overflow: hidden;
     border-bottom: 1px solid var(--border-subtle);
-    background: color-mix(in srgb, var(--artifact-accent) 6%, var(--muted));
+    background: var(--artifact-surface);
     color: var(--muted-foreground);
   }
 </style>

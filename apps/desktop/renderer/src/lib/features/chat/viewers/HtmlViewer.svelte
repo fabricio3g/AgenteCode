@@ -1,7 +1,7 @@
 <script lang="ts">
   import { t } from 'svelte-i18n';
   import { readArrayBuffer } from './viewer-source';
-  import { buildPreviewHtml } from '$lib/utils/preview-builder';
+  import { buildArtifactPreviewHtml } from '$lib/utils/preview-builder';
   import { registerViewerControls, useViewerControls } from './viewer-controls.svelte';
   import TextViewer from './TextViewer.svelte';
   import ViewerStatus from './ViewerStatus.svelte';
@@ -28,7 +28,7 @@
     return () => { current = false; };
   });
   const preview = $derived.by(() => {
-    const page = buildPreviewHtml(content, {}, filename).html;
+    const page = buildArtifactPreviewHtml(content, {}, filename).html;
     const policy = '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; img-src data: blob:; style-src \'unsafe-inline\'; font-src data:;">';
     return page.replace(/<head(?:\s[^>]*)?>/i, (head) => head + policy);
   });
@@ -40,7 +40,5 @@
 {:else if sourceView}
   <TextViewer src={sourceUrl} {filename} lang="html" />
 {:else}
-  <iframe class="html-page" srcdoc={preview} sandbox="" referrerpolicy="no-referrer" title={filename}></iframe>
+  <iframe class="artifact-preview-frame h-full min-h-0 w-full flex-1" srcdoc={preview} sandbox="" referrerpolicy="no-referrer" title={filename}></iframe>
 {/if}
-
-<style>.html-page { display:block; width:100%; flex:1; min-height:0; height:100%; border:0; background:var(--background); }</style>

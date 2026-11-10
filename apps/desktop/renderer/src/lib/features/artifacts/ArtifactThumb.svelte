@@ -12,7 +12,7 @@
   import { resolveArtifactPresentation } from '$lib/services/artifact-model';
   import { artifactDocumentItems, type DocumentSurfaceItem } from '$lib/features/chat/document-surface';
   import { documentSource } from '$lib/features/chat/document-viewer';
-  import { buildPreviewHtml } from '$lib/utils/preview-builder';
+  import { buildArtifactPreviewHtml } from '$lib/utils/preview-builder';
   import { renderMarkdown } from '$lib/utils/markdown';
   import InlineArtifactPreview from '$lib/ui/components/InlineArtifactPreview.svelte';
   import DeckSlideView from '$lib/features/chat/viewers/DeckSlideView.svelte';
@@ -32,9 +32,13 @@
   });
   const ext = $derived((doc?.name.split('.').pop() || '').toLowerCase());
   const pageHtml = $derived.by(() => {
-    if (inline || doc || !resolved.preview) return '';
+    if (inline) return '';
+    const preview = doc
+      ? (/^html?$/.test(ext) && doc.previewHtml ? { html: doc.previewHtml, basePath: doc.id } : null)
+      : resolved.preview;
+    if (!preview) return '';
     try {
-      return buildPreviewHtml(resolved.preview.html, resolved.artifact.files, resolved.preview.basePath).html;
+      return buildArtifactPreviewHtml(preview.html, resolved.artifact.files, preview.basePath).html;
     } catch {
       return '';
     }
@@ -103,7 +107,7 @@
 <div class="thumb">
   {#if inline}
     <!-- The chart or card itself, drawn at twice the size and shrunk. -->
-    <div class="scaled" aria-hidden="true"><InlineArtifactPreview artifact={resolved.artifact} /></div>
+    <div class="scaled" aria-hidden="true"><InlineArtifactPreview artifact={resolved.artifact} poster /></div>
   {:else if doc?.deck}
     <div class="slide-fit"><DeckSlideView deck={doc.deck} slide={doc.deck.slides[0]} index={0} /></div>
   {:else if imageUrl}
@@ -129,10 +133,10 @@
     {#if !docxReady}<span class="glyph"><FileText class="size-8" /></span>{/if}
   {:else if doc && (ext === 'md' || ext === 'markdown') && doc.content}
     <article class="md-page markdown-body">{@html renderMarkdown(doc.content.slice(0, 1800))}</article>
-  {:else if doc?.content}
-    <pre class="text-page">{doc.content.slice(0, 600)}</pre>
   {:else if pageHtml && visible}
-    <iframe class="web" srcdoc={pageHtml} sandbox="" referrerpolicy="no-referrer" tabindex="-1" aria-hidden="true" title=""></iframe>
+    <iframe class="artifact-preview-frame web" srcdoc={pageHtml} sandbox="" referrerpolicy="no-referrer" tabindex="-1" aria-hidden="true" title=""></iframe>
+  {:else if doc?.content && !pageHtml}
+    <pre class="text-page">{doc.content.slice(0, 600)}</pre>
   {:else}
     <span class="glyph">{#if doc}<FileText class="size-8" />{:else}<Files class="size-8" />{/if}</span>
   {/if}
@@ -261,8 +265,6 @@
     left: 0;
     width: 400%;
     height: 400%;
-    border: 0;
-    background: white;
     transform: scale(0.25);
     transform-origin: top left;
   }

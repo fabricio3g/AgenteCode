@@ -145,7 +145,7 @@ const builtinArtifacts = [
       format: z.enum(['html', 'markdown']).optional().describe('Output format'),
       path: pathSchema,
       subtitle: z.string().optional(),
-      theme: z.enum(['light', 'dark']).optional().describe('Color theme for HTML reports'),
+      theme: z.enum(['light', 'dark']).optional().describe('Fixed palette for HTML reports. Omit for adaptive light and dark.'),
       accent: z.enum(['slate', 'blue', 'green', 'amber', 'rose', 'violet']).optional().describe('One muted accent color for HTML reports')
     })
   }),

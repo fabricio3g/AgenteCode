@@ -5,7 +5,7 @@
   import type { AgentArtifact } from '$lib/types/chat';
   import { resolveArtifactPreview } from '$lib/services/artifact-model';
   import { countOf } from '$lib/utils/format';
-  import { buildPreviewHtml } from '$lib/utils/preview-builder';
+  import { buildArtifactPreviewHtml } from '$lib/utils/preview-builder';
   import ChartBlock from '$lib/features/chat/ChartBlock.svelte';
   import ArtifactMap from './ArtifactMap.svelte';
   import ArtifactDiagram from './ArtifactDiagram.svelte';
@@ -16,16 +16,20 @@
 
   interface Props {
     artifact: AgentArtifact;
+    /** Library thumbnails render a static poster rather than live controls. */
+    poster?: boolean;
+    /** A space other than Home opened this artifact: read it, do not work it. */
+    readOnly?: boolean;
   }
 
-  let { artifact }: Props = $props();
+  let { artifact, poster = false, readOnly = false }: Props = $props();
 
   const files = $derived(artifact.files || {});
   const previewSource = $derived(resolveArtifactPreview(artifact));
 
   const previewBuild = $derived.by(() => {
     if (!previewSource?.html) return { html: '', externalRefs: [] as string[] };
-    return buildPreviewHtml(previewSource.html, files, previewSource.basePath);
+    return buildArtifactPreviewHtml(previewSource.html, files, previewSource.basePath);
   });
 
   const previewSrc = $derived(previewBuild.html);
@@ -54,7 +58,7 @@
 {:else if previewSrc}
   <div class="inline-html-artifact">
     <iframe
-      class="inline-html-frame"
+      class="artifact-preview-frame h-full w-full"
       srcdoc={previewSrc}
       sandbox=""
       referrerpolicy="no-referrer"
@@ -115,14 +119,6 @@
     background: var(--artifact-surface);
     color: var(--text-secondary);
     font-size: 0.78rem;
-  }
-
-  .inline-html-frame {
-    display: block;
-    height: 100%;
-    width: 100%;
-    border: 0;
-    background: transparent;
   }
 
   @media (max-width: 640px) {

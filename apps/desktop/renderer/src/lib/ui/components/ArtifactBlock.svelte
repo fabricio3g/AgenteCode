@@ -85,7 +85,7 @@
   {:else}
     <div class="art-card" data-status={resolved.manifest.status} style:--artifact-accent={artifactKindAccent(resolved.manifest.kind)}>
       <UiButton variant="plain" type="button" class={uiClass("art-open", "ui-local-51be238f")} onclick={onOpen} title={$t('artifacts.card.open')}>
-        <span class="art-icon" aria-hidden="true"><CardIcon class="size-[18px]" /></span>
+        <span class="artifact-kind-tile size-10 rounded-[0.625rem]" aria-hidden="true"><CardIcon class="size-[18px]" /></span>
         <span class="min-w-0 flex-1">
           <span class="art-title">{artifact.title || $t('artifacts.untitled')}</span>
           <span class="art-meta">{meta}</span>
@@ -106,18 +106,19 @@
 <style>
   .art-card {
     display: flex;
-    width: min(100%, 26rem);
+    width: var(--inline-block-width);
+    max-width: 100%;
     margin-top: 0.75rem;
     align-items: center;
     gap: 0.25rem;
     padding: 0.375rem 0.5rem 0.375rem 0.375rem;
-    border: 1px solid color-mix(in srgb, var(--artifact-accent) 24%, var(--border));
-    border-radius: 0.875rem;
-    background: color-mix(in srgb, var(--artifact-accent) 3%, var(--background));
-    transition: border-color var(--motion-fast) var(--motion-ease);
+    border-block: 1px solid var(--border-subtle);
+    border-radius: 0;
+    background: transparent;
+    transition: background-color var(--motion-fast) var(--motion-ease);
   }
   .art-card:hover {
-    border-color: color-mix(in srgb, var(--artifact-accent) 45%, var(--border));
+    background: var(--artifact-surface-hover);
   }
   .art-card[data-status='invalid'] {
     border-color: color-mix(in srgb, var(--error) 40%, var(--border));
@@ -139,20 +140,6 @@
     outline: none;
     box-shadow: 0 0 0 2px color-mix(in srgb, var(--ring) 40%, transparent);
   }
-  /* The tile carries the kind's accent at full strength and the glyph stays
-     white, the same read as the design starters: colour in the card, not in
-     the icon. */
-  .art-icon {
-    display: inline-flex;
-    width: 2.5rem;
-    height: 2.5rem;
-    flex-shrink: 0;
-    align-items: center;
-    justify-content: center;
-    border-radius: 0.625rem;
-    background: var(--artifact-accent);
-    color: #fff;
-  }
   .art-title,
   .art-meta {
     display: block;
@@ -161,13 +148,13 @@
     white-space: nowrap;
   }
   .art-title {
-    font-size: 13.5px;
+    font-size: var(--text-sm);
     font-weight: 500;
     color: var(--foreground);
   }
   .art-meta {
     margin-top: 1px;
-    font-size: 12px;
+    font-size: var(--text-xs);
     color: var(--muted-foreground);
   }
   :global(.art-action.ui-local-51be238f) {
@@ -193,24 +180,24 @@
 
   .art-inline {
     position: relative;
+    display: flex;
+    flex-direction: column;
     width: var(--inline-block-width);
     max-width: 100%;
     margin-top: 0.75rem;
   }
   :global(.art-expand.ui-local-51be238f) {
-    position: absolute;
-    top: 0.5rem;
-    right: 0.5rem;
+    align-self: flex-end;
     display: inline-flex;
     width: 1.75rem;
     height: 1.75rem;
     align-items: center;
     justify-content: center;
-    border: 1px solid var(--border);
+    border: 0;
     border-radius: 0.5rem;
-    background: var(--background);
+    background: transparent;
     color: var(--muted-foreground);
-    opacity: 0;
+    opacity: 0.7;
     transition: opacity var(--motion-fast) var(--motion-ease), color var(--motion-fast) var(--motion-ease);
   }
   .art-inline:hover :global(.art-expand.ui-local-51be238f),

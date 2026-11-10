@@ -79,7 +79,7 @@
         <ArtifactStudio {artifact} chatId={ref.chatId} messageId={ref.messageId} bind:dirty compact>
           {#snippet lead()}
             <div class="flex min-w-0 items-center gap-2.5">
-              <span class="panel-icon" style:--artifact-accent={artifactKindAccent(resolved.manifest.kind)} aria-hidden="true"><Icon class="size-4" /></span>
+                <span class="artifact-kind-tile size-7 rounded-lg" style:--artifact-accent={artifactKindAccent(resolved.manifest.kind)} aria-hidden="true"><Icon class="size-4" /></span>
               <span class="min-w-0">
                 <span class="panel-title">{artifact.title || $t('artifacts.untitled')}</span>
                 <span class="panel-meta">{$t(`artifacts.kind.${resolved.manifest.kind}`)}</span>
@@ -110,17 +110,6 @@
     min-width: 0;
     flex: 1;
     flex-direction: column;
-  }
-  .panel-icon {
-    display: inline-flex;
-    width: 1.75rem;
-    height: 1.75rem;
-    flex-shrink: 0;
-    align-items: center;
-    justify-content: center;
-    border-radius: 0.5rem;
-    background: var(--artifact-accent);
-    color: #fff;
   }
   .panel-title,
   .panel-meta {

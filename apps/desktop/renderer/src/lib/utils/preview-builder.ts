@@ -98,7 +98,8 @@ export function buildPreviewHtml(
   htmlSource: string,
   allFiles: Record<string, string>,
   basePath: string,
-  interactive = false
+  interactive = false,
+  { adaptiveCanvas = false } = {}
 ): { html: string; externalRefs: string[] } {
   const externalRefs: string[] = [];
   const parser = new DOMParser();
@@ -242,6 +243,16 @@ export function buildPreviewHtml(
     head.appendChild(viewport);
   }
 
+  // Plain markup can use the browser's adaptive canvas and controls. Styled
+  // pages own their palette: switching their default ink alone could make
+  // legacy pages with a fixed background unreadable.
+  if (adaptiveCanvas && !doc.querySelector('meta[name="color-scheme" i], style, link[rel~="stylesheet" i], [style], [bgcolor], body[text], font[color]')) {
+    const scheme = doc.createElement('meta');
+    scheme.name = 'color-scheme';
+    scheme.content = 'light dark';
+    head.prepend(scheme);
+  }
+
   const policy = doc.createElement('meta');
   policy.setAttribute('http-equiv', 'Content-Security-Policy');
   policy.setAttribute('content', artifactPreviewCsp(interactive));
@@ -258,6 +269,10 @@ export function buildPreviewHtml(
   head.insertBefore(referrer, policy.nextSibling);
 
   return { html: '<!DOCTYPE html>' + doc.documentElement.outerHTML, externalRefs };
+}
+
+export function buildArtifactPreviewHtml(html: string, files: Record<string, string>, path: string, interactive = false) {
+  return buildPreviewHtml(html, files, path, interactive, { adaptiveCanvas: true });
 }
 
 export function isSimpleArtifact(artifact: AgentArtifact | null): boolean {

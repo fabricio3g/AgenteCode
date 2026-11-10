@@ -7,7 +7,7 @@
   import DocumentViewer from '$lib/features/chat/DocumentViewer.svelte';
   import { artifactDocumentItems } from '$lib/features/chat/document-surface';
   import { resolveArtifactPresentation } from '$lib/services/artifact-model';
-  import { buildPreviewHtml } from '$lib/utils/preview-builder';
+  import { buildArtifactPreviewHtml } from '$lib/utils/preview-builder';
 
   import ViewerTabs from '$lib/features/chat/viewers/ViewerTabs.svelte';
   import { useViewerControls } from '$lib/features/chat/viewers/viewer-controls.svelte';
@@ -23,7 +23,7 @@
   $effect(() => { if (controls) controls.title = activeDoc?.title || activeDoc?.name || ''; return () => { if (controls) controls.title = ''; }; });
   const activeDoc = $derived(documents.find((doc) => doc.id === activeDocId) ?? documents.find((doc) => doc.id === entryPath) ?? documents[0]);
   const previewBuild = $derived(resolved.preview
-    ? buildPreviewHtml(resolved.preview.html, resolved.artifact.files, resolved.preview.basePath, true)
+    ? buildArtifactPreviewHtml(resolved.preview.html, resolved.artifact.files, resolved.preview.basePath, true)
     : { html: '', externalRefs: [] as string[] });
 
 </script>
@@ -42,9 +42,9 @@
       (no allow-same-origin), so it can't reach the app, its storage or
       electronAPI. That is what lets small web apps work right here.
     -->
-    <div class="min-h-0 flex-1 overflow-hidden bg-white">
+    <div class="min-h-0 flex-1 overflow-hidden">
       {#key `${refreshKey}:${previewBuild.html}`}
-        <iframe class="h-full w-full border-0" srcdoc={previewBuild.html} sandbox="allow-scripts allow-forms allow-modals" referrerpolicy="no-referrer" title={$t('artifacts.studio.preview')}></iframe>
+        <iframe class="artifact-preview-frame h-full w-full" srcdoc={previewBuild.html} sandbox="allow-scripts allow-forms allow-modals" referrerpolicy="no-referrer" title={$t('artifacts.studio.preview')}></iframe>
       {/key}
     </div>
   {:else}

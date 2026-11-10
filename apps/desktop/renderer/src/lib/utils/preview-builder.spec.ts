@@ -1,8 +1,20 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from 'vitest';
-import { buildPreviewHtml } from './preview-builder';
+import { buildArtifactPreviewHtml, buildPreviewHtml } from './preview-builder';
 
 describe('private artifact previews', () => {
+  it('adapts plain previews without changing authored palettes or exports', () => {
+    const plain = '<h1>Plain page</h1><input>';
+    expect(buildArtifactPreviewHtml(plain, {}, 'index.html').html).toContain('name="color-scheme" content="light dark"');
+    expect(buildPreviewHtml(plain, {}, 'index.html').html).not.toContain('color-scheme');
+    const styled = '<link rel="stylesheet" href="theme.css"><h1>Fixed palette</h1>';
+    const { html } = buildArtifactPreviewHtml(styled, { 'theme.css': 'body{background:white}' }, 'index.html');
+    expect(html).toContain('body{background:white}');
+    expect(html).not.toContain('color-scheme');
+    const fixed = '<meta name="color-scheme" content="light"><h1>Light</h1>';
+    expect(buildArtifactPreviewHtml(fixed, {}, 'index.html').html).toContain('name="color-scheme" content="light"');
+  });
+
   it('keeps fragment links inside the srcdoc document', () => {
     const { html } = buildPreviewHtml('<html><head></head><body><a href="#pricing">Pricing</a><section id="pricing"></section></body></html>', {}, 'index.html', true);
     const doc = new DOMParser().parseFromString(html, 'text/html');

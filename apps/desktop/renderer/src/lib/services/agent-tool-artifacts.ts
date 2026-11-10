@@ -4,7 +4,7 @@ import { validateChartData } from '$lib/utils/chart-math';
 import type { ChartData, Dataset } from '$lib/utils/chart-data';
 import type { AgentArtifact } from '$lib/types/chat';
 import { renderReportHtml, renderReportMarkdown, type GeneratedArtifactFile } from '$lib/services/generated-documents';
-import { resolveAccent, resolveTheme } from '$shared/artifact-theme';
+import { resolveAccent } from '$shared/artifact-theme';
 import { specPathFor } from '$lib/utils/artifact-files';
 import type { ToolContext, ToolResult } from '$lib/services/agent-types';
 
@@ -30,8 +30,9 @@ export async function handleCreateReport(params: {
       'Rebuild the report using gathered evidence. Include real body content, bullets, sources, and limitations instead of only section titles.'
     );
   }
+  const { theme } = params.args;
   const content = format === 'html'
-    ? renderReportHtml(params.args, { theme: resolveTheme(params.args.theme), accent: resolveAccent(params.args.accent) })
+    ? renderReportHtml(params.args, { theme: theme === 'light' || theme === 'dark' ? theme : undefined, accent: resolveAccent(params.args.accent) })
     : renderReportMarkdown(params.args);
 
   if (params.isWorkspace(params.ctx) && params.ctx.workspaceRoot) {
