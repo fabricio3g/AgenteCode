@@ -63,20 +63,23 @@
     position: relative;
     background: var(--primary);
     color: var(--primary-foreground);
-    box-shadow: none;
-    width: 1.75rem;
-    height: 1.75rem;
+    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.16);
+    width: 2.125rem;
+    height: 2.125rem;
     margin-inline: 0.125rem;
     transition: opacity var(--motion-instant) var(--motion-ease),
-      background-color var(--motion-instant) var(--motion-ease);
+      background-color var(--motion-instant) var(--motion-ease),
+      transform var(--motion-fast) var(--motion-ease-out);
   }
   :global(.composer-send.ui-local-2f6b41d9:not(:disabled):hover) {
     background: var(--primary-hover);
+    transform: scale(1.04);
   }
   :global(.composer-send.ui-local-2f6b41d9:disabled) {
     opacity: 1;
-    background: color-mix(in srgb, var(--foreground) 22%, var(--composer-surface));
-    color: var(--composer-surface);
+    background: color-mix(in srgb, var(--foreground) 12%, transparent);
+    color: var(--muted-foreground);
+    box-shadow: none;
   }
   .send-glyph { display: inline-flex; align-items: center; justify-content: center; }
   .send-glyph :global(svg) { width: 0.875rem; height: 0.875rem; stroke-width: 2; }

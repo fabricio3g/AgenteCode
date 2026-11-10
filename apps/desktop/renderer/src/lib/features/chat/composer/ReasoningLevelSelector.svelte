@@ -219,7 +219,7 @@
     white-space: nowrap;
   }
 
-  :global(.thinking-trigger.is-inline.ui-local-efeab109) { height:1.75rem;gap:0.25rem;font-size:var(--text-xs);padding-inline:0.25rem; }
+  :global(.thinking-trigger.is-inline.ui-local-efeab109) { height:2rem;gap:0.25rem;font-size:var(--text-xs);padding-inline:0.25rem; }
   :is(.thinking-trigger, :global(.thinking-trigger.ui-local-efeab109)) :global(.thinking-icon) { display:none; }
   .thinking-prefix { display:none; }
   :global(.thinking-trigger.is-inline.ui-local-efeab109) :global(.thinking-icon) { display:block; }

@@ -18,6 +18,11 @@ export interface Starter {
   /** What you get back, one line. */
   hint?: string;
   /**
+   * The prompt this row fills in. The links look writes it into the composer
+   * on hover, so the field previews the words before anything is picked.
+   */
+  preview?: string;
+  /**
    * What the prompt still needs, for rows whose prompt is only the start of a
    * sentence. A phrase, not a fragment of one — every locale words it its own
    * way, which is why the blank is never punctuation inside `label`.

@@ -13,7 +13,6 @@
   import { cn as uiClass } from '$lib/utils/cn';
 
   import { Check, Wrench } from 'lucide-svelte';
-  import ComposerGlyph from '$lib/features/shared/composer/ComposerGlyph.svelte';
   import { t } from 'svelte-i18n';
   import { Menu } from '$lib/components/ui';
   import { appStore } from '$lib/stores/app.svelte';
@@ -40,7 +39,7 @@
 <Menu bind:open placement="top-start" minWidth="15rem" label={$t('home.tools.title')}>
   {#snippet trigger(props)}
     <UiButton variant="plain" type="button" class={uiClass("tools-trigger", "ui-local-69ee6147", {"is-compact": compact, "composer-icon-control": compact, "is-open": open})}   title={$t('home.tools.title')} aria-label={`${$t('home.tools.title')} · ${$t('home.tools.button', { values: { on: totalOn, total } })}`} {...props}>
-      {#if compact}<ComposerGlyph name="more" />{:else}<Wrench class="size-3.5" /><span>{$t('home.tools.button', { values: { on: totalOn, total } })}</span>{/if}
+      {#if compact}<Wrench class="size-4" />{:else}<Wrench class="size-3.5" /><span>{$t('home.tools.button', { values: { on: totalOn, total } })}</span>{/if}
     </UiButton>
   {/snippet}
 

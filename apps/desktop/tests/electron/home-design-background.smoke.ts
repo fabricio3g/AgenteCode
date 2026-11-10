@@ -38,7 +38,7 @@ async function run() {
       accessibilityStore.update({ reduceMotion: 'on' });
       appStore.sidebarOpen = false; appStore.onboardingOpen = false;
       appStore.currentChatId = null;
-      appStore.config = { llm: { backend_mode: 'api', provider: 'openrouter', providers: { openrouter: { base_url: 'https://openrouter.ai/api/v1', model: 'deepseek/deepseek-v4-flash', has_api_key: true } } } };
+      appStore.config = { ui: { enable_thinking: true }, llm: { backend_mode: 'api', provider: 'openrouter', providers: { openrouter: { base_url: 'https://openrouter.ai/api/v1', model: 'deepseek/deepseek-v4-flash', has_api_key: true } } } };
       const api = window.electronAPI, invoke = api.invoke.bind(api), on = api.on.bind(api);
       const listeners = new Set();
       const qa = window.__qa = { starts: [], replies: [], turns: [], emit(event) { for (const listener of listeners) listener(event); } };
@@ -53,6 +53,11 @@ async function run() {
       qa.turns.push(appStore.sendCurrentMessage().catch(error => { qa.turnError = String(error); }));
     })()`);
     await waitFor('window.__qa.starts.length === 1');
+    await js(`(() => {
+      const qa = window.__qa;
+      qa.emit({runId: qa.starts[0].runId, type: 'event', envelope: {timestamp: new Date().toISOString(), event: {type: 'reasoning_delta', text: 'Plan the fixture layout.'}}});
+    })()`);
+    await waitFor("!!document.querySelector('.live[role=status]') && document.body.innerText.includes('Plan the fixture layout.')");
     await js(`(async () => {
       const { appStore } = await import('/src/lib/stores/app.svelte.ts');
       const chat = appStore.createChat('home'); window.__qa.home = chat.id;
@@ -60,6 +65,25 @@ async function run() {
       window.__qa.turns.push(appStore.sendCurrentMessage());
     })()`);
     await waitFor('window.__qa.starts.length === 2');
+    const chrome = await js<{ font: string[]; size: string[]; border: string[] }>(`(() => {
+      const sidebar = getComputedStyle(document.querySelector('.sidebar-row'));
+      const composer = getComputedStyle(document.querySelector('.composer-textarea'));
+      const shell = getComputedStyle(document.querySelector('.composer-shell'));
+      const bubble = getComputedStyle(document.querySelector('.user-bubble'));
+      return {
+        font: [sidebar.fontFamily, composer.fontFamily],
+        size: [sidebar.fontSize, composer.fontSize],
+        border: [shell.borderTop, bubble.borderTop]
+      };
+    })()`);
+    assert.equal(chrome.font[0], chrome.font[1]);
+    assert.equal(chrome.size[0], chrome.size[1]);
+    assert.equal(chrome.border[0], chrome.border[1]);
+    await js(`(() => {
+      const qa = window.__qa;
+      for (const output_bytes of [120, 400]) qa.emit({runId: qa.starts[1].runId, type: 'event', envelope: {timestamp: new Date().toISOString(), event: {type: 'generation_progress', output_bytes, tool_name: 'web_search'}}});
+    })()`);
+    await waitFor("document.querySelector('.live[role=status]')?.innerText.includes('280 B')");
     await js(`(async () => {
       const { appStore } = await import('/src/lib/stores/app.svelte.ts');
       appStore.setActiveSpace('code');

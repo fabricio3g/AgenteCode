@@ -52,7 +52,7 @@
      */
     beforeClose?: () => boolean | Promise<boolean>;
     class?: string;
-    children: Snippet;
+    children?: Snippet;
     headerActions?: Snippet;
     /** A reader supplies its own toolbar and close action. */
     hideHeader?: boolean;
@@ -110,7 +110,7 @@
            windows, large interface sizes); bodies with their own scroller
            still get a bounded height from this flex column. -->
       <div class="flex min-h-0 flex-1 flex-col overflow-y-auto">
-        {@render children()}
+        {@render children?.()}
       </div>
       {#if footer}
         <DialogFooter separated>

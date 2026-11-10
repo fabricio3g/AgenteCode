@@ -109,9 +109,21 @@
     hue: STARTER_HUES[id],
     label: $t(`code.starters.${id}.label`),
     hint: $t(`code.starters.${id}.hint`),
+    preview: $t(`code.starters.${id}.prompt`),
     slot: STARTER_SLOTS.has(id) ? $t(`code.starters.${id}.slot`) : undefined,
     key: formatShortcut(`mod+alt+${index + 1}`)
   })));
+
+  /**
+   * Hovering a link writes its prompt into the composer as a preview; leaving
+   * clears it. The same event the draft uses keeps it scoped to this chat, so
+   * a pane's own composer is the only one that changes.
+   */
+  function previewStarter(starter: Starter | null) {
+    window.dispatchEvent(new CustomEvent('code-composer-preview', {
+      detail: { chatId: chat?.id, text: starter?.preview ?? '' }
+    }));
+  }
 
   /**
    * Picking a starter fills the composer and focuses it; it never sends. The
@@ -193,7 +205,7 @@
           {#key chat.id}<CodeComposer {chat} />{/key}
           {#if !chat.messages.length}
             <div class="empty-links composer-column px-3 md:px-6">
-              <StarterList {starters} label={$t('code.starters.title')} onpick={useStarter} variant="links" />
+              <StarterList {starters} label={$t('code.starters.title')} onpick={useStarter} onpreview={previewStarter} variant="links" />
             </div>
           {/if}
         {/if}

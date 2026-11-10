@@ -17,7 +17,7 @@
   import { cn as uiClass } from '$lib/utils/cn';
 
   import { onDestroy, tick, untrack } from 'svelte';
-  import { ArrowUp, ChevronDown, ClipboardList, Eye, EyeOff, File as FileIcon, Paperclip, Play, ShieldCheck, Settings2, Target, X, Zap } from 'lucide-svelte';
+  import { ArrowUp, ChevronDown, ClipboardList, Eye, EyeOff, File as FileIcon, Paperclip, Play, ShieldCheck, Settings2, Target, Wrench, X, Zap } from 'lucide-svelte';
   import { toastStore } from '$lib/stores/toast.svelte';
   import { codeWorkspace } from './workspace.svelte';
   import { exactSlashCommand, matchSlashCommands, slashQuery } from './slash-commands';
@@ -55,6 +55,7 @@
   import DictationButton from '$lib/features/chat/composer/DictationButton.svelte';
   import DictationSetupPopover from '$lib/features/chat/composer/DictationSetupPopover.svelte';
   import ComposerRecorder from '$lib/features/chat/composer/ComposerRecorder.svelte';
+  import ComposerAsk from '$lib/features/chat/composer/ComposerAsk.svelte';
   import { Dictation } from '$lib/features/chat/composer/use-dictation.svelte';
   import { approvalsStore } from '$lib/stores/approvals.svelte';
   import { copy } from '$lib/copy';
@@ -104,6 +105,8 @@
    */
   let starterSlot = $state<string | null>(null);
   let starterPrefix = $state('');
+  /** The starter under the pointer, shown in the empty field as a preview. */
+  let previewText = $state('');
 
   const run = $derived(codeStore.runFor(chat.id));
   const running = $derived(!!run?.running);
@@ -144,8 +147,8 @@
     const last = chat.messages.at(-1)?.metadata;
     return !running && modelReady && (last?.codeStopReason === 'length' || !!last?.codeHitTurnLimit);
   });
-  /** A paused run waiting on the user: point at the row that needs an answer. */
-  const awaitingApproval = $derived(approvalsStore.forChat(chat.id).length > 0);
+  /** A paused run waiting on the user: the question rides on the prompt sheet. */
+  const pendingApprovals = $derived(approvalsStore.forChat(chat.id));
 
   const modes = $derived([
     // Short names and one-line hints: the menu is read at a glance; the full
@@ -176,13 +179,15 @@
     appStore.openSettings('models');
   }
 
-  const placeholder = $derived(
-    running
-      ? $t('code.steerPlaceholder')
-      : !modelReady
-        ? ownBackend === 'api' && ownModel ? copy.model.configureProvider : $t('code.selectModel')
-        : $t('code.composerPlaceholder')
-  );
+   const placeholder = $derived(
+     running
+       ? $t('code.steerPlaceholder')
+       : !modelReady
+         ? ownBackend === 'api' && ownModel ? copy.model.configureProvider : $t('code.selectModel')
+         : previewText && !text.trim()
+           ? previewText
+           : $t('code.composerPlaceholder')
+   );
 
   const hint = $derived(
     running
@@ -455,8 +460,9 @@
     }
   }
 
-  async function submit() {
-    const value = text.trim() || (attachments.length ? 'Please review the attached media.' : '');
+   async function submit() {
+     previewText = '';
+     const value = text.trim() || (attachments.length ? 'Please review the attached media.' : '');
     if(parseGoalCommand(value)){clearComposer();await goalControl?.command(value);return;}
     if (attaching) return;
     starterSlot = null;
@@ -537,10 +543,6 @@
     void submit();
   }
 
-  function scrollToApproval() {
-    document.querySelector('[data-awaiting-approval="true"]')?.scrollIntoView({ block: 'center', behavior: 'smooth' });
-  }
-
   function onInput(event: Event) {
     const element = event.currentTarget as HTMLTextAreaElement;
     text = element.value;
@@ -588,6 +590,7 @@
       const slot = typeof detail === 'object' ? detail?.slot : undefined;
       starterPrefix = slot ? value : '';
       starterSlot = slot ?? null;
+      previewText = '';
       text = mergeDraft(text, value);
       void Promise.resolve().then(focusComposer);
     };
@@ -602,13 +605,20 @@
       if (media.length) attachments = [...attachments, ...media.filter((item) => !attachments.some((existing) => existing.path === item.path))];
       void Promise.resolve().then(focusComposer);
     };
+    const onPreview = (event: Event) => {
+      const detail = (event as CustomEvent<{ chatId?: string; text?: string }>).detail ?? {};
+      if ((detail.chatId ?? appStore.currentChatId) !== chat.id) return;
+      previewText = detail.text ?? '';
+    };
     window.addEventListener('focus-composer', onFocusComposer);
     window.addEventListener('code-composer-draft', onDraft);
     window.addEventListener('code-composer-append', onAppend);
+    window.addEventListener('code-composer-preview', onPreview);
     return () => {
       window.removeEventListener('focus-composer', onFocusComposer);
       window.removeEventListener('code-composer-draft', onDraft);
       window.removeEventListener('code-composer-append', onAppend);
+      window.removeEventListener('code-composer-preview', onPreview);
     };
   });
 
@@ -640,7 +650,7 @@
 {#snippet overflowMenu()}
             <!-- The tools menu sits with the space's own controls, as in Home. -->
             <Menu bind:open={toolsMenuOpen} placement="top-start" minWidth="14rem" label={$t('code.toolsMenu')}>
-              {#snippet trigger(props)}<Tooltip label={$t('code.toolsMenu')} position="top"><UiIconButton label={$t('code.toolsMenu')} size="xs" type="button" class={uiClass("composer-icon-control", "ui-local-49e9c79c")}  {...props}><ComposerGlyph name="more" /></UiIconButton></Tooltip>{/snippet}
+              {#snippet trigger(props)}<Tooltip label={$t('code.toolsMenu')} position="top"><UiIconButton label={$t('code.toolsMenu')} size="xs" type="button" class={uiClass("composer-icon-control", "ui-local-49e9c79c")}  {...props}><Wrench /></UiIconButton></Tooltip>{/snippet}
               {#each menuGroups as group, index (index)}
                 {#if index > 0}<div class="ui-menu-separator" role="separator"></div>{/if}
                 {#each group as command (command.name)}<MenuItem icon={command.icon} label={command.label} disabled={command.disabled} onselect={() => void runCommand(command)} />{/each}
@@ -682,12 +692,6 @@
   ondrop={(event) => { const selected = [...(event.dataTransfer?.files || [])]; if (selected.length && !event.defaultPrevented) { event.preventDefault(); event.stopPropagation(); void attachFiles(selected); } }}>
   <div class="composer-frame mx-auto w-full" style="max-width: var(--thread-width);">
     {#if dictation.phase === 'choose'}<DictationSetupPopover {dictation} />{/if}
-    {#if awaitingApproval}
-      <Button variant="plain" type="button" class={uiClass("approval-pill mb-2 flex self-start items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium", "ui-local-49e9c79c")} onclick={scrollToApproval}>
-        <ShieldCheck class="size-3.5" />
-        {$t('code.awaitingApproval')}
-      </Button>
-    {/if}
     {#if fileOpen}
       <div class="slash-menu" role="listbox" aria-label={$t('code.projectFiles')}>
         {#each fileMatches as file, index (file)}
@@ -725,6 +729,20 @@
     {/if}
     <CodeAttachmentShelf {attachments} onremove={path => attachments = attachments.filter(item => item.path !== path)} />
     <div class="composer-shell ui-composer pointer-events-auto transition">
+      {#if pendingApprovals.length}
+        {@const approval = pendingApprovals[0]!}
+        <ComposerAsk
+          question={$t('code.awaitingApproval')}
+          detail={approval.reason || approval.command || approval.cwd}
+          options={[
+            { id: 'allow', label: copy.tool.allow, desc: approval.dangerous ? approval.cwd : undefined },
+            { id: 'deny', label: copy.tool.deny }
+          ]}
+          onanswer={(id) => approvalsStore.resolve(approval.id, id === 'allow')}
+        >
+          {#snippet hint()}<span>Enter {copy.tool.allow.toLowerCase()} · Esc {copy.tool.deny.toLowerCase()}</span>{/snippet}
+        </ComposerAsk>
+      {/if}
       <div class="composer-body">
         <UiTextarea variant="composer"
           bind:ref={textarea}
@@ -836,13 +854,6 @@
   /* The labelled context ring keeps its own width; squeezing it to an icon
      slot spilled the ring over the media glyph beside it. */
 
-
-
-  :global(.approval-pill.ui-local-49e9c79c) {
-    border: 1px solid color-mix(in srgb, var(--warning, #d97706) 45%, transparent);
-    background: color-mix(in srgb, var(--warning, #d97706) 12%, var(--background));
-    color: var(--foreground);
-  }
   .composer-dock {
     background: var(--chat-bg);
   }

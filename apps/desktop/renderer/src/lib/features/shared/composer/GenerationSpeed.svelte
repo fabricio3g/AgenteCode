@@ -16,5 +16,5 @@
 {/if}
 
 <style>
-  .generation-speed { color:var(--muted-foreground); font-size:var(--text-xs); font-variant-numeric:tabular-nums; white-space:nowrap; }
+  .generation-speed { color:var(--muted-foreground); font-size:var(--composer-status-size, var(--text-xs)); font-variant-numeric:tabular-nums; white-space:nowrap; }
 </style>

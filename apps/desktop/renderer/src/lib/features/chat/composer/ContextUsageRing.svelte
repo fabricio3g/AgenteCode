@@ -89,7 +89,7 @@
 <style>
   :global(.context-ring.ui-local-e4609396) { flex-shrink: 0; }
   :global(.context-ring.has-label.ui-local-e4609396) { width:auto;gap:0.375rem;padding-inline:0.25rem;border:0;box-shadow:none;background:transparent; }
-  .context-usage-label { font-size:var(--text-xs);color:var(--muted-foreground);white-space:nowrap; }
+  .context-usage-label { font-size:var(--composer-status-size, var(--text-xs));color:var(--muted-foreground);white-space:nowrap; }
   .breakdown-note { color: var(--muted-foreground); }
   .context-breakdown { width: 17rem; max-width: 75vw; margin-top: 0.625rem; }
   .context-bar { display:flex; height:0.375rem; overflow:hidden; border-radius:99px; background:var(--muted); margin-bottom:0.625rem; }

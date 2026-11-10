@@ -12,7 +12,6 @@
 
 <script lang="ts">
   import Button from './Button.svelte';
-  import Tooltip from './Tooltip.svelte';
   import type { Starter } from './starter-list';
 
   interface Props {
@@ -22,25 +21,30 @@
     onpick: (id: string) => void;
     /** `rows` is the picker look; `links` is one line of text under a composer. */
     variant?: 'rows' | 'links';
+    /** The row or link under the pointer, or `null` when it leaves. The links
+     *  look prints the prompt in the composer instead of opening a tooltip. */
+    onpreview?: (starter: Starter | null) => void;
   }
 
-  let { starters, label, onpick, variant = 'rows' }: Props = $props();
+  let { starters, label, onpick, variant = 'rows', onpreview }: Props = $props();
 </script>
 
 {#if variant === 'links'}
   <nav class="starter-links" aria-label={label}>
     {#each starters as starter, index (starter.id)}
       {#if index > 0}<span class="sep" aria-hidden="true">·</span>{/if}
-      <!-- The hint the row look puts on screen goes in a tooltip here: it is
-           portalled and absolutely positioned, so showing it never moves the
-           link the pointer is already on. -->
-      {#if starter.hint}
-        <Tooltip label={starter.hint} position="top">
-          <Button variant="plain" type="button" class="starter-link" onclick={() => onpick(starter.id)}>{starter.label}</Button>
-        </Tooltip>
-      {:else}
-        <Button variant="plain" type="button" class="starter-link" onclick={() => onpick(starter.id)}>{starter.label}</Button>
-      {/if}
+      <!-- The hint the row look prints is not repeated here: pointing at a link
+           writes its prompt into the composer, where the words will land. -->
+      <Button
+        variant="plain"
+        type="button"
+        class="starter-link"
+        onpointerenter={() => onpreview?.(starter)}
+        onpointerleave={() => onpreview?.(null)}
+        onfocus={() => onpreview?.(starter)}
+        onblur={() => onpreview?.(null)}
+        onclick={() => onpick(starter.id)}
+      >{starter.label}</Button>
     {/each}
   </nav>
 {:else}

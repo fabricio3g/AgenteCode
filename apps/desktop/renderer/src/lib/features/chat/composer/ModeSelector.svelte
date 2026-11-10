@@ -16,7 +16,7 @@
 {#if modes.length > 1}
   <Menu bind:open placement="top-start" label={copy.composer.selectMode}>
     {#snippet trigger(props)}
-      <Button variant="plain" type="button" class="composer-selector mode-trigger flex h-6 items-center gap-1 px-2"
+      <Button variant="plain" type="button" class="composer-selector mode-trigger mode-selector flex h-6 items-center gap-1 px-2"
         aria-label={copy.composer.selectMode} title={$t(`chat.mode.${appStore.composerMode}Hint`)} {...props}>
         <span class="trigger-label">{$t(`chat.mode.${appStore.composerMode}`)}</span>
         <ChevronDown class="size-3 shrink-0" />

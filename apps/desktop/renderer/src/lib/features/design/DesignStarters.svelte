@@ -6,8 +6,8 @@
   look so the Design dock and the Code space teach the same grammar.
 
   Picking one fills the composer and focuses it, so a mis-tap costs nothing and
-  the prompt can still be edited before sending. In the links look the hint is
-  a tooltip on the link; the line itself carries only the names.
+  the prompt can still be edited before sending. In the links look the hint
+  rides on the composer's placeholder instead of a tooltip.
 -->
 
 <script lang="ts">
@@ -45,8 +45,16 @@
     hue: HUES[suggestion.id] ?? 250,
     icon: ICONS[suggestion.id as keyof typeof ICONS],
     label: suggestion.label,
-    hint: firstClause(suggestion.prompt)
+    hint: firstClause(suggestion.prompt),
+    preview: suggestion.prompt
   })));
+
+  /** Pointing at a link previews its prompt in the composer, where it will land. */
+  function preview(starter: Starter | null) {
+    window.dispatchEvent(new CustomEvent('composer-preview', {
+      detail: { chatId: appStore.currentChatId, text: starter?.preview ?? '' }
+    }));
+  }
 
   function pick(id: string) {
     const suggestion = copy.design.suggestions.find((item) => item.id === id);
@@ -56,4 +64,4 @@
   }
 </script>
 
-<StarterList {starters} label={copy.design.dock.starters} onpick={pick} {variant} />
+<StarterList {starters} label={copy.design.dock.starters} onpick={pick} onpreview={preview} {variant} />

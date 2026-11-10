@@ -98,6 +98,21 @@
   let budgetTimer: ReturnType<typeof setTimeout> | null = null;
   let quotedText = $state('');
   let quotedSourceMessageId = $state('');
+  /** The starter under the pointer: its prompt is previewed in the empty field. */
+  let previewPrompt = $state('');
+
+  /* Design's link row (and anything else outside this subtree) announces the
+     starter it is pointing at, so one field behaviour serves every surface.
+     Scoped to the conversation in front, or a background tab would adopt it. */
+  $effect(() => {
+    const onPreview = (event: Event) => {
+      const detail = (event as CustomEvent<{ chatId?: string; text?: string }>).detail ?? {};
+      if (detail.chatId && detail.chatId !== appStore.currentChatId) return;
+      previewPrompt = detail.text ?? '';
+    };
+    window.addEventListener('composer-preview', onPreview);
+    return () => window.removeEventListener('composer-preview', onPreview);
+  });
   let destroyed = false;
 
   const generating = $derived(appStore.currentChatGenerating);
@@ -119,7 +134,7 @@
         ? say.inProgress('Agent working')
         : generating && appStore.composerMode === 'instant'
           ? say.inProgress('Answering')
-          : customPlaceholder ?? copy.composer.placeholder
+          : customPlaceholder ?? (previewPrompt && !appStore.composer.trim() ? previewPrompt : copy.composer.placeholder)
   );
 
   // Mirrors the guards inside sendCurrentMessage so the button reflects reality.
@@ -481,7 +496,7 @@
     {#if threadIsEmpty && suggestions}
       <!-- await tick() so the textarea holds the inserted prompt before we
            focus it; otherwise the caret lands at the pre-insert length. -->
-      <ComposerSuggestions onpick={async () => { await tick(); focusComposer(); }} />
+      <ComposerSuggestions onpick={async () => { previewPrompt = ''; await tick(); focusComposer(); }} onpreview={(starter) => (previewPrompt = starter?.preview ?? '')} />
     {/if}
   </div>
 </div>

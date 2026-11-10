@@ -559,10 +559,10 @@
               role="button"
               tabindex="0"
               aria-label={`Remove page flow from ${pageLabel(arrow.from)} to ${pageLabel(arrow.to)}`}
-              title={`Page flow: ${pageLabel(arrow.from)} → ${pageLabel(arrow.to)} · Click to remove · Use frame ⋯ → Link to change`}
               onclick={() => void removeFlow(arrow)}
               onkeydown={(event) => onFlowKeydown(event, arrow)}
             >
+              <title>{`Page flow: ${pageLabel(arrow.from)} → ${pageLabel(arrow.to)} · Click to remove · Use frame ⋯ → Link to change`}</title>
               <path class="flow-line" d={arrow.d} />
               <path class="head-mark" d="M-7 -4L0 0L-7 4" transform="translate({arrow.x} {arrow.y}) rotate({arrow.angle})" />
               <path class="flow-hit" d={arrow.d} />

@@ -135,7 +135,7 @@
 
 <aside class="sidebar relative isolate flex h-full w-full flex-col overflow-hidden bg-sidebar text-sidebar-foreground">
   <div class="sidebar-head" class:is-mac={appStore.sidebarOpen && typeof window !== 'undefined' && window.electronAPI?.platform === 'darwin'}>
-    <span class="sidebar-brand">{'Agente'}</span>
+    <span class="sidebar-brand"><img src="./app-icon.png" alt="" width="20" height="20" draggable="false" />Agente</span>
     {#if onToggle && appStore.sidebarOpen}
       <UiIconButton label={$t('titlebar.hideSidebar')}
         size="sm" data-sidebar-toggle aria-controls="app-sidebar" aria-expanded="true"
@@ -290,7 +290,8 @@
   .sidebar-head { display: flex; flex-shrink: 0; align-items: center; justify-content: space-between; gap: 0.5rem; height: 3rem; padding: 0 0.5rem 0 1rem; -webkit-app-region: drag; }
   .sidebar-head :global(button) { -webkit-app-region: no-drag; }
   .sidebar-head.is-mac { padding-inline-start: 78px; }
-  .sidebar-brand { min-width: 0; font-size: var(--text-sm); font-weight: 600; }
+  .sidebar-brand { display: flex; align-items: center; gap: 0.5rem; min-width: 0; font-size: var(--text-sm); font-weight: 600; }
+  .sidebar-brand img { flex: none; border-radius: var(--radius-sm); }
   /* Chats sit one step in from their date, so the list reads as groups. */
   .chat-group-rows { padding-inline-start: 0.25rem; }
 

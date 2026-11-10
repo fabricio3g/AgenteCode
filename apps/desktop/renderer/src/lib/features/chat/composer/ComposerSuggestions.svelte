@@ -21,19 +21,17 @@
   interface Props {
     /** Focuses the composer textarea after the prompt is inserted. */
     onpick: () => void;
+    /** The starter under the pointer, so the composer can preview its prompt. */
+    onpreview?: (starter: Starter | null) => void;
   }
 
-  let { onpick }: Props = $props();
-
-  /** The links paint no description, so the prompt's first clause rides on the
-   *  link's tooltip instead — the same thing the row look prints under the name. */
-  const firstClause = (prompt: string) => prompt.split(/[.,]\s/)[0].replace(/\.$/, '').trim();
+  let { onpick, onpreview }: Props = $props();
 
   const starters = $derived<Starter[]>(
     copy.emptyState.suggestions.map((suggestion) => ({
       id: suggestion.id,
       label: suggestion.label,
-      hint: firstClause(suggestion.prompt)
+      preview: suggestion.prompt
     }))
   );
 
@@ -49,7 +47,7 @@
 </script>
 
 <div class="suggestions">
-  <StarterList {starters} label={copy.emptyState.greeting} onpick={(id) => void pick(id)} variant="links" />
+  <StarterList {starters} label={copy.emptyState.greeting} onpick={(id) => void pick(id)} {onpreview} variant="links" />
 </div>
 
 <style>
