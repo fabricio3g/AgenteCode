@@ -104,6 +104,8 @@
 {/if}
 
 <style>
+  /* A file is an object you can pick up: one soft sheet a step above the
+     page, with a hairline ring. Files that follow each other stack closely. */
   .art-card {
     display: flex;
     width: var(--inline-block-width);
@@ -111,11 +113,14 @@
     margin-top: 0.75rem;
     align-items: center;
     gap: 0.25rem;
-    padding: 0.375rem 0.5rem 0.375rem 0.375rem;
-    border-block: 1px solid var(--border-subtle);
-    border-radius: 0;
-    background: transparent;
-    transition: background-color var(--motion-fast) var(--motion-ease);
+    padding: 0.5rem 0.625rem 0.5rem 0.5rem;
+    border: 1px solid var(--border-subtle);
+    border-radius: 0.875rem;
+    background: var(--artifact-surface);
+    transition: background-color var(--motion-instant) var(--motion-ease);
+  }
+  :global(.art-card + .art-card) {
+    margin-top: 0.375rem;
   }
   .art-card:hover {
     background: var(--artifact-surface-hover);
@@ -174,7 +179,7 @@
   }
   .art-note {
     margin-top: 0.375rem;
-    font-size: 12px;
+    font-size: var(--text-xs);
     color: var(--error);
   }
 
@@ -186,8 +191,15 @@
     max-width: 100%;
     margin-top: 0.75rem;
   }
+  /* Expand sits at the end of the artifact's own header row, so it costs no
+     line of its own; the header leaves it room. */
+  .art-inline > :global(.viz-surface > .viz-header) {
+    padding-right: 2.25rem;
+  }
   :global(.art-expand.ui-local-51be238f) {
-    align-self: flex-end;
+    position: absolute;
+    top: 2.375rem;
+    right: 0;
     display: inline-flex;
     width: 1.75rem;
     height: 1.75rem;

@@ -4,7 +4,8 @@
   import { cn as uiClass } from '$lib/utils/cn';
 
   import { onMount } from 'svelte';
-  import { BarChart3, Download, Table2 } from 'lucide-svelte';
+  import { Download, Table2 } from 'lucide-svelte';
+  import VizHeading from '$lib/ui/components/VizHeading.svelte';
   import { Button } from '$lib/components/ui';
   import { parseChartData, type ChartData } from '$lib/utils/chart-data';
   import { CHART_NAMES, resolveChartType, type ChartType } from '$lib/utils/chart-types';
@@ -141,13 +142,14 @@
 
 <section class="viz-surface artifact-chart" aria-label={title || (kind ? CHART_NAMES[kind] : 'Chart')} data-chart-type={type} data-variant={variant}>
   <header class="viz-header">
-    <div class="chart-heading">
-      {#if variant === 'artifact'}<span class="artifact-kind-tile size-8 rounded-lg" style:--artifact-accent="var(--accent-violet)" aria-hidden="true"><BarChart3 class="size-4" /></span>{/if}
-      <div class="min-w-0">
+    {#if variant === 'artifact'}
+      <VizHeading kind="chart" {title} subtitle={data?.subtitle} />
+    {:else}
+      <div class="min-w-0 flex-1">
         {#if title}<h3 class="viz-title">{title}</h3>{/if}
         {#if data?.subtitle}<p class="viz-subtitle">{data.subtitle}</p>{/if}
       </div>
-    </div>
+    {/if}
     <div class="chart-actions">
       <Button variant="ghost" size="xs" aria-label="Show chart data" aria-pressed={tableOpen} onclick={() => (tableOpen = !tableOpen)}><Table2 /><span>Data</span></Button>
       <Button variant="ghost" size="xs" aria-label="Download chart as SVG" disabled={!!error} onclick={downloadSvg}><Download /> SVG</Button>
@@ -195,7 +197,6 @@
 </section>
 
 <style>
-  .chart-heading { display:flex; flex:1; min-width:0; align-items:center; gap:0.625rem; }
   .chart-actions { display: flex; flex-shrink: 0; align-items: center; gap: 0.125rem; }
   .chart-legend { display: flex; flex-wrap: wrap; gap: 0.25rem 0.875rem; margin: 0 0 0.75rem; }
   .chart-legend :global(button.ui-local-647a5dec) { display: inline-flex; align-items: center; gap: 0.375rem; min-height: 1.5rem; color: var(--text-secondary); font-size: var(--text-xs); }

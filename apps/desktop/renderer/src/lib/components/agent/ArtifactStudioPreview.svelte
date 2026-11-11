@@ -30,7 +30,7 @@
 
 <div class="flex h-full min-h-0 flex-col bg-background">
   {#if resolved.manifest.presentation === 'inline' && resolved.artifact.inline}
-    <div class="min-h-0 flex-1 overflow-auto p-4 sm:p-6"><ArtifactRenderer artifact={resolved.artifact} /></div>
+    <div class="studio-inline min-h-0 flex-1 overflow-auto p-4 sm:p-6"><ArtifactRenderer artifact={resolved.artifact} /></div>
   {:else if activeDoc}
     <ViewerTabs items={documents.map(doc => ({ id: doc.id, title: doc.title || doc.name }))} active={activeDoc.id} onchange={id => { activeDocId = id; if (controls) { controls.query = ''; controls.searchOpen = false; } }} />
     <div class="studio-doc min-h-0 flex-1 overflow-hidden">
@@ -48,11 +48,17 @@
       {/key}
     </div>
   {:else}
-    <div class="min-h-0 flex-1 overflow-auto p-4 sm:p-6"><ArtifactRenderer artifact={resolved.artifact} /></div>
+    <div class="studio-inline min-h-0 flex-1 overflow-auto p-4 sm:p-6"><ArtifactRenderer artifact={resolved.artifact} /></div>
   {/if}
 
 </div>
 
 <style>
+  /* The panel's own header already carries the kind and the title, and the
+     panel is the frame: the artifact drops its heading and its top rule. */
+  .studio-inline > :global(.viz-surface) { margin-top: 0; padding-top: 0; border-top: 0; }
+  .studio-inline > :global(.viz-surface > .viz-header > .viz-heading) { display: none; }
+  .studio-inline > :global(.viz-surface > .viz-header) { justify-content: flex-end; }
+  .studio-inline > :global(.viz-surface > .viz-header:not(:has(> :not(.viz-heading)))) { display: none; }
   .studio-doc { display:flex; min-width:0; flex-direction:column; margin:0 4px 4px; border-radius:8px; overflow:hidden; }
 </style>

@@ -1,6 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+  import VizHeading from './VizHeading.svelte';
   import type { DiagramArtifactPayload } from '$lib/types/chat';
   import { themeStore } from '$lib/stores/theme.svelte';
 
@@ -133,7 +134,7 @@
 
 <section class="viz-surface artifact-diagram" aria-label={payload.title || 'Diagram'}>
   {#if payload.title}
-    <header class="viz-header"><h3 class="viz-title">{payload.title}</h3></header>
+    <header class="viz-header"><VizHeading kind="diagram" title={payload.title} /></header>
   {/if}
   <div bind:this={diagramEl} class="diagram-output"></div>
   {#if loading}
@@ -154,6 +155,13 @@
   .diagram-output :global(svg) {
     max-width: 100%;
     height: auto;
+  }
+
+  /* Mermaid draws square boxes; the app has no square corners. */
+  .diagram-output :global(.node rect),
+  .diagram-output :global(.cluster rect) {
+    rx: 10px;
+    ry: 10px;
   }
 
   .diagram-loading {

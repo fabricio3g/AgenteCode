@@ -87,7 +87,11 @@
   }
   :global(.open.ui-local-b2856088) {
     display: flex;
+    width: 100%;
+    flex: 1;
     flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-start;
     text-align: left;
     outline: none;
   }
@@ -120,6 +124,8 @@
   .thumb {
     position: relative;
     display: flex;
+    width: 100%;
+    flex-shrink: 0;
     aspect-ratio: 16 / 10;
     align-items: center;
     justify-content: center;

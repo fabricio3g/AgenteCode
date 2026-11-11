@@ -2,6 +2,7 @@
 
 <script lang="ts">
   import type { InfoCardArtifactPayload } from '$lib/types/chat';
+  import VizHeading from './VizHeading.svelte';
 
   interface Props {
     payload: InfoCardArtifactPayload;
@@ -13,10 +14,7 @@
 
 <section class="viz-surface info-card" aria-label={payload.title || 'Info card'}>
   <header class="viz-header">
-    <h3 class="viz-title">{payload.title}</h3>
-    {#if payload.subtitle}
-      <p class="viz-subtitle">{payload.subtitle}</p>
-    {/if}
+    <VizHeading kind="info_card" title={payload.title} subtitle={payload.subtitle} />
   </header>
 
   {#if payload.rows?.length}

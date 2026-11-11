@@ -10,6 +10,7 @@
 -->
 
 <script lang="ts">
+  import VizHeading from './VizHeading.svelte';
   import type { HtmlCardArtifactPayload } from '$lib/types/chat';
   import { appStore } from '$lib/stores/app.svelte';
   import { buildWidgetDocument, readThemeTokens } from './widget-kit';
@@ -92,7 +93,7 @@
 <section class="viz-surface html-card" aria-label={payload.title || 'HTML card'}>
   {#if payload.title}
     <header class="viz-header">
-      <h3 class="viz-title">{payload.title}</h3>
+      <VizHeading kind={interactive ? 'widget' : 'html_card'} title={payload.title} />
     </header>
   {/if}
   <div class="html-card-frame-wrap" style:height={`${height}px`}>

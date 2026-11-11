@@ -1,6 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+  import VizHeading from './VizHeading.svelte';
   import type { MapArtifactPayload } from '$lib/types/chat';
   import { geoPath, geoGraticule10, geoCentroid, geoArea } from 'd3-geo';
   import { appStore } from '$lib/stores/app.svelte';
@@ -281,7 +282,7 @@
 
 <div class="viz-surface artifact-map">
   {#if payload.title}
-    <header class="viz-header"><h3 class="viz-title">{payload.title}</h3></header>
+    <header class="viz-header"><VizHeading kind="map" title={payload.title} /></header>
   {/if}
 
   <svg
