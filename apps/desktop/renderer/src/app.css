@@ -398,22 +398,23 @@
   color-scheme: dark;
 
   /*
-   * Neutral graphite. The page is near black; things that sit closer to the
-   * user are one step lighter (panels, the composer, dock cards), and menus
-   * one step more. Every fill and hairline is a white alpha so it reads the
+   * Neutral graphite, not black. The sidebar's ground is the darkest tone; the
+   * page is a dark grey (#1c1c1c, set with the window colour in
+   * shared/window-theme.ts), and things that sit closer to the user are one
+   * step lighter (panels, the composer, dock cards), and menus one step more. Every fill and hairline is a white alpha so it reads the
    * same on any of those surfaces. One accent (orange) for focus and active.
    */
   --background: var(--theme-background);
   --foreground: var(--theme-foreground);
-  --card: #0a0a0a;
+  --card: #232323;
   --card-foreground: var(--foreground);
-  --popover: #0a0a0a;
+  --popover: #272727;
   --popover-foreground: var(--foreground);
   --primary: #ffffff;
   --primary-foreground: #000000;
-  --secondary: #111111;
+  --secondary: #2a2a2a;
   --secondary-foreground: var(--foreground);
-  --muted: #111111;
+  --muted: #2b2b2b;
   --muted-foreground: #b3b3b3;
   --accent: rgb(255 255 255 / 0.06);
   --accent-foreground: var(--foreground);
@@ -434,10 +435,10 @@
   /* The ground the canvas sheet rests on. Shadows barely read on near-black,
      so in dark the depth comes from tone: the ground is almost black, well
      under the #1a1a1a canvas, so the two never read as the same grey. */
-  --sidebar: #000000;
+  --sidebar: #161616;
   /* The ground is far under the canvas, so a rail inside the sheet would read
      as a hole; it takes the same small step light takes (#fff → #f5f5f6). */
-  --sheet-rail: #0a0a0a;
+  --sheet-rail: #181818;
   --sidebar-foreground: var(--foreground);
   --sidebar-primary: var(--primary);
   --sidebar-primary-foreground: var(--primary-foreground);
@@ -461,8 +462,8 @@
 
   /* Aliases */
   --surface: var(--card);
-  --surface-hover: #171717;
-  --surface-active: #111111;
+  --surface-hover: #2f2f2f;
+  --surface-active: #292929;
   --surface-overlay: var(--popover);
   --text: var(--foreground);
   --text-secondary: #c8c8c8;
@@ -476,7 +477,7 @@
   --border-inverse: rgb(255 255 255 / 0.3);
   --primary-hover: #ffffff;
   --primary-fg: var(--primary-foreground);
-  --accent-hover: #171717;
+  --accent-hover: #2f2f2f;
   --accent-fg: var(--accent-foreground);
   --accent-soft: rgb(255 255 255 / 0.06);
 
@@ -510,9 +511,9 @@
   --brand-accent: #e8793a;
   --brand-accent-strong: #f29a64;
 
-  --user-bubble: #111111;
+  --user-bubble: #2b2b2b;
   --user-bubble-text: var(--foreground);
-  --composer-surface: #1b1b1b;
+  --composer-surface: #262626;
   --composer-ring: rgb(255 255 255 / 0.12);
   /* A shadow on a dark page reads as depth, not as dirt: keep it tight. */
   --composer-shadow: 0 1px 2px rgb(0 0 0 / 0.5);
@@ -568,7 +569,7 @@
   --accent-yellow-bg: var(--warning-bg);
   --accent-yellow-text: var(--warning);
 
-  --code-terminal-bg: #111111;
+  --code-terminal-bg: #161616;
   --code-terminal-text: #d4d4d4;
   --code-terminal-prompt: var(--success);
   --code-terminal-dim: #7a7a7a;
@@ -767,6 +768,7 @@ textarea {
   font-variant-numeric: tabular-nums;
 }
 .viz-header { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 0.5rem 1rem; margin-bottom: 0.875rem; }
+.viz-heading { display: flex; flex: 1; min-width: 0; align-items: center; gap: 0.625rem; }
 .viz-title { margin: 0; color: var(--foreground); font-size: var(--text-sm); font-weight: 600; line-height: 1.4; letter-spacing: -0.015em; text-wrap: balance; }
 .viz-subtitle { margin: 0.25rem 0 0; color: var(--text-secondary); font-size: var(--text-xs); line-height: 1.5; }
 .viz-error { margin: 0.5rem 0; color: var(--error); font-size: var(--text-sm); }

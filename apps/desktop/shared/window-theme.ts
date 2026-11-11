@@ -2,7 +2,7 @@ export type WindowTheme = 'light' | 'dark';
 export const THEME_STORAGE_KEY = 'chatealm_theme';
 export const WINDOW_THEME_COLORS = {
   light: { color: '#ffffff', symbolColor: '#000000' },
-  dark: { color: '#000000', symbolColor: '#ffffff' }
+  dark: { color: '#1c1c1c', symbolColor: '#ffffff' }
 } as const;
 
 export function parseWindowTheme(value: unknown): WindowTheme | null {
