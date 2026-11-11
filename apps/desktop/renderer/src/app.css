@@ -56,7 +56,7 @@
   color-scheme: light;
 
   /* Canonical (Flaxeo / shadcn-style) */
-  --radius: 0.5rem;
+  --radius: 0.625rem;
   /* Radius tension: pills stay for entry points; utility inputs go
      sharp so controls read as controls, not as more chrome. */
   --radius-input: 6px;

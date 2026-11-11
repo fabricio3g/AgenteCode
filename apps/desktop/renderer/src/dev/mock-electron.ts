@@ -52,7 +52,19 @@ const savedSessions: unknown[] = [
     draft: '',
     contextMode: 'code',
     projectId: null,
-    messages: [{ id: 'm1', role: 'user', content: 'Refactor the auth flow', createdAt: Date.now() - 172_800_000 }]
+    messages: [
+      { id: 'm1', role: 'user', content: 'Refactor the auth flow', createdAt: Date.now() - 172_800_000 },
+      {
+        id: 'm2', role: 'assistant', content: 'The session check now lives in one place and both routes use it.', done: true, createdAt: Date.now() - 172_700_000,
+        agentSteps: [{ id: 'auth-edit', type: 'editing', toolName: 'edit_file', label: 'Edit', status: 'done', diffStats: [
+          { path: 'src/auth/session.ts', kind: 'created', additions: 64, deletions: 0 },
+          { path: 'src/routes/login.ts', kind: 'modified', additions: 12, deletions: 31 },
+          { path: 'src/routes/account.ts', kind: 'modified', additions: 9, deletions: 27 },
+          { path: 'src/auth/legacy-check.ts', kind: 'deleted', additions: 0, deletions: 48 },
+          { path: 'tests/auth/session.test.ts', kind: 'created', additions: 85, deletions: 0 }
+        ] }]
+      }
+    ]
   },
   // A Home chat with a few artifacts, for the Artifacts screen.
   {

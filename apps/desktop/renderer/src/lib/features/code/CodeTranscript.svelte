@@ -49,6 +49,9 @@
   import { approvalsStore } from '$lib/stores/approvals.svelte';
   import { editedFiles, replyBlocks } from './work-blocks';
   import { unlinkedChildren } from './subagent-row';
+  import FileChangesCard from '$lib/components/agent/FileChangesCard.svelte';
+  import { restoreCodeEdits } from './code-edits';
+  import { appStore } from '$lib/stores/app.svelte';
 
   let { messages, chatId }: { messages: ChatMessage[]; chatId: string } = $props();
 
@@ -64,6 +67,19 @@
   /** Live run state for retry + todo visibility while streaming. */
   const run = $derived(codeStore.runFor(chatId));
   const plan = $derived(pendingPlan(messages));
+
+  /* Undo reverts the latest edits, so only the last reply that edited offers it. */
+  const lastEditId = $derived([...messages].reverse().find((message) => message.role === 'assistant' && editedFiles(message.agentSteps ?? []).length)?.id);
+
+  async function undoEdits() {
+    const chat = appStore.chats.find((item) => item.id === chatId);
+    if (!chat) return;
+    try {
+      await restoreCodeEdits(chat, 'undo');
+    } catch (error) {
+      toastStore.error((error as Error)?.message || String(error));
+    }
+  }
 
   /* An approval waiting on you is the one thing a scrolled-away transcript
      cannot show, so the status row and the jump button share the answer. */
@@ -277,6 +293,19 @@
               </div>
             {/if}
           {/each}
+
+          <!-- What the turn left on disk, once it has settled. -->
+          {#if !streaming}
+            {@const edits = editedFiles(entries.map((entry) => entry.step))}
+            {#if edits.length}
+              <FileChangesCard
+                stats={edits}
+                onreview={() => codeWorkspace.toggleChanges(true)}
+                onundo={message.id === lastEditId && !run?.running ? undoEdits : undefined}
+                onopenfile={(path) => codeWorkspace.showFileInChanges(path)}
+              />
+            {/if}
+          {/if}
 
           <!-- Unlinked children use the same rows as linked and live children. -->
           {#each orphans as child (child.id)}

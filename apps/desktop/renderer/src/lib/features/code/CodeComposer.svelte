@@ -34,7 +34,8 @@
   import { latestGenerationSpeed } from '$lib/utils/generation-speed';
   import ContextUsageRing from '$lib/features/chat/composer/ContextUsageRing.svelte';
   import { codeStore } from './code.svelte';
-  import { codeEdits, initProject, projectFiles, setAgenteModel } from './code-ipc';
+  import { initProject, projectFiles, setAgenteModel } from './code-ipc';
+  import { restoreCodeEdits } from './code-edits';
   import CodeProjectDialog from './CodeProjectDialog.svelte';
   import CodeAttachmentShelf from './CodeAttachmentShelf.svelte';
   import PromptQueue from '$lib/features/shared/PromptQueue.svelte';
@@ -166,14 +167,7 @@
     if (mode !== runtimeMode) void codeStore.setMode(chat.id, mode).catch((error) => toastStore.error(String(error)));
   }
 
-  async function editFiles(action: 'undo' | 'redo') {
-    await codeStore.ensureSession(chat.id);
-    const result = await codeEdits(chat.id, action);
-    if (!result.ok) throw new Error(result.error || 'Could not restore files.');
-    await codeStore.refreshCheckpoints(chat.id);
-    if (project) await codeWorkspace.refreshChanges({ chatId: chat.id, projectRoot: project.rootPath, sessionId: chat.codeAgent?.sessionId || undefined });
-    toastStore.success(`${action === 'undo' ? 'Restored' : 'Reapplied'} ${result.files?.length ?? 0} files`);
-  }
+  const editFiles = (action: 'undo' | 'redo') => restoreCodeEdits(chat, action);
 
   function openModelHub() {
     appStore.openSettings('models');

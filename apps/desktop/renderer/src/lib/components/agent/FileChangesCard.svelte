@@ -19,12 +19,16 @@
     stats: CodeAgentDiffStat[];
     /** Opens the full review (the Changes pane) where the surface has one. */
     onreview?: () => void;
+    /** Puts the files back as they were before these edits. */
+    onundo?: () => void;
+    /** Opens one file's diff; without it a row unfolds the file's contents in place. */
+    onopenfile?: (path: string) => void;
   }
 
   /** Files listed before "show more". */
   const VISIBLE = 3;
 
-  let { stats, onreview }: Props = $props();
+  let { stats, onreview, onundo, onopenfile }: Props = $props();
   let open = $state<Set<string>>(new Set());
   let showAll = $state(false);
 
@@ -60,6 +64,9 @@
       <p class="title">{$t('code.activity.done.edit', { values: { n: files.length } })}</p>
       <p class="cnt"><span class="a">+{adds}</span><span class="d">−{dels}</span></p>
     </div>
+    {#if onundo}
+      <Button variant="ghost" size="sm" onclick={onundo}>{$t('canvas.undo')}</Button>
+    {/if}
     {#if onreview}
       <Button variant="outline" size="sm" onclick={onreview}>{$t('codeWs.viewChanges')}</Button>
     {/if}
@@ -67,11 +74,11 @@
   <ul class="list">
     {#each shown as file (file.path)}
       <li>
-        <Button variant="plain" class={uiClass('row', 'ui-local-9cb339f3')} aria-expanded={open.has(file.path)} disabled={!body(file)} onclick={() => toggle(file.path)}>
+        <Button variant="plain" class={uiClass('row', 'ui-local-9cb339f3')} aria-expanded={onopenfile ? undefined : open.has(file.path)} disabled={!onopenfile && !body(file)} onclick={() => (onopenfile ? onopenfile(file.path) : toggle(file.path))}>
           <span class="path" class:gone={file.kind === 'deleted'} title={file.path}>{file.path}</span>
           <span class="cnt"><span class="a">+{file.additions}</span><span class="d">−{file.deletions}</span></span>
         </Button>
-        {#if open.has(file.path)}<pre class="diff">{body(file)}</pre>{/if}
+        {#if !onopenfile && open.has(file.path)}<pre class="diff">{body(file)}</pre>{/if}
       </li>
     {/each}
   </ul>

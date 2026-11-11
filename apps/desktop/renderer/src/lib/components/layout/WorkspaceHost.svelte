@@ -263,7 +263,7 @@
   .workspace-main { position: absolute; z-index: 0; display: flex; max-width:100%;max-height:100%; min-width: 0; min-height: 0; overflow: hidden; }
   /* Quiet surfaces: one hairline and a soft shadow, no inner highlight. A docked
      panel is flat; a floating one lifts a little. */
-  .workspace-panel { position: absolute; display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; border-radius: var(--radius-sm); background: var(--background); }
+  .workspace-panel { position: absolute; display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; border-radius: var(--radius-xl); background: var(--background); }
   /* The edge is drawn on top of the content: an inset shadow sat under children
      with their own fill (the canvas board, the browser), so those panels lost it. */
   .workspace-panel::after { content: ''; position: absolute; inset: 0; z-index: 30; border: 1px solid var(--border-subtle); border-radius: inherit; pointer-events: none; }
