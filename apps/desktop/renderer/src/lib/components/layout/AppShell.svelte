@@ -13,6 +13,8 @@
   import CalendarScreen from '$lib/features/home/CalendarScreen.svelte';
   import ComplementsScreen from '$lib/features/home/ComplementsScreen.svelte';
   import ConversationPanes from '$lib/features/code/ConversationPanes.svelte';
+  import ContextPanel from '$lib/features/chat/ContextPanel.svelte';
+  import { PanelRight as ContextIcon } from 'lucide-svelte';
   import ArtifactsScreen from '$lib/features/artifacts/ArtifactsScreen.svelte';
   import FilesScreen from '$lib/features/files/FilesScreen.svelte';
   import ArtifactPanel from '$lib/features/artifacts/ArtifactPanel.svelte';
@@ -86,11 +88,13 @@
   const showArtifact = $derived(!inCodeSpace && appStore.homeView === 'chat' && !!appStore.artifactPanel);
   /** The canvas annotates for whichever conversation is open, so it follows the chat. */
   const canvasAvailable = $derived((inCodeSpace && !!changesTarget) || (!inCodeSpace && appStore.homeView === 'chat' && !!appStore.currentChat));
+  const contextAvailable = $derived(!inCodeSpace && appStore.homeView === 'chat' && !!appStore.currentChat);
   const dockPanels = $derived.by(() => {
     const panels: WorkspacePanel[] = [
       { id: 'artifact', title: $t('artifacts.title'), icon: FileBox, content: artifactPanel, region: 'right', available: showArtifact, open: showArtifact, onhide: () => artifactPanelHandle?.requestClose() },
       { id: 'browser', title: $t('browser.title'), icon: Globe, content: browserPanel, region: 'right', available: true, open: browserPanelStore.open, onhide: () => void browserPanelStore.hide() },
-      { id: 'canvas', title: $t('canvas.title'), icon: Image, content: canvasPanel, region: 'right', available: canvasAvailable, open: workspaceLayout.isOpen('canvas'), onhide: () => workspaceLayout.hide('canvas') }
+      { id: 'canvas', title: $t('canvas.title'), icon: Image, content: canvasPanel, region: 'right', available: canvasAvailable, open: workspaceLayout.isOpen('canvas'), onhide: () => workspaceLayout.hide('canvas') },
+      { id: 'context', title: $t('context.title'), icon: ContextIcon, content: contextPanel, region: 'right', available: contextAvailable, open: workspaceLayout.isOpen('context'), onhide: () => workspaceLayout.hide('context') }
 
     ];
     return panels;
@@ -389,6 +393,9 @@
 
 {#snippet artifactPanel(state: PanelRenderState)}<ArtifactPanel embedded exposed={state.exposed} bind:this={artifactPanelHandle} />{/snippet}
 {#snippet browserPanel(state: PanelRenderState)}<BrowserPanel embedded exposed={state.exposed && !settingsShowing} presentationKey={JSON.stringify(state.rect)} chatId={appStore.currentChat?.id} />{/snippet}
+{#snippet contextPanel()}
+  {#if appStore.currentChat}<ContextPanel chat={appStore.currentChat} />{/if}
+{/snippet}
 {#snippet canvasPanel()}
   {#if appStore.currentChat}<CanvasPanel chatId={appStore.currentChat.id} />{/if}
 {/snippet}

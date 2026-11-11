@@ -2960,6 +2960,13 @@
     "systemHint": "The voices built into your operating system.",
     "runsOn": "Runs on"
   },
+  "context": {
+    "title": "上下文",
+    "latest": "最新回复",
+    "web": "网页阅读",
+    "files": "已更改的文件",
+    "empty": "此对话生成的内容、来源和已更改的文件会显示在这里。"
+  },
   "workspace": {
     "panels": "工作区面板",
     "actions": "面板操作",

@@ -29,6 +29,8 @@
 
   // This component is keyed by chat id: every mounted conversation owns a dock,
   // including hidden panels, their scroll, terminal focus and canvas gestures.
+  import ContextPanel from '$lib/features/chat/ContextPanel.svelte';
+  import { PanelRight as ContextIcon } from 'lucide-svelte';
   let { chat, split = false, onclose, oncontextmenu }: { chat: ChatSession; split?: boolean; onclose?: () => void; oncontextmenu?: (event: MouseEvent) => void } = $props();
   const chatId = untrack(() => chat.id);
   const scope = conversationScope(chatId);
@@ -46,6 +48,7 @@
       { id: 'tasks', title: $t('code.todosTitle'), icon: ListChecks, content: tasksPanel, region: 'right', available: true, open: layout.isOpen('tasks'), onhide: () => layout.hide('tasks') },
       { id: 'browser', title: $t('browser.title'), icon: Globe, content: browserPanel, region: 'right', available: true, open: browser.open, onhide: () => void browser.hide() },
       { id: 'canvas', title: $t('canvas.title'), icon: Image, content: canvasPanel, region: 'right', available: true, open: layout.isOpen('canvas'), onhide: () => layout.hide('canvas') },
+      { id: 'context', title: $t('context.title'), icon: ContextIcon, content: contextPanel, region: 'right', available: true, open: layout.isOpen('context'), onhide: () => layout.hide('context') },
       { id: 'processes', title: $t('codeWs.processes'), icon: Activity, content: processesPanel, region: 'bottom', available, open: layout.isOpen('processes'), onhide: () => layout.hide('processes') }
     ];
     for (const term of codeWorkspace.terminalsForScope(scope)) items.push({ id: `terminal:${term.id}`, title: term.title, icon: SquareTerminal, content: terminalPanel, region: 'bottom', available, open: layout.isOpen(`terminal:${term.id}`), onhide: () => layout.hide(`terminal:${term.id}`), actions: [
@@ -81,6 +84,9 @@
 {/snippet}
 {#snippet planPanel()}
   {#if plan}<PlanPanel embedded chatId={chat.id} {plan} />{:else}<p class="p-5 text-xs text-muted-foreground">{$t('workspace.noPlan')}</p>{/if}
+{/snippet}
+{#snippet contextPanel()}
+  <ContextPanel {chat} code />
 {/snippet}
 {#snippet tasksPanel()}
   <TasksPanel {chat} />

@@ -2960,6 +2960,13 @@
     "systemHint": "The voices built into your operating system.",
     "runsOn": "Runs on"
   },
+  "context": {
+    "title": "コンテキスト",
+    "latest": "最新の返信",
+    "web": "参照したウェブページ",
+    "files": "変更したファイル",
+    "empty": "この会話で作成したもの、参照元、変更したファイルがここに表示されます。"
+  },
   "workspace": {
     "panels": "ワークスペースのパネル",
     "actions": "パネルの操作",

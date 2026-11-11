@@ -2960,6 +2960,13 @@
     "systemHint": "The voices built into your operating system.",
     "runsOn": "Runs on"
   },
+  "context": {
+    "title": "Contexte",
+    "latest": "Dernière réponse",
+    "web": "Lectures web",
+    "files": "Fichiers modifiés",
+    "empty": "Les artefacts, les sources et les fichiers modifiés de cette conversation apparaissent ici."
+  },
   "workspace": {
     "panels": "Panneaux de travail",
     "actions": "Actions du panneau",

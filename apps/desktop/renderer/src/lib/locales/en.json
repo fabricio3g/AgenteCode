@@ -2960,6 +2960,13 @@
     "systemHint": "The voices built into your operating system.",
     "runsOn": "Runs on"
   },
+  "context": {
+    "title": "Context",
+    "latest": "Latest reply",
+    "web": "Web reading",
+    "files": "Files changed",
+    "empty": "Artifacts, sources and changed files from this conversation show up here."
+  },
   "workspace": {
     "panels": "Workspace panels",
     "actions": "Panel actions",

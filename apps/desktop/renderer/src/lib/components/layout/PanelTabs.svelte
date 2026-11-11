@@ -133,6 +133,7 @@
         {@render pane('browser', $t('browser.title'), browserPanelStore.open, () => void browserPanelStore.toggle().catch((error) => toastStore.error(String(error))), Globe)}
       {/if}
     </div>
+        {@render pane('context', $t('context.title'), workspaceLayout.isOpen('context'), () => workspaceLayout.toggle('context'), ContextIcon)}
 
     <!-- Checkpoints act on the turn, not on a pane, so they trail the strip. -->
     {#if inCode && checkpoints.length}

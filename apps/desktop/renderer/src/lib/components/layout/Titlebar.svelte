@@ -24,6 +24,7 @@
   import TitlebarLeftTools from './TitlebarLeftTools.svelte';
   import SpaceSwitcher from './SpaceSwitcher.svelte';
   import WindowControls from './WindowControls.svelte';
+  import { PanelRight as ContextIcon } from 'lucide-svelte';
   import ComputerButton from '$lib/features/computer/ComputerButton.svelte';
   import NotificationsButton from '$lib/features/shared/NotificationsButton.svelte';
 
@@ -97,6 +98,18 @@
           <Globe class="size-4" />
         </UiIconButton>
       </Tooltip>
+      {#if !settingsOpen && appStore.activeSpace === 'home' && appStore.homeView === 'chat' && appStore.currentChat}
+        <Tooltip label={$t('context.title')} position="bottom">
+          <UiIconButton label={$t('context.title')} size="sm" type="button"
+            class={uiClass(" titlebar-no-drag", {"selected": workspaceLayout.isOpen('context')})}
+            aria-pressed={workspaceLayout.isOpen('context')}
+            data-panel-tab="context"
+            onclick={() => workspaceLayout.toggle('context')}
+          >
+            <ContextIcon class="size-4" />
+          </UiIconButton>
+        </Tooltip>
+      {/if}
     {/if}
     {#if !settingsOpen && appStore.currentChat && (appStore.activeSpace === 'home' || appStore.activeSpace === 'code')}
       <ComputerButton />
