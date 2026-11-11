@@ -44,7 +44,15 @@
   let host: HTMLDivElement | undefined = $state();
   let canvas: HTMLDivElement | undefined = $state();
 
-  const zoom = $derived(manualZoom ?? fit);
+  /*
+   * A page shrunk to fit a narrow pane is a picture of a document: at half
+   * size nobody reads it. Below this, fit-to-width stops shrinking and the
+   * text is set at full size in the pane's own width instead, as one sheet.
+   * Picking a zoom brings the real pages back.
+   */
+  const READABLE_FIT = 0.75;
+  const reading = $derived(manualZoom === null && fit < READABLE_FIT);
+  const zoom = $derived(reading ? 1 : manualZoom ?? fit);
   const term = $derived((query || controls?.query || '').trim());
   const find = createViewerFind(() => loading ? null : host, () => term);
   registerViewerControls(controls, () => ({
@@ -68,6 +76,9 @@
       target.replaceChildren(...pending.childNodes);
       pageCount = pages;
       page = 1;
+      // Measure the new pages at their own width, not the last document's layout.
+      fit = 1;
+      await tick();
       recalcFit();
     } catch (err) {
       console.error('[DocxViewer] Failed to render DOCX:', err);
@@ -84,7 +95,10 @@
   function recalcFit() {
     const first = pages()[0];
     const available = (canvas?.clientWidth || 0) - 48;
-    fit = first ? fitZoom(first.offsetWidth, available) : 1;
+    // The page's real width, kept from before the reading layout narrowed it.
+    if (first && !reading) first.dataset.pageWidth = String(first.offsetWidth);
+    const width = Number(first?.dataset.pageWidth) || first?.offsetWidth || 0;
+    fit = first ? fitZoom(width, available) : 1;
   }
 
   $effect(() => {
@@ -144,7 +158,7 @@
       </div>
     {/if}
     <!-- CSS zoom (not a transform) so the scroll height follows the zoom. -->
-    <div class="docx-pages" class:pending={loading || !!error} style:zoom={zoom}>
+    <div class="docx-pages" class:pending={loading || !!error} class:reading style:zoom={zoom}>
       <div class="docx-host" data-viewer-text bind:this={host}></div>
     </div>
   </div>
@@ -192,6 +206,33 @@
   }
   .docx-pages.pending {
     visibility: hidden;
+  }
+  /* Reading layout: the pages join into one sheet as wide as the pane. */
+  .docx-pages.reading {
+    width: 100%;
+  }
+  :global(.docx-viewer .docx-pages.reading .docx-wrapper) {
+    gap: 0;
+    align-items: stretch;
+    overflow: hidden;
+    border-radius: 0.75rem;
+  }
+  :global(.docx-viewer .docx-pages.reading .docx-wrapper > section.docx) {
+    width: auto !important;
+    min-height: 0 !important;
+    padding: 1.5rem 1.75rem !important;
+    box-shadow: none !important;
+    column-count: 1 !important;
+  }
+  :global(.docx-viewer .docx-pages.reading .docx-wrapper > section.docx + section.docx) {
+    padding-top: 0 !important;
+  }
+  /* Word's fixed line heights assume the page's width; rewrapped text needs room. */
+  :global(.docx-viewer .docx-pages.reading section.docx :is(p, h1, h2, h3, h4, h5, h6)) {
+    line-height: 1.3 !important;
+  }
+  :global(.docx-viewer .docx-pages.reading table) {
+    width: 100% !important;
   }
 
   /* Pages: white sheets with a soft paper shadow, spaced like Word. */

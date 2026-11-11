@@ -409,8 +409,11 @@
 
 <style>
   .sheet-viewer {
-    --grid-line: color-mix(in srgb, var(--foreground) 11%, transparent);
-    --sheet-accent: var(--success);
+    /* A sheet in the app's own voice: hairline grid, grey headers, and a
+       neutral selection. The only colour on screen is the file's own. */
+    --grid-line: color-mix(in srgb, var(--foreground) 7%, transparent);
+    --sheet-accent: color-mix(in srgb, var(--foreground) 62%, var(--background));
+    --sheet-chrome: color-mix(in srgb, var(--foreground) 4%, var(--background));
     display: flex;
     min-height: 0;
     flex: 1 1 auto;
@@ -428,7 +431,7 @@
     align-items: center;
     gap: 0.5rem;
     padding: 0 0.5rem;
-    border-bottom: 1px solid var(--border);
+    border-bottom: 1px solid var(--border-subtle);
     font-size: var(--text-sm);
   }
   .name-box {
@@ -468,13 +471,14 @@
     table-layout: fixed;
     border-collapse: separate;
     border-spacing: 0;
-    font-size: calc(var(--text-base) / var(--reading-scale, 1));
+    font-size: calc(var(--text-sm) / var(--reading-scale, 1));
     line-height: 1.35;
     font-family: var(--font-sans);
+    font-variant-numeric: tabular-nums;
   }
   .sheet-grid th,
   .sheet-grid td {
-    padding: 0 0.3rem;
+    padding: 0 0.5rem;
     border-right: 1px solid var(--grid-line);
     border-bottom: 1px solid var(--grid-line);
     overflow: hidden;
@@ -491,7 +495,7 @@
     position: sticky;
     top: 0;
     z-index: 6;
-    background: var(--muted);
+    background: var(--sheet-chrome);
     color: var(--muted-foreground);
     font-size: calc(var(--text-xs) / var(--reading-scale, 1));
     font-weight: 500;
@@ -508,7 +512,7 @@
     position: sticky;
     left: 0;
     z-index: 3;
-    background: var(--muted);
+    background: var(--sheet-chrome);
     color: var(--muted-foreground);
     font-size: calc(var(--text-xs) / var(--reading-scale, 1));
     font-weight: 500;
@@ -518,19 +522,15 @@
   }
   :is(.col-head.on, :global(.col-head.on.ui-local-044facd2)),
   :is(.row-head.on, :global(.row-head.on.ui-local-044facd2)) {
-    background: color-mix(in srgb, var(--sheet-accent) 16%, var(--muted));
+    background: color-mix(in srgb, var(--foreground) 10%, var(--background));
     color: var(--foreground);
-    box-shadow: inset 0 -2px 0 var(--sheet-accent);
-  }
-  :is(.row-head.on, :global(.row-head.on.ui-local-044facd2)) {
-    box-shadow: inset -2px 0 0 var(--sheet-accent);
   }
   .sheet-grid td.sel {
-    background-image: linear-gradient(color-mix(in srgb, var(--sheet-accent) 13%, transparent), color-mix(in srgb, var(--sheet-accent) 13%, transparent));
+    background-image: linear-gradient(color-mix(in srgb, var(--foreground) 7%, transparent), color-mix(in srgb, var(--foreground) 7%, transparent));
   }
   .sheet-grid td.focus {
-    outline: 2px solid var(--sheet-accent);
-    outline-offset: -2px;
+    outline: 1.5px solid var(--sheet-accent);
+    outline-offset: -1.5px;
     background-image: none;
   }
   .sheet-grid td.hit {
@@ -553,9 +553,9 @@
     flex-shrink: 0;
     align-items: center;
     gap: 0.75rem;
-    padding: 0 0.5rem 0 0;
-    border-top: 1px solid var(--border);
-    background: var(--muted);
+    padding: 0 0.625rem 0 0.25rem;
+    border-top: 1px solid var(--border-subtle);
+    background: transparent;
     font-size: var(--text-xs);
   }
 
