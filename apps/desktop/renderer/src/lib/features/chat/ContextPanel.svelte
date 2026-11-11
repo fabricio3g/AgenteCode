@@ -1,16 +1,18 @@
 <svelte:options runes={true} />
 
 <!--
-  What this conversation has produced and drawn on, in one column beside it:
-  the latest reply in brief, then the artifacts it made, the pages it read and
-  (in Code) the files it changed. Every row is a door: an artifact opens in its
-  viewer, a page in the browser, a file in the Changes pane. Sections with
-  nothing in them are not drawn.
+  The session at a glance, in one column beside the conversation. A dense card
+  first: when it started, how long and how much it took, which model, what it
+  changed, over the latest reply in brief. Then lists: what was asked, the
+  artifacts made, the pages read and (in Code) the files changed. Every row is
+  a door: a request scrolls to its message, an artifact opens in its viewer, a
+  page in the browser, a file in the Changes pane. Empty sections are not drawn.
 -->
 
 <script lang="ts">
   import { t, locale } from 'svelte-i18n';
   import { FileDiff, FileSpreadsheet, FileText, Files, Globe, Presentation, Shapes } from 'lucide-svelte';
+  import { formatToolDuration } from '$lib/utils/tool-ui';
   import Button from '$lib/components/ui/Button.svelte';
   import { cn as uiClass } from '$lib/utils/cn';
   import type { ArtifactKind, ChatSession } from '$lib/types/chat';
@@ -18,6 +20,7 @@
   import { resolveArtifactPresentation } from '$lib/services/artifact-model';
   import { editedFiles } from '$lib/features/code/work-blocks';
   import { codeWorkspace } from '$lib/features/code/workspace.svelte';
+  import { codeStore } from '$lib/features/code/code.svelte';
 
   let { chat, code = false }: { chat: ChatSession; /** Code conversations list the files they changed. */ code?: boolean } = $props();
 
@@ -61,26 +64,82 @@
   });
 
   const files = $derived(code ? editedFiles(replies.flatMap((message) => message.agentSteps ?? [])) : []);
-  const empty = $derived(!latest && !artifacts.length && !pages.length && !files.length);
 
-  const when = (at: number) => new Date(at).toLocaleString($locale || undefined, { dateStyle: 'medium', timeStyle: 'short' });
+  /** What was asked, in order; `index` is the message's place in the transcript. */
+  const requests = $derived(chat.messages.flatMap((message, index) => {
+    const text = message.role === 'user' ? message.content.replace(/\s+/g, ' ').trim() : '';
+    return text ? [{ id: message.id, index, text }] : [];
+  }));
+
+  /** The facts of the session, each drawn only when it is known. */
+  const facts = $derived.by(() => {
+    const tokens = replies.reduce((sum, { metadata: m }) => sum + (m?.totalTokens ?? m?.tokens ?? ((m?.inputTokens ?? 0) + (m?.outputTokens ?? 0))), 0);
+    const worked = replies.reduce((sum, { metadata: m }) => sum + (m?.codeElapsedMs ?? (m?.totalElapsedSeconds ?? 0) * 1000), 0);
+    const model = [...replies].reverse().find((message) => message.metadata?.modelName)?.metadata?.modelName;
+    const compact = new Intl.NumberFormat($locale || undefined, { notation: 'compact', maximumFractionDigits: 1 });
+    const rows: Array<{ label: string; value: string }> = [
+      { label: $t('context.started'), value: when(chat.createdAt) },
+      { label: $t('context.messages'), value: String(chat.messages.length) }
+    ];
+    if (model) rows.push({ label: $t('context.model'), value: model });
+    if (tokens) rows.push({ label: $t('context.tokens'), value: compact.format(tokens) });
+    if (worked >= 1000) rows.push({ label: $t('context.worked'), value: formatToolDuration(worked) });
+    const project = codeStore.projectById(chat.projectId ?? null)?.rootName;
+    const tools = replies.reduce((sum, message) => sum + (message.agentSteps?.length ?? 0), 0);
+    const children = replies.reduce((sum, message) => sum + (message.metadata?.codeChildren?.length ?? 0), 0);
+    const todos = [...replies].reverse().find((message) => message.metadata?.codeTodos?.length)?.metadata?.codeTodos ?? [];
+    if (project) rows.push({ label: $t('conversationInfo.project'), value: project });
+    if (tools) rows.push({ label: $t('home.tools.title'), value: String(tools) });
+    if (children) rows.push({ label: $t('code.cmd.subagents.label'), value: String(children) });
+    if (todos.length) rows.push({ label: $t('code.todosTitle'), value: `${todos.filter((todo) => todo.status === 'completed').length}/${todos.length}` });
+    if (artifacts.length) rows.push({ label: $t('artifacts.title'), value: String(artifacts.length) });
+    if (pages.length) rows.push({ label: $t('context.sources'), value: String(pages.length) });
+    return rows;
+  });
+  const churn = $derived({ add: files.reduce((sum, file) => sum + file.additions, 0), del: files.reduce((sum, file) => sum + file.deletions, 0) });
+
+  /** Message slots are drawn in transcript order by both Home's thread and Code's. */
+  function jumpTo(index: number) {
+    document.querySelectorAll<HTMLElement>('.message-slot, .code-message-slot')[index]?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  function when(at: number): string {
+    return new Date(at).toLocaleString($locale || undefined, { dateStyle: 'medium', timeStyle: 'short' });
+  }
 </script>
 
 <div class="context">
-  {#if empty}
-    <p class="empty">{$t('context.empty')}</p>
-  {/if}
-
-  {#if latest}
-    <section class="brief" aria-label={$t('context.latest')}>
+  <section class="brief" aria-label={$t('context.button')}>
+    <h2 class="brief-title">{chat.title}</h2>
+    <dl class="facts">
+      {#each facts as fact (fact.label)}
+        <div class="fact"><dt>{fact.label}</dt><dd title={fact.value}>{fact.value}</dd></div>
+      {/each}
+      {#if files.length}
+        <div class="fact"><dt>{$t('context.changes')}</dt><dd class="churn"><span class="text-success">+{churn.add}</span><span class="text-error">−{churn.del}</span><span>· {files.length}</span></dd></div>
+      {/if}
+    </dl>
+    {#if latest}
       <p class="stamp">{$t('context.latest')} · {when(latest.at)}</p>
       <p class="brief-text">{latest.text}</p>
+    {/if}
+  </section>
+
+  {#if requests.length}
+    <section>
+      <h3 class="heading">{$t('context.requests')}<span class="count">{requests.length}</span></h3>
+      {#each requests as request, order (request.id)}
+        <Button variant="plain" class={uiClass('row', 'ui-local-c0a1e7f4')} title={request.text} onclick={() => jumpTo(request.index)}>
+          <span class="tile num" aria-hidden="true">{order + 1}</span>
+          <span class="label">{request.text}</span>
+        </Button>
+      {/each}
     </section>
   {/if}
 
   {#if artifacts.length}
     <section>
-      <h3 class="heading">{$t('artifacts.title')}</h3>
+      <h3 class="heading">{$t('artifacts.title')}<span class="count">{artifacts.length}</span></h3>
       {#each artifacts as item (item.key)}
         <Button variant="plain" class={uiClass('row', 'ui-local-c0a1e7f4')} title={item.title} onclick={() => appStore.openArtifactPanel(chat.id, item.messageId, item.index)}>
           <span class="tile" aria-hidden="true"><item.icon class="size-3.5" /></span>
@@ -92,7 +151,7 @@
 
   {#if pages.length}
     <section>
-      <h3 class="heading">{$t('context.web')}</h3>
+      <h3 class="heading">{$t('context.web')}<span class="count">{pages.length}</span></h3>
       {#each pages as page (page.url)}
         <Button variant="plain" class={uiClass('row', 'ui-local-c0a1e7f4')} title={page.url} onclick={() => window.open(page.url, '_blank', 'noopener,noreferrer')}>
           <span class="tile" aria-hidden="true"><Globe class="size-3.5" /></span>
@@ -105,7 +164,7 @@
 
   {#if files.length}
     <section>
-      <h3 class="heading">{$t('context.files')}</h3>
+      <h3 class="heading">{$t('context.files')}<span class="count">{files.length}</span></h3>
       {#each files as file (file.path)}
         <Button variant="plain" class={uiClass('row', 'ui-local-c0a1e7f4')} title={file.path} onclick={() => codeWorkspace.showFileInChanges(file.path)}>
           <span class="tile" aria-hidden="true"><FileDiff class="size-3.5" /></span>
@@ -127,14 +186,6 @@
     overflow-y: auto;
     padding: 0.75rem;
   }
-  .empty {
-    margin: 2rem 0.5rem;
-    color: var(--muted-foreground);
-    font-size: var(--text-sm);
-    line-height: 1.5;
-    text-align: center;
-  }
-
   /* The brief is the one card in the column; everything under it is rows. */
   .brief {
     padding: 0.75rem 0.875rem;
@@ -142,30 +193,81 @@
     border-radius: var(--radius-lg);
     background: var(--artifact-surface);
   }
-  .stamp {
-    margin: 0 0 0.375rem;
+  .brief-title {
+    margin: 0 0 0.5rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--foreground);
+    font-size: var(--text-sm);
+    font-weight: 600;
+  }
+  /* Facts: label hard left, value hard right, two to a line while there is room. */
+  .facts {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(9.5rem, 1fr));
+    gap: 0.125rem 1.25rem;
+    margin: 0;
+    font-size: var(--text-xs);
+  }
+  .fact {
+    display: flex;
+    min-width: 0;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.1875rem 0;
+  }
+  .fact dt {
+    flex-shrink: 0;
     color: var(--muted-foreground);
-    font-family: var(--font-mono);
+  }
+  .fact dd {
+    min-width: 0;
+    margin: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--foreground);
+    font-variant-numeric: tabular-nums;
+  }
+  .stamp {
+    margin: 0.625rem 0 0.25rem;
+    padding-top: 0.625rem;
+    border-top: 1px solid var(--border-subtle);
+    color: var(--muted-foreground);
     font-size: var(--text-xs);
   }
   .brief-text {
     margin: 0;
     color: var(--text-secondary);
     font-size: var(--text-sm);
-    line-height: 1.55;
+    line-height: 1.5;
     display: -webkit-box;
     overflow: hidden;
     -webkit-box-orient: vertical;
-    -webkit-line-clamp: 6;
-    line-clamp: 6;
+    -webkit-line-clamp: 3;
+    line-clamp: 3;
   }
 
   .heading {
     margin: 0 0 0.25rem;
     padding: 0 0.5rem;
+    display: flex;
+    align-items: baseline;
+    gap: 0.375rem;
     color: var(--muted-foreground);
-    font-size: var(--text-sm);
+    font-size: var(--text-xs);
+    font-weight: 500;
+  }
+  .count {
     font-weight: 400;
+    font-variant-numeric: tabular-nums;
+    opacity: 0.7;
+  }
+  .num {
+    font-size: var(--text-xs);
+    font-variant-numeric: tabular-nums;
   }
   :global(.row.ui-local-c0a1e7f4) {
     display: flex;

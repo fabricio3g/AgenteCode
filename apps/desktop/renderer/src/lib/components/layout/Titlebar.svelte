@@ -99,8 +99,8 @@
         </UiIconButton>
       </Tooltip>
       {#if !settingsOpen && appStore.activeSpace === 'home' && appStore.homeView === 'chat' && appStore.currentChat}
-        <Tooltip label={$t('context.title')} position="bottom">
-          <UiIconButton label={$t('context.title')} size="sm" type="button"
+        <Tooltip label={$t('context.button')} position="bottom">
+          <UiIconButton label={$t('context.button')} size="sm" type="button"
             class={uiClass(" titlebar-no-drag", {"selected": workspaceLayout.isOpen('context')})}
             aria-pressed={workspaceLayout.isOpen('context')}
             data-panel-tab="context"
