@@ -117,7 +117,7 @@
     overflow: hidden;
     padding: 0 0.625rem 0 0.875rem;
     border: 1px solid var(--border-subtle);
-    border-radius: 0.875rem;
+    border-radius: var(--radius-lg);
     background: var(--artifact-surface);
     transition: background-color var(--motion-instant) var(--motion-ease);
   }

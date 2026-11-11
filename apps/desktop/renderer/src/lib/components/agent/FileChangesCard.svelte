@@ -99,7 +99,7 @@
     margin-top: 0.5rem;
     overflow: hidden;
     border: 1px solid var(--border-subtle);
-    border-radius: 0.875rem;
+    border-radius: var(--radius-lg);
     background: var(--artifact-surface);
   }
   .hdr {
@@ -115,7 +115,7 @@
     flex-shrink: 0;
     align-items: center;
     justify-content: center;
-    border-radius: 0.625rem;
+    border-radius: var(--radius-md);
     background: color-mix(in srgb, var(--foreground) 7%, transparent);
     color: var(--muted-foreground);
   }

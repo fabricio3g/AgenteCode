@@ -46,7 +46,7 @@
   size={compact ? 'xs' : 'md'}
   label={stopping ? stopLabel : sendLabel}
   title=""
-  class={`composer-send ui-local-2f6b41d9 rounded-full${stopping ? ' is-stop' : ''}`}
+  class={`composer-send ui-local-2f6b41d9 rounded-[var(--float-row-radius)]${stopping ? ' is-stop' : ''}`}
   disabled={!running && disabled}
   onclick={() => (stopping ? onstop() : onsend())}
 >

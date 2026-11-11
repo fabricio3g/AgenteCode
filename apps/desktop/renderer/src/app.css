@@ -56,7 +56,7 @@
   color-scheme: light;
 
   /* Canonical (Flaxeo / shadcn-style) */
-  --radius: 0.625rem;
+  --radius: 0.5rem;
   /* Radius tension: pills stay for entry points; utility inputs go
      sharp so controls read as controls, not as more chrome. */
   --radius-input: 6px;
@@ -324,10 +324,10 @@
   /* The composer is one pill: the field and its bar are a single object, so
      the corner is near half the shell's height rather than one step past the
      controls inside it. */
-  --composer-radius: 1.75rem;
+  --composer-radius: 0.75rem;
   /* A large corner everywhere except the bottom-right, which tucks in to point
      the bubble at its author. */
-  --bubble-radius: 1.125rem;
+  --bubble-radius: 0.75rem;
   --bubble-tail-radius: var(--bubble-radius);
 
   /* Shadows — light only, quiet */
@@ -870,6 +870,9 @@ textarea {
 .composer-shell {
   position: relative;
   container: composer / inline-size;
+  /* The shell is a rounded rectangle, so its controls are too: inside it the
+     pill radius resolves to the row radius the sidebar uses. */
+  --radius-full: var(--float-row-radius);
 }
 
 /* Navigation rows and composer controls follow the same reading scale. */
