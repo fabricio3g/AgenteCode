@@ -85,7 +85,7 @@
   {:else}
     <div class="art-card" data-status={resolved.manifest.status} style:--artifact-accent={artifactKindAccent(resolved.manifest.kind)}>
       <UiButton variant="plain" type="button" class={uiClass("art-open", "ui-local-51be238f")} onclick={onOpen} title={$t('artifacts.card.open')}>
-        <span class="artifact-kind-tile size-10 rounded-[0.625rem]" aria-hidden="true"><CardIcon class="size-[18px]" /></span>
+        <span class="art-sheet" aria-hidden="true"><CardIcon class="size-5" /></span>
         <span class="min-w-0 flex-1">
           <span class="art-title">{artifact.title || $t('artifacts.untitled')}</span>
           <span class="art-meta">{meta}</span>
@@ -111,9 +111,11 @@
     width: var(--inline-block-width);
     max-width: 100%;
     margin-top: 0.75rem;
-    align-items: center;
+    align-items: stretch;
     gap: 0.25rem;
-    padding: 0.5rem 0.625rem 0.5rem 0.5rem;
+    min-height: 4rem;
+    overflow: hidden;
+    padding: 0 0.625rem 0 0.875rem;
     border: 1px solid var(--border-subtle);
     border-radius: 0.875rem;
     background: var(--artifact-surface);
@@ -133,11 +135,43 @@
     min-width: 0;
     flex: 1;
     align-items: center;
-    gap: 0.75rem;
-    padding: 0.125rem;
+    gap: 0.875rem;
+    padding: 0;
     border-radius: 0.625rem;
     text-align: left;
     cursor: pointer;
+  }
+  /* The file itself: a sheet of paper with a folded corner, standing in the
+     card and cut off by its bottom edge. The kind's colour is on the glyph
+     only, so a row of files stays grey with one small hue each. */
+  .art-sheet {
+    position: relative;
+    display: inline-flex;
+    width: 2.75rem;
+    height: 3.25rem;
+    flex-shrink: 0;
+    align-self: flex-end;
+    align-items: center;
+    justify-content: center;
+    padding-top: 0.25rem;
+    border-radius: 0.375rem 0 0 0;
+    background: color-mix(in srgb, var(--foreground) 9%, var(--artifact-surface));
+    color: var(--artifact-accent);
+    clip-path: polygon(0 0, calc(100% - 0.75rem) 0, 100% 0.75rem, 100% 100%, 0 100%);
+    transition: translate var(--motion-fast) var(--motion-ease-out);
+  }
+  .art-sheet::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 0.75rem;
+    height: 0.75rem;
+    border-bottom-left-radius: 0.25rem;
+    background: color-mix(in srgb, var(--foreground) 18%, var(--artifact-surface));
+  }
+  .art-card:hover .art-sheet {
+    translate: 0 -2px;
   }
   :global(.art-open:focus-visible.ui-local-51be238f),
   :global(.art-action:focus-visible.ui-local-51be238f),
@@ -163,6 +197,7 @@
     color: var(--muted-foreground);
   }
   :global(.art-action.ui-local-51be238f) {
+    align-self: center;
     display: inline-flex;
     width: 2rem;
     height: 2rem;

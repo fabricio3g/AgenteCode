@@ -224,7 +224,13 @@ savedSessions.push({
   projectId: null,
   messages: [
     { id: 's0', role: 'user', content: 'Show me every artifact type.', createdAt: Date.now() - 1_800_000 },
-    { id: 's1', role: 'assistant', content: 'Here they are.', createdAt: Date.now() - 1_790_000, artifacts: showcaseArtifacts }
+    { id: 's1', role: 'assistant', content: 'Here they are.', createdAt: Date.now() - 1_790_000, artifacts: showcaseArtifacts,
+      agentSteps: [{ id: 'sc-edit', type: 'editing', toolName: 'edit_file', label: 'Edit', status: 'done', diffStats: [
+        { path: 'redesign/build.mjs', kind: 'created', additions: 78, deletions: 0, after: "import { icons } from './icons.mjs';" },
+        { path: 'redesign/icons.mjs', kind: 'created', additions: 575, deletions: 0, after: 'export const icons = {};' },
+        { path: 'redesign/motions.mjs', kind: 'modified', additions: 59, deletions: 12, after: 'export const motions = {};' },
+        { path: 'redesign/index.html', kind: 'created', additions: 796, deletions: 0, after: '<!doctype html>' }
+      ] }] }
   ]
 });
 

@@ -15,6 +15,7 @@
   import { stripChartBlocks } from '$lib/utils/charts';
   import { writeToClipboard } from '$lib/utils/clipboard';
   import FileChangesCard from '$lib/components/agent/FileChangesCard.svelte';
+  import { codeWorkspace } from '$lib/features/code/workspace.svelte';
   import { charactersStore, greetingsFor } from '$lib/features/roleplay/characters.svelte';
   import SwipePager from '$lib/features/roleplay/SwipePager.svelte';
   import ChoicePanel from '$lib/features/roleplay/ChoicePanel.svelte';
@@ -316,7 +317,7 @@
     {/if}
 
     {#if diffStats.length}
-      <FileChangesCard stats={diffStats} />
+      <FileChangesCard stats={diffStats} onreview={appStore.currentContextMode === 'code' ? () => codeWorkspace.toggleChanges(true) : undefined} />
     {/if}
 
     {#if !roleplayFailed}<MessageFooter />{/if}

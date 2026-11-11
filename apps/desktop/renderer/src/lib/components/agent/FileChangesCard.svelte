@@ -1,134 +1,183 @@
 <svelte:options runes={true} />
 
+<!--
+  What a turn changed on disk, as one card: a header that says how many files
+  and how much (+/−), then one row per file — path hard left, counts hard
+  right. The first few files show; the rest wait behind "show more". A row
+  opens the file's new (or, for a deletion, old) contents in place.
+-->
+
 <script lang="ts">
   import { cn as uiClass } from '$lib/utils/cn';
 
-  import { ChevronDown, ChevronRight, FileCode2, Folder } from 'lucide-svelte';
+  import { t } from 'svelte-i18n';
+  import { ChevronDown, FileDiff } from 'lucide-svelte';
   import type { CodeAgentDiffStat } from '$lib/types/chat';
   import Button from '$lib/components/ui/Button.svelte';
-  import { say } from '$lib/copy';
 
-  interface Props { stats: CodeAgentDiffStat[] }
+  interface Props {
+    stats: CodeAgentDiffStat[];
+    /** Opens the full review (the Changes pane) where the surface has one. */
+    onreview?: () => void;
+  }
 
-  let { stats }: Props = $props();
-  let expanded = $state<Set<string>>(new Set());
+  /** Files listed before "show more". */
+  const VISIBLE = 3;
 
-  const adds = $derived(stats.reduce((s, d) => s + d.additions, 0));
-  const dels = $derived(stats.reduce((s, d) => s + d.deletions, 0));
+  let { stats, onreview }: Props = $props();
+  let open = $state<Set<string>>(new Set());
+  let showAll = $state(false);
 
-  type Node = { name: string; path: string; isDir: boolean; children: Node[]; stat?: CodeAgentDiffStat; ca: number; cd: number; cf: number };
-
-  const root = $derived.by(() => {
-    const r: Node = { name: '', path: '', isDir: true, children: [], ca: 0, cd: 0, cf: 0 };
-    for (const s of stats) {
-      const parts = s.path.split('/').filter(Boolean);
-      let cur = r, dir = '';
-      for (let i = 0; i < parts.length; i++) {
-        const last = i === parts.length - 1;
-        dir = dir ? `${dir}/${parts[i]}` : parts[i];
-        if (last) {
-          let n = cur.children.find((c) => c.path === dir && !c.isDir);
-          if (n) { n.stat = s; } else { cur.children.push({ name: parts[i], path: dir, isDir: false, children: [], stat: s, ca: 0, cd: 0, cf: 0 }); }
-        } else {
-          let n = cur.children.find((c) => c.path === dir && c.isDir);
-          if (!n) { n = { name: parts[i], path: dir, isDir: true, children: [], ca: 0, cd: 0, cf: 0 }; cur.children.push(n); }
-          cur = n;
-        }
-      }
+  /** One row per file: a file touched twice in a turn keeps its last state and the sum of its counts. */
+  const files = $derived.by(() => {
+    const byPath = new Map<string, CodeAgentDiffStat>();
+    for (const stat of stats) {
+      const seen = byPath.get(stat.path);
+      byPath.set(stat.path, seen
+        ? { ...stat, additions: seen.additions + stat.additions, deletions: seen.deletions + stat.deletions, before: seen.before ?? stat.before }
+        : stat);
     }
-    function agg(n: Node): void {
-      if (!n.isDir) return;
-      for (const c of n.children) { if (c.isDir) agg(c); n.ca += c.ca + (c.stat?.additions || 0); n.cd += c.cd + (c.stat?.deletions || 0); n.cf += c.cf + (c.stat ? 1 : 0); }
-    }
-    agg(r);
-    return r;
+    return [...byPath.values()];
   });
+  const adds = $derived(files.reduce((sum, file) => sum + file.additions, 0));
+  const dels = $derived(files.reduce((sum, file) => sum + file.deletions, 0));
+  const shown = $derived(showAll ? files : files.slice(0, VISIBLE));
+  const hidden = $derived(files.length - shown.length);
 
-  const allExpanded = $derived(stats.every((s) => expanded.has(s.path)));
-
-  function depth(d: number): string {
-    return `depth-${Math.min(d, 6)}`;
+  function toggle(path: string) {
+    const next = new Set(open);
+    if (!next.delete(path)) next.add(path);
+    open = next;
   }
 
-  function toggle(p: string) {
-    const next = new Set(expanded);
-    next.has(p) ? next.delete(p) : next.add(p);
-    expanded = next;
-  }
+  const body = (file: CodeAgentDiffStat) => (file.kind === 'deleted' ? file.before : file.after) || '';
 </script>
 
 <section class="card">
   <header class="hdr">
-    <span class="title">{say.files(stats.length)}</span>
-    <span class="cnt"><span class="a">+{adds}</span><span class="d">-{dels}</span></span>
-    <Button
-      variant="ghost"
-      size="xs"
-      onclick={() => (expanded = allExpanded ? new Set() : new Set(stats.map((s) => s.path)))}
-    >
-      {allExpanded ? 'Collapse' : 'Expand'}
-    </Button>
+    <span class="tile" aria-hidden="true"><FileDiff class="size-[18px]" /></span>
+    <div class="min-w-0 flex-1">
+      <p class="title">{$t('code.activity.done.edit', { values: { n: files.length } })}</p>
+      <p class="cnt"><span class="a">+{adds}</span><span class="d">−{dels}</span></p>
+    </div>
+    {#if onreview}
+      <Button variant="outline" size="sm" onclick={onreview}>{$t('codeWs.viewChanges')}</Button>
+    {/if}
   </header>
-  {#snippet tree(n: Node, d: number)}
-    {#each n.children as c (c.path)}
-      {#if c.isDir}
-        <div class="nr">
-          <Button variant="plain" class={uiClass(`tr ${depth(d)}`, "ui-local-9cb339f3")} onclick={() => toggle(c.path)}>
-            {#if expanded.has(c.path)}<ChevronDown class="ci" />{:else}<ChevronRight class="ci" />{/if}
-            <Folder class="ci" /><span class="nm">{c.name}</span>
-            {#if c.ca || c.cd}<span class="cnt"><span class="a">+{c.ca}</span><span class="d">-{c.cd}</span></span>{/if}
-          </Button>
-          {#if expanded.has(c.path)}{@render tree(c, d + 1)}{/if}
-        </div>
-      {:else}
-        <div class="nr">
-          <Button variant="plain" class={uiClass(`tr ${depth(d)}`, "ui-local-9cb339f3")} onclick={() => toggle(c.path)}>
-            <FileCode2 class="ci" /><span class="nm">{c.name}</span>
-            <span class="kind {c.stat?.kind}">{c.stat?.kind}</span>
-            {#if c.stat}<span class="cnt"><span class="a">+{c.stat.additions}</span><span class="d">-{c.stat.deletions}</span></span>{/if}
-          </Button>
-          {#if expanded.has(c.path) && c.stat}
-            <pre class="diff">{c.stat.kind === 'deleted' ? (c.stat.before || '') : (c.stat.after || '')}</pre>
-          {/if}
-        </div>
-      {/if}
+  <ul class="list">
+    {#each shown as file (file.path)}
+      <li>
+        <Button variant="plain" class={uiClass('row', 'ui-local-9cb339f3')} aria-expanded={open.has(file.path)} disabled={!body(file)} onclick={() => toggle(file.path)}>
+          <span class="path" class:gone={file.kind === 'deleted'} title={file.path}>{file.path}</span>
+          <span class="cnt"><span class="a">+{file.additions}</span><span class="d">−{file.deletions}</span></span>
+        </Button>
+        {#if open.has(file.path)}<pre class="diff">{body(file)}</pre>{/if}
+      </li>
     {/each}
-  {/snippet}
-  <div class="list">{@render tree(root, 0)}</div>
+  </ul>
+  {#if hidden > 0 || (showAll && files.length > VISIBLE)}
+    <Button variant="plain" class={uiClass('more', 'ui-local-9cb339f3')} aria-expanded={showAll} onclick={() => (showAll = !showAll)}>
+      {showAll ? $t('code.showLess') : `${$t('modelHub.loadMore')} · ${hidden}`}
+      <ChevronDown class={uiClass('size-3.5 transition-transform', showAll && 'rotate-180')} />
+    </Button>
+  {/if}
 </section>
 
 <style>
-  /*
-   * Same token vocabulary as AgentBlock and ToolCallRow. This card used to run
-   * on the legacy text/surface names with hardcoded #16a34a and #dc2626 — which
-   * are the light values of --success and --error, so on the dark default the
-   * diff counts were rendering dark-on-dark.
-   */
-  .card { margin-top: 0.5rem; width: var(--inline-block-width); max-width: 100%; border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); background: color-mix(in srgb, var(--muted) 45%, transparent); overflow: hidden; }
-  .hdr { display: flex; align-items: center; gap: 0.4rem; padding: 0.45rem 0.6rem; font-size: 0.72rem; font-weight: 680; color: var(--muted-foreground); }
-  .title { flex: 1; }
-  .cnt { display: inline-flex; gap: 0.25rem; font-variant-numeric: tabular-nums; font-size: var(--text-xs); font-weight: 700; }
+  /* The same sheet as a file card in chat (ArtifactBlock): one step above the
+     page, a hairline ring, no rules heavier than the row separators. */
+  .card {
+    width: var(--inline-block-width);
+    max-width: 100%;
+    margin-top: 0.5rem;
+    overflow: hidden;
+    border: 1px solid var(--border-subtle);
+    border-radius: 0.875rem;
+    background: var(--artifact-surface);
+  }
+  .hdr {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.625rem 0.75rem 0.625rem 0.625rem;
+  }
+  .tile {
+    display: inline-flex;
+    width: 2.5rem;
+    height: 2.5rem;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    border-radius: 0.625rem;
+    background: color-mix(in srgb, var(--foreground) 7%, transparent);
+    color: var(--muted-foreground);
+  }
+  .title {
+    margin: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--foreground);
+    font-size: var(--text-sm);
+    font-weight: 600;
+  }
+  .title::first-letter { text-transform: uppercase; }
+  .cnt {
+    display: inline-flex;
+    flex-shrink: 0;
+    gap: 0.5rem;
+    margin: 0;
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    font-variant-numeric: tabular-nums;
+  }
+  .hdr .cnt { margin-top: 0.125rem; }
   .a { color: var(--success); }
-  :is(.d, :global(.d.ui-local-9cb339f3)) { color: var(--error); }
-  .list { max-height: 28rem; overflow-y: auto; }
-  .nr { border-top: 1px solid var(--border-subtle); }
-  /* Not pilled: these are full-bleed rows separated by rules, so a pill would
-     float free of the separators. */
-  :is(.tr, :global(.tr.ui-local-9cb339f3)) { display: flex; align-items: center; gap: 0.3rem; width: 100%; border: 0; background: transparent; color: var(--muted-foreground); padding: 0.3rem 0.5rem; text-align: left; font-size: 0.74rem; cursor: pointer; transition: background-color var(--motion-fast) var(--motion-ease), color var(--motion-fast) var(--motion-ease); }
-  :is(.tr:hover, :global(.tr:hover.ui-local-9cb339f3)) { background: var(--surface-hover); color: var(--foreground); }
-  .ci { width: 0.85rem; height: 0.85rem; flex-shrink: 0; }
-  .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.75rem; flex: 1; }
-  .kind { border-radius: var(--radius-full); background: var(--muted); padding: 0.1rem 0.35rem; font-size: var(--text-xs); font-weight: 650; letter-spacing: 0.01em; }
-  .kind.created { color: var(--success); }
-  .kind.modified { color: var(--primary); }
-  .kind.deleted { color: var(--error); }
+  .d { color: var(--error); }
+
+  .list { margin: 0; padding: 0; list-style: none; max-height: 28rem; overflow-y: auto; border-top: 1px solid var(--border-subtle); }
+  :global(.row.ui-local-9cb339f3) {
+    display: flex;
+    width: 100%;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.5rem 0.875rem;
+    border-radius: 0;
+    color: var(--text-secondary);
+    text-align: left;
+    transition: background-color var(--motion-instant) var(--motion-ease), color var(--motion-instant) var(--motion-ease);
+  }
+  :global(.row.ui-local-9cb339f3:hover:not(:disabled)) { background: var(--artifact-surface-hover); color: var(--foreground); }
+  :global(.row.ui-local-9cb339f3:disabled) { cursor: default; opacity: 1; }
+  .path { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-sm); }
+  .path.gone { text-decoration: line-through; color: var(--muted-foreground); }
+
   /* Matches .ui-tool-fallback-args-value so agent code blocks read the same
      inline as they do in the activity drawer. */
-  .diff { margin: 0; max-height: 16rem; overflow: auto; border-top: 1px solid var(--border-subtle); background: color-mix(in srgb, var(--muted) 50%, transparent); color: color-mix(in srgb, var(--foreground) 90%, transparent); border-radius: 0; padding: 0.45rem 0.6rem; font-family: var(--font-mono); font-size: var(--text-xs); line-height: 1.5; white-space: pre-wrap; }
-  .depth-1 { padding-left: 1rem; }
-  .depth-2 { padding-left: 1.6rem; }
-  .depth-3 { padding-left: 2.2rem; }
-  .depth-4 { padding-left: 2.8rem; }
-  .depth-5 { padding-left: 3.4rem; }
-  .depth-6 { padding-left: 4rem; }
+  .diff {
+    margin: 0;
+    max-height: 16rem;
+    overflow: auto;
+    padding: 0.5rem 0.875rem;
+    background: color-mix(in srgb, var(--foreground) 4%, transparent);
+    color: color-mix(in srgb, var(--foreground) 90%, transparent);
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    line-height: 1.5;
+    white-space: pre-wrap;
+  }
+  :global(.more.ui-local-9cb339f3) {
+    display: flex;
+    width: 100%;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.5rem 0.875rem 0.625rem;
+    border-radius: 0;
+    color: var(--muted-foreground);
+    font-size: var(--text-sm);
+    font-weight: 500;
+    text-align: left;
+  }
+  :global(.more.ui-local-9cb339f3:hover) { color: var(--foreground); }
 </style>
