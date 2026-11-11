@@ -304,6 +304,9 @@
     display: flex;
     flex-direction: column;
     gap: 0.125rem;
+    margin-top: 0.5rem;
     padding-top: 0.5rem;
+    /* The utilities under the list are a different kind of row: one hairline says so. */
+    border-top: 1px solid var(--border-subtle);
   }
 </style>
