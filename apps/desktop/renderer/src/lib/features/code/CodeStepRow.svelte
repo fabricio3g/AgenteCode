@@ -143,7 +143,7 @@
   >
     {#snippet header()}
       <Icon class="step-icon size-3.5 shrink-0 {isError ? 'is-error' : ''} {isApproval ? 'is-approval' : ''} {running ? 'is-running' : ''}" />
-      <span class="verb shrink-0" class:is-running={running}>{step.label}</span>
+      <span class="verb shrink-0" class:is-running={running} class:ui-shimmer-text={running}>{step.label}</span>
       {#if target}<code class="chip min-w-0 truncate">{target}</code>{/if}
       {#if step.model}<code class="chip model-chip shrink-0" title={step.model}>{shortModel(step.model)}</code>{/if}
       {#if adds || dels}
@@ -208,52 +208,27 @@
 {/if}
 
 <style>
+  /*
+   * Settled rows are grey and the running one is the only bright row.
+   *
+   * Every verb used to be full white, so ten finished calls shouted as loud as
+   * the one still going. A running row also stays a row: the kind keeps its
+   * glyph, in the accent colour, and the verb takes the same shimmer as the
+   * run's live line — "still going" without pretending to be progress. (A 2px
+   * light used to sweep under the verb, which read as a link.)
+   */
   .verb {
+    color: var(--text-secondary);
+  }
+  .verb.is-running,
+  :global(.head:not(:disabled):hover) .verb {
     color: var(--foreground);
   }
-  /*
-   * A running row stays a row.
-   *
-   * It used to swap its glyph for a busy tile, which made one live call read as
-   * a different kind of object from the nine settled ones around it. Now the
-   * kind keeps its own glyph in the accent colour and a 2px light travels under
-   * the verb: "still going" without pretending to be progress.
-   */
   :global(.step-icon.is-running) {
     color: var(--brand-accent);
   }
-  .verb.is-running {
-    position: relative;
-    /* The bar lives inside the verb's own box: a negative offset put it under
-       the row, where the disclosure's head can clip it. */
-    padding-bottom: 0.125rem;
-    margin-bottom: -0.125rem;
-  }
-  .verb.is-running::after {
-    content: '';
-    position: absolute;
-    right: -0.25rem;
-    bottom: 0;
-    left: 0;
-    height: 2px;
-    border-radius: 2px;
-    background: linear-gradient(
-        90deg,
-        transparent 0%,
-        color-mix(in srgb, var(--brand-accent) 65%, transparent) 45%,
-        transparent 90%
-      )
-      0 0 / 220% 100% no-repeat;
-    animation: meter-sweep 2.6s linear infinite;
-  }
-  @keyframes meter-sweep {
-    from { background-position: 160% 0; }
-    to { background-position: -60% 0; }
-  }
+  /* What the call touched: mono, quieter than the verb, no box of its own. */
   .chip {
-    padding: 0.0625rem 0.375rem;
-    border-radius: 0.3125rem;
-    background: var(--muted);
     font-family: var(--font-mono, ui-monospace, monospace);
     font-size: var(--text-xs);
     color: var(--muted-foreground);
@@ -392,7 +367,6 @@
   }
   @media (prefers-reduced-motion: reduce) {
     .caret { animation: none; }
-    .verb.is-running::after { animation: none; background-position: 45% 0; }
     :global(.step-icon.is-running) { animation: none; }
   }
 </style>

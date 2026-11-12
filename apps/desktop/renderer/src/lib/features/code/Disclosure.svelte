@@ -134,12 +134,14 @@
     opacity: 1;
   }
   /* ── L1: the run of work between two pieces of prose ─────────────────── */
-  /* A header, not a row: smaller and dimmer than everything it holds. */
+  /* A header, not a row: dimmer than everything it holds, at the rows' size so
+     the block reads as one column of type (at --text-xs it looked like a stray
+     caption above its own rows). */
   .level-block > .row > :global(.head.ui-local-2c22291d) {
     gap: 0.375rem;
     padding: 0.3125rem 0.5rem;
     border-radius: 0.5rem;
-    font-size: var(--text-xs);
+    font-size: var(--text-sm);
   }
   /* Its rows hang from a hairline under the chevron, and keep `--row-gap`
      between them: at 0 a run of steps read as one paragraph, while the blocks

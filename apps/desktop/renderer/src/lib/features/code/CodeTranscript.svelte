@@ -361,7 +361,7 @@
               </div>
             {/if}
           {/if}
-          {#if message.content.trim()}<UiButton variant="plain" type="button" class={uiClass("flex items-center gap-1 self-start text-xs text-muted-foreground opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100 focus-visible:opacity-100", "ui-local-7965b84d")} onclick={() => messageAction(message, 'copy')}><Copy class="size-3" />{$t('code.message.copy')}</UiButton>{/if}
+          {#if message.content.trim() && !streaming}<UiButton variant="plain" type="button" class={uiClass("flex items-center gap-1 self-start text-xs text-muted-foreground opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100 focus-visible:opacity-100", "ui-local-7965b84d")} onclick={() => messageAction(message, 'copy')}><Copy class="size-3" />{$t('code.message.copy')}</UiButton>{/if}
         </div>
       {/if}
       </DeferredMessage>

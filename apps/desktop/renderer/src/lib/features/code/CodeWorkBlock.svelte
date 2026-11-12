@@ -2,25 +2,21 @@
 
 <!--
   The work between two pieces of the reply, as one timeline: thoughts and tool calls in the order they happened. Live and failed work opens by default; settled successful work folds unless the reader chose otherwise. The header
-  updates as work progresses. It folds to "4 steps · 2 files changed · 12.4s" with the touched files as
-  chips — each opens its diff in the Changes pane. The live status line still names pending approvals and failures.
+  updates as work progresses. It folds to "4 steps · 2 files changed · 12.4s"; the files themselves are
+  listed once, in the turn's edited-files card.
 
   This is L1: the smallest, quietest line on the page, with its rows hanging
   from the rail the shared disclosure draws for it.
 -->
 
 <script lang="ts">
-  import UiButton from '$lib/components/ui/Button.svelte';
-  import { cn as uiClass } from '$lib/utils/cn';
-
   import { t } from 'svelte-i18n';
   import type { CodeChild } from '$shared/agente-protocol';
   import { approvalsStore } from '$lib/stores/approvals.svelte';
   import { formatToolDuration } from '$lib/utils/tool-ui';
   import { activitySummary } from './activity';
-  import { codeWorkspace } from './workspace.svelte';
   import { changedFiles, isRunning, needsAttention, workBlockKey, type WorkItem } from './work-blocks';
-  import { disclosure, disclosureKey } from './disclosure-state.svelte';
+  import { disclosureKey } from './disclosure-state.svelte';
   import CodeStepRow from './CodeStepRow.svelte';
   import CodeThoughtRow from './CodeThoughtRow.svelte';
   import Disclosure from './Disclosure.svelte';
@@ -64,7 +60,6 @@
    * the reader's choice for that row (a step, or the card of a spawn) hangs on.
    */
   const id = $derived(disclosureKey(chatId, messageId, workBlockKey(visible[0]?.key)));
-  const open = $derived(disclosure.isOpen(id, defaultOpen));
 
   /**
    * How long the whole run of work took: from the first step that started to the
@@ -119,7 +114,7 @@
   <div class="work min-w-0">
     <Disclosure {id} level="block" chevron="leading" {defaultOpen}>
       {#snippet header()}
-        <span class="line min-w-0 truncate tabular-nums">{line}</span>
+        <span class="min-w-0 truncate tabular-nums">{line}</span>
         <span class="flex-1"></span>
         {#if span !== undefined}<span class="span shrink-0 tabular-nums">{formatToolDuration(span)}</span>{/if}
       {/snippet}
@@ -128,49 +123,13 @@
         {#each folded as item (item.key)}{@render row(item)}{/each}
       {/snippet}
     </Disclosure>
-    <!-- Folded, the chips are the one-click way to a file's diff. -->
-    {#if codeActions && files.length && !open}
-      <div class="files">
-        {#each files as file (file.path)}
-          <UiButton variant="plain" type="button" class={uiClass("file-chip", "ui-local-670661b4")} title={file.path} onclick={() => codeWorkspace.showFileInChanges(file.path)}>
-            <span>{file.name}</span>
-            {#if file.additions}<span class="text-success">+{file.additions}</span>{/if}
-            {#if file.deletions}<span class="text-error">−{file.deletions}</span>{/if}
-          </UiButton>
-        {/each}
-      </div>
-    {/if}
   </div>
 {/if}
 {#each waiting as item (item.key)}<div class="min-w-0">{@render row(item)}</div>{/each}
 
 <style>
-  .line {
-    font-size: var(--text-code);
-  }
   .span {
     font-size: var(--text-xs);
     color: var(--muted-foreground);
-  }
-  .files {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.375rem;
-    padding: var(--group-gap, 6px) var(--dock-gap, 8px) 0 var(--step-indent, 19px);
-  }
-  :global(.file-chip.ui-local-670661b4) {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.375rem;
-    padding: 0.125rem 0.5rem;
-    border-radius: 0.375rem;
-    background: var(--muted);
-    font-family: var(--font-mono, ui-monospace, monospace);
-    font-size: var(--text-code);
-    color: var(--foreground);
-    transition: background-color var(--motion-fast) var(--motion-ease);
-  }
-  :global(.file-chip:hover.ui-local-670661b4) {
-    background: var(--surface-hover);
   }
 </style>

@@ -108,25 +108,46 @@
       let lastIndex = 0;
       let match: RegExpExecArray | null = null;
       while ((match = citationRe.exec(text)) !== null) {
-        if (match.index > lastIndex) {
-          fragment.appendChild(document.createTextNode(text.slice(lastIndex, match.index)));
-        }
         const numbers = match[0].match(/\d+/g) || [];
+        const linked = numbers.some((numberText) => /^https?:/i.test(refs[Number(numberText) - 1]?.url ?? ''));
+        let end = match.index + match[0].length;
+        /*
+         * A citation hangs on the word it supports. The space the model left
+         * before `[2]` goes, and that word, the chips and any punctuation right
+         * after them share one unbreakable group, so a line never ends between
+         * a word and its source, or between two sources.
+         */
+        const group = linked ? document.createElement('span') : fragment;
+        if (match.index > lastIndex) {
+          const before = text.slice(lastIndex, match.index);
+          const word = linked ? /(\S+)\s*$/.exec(before) : null;
+          const head = word ? before.slice(0, word.index) : before;
+          if (head) fragment.appendChild(document.createTextNode(head));
+          if (word) group.appendChild(document.createTextNode(word[1]));
+        }
         for (const numberText of numbers) {
           const source = refs[Number(numberText) - 1];
           if (source && /^https?:/i.test(source.url)) {
-            const chip = document.createElement('a');            chip.className = 'ui-legacy-pill mx-0.5 inline-flex h-5 min-w-5 items-center justify-center px-1.5 align-middle text-[12px] font-medium text-[var(--text-secondary)]';
+            const chip = document.createElement('a');
+            chip.className = 'md-cite';
             chip.href = source.url;
             chip.target = '_blank';
             chip.rel = 'noreferrer';
             chip.textContent = numberText;
             chip.title = `${source.title}\n${domainLabel(source.url)}`;
-            fragment.appendChild(chip);
+            group.appendChild(chip);
           } else {
-            fragment.appendChild(document.createTextNode(`[${numberText}]`));
+            group.appendChild(document.createTextNode(`[${numberText}]`));
           }
         }
-        lastIndex = match.index + match[0].length;
+        if (group !== fragment) {
+          const trailing = /^[.,;:!?)\]»”’]+/.exec(text.slice(end))?.[0] ?? '';
+          if (trailing) group.appendChild(document.createTextNode(trailing));
+          end += trailing.length;
+          (group as HTMLElement).className = 'md-cite-group';
+          fragment.appendChild(group);
+        }
+        lastIndex = citationRe.lastIndex = end;
       }
       if (lastIndex < text.length) fragment.appendChild(document.createTextNode(text.slice(lastIndex)));
       if (node.parentNode && lastIndex > 0) node.parentNode.replaceChild(fragment, node);

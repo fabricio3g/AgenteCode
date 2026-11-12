@@ -32,7 +32,10 @@ export interface ActivityCount {
 }
 
 /** Per-kind counts for a run of steps, in reading order, and whether any is still going. */
-export function activitySummary(steps: AgentStep[]): { counts: ActivityCount[]; running: boolean } {
+export function activitySummary(all: AgentStep[]): { counts: ActivityCount[]; running: boolean } {
+  // An approval is a question about a call, not a call: counting it made one
+  // edit waiting on you read as "Editing 2 files".
+  const steps = all.filter((step) => step.type !== 'approval');
   const counts = ORDER.map((kind) => {
     const ofKind = steps.filter((step) => stepKind(step) === kind);
     return { kind, count: kind === 'edit' ? (ofKind.length ? editedFiles(ofKind) : 0) : ofKind.length, running: ofKind.some(isStepRunning) };

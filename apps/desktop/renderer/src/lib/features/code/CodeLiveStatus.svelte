@@ -10,7 +10,7 @@
 <script lang="ts">
   import { t } from 'svelte-i18n';
   import { copy } from '$lib/copy';
-  import { formatToolDuration, titleCaseToolName, toolTarget } from '$lib/utils/tool-ui';
+  import { formatToolDuration, titleCaseToolName } from '$lib/utils/tool-ui';
   import { codeRunElapsed, type CodeRunState } from './code-run';
   import { toolKind } from '$shared/tool-kinds';
   import TileMeter from '$lib/components/ui/TileMeter.svelte';
@@ -61,8 +61,9 @@
       // A wait on a subagent names the agent, not its id.
       const child = status.step.toolName === 'task_output' ? run.children?.find((candidate) => candidate.id === status.step.subagentId) : undefined;
       if (child) return $t('code.live.waitingFor', { values: { agent: [titleCaseToolName(child.kind || 'subagent'), child.description].filter(Boolean).join(' · ') } });
-      const target = toolTarget(status.step.toolName, status.step.detail);
-      return target ? `${status.step.label} ${target}` : status.step.label;
+      // The running row above already names the call ("Read src/index.ts"):
+      // repeating it here said everything twice. This line keeps the run's pulse.
+      return copy.status.working;
     },
     thinking: () => $t('code.thinking'),
     writing: () => $t('code.live.writing'),
@@ -74,6 +75,9 @@
   const label = $derived((labels[status.kind] as (status: LiveStatus) => string)(status));
 </script>
 
+<!-- An approval is already on screen with its diff and its Allow / Deny: a
+     third "waiting for your approval" line here only repeated it. -->
+{#if status.kind !== 'approval'}
 <div class="live" role="status" aria-live="polite">
   <TileMeter {mode} />
   <span class="min-w-0 truncate">
@@ -82,6 +86,7 @@
   {#if quietMs >= QUIET_MS}<span class="shrink-0">· {$t('code.live.noUpdate', { values: { seconds: Math.floor(quietMs / 1000) } })}</span>{/if}
   {#if elapsed}<span class="shrink-0 tabular-nums">· {elapsed}</span>{/if}
 </div>
+{/if}
 
 <style>
   .live {
