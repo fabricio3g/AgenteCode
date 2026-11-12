@@ -491,6 +491,7 @@
     "deleteUnlinkedTitle": "{conversations} löschen?",
     "awaitingApproval": "Wartet auf deine Freigabe",
     "approve": {
+      "action": "Diese Aktion erlauben?",
       "edit": "Diese Änderung erlauben?",
       "command": "Diesen Befehl ausführen?",
       "plan": "Diesen Plan freigeben?",

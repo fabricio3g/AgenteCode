@@ -47,6 +47,8 @@
   import { MAX_COMPOSER_TEXTAREA_PX, autogrowTextarea } from '$lib/features/shared/composer-autogrow';
   import NameCompletion from '$lib/features/shared/NameCompletion.svelte';
   import PromptQueue from '$lib/features/shared/PromptQueue.svelte';
+  import ApprovalBar from '$lib/features/shared/composer/ApprovalBar.svelte';
+  import { approvalsStore } from '$lib/stores/approvals.svelte';
   import SessionGoal from '$lib/features/shared/SessionGoal.svelte';
   import type { NameCandidate } from '$lib/features/shared/name-completion';
 
@@ -212,8 +214,19 @@
     await appStore.sendCurrentMessage();
   }
 
+  /** A tool call held for the user's answer: asked on this sheet, as in Code. */
+  const pendingApprovals = $derived(appStore.currentChatId ? approvalsStore.forChat(appStore.currentChatId) : []);
+
   function onKeydown(event: KeyboardEvent) {
     if (event.isComposing || event.defaultPrevented) return;
+    // A held call owns Escape (deny) and Enter on an empty field (allow).
+    const approval = pendingApprovals[0];
+    if (approval && (event.key === 'Escape' || (event.key === 'Enter' && !event.shiftKey && !appStore.composer.trim() && !appStore.pendingAttachments.length))) {
+      event.preventDefault();
+      event.stopPropagation();
+      approvalsStore.resolve(approval.id, event.key === 'Enter');
+      return;
+    }
     if (goalSlashOpen && event.key === 'Escape') { event.preventDefault(); goalSlashDismissed = true; return; }
     if (goalSlashOpen && (event.key === 'Tab' || (event.key === 'Enter' && !event.shiftKey))) { event.preventDefault(); void openGoal(); return; }
     if (event.key === 'ArrowUp' && !appStore.composer && !appStore.pendingAttachments.length) {
@@ -423,6 +436,10 @@
     {/if}
     <AttachmentCards />
     <div class="composer-shell ui-composer pointer-events-auto transition">
+      {#if pendingApprovals.length}
+        {@const approval = pendingApprovals[0]!}
+        <ApprovalBar {approval} service total={pendingApprovals.length} onanswer={(allow) => approvalsStore.resolve(approval.id, allow)} />
+      {/if}
       {#if nameCompletion}
         <NameCompletion {textarea} text={appStore.composer} {...nameCompletion} onchange={(text) => appStore.updateComposer(text)} />
       {/if}

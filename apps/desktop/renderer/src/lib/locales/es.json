@@ -500,6 +500,7 @@
     "deleteUnlinkedTitle": "¿Eliminar {conversations}?",
     "awaitingApproval": "Esperando tu aprobación",
     "approve": {
+      "action": "¿Permitir esta acción?",
       "edit": "¿Permitir esta edición?",
       "command": "¿Ejecutar este comando?",
       "plan": "¿Aprobar este plan?",

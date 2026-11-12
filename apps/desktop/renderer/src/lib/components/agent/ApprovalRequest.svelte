@@ -1,17 +1,18 @@
 <svelte:options runes={true} />
 
 <!--
-  Inline approval prompt.
+  Where a held run stopped, in the conversation.
 
-  The run is stopped until this is answered. It previously lived only inside the
-  activity drawer, so with the drawer closed a blocked agent showed nothing at
-  all and the user had no way to know why it had stalled.
+  The answer itself lives on the composer sheet (ApprovalBar), where Enter and
+  Esc already are; this band only marks the spot in the turn: what was asked,
+  why, and that the run is waiting below. It used to be a second card with its
+  own Allow / Deny, so the same question was asked twice on one screen.
 -->
 
 <script lang="ts">
+  import { t } from 'svelte-i18n';
   import { ShieldQuestion } from 'lucide-svelte';
-  import Button from '$lib/components/ui/Button.svelte';
-  import { approvalsStore, type PendingApproval } from '$lib/stores/approvals.svelte';
+  import type { PendingApproval } from '$lib/stores/approvals.svelte';
   import { copy } from '$lib/copy';
 
   interface Props {
@@ -23,94 +24,67 @@
 
 {#each approvals as approval (approval.id)}
   <section class="approval" class:dangerous={approval.dangerous} aria-label={copy.tool.needsApproval}>
-    <header class="head">
+    <p class="head">
       <ShieldQuestion class="size-3.5 shrink-0" />
       <span class="title">{copy.tool.needsApproval}</span>
-    </header>
-
-    {#if approval.dangerous}<p class="lede">{copy.tool.approvalDestructive}</p>{/if}
-
-    {#if approval.reason}
-      <p class="reason">{approval.reason}</p>
-    {/if}
-
-    <pre class="ui-tool-fallback-args-value">{approval.command}</pre>
-
-    {#if approval.cwd}
-      <p class="cwd" title={approval.cwd}>{approval.cwd}</p>
-    {/if}
-
-    <div class="actions">
-      <Button variant="outline" size="sm" onclick={() => approvalsStore.resolve(approval.id, false)}>
-        {copy.tool.deny}
-      </Button>
-      <Button size="sm" onclick={() => approvalsStore.resolve(approval.id, true)}>
-        {copy.tool.allow}
-      </Button>
-    </div>
+      <code class="what">{approval.command}</code>
+    </p>
+    {#if approval.dangerous}<p class="note is-danger">{copy.tool.approvalDestructive}</p>{/if}
+    {#if approval.reason}<p class="note">{approval.reason}</p>{/if}
+    <p class="note">{$t('code.approve.below')}</p>
   </section>
 {/each}
 
 <style>
-  /* Same card recipe as FileChangesCard, so the two agent cards in one turn
-     read as a set. */
+  /* The band the Code transcript draws for a held call: a warning rail and a
+     whisper of tint, no box of its own. */
   .approval {
-    margin: 0.5rem 0;
-    width: var(--inline-block-width);
-    max-width: 100%;
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-lg);
-    background: color-mix(in srgb, var(--muted) 45%, transparent);
-    padding: 0.75rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    margin: 0.25rem 0;
+    padding: 0.5rem 0.75rem;
+    border-left: 2px solid color-mix(in srgb, var(--warning) 60%, transparent);
+    border-radius: 0 0.5rem 0.5rem 0;
+    background: color-mix(in srgb, var(--warning) 5%, transparent);
   }
-
   .approval.dangerous {
-    border-color: color-mix(in srgb, var(--destructive, #c0392b) 35%, var(--border-subtle));
+    border-left-color: color-mix(in srgb, var(--error) 60%, transparent);
+    background: color-mix(in srgb, var(--error) 5%, transparent);
   }
-
   .head {
     display: flex;
+    min-width: 0;
     align-items: center;
-    gap: 0.4rem;
-    color: var(--muted-foreground);
-    /* Matches AgentBlock's status line, which this sits directly beneath. */
-    font-size: 0.8125rem;
+    gap: 0.5rem;
+    margin: 0;
+    color: var(--warning);
+    font-size: var(--text-sm);
+  }
+  .dangerous .head {
+    color: var(--error);
+  }
+  .title {
+    flex-shrink: 0;
+    color: var(--foreground);
     font-weight: 500;
   }
-
-  .title {
-    color: var(--foreground);
-  }
-
-  .lede {
-    margin: 0.35rem 0 0.5rem;
-    color: var(--muted-foreground);
-    font-size: 0.75rem;
-    line-height: 1.5;
-  }
-
-  .reason {
-    margin: 0 0 0.5rem;
-    color: var(--destructive, #c0392b);
-    font-size: 0.75rem;
-    line-height: 1.5;
-    overflow-wrap: anywhere;
-  }
-
-  .cwd {
-    margin: 0.35rem 0 0;
+  .what {
+    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
     color: var(--muted-foreground);
-    font-variant-numeric: tabular-nums;
+    font-family: var(--font-mono);
     font-size: var(--text-xs);
   }
-
-  .actions {
-    display: flex;
-    justify-content: flex-end;
-    gap: 0.5rem;
-    margin-top: 0.65rem;
+  .note {
+    margin: 0;
+    color: var(--muted-foreground);
+    font-size: var(--text-xs);
+    line-height: 1.45;
+  }
+  .note.is-danger {
+    color: var(--error);
   }
 </style>

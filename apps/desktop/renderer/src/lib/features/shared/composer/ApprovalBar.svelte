@@ -1,8 +1,9 @@
 <svelte:options runes={true} />
 
 <!--
-  The one place a Code run asks you something: a tool call held for your
-  answer, on top of the prompt sheet where your hands already are.
+  The one place a run asks you something: a tool call held for your answer,
+  on top of the prompt sheet where your hands already are. Code and the chat
+  composer (Home, Design, Roleplay) both mount it.
 
   It used to be the generic question picker — a title, the raw command in
   mono, then "Allow" and "Deny" as two bare rows — so it read as a menu and
@@ -14,7 +15,9 @@
   The question names the kind of call, the subject is the file or command it
   touches (a click scrolls to its diff in the conversation), and the two
   buttons carry their keys. A destructive call says so in red. The transcript
-  shows the diff; it no longer carries a second pair of buttons.
+  shows the diff; it no longer carries a second pair of buttons. A `service`
+  request (a connected app's action, a local creative domain) has no file or
+  command to name, so it asks "Allow this action?" over the action itself.
 -->
 
 <script lang="ts">
@@ -33,6 +36,7 @@
     step,
     index = 1,
     total = 1,
+    service = false,
     onanswer
   }: {
     approval: PendingApproval;
@@ -41,6 +45,8 @@
     /** Which of the pending requests this is (1-based), when several wait. */
     index?: number;
     total?: number;
+    /** A connected service's action rather than a coding tool call. */
+    service?: boolean;
     onanswer: (allow: boolean) => void;
   } = $props();
 
@@ -48,6 +54,7 @@
 
   /** "edit src/index.ts" → the tool and what it touches. */
   const parsed = $derived.by(() => {
+    if (service) return { kind: 'action' as const, tool: '', subject: approval.command };
     if (PLAN.test(approval.command)) return { kind: 'plan' as const, tool: '', subject: approval.command.replace(PLAN, '') };
     const [tool = '', ...rest] = approval.command.trim().split(/\s+/);
     const kind = toolKind(tool);
@@ -59,6 +66,8 @@
       ? $t('code.approve.other', { values: { tool: titleCaseToolName(parsed.tool || 'tool') } })
       : $t(`code.approve.${parsed.kind}`)
   );
+  /** Where a service request acts (the connected app, the creative project). */
+  const where = $derived(service && approval.cwd && !approval.command.startsWith(approval.cwd) ? approval.cwd : '');
   const Icon = $derived(approval.dangerous ? ShieldAlert : parsed.kind === 'edit' ? FilePen : parsed.kind === 'command' ? SquareTerminal : parsed.kind === 'plan' ? ListChecks : Wrench);
 
   /** What an edit would change, counted from the diff the row shows. */
@@ -103,7 +112,10 @@
     </p>
     {#if parsed.subject || churn}
       <p class="subject">
-        {#if parsed.subject}
+        {#if parsed.subject && service}
+          <span class="target is-static">{parsed.subject}</span>
+          {#if where}<span class="where">{where}</span>{/if}
+        {:else if parsed.subject}
           <button type="button" class="target" title={$t('code.approve.show')} onclick={reveal}>{parsed.subject}</button>
         {/if}
         {#if churn}<span class="churn"><span class="text-success">+{churn.adds}</span><span class="text-error">−{churn.dels}</span></span>{/if}
@@ -202,7 +214,17 @@
     white-space: nowrap;
     cursor: pointer;
   }
-  .target:hover {
+  /* A service action reads as a sentence ("Gmail · Send email to …"), not code. */
+  .target.is-static {
+    font-family: inherit;
+    cursor: default;
+  }
+  .where {
+    flex-shrink: 0;
+    color: var(--muted-foreground);
+    font-size: var(--text-xs);
+  }
+  .target:not(.is-static):hover {
     color: var(--foreground);
     text-decoration: underline;
     text-underline-offset: 2px;

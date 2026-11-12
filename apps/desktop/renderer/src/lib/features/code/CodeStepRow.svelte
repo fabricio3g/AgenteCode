@@ -26,7 +26,6 @@
   import { approvalsStore } from '$lib/stores/approvals.svelte';
   import { formatToolDuration, toolTarget } from '$lib/utils/tool-ui';
   import { shortModel } from '$lib/utils/format';
-  import { copy } from '$lib/copy';
   import { ActiveDuration } from '$lib/utils/active-duration';
   import { toastStore } from '$lib/stores/toast.svelte';
   import { writeToClipboard } from '$lib/utils/clipboard';
@@ -196,14 +195,9 @@
             <UiButton variant="plain" type="button" class={uiClass("view-link self-start", "ui-local-af21c610")} onclick={() => codeWorkspace.showFileInChanges(step.fileChanges?.[0]?.path ?? '')}>{$t('codeWs.viewChanges')}</UiButton>
           {/if}
         {/if}
-        {#if isApproval && codeActions}
-          <!-- Code answers in the composer's approval bar: one pair of buttons. -->
+        {#if isApproval}
+          <!-- Every composer carries the approval bar: one pair of buttons, there. -->
           <p class="approval-note">{$t('code.approve.below')}</p>
-        {:else if isApproval}
-          <div class="flex items-center gap-2 pt-1">
-            <UiButton variant="plain" type="button" class={uiClass("approve-btn", "ui-local-af21c610")} onclick={() => approvalsStore.resolve(pending?.id ?? step.id, false)}>{copy.tool.deny}</UiButton>
-            <UiButton variant="plain" type="button" class={uiClass("approve-btn primary", "ui-local-af21c610")} onclick={() => approvalsStore.resolve(pending?.id ?? step.id, true)}>{copy.tool.allow}</UiButton>
-          </div>
         {/if}
       </div>
     {/snippet}
@@ -351,27 +345,6 @@
   }
   @keyframes blink {
     50% { opacity: 0; }
-  }
-  :global(.approve-btn.ui-local-af21c610) {
-    height: 1.75rem;
-    padding: 0 0.75rem;
-    border-radius: var(--radius-full);
-    font-size: var(--text-xs);
-    font-weight: 500;
-    color: var(--foreground);
-    border: 1px solid var(--border);
-    background: var(--background);
-  }
-  :global(.approve-btn:hover.ui-local-af21c610) {
-    background: var(--surface-hover);
-  }
-  :global(.approve-btn.primary.ui-local-af21c610) {
-    border-color: var(--primary);
-    background: var(--primary);
-    color: var(--primary-fg);
-  }
-  :global(.approve-btn.primary:hover.ui-local-af21c610) {
-    opacity: 0.9;
   }
   @media (prefers-reduced-motion: reduce) {
     .caret { animation: none; }

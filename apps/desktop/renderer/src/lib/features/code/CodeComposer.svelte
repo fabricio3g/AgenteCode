@@ -56,7 +56,7 @@
   import DictationButton from '$lib/features/chat/composer/DictationButton.svelte';
   import DictationSetupPopover from '$lib/features/chat/composer/DictationSetupPopover.svelte';
   import ComposerRecorder from '$lib/features/chat/composer/ComposerRecorder.svelte';
-  import CodeApprovalBar from './CodeApprovalBar.svelte';
+  import ApprovalBar from '$lib/features/shared/composer/ApprovalBar.svelte';
   import { Dictation } from '$lib/features/chat/composer/use-dictation.svelte';
   import { approvalsStore } from '$lib/stores/approvals.svelte';
   import { copy } from '$lib/copy';
@@ -745,7 +745,7 @@
     <div class="composer-shell ui-composer pointer-events-auto transition">
       {#if pendingApprovals.length}
         {@const approval = pendingApprovals[0]!}
-        <CodeApprovalBar
+        <ApprovalBar
           {approval}
           step={approvalStep(approval.requestId)}
           total={pendingApprovals.length}

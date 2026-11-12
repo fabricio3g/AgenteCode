@@ -491,6 +491,7 @@
     "deleteUnlinkedTitle": "Supprimer {conversations} ?",
     "awaitingApproval": "En attente de votre approbation",
     "approve": {
+      "action": "Autoriser cette action ?",
       "edit": "Autoriser cette modification ?",
       "command": "Exécuter cette commande ?",
       "plan": "Approuver ce plan ?",

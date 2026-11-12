@@ -491,6 +491,7 @@
     "deleteUnlinkedTitle": "删除{conversations}？",
     "awaitingApproval": "等待你的批准",
     "approve": {
+      "action": "允许此操作?",
       "edit": "允许这次编辑?",
       "command": "运行这条命令?",
       "plan": "批准这个计划?",

@@ -491,6 +491,7 @@
     "deleteUnlinkedTitle": "Excluir {conversations}?",
     "awaitingApproval": "Aguardando sua aprovação",
     "approve": {
+      "action": "Permitir esta ação?",
       "edit": "Permitir esta edição?",
       "command": "Executar este comando?",
       "plan": "Aprovar este plano?",

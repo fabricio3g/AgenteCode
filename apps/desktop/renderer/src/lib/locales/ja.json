@@ -491,6 +491,7 @@
     "deleteUnlinkedTitle": "{conversations}を削除しますか？",
     "awaitingApproval": "承認待ち",
     "approve": {
+      "action": "この操作を許可しますか?",
       "edit": "この編集を許可しますか?",
       "command": "このコマンドを実行しますか?",
       "plan": "このプランを承認しますか?",
