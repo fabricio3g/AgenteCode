@@ -150,14 +150,16 @@
   <div class="titlebar-safe">
     <div class="titlebar-left flex min-w-0 items-center">
       {#if !settingsOpen}
+        <!-- The spaces and search live in the sidebar; they come up here only
+             while it is closed. -->
         {#if !appStore.sidebarOpen}
           <TitlebarLeftTools expanded={appStore.sidebarOpen || sidebarPreview} onToggle={onSidebarToggle} onEnter={onSidebarEnter} onLeave={onSidebarLeave} />
+          <SpaceSwitcher />
+          <Tooltip label={$t('titlebar.search')} shortcut="mod+shift+k" position="bottom">
+            <UiIconButton label={$t('titlebar.search')} title="" size="sm" class="titlebar-no-drag"
+              onclick={() => appStore.openSearch()}><Search /></UiIconButton>
+          </Tooltip>
         {/if}
-        <SpaceSwitcher />
-        <Tooltip label={$t('titlebar.search')} shortcut="mod+shift+k" position="bottom">
-          <UiIconButton label={$t('titlebar.search')} title="" size="sm" class="titlebar-no-drag"
-            onclick={() => appStore.openSearch()}><Search /></UiIconButton>
-        </Tooltip>
       {:else}
         <div class="flex items-center gap-1.5 pl-1.5">
           <Tooltip label={$t('shortcuts.backToConversation')} shortcut="escape">

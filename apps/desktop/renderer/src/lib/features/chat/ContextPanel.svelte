@@ -14,7 +14,6 @@
   import { FileDiff, FileSpreadsheet, FileText, Files, Globe, Presentation, Shapes } from 'lucide-svelte';
   import { formatToolDuration } from '$lib/utils/tool-ui';
   import Button from '$lib/components/ui/Button.svelte';
-  import { cn as uiClass } from '$lib/utils/cn';
   import type { ArtifactKind, ChatSession } from '$lib/types/chat';
   import { appStore } from '$lib/stores/app.svelte';
   import { resolveArtifactPresentation } from '$lib/services/artifact-model';
@@ -108,7 +107,7 @@
   }
 </script>
 
-<div class="context">
+<div class="pane-body">
   <section class="brief" aria-label={$t('context.button')}>
     <h2 class="brief-title">{chat.title}</h2>
     <dl class="facts">
@@ -116,7 +115,7 @@
         <div class="fact"><dt>{fact.label}</dt><dd title={fact.value}>{fact.value}</dd></div>
       {/each}
       {#if files.length}
-        <div class="fact"><dt>{$t('context.changes')}</dt><dd class="churn"><span class="text-success">+{churn.add}</span><span class="text-error">−{churn.del}</span><span>· {files.length}</span></dd></div>
+        <div class="fact"><dt>{$t('context.changes')}</dt><dd class="pane-churn"><span class="text-success">+{churn.add}</span><span class="text-error">−{churn.del}</span><span>· {files.length}</span></dd></div>
       {/if}
     </dl>
     {#if latest}
@@ -127,11 +126,11 @@
 
   {#if requests.length}
     <section>
-      <h3 class="heading">{$t('context.requests')}<span class="count">{requests.length}</span></h3>
+      <h3 class="pane-heading">{$t('context.requests')}<span class="pane-count">{requests.length}</span></h3>
       {#each requests as request, order (request.id)}
-        <Button variant="plain" class={uiClass('row', 'ui-local-c0a1e7f4')} title={request.text} onclick={() => jumpTo(request.index)}>
-          <span class="tile num" aria-hidden="true">{order + 1}</span>
-          <span class="label">{request.text}</span>
+        <Button variant="plain" class="pane-row" title={request.text} onclick={() => jumpTo(request.index)}>
+          <span class="pane-row-tile" aria-hidden="true">{order + 1}</span>
+          <span class="pane-row-label">{request.text}</span>
         </Button>
       {/each}
     </section>
@@ -139,11 +138,11 @@
 
   {#if artifacts.length}
     <section>
-      <h3 class="heading">{$t('artifacts.title')}<span class="count">{artifacts.length}</span></h3>
+      <h3 class="pane-heading">{$t('artifacts.title')}<span class="pane-count">{artifacts.length}</span></h3>
       {#each artifacts as item (item.key)}
-        <Button variant="plain" class={uiClass('row', 'ui-local-c0a1e7f4')} title={item.title} onclick={() => appStore.openArtifactPanel(chat.id, item.messageId, item.index)}>
-          <span class="tile" aria-hidden="true"><item.icon class="size-3.5" /></span>
-          <span class="label">{item.title}</span>
+        <Button variant="plain" class="pane-row" title={item.title} onclick={() => appStore.openArtifactPanel(chat.id, item.messageId, item.index)}>
+          <span class="pane-row-tile" aria-hidden="true"><item.icon class="size-3.5" /></span>
+          <span class="pane-row-label">{item.title}</span>
         </Button>
       {/each}
     </section>
@@ -151,12 +150,12 @@
 
   {#if pages.length}
     <section>
-      <h3 class="heading">{$t('context.web')}<span class="count">{pages.length}</span></h3>
+      <h3 class="pane-heading">{$t('context.web')}<span class="pane-count">{pages.length}</span></h3>
       {#each pages as page (page.url)}
-        <Button variant="plain" class={uiClass('row', 'ui-local-c0a1e7f4')} title={page.url} onclick={() => window.open(page.url, '_blank', 'noopener,noreferrer')}>
-          <span class="tile" aria-hidden="true"><Globe class="size-3.5" /></span>
-          <span class="label">{page.title}</span>
-          <span class="aside">{page.host}</span>
+        <Button variant="plain" class="pane-row" title={page.url} onclick={() => window.open(page.url, '_blank', 'noopener,noreferrer')}>
+          <span class="pane-row-tile" aria-hidden="true"><Globe class="size-3.5" /></span>
+          <span class="pane-row-label">{page.title}</span>
+          <span class="pane-row-aside">{page.host}</span>
         </Button>
       {/each}
     </section>
@@ -164,12 +163,12 @@
 
   {#if files.length}
     <section>
-      <h3 class="heading">{$t('context.files')}<span class="count">{files.length}</span></h3>
+      <h3 class="pane-heading">{$t('context.files')}<span class="pane-count">{files.length}</span></h3>
       {#each files as file (file.path)}
-        <Button variant="plain" class={uiClass('row', 'ui-local-c0a1e7f4')} title={file.path} onclick={() => codeWorkspace.showFileInChanges(file.path)}>
-          <span class="tile" aria-hidden="true"><FileDiff class="size-3.5" /></span>
-          <span class="label">{file.name}</span>
-          <span class="aside churn"><span class="text-success">+{file.additions}</span><span class="text-error">−{file.deletions}</span></span>
+        <Button variant="plain" class="pane-row" title={file.path} onclick={() => codeWorkspace.showFileInChanges(file.path)}>
+          <span class="pane-row-tile" aria-hidden="true"><FileDiff class="size-3.5" /></span>
+          <span class="pane-row-label">{file.name}</span>
+          <span class="pane-row-aside pane-churn"><span class="text-success">+{file.additions}</span><span class="text-error">−{file.deletions}</span></span>
         </Button>
       {/each}
     </section>
@@ -177,15 +176,6 @@
 </div>
 
 <style>
-  .context {
-    display: flex;
-    min-height: 0;
-    flex: 1;
-    flex-direction: column;
-    gap: 1.125rem;
-    overflow-y: auto;
-    padding: 0.75rem;
-  }
   /* The brief is the one card in the column; everything under it is rows. */
   .brief {
     padding: 0.75rem 0.875rem;
@@ -248,74 +238,5 @@
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 3;
     line-clamp: 3;
-  }
-
-  .heading {
-    margin: 0 0 0.25rem;
-    padding: 0 0.5rem;
-    display: flex;
-    align-items: baseline;
-    gap: 0.375rem;
-    color: var(--muted-foreground);
-    font-size: var(--text-xs);
-    font-weight: 500;
-  }
-  .count {
-    font-weight: 400;
-    font-variant-numeric: tabular-nums;
-    opacity: 0.7;
-  }
-  .num {
-    font-size: var(--text-xs);
-    font-variant-numeric: tabular-nums;
-  }
-  :global(.row.ui-local-c0a1e7f4) {
-    display: flex;
-    width: 100%;
-    min-width: 0;
-    align-items: center;
-    gap: 0.625rem;
-    padding: 0.3125rem 0.5rem;
-    border-radius: 0.5rem;
-    color: var(--foreground);
-    font-size: var(--text-sm);
-    text-align: left;
-    transition: background-color var(--motion-instant) var(--motion-ease);
-  }
-  :global(.row.ui-local-c0a1e7f4:hover) {
-    background: var(--float-row-hover);
-  }
-  .tile {
-    display: inline-flex;
-    width: 1.5rem;
-    height: 1.5rem;
-    flex-shrink: 0;
-    align-items: center;
-    justify-content: center;
-    border-radius: 0.375rem;
-    background: color-mix(in srgb, var(--foreground) 8%, transparent);
-    color: var(--text-secondary);
-  }
-  .label {
-    min-width: 0;
-    flex: 1;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .aside {
-    flex-shrink: 0;
-    max-width: 40%;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    color: var(--muted-foreground);
-    font-size: var(--text-xs);
-  }
-  .churn {
-    display: inline-flex;
-    gap: 0.375rem;
-    font-family: var(--font-mono);
-    font-variant-numeric: tabular-nums;
   }
 </style>

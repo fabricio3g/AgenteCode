@@ -23,13 +23,12 @@ describe('space switcher', () => {
     const view = render(SpaceSwitcher);
     expect(view.container.querySelector('[data-space-switcher]')).toBeTruthy();
 
-    // Bots no longer appears in the product navigation. Only the space you are
-    // in is named; the rest keep their glyph and are named on hover.
+    // Bots no longer appears in the product navigation. Every space is a glyph,
+    // named for assistive tech and on hover.
     const tabs = view.getAllByRole('tab');
     const nameOf = (tab: HTMLElement) => tab.getAttribute('aria-label') ?? tab.textContent?.trim();
     expect(tabs.map(nameOf)).toEqual(['Home', 'Code', 'Design', 'Roleplay']);
-    expect(tabs[0].textContent?.trim()).toBe('Home');
-    expect(tabs.slice(1).every((tab) => !tab.textContent?.trim())).toBe(true);
+    expect(tabs.every((tab) => !tab.textContent?.trim())).toBe(true);
     const [home, code, design, roleplay] = tabs;
     home.focus();
     await fireEvent.keyDown(home, { key: 'ArrowRight' });
@@ -46,7 +45,6 @@ describe('space switcher', () => {
     expect(view.queryByRole('button', { name: 'Settings' })).toBeNull();
 
     expect(view.container.querySelectorAll('.tooltip-anchor')).toHaveLength(4);
-    // The named segment explains itself; the glyph-only ones need the pill.
     expect(view.getByRole('tab', { name: 'Code' }).closest('.tooltip-anchor')).toBeTruthy();
     expect(view.getByRole('tablist').getAttribute('aria-orientation')).not.toBe('vertical');
   });
@@ -67,7 +65,7 @@ describe('space switcher', () => {
     expect(view.getAllByRole('tab').map((tab) => tab.getAttribute('aria-label') ?? tab.textContent?.trim())).toEqual(['Home', 'Code', 'Design']);
   });
 
-  it('names a glyph-only space on hover, and never the one in effect', async () => {
+  it('names every space on hover, the one in effect included', async () => {
     appStore.activeSpace = 'home';
     appStore.config = { ...appStore.config, ui: { ...appStore.config.ui, roleplay_enabled: false } };
     const view = render(SpaceSwitcher);
@@ -76,11 +74,10 @@ describe('space switcher', () => {
     await fireEvent.mouseEnter(anchor('Code'));
     await vi.waitFor(() => expect(view.getByRole('tooltip').textContent?.trim()).toBe('Code'));
 
-    // The selected segment already says its name; a pill repeating it is noise.
+    // No segment shows its name, so the selected one needs the pill too.
     await fireEvent.mouseLeave(anchor('Code'));
     await fireEvent.mouseEnter(anchor('Home'));
-    await new Promise((resolve) => setTimeout(resolve, 200));
-    expect(view.queryByRole('tooltip')).toBeNull();
+    await vi.waitFor(() => expect(view.getByRole('tooltip').textContent?.trim()).toBe('Home'));
   });
 
   it('switches spaces when a tab is chosen', async () => {
@@ -95,8 +92,9 @@ describe('space switcher', () => {
   it('uses the shared segmented control and keeps navigation out of the drag region', () => {
     const modules = import.meta.glob<string>('./SpaceSwitcher.svelte', { query: '?raw', import: 'default', eager: true });
     const row = modules['./SpaceSwitcher.svelte'];
-    // Names are on screen now, so the tooltips went: a glyph-only rail hid them.
+    // Glyphs only; the segmented control names each one in its own tooltip.
     expect(row).toContain('<SegmentedControl');
+    expect(row).toContain('labels="none"');
     expect(row).not.toContain('<Tooltip');
     const style = row.slice(row.indexOf('<style>'));
 
@@ -108,14 +106,14 @@ describe('space switcher', () => {
      */
     expect(style).toMatch(/\.space-group\s*\{[^}]*app-region:\s*no-drag/s);
 
-    // The switcher belongs to the titlebar, not the sidebar.
+    // The switcher heads the sidebar, and the titlebar while the sidebar is closed.
     const shell = import.meta.glob<string>('./AppShell.svelte', { query: '?raw', import: 'default', eager: true });
     expect(shell['./AppShell.svelte']).not.toContain('ActivityRail');
     expect(shell['./AppShell.svelte']).toContain('left: var(--sheet-gap)');
     const titlebar = import.meta.glob<string>('./Titlebar.svelte', { query: '?raw', import: 'default', eager: true });
     expect(titlebar['./Titlebar.svelte']).toContain('<SpaceSwitcher />');
     const sidebar = import.meta.glob<string>('./Sidebar.svelte', { query: '?raw', import: 'default', eager: true });
-    expect(sidebar['./Sidebar.svelte']).not.toContain('<SpaceSwitcher');
+    expect(sidebar['./Sidebar.svelte']).toContain('<SpaceSwitcher />');
   });
 
   it('keeps downloads, theme and the window controls in the titlebar', async () => {

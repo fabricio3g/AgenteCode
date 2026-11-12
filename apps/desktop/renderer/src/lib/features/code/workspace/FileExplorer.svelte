@@ -144,10 +144,7 @@
   {#if loading}
     <div class="flex flex-1 items-center justify-center"><LoaderCircle class="size-4 animate-spin text-muted-foreground" /></div>
   {:else if files && !files.length}
-    <div class="files-empty">
-      <FolderTree class="mt-0.5 size-3.5 shrink-0" />
-      <p>{$t('codeWs.noFiles')}</p>
-    </div>
+    <div class="pane-body"><p class="pane-empty"><FolderTree class="size-3.5" />{$t('codeWs.noFiles')}</p></div>
   {:else}
     <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
     <ul class="files-tree" role="tree" aria-label={$t('codeWs.files')} bind:this={treeEl} tabindex="0" onkeydown={onKeyDown}>
@@ -166,10 +163,9 @@
 </aside>
 
 <style>
-  .files { display: flex; min-height: 0; width: 100%; height: 100%; flex: 1; flex-direction: column; background: var(--float-bg); }
+  .files { display: flex; min-height: 0; width: 100%; height: 100%; flex: 1; flex-direction: column; background: transparent; }
   /* Rows are 1.375rem tiles: the gap keeps a hovered row from touching the next,
      and the top inset keeps the first one off the bar. */
-  .files-tree { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 0.125rem; padding: 0.25rem 4px 4px; outline: none; }
+  .files-tree { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 0.125rem; padding: 0.25rem 0.75rem 0.75rem; outline: none; }
   .files-tree:focus-visible { outline: 1px solid var(--border-hover); outline-offset: -1px; }
-  .files-empty { display: flex; align-items: flex-start; gap: 0.5rem; padding: 0.5rem 0.75rem; color: var(--muted-foreground); font-size: var(--text-xs); line-height: 1.55; }
 </style>

@@ -139,7 +139,7 @@
     transition: background-color var(--motion-fast) var(--motion-ease);
   }
   :is(.file-row:hover, :global(.file-row:hover.ui-local-7a0637fc)),
-  .file-node.is-selected :is(.file-row, :global(.file-row.ui-local-7a0637fc)) { background: var(--surface-hover); }
+  .file-node.is-selected :is(.file-row, :global(.file-row.ui-local-7a0637fc)) { background: var(--float-row-hover); }
   .file-indent { flex-shrink: 0; }
   .file-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--foreground); }
   .file-mark { flex-shrink: 0; margin-left: auto; font-size: var(--text-xs); font-weight: 600; font-variant-numeric: tabular-nums; }

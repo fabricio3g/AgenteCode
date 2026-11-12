@@ -3,8 +3,10 @@
 <!--
   The spaces, as one segmented control: a soft track with a raised segment on
   the space you are in. It reuses `SegmentedControl` rather than drawing its own
-  pills, so the topbar control matches every picker in Settings — and inherits
+  pills, so the control matches every picker in Settings — and inherits
   roving tabindex, Arrow/Home/End, the sliding indicator and reduced motion.
+  Glyphs only: each segment names itself in a tooltip. It heads the sidebar,
+  and the titlebar while the sidebar is closed.
 -->
 
 <script lang="ts">
@@ -52,7 +54,7 @@
     shape="soft"
     id="space"
     controlsPanels={false}
-    labels="active"
+    labels="none"
     label={copy.spaces.label}
     value={appStore.activeTab}
     {options}

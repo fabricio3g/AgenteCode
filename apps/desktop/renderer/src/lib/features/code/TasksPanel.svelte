@@ -33,12 +33,11 @@
 
 {#if todos.length}
   <!-- svelte-ignore a11y_no_noninteractive_tabindex (The task list needs focus for keyboard scrolling.) -->
-  <div class="min-h-0 flex-1 overflow-y-auto px-4 py-3" role="region" aria-label={$t('code.todosTitle')} tabindex="0">
+  <div class="pane-body" role="region" aria-label={$t('code.todosTitle')} tabindex="0">
+    <section>
     {#if total}
-      <div class="tasks-progress">
-        <div class="progress-track" role="progressbar" aria-label={$t('code.todosTitle')} aria-valuemin="0" aria-valuemax={total} aria-valuenow={done}><span style:width={`${done / total * 100}%`}></span></div>
-        <span class="tabular-nums" aria-hidden="true">{done}/{total}</span>
-      </div>
+      <h3 class="pane-heading">{$t('code.todosTitle')}<span class="pane-count" aria-hidden="true">{done}/{total}</span></h3>
+      <div class="progress-track" role="progressbar" aria-label={$t('code.todosTitle')} aria-valuemin="0" aria-valuemax={total} aria-valuenow={done}><span style:width={`${done / total * 100}%`}></span></div>
     {/if}
     <ul>
       {#each todos as todo, index (index)}
@@ -63,27 +62,21 @@
         </li>
       {/each}
     </ul>
+    </section>
   </div>
 {:else}
-  <p class="p-5 text-xs text-muted-foreground">{$t('code.todosEmpty')}</p>
+  <div class="pane-body"><p class="pane-empty">{$t('code.todosEmpty')}</p></div>
 {/if}
 
 <style>
-  .tasks-progress {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    margin-bottom: 0.75rem;
-    color: var(--muted-foreground);
-    font-size: var(--text-xs);
-  }
-  .progress-track { flex:1; height:3px; border-radius:var(--radius-full); background:var(--muted); overflow:hidden; }
+  .progress-track { height:3px; margin:0.375rem 0.5rem 0.625rem; border-radius:var(--radius-full); background:var(--muted); overflow:hidden; }
   .progress-track span { display:block; height:100%; background:var(--text-secondary); transition:width var(--motion-smooth) var(--motion-ease-out); }
-  ul { display:flex; flex-direction:column; gap:0.375rem; margin:0; padding:0; list-style:none; }
+  ul { display:flex; flex-direction:column; gap:0.125rem; margin:0; padding:0; list-style:none; }
   li {
     display: flex;
     align-items: flex-start;
-    gap: 0.5rem;
+    gap: 0.625rem;
+    padding: 0.25rem 0.5rem;
     font-size: var(--text-sm);
     line-height: 1.45;
     color: var(--muted-foreground);

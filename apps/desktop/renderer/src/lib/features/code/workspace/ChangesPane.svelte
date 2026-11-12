@@ -159,12 +159,7 @@
     <div class="flex flex-1 items-center justify-center"><LoaderCircle class="size-4 animate-spin text-muted-foreground" /></div>
   {:else if !files.length}
     <!-- Empty: a quiet note at the top, not a poster in the middle. -->
-    <div class="changes-empty">
-      <FileCode2 class="mt-0.5 size-3.5 shrink-0" />
-      <div class="min-w-0">
-        <p class="text-foreground">{$t('codeWs.noChanges')}</p>
-      </div>
-    </div>
+    <div class="pane-body"><p class="pane-empty"><FileCode2 class="size-3.5" />{$t('codeWs.noChanges')}</p></div>
   {:else}
     <ul class="changes-list" role="listbox" aria-label={$t('codeWs.changes')}>
       {#each files as file (file.path)}
@@ -177,9 +172,9 @@
               <span class="text-foreground">{parts.name}</span>
               {#if parts.dir}<span class="ml-1.5 text-muted-foreground">{parts.dir}</span>{/if}
             </span>
-            <span class="shrink-0 text-[length:var(--text-xs)] tabular-nums text-muted-foreground">
-              {#if file.additions}<span>+{file.additions}</span>{/if}
-              {#if file.deletions}<span class="ml-1">−{file.deletions}</span>{/if}
+            <span class="pane-row-aside pane-churn">
+              {#if file.additions}<span class="text-success">+{file.additions}</span>{/if}
+              {#if file.deletions}<span class="text-error">−{file.deletions}</span>{/if}
             </span>
           </UiListRow>
         </li>
@@ -226,7 +221,8 @@
     min-height: 0;
     width: 100%;
     flex-direction: column;
-    background: var(--float-bg);
+    /* The pane frame is the surface; the body adds none of its own. */
+    background: transparent;
   }
 
 
@@ -242,16 +238,6 @@
   }
   .branch-label :global(svg) { flex-shrink: 0; }
 
-  .changes-empty {
-    display: flex;
-    align-items: flex-start;
-    gap: 0.5rem;
-    padding: 0.5rem 0.75rem;
-    color: var(--muted-foreground);
-    font-size: var(--text-xs);
-    line-height: 1.55;
-  }
-
   .changes-list {
     /* Rows are full-radius hover pills: with no gap they merge into one band,
        and with no top inset the first one sits on the bar above it. */
@@ -261,7 +247,7 @@
     max-height: 40%;
     flex-shrink: 0;
     overflow-y: auto;
-    padding: 0.25rem 4px 4px;
+    padding: 0.25rem 0.75rem 0.5rem;
   }
 
   :is(.file-row, :global(.file-row.ui-local-8f978f5f)) {
@@ -269,17 +255,17 @@
     width: 100%;
     height: var(--sidebar-row-h);
     align-items: center;
-    gap: 0.5rem;
-    padding: 0 0.6rem;
+    gap: 0.625rem;
+    padding: 0 0.5rem;
     border-radius: var(--float-row-radius);
     color: var(--muted-foreground);
     font-size: var(--text-sm);
     text-align: left;
-    transition: background-color var(--motion-fast) var(--motion-ease);
+    transition: background-color var(--motion-instant) var(--motion-ease);
   }
   :is(.file-row:hover, :global(.file-row:hover.ui-local-8f978f5f)),
   :is(.file-row.is-active, :global(.file-row.is-active.ui-local-8f978f5f)) {
-    background: var(--surface-hover);
+    background: var(--float-row-hover);
   }
 
   .diff-box {
@@ -289,10 +275,12 @@
     flex-direction: column;
     /* The path bar and the first diff line are two things, not one. */
     gap: 0.125rem;
-    margin: 0.25rem 4px 4px;
+    margin: 0 0.75rem 0.75rem;
     overflow: hidden;
-    border-radius: 8px;
-    background: var(--muted);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    /* Inset, not raised: code sits in the page's own tone inside the sheet. */
+    background: var(--background);
   }
 
   .diff-bar {

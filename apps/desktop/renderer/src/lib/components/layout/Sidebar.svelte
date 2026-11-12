@@ -9,8 +9,9 @@
   import { cn as uiClass } from '$lib/utils/cn';
 
   let { onNavigate, onToggle }: { onNavigate?: () => void; onToggle?: () => void } = $props();
-  import { PanelLeftClose } from 'lucide-svelte';
+  import { PanelLeftClose, Search as SearchIcon } from 'lucide-svelte';
   import SidebarInstances from './SidebarInstances.svelte';
+  import SpaceSwitcher from './SpaceSwitcher.svelte';
   import CalendarPreview from '$lib/features/home/CalendarPreview.svelte';
   import Tooltip from '$lib/components/ui/Tooltip.svelte';
   import { appStore } from '$lib/stores/app.svelte';
@@ -135,7 +136,10 @@
 
 <aside class="sidebar relative isolate flex h-full w-full flex-col overflow-hidden bg-sidebar text-sidebar-foreground">
   <div class="sidebar-head" class:is-mac={appStore.sidebarOpen && typeof window !== 'undefined' && window.electronAPI?.platform === 'darwin'}>
-    <span class="sidebar-brand"><img src="./app-icon.png" alt="" width="20" height="20" draggable="false" />{'Agente'}</span>
+    <!-- The spaces head the column they switch; with the column closed they
+         move to the titlebar (a peek at the closed column leaves them there,
+         so the tab ids stay unique). -->
+    {#if appStore.sidebarOpen}<SpaceSwitcher />{/if}
     {#if onToggle && appStore.sidebarOpen}
       <UiIconButton label={$t('titlebar.hideSidebar')}
         size="sm" data-sidebar-toggle aria-controls="app-sidebar" aria-expanded="true"
@@ -155,6 +159,85 @@
         <span class="sidebar-row-label">{newButtonLabel}</span>
       </UiListRow>
 
+      <UiListRow
+        type="button"
+        class={uiClass("sidebar-row", "ui-local-0456fb2e")}
+        title={`${$t('titlebar.search')} (${formatShortcut('mod+shift+k')})`}
+        onclick={() => appStore.openSearch()}
+      >
+        <SearchIcon class="sidebar-row-icon" />
+        <span class="sidebar-row-label">{$t('titlebar.search')}</span>
+      </UiListRow>
+    </div>
+
+    <div class="chat-list sidebar-scroll flex-1 overflow-y-auto">
+      <!-- Code tab: the sidebar is a project-folder tree; each folder holds
+           that project's agent conversations. -->
+      {#if appStore.activeSpace === 'code'}
+        <CodeSidebar />
+      {:else if groupedChats.length}
+        {#each groupedChats as group, order (group.key)}
+          {@const isCollapsed = collapsedGroups.has(group.key)}
+          <div class="mb-1.5">
+            <div class="sidebar-section-row">
+              <UiButton variant="plain"
+                type="button"
+                class={uiClass("sidebar-section", "ui-local-0456fb2e")}
+                aria-expanded={!isCollapsed}
+                onclick={() => toggleGroup(group.key)}
+              >
+                {group.label}
+                {#if isCollapsed}<span class="pane-count">{group.chats.length}</span>{/if}
+              </UiButton>
+              {#if order === 0}
+                <!-- List options ride the first heading: clearing history is
+                     rare and destructive, so it never gets a row of its own. -->
+                <Menu bind:open={listMenuOpen} placement="bottom-end" minWidth="12rem" label={$t('sidebar.listOptions')}>
+                  {#snippet trigger(props)}
+                    <UiIconButton label={$t('sidebar.listOptions')} size="xs" type="button" class={uiClass("sidebar-row-action", {"is-open": listMenuOpen})} title={$t('sidebar.listOptions')} {...props}><MoreHorizontal /></UiIconButton>
+                  {/snippet}
+                  {#if allCollapsed}
+                    <MenuItem icon={ChevronsUpDown} label={$t('sidebar.expandAll')} onselect={() => setAllGroups(false)} />
+                  {:else}
+                    <MenuItem icon={ChevronsDownUp} label={$t('sidebar.collapseAll')} onselect={() => setAllGroups(true)} />
+                  {/if}
+                  <div class="ui-menu-separator" role="separator"></div>
+                  <MenuItem icon={Trash2} danger label={$t('sidebar.clearHistory')} onselect={() => void clearHistory()} />
+                </Menu>
+              {/if}
+            </div>
+            {#if !isCollapsed}
+            <div class="chat-group-rows space-y-0.5" transition:slide={{ duration: 140 }}>
+              {#each group.chats as chat (chat.id)}
+                <div animate:flip={{ duration: 220, easing: smoothEase }}>
+                  <SessionRow
+                    {chat}
+                    active={appStore.currentChatId === chat.id}
+                    onselect={() => appStore.selectChat(chat.id)}
+                    menuLabel={$t('sidebar.chatOptions')}
+                  />
+                </div>
+              {/each}
+            </div>
+            {/if}
+          </div>
+        {/each}
+      {:else}
+        {#if appStore.activeSpace === 'roleplay'}
+          <EmptyState size="compact" icon={Drama} title={copy.roleplay.noRoleplays} description={copy.roleplay.noRoleplaysHint} />
+        {:else if appStore.activeSpace === 'design'}
+          <EmptyState size="compact" icon={PenTool} title={copy.design.noDesigns} description={copy.design.noDesignsHint} />
+        {:else}
+          <EmptyState size="compact" icon={MessageSquare} title={$t('sidebar.noConversations')} description={$t('sidebar.emptyHint')} />
+        {/if}
+      {/if}
+    </div>
+
+    <!-- The running-model list sits here rather than above the search field:
+         a model loading must not push the search field and every conversation
+         below it down the column. Settings closes the column, one door. -->
+    <!-- Places, not actions: they sit under the list, above Settings. -->
+    <div class="sidebar-footer">
       {#if appStore.activeSpace === 'home'}
         <Tooltip label={$t('home.calendar.title')} position="right" class="w-full" delay={250}>
           {#snippet content()}<CalendarPreview />{/snippet}
@@ -202,75 +285,6 @@
           <FolderOpen class="sidebar-row-icon" />
           <span class="sidebar-row-label">{$t('sidebar.files')}</span>
         </UiListRow>
-    </div>
-
-    {#if appStore.activeSpace !== 'code' && groupedChats.length}
-    <div class="search-line">
-        <!-- List options stay behind one small button: clearing history is
-             rare and destructive, so it never gets a row of its own. -->
-        <Menu bind:open={listMenuOpen} placement="bottom-end" minWidth="12rem" label={$t('sidebar.listOptions')}>
-          {#snippet trigger(props)}
-            <UiIconButton label={$t('sidebar.listOptions')} size="xs" type="button" class={uiClass("list-options  ", "ui-local-0456fb2e", {"is-open": listMenuOpen})}   title={$t('sidebar.listOptions')} {...props}><MoreHorizontal /></UiIconButton>
-          {/snippet}
-          {#if allCollapsed}
-            <MenuItem icon={ChevronsUpDown} label={$t('sidebar.expandAll')} onselect={() => setAllGroups(false)} />
-          {:else}
-            <MenuItem icon={ChevronsDownUp} label={$t('sidebar.collapseAll')} onselect={() => setAllGroups(true)} />
-          {/if}
-          <div class="ui-menu-separator" role="separator"></div>
-          <MenuItem icon={Trash2} danger label={$t('sidebar.clearHistory')} onselect={() => void clearHistory()} />
-        </Menu>
-    </div>
-    {/if}
-
-    <div class="chat-list sidebar-scroll flex-1 overflow-y-auto">
-      <!-- Code tab: the sidebar is a project-folder tree; each folder holds
-           that project's agent conversations. -->
-      {#if appStore.activeSpace === 'code'}
-        <CodeSidebar />
-      {:else if groupedChats.length}
-        {#each groupedChats as group (group.key)}
-          {@const isCollapsed = collapsedGroups.has(group.key)}
-          <div class="mb-1.5">
-            <UiButton variant="plain"
-              type="button"
-              class={uiClass("sidebar-section", "ui-local-0456fb2e")}
-              aria-expanded={!isCollapsed}
-              onclick={() => toggleGroup(group.key)}
-            >
-              {group.label}
-            </UiButton>
-            {#if !isCollapsed}
-            <div class="chat-group-rows space-y-0.5" transition:slide={{ duration: 140 }}>
-              {#each group.chats as chat (chat.id)}
-                <div animate:flip={{ duration: 220, easing: smoothEase }}>
-                  <SessionRow
-                    {chat}
-                    active={appStore.currentChatId === chat.id}
-                    onselect={() => appStore.selectChat(chat.id)}
-                    menuLabel={$t('sidebar.chatOptions')}
-                  />
-                </div>
-              {/each}
-            </div>
-            {/if}
-          </div>
-        {/each}
-      {:else}
-        {#if appStore.activeSpace === 'roleplay'}
-          <EmptyState size="compact" icon={Drama} title={copy.roleplay.noRoleplays} description={copy.roleplay.noRoleplaysHint} />
-        {:else if appStore.activeSpace === 'design'}
-          <EmptyState size="compact" icon={PenTool} title={copy.design.noDesigns} description={copy.design.noDesignsHint} />
-        {:else}
-          <EmptyState size="compact" icon={MessageSquare} title={$t('sidebar.noConversations')} description={$t('sidebar.emptyHint')} />
-        {/if}
-      {/if}
-    </div>
-
-    <!-- The running-model list sits here rather than above the search field:
-         a model loading must not push the search field and every conversation
-         below it down the column. Settings closes the column, one door. -->
-    <div class="sidebar-footer">
       <SidebarInstances />
       <UiListRow
         type="button"
@@ -287,18 +301,10 @@
 </aside>
 
 <style>
-  .sidebar-head { display: flex; flex-shrink: 0; align-items: center; justify-content: space-between; gap: 0.5rem; height: 3rem; padding: 0 0.5rem 0 1rem; -webkit-app-region: drag; }
+  .sidebar-head { display: flex; flex-shrink: 0; align-items: center; justify-content: space-between; gap: 0.5rem; height: 3rem; padding: 0 0.5rem; -webkit-app-region: drag; }
   .sidebar-head :global(button) { -webkit-app-region: no-drag; }
+  .sidebar-head :global(.space-group) { padding-inline: 0; }
   .sidebar-head.is-mac { padding-inline-start: 78px; }
-  .sidebar-brand { display: flex; align-items: center; gap: 0.5rem; min-width: 0; font-size: var(--text-sm); font-weight: 600; }
-  .sidebar-brand img { flex: none; border-radius: var(--radius-sm); }
-  /* Chats sit one step in from their date, so the list reads as groups. */
-  .chat-group-rows { padding-inline-start: 0.25rem; }
-
-  .search-line { display: flex; justify-content: flex-end; align-items: center; }
-  /* A bare glyph until hovered or open, so the row stays quiet. */
-  :global(.list-options.ui-local-0456fb2e) { flex-shrink: 0; border-color: transparent; background: transparent; box-shadow: none; opacity: 0.7; }
-  :global(.list-options:hover.ui-local-0456fb2e), :global(.list-options.is-open.ui-local-0456fb2e) { opacity: 1; background: var(--float-row-hover); }
 
   .sidebar-footer {
     display: flex;

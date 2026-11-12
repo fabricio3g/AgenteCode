@@ -24,7 +24,6 @@
     ArrowUp,
     ArrowDown,
     FolderPlus,
-    ChevronRight,
     Copy as CopyIcon,
     Folder,
     FolderOpen,
@@ -368,17 +367,17 @@
   {/if}
 
   {#if unlinked.length}
-    <div class="mt-3">
-      <div class="flex items-center gap-1">
+    <div class="mt-1.5">
+      <div class="sidebar-section-row">
         <UiButton variant="plain"
           type="button"
-          class={uiClass("sidebar-section min-w-0 flex-1")}
+          class={uiClass("sidebar-section")}
           aria-expanded={unlinkedOpen}
           title={$t('code.unlinkedHint')}
           onclick={() => (unlinkedOpen = !unlinkedOpen)}
         >
-          <ChevronRight class={`size-3 shrink-0 transition-transform duration-150${unlinkedOpen ? ' rotate-90' : ''}`} />
-          <span class="truncate">{$t('code.unlinked')} · {unlinked.length}</span>
+          <span class="truncate">{$t('code.unlinked')}</span>
+          <span class="pane-count">{unlinked.length}</span>
         </UiButton>
         <IconButton
           class="sidebar-row-action"
