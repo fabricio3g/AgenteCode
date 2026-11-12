@@ -135,12 +135,13 @@
 </script>
 
 <aside class="sidebar relative isolate flex h-full w-full flex-col overflow-hidden bg-sidebar text-sidebar-foreground">
-  <div class="sidebar-head" class:is-mac={appStore.sidebarOpen && typeof window !== 'undefined' && window.electronAPI?.platform === 'darwin'}>
-    <!-- The spaces head the column they switch; with the column closed they
-         move to the titlebar (a peek at the closed column leaves them there,
-         so the tab ids stay unique). -->
-    {#if appStore.sidebarOpen}<SpaceSwitcher />{/if}
-    {#if onToggle && appStore.sidebarOpen}
+  <!-- The spaces head the column they switch. With the column closed they
+       move to the titlebar, and a peek at it (which floats under the
+       titlebar) draws no head at all: it would be an empty band. -->
+  {#if appStore.sidebarOpen}
+  <div class="sidebar-head" class:is-mac={typeof window !== 'undefined' && window.electronAPI?.platform === 'darwin'}>
+    <SpaceSwitcher />
+    {#if onToggle}
       <UiIconButton label={$t('titlebar.hideSidebar')}
         size="sm" data-sidebar-toggle aria-controls="app-sidebar" aria-expanded="true"
         onclick={onToggle}>
@@ -148,6 +149,7 @@
       </UiIconButton>
     {/if}
   </div>
+  {/if}
   <div class="relative z-10 flex min-h-0 flex-1 flex-col px-2 pb-1">
     <div class="flex flex-col gap-0.5 pb-2 pt-1">
       <UiListRow

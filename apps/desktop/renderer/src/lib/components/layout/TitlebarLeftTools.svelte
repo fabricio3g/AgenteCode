@@ -28,7 +28,7 @@
 
 <div class="flex min-w-0 items-center gap-0.5 pl-1.5" style={isMac ? 'padding-left: 78px;' : ''}>
   <Tooltip label={toggleLabel} shortcut="mod+b">
-    <UiIconButton label={toggleLabel} size="sm"
+    <UiIconButton label={toggleLabel} title="" size="sm"
       class={uiClass(" titlebar-no-drag")}
       data-sidebar-toggle
       onclick={onToggle}
@@ -45,7 +45,7 @@
   <!-- Local-engine tuning (context length, GPU layers…): a cloud model has none. -->
   {#if appStore.backendMode !== 'api'}
     <Tooltip label={$t('titlebar.llmSettings')}>
-      <UiIconButton label={$t('titlebar.llmSettings')} size="sm" class={uiClass(" titlebar-no-drag titlebar-secondary")} onclick={() => (appStore.llmDrawerOpen = true)} >
+      <UiIconButton label={$t('titlebar.llmSettings')} title="" size="sm" class={uiClass(" titlebar-no-drag titlebar-secondary")} onclick={() => (appStore.llmDrawerOpen = true)} >
         <SlidersHorizontal class="size-4" />
       </UiIconButton>
     </Tooltip>
