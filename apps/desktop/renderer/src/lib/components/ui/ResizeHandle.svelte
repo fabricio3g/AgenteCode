@@ -137,7 +137,7 @@
     opacity: 0;
     transition: opacity var(--motion-instant) var(--motion-ease);
   }
-  .resize-handle::before { z-index: 1; border-radius: 2px; background: var(--grip); }
+  .resize-handle::before { z-index: 1; border-radius: 999px; background: var(--grip); }
   .resize-handle.is-x::after {
     left: calc(50% - 0.5px);
     top: calc(var(--grip-at, 50%) - 60px);
@@ -152,8 +152,8 @@
     width: 120px;
     background: linear-gradient(90deg, transparent, var(--seam) 30%, var(--seam) 70%, transparent);
   }
-  .resize-handle.is-x::before { width: 3px; height: 20px; left: calc(50% - 1.5px); top: calc(var(--grip-at, 50%) - 10px); }
-  .resize-handle.is-y::before { height: 3px; width: 20px; top: calc(50% - 1.5px); left: calc(var(--grip-at, 50%) - 10px); }
+  .resize-handle.is-x::before { width: 4px; height: 28px; left: calc(50% - 2px); top: calc(var(--grip-at, 50%) - 14px); }
+  .resize-handle.is-y::before { height: 4px; width: 28px; top: calc(50% - 2px); left: calc(var(--grip-at, 50%) - 14px); }
 
   .resize-handle:hover::after, .resize-handle:hover::before,
   .resize-handle:focus-visible::after, .resize-handle:focus-visible::before,

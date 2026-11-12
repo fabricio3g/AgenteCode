@@ -261,30 +261,49 @@
 <style>
   .workspace { position: relative; flex: 1; min-width: 0; min-height: 0; overflow: hidden; }
   .workspace-main { position: absolute; z-index: 0; display: flex; max-width:100%;max-height:100%; min-width: 0; min-height: 0; overflow: hidden; }
-  /* Quiet surfaces: one hairline and a soft shadow, no inner highlight. A docked
-     panel is flat; a floating one lifts a little. */
-  .workspace-panel { position: absolute; display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; border-radius: var(--radius-lg); background: var(--background); }
+  /*
+   * A pane is a sheet one step above the page: its own tone, one hairline, a
+   * soft lift. The chrome stays thin (the header is a single quiet row) and
+   * wakes up only for the pane you are in.
+   */
+  .workspace-panel { position: absolute; display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; border-radius: var(--radius-lg); background: var(--card); box-shadow: 0 1px 2px rgb(0 0 0 / 0.12); animation: pane-in var(--motion-fast) var(--motion-ease-out); }
   /* The edge is drawn on top of the content: an inset shadow sat under children
      with their own fill (the canvas board, the browser), so those panels lost it. */
-  .workspace-panel::after { content: ''; position: absolute; inset: 0; z-index: 30; border: 1px solid var(--border-subtle); border-radius: inherit; pointer-events: none; }
+  .workspace-panel::after { content: ''; position: absolute; inset: 0; z-index: 30; border: 1px solid var(--border-subtle); border-radius: inherit; pointer-events: none; transition: border-color var(--motion-fast) var(--motion-ease); }
+  .workspace-panel:focus-within::after { border-color: var(--border); }
   .workspace-panel[hidden] { display: none; }
   .workspace-panel.floating { background:var(--float-bg);border-radius:var(--float-radius);box-shadow:var(--float-shadow); }
   .workspace-panel.floating::after { border-color:var(--float-border); }
   .workspace-panel.resize-ready::after { border-color: var(--split-line); }
-  /* The strip owns the panel's top edge: no fill, just a hairline under it. */
-  :global(.workspace-header) { cursor: grab; touch-action: none; }
+  @keyframes pane-in { from { opacity: 0; } }
+  /* Nothing fades while a pane is being dragged or resized. */
+  .workspace[data-workspace-interacting] .workspace-panel { animation: none; }
 
+  /* The header: tabs hard left, actions hard right, one hairline under it. */
+  :global(.workspace-header) { height: 2.5rem; padding: 0 0.375rem; border-bottom: 1px solid var(--border-subtle); cursor: grab; touch-action: none; }
+  :global(.workspace-header .ui-pane-header-actions) { opacity: 0.55; transition: opacity var(--motion-fast) var(--motion-ease); }
+  .workspace-panel:is(:hover, :focus-within) :global(.workspace-header .ui-pane-header-actions) { opacity: 1; }
 
   .workspace-tabs { display: flex; min-width: 0; flex: 1; gap: 2px; overflow-x: auto; scrollbar-width: none; }
-  :global(.workspace-tab.ui-local-c24761b3) { display: inline-flex; align-items: center; gap: 0.5rem; min-width: 0; max-width: 180px; height: var(--sidebar-row-h); padding: 0 0.5rem; flex-shrink: 0; border-radius: var(--float-row-radius); font-family:var(--font-sans); font-size: var(--text-sm); color: var(--text-secondary); cursor: grab; touch-action: none; transition: color var(--motion-instant) var(--motion-ease), background-color var(--motion-instant) var(--motion-ease); }
+  :global(.workspace-tab.ui-local-c24761b3) { display: inline-flex; align-items: center; gap: 0.5rem; min-width: 0; max-width: 180px; height: 1.75rem; padding: 0 0.5rem; flex-shrink: 0; border-radius: var(--float-row-radius); font-family:var(--font-sans); font-size: var(--text-sm); color: var(--muted-foreground); cursor: grab; touch-action: none; transition: color var(--motion-instant) var(--motion-ease), background-color var(--motion-instant) var(--motion-ease); }
   :global(.workspace-tab.ui-local-c24761b3) span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   :global(.workspace-tab:hover.ui-local-c24761b3) { color: var(--foreground); }
-  :global(.workspace-tab.active.ui-local-c24761b3) { color: var(--foreground); background: var(--surface-active); font-weight: 500; }
+  :global(.workspace-tab.active.ui-local-c24761b3) { color: var(--foreground); background: var(--float-row-hover); font-weight: 500; }
+  /* A pane on its own is a title, not a tab: no chip around the only choice. */
+  :global(.workspace-tab.ui-local-c24761b3:only-child) { background: transparent; font-weight: 600; }
   :global(.workspace-tab:focus-visible.ui-local-c24761b3) { outline: 1px solid var(--ring); outline-offset: -1px; }
   .workspace-content { display: flex; flex: 1; flex-direction: column; min-height: 0; min-width: 0; overflow: hidden; }
   .workspace-divider { position: absolute; }
-  .workspace-panel.resize-ready { box-shadow: inset 0 0 0 1px var(--muted-foreground), 0 8px 30px #0002; }
-  .drag-ghost, .drop-preview { position: absolute; pointer-events: none; z-index: 100000; border-radius: 0.75rem; }
-  .drag-ghost { display: flex; align-items: flex-start; gap: 6px; padding: 8px; opacity: .75; color: var(--muted-foreground); background: var(--card); box-shadow: var(--shadow-lg); font-size: var(--text-xs); }
-  .drop-preview { background: color-mix(in srgb, var(--foreground) 8%, transparent); box-shadow: inset 0 0 0 1px var(--border-hover); }
+  .workspace-panel.resize-ready { box-shadow: 0 8px 30px #0002; }
+  /*
+   * Dragging a pane: the ghost is the pane's own title on a small lifted chip,
+   * and the preview shows exactly the space it will take, in the accent, easing
+   * from one target to the next so the eye can follow it.
+   */
+  .drag-ghost, .drop-preview { position: absolute; pointer-events: none; z-index: 100000; }
+  .drag-ghost { display: flex; align-items: flex-start; gap: 0.375rem; padding: 0.5rem 0.625rem; border: 1px solid var(--border); border-radius: var(--radius-lg); background: color-mix(in srgb, var(--popover) 82%, transparent); backdrop-filter: blur(10px); box-shadow: var(--float-shadow); color: var(--foreground); font-size: var(--text-sm); font-weight: 500; }
+  .drop-preview { border: 1.5px solid color-mix(in srgb, var(--brand-accent) 70%, transparent); border-radius: var(--radius-lg); background: color-mix(in srgb, var(--brand-accent) 12%, transparent); transition: left var(--motion-fast) var(--motion-ease-out), top var(--motion-fast) var(--motion-ease-out), width var(--motion-fast) var(--motion-ease-out), height var(--motion-fast) var(--motion-ease-out); }
+  @media (prefers-reduced-motion: reduce) { .workspace-panel { animation: none; } .drop-preview { transition: none; } }
+  :global(.a11y-reduce-motion) :is(.workspace-panel) { animation: none; }
+  :global(.a11y-reduce-motion) .drop-preview { transition: none; }
 </style>
