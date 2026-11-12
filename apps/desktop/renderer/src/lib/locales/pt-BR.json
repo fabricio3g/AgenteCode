@@ -490,6 +490,15 @@
     "deleteAll": "Excluir todas",
     "deleteUnlinkedTitle": "Excluir {conversations}?",
     "awaitingApproval": "Aguardando sua aprovação",
+    "approve": {
+      "edit": "Permitir esta edição?",
+      "command": "Executar este comando?",
+      "plan": "Aprovar este plano?",
+      "other": "Permitir {tool}?",
+      "of": "{n} de {total}",
+      "show": "Mostrar na conversa",
+      "below": "Responda no compositor: Enter permite, Esc nega"
+    },
     "pathCopied": "Caminho copiado",
     "searchConversations": "Pesquisar conversas",
     "restoredNote": "Restaurado para um ponto de controle anterior ({files}).",

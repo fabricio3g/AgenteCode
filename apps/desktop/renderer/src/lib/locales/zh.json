@@ -490,6 +490,15 @@
     "deleteAll": "全部删除",
     "deleteUnlinkedTitle": "删除{conversations}？",
     "awaitingApproval": "等待你的批准",
+    "approve": {
+      "edit": "允许这次编辑?",
+      "command": "运行这条命令?",
+      "plan": "批准这个计划?",
+      "other": "允许 {tool}?",
+      "of": "第 {n} 个,共 {total} 个",
+      "show": "在对话中显示",
+      "below": "在输入框中回答:Enter 允许,Esc 拒绝"
+    },
     "pathCopied": "已复制路径",
     "searchConversations": "搜索对话",
     "restoredNote": "已恢复到之前的检查点（{files}）。",

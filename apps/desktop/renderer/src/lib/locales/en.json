@@ -499,6 +499,15 @@
     "deleteAll": "Delete all",
     "deleteUnlinkedTitle": "Delete {conversations}?",
     "awaitingApproval": "Waiting for your approval",
+    "approve": {
+      "edit": "Allow this edit?",
+      "command": "Run this command?",
+      "plan": "Approve this plan?",
+      "other": "Allow {tool}?",
+      "of": "{n} of {total}",
+      "show": "Show in conversation",
+      "below": "Answer in the composer: Enter allows, Esc denies"
+    },
     "pathCopied": "Path copied",
     "searchConversations": "Search conversations",
     "restoredNote": "Restored to an earlier checkpoint ({files}).",

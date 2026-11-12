@@ -56,7 +56,7 @@
   import DictationButton from '$lib/features/chat/composer/DictationButton.svelte';
   import DictationSetupPopover from '$lib/features/chat/composer/DictationSetupPopover.svelte';
   import ComposerRecorder from '$lib/features/chat/composer/ComposerRecorder.svelte';
-  import ComposerAsk from '$lib/features/chat/composer/ComposerAsk.svelte';
+  import CodeApprovalBar from './CodeApprovalBar.svelte';
   import { Dictation } from '$lib/features/chat/composer/use-dictation.svelte';
   import { approvalsStore } from '$lib/stores/approvals.svelte';
   import { copy } from '$lib/copy';
@@ -150,6 +150,14 @@
   });
   /** A paused run waiting on the user: the question rides on the prompt sheet. */
   const pendingApprovals = $derived(approvalsStore.forChat(chat.id));
+  /** The transcript row an approval belongs to (it carries the diff). */
+  function approvalStep(requestId: string) {
+    for (let index = chat.messages.length - 1; index >= 0; index--) {
+      const step = chat.messages[index]?.agentSteps?.find((candidate) => candidate.id === requestId);
+      if (step) return step;
+    }
+    return undefined;
+  }
 
   const modes = $derived([
     // Short names and one-line hints: the menu is read at a glance; the full
@@ -521,6 +529,18 @@
       selectMode(runtimeMode === 'plan' ? 'supervised' : runtimeMode === 'supervised' ? 'full' : 'plan');
       return;
     }
+    /*
+     * A call waiting on you owns Enter and Escape: Escape denies it (it used to
+     * stop the whole run while the card said "Esc deny"), and Enter on an empty
+     * field allows it. With words in the field Enter still sends them.
+     */
+    const approval = pendingApprovals[0];
+    if (approval && !event.isComposing && (event.key === 'Escape' || (event.key === 'Enter' && !event.shiftKey && !text.trim() && !attachments.length))) {
+      event.preventDefault();
+      event.stopPropagation();
+      approvalsStore.resolve(approval.id, event.key === 'Enter');
+      return;
+    }
     // Escape stops a live run (the shortcut help promises it).
     if (event.key === 'Escape' && running) {
       event.preventDefault();
@@ -725,17 +745,12 @@
     <div class="composer-shell ui-composer pointer-events-auto transition">
       {#if pendingApprovals.length}
         {@const approval = pendingApprovals[0]!}
-        <ComposerAsk
-          question={$t('code.awaitingApproval')}
-          detail={approval.reason || approval.command || approval.cwd}
-          options={[
-            { id: 'allow', label: copy.tool.allow, desc: approval.dangerous ? approval.cwd : undefined },
-            { id: 'deny', label: copy.tool.deny }
-          ]}
-          onanswer={(id) => approvalsStore.resolve(approval.id, id === 'allow')}
-        >
-          {#snippet hint()}<span>Enter {copy.tool.allow.toLowerCase()} · Esc {copy.tool.deny.toLowerCase()}</span>{/snippet}
-        </ComposerAsk>
+        <CodeApprovalBar
+          {approval}
+          step={approvalStep(approval.requestId)}
+          total={pendingApprovals.length}
+          onanswer={(allow) => approvalsStore.resolve(approval.id, allow)}
+        />
       {/if}
       <div class="composer-body">
         <UiTextarea variant="composer"

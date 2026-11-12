@@ -196,7 +196,10 @@
             <UiButton variant="plain" type="button" class={uiClass("view-link self-start", "ui-local-af21c610")} onclick={() => codeWorkspace.showFileInChanges(step.fileChanges?.[0]?.path ?? '')}>{$t('codeWs.viewChanges')}</UiButton>
           {/if}
         {/if}
-        {#if isApproval}
+        {#if isApproval && codeActions}
+          <!-- Code answers in the composer's approval bar: one pair of buttons. -->
+          <p class="approval-note">{$t('code.approve.below')}</p>
+        {:else if isApproval}
           <div class="flex items-center gap-2 pt-1">
             <UiButton variant="plain" type="button" class={uiClass("approve-btn", "ui-local-af21c610")} onclick={() => approvalsStore.resolve(pending?.id ?? step.id, false)}>{copy.tool.deny}</UiButton>
             <UiButton variant="plain" type="button" class={uiClass("approve-btn primary", "ui-local-af21c610")} onclick={() => approvalsStore.resolve(pending?.id ?? step.id, true)}>{copy.tool.allow}</UiButton>
@@ -267,6 +270,11 @@
     border-radius: 0 0.5rem 0.5rem 0;
     border-left: 2px solid color-mix(in srgb, var(--warning) 60%, transparent);
     background: color-mix(in srgb, var(--warning) 5%, transparent);
+  }
+  .approval-note {
+    margin: 0;
+    color: var(--muted-foreground);
+    font-size: var(--text-xs);
   }
   .trace-label {
     display:flex; align-items:center; justify-content:space-between; gap:0.5rem;

@@ -49,7 +49,20 @@
   const visible = $derived(items.filter((item) => !(item.step?.type === 'approval' && !needsAttention(item.step, approvals)) && !(item.step?.toolName === 'task' && item.step.subagentId && activeChildIds.has(item.step.subagentId))));
   /** A step waiting on you never folds away: its Allow / Deny stay on screen, under the block. */
   const waiting = $derived(visible.filter((item) => !!item.step && (item.step.status === 'awaiting_approval' || approvals.has(item.step.id))));
-  const folded = $derived(visible.filter((item) => !waiting.includes(item)));
+  /**
+   * The call an approval is holding. The engine reports the call and the
+   * request as two steps, so "Edit src/index.ts" showed twice — once running,
+   * once asking. While it waits, the request row speaks for it.
+   */
+  const held = $derived.by(() => {
+    const ids = new Set<string>();
+    for (const item of waiting) {
+      const blocked = [...visible].reverse().find((candidate) => candidate.step && candidate.step.type !== 'approval' && isRunning(candidate.step) && candidate.step.toolName === item.step?.toolName && !ids.has(candidate.step.id));
+      if (blocked?.step) ids.add(blocked.step.id);
+    }
+    return ids;
+  });
+  const folded = $derived(visible.filter((item) => !waiting.includes(item) && !(item.step && held.has(item.step.id))));
   const files = $derived(changedFiles(visible));
   const steps = $derived(visible.flatMap((item) => (item.step ? [item.step] : [])));
   const running = $derived(steps.some(isRunning));

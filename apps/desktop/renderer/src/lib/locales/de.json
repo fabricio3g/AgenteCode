@@ -490,6 +490,15 @@
     "deleteAll": "Alle löschen",
     "deleteUnlinkedTitle": "{conversations} löschen?",
     "awaitingApproval": "Wartet auf deine Freigabe",
+    "approve": {
+      "edit": "Diese Änderung erlauben?",
+      "command": "Diesen Befehl ausführen?",
+      "plan": "Diesen Plan freigeben?",
+      "other": "{tool} erlauben?",
+      "of": "{n} von {total}",
+      "show": "Im Gespräch zeigen",
+      "below": "Antworte im Eingabefeld: Enter erlaubt, Esc lehnt ab"
+    },
     "pathCopied": "Pfad kopiert",
     "searchConversations": "Unterhaltungen durchsuchen",
     "restoredNote": "Auf einen früheren Checkpoint zurückgesetzt ({files}).",

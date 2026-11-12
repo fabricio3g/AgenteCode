@@ -490,6 +490,15 @@
     "deleteAll": "すべて削除",
     "deleteUnlinkedTitle": "{conversations}を削除しますか？",
     "awaitingApproval": "承認待ち",
+    "approve": {
+      "edit": "この編集を許可しますか?",
+      "command": "このコマンドを実行しますか?",
+      "plan": "このプランを承認しますか?",
+      "other": "{tool} を許可しますか?",
+      "of": "{n} / {total}",
+      "show": "会話で表示",
+      "below": "入力欄で回答: Enter で許可、Esc で拒否"
+    },
     "pathCopied": "パスをコピーしました",
     "searchConversations": "会話を検索",
     "restoredNote": "以前のチェックポイントに復元しました（{files}）。",

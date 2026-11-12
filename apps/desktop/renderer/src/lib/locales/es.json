@@ -499,6 +499,15 @@
     "deleteAll": "Eliminar todas",
     "deleteUnlinkedTitle": "¿Eliminar {conversations}?",
     "awaitingApproval": "Esperando tu aprobación",
+    "approve": {
+      "edit": "¿Permitir esta edición?",
+      "command": "¿Ejecutar este comando?",
+      "plan": "¿Aprobar este plan?",
+      "other": "¿Permitir {tool}?",
+      "of": "{n} de {total}",
+      "show": "Mostrar en la conversación",
+      "below": "Responde en el compositor: Intro permite, Esc deniega"
+    },
     "pathCopied": "Ruta copiada",
     "searchConversations": "Buscar conversaciones",
     "restoredNote": "Restaurado a un punto de control anterior ({files}).",

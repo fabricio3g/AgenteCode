@@ -490,6 +490,15 @@
     "deleteAll": "Tout supprimer",
     "deleteUnlinkedTitle": "Supprimer {conversations} ?",
     "awaitingApproval": "En attente de votre approbation",
+    "approve": {
+      "edit": "Autoriser cette modification ?",
+      "command": "Exécuter cette commande ?",
+      "plan": "Approuver ce plan ?",
+      "other": "Autoriser {tool} ?",
+      "of": "{n} sur {total}",
+      "show": "Afficher dans la conversation",
+      "below": "Répondez dans la zone de saisie : Entrée autorise, Échap refuse"
+    },
     "pathCopied": "Chemin copié",
     "searchConversations": "Rechercher des conversations",
     "restoredNote": "Restauré à un point de contrôle antérieur ({files}).",
