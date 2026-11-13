@@ -1,7 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
-  import { ChevronDown, Sparkles, Zap } from 'lucide-svelte';
+  import { ChevronDown, Sparkles, Zap } from '$lib/icons';
   import { t } from 'svelte-i18n';
   import { appStore } from '$lib/stores/app.svelte';
   import { copy } from '$lib/copy';

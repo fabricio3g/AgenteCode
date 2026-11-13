@@ -18,7 +18,7 @@
     Sparkles,
     Table,
     Workflow
-  } from 'lucide-svelte';
+  } from '$lib/icons';
   import { t } from 'svelte-i18n';
   import { get } from 'svelte/store';
   import { appStore } from '$lib/stores/app.svelte';

@@ -7,12 +7,12 @@ const raw = JSON.stringify({ labels: ['First', 'Second'], datasets: [{ label: 'P
 describe('chart interactions and existing payloads', () => {
   it('renders the existing bar format and allows hiding a series while retaining one', async () => {
     const view = render(ChartBlock, { props: { type: 'bar', title: 'Revenue', raw } });
-    expect(view.container.querySelectorAll('svg rect')).toHaveLength(4);
+    expect(view.container.querySelectorAll('svg:not(.ag-icon) rect')).toHaveLength(4);
     await fireEvent.click(view.getByRole('button', { name: 'Services' }));
-    expect(view.container.querySelectorAll('svg rect')).toHaveLength(2);
+    expect(view.container.querySelectorAll('svg:not(.ag-icon) rect')).toHaveLength(2);
     expect(view.getByRole('button', { name: 'Product' }).hasAttribute('disabled')).toBe(true);
     await fireEvent.click(view.getByRole('button', { name: 'Services' }));
-    expect(view.container.querySelectorAll('svg rect')).toHaveLength(4);
+    expect(view.container.querySelectorAll('svg:not(.ag-icon) rect')).toHaveLength(4);
   });
   it('offers keyboard values and a data table for the complete series', async () => {
     const view = render(ChartBlock, { props: { type: 'line', title: 'Revenue', raw } });

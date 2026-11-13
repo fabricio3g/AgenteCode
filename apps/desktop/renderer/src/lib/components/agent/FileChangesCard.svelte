@@ -11,7 +11,7 @@
   import { cn as uiClass } from '$lib/utils/cn';
 
   import { t } from 'svelte-i18n';
-  import { ChevronDown, FileDiff } from 'lucide-svelte';
+  import { ChevronDown, FileDiff } from '$lib/icons';
   import type { CodeAgentDiffStat } from '$lib/types/chat';
   import Button from '$lib/components/ui/Button.svelte';
 

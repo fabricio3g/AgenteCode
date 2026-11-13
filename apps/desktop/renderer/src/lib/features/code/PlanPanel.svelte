@@ -12,7 +12,7 @@
   import IconButton from '$lib/components/ui/IconButton.svelte';
 
   import { t } from 'svelte-i18n';
-  import { ClipboardList, MessageSquare, RefreshCw, Hammer, X } from 'lucide-svelte';
+  import { ClipboardList, MessageSquare, RefreshCw, Hammer, X } from '$lib/icons';
   import { Button, PaneHeader, Tooltip } from '$lib/components/ui';
   import RichContent from '$lib/ui/components/RichContent.svelte';
   import { appStore } from '$lib/stores/app.svelte';

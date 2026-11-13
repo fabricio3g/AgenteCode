@@ -20,7 +20,7 @@
   import { untrack } from 'svelte';
   import { t } from 'svelte-i18n';
   import { get } from 'svelte/store';
-  import { Check, CircleCheck, Eye, EyeOff, LoaderCircle, Plus, RefreshCw, Search, Trash2, TriangleAlert, X } from 'lucide-svelte';
+  import { Check, CircleCheck, Eye, EyeOff, LoaderCircle, Plus, RefreshCw, Search, Trash2, TriangleAlert, X } from '$lib/icons';
   import { appStore } from '$lib/stores/app.svelte';
   import { confirmStore } from '$lib/stores/confirm.svelte';
   import { toastStore } from '$lib/stores/toast.svelte';

@@ -2,7 +2,7 @@
 <script lang="ts">
   import UiInput from '$lib/components/ui/Input.svelte';
 
-  import { Globe, SquareTerminal, GitBranch, Image } from 'lucide-svelte';
+  import { Globe, SquareTerminal, GitBranch, Image } from '$lib/icons';
   import WorkspaceHost from '../WorkspaceHost.svelte';
   import TerminalView from '$lib/features/code/workspace/TerminalView.svelte';
   import { workspaceLayout } from '$lib/stores/workspace-layout.svelte';

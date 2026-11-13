@@ -9,7 +9,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { t } from 'svelte-i18n';
-  import { Download, LoaderCircle } from 'lucide-svelte';
+  import { Download, LoaderCircle } from '$lib/icons';
   import { Button } from '$lib/components/ui';
   import { listen } from '$lib/services/bridge';
   import { speechEngine } from '$lib/stores/speech-engine.svelte';

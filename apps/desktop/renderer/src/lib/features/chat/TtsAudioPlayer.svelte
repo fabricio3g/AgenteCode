@@ -7,7 +7,7 @@
 
   import { Tooltip } from '$lib/components/ui';
   import type { ChatMessage, AppConfig } from '$lib/types/chat';
-  import { Pause, Play, X } from 'lucide-svelte';
+  import { Pause, Play, X } from '$lib/icons';
   import { t } from 'svelte-i18n';
   import { ttsStore } from '$lib/stores/tts.svelte';
   import { appStore } from '$lib/stores/app.svelte';

@@ -16,7 +16,7 @@
     Globe,
     Terminal,
     XCircle
-  } from 'lucide-svelte';
+  } from '$lib/icons';
   import { slide } from 'svelte/transition';
   import { quintOut } from 'svelte/easing';
   import type { AgentStep } from '$lib/types/chat';

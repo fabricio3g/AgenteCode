@@ -13,7 +13,7 @@
 
   import { onMount } from 'svelte';
   import { t } from 'svelte-i18n';
-  import { RefreshCw } from 'lucide-svelte';
+  import { RefreshCw } from '$lib/icons';
   import { Button, Dialog, Input, Switch } from '$lib/components/ui';
   import { invoke } from '$lib/services/bridge';
   import { toastStore } from '$lib/stores/toast.svelte';

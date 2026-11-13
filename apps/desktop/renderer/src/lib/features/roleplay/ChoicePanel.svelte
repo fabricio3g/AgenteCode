@@ -19,7 +19,7 @@
   import UiButton from '$lib/components/ui/Button.svelte';
   import { cn as uiClass } from '$lib/utils/cn';
 
-  import { X } from 'lucide-svelte';
+  import { X } from '$lib/icons';
   import { t } from 'svelte-i18n';
   import { appStore } from '$lib/stores/app.svelte';
 

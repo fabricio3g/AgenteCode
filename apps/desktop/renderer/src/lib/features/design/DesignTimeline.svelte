@@ -13,7 +13,7 @@
   import UiRange from '$lib/components/ui/Range.svelte';
   import { cn as uiClass } from '$lib/utils/cn';
 
-  import { MousePointerClick, Pause, Play, RotateCcw, X } from 'lucide-svelte';
+  import { MousePointerClick, Pause, Play, RotateCcw, X } from '$lib/icons';
   import Button from '$lib/components/ui/Button.svelte';
   import IconButton from '$lib/components/ui/IconButton.svelte';
   import SegmentedControl from '$lib/components/ui/SegmentedControl.svelte';

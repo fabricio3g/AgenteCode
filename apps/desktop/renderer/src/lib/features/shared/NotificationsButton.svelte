@@ -1,7 +1,7 @@
 <svelte:options runes={true} />
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { Bell } from 'lucide-svelte';
+  import { Bell } from '$lib/icons';
   import Menu from '$lib/components/ui/Menu.svelte';
   import MenuItem from '$lib/components/ui/MenuItem.svelte';
   import IconButton from '$lib/components/ui/IconButton.svelte';

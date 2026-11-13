@@ -7,7 +7,7 @@
 
   import { Tooltip } from '$lib/components/ui';
   import { motionFly, motionFade } from '$lib/utils/transitions';
-  import { X } from 'lucide-svelte';
+  import { X } from '$lib/icons';
   import { toastStore } from '$lib/stores/toast.svelte';
 
   const COLOR_MAP = {

@@ -20,7 +20,7 @@
 <script lang="ts">
   import { Button } from '$lib/components/ui';
   import { t, locale } from 'svelte-i18n';
-  import { Check } from 'lucide-svelte';
+  import { Check } from '$lib/icons';
   import { SUPPORTED_UI_LANGUAGES, normalizeLocaleCode } from '$lib/i18n';
   import { themeStore } from '$lib/stores/theme.svelte';
   import { speechEngine } from '$lib/stores/speech-engine.svelte';

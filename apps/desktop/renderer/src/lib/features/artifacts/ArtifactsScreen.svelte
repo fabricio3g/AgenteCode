@@ -11,7 +11,7 @@
   import IconButton from '$lib/components/ui/IconButton.svelte';
 
   import { t } from 'svelte-i18n';
-  import { ArrowLeft, MessageSquare, Plus, Sparkles, Trash2 } from 'lucide-svelte';
+  import { ArrowLeft, MessageSquare, Plus, Sparkles, Trash2 } from '$lib/icons';
   import { appStore } from '$lib/stores/app.svelte';
   import { confirmStore } from '$lib/stores/confirm.svelte';
   import { Button, FilterBar, FilterChip, PageHeader, PaneHeader } from '$lib/components/ui';

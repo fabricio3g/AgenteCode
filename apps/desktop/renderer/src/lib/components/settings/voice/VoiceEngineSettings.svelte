@@ -10,7 +10,7 @@
   import IconButton from '$lib/components/ui/IconButton.svelte';
 
   import { t } from 'svelte-i18n';
-  import { RotateCcw, Volume2 } from 'lucide-svelte';
+  import { RotateCcw, Volume2 } from '$lib/icons';
   import { Badge, Button, Select, Tooltip } from '$lib/components/ui';
   import { appStore } from '$lib/stores/app.svelte';
   import { speechEngine } from '$lib/stores/speech-engine.svelte';

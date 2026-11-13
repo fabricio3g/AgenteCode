@@ -9,7 +9,7 @@
   import { cn as uiClass } from '$lib/utils/cn';
 
   import type { GgufMeta, HardwareInfo, RecommendedSettings } from '$lib/types/bridge';
-  import { AlertTriangle, CircleCheck, Info, LoaderCircle, Sparkles } from 'lucide-svelte';
+  import { AlertTriangle, CircleCheck, Info, LoaderCircle, Sparkles } from '$lib/icons';
   import { untrack } from 'svelte';
   import { t } from 'svelte-i18n';
   import { appStore } from '$lib/stores/app.svelte';

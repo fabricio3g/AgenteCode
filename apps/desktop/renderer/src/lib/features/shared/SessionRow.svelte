@@ -17,12 +17,12 @@
   import UiInput from '$lib/components/ui/Input.svelte';
   import { cn as uiClass } from '$lib/utils/cn';
 
-  import type { ComponentType, Snippet } from 'svelte';
-  import type { Icon as LucideIcon } from 'lucide-svelte';
+  import type { Snippet } from 'svelte';
+  import type { Icon as AppIcon } from '$lib/icons';
   import { t } from 'svelte-i18n';
   import { openConversationWindow } from './conversation-window';
   import { tick } from 'svelte';
-  import { FileDown, MoreHorizontal, PanelBottom, PanelRight, ExternalLink, Pencil, Trash2 } from 'lucide-svelte';
+  import { FileDown, MoreHorizontal, PanelBottom, PanelRight, ExternalLink, Pencil, Trash2 } from '$lib/icons';
   import Tooltip from '$lib/components/ui/Tooltip.svelte';
   import SessionMetadata from './SessionMetadata.svelte';
   import Menu from '$lib/components/ui/Menu.svelte';
@@ -49,7 +49,7 @@
     active: boolean;
     onselect: () => void;
     /** Leading icon (Code shows a speech bubble; Home shows none). */
-    icon?: ComponentType<LucideIcon>;
+    icon?: AppIcon;
     status?: 'running' | 'approval' | null;
     statusLabel?: string;
     menuLabel?: string;

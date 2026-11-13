@@ -12,7 +12,7 @@
   import { cn as uiClass } from '$lib/utils/cn';
 
   import { locale, t } from 'svelte-i18n';
-  import { Brain, Cpu, Download, FolderOpen, Loader2, Mic, Pause, Play, RotateCcw, Volume2, X } from 'lucide-svelte';
+  import { Brain, Cpu, Download, FolderOpen, Loader2, Mic, Pause, Play, RotateCcw, Volume2, X } from '$lib/icons';
   import { Menu } from '$lib/components/ui';
   import { downloadsStore } from '$lib/stores/downloads.svelte';
   import { invoke } from '$lib/services/bridge';

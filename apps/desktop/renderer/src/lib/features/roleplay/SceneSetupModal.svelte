@@ -17,7 +17,7 @@
   import { cn as uiClass } from '$lib/utils/cn';
 
   import { untrack } from 'svelte';
-  import { Globe2, Info, X } from 'lucide-svelte';
+  import { Globe2, Info, X } from '$lib/icons';
   import { t } from 'svelte-i18n';
   import { motionFade, flyAndScale } from '$lib/utils/transitions';
   import { modalLayer } from '$lib/components/ui/modal-layer';

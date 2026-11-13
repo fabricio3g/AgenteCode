@@ -14,7 +14,9 @@
 
   import { t } from 'svelte-i18n';
   import type { Snippet } from 'svelte';
-  import { Activity, ClipboardList, FolderTree, GitCompareArrows, Globe, History, Image, ListChecks, SquareTerminal } from 'lucide-svelte';
+  import { PanelRight as ContextIcon } from '$lib/icons';
+
+  import { Activity, ClipboardList, FolderTree, GitCompareArrows, Globe, History, Image, ListChecks, SquareTerminal } from '$lib/icons';
   import Menu from '$lib/components/ui/Menu.svelte';
   import Tooltip from '$lib/components/ui/Tooltip.svelte';
   import MenuItem from '$lib/components/ui/MenuItem.svelte';
@@ -131,9 +133,9 @@
           {@render pane('terminal', $t('codeWs.terminal'), terminalOpen, () => void toggleTerminal(), SquareTerminal)}
         {/if}
         {@render pane('browser', $t('browser.title'), browserPanelStore.open, () => void browserPanelStore.toggle().catch((error) => toastStore.error(String(error))), Globe)}
+        {@render pane('context', $t('context.button'), workspaceLayout.isOpen('context'), () => workspaceLayout.toggle('context'), ContextIcon)}
       {/if}
     </div>
-        {@render pane('context', $t('context.button'), workspaceLayout.isOpen('context'), () => workspaceLayout.toggle('context'), ContextIcon)}
 
     <!-- Checkpoints act on the turn, not on a pane, so they trail the strip. -->
     {#if inCode && checkpoints.length}

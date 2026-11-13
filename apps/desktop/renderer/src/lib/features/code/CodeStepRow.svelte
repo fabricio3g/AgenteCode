@@ -20,7 +20,7 @@
   import { cn as uiClass } from '$lib/utils/cn';
 
   import { t } from 'svelte-i18n';
-  import { AlertCircle, Copy, FilePen, FileText, FolderOpen, Globe, ListChecks, Search, Square, SquareTerminal, Wrench, XCircle } from 'lucide-svelte';
+  import { AlertCircle, Copy, FilePen, FileText, FolderOpen, Globe, ListChecks, Search, Square, SquareTerminal, Wrench, XCircle } from '$lib/icons';
   import type { AgentStep } from '$lib/types/chat';
   import type { CodeChild } from '$shared/agente-protocol';
   import { approvalsStore } from '$lib/stores/approvals.svelte';

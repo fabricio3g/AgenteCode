@@ -1,17 +1,17 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
-  import type { ComponentType, Snippet } from 'svelte';
+  import type { Snippet } from 'svelte';
   import type { HTMLButtonAttributes } from 'svelte/elements';
-  import type { Icon as LucideIcon } from 'lucide-svelte';
-  import { Check } from 'lucide-svelte';
+  import type { Icon as AppIcon } from '$lib/icons';
+  import { Check } from '$lib/icons';
   import { cn } from '$lib/utils/cn';
 
   interface Props extends Omit<HTMLButtonAttributes, 'role' | 'class' | 'children'> {
     label?: string;
     /** A quieter second line under the label. */
     description?: string;
-    icon?: ComponentType<LucideIcon>;
+    icon?: AppIcon;
     danger?: boolean;
     /** The current choice: marked with a check, not a fill. */
     active?: boolean;

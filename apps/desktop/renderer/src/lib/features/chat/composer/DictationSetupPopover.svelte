@@ -13,7 +13,7 @@
 
   import { onMount } from 'svelte';
   import { t } from 'svelte-i18n';
-  import { X } from 'lucide-svelte';
+  import { X } from '$lib/icons';
   import { appStore } from '$lib/stores/app.svelte';
   import { resolveModelHubSection } from '$lib/utils/model-hub-routing';
   import { formatBytes } from '$lib/utils/format';

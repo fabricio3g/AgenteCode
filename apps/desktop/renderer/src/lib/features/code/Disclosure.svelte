@@ -19,7 +19,7 @@
   import { cn as uiClass } from '$lib/utils/cn';
 
   import type { Snippet } from 'svelte';
-  import { ChevronRight } from 'lucide-svelte';
+  import { ChevronRight } from '$lib/icons';
   import { disclosure } from './disclosure-state.svelte';
 
   let {
@@ -109,7 +109,7 @@
   :is(.head:disabled, :global(.head:disabled.ui-local-2c22291d)) {
     cursor: default;
   }
-  /* The chevron is a lucide component: its svg carries no scope class of ours,
+  /* The chevron is an icon component: its svg carries no scope class of ours,
      so every rule that reaches it goes through :global. */
   :is(.head, :global(.head.ui-local-2c22291d)) :global(.chev) {
     opacity: 0.55;

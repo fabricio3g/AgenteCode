@@ -7,7 +7,7 @@
 -->
 
 <script lang="ts">
-  import { FolderInput, Library, Save, Sparkles } from 'lucide-svelte';
+  import { FolderInput, Library, Save, Sparkles } from '$lib/icons';
   import MenuItem from '$lib/components/ui/MenuItem.svelte';
   import { appStore } from '$lib/stores/app.svelte';
   import { copy } from '$lib/copy';

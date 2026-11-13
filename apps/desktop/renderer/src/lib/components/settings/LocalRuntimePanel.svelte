@@ -12,7 +12,7 @@
   import { onMount, onDestroy } from 'svelte';
   import { t } from 'svelte-i18n';
   import { get } from 'svelte/store';
-  import { Check, Download, LoaderCircle, RefreshCw, Square, Trash2, TriangleAlert, Zap } from 'lucide-svelte';
+  import { Check, Download, LoaderCircle, RefreshCw, Square, Trash2, TriangleAlert, Zap } from '$lib/icons';
   import { appStore } from '$lib/stores/app.svelte';
   import { confirmStore } from '$lib/stores/confirm.svelte';
   import { hardwareStore } from '$lib/stores/hardware.svelte';

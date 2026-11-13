@@ -9,7 +9,7 @@
 
   import { Tooltip } from '$lib/components/ui';
   import { t } from 'svelte-i18n';
-  import { ChevronLeft, ChevronRight, Pencil, Plus, Trash2 } from 'lucide-svelte';
+  import { ChevronLeft, ChevronRight, Pencil, Plus, Trash2 } from '$lib/icons';
   import { getFileIcon } from '$lib/utils/doc-utils';
   import Button from '$lib/components/ui/Button.svelte';
   import Select from '$lib/components/ui/Select.svelte';

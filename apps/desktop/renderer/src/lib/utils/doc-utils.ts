@@ -1,4 +1,4 @@
-import { FileText, FileSpreadsheet, FileCode, FileImage, FileArchive, FileMusic, FilePlay, Image, File, Presentation } from 'lucide-svelte';
+import { FileText, FileSpreadsheet, FileCode, FileImage, FileArchive, FileMusic, FilePlay, Image, File, Presentation } from '$lib/icons';
 import { dataUrlMime, dataUrlToBytes } from './artifact-files';
 
 export type ViewerKind = 'pdf' | 'docx' | 'xlsx' | 'pptx' | 'text' | 'image' | 'unknown';

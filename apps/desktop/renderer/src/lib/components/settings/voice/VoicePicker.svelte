@@ -11,7 +11,7 @@
   import { cn as uiClass } from '$lib/utils/cn';
 
   import { t, locale } from 'svelte-i18n';
-  import { Check, LoaderCircle, Play, Square } from 'lucide-svelte';
+  import { Check, LoaderCircle, Play, Square } from '$lib/icons';
   import { Select } from '$lib/components/ui';
   import { appStore } from '$lib/stores/app.svelte';
   import { speechEngine } from '$lib/stores/speech-engine.svelte';

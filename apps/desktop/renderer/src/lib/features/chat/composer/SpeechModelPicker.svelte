@@ -8,7 +8,7 @@
 
 <script lang="ts">
   import { t } from 'svelte-i18n';
-  import { Check } from 'lucide-svelte';
+  import { Check } from '$lib/icons';
   import { formatBytes } from '$lib/utils/format';
   import { Button } from '$lib/components/ui';
   import type { SpeechModel } from './speech-models';

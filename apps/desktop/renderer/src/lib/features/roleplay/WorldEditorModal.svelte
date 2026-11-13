@@ -20,7 +20,7 @@
   import { deleteWorld } from './library-actions.svelte';
   import Avatar from '$lib/components/ui/Avatar.svelte';
   import { untrack } from 'svelte';
-  import { ArrowDown, ArrowUp, Plus, Trash2, Upload, X } from 'lucide-svelte';
+  import { ArrowDown, ArrowUp, Plus, Trash2, Upload, X } from '$lib/icons';
   import { motionFade, flyAndScale } from '$lib/utils/transitions';
   import { modalLayer } from '$lib/components/ui/modal-layer';
   import { dirtyGuard } from '$lib/components/ui/dirty-guard';

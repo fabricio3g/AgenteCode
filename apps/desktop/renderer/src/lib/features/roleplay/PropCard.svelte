@@ -12,7 +12,7 @@
   import UiButton from '$lib/components/ui/Button.svelte';
   import { cn as uiClass } from '$lib/utils/cn';
 
-  import { Box, FileText, Image as ImageIcon, Mail, Map, StickyNote } from 'lucide-svelte';
+  import { Box, FileText, Image as ImageIcon, Mail, Map, StickyNote } from '$lib/icons';
   import type { RoleplayProp } from './roleplay-props';
   import PropViewerModal from './PropViewerModal.svelte';
   import { roleplayStore } from './roleplay.svelte';

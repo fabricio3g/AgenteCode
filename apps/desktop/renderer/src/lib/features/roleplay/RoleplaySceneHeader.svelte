@@ -13,7 +13,7 @@
   import { cn as uiClass } from '$lib/utils/cn';
 
   import Avatar from '$lib/components/ui/Avatar.svelte';
-  import { Ban, BookOpen, Pause, Pencil, Play, Plus, Settings2 } from 'lucide-svelte';
+  import { Ban, BookOpen, Pause, Pencil, Play, Plus, Settings2 } from '$lib/icons';
   import { Button, IconButton, Select, Tooltip } from '$lib/components/ui';
   import SegmentedControl from '$lib/components/ui/SegmentedControl.svelte';
   import { appStore } from '$lib/stores/app.svelte';

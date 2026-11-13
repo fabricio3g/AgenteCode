@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { render, fireEvent } from '@testing-library/svelte';
 import { describe, expect, it, vi } from 'vitest';
-import { Telescope } from 'lucide-svelte';
+import { Telescope } from '$lib/icons';
 import StarterList from './StarterList.svelte';
 import type { Starter } from './starter-list';
 

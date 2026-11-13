@@ -11,7 +11,7 @@
 
   import { onDestroy } from 'svelte';
   import { t } from 'svelte-i18n';
-  import { LoaderCircle, Mic, Play, Square, Trash2, Upload } from 'lucide-svelte';
+  import { LoaderCircle, Mic, Play, Square, Trash2, Upload } from '$lib/icons';
   import type { ClonedVoice } from '$shared/voice-models';
   import { Button, Input, Tooltip } from '$lib/components/ui';
   import { invoke } from '$lib/services/bridge';

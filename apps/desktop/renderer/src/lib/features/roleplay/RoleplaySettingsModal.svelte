@@ -11,7 +11,7 @@
 
   import { Button, Tooltip } from '$lib/components/ui';
   import { untrack } from 'svelte';
-  import { Check, X } from 'lucide-svelte';
+  import { Check, X } from '$lib/icons';
   import { modalLayer } from '$lib/components/ui/modal-layer';
   import { motionFade, flyAndScale } from '$lib/utils/transitions';
   import { charactersStore, emptyCharacter } from './characters.svelte';

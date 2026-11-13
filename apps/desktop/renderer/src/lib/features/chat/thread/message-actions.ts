@@ -1,11 +1,7 @@
-import type { ComponentType } from 'svelte';
-import type { Icon } from 'lucide-svelte';
+import type { Icon } from '$lib/icons';
 
-/**
- * Icons come from lucide-svelte, which still ships legacy class components, so
- * this is a `ComponentType` rather than the runes-mode `Component`.
- */
-export type IconComponent = ComponentType<Icon>;
+/** Any icon of the app's own set (`$lib/icons`). */
+export type IconComponent = Icon;
 
 /**
  * One action on a message's hover bar.

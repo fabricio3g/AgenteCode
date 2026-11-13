@@ -7,7 +7,7 @@
 
   import { onMount } from 'svelte';
   import { t } from 'svelte-i18n';
-  import { Check, FolderInput, LoaderCircle, Trash2 } from 'lucide-svelte';
+  import { Check, FolderInput, LoaderCircle, Trash2 } from '$lib/icons';
   import { appStore } from '$lib/stores/app.svelte';
   import { confirmStore } from '$lib/stores/confirm.svelte';
   import { deleteWhisperRuntime, listWhisperRuntimes, pickWhisperRuntimeFile, type WhisperRuntime } from '$lib/services/stt';

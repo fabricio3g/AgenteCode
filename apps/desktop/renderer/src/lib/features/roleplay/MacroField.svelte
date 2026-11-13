@@ -19,7 +19,7 @@
   import { Button } from '$lib/components/ui';
   import Menu from '$lib/components/ui/Menu.svelte';
   import MenuItem from '$lib/components/ui/MenuItem.svelte';
-  import { Eye, UserRound } from 'lucide-svelte';
+  import { Eye, UserRound } from '$lib/icons';
   import { resolveMacros } from '$lib/services/roleplay-macros';
   import { t } from 'svelte-i18n';
 

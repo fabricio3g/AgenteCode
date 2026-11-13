@@ -6,7 +6,7 @@
 
 <script lang="ts">
   import { onDestroy, tick } from 'svelte';
-  import { Check, ChevronDown } from 'lucide-svelte';
+  import { Check, ChevronDown } from '$lib/icons';
   import { cn } from '$lib/utils/cn';
   import { flyAndScale } from '$lib/utils/transitions';
   import Portal from './Portal.svelte';

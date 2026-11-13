@@ -5,7 +5,7 @@
   import { cn as uiClass } from '$lib/utils/cn';
 
   import { Tooltip } from '$lib/components/ui';
-  import { File, FileImage, FileText, Music, Video, X } from 'lucide-svelte';
+  import { File, FileImage, FileText, Music, Video, X } from '$lib/icons';
   import { t } from 'svelte-i18n';
   import type { Attachment } from '$shared/agente-protocol.gen';
   import { invoke } from '$lib/services/bridge';

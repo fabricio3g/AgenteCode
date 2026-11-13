@@ -10,16 +10,15 @@
 -->
 
 <script lang="ts">
-  import type { ComponentType } from 'svelte';
-  import type { Icon as LucideIcon } from 'lucide-svelte';
-  import { Code2, Drama, House, PenTool } from 'lucide-svelte';
+  import type { Icon as AppIcon } from '$lib/icons';
+  import { Code2, Drama, House, PenTool } from '$lib/icons';
   import SegmentedControl from '$lib/components/ui/SegmentedControl.svelte';
   import { appStore } from '$lib/stores/app.svelte';
   import { codeStore } from '$lib/features/code/code.svelte';
   import { copy } from '$lib/copy';
   import type { ChatContextMode } from '$lib/types/chat';
 
-  const spaces: Array<{ id: ChatContextMode; label: string; icon: ComponentType<LucideIcon> }> = [
+  const spaces: Array<{ id: ChatContextMode; label: string; icon: AppIcon }> = [
     { id: 'home', label: copy.spaces.home, icon: House },
     { id: 'code', label: copy.spaces.code, icon: Code2 },
     { id: 'design', label: copy.spaces.design, icon: PenTool },

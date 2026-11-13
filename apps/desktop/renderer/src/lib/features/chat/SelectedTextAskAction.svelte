@@ -5,7 +5,7 @@
   import { cn as uiClass } from '$lib/utils/cn';
 
   import { onDestroy, onMount } from 'svelte';
-  import { Quote } from 'lucide-svelte';
+  import { Quote } from '$lib/icons';
   import { t } from 'svelte-i18n';
   import Portal from '$lib/components/ui/Portal.svelte';
 

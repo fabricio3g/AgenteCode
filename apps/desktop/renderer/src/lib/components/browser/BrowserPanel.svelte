@@ -16,7 +16,7 @@
 
   import { Button, Tooltip } from '$lib/components/ui';
   import { onMount, tick } from 'svelte';
-  import { X, Plus, ArrowLeft, ArrowRight, RotateCw, LoaderCircle, Monitor, Laptop, Tablet, Smartphone, PanelRight, Hand, MoreHorizontal, Pencil, Globe, SquareDashedMousePointer } from 'lucide-svelte';
+  import { X, Plus, ArrowLeft, ArrowRight, RotateCw, LoaderCircle, Monitor, Laptop, Tablet, Smartphone, PanelRight, Hand, MoreHorizontal, Pencil, Globe, SquareDashedMousePointer } from '$lib/icons';
   import { t } from 'svelte-i18n';
   import Menu from '$lib/components/ui/Menu.svelte';
   import MenuItem from '$lib/components/ui/MenuItem.svelte';

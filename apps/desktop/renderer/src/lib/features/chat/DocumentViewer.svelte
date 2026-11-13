@@ -7,7 +7,7 @@
 -->
 
 <script lang="ts">
-  import { Files } from 'lucide-svelte';
+  import { Files } from '$lib/icons';
   import { t } from 'svelte-i18n';
   import { renderMarkdown } from '$lib/utils/markdown';
   import HtmlViewer from './viewers/HtmlViewer.svelte';

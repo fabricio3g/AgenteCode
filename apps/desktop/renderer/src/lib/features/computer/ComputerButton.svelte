@@ -1,6 +1,6 @@
 <svelte:options runes={true} />
 <script lang="ts">
-  import { Monitor, Hand, Play, Square } from 'lucide-svelte';
+  import { Monitor, Hand, Play, Square } from '$lib/icons';
   import UiIconButton from '$lib/components/ui/IconButton.svelte';
   import Menu from '$lib/components/ui/Menu.svelte';
   import MenuItem from '$lib/components/ui/MenuItem.svelte';

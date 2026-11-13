@@ -15,7 +15,7 @@
   import { cn as uiClass } from '$lib/utils/cn';
 
   import { untrack } from 'svelte';
-  import { BookOpen, Copy, Plus, Trash2 } from 'lucide-svelte';
+  import { BookOpen, Copy, Plus, Trash2 } from '$lib/icons';
   import { Button, Select, Switch, Tooltip } from '$lib/components/ui';
   import type { CharacterBook, LorebookEntry } from '$lib/types/chat';
   import { emptyLoreEntry, normalizeBook } from '$lib/services/character-card';

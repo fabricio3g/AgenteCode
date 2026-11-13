@@ -27,7 +27,7 @@
   import {
     AlertCircle, Ban, Check, ChevronRight, Cpu, Download, FolderInput, FolderOpen, HardDrive,
     LoaderCircle, MemoryStick, Trash2,
-  } from 'lucide-svelte';
+  } from '$lib/icons';
   import { Badge, Button, Select, Switch, Tooltip } from '$lib/components/ui';
   import { openModelsFolder, pickModelFile } from '$lib/services/files';
   import { importLocalModel } from '$lib/services/models';

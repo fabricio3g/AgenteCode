@@ -5,7 +5,7 @@
 
 <script lang="ts">
   import type { Snippet } from 'svelte';
-  import { X } from 'lucide-svelte';
+  import { X } from '$lib/icons';
   import { cn } from '$lib/utils/cn';
   import { backdropIn, backdropOut, dialogIn, dialogOut } from '$lib/utils/transitions';
   import { copy } from '$lib/copy';

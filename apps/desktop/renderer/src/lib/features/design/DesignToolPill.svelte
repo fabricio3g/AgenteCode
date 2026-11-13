@@ -9,7 +9,7 @@
 -->
 
 <script lang="ts" module>
-  import { MessageSquarePlus, MousePointer2, Pencil, SquareDashedMousePointer } from 'lucide-svelte';
+  import { MessageSquarePlus, MousePointer2, Pencil, SquareDashedMousePointer } from '$lib/icons';
   import { copy } from '$lib/copy';
   import type { DesignCanvasTool } from '$shared/design';
 
@@ -34,7 +34,7 @@
 </script>
 
 <script lang="ts">
-  import { Globe, ImagePlus, Minus, Plus, Send, Upload } from 'lucide-svelte';
+  import { Globe, ImagePlus, Minus, Plus, Send, Upload } from '$lib/icons';
   import Badge from '$lib/components/ui/Badge.svelte';
   import Button from '$lib/components/ui/Button.svelte';
   import Menu from '$lib/components/ui/Menu.svelte';

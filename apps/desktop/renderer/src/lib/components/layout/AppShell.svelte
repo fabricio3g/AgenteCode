@@ -14,7 +14,7 @@
   import ComplementsScreen from '$lib/features/home/ComplementsScreen.svelte';
   import ConversationPanes from '$lib/features/code/ConversationPanes.svelte';
   import ContextPanel from '$lib/features/chat/ContextPanel.svelte';
-  import { PanelRight as ContextIcon } from 'lucide-svelte';
+  import { PanelRight as ContextIcon } from '$lib/icons';
   import ArtifactsScreen from '$lib/features/artifacts/ArtifactsScreen.svelte';
   import FilesScreen from '$lib/features/files/FilesScreen.svelte';
   import ArtifactPanel from '$lib/features/artifacts/ArtifactPanel.svelte';
@@ -43,7 +43,7 @@
   import WorkspaceHost from './WorkspaceHost.svelte';
   import type { WorkspacePanel, PanelRenderState } from './workspace-panel';
   import { workspaceLayout } from '$lib/stores/workspace-layout.svelte';
-  import { FileBox, Globe, Image } from 'lucide-svelte';
+  import { FileBox, Globe, Image } from '$lib/icons';
   import CanvasPanel from '$lib/features/canvas/CanvasPanel.svelte';
   import { codeWorkspace } from '$lib/features/code/workspace.svelte';
   import { appStore } from '$lib/stores/app.svelte';

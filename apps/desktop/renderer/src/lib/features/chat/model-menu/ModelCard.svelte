@@ -12,7 +12,7 @@
   import { t } from 'svelte-i18n';
   import Portal from '$lib/components/ui/Portal.svelte';
   import ProviderIcon from '$lib/components/ui/ProviderIcon.svelte';
-  import { Cpu } from 'lucide-svelte';
+  import { Cpu } from '$lib/icons';
   import { getModelCard, formatPrice, formatTokens, type ModelCard } from '$lib/services/model-card';
   import type { CardTarget } from './model-menu';
 

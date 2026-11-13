@@ -5,7 +5,7 @@
 
   import { Tooltip } from '$lib/components/ui';
   import { t } from 'svelte-i18n';
-  import { FileDown, FileQuestion } from 'lucide-svelte';
+  import { FileDown, FileQuestion } from '$lib/icons';
   import CodeEditor from '$lib/ui/components/CodeEditor.svelte';
   import { isDataUrlFile } from '$lib/utils/artifact-files';
 

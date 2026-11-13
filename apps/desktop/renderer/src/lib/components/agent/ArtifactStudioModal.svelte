@@ -10,7 +10,7 @@
   import { appStore } from '$lib/stores/app.svelte';
   import { confirmStore } from '$lib/stores/confirm.svelte';
   import Dialog from '$lib/components/ui/Dialog.svelte';
-  import { X } from 'lucide-svelte';
+  import { X } from '$lib/icons';
   import { resolveArtifactPresentation } from '$lib/services/artifact-model';
   import ArtifactStudio from './ArtifactStudio.svelte';
 

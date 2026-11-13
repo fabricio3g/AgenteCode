@@ -9,7 +9,7 @@
 -->
 
 <script lang="ts">
-  import { X } from 'lucide-svelte';
+  import { X } from '$lib/icons';
   import IconButton from '$lib/components/ui/IconButton.svelte';
   import { copy } from '$lib/copy';
   import { toastStore } from '$lib/stores/toast.svelte';

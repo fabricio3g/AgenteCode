@@ -13,7 +13,7 @@
   import { Button, PaneHeader, Tooltip } from '$lib/components/ui';
   import { conversationScope } from '$shared/workspace-scope';
   import { t } from 'svelte-i18n';
-  import { ChevronRight, ExternalLink, Play, Square, Trash2 } from 'lucide-svelte';
+  import { ChevronRight, ExternalLink, Play, Square, Trash2 } from '$lib/icons';
   import { browserPanelStore as defaultBrowser, type BrowserPanelStore } from '$lib/stores/browser-panel.svelte';
   import { codeWorkspace } from '../workspace.svelte';
   import type { ProcessInfo } from '$shared/code-workspace';

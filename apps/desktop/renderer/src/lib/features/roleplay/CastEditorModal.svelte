@@ -16,7 +16,7 @@
 
   import { t } from 'svelte-i18n';
   import { untrack } from 'svelte';
-  import { X } from 'lucide-svelte';
+  import { X } from '$lib/icons';
   import { motionFade, flyAndScale } from '$lib/utils/transitions';
   import { modalLayer } from '$lib/components/ui/modal-layer';
   import { dirtyGuard } from '$lib/components/ui/dirty-guard';

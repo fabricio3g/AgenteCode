@@ -7,7 +7,7 @@
 
   import { tick } from 'svelte';
   import { t } from 'svelte-i18n';
-  import { ArrowDown, ArrowUp, Folder, FolderOpen, MoreHorizontal, Pencil, Plus, Trash2 } from 'lucide-svelte';
+  import { ArrowDown, ArrowUp, Folder, FolderOpen, MoreHorizontal, Pencil, Plus, Trash2 } from '$lib/icons';
   import { appStore } from '$lib/stores/app.svelte';
   import { workspaceLayout } from '$lib/stores/workspace-layout.svelte';
   import { copy } from '$lib/copy';

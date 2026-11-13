@@ -19,7 +19,7 @@
   import UiButton from '$lib/components/ui/Button.svelte';
   import { cn as uiClass } from '$lib/utils/cn';
 
-  import { AlertCircle, BriefcaseBusiness, ChevronDown, Download, Globe } from 'lucide-svelte';
+  import { AlertCircle, BriefcaseBusiness, ChevronDown, Download, Globe } from '$lib/icons';
   import { slide } from 'svelte/transition';
   import { appStore } from '$lib/stores/app.svelte';
   import { copy, say } from '$lib/copy';

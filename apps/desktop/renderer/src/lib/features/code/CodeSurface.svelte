@@ -14,7 +14,7 @@
 
   import { onMount } from 'svelte';
   import { t } from 'svelte-i18n';
-  import { Bug, FlaskConical, FolderOpen, Globe, Telescope } from 'lucide-svelte';
+  import { Bug, FlaskConical, FolderOpen, Globe, Telescope } from '$lib/icons';
   import { Button } from '$lib/components/ui';
   import StarterList from '$lib/components/ui/StarterList.svelte';
   import type { Starter } from '$lib/components/ui/starter-list';

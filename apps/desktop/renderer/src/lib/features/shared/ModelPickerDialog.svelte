@@ -22,7 +22,7 @@
 
   import { Button } from '$lib/components/ui';
   import type { Snippet } from 'svelte';
-  import { Check, ChevronRight, LoaderCircle, RefreshCw, Search, Settings2, X } from 'lucide-svelte';
+  import { Check, ChevronRight, LoaderCircle, RefreshCw, Search, Settings2, X } from '$lib/icons';
   import { t } from 'svelte-i18n';
   import { backdropIn, backdropOut, dialogIn, dialogOut } from '$lib/utils/transitions';
   import { modalLayer } from '$lib/components/ui/modal-layer';

@@ -11,7 +11,7 @@
 
   import { cn as uiClass } from '$lib/utils/cn';
 
-  import { Check, Download, ExternalLink, LoaderCircle, X } from 'lucide-svelte';
+  import { Check, Download, ExternalLink, LoaderCircle, X } from '$lib/icons';
   import { t } from 'svelte-i18n';
   import { Badge, Button, Disclosure, Tooltip } from '$lib/components/ui';
   import { renderMarkdown } from '$lib/utils/markdown';

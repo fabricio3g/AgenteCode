@@ -19,7 +19,7 @@
   import { cn as uiClass } from '$lib/utils/cn';
 
   import { t } from 'svelte-i18n';
-  import { Brain, ChevronDown } from 'lucide-svelte';
+  import { Brain, ChevronDown } from '$lib/icons';
   import ComposerCard from '$lib/features/shared/composer/ComposerCard.svelte';
   import { appStore } from '$lib/stores/app.svelte';
   import { reasoningRouteIdentity } from '$lib/services/reasoning-route';

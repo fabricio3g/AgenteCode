@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { CreatedFile } from '$lib/types/chat';
-  import { FilePlus } from 'lucide-svelte';
+  import { FilePlus } from '$lib/icons';
   import { getFileIcon, fileAccent } from '$lib/utils/doc-utils';
 
   interface Props {

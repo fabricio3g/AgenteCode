@@ -23,7 +23,7 @@
 
   import { deleteCharacter } from './library-actions.svelte';
   import { untrack } from 'svelte';
-  import { X, Plus, Trash2, Upload, ChevronDown, ChevronUp } from 'lucide-svelte';
+  import { X, Plus, Trash2, Upload, ChevronDown, ChevronUp } from '$lib/icons';
   import { motionFade, flyAndScale } from '$lib/utils/transitions';
   import { modalLayer } from '$lib/components/ui/modal-layer';
   import { dirtyGuard } from '$lib/components/ui/dirty-guard';

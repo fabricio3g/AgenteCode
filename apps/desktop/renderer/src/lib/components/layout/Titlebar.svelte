@@ -8,7 +8,7 @@
   import DownloadsButton from './DownloadsButton.svelte';
   import { onMount } from 'svelte';
   import { appStore } from '$lib/stores/app.svelte';
-  import { ArrowLeft, Globe, MoonStar, Search, SunMedium } from 'lucide-svelte';
+  import { ArrowLeft, Globe, MoonStar, Search, SunMedium } from '$lib/icons';
   import Tooltip from '$lib/components/ui/Tooltip.svelte';
   import { Button } from '$lib/components/ui';
   import { themeStore } from '$lib/stores/theme.svelte';
@@ -24,7 +24,7 @@
   import TitlebarLeftTools from './TitlebarLeftTools.svelte';
   import SpaceSwitcher from './SpaceSwitcher.svelte';
   import WindowControls from './WindowControls.svelte';
-  import { PanelRight as ContextIcon } from 'lucide-svelte';
+  import { PanelRight as ContextIcon } from '$lib/icons';
   import ComputerButton from '$lib/features/computer/ComputerButton.svelte';
   import NotificationsButton from '$lib/features/shared/NotificationsButton.svelte';
 

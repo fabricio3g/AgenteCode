@@ -10,7 +10,7 @@
 
 <script lang="ts">
   import ResearchWidget from './ResearchWidget.svelte';
-  import { AlertCircle } from 'lucide-svelte';
+  import { AlertCircle } from '$lib/icons';
   import { appStore } from '$lib/stores/app.svelte';
   import { approvalsStore } from '$lib/stores/approvals.svelte';
   import { artifactsForMessage } from '$lib/stores/app-store-artifacts';

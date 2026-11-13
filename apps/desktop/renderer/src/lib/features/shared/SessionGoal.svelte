@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Target, Pause, Play, ChevronDown, Check } from 'lucide-svelte';
+  import { Target, Pause, Play, ChevronDown, Check } from '$lib/icons';
   import { tick } from 'svelte';
   import { slide } from 'svelte/transition';
   import Button from '$lib/components/ui/Button.svelte';

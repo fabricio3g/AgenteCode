@@ -7,7 +7,7 @@
   import { cn as uiClass } from '$lib/utils/cn';
 
   import { Tooltip } from '$lib/components/ui';
-  import { ExternalLink, X } from 'lucide-svelte';
+  import { ExternalLink, X } from '$lib/icons';
   import { appStore } from '$lib/stores/app.svelte';
   import type { ChatMessage } from '$lib/types/chat';
   import { domainLabel } from '$lib/ui/message-utils';

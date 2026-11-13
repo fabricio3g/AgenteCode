@@ -8,7 +8,7 @@
 -->
 
 <script lang="ts">
-  import { ArrowRight, Check, FileImage, FileText, GalleryHorizontal, Link2, Maximize2, MoreHorizontal, Trash2 } from 'lucide-svelte';
+  import { ArrowRight, Check, FileImage, FileText, GalleryHorizontal, Link2, Maximize2, MoreHorizontal, Trash2 } from '$lib/icons';
   import IconButton from '$lib/components/ui/IconButton.svelte';
   import Menu from '$lib/components/ui/Menu.svelte';
   import MenuItem from '$lib/components/ui/MenuItem.svelte';

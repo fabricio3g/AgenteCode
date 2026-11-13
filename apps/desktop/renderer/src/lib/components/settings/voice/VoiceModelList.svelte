@@ -17,7 +17,7 @@
   import { cn as uiClass } from '$lib/utils/cn';
 
   import { t, locale } from 'svelte-i18n';
-  import { Download, RotateCcw, Trash2, X } from 'lucide-svelte';
+  import { Download, RotateCcw, Trash2, X } from '$lib/icons';
   import { Badge, Button, Select, Tooltip } from '$lib/components/ui';
   import { appStore } from '$lib/stores/app.svelte';
   import { confirmStore } from '$lib/stores/confirm.svelte';

@@ -14,7 +14,7 @@
   import StarterList from '$lib/components/ui/StarterList.svelte';
   import type { Starter } from '$lib/components/ui/starter-list';
 
-  import { BadgeDollarSign, LayoutDashboard, LayoutTemplate, LogIn, MousePointerClick, Smartphone } from 'lucide-svelte';
+  import { BadgeDollarSign, LayoutDashboard, LayoutTemplate, LogIn, MousePointerClick, Smartphone } from '$lib/icons';
   import { appStore } from '$lib/stores/app.svelte';
   import { copy } from '$lib/copy';
 

@@ -14,8 +14,8 @@
 
   import { t } from 'svelte-i18n';
   import { Button, Tooltip } from '$lib/components/ui';
-  import { Copy, X } from 'lucide-svelte';
-  import { BookMarked } from 'lucide-svelte';
+  import { Copy, X } from '$lib/icons';
+  import { BookMarked } from '$lib/icons';
   import { flyAndScale, motionFade } from '$lib/utils/transitions';
   import { modalLayer } from '$lib/components/ui/modal-layer';
   import { appStore } from '$lib/stores/app.svelte';

@@ -10,7 +10,7 @@
   import { cn as uiClass } from '$lib/utils/cn';
 
   import { t } from 'svelte-i18n';
-  import { PanelLeftClose, PanelLeftOpen, SlidersHorizontal } from 'lucide-svelte';
+  import { PanelLeftClose, PanelLeftOpen, SlidersHorizontal } from '$lib/icons';
   import Tooltip from '$lib/components/ui/Tooltip.svelte';
   import { appStore } from '$lib/stores/app.svelte';
 

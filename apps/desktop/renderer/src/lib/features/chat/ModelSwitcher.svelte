@@ -19,7 +19,7 @@
   import { Button } from '$lib/components/ui';
   import { untrack } from 'svelte';
   import { get } from 'svelte/store';
-  import { Check, ChevronRight, Cpu, LoaderCircle, Power, RefreshCw, Search, Settings2, Square, X } from 'lucide-svelte';
+  import { Check, ChevronRight, Cpu, LoaderCircle, Power, RefreshCw, Search, Settings2, Square, X } from '$lib/icons';
   import { backdropIn, backdropOut, dialogIn, dialogOut } from '$lib/utils/transitions';
   import { appStore } from '$lib/stores/app.svelte';
   import { modelsStore } from '$lib/stores/models.svelte';

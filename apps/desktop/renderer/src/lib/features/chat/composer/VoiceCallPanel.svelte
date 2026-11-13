@@ -4,7 +4,7 @@
   import { cn as uiClass } from '$lib/utils/cn';
 
   import { onMount, onDestroy } from 'svelte';
-  import { Mic, MicOff, PhoneOff, Volume2, VolumeX, Settings2 } from 'lucide-svelte';
+  import { Mic, MicOff, PhoneOff, Volume2, VolumeX, Settings2 } from '$lib/icons';
   import { t } from 'svelte-i18n';
   import { Tooltip } from '$lib/components/ui';
   import { appStore } from '$lib/stores/app.svelte';

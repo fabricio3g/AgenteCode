@@ -9,7 +9,7 @@
 
 <script lang="ts">
   import { tick, untrack } from 'svelte';
-  import { MessageSquare, MousePointer2, Pencil, X } from 'lucide-svelte';
+  import { MessageSquare, MousePointer2, Pencil, X } from '$lib/icons';
   import Badge from '$lib/components/ui/Badge.svelte';
   import Button from '$lib/components/ui/Button.svelte';
   import IconButton from '$lib/components/ui/IconButton.svelte';

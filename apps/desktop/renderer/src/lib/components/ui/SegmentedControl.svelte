@@ -1,6 +1,5 @@
 <script lang="ts">
-  import type { ComponentType } from 'svelte';
-  import type { Icon as LucideIcon } from 'lucide-svelte';
+  import type { Icon as AppIcon } from '$lib/icons';
   import { onMount, tick } from 'svelte';
   import { cn } from '$lib/utils/cn';
   import { reducedMotion } from '$lib/utils/motion.svelte';
@@ -11,7 +10,7 @@
     value: string;
     label: string;
     /** A glyph before the label; the label stays the accessible name. */
-    icon?: ComponentType<LucideIcon>;
+    icon?: AppIcon;
     /** A live dot: this segment's work keeps running in the background. */
     dot?: boolean;
     title?: string;

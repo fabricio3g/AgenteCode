@@ -14,7 +14,7 @@
   import UiButton from '$lib/components/ui/Button.svelte';
   import { cn as uiClass } from '$lib/utils/cn';
 
-  import { BookOpen, ChevronDown, ChevronRight, Pin, ScrollText } from 'lucide-svelte';
+  import { BookOpen, ChevronDown, ChevronRight, Pin, ScrollText } from '$lib/icons';
   import { t } from 'svelte-i18n';
   import type { RoleplayRecall, RoleplayTrimNote } from '$lib/types/chat';
 

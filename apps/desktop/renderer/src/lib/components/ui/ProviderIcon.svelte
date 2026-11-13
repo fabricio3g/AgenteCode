@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Cpu, Server } from 'lucide-svelte';
+  import { Cpu, Server } from '$lib/icons';
 
   let { provider, size = 20 }: { provider: string; size?: number } = $props();
   const brands = new Set(['opencode-go', 'openrouter', 'deepseek', 'lmstudio', 'ollama']);

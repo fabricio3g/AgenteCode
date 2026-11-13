@@ -15,7 +15,7 @@
   import { cn as uiClass } from '$lib/utils/cn';
 
   import { t } from 'svelte-i18n';
-  import { ChevronDown, ChevronRight, Copy, File as FileIcon, Folder, FolderOpen, MoreHorizontal, PenLine, AtSign } from 'lucide-svelte';
+  import { ChevronDown, ChevronRight, Copy, File as FileIcon, Folder, FolderOpen, MoreHorizontal, PenLine, AtSign } from '$lib/icons';
   import IconButton from '$lib/components/ui/IconButton.svelte';
   import Menu from '$lib/components/ui/Menu.svelte';
   import MenuItem from '$lib/components/ui/MenuItem.svelte';

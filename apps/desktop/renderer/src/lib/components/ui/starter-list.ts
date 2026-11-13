@@ -3,8 +3,7 @@
  * conversation, the Home empty state and the Design dock cannot drift apart,
  * and so nothing has to re-derive a label from a prompt fragment.
  */
-import type { ComponentType } from 'svelte';
-import type { Icon as LucideIcon } from 'lucide-svelte';
+import type { Icon as AppIcon } from '$lib/icons';
 
 export interface Starter {
   /** Stable key: the consumer gets it back from `onpick`. */
@@ -32,6 +31,5 @@ export interface Starter {
   key?: string;
 }
 
-/** Icons come from lucide-svelte, which still ships legacy class components,
- *  so this is a `ComponentType` rather than the runes-mode `Component`. */
-export type StarterIcon = ComponentType<LucideIcon>;
+/** Any icon of the app's own set (`$lib/icons`). */
+export type StarterIcon = AppIcon;

@@ -17,7 +17,7 @@
 
   import { onMount, tick } from 'svelte';
   import { t } from 'svelte-i18n';
-  import { ArrowUp, ChevronRight, Folder, FolderGit2, House, LoaderCircle } from 'lucide-svelte';
+  import { ArrowUp, ChevronRight, Folder, FolderGit2, House, LoaderCircle } from '$lib/icons';
   import { Button } from '$lib/components/ui';
   import { browseFolders, type FolderListing } from '$lib/services/files';
 

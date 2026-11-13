@@ -7,7 +7,7 @@
 
   import { Button, Tooltip } from '$lib/components/ui';
   import { modalLayer } from '$lib/components/ui/modal-layer';
-  import { LoaderCircle, Search as SearchIcon, X } from 'lucide-svelte';
+  import { LoaderCircle, Search as SearchIcon, X } from '$lib/icons';
   import { t } from 'svelte-i18n';
   import { motionFade, motionFly } from '$lib/utils/transitions';
   import { appStore } from '$lib/stores/app.svelte';

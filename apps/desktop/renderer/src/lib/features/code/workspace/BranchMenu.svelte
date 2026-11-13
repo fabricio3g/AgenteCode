@@ -16,7 +16,7 @@
   import { cn as uiClass } from '$lib/utils/cn';
 
   import { t } from 'svelte-i18n';
-  import { Check, ChevronDown, GitBranch, Plus } from 'lucide-svelte';
+  import { Check, ChevronDown, GitBranch, Plus } from '$lib/icons';
   import Menu from '$lib/components/ui/Menu.svelte';
   import MenuItem from '$lib/components/ui/MenuItem.svelte';
   import Tooltip from '$lib/components/ui/Tooltip.svelte';

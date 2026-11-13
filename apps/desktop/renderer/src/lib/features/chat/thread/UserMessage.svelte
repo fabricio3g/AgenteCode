@@ -5,7 +5,7 @@
   import { cn as uiClass } from '$lib/utils/cn';
 
   import Avatar from '$lib/components/ui/Avatar.svelte';
-  import { CornerDownLeft, Copy, Pencil, Pin, Trash2 } from 'lucide-svelte';
+  import { CornerDownLeft, Copy, Pencil, Pin, Trash2 } from '$lib/icons';
   import { t } from 'svelte-i18n';
   import { appStore } from '$lib/stores/app.svelte';
   import { confirmStore } from '$lib/stores/confirm.svelte';

@@ -19,7 +19,7 @@
 
   import { onMount } from 'svelte';
   import { t } from 'svelte-i18n';
-  import { Copy, Minus, Square, X } from 'lucide-svelte';
+  import { Copy, Minus, Square, X } from '$lib/icons';
   import { appWindow } from '$lib/services/window';
 
   const platform = typeof window !== 'undefined' ? window.electronAPI?.platform : undefined;
@@ -75,7 +75,7 @@
     transition: background-color var(--motion-fast) var(--motion-ease), color var(--motion-fast) var(--motion-ease);
   }
 
-  /* The same 16px mark as every other lucide icon in the bar (globe,
+  /* The same 16px mark as every other icon in the bar (globe,
      downloads, theme), so the caption reads as part of the tool row. */
   .window-controls :global(.window-control svg) {
     inline-size: 1rem;

@@ -15,7 +15,7 @@
 
   import { untrack } from 'svelte';
   import { t } from 'svelte-i18n';
-  import { ChevronDown } from 'lucide-svelte';
+  import { ChevronDown } from '$lib/icons';
   import ReasoningLevelSelector from '$lib/features/chat/composer/ReasoningLevelSelector.svelte';
   import ModelPickerDialog from '$lib/features/shared/ModelPickerDialog.svelte';
   import { fetchReasoningCapabilities } from '$lib/services/chat-api';

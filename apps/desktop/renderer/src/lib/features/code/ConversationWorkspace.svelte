@@ -2,7 +2,7 @@
 <script lang="ts">
   import { setContext, untrack } from 'svelte';
   import { t } from 'svelte-i18n';
-  import { Activity, ClipboardList, FolderTree, GitCompareArrows, Globe, Image, ListChecks, SquareTerminal, X } from 'lucide-svelte';
+  import { Activity, ClipboardList, FolderTree, GitCompareArrows, Globe, Image, ListChecks, SquareTerminal, X } from '$lib/icons';
   import type { ChatSession } from '$lib/types/chat';
   import { conversationScope } from '$shared/workspace-scope';
   import { appStore } from '$lib/stores/app.svelte';
@@ -30,7 +30,7 @@
   // This component is keyed by chat id: every mounted conversation owns a dock,
   // including hidden panels, their scroll, terminal focus and canvas gestures.
   import ContextPanel from '$lib/features/chat/ContextPanel.svelte';
-  import { PanelRight as ContextIcon } from 'lucide-svelte';
+  import { PanelRight as ContextIcon } from '$lib/icons';
   let { chat, split = false, onclose, oncontextmenu }: { chat: ChatSession; split?: boolean; onclose?: () => void; oncontextmenu?: (event: MouseEvent) => void } = $props();
   const chatId = untrack(() => chat.id);
   const scope = conversationScope(chatId);

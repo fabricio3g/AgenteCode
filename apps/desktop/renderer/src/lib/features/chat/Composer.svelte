@@ -17,7 +17,7 @@
 
   import type { Snippet } from 'svelte';
   import { onDestroy, tick } from 'svelte';
-  import { Paperclip, Target } from 'lucide-svelte';
+  import { Paperclip, Target } from '$lib/icons';
   import { t } from 'svelte-i18n';
   import { appStore } from '$lib/stores/app.svelte';
   import { toastStore } from '$lib/stores/toast.svelte';

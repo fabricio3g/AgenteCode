@@ -20,7 +20,7 @@
   import { t } from 'svelte-i18n';
   import { untrack } from 'svelte';
   import { get } from 'svelte/store';
-  import { Check, ChevronDown, Cpu, Cloud, Brain, LoaderCircle, ArrowDownToLine, SlidersHorizontal, Settings2, Search } from 'lucide-svelte';
+  import { Check, ChevronDown, Cpu, Cloud, Brain, LoaderCircle, ArrowDownToLine, SlidersHorizontal, Settings2, Search } from '$lib/icons';
   import Menu from '$lib/components/ui/Menu.svelte';
   import Button from '$lib/components/ui/Button.svelte';
   import MenuItem from '$lib/components/ui/MenuItem.svelte';

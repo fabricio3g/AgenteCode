@@ -17,7 +17,7 @@
 
   import { PaneHeader, Tooltip } from '$lib/components/ui';
   import { t } from 'svelte-i18n';
-  import { FolderTree, LoaderCircle, RefreshCw, X } from 'lucide-svelte';
+  import { FolderTree, LoaderCircle, RefreshCw, X } from '$lib/icons';
   import { workspaceLayout as defaultLayout, type WorkspaceLayoutStore } from '$lib/stores/workspace-layout.svelte';
   import { codeWorkspace } from '../workspace.svelte';
   import FileRow, { type FileEntry } from './FileRow.svelte';

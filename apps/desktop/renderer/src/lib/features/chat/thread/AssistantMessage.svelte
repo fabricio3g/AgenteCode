@@ -2,7 +2,7 @@
 
 <script lang="ts">
   import Avatar from '$lib/components/ui/Avatar.svelte';
-  import { AlertTriangle, Copy, Dices, FileSearch, GitBranch, GraduationCap, ListChecks, Pencil, Pin, RefreshCcw, Trash2, Volume2, X } from 'lucide-svelte';
+  import { AlertTriangle, Copy, Dices, FileSearch, GitBranch, GraduationCap, ListChecks, Pencil, Pin, RefreshCcw, Trash2, Volume2, X } from '$lib/icons';
   import { Button } from '$lib/components/ui';
   import RecallLine from '$lib/features/roleplay/RecallLine.svelte';
   import { t } from 'svelte-i18n';

@@ -3,7 +3,7 @@
 
   import { cn as uiClass } from '$lib/utils/cn';
 
-  import { Search, X } from 'lucide-svelte';
+  import { Search, X } from '$lib/icons';
   import { Input } from '$lib/components/ui';
   import { cn } from '$lib/utils/cn';
 

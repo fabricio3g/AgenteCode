@@ -9,7 +9,7 @@
   import { t } from 'svelte-i18n';
   import { Button, Dialog } from '$lib/components/ui';
   import { dirtyGuard } from '$lib/components/ui/dirty-guard';
-  import { MessageSquareText } from 'lucide-svelte';
+  import { MessageSquareText } from '$lib/icons';
   import { appStore } from '$lib/stores/app.svelte';
   import { APP_SYSTEM_PROMPT_DEFAULT } from '$lib/app-meta';
 

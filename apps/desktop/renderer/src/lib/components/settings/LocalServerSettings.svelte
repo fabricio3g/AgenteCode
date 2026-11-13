@@ -11,7 +11,7 @@
 
 <script lang="ts">
   import { t } from 'svelte-i18n';
-  import { Cpu, LoaderCircle } from 'lucide-svelte';
+  import { Cpu, LoaderCircle } from '$lib/icons';
   import { Button, SegmentedControl } from '$lib/components/ui';
   import { appStore } from '$lib/stores/app.svelte';
   import { modelsStore } from '$lib/stores/models.svelte';

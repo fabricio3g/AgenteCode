@@ -19,7 +19,7 @@
   import {
     Copy, ExternalLink, FileArchive, FileAudio, FileCode, FileSpreadsheet, FileText, FolderOpen,
     FolderSearch, Image as ImageIcon, MessageSquare, Pin, PinOff, Presentation, Sparkles, Trash2
-  } from 'lucide-svelte';
+  } from '$lib/icons';
   import { appStore } from '$lib/stores/app.svelte';
   import { confirmStore } from '$lib/stores/confirm.svelte';
   import { toastStore } from '$lib/stores/toast.svelte';

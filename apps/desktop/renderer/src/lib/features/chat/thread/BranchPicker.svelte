@@ -10,7 +10,7 @@
 
   import { cn as uiClass } from '$lib/utils/cn';
 
-  import { ChevronLeft, ChevronRight } from 'lucide-svelte';
+  import { ChevronLeft, ChevronRight } from '$lib/icons';
   import { appStore } from '$lib/stores/app.svelte';
   import { copy } from '$lib/copy';
   import { useMessage } from './message-context';

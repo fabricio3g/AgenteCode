@@ -12,7 +12,7 @@
   import { cn as uiClass } from '$lib/utils/cn';
 
   import type { Snippet } from 'svelte';
-  import { Check } from 'lucide-svelte';
+  import { Check } from '$lib/icons';
   import Tooltip from '$lib/components/ui/Tooltip.svelte';
   import type { MessageAction } from './message-actions';
 

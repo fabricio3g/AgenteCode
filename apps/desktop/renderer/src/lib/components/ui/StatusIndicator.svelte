@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { AlertCircle, Check, LoaderCircle } from 'lucide-svelte';
+  import { AlertCircle, Check, LoaderCircle } from '$lib/icons';
   import Button from './Button.svelte';
   import type { AutosaveState } from '$lib/utils/autosave';
 

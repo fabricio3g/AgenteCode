@@ -5,7 +5,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { t } from 'svelte-i18n';
-  import { Download, FolderOpen, RefreshCw } from 'lucide-svelte';
+  import { Download, FolderOpen, RefreshCw } from '$lib/icons';
   import { invoke, listen } from '$lib/services/bridge';
   import { downloadSpeechEngine, restartSpeechEngine, speechEngineStatus, type SpeechEngineStatus } from '$lib/services/speech-engine';
   import { humanizeAgentError } from '$lib/utils/errors';

@@ -12,7 +12,7 @@
   import UiButton from '$lib/components/ui/Button.svelte';
   import { cn as uiClass } from '$lib/utils/cn';
 
-  import { ChevronDown, Download, FileText, Search } from 'lucide-svelte';
+  import { ChevronDown, Download, FileText, Search } from '$lib/icons';
   import { t } from 'svelte-i18n';
   import { slide } from 'svelte/transition';
   import type { AgentStep } from '$lib/types/chat';

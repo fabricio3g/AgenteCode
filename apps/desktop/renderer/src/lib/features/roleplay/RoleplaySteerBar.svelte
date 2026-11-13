@@ -10,7 +10,7 @@
   import UiTextarea from '$lib/components/ui/Textarea.svelte';
   import { cn as uiClass } from '$lib/utils/cn';
 
-  import { Dices, FastForward, ListOrdered, PenLine, StickyNote } from 'lucide-svelte';
+  import { Dices, FastForward, ListOrdered, PenLine, StickyNote } from '$lib/icons';
   import { Button } from '$lib/components/ui';
   import { motionSlide } from '$lib/utils/transitions';
   import { t } from 'svelte-i18n';

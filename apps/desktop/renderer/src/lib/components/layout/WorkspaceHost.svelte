@@ -7,7 +7,7 @@
   import { PaneHeader, Tooltip } from '$lib/components/ui';
   import { onMount, type Snippet } from 'svelte';
   import { t } from 'svelte-i18n';
-  import { Maximize2, Minimize2, MoreHorizontal, PanelBottom, PanelRight, PanelsTopLeft, RotateCcw, X } from 'lucide-svelte';
+  import { Maximize2, Minimize2, MoreHorizontal, PanelBottom, PanelRight, PanelsTopLeft, RotateCcw, X } from '$lib/icons';
   import Menu from '$lib/components/ui/Menu.svelte';
   import MenuItem from '$lib/components/ui/MenuItem.svelte';
   import ResizeHandle from '$lib/components/ui/ResizeHandle.svelte';

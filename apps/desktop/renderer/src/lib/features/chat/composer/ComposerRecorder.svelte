@@ -14,7 +14,7 @@
   import { cn as uiClass } from '$lib/utils/cn';
 
   import { t } from 'svelte-i18n';
-  import { Check, Loader2, X } from 'lucide-svelte';
+  import { Check, Loader2, X } from '$lib/icons';
   import type { Dictation } from './use-dictation.svelte';
 
   let { dictation }: { dictation: Dictation } = $props();

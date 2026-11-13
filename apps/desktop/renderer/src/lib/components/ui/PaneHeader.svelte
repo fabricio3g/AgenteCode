@@ -9,8 +9,8 @@
 -->
 
 <script lang="ts">
-  import type { ComponentType, Snippet } from 'svelte';
-  import type { Icon as LucideIcon } from 'lucide-svelte';
+  import type { Snippet } from 'svelte';
+  import type { Icon as AppIcon } from '$lib/icons';
   import type { HTMLAttributes } from 'svelte/elements';
   import { cn } from '$lib/utils/cn';
 
@@ -29,7 +29,7 @@
     subtitle?: string;
     /** Native tooltip for the title text. */
     titleAttr?: string;
-    icon?: ComponentType<LucideIcon>;
+    icon?: AppIcon;
     /** Before the icon: a back button, a drag grip. */
     leading?: Snippet;
     /** Replaces the title/subtitle block. */

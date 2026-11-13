@@ -12,7 +12,7 @@
 
   import { onMount } from 'svelte';
   import { t } from 'svelte-i18n';
-  import { Check, Download, LoaderCircle, TriangleAlert } from 'lucide-svelte';
+  import { Check, Download, LoaderCircle, TriangleAlert } from '$lib/icons';
   import { Button, Input, SegmentedControl, Select } from '$lib/components/ui';
   import ProviderIcon from '$lib/components/ui/ProviderIcon.svelte';
   import { invoke, listen } from '$lib/services/bridge';

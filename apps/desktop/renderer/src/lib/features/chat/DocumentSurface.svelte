@@ -6,7 +6,7 @@
   import UiButton from '$lib/components/ui/Button.svelte';
   import { cn as uiClass } from '$lib/utils/cn';
 
-  import { AlertCircle, Download, ExternalLink, FileText, X } from 'lucide-svelte';
+  import { AlertCircle, Download, ExternalLink, FileText, X } from '$lib/icons';
   import { motionFade } from '$lib/utils/transitions';
   import Portal from '$lib/ui/components/Portal.svelte';
   import { getFileIcon, getViewerKind, downloadFromDataUrl, downloadFromSrc } from '$lib/utils/doc-utils';

@@ -6,7 +6,7 @@
 -->
 
 <script lang="ts">
-  import { Globe2 } from 'lucide-svelte';
+  import { Globe2 } from '$lib/icons';
   import { t } from 'svelte-i18n';
   import { copy } from '$lib/copy';
   import type { RoleplayWorld } from '$lib/types/chat';

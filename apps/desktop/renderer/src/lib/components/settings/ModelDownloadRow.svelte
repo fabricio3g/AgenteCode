@@ -12,7 +12,7 @@
   import UiIconButton from '$lib/components/ui/IconButton.svelte';
 
   import { Tooltip } from '$lib/components/ui';
-  import { LoaderCircle, Pause, Play, X } from 'lucide-svelte';
+  import { LoaderCircle, Pause, Play, X } from '$lib/icons';
   import { t } from 'svelte-i18n';
   import type { DownloadJob } from '$lib/types/bridge';
   import { downloadsStore } from '$lib/stores/downloads.svelte';

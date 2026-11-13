@@ -22,7 +22,7 @@
   import { reducedMotion } from '$lib/utils/motion.svelte';
   import { sentPromptEntry } from '$lib/utils/transitions';
   import { writeToClipboard } from '$lib/utils/clipboard';
-  import { CircleCheck, ClipboardList, Clock, Copy, GitFork, History, RotateCcw, TriangleAlert } from 'lucide-svelte';
+  import { CircleCheck, ClipboardList, Clock, Copy, GitFork, History, RotateCcw, TriangleAlert } from '$lib/icons';
   import type { ChatMessage } from '$lib/types/chat';
   import DeferredMessage from '$lib/features/shared/DeferredMessage.svelte';
   import RichContent from '$lib/ui/components/RichContent.svelte';

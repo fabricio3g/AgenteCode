@@ -17,7 +17,7 @@
   import { cn as uiClass } from '$lib/utils/cn';
 
   import { t } from 'svelte-i18n';
-  import { Check, Globe2, GraduationCap, Layers, ListChecks, MessageSquare, Paperclip, Radar, X } from 'lucide-svelte';
+  import { Check, Globe2, GraduationCap, Layers, ListChecks, MessageSquare, Paperclip, Radar, X } from '$lib/icons';
   import ComposerGlyph from '$lib/features/shared/composer/ComposerGlyph.svelte';
   import { Menu } from '$lib/components/ui';
   import { appStore } from '$lib/stores/app.svelte';

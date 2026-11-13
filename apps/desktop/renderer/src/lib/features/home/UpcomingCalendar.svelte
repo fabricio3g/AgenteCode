@@ -1,6 +1,6 @@
 <script lang="ts">
   import { locale, t } from 'svelte-i18n';
-  import { CalendarDays, ChevronRight } from 'lucide-svelte';
+  import { CalendarDays, ChevronRight } from '$lib/icons';
   import Button from '$lib/components/ui/Button.svelte';
   import { appStore } from '$lib/stores/app.svelte';
   import { useCalendar } from './calendar-state.svelte';

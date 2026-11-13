@@ -1,7 +1,7 @@
 <script lang="ts">
   import { copy } from '$lib/copy';
   import { onMount } from 'svelte';
-  import { Box, Download, ExternalLink, FolderOpen, Image, Play, Square } from 'lucide-svelte';
+  import { Box, Download, ExternalLink, FolderOpen, Image, Play, Square } from '$lib/icons';
   import Button from '$lib/components/ui/Button.svelte';
   import { invoke, listen } from '$lib/services/bridge';
   import { DEFAULT_SCENE, type BlenderState } from '$shared/design-3d';

@@ -5,7 +5,7 @@
 
   import { t } from 'svelte-i18n';
   import { onMount } from 'svelte';
-  import { ChevronDown, MoreHorizontal, Search, TestTube2 } from 'lucide-svelte';
+  import { ChevronDown, MoreHorizontal, Search, TestTube2 } from '$lib/icons';
   import { get } from 'svelte/store';
   import { say } from '$lib/copy';
   import {

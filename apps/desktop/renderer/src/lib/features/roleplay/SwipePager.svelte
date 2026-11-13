@@ -11,7 +11,7 @@
 
   import { cn as uiClass } from '$lib/utils/cn';
 
-  import { ChevronLeft, ChevronRight } from 'lucide-svelte';
+  import { ChevronLeft, ChevronRight } from '$lib/icons';
   import { t } from 'svelte-i18n';
 
   interface Props {

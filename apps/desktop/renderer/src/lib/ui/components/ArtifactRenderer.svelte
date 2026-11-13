@@ -2,7 +2,7 @@
 
 <script lang="ts">
   import type { AgentArtifact } from '$lib/types/chat';
-  import { AlertCircle, FileQuestion } from 'lucide-svelte';
+  import { AlertCircle, FileQuestion } from '$lib/icons';
   import { t } from 'svelte-i18n';
   import { resolveArtifactPresentation } from '$lib/services/artifact-model';
   import DocumentSurface from '$lib/features/chat/DocumentSurface.svelte';

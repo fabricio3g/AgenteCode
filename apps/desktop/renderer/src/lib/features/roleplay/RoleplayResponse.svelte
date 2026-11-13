@@ -11,7 +11,7 @@
   import { roleplayStore } from './roleplay.svelte';
   import { characterBubbles, voiceConfig } from './roleplay-voice';
   import { ttsStore } from '$lib/stores/tts.svelte';
-  import { Square, Volume2 } from 'lucide-svelte';
+  import { Square, Volume2 } from '$lib/icons';
   import { t } from 'svelte-i18n';
   import { stripSpeakerPrefix } from './roleplay-output';
   import type { ChatMessage, RoleplayTurnSnapshot } from '$lib/types/chat';

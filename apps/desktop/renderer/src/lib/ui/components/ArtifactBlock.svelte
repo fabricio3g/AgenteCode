@@ -12,7 +12,7 @@
    * artifact in the chat's side panel.
    */
   import type { AgentArtifact, ArtifactKind } from '$lib/types/chat';
-  import { Download, FileSpreadsheet, FileText, Files, Globe, Library, Maximize2, Presentation } from 'lucide-svelte';
+  import { Download, FileSpreadsheet, FileText, Files, Globe, Library, Maximize2, Presentation } from '$lib/icons';
   import { t } from 'svelte-i18n';
   import { say } from '$lib/copy';
   import { resolveArtifactPresentation } from '$lib/services/artifact-model';

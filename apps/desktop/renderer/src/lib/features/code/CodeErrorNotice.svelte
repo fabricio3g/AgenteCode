@@ -1,7 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
-  import { AlertCircle } from 'lucide-svelte';
+  import { AlertCircle } from '$lib/icons';
   import { t } from 'svelte-i18n';
   import { classifyCodeError, safeCodeErrorDetails } from './code-error';
 

@@ -17,7 +17,7 @@
 
   import { onMount } from 'svelte';
   import { locale, t } from 'svelte-i18n';
-  import { LoaderCircle, Play, Square } from 'lucide-svelte';
+  import { LoaderCircle, Play, Square } from '$lib/icons';
   import { appStore } from '$lib/stores/app.svelte';
   import { speechEngine } from '$lib/stores/speech-engine.svelte';
   import { ttsStore } from '$lib/stores/tts.svelte';

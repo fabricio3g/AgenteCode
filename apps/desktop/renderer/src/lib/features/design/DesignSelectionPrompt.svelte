@@ -8,7 +8,7 @@
 -->
 
 <script lang="ts">
-  import { ArrowUp, Sparkles } from 'lucide-svelte';
+  import { ArrowUp, Sparkles } from '$lib/icons';
   import IconButton from '$lib/components/ui/IconButton.svelte';
   import Input from '$lib/components/ui/Input.svelte';
   import { appStore } from '$lib/stores/app.svelte';

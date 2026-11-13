@@ -4,8 +4,8 @@
   edge. `size="compact"` is the sidebar/picker scale, `icon` a quiet glyph tile.
 -->
 <script lang="ts">
-  import type { ComponentType, Snippet } from 'svelte';
-  import type { Icon as LucideIcon } from 'lucide-svelte';
+  import type { Snippet } from 'svelte';
+  import type { Icon as AppIcon } from '$lib/icons';
   import type { HTMLAttributes } from 'svelte/elements';
   import Button from './Button.svelte';
   import { cn } from '$lib/utils/cn';
@@ -24,7 +24,7 @@
   }: HTMLAttributes<HTMLDivElement> & {
     title?: string;
     description?: string;
-    icon?: ComponentType<LucideIcon>;
+    icon?: AppIcon;
     illustration?: Snippet;
     action?: string;
     onaction?: () => void;

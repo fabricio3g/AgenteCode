@@ -10,7 +10,7 @@ import {
   FileSpreadsheet,
   FileText,
   Presentation
-} from 'lucide-svelte';
+} from '$lib/icons';
 
 describe('getFileIcon', () => {
   it('maps office documents to their kind icon', () => {

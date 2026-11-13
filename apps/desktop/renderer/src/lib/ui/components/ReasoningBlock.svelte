@@ -14,7 +14,7 @@
 
   import { slide } from 'svelte/transition';
   import { quintOut } from 'svelte/easing';
-  import { ChevronRight } from 'lucide-svelte';
+  import { ChevronRight } from '$lib/icons';
   import { t } from 'svelte-i18n';
   import { formatReasoningDuration } from '$lib/utils/tool-ui';
 

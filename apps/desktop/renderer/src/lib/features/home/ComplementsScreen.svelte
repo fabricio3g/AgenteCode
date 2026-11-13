@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { t } from 'svelte-i18n';
-  import { ArrowLeft, ExternalLink, Globe, Plug, Plus, RotateCw, Terminal } from 'lucide-svelte';
+  import { ArrowLeft, ExternalLink, Globe, Plug, Plus, RotateCw, Terminal } from '$lib/icons';
   import type { Complement, ComplementChange, ComplementTransport } from '$shared/complements';
   import Button from '$lib/components/ui/Button.svelte';
   import Dialog from '$lib/components/ui/Dialog.svelte';

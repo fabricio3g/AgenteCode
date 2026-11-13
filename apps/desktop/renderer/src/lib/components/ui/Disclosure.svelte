@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
-  import { ChevronDown, ChevronRight } from 'lucide-svelte';
+  import { ChevronDown, ChevronRight } from '$lib/icons';
   import { cn } from '$lib/utils/cn';
   import { motionSlide } from '$lib/utils/transitions';
 

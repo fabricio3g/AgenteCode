@@ -6,7 +6,7 @@
   import UiTextarea from '$lib/components/ui/Textarea.svelte';
   import { cn as uiClass } from '$lib/utils/cn';
 
-  import { ArrowRight, SkipForward, Square } from 'lucide-svelte';
+  import { ArrowRight, SkipForward, Square } from '$lib/icons';
   import { cancelDeepResearchTask, deepResearchStore } from '$lib/stores/deep-research.svelte';
   import { appStore } from '$lib/stores/app.svelte';
   import { activityLabel } from '$lib/utils/tool-ui';

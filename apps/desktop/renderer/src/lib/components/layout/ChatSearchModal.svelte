@@ -19,7 +19,7 @@
 
   import { onMount, tick } from 'svelte';
   import { t } from 'svelte-i18n';
-  import { MessageSquare, Plus, Search } from 'lucide-svelte';
+  import { MessageSquare, Plus, Search } from '$lib/icons';
   import { modalLayer } from '$lib/components/ui/modal-layer';
   import { displayChatTitle } from '$lib/features/shared/session-title';
   import { codeStore } from '$lib/features/code/code.svelte';

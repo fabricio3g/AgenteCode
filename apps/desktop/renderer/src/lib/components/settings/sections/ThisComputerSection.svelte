@@ -17,7 +17,7 @@
   import { onDestroy, onMount } from 'svelte';
   import { t } from 'svelte-i18n';
   import { get } from 'svelte/store';
-  import { Brain, Check, FolderOpen, Mic, RefreshCw, Sparkles, Volume2 } from 'lucide-svelte';
+  import { Brain, Check, FolderOpen, Mic, RefreshCw, Sparkles, Volume2 } from '$lib/icons';
   import { invoke, listen } from '$lib/services/bridge';
   import { appStore } from '$lib/stores/app.svelte';
   import { confirmStore } from '$lib/stores/confirm.svelte';

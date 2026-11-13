@@ -3321,39 +3321,17 @@ input[type="range"]::-moz-range-thumb {
 @font-face { font-family: 'Cambria'; src: local('Cambria'), local('Caladea'), local('Liberation Serif'), local('Georgia'); }
 
 /* ── Icons ──────────────────────────────────────────────────────────────
-   Lucide at 1.5px: lighter at the 14–16px sizes the app uses. The 12px and
-   smaller icons keep a touch more weight so they don't go hairline. */
-svg.lucide {
-  stroke-width: 1.5;
-  transition:
-    translate 160ms cubic-bezier(0.2, 0.8, 0.2, 1),
-    rotate 200ms cubic-bezier(0.2, 0.8, 0.2, 1),
-    scale 160ms cubic-bezier(0.2, 0.8, 0.2, 1);
+   The app's own set (`lib/icons`), drawn on a 16px grid. The app runs it at
+   the slim weight (1 instead of 1.5): `ag-icon-slim` on <html> in index.html;
+   drop the class for regular. Each icon carries its own hover motion,
+   generated into `lib/icons/generated/icons.css`; nothing here animates
+   them. The 12px and smaller icons keep a touch more weight so they don't go
+   hairline. */
+svg.ag-icon:is(.size-2, .size-2\.5, .size-3, .h-3, .h-2\.5) {
+  --ag-icon-stroke: 1.25;
 }
-svg.lucide:is(.size-2, .size-2\.5, .size-3, .h-3, .h-2\.5) {
-  stroke-width: 1.75;
-}
-
-/* Hover motion: a small, meaningful nudge per icon — fast and quiet. Uses the
-   individual transform properties so Tailwind's rotate-180 etc. still apply. */
-:is(button, a, [role='menuitem'], [role='tab'], label):not(:disabled):hover {
-  & svg:is(.lucide-plus, .lucide-x) { rotate: 90deg; }
-  & svg:is(.lucide-settings, .lucide-settings-2, .lucide-cog, .lucide-sun) { rotate: 45deg; }
-  & svg:is(.lucide-refresh-cw, .lucide-rotate-cw, .lucide-refresh-ccw, .lucide-rotate-ccw, .lucide-repeat) { rotate: 120deg; }
-  & svg:is(.lucide-arrow-up, .lucide-send, .lucide-house, .lucide-home, .lucide-upload, .lucide-chevron-up) { translate: 0 -1.5px; }
-  & svg:is(.lucide-arrow-down, .lucide-download, .lucide-chevron-down) { translate: 0 1.5px; }
-  & svg:is(.lucide-arrow-left, .lucide-chevron-left, .lucide-undo-2) { translate: -1.5px 0; }
-  & svg:is(.lucide-arrow-right, .lucide-chevron-right, .lucide-redo-2) { translate: 1.5px 0; }
-  & svg:is(.lucide-external-link, .lucide-arrow-up-right, .lucide-square-arrow-out-up-right) { translate: 1px -1px; }
-  & svg:is(.lucide-trash, .lucide-trash-2, .lucide-paperclip, .lucide-pencil, .lucide-pen, .lucide-pen-line, .lucide-square-pen, .lucide-moon) { rotate: -12deg; }
-  & svg:is(.lucide-search, .lucide-globe, .lucide-globe-2, .lucide-earth) { rotate: 15deg; }
-  & svg:is(.lucide-copy, .lucide-mic, .lucide-brain, .lucide-sparkles, .lucide-star, .lucide-heart, .lucide-bell, .lucide-thumbs-up, .lucide-thumbs-down, .lucide-maximize, .lucide-maximize-2, .lucide-expand, .lucide-volume-2, .lucide-play) { scale: 1.12; }
-  & svg:is(.lucide-minimize, .lucide-minimize-2, .lucide-shrink) { scale: 0.88; }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  svg.lucide { transition: none; }
-  :is(button, a, [role='menuitem'], [role='tab'], label):hover svg.lucide { translate: none; rotate: none; scale: none; }
+html:not(.ag-icon-slim) svg.ag-icon:is(.size-2, .size-2\.5, .size-3, .h-3, .h-2\.5) {
+  --ag-icon-stroke: 1.75;
 }
 
 /* ─── Accessibility (Settings → Accessibility) ─────────────────────────────
@@ -3385,7 +3363,6 @@ html.a11y-relaxed body {
 html.a11y-relaxed .markdown-body,
 html.a11y-relaxed .user-bubble,
 html.a11y-relaxed .composer-textarea {
-  --prose-ink: var(--foreground);
   line-height: 1.9;
   letter-spacing: 0.02em;
   word-spacing: 0.08em;
@@ -3408,12 +3385,12 @@ html.a11y-contrast {
   --composer-ring: rgb(0 0 0 / 0.32);
 }
 html.dark.a11y-contrast {
+  --prose-ink: var(--foreground);
   --muted-foreground: #cfcfcf;
   --text-secondary: #e5e5e5;
   --text-tertiary: #cfcfcf;
   --border: rgb(255 255 255 / 0.24);
   --border-subtle: rgb(255 255 255 / 0.16);
-    --prose-ink: var(--foreground);
   --border-hover: rgb(255 255 255 / 0.36);
   --float-border: rgb(255 255 255 / 0.32);
   --input: rgb(255 255 255 / 0.34);
@@ -3436,6 +3413,7 @@ html.dark.a11y-contrast {
     --composer-ring: rgb(0 0 0 / 0.32);
   }
   html.dark {
+    --prose-ink: var(--foreground);
     --muted-foreground: #cfcfcf;
     --text-secondary: #e5e5e5;
     --text-tertiary: #cfcfcf;
@@ -3494,11 +3472,11 @@ html.a11y-reduce-motion *::after {
 }
 
 /* Transcript disclosures respond through text color; icons stay still. */
-.ui-quiet-disclosure:hover svg.lucide,
-.ui-tool-fallback-trigger:hover svg.lucide {
-  translate: none;
-  rotate: none;
-  scale: none;
+.ui-quiet-disclosure:hover svg.ag-icon,
+.ui-quiet-disclosure:hover svg.ag-icon *,
+.ui-tool-fallback-trigger:hover svg.ag-icon,
+.ui-tool-fallback-trigger:hover svg.ag-icon * {
+  animation: none !important;
 }
 
 /* Reference accents carry meaning while body copy stays quiet. */

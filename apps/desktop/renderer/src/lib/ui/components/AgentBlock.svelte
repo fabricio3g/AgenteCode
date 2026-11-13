@@ -6,7 +6,7 @@
   import { cn as uiClass } from '$lib/utils/cn';
 
   import type { AgentActivity, AgentOutcome, AgentStopReason, ChatMessage } from '$lib/types/chat';
-  import { Check, ChevronDown, CircleAlert, CircleStop } from 'lucide-svelte';
+  import { Check, ChevronDown, CircleAlert, CircleStop } from '$lib/icons';
   import { t } from 'svelte-i18n';
   import ToolCallRow from '$lib/components/agent/ToolCallRow.svelte';
   import { appStore } from '$lib/stores/app.svelte';

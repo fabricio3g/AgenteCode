@@ -58,7 +58,7 @@ async function run() {
     assert.deepEqual(requests, { go: 1, router: 1 });
     generation = 'new';
     const refreshed = await win.webContents.executeJavaScript(`(async () => {
-      const refresh = document.querySelector('.model-modal-root .lucide-refresh-cw')?.closest('button');
+      const refresh = document.querySelector('.model-modal-root .ag-icon-refresh-cw')?.closest('button');
       if (!refresh) throw new Error('Picker refresh button not found');
       refresh.click();
       const { appStore, providerModels } = window.modelDiscoveryFixture;

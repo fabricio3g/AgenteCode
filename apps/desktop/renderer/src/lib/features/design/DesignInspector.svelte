@@ -13,7 +13,7 @@
   import UiColorInput from '$lib/components/ui/ColorInput.svelte';
   import { cn as uiClass } from '$lib/utils/cn';
 
-  import { AlignVerticalSpaceAround, Check, Copy, GalleryHorizontal, Sparkles, X } from 'lucide-svelte';
+  import { AlignVerticalSpaceAround, Check, Copy, GalleryHorizontal, Sparkles, X } from '$lib/icons';
   import Button from '$lib/components/ui/Button.svelte';
   import IconButton from '$lib/components/ui/IconButton.svelte';
   import Input from '$lib/components/ui/Input.svelte';

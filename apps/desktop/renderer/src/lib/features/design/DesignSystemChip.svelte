@@ -7,7 +7,7 @@
 -->
 
 <script lang="ts">
-  import { Palette } from 'lucide-svelte';
+  import { Palette } from '$lib/icons';
   import Button from '$lib/components/ui/Button.svelte';
   import IconButton from '$lib/components/ui/IconButton.svelte';
   import Menu from '$lib/components/ui/Menu.svelte';

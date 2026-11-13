@@ -1,7 +1,7 @@
 <svelte:options runes={true} />
 <script lang="ts">
   import { t } from 'svelte-i18n';
-  import { ChevronRight } from 'lucide-svelte';
+  import { ChevronRight } from '$lib/icons';
   import RichContent from '$lib/ui/components/RichContent.svelte';
   import { copy } from '$lib/copy';
   import type { ChatMessage } from '$lib/types/chat';

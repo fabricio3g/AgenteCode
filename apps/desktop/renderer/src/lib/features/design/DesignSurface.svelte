@@ -18,7 +18,7 @@
   import { cn as uiClass } from '$lib/utils/cn';
 
   import { onMount, untrack } from 'svelte';
-  import { Copy, Download, ExternalLink, FileImage, FileText, Film, FolderOpen, LayoutGrid, GalleryHorizontal, History, Layers, Maximize2, Monitor, MoreHorizontal, PanelLeftClose, PanelLeftOpen, PanelRight, RotateCw, Smartphone, Tablet } from 'lucide-svelte';
+  import { Copy, Download, ExternalLink, FileImage, FileText, Film, FolderOpen, LayoutGrid, GalleryHorizontal, History, Layers, Maximize2, Monitor, MoreHorizontal, PanelLeftClose, PanelLeftOpen, PanelRight, RotateCw, Smartphone, Tablet } from '$lib/icons';
   import Thread from '$lib/features/chat/thread/Thread.svelte';
   import Composer from '$lib/features/chat/Composer.svelte';
   import Button from '$lib/components/ui/Button.svelte';

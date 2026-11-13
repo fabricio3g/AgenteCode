@@ -12,7 +12,7 @@
 
 <script lang="ts">
   import { Button } from '$lib/components/ui';
-  import { AlertTriangle } from 'lucide-svelte';
+  import { AlertTriangle } from '$lib/icons';
   import Thread from '$lib/features/chat/thread/Thread.svelte';
   import Composer from '$lib/features/chat/Composer.svelte';
   import { appStore } from '$lib/stores/app.svelte';

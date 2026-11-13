@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { FileText, Maximize2, X, LoaderCircle } from 'lucide-svelte';
+  import { FileText, Maximize2, X, LoaderCircle } from '$lib/icons';
   import Button from '$lib/components/ui/Button.svelte';
   import IconButton from '$lib/components/ui/IconButton.svelte';
   import Checkbox from '$lib/components/ui/Checkbox.svelte';

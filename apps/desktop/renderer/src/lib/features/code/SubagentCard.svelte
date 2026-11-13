@@ -18,7 +18,7 @@
   import { cn as uiClass } from '$lib/utils/cn';
 
   import { t } from 'svelte-i18n';
-  import { Bot, Copy, ListChecks, Square, Telescope } from 'lucide-svelte';
+  import { Bot, Copy, ListChecks, Square, Telescope } from '$lib/icons';
   import type { CodeChild } from '$shared/agente-protocol';
   import { invoke } from '$lib/services/bridge';
   import { copy } from '$lib/copy';

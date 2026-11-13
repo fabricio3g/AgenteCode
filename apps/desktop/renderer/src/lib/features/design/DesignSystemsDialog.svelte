@@ -12,7 +12,7 @@
   import IconButton from '$lib/components/ui/IconButton.svelte';
 
   import { untrack } from 'svelte';
-  import { Check, Pencil, Trash2 } from 'lucide-svelte';
+  import { Check, Pencil, Trash2 } from '$lib/icons';
   import { Button, Dialog, Input } from '$lib/components/ui';
   import { copy } from '$lib/copy';
   import { confirmStore } from '$lib/stores/confirm.svelte';

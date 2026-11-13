@@ -13,7 +13,7 @@
   import ArtifactInfoCard from './ArtifactInfoCard.svelte';
   import ArtifactHtmlCard from './ArtifactHtmlCard.svelte';
   import ArtifactLesson from './ArtifactLesson.svelte';
-  import { FileQuestion } from 'lucide-svelte';
+  import { FileQuestion } from '$lib/icons';
 
   interface Props {
     artifact: AgentArtifact;

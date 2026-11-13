@@ -3,7 +3,7 @@
 <script lang="ts">
   import IconButton from '$lib/components/ui/IconButton.svelte';
 
-  import { Cpu, LoaderCircle, MemoryStick, MonitorCheck, RefreshCw } from 'lucide-svelte';
+  import { Cpu, LoaderCircle, MemoryStick, MonitorCheck, RefreshCw } from '$lib/icons';
   import { t } from 'svelte-i18n';
   import { Badge, Button, Tooltip } from '$lib/components/ui';
   import { hardwareStore } from '$lib/stores/hardware.svelte';

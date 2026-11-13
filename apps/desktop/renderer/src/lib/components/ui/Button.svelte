@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { HTMLButtonAttributes } from 'svelte/elements';
-  import { LoaderCircle } from 'lucide-svelte';
+  import { LoaderCircle } from '$lib/icons';
   import { cn } from '$lib/utils/cn';
   import { buttonVariants, type ButtonSize, type ButtonVariant } from './button/variants';
 

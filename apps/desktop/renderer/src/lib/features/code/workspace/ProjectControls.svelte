@@ -12,7 +12,7 @@
   import { cn as uiClass } from '$lib/utils/cn';
 
   import { t } from 'svelte-i18n';
-  import { Code, FolderOpen, PanelsTopLeft, Play, Plus, Upload, X } from 'lucide-svelte';
+  import { Code, FolderOpen, PanelsTopLeft, Play, Plus, Upload, X } from '$lib/icons';
   import Portal from '$lib/components/ui/Portal.svelte';
   import Tooltip from '$lib/components/ui/Tooltip.svelte';
   import { motionFly } from '$lib/utils/transitions';

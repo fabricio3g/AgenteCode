@@ -13,7 +13,7 @@
   import { cn as uiClass } from '$lib/utils/cn';
 
   import Avatar from '$lib/components/ui/Avatar.svelte';
-  import { Check } from 'lucide-svelte';
+  import { Check } from '$lib/icons';
   import { charactersStore } from './characters.svelte';
   import { t } from 'svelte-i18n';
 

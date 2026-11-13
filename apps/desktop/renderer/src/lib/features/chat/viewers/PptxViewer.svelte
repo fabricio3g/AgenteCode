@@ -14,7 +14,7 @@
   import { cn as uiClass } from '$lib/utils/cn';
 
   import { observeViewerSize } from './viewer-layout';
-  import { X } from 'lucide-svelte';
+  import { X } from '$lib/icons';
   import { tick } from 'svelte';
   import { t } from 'svelte-i18n';
   import ViewerStatus from './ViewerStatus.svelte';

@@ -24,7 +24,7 @@
   import UiButton from '$lib/components/ui/Button.svelte';
   import { cn as uiClass } from '$lib/utils/cn';
 
-  import { ArrowDown } from 'lucide-svelte';
+  import { ArrowDown } from '$lib/icons';
   import { t } from 'svelte-i18n';
   import TileMeter from '$lib/components/ui/TileMeter.svelte';
   import type { TileMeterMode } from '$lib/utils/activity-meter';

@@ -13,7 +13,7 @@
 
   import { Tooltip } from '$lib/components/ui';
   import JSZip from 'jszip';
-  import { Download, RotateCcw, Save } from 'lucide-svelte';
+  import { Download, RotateCcw, Save } from '$lib/icons';
   import { appStore } from '$lib/stores/app.svelte';
   import { confirmStore } from '$lib/stores/confirm.svelte';
   import { toastStore } from '$lib/stores/toast.svelte';

@@ -7,7 +7,7 @@
 -->
 
 <script lang="ts">
-  import { FileText, Files } from 'lucide-svelte';
+  import { FileText, Files } from '$lib/icons';
   import type { AgentArtifact } from '$lib/types/chat';
   import { resolveArtifactPresentation } from '$lib/services/artifact-model';
   import { artifactDocumentItems, type DocumentSurfaceItem } from '$lib/features/chat/document-surface';

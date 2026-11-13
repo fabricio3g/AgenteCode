@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { AlertCircle, LoaderCircle } from 'lucide-svelte';
+  import { AlertCircle, LoaderCircle } from '$lib/icons';
   import type { HTMLAttributes } from 'svelte/elements';
   import Button from './Button.svelte';
   import { cn } from '$lib/utils/cn';

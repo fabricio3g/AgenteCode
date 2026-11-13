@@ -6,7 +6,7 @@
 
 <script lang="ts">
   import { t } from 'svelte-i18n';
-  import { ArrowLeft } from 'lucide-svelte';
+  import { ArrowLeft } from '$lib/icons';
   import { Button } from '$lib/components/ui';
 
   let {

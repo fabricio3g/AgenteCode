@@ -9,7 +9,7 @@
 <script lang="ts">
   import { cn as uiClass } from '$lib/utils/cn';
 
-  import { Check, X } from 'lucide-svelte';
+  import { Check, X } from '$lib/icons';
   import Button from '$lib/components/ui/Button.svelte';
   import IconButton from '$lib/components/ui/IconButton.svelte';
   import { copy } from '$lib/copy';

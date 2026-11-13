@@ -1,7 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
-  import { Mic, Phone, Settings2 } from 'lucide-svelte';
+  import { Mic, Phone, Settings2 } from '$lib/icons';
   import { t } from 'svelte-i18n';
   import IconButton from '$lib/components/ui/IconButton.svelte';
   import Tooltip from '$lib/components/ui/Tooltip.svelte';

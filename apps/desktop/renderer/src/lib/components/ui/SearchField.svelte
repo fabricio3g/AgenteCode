@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { HTMLInputAttributes } from 'svelte/elements';
-  import { Search, X } from 'lucide-svelte';
+  import { Search, X } from '$lib/icons';
   import Input from './Input.svelte';
   import IconButton from './IconButton.svelte';
   import { cn } from '$lib/utils/cn';

@@ -17,7 +17,7 @@
 
   import { onMount } from 'svelte';
   import { t } from 'svelte-i18n';
-  import { Wifi } from 'lucide-svelte';
+  import { Wifi } from '$lib/icons';
   import { appStore } from '$lib/stores/app.svelte';
   import { instancesStore } from '$lib/stores/instances.svelte';
   import StatusDot from '$lib/components/ui/StatusDot.svelte';

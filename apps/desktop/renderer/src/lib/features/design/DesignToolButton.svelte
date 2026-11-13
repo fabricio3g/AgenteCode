@@ -7,8 +7,8 @@
 -->
 
 <script lang="ts">
-  import type { ComponentType, Snippet } from 'svelte';
-  import type { Icon as LucideIcon } from 'lucide-svelte';
+  import type { Snippet } from 'svelte';
+  import type { Icon as AppIcon } from '$lib/icons';
   import IconButton from '$lib/components/ui/IconButton.svelte';
   import Tooltip from '$lib/components/ui/Tooltip.svelte';
   import { cn } from '$lib/utils/cn';
@@ -23,7 +23,7 @@
     onclick,
     children
   }: {
-    icon: ComponentType<LucideIcon>;
+    icon: AppIcon;
     label: string;
     shortcut?: string;
     /** Set for a toggle: the button reports its state and takes the on tint. */

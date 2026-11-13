@@ -12,7 +12,7 @@
 
 <script lang="ts">
   import { Button, FilterBar, FilterChip, PageHeader } from '$lib/components/ui';
-  import { Plus, Upload } from 'lucide-svelte';
+  import { Plus, Upload } from '$lib/icons';
   import { t } from 'svelte-i18n';
   import { copy } from '$lib/copy';
   import type { CharacterCard, RoleplayWorld, UserPersona } from '$lib/types/chat';

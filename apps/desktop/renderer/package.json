@@ -32,7 +32,6 @@
     "highlight.js": "^11.11.1",
     "jszip": "^3.10.1",
     "katex": "^0.16.38",
-    "lucide-svelte": "^0.542.0",
     "marked": "^16.3.0",
     "mermaid": "^11.16.0",
     "monaco-editor": "^0.55.1",

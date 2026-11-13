@@ -8,7 +8,7 @@
 
 <script lang="ts">
   import { t } from 'svelte-i18n';
-  import { RotateCcw } from 'lucide-svelte';
+  import { RotateCcw } from '$lib/icons';
   import { Button, SegmentedControl, Select, Switch } from '$lib/components/ui';
   import SettingsRow from './SettingsRow.svelte';
   import SettingsPage from './SettingsPage.svelte';

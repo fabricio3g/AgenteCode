@@ -11,7 +11,7 @@
 -->
 
 <script lang="ts">
-  import { AArrowDown, AArrowUp, Baseline, Bold, Ellipsis, Minus, PaintBucket, Plus, Space, SquareRoundCorner, Code, Copy } from 'lucide-svelte';
+  import { AArrowDown, AArrowUp, Baseline, Bold, Ellipsis, Minus, PaintBucket, Plus, Space, SquareRoundCorner, Code, Copy } from '$lib/icons';
   import IconButton from '$lib/components/ui/IconButton.svelte';
   import Menu from '$lib/components/ui/Menu.svelte';
   import MenuItem from '$lib/components/ui/MenuItem.svelte';

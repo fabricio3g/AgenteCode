@@ -8,7 +8,7 @@
 
 <script lang="ts">
   import { writeToClipboard } from '$lib/utils/clipboard';
-  import { Copy, FileText, Package, Send } from 'lucide-svelte';
+  import { Copy, FileText, Package, Send } from '$lib/icons';
   import MenuItem from '$lib/components/ui/MenuItem.svelte';
   import { copy } from '$lib/copy';
   import { invoke } from '$lib/services/bridge';

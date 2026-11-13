@@ -2,7 +2,7 @@
 
 import { cleanup, fireEvent, render } from '@testing-library/svelte';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { Cpu, Search } from 'lucide-svelte';
+import { Cpu, Search } from '$lib/icons';
 import SettingsRail, { type RailGroup } from './SettingsRail.svelte';
 
 // The rail reaches for the model library and the store only in the import

@@ -11,7 +11,7 @@
 
 <script lang="ts">
   import { untrack } from 'svelte';
-  import { ChevronRight, X } from 'lucide-svelte';
+  import { ChevronRight, X } from '$lib/icons';
   import IconButton from '$lib/components/ui/IconButton.svelte';
   import { copy } from '$lib/copy';
   import { designStore } from './design.svelte';

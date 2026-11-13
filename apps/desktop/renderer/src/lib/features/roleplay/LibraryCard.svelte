@@ -13,7 +13,7 @@
 
   import { IconButton, Tooltip } from '$lib/components/ui';
   import type { Snippet } from 'svelte';
-  import { Copy as CopyIcon, MoreHorizontal, Pencil, SlidersHorizontal, Trash2 } from 'lucide-svelte';
+  import { Copy as CopyIcon, MoreHorizontal, Pencil, SlidersHorizontal, Trash2 } from '$lib/icons';
   import Menu from '$lib/components/ui/Menu.svelte';
   import MenuItem from '$lib/components/ui/MenuItem.svelte';
   import { copy } from '$lib/copy';

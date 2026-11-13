@@ -12,7 +12,7 @@
 
   import { onMount } from 'svelte';
   import { t } from 'svelte-i18n';
-  import { Check, Copy, Cpu, Eye, EyeOff, Plus, Square, Wifi } from 'lucide-svelte';
+  import { Check, Copy, Cpu, Eye, EyeOff, Plus, Square, Wifi } from '$lib/icons';
   import { Button, Menu, MenuItem, Switch } from '$lib/components/ui';
   import { appStore } from '$lib/stores/app.svelte';
   import { instancesStore, type LocalInstance } from '$lib/stores/instances.svelte';

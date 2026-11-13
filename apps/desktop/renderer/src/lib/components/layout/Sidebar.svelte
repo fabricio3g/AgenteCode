@@ -9,7 +9,7 @@
   import { cn as uiClass } from '$lib/utils/cn';
 
   let { onNavigate, onToggle }: { onNavigate?: () => void; onToggle?: () => void } = $props();
-  import { PanelLeftClose, Search as SearchIcon } from 'lucide-svelte';
+  import { PanelLeftClose, Search as SearchIcon } from '$lib/icons';
   import SidebarInstances from './SidebarInstances.svelte';
   import SpaceSwitcher from './SpaceSwitcher.svelte';
   import CalendarPreview from '$lib/features/home/CalendarPreview.svelte';
@@ -22,7 +22,7 @@
   import { flip } from 'svelte/animate';
   import { smoothEase } from '$lib/utils/transitions';
   import { formatShortcut } from '$lib/utils/shortcuts';
-  import { Settings as SettingsIcon, Blocks, CalendarDays, ChevronsDownUp, ChevronsUpDown, Drama, FolderOpen, MessageSquare, MoreHorizontal, PenTool, Plus, Puzzle, Trash2 } from 'lucide-svelte';
+  import { Settings as SettingsIcon, Blocks, CalendarDays, ChevronsDownUp, ChevronsUpDown, Drama, FolderOpen, MessageSquare, MoreHorizontal, PenTool, Plus, Puzzle, Trash2 } from '$lib/icons';
   import Menu from '$lib/components/ui/Menu.svelte';
   import MenuItem from '$lib/components/ui/MenuItem.svelte';
   import { confirmStore } from '$lib/stores/confirm.svelte';

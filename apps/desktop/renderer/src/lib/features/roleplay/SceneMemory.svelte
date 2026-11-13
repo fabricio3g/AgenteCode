@@ -18,7 +18,7 @@
   import { cn as uiClass } from '$lib/utils/cn';
 
   import { Button, Tooltip } from '$lib/components/ui';
-  import { Pencil, Pin, PinOff, Plus, RefreshCw, Trash2, X } from 'lucide-svelte';
+  import { Pencil, Pin, PinOff, Plus, RefreshCw, Trash2, X } from '$lib/icons';
   import { t } from 'svelte-i18n';
   import { motionFade, flyAndScale } from '$lib/utils/transitions';
   import { modalLayer } from '$lib/components/ui/modal-layer';

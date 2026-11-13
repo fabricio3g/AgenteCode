@@ -14,7 +14,7 @@
 
   import { t } from 'svelte-i18n';
   import { locale } from 'svelte-i18n';
-  import { BarChart3, FileSpreadsheet, FileText, Globe, GraduationCap, Presentation, Trash2 } from 'lucide-svelte';
+  import { BarChart3, FileSpreadsheet, FileText, Globe, GraduationCap, Presentation, Trash2 } from '$lib/icons';
   import ArtifactThumb from './ArtifactThumb.svelte';
   import type { LibraryEntry } from './artifact-library';
   import { artifactKindAccent } from '$lib/ui/components/artifact-accent';

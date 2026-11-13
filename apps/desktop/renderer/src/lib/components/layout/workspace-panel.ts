@@ -1,5 +1,5 @@
 import type { Snippet } from 'svelte';
-import type { Activity } from 'lucide-svelte';
+import type { Activity } from '$lib/icons';
 import type { Rect, Region } from './workspace-layout';
 
 export interface PanelRenderState { id: string; exposed: boolean; focused: boolean; rect: Rect }

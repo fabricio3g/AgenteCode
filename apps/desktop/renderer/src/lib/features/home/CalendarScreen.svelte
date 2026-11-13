@@ -1,7 +1,7 @@
 <script lang="ts">
   import { tick, untrack } from 'svelte';
   import { locale, t } from 'svelte-i18n';
-  import { ArrowLeft, Check, ChevronLeft, ChevronRight, Link2, Pencil, Plus } from 'lucide-svelte';
+  import { ArrowLeft, Check, ChevronLeft, ChevronRight, Link2, Pencil, Plus } from '$lib/icons';
   import Button from '$lib/components/ui/Button.svelte';
   import IconButton from '$lib/components/ui/IconButton.svelte';
   import PageHeader from '$lib/components/ui/PageHeader.svelte';

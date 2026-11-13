@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onDestroy, untrack } from 'svelte';
   import { locale, t } from 'svelte-i18n';
-  import { ArrowLeft, CalendarDays, Link2, Plus, RefreshCw, Trash2 } from 'lucide-svelte';
+  import { ArrowLeft, CalendarDays, Link2, Plus, RefreshCw, Trash2 } from '$lib/icons';
   import Button from '$lib/components/ui/Button.svelte';
   import Checkbox from '$lib/components/ui/Checkbox.svelte';
   import Dialog from '$lib/components/ui/Dialog.svelte';

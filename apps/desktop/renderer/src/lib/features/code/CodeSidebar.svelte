@@ -33,7 +33,7 @@
     Plus,
     Trash2,
     TriangleAlert
-  } from 'lucide-svelte';
+  } from '$lib/icons';
   import { t } from 'svelte-i18n';
   import Menu from '$lib/components/ui/Menu.svelte';
   import MenuItem from '$lib/components/ui/MenuItem.svelte';

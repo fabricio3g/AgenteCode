@@ -12,7 +12,7 @@
   import UiTextarea from '$lib/components/ui/Textarea.svelte';
   import { cn as uiClass } from '$lib/utils/cn';
 
-  import { X } from 'lucide-svelte';
+  import { X } from '$lib/icons';
 
   interface Props {
     /** Editable quote text, bound so the composer can send the edited version. */

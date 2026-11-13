@@ -17,7 +17,7 @@
 
   import { Button, Tooltip } from '$lib/components/ui';
   import { tick } from 'svelte';
-  import { ArrowUp, CornerDownRight, MessageSquareShare, Paperclip, Pencil, X } from 'lucide-svelte';
+  import { ArrowUp, CornerDownRight, MessageSquareShare, Paperclip, Pencil, X } from '$lib/icons';
   import { t } from 'svelte-i18n';
   import type { QueuedPrompt } from '$lib/types/chat';
 

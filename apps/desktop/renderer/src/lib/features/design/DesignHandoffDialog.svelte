@@ -14,7 +14,7 @@
 
   import { cn as uiClass } from '$lib/utils/cn';
 
-  import { Check, FolderOpen } from 'lucide-svelte';
+  import { Check, FolderOpen } from '$lib/icons';
   import Button from '$lib/components/ui/Button.svelte';
   import Dialog from '$lib/components/ui/Dialog.svelte';
   import Input from '$lib/components/ui/Input.svelte';

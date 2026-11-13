@@ -4,7 +4,7 @@
   import { cn as uiClass } from '$lib/utils/cn';
 
   import { onMount } from 'svelte';
-  import { Download, Table2 } from 'lucide-svelte';
+  import { Download, Table2 } from '$lib/icons';
   import VizHeading from '$lib/ui/components/VizHeading.svelte';
   import { Button } from '$lib/components/ui';
   import { parseChartData, type ChartData } from '$lib/utils/chart-data';

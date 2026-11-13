@@ -26,9 +26,9 @@
 </script>
 
 <script lang="ts">
-  import type { ComponentType, Snippet } from 'svelte';
-  import type { Icon as LucideIcon } from 'lucide-svelte';
-  import { ChevronRight } from 'lucide-svelte';
+  import type { Snippet } from 'svelte';
+  import type { Icon as AppIcon } from '$lib/icons';
+  import { ChevronRight } from '$lib/icons';
   import { tick } from 'svelte';
   import Menu from './Menu.svelte';
   import type { MenuPlacement } from './menu';
@@ -51,7 +51,7 @@
     label: string;
     /** The current choice, quiet on the right of the row. */
     value?: string;
-    icon?: ComponentType<LucideIcon>;
+    icon?: AppIcon;
     /** Replaces the icon: a mark of the caller's own (a slot meter, a logo). */
     lead?: Snippet;
     placement?: MenuPlacement;

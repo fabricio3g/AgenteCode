@@ -1,6 +1,6 @@
 <script lang="ts">
   import { slide } from 'svelte/transition';
-  import { Search, ChevronDown } from 'lucide-svelte';
+  import { Search, ChevronDown } from '$lib/icons';
   import { appStore } from '$lib/stores/app.svelte';
   import ModeSelector from './ModeSelector.svelte';
   import Button from '$lib/components/ui/Button.svelte';

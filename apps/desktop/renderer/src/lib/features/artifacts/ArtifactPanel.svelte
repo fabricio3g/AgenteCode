@@ -12,7 +12,7 @@
   import { cn as uiClass } from '$lib/utils/cn';
 
   import { t } from 'svelte-i18n';
-  import { FileSpreadsheet, FileText, Files, Globe, Library, Presentation, X } from 'lucide-svelte';
+  import { FileSpreadsheet, FileText, Files, Globe, Library, Presentation, X } from '$lib/icons';
   import type { ArtifactKind } from '$lib/types/chat';
   import { appStore } from '$lib/stores/app.svelte';
   import { confirmStore } from '$lib/stores/confirm.svelte';

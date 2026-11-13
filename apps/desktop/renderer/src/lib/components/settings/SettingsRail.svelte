@@ -21,11 +21,11 @@
 -->
 
 <script module lang="ts">
-  import { Compass } from 'lucide-svelte';
+  import { Compass } from '$lib/icons';
   import type { ModelHubTab } from '$lib/types/model-hub';
   import type { SettingsNavigationSection } from '$lib/utils/model-hub-routing';
 
-  /** lucide-svelte ships one component shape; any icon fits. */
+  /** The set ships one component shape; any icon fits. */
   export type RailIcon = typeof Compass;
 
   export type RailItem =
@@ -49,7 +49,7 @@
 
   import { cn as uiClass } from '$lib/utils/cn';
 
-  import { Plus } from 'lucide-svelte';
+  import { Plus } from '$lib/icons';
   import { t } from 'svelte-i18n';
   import ModelSearchField from './ModelSearchField.svelte';
   import ProviderIcon from '$lib/components/ui/ProviderIcon.svelte';

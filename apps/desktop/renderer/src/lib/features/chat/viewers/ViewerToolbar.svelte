@@ -9,7 +9,7 @@
   import { observeViewerSize } from './viewer-layout';
   import { Tooltip } from '$lib/components/ui';
   import { tick, type Snippet } from 'svelte';
-  import { ChevronLeft, ChevronRight, Download, Ellipsis, Minus, Plus, Search, X } from 'lucide-svelte';
+  import { ChevronLeft, ChevronRight, Download, Ellipsis, Minus, Plus, Search, X } from '$lib/icons';
   import { t } from 'svelte-i18n';
   import Menu from '$lib/components/ui/Menu.svelte';
   import MenuItem from '$lib/components/ui/MenuItem.svelte';

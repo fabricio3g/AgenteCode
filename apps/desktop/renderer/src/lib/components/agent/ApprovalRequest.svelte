@@ -11,7 +11,7 @@
 
 <script lang="ts">
   import { t } from 'svelte-i18n';
-  import { ShieldQuestion } from 'lucide-svelte';
+  import { ShieldQuestion } from '$lib/icons';
   import type { PendingApproval } from '$lib/stores/approvals.svelte';
   import { copy } from '$lib/copy';
 

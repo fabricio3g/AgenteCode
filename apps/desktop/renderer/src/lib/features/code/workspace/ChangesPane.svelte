@@ -15,7 +15,7 @@
   import { Button, PaneHeader, Tooltip } from '$lib/components/ui';
   import { conversationScope } from '$shared/workspace-scope';
   import { t } from 'svelte-i18n';
-  import { FileCode2, FolderOpen, GitBranch, LoaderCircle, RefreshCw, Undo2, X } from 'lucide-svelte';
+  import { FileCode2, FolderOpen, GitBranch, LoaderCircle, RefreshCw, Undo2, X } from '$lib/icons';
   import { invoke } from '$lib/services/bridge';
   import { confirmStore } from '$lib/stores/confirm.svelte';
   import { toastStore } from '$lib/stores/toast.svelte';

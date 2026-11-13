@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { ChevronLeft, ChevronRight, Minus, Plus, Trash2 } from 'lucide-svelte';
+  import { ChevronLeft, ChevronRight, Minus, Plus, Trash2 } from '$lib/icons';
   import Button from '$lib/components/ui/Button.svelte';
   import IconButton from '$lib/components/ui/IconButton.svelte';
   import Checkbox from '$lib/components/ui/Checkbox.svelte';

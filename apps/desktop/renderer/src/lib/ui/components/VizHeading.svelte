@@ -8,7 +8,7 @@
 -->
 
 <script lang="ts">
-  import { AppWindow, BarChart3, GraduationCap, Info, LayoutDashboard, MapPin, SlidersHorizontal, Workflow } from 'lucide-svelte';
+  import { AppWindow, BarChart3, GraduationCap, Info, LayoutDashboard, MapPin, SlidersHorizontal, Workflow } from '$lib/icons';
   import type { ArtifactKind } from '$lib/types/chat';
   import { artifactKindAccent } from './artifact-accent';
 

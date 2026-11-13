@@ -6,7 +6,7 @@
 
 <script lang="ts">
   import { t } from 'svelte-i18n';
-  import { Check, Code2, Drama, House, Minus, PenTool } from 'lucide-svelte';
+  import { Check, Code2, Drama, House, Minus, PenTool } from '$lib/icons';
   import { Button } from '$lib/components/ui';
   import { copy } from '$lib/copy';
   import { cn } from '$lib/utils/cn';
