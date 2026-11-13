@@ -1,6 +1,6 @@
 //! Welcome screen — the Agente Code hero.
 //!
-//! A rounded card with the pixel-art split-A mark, the wordmark and the
+//! A rounded card with the app icon in half-block pixels, the wordmark and the
 //! quick actions, floating on the landing page's tile field: a mosaic of
 //! dim amber squares that drifts, rolls rings out of a horizon glow and
 //! twinkles on a few embers. The field is ambient (repainted ~15 fps only
@@ -57,9 +57,9 @@ pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState) {
     let connected = !state.config.current_provider.is_empty();
     // A connected session gets one guidance row under the wordmark.
     let detail_rows = if connected && area.height >= 13 { 1 } else { 0 };
-    // The mark needs its five rows plus room for the menu; tight terminals
+    // The mark needs its ten rows plus room for the menu; tight terminals
     // fall back to the one-line wordmark.
-    let with_icon = area.height >= 18 && area.width >= 40;
+    let with_icon = area.height >= ICON_ROWS + action_count() as u16 + 7 && area.width >= 56;
     let brand_rows = if with_icon {
         ICON_ROWS
     } else {
@@ -121,7 +121,8 @@ pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState) {
     // With the mark: icon on the left, wordmark + guidance centered beside it.
     let (words_x, words_y) = if with_icon {
         paint_icon(frame.buffer_mut(), text_x, brand_y);
-        (text_x + ICON_COLS + 3, brand_y + 1)
+        // The wordmark (and its guidance row) sit on the mark's middle.
+        (text_x + ICON_COLS + 3, brand_y + ICON_ROWS / 2 - 1)
     } else {
         (text_x, brand_y)
     };
@@ -183,44 +184,48 @@ pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState) {
 
 // ── Mark ────────────────────────────────────────────────────────────────────
 
-/// The split-A mark as 12×10 pixels: the ember tile in two halves (`O`
-/// left, `P` the lighter right), the A split down its spine (`K` ink, `C`
-/// cream) with the cream moon at the top right, and ` ` outside the rounded
-/// corners. The orbit is a hairline at this size, so it stays out — the same
-/// call the 16 px icon makes. Two pixels stack per cell (half blocks), so it
-/// paints as 12×5 cells.
-const ICON: [&str; 10] = [
-    " OOOOOPPPPP ",
-    "OOOOOKCPPPPP",
-    "OOOOKKCCPPCP",
-    "OOOKKOPCCPPP",
-    "OOOKKOPCCPPP",
-    "OOKKOOPPCCPP",
-    "OOKKOOPPCCPP",
-    "OKKOOOPPPCCP",
-    "OKKOOOPPPCCP",
-    " OOOOOPPPPP ",
+/// The app mark as 26×20 pixels: the A crossed by its orbit swoosh, with the
+/// moon at the top right — the glyph of the desktop's `app-icon.png`, cropped
+/// to its bounds and downsampled. Each pixel is coverage `0`–`f`, painted as a
+/// blend from the card to the foreground, so the mark is white on dark and ink
+/// on light with smooth edges and no tile behind it (a black tile read as a
+/// hole in the card). `.` is empty. Two pixels stack per cell (half blocks),
+/// so it paints as 26×10 cells.
+const ICON: [&str; 20] = [
+    "..........8aaa8...........",
+    ".........3fffff3..........",
+    ".........afffff9..........",
+    "........2ffffffe..........",
+    "........8fffcfff7......78.",
+    "........dffd2effd.....7ffa",
+    ".......5fff8.9fff4....7ffb",
+    ".......bfff2.3fffb.....8a2",
+    "......3fffb...bfff2...75..",
+    "......8fff4...5fff7.4bf3..",
+    "..38..effd.....dffdbff5...",
+    ".7e4.5fff6....2affffc3....",
+    "5fd..affe3369ceffffb......",
+    "affdafffeefffffeeffe......",
+    "5fffffffffffd96.6fff7.....",
+    ".39cfffe9752.....effd.....",
+    "...4fff8.........9fff4....",
+    "...bfff3.........4fffa....",
+    "..2fffc...........dfff2...",
+    "..4aaa5...........5aaa3...",
 ];
-const ICON_COLS: u16 = 12;
-const ICON_ROWS: u16 = 5;
+const ICON_COLS: u16 = 26;
+const ICON_ROWS: u16 = 10;
 
-/// Brand colors, fixed across themes: the icon is the app icon, not chrome.
-const ICON_TILE: Color = Color::Rgb(0xe7, 0x6d, 0x1f);
-const ICON_TILE_LIGHT: Color = Color::Rgb(0xf0, 0x8a, 0x43);
-const ICON_INK: Color = Color::Rgb(0x1a, 0x12, 0x08);
-const ICON_CREAM: Color = Color::Rgb(0xff, 0xf4, 0xe6);
+/// The pixel's colour: its coverage between the card and the foreground.
+fn icon_pixel(row: usize, col: usize) -> Color {
+    let coverage = (ICON[row].as_bytes()[col] as char).to_digit(16).unwrap_or(0);
+    style::blend_colors(style::BG_PANEL(), style::FG(), coverage as f32 / 15.0)
+}
 
 fn paint_icon(buf: &mut Buffer, x: u16, y: u16) {
-    let pixel = |row: usize, col: usize| match ICON[row].as_bytes()[col] {
-        b'O' => ICON_TILE,
-        b'P' => ICON_TILE_LIGHT,
-        b'K' => ICON_INK,
-        b'C' => ICON_CREAM,
-        _ => style::BG_PANEL(),
-    };
     for cy in 0..ICON_ROWS as usize {
         for cx in 0..ICON_COLS as usize {
-            let (top, bottom) = (pixel(cy * 2, cx), pixel(cy * 2 + 1, cx));
+            let (top, bottom) = (icon_pixel(cy * 2, cx), icon_pixel(cy * 2 + 1, cx));
             let Some(cell) = buf.cell_mut((x + cx as u16, y + cy as u16)) else {
                 continue;
             };
@@ -510,7 +515,7 @@ mod tests {
     fn agente_welcome_is_normal_font_box_with_buttons() {
         let mut state = AppState::new(AppConfig::default(), "/tmp/agente".into());
         state.ui.show_welcome_screen = true;
-        let text = shot(&mut state, 80, 20);
+        let text = shot(&mut state, 80, 24);
 
         assert!(text.contains("Agente"), "wordmark");
         assert!(text.contains("Code"), "title-case Code suffix");
@@ -521,7 +526,7 @@ mod tests {
         // The only block glyphs are the half-block pixel mark, never block
         // letters spelling the name.
         assert!(!text.contains('█'), "no block letter art");
-        assert!(text.contains('▀'), "pixel split-A mark beside the wordmark");
+        assert!(text.contains('▀'), "pixel app mark beside the wordmark");
         assert!(
             !text.contains('~'),
             "the hero field is squares, not drifting glyphs"

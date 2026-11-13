@@ -61,10 +61,9 @@ pub(crate) fn render_markdown_at_width(content: &str, width: usize) -> Vec<Line<
                     sp("  "),
                     sf("┌", FG_DIM()),
                     sp("─ "),
-                    s(
-                        lang_display.to_string(),
-                        Style::default().fg(SYNTAX_KEYWORD()),
-                    ),
+                    // A quiet caption, as on desktop: the code under it is what
+                    // carries colour.
+                    s(lang_display.to_string(), Style::default().fg(FG_DIM())),
                 ]));
             } else {
                 in_code_block = false;
@@ -158,7 +157,8 @@ pub(crate) fn render_markdown_at_width(content: &str, width: usize) -> Vec<Line<
         }
 
         if line.starts_with("- ") || line.starts_with("* ") {
-            let mut spans = vec![sp("  "), sf("• ", PRIMARY())];
+            // Markers are structure, not emphasis: muted, as the desktop draws them.
+            let mut spans = vec![sp("  "), sf("• ", FG_MUTED())];
             spans.extend(inline_md(&line[2..], Style::default().fg(FG())));
             lines.push(Line::from(spans));
             continue;
@@ -184,7 +184,7 @@ pub(crate) fn render_markdown_at_width(content: &str, width: usize) -> Vec<Line<
             if dot_pos > 0 && line[..dot_pos].chars().all(|c| c.is_ascii_digit()) {
                 let mut spans = vec![
                     sp("  "),
-                    s(prefix.to_string(), Style::default().fg(PRIMARY())),
+                    s(prefix.to_string(), Style::default().fg(FG_MUTED())),
                 ];
                 spans.extend(inline_md(rest, Style::default().fg(FG())));
                 lines.push(Line::from(spans));

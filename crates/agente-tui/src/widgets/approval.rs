@@ -35,48 +35,42 @@ pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState) {
         .as_ref()
         .map(|view| view.rendered_height().clamp(3, 12) as u16)
         .unwrap_or(0);
-    let action_rows = if area.width >= 64 { 1 } else { 2 };
+    let action_rows = if area.width >= 56 { 1 } else { 2 };
     // The full target is shown: a long command wrapped over several rows, never
     // cut off where its tail (`; rm -rf …`) would go unread before approving.
-    let target = request_target(request);
+    // A diff names its own file and counts in its header, so with a diff the
+    // target line would only repeat it.
+    let target = if diff.is_some() { None } else { request_target(request) };
     let target_lines = target
         .as_deref()
-        .map(|text| wrap_target(text, (panel_inner_width(area) as usize).saturating_sub(8)))
+        .map(|text| wrap_target(text, panel_inner_width(area) as usize))
         .unwrap_or_default();
-    let extra = target_lines.len().saturating_sub(1) as u16;
-    // Border(2) + gap + tool + target + gap + [diff|warning + gap] + actions.
+    let warning_rows = u16::from(request.is_dangerous);
+    // Border(2) + gap + [target rows | diff] + [warning] + gap + actions.
     let middle = if diff.is_some() {
-        desired_diff_height + 1
-    } else if request.is_dangerous {
-        2
+        desired_diff_height
     } else {
-        0
+        target_lines.len() as u16
     };
-    let desired_height = 6 + middle + action_rows + extra;
-    let panel = super::centered_panel(
-        area,
-        area.width.saturating_sub(4).min(76),
-        desired_height.min(area.height.saturating_sub(2)),
+    let desired_height = 4 + middle + warning_rows + action_rows;
+    // Docked on the composer, as the desktop's approval bar is: the transcript
+    // above stays readable while the question waits right where the keys are.
+    let height = desired_height.min(area.height.saturating_sub(1));
+    let panel = Rect::new(
+        area.x + 1.min(area.width),
+        area.bottom().saturating_sub(height),
+        area.width.saturating_sub(2),
+        height,
     );
 
-    // Same card as every modal; the ◆ and the border tint carry the urgency
-    // (red for destructive calls), echoing the activity strip's ◆.
+    // The card's tint (amber, red for a destructive call) is the one status
+    // mark; the title asks the question by kind, as the desktop does.
     let accent = if request.is_dangerous {
         ERROR()
     } else {
-        PRIMARY()
+        WARNING()
     };
-    let mut title = vec![
-        Span::styled("◆ ", Style::default().fg(accent)),
-        Span::styled(
-            if request.is_dangerous {
-                "Review destructive tool call"
-            } else {
-                "Review tool call"
-            },
-            style::bold(),
-        ),
-    ];
+    let mut title = vec![Span::styled(question(request), style::bold())];
     // Name the origin when a child raised the request: parent and child
     // approvals used to be indistinguishable.
     if let Some(agente_core::agent::ApprovalSource::Subagent { id }) =
@@ -114,55 +108,32 @@ pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState) {
     let row = |dy: u16| -> Option<Rect> {
         (dy < actions_dy).then(|| Rect::new(inner.x, inner.y + dy, inner.width, 1))
     };
-    let label_w = 8u16;
-    let field = |frame: &mut Frame, dy: u16, label: &str, value: Span<'static>| {
-        if let Some(row_area) = row(dy) {
-            frame.render_widget(
-                Paragraph::new(Line::from(vec![
-                    Span::styled(format!("{label:<w$}", w = label_w as usize), style::dim()),
-                    value,
-                ]))
-                .style(style::panel()),
-                row_area,
-            );
-        }
-    };
-    let value_w = inner.width.saturating_sub(label_w) as usize;
-    field(
-        frame,
-        1,
-        "tool",
-        Span::styled(
-            truncate_cells(
-                &format!("{}  {}", request.tool_name, request.description),
-                value_w,
-            ),
-            style::text(),
-        ),
-    );
-    for (index, line) in target_lines.iter().enumerate() {
-        field(
-            frame,
-            2 + index as u16,
-            if index == 0 { "target" } else { "" },
-            Span::styled(line.clone(), Style::default().fg(SECONDARY())),
-        );
-    }
 
+    let mut dy = 1u16;
     if let Some(view) = &diff {
         let diff_height = actions_dy
-            .saturating_sub(5 + extra)
+            .saturating_sub(2 + warning_rows)
             .min(desired_diff_height);
         if diff_height > 0 {
-            frame.render_widget(
-                view,
-                Rect::new(inner.x, inner.y + 4 + extra, inner.width, diff_height),
-            );
+            frame.render_widget(view, Rect::new(inner.x, inner.y + dy, inner.width, diff_height));
         }
-    } else if request.is_dangerous {
-        if let Some(row_area) = row(4 + extra) {
+        dy += diff_height;
+    } else {
+        for line in &target_lines {
+            if let Some(row_area) = row(dy) {
+                frame.render_widget(
+                    Paragraph::new(Line::from(Span::styled(line.clone(), style::text())))
+                        .style(style::panel()),
+                    row_area,
+                );
+            }
+            dy += 1;
+        }
+    }
+    if request.is_dangerous {
+        if let Some(row_area) = row(dy) {
             frame.render_widget(
-                Paragraph::new("This operation can modify or remove data.")
+                Paragraph::new("This can modify or remove data.")
                     .style(style::error().bg(BG_PANEL())),
                 row_area,
             );
@@ -171,11 +142,11 @@ pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState) {
 
     let actions_y = inner.y + actions_dy;
 
-    // Two-row layout moves `Esc cancel` under the buttons on narrow panels.
+    // Two-row layout moves Deny under the two allows on narrow panels.
     let first_row = if action_rows == 1 {
         ACTIONS
     } else {
-        &ACTIONS[..3]
+        &ACTIONS[..2]
     };
     render_actions(
         frame,
@@ -188,12 +159,13 @@ pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState) {
             frame,
             state,
             Rect::new(inner.x, actions_y.saturating_add(1), inner.width, 1),
-            &ACTIONS[3..],
+            &ACTIONS[2..],
         );
     }
 }
 
-/// One approval button: key cap, label, and the action it resolves to.
+/// One approval button: the answer as a cap, then the key that gives it —
+/// the desktop bar's "Allow Enter / Deny Esc", in cells.
 struct ActionButton {
     key: &'static str,
     label: &'static str,
@@ -201,33 +173,38 @@ struct ActionButton {
     cap: fn() -> Style,
 }
 
+/// Enter allows and Esc denies, as on the desktop; `Y`/`A`/`N` still work
+/// (`handle_approval_key`) but the buttons name the keys people reach for.
 const ACTIONS: &[ActionButton] = &[
     ActionButton {
-        key: " Y ",
-        label: " allow once",
+        key: " Allow ",
+        label: " Enter",
         action: ApprovalAction::ApproveOnce,
         cap: style::button_primary,
     },
     ActionButton {
-        key: " A ",
-        label: " allow for turn",
+        key: " Allow for turn ",
+        label: " A",
         action: ApprovalAction::ApproveAll,
         cap: style::button_secondary,
     },
     ActionButton {
-        key: " N ",
-        label: " deny",
+        key: " Deny ",
+        label: " Esc",
         action: ApprovalAction::Deny,
-        cap: style::button_danger,
-    },
-    // `Esc` resolves to Deny, same as the keyboard.
-    ActionButton {
-        key: "Esc",
-        label: " cancel",
-        action: ApprovalAction::Deny,
-        cap: style::dim,
+        cap: style::text,
     },
 ];
+
+/// The question the card asks, by the kind of call.
+fn question(request: &agente_core::types::ApprovalRequest) -> String {
+    match request.tool_name.as_str() {
+        "edit_file" | "write_file" | "apply_patch" | "edit" | "write" => "Allow this edit?".into(),
+        "shell" | "bash" | "process_stop" => "Run this command?".into(),
+        "present_plan" => "Approve this plan?".into(),
+        other => format!("Allow {}?", other.replace('_', " ")),
+    }
+}
 
 /// Paint `buttons` left to right in `row`, registering each one's hit rect
 /// from its drawn width, from `row`'s left edge (the edge the tool and target
@@ -268,9 +245,9 @@ fn render_actions(frame: &mut Frame, state: &AppState, row: Rect, buttons: &[Act
 }
 
 /// Inner width of the review card for an `area` (mirrors the panel sizing in
-/// [`render`]: the card is at most 76 wide with a 1-cell gutter each side).
+/// [`render`]: the card spans the area less a 1-cell gutter each side).
 fn panel_inner_width(area: Rect) -> u16 {
-    area.width.saturating_sub(4).min(76).saturating_sub(4)
+    area.width.saturating_sub(2).saturating_sub(4)
 }
 
 /// Hard-wrap `text` into at most six rows of `width` cells (the last row

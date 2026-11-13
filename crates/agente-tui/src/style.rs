@@ -43,56 +43,61 @@ pub fn current_theme() -> Theme {
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// DARK THEME (default) - pure-black monochrome canvas
+// DARK THEME (default) - the desktop's graphite: one ladder of neutral
+// surfaces, neutral text, and one orange accent for focus and selection
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 pub mod dark {
     use super::*;
 
-    // Background colors — pure-black monochrome canvas
-    pub const BG: Color = Color::Rgb(0, 0, 0); // #000000
-    pub const BG_PANEL: Color = Color::Rgb(24, 24, 28); // #18181c
-    pub const BG_ELEMENT: Color = Color::Rgb(44, 46, 50); // #2c2e32
+    // Background colors — the desktop app's graphite ladder (page #1c1c1c,
+    // cards #232323, fills a step lighter), so both surfaces read as one product
+    pub const BG: Color = Color::Rgb(28, 28, 28); // #1c1c1c
+    pub const BG_PANEL: Color = Color::Rgb(35, 35, 35); // #232323
+    pub const BG_ELEMENT: Color = Color::Rgb(43, 43, 43); // #2b2b2b
     /// Pointer hover: one step above the panel, one below the selection.
-    pub const BG_HOVER: Color = Color::Rgb(34, 34, 40); // #222228
-    pub const BG_ACTIVE: Color = Color::Rgb(44, 44, 52); // #2c2c34
+    pub const BG_HOVER: Color = Color::Rgb(43, 43, 43); // #2b2b2b
+    pub const BG_ACTIVE: Color = Color::Rgb(48, 48, 48); // #303030
 
     // Text colors
     pub const FG: Color = Color::Rgb(255, 255, 255); // #ffffff
-    pub const FG_MUTED: Color = Color::Rgb(154, 154, 162); // #9a9aa2
-    pub const FG_DIM: Color = Color::Rgb(106, 106, 114); // #6a6a72
+    pub const FG_MUTED: Color = Color::Rgb(179, 179, 179); // #b3b3b3
+    pub const FG_DIM: Color = Color::Rgb(133, 133, 133); // #858585
     /// Shared monochrome gray for all dim chrome in dark mode.
-    pub const MONO_GRAY: Color = Color::Rgb(136, 136, 136); // #888888
+    pub const MONO_GRAY: Color = Color::Rgb(138, 138, 138); // #8a8a8a
     /// Dimmed chrome for collapsed tool headers (Wave 2 renders use this).
     pub const MACHINERY: Color = MONO_GRAY;
     /// Dim suffix text (counts, separators, metadata tails).
     pub const DETAIL: Color = MONO_GRAY;
-    /// Bright green for action markers and meta suffixes.
-    pub const META: Color = Color::Rgb(158, 206, 106); // #9ece6a
+    /// Settled action markers and meta suffixes (`◆ Run`, `[412ms]`): grey,
+    /// as the desktop's settled step rows are. A pass is the default state,
+    /// so it stays dim; colour is for what needs the eye.
+    pub const META: Color = Color::Rgb(138, 138, 138); // #8a8a8a
 
-    // Primary/Brand - teal accent
-    pub const PRIMARY: Color = Color::Rgb(138, 190, 183); // #8abeb7
-    pub const SECONDARY: Color = Color::Rgb(97, 175, 239); // #61afef (blue subheadings)
-    pub const ACCENT: Color = Color::Rgb(138, 190, 183); // #8abeb7
+    // Primary/Brand — the desktop's single orange accent (--brand-accent);
+    // subheadings are neutral, not a second hue
+    pub const PRIMARY: Color = Color::Rgb(232, 121, 58); // #e8793a
+    pub const SECONDARY: Color = Color::Rgb(200, 200, 200); // #c8c8c8
+    pub const ACCENT: Color = Color::Rgb(232, 121, 58); // #e8793a
 
     // Semantic colors
-    pub const SUCCESS: Color = Color::Rgb(181, 189, 104); // #b5bd68
-    pub const WARNING: Color = Color::Rgb(217, 161, 59); // #d9a13b
-    pub const ERROR: Color = Color::Rgb(204, 102, 102); // #cc6666
-    pub const INFO: Color = Color::Rgb(95, 135, 255); // #5f87ff
+    pub const SUCCESS: Color = Color::Rgb(108, 197, 138); // #6cc58a
+    pub const WARNING: Color = Color::Rgb(229, 180, 84); // #e5b454
+    pub const ERROR: Color = Color::Rgb(240, 123, 114); // #f07b72
+    pub const INFO: Color = Color::Rgb(75, 180, 214); // #4bb4d6
 
     // Borders - quiet, barely-there
-    pub const BORDER: Color = Color::Rgb(58, 58, 66); // #3a3a42
-    pub const BORDER_SUBTLE: Color = Color::Rgb(42, 42, 50); // #2a2a32
-    pub const BORDER_ACTIVE: Color = Color::Rgb(74, 74, 82); // #4a4a52
+    pub const BORDER: Color = Color::Rgb(46, 46, 46); // #2e2e2e
+    pub const BORDER_SUBTLE: Color = Color::Rgb(41, 41, 41); // #292929
+    pub const BORDER_ACTIVE: Color = Color::Rgb(60, 60, 60); // #3c3c3c
     /// Barely-visible full-width rule under popup headers, between SUBTLE and BORDER.
-    pub const BORDER_RULE: Color = Color::Rgb(48, 48, 58); // #30303a
+    pub const BORDER_RULE: Color = Color::Rgb(43, 43, 43); // #2b2b2b
 
     // Diff colors
-    pub const DIFF_ADDED: Color = Color::Rgb(181, 189, 104); // #b5bd68
-    pub const DIFF_REMOVED: Color = Color::Rgb(204, 102, 102); // #cc6666
-    pub const DIFF_ADDED_BG: Color = Color::Rgb(14, 61, 19); // #0e3d13
-    pub const DIFF_REMOVED_BG: Color = Color::Rgb(61, 14, 19); // #3d0e13
+    pub const DIFF_ADDED: Color = Color::Rgb(108, 197, 138); // #6cc58a
+    pub const DIFF_REMOVED: Color = Color::Rgb(240, 123, 114); // #f07b72
+    pub const DIFF_ADDED_BG: Color = Color::Rgb(41, 55, 46); // #29372e
+    pub const DIFF_REMOVED_BG: Color = Color::Rgb(62, 43, 42); // #3e2b2a
 
     // Hero tile field — the landing page's mosaic, one brand orange at
     // shifting intensity. Dim end first, highlight last.
@@ -100,13 +105,14 @@ pub mod dark {
     pub const TILE_HI: Color = Color::Rgb(255, 190, 152); // #ffbe98
     pub const TILE_ALPHA: f32 = 0.4;
 
-    // Markdown colors — teal section headings, blue sub-headings, white bold
-    pub const MD_HEADING: Color = Color::Rgb(78, 201, 176); // #4ec9b0
-    pub const MD_LINK: Color = Color::Rgb(129, 162, 190); // #81a2be
-    pub const MD_CODE: Color = Color::Rgb(138, 190, 183); // #8abeb7
-    pub const MD_EMPH: Color = Color::Rgb(212, 212, 212); // #d4d4d4
-    pub const MD_STRONG: Color = Color::Rgb(232, 232, 234); // #e8e8ea
-    pub const MD_QUOTE: Color = Color::Rgb(128, 128, 128); // #808080
+    // Markdown colors — headings and bold at full foreground (landmarks by
+    // weight, as on desktop), links in the desktop's companion blue
+    pub const MD_HEADING: Color = Color::Rgb(255, 255, 255); // #ffffff
+    pub const MD_LINK: Color = Color::Rgb(155, 217, 236); // #9bd9ec
+    pub const MD_CODE: Color = Color::Rgb(230, 230, 230); // #e6e6e6
+    pub const MD_EMPH: Color = Color::Rgb(220, 220, 220); // #dcdcdc
+    pub const MD_STRONG: Color = Color::Rgb(255, 255, 255); // #ffffff
+    pub const MD_QUOTE: Color = Color::Rgb(200, 200, 200); // #c8c8c8
 
     // Syntax colors (VS Code-ish)
     pub const SYNTAX_COMMENT: Color = Color::Rgb(106, 153, 85); // #6A9955
@@ -130,43 +136,43 @@ pub mod light {
     pub const BG: Color = Color::Rgb(255, 255, 255); // #ffffff
     pub const BG_PANEL: Color = Color::Rgb(250, 250, 250); // #fafafa
     pub const BG_ELEMENT: Color = Color::Rgb(245, 245, 245); // #f5f5f5
-    pub const BG_HOVER: Color = Color::Rgb(235, 235, 235); // #ebebeb
-    pub const BG_ACTIVE: Color = Color::Rgb(225, 225, 225); // #e1e1e1
+    pub const BG_HOVER: Color = Color::Rgb(240, 240, 240); // #f0f0f0
+    pub const BG_ACTIVE: Color = Color::Rgb(232, 232, 232); // #e8e8e8
 
     // Text colors
-    pub const FG: Color = Color::Rgb(26, 26, 26); // #1a1a1a
-    pub const FG_MUTED: Color = Color::Rgb(92, 92, 100); // #5c5c64
-    pub const FG_DIM: Color = Color::Rgb(118, 118, 126); // #76767e
+    pub const FG: Color = Color::Rgb(17, 17, 17); // #111111
+    pub const FG_MUTED: Color = Color::Rgb(82, 82, 82); // #525252
+    pub const FG_DIM: Color = Color::Rgb(115, 115, 115); // #737373
     /// Dimmed chrome for collapsed tool headers (Wave 2 renders use this).
     pub const MACHINERY: Color = FG_MUTED;
     /// Dim suffix text (counts, separators, metadata tails).
     pub const DETAIL: Color = FG_DIM;
-    /// Dark green for action markers and meta suffixes on light canvases.
-    pub const META: Color = Color::Rgb(47, 125, 79); // #2f7d4f
+    /// Settled action markers and meta suffixes: grey, as in dark mode.
+    pub const META: Color = Color::Rgb(115, 115, 115); // #737373
 
     // Primary/Brand
-    pub const PRIMARY: Color = Color::Rgb(59, 125, 216); // #3b7dd8 (blue)
-    pub const SECONDARY: Color = Color::Rgb(123, 91, 182); // #7b5bb6 (purple)
-    pub const ACCENT: Color = Color::Rgb(214, 140, 39); // #d68c27 (orange)
+    pub const PRIMARY: Color = Color::Rgb(231, 109, 31); // #e76d1f
+    pub const SECONDARY: Color = Color::Rgb(82, 82, 82); // #525252
+    pub const ACCENT: Color = Color::Rgb(231, 109, 31); // #e76d1f
 
     // Semantic colors
-    pub const SUCCESS: Color = Color::Rgb(61, 154, 87); // #3d9a57
-    pub const WARNING: Color = Color::Rgb(214, 140, 39); // #d68c27
-    pub const ERROR: Color = Color::Rgb(209, 56, 61); // #d1383d
-    pub const INFO: Color = Color::Rgb(49, 135, 149); // #318795
+    pub const SUCCESS: Color = Color::Rgb(22, 163, 74); // #16a34a
+    pub const WARNING: Color = Color::Rgb(202, 138, 4); // #ca8a04
+    pub const ERROR: Color = Color::Rgb(217, 48, 37); // #d93025
+    pub const INFO: Color = Color::Rgb(3, 88, 140); // #03588c
 
     // Borders
-    pub const BORDER: Color = Color::Rgb(184, 184, 184); // #b8b8b8
-    pub const BORDER_SUBTLE: Color = Color::Rgb(212, 212, 212); // #d4d4d4
-    pub const BORDER_ACTIVE: Color = Color::Rgb(160, 160, 160); // #a0a0a0
+    pub const BORDER: Color = Color::Rgb(224, 224, 224); // #e0e0e0
+    pub const BORDER_SUBTLE: Color = Color::Rgb(235, 235, 235); // #ebebeb
+    pub const BORDER_ACTIVE: Color = Color::Rgb(200, 200, 200); // #c8c8c8
     /// Barely-visible full-width rule under popup headers, between SUBTLE and BORDER.
-    pub const BORDER_RULE: Color = Color::Rgb(226, 226, 230); // #e2e2e6
+    pub const BORDER_RULE: Color = Color::Rgb(237, 237, 237); // #ededed
 
     // Diff colors
-    pub const DIFF_ADDED: Color = Color::Rgb(30, 114, 92); // #1e725c
-    pub const DIFF_REMOVED: Color = Color::Rgb(197, 59, 83); // #c53b53
-    pub const DIFF_ADDED_BG: Color = Color::Rgb(213, 229, 213); // #d5e5d5
-    pub const DIFF_REMOVED_BG: Color = Color::Rgb(247, 216, 219); // #f7d8db
+    pub const DIFF_ADDED: Color = Color::Rgb(21, 128, 61); // #15803d
+    pub const DIFF_REMOVED: Color = Color::Rgb(198, 40, 40); // #c62828
+    pub const DIFF_ADDED_BG: Color = Color::Rgb(220, 242, 227); // #dcf2e3
+    pub const DIFF_REMOVED_BG: Color = Color::Rgb(251, 227, 225); // #fbe3e1
 
     // On white the ramp runs the other way: the faint tiles are a pale tint and
     // the brightest ones are the saturated brand orange.
@@ -175,12 +181,12 @@ pub mod light {
     pub const TILE_ALPHA: f32 = 0.5;
 
     // Markdown colors
-    pub const MD_HEADING: Color = Color::Rgb(214, 140, 39);
-    pub const MD_LINK: Color = Color::Rgb(59, 125, 216);
-    pub const MD_CODE: Color = Color::Rgb(61, 154, 87);
-    pub const MD_EMPH: Color = Color::Rgb(176, 133, 31);
-    pub const MD_STRONG: Color = Color::Rgb(214, 140, 39);
-    pub const MD_QUOTE: Color = Color::Rgb(112, 134, 181);
+    pub const MD_HEADING: Color = Color::Rgb(0, 0, 0); // #000000
+    pub const MD_LINK: Color = Color::Rgb(3, 88, 140); // #03588c
+    pub const MD_CODE: Color = Color::Rgb(31, 31, 31); // #1f1f1f
+    pub const MD_EMPH: Color = Color::Rgb(43, 43, 43); // #2b2b2b
+    pub const MD_STRONG: Color = Color::Rgb(0, 0, 0); // #000000
+    pub const MD_QUOTE: Color = Color::Rgb(82, 82, 82); // #525252
 
     // Syntax colors
     pub const SYNTAX_COMMENT: Color = Color::Rgb(138, 138, 138);

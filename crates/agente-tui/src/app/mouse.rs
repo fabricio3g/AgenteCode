@@ -662,12 +662,15 @@ mod tests {
     fn open_palette(app: &mut App) -> (ratatui::buffer::Buffer, usize, u16) {
         app.state.ui.show_welcome_screen = false;
         app.state.input.show_command_palette = true;
-        let buf = render(app, 80, 30);
         let commands = crate::command_palette::filter_commands("");
         let index = commands
             .iter()
             .position(|c| *c == crate::command_palette::Command::ShowHelp)
             .unwrap();
+        // The grouped palette puts Help in its last group, below the fold at
+        // 80×30: select it so the list scrolls it into view, as keys would.
+        app.state.input.command_palette_selected = index;
+        let buf = render(app, 80, 30);
         let row = find_row(&buf, commands[index].label()).expect("help row painted");
         (buf, index, row)
     }

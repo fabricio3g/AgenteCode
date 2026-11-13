@@ -775,6 +775,13 @@ pub(crate) fn shot_text(buf: &Buffer) -> String {
     out
 }
 
+/// A dark-theme surface (canvas or panel) left behind on a light frame.
+fn is_dark_surface(color: Color) -> bool {
+    matches!(color, Color::Black | Color::Rgb(0, 0, 0))
+        || color == crate::style::dark::BG
+        || color == crate::style::dark::BG_PANEL
+}
+
 fn write_shot(name: &str, buf: &Buffer) {
     // Anchored to the crate, not the test process cwd, so shots always land in
     // one place.
@@ -841,12 +848,7 @@ fn check(scenario: &str, size: (u16, u16), buf: &Buffer, out: &mut Vec<Violation
                 reset_bg_count += 1;
                 reset_bg.get_or_insert((x, y));
             }
-            if light_audit
-                && matches!(
-                    cell.bg,
-                    Color::Rgb(0, 0, 0) | Color::Black | Color::Rgb(24, 24, 28)
-                )
-            {
+            if light_audit && is_dark_surface(cell.bg) {
                 dark_hole_count += 1;
                 dark_hole.get_or_insert((x, y));
             }
@@ -1279,10 +1281,7 @@ fn theme_toggle_leaves_no_dark_holes() {
             seen_timestamp = true;
         }
         for x in 0..buf.area.width {
-            if matches!(
-                buf[(x, y)].bg,
-                Color::Reset | Color::Rgb(0, 0, 0) | Color::Black | Color::Rgb(24, 24, 28)
-            ) {
+            if buf[(x, y)].bg == Color::Reset || is_dark_surface(buf[(x, y)].bg) {
                 dark_holes += 1;
             }
         }
