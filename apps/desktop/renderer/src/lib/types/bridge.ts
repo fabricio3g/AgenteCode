@@ -36,6 +36,8 @@ export interface GgufMeta {
   quantization: string;
   head_count: number;
   head_count_kv: number;
+  /** Layers with a KV cache; fewer than block_count on hybrid models. */
+  kv_layer_count?: number;
   /** Non-zero only on MoE architectures. */
   expert_count?: number;
   embedding_length: number;

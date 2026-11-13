@@ -2,24 +2,28 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { getAppPaths } from './paths.ts';
 import { loadConfig, saveConfig } from './config.ts';
-import { hasNvidiaGpu, hasVulkanSupport } from './gpu-probe.ts';
+import { hasGpuDevice } from './runtime-devices.ts';
 
+/** Variant order among builds that tie on reaching a GPU: the faster backend first. */
 function preferredRuntimeVariants(cfg) {
   const requested = String(cfg?.llm?.local?.binary?.install_variant || 'auto').toLowerCase();
-  if (requested && requested !== 'auto') {
-    if (requested === 'cuda12' || requested === 'cuda13') return ['cuda', 'vulkan', 'cpu', 'unknown'];
-    return [requested, 'cuda', 'vulkan', 'metal', 'cpu', 'unknown'];
-  }
-
-  if (process.platform === 'darwin') return ['metal', 'cpu', 'unknown'];
-  if (hasNvidiaGpu()) return ['cuda', 'vulkan', 'cpu', 'unknown'];
-  if (hasVulkanSupport()) return ['vulkan', 'cpu', 'unknown'];
-  return ['cpu', 'vulkan', 'cuda', 'unknown'];
+  const base = ['cuda', 'rocm', 'metal', 'vulkan', 'sycl', 'opencl', 'cpu', 'unknown'];
+  if (requested === 'cuda12' || requested === 'cuda13') return base;
+  return requested && requested !== 'auto' ? [requested, ...base.filter((variant) => variant !== requested)] : base;
 }
 
+/**
+ * Builds that can reach a GPU here first (as each one's own --list-devices
+ * says), then by backend, then newest. The old order came from nvidia-smi and
+ * vulkaninfo, which are missing on most Windows machines, so a CPU-only build
+ * ranked first on a machine with a GPU.
+ */
 function orderRuntimesForPreference(runtimes, cfg) {
   const order = preferredRuntimeVariants(cfg);
+  const reach = new Map(runtimes.map((runtime) => [runtime.path, hasGpuDevice(runtime.path) === true]));
   return [...runtimes].sort((left, right) => {
+    const gpu = Number(reach.get(right.path)) - Number(reach.get(left.path));
+    if (gpu) return gpu;
     const leftRank = order.indexOf(left.variant);
     const rightRank = order.indexOf(right.variant);
     const normalizedLeftRank = leftRank === -1 ? order.length : leftRank;
@@ -157,25 +161,21 @@ export function listRuntimeBinaries() {
   });
 }
 
+/**
+ * The engine a launch uses: the one asked for, else the one chosen in
+ * settings, else the best installed build (see orderRuntimesForPreference).
+ * An explicit or chosen engine answers without listing or probing the others.
+ */
 export function resolveRuntimeBinary(explicitPath = '') {
   const cfg = loadConfig();
-  const candidates = [];
-  if (explicitPath) candidates.push(explicitPath);
-  if (cfg.llm?.local?.runtime_path) candidates.push(cfg.llm.local.runtime_path);
-  if (cfg.llm?.local?.binary?.path) candidates.push(cfg.llm.local.binary.path);
-
-  for (const runtime of orderRuntimesForPreference(listRuntimeBinaries(), cfg)) {
-    candidates.push(runtime.path);
-  }
-
-  const seen = new Set();
-  for (const candidate of candidates) {
-    if (!candidate || seen.has(candidate)) continue;
-    seen.add(candidate);
-    const resolved = resolveRuntimeCandidate(candidate);
+  for (const candidate of [explicitPath, cfg.llm?.local?.runtime_path, cfg.llm?.local?.binary?.path]) {
+    const resolved = candidate ? resolveRuntimeCandidate(candidate) : null;
     if (resolved) return resolved;
   }
-
+  for (const runtime of orderRuntimesForPreference(listRuntimeBinaries(), cfg)) {
+    const resolved = resolveRuntimeCandidate(runtime.path);
+    if (resolved) return resolved;
+  }
   return null;
 }
 

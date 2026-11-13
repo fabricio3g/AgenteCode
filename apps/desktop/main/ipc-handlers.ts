@@ -2,6 +2,7 @@ import { ipcMain, shell } from 'electron';
 import { getMainWindow, requestMainWindowClose, setActiveWorkState } from './window-manager.ts';
 import { panelOpenTab as createWebviewerWindow } from './browser-panel.ts';
 import { loadConfig, saveConfig, updateConfig, loadConfigFromDisk } from './config.ts';
+import { launchConfigFromSaved } from '../shared/local-launch.ts';
 import { redactConfig } from './config.redact.ts';
 import { getHardwareLimits, getSystemInfo } from './system-info.ts';
 import {
@@ -271,26 +272,15 @@ export function registerIpcHandlers() {
   // comes back as `interrupted` and resumes from its .part on demand.
   restorePersistedJobs();
 
-  // "Download & load when ready": completed jobs hand the model to the same
-  // runtime path a manual load takes — recommended settings, no user overrides.
+  // "Download & load when ready": a finished download starts through the same
+  // mapping as every other load (shared/local-launch.ts). A new file has no
+  // saved settings, so it keeps only the app-wide ones (engine, slots,
+  // address) and llama.cpp's --fit sizes the rest.
   setAutoLoadHandler((modelPath) => {
-    void (async () => {
-      const settings = await getRecommendedSettings(modelPath, null, null, '') as Record<string, unknown>;
-      await startLlama({
-        model_path: modelPath,
-        backend_mode: settings.backend || 'auto',
-        host: '127.0.0.1',
-        port: 11435,
-        context_length: settings.context_length,
-        gpu_offload: settings.gpu_layers,
-        cpu_threads: settings.cpu_threads,
-        batch_size: settings.batch_size,
-        flash_attention: settings.flash_attention,
-        offload_kv_cache: settings.offload_kv
-      }, getMainWindow());
-    })().catch((err) => {
-      console.warn('[downloads] auto-load failed:', err);
-    });
+    void startLlama(launchConfigFromSaved(loadConfig().llm?.local as Record<string, unknown> | undefined, modelPath), getMainWindow())
+      .catch((err) => {
+        console.warn('[downloads] auto-load failed:', err);
+      });
   });
 
   registerDownloadHandlers({

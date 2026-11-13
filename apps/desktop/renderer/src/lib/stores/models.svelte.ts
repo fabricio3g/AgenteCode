@@ -8,6 +8,13 @@ class ModelsStore {
   fallbackModels = $state<LocalModel[]>([]);
   loading = $state(false);
   status = $state<SupervisorStatus | null>(null);
+  /** Told every time the server's status changes (the app derives its loaded model from it). */
+  onStatus: ((status: SupervisorStatus | null) => void) | null = null;
+
+  private setStatus(next: SupervisorStatus | null) {
+    this.status = next;
+    this.onStatus?.(next);
+  }
   error = $state<string | null>(null);
   unloading = $state(false);
   lastRefresh = $state<number>(0);
@@ -119,9 +126,9 @@ class ModelsStore {
   async refreshStatus() {
     if (!isElectron()) return;
     try {
-      this.status = await getSupervisorStatus();
+      this.setStatus(await getSupervisorStatus());
     } catch {
-      this.status = null;
+      this.setStatus(null);
     }
   }
 
@@ -145,18 +152,27 @@ class ModelsStore {
             model_id?: unknown;
             model_path?: unknown;
           };
-          this.status = {
-            state: typeof stateEvent.state === 'string'
-              ? stateEvent.state
-              : (typeof stateEvent.to === 'string' ? stateEvent.to : 'idle'),
+          // Merged, not replaced: a state change used to wipe the context
+          // window, slot count and model path the last full read had.
+          const state = typeof stateEvent.state === 'string'
+            ? stateEvent.state
+            : (typeof stateEvent.to === 'string' ? stateEvent.to : 'idle');
+          const fields = Object.fromEntries(
+            ['model_path', 'n_ctx', 'total_slots', 'runtime_path', 'port']
+              .filter((key) => key in stateEvent)
+              .map((key) => [key, (stateEvent as unknown as Record<string, unknown>)[key]])
+          );
+          this.setStatus({
+            ...(this.status ?? {}),
+            ...fields,
+            state,
             active_model: typeof stateEvent.model_id === 'string'
               ? stateEvent.model_id
-              : (typeof stateEvent.model_path === 'string' ? stateEvent.model_path : null),
-            port: event.port ?? null,
-            uptime_secs: null,
-            memory_mb: null,
+              : (typeof stateEvent.model_path === 'string' ? stateEvent.model_path : (state === 'idle' ? null : this.status?.active_model ?? null)),
             sessions_count: this.status?.sessions_count ?? 0
-          };
+          } as SupervisorStatus);
+          // `ready` comes after /props: read the full status once more.
+          if (state === 'ready') void this.refreshStatus();
         }
       });
     } catch {

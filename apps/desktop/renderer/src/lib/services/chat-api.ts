@@ -8,6 +8,7 @@ export { toRequestMessages } from './chat/messages';
 export { extractJsonFromResponse, type StructuredExtractionResult } from './chat/structured-response';
 
 import { isVisionModel } from '$shared/model-capabilities';
+import { activeLoadConfig } from '$shared/local-launch';
 import { listedModels } from './listed-models';
 import OpenAI from 'openai';
 import type { AppConfig, ChatMessage, ModelOption, ReasoningCapabilities, ReasoningLevel, ReasoningRequest } from '$lib/types/chat';
@@ -268,7 +269,7 @@ interface ChatStreamEvent {
 export { isVisionModel };
 
 async function hasLocalVisionModel(config: AppConfig): Promise<boolean> {
-  const mmprojPath = String(config.llm?.local?.mmproj_path || '').trim();
+  const mmprojPath = String(activeLoadConfig(config.llm?.local as Record<string, unknown> | undefined).mmproj_path || '').trim();
   if (!mmprojPath) return false;
   if (!isElectron()) return true;
   try {
@@ -307,23 +308,12 @@ export async function loadChatConfig(): Promise<AppConfig> {
           ...(config.llm?.providers?.openai || {})
         }
       },
+      // Only the address has a default. Sizing, threads, memory locking and
+      // cache types stay unset unless someone chose them: a value here reads
+      // as a choice and is passed to llama-server, which turns its own --fit
+      // off (this used to pin a 4,096 context, CPU only and mlock).
       local: {
         base_url: config.llm?.local?.base_url || 'http://127.0.0.1:11435/v1',
-        context_length: config.llm?.local?.context_length || 4096,
-        gpu_layers: config.llm?.local?.gpu_layers ?? 0,
-        cpu_threads: config.llm?.local?.cpu_threads || 4,
-        batch_size: config.llm?.local?.batch_size || 512,
-        flash_attention: config.llm?.local?.flash_attention ?? true,
-        offload_kv_cache: config.llm?.local?.offload_kv_cache ?? true,
-        keep_in_memory: config.llm?.local?.keep_in_memory ?? true,
-        mmap: config.llm?.local?.mmap ?? true,
-        seed: config.llm?.local?.seed ?? null,
-        rope_freq_base: config.llm?.local?.rope_freq_base ?? null,
-        rope_freq_scale: config.llm?.local?.rope_freq_scale ?? null,
-        parallel: config.llm?.local?.parallel ?? null,
-        cache_type_k: config.llm?.local?.cache_type_k || 'f16',
-        cache_type_v: config.llm?.local?.cache_type_v || 'f16',
-        mmproj_path: config.llm?.local?.mmproj_path || undefined,
         ...(config.llm?.local || {})
       }
     },

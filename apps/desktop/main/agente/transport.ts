@@ -11,6 +11,8 @@ import { resolveApiKey } from '../provider-auth.ts';
 import { resolveProvider } from '../providers/registry.ts';
 import { isVisionModel } from '../../shared/model-capabilities.ts';
 import { DEFAULT_PROVIDER_BASE_URL } from '../../shared/providers.ts';
+import { activeLoadConfig } from '../../shared/local-launch.ts';
+import { getLlamaStatus } from '../llm-runner.ts';
 
 /** Assumed context window when the provider cannot tell us. */
 const FALLBACK_CONTEXT_WINDOW = 32_768;
@@ -58,8 +60,8 @@ export function resolveTransport(providerName: string, modelOverride?: string, s
 /** Local models see images only with a vision projector loaded; API models by id. */
 export function transportSeesImages(transport: AgenteTransport): boolean {
   if (transport.providerName === 'local') {
-    const cfg = loadConfigFromDisk() as { llm?: { local?: { mmproj_path?: string } } };
-    return !!cfg.llm?.local?.mmproj_path;
+    const cfg = loadConfigFromDisk() as { llm?: { local?: Record<string, unknown> } };
+    return !!activeLoadConfig(cfg.llm?.local).mmproj_path;
   }
   return isVisionModel(transport.model);
 }
@@ -99,7 +101,15 @@ async function providerContextWindow(transport: AgenteTransport): Promise<number
  * provider metadata lookup, then a conservative fallback.
  */
 export async function resolveContextWindow(transport: AgenteTransport): Promise<number> {
-  if (transport.providerName === 'local') return positive(llmConfig().local?.context_length) ?? FALLBACK_CONTEXT_WINDOW;
+  // What the running server settled on (per slot) is the truth; the context
+  // saved for the model only stands in before it is up. Assuming 32k here
+  // let the meter and compaction disagree with an auto-sized server.
+  if (transport.providerName === 'local') {
+    const running = getLlamaStatus() as { state?: string; n_ctx?: unknown };
+    return positive(running.state === 'ready' ? running.n_ctx : null)
+      ?? positive(activeLoadConfig(llmConfig().local as Record<string, unknown> | undefined).context_length)
+      ?? FALLBACK_CONTEXT_WINDOW;
+  }
   // Metadata is best-effort.
   return (await providerContextWindow(transport).catch(() => null)) ?? FALLBACK_CONTEXT_WINDOW;
 }

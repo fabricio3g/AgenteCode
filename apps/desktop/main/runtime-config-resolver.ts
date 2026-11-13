@@ -1,8 +1,9 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { execFileSync, spawnSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import { resolveRuntimeBinary } from './runtime-resolver.ts';
+import { listDevices } from './runtime-devices.ts';
 import { createLogger } from './utils/logger.ts';
 import { detectTemplateThinkingSupport, detectTemplateToolSupport } from './chat-templates.ts';
 
@@ -12,7 +13,6 @@ const BACKENDS = ['auto', 'cpu', 'cuda', 'vulkan', 'rocm', 'hip', 'metal', 'open
 const DEFAULT_CONTEXT_FALLBACK = 4096;
 const CONTEXT_DOWNSCALE_STEP = 0.5;
 const MIN_CONTEXT_SIZE = 512;
-const RUNTIME_PROBE_CACHE = new Map();
 const GGUF_FIELDS_CACHE = new Map();
 const GGUF_FIELDS_CACHE_MAX = 500;
 
@@ -189,6 +189,8 @@ export function readGgufMetadataFields(filePath) {
         embedding_length: null,
         head_count: null,
         head_count_kv: null,
+        /** Layers that keep a KV cache; fewer than block_count on hybrid (conv/SSM + attention) models. */
+        kv_layer_count: null,
         expert_count: null,
         parameter_count: null,
         chat_template_uses_tools: null,
@@ -231,6 +233,17 @@ export function readGgufMetadataFields(filePath) {
         }
         if (key.endsWith('.attention.head_count_kv')) {
           if (isFinitePositiveInt(Number(value))) out.head_count_kv = Number(value);
+          // Hybrid models (LFM, Jamba, Granite-H…) list it per layer, 0 where a
+          // layer has no attention. Those layers hold no KV cache, and counting
+          // them made a 1.5 GB model "need" 50 GB at long context.
+          else if (Array.isArray(value)) {
+            const perLayer = value.map(Number).filter((n) => Number.isFinite(n));
+            const attention = perLayer.filter((n) => n > 0);
+            if (attention.length) {
+              out.head_count_kv = Math.max(...attention);
+              out.kv_layer_count = attention.length;
+            }
+          }
         }
         // Present only on MoE architectures; gates the CPU expert-offload control.
         if (key.endsWith('.expert_count')) {
@@ -450,37 +463,48 @@ function probeRuntimeCapabilities(runtimePath) {
     };
   }
 
-  const stat = fs.statSync(runtimePath);
-  const cacheKey = `${runtimePath}:${stat.mtimeMs}:${stat.size}`;
-  if (RUNTIME_PROBE_CACHE.has(cacheKey)) return RUNTIME_PROBE_CACHE.get(cacheKey);
-
-  let parsed = {
-    runtimePath,
-    availableBackends: ['cpu'],
-    devices: [],
-    devicesByBackend: {},
-    source: 'probe_failed'
-  };
-
-  try {
-    const result = spawnSync(runtimePath, ['--list-devices'], {
-      timeout: 10000,
-      encoding: 'utf8'
-    });
-    const combined = `${String(result.stdout || '')}\n${String(result.stderr || '')}`;
-    parsed = {
-      runtimePath,
-      ...parseRuntimeListDevicesOutput(combined),
-      source: result.status === 0 ? 'list_devices' : 'list_devices_error_output'
-    };
-    log.info(`probeRuntimeCapabilities runtime=${runtimePath} source=${parsed.source} backends=${JSON.stringify(parsed.availableBackends)}`);
-  } catch (err: unknown) {
-    log.info(`probeRuntimeCapabilities runtime=${runtimePath} error=${String(err)}`);
-    parsed.source = 'probe_exception';
+  // The build's own device list (main/runtime-devices.ts): it runs from the
+  // build's folder, needs no nvidia-smi or vulkaninfo, and a probe that did not
+  // answer is asked again next time instead of being cached as "no GPU".
+  const listed = listDevices(runtimePath);
+  if (listed === null) {
+    log.info(`probeRuntimeCapabilities runtime=${runtimePath} source=probe_failed`);
+    return { runtimePath, availableBackends: ['cpu'], devices: [], devicesByBackend: {}, source: 'probe_failed' };
   }
-
-  RUNTIME_PROBE_CACHE.set(cacheKey, parsed);
+  const parsed = {
+    runtimePath,
+    ...parseRuntimeListDevicesOutput(listed.map((device) => `${device.id}: ${device.label}`).join('\n')),
+    source: 'list_devices'
+  };
+  log.info(`probeRuntimeCapabilities runtime=${runtimePath} source=${parsed.source} backends=${JSON.stringify(parsed.availableBackends)}`);
   return parsed;
+}
+
+export type RuntimeDevice = { id: string; backend: string; name: string; totalMb: number | null; freeMb: number | null };
+
+/**
+ * The devices a llama-server build can offload to, as llama.cpp itself lists
+ * them (`--list-devices`): the truth for "is there a GPU", which our own
+ * hardware probe misses for integrated Radeon/Intel graphics. A CPU-only
+ * build lists none even on a machine with a GPU.
+ */
+export function listRuntimeDevices(runtimePath?: string | null): { runtimePath: string | null; devices: RuntimeDevice[] } {
+  const resolvedPath = runtimePath && fs.existsSync(runtimePath) ? runtimePath : resolveRuntimeBinary(runtimePath || '');
+  const caps = probeRuntimeCapabilities(resolvedPath);
+  const devices = (caps.devices || [])
+    .filter((device) => device.backend && device.backend !== 'cpu')
+    .map((device) => {
+      // "AMD Radeon(TM) Graphics (14026 MiB, 13324 MiB free)"
+      const memory = String(device.label).match(/\((\d+)\s*MiB,\s*(\d+)\s*MiB free\)\s*$/i);
+      return {
+        id: device.id,
+        backend: device.backend,
+        name: String(device.label).replace(/\s*\([^)]*MiB[^)]*\)\s*$/i, '').trim(),
+        totalMb: memory ? Number(memory[1]) : null,
+        freeMb: memory ? Number(memory[2]) : null
+      };
+    });
+  return { runtimePath: caps.runtimePath || null, devices };
 }
 
 function pickDeviceForBackend(backend, runtimeCaps) {
@@ -709,7 +733,10 @@ export function resolveRuntimeConfig(options = {}) {
   const totalRamGb = systemInfo?.total_ram_gb || os.totalmem() / (1024 ** 3);
   const estimatedMemoryGb = estimateContextMemory(contextSize, gpuLayers > 0);
 
-  if (estimatedMemoryGb > totalRamGb * 0.7 && contextSize > MIN_CONTEXT_SIZE) {
+  // Never on a context the user chose: that is the only kind that reaches the
+  // command line, so this used to silently shrink every explicit choice.
+  // llama.cpp reports a real out-of-memory, which the load dialog shows.
+  if (contextSource !== 'user' && estimatedMemoryGb > totalRamGb * 0.7 && contextSize > MIN_CONTEXT_SIZE) {
     const originalContext = contextSize;
     while (contextSize > MIN_CONTEXT_SIZE) {
       contextSize = Math.floor(contextSize * CONTEXT_DOWNSCALE_STEP);
@@ -731,6 +758,8 @@ export function resolveRuntimeConfig(options = {}) {
     selectedDevice,
     runtimePath: runtimePath || null,
     availableBackends: runtimeCaps.availableBackends || ['cpu'],
+    /** 'list_devices' when the build answered; anything else means we do not know its devices. */
+    deviceSource: runtimeCaps.source,
     gpuLayers,
     contextSize,
     batchSize: effectiveBatchSize,

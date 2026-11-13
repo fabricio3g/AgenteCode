@@ -345,7 +345,7 @@
     void appStore.activeProvider?.max_tokens;
     void appStore.activeProvider?.base_url;
     void appStore.activeProvider?.has_api_key;
-    void appStore.config.llm?.local?.context_length;
+    void appStore.activeLoadConfig.context_length;
     void appStore.config.llm?.local?.max_tokens;
     void appStore.config.llm?.local?.system_prompt;
     void appStore.config.llm?.system_prompt;

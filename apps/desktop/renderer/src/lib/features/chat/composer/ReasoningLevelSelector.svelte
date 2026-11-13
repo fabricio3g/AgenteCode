@@ -58,7 +58,7 @@
   // A model that always thinks and offers nothing to pick: say so, quietly.
   const alwaysThinking = $derived(known && !visible && capabilities.mandatory === true);
   const modelDefault = $derived<ReasoningLevel | 'auto'>(!controlled && appStore.backendMode === 'local'
-    ? normalizeThinkingMode(appStore.config.llm?.local?.thinking_mode, appStore.config.llm?.local?.disable_thinking)
+    ? normalizeThinkingMode(appStore.activeLoadConfig.thinking_mode)
     : capabilities.default ?? 'auto');
   const levels = $derived<Array<ReasoningLevel | null>>([null, ...capabilities.levels]);
   const chosen = $derived(controlled ? (value ?? null) : appStore.reasoningLevel);

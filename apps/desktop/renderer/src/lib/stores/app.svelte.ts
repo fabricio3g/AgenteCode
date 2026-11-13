@@ -29,7 +29,8 @@ import { ingestAttachment } from '$lib/services/attachment-ingestion';
 import { INGESTED_DOCUMENT_GUIDANCE, ingestionFileType } from '$shared/document-ingestion';
 import { clearRagDocuments, ingestDocument, ingestText, ingestTextFast, listRagDocuments, queryDocuments, removeRagDocument } from '$lib/services/rag';
 import { webSearch } from '$lib/services/search';
-import { getRecommendedSettings, loadLocalModel, onSupervisorEvent, stopLlama } from '$lib/services/runtime';
+import { loadLocalModel, onSupervisorEvent, stopLlama } from '$lib/services/runtime';
+import { activeLoadConfig, type LocalLoadConfig } from '$shared/local-launch';
 import { invoke, isElectron } from '$lib/services/bridge';
 import { checkIsFirstRun } from '$lib/services/onboarding';
 import { downloadsStore } from '$lib/stores/downloads.svelte';
@@ -72,13 +73,10 @@ import {
 } from '$lib/stores/app-store-config';
 import { findLatestArtifactMessage, removeArtifactFromMessage, resolveArtifactForMessage, upsertArtifactOnMessage } from '$lib/stores/app-store-artifacts';
 import {
-  buildLocalModelRuntimeRequest,
-  buildLocalModelSettingsPatch,
-  buildRememberedLocalModelSettingsEntry,
-  pickNumber,
-  readRememberedLocalModelSettings,
+  DEFAULT_LOCAL_PARALLEL,
   resolveLocalModelLoadState,
-  writeRememberedLocalModelSettings
+  localWithLoadState,
+  type LocalModelLoadState
 } from '$lib/stores/app-store-local-model';
 import {
   buildWorkspaceFromIndexResult,
@@ -244,6 +242,8 @@ class AppStore {
     }
   });
   get reasoningCapabilities() { return this.thinkingCapabilities.capabilities; }
+  /** The selected local model's own load config (context, thinking, projector…); empty = all auto. */
+  get activeLoadConfig(): LocalLoadConfig { return activeLoadConfig(this.config.llm?.local as Record<string, unknown> | undefined); }
   set reasoningCapabilities(value: ReasoningCapabilities) { this.thinkingCapabilities.capabilities = value; }
   composerMode = $state<'chat' | 'instant' | 'agent'>('agent');
   pendingAttachments = $state<Attachment[]>([]);
@@ -274,9 +274,9 @@ class AppStore {
   localModelLoadKeepInMemory = $state(false);
   localModelLoadMmap = $state(true);
   localModelLoadSeed = $state('');
-  localModelLoadParallel = $state('1');
-  /** A load started from the model menu runs without its dialog; a failure brings the dialog back. */
-  localModelLoadQuiet = $state(false);
+  localModelLoadParallel = $state(String(DEFAULT_LOCAL_PARALLEL));
+  /** Guards against an older open finishing after a newer one. */
+  private localModelLoadOpenToken = 0;
   localModelLoadRopeFreqBase = $state('');
   localModelLoadRopeFreqScale = $state('');
   localModelLoadCacheTypeK = $state('f16');
@@ -294,13 +294,42 @@ class AppStore {
   localModelLoadCacheReuse = $state('');
   localModelLoadSwaFull = $state(false);
   localModelLoadSplitMode = $state('');
-  localModelRememberSettings = $state(false);
   localModelLoadProgress = $state(0);
   localModelLoadPhase = $state('');
   /** Why the last load failed, in words; cleared when a new load starts. */
   localModelLoadError = $state('');
   localModelLoading = $state(false);
   localModelActive = $state<{ name: string; path: string; hasMmproj: boolean } | null>(null);
+  /** The model the main server last reported ready (an extra instance in chat is not it). */
+  private mainServerModelPath: string | null = null;
+
+  /**
+   * The loaded model follows the server, not the last button pressed: set
+   * when the main server reports ready (also after the app restarts), cleared
+   * when it stops or fails. It used to be a copy set only by a load from this
+   * window, so the pill named a model whose server had died, and a model
+   * already running at startup read as "none loaded".
+   */
+  syncLocalModelFromStatus(status: { state?: unknown; model_path?: string | null } | null) {
+    const path = typeof status?.model_path === 'string' ? status.model_path : null;
+    // The supervisor reports a failure as `{ Error: message }`.
+    const state = typeof status?.state === 'string' ? status.state : status?.state ? 'error' : undefined;
+    if (state === 'ready' && path) {
+      this.mainServerModelPath = path;
+      if (this.localModelActive?.path?.toLowerCase() !== path.toLowerCase()) {
+        const name = path.split(/[\\/]/).pop()?.replace(/\.gguf$/i, '') || path;
+        this.localModelActive = { name, path, hasMmproj: !!activeLoadConfig(this.config.llm?.local as Record<string, unknown> | undefined).mmproj_path };
+      }
+      return;
+    }
+    if (this.localModelLoading) return;
+    if (state === 'idle' || state === 'error') {
+      const was = this.mainServerModelPath;
+      this.mainServerModelPath = null;
+      // Only the main server's model goes; a chat on an extra instance stays.
+      if (this.localModelActive && (!was || this.localModelActive.path.toLowerCase() === was.toLowerCase())) this.localModelActive = null;
+    }
+  }
   onboardingOpen = $state(false);
   onboardingCompleted = $state(false);
   userName = $state(typeof localStorage !== 'undefined' ? (localStorage.getItem(USER_NAME_KEY) || '') : '');
@@ -622,7 +651,7 @@ class AppStore {
         backendMode: this.backendMode,
         invoke: toInvoke(electronApi),
         messages: outboundMessages,
-        localContextLength: this.config.llm?.local?.context_length,
+        localContextLength: this.activeLoadConfig.context_length,
         localMaxTokens: this.config.llm?.local?.max_tokens,
         providerMaxTokens: provider?.max_tokens,
         activeProviderModel: provider?.model,
@@ -896,45 +925,29 @@ class AppStore {
     this.activityDrawerOpen = false;
   }
 
+  /**
+   * Opens the load settings for `model`, filled from that model's own saved
+   * config (auto for anything it never had). The dialog appears once its
+   * fields are ready, so it never shows the previous model's values first.
+   */
   async openLocalModelLoadDialog(model: LocalModelLoadTarget, options: { asInstance?: boolean } = {}) {
     if (!model.path) return;
+    // Reopening during a load shows its progress, not a fresh form.
+    if (this.localModelLoading) {
+      this.localModelLoadTarget = model;
+      return;
+    }
+    const opening = ++this.localModelLoadOpenToken;
+    const runtimePath = this.config.llm?.local?.runtime_path || '';
+    const detectedProjector = await this.detectMmprojForModel(model.path);
+    if (opening !== this.localModelLoadOpenToken) return;
+    const resolved = resolveLocalModelLoadState({ config: this.config, model, runtimePath, mmprojPath: detectedProjector });
     this.localModelLoadAsInstance = !!options.asInstance;
     this.localModelLoadShare = false;
-    this.localModelLoadTarget = model;
-    // Reopening during a load shows its progress; only a fresh dialog resets it.
-    if (this.localModelLoading) return;
-    this.localModelLoadRuntimePath = this.config.llm?.local?.runtime_path || '';
     this.localModelLoadProgress = 0;
     this.localModelLoadPhase = '';
     this.localModelLoadError = '';
-    // Auto-detect mmproj in same folder
-    this.localModelLoadMmprojPath = '';
-    this.localModelLoadMmprojPath = await this.detectMmprojForModel(model.path);
-    const remembered = readRememberedLocalModelSettings()[model.id] || {};
-    let recommended: Awaited<ReturnType<typeof getRecommendedSettings>> | null = null;
-    try {
-      const hasRememberedContext = Object.prototype.hasOwnProperty.call(remembered, 'context_length');
-      const hasRememberedGpu = Object.prototype.hasOwnProperty.call(remembered, 'gpu_offload');
-      const recommendedContextHint = hasRememberedContext ? pickNumber(remembered.context_length) : undefined;
-      const recommendedGpuHint = hasRememberedGpu ? pickNumber(remembered.gpu_offload) : undefined;
-      recommended = await getRecommendedSettings(
-        model.path,
-        recommendedContextHint,
-        recommendedGpuHint,
-        this.localModelLoadRuntimePath || this.config.llm?.local?.runtime_path
-      );
-    } catch {
-      recommended = null;
-    }
-    const resolved = resolveLocalModelLoadState({
-      remembered,
-      config: this.config,
-      model,
-      runtimePath: this.localModelLoadRuntimePath,
-      recommended,
-      hardwareConcurrency: navigator.hardwareConcurrency,
-      mmprojPath: this.localModelLoadMmprojPath
-    });
+    this.localModelLoadRuntimePath = resolved.runtimePath;
     this.localModelLoadContextLength = resolved.contextLength;
     this.localModelLoadGpuLayers = resolved.gpuLayers;
     this.localModelLoadCpuThreads = resolved.cpuThreads;
@@ -961,7 +974,40 @@ class AppStore {
     this.localModelLoadCacheReuse = resolved.cacheReuse;
     this.localModelLoadSwaFull = resolved.swaFull;
     this.localModelLoadSplitMode = resolved.splitMode;
-    this.localModelRememberSettings = resolved.rememberSettings;
+    this.localModelLoadTarget = model;
+  }
+
+  /** The load dialog's current values as one state (what Load saves and launches). */
+  get localModelLoadState(): LocalModelLoadState {
+    return {
+      contextLength: this.localModelLoadContextLength,
+      gpuLayers: this.localModelLoadGpuLayers,
+      cpuThreads: this.localModelLoadCpuThreads,
+      batchSize: this.localModelLoadBatchSize,
+      runtimePath: this.localModelLoadRuntimePath,
+      flashAttention: this.localModelLoadFlashAttention,
+      offloadKvCache: this.localModelLoadOffloadKvCache,
+      keepInMemory: this.localModelLoadKeepInMemory,
+      mmap: this.localModelLoadMmap,
+      seed: this.localModelLoadSeed,
+      parallel: this.localModelLoadParallel,
+      ropeFreqBase: this.localModelLoadRopeFreqBase,
+      ropeFreqScale: this.localModelLoadRopeFreqScale,
+      cacheTypeK: this.localModelLoadCacheTypeK,
+      cacheTypeV: this.localModelLoadCacheTypeV,
+      mmprojPath: this.localModelLoadMmprojPath,
+      thinkingMode: this.localModelLoadThinkingMode,
+      mtpEnabled: this.localModelLoadMtpEnabled,
+      mtpDraftPath: this.localModelLoadMtpDraftPath,
+      mtpDraftNMax: this.localModelLoadMtpDraftNMax,
+      cpuMoe: this.localModelLoadCpuMoe,
+      nCpuMoe: this.localModelLoadNCpuMoe,
+      contextShift: this.localModelLoadContextShift,
+      cacheRamMb: this.localModelLoadCacheRamMb,
+      cacheReuse: this.localModelLoadCacheReuse,
+      swaFull: this.localModelLoadSwaFull,
+      splitMode: this.localModelLoadSplitMode
+    };
   }
 
   /** Hides the dialog. A load in progress keeps running and reporting. */
@@ -1105,14 +1151,27 @@ class AppStore {
     }
   }
 
-  /** Load with the remembered/recommended settings and no dialog (the model menu's path). */
-  async loadLocalModelQuietly(model: LocalModelLoadTarget) {
-    this.localModelLoadQuiet = true;
+  /**
+   * Restarts the selected model with its saved config and the app-wide
+   * settings (Settings → Local server's "Apply and restart"). No dialog and
+   * no second copy of the settings: it is the same launch a chat makes.
+   */
+  async reloadLocalModel() {
+    const path = this.config.llm?.local?.selected_model_path;
+    if (!path || this.localModelLoading) return;
+    this.localModelLoading = true;
+    this.localModelLoadError = '';
     try {
-      await this.openLocalModelLoadDialog(model);
-      await this.confirmLocalModelLoad();
+      await loadLocalModel(await loadChatConfig(), path);
+      await modelsStore.refreshStatus();
+    } catch (error) {
+      const message = describeLocalLoadError(toErrorMessage(error));
+      this.localModelLoadError = message;
+      this.localModelActive = null;
+      void modelsStore.refreshStatus();
+      toastStore.error(message);
     } finally {
-      this.localModelLoadQuiet = false;
+      this.localModelLoading = false;
     }
   }
 
@@ -1133,6 +1192,14 @@ class AppStore {
       if (!this.localModelLoadMmprojPath && target.path) {
         this.localModelLoadMmprojPath = await this.detectMmprojForModel(target.path);
       }
+      const loadState = this.localModelLoadState;
+      // This model's config, plus the app-wide engine and slots. Written
+      // before the selection moves, so a legacy config that described the
+      // previous model is kept as that model's entry.
+      await this.commitConfig({
+        ...this.config,
+        llm: { ...this.config.llm, local: localWithLoadState(this.config.llm?.local, target.path, loadState) }
+      });
       await this.setBackendMode('local');
       this.localModelLoadProgress = 12;
       this.localModelLoadPhase = 'Saving local model selection';
@@ -1143,44 +1210,6 @@ class AppStore {
         source: 'local',
         details: target.details
       });
-      const loadState = {
-        contextLength: this.localModelLoadContextLength,
-        gpuLayers: this.localModelLoadGpuLayers,
-        cpuThreads: this.localModelLoadCpuThreads,
-        batchSize: this.localModelLoadBatchSize,
-        runtimePath: this.localModelLoadRuntimePath,
-        flashAttention: this.localModelLoadFlashAttention,
-        offloadKvCache: this.localModelLoadOffloadKvCache,
-        keepInMemory: this.localModelLoadKeepInMemory,
-        mmap: this.localModelLoadMmap,
-        seed: this.localModelLoadSeed,
-        parallel: this.localModelLoadParallel,
-        ropeFreqBase: this.localModelLoadRopeFreqBase,
-        ropeFreqScale: this.localModelLoadRopeFreqScale,
-        cacheTypeK: this.localModelLoadCacheTypeK,
-        cacheTypeV: this.localModelLoadCacheTypeV,
-        mmprojPath: this.localModelLoadMmprojPath,
-        thinkingMode: this.localModelLoadThinkingMode,
-        mtpEnabled: this.localModelLoadMtpEnabled,
-        mtpDraftPath: this.localModelLoadMtpDraftPath,
-        mtpDraftNMax: this.localModelLoadMtpDraftNMax,
-        cpuMoe: this.localModelLoadCpuMoe,
-        nCpuMoe: this.localModelLoadNCpuMoe,
-        contextShift: this.localModelLoadContextShift,
-        cacheRamMb: this.localModelLoadCacheRamMb,
-        cacheReuse: this.localModelLoadCacheReuse,
-        swaFull: this.localModelLoadSwaFull,
-        splitMode: this.localModelLoadSplitMode,
-        rememberSettings: this.localModelRememberSettings
-      };
-      await this.updateLocalSettings(buildLocalModelSettingsPatch(loadState));
-      const remembered = readRememberedLocalModelSettings();
-      if (this.localModelRememberSettings) {
-        remembered[target.id] = buildRememberedLocalModelSettingsEntry(loadState);
-      } else {
-        delete remembered[target.id];
-      }
-      writeRememberedLocalModelSettings(remembered);
       const config = await loadChatConfig();
       this.localModelLoadProgress = 24;
       this.localModelLoadPhase = 'Launching local runtime';
@@ -1188,11 +1217,9 @@ class AppStore {
       // over `supervisor-event`; see subscribeToLoadProgress.
       const stopTrackingProgress = await this.subscribeToLoadProgress();
       try {
-        await loadLocalModel(buildLocalModelRuntimeRequest({
-          config,
-          target,
-          state: loadState
-        }));
+        // Launched from what was just saved, through the same mapping every
+        // other start uses (shared/local-launch.ts).
+        await loadLocalModel(config, target.path);
       } finally {
         stopTrackingProgress();
       }
@@ -1218,6 +1245,10 @@ class AppStore {
     } catch (error) {
       const message = describeLocalLoadError(toErrorMessage(error));
       this.localModelLoadError = message;
+      // The previous server was stopped to make room: nothing is loaded now,
+      // and the pill must not keep naming the old model.
+      this.localModelActive = null;
+      void modelsStore.refreshStatus();
       this.localModelLoadProgress = 0;
       this.localModelLoadPhase = '';
       // The dialog may be hidden: the toast is how the failure reaches the user.
@@ -1230,6 +1261,8 @@ class AppStore {
   async init() {
     this.ready = false;
     this.error = null;
+    // The loaded model is whatever the server reports (see syncLocalModelFromStatus).
+    modelsStore.onStatus = (status) => this.syncLocalModelFromStatus(status);
     // The provider directory comes from the core; nothing waits on it.
     void loadProviderDirectory();
 
@@ -3074,7 +3107,7 @@ class AppStore {
       } catch {
         // The runtime is not answering: the configured size stands in for it.
       }
-      return Number(this.config.llm?.local?.context_length) || FALLBACK_CONTEXT_TOKENS;
+      return Number(this.activeLoadConfig.context_length) || FALLBACK_CONTEXT_TOKENS;
     }
     const providerName = this.activeProviderName;
     const model = this.activeProvider?.model;

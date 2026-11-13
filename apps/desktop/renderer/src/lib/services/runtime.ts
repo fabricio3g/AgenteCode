@@ -1,6 +1,7 @@
-import type { AppConfig, LocalThinkingMode } from '$lib/types/chat';
+import type { AppConfig } from '$lib/types/chat';
 import type { LlamaConfig, ModelSession, RecommendedSettings, RuntimeTelemetry, SupervisorEvent, SupervisorStatus } from '$lib/types/bridge';
 import { invoke, listen } from './bridge';
+import { launchConfigFromSaved, launchSignature, type LocalLaunchConfig } from '$shared/local-launch';
 
 const DEFAULT_LOCAL_BASE_URL = 'http://127.0.0.1:11435/v1';
 let lastLocalLoadSignature: string | null = null;
@@ -23,18 +24,6 @@ export function resolveLocalBaseUrl(config?: AppConfig): string {
   return toClientSafeBaseUrl(normalizeLocalBaseUrl(config?.llm?.local?.base_url));
 }
 
-function resolveLocalBindBaseUrl(config?: AppConfig): string {
-  return normalizeLocalBaseUrl(config?.llm?.local?.base_url);
-}
-
-function parseHostPort(baseUrl: string): { host: string; port: number } {
-  const url = new URL(normalizeLocalBaseUrl(baseUrl));
-  return {
-    host: url.hostname || '127.0.0.1',
-    port: url.port ? Number(url.port) : url.protocol === 'https:' ? 443 : 80
-  };
-}
-
 async function startLlama(config: LlamaConfig): Promise<string> {
   return invoke<string>('start_llama', { config });
 }
@@ -44,39 +33,6 @@ export async function stopLlama(): Promise<void> {
   localLoad = null;
   await invoke<void>('stop_llama');
   lastLocalLoadSignature = null;
-}
-
-function buildLocalLoadSignature(config: LlamaConfig): string {
-  return JSON.stringify({
-    model_path: config.model_path,
-    runtime_path: config.runtime_path || null,
-    backend_mode: config.backend_mode || 'auto',
-    context_length: config.context_length ?? null,
-    gpu_offload: config.gpu_offload ?? null,
-    cpu_threads: config.cpu_threads ?? null,
-    batch_size: config.batch_size ?? null,
-    flash_attention: config.flash_attention ?? null,
-    offload_kv_cache: config.offload_kv_cache ?? null,
-    mmap: config.mmap ?? null,
-    keep_in_memory: config.keep_in_memory ?? null,
-    seed: config.seed ?? null,
-    parallel: config.parallel ?? null,
-    rope_freq_base: config.rope_freq_base ?? null,
-    rope_freq_scale: config.rope_freq_scale ?? null,
-    cache_type_k: config.cache_type_k ?? null,
-    cache_type_v: config.cache_type_v ?? null,
-    mmproj_path: config.mmproj_path ?? null,
-    mtp: config.mtp ?? null,
-    mtp_draft_path: config.mtp_draft_path ?? null,
-    mtp_draft_n_max: config.mtp_draft_n_max ?? null,
-    cpu_moe: config.cpu_moe ?? null,
-    n_cpu_moe: config.n_cpu_moe ?? null,
-    context_shift: config.context_shift ?? null,
-    cache_ram_mb: config.cache_ram_mb ?? null,
-    cache_reuse: config.cache_reuse ?? null,
-    swa_full: config.swa_full ?? null,
-    split_mode: config.split_mode ?? null
-  });
 }
 
 export async function getSupervisorStatus(): Promise<SupervisorStatus> {
@@ -125,6 +81,14 @@ export interface LocalCommandPreview {
  * Built in main through the same resolver and capability probe as a real
  * launch, so the preview cannot drift from what actually executes.
  */
+/** A device a llama-server build can offload to, as `--list-devices` reports it. */
+export type RuntimeDevice = { id: string; backend: string; name: string; totalMb: number | null; freeMb: number | null };
+
+/** llama.cpp's own device list for an engine (the configured one when no path is given). */
+export async function getRuntimeDevices(runtimePath?: string | null): Promise<{ runtimePath: string | null; devices: RuntimeDevice[] }> {
+  return invoke('runtime_devices', { runtimePath: runtimePath || null });
+}
+
 export async function previewLocalModelCommand(config: Record<string, unknown>): Promise<LocalCommandPreview> {
   return invoke<LocalCommandPreview>('preview_local_model_command', { config });
 }
@@ -155,84 +119,44 @@ async function waitForLocalServer(baseUrl: string, timeoutMs = 60_000, signal?: 
   throw new Error('Local runtime did not become ready in time');
 }
 
+/**
+ * The chat path: answer with the server if it is up, otherwise start the
+ * selected model with its saved settings — the same launch the load dialog
+ * makes. It used to restart with main's "recommended" numbers instead, which
+ * pinned an 8k context (and a CPU-only engine choice) after every idle sleep
+ * or crash.
+ */
 export async function ensureLocalRuntime(config: AppConfig): Promise<string> {
   const modelPath = config.llm?.local?.selected_model_path;
   if (!modelPath) {
     throw new Error('Select a local model in Settings before using local mode');
   }
-
   const baseUrl = resolveLocalBaseUrl(config);
-
   try {
     await waitForLocalServer(baseUrl, 1500);
     return baseUrl;
   } catch {
     // start it below
   }
-
-  const settings = await getRecommendedSettings(
-    modelPath,
-    config.llm?.local?.context_length,
-    config.llm?.local?.gpu_layers,
-    config.llm?.local?.runtime_path
-  );
-  const { host, port } = parseHostPort(resolveLocalBindBaseUrl(config));
-
-  await startLlama({
-    model_path: modelPath,
-    backend_mode: settings.backend,
-    host,
-    port,
-    context_length: settings.context_length,
-    gpu_offload: settings.gpu_layers,
-    batch_size: settings.batch_size,
-    cpu_threads: settings.cpu_threads,
-    flash_attention: settings.flash_attention,
-    offload_kv_cache: settings.offload_kv,
-    mmap: settings.use_mmap,
-    keep_in_memory: config.llm?.local?.keep_in_memory ?? false,
-    runtime_path: config.llm?.local?.runtime_path
-  });
-
-  await waitForLocalServer(baseUrl);
-  return baseUrl;
+  return loadLocalModel(config, modelPath);
 }
 
-export async function loadLocalModel(args: {
-  config: AppConfig;
-  modelPath: string;
-  runtimePath?: string;
-  contextLength?: number;
-  gpuLayers?: number;
-  cpuThreads?: number;
-  batchSize?: number;
-  flashAttention?: boolean;
-  offloadKvCache?: boolean;
-  keepInMemory?: boolean;
-  mmap?: boolean;
-  seed?: number;
-  parallel?: number;
-  ropeFreqBase?: number;
-  ropeFreqScale?: number;
-  cacheTypeK?: string;
-  cacheTypeV?: string;
-  mmprojPath?: string;
-  thinkingMode?: LocalThinkingMode;
-  mtp?: boolean;
-  mtpDraftPath?: string;
-  mtpDraftNMax?: number;
-  cpuMoe?: boolean;
-  nCpuMoe?: number;
-  contextShift?: boolean;
-  cacheRamMb?: number;
-  cacheReuse?: number;
-  swaFull?: boolean;
-  splitMode?: string;
-}): Promise<string> {
-  const signature = JSON.stringify(args);
+/**
+ * Starts `modelPath` with the settings saved for it (see `launchConfigFromSaved`).
+ * The one renderer path to llama-server: the dialog saves its choices first and
+ * then calls this, and so does the chat when the server is down.
+ *
+ * A failure is reported as llama.cpp reported it. There is no fallback ladder:
+ * it used to retry on another engine, then with half the GPU layers, then on
+ * the CPU at a 2,048 context — and said "Model loaded" over a model that was
+ * no longer the one chosen.
+ */
+export async function loadLocalModel(config: AppConfig, modelPath: string): Promise<string> {
+  const launch = launchConfigFromSaved(config.llm?.local as Record<string, unknown> | undefined, modelPath);
+  const signature = launchSignature(launch);
   if (localLoad?.signature === signature) return localLoad.promise;
   const generation = ++localLoadGeneration;
-  const request = { signature, promise: performLocalModelLoad(args, generation) };
+  const request = { signature, promise: performLocalModelLoad(config, launch, signature, generation) };
   localLoad = request;
   try {
     return await request.promise;
@@ -241,164 +165,33 @@ export async function loadLocalModel(args: {
   }
 }
 
-async function performLocalModelLoad(args: Parameters<typeof loadLocalModel>[0], generation: number): Promise<string> {
+async function performLocalModelLoad(config: AppConfig, launch: LocalLaunchConfig, signature: string, generation: number): Promise<string> {
   const checkCurrent = () => {
     if (generation !== localLoadGeneration) throw new Error('Model load cancelled by a stop or a newer load request.');
   };
-  const stopForRestart = async () => {
-    checkCurrent();
-    await invoke<void>('stop_llama');
-    checkCurrent();
-  };
-  const baseUrl = resolveLocalBaseUrl(args.config);
+  const baseUrl = resolveLocalBaseUrl(config);
 
-  const settings = await getRecommendedSettings(
-    args.modelPath,
-    args.contextLength ?? args.config.llm?.local?.context_length,
-    args.gpuLayers ?? args.config.llm?.local?.gpu_layers,
-    args.runtimePath || args.config.llm?.local?.runtime_path
-  );
-  checkCurrent();
-  const { host, port } = parseHostPort(resolveLocalBindBaseUrl(args.config));
-  const baseStartConfig: LlamaConfig = {
-    model_path: args.modelPath,
-    backend_mode: settings.backend,
-    host,
-    port,
-    // Sizing is left undefined unless the user picked a number. Backfilling
-    // from `settings` here would make every launch look hand-tuned and stop
-    // llama.cpp's own --fit from ever running.
-    context_length: args.contextLength,
-    gpu_offload: args.gpuLayers,
-    cpu_threads: args.cpuThreads,
-    batch_size: args.batchSize,
-    flash_attention: args.flashAttention ?? args.config.llm?.local?.flash_attention ?? settings.flash_attention,
-    offload_kv_cache: args.offloadKvCache ?? args.config.llm?.local?.offload_kv_cache ?? settings.offload_kv,
-    mmap: args.mmap ?? args.config.llm?.local?.mmap ?? settings.use_mmap,
-    keep_in_memory: args.keepInMemory ?? args.config.llm?.local?.keep_in_memory ?? false,
-    cpu_moe: args.cpuMoe ?? args.config.llm?.local?.cpu_moe ?? false,
-    n_cpu_moe: args.nCpuMoe ?? args.config.llm?.local?.n_cpu_moe ?? undefined,
-    context_shift: args.contextShift ?? args.config.llm?.local?.context_shift ?? false,
-    cache_ram_mb: args.cacheRamMb ?? args.config.llm?.local?.cache_ram_mb ?? undefined,
-    cache_reuse: args.cacheReuse ?? args.config.llm?.local?.cache_reuse ?? undefined,
-    swa_full: args.swaFull ?? args.config.llm?.local?.swa_full ?? false,
-    split_mode: args.splitMode ?? args.config.llm?.local?.split_mode ?? undefined,
-    seed: args.seed ?? args.config.llm?.local?.seed ?? undefined,
-    parallel: args.parallel ?? args.config.llm?.local?.parallel ?? undefined,
-    rope_freq_base: args.ropeFreqBase ?? args.config.llm?.local?.rope_freq_base ?? undefined,
-    rope_freq_scale: args.ropeFreqScale ?? args.config.llm?.local?.rope_freq_scale ?? undefined,
-    cache_type_k: args.cacheTypeK ?? args.config.llm?.local?.cache_type_k ?? undefined,
-    cache_type_v: args.cacheTypeV ?? args.config.llm?.local?.cache_type_v ?? undefined,
-    runtime_path: args.runtimePath || args.config.llm?.local?.runtime_path,
-    mmproj_path: args.mmprojPath || args.config.llm?.local?.mmproj_path || undefined,
-    // Tri-state with legacy fallback: an old `disable_thinking: true` still
-    // means off; 'auto'/absent omits the key so the server detects.
-    thinking_mode: args.thinkingMode
-      ?? args.config.llm?.local?.thinking_mode
-      ?? (args.config.llm?.local?.disable_thinking ? 'off' : 'auto'),
-    mtp: args.mtp ?? args.config.llm?.local?.mtp ?? false,
-    mtp_draft_path: args.mtpDraftPath || args.config.llm?.local?.mtp_draft_path || undefined,
-    mtp_draft_n_max: args.mtpDraftNMax ?? args.config.llm?.local?.mtp_draft_n_max ?? undefined
-  };
-  const desiredSignature = buildLocalLoadSignature(baseStartConfig);
-
+  // The same launch already serving: nothing to do.
   try {
-    const currentStatus = await getSupervisorStatus();
-    const currentModelPath = currentStatus?.model_path || null;
-    if (currentStatus?.state === 'ready' && currentModelPath === args.modelPath && lastLocalLoadSignature === desiredSignature) {
+    const status = await getSupervisorStatus();
+    const samePath = (value: string) => value.replace(/\\/g, '/').toLowerCase();
+    if (status?.state === 'ready' && samePath(String(status?.model_path || '')) === samePath(launch.model_path) && lastLocalLoadSignature === signature) {
       return baseUrl;
     }
   } catch {
-    // proceed with load if status check fails
+    // proceed with the load if the status check fails
   }
 
-  try {
-    await stopForRestart();
-  } catch {
-    // ignore stop failures before restart
-  }
-
-  function isGpuOrRuntimeError(error: unknown) {
-    const value = String((error as Error)?.message || error || '').toLowerCase();
-    return /gpu|vulkan|cuda|cublas|ggml_vulkan|vk_|out of memory|oom|memory allocation|device lost|failed to allocate|terminated before ready|signal:\s*some\(9\)|killed/.test(value);
-  }
-
-  const startWithConfig = async (config: LlamaConfig) => {
-    checkCurrent();
-    await startLlama(config);
-    checkCurrent();
-    await waitForLocalServer(baseUrl);
-    checkCurrent();
-  };
-
-  let lastError: unknown = null;
-  try {
-    await startWithConfig(baseStartConfig);
-    lastLocalLoadSignature = desiredSignature;
-    return baseUrl;
-  } catch (error) {
-    lastError = error;
-  }
   checkCurrent();
-
-  if (baseStartConfig.runtime_path) {
-    try {
-      const retryConfig = { ...baseStartConfig };
-      delete retryConfig.runtime_path;
-      await stopForRestart();
-      await startWithConfig(retryConfig);
-      lastLocalLoadSignature = buildLocalLoadSignature(retryConfig);
-      return baseUrl;
-    } catch (error) {
-      lastError = error;
-    }
-  }
+  await startLlama(launch as LlamaConfig);
   checkCurrent();
-
-  if (Number(baseStartConfig.gpu_offload || 0) > 0 && isGpuOrRuntimeError(lastError)) {
-    try {
-      const saferConfig: LlamaConfig = {
-        ...baseStartConfig,
-        runtime_path: undefined,
-        gpu_offload: Math.max(0, Math.floor(Number(baseStartConfig.gpu_offload || 0) * 0.5)),
-        offload_kv_cache: false,
-        batch_size: Math.min(Number(baseStartConfig.batch_size || settings.batch_size || 512), 128),
-        cache_type_k: 'f16',
-        cache_type_v: 'f16'
-      };
-      await stopForRestart();
-      await startWithConfig(saferConfig);
-      lastLocalLoadSignature = buildLocalLoadSignature(saferConfig);
-      return baseUrl;
-    } catch (error) {
-      lastError = error;
-    }
-  }
+  // main's start resolves once /health answers and /props has been read; this
+  // only confirms the OpenAI endpoint answers too. A large CPU load can take
+  // minutes, so the wait is generous rather than a trigger for retries.
+  await waitForLocalServer(baseUrl, 180_000);
   checkCurrent();
-
-  if (Number(baseStartConfig.gpu_offload || 0) > 0 && isGpuOrRuntimeError(lastError)) {
-    const maxThreads = Math.max(1, Number(args.config.llm?.local?.cpu_threads || navigator.hardwareConcurrency || 1));
-    const cpuSafeConfig: LlamaConfig = {
-      ...baseStartConfig,
-      runtime_path: undefined,
-      context_length: Math.min(Number(baseStartConfig.context_length || settings.context_length || 4096), 2048),
-      gpu_offload: 0,
-      batch_size: Math.min(Number(baseStartConfig.batch_size || settings.batch_size || 512), 96),
-      cpu_threads: Math.max(2, Math.min(maxThreads, Number(baseStartConfig.cpu_threads || maxThreads))),
-      flash_attention: false,
-      offload_kv_cache: false,
-      keep_in_memory: false,
-      mmap: true,
-      cache_type_k: 'f16',
-      cache_type_v: 'f16'
-    };
-    await stopForRestart();
-    await startWithConfig(cpuSafeConfig);
-    lastLocalLoadSignature = buildLocalLoadSignature(cpuSafeConfig);
-    return baseUrl;
-  }
-
-  throw lastError instanceof Error ? lastError : new Error(String(lastError || 'Failed to load local model'));
+  lastLocalLoadSignature = signature;
+  return baseUrl;
 }
 
 export async function onSupervisorEvent(handler: (event: SupervisorEvent) => void): Promise<() => void> {

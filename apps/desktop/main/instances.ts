@@ -17,7 +17,7 @@ import { resolveRuntimeBinary } from './runtime-resolver.ts';
 import { inspectLlamaServer, supportsLlamaFlag } from './llama-runtime.ts';
 import { getHardwareLimits } from './system-info.ts';
 import { endInstanceSession, sessionKeyForPort, startInstanceSession } from './llama-session.ts';
-import { getLlamaStatus, getMainLaunchConfig, getRecommendedSettings, startLlama } from './llm-runner.ts';
+import { getLlamaStatus, getMainLaunchConfig, startLlama } from './llm-runner.ts';
 
 const FIRST_EXTRA_PORT = 11440;
 const LOOPBACK = '127.0.0.1';
@@ -178,28 +178,22 @@ export async function startInstance(options: StartInstanceOptions): Promise<Inst
   if (!options.model_path || !fs.existsSync(options.model_path)) throw new Error(`Model file not found: ${options.model_path}`);
   const config = options.config
     ? { ...options.config, model_path: options.model_path, parallel: Math.max(1, Math.floor(Number(options.config.parallel) || 1)) }
-    : await quickConfig(options);
+    : quickConfig(options);
   return launchNew(config, !!options.share);
 }
 
-/** The quick path (no dialog): recommended settings, context per parallel slot. */
-async function quickConfig(options: StartInstanceOptions): Promise<Record<string, unknown>> {
-  const settings = await getRecommendedSettings(options.model_path, options.context_length ?? null, null, '');
-  const parallel = Math.max(1, Math.min(16, Math.floor(Number(options.parallel) || 1)));
-  // llama.cpp splits the context between the slots: give each slot the
-  // context asked for.
-  const perSlot = Number(options.context_length || settings.context_length) || 4096;
+/**
+ * The quick path (no dialog): only what was asked for. Context and GPU layers
+ * stay unset unless given, so llama.cpp's --fit sizes them against real
+ * memory; every slot can use the whole context (unified KV).
+ */
+function quickConfig(options: StartInstanceOptions): Record<string, unknown> {
   const config: Record<string, unknown> = {
     model_path: options.model_path,
-    backend_mode: settings.backend || 'auto',
-    context_length: perSlot * parallel,
-    gpu_offload: settings.gpu_layers,
-    cpu_threads: settings.cpu_threads,
-    batch_size: settings.batch_size,
-    flash_attention: settings.flash_attention,
-    offload_kv_cache: settings.offload_kv,
-    parallel
+    backend_mode: 'auto',
+    parallel: Math.max(1, Math.min(16, Math.floor(Number(options.parallel) || 1)))
   };
+  if (Number(options.context_length) > 0) config.context_length = Math.floor(Number(options.context_length));
   return config;
 }
 

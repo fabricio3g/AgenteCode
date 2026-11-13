@@ -6,6 +6,7 @@ import fr from '../../renderer/src/lib/locales/fr.json';
 import de from '../../renderer/src/lib/locales/de.json';
 import ja from '../../renderer/src/lib/locales/ja.json';
 import type { AgenteTransport } from './transport.ts';
+import { launchConfigFromSaved } from '../../shared/local-launch.ts';
 
 const catalogs = { en, es, 'pt-BR': pt, zh, fr, de, ja };
 
@@ -27,7 +28,6 @@ type PreflightDeps = {
   localConfig: () => LocalConfig;
   status: () => Record<string, unknown>;
   pendingLaunch: () => { config: Record<string, unknown>; promise: Promise<unknown> } | null;
-  recommended: (modelPath: string, context: unknown, gpu: unknown, runtime: string) => Promise<Record<string, any>>;
   start: (config: Record<string, unknown>) => Promise<unknown>;
   locale: () => string;
 };
@@ -36,24 +36,14 @@ function matchesLaunch(config: Record<string, unknown>, port: number, selectedPa
   return Number(config.port || 11435) === port && (!selectedPath || config.model_path === selectedPath);
 }
 
+/**
+ * The agent's auto-start: the selected model with its saved settings, through
+ * the same mapping as every other load (shared/local-launch.ts). It used to
+ * start from main's recommendation — an 8k context on 16 GB machines, GPU
+ * layers from a VRAM probe that misses integrated GPUs, and memory locking.
+ */
 async function loadSelectedModel(deps: PreflightDeps, local: LocalConfig, selectedPath: string, port: number): Promise<void> {
-  const settings = await deps.recommended(selectedPath, local.context_length, local.gpu_layers, local.runtime_path || '');
-  await deps.start({
-    model_path: selectedPath,
-    backend_mode: settings.backend,
-    host: '127.0.0.1',
-    port,
-    context_length: settings.context_length,
-    gpu_offload: settings.gpu_layers,
-    batch_size: settings.batch_size,
-    cpu_threads: settings.cpu_threads,
-    flash_attention: settings.flash_attention,
-    offload_kv_cache: settings.offload_kv,
-    mmap: settings.use_mmap,
-    keep_in_memory: true,
-    runtime_path: local.runtime_path,
-    mmproj_path: local.mmproj_path
-  });
+  await deps.start({ ...launchConfigFromSaved(local, selectedPath), port });
 }
 
 async function existingLaunch(deps: PreflightDeps, port: number, selectedPath: string): Promise<boolean> {
@@ -93,12 +83,16 @@ export function createProviderPreflight(deps: PreflightDeps): (transport: Agente
     finally { clearPending(request); }
   }
   async function ensureLocal(transport: AgenteTransport): Promise<void> {
-    const local = { ...deps.localConfig(), ...(transport.modelPath !== undefined ? { selected_model_path: transport.modelPath } : {}) };
+    // The saved settings stay as saved: they name the file they were chosen
+    // for, so a conversation pinned to another file starts that one on auto
+    // instead of inheriting this one's context and GPU layers.
+    const saved = deps.localConfig();
+    const local = { ...saved, ...(transport.modelPath !== undefined ? { selected_model_path: transport.modelPath } : {}) };
     const { port, selectedPath } = localSelection(local, transport.baseUrl);
     // A Home load may still be preparing the model. Await its exact launch
-    // rather than replacing it with recommended defaults midway through.
+    // rather than replacing it midway through.
     if (await existingLaunch(deps, port, selectedPath)) return;
-    await loadConfiguredModel(local, transport, selectedPath, port);
+    await loadConfiguredModel(saved, transport, selectedPath, port);
   }
   return async (transport) => {
     if (transport.providerName === 'local') return ensureLocal(transport);

@@ -130,7 +130,7 @@ describe('llama.cpp runtime compatibility', () => {
   });
 
   it('emits KV-offload, parallel and MoE flags only when they change behaviour', () => {
-    const supportedFlags = new Set(['--no-kv-offload', '--cpu-moe', '--n-cpu-moe', '--context-shift']);
+    const supportedFlags = new Set(['--no-kv-offload', '--cpu-moe', '--n-cpu-moe', '--context-shift', '--kv-unified']);
     const build = (config) => buildLlamaArgs(
       { model_path: '', port: 11435, backend_mode: 'cpu', ...config },
       process.execPath, null, { supportedFlags }
@@ -145,8 +145,15 @@ describe('llama.cpp runtime compatibility', () => {
     // `offload_kv_cache` is the key the renderer actually sends.
     assert.equal(build({ offload_kv_cache: false }).includes('--no-kv-offload'), true);
     assert.equal(build({ offload_kv_cache: true }).includes('--no-kv-offload'), false);
-    assert.equal(build({ parallel: 1 }).includes('--parallel'), false);
-    assert.equal(build({ parallel: 4 }).includes('--parallel'), true);
+    // An explicit slot count is passed as asked; more than one slot shares one
+    // KV pool, so each chat can use the whole --ctx-size instead of ctx / slots.
+    const one = build({ parallel: 1 });
+    assert.deepEqual(one.slice(one.indexOf('--parallel'), one.indexOf('--parallel') + 2), ['--parallel', '1']);
+    assert.equal(one.includes('--kv-unified'), false);
+    const four = build({ parallel: 4 });
+    assert.deepEqual(four.slice(four.indexOf('--parallel'), four.indexOf('--parallel') + 2), ['--parallel', '4']);
+    assert.equal(four.includes('--kv-unified'), true);
+    assert.equal(defaults.includes('--kv-unified'), false);
     assert.equal(build({ context_shift: true }).includes('--context-shift'), true);
 
     // The partial form wins over the blanket one; they cannot both be passed.

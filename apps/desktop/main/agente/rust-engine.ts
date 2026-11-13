@@ -14,7 +14,7 @@ import { bindComputerOwner, cancelComputerTurn, settleComputerTurn, computerSess
 import { resolveApiKey } from '../provider-auth.ts';
 import { getAppPaths } from '../paths.ts';
 import { forgetProviderKey, loadConfig, saveConfig } from '../config.ts';
-import { getLlamaStatus, getPendingMainLaunch, getRecommendedSettings, startLlama } from '../llm-runner.ts';
+import { getLlamaStatus, getPendingMainLaunch, startLlama } from '../llm-runner.ts';
 import { moduleDirname } from '../module-env.ts';
 import { AgenteDaemon, resolveAgenteBinary } from '../agente-daemon.ts';
 import type { AgenteClient } from '../agente-client.ts';
@@ -67,7 +67,6 @@ const ensureProvider = createProviderPreflight({
   localConfig: () => (loadConfig().llm?.local ?? {}) as Record<string, unknown>,
   status: getLlamaStatus,
   pendingLaunch: getPendingMainLaunch,
-  recommended: getRecommendedSettings,
   start: (config) => startLlama(config, getCodeMainWindow()),
   locale: desktopLocale
 });
@@ -249,7 +248,11 @@ export async function configureDesktopProvider(client: Pick<AgenteClient, 'reque
 function localLimits(limits: unknown, context: number): unknown {
   const current = (limits && typeof limits === 'object' ? limits : {}) as { output?: unknown };
   const output = Number(current.output) || 0;
-  return { ...current, context, output: output && output < context ? output : Math.floor(context / 4) };
+  // The reply reserve is at most a quarter of the window. Keeping a catalog
+  // output of 4k on an 8k server left 4k for the system prompt and tool
+  // schemas, and "Hello" overflowed.
+  const reserve = Math.floor(context / 4);
+  return { ...current, context, output: output > 0 ? Math.min(output, reserve) : reserve };
 }
 
 async function coreRuns(client: AgenteClient, providerId: string): Promise<boolean> {

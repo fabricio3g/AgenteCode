@@ -17,16 +17,19 @@
   import { modelsStore } from '$lib/stores/models.svelte';
   import { formatTokens } from '$lib/services/model-card';
   import { shortModelName } from '$lib/features/chat/model-menu/model-menu';
+  import { DEFAULT_LOCAL_PARALLEL } from '$lib/stores/app-store-local-model';
   import SettingsSection from './SettingsSection.svelte';
   import SettingsRow from './SettingsRow.svelte';
 
   const CHOICES = [1, 2, 4, 6, 8];
 
-  const configured = $derived(Math.max(1, Number(appStore.config.llm?.local?.parallel) || 1));
+  const configured = $derived(Math.max(1, Number(appStore.config.llm?.local?.parallel) || DEFAULT_LOCAL_PARALLEL));
   const loaded = $derived(appStore.localModelActive);
   const running = $derived(Number(modelsStore.status?.total_slots) || 0);
   const serverContext = $derived(Number(modelsStore.status?.n_ctx) || 0);
-  const perChat = $derived(serverContext > 0 ? Math.floor(serverContext / configured) : 0);
+  // The slots share one KV pool (`--kv-unified`), and llama-server already
+  // reports what one slot can use: each chat gets all of it, not a share.
+  const perChat = $derived(serverContext);
   const memoryMb = $derived(Number(modelsStore.status?.memory_mb) || 0);
   /** The server runs a different slot count than the setting: a reload applies it. */
   const stale = $derived(!!loaded && running > 0 && running !== configured);
@@ -36,11 +39,10 @@
 
   let waiting = $state(false);
 
+  /** Same launch a chat makes: the model's own config plus the slots just chosen. */
   async function restart() {
-    const model = appStore.localModelActive;
-    if (!model?.path) return;
     waiting = false;
-    await appStore.loadLocalModelQuietly({ id: model.path, name: model.name || shortModelName(model.path), path: model.path });
+    await appStore.reloadLocalModel();
   }
 
   function apply() {

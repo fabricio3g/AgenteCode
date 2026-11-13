@@ -19,7 +19,7 @@
   import { Button } from '$lib/components/ui';
   import { untrack } from 'svelte';
   import { get } from 'svelte/store';
-  import { Check, ChevronRight, Cpu, LoaderCircle, Power, RefreshCw, Search, Settings2, Square, X } from '$lib/icons';
+  import { Check, ChevronRight, Cpu, LoaderCircle, RefreshCw, Search, Settings2, Square, X } from '$lib/icons';
   import { backdropIn, backdropOut, dialogIn, dialogOut } from '$lib/utils/transitions';
   import { appStore } from '$lib/stores/app.svelte';
   import { modelsStore } from '$lib/stores/models.svelte';
@@ -57,19 +57,12 @@
   let source = $state<Source>('all');
   const showCloud = $derived(source !== 'local');
   const showLocal = $derived(source !== 'cloud' && isElectron());
-  const isAnyModelLoaded = $derived(!!appStore.localModelActive);
   const loadedModelName = $derived(appStore.localModelActive?.name || '');
   const loadedModelPath = $derived(appStore.localModelActive?.path?.toLowerCase() || '');
-  const loadedModelFilename = $derived(
-    loadedModelName
-      ? loadedModelName.split('/').pop()?.split('\\').pop()?.replace(/\.gguf$/i, '') || loadedModelName
-      : ''
-  );
 
   let modelSearch = $state('');
   let searchInput = $state<HTMLInputElement | undefined>(undefined);
   let unloading = $state(false);
-  let confirmSwitch = $state<ModelOption | null>(null);
   let expandedProviders = $state<Record<string, boolean>>({});
   let selectingModel = $state('');
   let showAll = $state<Record<string, boolean>>({});
@@ -200,24 +193,21 @@
     return parts.join(' • ');
   }
 
-  /** A local row: the loaded model is picked at once, another one loads (after a confirm if it replaces one). */
+  /**
+   * A local row: the loaded model is picked at once; any other one opens its
+   * load settings (context, GPU offload, thinking…), where Load replaces the
+   * running model. Nothing loads on a click alone.
+   */
   async function pickLocal(model: ModelOption) {
     if (!model.path || localLoading) return;
     if (chat && appStore.currentChatId !== chat.id) appStore.selectChat(chat.id);
+    setOpen(false);
     if (isLoaded(model)) {
       if (appStore.backendMode !== 'local') await appStore.setBackendMode('local');
       recentModels.remember({ kind: 'local', id: model.id, name: model.name, path: model.path });
-      setOpen(false);
       return;
     }
-    if (isAnyModelLoaded && confirmSwitch?.id !== model.id) {
-      confirmSwitch = model;
-      return;
-    }
-    confirmSwitch = null;
-    setOpen(false);
-    recentModels.remember({ kind: 'local', id: model.id, name: model.name, path: model.path });
-    await appStore.loadLocalModelQuietly(model);
+    await appStore.openLocalModelLoadDialog(model);
   }
 
   async function handleUnload(e: MouseEvent) {
@@ -232,10 +222,6 @@
     } finally {
       unloading = false;
     }
-  }
-
-  async function confirmSwitchModel() {
-    if (confirmSwitch) await pickLocal(confirmSwitch);
   }
 
   /** Cloud refreshes every configured group shown by this picker. */
@@ -273,7 +259,6 @@
     const open = menuOpen;
     if (!open) {
       modelSearch = '';
-      confirmSwitch = null;
       return;
     }
 
@@ -380,14 +365,6 @@
           <div class="picker-note" role="status">
             <LoaderCircle class="size-3.5 shrink-0 animate-spin" />
             <span>{$t('modelPicker.loadingModel')}</span>
-          </div>
-        {/if}
-
-        {#if confirmSwitch}
-          <div class="picker-note">
-            <span class="min-w-0 flex-1">{$t('modelPicker.switchConfirm', { values: { current: loadedModelFilename, next: confirmSwitch.name } })}</span>
-            <Button variant="outline" size="sm" type="button" onclick={() => (confirmSwitch = null)}>{$t('modelPicker.cancel')}</Button>
-            <Button variant="default" size="sm" type="button" onclick={confirmSwitchModel}><Power /> {$t('modelPicker.switch')}</Button>
           </div>
         {/if}
 

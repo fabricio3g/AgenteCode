@@ -335,6 +335,9 @@ export class ManagedProcess {
 
 // ── Argument builders ──
 
+/** The smallest context `--fit` may pick on auto: room for an agent turn's tools. */
+const MIN_AUTO_CONTEXT = 16384;
+
 export function buildLlamaArgs(config, runtimePath, systemInfo = null, capabilities = null) {
   // Resolve runtime configuration with backend detection and context guardrails
   const resolved = resolveRuntimeConfig({
@@ -366,9 +369,10 @@ export function buildLlamaArgs(config, runtimePath, systemInfo = null, capabilit
   if (resolved.contextSource === 'user') args.push('--ctx-size', String(resolved.contextSize));
   if (resolved.gpuLayersSource === 'user') {
     args.push('--n-gpu-layers', String(resolved.gpuLayers));
-  } else if (resolved.backend === 'cpu') {
-    // No usable GPU backend in this build, or the user asked for CPU — say so
-    // rather than letting auto-fit offload anyway.
+  } else if (resolved.backend === 'cpu' && (String(config.backend_mode).toLowerCase() === 'cpu' || resolved.deviceSource === 'list_devices')) {
+    // The build answered and lists no GPU (or the user asked for CPU): say so
+    // rather than letting auto-fit offload anyway. When the probe did not
+    // answer we do not know, so llama.cpp's own -ngl auto decides.
     args.push('--n-gpu-layers', '0');
   }
   if (resolved.batchSource === 'user') args.push('--batch-size', String(resolved.batchSize));
@@ -380,6 +384,13 @@ export function buildLlamaArgs(config, runtimePath, systemInfo = null, capabilit
   }
 
   if (supports('--fit')) args.push('--fit', config.fit_vram === false ? 'off' : 'on');
+  // With context on auto, --fit may shrink it down to --fit-ctx (4096
+  // upstream) — less than an agent turn's tool schemas, so "Hello" overflowed.
+  // Keep the floor at 16k, or the model's own maximum when that is smaller.
+  if (resolved.contextSource !== 'user' && config.fit_vram !== false && supports('--fit-ctx')) {
+    const trained = Number(resolved.ggufContextLength) || 0;
+    args.push('--fit-ctx', String(trained > 0 ? Math.min(MIN_AUTO_CONTEXT, trained) : MIN_AUTO_CONTEXT));
+  }
   if (config.sleep_idle_seconds != null && supports('--sleep-idle-seconds')) {
     args.push('--sleep-idle-seconds', String(config.sleep_idle_seconds));
   }
@@ -452,9 +463,13 @@ export function buildLlamaArgs(config, runtimePath, systemInfo = null, capabilit
   }
 
   if (config.seed != null) args.push('--seed', String(config.seed));
-  // Upstream's `auto` picks the slot count and enables a unified KV buffer;
-  // pinning it to 1 gives up both for nothing.
-  if (Number(config.parallel) > 1) args.push('--parallel', String(Math.floor(Number(config.parallel))));
+  // Slots and context, the way LM Studio does it: `--ctx-size` is what each
+  // chat can use, and the slots share one KV pool (`--kv-unified`). Without
+  // it llama.cpp hands each slot ctx / parallel, so four slots on a 32k load
+  // left every chat 8k. Unset leaves upstream's auto (4 slots, unified).
+  const parallel = Math.floor(Number(config.parallel));
+  if (parallel >= 1) args.push('--parallel', String(parallel));
+  if (parallel > 1 && supports('--kv-unified')) args.push('--kv-unified');
   if (config.rope_freq_base) args.push('--rope-freq-base', String(config.rope_freq_base));
   if (config.rope_freq_scale) args.push('--rope-freq-scale', String(config.rope_freq_scale));
   if (config.mmproj_path) args.push('--mmproj', config.mmproj_path);

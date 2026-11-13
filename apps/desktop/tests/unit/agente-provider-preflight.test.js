@@ -15,7 +15,6 @@ function harness(overrides = {}) {
     localConfig: () => ({ selected_model_path: '/models/model.gguf', runtime_path: '/runtime/server', mmproj_path: '/models/projector.gguf' }),
     status: () => ({ state: 'idle' }),
     pendingLaunch: () => null,
-    recommended: async () => ({ backend: 'cpu', context_length: 4096, gpu_layers: 0, use_mmap: true }),
     start: async (config) => { starts.push(config); },
     locale: () => 'en',
     ...overrides
@@ -35,21 +34,44 @@ test('cold local turns wait for the managed Home launch to finish', async () => 
   assert.equal(completed, true);
 });
 
-test('simultaneous cold turns share recommendations and one load', async () => {
-  const settings = deferred();
-  let probes = 0;
-  const h = harness({ recommended: () => { probes++; return settings.promise; } });
+test('simultaneous cold turns share one load', async () => {
+  const ready = deferred();
+  let launches = 0;
+  const h = harness({ start: (config) => { launches++; h.starts.push(config); return ready.promise; } });
   const turns = [h.ensure(transport), h.ensure(transport), h.ensure(transport)];
   await new Promise((resolve) => setImmediate(resolve));
-  assert.equal(probes, 1);
-  settings.resolve({ backend: 'cpu', context_length: 4096, gpu_layers: 0 });
+  assert.equal(launches, 1);
+  ready.resolve('started');
   await Promise.all(turns);
   assert.equal(h.starts.length, 1);
   assert.equal(h.starts[0].model_path, '/models/model.gguf');
   assert.equal(h.starts[0].mmproj_path, '/models/projector.gguf');
   assert.equal(h.starts[0].runtime_path, '/runtime/server');
-  assert.equal(h.starts[0].gpu_offload, 0);
   assert.equal(h.starts[0].port, 11435);
+});
+
+test('an auto-start pins nothing nobody chose, so llama.cpp --fit sizes it', async () => {
+  const h = harness();
+  await h.ensure(transport);
+  for (const key of ['context_length', 'gpu_offload', 'cpu_threads', 'batch_size', 'keep_in_memory', 'flash_attention']) {
+    assert.equal(h.starts[0][key], undefined, key);
+  }
+});
+
+test('an auto-start keeps the settings saved for that model', async () => {
+  const h = harness({ localConfig: () => ({ selected_model_path: '/models/model.gguf', context_length: 32768, gpu_layers: 12, thinking_mode: 'off', parallel: 4 }) });
+  await h.ensure(transport);
+  assert.equal(h.starts[0].context_length, 32768);
+  assert.equal(h.starts[0].gpu_offload, 12);
+  assert.equal(h.starts[0].thinking_mode, 'off');
+  assert.equal(h.starts[0].parallel, 4);
+});
+
+test('a conversation on another file does not inherit the selected model’s sizing', async () => {
+  const h = harness({ localConfig: () => ({ selected_model_path: '/models/model.gguf', context_length: 262144, gpu_layers: 0 }) });
+  await h.ensure({ ...transport, modelPath: '/models/conversation.gguf' });
+  assert.equal(h.starts[0].context_length, undefined);
+  assert.equal(h.starts[0].gpu_offload, undefined);
 });
 
 test('already ready selected model is reused without a new process', async () => {

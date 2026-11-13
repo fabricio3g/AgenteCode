@@ -18,6 +18,8 @@ type GgufMetadata = {
   quantization: string;
   head_count: number;
   head_count_kv: number;
+  /** Layers with a KV cache (hybrid models have fewer than block_count). */
+  kv_layer_count?: number;
   /** Non-zero only on MoE architectures. */
   expert_count: number;
   embedding_length: number;
@@ -179,6 +181,7 @@ function readGgufMetadata(filePath: string): GgufMetadata {
       quantization: guessQuantization(fileName),
       head_count: Number(ggufFields?.head_count || 0),
       head_count_kv: Number(ggufFields?.head_count_kv || 0),
+      kv_layer_count: Number(ggufFields?.kv_layer_count || 0) || undefined,
       expert_count: Number(ggufFields?.expert_count || 0),
       embedding_length: Number(ggufFields?.embedding_length || 0),
       file_size_bytes: stat.size,

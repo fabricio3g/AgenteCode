@@ -9,6 +9,8 @@
   computer › and Cloud ›. There is no Cloud / On-device switch: the model you
   pick decides where a chat runs. The on-device model is one for the whole app
   (one llama.cpp server), so its door says so and shows how many chats use it.
+  Picking an on-device model that is not loaded opens its load settings
+  (context, GPU offload, thinking…), like LM Studio: nothing loads blind.
   "All models…" opens the full searchable list. A card beside the menu tells
   what a model costs and accepts before you pick it.
 
@@ -68,7 +70,6 @@
   let allOpen = $state(false);
   let allSource = $state<'all' | 'cloud' | 'local'>('all');
   let allProvider = $state<string | null>(null);
-  let confirmId = $state<string | null>(null);
   let cardTarget = $state<CardTarget | null>(null);
   let cardAnchor = $state<HTMLElement | null>(null);
   const group = submenuGroup();
@@ -114,7 +115,7 @@
   const chosenLevel = $derived(controlled ? (givenLevel ?? null) : appStore.reasoningLevel);
   const currentLevel = $derived(levels.includes(chosenLevel) ? chosenLevel : null);
   const modelDefault = $derived<ReasoningLevel | 'auto'>(!controlled && backend === 'local'
-    ? normalizeThinkingMode(appStore.config.llm?.local?.thinking_mode, appStore.config.llm?.local?.disable_thinking)
+    ? normalizeThinkingMode(appStore.activeLoadConfig.thinking_mode)
     : capabilities.default ?? 'auto');
 
   function levelLabel(value: ReasoningLevel | null): string {
@@ -138,9 +139,9 @@
 
   // ── This computer ────────────────────────────────────────────────────
   const localModels = $derived<LocalModel[]>(modelsStore.availableModels ?? []);
-  const slots = $derived(Number(modelsStore.status?.total_slots) || 0);
-  const serverContext = $derived(Number(modelsStore.status?.n_ctx) || 0);
-  const perChat = $derived(slots > 0 && serverContext > 0 ? Math.floor(serverContext / slots) : null);
+  // llama-server reports the context each slot (each chat) can use, already
+  // net of `--parallel`; dividing it by the slot count again halved it twice.
+  const perChat = $derived(Number(modelsStore.status?.n_ctx) || null);
   /** Chats replying through the on-device model right now. */
   const localBusy = $derived(appStore.chats.filter((item) => appStore.isChatGenerating(item.id) && appStore.configForChat(item).llm?.backend_mode === 'local').length);
 
@@ -210,26 +211,20 @@
   }
 
   /**
-   * The loaded model is picked at once. Another one replaces it for every
-   * chat, so the first click asks (in the row itself) and the second loads.
+   * The loaded model is picked at once. Any other one opens its load settings
+   * — the dialog says what it replaces, and Load is the confirmation.
    */
   async function pickLocal(model: { id: string; name: string; path?: string }) {
     if (!model.path || loading) return;
     focusChat();
+    open = false;
     if (isLoaded(model)) {
-      open = false;
       if (appStore.backendMode !== 'local') await appStore.setBackendMode('local');
       recentModels.remember({ kind: 'local', id: model.id, name: model.name, path: model.path });
       return;
     }
-    if (appStore.localModelActive && confirmId !== model.path) {
-      confirmId = model.path;
-      return;
-    }
-    confirmId = null;
-    open = false;
-    recentModels.remember({ kind: 'local', id: model.id, name: model.name, path: model.path });
-    await appStore.loadLocalModelQuietly({ id: model.id, name: model.name, path: model.path });
+    const known = localModels.find((item) => item.path === model.path);
+    await appStore.openLocalModelLoadDialog(known ? { ...known, id: model.id, name: model.name } : { id: model.id, name: model.name, path: model.path });
   }
 
   function pickRecent(entry: RecentModel) {
@@ -271,7 +266,6 @@
   $effect(() => {
     if (open) return;
     group.active = null;
-    confirmId = null;
     cardTarget = null;
     cardAnchor = null;
   });
@@ -324,10 +318,9 @@
       <p class="ui-menu-label">{$t('modelPicker.recent')}</p>
       {#each recentRows as entry (recentKey(entry))}
         {@const current = recentKey(entry) === currentKey}
-        <MenuItem class="model-row" keepOpen={entry.kind === 'local' && !current} {...cardFor(() => recentCard(entry))} onselect={() => pickRecent(entry)}>
+        <MenuItem class="model-row" {...cardFor(() => recentCard(entry))} onselect={() => pickRecent(entry)}>
           {#if entry.kind === 'cloud'}<ProviderIcon provider={entry.provider} size={14} />{:else}<Cpu class="size-3.5 text-muted-foreground" />{/if}
           <span class="ui-menu-item-text"><span class="truncate">{entry.name}</span></span>
-          {#if entry.kind === 'local' && confirmId === entry.path}<span class="row-note">{$t('modelPicker.switch')}?</span>{/if}
           {#if entry.kind === 'local' && isLoaded(entry)}<span class="live-dot" aria-hidden="true"></span>{/if}
           {#if current}<Check class="ui-menu-check size-3.5" />{/if}
         </MenuItem>
@@ -350,13 +343,8 @@
           {@const loaded = isLoaded(model)}
           {@const fit = localFit(model.size_gb, hardwareStore.info)}
           {@const target = loading && appStore.localModelLoadTarget?.path === model.path}
-          <MenuItem class={fit === 'wont' && !loaded ? 'model-row is-off' : 'model-row'} keepOpen {...cardFor(() => localCard(model))} onselect={() => void pickLocal(model)}>
-            <span class="ui-menu-item-text">
-              <span class="truncate">{shortModelName(model.name)}</span>
-              {#if confirmId === model.path}
-                <span class="ui-menu-item-hint">{localBusy ? $t('modelPicker.switchBusy', { values: { n: localBusy } }) : $t('modelPicker.switchConfirm', { values: { current: loadedName, next: shortModelName(model.name) } })}</span>
-              {/if}
-            </span>
+          <MenuItem class={fit === 'wont' && !loaded ? 'model-row is-off' : 'model-row'} {...cardFor(() => localCard(model))} onselect={() => void pickLocal(model)}>
+            <span class="ui-menu-item-text"><span class="truncate">{shortModelName(model.name)}</span></span>
             {#if target}<LoaderCircle class="size-3.5 animate-spin text-muted-foreground" />
             {:else if loaded}<span class="row-meta"><span class="live-dot" aria-hidden="true"></span>{$t('modelPicker.loaded')}</span>
             {:else if fit === 'wont'}<span class="row-meta">{$t('modelPicker.wontFit')}</span>
@@ -447,7 +435,7 @@
 
   .model-menu { display: flex; flex-direction: column; }
   :global(.model-row.is-off) { color: var(--muted-foreground); }
-  .row-meta, .row-note {
+  .row-meta {
     margin-left: auto;
     display: inline-flex;
     flex-shrink: 0;

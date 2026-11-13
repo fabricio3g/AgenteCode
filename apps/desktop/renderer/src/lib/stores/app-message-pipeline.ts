@@ -1,4 +1,5 @@
 import type { AppConfig, ChatMessage } from '$lib/types/chat';
+import { activeLoadConfig } from '$shared/local-launch';
 import type { RequestMessage } from '$lib/services/chat/types';
 import {
   attributeRoleplayContent,
@@ -127,7 +128,7 @@ export async function applyLocalContextBudgetTruncation(params: {
 
   const budget = await params.invoke<{ isOverflow?: boolean }>('build_context_budget', {
     config: {
-      context_length: params.config.llm?.local?.context_length || 4096,
+      context_length: activeLoadConfig(params.config.llm?.local as Record<string, unknown> | undefined).context_length || 4096,
       max_tokens: params.config.llm?.local?.max_tokens
     },
     messages: params.messages

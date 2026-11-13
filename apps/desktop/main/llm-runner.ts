@@ -140,6 +140,24 @@ async function fetchServerProps(port: number): Promise<Record<string, unknown> |
   }
 }
 
+/**
+ * What /props told us about the running model. Cleared whenever a load
+ * starts or the server stops: a field left over from the previous model
+ * (its context window, slot count, vision support) used to outlive it and
+ * feed the next model's chats.
+ */
+const PROPS_CLEARED = { n_ctx: null, total_slots: null, server_model_path: null, build_info: null, modalities: null };
+
+/** /props right after /health can still miss; a few short retries before giving up. */
+async function readServerProps(port: number, generation: number): Promise<Record<string, unknown> | null> {
+  for (let attempt = 0; attempt < 4; attempt++) {
+    const props = await fetchServerProps(port);
+    if (props || generation !== launchGeneration) return props;
+    await new Promise((resolve) => setTimeout(resolve, 400 * (attempt + 1)));
+  }
+  return null;
+}
+
 function readPropsFields(props: Record<string, unknown> | null): Record<string, unknown> {
   if (!props) return {};
   const generation = (props.default_generation_settings || {}) as Record<string, unknown>;
@@ -225,7 +243,6 @@ async function launchLlama(config: Record<string, unknown>, win: BrowserWindow |
   const launchConfig = resolvedModelPath === config.model_path
     ? config
     : { ...config, model_path: resolvedModelPath };
-  lastMainConfig = { ...launchConfig };
 
   // Get system info for runtime config resolution
   const systemInfo = await getHardwareLimits();
@@ -247,13 +264,21 @@ async function launchLlama(config: Record<string, unknown>, win: BrowserWindow |
 
   // Relay everything the supervisor learns — including the load phases it
   // parses out of llama-server's own log — straight to the renderer.
+  // The process reports `ready` once /health answers, but the model is only
+  // usable once /props says what it settled on (context, slots, vision):
+  // until then it stays `starting`, so nothing reads a window that is not
+  // there yet. The `ready` below, after /props, is the one everyone sees.
+  let propsRead = false;
   llama._onStatusChange = (status: Record<string, unknown>, patch: Record<string, unknown>) => {
-    llamaStatus = { ...llamaStatus, ...status };
-    sendSupervisorEvent(win, patch);
+    const early = !propsRead && patch.state === 'ready';
+    const shown = early ? { ...patch, state: 'starting', load_phase: 'Reading server settings' } : patch;
+    llamaStatus = { ...llamaStatus, ...status, ...(early ? { state: 'starting' } : {}) };
+    sendSupervisorEvent(win, shown);
   };
 
   emitStatus(win, {
     state: 'starting',
+    ...PROPS_CLEARED,
     model_id: path.basename(launchConfig.model_path as string),
     model_path: launchConfig.model_path,
     runtime_path: runtimePath,
@@ -272,8 +297,12 @@ async function launchLlama(config: Record<string, unknown>, win: BrowserWindow |
         ...templateStatusFor(launchConfig.model_path as string)
       }
     });
-    const props = await fetchServerProps(port);
+    const props = await readServerProps(port, generation);
     if (generation !== launchGeneration) throw new ProcessStartCancelled();
+    propsRead = true;
+    // Only a launch that came up is one to restart (network sharing); a
+    // failed or stopped one must not come back by itself.
+    lastMainConfig = { ...launchConfig };
     emitStatus(win, {
       state: 'ready',
       port,
@@ -289,10 +318,11 @@ async function launchLlama(config: Record<string, unknown>, win: BrowserWindow |
 export async function stopLlama(win: BrowserWindow | null | undefined): Promise<void> {
   const generation = ++launchGeneration;
   mainLaunch = null;
+  lastMainConfig = null;
   await llama.stop({ runtime_path: null, model_path: null, model_id: null, port: null });
   if (generation !== launchGeneration) return;
   endLlamaSession();
-  emitStatus(win, { state: 'idle', runtime_path: null, model_path: null, model_id: null });
+  emitStatus(win, { state: 'idle', runtime_path: null, model_path: null, model_id: null, ...PROPS_CLEARED });
 }
 
 // ── Embedding server ──
@@ -555,8 +585,13 @@ export async function getRecommendedSettings(
   });
 
   const ggufFields = readGgufMetadataFields(resolvedModelPath);
+  // A suggestion for the load dialog's "Use recommended" only — never applied
+  // to a launch on its own (shared/local-launch.ts). A context the person
+  // gave is theirs and is returned as given; only an unset one is suggested
+  // from RAM.
   const practicalContextCap = hw.total_ram_gb <= 16 ? 8192 : hw.total_ram_gb <= 32 ? 16384 : 32768;
-  let contextLength = Math.min(resolved.contextSize, practicalContextCap);
+  const userGaveContext = Number(userContext) > 0;
+  let contextLength = userGaveContext ? resolved.contextSize : Math.min(resolved.contextSize, practicalContextCap);
   let gpuLayers = resolved.gpuLayers;
 
   if (Number(ggufFields?.block_count || 0) > 0 && gpuLayers > Number(ggufFields.block_count)) {
