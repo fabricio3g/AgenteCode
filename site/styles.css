@@ -143,9 +143,9 @@ svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width:
 .nav-inner { display: flex; align-items: center; gap: 20px; height: 60px; }
 /* Wordmark: the tilde-A mark is the "A" of "Agente", set on the text baseline. */
 .wordmark { display: inline-flex; align-items: baseline; font-size: 20px; line-height: 1; font-weight: 800; letter-spacing: -0.05em; color: var(--foreground); }
-.wordmark-a { width: auto; height: 0.74em; aspect-ratio: 1; margin-right: 0.015em; overflow: visible; align-self: baseline; transform: translateY(0.005em); }
+/* The app mark (A, orbit swoosh, moon) traced in examples/gen_brand.rs, in the text colour. */
+.wordmark-a { width: auto; height: 1.15em; aspect-ratio: 98 / 72; margin-right: 0.4em; overflow: visible; align-self: center; }
 .wm-a { fill: currentColor; stroke: none; }
-.wm-tilde { fill: none; stroke: var(--brand-accent); stroke-width: 11; stroke-linecap: round; }
 .wordmark-sm { font-size: 17px; }
 .nav-links { display: flex; gap: 2px; margin-left: 8px; }
 .nav-links a, .footer nav a {
