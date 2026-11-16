@@ -365,6 +365,16 @@ fn render_body(frame: &mut Frame, area: Rect, state: &AppState) {
     let bg = panel_bg();
     let is_running = !matches!(state.agent.state, AgentState::Idle | AgentState::Error(_));
     let text = &state.input.input_text;
+    let focused = crate::state::modal_owner(state).allows_composer_input();
+    let caret = || {
+        Span::styled(
+            "▌",
+            Style::default()
+                .fg(PRIMARY())
+                .bg(bg)
+                .add_modifier(Modifier::SLOW_BLINK),
+        )
+    };
 
     // Padding (1), prompt (2), and the cursor (1) use the side columns.
     let available_width = area.width.saturating_sub(4).max(1) as usize;
@@ -455,17 +465,10 @@ fn render_body(frame: &mut Frame, area: Rect, state: &AppState) {
             "Ask anything…"
         };
 
-        let mut spans = vec![
-            Span::styled(" ", Style::default().bg(bg)),
-            prompt,
-            Span::styled(
-                "▌",
-                Style::default()
-                    .fg(PRIMARY())
-                    .bg(bg)
-                    .add_modifier(Modifier::SLOW_BLINK),
-            ),
-        ];
+        let mut spans = vec![Span::styled(" ", Style::default().bg(bg)), prompt];
+        if focused {
+            spans.push(caret());
+        }
         // Show a placeholder in the empty composer. Keep the
         // queueing hint while running and the connect prompt before any
         // provider, plus the idle hint.
@@ -513,7 +516,7 @@ fn render_body(frame: &mut Frame, area: Rect, state: &AppState) {
             };
 
             let pad = Span::styled(" ", Style::default().bg(bg));
-            if i == cursor_line {
+            if focused && i == cursor_line {
                 let before_chars = cursor_char.saturating_sub(wrapped_line.start_char);
                 // Split the styled line at the cursor so `/command` keeps its
                 // accent color on both sides of the blinking ▌.
@@ -521,13 +524,7 @@ fn render_body(frame: &mut Frame, area: Rect, state: &AppState) {
                     split_spans_at(style_input_line(line_text, bg), before_chars);
                 let mut row = vec![pad, prompt];
                 row.extend(before_spans);
-                row.push(Span::styled(
-                    "▌",
-                    Style::default()
-                        .fg(PRIMARY())
-                        .bg(bg)
-                        .add_modifier(Modifier::SLOW_BLINK),
-                ));
+                row.push(caret());
                 row.extend(after_spans);
                 lines.push(Line::from(row));
             } else {
@@ -625,6 +622,25 @@ mod tests {
         let h = desired_height("", 80, 0);
         assert_eq!(h, min_height());
         assert_eq!(h, 3);
+    }
+
+    #[test]
+    fn composer_caret_tracks_modal_focus() {
+        use ratatui::{backend::TestBackend, Terminal};
+
+        let mut state = AppState::new(Default::default(), "/tmp/agente".into());
+        let mut terminal = Terminal::new(TestBackend::new(40, 3)).unwrap();
+        for draft in ["", "draft"] {
+            state.input.input_text = draft.into();
+            for modal_open in [false, true] {
+                state.input.show_command_palette = modal_open;
+                terminal
+                    .draw(|frame| render_body(frame, frame.area(), &state))
+                    .unwrap();
+                let cells = terminal.backend().buffer().content();
+                assert_eq!(cells.iter().any(|cell| cell.symbol() == "▌"), !modal_open);
+            }
+        }
     }
 
     #[test]

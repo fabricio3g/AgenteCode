@@ -351,6 +351,8 @@ impl ProcessView {
 pub struct UiState {
     /// When set, show a full-width diff peek for this modified file (Esc closes).
     pub diff_peek: Option<String>,
+    pub diff_peek_scroll: usize,
+    pub diff_peek_max: usize,
     /// Screen rect of the plan review modal from the last render (for wheel scroll).
     pub plan_review_area: Option<Rect>,
     /// Screen rect of the subagent detail modal body (for wheel scroll).
@@ -513,6 +515,8 @@ impl Default for UiState {
             tab_strip: super::TabStrip::default(),
             media_consent: None,
             diff_peek: None,
+            diff_peek_scroll: 0,
+            diff_peek_max: 0,
             plan_review_area: None,
             subagent_detail_area: None,
             subagent_detail_id: None,
@@ -596,6 +600,13 @@ pub fn is_hover_target(region: &ClickRegion) -> bool {
 }
 
 impl UiState {
+    pub fn scroll_diff_peek(&mut self, delta: isize) {
+        self.diff_peek_scroll = self
+            .diff_peek_scroll
+            .saturating_add_signed(delta)
+            .min(self.diff_peek_max);
+    }
+
     /// True when the last known pointer position lies inside `rect`.
     pub fn pointer_in(&self, rect: Rect) -> bool {
         self.mouse_pos
@@ -678,7 +689,7 @@ impl UiState {
     /// that grows while gliding (a new message) is still where it lands.
     pub fn glide_to_bottom(&mut self) {
         if self.reduce_motion {
-            self.chat_auto_scroll = true;
+            self.scroll_to_bottom();
             return;
         }
         self.chat_auto_scroll = false;
@@ -728,21 +739,6 @@ impl UiState {
             self.chat_auto_scroll = true;
         }
         false
-    }
-
-    /// True when the viewport is at (or within one row of) the bottom.
-    pub fn is_near_bottom(&self) -> bool {
-        let max = self.max_scroll();
-        self.chat_scroll >= max.saturating_sub(1)
-    }
-
-    /// Re-enable auto-follow only if the user is already pinned to the bottom.
-    /// Used after stream/subagent events so mid-history reading is never yanked.
-    pub fn follow_bottom_if_pinned(&mut self) {
-        if self.is_near_bottom() {
-            self.chat_auto_scroll = true;
-            self.chat_scroll = self.max_scroll();
-        }
     }
 
     /// True when the jump-to-bottom control should be shown.
@@ -856,9 +852,12 @@ impl UiState {
     /// user-level display preferences.
     pub fn reset_for_workspace(&mut self) {
         self.diff_peek = None;
+        self.diff_peek_scroll = 0;
+        self.diff_peek_max = 0;
         self.plan_review_area = None;
         self.chat_scroll = 0;
         self.chat_auto_scroll = true;
+        self.scroll_target = None;
         self.chat_content_height = 0;
         self.chat_visible_height = 0;
         self.scroll_drag = None;
@@ -1300,34 +1299,6 @@ mod scroll_follow_tests {
         ui.glide_by(-30);
         assert_eq!(ui.chat_scroll, 70);
         assert!(!ui.has_active_animation());
-    }
-
-    #[test]
-    fn follow_bottom_if_pinned_leaves_mid_history_alone() {
-        let mut ui = UiState {
-            chat_content_height: 100,
-            chat_visible_height: 20,
-            chat_scroll: 10,
-            chat_auto_scroll: false,
-            ..UiState::default()
-        };
-        ui.follow_bottom_if_pinned();
-        assert!(!ui.chat_auto_scroll);
-        assert_eq!(ui.chat_scroll, 10);
-        assert!(ui.show_jump_to_bottom());
-    }
-
-    #[test]
-    fn follow_bottom_if_pinned_re_enables_at_bottom() {
-        let mut ui = UiState::default();
-        ui.chat_content_height = 100;
-        ui.chat_visible_height = 20;
-        ui.chat_scroll = ui.max_scroll();
-        ui.chat_auto_scroll = false;
-        ui.follow_bottom_if_pinned();
-        assert!(ui.chat_auto_scroll);
-        assert_eq!(ui.chat_scroll, ui.max_scroll());
-        assert!(!ui.show_jump_to_bottom());
     }
 
     #[test]

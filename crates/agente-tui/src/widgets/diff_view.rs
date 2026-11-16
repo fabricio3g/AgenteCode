@@ -198,6 +198,10 @@ impl DiffView {
         }
         rows
     }
+
+    pub fn scrolled(&self, offset: usize) -> impl Widget + '_ {
+        DiffViewport { view: self, offset }
+    }
 }
 
 pub struct DiffStats {
@@ -207,6 +211,17 @@ pub struct DiffStats {
 
 impl Widget for &DiffView {
     fn render(self, area: Rect, buf: &mut Buffer) {
+        self.scrolled(0).render(area, buf);
+    }
+}
+
+struct DiffViewport<'a> {
+    view: &'a DiffView,
+    offset: usize,
+}
+
+impl Widget for DiffViewport<'_> {
+    fn render(self, area: Rect, buf: &mut Buffer) {
         // Zero-sized areas index outside the buffer; a 1-wide area has no room
         // for the one-space text indent (text writes at `area.x + 1`), so text
         // is gated on `area.width >= 2` below. All callers pre-clamp today,
@@ -214,10 +229,10 @@ impl Widget for &DiffView {
         if area.width == 0 || area.height == 0 {
             return;
         }
-        let stats = self.stats();
+        let stats = self.view.stats();
         let header = format!(
             " {} (+{} -{}) ",
-            self.new_path, stats.additions, stats.deletions
+            self.view.new_path, stats.additions, stats.deletions
         );
 
         // Render header bar with BG_PANEL() background and FG() text
@@ -242,13 +257,14 @@ impl Widget for &DiffView {
 
         // One right-aligned line-number column; the number itself carries the
         // change tag (added/removed tint), so no +/- sign column is printed.
-        let gutter = self.gutter_width();
+        let gutter = self.view.gutter_width();
 
         // Render diff lines
         let mut y = area.y + 1;
         let max_y = area.y + area.height;
+        let mut skip = self.offset;
 
-        for (i, hunk) in self.hunks.iter().enumerate() {
+        for (i, hunk) in self.view.hunks.iter().enumerate() {
             if y >= max_y {
                 break;
             }
@@ -286,6 +302,10 @@ impl Widget for &DiffView {
                         content,
                     ),
                 };
+                if skip > 0 {
+                    skip -= 1;
+                    continue;
+                }
 
                 // Band the full row, then print gutter + content with one
                 // space between them. Sign-less: the number color plus the
@@ -315,11 +335,15 @@ impl Widget for &DiffView {
             // Between consecutive hunks: one muted row counting the unchanged
             // lines the header accounting says were skipped (only when the
             // gap is positive).
-            if let Some(next) = self.hunks.get(i + 1) {
+            if let Some(next) = self.view.hunks.get(i + 1) {
                 let skipped = next
                     .old_start
                     .saturating_sub(hunk.old_start.saturating_add(hunk.old_lines));
                 if skipped > 0 && y < max_y {
+                    if skip > 0 {
+                        skip -= 1;
+                        continue;
+                    }
                     if area.width >= 2 {
                         let text = format!(" … {skipped} unchanged lines ");
                         buf.set_stringn(

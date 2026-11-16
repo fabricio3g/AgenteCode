@@ -1,5 +1,4 @@
-//! One scrollbar for every scrollable surface (chat, plan review, subagent
-//! detail): a thin thumb with no track, brighter while hovered or dragged.
+//! Shared scrollbar: a thin thumb with no track, brighter while hovered or dragged.
 //!
 //! Painting registers a [`HitTarget::Scrollbar`] carrying the bar's geometry,
 //! so the mouse router can turn any pointer row into an offset for whichever
@@ -21,6 +20,7 @@ pub enum ScrollSurface {
     Plan,
     SubagentDetail,
     Process,
+    DiffPeek,
 }
 
 /// A painted scrollbar: enough to map a pointer row back to an offset.
@@ -82,14 +82,14 @@ pub fn render(
     let blank = |frame: &mut Frame| {
         frame.render_widget(Paragraph::new("").style(Style::default().bg(bg)), area);
     };
-    if area.width == 0 || area.height == 0 || total <= visible {
+    if area.width == 0 || area.height < 2 || total <= visible {
         blank(frame);
         return None;
     }
     let height = area.height;
     let max_offset = total - visible;
     let thumb_len =
-        ((f64::from(height) * visible as f64 / total as f64).round() as u16).clamp(1, height);
+        ((f64::from(height) * visible as f64 / total as f64).round() as u16).clamp(1, height - 1);
     let thumb_pos = ((f64::from(height - thumb_len) * offset.min(max_offset) as f64
         / max_offset as f64)
         .round()) as u16;

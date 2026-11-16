@@ -38,7 +38,14 @@ impl App {
                 ListId::FolderBrowser
             }
             ModalOwner::SessionPicker => ListId::SessionList,
-            ModalOwner::Connect => ListId::Connect,
+            ModalOwner::Connect
+                if matches!(
+                    self.state.config.connect_screen,
+                    ConnectScreen::SelectProvider { .. }
+                ) =>
+            {
+                ListId::Connect
+            }
             ModalOwner::Welcome => ListId::Welcome,
             _ => return None,
         })
@@ -70,23 +77,6 @@ impl App {
         })
     }
 
-    /// Route a wheel scroll to whichever list is open (moving its selection)
-    /// instead of scrolling the chat. Returns `false` when no list is open.
-    fn picker_scroll(&mut self, delta: i32) -> bool {
-        let Some(list) = self.active_list().filter(|l| *l != ListId::Welcome) else {
-            return false;
-        };
-        let Some(selected) = self.list_selection_mut(list) else {
-            return false;
-        };
-        *selected = if delta < 0 {
-            selected.saturating_sub(delta.unsigned_abs() as usize)
-        } else {
-            selected.saturating_add(delta as usize)
-        };
-        true
-    }
-
     /// Pointer moved onto `hit`: remember it for hover styling, and move a
     /// list's selection onto the hovered row (hover-to-select).
     fn hover_hit(&mut self, hit: Option<HitTarget>) {
@@ -114,7 +104,7 @@ impl App {
             HitTarget::Row {
                 list: ListId::Welcome,
                 index,
-            } => {
+            } if self.active_list() == Some(ListId::Welcome) => {
                 self.state.ui.welcome_selected = index;
                 if let Some(cmd) = welcome::action_at(index) {
                     self.execute_command(cmd)?;
@@ -148,49 +138,61 @@ impl App {
         )
     }
 
-    /// Wheel-scroll the plan review modal when it is open and the pointer is
-    /// over it. The modal replaces the chat list, so the wheel must drive the
-    /// plan body instead of the hidden chat.
-    fn plan_review_scroll(&mut self, delta: i32, x: u16, y: u16) -> bool {
-        if !self.state.plan_review.takes_chat_area() {
-            return false;
+    fn route_wheel(&mut self, owner: ModalOwner, delta: i16, x: u16, y: u16) -> anyhow::Result<()> {
+        if self
+            .active_list()
+            .is_some_and(|list| list != ListId::Welcome)
+        {
+            // Keyboard navigation already uses the live filtered list and its bounds.
+            let direction = if delta < 0 {
+                KeyCode::Up
+            } else {
+                KeyCode::Down
+            };
+            self.handle_key(KeyEvent::new(direction, KeyModifiers::NONE))?;
+        } else {
+            let rows = delta * 3;
+            match owner {
+                ModalOwner::Help => self.state.ui.scroll_help(i32::from(delta)),
+                ModalOwner::ProcessView => {
+                    if let Some(view) = self.state.ui.process_view.as_mut() {
+                        view.scroll_by(rows as isize);
+                    }
+                }
+                ModalOwner::SubagentDetail => {
+                    if hit(self.state.ui.subagent_detail_area, x, y) {
+                        self.state.ui.scroll_subagent_detail(i32::from(rows));
+                    }
+                }
+                ModalOwner::DiffPeek => self.state.ui.scroll_diff_peek(rows as isize),
+                owner if self.plan_scroll_is_active(owner) => {
+                    if hit(self.state.ui.plan_review_area, x, y) {
+                        self.state.plan_review.scroll_by(rows);
+                    }
+                }
+                owner if !owner.blocks_chat_mouse() || owner.wheel_falls_through_to_chat() => {
+                    self.state.glide_by(rows as isize);
+                }
+                _ => {}
+            }
         }
-        let Some(area) = self.state.ui.plan_review_area else {
-            return false;
-        };
-        if !hit(Some(area), x, y) {
-            return false;
-        }
-        self.state
-            .plan_review
-            .scroll_by(if delta < 0 { -3 } else { 3 });
-        true
+        self.state.ui.needs_render = true;
+        Ok(())
     }
 
-    /// Wheel-scroll the subagent detail modal body.
-    fn subagent_detail_scroll(&mut self, delta: i32, x: u16, y: u16) -> bool {
-        if self.state.ui.subagent_detail_id.is_none() {
-            return false;
-        }
-        let Some(area) = self.state.ui.subagent_detail_area else {
-            return false;
-        };
-        if !hit(Some(area), x, y) {
-            return false;
-        }
-        self.state
-            .ui
-            .scroll_subagent_detail(if delta < 0 { -3 } else { 3 });
-        true
+    fn plan_scroll_is_active(&self, owner: ModalOwner) -> bool {
+        (owner.is_plan_surface() || owner == ModalOwner::Approval)
+            && self.state.plan_review.takes_chat_area()
     }
 
-    /// Wheel-scroll the live output view (it owns the screen while open).
-    fn process_view_scroll(&mut self, delta: i32) -> bool {
-        let Some(view) = self.state.ui.process_view.as_mut() else {
-            return false;
-        };
-        view.scroll_by(if delta < 0 { -3 } else { 3 });
-        true
+    fn scrollbar_is_active(&self, surface: ScrollSurface, owner: ModalOwner) -> bool {
+        match surface {
+            ScrollSurface::Chat => !owner.is_modal() && !self.state.plan_review.takes_chat_area(),
+            ScrollSurface::Plan => self.plan_scroll_is_active(owner),
+            ScrollSurface::Process => owner == ModalOwner::ProcessView,
+            ScrollSurface::SubagentDetail => owner == ModalOwner::SubagentDetail,
+            ScrollSurface::DiffPeek => owner == ModalOwner::DiffPeek,
+        }
     }
 }
 
@@ -209,6 +211,7 @@ impl App {
         let prev_hover = self.state.ui.hovered_entry_id;
         let moved = self.state.ui.mouse_pos != Some((x, y));
         self.state.ui.mouse_pos = Some((x, y));
+        let owner = modal_owner(&self.state);
 
         // Registered targets (list rows, dialog buttons) sit above every
         // surface: they hover everywhere and win clicks over the chat.
@@ -220,18 +223,23 @@ impl App {
             // Scrollbars (any surface, modal or not): press jumps and starts
             // a drag, drags scrub, release ends it.
             MouseEventKind::Down(MouseButton::Left) => {
+                self.state.ui.suppress_click_on_up = false;
                 if let Some(HitTarget::Scrollbar(geom)) = self.state.ui.hits.at(x, y) {
-                    self.state.ui.scroll_drag = Some(geom);
-                    self.state.ui.mouse_down = None;
-                    self.state.ui.drag_selecting = false;
-                    self.state.ui.selection = None;
-                    self.scroll_surface_to(geom, y);
-                    return Ok(());
+                    if self.scrollbar_is_active(geom.surface, owner) {
+                        self.state.ui.scroll_drag = Some(geom);
+                        self.state.ui.mouse_down = None;
+                        self.state.ui.drag_selecting = false;
+                        self.state.ui.selection = None;
+                        self.scroll_surface_to(geom, y);
+                        return Ok(());
+                    }
                 }
             }
             MouseEventKind::Drag(MouseButton::Left) => {
                 if let Some(geom) = self.state.ui.scroll_drag {
-                    self.scroll_surface_to(geom, y);
+                    if self.scrollbar_is_active(geom.surface, owner) {
+                        self.scroll_surface_to(geom, y);
+                    }
                     return Ok(());
                 }
             }
@@ -240,9 +248,11 @@ impl App {
                 self.state.ui.needs_render = true;
                 return Ok(());
             }
-            MouseEventKind::Up(MouseButton::Left)
-                if !self.state.ui.drag_selecting && !self.state.ui.suppress_click_on_up =>
-            {
+            MouseEventKind::Up(MouseButton::Left) if self.state.ui.suppress_click_on_up => {
+                self.state.ui.suppress_click_on_up = false;
+                return Ok(());
+            }
+            MouseEventKind::Up(MouseButton::Left) if !self.state.ui.drag_selecting => {
                 // Resolve at the press position so release jitter can't
                 // retarget the click onto a neighbouring row.
                 let (px, py) = self.state.ui.mouse_down.unwrap_or((x, y));
@@ -252,10 +262,11 @@ impl App {
                     return self.activate_hit(target);
                 }
             }
+            MouseEventKind::ScrollUp => return self.route_wheel(owner, -1, x, y),
+            MouseEventKind::ScrollDown => return self.route_wheel(owner, 1, x, y),
             _ => {}
         }
 
-        let owner = modal_owner(&self.state);
         if owner.blocks_chat_mouse() {
             // [stop] in the activity strip must ALWAYS be clickable, even when
             // an approval dialog or modal is open.
@@ -266,56 +277,10 @@ impl App {
                 }
             }
 
-            match mouse.kind {
-                MouseEventKind::ScrollUp => {
-                    if self.state.ui.show_help {
-                        self.state.ui.scroll_help(-1);
-                    }
-                    let consumed = self.picker_scroll(-1)
-                        || self.plan_review_scroll(-1, mouse.column, mouse.row)
-                        || self.subagent_detail_scroll(-1, mouse.column, mouse.row)
-                        || self.process_view_scroll(-1);
-                    if !consumed && owner.wheel_falls_through_to_chat() {
-                        // Floating card with no scrollable body (approval,
-                        // plan ask, …): the transcript stays visible behind
-                        // it, so the wheel keeps scrolling the chat instead
-                        // of dying on the overlay.
-                        self.state.glide_by(-3);
-                    }
-                    self.state.ui.needs_render = true;
-                }
-                MouseEventKind::ScrollDown => {
-                    if self.state.ui.show_help {
-                        self.state.ui.scroll_help(1);
-                    }
-                    let consumed = self.picker_scroll(1)
-                        || self.plan_review_scroll(1, mouse.column, mouse.row)
-                        || self.subagent_detail_scroll(1, mouse.column, mouse.row)
-                        || self.process_view_scroll(1);
-                    if !consumed && owner.wheel_falls_through_to_chat() {
-                        self.state.glide_by(3);
-                    }
-                    self.state.ui.needs_render = true;
-                }
-                _ => {}
-            }
             return Ok(());
         }
 
         match mouse.kind {
-            MouseEventKind::ScrollUp => {
-                if !self.picker_scroll(-1) && !self.plan_review_scroll(-1, mouse.column, mouse.row)
-                {
-                    self.state.glide_by(-3);
-                }
-                self.state.ui.needs_render = true;
-            }
-            MouseEventKind::ScrollDown => {
-                if !self.picker_scroll(1) && !self.plan_review_scroll(1, mouse.column, mouse.row) {
-                    self.state.glide_by(3);
-                }
-                self.state.ui.needs_render = true;
-            }
             MouseEventKind::Down(MouseButton::Left) => {
                 // Jump-to-bottom chip fires on press (not release) so release
                 // jitter can never convert it into a drag or a stray toggle.
@@ -387,10 +352,6 @@ impl App {
                     }
                     self.state.ui.drag_selecting = false;
                     // Keep selection visible briefly; clear on next click
-                } else if self.state.ui.suppress_click_on_up {
-                    // A Down-arm chrome claim (jump-to-bottom chip) already
-                    // handled this gesture; the release must not toggle rows.
-                    self.state.ui.suppress_click_on_up = false;
                 } else {
                     // Click (no meaningful drag). Resolve at the press
                     // position, not the release: sub-threshold jitter must not
@@ -455,6 +416,7 @@ impl App {
                 ui.subagent_detail_follow = false;
                 ui.subagent_detail_scroll = offset;
             }
+            ScrollSurface::DiffPeek => ui.diff_peek_scroll = offset.min(ui.diff_peek_max),
         }
         self.state.ui.needs_render = true;
     }
@@ -714,6 +676,40 @@ mod tests {
         for row in &rows[header..composer] {
             assert!(!row.contains("stop"), "strip leaked into the picker: {row}");
         }
+    }
+
+    #[test]
+    fn slash_picker_wheel_shares_keyboard_bounds() {
+        let mut app = test_app();
+        app.state.input.input_text = "/help".into();
+        app.state.input.show_slash_picker = true;
+        let last = crate::command_palette::filter_commands("help").len() - 1;
+        for _ in 0..last + 3 {
+            app.handle_mouse(wheel(MouseEventKind::ScrollDown, 20, 10))
+                .unwrap();
+        }
+        assert_eq!(app.state.input.slash_picker_selected, last);
+    }
+
+    #[test]
+    fn diff_peek_wheel_and_end_reach_later_changes() {
+        use crossterm::event::{KeyCode, KeyEvent};
+
+        let mut app = test_app();
+        let path = "long.txt";
+        let mut file: String = (1..=80).map(|i| format!("change {i}\n")).collect();
+        file.push_str("diff-end-marker\n");
+        app.state.session.file_versions.insert(path.into(), file);
+        app.state.open_diff_peek(path);
+        let first = render(&mut app, 80, 24);
+        assert!(find_row(&first, "diff-end-marker").is_none());
+        app.handle_mouse(wheel(MouseEventKind::ScrollDown, 20, 10))
+            .unwrap();
+        assert_eq!(app.state.ui.diff_peek_scroll, 3);
+        app.handle_key(KeyEvent::new(KeyCode::End, KeyModifiers::NONE))
+            .unwrap();
+        let end = render(&mut app, 80, 24);
+        assert!(find_row(&end, "diff-end-marker").is_some());
     }
 
     #[test]
@@ -1001,9 +997,17 @@ mod tests {
             crate::state::ModalOwner::Approval
         );
 
+        let mut process = crate::state::ProcessView::open("hidden".into());
+        process.scroll = 8;
+        process.max_scroll = 20;
+        app.state.ui.process_view = Some(process);
+        app.state.ui.show_help = true;
+        app.state.ui.help_scroll = 2;
         app.handle_mouse(wheel(MouseEventKind::ScrollDown, 50, 10))
             .unwrap();
 
+        assert_eq!(app.state.ui.process_view.as_ref().unwrap().scroll, 8);
+        assert_eq!(app.state.ui.help_scroll, 2);
         assert!(
             app.state.ui.chat_scroll > 0,
             "wheel behind a floating approval must scroll the chat"

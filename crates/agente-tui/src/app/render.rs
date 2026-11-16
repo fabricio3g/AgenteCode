@@ -362,13 +362,13 @@ fn render_diff_peek(frame: &mut ratatui::Frame, size: ratatui::layout::Rect, sta
         .session
         .file_originals
         .get(&path)
-        .and_then(|o| o.clone())
+        .and_then(Option::as_deref)
         .unwrap_or_default();
     let new_content = state
         .session
         .file_versions
         .get(&path)
-        .cloned()
+        .map(String::as_str)
         .unwrap_or_default();
 
     // The peek is a takeover view, so it claims everything above the hint bar
@@ -396,21 +396,44 @@ fn render_diff_peek(frame: &mut ratatui::Frame, size: ratatui::layout::Rect, sta
             ),
         ],
     );
+    // Diff between the header rule and the footer row (one gap row above it).
+    let height = panel.height.saturating_sub(3);
+    let view =
+        widgets::diff_view::DiffView::from_content(old_content, new_content, path.clone(), path);
+    let visible = usize::from(height.saturating_sub(1));
+    let total = view.rendered_height();
+    state.ui.diff_peek_max = total.saturating_sub(visible);
+    let offset = state.ui.diff_peek_scroll.min(state.ui.diff_peek_max);
+    state.ui.diff_peek_scroll = offset;
+    let scrollable = state.ui.diff_peek_max > 0;
+    let mut hints = Vec::new();
+    if scrollable {
+        hints.push(("↑↓", "scroll"));
+    }
+    hints.push(("Esc", "close"));
     widgets::panel_footer(
         frame,
         panel,
-        widgets::footer_hints(&[("Esc", "close")], panel.width.saturating_sub(4)),
+        widgets::footer_hints(&hints, panel.width.saturating_sub(4)),
     );
 
-    // Diff between the header rule and the footer row (one gap row above it).
-    let height = panel.height.saturating_sub(3);
-    if height == 0 {
-        return;
+    let inner = Rect::new(panel.x, body.y, panel.width - u16::from(scrollable), height);
+    frame.render_widget(view.scrolled(offset), inner);
+    if scrollable {
+        use widgets::scrollbar::{self, ScrollSurface, Viewport};
+        scrollbar::render(
+            frame,
+            Rect::new(inner.right(), inner.y + 1, 1, height.saturating_sub(1)),
+            ScrollSurface::DiffPeek,
+            Viewport {
+                offset,
+                visible,
+                total,
+            },
+            BG_PANEL(),
+            &state.ui,
+        );
     }
-    let inner = Rect::new(panel.x, body.y, panel.width, height);
-    let view =
-        widgets::diff_view::DiffView::from_content(&old_content, &new_content, path.clone(), path);
-    frame.render_widget(&view, inner);
 }
 
 #[cfg(test)]

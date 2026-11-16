@@ -109,6 +109,9 @@ impl App {
 
     /// Ctrl+V with an image on the clipboard (a screenshot).
     pub(super) fn attach_clipboard_image(&mut self) -> bool {
+        if !crate::state::modal_owner(&self.state).allows_composer_input() {
+            return false;
+        }
         match crate::clipboard::paste_image_png() {
             Ok(Some(png)) => {
                 let name = format!(

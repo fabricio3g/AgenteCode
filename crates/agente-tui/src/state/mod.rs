@@ -355,12 +355,21 @@ impl AppState {
         content: String,
         attachments: Vec<agente_core::media::Attachment>,
     ) {
-        let mode_str = self.agent.mode.to_string();
-        self.session
-            .add_user_message_with(content, mode_str, attachments);
         // The prompt rises out of the composer into its bubble: glide to the
         // new bottom while the new block fades in.
         self.ui.glide_to_bottom();
+        self.append_user_message(content, attachments);
+    }
+
+    /// Record a queued prompt when the model receives it, preserving the viewport.
+    pub(crate) fn append_user_message(
+        &mut self,
+        content: String,
+        attachments: Vec<agente_core::media::Attachment>,
+    ) {
+        let mode_str = self.agent.mode.to_string();
+        self.session
+            .add_user_message_with(content, mode_str, attachments);
         self.ui.trigger_message_fade();
     }
 
@@ -392,8 +401,6 @@ impl AppState {
         let reasoning = self.take_reasoning();
         self.session
             .add_assistant_message(content, mode_str, duration, reasoning);
-        // No fade: the text was already on screen while it streamed.
-        self.ui.chat_auto_scroll = true;
     }
 
     /// Add interrupted message to chat history
@@ -428,7 +435,6 @@ impl AppState {
     pub fn add_tool_call(&mut self, name: String, args: String) {
         let mode_str = self.agent.current_turn_mode.to_string();
         self.session.add_tool_call(name, args, mode_str);
-        self.ui.chat_auto_scroll = true;
     }
 
     /// Add tool result to chat history
@@ -442,7 +448,6 @@ impl AppState {
         let mode_str = self.agent.current_turn_mode.to_string();
         self.session
             .add_tool_result(tool_name, content, is_error, duration_ms, mode_str);
-        self.ui.chat_auto_scroll = true;
     }
 
     /// Stamp the newest un-stamped file-mutating tool result with this edit's
@@ -498,6 +503,8 @@ impl AppState {
             return;
         }
         self.ui.diff_peek = Some(path.to_string());
+        self.ui.diff_peek_scroll = 0;
+        self.ui.diff_peek_max = 0;
         self.ui.needs_render = true;
     }
 
@@ -1019,6 +1026,26 @@ mod tests {
     use agente_core::session::{SessionData, SessionMeta};
     use agente_core::types::AgentMode;
     use agente_core::types::{ChatEntry, Role};
+
+    #[test]
+    fn incoming_transcript_entries_preserve_the_viewport_mode() {
+        for pinned in [false, true] {
+            let mut state = AppState::new(AppConfig::default(), "/tmp/agente".into());
+            state.ui.set_chat_dimensions(80, 20);
+            if !pinned {
+                state.ui.scroll_up(1);
+            }
+            state.add_tool_call("read_file".into(), "{}".into());
+            state.add_tool_result("read_file", "result".into(), false, None);
+            state.add_assistant_message("done".into());
+            state.append_user_message("queued".into(), Vec::new());
+            state.ui.set_chat_dimensions(90, 20);
+
+            assert_eq!(state.ui.chat_auto_scroll, pinned);
+            assert_eq!(state.ui.chat_scroll, if pinned { 70 } else { 59 });
+            assert!(state.ui.scroll_target.is_none());
+        }
+    }
 
     #[test]
     fn load_from_session_dismisses_welcome_screen() {

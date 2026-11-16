@@ -258,10 +258,18 @@ impl App {
 
     /// Transient UI belongs to the tab that was on screen.
     fn after_tab_change(&mut self) {
+        self.state.input.close_at_picker();
+        self.state.input.show_slash_picker = false;
         let ui = &mut self.state.ui;
         ui.message_actions = None;
         ui.process_view = None;
         ui.subagent_detail_id = None;
+        ui.diff_peek = None;
+        if ui.scroll_drag.take().is_some() {
+            ui.suppress_click_on_up = true;
+        }
+        ui.hits.begin_frame();
+        ui.mouse_down = None;
         ui.selection = None;
         ui.hovered_entry_id = None;
         ui.clear_chat_render_cache();
@@ -365,6 +373,9 @@ mod tests {
         let first = app.state.session.session_id;
         app.state.add_user_message("first tab prompt".into());
         app.state.input.input_text = "draft one".into();
+        app.state.ui.set_chat_dimensions(100, 20);
+        app.state.ui.scroll_to_bottom();
+        app.state.ui.scroll_up(10);
 
         app.handle_key(KeyEvent::new(KeyCode::F(2), KeyModifiers::NONE))
             .unwrap();
@@ -374,11 +385,20 @@ mod tests {
         assert!(app.state.session.chat_history.is_empty());
         assert!(app.state.input.input_text.is_empty());
         app.state.input.input_text = "draft two".into();
+        app.state.ui.set_chat_dimensions(30, 20);
+
+        app.with_background_tab(0, |app| {
+            assert_eq!(app.state.ui.max_scroll(), 80);
+            assert_eq!(app.state.ui.chat_scroll, 70);
+            assert!(!app.state.ui.chat_auto_scroll);
+        });
+        assert_eq!(app.state.ui.max_scroll(), 10);
 
         app.handle_key(KeyEvent::new(KeyCode::PageUp, KeyModifiers::CONTROL))
             .unwrap();
         assert_eq!(app.state.session.session_id, first);
         assert_eq!(app.state.input.input_text, "draft one");
+        assert_eq!(app.state.ui.chat_scroll, 70);
         app.refresh_tab_strip();
         let titles: Vec<&str> = app
             .state

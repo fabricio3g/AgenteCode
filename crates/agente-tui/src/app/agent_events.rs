@@ -371,7 +371,7 @@ impl App {
                 // the order they actually entered the conversation.
                 for message in self.state.agent.take_injected(messages.len()) {
                     self.state
-                        .add_user_message_with(message.display, message.attachments);
+                        .append_user_message(message.display, message.attachments);
                 }
             }
             AgentEvent::CallUsage {
@@ -742,8 +742,6 @@ impl App {
                     entry.is_error = is_error;
                     entry.content = summary.clone();
                 }
-                // Don't yank the view if the user scrolled up mid-stream.
-                self.state.ui.follow_bottom_if_pinned();
                 tracing::info!(
                     subagent_id = %id,
                     status = status,
@@ -765,14 +763,11 @@ impl App {
                     &status,
                     &summary,
                 );
-                // Visible done-row. Bypass the `AppState` helper: it
-                // forces auto-scroll, which would yank a user reading
-                // history for every background completion.
+                // Append the notice without consuming the main agent's live reasoning.
                 let mode_str = self.state.agent.current_turn_mode.to_string();
                 self.state
                     .session
                     .add_assistant_message(text.clone(), mode_str, None, None);
-                self.state.ui.follow_bottom_if_pinned();
                 // Model-facing injection. A running turn's terminal event
                 // replaces the conversation wholesale, so a direct push
                 // now would be clobbered — queue for the turn boundary.

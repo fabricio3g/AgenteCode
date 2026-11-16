@@ -24,6 +24,8 @@ pub struct TabState {
     pub chat_scroll: usize,
     pub chat_auto_scroll: bool,
     pub scroll_target: Option<usize>,
+    pub chat_content_height: usize,
+    pub chat_visible_height: usize,
     pub show_welcome_screen: bool,
 }
 
@@ -59,6 +61,8 @@ impl TabState {
             chat_scroll: 0,
             chat_auto_scroll: true,
             scroll_target: None,
+            chat_content_height: 0,
+            chat_visible_height: 0,
             show_welcome_screen: false,
         }
     }
@@ -78,6 +82,14 @@ impl TabState {
         swap(&mut self.chat_scroll, &mut state.ui.chat_scroll);
         swap(&mut self.chat_auto_scroll, &mut state.ui.chat_auto_scroll);
         swap(&mut self.scroll_target, &mut state.ui.scroll_target);
+        swap(
+            &mut self.chat_content_height,
+            &mut state.ui.chat_content_height,
+        );
+        swap(
+            &mut self.chat_visible_height,
+            &mut state.ui.chat_visible_height,
+        );
         swap(
             &mut self.show_welcome_screen,
             &mut state.ui.show_welcome_screen,

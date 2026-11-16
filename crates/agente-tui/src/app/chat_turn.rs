@@ -62,7 +62,6 @@ impl App {
         self.state.agent.mark_agent_event();
         // Thinking cards always start collapsed; user expands individually.
         self.state.agent.thinking_expanded = false;
-        self.state.ui.chat_auto_scroll = true;
         // Reset the turn-scoped auto-approve override back to the user's persistent preference.
         self.state.agent.reset_auto_approve_runtime();
 
@@ -173,7 +172,7 @@ impl App {
         for queued in queued {
             let message = queued.to_message();
             self.state
-                .add_user_message_with(queued.display, queued.attachments);
+                .append_user_message(queued.display, queued.attachments);
             self.state.session.conversation.push(message);
         }
         if had_queued {

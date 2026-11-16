@@ -118,7 +118,7 @@ impl App {
             | ModalOwner::AtPicker
             | ModalOwner::SlashPicker
             | ModalOwner::Welcome => self.insert_paste(&normalized),
-            ModalOwner::PlanAsk | ModalOwner::PlanReview => {
+            ModalOwner::PlanAsk => {
                 if let Some(ask) = self.state.plan_review.ask.as_mut() {
                     let index = ask.question_index;
                     if let Some(question) = ask.questions.get_mut(index) {
@@ -170,6 +170,7 @@ impl App {
                 self.state.ui.needs_render = true;
             }
             ModalOwner::Approval
+            | ModalOwner::PlanReview
             | ModalOwner::DiffPeek
             | ModalOwner::Doctor
             | ModalOwner::Help
@@ -293,6 +294,9 @@ impl App {
                 // draw() autoresizes the terminal; invalidate geometry now,
                 // including while idle or a modal owns keyboard focus.
                 self.state.ui.clear_chat_render_cache();
+                if self.state.ui.scroll_drag.take().is_some() {
+                    self.state.ui.suppress_click_on_up = true;
+                }
                 self.state.ui.needs_render = true;
             }
             _ => {}
@@ -359,6 +363,7 @@ impl App {
                         self.attach_clipboard_image();
                     }
                     Err(_) if self.attach_clipboard_image() => {}
+                    Err(arboard::Error::ContentNotAvailable) => {}
                     Err(error) => {
                         tracing::debug!(%error, "clipboard read failed");
                         self.state
@@ -406,8 +411,16 @@ impl App {
                 _ => {}
             },
             ModalOwner::DiffPeek => {
-                if key.code == KeyCode::Esc {
-                    self.state.ui.diff_peek = None;
+                let ui = &mut self.state.ui;
+                match key.code {
+                    KeyCode::Esc => ui.diff_peek = None,
+                    KeyCode::Up => ui.scroll_diff_peek(-1),
+                    KeyCode::Down => ui.scroll_diff_peek(1),
+                    KeyCode::PageUp => ui.scroll_diff_peek(-8),
+                    KeyCode::PageDown => ui.scroll_diff_peek(8),
+                    KeyCode::Home => ui.diff_peek_scroll = 0,
+                    KeyCode::End => ui.diff_peek_scroll = ui.diff_peek_max,
+                    _ => {}
                 }
                 return Ok(true);
             }
@@ -730,7 +743,7 @@ impl App {
                 modifiers: KeyModifiers::SHIFT,
                 ..
             } => {
-                self.state.ui.chat_auto_scroll = true;
+                self.state.ui.scroll_to_bottom();
             }
             KeyEvent {
                 code: KeyCode::Home,
@@ -744,7 +757,7 @@ impl App {
                 modifiers: KeyModifiers::SHIFT,
                 ..
             } => {
-                self.state.ui.chat_auto_scroll = true;
+                self.state.ui.scroll_to_bottom();
             }
             KeyEvent {
                 code: KeyCode::Left,
