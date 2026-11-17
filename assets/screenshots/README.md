@@ -1,14 +1,15 @@
 # README screenshots
 
-These images show Agente's UI at the `0.2.2` release-candidate stage, using
-development fixtures rather than private conversations or live provider calls.
+These images show Agente Code's UI at the `0.2.3` stage, using development
+fixtures rather than private conversations or live provider calls. The same
+captures, unframed, are the landing page's product shots in `site/assets/`.
 
 | File | Surface | Source |
 |---|---|---|
-| `desktop.png` | Home chat with a web artifact preview | Renderer browser harness, `chat-artifacts` |
-| `desktop-code.png` | Code approval with the Changes dock | Renderer browser harness, scripted supervised Code turn |
-| `bots.png` | Colina, a handoff to Scout, and scheduled routines | Renderer browser harness, Bots screen |
-| `terminal.png` | Terminal conversation, markdown, and tool receipts | TUI visual harness, `chat_markdown_and_tools`, `120x40` |
+| `desktop.png` | Home: a board pack answered with three file cards | Renderer mock (`?mock`), **Board pack for Q3** |
+| `desktop-code.png` | Code: an edit held on "Allow this edit?" in the composer | Renderer mock, a new **demo-app** conversation: "Add a verbose flag to boot" |
+| `terminal.png` | Terminal: a plan, then the docked approval card with its diff | TUI visual harness, `approval_edit_diff` |
+| `bots.png` | Colina, a handoff to Scout, and scheduled routines (not used by the README) | Renderer browser harness, Bots screen |
 
 ## Refreshing the captures
 
@@ -41,11 +42,13 @@ the TUI content is rendered directly by the harness.
 
 ## Presentation
 
-The gray background is baked into each PNG so it works on GitHub in either
-theme, without relying on README CSS:
+Desktop captures are taken at **1440 × 900** with device scale 1.5; the
+terminal at its harness size. The gray background is baked into each PNG so it
+works on GitHub in either theme, without relying on README CSS:
 
-- Desktop: 88 px padding, **1576 × 1096** final size.
-- Terminal: 72 px padding, **1084 × 772** final size.
+- Desktop: a 1400 px window, 88 px padding, **1576 × 1051** final size.
+- Terminal: a 940 px window under a 30 px bar with gray dots, 72 px padding,
+  **1084 × 790** final size.
 - Window corners: 16 px radius.
 - Shadow: `0 30px 65px -14px rgba(0, 0, 0, .38)`.
 - Background: a soft white radial highlight over

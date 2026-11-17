@@ -1,96 +1,92 @@
 <p align="center">
-  <img src="assets/brand/agente-code-icon.svg" alt="Agente" height="72" />
-</p>
-
-<h1 align="center">Agente</h1>
-
-<p align="center">
-  <strong>Your models. Your workspace. One Rust agent core.</strong><br />
-  Build software and work with documents using a shared agent runtime.<br />
-  A calm desktop, a keyboard-first terminal, and a runtime you can host yourself.
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/brand/agente-code-lockup-on-dark.svg" />
+    <img src="assets/brand/agente-code-lockup-on-light.svg" alt="Agente Code" height="56" />
+  </picture>
 </p>
 
 <p align="center">
-  <a href="https://github.com/fabricio3g/AgenteCode/releases"><img src="https://img.shields.io/badge/release-v0.2.2-666666?style=flat" alt="Release v0.2.2" /></a>
+  <strong>One agent for your desktop, your terminal and your server.</strong><br />
+  Agente Code plans, edits and builds with you. Bring any model, read every step<br />
+  as it happens, and approve every change before it lands.
+</p>
+
+<p align="center">
+  <a href="https://github.com/fabricio3g/AgenteCode/releases/latest"><img src="https://img.shields.io/badge/release-v0.2.3-666666?style=flat" alt="Release v0.2.3" /></a>
   <a href="https://github.com/fabricio3g/AgenteCode/actions/workflows/rust.yml"><img src="https://img.shields.io/badge/Rust-CI-666666?style=flat" alt="Rust CI" /></a>
   <a href="https://github.com/fabricio3g/AgenteCode/actions/workflows/desktop.yml"><img src="https://img.shields.io/badge/Desktop-CI-666666?style=flat" alt="Desktop CI" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-666666?style=flat" alt="MIT license" /></a>
 </p>
 
 <p align="center">
-  <a href="#get-started">Get started</a> ·
-  <a href="#agente-desktop">Desktop</a> ·
-  <a href="#agente-code">Code</a> ·
-  <a href="#agente-server">Server</a> ·
+  <a href="#install">Install</a> ·
+  <a href="#desktop">Desktop</a> ·
+  <a href="#terminal">Terminal</a> ·
+  <a href="#server">Server</a> ·
+  <a href="#models">Models</a> ·
   <a href="#development">Development</a>
 </p>
 
 <p align="center">
-  <img src="assets/screenshots/desktop.png" alt="Agente Desktop in dark mode: a launch-page conversation with a live artifact preview beside the chat, framed on a gray-gradient background" width="100%" />
-  <br /><sub>Chat and an artifact preview, side by side. Screenshots show the current UI with demo data.</sub>
+  <img src="assets/screenshots/desktop-code.png" alt="Agente Code Desktop in the Code space: the agent read src/index.ts and asks “Allow this edit?” above the composer, with the diff in the conversation" width="100%" />
 </p>
 
-## Choose your workspace
+## Three surfaces, one core
 
-| | Made for | How to use it |
+The same Rust agent runs all three, so a session, a model or a tool behaves the same wherever you use it.
+
+| | For | Get it |
 |---|---|---|
-| **Agente Desktop** | Chat, local models, research, voice, artifacts, roleplay, and a visual coding workspace | Download a Linux or Windows installer |
-| **Agente Code** | Working in a repository without leaving your terminal | Download a Linux or Windows binary |
-| **Agente Server** | Keeping sessions running on your own infrastructure | `agente serve` or the Docker image; preview |
+| **[Desktop](#desktop)** | The whole task: chat and research, files you can download, a project workspace, design, local models, voice | Installer for Windows and Linux |
+| **[Terminal](#terminal)** | Working in a repository without leaving your shell | One binary for Windows and Linux |
+| **[Server](#server)** <sup>preview</sup> | Sessions that keep running on a machine you control | `agente serve` or the Docker image |
 
-Use cloud providers with your own keys, or connect local models. The coding agent uses the Rust core; Desktop talks to the runtime through a local background service.
+**You keep the last word.** Edits and commands wait for a yes: Enter allows, Esc denies, and destructive calls are marked in red. Start read-only with a plan, revert or fork from any message, and see what each call costs.
 
-## Get started
+## Install
 
-The repository is currently private. Open the release links while signed in
-with an account that has repository access, or use the [GitHub CLI](https://cli.github.com)
-after `gh auth login`. Anonymous download requests return 404.
+> [!NOTE]
+> The repository is private. Open release links while signed in with an account that has access, or use the [GitHub CLI](https://cli.github.com) after `gh auth login`. Anonymous downloads return 404.
 
-### Download Agente Code
-
-The next release uses these Code filenames. Existing assets on the [releases page](https://github.com/fabricio3g/AgenteCode/releases) keep their original names. Choose your platform:
+### Desktop
 
 | Platform | Download |
 |---|---|
-| Linux x86_64 | [AgenteCode-linux-x64](https://github.com/fabricio3g/AgenteCode/releases/latest/download/AgenteCode-linux-x64) |
-| Linux arm64 | [AgenteCode-linux-arm64](https://github.com/fabricio3g/AgenteCode/releases/latest/download/AgenteCode-linux-arm64) |
-| Debian/Ubuntu amd64 | [AgenteCode-linux-amd64.deb](https://github.com/fabricio3g/AgenteCode/releases/latest/download/AgenteCode-linux-amd64.deb) |
-| Debian/Ubuntu arm64 | [AgenteCode-linux-arm64.deb](https://github.com/fabricio3g/AgenteCode/releases/latest/download/AgenteCode-linux-arm64.deb) |
-| Windows x64 | [AgenteCode-windows-x64.exe](https://github.com/fabricio3g/AgenteCode/releases/latest/download/AgenteCode-windows-x64.exe) |
+| Windows x64 | [AgenteDesktop-windows-x64.exe](https://github.com/fabricio3g/AgenteCode/releases/latest/download/AgenteDesktop-windows-x64.exe) |
+| Linux x64 | [AgenteDesktop-linux-x64.AppImage](https://github.com/fabricio3g/AgenteCode/releases/latest/download/AgenteDesktop-linux-x64.AppImage) |
+| Debian / Ubuntu amd64 | [AgenteDesktop-linux-amd64.deb](https://github.com/fabricio3g/AgenteCode/releases/latest/download/AgenteDesktop-linux-amd64.deb) |
 
-On Linux, install to your user bin directory (make sure `~/.local/bin` is on your `PATH`):
+- **Windows:** run the installer. It is not code-signed yet, so SmartScreen may ask you to confirm.
+- **Linux:** `chmod +x` the AppImage and run it (needs FUSE 2: `libfuse2t64` on recent Ubuntu), or `sudo apt install ./AgenteDesktop-linux-amd64.deb`.
+- **macOS:** build from source with the [Desktop guide](apps/desktop/README.md).
+
+Desktop bundles its own `agente` runtime and CPU, Vulkan, CUDA and SYCL inference runtimes; ROCm is a download from inside the app. Each release includes a size report for the installers.
+
+### Terminal
 
 ```bash
 mkdir -p ~/.local/bin
-gh release download --repo fabricio3g/AgenteCode --pattern AgenteCode-linux-x64 --output ~/.local/bin/agente --clobber
+gh release download --repo fabricio3g/AgenteCode --pattern AgenteCode-linux-x64 \
+  --output ~/.local/bin/agente --clobber
 chmod +x ~/.local/bin/agente
 agente --version
 ```
 
-Use `AgenteCode-linux-arm64` instead on arm64. Debian packages install the `agente` command, terminal launcher, and icons: `sudo apt install ./AgenteCode-linux-amd64.deb` (use the arm64 package on arm64). On Windows, rename the download to `agente.exe` and put it in a folder on your `PATH`.
-
-Verify Code binaries and Debian packages with [AgenteCode-SHA256SUMS](https://github.com/fabricio3g/AgenteCode/releases/latest/download/AgenteCode-SHA256SUMS). Desktop installers and update metadata have their own [AgenteDesktop-SHA256SUMS](https://github.com/fabricio3g/AgenteCode/releases/latest/download/AgenteDesktop-SHA256SUMS).
-
-### Download Agente Desktop
-
-The next release uses the following Desktop installer names (existing release assets retain their original names):
-
 | Platform | Download |
 |---|---|
-| Linux x86_64 | [AppImage](https://github.com/fabricio3g/AgenteCode/releases/latest/download/AgenteDesktop-linux-x64.AppImage) |
-| Debian/Ubuntu amd64 | [.deb package](https://github.com/fabricio3g/AgenteCode/releases/latest/download/AgenteDesktop-linux-amd64.deb) |
-| Windows x64 | [Installer](https://github.com/fabricio3g/AgenteCode/releases/latest/download/AgenteDesktop-windows-x64.exe) |
+| Linux x64 | [AgenteCode-linux-x64](https://github.com/fabricio3g/AgenteCode/releases/latest/download/AgenteCode-linux-x64) |
+| Linux arm64 | [AgenteCode-linux-arm64](https://github.com/fabricio3g/AgenteCode/releases/latest/download/AgenteCode-linux-arm64) |
+| Debian / Ubuntu | [amd64 .deb](https://github.com/fabricio3g/AgenteCode/releases/latest/download/AgenteCode-linux-amd64.deb) · [arm64 .deb](https://github.com/fabricio3g/AgenteCode/releases/latest/download/AgenteCode-linux-arm64.deb) |
+| Windows x64 | [AgenteCode-windows-x64.exe](https://github.com/fabricio3g/AgenteCode/releases/latest/download/AgenteCode-windows-x64.exe) |
 
-Desktop bundles CPU, Vulkan, CUDA and SYCL runtimes with their required libraries. ROCm is available through the UI download. CUDA can still make installers large; each release includes a component size report. Production source maps are excluded.
+Make sure `~/.local/bin` is on your `PATH`. The `.deb` packages install `agente` with a terminal launcher and icons. On Windows, rename the download to `agente.exe` and put it in a folder on your `PATH`.
 
-On Linux, make the AppImage executable and run it, or install the Debian package with `sudo apt install ./AgenteDesktop-linux-amd64.deb`. AppImages require FUSE 2 (`libfuse2t64` on recent Ubuntu). On Windows, run the installer; this release is unsigned.
-
-Desktop includes its own `agente` runtime. Install the standalone Code binary too if you want to use it in a terminal.
+Verify downloads with [AgenteCode-SHA256SUMS](https://github.com/fabricio3g/AgenteCode/releases/latest/download/AgenteCode-SHA256SUMS) and [AgenteDesktop-SHA256SUMS](https://github.com/fabricio3g/AgenteCode/releases/latest/download/AgenteDesktop-SHA256SUMS).
 
 <details>
 <summary><strong>Run Desktop from source</strong></summary>
 
-With stable Rust, Node.js 22.12+ and the native build tools for your OS installed:
+With stable Rust, Node.js 22.12+ and your platform's native build tools:
 
 ```bash
 git clone https://github.com/fabricio3g/AgenteCode.git
@@ -100,130 +96,138 @@ npm --prefix renderer install
 CARGO_BUILD_JOBS=2 npm run dev
 ```
 
-The dev command builds `agente` and starts Electron and the renderer. See the [Desktop guide](apps/desktop/README.md) for native-module troubleshooting and local-model setup.
+`npm run dev` builds `agente`, then starts Electron and the renderer. The [Desktop guide](apps/desktop/README.md) covers native modules and local-model setup.
 
 </details>
 
-## Agente Desktop
+## Desktop
 
-**A workspace for the whole task.** Move between Home, Code, Design, and Roleplay without juggling separate apps.
-
-- **Chat and research.** Use cloud or local models, search the web, and keep conversations organized.
-- **Artifacts beside the conversation.** Preview pages, documents, slides, and spreadsheets, then download the results. Float panels, stack them, or group them as tabs in the workspace.
-- **Local inference.** Manage GGUF models and llama.cpp runtimes, with CPU and GPU backends selected for your machine. Available backends depend on the runtime bundle.
-- **Voice.** Dictate with whisper.cpp speech-to-text and listen to responses with text-to-speech.
-- **Roleplay.** Work with characters, personas, and worlds in a dedicated space.
-- **A shared composer.** Attach files, pick a model, tune supported thinking levels, and inspect context usage.
-- **Your preferred interface.** Dark and light themes, accessibility settings, and seven UI languages: English, Spanish, Brazilian Portuguese, Chinese, French, German, and Japanese.
-
-### Code, with the workspace around it
+**A calm workspace for the whole task.** Ask in Home and get documents, decks and spreadsheets back as files. Switch to Code for a project, or Design for pages you can point at.
 
 <p align="center">
-  <img src="assets/screenshots/desktop-code.png" alt="Agente Desktop Code: a proposed source edit with Allow and Deny controls, plus a docked changes panel showing a file diff, on a gray-gradient background" width="100%" />
-  <br /><sub>Review a proposed edit before allowing it. Keep project changes beside the conversation.</sub>
+  <img src="assets/screenshots/desktop.png" alt="Agente Code Desktop in Home: a board pack request answered with a report, a review deck and an operating model as downloadable file cards" width="100%" />
 </p>
 
-Desktop's Code section runs the Rust coding agent through `agente serve`. Open projects, follow tool activity, review approvals and diffs, and use docked changes, terminals, processes, and the agent's browser. Revert or fork from messages, and restore file checkpoints when you need to go back.
+- **Home** — chat and research with cloud or local models, web search, and artifacts (pages, documents, slides, spreadsheets) you preview, edit and download.
+- **Code** — the Rust coding agent on a project, with approvals in the composer, diffs in the transcript, and docked changes, terminals, processes and a browser. Each conversation keeps its own layout.
+- **Design** — plain HTML pages on a board you pan and zoom. Select or comment on elements, draw on the canvas, compare variants, and hand the result to Code.
+- **Local models** — manage GGUF models and llama.cpp runtimes, with CPU and GPU backends picked for your machine.
+- **Voice** — dictate with whisper.cpp and listen to replies.
+- **Yours to tune** — dark and light themes, text size and accessibility settings, and seven languages: English, Spanish, Brazilian Portuguese, Chinese, French, German and Japanese. Roleplay is an optional space you can turn on in Settings.
 
-Each conversation keeps its own panel layout, terminal sessions, and browser tabs and storage. Use panel menus to dock, split, group, or float panels; arrow keys resize focused edges and corners. Hiding a terminal or process panel keeps the work running. Close terminals or stop processes explicitly when you are finished.
+## Terminal
 
-## Agente Code
-
-**Stay in the terminal. Keep control of the work.** A keyboard-first TUI with a minimal transcript, session tabs, live tool output, and explicit approvals.
+**Stay in your repository. Keep control of the work.** A keyboard-first agent with a quiet transcript, session tabs, live tool output and an approval card docked above the prompt.
 
 <p align="center">
-  <img src="assets/screenshots/terminal.png" alt="Agente Code terminal UI: a coding prompt, a markdown plan, Rust code, task progress, tool receipts, and the model and context status, on a gray-gradient background" width="100%" />
-  <br /><sub>Plans, tools, and a persistent session—without leaving your repository.</sub>
+  <img src="assets/screenshots/terminal.png" alt="Agente Code in a terminal: a plan, then “Allow this edit?” with the diff and Allow Enter, Allow for turn A, Deny Esc above the prompt" width="80%" />
 </p>
 
 ```bash
-agente                                  # open the TUI in this folder
+agente                                   # open in this folder
 agente -p ~/src/my-app                   # work in another project
 agente "refactor the auth module"        # start with a prompt
-agente --resume                         # reopen a saved session
-agente --no-tui "fix the failing test"   # headless; auto-approves tools
+agente --resume                          # pick a saved session to reopen
+agente --no-tui "fix the failing test"   # headless; add --no-auto-approve to keep prompts
 ```
 
-1. Connect a provider with `/provider`.
-2. Pick a model with `/model`; use `Ctrl+T` for supported reasoning levels.
-3. Describe the task. Mention files with `@`, run commands with `/`, or open the palette with `Ctrl+P`.
+First run: connect a provider with `/provider`, pick a model with `/model` (`Ctrl+T` sets the reasoning level), then describe the task. Mention files with `@`, run commands with `/`, open everything else with `Ctrl+P`.
 
-| Capability | What you get |
+| | |
 |---|---|
-| **Plan, build, auto** | Start read-only with a plan, approve tools as you build, or use auto-approval. Cycle with `Shift+Tab`. |
-| **Parallel tools and subagents** | Read tools run concurrently. Explore, plan, and general-purpose agents work in parallel; writing children get isolated git worktrees. |
-| **Skills and MCP** | Load [Agent Skills](https://agentskills.io/specification), custom agents, and MCP tools over stdio or Streamable HTTP. |
-| **Sessions and tabs** | Resume saved work, run multiple sessions, queue or steer prompts during a turn, and revert or fork from a message. |
-| **Changes and processes** | Review diffs, undo/redo edits, and inspect or stop background dev servers and watchers. |
-| **Media input** | Attach images, audio, video, and PDFs to models that support them. |
-| **Context and spend** | Automatic compaction, prompt caching, context usage, and per-call and per-subagent cost accounting. Estimates are labeled. |
-| **Editor and automation** | Use `--acp-stdio` for Agent Client Protocol integrations, or `--no-tui` for scripts and CI. |
-
-Cloud providers: OpenRouter, OpenCode Go, DeepSeek, Z.AI (GLM), and MiniMax. Local: Ollama, LM Studio, and llama.cpp. Any other OpenAI-compatible endpoint works as a custom provider. Services whose terms forbid using your own key from a third-party app (such as OpenAI, Anthropic, and Gemini directly) are left out; their models are still available through OpenRouter. Model capabilities determine tool, reasoning, and media support.
+| **Plan → build → auto** | Start read-only with a plan, approve tools as you build, or approve a whole turn. `Shift+Tab` cycles. |
+| **Subagents** | Explore, plan and general-purpose children run in parallel; writing children get their own git worktree. |
+| **Sessions and tabs** | Several sessions at once, queue or steer a running turn, revert or fork from any message, resume after quitting. |
+| **Skills and MCP** | [Agent Skills](https://agentskills.io/specification), custom agents, and MCP servers over stdio or Streamable HTTP. |
+| **Changes and processes** | Diffs, undo/redo, and live output from dev servers and watchers you can stop. |
+| **Media** | Images, audio, video and PDFs for models that accept them. |
+| **Context and spend** | Automatic compaction, prompt caching, a context meter, and cost per call and per subagent. Estimates are labelled. |
+| **Editors and scripts** | `--acp-stdio` for the Agent Client Protocol; `--no-tui` for CI. |
 
 <details>
 <summary><strong>Keyboard shortcuts</strong></summary>
 
 | Key | Action |
 |---|---|
-| `Enter` | Send; while working, queue; on an empty composer, inject the queue |
+| `Enter` | Send; while a turn runs, queue; on an empty prompt, send the queue now |
 | `Shift+Tab` | Cycle plan → build → auto |
 | `Esc` `Esc` | Interrupt the turn |
 | `Ctrl+P` | Command palette |
-| `Ctrl+T` | Reasoning effort |
+| `Ctrl+T` | Reasoning level |
 | `Ctrl+V` | Paste text or attach a clipboard image |
 | `Ctrl+X` | Subagents |
 | `Ctrl+S` / `Ctrl+N` | Session picker / new session |
-| `F2` | New session tab |
+| `F2` | New tab |
 | `Ctrl+PgUp` / `Ctrl+PgDn` | Switch tabs |
 | `PageUp` / `PageDown` | Scroll the transcript |
-| `Ctrl+O` | Edit your prompt in `$EDITOR` |
+| `Ctrl+O` | Edit the prompt in `$EDITOR` |
 | `Ctrl+B` | Show session changes |
 | `?` / `F1` | All shortcuts |
 
-Useful commands: `/settings`, `/skills`, `/mcp`, `/compact`, `/undo`, `/redo`, `/init`, and `/doctor`.
+Useful commands: `/settings`, `/skills`, `/mcp`, `/compact`, `/undo`, `/redo`, `/init`, `/doctor`.
 
 </details>
 
 <details>
-<summary><strong>Configuration and extensions</strong></summary>
+<summary><strong>Configuration</strong></summary>
 
-TUI settings merge from `~/.agente/config.json` and your project's `agente.json`; the project wins. Provider keys live in `~/.agente/auth.json`. See [`agente.json.example`](agente.json.example) for configuration fields.
+Settings merge from `~/.agente/config.json` and the project's `agente.json` (the project wins); provider keys live in `~/.agente/auth.json`. [`agente.json.example`](agente.json.example) lists the fields, and [Provider routing and caching](docs/PROVIDERS.md) explains how routes and cache rules are chosen.
 
-Provider routes and cache behavior use shared metadata, with configuration overrides. Newly discovered gateway models stay visible even when their protocol is unknown; set `models.<id>.provider.api_format` to enable one. See [Provider routing and caching](docs/PROVIDERS.md) for precedence, cache rules, and examples.
-
-- **Skills:** folders containing `SKILL.md` in `.agente/skills`, `.agents/skills`, or `.claude/skills`, with user-level equivalents. The agent can select a skill, or you can invoke `/skill-name`.
+- **Skills:** folders with a `SKILL.md` in `.agente/skills`, `.agents/skills` or `.claude/skills`, in the project or your home folder. The agent picks one when it fits, or you call `/skill-name`.
 - **Custom agents:** Markdown definitions in `.agente/agents/*.md`.
-- **MCP:** configure servers in `agente.json` or the project's `.mcp.json`. Project servers require approval; read-only tools are available in Plan mode.
+- **MCP:** servers in `agente.json` or the project's `.mcp.json`. Project servers wait for your approval; read-only tools also work in Plan mode.
+- **Browser and Google Workspace:** `agente bridge install` adds your real browser and Google Docs, Sheets and Drive as tools ([guide](docs/GOOGLE_WORKSPACE.md)).
 
-The composer status shows `mode │ $spend · cache% │ context`. `~$` marks catalog estimates, `+` means some calls are unpriced, and `free` means the provider explicitly charged zero.
+The status row reads `mode │ $spend · cache% │ context`: `~` marks a catalog estimate, `+` means some calls were unpriced, and `free` means the provider charged nothing.
 
 </details>
 
-## Agente Server
+## Server
 
-**Keep the runtime running. Connect when you need it.** The local service behind Desktop can also run headless for sessions and tools.
+**Start a task, close the laptop, attach later.** The runtime behind Desktop also runs headless.
 
 ```bash
-agente serve                         # start the local service
-agente serve --status                # check whether it is running
-agente attach                        # join the latest runtime session
+agente serve                 # start the local service
+agente serve --status        # is it running?
+agente attach                # join the latest session from any terminal
 ```
 
-For self-hosting, the preview Docker image is `ghcr.io/fabricio3g/agente-server`. The [Server guide](docs/SERVER.md) covers persistent storage, provider configuration, and remote connections.
+To host it yourself, run the preview image `ghcr.io/fabricio3g/agente-server` with a token:
 
-## Under the hood
+```bash
+export AGENTE_TOKEN=$(openssl rand -hex 32)
+docker run -d --name agente \
+  -p 127.0.0.1:7420:7420 \
+  -e AGENTE_TOKEN -e OPENROUTER_API_KEY \
+  -v agente-data:/home/agente/.agente \
+  -v "$PWD/workspace:/workspace" \
+  ghcr.io/fabricio3g/agente-server:latest
+```
 
-The Rust core handles the agent loop, tools, providers, permissions, subagents, skills, MCP, caching, and compaction. The TUI uses the core directly; Desktop's Code section uses the runtime service. Home chat also has Desktop-specific inference and artifact tooling.
+Remote connections are not encrypted: put a tunnel or TLS proxy in front. The [Server guide](docs/SERVER.md) covers storage, providers and remote attach.
+
+## Models
+
+Bring your own key, or nothing at all.
+
+- **Cloud:** OpenRouter, OpenCode Go, DeepSeek, Z.AI (GLM) and MiniMax.
+- **Local:** llama.cpp, Ollama and LM Studio.
+- **Anything else** that speaks the OpenAI API, as a custom provider.
+
+Services whose terms forbid using your key from a third-party app (OpenAI, Anthropic and Gemini directly) are left out; their models are still available through OpenRouter. Tools, reasoning levels and media follow what each model supports.
+
+## How it fits together
 
 ```mermaid
 flowchart LR
-  core["Rust agent core<br/>tools · providers · subagents · skills · MCP"] --> tui["Agente Code<br/>terminal"]
-  core --> runtime["Runtime + agente serve<br/>sessions · events · approvals"]
-  runtime --> desktop["Desktop Code"]
+  core["Rust agent core<br/>tools · providers · subagents · skills · MCP"] --> tui["Terminal"]
+  core --> runtime["Runtime · agente serve<br/>sessions · events · approvals"]
+  runtime --> desktop["Desktop"]
   runtime --> attach["agente attach"]
-  runtime --> server["Agente Server<br/>Docker preview"]
+  runtime --> server["Server image"]
 ```
+
+The terminal uses the core directly; Desktop's Code space and the server go through the runtime. Home and Design add Desktop's own inference and artifact tools.
 
 <details>
 <summary><strong>Repository map</strong></summary>
@@ -231,25 +235,28 @@ flowchart LR
 | Path | Purpose |
 |---|---|
 | `crates/agente-core` | Agent loop, tools, providers, permissions, subagents, skills, MCP, compaction |
-| `crates/agente-runtime` | Sessions, events, approvals, undo/redo, per-session projects and modes |
+| `crates/agente-runtime` | Sessions, events, approvals, undo/redo |
 | `crates/agente-daemon` | `agente serve` and its transports |
 | `crates/agente-tui` | Terminal UI |
-| `crates/agente-cli` | The `agente` binary: TUI, headless, ACP, serve, attach |
-| `crates/agente-{protocol,session,acp,node}` | Shared types, persistence, editor protocol, Node bindings |
-| `apps/desktop` | Electron, Svelte, and TypeScript app |
+| `crates/agente-cli` | The `agente` binary: TUI, headless, ACP, serve, attach, bridge |
+| `crates/agente-bridge` | Browser-extension hub and Google Workspace tools |
+| `crates/agente-{protocol,session,acp,node,audio,computer}` | Shared types, persistence, editor protocol, Node bindings, audio, computer use |
+| `apps/desktop` | Electron + Svelte desktop app and the browser extension |
+| `site/` | The landing page |
+| `assets/brand/` | Icon, lockups and favicon, generated by `crates/agente-tui/examples/gen_brand.rs` |
 
 </details>
 
 ## Development
 
-Build the standalone Code binary from the repository root:
+Build the terminal binary from the repository root:
 
 ```bash
 CARGO_BUILD_JOBS=2 cargo build --release --bin agente -j 2
-./target/release/agente --version      # Windows: target/release/agente.exe
+./target/release/agente --version        # Windows: target\release\agente.exe
 ```
 
-Run Rust checks one crate at a time; substitute the crate you changed:
+Check one crate at a time (substitute the one you changed):
 
 ```bash
 cargo fmt --all -- --check
@@ -258,7 +265,7 @@ CARGO_BUILD_JOBS=2 cargo test -p agente-core -j 2
 CARGO_BUILD_JOBS=2 cargo clippy -p agente-core --all-targets -j 2 -- -D warnings
 ```
 
-Desktop checks, from `apps/desktop`:
+Desktop, from `apps/desktop`:
 
 ```bash
 npm run check
@@ -270,12 +277,12 @@ node scripts/gen-protocol-types.mjs --check
 
 | Guide | What's inside |
 |---|---|
-| [Project context](AGENTS.md) | Architecture, UI conventions, and contributor instructions |
+| [Project context](AGENTS.md) | Architecture, design decisions and contributor rules |
 | [Desktop development](apps/desktop/docs/DEVELOPMENT.md) | Toolchain and native-module troubleshooting |
+| [Providers](docs/PROVIDERS.md) | Routing, caching and adding a provider |
 | [Server](docs/SERVER.md) | Self-hosting and remote sessions |
-| [Releasing](docs/RELEASING.md) | CLI and desktop build and publication workflow |
-| [0.2.2 release record](docs/RELEASE_PLAN_0.2.2.md) | Coordinated binaries and installers, packaging work, and validation gates |
+| [Releasing](docs/RELEASING.md) | Building and publishing the CLI and Desktop |
 
 ## License
 
-[MIT](LICENSE). Brand assets live in [`assets/brand`](assets/brand); the wordmark uses [Space Grotesk](https://github.com/floriankarsten/space-grotesk), licensed under the SIL Open Font License 1.1.
+[MIT](LICENSE). Brand assets are in [`assets/brand`](assets/brand); the wordmark is set in [Space Grotesk](https://github.com/floriankarsten/space-grotesk) (SIL Open Font License 1.1).
