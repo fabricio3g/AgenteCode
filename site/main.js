@@ -1,14 +1,23 @@
-import { mountPlate } from "./js/plate.js?v=14";
-import { initTeam } from "./js/team.js?v=14";
-import { initTheme, initSegmented, initCopy, initReveal, initScroll, initStack } from "./js/ui.js?v=14";
+import { mountTiles } from "./js/tiles.js?v=20";
+import { initTheme, initSegmented, initCopy, initReveal, initScroll } from "./js/ui.js?v=20";
 
 initTheme();
 initSegmented();
 initCopy();
 initReveal();
 initScroll();
-initStack();
-initTeam();
 
-// The rotating plate behind the whole page.
-mountPlate(document.getElementById("plate"), document.getElementById("plate-next"));
+// The tile field the terminal's welcome card floats on, glowing up from the product shot.
+const tiles = document.getElementById("hero-tiles");
+if (tiles) mountTiles(tiles, { focus: [0.5, 0.78] });
+
+// The browser chrome follows the page theme.
+const themeColor = document.querySelector('meta[name="theme-color"]');
+const syncChrome = () => themeColor?.setAttribute("content", document.documentElement.dataset.theme === "light" ? "#ffffff" : "#1c1c1c");
+document.addEventListener("themechange", syncChrome);
+syncChrome();
+
+// "Install the CLI" lands on the install section with the CLI tab open.
+document.querySelectorAll("[data-install]").forEach((link) => {
+  link.addEventListener("click", () => document.getElementById(`g-${link.dataset.install}`)?.click());
+});
