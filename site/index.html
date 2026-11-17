@@ -67,26 +67,18 @@
     <!-- 1 · Hero: the tile field the terminal greets you with, behind one sentence and the product. -->
     <section class="hero" id="top">
       <canvas class="hero-tiles" id="hero-tiles" aria-hidden="true"></canvas>
-      <div class="wrap hero-copy">
-        <h1>One agent for your desktop,<br class="br-wide" /> your terminal and your server.</h1>
-        <p class="lede">Agente Code plans, edits and builds with you. Bring any model, read every step as it happens, and approve every change before it lands.</p>
-        <div class="actions">
-          <a class="btn btn-solid btn-lg" href="#install"><svg aria-hidden="true"><use href="#i-download" /></svg>Download Desktop</a>
-          <a class="btn btn-outline btn-lg" href="#install" data-install="cli"><svg aria-hidden="true"><use href="#i-terminal" /></svg>Install the CLI</a>
+      <div class="wrap hero-grid">
+        <div class="hero-copy">
+          <h1>One agent for your desktop, terminal and server.</h1>
+          <p class="lede">Agente Code plans, edits and builds with you. Bring any model, read every step as it happens, and approve every change before it lands.</p>
+          <div class="actions">
+            <a class="btn btn-solid btn-lg" href="#install"><svg aria-hidden="true"><use href="#i-download" /></svg>Download Desktop</a>
+            <a class="btn btn-outline btn-lg" href="#install" data-install="cli"><svg aria-hidden="true"><use href="#i-terminal" /></svg>Install the CLI</a>
+          </div>
         </div>
-      </div>
-
-      <div class="wrap hero-shot" data-reveal>
-        <figure class="window window-main">
+        <figure class="window hero-window" data-reveal>
           <img src="assets/desktop-code.webp" width="2160" height="1350" alt="Agente Code Desktop in the Code space: the agent read src/index.ts and asks “Allow this edit?” above the composer, with the diff in the conversation" />
         </figure>
-        <div class="hero-pair">
-          <p class="hero-caption"><b>Same question, every surface.</b> The desktop asks above the composer; the terminal docks the same card over its prompt. Enter allows, Esc denies.</p>
-          <figure class="window window-term">
-            <div class="window-bar" aria-hidden="true"><i></i><i></i><i></i><span>agente</span></div>
-            <img src="assets/terminal.webp" width="1371" height="896" alt="Agente Code in a terminal asking “Allow this edit?” with the diff, and Allow Enter, Allow for turn A, Deny Esc" loading="lazy" />
-          </figure>
-        </div>
       </div>
     </section>
 

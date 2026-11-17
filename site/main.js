@@ -9,7 +9,7 @@ initScroll();
 
 // The tile field the terminal's welcome card floats on, glowing up from the product shot.
 const tiles = document.getElementById("hero-tiles");
-if (tiles) mountTiles(tiles, { focus: [0.5, 0.78] });
+if (tiles) mountTiles(tiles, { focus: [0.7, 0.85] });
 
 // The browser chrome follows the page theme.
 const themeColor = document.querySelector('meta[name="theme-color"]');
