@@ -3305,6 +3305,34 @@
     "pillFailed": "{n} 件失敗",
     "previous": "前のサブエージェント",
     "next": "次のサブエージェント",
-    "position": "{n} / {total}"
+    "position": "{n} / {total}",
+    "running": "実行中",
+    "connections": "接続",
+    "computerUse": "コンピューター操作",
+    "computerReady": "準備完了",
+    "computerActive": "操作中",
+    "computerPaused": "一時停止",
+    "pr": "PR #{n}",
+    "prDraft": "ドラフト",
+    "prState": {
+      "OPEN": "オープン",
+      "MERGED": "マージ済み",
+      "CLOSED": "クローズ"
+    },
+    "checks": {
+      "pass": "チェック成功",
+      "fail": "チェック失敗",
+      "pending": "チェック実行中"
+    },
+    "ahead": "{base} より {n} コミット先行",
+    "createPr": "PR を作成",
+    "mcpTools": "ツール {n} 件",
+    "mcp": {
+      "disabled": "オフ",
+      "needs_approval": "承認が必要",
+      "connecting": "接続中",
+      "failed": "失敗",
+      "ready": "準備完了"
+    }
   }
 }

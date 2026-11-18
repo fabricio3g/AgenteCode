@@ -865,6 +865,14 @@ const handlers: Record<string, (args?: Record<string, unknown>) => unknown> = {
       { name: 'fix/sidebar-width', commit: 'c7d8e9f', current: false, ahead: 0, behind: 0 }
     ]
   }),
+  agente_mcp_status: () => [
+    { name: 'web', target: 'agente bridge', remote: false, status: 'ready', error: null, tools: 14 },
+    { name: 'github', target: 'https://api.githubcopilot.com/mcp/', remote: true, status: 'failed', error: '401 Unauthorized', tools: 0 }
+  ],
+  agente_git_pull_request: () => ({
+    source: 'git', branch: 'main', base: 'main', ahead: 0, compareUrl: null,
+    pr: { number: 42, title: 'Session column and subagent pill', url: 'https://github.com/example/demo-app/pull/42', state: 'OPEN', draft: false, checks: 'pending' }
+  }),
   agente_git_switch_branch: (args) => ({ ok: true, branch: String((args as { name?: string })?.name ?? 'main') }),
   agente_open_in_editor: () => ({ ok: true, editor: 'code' }),
   agente_process_list: () => [],

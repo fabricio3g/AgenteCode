@@ -184,6 +184,8 @@ svg.ag-icon :is(.a, .b, .c, .d, .e, .f) { transform-box: fill-box; transform-ori
   :is(button, a, [role='menuitem'], [role='tab'], [role='option'], label, summary):not(:disabled):hover .ag-icon-git-compare-arrows:not([class*='animate-']) .b { animation: ag-git-compare-arrows-right 260ms ease-out; }
   :is(button, a, [role='menuitem'], [role='tab'], [role='option'], label, summary):not(:disabled):hover .ag-icon-git-fork:not([class*='animate-']) .a { stroke-dasharray: 1; animation: ag-git-fork-draw 200ms ease-out; }
   :is(button, a, [role='menuitem'], [role='tab'], [role='option'], label, summary):not(:disabled):hover .ag-icon-git-fork:not([class*='animate-']) .b { animation: ag-git-fork-pop 200ms ease-out 100ms; }
+  :is(button, a, [role='menuitem'], [role='tab'], [role='option'], label, summary):not(:disabled):hover .ag-icon-git-pull-request:not([class*='animate-']) .a { stroke-dasharray: 1; animation: ag-git-pull-request-draw 220ms ease-out; }
+  :is(button, a, [role='menuitem'], [role='tab'], [role='option'], label, summary):not(:disabled):hover .ag-icon-git-pull-request:not([class*='animate-']) .b { animation: ag-git-pull-request-nudge 200ms ease-out 80ms; }
   :is(button, a, [role='menuitem'], [role='tab'], [role='option'], label, summary):not(:disabled):hover .ag-icon-globe:not([class*='animate-']) .a { animation: ag-globe-spin 280ms ease-in-out; }
   :is(button, a, [role='menuitem'], [role='tab'], [role='option'], label, summary):not(:disabled):hover .ag-icon-globe-2:not([class*='animate-']) .a { animation: ag-globe-2-turn 280ms ease-out; }
   :is(button, a, [role='menuitem'], [role='tab'], [role='option'], label, summary):not(:disabled):hover .ag-icon-graduation-cap:not([class*='animate-']) .a { animation: ag-graduation-cap-swing 300ms ease-in-out; }
@@ -459,6 +461,8 @@ svg.ag-icon :is(.a, .b, .c, .d, .e, .f) { transform-box: fill-box; transform-ori
 @keyframes ag-git-compare-arrows-right { 50% { translate: 1px 0; } }
 @keyframes ag-git-fork-draw { from { stroke-dashoffset: 1; } }
 @keyframes ag-git-fork-pop { 50% { scale: 1.15; } }
+@keyframes ag-git-pull-request-draw { from { stroke-dashoffset: 1; } }
+@keyframes ag-git-pull-request-nudge { 50% { translate: -1px 0; } }
 @keyframes ag-globe-spin { 50% { translate: 1.5px 0; scale: 0.85 1; } }
 @keyframes ag-globe-2-turn { from { translate: -1px 0; opacity: 0.3; } }
 @keyframes ag-graduation-cap-swing { 30% { rotate: 25deg; } 70% { rotate: -12deg; } }

@@ -3305,6 +3305,34 @@
     "pillFailed": "{n} fehlgeschlagen",
     "previous": "Vorheriger Subagent",
     "next": "Nächster Subagent",
-    "position": "{n} von {total}"
+    "position": "{n} von {total}",
+    "running": "Läuft",
+    "connections": "Verbindungen",
+    "computerUse": "Computersteuerung",
+    "computerReady": "Bereit",
+    "computerActive": "Steuert",
+    "computerPaused": "Pausiert",
+    "pr": "PR #{n}",
+    "prDraft": "Entwurf",
+    "prState": {
+      "OPEN": "Offen",
+      "MERGED": "Gemergt",
+      "CLOSED": "Geschlossen"
+    },
+    "checks": {
+      "pass": "Checks bestanden",
+      "fail": "Checks fehlgeschlagen",
+      "pending": "Checks laufen"
+    },
+    "ahead": "{n, plural, one {# Commit} other {# Commits}} vor {base}",
+    "createPr": "PR erstellen",
+    "mcpTools": "{n, plural, one {# Tool} other {# Tools}}",
+    "mcp": {
+      "disabled": "Aus",
+      "needs_approval": "Freigabe nötig",
+      "connecting": "Verbindet",
+      "failed": "Fehlgeschlagen",
+      "ready": "Bereit"
+    }
   }
 }

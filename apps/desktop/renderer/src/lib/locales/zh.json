@@ -3305,6 +3305,34 @@
     "pillFailed": "{n} 个失败",
     "previous": "上一个子代理",
     "next": "下一个子代理",
-    "position": "第 {n} 个，共 {total} 个"
+    "position": "第 {n} 个，共 {total} 个",
+    "running": "运行中",
+    "connections": "连接",
+    "computerUse": "电脑操控",
+    "computerReady": "就绪",
+    "computerActive": "操控中",
+    "computerPaused": "已暂停",
+    "pr": "PR #{n}",
+    "prDraft": "草稿",
+    "prState": {
+      "OPEN": "开放",
+      "MERGED": "已合并",
+      "CLOSED": "已关闭"
+    },
+    "checks": {
+      "pass": "检查通过",
+      "fail": "检查失败",
+      "pending": "检查进行中"
+    },
+    "ahead": "领先 {base} {n} 个提交",
+    "createPr": "创建 PR",
+    "mcpTools": "{n} 个工具",
+    "mcp": {
+      "disabled": "已关闭",
+      "needs_approval": "需要批准",
+      "connecting": "连接中",
+      "failed": "失败",
+      "ready": "就绪"
+    }
   }
 }

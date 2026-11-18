@@ -81,7 +81,7 @@
   <WorkspaceHost {panels} {layout}>
     <div class="conversation-row">
       <CodeSurface {chat} />
-      {#if project && projectControls.open}<SessionPanel {chat} {project} {layout} />{/if}
+      {#if project && projectControls.open}<SessionPanel {chat} {project} {layout} {browser} />{/if}
     </div>
   </WorkspaceHost>
 </div>

@@ -61,6 +61,23 @@ export interface GitBranch {
   behind: number;
 }
 
+/** A PR's checks, rolled into one state. */
+export type PullRequestChecks = 'pass' | 'fail' | 'pending' | 'none';
+
+/** The current branch as a pull request: its base, its lead and any PR that exists. */
+export interface PullRequestState {
+  source: 'git' | 'none';
+  branch: string | null;
+  /** The branch a PR would merge into (the remote's HEAD, else main/master). */
+  base: string | null;
+  /** Commits on the branch that its base on the remote does not have. */
+  ahead: number;
+  /** Where to open a PR on the web (GitHub only), when there is a remote. */
+  compareUrl: string | null;
+  /** The branch's PR, read through the GitHub CLI when it is installed and signed in. */
+  pr: { number: number; title: string; url: string; state: 'OPEN' | 'MERGED' | 'CLOSED'; draft: boolean; checks: PullRequestChecks } | null;
+}
+
 /** Everything the branch menu needs for one project, in a single round trip. */
 export interface GitBranches {
   source: 'git' | 'none';

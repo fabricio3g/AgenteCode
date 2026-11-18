@@ -94,6 +94,7 @@ export { default as GalleryHorizontal } from './generated/GalleryHorizontal.svel
 export { default as GitBranch } from './generated/GitBranch.svelte';
 export { default as GitCompareArrows } from './generated/GitCompareArrows.svelte';
 export { default as GitFork } from './generated/GitFork.svelte';
+export { default as GitPullRequest } from './generated/GitPullRequest.svelte';
 export { default as Globe } from './generated/Globe.svelte';
 export { default as Globe2 } from './generated/Globe2.svelte';
 export { default as GraduationCap } from './generated/GraduationCap.svelte';

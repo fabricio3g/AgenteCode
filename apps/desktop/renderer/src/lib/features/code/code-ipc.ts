@@ -3,7 +3,7 @@
 import { invoke } from '$lib/services/bridge';
 import type { CodeCheckpointSummary, AgenteStartSessionArgs } from '$shared/agente-protocol';
 import type { Attachment } from '$shared/agente-protocol.gen';
-import type { GitBranches, OpenInEditorArgs, OpenInEditorResult, SwitchBranchResult } from '$shared/code-workspace';
+import type { GitBranches, OpenInEditorArgs, OpenInEditorResult, PullRequestState, SwitchBranchResult } from '$shared/code-workspace';
 
 export function startCodeAgentSession(args: AgenteStartSessionArgs): Promise<{ sessionId: string; resumed: boolean; conversationIndex?: number }> {
   return invoke('agente_start_session', args as unknown as Record<string, unknown>);
@@ -115,6 +115,10 @@ export function projectFiles(projectRoot: string): Promise<string[]> {
 }
 
 /** Local branches of the project's repository, with the worktree's dirty flag. */
+export function gitPullRequest(projectRoot: string): Promise<PullRequestState> {
+  return invoke('agente_git_pull_request', { projectRoot });
+}
+
 export function gitBranches(projectRoot: string): Promise<GitBranches> {
   return invoke('agente_git_branches', { projectRoot });
 }

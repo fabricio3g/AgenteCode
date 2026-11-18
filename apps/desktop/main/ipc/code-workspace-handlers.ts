@@ -5,6 +5,7 @@ import { createTerminal, killAllTerminals, killTerminal, resizeTerminal, writeTe
 import { processRegistry, type ProcessEvent } from '../agente/processes.ts';
 import { fileDiff, listChanges, revertFile } from '../agente/changes.ts';
 import { branchState, switchBranch } from '../agente/git-branches.ts';
+import { pullRequestState } from '../agente/pull-request.ts';
 import { openInEditor } from '../agente/open-editor.ts';
 import { revealPath, trashPath } from '../agente/reveal.ts';
 import { rustProcesses } from '../agente/rust-engine.ts';
@@ -60,6 +61,9 @@ export function registerCodeWorkspaceHandlers(ipcMain: IpcMain): void {
 
   ipcMain.handle('agente_git_branches', (_e, args: { projectRoot: string }) =>
     branchState(args.projectRoot)
+  );
+  ipcMain.handle('agente_git_pull_request', (_e, args: { projectRoot: string }) =>
+    pullRequestState(args.projectRoot)
   );
   ipcMain.handle('agente_git_switch_branch', (_e, args: { projectRoot: string; name: string; create?: boolean }) =>
     switchBranch(args.projectRoot, args.name, args.create === true)

@@ -3305,6 +3305,34 @@
     "pillFailed": "{n} en échec",
     "previous": "Sous-agent précédent",
     "next": "Sous-agent suivant",
-    "position": "{n} sur {total}"
+    "position": "{n} sur {total}",
+    "running": "En cours",
+    "connections": "Connexions",
+    "computerUse": "Contrôle de l’ordinateur",
+    "computerReady": "Prêt",
+    "computerActive": "Aux commandes",
+    "computerPaused": "En pause",
+    "pr": "PR #{n}",
+    "prDraft": "Brouillon",
+    "prState": {
+      "OPEN": "Ouverte",
+      "MERGED": "Fusionnée",
+      "CLOSED": "Fermée"
+    },
+    "checks": {
+      "pass": "Vérifications réussies",
+      "fail": "Vérifications en échec",
+      "pending": "Vérifications en cours"
+    },
+    "ahead": "{n, plural, one {# commit} other {# commits}} d’avance sur {base}",
+    "createPr": "Créer la PR",
+    "mcpTools": "{n, plural, one {# outil} other {# outils}}",
+    "mcp": {
+      "disabled": "Désactivé",
+      "needs_approval": "À approuver",
+      "connecting": "Connexion",
+      "failed": "Échec",
+      "ready": "Prêt"
+    }
   }
 }
