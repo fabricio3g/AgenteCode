@@ -1,0 +1,46 @@
+<!doctype html><meta charset="utf-8"><title>glfx diag</title>
+<body style="margin:0;background:#222">
+<script type="module">
+// Mounts every effect and reports what happened through a GET to the static server's log.
+const report = (o) => fetch("/__diag?" + encodeURIComponent(JSON.stringify(o))).catch(() => {});
+const errs = [];
+const ce = console.error; console.error = (...a) => { errs.push(a.map(String).join(" ").slice(0, 400)); ce(...a); };
+addEventListener("error", (e) => errs.push("onerror " + e.message));
+addEventListener("unhandledrejection", (e) => errs.push("rejection " + (e.reason?.message || e.reason)));
+try {
+  const { mountGL, hasWebGL2 } = await import("../glfx/glfx.js");
+  const { FX } = await import("../glfx/effects.js");
+  const c0 = document.createElement("canvas").getContext("webgl2");
+  const info = { ua: navigator.userAgent, webgl2: hasWebGL2(), gpu: "gpu" in navigator,
+    cbf: !!c0?.getExtension("EXT_color_buffer_float"), renderer: c0?.getParameter(c0.RENDERER) };
+  const pal = { bg: "#161616", deep: "#0e0e0e", accent: "#e8793a", hi: "#ffbe98", ink: "#ececec", faint: "#3a2418",
+    paper: "#15130f", sepia: "#e6dbc4", sea: "#1f5560", abyss: "#08161a", kelp: "#4f6b3a", ochre: "#c98a3c",
+    ivory: "#1b1815", clay: "#e8793a", kraft: "#a97c50", sage: "#6f7f5a",
+    deep: "#101a2e", cyan: "#3fc6d6", plum: "#8a63d8", poppy: "#f2593d" };
+  const res = {};
+  for (const [k, fx] of Object.entries(FX)) {
+    const cv = document.createElement("canvas");
+    cv.style.cssText = "width:200px;height:120px;display:inline-block";
+    document.body.append(cv);
+    const inst = mountGL(cv, fx, pal);
+    await new Promise((r) => setTimeout(r, 250));
+    // Read inside the next frame, after glfx's own rAF has drawn, before the buffer is cleared.
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    let px = null;
+    if (inst) {
+      const gl = cv.getContext("webgl2");
+      const b = new Uint8Array(4);
+      gl.readPixels(cv.width >> 1, cv.height >> 1, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, b);
+      px = [...b].join(",") + " err=" + gl.getError() + " size=" + cv.width + "x" + cv.height;
+    }
+    res[k] = inst ? px : "null";
+    inst?.destroy();
+  }
+  const vis = document.visibilityState;
+  report({ info, res, errs, vis });
+  const pre = document.createElement("pre");
+  pre.style.cssText = "color:#eee;font:12px monospace";
+  pre.textContent = JSON.stringify({ info, res, errs }, null, 1);
+  document.body.append(pre);
+} catch (e) { report({ fatal: String(e), stack: e.stack, errs }); }
+</script>

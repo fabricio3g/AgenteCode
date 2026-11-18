@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Shader lab · Agente</title>
+  <meta name="robots" content="noindex" />
+  <link rel="icon" type="image/svg+xml" href="../assets/agente-code-icon.svg" />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Inter:opsz,wght@14..32,400..800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="../styles.css?v=14" />
+  <script>
+    (function () {
+      var t = null;
+      var p = "agente";
+      try { t = localStorage.getItem("agente-theme"); p = localStorage.getItem("agente-palette") || "agente"; } catch (e) {}
+      document.documentElement.dataset.theme = t || (matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark");
+      document.documentElement.dataset.palette = p;
+      document.documentElement.classList.add("js");
+    })();
+  </script>
+  <style>
+    .lab { padding: 88px 0 80px; }
+    .lab-head { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 16px; margin-bottom: 24px; }
+    .lab-head h1 { font-size: 28px; }
+    .lab-head p { margin: 6px 0 0; color: var(--text-tertiary); max-width: 60ch; }
+    .lab-tools { display: flex; gap: 8px; flex-wrap: wrap; }
+    .notice { margin: 0 0 20px; padding: 10px 14px; border-radius: var(--radius-lg); background: var(--muted); color: var(--text-secondary); font-size: 13.5px; }
+    .notice[hidden], .card[hidden] { display: none; }
+
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 480px), 1fr)); gap: 16px; }
+    .card { border-radius: var(--radius-xl); box-shadow: 0 0 0 1px var(--border); overflow: hidden; background: var(--card); }
+    .stagebox { position: relative; aspect-ratio: 16 / 9; background: var(--background); overflow: hidden; isolation: isolate; }
+    .stagebox canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; z-index: -1; }
+    .mock { position: absolute; inset: 0; display: grid; place-content: center start; justify-items: start; gap: 12px; padding: 16px 16px 16px 7%; text-align: left; }
+    /* A soft scrim of the page colour behind the copy keeps it legible over busy fields. */
+    .mock::before { content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none;
+      background: radial-gradient(48% 46% at 22% 50%, color-mix(in srgb, var(--background) 82%, transparent), transparent); }
+    .mock h2 { font-size: clamp(20px, 3.4vw, 30px); line-height: 1.1; letter-spacing: -0.03em; }
+    .mock p { margin: 0; color: var(--text-secondary); font-size: 13px; max-width: 34ch; }
+    .mock .row { display: flex; gap: 8px; flex-wrap: wrap; }
+    .meta { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; }
+    .meta b { font-weight: 600; font-size: 14px; }
+    .meta span { display: block; color: var(--text-tertiary); font-size: 12.5px; }
+    .meta code { font-size: 11.5px; color: var(--text-faint); }
+    .status { font: 500 11px/1 var(--font-mono); color: var(--text-faint); }
+    .status.err { color: var(--brand-accent-strong); }
+
+    /* Fullscreen preview: the chosen effect behind the real hero copy and buttons. */
+    .full { position: fixed; inset: 0; z-index: 80; display: none; background: var(--background); isolation: isolate; }
+    .full.open { display: block; }
+    .full canvas { position: absolute; inset: 0; width: 100%; height: 100%; z-index: -1; }
+    .full .mock h2 { font-size: clamp(36px, 6vw, 68px); }
+    .full .mock p { font-size: 17px; max-width: 46ch; }
+    .full .close { position: absolute; top: 16px; right: 16px; }
+    @media (max-width: 560px) { .mock p { display: none; } }
+  </style>
+</head>
+<body>
+  <header class="nav scrolled">
+    <div class="wrap nav-inner">
+      <a class="wordmark" href="../index.html" aria-label="Agente home"><svg class="wordmark-a" viewBox="22 22 76 76" aria-hidden="true"><path class="wm-a" d="M22 98 50 22h20l28 76H79L60 44 41 98Z"/><path class="wm-tilde" d="M36 77c8-10 16-10 24-4s16 6 24-4"/></svg><span>gente</span></a>
+      <div class="nav-actions" style="margin-left:auto">
+        <button class="icon-btn" id="theme-toggle" type="button" aria-label="Switch light or dark theme">
+          <svg class="i-sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2m-7.07-2.93 1.41-1.41M17.66 6.34l1.41-1.41M2 12h2m16 0h2M4.93 4.93l1.41 1.41m11.32 11.32 1.41 1.41"/></svg>
+          <svg class="i-moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="lab">
+    <div class="wrap">
+      <div class="lab-head">
+        <div>
+          <h1>Shader lab</h1>
+          <p>Candidate backdrops for the landing redesign: ocean studies, nature plates, old science-book prints, and a newer group that pairs the orange with its complements — cyan, indigo and plum — on deep grounds. The <b>Palette</b> button swaps Agente's graphite-orange for Claude's warm neutrals (ivory #FAF9F5, clay #D97757); the theme button swaps light and dark. Click a card's <b>Preview</b> to see it full-screen behind the hero.</p>
+        </div>
+        <div class="lab-tools">
+          <button class="ui-btn ui-btn-outline" type="button" id="palette">Palette: <b id="palette-label" style="font-weight:600">Agente</b></button>
+          <button class="ui-btn ui-btn-outline" type="button" id="pause"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14M16 5v14"/></svg>Pause all</button>
+        </div>
+      </div>
+      <div class="lab-tools" id="sets" role="group" aria-label="Filter by set" style="margin-bottom:16px"></div>
+      <p class="notice" id="notice" hidden></p>
+      <div class="grid" id="grid"></div>
+    </div>
+  </main>
+
+  <div class="full" id="full" role="dialog" aria-modal="true" aria-label="Hero preview">
+    <canvas id="full-canvas"></canvas>
+    <div class="mock">
+      <h2>A workbench is<br /><span class="shimmer">more than a chat.</span></h2>
+      <p>One Rust agent core behind a desktop, a terminal, a team of bots, and a server you host.</p>
+      <div class="row">
+        <a class="ui-btn ui-btn-lg ui-btn-solid" href="#">Get Agente <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14m-7-7 7 7-7 7"/></svg></a>
+        <a class="ui-btn ui-btn-lg ui-btn-outline" href="#"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.4 5.4 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4"/></svg>View on GitHub</a>
+      </div>
+    </div>
+    <button class="ui-btn ui-btn-outline ui-btn-sm close" type="button" id="full-close">Close <kbd style="font:inherit;opacity:.6">Esc</kbd></button>
+  </div>
+
+  <template id="card-tpl">
+    <article class="card">
+      <div class="stagebox">
+        <canvas></canvas>
+        <div class="mock">
+          <h2>A workbench is<br />more than a chat.</h2>
+          <p>One Rust agent core behind a desktop, a terminal, bots and a server.</p>
+          <div class="row">
+            <button class="ui-btn ui-btn-solid" type="button">Get Agente <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14m-7-7 7 7-7 7"/></svg></button>
+            <button class="ui-btn ui-btn-outline" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"/></svg>Open folder</button>
+          </div>
+        </div>
+      </div>
+      <div class="meta">
+        <div><b></b><span></span><code></code></div>
+        <div style="display:flex;align-items:center;gap:10px">
+          <span class="status">loading…</span>
+          <button class="ui-btn ui-btn-outline ui-btn-sm preview" type="button">Preview</button>
+        </div>
+      </div>
+    </article>
+  </template>
+
+  <script type="module" src="shaders.js?v=14"></script>
+</body>
+</html>
