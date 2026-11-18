@@ -48,7 +48,7 @@ export interface Dialect {
 
 // ── The table ──────────────────────────────────────────────────────────
 
-export const DIALECTS: Dialect[] = [
+const DIALECTS: Dialect[] = [
   {
     // OpenCode Go: a flat subscription to open models behind one
     // OpenAI-compatible endpoint (opencode.ai/docs/go).

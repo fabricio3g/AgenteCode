@@ -9,7 +9,6 @@
 //! process restarts. Without a store the runtime stays purely in-memory.
 
 mod bridge;
-mod compat;
 mod edits;
 pub mod import;
 
@@ -30,9 +29,9 @@ use agente_core::subagent::SubagentRegistry;
 use agente_core::types::{AgentMode, ApprovalAction};
 use agente_core::AbortController;
 use agente_protocol::{
-    ApprovalDecision, ApprovalDecisionKind, ChildSnapshot, Message, Origin, Role, RunId,
-    RuntimeEvent, RuntimeEventEnvelope, SessionId, SessionInfo, SessionSnapshot, StartTurn, Trust,
-    TurnId, TurnMode, TurnOutcome, TurnStatus, UserInput, PROTOCOL_VERSION,
+    ApprovalDecision, ApprovalDecisionKind, Message, Origin, Role, RunId, RuntimeEvent,
+    RuntimeEventEnvelope, SessionId, SessionInfo, SessionSnapshot, StartTurn, Trust, TurnId,
+    TurnMode, TurnOutcome, TurnStatus, UserInput, PROTOCOL_VERSION,
 };
 use agente_session::{SessionMeta, SessionStore, SessionStoreError};
 use chrono::Utc;
@@ -93,7 +92,6 @@ pub struct RuntimeConfig {
     /// Auto-approve rules, for the engines of sessions in other projects.
     pub auto_approve: AutoApproveConfig,
     pub approval_broker: ApprovalBroker,
-    pub mcp_manager: Option<Arc<McpManager>>,
     pub subagent_registry: SubagentRegistry,
     /// Per-subagent-type model overrides from the user's config.
     pub subagent_models: agente_core::config::SubagentModels,
@@ -151,7 +149,6 @@ impl RuntimeConfig {
             catalog: app_config.catalog.clone(),
             auto_approve: app_config.auto_approve.clone(),
             approval_broker: ApprovalBroker::new(),
-            mcp_manager: None,
             subagent_registry: SubagentRegistry::new(),
             subagent_models: app_config.subagent_models.clone(),
             smart_compaction: app_config.smart_compaction,
@@ -165,11 +162,6 @@ impl RuntimeConfig {
 
     pub fn with_profile_source(mut self, source: Arc<dyn ProfileSource>) -> Self {
         self.profile_source = Some(source);
-        self
-    }
-
-    pub fn with_mcp_manager(mut self, manager: Arc<McpManager>) -> Self {
-        self.mcp_manager = Some(manager);
         self
     }
 
@@ -533,7 +525,6 @@ impl RuntimeInner {
         let base = live
             .mcp_manager
             .clone()
-            .or_else(|| self.config.mcp_manager.clone())
             .unwrap_or_else(|| Arc::new(McpManager::from_sources(&live.app_config.mcp, "", &[])));
         let manager =
             Arc::new(base.for_project(project_dir, &live.app_config.approved_mcp_servers));
@@ -818,10 +809,6 @@ impl TurnHandle {
         self.session_id
     }
 
-    pub fn events(&mut self) -> &mut mpsc::Receiver<RuntimeEventEnvelope> {
-        &mut self.events
-    }
-
     pub async fn recv(&mut self) -> Option<RuntimeEventEnvelope> {
         self.events.recv().await
     }
@@ -1067,7 +1054,7 @@ impl RuntimeHandle {
             session_id.as_uuid(),
             task_id,
             legacy_tx,
-            compat::conversation_to_core(conversation),
+            conversation,
             provider,
             model,
             thinking,
@@ -1539,7 +1526,6 @@ impl RuntimeHandle {
         let live = self.inner.live();
         live.mcp_manager
             .clone()
-            .or_else(|| self.inner.config.mcp_manager.clone())
             .map(|manager| manager.snapshots())
             .unwrap_or_default()
     }
@@ -2076,20 +2062,6 @@ impl RuntimeHandle {
         self.inner.update_meta(session_id, &project_dir, |_| {});
         self.inner.persist_snapshot(&snapshot);
         snapshot
-    }
-
-    pub fn child_snapshot(&self, run_id: RunId) -> Option<ChildSnapshot> {
-        let legacy_id = self
-            .inner
-            .lock_children()
-            .iter()
-            .find_map(|(legacy, mapped)| (*mapped == run_id).then(|| legacy.clone()))?;
-        let snapshot = self.inner.config.subagent_registry.get(&legacy_id)?;
-        Some(ChildSnapshot {
-            run_id,
-            status: format!("{:?}", snapshot.status).to_lowercase(),
-            summary: snapshot.summary,
-        })
     }
 
     pub fn approval_broker(&self) -> ApprovalBroker {

@@ -42,10 +42,6 @@ impl ToolCore for ReadFileTool {
         ToolKind::Read
     }
 
-    fn icon(&self) -> &'static str {
-        "◉"
-    }
-
     fn description(&self) -> &str {
         "Read the contents of a file, optionally a 1-indexed line range. A whole-file read is limited to 1 MB; larger files must be read with start_line/end_line. Long lines are truncated."
     }
@@ -240,10 +236,6 @@ impl ToolCore for WriteFileTool {
         ToolKind::Write
     }
 
-    fn icon(&self) -> &'static str {
-        "✎"
-    }
-
     fn execution_mode(&self) -> ToolExecutionMode {
         ToolExecutionMode::Sequential
     }
@@ -375,10 +367,6 @@ impl ToolCore for EditFileTool {
 
     fn kind(&self) -> ToolKind {
         ToolKind::Edit
-    }
-
-    fn icon(&self) -> &'static str {
-        "✎"
     }
 
     fn execution_mode(&self) -> ToolExecutionMode {
@@ -599,10 +587,6 @@ impl ToolCore for ListDirTool {
 
     fn kind(&self) -> ToolKind {
         ToolKind::List
-    }
-
-    fn icon(&self) -> &'static str {
-        "≡"
     }
 
     fn description(&self) -> &str {

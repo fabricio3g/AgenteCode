@@ -21,18 +21,6 @@ pub enum Permission {
     Ask,
 }
 
-impl Permission {
-    /// Check if permission requires user interaction
-    pub fn requires_prompt(&self) -> bool {
-        matches!(self, Self::Ask)
-    }
-
-    /// Check if permission is granted
-    pub fn is_allowed(&self) -> bool {
-        !matches!(self, Self::Deny)
-    }
-}
-
 /// Permission rule with pattern matching
 #[derive(Debug, Clone)]
 pub struct PermissionRule {
@@ -40,8 +28,6 @@ pub struct PermissionRule {
     pub pattern: String,
     /// Permission decision for matching actions
     pub permission: Permission,
-    /// Optional description
-    pub description: Option<String>,
 }
 
 impl PermissionRule {
@@ -50,20 +36,6 @@ impl PermissionRule {
         Self {
             pattern: pattern.into(),
             permission,
-            description: None,
-        }
-    }
-
-    /// Create a new permission rule with description
-    pub fn with_description(
-        pattern: impl Into<String>,
-        permission: Permission,
-        description: impl Into<String>,
-    ) -> Self {
-        Self {
-            pattern: pattern.into(),
-            permission,
-            description: Some(description.into()),
         }
     }
 
@@ -148,7 +120,6 @@ fn match_wildcard(action: &str, pattern: &str, pattern_parts: &[&str]) -> bool {
 pub fn plan_mode_default_rules() -> Vec<PermissionRule> {
     vec![
         // Read operations are allowed
-        PermissionRule::new("file:read", Permission::Allow),
         PermissionRule::new("tool:read_file", Permission::Allow),
         PermissionRule::new("tool:list_dir", Permission::Allow),
         PermissionRule::new("tool:grep", Permission::Allow),
@@ -172,12 +143,10 @@ pub fn plan_mode_default_rules() -> Vec<PermissionRule> {
         // Present finished plan for Accept / Redo / Comment (writes only under .agente/plans/)
         PermissionRule::new("tool:present_plan", Permission::Allow),
         // Mutating operations are denied in Plan mode. Switch to Build mode to edit.
-        PermissionRule::with_description("file:write", Permission::Deny, "Write to files"),
-        PermissionRule::with_description("file:edit", Permission::Deny, "Edit existing files"),
-        PermissionRule::with_description("tool:write_file", Permission::Deny, "Write files"),
-        PermissionRule::with_description("tool:edit_file", Permission::Deny, "Edit files"),
+        PermissionRule::new("tool:write_file", Permission::Deny),
+        PermissionRule::new("tool:edit_file", Permission::Deny),
         // Shell commands are denied in Plan mode.
-        PermissionRule::with_description("tool:shell", Permission::Deny, "Execute commands"),
+        PermissionRule::new("tool:shell", Permission::Deny),
     ]
 }
 
@@ -185,7 +154,6 @@ pub fn plan_mode_default_rules() -> Vec<PermissionRule> {
 pub fn build_mode_default_rules() -> Vec<PermissionRule> {
     vec![
         // Most operations allowed
-        PermissionRule::new("file:*", Permission::Allow),
         PermissionRule::new("tool:read_file", Permission::Allow),
         PermissionRule::new("tool:list_dir", Permission::Allow),
         PermissionRule::new("tool:grep", Permission::Allow),
@@ -204,7 +172,7 @@ pub fn build_mode_default_rules() -> Vec<PermissionRule> {
         PermissionRule::new("tool:write_file", Permission::Allow),
         PermissionRule::new("tool:edit_file", Permission::Allow),
         // Every shell command in Build mode requires user approval.
-        PermissionRule::with_description("tool:shell", Permission::Ask, "Run shell command"),
+        PermissionRule::new("tool:shell", Permission::Ask),
     ]
 }
 
@@ -239,17 +207,6 @@ impl PermissionEngine {
         }
     }
 
-    /// Create a permission engine with custom rules
-    pub fn with_rules(mode: AgentMode, rules: Vec<PermissionRule>) -> Self {
-        Self {
-            rules,
-            mode,
-            auto_approve_all: false,
-            auto_approve_config: None,
-            project_dir: None,
-        }
-    }
-
     /// Set the agent mode
     pub fn set_mode(&mut self, mode: AgentMode) {
         self.mode = mode;
@@ -272,39 +229,6 @@ impl PermissionEngine {
     /// Add a permission rule
     pub fn add_rule(&mut self, rule: PermissionRule) {
         self.rules.push(rule);
-    }
-
-    /// Clear all rules
-    pub fn clear_rules(&mut self) {
-        self.rules.clear();
-    }
-
-    /// Check permission for an action
-    ///
-    /// Returns the permission decision. Rules are evaluated in order, first match wins.
-    pub fn check(&self, action: &str) -> Permission {
-        // Explicit denies are safety boundaries; auto-approve only bypasses prompts.
-        for rule in &self.rules {
-            if rule.matches(action) && rule.permission == Permission::Deny {
-                return Permission::Deny;
-            }
-        }
-
-        if self.auto_approve_all {
-            return Permission::Allow;
-        }
-
-        for rule in &self.rules {
-            if rule.matches(action) {
-                return rule.permission;
-            }
-        }
-
-        // Default: deny in plan mode, allow in build mode
-        match self.mode {
-            AgentMode::Plan => Permission::Deny,
-            AgentMode::Build => Permission::Allow,
-        }
     }
 
     /// Create a permission engine seeded with the user's auto-approve config.
@@ -436,7 +360,7 @@ impl PermissionEngine {
 
     /// Check permission for a tool call. Convenience form: collects the
     /// filesystem facts inline (I/O happens under the caller's lock — prefer
-    /// [`PermissionEngine::check_tool_with_facts`] on hot paths).
+    /// [`PermissionEngine::check_tool_with_default`] on hot paths).
     pub fn check_tool(&self, tool_name: &str, args: &serde_json::Value) -> Permission {
         self.check_tool_or(tool_name, args, None)
     }
@@ -464,17 +388,6 @@ impl PermissionEngine {
     ///
     /// Automatic approval only upgrades a final `Ask` to `Allow`; it can never
     /// turn a `Deny` (mode prohibition or explicit rule) into an allow.
-    pub fn check_tool_with_facts(
-        &self,
-        tool_name: &str,
-        args: &serde_json::Value,
-        facts: &ToolFsFacts,
-    ) -> Permission {
-        self.check_tool_with_default(tool_name, args, facts, None)
-    }
-
-    /// [`Self::check_tool_with_facts`] where the tool supplies its own
-    /// fallback (step 5) instead of the mode default.
     pub fn check_tool_with_default(
         &self,
         tool_name: &str,
@@ -531,31 +444,6 @@ impl PermissionEngine {
         } else {
             decision
         }
-    }
-
-    /// Check permission for file operations
-    pub fn check_file_op(&self, operation: &str, path: &str) -> Permission {
-        if self.mode == AgentMode::Plan && matches!(operation, "write" | "edit" | "delete") {
-            return Permission::Deny;
-        }
-
-        let action = format!("file:{operation}");
-
-        // Check specific path patterns
-        let path_action = format!("{action}:{path}");
-        for rule in &self.rules {
-            if rule.matches(&path_action) {
-                return rule.permission;
-            }
-        }
-
-        // Fall back to generic action check
-        self.check(&action)
-    }
-
-    /// Get all rules
-    pub fn rules(&self) -> &[PermissionRule] {
-        &self.rules
     }
 }
 
@@ -915,14 +803,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_permission_display() {
-        assert!(Permission::Allow.is_allowed());
-        assert!(!Permission::Deny.is_allowed());
-        assert!(Permission::Ask.is_allowed());
-        assert!(Permission::Ask.requires_prompt());
-    }
-
-    #[test]
     fn test_rule_matching() {
         let rule = PermissionRule::new("tool:read", Permission::Allow);
         assert!(rule.matches("tool:read"));
@@ -939,14 +819,14 @@ mod tests {
     #[test]
     fn test_plan_mode_defaults() {
         let engine = PermissionEngine::new(AgentMode::Plan);
+        let no_args = serde_json::json!({});
 
         // Read operations should be allowed
-        assert_eq!(engine.check("tool:read_file"), Permission::Allow);
-        assert_eq!(engine.check("file:read"), Permission::Allow);
+        assert_eq!(engine.check_tool("read_file", &no_args), Permission::Allow);
 
         // Write operations are denied in Plan mode
-        assert_eq!(engine.check("tool:write_file"), Permission::Deny);
-        assert_eq!(engine.check("tool:edit_file"), Permission::Deny);
+        assert_eq!(engine.check_tool("write_file", &no_args), Permission::Deny);
+        assert_eq!(engine.check_tool("edit_file", &no_args), Permission::Deny);
     }
 
     /// Plan mode is where exploration happens, so the hosted subagent family
@@ -977,12 +857,13 @@ mod tests {
     #[test]
     fn test_build_mode_defaults() {
         let engine = PermissionEngine::new(AgentMode::Build);
+        let no_args = serde_json::json!({});
 
         // Most operations allowed
-        assert_eq!(engine.check("tool:write_file"), Permission::Allow);
-        assert_eq!(engine.check("tool:edit_file"), Permission::Allow);
+        assert_eq!(engine.check_tool("write_file", &no_args), Permission::Allow);
+        assert_eq!(engine.check_tool("edit_file", &no_args), Permission::Allow);
         // Every shell call in Build mode asks for approval.
-        assert_eq!(engine.check("tool:shell"), Permission::Ask);
+        assert_eq!(engine.check_tool("shell", &no_args), Permission::Ask);
     }
 
     #[test]
@@ -1021,7 +902,6 @@ mod tests {
 
         // With auto-approve, explicit denies still win.
         engine.set_auto_approve(true);
-        assert_eq!(engine.check("tool:write_file"), Permission::Deny);
         assert_eq!(
             engine.check_tool("write_file", &serde_json::json!({})),
             Permission::Deny
@@ -1172,25 +1052,27 @@ mod tests {
         let engine = PermissionEngine::from_config(AgentMode::Build, &AutoApproveConfig::default());
         let tiny = serde_json::json!({"path": ".mcp.json", "search": "a", "replace": "b"});
         assert_eq!(
-            engine.check_tool_with_facts(
+            engine.check_tool_with_default(
                 "edit_file",
                 &tiny,
                 &ToolFsFacts {
                     target_exists: true,
                     target_line_count: Some(3)
-                }
+                },
+                None
             ),
             Permission::Ask
         );
         let plain = serde_json::json!({"path": "src/a.rs", "search": "a", "replace": "b"});
         assert_eq!(
-            engine.check_tool_with_facts(
+            engine.check_tool_with_default(
                 "edit_file",
                 &plain,
                 &ToolFsFacts {
                     target_exists: true,
                     target_line_count: Some(3)
-                }
+                },
+                None
             ),
             Permission::Allow
         );

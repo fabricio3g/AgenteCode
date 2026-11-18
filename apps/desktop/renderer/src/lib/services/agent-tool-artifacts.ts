@@ -318,7 +318,7 @@ export async function handleCreateDashboard(params: {
   return params.ok({ title, path, metricCount: metrics.length }, { createdFiles: [path] });
 }
 
-export function sanitizeHtmlCard(html: string): string {
+function sanitizeHtmlCard(html: string): string {
   let out = String(html || '');
   // Remove scripts and remote/active hooks — self-contained snippets only.
   // Runs in any JS env (no DOM), so regex pre-strip; the render path

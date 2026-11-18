@@ -435,7 +435,7 @@ export function orderedEntries(
 
 const TODO_TOOLS = new Set(['todo_write', 'todo']);
 
-export function eventToStep(event: CodeAgentEvent): AgentStep | null {
+function eventToStep(event: CodeAgentEvent): AgentStep | null {
   switch (event.type) {
     case 'tool_start':
       return {

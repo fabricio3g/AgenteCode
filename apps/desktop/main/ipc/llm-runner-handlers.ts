@@ -12,8 +12,6 @@ type LlmRunnerHandlerDeps = {
   unloadModel: (modelId: string, win: BrowserWindow | null) => unknown;
   getRecommendedSettings: (modelPath: string, userContext: unknown, userGpuLayers: unknown, runtimePath: string) => unknown;
   previewLocalModelCommand: (config: unknown) => unknown;
-  startEmbeddingServer: (config: unknown, win: BrowserWindow | null) => unknown;
-  stopEmbeddingServer: () => unknown;
   getEmbeddingStatus: () => unknown;
 };
 
@@ -29,8 +27,6 @@ export function registerLlmRunnerHandlers({
   unloadModel,
   getRecommendedSettings,
   previewLocalModelCommand,
-  startEmbeddingServer,
-  stopEmbeddingServer,
   getEmbeddingStatus,
 }: LlmRunnerHandlerDeps): void {
   ipcMain.handle('start_llama', (_e, { config }) => startLlama(config, getMainWindow()));
@@ -44,7 +40,5 @@ export function registerLlmRunnerHandlers({
     getRecommendedSettings(modelPath, userContext, userGpuLayers, runtimePath));
   ipcMain.handle('preview_local_model_command', (_e, { config }) => previewLocalModelCommand(config));
 
-  ipcMain.handle('start_embedding_server', (_e, { config }) => startEmbeddingServer(config, getMainWindow()));
-  ipcMain.handle('stop_embedding_server', () => stopEmbeddingServer());
   ipcMain.handle('get_embedding_status', () => getEmbeddingStatus());
 }

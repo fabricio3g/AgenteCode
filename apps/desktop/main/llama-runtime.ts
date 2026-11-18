@@ -49,7 +49,3 @@ export function inspectLlamaServer(binaryPath: string): LlamaRuntimeCapabilities
 export function supportsLlamaFlag(capabilities: LlamaRuntimeCapabilities | null | undefined, flag: string): boolean {
   return !capabilities || capabilities.supportedFlags.has(flag);
 }
-
-export function clearLlamaRuntimeCapabilitiesCache(): void {
-  capabilitiesCache.clear();
-}

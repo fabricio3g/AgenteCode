@@ -74,10 +74,6 @@ export function formatReasoningDuration(seconds: number): string {
   return String(Math.floor(s));
 }
 
-export function isCodeToolName(name: string): boolean {
-  return /^(run[_\s-]?code|execute[_\s-]?(command|code)|bash|shell)$/i.test(String(name || '').trim());
-}
-
 export function toolStatusLabel(
   status: ToolUiStatus | string,
   opts?: { cancelled?: boolean }

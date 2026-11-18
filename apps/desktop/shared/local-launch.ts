@@ -54,7 +54,7 @@ export type LocalLoadConfig = {
 };
 
 /** The per-model keys; everything else in `config.llm.local` is app-wide. */
-export const LOAD_CONFIG_KEYS = [
+const LOAD_CONFIG_KEYS = [
   'context_length', 'gpu_layers', 'cpu_threads', 'batch_size', 'flash_attention', 'offload_kv_cache',
   'keep_in_memory', 'mmap', 'seed', 'rope_freq_base', 'rope_freq_scale', 'cache_type_k', 'cache_type_v',
   'mmproj_path', 'thinking_mode', 'mtp', 'mtp_draft_path', 'mtp_draft_n_max', 'cpu_moe', 'n_cpu_moe',
@@ -68,7 +68,7 @@ const LEGACY_KEYS: string[] = [...LOAD_CONFIG_KEYS, 'gpu_offload', 'disable_thin
  * llama.cpp's behaviour when a switch is left alone. Saving a switch at its
  * default stores nothing, so "unchanged" stays unchanged if the default moves.
  */
-export const LOAD_CONFIG_DEFAULTS = {
+const LOAD_CONFIG_DEFAULTS = {
   flash_attention: true,
   offload_kv_cache: true,
   keep_in_memory: false,
@@ -142,12 +142,12 @@ function text(value: unknown): string | undefined {
 }
 
 /** The key a model file's config is stored under: one spelling per file. */
-export function modelKey(modelPath: string): string {
+function modelKey(modelPath: string): string {
   return String(modelPath || '').trim().replace(/\\/g, '/').toLowerCase();
 }
 
 /** A clean per-model config: valid values only, switches at their default dropped. */
-export function normalizeLoadConfig(raw: Record<string, unknown> | null | undefined): LocalLoadConfig {
+function normalizeLoadConfig(raw: Record<string, unknown> | null | undefined): LocalLoadConfig {
   const value = raw ?? {};
   const config: Record<string, unknown> = {
     context_length: count(value.context_length),

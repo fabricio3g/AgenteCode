@@ -8,7 +8,7 @@
 import { colorToHex, type TokenDecl } from './design-tokens';
 
 export const TWEAKS_FILE = 'tweaks.json';
-export const MAX_TWEAKS = 12;
+const MAX_TWEAKS = 12;
 
 export interface TweakOption { value: string; label: string }
 

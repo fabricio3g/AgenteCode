@@ -1,4 +1,3 @@
-import type { AgentArtifact } from '$lib/types/chat';
 import { artifactPreviewCsp } from '$shared/artifact-preview-policy';
 
 const TEXT_ASSET_EXTENSIONS = new Set(['html', 'htm', 'css', 'js', 'mjs', 'cjs', 'ts', 'jsx', 'tsx', 'json', 'svg', 'txt', 'md', 'xml', 'webmanifest']);
@@ -273,12 +272,4 @@ export function buildPreviewHtml(
 
 export function buildArtifactPreviewHtml(html: string, files: Record<string, string>, path: string, interactive = false) {
   return buildPreviewHtml(html, files, path, interactive, { adaptiveCanvas: true });
-}
-
-export function isSimpleArtifact(artifact: AgentArtifact | null): boolean {
-  if (!artifact) return false;
-  const visibleFiles = Object.entries(artifact.files).filter(([k]) => !k.startsWith('__'));
-  if (visibleFiles.length > 3) return false;
-  const totalSize = visibleFiles.reduce((sum, [, c]) => sum + c.length, 0);
-  return totalSize <= 8192;
 }

@@ -25,8 +25,8 @@
   import { confirmStore } from '$lib/stores/confirm.svelte';
   import { onMount } from 'svelte';
   import {
-    AlertCircle, Ban, Check, ChevronRight, Cpu, Download, FolderInput, FolderOpen, HardDrive,
-    LoaderCircle, MemoryStick, Trash2,
+    AlertCircle, Ban, Check, ChevronRight, Download, FolderInput, FolderOpen, HardDrive,
+    LoaderCircle, Trash2,
   } from '$lib/icons';
   import { Badge, Button, Select, Switch, Tooltip } from '$lib/components/ui';
   import { openModelsFolder, pickModelFile } from '$lib/services/files';
@@ -283,7 +283,6 @@
   });
 
   const supervisor = $derived(modelsStore.status);
-  const activeModelName = $derived(supervisor?.active_model || '');
   const loadPhase = $derived(supervisor?.load_phase || '');
   const loadProgress = $derived(Number(supervisor?.load_progress ?? 0));
 

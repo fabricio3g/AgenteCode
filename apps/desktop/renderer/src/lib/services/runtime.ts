@@ -1,5 +1,5 @@
 import type { AppConfig } from '$lib/types/chat';
-import type { LlamaConfig, ModelSession, RecommendedSettings, RuntimeTelemetry, SupervisorEvent, SupervisorStatus } from '$lib/types/bridge';
+import type { LlamaConfig, RecommendedSettings, RuntimeTelemetry, SupervisorEvent, SupervisorStatus } from '$lib/types/bridge';
 import { invoke, listen } from './bridge';
 import { launchConfigFromSaved, launchSignature, type LocalLaunchConfig } from '$shared/local-launch';
 
@@ -42,18 +42,6 @@ export async function getSupervisorStatus(): Promise<SupervisorStatus> {
 /** Live /slots readings, or null when the server is down or too old to report. */
 export async function getRuntimeTelemetry(): Promise<RuntimeTelemetry | null> {
   return invoke<RuntimeTelemetry | null>('get_runtime_telemetry');
-}
-
-async function supervisorHealthCheck(): Promise<boolean> {
-  return invoke<boolean>('supervisor_health_check');
-}
-
-async function getLoadedModels(): Promise<ModelSession[]> {
-  return invoke<ModelSession[]>('get_loaded_models');
-}
-
-async function unloadModel(modelId: string): Promise<void> {
-  await invoke<void>('unload_model', { modelId });
 }
 
 export async function getRecommendedSettings(

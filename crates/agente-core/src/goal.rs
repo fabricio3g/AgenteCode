@@ -118,9 +118,6 @@ impl crate::tools::ToolCore for GoalCompleteTool {
     fn kind(&self) -> crate::tools::ToolKind {
         crate::tools::ToolKind::Todo
     }
-    fn icon(&self) -> &'static str {
-        "✓"
-    }
     fn description(&self) -> &str {
         "Mark the active session goal complete only after all of it has been achieved and verified. Do not call if work remains, is blocked, or needs user input."
     }

@@ -14,18 +14,13 @@ pub mod registry;
 pub mod types;
 pub mod worktree;
 
-pub use context::{completion_output, fork_subagent_context};
 pub use definition::{
-    builtin_subagent, custom_subagents, filter_tool_definitions, resolve_effective_config,
-    tool_allowed_by_capability, BuiltinSubagent, CustomSubagent, EffectiveRuntimeConfig,
-    SubagentParentDefaults, BUILTIN_SUBAGENTS, DEFAULT_MAX_CONCURRENT_SUBAGENTS,
-    DEFAULT_MAX_SUBAGENT_DEPTH, DEFAULT_SUBAGENT_TIMEOUT_MS, EXPLORE_PROMPT, EXPLORE_TOOLS,
-    GENERAL_PURPOSE_PROMPT, GENERAL_PURPOSE_TOOLS, PLAN_PROMPT, PLAN_TOOLS,
+    custom_subagents, CustomSubagent, BUILTIN_SUBAGENTS, DEFAULT_MAX_SUBAGENT_DEPTH,
 };
 pub use host::{SubagentHost, SubagentHostConfig, ToolPolicy};
-pub use registry::{bound_conversation, QueuedSpawn, SubagentRegistry, MAX_RESUME_MESSAGES};
+pub use registry::SubagentRegistry;
 pub use types::{
     completion_notice_text, SubagentCapabilityMode, SubagentIsolation, SubagentResult,
-    SubagentSnapshot, SubagentSpawnRequest, SubagentStatus, SubagentType,
+    SubagentSnapshot, SubagentSpawnRequest, SubagentStatus,
 };
 pub use worktree::WorktreeInfo;

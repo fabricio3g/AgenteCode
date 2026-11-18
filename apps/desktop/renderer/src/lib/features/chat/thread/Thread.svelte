@@ -24,7 +24,7 @@
   import DeferredMessage from '$lib/features/shared/DeferredMessage.svelte';
   import ThreadTimeline from './ThreadTimeline.svelte';
   import type { TimelineMarker } from './timeline';
-  let { density = 'comfortable', timeline = true }: { density?: 'comfortable' | 'compact'; timeline?: boolean } = $props();
+  let { density = 'comfortable' }: { density?: 'comfortable' | 'compact' } = $props();
 
   /** Treat anything within this many pixels of the bottom as "at the bottom". */
   const BOTTOM_THRESHOLD_PX = 96;
@@ -387,7 +387,7 @@
         {/if}
       </div>
 
-      {#if showTimeline && timeline}
+      {#if showTimeline}
         <ThreadTimeline
           markers={timelineMarkers}
           index={timelineIndex}

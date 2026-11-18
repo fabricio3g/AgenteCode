@@ -88,10 +88,6 @@ impl ToolCore for GrepTool {
         super::ToolKind::Search
     }
 
-    fn icon(&self) -> &'static str {
-        "◎"
-    }
-
     fn description(&self) -> &str {
         "Search for a pattern in files. Supports regex or literal strings, case control, glob filtering, context lines, and result limits."
     }
@@ -346,10 +342,6 @@ impl ToolCore for FindTool {
     }
     fn kind(&self) -> super::ToolKind {
         super::ToolKind::Search
-    }
-
-    fn icon(&self) -> &'static str {
-        "◇"
     }
 
     fn description(&self) -> &str {

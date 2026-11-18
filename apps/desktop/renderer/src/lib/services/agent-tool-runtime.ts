@@ -3,7 +3,7 @@ export type ToolRuntimeResult = {
   error?: string;
 };
 
-export function isRetryableToolFailure(error?: string): boolean {
+function isRetryableToolFailure(error?: string): boolean {
   const message = String(error || '').toLowerCase();
   if (!message) return false;
   if (

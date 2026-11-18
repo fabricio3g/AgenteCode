@@ -56,7 +56,7 @@ export function buildLocalModelSecondaryText(model: Pick<ModelOption, 'architect
   return String(model.details || '').trim();
 }
 
-export function getLocalModelSearchFields(model: Pick<ModelOption, 'id' | 'name' | 'details' | 'architecture' | 'quantization_name' | 'size_label'>): string[] {
+function getLocalModelSearchFields(model: Pick<ModelOption, 'id' | 'name' | 'details' | 'architecture' | 'quantization_name' | 'size_label'>): string[] {
   return [
     model.id,
     model.name,

@@ -4,7 +4,7 @@ import os from 'node:os';
 import { spawn } from 'node:child_process';
 import { loadConfig, WHISPER_QUALITY_CATALOG } from './config.ts';
 import { getAppPaths } from './paths.ts';
-import { resolveWhisperBinary, detectBestBackend, pickBestRuntime, listWhisperBinaries } from './whisper-resolver.ts';
+import { resolveWhisperBinary, detectBestBackend, listWhisperBinaries } from './whisper-resolver.ts';
 import { DEFAULT_PROVIDER_BASE_URL, DEFAULT_PROVIDER_ID } from '../shared/providers.ts';
 import { warmWhisperServer, findWhisperServer, stopWhisperServer, transcribeWithServer, whisperServerStatus } from './whisper-server.ts';
 import { liveWhisperContext } from './voice/whisper-window.ts';

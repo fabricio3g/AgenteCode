@@ -15,7 +15,6 @@
   import { copy } from '$lib/copy';
   import { buildPreviewHtml } from '$lib/utils/preview-builder';
   import { designStore } from './design.svelte';
-  import { pageLabel } from './design-view';
 
   /** The page every thumbnail renders at before it is scaled down. */
   const THUMB_WIDTH = 1280;

@@ -7,7 +7,7 @@ test('the voice IPC forwards request correlation and engine failures to the play
   let forward;
   registerTtsHandlers({
     ipcMain: { handle() {} }, getMainWindow: () => ({ webContents: { send: (channel, payload) => messages.push({ channel, payload }) } }),
-    initTts: async () => [], generateTtsStream() {}, cancelTtsStream() {}, unloadTts() {}, checkEspeakData() {}, listVoices: () => [],
+    initTts: async () => [], generateTtsStream() {}, cancelTtsStream() {}, unloadTts() {}, listVoices: () => [],
     onWorkerMessage: (listener) => { forward = listener; }
   });
   forward({ type: 'start', id: 19, requestId: 'read-message', total: 1 });

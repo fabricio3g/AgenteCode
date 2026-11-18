@@ -40,11 +40,6 @@
     if (root) void codeWorkspace.loadBranches(root);
   });
 
-  function toggle(next: boolean) {
-    open = next;
-    if (next) void codeWorkspace.loadBranches(projectRoot);
-  }
-
   async function choose(name: string, create = false): Promise<void> {
     if (busy || !name.trim()) return;
     busy = name;

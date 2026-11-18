@@ -19,7 +19,7 @@ export type InspectorTab = 'element' | 'tokens' | 'code';
 export const TOKENS_FILE = 'tokens.css';
 
 /** The active frame's page, as the store reaches it: one frame, or every frame at once. */
-export interface FrameHost {
+interface FrameHost {
   post(message: Record<string, unknown>): void;
   broadcast(message: Record<string, unknown>): void;
 }
@@ -60,7 +60,7 @@ function initialSizes(prefs: DesignPrefs): FrameSizeId[] {
 }
 
 /** What the timeline knows about the open page's animations: the list, whether reduced motion is previewed, and the playhead. */
-export interface MotionState {
+interface MotionState {
   items: MotionItem[];
   reduced: boolean;
   /** ms on the timeline's axis */
@@ -71,7 +71,7 @@ export interface MotionState {
 const NO_MOTION: MotionState = { items: [], reduced: false, time: 0, playing: false, count: 0 };
 
 /** A text edit the picker reported, with the element's page position. */
-export interface DesignTextEdit {
+interface DesignTextEdit {
   page: string;
   selector: string;
   oldText: string;

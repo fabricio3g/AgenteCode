@@ -19,7 +19,6 @@
   import { cn as uiClass } from '$lib/utils/cn';
 
   import { t } from 'svelte-i18n';
-  import { Brain, ChevronDown } from '$lib/icons';
   import ComposerCard from '$lib/features/shared/composer/ComposerCard.svelte';
   import { appStore } from '$lib/stores/app.svelte';
   import { reasoningRouteIdentity } from '$lib/services/reasoning-route';
@@ -30,13 +29,11 @@
   let {
     capabilities: given,
     value,
-    onchange,
-    inline = false
+    onchange
   }: {
     capabilities?: ReasoningCapabilities;
     value?: ReasoningLevel | null;
     onchange?: (level: ReasoningLevel | null) => void;
-    inline?: boolean;
   } = $props();
   const controlled = $derived(!!given);
 
@@ -139,13 +136,11 @@
 </script>
 
 {#if visible}
-  <UiButton variant="plain" bind:ref={anchor} type="button" class={uiClass("thinking-trigger", "ui-local-efeab109", {"is-inline": inline, "composer-selector": inline, "is-open": open})}
+  <UiButton variant="plain" bind:ref={anchor} type="button" class={uiClass("thinking-trigger", "ui-local-efeab109", {"is-open": open})}
     aria-haspopup="dialog" aria-expanded={open} aria-controls={open ? id : undefined}
     aria-label={$t('composer.thinking.trigger', { values: { level: labelFor(current) } })} title={$t('composer.thinking.title')}
     onclick={() => (open = !open)}>
-    {#if inline}<Brain class="thinking-icon size-3 shrink-0" /><span class="thinking-prefix">{$t('composer.thinking.title')} ·</span>{/if}
     <span class="thinking-level">{labelFor(current)}</span>
-    {#if inline}<ChevronDown class="thinking-chevron size-3 shrink-0" />{/if}
   </UiButton>
   {#if open}
     <ComposerCard {anchor} {id} bright label={$t('composer.thinking.title')} onclose={() => (open = false)}>
@@ -219,14 +214,9 @@
     white-space: nowrap;
   }
 
-  :global(.thinking-trigger.is-inline.ui-local-efeab109) { height:2rem;gap:0.25rem;font-size:var(--text-xs);padding-inline:0.25rem; }
-  :is(.thinking-trigger, :global(.thinking-trigger.ui-local-efeab109)) :global(.thinking-icon) { display:none; }
-  .thinking-prefix { display:none; }
-  :global(.thinking-trigger.is-inline.ui-local-efeab109) :global(.thinking-icon) { display:block; }
-  /* Narrow: the level folds into its icon (the label and tooltip still name it). */
+  /* Narrow: the level hides (the label and tooltip still name it). */
   @container composer (max-width:480px) {
-    .thinking-level, :is(.thinking-trigger, :global(.thinking-trigger.ui-local-efeab109)) :global(.thinking-chevron) { display:none; }
-    :is(.thinking-trigger, :global(.thinking-trigger.ui-local-efeab109)) :global(.thinking-icon) { display:block; }
+    .thinking-level { display:none; }
   }
 
   :is(.thinking-trigger:not(.is-static):hover, :global(.thinking-trigger:not(.is-static):hover.ui-local-efeab109)),

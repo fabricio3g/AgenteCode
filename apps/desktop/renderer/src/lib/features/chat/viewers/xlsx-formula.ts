@@ -6,8 +6,8 @@
 // sheets don't show blanks. Anything else yields an Excel-style error.
 
 export type CellInput = number | string | boolean | Date | null | undefined | { formula: string };
-export type FormulaValue = number | string | boolean | null;
-export type ErrorValue = '#DIV/0!' | '#NAME?' | '#VALUE!' | '#REF!' | '#CIRC!';
+type FormulaValue = number | string | boolean | null;
+type ErrorValue = '#DIV/0!' | '#NAME?' | '#VALUE!' | '#REF!' | '#CIRC!';
 
 /** Reads a cell's raw content: a value, or `{ formula }` for a formula without a result. */
 export type CellReader = (sheet: string, row: number, col: number) => CellInput;

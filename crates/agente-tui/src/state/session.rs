@@ -130,6 +130,7 @@ impl SessionState {
     }
 
     /// Add a user message to the chat history
+    #[cfg(test)]
     pub fn add_user_message(&mut self, content: String, mode: String) {
         self.add_user_message_with(content, mode, Vec::new());
     }
@@ -418,14 +419,6 @@ impl SessionState {
         }]);
         self.redo_stack.clear();
         self.set_tracked_content(path, after);
-    }
-
-    /// Track a deletion performed outside the normal file-tool event path.
-    pub fn track_file_deletion(&mut self, path: &str) {
-        let before = self.file_versions.get(path).cloned().or_else(|| {
-            std::fs::read_to_string(std::path::Path::new(&self.project_dir).join(path)).ok()
-        });
-        self.track_file_change(path, before, None);
     }
 
     /// Undo the last mutation only when every file still matches the content

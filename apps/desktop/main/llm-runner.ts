@@ -352,11 +352,6 @@ export async function startEmbeddingServer(config: Record<string, unknown>, _win
   return 'started';
 }
 
-export async function stopEmbeddingServer() {
-  await embedding.stop({ port: null });
-  await clearEmbeddingCacheSafe();
-}
-
 export function getLlamaStatus() {
   return llamaStatus;
 }

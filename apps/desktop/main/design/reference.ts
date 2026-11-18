@@ -30,7 +30,7 @@ export interface ReferenceHost {
 }
 
 /** Only public web addresses may load, so the page cannot reach the user's machine or network. */
-export function allowedReferenceRequest(url: string): boolean {
+function allowedReferenceRequest(url: string): boolean {
   if (url.startsWith('data:') || url.startsWith('blob:')) return true;
   return isSafePublicUrl(url);
 }

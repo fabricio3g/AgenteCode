@@ -25,7 +25,7 @@ export async function cancelBrowserPick(scope: string, tabId: string | null): Pr
 const label = (pick: PickedElement): string => `<${pick.tag}>${pick.text ? ` "${pick.text.slice(0, 60)}"` : ''}`;
 
 /** The text block the agent reads: what was picked and how to address it with the browser tools. */
-export function pickContext(picks: PickedElement[]): string {
+function pickContext(picks: PickedElement[]): string {
   let where = '';
   try { const u = new URL(picks[0]!.url); where = u.host + u.pathname; } catch { where = picks[0]!.url; }
   const lines = picks.map((pick) => {
@@ -46,5 +46,3 @@ export async function sendPicksToComposer(picks: PickedElement[], chatId: string
   }
   return handOffToAgent(pickContext(picks), media, chatId);
 }
-
-export const pickChipLabel = label;

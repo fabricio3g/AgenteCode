@@ -1,6 +1,6 @@
 import type { SlideData } from '$lib/types/bridge';
 import { normalizeDeck, type DeckSpec } from '$shared/deck';
-import type { GeneratedWorkProduct, WorkProductStatus } from '$lib/types/chat';
+import type { WorkProductStatus } from '$lib/types/chat';
 import type { ResolvedArtifact } from '$lib/services/artifact-model';
 import { isDataUrlFile, specPathFor, viewerPathFor } from '$lib/utils/artifact-files';
 
@@ -21,15 +21,6 @@ export interface DocumentSurfaceItem {
   deck?: DeckSpec;
   status?: WorkProductStatus;
   warnings?: string[];
-}
-
-export interface DocumentSurfaceProduct {
-  id?: string;
-  title?: string;
-  status?: WorkProductStatus;
-  sourceCount?: number;
-  warnings?: string[];
-  workProduct?: GeneratedWorkProduct | null;
 }
 
 const DOCUMENT_SURFACE_EXTS = new Set([
@@ -55,7 +46,7 @@ export function documentExtension(name: string) {
   return (name.split('.').pop() || '').toLowerCase();
 }
 
-export function isDocumentSurfaceFile(name: string) {
+function isDocumentSurfaceFile(name: string) {
   return DOCUMENT_SURFACE_EXTS.has(documentExtension(name));
 }
 

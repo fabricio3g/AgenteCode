@@ -10,7 +10,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import {
-  DESIGN_IMAGE_EXTENSIONS, DESIGN_LIMITS, DESIGN_SYSTEM_MANIFEST, DESIGN_SYSTEM_SPECIMEN, DESIGN_TEXT_EXTENSIONS,
+  DESIGN_IMAGE_EXTENSIONS, DESIGN_SYSTEM_MANIFEST, DESIGN_SYSTEM_SPECIMEN, DESIGN_TEXT_EXTENSIONS,
   type DesignFiles, type DesignSystemBrief, type DesignSystemDetail, type DesignSystemRequest, type DesignSystemSummary, type DesignVersion
 } from '../../shared/design.ts';
 import { DesignPathError, collectFiles, ensureWorkspace, listFiles, resolveInside, snapshot, workspaceRoot, writeText } from './workspace.ts';
@@ -163,7 +163,7 @@ export function getSystem(systemsRoot: string, id: unknown): DesignSystemDetail 
  * Save a design's system files as a new system. The design must already have
  * tokens or guidance; a bare page is not a system.
  */
-export function createSystem(host: DesignSystemHost, chatId: string, name: unknown, description: unknown): DesignSystemSummary {
+function createSystem(host: DesignSystemHost, chatId: string, name: unknown, description: unknown): DesignSystemSummary {
   const root = ensureWorkspace(workspaceRoot(host.designsRoot, chatId));
   const wanted = listFiles(root).map((entry) => entry.path).filter(isSystemFile);
   if (!SYSTEM_FILES.slice(0, 2).some((rel) => wanted.includes(rel))) {
@@ -213,7 +213,7 @@ export function createSystemFromFiles(systemsRoot: string, input: { name: unknow
   return summarize(dir, manifest);
 }
 
-export function renameSystem(systemsRoot: string, id: unknown, name: unknown): DesignSystemSummary {
+function renameSystem(systemsRoot: string, id: unknown, name: unknown): DesignSystemSummary {
   const dir = systemDir(systemsRoot, id);
   const manifest = readManifest(dir);
   if (!manifest) throw new DesignPathError('Unknown design system.');
@@ -222,7 +222,7 @@ export function renameSystem(systemsRoot: string, id: unknown, name: unknown): D
   return summarize(dir, next);
 }
 
-export function deleteSystem(systemsRoot: string, id: unknown): { deleted: true } {
+function deleteSystem(systemsRoot: string, id: unknown): { deleted: true } {
   const dir = systemDir(systemsRoot, id);
   fs.rmSync(dir, { recursive: true, force: true });
   return { deleted: true };
@@ -233,7 +233,7 @@ export function deleteSystem(systemsRoot: string, id: unknown): { deleted: true 
  * design is snapshotted first, so the whole change can be restored from its
  * version list. Returns the workspace paths that changed.
  */
-export function applySystem(host: DesignSystemHost, chatId: string, id: unknown): { before: DesignVersion | null; paths: string[] } {
+function applySystem(host: DesignSystemHost, chatId: string, id: unknown): { before: DesignVersion | null; paths: string[] } {
   const root = ensureWorkspace(workspaceRoot(host.designsRoot, chatId));
   const dir = systemDir(host.systemsRoot, id);
   const manifest = readManifest(dir);
@@ -252,12 +252,12 @@ export function applySystem(host: DesignSystemHost, chatId: string, id: unknown)
   return { before, paths };
 }
 
-export function unlinkSystem(designsRoot: string, chatId: string): { ok: true } {
+function unlinkSystem(designsRoot: string, chatId: string): { ok: true } {
   fs.rmSync(linkFile(designsRoot, chatId), { force: true });
   return { ok: true };
 }
 
-export function currentSystem(systemsRoot: string, designsRoot: string, chatId: string): DesignSystemSummary | null {
+function currentSystem(systemsRoot: string, designsRoot: string, chatId: string): DesignSystemSummary | null {
   const id = linkedId(designsRoot, chatId);
   if (!id) return null;
   const dir = path.join(systemsRoot, id);
@@ -266,7 +266,7 @@ export function currentSystem(systemsRoot: string, designsRoot: string, chatId: 
 }
 
 /** What the design agent reads about its system at the start of a turn. */
-export function briefSystem(systemsRoot: string, designsRoot: string, chatId: string): DesignSystemBrief | null {
+function briefSystem(systemsRoot: string, designsRoot: string, chatId: string): DesignSystemBrief | null {
   const id = linkedId(designsRoot, chatId);
   if (!id) return null;
   const dir = path.join(systemsRoot, id);

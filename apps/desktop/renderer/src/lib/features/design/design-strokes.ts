@@ -11,7 +11,7 @@ export interface Pt { x: number; y: number }
 /** A probe samples at most this many points along a mark. */
 export const PROBE_POINTS = 16;
 /** A mark smaller than this (px, either way) is a click, not a drawing. */
-export const MIN_MARK = 6;
+const MIN_MARK = 6;
 export const MAX_STROKES = 12;
 /** Points closer than this (screen px) to the last one are dropped while drawing. */
 export const POINT_GAP = 2;

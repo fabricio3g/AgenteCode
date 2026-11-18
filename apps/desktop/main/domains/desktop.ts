@@ -9,7 +9,7 @@ import { DOMAIN_TOOL_DEFS } from '../../shared/domains.ts';
 import type { AgentTool } from '../../shared/agent-core/types.ts';
 
 let instance: DomainService | undefined;
-export function domainConfig(): DomainConfig {
+function domainConfig(): DomainConfig {
   const raw = loadConfig().domains as Partial<DomainConfig> | undefined;
   return { enabled: raw?.enabled ?? {}, runtimes: raw?.runtimes ?? {} };
 }
@@ -27,7 +27,6 @@ export function createDomainTools(): AgentTool[] {
 }
 export function registerDomainHandlers(): void {
   ipcMain.handle('domains_status', () => domainService().status());
-  ipcMain.handle('domains_config', () => domainConfig());
   ipcMain.handle('domains_set_enabled', (_event, { domain, enabled }) => {
     domainService().registry.get(domain);
     const config = loadConfig(); const domains = domainConfig(); domains.enabled[domain] = enabled === true;

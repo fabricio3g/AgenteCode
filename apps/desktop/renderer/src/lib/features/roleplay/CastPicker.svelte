@@ -21,10 +21,9 @@
     /** Selected character ids, in speaking order. */
     value: string[];
     onchange: (ids: string[]) => void;
-    emptyHint?: string;
   }
 
-  let { value, onchange, emptyHint = '' }: Props = $props();
+  let { value, onchange }: Props = $props();
 
   function toggle(id: string) {
     onchange(value.includes(id) ? value.filter((entry) => entry !== id) : [...value, id]);
@@ -33,7 +32,7 @@
 
 {#if !charactersStore.characters.length}
   <p class="py-2 text-xs text-muted-foreground">
-    {emptyHint || $t('roleplay.setup.noCharacters')}
+    {$t('roleplay.setup.noCharacters')}
   </p>
 {:else}
   <div class="cast-grid">

@@ -1,10 +1,6 @@
 import { z } from 'zod';
 import { generatePrompt } from './prompt';
 
-export interface ComponentRenderProps<P = Record<string, unknown>> {
-  props: P;
-}
-
 export interface DefinedComponent<T extends z.ZodObject<any> = z.ZodObject<any>> {
   name: string;
   props: T;

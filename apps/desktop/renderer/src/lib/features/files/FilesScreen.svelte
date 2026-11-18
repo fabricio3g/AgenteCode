@@ -16,6 +16,7 @@
 
   import { t } from 'svelte-i18n';
   import { locale } from 'svelte-i18n';
+  import { recentDay } from '$lib/features/shared/recent-day';
   import {
     Copy, ExternalLink, FileArchive, FileAudio, FileCode, FileSpreadsheet, FileText, FolderOpen,
     FolderSearch, Image as ImageIcon, MessageSquare, Pin, PinOff, Presentation, Sparkles, Trash2
@@ -125,11 +126,7 @@
   };
 
   function when(ts: number): string {
-    if (!ts) return '';
-    const days = Math.floor((Date.now() - ts) / 86_400_000);
-    const lang = $locale || 'en';
-    if (days < 7) return new Intl.RelativeTimeFormat(lang, { numeric: 'auto' }).format(-days, 'day');
-    return new Date(ts).toLocaleDateString(lang, { month: 'short', day: 'numeric' });
+    return recentDay(ts, $locale || 'en');
   }
 
   /** `indexed · 42 chunks`, or why the model will not get vectors for it. */

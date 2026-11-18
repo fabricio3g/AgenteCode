@@ -372,17 +372,6 @@ pub fn session_label(title: &str, first_prompt: &str) -> String {
     "New session".to_string()
 }
 
-/// Stable display fallback while a new session's background title request is
-/// still pending (or an older session has not yet been titled).
-pub fn display_title(title: &str) -> &str {
-    let title = title.trim();
-    if title.is_empty() {
-        "New session"
-    } else {
-        title
-    }
-}
-
 /// Persist a generated title without loading the whole session into the TUI.
 /// The caller serializes this with normal session saves, so a late background
 /// result remains valid even when its tab was switched or closed.
@@ -539,13 +528,5 @@ mod tests {
 
         let legacy: SessionMeta = serde_json::from_value(value).unwrap();
         assert!(legacy.title.is_empty());
-        assert_eq!(display_title(&legacy.title), "New session");
-    }
-
-    #[test]
-    fn display_title_trims_only_for_fallback_detection() {
-        assert_eq!(display_title(""), "New session");
-        assert_eq!(display_title("   "), "New session");
-        assert_eq!(display_title("Generated title"), "Generated title");
     }
 }

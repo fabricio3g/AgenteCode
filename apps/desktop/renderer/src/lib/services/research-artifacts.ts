@@ -215,7 +215,7 @@ export function buildSourceShortlistMarkdown(
   return lines.join('\n').trim() + '\n';
 }
 
-export function buildEvidenceMatrixRows(citations: ResearchCitation[]): {
+function buildEvidenceMatrixRows(citations: ResearchCitation[]): {
   columns: string[];
   rows: Array<Record<string, string>>;
 } {
@@ -247,7 +247,7 @@ export function buildEvidenceMatrixCsv(citations: ResearchCitation[]): string {
   return lines.join('\n') + '\n';
 }
 
-export function buildEvidenceMatrixMarkdown(citations: ResearchCitation[]): string {
+function buildEvidenceMatrixMarkdown(citations: ResearchCitation[]): string {
   const { columns, rows } = buildEvidenceMatrixRows(citations);
   const header = `| ${columns.join(' | ')} |`;
   const sep = `| ${columns.map(() => '---').join(' | ')} |`;
@@ -255,7 +255,7 @@ export function buildEvidenceMatrixMarkdown(citations: ResearchCitation[]): stri
   return ['# Evidence matrix', '', header, sep, ...body, ''].join('\n');
 }
 
-export function buildAnnotatedBibliographyMarkdown(citations: ResearchCitation[]): string {
+function buildAnnotatedBibliographyMarkdown(citations: ResearchCitation[]): string {
   const blocks = citations.map((c) => {
     const apa = `${c.author}. (${c.year}). ${c.title}. ${c.site}.${c.url ? ` ${c.url}` : ''}`;
     return [
@@ -270,7 +270,7 @@ export function buildAnnotatedBibliographyMarkdown(citations: ResearchCitation[]
   return ['# Annotated bibliography', '', ...blocks].join('\n').trim() + '\n';
 }
 
-export function buildSearchProtocolMarkdown(params: {
+function buildSearchProtocolMarkdown(params: {
   query?: string;
   searchMode?: string | null;
   meta?: SearchMeta | null;

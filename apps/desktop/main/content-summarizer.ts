@@ -1,10 +1,4 @@
-function normalizeWhitespace(text) {
-  return String(text || '').replace(/\s+/g, ' ').trim();
-}
-
-function tokenize(text) {
-  return normalizeWhitespace(text).toLowerCase().match(/[a-z0-9]+/g) || [];
-}
+import { normalizeWhitespace, tokenize } from './search-providers/shared.ts';
 
 function keywordDensityScore(text, queryTerms) {
   if (!queryTerms.length) return 0;

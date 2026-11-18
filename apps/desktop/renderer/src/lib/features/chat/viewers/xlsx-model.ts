@@ -47,8 +47,8 @@ export interface GridSheet {
   truncatedRows: number;
 }
 
-export const MAX_ROWS = 2000;
-export const MAX_COLS = 80;
+const MAX_ROWS = 2000;
+const MAX_COLS = 80;
 const DEFAULT_COL_PX = 72;
 const DEFAULT_ROW_PX = 22;
 

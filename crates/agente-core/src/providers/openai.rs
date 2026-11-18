@@ -4,8 +4,8 @@ use std::collections::{BTreeMap, HashMap};
 use tokio::sync::mpsc::Sender;
 
 use super::{
-    inferred_service_model_capabilities, join_url, ApiFormat, ModelInfo, Provider,
-    ProviderCapabilities, ProviderInfo, RequestContext,
+    inferred_service_model_capabilities, join_url, ApiFormat, ModelInfo, Provider, ProviderInfo,
+    RequestContext,
 };
 use crate::catalog::{ModelCost, ModelLimits, ModelStatus};
 use crate::llm::{
@@ -20,28 +20,6 @@ pub struct OpenAIProvider {
 }
 
 impl OpenAIProvider {
-    pub fn new(id: &str, name: &str, base_url: &str, env_keys: Vec<String>) -> Self {
-        Self::from_info(ProviderInfo {
-            id: id.to_string(),
-            name: name.to_string(),
-            api_format: ApiFormat::OpenAI,
-            capabilities: ProviderCapabilities {
-                streaming: true,
-                tools: true,
-                vision: false,
-                reasoning: false,
-                temperature: true,
-                max_tokens: true,
-            },
-            base_url: base_url.to_string(),
-            env_keys,
-            headers: HashMap::new(),
-            models: vec![],
-            api_key: None,
-            transport: Default::default(),
-        })
-    }
-
     pub fn from_info(info: ProviderInfo) -> Self {
         Self {
             info,
@@ -1060,14 +1038,7 @@ mod discovery_tests {
             id: "openrouter".to_string(),
             name: "OpenRouter".to_string(),
             api_format: ApiFormat::OpenAI,
-            capabilities: ProviderCapabilities {
-                streaming: true,
-                tools: true,
-                vision: false,
-                reasoning: false,
-                temperature: true,
-                max_tokens: true,
-            },
+            capabilities: crate::providers::ProviderCapabilities { tools: true },
             base_url: "https://openrouter.ai/api/v1".to_string(),
             env_keys: vec!["OPENROUTER_API_KEY".to_string()],
             headers: HashMap::new(),

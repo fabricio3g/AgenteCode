@@ -31,10 +31,6 @@ export interface PendingApproval {
   reason?: string;
 }
 
-interface ApprovalRecord extends PendingApproval {
-  resolve: (allow: boolean) => void;
-}
-
 class ApprovalsStore {
   items = $state<PendingApproval[]>([]);
 

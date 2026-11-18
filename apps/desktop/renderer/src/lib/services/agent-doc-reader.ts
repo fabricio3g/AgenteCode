@@ -165,7 +165,7 @@ export function parseDelimited(text: string, delimiter?: string): string[][] {
   return rows.filter((r) => r.some((c) => c.trim() !== ''));
 }
 
-export function rowsToText(rows: string[][]): string {
+function rowsToText(rows: string[][]): string {
   return rows.map((row) => row.join('\t')).join('\n');
 }
 

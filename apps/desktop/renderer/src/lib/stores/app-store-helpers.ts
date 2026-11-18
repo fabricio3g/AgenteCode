@@ -333,7 +333,7 @@ export const WORKSPACE_MAX_FILES = 120;
 export const WORKSPACE_MAX_FILE_SIZE_BYTES = 512 * 1024;
 
 export const WEB_RAG_MIN_ANSWER_CHARS = 200;
-export const WEB_RAG_MAX_SOURCES = 12;
+const WEB_RAG_MAX_SOURCES = 12;
 
 export function normalizeText(value: unknown) {
   return String(value || '').replace(/\s+/g, ' ').trim();

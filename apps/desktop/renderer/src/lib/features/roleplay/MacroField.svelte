@@ -11,11 +11,9 @@
 -->
 
 <script lang="ts">
-  import UiInput from '$lib/components/ui/Input.svelte';
   import UiTextarea from '$lib/components/ui/Textarea.svelte';
   import { cn as uiClass } from '$lib/utils/cn';
 
-  import { untrack } from 'svelte';
   import { Button } from '$lib/components/ui';
   import Menu from '$lib/components/ui/Menu.svelte';
   import MenuItem from '$lib/components/ui/MenuItem.svelte';
@@ -33,9 +31,6 @@
     /** The names the preview and the inserted macros resolve against. */
     char: string;
     user: string;
-    /** Single-line input instead of a textarea. */
-    single?: boolean;
-    id?: string;
   }
 
   let {
@@ -46,14 +41,12 @@
     placeholder = '',
     rows = 4,
     char,
-    user,
-    single = false,
-    id = undefined
+    user
   }: Props = $props();
 
   let field = $state<HTMLTextAreaElement | HTMLInputElement | null>(null);
   let menuOpen = $state(false);
-  const fieldId = untrack(() => id ?? `macro-field-${Math.random().toString(36).slice(2, 8)}`);
+  const fieldId = `macro-field-${Math.random().toString(36).slice(2, 8)}`;
 
   const preview = $derived(value.includes('{{') ? resolveMacros(value, { char: char || '…', user: user || '…' }) : '');
 
@@ -86,26 +79,15 @@
     </Menu>
   </div>
   {#if hint}<p class="field-hint">{hint}</p>{/if}
-  {#if single}
-    <UiInput
-      id={fieldId}
-      bind:ref={() => field as HTMLInputElement | undefined, node => { field = node ?? null; }}
-      class={uiClass("", "ui-local-63bc9ae0")}
-      {value}
-      {placeholder}
-      oninput={(event) => onchange(event.currentTarget.value)}
-    />
-  {:else}
-    <UiTextarea
-      id={fieldId}
-      bind:ref={() => field as HTMLTextAreaElement | undefined, node => { field = node ?? null; }}
-      class={uiClass(" field-area", "ui-local-63bc9ae0")}
-      {rows}
-      {value}
-      {placeholder}
-      oninput={(event) => onchange(event.currentTarget.value)}
-    ></UiTextarea>
-  {/if}
+  <UiTextarea
+    id={fieldId}
+    bind:ref={() => field as HTMLTextAreaElement | undefined, node => { field = node ?? null; }}
+    class={uiClass(" field-area", "ui-local-63bc9ae0")}
+    {rows}
+    {value}
+    {placeholder}
+    oninput={(event) => onchange(event.currentTarget.value)}
+  ></UiTextarea>
   {#if preview}
     <p class="preview" aria-live="polite">
       <Eye class="size-3 shrink-0" />

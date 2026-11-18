@@ -15,8 +15,3 @@ export async function getRuntimeRecommendations(): Promise<RuntimeRecommendation
   cached = await invoke<RuntimeRecommendations>('get_runtime_recommendations');
   return cached!;
 }
-
-/** Invalidate cache so next call fetches fresh data */
-function invalidateRuntimeRecommendations() {
-  cached = null;
-}

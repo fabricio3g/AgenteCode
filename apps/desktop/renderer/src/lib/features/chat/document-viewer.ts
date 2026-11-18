@@ -18,7 +18,7 @@ export type DocumentViewerKind =
   | 'pptx-missing'
   | 'unsupported';
 
-export function isMarkdownDocument(doc: DocumentSurfaceItem | null | undefined): boolean {
+function isMarkdownDocument(doc: DocumentSurfaceItem | null | undefined): boolean {
   if (!doc) return false;
   const ext = documentExtension(doc.name);
   return doc.kind === 'report' || ext === 'md' || ext === 'markdown';

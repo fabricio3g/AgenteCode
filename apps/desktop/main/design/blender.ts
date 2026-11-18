@@ -64,7 +64,7 @@ function setScriptAllowed(allow: boolean): void {
   saveConfig(config as unknown as Parameters<typeof saveConfig>[0]);
 }
 
-export function blenderState(chatId: string): BlenderState {
+function blenderState(chatId: string): BlenderState {
   const { workspace, output } = roots(chatId);
   const job = jobs.get(chatId);
   const directory = currentOutput(output);

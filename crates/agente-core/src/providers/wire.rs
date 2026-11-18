@@ -83,7 +83,7 @@ pub(super) fn completion_request(
     body: &Value,
     context: RequestContext,
 ) -> Result<reqwest::RequestBuilder, LlmError> {
-    let base_url = if crate::config::provider_is_supported(&info.id, &Default::default()) {
+    let base_url = if crate::config::provider_is_supported(&info.id) {
         info.resolve_base_url()
     } else {
         model
@@ -125,18 +125,16 @@ pub(super) fn completion_request(
     }
     let mut headers = reqwest::header::HeaderMap::new();
     for (key, value) in info.headers.iter().chain(model.headers.iter()) {
-        if crate::config::provider_is_supported(
-            super::canonical_provider_id(&info.id),
-            &Default::default(),
-        ) && (key.eq_ignore_ascii_case("authorization")
-            || key.eq_ignore_ascii_case("x-api-key")
-            || info
-                .transport_policy()
-                .cache
-                .session_header
-                .as_ref()
-                .is_some_and(|name| key.eq_ignore_ascii_case(name))
-            || key.eq_ignore_ascii_case("host"))
+        if crate::config::provider_is_supported(super::canonical_provider_id(&info.id))
+            && (key.eq_ignore_ascii_case("authorization")
+                || key.eq_ignore_ascii_case("x-api-key")
+                || info
+                    .transport_policy()
+                    .cache
+                    .session_header
+                    .as_ref()
+                    .is_some_and(|name| key.eq_ignore_ascii_case(name))
+                || key.eq_ignore_ascii_case("host"))
         {
             return Err(LlmError::HttpError(format!(
                 "{}: authentication and session headers cannot be overridden",

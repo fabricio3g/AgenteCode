@@ -1,7 +1,5 @@
 import { z } from 'zod';
-import { createLibrary, defineComponent, type ComponentGroup, type PromptOptions } from './library';
-import Stack from './components/Stack.svelte';
-import Card from './components/Card.svelte';
+import { createLibrary, defineComponent, type ComponentGroup } from './library';
 import ChatCard from './components/ChatCard.svelte';
 import CardHeader from './components/CardHeader.svelte';
 import TextContent from './components/TextContent.svelte';
@@ -42,13 +40,6 @@ const anyObject = z.record(z.string(), z.any()).optional();
 const actionSchema = z.object({ type: z.string().optional(), params: z.record(z.string(), z.any()).optional() }).optional();
 const optionSchema = z.any();
 
-const StackComponent = defineComponent({
-  name: 'Stack',
-  props: z.object({ children: anyArray, direction: z.string().optional(), gap: z.string().optional(), align: z.string().optional(), justify: z.string().optional(), wrap: z.boolean().optional() }),
-  description: 'Flexible vertical or horizontal stack layout.',
-  component: Stack
-});
-const CardComponent = defineComponent({ name: 'Card', props: z.object({ children: anyArray }), description: 'Content card container.', component: Card });
 const CardHeaderComponent = defineComponent({ name: 'CardHeader', props: z.object({ title: z.string(), subtitle: z.string().optional() }), description: 'Card title and subtitle.', component: CardHeader });
 const TextContentComponent = defineComponent({ name: 'TextContent', props: z.object({ text: z.string(), tone: z.string().optional() }), description: 'Plain text content.', component: TextContent });
 const MarkdownComponent = defineComponent({ name: 'MarkDownRenderer', props: z.object({ content: z.string() }), description: 'Markdown content block.', component: MarkdownRenderer });
@@ -171,28 +162,6 @@ const uiChatComponentGroups: ComponentGroup[] = [
   { name: 'Lists & Follow-ups', components: ['ListBlock', 'ListItem', 'FollowUpBlock', 'FollowUpItem'] },
   { name: 'Sections', components: ['SectionBlock', 'SectionItem'] }
 ];
-
-const uiPromptOptions: PromptOptions = {
-  additionalRules: [
-    'Use Stack for general layouts and Card for grouped panels.',
-    'Define referenced variables before or after use; root must always be present.',
-    'For forms, pass Form(name, buttons, fields).'
-  ]
-};
-
-const uiChatPromptOptions: PromptOptions = {
-  additionalRules: [
-    'Use Card as the root component for chat responses.',
-    'Use FollowUpBlock at the end when suggesting next actions.',
-    'Use ListBlock for clickable options and SectionBlock for grouped details.'
-  ]
-};
-
-const uiLibrary = createLibrary({
-  root: 'Stack',
-  componentGroups: uiComponentGroups,
-  components: [StackComponent, CardComponent, ...sharedComponents]
-});
 
 export const uiChatLibrary = createLibrary({
   root: 'Card',

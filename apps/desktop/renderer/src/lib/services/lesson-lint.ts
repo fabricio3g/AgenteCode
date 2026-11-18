@@ -115,7 +115,7 @@ function checkExplore(block: AnyRecord, path: string, errors: LessonLintIssue[])
   }
 }
 
-export function lessonMode(args: AnyRecord): 'lesson' | 'practice' {
+function lessonMode(args: AnyRecord): 'lesson' | 'practice' {
   return String(args.mode || '').trim().toLowerCase() === 'practice' ? 'practice' : 'lesson';
 }
 

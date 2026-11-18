@@ -43,7 +43,7 @@ function workspaceEnv() {
  * relativePaths and prefix collisions (`root-evil` vs `root`)
  * cannot escape. Rejects missing roots and symlink escapes.
  */
-export function resolveWorkspacePath(workspaceRoot, relativePath) {
+function resolveWorkspacePath(workspaceRoot, relativePath) {
   if (typeof workspaceRoot !== 'string' || !workspaceRoot.trim()) {
     throw new Error('Workspace root is required');
   }
@@ -201,41 +201,6 @@ export async function indexWorkspaceFolder(folderPath, chatId) {
   };
 }
 
-export async function snapshotWorkspaceFiles(workspaceRoot) {
-  const files = [];
-  const textExts = new Set(['.js', '.ts', '.py', '.rs', '.go', '.java', '.c', '.cpp', '.h',
-    '.md', '.txt', '.json', '.yaml', '.yml', '.toml', '.html', '.css', '.svelte',
-    '.vue', '.jsx', '.tsx', '.rb', '.php', '.sh', '.bat', '.ps1', '.sql',
-    '.xml', '.csv', '.ini', '.cfg', '.env', '.astro', '.mjs', '.cjs']);
-
-  function walk(dir, rel = '') {
-    const entries = fs.readdirSync(dir, { withFileTypes: true });
-    for (const entry of entries) {
-      if (entry.name.startsWith('.') || ['node_modules', '__pycache__', 'dist', 'build', 'target'].includes(entry.name)) continue;
-      const fullPath = path.join(dir, entry.name);
-      const relPath = rel ? `${rel}/${entry.name}` : entry.name;
-      if (entry.isDirectory()) {
-        walk(fullPath, relPath);
-        continue;
-      }
-      if (!entry.isFile()) continue;
-      const stat = fs.statSync(fullPath);
-      const ext = path.extname(entry.name).toLowerCase();
-      if (!textExts.has(ext) || stat.size > 1024 * 1024) continue;
-      try {
-        const content = fs.readFileSync(fullPath, 'utf8');
-        files.push({ path: relPath, content, size: stat.size, lineCount: content.split('\n').length });
-      } catch {
-        // Skip unreadable files.
-      }
-    }
-  }
-
-  if (!workspaceRoot || !fs.existsSync(workspaceRoot)) return { files: [] };
-  walk(workspaceRoot);
-  return { files };
-}
-
 export async function writeWorkspaceFile(workspaceRoot, relativePath, content) {
   const fullPath = resolveWorkspacePath(workspaceRoot, relativePath);
   fs.mkdirSync(path.dirname(fullPath), { recursive: true });
@@ -387,7 +352,7 @@ export async function workspaceExec({ workspace_root, command, args: execArgs, c
 
 const TEMP_FILE_NAME_LIMIT = 128;
 
-export function sanitizeTempFileName(name) {
+function sanitizeTempFileName(name) {
   const base = path.basename(String(name || 'upload.bin'));
   const clean = base.replace(/[^a-zA-Z0-9._-]+/g, '_').replace(/^\.+/, '').slice(0, TEMP_FILE_NAME_LIMIT);
   return clean || 'upload.bin';

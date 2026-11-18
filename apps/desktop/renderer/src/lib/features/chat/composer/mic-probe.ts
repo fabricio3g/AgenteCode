@@ -25,11 +25,6 @@ async function audioInputs(): Promise<MediaDeviceInfo[]> {
   }
 }
 
-/** Any microphone plugged in at all (no permission prompt). */
-export async function hasMicrophone(): Promise<boolean> {
-  return (await audioInputs()).length > 0;
-}
-
 /** Retry a stale persisted device id after USB reconnection, using the OS default. */
 export async function requestMicrophone(deviceId?: string): Promise<MediaStream> {
   const options = { echoCancellation: true, noiseSuppression: true, autoGainControl: true };

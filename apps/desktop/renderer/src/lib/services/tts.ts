@@ -17,10 +17,6 @@ function getElectronApi(): ElectronApi | null {
   return api;
 }
 
-export async function unloadTts(): Promise<void> {
-  await invoke<void>('unload_tts');
-}
-
 export async function generateTtsStream(request: TtsRequest & { volume?: number; requestId: string }): Promise<void> {
   await invoke<{ ok: boolean }>('generate_tts_stream', { request });
 }

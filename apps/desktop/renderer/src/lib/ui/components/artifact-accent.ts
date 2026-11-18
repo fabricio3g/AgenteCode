@@ -55,7 +55,7 @@ const NAMED_ACCENTS: Record<string, string> = {
  */
 const CSS_COLOR = /^(?:#[0-9a-f]{3,8}|[a-z]{3,20}|rgba?\([\d\s.,%/]+\)|hsla?\([\d\s.,%/deg]+\)|oklch\([\d\s.,%/]+\))$/i;
 
-export const DEFAULT_ARTIFACT_ACCENT = 'var(--primary)';
+const DEFAULT_ARTIFACT_ACCENT = 'var(--primary)';
 
 export function resolveArtifactAccent(value: unknown): string {
   const candidate = String(value ?? '').trim();

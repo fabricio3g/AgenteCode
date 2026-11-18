@@ -24,12 +24,12 @@ export function attachmentStoreDir(): string {
 }
 
 /** Full sha256 of a file's bytes — the registry's primary key. */
-export function attachmentHash(bytes: Buffer): string {
+function attachmentHash(bytes: Buffer): string {
   return createHash('sha256').update(bytes).digest('hex');
 }
 
 /** The stored name: the first twelve hex characters of the hash. */
-export function storedName(hash: string, extension: string): string {
+function storedName(hash: string, extension: string): string {
   const ext = String(extension || '').toLowerCase().replace(/[^a-z0-9]/g, '');
   return `${hash.slice(0, 12)}.${ext || 'bin'}`;
 }

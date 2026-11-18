@@ -1,3 +1,5 @@
+import { normalizeWhitespace } from './search-providers/shared.ts';
+
 const NOISE_DOMAINS = new Set([
   'facebook.com',
   'x.com',
@@ -25,10 +27,6 @@ const STOPWORDS = new Set([
   'the', 'a', 'an', 'and', 'or', 'of', 'for', 'to', 'in', 'on', 'at', 'by', 'with', 'from',
   'what', 'which', 'who', 'when', 'where', 'why', 'how', 'is', 'are', 'was', 'were', 'be', 'this', 'that'
 ]);
-
-function normalizeWhitespace(text) {
-  return String(text || '').replace(/\s+/g, ' ').trim();
-}
 
 function tokenize(text) {
   return normalizeWhitespace(text)

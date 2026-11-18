@@ -34,7 +34,7 @@ export const effectSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('spectral'), start: z.number().nonnegative(), end: positive, lowHz: positive, highHz: positive, gainDb: z.number().min(-96).max(0) }).refine(v => v.end > v.start && v.highHz > v.lowHz, 'Invalid spectral selection')
 ]);
 const point = z.object({ time: z.number().finite().nonnegative(), value: z.number().finite() });
-export const trackSchema = z.object({
+const trackSchema = z.object({
   id: reference, name: z.string().max(200), kind: z.enum(['audio', 'midi', 'bus']), gainDb: z.number().min(-96).max(24), pan: z.number().min(-1).max(1), mute: z.boolean(), solo: z.boolean(),
   clips: z.array(z.object({ id: reference, assetId: reference, start: z.number().nonnegative(), offset: z.number().nonnegative(), duration: positive, gainDb: z.number().min(-96).max(24) })).max(10000),
   notes: z.array(z.object({ pitch: z.number().int().min(0).max(127), start: z.number().nonnegative(), duration: positive, velocity: z.number().min(0).max(1) })).max(100000),

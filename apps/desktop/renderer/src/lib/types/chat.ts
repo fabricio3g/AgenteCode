@@ -372,37 +372,6 @@ export type CodeAgentProviderId = CodeAgentInstanceId;
 export type CodeAgentProviderStatus = 'ready' | 'missing' | 'login' | 'soon' | 'disabled';
 export type CodeAgentRuntimeMode = 'full' | 'supervised' | 'plan';
 
-export interface CodeAgentProvider {
-  id: CodeAgentInstanceId;
-  instanceId?: CodeAgentInstanceId;
-  driverKind: CodeAgentDriverKind;
-  label: string;
-  driver: string;
-  detail: string;
-  status: CodeAgentProviderStatus;
-  enabled?: boolean;
-  accentColor?: string;
-}
-
-export interface CodeAgentDriver {
-  driverKind: CodeAgentDriverKind;
-  displayName: string;
-  detail: string;
-  supportsMultipleInstances?: boolean;
-}
-
-export interface CodeAgentInstance {
-  id: CodeAgentInstanceId;
-  driverKind: CodeAgentDriverKind;
-  displayName: string;
-  detail: string;
-  enabled: boolean;
-  status: CodeAgentProviderStatus;
-  config?: unknown;
-  environment?: Array<{ name: string; value: string; sensitive?: boolean }>;
-  accentColor?: string;
-}
-
 export interface CodeAgentSessionMeta {
   draftAttachments?: CodeAttachment[];
   instanceId: CodeAgentInstanceId;
@@ -980,30 +949,6 @@ export interface ChatSession {
   origin?: 'browser';
   messages: ChatMessage[];
 }
-
-/**
- * Clear space separation on top of ChatSession.
- *
- * ChatSession stays as persisted base for compat.
- * New code branches on these narrowed views:
- * - HomeSession: no project, no codeAgent, no workspace.
- * - CodeSession: project-linked agent conversation.
- * Narrow via `isCodeSession` / `isHomeSession`
- * in `features/shared/session-guards.ts`.
- */
-export interface HomeSession extends ChatSession {
-  contextMode?: 'home';
-  codeAgent?: null;
-  projectId?: null;
-  workspace?: null;
-}
-
-export interface CodeSession extends ChatSession {
-  contextMode?: 'code';
-  projectId?: string | null;
-}
-
-export type SpaceSession = HomeSession | CodeSession;
 
 export interface ModelOption {
   id: string;

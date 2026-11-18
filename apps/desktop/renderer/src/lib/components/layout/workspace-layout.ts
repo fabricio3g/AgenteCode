@@ -20,8 +20,8 @@ export interface PanePlacement { id: string; chatId: string; rect: Rect; focused
  * sentence. A split that would cross it is refused rather than squeezed, and a
  * saved layout that no longer fits (a smaller window) shows its first pane alone.
  */
-export const MIN_PANE_WIDTH = 320;
-export const MIN_PANE_HEIGHT = 220;
+const MIN_PANE_WIDTH = 320;
+const MIN_PANE_HEIGHT = 220;
 export interface FloatingGroup { group: DockNode; rect: Rect; z: number; maximized: boolean }
 export interface WorkspaceLayout {
   version: 2;
@@ -72,7 +72,7 @@ const finite = (value: unknown, fallback: number, min = 1, max = 10000) => typeo
 const json = (raw: string | null): Record<string, unknown> => {
   try { const value = JSON.parse(raw || '{}'); return value && typeof value === 'object' && !Array.isArray(value) ? value : {}; } catch { return {}; }
 };
-export const group = (id: string): PanelGroup => ({ kind: 'group', id: `group:${id}:${crypto.randomUUID()}`, panels: [id], active: id });
+const group = (id: string): PanelGroup => ({ kind: 'group', id: `group:${id}:${crypto.randomUUID()}`, panels: [id], active: id });
 
 /* ── the centre: conversations, split ──────────────────────────────────────── */
 
@@ -83,7 +83,7 @@ export function paneIds(node: PaneNode | null): string[] {
 export function panes(node: PaneNode | null): PaneLeaf[] {
   return !node ? [] : node.kind === 'pane' ? [node] : [...panes(node.a), ...panes(node.b)];
 }
-export function findPane(node: PaneNode | null, id: string): PaneLeaf | null {
+function findPane(node: PaneNode | null, id: string): PaneLeaf | null {
   if (!node) return null;
   return node.kind === 'pane' ? (node.id === id ? node : null) : findPane(node.a, id) ?? findPane(node.b, id);
 }
@@ -175,7 +175,7 @@ export function filterNode(node: DockNode | null, visible: Set<string>): DockNod
   }
   return project(node).node;
 }
-export function removePanel(node: DockNode | null, id: string): DockNode | null {
+function removePanel(node: DockNode | null, id: string): DockNode | null {
   return filterNode(node, new Set(panelIds(node).filter((panel) => panel !== id)));
 }
 function insert(node: DockNode, target: string, added: DockNode, edge: DockEdge): DockNode {
@@ -229,7 +229,7 @@ export function setSplitRatio(node: DockNode | null, id: string, ratio: number):
   if (!node || node.kind === 'group') return node;
   return node.id === id ? { ...node, ratio: finite(ratio, 0.5, 0.05, 0.95) } : { ...node, a: setSplitRatio(node.a, id, ratio)!, b: setSplitRatio(node.b, id, ratio)! };
 }
-export function findSplit(node: DockNode | null, id: string): PanelSplit | null {
+function findSplit(node: DockNode | null, id: string): PanelSplit | null {
   if (!node || node.kind === 'group') return null;
   return node.id === id ? node : findSplit(node.a, id) ?? findSplit(node.b, id);
 }

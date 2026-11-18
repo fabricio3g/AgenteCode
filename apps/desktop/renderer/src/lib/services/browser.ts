@@ -30,28 +30,14 @@ export function openBrowserTab(scope: string, url?: string): Promise<{ id: strin
   return invoke('browser_open_tab', { scope, url });
 }
 export function getBrowserState(scope: string): Promise<BrowserPanelState> { return invoke('browser_get_state', { scope }); }
-export function listBrowserTabs(scope: string): Promise<BrowserPanelTab[]> {
-  return invoke('browser_list_tabs', { scope });
-}
 export async function setActiveBrowserTab(scope: string, tabId: string): Promise<void> {
   await invoke('browser_set_active', { scope, tabId });
 }
 export async function closeBrowserTab(scope: string, tabId?: string): Promise<void> {
   await invoke('browser_close_tab', { scope, tabId });
 }
-export async function closeAllBrowserTabs(scope: string): Promise<void> {
-  await invoke('browser_close_all', { scope });
-}
 export async function setBrowserPanelVisible(scope: string, visible: boolean): Promise<void> {
   await invoke('browser_panel_visible', { scope, visible });
-}
-/** Step the live page aside while an overlay covers it; returns a still to show meanwhile. */
-export async function setBrowserPanelOccluded(scope: string, occluded: boolean): Promise<string | null> {
-  const result = await invoke<{ image: string | null }>('browser_panel_occluded', { scope, occluded });
-  return result?.image ?? null;
-}
-export async function syncBrowserPanelBounds(scope: string, rect: { x: number; y: number; width: number; height: number }): Promise<void> {
-  await invoke('browser_panel_bounds', { scope, ...rect });
 }
 export async function syncBrowserPresentation(scope: string, presentation: BrowserPresentation): Promise<string | null> {
   const result = await invoke<{ image: string | null }>('browser_panel_presentation', { scope, ...presentation });

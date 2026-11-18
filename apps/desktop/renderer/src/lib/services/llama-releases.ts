@@ -51,10 +51,10 @@ export type ReleaseFetchResult = {
   latestTag?: string;
 };
 
-export const LLAMA_REPO = 'ggml-org/llama.cpp';
+const LLAMA_REPO = 'ggml-org/llama.cpp';
 
 /** Used when the GitHub API is unreachable or rate-limited. */
-export const FALLBACK_TAG = 'b10437';
+const FALLBACK_TAG = 'b10437';
 
 const FALLBACK_ASSET_NAMES = [
   `llama-${FALLBACK_TAG}-bin-macos-arm64.tar.gz`,
@@ -278,7 +278,7 @@ export function toDownloadPayload(asset: ReleaseAsset): {
   };
 }
 
-export function buildFallbackAssets(platformInfo: RuntimePlatformInfo): ReleaseAsset[] {
+function buildFallbackAssets(platformInfo: RuntimePlatformInfo): ReleaseAsset[] {
   const base = `https://github.com/${LLAMA_REPO}/releases/download/${FALLBACK_TAG}`;
   const manifest = FALLBACK_ASSET_NAMES.map((name) => ({ name, url: `${base}/${name}` }));
   return selectRuntimeAssets(manifest, FALLBACK_TAG, platformInfo).assets;

@@ -119,10 +119,6 @@ impl ToolCore for WebFetchTool {
         super::ToolKind::Web
     }
 
-    fn icon(&self) -> &'static str {
-        "↗"
-    }
-
     fn description(&self) -> &str {
         "Fetch a public HTTP/HTTPS URL and return text content (HTML is lightly stripped). Use for docs and research. Always prefer local files when available."
     }
@@ -239,10 +235,6 @@ impl ToolCore for WebSearchTool {
     }
     fn kind(&self) -> super::ToolKind {
         super::ToolKind::Web
-    }
-
-    fn icon(&self) -> &'static str {
-        "◎"
     }
 
     fn description(&self) -> &str {

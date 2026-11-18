@@ -32,7 +32,7 @@
   import { Accessibility, Box, Compass, Cpu, Layers, Search as SearchIcon, Settings as SettingsIcon, Shapes, Volume2 } from '$lib/icons';
   import { onMount, untrack } from 'svelte';
   import { t } from 'svelte-i18n';
-  import { Button, Dialog, Input } from '$lib/components/ui';
+  import { Dialog, Input } from '$lib/components/ui';
   import { appStore } from '$lib/stores/app.svelte';
   import { downloadsStore } from '$lib/stores/downloads.svelte';
   import { modelsStore } from '$lib/stores/models.svelte';

@@ -101,7 +101,7 @@ impl InspectorServer {
     }
 
     /// Render the current state to a [`SerializedFrame`].
-    pub async fn render_frame(&self) -> SerializedFrame {
+    pub(crate) async fn render_frame(&self) -> SerializedFrame {
         let (tx, rx) = oneshot::channel();
         let _ = self.cmd_tx.send(InspectorCmd::RenderFrame(tx)).await;
         rx.await.unwrap_or_else(|_| SerializedFrame {
@@ -115,7 +115,7 @@ impl InspectorServer {
     }
 
     /// Broadcast the newly rendered frame to all connected SSE clients.
-    pub async fn broadcast_frame(&self) {
+    pub(crate) async fn broadcast_frame(&self) {
         let frame = self.render_frame().await;
         let payload = serde_json::json!({
             "type": "frame",

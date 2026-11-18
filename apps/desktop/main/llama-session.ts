@@ -40,7 +40,7 @@ export function endInstanceSession(port: number): void {
   keys.delete(port);
 }
 
-export function getLlamaSessionKey(): string {
+function getLlamaSessionKey(): string {
   return mainPort != null ? keys.get(mainPort) ?? '' : '';
 }
 

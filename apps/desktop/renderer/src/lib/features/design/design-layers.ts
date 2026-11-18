@@ -23,7 +23,7 @@ export interface LayerNode {
 const HIDDEN = new Set(['head', 'script', 'style', 'link', 'meta', 'title', 'base', 'noscript', 'template']);
 /** Drawn as one row; their insides are the element's business. */
 const LEAVES = new Set(['svg', 'select', 'textarea', 'canvas', 'iframe', 'video', 'audio']);
-export const MAX_LAYERS = 1500;
+const MAX_LAYERS = 1500;
 const PREVIEW = 28;
 const IDENT = /^[A-Za-z_][A-Za-z0-9_-]*$/;
 
@@ -90,7 +90,7 @@ export function layerIndexFor(source: string | undefined, selector: string): num
 export interface LayerRow { node: LayerNode; depth: number; open: boolean; parent: number }
 
 /** The default: the page's top-level elements are open (their children show), the rest folded. */
-export const defaultOpen = (depth: number) => depth < 1;
+const defaultOpen = (depth: number) => depth < 1;
 
 /** The rows on screen, given which nodes are open (`overrides` by selector; absent = the default for its depth). */
 export function visibleRows(tree: LayerNode[], overrides: Record<string, boolean>): LayerRow[] {

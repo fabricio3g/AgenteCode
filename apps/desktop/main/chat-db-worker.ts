@@ -4,7 +4,7 @@ import * as database from './chat-db';
 database.setChatDbPath(workerData.databasePath);
 const operations = {
   saveChatSession: database.saveChatSession, saveChatDraft: database.saveChatDraft,
-  loadAllChats: database.loadAllChats, searchChatContent: database.searchChatContent,
+  loadAllChats: database.loadAllChats,
   deleteChatFromDb: database.deleteChat, migrateFromLocalStorage: database.migrateFromLocalStorage,
   loadAllFolders: database.loadAllFolders, saveFolder: database.saveFolder, deleteFolder: database.deleteFolder,
   loadAllCodeProjects: database.loadAllCodeProjects, saveCodeProject: database.saveCodeProject, deleteCodeProject: database.deleteCodeProject,

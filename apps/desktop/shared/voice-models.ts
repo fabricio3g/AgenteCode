@@ -133,10 +133,6 @@ export const VOICE_MODELS: VoiceModel[] = [
   }
 ];
 
-export function voiceModel(id: string | undefined): VoiceModel | undefined {
-  return VOICE_MODELS.find((model) => model.id === id);
-}
-
 /** Every repo file a model needs. */
 export function voiceModelFiles(model: VoiceModel): string[] {
   return model.files?.length ? model.files : [model.file];

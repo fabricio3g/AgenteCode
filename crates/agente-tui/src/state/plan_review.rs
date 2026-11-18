@@ -1,7 +1,5 @@
 //! Plan review card + ask/clarify state for finished plans.
 
-use chrono::{DateTime, Utc};
-
 /// UI phase for plan review flow.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum PlanReviewPhase {
@@ -20,7 +18,6 @@ pub struct PendingPlan {
     pub path: String,
     pub title: String,
     pub body_markdown: String,
-    pub created_at: DateTime<Utc>,
     pub version: u32,
 }
 
@@ -118,7 +115,6 @@ impl PlanReviewState {
             path,
             title,
             body_markdown: body,
-            created_at: Utc::now(),
             version,
         });
         // Phase intentionally unchanged (Idle) — the card opens on promote().
@@ -142,6 +138,7 @@ impl PlanReviewState {
         self.ask = None;
     }
 
+    #[cfg(test)]
     pub fn open_review(&mut self, path: String, title: String, body: String) {
         self.store_plan(path, title, body);
         self.phase = PlanReviewPhase::Review;
@@ -162,10 +159,6 @@ impl PlanReviewState {
         *self = Self::default();
     }
 
-    pub fn has_pending(&self) -> bool {
-        self.pending.is_some()
-    }
-
     /// Full-screen plan panel replaces the chat list (Review or Comment typing).
     pub fn takes_chat_area(&self) -> bool {
         self.pending.is_some()
@@ -173,13 +166,6 @@ impl PlanReviewState {
                 self.phase,
                 PlanReviewPhase::Review | PlanReviewPhase::AwaitingComment
             )
-    }
-
-    pub fn is_modal(&self) -> bool {
-        matches!(
-            self.phase,
-            PlanReviewPhase::Review | PlanReviewPhase::Asking
-        )
     }
 
     pub fn max_scroll(&self) -> u16 {

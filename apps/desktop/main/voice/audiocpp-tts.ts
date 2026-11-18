@@ -48,12 +48,12 @@ export function onWorkerMessage(handler: (msg: TtsMessage) => void): void {
 }
 
 /** Backends on this machine, bundled or downloaded (audiocpp-engine.ts). */
-export function availableSpeechBackends(): string[] {
+function availableSpeechBackends(): string[] {
   return installedAudioBackends();
 }
 
 /** The installed audio.cpp release (`BUILD_INFO.txt`). */
-export function speechEngineVersion(): string | null {
+function speechEngineVersion(): string | null {
   return audioEngineVersion();
 }
 
@@ -66,7 +66,7 @@ function speechBackend(setting: unknown): 'cpu' | 'vulkan' {
 }
 
 /** Threads the server runs with: the setting, else up to 8 of this machine's cores. */
-export function speechThreads(setting: unknown): number {
+function speechThreads(setting: unknown): number {
   const cores = availableParallelism();
   return Math.max(1, Math.min(cores, Number(setting) || Math.min(8, cores)));
 }
@@ -95,7 +95,7 @@ function binary(backend: string): string | null {
   return audioEngineBinary(backend);
 }
 
-export function modelPath(model: VoiceModel): string {
+function modelPath(model: VoiceModel): string {
   return path.join(getAppPaths().voiceModelsRoot, voiceModelRelPath(model));
 }
 
@@ -105,7 +105,7 @@ function isInstalled(model: VoiceModel): boolean {
 }
 
 /** The voice models that are downloaded. */
-export function installedVoiceModels(): VoiceModel[] {
+function installedVoiceModels(): VoiceModel[] {
   return voiceCatalog().filter(isInstalled);
 }
 
@@ -113,7 +113,7 @@ export function installedVoiceModels(): VoiceModel[] {
 let espeakFound: boolean | undefined;
 
 /** Probed once per process: the check blocks the main thread for up to 3 s. */
-export function hasEspeak(): boolean {
+function hasEspeak(): boolean {
   if (process.platform === 'win32') return false;
   if (espeakFound === undefined) {
     const probe = spawnSync('sh', ['-c', 'ldconfig -p 2>/dev/null | grep -q libespeak-ng'], { timeout: 3000 });
@@ -358,6 +358,3 @@ export function listVoices(): string[] {
   return installedVoiceModels().flatMap((model) => model.voices.map((voice) => voice.id));
 }
 
-export async function checkEspeakData(_modelsDir: string): Promise<{ found: boolean }> {
-  return { found: hasEspeak() };
-}

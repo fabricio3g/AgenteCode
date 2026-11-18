@@ -901,9 +901,7 @@ impl App {
                                 if on_group_header {
                                     self.state.ui.toggle_tool_group(hovered);
                                 } else {
-                                    self.state
-                                        .ui
-                                        .cycle_tool_entry(hovered, entry.tool_name.as_deref());
+                                    self.state.ui.cycle_tool_entry(hovered);
                                 }
                                 return Ok(());
                             }

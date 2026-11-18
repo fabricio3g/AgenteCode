@@ -17,7 +17,7 @@
   import { cn as uiClass } from '$lib/utils/cn';
 
   import { t } from 'svelte-i18n';
-  import { ArrowRight, Check, EyeOff, Highlighter, ChevronLeft, ChevronRight, Circle, ImagePlus, Minus, MousePointer2, Move, Pencil, Plus, RotateCcw, RotateCw, Square, SquareDashed, Trash2, Type, Upload, X } from '$lib/icons';
+  import { ArrowRight, Check, EyeOff, Highlighter, ChevronLeft, ChevronRight, Circle, ImagePlus, Minus, MousePointer2, Move, Pencil, Plus, RotateCcw, RotateCw, Square, Trash2, Type, Upload, X } from '$lib/icons';
   import { Button, IconButton, Menu, PaneHeader, Tooltip } from '$lib/components/ui';
   import CanvasSurface from './CanvasSurface.svelte';
   import { getCanvasBoard } from './canvas-context';

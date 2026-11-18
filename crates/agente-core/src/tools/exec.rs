@@ -548,10 +548,6 @@ impl ToolCore for ShellTool {
         super::ToolKind::Execute
     }
 
-    fn icon(&self) -> &'static str {
-        "▸"
-    }
-
     fn execution_mode(&self) -> ToolExecutionMode {
         ToolExecutionMode::Sequential
     }

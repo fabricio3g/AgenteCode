@@ -42,10 +42,6 @@ impl ToolCore for ApplyPatchTool {
         ToolKind::Edit
     }
 
-    fn icon(&self) -> &'static str {
-        "✎"
-    }
-
     fn execution_mode(&self) -> ToolExecutionMode {
         ToolExecutionMode::Sequential
     }

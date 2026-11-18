@@ -6,7 +6,7 @@ const vec = z.tuple([number.min(-10000).max(10000), number.min(-10000).max(10000
 const color = z.string().regex(/^#[0-9a-f]{6}$/i);
 const id = z.string().regex(/^[\w -]{1,80}$/);
 /** One step of an object's modifier stack, in the order it is listed. */
-export const modifierSchema = z.discriminatedUnion('type', [
+const modifierSchema = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('subdivision'), viewport: z.number().int().min(0).max(6).default(1),
     render: z.number().int().min(0).max(6).default(2)
@@ -33,10 +33,9 @@ export const modifierSchema = z.discriminatedUnion('type', [
     target: id
   }).strict()
 ]);
-export type Modifier = z.infer<typeof modifierSchema>;
 
 /** Named surface recipes the fixed node graph understands, so the model does not invent nodes. */
-export const MATERIAL_PRESETS = ['painted_metal', 'matte_plastic', 'brushed_metal', 'glass', 'ceramic', 'fabric', 'wood', 'stone'] as const;
+const MATERIAL_PRESETS = ['painted_metal', 'matte_plastic', 'brushed_metal', 'glass', 'ceramic', 'fabric', 'wood', 'stone'] as const;
 
 const materialSchema = z.object({
   id, color,
@@ -52,9 +51,9 @@ const materialSchema = z.object({
   }).strict().optional()
 }).strict();
 
-export const OBJECT_TYPES = ['cube', 'sphere', 'ico_sphere', 'cylinder', 'cone', 'torus', 'plane', 'circle', 'grid', 'text', 'mesh', 'curve'] as const;
+const OBJECT_TYPES = ['cube', 'sphere', 'ico_sphere', 'cylinder', 'cone', 'torus', 'plane', 'circle', 'grid', 'text', 'mesh', 'curve'] as const;
 export const RENDER_VIEWS = ['three_quarter', 'front', 'side', 'top'] as const;
-export const LIGHTING_PRESETS = ['studio_softbox', 'product', 'archviz_sun', 'dramatic_rim', 'flat', 'custom'] as const;
+const LIGHTING_PRESETS = ['studio_softbox', 'product', 'archviz_sun', 'dramatic_rim', 'flat', 'custom'] as const;
 
 const objectSchema = z.object({
   id,
@@ -82,7 +81,6 @@ const objectSchema = z.object({
     spacing: vec.default([1.2, 0, 0]), radius: number.min(0).max(1000).default(3)
   }).strict().optional()
 }).strict();
-export type SceneObject = z.infer<typeof objectSchema>;
 
 export const sceneSchema = z.object({
   title: z.string().max(160).default('Untitled scene'),
@@ -145,7 +143,6 @@ export const sceneSchema = z.object({
   }
 });
 export type DesignScene = z.infer<typeof sceneSchema>;
-export type SceneMaterial = z.infer<typeof materialSchema>;
 
 /** What `inspect` reports about a built scene, so the model can check its work without a render. */
 export interface SceneInspection {

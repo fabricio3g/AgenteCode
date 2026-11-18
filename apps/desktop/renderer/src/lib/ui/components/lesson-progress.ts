@@ -57,10 +57,3 @@ export function saveLessonProgress(key: string, index: number): void {
   map[key] = { index: Math.floor(index), at: Date.now() };
   write(map);
 }
-
-export function clearLessonProgress(key: string): void {
-  const map = read();
-  if (!(key in map)) return;
-  delete map[key];
-  write(map);
-}

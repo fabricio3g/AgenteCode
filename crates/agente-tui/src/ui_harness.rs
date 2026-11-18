@@ -532,7 +532,6 @@ pub(crate) fn scenarios() -> Vec<(&'static str, Build)> {
                                 3. Never retry 4xx\n\n\
                                 ### Risk\n\nA retry storm if the cap is wrong."
                     .into(),
-                created_at: ts(),
                 version: 1,
             });
         }),
@@ -598,7 +597,6 @@ pub(crate) fn scenarios() -> Vec<(&'static str, Build)> {
             s.agent.retry_status = Some(RetryStatus {
                 attempt: 2,
                 max_attempts: 3,
-                delay_ms: 2_000,
             });
         }),
         ("agent_context_warning", |s| {
@@ -671,9 +669,8 @@ fn seed_subagent(state: &mut AppState) {
             worktree: Some(worktree.clone()),
         });
     state.agent.subagents.insert(
-        id.clone(),
+        id,
         SubagentUiState {
-            id,
             subagent_type: "explore".into(),
             description: "Find every provider retry call site".into(),
             status: "running".into(),

@@ -21,30 +21,12 @@ pub struct ActionResult {
 }
 
 impl ActionResult {
-    pub fn ok(text: impl Into<String>) -> Self {
-        Self {
-            ok: true,
-            text: text.into(),
-            ..Self::default()
-        }
-    }
-
     pub fn error(text: impl Into<String>) -> Self {
         Self {
             ok: false,
             text: text.into(),
             ..Self::default()
         }
-    }
-
-    pub fn at(mut self, url: Option<String>) -> Self {
-        self.url = url;
-        self
-    }
-
-    pub fn with_image(mut self, image: Option<ImagePayload>) -> Self {
-        self.image = image;
-        self
     }
 }
 
@@ -103,30 +85,6 @@ impl Driver {
             Self::Local(hub) => hub.extension(),
             Self::Peer(peer) => peer.extension(),
             Self::Offline { .. } => None,
-        }
-    }
-
-    /// One line for `agente bridge status` and the side panel.
-    pub fn describe(&self) -> String {
-        match self {
-            Self::Local(hub) => match hub.extension() {
-                Some(info) => format!(
-                    "hub on 127.0.0.1:{} · {} connected",
-                    hub.pairing().port,
-                    info.label()
-                ),
-                None => format!(
-                    "hub on 127.0.0.1:{} · no browser connected",
-                    hub.pairing().port
-                ),
-            },
-            Self::Peer(peer) => match peer.extension() {
-                Some(info) => format!("connected to another bridge · {} attached", info.label()),
-                None => "connected to another bridge · no browser attached".to_string(),
-            },
-            Self::Offline { pairing, reason } => {
-                format!("offline · {}", offline_text(pairing, reason))
-            }
         }
     }
 }

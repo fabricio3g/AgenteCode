@@ -14,11 +14,6 @@ use crate::widgets::markdown::markdown_display_lines;
 const BUTTONS: &[&str] = &["Accept", "Redo", "Comment"];
 const BUTTON_KEYS: &[&str] = &["A", "R", "C"];
 
-/// True when plan panel should replace the chat list.
-pub fn is_active(state: &AppState) -> bool {
-    state.plan_review.takes_chat_area()
-}
-
 pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState) {
     if !state.plan_review.takes_chat_area() {
         state.ui.plan_review_area = None;

@@ -1,4 +1,4 @@
-import type { AgentStep, AgentStopReason } from '$lib/types/chat';
+import type { AgentStopReason } from '$lib/types/chat';
 
 export type ProgressSnapshot = {
   sourceCount: number;

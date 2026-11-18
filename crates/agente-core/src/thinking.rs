@@ -337,19 +337,6 @@ pub fn model_supports_thinking(model: &ModelInfo) -> bool {
     !profile(model).levels.is_empty()
 }
 
-/// Cycle `auto` → each level → `auto`. Returns `auto` when nothing is
-/// configurable.
-pub fn cycle_thinking_level(model: &ModelInfo, current: &str) -> String {
-    let mut choices = vec![THINKING_AUTO.to_string()];
-    choices.extend(supported_thinking_levels(model));
-    // A stale setting recovers to the first choice rather than skipping it.
-    let next = match choices.iter().position(|l| l == current) {
-        Some(idx) => (idx + 1) % choices.len(),
-        None => 0,
-    };
-    choices[next].clone()
-}
-
 /// Keep a session level after a model switch when the new model accepts it;
 /// otherwise fall back to `auto` (the provider's default).
 pub fn clamp_thinking_level(model: &ModelInfo, current: &str) -> String {
@@ -780,17 +767,12 @@ mod tests {
             ],
         );
         assert_eq!(supported_thinking_levels(&m), vec!["off", "high", "max"]);
-        assert_eq!(cycle_thinking_level(&m, "off"), "high");
-        assert_eq!(cycle_thinking_level(&m, "high"), "max");
-        assert_eq!(cycle_thinking_level(&m, "max"), "auto");
-        assert_eq!(cycle_thinking_level(&m, "auto"), "off");
     }
 
     #[test]
     fn no_reasoning_no_levels() {
         let m = model_with(false, vec![]);
         assert!(supported_thinking_levels(&m).is_empty());
-        assert_eq!(cycle_thinking_level(&m, "high"), "auto");
     }
 
     #[test]

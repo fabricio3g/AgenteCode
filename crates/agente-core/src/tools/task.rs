@@ -8,7 +8,7 @@ use std::path::Path;
 
 use super::{
     atomic_fs, ensure_not_cancelled, with_file_mutation_queue, ToolCore, ToolError,
-    ToolExecutionContext, ToolExecutionMode, ToolKind, ToolRenderInfo,
+    ToolExecutionContext, ToolExecutionMode, ToolKind,
 };
 
 /// Where a project keeps its plans: one file per plan, so plans from other
@@ -93,10 +93,6 @@ impl ToolCore for TodoWriteTool {
         ToolKind::Todo
     }
 
-    fn icon(&self) -> &'static str {
-        "☐"
-    }
-
     fn description(&self) -> &str {
         "Replace the full task todo list for this session. The list persists across turns and interruptions. When resuming, review unfinished tasks against the user's latest request and update the list before continuing: resume relevant work, revise or replace superseded tasks, and preserve completed tasks that still belong to the work. Use an empty todos array to clear a list that is no longer relevant."
     }
@@ -140,21 +136,6 @@ impl ToolCore for PresentPlanTool {
 
     fn kind(&self) -> ToolKind {
         ToolKind::Plan
-    }
-
-    fn icon(&self) -> &'static str {
-        "◇"
-    }
-
-    fn render_call(&self, args: &serde_json::Value) -> ToolRenderInfo {
-        ToolRenderInfo {
-            icon: self.icon(),
-            label: self.name().to_string(),
-            detail: args
-                .get("title")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string()),
-        }
     }
 
     fn description(&self) -> &str {

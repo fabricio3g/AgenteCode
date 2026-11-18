@@ -9,13 +9,13 @@ import path from 'node:path';
 import JSZip from 'jszip';
 import { DesignPathError, EXPORT_MAX_BYTES, exportFileName, listFiles } from './workspace.ts';
 
-export const HANDOFF_FILE = 'HANDOFF.md';
+const HANDOFF_FILE = 'HANDOFF.md';
 /** The HANDOFF.md document: a generated summary, kept well under a megabyte. */
-export const HANDOFF_MAX_BYTES = 512 * 1024;
+const HANDOFF_MAX_BYTES = 512 * 1024;
 /** Pages in one bundle (top-level pages plus variants). */
-export const HANDOFF_MAX_PAGES = 40;
+const HANDOFF_MAX_PAGES = 40;
 /** Where a project keeps handed-off designs. */
-export const PROJECT_DESIGN_DIRS = ['.agente', 'designs'] as const;
+const PROJECT_DESIGN_DIRS = ['.agente', 'designs'] as const;
 const SLUG_MAX = 48;
 
 export interface HandoffPage { name: string; html: string }

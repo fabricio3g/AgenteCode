@@ -1,5 +1,4 @@
-use std::collections::HashSet;
-use std::sync::{Mutex, OnceLock};
+use std::sync::OnceLock;
 
 use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
@@ -15,12 +14,6 @@ static SYNTAX_SET: OnceLock<SyntaxSet> = OnceLock::new();
 static DARK_THEME: OnceLock<Theme> = OnceLock::new();
 /// Light-theme syntect palette, loaded once and selected at highlight time.
 static LIGHT_THEME: OnceLock<Theme> = OnceLock::new();
-/// Intern table for code-fence language tags. `detect_language` must return a
-/// `&'static str`, which used to mean a fresh `Box::leak` on every call — an
-/// unbounded leak proportional to rendered code blocks. Each UNIQUE tag is now
-/// leaked exactly once; repeats are a hash lookup, so memory is bounded by the
-/// number of distinct tags a session ever sees.
-static INTERNED_LANGS: OnceLock<Mutex<HashSet<&'static str>>> = OnceLock::new();
 
 fn get_syntax_set() -> &'static SyntaxSet {
     SYNTAX_SET.get_or_init(|| {
@@ -39,11 +32,8 @@ fn syntect_theme_name(theme: crate::style::Theme) -> &'static str {
 
 /// The syntect palette for the current app theme, selected on every highlight
 /// call so lines rendered after a `/theme` toggle pick up the new palette.
-///
-/// NOTE: the per-entry chat render cache (`state::ui::RenderedChatBlock`) is
-/// keyed on width/expand only, so already-rendered blocks keep their old
-/// colors until invalidated. `style::syntax_generation()` (bumped by
-/// `style::set_theme`) exists for Wave 4 to fold into that cache key.
+/// Cached renders mix `style::syntax_generation()` (bumped by
+/// `style::set_theme`) into their keys, so they re-highlight after a toggle.
 fn get_theme() -> &'static Theme {
     let theme = crate::style::current_theme();
     let name = syntect_theme_name(theme);
@@ -56,24 +46,6 @@ fn get_theme() -> &'static Theme {
 fn load_theme(name: &str) -> Theme {
     let ts = ThemeSet::load_defaults();
     ts.themes[name].clone()
-}
-
-/// Get language name from file extension or explicit language tag
-pub fn detect_language(_code: &str, explicit_lang: Option<&str>) -> Option<&'static str> {
-    let lang = explicit_lang?;
-    let lower = lang.to_lowercase();
-    let table = INTERNED_LANGS.get_or_init(|| Mutex::new(HashSet::new()));
-    if let Ok(mut set) = table.lock() {
-        if let Some(existing) = set.get(lower.as_str()).copied() {
-            return Some(existing);
-        }
-        let leaked: &'static str = Box::leak(lower.into_boxed_str());
-        set.insert(leaked);
-        return Some(leaked);
-    }
-    // Mutex poisoned (a panic while interning): fall back to a one-off leak so
-    // highlighting keeps working; this path is unreachable in practice.
-    Some(Box::leak(lower.into_boxed_str()))
 }
 
 /// Map common language identifiers to syntect syntax names

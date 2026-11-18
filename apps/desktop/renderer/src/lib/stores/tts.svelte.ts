@@ -11,7 +11,6 @@ type TtsChunkEvent = { requestId?: string; index?: number; total?: number; base6
 type TtsStartEvent = { requestId?: string; total?: number };
 type TtsDoneEvent = { requestId?: string };
 
-type SpeechPart = { id: string; text: string; config: AppConfig };
 function speechSignature(text: string, config: AppConfig): string {
   return JSON.stringify([speechRequest(text, config, ''), config.tts?.providers?.[config.tts.api_provider ?? '']?.base_url]);
 }

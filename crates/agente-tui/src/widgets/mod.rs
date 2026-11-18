@@ -20,11 +20,9 @@ use std::borrow::Cow;
 /// Shared braille spinner frames used by chat streaming and the welcome screen.
 pub const SPINNER: &[&str] = &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
-/// Animation tick divisors: work spins at tick/4 (~7.5fps @30fps),
-/// idle-watch breathes at tick/8 (~3.75fps). All spinners/pulses derive
-/// from `anim_frame` so cues never drift apart under load.
+/// Animation tick divisor: work spins at tick/4 (~7.5fps @30fps). All
+/// spinners/pulses derive from `anim_frame` so cues never drift apart under load.
 pub const SPINNER_DIVISOR: u64 = 4;
-pub const MONITOR_PULSE_DIVISOR: u64 = 8;
 /// Waiting-on-you diamond pulse speed: sin²(tick·speed), period π,
 /// ≈1.3s per cycle at ~30fps. Shared by approval/drain/plan waits.
 pub const WAITING_PULSE_SPEED: f32 = 0.08;
@@ -218,11 +216,6 @@ pub fn panel_row(panel: Rect, dy: u16, inset: u16) -> Option<Rect> {
     Some(Rect::new(panel.x + inset, panel.y + dy, width, 1))
 }
 
-/// The panel's last row, inset like [`panel_row`]. `None` for an empty panel.
-pub fn panel_last_row(panel: Rect, inset: u16) -> Option<Rect> {
-    panel_row(panel, panel.height.checked_sub(1)?, inset)
-}
-
 // ── Popup chrome: header rule + footer hints ─────────────────────────────────
 //
 // Every floating surface is the same three-part sandwich: an opaque
@@ -231,10 +224,6 @@ pub fn panel_last_row(panel: Rect, inset: u16) -> Option<Rect> {
 
 /// A full-width horizontal rule (`─`) in the barely-visible `BORDER_RULE`
 /// tone — the quiet separator under popup headers.
-pub fn rule_line(width: usize) -> ratatui::text::Line<'static> {
-    ratatui::text::Line::from(rule_span(width))
-}
-
 fn rule_span(width: usize) -> Span<'static> {
     s(
         "─".repeat(width),
@@ -247,7 +236,7 @@ fn rule_span(width: usize) -> Span<'static> {
 ///
 /// The caller paints [`panel_bg`] for the full panel first. This helper draws
 /// one row at the panel's top: `title_spans` (caller-built: icon, bold title,
-/// dim suffix), then a one-column gap and a full-width [`rule_line`] running to
+/// dim suffix), then a one-column gap and a full-width [`rule_span`] running to
 /// the content's right edge. Text is inset 2 columns on both sides, matching
 /// every popup uses. A panel with no room for a header (0 or 1 rows) is
 /// returned untouched — nothing is painted.
@@ -524,44 +513,6 @@ pub fn truncate_cells(text: &str, budget: usize) -> String {
     }
     out.push('…');
     out
-}
-
-/// Build a footer hint from ordered segments, dropping whole segments rather
-/// than cutting one in half.
-///
-/// The last segment is the escape hatch (`esc close`) and is kept whenever it
-/// fits at all — a hint that trails off as `… esc cl` tells the user nothing.
-/// Middle segments are dropped first, from the right. Shares the drop logic
-/// with [`footer_hints`] via [`fit_segments`].
-pub fn hint_line(
-    segments: &[(String, ratatui::style::Style)],
-    width: u16,
-) -> ratatui::text::Line<'static> {
-    use ratatui::text::{Line, Span};
-
-    let cells = |s: &str| s.chars().count();
-    if segments.is_empty() {
-        return Line::from("");
-    }
-    let widths: Vec<usize> = segments.iter().map(|(t, _)| cells(t)).collect();
-    let budget = width as usize;
-    let total: usize = widths.iter().sum();
-
-    let render = |pair: &(String, ratatui::style::Style)| Span::styled(pair.0.clone(), pair.1);
-
-    if total <= budget {
-        return Line::from(segments.iter().map(render).collect::<Vec<_>>());
-    }
-
-    let (kept, last_fits) = fit_segments(&widths, budget, 0);
-    let mut spans: Vec<Span<'static>> = segments[..kept].iter().map(render).collect();
-    let last = segments.last().expect("non-empty");
-    if last_fits {
-        spans.push(render(last));
-    } else if spans.is_empty() {
-        spans.push(Span::styled(truncate_cells(&last.0, budget), last.1));
-    }
-    Line::from(spans)
 }
 
 /// Make `panel` an opaque floating surface: wipe whatever the layer below
@@ -1328,14 +1279,6 @@ mod tests {
         assert_eq!(text(footer_hints(&hints, 12)), "Esc close");
         // Absurdly narrow: the escape hatch is clipped, never overflowed.
         assert_eq!(text(footer_hints(&hints, 5)), "Esc …");
-    }
-
-    #[test]
-    fn hint_line_keeps_last_segment_when_it_fits() {
-        let seg = |t: &str| (t.to_string(), ratatui::style::Style::default());
-        let line = hint_line(&[seg("a  "), seg("b  "), seg("esc")], 8);
-        let text: String = line.spans.iter().map(|s| s.content.as_ref()).collect();
-        assert_eq!(text, "a  esc");
     }
 
     #[test]

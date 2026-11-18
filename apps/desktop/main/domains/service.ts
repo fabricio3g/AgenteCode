@@ -82,7 +82,7 @@ export class DomainService {
     try { await fs.writeFile(file, bytes); return await this.store.asset(file, path.basename(name), kind, mimeOf(name)); } finally { await fs.rm(file, { force: true }); }
   }
 }
-export function mimeOf(name: string): string {
+function mimeOf(name: string): string {
   const extension = path.extname(name).toLowerCase();
   return ({ '.wav': 'audio/wav', '.mp3': 'audio/mpeg', '.flac': 'audio/flac', '.ogg': 'audio/ogg', '.m4a': 'audio/mp4', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.svg': 'image/svg+xml', '.webp': 'image/webp', '.mp4': 'video/mp4', '.webm': 'video/webm', '.mid': 'audio/midi', '.blend': 'application/x-blender', '.glb': 'model/gltf-binary' } as Record<string, string>)[extension] || 'application/octet-stream';
 }

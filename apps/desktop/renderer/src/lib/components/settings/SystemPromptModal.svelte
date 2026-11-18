@@ -7,7 +7,7 @@
   import { cn as uiClass } from '$lib/utils/cn';
 
   import { t } from 'svelte-i18n';
-  import { Button, Dialog } from '$lib/components/ui';
+  import { Dialog } from '$lib/components/ui';
   import { dirtyGuard } from '$lib/components/ui/dirty-guard';
   import { MessageSquareText } from '$lib/icons';
   import { appStore } from '$lib/stores/app.svelte';

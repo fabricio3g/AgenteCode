@@ -5,13 +5,6 @@ export interface SearchStatusInfo {
   detail: string;
 }
 
-export function providerLabel(provider?: string | null) {
-  if (!provider) return '';
-  const normalized = String(provider).replace(/[_-]+/g, ' ').trim();
-  if (!normalized) return '';
-  return normalized.replace(/\b\w/g, (letter) => letter.toUpperCase());
-}
-
 export function getSearchStatus(meta: SearchMeta | null): SearchStatusInfo | null {
   if (!meta?.searchRequested) return null;
   if (meta.researchSummary) {
@@ -50,15 +43,6 @@ export function getSearchStatus(meta: SearchMeta | null): SearchStatusInfo | nul
           : 'No web sources found',
     detail: detailParts.join(' ').trim()
   };
-}
-
-export function faviconUrl(url: string) {
-  try {
-    const host = new URL(url).hostname;
-    return `https://www.google.com/s2/favicons?domain=${encodeURIComponent(host)}&sz=64`;
-  } catch {
-    return '';
-  }
 }
 
 export function domainLabel(url: string) {

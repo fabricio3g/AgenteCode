@@ -179,7 +179,7 @@ function mapAssets(raw: unknown): CharacterAsset[] {
 }
 
 /** Map a card `data` block (V2/V3) or a flat V1 object onto our card fields. */
-export function mapCardFields(raw: UnknownRecord): Partial<CharacterCard> {
+function mapCardFields(raw: UnknownRecord): Partial<CharacterCard> {
   return {
     name: str(raw.name),
     nickname: str(raw.nickname) || undefined,

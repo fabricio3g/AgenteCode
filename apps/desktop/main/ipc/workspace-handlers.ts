@@ -44,7 +44,6 @@ type WorkspaceHandlerDeps = {
   pickMmprojFile: () => unknown;
   pickWhisperRuntimeFile: () => unknown;
   indexWorkspaceFolder: (path: string, chatId: string) => unknown;
-  snapshotWorkspaceFiles: (workspaceRoot: string) => unknown;
   writeWorkspaceFile: (workspaceRoot: string, relativePath: string, content: string) => unknown;
   readWorkspaceFile: (workspaceRoot: string, relativePath: string) => unknown;
   createWorkspaceDocument: (workspaceRoot: string, relativePath: string, docType: string, content: unknown) => unknown;
@@ -66,7 +65,6 @@ export function registerWorkspaceHandlers({
   pickMmprojFile,
   pickWhisperRuntimeFile,
   indexWorkspaceFolder,
-  snapshotWorkspaceFiles,
   writeWorkspaceFile, writeWorkspaceBinary,
   readWorkspaceFile,
   createWorkspaceDocument,
@@ -86,7 +84,6 @@ export function registerWorkspaceHandlers({
   ipcMain.handle('pick_mmproj_file', () => pickMmprojFile());
   ipcMain.handle('pick_whisper_runtime_file', () => pickWhisperRuntimeFile());
   ipcMain.handle('index_workspace_folder', (_e, { path, chatId }) => indexWorkspaceFolder(path, chatId));
-  ipcMain.handle('snapshot_workspace_files', (_e, { workspaceRoot }) => snapshotWorkspaceFiles(workspaceRoot));
   ipcMain.handle('write_workspace_file', (_e, { workspaceRoot, relativePath, content }) => writeWorkspaceFile(workspaceRoot, relativePath, content));
   ipcMain.handle('write_workspace_binary', (_e, { workspaceRoot, relativePath, dataUrl }) => writeWorkspaceBinary(workspaceRoot, relativePath, dataUrl));
   ipcMain.handle('read_workspace_file', (_e, { workspaceRoot, relativePath }) => readWorkspaceFile(workspaceRoot, relativePath));

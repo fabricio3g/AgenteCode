@@ -9,9 +9,9 @@ import { isColorValue, parseTokens, tokensFor } from './design-tokens';
 export type StyleSet = Record<string, string>;
 
 /** Type sizes in px, the ladder A− / A+ walk. */
-export const FONT_STEPS = [10, 11, 12, 13, 14, 16, 18, 20, 24, 28, 32, 40, 48, 56, 64, 72, 96];
-export const RADIUS_STEPS = [0, 2, 4, 6, 8, 12, 16, 20, 24, 32, 9999];
-export const PADDING_STEPS = [0, 2, 4, 6, 8, 12, 16, 20, 24, 32, 40, 48, 64];
+const FONT_STEPS = [10, 11, 12, 13, 14, 16, 18, 20, 24, 28, 32, 40, 48, 56, 64, 72, 96];
+const RADIUS_STEPS = [0, 2, 4, 6, 8, 12, 16, 20, 24, 32, 9999];
+const PADDING_STEPS = [0, 2, 4, 6, 8, 12, 16, 20, 24, 32, 40, 48, 64];
 
 /** The first number of a px length (`16px`, `12.5px 4px`), or null for anything else. */
 export function parsePx(value: string | undefined): number | null {
@@ -62,7 +62,7 @@ export function paddingEdit(styles: Record<string, string>, dir: 1 | -1): StyleS
 /** A colour swatch: what it shows and what the page gets (`var(--accent)` keeps the link to the token). */
 export interface Swatch { label: string; show: string; css: string }
 
-export const NEUTRAL_SWATCHES: Swatch[] = [
+const NEUTRAL_SWATCHES: Swatch[] = [
   { label: 'Ink', show: '#111317', css: '#111317' },
   { label: 'Grey', show: '#6b7280', css: '#6b7280' },
   { label: 'Mist', show: '#e5e7eb', css: '#e5e7eb' },
@@ -80,7 +80,7 @@ export function swatchesFor(tokensCss: string | undefined): { fromDesign: Swatch
 }
 
 /** Edits within this gap are one burst, so one automatic snapshot covers a run of clicks. */
-export const BURST_MS = 20_000;
+const BURST_MS = 20_000;
 
 /** Whether an edit made at `now` starts a new burst, given when the last one was made (null = none yet). */
 export function startsBurst(last: number | null, now: number, gap = BURST_MS): boolean {

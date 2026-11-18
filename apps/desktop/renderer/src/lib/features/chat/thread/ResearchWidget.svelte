@@ -77,9 +77,6 @@
       })
   );
 
-  const searches = $derived(rows.filter((row) => row.kind === 'search').length);
-  const reads = $derived(rows.filter((row) => row.kind === 'read').length);
-
   /** What is happening right now, for the collapsed line while running. */
   const phase = $derived.by(() => {
     const active = [...steps].reverse().find((step: AgentStep) => step.status === 'running');

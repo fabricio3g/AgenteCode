@@ -37,7 +37,7 @@ const ALIASES: Record<string, string> = {
 
 const TEMPERATURE = new Set(['c', 'f', 'k']);
 
-export function normalizeUnit(raw: string): string {
+function normalizeUnit(raw: string): string {
   const key = String(raw || '').trim().toLowerCase();
   const direct = ALIASES[key] ?? key;
   // Case matters for nothing here except "L" vs "l", which lowercases to the same unit.
@@ -128,7 +128,7 @@ function formatOffset(minutes: number): string {
  * Parse "2026-03-01 14:30" or "2026-03-01T14:30:00" as wall-clock time in `zone`,
  * or an ISO string with an explicit offset / Z as that instant.
  */
-export function parseInZone(input: string, zone: string): Date {
+function parseInZone(input: string, zone: string): Date {
   const text = String(input || '').trim();
   if (!text) throw new Error('datetime is required');
   if (/(Z|[+-]\d{2}:?\d{2})$/i.test(text)) {
@@ -147,7 +147,7 @@ export function parseInZone(input: string, zone: string): Date {
 
 export type ZonedTime = { zone: string; iso: string; local: string; offset: string; weekday: string };
 
-export function describeInZone(date: Date, zone: string): ZonedTime {
+function describeInZone(date: Date, zone: string): ZonedTime {
   assertZone(zone);
   const p = zoneParts(date, zone);
   const offset = formatOffset(zoneOffsetMinutes(date, zone));
@@ -161,7 +161,7 @@ export function describeInZone(date: Date, zone: string): ZonedTime {
   };
 }
 
-export function localZone(): string {
+function localZone(): string {
   return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
 }
 

@@ -1,7 +1,6 @@
 import type { SearchResult } from '$lib/types/bridge';
 import type { ToolContext, ToolObservation, ToolResult } from '$lib/services/agent-types';
 import { say } from '$lib/copy';
-import type { AgentArtifact } from '$lib/types/chat';
 
 /** How to shape partial answers when the model did not finish. */
 export type FallbackMode = 'research' | 'chat';
@@ -338,7 +337,7 @@ function renderReferences(sources: EvidenceSource[]): string {
  * Product-facing partial report — natural prose, not a rigid “strict” dump.
  * Never titles the body "Gathered Evidence" or "Agent stopped because".
  */
-export function renderResearchFallbackReport(params: {
+function renderResearchFallbackReport(params: {
   prompt: string;
   observations: ToolObservation[];
   sources: EvidenceSource[];
@@ -485,28 +484,6 @@ function renderChatFallback(params: {
   chunks.push(renderFilesAndMissing(params));
   return chunks.join('\n').replace(/\n{3,}/g, '\n\n').trim();
 }
-
-/** @deprecated Prefer renderResearchFallbackReport for user-facing content */
-function renderEvidenceOnlyMarkdown(params: {
-  observations: ToolObservation[];
-  sources: EvidenceSource[];
-  createdFiles?: string[];
-  visibleFiles?: string[];
-  missingExtensions?: string[];
-  prompt?: string;
-}): string {
-  return renderResearchFallbackReport({
-    prompt: params.prompt || 'Research findings',
-    observations: params.observations,
-    sources: params.sources,
-    createdFiles: params.createdFiles,
-    visibleFiles: params.visibleFiles,
-    missingExtensions: params.missingExtensions
-  });
-}
-
-// Keep symbol referenced for tree-shaking / deprecation bridge in case callers import via re-export paths
-void renderEvidenceOnlyMarkdown;
 
 function evidenceSections(items: EvidenceItem[], sources: EvidenceSource[]) {
   const sections: Array<{ title: string; content: string }> = [];

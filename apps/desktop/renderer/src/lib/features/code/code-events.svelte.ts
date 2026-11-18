@@ -7,10 +7,9 @@ import type { CodeAgentEvent } from '$shared/agente-protocol';
 type EventHandler = (event: CodeAgentEvent) => void;
 
 /** Subscribe to every chat's events (the store's own fan-out). */
-export const WILDCARD = '*';
+const WILDCARD = '*';
 
 let initialized = false;
-let unsub: (() => void) | null = null;
 const handlers = new Map<string, Set<EventHandler>>();
 
 function handlePushEvent(event: CodeAgentEvent): void {
@@ -35,10 +34,8 @@ function handlePushEvent(event: CodeAgentEvent): void {
 export function subscribeToCodeAgentEvents(chatId: string, handler: EventHandler): () => void {
   if (!initialized) {
     initialized = true;
-    listen<CodeAgentEvent>('code_agent_event', (event) => {
+    void listen<CodeAgentEvent>('code_agent_event', (event) => {
       handlePushEvent(event);
-    }).then((off) => {
-      unsub = off;
     });
   }
 
@@ -55,13 +52,4 @@ export function subscribeToCodeAgentEvents(chatId: string, handler: EventHandler
       handlers.delete(chatId);
     }
   };
-}
-
-export function disposeCodeAgentEventStore(): void {
-  handlers.clear();
-  if (unsub) {
-    unsub();
-    unsub = null;
-  }
-  initialized = false;
 }

@@ -9,7 +9,7 @@ use async_trait::async_trait;
 
 use crate::extensions::skills::{self, Skill, SKILL_TOOL};
 
-use super::{Tool, ToolError, ToolKind, ToolRenderInfo};
+use super::{Tool, ToolError, ToolKind};
 
 pub struct SkillTool {
     skills: Vec<Skill>,
@@ -60,10 +60,6 @@ impl Tool for SkillTool {
         ToolKind::Read
     }
 
-    fn icon(&self) -> &'static str {
-        "◆"
-    }
-
     async fn execute(
         &self,
         args: serde_json::Value,
@@ -83,17 +79,6 @@ impl Tool for SkillTool {
         skill
             .content_block()
             .map_err(|e| ToolError::ExecutionError(format!("Failed to read skill '{name}': {e}")))
-    }
-
-    fn render_call(&self, args: &serde_json::Value) -> ToolRenderInfo {
-        ToolRenderInfo {
-            icon: self.icon(),
-            label: SKILL_TOOL.to_string(),
-            detail: args
-                .get("name")
-                .and_then(|v| v.as_str())
-                .map(str::to_string),
-        }
     }
 }
 

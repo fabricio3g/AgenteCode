@@ -65,7 +65,7 @@ pub mod dark {
     pub const FG_DIM: Color = Color::Rgb(133, 133, 133); // #858585
     /// Shared monochrome gray for all dim chrome in dark mode.
     pub const MONO_GRAY: Color = Color::Rgb(138, 138, 138); // #8a8a8a
-    /// Dimmed chrome for collapsed tool headers (Wave 2 renders use this).
+    /// Dimmed chrome for collapsed tool headers.
     pub const MACHINERY: Color = MONO_GRAY;
     /// Dim suffix text (counts, separators, metadata tails).
     pub const DETAIL: Color = MONO_GRAY;
@@ -84,10 +84,8 @@ pub mod dark {
     pub const SUCCESS: Color = Color::Rgb(108, 197, 138); // #6cc58a
     pub const WARNING: Color = Color::Rgb(229, 180, 84); // #e5b454
     pub const ERROR: Color = Color::Rgb(240, 123, 114); // #f07b72
-    pub const INFO: Color = Color::Rgb(75, 180, 214); // #4bb4d6
 
     // Borders - quiet, barely-there
-    pub const BORDER: Color = Color::Rgb(46, 46, 46); // #2e2e2e
     pub const BORDER_SUBTLE: Color = Color::Rgb(41, 41, 41); // #292929
     pub const BORDER_ACTIVE: Color = Color::Rgb(60, 60, 60); // #3c3c3c
     /// Barely-visible full-width rule under popup headers, between SUBTLE and BORDER.
@@ -108,21 +106,9 @@ pub mod dark {
     // Markdown colors — headings and bold at full foreground (landmarks by
     // weight, as on desktop), links in the desktop's companion blue
     pub const MD_HEADING: Color = Color::Rgb(255, 255, 255); // #ffffff
-    pub const MD_LINK: Color = Color::Rgb(155, 217, 236); // #9bd9ec
     pub const MD_CODE: Color = Color::Rgb(230, 230, 230); // #e6e6e6
     pub const MD_EMPH: Color = Color::Rgb(220, 220, 220); // #dcdcdc
-    pub const MD_STRONG: Color = Color::Rgb(255, 255, 255); // #ffffff
     pub const MD_QUOTE: Color = Color::Rgb(200, 200, 200); // #c8c8c8
-
-    // Syntax colors (VS Code-ish)
-    pub const SYNTAX_COMMENT: Color = Color::Rgb(106, 153, 85); // #6A9955
-    pub const SYNTAX_KEYWORD: Color = Color::Rgb(86, 156, 214); // #569CD6
-    pub const SYNTAX_FUNCTION: Color = Color::Rgb(220, 220, 170); // #DCDCAA
-    pub const SYNTAX_VARIABLE: Color = Color::Rgb(156, 220, 254); // #9CDCFE
-    pub const SYNTAX_STRING: Color = Color::Rgb(206, 145, 120); // #CE9178
-    pub const SYNTAX_NUMBER: Color = Color::Rgb(181, 206, 168); // #B5CEA8
-    pub const SYNTAX_TYPE: Color = Color::Rgb(78, 201, 176); // #4EC9B0
-    pub const SYNTAX_OPERATOR: Color = Color::Rgb(212, 212, 212); // #D4D4D4
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -143,7 +129,7 @@ pub mod light {
     pub const FG: Color = Color::Rgb(17, 17, 17); // #111111
     pub const FG_MUTED: Color = Color::Rgb(82, 82, 82); // #525252
     pub const FG_DIM: Color = Color::Rgb(115, 115, 115); // #737373
-    /// Dimmed chrome for collapsed tool headers (Wave 2 renders use this).
+    /// Dimmed chrome for collapsed tool headers.
     pub const MACHINERY: Color = FG_MUTED;
     /// Dim suffix text (counts, separators, metadata tails).
     pub const DETAIL: Color = FG_DIM;
@@ -159,10 +145,8 @@ pub mod light {
     pub const SUCCESS: Color = Color::Rgb(22, 163, 74); // #16a34a
     pub const WARNING: Color = Color::Rgb(202, 138, 4); // #ca8a04
     pub const ERROR: Color = Color::Rgb(217, 48, 37); // #d93025
-    pub const INFO: Color = Color::Rgb(3, 88, 140); // #03588c
 
     // Borders
-    pub const BORDER: Color = Color::Rgb(224, 224, 224); // #e0e0e0
     pub const BORDER_SUBTLE: Color = Color::Rgb(235, 235, 235); // #ebebeb
     pub const BORDER_ACTIVE: Color = Color::Rgb(200, 200, 200); // #c8c8c8
     /// Barely-visible full-width rule under popup headers, between SUBTLE and BORDER.
@@ -182,21 +166,9 @@ pub mod light {
 
     // Markdown colors
     pub const MD_HEADING: Color = Color::Rgb(0, 0, 0); // #000000
-    pub const MD_LINK: Color = Color::Rgb(3, 88, 140); // #03588c
     pub const MD_CODE: Color = Color::Rgb(31, 31, 31); // #1f1f1f
     pub const MD_EMPH: Color = Color::Rgb(43, 43, 43); // #2b2b2b
-    pub const MD_STRONG: Color = Color::Rgb(0, 0, 0); // #000000
     pub const MD_QUOTE: Color = Color::Rgb(82, 82, 82); // #525252
-
-    // Syntax colors
-    pub const SYNTAX_COMMENT: Color = Color::Rgb(138, 138, 138);
-    pub const SYNTAX_KEYWORD: Color = Color::Rgb(123, 91, 182);
-    pub const SYNTAX_FUNCTION: Color = Color::Rgb(59, 125, 216);
-    pub const SYNTAX_VARIABLE: Color = Color::Rgb(209, 56, 61);
-    pub const SYNTAX_STRING: Color = Color::Rgb(61, 154, 87);
-    pub const SYNTAX_NUMBER: Color = Color::Rgb(214, 140, 39);
-    pub const SYNTAX_TYPE: Color = Color::Rgb(176, 133, 31);
-    pub const SYNTAX_OPERATOR: Color = Color::Rgb(49, 135, 149);
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -229,8 +201,6 @@ theme_color!(ACCENT);
 theme_color!(SUCCESS);
 theme_color!(WARNING);
 theme_color!(ERROR);
-theme_color!(INFO);
-theme_color!(BORDER);
 theme_color!(BORDER_SUBTLE);
 theme_color!(BORDER_ACTIVE);
 theme_color!(BORDER_RULE);
@@ -254,19 +224,9 @@ pub fn TILE_ALPHA() -> f32 {
     }
 }
 theme_color!(MD_HEADING);
-theme_color!(MD_LINK);
 theme_color!(MD_CODE);
 theme_color!(MD_EMPH);
-theme_color!(MD_STRONG);
 theme_color!(MD_QUOTE);
-theme_color!(SYNTAX_COMMENT);
-theme_color!(SYNTAX_KEYWORD);
-theme_color!(SYNTAX_FUNCTION);
-theme_color!(SYNTAX_VARIABLE);
-theme_color!(SYNTAX_STRING);
-theme_color!(SYNTAX_NUMBER);
-theme_color!(SYNTAX_TYPE);
-theme_color!(SYNTAX_OPERATOR);
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // STYLES - semantic, composable
@@ -302,16 +262,6 @@ pub fn success() -> Style {
     Style::default().fg(SUCCESS())
 }
 
-/// Action-marker / meta-suffix green.
-pub fn meta() -> Style {
-    Style::default().fg(META())
-}
-
-/// Dim brackets around a meta value.
-pub fn meta_bracket() -> Style {
-    Style::default().fg(META()).add_modifier(Modifier::DIM)
-}
-
 /// Warning colored text
 pub fn warning() -> Style {
     Style::default().fg(WARNING())
@@ -320,42 +270,6 @@ pub fn warning() -> Style {
 /// Error colored text
 pub fn error() -> Style {
     Style::default().fg(ERROR()).add_modifier(Modifier::BOLD)
-}
-
-/// Info colored text
-pub fn info() -> Style {
-    Style::default().fg(INFO())
-}
-
-// Mode-specific styles
-pub fn mode_plan() -> Style {
-    warning()
-}
-pub fn mode_build() -> Style {
-    success()
-}
-
-/// Accent color for an agent mode: plan = amber, build = green.
-///
-/// The composer border deliberately uses its own accent (PRIMARY for build)
-/// and does not route through here.
-pub fn mode_accent_color(is_plan: bool) -> Color {
-    if is_plan {
-        WARNING()
-    } else {
-        SUCCESS()
-    }
-}
-
-// Input styles
-pub fn input_prompt() -> Style {
-    accent()
-}
-pub fn input_text() -> Style {
-    text()
-}
-pub fn input_cursor() -> Style {
-    Style::default().fg(PRIMARY())
 }
 
 /// Background lift for a hovered card on the bare canvas. The full
@@ -369,32 +283,6 @@ pub fn panel() -> Style {
     Style::default().bg(BG_PANEL())
 }
 
-// Selection styles
-pub fn selected() -> Style {
-    Style::default()
-        .bg(BG_ACTIVE())
-        .fg(FG())
-        .add_modifier(Modifier::BOLD)
-}
-
-pub fn highlight() -> Style {
-    Style::default().bg(BG_ELEMENT()).fg(ACCENT())
-}
-
-// Border styles
-pub fn border() -> Style {
-    Style::default().fg(BORDER())
-}
-pub fn border_subtle() -> Style {
-    Style::default().fg(BORDER_SUBTLE())
-}
-pub fn border_active() -> Style {
-    Style::default().fg(BORDER_ACTIVE())
-}
-
-// File status styles were removed: every caller styled file rows through the
-// semantic `success()` / `warning()` / `error()` accessors directly.
-
 // Thinking/reasoning style
 pub fn thinking() -> Style {
     match current_theme() {
@@ -404,17 +292,6 @@ pub fn thinking() -> Style {
         Theme::Light => Style::default()
             .fg(FG_MUTED())
             .add_modifier(Modifier::ITALIC),
-    }
-}
-
-/// Transcript step marker (`◆`) color: shared monochrome gray in dark mode,
-/// theme secondary in light mode.
-/// All transcript steps (thought, tool, subagent, group) share this marker;
-/// semantic icons were retired.
-pub fn step() -> Style {
-    match current_theme() {
-        Theme::Dark => Style::default().fg(MACHINERY()),
-        Theme::Light => Style::default().fg(SECONDARY()),
     }
 }
 
@@ -447,24 +324,6 @@ pub fn button_danger() -> Style {
     Style::default()
         .bg(ERROR())
         .fg(BG())
-        .add_modifier(Modifier::BOLD)
-}
-
-// Markdown styles
-pub fn md_heading() -> Style {
-    Style::default()
-        .fg(MD_HEADING())
-        .add_modifier(Modifier::BOLD)
-}
-pub fn md_code() -> Style {
-    Style::default().fg(MD_CODE())
-}
-pub fn md_link() -> Style {
-    Style::default().fg(MD_LINK())
-}
-pub fn md_strong() -> Style {
-    Style::default()
-        .fg(MD_STRONG())
         .add_modifier(Modifier::BOLD)
 }
 

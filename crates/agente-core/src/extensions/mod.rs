@@ -19,9 +19,6 @@ pub struct CustomCommand {
     pub name: String,
     pub description: String,
     pub template: String,
-    pub agent: Option<String>,
-    pub model: Option<String>,
-    pub source: PathBuf,
 }
 
 #[derive(Debug, Clone)]
@@ -38,7 +35,6 @@ pub struct AgentProfile {
     /// won't pick it from the `task` description) while leaving direct
     /// spawns by name working — internal helpers, not ambient choice.
     pub hidden: bool,
-    pub source: PathBuf,
 }
 
 /// Discover custom slash commands from project + user config dirs.
@@ -112,9 +108,6 @@ fn load_command(path: &Path) -> anyhow::Result<CustomCommand> {
             .cloned()
             .unwrap_or_else(|| "Custom command".into()),
         template: body.trim().to_string(),
-        agent: meta.get("agent").cloned(),
-        model: meta.get("model").cloned(),
-        source: path.to_path_buf(),
     })
 }
 
@@ -149,7 +142,6 @@ fn load_agent(path: &Path) -> anyhow::Result<AgentProfile> {
         tools,
         capability: meta.get("capability").cloned(),
         hidden: truthy(meta.get("hidden")),
-        source: path.to_path_buf(),
     })
 }
 

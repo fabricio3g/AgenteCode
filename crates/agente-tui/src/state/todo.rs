@@ -46,22 +46,4 @@ impl TodoState {
     pub fn count(&self) -> usize {
         self.todos.get_all().len()
     }
-
-    /// Get pending todo count
-    pub fn pending_count(&self) -> usize {
-        self.todos
-            .get_all()
-            .iter()
-            .filter(|t| matches!(t.status, agente_core::types::TodoStatus::Pending))
-            .count()
-    }
-
-    /// Get completed todo count
-    pub fn completed_count(&self) -> usize {
-        self.todos
-            .get_all()
-            .iter()
-            .filter(|t| matches!(t.status, agente_core::types::TodoStatus::Completed))
-            .count()
-    }
 }

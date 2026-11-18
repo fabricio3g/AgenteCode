@@ -8,8 +8,8 @@ import { debuggerConsoleMessage, type BrowserConsoleMessage } from './browser-co
 import { browserPointerScript } from './browser-pointer.ts';
 import { browserViewBounds, sameBrowserBounds, type BrowserPresentation } from '../shared/browser-presentation.ts';
 
-export const AGENT_BROWSER_PARTITION = 'persist:agent-browser';
-export const AGENT_BROWSER_MAX_TABS = 5;
+const AGENT_BROWSER_PARTITION = 'persist:agent-browser';
+const AGENT_BROWSER_MAX_TABS = 5;
 
 export type AgentBrowserViewportPreset = BrowserViewportPreset;
 
@@ -549,32 +549,10 @@ export async function panelClick(text: string, tabId?: string) {
   return readSnapshot(tab);
 }
 
-export async function panelTypeText(selector: string, text: string, tabId?: string) {
-  const tab = requireTab(tabId);
-  await cdp(tab, 'Runtime.evaluate', {
-    expression: `(() => { const el = document.querySelector(${JSON.stringify(selector)}); if (el) el.focus(); return !!el; })()`
-  });
-  await cdp(tab, 'Input.insertText', { text });
-  return 'ok';
-}
-
-export async function panelEvaluate(script: string, tabId?: string) {
-  const tab = requireTab(tabId);
-  const result = await cdp<{ result?: { value?: unknown } }>(tab, 'Runtime.evaluate', {
-    expression: String(script).slice(0, 20000),
-    returnByValue: true
-  });
-  return String(result.result?.value ?? '');
-}
-
 export async function panelScreenshot(tabId?: string) {
   const tab = requireTab(tabId);
   const shot = await cdp<{ data?: string }>(tab, 'Page.captureScreenshot', { format: 'png' });
   return `data:image/png;base64,${shot.data || ''}`;
-}
-
-export function panelCurrentUrl(tabId?: string) {
-  return safeUrl(requireTab(tabId));
 }
 
 export async function panelSetViewport(preset: AgentBrowserViewportPreset, tabId?: string) {

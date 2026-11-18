@@ -3,16 +3,14 @@
 <script lang="ts">
   import { writeToClipboard } from '$lib/utils/clipboard';
   import DialogActions from '$lib/components/ui/DialogActions.svelte';
-  import IconButton from '$lib/components/ui/IconButton.svelte';
 
-  import UiRange from '$lib/components/ui/Range.svelte';
   import LoadSizeControl from './LoadSizeControl.svelte';
   import { shortTokens } from './load-sizing';
   import { DEFAULT_LOCAL_PARALLEL } from '$lib/stores/app-store-local-model';
   import { cn as uiClass } from '$lib/utils/cn';
 
   import type { GgufMeta, HardwareInfo, RecommendedSettings } from '$lib/types/bridge';
-  import { AlertTriangle, CircleCheck, Info, LoaderCircle, Sparkles } from '$lib/icons';
+  import { AlertTriangle, LoaderCircle, Sparkles } from '$lib/icons';
   import { untrack } from 'svelte';
   import { t } from 'svelte-i18n';
   import { appStore } from '$lib/stores/app.svelte';
@@ -27,7 +25,6 @@
   import { localWithLoadState } from '$lib/stores/app-store-local-model';
   import { launchConfigFromSaved } from '$shared/local-launch';
   import { Badge, Button, Dialog, Disclosure, Input, SegmentedControl, Select, Switch } from '$lib/components/ui';
-  import Tooltip from '$lib/components/ui/Tooltip.svelte';
 
   const cacheTypes = ['f16', 'q8_0', 'q4_0'];
   /** '' leaves the cache type to the server (q8_0 K on a GPU, f16 otherwise). */

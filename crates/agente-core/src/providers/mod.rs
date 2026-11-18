@@ -122,12 +122,7 @@ impl ModelApi {
 /// Provider capabilities
 #[derive(Debug, Clone, Default)]
 pub struct ProviderCapabilities {
-    pub streaming: bool,
     pub tools: bool,
-    pub vision: bool,
-    pub reasoning: bool,
-    pub temperature: bool,
-    pub max_tokens: bool,
 }
 
 /// Provider info
@@ -326,7 +321,7 @@ impl ProviderRegistry {
         );
 
         for (id, provider_config) in &config.provider {
-            if !crate::config::provider_is_supported(id, provider_config) {
+            if !crate::config::provider_is_supported(id) {
                 continue;
             }
             registry.register_from_config(id, provider_config, config);
@@ -458,14 +453,7 @@ impl ProviderRegistry {
                 .clone()
                 .unwrap_or_else(|| id.to_string()),
             api_format,
-            capabilities: ProviderCapabilities {
-                streaming: true,
-                tools: true,
-                vision: models.iter().any(|m| m.capabilities.vision),
-                reasoning: models.iter().any(|m| m.capabilities.reasoning),
-                temperature: true,
-                max_tokens: true,
-            },
+            capabilities: ProviderCapabilities { tools: true },
             base_url,
             env_keys: provider_config.env.clone(),
             headers: provider_config

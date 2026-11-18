@@ -111,7 +111,7 @@ async function readDocument(args: Record<string, unknown>, ctx: ToolContext, dep
   }
 }
 
-export function readDocumentText(doc: ParsedDocument & { name: string }, range: unknown, maxChars: number, offset = 0) {
+function readDocumentText(doc: ParsedDocument & { name: string }, range: unknown, maxChars: number, offset = 0) {
   const indexes = selectUnits(doc.units, range);
   const blocks = indexes.map((index) => ({ index, label: doc.units[index].label,
     text: doc.unitName === 'document' ? doc.units[index].text : `--- ${doc.units[index].label} ---\n${doc.units[index].text}` }));
@@ -130,7 +130,7 @@ export function readDocumentText(doc: ParsedDocument & { name: string }, range: 
     nextOffset: end < text.length ? end : undefined, total: doc.units.length, ...(doc.warning ? { warning: doc.warning } : {}) };
 }
 
-export function tablesOf(doc: ParsedDocument, range: unknown, maxRows: number, budget = 9000, rowOffset = 0) {
+function tablesOf(doc: ParsedDocument, range: unknown, maxRows: number, budget = 9000, rowOffset = 0) {
   const out: Array<{ unit: string; index: number; columns: number; rowCount: number; rows: string[][]; rowsTruncated: boolean; rowOffset: number; nextRowOffset?: number }> = [];
   let chars = 0;
   let omitted = 0;
@@ -150,7 +150,7 @@ export function tablesOf(doc: ParsedDocument, range: unknown, maxRows: number, b
 const ok = (output: unknown, extra?: Partial<ToolResult>): ToolResult => ({ success: true, output, ...extra });
 const fail = (error: string, note?: string): ToolResult => ({ success: false, error, ...(note ? { note } : {}) });
 
-export const HOME_EXTRA_TOOL_NAMES = new Set(['read_document', 'extract_tables', 'notes', 'todos', 'reminders', 'convert_units', 'convert_time', 'ocr_image', 'describe_image', 'transcribe_audio']);
+const HOME_EXTRA_TOOL_NAMES = new Set(['read_document', 'extract_tables', 'notes', 'todos', 'reminders', 'convert_units', 'convert_time', 'ocr_image', 'describe_image', 'transcribe_audio']);
 
 function notesTool(args: Record<string, unknown>): ToolResult {
   const id = String(args.id ?? '');

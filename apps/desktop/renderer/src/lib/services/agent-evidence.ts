@@ -228,7 +228,7 @@ export function requestedVisualArtifacts(prompt: string): VisualArtifactKind[] {
   return kinds;
 }
 
-export function requestedArtifactExtensions(prompt: string): string[] {
+function requestedArtifactExtensions(prompt: string): string[] {
   const kinds = requestedArtifactKinds(prompt);
   return Object.entries(kinds)
     .filter(([, requested]) => requested)
@@ -247,19 +247,4 @@ export function fallbackTitle(prompt: string): string {
 
 export function hasAllRequestedArtifacts(files: Record<string, string>, prompt: string): boolean {
   return missingRequestedArtifactExtensions(files, prompt).length === 0;
-}
-
-export function hasGatheredEvidence(params: {
-  files: Record<string, string>;
-  observations: ToolObservation[];
-  sources: SearchResult[];
-  content?: string;
-  hasVisibleArtifact: (files: Record<string, string>) => boolean;
-}): boolean {
-  return !!(
-    String(params.content || '').trim() ||
-    params.sources.length ||
-    params.observations.some((observation) => observation.success && observation.summary) ||
-    params.hasVisibleArtifact(params.files)
-  );
 }

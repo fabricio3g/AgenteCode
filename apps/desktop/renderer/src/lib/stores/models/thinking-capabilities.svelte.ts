@@ -12,7 +12,7 @@ export interface ThinkingCapabilitiesDeps {
 const unknown = (): ReasoningCapabilities => ({ supported: false, levels: [], source: 'unknown' });
 
 /** The route supplies its own capabilities; local preferences never enter a cloud query. */
-export function thinkingQuery(config: AppConfig, native: boolean): ThinkingQuery {
+function thinkingQuery(config: AppConfig, native: boolean): ThinkingQuery {
   const mode = config.llm?.backend_mode || (native ? 'local' : 'api');
   if (mode === 'local') {
     return { providerName: 'local', model: config.llm?.local?.model || 'local-model', modelPath: config.llm?.local?.selected_model_path || '' };

@@ -34,7 +34,7 @@ function runtimeCompatible(input: AssessModelFitInput): boolean {
   return versionAtLeast(input.runtime?.version, input.requirement.minVersion);
 }
 
-export function estimateWorkingMemoryBytes(input: AssessModelFitInput): number {
+function estimateWorkingMemoryBytes(input: AssessModelFitInput): number {
   const artifactBytes = Math.max(0, Number(input.artifact.sizeBytes) || 0);
   const projectorBytes = Math.max(0, Number(input.artifact.projectorBytes) || 0);
   const parameterReserve = Math.max(0, Number(input.parametersB) || 0) * 0.04 * GB;

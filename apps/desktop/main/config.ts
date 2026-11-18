@@ -13,22 +13,16 @@
  */
 
 import fs from 'node:fs';
-import path from 'node:path';
 import { getAppPaths } from './paths.ts';
 
 // Import from TypeScript modules
-import { slugify, deepMerge, deepClone, readJsonSafe, writeJsonSafe } from './config.utils.ts';
+import { deepMerge, deepClone, readJsonSafe, writeJsonSafe } from './config.utils.ts';
 import { getDefaultConfig } from './config.defaults.ts';
 import { migrateConfig } from './config.migrate.ts';
 import { SecretsManager, CryptoProvider } from './config.secrets.ts';
 import type { AppConfig, AppPaths as AppPathsType } from './config.types.ts';
 
 // ── Model Catalogs ───────────────────────────────────────────────────────────
-
-const RUNTIME_INSTALL_VARIANTS = [
-  'auto', 'cpu', 'cuda', 'cuda12', 'cuda13', 'vulkan',
-  'hip', 'rocm', 'sycl', 'openeuler_310p', 'openeuler_910b_aclgraph'
-];
 
 export const TTS_MODEL_CATALOG = {
   kokoro_v11: {
@@ -314,4 +308,4 @@ export function forgetProviderKey(id: string): void {
 }
 
 // Export types
-export type { AppConfig, AppPaths } from './config.types.ts';
+export type { AppConfig } from './config.types.ts';

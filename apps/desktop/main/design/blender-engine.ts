@@ -8,7 +8,7 @@ import { extractArchive, ensureSafeEntryPath } from '../archive-install.ts';
 import { trackDownload } from '../model-download.ts';
 
 const exec = promisify(execFile);
-export const BLENDER_VERSION = '4.5.15';
+const BLENDER_VERSION = '4.5.15';
 const RELEASE = 'https://download.blender.org/release/Blender4.5/';
 const engineRoot = () => path.join(getAppPaths().enginesRoot, 'blender');
 let installing: Promise<string> | undefined;

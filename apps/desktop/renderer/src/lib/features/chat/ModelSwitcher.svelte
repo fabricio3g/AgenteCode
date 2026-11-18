@@ -35,6 +35,7 @@
   import { buildLocalModelSecondaryText, formatContextLength, localModelMatchesSearch } from '$lib/utils/local-models';
   import { configuredProviders, defaultBaseUrl } from '$lib/utils/providers';
   import { recentModels } from '$lib/stores/recent-models.svelte';
+  import { moveAmongModelRows } from '$lib/features/shared/model-row-keys';
 
   type Source = 'all' | 'cloud' | 'local';
 
@@ -268,21 +269,7 @@
 
     // Escape, focus trapping and focus return come from modalLayer; this only
     // adds arrow-key movement between the search field and the model rows.
-    function handleKeydown(event: KeyboardEvent) {
-      if (!panelEl) return;
-      if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-        const rows = [...panelEl.querySelectorAll<HTMLButtonElement>('[data-model-option]:not(:disabled)')];
-        const current = rows.findIndex((row) => row === document.activeElement);
-        if (document.activeElement !== searchInput && current < 0) return;
-        event.preventDefault();
-        const next = current + (event.key === 'ArrowDown' ? 1 : -1);
-        if (next < 0 && current >= 0) searchInput?.focus();
-        else {
-          const row = rows[Math.min(rows.length - 1, Math.max(0, next))];
-          row?.focus(); row?.scrollIntoView({ block: 'nearest' });
-        }
-      }
-    }
+    const handleKeydown = (event: KeyboardEvent) => moveAmongModelRows(event, panelEl, searchInput);
     document.addEventListener('keydown', handleKeydown);
     return () => {
       cancelAnimationFrame(focusTimer);

@@ -26,7 +26,7 @@ async function preparedGraph(project: CreativeProject, directory: string, ctx: O
   }
   return { sampleRate: project.sampleRate, tracks };
 }
-export async function renderStudio(project: CreativeProject, ctx: OperationContext): Promise<MediaAssetRef> {
+async function renderStudio(project: CreativeProject, ctx: OperationContext): Promise<MediaAssetRef> {
   return withTemp(ctx, async dir => {
     const engine = await ctx.binary('audio-engine'); const graph = await preparedGraph(project, dir, ctx);
     const input = path.join(dir, 'graph.json'); const output = path.join(dir, 'mix.wav');

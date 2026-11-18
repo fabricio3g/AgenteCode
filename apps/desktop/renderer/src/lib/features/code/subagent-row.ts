@@ -65,7 +65,7 @@ export function childFromStep(step: AgentStep): CodeChild {
 }
 
 /** The tool a child is on right now, for the one line that says what it is doing. */
-export function childCurrentTool(child: CodeChild): string | undefined {
+function childCurrentTool(child: CodeChild): string | undefined {
   for (let index = child.tools.length - 1; index >= 0; index--) {
     if (child.tools[index]!.status === 'running') return child.tools[index]!.name;
   }

@@ -1,4 +1,5 @@
-import { scrapeUrlStructured } from './web-scraper.ts';
+import { scrapeUrlStructured, clampNumber } from './web-scraper.ts';
+import { normalizeWhitespace } from './search-providers/shared.ts';
 import { scoreLinksForQuery } from './link-scorer.ts';
 import { summarizeCrawledPages } from './content-summarizer.ts';
 
@@ -18,16 +19,6 @@ const MODE_CONFIG = {
     minLinkScore: 0.045
   }
 };
-
-function normalizeWhitespace(text) {
-  return String(text || '').replace(/\s+/g, ' ').trim();
-}
-
-function clampNumber(value, min, max, fallback) {
-  const num = Number(value);
-  if (!Number.isFinite(num)) return fallback;
-  return Math.max(min, Math.min(num, max));
-}
 
 function normalizeUrl(url) {
   try {

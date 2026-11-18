@@ -35,7 +35,7 @@ export const WIDGET_CSP =
   "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; media-src data: blob:; connect-src 'none'; form-action 'none'; base-uri 'none'";
 
 /** Minimal, token-based components. Everything is opt-in by class. */
-export const WIDGET_KIT_CSS = `
+const WIDGET_KIT_CSS = `
 *,*::before,*::after{box-sizing:border-box}
 html,body{margin:0;padding:0;background:transparent;color:var(--foreground,#111);font:var(--text-sm,14px)/1.6 var(--font-sans,system-ui,sans-serif);-webkit-font-smoothing:antialiased}
 body{padding:2px;overflow-wrap:anywhere;font-variant-numeric:tabular-nums}
@@ -113,7 +113,7 @@ button:focus-visible,input:focus-visible,summary:focus-visible{outline:2px solid
  * posts a follow-up question to the app, which drops it in the composer for
  * the user to send — a widget never sends messages on its own.
  */
-export const WIDGET_RUNTIME_JS = `
+const WIDGET_RUNTIME_JS = `
 (() => {
   const post = (type, data) => parent.postMessage({ source: 'flaxeo-widget', type, ...data }, '*');
   const fmtNum = new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 });

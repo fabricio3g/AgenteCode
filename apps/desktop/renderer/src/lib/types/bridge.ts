@@ -117,14 +117,6 @@ export interface DownloadJob {
 
 export type SupervisorState = 'idle' | 'starting' | 'ready' | 'loading_model' | 'model_ready' | 'stopping' | 'error';
 
-export interface ModelSession {
-  id: string;
-  model_id: string;
-  model_path: string;
-  port: number;
-  is_embedding: boolean;
-}
-
 export interface SupervisorStatus {
   state: SupervisorState | { Error: string } | string;
   active_model?: string | null;
@@ -301,21 +293,6 @@ export interface StoredFile {
   version: number;
 }
 
-/** One chat message that uses a stored file. */
-export interface FileRef {
-  hash: string;
-  chatId: string;
-  messageId: string;
-}
-
-export interface FileStoreStats {
-  count: number;
-  bytes: number;
-  /** Never pinned and referenced by no chat — the cleanup candidates. */
-  unusedCount: number;
-  unusedBytes: number;
-}
-
 export interface SearchResult {
   title: string;
   url: string;
@@ -388,13 +365,4 @@ export interface TtsRequest {
   language?: string;
   /** A cloned voice: the reference clip and what it says. */
   voiceRef?: { file: string; transcript?: string };
-}
-
-export interface SandboxExecResult {
-  cwd: string;
-  stdout: string;
-  stderr: string;
-  exit_code?: number | null;
-  timed_out: boolean;
-  files: Record<string, string>;
 }

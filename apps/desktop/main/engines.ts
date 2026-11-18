@@ -35,12 +35,12 @@ export type EngineOverview = {
 };
 
 /** "b10442-llama-b10442-bin-ubuntu-vulkan-x64" → "b10442". */
-export function buildTag(id: string): string {
+function buildTag(id: string): string {
   return /^(b\d+|v[\d.]+)/i.exec(id)?.[1] ?? id;
 }
 
 /** Total size of a file or folder, without following links. */
-export function folderBytes(target: string): number {
+function folderBytes(target: string): number {
   let total = 0;
   const walk = (p: string) => {
     let stat: fs.Stats;

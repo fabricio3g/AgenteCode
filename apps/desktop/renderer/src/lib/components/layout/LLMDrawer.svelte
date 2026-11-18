@@ -9,7 +9,7 @@
   import { Button, Tooltip } from '$lib/components/ui';
   import { modalLayer } from '$lib/components/ui/modal-layer';
   import { motionFade, motionFly } from '$lib/utils/transitions';
-  import { Settings, X, Cpu, ExternalLink, MemoryStick, Zap, Sliders } from '$lib/icons';
+  import { X, Cpu, ExternalLink, MemoryStick, Zap, Sliders } from '$lib/icons';
   import { appStore } from '$lib/stores/app.svelte';
   import { providerLabel } from '$lib/utils/providers';
   import { toastStore } from '$lib/stores/toast.svelte';

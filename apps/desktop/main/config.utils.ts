@@ -67,15 +67,6 @@ export function deepClone<T>(obj: T): T {
 }
 
 /**
- * Result type for JSON file operations.
- */
-export interface JsonReadResult<T> {
-  success: boolean;
-  data: T | null;
-  error?: string;
-}
-
-/**
  * Safely reads a JSON file with error handling.
  * @param filePath - Absolute path to the JSON file
  * @param fallback - Value to return if file doesn't exist or is invalid

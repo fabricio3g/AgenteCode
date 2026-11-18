@@ -1,6 +1,6 @@
 import { normalizeReportDocument, reportSections, reportEndmatter, type ReportDocument } from '$shared/report-document';
 export type { ReportDocument } from '$shared/report-document';
-import type { PresentationData, SlideData } from '$lib/types/bridge';
+import type { SlideData } from '$lib/types/bridge';
 import {
   escapeHtml,
   tableData,
@@ -12,7 +12,7 @@ import { renderMarkdown } from '$lib/utils/markdown';
 import { normalizeDeck, type DeckSpec } from '$shared/deck';
 import { invoke } from './bridge';
 
-export type GeneratedBinary = {
+type GeneratedBinary = {
   bytes: number[];
   mime: string;
 };
@@ -31,7 +31,7 @@ export type GeneratedArtifactFile = {
   spec?: GeneratedFileSpec;
 };
 
-export type WorkProductFormat = 'md' | 'html' | 'docx' | 'xlsx' | 'pdf' | 'pptx';
+type WorkProductFormat = 'md' | 'html' | 'docx' | 'xlsx' | 'pdf' | 'pptx';
 
 const MIME_BY_EXT: Record<string, string> = {
   docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
@@ -181,7 +181,7 @@ function sectionBodyHtml(markdown: string): string {
   return renderMarkdown(markdown, { highlight: false, math: false, cache: false });
 }
 
-export function htmlReport(
+function htmlReport(
   report: ReportDocument,
   label = '',
   options: { theme?: ArtifactTheme; accent?: ArtifactAccent } = {}
@@ -232,7 +232,7 @@ function bytesToBase64(bytes: number[]): string {
   return btoa(binary);
 }
 
-export function bytesToDataUrl(bytes: number[], mime: string): string {
+function bytesToDataUrl(bytes: number[], mime: string): string {
   return `data:${mime};base64,${bytesToBase64(bytes)}`;
 }
 

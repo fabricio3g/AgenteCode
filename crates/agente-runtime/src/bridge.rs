@@ -8,7 +8,7 @@ use agente_protocol::{
 };
 use tokio::sync::{mpsc as tokio_mpsc, oneshot};
 
-use crate::{compat, RuntimeInner};
+use crate::RuntimeInner;
 
 /// Deltas buffered while the event channel is full are capped so a client that
 /// stops draining cannot grow the forwarder without bound.
@@ -57,13 +57,8 @@ pub(crate) fn forward_legacy_events(
                 conversation,
                 tokens,
             } => {
-                let revision = commit_conversation(
-                    &inner,
-                    session_id,
-                    turn_id,
-                    compat::conversation_from_core(conversation),
-                    &mut forwarder,
-                );
+                let revision =
+                    commit_conversation(&inner, session_id, turn_id, conversation, &mut forwarder);
                 forwarder.emit(RuntimeEvent::TurnFinished { revision });
                 terminal_outcome = Some(TurnOutcome {
                     turn_id,
@@ -80,13 +75,8 @@ pub(crate) fn forward_legacy_events(
                 tokens,
                 partial_text,
             } => {
-                let revision = commit_conversation(
-                    &inner,
-                    session_id,
-                    turn_id,
-                    compat::conversation_from_core(conversation),
-                    &mut forwarder,
-                );
+                let revision =
+                    commit_conversation(&inner, session_id, turn_id, conversation, &mut forwarder);
                 forwarder.emit(RuntimeEvent::TurnCancelled {
                     revision,
                     partial_text,
@@ -117,7 +107,7 @@ pub(crate) fn forward_legacy_events(
                         .map(|snapshot| snapshot.conversation.clone())
                         .unwrap_or_default()
                 } else {
-                    compat::conversation_from_core(conversation)
+                    conversation
                 };
                 let revision =
                     commit_conversation(&inner, session_id, turn_id, committed, &mut forwarder);
@@ -171,11 +161,7 @@ pub(crate) fn forward_legacy_events(
             } => {
                 inner.lock_edits().compacted(session_id);
                 inner.persist_edits(session_id);
-                let revision = replace_conversation(
-                    &inner,
-                    session_id,
-                    compat::conversation_from_core(compacted_conversation),
-                );
+                let revision = replace_conversation(&inner, session_id, compacted_conversation);
                 forwarder.emit(RuntimeEvent::ContextCompacted {
                     summary,
                     revision,

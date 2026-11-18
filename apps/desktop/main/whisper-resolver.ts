@@ -151,7 +151,7 @@ export function resolveWhisperBinary(explicitPath = ''): string | null {
   return null;
 }
 
-export function clearWhisperSelectionFromConfig(binPath: string): void {
+function clearWhisperSelectionFromConfig(binPath: string): void {
   const cfg = loadConfig();
   const next = structuredClone(cfg);
   let dirty = false;
@@ -196,22 +196,4 @@ export function detectBestBackend(): WhisperBackendInfo {
     return { backend: 'vulkan', reason: 'Vulkan support detected', hasCuda, hasVulkan };
   }
   return { backend: 'cpu', reason: 'No GPU backend detected, using CPU', hasCuda, hasVulkan };
-}
-
-export function pickBestRuntime(runtimes: WhisperRuntime[]): WhisperRuntime | null {
-  if (!runtimes.length) return null;
-
-  const backend = detectBestBackend();
-  const preferredVariant = backend.backend;
-
-  const match = runtimes.find(r => r.variant === preferredVariant);
-  if (match) return match;
-
-  const order = ['cuda', 'vulkan', 'rocm', 'metal', 'cpu', 'unknown'];
-  for (const variant of order) {
-    const found = runtimes.find(r => r.variant === variant);
-    if (found) return found;
-  }
-
-  return runtimes[0];
 }

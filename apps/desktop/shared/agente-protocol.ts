@@ -231,15 +231,6 @@ export interface AgenteStartSessionArgs {
   checkpointsEnabled?: boolean;
 }
 
-export interface AgenteSessionInfo {
-  sessionId: string;
-  projectRoot: string;
-  createdAt: number;
-  updatedAt: number;
-  entryCount: number;
-  title: string;
-}
-
 /** One turn's checkpoint, as returned by `agente_list_checkpoints`. */
 export interface AgenteCheckpointSummary {
   turnIndex: number;

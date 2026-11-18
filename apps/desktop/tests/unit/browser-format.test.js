@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
 
-import { describeLoadError, formatConsole, formatSnapshot, isLocalUrl } from '../../main/browser-format.ts';
+import { describeLoadError, formatConsole, formatSnapshot, isLocalUrl } from '../../shared/browser/format.ts';
 
 describe('agent browser text', () => {
   it('formats a snapshot with refs, errors and untrusted page text', () => {

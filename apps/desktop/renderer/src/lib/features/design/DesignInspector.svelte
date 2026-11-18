@@ -21,7 +21,7 @@
   import Select from '$lib/components/ui/Select.svelte';
   import { appStore } from '$lib/stores/app.svelte';
   import { copy } from '$lib/copy';
-  import { isColorValue, colorToHex, parseTokens, tokenEdit, tokensFor, type TokenDecl, type TokenGroup } from './design-tokens';
+  import { isColorValue, colorToHex, parseTokens, tokensFor, type TokenDecl, type TokenGroup } from './design-tokens';
   import { curvePath, durationMs, EASING_PRESETS, formatDurationToken } from './design-motion';
   import { designStore, TOKENS_FILE, type InspectorTab } from './design.svelte';
   import DesignTweaks from './DesignTweaks.svelte';

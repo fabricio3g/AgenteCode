@@ -20,7 +20,7 @@
 import fs from 'node:fs';
 
 /** Suffix of the sidecar template file stored next to a downloaded GGUF. */
-export const SIDECAR_TEMPLATE_SUFFIX = '.chat-template.jinja';
+const SIDECAR_TEMPLATE_SUFFIX = '.chat-template.jinja';
 
 /**
  * Whether a chat template grants the model a real thinking toggle. Mirrors

@@ -4,7 +4,7 @@ import { invoke } from '$lib/services/bridge';
 import { sttTranscribe } from '$lib/services/stt';
 import { micStateFromError, requestMicrophone } from './mic-probe';
 
-export type CallPhase = 'idle' | 'permission' | 'listening' | 'error';
+type CallPhase = 'idle' | 'permission' | 'listening' | 'error';
 /** Persistent input capture, independent of model requests and output playback. */
 export class VoiceCall {
   phase = $state<CallPhase>('idle');

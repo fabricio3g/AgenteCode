@@ -22,7 +22,7 @@ function prose(value: unknown): string {
   return plain(Lexer.lexInline(text(value)));
 }
 
-export const DECK_LAYOUTS = ['title', 'section', 'bullets', 'two-column', 'quote', 'stats', 'table', 'chart'] as const;
+const DECK_LAYOUTS = ['title', 'section', 'bullets', 'two-column', 'quote', 'stats', 'table', 'chart'] as const;
 export type DeckLayout = (typeof DECK_LAYOUTS)[number];
 export type DeckChartType = 'bar' | 'column' | 'line' | 'pie' | 'doughnut';
 

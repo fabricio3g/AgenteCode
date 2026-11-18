@@ -197,8 +197,8 @@ function centroidOf(points: Point[]): Point {
  * in the caller zoomed. The vector basemap is the *fallback*; it must not dictate what
  * the primary surface can show. 19 is where tile providers stop.
  */
-export const MIN_ZOOM = 0;
-export const MAX_ZOOM = 19;
+const MIN_ZOOM = 0;
+const MAX_ZOOM = 19;
 
 /**
  * Where to sit when points are coincident and there is nothing to fit — a
@@ -244,7 +244,6 @@ function niceDistance(km: number): number {
 }
 
 export type LabelCandidate = { x: number; y: number; text: string; priority: number };
-export type PlacedLabel = LabelCandidate;
 
 /**
  * Greedy label placement, most important first, skipping any that would overlap

@@ -34,13 +34,7 @@ export const TWIST_VECTORS: readonly TwistVector[] = [
   { id: 'clock', kind: 'pressure', text: 'time runs short on something unfinished' }
 ];
 
-export const TWIST_INTENSITIES: readonly TwistIntensity[] = ['mild', 'sharp', 'brutal'];
-
-export const TWIST_INTENSITY_LABELS: Record<TwistIntensity, string> = {
-  mild: 'Mild',
-  sharp: 'Sharp',
-  brutal: 'Brutal'
-};
+const TWIST_INTENSITIES: readonly TwistIntensity[] = ['mild', 'sharp', 'brutal'];
 
 /** How far the turn is expected to move. */
 const INTENSITY_COPY: Record<TwistIntensity, string> = {

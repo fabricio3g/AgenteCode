@@ -58,7 +58,3 @@ export async function removeRagDocument(doc_id: string, chat_id: string): Promis
 export async function clearRagDocuments(chat_id: string): Promise<void> {
   await invoke<void>('clear_rag_documents', { payload: { chat_id: requireChatId(chat_id) } });
 }
-
-async function hasRagDocuments(chat_id: string): Promise<boolean> {
-  return invoke<boolean>('has_rag_documents', { payload: { chat_id: requireChatId(chat_id) } });
-}

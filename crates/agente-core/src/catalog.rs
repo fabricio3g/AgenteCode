@@ -778,19 +778,6 @@ impl ModelCatalog {
         models
     }
 
-    /// Search every provider for a model id / api_id.
-    pub fn find_model_any(&self, model_id: &str) -> Option<&CatalogModel> {
-        if model_id.is_empty() {
-            return None;
-        }
-        for provider in self.providers.values() {
-            if let Some(m) = Self::find_in_provider(provider, model_id) {
-                return Some(m);
-            }
-        }
-        None
-    }
-
     fn find_in_provider<'a>(
         provider: &'a CatalogProvider,
         model_id: &str,

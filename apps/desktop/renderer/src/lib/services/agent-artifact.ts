@@ -3,7 +3,7 @@ import type { ToolResult } from '$lib/services/agent-types';
 import { normalizeArtifact } from '$lib/services/artifact-model';
 import { specPathFor, viewerPathFor } from '$lib/utils/artifact-files';
 
-export const INLINE_ARTIFACT_FILE = '__artifact__.json';
+const INLINE_ARTIFACT_FILE = '__artifact__.json';
 
 export type ArtifactContext = {
   files: Record<string, string>;
@@ -19,7 +19,7 @@ export type ArtifactContext = {
   artifactManifest: ArtifactManifest | null;
 };
 
-export const INLINE_ARTIFACT_KINDS = ['chart', 'map', 'diagram', 'dashboard', 'info_card', 'html_card', 'lesson'];
+const INLINE_ARTIFACT_KINDS = ['chart', 'map', 'diagram', 'dashboard', 'info_card', 'html_card', 'lesson'];
 
 function parseInlinePayload(raw: string | undefined): InlineArtifactPayload | null {
   if (!raw) return null;

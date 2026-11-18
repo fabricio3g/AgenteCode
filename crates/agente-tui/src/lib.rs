@@ -1,44 +1,38 @@
-pub mod app;
-pub mod at_file_picker;
-pub mod brand;
-pub mod clipboard;
-pub mod command_palette;
-pub mod connect;
-pub mod doctor;
-pub mod editor;
+pub(crate) mod app;
+pub(crate) mod at_file_picker;
+pub(crate) mod brand;
+pub(crate) mod clipboard;
+pub(crate) mod command_palette;
+pub(crate) mod connect;
+pub(crate) mod doctor;
+pub(crate) mod editor;
 #[cfg(test)]
 mod freeze_harness;
-pub mod git_status;
-pub mod help;
-pub mod mcp_servers;
-pub mod media_consent;
-pub mod mentions;
-pub mod message_actions;
-pub mod model_selector;
-pub mod session_picker;
-pub mod settings;
-pub mod skills;
-pub mod slash_command;
-pub mod state;
-pub mod style;
-pub mod subagent_models;
-pub mod syntax_highlight;
+pub(crate) mod git_status;
+pub(crate) mod help;
+pub(crate) mod mcp_servers;
+pub(crate) mod media_consent;
+pub(crate) mod mentions;
+pub(crate) mod message_actions;
+pub(crate) mod model_selector;
+pub(crate) mod session_picker;
+pub(crate) mod settings;
+pub(crate) mod skills;
+pub(crate) mod slash_command;
+pub(crate) mod state;
+pub(crate) mod style;
+pub(crate) mod subagent_models;
+pub(crate) mod syntax_highlight;
 #[cfg(test)]
 pub(crate) mod test_support;
-pub mod thinking_selector;
+pub(crate) mod thinking_selector;
 #[cfg(test)]
 mod ui_harness;
-pub mod web_export;
+pub(crate) mod web_export;
 pub mod web_inspector;
-pub mod widgets;
+pub(crate) mod widgets;
 
-// The crate root exposes only what a consumer actually binds to. The three
-// globs this replaces dumped `escape_html`, `unicode_width`, `fill`, every
-// theme accessor and the inspector's internals into the root namespace, where
-// they collided with same-named helpers and hid what the public surface is.
-// Everything else stays reachable through its own module (`agente_tui::style`,
-// `agente_tui::web_inspector`, …).
+// The crate root exposes only what a consumer actually binds to: the `agente`
+// binary runs `App` and `agente --inspect` serves `web_inspector`. Everything
+// else is crate-private, so the `dead_code` lint sees it.
 pub use app::App;
-pub use state::AppState;
-pub use style::{set_theme, Theme};
-pub use syntax_highlight::{detect_language, highlight_code};

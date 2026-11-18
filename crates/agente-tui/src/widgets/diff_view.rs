@@ -1,10 +1,9 @@
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::style::{Modifier, Style};
-use ratatui::text::{Line, Span};
 use ratatui::widgets::Widget;
 
-use crate::style::{self, *};
+use crate::style::*;
 
 /// Unified diff view widget
 pub struct DiffView {
@@ -441,42 +440,6 @@ pub fn count_changed_lines(old_content: &str, new_content: &str) -> (usize, usiz
         }
     }
     (additions, deletions)
-}
-
-/// Simple line-by-line diff for preview
-pub fn inline_diff_preview(
-    old_line: &str,
-    new_line: &str,
-) -> (Vec<Span<'static>>, Vec<Span<'static>>) {
-    let removed = vec![
-        Span::styled(
-            "- ",
-            Style::default().fg(DIFF_REMOVED()).bg(DIFF_REMOVED_BG()),
-        ),
-        Span::styled(
-            old_line.to_string(),
-            Style::default().fg(DIFF_REMOVED()).bg(DIFF_REMOVED_BG()),
-        ),
-    ];
-    let added = vec![
-        Span::styled("+ ", Style::default().fg(DIFF_ADDED()).bg(DIFF_ADDED_BG())),
-        Span::styled(
-            new_line.to_string(),
-            Style::default().fg(DIFF_ADDED()).bg(DIFF_ADDED_BG()),
-        ),
-    ];
-    (removed, added)
-}
-
-/// Mini diff for sidebar/tooltip
-pub fn mini_diff(path: &str, additions: usize, deletions: usize) -> Line<'static> {
-    Line::from(vec![
-        Span::styled(path.to_string(), style::text()),
-        Span::styled("  ", Style::default()),
-        Span::styled(format!("+{additions}"), style::success()),
-        Span::styled("  ", Style::default()),
-        Span::styled(format!("-{deletions}"), style::error()),
-    ])
 }
 
 #[cfg(test)]

@@ -7,7 +7,7 @@
 
 import { nativeImage, type NativeImage } from 'electron';
 import { SNAPSHOT_SCRIPT } from '../shared/browser/snapshot.ts';
-import { describeLoadError, type BrowserSnapshot } from './browser-format.ts';
+import { describeLoadError, type BrowserSnapshot } from '../shared/browser/format.ts';
 import {
   panelCdp,
   panelCloseTab,

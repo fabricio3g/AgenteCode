@@ -40,7 +40,7 @@ export function resolveTheme(value: unknown): ArtifactTheme {
 }
 
 /** The stylesheet for a generated HTML document (screen + print). */
-export function artifactDocumentCss(theme?: ArtifactTheme, accent: ArtifactAccent = 'slate'): string {
+function artifactDocumentCss(theme?: ArtifactTheme, accent: ArtifactAccent = 'slate'): string {
   const { light, dark } = ARTIFACT_INK;
   const tint = ARTIFACT_ACCENTS[accent];
   return `

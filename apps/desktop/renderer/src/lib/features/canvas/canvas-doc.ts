@@ -62,12 +62,9 @@ export interface CanvasDoc {
   instructions?: string;
 }
 
-/** Strokes a user can draw with, in toolbar order. */
-export const TOOLS: ToolId[] = ['select', 'rect', 'ellipse', 'arrow', 'line', 'freehand', 'text', 'highlight', 'blur', 'pan'];
-
 /** Paper for a board the user starts from scratch, in the 16:10 most screens arrive in. */
-export const BOARD_W = 1600;
-export const BOARD_H = 1000;
+const BOARD_W = 1600;
+const BOARD_H = 1000;
 
 /**
  * A blank board has no source bitmap: nothing was uploaded, so there is no
@@ -203,7 +200,7 @@ export function planHandoff(doc: CanvasDoc): HandoffPlan {
 }
 
 /** Breathing room around a crop, in image pixels. */
-export const CROP_PAD = 12;
+const CROP_PAD = 12;
 
 export interface HandoffPoint {
   label: string;

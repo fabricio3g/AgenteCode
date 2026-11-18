@@ -53,7 +53,7 @@ export function hasEnoughResearchEvidence(mode: ResearchMode, sources: SearchRes
   return list.length >= threshold.minSources || rich >= threshold.minRich;
 }
 
-export function countSuccessfulSearchRounds(observations: ToolObservation[]): number {
+function countSuccessfulSearchRounds(observations: ToolObservation[]): number {
   return (observations || []).filter((o) => o.name === 'web_search' && o.success).length;
 }
 

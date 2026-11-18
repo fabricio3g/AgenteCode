@@ -49,7 +49,7 @@ export function stripSpeakerPrefix(text: string, names: Iterable<string>): strin
  * Gemini rejects anything above five — so four is what every provider gets.
  * The colon forms go first because they mark a real turn boundary.
  */
-export const ROLEPLAY_STOP_LIMIT = 4;
+const ROLEPLAY_STOP_LIMIT = 4;
 
 /**
  * Sequences that end generation early, one per turn boundary in the scene.

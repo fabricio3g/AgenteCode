@@ -4,7 +4,7 @@
 
 import { browserScope, withBrowserScope } from './browser-panel.ts';
 import * as driver from './browser-driver.ts';
-import { formatConsole, formatSnapshot, type BrowserSnapshot } from './browser-format.ts';
+import { formatConsole, formatSnapshot, type BrowserSnapshot } from '../shared/browser/format.ts';
 
 export type BrowserActionName =
   | 'open'

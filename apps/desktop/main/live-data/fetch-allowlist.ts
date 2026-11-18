@@ -11,7 +11,7 @@ const ALLOWED_HOSTS = new Set([
   'api.coingecko.com'
 ]);
 
-export function assertAllowedLiveDataUrl(urlString: string): URL {
+function assertAllowedLiveDataUrl(urlString: string): URL {
   let url: URL;
   try {
     url = new URL(urlString);

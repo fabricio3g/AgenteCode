@@ -24,6 +24,27 @@ function fakeEditor(dir, name = 'fake-editor') {
   return file;
 }
 
+/**
+ * Run `fn` with `vars` set and `$VISUAL`/`$EDITOR` cleared, then restore all of
+ * them. npm exports its own `EDITOR` (notepad.exe on Windows) to the scripts it
+ * runs, which would otherwise win over the PATH probe these tests exercise.
+ */
+async function withEnv(vars, fn) {
+  const keys = ['VISUAL', 'EDITOR', ...Object.keys(vars)];
+  const saved = Object.fromEntries(keys.map((key) => [key, process.env[key]]));
+  delete process.env.VISUAL;
+  delete process.env.EDITOR;
+  Object.assign(process.env, vars);
+  try {
+    await fn();
+  } finally {
+    for (const [key, value] of Object.entries(saved)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+}
+
 describe('configured editor commands', () => {
   it('splits on whitespace and honours double quotes', () => {
     assert.deepEqual(splitCommand('code --wait'), ['code', '--wait']);
@@ -113,15 +134,11 @@ describe('opening a file', () => {
 
   it('explains itself when no editor can be found', async () => {
     const root = tempDir();
-    const saved = process.env.PATH;
-    process.env.PATH = '/nonexistent';
-    try {
+    await withEnv({ PATH: '/nonexistent' }, async () => {
       const result = await openInEditor({ projectRoot: root, path: 'a.ts' });
       assert.equal(result.ok, false);
       assert.match(result.error ?? '', /No editor found/);
-    } finally {
-      process.env.PATH = saved;
-    }
+    });
   });
 
   it('launches the resolved editor with the file and line', async () => {
@@ -130,22 +147,14 @@ describe('opening a file', () => {
     const bin = tempDir();
     fakeEditor(bin, 'code');
     const out = path.join(tempDir(), 'args.txt');
-    const savedPath = process.env.PATH;
-    const savedOut = process.env.OUT;
-    process.env.PATH = bin;
-    process.env.OUT = out;
-    try {
+    await withEnv({ PATH: bin, OUT: out }, async () => {
       const result = await openInEditor({ projectRoot: root, path: 'a.ts', line: 12 });
       assert.deepEqual(result, { ok: true, editor: 'code' });
       // The editor is spawned detached: wait for it to write its arguments.
       const deadline = Date.now() + 4000;
       while (!fs.existsSync(out) && Date.now() < deadline) await new Promise((done) => setTimeout(done, 25));
       assert.deepEqual(fs.readFileSync(out, 'utf8').trim().split('\n'), ['-g', path.join(root, 'a.ts') + ':12']);
-    } finally {
-      process.env.PATH = savedPath;
-      if (savedOut === undefined) delete process.env.OUT;
-      else process.env.OUT = savedOut;
-    }
+    });
   });
 
   it('hands a terminal editor back as a command line instead of spawning it', async () => {

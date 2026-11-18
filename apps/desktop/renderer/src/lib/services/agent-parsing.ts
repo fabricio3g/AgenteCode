@@ -137,66 +137,6 @@ export function parseXmlToolCall(content: string): { toolCall: ToolCallShape | n
   }
 }
 
-function extractBalancedJson(str: string): string | null {
-  let start = -1;
-  for (let i = 0; i < str.length; i++) {
-    if (str[i] === '{' || str[i] === '[') { start = i; break; }
-  }
-  if (start === -1) return null;
-  const opener = str[start];
-  const closer = opener === '{' ? '}' : ']';
-  let depth = 0;
-  let inString = false;
-  let escaped = false;
-  for (let i = start; i < str.length; i++) {
-    const c = str[i];
-    if (escaped) { escaped = false; continue; }
-    if (c === '\\') { escaped = true; continue; }
-    if (c === '"') { inString = !inString; continue; }
-    if (inString) continue;
-    if (c === opener) depth++;
-    else if (c === closer) {
-      depth--;
-      if (depth === 0) return str.slice(start, i + 1);
-    }
-  }
-  return null;
-}
-
-export function parseToolCallCodeblocks(content: string): { toolCalls: ToolCallShape[]; cleanContent: string } {
-  const fenceRegex = /```tool_call\s*\n([\s\S]*?)\n```/gi;
-  let match: RegExpExecArray | null;
-  let clean = content;
-  const allCalls: ToolCallShape[] = [];
-  while ((match = fenceRegex.exec(content)) !== null) {
-    const inner = match[1].trim();
-    const json = extractBalancedJson(inner);
-    if (!json) continue;
-    try {
-      const parsed = JSON.parse(json) as unknown;
-      if (Array.isArray(parsed)) {
-        for (const item of parsed) {
-          const entry = item as { name?: string; arguments?: Record<string, unknown>; args?: Record<string, unknown> };
-          if (typeof entry.name === 'string') {
-            allCalls.push({ name: entry.name, arguments: entry.arguments || entry.args || {} });
-          }
-        }
-      } else {
-        const entry = parsed as { name?: string; arguments?: Record<string, unknown>; args?: Record<string, unknown> };
-        if (typeof entry.name === 'string') {
-          allCalls.push({ name: entry.name, arguments: entry.arguments || entry.args || {} });
-        }
-      }
-    } catch {
-      // ignore
-    }
-  }
-  if (allCalls.length) {
-    clean = content.replace(/```tool_call\s*\n[\s\S]*?\n```/gi, '').trim();
-  }
-  return { toolCalls: allCalls, cleanContent: clean };
-}
-
 const DEBUG_LINE_RE = /^\[(?:agent|chat-api|agent-llm|TTS|OcrEngine|onboarding)\][\s\S]*$/gm;
 
 function stripAgentDebugLines(content: string): string {
@@ -268,29 +208,4 @@ export function stripToolCallArtifacts(content: string): string {
     .replace(/name\s*=\s*"[A-Za-z_][\w-]*"\s*>[^<\n]*/gi, '')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
-}
-
-const CODEBLOCK_EXT_MAP: Record<string, string> = {
-  html: 'index.html', css: 'style.css', js: 'script.js', ts: 'script.ts',
-  svg: 'icon.svg', json: 'data.json', xml: 'config.xml',
-  py: 'script.py', bash: 'run.sh', sh: 'run.sh',
-  yaml: 'config.yaml', yml: 'config.yml', toml: 'config.toml',
-  txt: 'readme.txt', md: 'readme.md'
-};
-
-export function parseCodeblockWrites(content: string): Array<{ path: string; code: string }> {
-  const matches = content.matchAll(/```(\w+)\s*\n([\s\S]*?)```/g);
-  const files: Array<{ path: string; code: string }> = [];
-  const seen = new Set<string>();
-  for (const m of matches) {
-    const lang = m[1].toLowerCase();
-    const code = m[2].trim();
-    if (!code) continue;
-    const ext = CODEBLOCK_EXT_MAP[lang];
-    if (ext && !seen.has(ext)) {
-      seen.add(ext);
-      files.push({ path: ext, code });
-    }
-  }
-  return files;
 }

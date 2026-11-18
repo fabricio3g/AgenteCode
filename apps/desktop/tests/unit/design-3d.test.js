@@ -11,13 +11,13 @@ test('3D scenes and tool schema accept modeling, materials and render settings',
   assert.deepEqual(scene.objects[0].scale, [1, 1, 1]);
 });
 
-test('3D scenes reject executable code, filesystem paths, invalid geometry and excessive renders', () => {
+test('3D scenes reject executable code, filesystem paths, invalid geometry and undersized renders', () => {
   for (const scene of [
     { ...DEFAULT_SCENE, python: 'import os' },
     { ...DEFAULT_SCENE, output: '../../outside' },
     { ...DEFAULT_SCENE, objects: [{ id: 'Mesh', type: 'mesh', vertices: [[0, 0, 0]], faces: [[0, 1, 2]] }] },
     { ...DEFAULT_SCENE, objects: [DEFAULT_SCENE.objects[0], DEFAULT_SCENE.objects[0]] },
-    { ...DEFAULT_SCENE, render: { width: 100000 } },
+    { ...DEFAULT_SCENE, render: { width: 64 } },
     { ...DEFAULT_SCENE, materials: [{ id: 'clay', color: 'file:///secret' }] },
     { ...DEFAULT_SCENE, objects: [{ id: 'object', type: 'cube', material: 'missing' }] },
     { ...DEFAULT_SCENE, objects: [{ id: 'asset', type: 'cube', asset: 'polyhaven:Chair' }] }

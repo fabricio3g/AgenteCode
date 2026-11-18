@@ -370,7 +370,6 @@ mod tests {
         state.agent.subagents.insert(
             "sub-1".into(),
             SubagentUiState {
-                id: "sub-1".into(),
                 subagent_type: "explore".into(),
                 description: "Explore checkout flow".into(),
                 status: "running".into(),

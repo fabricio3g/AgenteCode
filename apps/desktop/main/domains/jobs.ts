@@ -3,7 +3,7 @@ import crypto from 'node:crypto';
 import type { MediaJob } from '../../shared/domains.ts';
 
 export type JobContext = { signal: AbortSignal; update(phase: string, progress?: number): void; owner: string };
-export function abortError(): Error { return Object.assign(new Error('Processing stopped'), { name: 'AbortError' }); }
+function abortError(): Error { return Object.assign(new Error('Processing stopped'), { name: 'AbortError' }); }
 export function checkAbort(signal: AbortSignal): void { if (signal.aborted) throw abortError(); }
 export async function runProcess(binary: string, args: string[], ctx: JobContext, options: { cwd?: string; stdout?: (chunk: Buffer) => void; maxBytes?: number } = {}): Promise<{ stdout: Buffer; stderr: string }> {
   checkAbort(ctx.signal);

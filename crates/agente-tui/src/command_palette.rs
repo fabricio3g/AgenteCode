@@ -636,22 +636,6 @@ fn command_item(command: Command, selected: bool) -> PickItem {
     )
 }
 
-/// Paint every cell in `area` with a solid background (opaque).
-pub fn fill(frame: &mut Frame, area: Rect, color: ratatui::style::Color) {
-    if area.width == 0 || area.height == 0 {
-        return;
-    }
-    // Use a space-filled paragraph so every cell is written, not just style.
-    let line = " ".repeat(area.width as usize);
-    let lines: Vec<Line> = (0..area.height)
-        .map(|_| Line::from(Span::styled(line.clone(), Style::default().bg(color))))
-        .collect();
-    frame.render_widget(
-        Paragraph::new(lines).style(Style::default().bg(color)),
-        area,
-    );
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

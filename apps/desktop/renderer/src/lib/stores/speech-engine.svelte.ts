@@ -11,7 +11,7 @@ import { downloadsStore } from '$lib/stores/downloads.svelte';
 import { hardwareStore } from '$lib/stores/hardware.svelte';
 import { VOICE_MODELS, voiceModelFiles, type VoiceModel } from '$shared/voice-models';
 
-export type VoiceModelState = 'installed' | 'downloading' | 'failed' | 'available';
+type VoiceModelState = 'installed' | 'downloading' | 'failed' | 'available';
 
 /**
  * Whether a model runs here. Speech models are small next to chat models, so

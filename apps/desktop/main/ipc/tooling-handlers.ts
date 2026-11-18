@@ -18,10 +18,7 @@ type ToolingHandlerDeps = {
   browserNavigate: (url: string, tabId?: string) => unknown;
   browserSnapshot: (tabId?: string) => unknown;
   browserClick: (text: string, tabId?: string) => unknown;
-  browserTypeText: (selector: string, text: string, tabId?: string) => unknown;
-  browserEvaluate: (script: string, tabId?: string) => unknown;
   browserScreenshot: (tabId?: string) => unknown;
-  browserGetCurrentUrl: (tabId?: string) => unknown;
   browserClose: (tabId?: string) => unknown;
   generatePptx: (data: unknown) => unknown;
   parseSlidesFromMarkdown: (markdown: string) => unknown;
@@ -48,12 +45,9 @@ export function registerToolingHandlers(deps: ToolingHandlerDeps): void {
   deps.ipcMain.handle('browser_navigate', (_e, { url, tabId, scope }) => withBrowserScope(scope, () => deps.browserNavigate(url, tabId)));
   deps.ipcMain.handle('browser_snapshot', (_e, { tabId, scope } = {}) => withBrowserScope(scope, () => deps.browserSnapshot(tabId)));
   deps.ipcMain.handle('browser_click', (_e, { text, tabId, scope }) => withBrowserScope(scope, () => deps.browserClick(text, tabId)));
-  deps.ipcMain.handle('browser_type_text', (_e, { selector, text, tabId, scope }) => withBrowserScope(scope, () => deps.browserTypeText(selector, text, tabId)));
-  deps.ipcMain.handle('browser_evaluate', (_e, { script, tabId, scope }) => withBrowserScope(scope, () => deps.browserEvaluate(script, tabId)));
   deps.ipcMain.handle('browser_pick_element', (_e, { tabId, scope, multi } = {}) => withBrowserScope(scope, () => panelPickElement(tabId, !!multi)));
   deps.ipcMain.handle('browser_pick_cancel', (_e, { tabId, scope } = {}) => withBrowserScope(scope, () => panelPickCancel(tabId)));
   deps.ipcMain.handle('browser_screenshot', (_e, { tabId, scope } = {}) => withBrowserScope(scope, () => deps.browserScreenshot(tabId)));
-  deps.ipcMain.handle('browser_get_current_url', (_e, { tabId, scope } = {}) => withBrowserScope(scope, () => deps.browserGetCurrentUrl(tabId)));
   deps.ipcMain.handle('browser_close', (_e, { tabId, scope } = {}) => withBrowserScope(scope, () => deps.browserClose(tabId)));
 
   deps.ipcMain.handle('generate_pptx', (_e, { data }) => deps.generatePptx(data));

@@ -50,10 +50,6 @@ impl ApprovalQueue {
         self.entries.is_empty()
     }
 
-    pub fn len(&self) -> usize {
-        self.entries.len()
-    }
-
     pub fn clear(&mut self) {
         self.entries.clear();
     }
@@ -62,10 +58,6 @@ impl ApprovalQueue {
     /// clearing requests from a specific origin).
     pub fn retain(&mut self, keep: impl FnMut(&PendingApproval) -> bool) {
         self.entries.retain(keep);
-    }
-
-    pub fn iter(&self) -> impl Iterator<Item = &PendingApproval> {
-        self.entries.iter()
     }
 }
 
@@ -344,13 +336,11 @@ const MAX_LIVE_TOOL_OUTPUT_BYTES: usize = 32 * 1024;
 pub struct RetryStatus {
     pub attempt: u32,
     pub max_attempts: u32,
-    pub delay_ms: u64,
 }
 
 /// Live UI state for a spawned subagent, fed by `AgentEvent::Subagent*`.
 #[derive(Debug, Clone, Default)]
 pub struct SubagentUiState {
-    pub id: String,
     pub subagent_type: String,
     pub description: String,
     /// "pending" | "running" | "completed" | "failed" | "cancelled"
@@ -537,25 +527,12 @@ impl AgentRuntimeState {
         self.turn_started_at = Some(std::time::Instant::now());
     }
 
-    /// Toggle between Plan and Build mode
-    pub fn toggle_mode(&mut self) {
-        self.set_mode(match self.mode {
-            AgentMode::Plan => AgentMode::Build,
-            AgentMode::Build => AgentMode::Plan,
-        });
-    }
-
     /// Set the agent mode and update the permission engine.
     pub fn set_mode(&mut self, mode: AgentMode) {
         self.mode = mode;
         if let Ok(mut engine) = self.shared_permission_engine.write() {
             engine.set_mode(mode);
         }
-    }
-
-    /// Clear reasoning text
-    pub fn clear_reasoning(&mut self) {
-        self.reasoning_text.clear();
     }
 
     /// True while the chat transcript is drawing its own live thinking block.
@@ -655,11 +632,6 @@ impl AgentRuntimeState {
     pub fn end_parent_turn(&mut self) {
         self.abort_task();
         self.refresh_approval_state();
-    }
-
-    /// Check if agent is streaming
-    pub fn is_streaming(&self) -> bool {
-        matches!(self.state, AgentState::StreamingResponse)
     }
 
     /// Stamp the last-event clock (call on every inbound AgentTaskEvent and at

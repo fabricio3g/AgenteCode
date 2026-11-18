@@ -410,7 +410,6 @@ mod tests {
         let parent = super::super::definition::SubagentParentDefaults {
             model: "m".into(),
             project_dir: ".".into(),
-            depth: 0,
         };
         let cfg =
             super::super::definition::resolve_effective_config(&request, &parent, &[]).unwrap();

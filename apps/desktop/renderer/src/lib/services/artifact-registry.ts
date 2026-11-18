@@ -364,10 +364,6 @@ export function getEnabledArtifactIds(toggles: Record<string, boolean> = {}): Se
   return enabled;
 }
 
-export function getArtifactIdByToolName(toolName: string): string | undefined {
-  return getArtifactDefinitionByToolName(toolName)?.id;
-}
-
 export function isArtifactToolEnabled(toolName: string, toggles: Record<string, boolean>): boolean {
   const artifact = getArtifactDefinitionByToolName(toolName);
   return artifact ? (toggles[artifact.id] ?? artifact.defaultEnabled) : true;

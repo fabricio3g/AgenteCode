@@ -3,7 +3,7 @@
 <!--
   The one bottom toolbar every composer draws (Home, Code, Design), so the
   eye finds the same thing in the same place: attach and mode on the left,
-  status, model, microphone, context ring and send / stop on the right.
+  status, model, microphone and send / stop on the right.
   A composer that has no attach button or no extras leaves that snippet out; the
   slot is never filled with something else.
 -->
@@ -17,11 +17,10 @@
     extras?: Snippet;
     status?: Snippet;
     microphone: Snippet;
-    context?: Snippet;
     trailing: Snippet;
   }
 
-  let { attach, model, extras, status, microphone, context, trailing }: Props = $props();
+  let { attach, model, extras, status, microphone, trailing }: Props = $props();
 </script>
 
 <div class="composer-bar">
@@ -38,7 +37,6 @@
     </div>{/if}
     <div class="composer-bar-actions">
     {@render microphone()}
-    {@render context?.()}
     {@render trailing()}
     </div>
   </div>

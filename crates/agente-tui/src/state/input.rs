@@ -247,13 +247,6 @@ impl InputState {
         }
     }
 
-    /// Clear current input
-    pub fn clear(&mut self) {
-        self.input_text.clear();
-        self.input_cursor = 0;
-        self.pasted_blocks.clear();
-    }
-
     /// Open the thinking-level picker, parked on the active level.
     pub fn open_thinking_selector(&mut self, levels: &[String], current: &str) {
         self.show_thinking_selector = true;

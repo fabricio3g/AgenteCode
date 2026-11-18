@@ -46,15 +46,12 @@ export type DesignResearchTool = 'design_reference' | 'design_view';
 export type DesignToolName = DesignFileTool | DesignRenderTool | DesignResearchTool;
 
 export const DESIGN_FILE_TOOLS: readonly DesignFileTool[] = ['design_list', 'design_read', 'design_write', 'design_edit', 'design_snapshot'];
-export const DESIGN_RENDER_TOOLS: readonly DesignRenderTool[] = ['design_preview', 'design_inspect', 'design_motion'];
 /**
  * Tools the Design agent may borrow from Home: read-only web access and the
  * read-only half of the agent browser (open, snapshot, read, tabs, screenshot).
  * Clicking, typing and pressing keys stay out: a design turn never drives a form.
  */
 export const DESIGN_BORROWED_TOOLS = ['web_search', 'fetch_url', 'browser_open', 'browser_snapshot', 'browser_read', 'browser_tabs', 'browser_screenshot'] as const;
-/** Tools that change the workspace, so core runs them one at a time. */
-export const DESIGN_MUTATING_TOOLS: readonly string[] = ['design_write', 'design_edit', 'design_snapshot', 'design_reference'];
 
 export interface DesignToolSpec {
   name: DesignToolName;

@@ -9,8 +9,6 @@ import { toErrorMessage } from '$lib/utils/errors';
 import { samplingParams } from '$shared/llm-params';
 import { DEFAULT_PROVIDER_BASE_URL, DEFAULT_PROVIDER_ID } from '$shared/providers';
 
-export type { RequestMessage, ToolDefinition, NativeToolCall, CompletionResult } from '$lib/services/chat-api';
-
 function shouldDebugAgentLogs(config: unknown): boolean {
   return !!(config as { ui?: { agent_debug_logs?: boolean } })?.ui?.agent_debug_logs;
 }

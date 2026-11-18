@@ -9,7 +9,6 @@ description = "ACP-style JSON-RPC stdio adapter for the Agente runtime"
 [dependencies]
 agente-protocol = { workspace = true }
 agente-runtime = { workspace = true }
-serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }

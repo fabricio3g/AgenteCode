@@ -264,14 +264,6 @@ impl SubagentHost {
         self.inner.mcp_session_id.get().copied()
     }
 
-    pub fn registry(&self) -> &SubagentRegistry {
-        &self.inner.registry
-    }
-
-    pub fn project_dir(&self) -> &str {
-        &self.inner.config.project_dir
-    }
-
     /// Execute a hosted subagent tool call (`task`, `task_output`, `kill_task`).
     pub(crate) async fn execute_hosted_tool_call(
         &self,
@@ -535,7 +527,6 @@ impl SubagentHost {
         let parent_defaults = SubagentParentDefaults {
             model: self.inner.config.model.clone(),
             project_dir: self.inner.config.project_dir.clone(),
-            depth,
         };
         let mut cfg = match resolve_effective_config(&request, &parent_defaults, custom) {
             Ok(cfg) => cfg,
@@ -1888,7 +1879,6 @@ mod tests {
         let parent_defaults = SubagentParentDefaults {
             model: "test-model".into(),
             project_dir: ".".into(),
-            depth: 0,
         };
 
         let mut request = queue_test_request();

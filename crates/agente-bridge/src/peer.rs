@@ -46,16 +46,8 @@ impl Peer {
         tokio::spawn(reconnect_loop(Arc::clone(&peer)));
         Ok(peer)
     }
-    pub fn pairing(&self) -> &Pairing {
-        &self.pairing
-    }
-
     pub fn extension(&self) -> Option<ClientInfo> {
         self.inner.lock().expect("peer state").extension.clone()
-    }
-
-    pub fn connected(&self) -> bool {
-        self.inner.lock().expect("peer state").tx.is_some()
     }
 
     /// Forward one action to the hub, which forwards it to the browser.

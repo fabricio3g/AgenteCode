@@ -15,7 +15,6 @@ use crate::widgets::{centered_panel, footer_hints, modal_card, modal_footer, s, 
 
 #[derive(Debug, Clone)]
 pub struct DiagnosticCheck {
-    pub category: &'static str,
     pub name: &'static str,
     pub status: CheckStatus,
     pub details: String,
@@ -25,7 +24,6 @@ pub struct DiagnosticCheck {
 pub enum CheckStatus {
     Pass,
     Warn,
-    Fail,
 }
 
 impl CheckStatus {
@@ -33,7 +31,6 @@ impl CheckStatus {
         match self {
             CheckStatus::Pass => ("✓ PASS", SUCCESS()),
             CheckStatus::Warn => ("! WARN", WARNING()),
-            CheckStatus::Fail => ("✗ FAIL", ERROR()),
         }
     }
 }
@@ -46,7 +43,6 @@ pub fn run_diagnostics(state: &AppState) -> Vec<DiagnosticCheck> {
     let colorterm = std::env::var("COLORTERM").unwrap_or_else(|_| "none".to_string());
     let is_truecolor = colorterm.contains("truecolor") || colorterm.contains("24bit");
     checks.push(DiagnosticCheck {
-        category: "Terminal",
         name: "Truecolor (24-bit)",
         status: if is_truecolor {
             CheckStatus::Pass
@@ -59,7 +55,6 @@ pub fn run_diagnostics(state: &AppState) -> Vec<DiagnosticCheck> {
     // 2. Unicode & Nerd Font Glyphs
     let glyphs = " ◉ ✎ ▸ ◆ ✓ ✗ ⧗";
     checks.push(DiagnosticCheck {
-        category: "Fonts",
         name: "Symbols & Glyphs",
         status: CheckStatus::Pass,
         details: format!("Render test: {glyphs}"),
@@ -68,7 +63,6 @@ pub fn run_diagnostics(state: &AppState) -> Vec<DiagnosticCheck> {
     // 3. System Clipboard
     let clipboard_ok = arboard::Clipboard::new().is_ok();
     checks.push(DiagnosticCheck {
-        category: "Clipboard",
         name: "System Clipboard (arboard)",
         status: if clipboard_ok {
             CheckStatus::Pass
@@ -86,14 +80,12 @@ pub fn run_diagnostics(state: &AppState) -> Vec<DiagnosticCheck> {
     let git_branch = crate::git_status::get_git_branch(&state.session.project_dir);
     if let Some(branch) = git_branch {
         checks.push(DiagnosticCheck {
-            category: "Git",
             name: "Repository & Branch",
             status: CheckStatus::Pass,
             details: format!(" {branch} (tracked)"),
         });
     } else {
         checks.push(DiagnosticCheck {
-            category: "Git",
             name: "Repository & Branch",
             status: CheckStatus::Warn,
             details: "No git repository found in working directory".to_string(),
@@ -105,7 +97,6 @@ pub fn run_diagnostics(state: &AppState) -> Vec<DiagnosticCheck> {
     let model = &state.config.current_model;
     let has_key = state.config.get_api_key_for(provider).is_some();
     checks.push(DiagnosticCheck {
-        category: "Model",
         name: "Active Model & Provider",
         status: if has_key {
             CheckStatus::Pass
@@ -147,7 +138,6 @@ pub fn run_diagnostics(state: &AppState) -> Vec<DiagnosticCheck> {
         )
     };
     checks.push(DiagnosticCheck {
-        category: "Input",
         name: "Mouse Reporting",
         status: mouse_status,
         details: mouse_details,

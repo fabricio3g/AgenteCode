@@ -283,7 +283,7 @@ async function freeDiskBytes(dir: string): Promise<number> {
  * Best-effort: missing or private files just leave the model on the
  * family/generic fallback, so callers never fail a download over this.
  */
-export async function captureRepoChatTemplate(
+async function captureRepoChatTemplate(
   repoId: string,
   modelPath: string,
   options: { hfToken?: string; branch?: string } = {}

@@ -12,6 +12,7 @@ import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import type { OpenInEditorArgs, OpenInEditorResult } from '../../shared/code-workspace.ts';
+import { resolveInRoot } from './changes.ts';
 
 export interface EditorInvocation {
   command: string;
@@ -21,7 +22,7 @@ export interface EditorInvocation {
 }
 
 /** Editors looked for on PATH when nothing is configured, best known first. */
-export const EDITOR_CANDIDATES = ['code', 'cursor', 'windsurf', 'codium', 'zed', 'subl', 'idea', 'sublime_text', 'nvim', 'vim'];
+const EDITOR_CANDIDATES = ['code', 'cursor', 'windsurf', 'codium', 'zed', 'subl', 'idea', 'sublime_text', 'nvim', 'vim'];
 
 /** Editors that only run inside a terminal. */
 const TERMINAL_EDITORS = new Set(['nvim', 'vim', 'vi', 'hx', 'helix', 'nano', 'micro', 'emacs']);
@@ -131,14 +132,6 @@ export function shellLine(invocation: EditorInvocation): string {
     ? `"${value.replace(/"/g, '""')}"`
     : `'${value.replace(/'/g, `'\\''`)}'`);
   return [invocation.command, ...invocation.args].map(quote).join(' ');
-}
-
-/** `relative` resolved inside `projectRoot`; throws when it points outside. */
-function resolveInRoot(projectRoot: string, relative: string): string {
-  const root = path.resolve(projectRoot);
-  const abs = path.isAbsolute(relative) ? path.resolve(relative) : path.resolve(root, relative);
-  if (abs !== root && !abs.startsWith(root + path.sep)) throw new Error(`Path "${relative}" escapes the project root`);
-  return abs;
 }
 
 export function openInEditor(args: OpenInEditorArgs & { editor?: string }): Promise<OpenInEditorResult> {

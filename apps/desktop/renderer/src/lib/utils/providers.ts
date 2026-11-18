@@ -25,7 +25,7 @@ export function defaultBaseUrl(id: string): string {
   return providerMeta(id)?.defaultBaseUrl || DEFAULT_PROVIDER_BASE_URL;
 }
 
-export type ProviderSaved = {
+type ProviderSaved = {
   has_api_key?: boolean;
   api_key?: string;
   model?: string;

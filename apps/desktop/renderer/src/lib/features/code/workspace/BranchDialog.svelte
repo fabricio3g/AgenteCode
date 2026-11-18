@@ -11,7 +11,7 @@
   import DialogActions from '$lib/components/ui/DialogActions.svelte';
 
   import { t } from 'svelte-i18n';
-  import { Button, Dialog, Input } from '$lib/components/ui';
+  import { Dialog, Input } from '$lib/components/ui';
 
   let {
     projectRoot,

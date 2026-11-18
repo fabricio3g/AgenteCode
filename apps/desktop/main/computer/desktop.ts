@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
 import { app, BrowserWindow, desktopCapturer, dialog, powerMonitor, screen, webContents, type IpcMain } from 'electron';
-import type { ComputerAction, ComputerObservation, ComputerState } from '../../shared/computer.ts';
+import type { ComputerAction, ComputerObservation } from '../../shared/computer.ts';
 import { ComputerSession, ComputerActionRejected, type ComputerOwner } from './session.ts';
 import { ComputerHelper, computerHelperPath } from './helper.ts';
 import { ComputerOverlayWindows } from './overlay.ts';
@@ -97,7 +97,7 @@ export function settleComputerTurn(sessionId: string, turnId: string) { computer
 export function cancelComputerTurn(sessionId: string, reason = 'cancelled') {
   if (computerSession.owner?.sessionId === sessionId) computerSession.takeover(reason);
 }
-export function disposeComputer() { computerSession.end('app_closed'); helper.close(); }
+function disposeComputer() { computerSession.end('app_closed'); helper.close(); }
 
 export function registerComputerHandlers(ipcMain: IpcMain) {
   const knownOwners = new Set<number>();
@@ -132,4 +132,4 @@ export function registerComputerHandlers(ipcMain: IpcMain) {
   app.once('before-quit', disposeComputer);
 }
 
-export type { ComputerOwner, ComputerState };
+export type { ComputerOwner };

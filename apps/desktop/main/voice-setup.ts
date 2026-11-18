@@ -180,7 +180,7 @@ async function runSetup(win: BrowserWindow | null, quality?: string): Promise<Vo
 // ── Speech models: the three choices in Settings → Voice and the mic ──────
 
 /** Fast · Balanced · Best — all Whisper (MIT), all multilingual. */
-export const SPEECH_TIERS = [
+const SPEECH_TIERS = [
   { tier: 'fast', quality: 'base_q5' },
   { tier: 'balanced', quality: 'small_q5', recommended: true },
   { tier: 'best', quality: 'large_v3_turbo_q5' }

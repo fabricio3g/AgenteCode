@@ -161,14 +161,12 @@
   --text-secondary: #525252;
   --text-tertiary: #6b6b6b;
   --text-muted: var(--muted-foreground);
-  --text-inverse: var(--primary-foreground);
   --split-line: color-mix(in srgb, var(--foreground) 16%, transparent);
   --border-hover: rgb(0 0 0 / 0.14);
   --border-active: rgb(0 0 0 / 0.2);
   /* Internal dividers inside an already-bordered surface. Full --border on every
      seam turns a panel into a grid of lines. */
   --border-subtle: #0000000d;
-  --border-inverse: rgb(0 0 0 / 0.15);
   --primary-hover: #171717;
   --primary-fg: var(--primary-foreground);
   --accent-hover: #e8e8e8;
@@ -194,13 +192,7 @@
      `-strong` variants clear 4.5:1 where the accent touches small type. */
   --companion: #03588c;
   --companion-strong: #023059;
-  /* The two supporting hues from the palette: a bright cyan for live signals and a
-     dusty rose for the human/secondary ones. Orange stays the only warm accent. */
-  --accent-cyan: #049dbf;
-  --accent-rose: #bf8f84;
   --companion-soft: #03588c12;
-  --control-bg: var(--card);
-  --control-inset: inset 0 1px 0 rgb(255 255 255 / 0.65);
   --control-shadow: 0 1px 2px rgb(16 28 44 / 0.08);
   --brand-accent: #e76d1f;
   --brand-accent-strong: #b34a0e;
@@ -219,10 +211,7 @@
      lifted by a wide, low shadow rather than by a fill. */
   --composer-surface: #ffffff;
   --composer-ring: rgb(0 0 0 / 0.08);
-  --composer-ring-hover: color-mix(in srgb, var(--composer-ring) 88%, var(--foreground));
   --composer-ring-focus: color-mix(in srgb, var(--composer-ring) 70%, var(--foreground));
-  --composer-control-bg: color-mix(in srgb, var(--foreground) 3%, transparent);
-  --composer-control-ring: color-mix(in srgb, var(--foreground) 8%, transparent);
   --composer-control-hover: color-mix(in srgb, var(--foreground) 7%, transparent);
   /* A placeholder is a hint, not a disabled value: light enough to recede under
      the caret, dark enough to read at 15px. */
@@ -232,15 +221,12 @@
   --composer-shadow: 0 1px 2px rgb(0 0 0 / 0.04);
   --composer-shadow-focus: 0 1px 2px rgb(0 0 0 / 0.05), 0 8px 20px -8px rgb(0 0 0 / 0.16);
   --chat-bg: var(--background);
-  --titlebar-bg: var(--background);
-  --sidebar-bg: var(--sidebar);
   --panel-bg: var(--card);
   --panel-border: var(--border-hover);
   --overlay: rgb(0 0 0 / 0.35);
 
   /* Artifacts — borderless surface contrast (not boxed chrome) */
   --artifact-surface: color-mix(in srgb, var(--surface) 88%, var(--chat-bg));
-  --artifact-surface-strong: color-mix(in srgb, var(--surface) 96%, var(--foreground) 4%);
   --artifact-surface-hover: color-mix(in srgb, var(--surface-hover) 85%, var(--chat-bg));
   --artifact-elev: 0 1px 2px rgb(0 0 0 / 0.04);
   --artifact-radius: var(--radius-md);
@@ -259,8 +245,6 @@
   --chart-4: #dc2626;
   --chart-5: #7c3aed;
   --chart-6: #0891b2;
-  /* Text drawn on top of a filled slice, so it tracks the fill, not the theme. */
-  --chart-label-on-fill: #ffffff;
 
   --accent-sky: var(--chart-6);
   --accent-green: var(--chart-2);
@@ -300,14 +284,6 @@
   --row-gap: 2px;
   --step-indent: 19px;
   --dock-gap: 8px;
-  /* Icon buttons across the chrome: one size, one icon size. */
-  --icon-btn: 1.5rem;
-  --icon: 14px;
-  /* The space switcher at the sidebar's head: one button, one icon. It is the
-     one place the 14px chrome icon scale does not apply — a row of 14px marks
-     reads as decoration. */
-  --space-btn: 1.25rem;
-  --space-icon: 15px;
   /* One height for every row in the sidebar rail (.sidebar-row), and one size
      for the mark that leads it. Rows stepped up to 2rem so the whole left edge
      reads at one scale. */
@@ -336,9 +312,6 @@
 
   /* Shadows — light only, quiet */
   --shadow-xs: 0 1px 2px rgb(0 0 0 / 0.05);
-  /* Lifts the composer off the page: the one surface that floats on the
-     conversation, at a whisper of a shadow (the study's `0 6px 22px`). */
-  --panel-shadow: 0 2px 8px rgb(0 0 0 / 0.025);
   /* The docked sidebar is flat: a surface and a hairline, no groove. */
   --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.05);
   --shadow-md: 0 1px 3px rgb(0 0 0 / 0.08);
@@ -376,7 +349,6 @@
   --accent-yellow-text: #854d0e;
 
   /* Stacking order — one ladder instead of ad-hoc z-[40] … z-[500] literals */
-  --z-base: 0;
   --z-sticky: 10;
   --z-float: 60;
   /* Side drawers (LLM settings, search) sit over the page, under dialogs. */
@@ -473,12 +445,10 @@
   --text-secondary: #c8c8c8;
   --text-tertiary: var(--muted-foreground);
   --text-muted: var(--muted-foreground);
-  --text-inverse: var(--primary-foreground);
   --split-line: rgb(255 255 255 / 0.24);
   --border-hover: #ffffff24;
   --border-active: rgb(255 255 255 / 0.2);
   --border-subtle: #ffffff0f;
-  --border-inverse: rgb(255 255 255 / 0.3);
   --primary-hover: #ffffff;
   --primary-fg: var(--primary-foreground);
   --accent-hover: #2f2f2f;
@@ -506,11 +476,7 @@
 
   --companion: #4bb4d6;
   --companion-strong: #9bd9ec;
-  --accent-cyan: #36bfdc;
-  --accent-rose: #d3aaa0;
   --companion-soft: #4bb4d61a;
-  --control-bg: color-mix(in srgb, var(--card) 94%, #fff 6%);
-  --control-inset: inset 0 1px 0 rgb(255 255 255 / 0.07);
   --control-shadow: 0 1px 2px rgb(0 0 0 / 0.22);
   --brand-accent: #e8793a;
   --brand-accent-strong: #f29a64;
@@ -523,15 +489,12 @@
   --composer-shadow: 0 1px 2px rgb(0 0 0 / 0.5);
   --composer-shadow-focus: 0 1px 2px rgb(0 0 0 / 0.55), 0 10px 24px -10px rgb(0 0 0 / 0.9);
   --chat-bg: var(--background);
-  --titlebar-bg: var(--background);
-  --sidebar-bg: var(--sidebar);
   --panel-bg: var(--card);
   --panel-border: var(--border-hover);
   --overlay: rgb(0 0 0 / 0.6);
 
   /* Artifacts — borderless surface contrast (not boxed chrome) */
   --artifact-surface: color-mix(in srgb, var(--surface) 92%, #ffffff 6%);
-  --artifact-surface-strong: color-mix(in srgb, var(--surface) 88%, #ffffff 10%);
   --artifact-surface-hover: color-mix(in srgb, var(--surface-hover) 90%, #ffffff 8%);
   --artifact-elev: none;
   --artifact-radius: var(--radius-md);
@@ -544,14 +507,12 @@
   --chart-4: #f87171;
   --chart-5: #a78bfa;
   --chart-6: #22d3ee;
-  --chart-label-on-fill: #0b0b0b;
 
   /* Elevation comes from lighter surfaces, not shadows; transparent rather
      than `none` because these compose into box-shadow lists (`inset 0 0 0
      1px var(--border), var(--shadow-xs)`), where `none` would invalidate the
      whole declaration. Floating things (menus, dialogs) keep a real shadow. */
   --shadow-xs: 0 0 #0000;
-  --panel-shadow: 0 0 #0000;
   --shadow-sm: 0 0 #0000;
   --shadow-md: 0 0 #0000;
   --shadow-lg: 0 12px 32px rgb(0 0 0 / 0.45);
@@ -752,12 +713,6 @@ textarea {
   }
 }
 
-.surface-panel {
-  background: var(--panel-bg);
-  border: 1px solid var(--panel-border);
-  box-shadow: var(--surface-shadow);
-}
-
 /* Analytical visuals share the transcript's typography and an open, quiet canvas. */
 .viz-surface {
   container-type: inline-size;
@@ -898,63 +853,7 @@ textarea {
   box-shadow: var(--composer-shadow-focus);
 }
 
-.ui-dialog-backdrop {
-  background-color: var(--overlay);
-}
-
 /* ─── Selectors / menus / modals (quiet chrome) ─────────────── */
-/*
- * Pill variant, for the controls that sit inside the composer. They read as
- * chips on the composer surface rather than as buttons on the page.
- */
-.ui-select-trigger.ui-pill {
-  height: 2.25rem;
-  border-radius: var(--radius-full);
-  border: 0;
-  background: var(--muted);
-  padding: 0 0.75rem;
-}
-
-.ui-select-trigger.ui-pill:hover {
-  background: var(--surface-active);
-  color: var(--foreground);
-}
-
-.ui-select-trigger.ui-pill[aria-expanded='true'],
-.ui-select-trigger.ui-pill.is-active {
-  background: var(--surface-active);
-  color: var(--foreground);
-}
-
-.ui-select-trigger {
-  display: inline-flex;
-  height: 2rem;
-  align-items: center;
-  gap: 0.25rem;
-  border: none;
-  border-radius: var(--radius-md);
-  background: transparent;
-  padding: 0 0.625rem;
-  /* --text-secondary over --muted-foreground: 7.5:1 against the composer
-     surface instead of 5.2:1, which is what made these read as disabled. */
-  color: var(--text-secondary);
-  font-size: var(--text-sm);
-  font-weight: 500;
-  cursor: pointer;
-  transition: background-color var(--motion-fast) var(--motion-ease), color var(--motion-fast) var(--motion-ease);
-}
-
-.ui-select-trigger:hover,
-.ui-select-trigger[aria-expanded='true'] {
-  background: var(--muted);
-  color: var(--foreground);
-}
-
-.ui-select-trigger:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 2px color-mix(in oklch, var(--ring) 30%, transparent);
-}
-
 /* Event colors shared by the month grid, agenda and Home. */
 .calendar-tone {
   --calendar-tone: light-dark(#3e648e, #88acd8);
@@ -1102,8 +1001,7 @@ textarea {
  * mention suggestions), so a dropdown looks the same wherever it opens.
  */
 .ui-float,
-.ui-menu,
-.ui-legacy-menu {
+.ui-menu {
   border: 1px solid var(--float-border);
   border-radius: var(--float-radius);
   background: var(--float-bg);
@@ -1190,14 +1088,12 @@ textarea {
 }
 
 .ui-row:disabled,
-.ui-row.is-disabled,
 .ui-menu-item:disabled {
   cursor: default;
   opacity: 0.45;
 }
 
 .ui-row:disabled:hover,
-.ui-row.is-disabled:hover,
 .ui-menu-item:disabled:hover {
   background: transparent;
 }
@@ -1238,17 +1134,6 @@ textarea {
   padding: 3px;
 }
 
-.ui-segmented.ui-segmented-fill {
-  display: flex;
-  width: 100%;
-}
-
-.ui-segmented.ui-segmented-fill .ui-segmented-item {
-  flex: 1 1 0;
-  min-width: 0;
-  justify-content: center;
-}
-
 .ui-segmented-item {
   display: inline-flex;
   align-items: center;
@@ -1276,17 +1161,6 @@ textarea {
   background: var(--segment-active-bg);
   box-shadow: var(--segment-active-shadow);
   color: var(--foreground);
-}
-
-/* Slightly more visible selects for Code composer (not transparent “missing CSS”) */
-.ui-select-trigger.ui-select-solid {
-  background: var(--muted);
-  color: var(--foreground);
-}
-
-.ui-select-trigger.ui-select-solid:hover,
-.ui-select-trigger.ui-select-solid[aria-expanded='true'] {
-  background: color-mix(in srgb, var(--muted) 70%, var(--foreground) 6%);
 }
 
 .ui-modal-backdrop {
@@ -1343,21 +1217,6 @@ textarea {
   padding: 1.25rem;
 }
 
-
-
-
-
-.ui-card-quiet {
-  border: none;
-  border-radius: var(--radius-xl);
-  background: color-mix(in srgb, var(--muted) 45%, transparent);
-  transition: background-color var(--motion-fast) var(--motion-ease);
-}
-
-.ui-card-quiet:hover {
-  background: color-mix(in srgb, var(--muted) 70%, transparent);
-}
-
 /* Content dissolves under the top bar instead of being cut off, on every
    surface (the same look as the chat thread, mirroring the composer's fade at
    the bottom). Put it on a non-scrolling wrapper around the scroll area. */
@@ -1380,38 +1239,6 @@ textarea {
     var(--ui-top-fade-from, var(--background))
   );
 }
-
-.ui-scroll-header {
-  position: relative;
-  z-index: 10;
-  flex-shrink: 0;
-  --ui-header-fade-from: var(--background);
-}
-
-.ui-scroll-header--popover {
-  --ui-header-fade-from: var(--popover);
-}
-
-.ui-scroll-header__fade {
-  pointer-events: none;
-  position: absolute;
-  inset-inline: 0;
-  top: 100%;
-  height: 1.5rem;
-  z-index: 1;
-  background: linear-gradient(
-    to bottom,
-    var(--ui-header-fade-from) 0%,
-    color-mix(in srgb, var(--ui-header-fade-from) 55%, transparent) 45%,
-    transparent 100%
-  );
-}
-
-.ui-scroll-header--compact .ui-scroll-header__fade {
-  height: 1rem;
-}
-
-
 
 /* A rounded field on a muted fill: the browser address bar, the dock's run box. */
 .ui-pill-field {
@@ -1446,31 +1273,8 @@ textarea {
   font-weight: 600;
 }
 
-.ui-status-badge {
-  font-variant-numeric: tabular-nums;
-}
-
-.ui-float-panel {
-  border: 1px solid var(--float-border);
-  box-shadow: var(--float-shadow);
-}
-
-.no-scrollbar::-webkit-scrollbar {
-  display: none;
-}
-
-.no-scrollbar {
-  scrollbar-width: none;
-}
-
 /* ─── Conversation patterns ─────────────────────────────────────── */
-/* Shimmer overlay for running labels — pair with .ui-shimmer-host on the wrapper */
-.ui-shimmer-host {
-  position: relative;
-  display: inline-block;
-  line-height: 1;
-}
-
+/* Shimmer overlay for running labels */
 .ui-shimmer {
   pointer-events: none;
   position: absolute;
@@ -1650,10 +1454,6 @@ textarea {
 }
 
 /* Tool call rows (ToolCallRow) */
-.ui-tool-fallback-root {
-  width: 100%;
-}
-
 .ui-tool-fallback-trigger {
   display: flex;
   width: fit-content;
@@ -1697,11 +1497,6 @@ textarea {
 
 .ui-tool-fallback-chevron.is-closed {
   transform: rotate(-90deg);
-}
-
-.ui-tool-fallback-label-cancelled {
-  color: var(--muted-foreground);
-  text-decoration: line-through;
 }
 
 .ui-tool-fallback-content {
@@ -1784,83 +1579,6 @@ textarea {
   opacity: 0.9;
 }
 
-.ui-tool-fallback-terminal {
-  margin: 0;
-  border-radius: var(--radius-md);
-  border: 1px solid var(--border);
-  background: var(--code-terminal-bg);
-  color: var(--code-terminal-text);
-  padding: 0.625rem 0.75rem;
-  font-size: 0.75rem;
-  font-family: var(--font-mono);
-  line-height: 1.5;
-  white-space: pre-wrap;
-  word-break: break-word;
-  max-height: 20rem;
-  overflow: auto;
-}
-
-/* Tool group (ActivityDrawer) */
-.ui-tool-group-root {
-  width: 100%;
-  margin: 0.25rem 0;
-}
-
-.ui-tool-group-root[data-variant='outline'] {
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  padding: 0.75rem 0;
-}
-
-.ui-tool-group-root[data-variant='muted'] {
-  border: 1px solid color-mix(in srgb, var(--muted-foreground) 30%, transparent);
-  border-radius: var(--radius-lg);
-  background: color-mix(in srgb, var(--muted) 30%, transparent);
-  padding: 0.75rem 0;
-}
-
-.ui-tool-group-trigger {
-  display: flex;
-  width: 100%;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0 1rem;
-  border: none;
-  background: transparent;
-  color: var(--muted-foreground);
-  font-size: 0.875rem;
-  cursor: pointer;
-  transition: color var(--motion-fast) var(--motion-ease);
-}
-
-.ui-tool-group-trigger:hover {
-  color: var(--foreground);
-}
-
-.ui-tool-group-trigger-label {
-  flex: 1;
-  text-align: left;
-  font-size: 0.75rem;
-  font-weight: 500;
-}
-
-.ui-tool-group-content {
-  display: flex;
-  flex-direction: column;
-  gap: 0.125rem;
-  padding: 0.5rem 0.75rem 0;
-}
-
-.ui-tool-group-summary {
-  padding: 0.35rem 1rem 0;
-  color: var(--muted-foreground);
-  font-size: var(--text-xs);
-  letter-spacing: var(--tracking-caption);
-  font-weight: 500;
-  opacity: 0.8;
-}
-
-
 /* Chain-of-thought stack spacing */
 .ui-cot-stack {
   display: flex;
@@ -1887,131 +1605,6 @@ textarea {
 
 /* ─── Utility classes ─────────────────────────────────── */
 
-.ui-legacy-card {
-  background: var(--ui-legacy-card-bg, var(--surface));
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  transition: box-shadow 0.2s ease, transform 0.2s ease;
-}
-
-.ui-legacy-card:hover {
-  box-shadow: var(--shadow-md);
-}
-
-.modal-backdrop {
-  will-change: opacity;
-  backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
-}
-
-.modal-surface {
-  will-change: transform, opacity;
-}
-
-.ui-legacy-card-interactive {
-  transition: background-color 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
-}
-
-.ui-legacy-card-interactive:hover {
-  background: var(--surface-hover);
-  border-color: var(--border-hover);
-}
-
-.ui-legacy-pill {
-  background: var(--ui-legacy-pill-bg, var(--surface));
-  border: 1px solid var(--ui-legacy-pill-border, var(--border));
-  border-style: var(--ui-legacy-pill-border-style, solid);
-  border-radius: var(--radius-full);
-}
-
-.ui-legacy-muted-pill {
-  background: var(--ui-legacy-muted-pill-bg, var(--surface-hover));
-  border: 1px solid var(--ui-legacy-muted-pill-border, var(--border));
-  border-radius: var(--radius-full);
-}
-
-.ui-legacy-segmented {
-  display: inline-flex;
-  align-items: center;
-  gap: 1px;
-  padding: 2px;
-  background: var(--surface-hover);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-}
-
-.ui-legacy-segment {
-  border-radius: var(--radius-sm);
-  border: none;
-  background: none;
-  cursor: pointer;
-  font-size: 0.75rem;
-  font-weight: 500;
-  padding: 5px 10px;
-  color: var(--text-tertiary);
-  transition: background-color var(--motion-fast) var(--motion-ease), color var(--motion-fast) var(--motion-ease);
-}
-
-.ui-legacy-segment:hover {
-  color: var(--text);
-  background: var(--surface);
-}
-
-.ui-legacy-segment.is-active {
-  background: var(--background);
-  color: var(--text);
-  box-shadow: var(--shadow-xs);
-}
-
-.ui-legacy-button-primary {
-  background: var(--primary);
-  color: var(--primary-fg);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-full);
-  box-shadow: var(--shadow-xs);
-  transition: background-color var(--motion-fast) var(--motion-ease), border-color var(--motion-fast) var(--motion-ease), transform 0.1s ease;
-}
-
-.ui-legacy-button-primary:hover {
-  background: var(--primary-hover);
-  border-color: var(--border-hover);
-}
-
-.ui-legacy-button-primary:active {
-  transform: scale(0.98);
-}
-
-.ui-legacy-button-secondary {
-  background: var(--surface);
-  color: var(--text);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-full);
-  box-shadow: var(--shadow-xs);
-  transition: background-color var(--motion-fast) var(--motion-ease), border-color var(--motion-fast) var(--motion-ease);
-}
-
-.ui-legacy-button-secondary:hover {
-  background: var(--surface-hover);
-  border-color: var(--border-hover);
-}
-
-.ui-legacy-icon-button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: var(--radius-full);
-  color: var(--text-tertiary);
-  transition: background-color var(--motion-fast) var(--motion-ease), color var(--motion-fast) var(--motion-ease), border-color var(--motion-fast) var(--motion-ease);
-}
-
-.ui-legacy-icon-button:hover {
-  background: var(--surface-hover);
-  color: var(--text);
-  border-color: var(--border);
-}
-
 .ui-legacy-field {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -2023,56 +1616,6 @@ textarea {
 .ui-legacy-field:focus-within {
   border-color: var(--ring);
   box-shadow: 0 0 0 2px color-mix(in oklch, var(--ring) 25%, transparent);
-}
-
-@keyframes ui-legacy-loader-dots {
-  33% {
-    background-size: calc(100% / 3) 0%, calc(100% / 3) 100%, calc(100% / 3) 100%;
-  }
-  50% {
-    background-size: calc(100% / 3) 100%, calc(100% / 3) 0%, calc(100% / 3) 100%;
-  }
-  66% {
-    background-size: calc(100% / 3) 100%, calc(100% / 3) 100%, calc(100% / 3) 0%;
-  }
-}
-
-.ui-legacy-message-loading-container {
-  display: inline-flex;
-  align-items: center;
-  width: fit-content;
-  height: 32px;
-  padding: 8px 10px;
-  border-radius: var(--radius-full);
-  background: var(--surface-hover);
-  border: 1px solid var(--border);
-}
-
-.ui-legacy-message-loading {
-  width: 24px;
-  aspect-ratio: 4;
-  --_g: no-repeat radial-gradient(circle closest-side, var(--text-tertiary) 90%, transparent 90%);
-  background: var(--_g) 0% 50%, var(--_g) 50% 50%, var(--_g) 100% 50%;
-  background-size: calc(100% / 3) 100%;
-  animation: ui-legacy-loader-dots 750ms infinite linear;
-}
-
-.ui-legacy-shimmer-text {
-  display: inline-block;
-  background-image:
-    linear-gradient(90deg, transparent calc(50% - 44px), var(--text) 50%, transparent calc(50% + 44px)),
-    linear-gradient(var(--text-secondary), var(--text-secondary));
-  background-size: 250% 100%, auto;
-  background-repeat: no-repeat, padding-box;
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-  animation: ui-legacy-loader-shimmer 2s linear infinite;
-}
-
-@keyframes ui-legacy-loader-shimmer {
-  0% { background-position: 100% center; }
-  100% { background-position: 0% center; }
 }
 
 /*
@@ -2416,28 +1959,6 @@ kbd {
 
 /* ─── End utility classes ────────────────────────────── */
 
-/* ─── Collapsed sidebar ─────────────────────────────── */
-.collapsed-btn {
-  color: var(--text);
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: 4px;
-  transition: background 0.15s ease;
-}
-
-.collapsed-btn:hover {
-  background: var(--surface-hover);
-}
-
-.collapsed-btn svg {
-  transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.collapsed-btn:hover svg {
-  transform: rotate(-8deg);
-}
-/* ─── End collapsed sidebar ──────────────────────────── */
-
 /* ─── Message action bar (T3-style ghost row under bubbles) ───────────── */
 .message-action-bar {
   display: flex;
@@ -2496,107 +2017,6 @@ kbd {
 
 .msg-action-btn.copied {
   color: var(--success);
-}
-
-.msg-action-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.25rem;
-  padding: 0 0.5rem;
-  border-radius: var(--radius-full);
-  font-size: 0.75rem;
-  color: var(--text-muted);
-  background: var(--surface-hover);
-  border: 1px solid var(--border);
-  line-height: 1.5rem;
-}
-
-.assistant-footer {
-  opacity: 0;
-  visibility: hidden;
-  transition: opacity var(--motion-fast) var(--motion-ease), visibility var(--motion-fast) var(--motion-ease);
-  margin-top: 0.25rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-}
-.assistant-footer.visible {
-  opacity: 1;
-  visibility: visible;
-}
-
-.footer-info-line {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  flex-wrap: wrap;
-}
-.footer-model-name {
-  font-size: var(--text-xs);
-  color: var(--text-muted);
-}
-.footer-tools-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.25rem;
-  padding: 0 0.5rem;
-  border-radius: var(--radius-full);
-  font-size: var(--text-xs);
-  color: var(--text-muted);
-  background: var(--surface-hover);
-  border: 1px solid var(--border);
-  line-height: 1.5rem;
-}
-
-@property --work-angle {
-  syntax: '<angle>';
-  initial-value: 0deg;
-  inherits: false;
-}
-
-@keyframes work-spin {
-  to { --work-angle: 360deg; }
-}
-.thinking-dot:nth-child(2) { animation-delay: 0.2s; }
-.thinking-dot:nth-child(3) { animation-delay: 0.4s; }
-
-.work-composer {
-  border-color: var(--work-accent-border);
-  background: var(--surface);
-  box-shadow: var(--shadow-md);
-}
-
-.work-composer-generating {
-  position: relative;
-  isolation: isolate;
-  border-color: transparent !important;
-  animation: work-spin 6s linear infinite;
-}
-
-/* Glass-style sweeping light border — replaces solid pulse */
-.work-composer-generating::before {
-  content: '';
-  position: absolute;
-  inset: -1px;
-  border-radius: 25px;
-  padding: 1.5px;
-  background: conic-gradient(
-    from var(--work-angle),
-    transparent 30%,
-    var(--work-glint) 50%,
-    var(--work-accent-border) 62%,
-    var(--work-accent) 70%,
-    var(--work-accent-border) 78%,
-    var(--work-glint) 88%,
-    transparent 100%
-  );
-  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-  -webkit-mask-composite: xor;
-  mask-composite: exclude;
-  z-index: -1;
-  pointer-events: none;
-  opacity: 0.9;
 }
 
 .markdown-body {
@@ -3143,37 +2563,6 @@ kbd {
   cursor: help;
 }
 
-/*
- * Stream cursor. It hangs off the *last block* of the live tail, not off the tail
- * container: `::after` on a container whose children are block-level `<p>`/`<pre>`
- * forms an anonymous block, so the caret rendered on its own line below the text
- * instead of trailing the last word. Inside the block it is an ordinary inline box.
- *
- * There is deliberately no `will-change` here. It used to sit on the container and
- * promoted the whole markdown body to a compositing layer for the entire stream,
- * re-rasterising it on every DOM write. The caret is a 1s opacity loop on two
- * pixels — it does not need a layer.
- */
-.stream-caret > :last-child::after {
-  content: '';
-  display: inline-block;
-  width: 2px;
-  height: 1em;
-  background: var(--primary);
-  opacity: 0.7;
-  margin-left: 2px;
-  vertical-align: text-bottom;
-  border-radius: 1px;
-  animation: streamCaretPulse 1s ease-in-out infinite;
-}
-@keyframes streamCaretPulse {
-  0%, 100% { opacity: 0.7; }
-  50% { opacity: 0.2; }
-}
-
-/* Text shimmer for "Thinking" label */
-
-
 input[type="range"] {
   -webkit-appearance: none;
   appearance: none;
@@ -3222,25 +2611,6 @@ input[type="range"]::-moz-range-thumb {
   box-shadow: 0 1px 4px rgba(0,0,0,0.18);
 }
 
-@keyframes thinPulse {
-  0%, 100% {
-    transform: scale(1);
-    opacity: 0.8;
-  }
-  50% {
-    transform: scale(1.3);
-    opacity: 0.3;
-  }
-}
-
-.loader-pulse {
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  background: var(--primary);
-  animation: thinPulse 1.5s ease-in-out infinite;
-}
-
 /* ── Dark-mode hljs overrides ───────────────────────────────────────────── */
 /* The github.min.css import handles light mode. These override for dark. */
 .dark .hljs { color: #c9d1d9; }
@@ -3278,35 +2648,14 @@ input[type="range"]::-moz-range-thumb {
   .message-action-bar { opacity: 1; pointer-events: auto; }
 }
 
-/* Ambient gradient disabled — Flaxeo calm flat chrome */
-.ambient-gradient {
-  display: none;
-}
-
 /* ── Reduced-motion / mobile: kill decorative continuous animations ─── */
 @media (prefers-reduced-motion: reduce), (max-width: 768px), (pointer: coarse) {
-  .ambient-gradient { animation: none !important; display: none; }
   .text-shimmer, .startup-loading-text.text-shimmer {
     animation: none !important;
     background: none;
     -webkit-text-fill-color: var(--text-muted);
   }
-  .startup-dots-layer { animation: none !important; }
-  .ui-legacy-shimmer-text { animation: none !important; }
-  .ui-legacy-message-loading { animation: none !important; }
-  .loader-pulse { animation: none !important; }
   .message-enter { animation: none !important; }
-  .work-composer-generating { animation: none !important; }
-
-  /*
-   * Matches the caret's real selector. The old rule here was `.stream-caret::after`,
-   * which stopped matching once the caret moved onto the tail's last block. This
-   * block also used to miss the per-chunk `streamFadeIn` entirely, because that
-   * selector lived in a component `<style>` and Svelte name-mangled it — so
-   * reduced-motion users still got the opacity flicker. There is nothing per-chunk
-   * left to animate now.
-   */
-  .stream-caret > :last-child::after { animation: none !important; opacity: 0.7; }
 }
 
 /*
@@ -3430,9 +2779,6 @@ html.dark.a11y-contrast {
   html {
     --grain-noise: none;
   }
-  .backdrop-blur-xl {
-    backdrop-filter: none;
-  }
   :focus-visible {
     outline: 2px solid CanvasText;
     outline-offset: 2px;
@@ -3502,8 +2848,6 @@ html.a11y-reduce-motion *::after {
 @media (prefers-reduced-motion: reduce) { .ui-button, .ui-action, .ui-field { transition: none; } }
 
 /* Shared composer controls and the inset data strip below the input. */
-.composer-meta-item { display:flex;align-items:center;min-width:0; }
-.composer-meta-item.is-reasoning:not(:has(.thinking-trigger)) { display:none; }
 .composer-bar .model-slot { display:flex;min-width:4rem;max-width:12.5rem;flex:0 1 auto; }
 /* The pill's tooltip anchor must shrink with the slot, or a long model name runs over the buttons beside it. */
 .composer-bar .model-slot > * { min-width:0;max-width:100%;flex-shrink:1; }
@@ -3528,21 +2872,8 @@ html.a11y-reduce-motion *::after {
    as wide as the chevron balances the right side. Code's chip carries a leading
    icon instead, so this only touches the label-only chip. */
 .composer-bar .mode-selector::before { content:''; inline-size:0.75rem; flex:none; }
-.composer-secondary {
-  position:relative; display:flex; align-items:center; justify-content:space-between;
-  gap:0.25rem 0.5rem; min-width:0; margin:-0.875rem 1rem 0;
-  padding:1.125rem 0.625rem 0.375rem;
-  border:1px solid var(--border); border-top:0;
-  border-radius:0 0 var(--radius-lg) var(--radius-lg);
-  background:var(--composer-surface); color:var(--muted-foreground); font-size:var(--text-xs);
-}
 /* The input sits over the strip's open seam, so there is only one edge there. */
 .composer-shell { z-index:1; }
-.composer-secondary-status { display:flex;align-items:center;flex-wrap:nowrap;gap:0.375rem;min-width:0;margin-left:auto; }
-.composer-checkout { display:inline-flex;align-items:center;gap:0.375rem;min-width:0; }
-.composer-checkout svg { width:0.75rem;height:0.75rem;flex-shrink:0; }
-.composer-checkout { flex:0 1 auto; }
-.composer-checkout span { overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
 /* Narrow ladder: dividers tighten, then the secondary controls (thinking,
    mode) fold into their icons, and the model name takes whatever they free —
    it is the one label worth reading, so it is never capped short of the room
@@ -3764,49 +3095,6 @@ html.a11y-reduce-motion *::after {
 /* Choices are list rows: a glyph tile, the name, one grey line. On the
    white sheet the chosen one takes the soft fill (the current-row white
    would vanish here), and its tile turns to the foreground. */
-.setup-choices {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-  margin-inline: -0.5rem;
-}
-
-.setup-choice {
-  display: grid;
-  grid-template-columns: 2.25rem minmax(0, 1fr);
-  column-gap: 0.75rem;
-  row-gap: 0.125rem;
-  align-items: center;
-  padding: 0.625rem 0.75rem 0.625rem 0.5rem;
-  border-radius: var(--float-row-radius);
-  color: var(--muted-foreground);
-  text-align: left;
-  transition: background-color var(--motion-instant) var(--motion-ease);
-}
-.setup-choice > svg {
-  grid-row: span 2;
-  width: 2.25rem;
-  height: 2.25rem;
-  padding: 0.5rem;
-  border-radius: var(--radius-md);
-  background: var(--muted);
-  color: var(--muted-foreground);
-}
-.setup-choice:hover { background: var(--surface-hover); }
-.setup-choice.is-selected { background: var(--muted); }
-.setup-choice.is-selected > svg { background: var(--foreground); color: var(--background); }
-.setup-choice:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
-
-.setup-choice-title {
-  color: var(--foreground);
-  font-size: var(--text-sm);
-  font-weight: 600;
-}
-
-.setup-choice-text {
-  font-size: var(--text-xs);
-  line-height: 1.45;
-}
 
 .setup-radio {
   display: flex;
@@ -3860,7 +3148,7 @@ html.a11y-reduce-motion *::after {
 }
 
 /* Compact composer controls use the shared icon-size token. */
-.composer-bar, .composer-secondary { --ui-icon-button-size:2rem; }
+.composer-bar { --ui-icon-button-size:2rem; }
 .composer-bar .composer-icon-control {
   width:var(--ui-icon-button-size); height:var(--ui-icon-button-size); padding:0;
   border:0; border-radius:var(--radius-full);

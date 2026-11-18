@@ -96,7 +96,7 @@ export function toHex(color: Rgba): string {
 }
 
 /** Greys and near-greys: the channels barely differ. */
-export function isNeutral(color: Rgba): boolean {
+function isNeutral(color: Rgba): boolean {
   return Math.max(color.r, color.g, color.b) - Math.min(color.r, color.g, color.b) < 24;
 }
 
@@ -148,7 +148,7 @@ function modeOf<T>(items: Array<{ value: T; count: number }>, key: (value: T) =>
 }
 
 /** Families merged by name, ranked by how many elements use them. */
-export function fontFamilies(fonts: ReferenceCapture['fonts']): Counted<string>[] {
+function fontFamilies(fonts: ReferenceCapture['fonts']): Counted<string>[] {
   const totals = new Map<string, number>();
   for (const font of fonts) {
     const family = cleanFamily(font.family);
@@ -203,7 +203,7 @@ function topValues(entries: Array<{ value: string; count: number }>, limit: numb
  * tint, a muted grey), else any other shade. Accents such as a button's fill
  * never stand in for a surface or a muted text colour.
  */
-export function secondShade(shades: Counted<string>[], chosen: string): string {
+function secondShade(shades: Counted<string>[], chosen: string): string {
   const others = shades.filter((entry) => entry.value !== chosen);
   const neutral = others.find((entry) => {
     const rgb = parseColor(entry.value);

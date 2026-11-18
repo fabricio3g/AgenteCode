@@ -53,7 +53,7 @@ export function durationMs(value: string): number | null {
 export const formatDurationToken = (ms: number) => `${Math.round(ms)}ms`;
 
 /** The points a cubic-bezier(x1, y1, x2, y2) passes through, `steps` + 1 of them. */
-export function cubicPoints(x1: number, y1: number, x2: number, y2: number, steps = 32): Point[] {
+function cubicPoints(x1: number, y1: number, x2: number, y2: number, steps = 32): Point[] {
   return Array.from({ length: steps + 1 }, (_, index) => {
     const t = index / steps;
     const u = 1 - t;

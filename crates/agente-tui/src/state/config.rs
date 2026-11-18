@@ -116,12 +116,13 @@ pub struct ConfigState {
 }
 
 impl ConfigState {
-    /// Create new config state from config
+    /// Config state for tests: no project, so no `.mcp.json` servers.
+    #[cfg(test)]
     pub fn new(config: AppConfig) -> Self {
         Self::for_project(config, "")
     }
 
-    /// [`Self::new`] that also offers the project's `.mcp.json` servers.
+    /// Config state from `config`, also offering the project's `.mcp.json` servers.
     pub fn for_project(config: AppConfig, project_dir: &str) -> Self {
         let registry = Arc::new(ProviderRegistry::from_config(&config));
 
@@ -387,24 +388,9 @@ impl ConfigState {
         entries
     }
 
-    /// Get resolved API key for current provider
-    pub fn get_resolved_api_key(&self) -> Option<String> {
-        self.config.resolve_api_key(&self.current_provider)
-    }
-
-    /// Get resolved base URL for current provider
-    pub fn get_resolved_base_url(&self) -> Option<String> {
-        self.config.resolve_base_url(&self.current_provider)
-    }
-
     /// Get API key for specific provider
     pub fn get_api_key_for(&self, provider: &str) -> Option<String> {
         self.config.resolve_api_key(provider)
-    }
-
-    /// Get base URL for specific provider
-    pub fn get_base_url_for(&self, provider: &str) -> Option<String> {
-        self.config.resolve_base_url(provider)
     }
 
     /// Check if provider has API key
@@ -572,7 +558,6 @@ impl ConfigState {
                         provider: provider.to_string(),
                         model_id: m.id.clone(),
                         display_name: m.name.clone(),
-                        discovered: true,
                         context_window: (m.limits.context > 0).then_some(m.limits.context),
                     });
                 }
@@ -586,7 +571,6 @@ impl ConfigState {
                     provider: provider.to_string(),
                     model_id: m.id.clone(),
                     display_name: m.name.clone(),
-                    discovered: true,
                     context_window: (m.limits.context > 0).then_some(m.limits.context),
                 });
             }
@@ -606,7 +590,6 @@ impl ConfigState {
                         display_name: resolved
                             .as_ref()
                             .map_or_else(|| humanize_model_id(id), |m| m.name.clone()),
-                        discovered: true,
                         context_window: resolved
                             .and_then(|m| (m.limits.context > 0).then_some(m.limits.context)),
                     });
@@ -626,7 +609,6 @@ impl ConfigState {
                         provider: provider.to_string(),
                         model_id: id.clone(),
                         display_name: model.name.clone().unwrap_or_else(|| id.clone()),
-                        discovered: false,
                         context_window,
                     });
                 }
@@ -673,7 +655,6 @@ pub struct ModelEntry {
     pub provider: String,
     pub model_id: String,
     pub display_name: String,
-    pub discovered: bool,
     /// Model context window in tokens (None when unknown).
     pub context_window: Option<u32>,
 }

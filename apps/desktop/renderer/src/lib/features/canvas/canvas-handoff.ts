@@ -5,7 +5,7 @@ import { createId } from '$lib/utils/id';
 import type { Attachment as ChatAttachment } from '$lib/types/chat';
 import type { Attachment } from '$shared/agente-protocol.gen';
 import { canvasBoard as defaultBoard, type CanvasBoardStore } from './canvas-board.svelte';
-import { asFractions, lineEndpoints, composePrompt, isPoint, marksFor, mergeDraft, planHandoff, type CanvasImage, type CanvasMark, type HandoffEntry } from './canvas-doc';
+import { asFractions, lineEndpoints, composePrompt, mergeDraft, planHandoff, type CanvasImage, type CanvasMark, type HandoffEntry } from './canvas-doc';
 
 /**
  * The board's way out: render what the user drew, import it the same way any
@@ -119,7 +119,7 @@ export interface ExportedMedia {
   dataUrl: string;
 }
 
-export interface HandoffResult {
+interface HandoffResult {
   media: ExportedMedia[];
   prompt: string;
 }
@@ -134,7 +134,7 @@ export interface HandoffResult {
  * ask a model to read, so a board made from scratch gets its own wording. A
  * board holding both keeps the screenshot wording, which still fits the images.
  */
-export async function exportBoard(header: string, boardHeader: string, empty: string, canvasBoard: CanvasBoardStore = defaultBoard): Promise<HandoffResult> {
+async function exportBoard(header: string, boardHeader: string, empty: string, canvasBoard: CanvasBoardStore = defaultBoard): Promise<HandoffResult> {
   const doc = canvasBoard.doc;
   const plan = planHandoff(doc);
   if (!plan.overview.length) return { media: [], prompt: '' };
@@ -236,9 +236,4 @@ export async function sendCanvasToAgent(header: string, boardHeader: string, emp
   } catch (error) {
     toastStore.error(error instanceof Error ? error.message : String(error));
   }
-}
-
-/** How many labelled points the panel is about to send. */
-export function pointCount(canvasBoard: CanvasBoardStore = defaultBoard): number {
-  return marksFor(canvasBoard.doc, canvasBoard.image?.id ?? '').filter(isPoint).filter((mark) => canvasBoard.doc.labelled.includes(mark.id)).length;
 }

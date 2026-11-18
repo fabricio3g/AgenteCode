@@ -20,7 +20,7 @@
   import { confirmStore } from '$lib/stores/confirm.svelte';
   import { copy } from '$lib/copy';
   import type { CharacterCard, RoleplayWorld, UserPersona } from '$lib/types/chat';
-  import { charactersStore, emptyCharacter, greetingsFor } from './characters.svelte';
+  import { charactersStore, emptyCharacter } from './characters.svelte';
   import RoleplayLibrary from './RoleplayLibrary.svelte';
   import CharacterEditorModal from './CharacterEditorModal.svelte';
   import PersonaEditorModal from './PersonaEditorModal.svelte';

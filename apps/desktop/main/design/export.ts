@@ -6,7 +6,7 @@
  */
 import { exportFileName } from './workspace.ts';
 
-export const EXPORT_WIDTH = { min: 280, max: 2560, fallback: 1440 } as const;
+const EXPORT_WIDTH = { min: 280, max: 2560, fallback: 1440 } as const;
 /** Chromium prints one page up to 200 inches; a page taller than this is cut at 18000 CSS px (187.5 in). */
 export const PDF_MAX_HEIGHT_PX = 18_000;
 const PDF_MIN_HEIGHT_PX = 200;

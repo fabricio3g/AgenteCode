@@ -6,7 +6,7 @@
  */
 import type { DesignAnimation, DesignFrame, DesignMotionSample } from '../../shared/design.ts';
 
-export const FRAME_LIMITS = { frames: { min: 2, max: 8, fallback: 4 }, durationMs: { min: 1, max: 3000, fallback: 600 } } as const;
+const FRAME_LIMITS = { frames: { min: 2, max: 8, fallback: 4 }, durationMs: { min: 1, max: 3000, fallback: 600 } } as const;
 
 const clampNumber = (value: unknown, min: number, max: number, fallback: number) =>
   typeof value === 'number' && Number.isFinite(value) ? Math.min(max, Math.max(min, value)) : fallback;

@@ -172,7 +172,7 @@ export function collectFiles(chats: readonly ChatSession[], projectRootOf: (chat
  * and size: the attachment row a chat persists has no hash column, and adding
  * one would mean another migration for a value the pair already identifies.
  */
-export function registryKey(name: string, size: number | null): string {
+function registryKey(name: string, size: number | null): string {
   // An unknown size is its own key: a created file (never in the registry) must
   // not look like a stored 0-byte file of the same name.
   return `${String(name || '').toLowerCase()}:${size == null ? -1 : Number(size) || 0}`;

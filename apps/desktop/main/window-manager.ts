@@ -9,7 +9,7 @@ let trayAvailable = false;
 let quitting = false;
 export function setTrayAvailable(value: boolean) { trayAvailable = value; }
 export function setQuitting(value: boolean) { quitting = value; }
-export function hidesToTray() { return trayAvailable && !quitting && (process.platform === 'win32' || process.platform === 'linux'); }
+function hidesToTray() { return trayAvailable && !quitting && (process.platform === 'win32' || process.platform === 'linux'); }
 export function attachCloseToTray(win: BrowserWindow) {
   win.on('close', event => { if (hidesToTray()) { event.preventDefault(); win.hide(); } });
 }
@@ -58,18 +58,9 @@ type ActiveWorkStateInput = { active?: unknown; reasons?: unknown };
 
 const activeWorkByWindow = new Map<number, ActiveWorkState>();
 let activeWorkState: ActiveWorkState = { active: false, reasons: [] };
-let preloadPath = '';
 
 export function setMainWindow(win: BrowserWindow | null) {
   mainWindow = win;
-}
-
-export function setPreloadPath(p: string) {
-  preloadPath = p;
-}
-
-function getPreloadPath() {
-  return preloadPath;
 }
 
 export function getMainWindow(): BrowserWindow | null {

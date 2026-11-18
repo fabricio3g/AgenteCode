@@ -22,6 +22,7 @@ import { viewerPathFor } from '$lib/utils/artifact-files';
 import { readWorkspaceFile, writeWorkspaceFile, writeWorkspaceBinary, deleteWorkspaceFile } from '$lib/services/files';
 import { isWorkspace, normPath, getWsFiles, upsertWsFile, readWsText, globToRegex } from '$lib/services/agent-workspace';
 import { toErrorMessage, isAbortError } from '$lib/utils/errors';
+import { createId } from '$lib/utils/id';
 import { buildPreviewHtml } from '$lib/services/agent-content';
 import { executeWithTimeoutAndRetries } from '$lib/services/agent-tool-runtime';
 import { approvalsStore } from '$lib/stores/approvals.svelte';
@@ -47,17 +48,16 @@ export function debugLog(enabled: boolean, message: string) {
   if (enabled) console.log(message);
 }
 
-export function uid(prefix: string) {
-  return crypto?.randomUUID
-    ? `${prefix}-${crypto.randomUUID()}`
-    : `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+/** Step and run ids, from the app's one id helper. */
+export function uid(prefix: string): string {
+  return createId(prefix);
 }
 
 function ok(output: unknown, extra?: Partial<ToolResult>): ToolResult {
   return { success: true, output, ...extra };
 }
 
-export function fail(error: string, note?: string): ToolResult {
+function fail(error: string, note?: string): ToolResult {
   return { success: false, error, ...(note ? { note } : {}) };
 }
 

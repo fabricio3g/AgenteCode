@@ -32,7 +32,7 @@ function roots(): string[] {
 }
 
 /** The folder holding `backend`'s server: downloaded first, then bundled. */
-export function audioEngineDir(backend: string): string | null {
+function audioEngineDir(backend: string): string | null {
   return roots().map((root) => path.join(root, backend)).find((dir) => fs.existsSync(path.join(dir, SERVER))) ?? null;
 }
 

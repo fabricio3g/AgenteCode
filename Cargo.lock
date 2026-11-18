@@ -15,7 +15,6 @@ dependencies = [
  "agente-core",
  "agente-protocol",
  "agente-runtime",
- "serde",
  "serde_json",
  "thiserror 1.0.69",
  "tokio",
@@ -67,10 +66,8 @@ dependencies = [
  "agente-runtime",
  "agente-tui",
  "anyhow",
- "chrono",
  "clap",
  "dirs",
- "serde",
  "serde_json",
  "tempfile",
  "tokio",
@@ -116,8 +113,6 @@ dependencies = [
  "tempfile",
  "thiserror 1.0.69",
  "tokio",
- "tokio-stream",
- "tokio-test",
  "tokio-util",
  "toml",
  "tracing",
@@ -134,8 +129,6 @@ dependencies = [
  "agente-runtime",
  "async-trait",
  "base64 0.22.1",
- "chrono",
- "reqwest 0.11.27",
  "serde",
  "serde_json",
  "thiserror 1.0.69",
@@ -152,7 +145,6 @@ dependencies = [
  "napi",
  "napi-build",
  "napi-derive",
- "serde",
  "serde_json",
  "tokio",
 ]
@@ -3947,17 +3939,6 @@ dependencies = [
  "pin-project-lite",
  "tokio",
  "tokio-util",
-]
-
-[[package]]
-name = "tokio-test"
-version = "0.4.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3f6d24790a10a7af737693a3e8f1d03faef7e6ca0cc99aae5066f533766de545"
-dependencies = [
- "futures-core",
- "tokio",
- "tokio-stream",
 ]
 
 [[package]]

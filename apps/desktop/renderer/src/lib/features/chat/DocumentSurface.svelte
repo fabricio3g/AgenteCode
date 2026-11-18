@@ -26,7 +26,6 @@
     docs?: DocumentSurfaceItem[];
     title?: string;
     sourceCount?: number;
-    className?: string;
     launcherMode?: 'tile' | 'strip';
     allowDownload?: boolean;
     onDownloadSlides?: () => void;
@@ -36,7 +35,6 @@
     docs = [],
     title = '',
     sourceCount = 0,
-    className = '',
     launcherMode = 'tile',
     allowDownload = true,
     onDownloadSlides
@@ -152,7 +150,7 @@
 
 
 {#if visibleDocs.length}
-  <div class={`document-surface ${className}`}>
+  <div class="document-surface">
     {#if launcherMode === 'strip'}
       <div class="attachment-strip" aria-label={surfaceTitle}>
         {#each visibleDocs as doc (doc.id)}

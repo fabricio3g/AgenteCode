@@ -11,9 +11,7 @@ mod project;
 mod tcp;
 
 pub use connection::serve_connection;
-pub use tcp::{
-    default_token_path, generate_token, load_or_create_token, serve_authenticated, serve_tcp,
-};
+pub use tcp::{default_token_path, load_or_create_token, serve_tcp};
 
 use agente_runtime::RuntimeHandle;
 use std::path::{Path, PathBuf};

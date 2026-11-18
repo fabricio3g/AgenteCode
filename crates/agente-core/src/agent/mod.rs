@@ -9,4 +9,4 @@ pub mod external;
 // Re-export commonly used agent channel types for convenience
 pub use channel::{spawn_chat_task, spawn_discovery_task, TurnTools, UserInbox};
 pub use events::{AgentEvent, AgentTaskEvent, ApprovalSource};
-pub use external::{ExternalAgentRuntime, ExternalRuntimeConfig, ExternalToolResult};
+pub use external::{ExternalAgentRuntime, ExternalRuntimeConfig};

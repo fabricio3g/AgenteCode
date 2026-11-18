@@ -14,10 +14,6 @@ export async function refreshModelIndex(): Promise<number> {
   return invoke<number>('refresh_model_index');
 }
 
-async function invalidateModelCache(path: string): Promise<void> {
-  await invoke<void>('invalidate_model_cache', { path });
-}
-
 export async function getGgufMetadata(filePath: string): Promise<GgufMeta> {
   return invoke<GgufMeta>('get_gguf_metadata', { filePath });
 }
@@ -38,12 +34,4 @@ export async function importLocalModel(
     filePath,
     copy_to_managed
   });
-}
-
-async function pickModelFile(): Promise<string | null> {
-  try {
-    return await invoke<string>('pick_model_file');
-  } catch {
-    return null;
-  }
 }

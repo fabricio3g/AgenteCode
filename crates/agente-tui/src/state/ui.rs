@@ -50,7 +50,6 @@ pub enum Fold {
 pub struct ChatPlainLine {
     pub entry_id: Option<Uuid>,
     pub plain: Arc<str>,
-    pub is_thinking: bool,
 }
 
 /// A chat entry's fully-parsed render block, cached so the markdown parser and
@@ -419,7 +418,7 @@ pub struct UiState {
     pub expanded_message_ids: HashSet<Uuid>,
     /// Expanded thinking cards (finished turns), keyed by assistant entry id
     pub expanded_thinking_ids: HashSet<Uuid>,
-    /// Per-tool-card fold overrides (default comes from `default_tool_fold`).
+    /// Per-tool-card fold overrides (a card without one is `Fold::Collapsed`).
     pub tool_fold: HashMap<Uuid, Fold>,
     /// Verb-group headers the user expanded, keyed by the group's first
     /// member's entry id (see `widgets::chat::derive_tool_groups`).
@@ -479,8 +478,6 @@ pub struct UiState {
     pub anim_start: std::time::Instant,
     /// Last FPS update time
     pub fps_last_time: std::time::Instant,
-    /// Last frame time for effects
-    pub last_frame_time: std::time::Instant,
     /// Effect manager
     /// When the current message fade-in began, if one is running.
     pub message_fade: Option<super::anim::Tween>,
@@ -568,7 +565,6 @@ impl Default for UiState {
             anim_frame: 0,
             anim_start: std::time::Instant::now(),
             fps_last_time: std::time::Instant::now(),
-            last_frame_time: std::time::Instant::now(),
             message_fade: None,
             surface_fade: None,
             last_modal_owner: None,
@@ -753,6 +749,7 @@ impl UiState {
     }
 
     /// Set chat content and visible dimensions
+    #[cfg(test)]
     pub fn set_chat_dimensions(&mut self, content_height: usize, visible_height: usize) {
         self.chat_content_height = content_height;
         self.chat_visible_height = visible_height;
@@ -906,11 +903,6 @@ impl UiState {
             ClickKind::LiveTool => 1,
             ClickKind::Message | ClickKind::Prompt => 2,
         })
-    }
-
-    /// Find clicked entry at Y position
-    pub fn find_clicked_entry(&self, y: u16) -> Option<uuid::Uuid> {
-        self.find_click_region(y).map(|r| r.entry_id)
     }
 
     /// Map screen coordinates to content line/col
@@ -1073,24 +1065,17 @@ fn ordered_selection(sel: ChatSelection) -> (usize, usize, usize, usize) {
 }
 
 impl UiState {
-    /// Completed tools start compact; click/Enter reveals preview and output.
-    pub fn default_tool_fold(_tool_name: Option<&str>) -> Fold {
-        Fold::Collapsed
-    }
-
-    /// Effective fold of a tool card: the user override when present, else the
-    /// tool's default.
-    pub fn tool_fold_of(&self, id: Uuid, tool_name: Option<&str>) -> Fold {
-        self.tool_fold
-            .get(&id)
-            .copied()
-            .unwrap_or_else(|| Self::default_tool_fold(tool_name))
+    /// Effective fold of a tool card: the user override when present, else
+    /// collapsed — completed tools start compact; click/Enter reveals preview
+    /// and output.
+    pub fn tool_fold_of(&self, id: Uuid) -> Fold {
+        self.tool_fold.get(&id).copied().unwrap_or(Fold::Collapsed)
     }
 
     /// Cycle a tool card Collapsed → Truncated → Expanded → Collapsed,
     /// starting from its *effective* state (override or default).
-    pub fn cycle_tool_entry(&mut self, id: Uuid, tool_name: Option<&str>) {
-        let next = match self.tool_fold_of(id, tool_name) {
+    pub fn cycle_tool_entry(&mut self, id: Uuid) {
+        let next = match self.tool_fold_of(id) {
             Fold::Collapsed => Fold::Truncated,
             Fold::Truncated => Fold::Expanded,
             Fold::Expanded => Fold::Collapsed,
@@ -1186,14 +1171,6 @@ impl UiState {
             || self.scroll_target.is_some()
     }
 
-    /// Tick effects and return delta time
-    pub fn tick_effects(&mut self) -> std::time::Duration {
-        let now = std::time::Instant::now();
-        let dt = now.duration_since(self.last_frame_time);
-        self.last_frame_time = now;
-        dt
-    }
-
     /// Fade a newly-appended message in.
     ///
     /// This was inert in three separate ways: `fade_from(bg, bg, …)`
@@ -1216,11 +1193,6 @@ impl UiState {
             self.hover_fade = Some(super::anim::Tween::start(super::anim::HOVER_MS));
         }
         self.hovered_entry_id = id;
-    }
-
-    /// Request re-render
-    pub fn request_render(&mut self) {
-        self.needs_render = true;
     }
 }
 
@@ -1342,30 +1314,28 @@ mod interaction_state_tests {
         assert!(ui.tool_fold.is_empty());
 
         // Every finished tool starts compact.
-        assert_eq!(ui.tool_fold_of(shell, Some("shell")), Fold::Collapsed);
-        assert_eq!(ui.tool_fold_of(read, Some("read_file")), Fold::Collapsed);
-        assert_eq!(ui.tool_fold_of(grep, Some("grep")), Fold::Collapsed);
-        assert_eq!(ui.tool_fold_of(grep, None), Fold::Collapsed);
-        assert_eq!(UiState::default_tool_fold(None), Fold::Collapsed);
+        assert_eq!(ui.tool_fold_of(shell), Fold::Collapsed);
+        assert_eq!(ui.tool_fold_of(read), Fold::Collapsed);
+        assert_eq!(ui.tool_fold_of(grep), Fold::Collapsed);
 
         // Cycle through preview and expanded output, then back to the header.
-        ui.cycle_tool_entry(shell, Some("shell"));
-        assert_eq!(ui.tool_fold_of(shell, Some("shell")), Fold::Truncated);
-        ui.cycle_tool_entry(shell, Some("shell"));
-        assert_eq!(ui.tool_fold_of(shell, Some("shell")), Fold::Expanded);
-        ui.cycle_tool_entry(shell, Some("shell"));
-        assert_eq!(ui.tool_fold_of(shell, Some("shell")), Fold::Collapsed);
-        ui.cycle_tool_entry(shell, Some("shell"));
-        assert_eq!(ui.tool_fold_of(shell, Some("shell")), Fold::Truncated);
+        ui.cycle_tool_entry(shell);
+        assert_eq!(ui.tool_fold_of(shell), Fold::Truncated);
+        ui.cycle_tool_entry(shell);
+        assert_eq!(ui.tool_fold_of(shell), Fold::Expanded);
+        ui.cycle_tool_entry(shell);
+        assert_eq!(ui.tool_fold_of(shell), Fold::Collapsed);
+        ui.cycle_tool_entry(shell);
+        assert_eq!(ui.tool_fold_of(shell), Fold::Truncated);
 
         // Collapsed default cycles Collapsed → Truncated.
-        ui.cycle_tool_entry(grep, Some("grep"));
-        assert_eq!(ui.tool_fold_of(grep, Some("grep")), Fold::Truncated);
+        ui.cycle_tool_entry(grep);
+        assert_eq!(ui.tool_fold_of(grep), Fold::Truncated);
 
         // collapse_all_tools drops every override.
         ui.collapse_all_tools();
         assert!(ui.tool_fold.is_empty());
-        assert_eq!(ui.tool_fold_of(shell, Some("shell")), Fold::Collapsed);
+        assert_eq!(ui.tool_fold_of(shell), Fold::Collapsed);
     }
 
     #[test]

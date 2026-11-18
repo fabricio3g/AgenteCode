@@ -1,5 +1,3 @@
-export const MEDIA_ACCEPT = '.png,.jpg,.jpeg,.gif,.webp,.mp3,.wav,.m4a,.ogg,.oga,.flac,.mp4,.webm,.mov,.mkv,.pdf';
-
 export function isMediaPath(text: string): boolean {
   return /\.(png|jpe?g|gif|webp|mp3|wav|m4a|ogg|oga|flac|mp4|webm|mov|mkv|pdf)["']?$/i.test(text.trim());
 }

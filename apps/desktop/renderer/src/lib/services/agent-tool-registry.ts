@@ -77,8 +77,3 @@ export function toggleGroup(disabled: readonly string[], group: HomeToolGroupId,
   const rest = disabled.filter((entry) => entry !== group && !members.has(entry));
   return enabled ? rest : [...rest, group];
 }
-
-export function toggleTool(disabled: readonly string[], tool: string, enabled: boolean): string[] {
-  const rest = disabled.filter((entry) => entry !== tool);
-  return enabled ? rest : [...rest, tool];
-}

@@ -1,25 +1,22 @@
 // Chat facade: discovery and transport orchestration live here; pure wire code lives in chat/.
-import type { CompletionResult, RequestMessage, ToolDefinition } from './chat/types';
+import type { CompletionResult, RequestMessage } from './chat/types';
 import { normalizeRuntimeUsage, readCompletionPayload } from './chat/completion';
 import { toRequestMessages } from './chat/messages';
-export type { ContentPart, RequestMessage, ToolParameterSchema, ToolDefinition, NativeToolCall, CompletionResult } from './chat/types';
+export type { RequestMessage, CompletionResult } from './chat/types';
 export { normalizeRuntimeUsage, readCompletionWithTools } from './chat/completion';
 export { toRequestMessages } from './chat/messages';
-export { extractJsonFromResponse, type StructuredExtractionResult } from './chat/structured-response';
+export { extractJsonFromResponse } from './chat/structured-response';
 
 import { isVisionModel } from '$shared/model-capabilities';
 import { activeLoadConfig } from '$shared/local-launch';
 import { listedModels } from './listed-models';
 import OpenAI from 'openai';
-import type { AppConfig, ChatMessage, ModelOption, ReasoningCapabilities, ReasoningLevel, ReasoningRequest } from '$lib/types/chat';
-import type { LocalModel } from '$lib/types/bridge';
-import { getIndexedModels, getLocalModels } from '$lib/services/models';
+import type { AppConfig, ModelOption, ReasoningCapabilities, ReasoningLevel, ReasoningRequest } from '$lib/types/chat';
 import { ensureLocalRuntime, resolveLocalBaseUrl } from '$lib/services/runtime';
 import { normalizeStreamingContentDelta, normalizeStreamingReasoningDelta } from '$lib/services/streaming';
 import { invoke, listen, isElectron } from '$lib/services/bridge';
 import { createStreamIdleWatchdog, streamIdleTimeoutMessage } from '$lib/services/chat-stream-idle';
 import { loadAppConfig } from '$lib/utils/storage';
-import { toErrorMessage } from '$lib/utils/errors';
 import type { RoleplaySampling } from '$lib/services/roleplay-prompts';
 import { DEFAULT_PROVIDER_BASE_URL, DEFAULT_PROVIDER_ID } from '$shared/providers';
 import { defaultBaseUrl } from '$lib/utils/providers';
@@ -245,17 +242,6 @@ export function buildReasoningRequest(level?: ReasoningLevel | null): ReasoningR
   return { level };
 }
 
-function resolveLocalModels(localModels: LocalModel[]): ModelOption[] {
-  return localModels.map((entry) => ({
-    id: entry.id,
-    name: entry.name,
-    source: 'local',
-    path: entry.path,
-    details: [entry.architecture, entry.size_label].filter(Boolean).join(' • ')
-  }));
-}
-
-// Multimodal content part for vision APIs
 interface ChatStreamEvent {
   streamId: string;
   type: 'delta' | 'done' | 'error' | 'cancelled';

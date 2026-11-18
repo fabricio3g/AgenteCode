@@ -1,6 +1,6 @@
 import { attachStartupDiagnostics, failStartup, smokeMode } from './startup.ts';
 import './bootstrap-data.ts';
-import { app, BrowserWindow, Menu, Tray, nativeImage, shell, session, dialog, systemPreferences } from 'electron';
+import { app, BrowserWindow, Menu, Tray, nativeImage, shell, session, systemPreferences } from 'electron';
 import fs from 'node:fs';
 import net from 'node:net';
 import path from 'node:path';
@@ -12,7 +12,7 @@ registerDomainScheme();
 import { stopAllInstances } from './instances.ts';
 import { moduleDirname } from './module-env.ts';
 import { APP_NAME } from '../shared/brand.ts';
-import { setMainWindow, setConversationWindowFactory, setPreloadPath, getMainWindow, requestMainWindowClose, setActiveWorkState, initialWindowColors, flushWindowTheme } from './window-manager.ts';
+import { setMainWindow, setConversationWindowFactory, getMainWindow, initialWindowColors, flushWindowTheme } from './window-manager.ts';
 import { registerWindowZoom } from './window-zoom.ts';
 import { setTrayAvailable, setQuitting, attachCloseToTray } from './window-manager.ts';
 import { registerActivityNotifications } from './notifications.ts';
@@ -53,8 +53,6 @@ let tray = null;
 const PRELOAD_PATH = IS_DEV
   ? path.join(moduleDir, '..', '..', 'preload', 'preload.cjs') // Dev: dist-electron/main/ -> project root
   : path.join(app.getAppPath(), 'preload', 'preload.cjs'); // Production: packaged app path
-
-setPreloadPath(PRELOAD_PATH);
 
 // app.exit(), used by smoke mode, skips before-quit. Stop its isolated daemon.
 if (smokeMode) app.once('quit', () => {

@@ -186,17 +186,6 @@ impl std::fmt::Display for TodoStatus {
     }
 }
 
-impl TodoStatus {
-    pub fn display_checkbox(&self) -> &'static str {
-        match self {
-            TodoStatus::Pending => "[ ]",
-            TodoStatus::InProgress => "[>]",
-            TodoStatus::Completed => "[x]",
-            TodoStatus::Cancelled => "[-]",
-        }
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum TodoPriority {
     High,

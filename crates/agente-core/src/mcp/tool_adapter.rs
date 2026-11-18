@@ -8,8 +8,7 @@ use parking_lot::Mutex;
 use crate::mcp::client::McpManager;
 use crate::permissions::Permission;
 use crate::tools::{
-    Tool, ToolError, ToolExecutionContext, ToolExecutionMode, ToolKind, ToolRenderInfo,
-    TOOL_HEARTBEAT_MS,
+    Tool, ToolError, ToolExecutionContext, ToolExecutionMode, ToolKind, TOOL_HEARTBEAT_MS,
 };
 use crate::types::AgentMode;
 
@@ -181,10 +180,6 @@ impl Tool for McpToolAdapter {
         })
     }
 
-    fn icon(&self) -> &'static str {
-        "⬡"
-    }
-
     async fn execute(
         &self,
         args: serde_json::Value,
@@ -224,19 +219,6 @@ impl Tool for McpToolAdapter {
     fn take_result_attachments(&self, call_id: &str) -> Vec<agente_protocol::Attachment> {
         self.media.lock().remove(call_id).unwrap_or_default()
     }
-
-    fn render_call(&self, args: &serde_json::Value) -> ToolRenderInfo {
-        let detail = args
-            .as_object()
-            .and_then(|m| m.values().next())
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string());
-        ToolRenderInfo {
-            icon: self.icon(),
-            label: format!("mcp:{}", self.name),
-            detail,
-        }
-    }
 }
 
 #[cfg(test)]
@@ -248,7 +230,6 @@ mod tests {
         McpToolAdapter::from_mcp_tool(
             crate::mcp::McpTool {
                 name: "t".into(),
-                server_name: "s".into(),
                 full_name: "s_t".into(),
                 description: "d".into(),
                 input_schema: serde_json::json!({"type": "object"}),

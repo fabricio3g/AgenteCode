@@ -25,7 +25,7 @@ type Node =
 
 type Token = { kind: 'number'; value: number } | { kind: 'ident'; value: string } | { kind: 'op'; value: string };
 
-export const LESSON_FUNCTIONS: Record<string, { arity: number | [number, number]; apply: (args: number[]) => number }> = {
+const LESSON_FUNCTIONS: Record<string, { arity: number | [number, number]; apply: (args: number[]) => number }> = {
   sin: { arity: 1, apply: ([x]) => Math.sin(x) },
   cos: { arity: 1, apply: ([x]) => Math.cos(x) },
   tan: { arity: 1, apply: ([x]) => Math.tan(x) },
@@ -47,7 +47,7 @@ export const LESSON_FUNCTIONS: Record<string, { arity: number | [number, number]
   pow: { arity: 2, apply: ([x, y]) => x ** y }
 };
 
-export const LESSON_CONSTANTS: Record<string, number> = {
+const LESSON_CONSTANTS: Record<string, number> = {
   pi: Math.PI,
   e: Math.E,
   tau: Math.PI * 2

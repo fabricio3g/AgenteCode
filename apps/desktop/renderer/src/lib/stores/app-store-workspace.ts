@@ -70,7 +70,7 @@ export function recalculateWorkspace(workspace: WorkspaceContext): WorkspaceCont
   };
 }
 
-export function mapIndexedWorkspaceFiles(
+function mapIndexedWorkspaceFiles(
   files: Array<{ path: string; name: string; size: number; type: string; status: WorkspaceFile['status']; doc_id?: string; reason?: string }>
 ): WorkspaceFile[] {
   return files.map((file) => ({

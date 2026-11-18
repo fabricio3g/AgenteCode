@@ -28,10 +28,9 @@
 
   let {
     value = $bindable(),
-    showThinking = true,
     compact = false,
     onchange
-  }: { value?: Pin; showThinking?: boolean; /** One thin line: model button and thinking level side by side. */ compact?: boolean; onchange?: (pin: Pin | undefined) => void } = $props();
+  }: { value?: Pin; /** One thin line: model button and thinking level side by side. */ compact?: boolean; onchange?: (pin: Pin | undefined) => void } = $props();
 
   const initial = untrack(() => value);
   let provider = $state(initial?.provider ?? '');
@@ -66,7 +65,7 @@
   // What this model can think at; a level it does not offer falls back to auto.
   $effect(() => {
     const id = provider, name = model.trim();
-    if (!showThinking || !id || !name) {
+    if (!id || !name) {
       capabilities = { supported: false, levels: [], source: 'unknown' };
       return;
     }
@@ -101,7 +100,7 @@
     onpick={pick}
   />
 
-  {#if showThinking && capabilities.supported && capabilities.levels.length}
+  {#if capabilities.supported && capabilities.levels.length}
     <div class="thinking-row">
       {#if !compact}<span class="text-[length:var(--text-xs)] text-muted-foreground">{$t('bots.thinking')}</span>{/if}
       <ReasoningLevelSelector {capabilities} value={thinking} onchange={(level) => (thinking = level)} />

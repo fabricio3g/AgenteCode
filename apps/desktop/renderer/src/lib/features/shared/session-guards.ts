@@ -19,14 +19,6 @@ export function isCodeSession(chat: Pick<ChatSession, 'contextMode' | 'workspace
   return getSpaceForSession(chat) === 'code';
 }
 
-export function isRoleplaySession(chat: Pick<ChatSession, 'contextMode' | 'workspace'> | null | undefined): boolean {
-  return getSpaceForSession(chat) === 'roleplay';
-}
-
-export function isDesignSession(chat: Pick<ChatSession, 'contextMode' | 'workspace'> | null | undefined): boolean {
-  return getSpaceForSession(chat) === 'design';
-}
-
 export function isHomeSession(chat: Pick<ChatSession, 'contextMode' | 'workspace'> | null | undefined): boolean {
   return getSpaceForSession(chat) === 'home';
 }

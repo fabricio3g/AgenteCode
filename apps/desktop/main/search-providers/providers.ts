@@ -2,7 +2,7 @@
 import { APP_USER_AGENT } from '../../shared/brand.ts';
 import {
   fetchWithRetry, normalizeSearchItem, parseSearchResultsFromText,
-  normalizeWhitespace, cleanText, compactSearchContext,
+  cleanText, compactSearchContext,
   requireOption, pickFirstArray, mapSearchResults
 } from './shared.ts';
 import type { SearchResult } from './shared.ts';

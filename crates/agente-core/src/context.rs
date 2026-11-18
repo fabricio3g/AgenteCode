@@ -2,14 +2,10 @@ pub mod budget;
 pub mod compaction;
 
 pub use budget::{
-    estimate_message_tokens, estimate_tool_definition_tokens, format_tokens, Band, ContextBudget,
-    COMPACT_AT,
+    estimate_message_tokens, estimate_tool_definition_tokens, format_tokens, ContextBudget,
 };
 pub use compaction::{
-    build_summarization_messages, normalize_tool_messages, normalize_tool_messages_tracked,
-    serialize_conversation, CompactionResult, CompactionStrategy, ContextCompactor, LlmSummarizer,
-    SummarizeError, Summarizer, Summary, SummaryMetadata, SummaryType, SUMMARIZATION_PROMPT,
-    SUMMARIZATION_SYSTEM_PROMPT, UPDATE_SUMMARIZATION_PROMPT,
+    normalize_tool_messages_tracked, CompactionStrategy, ContextCompactor, SummaryType,
 };
 
 /// Marker embedded in the AGENTS.md reminder message so re-injection can be
@@ -329,24 +325,6 @@ mod prompt_budget_tests {
         assert!(reminder.contains("truncated"));
         let _ = std::fs::remove_dir_all(&dir);
     }
-}
-
-pub fn planner_system_prompt() -> String {
-    r#"You are a planning agent for a coding assistant.
-
-Analyze the task, then reply in this format:
-REASONING: <your analysis of the task>
-PLAN:
-1. <step 1>
-2. <step 2>
-
-Each step must be specific and actionable, and the plan must say which files it
-touches and how the result is verified."#
-        .to_string()
-}
-
-pub fn executor_system_prompt(project_dir: &str, memory_context: &str) -> String {
-    executor_system_prompt_with_tools(project_dir, memory_context, &[])
 }
 
 /// Render the "You have access to these tools:" block from the actual tool

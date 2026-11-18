@@ -57,7 +57,7 @@ export function buildRequestMessagesWithPatchedUser(params: {
 }
 
 /** Prepend system prompt when present. */
-export function prependSystemPrompt(messages: RequestMessage[], systemPrompt: string): RequestMessage[] {
+function prependSystemPrompt(messages: RequestMessage[], systemPrompt: string): RequestMessage[] {
   return systemPrompt ? [{ role: 'system', content: systemPrompt }, ...messages] : messages;
 }
 

@@ -46,15 +46,6 @@ export interface LocalModelLoadState {
   splitMode: string;
 }
 
-export function pickNumber(...values: unknown[]): number | undefined {
-  for (const value of values) {
-    if (value === undefined || value === null || value === '') continue;
-    const parsed = Number(value);
-    if (Number.isFinite(parsed)) return parsed;
-  }
-  return undefined;
-}
-
 /**
  * Normalizes a thinking mode from saved config or the legacy
  * `disable_thinking` boolean. Anything unrecognized falls back to 'auto'
@@ -119,7 +110,7 @@ export function resolveLocalModelLoadState(params: {
 const num = (value: string) => (value.trim() === '' ? undefined : Number(value));
 
 /** The model's own config from the dialog; `normalizeLoadConfig` drops auto and defaults. */
-export function loadConfigFromState(state: LocalModelLoadState): LocalLoadConfig {
+function loadConfigFromState(state: LocalModelLoadState): LocalLoadConfig {
   return {
     context_length: num(state.contextLength),
     gpu_layers: num(state.gpuLayers),

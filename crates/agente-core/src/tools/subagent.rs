@@ -101,10 +101,6 @@ impl Tool for TaskTool {
         super::ToolKind::Task
     }
 
-    fn icon(&self) -> &'static str {
-        "◈"
-    }
-
     fn description(&self) -> &str {
         &self.description
     }
@@ -193,10 +189,6 @@ impl Tool for TaskOutputTool {
         super::ToolKind::Task
     }
 
-    fn icon(&self) -> &'static str {
-        "◈"
-    }
-
     fn description(&self) -> &str {
         "Retrieve the output of a subagent spawned with the task tool. If the subagent is still \
          running, optionally wait up to timeout_ms for it to finish; otherwise returns its \
@@ -248,10 +240,6 @@ impl Tool for KillTaskTool {
     }
     fn kind(&self) -> super::ToolKind {
         super::ToolKind::Task
-    }
-
-    fn icon(&self) -> &'static str {
-        "◈"
     }
 
     fn description(&self) -> &str {

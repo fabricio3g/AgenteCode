@@ -77,13 +77,6 @@ impl AbortController {
     pub fn signal(&self) -> AbortSignal {
         AbortSignal::from_token(self.token.clone())
     }
-
-    /// Create a controller whose token is a child of this signal's token.
-    /// Cancellation of the parent propagates without a relay task, while
-    /// cancelling the returned controller remains local to the child.
-    pub fn child_controller(&self) -> AbortController {
-        AbortController::from_token(self.token.child_token())
-    }
 }
 
 impl Default for AbortController {
@@ -142,80 +135,6 @@ impl AbortSignal {
     /// Create a controller linked to this signal without a relay task.
     pub fn child_controller(&self) -> AbortController {
         AbortController::from_token(self.token.child_token())
-    }
-}
-
-/// A guard that automatically aborts when dropped
-///
-/// This is useful for ensuring operations are aborted when
-/// a scope exits.
-pub struct AbortGuard {
-    controller: AbortController,
-}
-
-impl AbortGuard {
-    /// Create a new AbortGuard
-    pub fn new(controller: AbortController) -> Self {
-        Self { controller }
-    }
-
-    /// Get the underlying AbortController
-    pub fn controller(&self) -> &AbortController {
-        &self.controller
-    }
-
-    /// Abort without consuming the guard
-    pub fn abort(&self) {
-        self.controller.abort();
-    }
-}
-
-impl Drop for AbortGuard {
-    fn drop(&mut self) {
-        self.controller.abort();
-    }
-}
-
-/// A scope that supports cancellation
-///
-/// CancellableScope provides a structured way to manage cancellable
-/// operations within a specific scope.
-pub struct CancellableScope {
-    controller: AbortController,
-}
-
-impl CancellableScope {
-    /// Create a new cancellable scope
-    pub fn new() -> Self {
-        Self {
-            controller: AbortController::new(),
-        }
-    }
-
-    /// Get the AbortController for this scope
-    pub fn controller(&self) -> &AbortController {
-        &self.controller
-    }
-
-    /// Get an AbortSignal for this scope
-    pub fn signal(&self) -> AbortSignal {
-        self.controller.signal()
-    }
-
-    /// Abort all operations in this scope
-    pub fn abort(&self) {
-        self.controller.abort();
-    }
-
-    /// Check if the scope has been aborted
-    pub fn is_aborted(&self) -> bool {
-        self.controller.is_aborted()
-    }
-}
-
-impl Default for CancellableScope {
-    fn default() -> Self {
-        Self::new()
     }
 }
 
@@ -309,18 +228,5 @@ mod tests {
     fn test_never_signal() {
         let signal = AbortSignal::never();
         assert!(!signal.is_aborted());
-    }
-
-    #[test]
-    fn test_cancellable_scope() {
-        let scope = CancellableScope::new();
-        let signal = scope.signal();
-
-        assert!(!scope.is_aborted());
-        assert!(!signal.is_aborted());
-
-        scope.abort();
-        assert!(scope.is_aborted());
-        assert!(signal.is_aborted());
     }
 }

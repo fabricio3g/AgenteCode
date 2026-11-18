@@ -92,7 +92,7 @@ pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState) {
         derive_tool_groups(
             &state.session.chat_history,
             &skipped,
-            &|id, name| state.ui.tool_fold_of(id, name),
+            &|id| state.ui.tool_fold_of(id),
             &state.ui.expanded_groups,
         )
     };
@@ -276,7 +276,6 @@ pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState) {
                 line,
                 chat_width,
                 Some(LIVE_THINKING_ID),
-                true,
             );
         }
         // Header-only hit target (see finished thinking cards).
@@ -314,7 +313,6 @@ pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState) {
                 line,
                 chat_width,
                 None,
-                false,
             );
         }
         let end = history_height + lines.len();
@@ -358,7 +356,6 @@ pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState) {
                 line,
                 chat_width,
                 None,
-                false,
             );
         }
     }
@@ -375,7 +372,6 @@ pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState) {
                 line,
                 chat_width,
                 None,
-                false,
             );
         }
     }
@@ -861,10 +857,7 @@ fn render_history_range(
         |after: usize| -> Option<usize> { (after + 1..history.len()).find(|&j| !is_hidden(j)) };
     // Effective fold per entry, resolved once so the helper closures below
     // stay free of the `ui` borrow (the loop needs it mutably).
-    let folds: Vec<Fold> = history
-        .iter()
-        .map(|e| ui.tool_fold_of(e.id, e.tool_name.as_deref()))
-        .collect();
+    let folds: Vec<Fold> = history.iter().map(|e| ui.tool_fold_of(e.id)).collect();
     // A finished tool card in Collapsed fold is a one-line dense block: the
     // gap rhythm suppresses the blank between consecutive dense cards.
     // Bare machinery rows — the `◆ read_file {…}` call announcer and a
@@ -941,7 +934,7 @@ fn render_history_range(
 
         let user_expanded = ui.expanded_message_ids.contains(&entry.id);
         let thinking_expanded = ui.expanded_thinking_ids.contains(&entry.id);
-        let tool_fold = ui.tool_fold_of(entry.id, entry.tool_name.as_deref());
+        let tool_fold = ui.tool_fold_of(entry.id);
         let in_group = group_idx_of[index].is_some_and(|gi| groups[gi].2.expanded);
         let dense_next = (in_group
             && group_idx_of[index]
@@ -1271,7 +1264,6 @@ fn push_wrapped(
     line: Line<'_>,
     width: usize,
     entry_id: Option<uuid::Uuid>,
-    is_thinking: bool,
 ) {
     let wrapped = wrap_line(&line, width);
     for w in wrapped {
@@ -1279,7 +1271,6 @@ fn push_wrapped(
         plain.push(ChatPlainLine {
             entry_id,
             plain: text.into(),
-            is_thinking,
         });
         lines.push(w);
     }
@@ -1306,7 +1297,6 @@ fn push_owned_line(
     plain.push(ChatPlainLine {
         entry_id,
         plain: text.into(),
-        is_thinking: false,
     });
     lines.push(owned);
 }
@@ -1348,9 +1338,9 @@ fn empty_state_lines() -> Vec<Line<'static>> {
 }
 
 /// Render one chat entry into a cacheable block: finished thinking card (if
-/// any) + the role body, plus its click regions. The `frame` counter is unused
-/// for finished cards (shimmer only applies to the live panel), so this is
-/// deterministic given `(entry, width, fold states, dense-next, hover)`.
+/// any) + the role body, plus its click regions. Finished cards take no
+/// animation frame (shimmer only applies to the live panel), so this is
+/// deterministic given its arguments.
 #[allow(clippy::too_many_arguments)]
 fn render_entry_block(
     entry: &agente_core::types::ChatEntry,
@@ -1411,14 +1401,7 @@ fn render_entry_block(
             entry.response_duration,
         );
         for line in think_raw {
-            push_wrapped(
-                &mut lines,
-                &mut plain,
-                line,
-                chat_width,
-                Some(entry.id),
-                true,
-            );
+            push_wrapped(&mut lines, &mut plain, line, chat_width, Some(entry.id));
         }
         // The whole collapsed header is clickable (expand/collapse), including
         // wrapped continuation rows on narrow terminals. The expanded body
@@ -1460,14 +1443,7 @@ fn render_entry_block(
 
     let start = lines.len();
     for line in raw {
-        push_wrapped(
-            &mut lines,
-            &mut plain,
-            line,
-            chat_width,
-            Some(entry.id),
-            false,
-        );
+        push_wrapped(&mut lines, &mut plain, line, chat_width, Some(entry.id));
     }
     let end = lines.len();
     if end > start {
@@ -1744,7 +1720,7 @@ pub(crate) struct GroupInfo {
 pub(crate) fn derive_tool_groups(
     entries: &[agente_core::types::ChatEntry],
     skip: &[bool],
-    fold_of: &dyn Fn(uuid::Uuid, Option<&str>) -> Fold,
+    fold_of: &dyn Fn(uuid::Uuid) -> Fold,
     expanded_groups: &std::collections::HashSet<uuid::Uuid>,
 ) -> Vec<(usize, usize, GroupInfo)> {
     let mut groups: Vec<(usize, usize, GroupInfo)> = Vec::new();
@@ -1787,7 +1763,7 @@ pub(crate) fn derive_tool_groups(
         let is_tool = entry.role == agente_core::types::Role::Tool && entry.subagent_id.is_none();
         if is_tool {
             let family = tool_family(entry.tool_name.as_deref().unwrap_or(""));
-            let collapsed = fold_of(entry.id, entry.tool_name.as_deref()) == Fold::Collapsed
+            let collapsed = fold_of(entry.id) == Fold::Collapsed
                 || expanded_groups.contains(&entry.id)
                 || run
                     .first()
@@ -1883,7 +1859,6 @@ fn render_group_header_block(
                 .map(|span| span.content.as_ref())
                 .collect::<String>()
                 .into(),
-            is_thinking: false,
         })
         .collect();
 
@@ -2850,7 +2825,7 @@ mod tests {
         let groups = derive_tool_groups(
             &entries,
             &[],
-            &|id, _| {
+            &|id| {
                 if id == entries[1].id {
                     Fold::Expanded
                 } else {
@@ -3611,7 +3586,7 @@ mod tests {
     #[test]
     fn group_derivation_needs_three_consecutive_collapsed() {
         let entries: Vec<_> = (0..3).map(|_| tool_entry("grep", "x", None)).collect();
-        let all_collapsed = |_id: uuid::Uuid, _name: Option<&str>| Fold::Collapsed;
+        let all_collapsed = |_id: uuid::Uuid| Fold::Collapsed;
         let groups = derive_tool_groups(&entries, &[false; 3], &all_collapsed, &HashSet::new());
         assert_eq!(groups.len(), 1);
         assert_eq!(groups[0].0, 0, "run start");
@@ -3636,7 +3611,7 @@ mod tests {
             tool_entry("shell", "x", None),
             tool_entry("grep", "x", None),
         ];
-        let all_collapsed = |_id: uuid::Uuid, _name: Option<&str>| Fold::Collapsed;
+        let all_collapsed = |_id: uuid::Uuid| Fold::Collapsed;
         let groups = derive_tool_groups(&entries, &[false; 4], &all_collapsed, &HashSet::new());
         assert!(
             groups.is_empty(),
@@ -3649,7 +3624,7 @@ mod tests {
             tool_entry("grep", "x", None),
             tool_entry("grep", "x", None),
         ];
-        let third_expanded = |id: uuid::Uuid, _name: Option<&str>| {
+        let third_expanded = |id: uuid::Uuid| {
             if id == entries[2].id {
                 Fold::Expanded
             } else {
@@ -3756,7 +3731,7 @@ mod tests {
             skip.push(false);
             history.push(tool_entry("grep", "x", None));
         }
-        let all_collapsed = |_id: uuid::Uuid, _name: Option<&str>| Fold::Collapsed;
+        let all_collapsed = |_id: uuid::Uuid| Fold::Collapsed;
 
         let collapsed_groups = derive_tool_groups(&history, &skip, &all_collapsed, &HashSet::new());
         assert_eq!(collapsed_groups.len(), 1);

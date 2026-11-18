@@ -3,7 +3,7 @@
 <script lang="ts">
   import VizHeading from './VizHeading.svelte';
   import type { MapArtifactPayload } from '$lib/types/chat';
-  import { geoPath, geoGraticule10, geoCentroid, geoArea } from 'd3-geo';
+  import { geoPath, geoGraticule10, geoCentroid } from 'd3-geo';
   import { appStore } from '$lib/stores/app.svelte';
   import { loadAtlas, detailForZoom, type Atlas } from './map-atlas';
   import {

@@ -11,7 +11,7 @@ import { safeParse, normalizeWhitespace } from '$lib/utils/storage';
 
 type DeepResearchStatus = 'queued' | 'awaiting_input' | 'searching' | 'crawling' | 'synthesizing' | 'completed' | 'failed' | 'cancelled';
 
-export interface ResearchQuestion {
+interface ResearchQuestion {
   id: string;
   question: string;
   hint?: string;
@@ -19,7 +19,7 @@ export interface ResearchQuestion {
   suggestedAnswerSource?: 'ai' | 'fallback';
 }
 
-export interface DeepResearchTask {
+interface DeepResearchTask {
   id: string;
   chatId: string;
   messageId: string;
@@ -94,81 +94,6 @@ function parseGeneratedQuestions(data: unknown): ResearchQuestion[] {
       return true;
     })
     .slice(0, 6);
-}
-
-function fallbackQuestionsFromQuery(query: string): ResearchQuestion[] {
-  const topic = normalizeWhitespace(query)
-    .replace(/conversation context:[\s\S]*?current research request:/i, '')
-    .replace(/^current research request:\s*/i, '')
-    .replace(/^query:\s*/i, '')
-    .slice(0, 90) || 'this topic';
-
-  const q = topic.toLowerCase();
-  const isMedical = /disease|syndrome|cancer|drug|therapy|treatment|diagnos|clinical|patient|autoimmune|trial|guideline/.test(q);
-
-  if (isMedical) {
-    return [
-      {
-        id: 'rq_1',
-        question: 'Which clinical focus is most useful?',
-        hint: 'diagnosis, first-line treatment, refractory cases, monitoring',
-        suggestedAnswer: `Focus on diagnosis criteria and evidence-based treatment pathway for ${topic}.`,
-        suggestedAnswerSource: 'fallback'
-      },
-      {
-        id: 'rq_2',
-        question: 'What evidence hierarchy should be prioritized?',
-        hint: 'guidelines, meta-analyses, RCTs, cohort studies',
-        suggestedAnswer: 'Prioritize recent clinical guidelines and systematic reviews, then RCT evidence.',
-        suggestedAnswerSource: 'fallback'
-      },
-      {
-        id: 'rq_3',
-        question: 'Which patient context should be emphasized?',
-        hint: 'adult vs pediatric, severe disease, comorbidities, pregnancy',
-        suggestedAnswer: 'Emphasize adult moderate-to-severe cases and note key special populations separately.',
-        suggestedAnswerSource: 'fallback'
-      },
-      {
-        id: 'rq_4',
-        question: 'What output format helps most?',
-        hint: 'step-by-step protocol, comparison table, red flags checklist',
-        suggestedAnswer: 'Provide a stepwise management summary plus a therapy comparison table and safety red flags.',
-        suggestedAnswerSource: 'fallback'
-      }
-    ];
-  }
-
-  return [
-    {
-      id: 'rq_1',
-      question: 'What exact decision should this research support?',
-      hint: 'choose tool/vendor/strategy, implementation plan, risk tradeoff',
-      suggestedAnswer: `Frame ${topic} as a decision brief with clear options and recommendation criteria.`,
-      suggestedAnswerSource: 'fallback'
-    },
-    {
-      id: 'rq_2',
-      question: 'What constraints matter most?',
-      hint: 'budget, timeline, team size, compliance, performance',
-      suggestedAnswer: 'Prioritize practical constraints: implementation complexity, cost, timeline, and risk.',
-      suggestedAnswerSource: 'fallback'
-    },
-    {
-      id: 'rq_3',
-      question: 'What comparisons should be included?',
-      hint: 'top alternatives, baseline approach, build vs buy',
-      suggestedAnswer: 'Compare the leading alternatives side-by-side with measurable pros/cons.',
-      suggestedAnswerSource: 'fallback'
-    },
-    {
-      id: 'rq_4',
-      question: 'How should results be presented?',
-      hint: 'executive summary, technical deep dive, action checklist',
-      suggestedAnswer: 'Deliver an executive summary first, then concise technical detail and an action checklist.',
-      suggestedAnswerSource: 'fallback'
-    }
-  ];
 }
 
 function persistTasks(tasks: DeepResearchTask[]) {
@@ -559,7 +484,6 @@ class DeepResearchStore {
   }): Promise<DeepResearchTask> {
     this.init();
 
-    const planningQuery = [args.conversationContext ? `Conversation context:\n${args.conversationContext}` : '', `Current research request:\n${args.query}`].filter(Boolean).join('\n\n');
     const generatedQuestions = await generateQuestions(args.query, args.mode, args.conversationContext);
     const questionGenerationFailed = generatedQuestions.length === 0;
     const questions = questionGenerationFailed

@@ -44,10 +44,6 @@ impl ToolCore for FileOutlineTool {
         ToolKind::Read
     }
 
-    fn icon(&self) -> &'static str {
-        "◇"
-    }
-
     fn execution_mode(&self) -> ToolExecutionMode {
         ToolExecutionMode::Parallel
     }

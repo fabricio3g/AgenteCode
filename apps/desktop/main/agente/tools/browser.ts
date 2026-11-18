@@ -9,7 +9,7 @@ import { z } from 'zod';
 import type { AgentTool, ToolExecContext } from '../../../shared/agent-core/types.ts';
 import { defineTool } from './define-tool.ts';
 import { runBrowserAction, type BrowserActionName } from '../../browser-actions.ts';
-import { isLocalUrl } from '../../browser-format.ts';
+import { isLocalUrl } from '../../../shared/browser/format.ts';
 
 export interface BrowserToolOptions {
   /** Whether the current model can take images (screenshots). */

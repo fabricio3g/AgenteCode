@@ -1,4 +1,4 @@
-use super::{ApiFormat, ModelInfo, Provider, ProviderCapabilities, ProviderInfo, RequestContext};
+use super::{ApiFormat, ModelInfo, Provider, ProviderInfo, RequestContext};
 use crate::llm::{LlmError, StopReason, StreamEvent, Usage};
 use crate::types::{Message, ProviderContinuation, Role, ToolDefinition};
 use async_trait::async_trait;
@@ -12,24 +12,6 @@ pub struct MessagesProvider {
 }
 
 impl MessagesProvider {
-    pub fn new(id: &str, name: &str, base_url: &str, env_keys: Vec<String>) -> Self {
-        Self::from_info(ProviderInfo {
-            id: id.into(),
-            name: name.into(),
-            base_url: base_url.into(),
-            env_keys,
-            api_format: ApiFormat::Anthropic,
-            capabilities: ProviderCapabilities {
-                streaming: true,
-                tools: true,
-                vision: true,
-                reasoning: true,
-                temperature: true,
-                max_tokens: true,
-            },
-            ..Default::default()
-        })
-    }
     pub fn from_info(info: ProviderInfo) -> Self {
         Self { info }
     }

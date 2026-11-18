@@ -92,24 +92,6 @@ export async function webSearch(args: {
   });
 }
 
-async function ingestSearchContext(chatId: string, context: string, sources: Array<{ title: string; url: string; snippet: string }>): Promise<number> {
-  const normalizedChatId = String(chatId || '').trim();
-  if (!normalizedChatId) throw new Error('chatId is required');
-  return invoke<number>('ingest_search_context', {
-    chatId: normalizedChatId,
-    context,
-    sources
-  });
-}
-
-export async function fetchModelCatalog(): Promise<unknown> {
-  return invoke<unknown>('fetch_model_catalog');
-}
-
-export async function searchHfModels(query: string, sort = 'trending', limit = 20): Promise<unknown> {
-  return invoke<unknown>('search_hf_models', { query, sort, limit, hfToken: getStoredHfToken() });
-}
-
 export interface HfModelSearchItem {
   /** SPDX-ish id from the repo tags, e.g. apache-2.0. */
   license?: string;
@@ -198,10 +180,6 @@ export async function fetchHfReadme(repo_id: string): Promise<HfReadmeResponse> 
 /** Drop YAML frontmatter (`---` block) so cards show prose, not metadata. */
 export function stripFrontmatter(text: string): string {
   return String(text || '').replace(/^---\s*\n[\s\S]*?\n---\s*\n/, '').trimStart();
-}
-
-async function openUrlWindow(url: string): Promise<void> {
-  await invoke<void>('open_url_window', { url });
 }
 
 export interface OpenWebviewerResult {

@@ -16,17 +16,3 @@ export function safeParseJson(str) {
   if (!str) return null;
   try { return JSON.parse(str); } catch { return null; }
 }
-
-export function normalizeRuntimeUsage(usage, timings) {
-  const usageRecord = usage && typeof usage === 'object' ? usage : {};
-  const timingRecord = timings && typeof timings === 'object'
-    ? timings
-    : usageRecord.timings && typeof usageRecord.timings === 'object'
-      ? usageRecord.timings
-      : null;
-  if (!Object.keys(usageRecord).length && !timingRecord) return null;
-  return {
-    ...usageRecord,
-    ...(timingRecord ? { timings: timingRecord } : {})
-  };
-}

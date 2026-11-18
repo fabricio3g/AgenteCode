@@ -218,7 +218,7 @@ pub struct AppConfig {
 }
 
 /// The same allowlist gates saved configuration, the registry, and the picker.
-pub fn provider_is_supported(id: &str, _provider: &ProviderConfig) -> bool {
+pub fn provider_is_supported(id: &str) -> bool {
     crate::providers::spec::offered(id)
 }
 
@@ -803,7 +803,7 @@ impl AppConfig {
         let mut entries = Vec::new();
 
         for (id, provider) in &self.provider {
-            if !provider_is_supported(id, provider) {
+            if !provider_is_supported(id) {
                 continue;
             }
             let name = provider.name.as_ref().unwrap_or(id).clone();
@@ -894,25 +894,6 @@ impl AppConfig {
             if !m.is_empty() {
                 self.default_model = Some(m);
             }
-        }
-    }
-
-    pub fn resolve_editor(&self) -> String {
-        if let Some(editor) = &self.editor {
-            if !editor.is_empty() {
-                return editor.clone();
-            }
-        }
-        if let Ok(editor) = std::env::var("EDITOR") {
-            return editor;
-        }
-        if let Ok(visual) = std::env::var("VISUAL") {
-            return visual;
-        }
-        if cfg!(target_os = "windows") {
-            "notepad".to_string()
-        } else {
-            "vim".to_string()
         }
     }
 
@@ -1052,13 +1033,6 @@ mod tests {
         let url = config.resolve_base_url("openrouter");
         assert!(url.is_some());
         assert!(url.unwrap().starts_with("http"));
-    }
-
-    #[test]
-    fn test_resolve_editor_default() {
-        let config = AppConfig::default();
-        let editor = config.resolve_editor();
-        assert!(!editor.is_empty());
     }
 
     #[test]

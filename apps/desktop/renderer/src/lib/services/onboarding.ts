@@ -55,10 +55,6 @@ const MODEL_CATALOG: OnboardingModel[] = [
   },
 ];
 
-export function getModelCatalog(): OnboardingModel[] {
-  return MODEL_CATALOG;
-}
-
 export function getRecommendedModels(hardware: HardwareInfo | null): OnboardingModel[] {
   const ramGb = hardware?.total_ram_gb ?? 4;
   const models = MODEL_CATALOG.filter((model) => model.minRamGb <= ramGb);

@@ -12,7 +12,7 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
 use crate::extensions::skills;
-use crate::llm::{LlmClient, LlmError};
+
 use crate::types::{Message, Role};
 
 use super::budget::{estimate_message_tokens, estimated_message_cost, ContextBudget, COMPACT_AT};
@@ -185,42 +185,6 @@ pub fn build_summarization_messages(
             attachments: Vec::new(),
         },
     ]
-}
-
-/// An LLM-backed summarizer using the project's OpenAI-compatible client.
-pub struct LlmSummarizer {
-    client: Arc<dyn LlmClient>,
-    model: String,
-}
-
-impl LlmSummarizer {
-    /// Create a summarizer that uses `client` with `model` for completions.
-    pub fn new(client: Arc<dyn LlmClient>, model: impl Into<String>) -> Self {
-        Self {
-            client,
-            model: model.into(),
-        }
-    }
-}
-
-#[async_trait]
-impl Summarizer for LlmSummarizer {
-    async fn summarize(
-        &self,
-        messages: &[Message],
-        _budget_tokens: usize,
-        previous_summary: Option<&str>,
-    ) -> Result<String, SummarizeError> {
-        let llm_messages = build_summarization_messages(messages, previous_summary);
-        let response = self
-            .client
-            .chat_completion(&llm_messages, None, &self.model)
-            .await
-            .map_err(|e: LlmError| SummarizeError::Llm(e.to_string()))?;
-        response
-            .content
-            .ok_or_else(|| SummarizeError::Llm("Empty summary from model".to_string()))
-    }
 }
 
 /// How a compaction trades window for recent turns.

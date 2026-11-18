@@ -574,7 +574,6 @@ export function resolveRuntimeConfig(options = {}) {
 
   // 2. Backend resolution
   let backend = normalizeBackendName(userBackend || 'auto');
-  let detectedBackend = null;
   let selectedDevice = null;
 
   // Helper to perform auto-detection using current runtime capabilities

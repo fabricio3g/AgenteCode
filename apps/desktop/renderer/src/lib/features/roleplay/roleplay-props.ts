@@ -21,7 +21,7 @@
 
 import { ROLEPLAY_PROP_KINDS, type RoleplayProp, type RoleplayPropKind } from '$lib/types/chat';
 
-export const PROP_KINDS = ROLEPLAY_PROP_KINDS;
+const PROP_KINDS = ROLEPLAY_PROP_KINDS;
 export type PropKind = RoleplayPropKind;
 export type { RoleplayProp };
 

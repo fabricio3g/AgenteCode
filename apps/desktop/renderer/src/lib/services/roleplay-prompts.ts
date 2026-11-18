@@ -1,6 +1,6 @@
-import type { CharacterBook, CharacterCard, LorebookEntry, PromptTrim, RoleplaySettings, RoleplayTrimNote, RoleplayUsed, UserPersona, WorldSettings } from '$lib/types/chat';
+import type { CharacterBook, CharacterCard, LorebookEntry, PromptTrim, RoleplaySettings, RoleplayUsed, UserPersona, WorldSettings } from '$lib/types/chat';
 
-export type { PromptTrim, RoleplayTrimNote, RoleplayUsed };
+export type { PromptTrim, RoleplayUsed };
 import { resolveMacros, type MacroContext } from './roleplay-macros';
 
 /**
@@ -539,7 +539,7 @@ export function buildRoleplaySystemPrompt(input: RoleplayPromptInput): string {
 export const LOCAL_ROLEPLAY_MAX_TOKENS = 400;
 
 /** The local roleplay preset: sampler values llama-server reads from the request body. */
-export const LOCAL_ROLEPLAY_PRESET = {
+const LOCAL_ROLEPLAY_PRESET = {
   temperature: 0.8,
   topP: 1,
   minP: 0.05,

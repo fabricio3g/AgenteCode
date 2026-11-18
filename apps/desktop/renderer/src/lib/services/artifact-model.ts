@@ -174,14 +174,3 @@ export function resolveArtifactPresentation(artifact: AgentArtifact): ResolvedAr
     }
   };
 }
-
-export function withArtifactIssue(artifact: AgentArtifact, issue: ArtifactIssue): AgentArtifact {
-  const normalized = normalizeArtifact(artifact);
-  return normalizeArtifact({
-    ...normalized,
-    manifest: {
-      ...(normalized.manifest as ArtifactManifest),
-      issues: uniqueIssues([...(normalized.manifest?.issues || []), issue])
-    }
-  });
-}

@@ -41,7 +41,7 @@ export type FramePositions = Record<string, { x: number; y: number }>;
 export const frameKey = (page: string, size: FrameSizeId) => `${size}:${page}`;
 
 /** Clear space two frames keep: beside each other, and above one (its label sits there). */
-export const FRAME_CLEARANCE = { x: 24, y: 48 } as const;
+const FRAME_CLEARANCE = { x: 24, y: 48 } as const;
 /** Spacing used when a frame is moved out of another's way. */
 const FREE_SPACING = { x: 80, y: 120 } as const;
 
@@ -131,7 +131,7 @@ export function boardLayout(pages: readonly string[], variants: readonly string[
 export const ZOOM_PRESETS = [0.1, 0.25, 0.5, 0.75, 1, 1.5, 2] as const;
 /** A fitted board of many frames may go below the smallest preset, never below this. */
 export const ZOOM_MIN = 0.05;
-export const ZOOM_MAX = ZOOM_PRESETS[ZOOM_PRESETS.length - 1];
+const ZOOM_MAX = ZOOM_PRESETS[ZOOM_PRESETS.length - 1];
 
 export function clampZoom(zoom: number): number {
   if (!Number.isFinite(zoom)) return 1;
@@ -217,9 +217,6 @@ export function pageLabel(path: string): string {
   const variant = path.match(/^variants\/([^/]+)\//);
   return variant ? variant[1] : path;
 }
-
-/** The top chrome of every column: the toolbar and the inspector header share this height. */
-export const CHROME_HEIGHT = 36;
 
 /** Pane widths in px at the app's 100% scale (16px = 1rem). */
 export const DOCK_WIDTH = { min: 288, default: 416, max: 640 } as const;

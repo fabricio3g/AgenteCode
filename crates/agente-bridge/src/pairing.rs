@@ -55,10 +55,6 @@ impl Pairing {
         })
     }
 
-    pub fn load() -> Option<Self> {
-        Self::load_from(&token_path())
-    }
-
     pub fn load_from(path: &Path) -> Option<Self> {
         let text = std::fs::read_to_string(path).ok()?;
         serde_json::from_str(&text).ok()
@@ -76,10 +72,6 @@ impl Pairing {
         let pairing = Self::new(DEFAULT_PORT);
         pairing.save_to(path)?;
         Ok(pairing)
-    }
-
-    pub fn save(&self) -> Result<()> {
-        self.save_to(&token_path())
     }
 
     pub fn save_to(&self, path: &Path) -> Result<()> {

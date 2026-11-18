@@ -9,23 +9,6 @@ use ratatui::buffer::Buffer;
 use ratatui::style::{Color, Modifier};
 use serde::{Deserialize, Serialize};
 
-/// High-fidelity cell representation for web inspection.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct WebCell {
-    pub x: u16,
-    pub y: u16,
-    pub symbol: String,
-    pub fg: String,
-    pub bg: String,
-    pub is_reset_bg: bool,
-    pub bold: bool,
-    pub italic: bool,
-    pub underline: bool,
-    pub dim: bool,
-    pub reversed: bool,
-    pub crossed_out: bool,
-}
-
 /// A contiguous run of styled cells on a single row (for compact HTML rendering).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StyledSpan {
@@ -125,29 +108,6 @@ pub fn escape_html(s: &str) -> String {
         .replace('\'', "&#39;")
 }
 
-/// Estimate display width of a Unicode string.
-pub fn unicode_width(s: &str) -> usize {
-    s.chars()
-        .map(|c| {
-            let cp = c as u32;
-            if (0x1100..=0x115F).contains(&cp)
-                || (0x2329..=0x232A).contains(&cp)
-                || (0x23E9..=0x23FA).contains(&cp)
-                || (0x2E80..=0xA4CF).contains(&cp)
-                || (0xAC00..=0xD7A3).contains(&cp)
-                || (0xF900..=0xFAFF).contains(&cp)
-                || (0xFE30..=0xFE6F).contains(&cp)
-                || (0xFF00..=0xFF60).contains(&cp)
-                || (0x1F300..=0x1FAFF).contains(&cp)
-            {
-                2
-            } else {
-                1
-            }
-        })
-        .sum()
-}
-
 /// Serialize a Ratatui [`Buffer`] into a structured [`SerializedFrame`].
 pub fn serialize_buffer(buf: &Buffer) -> SerializedFrame {
     let width = buf.area.width;
@@ -171,7 +131,8 @@ pub fn serialize_buffer(buf: &Buffer) -> SerializedFrame {
                 violations.push(format!("Control char at ({x},{y}): {sym:?}"));
             }
             if sym.is_empty() {
-                let prev_wide = x > 0 && unicode_width(buf[(x - 1, y)].symbol()) > 1;
+                let prev_wide =
+                    x > 0 && crate::widgets::display_width(buf[(x - 1, y)].symbol()) > 1;
                 if !prev_wide {
                     violations.push(format!("Empty (non-continuation) cell at ({x},{y})"));
                 }
@@ -308,6 +269,7 @@ pub fn frame_to_html_snippet(frame: &SerializedFrame) -> String {
 }
 
 /// One gallery row: scenario name, terminal size, the frame, category, description.
+#[cfg(test)]
 pub type GalleryEntry = (
     &'static str,
     (u16, u16),
@@ -316,7 +278,9 @@ pub type GalleryEntry = (
     &'static str,
 );
 
-/// Generate a complete, standalone, zero-dependency interactive HTML Visual Gallery page.
+/// Generate a complete, standalone, zero-dependency interactive HTML Visual
+/// Gallery page (written by the visual harness).
+#[cfg(test)]
 pub fn generate_visual_gallery_html(scenarios_data: &[GalleryEntry]) -> String {
     let scenarios_json = serde_json::to_string(
         &scenarios_data

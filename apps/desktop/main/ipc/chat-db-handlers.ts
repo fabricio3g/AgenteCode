@@ -5,7 +5,6 @@ type ChatDbHandlerDeps = {
   saveChatSession: (session: unknown) => unknown;
   saveChatDraft: (chatId: string, draft: string, codeAgent: unknown, updatedAt: number, pendingPrompts?: unknown) => boolean | Promise<unknown>;
   loadAllChats: () => unknown;
-  searchChatContent: (query: string, limit?: number) => unknown;
   deleteChatFromDb: (chatId: string) => Promise<unknown>;
   clearRagDocuments: (chatId: string) => Promise<unknown>;
   migrateFromLocalStorage: (persistedState: unknown) => unknown;
@@ -30,7 +29,6 @@ export function registerChatDbHandlers(deps: ChatDbHandlerDeps): void {
   deps.ipcMain.handle('chat_db_save_draft', (_e, { chatId, draft, codeAgent, updatedAt, pendingPrompts }) => deps.saveChatDraft(chatId, draft, codeAgent, updatedAt, pendingPrompts));
   deps.ipcMain.handle('chat_db_save_session', (_e, { session }) => deps.saveChatSession(session));
   deps.ipcMain.handle('chat_db_load_all', () => deps.loadAllChats());
-  deps.ipcMain.handle('chat_db_search_content', (_e, { query, limit }) => deps.searchChatContent(String(query ?? ''), Number(limit) || 30));
   deps.ipcMain.handle('chat_db_delete', async (_e, { chatId }) => {
     await deps.deleteChatFromDb(chatId);
     deps.clearRagDocuments(chatId).catch(() => {});

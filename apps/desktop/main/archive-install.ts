@@ -33,32 +33,6 @@ export function ensureSafeEntryPath(entryPath: string): void {
   }
 }
 
-/** Streams `url` to `filePath`, reporting completion as a 0..1 fraction. */
-export async function downloadToFile(
-  url: string,
-  filePath: string,
-  onFraction: (fraction: number) => void = () => {}
-): Promise<void> {
-  const resp = await fetch(url);
-  if (!resp.ok) throw new Error(`Download failed: HTTP ${resp.status}`);
-
-  const totalBytes = Number(resp.headers.get('content-length') || 0);
-  fs.mkdirSync(path.dirname(filePath), { recursive: true });
-
-  const writeStream = fs.createWriteStream(filePath);
-  let downloaded = 0;
-  const reader = resp.body!.getReader();
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    writeStream.write(Buffer.from(value));
-    downloaded += value.length;
-    if (totalBytes > 0) onFraction(downloaded / totalBytes);
-  }
-  await new Promise((res, rej) => writeStream.end((err?: Error | null) => (err ? rej(err) : res())));
-}
-
 /**
  * Unpacks a .tar.gz/.tgz/.zip archive into `destDir`, rejecting unsafe entries.
  * `kind` only labels the "unsupported format" error (e.g. "runtime", "whisper runtime").

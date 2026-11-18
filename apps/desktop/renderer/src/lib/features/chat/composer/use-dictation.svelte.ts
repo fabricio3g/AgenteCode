@@ -83,7 +83,7 @@ function microphoneAccessMessage(err: unknown): string {
   return err instanceof Error ? err.message : 'Unable to access microphone.';
 }
 
-export type DictationPhase = 'idle' | 'choose' | 'setup' | 'permission' | 'recording' | 'transcribing' | 'error';
+type DictationPhase = 'idle' | 'choose' | 'setup' | 'permission' | 'recording' | 'transcribing' | 'error';
 
 type VoiceSetupPlan = { supported: boolean; needsRuntime: boolean; needsModel: boolean; bytes: number };
 

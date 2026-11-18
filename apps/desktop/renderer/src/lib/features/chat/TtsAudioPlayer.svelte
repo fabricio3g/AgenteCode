@@ -6,13 +6,13 @@
   import { cn as uiClass } from '$lib/utils/cn';
 
   import { Tooltip } from '$lib/components/ui';
-  import type { ChatMessage, AppConfig } from '$lib/types/chat';
+  import type { ChatMessage } from '$lib/types/chat';
   import { Pause, Play, X } from '$lib/icons';
   import { t } from 'svelte-i18n';
   import { ttsStore } from '$lib/stores/tts.svelte';
   import { appStore } from '$lib/stores/app.svelte';
 
-  let { message, onDone, config, showIdle = false }: { message: ChatMessage; onDone?: () => void; config?: AppConfig; showIdle?: boolean } = $props();
+  let { message }: { message: ChatMessage } = $props();
   let dismissed = $state(false);
   const active = $derived(ttsStore.currentMessageId === message.id && (ttsStore.playing || ttsStore.paused));
   const playing = $derived(active && ttsStore.playing);
@@ -28,17 +28,16 @@
   async function togglePlayback() {
     if (playing) await ttsStore.pause();
     else if (active && ttsStore.paused) await ttsStore.resume();
-    else if (message.content.trim()) await ttsStore.speak(message.id, message.content, config ?? appStore.config);
+    else if (message.content.trim()) await ttsStore.speak(message.id, message.content, appStore.config);
   }
   function dismiss() {
     if (active) ttsStore.stop();
     dismissed = true;
-    onDone?.();
   }
   $effect(() => { if (active) dismissed = false; });
 </script>
 
-{#if !dismissed && (showIdle || active || hasBuffer || message.ttsAudio)}
+{#if !dismissed && (active || hasBuffer || message.ttsAudio)}
   <div class="tts-player" role="group" aria-label={$t('tts.player.label')}>
     <Tooltip label={playing ? $t('tts.player.pause') : active ? $t('tts.player.resume') : $t('tts.player.play')} position="bottom"><UiIconButton label={playing ? $t('tts.player.pause') : active ? $t('tts.player.resume') : $t('tts.player.play')} size="sm" type="button" class={uiClass("tts-play ", "ui-local-72f54e69")} onclick={() => void togglePlayback()} >
       {#if playing}<Pause class="size-3.5" />{:else}<Play class="size-3.5" />{/if}

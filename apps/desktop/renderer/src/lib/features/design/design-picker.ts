@@ -7,7 +7,7 @@
 import type { DesignComment, DesignPick, DesignSelection, DesignStroke } from '$shared/design';
 import { formatMarks, PROBE_POINTS } from './design-strokes';
 
-export const FRAME_SOURCE = 'agente-design-frame';
+const FRAME_SOURCE = 'agente-design-frame';
 export const HOST_SOURCE = 'agente-design';
 
 /**

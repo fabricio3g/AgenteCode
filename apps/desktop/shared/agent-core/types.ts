@@ -212,8 +212,6 @@ export interface CoreRunSummary {
   };
 }
 
-export type AgentEventListener = (event: AgentEvent) => void | Promise<void>;
-
 // ── LLM boundary (the only thing the loop knows about models) ──────────
 
 export interface StreamCallbacks {

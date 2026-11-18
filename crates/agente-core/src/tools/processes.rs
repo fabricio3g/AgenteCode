@@ -293,9 +293,6 @@ impl ToolCore for ProcessListTool {
     fn kind(&self) -> super::ToolKind {
         super::ToolKind::Read
     }
-    fn icon(&self) -> &'static str {
-        "≡"
-    }
     fn description(&self) -> &str {
         "List the background processes started in this project (shell with background: true), with their status and URLs."
     }
@@ -346,9 +343,6 @@ impl ToolCore for ProcessOutputTool {
     }
     fn kind(&self) -> super::ToolKind {
         super::ToolKind::Read
-    }
-    fn icon(&self) -> &'static str {
-        "≡"
     }
     fn description(&self) -> &str {
         "Read the recent output of a background process (server logs, build errors)."
@@ -405,9 +399,6 @@ impl ToolCore for ProcessStopTool {
     }
     fn kind(&self) -> super::ToolKind {
         super::ToolKind::Execute
-    }
-    fn icon(&self) -> &'static str {
-        "■"
     }
     fn description(&self) -> &str {
         "Stop a background process and everything it started."

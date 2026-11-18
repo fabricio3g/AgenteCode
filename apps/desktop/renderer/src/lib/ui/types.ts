@@ -11,11 +11,6 @@ export interface ValidationError {
   message: string;
 }
 
-enum BuiltinActionType {
-  ContinueConversation = 'continue_conversation',
-  OpenUrl = 'open_url'
-}
-
 export interface ActionEvent {
   type: string;
   params: Record<string, any>;

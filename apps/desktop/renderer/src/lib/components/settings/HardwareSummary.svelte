@@ -5,7 +5,7 @@
 
   import { Cpu, LoaderCircle, MemoryStick, MonitorCheck, RefreshCw } from '$lib/icons';
   import { t } from 'svelte-i18n';
-  import { Badge, Button, Tooltip } from '$lib/components/ui';
+  import { Badge, Tooltip } from '$lib/components/ui';
   import { hardwareStore } from '$lib/stores/hardware.svelte';
   import SettingsSection from './SettingsSection.svelte';
 </script>

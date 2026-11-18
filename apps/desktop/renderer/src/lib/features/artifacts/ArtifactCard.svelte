@@ -14,6 +14,7 @@
 
   import { t } from 'svelte-i18n';
   import { locale } from 'svelte-i18n';
+  import { recentDay } from '$lib/features/shared/recent-day';
   import { BarChart3, FileSpreadsheet, FileText, Globe, GraduationCap, Presentation, Trash2 } from '$lib/icons';
   import ArtifactThumb from './ArtifactThumb.svelte';
   import type { LibraryEntry } from './artifact-library';
@@ -39,11 +40,7 @@
   });
 
   function when(ts: number): string {
-    if (!ts) return '';
-    const days = Math.floor((Date.now() - ts) / 86_400_000);
-    const lang = $locale || 'en';
-    if (days < 7) return new Intl.RelativeTimeFormat(lang, { numeric: 'auto' }).format(-days, 'day');
-    return new Date(ts).toLocaleDateString(lang, { month: 'short', day: 'numeric' });
+    return recentDay(ts, $locale || 'en');
   }
 </script>
 

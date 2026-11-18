@@ -130,12 +130,11 @@ impl App {
             AgentEvent::Retry {
                 attempt,
                 max_attempts,
-                delay_ms,
+                ..
             } => {
                 self.state.agent.retry_status = Some(crate::state::RetryStatus {
                     attempt,
                     max_attempts,
-                    delay_ms,
                 });
             }
             AgentEvent::ToolCallStart { id, name, args } => {
@@ -618,7 +617,6 @@ impl App {
                     self.state.agent.subagents.insert(
                         id.clone(),
                         crate::state::SubagentUiState {
-                            id: id.clone(),
                             subagent_type: subagent_type.clone(),
                             description: description.clone(),
                             status,
@@ -829,7 +827,6 @@ impl App {
             self.state.agent.subagents.insert(
                 id.to_string(),
                 crate::state::SubagentUiState {
-                    id: id.to_string(),
                     subagent_type: "unknown".to_string(),
                     description: "Subagent activity (start event missed)".to_string(),
                     status: "running".to_string(),
@@ -1245,7 +1242,7 @@ mod tests {
             })
             .unwrap();
         app.process_agent_events();
-        assert!(app.state.plan_review.has_pending());
+        assert!(app.state.plan_review.pending.is_some());
         assert_eq!(
             app.state.plan_review.phase,
             crate::state::PlanReviewPhase::Idle

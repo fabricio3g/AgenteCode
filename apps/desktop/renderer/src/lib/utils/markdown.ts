@@ -107,7 +107,7 @@ function renderKatex(math: string, displayMode: boolean, raw: string): string {
  */
 let purifyHooksInstalled = false;
 
-export function sanitizeAssistantHtml(html: string): string {
+function sanitizeAssistantHtml(html: string): string {
   if (typeof window === 'undefined') return html;
   if (!purifyHooksInstalled) {
     DOMPurify.addHook('uponSanitizeElement', (node) => {

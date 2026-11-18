@@ -10,7 +10,6 @@
   import { appStore } from '$lib/stores/app.svelte';
   import { ArrowLeft, Globe, MoonStar, Search, SunMedium } from '$lib/icons';
   import Tooltip from '$lib/components/ui/Tooltip.svelte';
-  import { Button } from '$lib/components/ui';
   import { themeStore } from '$lib/stores/theme.svelte';
   import { downloadsStore } from '$lib/stores/downloads.svelte';
   import { browserPanelStore, type BrowserPanelStore } from '$lib/stores/browser-panel.svelte';

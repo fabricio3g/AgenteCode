@@ -20,7 +20,6 @@ type TtsHandlerDeps = {
   generateTtsStream: (request: unknown, win: BrowserWindow | null) => void | Promise<void>;
   cancelTtsStream: () => void;
   unloadTts: () => void | Promise<void>;
-  checkEspeakData: (modelsDir: string) => unknown;
   listVoices: () => string[];
   onWorkerMessage: (handler: (msg: TtsWorkerMessage) => void) => void;
   logger?: (message: string, ...args: unknown[]) => void;
@@ -33,7 +32,6 @@ export function registerTtsHandlers({
   generateTtsStream,
   cancelTtsStream,
   unloadTts,
-  checkEspeakData,
   listVoices,
   onWorkerMessage,
   logger,
@@ -117,7 +115,6 @@ export function registerTtsHandlers({
   });
 
   ipcMain.handle('unload_tts', () => unloadTts());
-  ipcMain.handle('check_espeak_data', (_e, { modelsDir }) => checkEspeakData(modelsDir));
   ipcMain.handle('preload_tts', async () => initTts());
   ipcMain.handle('list_tts_voices', () => listVoices());
   ipcMain.handle('list_speech_voices', async (_e, { provider: id }) => {

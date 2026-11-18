@@ -39,10 +39,3 @@ export function screenScript(python: unknown): ScriptCheck {
   }
   return { ok: true };
 }
-
-/** Notes the agent gets in the tool result: it can read attached references, write only into the job. */
-export const SCRIPT_HELP = [
-  'Free Blender Python: the scene is empty, `output` is the job directory, `references` is the design workspace references folder (may be empty).',
-  'Helpers: rgba(hex), aim(obj, target), add_area(location, energy, size, color, target), add_sun(direction, energy, color), studio(preset, strength), frame_camera(view).',
-  'The tail exports model.glb, scene.blend and the requested view PNGs, so build the scene and leave it in view; do not save or export yourself.'
-].join(' ');

@@ -214,14 +214,10 @@ pub struct AgentRosterEntry {
 /// The full set of spawnable agent types: built-ins plus discovered custom
 /// agents, with project-level files shadowing built-ins by name. This is the
 /// dynamic roster the task tool's description is generated from.
-pub fn agent_roster(project_dir: &str) -> Vec<AgentRosterEntry> {
-    agent_roster_with(project_dir, &custom_subagents(project_dir))
-}
-
-/// Roster from an already-loaded custom list. Children reuse the parent's
-/// roster so a worktree checkout does not re-scan `.agente/agents`.
-pub fn agent_roster_with(project_dir: &str, custom: &[CustomSubagent]) -> Vec<AgentRosterEntry> {
-    let _ = project_dir;
+///
+/// Takes an already-loaded custom list: children reuse the parent's roster
+/// so a worktree checkout does not re-scan `.agente/agents`.
+pub fn agent_roster(custom: &[CustomSubagent]) -> Vec<AgentRosterEntry> {
     let mut entries: Vec<AgentRosterEntry> = Vec::new();
     for builtin in BUILTIN_SUBAGENTS {
         if custom.iter().any(|c| c.name == builtin.name) {
@@ -272,7 +268,6 @@ pub fn roster_tools_summary(tools: &Option<Vec<String>>) -> String {
 pub struct SubagentParentDefaults {
     pub model: String,
     pub project_dir: String,
-    pub depth: u32,
 }
 
 /// Fully resolved configuration for a child agent run.
@@ -523,7 +518,7 @@ mod tests {
         )
         .unwrap();
 
-        let roster = agent_roster(dir.to_str().unwrap());
+        let roster = agent_roster(&custom_subagents(dir.to_str().unwrap()));
         let names: Vec<&str> = roster.iter().map(|e| e.name.as_str()).collect();
         assert!(names.contains(&"scout"), "{names:?}");
         assert!(!names.contains(&"helper"), "{names:?}");
@@ -547,7 +542,6 @@ mod tests {
         let parent = SubagentParentDefaults {
             model: "m".into(),
             project_dir: dir.to_str().unwrap().into(),
-            depth: 0,
         };
         let custom = custom_subagents(dir.to_str().unwrap());
         assert!(custom.iter().any(|c| c.name == "helper" && c.hidden));
@@ -634,7 +628,6 @@ mod tests {
         let parent = SubagentParentDefaults {
             model: "m".into(),
             project_dir: ".".into(),
-            depth: 0,
         };
         assert!(resolve_effective_config(&req, &parent, &[]).is_err());
     }
@@ -657,7 +650,6 @@ mod tests {
         let parent = SubagentParentDefaults {
             model: "parent-model".into(),
             project_dir: ".".into(),
-            depth: 1,
         };
         let cfg = resolve_effective_config(&req, &parent, &[]).unwrap();
         assert_eq!(cfg.capability, SubagentCapabilityMode::All);
@@ -691,7 +683,6 @@ mod tests {
         let parent = SubagentParentDefaults {
             model: "parent-model".into(),
             project_dir: ".".into(),
-            depth: 0,
         };
         let cfg = resolve_effective_config(&req, &parent, &[]).unwrap();
         assert_eq!(cfg.model.as_deref(), Some("parent-model"));

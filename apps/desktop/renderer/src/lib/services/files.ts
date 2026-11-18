@@ -1,4 +1,4 @@
-import type { FileRef, FileStoreStats, LocalModel, StoredFile, WorkspaceIndexResult } from '$lib/types/bridge';
+import type { LocalModel, StoredFile, WorkspaceIndexResult } from '$lib/types/bridge';
 import { invoke } from './bridge';
 
 export async function pathExists(path: string): Promise<boolean> {
@@ -29,10 +29,6 @@ export async function downloadRuntime(payload: {
 
 export async function writeTempFile(name: string, data: Uint8Array): Promise<string> {
   return invoke<string>('write_temp_file', { name, data });
-}
-
-async function resetMediaPermissions(): Promise<{ removed: string[]; failed: string[] }> {
-  return invoke<{ removed: string[]; failed: string[] }>('reset_media_permissions');
 }
 
 export type FolderListing = {
@@ -73,23 +69,6 @@ export async function writeWorkspaceBinary(workspaceRoot: string, relativePath: 
   return invoke<string>('write_workspace_binary', { workspaceRoot, relativePath, dataUrl });
 }
 
-async function workspaceExec(payload: {
-  workspace_root: string;
-  command: string;
-  args?: string[];
-  cwd?: string;
-  shell?: boolean;
-  timeout_ms?: number;
-}): Promise<{
-  cwd: string;
-  stdout: string;
-  stderr: string;
-  exit_code?: number | null;
-  timed_out: boolean;
-}> {
-  return invoke('workspace_exec', payload);
-}
-
 export async function createWorkspaceDocument(
   workspaceRoot: string,
   relativePath: string,
@@ -128,22 +107,9 @@ export async function listFiles(): Promise<StoredFile[]> {
   return invoke<StoredFile[]>('files_list');
 }
 
-export async function getFile(hash: string): Promise<StoredFile | null> {
-  return invoke<StoredFile | null>('files_get', { hash });
-}
-
-/** Every chat message that uses this file. */
-export async function listFileRefs(hash: string): Promise<FileRef[]> {
-  return invoke<FileRef[]>('files_refs', { hash });
-}
-
 /** Returns the updated row, or null when the hash is unknown. */
 export async function setFilePinned(hash: string, pinned: boolean): Promise<StoredFile | null> {
   return invoke<StoredFile | null>('files_pin', { hash, pinned });
-}
-
-export async function fileStats(): Promise<FileStoreStats> {
-  return invoke<FileStoreStats>('files_stats');
 }
 
 /**

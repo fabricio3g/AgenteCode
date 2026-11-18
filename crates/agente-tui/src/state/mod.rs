@@ -25,17 +25,19 @@ mod ui;
 pub use session::diff_line_counts;
 
 pub use agent::{
-    format_usd, AgentRuntimeState, ApprovalQueue, ContextState, LiveToolCall, PendingApproval,
-    QueuedMessage, RetryStatus, Spend, SubagentToolRow, SubagentUiState, WorkMode,
+    AgentRuntimeState, LiveToolCall, QueuedMessage, RetryStatus, Spend, SubagentToolRow,
+    SubagentUiState, WorkMode,
 };
 pub use config::{ConfigState, ConnectScreen, DiscoveryStatus, ModelEntry};
 pub use hits::{HitMap, HitTarget, ListId};
-pub use input::{paste_wants_chip, InputState, PastedBlock};
+pub use input::{paste_wants_chip, InputState};
 pub use picker::SessionPickerState;
 pub use plan_review::{
-    is_vague_feedback, synthesize_feedback, template_ask_questions, AskQuestion, PendingPlan,
-    PlanAskState, PlanReviewPhase, PlanReviewState,
+    is_vague_feedback, synthesize_feedback, template_ask_questions, PlanAskState, PlanReviewPhase,
+    PlanReviewState,
 };
+#[cfg(test)]
+pub use plan_review::{AskQuestion, PendingPlan};
 pub use session::SessionState;
 pub use tabs::{tab_label, TabLabel, TabState, TabStatus, TabStrip};
 pub use todo::TodoState;
@@ -209,18 +211,6 @@ impl AppState {
             })
     }
 
-    pub fn thinking_levels_for_current_model(&self) -> Vec<String> {
-        let provider = self.config.current_provider.clone();
-        let model_id = self.config.current_model.clone();
-        if model_id.is_empty() {
-            return Vec::new();
-        }
-        match self.resolve_model(&provider, &model_id) {
-            Some(model) => agente_core::thinking::supported_thinking_levels(&model),
-            None => Vec::new(),
-        }
-    }
-
     /// Keep the active level valid after a TUI model/provider switch.
     pub fn clamp_thinking_level_for_current_model(&mut self) {
         let provider = self.config.current_provider.clone();
@@ -229,13 +219,6 @@ impl AppState {
             self.agent.thinking_level =
                 agente_core::thinking::clamp_thinking_level(&model, &self.agent.thinking_level);
         }
-    }
-
-    pub fn browsed_model_provider(&self) -> String {
-        self.input
-            .model_selector_provider
-            .clone()
-            .unwrap_or_else(|| self.config.current_provider.clone())
     }
 
     /// Human-readable provider label, for chips and headers.
@@ -477,11 +460,6 @@ impl AppState {
         self.session.track_file_change(path, before, after);
     }
 
-    /// Track a file deletion
-    pub fn track_file_deletion(&mut self, path: &str) {
-        self.session.track_file_deletion(path);
-    }
-
     /// Open the diff peek for a tracked file. Sets `ui.diff_peek` only when
     /// the path has tracked changes (present in `file_originals` or
     /// `file_versions` with differing before/after); otherwise leaves state
@@ -574,26 +552,6 @@ impl AppState {
     /// Get all provider entries
     pub fn all_provider_entries(&self) -> Vec<agente_core::config::ProviderEntry> {
         self.config.all_provider_entries()
-    }
-
-    /// Get resolved API key for current provider
-    pub fn get_resolved_api_key(&self) -> Option<String> {
-        self.config.get_resolved_api_key()
-    }
-
-    /// Get resolved base URL for current provider
-    pub fn get_resolved_base_url(&self) -> Option<String> {
-        self.config.get_resolved_base_url()
-    }
-
-    /// Get API key for specific provider
-    pub fn get_api_key_for(&self, provider: &str) -> Option<String> {
-        self.config.get_api_key_for(provider)
-    }
-
-    /// Get base URL for specific provider
-    pub fn get_base_url_for(&self, provider: &str) -> Option<String> {
-        self.config.get_base_url_for(provider)
     }
 
     /// Set discovered models for a provider
@@ -706,39 +664,14 @@ impl AppState {
         self.ui.glide_by(delta);
     }
 
-    /// Scroll to bottom of chat
-    pub fn scroll_to_bottom(&mut self) {
-        self.ui.scroll_to_bottom();
-    }
-
     /// Get maximum scroll position
     pub fn max_scroll(&self) -> usize {
         self.ui.max_scroll()
     }
 
-    /// Set chat dimensions
-    pub fn set_chat_dimensions(&mut self, content_height: usize, visible_height: usize) {
-        self.ui.set_chat_dimensions(content_height, visible_height);
-    }
-
-    /// Find clicked entry at Y position
-    pub fn find_clicked_entry(&self, y: u16) -> Option<uuid::Uuid> {
-        self.ui.find_clicked_entry(y)
-    }
-
-    /// Update todos
-    pub fn update_todos(&mut self, todos: Vec<agente_core::types::Todo>) {
-        self.todo.update(todos);
-    }
-
     /// Get all todos
     pub fn get_todos(&self) -> &[agente_core::types::Todo] {
         self.todo.get_all()
-    }
-
-    /// Trigger message fade effect
-    pub fn trigger_message_fade(&mut self) {
-        self.ui.trigger_message_fade();
     }
 
     /// Whether any continuous UI animation or active turn needs smooth continuous rendering
@@ -762,16 +695,6 @@ impl AppState {
                 self.agent.state,
                 agente_core::types::AgentState::Idle | agente_core::types::AgentState::Error(_)
             )
-    }
-
-    /// Tick effects and return delta time
-    pub fn tick_effects(&mut self) -> std::time::Duration {
-        self.ui.tick_effects()
-    }
-
-    /// Clear reasoning text
-    pub fn clear_reasoning(&mut self) {
-        self.agent.clear_reasoning();
     }
 
     /// Compact conversation. Returns `(messages removed, tokens saved)`.

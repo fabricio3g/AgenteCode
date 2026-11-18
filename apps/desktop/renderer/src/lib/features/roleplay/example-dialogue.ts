@@ -31,7 +31,7 @@ function speakerOf(raw: string): Speaker {
 }
 
 /** The label a speaker carries in the card's text. */
-export function speakerTag(speaker: Speaker): string {
+function speakerTag(speaker: Speaker): string {
   if (speaker === 'user') return '{{user}}';
   if (speaker === 'char') return '{{char}}';
   return speaker.slice('name:'.length);

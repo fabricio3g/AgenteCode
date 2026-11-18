@@ -24,8 +24,8 @@
  */
 import type { RuntimeEvent } from './agente-protocol.gen.ts';
 
-export const MIN_SPEED_SAMPLE_TOKENS = 8;
-export const MIN_SPEED_SAMPLE_MS = 300;
+const MIN_SPEED_SAMPLE_TOKENS = 8;
+const MIN_SPEED_SAMPLE_MS = 300;
 
 export function generationRate(tokens: number | undefined, milliseconds: number | undefined): number | undefined {
   if (!Number.isFinite(tokens) || !Number.isFinite(milliseconds)) return undefined;

@@ -469,9 +469,6 @@ fn run_non_interactive(
         let mut turn = runtime_handle.start_turn(StartTurn {
             session_id,
             conversation: vec![Message::user(user_prompt)],
-            provider: None,
-            model: None,
-            thinking_level: None,
             mode,
             ..StartTurn::default()
         })?;

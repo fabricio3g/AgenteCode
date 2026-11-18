@@ -6,7 +6,7 @@
  * HTML, a hidden browser window) and resellers of scraped Google results
  * (SerpApi, Serper) were removed; Google CSE and Bing's API are closed.
  */
-export const DEFAULT_PROVIDER_ORDER = [
+const DEFAULT_PROVIDER_ORDER = [
   'aggregator',
   'tavily',
   'exa',
@@ -18,12 +18,12 @@ export const DEFAULT_PROVIDER_ORDER = [
 ];
 
 /** Needs no key: the aggregator's free, API-based sources. */
-export const FREE_PROVIDER_ORDER = ['aggregator'];
+const FREE_PROVIDER_ORDER = ['aggregator'];
 
 /** Providers that existed before and are gone; saved settings naming them fall back to auto. */
 export const REMOVED_SEARCH_PROVIDERS = ['duckduckgo', 'electron', 'serpapi', 'serper', 'google_cse', 'bing'];
 
-export const PROVIDER_PRIORITY: Record<string, number> = {
+const PROVIDER_PRIORITY: Record<string, number> = {
   aggregator: 5.5,
   tavily: 5,
   exa: 4.8,
@@ -178,13 +178,13 @@ export function compactSearchContext(context: unknown, max = 1800): string {
   return normalizeWhitespace(context).slice(0, max);
 }
 
-export function looksContextDependent(query: string): boolean {
+function looksContextDependent(query: string): boolean {
   const normalized = normalizeWhitespace(query).toLowerCase();
   if (!normalized) return false;
   return /\b(this|that|these|those|it|its|he|him|his|she|her|hers|they|them|their|there|latest|recent|current|today|now|news|update|price|stock|version|release)\b/i.test(normalized);
 }
 
-export function extractContextTerms(context: string): string[] {
+function extractContextTerms(context: string): string[] {
   const text = compactSearchContext(context);
   if (!text) return [];
 
@@ -237,11 +237,11 @@ export function buildEffectiveSearchQuery(query: string, context: string): strin
   return normalizeWhitespace(`${contextTerms.slice(0, 3).join(' ')} ${normalizedQuery}`).slice(0, 260);
 }
 
-export function escapeRegExp(value: unknown): string {
+function escapeRegExp(value: unknown): string {
   return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-export function normalizeUrl(rawUrl: unknown): string {
+function normalizeUrl(rawUrl: unknown): string {
   const value = normalizeWhitespace(rawUrl);
   if (!value) return '';
 
@@ -261,7 +261,7 @@ export function normalizeUrl(rawUrl: unknown): string {
   }
 }
 
-export function getDomain(rawUrl: unknown): string {
+function getDomain(rawUrl: unknown): string {
   try {
     const url = new URL(String(rawUrl));
     return url.hostname.replace(/^www\./, '').toLowerCase();
@@ -270,7 +270,7 @@ export function getDomain(rawUrl: unknown): string {
   }
 }
 
-export function providerPriority(provider: string): number {
+function providerPriority(provider: string): number {
   return PROVIDER_PRIORITY[provider] || 1;
 }
 
@@ -436,7 +436,7 @@ export function parseSearchResultsFromText(provider: string, text: string, maxRe
   return results.slice(0, maxResults);
 }
 
-export function scoreText(text: string, queryTerms: string[]): number {
+function scoreText(text: string, queryTerms: string[]): number {
   const haystack = normalizeWhitespace(text).toLowerCase();
   if (!haystack || !queryTerms.length) return 0;
 
@@ -454,13 +454,13 @@ export function scoreText(text: string, queryTerms: string[]): number {
   return score;
 }
 
-export function choosePrimaryProvider(providers: string[]): string {
+function choosePrimaryProvider(providers: string[]): string {
   const list = Array.isArray(providers) ? providers : Array.from(providers || []);
   if (!list.length) return 'unknown';
   return [...list].sort((a, b) => providerPriority(b) - providerPriority(a))[0] || list[0];
 }
 
-export function dedupeKey(result: SearchResult): string {
+function dedupeKey(result: SearchResult): string {
   const url = normalizeUrl(result.url);
   if (url) return `url:${url}`;
   const title = normalizeWhitespace(result.title).toLowerCase();

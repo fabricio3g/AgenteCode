@@ -158,15 +158,6 @@ function classifyText(message: string): LlmFailure {
   return { message, code: 'UNKNOWN' };
 }
 
-/** Codes an automatic retry can plausibly fix. */
-const RETRYABLE_CODES: ReadonlySet<ErrorCode> = new Set([
-  'RATE_LIMIT', 'SERVER', 'TIMEOUT', 'TRANSPORT'
-]);
-
-export function isRetryableFailure(failure: LlmFailure): boolean {
-  return RETRYABLE_CODES.has(failure.code);
-}
-
 /**
  * The one error type adapters throw. `message` stays human-readable for the
  * existing surfaces; `failure.code` lets policies react without re-parsing.

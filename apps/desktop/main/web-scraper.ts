@@ -1,6 +1,7 @@
 import { APP_USER_AGENT } from '../shared/brand.ts';
 import { Readability } from '@mozilla/readability';
 import { parseHTML } from 'linkedom';
+import { normalizeWhitespace, cleanText } from './search-providers/shared.ts';
 
 const DEFAULT_TIMEOUT_MS = 10000;
 const DEFAULT_MAX_LENGTH = 50000;
@@ -10,18 +11,10 @@ const THIN_CONTENT_CHARS = 700;
 const DEFAULT_MAX_DOWNLOAD_BYTES = 12 * 1024 * 1024;
 const HARD_MAX_DOWNLOAD_BYTES = 20 * 1024 * 1024;
 
-function clampNumber(value, min, max, fallback) {
+export function clampNumber(value, min, max, fallback) {
   const num = Number(value);
   if (!Number.isFinite(num)) return fallback;
   return Math.max(min, Math.min(num, max));
-}
-
-function normalizeWhitespace(text) {
-  return String(text || '').replace(/\s+/g, ' ').trim();
-}
-
-function cleanText(text) {
-  return String(text || '').replace(/\u0000/g, '').trim();
 }
 
 /** Collapse whitespace / nulls so LLM context uses fewer tokens. */
@@ -139,7 +132,7 @@ function hasUsableExtractedText(text) {
   return wordMatches.length >= 20;
 }
 
-export async function extractPdfTextFromBuffer(buffer, maxLength = DEFAULT_MAX_LENGTH) {
+async function extractPdfTextFromBuffer(buffer, maxLength = DEFAULT_MAX_LENGTH) {
   const pdfParse = (await import('pdf-parse')).default;
   const data = await pdfParse(Buffer.from(buffer));
   const text = compactExtractedText(data?.text || '', maxLength);
@@ -154,7 +147,7 @@ export async function extractPdfTextFromBuffer(buffer, maxLength = DEFAULT_MAX_L
   };
 }
 
-export async function extractDocxTextFromBuffer(buffer, maxLength = DEFAULT_MAX_LENGTH) {
+async function extractDocxTextFromBuffer(buffer, maxLength = DEFAULT_MAX_LENGTH) {
   const mammoth = await import('mammoth');
   const extract = mammoth.default?.extractRawText || mammoth.extractRawText;
   const result = await extract({ buffer: Buffer.from(buffer) });

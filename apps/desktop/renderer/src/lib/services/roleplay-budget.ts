@@ -26,10 +26,10 @@ import { LOCAL_ROLEPLAY_MAX_TOKENS } from './roleplay-prompts';
 export const FALLBACK_CONTEXT_TOKENS = 4096;
 
 /** Completion reserve for cloud scenes that set no `max_tokens`. */
-export const CLOUD_COMPLETION_RESERVE = 1024;
+const CLOUD_COMPLETION_RESERVE = 1024;
 
 /** The trims applied in order; each step keeps the previous ones. */
-export const PROMPT_TRIM_LADDER: readonly PromptTrim[] = [
+const PROMPT_TRIM_LADDER: readonly PromptTrim[] = [
   {},
   { examples: true },
   { examples: true, loreLimit: 4 },

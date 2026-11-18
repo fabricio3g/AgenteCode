@@ -27,7 +27,7 @@ function cacheKey(binaryPath: string): string | null {
 }
 
 /** "Vulkan0: AMD Radeon(TM) Graphics (14026 MiB, 13324 MiB free)" → one device. */
-export function parseListDevices(output: string): ListedDevice[] {
+function parseListDevices(output: string): ListedDevice[] {
   const devices: ListedDevice[] = [];
   for (const raw of String(output || '').split(/\r?\n/)) {
     const match = raw.trim().match(/^([A-Za-z]+)(\d+)\s*:\s*(.+)$/);

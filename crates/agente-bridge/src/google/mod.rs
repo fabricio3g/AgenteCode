@@ -215,14 +215,6 @@ impl Google {
         serde_json::from_str(&text)
             .map_err(|error| format!("Google answered with something that is not JSON: {error}"))
     }
-
-    pub async fn post_form(&self, url: &str, form: &[(&str, String)]) -> Result<Value, String> {
-        let response = self.send(self.http.post(url).form(form)).await?;
-        response
-            .json::<Value>()
-            .await
-            .map_err(|error| format!("Google answered with something that is not JSON: {error}"))
-    }
 }
 
 impl Default for Google {

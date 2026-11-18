@@ -4,10 +4,10 @@ import { createId } from '$lib/utils/id';
 import type { ChatFolder, ChatSession } from '$lib/types/chat';
 
 const KEY = 'agente.sidebarOrder';
-export const SIDEBAR_DRAG = 'application/x-agente-sidebar';
+const SIDEBAR_DRAG = 'application/x-agente-sidebar';
 export type SidebarItem = { kind: 'project' | 'folder' | 'chat'; id: string; projectId?: string };
 export const itemKey = (item: SidebarItem) => `${item.kind}:${item.id}`;
-export function ordered<T extends { id: string }>(items: T[], ids: string[]): T[] {
+function ordered<T extends { id: string }>(items: T[], ids: string[]): T[] {
   const rank = new Map(ids.map((id, index) => [id, index]));
   return items.map((item, index) => ({ item, index })).sort((a, b) => (rank.get(a.item.id) ?? ids.length + a.index) - (rank.get(b.item.id) ?? ids.length + b.index)).map(({ item }) => item);
 }

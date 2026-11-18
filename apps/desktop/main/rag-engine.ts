@@ -13,7 +13,7 @@ import { ensureRagEmbeddingRuntime } from './rag/embedding-runtime.ts';
 import { chunkMarkdown, searchableText } from './rag/chunking.ts';
 import { Bm25, blendScores, buildContext, citationOf, selectDiverse, type Candidate } from './rag/ranking.ts';
 import {
-  saveRagDocument, listRagDocumentsDb, deleteRagDocumentDb,
+  saveRagDocument, deleteRagDocumentDb,
   deleteRagDocumentsByChat, upsertFileRecord, getFileRecord, getFileRecordByDocId,
   listFileRecords, linkFileRef, setFileStatus
 } from './chat-db.ts';
@@ -705,51 +705,4 @@ export async function hasRagDocuments(chatId: string): Promise<boolean> {
   ensureStoreLoaded();
   const store = chatDocuments.get(key);
   return !!store && store.size > 0;
-}
-
-/**
- * One-time migration: reads the legacy JSON store and bulk-inserts
- * all chunks into LanceDB with embeddings, plus metadata into SQLite.
- * Called once at startup if a migration marker file is absent.
- */
-async function migrateFromJsonStore() {
-  const storePath = getStorePath();
-  if (!fs.existsSync(storePath)) return;
-
-  await ensureVectorStore();
-  if (!vectorStoreReady) {
-    log.warn('Skipping migration — LanceDB not available');
-    return;
-  }
-
-  const markerPath = storePath + '.migrated';
-  if (fs.existsSync(markerPath)) return;
-
-  log.info('Migrating JSON store to LanceDB...');
-  ensureStoreLoaded();
-
-  let migrated = 0;
-  for (const [chatId, docs] of chatDocuments.entries()) {
-    for (const { doc, chunks } of docs.values()) {
-      // Embeddings are positional, so the text list and the chunk list must be
-      // the same length — a heading-only chunk still indexes by its heading.
-      const indexable = chunks.filter((chunk) => searchableText(chunk as { text: string; heading?: string }).trim()) as Array<{ id: string; text: string; index: number; heading?: string; line_start?: number; line_end?: number }>;
-      if (!indexable.length) continue;
-
-      const embeddings = await getEmbeddings(indexable.map((chunk) => searchableText(chunk))).catch(() => null);
-      if (!embeddings) continue;
-
-      try {
-        await vectorStore.addChunks(chatId, doc, indexable, embeddings);
-        saveRagDocument(doc);
-        migrated++;
-      } catch (err: unknown) {
-        log.warn(`Migration failed for doc ${doc.id}:`, toErrorMessage(err));
-      }
-    }
-  }
-
-  // Mark migration as done (backup old file, don't delete)
-  fs.writeFileSync(markerPath, JSON.stringify({ migrated, at: new Date().toISOString() }));
-  log.info(`Migration complete: ${migrated} documents migrated to LanceDB`);
 }

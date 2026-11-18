@@ -180,38 +180,14 @@ impl ExternalAgentRuntime {
     }
 
     pub async fn execute_tool_calls(&self, tool_calls: Vec<ToolCall>) -> Vec<ExternalToolResult> {
-        self.execute_tool_calls_inner(tool_calls, false, AbortSignal::never())
-            .await
+        self.execute_tool_calls_inner(tool_calls, false).await
     }
 
     pub async fn execute_approved_tool_calls(
         &self,
         tool_calls: Vec<ToolCall>,
     ) -> Vec<ExternalToolResult> {
-        self.execute_tool_calls_inner(tool_calls, true, AbortSignal::never())
-            .await
-    }
-
-    /// Cancellation-aware tool execution: aborting `cancel` drops in-flight
-    /// tool futures (and reaches process-tree teardown for shell) instead of
-    /// leaving commands running after the host abandoned the turn.
-    pub async fn execute_tool_calls_cancellable(
-        &self,
-        tool_calls: Vec<ToolCall>,
-        cancel: AbortSignal,
-    ) -> Vec<ExternalToolResult> {
-        self.execute_tool_calls_inner(tool_calls, false, cancel)
-            .await
-    }
-
-    /// [`execute_approved_tool_calls`] with a cancellation signal.
-    pub async fn execute_approved_tool_calls_cancellable(
-        &self,
-        tool_calls: Vec<ToolCall>,
-        cancel: AbortSignal,
-    ) -> Vec<ExternalToolResult> {
-        self.execute_tool_calls_inner(tool_calls, true, cancel)
-            .await
+        self.execute_tool_calls_inner(tool_calls, true).await
     }
 
     pub async fn changed_files(&self) -> Vec<ChangedFileInfo> {
@@ -245,7 +221,6 @@ impl ExternalAgentRuntime {
         &self,
         tool_calls: Vec<ToolCall>,
         approved_once: bool,
-        cancel: AbortSignal,
     ) -> Vec<ExternalToolResult> {
         let has_sequential = {
             let registry = self.tool_registry.read().await;
@@ -257,23 +232,18 @@ impl ExternalAgentRuntime {
         if has_sequential {
             let mut results = Vec::with_capacity(tool_calls.len());
             for tool_call in tool_calls {
-                results.push(self.execute_one(tool_call, approved_once, &cancel).await);
+                results.push(self.execute_one(tool_call, approved_once).await);
             }
             return results;
         }
 
         let futures = tool_calls
             .into_iter()
-            .map(|tool_call| self.execute_one(tool_call, approved_once, &cancel));
+            .map(|tool_call| self.execute_one(tool_call, approved_once));
         join_all(futures).await
     }
 
-    async fn execute_one(
-        &self,
-        tool_call: ToolCall,
-        approved_once: bool,
-        cancel: &AbortSignal,
-    ) -> ExternalToolResult {
+    async fn execute_one(&self, tool_call: ToolCall, approved_once: bool) -> ExternalToolResult {
         let tool_name = tool_call.function.name.clone();
         let tool_call_id = tool_call.id.clone();
         let args: serde_json::Value = serde_json::from_str(&tool_call.function.arguments)
@@ -355,7 +325,7 @@ impl ExternalAgentRuntime {
             .execute_with_context(
                 &tool_name,
                 args.clone(),
-                ToolExecutionContext::new(cancel.clone()),
+                ToolExecutionContext::new(AbortSignal::never()),
             )
             .await;
 

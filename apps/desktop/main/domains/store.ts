@@ -4,8 +4,8 @@ import crypto from 'node:crypto';
 import type { CreativeProject, MediaAssetRef, MediaKind, ProjectPatch } from '../../shared/domains.ts';
 
 const ID = /^[a-zA-Z0-9_-]{1,100}$/;
-export function checkedId(id: string): string { if (!ID.test(id)) throw new Error('Invalid local asset or project reference'); return id; }
-export async function atomicJson(file: string, value: unknown): Promise<void> {
+function checkedId(id: string): string { if (!ID.test(id)) throw new Error('Invalid local asset or project reference'); return id; }
+async function atomicJson(file: string, value: unknown): Promise<void> {
   await fs.mkdir(path.dirname(file), { recursive: true });
   const temp = `${file}.${crypto.randomUUID()}.tmp`;
   try { await fs.writeFile(temp, JSON.stringify(value, null, 2)); await fs.rename(temp, file); }

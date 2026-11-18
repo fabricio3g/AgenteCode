@@ -12,11 +12,10 @@ import {
 import {
   startLlama, stopLlama, getInstalledRuntimes, deleteRuntimeBinary,
   getSupervisorStatus, getRuntimeTelemetry, supervisorHealthCheck, getLoadedModels,
-  unloadModel, getRecommendedSettings, previewLocalModelCommand,
-  startEmbeddingServer, stopEmbeddingServer
+  unloadModel, getRecommendedSettings, previewLocalModelCommand
 } from './llm-runner.ts';
 import { getEmbeddingStatus } from './embedding-state.ts';
-import { initTts, generateTtsStream, cancelTtsStream, unloadTts, checkEspeakData, listVoices, onWorkerMessage } from './voice/audiocpp-tts.ts';
+import { initTts, generateTtsStream, cancelTtsStream, unloadTts, listVoices, onWorkerMessage } from './voice/audiocpp-tts.ts';
 import { registerVoiceModelHandlers } from './voice/voice-model-handlers.ts';
 import { transcribeAudio, getSttStatus, preloadWhisper, unloadWhisper } from './stt-engine.ts';
 import {
@@ -37,7 +36,7 @@ import { crawlWeb } from './web-crawler.ts';
 import { getAggregatorCatalog, probeAggregatorEngines } from './search-providers/aggregator.ts';
 import {
   pathExists, openModelsFolder, pickWorkspaceFolder, pickModelFile, pickMmprojFile, pickWhisperRuntimeFile,
-  indexWorkspaceFolder, snapshotWorkspaceFiles, writeWorkspaceFile, readWorkspaceFile,
+  indexWorkspaceFolder, writeWorkspaceFile, writeWorkspaceBinary, readWorkspaceFile,
   createWorkspaceDocument, renameWorkspaceFile, deleteWorkspaceFile,
   openWorkspaceFile, createWorkspaceFolder, workspaceExec, writeTempFile,
   resetMediaPermissions
@@ -48,9 +47,8 @@ import {
   panelOpenTab, panelListTabs, panelSetActive, panelCloseTab, panelCloseAll,
   panelSetVisible, panelSetOccluded, panelSetBounds, panelSetPresentation, panelSetViewport,
   panelNavigate as browserNavigate, panelSnapshot as browserSnapshot,
-  panelClick as browserClick, panelTypeText as browserTypeText,
-  panelEvaluate as browserEvaluate, panelScreenshot as browserScreenshot,
-  panelCurrentUrl as browserGetCurrentUrl, panelCloseTab as browserClose
+  panelClick as browserClick, panelScreenshot as browserScreenshot,
+  panelCloseTab as browserClose
 } from './browser-panel.ts';
 import {
   generatePptx, parseSlidesFromMarkdown, slidesToMarkdown
@@ -155,8 +153,6 @@ export function registerIpcHandlers() {
     unloadModel,
     getRecommendedSettings,
     previewLocalModelCommand,
-    startEmbeddingServer,
-    stopEmbeddingServer,
     getEmbeddingStatus,
   });
 
@@ -177,7 +173,6 @@ export function registerIpcHandlers() {
     generateTtsStream,
     cancelTtsStream,
     unloadTts,
-    checkEspeakData,
     listVoices,
     onWorkerMessage,
     logger: (message, ...args) => log.info(message, ...args),
@@ -226,7 +221,6 @@ export function registerIpcHandlers() {
     saveChatDraft: (...args) => chatDatabase.request('saveChatDraft', ...args),
     saveChatSession: (...args) => chatDatabase.request('saveChatSession', ...args),
     loadAllChats: (...args) => chatDatabase.request('loadAllChats', ...args),
-    searchChatContent: (...args) => chatDatabase.request('searchChatContent', ...args),
     deleteChatFromDb: (...args) => chatDatabase.request('deleteChatFromDb', ...args),
     clearRagDocuments,
     migrateFromLocalStorage: (...args) => chatDatabase.request('migrateFromLocalStorage', ...args),
@@ -339,8 +333,8 @@ export function registerIpcHandlers() {
     pickMmprojFile,
     pickWhisperRuntimeFile,
     indexWorkspaceFolder,
-    snapshotWorkspaceFiles,
     writeWorkspaceFile,
+    writeWorkspaceBinary,
     readWorkspaceFile,
     createWorkspaceDocument,
     renameWorkspaceFile,
@@ -371,10 +365,7 @@ export function registerIpcHandlers() {
     browserNavigate,
     browserSnapshot,
     browserClick,
-    browserTypeText,
-    browserEvaluate,
     browserScreenshot,
-    browserGetCurrentUrl,
     browserClose,
     generatePptx,
     parseSlidesFromMarkdown,

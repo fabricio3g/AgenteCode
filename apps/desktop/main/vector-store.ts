@@ -12,7 +12,7 @@ import { getAppPaths } from './paths.ts';
  * more ids in it, not a fan-out over N tables.
  */
 
-export const CHUNK_TABLE = 'agente_chunks';
+const CHUNK_TABLE = 'agente_chunks';
 
 type ChunkRow = {
   id: string;

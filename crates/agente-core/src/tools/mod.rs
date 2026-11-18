@@ -562,14 +562,6 @@ where
 // materially different matcher: it took the first fuzzy hit instead of
 // refusing on ambiguity, so an edit could land in the wrong place.
 
-/// Metadata for rendering a tool call or result in the UI.
-#[derive(Debug, Clone)]
-pub struct ToolRenderInfo {
-    pub icon: &'static str,
-    pub label: String,
-    pub detail: Option<String>,
-}
-
 /// Behavioral class of a tool. ONE source of truth for everything that used
 /// to be name-based match lists: Plan-mode gating, subagent capability
 /// filtering, permission rules and the TUI presentation tables all derive
@@ -709,26 +701,6 @@ pub trait Tool: Send + Sync {
             }
         }
     }
-
-    /// Icon displayed next to the tool name in the UI.
-    fn icon(&self) -> &'static str {
-        "→"
-    }
-
-    /// Render a short summary of the tool call for the UI.
-    /// Default implementation shows the tool name and first argument.
-    fn render_call(&self, args: &serde_json::Value) -> ToolRenderInfo {
-        let detail = args
-            .as_object()
-            .and_then(|m| m.values().next())
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string());
-        ToolRenderInfo {
-            icon: self.icon(),
-            label: self.name().to_string(),
-            detail,
-        }
-    }
 }
 
 /// Args type bound for the typed tool path: deserialization from the
@@ -744,9 +716,6 @@ pub trait ToolCore: Send + Sync + 'static {
     type Args: ToolArgs;
     fn name(&self) -> &str;
     fn description(&self) -> &str;
-    fn icon(&self) -> &'static str {
-        "→"
-    }
     fn kind(&self) -> ToolKind {
         ToolKind::Other
     }
@@ -755,20 +724,6 @@ pub trait ToolCore: Send + Sync + 'static {
     }
     fn allowed_in_plan(&self) -> bool {
         true
-    }
-    /// Card-header summary for the UI. Defaults to the generic first-string
-    /// treatment; override to surface a specific arg (e.g. a plan title).
-    fn render_call(&self, args: &serde_json::Value) -> ToolRenderInfo {
-        let detail = args
-            .as_object()
-            .and_then(|m| m.values().next())
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string());
-        ToolRenderInfo {
-            icon: self.icon(),
-            label: self.name().to_string(),
-            detail,
-        }
     }
     // Declared RPITIT-style with an explicit Send bound (implementers write
     // a plain `async fn run`) so the adapter's futures stay Send.
@@ -864,14 +819,6 @@ impl<C: ToolCore> Tool for TypedTool<C> {
         self.0.kind()
     }
 
-    fn icon(&self) -> &'static str {
-        self.0.icon()
-    }
-
-    fn render_call(&self, args: &serde_json::Value) -> ToolRenderInfo {
-        self.0.render_call(args)
-    }
-
     async fn execute(
         &self,
         args: serde_json::Value,
@@ -963,7 +910,7 @@ impl ToolRegistry {
         registry.register_typed::<WebFetchTool>();
         registry.register_typed::<WebSearchTool>();
         registry.register(Box::new(TaskTool::with_roster(
-            crate::subagent::definition::agent_roster_with(&registry.project_dir, agents),
+            crate::subagent::definition::agent_roster(agents),
         )));
         registry.register(Box::new(TaskOutputTool));
         registry.register(Box::new(KillTaskTool));

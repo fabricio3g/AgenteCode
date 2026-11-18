@@ -13,7 +13,7 @@
   import { copy } from '$lib/copy';
   import type { DesignCanvasTool } from '$shared/design';
 
-  export const TOOLS: { id: DesignCanvasTool; key: string; icon: typeof MousePointer2; label: string }[] = [
+  const TOOLS: { id: DesignCanvasTool; key: string; icon: typeof MousePointer2; label: string }[] = [
     { id: 'browse', key: 'v', icon: MousePointer2, label: copy.design.tools.browse },
     { id: 'select', key: 's', icon: SquareDashedMousePointer, label: copy.design.tools.select },
     { id: 'comment', key: 'c', icon: MessageSquarePlus, label: copy.design.tools.comment },

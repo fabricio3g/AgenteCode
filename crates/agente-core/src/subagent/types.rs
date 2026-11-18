@@ -8,24 +8,6 @@ use serde::{Deserialize, Serialize};
 
 use crate::types::Message;
 
-/// Name of the subagent type to launch. Built-in types are
-/// `general-purpose`, `explore`, and `plan`; any other name resolves against
-/// user-defined agents from `.agente/agents/*.md`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct SubagentType(pub String);
-
-impl SubagentType {
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
-impl From<&str> for SubagentType {
-    fn from(value: &str) -> Self {
-        Self(value.to_string())
-    }
-}
-
 /// Capability mode controlling which tool classes a child agent can use.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]

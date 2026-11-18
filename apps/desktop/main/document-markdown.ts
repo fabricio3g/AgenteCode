@@ -296,9 +296,3 @@ export async function convertFileToMarkdown(filePath: string): Promise<MarkdownC
   try { return { markdown: readText(filePath), fileType: 'text' }; }
   catch { throw new Error(`Unsupported file type: ${ext || path.basename(filePath)}`); }
 }
-
-/** Extensions `convertFileToMarkdown` handles as a structured format. */
-export const SUPPORTED_DOCUMENT_EXTENSIONS = [
-  '.pdf', '.docx', '.xlsx', '.xlsm', '.pptx', '.html', '.htm', '.odt', '.ods', '.odp', '.epub', '.rtf',
-  ...TEXT_EXTENSIONS, ...CODE_EXTENSIONS
-];

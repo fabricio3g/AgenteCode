@@ -245,37 +245,3 @@ export interface AppPaths {
   projectRoot: string;
   IS_DEV: boolean;
 }
-
-/**
- * TTS model catalog entry.
- */
-export interface TTSModelCatalogEntry {
-  label: string;
-  repo: string;
-  dir: string;
-  engine: TTSEngineType;
-  lang?: string;
-  voice_map?: Record<string, number>;
-}
-
-/**
- * Whisper quality catalog entry (GGML format for whisper.cpp).
- */
-export interface WhisperQualityCatalogEntry {
-  label: string;
-  repo: string;
-  dir: string;
-  file: string;
-  multilingual: boolean;
-  files: string[];
-}
-
-/**
- * Local GGUF model catalog entry.
- */
-export interface LocalGGUFCatalogEntry {
-  label: string;
-  filename: string;
-  url: string;
-  size_bytes: number;
-}

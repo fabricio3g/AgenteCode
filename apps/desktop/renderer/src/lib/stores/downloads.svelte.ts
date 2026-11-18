@@ -13,7 +13,7 @@ interface SpeedSample {
   speedBps: number;
 }
 
-export interface JobSpeed {
+interface JobSpeed {
   speedBps: number;
   etaSeconds: number;
 }

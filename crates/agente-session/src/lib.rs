@@ -213,16 +213,6 @@ impl SessionStore {
         Ok(())
     }
 
-    /// Flush and `sync_data` every buffered session log.
-    pub fn durable_flush_all(&self) -> Result<(), SessionStoreError> {
-        let mut logs = self.logs.lock().unwrap();
-        for writer in logs.values_mut() {
-            writer.flush()?;
-            writer.get_ref().sync_data()?;
-        }
-        Ok(())
-    }
-
     /// Atomically replace the session snapshot. The session log is flushed
     /// first so the on-disk log is at least as current as the snapshot; replay
     /// then skips everything with `sequence <= last_sequence`.

@@ -228,7 +228,7 @@ const configured = new Map<string, Record<string, unknown>>();
  * Every configure rebuilds the runtime's provider registry, so an unchanged
  * entry is not sent again.
  */
-export async function configureDesktopProvider(client: Pick<AgenteClient, 'request'>, id: string, config: Record<string, unknown>, prefer: 'new' | 'held' = 'new'): Promise<void> {
+async function configureDesktopProvider(client: Pick<AgenteClient, 'request'>, id: string, config: Record<string, unknown>, prefer: 'new' | 'held' = 'new'): Promise<void> {
   const held = configured.get(id);
   const fresh = (config.models ?? {}) as Record<string, unknown>;
   const kept = (held?.models ?? {}) as Record<string, unknown>;
@@ -281,7 +281,7 @@ export async function modelSeesImages(providerName: string, model: string): Prom
  * vision projector. The name guess is the fallback only when the core
  * cannot be asked.
  */
-export async function modelInputs(providerName: string, model: string): Promise<string[]> {
+async function modelInputs(providerName: string, model: string): Promise<string[]> {
   const transport = resolveTransport(providerName, model);
   const guess = transportSeesImages(transport) ? ['text', 'image'] : ['text'];
   if (transport.providerName === 'local') return guess;
@@ -366,7 +366,7 @@ function providerEntry(providerName: string, model: string, selection?: LocalMod
 }
 
 /** A provider as the runtime takes it: Desktop's endpoint and key, and these models. */
-export function providerConfig(providerName: string, models: string[], selection?: LocalModelSelection): Record<string, unknown> {
+function providerConfig(providerName: string, models: string[], selection?: LocalModelSelection): Record<string, unknown> {
   const transport = resolveTransport(providerName, models[0], selection);
   const apiKey = resolveApiKey('', transport.baseUrl, transport.providerName) || undefined;
   return {

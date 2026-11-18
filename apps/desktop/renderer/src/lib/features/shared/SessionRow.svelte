@@ -18,7 +18,6 @@
   import { cn as uiClass } from '$lib/utils/cn';
 
   import type { Snippet } from 'svelte';
-  import type { Icon as AppIcon } from '$lib/icons';
   import { t } from 'svelte-i18n';
   import { openConversationWindow } from './conversation-window';
   import { tick } from 'svelte';
@@ -48,8 +47,6 @@
     dropActive?: boolean;
     active: boolean;
     onselect: () => void;
-    /** Leading icon (Code shows a speech bubble; Home shows none). */
-    icon?: AppIcon;
     status?: 'running' | 'approval' | null;
     statusLabel?: string;
     menuLabel?: string;
@@ -63,7 +60,7 @@
     open?: boolean;
   }
 
-  let { chat, active, onselect, icon: Icon, status = null, statusLabel = '', menuLabel = copy.actions.more, onsplit, open = false, extraActions, ondragstart, ondragend, ondragover, ondrop, dropActive = false }: Props = $props();
+  let { chat, active, onselect, status = null, statusLabel = '', menuLabel = copy.actions.more, onsplit, open = false, extraActions, ondragstart, ondragend, ondragover, ondrop, dropActive = false }: Props = $props();
 
   const title = $derived(displayChatTitle(chat));
 
@@ -138,7 +135,6 @@
     }
   }}
 >
-  {#if Icon}<Icon class="sidebar-row-icon" />{/if}
 
   {#if renaming}
     <UiInput

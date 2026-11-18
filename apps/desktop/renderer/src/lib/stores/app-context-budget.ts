@@ -24,7 +24,7 @@ export interface ApiModelMetadataValue {
 
 export type InvokeFn = <T = unknown>(channel: string, payload?: unknown) => Promise<T>;
 
-export function normalizeLocalContextBudget(input: unknown): ContextBudgetValue | null {
+function normalizeLocalContextBudget(input: unknown): ContextBudgetValue | null {
   if (!input || typeof input !== 'object') return null;
   const value = input as Partial<ContextBudgetValue>;
   return {
@@ -37,7 +37,7 @@ export function normalizeLocalContextBudget(input: unknown): ContextBudgetValue 
   };
 }
 
-export async function countMessageTokens(messages: RequestMessage[], invoke: InvokeFn): Promise<number> {
+async function countMessageTokens(messages: RequestMessage[], invoke: InvokeFn): Promise<number> {
   let totalTokens = 0;
   for (const msg of messages) {
     const text = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content);

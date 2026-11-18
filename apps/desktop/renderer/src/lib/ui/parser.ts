@@ -349,20 +349,3 @@ function parseWithSchema(schema: LibraryJSONSchema, input: string): ParseResult 
 export function createParser(schema: LibraryJSONSchema) {
   return { parse(input: string) { return parseWithSchema(schema, input); } };
 }
-
-function createStreamingParser(schema: LibraryJSONSchema) {
-  let buffer = '';
-  return {
-    push(chunk: string) {
-      buffer += chunk;
-      return parseWithSchema(schema, buffer);
-    },
-    parse(input: string) {
-      buffer = input;
-      return parseWithSchema(schema, buffer);
-    },
-    reset() {
-      buffer = '';
-    }
-  };
-}

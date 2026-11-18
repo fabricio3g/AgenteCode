@@ -11,8 +11,6 @@ import type {
   AppConfig,
   TTSConfig,
   STTConfig,
-  OnboardingConfig,
-  LLMConfig,
 } from './config.types.ts';
 
 /**

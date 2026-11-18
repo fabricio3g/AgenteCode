@@ -7,9 +7,6 @@
   arrow keys that walk the rows, and a count in the footer. The composer's
   switcher and every pin (a subagent type, the compaction model) open this, so
   choosing a model reads the same wherever it is asked for.
-
-  `rows` replaces the cloud list for a caller with a different body (the
-  composer's on-device branch); the shell, the search and the footer stay.
 -->
 
 <script lang="ts">
@@ -21,8 +18,7 @@
   import { cn as uiClass } from '$lib/utils/cn';
 
   import { Button } from '$lib/components/ui';
-  import type { Snippet } from 'svelte';
-  import { Check, ChevronRight, LoaderCircle, RefreshCw, Search, Settings2, X } from '$lib/icons';
+  import { Check, ChevronRight, LoaderCircle, RefreshCw, Search, X } from '$lib/icons';
   import { t } from 'svelte-i18n';
   import { backdropIn, backdropOut, dialogIn, dialogOut } from '$lib/utils/transitions';
   import { modalLayer } from '$lib/components/ui/modal-layer';
@@ -31,30 +27,19 @@
   import { appStore } from '$lib/stores/app.svelte';
   import { providerModels } from '$lib/stores/provider-models.svelte';
   import { configuredProviders } from '$lib/utils/providers';
+  import { moveAmongModelRows } from './model-row-keys';
 
   let {
     open = $bindable(false),
     title,
     selected = null,
-    onpick,
-    onmanage,
-    bar,
-    note,
-    rows
+    onpick
   }: {
     open?: boolean;
     title?: string;
     /** The pin in effect, so its row is marked and sorted first. */
     selected?: { provider: string; model: string } | null;
     onpick: (provider: string, model: string) => void;
-    /** Opens provider settings; hides the button when absent. */
-    onmanage?: () => void;
-    /** Controls at the left of the bar (the composer's source switch). */
-    bar?: Snippet;
-    /** One quiet inset row above the list (loading, a switch to confirm). */
-    note?: Snippet;
-    /** A different list body. */
-    rows?: Snippet;
   } = $props();
 
   let search = $state('');
@@ -123,22 +108,6 @@
     return () => clearTimeout(timer);
   });
 
-  function onKeydown(event: KeyboardEvent) {
-    if (!panelEl) return;
-    if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
-    const list = [...panelEl.querySelectorAll<HTMLButtonElement>('[data-model-option]:not(:disabled)')];
-    const current = list.findIndex((row) => row === document.activeElement);
-    if (document.activeElement !== searchInput && current < 0) return;
-    event.preventDefault();
-    const next = current + (event.key === 'ArrowDown' ? 1 : -1);
-    if (next < 0 && current >= 0) searchInput?.focus();
-    else {
-      const row = list[Math.min(list.length - 1, Math.max(0, next))];
-      row?.focus();
-      row?.scrollIntoView({ block: 'nearest' });
-    }
-  }
-
   /** Portal fixed menus out of the titlebar drag region so clicks work on Windows/Electron. */
   function portalToBody(node: HTMLElement) {
     document.body.appendChild(node);
@@ -164,7 +133,7 @@
         aria-modal="true"
         aria-labelledby={`${dialogId}-title`}
         tabindex="-1"
-        onkeydown={onKeydown}
+        onkeydown={(event) => moveAmongModelRows(event, panelEl, searchInput)}
         onclick={(e) => e.stopPropagation()}
         onpointerdown={(e) => e.stopPropagation()}
         in:dialogIn
@@ -173,20 +142,13 @@
         <h2 id={`${dialogId}-title`} class="sr-only">{title ?? $t('modelPicker.title')}</h2>
 
         <div class="picker-bar">
-          {#if bar}{@render bar()}{:else}<span class="picker-title">{title ?? $t('modelPicker.title')}</span>{/if}
+          <span class="picker-title">{title ?? $t('modelPicker.title')}</span>
           <span class="flex-1"></span>
           <Tooltip label={$t('modelPicker.refresh')} position="bottom">
             <UiIconButton label={$t('modelPicker.refresh')} size="xs" type="button" class={uiClass(" ", "ui-local-6cbfdb91")} onclick={refresh}  disabled={refreshing}>
               <RefreshCw class={refreshing ? 'animate-spin' : ''} />
             </UiIconButton>
           </Tooltip>
-          {#if onmanage}
-            <Tooltip label={$t('modelPicker.manageProviders')} position="bottom">
-              <UiIconButton label={$t('modelPicker.manageProviders')} size="xs" type="button" class={uiClass(" ", "ui-local-6cbfdb91")} onclick={onmanage} >
-                <Settings2 />
-              </UiIconButton>
-            </Tooltip>
-          {/if}
           <Tooltip label={$t('modelPicker.close')} position="bottom"><UiIconButton label={$t('modelPicker.close')} size="xs" type="button" class={uiClass(" ", "ui-local-6cbfdb91")} onclick={() => (open = false)} ><X /></UiIconButton></Tooltip>
         </div>
 
@@ -204,13 +166,9 @@
           {/if}
         </label>
 
-        {#if note}{@render note()}{/if}
-
         <div class="model-list" aria-label={$t('modelPicker.available')}>
-          {#if rows}
-            {@render rows()}
-          {:else if !providers.length}
-            <EmptyState align="start" size="compact" title={$t('modelPicker.noProviders')} description={$t('modelPicker.noProvidersHint')} action={$t('modelPicker.configureProvider')} onaction={onmanage} />
+          {#if !providers.length}
+            <EmptyState align="start" size="compact" title={$t('modelPicker.noProviders')} description={$t('modelPicker.noProvidersHint')} />
           {:else if !visible.length}
             <EmptyState align="start" size="compact" title={$t('modelPicker.noResults')} description={$t('modelPicker.noResultsHint')} action={$t('modelPicker.clearSearch')} onaction={() => (search = '')} />
           {:else}

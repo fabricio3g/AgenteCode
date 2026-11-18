@@ -305,7 +305,6 @@ fn mcp_tool_from_json(server: &str, config: &McpConfig, tool: &Value) -> Option<
     Some(McpTool {
         full_name: full_tool_name(server, &name),
         name,
-        server_name: server.to_string(),
         description,
         input_schema,
         plan_mode: config.plan_mode,
@@ -557,11 +556,6 @@ impl McpManager {
             .collect();
         tools.sort_by(|a, b| a.full_name.cmp(&b.full_name));
         tools
-    }
-
-    /// Kept for callers of the pre-rmcp API.
-    pub fn get_all_tools(&self) -> Vec<McpTool> {
-        self.tools()
     }
 
     /// Names of the connected servers.

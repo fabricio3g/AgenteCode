@@ -19,9 +19,7 @@ agente-protocol = { workspace = true }
 agente-runtime = { workspace = true }
 agente-tui = { workspace = true }
 tokio = { workspace = true }
-serde = { workspace = true }
 serde_json = { workspace = true }
-chrono = { workspace = true }
 clap = { workspace = true }
 anyhow = { workspace = true }
 tracing = { workspace = true }

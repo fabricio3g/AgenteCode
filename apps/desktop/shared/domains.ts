@@ -57,7 +57,6 @@ export interface MediaJob {
   phase: string; startedAt: number; endedAt?: number; progress?: number;
   result?: unknown; error?: string;
 }
-export const DOMAIN_TOOL_NAMES = ['domain_catalog', 'domain_tools', 'domain_read', 'domain_write'] as const;
 const argumentsSchema = { type: 'object' as const, additionalProperties: true };
 export const DOMAIN_TOOL_DEFS: Array<{ name: string; description: string; parameters: { type: 'object'; properties: Record<string, { type: string; additionalProperties?: boolean }>; required?: string[]; additionalProperties: boolean } }> = [
   { name: 'domain_catalog', description: 'List domain packs enabled in Settings and their local dependencies. Domain tools process media locally. Use domain_tools to discover operations.', parameters: { type: 'object' as const, properties: {}, additionalProperties: false } },

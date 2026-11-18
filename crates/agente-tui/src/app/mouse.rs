@@ -539,12 +539,9 @@ impl App {
         }
 
         // Tool card → cycle its fold Collapsed → Truncated → Expanded
-        // (drag-select still copies). The region carries the tool name so
-        // `shell`/`read_file` cycle from their Truncated default.
+        // (drag-select still copies).
         if region.kind == ClickKind::Tool {
-            self.state
-                .ui
-                .cycle_tool_entry(region.entry_id, region.tool_name.as_deref());
+            self.state.ui.cycle_tool_entry(region.entry_id);
             return Ok(());
         }
 

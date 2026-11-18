@@ -24,8 +24,6 @@ pub use client::{McpManager, ServerSnapshot, ServerStatus};
 #[cfg(feature = "execution")]
 pub use tool_adapter::McpToolAdapter;
 
-use crate::types::ToolDefinition;
-
 /// Longest tool name every provider accepts (OpenAI caps at 64).
 pub const MAX_TOOL_NAME: usize = 64;
 
@@ -210,7 +208,6 @@ pub fn approval_key(project_dir: &str, server: &str) -> String {
 pub struct McpTool {
     /// Name on the server.
     pub name: String,
-    pub server_name: String,
     /// Name the model sees: `server_tool`, sanitized and capped.
     pub full_name: String,
     pub description: String,
@@ -221,16 +218,6 @@ pub struct McpTool {
     pub read_only: bool,
     /// Every call is pre-approved (config `trust`).
     pub trusted: bool,
-}
-
-impl McpTool {
-    pub fn to_tool_definition(&self) -> ToolDefinition {
-        ToolDefinition {
-            name: self.full_name.clone(),
-            description: self.description.clone(),
-            parameters: self.input_schema.clone(),
-        }
-    }
 }
 
 /// `server_tool` with every character outside `[A-Za-z0-9_-]` replaced, cut
