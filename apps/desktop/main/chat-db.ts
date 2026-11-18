@@ -389,7 +389,11 @@ export function saveChatSession(session) {
       session.updatedAt || Date.now()
     );
 
-    const messages = Array.isArray(session.messages) ? session.messages : [];
+    // A chat whose transcript was never loaded (Code chats load on open) arrives
+    // without `messages`: only its row changes. Treating that as an empty
+    // transcript would prune every message it has.
+    if (!Array.isArray(session.messages)) return;
+    const messages = session.messages;
     const keepIds = messages.map((msg) => msg.id).filter(Boolean);
     deleteOrphanMessagesExcept(session.id, keepIds);
 
@@ -472,6 +476,7 @@ export function saveChatSession(session) {
   });
 
   transaction();
+  if (!Array.isArray(session.messages)) return;
   // Publish fingerprints only after commit; failed transactions must be retried.
   for (const id of chatMessageIds.get(session.id) ?? []) if (!messageIds.has(id)) messageFingerprints.delete(`${session.id}\0${id}`);
   chatMessageIds.set(session.id, messageIds);
@@ -479,124 +484,202 @@ export function saveChatSession(session) {
   while (messageFingerprints.size > 10000) messageFingerprints.delete(messageFingerprints.keys().next().value!);
 }
 
+/**
+ * Chats whose transcripts load on open instead of at startup: Code sessions,
+ * which hold nearly all of the database (tool output, diffs, subagent
+ * transcripts). Everything else is small and read across chats (search, the
+ * artifact library), so it still loads up front.
+ */
+const LAZY_CHAT = "(coalesce(c.context_mode, 'chat') IN ('code', 'work') OR c.workspace IS NOT NULL)";
+
+function groupRows(rows, key) {
+  const grouped = new Map();
+  for (const row of rows) {
+    const bucket = grouped.get(row[key]) ?? [];
+    bucket.push(row);
+    grouped.set(row[key], bucket);
+  }
+  return grouped;
+}
+
+function attachmentFromRow(att) {
+  return {
+    id: att.id,
+    name: att.name || '',
+    size: att.size || 0,
+    type: att.type || '',
+    url: att.url || undefined,
+    preview: att.preview || undefined,
+    base64: att.base64 || undefined,
+    data: att.data || undefined,
+    kind: att.kind || undefined,
+    status: att.status || undefined,
+    docId: att.doc_id || undefined,
+    ocrText: att.ocr_text || undefined,
+    error: att.error || undefined
+  };
+}
+
+function versionFromRow(ver) {
+  return {
+    content: ver.content,
+    reasoning: ver.reasoning || undefined,
+    createdAt: ver.created_at,
+    metadata: {
+      modelName: ver.model_name || undefined,
+      tokens: ver.tokens || undefined,
+      timing: ver.timing || undefined,
+      tokensPerSecond: ver.tokens_per_second || undefined,
+      error: !!ver.error,
+      ...parseJson(ver.metadata, {})
+    }
+  };
+}
+
+function messageFromRow(msg, attachmentRows, versionRows) {
+  const attachments = (attachmentRows.get(msg.id) ?? []).map(attachmentFromRow);
+  const versions = (versionRows.get(msg.id) ?? []).map(versionFromRow);
+  const result: Record<string, unknown> = {
+    id: msg.id,
+    role: msg.role,
+    content: msg.content,
+    createdAt: msg.created_at,
+    done: !!msg.done,
+    status: msg.status || 'idle'
+  };
+  if (msg.reasoning) result.reasoning = msg.reasoning;
+  if (msg.model) result.model = msg.model;
+  if (msg.search_mode) result.searchMode = msg.search_mode;
+  if (msg.mode) result.mode = msg.mode;
+  if (msg.speaker_id) result.speakerId = msg.speaker_id;
+  const choices = parseJson(msg.choices, []);
+  if (Array.isArray(choices) && choices.length) result.choices = choices.map(String);
+  const props = parseJson(msg.props, []);
+  if (Array.isArray(props) && props.length) result.props = props;
+  const storyTurn = parseJson(msg.story_turn, null);
+  if (storyTurn) result.storyTurn = storyTurn;
+  if (msg.active_version != null) result.activeVersion = msg.active_version;
+  result.metadata = parseJson(msg.metadata, undefined);
+  result.sources = parseJson(msg.sources, []);
+  result.searchMeta = parseJson(msg.search_meta, null);
+  result.agentSteps = parseJson(msg.agent_steps, []);
+  result.ragDocuments = parseJson(msg.rag_documents, []);
+  result.slides = parseJson(msg.slides, []);
+  result.workContext = parseJson(msg.work_context, null);
+  result.filesCreated = parseJson(msg.files_created, []);
+  result.ttsAudio = parseJson(msg.tts_audio, undefined);
+  result.artifact = parseJson(msg.artifact, null);
+  const artifacts = parseJson(msg.artifacts, null);
+  if (Array.isArray(artifacts) && artifacts.length) result.artifacts = artifacts;
+  if (attachments.length) result.attachments = attachments;
+  if (versions.length) result.versions = versions;
+  return result;
+}
+
+function sessionFromRow(chat, messages) {
+  return {
+    id: chat.id,
+    title: chat.title,
+    createdAt: chat.created_at,
+    updatedAt: chat.updated_at,
+    folderId: chat.folder_id,
+    draft: chat.draft || '',
+    contextMode: chat.context_mode || 'chat',
+    codeAgent: parseJson(chat.code_agent, null),
+    homeRuntime: parseJson(chat.home_runtime, undefined),
+    projectId: chat.project_id || null,
+    workspace: parseJson(chat.workspace, null),
+    composerMode: chat.composer_mode || null,
+    searchMode: chat.search_mode || null,
+    reasoningLevel: chat.reasoning_level || null,
+    modelSelection: parseJson(chat.model_selection, null),
+    pendingPrompts: parseJson(chat.pending_prompts, []),
+    characterId: chat.character_id || null,
+    worldId: chat.world_id || null,
+    personaId: chat.persona_id || null,
+    greetingIndex: chat.greeting_index != null ? chat.greeting_index : 0,
+    roleplay: parseJson(chat.roleplay, null),
+    origin: chat.origin || undefined,
+    // `false` = transcript still in the database; the renderer loads it on open.
+    ...(messages ? { messages } : { messages: [], messagesLoaded: false })
+  };
+}
+
+/**
+ * Every chat, with transcripts for the small spaces only. Code chats come back
+ * with `messagesLoaded: false` and an empty list; `loadChatMessages` fills one
+ * in when it is opened. On a long-used profile this is the difference between
+ * parsing ~100 MB of tool output at startup and parsing about one.
+ */
 export function loadAllChats() {
   const database = getDb();
-  const chats = database.prepare('SELECT * FROM chats ORDER BY updated_at DESC').all();
-  const group = (rows, key) => {
-    const grouped = new Map();
-    for (const row of rows) {
-      const bucket = grouped.get(row[key]) ?? [];
-      bucket.push(row);
-      grouped.set(row[key], bucket);
+  const chats = database.prepare('SELECT * FROM chats c ORDER BY updated_at DESC').all();
+  const lazy = new Set(database.prepare(`SELECT c.id FROM chats c WHERE ${LAZY_CHAT}`).all().map((row) => row.id));
+  const eager = `(SELECT c.id FROM chats c WHERE NOT ${LAZY_CHAT})`;
+  // Three scans instead of two extra queries for every message at startup.
+  const messageRows = groupRows(database.prepare(`SELECT * FROM messages WHERE chat_id IN ${eager} ORDER BY created_at ASC`).all(), 'chat_id');
+  const attachmentRows = groupRows(database.prepare(`SELECT a.* FROM attachments a JOIN messages m ON m.id = a.message_id WHERE m.chat_id IN ${eager}`).all(), 'message_id');
+  const versionRows = groupRows(database.prepare(`SELECT v.* FROM message_versions v JOIN messages m ON m.id = v.message_id WHERE m.chat_id IN ${eager} ORDER BY v.created_at ASC`).all(), 'message_id');
+
+  return chats.map((chat) => sessionFromRow(
+    chat,
+    lazy.has(chat.id) ? null : (messageRows.get(chat.id) ?? []).map((msg) => messageFromRow(msg, attachmentRows, versionRows))
+  ));
+}
+
+/** One chat's transcript, for a chat that came back from `loadAllChats` unloaded. */
+export function loadChatMessages(chatId: string) {
+  const database = getDb();
+  const rows = database.prepare('SELECT * FROM messages WHERE chat_id = ? ORDER BY created_at ASC').all(chatId);
+  const attachmentRows = groupRows(database.prepare('SELECT a.* FROM attachments a JOIN messages m ON m.id = a.message_id WHERE m.chat_id = ?').all(chatId), 'message_id');
+  const versionRows = groupRows(database.prepare('SELECT v.* FROM message_versions v JOIN messages m ON m.id = v.message_id WHERE m.chat_id = ? ORDER BY v.created_at ASC').all(chatId), 'message_id');
+  return rows.map((msg) => messageFromRow(msg, attachmentRows, versionRows));
+}
+
+/**
+ * Content search over transcripts that are not loaded: the first matching
+ * message per chat. LIKE is case-insensitive for ASCII, as the in-memory
+ * search is for loaded chats; `%`, `_` and `\` in the query are escaped.
+ */
+export function searchChatMessages(query: string, chatIds: string[]) {
+  const q = String(query ?? '').trim();
+  if (!q || !Array.isArray(chatIds) || !chatIds.length) return [];
+  const database = getDb();
+  const pattern = `%${q.replace(/[\\%_]/g, (ch) => `\\${ch}`)}%`;
+  const out = [];
+  const find = database.prepare("SELECT id, content FROM messages WHERE chat_id = ? AND content LIKE ? ESCAPE '\\' ORDER BY created_at ASC LIMIT 1");
+  for (const chatId of chatIds) {
+    const row = find.get(chatId, pattern);
+    if (row) out.push({ chatId, messageId: row.id, content: row.content });
+  }
+  return out;
+}
+
+/**
+ * Only what the Files screen reads from unloaded chats: attachments, the
+ * media a Code turn carried, and each tool step's file changes. Parsed here,
+ * off the UI thread, so the screen never pulls whole transcripts across.
+ */
+export function loadChatFileFacts(chatIds: string[]) {
+  if (!Array.isArray(chatIds) || !chatIds.length) return {};
+  const database = getDb();
+  const messages = database.prepare('SELECT id, created_at, metadata, agent_steps FROM messages WHERE chat_id = ? ORDER BY created_at ASC');
+  const attachments = database.prepare('SELECT a.* FROM attachments a JOIN messages m ON m.id = a.message_id WHERE m.chat_id = ?');
+  const out: Record<string, unknown[]> = {};
+  for (const chatId of chatIds) {
+    const byMessage = groupRows(attachments.all(chatId), 'message_id');
+    const list = [];
+    for (const row of messages.all(chatId)) {
+      const steps = parseJson(row.agent_steps, []);
+      const fileSteps = Array.isArray(steps) ? steps.filter((step) => Array.isArray(step?.fileChanges) && step.fileChanges.length).map((step) => ({ id: step.id, fileChanges: step.fileChanges })) : [];
+      const codeAttachments = parseJson(row.metadata, null)?.codeAttachments;
+      const files = (byMessage.get(row.id) ?? []).map(attachmentFromRow);
+      if (!fileSteps.length && !files.length && !codeAttachments?.length) continue;
+      list.push({ id: row.id, createdAt: row.created_at, attachments: files, agentSteps: fileSteps, ...(codeAttachments?.length ? { metadata: { codeAttachments } } : {}) });
     }
-    return grouped;
-  };
-  // Four scans instead of two extra queries for every message at startup.
-  const messageRows = group(database.prepare('SELECT * FROM messages ORDER BY created_at ASC').all(), 'chat_id');
-  const attachmentRows = group(database.prepare('SELECT * FROM attachments').all(), 'message_id');
-  const versionRows = group(database.prepare('SELECT * FROM message_versions ORDER BY created_at ASC').all(), 'message_id');
-
-  return chats.map(chat => {
-    const messages = (messageRows.get(chat.id) ?? []).map(msg => {
-      const attachments = (attachmentRows.get(msg.id) ?? []).map(att => ({
-        id: att.id,
-        name: att.name || '',
-        size: att.size || 0,
-        type: att.type || '',
-        url: att.url || undefined,
-        preview: att.preview || undefined,
-        base64: att.base64 || undefined,
-        data: att.data || undefined,
-        kind: att.kind || undefined,
-        status: att.status || undefined,
-        docId: att.doc_id || undefined,
-        ocrText: att.ocr_text || undefined,
-        error: att.error || undefined
-      }));
-
-      const versions = (versionRows.get(msg.id) ?? []).map(ver => {
-        const metadata = {
-          modelName: ver.model_name || undefined,
-          tokens: ver.tokens || undefined,
-          timing: ver.timing || undefined,
-          tokensPerSecond: ver.tokens_per_second || undefined,
-          error: !!ver.error
-        };
-        return {
-          content: ver.content,
-          reasoning: ver.reasoning || undefined,
-          createdAt: ver.created_at,
-          metadata: {
-            ...metadata,
-            ...parseJson(ver.metadata, {})
-          }
-        };
-      });
-
-      const result = {
-        id: msg.id,
-        role: msg.role,
-        content: msg.content,
-        createdAt: msg.created_at,
-        done: !!msg.done,
-        status: msg.status || 'idle'
-      };
-      if (msg.reasoning) result.reasoning = msg.reasoning;
-      if (msg.model) result.model = msg.model;
-      if (msg.search_mode) result.searchMode = msg.search_mode;
-      if (msg.mode) result.mode = msg.mode;
-      if (msg.speaker_id) result.speakerId = msg.speaker_id;
-      const choices = parseJson(msg.choices, []);
-      if (Array.isArray(choices) && choices.length) result.choices = choices.map(String);
-      const props = parseJson(msg.props, []);
-      if (Array.isArray(props) && props.length) result.props = props;
-      const storyTurn = parseJson(msg.story_turn, null);
-      if (storyTurn) result.storyTurn = storyTurn;
-      if (msg.active_version != null) result.activeVersion = msg.active_version;
-      result.metadata = parseJson(msg.metadata, undefined);
-      result.sources = parseJson(msg.sources, []);
-      result.searchMeta = parseJson(msg.search_meta, null);
-      result.agentSteps = parseJson(msg.agent_steps, []);
-      result.ragDocuments = parseJson(msg.rag_documents, []);
-      result.slides = parseJson(msg.slides, []);
-      result.workContext = parseJson(msg.work_context, null);
-      result.filesCreated = parseJson(msg.files_created, []);
-      result.ttsAudio = parseJson(msg.tts_audio, undefined);
-      result.artifact = parseJson(msg.artifact, null);
-      const artifacts = parseJson(msg.artifacts, null);
-      if (Array.isArray(artifacts) && artifacts.length) result.artifacts = artifacts;
-      if (attachments.length) result.attachments = attachments;
-      if (versions.length) result.versions = versions;
-      return result;
-    });
-
-    const session = {
-      id: chat.id,
-      title: chat.title,
-      createdAt: chat.created_at,
-      updatedAt: chat.updated_at,
-      folderId: chat.folder_id,
-      draft: chat.draft || '',
-      contextMode: chat.context_mode || 'chat',
-      codeAgent: parseJson(chat.code_agent, null),
-      homeRuntime: parseJson(chat.home_runtime, undefined),
-      projectId: chat.project_id || null,
-      workspace: parseJson(chat.workspace, null),
-      composerMode: chat.composer_mode || null,
-      searchMode: chat.search_mode || null,
-      reasoningLevel: chat.reasoning_level || null,
-      modelSelection: parseJson(chat.model_selection, null),
-      pendingPrompts: parseJson(chat.pending_prompts, []),
-      characterId: chat.character_id || null,
-      worldId: chat.world_id || null,
-      personaId: chat.persona_id || null,
-      greetingIndex: chat.greeting_index != null ? chat.greeting_index : 0,
-      roleplay: parseJson(chat.roleplay, null),
-      origin: chat.origin || undefined,
-      messages
-    };
-    return session;
-  });
+    out[chatId] = list;
+  }
+  return out;
 }
 
 export function loadAllFolders() {

@@ -29,8 +29,8 @@ export const projectControls = new ProjectControlsState();
 if (typeof window !== 'undefined') {
   window.addEventListener('keydown', (event) => {
     if (!(event.ctrlKey || event.metaKey) || !event.altKey || event.shiftKey || event.code !== 'Digit0') return;
-    // Only where a Code conversation is on screen.
-    if (!document.querySelector('[data-conversation-workspace]')) return;
+    // Only where a Code conversation is on screen (Code stays mounted, hidden, behind other spaces).
+    if (!document.querySelector('[data-space-layer="code"]:not([hidden]) [data-conversation-workspace]')) return;
     event.preventDefault();
     projectControls.toggle();
   });

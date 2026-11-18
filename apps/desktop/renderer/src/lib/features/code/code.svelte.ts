@@ -766,6 +766,9 @@ class CodeStore {
 
   /** Start (or resume) the session, record the turn, then `start` it. */
   async #runTurn(chatId: string, text: string, start: () => Promise<{ ok: boolean; error?: string; conversationIndex?: number }>, attachments: Attachment[] = []): Promise<void> {
+    // A turn appends to the history: it must be loaded first (session goals and
+    // computer use can send into a chat nobody has opened this launch).
+    await appStore.ensureChatMessages(chatId);
     const chat = appStore.chats.find((c) => c.id === chatId);
     const project = this.projectById(chat?.projectId ?? null);
     if (!chat || !project || !text.trim()) return;
@@ -988,6 +991,7 @@ class CodeStore {
   }
 
   async actOnMessage(chatId: string, messageId: string, action: 'fork' | 'rewind'): Promise<void> {
+    await appStore.ensureChatMessages(chatId);
     const chat = appStore.chats.find((item) => item.id === chatId);
     const project = this.projectById(chat?.projectId ?? null);
     const index = chat?.messages.findIndex((item) => item.id === messageId) ?? -1;

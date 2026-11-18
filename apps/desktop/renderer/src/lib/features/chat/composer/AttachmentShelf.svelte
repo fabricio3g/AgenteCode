@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { spaceVisible } from '$lib/components/layout/space-visibility';
   import { ChevronLeft, ChevronRight, Minus, Plus, Trash2 } from '$lib/icons';
   import Button from '$lib/components/ui/Button.svelte';
   import IconButton from '$lib/components/ui/IconButton.svelte';
@@ -8,6 +9,8 @@
   import { SHELF_LIMIT, type DraftAttachment } from './attachment-shelf';
   import { formatBytes } from '$lib/utils/format';
   import { toastStore } from '$lib/stores/toast.svelte';
+  /** Code keeps this mounted behind other spaces; window keys are only ours while shown. */
+  const shown = spaceVisible();
   let { files, onremove }: { files: DraftAttachment[]; onremove: (id: string) => void } = $props();
   let gallery = $state(false);
   let activeId = $state<string | null>(null);
@@ -39,7 +42,7 @@
   function select(id: string, value: boolean) { selected = value ? [...new Set([...selected, id])] : selected.filter(item => item !== id); }
   function step(direction: number) { if (files.length) activeId = files[(index + direction + files.length) % files.length].id; }
   function keys(event: KeyboardEvent) {
-    if (!active || event.altKey || event.ctrlKey || event.metaKey || (event.target as HTMLElement)?.closest('input,textarea,select,[contenteditable=true]')) return;
+    if (!shown() || !active || event.altKey || event.ctrlKey || event.metaKey || (event.target as HTMLElement)?.closest('input,textarea,select,[contenteditable=true]')) return;
     if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') { event.preventDefault(); event.stopPropagation(); step(event.key === 'ArrowLeft' ? -1 : 1); }
   }
 </script>

@@ -15,10 +15,13 @@
   import { workspaceLayout as defaultLayout, type WorkspaceLayoutStore } from '$lib/stores/workspace-layout.svelte';
   import { clampRect, dropEdge, EDGE, measureWorkspace, panelIds, previewRect, projectedSplitRatio, resizeCorners, resizeRect, type Divider, type DockEdge, type Placement, type Rect, type ResizeCorner, type WorkspaceLayout } from './workspace-layout';
   import type { WorkspacePanel } from './workspace-panel';
+  import { spaceVisible } from './space-visibility';
   import { startPointerGesture } from '$lib/utils/pointer-gesture';
 
   let { panels, children, layout: workspaceLayout = defaultLayout }: { layout?: WorkspaceLayoutStore; panels: WorkspacePanel[]; children: Snippet } = $props();
   let host = $state<HTMLDivElement>();
+  /** False while this host's space is mounted but another one is shown. */
+  const shown = spaceVisible();
   let size = $state({ width: 0, height: 0 });
   let preview = $state<Rect | null>(null);
   let ghost = $state<Rect | null>(null);
@@ -51,6 +54,9 @@
   });
   onMount(() => {
     const measure = () => {
+      // Hidden spaces measure 0×0: keep the last real size, or every panel (a
+      // terminal resizing its shell to zero columns) re-lays out for nothing.
+      if (host && !shown() && !host.clientWidth && !host.clientHeight) return;
       if (host && (host.clientWidth !== size.width || host.clientHeight !== size.height)) size = { width: host.clientWidth, height: host.clientHeight };
     };
     const observer = new ResizeObserver(measure);
@@ -192,7 +198,7 @@
   <main onpointerdown={() => { workspaceLayout.focused = ''; }} class="workspace-main" style="left:0;top:0;width:calc(100% - {Math.max(0,size.width-measured.main.width)}px);height:calc(100% - {Math.max(0,size.height-measured.main.height)}px);">{@render children()}</main>
   {#each panels as panel (panel.id)}
     {@const placement = location(panel.id)}
-    {@const exposed = !!placement && placement.group.active === panel.id}
+    {@const exposed = !!placement && placement.group.active === panel.id && shown()}
     {@const rect = placement?.rect ?? { x: 0, y: 0, width: 0, height: 0 }}
     <!-- All content has one stable owner. Changing groups only changes geometry/visibility. -->
     <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->

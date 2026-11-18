@@ -21,6 +21,7 @@
 -->
 
 <script lang="ts">
+  import { spaceVisible } from '$lib/components/layout/space-visibility';
   import { t } from 'svelte-i18n';
   import { FilePen, ListChecks, ShieldAlert, SquareTerminal, Wrench } from 'lucide-svelte';
   import Button from '$lib/components/ui/Button.svelte';
@@ -30,6 +31,8 @@
   import { titleCaseToolName } from '$lib/utils/tool-ui';
   import { toolKind } from '$shared/tool-kinds';
   import { formatShortcut } from '$lib/utils/shortcuts';
+  /** Code keeps this mounted behind other spaces; window keys are only ours while shown. */
+  const shown = spaceVisible();
 
   let {
     approval,
@@ -91,6 +94,8 @@
    * keys work wherever the caret is.
    */
   function onKeydown(event: KeyboardEvent) {
+    // A Code approval stays mounted behind other spaces: Enter typed in Home must not allow it.
+    if (!shown()) return;
     const target = event.target;
     if (target instanceof Element && target.closest('textarea, input, select, [contenteditable="true"]')) return;
     if (event.defaultPrevented || event.isComposing) return;

@@ -44,7 +44,7 @@ import { get } from 'svelte/store';
 import { _ as translate } from 'svelte-i18n';
 import type { CompletionResult, RequestMessage } from '$lib/services/chat/types';
 import { cachedModels, completeAssistantReply, detectToolSupport, fetchModels, fetchReasoningCapabilities, hasConfiguredVisionModel, invalidateModels, loadChatConfig, reasoningRouteIdentity, streamAssistantReply } from '$lib/services/chat-api';
-import { loadChatState, saveChatState, saveAppConfig, saveChatDraftToDb, saveChatStateToDb, loadChatStateFromDb, deleteChatFromDb } from '$lib/utils/storage';
+import { loadChatState, saveChatState, saveAppConfig, saveChatDraftToDb, saveChatStateToDb, loadChatStateFromDb, deleteChatFromDb, loadChatMessagesFromDb } from '$lib/utils/storage';
 import { toErrorMessage } from '$lib/utils/errors';
 import { describeLocalLoadError } from '$lib/utils/local-load-errors';
 import { estimateContextBreakdown, homeRuntimeBudget } from '$lib/stores/app-context-budget';
@@ -1321,6 +1321,8 @@ class AppStore {
       this.activeSpace = normalizeContextMode(this.currentChat?.contextMode || this.activeSpace);
       this.rebuildChatIdBySpace();
       this.hydrateUiFromChat(this.currentChat);
+      // The chat the window reopens on may be a Code chat whose transcript loads on open.
+      void this.ensureChatMessages(this.currentChatId);
     } catch (error) {
       this.error = toErrorMessage(error) || 'Failed to initialize application';
       if (!this.chats.length) {
@@ -1655,6 +1657,7 @@ class AppStore {
     if (previousRoute !== reasoningRouteIdentity(this.config) || !this.models.length) void this.refreshModels();
     void this.refreshReasoningCapabilities();
     this.persist({ navigationOnly: true });
+    void this.ensureChatMessages(chatId);
     if (isElectron()) {
       void this.refreshRagDocuments(chatId);
     }
@@ -1972,6 +1975,38 @@ class AppStore {
   touchChats(chatId = this.currentChatId) {
     if (chatId) this.dirtyChatIds.add(chatId);
     this.chats = [...this.chats];
+  }
+
+  /** Transcripts in flight, so opening a chat twice loads it once. */
+  #messageLoads = new Map<string, Promise<void>>();
+
+  /**
+   * Load a chat's transcript if it started unloaded (Code chats do: they hold
+   * nearly all of the database). Resolves at once for a loaded chat. Anything
+   * added to the chat while it loaded (a sent message) stays, after the
+   * history. On failure the chat stays unloaded — and so stays safe to save —
+   * and the next open tries again.
+   */
+  ensureChatMessages(chatId: string | null | undefined): Promise<void> {
+    const chat = this.findChat(chatId);
+    if (!chat || chat.messagesLoaded !== false) return Promise.resolve();
+    const pending = this.#messageLoads.get(chat.id);
+    if (pending) return pending;
+    const id = chat.id;
+    const load = loadChatMessagesFromDb(id).then((rows) => {
+      const target = this.findChat(id);
+      if (!target || target.messagesLoaded !== false) return;
+      const history = rows.map((message, index) => normalizeMessage(message, index));
+      const known = new Set(history.map((message) => message.id));
+      target.messages = [...history, ...target.messages.filter((message) => !known.has(message.id))];
+      delete target.messagesLoaded;
+    }).catch((error) => {
+      console.error('[chat] Loading the transcript failed:', error);
+    }).finally(() => {
+      this.#messageLoads.delete(id);
+    });
+    this.#messageLoads.set(id, load);
+    return load;
   }
 
   findChat(chatId: string | null | undefined) {

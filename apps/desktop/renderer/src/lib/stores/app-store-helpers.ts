@@ -595,6 +595,7 @@ export function normalizeChat(chat: Partial<ChatSession>, index: number): ChatSe
     personaId: isRoleplay ? (typeof chat.personaId === 'string' ? chat.personaId : null) : null,
     greetingIndex: isRoleplay && Number.isFinite(chat.greetingIndex) ? Number(chat.greetingIndex) : 0,
     roleplay: isRoleplay ? compactStoredScene(chat.roleplay) : null,
+    ...(chat.messagesLoaded === false ? { messagesLoaded: false as const } : {}),
     messages
   };
 }

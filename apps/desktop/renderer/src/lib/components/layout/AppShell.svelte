@@ -13,6 +13,7 @@
   import CalendarScreen from '$lib/features/home/CalendarScreen.svelte';
   import ComplementsScreen from '$lib/features/home/ComplementsScreen.svelte';
   import ConversationPanes from '$lib/features/code/ConversationPanes.svelte';
+  import SpaceLayer from './SpaceLayer.svelte';
   import ContextPanel from '$lib/features/chat/ContextPanel.svelte';
   import { PanelRight as ContextIcon } from '$lib/icons';
   import ArtifactsScreen from '$lib/features/artifacts/ArtifactsScreen.svelte';
@@ -59,6 +60,14 @@
   let artifactPanelHandle = $state<{ requestClose: () => void }>();
   // The top-bar tab decides the main view; Bots sits beside the three spaces.
   const inCodeSpace = $derived(appStore.activeTab === 'code');
+  /*
+   * Code stays mounted once opened: leaving it used to tear down every pane,
+   * transcript and terminal, and coming back rebuilt them all — the freeze on
+   * a space switch. The other spaces read the current chat directly, so they
+   * still mount on demand (and are light).
+   */
+  let codeOpened = $state(false);
+  $effect.pre(() => { if (inCodeSpace) codeOpened = true; });
 
   const scope = $derived(appStore.currentChat ? conversationScope(appStore.currentChat.id) : inCodeSpace ? `space:code:${codeStore.activeProjectId ?? 'none'}` : `space:${appStore.activeTab}`);
   /*
@@ -332,9 +341,10 @@
     />
 
     <div class="relative flex min-h-0 min-w-0 flex-1 flex-col">
-      {#if inCodeSpace}
-        <ConversationPanes />
-      {:else}
+      {#if codeOpened || inCodeSpace}
+        <SpaceLayer name="code" visible={inCodeSpace}><ConversationPanes /></SpaceLayer>
+      {/if}
+      {#if !inCodeSpace}
       <WorkspaceHost panels={dockPanels}>
         <!-- The one branch point between the spaces:
              Code hosts the coding agent surface; Roleplay the character surface;

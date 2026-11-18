@@ -947,6 +947,12 @@ export interface ChatSession {
   roleplay?: RoleplaySettings | null;
   /** Where the conversation started: the browser extension's chat panel. */
   origin?: 'browser';
+  /**
+   * `false` while the transcript is still in the database: Code chats load on
+   * open (`appStore.ensureChatMessages`). Never persisted; absent once loaded.
+   * A save of such a chat writes its row only, never an empty transcript.
+   */
+  messagesLoaded?: false;
   messages: ChatMessage[];
 }
 

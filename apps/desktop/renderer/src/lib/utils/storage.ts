@@ -2,10 +2,21 @@ import type { AppConfig, ChatSession, ChatFolder, CharacterCard, CodeProject, Ro
 import { isElectron } from '$lib/services/bridge';
 import { THEME_STORAGE_KEY } from '$shared/window-theme';
 import { WriteQueue } from './write-queue';
+import { toIpc } from './plain.svelte';
+
+/**
+ * A chat whose transcript was never loaded is saved without `messages`, so the
+ * database updates its row and leaves the transcript alone; sending `[]` would
+ * delete it.
+ */
+export function savePayload(session: ChatSession): ChatSession {
+  if (session.messagesLoaded !== false) return session;
+  const { messages: _messages, ...row } = session;
+  return row as ChatSession;
+}
 
 const chatWrites = new WriteQueue<ChatSession>(async session => {
-  const plain = JSON.parse(JSON.stringify(session));
-  await window.electronAPI!.invoke('chat_db_save_session', { session: plain });
+  await toIpc(savePayload(session), (plain) => window.electronAPI!.invoke('chat_db_save_session', { session: plain }));
 });
 export const flushChatSaves = () => chatWrites.flush();
 
@@ -45,7 +56,8 @@ function mergeDocumentPayloadsFromLocal(dbChats: ChatSession[], localChats: Chat
 
   return dbChats.map((chat) => {
     const localChat = localChatById.get(chat.id);
-    if (!localChat?.messages?.length) return chat;
+    // An unloaded transcript is merged when it loads, never into an empty list.
+    if (chat.messagesLoaded === false || !localChat?.messages?.length) return chat;
 
     const localMessageById = new Map(localChat.messages.map((message) => [message.id, message]));
     return {
@@ -231,7 +243,7 @@ async function backfillFromLegacy(chats: ChatSession[]): Promise<ChatSession[]> 
   let complete = true;
   for (const chat of changed) {
     try {
-      await (window as any).electronAPI.invoke('chat_db_save_session', { session: JSON.parse(JSON.stringify(chat)) });
+      await toIpc(savePayload(chat), (plain) => window.electronAPI!.invoke('chat_db_save_session', { session: plain }));
     } catch (err) {
       complete = false;
       console.error('[backfillFromLegacy] Failed:', err);
@@ -263,6 +275,37 @@ export async function saveChatStateToDb(session: ChatSession): Promise<void> {
     await chatWrites.enqueue(session.id, session);
   } catch (err) {
     console.error('[saveChatStateToDb] Failed:', err);
+  }
+}
+
+/** One chat's transcript, for a chat that started unloaded. */
+export async function loadChatMessagesFromDb(chatId: string): Promise<ChatSession['messages']> {
+  if (!isElectronEnv()) return [];
+  const messages = await window.electronAPI!.invoke('chat_db_load_messages', { chatId }) as ChatSession['messages'];
+  return Array.isArray(messages) ? messages : [];
+}
+
+/** Content search across unloaded transcripts: the first matching message per chat. */
+export async function searchChatsInDb(query: string, chatIds: string[]): Promise<Array<{ chatId: string; messageId: string; content: string }>> {
+  if (!isElectronEnv() || !query.trim() || !chatIds.length) return [];
+  try {
+    const hits = await window.electronAPI!.invoke('chat_db_search', { query, chatIds });
+    return Array.isArray(hits) ? hits : [];
+  } catch (err) {
+    console.error('[searchChatsInDb] Failed:', err);
+    return [];
+  }
+}
+
+/** What the Files screen reads from unloaded chats (attachments, file changes), per chat. */
+export async function loadChatFileFactsFromDb(chatIds: string[]): Promise<Record<string, ChatSession['messages']>> {
+  if (!isElectronEnv() || !chatIds.length) return {};
+  try {
+    const facts = await window.electronAPI!.invoke('chat_db_file_facts', { chatIds });
+    return facts && typeof facts === 'object' ? facts as Record<string, ChatSession['messages']> : {};
+  } catch (err) {
+    console.error('[loadChatFileFactsFromDb] Failed:', err);
+    return {};
   }
 }
 

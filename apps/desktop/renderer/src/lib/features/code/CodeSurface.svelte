@@ -27,6 +27,7 @@
   import SubagentPill from './SubagentPill.svelte';
   import { isCodeSession } from '$lib/features/shared/session-guards';
   import type { ChatSession } from '$lib/types/chat';
+  import { spaceVisible } from '$lib/components/layout/space-visibility';
 
   onMount(() => {
     void codeStore.load();
@@ -143,12 +144,20 @@
     }));
   }
 
+  const shown = spaceVisible();
   /** The starters are on screen, so their keys are live. */
-  const startersShowing = $derived(!!chat && !chat.messages.length && !unlinked);
+  /**
+   * A new conversation, not one whose transcript is still loading (Code chats
+   * load on open): only a new one gets the centred composer and the starters.
+   */
+  const empty = $derived(!!chat && chat.messagesLoaded !== false && !chat.messages.length);
+  const startersShowing = $derived(empty && !unlinked);
 
   $effect(() => {
     if (!startersShowing) return;
     const onKey = (event: KeyboardEvent) => {
+      // Code stays mounted behind other spaces; its keys are only its own while shown.
+      if (!shown()) return;
       if (!(event.ctrlKey || event.metaKey) || !event.altKey || event.shiftKey) return;
       const index = ['Digit1', 'Digit2', 'Digit3', 'Digit4'].indexOf(event.code);
       if (index < 0 || index >= starters.length) return;
@@ -178,12 +187,12 @@
            centred and the starters sit under the composer as one line of text;
            the composer itself keeps its slot in both states, so sending the
            first message never remounts it and never drops the keyboard. -->
-      <div class="flex min-h-0 min-w-0 flex-1 flex-col" class:is-empty={!unlinked && !chat.messages.length}>
+      <div class="flex min-h-0 min-w-0 flex-1 flex-col" class:is-empty={!unlinked && empty}>
         {#if unlinked}
           <div class="ui-top-fade flex min-h-0 min-w-0 flex-1 flex-col">
             {#key chat.id}<CodeTranscript messages={chat.messages} chatId={chat.id} />{/key}
           </div>
-        {:else if !chat.messages.length}
+        {:else if empty}
           <!-- Which folder the agent touches: the one thing a conversation has
                not had the chance to say yet. -->
           {#if chatProject}
@@ -204,7 +213,7 @@
           </p>
         {:else}
           {#key chat.id}<SubagentPill {chat} /><CodeComposer {chat} />{/key}
-          {#if !chat.messages.length}
+          {#if empty}
             <div class="empty-links composer-column px-3 md:px-6">
               <StarterList {starters} label={$t('code.starters.title')} onpick={useStarter} onpreview={previewStarter} variant="links" />
             </div>

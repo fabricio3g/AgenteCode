@@ -22,6 +22,8 @@
     FolderSearch, Image as ImageIcon, MessageSquare, Pin, PinOff, Presentation, Sparkles, Trash2
   } from '$lib/icons';
   import { appStore } from '$lib/stores/app.svelte';
+  import { loadChatFileFactsFromDb } from '$lib/utils/storage';
+  import type { ChatSession } from '$lib/types/chat';
   import { confirmStore } from '$lib/stores/confirm.svelte';
   import { toastStore } from '$lib/stores/toast.svelte';
   import { codeStore } from '$lib/features/code/code.svelte';
@@ -56,8 +58,21 @@
 
   $effect(() => { void refreshRegistry(); });
 
+  /*
+   * Chats whose transcripts are not loaded (Code chats load on open) lend the
+   * library only what it reads — attachments and file changes — fetched once
+   * from the database, never the transcripts themselves.
+   */
+  let fileFacts = $state<Record<string, ChatSession['messages']>>({});
+  $effect(() => {
+    const unloaded = appStore.chats.filter((item) => item.messagesLoaded === false && !(item.id in fileFacts)).map((item) => item.id);
+    if (!unloaded.length) return;
+    void loadChatFileFactsFromDb(unloaded).then((facts) => { fileFacts = { ...fileFacts, ...facts }; });
+  });
+  const libraryChats = $derived(appStore.chats.map((item) => item.messagesLoaded === false ? { ...item, messages: fileFacts[item.id] ?? [] } : item));
+
   const all = $derived(applyRegistry(
-    collectFiles(appStore.chats, (chat) => codeStore.projectById(chat.projectId ?? null)?.rootPath ?? null),
+    collectFiles(libraryChats, (chat) => codeStore.projectById(chat.projectId ?? null)?.rootPath ?? null),
     registryIndex(registry)
   ));
   /** Stored copies no chat carries any more; pinned ones are knowledge the user kept. */

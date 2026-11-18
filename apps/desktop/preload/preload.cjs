@@ -9,7 +9,7 @@ const ALLOWED_INVOKE_CHANNELS = new Set([
   'window:open-conversation', 'window:minimize', 'window:toggle-maximize', 'window:is-maximized', 'window:close', 'window:request-close', 'window:set-active-work',
   'get_hardware_limits', 'get_desktop_capabilities', 'get_runtime_recommendations', 'is_first_run',
   'get_config', 'save_config', 'update_config',
-  'chat_db_save_draft', 'chat_db_save_session', 'chat_db_load_all', 'chat_db_delete', 'chat_db_migrate',
+  'chat_db_save_draft', 'chat_db_save_session', 'chat_db_load_all', 'chat_db_load_messages', 'chat_db_search', 'chat_db_file_facts', 'chat_db_delete', 'chat_db_migrate',
   'chat_db_load_folders', 'chat_db_save_folder', 'chat_db_delete_folder',
   'chat_db_load_code_projects', 'chat_db_save_code_project', 'chat_db_delete_code_project',
   'chat_db_load_characters', 'chat_db_save_character', 'chat_db_delete_character',

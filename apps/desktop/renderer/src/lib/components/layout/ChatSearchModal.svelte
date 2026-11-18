@@ -26,6 +26,7 @@
   import { appStore } from '$lib/stores/app.svelte';
   import { countOf } from '$lib/utils/format';
   import type { ChatSession } from '$lib/types/chat';
+  import { searchChatsInDb } from '$lib/utils/storage';
 
   let searchInput = $state<HTMLInputElement>();
   let list = $state<HTMLDivElement>();
@@ -57,6 +58,25 @@
     snippet: string | null;
   }
 
+  /*
+   * Transcripts that are not loaded (Code chats load on open) are searched in
+   * the database instead, a beat after typing stops; their first matching
+   * message joins the results like any loaded chat's.
+   */
+  let dbMatches = $state<Record<string, { messageId: string; content: string }>>({});
+  $effect(() => {
+    const q = query.trim();
+    const unloaded = spaceChats.filter((chat) => chat.messagesLoaded === false).map((chat) => chat.id);
+    if (!q || !unloaded.length) { dbMatches = {}; return; }
+    let current = true;
+    const timer = setTimeout(() => {
+      void searchChatsInDb(q, unloaded).then((hits) => {
+        if (current) dbMatches = Object.fromEntries(hits.map((hit) => [hit.chatId, { messageId: hit.messageId, content: hit.content }]));
+      });
+    }, 150);
+    return () => { current = false; clearTimeout(timer); };
+  });
+
   const results = $derived.by((): SearchHit[] => {
     const q = query.trim().toLowerCase();
     const hits: SearchHit[] = [];
@@ -66,7 +86,8 @@
         continue;
       }
       const titleHit = (chat.title || '').toLowerCase().includes(q);
-      const msg = chat.messages.find((m) => (m.content || '').toLowerCase().includes(q));
+      const stored = chat.messagesLoaded === false ? dbMatches[chat.id] : undefined;
+      const msg = stored ? { id: stored.messageId, content: stored.content } : chat.messages.find((m) => (m.content || '').toLowerCase().includes(q));
       if (!titleHit && !msg) continue;
       let snippet: string | null = null;
       if (msg) {
