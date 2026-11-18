@@ -3299,6 +3299,12 @@
     "scripts": "Scripts",
     "answer": "Respuesta",
     "tools": "Llamadas a herramientas",
-    "gone": "Este subagente ya no está en la conversación."
+    "gone": "Este subagente ya no está en la conversación.",
+    "pill": "{n, plural, one {# subagente} other {# subagentes}}",
+    "pillWorking": "{n} trabajando",
+    "pillFailed": "{n} fallaron",
+    "previous": "Subagente anterior",
+    "next": "Subagente siguiente",
+    "position": "{n} de {total}"
   }
 }

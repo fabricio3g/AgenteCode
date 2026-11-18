@@ -24,6 +24,7 @@
   import { codeWorkspace } from './workspace.svelte';
   import CodeTranscript from './CodeTranscript.svelte';
   import CodeComposer from './CodeComposer.svelte';
+  import SubagentPill from './SubagentPill.svelte';
   import { isCodeSession } from '$lib/features/shared/session-guards';
   import type { ChatSession } from '$lib/types/chat';
 
@@ -202,7 +203,7 @@
             {$t('code.unlinkedHint')}
           </p>
         {:else}
-          {#key chat.id}<CodeComposer {chat} />{/key}
+          {#key chat.id}<SubagentPill {chat} /><CodeComposer {chat} />{/key}
           {#if !chat.messages.length}
             <div class="empty-links composer-column px-3 md:px-6">
               <StarterList {starters} label={$t('code.starters.title')} onpick={useStarter} onpreview={previewStarter} variant="links" />

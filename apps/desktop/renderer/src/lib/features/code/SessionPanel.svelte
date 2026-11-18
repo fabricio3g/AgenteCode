@@ -3,48 +3,39 @@
 <!--
   The session column: everything about this conversation that is not the
   conversation itself, docked beside it so the transcript and the composer
-  share their width with it instead of being covered.
+  share their width with it instead of being covered. Subagents are not here:
+  they have their bubbles in the transcript and their pill over the composer.
 
   One place for what used to be four — the floating project card, the Tasks
   pane, the Context pane and the composer's ring — top to bottom in the order
   people look: which project and which checkout, how full the context is,
-  what the agent is working through, which subagents it has out, and the
-  project's scripts. Labels hard left, values hard right; empty sections are
-  not drawn. A subagent row opens its live view in the right dock.
+  what the agent is working through, and the project's scripts. Labels hard
+  left, values hard right; empty sections are not drawn.
 -->
 
 <script lang="ts">
   import { t } from 'svelte-i18n';
-  import { Activity, Bot, ClipboardList, Code, FolderOpen, GitCompareArrows, Image, ListChecks, Play, Plus, Telescope, Upload, X } from '$lib/icons';
+  import { Activity, ClipboardList, Code, FolderOpen, GitCompareArrows, Image, Play, Plus, Upload, X } from '$lib/icons';
   import type { ChatSession, CodeProject } from '$lib/types/chat';
   import type { WorkspaceLayoutStore } from '$lib/stores/workspace-layout.svelte';
   import { Button, IconButton } from '$lib/components/ui';
   import UiInput from '$lib/components/ui/Input.svelte';
   import Tooltip from '$lib/components/ui/Tooltip.svelte';
-  import TileMeter from '$lib/components/ui/TileMeter.svelte';
   import { toastStore } from '$lib/stores/toast.svelte';
   import { copy } from '$lib/copy';
   import { shortModel } from '$lib/utils/format';
-  import { formatToolDuration, titleCaseToolName } from '$lib/utils/tool-ui';
+  import { formatToolDuration } from '$lib/utils/tool-ui';
   import ContextUsageRing from '$lib/features/chat/composer/ContextUsageRing.svelte';
   import { codeStore } from './code.svelte';
   import { codeWorkspace } from './workspace.svelte';
   import { conversationSpend, spendCostLabel } from './accounting';
-  import { childActivity, childElapsedMs, sessionChildren } from './subagent-row';
   import { latestPlan } from './plan-review';
   import TasksPanel from './TasksPanel.svelte';
   import BranchMenu from './workspace/BranchMenu.svelte';
   import { openFileInEditor } from './workspace/editor-actions';
   import { projectControls } from './workspace/project-controls.svelte';
 
-  let { chat, project, layout, activeChild = null, onopenchild }: {
-    chat: ChatSession;
-    project: CodeProject;
-    layout: WorkspaceLayoutStore;
-    /** The subagent whose view is open in the dock, marked in the list. */
-    activeChild?: string | null;
-    onopenchild: (id: string) => void;
-  } = $props();
+  let { chat, project, layout }: { chat: ChatSession; project: CodeProject; layout: WorkspaceLayoutStore } = $props();
 
   const run = $derived(codeStore.runFor(chat.id));
   const branch = $derived(codeWorkspace.branchFor(project.rootPath));
@@ -59,15 +50,6 @@
   const worked = $derived(chat.messages.reduce((sum, { metadata: m }) => sum + (m?.codeElapsedMs ?? 0), 0));
 
   const todos = $derived(codeStore.todosFor(chat));
-  const children = $derived(sessionChildren(chat.messages, run?.children ?? []));
-  const working = $derived(children.filter((child) => child.status === 'running').length);
-
-  let now = $state(Date.now());
-  $effect(() => {
-    if (!working) return;
-    const timer = setInterval(() => (now = Date.now()), 1000);
-    return () => clearInterval(timer);
-  });
 
   // Scripts: the project's own commands, one click to run in Processes.
   type Script = { name: string; command: string };
@@ -141,28 +123,6 @@
     <div class="tasks"><TasksPanel {chat} /></div>
   {/if}
 
-  {#if children.length}
-    <section>
-      <h3 class="pane-heading">{$t('sessionHud.subagents')}<span class="pane-count">{working ? `${working}/${children.length}` : children.length}</span></h3>
-      {#each children as child (child.id)}
-        {@const Icon = /explore/i.test(child.kind) ? Telescope : /plan/i.test(child.kind) ? ListChecks : Bot}
-        {@const elapsed = childElapsedMs(child, now)}
-        <button type="button" class="pane-row child" class:is-active={activeChild === child.id} data-subagent-row={child.id}
-          title={child.description} onclick={() => onopenchild(child.id)}>
-          <span class="pane-row-tile" aria-hidden="true"><Icon class="size-3.5" /></span>
-          <span class="child-text">
-            <span class="pane-row-label">{child.description || titleCaseToolName(child.kind)}</span>
-            <span class="child-status" class:text-error={child.status === 'error'}>
-              {#if child.status === 'running'}<TileMeter mode={run?.stopping ? 'stopped' : 'busy'} /><span class="ui-shimmer-text">{childActivity(child) ?? copy.status.working}</span>
-              {:else}{child.status === 'error' ? copy.tool.failed : titleCaseToolName(child.kind)}{/if}
-            </span>
-          </span>
-          {#if elapsed !== undefined}<span class="pane-row-aside">{formatToolDuration(elapsed)}</span>{/if}
-        </button>
-      {/each}
-    </section>
-  {/if}
-
   <section>
     {#if scripts[project.id]?.length || adding}<h3 class="pane-heading">{$t('sessionHud.scripts')}</h3>{/if}
     {#each scripts[project.id] ?? [] as script, index (index)}
@@ -217,11 +177,6 @@
 
   /* The Tasks pane, embedded: the column already scrolls and pads. */
   .tasks :global(.pane-body) { padding: 0; overflow: visible; }
-
-  .child { align-items: flex-start; padding-block: 0.375rem; }
-  .child-text { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 0.125rem; }
-  .child-status { display: flex; min-width: 0; align-items: center; gap: 0.375rem; overflow: hidden; color: var(--muted-foreground); font-size: var(--text-xs); white-space: nowrap; }
-  .child .pane-row-aside { padding-top: 0.125rem; }
 
   .script-row { display: flex; align-items: center; gap: 0.25rem; }
   .add { color: var(--muted-foreground); }

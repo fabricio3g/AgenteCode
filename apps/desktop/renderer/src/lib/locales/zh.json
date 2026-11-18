@@ -3299,6 +3299,12 @@
     "scripts": "脚本",
     "answer": "回答",
     "tools": "工具调用",
-    "gone": "此子代理已不在对话中。"
+    "gone": "此子代理已不在对话中。",
+    "pill": "{n} 个子代理",
+    "pillWorking": "{n} 个运行中",
+    "pillFailed": "{n} 个失败",
+    "previous": "上一个子代理",
+    "next": "下一个子代理",
+    "position": "第 {n} 个，共 {total} 个"
   }
 }

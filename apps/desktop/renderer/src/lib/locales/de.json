@@ -3299,6 +3299,12 @@
     "scripts": "Skripte",
     "answer": "Antwort",
     "tools": "Tool-Aufrufe",
-    "gone": "Dieser Subagent ist nicht mehr in der Unterhaltung."
+    "gone": "Dieser Subagent ist nicht mehr in der Unterhaltung.",
+    "pill": "{n, plural, one {# Subagent} other {# Subagenten}}",
+    "pillWorking": "{n} arbeiten",
+    "pillFailed": "{n} fehlgeschlagen",
+    "previous": "Vorheriger Subagent",
+    "next": "Nächster Subagent",
+    "position": "{n} von {total}"
   }
 }

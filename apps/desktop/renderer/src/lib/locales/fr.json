@@ -3299,6 +3299,12 @@
     "scripts": "Scripts",
     "answer": "Réponse",
     "tools": "Appels d’outils",
-    "gone": "Ce sous-agent n’est plus dans la conversation."
+    "gone": "Ce sous-agent n’est plus dans la conversation.",
+    "pill": "{n, plural, one {# sous-agent} other {# sous-agents}}",
+    "pillWorking": "{n} en cours",
+    "pillFailed": "{n} en échec",
+    "previous": "Sous-agent précédent",
+    "next": "Sous-agent suivant",
+    "position": "{n} sur {total}"
   }
 }

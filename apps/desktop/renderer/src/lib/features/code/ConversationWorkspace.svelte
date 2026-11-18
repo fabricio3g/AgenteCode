@@ -24,6 +24,7 @@
   import SessionPanel from './SessionPanel.svelte';
   import SubagentView from './SubagentView.svelte';
   import { projectControls } from './workspace/project-controls.svelte';
+  import { subagentFocus } from './subagent-focus.svelte';
   import CodeSurface from './CodeSurface.svelte';
   import { latestPlan } from './plan-review';
   import { codeStore } from './code.svelte';
@@ -39,12 +40,11 @@
   setContext(CANVAS_CONTEXT, canvasBoard.forChat(chatId));
   const project = $derived(codeStore.projectById(chat.projectId ?? null));
   const plan = $derived(codeWorkspace.plan?.chatId === chat.id ? codeWorkspace.plan.plan ?? latestPlan(chat.messages) : latestPlan(chat.messages));
-  /** The subagent the dock's Subagent pane follows; picked in the session column. */
-  let childId = $state<string | null>(null);
-  function openChild(id: string) {
-    childId = id;
-    layout.show('subagent');
-  }
+  /** The subagent the dock's Subagent pane follows; picked from the composer's pill. */
+  const childId = $derived(subagentFocus.get(chatId));
+  $effect(() => {
+    if (subagentFocus.picked[chatId]) untrack(() => layout.show('subagent'));
+  });
   const panels = $derived.by(() => {
     const available = !!project;
     const items: WorkspacePanel[] = [
@@ -81,7 +81,7 @@
   <WorkspaceHost {panels} {layout}>
     <div class="conversation-row">
       <CodeSurface {chat} />
-      {#if project && projectControls.open}<SessionPanel {chat} {project} {layout} activeChild={layout.isOpen('subagent') ? childId : null} onopenchild={openChild} />{/if}
+      {#if project && projectControls.open}<SessionPanel {chat} {project} {layout} />{/if}
     </div>
   </WorkspaceHost>
 </div>

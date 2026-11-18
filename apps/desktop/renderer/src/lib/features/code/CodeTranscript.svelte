@@ -28,6 +28,8 @@
   import RichContent from '$lib/ui/components/RichContent.svelte';
   import MediaAttachmentCard from './MediaAttachmentCard.svelte';
   import CodeWorkBlock from './CodeWorkBlock.svelte';
+  import SubagentTally from './SubagentTally.svelte';
+  import { subagentFocus } from './subagent-focus.svelte';
   import CodeLiveStatus from './CodeLiveStatus.svelte';
   import CodeErrorNotice from './CodeErrorNotice.svelte';
   import { withoutCodeErrorText } from './code-error';
@@ -36,8 +38,6 @@
   import { formatDuration } from '$lib/utils/format';
   import { codeStore } from './code.svelte';
   import { orderedEntries } from './code-run';
-  import SubagentCard from './SubagentCard.svelte';
-  import { disclosureKey } from './disclosure-state.svelte';
   import JumpToLatest from '$lib/features/chat/thread/JumpToLatest.svelte';
   import ThreadTimeline from '$lib/features/chat/thread/ThreadTimeline.svelte';
   import { conversationTimelinePreview } from '$lib/utils/conversation-timeline';
@@ -48,7 +48,6 @@
   import { toastStore } from '$lib/stores/toast.svelte';
   import { approvalsStore } from '$lib/stores/approvals.svelte';
   import { editedFiles, replyBlocks } from './work-blocks';
-  import { unlinkedChildren } from './subagent-row';
   import FileChangesCard from '$lib/components/agent/FileChangesCard.svelte';
   import { restoreCodeEdits } from './code-edits';
   import { appStore } from '$lib/stores/app.svelte';
@@ -207,7 +206,9 @@
 
   function entriesFor(message: ChatMessage) {
     const live = message.status === 'streaming' && run?.assistantMessageId === message.id ? run.timeline : undefined;
-    return withoutCodeErrorText(orderedEntries(message, live), diagnosticFor(message));
+    // Subagents have one place, the pill over the composer and its pane: their
+    // spawn steps are not drawn here, so the step count leaves them out too.
+    return withoutCodeErrorText(orderedEntries(message, live), diagnosticFor(message)).filter((entry) => entry.step?.toolName !== 'task');
   }
 
   function diagnosticFor(message: ChatMessage): string | undefined {
@@ -278,14 +279,11 @@
         {@const children = live ? run?.children ?? [] : message.metadata?.codeChildren ?? []}
         {@const diagnostics = live ? run?.diagnostics ?? [] : message.metadata?.codeDiagnostics ?? []}
         {@const blocks = replyBlocks(entries)}
-        {@const activeChildren = streaming && live && run?.running ? children.filter((child) => child.status === 'running') : []}
-        {@const activeChildIds = new Set(activeChildren.map((child) => child.id))}
-        {@const orphans = unlinkedChildren(children.filter((child) => !activeChildIds.has(child.id)), entries.flatMap((entry) => (entry.step ? [entry.step] : [])))}
         <div class="group flex min-w-0 flex-col gap-[var(--thread-gap)]">
           {#each blocks as block, index (block.key)}
             {#if block.items}
               <div class="-mx-2 min-w-0">
-                <CodeWorkBlock items={block.items} {chatId} messageId={message.id} {children} {activeChildIds} live={streaming && index === blocks.length - 1} />
+                <CodeWorkBlock items={block.items} {chatId} messageId={message.id} {children} live={streaming && index === blocks.length - 1} />
               </div>
             {:else}
               <div class="text-sm leading-relaxed text-foreground">
@@ -307,17 +305,17 @@
             {/if}
           {/if}
 
-          <!-- Unlinked children use the same rows as linked and live children. -->
-          {#each orphans as child (child.id)}
-            <SubagentCard {child} {chatId} id={disclosureKey(chatId, message.id, `child-${child.id}`)} />
-          {/each}
+          <!-- The turn's subagents in one line; the pane holds the detail. -->
+          {#if children.length}
+            <button type="button" class="subagent-line" data-subagent-line={message.id}
+              onclick={() => subagentFocus.open(chatId, (children.find((child) => child.status === 'running') ?? children[0]).id)}>
+              <SubagentTally {children} stopping={live && !!run?.stopping} />
+            </button>
+          {/if}
           {#if diagnostics.length}
             <details class="text-xs text-muted-foreground"><summary class="cursor-pointer">{$t('code.runtimeNotes', { values: { n: diagnostics.length } })}</summary><div class="mt-2 space-y-1">{#each diagnostics as note, index (index)}<p>{note}</p>{/each}</div></details>
           {/if}
 
-          {#each activeChildren as child (child.id)}
-            <SubagentCard {child} {chatId} id={disclosureKey(chatId, message.id, `child-${child.id}`)} />
-          {/each}
 
           <!-- What is happening now: always the last line, next to the composer. -->
           {#if streaming && live && run}
@@ -418,4 +416,8 @@
 
   .code-message-slot { min-width: 0; content-visibility: auto; contain-intrinsic-size: auto 120px; }
   .code-message-slot.is-live { content-visibility: visible; }
+  /* One quiet line per turn; hover lifts it like any row that opens a pane. */
+  .subagent-line { display: inline-flex; align-self: flex-start; align-items: center; gap: 0.375rem; height: 1.75rem; margin-inline: -0.5rem; padding: 0 0.5rem; border: 0; border-radius: var(--radius-full); background: none; color: var(--muted-foreground); font: inherit; font-size: var(--text-xs); font-variant-numeric: tabular-nums; cursor: pointer; transition: background-color var(--motion-instant) var(--motion-ease); }
+  .subagent-line:hover { background: var(--float-row-hover); }
+  .subagent-line:focus-visible { outline: 2px solid var(--brand-accent); outline-offset: 1px; }
 </style>
