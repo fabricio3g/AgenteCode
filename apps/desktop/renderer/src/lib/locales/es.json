@@ -3285,5 +3285,20 @@
         "code": "Código"
       }
     }
+  },
+  "sessionHud": {
+    "title": "Sesión",
+    "open": "Mostrar detalles de la sesión",
+    "fold": "Ocultar detalles de la sesión",
+    "changes": "Cambios",
+    "context": "Contexto",
+    "spend": "Gasto",
+    "model": "Modelo",
+    "subagents": "Subagentes",
+    "subagent": "Subagente",
+    "scripts": "Scripts",
+    "answer": "Respuesta",
+    "tools": "Llamadas a herramientas",
+    "gone": "Este subagente ya no está en la conversación."
   }
 }

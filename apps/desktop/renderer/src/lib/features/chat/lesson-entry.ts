@@ -24,6 +24,15 @@ const COMMANDS: Array<{ command: string; mode: LessonMode }> = [
   { command: 'practice', mode: 'practice' }
 ];
 
+const LESSON_DIRECTIVES = {
+  lesson: 'Create an interactive lesson with create_lesson (mode "lesson") for: ',
+  practice: 'Create a practice set with create_lesson (mode "practice") for: '
+};
+
+export function isLessonDirective(text: string): boolean {
+  return Object.values(LESSON_DIRECTIVES).some(prefix => text.trimStart().startsWith(prefix));
+}
+
 /** `/teach the chain rule` → a directive; `null` when it is not a lesson ask. */
 export function matchLessonCommand(text: string, contextMode?: string | null): LessonAsk | null {
   if (!lessonsEnabled(contextMode)) return null;
@@ -38,8 +47,8 @@ export function matchLessonCommand(text: string, contextMode?: string | null): L
 export function buildDirective(mode: LessonMode, topic: string): string {
   const subject = topic.trim() || 'the topic we have been discussing';
   return mode === 'practice'
-    ? `Create a practice set with create_lesson (mode "practice") for: ${subject}. Same concept, no hints, no visuals, choice and numeric blocks only, mixed with the previous concept where it fits. End with a summary.`
-    : `Create an interactive lesson with create_lesson (mode "lesson") for: ${subject}. One concept: open with a question before any explanation, then explore/predict/steps as they help, and close with a summary. Every wrong option needs its own reason.`;
+    ? `${LESSON_DIRECTIVES.practice}${subject}. Same concept, no hints, no visuals, choice and numeric blocks only, mixed with the previous concept where it fits. End with a summary.`
+    : `${LESSON_DIRECTIVES.lesson}${subject}. One concept: open with a question before any explanation, then explore/predict/steps as they help, and close with a summary. Every wrong option needs its own reason.`;
 }
 
 /**

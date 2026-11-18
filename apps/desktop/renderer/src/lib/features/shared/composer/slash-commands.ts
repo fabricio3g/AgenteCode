@@ -1,4 +1,4 @@
-// Slash commands in the Code composer: typing "/" lists them, typing more
+// Slash commands in the composer: typing "/" lists them, typing more
 // filters them, Tab completes the word and Enter runs it.
 
 export interface SlashCommand {

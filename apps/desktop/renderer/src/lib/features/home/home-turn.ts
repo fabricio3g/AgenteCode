@@ -12,6 +12,8 @@ import type { SearchResult } from '$lib/types/bridge';
 import type { AgentTaskResult, RunAgentTaskArgs } from '$lib/services/agent-types';
 import type { GenerationBackendMode } from '$lib/stores/app-store-types';
 import { humanizeAgentError } from '$lib/utils/errors';
+import { COMPUTER_TASK_BUDGET, isComputerTask } from '$shared/computer';
+import { isLessonDirective } from '$lib/features/chat/lesson-entry';
 import { homeWorkSteps } from './home-live';
 import {
   activityFromProgress,
@@ -46,11 +48,18 @@ export interface HomeAgentPlan {
   budget: Budget;
 }
 
+export function homeToolRequest(prompt: string, contextMode: string): 'lesson' | 'computer' | undefined {
+  if (contextMode !== 'home') return;
+  if (isLessonDirective(prompt)) return 'lesson';
+  if (isComputerTask(prompt)) return 'computer';
+}
+
 /**
  * The run shape for a Home turn. Research depth picks the search profile and
  * its budget; Instant keeps its own allowlist and budget whatever the depth.
  */
-export function planHomeAgentRun(args: { composerMode: string | undefined; searchMode: SearchMode | undefined }): HomeAgentPlan {
+export function planHomeAgentRun(args: { composerMode: string | undefined; searchMode: SearchMode | undefined; request?: ReturnType<typeof homeToolRequest> }): HomeAgentPlan {
+  if (args.request) return { instant: false, agentProfile: 'chat', toolMode: 'agent', budget: args.request === 'computer' ? COMPUTER_TASK_BUDGET : CHAT_BUDGET };
   const instant = args.composerMode === 'instant';
   const searchMode = args.searchMode && args.searchMode !== 'chat' ? args.searchMode : undefined;
   return {

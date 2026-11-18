@@ -3285,5 +3285,20 @@
         "code": "Code"
       }
     }
+  },
+  "sessionHud": {
+    "title": "セッション",
+    "open": "セッションの詳細を表示",
+    "fold": "セッションの詳細を隠す",
+    "changes": "変更",
+    "context": "コンテキスト",
+    "spend": "費用",
+    "model": "モデル",
+    "subagents": "サブエージェント",
+    "subagent": "サブエージェント",
+    "scripts": "スクリプト",
+    "answer": "回答",
+    "tools": "ツール呼び出し",
+    "gone": "このサブエージェントは会話にもうありません。"
   }
 }

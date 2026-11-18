@@ -66,7 +66,7 @@ export const EDGE = 6;
 const MIN_WIDTH = 240;
 const MIN_CHAT_WIDTH = 400;
 const MIN_HEIGHT = 140;
-const known = new Set(['changes', 'files', 'plan', 'tasks', 'browser', 'artifact', 'routines', 'processes', 'canvas', 'context']);
+const known = new Set(['changes', 'files', 'plan', 'tasks', 'browser', 'artifact', 'routines', 'processes', 'canvas', 'context', 'subagent']);
 const validId = (id: unknown): id is string => typeof id === 'string' && (known.has(id) || /^terminal:[\w-]+$/.test(id));
 const finite = (value: unknown, fallback: number, min = 1, max = 10000) => typeof value === 'number' && Number.isFinite(value) ? Math.min(max, Math.max(min, value)) : fallback;
 const json = (raw: string | null): Record<string, unknown> => {

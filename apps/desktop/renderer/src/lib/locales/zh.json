@@ -3285,5 +3285,20 @@
         "code": "Code"
       }
     }
+  },
+  "sessionHud": {
+    "title": "会话",
+    "open": "显示会话详情",
+    "fold": "隐藏会话详情",
+    "changes": "更改",
+    "context": "上下文",
+    "spend": "花费",
+    "model": "模型",
+    "subagents": "子代理",
+    "subagent": "子代理",
+    "scripts": "脚本",
+    "answer": "回答",
+    "tools": "工具调用",
+    "gone": "此子代理已不在对话中。"
   }
 }

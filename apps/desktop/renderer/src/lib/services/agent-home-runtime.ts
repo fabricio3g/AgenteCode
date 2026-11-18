@@ -4,7 +4,7 @@ import type { AgentStep } from '$lib/types/chat';
 import type { Attachment, ClientToolCall, Message, RuntimeEvent, SessionSnapshot, TurnOutcome, Usage } from '$shared/agente-protocol.gen';
 import type { HomeRuntimeEvent, HomeRuntimeMeta } from '$shared/home-runtime';
 import { invoke } from './bridge';
-import { COMPUTER_TASK_BUDGET } from '$shared/computer';
+import { COMPUTER_TASK_BUDGET, isComputerTask } from '$shared/computer';
 import { watchHomeRun } from './home-runtime-events';
 import { loadAppConfig } from '$lib/utils/storage';
 import { resolveAgentRunPlan } from './agent-run-plan';
@@ -399,7 +399,8 @@ async function startAttempt(turn: HomeTurn, attempt: Attempt): Promise<{ session
     runId: turn.activeRunId, ...start, provider, model: plan.activeModel, thinkingLevel: args.reasoningLevel || 'auto',
     localSelection: plan.localMode ? { modelPath: run.config.llm?.local?.selected_model_path || '', baseUrl: run.config.llm?.local?.base_url || '' } : undefined,
     policy: { ...remainingPolicy(turn, wrapUp), complements: !wrapUp && turn.complementsEnabled }, tools: wrapUp ? [] : toolManifest(turn.tools),
-    chatId: args.chatId, computerEnabled: !wrapUp && turn.computerEnabled
+    chatId: args.chatId, computerEnabled: !wrapUp && turn.computerEnabled,
+    computerRequested: !wrapUp && turn.computerEnabled && isComputerTask(args.rawPrompt ?? '')
   });
   if (!started) throw new Error('The agent runtime did not start the turn.');
   // Runtime events can arrive while the start request is in flight.
@@ -453,14 +454,11 @@ async function driveTurns(turn: HomeTurn, onIndex: (index: number | undefined) =
   injectLiveEvidence(run);
   const resume = canContinueHomeHistory(args.homeRuntime, args.historyIds || []) || args.forkIndex !== undefined;
   let sessionId = resume || args.homeRuntime?.goalPending ? args.homeRuntime?.sessionId : undefined;
-  // A history edit starts a fresh runtime session. Carry its goal forward
-  // without changing the original session or rewriting its transcript.
+  // Import edited history into the goal's session so the goal and any
+  // paused computer task keep their owning session identity.
   if (!sessionId && args.homeRuntime?.sessionId) {
-    const goal = await invoke<{ objective: string; status: 'active' | 'completed' } | null>('agente_goal_get', { sessionId: args.homeRuntime.sessionId });
-    if (goal) {
-      sessionId = crypto.randomUUID();
-      await invoke('agente_goal_set', { sessionId, ...goal });
-    }
+    const goal = await invoke('agente_goal_get', { sessionId: args.homeRuntime.sessionId });
+    if (goal) sessionId = args.homeRuntime.sessionId;
   }
   let next: Attempt | undefined = { sessionId, forkIndex: args.forkIndex, conversation: resume ? undefined : history, prompt: history.at(-1), systemPrompt: turn.systemPrompt ?? homeSystemPrompt(run) };
   let budgetNotice = '';

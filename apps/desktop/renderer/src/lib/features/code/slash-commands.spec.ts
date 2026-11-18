@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { exactSlashCommand, matchSlashCommands, slashQuery } from './slash-commands';
+import { exactSlashCommand, matchSlashCommands, slashQuery } from '$lib/features/shared/composer/slash-commands';
 
 const commands = [{ name: 'compact' }, { name: 'changes' }, { name: 'full', aliases: ['auto'] }, { name: 'new' }];
 

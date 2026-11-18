@@ -1,6 +1,11 @@
 /** One physical desktop, shared by Home and Code. Coordinates are image pixels. */
 export type ComputerPhase = 'off' | 'requesting' | 'preparing' | 'active' | 'paused' | 'ended';
 export type ComputerSpace = 'home' | 'code';
+export const COMPUTER_TASK_PREFIX = 'Use my computer to ';
+export const COMPUTER_RESUME_PROMPT = 'Continue the computer task from the current screen. Take a fresh computer_observe before acting.';
+export function isComputerTask(prompt: string): boolean {
+  return prompt.trim() === COMPUTER_RESUME_PROMPT || prompt.trimStart().toLowerCase().startsWith(COMPUTER_TASK_PREFIX.toLowerCase());
+}
 export const COMPUTER_TASK_BUDGET = { maxIterations:300, maxToolCalls:1000, maxTimeMs:60 * 60_000, idleMs:10 * 60_000 } as const;
 export interface ComputerState {
   phase: ComputerPhase;

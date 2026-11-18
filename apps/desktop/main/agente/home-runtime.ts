@@ -5,6 +5,7 @@ import { runtimeConnection, useProvider, modelSeesImages } from './rust-engine.t
 import { createComputerTools } from './tools/computer.ts';
 import { bindComputerOwner, cancelComputerTurn, settleComputerTurn, computerSession, type ComputerOwner } from '../computer/desktop.ts';
 import { COMPUTER_INSTRUCTIONS } from '../../shared/computer.ts';
+import { computerHelperPath } from '../computer/helper.ts';
 import type { AgentTool } from '../../shared/agent-core/types.ts';
 import type { Attachment } from '../../shared/agente-protocol.gen.ts';
 import { notifyActivity } from '../notifications.ts';
@@ -114,13 +115,17 @@ export function registerHomeRuntimeHandlers(ipcMain: IpcMain) {
     }
     if ([...runs.values()].some((run) => run.sessionId === sessionId)) throw new Error('This Home chat is already working.');
     const provider = await useProvider(client, args.provider, args.model, args.localSelection);
+    const helperAvailable = !!computerHelperPath();
+    const computerEnabled = args.computerEnabled && !!args.chatId && helperAvailable && await modelSeesImages(args.provider, args.model);
+    if (args.computerRequested && !computerEnabled) {
+      throw new Error(helperAvailable ? 'Computer use requires a model with image input. Choose a vision model.' : 'Computer use requires the Windows computer helper.');
+    }
     trackGoalTurn(sessionId, client, event.sender, provider.id, provider.model, args.prompt?.content);
     const info = await client.request<{ limits?: { context?: number } }>('models.info', { provider: provider.id, model: provider.model });
     const run: Run = { runId: args.runId, sessionId, owner: event.sender, client, pending: new Set(), approvals: new Set(), chatId: args.chatId };
     if (args.policy.complements && args.chatId && args.policy.max_tool_calls > 0 && hello.capabilities.includes('complements_v1')) {
       run.complementNames = await homeComplements(client).catch(() => undefined);
     }
-    const computerEnabled = args.computerEnabled && !!args.chatId && await modelSeesImages(args.provider, args.model);
     if (computerEnabled) run.computerTools = new Map(createComputerTools({ owner: () => computerOwner(run), canSeeImages: () => true }).map(tool => [tool.name, tool]));
     const computerDefinitions = [...(run.computerTools?.values() ?? [])].map(tool => ({ name: tool.name, description: tool.description, parameters: tool.parameters, sequential: true, mutating: true }));
     await client.request('client_tools.register', { session_id: sessionId, tools: [...args.tools.filter(tool => !tool.name.startsWith('computer_')), ...computerDefinitions] });

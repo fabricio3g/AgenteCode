@@ -19,6 +19,7 @@ export interface HomeRuntimeMeta {
 export interface HomeStartArgs {
   chatId?: string;
   computerEnabled?: boolean;
+  computerRequested?: boolean;
   localSelection?: LocalModelSelection;
   runId: string;
   sessionId?: string;

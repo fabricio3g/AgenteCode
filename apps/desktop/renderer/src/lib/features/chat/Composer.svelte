@@ -10,14 +10,13 @@
 -->
 
 <script lang="ts">
-  import Button from '$lib/components/ui/Button.svelte';
   import UiFileInput from '$lib/components/ui/FileInput.svelte';
   import UiTextarea from '$lib/components/ui/Textarea.svelte';
   import { cn as uiClass } from '$lib/utils/cn';
 
   import type { Snippet } from 'svelte';
   import { onDestroy, tick } from 'svelte';
-  import { Paperclip, Target } from '$lib/icons';
+  import { Globe2, GraduationCap, ListChecks, Paperclip, Radar, Target, Wrench, Zap } from '$lib/icons';
   import { t } from 'svelte-i18n';
   import { appStore } from '$lib/stores/app.svelte';
   import { toastStore } from '$lib/stores/toast.svelte';
@@ -34,9 +33,11 @@
   import ComposerBar from './composer/ComposerBar.svelte';
   import DictationButton from './composer/DictationButton.svelte';
   import SendButton from '$lib/features/shared/composer/SendButton.svelte';
+  import ComposerPicker from '$lib/features/shared/composer/ComposerPicker.svelte';
+  import { matchSlashCommands, slashQuery } from '$lib/features/shared/composer/slash-commands';
   import HomeContextStatus from './composer/HomeContextStatus.svelte';
   import SelectedModes from './composer/SelectedModes.svelte';
-  import { parseGoalCommand } from '$shared/session-goal';
+  import { parseGoalCommand, type GoalCommand } from '$shared/session-goal';
   import { parseHomeModeCommand } from '$shared/composer-command';
   import SelectedTextCard from './composer/SelectedTextCard.svelte';
   import VoiceCallPanel from './composer/VoiceCallPanel.svelte';
@@ -64,12 +65,36 @@
 
   /** Textarea grows with content up to this height, then scrolls. */
   const MAX_TEXTAREA_PX = MAX_COMPOSER_TEXTAREA_PX;
-  let goalControl = $state<{ edit: () => Promise<void>; command:(value:string)=>Promise<boolean> }>();
-  let goalSlashDismissed = $state(false);
-  const goalSlashOpen = $derived(!goalSlashDismissed && /^\/[a-z]*$/i.test(appStore.composer) && '/goal'.startsWith(appStore.composer.toLowerCase()));
-  async function openGoal() {
-    appStore.updateComposer('/goal ');
-    if (!appStore.currentChat) appStore.createChat('home');
+  let goalControl = $state<{ command: (value: GoalCommand) => Promise<void> }>();
+  const slashId = $props.id();
+  let slashDismissed = $state(false);
+  let slashIndex = $state(0);
+  const supportsGoals = $derived(appStore.currentContextMode === 'home' || appStore.currentContextMode === 'design');
+  const slashCommands = $derived([
+    { name: 'goal', icon: Target, hint: $t('goal.hint') },
+    { name: 'teach', icon: GraduationCap, hint: $t('artifacts.lesson.teach') },
+    { name: 'practice', icon: ListChecks, hint: $t('artifacts.lesson.practice') },
+    { name: 'agent', icon: Wrench, hint: $t('chat.mode.agentHint') },
+    { name: 'instant', icon: Zap, hint: $t('chat.mode.instantHint') },
+    { name: 'search', icon: Globe2, hint: copy.searchModes.search.label },
+    { name: 'research', icon: Radar, hint: copy.searchModes.deep.label }
+  ]);
+  const slashText = $derived(appStore.currentContextMode === 'home' ? slashQuery(appStore.composer) : null);
+  const slashMatches = $derived(slashText === null ? [] : matchSlashCommands(slashCommands, slashText));
+  const slashOpen = $derived(!slashDismissed && slashMatches.length > 0);
+
+  $effect(() => { void slashText; slashIndex = 0; });
+
+  async function selectSlash(index: number, complete = false) {
+    const command = slashMatches[index];
+    if (!command) return;
+    if (!appStore.currentChat) appStore.createChat();
+    if (command.name === 'goal' && !complete) {
+      appStore.updateComposer('/goal');
+      await submit();
+      return;
+    }
+    appStore.updateComposer(`/${command.name} `);
     await tick();
     focusComposer();
   }
@@ -175,11 +200,19 @@
   }
 
   async function submit() {
-    if (parseGoalCommand(appStore.composer) && appStore.currentContextMode!=='roleplay') { const value=appStore.composer;if(!appStore.currentChat)appStore.createChat('home');appStore.updateComposer('');await tick();await goalControl?.command(value);return; }
+    const goalCommand = supportsGoals ? parseGoalCommand(appStore.composer) : null;
+    if (goalCommand) {
+      if (!appStore.currentChat) appStore.createChat();
+      appStore.updateComposer('');
+      await tick();
+      await goalControl?.command(goalCommand);
+      return;
+    }
     // `/teach` and `/practice` are Home-only and opt-in: the first use turns the
     // type on, and the command becomes the directive the agent answers.
     const lessonAsk = matchLessonCommand(appStore.composer, appStore.currentContextMode);
     if (lessonAsk) {
+      if (!appStore.currentChat) appStore.createChat('home');
       if (!(appStore.getArtifactToggles().lesson ?? false)) void appStore.updateArtifactToggles({ lesson: true });
       appStore.updateComposer(lessonAsk.directive);
     }
@@ -227,8 +260,18 @@
       approvalsStore.resolve(approval.id, event.key === 'Enter');
       return;
     }
-    if (goalSlashOpen && event.key === 'Escape') { event.preventDefault(); goalSlashDismissed = true; return; }
-    if (goalSlashOpen && (event.key === 'Tab' || (event.key === 'Enter' && !event.shiftKey))) { event.preventDefault(); void openGoal(); return; }
+    if (slashOpen && event.key === 'Escape') { event.preventDefault(); slashDismissed = true; return; }
+    if (slashOpen && (event.key === 'ArrowDown' || event.key === 'ArrowUp')) {
+      event.preventDefault();
+      const count = slashMatches.length;
+      slashIndex = (slashIndex + (event.key === 'ArrowDown' ? 1 : -1) + count) % count;
+      return;
+    }
+    if (slashOpen && !event.shiftKey && (event.key === 'Tab' || event.key === 'Enter')) {
+      event.preventDefault();
+      void selectSlash(slashIndex, event.key === 'Tab');
+      return;
+    }
     if (event.key === 'ArrowUp' && !appStore.composer && !appStore.pendingAttachments.length) {
       const item = [...(appStore.currentChat?.pendingPrompts ?? [])].reverse().find(item => !item.sending);
       if (item && appStore.currentChatId) {
@@ -243,7 +286,7 @@
   }
 
   function onInput(event: Event) {
-    goalSlashDismissed = false;
+    slashDismissed = false;
     const element = event.currentTarget as HTMLTextAreaElement;
     appStore.updateComposer(element.value);
     autoGrow(element);
@@ -426,13 +469,18 @@
 
     <!-- Radius comes from --composer-radius on .ui-composer; the rounded-*
          utilities that used to sit here fought it at equal specificity. -->
-    {#if goalSlashOpen}
-      <div class="goal-slash" role="listbox" aria-label={$t('code.slash.title')}>
-        <Button variant="plain" type="button" role="option" aria-selected="true" onmousedown={(event) => event.preventDefault()} onclick={() => void openGoal()}><Target class="size-4" /><span>/goal</span><span class="goal-slash-hint">{$t('goal.hint')}</span></Button>
-      </div>
+    {#if slashOpen}
+      <ComposerPicker id={slashId} label={$t('code.slash.title')} selected={slashIndex} floating
+        items={slashMatches.map(command => ({ id: command.name, label: `/${command.name}`, icon: command.icon, hint: command.hint }))}
+        onhighlight={index => (slashIndex = index)} onselect={index => void selectSlash(index)} />
     {/if}
     {#if appStore.currentChat?.pendingPrompts?.length && appStore.currentChatId}
       <PromptQueue running={generating} items={appStore.currentChat.pendingPrompts} onupdate={(id, content) => appStore.updateQueuedPrompt(appStore.currentChatId!, id, content)} onremove={(id) => { appStore.removeQueuedPrompt(appStore.currentChatId!, id); }} onsend={(id) => void appStore.sendQueuedPromptsNow(appStore.currentChatId!, id)} />
+    {/if}
+    {#if appStore.currentChat && supportsGoals}
+      {#key appStore.currentChat.id}
+        <SessionGoal bind:this={goalControl} chatId={appStore.currentChat.id} sessionId={appStore.currentChat.homeRuntime?.sessionId} ensureSession={ensureGoalSession} />
+      {/key}
     {/if}
     <AttachmentCards />
     <div class="composer-shell ui-composer pointer-events-auto transition">
@@ -481,6 +529,8 @@
           {placeholder}
           rows={1}
           value={appStore.composer}
+          aria-controls={slashOpen ? slashId : undefined}
+          aria-activedescendant={slashOpen ? `${slashId}-${slashIndex}` : undefined}
           oninput={onInput}
           onkeydown={onKeydown}
         ></UiTextarea>
@@ -507,9 +557,6 @@
       </div>
     </div>
     <div class="composer-footnote"><div class="composer-footnote-trailing"><HomeContextStatus /></div></div>
-    {#if appStore.currentChat && appStore.currentChat.contextMode !== 'code' && appStore.currentChat.contextMode !== 'roleplay'}
-      <div class="pointer-events-auto"><SessionGoal bind:this={goalControl} chatId={appStore.currentChat.id} sessionId={appStore.currentChat.homeRuntime?.sessionId} ensureSession={ensureGoalSession} running={generating} /></div>
-    {/if}
     {#if threadIsEmpty && suggestions}
       <!-- await tick() so the textarea holds the inserted prompt before we
            focus it; otherwise the caret lands at the pre-insert length. -->
@@ -519,9 +566,6 @@
 </div>
 
 <style>
-  .goal-slash { position:absolute; bottom:100%; left:0; right:0; padding:0.25rem; border:1px solid var(--border); border-radius:var(--radius-md); background:var(--background); box-shadow:var(--shadow-md); }
-  .goal-slash :global(button) { display:flex; align-items:center; gap:0.5rem; width:100%; padding:0.5rem; border-radius:var(--radius-sm); text-align:left; background:var(--surface-hover); font-size:var(--text-sm); }
-  .goal-slash-hint { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--muted-foreground); font-size:var(--text-xs); }
   .composer-dock {
     background: var(--chat-bg);
   }

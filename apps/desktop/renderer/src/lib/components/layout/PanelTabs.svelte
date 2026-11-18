@@ -16,7 +16,7 @@
   import type { Snippet } from 'svelte';
   import { PanelRight as ContextIcon } from '$lib/icons';
 
-  import { Activity, ClipboardList, FolderTree, GitCompareArrows, Globe, History, Image, ListChecks, SquareTerminal } from '$lib/icons';
+  import { Activity, FolderTree, GitCompareArrows, Globe, History, ListChecks, PanelsTopLeft, SquareTerminal } from '$lib/icons';
   import Menu from '$lib/components/ui/Menu.svelte';
   import Tooltip from '$lib/components/ui/Tooltip.svelte';
   import MenuItem from '$lib/components/ui/MenuItem.svelte';
@@ -26,10 +26,9 @@
   import type { ChatSession, CodeProject } from '$lib/types/chat';
   import { codeStore } from '$lib/features/code/code.svelte';
   import { codeWorkspace } from '$lib/features/code/workspace.svelte';
-  import ProjectControls from '$lib/features/code/workspace/ProjectControls.svelte';
+  import { projectControls } from '$lib/features/code/workspace/project-controls.svelte';
   import { workspaceLayout as defaultLayout, type WorkspaceLayoutStore } from '$lib/stores/workspace-layout.svelte';
   import { browserPanelStore as defaultBrowser, type BrowserPanelStore } from '$lib/stores/browser-panel.svelte';
-  import { latestPlan } from '$lib/features/code/plan-review';
   import { groupedNumber } from '$lib/utils/format';
 
   let { chat = null, project = null, inline = false, layout: workspaceLayout = defaultLayout, browser: browserPanelStore = defaultBrowser }: { inline?: boolean; layout?: WorkspaceLayoutStore; browser?: BrowserPanelStore; chat?: ChatSession | null; project?: CodeProject | null } = $props();
@@ -41,7 +40,6 @@
   const changes = $derived(chat ? codeWorkspace.changesFor(chat.id) : null);
   const changeTotals = $derived((changes?.files ?? []).reduce((acc, f) => ({ add: acc.add + f.additions, del: acc.del + f.deletions }), { add: 0, del: 0 }));
   const terminalOpen = $derived(codeWorkspace.terminalsForScope(workspaceLayout.scope).some((term) => workspaceLayout.isOpen(`terminal:${term.id}`)));
-  const processesOpen = $derived(workspaceLayout.isOpen('processes'));
   const remainingTasks = $derived(chat ? codeStore.todosFor(chat).filter((todo) => todo.status === 'pending' || todo.status === 'in_progress').length : 0);
 
   let historyOpen = $state(false);
@@ -114,13 +112,10 @@
 
 <div class="pane-strip" class:inline role="toolbar" tabindex="-1" aria-label={$t('workspace.panels')} onkeydown={onKeydown} ondblclick={(event) => event.stopPropagation()}>
   <div class="pane-strip-controls">
-    <!-- The branch names the checkout the panes act on, so it leads the strip. -->
-    {#if inCode && project && chat}
-      <ProjectControls {chat} {project} layout={workspaceLayout}>
-        {@render pane('plan', $t('code.plan.title'), workspaceLayout.isOpen('plan'), () => codeWorkspace.togglePlan(chat!.id, latestPlan(chat!.messages), workspaceLayout), ClipboardList)}
-        {@render pane('processes', $t('codeWs.processes'), processesOpen, () => void codeWorkspace.toggleBottom('processes', cwd, workspaceLayout), Activity)}
-        {@render pane('canvas', $t('canvas.title'), workspaceLayout.isOpen('canvas'), () => workspaceLayout.toggle('canvas'), Image)}
-      </ProjectControls>
+    <!-- The session column (project, git, context, tasks, subagents, scripts)
+         leads the strip; plan, processes and canvas live in it. -->
+    {#if inCode}
+      <span data-session-toggle>{@render pane('session', projectControls.open ? $t('sessionHud.fold') : $t('sessionHud.open'), projectControls.open, () => projectControls.toggle(), PanelsTopLeft)}</span>
     {/if}
     <div class="pane-strip-tabs">
       {#if chat}
@@ -128,12 +123,17 @@
           {@render pane('changes', $t('codeWs.changes'), workspaceLayout.isOpen('changes'), () => workspaceLayout.toggle('changes'), GitCompareArrows, changesBadge, $t('codeWs.changes'))}
           {@render pane('files', $t('codeWs.files'), workspaceLayout.isOpen('files'), () => workspaceLayout.toggle('files'), FolderTree, null, $t('codeWs.files'))}
         {/if}
-        {@render pane('tasks', $t('code.todosTitle'), workspaceLayout.isOpen('tasks'), () => workspaceLayout.toggle('tasks'), ListChecks, remainingTasks ? tasksBadge : null, $t('code.todosTitle'))}
+        <!-- In Code the session column carries tasks and context. -->
+        {#if !inCode}
+          {@render pane('tasks', $t('code.todosTitle'), workspaceLayout.isOpen('tasks'), () => workspaceLayout.toggle('tasks'), ListChecks, remainingTasks ? tasksBadge : null, $t('code.todosTitle'))}
+        {/if}
         {#if inCode}
           {@render pane('terminal', $t('codeWs.terminal'), terminalOpen, () => void toggleTerminal(), SquareTerminal)}
         {/if}
         {@render pane('browser', $t('browser.title'), browserPanelStore.open, () => void browserPanelStore.toggle().catch((error) => toastStore.error(String(error))), Globe)}
-        {@render pane('context', $t('context.button'), workspaceLayout.isOpen('context'), () => workspaceLayout.toggle('context'), ContextIcon)}
+        {#if !inCode}
+          {@render pane('context', $t('context.button'), workspaceLayout.isOpen('context'), () => workspaceLayout.toggle('context'), ContextIcon)}
+        {/if}
       {/if}
     </div>
 

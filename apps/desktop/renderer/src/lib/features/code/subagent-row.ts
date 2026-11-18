@@ -97,3 +97,15 @@ export function childActivity(child: CodeChild): string | undefined {
   const kind = toolKind(tool);
   return kind === 'other' ? titleCaseToolName(tool) : KIND_VERBS[kind];
 }
+
+/**
+ * Every child this conversation has spawned, newest first: the saved turns'
+ * `codeChildren` plus the live run's, the live copy winning for a child that
+ * is in both (a turn's own message carries a snapshot while it streams).
+ */
+export function sessionChildren(messages: ReadonlyArray<{ metadata?: { codeChildren?: CodeChild[] } }>, live: readonly CodeChild[] = []): CodeChild[] {
+  const byId = new Map<string, CodeChild>();
+  for (const message of messages) for (const child of message.metadata?.codeChildren ?? []) byId.set(child.id, child);
+  for (const child of live) byId.set(child.id, child);
+  return [...byId.values()].reverse();
+}

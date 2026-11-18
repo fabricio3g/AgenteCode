@@ -20,7 +20,8 @@
   import { ArrowUp, ChevronDown, ClipboardList, Eye, EyeOff, File as FileIcon, Paperclip, Play, ShieldCheck, Settings2, Target, Wrench, X, Zap } from '$lib/icons';
   import { toastStore } from '$lib/stores/toast.svelte';
   import { codeWorkspace } from './workspace.svelte';
-  import { exactSlashCommand, matchSlashCommands, slashQuery } from './slash-commands';
+  import { exactSlashCommand, matchSlashCommands, slashQuery } from '$lib/features/shared/composer/slash-commands';
+  import ComposerPicker from '$lib/features/shared/composer/ComposerPicker.svelte';
   import { codeCommands, type CodeCommand, type CodeDialog } from './code-commands';
   import { t } from 'svelte-i18n';
   import type { ChatSession, ReasoningLevel } from '$lib/types/chat';
@@ -33,6 +34,7 @@
   import GenerationSpeed from '$lib/features/shared/composer/GenerationSpeed.svelte';
   import { latestGenerationSpeed } from '$lib/utils/generation-speed';
   import ContextUsageRing from '$lib/features/chat/composer/ContextUsageRing.svelte';
+  import { projectControls } from './workspace/project-controls.svelte';
   import { codeStore } from './code.svelte';
   import { initProject, projectFiles, setAgenteModel } from './code-ipc';
   import { restoreCodeEdits } from './code-edits';
@@ -40,7 +42,7 @@
   import CodeAttachmentShelf from './CodeAttachmentShelf.svelte';
   import PromptQueue from '$lib/features/shared/PromptQueue.svelte';
   import SessionGoal from '$lib/features/shared/SessionGoal.svelte';
-  import { parseGoalCommand } from '$shared/session-goal';
+  import { parseGoalCommand, type GoalCommand } from '$shared/session-goal';
   import { conversationSpend } from './accounting';
   import { fileMentionAt, insertFile, matchFiles } from './file-mention';
   import { downloadSessionMarkdown } from '$lib/features/shared/export-session';
@@ -64,7 +66,7 @@
   import { mergeDraft } from '$lib/features/canvas/canvas-doc';
 
   let { chat }: { chat: ChatSession } = $props();
-  let goalControl = $state<{ edit: () => Promise<void>; command:(value:string)=>Promise<boolean> }>();
+  let goalControl = $state<{ command: (value: GoalCommand) => Promise<void> }>();
 
   function ensureGoalSession(): string {
     chat.codeAgent ??= { instanceId: 'agente', driverKind: 'agente', substrate: 'native', updatedAt: Date.now() };
@@ -319,7 +321,6 @@
     if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
       event.preventDefault();
       slashIndex = (slashIndex + (event.key === 'ArrowDown' ? 1 : -1) + count) % count;
-      void Promise.resolve().then(() => document.querySelector('.slash-item.is-active')?.scrollIntoView({ block: 'nearest' }));
       return true;
     }
     if (event.key === 'Tab') {
@@ -465,7 +466,8 @@
    async function submit() {
      previewText = '';
      const value = text.trim() || (attachments.length ? 'Please review the attached media.' : '');
-    if(parseGoalCommand(value)){clearComposer();await goalControl?.command(value);return;}
+    const goalCommand = parseGoalCommand(value);
+    if (goalCommand) { clearComposer(); await goalControl?.command(goalCommand); return; }
     if (attaching) return;
     starterSlot = null;
     if (!value) { await codeStore.sendQueuedNow(chat.id, chat.pendingPrompts?.find((item) => !item.sending)?.id); return; }
@@ -707,33 +709,13 @@
   <div class="composer-frame mx-auto w-full" style="max-width: var(--thread-width);">
     {#if dictation.phase === 'choose'}<DictationSetupPopover {dictation} />{/if}
     {#if fileOpen}
-      <div class="slash-menu" role="listbox" aria-label={$t('code.projectFiles')}>
-        {#each fileMatches as file, index (file)}
-          <Button variant="plain" type="button" role="option" aria-selected={index === fileIndex} class={uiClass("slash-item", "ui-local-49e9c79c", {"is-active": index === fileIndex})}  onmouseenter={() => (fileIndex = index)} onmousedown={(event) => event.preventDefault()} onclick={() => chooseFile(file)}><FileIcon class="size-4 shrink-0 text-muted-foreground" /><span class="truncate text-xs">{file}</span></Button>
-        {/each}
-      </div>
+      <ComposerPicker label={$t('code.projectFiles')} selected={fileIndex}
+        items={fileMatches.map(file => ({ id: file, label: file, icon: FileIcon }))}
+        onhighlight={index => (fileIndex = index)} onselect={index => chooseFile(fileMatches[index]!)} />
     {:else if slashOpen}
-      <div class="slash-menu" role="listbox" aria-label={$t('code.slash.title')}>
-        {#each slashMatches as command, index (command.name)}
-          {@const Icon = command.icon}
-          <Button variant="plain"
-            type="button"
-            role="option"
-            aria-selected={index === slashIndex}
-            aria-disabled={command.disabled}
-            class={uiClass("slash-item", "ui-local-49e9c79c", {"is-active": index === slashIndex, "is-disabled": command.disabled})}
-
-
-            onmouseenter={() => (slashIndex = index)}
-            onmousedown={(event) => event.preventDefault()}
-            onclick={() => void runCommand(command)}
-          >
-            <Icon class="size-4 shrink-0 text-muted-foreground" />
-            <span class="text-[length:var(--text-sm)] text-foreground">/{command.name}</span>
-            <span class="min-w-0 flex-1 truncate text-xs text-muted-foreground">{command.hint}</span>
-          </Button>
-        {/each}
-      </div>
+      <ComposerPicker label={$t('code.slash.title')} selected={slashIndex}
+        items={slashMatches.map(command => ({ id: command.name, label: `/${command.name}`, icon: command.icon, hint: command.hint, disabled: command.disabled }))}
+        onhighlight={index => (slashIndex = index)} onselect={index => void runCommand(slashMatches[index]!)} />
     {/if}
     {#if chat.pendingPrompts?.length}
       <PromptQueue {running} steers items={chat.pendingPrompts} onupdate={(id, content) => appStore.updateQueuedPrompt(chat.id, id, content)} onremove={(id) => { appStore.removeQueuedPrompt(chat.id, id); }} onsend={(id) => void codeStore.sendQueuedNow(chat.id, id)} />
@@ -741,6 +723,7 @@
     {#if starterSlot}
       <p class="starter-slot"><span class="slot">{starterSlot}</span></p>
     {/if}
+    <SessionGoal bind:this={goalControl} chatId={chat.id} space="code" sessionId={chat.codeAgent?.sessionId} ensureSession={ensureGoalSession} />
     <CodeAttachmentShelf {attachments} onremove={path => attachments = attachments.filter(item => item.path !== path)} />
     <div class="composer-shell ui-composer pointer-events-auto transition">
       {#if pendingApprovals.length}
@@ -826,8 +809,7 @@
       </div>
     </div>
 
-    {#if showContextRing && usage}<div class="composer-footnote"><div class="composer-footnote-trailing"><ContextUsageRing showLabel usedTokens={usage.promptTokens} maxTokens={usage.contextWindow ?? 0} breakdown={usage.breakdown} {spend} /></div></div>{/if}
-    <SessionGoal bind:this={goalControl} chatId={chat.id} space="code" sessionId={chat.codeAgent?.sessionId} ensureSession={ensureGoalSession} {running} />
+    {#if showContextRing && usage && !(projectControls.open && chat.projectId)}<div class="composer-footnote"><div class="composer-footnote-trailing"><ContextUsageRing showLabel usedTokens={usage.promptTokens} maxTokens={usage.contextWindow ?? 0} breakdown={usage.breakdown} {spend} /></div></div>{/if}
 
     <p class="composer-hint sr-only mx-auto mt-[var(--dock-gap)] px-1 text-center text-xs text-muted-foreground opacity-70">
       {#if hint}
@@ -901,35 +883,6 @@
     transition: background-color var(--motion-fast) var(--motion-ease), color var(--motion-fast) var(--motion-ease);
   }
   :global(.media-status:hover.ui-local-49e9c79c) { background: var(--surface-hover); color: var(--foreground); }
-  .slash-menu {
-    max-height: min(20rem, 40vh);
-    overflow-y: auto;
-    margin-bottom: 0.5rem;
-    padding: var(--float-pad);
-    border: 1px solid var(--float-border);
-    border-radius: var(--float-radius);
-    background: var(--float-bg);
-    box-shadow: var(--float-shadow);
-  }
-  :global(.slash-item.ui-local-49e9c79c) {
-    display: flex;
-    width: 100%;
-    min-height: var(--float-row-h);
-    align-items: center;
-    gap: 0.625rem;
-    padding: 0.3125rem 0.625rem;
-    border-radius: var(--float-row-radius);
-    font-size: var(--text-sm);
-    text-align: left;
-  }
-  :global(.slash-item:hover.ui-local-49e9c79c),
-  :global(.slash-item.is-active.ui-local-49e9c79c) {
-    background: var(--float-row-hover);
-  }
-  :global(.slash-item.is-disabled.ui-local-49e9c79c) {
-    opacity: 0.45;
-    cursor: default;
-  }
   /* Compact rectangle: clear edges, quiet depth, no pill or glyph motion. */
   :global(.mode-menu) {width:16rem;max-width:calc(100vw - 1.5rem);}
   :global(.mode-menu .mode-option) {padding:0.3125rem 0.625rem;}

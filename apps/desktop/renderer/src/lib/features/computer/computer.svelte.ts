@@ -1,5 +1,5 @@
 import type { ComputerState, ComputerSpace } from '$shared/computer';
-import { EMPTY_COMPUTER_STATE } from '$shared/computer';
+import { COMPUTER_RESUME_PROMPT, EMPTY_COMPUTER_STATE } from '$shared/computer';
 import { invoke, listen, isElectron } from '$lib/services/bridge';
 import { appStore } from '$lib/stores/app.svelte';
 import { codeStore } from '$lib/features/code/code.svelte';
@@ -37,7 +37,7 @@ export async function startComputerUseEvents(): Promise<() => void> {
       }
       if (disposed || epoch !== resumeEpoch) return;
       if (!ready) throw new Error('The previous turn is still stopping. Resume again once it has stopped.');
-      const prompt = 'Continue the computer task from the current screen. Take a fresh computer_observe before acting.';
+      const prompt = COMPUTER_RESUME_PROMPT;
       if (event.space === 'code') await codeStore.send(event.chatId, prompt);
       else await appStore.sendCurrentMessage({ chatId: event.chatId, queuedPrompt: { id: createId('computer-resume'), content: prompt, attachments: [] } });
     })().catch(error => {

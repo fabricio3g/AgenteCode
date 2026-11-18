@@ -11,7 +11,7 @@ import type { IndexedDocument, SearchResult } from '$lib/types/bridge';
 import { countOf } from '$lib/utils/format';
 import { runAgentTask } from '$lib/services/agent';
 import { captureDesignTurnContext, runDesignTask } from '$lib/services/agent-design-runtime';
-import { applyHomeAgentResult, homeAgentCallbacks, initialHomeActivity, planHomeAgentRun, settleAgentSteps } from '$lib/features/home/home-turn';
+import { applyHomeAgentResult, homeAgentCallbacks, homeToolRequest, initialHomeActivity, planHomeAgentRun, settleAgentSteps } from '$lib/features/home/home-turn';
 import { updateHomeLive } from '$lib/features/home/home-live';
 import { roleplayStore } from '$lib/features/roleplay/roleplay.svelte';
 import { messageSpeechParts } from '$lib/features/roleplay/roleplay-voice';
@@ -1923,6 +1923,10 @@ class AppStore {
       }
     }
 
+    if (chat.homeRuntime) {
+      const meta = chat.homeRuntime;
+      chat.homeRuntime = { ...meta, revision: meta.revision + 1, historyIds: [] };
+    }
     chat.updatedAt = Date.now();
     this.closeEditMessage();
     this.touchChats();
@@ -2533,7 +2537,8 @@ class AppStore {
       searchMode: activeSearchMode,
       contextMode: activeContextMode
     });
-    const useToolLoop = shouldUseToolLoop({
+    const homeRequest = homeToolRequest(content, activeContextMode);
+    const useToolLoop = !!homeRequest || shouldUseToolLoop({
       voiceCall: this.voiceModeActive && targetChatId === this.currentChatId,
       control: this.composerModeControl,
       composerMode: activeComposerMode,
@@ -2541,7 +2546,7 @@ class AppStore {
       searchMode: activeSearchMode,
       contextMode: activeContextMode
     });
-    const plan = planHomeAgentRun({ composerMode: activeComposerMode, searchMode: activeSearchMode });
+    const plan = planHomeAgentRun({ composerMode: activeComposerMode, searchMode: activeSearchMode, request: homeRequest });
     const initial = initialHomeActivity(plan, activeComposerMode);
     // Spends the routed speaker and any queued story turn: one turn, one generation.
     const turn = roleplayStore.prepareTurn(targetChat, { consumeRouting: true });
@@ -3267,8 +3272,8 @@ class AppStore {
      * Instant fast path, and a Deep or Max research answer re-runs at the same
      * depth instead of silently shrinking to a plain chat agent.
      */
-    const plan = planHomeAgentRun({ composerMode: message.mode, searchMode: message.searchMode });
     const regenPrompt = [...chat.messages.slice(0, index)].reverse().find((entry) => entry.role === 'user')?.content || '';
+    const plan = planHomeAgentRun({ composerMode: message.mode, searchMode: message.searchMode, request: homeToolRequest(regenPrompt, getSpaceForSession(chat)) });
 
     this.error = null;
     const controller = new AbortController();

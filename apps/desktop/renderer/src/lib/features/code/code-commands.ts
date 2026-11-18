@@ -4,7 +4,7 @@
 // controls, so they are slash-only.
 
 import { Archive, Bot, ClipboardList, File as FileIcon, FileDown, FolderOpen, GitCompareArrows, MessageSquarePlus, Plug, RotateCcw, RotateCw, Settings2, ShieldCheck, Sparkles, Square, SquareTerminal, Zap, History, Cpu } from '$lib/icons';
-import type { SlashCommand } from './slash-commands';
+import type { SlashCommand } from '$lib/features/shared/composer/slash-commands';
 
 export type CodeDialog = 'skills' | 'agents' | 'mcp' | 'sessions' | 'settings';
 type Mode = 'plan' | 'supervised' | 'full';

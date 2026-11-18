@@ -101,10 +101,11 @@ async function run() {
       const dataTransfer=new DataTransfer();source.dispatchEvent(new DragEvent('dragstart',{bubbles:true,dataTransfer}));target.dispatchEvent(new DragEvent('drop',{bubbles:true,cancelable:true,dataTransfer}));
       if(sidebarOrganization.list('projects',codeStore.projects)[0].id!=='project-a')throw new Error('project order was not saved');
     })()`);
-    // Compact project card adds scripts and permits its nested branch picker.
-    await js(`document.querySelector('[data-conversation-workspace="split-a"] [aria-label="Project controls"]').click()`);await pause();
+    // The session column adds scripts and permits its nested branch picker.
+    // The session column is open by default; its toggle lives in the pane's header.
+    await js(`if(!document.querySelector('[data-project-controls="split-a"]'))document.querySelector('[data-conversation-workspace="split-a"] [data-session-toggle] button').click()`);await pause();
     await js(`document.querySelector('[data-project-controls="split-a"] [data-keep-open]').click()`);await pause();
-    assert.equal(await js(`!!document.querySelector('[data-project-controls="split-a"] .script-form')`),true,'Add script stays in the project card');
+    assert.equal(await js(`!!document.querySelector('[data-project-controls="split-a"] .script-form')`),true,'Add script stays in the session column');
     await js(`document.querySelector('[data-project-controls="split-a"] .script-form input').value='Dev';document.querySelector('[data-project-controls="split-a"] .script-form input').dispatchEvent(new Event('input',{bubbles:true}));document.querySelector('[data-project-controls="split-a"] .script-form input+input').value='npm run dev';document.querySelector('[data-project-controls="split-a"] .script-form input+input').dispatchEvent(new Event('input',{bubbles:true}));`);
     await pause();await js(`document.querySelector('[data-project-controls="split-a"] .script-form').dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}))`);await pause();
     assert.equal(await js(`JSON.parse(localStorage.getItem('agente.projectScripts'))['project-a'][0].command`),'npm run dev');

@@ -3285,5 +3285,20 @@
         "code": "Code"
       }
     }
+  },
+  "sessionHud": {
+    "title": "Sitzung",
+    "open": "Sitzungsdetails anzeigen",
+    "fold": "Sitzungsdetails ausblenden",
+    "changes": "Änderungen",
+    "context": "Kontext",
+    "spend": "Kosten",
+    "model": "Modell",
+    "subagents": "Subagenten",
+    "subagent": "Subagent",
+    "scripts": "Skripte",
+    "answer": "Antwort",
+    "tools": "Tool-Aufrufe",
+    "gone": "Dieser Subagent ist nicht mehr in der Unterhaltung."
   }
 }

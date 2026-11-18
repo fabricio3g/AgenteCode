@@ -43,6 +43,7 @@ function setup(t){
 }
 test('slash commands share one parser and selected modes preserve their prompt',()=>{
   assert.deepEqual(parseGoalCommand('/goal pause'),{action:'pause'});
+  assert.deepEqual(parseGoalCommand('/goal edit'),{action:'edit'});
   assert.deepEqual(parseGoalCommand('/GOAL fix checkout'),{action:'start',objective:'fix checkout'});
   assert.equal(parseGoalCommand('/goals'),null);
   assert.deepEqual(parseHomeModeCommand('/research max find sources'),{research:'max',prompt:'find sources'});
@@ -71,6 +72,37 @@ test('an unfinished verified turn dispatches exactly one continuation',async t=>
   await new Promise(resolve=>setImmediate(resolve));
   assert.equal(env.owner.sent.filter(item=>item.channel==='session_goal_continue').length,2);
   assert.equal((await env.invoke('agente_goal_get',{sessionId:id})).turns,1);
+});
+
+test('editing a running goal dispatches the new objective after the old turn settles', async t => {
+  const env = setup(t);
+  await env.start();
+  env.api.goalTurnStarted(id, 'previous-turn');
+  const edited = await env.invoke('agente_goal_set', {
+    sessionId: id, chatId: 'chat', space: 'home', objective: 'Fix refunds', criteria: 'Refund tests pass'
+  });
+  env.api.goalTurnStarted(id, 'previous-turn'); // Further events from the old turn.
+  const continuations = () => env.owner.sent.filter(item => item.channel === 'session_goal_continue');
+  assert.equal(continuations().length, 1);
+  env.client.notify('turn.outcome', { session_id: id, turn_id: 'previous-turn', status: 'completed', tokens: 10 });
+  await settle(() => continuations().length === 2);
+  assert.equal(env.client.calls.some(call => call.method === 'turn.start'), false);
+  assert.equal(continuations()[1].args.revision, edited.revision);
+  assert.match(continuations()[1].args.prompt, /Objective: Fix refunds/);
+});
+
+test('editing while the goal is being checked cancels the obsolete verifier', async t => {
+  const env = setup(t);
+  env.setDelay(true);
+  await env.start();
+  env.api.goalTurnStarted(id, 'worker');
+  env.client.notify('turn.outcome', { session_id: id, turn_id: 'worker', status: 'completed', tokens: 10 });
+  await settle(() => env.client.calls.some(call => call.method === 'turn.start'));
+  const edited = await env.invoke('agente_goal_set', { sessionId: id, chatId: 'chat', space: 'home', objective: 'Fix refunds' });
+  assert.equal(edited.phase, 'working');
+  assert.equal(edited.turns, 1);
+  await settle(() => env.client.calls.some(call => call.method === 'turn.cancel' && call.args.turn_id === 'verify'));
+  assert.match(env.owner.sent.filter(item => item.channel === 'session_goal_continue').at(-1).args.prompt, /Objective: Fix refunds/);
 });
 test('a fresh verifier can complete with evidence without launching another worker',async t=>{
   const env=setup(t);env.setVerdict({verdict:'achieved',reason:'The regression passed after the fix.',evidence:['Focused checkout test: exit 0.']});await env.start();

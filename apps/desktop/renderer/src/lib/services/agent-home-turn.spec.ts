@@ -18,6 +18,9 @@ import type { HomeRuntimeEvent } from '$shared/home-runtime';
 import { invoke, listen } from './bridge';
 import { INSTANT_TOOL_NAMES, runAgentTask } from './agent';
 import { shouldUseToolLoop } from './composer-route';
+import { homeToolRequest, planHomeAgentRun } from '$lib/features/home/home-turn';
+import { matchLessonCommand } from '$lib/features/chat/lesson-entry';
+import { COMPUTER_RESUME_PROMPT, COMPUTER_TASK_BUDGET, COMPUTER_TASK_PREFIX } from '$shared/computer';
 import type { RunAgentTaskArgs } from './agent-types';
 
 type Turn = { status: 'completed' | 'failed' | 'cancelled'; error?: string };
@@ -125,17 +128,16 @@ describe('Home turn on the Rust runtime', () => {
     expect(starts[0].conversation).toBeDefined();
   });
 
-  it('copies a goal when edited history requires a new session', async () => {
+  it('imports edited history into the existing goal session', async () => {
     script = async ({ emit }) => { emit(say('Working.')); return { status: 'completed' }; };
     const original = vi.mocked(invoke).getMockImplementation()!;
     vi.mocked(invoke).mockImplementation(async (command: string, args?: any) => {
-      if (command === 'agente_goal_get') return { objective: 'Finish work', status: 'active' };
-      if (command === 'agente_goal_set') return args;
+      if (command === 'agente_goal_get') return { objective: 'Finish work', phase: 'working' };
       return original(command, args);
     });
     await run('hi', { homeRuntime: { sessionId: 'old-session', revision: 1, provider: 'p', model: 'm', contextWindow: 100, historyIds: ['old'] }, historyIds: ['edited', 'new'] });
-    expect(starts[0].sessionId).not.toBe('old-session');
-    expect(vi.mocked(invoke)).toHaveBeenCalledWith('agente_goal_set', expect.objectContaining({ sessionId: starts[0].sessionId, objective: 'Finish work', status: 'active' }));
+    expect(starts[0].sessionId).toBe('old-session');
+    expect(vi.mocked(invoke)).not.toHaveBeenCalledWith('agente_goal_set', expect.anything());
     expect(starts[0].conversation).toBeDefined();
   });
 
@@ -157,6 +159,21 @@ describe('Home turn on the Rust runtime', () => {
     expect(starts[0].tools).toEqual([]);
     expect(starts[0].policy.max_iterations).toBe(1);
     expect(result.content).toBe('Four.');
+  });
+
+  it('offers the lesson tool for a Teach request from Instant mode', async () => {
+    script = async ({ emit }) => { emit(say('Here is a lesson.')); return { status: 'completed' }; };
+    const prompt = matchLessonCommand('/teach the chain rule', 'home')!.directive;
+    const plan = planHomeAgentRun({ composerMode: 'instant', searchMode: 'deep', request: homeToolRequest(prompt, 'home') });
+    await run(prompt, { contextMode: 'home', toolMode: plan.toolMode, agentProfile: plan.agentProfile, config: { ui: { artifact_toggles: { lesson: true } } } });
+    expect(starts[0].tools).toContainEqual(expect.objectContaining({ name: 'create_lesson' }));
+  });
+
+  it.each([`${COMPUTER_TASK_PREFIX}open Settings`, COMPUTER_RESUME_PROMPT])('keeps computer tools enabled for %s from Instant mode', async prompt => {
+    script = async ({ emit }) => { emit(say('Ready.')); return { status: 'completed' }; };
+    const plan = planHomeAgentRun({ composerMode: 'instant', searchMode: 'chat', request: homeToolRequest(prompt, 'home') });
+    await run(prompt, { contextMode: 'home', toolMode: plan.toolMode, ...plan.budget });
+    expect(starts[0]).toMatchObject({ computerEnabled: true, computerRequested: true, policy: { max_iterations: COMPUTER_TASK_BUDGET.maxIterations } });
   });
 
   it('runs a Home tool the runtime calls and publishes its artifact', async () => {

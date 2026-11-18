@@ -5,13 +5,14 @@ export interface SessionGoal {
   phase: GoalPhase; reason: string; evidence: string[]; turns: number; tokens: number;
   elapsedMs: number; startedAt?: number; updatedAt: number; noProgress: number;
 }
-export type GoalCommand = {action:'view'|'pause'|'resume'|'clear'} | {action:'start';objective:string};
+export type GoalCommand = {action:'view'|'edit'|'pause'|'resume'|'clear'} | {action:'start';objective:string};
 export function parseGoalCommand(text: string): GoalCommand | null {
   const match = text.trim().match(/^\/goal(?:\s+([\s\S]*))?$/i);
   if (!match) return null;
   const value = (match[1] || '').trim();
   if (!value) return {action:'view'};
-  if (['pause','resume','clear'].includes(value.toLowerCase())) return {action:value.toLowerCase() as 'pause'|'resume'|'clear'};
+  const action = value.toLowerCase();
+  if (action === 'edit' || action === 'pause' || action === 'resume' || action === 'clear') return {action};
   return {action:'start',objective:value};
 }
 export function goalElapsed(goal: SessionGoal, now=Date.now()): number {
