@@ -1,14 +1,15 @@
 //! Generator for the Agente Code brand set in `assets/brand/`.
 //!
-//! The mark is a white "A" crossed by an orbit swoosh, with a moon at its top
-//! right, on a black rounded tile inside a graphite rim — the desktop app's
-//! icon (`apps/desktop/renderer/public/app-icon.png`). Its artwork exists as
-//! raster masters only (`agente-code-icon-black-white.png` and the rimmed
-//! `agente-code-icon-graphite-relief.png`, 1254 px), so [`MARK`] is that mark
-//! traced once: marching squares at the 50% grey level over the black-and-white
-//! master, joined into closed loops (the A with its swoosh, the A's counter,
-//! the moon) and simplified to 0.6 px (Ramer–Douglas–Peucker), on a 120-unit
-//! grid and filled even-odd. Everything else is built from it:
+//! The mark is a tilted Quasar Orbital (-28°): a circular black-hole event
+//! horizon ringed by a bright photon halo, a tilted hollow elliptical accretion
+//! ring, and twin perpendicular relativistic jets, on a black rounded tile
+//! inside a graphite rim.
+//!
+//! - Full / large sizes (`≥ 48 px`): rendered as a 15×15 Matrix Field halftone
+//!   of rounded-square tiles (`rx = 0.22 * size`) with four corner star specks.
+//! - Optical small sizes (`≤ 32 px`): rendered as a single watertight even-odd
+//!   compound path of the same -28° Quasar Orbital on a full-bleed black tile,
+//!   staying razor-sharp down to 16 px.
 //!
 //! ```sh
 //! cargo run -p agente-tui --example gen_brand
@@ -20,35 +21,174 @@
 //! variant), lockups for dark and light backgrounds (SVG + 2x PNG), icon PNGs
 //! from 16 to 1024 px, and a multi-size `favicon.ico`.
 
+use std::fmt::Write as _;
 use std::fs;
 
 use resvg::{tiny_skia, usvg};
 
 const OUT: &str = "assets/brand";
 
-/// The traced mark on the 120-unit grid (see the module docs); fill it
-/// even-odd so the counter stays open.
-const MARK: &str = "M52.76 25.31 L67.29 25.31 L73.65 40.05 L83.11 62.88 L87.42 61.23 L92.68 58.82 L96.7 56.72 L100.14 54.61 L101.2 53.88 L101.39 53.83 L101.53 53.92 L101.51 54.31 L101.33 54.69 L99.86 56.77 L98.28 58.52 L95.93 60.74 L93.06 63.03 L91.15 64.38 L88.37 66.12 L85.12 67.88 L85.05 67.99 L90.68 81.77 L95.74 94.52 L82.34 94.54 L81.96 94.48 L73.65 72.87 L73.54 72.64 L73.44 72.62 L70.48 73.66 L66.17 74.98 L58.52 76.99 L51.63 78.44 L47.32 79.21 L43.21 79.81 L37.56 94.6 L24.15 94.59 L29.63 80.72 L26.08 80.36 L22.73 79.69 L20.24 78.8 L19.28 78.33 L18.23 77.68 L17.39 76.99 L16.67 76.22 L16.27 75.65 L15.81 74.69 L15.6 73.92 L15.52 72.87 L15.71 71.72 L15.98 70.96 L16.86 69.33 L17.64 68.28 L18.71 67.12 L20.05 65.95 L21.67 64.8 L23.3 63.86 L25.31 62.9 L27.61 62.05 L27.64 62.15 L26.27 63.28 L24.74 64.79 L24.07 65.6 L23.38 66.65 L22.91 67.7 L22.7 68.66 L22.71 69.33 L22.99 70.29 L23.59 71.04 L24.26 71.53 L25.31 72.03 L26.46 72.39 L28.37 72.79 L30 72.97 L32.58 73.05 L32.73 72.97 L36.28 64.07 L43.09 47.51 L49.33 32.88 Z M59.95 39.51 L57.24 45.69 L51.03 60.33 L46.36 71.84 L52.11 71.06 L58.8 69.84 L65.12 68.39 L69.43 67.25 L71.34 66.65 Z M103.89 39.95 L104.74 39.93 L106.17 40.21 L107.22 40.71 L108.09 41.32 L108.99 42.34 L109.47 43.21 L109.86 44.35 L110 45.41 L109.96 46.65 L109.69 47.8 L109.16 48.95 L108.47 49.89 L107.7 50.6 L106.75 51.18 L105.79 51.54 L104.55 51.71 L103.3 51.64 L102.25 51.36 L101.1 50.78 L100.24 50.12 L99.55 49.33 L98.98 48.37 L98.58 47.32 L98.4 45.98 L98.49 44.74 L98.86 43.59 L99.44 42.54 L100.05 41.81 L101 40.98 L101.87 40.49 L102.92 40.12 Z";
+/// Quasar tilt angle in degrees (ascending bottom-left → top-right).
+const QUASAR_ANGLE_DEG: f32 = -28.0;
+
+/// Watertight, zero-overlap even-odd compound path for the -28° optical-small
+/// Quasar Orbital (defined in canonical horizontal/vertical orientation on a
+/// 120×120 grid, rotated by `QUASAR_ANGLE_DEG` around `(60, 60)`):
+///
+/// 1. Outer silhouette: photon ring (`r = 19.5`) fused with twin tapered jets
+///    (`y = 7..113`) and the outer accretion ellipse (`rx = 50, ry = 17.5`).
+/// 2. Central event-horizon void (`r = 11.2`).
+/// 3. Right & left hollow orbital crescents between `r = 19.5` and the inner
+///    accretion ellipse (`rx = 43.2, ry = 10.6`).
+const SMALL_QUASAR_PATH: &str = concat!(
+    // Outer silhouette (clockwise)
+    "M60 7 Q62.2 26 65.5 41.29 ",
+    "A19.5 19.5 0 0 1 69.18 42.80 ",
+    "A50 17.5 0 0 1 69.18 77.20 ",
+    "A19.5 19.5 0 0 1 65.5 78.71 ",
+    "Q62.2 94 60 113 ",
+    "Q57.8 94 54.5 78.71 ",
+    "A19.5 19.5 0 0 1 50.82 77.20 ",
+    "A50 17.5 0 0 1 50.82 42.80 ",
+    "A19.5 19.5 0 0 1 54.5 41.29 ",
+    "Q57.8 26 60 7 Z ",
+    // Event-horizon circular void
+    "M71.2 60 A11.2 11.2 0 1 0 48.8 60 A11.2 11.2 0 1 0 71.2 60 Z ",
+    // Right hollow orbital crescent
+    "M76.88 50.24 A43.2 10.6 0 0 1 76.88 69.76 A19.5 19.5 0 0 0 76.88 50.24 Z ",
+    // Left hollow orbital crescent
+    "M43.12 69.76 A43.2 10.6 0 0 1 43.12 50.24 A19.5 19.5 0 0 0 43.12 69.76 Z"
+);
 
 /// Graphite rim around the black tile, lit from the top as on the desktop icon.
-const RIM_TOP: &str = "#3c3c3c";
-const RIM_BOTTOM: &str = "#1d1d1d";
+const RIM_TOP: &str = "#3e3e40";
+const RIM_BOTTOM: &str = "#1d1d1f";
+
+/// Evaluates the normalized tilted Quasar Orbital luminance field in `[-1, 1]^2`.
+fn quasar_orbital_field(nx: f32, ny: f32) -> f32 {
+    let rad = QUASAR_ANGLE_DEG.to_radians();
+    let (sn, cs) = rad.sin_cos();
+    let u = nx * cs + ny * sn;
+    let v = -nx * sn + ny * cs;
+    let r = u.hypot(v);
+
+    let void_r = 0.21_f32;
+    if r < void_r {
+        return 0.0;
+    }
+
+    // Luminous photon ring hugging the circular event horizon.
+    let ring = (-((r - (void_r + 0.095)) / 0.115).powi(2)).exp() * 1.24;
+
+    // Tilted hollow elliptical accretion ring.
+    let ed = (u / 0.84).hypot(v / 0.29);
+    let outer_ring = (-((ed - 1.0) / 0.24).powi(2)).exp() * 1.15;
+    let inner_glow = (-(v / 0.14).powi(2)).exp() * (-(u / 0.45).powi(2)).exp() * 0.45;
+    let disk = outer_ring.max(inner_glow);
+
+    // Twin perpendicular relativistic jets.
+    let jet_w = 0.092 * (0.72 + 0.38 * (-v.abs() * 2.0).exp());
+    let jet = (-(u / jet_w).powi(2)).exp() * (-(v / 0.94).powi(2) * 0.82).exp() * 1.12;
+
+    ring.max(disk * 0.98 + jet * 0.98)
+        .max(ring * 0.78 + disk * 0.56 + jet * 0.56)
+        .min(1.0)
+}
+
+/// Builds the 15×15 Matrix Field rounded-square tile elements for the large icon.
+fn matrix_field_elements() -> String {
+    let n: usize = 15;
+    let pad = 9.0_f32;
+    let step = (120.0 - pad * 2.0) / n as f32;
+    let stars: [(usize, usize, f32); 4] = [
+        (2, n - 3, 0.42),
+        (2, 2, 0.34),
+        (n - 3, n - 3, 0.36),
+        (n - 3, 2, 0.34),
+    ];
+
+    let mut out = String::new();
+    for r in 0..n {
+        for c in 0..n {
+            let x = pad + (c as f32 + 0.5) * step;
+            let y = pad + (r as f32 + 0.5) * step;
+            let nx = (x - 60.0) / 51.0;
+            let ny = (y - 60.0) / 51.0;
+            let mut v = quasar_orbital_field(nx, ny);
+            let mut is_star = false;
+            for &(sr, sc, sv) in &stars {
+                if r == sr && c == sc && v < sv {
+                    v = sv;
+                    is_star = true;
+                }
+            }
+            if v < 0.15 {
+                continue;
+            }
+            let q = if v > 0.78 {
+                0.90
+            } else if v > 0.58 {
+                0.75
+            } else if v > 0.40 {
+                0.58
+            } else if v > 0.25 {
+                0.42
+            } else {
+                0.28
+            };
+            let sz = step * q;
+            let rx = sz * 0.22;
+            let op = if is_star {
+                0.72
+            } else if v > 0.58 {
+                1.0
+            } else if v > 0.34 {
+                0.85
+            } else {
+                0.62
+            };
+            if op < 0.99 {
+                let _ = write!(
+                    out,
+                    r##"<rect x="{:.2}" y="{:.2}" width="{:.2}" height="{:.2}" rx="{:.2}" fill="#fff" fill-opacity="{:.2}"/>"##,
+                    x - sz / 2.0,
+                    y - sz / 2.0,
+                    sz,
+                    sz,
+                    rx,
+                    op
+                );
+            } else {
+                let _ = write!(
+                    out,
+                    r##"<rect x="{:.2}" y="{:.2}" width="{:.2}" height="{:.2}" rx="{:.2}" fill="#fff"/>"##,
+                    x - sz / 2.0,
+                    y - sz / 2.0,
+                    sz,
+                    sz,
+                    rx
+                );
+            }
+        }
+    }
+    out
+}
 
 /// Tile + mark on a 120-unit grid. `small` is the optical variant for
-/// 16–32 px: the rim would turn to a grey smear, so the tile goes full bleed
-/// and the mark grows a step to keep its swoosh and moon legible.
+/// 16–32 px: full-bleed black tile with the clean even-odd Quasar Orbital path.
 fn icon_body(small: bool) -> String {
     if small {
         return format!(
-            r##"<rect x="0" y="0" width="120" height="120" rx="20" fill="#000"/>
-<path fill="#fff" fill-rule="evenodd" transform="translate(60 60) scale(1.14) translate(-63 -60)" d="{MARK}"/>"##
+            r##"<rect x="0" y="0" width="120" height="120" rx="22" fill="#000"/>
+<path fill="#fff" fill-rule="evenodd" transform="translate(60 60) scale(0.92) rotate({QUASAR_ANGLE_DEG}) translate(-60 -60)" d="{SMALL_QUASAR_PATH}"/>"##
         );
     }
+    let matrix = matrix_field_elements();
     format!(
         r##"<defs><linearGradient id="rim" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="{RIM_TOP}"/><stop offset="1" stop-color="{RIM_BOTTOM}"/></linearGradient></defs>
-<rect x="2" y="2" width="116" height="116" rx="18" fill="url(#rim)"/>
-<rect x="5.5" y="5.5" width="109" height="109" rx="14.5" fill="#000"/>
-<path fill="#fff" fill-rule="evenodd" d="{MARK}"/>"##
+<rect x="2" y="2" width="116" height="116" rx="22" fill="url(#rim)"/>
+<rect x="5.5" y="5.5" width="109" height="109" rx="18.5" fill="#0d0d0e"/>
+<g transform="translate(60 60) scale(0.87) translate(-60 -60)">{matrix}</g>"##
     )
 }
 

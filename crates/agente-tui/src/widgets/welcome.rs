@@ -1,6 +1,6 @@
 //! Welcome screen — the Agente Code hero.
 //!
-//! A rounded card with the app icon in half-block pixels, the wordmark and the
+//! A rounded card with the app icon in ASCII art, the wordmark and the
 //! quick actions, floating on the landing page's tile field: a mosaic of
 //! dim amber squares that drifts, rolls rings out of a horizon glow and
 //! twinkles on a few embers. The field is ambient (repainted ~15 fps only
@@ -184,57 +184,54 @@ pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState) {
 
 // ── Mark ────────────────────────────────────────────────────────────────────
 
-/// The app mark as 26×20 pixels: the A crossed by its orbit swoosh, with the
-/// moon at the top right — the glyph of the desktop's `app-icon.png`, cropped
-/// to its bounds and downsampled. Each pixel is coverage `0`–`f`, painted as a
-/// blend from the card to the foreground, so the mark is white on dark and ink
-/// on light with smooth edges and no tile behind it (a black tile read as a
-/// hole in the card). `.` is empty. Two pixels stack per cell (half blocks),
-/// so it paints as 26×10 cells.
-const ICON: [&str; 20] = [
-    "..........8aaa8...........",
-    ".........3fffff3..........",
-    ".........afffff9..........",
-    "........2ffffffe..........",
-    "........8fffcfff7......78.",
-    "........dffd2effd.....7ffa",
-    ".......5fff8.9fff4....7ffb",
-    ".......bfff2.3fffb.....8a2",
-    "......3fffb...bfff2...75..",
-    "......8fff4...5fff7.4bf3..",
-    "..38..effd.....dffdbff5...",
-    ".7e4.5fff6....2affffc3....",
-    "5fd..affe3369ceffffb......",
-    "affdafffeefffffeeffe......",
-    "5fffffffffffd96.6fff7.....",
-    ".39cfffe9752.....effd.....",
-    "...4fff8.........9fff4....",
-    "...bfff3.........4fffa....",
-    "..2fffc...........dfff2...",
-    "..4aaa5...........5aaa3...",
+/// The app mark as 26×10 ASCII art: a tilted Quasar Orbital (-28°) rendered
+/// with the ramp `.,:;+=*#@`. Each glyph's luminance blends between the card
+/// and the foreground, so the mark stays crisp monochrome on dark and light
+/// themes with no tile behind it. Spaces stay empty panel background.
+const ICON: [&str; 10] = [
+    "      ,:                  ",
+    "   ,   ,+.            ,   ",
+    "        ,*;    .;=#@@@*+, ",
+    "        .;@@@@@#;..:=@@=. ",
+    "      ,#@@#    #@*,*@*,   ",
+    "   ,*@*,*@#    #@@#,      ",
+    " .=@@=:..;#@@@@@;.        ",
+    " ,+*@@@#=;.    ;*,        ",
+    "   ,            .+,   ,   ",
+    "                  :,      ",
 ];
 const ICON_COLS: u16 = 26;
 const ICON_ROWS: u16 = 10;
 
-/// The pixel's colour: its coverage between the card and the foreground.
-fn icon_pixel(row: usize, col: usize) -> Color {
-    let coverage = (ICON[row].as_bytes()[col] as char)
-        .to_digit(16)
-        .unwrap_or(0);
-    style::blend_colors(style::BG_PANEL(), style::FG(), coverage as f32 / 15.0)
+/// Luminance level `0.0..=1.0` for an ASCII glyph in [`ICON`].
+fn icon_shade(ch: char) -> f32 {
+    match ch {
+        '@' => 1.00,
+        '#' => 0.90,
+        '*' => 0.78,
+        '=' => 0.68,
+        '+' => 0.58,
+        ';' => 0.50,
+        ':' => 0.44,
+        ',' => 0.36,
+        '.' => 0.32,
+        _ => 0.0,
+    }
 }
 
 fn paint_icon(buf: &mut Buffer, x: u16, y: u16) {
-    for cy in 0..ICON_ROWS as usize {
-        for cx in 0..ICON_COLS as usize {
-            let (top, bottom) = (icon_pixel(cy * 2, cx), icon_pixel(cy * 2 + 1, cx));
+    let panel_bg = style::BG_PANEL();
+    let fg = style::FG();
+    for (cy, row) in ICON.iter().enumerate() {
+        for (cx, ch) in row.chars().enumerate() {
             let Some(cell) = buf.cell_mut((x + cx as u16, y + cy as u16)) else {
                 continue;
             };
-            if top == bottom {
-                cell.set_symbol(" ").set_bg(top);
+            if ch == ' ' {
+                cell.set_symbol(" ").set_bg(panel_bg);
             } else {
-                cell.set_symbol("▀").set_fg(top).set_bg(bottom);
+                let color = style::blend_colors(panel_bg, fg, icon_shade(ch));
+                cell.set_char(ch).set_fg(color).set_bg(panel_bg);
             }
         }
     }
@@ -525,10 +522,13 @@ mod tests {
         assert!(text.contains("New session"));
         assert!(text.contains("Resume session"));
         assert!(text.contains("Ctrl+C"), "key hints on the menu rows");
-        // The only block glyphs are the half-block pixel mark, never block
-        // letters spelling the name.
+        // The app mark beside the wordmark is ASCII art, never block letters
+        // spelling the name.
         assert!(!text.contains('█'), "no block letter art");
-        assert!(text.contains('▀'), "pixel app mark beside the wordmark");
+        assert!(
+            text.contains('@') && text.contains('#'),
+            "ASCII quasar mark beside the wordmark"
+        );
         assert!(
             !text.contains('~'),
             "the hero field is squares, not drifting glyphs"
