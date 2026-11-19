@@ -14,7 +14,7 @@ import {
   searchTavily, searchBrave, searchSearxng, searchExa, searchJina, searchYouCom, searchPerplexity
 } from './search-providers/providers.ts';
 import { searchAggregator } from './search-providers/aggregator.ts';
-import { scrapeUrlStructured } from './web-scraper.ts';
+import { isSafePublicUrl, scrapeUrlStructured } from './web-scraper.ts';
 
 async function runProviderSearch(provider: string, query: string, maxResults: number, options: Record<string, unknown>): Promise<SearchResult[]> {
   switch (provider) {
@@ -42,6 +42,7 @@ type FetchedPage = {
 
 /** A result's whole page, read through Reader View — no character budget. */
 async function fetchPageContent(url: string, options: Record<string, unknown> = {}): Promise<FetchedPage | null> {
+  if (!isSafePublicUrl(url)) return null;
   try {
     if (options?.use_local_readability !== false) {
       const scraped = await scrapeUrlStructured({
@@ -72,6 +73,7 @@ async function fetchPageContent(url: string, options: Record<string, unknown> = 
       }
     }
 
+    if (!isSafePublicUrl(url)) return null;
     const readerUrl = buildJinaReaderUrl(url, 'https://r.jina.ai');
     if (!readerUrl) return null;
     const headers: Record<string, string> = { Accept: 'text/plain', 'X-Return-Format': 'markdown', 'User-Agent': APP_USER_AGENT };
@@ -452,7 +454,16 @@ function normalizeGgufFile(file: { rfilename?: string; path?: string; size?: num
   };
 }
 
+const HF_REPO_ID_RE = /^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/;
+
+function isValidHfRepoId(repoId: unknown): repoId is string {
+  if (typeof repoId !== 'string' || !HF_REPO_ID_RE.test(repoId)) return false;
+  const [owner, name] = repoId.split('/');
+  return owner !== '.' && owner !== '..' && name !== '.' && name !== '..';
+}
+
 async function fetchHfTreeSizes(repoId: string, hfToken?: string): Promise<Map<string, number>> {
+  if (!isValidHfRepoId(repoId)) return new Map();
   try {
     const url = `https://huggingface.co/api/models/${repoId}/tree/main?recursive=true`;
     const resp = await fetchWithRetry(url, { headers: hfHeaders(hfToken), timeout_ms: 15000 });
@@ -569,6 +580,7 @@ export async function searchHfModels(
 }
 
 export async function hfRepoGguf(repoId: string, hfToken?: string) {
+  if (!isValidHfRepoId(repoId)) return null;
   try {
     const url = `https://huggingface.co/api/models/${repoId}?blobs=true`;
     const resp = await fetchWithRetry(url, { headers: hfHeaders(hfToken), timeout_ms: 15000 });
@@ -608,7 +620,7 @@ const HF_README_MAX_CHARS = 40000;
 
 export async function fetchHfReadme(repoId: string, hfToken?: string) {
   try {
-    if (!repoId || typeof repoId !== 'string' || repoId.includes('..')) {
+    if (!isValidHfRepoId(repoId)) {
       return { repo_id: repoId, readme: '', error: 'Invalid repository id.' };
     }
     const url = `https://huggingface.co/${repoId}/resolve/main/README.md`;

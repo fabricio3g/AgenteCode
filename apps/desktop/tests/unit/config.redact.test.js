@@ -250,6 +250,38 @@ describe('redactConfig', () => {
     redacted.tts.engine = 'wasm';
     assert.strictEqual(config.tts.engine, 'kokoro');
   });
+
+  it('redacts search.providers API keys without mutating original config', () => {
+    const config = {
+      tts: {},
+      stt: {},
+      llm: { providers: {} },
+      rag: {},
+      onboarding: {},
+      search: {
+        provider: 'brave',
+        max_results: 6,
+        providers: {
+          brave: { api_key: 'BSA-secret-token' },
+          tavily: { api_key: '' },
+          searxng: { base_url: 'http://localhost:8080' }
+        }
+      }
+    };
+    const redacted = redactConfig(config);
+
+    // Original unchanged
+    assert.strictEqual(config.search.providers.brave.api_key, 'BSA-secret-token');
+
+    // Redacted search providers strip api_key and expose has_api_key
+    assert.strictEqual(redacted.search.providers.brave.api_key, undefined);
+    assert.ok(!('api_key' in redacted.search.providers.brave));
+    assert.strictEqual(redacted.search.providers.brave.has_api_key, true);
+    assert.strictEqual(redacted.search.providers.tavily.api_key, undefined);
+    assert.strictEqual(redacted.search.providers.tavily.has_api_key, false);
+    assert.strictEqual(redacted.search.providers.searxng.base_url, 'http://localhost:8080');
+    assert.strictEqual(redacted.search.providers.searxng.has_api_key, false);
+  });
 });
 
 // ── hasApiKey tests ──────────────────────────────────────────────────────────

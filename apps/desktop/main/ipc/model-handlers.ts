@@ -25,7 +25,12 @@ export function registerModelManagementHandlers({
 }: ModelHandlerDeps): void {
   ipcMain.handle('get_local_models', () => getLocalModels());
   ipcMain.handle('get_gguf_metadata', (_e, { filePath }) => getGgufMetadata(filePath));
-  ipcMain.handle('delete_local_model', (_e, { path }) => deleteLocalModel(path));
+  ipcMain.handle('delete_local_model', (_e, args: { path?: unknown } = {}) => {
+    if (typeof args?.path !== 'string' || !args.path.trim()) {
+      throw new Error('Model path is required');
+    }
+    return deleteLocalModel(args.path);
+  });
   ipcMain.handle('get_models_dir_path', () => getModelsDirPath());
   ipcMain.handle('get_indexed_models', () => getIndexedModels());
   ipcMain.handle('refresh_model_index', () => refreshModelIndex());

@@ -19,6 +19,7 @@ import { pipeline } from 'node:stream/promises';
 import { Transform } from 'node:stream';
 import { randomUUID } from 'node:crypto';
 import { getAppPaths } from './paths.ts';
+import { loadConfig } from './config.ts';
 import { getMainWindow } from './window-manager.ts';
 import { readGgufMetadataFields } from './runtime-config-resolver.ts';
 import { sidecarTemplatePath } from './chat-templates.ts';
@@ -401,6 +402,77 @@ async function ensureChatTemplateSidecar(job: DownloadJob, hfToken?: string): Pr
   }
 }
 
+const HF_REPO_ID_RE = /^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/;
+
+function normalizeDownloadComparePath(target: string): string {
+  const resolved = path.resolve(target);
+  return process.platform === 'win32' ? resolved.toLowerCase() : resolved;
+}
+
+function isWithinDownloadRoot(candidate: string, root: string): boolean {
+  const normCandidate = normalizeDownloadComparePath(candidate);
+  const normRoot = normalizeDownloadComparePath(root);
+  if (normCandidate === normRoot) return true;
+  const prefix = normRoot.endsWith(path.sep) ? normRoot : normRoot + path.sep;
+  return normCandidate.startsWith(prefix);
+}
+
+function resolveNearestExistingRealpath(target: string): string {
+  let cursor = path.resolve(target);
+  while (!fs.existsSync(cursor)) {
+    const parent = path.dirname(cursor);
+    if (parent === cursor) break;
+    cursor = parent;
+  }
+  try {
+    return fs.existsSync(cursor) ? fs.realpathSync(cursor) : cursor;
+  } catch {
+    return cursor;
+  }
+}
+
+function validateRelativeDownloadPath(label: string, value: string): string {
+  if (typeof value !== 'string' || !value.trim()) {
+    throw new Error(`Invalid download ${label}`);
+  }
+  if (value.includes('\0') || path.isAbsolute(value) || value.startsWith('/') || value.startsWith('\\')) {
+    throw new Error(`Invalid download ${label}: absolute paths are not allowed`);
+  }
+  const segments = value.split(/[\\/]+/);
+  if (segments.some((seg) => seg === '..')) {
+    throw new Error(`Invalid download ${label}: path traversal is not allowed`);
+  }
+  return value;
+}
+
+function resolveAllowedModelsDir(modelsDir: string | undefined): string {
+  const paths = getAppPaths();
+  let configuredDir = '';
+  try {
+    configuredDir = String(loadConfig()?.llm?.local?.models_dir || '').trim();
+  } catch {
+    configuredDir = '';
+  }
+  const allowedRoots = [
+    paths.localModelsRoot,
+    configuredDir,
+    paths.voiceModelsRoot,
+    paths.speechModelsRoot,
+  ].filter(Boolean).map((root) => path.resolve(root));
+
+  const targetDir = path.resolve(modelsDir || paths.localModelsRoot);
+  const realTarget = resolveNearestExistingRealpath(targetDir);
+  const permitted = allowedRoots.some((root) => {
+    if (!isWithinDownloadRoot(targetDir, root)) return false;
+    const realRoot = resolveNearestExistingRealpath(root);
+    return isWithinDownloadRoot(realTarget, realRoot);
+  });
+  if (!permitted) {
+    throw new Error('Download destination must be inside the configured models directory');
+  }
+  return targetDir;
+}
+
 export async function startDownloadHf({
   repoId,
   file,
@@ -418,11 +490,26 @@ export async function startDownloadHf({
   branch?: string;
   loadWhenReady?: boolean;
 }): Promise<string> {
-  const paths = getAppPaths();
-  const targetDir = modelsDir || paths.localModelsRoot;
-  const relativeDest = destRel || file;
-  const destDir = path.join(targetDir, path.dirname(relativeDest === file ? '' : relativeDest));
-  const destPath = path.join(targetDir, relativeDest);
+  if (typeof repoId !== 'string' || !HF_REPO_ID_RE.test(repoId)) {
+    throw new Error('Invalid Hugging Face repository id');
+  }
+  const [repoOwner, repoName] = repoId.split('/');
+  if (repoOwner === '.' || repoOwner === '..' || repoName === '.' || repoName === '..') {
+    throw new Error('Invalid Hugging Face repository id');
+  }
+
+  const targetDir = resolveAllowedModelsDir(modelsDir);
+  const safeFile = validateRelativeDownloadPath('file', file);
+  const relativeDest = destRel !== undefined ? validateRelativeDownloadPath('destRel', destRel) : safeFile;
+  const destDir = path.resolve(targetDir, path.dirname(relativeDest === safeFile ? '' : relativeDest));
+  const destPath = path.resolve(targetDir, relativeDest);
+  if (!isWithinDownloadRoot(destDir, targetDir) || !isWithinDownloadRoot(destPath, targetDir)) {
+    throw new Error('Download destination escapes models directory');
+  }
+  const realTargetDir = resolveNearestExistingRealpath(targetDir);
+  if (!isWithinDownloadRoot(resolveNearestExistingRealpath(destPath), realTargetDir)) {
+    throw new Error('Download destination escapes models directory');
+  }
 
   // Resume instead of duplicating: an existing paused/interrupted/errored job
   // pointing at the same destination picks up where it left off.

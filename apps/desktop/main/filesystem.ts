@@ -36,14 +36,40 @@ function workspaceEnv() {
   return safe;
 }
 
+const MAX_EXEC_OUTPUT_BYTES = 1024 * 1024; // 1 MB per stream
+
+function normalizeComparePath(target: string): string {
+  const resolved = path.resolve(target);
+  return process.platform === 'win32' ? resolved.toLowerCase() : resolved;
+}
+
+function isPathWithinRoot(candidate: string, root: string): boolean {
+  const normCandidate = normalizeComparePath(candidate);
+  const normRoot = normalizeComparePath(root);
+  if (normCandidate === normRoot) return true;
+  const prefix = normRoot.endsWith(path.sep) ? normRoot : normRoot + path.sep;
+  return normCandidate.startsWith(prefix);
+}
+
+function realpathOfNearestExistingAncestor(targetPath: string): string {
+  let cursor = path.resolve(targetPath);
+  while (!fs.existsSync(cursor)) {
+    const parent = path.dirname(cursor);
+    if (parent === cursor) break;
+    cursor = parent;
+  }
+  return fs.realpathSync(cursor);
+}
+
 /**
  * Containment check for workspace file ops.
  *
- * Resolves both root and target so `..` segments, absolute
- * relativePaths and prefix collisions (`root-evil` vs `root`)
- * cannot escape. Rejects missing roots and symlink escapes.
+ * Resolves both root and target (walking up to the nearest existing ancestor
+ * when the target does not yet exist) so `..` segments, absolute relativePaths,
+ * prefix collisions (`root-evil` vs `root`), and symlink escapes like
+ * `symlink_out/new_subdir/file.txt` cannot escape.
  */
-function resolveWorkspacePath(workspaceRoot, relativePath) {
+export function resolveWorkspacePath(workspaceRoot, relativePath) {
   if (typeof workspaceRoot !== 'string' || !workspaceRoot.trim()) {
     throw new Error('Workspace root is required');
   }
@@ -55,22 +81,14 @@ function resolveWorkspacePath(workspaceRoot, relativePath) {
     throw new Error('Workspace root not found');
   }
   const fullPath = path.resolve(root, relativePath);
-  if (fullPath !== root && !fullPath.startsWith(root + path.sep)) {
+  if (!isPathWithinRoot(fullPath, root)) {
     throw new Error('Path traversal not allowed');
   }
   try {
     const realRoot = fs.realpathSync(root);
-    const parent = path.dirname(fullPath);
-    if (fs.existsSync(fullPath)) {
-      const realTarget = fs.realpathSync(fullPath);
-      if (realTarget !== realRoot && !realTarget.startsWith(realRoot + path.sep)) {
-        throw new Error('Path traversal not allowed');
-      }
-    } else if (fs.existsSync(parent)) {
-      const realParent = fs.realpathSync(parent);
-      if (realParent !== realRoot && !realParent.startsWith(realRoot + path.sep)) {
-        throw new Error('Path traversal not allowed');
-      }
+    const realAncestor = realpathOfNearestExistingAncestor(fullPath);
+    if (!isPathWithinRoot(realAncestor, realRoot)) {
+      throw new Error('Path traversal not allowed');
     }
   } catch {
     throw new Error('Path traversal not allowed');
@@ -255,15 +273,53 @@ export async function deleteWorkspaceFile(workspaceRoot, relativePath) {
   }
 }
 
+function isInsideAppOwnedDir(absolutePath: string): boolean {
+  const candidates: string[] = [path.join(os.tmpdir(), 'chatealm')];
+  try {
+    candidates.push(getAppPaths().appData);
+  } catch {
+    // Electron app paths may be unavailable in pure unit tests
+  }
+  const coreAttachmentsDir = path.join(
+    process.env.AGENTE_CONFIG_DIR || path.join(os.homedir(), '.agente'),
+    'attachments'
+  );
+  candidates.push(coreAttachmentsDir);
+
+  const resolvedTarget = path.resolve(absolutePath);
+  for (const dir of candidates) {
+    if (!dir) continue;
+    const resolvedDir = path.resolve(dir);
+    if (!isPathWithinRoot(resolvedTarget, resolvedDir)) continue;
+    try {
+      if (!fs.existsSync(resolvedDir)) continue;
+      const realDir = fs.realpathSync(resolvedDir);
+      const realTarget = realpathOfNearestExistingAncestor(resolvedTarget);
+      if (isPathWithinRoot(realTarget, realDir)) return true;
+    } catch {
+      continue;
+    }
+  }
+  return false;
+}
+
 export async function openWorkspaceFile(absolutePath, workspaceRoot) {
-  // Pin opens inside workspace when root known; standalone absolute
-  // opens stay for app-owned paths (models folder uses openModelsFolder).
+  if (typeof absolutePath !== 'string' || !absolutePath.trim()) {
+    throw new Error('File path is required');
+  }
+  // Pin opens inside workspace when root is provided; otherwise allow only app-owned directories.
   if (workspaceRoot) {
-    const fullPath = resolveWorkspacePath(workspaceRoot, path.relative(path.resolve(workspaceRoot), path.resolve(absolutePath)));
+    const root = path.resolve(workspaceRoot);
+    const target = path.resolve(absolutePath);
+    const rel = path.relative(root, target) || '.';
+    const fullPath = resolveWorkspacePath(root, rel);
     shell.openPath(fullPath);
     return;
   }
-  shell.openPath(absolutePath);
+  if (!isInsideAppOwnedDir(absolutePath)) {
+    throw new Error('Workspace root is required to open files outside app directories');
+  }
+  shell.openPath(path.resolve(absolutePath));
 }
 
 export async function createWorkspaceFolder(workspaceRoot, relativePath) {
@@ -271,44 +327,64 @@ export async function createWorkspaceFolder(workspaceRoot, relativePath) {
   fs.mkdirSync(fullPath, { recursive: true });
 }
 
-export async function workspaceExec({ workspace_root, command, args: execArgs, cwd, shell: useShell, timeout_ms }) {
-  // Pin exec cwd inside workspace root; absolute escapes refused.
-  let workDir = workspace_root;
-  if (cwd) {
-    const root = path.resolve(workspace_root || '');
-    const resolved = path.resolve(root, cwd);
-    if (!workspace_root || (resolved !== root && !resolved.startsWith(root + path.sep))) {
-      return {
-        cwd: String(cwd),
-        stdout: '',
-        stderr: 'Working directory escapes workspace root',
-        exit_code: -1,
-        timed_out: false,
-        error: 'Working directory escapes workspace root'
-      };
-    }
-    workDir = resolved;
+export async function workspaceExec({ workspace_root, command, args: execArgs, cwd, timeout_ms }) {
+  // Pin exec cwd inside a valid workspace root; absolute and symlink escapes refused.
+  if (typeof workspace_root !== 'string' || !workspace_root.trim()) {
+    return {
+      cwd: String(cwd || ''),
+      stdout: '',
+      stderr: 'Workspace root is required',
+      exit_code: -1,
+      timed_out: false,
+      error: 'Workspace root is required'
+    };
   }
 
-  if (useShell !== true && !isWorkspaceCommandAllowed(command)) {
+  let workDir: string;
+  try {
+    const resolvedRoot = resolveWorkspacePath(workspace_root, '.');
+    if (cwd) {
+      const targetRel = path.isAbsolute(String(cwd))
+        ? (path.relative(resolvedRoot, path.resolve(String(cwd))) || '.')
+        : String(cwd);
+      workDir = resolveWorkspacePath(resolvedRoot, targetRel);
+    } else {
+      workDir = resolvedRoot;
+    }
+    if (!fs.existsSync(workDir) || !fs.statSync(workDir).isDirectory()) {
+      throw new Error('Working directory not found');
+    }
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'Working directory escapes workspace root';
+    return {
+      cwd: String(cwd || workspace_root),
+      stdout: '',
+      stderr: msg,
+      exit_code: -1,
+      timed_out: false,
+      error: msg
+    };
+  }
+
+  if (typeof command !== 'string' || !command.trim() || !isWorkspaceCommandAllowed(command)) {
     return {
       cwd: workDir,
       stdout: '',
-      stderr: `Command not allowed: ${command}. Allowed commands: ${[...ALLOWED_WORKSPACE_COMMANDS].join(', ')}`,
+      stderr: `Command not allowed: ${String(command || '')}. Allowed commands: ${[...ALLOWED_WORKSPACE_COMMANDS].join(', ')}`,
       exit_code: -1,
       timed_out: false,
       error: 'Command not in allowlist'
     };
   }
 
+  const safeArgs = Array.isArray(execArgs) ? execArgs.map((arg) => String(arg)) : [];
   const timeoutMs = timeout_ms || 30000;
   const env = workspaceEnv();
 
   return new Promise((resolve) => {
-    let proc;
-    proc = spawn(command, execArgs || [], {
+    const proc = spawn(command, safeArgs, {
       cwd: workDir,
-      shell: useShell === true,
+      shell: false,
       timeout: timeoutMs,
       stdio: ['ignore', 'pipe', 'pipe'],
       env
@@ -316,6 +392,10 @@ export async function workspaceExec({ workspace_root, command, args: execArgs, c
 
     let stdout = '';
     let stderr = '';
+    let stdoutBytes = 0;
+    let stderrBytes = 0;
+    let stdoutTruncated = false;
+    let stderrTruncated = false;
     let timedOut = false;
 
     const timer = setTimeout(() => {
@@ -323,8 +403,34 @@ export async function workspaceExec({ workspace_root, command, args: execArgs, c
       try { proc.kill('SIGKILL'); } catch { /* ignore */ }
     }, timeoutMs);
 
-    proc.stdout.on('data', d => { stdout += d.toString(); });
-    proc.stderr.on('data', d => { stderr += d.toString(); });
+    proc.stdout.on('data', (chunk: Buffer) => {
+      if (stdoutTruncated) return;
+      const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      const remaining = MAX_EXEC_OUTPUT_BYTES - stdoutBytes;
+      if (buf.byteLength <= remaining) {
+        stdout += buf.toString('utf8');
+        stdoutBytes += buf.byteLength;
+      } else {
+        if (remaining > 0) stdout += buf.subarray(0, remaining).toString('utf8');
+        stdoutBytes = MAX_EXEC_OUTPUT_BYTES;
+        stdoutTruncated = true;
+        stdout += '\n... (output truncated)';
+      }
+    });
+    proc.stderr.on('data', (chunk: Buffer) => {
+      if (stderrTruncated) return;
+      const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      const remaining = MAX_EXEC_OUTPUT_BYTES - stderrBytes;
+      if (buf.byteLength <= remaining) {
+        stderr += buf.toString('utf8');
+        stderrBytes += buf.byteLength;
+      } else {
+        if (remaining > 0) stderr += buf.subarray(0, remaining).toString('utf8');
+        stderrBytes = MAX_EXEC_OUTPUT_BYTES;
+        stderrTruncated = true;
+        stderr += '\n... (output truncated)';
+      }
+    });
 
     proc.on('close', (code) => {
       clearTimeout(timer);

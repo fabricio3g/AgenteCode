@@ -131,4 +131,46 @@ describe('chat-ipc streamed tool call reconstruction', () => {
       arguments: { path: 'a.txt', content: 'hello' }
     }]);
   });
+
+  it('preserves nested braces, repeated digits, and repeated quotes in append mode', () => {
+    const acc = new Map();
+    // Valid JSON: {"n":1100,"o":{"a":{"k":""}}}
+    const validChunks = ['{', '"n":', '1', '1', '0', '0', ',"o":', '{', '"a":', '{', '"k":', '"', '"', '}', '}', '}'];
+    for (let i = 0; i < validChunks.length; i += 1) {
+      accumulateToolCallDelta(acc, {
+        index: 0,
+        id: i === 0 ? 'call_nested' : undefined,
+        name: i === 0 ? 'nested_tool' : undefined,
+        arguments: validChunks[i]
+      }, { appendArguments: true });
+    }
+
+    const calls = finalizeToolCalls(acc);
+    assert.deepStrictEqual(calls, [{
+      id: 'call_nested',
+      name: 'nested_tool',
+      arguments: { n: 1100, o: { a: { k: '' } } }
+    }]);
+  });
+
+  it('still accepts cumulative snapshots in append mode only when next strictly extends current', () => {
+    const acc = new Map();
+    accumulateToolCallDelta(acc, {
+      index: 0,
+      id: 'call_snap',
+      name: 'snap_tool',
+      arguments: '{"a":1'
+    }, { appendArguments: true });
+    accumulateToolCallDelta(acc, {
+      index: 0,
+      arguments: '{"a":1,"b":22}'
+    }, { appendArguments: true });
+
+    const calls = finalizeToolCalls(acc);
+    assert.deepStrictEqual(calls, [{
+      id: 'call_snap',
+      name: 'snap_tool',
+      arguments: { a: 1, b: 22 }
+    }]);
+  });
 });

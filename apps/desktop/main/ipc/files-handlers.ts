@@ -6,10 +6,10 @@ type StoredFileRow = { hash: string; storedPath?: string | null; name?: string }
 type FilesHandlerDeps = {
   ipcMain: IpcMain;
   listFiles: () => unknown;
-  getFile: (hash: string) => StoredFileRow;
+  getFile: (hash: string) => Promise<StoredFileRow> | StoredFileRow;
   listFileRefs: (hash: string) => unknown;
   setFilePinned: (hash: string, pinned: boolean) => unknown;
-  deleteFile: (hash: string) => unknown;
+  deleteFile: (hash: string) => Promise<unknown> | unknown;
   fileStats: () => unknown;
   /** Electron's `shell.trashItem`: the OS trash, never a hard delete. */
   trashItem: (path: string) => Promise<void>;
@@ -38,7 +38,7 @@ export function registerFilesHandlers({
    * to its project and is deleted from there.
    */
   ipcMain.handle('files_trash', async (_e, { hash }) => {
-    const file = getFile(hash);
+    const file = await getFile(hash);
     if (!file) return { ok: false, error: 'unknown file' };
     const stored = storedPathIn(String(file.storedPath || ''));
     if (stored) {
@@ -48,7 +48,7 @@ export function registerFilesHandlers({
         return { ok: false, error: err instanceof Error ? err.message : String(err) };
       }
     }
-    deleteFile(hash);
+    await deleteFile(hash);
     return { ok: true };
   });
 }

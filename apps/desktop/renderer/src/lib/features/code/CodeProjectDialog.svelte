@@ -11,7 +11,7 @@
 <script lang="ts">
   import { cn as uiClass } from '$lib/utils/cn';
 
-  import { onMount } from 'svelte';
+  import { onDestroy, onMount } from 'svelte';
   import { t } from 'svelte-i18n';
   import { RefreshCw } from '$lib/icons';
   import { Button, Dialog, Input, Switch } from '$lib/components/ui';
@@ -39,6 +39,7 @@
     try { if (smart) await invoke('agente_runtime_configure', { compaction_model: settings.compaction_model ?? null }); const result = await codeStore.compact(chatId, smart); if (!result.ok) error = result.error || 'Compaction failed'; } catch (cause) { error = String(cause); } finally { compacting = false; }
   }
   let loading = $state(true);
+  let loaded = $state(false);
   let settings = $state<Settings>({ smart_compaction: false, max_parallel_subagents: 8, allow_media: [] });
   const run = $derived(codeStore.runFor(chatId));
   const compactReport = $derived.by(() => {
@@ -54,6 +55,7 @@
 
   async function load(silent = false) {
     if (!silent) loading = true;
+    if (section === 'settings') loaded = false;
     error = '';
     try {
       if (section === 'mcp') servers = await mcpStatus(projectRoot!);
@@ -64,6 +66,7 @@
       }
       if (settings.compaction_model?.provider.startsWith('desktop-')) settings.compaction_model = { ...settings.compaction_model, provider: settings.compaction_model.provider.slice(8) };
       lastSaved = snapshot();
+      loaded = true;
     } catch (cause) {
       error = String(cause);
     } finally {
@@ -98,30 +101,57 @@
   });
   let lastSaved = '';
   let saveState = $state<'idle' | 'saving' | 'saved'>('idle');
+  let saveTimer: ReturnType<typeof setTimeout> | null = null;
 
-  $effect(() => {
-    if (section !== 'settings' || loading) return;
-    const next = snapshot();
-    if (next === lastSaved) return;
-    const timer = setTimeout(async () => {
-      saveState = 'saving';
-      try {
-        const value = JSON.parse(next) as { smart: boolean; model: Settings['compaction_model'] | null; parallel: number; media: string[] };
-        await invoke('agente_runtime_configure', {
-          smart_compaction: value.smart,
-          compaction_model: value.model,
-          max_parallel_subagents: value.parallel,
-          allow_media: value.media
-        });
-        lastSaved = next;
+  async function saveSettings(next: string, updateUi = true): Promise<void> {
+    if (updateUi) saveState = 'saving';
+    try {
+      const value = JSON.parse(next) as { smart: boolean; model: Settings['compaction_model'] | null; parallel: number; media: string[] };
+      await invoke('agente_runtime_configure', {
+        smart_compaction: value.smart,
+        compaction_model: value.model,
+        max_parallel_subagents: value.parallel,
+        allow_media: value.media
+      });
+      lastSaved = next;
+      if (updateUi) {
         error = '';
         saveState = 'saved';
-      } catch (cause) {
+      }
+    } catch (cause) {
+      if (updateUi) {
         error = String(cause);
         saveState = 'idle';
       }
+    }
+  }
+
+  $effect(() => {
+    if (section !== 'settings' || loading || !loaded) return;
+    const next = snapshot();
+    if (next === lastSaved) return;
+    const timer = setTimeout(() => {
+      if (saveTimer === timer) saveTimer = null;
+      void saveSettings(next, true);
     }, 350);
-    return () => clearTimeout(timer);
+    saveTimer = timer;
+    return () => {
+      clearTimeout(timer);
+      if (saveTimer === timer) saveTimer = null;
+    };
+  });
+
+  onDestroy(() => {
+    if (saveTimer) {
+      clearTimeout(saveTimer);
+      saveTimer = null;
+    }
+    if (section !== 'settings' || !loaded) return;
+    const next = snapshot();
+    if (next !== lastSaved) {
+      lastSaved = next;
+      void saveSettings(next, false);
+    }
   });
 </script>
 

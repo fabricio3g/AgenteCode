@@ -1,4 +1,4 @@
-import type { IpcMain, BrowserWindow } from 'electron';
+import { BrowserWindow, type IpcMain } from 'electron';
 
 type ChatHandlerDeps = {
   ipcMain: IpcMain;
@@ -16,6 +16,6 @@ export function registerChatHandlers({
   cancelChatStream,
 }: ChatHandlerDeps): void {
   ipcMain.handle('chat_complete', (_e, args) => completeChatRequest(args));
-  ipcMain.handle('chat_stream_start', (_e, args) => startChatStream(args, getMainWindow()));
+  ipcMain.handle('chat_stream_start', (event, args) => startChatStream(args, BrowserWindow.fromWebContents(event.sender) ?? getMainWindow()));
   ipcMain.handle('chat_stream_cancel', (_e, args) => cancelChatStream(args));
 }

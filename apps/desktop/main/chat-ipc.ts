@@ -12,12 +12,14 @@ function mergeToolCallText(currentValue, nextValue, { append = false } = {}) {
   const next = String(nextValue || '');
   if (!next) return current;
   if (!current) return next;
+  if (append) {
+    if (next.length > current.length && next.startsWith(current)) return next;
+    return current + next;
+  }
   if (current === next) return current;
   if (next.startsWith(current)) return next;
   if (current.startsWith(next)) return current;
-  if (!append) return next.length > current.length ? next : current;
-  if (current.endsWith(next)) return current;
-  return current + next;
+  return next.length > current.length ? next : current;
 }
 
 export function accumulateToolCallDelta(toolCallAccumulator, delta, { appendArguments = true } = {}) {

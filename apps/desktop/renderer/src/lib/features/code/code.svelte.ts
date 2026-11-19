@@ -250,7 +250,7 @@ class CodeStore {
   /** Open the project folder in the system file manager. */
   async revealProject(projectId: string): Promise<void> {
     const project = this.projectById(projectId);
-    if (project) await invoke('open_workspace_file', { absolutePath: project.rootPath });
+    if (project) await invoke('open_workspace_file', { absolutePath: project.rootPath, workspaceRoot: project.rootPath });
   }
 
   /** Conversations whose project no longer exists (older builds orphaned them). */

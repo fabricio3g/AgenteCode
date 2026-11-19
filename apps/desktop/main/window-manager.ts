@@ -11,7 +11,7 @@ export function setTrayAvailable(value: boolean) { trayAvailable = value; }
 export function setQuitting(value: boolean) { quitting = value; }
 function hidesToTray() { return trayAvailable && !quitting && (process.platform === 'win32' || process.platform === 'linux'); }
 export function attachCloseToTray(win: BrowserWindow) {
-  win.on('close', event => { if (hidesToTray()) { event.preventDefault(); win.hide(); } });
+  win.on('close', event => { if (win === getMainWindow() && hidesToTray()) { event.preventDefault(); win.hide(); } });
 }
 let themePreferences: WindowThemePreferences | undefined;
 const paintedColors = new WeakMap<BrowserWindow, string>();
@@ -79,7 +79,7 @@ export function setActiveWorkState(state: ActiveWorkStateInput = {}, win = getMa
 
 export async function requestMainWindowClose(win = getMainWindow()) {
   if (!win || win.isDestroyed()) return { closed: false, prompted: false };
-  if (hidesToTray()) { win.hide(); return { closed: false, prompted: false, hidden: true }; }
+  if (win === getMainWindow() && hidesToTray()) { win.hide(); return { closed: false, prompted: false, hidden: true }; }
   const work = activeWorkByWindow.get(win.id) ?? activeWorkState;
   if (!work.active) {
     win.close();

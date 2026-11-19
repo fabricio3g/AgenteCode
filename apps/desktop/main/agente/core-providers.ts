@@ -32,7 +32,9 @@ function coreKeys(): Record<string, string> {
     const { mtimeMs } = fs.statSync(file);
     if (cached?.mtimeMs !== mtimeMs) {
       const entries = (JSON.parse(fs.readFileSync(file, 'utf8')).entries || {}) as Record<string, { key?: string; token?: string }>;
-      const keys = Object.entries(entries).map(([id, entry]) => [id, entry.key || entry.token || ''] as const);
+      const keys = Object.entries(entries)
+        .filter(([id]) => !id.includes(':'))
+        .map(([id, entry]) => [id, entry.key || entry.token || ''] as const);
       cached = { mtimeMs, keys: Object.fromEntries(keys.filter(([, key]) => key)) };
     }
     return cached.keys;
@@ -91,7 +93,10 @@ export async function routeKeysToCore(connect: () => Promise<Rpc>, providers: Ke
 
 /** The renderer sees only `has_api_key`: providers with a key in the core have one. */
 export function flagCoreKeys(providers: Record<string, { has_api_key?: boolean }>): void {
-  for (const id of Object.keys(coreKeys())) providers[id] = { ...providers[id], has_api_key: true };
+  for (const id of Object.keys(coreKeys())) {
+    if (id.includes(':')) continue;
+    providers[id] = { ...providers[id], has_api_key: true };
+  }
 }
 
 /**

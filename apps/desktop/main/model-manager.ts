@@ -342,16 +342,85 @@ export async function getGgufMetadata(filePath: string): Promise<GgufMetadata> {
   }
 }
 
-export async function deleteLocalModel(modelPath: string): Promise<void> {
-  if (fs.existsSync(modelPath)) {
-    fs.unlinkSync(modelPath);
+function resolveRealOrAncestor(targetPath: string): string {
+  const resolved = path.resolve(targetPath);
+  if (fs.existsSync(resolved)) {
+    try {
+      return fs.realpathSync(resolved);
+    } catch {
+      return resolved;
+    }
   }
+  const missing: string[] = [];
+  let cursor = resolved;
+  while (!fs.existsSync(cursor)) {
+    const parent = path.dirname(cursor);
+    if (parent === cursor) break;
+    missing.unshift(path.basename(cursor));
+    cursor = parent;
+  }
+  try {
+    const base = fs.existsSync(cursor) ? fs.realpathSync(cursor) : cursor;
+    return missing.length ? path.join(base, ...missing) : base;
+  } catch {
+    return resolved;
+  }
+}
+
+function normalizeModelComparePath(targetPath: string): string {
+  const resolved = resolveRealOrAncestor(targetPath);
+  return process.platform === 'win32' ? resolved.toLowerCase() : resolved;
+}
+
+function isFileInsideDir(targetPath: string, dirPath: string): boolean {
+  const normTarget = normalizeModelComparePath(targetPath);
+  const normDir = normalizeModelComparePath(dirPath);
+  const prefix = normDir.endsWith(path.sep) ? normDir : normDir + path.sep;
+  return normTarget.startsWith(prefix);
+}
+
+export async function deleteLocalModel(modelPath: string): Promise<void> {
+  if (typeof modelPath !== 'string' || !modelPath.trim()) {
+    throw new Error('Model path is required');
+  }
+  const resolvedTarget = resolveRealOrAncestor(modelPath);
+  if (path.extname(resolvedTarget).toLowerCase() !== '.gguf') {
+    throw new Error('Refusing to delete non-GGUF file');
+  }
+
   const cfg = loadConfig();
+  const normTarget = normalizeModelComparePath(resolvedTarget);
+  const modelsDir = getModelsDir();
+  const inModelsDir = isFileInsideDir(resolvedTarget, modelsDir);
+  const registeredModels = Array.isArray(cfg.llm?.local?.models) ? cfg.llm.local.models : [];
+  const isRegistered = registeredModels.some((model) => {
+    const candidate = String((model as { path?: unknown })?.path || '').trim();
+    return Boolean(candidate) && normalizeModelComparePath(candidate) === normTarget;
+  });
+
+  if (!inModelsDir && !isRegistered) {
+    throw new Error('Refusing to delete model outside managed models directory');
+  }
+
+  if (fs.existsSync(resolvedTarget)) {
+    const stat = fs.statSync(resolvedTarget);
+    if (!stat.isFile()) {
+      throw new Error('Refusing to delete non-file target');
+    }
+    fs.unlinkSync(resolvedTarget);
+  }
   if (cfg.llm?.local?.models) {
-    cfg.llm.local.models = cfg.llm.local.models.filter((model) => path.resolve(String(model.path || '')) !== path.resolve(modelPath));
+    cfg.llm.local.models = cfg.llm.local.models.filter((model) => {
+      const candidate = String((model as { path?: unknown })?.path || '').trim();
+      if (!candidate) return true;
+      return normalizeModelComparePath(candidate) !== normTarget;
+    });
     saveConfig(cfg);
   }
   await invalidateModelCache(modelPath);
+  if (resolvedTarget !== modelPath) {
+    await invalidateModelCache(resolvedTarget);
+  }
 }
 
 export async function getModelsDirPath(): Promise<string> {

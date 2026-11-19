@@ -30,6 +30,7 @@ function mergeRedactedProviderKeys(cfg: AppConfigLike, diskConfig: AppConfigLike
     if (!provider.api_key && diskSearchProviders[name]?.api_key) {
       provider.api_key = diskSearchProviders[name]?.api_key;
     }
+    delete provider.has_api_key;
   }
   for (const section of ['tts', 'stt'] as const) {
     const incoming = (cfg[section] as { providers?: Record<string, { api_key?: string; has_api_key?: boolean }> } | undefined)?.providers ?? {};

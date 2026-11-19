@@ -22,7 +22,7 @@
 
 <script lang="ts">
   import Radio from '$lib/components/ui/Radio.svelte';
-  import { onMount, tick } from 'svelte';
+  import { onDestroy, onMount, tick } from 'svelte';
   import { t } from 'svelte-i18n';
   import { Plus } from '$lib/icons';
   import { Button, Input, Switch, Textarea } from '$lib/components/ui';
@@ -39,12 +39,13 @@
   const MAIN = 'main';
   let rows = $state<Row[]>([]);
   let picks = $state(true);
-  /** A list name, or `main` for the conversation's model (saved as unset). */
-  let defaultModel = $state(MAIN);
+  /** Key of the default row, or `null` for the conversation's own model (saved as unset). */
+  let defaultKey = $state<string | null>(null);
   let editing = $state<string | null>(null);
   let loaded = $state(false);
   let saved = $state(false);
   let lastSaved = '';
+  let saveTimer: ReturnType<typeof setTimeout> | null = null;
 
   const complete = $derived(rows.filter((row) => row.name && row.provider && row.model));
 
@@ -54,37 +55,76 @@
       const current = settings?.subagents ?? {};
       rows = (current.models ?? []).map((entry) => ({ ...entry, provider: entry.provider.replace(/^desktop-/, ''), key: crypto.randomUUID() }));
       picks = current.orchestrator_picks ?? true;
-      defaultModel = current.default_model && rows.some((row) => row.name === current.default_model) ? current.default_model : MAIN;
+      const defaultRow = current.default_model ? rows.find((row) => row.name === current.default_model) : undefined;
+      defaultKey = defaultRow ? defaultRow.key : null;
       lastSaved = snapshot();
+      loaded = true;
     } catch (cause) {
       onerror(String(cause));
-    } finally {
-      loaded = true;
     }
   });
+
+  function hasUnsettledConfiguredRows(): boolean {
+    const configured = rows.filter((row) => row.provider && row.model);
+    const seen = new Set<string>();
+    for (const row of configured) {
+      if (!row.name || row.name === MAIN || !/^[a-z0-9._-]+$/.test(row.name)) return true;
+      if (seen.has(row.name)) return true;
+      seen.add(row.name);
+    }
+    return false;
+  }
 
   /** What would be saved: complete rows, and the default unless it is the conversation's model. */
   function snapshot(): string {
     const models = complete.map(({ key: _key, ...entry }) => ({ ...entry, use_for: entry.use_for?.trim() || undefined }));
-    const known = models.some((entry) => entry.name === defaultModel);
-    return JSON.stringify({ orchestrator_picks: picks ? undefined : false, models, default_model: known ? defaultModel : undefined });
+    const defaultRow = defaultKey ? complete.find((row) => row.key === defaultKey) : undefined;
+    return JSON.stringify({ orchestrator_picks: picks ? undefined : false, models, default_model: defaultRow?.name });
+  }
+
+  async function saveSnapshot(next: string, notifyError = true): Promise<void> {
+    try {
+      await invoke('agente_subagent_settings', JSON.parse(next) as Record<string, unknown>);
+      lastSaved = next;
+      saved = true;
+    } catch (cause) {
+      if (notifyError) onerror(String(cause));
+    }
   }
 
   $effect(() => {
     if (!loaded) return;
+    if (hasUnsettledConfiguredRows()) return;
     const next = snapshot();
     if (next === lastSaved) return;
     saved = false;
-    const timer = setTimeout(async () => {
-      try {
-        await invoke('agente_subagent_settings', JSON.parse(next) as Record<string, unknown>);
-        lastSaved = next;
-        saved = true;
-      } catch (cause) {
-        onerror(String(cause));
-      }
+    const timer = setTimeout(() => {
+      if (saveTimer === timer) saveTimer = null;
+      void saveSnapshot(next);
     }, 400);
-    return () => clearTimeout(timer);
+    saveTimer = timer;
+    return () => {
+      clearTimeout(timer);
+      if (saveTimer === timer) saveTimer = null;
+    };
+  });
+
+  onDestroy(() => {
+    if (saveTimer) {
+      clearTimeout(saveTimer);
+      saveTimer = null;
+    }
+    if (!loaded) return;
+    if (editing) {
+      const idx = rows.findIndex((row) => row.key === editing);
+      if (idx >= 0) settle(idx);
+    }
+    if (hasUnsettledConfiguredRows()) return;
+    const next = snapshot();
+    if (next !== lastSaved) {
+      lastSaved = next;
+      void saveSnapshot(next, false);
+    }
   });
 
   async function add() {
@@ -105,14 +145,12 @@
 
   function settle(index: number) {
     const row = rows[index]!;
-    const before = row.name;
     row.name = settledName(rows, index);
-    if (defaultModel === before && before !== row.name) defaultModel = row.name || MAIN;
   }
 
   function remove(row: Row) {
     rows = rows.filter((item) => item.key !== row.key);
-    if (defaultModel === row.name) defaultModel = MAIN;
+    if (defaultKey === row.key) defaultKey = null;
     if (editing === row.key) editing = null;
   }
 
@@ -124,7 +162,7 @@
 <div class="editor-root">
   <div class="region" role="radiogroup" aria-label={$t('code.project.agents.defaultModel')}>
     {#each rows as row, index (row.key)}
-      {@const isDefault = defaultModel === row.name && !!row.model}
+      {@const isDefault = defaultKey === row.key && !!row.model}
       <div class="row" data-model-row={row.key} class:is-default={isDefault} class:is-editing={editing === row.key}>
         <Radio
           class="radio ui-local-45920442"
@@ -132,7 +170,7 @@
           checked={isDefault}
           disabled={!row.model || !row.name}
           aria-label={$t('code.project.agents.makeDefault', { values: { name: row.name || '—' } })}
-          onchange={() => (defaultModel = row.name)}
+          onchange={() => (defaultKey = row.key)}
         />
         {#if editing === row.key}
           <div class="form">
@@ -177,12 +215,12 @@
     {/each}
 
     <!-- The conversation's own model: always there, the last option, not editable. -->
-    <label class="row main-row" class:is-default={defaultModel === MAIN}>
-      <Radio class="radio ui-local-45920442" name="subagent-default" checked={defaultModel === MAIN} onchange={() => (defaultModel = MAIN)} />
+    <label class="row main-row" class:is-default={defaultKey === null}>
+      <Radio class="radio ui-local-45920442" name="subagent-default" checked={defaultKey === null} onchange={() => (defaultKey = null)} />
       <span class="entry">
         <span class="entry-head">
           <span class="entry-name">{$t('code.project.agents.mainModel')}</span>
-          {#if defaultModel === MAIN}<span class="badge">{$t('code.project.agents.defaultChip')}</span>{/if}
+          {#if defaultKey === null}<span class="badge">{$t('code.project.agents.defaultChip')}</span>{/if}
         </span>
         <span class="entry-note is-empty">{$t('code.project.agents.mainModelHint')}</span>
       </span>

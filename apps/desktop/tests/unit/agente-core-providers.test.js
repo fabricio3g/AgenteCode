@@ -40,6 +40,23 @@ describe('the core key store, read from Desktop', () => {
     assert.equal(providers.custom.has_api_key, false);
   });
 
+  it('excludes namespaced web:* keys from coreKey and flagCoreKeys', () => {
+    writeAuth({
+      deepseek: { type: 'api', key: 'sk-llm' },
+      'web:brave': { type: 'api', key: 'sk-brave' },
+      'web:tavily': { type: 'api', key: 'sk-tavily' },
+      'web:exa': { type: 'api', key: 'sk-exa' }
+    });
+    assert.equal(coreKey('deepseek'), 'sk-llm');
+    assert.equal(coreKey('web:brave'), '');
+    assert.equal(coreKey('web:tavily'), '');
+    assert.equal(coreKey('web:exa'), '');
+    const providers = { deepseek: { has_api_key: false } };
+    flagCoreKeys(providers);
+    assert.deepEqual(Object.keys(providers), ['deepseek']);
+    assert.equal(providers.deepseek.has_api_key, true);
+  });
+
   it('treats a missing or broken store as empty', () => {
     fs.writeFileSync(path.join(dir, 'auth.json'), '{ nope');
     fs.utimesSync(path.join(dir, 'auth.json'), new Date(1), new Date(1));

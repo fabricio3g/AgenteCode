@@ -56,6 +56,80 @@ function isPrivateOrLocalIpv4(hostname) {
   return false;
 }
 
+function parseIpv6Groups(host) {
+  let addr = String(host || '').toLowerCase();
+  if (!addr || addr.includes('%')) return null;
+
+  // Convert trailing embedded IPv4 (e.g. ::ffff:127.0.0.1) to two 16-bit hex groups.
+  const lastColon = addr.lastIndexOf(':');
+  if (lastColon !== -1 && addr.includes('.')) {
+    const ipv4Part = addr.slice(lastColon + 1);
+    const m = ipv4Part.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+    if (!m) return null;
+    const octets = m.slice(1).map(Number);
+    if (octets.some((n) => !Number.isInteger(n) || n < 0 || n > 255)) return null;
+    const hi = ((octets[0] << 8) | octets[1]).toString(16);
+    const lo = ((octets[2] << 8) | octets[3]).toString(16);
+    addr = `${addr.slice(0, lastColon + 1)}${hi}:${lo}`;
+  }
+
+  const halves = addr.split('::');
+  if (halves.length > 2) return null;
+
+  const parseSide = (part) => {
+    if (!part) return [];
+    const segs = part.split(':');
+    const nums = [];
+    for (const seg of segs) {
+      if (!/^[0-9a-f]{1,4}$/.test(seg)) return null;
+      nums.push(parseInt(seg, 16));
+    }
+    return nums;
+  };
+
+  if (halves.length === 1) {
+    const groups = parseSide(halves[0]);
+    return groups && groups.length === 8 ? groups : null;
+  }
+
+  const left = parseSide(halves[0]);
+  const right = parseSide(halves[1]);
+  if (!left || !right) return null;
+  const missing = 8 - (left.length + right.length);
+  if (missing < 1) return null;
+  return [...left, ...new Array(missing).fill(0), ...right];
+}
+
+function isPrivateOrLocalIpv6(host) {
+  const groups = parseIpv6Groups(host);
+  if (!groups) return true; // Fail closed on unparseable or zoned IPv6
+
+  const allZero = groups.every((g) => g === 0);
+  if (allZero) return true; // :: unspecified
+
+  const isLoopback = groups.slice(0, 7).every((g) => g === 0) && groups[7] === 1;
+  if (isLoopback) return true; // ::1
+
+  const first = groups[0];
+  if ((first & 0xfe00) === 0xfc00) return true; // fc00::/7 ULA
+  if ((first & 0xffc0) === 0xfe80) return true; // fe80::/10 link-local
+  if ((first & 0xffc0) === 0xfec0) return true; // fec0::/10 deprecated site-local
+  if ((first & 0xff00) === 0xff00) return true; // ff00::/8 multicast
+
+  // IPv4-mapped (::ffff:0:0/96) and IPv4-compatible (::/96)
+  const isIpv4Mapped = groups.slice(0, 5).every((g) => g === 0) && groups[5] === 0xffff;
+  const isIpv4Compatible = groups.slice(0, 6).every((g) => g === 0);
+  if (isIpv4Mapped || isIpv4Compatible) {
+    const a = (groups[6] >> 8) & 0xff;
+    const b = groups[6] & 0xff;
+    const c = (groups[7] >> 8) & 0xff;
+    const d = groups[7] & 0xff;
+    if (isPrivateOrLocalIpv4(`${a}.${b}.${c}.${d}`)) return true;
+  }
+
+  return false;
+}
+
 /**
  * Public http(s) only — blocks SSRF to localhost, private nets, file/data schemes, and credentials-in-URL.
  */
@@ -69,8 +143,10 @@ export function isSafePublicUrl(value) {
     if (host === 'localhost' || host.endsWith('.localhost') || host.endsWith('.local') || host.endsWith('.internal')) {
       return false;
     }
-    if (host === '::1' || host === '0:0:0:0:0:0:0:1') return false;
-    if (host.startsWith('fc') || host.startsWith('fd') || host.startsWith('fe80')) return false; // ULA / link-local v6
+    if (host.includes(':')) {
+      if (isPrivateOrLocalIpv6(host)) return false;
+      return true;
+    }
     if (isPrivateOrLocalIpv4(host)) return false;
     return true;
   } catch {
@@ -475,6 +551,46 @@ async function fetchReaderFallback(url, maxLength, timeoutMs) {
   }
 }
 
+const MAX_REDIRECT_HOPS = 5;
+const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
+
+async function readResponseBytesCapped(response, maxBytes) {
+  if (!response.body || typeof response.body.getReader !== 'function') {
+    const buf = await response.arrayBuffer();
+    if (buf.byteLength > maxBytes) {
+      return { exceeded: true, bytesRead: buf.byteLength, arrayBuffer: null };
+    }
+    return { exceeded: false, bytesRead: buf.byteLength, arrayBuffer: buf };
+  }
+
+  const reader = response.body.getReader();
+  const chunks = [];
+  let total = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!value || value.byteLength === 0) continue;
+      total += value.byteLength;
+      if (total > maxBytes) {
+        await reader.cancel().catch(() => {});
+        return { exceeded: true, bytesRead: total, arrayBuffer: null };
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  const combined = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    combined.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return { exceeded: false, bytesRead: total, arrayBuffer: combined.buffer };
+}
+
 export async function scrapeUrlStructured({
   url,
   maxLength,
@@ -502,18 +618,62 @@ export async function scrapeUrlStructured({
     DEFAULT_MAX_DOWNLOAD_BYTES
   );
 
+  const requestHeaders = {
+    'User-Agent': BROWSER_USER_AGENT,
+    'Accept-Language': 'en-US,en;q=0.9',
+    Accept:
+      'text/html,application/xhtml+xml,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain;q=0.9,*/*;q=0.8'
+  };
+
   let response;
+  let currentUrl = normalizedUrl;
+  const signal = AbortSignal.timeout(safeTimeout);
   try {
-    response = await fetch(normalizedUrl, {
-      signal: AbortSignal.timeout(safeTimeout),
-      redirect: 'follow',
-      headers: {
-        'User-Agent': BROWSER_USER_AGENT,
-        'Accept-Language': 'en-US,en;q=0.9',
-        Accept:
-          'text/html,application/xhtml+xml,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain;q=0.9,*/*;q=0.8'
+    for (let hop = 0; hop <= MAX_REDIRECT_HOPS; hop += 1) {
+      response = await fetch(currentUrl, {
+        signal,
+        redirect: 'manual',
+        headers: requestHeaders
+      });
+
+      if (!REDIRECT_STATUSES.has(response.status)) {
+        break;
       }
-    });
+
+      const location = response.headers.get('location');
+      response.body?.cancel?.().catch(() => {});
+      if (!location) {
+        break;
+      }
+      if (hop === MAX_REDIRECT_HOPS) {
+        return {
+          error: `Too many redirects (max ${MAX_REDIRECT_HOPS}).`,
+          url: normalizedUrl,
+          status: response.status,
+          quality: 'blocked'
+        };
+      }
+      let nextUrl;
+      try {
+        nextUrl = new URL(location, currentUrl).toString();
+      } catch {
+        return {
+          error: 'Blocked redirect to an invalid URL.',
+          url: normalizedUrl,
+          status: response.status,
+          quality: 'blocked'
+        };
+      }
+      if (!isSafePublicUrl(nextUrl)) {
+        return {
+          error: 'Blocked redirect to a non-public or unsafe URL.',
+          url: normalizedUrl,
+          status: response.status,
+          quality: 'blocked'
+        };
+      }
+      currentUrl = nextUrl;
+    }
   } catch (error) {
     return {
       error: error?.message || String(error || 'Request failed'),
@@ -523,8 +683,9 @@ export async function scrapeUrlStructured({
   }
 
   // Reject redirects that land on private/non-public targets (SSRF via redirect).
-  const finalUrl = String(response.url || normalizedUrl);
+  const finalUrl = String(response?.url || currentUrl);
   if (!isSafePublicUrl(finalUrl)) {
+    response?.body?.cancel?.().catch(() => {});
     return {
       error: 'Blocked redirect to a non-public or unsafe URL.',
       url: normalizedUrl,
@@ -548,6 +709,7 @@ export async function scrapeUrlStructured({
   const contentType = String(response.headers.get('content-type') || '').toLowerCase();
   const contentLengthHeader = Number(response.headers.get('content-length') || 0);
   if (Number.isFinite(contentLengthHeader) && contentLengthHeader > safeMaxDownload) {
+    response.body?.cancel?.().catch(() => {});
     return {
       error: `Remote file too large (${contentLengthHeader} bytes; max ${safeMaxDownload}).`,
       url: finalUrl,
@@ -556,15 +718,25 @@ export async function scrapeUrlStructured({
     };
   }
 
-  const arrayBuffer = await response.arrayBuffer();
-  if (arrayBuffer.byteLength > safeMaxDownload) {
+  let bodyResult;
+  try {
+    bodyResult = await readResponseBytesCapped(response, safeMaxDownload);
+  } catch (error) {
     return {
-      error: `Downloaded payload too large (${arrayBuffer.byteLength} bytes; max ${safeMaxDownload}).`,
+      error: error?.message || String(error || 'Failed to read response body'),
+      url: finalUrl,
+      status: response.status
+    };
+  }
+  if (bodyResult.exceeded || !bodyResult.arrayBuffer) {
+    return {
+      error: `Downloaded payload too large (${bodyResult.bytesRead} bytes; max ${safeMaxDownload}).`,
       url: finalUrl,
       status: response.status,
       quality: 'blocked'
     };
   }
+  const arrayBuffer = bodyResult.arrayBuffer;
 
   const magic = new Uint8Array(arrayBuffer, 0, Math.min(16, arrayBuffer.byteLength));
   const kind = detectDocumentKind(finalUrl, contentType, magic);

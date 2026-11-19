@@ -37,7 +37,7 @@ const ALLOWED_INVOKE_CHANNELS = new Set([
   'search_hf_models', 'hf_repo_gguf', 'fetch_hf_readme', 'open_url_window', 'open_webviewer',
   'live_get_weather', 'live_convert_currency', 'live_get_quote', 'live_geocode_place',
 
-  'path_exists', 'browse_folders', 'open_models_folder', 'pick_workspace_folder', 'pick_model_file', 'pick_whisper_runtime_file',
+  'path_exists', 'browse_folders', 'open_models_folder', 'pick_workspace_folder', 'pick_model_file', 'pick_mmproj_file', 'pick_whisper_runtime_file',
   'index_workspace_folder', 'write_workspace_file', 'write_workspace_binary', 'read_workspace_file', 'read_workspace_binary',
   'create_workspace_document', 'rename_workspace_file', 'delete_workspace_file',
   'open_workspace_file', 'create_workspace_folder', 'workspace_exec', 'write_temp_file',

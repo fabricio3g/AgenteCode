@@ -45,6 +45,7 @@ type WorkspaceHandlerDeps = {
   pickWhisperRuntimeFile: () => unknown;
   indexWorkspaceFolder: (path: string, chatId: string) => unknown;
   writeWorkspaceFile: (workspaceRoot: string, relativePath: string, content: string) => unknown;
+  writeWorkspaceBinary: (workspaceRoot: string, relativePath: string, dataUrl: string) => unknown;
   readWorkspaceFile: (workspaceRoot: string, relativePath: string) => unknown;
   createWorkspaceDocument: (workspaceRoot: string, relativePath: string, docType: string, content: unknown) => unknown;
   renameWorkspaceFile: (workspaceRoot: string, oldPath: string, newPath: string) => unknown;

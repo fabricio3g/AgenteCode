@@ -50,6 +50,7 @@ type ChatState = {
   systemPrompt?: string;
   turnId: string | null;
   stopRequested: boolean;
+  stopGrace?: ReturnType<typeof setTimeout>;
   settlement?: { promise: Promise<void>; resolve: () => void };
   followUps: Array<{ text: string; attachments: Attachment[] }>;
   contextWindow: number;
@@ -59,10 +60,18 @@ type ChatState = {
 
 const chats = new Map<string, ChatState>();
 const manualCompactions = new Set<string>();
+const attachedClients = new WeakSet<AgenteClient>();
 let daemon: AgenteDaemon | null = null;
 let listening: AgenteClient | null = null;
 let desktopTools: Promise<DesktopToolServer> | null = null;
 let connectionPromise: Promise<AgenteClient> | null = null;
+
+function clearStopGrace(chat: ChatState): void {
+  if (chat.stopGrace) {
+    clearTimeout(chat.stopGrace);
+    chat.stopGrace = undefined;
+  }
+}
 
 const ensureProvider = createProviderPreflight({
   localConfig: () => (loadConfig().llm?.local ?? {}) as Record<string, unknown>,
@@ -144,35 +153,37 @@ async function openConnection(): Promise<AgenteClient> {
   }
   const client = await daemon.connect();
   if (listening !== client) {
-    listening = client;
-    client.onClose(() => {
-      if (listening !== client) return;
-      listening = null;
-      connectionPromise = null;
-      configured.clear();
-      for (const chat of chats.values()) {
-        if (!chat.turnId) continue;
-        cancelComputerTurn(chat.sessionId, 'runtime_disconnected');
-        settleComputerTurn(chat.sessionId, chat.turnId);
-        chat.turnId = null;
-        chat.settlement?.resolve();
-        chat.settlement = undefined;
-        chat.followUps = [];
-        emit({ type: 'error', chatId: chat.chatId, message: 'The Rust runtime disconnected. Reconnect by sending a new message.' });
-        emit({ type: 'agent_end', chatId: chat.chatId, stopReason: 'error' });
-      }
-    });
-    client.onNotification((method, params) => {
-      if (method === 'turn.outcome') {
-        const outcome = params as TurnOutcome;
-        const chat = [...chats.values()].find((state) => state.sessionId === outcome.session_id);
-        if (chat && (!chat.turnId || chat.turnId === outcome.turn_id)) continueWithFollowUp(chat, outcome.status === 'completed');
-        return;
-      }
-      if (method !== 'event') return;
-      const envelope = params as RuntimeEventEnvelope;
-      route(envelope);
-    });
+    if (!attachedClients.has(client)) {
+      attachedClients.add(client);
+      client.onClose(() => {
+        if (listening === client) listening = null;
+        connectionPromise = null;
+        configured.clear();
+        for (const chat of chats.values()) {
+          clearStopGrace(chat);
+          if (!chat.turnId) continue;
+          cancelComputerTurn(chat.sessionId, 'runtime_disconnected');
+          settleComputerTurn(chat.sessionId, chat.turnId);
+          chat.turnId = null;
+          chat.settlement?.resolve();
+          chat.settlement = undefined;
+          chat.followUps = [];
+          emit({ type: 'error', chatId: chat.chatId, message: 'The Rust runtime disconnected. Reconnect by sending a new message.' });
+          emit({ type: 'agent_end', chatId: chat.chatId, stopReason: 'error' });
+        }
+      });
+      client.onNotification((method, params) => {
+        if (method === 'turn.outcome') {
+          const outcome = params as TurnOutcome;
+          const chat = [...chats.values()].find((state) => state.sessionId === outcome.session_id);
+          if (chat && (!chat.turnId || chat.turnId === outcome.turn_id)) continueWithFollowUp(chat, outcome.status === 'completed');
+          return;
+        }
+        if (method !== 'event') return;
+        const envelope = params as RuntimeEventEnvelope;
+        route(envelope);
+      });
+    }
     // Turns started by another client arrive this way;
     // the runtime never sends a turn twice to the client that started it.
     await client.request('events.subscribe', {}).catch(() => {});
@@ -190,10 +201,17 @@ async function openConnection(): Promise<AgenteClient> {
       const overrides = saved.subagent_models as Record<string, { provider: string; model: string }> | undefined;
       const listed = (saved.subagents as SubagentSettings | undefined)?.models ?? [];
       for (const model of [...Object.values(overrides || {}), ...listed, ...(saved.compaction_model ? [saved.compaction_model as { provider: string; model: string }] : [])]) {
-        if (model.provider.startsWith('desktop-')) await useProvider(client, model.provider.slice(8), model.model);
+        if (model?.provider?.startsWith('desktop-')) {
+          try {
+            await useProvider(client, model.provider.slice(8), model.model);
+          } catch (error: unknown) {
+            console.warn(`[agente] skipped restoring model ${model.provider}/${model.model}: ${error instanceof Error ? error.message : String(error)}`);
+          }
+        }
       }
       await client.request('runtime.configure', saved);
     }
+    listening = client;
   }
   return client;
 }
@@ -331,6 +349,7 @@ function recordCheckpoint(chat: ChatState, event: Extract<CodeAgentEvent, { type
 
 /** The turn ended: send the next queued follow-up, if any. */
 function continueWithFollowUp(chat: ChatState, completed: boolean): void {
+  clearStopGrace(chat);
   if (chat.turnId) settleComputerTurn(chat.sessionId, chat.turnId);
   chat.turnId = null;
   chat.settlement?.resolve();
@@ -489,6 +508,7 @@ async function prompt(chatId: string, text: string, images?: Array<{ data: strin
   const chat = chats.get(chatId);
   if (!chat) return { ok: false, error: 'No active agente session for this chat' };
   bindChatWindow(chat, owner);
+  clearStopGrace(chat);
   chat.stopRequested = false;
   try {
     // The terminal event reaches the renderer before the runtime releases its turn slot.
@@ -570,7 +590,12 @@ async function abort(chatId: string): Promise<{ ok: boolean }> {
     return { ok: true };
   }
   // Armed before any await: a runtime that never answers cannot hold it up.
-  const grace = setTimeout(() => { if (chat.turnId === turnId) settleStopped(chat); }, STOP_GRACE_MS);
+  clearStopGrace(chat);
+  const grace = setTimeout(() => {
+    if (chat.stopGrace === grace) chat.stopGrace = undefined;
+    if (chat.turnId === turnId) settleStopped(chat);
+  }, STOP_GRACE_MS);
+  chat.stopGrace = grace;
   let cancelled = false;
   try {
     const client = await connect();
@@ -579,15 +604,17 @@ async function abort(chatId: string): Promise<{ ok: boolean }> {
     cancelled = false;
   }
   if (!cancelled && chat.turnId === turnId) {
-    clearTimeout(grace);
     settleStopped(chat);
   }
   return { ok: true };
 }
 
 function settleStopped(chat: ChatState): void {
+  clearStopGrace(chat);
   if (chat.turnId) settleComputerTurn(chat.sessionId, chat.turnId);
   chat.turnId = null;
+  chat.settlement?.resolve();
+  chat.settlement = undefined;
   emit({ type: 'agent_end', chatId: chat.chatId, stopReason: 'aborted' });
 }
 
@@ -639,6 +666,8 @@ async function compact(chatId: string, smart = true): Promise<{ ok: boolean; err
 async function exec(chatId: string, command: string): Promise<{ ok: boolean; error?: string }> {
   const chat = chats.get(chatId);
   if (!chat) return { ok: false, error: 'No active agente session for this chat' };
+  clearStopGrace(chat);
+  chat.stopRequested = false;
   try {
     const client = await connect();
     const started = await client.request<{ turn_id: string }>('turn.exec', {
@@ -784,7 +813,11 @@ async function deleteSessionData(args: { chatIds?: string[]; sessionIds?: string
 }
 
 function disposeAllSessions(): void {
-  for (const chat of chats.values()) { cancelComputerTurn(chat.sessionId, 'runtime_closed'); if (chat.turnId) settleComputerTurn(chat.sessionId, chat.turnId); }
+  for (const chat of chats.values()) {
+    clearStopGrace(chat);
+    cancelComputerTurn(chat.sessionId, 'runtime_closed');
+    if (chat.turnId) settleComputerTurn(chat.sessionId, chat.turnId);
+  }
   chats.clear();
   daemon?.stop();
   daemon = null;

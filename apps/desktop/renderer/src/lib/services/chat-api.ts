@@ -304,16 +304,19 @@ export async function loadChatConfig(): Promise<AppConfig> {
       }
     },
     search: {
+      ...(config.search || {}),
       provider: config.search?.provider || 'aggregator',
       max_results: config.search?.max_results || 6
     },
     tts: {
+      ...(config.tts || {}),
       enable_voice_output: config.tts?.enable_voice_output ?? true,
       auto_play_voice: config.tts?.auto_play_voice ?? false,
       voice: config.tts?.voice || '',
       speed: config.tts?.speed ?? 1
     },
     ui: {
+      ...(config.ui || {}),
       theme: config.ui?.theme,
       show_assistant_text: config.ui?.show_assistant_text ?? true,
       enable_thinking: config.ui?.enable_thinking ?? true

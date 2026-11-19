@@ -92,7 +92,7 @@ function connectNotifications(client: AgenteClient) {
       send(run, { runId: run.runId, type: 'event', envelope, serviceName: complement && run.complementNames?.get(complement.id) });
     } else if (method === 'turn.outcome') {
       const outcome = params as TurnOutcome;
-      const run = [...runs.values()].find((run) => run.sessionId === outcome.session_id && run.turnId === outcome.turn_id);
+      const run = [...runs.values()].find((run) => run.sessionId === outcome.session_id && (!run.turnId || run.turnId === outcome.turn_id));
       if (!run) return;
       if (run.chatId && outcome.status !== 'cancelled') notifyActivity({ id: `home-${outcome.turn_id}`, chatId: run.chatId, space: 'home', title: outcome.status === 'completed' ? 'Task finished' : 'Task failed', body: outcome.status === 'completed' ? 'Your result is ready.' : 'Open the chat to review the error.' }, run.owner);
       void client.request<{ snapshot: SessionSnapshot }>('session.get', { session_id: run.sessionId }).then(({ snapshot }) => {
@@ -130,7 +130,7 @@ export function registerHomeRuntimeHandlers(ipcMain: IpcMain) {
     const computerDefinitions = [...(run.computerTools?.values() ?? [])].map(tool => ({ name: tool.name, description: tool.description, parameters: tool.parameters, sequential: true, mutating: true }));
     await client.request('client_tools.register', { session_id: sessionId, tools: [...args.tools.filter(tool => !tool.name.startsWith('computer_')), ...computerDefinitions] });
     runs.set(args.runId, run);
-    const disconnect = () => { computerSession.releaseOwner(event.sender.id); void cancel(run); };
+    const disconnect = () => { computerSession.releaseOwner(event.sender.id); void cancel(run); release(run); };
     event.sender.once('destroyed', disconnect);
     event.sender.once('render-process-gone', disconnect);
     run.dispose = () => {

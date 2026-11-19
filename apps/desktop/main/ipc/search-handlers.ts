@@ -1,4 +1,4 @@
-import type { IpcMain, BrowserWindow } from 'electron';
+import { BrowserWindow, type IpcMain } from 'electron';
 import { withBrowserScope } from '../browser-panel.ts';
 import type { ErrorMessageFn } from './types.ts';
 
@@ -37,7 +37,7 @@ export function registerSearchHandlers({
   probeAggregatorEngines,
   toErrorMessage,
 }: SearchHandlerDeps): void {
-  ipcMain.handle('web_search', (_e, args) => webSearch(args, getMainWindow()));
+  ipcMain.handle('web_search', (event, args) => webSearch(args, BrowserWindow.fromWebContents(event.sender) ?? getMainWindow()));
   ipcMain.handle('search:get-catalog', () => getAggregatorCatalog());
   ipcMain.handle('search:probe-engines', (_e, args: { engine_ids?: unknown; options?: Record<string, unknown>; query?: string } = {}) =>
     probeAggregatorEngines(args.engine_ids, args.options || {}, args.query));
