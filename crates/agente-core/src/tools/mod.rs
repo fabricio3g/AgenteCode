@@ -392,7 +392,11 @@ fn canonicalize_closest_ancestor(
             if let Ok(canonical) = std::fs::canonicalize(ancestor) {
                 let mut out = canonical;
                 for component in remainder.iter().rev() {
-                    out.push(component);
+                    if component == ".." {
+                        out.pop();
+                    } else if component != "." {
+                        out.push(component);
+                    }
                 }
                 return Ok(normalize_path(&out));
             }
@@ -439,7 +443,10 @@ fn canonicalize_closest_ancestor(
     }
 }
 
-/// Normalize a path by resolving . and .. components without requiring the path to exist.
+/// Normalize a path by resolving `.` and `..` components without requiring the
+/// path to exist. On Windows, verbatim paths (`\\?\...`) emit `.` and `..` as
+/// `Component::Normal` rather than `CurDir`/`ParentDir`, so those are collapsed
+/// here too.
 fn normalize_path(path: &std::path::Path) -> std::path::PathBuf {
     let mut result = std::path::PathBuf::new();
     for component in path.components() {
@@ -447,7 +454,11 @@ fn normalize_path(path: &std::path::Path) -> std::path::PathBuf {
             std::path::Component::Prefix(p) => result.push(p.as_os_str()),
             std::path::Component::RootDir => result.push(std::path::MAIN_SEPARATOR_STR),
             std::path::Component::CurDir => {}
+            std::path::Component::Normal(p) if p == "." => {}
             std::path::Component::ParentDir => {
+                result.pop();
+            }
+            std::path::Component::Normal(p) if p == ".." => {
                 result.pop();
             }
             std::path::Component::Normal(p) => result.push(p),
@@ -1847,6 +1858,25 @@ mod tests {
         let after = canonical_base_cached(&project_str);
         let expected = std::fs::canonicalize(&project).unwrap();
         assert_eq!(after, expected);
+    }
+
+    #[test]
+    fn resolve_project_path_rejects_parent_traversal_after_nonexistent_dir() {
+        let tmp = tempfile::tempdir().unwrap();
+        let project = tmp.path().join("proj");
+        std::fs::create_dir_all(&project).unwrap();
+        let project_str = project.to_string_lossy().into_owned();
+
+        // `..` after a nonexistent directory must collapse even on Windows
+        // verbatim (`\\?\`) paths and be rejected when escaping the project.
+        let err = resolve_project_path("nonexistent/../../outside.txt", &project_str)
+            .expect_err("traversal through nonexistent/../.. must be rejected");
+        assert!(err.to_string().contains("outside the project directory"));
+
+        // Staying inside the project still resolves cleanly with `..` collapsed.
+        let canon_project = std::fs::canonicalize(&project).unwrap();
+        let inside = resolve_project_path("nonexistent/../inside.txt", &project_str).unwrap();
+        assert_eq!(inside, canon_project.join("inside.txt"));
     }
 }
 
