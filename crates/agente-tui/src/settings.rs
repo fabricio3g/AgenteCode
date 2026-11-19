@@ -113,7 +113,10 @@ impl Setting {
                 if n == 0 {
                     ("main model ›".to_string(), false)
                 } else {
-                    (format!("{n} model{} ›", if n == 1 { "" } else { "s" }), true)
+                    (
+                        format!("{n} model{} ›", if n == 1 { "" } else { "s" }),
+                        true,
+                    )
                 }
             }
         }

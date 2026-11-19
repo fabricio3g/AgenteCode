@@ -47,7 +47,13 @@ fn card_lines(card: &Card, width: usize) -> [Line<'static>; 2] {
     };
     let title = Line::from(vec![
         s(mark, mark_style),
-        s(clip(&format!("{} {}", card.id, card.title), width.saturating_sub(2)), title_style),
+        s(
+            clip(
+                &format!("{} {}", card.id, card.title),
+                width.saturating_sub(2),
+            ),
+            title_style,
+        ),
     ]);
     let mut detail = card.role.clone();
     if let Some(model) = &card.model {
@@ -56,7 +62,10 @@ fn card_lines(card: &Card, width: usize) -> [Line<'static>; 2] {
     if card.status == CardStatus::Backlog && !card.depends_on.is_empty() {
         detail = format!("waits for {}", card.depends_on.join(", "));
     }
-    let detail = Line::from(vec![s("  ", style::dim()), s(clip(&detail, width.saturating_sub(2)), style::dim())]);
+    let detail = Line::from(vec![
+        s("  ", style::dim()),
+        s(clip(&detail, width.saturating_sub(2)), style::dim()),
+    ]);
     [title, detail]
 }
 
@@ -83,11 +92,23 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
     }
     let empty = Board::default();
     let board = state.agent.board.as_ref().unwrap_or(&empty);
-    let panel = centered_panel(area, area.width.saturating_sub(4).min(120), area.height.saturating_sub(2).min(28));
+    let panel = centered_panel(
+        area,
+        area.width.saturating_sub(4).min(120),
+        area.height.saturating_sub(2).min(28),
+    );
     let mut title = vec![s("Board", style::bold())];
     title.push(s(
-        if board.enabled { "  swarm on" } else { "  swarm off" },
-        if board.enabled { style::accent() } else { style::dim() },
+        if board.enabled {
+            "  swarm on"
+        } else {
+            "  swarm off"
+        },
+        if board.enabled {
+            style::accent()
+        } else {
+            style::dim()
+        },
     ));
     let body = modal_card(frame, panel, title);
 
@@ -135,7 +156,14 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
         body,
         footer_hints(
             &[
-                ("s", if board.enabled { "swarm off" } else { "swarm on" }),
+                (
+                    "s",
+                    if board.enabled {
+                        "swarm off"
+                    } else {
+                        "swarm on"
+                    },
+                ),
                 ("Esc", "close"),
             ],
             body.width.saturating_sub(2),
@@ -174,7 +202,9 @@ mod tests {
             }))
             .unwrap()
         };
-        board.add(vec![spec("Map code", &[]), spec("Write docs", &["c1"])]).unwrap();
+        board
+            .add(vec![spec("Map code", &[]), spec("Write docs", &["c1"])])
+            .unwrap();
         board.start("c1", "child");
         let mut state = AppState::new(AppConfig::default(), "/tmp/board".into());
         state.agent.board = Some(board);

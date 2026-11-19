@@ -287,11 +287,7 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
     // Title, then rows, gap, detail line, gap, footer.
     let list_rows = rows.len().clamp(4, 16) as u16;
     let panel = centered_panel(area, area.width.saturating_sub(4).min(76), list_rows + 7);
-    let body = modal_card(
-        frame,
-        panel,
-        vec![s("Subagent models", style::bold())],
-    );
+    let body = modal_card(frame, panel, vec![s("Subagent models", style::bold())]);
     let width = body.width.saturating_sub(4) as usize;
 
     if let Some(top) = panel_row(body, 1, 1) {
@@ -364,7 +360,11 @@ mod tests {
     fn settings() -> SubagentSettings {
         SubagentSettings {
             models: vec![
-                entry("scout", "qwen/qwen3-coder:free", "Fast searches. Never edits."),
+                entry(
+                    "scout",
+                    "qwen/qwen3-coder:free",
+                    "Fast searches. Never edits.",
+                ),
                 entry("builder", "z-ai/glm-5", ""),
             ],
             default_model: Some("scout".into()),

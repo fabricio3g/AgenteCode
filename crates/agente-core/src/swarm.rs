@@ -409,7 +409,10 @@ impl Board {
                     out.push_str(&format!(" waits for {}", card.depends_on.join(", ")));
                 }
                 if let Some(result) = &card.result {
-                    if matches!(status, CardStatus::Review | CardStatus::Failed | CardStatus::Done) {
+                    if matches!(
+                        status,
+                        CardStatus::Review | CardStatus::Failed | CardStatus::Done
+                    ) {
                         out.push_str(&format!(" — {}", trim_limit(result, 300)));
                     }
                 }
@@ -474,7 +477,9 @@ impl BoardStore {
         session: Uuid,
         change: impl FnOnce(&mut Board) -> Result<T, String>,
     ) -> Result<(T, Board), String> {
-        let _guard = WRITE.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        let _guard = WRITE
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         let mut board = self.get(session).map_err(|error| error.to_string())?;
         let value = change(&mut board)?;
         write_atomic(
@@ -648,7 +653,12 @@ mod tests {
         let ids = board
             .add(vec![
                 spec("Map the code", false, &[], &[]),
-                spec("Refactor parser", true, &["Map the code"], &["src/parser/**"]),
+                spec(
+                    "Refactor parser",
+                    true,
+                    &["Map the code"],
+                    &["src/parser/**"],
+                ),
                 spec("Write tests", true, &["c2"], &["tests/parser.rs"]),
             ])
             .unwrap();
@@ -658,13 +668,22 @@ mod tests {
 
         board.start("c1", "child-1");
         assert!(board.ready().is_empty());
-        assert_eq!(board.child_finished("child-1", true, "found it"), Some("c1".into()));
+        assert_eq!(
+            board.child_finished("child-1", true, "found it"),
+            Some("c1".into())
+        );
         // A reader goes straight to done; its result reaches the next card.
         assert_eq!(board.card("c1").unwrap().status, CardStatus::Done);
         assert_eq!(board.ready(), ["c2"]);
         let prompt = board.child_prompt("c2").unwrap();
-        assert!(prompt.contains("Results you build on:\n- c1 \"Map the code\": found it"), "{prompt}");
-        assert!(prompt.contains("may change only them: src/parser/**"), "{prompt}");
+        assert!(
+            prompt.contains("Results you build on:\n- c1 \"Map the code\": found it"),
+            "{prompt}"
+        );
+        assert!(
+            prompt.contains("may change only them: src/parser/**"),
+            "{prompt}"
+        );
 
         // A writer goes to review; the lead accepts it.
         board.start("c2", "child-2");
@@ -701,7 +720,10 @@ mod tests {
         // A bad card adds nothing.
         let before = board.cards.len();
         assert!(board
-            .add(vec![spec("Ok", false, &[], &[]), spec("Bad", false, &["nope"], &[])])
+            .add(vec![
+                spec("Ok", false, &[], &[]),
+                spec("Bad", false, &["nope"], &[])
+            ])
             .is_err());
         assert_eq!(board.cards.len(), before);
     }
@@ -709,17 +731,24 @@ mod tests {
     #[test]
     fn a_card_sent_back_retries_with_the_feedback() {
         let mut board = Board::default();
-        board.add(vec![spec("Fix bug", true, &[], &["src/a.rs"])]).unwrap();
+        board
+            .add(vec![spec("Fix bug", true, &[], &["src/a.rs"])])
+            .unwrap();
         board.start("c1", "child-1");
         assert!(board.move_card("c1", MoveTo::Done, None).is_err());
         board.child_finished("child-1", true, "patched");
         board
-            .move_card("c1", MoveTo::Backlog, Some("The test still fails on empty input."))
+            .move_card(
+                "c1",
+                MoveTo::Backlog,
+                Some("The test still fails on empty input."),
+            )
             .unwrap();
         assert_eq!(board.ready(), ["c1"]);
         assert_eq!(board.card("c1").unwrap().child_id, None);
         let prompt = board.child_prompt("c1").unwrap();
-        assert!(prompt.contains("Feedback on earlier attempts:\n- The test still fails on empty input."));
+        assert!(prompt
+            .contains("Feedback on earlier attempts:\n- The test still fails on empty input."));
         board.start("c1", "child-2");
         board.child_finished("child-2", false, "crashed");
         assert_eq!(board.card("c1").unwrap().status, CardStatus::Failed);
@@ -738,8 +767,14 @@ mod tests {
             .unwrap();
         board.start("c1", "x");
         let text = board.summary();
-        assert!(text.starts_with("working:\n- c1 Map [Map role · scout]"), "{text}");
-        assert!(text.contains("backlog:\n- c2 Build [Build role · scout] waits for c1"), "{text}");
+        assert!(
+            text.starts_with("working:\n- c1 Map [Map role · scout]"),
+            "{text}"
+        );
+        assert!(
+            text.contains("backlog:\n- c2 Build [Build role · scout] waits for c1"),
+            "{text}"
+        );
         assert_eq!(Board::default().summary(), "The board is empty.");
     }
 
@@ -751,7 +786,9 @@ mod tests {
         assert!(!store.enabled(session));
         store.set_enabled(session, true).unwrap();
         let (ids, board) = store
-            .update(session, |board| board.add(vec![spec("Map", false, &[], &[])]))
+            .update(session, |board| {
+                board.add(vec![spec("Map", false, &[], &[])])
+            })
             .unwrap();
         assert_eq!(ids, ["c1"]);
         assert!(board.enabled);

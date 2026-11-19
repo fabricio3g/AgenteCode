@@ -23,7 +23,7 @@
 <script lang="ts">
   import { spaceVisible } from '$lib/components/layout/space-visibility';
   import { t } from 'svelte-i18n';
-  import { FilePen, ListChecks, ShieldAlert, SquareTerminal, Wrench } from 'lucide-svelte';
+  import { FilePen, ListChecks, SquareTerminal, TriangleAlert, Wrench } from '$lib/icons';
   import Button from '$lib/components/ui/Button.svelte';
   import type { PendingApproval } from '$lib/stores/approvals.svelte';
   import type { AgentStep } from '$lib/types/chat';
@@ -71,7 +71,7 @@
   );
   /** Where a service request acts (the connected app, the creative project). */
   const where = $derived(service && approval.cwd && !approval.command.startsWith(approval.cwd) ? approval.cwd : '');
-  const Icon = $derived(approval.dangerous ? ShieldAlert : parsed.kind === 'edit' ? FilePen : parsed.kind === 'command' ? SquareTerminal : parsed.kind === 'plan' ? ListChecks : Wrench);
+  const Icon = $derived(approval.dangerous ? TriangleAlert : parsed.kind === 'edit' ? FilePen : parsed.kind === 'command' ? SquareTerminal : parsed.kind === 'plan' ? ListChecks : Wrench);
 
   /** What an edit would change, counted from the diff the row shows. */
   const churn = $derived.by(() => {

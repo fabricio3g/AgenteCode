@@ -102,20 +102,34 @@ where
                     let connection = Arc::clone(&connection);
                     tokio::spawn(async move {
                         let outcome = if method == "turn.start" {
-                            if params.pointer("/home/complements").and_then(Value::as_bool) == Some(true) {
+                            if params.pointer("/home/complements").and_then(Value::as_bool)
+                                == Some(true)
+                            {
                                 let wait = async {
-                                    while connection.complements.lock().unwrap().waiting_for_first_connection() {
-                                        tokio::time::sleep(std::time::Duration::from_millis(75)).await;
+                                    while connection
+                                        .complements
+                                        .lock()
+                                        .unwrap()
+                                        .waiting_for_first_connection()
+                                    {
+                                        tokio::time::sleep(std::time::Duration::from_millis(75))
+                                            .await;
                                     }
                                 };
-                                let _ = tokio::time::timeout(std::time::Duration::from_secs(4), wait).await;
+                                let _ =
+                                    tokio::time::timeout(std::time::Duration::from_secs(4), wait)
+                                        .await;
                                 let managers = connection.complements.lock().unwrap().managers();
                                 let refresh = async {
                                     for manager in managers {
                                         manager.refresh_stale_tools().await;
                                     }
                                 };
-                                let _ = tokio::time::timeout(std::time::Duration::from_secs(2), refresh).await;
+                                let _ = tokio::time::timeout(
+                                    std::time::Duration::from_secs(2),
+                                    refresh,
+                                )
+                                .await;
                             }
                             let turn_connection = Arc::clone(&connection);
                             tokio::task::spawn_blocking(move || {
@@ -713,8 +727,15 @@ impl Connection {
                     retry: Option<String>,
                 }
                 let Params { mut servers, retry } = parse(params)?;
-                if servers.len() > 32 || servers.keys().any(|id| id.len() != 12 || !id.bytes().all(|b| b.is_ascii_hexdigit())) {
-                    return Err((rpc::INVALID_PARAMS, "Invalid complement IDs or too many services".into()));
+                if servers.len() > 32
+                    || servers
+                        .keys()
+                        .any(|id| id.len() != 12 || !id.bytes().all(|b| b.is_ascii_hexdigit()))
+                {
+                    return Err((
+                        rpc::INVALID_PARAMS,
+                        "Invalid complement IDs or too many services".into(),
+                    ));
                 }
                 for config in servers.values_mut() {
                     config.mcp.trust = false;
@@ -756,12 +777,20 @@ impl Connection {
                     } else {
                         Vec::new()
                     };
-                    if !complements.is_empty() && start.mode != Some(agente_protocol::TurnMode::Plan) {
+                    if !complements.is_empty()
+                        && start.mode != Some(agente_protocol::TurnMode::Plan)
+                    {
                         start.mode = Some(agente_protocol::TurnMode::Build);
                     }
                     let extra = self
                         .client_tools
-                        .tools(start.session_id, turn_id, policy, self.outbox.clone(), complements)
+                        .tools(
+                            start.session_id,
+                            turn_id,
+                            policy,
+                            self.outbox.clone(),
+                            complements,
+                        )
                         .map_err(|error| (rpc::INVALID_PARAMS, error))?;
                     let timeout = policy.max_time_ms;
                     let turn = runtime

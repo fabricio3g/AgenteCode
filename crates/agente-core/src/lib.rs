@@ -8,7 +8,6 @@ pub mod context;
 pub mod extensions;
 #[cfg(feature = "execution")]
 pub mod goal;
-pub mod swarm;
 pub mod llm;
 #[cfg(feature = "execution")]
 pub mod lsp;
@@ -24,6 +23,7 @@ pub mod sandbox;
 pub mod session;
 #[cfg(feature = "execution")]
 pub mod subagent;
+pub mod swarm;
 pub mod thinking;
 #[cfg(feature = "execution")]
 pub mod todo;

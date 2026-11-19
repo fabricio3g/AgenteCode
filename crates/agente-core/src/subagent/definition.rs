@@ -459,13 +459,21 @@ mod tests {
         assert_eq!(cfg.capability, SubagentCapabilityMode::ReadOnly);
         assert_eq!(cfg.tools, None);
         assert_eq!(cfg.model.as_deref(), Some("parent-model"));
-        assert!(cfg.system_prompt.contains("Your role: Security reviewer."), "{}", cfg.system_prompt);
+        assert!(
+            cfg.system_prompt.contains("Your role: Security reviewer."),
+            "{}",
+            cfg.system_prompt
+        );
         assert!(cfg.system_prompt.contains("Check auth first."));
         assert!(!cfg.system_prompt.contains("{instructions}"));
 
         let bare = created("Security reviewer");
         let cfg = resolve_effective_config(&bare, &parent(), &[]).unwrap();
-        assert!(!cfg.system_prompt.contains("\n\n\n"), "{}", cfg.system_prompt);
+        assert!(
+            !cfg.system_prompt.contains("\n\n\n"),
+            "{}",
+            cfg.system_prompt
+        );
 
         let writer = SubagentSpawnRequest {
             capability_mode: Some(SubagentCapabilityMode::ReadWrite),
@@ -524,7 +532,9 @@ mod tests {
             ..request("auditor")
         };
         let cfg = resolve_effective_config(&sharpened, &parent(), &custom).unwrap();
-        assert!(cfg.system_prompt.ends_with("For this task your role is: License checker."));
+        assert!(cfg
+            .system_prompt
+            .ends_with("For this task your role is: License checker."));
 
         // Hidden agents stay spawnable by name.
         assert!(resolve_effective_config(&request("helper"), &parent(), &custom).is_ok());

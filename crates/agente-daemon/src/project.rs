@@ -199,10 +199,16 @@ mod tests {
         assert_eq!(value["agents_md"], false);
         // Only the user's own agents: the model creates every other subagent.
         let agents = value["agents"].as_array().unwrap();
-        let auditor = agents.iter().find(|agent| agent["name"] == "auditor").unwrap();
+        let auditor = agents
+            .iter()
+            .find(|agent| agent["name"] == "auditor")
+            .unwrap();
         assert_eq!(auditor["model"], "scout");
         for preset in ["general-purpose", "explore", "plan"] {
-            assert!(!agents.iter().any(|agent| agent["name"] == preset), "{preset}");
+            assert!(
+                !agents.iter().any(|agent| agent["name"] == preset),
+                "{preset}"
+            );
         }
         assert_eq!(value["commands"][0]["name"], "review");
 

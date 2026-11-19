@@ -11,7 +11,7 @@
 
 <script lang="ts">
   import { t, locale } from 'svelte-i18n';
-  import { FileDiff, FileSpreadsheet, FileText, Files, Globe, Presentation, Shapes } from 'lucide-svelte';
+  import { FileDiff, FileSpreadsheet, FileText, Files, Globe, Presentation, Shapes } from '$lib/icons';
   import { formatToolDuration } from '$lib/utils/tool-ui';
   import Button from '$lib/components/ui/Button.svelte';
   import type { ArtifactKind, ChatSession } from '$lib/types/chat';

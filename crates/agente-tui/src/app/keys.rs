@@ -20,10 +20,7 @@ fn is_text_char_modifiers(m: KeyModifiers) -> bool {
     let ctrl = m.contains(KeyModifiers::CONTROL);
     let alt = m.contains(KeyModifiers::ALT);
     // Pure Control → shortcut, not text
-    if ctrl && !alt {
-        return false;
-    }
-    true
+    !(ctrl && !alt)
 }
 
 /// Map OS key to the character we insert (layout / Alt helpers).
@@ -1561,9 +1558,15 @@ impl App {
         let mut changed = false;
         match (key.code, row) {
             (KeyCode::Esc, _) => self.state.input.show_subagent_models = false,
-            (KeyCode::Up, _) => self.state.input.subagent_models_selected = selected.saturating_sub(1),
-            (KeyCode::Down, _) => self.state.input.subagent_models_selected = (selected + 1).min(last),
-            (KeyCode::Enter, Some(Row::Entry(index))) => open_picker(self, ModelTarget::Entry(index)),
+            (KeyCode::Up, _) => {
+                self.state.input.subagent_models_selected = selected.saturating_sub(1)
+            }
+            (KeyCode::Down, _) => {
+                self.state.input.subagent_models_selected = (selected + 1).min(last)
+            }
+            (KeyCode::Enter, Some(Row::Entry(index))) => {
+                open_picker(self, ModelTarget::Entry(index))
+            }
             (KeyCode::Enter, Some(Row::Add)) => open_picker(self, ModelTarget::New),
             (KeyCode::Char(' '), Some(row @ (Row::Entry(_) | Row::Main)))
             | (KeyCode::Enter, Some(row @ Row::Main)) => {

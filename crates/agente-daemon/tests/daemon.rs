@@ -410,22 +410,50 @@ server.serve_forever()
     assert_eq!(status["result"], json!({}));
 
     let session = agente_protocol::SessionId::new();
-    desktop.request("client_tools.register", json!({"session_id":session,"tools":[]})).await;
+    desktop
+        .request(
+            "client_tools.register",
+            json!({"session_id":session,"tools":[]}),
+        )
+        .await;
     let (started, notes) = desktop.request("turn.start", json!({
         "session_id":session,"provider":"complement-fixture","model":"fixture","mode":"auto",
         "home":{"max_iterations":3,"max_tool_calls":1,"max_time_ms":9000,"complements":true},
         "prompt":{"role":"user","content":"Save using the fixture service."}
     })).await;
     assert!(started["result"]["turn_id"].is_string(), "{started}");
-    let notes = desktop.until(notes, |message| event_type(message) == Some("approval_requested") || message["method"] == "turn.outcome").await;
+    let notes = desktop
+        .until(notes, |message| {
+            event_type(message) == Some("approval_requested") || message["method"] == "turn.outcome"
+        })
+        .await;
     let approval = &notes.last().unwrap()["params"]["event"];
-    assert_eq!(approval["tool_name"], "complement_0123456789ab_save", "{notes:?}");
-    assert!(!notes.iter().any(|message| event_type(message) == Some("tool_result")));
-    let (response, notes) = desktop.request("approval.respond", json!({"request_id":approval["request_id"],"decision":"approve_once"})).await;
+    assert_eq!(
+        approval["tool_name"], "complement_0123456789ab_save",
+        "{notes:?}"
+    );
+    assert!(!notes
+        .iter()
+        .any(|message| event_type(message) == Some("tool_result")));
+    let (response, notes) = desktop
+        .request(
+            "approval.respond",
+            json!({"request_id":approval["request_id"],"decision":"approve_once"}),
+        )
+        .await;
     assert_eq!(response["result"]["ok"], true);
-    let notes = desktop.until(notes, |message| message["method"] == "turn.outcome").await;
-    assert!(notes.iter().any(|message| message["params"]["event"]["content"] == "fixture saved"), "{notes:?}");
-    let (removed, _) = desktop.request("complements.sync", json!({"servers":{}})).await;
+    let notes = desktop
+        .until(notes, |message| message["method"] == "turn.outcome")
+        .await;
+    assert!(
+        notes
+            .iter()
+            .any(|message| message["params"]["event"]["content"] == "fixture saved"),
+        "{notes:?}"
+    );
+    let (removed, _) = desktop
+        .request("complements.sync", json!({"servers":{}}))
+        .await;
     assert_eq!(removed["result"], json!({}));
     let _ = std::fs::remove_dir_all(dir);
 }
@@ -497,16 +525,25 @@ async fn providers_connect_to_the_shared_key_store_and_disconnect() {
         .await;
     assert_eq!(synced["result"]["provider"], "tavily", "{synced}");
     let web = std::fs::read_to_string(dir.join("config/web.json")).unwrap();
-    assert!(web.contains("\"tavily\"") && web.contains("\"max_results\": 5"), "{web}");
+    assert!(
+        web.contains("\"tavily\"") && web.contains("\"max_results\": 5"),
+        "{web}"
+    );
     assert!(!web.contains("tv-key"), "keys never go in web.json");
     let auth = std::fs::read_to_string(dir.join("config/auth.json")).unwrap();
-    assert!(auth.contains("web:tavily") && auth.contains("\"tv-key\""), "{auth}");
+    assert!(
+        auth.contains("web:tavily") && auth.contains("\"tv-key\""),
+        "{auth}"
+    );
     let (cleared, _) = client
         .request("web.sync", json!({ "provider": "auto", "keys": {} }))
         .await;
     assert_eq!(cleared["result"]["provider"], "duckduckgo", "{cleared}");
     let auth = std::fs::read_to_string(dir.join("config/auth.json")).unwrap();
-    assert!(!auth.contains("tv-key"), "a key Desktop dropped leaves the core");
+    assert!(
+        !auth.contains("tv-key"),
+        "a key Desktop dropped leaves the core"
+    );
 
     match previous_config_dir {
         Some(path) => std::env::set_var("AGENTE_CONFIG_DIR", path),

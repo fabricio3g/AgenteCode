@@ -159,10 +159,11 @@ impl SubagentSpawnRequest {
     /// background. A user agent with no capability named runs in the
     /// background.
     pub fn resolved_run_in_background(&self) -> bool {
-        self.run_in_background.unwrap_or_else(|| match self.capability_mode {
-            Some(mode) => mode != SubagentCapabilityMode::ReadOnly,
-            None => !self.is_created(),
-        })
+        self.run_in_background
+            .unwrap_or_else(|| match self.capability_mode {
+                Some(mode) => mode != SubagentCapabilityMode::ReadOnly,
+                None => !self.is_created(),
+            })
     }
 }
 

@@ -17,9 +17,7 @@ pub mod routing;
 pub mod types;
 pub mod worktree;
 
-pub use definition::{
-    custom_subagents, find_agent, AgentDefinition, DEFAULT_MAX_SUBAGENT_DEPTH,
-};
+pub use definition::{custom_subagents, find_agent, AgentDefinition, DEFAULT_MAX_SUBAGENT_DEPTH};
 pub use host::{SubagentHost, SubagentHostConfig, ToolPolicy};
 pub use registry::SubagentRegistry;
 pub use types::{

@@ -63,7 +63,10 @@ impl SubagentHost {
 
         let store = BoardStore::user();
         let changed = match args.action {
-            BoardAction::Show => store.get(session).map(|board| (String::new(), board)).map_err(|e| e.to_string()),
+            BoardAction::Show => store
+                .get(session)
+                .map(|board| (String::new(), board))
+                .map_err(|e| e.to_string()),
             BoardAction::Add => store
                 .update(session, |board| board.add(args.cards))
                 .map(|(ids, board)| (format!("Added {}.", ids.join(", ")), board)),
@@ -72,7 +75,9 @@ impl SubagentHost {
                     return outcome("Error: move needs `id` and `to`".into(), true);
                 };
                 store
-                    .update(session, |board| board.move_card(id, to, args.note.as_deref()))
+                    .update(session, |board| {
+                        board.move_card(id, to, args.note.as_deref())
+                    })
                     .map(|(_, board)| (format!("Moved {id}."), board))
             }
         };
@@ -166,9 +171,9 @@ impl SubagentHost {
         let ok = snapshot.status == SubagentStatus::Completed;
         let summary = snapshot.summary.clone().unwrap_or_default();
         let store = BoardStore::user();
-        let Ok((Some(_card), board)) =
-            store.update(session, |board| Ok(board.child_finished(child_id, ok, &summary)))
-        else {
+        let Ok((Some(_card), board)) = store.update(session, |board| {
+            Ok(board.child_finished(child_id, ok, &summary))
+        }) else {
             return;
         };
         self.send_board(&board);

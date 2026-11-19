@@ -85,7 +85,12 @@ pub fn mode_spans(state: &AppState) -> Vec<Span<'static>> {
         Style::default().fg(mode.color()).bg(BG()),
     )];
     // Swarm rides on top of the mode: say so where the mode is said.
-    if state.agent.board.as_ref().is_some_and(|board| board.enabled) {
+    if state
+        .agent
+        .board
+        .as_ref()
+        .is_some_and(|board| board.enabled)
+    {
         spans.push(Span::styled(
             " + swarm",
             Style::default().fg(PRIMARY()).bg(BG()),

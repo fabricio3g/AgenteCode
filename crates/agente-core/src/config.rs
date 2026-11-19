@@ -280,7 +280,11 @@ impl SubagentSettings {
                 None => "model".into(),
             };
         }
-        let base = if base == MAIN_MODEL { "main-model".to_string() } else { base };
+        let base = if base == MAIN_MODEL {
+            "main-model".to_string()
+        } else {
+            base
+        };
         self.free_name(&base, Some(index))
     }
 
@@ -1480,7 +1484,10 @@ mod tests {
             ],
             ..SubagentSettings::default()
         };
-        assert_eq!(settings.settled_name("Revisor Rápido!", 1), "revisor-rapido");
+        assert_eq!(
+            settings.settled_name("Revisor Rápido!", 1),
+            "revisor-rapido"
+        );
         assert_eq!(settings.settled_name("scout", 1), "scout-2");
         assert_eq!(settings.settled_name("scout", 0), "scout");
         assert_eq!(settings.settled_name("main", 1), "main-model");

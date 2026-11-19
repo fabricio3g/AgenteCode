@@ -36,10 +36,8 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
     let roomy = cap >= 11;
     let show_comment = cap >= 9;
     let gap_above_footer = cap >= 8;
-    let reserved = 3
-        + u16::from(roomy)
-        + if show_comment { 2 } else { 0 }
-        + u16::from(gap_above_footer);
+    let reserved =
+        3 + u16::from(roomy) + if show_comment { 2 } else { 0 } + u16::from(gap_above_footer);
     let steps_budget = cap.saturating_sub(reserved).max(1);
     let show_chips = active_options > 0 && steps_budget >= 3;
     let active_rows = 2 + u16::from(show_chips);
@@ -100,7 +98,10 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
                 Span::styled(
                     format!(
                         "“{}”",
-                        truncate_cells(&ask.original_comment, content_w.saturating_sub(12) as usize)
+                        truncate_cells(
+                            &ask.original_comment,
+                            content_w.saturating_sub(12) as usize
+                        )
                     ),
                     Style::default().fg(FG_MUTED()).bg(BG_PANEL()),
                 ),

@@ -83,7 +83,10 @@ pub fn resolve_model(
         if settings.picks() {
             return named(name, RouteSource::Picked).ok_or_else(|| unknown_model(settings, name));
         }
-        tracing::info!(model = name, "subagent model picks are off; ignoring the requested model");
+        tracing::info!(
+            model = name,
+            "subagent model picks are off; ignoring the requested model"
+        );
     }
 
     if let Some(preference) = agent_model.map(str::trim).filter(|m| !m.is_empty()) {
@@ -217,7 +220,7 @@ pub fn menu_text(menu: &[ModelMenuEntry]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     fn entry(name: &str, provider: &str, model: &str) -> SubagentModelEntry {
         SubagentModelEntry {
             name: name.into(),
@@ -257,7 +260,10 @@ mod tests {
         assert_eq!(r.thinking.as_deref(), Some("low"));
         assert_eq!(r.source, RouteSource::Picked);
         let main = route(&s, Some("main"), None).unwrap();
-        assert_eq!((main.seat, main.model, main.source), (None, None, RouteSource::Picked));
+        assert_eq!(
+            (main.seat, main.model, main.source),
+            (None, None, RouteSource::Picked)
+        );
     }
 
     #[test]
@@ -272,7 +278,10 @@ mod tests {
     fn with_picking_off_the_default_decides() {
         let s = settings(Some(false));
         let r = route(&s, Some("builder"), None).unwrap();
-        assert_eq!((r.seat.as_deref(), r.source), (Some("scout"), RouteSource::Default));
+        assert_eq!(
+            (r.seat.as_deref(), r.source),
+            (Some("scout"), RouteSource::Default)
+        );
         // Even an unknown name is ignored rather than failing.
         assert!(route(&s, Some("gpt-9"), None).is_ok());
     }
@@ -282,7 +291,10 @@ mod tests {
         let s = settings(None);
         // A preset's `model:` beats the default: a list name, main, or provider/model.
         let r = route(&s, None, Some("builder")).unwrap();
-        assert_eq!((r.seat.as_deref(), r.source), (Some("builder"), RouteSource::AgentFile));
+        assert_eq!(
+            (r.seat.as_deref(), r.source),
+            (Some("builder"), RouteSource::AgentFile)
+        );
         let r = route(&s, None, Some("main")).unwrap();
         assert_eq!((r.model, r.source), (None, RouteSource::AgentFile));
         let r = route(&s, None, Some("deepseek/deepseek-pro")).unwrap();
@@ -291,7 +303,10 @@ mod tests {
         assert_eq!(r.seat, None);
         // An unconnected provider is skipped, falling to the default.
         let r = route(&s, None, Some("nowhere/x")).unwrap();
-        assert_eq!((r.seat.as_deref(), r.source), (Some("scout"), RouteSource::Default));
+        assert_eq!(
+            (r.seat.as_deref(), r.source),
+            (Some("scout"), RouteSource::Default)
+        );
         // Nothing set: the parent's model.
         let r = route(&SubagentSettings::default(), None, None).unwrap();
         assert_eq!(r, RoutedModel::main(RouteSource::Inherited));

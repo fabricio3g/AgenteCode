@@ -218,7 +218,9 @@ const ICON_ROWS: u16 = 10;
 
 /// The pixel's colour: its coverage between the card and the foreground.
 fn icon_pixel(row: usize, col: usize) -> Color {
-    let coverage = (ICON[row].as_bytes()[col] as char).to_digit(16).unwrap_or(0);
+    let coverage = (ICON[row].as_bytes()[col] as char)
+        .to_digit(16)
+        .unwrap_or(0);
     style::blend_colors(style::BG_PANEL(), style::FG(), coverage as f32 / 15.0)
 }
 

@@ -72,7 +72,10 @@ impl ClientTools {
                     mutating: !tool.read_only,
                     sequential: !tool.read_only,
                 };
-                (definition, Some(McpToolAdapter::from_mcp_tool(tool, manager)))
+                (
+                    definition,
+                    Some(McpToolAdapter::from_mcp_tool(tool, manager)),
+                )
             }))
             .map(|(definition, complement)| {
                 Box::new(ClientTool {
@@ -176,7 +179,9 @@ impl Tool for ClientTool {
             ));
         }
         if let Some(tool) = &self.complement {
-            return tool.execute_with_context(arguments, project_dir, context).await;
+            return tool
+                .execute_with_context(arguments, project_dir, context)
+                .await;
         }
         let request_id = uuid::Uuid::new_v4().to_string();
         let call = ClientToolCall {

@@ -1,5 +1,6 @@
 pub(crate) mod app;
 pub(crate) mod at_file_picker;
+pub(crate) mod board_view;
 pub(crate) mod brand;
 pub(crate) mod clipboard;
 pub(crate) mod command_palette;
@@ -22,7 +23,6 @@ pub(crate) mod slash_command;
 pub(crate) mod state;
 pub(crate) mod style;
 pub(crate) mod subagent_models;
-pub(crate) mod board_view;
 pub(crate) mod syntax_highlight;
 #[cfg(test)]
 pub(crate) mod test_support;

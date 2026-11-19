@@ -31,11 +31,11 @@ use agente_core::types::{
     TodoPriority, TodoStatus,
 };
 
-use crate::state::{AppState, Fold};
 use crate::state::{
-    template_ask_questions, AskQuestion, ConnectScreen, PendingPlan, PlanAskState,
-    PlanReviewPhase, RetryStatus, SubagentToolRow, SubagentUiState,
+    template_ask_questions, AskQuestion, ConnectScreen, PendingPlan, PlanAskState, PlanReviewPhase,
+    RetryStatus, SubagentToolRow, SubagentUiState,
 };
+use crate::state::{AppState, Fold};
 
 /// Terminal sizes every scenario must survive. `40x12` is deliberately hostile:
 /// it is smaller than any panel the app wants to draw.

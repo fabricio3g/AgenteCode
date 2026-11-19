@@ -1001,8 +1001,14 @@ impl UiState {
     /// edge blank rows dropped, common leading indent removed.
     fn cleaned_screen_text(&self, first: usize, last: usize, sc: usize, ec: usize) -> String {
         let mut lines: Vec<String> = Vec::new();
-        for i in first..=last {
-            let line = &self.chat_plain_lines[i].plain;
+        for (i, row) in self
+            .chat_plain_lines
+            .iter()
+            .enumerate()
+            .take(last + 1)
+            .skip(first)
+        {
+            let line = &row.plain;
             let chars: Vec<char> = line.chars().collect();
             let a = if i == first { sc.min(chars.len()) } else { 0 };
             let b = if i == last {

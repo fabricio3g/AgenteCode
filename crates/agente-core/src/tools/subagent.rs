@@ -436,7 +436,9 @@ mod tests {
             tool.parameters()["properties"]["subagent_type"]["enum"],
             serde_json::json!(["auditor"])
         );
-        assert!(tool.description().contains("- auditor \u{2014} Audits deps"));
+        assert!(tool
+            .description()
+            .contains("- auditor \u{2014} Audits deps"));
     }
 
     #[test]

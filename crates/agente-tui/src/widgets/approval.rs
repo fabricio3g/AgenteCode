@@ -40,7 +40,11 @@ pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState) {
     // cut off where its tail (`; rm -rf …`) would go unread before approving.
     // A diff names its own file and counts in its header, so with a diff the
     // target line would only repeat it.
-    let target = if diff.is_some() { None } else { request_target(request) };
+    let target = if diff.is_some() {
+        None
+    } else {
+        request_target(request)
+    };
     let target_lines = target
         .as_deref()
         .map(|text| wrap_target(text, panel_inner_width(area) as usize))
@@ -115,7 +119,10 @@ pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState) {
             .saturating_sub(2 + warning_rows)
             .min(desired_diff_height);
         if diff_height > 0 {
-            frame.render_widget(view, Rect::new(inner.x, inner.y + dy, inner.width, diff_height));
+            frame.render_widget(
+                view,
+                Rect::new(inner.x, inner.y + dy, inner.width, diff_height),
+            );
         }
         dy += diff_height;
     } else {
