@@ -1,6 +1,6 @@
 {
   "name": "agente-desktop",
-  "version": "0.0.2",
+  "version": "0.3.0",
   "private": true,
   "description": "Agente Desktop – local AI workspace (Electron)",
   "repository": {
