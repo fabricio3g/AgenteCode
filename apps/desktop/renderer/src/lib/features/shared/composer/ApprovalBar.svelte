@@ -121,7 +121,7 @@
           <span class="target is-static">{parsed.subject}</span>
           {#if where}<span class="where">{where}</span>{/if}
         {:else if parsed.subject}
-          <button type="button" class="target" title={$t('code.approve.show')} onclick={reveal}>{parsed.subject}</button>
+          <Button variant="plain" type="button" class="target ui-local-10dbcf2f" title={$t('code.approve.show')} onclick={reveal}>{parsed.subject}</Button>
         {/if}
         {#if churn}<span class="churn"><span class="text-success">+{churn.adds}</span><span class="text-error">−{churn.dels}</span></span>{/if}
       </p>
@@ -205,7 +205,7 @@
     gap: 0.625rem;
     margin: 0;
   }
-  .target {
+  .target , :global(.target.ui-local-10dbcf2f){
     min-width: 0;
     overflow: hidden;
     padding: 0;
@@ -229,7 +229,7 @@
     color: var(--muted-foreground);
     font-size: var(--text-xs);
   }
-  .target:not(.is-static):hover {
+  .target:not(.is-static):hover , :global(.target.ui-local-10dbcf2f:not(.is-static):hover){
     color: var(--foreground);
     text-decoration: underline;
     text-underline-offset: 2px;

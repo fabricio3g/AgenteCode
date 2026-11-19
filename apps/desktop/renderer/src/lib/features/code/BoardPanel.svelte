@@ -88,9 +88,9 @@
             {$t(`code.swarm.column.${column.id}`)}<span class="count">{column.cards.length}</span>
           </h3>
           {#each column.cards as card (card.id)}
-            <button
+            <Button variant="plain"
               type="button"
-              class="card status-{card.status}"
+              class="card status-{card.status} ui-local-0875e6c3"
               disabled={!card.child_id}
               onclick={() => open(card)}
               title={card.child_id ? $t('code.swarm.openCard') : undefined}
@@ -114,7 +114,7 @@
               {#if card.result && card.status !== 'working' && card.status !== 'backlog'}
                 <span class="card-result">{card.result}</span>
               {/if}
-            </button>
+            </Button>
           {:else}
             <p class="column-empty">—</p>
           {/each}
@@ -147,16 +147,16 @@
   .count { color: var(--text-muted, var(--muted-foreground)); font-variant-numeric: tabular-nums; }
   .column-empty { font-size: var(--text-xs); color: var(--muted-foreground); padding-left: 0.25rem; }
 
-  .card { display: grid; gap: 0.25rem; width: 100%; min-width: 0; border: 1px solid var(--border-subtle); border-radius: 0.625rem; background: var(--card, transparent); padding: 0.625rem 0.75rem; text-align: left; transition: background var(--motion-instant) var(--motion-ease); }
-  .card:not(:disabled) { cursor: pointer; }
-  .card:not(:disabled):hover, .card:focus-visible { background: var(--surface-hover); }
-  .card.status-review { box-shadow: inset 3px 0 0 var(--warning); }
-  .card.status-failed { box-shadow: inset 3px 0 0 var(--error); }
-  .card.status-done { opacity: 0.72; }
+  :global(.card.ui-local-0875e6c3){ display: grid; gap: 0.25rem; width: 100%; min-width: 0; border: 1px solid var(--border-subtle); border-radius: 0.625rem; background: var(--card, transparent); padding: 0.625rem 0.75rem; text-align: left; transition: background var(--motion-instant) var(--motion-ease); }
+  :global(.card.ui-local-0875e6c3:not(:disabled)){ cursor: pointer; }
+  :global(.card.ui-local-0875e6c3:not(:disabled):hover), :global(.card.ui-local-0875e6c3:focus-visible){ background: var(--surface-hover); }
+  :global(.card.ui-local-0875e6c3.status-review){ box-shadow: inset 3px 0 0 var(--warning); }
+  :global(.card.ui-local-0875e6c3.status-failed){ box-shadow: inset 3px 0 0 var(--error); }
+  :global(.card.ui-local-0875e6c3.status-done){ opacity: 0.72; }
   .card-head { display: flex; min-width: 0; align-items: baseline; gap: 0.5rem; }
   .mark { width: 1rem; flex-shrink: 0; text-align: center; font-size: var(--text-xs); color: var(--muted-foreground); }
-  .status-review .mark { color: var(--warning); }
-  .status-failed .mark { color: var(--error); }
+  :global(.status-review.ui-local-0875e6c3) .mark { color: var(--warning); }
+  :global(.status-failed.ui-local-0875e6c3) .mark { color: var(--error); }
   .meter { display: inline-flex; width: 1rem; flex-shrink: 0; justify-content: center; align-self: center; }
   .card-title { min-width: 0; flex: 1; font-size: var(--text-sm); font-weight: 600; color: var(--foreground); overflow-wrap: anywhere; }
   .card-id { flex-shrink: 0; font-size: var(--text-xs); color: var(--muted-foreground); font-variant-numeric: tabular-nums; }

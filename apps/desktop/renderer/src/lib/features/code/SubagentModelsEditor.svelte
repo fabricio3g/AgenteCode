@@ -21,6 +21,7 @@
 -->
 
 <script lang="ts">
+  import Radio from '$lib/components/ui/Radio.svelte';
   import { onMount, tick } from 'svelte';
   import { t } from 'svelte-i18n';
   import { Plus } from '$lib/icons';
@@ -125,9 +126,8 @@
     {#each rows as row, index (row.key)}
       {@const isDefault = defaultModel === row.name && !!row.model}
       <div class="row" data-model-row={row.key} class:is-default={isDefault} class:is-editing={editing === row.key}>
-        <input
-          class="radio"
-          type="radio"
+        <Radio
+          class="radio ui-local-45920442"
           name="subagent-default"
           checked={isDefault}
           disabled={!row.model || !row.name}
@@ -156,7 +156,7 @@
             </div>
           </div>
         {:else}
-          <button type="button" class="entry" onclick={() => (editing = row.key)} aria-label={$t('code.project.agents.edit', { values: { name: row.name || $t('code.project.agents.chooseModel') } })}>
+          <Button variant="plain" type="button" class="entry ui-local-45920442" onclick={() => (editing = row.key)} aria-label={$t('code.project.agents.edit', { values: { name: row.name || $t('code.project.agents.chooseModel') } })}>
             <span class="entry-head">
               <span class="entry-name">{row.name || $t('code.project.agents.draft')}</span>
               {#if isDefault}<span class="badge">{$t('code.project.agents.defaultChip')}</span>{/if}
@@ -171,14 +171,14 @@
             {:else}
               <span class="entry-note" class:is-empty={!row.use_for?.trim()}>{row.use_for?.trim() || $t('code.project.agents.noNote')}</span>
             {/if}
-          </button>
+          </Button>
         {/if}
       </div>
     {/each}
 
     <!-- The conversation's own model: always there, the last option, not editable. -->
     <label class="row main-row" class:is-default={defaultModel === MAIN}>
-      <input class="radio" type="radio" name="subagent-default" checked={defaultModel === MAIN} onchange={() => (defaultModel = MAIN)} />
+      <Radio class="radio ui-local-45920442" name="subagent-default" checked={defaultModel === MAIN} onchange={() => (defaultModel = MAIN)} />
       <span class="entry">
         <span class="entry-head">
           <span class="entry-name">{$t('code.project.agents.mainModel')}</span>
@@ -211,11 +211,11 @@
   .row { display: grid; grid-template-columns: 2.25rem minmax(0, 1fr); align-items: start; }
   .row + .row { border-top: 1px solid var(--border-subtle); }
   .row.is-default { background: color-mix(in oklab, var(--brand-accent) 7%, transparent); }
-  .radio { justify-self: center; margin-top: 1.05rem; width: 1rem; height: 1rem; accent-color: var(--brand-accent); cursor: pointer; }
-  .radio:disabled { cursor: default; opacity: 0.4; }
+  :global(.radio.ui-local-45920442){ justify-self: center; margin-top: 1.05rem; width: 1rem; height: 1rem; accent-color: var(--brand-accent); cursor: pointer; }
+  :global(.radio.ui-local-45920442:disabled){ cursor: default; opacity: 0.4; }
 
-  .entry { display: grid; width: 100%; min-width: 0; gap: 0.25rem; padding: 0.75rem 0.875rem 0.75rem 0; text-align: left; cursor: pointer; }
-  button.entry:hover .entry-name, button.entry:focus-visible .entry-name { text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--border-hover); }
+  .entry , :global(.entry.ui-local-45920442){ display: grid; width: 100%; min-width: 0; gap: 0.25rem; padding: 0.75rem 0.875rem 0.75rem 0; text-align: left; cursor: pointer; }
+  :global(button.entry.ui-local-45920442:hover) .entry-name, :global(button.entry.ui-local-45920442:focus-visible) .entry-name { text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--border-hover); }
   .entry-head { display: flex; min-width: 0; align-items: baseline; gap: 0.5rem; }
   .entry-name { font-size: var(--text-prose); font-weight: 600; color: var(--foreground); }
   .badge { border-radius: 999px; background: color-mix(in oklab, var(--brand-accent) 16%, transparent); padding: 0 0.5rem; font-size: var(--text-xs); line-height: 1.6; font-weight: 500; color: var(--brand-accent-strong); }
@@ -224,7 +224,7 @@
   .entry-note { max-width: 64ch; font-size: var(--text-sm); line-height: 1.55; color: var(--prose-ink, var(--foreground)); }
   .entry-note.is-empty { color: var(--muted-foreground); }
   .entry-note.is-draft { color: var(--warning, var(--muted-foreground)); }
-  .main-row .entry { cursor: pointer; }
+  .main-row .entry , .main-row :global(.entry.ui-local-45920442){ cursor: pointer; }
 
   .form { display: grid; gap: 0.75rem; padding: 0.75rem 0.875rem 0.875rem 0; }
   .form-line { display: grid; grid-template-columns: minmax(0, 11rem) minmax(0, 1fr); gap: 0.75rem; }

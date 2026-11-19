@@ -13,6 +13,7 @@
 -->
 
 <script lang="ts">
+  import Button from '$lib/components/ui/Button.svelte';
   import UiButton from '$lib/components/ui/Button.svelte';
   import { cn as uiClass } from '$lib/utils/cn';
 
@@ -307,10 +308,10 @@
 
           <!-- The turn's subagents in one line; the pane holds the detail. -->
           {#if children.length}
-            <button type="button" class="subagent-line" data-subagent-line={message.id}
+            <Button variant="plain" type="button" class="subagent-line ui-local-3e9cc53a" data-subagent-line={message.id}
               onclick={() => subagentFocus.open(chatId, (children.find((child) => child.status === 'running') ?? children[0]).id)}>
               <SubagentTally {children} stopping={live && !!run?.stopping} />
-            </button>
+            </Button>
           {/if}
           {#if diagnostics.length}
             <details class="text-xs text-muted-foreground"><summary class="cursor-pointer">{$t('code.runtimeNotes', { values: { n: diagnostics.length } })}</summary><div class="mt-2 space-y-1">{#each diagnostics as note, index (index)}<p>{note}</p>{/each}</div></details>
@@ -417,7 +418,7 @@
   .code-message-slot { min-width: 0; content-visibility: auto; contain-intrinsic-size: auto 120px; }
   .code-message-slot.is-live { content-visibility: visible; }
   /* One quiet line per turn; hover lifts it like any row that opens a pane. */
-  .subagent-line { display: inline-flex; align-self: flex-start; align-items: center; gap: 0.375rem; height: 1.75rem; margin-inline: -0.5rem; padding: 0 0.5rem; border: 0; border-radius: var(--radius-full); background: none; color: var(--muted-foreground); font: inherit; font-size: var(--text-xs); font-variant-numeric: tabular-nums; cursor: pointer; transition: background-color var(--motion-instant) var(--motion-ease); }
-  .subagent-line:hover { background: var(--float-row-hover); }
-  .subagent-line:focus-visible { outline: 2px solid var(--brand-accent); outline-offset: 1px; }
+  :global(.subagent-line.ui-local-3e9cc53a){ display: inline-flex; align-self: flex-start; align-items: center; gap: 0.375rem; height: 1.75rem; margin-inline: -0.5rem; padding: 0 0.5rem; border: 0; border-radius: var(--radius-full); background: none; color: var(--muted-foreground); font: inherit; font-size: var(--text-xs); font-variant-numeric: tabular-nums; cursor: pointer; transition: background-color var(--motion-instant) var(--motion-ease); }
+  :global(.subagent-line.ui-local-3e9cc53a:hover){ background: var(--float-row-hover); }
+  :global(.subagent-line.ui-local-3e9cc53a:focus-visible){ outline: 2px solid var(--brand-accent); outline-offset: 1px; }
 </style>

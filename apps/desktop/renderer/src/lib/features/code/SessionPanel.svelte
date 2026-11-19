@@ -157,22 +157,22 @@
     </div>
     {#if pr?.pr}
       {@const item = pr.pr}
-      <button type="button" class="fact link" title={item.title} onclick={() => openExternal(item.url)} data-pull-request={item.number}>
+      <Button variant="plain" type="button" class="fact link ui-local-3526aefe" title={item.title} onclick={() => openExternal(item.url)} data-pull-request={item.number}>
         <span class="label"><GitPullRequest class="size-3.5" />{$t('sessionHud.pr', { values: { n: item.number } })}{#if item.draft || item.state !== 'OPEN'}<span class="muted">· {item.draft ? $t('sessionHud.prDraft') : $t(`sessionHud.prState.${item.state}`)}</span>{/if}</span>
         {#if item.checks !== 'none'}<span class="state" data-tone={item.checks === 'fail' ? 'error' : item.checks === 'pending' ? 'live' : ''}><span class="dot"></span>{$t(`sessionHud.checks.${item.checks}`)}</span>{/if}
-      </button>
+      </Button>
     {:else if pr && pr.ahead > 0 && pr.base}
       {@const compare = pr.compareUrl}
       <div class="fact">
         <span class="label"><GitPullRequest class="size-3.5" />{$t('sessionHud.ahead', { values: { n: pr.ahead, base: pr.base } })}</span>
-        {#if compare}<button type="button" class="action" onclick={() => openExternal(compare)}>{$t('sessionHud.createPr')}<ExternalLink class="size-3" /></button>{/if}
+        {#if compare}<Button variant="plain" type="button" class="action ui-local-3526aefe" onclick={() => openExternal(compare)}>{$t('sessionHud.createPr')}<ExternalLink class="size-3" /></Button>{/if}
       </div>
     {/if}
     {#if changes.length}
-      <button type="button" class="fact link" onclick={() => layout.show('changes')}>
+      <Button variant="plain" type="button" class="fact link ui-local-3526aefe" onclick={() => layout.show('changes')}>
         <span class="label"><GitCompareArrows class="size-3.5" />{$t('sessionHud.changes')}</span>
         <span class="pane-churn"><span class="text-success">+{churn.add}</span><span class="text-error">−{churn.del}</span><span class="muted">· {changes.length}</span></span>
-      </button>
+      </Button>
     {/if}
     {#if context}
       <div class="fact"><span class="label">{$t('sessionHud.context')}</span><ContextUsageRing showLabel usedTokens={context.promptTokens} maxTokens={context.contextWindow ?? 0} breakdown={context.breakdown} {spend} /></div>
@@ -198,17 +198,17 @@
       {#each running as process (process.id)}
         <div class="item" data-running-process={process.id}>
           <div class="item-row">
-            <button type="button" class="item-main" title={process.command} onclick={() => showProcess(process.id)}>
+            <Button variant="plain" type="button" class="item-main ui-local-3526aefe" title={process.command} onclick={() => showProcess(process.id)}>
               <span class="dot live" aria-hidden="true"></span>
               <span class="command">{process.command}</span>
               <span class="time">{formatToolDuration(Math.max(0, now - process.startedAt))}</span>
-            </button>
+            </Button>
             <IconButton quiet size="xs" label={$t('codeWs.stop')} onclick={() => void codeWorkspace.stopProcess(process.id)}><Square /></IconButton>
           </div>
           {#if process.urls[0]}
             {@const url = process.urls[0]}
             <!-- A server: its address on its own line, under the command. -->
-            <button type="button" class="chip" title={$t('codeWs.openInBrowser')} onclick={() => void browser.openUrl(url)}><ExternalLink class="size-3" />{host(url)}</button>
+            <Button variant="plain" type="button" class="chip ui-local-3526aefe" title={$t('codeWs.openInBrowser')} onclick={() => void browser.openUrl(url)}><ExternalLink class="size-3" />{host(url)}</Button>
           {/if}
         </div>
       {/each}
@@ -237,9 +237,9 @@
     {#if scripts[project.id]?.length || adding}<h3 class="pane-heading">{$t('sessionHud.scripts')}</h3>{/if}
     {#each scripts[project.id] ?? [] as script, index (index)}
       <div class="script-row">
-        <button type="button" class="pane-row" disabled={busy} title={script.command} onclick={() => void runCommand(script.command)}>
+        <Button variant="plain" type="button" class="pane-row ui-local-3526aefe" disabled={busy} title={script.command} onclick={() => void runCommand(script.command)}>
           <span class="pane-row-tile" aria-hidden="true"><Play class="size-3" /></span><span class="pane-row-label">{script.name}</span>
-        </button>
+        </Button>
         <IconButton quiet size="xs" label={copy.actions.remove} onclick={() => { scripts[project.id] = scripts[project.id].filter((_, i) => i !== index); saveScripts(); }}><X /></IconButton>
       </div>
     {/each}
@@ -250,7 +250,7 @@
         <div><Button size="xs" variant="ghost" onclick={() => adding = false}>{copy.actions.cancel}</Button><Button size="xs" type="submit" disabled={!name.trim() || !command.trim()}>{copy.actions.save}</Button></div>
       </form>
     {:else}
-      <button type="button" class="pane-row add" data-keep-open onclick={() => adding = true}><Plus class="size-3.5" /><span class="pane-row-label">{$t('projectControls.addScript')}</span></button>
+      <Button variant="plain" type="button" class="pane-row add ui-local-3526aefe" data-keep-open onclick={() => adding = true}><Plus class="size-3.5" /><span class="pane-row-label">{$t('projectControls.addScript')}</span></Button>
     {/if}
   </section>
 </aside>
@@ -277,16 +277,16 @@
   .tools { display: flex; gap: 0.125rem; margin-top: -0.375rem; padding-left: 0.25rem; }
 
   .facts { display: flex; flex-direction: column; gap: 0.125rem; }
-  .fact { display: flex; min-width: 0; min-height: 1.75rem; align-items: center; justify-content: space-between; gap: 0.75rem; padding: 0 0.5rem; border-radius: var(--float-row-radius); }
-  .fact.branch { padding-left: 0; }
-  .fact .label { display: inline-flex; align-items: center; gap: 0.375rem; flex-shrink: 0; }
-  .fact .value { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--foreground); font-variant-numeric: tabular-nums; }
-  .link { width: 100%; border: 0; background: none; color: inherit; font: inherit; cursor: pointer; transition: background-color var(--motion-instant) var(--motion-ease); }
-  .link:hover { background: var(--float-row-hover); }
+  .fact , :global(.fact.ui-local-3526aefe){ display: flex; min-width: 0; min-height: 1.75rem; align-items: center; justify-content: space-between; gap: 0.75rem; padding: 0 0.5rem; border-radius: var(--float-row-radius); }
+  .fact.branch , :global(.fact.ui-local-3526aefe.branch){ padding-left: 0; }
+  .fact .label , :global(.fact.ui-local-3526aefe) .label{ display: inline-flex; align-items: center; gap: 0.375rem; flex-shrink: 0; }
+  .fact .value , :global(.fact.ui-local-3526aefe) .value{ min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--foreground); font-variant-numeric: tabular-nums; }
+  :global(.link.ui-local-3526aefe){ width: 100%; border: 0; background: none; color: inherit; font: inherit; cursor: pointer; transition: background-color var(--motion-instant) var(--motion-ease); }
+  :global(.link.ui-local-3526aefe:hover){ background: var(--float-row-hover); }
   .muted { color: var(--muted-foreground); }
 
-  .action { display: inline-flex; flex-shrink: 0; align-items: center; gap: 0.25rem; padding: 0.125rem 0.5rem; border: 0; border-radius: var(--radius-full); background: color-mix(in srgb, var(--foreground) 7%, transparent); color: var(--foreground); font: inherit; cursor: pointer; transition: background-color var(--motion-instant) var(--motion-ease); }
-  .action:hover { background: color-mix(in srgb, var(--foreground) 12%, transparent); }
+  :global(.action.ui-local-3526aefe){ display: inline-flex; flex-shrink: 0; align-items: center; gap: 0.25rem; padding: 0.125rem 0.5rem; border: 0; border-radius: var(--radius-full); background: color-mix(in srgb, var(--foreground) 7%, transparent); color: var(--foreground); font: inherit; cursor: pointer; transition: background-color var(--motion-instant) var(--motion-ease); }
+  :global(.action.ui-local-3526aefe:hover){ background: color-mix(in srgb, var(--foreground) 12%, transparent); }
 
   /* A state: one dot and a word. Grey by default; colour only when it needs a look. */
   .state { display: inline-flex; min-width: 0; align-items: center; gap: 0.375rem; overflow: hidden; color: var(--muted-foreground); white-space: nowrap; text-overflow: ellipsis; }
@@ -301,19 +301,19 @@
   /* A running command: the row opens its output; the address and Stop sit on the right edge. */
   .item { display: flex; min-width: 0; flex-direction: column; align-items: flex-start; }
   .item-row { display: flex; width: 100%; min-width: 0; align-items: center; gap: 0.25rem; }
-  .item-main { display: flex; flex: 1; min-width: 0; height: 1.75rem; align-items: center; gap: 0.5rem; padding: 0 0.5rem; border: 0; border-radius: var(--float-row-radius); background: none; color: var(--foreground); font: inherit; text-align: left; cursor: pointer; transition: background-color var(--motion-instant) var(--motion-ease); }
-  .item-main:hover { background: var(--float-row-hover); }
+  :global(.item-main.ui-local-3526aefe){ display: flex; flex: 1; min-width: 0; height: 1.75rem; align-items: center; gap: 0.5rem; padding: 0 0.5rem; border: 0; border-radius: var(--float-row-radius); background: none; color: var(--foreground); font: inherit; text-align: left; cursor: pointer; transition: background-color var(--motion-instant) var(--motion-ease); }
+  :global(.item-main.ui-local-3526aefe:hover){ background: var(--float-row-hover); }
   .command { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--font-mono); }
   .time { flex-shrink: 0; color: var(--muted-foreground); font-variant-numeric: tabular-nums; }
-  .chip { display: inline-flex; align-items: center; gap: 0.3125rem; max-width: calc(100% - 1.5rem); margin: 0 0 0.25rem 1.5rem; overflow: hidden; padding: 0.125rem 0.5rem; border: 0; border-radius: var(--radius-full); background: color-mix(in srgb, var(--brand-accent) 14%, transparent); color: var(--foreground); font: inherit; font-family: var(--font-mono); text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
-  .chip:hover { background: color-mix(in srgb, var(--brand-accent) 22%, transparent); }
+  :global(.chip.ui-local-3526aefe){ display: inline-flex; align-items: center; gap: 0.3125rem; max-width: calc(100% - 1.5rem); margin: 0 0 0.25rem 1.5rem; overflow: hidden; padding: 0.125rem 0.5rem; border: 0; border-radius: var(--radius-full); background: color-mix(in srgb, var(--brand-accent) 14%, transparent); color: var(--foreground); font: inherit; font-family: var(--font-mono); text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+  :global(.chip.ui-local-3526aefe:hover){ background: color-mix(in srgb, var(--brand-accent) 22%, transparent); }
 
   /* The Tasks pane, embedded: the column already scrolls and pads. */
   .tasks :global(.pane-body) { padding: 0; overflow: visible; }
 
   .script-row { display: flex; align-items: center; gap: 0.25rem; }
-  .add { color: var(--muted-foreground); }
-  .add :global(svg) { margin-left: 0.3125rem; flex-shrink: 0; }
+  :global(.add.ui-local-3526aefe){ color: var(--muted-foreground); }
+  :global(.add.ui-local-3526aefe) :global(svg){ margin-left: 0.3125rem; flex-shrink: 0; }
   .script-form { display: grid; gap: 0.375rem; padding: 0.25rem 0.5rem; }
   .script-form > div { display: flex; justify-content: flex-end; gap: 0.375rem; }
 </style>

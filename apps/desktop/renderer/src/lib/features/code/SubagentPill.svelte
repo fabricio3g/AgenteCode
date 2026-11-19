@@ -13,6 +13,7 @@
 -->
 
 <script lang="ts">
+  import Button from '$lib/components/ui/Button.svelte';
   import { t } from 'svelte-i18n';
   import { ChevronUp } from '$lib/icons';
   import type { ChatSession } from '$lib/types/chat';
@@ -87,7 +88,7 @@
           {#each children as child (child.id)}
             {@const elapsed = childElapsedMs(child, now)}
             <li>
-              <button type="button" class="row" data-subagent-pick={child.id} class:is-active={subagentFocus.get(chat.id) === child.id}
+              <Button variant="plain" type="button" class="row {subagentFocus.get(chat.id) === child.id ? 'is-active' : ''} ui-local-034c360f" data-subagent-pick={child.id}
                 title={`${titleCaseToolName(child.kind)} · ${child.description}`} onclick={() => pick(child.id)}>
                 <span class="dot" data-state={child.status} aria-hidden="true"></span>
                 <span class="title">{child.description || titleCaseToolName(child.kind)}</span>
@@ -96,16 +97,16 @@
                   {:else if child.status === 'error'}{copy.tool.failed}{/if}
                   {#if elapsed !== undefined}<span class="elapsed">{formatToolDuration(elapsed)}</span>{/if}
                 </span>
-              </button>
+              </Button>
             </li>
           {/each}
         </ul>
       {/if}
-      <button type="button" class="pill" bind:this={summary} aria-expanded={open} data-subagent-pill
+      <Button variant="plain" type="button" class="pill ui-local-034c360f" bind:ref={summary} aria-expanded={open} data-subagent-pill
         onclick={() => (pinned = !pinned)}>
         <SubagentTally {children} stopping={!!run?.stopping} />
         <ChevronUp class="chevron size-3.5" />
-      </button>
+      </Button>
     </div>
   </div>
 {/if}
@@ -114,7 +115,7 @@
   .subagent-dock { position: relative; z-index: 6; margin-bottom: 0.375rem; }
   /* Starts on the composer content's left edge, like the approval bar. */
   .pill-wrap { position: relative; display: inline-flex; padding-left: 1.125rem; }
-  .pill {
+  :global(.pill.ui-local-034c360f){
     display: inline-flex;
     align-items: center;
     gap: 0.375rem;
@@ -130,10 +131,10 @@
     cursor: pointer;
     transition: background-color var(--motion-instant) var(--motion-ease);
   }
-  .pill:hover, .pill[aria-expanded='true'] { background: color-mix(in srgb, var(--foreground) 10%, transparent); }
-  .pill:focus-visible { outline: 2px solid var(--brand-accent); outline-offset: 2px; }
-  .pill :global(.chevron) { opacity: 0.6; transition: transform var(--motion-fast) var(--motion-ease); }
-  .pill[aria-expanded='false'] :global(.chevron) { transform: rotate(180deg); }
+  :global(.pill.ui-local-034c360f:hover), :global(.pill.ui-local-034c360f[aria-expanded='true']){ background: color-mix(in srgb, var(--foreground) 10%, transparent); }
+  :global(.pill.ui-local-034c360f:focus-visible){ outline: 2px solid var(--brand-accent); outline-offset: 2px; }
+  :global(.pill.ui-local-034c360f) :global(.chevron){ opacity: 0.6; transition: transform var(--motion-fast) var(--motion-ease); }
+  :global(.pill.ui-local-034c360f[aria-expanded='false']) :global(.chevron){ transform: rotate(180deg); }
 
   /* Lifts above the pill: the transcript under it never shifts. */
   .list {
@@ -156,7 +157,7 @@
     animation: list-in var(--motion-fast) var(--motion-ease-out);
   }
   /* One line per child: dot, task, then status and time on the right edge. */
-  .row {
+  :global(.row.ui-local-034c360f){
     display: flex;
     width: 100%;
     align-items: center;
@@ -173,7 +174,7 @@
     cursor: pointer;
     transition: background-color var(--motion-instant) var(--motion-ease);
   }
-  .row:hover, .row:focus-visible, .row.is-active { background: var(--float-row-hover); outline: none; }
+  :global(.row.ui-local-034c360f:hover), :global(.row.ui-local-034c360f:focus-visible), :global(.row.ui-local-034c360f.is-active){ background: var(--float-row-hover); outline: none; }
   .dot { width: 0.4375rem; height: 0.4375rem; flex-shrink: 0; border-radius: var(--radius-full); background: color-mix(in srgb, var(--muted-foreground) 70%, transparent); }
   .dot[data-state='running'] { background: var(--brand-accent); }
   .dot[data-state='error'] { background: var(--destructive); }

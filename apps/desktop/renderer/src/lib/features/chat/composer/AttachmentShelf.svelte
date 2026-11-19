@@ -42,7 +42,7 @@
   function select(id: string, value: boolean) { selected = value ? [...new Set([...selected, id])] : selected.filter(item => item !== id); }
   function step(direction: number) { if (files.length) activeId = files[(index + direction + files.length) % files.length].id; }
   function keys(event: KeyboardEvent) {
-    if (!shown() || !active || event.altKey || event.ctrlKey || event.metaKey || (event.target as HTMLElement)?.closest('input,textarea,select,[contenteditable=true]')) return;
+    if (!shown() || !active || event.altKey || event.ctrlKey || event.metaKey || (event.target instanceof Element && event.target.closest('input,textarea,select,[contenteditable=true]'))) return;
     if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') { event.preventDefault(); event.stopPropagation(); step(event.key === 'ArrowLeft' ? -1 : 1); }
   }
 </script>

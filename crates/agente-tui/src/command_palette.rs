@@ -70,6 +70,7 @@ impl Command {
             Self::Redo,
             Self::StopRun,
             Self::InitProject,
+            Self::Swarm,
             Self::ConnectProvider,
             Self::SwitchModel,
             Self::RefreshModels,
@@ -77,7 +78,6 @@ impl Command {
             Self::ToggleMode,
             Self::ToggleAutoApprove,
             Self::SubagentModels,
-            Self::Swarm,
             Self::NewTab,
             Self::CloseTab,
             Self::NextTab,
@@ -111,15 +111,15 @@ impl Command {
             | Self::Undo
             | Self::Redo
             | Self::StopRun
-            | Self::InitProject => "Session",
+            | Self::InitProject
+            | Self::Swarm => "Session",
             Self::ConnectProvider
             | Self::SwitchModel
             | Self::RefreshModels
             | Self::CycleThinking
             | Self::ToggleMode
             | Self::ToggleAutoApprove
-            | Self::SubagentModels
-            | Self::Swarm => "Model",
+            | Self::SubagentModels => "Model",
             Self::NewTab | Self::CloseTab | Self::NextTab | Self::PrevTab => "Tabs",
             Self::ViewTodos
             | Self::ViewPlan
@@ -167,7 +167,7 @@ impl Command {
             Self::InitProject => "Initialize Project",
             Self::ListSubagents => "List Subagents",
             Self::SubagentModels => "Subagent Models",
-            Self::Swarm => "Swarm Mode",
+            Self::Swarm => "Toggle Swarm",
             Self::Board => "View Board",
             Self::Settings => "Settings",
             Self::Skills => "Skills",
