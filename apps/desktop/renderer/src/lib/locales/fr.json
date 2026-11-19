@@ -409,6 +409,29 @@
     "refresh": "Actualiser"
   },
   "code": {
+    "swarm": {
+      "board": "Tableau",
+      "mode": "Mode essaim",
+      "short": "Essaim",
+      "brief": "L'agent planifie le gros travail en tableau et crée des sous-agents pour le faire",
+      "onHint": "L'agent planifie ici le gros travail et crée un sous-agent par carte.",
+      "offHint": "Activez-le pour que l'agent planifie le travail en tableau pour ses sous-agents.",
+      "emptyOn": "Pas encore de cartes. Demandez quelque chose de gros : l'agent le planifie ici et ses sous-agents le font.",
+      "emptyOff": "Le mode essaim est désactivé. Activé, l'agent découpe le gros travail en cartes, chacune faite par un sous-agent qu'il crée.",
+      "cards": "{n, plural, one {# carte} other {# cartes}}",
+      "working": "{n} en cours",
+      "toReview": "{n} à relire",
+      "failed": "{n} en échec",
+      "column": {
+        "backlog": "À faire",
+        "working": "En cours",
+        "review": "Relecture",
+        "done": "Fait"
+      },
+      "waitsFor": "Attend {cards}",
+      "openCard": "Ouvrir son sous-agent",
+      "clear": "Vider le tableau"
+    },
     "traceCopyInput": "Copier l’entrée",
     "traceCopyOutput": "Copier le résultat",
     "traceCopyCommand": "Copier la commande",
@@ -642,7 +665,7 @@
       },
       "subagents": {
         "label": "Sous-agents",
-        "hint": "Sous-agents intégrés et du projet, et leurs modèles"
+        "hint": "Les modèles que l'agent peut donner aux sous-agents qu'il crée"
       },
       "mcp": {
         "label": "Serveurs MCP",
@@ -693,14 +716,29 @@
         "empty": "Ce projet n'a encore ni compétences ni commandes personnalisées."
       },
       "agents": {
-        "title": "Sous-agents",
-        "hint": "Les aides auxquelles l'agent peut confier du travail, et le modèle de chacune.",
-        "all": "Tous les sous-agents",
-        "inherit": "Utilise le modèle de la conversation",
-        "useModel": "Utiliser le modèle actuel",
-        "reset": "Réinitialiser",
-        "defaultName": "All subagents",
-        "defaultHint": "Used by any type below that has no model of its own. Unset follows the chat."
+        "title": "Modèles des sous-agents",
+        "hint": "L'agent crée des sous-agents pour ses tâches et choisit l'un de ces modèles en lisant vos notes.",
+        "useFor": "Usage",
+        "useForPlaceholder": "En quoi est-il bon ? L'agent le lit pour choisir — ex. recherches rapides, ne modifie jamais",
+        "add": "Ajouter un modèle",
+        "remove": "Retirer le modèle",
+        "picks": "Laisser l'agent choisir",
+        "mainModel": "Modèle de la conversation",
+        "chooseModel": "Choisir un modèle",
+        "model": "Modèle",
+        "done": "Terminé",
+        "edit": "Modifier {name}",
+        "free": "gratuit",
+        "noNote": "Pas encore de note : dites à quoi sert ce modèle.",
+        "defaultChip": "Par défaut",
+        "defaultModel": "Modèle par défaut",
+        "name": "Nom",
+        "makeDefault": "Utiliser {name} par défaut",
+        "draft": "Nouveau modèle",
+        "needsModel": "Choisissez un modèle pour l'enregistrer.",
+        "mainModelHint": "Le modèle qu'utilise la discussion.",
+        "picksOn": "L'agent choisit dans cette liste d'après vos notes ; sinon, le modèle par défaut.",
+        "picksOff": "Tous les sous-agents utilisent le modèle par défaut."
       },
       "mcp": {
         "title": "Serveurs MCP",

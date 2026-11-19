@@ -69,6 +69,11 @@ pub enum AgentEvent {
         before: Option<String>,
         after: Option<String>,
     },
+    /// Swarm mode: the session's board changed (cards added, started,
+    /// finished or moved). The whole board, so a client just replaces it.
+    BoardChanged {
+        board: crate::swarm::Board,
+    },
     TodoUpdate {
         /// `None` for the parent agent; `Some(id)` for a subagent. A child's
         /// todo list is not the parent's plan.
@@ -200,9 +205,11 @@ pub enum AgentEvent {
         id: String,
         subagent_type: String,
         description: String,
-        /// The model this child runs on, so its card can name it. Children run
-        /// on the parent's model unless a `subagent_models` override applies.
+        /// The model this child runs on, so its card can name it. Routed by
+        /// `subagent::routing` (the user's list, the parent's pick, defaults).
         model: String,
+        /// The model list name it was routed to, when it came from the list.
+        seat: Option<String>,
     },
     /// Live text streamed from a subagent.
     SubagentText {

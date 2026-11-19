@@ -171,12 +171,19 @@ export type RuntimeEvent =
     todos: unknown;
     type: "todo_changed";
   }
+  /** Swarm mode: the session's whole board (`agente_core::swarm::Board`: `enabled`, and `cards` with id, title, role, model, status, depends_on, owns, child_id, result, notes). Replace, don't merge. */
+  | {
+    board: unknown;
+    type: "board_changed";
+  }
   | {
     description: string;
     kind: string;
-    /** The model this child runs on. Children inherit the parent's model unless a `subagent_models` override applies, so a card cannot infer it; the runtime resolves it once, at spawn. */
+    /** The model this child runs on. The runtime routes it once, at spawn (the user's model list, the parent's pick, per-type defaults), so a card cannot infer it. */
     model: string;
     run_id: string;
+    /** The user's name for that model on their subagent model list, when it came from the list. */
+    seat?: string | null;
     type: "child_started";
   }
   | {

@@ -23,11 +23,10 @@
   import { toastStore } from '$lib/stores/toast.svelte';
   import { copy } from '$lib/copy';
   import { writeToClipboard } from '$lib/utils/clipboard';
-  import { shortModel } from '$lib/utils/format';
   import { formatToolDuration, titleCaseToolName } from '$lib/utils/tool-ui';
   import { codeStore } from './code.svelte';
   import { spendCostLabel } from './accounting';
-  import { childActivity, childElapsedMs, sessionChildren } from './subagent-row';
+  import { childActivity, childElapsedMs, childModelLabel, sessionChildren } from './subagent-row';
   import { subagentFocus } from './subagent-focus.svelte';
   import CodeStepRow from './CodeStepRow.svelte';
   import CodeErrorNotice from './CodeErrorNotice.svelte';
@@ -102,7 +101,7 @@
     <header class="identity">
       <div class="who">
         <h2 class="title">{child.description || titleCaseToolName(child.kind || 'subagent')}</h2>
-        <p class="meta">{titleCaseToolName(child.kind || 'subagent')}{#if child.model}<span title={child.model}>{' · '}{shortModel(child.model)}</span>{/if}</p>
+        <p class="meta">{titleCaseToolName(child.kind || 'subagent')}{#if child.model}<span title={child.model}>{' · '}{childModelLabel(child)}</span>{/if}</p>
       </div>
       {#if running && !stopped && !run?.stopping}
         <IconButton size="sm" variant="ghost" label={$t('code.stopSubagent')} title={$t('code.stopSubagent')} onclick={stop}><Square class="size-3.5" /></IconButton>

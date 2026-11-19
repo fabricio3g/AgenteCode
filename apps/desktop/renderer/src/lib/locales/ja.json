@@ -409,6 +409,29 @@
     "refresh": "更新"
   },
   "code": {
+    "swarm": {
+      "board": "ボード",
+      "mode": "スウォームモード",
+      "short": "スウォーム",
+      "brief": "エージェントが大きな作業をボードとして計画し、サブエージェントを作って進めます",
+      "onHint": "エージェントがここで大きな作業を計画し、カードごとにサブエージェントを作ります。",
+      "offHint": "オンにすると、エージェントがサブエージェント用に作業をボードとして計画します。",
+      "emptyOn": "カードはまだありません。大きな依頼をすると、エージェントがここで計画し、サブエージェントが進めます。",
+      "emptyOff": "スウォームモードはオフです。オンにすると、エージェントが大きな作業をカードに分け、それぞれを作成したサブエージェントが進めます。",
+      "cards": "{n, plural, other {# 枚}}",
+      "working": "{n} 件作業中",
+      "toReview": "{n} 件レビュー待ち",
+      "failed": "{n} 件失敗",
+      "column": {
+        "backlog": "未着手",
+        "working": "作業中",
+        "review": "レビュー",
+        "done": "完了"
+      },
+      "waitsFor": "{cards} を待機中",
+      "openCard": "サブエージェントを開く",
+      "clear": "ボードを空にする"
+    },
     "traceCopyInput": "入力をコピー",
     "traceCopyOutput": "出力をコピー",
     "traceCopyCommand": "コマンドをコピー",
@@ -642,7 +665,7 @@
       },
       "subagents": {
         "label": "サブエージェント",
-        "hint": "組み込みとプロジェクトのサブエージェント、そのモデル"
+        "hint": "エージェントが作るサブエージェントに使えるモデル"
       },
       "mcp": {
         "label": "MCP サーバー",
@@ -693,14 +716,29 @@
         "empty": "このプロジェクトにはまだスキルもカスタムコマンドもありません。"
       },
       "agents": {
-        "title": "サブエージェント",
-        "hint": "エージェントが作業を任せられるヘルパーと、それぞれのモデル。",
-        "all": "すべてのサブエージェント",
-        "inherit": "会話のモデルを使用",
-        "useModel": "現在のモデルを使う",
-        "reset": "リセット",
-        "defaultName": "All subagents",
-        "defaultHint": "Used by any type below that has no model of its own. Unset follows the chat."
+        "title": "サブエージェントのモデル",
+        "hint": "エージェントはタスクごとにサブエージェントを作り、あなたのメモを読んでこれらのモデルから選びます。",
+        "useFor": "用途",
+        "useForPlaceholder": "得意なことは？ エージェントはこれを読んで選びます — 例: 高速な検索、編集はしない",
+        "add": "モデルを追加",
+        "remove": "モデルを削除",
+        "picks": "エージェントに選ばせる",
+        "mainModel": "会話のモデル",
+        "chooseModel": "モデルを選択",
+        "model": "モデル",
+        "done": "完了",
+        "edit": "{name} を編集",
+        "free": "無料",
+        "noNote": "メモはまだありません。このモデルの用途を書いてください。",
+        "defaultChip": "既定",
+        "defaultModel": "既定のモデル",
+        "name": "名前",
+        "makeDefault": "{name} を既定にする",
+        "draft": "新しいモデル",
+        "needsModel": "保存するにはモデルを選んでください。",
+        "mainModelHint": "チャットが使っているモデル。",
+        "picksOn": "エージェントはメモを読んでこのリストから選びます。選ばないときは既定を使います。",
+        "picksOff": "すべてのサブエージェントが既定で動きます。"
       },
       "mcp": {
         "title": "MCP サーバー",

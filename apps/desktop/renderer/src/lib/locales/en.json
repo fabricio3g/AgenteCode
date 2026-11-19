@@ -409,6 +409,29 @@
     "refresh": "Refresh"
   },
   "code": {
+    "swarm": {
+      "board": "Board",
+      "mode": "Swarm mode",
+      "short": "Swarm",
+      "brief": "The agent plans big work as a board and creates subagents to work it",
+      "onHint": "The agent plans big work here and creates a subagent per card.",
+      "offHint": "Turn on to let the agent plan work as a board for its subagents.",
+      "emptyOn": "No cards yet. Ask for something big — the agent plans it here and its subagents work it.",
+      "emptyOff": "Swarm mode is off. Turn it on and the agent splits big work into cards, each worked by a subagent it creates.",
+      "cards": "{n, plural, one {# card} other {# cards}}",
+      "working": "{n} working",
+      "toReview": "{n} to review",
+      "failed": "{n} failed",
+      "column": {
+        "backlog": "Backlog",
+        "working": "Working",
+        "review": "Review",
+        "done": "Done"
+      },
+      "waitsFor": "Waits for {cards}",
+      "openCard": "Open its subagent",
+      "clear": "Clear board"
+    },
     "traceCopyInput": "Copy input",
     "traceCopyOutput": "Copy output",
     "traceCopyCommand": "Copy command",
@@ -651,7 +674,7 @@
       },
       "subagents": {
         "label": "Subagents",
-        "hint": "Built-in and project subagents, and their models"
+        "hint": "The models the agent can give the subagents it creates"
       },
       "mcp": {
         "label": "MCP servers",
@@ -702,14 +725,29 @@
         "empty": "This project has no skills or custom commands yet."
       },
       "agents": {
-        "title": "Subagents",
-        "hint": "Helpers the agent can hand work to, and the model each one uses.",
-        "all": "Every subagent",
-        "inherit": "Uses the conversation's model",
-        "useModel": "Use current model",
-        "defaultName": "All subagents",
-        "defaultHint": "Used by any type below that has no model of its own. Unset follows the chat.",
-        "reset": "Use default"
+        "title": "Subagent models",
+        "hint": "The agent creates subagents for its tasks and picks one of these models by reading your notes.",
+        "useFor": "Use for",
+        "useForPlaceholder": "What is it good at? The agent reads this to choose — e.g. fast searches, never edits",
+        "add": "Add model",
+        "remove": "Remove model",
+        "picks": "Let the agent choose",
+        "mainModel": "Conversation's model",
+        "chooseModel": "Choose a model",
+        "model": "Model",
+        "done": "Done",
+        "edit": "Edit {name}",
+        "free": "free",
+        "noNote": "No note yet: say what this model is for.",
+        "defaultChip": "Default",
+        "defaultModel": "Default model",
+        "name": "Name",
+        "makeDefault": "Make {name} the default",
+        "draft": "New model",
+        "needsModel": "Choose a model to save it.",
+        "mainModelHint": "Whatever model the chat runs on.",
+        "picksOn": "The agent picks from this list by your notes; the default is used when it doesn't.",
+        "picksOff": "Every subagent runs on the default."
       },
       "mcp": {
         "title": "MCP servers",

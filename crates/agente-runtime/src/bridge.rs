@@ -262,6 +262,9 @@ fn map_event(inner: &RuntimeInner, event: AgentEvent) -> Option<(RuntimeEvent, O
             before,
             after,
         },
+        AgentEvent::BoardChanged { board } => RuntimeEvent::BoardChanged {
+            board: serde_json::to_value(board).unwrap_or(serde_json::Value::Null),
+        },
         AgentEvent::TodoUpdate { todos, .. } => RuntimeEvent::TodoChanged {
             todos: serde_json::to_value(todos).unwrap_or(serde_json::Value::Null),
         },
@@ -365,11 +368,13 @@ fn map_event(inner: &RuntimeInner, event: AgentEvent) -> Option<(RuntimeEvent, O
             subagent_type,
             description,
             model,
+            seat,
         } => RuntimeEvent::ChildStarted {
             run_id: inner.child_id(&id),
             kind: subagent_type,
             description,
             model,
+            seat,
         },
         AgentEvent::SubagentText { id, text } => RuntimeEvent::ChildDelta {
             run_id: inner.child_id(&id),

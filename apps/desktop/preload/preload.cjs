@@ -65,7 +65,7 @@ const ALLOWED_INVOKE_CHANNELS = new Set([
   'agente_changes', 'agente_file_diff', 'agente_revert_file',
   'agente_git_branches', 'agente_git_pull_request', 'agente_git_switch_branch', 'agente_open_in_editor', 'agente_reveal_path', 'agente_trash_path',
    'agente_exec', 'agente_undo', 'agente_redo', 'agente_project_info', 'agente_project_init', 'agente_mcp_status', 'agente_project_files',
-   'agente_message_action', 'agente_session_snapshot', 'agente_session_list', 'agente_session_history', 'agente_runtime_configure', 'agente_runtime_settings', 'agente_model_inputs', 'agente_child_cancel', 'agente_subagent_model', 'agente_media_import', 'agente_media_preview', 'agente_mcp_control'
+   'agente_message_action', 'agente_session_snapshot', 'agente_session_list', 'agente_session_history', 'agente_runtime_configure', 'agente_runtime_settings', 'agente_model_inputs', 'agente_child_cancel', 'agente_subagent_settings', 'agente_board', 'agente_media_import', 'agente_media_preview', 'agente_mcp_control'
 ]);
 
 const ALLOWED_EVENT_CHANNELS = new Set([

@@ -7,7 +7,6 @@ import {
   normalizeProviderName, providerHasCredentials, providerDisplayName, providerCandidates,
   getCacheKey, getCachedResult, setCachedResult, mergeAndRankResults, buildContext,
   buildJinaReaderUrl, toErrorMessage, classifyNetworkError, providerSearchError,
-  DEFAULT_CONTEXT_BUDGET,
   REMOVED_SEARCH_PROVIDERS
 } from './search-providers/shared.ts';
 import type { SearchResult } from './search-providers/shared.ts';
@@ -41,17 +40,16 @@ type FetchedPage = {
   warning?: string;
 };
 
+/** A result's whole page, read through Reader View — no character budget. */
 async function fetchPageContent(url: string, options: Record<string, unknown> = {}): Promise<FetchedPage | null> {
   try {
     if (options?.use_local_readability !== false) {
       const scraped = await scrapeUrlStructured({
         url,
-        maxLength: 30000,
         timeoutMs: 18000,
         maxLinks: 80,
       }) as {
         content?: string;
-        excerpt?: string;
         title?: string;
         site_name?: string;
         author?: string;
@@ -60,12 +58,10 @@ async function fetchPageContent(url: string, options: Record<string, unknown> = 
         warning?: string;
         error?: string;
       };
-      const readable = compactPageContent(scraped?.content || '', String(options?.search_query || ''), 9000);
-      const header = [scraped?.title, scraped?.excerpt].map(normalizeWhitespace).filter(Boolean).join('\n\n');
-      const content = [header, readable].filter(Boolean).join('\n\n');
+      const content = String(scraped?.content || '').trim();
       if (content) {
         return {
-          content: content.slice(0, 10000),
+          content,
           title: scraped?.title,
           site_name: scraped?.site_name,
           author: scraped?.author,
@@ -84,78 +80,10 @@ async function fetchPageContent(url: string, options: Record<string, unknown> = 
     }
     const resp = await fetchWithRetry(readerUrl, { headers, timeout_ms: 22000 });
     if (!resp.ok) return null;
-    const text = await resp.text();
-    return { content: text.slice(0, 10000), quality: 'ok' };
+    return { content: (await resp.text()).trim(), quality: 'ok' };
   } catch {
     return null;
   }
-}
-
-function scoreParagraph(text: string, terms: string[]): number {
-  const haystack = normalizeWhitespace(text).toLowerCase();
-  if (!haystack || !terms.length) return 0;
-  let score = 0;
-  for (const term of terms) {
-    if (!term) continue;
-    if (haystack.includes(term)) score += 1;
-    const hits = haystack.match(new RegExp(`\\b${term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'g')) || [];
-    score += Math.min(hits.length, 3) * 0.25;
-  }
-  return score;
-}
-
-function compactPageContent(content: string, query: string, maxChars: number): string {
-  const normalized = String(content || '').trim();
-  if (!normalized) return '';
-  const budget = Math.max(1200, Math.min(Number(maxChars) || 6000, 12000));
-  if (normalizeWhitespace(normalized).length <= budget) return normalized;
-
-  const terms = normalizeWhitespace(query).toLowerCase().match(/[a-z0-9]+/g)?.filter((term) => term.length > 2).slice(0, 12) || [];
-  const rawBlocks = normalized.split(/\n\s*\n+/);
-
-  let currentHeading = '';
-  const paragraphs: Array<{ paragraph: string; index: number; score: number; heading: string }> = [];
-  for (let i = 0; i < rawBlocks.length; i += 1) {
-    const block = rawBlocks[i].trim();
-    if (!block) continue;
-    if (/^#{1,4}\s+/.test(block)) {
-      currentHeading = block;
-    } else if (block.length > 80) {
-      paragraphs.push({ paragraph: block, index: i, score: scoreParagraph(block, terms), heading: currentHeading });
-    }
-  }
-
-  if (!paragraphs.length) return normalizeWhitespace(normalized).slice(0, budget);
-
-  const ranked = [...paragraphs].sort((left, right) => {
-    if (right.score !== left.score) return right.score - left.score;
-    return left.index - right.index;
-  });
-
-  const selected: typeof paragraphs = [];
-  const includedHeadings = new Set<string>();
-  let used = 0;
-  for (const item of ranked) {
-    if (used >= budget) break;
-    const headingCost = item.heading && !includedHeadings.has(item.heading) ? item.heading.length + 4 : 0;
-    if (used + item.paragraph.length + headingCost > budget * 1.15) continue;
-    selected.push(item);
-    used += item.paragraph.length + 2 + headingCost;
-    if (headingCost) includedHeadings.add(item.heading);
-  }
-
-  selected.sort((left, right) => left.index - right.index);
-  const result: string[] = [];
-  let lastHeading = '';
-  for (const item of selected) {
-    if (item.heading && item.heading !== lastHeading) {
-      result.push(item.heading);
-      lastHeading = item.heading;
-    }
-    result.push(item.paragraph);
-  }
-
-  return result.join('\n\n').slice(0, budget);
 }
 
 /** Prefer pages with more query-relevant title/snippet before scraping. */
@@ -280,7 +208,6 @@ export async function webSearch({ query, context, deep, mode, options }: { query
   // A saved choice of a removed provider (a scraper or reseller) searches with auto.
   const explicitProvider = REMOVED_SEARCH_PROVIDERS.includes(requestedProvider) ? 'auto' : requestedProvider;
   const maxResults = Math.max(1, Math.min(Number(options?.max_results) || 6, 20));
-  const contextBudget = Math.max(500, Number(options?.context_budget_chars) || DEFAULT_CONTEXT_BUDGET[searchMode as keyof typeof DEFAULT_CONTEXT_BUDGET] || DEFAULT_CONTEXT_BUDGET.search);
   const searchOptions = { ...(options || {}), conversation_context: conversationContext, search_query: effectiveQuery || normalizedQuery };
 
   const emit = (step: string, detail: string) => {
@@ -426,7 +353,7 @@ export async function webSearch({ query, context, deep, mode, options }: { query
   const searchContext = [
     `Search performed at: ${searchedAt}`,
     `Search query: ${effectiveQuery || normalizedQuery}`,
-    buildContext(mergedResults, contextBudget)
+    buildContext(mergedResults)
   ].filter(Boolean).join('\n\n');
   emit('results', `Found ${mergedResults.length} results via ${providerUsed}`);
 
@@ -463,7 +390,7 @@ export async function ingestSearchContext(chatId: string, context: string, sourc
         src?.url ? `URL: ${src.url}` : null,
         src?.provider ? `Provider: ${src.provider}` : null,
         src?.snippet ? `Snippet: ${src.snippet}` : null,
-        src?.full_content ? `Content: ${String(src.full_content).slice(0, 4000)}` : null
+        src?.full_content ? `Content: ${String(src.full_content)}` : null
       ].filter(Boolean);
       return lines.join('\n');
     })

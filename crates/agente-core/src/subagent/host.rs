@@ -21,7 +21,7 @@ use crate::providers::ProviderRegistry;
 use crate::subagent::context::{completion_output, fork_subagent_context};
 use crate::subagent::definition::{
     capability_for_parent_mode, filter_tool_definitions, resolve_effective_config,
-    resolve_timeout_ms, CustomSubagent, EffectiveRuntimeConfig, SubagentParentDefaults,
+    resolve_timeout_ms, AgentDefinition, EffectiveRuntimeConfig, SubagentParentDefaults,
 };
 use crate::subagent::registry::{
     bound_conversation, QueuedSpawn, SpawnAdmission, SubagentRegistry,
@@ -33,6 +33,8 @@ use crate::subagent::types::{
 use crate::subagent::worktree;
 use crate::tools::ToolExecutionContext;
 use crate::types::{Message, Role, ToolCall, ToolDefinition};
+
+mod board;
 
 /// Bounded wait for `task_output` when the model omits `timeout_ms` (or passes
 /// 0, which used to block forever in event silence).
@@ -86,9 +88,10 @@ pub struct SubagentHostConfig {
     /// Custom agents discovered once when the host is built (per turn) —
     /// spawning used to re-read `.agente/agents` from disk on every `task`
     /// call. Built-ins are always live.
-    pub custom_agents: Vec<CustomSubagent>,
-    /// User-configured per-type model overrides (`subagent_models` setting).
-    pub subagent_models: crate::config::SubagentModels,
+    pub custom_agents: Vec<AgentDefinition>,
+    /// The user's subagent model list, per-type defaults and picking switch
+    /// (`subagents` setting), read by `subagent::routing`.
+    pub subagents: crate::config::SubagentSettings,
     /// The parent turn's command environment; children inherit it, so a
     /// bot's subagent never gets the host's keys either.
     pub shell_env: crate::tools::ShellEnv,
@@ -112,6 +115,8 @@ struct SubagentHostInner {
     /// OS threads, and child runtimes disappear when their loops finish.
     scheduler: OnceLock<tokio::runtime::Handle>,
     mcp_session_id: OnceLock<uuid::Uuid>,
+    /// Set by the first `board` call of the turn: what card starts run under.
+    board_lead: OnceLock<board::BoardLead>,
 }
 
 /// Child task ids are allocated from a high offset so they never collide with
@@ -250,6 +255,7 @@ impl SubagentHost {
                 max_concurrent,
                 scheduler: OnceLock::new(),
                 mcp_session_id: OnceLock::new(),
+                board_lead: OnceLock::new(),
             }),
         }
     }
@@ -262,6 +268,21 @@ impl SubagentHost {
 
     pub fn mcp_session_id(&self) -> Option<uuid::Uuid> {
         self.inner.mcp_session_id.get().copied()
+    }
+
+    /// The user's models the orchestrator may assign, priced and sized from
+    /// the same metadata a turn resolves (registry, live data, catalog).
+    pub fn model_menu(&self) -> Vec<crate::subagent::routing::ModelMenuEntry> {
+        let config = &self.inner.config;
+        crate::subagent::routing::model_menu(&config.subagents, |provider, model| {
+            let info = crate::providers::resolve_model_info(
+                &config.provider_registry,
+                config.catalog.as_deref(),
+                provider,
+                model,
+            );
+            (info.cost, info.limits.context)
+        })
     }
 
     /// Execute a hosted subagent tool call (`task`, `task_output`, `kill_task`).
@@ -313,6 +334,13 @@ impl SubagentHost {
                     todos: None,
                     attachments: Vec::new(),
                 }
+            }
+            "board" => {
+                self.inner
+                    .scheduler
+                    .get_or_init(tokio::runtime::Handle::current);
+                self.execute_board(tool_call_id, args, parent_cancel, depth)
+                    .await
             }
             "task_output" => self.task_output(tool_call_id, args, &context).await,
             "kill_task" => self.kill_task(tool_call_id, args),
@@ -501,10 +529,11 @@ impl SubagentHost {
     /// Resolve and launch a child agent. See module docs for the full flow.
     async fn spawn(
         &self,
-        request: SubagentSpawnRequest,
+        mut request: SubagentSpawnRequest,
         parent_cancel: AbortSignal,
         depth: u32,
     ) -> SubagentResult {
+        request.normalize();
         self.inner
             .scheduler
             .get_or_init(tokio::runtime::Handle::current);
@@ -532,13 +561,37 @@ impl SubagentHost {
             Ok(cfg) => cfg,
             Err(e) => return err_result(e),
         };
-        if let Some(chosen) = crate::config::subagent_model_for(
-            &self.inner.config.subagent_models,
-            &request.subagent_type,
+        // A created subagent is known by its role from here on: its card,
+        // its registry entry, and what a resume must name.
+        if request.is_created() {
+            request.subagent_type = cfg.subagent_type.clone();
+        }
+        if request.resume_from.is_some() && request.model.is_some() {
+            return err_result(
+                "resume_from continues on the model the subagent ran on; omit `model` when resuming",
+            );
+        }
+        let registry = &self.inner.config.provider_registry;
+        let routed = match crate::subagent::routing::resolve_model(
+            &self.inner.config.subagents,
+            request.model.as_deref(),
+            cfg.agent_model.as_deref(),
+            |provider| registry.get(provider).is_some(),
         ) {
-            cfg.model = Some(chosen.model.clone());
-            cfg.provider = Some(chosen.provider.clone());
-            cfg.thinking_level = chosen.thinking.clone();
+            Ok(routed) => routed,
+            Err(e) => return err_result(e),
+        };
+        tracing::info!(
+            subagent_type = %request.subagent_type,
+            seat = ?routed.seat,
+            source = ?routed.source,
+            "Subagent model routed"
+        );
+        let mut seat = routed.seat;
+        if routed.model.is_some() {
+            cfg.model = routed.model;
+            cfg.provider = routed.provider;
+            cfg.thinking_level = routed.thinking;
         }
 
         // Plan-mode parent: every child runs read-only. Coerce instead of
@@ -590,6 +643,9 @@ impl SubagentHost {
                 ));
             }
             model = source.model.clone();
+            seat = source.seat.clone();
+            cfg.provider = Some(source.provider.clone()).filter(|p| !p.is_empty());
+            cfg.thinking_level = Some(source.thinking.clone()).filter(|t| !t.is_empty());
         }
 
         let id = request
@@ -612,6 +668,15 @@ impl SubagentHost {
             summary: None,
             conversation: Vec::new(),
             model: model.clone(),
+            seat: seat.clone(),
+            provider: cfg
+                .provider
+                .clone()
+                .unwrap_or_else(|| self.inner.config.provider_id.clone()),
+            thinking: cfg
+                .thinking_level
+                .clone()
+                .unwrap_or_else(|| self.inner.config.thinking_level.clone()),
             depth: depth + 1,
             background,
             started_at: chrono::Utc::now(),
@@ -643,6 +708,7 @@ impl SubagentHost {
                         subagent_type: request.subagent_type.clone(),
                         description: request.description.clone(),
                         model: model.clone(),
+                        seat: seat.clone(),
                     },
                 });
                 // Also covers a slot freed just before admission.
@@ -736,7 +802,7 @@ impl SubagentHost {
         {
             if let Some(root) = worktree::find_repo_root(Path::new(&self.inner.config.project_dir))
             {
-                let label = format!("{}-{}", request.subagent_type, short_id(id));
+                let label = format!("{}-{}", slug(&request.subagent_type), short_id(id));
                 match worktree::acquire_for(&root, &label).await {
                     Some(info) => {
                         cfg.cwd = Some(info.path.clone());
@@ -841,6 +907,7 @@ impl SubagentHost {
         let background = request.resolved_run_in_background();
 
         // Tell the UI a subagent card exists (the forwarder streams the rest).
+        let seat = self.inner.registry.get(&id).and_then(|snap| snap.seat);
         let _ = self.inner.config.event_sender.send(AgentTaskEvent {
             task_id: self.inner.config.task_id,
             event: AgentEvent::SubagentStarted {
@@ -848,6 +915,7 @@ impl SubagentHost {
                 subagent_type: request.subagent_type.clone(),
                 description: request.description.clone(),
                 model: model.clone(),
+                seat,
             },
         });
 
@@ -1016,6 +1084,9 @@ impl SubagentHost {
                     summary: Some("subagent state lost".into()),
                     conversation: Vec::new(),
                     model,
+                    seat: None,
+                    provider: String::new(),
+                    thinking: String::new(),
                     depth: depth + 1,
                     background,
                     started_at: chrono::Utc::now(),
@@ -1392,7 +1463,8 @@ fn forward_child_events(
             | AgentEvent::SubagentToolCallProgress { .. }
             | AgentEvent::SubagentToolCallResult { .. }
             | AgentEvent::SubagentDone { .. }
-            | AgentEvent::SubagentCompletedNotice { .. } => {}
+            | AgentEvent::SubagentCompletedNotice { .. }
+            | AgentEvent::BoardChanged { .. } => {}
         }
     }
 
@@ -1423,6 +1495,8 @@ fn forward_child_events(
     }
     // The checkout was settled BEFORE the terminal status was published.
     // Never release it again here: a resume may already own it.
+    // A card's subagent moves its card and starts the cards waiting on it.
+    host.board_child_finished(&subagent_id);
     // A slot freed (or a queued entry died): start waiting spawns FIFO.
     host.try_start_queued();
 }
@@ -1452,6 +1526,26 @@ fn settle_worktree_blocking(host: &SubagentHost, id: &str) -> bool {
 }
 
 /// Compact id label for a worktree branch/dir name.
+/// A path-safe label for a worktree: a role like "Security reviewer"
+/// becomes `security-reviewer`.
+fn slug(text: &str) -> String {
+    let folded: String = text
+        .to_lowercase()
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
+        .collect();
+    let joined = folded
+        .split('-')
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>()
+        .join("-");
+    if joined.is_empty() {
+        "subagent".into()
+    } else {
+        joined.chars().take(40).collect()
+    }
+}
+
 fn short_id(id: &str) -> String {
     let cleaned: String = id
         .chars()
@@ -1515,7 +1609,7 @@ mod tests {
         let host = SubagentHost::new(
             SubagentHostConfig {
                 custom_agents: Vec::new(),
-                subagent_models: Default::default(),
+                subagents: Default::default(),
                 shell_env: crate::tools::ShellEnv::Inherit,
                 only_tools: None,
                 event_sender,
@@ -1540,8 +1634,8 @@ mod tests {
     fn queue_test_request() -> SubagentSpawnRequest {
         SubagentSpawnRequest {
             prompt: "do it".into(),
-            description: "d".into(),
-            subagent_type: "explore".into(),
+            description: "explore".into(),
+            subagent_type: String::new(),
             run_in_background: Some(true),
             capability_mode: None,
             cwd: None,
@@ -1549,6 +1643,9 @@ mod tests {
             max_iterations: None,
             timeout_ms: None,
             resume_from: None,
+            role: None,
+            instructions: None,
+            model: None,
             task_id: None,
         }
     }
@@ -1563,6 +1660,9 @@ mod tests {
             summary: None,
             conversation: vec![],
             model: "test-model".into(),
+            seat: None,
+            provider: String::new(),
+            thinking: String::new(),
             depth: 1,
             background: true,
             started_at: chrono::Utc::now(),
@@ -1649,7 +1749,7 @@ mod tests {
                     name: "task".into(),
                     arguments: serde_json::json!({
                         "prompt": "Return findings", "description": "Read-only findings",
-                        "subagent_type": "explore", "run_in_background": false,
+                        "role": "explore", "run_in_background": false,
                     })
                     .to_string(),
                 },
@@ -1979,6 +2079,9 @@ mod tests {
             summary: None,
             conversation: Vec::new(),
             model: "test-model".into(),
+            seat: None,
+            provider: String::new(),
+            thinking: String::new(),
             depth: 1,
             background: true,
             started_at: chrono::Utc::now(),
@@ -2024,6 +2127,9 @@ mod tests {
             summary: None,
             conversation: Vec::new(),
             model: "m".into(),
+            seat: None,
+            provider: String::new(),
+            thinking: String::new(),
             depth: 1,
             background: true,
             started_at: chrono::Utc::now(),
@@ -2182,6 +2288,9 @@ mod tests {
             summary: None,
             conversation: Vec::new(),
             model: "test-model".into(),
+            seat: None,
+            provider: String::new(),
+            thinking: String::new(),
             depth: 1,
             background: true,
             started_at: chrono::Utc::now(),
@@ -2193,7 +2302,7 @@ mod tests {
         let host = SubagentHost::new(
             SubagentHostConfig {
                 custom_agents: Vec::new(),
-                subagent_models: Default::default(),
+                subagents: Default::default(),
                 shell_env: crate::tools::ShellEnv::Inherit,
                 only_tools: None,
                 event_sender,

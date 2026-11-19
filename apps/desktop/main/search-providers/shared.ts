@@ -34,12 +34,6 @@ const PROVIDER_PRIORITY: Record<string, number> = {
   perplexity: 3.1
 };
 
-export const DEFAULT_CONTEXT_BUDGET = {
-  search: 4500,
-  deep: 14000,
-  max: 26000
-};
-
 const SEARCH_CACHE_TTL_MS = 5 * 60 * 1000;
 const searchCache = new Map<string, { result: unknown; expires: number }>();
 
@@ -571,28 +565,24 @@ export function mergeAndRankResults(results: SearchResult[], query: string, limi
   return diverse.slice(0, limit);
 }
 
-export function buildContext(results: SearchResult[], budgetChars: number): string {
+/**
+ * Every result's whole page text (or its snippet when the page was not read),
+ * paragraphs and lists kept — no character budget, nothing cut.
+ */
+export function buildContext(results: SearchResult[]): string {
   const blocks: string[] = [];
-  let used = 0;
-
   for (let i = 0; i < results.length; i += 1) {
     const result = results[i];
-    const content = normalizeWhitespace((result.full_content || '').trim()) || normalizeWhitespace(result.snippet);
+    const content = cleanText(result.full_content || '').replace(/\n{3,}/g, '\n\n') || normalizeWhitespace(result.snippet);
     if (!content) continue;
-
-    const block = [
+    blocks.push([
       `## [${i + 1}] ${result.title || 'Untitled result'}`,
       result.url ? `URL: ${result.url}` : null,
       result.provider ? `Provider: ${providerDisplayName(result.provider)}` : null,
       Number.isFinite(result.score) ? `Score: ${Number(result.score).toFixed(2)}` : null,
       content
-    ].filter(Boolean).join('\n\n');
-
-    if (blocks.length && used + block.length > budgetChars) break;
-    blocks.push(block.slice(0, Math.max(1200, budgetChars)));
-    used += block.length + 24;
+    ].filter(Boolean).join('\n\n'));
   }
-
   return blocks.join('\n\n---\n\n');
 }
 

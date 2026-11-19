@@ -850,10 +850,27 @@ const handlers: Record<string, (args?: Record<string, unknown>) => unknown> = {
     smart_compaction: true,
     compaction_model: null,
     max_parallel_subagents: 8,
-    subagent_models: {},
+    subagents: {
+      orchestrator_picks: true,
+      models: [
+        { name: 'scout', provider: 'openrouter', model: 'qwen/qwen3-coder:free', use_for: 'Fast codebase searches and reading docs. Never edits.' },
+        { name: 'builder', provider: 'deepseek', model: 'deepseek-pro', use_for: 'Multi-file edits and refactors that need care.' }
+      ],
+      default_model: 'scout'
+    },
     allow_media: ['image', 'audio', 'video']
   }),
-  agente_subagent_model: () => ({ ok: true }),
+  agente_subagent_settings: () => ({ ok: true }),
+  agente_board: (args?: Record<string, unknown>) => ({
+    enabled: args?.action !== 'disable',
+    cards: [
+      { id: 'c1', title: 'Map the parser', role: 'Code mapper', capability: 'read-only', model: 'scout', prompt: '', status: 'done', result: 'Parser lives in src/parser; three entry points.' },
+      { id: 'c2', title: 'Refactor tokenizer', role: 'Refactorer', capability: 'read-write', model: 'builder', prompt: '', status: 'working', depends_on: ['c1'], owns: ['src/parser/lexer.rs'], child_id: 'child-2' },
+      { id: 'c3', title: 'Speed up AST walk', role: 'Performance engineer', capability: 'read-write', model: 'builder', prompt: '', status: 'review', depends_on: ['c1'], owns: ['src/parser/ast.rs'], result: 'Walk is 2.1× faster; tests pass.' },
+      { id: 'c4', title: 'Write parser tests', role: 'Test writer', capability: 'read-write', model: 'scout', prompt: '', status: 'backlog', depends_on: ['c2', 'c3'], owns: ['tests/parser.rs'] },
+      { id: 'c5', title: 'Update docs', role: 'Docs writer', capability: 'read-write', model: 'scout', prompt: '', status: 'failed', owns: ['docs/parser.md'], result: 'Rate limited by OpenRouter.' }
+    ]
+  }),
   agente_git_branches: () => ({
     source: 'git',
     current: 'main',

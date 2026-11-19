@@ -494,6 +494,19 @@ impl Connection {
                     .map_err(runtime_failure)?;
                 Ok(runtime.provider_status())
             }
+            // Desktop's Settings → Search, handed to the core's `web_search`
+            // (`web.json` + the keys in `auth.json`), so the Code space and
+            // the TUI search where Desktop does.
+            "web.sync" => {
+                let sync: agente_core::tools::web::settings::WebSync = parse(params)?;
+                let provider = sync.apply().map_err(|error| {
+                    (
+                        rpc::INTERNAL_ERROR,
+                        format!("Could not save web search settings: {error}"),
+                    )
+                })?;
+                Ok(json!({ "provider": provider.id() }))
+            }
             "models.catalog" => {
                 #[derive(Deserialize)]
                 struct Params {
@@ -587,6 +600,35 @@ impl Connection {
                     .put(session_id.as_uuid(), &goal)
                     .map_err(|error| (rpc::INTERNAL_ERROR, error.to_string()))?;
                 to_json(goal)
+            }
+            "board.get" => {
+                let SessionParams { session_id } = parse(params)?;
+                let board = agente_core::swarm::BoardStore::user()
+                    .get(session_id.as_uuid())
+                    .map_err(|error| (rpc::INTERNAL_ERROR, error.to_string()))?;
+                to_json(board)
+            }
+            "board.enable" => {
+                #[derive(Deserialize)]
+                struct EnableParams {
+                    session_id: SessionId,
+                    enabled: bool,
+                }
+                let EnableParams {
+                    session_id,
+                    enabled,
+                } = parse(params)?;
+                let board = agente_core::swarm::BoardStore::user()
+                    .set_enabled(session_id.as_uuid(), enabled)
+                    .map_err(|error| (rpc::INTERNAL_ERROR, error))?;
+                to_json(board)
+            }
+            "board.clear" => {
+                let SessionParams { session_id } = parse(params)?;
+                let board = agente_core::swarm::BoardStore::user()
+                    .clear(session_id.as_uuid())
+                    .map_err(|error| (rpc::INTERNAL_ERROR, error))?;
+                to_json(board)
             }
             "goal.clear" => {
                 let SessionParams { session_id } = parse(params)?;

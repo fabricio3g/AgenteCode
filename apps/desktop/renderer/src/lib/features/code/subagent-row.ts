@@ -10,6 +10,17 @@ import type { AgentStep } from '$lib/types/chat';
 import type { CodeChild } from '$shared/agente-protocol';
 import { toolKind } from '$shared/tool-kinds';
 import { titleCaseToolName } from '$lib/utils/tool-ui';
+import { shortModel } from '$lib/utils/format';
+
+/**
+ * How a card names a child's model: `scout · qwen3-coder:free` when it came
+ * from the user's subagent model list, the short model alone otherwise.
+ */
+export function childModelLabel(child: Pick<CodeChild, 'model' | 'seat'>): string {
+  const model = shortModel(child.model);
+  if (!child.seat) return model;
+  return model ? `${child.seat} · ${model}` : child.seat;
+}
 
 /**
  * The `task` step a newly appeared child belongs to, or `undefined`.

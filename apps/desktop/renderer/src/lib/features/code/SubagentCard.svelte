@@ -27,13 +27,12 @@
   import RichContent from '$lib/ui/components/RichContent.svelte';
   import { writeToClipboard } from '$lib/utils/clipboard';
   import { formatToolDuration, titleCaseToolName } from '$lib/utils/tool-ui';
-  import { shortModel } from '$lib/utils/format';
   import ClampedBlock from './ClampedBlock.svelte';
   import CodeStepRow from './CodeStepRow.svelte';
   import CodeErrorNotice from './CodeErrorNotice.svelte';
   import Disclosure from './Disclosure.svelte';
   import TileMeter from '$lib/components/ui/TileMeter.svelte';
-  import { childActivity, childElapsedMs } from './subagent-row';
+  import { childActivity, childElapsedMs, childModelLabel } from './subagent-row';
   import { spendCostLabel, spendLabel } from './accounting';
 
   let {
@@ -159,7 +158,7 @@
     {#if toolCount || child.model || spendDetail || cost}
       <div class="foot min-w-0">
         {#if toolCount}<span class="tabular-nums">{$t('code.subagent.tools', { values: { n: toolCount } })}</span>{/if}
-        {#if child.model}<span class="model min-w-0 truncate" title={child.model}>{shortModel(child.model)}</span>{/if}
+        {#if child.model}<span class="model min-w-0 truncate" title={child.model}>{childModelLabel(child)}</span>{/if}
         {#if spendDetail}<span class="tabular-nums">{spendDetail}</span>{:else if cost}<span class="tabular-nums">{cost}</span>{/if}
       </div>
     {/if}

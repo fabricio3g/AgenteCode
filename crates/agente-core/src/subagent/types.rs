@@ -54,10 +54,6 @@ impl SubagentIsolation {
     }
 }
 
-fn default_subagent_type() -> String {
-    "general-purpose".to_string()
-}
-
 /// Input of the `task` tool (spawns a subagent).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SubagentSpawnRequest {
@@ -65,16 +61,20 @@ pub struct SubagentSpawnRequest {
     pub prompt: String,
     /// Short description of the task (3-5 words).
     pub description: String,
-    /// Name of the subagent type to launch. Built-in types:
-    /// "general-purpose", "explore", "plan". Additional user-defined types
-    /// from `.agente/agents/*.md` may also be available.
-    #[serde(
-        default = "default_subagent_type",
-        alias = "type",
-        alias = "agent",
-        alias = "agent_type"
-    )]
+    /// One of the user's own agents (`.agente/agents/*.md`) to launch by
+    /// name. Usually empty: the parent creates the subagent from `role`.
+    /// There are no predetermined subagents.
+    #[serde(default, alias = "type", alias = "agent", alias = "agent_type")]
     pub subagent_type: String,
+    /// Create the subagent for this task: who it is, in a few words
+    /// ("Security reviewer"). Shown on its card. Read-only unless
+    /// `capability_mode` says otherwise. With one of the user's agents it
+    /// sharpens that agent instead.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub role: Option<String>,
+    /// How the created subagent should work, beyond the task prompt.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub instructions: Option<String>,
     /// When true, returns immediately with a `task_id`; the completion is
     /// pushed automatically when no poll is outstanding, or fetched with
     /// `task_output`. When false, blocks until the subagent finishes. Absent
@@ -114,19 +114,55 @@ pub struct SubagentSpawnRequest {
     /// subagent type.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub resume_from: Option<String>,
+    /// A name from the user's subagent model list (or `main`). Only offered
+    /// when the user lets the orchestrator pick; see `subagent::routing`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
     /// Server-injected before execution. Becomes the subagent's id.
     #[serde(skip)]
     pub task_id: Option<String>,
 }
 
 impl SubagentSpawnRequest {
+    /// Settle what the parent left out: trimmed fields, empty strings as
+    /// absent, and the task's description as the role when it named neither
+    /// a role nor one of the user's agents. Run once, before anything reads
+    /// the request.
+    pub fn normalize(&mut self) {
+        let clean = |value: &mut Option<String>| {
+            *value = value
+                .take()
+                .map(|text| text.trim().to_string())
+                .filter(|text| !text.is_empty());
+        };
+        clean(&mut self.role);
+        clean(&mut self.instructions);
+        self.subagent_type = self.subagent_type.trim().to_string();
+        if self.subagent_type.is_empty() && self.role.is_none() {
+            let description = self.description.trim();
+            self.role = Some(if description.is_empty() {
+                "Subagent".to_string()
+            } else {
+                description.to_string()
+            });
+        }
+    }
+
+    /// True when the parent creates the child (no user agent named).
+    pub fn is_created(&self) -> bool {
+        self.subagent_type.is_empty()
+    }
+
     /// Resolve the effective background flag. An explicit choice always wins;
-    /// otherwise research types (explore/plan) run inline because the parent
-    /// needs their result to continue, and everything else runs in the
+    /// otherwise a read-only child — research whose answer the parent needs
+    /// to continue — runs inline, and one that may change things runs in the
+    /// background. A user agent with no capability named runs in the
     /// background.
     pub fn resolved_run_in_background(&self) -> bool {
-        self.run_in_background
-            .unwrap_or(self.subagent_type != "explore" && self.subagent_type != "plan")
+        self.run_in_background.unwrap_or_else(|| match self.capability_mode {
+            Some(mode) => mode != SubagentCapabilityMode::ReadOnly,
+            None => !self.is_created(),
+        })
     }
 }
 
@@ -172,6 +208,13 @@ pub struct SubagentSnapshot {
     /// Transcript kept for `resume_from` (bounded).
     pub conversation: Vec<Message>,
     pub model: String,
+    /// The subagent model list name the child runs on (`None`: the parent's
+    /// model, or an agent file's `provider/model`).
+    pub seat: Option<String>,
+    /// Provider and thinking level it runs at, kept so a resume continues
+    /// on the same route.
+    pub provider: String,
+    pub thinking: String,
     /// Nesting depth (parent = 0).
     pub depth: u32,
     /// True when spawned with `run_in_background`: the parent does not block
@@ -185,6 +228,23 @@ pub struct SubagentSnapshot {
     /// Isolation checkout when the child ran in a worktree. `dirty` flips once
     /// the child changed anything past the seeded parent state.
     pub worktree: Option<crate::subagent::worktree::WorktreeInfo>,
+}
+
+impl SubagentSnapshot {
+    /// What a card names the model by: `scout · qwen3-coder:free` when it
+    /// came from the user's list, the bare model otherwise.
+    pub fn model_label(&self) -> String {
+        model_label(self.seat.as_deref(), &self.model)
+    }
+}
+
+/// `seat · model`, or `model` alone without a list name.
+pub fn model_label(seat: Option<&str>, model: &str) -> String {
+    match seat.filter(|s| !s.is_empty()) {
+        Some(seat) if !model.is_empty() => format!("{seat} \u{b7} {model}"),
+        Some(seat) => seat.to_string(),
+        None => model.to_string(),
+    }
 }
 
 /// Render the push completion notice for a background child no waiter

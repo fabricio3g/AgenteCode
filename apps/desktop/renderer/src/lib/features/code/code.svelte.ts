@@ -390,6 +390,11 @@ class CodeStore {
     return this.runs[chatId] ?? null;
   }
 
+  /** The engine session a chat runs in, once it has one. */
+  sessionIdFor(chatId: string): string | undefined {
+    return this.#sessionIds.get(chatId) ?? (appStore.chats.find((chat) => chat.id === chatId)?.codeAgent?.sessionId || undefined);
+  }
+
   todosFor(chat: ChatSession) {
     const run = this.runFor(chat.id);
     return run?.running ? run.todos : conversationTodos(chat.messages);

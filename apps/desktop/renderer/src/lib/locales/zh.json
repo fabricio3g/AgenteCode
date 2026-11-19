@@ -409,6 +409,29 @@
     "refresh": "刷新"
   },
   "code": {
+    "swarm": {
+      "board": "看板",
+      "mode": "蜂群模式",
+      "short": "蜂群",
+      "brief": "智能体把大型工作规划成看板，并创建子智能体来完成",
+      "onHint": "智能体在这里规划大型工作，并为每张卡片创建一个子智能体。",
+      "offHint": "开启后，智能体会把工作规划成看板交给子智能体。",
+      "emptyOn": "还没有卡片。提出一个大任务：智能体会在这里规划，由它的子智能体完成。",
+      "emptyOff": "蜂群模式已关闭。开启后，智能体会把大型工作拆成卡片，每张由它创建的子智能体完成。",
+      "cards": "{n, plural, other {# 张卡片}}",
+      "working": "{n} 进行中",
+      "toReview": "{n} 待审阅",
+      "failed": "{n} 失败",
+      "column": {
+        "backlog": "待办",
+        "working": "进行中",
+        "review": "审阅",
+        "done": "完成"
+      },
+      "waitsFor": "等待 {cards}",
+      "openCard": "打开其子智能体",
+      "clear": "清空看板"
+    },
     "traceCopyInput": "复制输入",
     "traceCopyOutput": "复制输出",
     "traceCopyCommand": "复制命令",
@@ -642,7 +665,7 @@
       },
       "subagents": {
         "label": "子代理",
-        "hint": "内置和项目的子代理及其模型"
+        "hint": "智能体可为其创建的子智能体使用的模型"
       },
       "mcp": {
         "label": "MCP 服务器",
@@ -693,14 +716,29 @@
         "empty": "这个项目还没有技能或自定义命令。"
       },
       "agents": {
-        "title": "子代理",
-        "hint": "代理可以分派工作的帮手，以及各自使用的模型。",
-        "all": "所有子代理",
-        "inherit": "使用对话的模型",
-        "useModel": "使用当前模型",
-        "reset": "重置",
-        "defaultName": "All subagents",
-        "defaultHint": "Used by any type below that has no model of its own. Unset follows the chat."
+        "title": "子智能体模型",
+        "hint": "智能体会为任务创建子智能体，并阅读你的说明从这些模型中选择。",
+        "useFor": "用途",
+        "useForPlaceholder": "它擅长什么？智能体会读这段来选择 — 例如：快速搜索，从不编辑",
+        "add": "添加模型",
+        "remove": "移除模型",
+        "picks": "让智能体选择",
+        "mainModel": "对话的模型",
+        "chooseModel": "选择模型",
+        "model": "模型",
+        "done": "完成",
+        "edit": "编辑 {name}",
+        "free": "免费",
+        "noNote": "还没有说明：写下这个模型的用途。",
+        "defaultChip": "默认",
+        "defaultModel": "默认模型",
+        "name": "名称",
+        "makeDefault": "将 {name} 设为默认",
+        "draft": "新模型",
+        "needsModel": "选择一个模型后才会保存。",
+        "mainModelHint": "聊天正在使用的模型。",
+        "picksOn": "智能体根据你的说明从此列表中选择；未选择时使用默认值。",
+        "picksOff": "所有子智能体都使用默认值。"
       },
       "mcp": {
         "title": "MCP 服务器",

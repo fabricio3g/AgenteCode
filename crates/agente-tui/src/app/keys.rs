@@ -177,6 +177,7 @@ impl App {
             | ModalOwner::Subagents
             | ModalOwner::SubagentDetail
             | ModalOwner::SubagentModels
+            | ModalOwner::Board
             | ModalOwner::Settings
             | ModalOwner::Skills
             | ModalOwner::Mcp
@@ -500,6 +501,15 @@ impl App {
             }
             ModalOwner::Mcp => {
                 self.handle_mcp_key(key)?;
+                return Ok(true);
+            }
+            ModalOwner::Board => {
+                match key.code {
+                    KeyCode::Esc => self.state.input.show_board = false,
+                    KeyCode::Char('s') => self.state.toggle_swarm(),
+                    _ => {}
+                }
+                self.state.ui.needs_render = true;
                 return Ok(true);
             }
             ModalOwner::MediaConsent => {
@@ -1397,6 +1407,12 @@ impl App {
                 Setting::Theme => {
                     self.execute_command(crate::command_palette::Command::ToggleTheme)?
                 }
+                Setting::WebSearch => {
+                    let message = match crate::settings::cycle_web_search() {
+                        Ok(message) | Err(message) => message,
+                    };
+                    self.state.ui.show_toast(message);
+                }
                 Setting::SubagentModels => {
                     self.execute_command(crate::command_palette::Command::SubagentModels)?;
                 }
@@ -1499,55 +1515,85 @@ impl App {
         Ok(())
     }
 
-    /// Keys for `/subagent-models`: move, Enter opens the model picker for the
-    /// row, Del/Backspace resets it to inherit, Esc closes.
+    /// Keys for `/subagent-models`. While a name or note is being typed,
+    /// keys edit it (Enter saves, Esc cancels). Otherwise: move; Space makes
+    /// a model (or the conversation's) the default; on a model, Enter
+    /// re-picks it, `u` edits its note, `n` renames, Del removes it; Enter
+    /// adds a model or flips whether the agent picks; Esc closes.
     fn handle_subagent_models_key(&mut self, key: KeyEvent) -> anyhow::Result<()> {
-        let input = &mut self.state.input;
-        let last = input.subagent_model_types.len().saturating_sub(1);
-        match key.code {
-            KeyCode::Esc => input.show_subagent_models = false,
-            KeyCode::Up => {
-                input.subagent_models_selected = input.subagent_models_selected.saturating_sub(1)
-            }
-            KeyCode::Down => {
-                input.subagent_models_selected = (input.subagent_models_selected + 1).min(last)
-            }
-            KeyCode::Enter => {
-                if let Some(target) = input
-                    .subagent_model_types
-                    .get(input.subagent_models_selected)
-                    .cloned()
-                {
-                    if self.state.is_connected() {
-                        self.state.input.model_selector_target = Some(target);
-                        self.state.input.show_model_selector = true;
-                        self.state.input.model_selector_query.clear();
-                        self.state.input.model_selector_selected = 0;
-                    } else {
-                        self.state.open_connect_screen();
-                    }
+        use crate::subagent_models::{self as dialog, Edit, EditField, ModelTarget, Row};
+        self.state.ui.needs_render = true;
+
+        if let Some(mut edit) = self.state.input.subagent_model_edit.take() {
+            match key.code {
+                KeyCode::Esc => {}
+                KeyCode::Enter => {
+                    dialog::commit_edit(&mut self.state.config.config.subagents, &edit);
+                    self.state.persist_config();
                 }
-            }
-            KeyCode::Delete | KeyCode::Backspace => {
-                if let Some(target) = input
-                    .subagent_model_types
-                    .get(input.subagent_models_selected)
-                {
-                    if self
-                        .state
-                        .config
-                        .config
-                        .subagent_models
-                        .remove(target.as_str())
-                        .is_some()
-                    {
-                        self.state.persist_config();
-                    }
+                KeyCode::Backspace => {
+                    edit.text.pop();
+                    self.state.input.subagent_model_edit = Some(edit);
                 }
+                KeyCode::Char(c) if !key.modifiers.contains(KeyModifiers::CONTROL) => {
+                    edit.text.push(c);
+                    self.state.input.subagent_model_edit = Some(edit);
+                }
+                _ => self.state.input.subagent_model_edit = Some(edit),
+            }
+            return Ok(());
+        }
+
+        let rows = dialog::rows(&self.state.config.config.subagents);
+        let last = rows.len().saturating_sub(1);
+        let selected = self.state.input.subagent_models_selected.min(last);
+        let row = rows.get(selected).copied();
+        let open_picker = |app: &mut Self, target: ModelTarget| {
+            if app.state.is_connected() {
+                app.state.input.model_selector_target = Some(target);
+                app.state.input.show_model_selector = true;
+                app.state.input.model_selector_query.clear();
+                app.state.input.model_selector_selected = 0;
+            } else {
+                app.state.open_connect_screen();
+            }
+        };
+        let mut changed = false;
+        match (key.code, row) {
+            (KeyCode::Esc, _) => self.state.input.show_subagent_models = false,
+            (KeyCode::Up, _) => self.state.input.subagent_models_selected = selected.saturating_sub(1),
+            (KeyCode::Down, _) => self.state.input.subagent_models_selected = (selected + 1).min(last),
+            (KeyCode::Enter, Some(Row::Entry(index))) => open_picker(self, ModelTarget::Entry(index)),
+            (KeyCode::Enter, Some(Row::Add)) => open_picker(self, ModelTarget::New),
+            (KeyCode::Char(' '), Some(row @ (Row::Entry(_) | Row::Main)))
+            | (KeyCode::Enter, Some(row @ Row::Main)) => {
+                dialog::set_default(&mut self.state.config.config.subagents, row);
+                changed = true;
+            }
+            (KeyCode::Enter | KeyCode::Char(' '), Some(Row::Picks)) => {
+                let settings = &mut self.state.config.config.subagents;
+                // Off is the change worth saving; on is the unset default.
+                settings.orchestrator_picks = settings.picks().then_some(false);
+                changed = true;
+            }
+            (KeyCode::Char(c @ ('u' | 'n')), Some(Row::Entry(index))) => {
+                let entry = &self.state.config.config.subagents.models[index];
+                let (field, text) = if c == 'u' {
+                    (EditField::Note, entry.use_for.clone())
+                } else {
+                    (EditField::Name, entry.name.clone())
+                };
+                self.state.input.subagent_model_edit = Some(Edit { index, field, text });
+            }
+            (KeyCode::Delete | KeyCode::Backspace, Some(Row::Entry(index))) => {
+                dialog::remove(&mut self.state.config.config.subagents, index);
+                changed = true;
             }
             _ => {}
         }
-        self.state.ui.needs_render = true;
+        if changed {
+            self.state.persist_config();
+        }
         Ok(())
     }
 
@@ -1599,16 +1645,10 @@ impl App {
                     filtered.get(self.state.input.model_selector_selected),
                     self.state.input.model_selector_target.take(),
                 ) {
-                    // Choosing for a subagent type: store the override, go
-                    // back to the subagent models dialog.
-                    self.state.config.config.subagent_models.insert(
-                        target,
-                        agente_core::config::SubagentModel {
-                            provider: entry.provider.clone(),
-                            model: entry.model_id.clone(),
-                            thinking: None,
-                        },
-                    );
+                    // Choosing for the subagent model list: store it, go
+                    // back to the dialog.
+                    let (provider, model) = (entry.provider.clone(), entry.model_id.clone());
+                    crate::subagent_models::apply_pick(&mut self.state, target, &provider, &model);
                     self.state.input.show_model_selector = false;
                     self.state.persist_config();
                 } else if let Some(entry) = filtered.get(self.state.input.model_selector_selected) {
@@ -3421,6 +3461,7 @@ mod tests {
             subagent_type: "explore".into(),
             description: "look around".into(),
             model: "test-model".into(),
+            seat: None,
         });
         let call = |cost, subagent_id: Option<&str>| AgentEvent::CallUsage {
             prompt_tokens: 100,

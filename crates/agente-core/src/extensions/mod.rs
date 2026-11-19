@@ -35,6 +35,9 @@ pub struct AgentProfile {
     /// won't pick it from the `task` description) while leaving direct
     /// spawns by name working — internal helpers, not ambient choice.
     pub hidden: bool,
+    /// `model:` frontmatter: a name from the subagent model list,
+    /// `provider/model`, or `main`. Absent = no preference.
+    pub model: Option<String>,
 }
 
 /// Discover custom slash commands from project + user config dirs.
@@ -113,16 +116,16 @@ fn load_command(path: &Path) -> anyhow::Result<CustomCommand> {
 
 fn load_agent(path: &Path) -> anyhow::Result<AgentProfile> {
     let raw = std::fs::read_to_string(path)?;
-    let (meta, body) = split_frontmatter(&raw);
-    let name = meta
-        .get("name")
-        .cloned()
-        .or_else(|| {
-            path.file_stem()
-                .and_then(|s| s.to_str())
-                .map(|s| s.to_string())
-        })
-        .unwrap_or_else(|| "agent".into());
+    let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("agent");
+    Ok(parse_agent(&raw, stem))
+}
+
+/// Parse an agent file (`---` frontmatter + prompt body). Shared by the
+/// files on disk and the built-in agents bundled with the binary, so both
+/// read the same fields the same way. `fallback_name` names a file without
+/// a `name:` key.
+pub fn parse_agent(raw: &str, fallback_name: &str) -> AgentProfile {
+    let (meta, body) = split_frontmatter(raw);
     let tools = meta
         .get("tools")
         .map(|s| {
@@ -132,8 +135,11 @@ fn load_agent(path: &Path) -> anyhow::Result<AgentProfile> {
                 .collect()
         })
         .unwrap_or_default();
-    Ok(AgentProfile {
-        name,
+    AgentProfile {
+        name: meta
+            .get("name")
+            .cloned()
+            .unwrap_or_else(|| fallback_name.to_string()),
         description: meta
             .get("description")
             .cloned()
@@ -142,7 +148,11 @@ fn load_agent(path: &Path) -> anyhow::Result<AgentProfile> {
         tools,
         capability: meta.get("capability").cloned(),
         hidden: truthy(meta.get("hidden")),
-    })
+        model: meta
+            .get("model")
+            .map(|m| m.trim().to_string())
+            .filter(|m| !m.is_empty() && m != "inherit"),
+    }
 }
 
 /// Lenient YAML-ish frontmatter parser for the block between `---` lines.

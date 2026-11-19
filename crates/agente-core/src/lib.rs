@@ -8,6 +8,7 @@ pub mod context;
 pub mod extensions;
 #[cfg(feature = "execution")]
 pub mod goal;
+pub mod swarm;
 pub mod llm;
 #[cfg(feature = "execution")]
 pub mod lsp;

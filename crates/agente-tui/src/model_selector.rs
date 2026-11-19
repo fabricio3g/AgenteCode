@@ -107,8 +107,8 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
             DiscoveryStatus::Failed(error) => Some(error.as_str()),
             _ => None,
         });
-    let title = match state.input.model_selector_target.as_deref() {
-        Some(target) => format!("Model for {}", crate::subagent_models::type_label(target)),
+    let title = match state.input.model_selector_target {
+        Some(target) => crate::subagent_models::target_title(state, target),
         None => "Switch model".to_string(),
     };
     let mut title_spans = vec![s(title, style::bold())];
@@ -266,15 +266,10 @@ fn render_input(frame: &mut Frame, area: Rect, state: &AppState) {
 }
 
 /// The `(provider, model)` the picker marks with `◈`: the main model, or
-/// the chosen subagent type's override when picking for one.
+/// the subagent model it is choosing for.
 fn model_in_effect(state: &AppState) -> Option<(&str, &str)> {
-    match state.input.model_selector_target.as_deref() {
-        Some(target) => state
-            .config
-            .config
-            .subagent_models
-            .get(target)
-            .map(|m| (m.provider.as_str(), m.model.as_str())),
+    match state.input.model_selector_target {
+        Some(target) => crate::subagent_models::target_model(state, target),
         None => (!state.config.current_model.is_empty()).then_some((
             state.config.current_provider.as_str(),
             state.config.current_model.as_str(),

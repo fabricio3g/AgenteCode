@@ -109,6 +109,9 @@ impl App {
 
         tracing::info!(session_id = %self.state.session.session_id, task_id = self.current_task_id, provider = %provider_id, model = %model, mode = ?mode, "Sending message to chat task");
 
+        // The board may have been switched on elsewhere (Desktop, a resumed
+        // session): the status row's `+ swarm` follows the store.
+        self.state.refresh_board();
         let task_handle = spawn_chat_task(
             self.state.session.session_id,
             self.current_task_id,
@@ -126,7 +129,7 @@ impl App {
             self.approval_broker.clone(),
             Some(Arc::clone(&self.state.config.mcp_manager)),
             self.state.subagent_registry.clone(),
-            self.state.config.config.subagent_models.clone(),
+            self.state.config.config.subagent_settings(),
             self.state.config.config.smart_compaction,
             self.state.config.config.compaction_model.clone(),
             // The tokenizer gap the loop learned last turn: the first request

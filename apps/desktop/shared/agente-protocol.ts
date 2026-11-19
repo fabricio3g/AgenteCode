@@ -112,10 +112,61 @@ export interface CodeChild {
   /** When the child reached a terminal state; stamped by the renderer. */
   finishedAt?: number;
   /**
-   * The model the runtime resolved for this child at spawn: the parent's, or
-   * the `subagent_models` override for its type. Only the runtime knows it.
+   * The model the runtime routed this child to at spawn: one from the user's
+   * subagent model list, the parent's own, or an agent file's. Only the
+   * runtime knows it.
    */
   model?: string;
+  /** The user's name for that model on their subagent model list. */
+  seat?: string;
+}
+
+/** Where a swarm card is (`agente_core::swarm::CardStatus`). */
+export type SwarmCardStatus = 'backlog' | 'working' | 'review' | 'done' | 'failed';
+
+/** One card of the swarm board: a piece of work and the subagent created for it. */
+export interface SwarmCard {
+  id: string;
+  title: string;
+  role: string;
+  instructions?: string;
+  capability: 'read-only' | 'read-write' | 'execute' | 'all';
+  model?: string;
+  prompt: string;
+  depends_on?: string[];
+  owns?: string[];
+  status: SwarmCardStatus;
+  child_id?: string;
+  result?: string;
+  notes?: string[];
+}
+
+/** A session's swarm board (`agente_core::swarm::Board`); `enabled` is the swarm switch. */
+export interface SwarmBoard {
+  enabled: boolean;
+  cards: SwarmCard[];
+}
+
+/** One model the user offers to subagents, under the name the orchestrator picks it by. */
+export interface SubagentModelEntry {
+  name: string;
+  provider: string;
+  model: string;
+  thinking?: string;
+  /** The user's note on when to use it; the orchestrator reads it. */
+  use_for?: string;
+}
+
+/**
+ * The runtime's `subagents` setting (`config::SubagentSettings`): the model
+ * list in display order, the model a subagent runs on when the agent picks
+ * none (a list name or `main`; unset = the main model), and whether the agent
+ * may pick per spawn (unset = yes).
+ */
+export interface SubagentSettings {
+  orchestrator_picks?: boolean;
+  models?: SubagentModelEntry[];
+  default_model?: string;
 }
 
 /** One file a turn produced, by reference — the bytes stay behind the wire. */
@@ -182,6 +233,7 @@ export type CodeAgentEvent =
   | { type: 'llm_retry'; chatId: string; attempt: number; delayMs: number; discardPartial?: boolean }
   | { type: 'length_continue'; chatId: string; turnIndex: number }
   | { type: 'todo_update'; chatId: string; todos: CodeTodoItem[] }
+  | { type: 'board_update'; chatId: string; board: SwarmBoard }
   | { type: 'compaction_start'; chatId: string; reason: string; model?: string | null }
   | { type: 'compaction_end'; chatId: string; reason: string; success: boolean; tokensBefore?: number; tokensAfter?: number; summary?: string; smart?: boolean; requestedSmart?: boolean; modelTokens?: number; inputTokens?: number; outputTokens?: number; cacheReadTokens?: number; cacheWriteTokens?: number }
   | { type: 'approval_request'; chatId: string; requestId: string; toolName: string; args: unknown; diff?: string; kind?: 'action' | 'plan'; dangerous?: boolean; reason?: string }

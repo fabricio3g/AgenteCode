@@ -2,10 +2,12 @@ import { APP_USER_AGENT } from '../shared/brand.ts';
 import { Readability } from '@mozilla/readability';
 import { parseHTML } from 'linkedom';
 import { normalizeWhitespace, cleanText } from './search-providers/shared.ts';
+import { elementToMarkdown, pickContentRoot, removeNoise } from './html-markdown.ts';
 
 const DEFAULT_TIMEOUT_MS = 10000;
-const DEFAULT_MAX_LENGTH = 50000;
 const DEFAULT_MAX_LINKS = 120;
+/** Sites answer an unknown agent with a bot wall; ask the way a browser does. */
+const BROWSER_USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 const THIN_CONTENT_CHARS = 700;
 /** Cap remote binary downloads (PDF/DOCX) to reduce abuse risk. */
 const DEFAULT_MAX_DOWNLOAD_BYTES = 12 * 1024 * 1024;
@@ -17,15 +19,26 @@ export function clampNumber(value, min, max, fallback) {
   return Math.max(min, Math.min(num, max));
 }
 
-/** Collapse whitespace / nulls so LLM context uses fewer tokens. */
-export function compactExtractedText(text, maxLength = DEFAULT_MAX_LENGTH) {
-  const safeMax = clampNumber(maxLength, 64, 200000, DEFAULT_MAX_LENGTH);
-  return cleanText(String(text || ''))
+/** A caller's character limit, or undefined: the whole text (the default). */
+function optionalLimit(value) {
+  if (value == null || value === '') return undefined;
+  const num = Number(value);
+  return Number.isFinite(num) && num > 0 ? Math.max(64, Math.floor(num)) : undefined;
+}
+
+/**
+ * Collapse runs of spaces, blank lines and NULs in text pulled out of a PDF,
+ * Word file or plain-text page. The whole text is kept unless the caller
+ * passes its own `maxLength`.
+ */
+export function compactExtractedText(text, maxLength = undefined) {
+  const limit = optionalLimit(maxLength);
+  const compact = cleanText(String(text || ''))
     .replace(/[ \t]+\n/g, '\n')
     .replace(/\n{3,}/g, '\n\n')
     .replace(/[ \t]{2,}/g, ' ')
-    .trim()
-    .slice(0, safeMax);
+    .trim();
+  return limit ? compact.slice(0, limit) : compact;
 }
 
 function isPrivateOrLocalIpv4(hostname) {
@@ -132,7 +145,7 @@ function hasUsableExtractedText(text) {
   return wordMatches.length >= 20;
 }
 
-async function extractPdfTextFromBuffer(buffer, maxLength = DEFAULT_MAX_LENGTH) {
+async function extractPdfTextFromBuffer(buffer, maxLength = undefined) {
   const pdfParse = (await import('pdf-parse')).default;
   const data = await pdfParse(Buffer.from(buffer));
   const text = compactExtractedText(data?.text || '', maxLength);
@@ -147,7 +160,7 @@ async function extractPdfTextFromBuffer(buffer, maxLength = DEFAULT_MAX_LENGTH) 
   };
 }
 
-async function extractDocxTextFromBuffer(buffer, maxLength = DEFAULT_MAX_LENGTH) {
+async function extractDocxTextFromBuffer(buffer, maxLength = undefined) {
   const mammoth = await import('mammoth');
   const extract = mammoth.default?.extractRawText || mammoth.extractRawText;
   const result = await extract({ buffer: Buffer.from(buffer) });
@@ -181,7 +194,7 @@ function documentResult({
     length: text.length,
     document_kind: kind,
     pages,
-    truncated: text.length >= clampNumber(maxLength, 500, 200000, DEFAULT_MAX_LENGTH)
+    truncated: !!optionalLimit(maxLength) && text.length >= optionalLimit(maxLength)
   };
   const quality = classifyScrapeQuality({ ...result, warning });
   return {
@@ -330,61 +343,31 @@ function extractLinks(document, baseUrl, maxLinks = DEFAULT_MAX_LINKS) {
   return links;
 }
 
-function htmlToStructuredText(htmlFragment, maxLength = DEFAULT_MAX_LENGTH) {
-  const { document: doc } = parseHTML(String(htmlFragment || ''));
-  const root = doc.body || doc.documentElement;
-  if (!root) return '';
-  const parts = [];
-
-  function walk(node) {
-    for (const child of node.childNodes) {
-      if (child.nodeType === 3) {
-        const t = normalizeWhitespace(child.textContent);
-        if (t) parts.push(t);
-      } else if (child.nodeType === 1) {
-        const tag = child.tagName.toLowerCase();
-        if (/^h[1-6]$/.test(tag)) {
-          const level = Math.min(Number(tag[1]), 4);
-          parts.push('\n\n' + '#'.repeat(level) + ' ' + normalizeWhitespace(child.textContent) + '\n\n');
-        } else if (tag === 'p') {
-          parts.push('\n\n');
-          walk(child);
-          parts.push('\n\n');
-        } else if (tag === 'li') {
-          parts.push('\n- ' + normalizeWhitespace(child.textContent));
-        } else if (tag === 'br') {
-          parts.push('\n');
-        } else if (tag === 'blockquote') {
-          parts.push('\n\n> ');
-          walk(child);
-          parts.push('\n\n');
-        } else {
-          walk(child);
-        }
-      }
-    }
-  }
-
-  walk(root);
-
-  return cleanText(parts.join(''))
-    .replace(/\n{3,}/g, '\n\n')
-    .trim()
-    .slice(0, maxLength);
-}
-
-export function parseHtmlToReadable({ html, url, maxLength = DEFAULT_MAX_LENGTH, maxLinks = DEFAULT_MAX_LINKS }) {
-  const safeMaxLength = clampNumber(maxLength, 1000, 200000, DEFAULT_MAX_LENGTH);
+/**
+ * A page as readable markdown: Mozilla Readability (Firefox's Reader View)
+ * finds the article, `html-markdown.ts` renders it — headings, lists, tables,
+ * code and links, with the spaces between words kept. When Readability finds
+ * no article, the page's own content region is read instead, with menus,
+ * banners and hidden text removed — never the raw text of the whole body,
+ * which carried scripts, styles and navigation. The whole text is returned
+ * unless the caller passes `maxLength`.
+ */
+export function parseHtmlToReadable({ html, url, maxLength = undefined, maxLinks = DEFAULT_MAX_LINKS }) {
+  const limit = optionalLimit(maxLength);
   const safeMaxLinks = clampNumber(maxLinks, 10, 300, DEFAULT_MAX_LINKS);
-  const { document } = parseHTML(String(html || ''));
+  const source = String(html || '');
+  const { document } = parseHTML(source);
 
   const links = extractLinks(document, url, safeMaxLinks);
   const metadata = extractMeta(document);
+  removeNoise(document);
 
   let article = null;
   try {
     const reader = new Readability(document, {
-      keepClasses: false,
+      // Classes carry code languages (`language-js`) and mark share bars and
+      // promos the renderer still drops inside an article.
+      keepClasses: true,
       charThreshold: 120
     });
     article = reader.parse();
@@ -392,55 +375,52 @@ export function parseHtmlToReadable({ html, url, maxLength = DEFAULT_MAX_LENGTH,
     article = null;
   }
 
-  const bodyText = cleanText(document.body?.textContent || '');
   let rawContent = '';
+  let extraction = 'readability';
   if (article?.content) {
-    rawContent = htmlToStructuredText(article.content, safeMaxLength);
+    const { document: articleDocument } = parseHTML(`<!doctype html><html><body>${article.content}</body></html>`);
+    rawContent = articleDocument.body ? elementToMarkdown(articleDocument.body, url) : '';
   }
-  // Fallback: semantic main/article regions when Readability is thin
-  if (!rawContent || rawContent.length < THIN_CONTENT_CHARS) {
-    const semantic =
-      document.querySelector('article')
-      || document.querySelector('main')
-      || document.querySelector('[role="main"]')
-      || document.querySelector('.post-content, .entry-content, .article-body, #content');
-    if (semantic) {
-      const structured = htmlToStructuredText(semantic.innerHTML || semantic.outerHTML || '', safeMaxLength);
-      if (structured.length > rawContent.length) rawContent = structured;
+  if (rawContent.length < THIN_CONTENT_CHARS) {
+    // Readability rewrites the document it parses, so the fallback reads a fresh copy.
+    const { document: copy } = parseHTML(source);
+    removeNoise(copy);
+    const root = pickContentRoot(copy);
+    const fallback = root ? elementToMarkdown(root, url) : '';
+    if (fallback.length > rawContent.length) {
+      rawContent = fallback;
+      extraction = 'fallback';
     }
   }
-  if (!rawContent || rawContent.length < 200) {
-    rawContent = cleanText(article?.textContent || bodyText);
-  }
-  // Prefer Readability article body — smaller, cleaner, fewer tokens for the model.
-  const content = compactExtractedText(rawContent, safeMaxLength);
+
+  const whole = cleanText(rawContent).replace(/\n{3,}/g, '\n\n').trim();
+  const content = limit ? whole.slice(0, limit) : whole;
   const title =
     normalizeWhitespace(article?.title || '')
     || metadata.title
-    || normalizeWhitespace(document.querySelector('title')?.textContent || '')
     || url;
   const excerpt =
     normalizeWhitespace(article?.excerpt || '')
     || metadata.description
-    || content.slice(0, 280);
-
-  // Cap links for agent context: useful for crawl, but not huge payloads
-  const cappedLinks = links.slice(0, safeMaxLinks);
+    || normalizeWhitespace(content.slice(0, 280));
 
   const result = {
     url,
     title,
     excerpt,
     content,
-    links: cappedLinks,
+    links,
     site_name: metadata.site_name || normalizeWhitespace(article?.siteName || ''),
     og_image: metadata.og_image,
     author: metadata.author || '',
     published_at: metadata.published_at || '',
     length: content.length,
+    truncated: content.length < whole.length,
     document_kind: 'html',
-    extraction: article ? 'readability' : 'fallback',
-    warning: article ? undefined : 'Readability could not identify a clean article; returned body text fallback.'
+    extraction,
+    warning: extraction === 'fallback'
+      ? 'Reader View found no article on this page; its main region was read instead.'
+      : undefined
   };
   const quality = classifyScrapeQuality(result);
   return {
@@ -513,7 +493,8 @@ export async function scrapeUrlStructured({
   }
 
   const safeTimeout = clampNumber(timeoutMs, 1000, 60000, DEFAULT_TIMEOUT_MS);
-  const safeMaxLength = clampNumber(maxLength, 1000, 200000, DEFAULT_MAX_LENGTH);
+  // No length budget unless the caller sets one: the page comes back whole.
+  const safeMaxLength = optionalLimit(maxLength);
   const safeMaxDownload = clampNumber(
     maxDownloadBytes,
     64 * 1024,
@@ -527,7 +508,8 @@ export async function scrapeUrlStructured({
       signal: AbortSignal.timeout(safeTimeout),
       redirect: 'follow',
       headers: {
-        'User-Agent': `Mozilla/5.0 (compatible; ${APP_USER_AGENT}; +local-research)`,
+        'User-Agent': BROWSER_USER_AGENT,
+        'Accept-Language': 'en-US,en;q=0.9',
         Accept:
           'text/html,application/xhtml+xml,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain;q=0.9,*/*;q=0.8'
       }
@@ -690,8 +672,7 @@ export async function scrapeUrlStructured({
   const finalResult = {
     ...parsed,
     url: finalUrl,
-    status: response.status,
-    truncated: parsed.length >= safeMaxLength
+    status: response.status
   };
   if (finalResult.quality !== 'ok') {
     const fallback = await fetchReaderFallback(finalUrl, safeMaxLength, Math.min(safeTimeout, 20000));

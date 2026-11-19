@@ -16,7 +16,8 @@
   import type { Snippet } from 'svelte';
   import { PanelRight as ContextIcon } from '$lib/icons';
 
-  import { Activity, FolderTree, GitCompareArrows, Globe, History, ListChecks, PanelsTopLeft, SquareTerminal } from '$lib/icons';
+  import { Activity, FolderTree, GitCompareArrows, Globe, History, LayoutGrid, ListChecks, PanelsTopLeft, SquareTerminal } from '$lib/icons';
+  import { swarmStore, tallyOf } from '$lib/features/code/swarm.svelte';
   import Menu from '$lib/components/ui/Menu.svelte';
   import Tooltip from '$lib/components/ui/Tooltip.svelte';
   import MenuItem from '$lib/components/ui/MenuItem.svelte';
@@ -41,6 +42,10 @@
   const changeTotals = $derived((changes?.files ?? []).reduce((acc, f) => ({ add: acc.add + f.additions, del: acc.del + f.deletions }), { add: 0, del: 0 }));
   const terminalOpen = $derived(codeWorkspace.terminalsForScope(workspaceLayout.scope).some((term) => workspaceLayout.isOpen(`terminal:${term.id}`)));
   const remainingTasks = $derived(chat ? codeStore.todosFor(chat).filter((todo) => todo.status === 'pending' || todo.status === 'in_progress').length : 0);
+  /** Swarm mode: the Board chip shows while the switch is on or cards remain. */
+  const board = $derived(chat ? swarmStore.boardFor(chat.id) : null);
+  const boardShown = $derived(!!board && (board.enabled || board.cards.length > 0));
+  const boardTally = $derived(tallyOf(board));
 
   let historyOpen = $state(false);
 
@@ -110,6 +115,11 @@
   <span class="pane-badge" aria-hidden="true">{groupedNumber(remainingTasks)}</span>
 {/snippet}
 
+{#snippet boardBadge()}
+  <!-- Cards waiting for review are what needs the user; otherwise the ones at work. -->
+  <span class="pane-badge" class:text-warning={boardTally.review > 0} aria-hidden="true">{boardTally.review || boardTally.working}</span>
+{/snippet}
+
 <div class="pane-strip" class:inline role="toolbar" tabindex="-1" aria-label={$t('workspace.panels')} onkeydown={onKeydown} ondblclick={(event) => event.stopPropagation()}>
   <div class="pane-strip-controls">
     <!-- The session column (project, git, context, tasks, subagents, scripts)
@@ -122,6 +132,9 @@
         {#if inCode}
           {@render pane('changes', $t('codeWs.changes'), workspaceLayout.isOpen('changes'), () => workspaceLayout.toggle('changes'), GitCompareArrows, changesBadge, $t('codeWs.changes'))}
           {@render pane('files', $t('codeWs.files'), workspaceLayout.isOpen('files'), () => workspaceLayout.toggle('files'), FolderTree, null, $t('codeWs.files'))}
+          {#if boardShown}
+            {@render pane('board', $t('code.swarm.board'), workspaceLayout.isOpen('board'), () => workspaceLayout.toggle('board'), LayoutGrid, boardTally.review || boardTally.working ? boardBadge : null, $t('code.swarm.board'))}
+          {/if}
         {/if}
         <!-- In Code the session column carries tasks and context. -->
         {#if !inCode}

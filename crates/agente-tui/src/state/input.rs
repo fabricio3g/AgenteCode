@@ -59,9 +59,9 @@ pub struct InputState {
     pub model_selector_provider: Option<String>,
     /// Selected model index
     pub model_selector_selected: usize,
-    /// Subagent type the model picker is choosing for (`/subagent-models`);
-    /// `None` switches the main model.
-    pub model_selector_target: Option<String>,
+    /// What the model picker is choosing for in `/subagent-models`; `None`
+    /// switches the main model.
+    pub model_selector_target: Option<crate::subagent_models::ModelTarget>,
 
     // Message actions dialog (click a sent message)
     pub message_actions_selected: usize,
@@ -79,11 +79,14 @@ pub struct InputState {
     pub show_mcp: bool,
     pub mcp_selected: usize,
 
+    /// The swarm board (`/board`).
+    pub show_board: bool,
+
     // Subagent models dialog (/subagent-models)
     pub show_subagent_models: bool,
     pub subagent_models_selected: usize,
-    /// Override keys captured when the dialog opened (`*`, built-ins, custom).
-    pub subagent_model_types: Vec<String>,
+    /// A model's name or note being typed.
+    pub subagent_model_edit: Option<crate::subagent_models::Edit>,
 
     // Subagents popup (/subagents)
     /// Show the running/completed subagents list
@@ -271,11 +274,11 @@ impl InputState {
         self.at_picker_anchor = 0;
     }
 
-    /// Open the `/subagents` popup
-    pub fn open_subagent_models(&mut self, types: Vec<String>) {
+    /// Open the `/subagent-models` dialog.
+    pub fn open_subagent_models(&mut self) {
         self.show_subagent_models = true;
         self.subagent_models_selected = 0;
-        self.subagent_model_types = types;
+        self.subagent_model_edit = None;
     }
 
     pub fn open_subagents(&mut self) {

@@ -653,6 +653,23 @@
           "type": "object"
         },
         {
+          "description": "Swarm mode: the session's whole board (`agente_core::swarm::Board`: `enabled`, and `cards` with id, title, role, model, status, depends_on, owns, child_id, result, notes). Replace, don't merge.",
+          "properties": {
+            "board": true,
+            "type": {
+              "enum": [
+                "board_changed"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "board",
+            "type"
+          ],
+          "type": "object"
+        },
+        {
           "properties": {
             "description": {
               "type": "string"
@@ -661,12 +678,19 @@
               "type": "string"
             },
             "model": {
-              "description": "The model this child runs on. Children inherit the parent's model unless a `subagent_models` override applies, so a card cannot infer it; the runtime resolves it once, at spawn.",
+              "description": "The model this child runs on. The runtime routes it once, at spawn (the user's model list, the parent's pick, per-type defaults), so a card cannot infer it.",
               "type": "string"
             },
             "run_id": {
               "format": "uuid",
               "type": "string"
+            },
+            "seat": {
+              "description": "The user's name for that model on their subagent model list, when it came from the list.",
+              "type": [
+                "string",
+                "null"
+              ]
             },
             "type": {
               "enum": [

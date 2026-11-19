@@ -201,9 +201,25 @@ impl App {
                 self.state.input.show_skills = true;
                 self.state.ui.needs_render = true;
             }
+            Command::Swarm => {
+                self.state.toggle_swarm();
+                self.state.ui.needs_render = true;
+            }
+            Command::Board => {
+                self.state.refresh_board();
+                self.state.input.show_board = true;
+                self.state.ui.needs_render = true;
+            }
             Command::SubagentModels => {
-                let types = crate::subagent_models::subagent_types(&self.state.session.project_dir);
-                self.state.input.open_subagent_models(types);
+                // Fold any pre-list per-type pins into the list once, so the
+                // dialog edits the one setting the runtime reads.
+                let config = &mut self.state.config.config;
+                if !config.subagent_models.is_empty() {
+                    let settings = config.subagent_settings();
+                    config.set_subagent_settings(settings);
+                    self.state.persist_config();
+                }
+                self.state.input.open_subagent_models();
                 self.state.ui.needs_render = true;
             }
             Command::Doctor => {

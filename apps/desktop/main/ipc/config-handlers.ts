@@ -1,6 +1,7 @@
 import type { IpcMain } from 'electron';
 import type { AppConfigLike } from './types.ts';
 import { flagCoreKeys, routeKeysToCore } from '../agente/core-providers.ts';
+import { syncWebSearchToCore } from '../agente/core-web.ts';
 import { forgetProviderKey } from '../config.ts';
 
 type ConfigHandlerDeps = {
@@ -62,14 +63,26 @@ export function registerConfigHandlers({
     mergeRedactedProviderKeys(nextConfig, diskConfig);
     await routeKeysToCore(runtime, nextConfig.llm?.providers, forgetProviderKey);
     void forgetThinkingRoutes();
-    return saveConfig(nextConfig);
+    const saved = saveConfig(nextConfig);
+    syncSearch();
+    return saved;
   });
 
   ipcMain.handle('update_config', async (_e, partial) => {
     await routeKeysToCore(runtime, (partial as AppConfigLike | undefined)?.llm?.providers, forgetProviderKey);
     void forgetThinkingRoutes();
-    return updateConfig(partial);
+    const updated = await updateConfig(partial);
+    if ((partial as AppConfigLike | undefined)?.search) syncSearch();
+    return updated;
   });
+
+  /** Settings → Search also drives the core's web_search (Code space, TUI). */
+  function syncSearch(): void {
+    const search = (loadConfig() as AppConfigLike).search;
+    void syncWebSearchToCore(runtime, search).catch((error: unknown) => {
+      console.warn(`[agente] web search settings not synced: ${error instanceof Error ? error.message : String(error)}`);
+    });
+  }
 }
 
 /** Provider keys, URLs or models may have changed: re-resolve thinking routes. */

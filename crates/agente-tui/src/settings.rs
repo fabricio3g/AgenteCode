@@ -3,7 +3,9 @@
 //! Rows are toggles (Enter flips, saved immediately) or links into another
 //! dialog (subagent models). Values show on the right in the list's trail.
 
+use agente_core::tools::web::settings::{SearchProvider, WebSettings};
 use ratatui::layout::Rect;
+use ratatui::style::Style;
 use ratatui::Frame;
 
 use crate::state::{AppState, ListId};
@@ -23,6 +25,8 @@ pub enum Setting {
     MediaAudio,
     MediaVideo,
     Theme,
+    /// Which provider `web_search` uses (`web.json`).
+    WebSearch,
     SubagentModels,
 }
 
@@ -35,6 +39,7 @@ pub const SETTINGS: &[Setting] = &[
     Setting::MediaAudio,
     Setting::MediaVideo,
     Setting::Theme,
+    Setting::WebSearch,
     Setting::SubagentModels,
 ];
 
@@ -49,6 +54,7 @@ impl Setting {
             Self::MediaAudio => "Audio",
             Self::MediaVideo => "Video",
             Self::Theme => "Theme",
+            Self::WebSearch => "Web search",
             Self::SubagentModels => "Subagent models",
         }
     }
@@ -64,8 +70,18 @@ impl Setting {
         }
     }
 
-    /// Current value, plus whether it is "on" (accent) or neutral (dim).
-    fn value(self, state: &AppState) -> (String, bool) {
+    /// Current value and its tint: accent when changed from the default,
+    /// warning when it cannot work yet, dim otherwise.
+    fn value(self, state: &AppState) -> (String, Style) {
+        if self == Self::WebSearch {
+            return web_search_value(&WebSettings::load());
+        }
+        let (text, on) = self.toggle_value(state);
+        (text, if on { style::accent() } else { style::dim() })
+    }
+
+    /// Current value of an ordinary row, plus whether it is "on".
+    fn toggle_value(self, state: &AppState) -> (String, bool) {
         let on_off = |on: bool, on_text: &str, off_text: &str| {
             (if on { on_text } else { off_text }.to_string(), on)
         };
@@ -91,12 +107,13 @@ impl Setting {
                 .to_string(),
                 false,
             ),
+            Self::WebSearch => (String::new(), false),
             Self::SubagentModels => {
-                let n = state.config.config.subagent_models.len();
+                let n = state.config.config.subagent_settings().models.len();
                 if n == 0 {
                     ("main model ›".to_string(), false)
                 } else {
-                    (format!("{n} set ›"), true)
+                    (format!("{n} model{} ›", if n == 1 { "" } else { "s" }), true)
                 }
             }
         }
@@ -124,10 +141,10 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
             .iter()
             .enumerate()
             .map(|(i, setting)| {
-                let (value, on) = setting.value(state);
+                let (value, tint) = setting.value(state);
                 PickItem::row_with_trail(
                     vec![s(setting.label(), row_label(i == selected))],
-                    vec![s(value, if on { style::accent() } else { style::dim() })],
+                    vec![s(value, tint)],
                 )
             })
             .collect();
@@ -148,6 +165,58 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
             body.width.saturating_sub(2),
         ),
     );
+}
+
+/// The Web search row: the provider, or what it still needs.
+fn web_search_value(settings: &WebSettings) -> (String, Style) {
+    let provider = settings.search_provider;
+    if provider == SearchProvider::DuckDuckGo {
+        return (provider.label().to_string(), style::dim());
+    }
+    if settings.ready(provider) {
+        (provider.label().to_string(), style::accent())
+    } else {
+        (
+            format!("{} · {}", provider.label(), missing(provider)),
+            style::warning(),
+        )
+    }
+}
+
+/// What a provider lacks, in the words of the fix.
+fn missing(provider: SearchProvider) -> String {
+    match provider.key_vars().first() {
+        Some(var) => format!("set {var}"),
+        None => "set SEARXNG_URL".to_string(),
+    }
+}
+
+/// Move Web search to the next provider, save it, and say what it needs.
+pub fn cycle_web_search() -> Result<String, String> {
+    let mut settings = WebSettings::load();
+    let all = SearchProvider::ALL;
+    let at = all
+        .iter()
+        .position(|p| *p == settings.search_provider)
+        .unwrap_or(0);
+    let next = all[(at + 1) % all.len()];
+    settings.search_provider = next;
+    settings
+        .save()
+        .map_err(|e| format!("Could not save web search: {e}"))?;
+    Ok(if settings.ready(next) {
+        format!("Web search: {}", next.label())
+    } else {
+        let mut note = format!(
+            "{} needs {} — DuckDuckGo answers until then",
+            next.label(),
+            missing(next).trim_start_matches("set ")
+        );
+        if let Some(url) = next.key_url() {
+            note.push_str(&format!(" (key: {url})"));
+        }
+        note
+    })
 }
 
 /// Steps `Enter` cycles through for Parallel subagents.
@@ -186,6 +255,26 @@ mod tests {
         assert!(text.contains("off"), "{text}");
         assert!(text.contains("Subagent models"), "{text}");
         assert!(text.contains("8 at once"), "default parallelism: {text}");
+    }
+
+    #[test]
+    fn web_search_row_names_the_provider_or_what_it_needs() {
+        let default = WebSettings::default();
+        assert_eq!(
+            web_search_value(&default),
+            ("DuckDuckGo".to_string(), style::dim())
+        );
+        let searxng = WebSettings {
+            search_provider: SearchProvider::SearXng,
+            searxng_url: Some("https://search.example".into()),
+            ..WebSettings::default()
+        };
+        assert_eq!(
+            web_search_value(&searxng),
+            ("SearXNG".to_string(), style::accent())
+        );
+        assert_eq!(missing(SearchProvider::Brave), "set BRAVE_SEARCH_API_KEY");
+        assert_eq!(missing(SearchProvider::SearXng), "set SEARXNG_URL");
     }
 
     #[test]

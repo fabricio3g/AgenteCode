@@ -60,9 +60,9 @@ pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState) {
         });
     let model = snapshot
         .as_ref()
-        .map(|s| s.model.as_str())
-        .or_else(|| live.map(|s| s.model.as_str()))
-        .unwrap_or("");
+        .map(|s| s.model_label())
+        .or_else(|| live.map(|s| s.model.clone()))
+        .unwrap_or_default();
     let count = live.map(|s| s.tool_rows.len()).unwrap_or(0);
     let mut meta = format!(
         " · {} · {count} tool{}",

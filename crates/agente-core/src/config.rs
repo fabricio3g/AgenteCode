@@ -129,21 +129,227 @@ pub struct SubagentModel {
     pub thinking: Option<String>,
 }
 
-/// Subagent type → model override.
+/// Subagent type → model override. The pre-list setting, still read from
+/// old configs and folded into [`SubagentSettings`] by
+/// [`AppConfig::subagent_settings`]; never written by current clients.
 pub type SubagentModels = HashMap<String, SubagentModel>;
 
-/// Override key that applies to every subagent type without its own entry.
+/// Legacy pin key that applied to every subagent type.
 pub const ALL_SUBAGENTS: &str = "*";
 
-/// The override a `subagent_type` runs on: its own entry, else the
-/// [`ALL_SUBAGENTS`] entry, else `None` (inherit the parent's model).
-pub fn subagent_model_for<'a>(
-    models: &'a SubagentModels,
-    subagent_type: &str,
-) -> Option<&'a SubagentModel> {
-    models
-        .get(subagent_type)
-        .or_else(|| models.get(ALL_SUBAGENTS))
+/// `default_model` / `task` `model` value meaning "the parent's model".
+pub const MAIN_MODEL: &str = "main";
+
+/// One model the user offers to subagents: from any provider, under a name
+/// the orchestrator picks it by, with the user's note on what it is for.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SubagentModelEntry {
+    pub name: String,
+    pub provider: String,
+    pub model: String,
+    /// Thinking level this model runs at; `None` inherits the parent's.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub thinking: Option<String>,
+    /// The user's own words on when to use it; shown to the orchestrator.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub use_for: String,
+}
+
+/// The `subagents` setting: the models subagents may run on, the one they
+/// run on when nothing else chooses, and whether the orchestrator may pick
+/// from the list per spawn.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SubagentSettings {
+    /// `None` means on: the parent may pass `model` to `task`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub orchestrator_picks: Option<bool>,
+    /// In display order.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub models: Vec<SubagentModelEntry>,
+    /// A list name or [`MAIN_MODEL`]; `None` runs on the parent's model.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default_model: Option<String>,
+}
+
+/// Fold text into the list-name shape: lowercase ASCII letters and digits,
+/// `.`, `_`, `-`; accents dropped, anything else one `-`, no `-` at the ends.
+fn fold_name(text: &str) -> String {
+    let mut out = String::new();
+    for c in text.chars().flat_map(char::to_lowercase) {
+        let c = match c {
+            'á' | 'à' | 'â' | 'ä' | 'ã' | 'å' => 'a',
+            'é' | 'è' | 'ê' | 'ë' => 'e',
+            'í' | 'ì' | 'î' | 'ï' => 'i',
+            'ó' | 'ò' | 'ô' | 'ö' | 'õ' => 'o',
+            'ú' | 'ù' | 'û' | 'ü' => 'u',
+            'ñ' => 'n',
+            'ç' => 'c',
+            other => other,
+        };
+        if c.is_ascii_lowercase() || c.is_ascii_digit() || "._".contains(c) {
+            out.push(c);
+        } else if !out.ends_with('-') {
+            out.push('-');
+        }
+    }
+    out.trim_matches('-').to_string()
+}
+
+fn is_default_subagents(settings: &SubagentSettings) -> bool {
+    *settings == SubagentSettings::default()
+}
+
+impl SubagentSettings {
+    pub fn picks(&self) -> bool {
+        self.orchestrator_picks.unwrap_or(true)
+    }
+
+    pub fn entry(&self, name: &str) -> Option<&SubagentModelEntry> {
+        self.models.iter().find(|entry| entry.name == name)
+    }
+
+    /// Names the orchestrator may pass: the list, when picking is on.
+    pub fn pickable(&self) -> &[SubagentModelEntry] {
+        if self.picks() {
+            &self.models
+        } else {
+            &[]
+        }
+    }
+
+    /// The default model's name, when it is still on the list (or `main`).
+    pub fn default_name(&self) -> Option<&str> {
+        self.default_model
+            .as_deref()
+            .filter(|name| *name == MAIN_MODEL || self.entry(name).is_some())
+    }
+
+    /// Check names before a client saves: non-empty, `[a-z0-9._-]`, unique,
+    /// not reserved, and a provider and model on every entry.
+    pub fn validate(&self) -> Result<(), String> {
+        let mut seen = std::collections::HashSet::new();
+        for entry in &self.models {
+            let name = entry.name.as_str();
+            if name.is_empty()
+                || !name
+                    .chars()
+                    .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || "._-".contains(c))
+            {
+                return Err(format!(
+                    "Subagent model name '{name}' must use lowercase letters, digits, '.', '_' or '-'."
+                ));
+            }
+            if name == MAIN_MODEL {
+                return Err(format!("'{name}' is reserved; choose another name."));
+            }
+            if !seen.insert(name) {
+                return Err(format!("Two subagent models are named '{name}'."));
+            }
+            if entry.provider.trim().is_empty() || entry.model.trim().is_empty() {
+                return Err(format!(
+                    "Subagent model '{name}' needs a provider and a model."
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    /// A free list name built from `model`: its last path segment, lowercased,
+    /// other characters folded to `-`, suffixed `-2`, `-3` and so on when taken.
+    pub fn unique_name(&self, model: &str) -> String {
+        let tail = model.rsplit('/').next().unwrap_or(model);
+        let mut base = fold_name(tail);
+        if base.is_empty() || base == MAIN_MODEL {
+            base = "model".into();
+        }
+        self.free_name(&base, None)
+    }
+
+    /// What a typed name becomes for the model at `index` — never refused
+    /// (Postel's law): folded to the name rule, named after its model when
+    /// emptied, `main` turned into `main-model`, and made unique.
+    pub fn settled_name(&self, raw: &str, index: usize) -> String {
+        let base = fold_name(raw);
+        if base.is_empty() {
+            return match self.models.get(index) {
+                Some(entry) => {
+                    let mut others = self.clone();
+                    others.models.remove(index);
+                    others.unique_name(&entry.model)
+                }
+                None => "model".into(),
+            };
+        }
+        let base = if base == MAIN_MODEL { "main-model".to_string() } else { base };
+        self.free_name(&base, Some(index))
+    }
+
+    fn free_name(&self, base: &str, except: Option<usize>) -> String {
+        let taken = |name: &str| {
+            self.models
+                .iter()
+                .enumerate()
+                .any(|(i, entry)| Some(i) != except && entry.name == name)
+        };
+        let mut name = base.to_string();
+        let mut n = 2;
+        while taken(&name) {
+            name = format!("{base}-{n}");
+            n += 1;
+        }
+        name
+    }
+
+    /// Fold pre-list per-type pins in: each becomes a list entry (reusing
+    /// one with the same provider, model and thinking), so no chosen model
+    /// is lost, and the pin for every type (`*`) becomes the default model
+    /// unless one is set.
+    pub fn with_legacy(mut self, legacy: &SubagentModels) -> Self {
+        let mut pins: Vec<(&String, &SubagentModel)> = legacy.iter().collect();
+        pins.sort_by(|a, b| a.0.cmp(b.0));
+        for (subagent_type, pin) in pins {
+            let existing = self.models.iter().find(|entry| {
+                entry.provider == pin.provider
+                    && entry.model == pin.model
+                    && entry.thinking == pin.thinking
+            });
+            let name = match existing {
+                Some(entry) => entry.name.clone(),
+                None => {
+                    let name = self.unique_name(&pin.model);
+                    self.models.push(SubagentModelEntry {
+                        name: name.clone(),
+                        provider: pin.provider.clone(),
+                        model: pin.model.clone(),
+                        thinking: pin.thinking.clone(),
+                        use_for: String::new(),
+                    });
+                    name
+                }
+            };
+            if subagent_type == ALL_SUBAGENTS && self.default_model.is_none() {
+                self.default_model = Some(name);
+            }
+        }
+        self
+    }
+
+    /// Project config on top of the user's: entries replace by name, new
+    /// ones append, an explicit switch or default wins.
+    fn merge(&mut self, other: SubagentSettings) {
+        if other.orchestrator_picks.is_some() {
+            self.orchestrator_picks = other.orchestrator_picks;
+        }
+        if other.default_model.is_some() {
+            self.default_model = other.default_model;
+        }
+        for entry in other.models {
+            match self.models.iter_mut().find(|e| e.name == entry.name) {
+                Some(existing) => *existing = entry,
+                None => self.models.push(entry),
+            }
+        }
+    }
 }
 
 /// Full application configuration
@@ -197,11 +403,14 @@ pub struct AppConfig {
     /// `DEFAULT_MAX_CONCURRENT_SUBAGENTS`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_parallel_subagents: Option<usize>,
-    /// Per-subagent-type model overrides (`explore`, `plan`, custom names, or
-    /// [`ALL_SUBAGENTS`] for every type). Types without an entry run on the
-    /// parent's model.
+    /// Pre-list per-type pins, read from old configs only. Read through
+    /// [`AppConfig::subagent_settings`]; clients write `subagents`.
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub subagent_models: SubagentModels,
+    /// Models subagents may run on, the default one, and whether the
+    /// orchestrator picks (`/subagent-models`, Desktop Settings → Subagents).
+    #[serde(default, skip_serializing_if = "is_default_subagents")]
+    pub subagents: SubagentSettings,
     /// Maximum agent tool-loop iterations per turn. Long-horizon tasks can
     /// exceed the old hardcoded cap of 50; default is 500.
     #[serde(default)]
@@ -253,6 +462,7 @@ impl Default for AppConfig {
             compaction_model: None,
             max_parallel_subagents: None,
             subagent_models: HashMap::new(),
+            subagents: SubagentSettings::default(),
             approved_mcp_servers: Vec::new(),
             allow_media: Vec::new(),
             max_iterations: None,
@@ -719,6 +929,7 @@ impl AppConfig {
         }
         // Per-type entries: the workspace wins for the types it names.
         self.subagent_models.extend(other.subagent_models);
+        self.subagents.merge(other.subagents);
         if !other.allow_media.is_empty() {
             self.allow_media = other.allow_media;
         }
@@ -926,6 +1137,7 @@ impl AppConfig {
             compaction_model: self.compaction_model.clone(),
             max_parallel_subagents: self.max_parallel_subagents,
             subagent_models: self.subagent_models.clone(),
+            subagents: self.subagents.clone(),
             approved_mcp_servers: self.approved_mcp_servers.clone(),
             allow_media: self.allow_media.clone(),
             default_thinking_level: self.default_thinking_level.clone(),
@@ -934,6 +1146,18 @@ impl AppConfig {
             catalog: None,
             auth_store: AuthStore::default(),
         }
+    }
+
+    /// The subagent settings in effect: `subagents`, with any pre-list
+    /// `subagent_models` pins folded in.
+    pub fn subagent_settings(&self) -> SubagentSettings {
+        self.subagents.clone().with_legacy(&self.subagent_models)
+    }
+
+    /// Replace the subagent settings and drop the pre-list pins they absorb.
+    pub fn set_subagent_settings(&mut self, settings: SubagentSettings) {
+        self.subagents = settings;
+        self.subagent_models.clear();
     }
 
     /// Global config path: `~/.agente/config.json`.
@@ -1183,44 +1407,152 @@ mod tests {
         );
     }
 
+    fn entry(name: &str, provider: &str, model: &str) -> SubagentModelEntry {
+        SubagentModelEntry {
+            name: name.into(),
+            provider: provider.into(),
+            model: model.into(),
+            thinking: None,
+            use_for: String::new(),
+        }
+    }
+
+    /// Old per-type pins become list entries (one per distinct model), and
+    /// the pin for every type becomes the default model.
     #[test]
-    fn subagent_model_overrides_fall_back_to_the_all_entry() {
+    fn legacy_pins_fold_into_the_model_list() {
         let pick = |provider: &str, model: &str| SubagentModel {
             provider: provider.into(),
             model: model.into(),
             thinking: None,
         };
-        let mut models = SubagentModels::new();
-        assert_eq!(subagent_model_for(&models, "explore"), None);
-        models.insert(ALL_SUBAGENTS.into(), pick("deepseek", "deepseek-flash"));
-        models.insert("plan".into(), pick("openrouter", "a/b"));
-        assert_eq!(
-            subagent_model_for(&models, "plan"),
-            Some(&pick("openrouter", "a/b"))
-        );
-        assert_eq!(
-            subagent_model_for(&models, "explore"),
-            Some(&pick("deepseek", "deepseek-flash"))
-        );
+        let legacy = SubagentModels::from([
+            (ALL_SUBAGENTS.into(), pick("deepseek", "deepseek-flash")),
+            ("explore".into(), pick("deepseek", "deepseek-flash")),
+            ("plan".into(), pick("openrouter", "qwen/qwen3-coder:free")),
+        ]);
+        let settings = SubagentSettings::default().with_legacy(&legacy);
+        let names: Vec<&str> = settings.models.iter().map(|e| e.name.as_str()).collect();
+        assert_eq!(names, ["deepseek-flash", "qwen3-coder-free"]);
+        assert_eq!(settings.default_model.as_deref(), Some("deepseek-flash"));
+        assert!(settings.validate().is_ok());
 
-        // Round-trips through the config file, and workspace entries win.
+        // A default the user already set is kept.
+        let mine = SubagentSettings {
+            default_model: Some(MAIN_MODEL.into()),
+            ..SubagentSettings::default()
+        }
+        .with_legacy(&legacy);
+        assert_eq!(mine.default_model.as_deref(), Some(MAIN_MODEL));
+
+        // Saving the settings drops the pins they absorbed.
+        let mut config = AppConfig {
+            subagent_models: legacy,
+            ..AppConfig::default()
+        };
+        let effective = config.subagent_settings();
+        config.set_subagent_settings(effective.clone());
+        assert!(config.subagent_models.is_empty());
+        assert_eq!(config.subagent_settings(), effective);
+    }
+
+    #[test]
+    fn the_default_model_counts_only_while_it_is_on_the_list() {
+        let mut settings = SubagentSettings {
+            models: vec![entry("scout", "openrouter", "a/scout:free")],
+            default_model: Some("scout".into()),
+            ..SubagentSettings::default()
+        };
+        assert_eq!(settings.default_name(), Some("scout"));
+        settings.default_model = Some("gone".into());
+        assert_eq!(settings.default_name(), None);
+        settings.default_model = Some(MAIN_MODEL.into());
+        assert_eq!(settings.default_name(), Some(MAIN_MODEL));
+        assert_eq!(SubagentSettings::default().default_name(), None);
+    }
+
+    #[test]
+    fn typed_names_are_settled_not_refused() {
+        let settings = SubagentSettings {
+            models: vec![
+                entry("scout", "openrouter", "a/scout"),
+                entry("other", "glm", "z-ai/glm-5"),
+            ],
+            ..SubagentSettings::default()
+        };
+        assert_eq!(settings.settled_name("Revisor Rápido!", 1), "revisor-rapido");
+        assert_eq!(settings.settled_name("scout", 1), "scout-2");
+        assert_eq!(settings.settled_name("scout", 0), "scout");
+        assert_eq!(settings.settled_name("main", 1), "main-model");
+        assert_eq!(settings.settled_name("  ", 1), "glm-5");
+        let mut renamed = settings.clone();
+        renamed.models[1].name = renamed.settled_name("Fast  Reader", 1);
+        assert_eq!(renamed.models[1].name, "fast-reader");
+        assert!(renamed.validate().is_ok());
+    }
+
+    #[test]
+    fn model_names_are_checked_and_generated() {
+        let mut settings = SubagentSettings {
+            models: vec![entry("scout", "openrouter", "a/b")],
+            ..SubagentSettings::default()
+        };
+        assert!(settings.validate().is_ok());
+        assert_eq!(settings.unique_name("x/Scout"), "scout-2");
+        assert_eq!(settings.unique_name("GLM 5.1"), "glm-5.1");
+        assert_eq!(settings.unique_name("main"), "model");
+        settings.models.push(entry("scout", "glm", "glm-5"));
+        assert!(settings.validate().unwrap_err().contains("Two"));
+        settings.models[1].name = "Has Space".into();
+        assert!(settings.validate().is_err());
+        settings.models[1].name = MAIN_MODEL.into();
+        assert!(settings.validate().unwrap_err().contains("reserved"));
+        settings.models[1] = entry("builder", "", "glm-5");
+        assert!(settings.validate().is_err());
+    }
+
+    /// The setting round-trips through the config file, stays out of it
+    /// while untouched, and a workspace file replaces entries by name.
+    #[test]
+    fn subagent_settings_round_trip_and_merge() {
+        assert!(!serde_json::to_string(&AppConfig::default())
+            .unwrap()
+            .contains("\"subagents\""));
         let base = AppConfig {
-            subagent_models: models,
+            subagents: SubagentSettings {
+                orchestrator_picks: Some(false),
+                models: vec![
+                    entry("scout", "openrouter", "a/scout:free"),
+                    entry("builder", "glm", "glm-5"),
+                ],
+                default_model: Some("scout".into()),
+            },
             ..AppConfig::default()
         };
         let json = serde_json::to_string(&base).unwrap();
         let loaded: AppConfig = serde_json::from_str(&json).unwrap();
-        assert_eq!(loaded.subagent_models, base.subagent_models);
+        assert_eq!(loaded.subagents, base.subagents);
+        assert!(!loaded.subagents.picks());
+        assert!(loaded.subagents.pickable().is_empty());
+
         let workspace = AppConfig {
-            subagent_models: SubagentModels::from([("plan".into(), pick("glm", "glm-5"))]),
+            subagents: SubagentSettings {
+                models: vec![
+                    entry("builder", "deepseek", "deepseek-pro"),
+                    entry("checker", "deepseek", "deepseek-flash"),
+                ],
+                default_model: Some("checker".into()),
+                ..SubagentSettings::default()
+            },
             ..AppConfig::default()
         };
-        let merged = base.merge(workspace);
-        assert_eq!(merged.subagent_models["plan"], pick("glm", "glm-5"));
-        assert_eq!(
-            merged.subagent_models[ALL_SUBAGENTS].model,
-            "deepseek-flash"
-        );
+        let merged = base.merge(workspace).subagents;
+        let names: Vec<&str> = merged.models.iter().map(|e| e.name.as_str()).collect();
+        assert_eq!(names, ["scout", "builder", "checker"]);
+        assert_eq!(merged.entry("builder").unwrap().model, "deepseek-pro");
+        assert_eq!(merged.default_model.as_deref(), Some("checker"));
+        // An unset switch in the workspace keeps the user's.
+        assert_eq!(merged.orchestrator_picks, Some(false));
     }
 
     #[test]

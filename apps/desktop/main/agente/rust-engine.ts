@@ -27,8 +27,9 @@ import { serveDesktopTools, type DesktopToolServer } from './desktop-tools-mcp.t
 import { RustProcessBridge } from './rust-processes.ts';
 import { RustTurnTranslator } from './rust-events.ts';
 import { coreProviderStatus, migrateKeysToCore } from './core-providers.ts';
+import { syncWebSearchToCore } from './core-web.ts';
 import { modelTransportConfig, providerTransportPolicy, type ModelTransport } from './model-transport.ts';
-import type { AgenteCheckpointSummary, AgenteRuntimeMode, AgenteStartSessionArgs, ApprovalDecision, CodeAgentEvent, LocalModelSelection } from '../../shared/agente-protocol.ts';
+import type { AgenteCheckpointSummary, AgenteRuntimeMode, AgenteStartSessionArgs, ApprovalDecision, CodeAgentEvent, LocalModelSelection, SubagentModelEntry, SubagentSettings } from '../../shared/agente-protocol.ts';
 import type { Attachment, Message, RuntimeEventEnvelope, SessionSnapshot, TurnMode, TurnOutcome } from '../../shared/agente-protocol.gen.ts';
 import { trackGoalTurn, goalTurnStarted } from '../session-goals.ts';
 
@@ -181,10 +182,14 @@ async function openConnection(): Promise<AgenteClient> {
     void migrateKeysToCore(client, (loadConfig().llm?.providers || {}) as Record<string, { api_key?: string }>, forgetProviderKey).catch((error: unknown) => {
       console.warn(`[agente] provider keys stay in Desktop for now: ${error instanceof Error ? error.message : String(error)}`);
     });
+    void syncWebSearchToCore(async () => client, loadConfig().search).catch((error: unknown) => {
+      console.warn(`[agente] web search settings not synced: ${error instanceof Error ? error.message : String(error)}`);
+    });
     const saved = loadConfig().agent_runtime as Record<string, unknown> | undefined;
     if (saved) {
       const overrides = saved.subagent_models as Record<string, { provider: string; model: string }> | undefined;
-      for (const model of [...Object.values(overrides || {}), ...(saved.compaction_model ? [saved.compaction_model as { provider: string; model: string }] : [])]) {
+      const listed = (saved.subagents as SubagentSettings | undefined)?.models ?? [];
+      for (const model of [...Object.values(overrides || {}), ...listed, ...(saved.compaction_model ? [saved.compaction_model as { provider: string; model: string }] : [])]) {
         if (model.provider.startsWith('desktop-')) await useProvider(client, model.provider.slice(8), model.model);
       }
       await client.request('runtime.configure', saved);
@@ -668,35 +673,30 @@ async function runtimeRequest<T>(method: string, params: Record<string, unknown>
 }
 
 /**
- * Pin a subagent type (or `*`) to a provider, model and thinking level, or drop
- * the pin so it inherits again. `thinking` is optional: without it the child
- * follows whatever the parent runs at.
+ * Save the subagent model list. Each entry's provider is resolved the way a
+ * turn's is — the core's own spec and key where it has one, otherwise handed
+ * over as a Desktop provider — and the pre-list per-type pins are cleared,
+ * since the list absorbs them. The runtime validates names.
  */
-async function subagentModel(
-  chatId: string,
-  kind: string,
-  pin: { provider: string; model: string; thinking?: string } | null
-): Promise<{ ok: boolean }> {
-  const chat = chats.get(chatId);
-  if (!chat) throw new Error('Start a Code session before choosing subagent models.');
+async function subagentSettings(next: SubagentSettings): Promise<{ ok: boolean }> {
   const client = await connect();
-  const settings = await client.request<{ subagent_models: Record<string, { provider: string; model: string; thinking?: string }> }>('runtime.settings');
-  const models = { ...settings.subagent_models };
-  if (!pin) delete models[kind];
-  else {
-    const provider = await useProvider(client, pin.provider, pin.model);
-    models[kind] = {
+  const models: SubagentModelEntry[] = [];
+  for (const entry of next.models ?? []) {
+    const provider = await useProvider(client, entry.provider.replace(/^desktop-/, ''), entry.model);
+    models.push({
+      name: entry.name,
       provider: provider.id,
       model: provider.model,
-      ...(pin.thinking ? { thinking: pin.thinking } : {})
-    };
+      ...(entry.thinking ? { thinking: entry.thinking } : {}),
+      ...(entry.use_for?.trim() ? { use_for: entry.use_for.trim() } : {})
+    });
   }
-  return configureSettings({ subagent_models: models });
+  return configureSettings({ subagents: { ...next, models }, subagent_models: {} });
 }
 
 /** Persist only user settings; endpoint keys and Desktop's MCP token stay live. */
 async function configureSettings(patch: Record<string, unknown>): Promise<{ ok: boolean }> {
-  const allowed = ['smart_compaction', 'compaction_model', 'max_parallel_subagents', 'subagent_models', 'allow_media', 'approved_mcp_servers'];
+  const allowed = ['smart_compaction', 'compaction_model', 'max_parallel_subagents', 'subagents', 'subagent_models', 'allow_media', 'approved_mcp_servers'];
   if (Object.keys(patch).some((key) => !allowed.includes(key))) throw new Error('Unknown agent setting.');
   if ('max_parallel_subagents' in patch && (!Number.isInteger(patch.max_parallel_subagents) || Number(patch.max_parallel_subagents) < 1 || Number(patch.max_parallel_subagents) > 32)) throw new Error('Choose 1–32 parallel subagents.');
   if (patch.compaction_model != null) {
@@ -811,7 +811,7 @@ export const rustEngine = {
   edits,
   runtimeRequest,
   messageAction,
-  subagentModel,
+  subagentSettings,
   configureSettings,
   listCheckpoints,
   rollback,

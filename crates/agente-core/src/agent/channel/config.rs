@@ -8,7 +8,7 @@ use crate::catalog::ModelCatalog;
 use crate::mcp::client::McpManager;
 use crate::permissions::{ApprovalBroker, SharedPermissionEngine};
 use crate::providers::ProviderRegistry;
-use crate::subagent::{CustomSubagent, SubagentHost};
+use crate::subagent::{AgentDefinition, SubagentHost};
 use crate::todo::TodoInput;
 use crate::types::{Message, ToolCall};
 
@@ -169,7 +169,7 @@ pub(crate) struct AgentRunConfig {
     pub subagent_host: Option<SubagentHost>,
     /// Custom `.agente/agents/*.md` roster. Parents load it once per turn and
     /// pass it down so a child's worktree checkout does not re-scan the disk.
-    pub custom_agents: Vec<CustomSubagent>,
+    pub custom_agents: Vec<AgentDefinition>,
     pub tool_policy: Option<crate::subagent::ToolPolicy>,
     pub is_subagent: bool,
     pub depth: u32,

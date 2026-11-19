@@ -93,8 +93,8 @@ pub struct RuntimeConfig {
     pub auto_approve: AutoApproveConfig,
     pub approval_broker: ApprovalBroker,
     pub subagent_registry: SubagentRegistry,
-    /// Per-subagent-type model overrides from the user's config.
-    pub subagent_models: agente_core::config::SubagentModels,
+    /// The user's subagent model list, per-type defaults and picking switch.
+    pub subagents: agente_core::config::SubagentSettings,
     /// LLM-summary compaction instead of trimming (user setting).
     pub smart_compaction: bool,
     pub compaction_model: Option<agente_core::config::SubagentModel>,
@@ -150,7 +150,7 @@ impl RuntimeConfig {
             auto_approve: app_config.auto_approve.clone(),
             approval_broker: ApprovalBroker::new(),
             subagent_registry: SubagentRegistry::new(),
-            subagent_models: app_config.subagent_models.clone(),
+            subagents: app_config.subagent_settings(),
             smart_compaction: app_config.smart_compaction,
             compaction_model: app_config.compaction_model.clone(),
             max_parallel_subagents: app_config.parallel_subagents(),
@@ -286,7 +286,7 @@ struct LiveSettings {
     smart_compaction: bool,
     compaction_model: Option<agente_core::config::SubagentModel>,
     max_parallel_subagents: usize,
-    subagent_models: agente_core::config::SubagentModels,
+    subagents: agente_core::config::SubagentSettings,
     /// MCP servers from the config (`mcp`), including tools a client serves
     /// itself (Agente Desktop's browser tools). `None`: the runtime's own.
     mcp_manager: Option<Arc<McpManager>>,
@@ -306,7 +306,7 @@ impl LiveSettings {
             smart_compaction: config.smart_compaction,
             compaction_model: config.compaction_model.clone(),
             max_parallel_subagents: config.max_parallel_subagents,
-            subagent_models: config.subagent_models.clone(),
+            subagents: config.subagents.clone(),
             mcp_manager: None,
         }
     }
@@ -346,7 +346,7 @@ impl LiveSettings {
             smart_compaction: rebuilt.smart_compaction,
             compaction_model: rebuilt.compaction_model,
             max_parallel_subagents: rebuilt.max_parallel_subagents,
-            subagent_models: rebuilt.subagent_models,
+            subagents: rebuilt.subagents,
             mcp_manager: previous.mcp_manager.clone(),
             app_config,
             client_providers,
@@ -1068,7 +1068,7 @@ impl RuntimeHandle {
             self.inner.config.approval_broker.clone(),
             Some(self.inner.project_mcp(&context.project_dir)),
             self.inner.config.subagent_registry.clone(),
-            live.subagent_models.clone(),
+            live.subagents.clone(),
             live.smart_compaction,
             live.compaction_model.clone(),
             // The gap this session measured last turn.
@@ -1216,7 +1216,7 @@ impl RuntimeHandle {
             "smart_compaction": config.smart_compaction,
             "compaction_model": config.compaction_model,
             "max_parallel_subagents": config.max_parallel_subagents.unwrap_or(8),
-            "subagent_models": config.subagent_models,
+            "subagents": config.subagent_settings(),
             "allow_media": config.allow_media,
             "approved_mcp_servers": config.approved_mcp_servers,
         })
@@ -1443,6 +1443,15 @@ impl RuntimeHandle {
             return Err(invalid("configure expects a JSON object".into()));
         };
         let patch_mcp = patch.contains_key("mcp");
+        if let Some(subagents) = patch.get("subagents") {
+            let settings: agente_core::config::SubagentSettings =
+                serde_json::from_value(subagents.clone())
+                    .map_err(|error| invalid(format!("subagents: {error}")))?;
+            settings.validate().map_err(invalid)?;
+        }
+        // `subagents` absorbs the pre-list pins; keeping them would bring a
+        // removed default back through the migration.
+        let replaces_pins = patch.contains_key("subagents");
         let patch_approvals = patch.contains_key("approved_mcp_servers");
         let mut live = self
             .inner
@@ -1469,8 +1478,11 @@ impl RuntimeHandle {
                 }
             }
         }
-        let app_config: AppConfig =
+        let mut app_config: AppConfig =
             serde_json::from_value(merged).map_err(|error| invalid(error.to_string()))?;
+        if replaces_pins {
+            app_config.subagent_models.clear();
+        }
         let mut next = LiveSettings::from_app_config(app_config, client_providers, &live);
         let mut added = None;
         if patch_mcp {
@@ -2237,6 +2249,9 @@ mod tests {
             summary: None,
             conversation: Vec::new(),
             model: String::new(),
+            seat: None,
+            provider: String::new(),
+            thinking: String::new(),
             depth: 0,
             background: false,
             started_at: Utc::now(),

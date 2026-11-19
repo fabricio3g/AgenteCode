@@ -75,7 +75,7 @@ export async function handleWebSearch(params: {
 export async function handleFetchUrl(params: {
   args: Record<string, unknown>;
   webSearch: (args: { query: string; deep: boolean; mode: 'deep' }) => Promise<{ results?: Array<{ url?: string; snippet?: string }>; context?: string }>;
-  fetchUrlContent: (url: string, maxChars: number) => Promise<{
+  fetchUrlContent: (url: string) => Promise<{
     error?: string;
     url?: string;
     title?: string;
@@ -102,8 +102,8 @@ export async function handleFetchUrl(params: {
   if (!url) return params.fail('Missing url');
   try {
     if (params.isElectron()) {
-      // Cap extract length for model tokens; scraper still uses Readability / PDF / DOCX extractors.
-      const result = await params.fetchUrlContent(url, 24000);
+      // The whole page: Reader View for HTML, text extraction for PDF / DOCX — no length budget.
+      const result = await params.fetchUrlContent(url);
       if (result.error) return params.fail(result.error);
       const content = String(result.content || '');
       return params.ok({

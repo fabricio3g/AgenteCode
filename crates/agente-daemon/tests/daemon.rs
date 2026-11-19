@@ -487,6 +487,27 @@ async fn providers_connect_to_the_shared_key_store_and_disconnect() {
         .request("providers.disconnect", json!({ "id": "deepseek" }))
         .await;
     assert_eq!(deepseek(&gone)["stored_key"], false);
+
+    // Desktop's Settings → Search reach the core's web_search the same way.
+    let (synced, _) = client
+        .request(
+            "web.sync",
+            json!({ "provider": "aggregator", "keys": { "tavily": " tv-key " }, "max_results": 5 }),
+        )
+        .await;
+    assert_eq!(synced["result"]["provider"], "tavily", "{synced}");
+    let web = std::fs::read_to_string(dir.join("config/web.json")).unwrap();
+    assert!(web.contains("\"tavily\"") && web.contains("\"max_results\": 5"), "{web}");
+    assert!(!web.contains("tv-key"), "keys never go in web.json");
+    let auth = std::fs::read_to_string(dir.join("config/auth.json")).unwrap();
+    assert!(auth.contains("web:tavily") && auth.contains("\"tv-key\""), "{auth}");
+    let (cleared, _) = client
+        .request("web.sync", json!({ "provider": "auto", "keys": {} }))
+        .await;
+    assert_eq!(cleared["result"]["provider"], "duckduckgo", "{cleared}");
+    let auth = std::fs::read_to_string(dir.join("config/auth.json")).unwrap();
+    assert!(!auth.contains("tv-key"), "a key Desktop dropped leaves the core");
+
     match previous_config_dir {
         Some(path) => std::env::set_var("AGENTE_CONFIG_DIR", path),
         None => std::env::remove_var("AGENTE_CONFIG_DIR"),

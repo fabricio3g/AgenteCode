@@ -5,7 +5,6 @@
 
 use agente_core::extensions::skills::SkillScope;
 use agente_core::mcp::{ServerSnapshot, ServerStatus};
-use agente_core::subagent::BUILTIN_SUBAGENTS;
 use agente_runtime::RuntimeHandle;
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -133,16 +132,18 @@ fn info(project_dir: &str) -> Value {
             })
         })
         .collect();
-    let mut agents: Vec<Value> = BUILTIN_SUBAGENTS
-        .iter()
-        .map(|agent| json!({ "name": agent.name, "description": agent.description, "builtin": true }))
+    // The user's own agents; the parent creates every other subagent.
+    let agents: Vec<Value> = agente_core::subagent::custom_subagents(project_dir)
+        .into_iter()
+        .filter(|agent| !agent.hidden)
+        .map(|agent| {
+            json!({
+                "name": agent.name,
+                "description": agent.description,
+                "model": agent.model,
+            })
+        })
         .collect();
-    agents.extend(
-        agente_core::subagent::custom_subagents(project_dir)
-            .into_iter()
-            .filter(|agent| !agent.hidden)
-            .map(|agent| json!({ "name": agent.name, "description": agent.description, "builtin": false })),
-    );
     let commands: Vec<Value> = agente_core::extensions::discover_commands(project_dir)
         .into_iter()
         .map(|command| {
@@ -180,21 +181,29 @@ mod tests {
     use super::*;
 
     #[test]
-    fn project_info_lists_builtins_and_what_the_folder_adds() {
+    fn project_info_lists_what_the_folder_adds() {
         let dir = tempfile_dir("info");
         std::fs::create_dir_all(dir.join(".agente/commands")).unwrap();
+        std::fs::create_dir_all(dir.join(".agente/agents")).unwrap();
         std::fs::write(
             dir.join(".agente/commands/review.md"),
             "---\ndescription: Review the diff\n---\nReview my changes.",
         )
         .unwrap();
+        std::fs::write(
+            dir.join(".agente/agents/auditor.md"),
+            "---\ndescription: Audits deps\nmodel: scout\n---\nAudit.",
+        )
+        .unwrap();
         let value = info(&dir.to_string_lossy());
         assert_eq!(value["agents_md"], false);
-        assert!(value["agents"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|agent| agent["builtin"] == true));
+        // Only the user's own agents: the model creates every other subagent.
+        let agents = value["agents"].as_array().unwrap();
+        let auditor = agents.iter().find(|agent| agent["name"] == "auditor").unwrap();
+        assert_eq!(auditor["model"], "scout");
+        for preset in ["general-purpose", "explore", "plan"] {
+            assert!(!agents.iter().any(|agent| agent["name"] == preset), "{preset}");
+        }
         assert_eq!(value["commands"][0]["name"], "review");
 
         let init = agente_core::extensions::init_project(&dir.to_string_lossy()).unwrap();

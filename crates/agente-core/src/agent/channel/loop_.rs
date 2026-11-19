@@ -68,7 +68,7 @@ pub fn spawn_chat_task(
     approval_broker: ApprovalBroker,
     mcp_manager: Option<Arc<crate::mcp::client::McpManager>>,
     subagent_registry: crate::subagent::SubagentRegistry,
-    subagent_models: crate::config::SubagentModels,
+    subagents: crate::config::SubagentSettings,
     smart_compaction: bool,
     compaction_model: Option<crate::config::SubagentModel>,
     initial_gap: usize,
@@ -84,7 +84,7 @@ pub fn spawn_chat_task(
         let host = SubagentHost::new(
             SubagentHostConfig {
                 custom_agents: custom_agents.clone(),
-                subagent_models,
+                subagents,
                 event_sender: sender.clone(),
                 task_id,
                 provider_id: provider_id.clone(),
@@ -264,6 +264,10 @@ pub(crate) async fn run_agent_loop(cfg: AgentRunConfig) -> Result<(), AgentLoopF
     if let Some(only) = &only_tools {
         tool_registry.retain_named(&only.iter().map(String::as_str).collect::<Vec<_>>());
     }
+    // The user's subagent models, when they let the orchestrator pick.
+    if let Some(host) = &subagent_host {
+        tool_registry.offer_subagent_models(&custom_agents, &host.model_menu());
+    }
     let mcp_allowed = only_tools
         .as_ref()
         .is_none_or(|only| only.iter().any(|name| name == "mcp"));
@@ -303,6 +307,16 @@ pub(crate) async fn run_agent_loop(cfg: AgentRunConfig) -> Result<(), AgentLoopF
         tool_registry.register(Box::new(crate::tools::TypedTool::new(
             crate::goal::GoalCompleteTool { session_id },
         )));
+    }
+
+    // Swarm mode is session state too: the main model gets the board while
+    // the user has it switched on. Children never plan the board.
+    if !is_subagent
+        && subagent_host.is_some()
+        && only_tools.is_none()
+        && crate::swarm::BoardStore::user().enabled(session_id)
+    {
+        tool_registry.register(Box::new(crate::swarm::BoardTool));
     }
 
     // Children get a pruned registry containing only tools their capability and

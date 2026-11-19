@@ -13,7 +13,7 @@ import { setMainWindowGetter } from '../agente/event-bridge.ts';
 import { listProjectFiles } from '../agente/project-files.ts';
 import { historyTurns } from '../agente/bot-history.ts';
 import type { Attachment, SessionSnapshot } from '../../shared/agente-protocol.gen.ts';
-import type { AgenteRuntimeMode, AgenteStartSessionArgs, ApprovalDecision } from '../../shared/agente-protocol.ts';
+import type { AgenteRuntimeMode, AgenteStartSessionArgs, ApprovalDecision, SubagentSettings } from '../../shared/agente-protocol.ts';
 
 type AgenteHandlerDeps = {
   ipcMain: IpcMain;
@@ -79,7 +79,14 @@ export function registerAgenteHandlers({ ipcMain, getMainWindow }: AgenteHandler
     const { snapshot } = await engine.runtimeRequest<{ snapshot: SessionSnapshot }>('session.get', { session_id: args.sessionId });
     return historyTurns(snapshot.conversation, args.chatId);
   });
-  ipcMain.handle('agente_subagent_model', (_e, args: { chatId: string; kind: string; pin: { provider: string; model: string; thinking?: string } | null }) => engine.subagentModel(args.chatId, args.kind, args.pin));
+  ipcMain.handle('agente_subagent_settings', (_e, args: SubagentSettings) => engine.subagentSettings(args));
+  // Swarm mode: the session's board and its switch (`agente_core::swarm`).
+  ipcMain.handle('agente_board', (_e, args: { sessionId: string; action: 'get' | 'enable' | 'disable' | 'clear' }) => {
+    const session_id = args.sessionId;
+    if (args.action === 'get') return engine.runtimeRequest('board.get', { session_id });
+    if (args.action === 'clear') return engine.runtimeRequest('board.clear', { session_id });
+    return engine.runtimeRequest('board.enable', { session_id, enabled: args.action === 'enable' });
+  });
   ipcMain.handle('agente_runtime_configure', (_e, args: Record<string, unknown>) => engine.configureSettings(args));
   const previews = new Map<string, string>();
   ipcMain.handle('agente_media_preview', async (_e, args: { path: string; maxSize?: number }) => {

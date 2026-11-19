@@ -7,7 +7,7 @@
 
 import { structuredPatch } from 'diff';
 import type { RuntimeEvent, RuntimeEventEnvelope } from '../../shared/agente-protocol.gen.ts';
-import type { CodeAgentEvent, CodeTodoItem } from '../../shared/agente-protocol.ts';
+import type { CodeAgentEvent, CodeTodoItem, SwarmBoard } from '../../shared/agente-protocol.ts';
 import { lineCount } from './text-lines.ts';
 import { RuntimeGenerationTimer, generationRate } from '../../shared/generation-speed.ts';
 import { contextBreakdown } from '../../shared/context-breakdown.ts';
@@ -259,6 +259,7 @@ export class RustTurnTranslator {
       ...outsideProjectReason(event.description)
     }],
     todo_changed: (event) => [{ type: 'todo_update', chatId: this.chatId, todos: todos(event.todos) }],
+    board_changed: (event) => [{ type: 'board_update', chatId: this.chatId, board: event.board as unknown as SwarmBoard }],
     compaction_started: (event) => [{ type: 'compaction_start', chatId: this.chatId, reason: 'auto', model: event.model ?? null }],
     context_compacted: (event) => [{ type: 'compaction_end', chatId: this.chatId, reason: 'auto', success: true, tokensBefore: event.tokens_before, tokensAfter: event.tokens_after, summary: event.smart ? event.summary : undefined, smart: event.smart }],
     usage: (event) => [this.usage(event.usage)],

@@ -29,8 +29,16 @@
   let {
     value = $bindable(),
     compact = false,
+    placeholder,
     onchange
-  }: { value?: Pin; /** One thin line: model button and thinking level side by side. */ compact?: boolean; onchange?: (pin: Pin | undefined) => void } = $props();
+  }: {
+    value?: Pin;
+    /** One thin line: model button and thinking level side by side. */
+    compact?: boolean;
+    /** What the trigger says with nothing chosen; by default, that the chat's model applies. */
+    placeholder?: string;
+    onchange?: (pin: Pin | undefined) => void;
+  } = $props();
 
   const initial = untrack(() => value);
   let provider = $state(initial?.provider ?? '');
@@ -41,7 +49,7 @@
 
   const providers = $derived(configuredProviders(appStore.config, { includeActiveAlways: true }));
   const providerLabel = $derived(providers.find((option) => option.id === provider)?.label ?? provider);
-  const label = $derived(model ? `${providerLabel} · ${model}` : $t('bots.modelSame'));
+  const label = $derived(model ? `${providerLabel} · ${model}` : (placeholder ?? $t('bots.modelSame')));
 
   // The pin the rest of the editor saves: unset while nothing is chosen.
   // The first pass only reads the initial value back, so it is not a change.

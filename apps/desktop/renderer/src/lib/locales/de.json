@@ -409,6 +409,29 @@
     "refresh": "Aktualisieren"
   },
   "code": {
+    "swarm": {
+      "board": "Board",
+      "mode": "Schwarmmodus",
+      "short": "Schwarm",
+      "brief": "Der Agent plant große Arbeit als Board und erstellt Subagenten dafür",
+      "onHint": "Der Agent plant große Arbeit hier und erstellt je Karte einen Subagenten.",
+      "offHint": "Einschalten, damit der Agent Arbeit als Board für seine Subagenten plant.",
+      "emptyOn": "Noch keine Karten. Bitte um etwas Großes — der Agent plant es hier, seine Subagenten erledigen es.",
+      "emptyOff": "Der Schwarmmodus ist aus. Eingeschaltet teilt der Agent große Arbeit in Karten, jede von einem Subagenten erledigt.",
+      "cards": "{n, plural, one {# Karte} other {# Karten}}",
+      "working": "{n} in Arbeit",
+      "toReview": "{n} zu prüfen",
+      "failed": "{n} fehlgeschlagen",
+      "column": {
+        "backlog": "Offen",
+        "working": "In Arbeit",
+        "review": "Prüfung",
+        "done": "Erledigt"
+      },
+      "waitsFor": "Wartet auf {cards}",
+      "openCard": "Subagent öffnen",
+      "clear": "Board leeren"
+    },
     "traceCopyInput": "Eingabe kopieren",
     "traceCopyOutput": "Ausgabe kopieren",
     "traceCopyCommand": "Befehl kopieren",
@@ -642,7 +665,7 @@
       },
       "subagents": {
         "label": "Subagenten",
-        "hint": "Eingebaute und Projekt-Subagenten und ihre Modelle"
+        "hint": "Die Modelle, die der Agent seinen Subagenten geben kann"
       },
       "mcp": {
         "label": "MCP-Server",
@@ -693,14 +716,29 @@
         "empty": "Dieses Projekt hat noch keine Skills oder eigenen Befehle."
       },
       "agents": {
-        "title": "Subagenten",
-        "hint": "Helfer, an die der Agent Arbeit abgeben kann, und ihr jeweiliges Modell.",
-        "all": "Alle Subagenten",
-        "inherit": "Nutzt das Modell der Unterhaltung",
-        "useModel": "Aktuelles Modell nutzen",
-        "reset": "Zurücksetzen",
-        "defaultName": "All subagents",
-        "defaultHint": "Used by any type below that has no model of its own. Unset follows the chat."
+        "title": "Modelle für Subagenten",
+        "hint": "Der Agent erstellt Subagenten für seine Aufgaben und wählt eines dieser Modelle anhand deiner Notizen.",
+        "useFor": "Einsatz",
+        "useForPlaceholder": "Wofür eignet es sich? Der Agent liest das zur Wahl — z. B. schnelle Suchen, ändert nie Dateien",
+        "add": "Modell hinzufügen",
+        "remove": "Modell entfernen",
+        "picks": "Agent wählen lassen",
+        "mainModel": "Modell der Unterhaltung",
+        "chooseModel": "Modell wählen",
+        "model": "Modell",
+        "done": "Fertig",
+        "edit": "{name} bearbeiten",
+        "free": "kostenlos",
+        "noNote": "Noch keine Notiz: schreib, wofür dieses Modell gedacht ist.",
+        "defaultChip": "Standard",
+        "defaultModel": "Standardmodell",
+        "name": "Name",
+        "makeDefault": "{name} als Standard verwenden",
+        "draft": "Neues Modell",
+        "needsModel": "Wähle ein Modell, um es zu speichern.",
+        "mainModelHint": "Das Modell, mit dem der Chat läuft.",
+        "picksOn": "Der Agent wählt anhand deiner Notizen aus dieser Liste; sonst gilt der Standard.",
+        "picksOff": "Alle Subagenten laufen auf dem Standard."
       },
       "mcp": {
         "title": "MCP-Server",

@@ -307,6 +307,7 @@ fn render_overlays(
         crate::state::ModalOwner::SubagentModels => {
             crate::subagent_models::render(frame, content, state)
         }
+        crate::state::ModalOwner::Board => crate::board_view::render(frame, content, state),
         crate::state::ModalOwner::Settings => crate::settings::render(frame, content, state),
         crate::state::ModalOwner::Skills => crate::skills::render(frame, content, state),
         crate::state::ModalOwner::Mcp => crate::mcp_servers::render(frame, content, state),

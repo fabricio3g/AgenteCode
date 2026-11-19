@@ -134,7 +134,7 @@ function applyRuntimeEvent(state: CodeRunState, event: Extract<CodeAgentEvent, {
       state.preparing = null;
       return false;
     case 'child_started':
-      Object.assign(child!, { kind: value.kind, description: value.description, status: 'running', model: value.model });
+      Object.assign(child!, { kind: value.kind, description: value.description, status: 'running', model: value.model, seat: value.seat ?? undefined });
       // One spawn, one row: hand the child to the `task` step that asked for it,
       // so the transcript draws its card there instead of a generic tool row.
       linkChild(state, child!, value.description);

@@ -409,6 +409,29 @@
     "refresh": "Actualizar"
   },
   "code": {
+    "swarm": {
+      "board": "Tablero",
+      "mode": "Modo enjambre",
+      "short": "Enjambre",
+      "brief": "El agente planifica el trabajo grande como un tablero y crea subagentes para hacerlo",
+      "onHint": "El agente planifica aquí el trabajo grande y crea un subagente por tarjeta.",
+      "offHint": "Actívalo para que el agente planifique el trabajo como un tablero para sus subagentes.",
+      "emptyOn": "Aún no hay tarjetas. Pide algo grande: el agente lo planifica aquí y sus subagentes lo hacen.",
+      "emptyOff": "El modo enjambre está apagado. Actívalo y el agente divide el trabajo grande en tarjetas, cada una hecha por un subagente que crea.",
+      "cards": "{n, plural, one {# tarjeta} other {# tarjetas}}",
+      "working": "{n} en marcha",
+      "toReview": "{n} por revisar",
+      "failed": "{n} fallidas",
+      "column": {
+        "backlog": "Pendiente",
+        "working": "En marcha",
+        "review": "Revisión",
+        "done": "Hecho"
+      },
+      "waitsFor": "Espera a {cards}",
+      "openCard": "Abrir su subagente",
+      "clear": "Vaciar tablero"
+    },
     "traceCopyInput": "Copiar entrada",
     "traceCopyOutput": "Copiar resultado",
     "traceCopyCommand": "Copiar comando",
@@ -651,7 +674,7 @@
       },
       "subagents": {
         "label": "Subagentes",
-        "hint": "Subagentes incluidos y del proyecto, y sus modelos"
+        "hint": "Los modelos que el agente puede dar a los subagentes que crea"
       },
       "mcp": {
         "label": "Servidores MCP",
@@ -702,14 +725,29 @@
         "empty": "Este proyecto aún no tiene habilidades ni comandos propios."
       },
       "agents": {
-        "title": "Subagentes",
-        "hint": "Ayudantes a los que el agente puede pasar trabajo, y el modelo de cada uno.",
-        "all": "Todos los subagentes",
-        "inherit": "Usa el modelo de la conversación",
-        "useModel": "Usar el modelo actual",
-        "reset": "Usar el predeterminado",
-        "defaultName": "Todos los subagentes",
-        "defaultHint": "Lo usa cualquier tipo sin modelo propio. Sin definir, sigue al chat."
+        "title": "Modelos de subagentes",
+        "hint": "El agente crea subagentes para sus tareas y elige uno de estos modelos leyendo tus notas.",
+        "useFor": "Usar para",
+        "useForPlaceholder": "¿En qué es bueno? El agente lo lee para elegir — p. ej. búsquedas rápidas, nunca edita",
+        "add": "Añadir modelo",
+        "remove": "Quitar modelo",
+        "picks": "Dejar que el agente elija",
+        "mainModel": "Modelo de la conversación",
+        "chooseModel": "Elige un modelo",
+        "model": "Modelo",
+        "done": "Listo",
+        "edit": "Editar {name}",
+        "free": "gratis",
+        "noNote": "Sin nota: di para qué sirve este modelo.",
+        "defaultChip": "Predeterminado",
+        "defaultModel": "Modelo predeterminado",
+        "name": "Nombre",
+        "makeDefault": "Usar {name} como predeterminado",
+        "draft": "Modelo nuevo",
+        "needsModel": "Elige un modelo para guardarlo.",
+        "mainModelHint": "El modelo que use el chat.",
+        "picksOn": "El agente elige de esta lista según tus notas; si no elige, usa el predeterminado.",
+        "picksOff": "Todos los subagentes usan el predeterminado."
       },
       "mcp": {
         "title": "Servidores MCP",

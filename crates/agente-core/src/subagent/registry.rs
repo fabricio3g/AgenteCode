@@ -392,6 +392,9 @@ mod tests {
             summary: None,
             conversation: Vec::new(),
             model: "m".to_string(),
+            seat: None,
+            provider: String::new(),
+            thinking: String::new(),
             depth: 0,
             background: false,
             started_at: chrono::Utc::now(),
@@ -403,7 +406,7 @@ mod tests {
 
     fn queued_item(id: &str) -> QueuedSpawn {
         let request = serde_json::from_value(serde_json::json!({
-            "prompt": "do it", "description": "d", "subagent_type": "explore",
+            "prompt": "do it", "description": "d", "role": "explore",
             "isolation": "none"
         }))
         .unwrap();

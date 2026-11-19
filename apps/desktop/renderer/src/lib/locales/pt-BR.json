@@ -409,6 +409,29 @@
     "refresh": "Atualizar"
   },
   "code": {
+    "swarm": {
+      "board": "Quadro",
+      "mode": "Modo enxame",
+      "short": "Enxame",
+      "brief": "O agente planeja o trabalho grande como um quadro e cria subagentes para fazê-lo",
+      "onHint": "O agente planeja aqui o trabalho grande e cria um subagente por cartão.",
+      "offHint": "Ative para o agente planejar o trabalho como um quadro para seus subagentes.",
+      "emptyOn": "Ainda não há cartões. Peça algo grande: o agente planeja aqui e seus subagentes fazem.",
+      "emptyOff": "O modo enxame está desligado. Ligado, o agente divide o trabalho grande em cartões, cada um feito por um subagente que ele cria.",
+      "cards": "{n, plural, one {# cartão} other {# cartões}}",
+      "working": "{n} em andamento",
+      "toReview": "{n} para revisar",
+      "failed": "{n} com falha",
+      "column": {
+        "backlog": "A fazer",
+        "working": "Em andamento",
+        "review": "Revisão",
+        "done": "Feito"
+      },
+      "waitsFor": "Espera {cards}",
+      "openCard": "Abrir o subagente",
+      "clear": "Limpar quadro"
+    },
     "traceCopyInput": "Copiar entrada",
     "traceCopyOutput": "Copiar resultado",
     "traceCopyCommand": "Copiar comando",
@@ -642,7 +665,7 @@
       },
       "subagents": {
         "label": "Subagentes",
-        "hint": "Subagentes incluídos e do projeto, e seus modelos"
+        "hint": "Os modelos que o agente pode dar aos subagentes que cria"
       },
       "mcp": {
         "label": "Servidores MCP",
@@ -693,14 +716,29 @@
         "empty": "Este projeto ainda não tem habilidades nem comandos próprios."
       },
       "agents": {
-        "title": "Subagentes",
-        "hint": "Ajudantes para quem o agente pode passar trabalho, e o modelo de cada um.",
-        "all": "Todos os subagentes",
-        "inherit": "Usa o modelo da conversa",
-        "useModel": "Usar o modelo atual",
-        "reset": "Redefinir",
-        "defaultName": "All subagents",
-        "defaultHint": "Used by any type below that has no model of its own. Unset follows the chat."
+        "title": "Modelos dos subagentes",
+        "hint": "O agente cria subagentes para suas tarefas e escolhe um destes modelos lendo suas notas.",
+        "useFor": "Usar para",
+        "useForPlaceholder": "Em que ele é bom? O agente lê isto para escolher — ex. buscas rápidas, nunca edita",
+        "add": "Adicionar modelo",
+        "remove": "Remover modelo",
+        "picks": "Deixar o agente escolher",
+        "mainModel": "Modelo da conversa",
+        "chooseModel": "Escolha um modelo",
+        "model": "Modelo",
+        "done": "Pronto",
+        "edit": "Editar {name}",
+        "free": "grátis",
+        "noNote": "Sem nota ainda: diga para que serve este modelo.",
+        "defaultChip": "Padrão",
+        "defaultModel": "Modelo padrão",
+        "name": "Nome",
+        "makeDefault": "Usar {name} como padrão",
+        "draft": "Novo modelo",
+        "needsModel": "Escolha um modelo para salvá-lo.",
+        "mainModelHint": "O modelo que o chat usar.",
+        "picksOn": "O agente escolhe desta lista pelas suas notas; se não escolher, usa o padrão.",
+        "picksOff": "Todos os subagentes usam o padrão."
       },
       "mcp": {
         "title": "Servidores MCP",

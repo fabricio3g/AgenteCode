@@ -886,7 +886,7 @@ impl ToolRegistry {
     /// fresh worktree checkout does not re-scan `.agente/agents` on disk.
     pub fn with_agents(
         project_dir: impl Into<String>,
-        agents: &[crate::subagent::CustomSubagent],
+        agents: &[crate::subagent::AgentDefinition],
     ) -> Self {
         let mut registry = Self {
             tools: HashMap::new(),
@@ -920,6 +920,22 @@ impl ToolRegistry {
             registry.register(Box::new(skills));
         }
         registry
+    }
+
+    /// Offer the user's subagent models on the `task` tool (rebuilt from the
+    /// same roster, so its description stays byte-stable per list).
+    pub fn offer_subagent_models(
+        &mut self,
+        agents: &[crate::subagent::AgentDefinition],
+        menu: &[crate::subagent::routing::ModelMenuEntry],
+    ) {
+        if menu.is_empty() || !self.tools.contains_key("task") {
+            return;
+        }
+        self.register(Box::new(
+            TaskTool::with_roster(crate::subagent::definition::agent_roster(agents))
+                .with_models(menu),
+        ));
     }
 
     /// Register pre-built MCP tool adapters.

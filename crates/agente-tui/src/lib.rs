@@ -22,6 +22,7 @@ pub(crate) mod slash_command;
 pub(crate) mod state;
 pub(crate) mod style;
 pub(crate) mod subagent_models;
+pub(crate) mod board_view;
 pub(crate) mod syntax_highlight;
 #[cfg(test)]
 pub(crate) mod test_support;

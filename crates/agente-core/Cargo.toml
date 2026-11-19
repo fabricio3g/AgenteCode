@@ -39,6 +39,8 @@ processkit = { workspace = true, optional = true }
 ignore = { workspace = true }
 http = "1"
 rmcp = { version = "3.4", optional = true, default-features = false, features = ["client", "transport-child-process", "transport-streamable-http-client-reqwest", "reqwest"] }
+scraper = "0.20"
+encoding_rs = "0.8"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 # The bot sandbox (src/sandbox/linux.rs): Landlock rules and the seccomp filter.

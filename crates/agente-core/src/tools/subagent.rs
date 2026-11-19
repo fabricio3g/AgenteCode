@@ -10,59 +10,63 @@ use async_trait::async_trait;
 
 use super::{Tool, ToolError, ToolExecutionMode};
 
-/// Live agent roster (built-ins + discovered customs) the description is
-/// generated from. The prose is computed once at construction: generating it
-/// lazily leaked a fresh `String` on every `description()` call, which the
-/// registry performs each loop iteration.
+/// The `task` tool. There are no predetermined subagents: the parent model
+/// creates each one (role, instructions, tool level, model). The prose is
+/// computed once at construction: generating it lazily leaked a fresh
+/// `String` on every `description()` call, which the registry performs each
+/// loop iteration.
 pub struct TaskTool {
     description: String,
-    /// Names advertised in the `subagent_type` schema enum so a provider can
-    /// constrain the choice (a call shaped `{"type": "explore"}` used to fall
-    /// through to the `general-purpose` default).
+    /// The user's own agents (`.agente/agents`), advertised as the
+    /// `subagent_type` enum; empty leaves `subagent_type` out of the schema.
     agent_types: Vec<String>,
+    /// Names the user lets the orchestrator assign (`model` enum); empty
+    /// leaves `model` out of the schema.
+    model_names: Vec<String>,
 }
-
-const FALLBACK_AGENT_TYPES: &[&str] = &["general-purpose", "explore", "plan"];
 
 impl Default for TaskTool {
     fn default() -> Self {
-        Self {
-            description: task_description(&[]),
-            agent_types: FALLBACK_AGENT_TYPES
-                .iter()
-                .map(|name| (*name).to_string())
-                .collect(),
-        }
+        Self::with_roster(Vec::new())
     }
 }
 
 impl TaskTool {
-    /// Build the tool with the live agent roster for description generation.
+    /// Build the tool with the user's own agents for its description.
     pub fn with_roster(roster: Vec<crate::subagent::definition::AgentRosterEntry>) -> Self {
-        let description = task_description(&roster);
-        let agent_types = if roster.is_empty() {
-            FALLBACK_AGENT_TYPES
-                .iter()
-                .map(|name| (*name).to_string())
-                .collect()
-        } else {
-            roster.iter().map(|entry| entry.name.clone()).collect()
-        };
         Self {
-            description,
-            agent_types,
+            description: task_description(&roster),
+            agent_types: roster.iter().map(|entry| entry.name.clone()).collect(),
+            model_names: Vec::new(),
         }
+    }
+
+    /// Offer the user's subagent models: their menu joins the description
+    /// and their names (plus `main`) become the `model` enum.
+    pub fn with_models(mut self, menu: &[crate::subagent::routing::ModelMenuEntry]) -> Self {
+        if menu.is_empty() {
+            return self;
+        }
+        self.description
+            .push_str(&crate::subagent::routing::menu_text(menu));
+        self.model_names = menu
+            .iter()
+            .map(|entry| entry.name.clone())
+            .chain(std::iter::once(crate::config::MAIN_MODEL.to_string()))
+            .collect();
+        self
     }
 }
 
 fn task_description(roster: &[crate::subagent::definition::AgentRosterEntry]) -> String {
     let mut out = String::from(
-        "Spawn a subagent to complete a task. Subagents run in their own context with a restricted toolset.",
+        "Create a subagent and hand it a task. There are no predetermined subagents: you design each one for the job.",
     );
-    if roster.is_empty() {
-        out.push_str(" Built-in types: \"general-purpose\" (all tools), \"explore\" (read-only investigation), \"plan\" (read-only planning). Custom types can be added as `.agente/agents/<name>.md`.");
-    } else {
-        out.push_str(" Available agent types:");
+    out.push_str(
+        " Give it a `role` (who it is, in a few words: \"Security reviewer\", \"Test writer\", \"Docs researcher\"), optional `instructions` (method, standards, what to avoid), a `capability_mode` (\"read-only\" by default; \"read-write\" to edit files, \"execute\" to also run commands, \"all\" to also create its own subagents), and the `prompt` with the task itself.",
+    );
+    if !roster.is_empty() {
+        out.push_str(" The user also wrote agents you can launch by name with `subagent_type` (a `role` then sharpens it):");
         for entry in roster {
             out.push_str(&format!(
                 "\n- {} \u{2014} {} (tools: {})",
@@ -71,24 +75,21 @@ fn task_description(roster: &[crate::subagent::definition::AgentRosterEntry]) ->
                 crate::subagent::definition::roster_tools_summary(&entry.tools),
             ));
         }
-        out.push_str("\nCustom types can be added as `.agente/agents/<name>.md`.");
     }
     out.push_str(
-        " explore and plan wait for the result inline by default (pass run_in_background=true to detach); general-purpose runs in the background by default and returns a task_id immediately. Use task_output to fetch a background result and kill_task to cancel one. A background completion with no outstanding poll is pushed to you automatically — do not poll task_output in a loop. If all concurrency slots are busy the spawn queues and returns a pending handle instead of failing.",
+        " A read-only subagent waits for its result inline by default; one that may change things runs in the background and returns a task_id immediately (`run_in_background` overrides either). Use task_output to fetch a background result and kill_task to cancel one. A background completion with no outstanding poll is pushed to you automatically — do not poll task_output in a loop. If all concurrency slots are busy the spawn queues and returns a pending handle instead of failing.",
     );
     // When to delegate, and what delegation costs. This used to live in the
     // executor system prompt, where it was a fifteen-line paragraph inside
     // "TOOL USAGE" — the mechanics belong to the tool, and the prompt renders
     // this description in full.
     out.push_str(
-        " Reach for explore on open-ended codebase questions (\"where is X handled\", \"find every caller of Y\", \"how does Z flow\") instead of reading file after file yourself; reach for plan when you need an implementation plan from an investigation; general-purpose is for work that changes files. Spawning is not free: every child runs its own model calls, so prefer a flat fan-out over chains (nesting is capped at depth 3). When parallel children touch files, partition ownership up front — one child per area — so their edits never collide, and combine the results yourself.",
+        " Create read-only subagents for open-ended questions (\"where is X handled\", \"find every caller of Y\", \"how does Z flow\") instead of reading file after file yourself — several independent ones at once when the questions are independent. When subagents write, partition ownership up front — one subagent per area — so their edits never collide, and combine the results yourself. Spawning is not free: every child runs its own model calls, so prefer a flat fan-out over chains (nesting is capped at depth 3).",
     );
     out.push_str(
         " The child starts with a fresh context: it sees ONLY your `prompt`, never the parent conversation. Pack everything it needs into the prompt — exact file paths, prior findings, constraints, and what \"done\" looks like. A prompt like \"fix what we discussed\" will fail.",
     );
-    out.push_str(
-        " In Plan mode every child runs with read-only tools regardless of subagent_type or capability_mode.",
-    );
+    out.push_str(" In Plan mode every child runs with read-only tools.");
     out
 }
 
@@ -117,19 +118,22 @@ impl Tool for TaskTool {
                     "type": "string",
                     "description": "Short description of the task (3-5 words)."
                 },
-                "subagent_type": {
+                "role": {
                     "type": "string",
-                    "description": "Name of the subagent type to launch. \"explore\" sweeps the codebase read-only, \"plan\" returns an implementation plan, \"general-purpose\" has all tools. Additional user-defined types may also be available.",
-                    "default": "general-purpose"
+                    "description": "Who the subagent is, in a few words (\"Security reviewer\", \"Test writer\"). Shown to the user on its card. Defaults to the description."
+                },
+                "instructions": {
+                    "type": "string",
+                    "description": "How the subagent should work: method, standards, what to avoid. The task itself goes in `prompt`."
                 },
                 "run_in_background": {
                     "type": "boolean",
-                    "description": "When true, returns immediately with a task_id and pushes the completion automatically; use task_output only to peek at a running result. Defaults to false for explore/plan (their result is needed inline) and true for general-purpose."
+                    "description": "When true, returns immediately with a task_id and pushes the completion automatically; use task_output only to peek at a running result. Defaults to false for a read-only subagent (its result is needed inline) and true for one that may change things."
                 },
                 "capability_mode": {
                     "type": "string",
                     "enum": ["read-only", "read-write", "execute", "all"],
-                    "description": "Capability mode: \"read-only\", \"read-write\", \"execute\", or \"all\". Controls which tool classes the child can use. Default is determined by the subagent type."
+                    "description": "Which tools the child gets: \"read-only\" (read and search, the default), \"read-write\" (plus edits), \"execute\" (plus shell), \"all\" (plus creating its own subagents). One of the user's agents defaults to its own level."
                 },
                 "cwd": {
                     "type": "string",
@@ -150,12 +154,25 @@ impl Tool for TaskTool {
                 },
                 "resume_from": {
                     "type": "string",
-                    "description": "Resume from a previously completed subagent's conversation. Pass the task_id returned by a prior task call. The new subagent continues the previous one's raw transcript with the new task prompt appended. The source must be completed and use the same subagent_type."
+                    "description": "Resume from a previously completed subagent's conversation. Pass the task_id returned by a prior task call. The new subagent continues the previous one's raw transcript with the new task prompt appended. The source must be completed and have the same role."
                 }
             },
             "required": ["prompt", "description"]
         });
-        schema["properties"]["subagent_type"]["enum"] = serde_json::json!(self.agent_types);
+        if !self.agent_types.is_empty() {
+            schema["properties"]["subagent_type"] = serde_json::json!({
+                "type": "string",
+                "enum": self.agent_types,
+                "description": "Launch one of the user's own agents by name instead of creating one."
+            });
+        }
+        if !self.model_names.is_empty() {
+            schema["properties"]["model"] = serde_json::json!({
+                "type": "string",
+                "enum": self.model_names,
+                "description": "Which of the user's subagent models runs this child (see the list in the tool description); \"main\" is your own model. Omit to use the user's default. Not allowed with resume_from."
+            });
+        }
         schema
     }
 
@@ -343,21 +360,22 @@ mod tests {
     }
 
     #[test]
-    fn spawn_request_defaults_resolve_by_type() {
-        // The LLM may omit the optional fields; serde defaults must kick in.
-        let req: SubagentSpawnRequest = serde_json::from_value(serde_json::json!({
+    fn spawn_request_defaults_create_a_subagent() {
+        // The LLM may omit the optional fields; serde defaults must kick in,
+        // and a request that names no role is created from its description.
+        let mut req: SubagentSpawnRequest = serde_json::from_value(serde_json::json!({
             "prompt": "explore the codebase",
-            "description": "explore repo",
+            "description": "Map the parser",
         }))
         .unwrap();
-        assert_eq!(req.subagent_type, "general-purpose");
+        req.normalize();
+        assert!(req.is_created());
+        assert_eq!(req.subagent_type, "");
+        assert_eq!(req.role.as_deref(), Some("Map the parser"));
+        assert!(req.run_in_background.is_none());
         assert!(
-            req.run_in_background.is_none(),
-            "run_in_background is unset so the host resolves it by type"
-        );
-        assert!(
-            req.resolved_run_in_background(),
-            "general-purpose defaults to background execution"
+            !req.resolved_run_in_background(),
+            "a read-only subagent's answer is needed inline"
         );
         assert!(req.capability_mode.is_none());
         assert!(req.cwd.is_none());
@@ -365,53 +383,84 @@ mod tests {
         assert!(req.resume_from.is_none());
     }
 
-    /// explore/plan are research types: the parent needs their answer to
-    /// continue, so they run inline unless background is explicitly requested.
+    /// A role alone creates a read-only subagent known by that role; it
+    /// waits inline unless it may change things or is told otherwise.
     #[test]
-    fn research_types_default_to_foreground() {
-        let req: SubagentSpawnRequest = serde_json::from_value(serde_json::json!({
-            "prompt": "p",
-            "description": "d",
-            "subagent_type": "explore",
+    fn a_role_creates_a_subagent() {
+        let mut req: SubagentSpawnRequest = serde_json::from_value(serde_json::json!({
+            "prompt": "p", "description": "d", "role": " Security reviewer ", "instructions": ""
         }))
         .unwrap();
-        assert!(req.run_in_background.is_none());
+        req.normalize();
+        assert!(req.is_created());
+        assert_eq!(req.role.as_deref(), Some("Security reviewer"));
+        assert_eq!(req.instructions, None);
+        assert!(!req.resolved_run_in_background());
+        req.capability_mode = Some(crate::subagent::types::SubagentCapabilityMode::ReadWrite);
+        assert!(req.resolved_run_in_background());
+        req.run_in_background = Some(false);
         assert!(!req.resolved_run_in_background());
 
-        let explicit: SubagentSpawnRequest = serde_json::from_value(serde_json::json!({
-            "prompt": "p",
-            "description": "d",
-            "subagent_type": "explore",
-            "run_in_background": true,
-        }))
-        .unwrap();
-        assert!(explicit.resolved_run_in_background());
+        let schema = TaskTool::default().parameters();
+        assert!(schema["properties"]["role"].is_object());
+        assert!(schema["properties"]["instructions"].is_object());
+        let desc = TaskTool::default().description().to_string();
+        assert!(desc.contains("no predetermined subagents"), "{desc}");
+        for preset in ["general-purpose", "\"explore\"", "\"plan\""] {
+            assert!(!desc.contains(preset), "{preset} in {desc}");
+        }
     }
 
-    /// Models commonly spell the type argument `type` or `agent`; unknown keys
-    /// used to be ignored and silently spawned `general-purpose`.
+    /// Models commonly spell the agent argument `type` or `agent`.
     #[test]
     fn subagent_type_accepts_common_aliases() {
         for key in ["type", "agent", "agent_type", "subagent_type"] {
             let mut payload = serde_json::json!({"prompt": "p", "description": "d"});
-            payload[key] = serde_json::json!("explore");
+            payload[key] = serde_json::json!("auditor");
             let req: SubagentSpawnRequest = serde_json::from_value(payload).unwrap();
-            assert_eq!(req.subagent_type, "explore", "alias {key}");
+            assert_eq!(req.subagent_type, "auditor", "alias {key}");
         }
     }
 
+    /// `subagent_type` exists only when the user wrote agents of their own.
     #[test]
-    fn task_schema_enumerates_agent_types() {
-        let schema = TaskTool::default().parameters();
-        let types: Vec<&str> = schema["properties"]["subagent_type"]["enum"]
-            .as_array()
-            .expect("subagent_type enum")
-            .iter()
-            .filter_map(|value| value.as_str())
-            .collect();
-        for expected in ["explore", "plan", "general-purpose"] {
-            assert!(types.contains(&expected), "{types:?}");
-        }
+    fn subagent_type_lists_only_the_users_agents() {
+        let plain = TaskTool::default().parameters();
+        assert!(plain["properties"].get("subagent_type").is_none());
+        let tool = TaskTool::with_roster(vec![crate::subagent::definition::AgentRosterEntry {
+            name: "auditor".into(),
+            description: "Audits deps".into(),
+            tools: Some(vec!["read_file".into()]),
+        }]);
+        assert_eq!(
+            tool.parameters()["properties"]["subagent_type"]["enum"],
+            serde_json::json!(["auditor"])
+        );
+        assert!(tool.description().contains("- auditor \u{2014} Audits deps"));
+    }
+
+    #[test]
+    fn model_is_offered_only_with_a_menu() {
+        let plain = TaskTool::default();
+        assert!(plain.parameters()["properties"].get("model").is_none());
+        assert!(!plain.description().contains("Models you can assign"));
+        let menu = [crate::subagent::routing::ModelMenuEntry {
+            name: "scout".into(),
+            price: "free".into(),
+            context: 131_072,
+            use_for: "Fast searches.".into(),
+        }];
+        let tool = TaskTool::default().with_models(&menu);
+        let names = tool.parameters()["properties"]["model"]["enum"].clone();
+        assert_eq!(names, serde_json::json!(["scout", "main"]));
+        assert!(tool
+            .description()
+            .contains("- scout \u{2014} free \u{b7} 131k \u{2014} Fast searches."));
+        let req: SubagentSpawnRequest = serde_json::from_value(serde_json::json!({
+            "prompt": "p", "description": "d", "model": "scout"
+        }))
+        .unwrap();
+        assert_eq!(req.model.as_deref(), Some("scout"));
     }
 
     #[test]

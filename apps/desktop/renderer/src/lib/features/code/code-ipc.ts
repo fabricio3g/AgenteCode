@@ -82,7 +82,8 @@ export function codeEdits(chatId: string, action: 'undo' | 'redo'): Promise<{ ok
 
 export interface ProjectInfo {
   skills: Array<{ name: string; description: string; scope: 'user' | 'project'; source: string }>;
-  agents: Array<{ name: string; description: string; builtin: boolean }>;
+  /** The user's own agents (`.agente/agents`); the model creates every other subagent. */
+  agents: Array<{ name: string; description: string; model?: string | null }>;
   commands: Array<{ name: string; description: string; template: string }>;
   agents_md: boolean;
 }

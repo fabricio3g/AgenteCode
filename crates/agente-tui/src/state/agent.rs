@@ -350,7 +350,8 @@ pub struct SubagentUiState {
     pub tool_rows: Vec<SubagentToolRow>,
     pub preparing_tool: Option<String>,
     pub summary: Option<String>,
-    /// Child model slug, for the detail header.
+    /// Child model label (`scout · qwen3-coder:free`, or the bare model),
+    /// for the card and detail header.
     pub model: String,
     /// Wall-clock start (`SubagentStarted`), for the live elapsed readout.
     pub started_at: Option<chrono::DateTime<chrono::Utc>>,
@@ -467,6 +468,9 @@ pub struct AgentRuntimeState {
     pub steering_queue: Vec<String>,
     /// Live UI state of spawned subagents, keyed by subagent id.
     pub subagents: HashMap<String, SubagentUiState>,
+    /// The session's swarm board (`/board`), kept current by
+    /// `AgentEvent::BoardChanged` and read from the store on `/swarm`.
+    pub board: Option<agente_core::swarm::Board>,
     /// Transient output for in-flight parent/direct tool calls, keyed by call id.
     pub live_tool_calls: HashMap<String, LiveToolCall>,
     /// Bumped whenever the live-tool-call set gains/loses a member. The chat
@@ -514,6 +518,7 @@ impl Default for AgentRuntimeState {
             user_inbox: agente_core::agent::UserInbox::default(),
             steering_queue: Vec::new(),
             subagents: HashMap::new(),
+            board: None,
             live_tool_calls: HashMap::new(),
             live_tools_epoch: 0,
             task_handle: None,

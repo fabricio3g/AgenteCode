@@ -252,6 +252,31 @@ impl AppState {
 
     /// Sync the TUI's current state into the on-disk AppConfig (workspace mirror + global).
     /// Best-effort: failures are logged, never propagated to the UI.
+    /// Re-read this session's swarm board from the store.
+    pub fn refresh_board(&mut self) {
+        self.agent.board = agente_core::swarm::BoardStore::user()
+            .get(self.session.session_id)
+            .ok();
+    }
+
+    /// Turn swarm mode on or off for this session. The board tool joins the
+    /// next turn; the cards stay either way.
+    pub fn toggle_swarm(&mut self) {
+        let store = agente_core::swarm::BoardStore::user();
+        let on = !store.enabled(self.session.session_id);
+        match store.set_enabled(self.session.session_id, on) {
+            Ok(board) => {
+                self.agent.board = Some(board);
+                self.add_system_message(if on {
+                    "Swarm mode on: for big work the agent plans a board and creates subagents to work it (/board to watch).".to_string()
+                } else {
+                    "Swarm mode off: the board stays; the agent delegates with task only.".to_string()
+                });
+            }
+            Err(error) => self.add_system_message(format!("Could not switch swarm mode: {error}")),
+        }
+    }
+
     pub fn persist_config(&mut self) {
         self.config.persist(&self.session.project_dir);
     }
@@ -757,8 +782,10 @@ pub enum ModalOwner {
     SubagentDetail,
     Connect,
     ModelSelector,
-    /// Per-subagent-type model overrides (`/subagent-models`).
+    /// The models subagents may run on (`/subagent-models`).
     SubagentModels,
+    /// The swarm board (`/board`).
+    Board,
     /// Preferences dialog (`/settings`).
     Settings,
     /// Installed agent skills (`/skills`).
@@ -844,6 +871,7 @@ impl ModalOwner {
                 | Self::Connect
                 | Self::ModelSelector
                 | Self::SubagentModels
+                | Self::Board
                 | Self::Settings
                 | Self::Skills
                 | Self::Mcp
@@ -905,6 +933,9 @@ pub fn modal_owner(state: &AppState) -> ModalOwner {
     }
     if state.input.show_subagent_models {
         return ModalOwner::SubagentModels;
+    }
+    if state.input.show_board {
+        return ModalOwner::Board;
     }
     if state.input.show_settings {
         return ModalOwner::Settings;

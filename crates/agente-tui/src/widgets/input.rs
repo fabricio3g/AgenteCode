@@ -80,10 +80,18 @@ fn border_color(state: &AppState) -> ratatui::style::Color {
 /// Mode readout for the top header: `plan` or `build`, in the mode accent.
 pub fn mode_spans(state: &AppState) -> Vec<Span<'static>> {
     let mode = state.agent.work_mode();
-    vec![Span::styled(
+    let mut spans = vec![Span::styled(
         mode.label(),
         Style::default().fg(mode.color()).bg(BG()),
-    )]
+    )];
+    // Swarm rides on top of the mode: say so where the mode is said.
+    if state.agent.board.as_ref().is_some_and(|board| board.enabled) {
+        spans.push(Span::styled(
+            " + swarm",
+            Style::default().fg(PRIMARY()).bg(BG()),
+        ));
+    }
+    spans
 }
 
 /// Bottom-border readout `model (thinking)`, degraded to fit `width` cells:

@@ -243,7 +243,7 @@ pub(crate) async fn prepare_tool_call(
 
 /// Hosted subagent tools are executed by the SubagentHost, not the registry.
 fn is_hosted_tool(name: &str) -> bool {
-    matches!(name, "task" | "task_output" | "kill_task")
+    matches!(name, "task" | "task_output" | "kill_task" | "board")
 }
 
 /// Execute a hosted subagent tool call. The caller must have checked

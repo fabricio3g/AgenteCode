@@ -119,4 +119,52 @@ describe('web-scraper helpers', () => {
     assert.ok(result.links.some((link) => link.url.includes('/related/page')));
     assert.ok(result.links.some((link) => link.url === 'https://other.test/out'));
   });
+
+  const prose = 'This sentence carries real article words for Reader View to score. '.repeat(12);
+
+  it('keeps the spaces between words and renders article structure as markdown', () => {
+    const html = `<!doctype html><html><head><title>Guide</title></head><body>
+      <article>
+        <h1>Guide</h1>
+        <p>${prose}</p>
+        <p>Install the tool with <code>cargo install</code> and <a href="/docs/run">run it</a> &amp; enjoy.</p>
+        <h2>Options</h2>
+        <ul><li>First <strong>option</strong></li><li>Second option</li></ul>
+        <table><thead><tr><th>Name</th><th>Value</th></tr></thead><tbody><tr><td>depth</td><td>3</td></tr></tbody></table>
+        <pre><code class="language-js">const a = 1;
+  console.log(a);</code></pre>
+        <p>${prose}</p>
+      </article></body></html>`;
+    const result = parseHtmlToReadable({ html, url: 'https://site.test/guide' });
+    assert.equal(result.extraction, 'readability');
+    assert.match(result.content, /Install the tool with `cargo install` and \[run it\]\(https:\/\/site\.test\/docs\/run\) & enjoy\./);
+    assert.match(result.content, /## Options/);
+    assert.match(result.content, /- First \*\*option\*\*\n- Second option/);
+    assert.match(result.content, /\| Name \| Value \|\n\| --- \| --- \|\n\| depth \| 3 \|/);
+    assert.match(result.content, /```js\nconst a = 1;\n {2}console\.log\(a\);\n```/);
+  });
+
+  it('returns the whole page with no length budget', () => {
+    const long = Array.from({ length: 400 }, (_, i) => `<p>Paragraph ${i}. ${prose}</p>`).join('');
+    const result = parseHtmlToReadable({ html: `<html><body><article>${long}</article></body></html>`, url: 'https://site.test/long' });
+    assert.ok(result.content.length > 200000, `got ${result.content.length}`);
+    assert.match(result.content, /Paragraph 399\./);
+    assert.equal(result.truncated, false);
+  });
+
+  it('falls back to the content region without scripts, styles, menus or hidden text', () => {
+    const html = `<html><head><style>.x{color:red}</style></head><body>
+      <header><nav><a href="/">Home</a><a href="/blog">Blog</a></nav></header>
+      <div class="cookie-banner">We use cookies</div>
+      <div class="layout"><div class="text">Short loose text in a div<div>and a nested line</div></div></div>
+      <script>window.tracking = true;</script>
+      <p style="display:none">Hidden promo</p>
+      <footer>Privacy · Terms</footer></body></html>`;
+    const result = parseHtmlToReadable({ html, url: 'https://site.test/x' });
+    assert.match(result.content, /Short loose text in a div/);
+    assert.match(result.content, /and a nested line/);
+    for (const junk of ['color:red', 'tracking', 'cookies', 'Blog', 'Hidden promo', 'Privacy']) {
+      assert.ok(!result.content.includes(junk), `${junk} leaked: ${result.content}`);
+    }
+  });
 });

@@ -118,7 +118,7 @@ function buildToolDefinitions(
       type: 'function', function: {
         name: 'fetch_url',
         description:
-          'Fetch and extract readable text from a public http(s) URL. Uses Mozilla Readability for HTML (token-efficient article text). Also extracts text from remote PDF and DOCX. Private/localhost URLs are blocked.',
+          'Read a public http(s) URL as clean markdown: Mozilla Readability (Firefox Reader View) finds the article and keeps headings, lists, tables, code and links, without menus, ads or scripts. Returns the whole page. Also extracts text from remote PDF and DOCX. Private/localhost URLs are blocked.',
         parameters: {
           type: 'object',
           properties: {

@@ -182,6 +182,7 @@ pub(crate) fn update_for_event(event: &RuntimeEvent) -> Option<Value> {
         | RuntimeEvent::ChildDelta { .. }
         | RuntimeEvent::ChildTool { .. }
         | RuntimeEvent::ChildFinished { .. }
+        | RuntimeEvent::BoardChanged { .. }
         | RuntimeEvent::ContextCompacted { .. }
         | RuntimeEvent::ContextBudget { .. }
         | RuntimeEvent::Usage { .. }

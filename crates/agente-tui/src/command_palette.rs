@@ -44,6 +44,8 @@ pub enum Command {
     InitProject,
     ListSubagents,
     SubagentModels,
+    Swarm,
+    Board,
     Settings,
     Skills,
     Mcp,
@@ -75,6 +77,7 @@ impl Command {
             Self::ToggleMode,
             Self::ToggleAutoApprove,
             Self::SubagentModels,
+            Self::Swarm,
             Self::NewTab,
             Self::CloseTab,
             Self::NextTab,
@@ -83,6 +86,7 @@ impl Command {
             Self::ViewPlan,
             Self::ViewChanges,
             Self::ListSubagents,
+            Self::Board,
             Self::OpenEditor,
             Self::ToggleTheme,
             Self::ShowHelp,
@@ -114,12 +118,14 @@ impl Command {
             | Self::CycleThinking
             | Self::ToggleMode
             | Self::ToggleAutoApprove
-            | Self::SubagentModels => "Model",
+            | Self::SubagentModels
+            | Self::Swarm => "Model",
             Self::NewTab | Self::CloseTab | Self::NextTab | Self::PrevTab => "Tabs",
             Self::ViewTodos
             | Self::ViewPlan
             | Self::ViewChanges
             | Self::ListSubagents
+            | Self::Board
             | Self::OpenEditor
             | Self::ToggleTheme => "View",
             Self::ShowHelp
@@ -161,6 +167,8 @@ impl Command {
             Self::InitProject => "Initialize Project",
             Self::ListSubagents => "List Subagents",
             Self::SubagentModels => "Subagent Models",
+            Self::Swarm => "Swarm Mode",
+            Self::Board => "View Board",
             Self::Settings => "Settings",
             Self::Skills => "Skills",
             Self::Mcp => "MCP Servers",
@@ -200,6 +208,8 @@ impl Command {
             Self::InitProject => "/init",
             Self::ListSubagents => "/subagents",
             Self::SubagentModels => "/subagent-models",
+            Self::Swarm => "/swarm",
+            Self::Board => "/board",
             Self::Settings => "/settings",
             Self::Skills => "/skills",
             Self::Mcp => "/mcp",
@@ -238,7 +248,9 @@ impl Command {
             Self::Redo => "Re-apply last undone file mutations",
             Self::InitProject => "Create or refresh AGENTS.md for this project",
             Self::ListSubagents => "List running/completed subagents (k to kill)",
-            Self::SubagentModels => "Choose the model each subagent type runs on",
+            Self::SubagentModels => "The models the agent can give the subagents it creates",
+            Self::Swarm => "Let the agent plan big work as a board its subagents work",
+            Self::Board => "The swarm board: cards by backlog, working, review, done",
             Self::Settings => "Smart compaction, motion, approvals, theme",
             Self::Skills => "Installed agent skills — pick one to run it",
             Self::Mcp => "Tool servers — status, approve, reconnect",

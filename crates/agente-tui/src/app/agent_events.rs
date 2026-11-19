@@ -570,6 +570,9 @@ impl App {
                     self.state.config.current_provider = provider.clone();
                 }
             }
+            AgentEvent::BoardChanged { board } => {
+                self.state.agent.board = Some(board);
+            }
             AgentEvent::ApprovalRequested { source, request } => {
                 self.state.agent.enqueue_approval(source, request);
             }
@@ -578,6 +581,7 @@ impl App {
                 subagent_type,
                 description,
                 model,
+                seat,
             } => {
                 // Card status mirrors the registry snapshot so a queued
                 // spawn reads pending, not running. A re-sent Started
@@ -596,9 +600,11 @@ impl App {
                 // when the snapshot is gone.
                 let card_model = snapshot
                     .as_ref()
-                    .map(|snap| snap.model.clone())
+                    .map(|snap| snap.model_label())
                     .filter(|model| !model.is_empty())
-                    .unwrap_or(model);
+                    .unwrap_or_else(|| {
+                        agente_core::subagent::types::model_label(seat.as_deref(), &model)
+                    });
                 if let Some(card) = self.state.agent.subagents.get_mut(&id) {
                     card.subagent_type = subagent_type.clone();
                     card.description = description.clone();
@@ -1024,6 +1030,7 @@ mod tests {
                     subagent_type: "explore".into(),
                     description: "research".into(),
                     model: "test-model".into(),
+                    seat: None,
                 },
             })
             .unwrap();
@@ -1609,6 +1616,9 @@ mod tests {
             summary: None,
             conversation: Vec::new(),
             model: "m".into(),
+            seat: None,
+            provider: String::new(),
+            thinking: String::new(),
             depth: 1,
             background: true,
             started_at: chrono::Utc::now(),
@@ -1621,6 +1631,7 @@ mod tests {
             subagent_type: "explore".into(),
             description: "queued work".into(),
             model: "test-model".into(),
+            seat: None,
         };
         app.inject_agent_event(started());
         app.process_agent_events();

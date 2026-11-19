@@ -2,7 +2,7 @@
 <script lang="ts">
   import { setContext, untrack } from 'svelte';
   import { t } from 'svelte-i18n';
-  import { Activity, Bot, ClipboardList, FolderTree, GitCompareArrows, Globe, Image, SquareTerminal, X } from '$lib/icons';
+  import { Activity, Bot, ClipboardList, FolderTree, GitCompareArrows, Globe, Image, LayoutGrid, SquareTerminal, X } from '$lib/icons';
   import type { ChatSession } from '$lib/types/chat';
   import { conversationScope } from '$shared/workspace-scope';
   import { appStore } from '$lib/stores/app.svelte';
@@ -23,6 +23,8 @@
   import PlanPanel from './PlanPanel.svelte';
   import SessionPanel from './SessionPanel.svelte';
   import SubagentView from './SubagentView.svelte';
+  import BoardPanel from './BoardPanel.svelte';
+  import { swarmStore } from './swarm.svelte';
   import { projectControls } from './workspace/project-controls.svelte';
   import { subagentFocus } from './subagent-focus.svelte';
   import CodeSurface from './CodeSurface.svelte';
@@ -45,6 +47,13 @@
   $effect(() => {
     if (subagentFocus.picked[chatId]) untrack(() => layout.show('subagent'));
   });
+  // The board belongs to the engine session: read it once the chat has one,
+  // so the Board chip and the composer's swarm switch show the real state.
+  const sessionId = $derived(chat.codeAgent?.sessionId);
+  $effect(() => {
+    if (sessionId) untrack(() => void swarmStore.load(chatId).catch(() => {}));
+  });
+  const boardShown = $derived(swarmStore.enabled(chatId) || !!swarmStore.boardFor(chatId)?.cards.length);
   const panels = $derived.by(() => {
     const available = !!project;
     const items: WorkspacePanel[] = [
@@ -52,6 +61,7 @@
       { id: 'files', title: $t('codeWs.files'), icon: FolderTree, content: filesPanel, region: 'right', available, open: layout.isOpen('files'), onhide: () => layout.hide('files') },
       { id: 'plan', title: plan?.title ?? $t('code.plan.title'), icon: ClipboardList, content: planPanel, region: 'right', available, open: layout.isOpen('plan'), onhide: () => layout.hide('plan') },
       { id: 'subagent', title: $t('sessionHud.subagent'), icon: Bot, content: subagentPanel, region: 'right', available: !!childId, open: layout.isOpen('subagent'), onhide: () => layout.hide('subagent') },
+      { id: 'board', title: $t('code.swarm.board'), icon: LayoutGrid, content: boardPanel, region: 'right', available: available && boardShown, open: layout.isOpen('board'), onhide: () => layout.hide('board') },
       { id: 'browser', title: $t('browser.title'), icon: Globe, content: browserPanel, region: 'right', available: true, open: browser.open, onhide: () => void browser.hide() },
       { id: 'canvas', title: $t('canvas.title'), icon: Image, content: canvasPanel, region: 'right', available: true, open: layout.isOpen('canvas'), onhide: () => layout.hide('canvas') },
       { id: 'processes', title: $t('codeWs.processes'), icon: Activity, content: processesPanel, region: 'bottom', available, open: layout.isOpen('processes'), onhide: () => layout.hide('processes') }
@@ -98,6 +108,7 @@
 {#snippet subagentPanel()}
   {#if childId}{#key childId}<SubagentView {chat} {childId} />{/key}{/if}
 {/snippet}
+{#snippet boardPanel()}<BoardPanel chatId={chat.id} />{/snippet}
 {#snippet browserPanel(state: PanelRenderState)}
   <BrowserPanel embedded store={browser} exposed={state.exposed && !appStore.settingsScreenOpen} presentationKey={JSON.stringify(state.rect)} chatId={chat.id} />
 {/snippet}

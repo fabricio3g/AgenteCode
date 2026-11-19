@@ -46,7 +46,8 @@
   import { conversationSpend } from './accounting';
   import { fileMentionAt, insertFile, matchFiles } from './file-mention';
   import { downloadSessionMarkdown } from '$lib/features/shared/export-session';
-  import { Button, Dialog } from '$lib/components/ui';
+  import { Button, Dialog, Switch } from '$lib/components/ui';
+  import { swarmStore } from './swarm.svelte';
   import { invoke } from '$lib/services/bridge';
   import type { Attachment, AttachmentKind } from '$shared/agente-protocol.gen';
   import { isMediaPath, mediaData } from './code-media';
@@ -175,6 +176,18 @@
   function selectMode(mode: 'plan' | 'supervised' | 'full') {
     modeMenuOpen = false;
     if (mode !== runtimeMode) void codeStore.setMode(chat.id, mode).catch((error) => toastStore.error(String(error)));
+  }
+
+  /** Swarm rides on top of the mode: the switch lives in the mode menu and the trigger says it. */
+  const swarmOn = $derived(swarmStore.enabled(chat.id));
+  /** The switch follows the store; a failed change puts it back. */
+  let swarmChecked = $state(false);
+  $effect(() => { swarmChecked = swarmOn; });
+  function setSwarm(on: boolean) {
+    void swarmStore.setEnabled(chat.id, on).catch((error) => {
+      swarmChecked = swarmStore.enabled(chat.id);
+      toastStore.error(String(error));
+    });
   }
 
   const editFiles = (action: 'undo' | 'redo') => restoreCodeEdits(chat, action);
@@ -688,6 +701,7 @@
                 >
                   <ModeIcon class="h-3 w-3 shrink-0 text-[var(--text-muted)]" />
                   <span class="trigger-label truncate">{activeMode.label}</span>
+                  {#if swarmOn}<span class="swarm-tag">+ {$t('code.swarm.short')}</span>{/if}
                   <ChevronDown class={`mode-chevron h-3 w-3 shrink-0 text-[var(--text-muted)] transition-transform duration-150${modeMenuOpen ? ' rotate-180' : ''}`} />
                 </Button>
               {/snippet}
@@ -698,6 +712,14 @@
                   <span class="mode-brief">{mode.brief}</span>
                 </MenuItem>
               {/each}
+              <!-- Swarm is not a fourth mode: it rides on whichever mode is on. -->
+              <label class="swarm-row">
+                <span class="swarm-text">
+                  <span class="mode-label">{$t('code.swarm.mode')}</span>
+                  <span class="swarm-brief">{$t('code.swarm.brief')}</span>
+                </span>
+                <Switch label={$t('code.swarm.mode')} bind:checked={swarmChecked} onchange={setSwarm} />
+              </label>
               <p class="mode-cycle">{$t('code.modeCycle')}</p>
             </Menu>
 {/snippet}
@@ -888,6 +910,12 @@
   :global(.mode-menu .mode-option) {padding:0.3125rem 0.625rem;}
   .mode-label {flex-shrink:0;}
   .mode-brief {min-width:0;margin-left:auto;padding-left:0.75rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted-foreground);font-size:var(--text-xs);}
+  .swarm-row {display:flex;align-items:center;gap:0.75rem;margin-top:0.25rem;border-top:1px solid var(--border-subtle);padding:0.5rem 0.625rem 0.375rem;cursor:pointer;}
+  .swarm-text {display:grid;min-width:0;flex:1;gap:0.0625rem;}
+  .swarm-brief {color:var(--muted-foreground);font-size:var(--text-xs);line-height:1.4;}
+  /* The mode name keeps its width; the swarm tag is the one that gives way. */
+  .swarm-tag {min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--brand-accent-strong);font-size:var(--text-xs);font-weight:500;}
+  :global(.mode-trigger:has(.swarm-tag) .trigger-label) {flex-shrink:0;}
   .mode-cycle {margin:0.25rem 0 0;padding:0.375rem 0.625rem 0.125rem;border-top:1px solid var(--border-subtle);color:var(--muted-foreground);font-size:var(--text-xs);}
   :global(.mode-menu :is(.mode-option.is-active, :global(.mode-option.is-active.ui-local-49e9c79c))) {background:var(--float-row-selected);}
   :global(.mode-menu .ui-menu-item-hint) {white-space:normal;overflow-wrap:anywhere;}
