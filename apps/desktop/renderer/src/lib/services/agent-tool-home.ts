@@ -10,10 +10,6 @@ import { docKindOf, parseDocument, parseIngestedDocument, selectUnits, type Pars
 import { ingestionFileType } from '$shared/document-ingestion';
 import { convertTimeZone, convertUnits, dateMath, supportedUnits } from '$lib/services/agent-units';
 import * as productivity from '$lib/services/home-productivity';
-import { appStore } from '$lib/stores/app.svelte';
-import { hasConfiguredVisionModel } from '$lib/services/chat-api';
-import { sttTranscribe } from '$lib/services/stt';
-import { readArrayBuffer } from '$lib/features/chat/viewers/viewer-source';
 
 export type HomeAttachment = { id: string; name: string; type: string; kind?: string; data?: string; base64?: string; ocrText?: string; docId?: string };
 
@@ -237,7 +233,7 @@ export async function runHomeTool(name: string, args: Record<string, unknown>, c
         }
       }
     }
-    const d = deps ?? (await defaultDeps());
+    const d = deps ?? (await (await import('./agent-tool-home-deps')).defaultDeps());
     switch (name) {
       case 'read_document': {
         const doc = await readDocument(args, ctx, d);
@@ -287,21 +283,3 @@ function btoaBytes(buffer: ArrayBuffer): string {
   return btoa(binary);
 }
 
-async function defaultDeps(): Promise<HomeToolDeps> {
-  const { invoke } = await import('$lib/services/bridge');
-  return {
-    attachments: (chatId) => {
-      const chat = appStore.chats.find((entry) => entry.id === chatId);
-      const sent = (chat?.messages ?? []).flatMap((message) => message.attachments ?? []);
-      const pending = chatId === appStore.currentChatId ? appStore.pendingAttachments : [];
-      const seen = new Set<string>();
-      return [...sent, ...pending].filter((a) => !seen.has(a.id) && seen.add(a.id)) as HomeAttachment[];
-    },
-    readWorkspaceBinary: async (root, path) => readArrayBuffer(await invoke<string>('read_workspace_binary', { workspaceRoot: root, relativePath: path }), 'file'),
-    dataUrlBytes: (dataUrl) => readArrayBuffer(dataUrl, 'attachment'),
-    readIngested: (chatId, docId) => invoke('read_ingested_document', { payload: { chat_id: chatId, doc_id: docId } }),
-    visionAvailable: async () => hasConfiguredVisionModel(appStore.config),
-    ocr: async (name, type, bytes) => (await import('$lib/services/ocr')).extractTextFromFile(new File([bytes], name, { type })),
-    transcribe: async (bytes, mime) => sttTranscribe(new Uint8Array(bytes), mime).then((r) => r.text)
-  };
-}
