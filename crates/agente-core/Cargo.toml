@@ -38,6 +38,7 @@ similar = { workspace = true }
 processkit = { workspace = true, optional = true }
 ignore = { workspace = true }
 http = "1"
+hyper = { version = "0.14", default-features = false, features = ["client", "tcp"] }
 rmcp = { version = "3.4", optional = true, default-features = false, features = ["client", "transport-child-process", "transport-streamable-http-client-reqwest", "reqwest"] }
 scraper = "0.20"
 encoding_rs = "0.8"

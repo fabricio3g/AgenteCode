@@ -19,12 +19,14 @@ use agente_runtime::{RuntimeError, RuntimeHandle, TurnHandle};
 use serde::de::DeserializeOwned;
 use serde::Deserialize;
 use serde_json::{json, Value};
-use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt, BufReader};
+use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt, BufReader};
 use tokio::sync::{broadcast, mpsc};
 use tokio::task::JoinHandle;
 
 /// Messages queued for the client before sends start to wait on it.
 const OUTBOX_CAPACITY: usize = 4_096;
+/// Maximum size of a single inbound JSON-RPC line after auth (64 MiB).
+const MAX_RPC_LINE_BYTES: usize = 64 * 1024 * 1024;
 
 /// The session is running a turn.
 const BUSY: i32 = -32001;
@@ -81,9 +83,9 @@ where
         complements: Mutex::default(),
     });
 
-    let mut lines = BufReader::new(reader).lines();
+    let mut reader = BufReader::new(reader);
     let result = loop {
-        let line = match lines.next_line().await {
+        let line = match rpc::read_bounded_line(&mut reader, MAX_RPC_LINE_BYTES).await {
             Ok(Some(line)) => line,
             Ok(None) => break Ok(()),
             Err(error) => break Err(error),

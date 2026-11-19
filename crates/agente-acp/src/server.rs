@@ -28,12 +28,15 @@ use agente_protocol::{
 };
 use agente_runtime::RuntimeHandle;
 use serde_json::{json, Value};
-use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt, BufReader};
+use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt, BufReader};
 use tokio::sync::Mutex as AsyncMutex;
 
 use crate::rpc::{self, FrameError, Incoming};
 use crate::updates;
 use crate::AcpError;
+
+/// Maximum size of a single inbound JSON-RPC line (64 MiB).
+const MAX_RPC_LINE_BYTES: usize = 64 * 1024 * 1024;
 
 /// Boxed sink so the server state is one concrete type for both stdio and
 /// in-memory test transports.
@@ -121,8 +124,8 @@ pub(crate) async fn serve_with_state<R: AsyncRead + Unpin>(
     state: Arc<ServerState>,
     reader: R,
 ) -> Result<(), AcpError> {
-    let mut lines = BufReader::new(reader).lines();
-    while let Some(line) = lines.next_line().await? {
+    let mut reader = BufReader::new(reader);
+    while let Some(line) = rpc::read_bounded_line(&mut reader, MAX_RPC_LINE_BYTES).await? {
         if line.trim().is_empty() {
             continue;
         }
@@ -635,7 +638,7 @@ mod tests {
     use agente_core::types::ApprovalRequest;
     use agente_protocol::Role;
     use agente_runtime::{RuntimeConfig, RuntimeSupervisor};
-    use tokio::io::duplex;
+    use tokio::io::{duplex, AsyncBufReadExt};
     use tokio::time::{timeout, Duration};
 
     const TEST_TIMEOUT: Duration = Duration::from_secs(10);

@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 
 use agente_acp::rpc::{self, Incoming};
 use serde_json::{json, Value};
-use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt, BufReader};
+use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt, BufReader};
 use tokio::net::TcpListener;
 
 use crate::connection::{error_reply, initialize_result};
@@ -19,6 +19,8 @@ use crate::{serve_connection, ServeError, Service};
 
 /// How long a new connection has to authenticate.
 const AUTH_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
+/// Maximum size of the unauthenticated handshake line (64 KiB).
+const MAX_PRE_AUTH_LINE_BYTES: usize = 64 * 1024;
 /// The wrong or missing token.
 const UNAUTHORIZED: i32 = -32004;
 
@@ -140,13 +142,17 @@ where
     W: AsyncWrite + Unpin + Send + 'static,
 {
     let mut reader = BufReader::new(reader);
-    let mut first = String::new();
-    let read = tokio::time::timeout(AUTH_TIMEOUT, reader.read_line(&mut first)).await;
-    let reply = match read {
-        Ok(Ok(0)) | Err(_) => return Ok(()),
+    let read = tokio::time::timeout(
+        AUTH_TIMEOUT,
+        rpc::read_bounded_line(&mut reader, MAX_PRE_AUTH_LINE_BYTES),
+    )
+    .await;
+    let first = match read {
+        Ok(Ok(Some(line))) => line,
+        Ok(Ok(None)) | Err(_) => return Ok(()),
         Ok(Err(error)) => return Err(error),
-        Ok(Ok(_)) => authenticate(&first, token),
     };
+    let reply = authenticate(&first, token);
     let accepted = reply.get("result").is_some();
     let mut line = serde_json::to_vec(&reply).unwrap_or_default();
     line.push(b'\n');

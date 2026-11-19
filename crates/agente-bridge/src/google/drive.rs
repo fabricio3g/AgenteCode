@@ -207,10 +207,10 @@ fn is_text(name: &str) -> bool {
         .any(|ext| lower.ends_with(ext))
 }
 
-/// Content-addressed under the bridge's files dir, keeping the readable name.
-fn store(bytes: &[u8], name: &str) -> std::io::Result<PathBuf> {
-    let hash = sha2::Sha256::digest(bytes);
-    let prefix: String = hash.iter().take(6).map(|b| format!("{b:02x}")).collect();
+/// Sanitize a Drive filename into a single safe filename component that cannot
+/// escape its parent directory (rejecting `.`, `..`, empty, and dot/space-only
+/// names).
+fn sanitize_filename(name: &str) -> String {
     let safe: String = name
         .chars()
         .map(|c| {
@@ -221,9 +221,27 @@ fn store(bytes: &[u8], name: &str) -> std::io::Result<PathBuf> {
             }
         })
         .collect();
+    let candidate = safe.trim().trim_end_matches(['.', ' ']);
+    if candidate.is_empty()
+        || candidate == "."
+        || candidate == ".."
+        || candidate.chars().all(|c| c == '.' || c == ' ')
+    {
+        "file".to_string()
+    } else if candidate.starts_with("..") {
+        format!("_{candidate}")
+    } else {
+        candidate.to_string()
+    }
+}
+
+/// Content-addressed under the bridge's files dir, keeping the readable name.
+fn store(bytes: &[u8], name: &str) -> std::io::Result<PathBuf> {
+    let hash = sha2::Sha256::digest(bytes);
+    let prefix: String = hash.iter().take(6).map(|b| format!("{b:02x}")).collect();
     let dir = crate::pairing::files_dir().join(prefix);
     std::fs::create_dir_all(&dir)?;
-    let path = dir.join(safe.trim());
+    let path = dir.join(sanitize_filename(name));
     std::fs::write(&path, bytes)?;
     Ok(path)
 }
@@ -385,5 +403,36 @@ mod tests {
         assert!(
             text.contains("{\"name\":\"x\"}\r\n--b\r\nContent-Type: text/csv\r\n\r\na,b\r\n--b--")
         );
+    }
+
+    #[test]
+    fn sanitize_filename_prevents_path_traversal_and_empty_names() {
+        use std::path::Component;
+        for malicious in [
+            "",
+            "   ",
+            ".",
+            "..",
+            "...",
+            " .. ",
+            "../escape",
+            "../../etc/passwd",
+        ] {
+            let safe = sanitize_filename(malicious);
+            let components: Vec<_> = Path::new(&safe).components().collect();
+            assert_eq!(
+                components.len(),
+                1,
+                "input {malicious:?} -> {safe:?} must be a single component"
+            );
+            assert!(
+                matches!(components[0], Component::Normal(_)),
+                "input {malicious:?} -> {safe:?} must be a normal component"
+            );
+        }
+        assert_eq!(sanitize_filename(".."), "file");
+        assert_eq!(sanitize_filename("."), "file");
+        assert_eq!(sanitize_filename("   "), "file");
+        assert_eq!(sanitize_filename("Budget 2026.xlsx"), "Budget 2026.xlsx");
     }
 }

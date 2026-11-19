@@ -49,8 +49,7 @@ impl PermissionRule {
 
         // Wildcard matching
         if self.pattern.contains('*') {
-            let pattern_parts: Vec<&str> = self.pattern.split('*').collect();
-            return match_wildcard(action, &self.pattern, &pattern_parts);
+            return match_wildcard(&self.pattern, action);
         }
 
         // Prefix match (e.g., "tool:" matches all tools)
@@ -62,58 +61,95 @@ impl PermissionRule {
     }
 }
 
-fn match_wildcard(action: &str, pattern: &str, pattern_parts: &[&str]) -> bool {
-    if pattern_parts.is_empty() {
-        return true;
-    }
+#[derive(Debug, Clone, Copy)]
+enum GlobToken {
+    Lit(char),
+    /// `*` — zero or more characters except `/`.
+    Star,
+    /// `**` — zero or more characters including `/`.
+    DoubleStar,
+    /// `**/` — zero or more directory segments (empty or any prefix ending in `/`).
+    DoubleStarSlash,
+}
 
-    // Simple implementation: ** matches across / boundaries
-    let double_star = "**";
-    if pattern.contains(double_star) {
-        // For now, treat ** the same as *
-        let combined: String = pattern_parts.join("");
-        return action.contains(&combined);
-    }
-
-    // Standard wildcard matching
-    let mut pattern_idx = 0;
-    let mut action_idx = 0;
-
-    while pattern_idx < pattern_parts.len() && action_idx < action.len() {
-        let part = pattern_parts[pattern_idx];
-
-        if part.is_empty() {
-            // ** pattern - matches anything including /
-            pattern_idx += 1;
-            if pattern_idx < pattern_parts.len() {
-                let next_part = pattern_parts[pattern_idx];
-                if let Some(pos) = action[action_idx..].find(next_part) {
-                    action_idx = pos + next_part.len();
+fn tokenize_wildcard(pattern: &str) -> Vec<GlobToken> {
+    let chars: Vec<char> = pattern.chars().collect();
+    let mut tokens = Vec::with_capacity(chars.len());
+    let mut i = 0;
+    while i < chars.len() {
+        if chars[i] == '*' {
+            let start = i;
+            while i < chars.len() && chars[i] == '*' {
+                i += 1;
+            }
+            if i - start >= 2 {
+                if i < chars.len() && chars[i] == '/' {
+                    tokens.push(GlobToken::DoubleStarSlash);
+                    i += 1;
                 } else {
-                    return false;
+                    tokens.push(GlobToken::DoubleStar);
+                }
+            } else {
+                tokens.push(GlobToken::Star);
+            }
+        } else {
+            tokens.push(GlobToken::Lit(chars[i]));
+            i += 1;
+        }
+    }
+    tokens
+}
+
+fn match_wildcard(pattern: &str, action: &str) -> bool {
+    let tokens = tokenize_wildcard(pattern);
+    let act: Vec<char> = action.chars().collect();
+    let n = act.len();
+    let mut dp = vec![false; n + 1];
+    dp[0] = true;
+
+    for token in tokens {
+        let mut next = vec![false; n + 1];
+        match token {
+            GlobToken::Lit(ch) => {
+                for j in 1..=n {
+                    if dp[j - 1] && act[j - 1] == ch {
+                        next[j] = true;
+                    }
                 }
             }
-            continue;
+            GlobToken::Star => {
+                next.copy_from_slice(&dp);
+                for j in 1..=n {
+                    if act[j - 1] != '/' && next[j - 1] {
+                        next[j] = true;
+                    }
+                }
+            }
+            GlobToken::DoubleStar => {
+                next.copy_from_slice(&dp);
+                for j in 1..=n {
+                    if next[j - 1] {
+                        next[j] = true;
+                    }
+                }
+            }
+            GlobToken::DoubleStarSlash => {
+                next.copy_from_slice(&dp);
+                let mut seen = dp[0];
+                for j in 1..=n {
+                    if seen && act[j - 1] == '/' {
+                        next[j] = true;
+                    }
+                    if dp[j] {
+                        seen = true;
+                    }
+                }
+            }
         }
-
-        if let Some(pos) = action[action_idx..].find(part) {
-            action_idx = pos + part.len();
-            pattern_idx += 1;
-        } else {
-            return false;
-        }
+        dp = next;
     }
 
-    // Handle trailing wildcard
-    if pattern_idx < pattern_parts.len() {
-        let remaining = pattern_parts[pattern_idx..].join("");
-        if remaining.is_empty() || remaining == "*" {
-            return true;
-        }
-        return action[action_idx..].ends_with(&remaining);
-    }
-
-    true
+    dp[n]
 }
 
 /// Default permission rules for Plan mode
@@ -453,42 +489,238 @@ impl Default for PermissionEngine {
     }
 }
 
+/// Extract the normalized basename of a command token (strip surrounding quotes,
+/// leading alias-escape `\`, directory prefixes like `/bin/` or `C:\...\`, and
+/// Windows `.exe`/`.com` suffixes).
+fn command_basename(word: &str) -> &str {
+    let trimmed = word.trim_matches(['\'', '"']).trim_start_matches('\\');
+    let base = trimmed.rsplit(['/', '\\']).next().unwrap_or(trimmed);
+    base.strip_suffix(".exe")
+        .or_else(|| base.strip_suffix(".com"))
+        .unwrap_or(base)
+}
+
+fn is_env_assignment(word: &str) -> bool {
+    let Some((name, _)) = word.split_once('=') else {
+        return false;
+    };
+    !name.is_empty()
+        && !name.starts_with('-')
+        && name.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_')
+}
+
+/// Strip leading environment assignments and common privilege/wrapper commands
+/// (`sudo`, `env`, `doas`, `command`, `exec`, `nohup`, `time`, `nice`, `timeout`)
+/// from a lowercased segment's words, returning `(command_basename, remaining_args)`.
+fn unwrap_command<'a>(words: &'a [&'a str]) -> Option<(&'a str, &'a [&'a str])> {
+    let mut i = 0;
+    while i < words.len() {
+        let word = words[i];
+        if is_env_assignment(word) {
+            i += 1;
+            continue;
+        }
+        let base = command_basename(word);
+        match base {
+            "sudo" => {
+                i += 1;
+                while i < words.len() {
+                    let flag = words[i];
+                    if flag == "--" {
+                        i += 1;
+                        break;
+                    }
+                    if matches!(
+                        flag,
+                        "-u" | "-g"
+                            | "-c"
+                            | "-d"
+                            | "-h"
+                            | "-p"
+                            | "-r"
+                            | "-t"
+                            | "--user"
+                            | "--group"
+                            | "--chdir"
+                            | "--host"
+                            | "--prompt"
+                    ) {
+                        i += 2;
+                        continue;
+                    }
+                    if flag.starts_with('-') {
+                        i += 1;
+                        continue;
+                    }
+                    break;
+                }
+            }
+            "doas" => {
+                i += 1;
+                while i < words.len() {
+                    let flag = words[i];
+                    if flag == "--" {
+                        i += 1;
+                        break;
+                    }
+                    if matches!(flag, "-u" | "-c") {
+                        i += 2;
+                        continue;
+                    }
+                    if flag.starts_with('-') {
+                        i += 1;
+                        continue;
+                    }
+                    break;
+                }
+            }
+            "env" => {
+                i += 1;
+                while i < words.len() {
+                    let flag = words[i];
+                    if flag == "--" {
+                        i += 1;
+                        break;
+                    }
+                    if matches!(flag, "-u" | "-c" | "-s" | "--unset" | "--chdir") {
+                        i += 2;
+                        continue;
+                    }
+                    if flag.starts_with('-') || is_env_assignment(flag) {
+                        i += 1;
+                        continue;
+                    }
+                    break;
+                }
+            }
+            "command" | "exec" | "nohup" | "time" => {
+                i += 1;
+                while i < words.len() {
+                    let flag = words[i];
+                    if flag == "--" {
+                        i += 1;
+                        break;
+                    }
+                    if flag.starts_with('-') {
+                        i += 1;
+                        continue;
+                    }
+                    break;
+                }
+            }
+            "nice" => {
+                i += 1;
+                while i < words.len() {
+                    let flag = words[i];
+                    if flag == "--" {
+                        i += 1;
+                        break;
+                    }
+                    if matches!(flag, "-n" | "--adjustment") {
+                        i += 2;
+                        continue;
+                    }
+                    if flag.starts_with('-') {
+                        i += 1;
+                        continue;
+                    }
+                    break;
+                }
+            }
+            "timeout" => {
+                i += 1;
+                while i < words.len() {
+                    let flag = words[i];
+                    if flag == "--" {
+                        i += 1;
+                        break;
+                    }
+                    if matches!(flag, "-k" | "-s" | "--kill-after" | "--signal") {
+                        i += 2;
+                        continue;
+                    }
+                    if flag.starts_with('-') {
+                        i += 1;
+                        continue;
+                    }
+                    // Skip the duration positional argument.
+                    i += 1;
+                    break;
+                }
+            }
+            _ => return Some((base, &words[i + 1..])),
+        }
+    }
+    None
+}
+
+/// Skip git global options (`-C repo`, `-c key=val`, `--git-dir path`, etc.) to
+/// locate the subcommand and its arguments. Input words are lowercased.
+fn git_subcommand_and_args<'a>(args: &'a [&'a str]) -> Option<(&'a str, &'a [&'a str])> {
+    let mut i = 0;
+    while i < args.len() {
+        let arg = args[i];
+        if arg == "--" {
+            return None;
+        }
+        if matches!(
+            arg,
+            "-c" | "--git-dir" | "--work-tree" | "--namespace" | "--config-env" | "--super-prefix"
+        ) {
+            i += 2;
+            continue;
+        }
+        if arg.starts_with('-') {
+            i += 1;
+            continue;
+        }
+        return Some((arg, &args[i + 1..]));
+    }
+    None
+}
+
 /// Check if a shell command is dangerous (destructive, network exfiltration, etc.).
 /// Used both to decide `Permission::Ask` in the permission engine and to set the
 /// `is_dangerous` flag on approval requests.
 pub fn is_dangerous_command(cmd: &str) -> bool {
-    let cmd_lower = cmd.to_lowercase();
-
-    // Known dangerous commands
-    let dangerous = [
-        "rm ",
-        "rm -rf",
-        "rm -rf /",
-        ":(){ :|:& };:",
-        "dd if=",
-        "mkfs",
-        "format",
-        "fdisk",
-        "shutdown",
-        "reboot",
-        "poweroff",
-        "halt",
-        "curl",
-        "wget",
-        "nc ",
-        "netcat",
-    ];
-
-    for dangerous_cmd in dangerous {
-        if cmd_lower.contains(dangerous_cmd) {
-            return true;
-        }
+    if is_destructive_command(cmd) {
+        return true;
     }
 
     // Commands with pipes or redirects that could be dangerous
-    if cmd_lower.contains('|') || cmd_lower.contains(">") {
+    if cmd.contains('|') || cmd.contains('>') {
         // Could be data exfiltration
         return true;
+    }
+
+    let cmd_lower = cmd.to_lowercase();
+    for segment in cmd_lower.split([';', '|', '&', '\n', '\r', '(', ')', '`']) {
+        let words: Vec<&str> = segment.split_whitespace().collect();
+        let Some((name, args)) = unwrap_command(&words) else {
+            continue;
+        };
+        let dangerous = matches!(
+            name,
+            "rm" | "mkfs"
+                | "format"
+                | "fdisk"
+                | "shutdown"
+                | "reboot"
+                | "poweroff"
+                | "halt"
+                | "curl"
+                | "wget"
+                | "nc"
+                | "netcat"
+                | "ncat"
+        ) || name.starts_with("mkfs.")
+            || (name == "dd"
+                && args
+                    .iter()
+                    .any(|arg| arg.starts_with("if=") || arg.starts_with("of=")));
+        if dangerous {
+            return true;
+        }
     }
 
     false
@@ -500,20 +732,50 @@ pub fn is_dangerous_command(cmd: &str) -> bool {
 /// need a person's yes, even in auto mode.
 pub fn is_destructive_command(cmd: &str) -> bool {
     let lower = cmd.to_lowercase();
-    let words: Vec<&str> = lower.split_whitespace().collect();
-    let recursive_rm = words.windows(2).any(|pair| {
-        pair[0].trim_start_matches(['(', ';', '&', '|']) == "rm"
-            && pair[1].starts_with('-')
-            && (pair[1] == "--recursive" || (!pair[1].starts_with("--") && pair[1].contains('r')))
-    });
-    let force_push =
-        lower.contains("git push") && words.iter().any(|word| *word == "--force" || *word == "-f");
-    recursive_rm
-        || force_push
-        || words.iter().any(|word| word.starts_with("mkfs"))
+    let compact: String = lower.chars().filter(|c| !c.is_whitespace()).collect();
+    if compact.contains(":(){:|:&};:")
         || lower.contains("drop table")
         || lower.contains("drop database")
-        || lower.replace(' ', "").contains(":(){:|:&};:")
+    {
+        return true;
+    }
+
+    for segment in lower.split([';', '|', '&', '\n', '\r', '(', ')', '`']) {
+        let words: Vec<&str> = segment.split_whitespace().collect();
+        let Some((name, args)) = unwrap_command(&words) else {
+            continue;
+        };
+
+        if name == "rm" {
+            let recursive = args.iter().take_while(|&&arg| arg != "--").any(|arg| {
+                *arg == "--recursive"
+                    || (arg.starts_with('-') && !arg.starts_with("--") && arg[1..].contains('r'))
+            });
+            if recursive {
+                return true;
+            }
+        }
+
+        if name == "git" {
+            if let Some(("push", push_args)) = git_subcommand_and_args(args) {
+                let forced = push_args.iter().take_while(|&&arg| arg != "--").any(|arg| {
+                    *arg == "--force"
+                        || (arg.starts_with('-')
+                            && !arg.starts_with("--")
+                            && arg[1..].contains('f'))
+                });
+                if forced {
+                    return true;
+                }
+            }
+        }
+
+        if name == "mkfs" || name.starts_with("mkfs.") {
+            return true;
+        }
+    }
+
+    false
 }
 
 /// Project files that decide what code runs later; edits to them always ask.
@@ -814,6 +1076,34 @@ mod tests {
         let rule = PermissionRule::new("tool:*", Permission::Allow);
         assert!(rule.matches("tool:read"));
         assert!(rule.matches("tool:write"));
+        assert!(!rule.matches("file:read"));
+
+        // `**` crosses `/` boundaries; `**/` matches zero or more directories.
+        let toml_any = PermissionRule::new("file:**/*.toml", Permission::Allow);
+        assert!(toml_any.matches("file:Cargo.toml"));
+        assert!(toml_any.matches("file:crates/core/Cargo.toml"));
+        assert!(toml_any.matches("file:a/b/c/config.toml"));
+        assert!(!toml_any.matches("file:crates/core/Cargo.toml.bak"));
+        assert!(!toml_any.matches("file:crates/core/Cargo.json"));
+
+        // Single `*` does not cross `/` boundaries.
+        let toml_root = PermissionRule::new("file:*.toml", Permission::Allow);
+        assert!(toml_root.matches("file:Cargo.toml"));
+        assert!(!toml_root.matches("file:crates/Cargo.toml"));
+
+        // Start and end anchors are enforced when no leading/trailing `*`.
+        let anchored = PermissionRule::new("a*b", Permission::Allow);
+        assert!(anchored.matches("ab"));
+        assert!(anchored.matches("axb"));
+        assert!(!anchored.matches("axbyyy"));
+        assert!(!anchored.matches("xxxab"));
+
+        // Multi-`*` advances cursor correctly without rewinding to relative offsets.
+        let multi = PermissionRule::new("a*b*c", Permission::Allow);
+        assert!(multi.matches("a123b456c"));
+        assert!(multi.matches("a123b456b789c"));
+        assert!(!multi.matches("a123c456b"));
+        assert!(!multi.matches("a123b456c789"));
     }
 
     #[test]
@@ -1262,5 +1552,74 @@ mod tests {
 
         let plan = PermissionEngine::new(AgentMode::Plan).with_project_dir("/work/proj");
         assert_eq!(plan.check_tool("shell", &args), Permission::Deny);
+    }
+
+    #[test]
+    fn destructive_commands_handle_paths_sudo_and_git_global_flags() {
+        for command in [
+            "/bin/rm -rf build",
+            "/usr/bin/rm -r dir",
+            "\\rm -rf dir",
+            "sudo rm -rf /tmp/x",
+            "sudo -u root /bin/rm -rf /tmp/x",
+            "FOO=1 env BAR=2 sudo -E /bin/rm --recursive dir",
+            "git -C repo push --force",
+            "git -C repo push -f origin main",
+            "/usr/bin/git --git-dir /repo --no-pager push --force",
+            "sudo git -c http.sslVerify=false push --force",
+            "sudo /sbin/mkfs.ext4 /dev/sdb1",
+        ] {
+            assert!(
+                is_destructive_command(command),
+                "should be destructive: {command}"
+            );
+        }
+        for command in [
+            "git -C repo push --force-with-lease",
+            "git -C repo status",
+            "sudo rm file.txt",
+            "/bin/rm file.txt",
+            "rm -- -rf",
+        ] {
+            assert!(
+                !is_destructive_command(command),
+                "should not be destructive: {command}"
+            );
+        }
+    }
+
+    #[test]
+    fn dangerous_commands_respect_token_boundaries() {
+        // Benign commands that previously false-positived on substring matches.
+        for command in [
+            "git log --format=%H",
+            "git log --pretty=format:%s",
+            "rsync -av src/ dst/",
+            "echo confirm please",
+            "cargo test curl_parser",
+            "git commit -m 'reformat code'",
+        ] {
+            assert!(!is_dangerous_command(command), "false positive: {command}");
+        }
+        // Genuine dangerous commands (including via path prefix / sudo / subshell).
+        for command in [
+            "rm file.txt",
+            "/bin/rm file.txt",
+            "sudo rm -rf /tmp/x",
+            "git -C repo push --force",
+            "format c:",
+            "dd if=/dev/zero of=/dev/sda",
+            "nc -lvp 4444",
+            "/usr/bin/netcat example.com 80",
+            "sudo curl https://example.com",
+            "echo $(curl https://example.com)",
+            "cat file | sh",
+            "echo hi > out.txt",
+        ] {
+            assert!(
+                is_dangerous_command(command),
+                "should be dangerous: {command}"
+            );
+        }
     }
 }

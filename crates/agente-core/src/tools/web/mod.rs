@@ -11,7 +11,7 @@ pub mod settings;
 
 pub use search::WebSearchTool;
 
-use std::net::{IpAddr, ToSocketAddrs};
+use std::net::{IpAddr, SocketAddr};
 use std::sync::{Arc, OnceLock};
 use std::time::{Duration, Instant};
 
@@ -29,38 +29,53 @@ pub(crate) const BROWSER_UA: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) A
 const CACHE_TTL: Duration = Duration::from_secs(10 * 60);
 const CACHE_ENTRIES: usize = 12;
 
-/// Loopback/private/link-local destinations are refused: a tool that fetches
-/// arbitrary URLs must not become a probe for the host's internal network.
+/// Loopback/private/link-local/special-use destinations are refused: a tool
+/// that fetches arbitrary URLs must not become a probe for internal networks.
 fn is_forbidden_ip(ip: IpAddr) -> bool {
     match ip {
         IpAddr::V4(v4) => {
+            let [a, b, _, _] = v4.octets();
             v4.is_private()
                 || v4.is_loopback()
                 || v4.is_link_local()
-                || v4.is_unspecified()
+                // "This network" 0.0.0.0/8 (includes 0.0.0.0 unspecified).
+                || a == 0
                 || v4.is_broadcast()
                 || v4.is_documentation()
+                // Multicast 224.0.0.0/4 and reserved 240.0.0.0/4.
+                || v4.is_multicast()
+                || a >= 240
+                // Benchmarking 198.18.0.0/15.
+                || (a == 198 && (18..=19).contains(&b))
                 // Carrier-grade NAT 100.64.0.0/10.
-                || (v4.octets()[0] == 100 && (64..=127).contains(&v4.octets()[1]))
+                || (a == 100 && (64..=127).contains(&b))
         }
         IpAddr::V6(v6) => {
-            if let Some(mapped) = v6.to_ipv4_mapped() {
-                return is_forbidden_ip(IpAddr::V4(mapped));
+            // IPv4-mapped (`::ffff:a.b.c.d`) and IPv4-compatible (`::a.b.c.d`).
+            if let Some(v4) = v6.to_ipv4_mapped().or_else(|| v6.to_ipv4()) {
+                return is_forbidden_ip(IpAddr::V4(v4));
             }
+            let segs = v6.segments();
+            // NAT64 well-known prefix 64:ff9b::/96.
+            let is_nat64 = segs[0] == 0x0064 && segs[1] == 0xff9b && segs[2..6] == [0, 0, 0, 0];
             v6.is_loopback()
                 || v6.is_unspecified()
                 || v6.is_unique_local()
                 || v6.is_unicast_link_local()
+                || v6.is_multicast()
+                || is_nat64
         }
     }
 }
 
-fn is_forbidden_host(url: &reqwest::Url) -> bool {
-    let Some(host) = url.host_str() else {
-        return true;
-    };
-    let host = host.to_ascii_lowercase();
-    if host == "localhost"
+fn normalize_host(host: &str) -> String {
+    host.to_ascii_lowercase().trim_end_matches('.').to_string()
+}
+
+fn is_forbidden_hostname(host: &str) -> bool {
+    let host = normalize_host(host);
+    if host.is_empty()
+        || host == "localhost"
         || host.ends_with(".localhost")
         || host.ends_with(".local")
         || host.ends_with(".internal")
@@ -74,18 +89,88 @@ fn is_forbidden_host(url: &reqwest::Url) -> bool {
     if let Ok(ip) = literal.parse::<IpAddr>() {
         return is_forbidden_ip(ip);
     }
-    // Resolve and refuse when any address is internal (a public name can
-    // still point at 127.0.0.1 or a LAN address).
-    let port = url.port_or_known_default().unwrap_or(80);
-    match (host.as_str(), port).to_socket_addrs() {
-        Ok(addrs) => addrs.into_iter().any(|addr| is_forbidden_ip(addr.ip())),
-        Err(_) => false,
+    false
+}
+
+fn is_forbidden_host(url: &reqwest::Url) -> bool {
+    let Some(host) = url.host_str() else {
+        return true;
+    };
+    is_forbidden_hostname(host)
+}
+
+fn validate_resolved_addrs(addrs: &[SocketAddr], allow_private: bool) -> std::io::Result<()> {
+    if addrs.is_empty() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::AddrNotAvailable,
+            "DNS lookup returned no addresses",
+        ));
+    }
+    if !allow_private && addrs.iter().any(|addr| is_forbidden_ip(addr.ip())) {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            "blocked request to a private/loopback address",
+        ));
+    }
+    Ok(())
+}
+
+/// Async DNS resolver backed by `tokio::net::lookup_host` that validates every
+/// resolved IP right before connect (non-blocking, fails closed on DNS errors,
+/// and eliminates DNS-rebinding TOCTOU).
+struct SafeDnsResolver {
+    /// Optional normalized host permitted to resolve to private/loopback IPs
+    /// (used for a user-configured SearXNG base origin).
+    allow_host: Option<String>,
+}
+
+impl SafeDnsResolver {
+    const fn public_only() -> Self {
+        Self { allow_host: None }
+    }
+
+    fn allowing_host(host: Option<String>) -> Self {
+        Self { allow_host: host }
+    }
+
+    async fn lookup(&self, host: &str) -> std::io::Result<Vec<SocketAddr>> {
+        let allow_private = self
+            .allow_host
+            .as_deref()
+            .is_some_and(|allowed| allowed == normalize_host(host));
+        if !allow_private && is_forbidden_hostname(host) {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::PermissionDenied,
+                "blocked request to a private/loopback address",
+            ));
+        }
+        let addrs: Vec<SocketAddr> = tokio::net::lookup_host((host, 0))
+            .await
+            .map_err(|e| std::io::Error::new(e.kind(), format!("DNS lookup failed: {e}")))?
+            .collect();
+        validate_resolved_addrs(&addrs, allow_private)?;
+        Ok(addrs)
+    }
+}
+
+impl reqwest::dns::Resolve for SafeDnsResolver {
+    fn resolve(&self, name: hyper::client::connect::dns::Name) -> reqwest::dns::Resolving {
+        let host = name.as_str().to_string();
+        let allow_host = self.allow_host.clone();
+        Box::pin(async move {
+            let resolver = SafeDnsResolver { allow_host };
+            let addrs = resolver
+                .lookup(&host)
+                .await
+                .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
+            Ok(Box::new(addrs.into_iter()) as reqwest::dns::Addrs)
+        })
     }
 }
 
 /// Process-wide HTTP client shared by the web tools so connection pools are
-/// reused across calls instead of rebuilt per invocation. Redirects are
-/// re-validated against the SSRF guard on every hop.
+/// reused across calls instead of rebuilt per invocation. Redirects and DNS
+/// resolution are validated against the SSRF guard on every hop.
 fn shared_http_client() -> Result<&'static reqwest::Client, ToolError> {
     static CLIENT: OnceLock<Result<reqwest::Client, String>> = OnceLock::new();
     CLIENT
@@ -93,8 +178,10 @@ fn shared_http_client() -> Result<&'static reqwest::Client, ToolError> {
             reqwest::Client::builder()
                 .timeout(Duration::from_secs(30))
                 .user_agent(concat!("agente/", env!("CARGO_PKG_VERSION")))
+                .dns_resolver(Arc::new(SafeDnsResolver::public_only()))
                 .redirect(reqwest::redirect::Policy::custom(|attempt| {
-                    if is_forbidden_host(attempt.url()) {
+                    let url = attempt.url();
+                    if !matches!(url.scheme(), "http" | "https") || is_forbidden_host(url) {
                         attempt.error(std::io::Error::new(
                             std::io::ErrorKind::PermissionDenied,
                             "blocked request to a private/loopback address",
@@ -110,6 +197,41 @@ fn shared_http_client() -> Result<&'static reqwest::Client, ToolError> {
         })
         .as_ref()
         .map_err(|e| ToolError::ExecutionError(e.clone()))
+}
+
+/// HTTP client scoped to a user-configured SearXNG base origin (which may live
+/// on localhost or a private LAN) while still blocking redirects to any other
+/// private/loopback address.
+pub(super) fn searxng_http_client(base: &reqwest::Url) -> Result<reqwest::Client, ToolError> {
+    if !matches!(base.scheme(), "http" | "https") {
+        return Err(ToolError::InvalidArguments(format!(
+            "SearXNG URL must use http or https, not {}",
+            base.scheme()
+        )));
+    }
+    let allowed_origin = base.origin();
+    let allowed_host = base.host_str().map(normalize_host);
+    reqwest::Client::builder()
+        .timeout(Duration::from_secs(30))
+        .user_agent(concat!("agente/", env!("CARGO_PKG_VERSION")))
+        .dns_resolver(Arc::new(SafeDnsResolver::allowing_host(allowed_host)))
+        .redirect(reqwest::redirect::Policy::custom(move |attempt| {
+            let url = attempt.url();
+            let same_origin = url.origin() == allowed_origin;
+            if !same_origin && (!matches!(url.scheme(), "http" | "https") || is_forbidden_host(url))
+            {
+                attempt.error(std::io::Error::new(
+                    std::io::ErrorKind::PermissionDenied,
+                    "blocked request to a private/loopback address",
+                ))
+            } else if attempt.previous().len() >= 5 {
+                attempt.stop()
+            } else {
+                attempt.follow()
+            }
+        }))
+        .build()
+        .map_err(|e| ToolError::ExecutionError(e.to_string()))
 }
 
 /// Arguments accepted by the `web_fetch` tool.
@@ -178,11 +300,13 @@ impl ToolCore for WebFetchTool {
         }
 
         let max_chars = args.max_chars.map(|n| n.max(1_000));
-        let page = match cached(&url) {
+        let cache_key = parsed.as_str().to_string();
+        let page = match cached(&cache_key) {
             Some(page) => page,
             None => {
-                let page = Arc::new(fetch_page(parsed).await?);
-                remember(&url, page.clone());
+                let (fetched, status) = fetch_page(parsed).await?;
+                let page = Arc::new(fetched);
+                remember_if_success(&cache_key, status, page.clone());
                 page
             }
         };
@@ -224,7 +348,13 @@ fn remember(url: &str, page: Arc<Fetched>) {
     cache.push((url.to_string(), Instant::now(), page));
 }
 
-async fn fetch_page(url: reqwest::Url) -> Result<Fetched, ToolError> {
+fn remember_if_success(url: &str, status: reqwest::StatusCode, page: Arc<Fetched>) {
+    if status.is_success() {
+        remember(url, page);
+    }
+}
+
+async fn fetch_page(url: reqwest::Url) -> Result<(Fetched, reqwest::StatusCode), ToolError> {
     let client = shared_http_client()?;
     let response = client
         .get(url)
@@ -338,7 +468,7 @@ async fn fetch_page(url: reqwest::Url) -> Result<Fetched, ToolError> {
         }
         page.notes.push(format!("HTTP {}.{hint}", status.as_u16()));
     }
-    Ok(page)
+    Ok((page, status))
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -620,5 +750,103 @@ mod tests {
         let html = b"<html><head><meta charset=\"iso-8859-1\"></head><body>caf\xe9</body></html>";
         assert!(decode(html, "text/html").contains("café"));
         assert_eq!(decode("naïve".as_bytes(), "text/plain"), "naïve");
+    }
+
+    #[test]
+    fn ssrf_guard_blocks_trailing_dots_and_special_ip_ranges() {
+        let blocked = [
+            "http://localhost./",
+            "http://localhost../",
+            "http://sub.localhost./",
+            "http://service.local./",
+            "http://meta.internal./",
+            "http://0.0.0.0/",
+            "http://0.1.2.3/",
+            "http://224.0.0.1/",
+            "http://239.255.255.250/",
+            "http://240.0.0.1/",
+            "http://255.255.255.255/",
+            "http://198.18.0.1/",
+            "http://198.19.255.254/",
+            "http://[ff02::1]/",
+            "http://[64:ff9b::127.0.0.1]/",
+            "http://[64:ff9b::10.0.0.1]/",
+            "http://[::ffff:127.0.0.1]/",
+            "http://[::ffff:10.0.0.1]/",
+            "http://[::127.0.0.1]/",
+            "http://[::10.0.0.1]/",
+        ];
+        for url in blocked {
+            let parsed = reqwest::Url::parse(url).unwrap();
+            assert!(is_forbidden_host(&parsed), "{url} must be blocked");
+        }
+        // Public IPv4 and IPv6 literals remain allowed.
+        for url in [
+            "https://93.184.216.34/",
+            "https://[2606:2800:220:1:248:1893:25c8:1946]/",
+            "https://[::ffff:93.184.216.34]/",
+        ] {
+            let parsed = reqwest::Url::parse(url).unwrap();
+            assert!(!is_forbidden_host(&parsed), "{url} should be allowed");
+        }
+    }
+
+    #[tokio::test]
+    async fn safe_dns_resolver_fails_closed_on_dns_error_and_private_ips() {
+        let resolver = SafeDnsResolver::public_only();
+        // Loopback hostname (including trailing dot) is blocked.
+        assert!(resolver.lookup("localhost.").await.is_err());
+        // Unresolvable host fails closed instead of silently allowing.
+        assert!(resolver
+            .lookup("definitely-nonexistent-host-for-ssrf-test.invalid")
+            .await
+            .is_err());
+        // Empty address set fails closed.
+        assert!(validate_resolved_addrs(&[], false).is_err());
+        // Mixed public + private resolution is rejected.
+        let mixed = [
+            SocketAddr::from(([93, 184, 216, 34], 443)),
+            SocketAddr::from(([127, 0, 0, 1], 443)),
+        ];
+        assert!(validate_resolved_addrs(&mixed, false).is_err());
+        // Pure public resolution passes.
+        let public = [SocketAddr::from(([93, 184, 216, 34], 443))];
+        assert!(validate_resolved_addrs(&public, false).is_ok());
+    }
+
+    #[test]
+    fn fetch_cache_only_remembers_success_and_uses_normalized_url() {
+        let unique = uuid::Uuid::new_v4();
+        let raw_upper = format!("https://EXAMPLE.COM/cache-test-{unique}");
+        let raw_lower = format!("https://example.com/cache-test-{unique}");
+        let parsed_upper = reqwest::Url::parse(&raw_upper).unwrap();
+        let parsed_lower = reqwest::Url::parse(&raw_lower).unwrap();
+        assert_eq!(parsed_upper.as_str(), parsed_lower.as_str());
+
+        let error_page = Arc::new(Fetched {
+            url: parsed_upper.to_string(),
+            title: "Error".into(),
+            text: "service unavailable".into(),
+            notes: vec!["HTTP 503.".into()],
+        });
+        remember_if_success(
+            parsed_upper.as_str(),
+            reqwest::StatusCode::SERVICE_UNAVAILABLE,
+            error_page,
+        );
+        assert!(
+            cached(parsed_lower.as_str()).is_none(),
+            "non-2xx responses must not be cached"
+        );
+
+        let ok_page = Arc::new(Fetched {
+            url: parsed_upper.to_string(),
+            title: "OK".into(),
+            text: "hello".into(),
+            notes: vec![],
+        });
+        remember_if_success(parsed_upper.as_str(), reqwest::StatusCode::OK, ok_page);
+        let hit = cached(parsed_lower.as_str()).expect("normalized URL should hit cache");
+        assert_eq!(hit.text, "hello");
     }
 }

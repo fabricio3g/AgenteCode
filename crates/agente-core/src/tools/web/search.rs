@@ -6,7 +6,7 @@ use serde_json::{json, Value};
 
 use super::extract::html_text;
 use super::settings::{api_key, SearchProvider, WebSettings};
-use super::shared_http_client;
+use super::{searxng_http_client, shared_http_client};
 use crate::tools::{ToolCore, ToolError, ToolExecutionContext, ToolExecutionMode};
 
 /// Browser-like UA for the DuckDuckGo HTML endpoints (they refuse plain bots).
@@ -160,7 +160,10 @@ async fn search_with(
             let base = settings
                 .searxng_base()
                 .ok_or("no SearXNG URL (set it in /settings or SEARXNG_URL)")?;
-            client
+            let base_url =
+                reqwest::Url::parse(&base).map_err(|e| format!("invalid SearXNG URL ({e})"))?;
+            let searx_client = searxng_http_client(&base_url).map_err(|e| e.to_string())?;
+            searx_client
                 .get(format!("{base}/search"))
                 .query(&[("q", query), ("format", "json")])
         }
@@ -494,6 +497,71 @@ mod tests {
         let schema = TypedTool::new(WebSearchTool).parameters();
         assert_eq!(schema["properties"]["query"]["description"], "Search query");
         assert!(schema["properties"]["max_results"].is_object());
+    }
+
+    #[tokio::test]
+    async fn searxng_allows_configured_localhost_origin_and_blocks_cross_origin_private_redirect() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+        // 1. Mock SearXNG on localhost that redirects same-origin `/search` -> `/v2/search`
+        //    and returns valid JSON hits.
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = tokio::spawn(async move {
+            for _ in 0..2 {
+                let (mut socket, _) = listener.accept().await.unwrap();
+                let mut buf = [0u8; 2048];
+                let n = socket.read(&mut buf).await.unwrap();
+                let req = String::from_utf8_lossy(&buf[..n]);
+                let first_line = req.lines().next().unwrap_or("");
+                if first_line.starts_with("GET /search?") {
+                    let resp = format!(
+                        "HTTP/1.1 302 Found\r\nLocation: http://127.0.0.1:{port}/v2/search\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                    );
+                    socket.write_all(resp.as_bytes()).await.unwrap();
+                } else {
+                    let body = r#"{"results":[{"title":"Local Hit","url":"https://example.org","content":"ok"}]}"#;
+                    let resp = format!(
+                        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                        body.len()
+                    );
+                    socket.write_all(resp.as_bytes()).await.unwrap();
+                }
+            }
+        });
+
+        let settings = WebSettings {
+            search_provider: SearchProvider::SearXng,
+            searxng_url: Some(format!("http://127.0.0.1:{port}")),
+            max_results: Some(5),
+        };
+        let hits = search_with(SearchProvider::SearXng, &settings, "rust", 5)
+            .await
+            .expect("configured localhost SearXNG with same-origin redirect should succeed");
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].title, "Local Hit");
+        server.await.unwrap();
+
+        // 2. Redirect to a different private/loopback origin must still be blocked.
+        let listener2 = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port2 = listener2.local_addr().unwrap().port();
+        let server2 = tokio::spawn(async move {
+            let (mut socket, _) = listener2.accept().await.unwrap();
+            let mut buf = [0u8; 2048];
+            let _ = socket.read(&mut buf).await;
+            let resp = "HTTP/1.1 302 Found\r\nLocation: http://169.254.169.254/latest/meta-data/\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+            let _ = socket.write_all(resp.as_bytes()).await;
+        });
+        let settings2 = WebSettings {
+            search_provider: SearchProvider::SearXng,
+            searxng_url: Some(format!("http://127.0.0.1:{port2}")),
+            max_results: Some(5),
+        };
+        let err = search_with(SearchProvider::SearXng, &settings2, "rust", 5)
+            .await
+            .expect_err("redirect from SearXNG to another internal IP must be blocked");
+        assert!(err.contains("private/loopback"), "{err}");
+        server2.await.unwrap();
     }
 
     #[tokio::test]

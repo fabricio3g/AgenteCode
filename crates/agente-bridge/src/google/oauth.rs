@@ -24,6 +24,7 @@ pub const SCOPES: &[&str] = &[
 ];
 
 const FLOW_TIMEOUT: Duration = Duration::from_secs(180);
+const SOCKET_READ_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// PKCE: the verifier never leaves this machine, only its hash does.
 pub struct Pkce {
@@ -157,7 +158,13 @@ async fn wait_for_code(listener: tokio::net::TcpListener, state: &str) -> anyhow
     loop {
         let (mut socket, _) = listener.accept().await?;
         let mut buffer = vec![0u8; 8192];
-        let read = socket.read(&mut buffer).await.unwrap_or(0);
+        let read = match tokio::time::timeout(SOCKET_READ_TIMEOUT, socket.read(&mut buffer)).await {
+            Ok(Ok(n)) if n > 0 => n,
+            _ => {
+                let _ = socket.shutdown().await;
+                continue;
+            }
+        };
         let request = String::from_utf8_lossy(&buffer[..read]).to_string();
         let target = request
             .lines()
@@ -188,11 +195,17 @@ async fn wait_for_code(listener: tokio::net::TcpListener, state: &str) -> anyhow
 
 /// `GET /callback?code=…&state=…` → the code, refusing anything else.
 pub fn parse_callback(target: &str, expected_state: &str) -> Result<String, String> {
-    let query = target.split_once('?').map(|(_, query)| query).unwrap_or("");
+    let (path, query) = target.split_once('?').unwrap_or((target, ""));
+    if path != "/callback" {
+        return Err("<h2>Waiting for the sign-in to finish…</h2>".to_string());
+    }
     let mut code = None;
     let mut state = None;
     let mut error = None;
     for pair in query.split('&') {
+        if pair.is_empty() {
+            continue;
+        }
         let (key, value) = pair.split_once('=').unwrap_or((pair, ""));
         match key {
             "code" => code = Some(urldecode(value)),
@@ -202,15 +215,31 @@ pub fn parse_callback(target: &str, expected_state: &str) -> Result<String, Stri
         }
     }
     if let Some(error) = error {
-        return Err(format!("<h2>Google refused the request</h2><p>{error}</p>"));
+        return Err(format!(
+            "<h2>Google refused the request</h2><p>{}</p>",
+            html_escape(&error)
+        ));
     }
     match (code, state) {
-        (Some(_), Some(state)) if state != expected_state => {
-            Err("<h2>That answer was not for this sign-in.</h2>".to_string())
-        }
-        (Some(code), _) => Ok(code),
+        (Some(code), Some(state)) if state == expected_state => Ok(code),
+        (Some(_), _) => Err("<h2>That answer was not for this sign-in.</h2>".to_string()),
         _ => Err("<h2>Waiting for the sign-in to finish…</h2>".to_string()),
     }
+}
+
+fn html_escape(value: &str) -> String {
+    let mut out = String::with_capacity(value.len());
+    for ch in value.chars() {
+        match ch {
+            '&' => out.push_str("&amp;"),
+            '<' => out.push_str("&lt;"),
+            '>' => out.push_str("&gt;"),
+            '"' => out.push_str("&quot;"),
+            '\'' => out.push_str("&#x27;"),
+            _ => out.push(ch),
+        }
+    }
+    out
 }
 
 fn open_browser(url: &str) {
@@ -328,5 +357,27 @@ mod tests {
             .unwrap_err()
             .contains("access_denied"));
         assert!(parse_callback("/favicon.ico", "s1").is_err());
+    }
+
+    #[test]
+    fn callback_rejects_missing_state_and_wrong_path_and_escapes_error_html() {
+        // CSRF: missing state must be rejected even with a valid code.
+        assert!(parse_callback("/callback?code=abc", "s1")
+            .unwrap_err()
+            .contains("not for this sign-in"));
+        // Wrong request path must be rejected even with valid code and state.
+        assert!(parse_callback("/other?code=abc&state=s1", "s1").is_err());
+        assert!(parse_callback("/callback/extra?code=abc&state=s1", "s1").is_err());
+        // XSS: HTML metacharacters in `error` must be escaped.
+        let escaped = parse_callback(
+            "/callback?error=%3Cscript%3Ealert(%27x%27%26%22y%22)%3C%2Fscript%3E",
+            "s1",
+        )
+        .unwrap_err();
+        assert!(!escaped.contains("<script>"), "{escaped}");
+        assert!(
+            escaped.contains("&lt;script&gt;alert(&#x27;x&#x27;&amp;&quot;y&quot;)&lt;/script&gt;"),
+            "{escaped}"
+        );
     }
 }

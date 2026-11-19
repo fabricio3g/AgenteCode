@@ -41,7 +41,16 @@ struct Inner {
     /// Agente Desktop, answering the extension's chat panel.
     app: Option<Link>,
     pending: HashMap<String, oneshot::Sender<ActionResult>>,
-    sequence: u64,
+}
+
+/// Equal strings, compared in time that doesn't depend on where they differ.
+fn same_token(given: &str, expected: &str) -> bool {
+    let (given, expected) = (given.as_bytes(), expected.as_bytes());
+    let mut difference = given.len() ^ expected.len();
+    for (index, byte) in expected.iter().enumerate() {
+        difference |= usize::from(byte ^ given.get(index).copied().unwrap_or(0));
+    }
+    difference == 0
 }
 
 /// The loopback listener plus the extension attached to it.
@@ -74,8 +83,9 @@ impl Hub {
                 match listener.accept().await {
                     Ok((stream, _)) => hub.accept(stream),
                     Err(error) => {
-                        tracing::warn!(%error, "bridge listener stopped accepting");
-                        break;
+                        tracing::warn!(%error, "bridge listener accept failed; retrying");
+                        tokio::time::sleep(Duration::from_millis(50)).await;
+                        continue;
                     }
                 }
             }
@@ -103,8 +113,7 @@ impl Hub {
             let Some(link) = inner.extension.clone() else {
                 return ActionResult::error(offline_text(&self.pairing, &Offline::NoBrowser));
             };
-            inner.sequence += 1;
-            let id = format!("a{}", inner.sequence);
+            let id = uuid::Uuid::new_v4().to_string();
             let (sender, receiver) = oneshot::channel();
             inner.pending.insert(id.clone(), sender);
             let frame = Frame::Action {
@@ -176,7 +185,7 @@ impl Hub {
             let _ = sink.close().await;
             return;
         };
-        if token != self.pairing.token {
+        if !same_token(&token, &self.pairing.token) {
             let _ = sink
                 .send(Message::text(
                     serde_json::to_string(&Frame::error(
@@ -286,7 +295,7 @@ impl Hub {
                 text,
                 image,
                 url,
-            } => {
+            } if role == Role::Extension => {
                 let sender = self.inner.lock().expect("hub state").pending.remove(&id);
                 if let Some(sender) = sender {
                     let _ = sender.send(ActionResult {
@@ -298,7 +307,7 @@ impl Hub {
                 }
             }
             // A peer bridge asking the hub to run an action on its behalf.
-            Frame::Forward { id, action, args } => {
+            Frame::Forward { id, action, args } if role == Role::Peer => {
                 let hub = Arc::clone(self);
                 let out = out.clone();
                 tokio::spawn(async move {
@@ -312,6 +321,7 @@ impl Hub {
                     });
                 });
             }
+            Frame::Result { .. } | Frame::Forward { .. } => {}
             Frame::Ping { id } => {
                 let _ = out.send(Frame::Pong { id });
             }
@@ -556,5 +566,118 @@ mod tests {
         let result = hub.request("snapshot", json!({})).await;
         assert!(!result.ok);
         assert!(result.text.contains("pairing code"));
+    }
+
+    #[tokio::test]
+    async fn hub_enforces_frame_roles_and_uses_uuid_action_ids() {
+        let (hub, port) = start().await;
+        let (mut extension, _) = join(&hub, port, Role::Extension, Some("chrome")).await;
+        let (mut peer, _) = join(&hub, port, Role::Peer, None).await;
+        let (mut app, _) = join(&hub, port, Role::App, None).await;
+        assert!(matches!(
+            next(&mut extension).await,
+            Frame::Status { app: Some(_) }
+        ));
+
+        // 1. An extension or app sending `Forward` must be ignored (only Peer may forward).
+        send(
+            &mut app,
+            &Frame::Forward {
+                id: "f-app".into(),
+                action: "snapshot".into(),
+                args: json!({}),
+            },
+        )
+        .await;
+        send(
+            &mut extension,
+            &Frame::Forward {
+                id: "f-ext".into(),
+                action: "snapshot".into(),
+                args: json!({}),
+            },
+        )
+        .await;
+        // Verify with a Ping/Pong barrier that neither Forward produced an Action or Result.
+        send(&mut app, &Frame::Ping { id: 1 }).await;
+        assert!(matches!(next(&mut app).await, Frame::Pong { id: 1 }));
+
+        // 2. Peer forwarding triggers a UUID v4 Action on the extension; a spoofed
+        //    Result from Peer or App must be ignored while the real Extension Result wins.
+        send(
+            &mut peer,
+            &Frame::Forward {
+                id: "f-peer".into(),
+                action: "snapshot".into(),
+                args: json!({}),
+            },
+        )
+        .await;
+        let action_id = match next(&mut extension).await {
+            Frame::Action { id, action, .. } => {
+                assert_eq!(action, "snapshot");
+                let parsed = uuid::Uuid::parse_str(&id).expect("action id must be a UUID");
+                assert_eq!(parsed.get_version(), Some(uuid::Version::Random));
+                id
+            }
+            other => panic!("expected Action, got {other:?}"),
+        };
+
+        // Spoofed Result from Peer and App must be ignored.
+        send(
+            &mut peer,
+            &Frame::Result {
+                id: action_id.clone(),
+                ok: true,
+                text: "spoofed-peer".into(),
+                image: None,
+                url: None,
+            },
+        )
+        .await;
+        send(
+            &mut app,
+            &Frame::Result {
+                id: action_id.clone(),
+                ok: true,
+                text: "spoofed-app".into(),
+                image: None,
+                url: None,
+            },
+        )
+        .await;
+        // Barrier so the hub processes the spoofed frames before the real result.
+        send(&mut peer, &Frame::Ping { id: 2 }).await;
+        assert!(matches!(next(&mut peer).await, Frame::Pong { id: 2 }));
+
+        // Real Result from Extension resolves the pending action.
+        send(
+            &mut extension,
+            &Frame::Result {
+                id: action_id,
+                ok: true,
+                text: "real-extension".into(),
+                image: None,
+                url: None,
+            },
+        )
+        .await;
+        match next(&mut peer).await {
+            Frame::Result { id, ok, text, .. } => {
+                assert_eq!(id, "f-peer");
+                assert!(ok);
+                assert_eq!(text, "real-extension");
+            }
+            other => panic!("expected Result, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn same_token_compares_constant_time() {
+        assert!(same_token("secret", "secret"));
+        assert!(!same_token("secrex", "secret"));
+        assert!(!same_token("sec", "secret"));
+        assert!(!same_token("secret2", "secret"));
+        assert!(!same_token("", "secret"));
     }
 }

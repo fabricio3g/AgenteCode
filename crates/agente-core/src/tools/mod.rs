@@ -232,21 +232,32 @@ impl Default for ToolExecutionContext {
 
 /// Canonical form of the project directory, cached per process: every tool
 /// preparation used to re-canonicalize the same root (two syscalls per call).
+/// Only canonicalized (existing) roots are cached so a path checked before the
+/// directory exists never permanently pins a non-canonical form.
 fn canonical_base_cached(project_dir: &str) -> std::path::PathBuf {
     static CACHE: std::sync::OnceLock<
         std::sync::Mutex<std::collections::HashMap<String, std::path::PathBuf>>,
     > = std::sync::OnceLock::new();
     let cache = CACHE.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()));
-    let mut guard = cache
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
-    if let Some(cached) = guard.get(project_dir) {
-        return cached.clone();
+    {
+        let guard = cache
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if let Some(cached) = guard.get(project_dir) {
+            return cached.clone();
+        }
     }
     let base = std::path::Path::new(project_dir);
-    let canonical = std::fs::canonicalize(base).unwrap_or_else(|_| base.to_path_buf());
-    guard.insert(project_dir.to_string(), canonical.clone());
-    canonical
+    match std::fs::canonicalize(base) {
+        Ok(canonical) => {
+            let mut guard = cache
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            guard.insert(project_dir.to_string(), canonical.clone());
+            canonical
+        }
+        Err(_) => base.to_path_buf(),
+    }
 }
 
 /// Resolve a path relative to the project directory and ensure it doesn't escape.
@@ -266,7 +277,7 @@ pub fn resolve_project_path(
         // write) and for dangling symlinks. Resolving only the nearest
         // existing ancestor keeps symlinked parents (or a symlinked leaf)
         // from slipping past the check on a purely lexical fallback.
-        Err(_) => canonicalize_closest_ancestor(&resolve_leaf_symlink(&target))?,
+        Err(_) => canonicalize_closest_ancestor(&resolve_leaf_symlink(&target)?)?,
     };
 
     // Containment is compared on verbatim-prefix-stripped forms: canonicalize
@@ -323,54 +334,106 @@ fn comparable_path(path: &std::path::Path) -> std::path::PathBuf {
     }
 }
 
-/// If the leaf itself is a symlink (including a dangling one, which
-/// `canonicalize` refuses to resolve), follow it one hop so the containment
-/// check below sees the real destination instead of the link's location.
-fn resolve_leaf_symlink(target: &std::path::Path) -> std::path::PathBuf {
-    let is_link = std::fs::symlink_metadata(target)
+/// Maximum symlink expansions allowed while resolving dangling or chained links
+/// (matches POSIX `SYMLOOP_MAX` / Linux `MAXSYMLINKS`).
+const MAX_SYMLINK_HOPS: usize = 40;
+
+fn is_symlink(path: &std::path::Path) -> bool {
+    std::fs::symlink_metadata(path)
         .map(|m| m.file_type().is_symlink())
-        .unwrap_or(false);
-    if !is_link {
-        return target.to_path_buf();
+        .unwrap_or(false)
+}
+
+/// Follow a leaf symlink chain (including dangling links, which `canonicalize`
+/// refuses to resolve) up to [`MAX_SYMLINK_HOPS`] hops so the containment check
+/// sees the real destination instead of the link's location.
+fn resolve_leaf_symlink(target: &std::path::Path) -> Result<std::path::PathBuf, ToolError> {
+    let mut current = target.to_path_buf();
+    for _ in 0..MAX_SYMLINK_HOPS {
+        if !is_symlink(&current) {
+            return Ok(current);
+        }
+        let link = std::fs::read_link(&current).map_err(|_| {
+            ToolError::ExecutionError(format!(
+                "Access denied: cannot resolve symlink '{}'",
+                target.display()
+            ))
+        })?;
+        current = if link.is_absolute() {
+            link
+        } else {
+            current.parent().map(|p| p.join(&link)).unwrap_or(link)
+        };
     }
-    match std::fs::read_link(target) {
-        Ok(link) if link.is_absolute() => link,
-        Ok(link) => target.parent().map(|p| p.join(&link)).unwrap_or(link),
-        Err(_) => target.to_path_buf(),
+    if is_symlink(&current) {
+        return Err(ToolError::ExecutionError(format!(
+            "Access denied: symlink chain exceeds {MAX_SYMLINK_HOPS} hops for '{}'",
+            target.display()
+        )));
     }
+    Ok(current)
 }
 
 /// Canonicalize the nearest existing ancestor of `target` and re-attach the
 /// missing remainder. Unlike a purely lexical normalization this resolves
-/// symlinked parent directories, so a new file under `link -> /outside`
-/// no longer passes the project-containment check.
+/// symlinked parent directories — including intermediate dangling symlink
+/// directories and chained symlinks — so a new file under `link -> /outside/missing`
+/// cannot slip past the project-containment check.
 fn canonicalize_closest_ancestor(
     target: &std::path::Path,
 ) -> Result<std::path::PathBuf, ToolError> {
-    let mut ancestor = target;
-    let mut remainder: Vec<std::ffi::OsString> = Vec::new();
-    loop {
-        if let Ok(canonical) = std::fs::canonicalize(ancestor) {
-            let mut out = canonical;
-            for component in remainder.iter().rev() {
-                out.push(component);
-            }
-            return Ok(normalize_path(&out));
-        }
-        match ancestor.parent() {
-            Some(parent) => {
-                // `file_name` is `None` for `..`/root; those resolve against
-                // the canonical ancestor instead of being re-attached.
-                if let Some(name) = ancestor.file_name() {
-                    remainder.push(name.to_os_string());
+    let mut current = resolve_leaf_symlink(target)?;
+    let mut hops = 0usize;
+
+    'resolve: loop {
+        let mut ancestor = current.as_path();
+        let mut remainder: Vec<std::ffi::OsString> = Vec::new();
+        loop {
+            if let Ok(canonical) = std::fs::canonicalize(ancestor) {
+                let mut out = canonical;
+                for component in remainder.iter().rev() {
+                    out.push(component);
                 }
-                ancestor = parent;
+                return Ok(normalize_path(&out));
             }
-            None => {
-                return Err(ToolError::ExecutionError(format!(
-                    "Access denied: '{}' is outside the project directory",
-                    target.display()
-                )));
+            // An intermediate component may itself be a dangling symlink (or
+            // chain of symlinks) pointing outside the project: `canonicalize`
+            // fails on dangling links, so expand the link and keep resolving
+            // instead of walking past it to an in-project parent.
+            if is_symlink(ancestor) {
+                hops += 1;
+                if hops > MAX_SYMLINK_HOPS {
+                    return Err(ToolError::ExecutionError(format!(
+                        "Access denied: symlink chain exceeds {MAX_SYMLINK_HOPS} hops for '{}'",
+                        target.display()
+                    )));
+                }
+                let mut next = resolve_leaf_symlink(ancestor)?;
+                for component in remainder.iter().rev() {
+                    next.push(component);
+                }
+                current = next;
+                continue 'resolve;
+            }
+            match ancestor.parent() {
+                Some(parent) => {
+                    match ancestor.components().next_back() {
+                        Some(std::path::Component::Normal(name)) => {
+                            remainder.push(name.to_os_string());
+                        }
+                        Some(std::path::Component::ParentDir) => {
+                            remainder.push(std::ffi::OsString::from(".."));
+                        }
+                        _ => {}
+                    }
+                    ancestor = parent;
+                }
+                None => {
+                    return Err(ToolError::ExecutionError(format!(
+                        "Access denied: '{}' is outside the project directory",
+                        target.display()
+                    )));
+                }
             }
         }
     }
@@ -1709,6 +1772,81 @@ mod tests {
         assert!(resolved.starts_with(&canon_project));
         // Fully resolved to the real file, not left pointing at the link.
         assert_eq!(std::fs::read_to_string(&resolved).unwrap(), "x");
+    }
+
+    #[test]
+    fn resolve_project_path_rejects_chained_dangling_symlinks_pointing_outside() {
+        let tmp = tempfile::tempdir().unwrap();
+        let project = tmp.path().join("proj");
+        let outside = tmp.path().join("outside");
+        std::fs::create_dir_all(&project).unwrap();
+        std::fs::create_dir_all(&outside).unwrap();
+        // proj/a -> proj/b -> /outside/missing
+        if !try_symlink_dir(&outside.join("missing"), &project.join("b")) {
+            return;
+        }
+        if !try_symlink_dir(&project.join("b"), &project.join("a")) {
+            return;
+        }
+
+        let err = resolve_project_path("a", &project.to_string_lossy())
+            .expect_err("chained dangling symlink pointing outside must be rejected");
+        assert!(err.to_string().contains("outside the project directory"));
+    }
+
+    #[test]
+    fn resolve_project_path_rejects_new_file_under_dangling_symlink_dir() {
+        let tmp = tempfile::tempdir().unwrap();
+        let project = tmp.path().join("proj");
+        let outside = tmp.path().join("outside");
+        std::fs::create_dir_all(&project).unwrap();
+        std::fs::create_dir_all(&outside).unwrap();
+        // proj/dangling_dir -> /outside/missing (does not exist)
+        if !try_symlink_dir(&outside.join("missing"), &project.join("dangling_dir")) {
+            return;
+        }
+
+        let err = resolve_project_path("dangling_dir/new.txt", &project.to_string_lossy())
+            .expect_err("new file under dangling symlink dir pointing outside must be rejected");
+        assert!(err.to_string().contains("outside the project directory"));
+    }
+
+    #[test]
+    fn resolve_project_path_rejects_symlink_cycle() {
+        let tmp = tempfile::tempdir().unwrap();
+        let project = tmp.path().join("proj");
+        std::fs::create_dir_all(&project).unwrap();
+        if !try_symlink_dir(&project.join("b"), &project.join("a")) {
+            return;
+        }
+        if !try_symlink_dir(&project.join("a"), &project.join("b")) {
+            return;
+        }
+
+        let err = resolve_project_path("a", &project.to_string_lossy())
+            .expect_err("symlink cycle must fail closed");
+        assert!(err.to_string().contains("symlink chain exceeds"));
+
+        let err_nested = resolve_project_path("a/new.txt", &project.to_string_lossy())
+            .expect_err("nested path through symlink cycle must fail closed");
+        assert!(err_nested.to_string().contains("symlink chain exceeds"));
+    }
+
+    #[test]
+    fn canonical_base_cached_does_not_pin_missing_project_dir() {
+        let tmp = tempfile::tempdir().unwrap();
+        let project = tmp.path().join("created-later");
+        let project_str = project.to_string_lossy().into_owned();
+
+        // First call before the directory exists falls back without caching.
+        let before = canonical_base_cached(&project_str);
+        assert_eq!(before, project);
+
+        // Once created, subsequent calls return the canonicalized path.
+        std::fs::create_dir_all(&project).unwrap();
+        let after = canonical_base_cached(&project_str);
+        let expected = std::fs::canonicalize(&project).unwrap();
+        assert_eq!(after, expected);
     }
 }
 

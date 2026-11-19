@@ -7,12 +7,58 @@
 //! connection loop can answer `-32700`/`-32600` and keep going.
 
 use serde_json::Value;
+use tokio::io::{AsyncBufRead, AsyncBufReadExt};
 
 pub const PARSE_ERROR: i32 = -32700;
 pub const INVALID_REQUEST: i32 = -32600;
 pub const METHOD_NOT_FOUND: i32 = -32601;
 pub const INVALID_PARAMS: i32 = -32602;
 pub const INTERNAL_ERROR: i32 = -32603;
+
+/// Read a single `\n`-terminated line (stripping trailing `\n` and optional
+/// `\r`) while bounding memory to `max_bytes`. Returns `Ok(None)` on clean EOF
+/// with no buffered bytes, `Ok(Some(line))` when a valid UTF-8 line fits within
+/// `max_bytes`, or `Err(io::ErrorKind::InvalidData)` as soon as a line exceeds
+/// `max_bytes` (even before a newline arrives) or contains invalid UTF-8.
+pub async fn read_bounded_line<R: AsyncBufRead + Unpin>(
+    reader: &mut R,
+    max_bytes: usize,
+) -> std::io::Result<Option<String>> {
+    let mut buf = Vec::new();
+    loop {
+        let available = reader.fill_buf().await?;
+        if available.is_empty() {
+            if buf.is_empty() {
+                return Ok(None);
+            }
+            break;
+        }
+        let remaining = max_bytes - buf.len();
+        let scan_len = available.len().min(remaining.saturating_add(1));
+        if let Some(newline_pos) = available[..scan_len].iter().position(|&b| b == b'\n') {
+            buf.extend_from_slice(&available[..newline_pos]);
+            reader.consume(newline_pos + 1);
+            break;
+        }
+        if available.len() > remaining {
+            let drop_len = remaining.saturating_add(1).min(available.len());
+            reader.consume(drop_len);
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("RPC line exceeds maximum size of {max_bytes} bytes"),
+            ));
+        }
+        buf.extend_from_slice(available);
+        let len = available.len();
+        reader.consume(len);
+    }
+    if buf.last() == Some(&b'\r') {
+        buf.pop();
+    }
+    String::from_utf8(buf)
+        .map(Some)
+        .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))
+}
 
 /// Why a line could not be turned into any JSON-RPC message.
 #[derive(Debug)]
@@ -208,5 +254,44 @@ mod tests {
             classify(r#"{"jsonrpc":"1.0","method":"x"}"#),
             Err(FrameError::NotAMessage)
         ));
+    }
+
+    #[tokio::test]
+    async fn read_bounded_line_reads_lines_within_cap_and_strips_crlf() {
+        let mut reader = tokio::io::BufReader::new(&b"alpha\nbeta\r\ngamma"[..]);
+        assert_eq!(
+            read_bounded_line(&mut reader, 16).await.unwrap().as_deref(),
+            Some("alpha")
+        );
+        assert_eq!(
+            read_bounded_line(&mut reader, 16).await.unwrap().as_deref(),
+            Some("beta")
+        );
+        assert_eq!(
+            read_bounded_line(&mut reader, 16).await.unwrap().as_deref(),
+            Some("gamma")
+        );
+        assert_eq!(read_bounded_line(&mut reader, 16).await.unwrap(), None);
+    }
+
+    #[tokio::test]
+    async fn read_bounded_line_rejects_lines_exceeding_cap() {
+        // Exact boundary passes.
+        let mut exact = tokio::io::BufReader::new(&b"12345\n"[..]);
+        assert_eq!(
+            read_bounded_line(&mut exact, 5).await.unwrap().as_deref(),
+            Some("12345")
+        );
+
+        // One byte over fails with InvalidData.
+        let mut over = tokio::io::BufReader::new(&b"123456\n"[..]);
+        let err = read_bounded_line(&mut over, 5).await.unwrap_err();
+        assert_eq!(err.kind(), std::io::ErrorKind::InvalidData);
+
+        // Unterminated oversized stream fails without needing a newline.
+        let huge = vec![b'a'; 1024];
+        let mut unterminated = tokio::io::BufReader::with_capacity(16, &huge[..]);
+        let err = read_bounded_line(&mut unterminated, 64).await.unwrap_err();
+        assert_eq!(err.kind(), std::io::ErrorKind::InvalidData);
     }
 }
