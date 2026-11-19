@@ -156,7 +156,8 @@ async function openConnection(): Promise<AgenteClient> {
     if (!attachedClients.has(client)) {
       attachedClients.add(client);
       client.onClose(() => {
-        if (listening === client) listening = null;
+        if (listening !== client) return;
+        listening = null;
         connectionPromise = null;
         configured.clear();
         for (const chat of chats.values()) {

@@ -138,7 +138,7 @@ export function isSafePublicUrl(value) {
     const url = new URL(String(value || '').trim());
     if (url.protocol !== 'http:' && url.protocol !== 'https:') return false;
     if (url.username || url.password) return false;
-    const host = url.hostname.replace(/^\[|\]$/g, '').toLowerCase();
+    const host = url.hostname.replace(/^\[|\]$/g, '').replace(/\.+$/, '').toLowerCase();
     if (!host) return false;
     if (host === 'localhost' || host.endsWith('.localhost') || host.endsWith('.local') || host.endsWith('.internal')) {
       return false;

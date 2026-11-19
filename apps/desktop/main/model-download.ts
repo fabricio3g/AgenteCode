@@ -417,18 +417,23 @@ function isWithinDownloadRoot(candidate: string, root: string): boolean {
   return normCandidate.startsWith(prefix);
 }
 
+function lstatExists(target: string): boolean {
+  try {
+    fs.lstatSync(target);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function resolveNearestExistingRealpath(target: string): string {
   let cursor = path.resolve(target);
-  while (!fs.existsSync(cursor)) {
+  while (!lstatExists(cursor)) {
     const parent = path.dirname(cursor);
     if (parent === cursor) break;
     cursor = parent;
   }
-  try {
-    return fs.existsSync(cursor) ? fs.realpathSync(cursor) : cursor;
-  } catch {
-    return cursor;
-  }
+  return fs.realpathSync(cursor);
 }
 
 function validateRelativeDownloadPath(label: string, value: string): string {
@@ -464,8 +469,12 @@ function resolveAllowedModelsDir(modelsDir: string | undefined): string {
   const realTarget = resolveNearestExistingRealpath(targetDir);
   const permitted = allowedRoots.some((root) => {
     if (!isWithinDownloadRoot(targetDir, root)) return false;
-    const realRoot = resolveNearestExistingRealpath(root);
-    return isWithinDownloadRoot(realTarget, realRoot);
+    try {
+      const realRoot = resolveNearestExistingRealpath(root);
+      return isWithinDownloadRoot(realTarget, realRoot);
+    } catch {
+      return false;
+    }
   });
   if (!permitted) {
     throw new Error('Download destination must be inside the configured models directory');

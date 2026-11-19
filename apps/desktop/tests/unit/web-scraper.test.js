@@ -50,6 +50,10 @@ describe('web-scraper helpers', () => {
 
     assert.equal(isSafePublicUrl('http://127.0.0.1/secret'), false);
     assert.equal(isSafePublicUrl('http://localhost:3000'), false);
+    assert.equal(isSafePublicUrl('http://localhost./'), false);
+    assert.equal(isSafePublicUrl('http://app.localhost./'), false);
+    assert.equal(isSafePublicUrl('http://foo.local./'), false);
+    assert.equal(isSafePublicUrl('http://meta.internal./'), false);
     assert.equal(isSafePublicUrl('http://192.168.1.10/x'), false);
     assert.equal(isSafePublicUrl('http://10.0.0.5/x'), false);
     assert.equal(isSafePublicUrl('http://169.254.169.254/latest/meta-data'), false);

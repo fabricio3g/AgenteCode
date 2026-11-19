@@ -51,9 +51,18 @@ function isPathWithinRoot(candidate: string, root: string): boolean {
   return normCandidate.startsWith(prefix);
 }
 
+function lstatExists(targetPath: string): boolean {
+  try {
+    fs.lstatSync(targetPath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function realpathOfNearestExistingAncestor(targetPath: string): string {
   let cursor = path.resolve(targetPath);
-  while (!fs.existsSync(cursor)) {
+  while (!lstatExists(cursor)) {
     const parent = path.dirname(cursor);
     if (parent === cursor) break;
     cursor = parent;

@@ -342,29 +342,30 @@ export async function getGgufMetadata(filePath: string): Promise<GgufMetadata> {
   }
 }
 
+function lstatExists(targetPath: string): boolean {
+  try {
+    fs.lstatSync(targetPath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function resolveRealOrAncestor(targetPath: string): string {
   const resolved = path.resolve(targetPath);
-  if (fs.existsSync(resolved)) {
-    try {
-      return fs.realpathSync(resolved);
-    } catch {
-      return resolved;
-    }
+  if (lstatExists(resolved)) {
+    return fs.realpathSync(resolved);
   }
   const missing: string[] = [];
   let cursor = resolved;
-  while (!fs.existsSync(cursor)) {
+  while (!lstatExists(cursor)) {
     const parent = path.dirname(cursor);
     if (parent === cursor) break;
     missing.unshift(path.basename(cursor));
     cursor = parent;
   }
-  try {
-    const base = fs.existsSync(cursor) ? fs.realpathSync(cursor) : cursor;
-    return missing.length ? path.join(base, ...missing) : base;
-  } catch {
-    return resolved;
-  }
+  const base = fs.realpathSync(cursor);
+  return missing.length ? path.join(base, ...missing) : base;
 }
 
 function normalizeModelComparePath(targetPath: string): string {
@@ -395,7 +396,12 @@ export async function deleteLocalModel(modelPath: string): Promise<void> {
   const registeredModels = Array.isArray(cfg.llm?.local?.models) ? cfg.llm.local.models : [];
   const isRegistered = registeredModels.some((model) => {
     const candidate = String((model as { path?: unknown })?.path || '').trim();
-    return Boolean(candidate) && normalizeModelComparePath(candidate) === normTarget;
+    if (!candidate) return false;
+    try {
+      return normalizeModelComparePath(candidate) === normTarget;
+    } catch {
+      return false;
+    }
   });
 
   if (!inModelsDir && !isRegistered) {
@@ -413,7 +419,11 @@ export async function deleteLocalModel(modelPath: string): Promise<void> {
     cfg.llm.local.models = cfg.llm.local.models.filter((model) => {
       const candidate = String((model as { path?: unknown })?.path || '').trim();
       if (!candidate) return true;
-      return normalizeModelComparePath(candidate) !== normTarget;
+      try {
+        return normalizeModelComparePath(candidate) !== normTarget;
+      } catch {
+        return true;
+      }
     });
     saveConfig(cfg);
   }
