@@ -8,6 +8,7 @@ import type { ExtractedFileText } from '$shared/document-ingestion';
 import { ingestionFileType } from '$shared/document-ingestion';
 import { extractPdfContent } from './pdf-ingestion';
 import { pdfTextLines } from '$shared/pdf-text';
+import JSZip from 'jszip';
 
 let worker: Awaited<ReturnType<typeof import('tesseract.js')['createWorker']>> | null = null;
 let queue: Promise<unknown> = Promise.resolve();
@@ -118,7 +119,6 @@ async function extract(file: File): Promise<ExtractedFileText> {
   }).join('\n\n');
   let method: ExtractedFileText['method'] = 'parser';
   if (type === 'docx' && !doc.units.some((unit) => unit.text.trim() || unit.tables.length)) {
-    const { default: JSZip } = await import('jszip');
     const zip = await JSZip.loadAsync(bytes);
     const images = Object.values(zip.files).filter((entry) => /^word\/media\/.*\.(png|jpe?g|gif|bmp)$/i.test(entry.name));
     const sections: string[] = [];

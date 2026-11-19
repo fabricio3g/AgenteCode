@@ -6,6 +6,7 @@
   import Checkbox from '$lib/components/ui/Checkbox.svelte';
   import Dialog from '$lib/components/ui/Dialog.svelte';
   import AttachmentTile from './AttachmentTile.svelte';
+  import DocumentViewer from '../DocumentViewer.svelte';
   import { SHELF_LIMIT, type DraftAttachment } from './attachment-shelf';
   import { formatBytes } from '$lib/utils/format';
   import { toastStore } from '$lib/stores/toast.svelte';
@@ -19,7 +20,7 @@
   let loading = $state(false);
   let previewError = $state('');
   let zoom = $state(1);
-  let Viewer = $state<typeof import('../DocumentViewer.svelte').default>();
+  const Viewer = DocumentViewer;
   const active = $derived(files.find(file => file.id === activeId));
   const index = $derived(files.findIndex(file => file.id === activeId));
   const hidden = $derived(Math.max(0, files.length - SHELF_LIMIT));
@@ -35,7 +36,6 @@
       loading = true;
       void file.loadSource().then(value => { if (current) source = value; }).catch(error => { if (current) previewError = String(error); }).finally(() => { if (current) loading = false; });
     }
-    if (file.kind !== 'image') void import('../DocumentViewer.svelte').then(module => { if (current) Viewer = module.default; }).catch(error => { if (current) previewError = String(error); });
     return () => { current = false; };
   });
   $effect(() => { if (activeId && !active) activeId = null; if (!files.length) { gallery = false; selected = []; } });

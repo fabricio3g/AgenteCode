@@ -1,3 +1,4 @@
+import JSZip from 'jszip';
 import { pdfTextLines } from '$shared/pdf-text';
 
 /**
@@ -111,7 +112,6 @@ function pullTables(xml: string, p: 'w' | 'a'): { tables: string[][][]; rest: st
 }
 
 async function zipOf(bytes: ArrayBuffer) {
-  const { default: JSZip } = await import('jszip');
   return JSZip.loadAsync(bytes);
 }
 

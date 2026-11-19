@@ -10,6 +10,10 @@ import { docKindOf, parseDocument, parseIngestedDocument, selectUnits, type Pars
 import { ingestionFileType } from '$shared/document-ingestion';
 import { convertTimeZone, convertUnits, dateMath, supportedUnits } from '$lib/services/agent-units';
 import * as productivity from '$lib/services/home-productivity';
+import { appStore } from '$lib/stores/app.svelte';
+import { hasConfiguredVisionModel } from '$lib/services/chat-api';
+import { sttTranscribe } from '$lib/services/stt';
+import { readArrayBuffer } from '$lib/features/chat/viewers/viewer-source';
 
 export type HomeAttachment = { id: string; name: string; type: string; kind?: string; data?: string; base64?: string; ocrText?: string; docId?: string };
 
@@ -284,11 +288,7 @@ function btoaBytes(buffer: ArrayBuffer): string {
 }
 
 async function defaultDeps(): Promise<HomeToolDeps> {
-  const [{ appStore }, { invoke }, { readArrayBuffer }] = await Promise.all([
-    import('$lib/stores/app.svelte'),
-    import('$lib/services/bridge'),
-    import('$lib/features/chat/viewers/viewer-source')
-  ]);
+  const { invoke } = await import('$lib/services/bridge');
   return {
     attachments: (chatId) => {
       const chat = appStore.chats.find((entry) => entry.id === chatId);
@@ -300,8 +300,8 @@ async function defaultDeps(): Promise<HomeToolDeps> {
     readWorkspaceBinary: async (root, path) => readArrayBuffer(await invoke<string>('read_workspace_binary', { workspaceRoot: root, relativePath: path }), 'file'),
     dataUrlBytes: (dataUrl) => readArrayBuffer(dataUrl, 'attachment'),
     readIngested: (chatId, docId) => invoke('read_ingested_document', { payload: { chat_id: chatId, doc_id: docId } }),
-    visionAvailable: async () => (await import('$lib/services/chat-api')).hasConfiguredVisionModel(appStore.config),
+    visionAvailable: async () => hasConfiguredVisionModel(appStore.config),
     ocr: async (name, type, bytes) => (await import('$lib/services/ocr')).extractTextFromFile(new File([bytes], name, { type })),
-    transcribe: async (bytes, mime) => (await import('$lib/services/stt')).sttTranscribe(new Uint8Array(bytes), mime).then((r) => r.text)
+    transcribe: async (bytes, mime) => sttTranscribe(new Uint8Array(bytes), mime).then((r) => r.text)
   };
 }
