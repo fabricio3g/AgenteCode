@@ -1,15 +1,13 @@
 //! Generator for the Agente Code brand set in `assets/brand/`.
 //!
-//! The mark is a tilted Quasar Orbital (-28°): a circular black-hole event
-//! horizon ringed by a bright photon halo, a tilted hollow elliptical accretion
-//! ring, and twin perpendicular relativistic jets, on a black rounded tile
-//! inside a graphite rim.
+//! The mark is a tilted Quasar Orbital (-28°) rendered as a 15×15 shaded Matrix
+//! Field of rounded-square tiles (`rx = 0.22 * size`) with four subtle corner
+//! star specks, on a black rounded tile inside a graphite rim.
 //!
-//! - Full / large sizes (`≥ 48 px`): rendered as a 15×15 Matrix Field halftone
-//!   of rounded-square tiles (`rx = 0.22 * size`) with four corner star specks.
-//! - Optical small sizes (`≤ 32 px`): rendered as a single watertight even-odd
-//!   compound path of the same -28° Quasar Orbital on a full-bleed black tile,
-//!   staying razor-sharp down to 16 px.
+//! - Full / large sizes (`≥ 48 px`): 15×15 shaded Matrix Field inside the
+//!   graphite-rimmed black tile.
+//! - Optical small sizes (`≤ 32 px`): the same 15×15 shaded Matrix Field scaled
+//!   up onto a full-bleed black tile (dropping the rim so 16–32 px stay crisp).
 //!
 //! ```sh
 //! cargo run -p agente-tui --example gen_brand
@@ -30,35 +28,6 @@ const OUT: &str = "assets/brand";
 
 /// Quasar tilt angle in degrees (ascending bottom-left → top-right).
 const QUASAR_ANGLE_DEG: f32 = -28.0;
-
-/// Watertight, zero-overlap even-odd compound path for the -28° optical-small
-/// Quasar Orbital (defined in canonical horizontal/vertical orientation on a
-/// 120×120 grid, rotated by `QUASAR_ANGLE_DEG` around `(60, 60)`):
-///
-/// 1. Outer silhouette: photon ring (`r = 19.5`) fused with twin tapered jets
-///    (`y = 7..113`) and the outer accretion ellipse (`rx = 50, ry = 17.5`).
-/// 2. Central event-horizon void (`r = 11.2`).
-/// 3. Right & left hollow orbital crescents between `r = 19.5` and the inner
-///    accretion ellipse (`rx = 43.2, ry = 10.6`).
-const SMALL_QUASAR_PATH: &str = concat!(
-    // Outer silhouette (clockwise)
-    "M60 7 Q62.2 26 65.5 41.29 ",
-    "A19.5 19.5 0 0 1 69.18 42.80 ",
-    "A50 17.5 0 0 1 69.18 77.20 ",
-    "A19.5 19.5 0 0 1 65.5 78.71 ",
-    "Q62.2 94 60 113 ",
-    "Q57.8 94 54.5 78.71 ",
-    "A19.5 19.5 0 0 1 50.82 77.20 ",
-    "A50 17.5 0 0 1 50.82 42.80 ",
-    "A19.5 19.5 0 0 1 54.5 41.29 ",
-    "Q57.8 26 60 7 Z ",
-    // Event-horizon circular void
-    "M71.2 60 A11.2 11.2 0 1 0 48.8 60 A11.2 11.2 0 1 0 71.2 60 Z ",
-    // Right hollow orbital crescent
-    "M76.88 50.24 A43.2 10.6 0 0 1 76.88 69.76 A19.5 19.5 0 0 0 76.88 50.24 Z ",
-    // Left hollow orbital crescent
-    "M43.12 69.76 A43.2 10.6 0 0 1 43.12 50.24 A19.5 19.5 0 0 0 43.12 69.76 Z"
-);
 
 /// Graphite rim around the black tile, lit from the top as on the desktop icon.
 const RIM_TOP: &str = "#3e3e40";
@@ -175,15 +144,16 @@ fn matrix_field_elements() -> String {
 }
 
 /// Tile + mark on a 120-unit grid. `small` is the optical variant for
-/// 16–32 px: full-bleed black tile with the clean even-odd Quasar Orbital path.
+/// 16–32 px: full-bleed black tile with the same 15×15 shaded Matrix Field
+/// scaled up so the rim never smears at small sizes.
 fn icon_body(small: bool) -> String {
+    let matrix = matrix_field_elements();
     if small {
         return format!(
-            r##"<rect x="0" y="0" width="120" height="120" rx="22" fill="#000"/>
-<path fill="#fff" fill-rule="evenodd" transform="translate(60 60) scale(0.92) rotate({QUASAR_ANGLE_DEG}) translate(-60 -60)" d="{SMALL_QUASAR_PATH}"/>"##
+            r##"<rect x="0" y="0" width="120" height="120" rx="22" fill="#0d0d0e"/>
+<g transform="translate(60 60) scale(0.96) translate(-60 -60)">{matrix}</g>"##
         );
     }
-    let matrix = matrix_field_elements();
     format!(
         r##"<defs><linearGradient id="rim" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="{RIM_TOP}"/><stop offset="1" stop-color="{RIM_BOTTOM}"/></linearGradient></defs>
 <rect x="2" y="2" width="116" height="116" rx="22" fill="url(#rim)"/>

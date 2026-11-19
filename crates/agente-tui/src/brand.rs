@@ -53,9 +53,11 @@ mod tests {
 
     #[test]
     fn favicon_is_the_current_mark() {
-        // The traced mark fills even-odd on a black tile; the old ember
-        // split-A carried its orange tile.
-        assert!(ICON_SVG.contains("evenodd"));
+        // The current mark is the 15×15 shaded Matrix Field Quasar Orbital on
+        // a dark tile; the old ember split-A carried its orange tile.
+        assert!(ICON_SVG.contains("#0d0d0e"));
+        assert!(ICON_SVG.contains("#ffffff"));
+        assert!(ICON_SVG.contains("fill-opacity"));
         assert!(!ICON_SVG.to_lowercase().contains("e76d1f"));
     }
 }
