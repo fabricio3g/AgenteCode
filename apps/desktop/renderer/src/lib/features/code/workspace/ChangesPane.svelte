@@ -263,9 +263,15 @@
     text-align: left;
     transition: background-color var(--motion-instant) var(--motion-ease);
   }
-  :is(.file-row:hover, :global(.file-row:hover.ui-local-8f978f5f)),
-  :is(.file-row.is-active, :global(.file-row.is-active.ui-local-8f978f5f)) {
+  :is(.file-row:hover, :global(.file-row:hover.ui-local-8f978f5f)) {
     background: var(--float-row-hover);
+    color: var(--foreground);
+  }
+  :is(.file-row.is-active, :global(.file-row.is-active.ui-local-8f978f5f)) {
+    background: var(--sidebar-accent);
+    box-shadow: inset 0 1px 0 var(--composer-crown), inset 0 0 0 1px var(--float-border);
+    color: var(--foreground);
+    font-weight: 500;
   }
 
   .diff-box {
@@ -277,8 +283,9 @@
     gap: 0.125rem;
     margin: 0 0.75rem 0.75rem;
     overflow: hidden;
-    border: 1px solid var(--border-subtle);
+    border: 1px solid var(--float-border);
     border-radius: var(--radius-md);
+    box-shadow: var(--control-shadow);
     /* Inset, not raised: code sits in the page's own tone inside the sheet. */
     background: var(--background);
   }

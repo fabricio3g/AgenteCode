@@ -28,7 +28,7 @@ export function flyAndScale(
   if (reducedMotion.value) return { duration: 0, css: () => '' }
   const style = getComputedStyle(node)
   const transform = style.transform === 'none' ? '' : style.transform
-  const p = { y: -8, x: 0, start: 0.95, duration: 200, ...params }
+  const p = { y: -6, x: 0, start: 0.95, duration: 180, ...params }
 
   return {
     duration: p.duration,
@@ -38,25 +38,26 @@ export function flyAndScale(
       const y = (1 - t) * p.y
       const x = (1 - t) * p.x
       const scale = p.start + t * (1 - p.start)
-      return `opacity: ${Math.min(1, t * 1.6)}; transform: ${transform} translate3d(${x}px, ${y}px, 0) scale(${scale});`
+      return `opacity: ${Math.min(1, t * 1.7)}; transform: ${transform} translate3d(${x}px, ${y}px, 0) scale(${scale});`
     }
   }
 }
 
-/** Ease-in for leaving: starts gently, then gets out of the way. */
+/** Ease-in for leaving: starts gently, then gets out of the way (Carbon exit curve). */
 const exitEase = (t: number): number => t * t * t
 
 /**
- * Dialogs share a short transform/opacity transition. Text stays sharp
- * throughout; animating a blur forces repeated rasterization of the panel.
+ * Dialogs enter with a crisp scale (0.955 -> 1) and gentle 8px settle over 240ms
+ * (well under the 300ms dialog ceiling and Doherty threshold). Text stays sharp
+ * throughout; never animate blur on the dialog panel itself.
  */
 export function dialogIn(_node: Element): TransitionConfig {
   if (reducedMotion.value) return { duration: 0, css: () => '' }
   return {
-    duration: 200,
+    duration: 240,
     easing: smoothEase,
     css: (t, u) =>
-      `opacity: ${Math.min(1, t * 1.8)}; transform: translate3d(0, ${u * 6}px, 0) scale(${0.985 + t * 0.015});`
+      `opacity: ${Math.min(1, t * 1.85)}; transform: translate3d(0, ${u * 8}px, 0) scale(${0.955 + t * 0.045});`
   }
 }
 
@@ -64,16 +65,16 @@ export function dialogIn(_node: Element): TransitionConfig {
 export function dialogOut(_node: Element): TransitionConfig {
   if (reducedMotion.value) return { duration: 0, css: () => '' }
   return {
-    duration: 160,
+    duration: 150,
     easing: exitEase,
-    css: (t, u) => `opacity: ${t}; transform: translate3d(0, ${u * 6}px, 0) scale(${1 - u * 0.025});`
+    css: (t, u) => `opacity: ${t}; transform: translate3d(0, ${u * 5}px, 0) scale(${1 - u * 0.03});`
   }
 }
 
-/** The backdrop behind a dialog: it fades in with the dialog and out a touch faster. */
+/** The backdrop behind a dialog: fades in smoothly with the dialog and exits briskly. */
 export function backdropIn(_node: Element): TransitionConfig {
   if (reducedMotion.value) return { duration: 0, css: () => '' }
-  return { duration: 150, easing: smoothEase, css: (t) => `opacity: ${t};` }
+  return { duration: 200, easing: smoothEase, css: (t) => `opacity: ${t};` }
 }
 
 export function backdropOut(_node: Element): TransitionConfig {

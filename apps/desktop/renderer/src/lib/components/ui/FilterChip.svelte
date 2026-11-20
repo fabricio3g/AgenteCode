@@ -24,20 +24,25 @@
     gap: 0.375rem;
     height: 1.75rem;
     padding: 0 0.625rem;
-    border: 0;
+    border: 1px solid transparent;
     border-radius: var(--radius-full);
     background: transparent;
     color: var(--muted-foreground);
     font-size: var(--text-xs);
     font-weight: 500;
-    transition: background-color var(--motion-instant) var(--motion-ease), color var(--motion-instant) var(--motion-ease);
+    transition: background-color var(--motion-instant) var(--motion-ease), color var(--motion-instant) var(--motion-ease), border-color var(--motion-instant) var(--motion-ease), transform var(--motion-instant) var(--motion-ease);
   }
   .chip:hover {
     color: var(--foreground);
     background: var(--surface-hover);
   }
+  .chip:active {
+    transform: translateY(1px);
+  }
   .chip.is-on {
+    border-color: var(--float-border);
     background: var(--muted);
+    box-shadow: var(--control-shadow);
     color: var(--foreground);
     font-weight: 600;
   }

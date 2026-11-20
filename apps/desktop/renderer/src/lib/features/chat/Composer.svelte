@@ -517,46 +517,50 @@
       {/if}
 
       <!--
-        Two rows: the message gets the full width, and every control sits on a
-        second line beneath it. Putting the input and the controls on one line
-        squeezes the text into a shrinking gap as the chips grow, and pins the
-        caret next to icons that have nothing to do with typing.
+        Prompt shell holds only the typing surface and the primary Send/Stop
+        key; all configuration controls and the model selector sit in the
+        Tactile Machined tray directly beneath the shell.
       -->
       <div class="composer-body {quotedText ? 'pt-1' : ''}">
-        <UiTextarea variant="composer"
-          bind:ref={textarea}
-          class={uiClass("composer-textarea w-full resize-none bg-transparent text-foreground outline-none")}
-          {placeholder}
-          rows={1}
-          value={appStore.composer}
-          aria-controls={slashOpen ? slashId : undefined}
-          aria-activedescendant={slashOpen ? `${slashId}-${slashIndex}` : undefined}
-          oninput={onInput}
-          onkeydown={onKeydown}
-        ></UiTextarea>
-
         {#if dictation.uiActive && !voiceMode && dictation.phase !== 'choose'}
-          <!-- Dictation takes over the bar: waveform, timer, cancel, done. -->
-          <div class="composer-bar">
+          <!-- Dictation takes over the shell: waveform, timer, cancel, done. -->
+          <div class="composer-recorder-row">
             <ComposerRecorder {dictation} />
             {#if generating}<SendButton compact running={true} disabled={false} sendLabel={copy.composer.send} stopLabel={copy.composer.stop} onsend={() => void submit()} onstop={() => appStore.stopStreaming()} />{/if}
           </div>
         {:else}
-          <ComposerBar>
-            {#snippet attach()}<ComposerAddMenu onattach={() => fileInput?.click()} />{/snippet}
-            {#snippet extras()}<ComposerToolsMenu compact />{#if appStore.activeSpace === 'home'}<SelectedModes />{/if}{/snippet}
-            {#snippet model()}<ModelMenu compact />{/snippet}
-            {#snippet microphone()}<DictationButton {dictation} oncall={() => void enterVoiceMode()} />{/snippet}
-            {#snippet trailing()}
+          <div class="composer-input-row">
+            <UiTextarea variant="composer"
+              bind:ref={textarea}
+              class={uiClass("composer-textarea w-full resize-none bg-transparent text-foreground outline-none")}
+              {placeholder}
+              rows={1}
+              value={appStore.composer}
+              aria-controls={slashOpen ? slashId : undefined}
+              aria-activedescendant={slashOpen ? `${slashId}-${slashIndex}` : undefined}
+              oninput={onInput}
+              onkeydown={onKeydown}
+            ></UiTextarea>
+            <div class="composer-send-slot">
               <SendButton compact running={generating} disabled={sendDisabled || (!appStore.composer.trim() && !appStore.pendingAttachments.some(item => item.status === 'ready'))}
                 sendLabel={copy.composer.send} stopLabel={copy.composer.stop}
                 onsend={() => void submit()} onstop={() => appStore.stopStreaming()} />
-            {/snippet}
-          </ComposerBar>
+            </div>
+          </div>
         {/if}
       </div>
     </div>
-    <div class="composer-footnote"><div class="composer-footnote-trailing"><HomeContextStatus /></div></div>
+    {#if !(dictation.uiActive && !voiceMode && dictation.phase !== 'choose')}
+      <div class="composer-tray">
+        <ComposerBar>
+          {#snippet attach()}<ComposerAddMenu onattach={() => fileInput?.click()} />{/snippet}
+          {#snippet extras()}<ComposerToolsMenu compact />{#if appStore.activeSpace === 'home'}<SelectedModes />{/if}{/snippet}
+          {#snippet model()}<ModelMenu compact />{/snippet}
+          {#snippet microphone()}<DictationButton {dictation} oncall={() => void enterVoiceMode()} />{/snippet}
+          {#snippet trailing()}<HomeContextStatus />{/snippet}
+        </ComposerBar>
+      </div>
+    {/if}
     {#if threadIsEmpty && suggestions}
       <!-- await tick() so the textarea holds the inserted prompt before we
            focus it; otherwise the caret lands at the pre-insert length. -->

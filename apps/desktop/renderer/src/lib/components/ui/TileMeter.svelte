@@ -1,24 +1,17 @@
 <svelte:options runes={true} />
 
 <!--
-  How alive a run is, told as weather: two columns of tiles that drops step
-  through, drawn in the landing page's mosaic — six levels, hard steps, no
-  fades (`tile-rain` in app.css carries the paint and the keyframe).
+  Minimal 2×2 micro-matrix activity indicator (Law of Prägnanz: half the visual
+  noise of the old 2×4 rain, aligned cleanly with 12–13px UI text).
 
-  · `busy`     a drop every 0.31s a cell, while events are arriving
-  · `quiet`    the same rain at a quarter speed, so a stalled tool looks stalled
-  · `attention` the rain stops mid-fall and the square turns amber, blinking
-                until you answer an approval
-  · `stopped`  the reader asked to stop: the rain freezes on the still frame
-                while the engine unwinds, so a stopped run stops looking busy
+  · `busy`      smooth clockwise pulse while events are arriving
+  · `quiet`     slow, gentle breath when a tool is waiting
+  · `attention` steady amber pulse until you answer an approval
+  · `stopped`   neutral dim still frame while the engine unwinds
 
-  An optional `color` names the task's hue for the head of the fall (the Home
-  activity line passes one per activity); the trail derives from it against
-  the page. Unset, the rain keeps the brand tiles.
-
-  Decorative: the row's own label says what is happening, so this stays out of
-  the accessibility tree. Under reduced motion the base styles hold a designed
-  still — a drizzle frozen mid-fall, not a frozen animation.
+  An optional `color` tints the matrix for task-specific activity lines.
+  Decorative (`aria-hidden="true"`). Under reduced motion the base styles hold
+  a clean two-tile diagonal still.
 -->
 
 <script lang="ts">
@@ -26,15 +19,8 @@
 
   let { mode = 'quiet', color = '' }: { mode?: TileMeterMode; color?: string } = $props();
 
-  /**
-   * All eight tiles take the same five-step trip (dark → dim → trail → head →
-   * dark); only the phase differs, so one keyframe serves every tile. A phase
-   * is the tile's delay in cell-crossing units: as long as the cycle, minus
-   * how long the drop takes to reach this cell — three cells after the head
-   * passes, and half a cycle later in the right column, so the two columns
-   * never fall in lockstep.
-   */
-  const PHASES = [-3.8, -6.3, -2.8, -5.3, -1.8, -4.3, -0.8, -3.3];
+  /** Clockwise order across the 2×2 grid: top-left → top-right → bottom-right → bottom-left. */
+  const PHASES = [0, 1, 3, 2];
 </script>
 
 <span

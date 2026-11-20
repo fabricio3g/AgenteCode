@@ -94,13 +94,25 @@
   /* The same sheet as a file card in chat (ArtifactBlock): one step above the
      page, a hairline ring, no rules heavier than the row separators. */
   .card {
+    position: relative;
     width: var(--inline-block-width);
     max-width: 100%;
     margin-top: 0.5rem;
     overflow: hidden;
-    border: 1px solid var(--border-subtle);
+    border: 1px solid var(--float-border);
     border-radius: var(--radius-lg);
     background: var(--artifact-surface);
+    box-shadow: var(--control-shadow);
+  }
+  .card::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 12%;
+    right: 12%;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--composer-crown), transparent);
+    pointer-events: none;
   }
   .hdr {
     display: flex;
@@ -134,7 +146,7 @@
     flex-shrink: 0;
     gap: 0.5rem;
     margin: 0;
-    font-family: var(--font-mono);
+    font-family: inherit;
     font-size: var(--text-xs);
     font-variant-numeric: tabular-nums;
   }

@@ -32,7 +32,7 @@
   aria-label={label}
   {disabled}
   class={cn(
-    'relative inline-flex h-5 w-9 shrink-0 items-center rounded-full border outline-none transition-colors duration-[var(--motion-fast)] ease-[var(--motion-ease)] focus-visible:ring-[3px] focus-visible:ring-ring/30 disabled:cursor-not-allowed disabled:opacity-50',
+    'relative inline-flex h-5 w-9 shrink-0 items-center rounded-full border shadow-[inset_0_1px_2px_rgb(0_0_0_/_0.28)] outline-none transition-colors duration-[var(--motion-fast)] ease-[var(--motion-ease)] focus-visible:ring-[3px] focus-visible:ring-ring/30 disabled:cursor-not-allowed disabled:opacity-50',
     checked ? 'border-transparent bg-primary' : 'border-[var(--border-hover)] bg-muted',
     className
   )}
@@ -41,7 +41,7 @@
 >
   <span
     class={cn(
-      'pointer-events-none block size-4 rounded-full bg-primary-foreground shadow-sm transition-transform duration-[var(--motion-normal)] ease-[var(--motion-ease)]',
+      'pointer-events-none block size-4 rounded-full bg-primary-foreground shadow-[var(--control-shadow)] transition-transform duration-[var(--motion-fast)] ease-[var(--motion-ease-out)]',
       checked ? 'translate-x-4' : 'translate-x-0'
     )}
   ></span>

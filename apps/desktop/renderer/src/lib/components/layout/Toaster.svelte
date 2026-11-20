@@ -25,12 +25,13 @@
 >
   {#each toastStore.toasts as toast (toast.id)}
     <div
-      class="toast pointer-events-auto flex items-center justify-center gap-2.5 px-4 py-2.5"
-      style="color: {COLOR_MAP[toast.type]}"
+      class="toast pointer-events-auto flex items-center justify-center gap-2.5 px-3.5 py-2.5"
+      style="--toast-tone: {COLOR_MAP[toast.type]}"
       role="alert"
-      in:motionFly={{ y: 12, duration: 200 }}
+      in:motionFly={{ y: 10, duration: 200 }}
       out:motionFade={{ duration: 150 }}
     >
+      <span class="toast-dot" aria-hidden="true"></span>
       <span class="text-[length:var(--text-sm)] font-medium leading-none text-foreground">{toast.message}</span>
       {#if toast.action}
         <UiButton variant="plain" type="button" class={uiClass("toast-action", "ui-local-2a4781e7")} onclick={toast.action.run}>{toast.action.label}</UiButton>
@@ -49,11 +50,29 @@
 
 <style>
   .toast {
+    position: relative;
     background: var(--float-bg);
     border: 1px solid var(--float-border);
     box-shadow: var(--float-shadow);
     border-radius: var(--float-radius);
     max-width: 22rem;
+  }
+  .toast::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 14%;
+    right: 14%;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--composer-crown), transparent);
+    pointer-events: none;
+  }
+  .toast-dot {
+    width: 0.4375rem;
+    height: 0.4375rem;
+    flex-shrink: 0;
+    border-radius: 999px;
+    background: var(--toast-tone, var(--foreground));
   }
   :global(.toast-action.ui-local-2a4781e7) {
     flex-shrink: 0;
@@ -62,6 +81,7 @@
     color: var(--brand-accent, var(--foreground));
     font-size: var(--text-sm);
     font-weight: 600;
+    transition: background-color var(--motion-instant) var(--motion-ease);
   }
   :global(.toast-action:hover.ui-local-2a4781e7) {
     background: var(--surface-hover);

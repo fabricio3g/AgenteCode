@@ -30,7 +30,7 @@ describe('starter list', () => {
     expect(view.queryByText('A map of the folders')).toBeNull();
     expect(view.queryByText('symptom or file')).toBeNull();
     expect(view.queryByText('Ctrl Alt 2')).toBeNull();
-    expect(view.getAllByText('·').length).toBe(1);
+    expect(view.queryByText('·')).toBeNull();
   });
 
   it('reports the picked starter whichever look it is drawn in', async () => {

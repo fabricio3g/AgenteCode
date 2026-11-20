@@ -53,7 +53,8 @@
     shape="soft"
     id="space"
     controlsPanels={false}
-    labels="none"
+    labels="active"
+    class="space-strip"
     label={copy.spaces.label}
     value={appStore.activeTab}
     {options}
@@ -65,4 +66,9 @@
   /* The head is a window drag region: without this a press on a segment drags
      the window instead of switching the space. */
   .space-group { display: flex; align-items: center; padding-inline: 0.375rem; -webkit-app-region: no-drag; }
+  /* Quiet borderless recess so the active machined pill never sits inside a second border. */
+  .space-group :global(.space-strip) {
+    border-color: transparent;
+    background: color-mix(in srgb, var(--foreground) 4%, transparent);
+  }
 </style>

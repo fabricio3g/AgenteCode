@@ -221,14 +221,17 @@
    */
   :global(.pane-tab.ui-local-4e9e0cd8) {
     position: relative;
-    transition: width var(--motion-fast) var(--motion-ease), background-color var(--motion-fast) var(--motion-ease), color var(--motion-fast) var(--motion-ease);
+    transition: width var(--motion-fast) var(--motion-ease), background-color var(--motion-instant) var(--motion-ease), color var(--motion-instant) var(--motion-ease), box-shadow var(--motion-instant) var(--motion-ease);
+  }
+  :global(.pane-tab.is-on.ui-local-4e9e0cd8) {
+    box-shadow: var(--control-shadow);
   }
   :global(.pane-tab.has-badge.ui-local-4e9e0cd8),
   :global(.pane-tab.has-label.ui-local-4e9e0cd8) {
     width: auto;
     gap: 0.3rem;
-    padding-inline: 0.4rem;
-    border-radius: var(--radius-full);
+    padding-inline: 0.5rem;
+    border-radius: var(--radius-sm);
   }
 
   .pane-tab-label {

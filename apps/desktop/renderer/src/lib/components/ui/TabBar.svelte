@@ -32,7 +32,8 @@
   {/each}
 </div>
 <style>
-  .ui-tab-bar { display:flex; flex-shrink:0; min-width:0; align-items:center; gap:0.25rem; overflow-x:auto; overscroll-behavior:contain; scrollbar-width:thin; padding:0.25rem; }
-  :global(.ui-tab) { flex-shrink:0; max-width:12rem; min-height:1.75rem; padding:0.25rem 0.625rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--muted-foreground); font-size:var(--text-xs); }
-  :global(.ui-tab:hover), :global(.ui-tab[aria-selected="true"]) { background:var(--surface-hover); color:var(--foreground); }
+  .ui-tab-bar { display:inline-flex; flex-shrink:0; min-width:0; max-width:100%; align-items:center; gap:2px; overflow-x:auto; overscroll-behavior:contain; scrollbar-width:thin; padding:2px; border:1px solid var(--border); border-radius:var(--radius-md); background:var(--muted); }
+  :global(.ui-tab) { flex-shrink:0; max-width:12rem; min-height:1.625rem; padding:0.2rem 0.625rem; border:1px solid transparent; border-radius:var(--radius-sm); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--muted-foreground); font-size:var(--text-xs); font-weight:500; transition:background-color var(--motion-instant) var(--motion-ease), color var(--motion-instant) var(--motion-ease), border-color var(--motion-instant) var(--motion-ease); }
+  :global(.ui-tab:hover) { background:color-mix(in srgb, var(--foreground) 6%, transparent); color:var(--foreground); }
+  :global(.ui-tab[aria-selected="true"]) { border-color:var(--float-border); background:var(--composer-control-bg); box-shadow:var(--control-shadow); color:var(--foreground); font-weight:500; }
 </style>

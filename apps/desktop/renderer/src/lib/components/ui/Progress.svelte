@@ -8,8 +8,8 @@
   <span style:width={bounded === undefined ? '30%' : `${bounded / limit * 100}%`}></span>
 </div>
 <style>
-  .ui-progress { flex:1; min-width:0; height:0.25rem; overflow:hidden; border-radius:var(--radius-full); background:var(--surface-hover); }
-  span { display:block; height:100%; border-radius:inherit; background:var(--muted-foreground); transition:width var(--motion-fast); }
+  .ui-progress { flex:1; min-width:0; height:0.3125rem; overflow:hidden; border-radius:var(--radius-full); background:var(--surface-hover); box-shadow:inset 0 1px 1px rgb(0 0 0 / 0.18); }
+  span { display:block; height:100%; border-radius:inherit; background:var(--foreground); transition:width var(--motion-normal) var(--motion-ease-out); }
   .is-indeterminate span { animation:progress 1.2s ease-in-out infinite alternate; }
   @keyframes progress { to { transform:translateX(230%); } }
   @media (prefers-reduced-motion:reduce) { span { transition:none; } .is-indeterminate span { animation:none; margin-inline:auto; } }

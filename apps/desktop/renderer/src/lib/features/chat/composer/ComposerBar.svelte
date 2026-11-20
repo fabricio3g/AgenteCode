@@ -16,8 +16,8 @@
     model?: Snippet;
     extras?: Snippet;
     status?: Snippet;
-    microphone: Snippet;
-    trailing: Snippet;
+    microphone?: Snippet;
+    trailing?: Snippet;
   }
 
   let { attach, model, extras, status, microphone, trailing }: Props = $props();
@@ -35,9 +35,9 @@
     {/if}
     {#if model}<div class="model-slot">{@render model()}</div>{/if}
     </div>{/if}
-    <div class="composer-bar-actions">
-    {@render microphone()}
-    {@render trailing()}
-    </div>
+    {#if microphone || trailing}<div class="composer-bar-actions">
+    {@render microphone?.()}
+    {@render trailing?.()}
+    </div>{/if}
   </div>
 </div>

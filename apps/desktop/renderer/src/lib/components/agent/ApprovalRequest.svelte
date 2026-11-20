@@ -43,14 +43,13 @@
     flex-direction: column;
     gap: 0.25rem;
     margin: 0.25rem 0;
-    padding: 0.5rem 0.75rem;
-    border-left: 2px solid color-mix(in srgb, var(--warning) 60%, transparent);
-    border-radius: 0 0.5rem 0.5rem 0;
-    background: color-mix(in srgb, var(--warning) 5%, transparent);
+    padding: 0.625rem 0.75rem;
+    border: 1px solid var(--float-border);
+    border-radius: var(--float-radius);
+    background: color-mix(in srgb, var(--foreground) 3%, transparent);
   }
   .approval.dangerous {
-    border-left-color: color-mix(in srgb, var(--error) 60%, transparent);
-    background: color-mix(in srgb, var(--error) 5%, transparent);
+    background: color-mix(in srgb, var(--error) 4%, transparent);
   }
   .head {
     display: flex;
@@ -75,7 +74,8 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     color: var(--muted-foreground);
-    font-family: var(--font-mono);
+    font-family: inherit;
+    font-variant-numeric: tabular-nums;
     font-size: var(--text-xs);
   }
   .note {

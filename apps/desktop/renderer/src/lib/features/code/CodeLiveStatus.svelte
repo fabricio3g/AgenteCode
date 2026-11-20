@@ -94,7 +94,8 @@
     max-width: 100%;
     align-items: center;
     gap: 0.5rem;
-    padding: 0.25rem 0.5rem;
+    padding: 0.3125rem 0.625rem;
+    border-radius: var(--radius-md);
     font-size: var(--text-sm);
     color: var(--muted-foreground);
   }

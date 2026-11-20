@@ -93,7 +93,7 @@
     align-items: center;
     text-align: left;
     color: var(--muted-foreground);
-    transition: color var(--motion-fast) var(--motion-ease);
+    transition: color var(--motion-instant) var(--motion-ease);
   }
   :is(.head:not(:disabled):hover, :global(.head:not(:disabled):hover.ui-local-2c22291d)),
   :is(.head:focus-visible, :global(.head:focus-visible.ui-local-2c22291d)) {
@@ -106,7 +106,7 @@
      so every rule that reaches it goes through :global. */
   :is(.head, :global(.head.ui-local-2c22291d)) :global(.chev) {
     opacity: 0.55;
-    transition: transform var(--motion-fast) var(--motion-ease), opacity var(--motion-fast) var(--motion-ease);
+    transition: transform var(--motion-fast) var(--motion-ease-out), opacity var(--motion-instant) var(--motion-ease);
   }
   :is(.head:hover, :global(.head:hover.ui-local-2c22291d)) :global(.chev),
   :is(.head:focus-visible, :global(.head:focus-visible.ui-local-2c22291d)) :global(.chev),

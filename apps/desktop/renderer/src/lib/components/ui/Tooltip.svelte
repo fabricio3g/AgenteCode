@@ -158,7 +158,18 @@
     line-height: 1.5;
   }
 
-  /* Quiet key caps after the label: the shortcut, never louder than the name. */
+  .tooltip-pill::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 16%;
+    right: 16%;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--composer-crown), transparent);
+    pointer-events: none;
+  }
+
+  /* Quiet PBT key caps after the label: the shortcut, never louder than the name. */
   .tooltip-keys {
     display: inline-flex;
     gap: 0.1875rem;
@@ -175,8 +186,11 @@
     padding: 0 0.25rem;
     border: 1px solid var(--float-border);
     border-radius: 0.3125rem;
+    background: color-mix(in srgb, var(--foreground) 4%, transparent);
+    box-shadow: 0 1px 0 var(--float-border), inset 0 1px 0 rgb(255 255 255 / 0.08);
     color: var(--muted-foreground);
     font-family: inherit;
+    font-variant-numeric: tabular-nums;
     font-size: var(--text-xs);
     line-height: 1;
   }

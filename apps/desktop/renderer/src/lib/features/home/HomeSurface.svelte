@@ -1,6 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+  import { locale } from 'svelte-i18n';
   import { motionFly } from '$lib/utils/transitions';
   import Thread from '$lib/features/chat/thread/Thread.svelte';
   import Composer from '$lib/features/chat/Composer.svelte';
@@ -8,6 +9,34 @@
   import ActivityDrawer from '$lib/components/agent/ActivityDrawer.svelte';
   import { appStore } from '$lib/stores/app.svelte';
   import { copy } from '$lib/copy';
+
+  const DAILY_GREETINGS_ES = [
+    '¿En qué puedo ayudarte hoy?',
+    '¿Qué vamos a construir hoy?',
+    '¿Por dónde empezamos?',
+    '¿Qué tienes en mente hoy?',
+    '¿Qué resolvemos hoy?',
+    '¿Listo para crear algo nuevo?',
+    '¿En qué trabajamos ahora?'
+  ] as const;
+
+  const DAILY_GREETINGS_EN = [
+    'How can I help you today?',
+    'What are we building today?',
+    'Where should we start?',
+    "What's on your mind today?",
+    'What should we solve today?',
+    'Ready to build something new?',
+    'What are we working on?'
+  ] as const;
+
+  const dayIndex = Math.floor(Date.now() / 86_400_000);
+  const dailyGreeting = $derived.by(() => {
+    const lang = ($locale || '').toLowerCase();
+    if (lang.startsWith('es')) return DAILY_GREETINGS_ES[dayIndex % DAILY_GREETINGS_ES.length];
+    if (lang.startsWith('en') || !lang) return DAILY_GREETINGS_EN[dayIndex % DAILY_GREETINGS_EN.length];
+    return copy.emptyState.greeting;
+  });
 
   const threadIsEmpty = $derived(!(appStore.currentChat?.messages?.length));
 
@@ -22,10 +51,8 @@
     class:empty={threadIsEmpty}
   >
     {#if threadIsEmpty}
-      <!-- One headline on the composer's own column, the same three-row
-           composition every empty surface uses: what this space is for, the
-           composer, then the starter links under it. -->
-      <h1 class="empty-greeting composer-column px-3 md:px-6">{copy.emptyState.greeting}</h1>
+      <!-- Centered daily headline directly above the composer. -->
+      <h1 class="empty-greeting composer-column px-3 md:px-6">{dailyGreeting}</h1>
       <UpcomingCalendar />
     {/if}
     <Thread />
@@ -48,27 +75,25 @@
     padding-block: 1rem;
   }
 
-  /* Anchors the centred empty state, on the composer's column so the headline
-     starts on the card's edge instead of floating centred above it. Same size
-     and weight as the Design dock's invitation: the composer stays the largest
-     thing on the screen. */
+  /* Centered daily headline directly above the composer: generous scale,
+     tight tracking, balanced wrapping. */
   .empty-greeting {
     position: relative;
     z-index: 1;
     flex-shrink: 0;
-    margin-block: 0 0.75rem;
+    margin-block: 0 1.25rem;
     color: var(--foreground);
-    font-size: 1.0625rem;
-    font-weight: 600;
-    letter-spacing: -0.015em;
-    line-height: 1.25;
-    text-align: left;
-    text-wrap: pretty;
+    font-size: clamp(1.625rem, 2.8vw, 2.125rem);
+    font-weight: 500;
+    letter-spacing: -0.028em;
+    line-height: 1.2;
+    text-align: center;
+    text-wrap: balance;
   }
 
   @media (max-width: 640px) {
     .empty-greeting {
-      margin-bottom: 0.5rem;
+      margin-bottom: 0.875rem;
     }
   }
 

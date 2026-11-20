@@ -31,10 +31,9 @@
 
 {#if variant === 'links'}
   <nav class="starter-links" aria-label={label}>
-    {#each starters as starter, index (starter.id)}
-      {#if index > 0}<span class="sep" aria-hidden="true">·</span>{/if}
-      <!-- The hint the row look prints is not repeated here: pointing at a link
-           writes its prompt into the composer, where the words will land. -->
+    {#each starters as starter (starter.id)}
+      {@const Icon = starter.icon}
+      <!-- Pointing at a chip writes its prompt into the composer's placeholder. -->
       <Button
         variant="plain"
         type="button"
@@ -44,7 +43,10 @@
         onfocus={() => onpreview?.(starter)}
         onblur={() => onpreview?.(null)}
         onclick={() => onpick(starter.id)}
-      >{starter.label}</Button>
+      >
+        {#if Icon}<Icon class="starter-link-icon" aria-hidden="true" />{/if}
+        <span>{starter.label}</span>
+      </Button>
     {/each}
   </nav>
 {:else}
@@ -200,51 +202,71 @@
     :global(.starter-row), .key { transition: none; }
   }
 
-  /* ── Links: the composer's own sentence, not a list to scan ──────────────
-     One line of text that wraps. No tile, no key, no description, and no
-     heading: `label` names the group for assistive tech, while on screen the
-     four labels are the whole offer and the composer above stays the thing the
-     eye lands on. */
+  /* ── Machined Starter Chips under the composer ─────────────────────────── */
   .starter-links {
     display: flex;
     flex-wrap: wrap;
-    align-items: baseline;
-    gap: 0.125rem 0.4375rem;
-    font-size: var(--text-sm);
+    align-items: center;
+    justify-content: center;
+    gap: 0.375rem;
+    padding-top: 0.25rem;
   }
 
-  /* The separator belongs to the line, not to either neighbour: it keeps the
-     muted weight of body copy and never underlines. 75%, not a fainter tint —
-     at 12px on white a quieter dot disappears and the four labels read as one
-     run-on sentence. */
-  .sep { color: color-mix(in srgb, var(--muted-foreground) 75%, transparent); font-size: var(--text-xs); }
-
-  /* Underline at rest and full colour on hover: a link you can see is a link,
-     where a band on a row here would read as another button. */
   :global(.starter-link) {
-    padding: 0;
-    border: 0;
-    background: none;
+    display: inline-flex;
+    height: 1.875rem;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0 0.7rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: color-mix(in srgb, var(--foreground) 2%, transparent);
     color: var(--text-secondary);
     font: inherit;
-    font-size: var(--text-sm);
+    font-size: var(--text-xs);
+    font-weight: 500;
     letter-spacing: -0.005em;
     text-align: left;
-    text-decoration: underline;
-    text-decoration-color: color-mix(in srgb, var(--foreground) 22%, transparent);
-    text-underline-offset: 3px;
-    transition: color var(--motion-instant) var(--motion-ease-out), text-decoration-color var(--motion-instant) var(--motion-ease-out);
+    text-decoration: none;
+    transition:
+      background-color var(--motion-instant) var(--motion-ease),
+      border-color var(--motion-instant) var(--motion-ease),
+      color var(--motion-instant) var(--motion-ease),
+      box-shadow var(--motion-instant) var(--motion-ease),
+      transform var(--motion-instant) var(--motion-ease-out);
+  }
+
+  :global(.starter-link .starter-link-icon) {
+    width: 0.8125rem;
+    height: 0.8125rem;
+    flex-shrink: 0;
+    color: var(--muted-foreground);
+    transition: color var(--motion-instant) var(--motion-ease);
   }
 
   :global(.starter-link:hover),
   :global(.starter-link:focus-visible) {
+    border-color: var(--border-hover);
+    background: var(--composer-control-bg);
+    box-shadow: var(--control-shadow);
     color: var(--foreground);
-    text-decoration-color: currentColor;
+    transform: translateY(-1px);
   }
 
-  :global(.starter-link:focus-visible) { outline: 2px solid var(--brand-accent); outline-offset: 2px; border-radius: 3px; }
+  :global(.starter-link:hover .starter-link-icon),
+  :global(.starter-link:focus-visible .starter-link-icon) {
+    color: var(--foreground);
+  }
+
+  :global(.starter-link:active) {
+    transform: translateY(1px);
+    box-shadow: inset 0 1px 2px rgb(0 0 0 / 0.18);
+  }
+
+  :global(.starter-link:focus-visible) { outline: 2px solid var(--brand-accent); outline-offset: 2px; }
 
   @media (prefers-reduced-motion: reduce) {
     :global(.starter-link) { transition: none; }
+    :global(.starter-link:hover) { transform: none; }
   }
 </style>

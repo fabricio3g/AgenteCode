@@ -120,8 +120,8 @@
   {/if}
 </Menu>
 
-<!-- The active research depth stays visible once the menu closes. -->
-{#if searchMode !== 'chat' && availableModes.includes(searchMode)}
+<!-- The active research depth stays visible once the menu closes (Home renders it in SelectedModes). -->
+{#if appStore.activeSpace !== 'home' && searchMode !== 'chat' && availableModes.includes(searchMode)}
   {@const ActiveIcon = MODE_ICONS[searchMode]}
   <span class="mode-chip" title={copy.searchModes[searchMode].description}>
     <ActiveIcon class="size-3.5 shrink-0" />
@@ -138,40 +138,28 @@
 {/if}
 
 <style>
-  /* Matches the model chip beside it: same height, borderless until hovered. */
   :global(.add-trigger.ui-local-0d4ea47c) {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    height: 1.75rem;
-    width: 1.75rem;
-    border: 1px solid transparent;
-    border-radius: var(--radius-full);
-    background: transparent;
-    color: var(--text-secondary);
-    transition:
-      background-color var(--motion-fast) var(--motion-ease),
-      border-color var(--motion-fast) var(--motion-ease),
-      color var(--motion-fast) var(--motion-ease);
-  }
-
-  :global(.add-trigger:hover.ui-local-0d4ea47c),
-  :global(.add-trigger.is-open.ui-local-0d4ea47c) {
-    background: var(--muted);
+    height: var(--ui-icon-button-size, 1.75rem);
+    width: var(--ui-icon-button-size, 1.75rem);
     color: var(--foreground);
   }
 
-  /* The active depth, tinted with the brand so it reads as "on". */
+  /* Active depth chip: matches the machined controls beside it. */
   .mode-chip {
     display: inline-flex;
-    height: 1.75rem;
+    height: var(--ui-icon-button-size, 1.75rem);
     align-items: center;
     gap: 0.3125rem;
     padding: 0 0.25rem 0 0.5625rem;
-    border-radius: var(--radius-full);
-    background: color-mix(in srgb, var(--primary) 9%, transparent);
-    color: color-mix(in srgb, var(--primary) 82%, var(--foreground));
-    font-size: 0.78125rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--composer-control-bg);
+    box-shadow: var(--control-shadow);
+    color: var(--foreground);
+    font-size: var(--chrome-font-size, var(--text-xs));
     font-weight: 500;
     white-space: nowrap;
   }

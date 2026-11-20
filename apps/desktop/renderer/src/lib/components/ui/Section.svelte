@@ -73,19 +73,33 @@
     line-height: 1.5;
   }
 
-  /* Keep settings aligned to the page edge, with a quiet divider between rows. */
+  /* Law of Common Region: each settings group sits inside a clean neutral
+     machined card with a subtle B1 top crown and hairline row dividers. */
   .settings-card {
-    overflow: visible;
-    border: 0;
-    border-radius: 0;
-    background: transparent;
+    position: relative;
+    overflow: hidden;
+    border: 1px solid var(--float-border);
+    border-radius: var(--float-radius);
+    background: color-mix(in srgb, var(--foreground) 1.8%, var(--card));
+    padding-inline: 1rem;
+    box-shadow: var(--control-shadow);
+  }
+  .settings-card::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 12%;
+    right: 12%;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--composer-crown), transparent);
+    pointer-events: none;
   }
   .settings-rows > :global(* + *) {
-    border-top: 1px solid color-mix(in srgb, var(--foreground) 5%, transparent);
+    border-top: 1px solid color-mix(in srgb, var(--foreground) 6%, transparent);
   }
 
   .settings-card.is-danger {
-    background:var(--error-bg);
+    background: var(--error-bg);
   }
 
 </style>

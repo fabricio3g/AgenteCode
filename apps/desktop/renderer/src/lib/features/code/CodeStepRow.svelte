@@ -224,9 +224,10 @@
   :global(.step-icon.is-running) {
     color: var(--brand-accent);
   }
-  /* What the call touched: mono, quieter than the verb, no box of its own. */
+  /* What the call touched: clean sans-serif + tabular-nums, quieter than the verb. */
   .chip {
-    font-family: var(--font-mono, ui-monospace, monospace);
+    font-family: inherit;
+    font-variant-numeric: tabular-nums;
     font-size: var(--text-xs);
     color: var(--muted-foreground);
   }
@@ -257,13 +258,13 @@
     flex-direction: column;
     gap: 0.375rem;
   }
-  /* An approval is the one row that asks for an answer: a tinted band on a warning rail,
-     not a bordered box — the terminal and diff cards inside it bring their own edges. */
+  /* An approval is the one row that asks for an answer: neutral machined card
+     with hairline border (zero colored border-left on rounded corners). */
   .step-inner.is-approval {
-    padding: 0.5rem 0.625rem 0.625rem;
-    border-radius: 0 0.5rem 0.5rem 0;
-    border-left: 2px solid color-mix(in srgb, var(--warning) 60%, transparent);
-    background: color-mix(in srgb, var(--warning) 5%, transparent);
+    padding: 0.625rem 0.75rem;
+    border-radius: var(--float-radius);
+    border: 1px solid var(--float-border);
+    background: color-mix(in srgb, var(--foreground) 3%, transparent);
   }
   .approval-note {
     margin: 0;

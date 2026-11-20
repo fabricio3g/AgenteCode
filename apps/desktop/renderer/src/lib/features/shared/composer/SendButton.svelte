@@ -63,7 +63,8 @@
     position: relative;
     background: var(--primary);
     color: var(--primary-foreground);
-    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.16);
+    box-shadow: var(--control-shadow-primary, inset 0 1px 0 rgb(255 255 255 / 0.28));
+    border-radius: var(--radius-sm);
     width: 2.125rem;
     height: 2.125rem;
     margin-inline: 0.125rem;

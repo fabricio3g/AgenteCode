@@ -84,7 +84,7 @@
       aria-labelledby={labelledBy}
       tabindex="-1"
       class={cn(
-        'relative flex max-h-[calc(100vh-2rem)] w-full flex-col overflow-hidden rounded-[var(--radius-2xl)] border border-[var(--float-border)] bg-[var(--float-bg)] text-foreground shadow-[shadow:var(--float-shadow)] outline-none',
+        'ui-modal-surface relative flex max-h-[calc(100vh-2rem)] w-full flex-col overflow-hidden rounded-[var(--radius-2xl)] border border-[var(--float-border)] bg-[var(--float-bg)] text-foreground shadow-[shadow:var(--float-shadow)] outline-none',
         size ? SIZE_CLASS[size] : '',
         className
       )}

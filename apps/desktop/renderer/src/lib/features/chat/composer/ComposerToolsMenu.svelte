@@ -78,7 +78,7 @@
     white-space: nowrap;
   }
 
-  :global(.tools-trigger.is-compact.ui-local-69ee6147) { width:2rem;height:2rem;justify-content:center;padding:0; }
+  :global(.tools-trigger.is-compact.ui-local-69ee6147) { width:var(--ui-icon-button-size, 1.75rem);height:var(--ui-icon-button-size, 1.75rem);justify-content:center;padding:0; }
 
   :global(.tools-trigger:hover.ui-local-69ee6147),
   :global(.tools-trigger.is-open.ui-local-69ee6147) {

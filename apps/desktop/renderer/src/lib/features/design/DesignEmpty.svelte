@@ -22,7 +22,7 @@
   </div>
 
   {#if generating}
-    <p class="title">{copy.design.empty.sketching}</p>
+    <p class="title ui-shimmer-text">{copy.design.empty.sketching}</p>
   {:else}
     <p class="title">{copy.design.empty.title}</p>
     <p class="hint">{copy.design.empty.hint}</p>
@@ -53,9 +53,10 @@
     flex-direction: column;
     gap: 0.4375rem;
     padding: 0.75rem;
-    border-radius: 0.625rem;
+    border: 1px solid var(--float-border);
+    border-radius: var(--radius-md);
     background: var(--card);
-    box-shadow: 0 1px 2px rgb(0 0 0 / 0.04), 0 6px 18px rgb(0 0 0 / 0.06);
+    box-shadow: var(--control-shadow);
     opacity: 0.9;
   }
 
@@ -109,9 +110,9 @@
 
   .title {
     margin: 0;
-    font-size: 1.0625rem;
-    font-weight: 600;
-    letter-spacing: -0.01em;
+    font-size: 1.25rem;
+    font-weight: 500;
+    letter-spacing: -0.02em;
     color: var(--foreground);
   }
 

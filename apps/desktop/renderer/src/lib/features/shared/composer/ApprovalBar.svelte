@@ -155,9 +155,10 @@
     gap: 0.75rem;
     margin: 0.4375rem 0.4375rem 0;
     padding: 0.625rem 0.625rem 0.625rem 0.75rem;
-    border-radius: 0.875rem;
-    background: color-mix(in srgb, var(--tone) 7%, transparent);
-    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--tone) 18%, transparent);
+    border-radius: 0.75rem;
+    background: color-mix(in srgb, var(--foreground) 3.5%, var(--composer-surface));
+    border: 1px solid var(--float-border);
+    box-shadow: var(--control-shadow);
     animation: approval-in var(--motion-normal) var(--motion-ease-out) both;
   }
   .approval.is-danger {
@@ -212,12 +213,14 @@
     border: 0;
     background: none;
     color: var(--text-secondary);
-    font-family: var(--font-mono);
+    font-family: inherit;
+    font-variant-numeric: tabular-nums;
     font-size: var(--text-xs);
     text-align: left;
     text-overflow: ellipsis;
     white-space: nowrap;
     cursor: pointer;
+    transition: color var(--motion-instant) var(--motion-ease);
   }
   /* A service action reads as a sentence ("Gmail · Send email to …"), not code. */
   .target.is-static {
@@ -238,7 +241,7 @@
     display: inline-flex;
     flex-shrink: 0;
     gap: 0.375rem;
-    font-family: var(--font-mono);
+    font-family: inherit;
     font-size: var(--text-xs);
     font-variant-numeric: tabular-nums;
   }

@@ -8,11 +8,12 @@
   {@render children?.()}
 </svelte:element>
 <style>
-  .ui-surface { min-width:0; min-height:0; border:0; border-radius:var(--float-radius); }
+  .ui-surface { position:relative; min-width:0; min-height:0; border:0; border-radius:var(--float-radius); }
   .tone-plain { background:transparent; }
   .tone-quiet { background:color-mix(in srgb, var(--foreground) 2.5%, transparent); }
-  .tone-raised { background:var(--card); box-shadow:var(--control-shadow); }
-  .tone-danger { background:var(--error-bg); }
+  .tone-raised { border:1px solid var(--float-border); background:var(--card); box-shadow:var(--control-shadow); }
+  .tone-raised::after { content:''; position:absolute; top:0; left:12%; right:12%; height:1px; background:linear-gradient(90deg, transparent, var(--composer-crown), transparent); pointer-events:none; }
+  .tone-danger { border:1px solid var(--float-border); background:var(--error-bg); }
   .padding-none { padding:0; } .padding-sm { padding:0.5rem; } .padding-md { padding:1rem; }
   .is-scroll { overflow:auto; overscroll-behavior:contain; scrollbar-gutter:stable; }
 </style>

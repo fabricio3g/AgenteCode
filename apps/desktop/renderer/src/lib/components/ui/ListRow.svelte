@@ -8,6 +8,6 @@
   {@render children?.()}
 </Button>
 <style>
-  :global(.ui-list-row) { display:flex; width:100%; min-width:0; align-items:center; gap:0.5rem; padding:0.5rem 0.625rem; text-align:left; font-size:var(--text-sm); color:var(--muted-foreground); }
+  :global(.ui-list-row) { display:flex; width:100%; min-width:0; align-items:center; gap:0.5rem; border-radius:var(--float-row-radius); padding:0.5rem 0.625rem; text-align:left; font-size:var(--text-sm); color:var(--muted-foreground); transition:background-color var(--motion-instant) var(--motion-ease), color var(--motion-instant) var(--motion-ease); }
   :global(.ui-list-row:hover), :global(.ui-list-row.is-selected) { background:var(--float-row-hover); color:var(--foreground); }
 </style>

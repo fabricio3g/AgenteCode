@@ -54,16 +54,15 @@
   let indicatorHeight = $state(0);
   let indicatorReady = $state(false);
 
-  /* One corner vocabulary for the three shapes: the track, then the segment
-     and its sliding indicator sit one step tighter, as nested corners do. */
+  /* Unified Tactile Machined corner vocabulary across all segmented & tab bars. */
   const TRACK_RADIUS = {
-    pill: 'rounded-full',
-    soft: 'rounded-[var(--radius)]',
-    rect: 'rounded-[var(--radius-sm)]',
+    pill: 'rounded-[var(--radius-md)]',
+    soft: 'rounded-[var(--radius-md)]',
+    rect: 'rounded-[var(--radius-md)]',
   } as const;
   const SEGMENT_RADIUS = {
-    pill: 'rounded-full',
-    soft: 'rounded-[var(--radius-md)]',
+    pill: 'rounded-[var(--radius-sm)]',
+    soft: 'rounded-[var(--radius-sm)]',
     rect: 'rounded-[var(--radius-sm)]',
   } as const;
 
@@ -150,10 +149,8 @@
     'relative inline-flex flex-wrap gap-[2px] p-[2px]',
     variant === 'tabs' && 'flex-nowrap',
     TRACK_RADIUS[shape],
-    // Same hairline track as .ui-segmented: on a dialog the --muted fill alone vanishes.
-    shape === 'rect'
-      ? 'border border-[var(--border-hover)] bg-[var(--card)]'
-      : 'border border-[var(--border)] bg-[var(--muted)]',
+    // Unified recessed hairline track across SpaceSwitcher, Settings, and modals.
+    'border border-[var(--border)] bg-[var(--muted)]',
     className,
   )}
   role={variant === 'tabs' ? 'tablist' : 'radiogroup'}
@@ -163,10 +160,9 @@
     <span
       aria-hidden="true"
       class={cn(
-        'pointer-events-none absolute',
+        'pointer-events-none absolute border border-[var(--float-border)] bg-[var(--composer-control-bg)] shadow-[var(--control-shadow)]',
         SEGMENT_RADIUS[shape],
-        shape === 'rect' ? 'bg-primary' : 'bg-[var(--segment-active-bg)] shadow-[var(--segment-active-shadow)]',
-        indicatorReady && !reducedMotion.value && 'transition-[left,top,width,height] duration-200 ease-[var(--motion-ease)]',
+        indicatorReady && !reducedMotion.value && 'transition-[left,top,width,height] duration-[var(--motion-normal)] ease-[var(--motion-ease-out)]',
       )}
       style={`left:${indicatorLeft}px;top:${indicatorTop}px;width:${indicatorWidth}px;height:${indicatorHeight}px;opacity:${indicatorReady ? 1 : 0};`}
     ></span>
@@ -188,15 +184,15 @@
         class={cn(
           // One control height for the whole settings screen: the 26px segment
           // inside a 2px track and its hairline lands on 32px, level with Input and Select.
-          'relative z-10 inline-flex h-[26px] items-center gap-[0.3rem] font-medium outline-none transition-[color,box-shadow] duration-[var(--motion-fast)] ease-[var(--motion-ease)] focus-visible:ring-[3px] focus-visible:ring-ring/20 disabled:opacity-50',
-          // A segment without its name is a 26px square, so the track stays a row of marks.
-          named ? 'px-3' : 'w-[26px] justify-center',
+          'relative z-10 inline-flex h-[26px] items-center gap-[0.35rem] font-medium outline-none transition-[color,box-shadow,padding] duration-[var(--motion-instant)] ease-[var(--motion-ease)] focus-visible:ring-[3px] focus-visible:ring-ring/20 disabled:opacity-50',
+          // Active-label mode stays compact (px-2.5) beside square icon-only siblings.
+          named ? (labels === 'active' ? 'px-2.5' : 'px-3') : 'w-[26px] justify-center',
           SEGMENT_RADIUS[shape],
           shape === 'rect' ? 'text-[length:var(--text-sm)]' : 'text-[length:var(--text-xs)]',
           value === option.value
-            ? shape === 'rect'
-              ? variant === 'tabs' ? 'text-primary-fg' : 'bg-primary text-primary-fg'
-              : variant === 'tabs' ? 'text-foreground' : 'bg-[var(--segment-active-bg)] shadow-[var(--segment-active-shadow)] text-foreground'
+            ? variant === 'tabs'
+              ? 'text-foreground'
+              : 'border border-[var(--float-border)] bg-[var(--composer-control-bg)] shadow-[var(--control-shadow)] text-foreground'
             : 'text-muted-foreground hover:text-foreground',
         )}
         onclick={() => select(option.value)}

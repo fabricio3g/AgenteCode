@@ -360,31 +360,40 @@
 
   .browser-tabs {
     display: flex;
-    height: 1.5rem;
+    height: 1.75rem;
     flex-shrink: 0;
     align-items: center;
-    gap: 0.125rem;
-    padding: 0 0.375rem 0.25rem;
+    gap: 0.1875rem;
+    padding: 0 0.5rem 0.25rem;
     overflow-x: auto;
     scrollbar-width: none;
   }
 
   .browser-tab {
     display: flex;
-    height: 1.25rem;
-    max-width: 9rem;
+    height: 1.5rem;
+    max-width: 9.5rem;
     align-items: center;
-    gap: 0.125rem;
-    padding: 0 0.15rem 0 0.5rem;
-    border-radius: var(--radius-full);
+    gap: 0.2rem;
+    padding: 0 0.25rem 0 0.5rem;
+    border: 1px solid transparent;
+    border-radius: var(--radius-sm);
     color: var(--muted-foreground);
     font-size: var(--text-xs);
+    font-weight: 500;
     white-space: nowrap;
+    transition: background-color var(--motion-instant) var(--motion-ease), border-color var(--motion-instant) var(--motion-ease), color var(--motion-instant) var(--motion-ease);
   }
 
-  .browser-tab:hover,
-  .browser-tab.active {
+  .browser-tab:hover {
     background: var(--surface-hover);
+    color: var(--foreground);
+  }
+
+  .browser-tab.active {
+    border-color: var(--float-border);
+    background: var(--composer-control-bg);
+    box-shadow: var(--control-shadow);
     color: var(--foreground);
   }
 
@@ -429,7 +438,8 @@
     flex: 1 1 auto;
     min-height: 0;
     margin: 0 12px 14px;
-    border-radius: 8px;
+    border: 1px solid var(--float-border);
+    border-radius: var(--radius-md);
     background: var(--muted);
   }
 

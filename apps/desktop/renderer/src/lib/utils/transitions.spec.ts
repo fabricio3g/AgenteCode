@@ -21,7 +21,7 @@ describe('shared desktop motion', () => {
   });
   it('keeps dialog text sharp throughout the animation', () => {
     const transition = dialogIn(document.createElement('div'));
-    expect(transition.duration).toBe(200);
+    expect(transition.duration).toBe(240);
     const css = transition.css!(0.5, 0.5);
     expect(css).toContain('opacity:'); expect(css).toContain('transform:');
     expect(css).not.toMatch(/filter|width|height/);

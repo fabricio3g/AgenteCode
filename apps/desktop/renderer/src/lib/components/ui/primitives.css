@@ -2,11 +2,13 @@
 :root { --button-danger-bg:#dc2626; --button-danger-hover:#c81e1e; --button-danger-fg:#fff; }
 /* Common interaction treatment. Feature CSS owns only domain geometry. */
 .ui-button, .ui-action { -webkit-app-region:no-drag; }
-/* Common control depth: shared Button and IconButton share one recipe. */
-.ui-button { transition: background-color var(--motion-fast), border-color var(--motion-fast), box-shadow var(--motion-fast), transform var(--motion-fast); }
+/* Common control depth: shared Button and IconButton share one recipe (Doherty 90ms). */
+.ui-button { transition: background-color var(--motion-instant) var(--motion-ease), border-color var(--motion-instant) var(--motion-ease), color var(--motion-instant) var(--motion-ease), box-shadow var(--motion-instant) var(--motion-ease), transform var(--motion-instant) var(--motion-ease); }
 /* Shape, border and fill come from button/variants.ts. */
-.ui-button-solid, .ui-button-outline { box-shadow: var(--control-shadow); }
-.ui-button:active:not(:disabled) { transform: translateY(1px); box-shadow: inset 0 1px 2px rgb(0 0 0 / 0.14); }
+.ui-button-solid { box-shadow: var(--control-shadow-primary, var(--control-shadow)); }
+.ui-button-secondary, .ui-button-outline { box-shadow: var(--control-shadow); }
+.ui-button-secondary:hover:not(:disabled), .ui-button-outline:hover:not(:disabled) { border-color: var(--border-strong, var(--float-border)); }
+.ui-button:active:not(:disabled) { transform: translateY(1px); box-shadow: inset 0 1px 2px rgb(0 0 0 / 0.24); }
 .ui-button:focus-visible { outline: 2px solid var(--brand-accent); outline-offset: 2px; }
 
 @media (prefers-reduced-motion:reduce) { .ui-button, .ui-action, .ui-field { transition:none; } }

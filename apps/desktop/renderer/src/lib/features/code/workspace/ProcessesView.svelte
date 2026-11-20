@@ -102,7 +102,7 @@
             onclick={() => (codeWorkspace.selectedProcesses[conversationScope(chatId)] = p.id)}
           >
             <span class="proc-dot {p.status === 'running' ? 'is-running' : p.status === 'exited' && p.exitCode ? 'is-failed' : ''}"></span>
-            <span class="min-w-0 flex-1 truncate font-mono">{p.command}</span>
+            <span class="min-w-0 flex-1 truncate">{p.command}</span>
             <span class="proc-time">{elapsed(p)}</span>
           </Button>
         </li>
@@ -187,12 +187,17 @@
     color: var(--muted-foreground);
     font-size: var(--text-sm);
     text-align: left;
-    transition: background-color var(--motion-fast) var(--motion-ease), color var(--motion-fast) var(--motion-ease);
+    transition: background-color var(--motion-instant) var(--motion-ease), color var(--motion-instant) var(--motion-ease);
   }
-  :global(.proc-row:hover.ui-local-7dc5fc69),
-  :global(.proc-row.is-active.ui-local-7dc5fc69) {
-    background: var(--surface-hover);
+  :global(.proc-row:hover.ui-local-7dc5fc69) {
+    background: var(--float-row-hover);
     color: var(--foreground);
+  }
+  :global(.proc-row.is-active.ui-local-7dc5fc69) {
+    background: var(--sidebar-accent);
+    box-shadow: inset 0 1px 0 var(--composer-crown), inset 0 0 0 1px var(--float-border);
+    color: var(--foreground);
+    font-weight: 500;
   }
 
   .proc-dot {
@@ -249,8 +254,10 @@
     flex: 1;
     flex-direction: column;
     overflow: hidden;
-    border-radius: 8px;
-    background: var(--muted);
+    border: 1px solid var(--float-border);
+    border-radius: var(--radius-md);
+    background: var(--background);
+    box-shadow: var(--control-shadow);
   }
 
   :global(.proc-head) { font-size: var(--text-xs); }

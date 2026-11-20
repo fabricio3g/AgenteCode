@@ -13,10 +13,13 @@
   </table>
 </div>
 <style>
-  .ui-data-table { min-width:0; max-width:100%; overflow:auto; overscroll-behavior:contain; }
+  .ui-data-table { min-width:0; max-width:100%; overflow:auto; overscroll-behavior:contain; border:1px solid var(--float-border); border-radius:var(--float-radius); background:var(--card); }
   table { width:100%; border-collapse:collapse; color:var(--foreground); font-size:var(--text-sm); }
-  th, td { padding:0.5rem 0.625rem; border-bottom:1px solid var(--border-subtle); text-align:left; vertical-align:top; }
-  th { font-weight:500; color:var(--muted-foreground); }
+  th, td { padding:0.5rem 0.75rem; border-bottom:1px solid var(--border-subtle); text-align:left; vertical-align:top; }
+  tbody tr:last-child td { border-bottom:0; }
+  tbody tr { transition:background-color var(--motion-instant) var(--motion-ease); }
+  tbody tr:hover { background:var(--float-row-hover); }
+  th { font-weight:500; color:var(--muted-foreground); background:color-mix(in srgb, var(--foreground) 2.5%, transparent); }
   .right { text-align:right; font-variant-numeric:tabular-nums; }
-  caption { padding:0.5rem; text-align:left; color:var(--muted-foreground); font-size:var(--text-xs); }
+  caption { padding:0.5rem 0.75rem; text-align:left; color:var(--muted-foreground); font-size:var(--text-xs); }
 </style>

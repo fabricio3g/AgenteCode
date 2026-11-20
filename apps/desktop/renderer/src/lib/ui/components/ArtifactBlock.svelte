@@ -107,6 +107,7 @@
   /* A file is an object you can pick up: one soft sheet a step above the
      page, with a hairline ring. Files that follow each other stack closely. */
   .art-card {
+    position: relative;
     display: flex;
     width: var(--inline-block-width);
     max-width: 100%;
@@ -116,16 +117,32 @@
     min-height: 4rem;
     overflow: hidden;
     padding: 0 0.625rem 0 0.875rem;
-    border: 1px solid var(--border-subtle);
+    border: 1px solid var(--float-border);
     border-radius: var(--radius-lg);
     background: var(--artifact-surface);
-    transition: background-color var(--motion-instant) var(--motion-ease);
+    box-shadow: var(--control-shadow);
+    transition: background-color var(--motion-instant) var(--motion-ease), border-color var(--motion-instant) var(--motion-ease), transform var(--motion-fast) var(--motion-ease-out);
+  }
+  .art-card::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 12%;
+    right: 12%;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--composer-crown), transparent);
+    pointer-events: none;
   }
   :global(.art-card + .art-card) {
     margin-top: 0.375rem;
   }
   .art-card:hover {
     background: var(--artifact-surface-hover);
+    border-color: var(--border-hover);
+    transform: translateY(-1px);
+  }
+  .art-card:active {
+    transform: translateY(0);
   }
   .art-card[data-status='invalid'] {
     border-color: color-mix(in srgb, var(--error) 40%, var(--border));

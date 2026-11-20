@@ -758,23 +758,40 @@
         />
       {/if}
       <div class="composer-body">
-        <UiTextarea variant="composer"
-          bind:ref={textarea}
-          class={uiClass("composer-textarea w-full resize-none bg-transparent text-foreground outline-none", "ui-local-49e9c79c")}
-          {placeholder}
-          rows={1}
-          value={text}
-          oninput={onInput}
-          onkeydown={onKeydown}
-          onselect={() => { if (textarea) caret = textarea.selectionStart; }}
-        ></UiTextarea>
-
         {#if dictation.uiActive && dictation.phase !== 'choose'}
-          <div class="composer-bar">
+          <div class="composer-recorder-row">
             <ComposerRecorder {dictation} />
             {#if running}<SendButton compact stopShortcut="escape" {running} disabled={false} sendLabel={$t('code.send')} stopLabel={$t('code.stop')} onsend={() => void submit()} onstop={() => void codeStore.stop(chat.id)} />{/if}
           </div>
         {:else}
+          <div class="composer-input-row">
+            <UiTextarea variant="composer"
+              bind:ref={textarea}
+              class={uiClass("composer-textarea w-full resize-none bg-transparent text-foreground outline-none", "ui-local-49e9c79c")}
+              {placeholder}
+              rows={1}
+              value={text}
+              oninput={onInput}
+              onkeydown={onKeydown}
+              onselect={() => { if (textarea) caret = textarea.selectionStart; }}
+            ></UiTextarea>
+            <div class="composer-send-slot">
+              <SendButton compact stopShortcut="escape"
+                {running}
+                disabled={!canSend}
+                sendLabel={$t('code.send')}
+                stopLabel={$t('code.stop')}
+                onsend={() => void submit()}
+                onstop={() => void codeStore.stop(chat.id)}
+              />
+            </div>
+          </div>
+        {/if}
+      </div>
+    </div>
+
+    {#if !(dictation.uiActive && dictation.phase !== 'choose')}
+      <div class="composer-tray">
         <ComposerBar>
           {#snippet attach()}
             <UiFileInput bind:ref={mediaPicker}  class={uiClass("hidden", "ui-local-49e9c79c")} accept="*/*" multiple onchange={(event) => { void attachFiles([...((event.currentTarget as HTMLInputElement).files || [])]); event.currentTarget.value = ''; }} />
@@ -785,11 +802,9 @@
           {#snippet extras()}
             {@render overflowMenu()}
             {@render selectedMode()}
-        {#if ownBackend !== 'local' && !modelReady}
-          <Tooltip label={copy.model.configureProvider} position="top"><UiIconButton label={copy.model.configureProvider} size="xs" type="button" class={uiClass(" provider-setup", "ui-local-49e9c79c")}  onclick={()=>appStore.openSettings('providers')}><Settings2 class="size-3" /></UiIconButton></Tooltip>
-        {/if}
-
-
+            {#if ownBackend !== 'local' && !modelReady}
+              <Tooltip label={copy.model.configureProvider} position="top"><UiIconButton label={copy.model.configureProvider} size="xs" type="button" class={uiClass(" provider-setup", "ui-local-49e9c79c")}  onclick={()=>appStore.openSettings('providers')}><Settings2 class="size-3" /></UiIconButton></Tooltip>
+            {/if}
           {/snippet}
           {#snippet model()}<ModelMenu compact {chat} capabilities={ownThinking} level={chat.reasoningLevel} onlevel={setThinking} />{/snippet}
           {#snippet status()}
@@ -812,26 +827,16 @@
                 </Button>
               </Tooltip>
             {/if}
-
-
           {/snippet}
           {#snippet microphone()}<DictationButton {dictation} />{/snippet}
           {#snippet trailing()}
-            <SendButton compact stopShortcut="escape"
-              {running}
-              disabled={!canSend}
-              sendLabel={$t('code.send')}
-              stopLabel={$t('code.stop')}
-              onsend={() => void submit()}
-              onstop={() => void codeStore.stop(chat.id)}
-            />
+            {#if showContextRing && usage && !(projectControls.open && chat.projectId)}
+              <ContextUsageRing showLabel usedTokens={usage.promptTokens} maxTokens={usage.contextWindow ?? 0} breakdown={usage.breakdown} {spend} />
+            {/if}
           {/snippet}
         </ComposerBar>
-        {/if}
       </div>
-    </div>
-
-    {#if showContextRing && usage && !(projectControls.open && chat.projectId)}<div class="composer-footnote"><div class="composer-footnote-trailing"><ContextUsageRing showLabel usedTokens={usage.promptTokens} maxTokens={usage.contextWindow ?? 0} breakdown={usage.breakdown} {spend} /></div></div>{/if}
+    {/if}
 
     <p class="composer-hint sr-only mx-auto mt-[var(--dock-gap)] px-1 text-center text-xs text-muted-foreground opacity-70">
       {#if hint}

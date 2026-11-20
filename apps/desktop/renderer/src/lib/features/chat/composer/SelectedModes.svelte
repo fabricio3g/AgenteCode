@@ -13,5 +13,5 @@
 </script>
 <div class="selected-mode-bar" aria-label="Selected modes">
   <ModeSelector />
-  {#if appStore.searchMode!=='chat'}<div class="selected-research" transition:slide={{duration:motionDuration()}}><span class="selected-mode-caption">Research</span><Menu bind:open placement="top-start" label="Research mode">{#snippet trigger(props)}<Button variant="plain" class="selected-mode-control" {...props}><Search class="size-3.5"/><span>{selected?.label}</span><ChevronDown class="size-3"/></Button>{/snippet}{#each options as option}<MenuItem label={option.label} active={appStore.searchMode===option.id} onselect={()=>appStore.setSearchMode(option.id)}/>{/each}</Menu></div>{/if}
+  {#if appStore.searchMode!=='chat'}<div class="selected-research" transition:slide={{duration:motionDuration()}}><Menu bind:open placement="top-start" label="Research mode">{#snippet trigger(props)}<Button variant="plain" class="composer-selector selected-mode-control" {...props}><Search class="size-3.5 shrink-0"/><span>{selected?.label}</span><ChevronDown class="size-3 shrink-0"/></Button>{/snippet}{#each options as option}<MenuItem label={option.label} active={appStore.searchMode===option.id} onselect={()=>appStore.setSearchMode(option.id)}/>{/each}</Menu></div>{/if}
 </div>

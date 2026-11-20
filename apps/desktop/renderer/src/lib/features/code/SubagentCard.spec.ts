@@ -22,7 +22,7 @@ it('reads as the agent it is: kind, description and what it is doing', () => {
   expect(row).toContain('Inspect files');
   expect(row).toContain('Reading');
   expect(container.querySelector('.level-subagent.is-card')).toBeNull();
-  expect(container.querySelectorAll('.tile-rain .tile')).toHaveLength(8);
+  expect(container.querySelectorAll('.tile-rain .tile')).toHaveLength(4);
   expect(container.textContent).not.toContain('{');
 });
 
