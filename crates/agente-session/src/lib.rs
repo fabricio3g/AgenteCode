@@ -22,7 +22,6 @@
 //! and before the first `append` for a session; recovery scans the whole log
 //! and is not designed to run concurrently with appends.
 
-use std::collections::hash_map::Entry;
 use std::collections::{BTreeMap, HashMap};
 use std::fs::{self, OpenOptions};
 use std::io::{BufRead, BufReader, BufWriter, Write};
@@ -48,6 +47,7 @@ const LOG_SUFFIX: &str = ".events.ndjson";
 const SNAPSHOT_SUFFIX: &str = ".snapshot.json";
 const META_SUFFIX: &str = ".meta.json";
 const LOG_BUFFER_CAPACITY: usize = 64 * 1024;
+const MAX_OPEN_LOGS: usize = 64;
 
 static TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
 
@@ -129,10 +129,74 @@ struct StoredInfo {
     info: SessionInfo,
 }
 
+#[derive(Debug)]
+struct LogEntry {
+    writer: BufWriter<fs::File>,
+    last_used: u64,
+}
+
+#[derive(Debug, Default)]
+struct LogCache {
+    tick: u64,
+    entries: HashMap<SessionId, LogEntry>,
+}
+
+impl LogCache {
+    fn get_mut(&mut self, session_id: &SessionId) -> Option<&mut BufWriter<fs::File>> {
+        let entry = self.entries.get_mut(session_id)?;
+        self.tick = self.tick.wrapping_add(1);
+        entry.last_used = self.tick;
+        Some(&mut entry.writer)
+    }
+
+    fn get_or_open(
+        &mut self,
+        session_id: SessionId,
+        path: &Path,
+    ) -> std::io::Result<&mut BufWriter<fs::File>> {
+        if self.entries.contains_key(&session_id) {
+            self.tick = self.tick.wrapping_add(1);
+            let tick = self.tick;
+            let entry = self
+                .entries
+                .get_mut(&session_id)
+                .expect("checked contains_key");
+            entry.last_used = tick;
+            return Ok(&mut entry.writer);
+        }
+        while self.entries.len() >= MAX_OPEN_LOGS {
+            let Some(&lru_id) = self
+                .entries
+                .iter()
+                .min_by_key(|(_, entry)| entry.last_used)
+                .map(|(id, _)| id)
+            else {
+                break;
+            };
+            if let Some(mut evicted) = self.entries.remove(&lru_id) {
+                if let Err(error) = evicted.writer.flush() {
+                    tracing::warn!(session = %lru_id, %error, "failed to flush evicted session log");
+                }
+            }
+        }
+        let file = OpenOptions::new().create(true).append(true).open(path)?;
+        self.tick = self.tick.wrapping_add(1);
+        let entry = self.entries.entry(session_id).or_insert(LogEntry {
+            writer: BufWriter::with_capacity(LOG_BUFFER_CAPACITY, file),
+            last_used: self.tick,
+        });
+        Ok(&mut entry.writer)
+    }
+
+    fn remove(&mut self, session_id: &SessionId) {
+        self.entries.remove(session_id);
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct SessionStore {
     root: PathBuf,
-    logs: Arc<Mutex<HashMap<SessionId, BufWriter<fs::File>>>>,
+    logs: Arc<Mutex<LogCache>>,
 }
 
 impl SessionStore {
@@ -143,12 +207,18 @@ impl SessionStore {
         fs::create_dir_all(&root)?;
         Ok(Self {
             root,
-            logs: Arc::new(Mutex::new(HashMap::new())),
+            logs: Arc::new(Mutex::new(LogCache::default())),
         })
     }
 
     pub fn root(&self) -> &Path {
         &self.root
+    }
+
+    fn lock_logs(&self) -> std::sync::MutexGuard<'_, LogCache> {
+        self.logs
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 
     /// Buffer one event line. Cheap: opens the session log lazily on first
@@ -160,19 +230,12 @@ impl SessionStore {
                 record.protocol_version,
             ));
         }
-        let mut logs = self.logs.lock().unwrap();
-        let writer = match logs.entry(record.session_id) {
-            Entry::Occupied(entry) => entry.into_mut(),
-            Entry::Vacant(entry) => {
-                let file = OpenOptions::new()
-                    .create(true)
-                    .append(true)
-                    .open(self.log_path(record.session_id))?;
-                entry.insert(BufWriter::with_capacity(LOG_BUFFER_CAPACITY, file))
-            }
-        };
-        serde_json::to_writer(&mut *writer, record)?;
-        writer.write_all(b"\n")?;
+        let mut line = serde_json::to_vec(record)?;
+        line.push(b'\n');
+        let path = self.log_path(record.session_id);
+        let mut logs = self.lock_logs();
+        let writer = logs.get_or_open(record.session_id, &path)?;
+        writer.write_all(&line)?;
         Ok(())
     }
 
@@ -186,7 +249,7 @@ impl SessionStore {
     /// Push this session's buffered event bytes to the OS (not yet durable
     /// against power loss, but visible to any reader of the file).
     pub fn flush(&self, session_id: SessionId) -> Result<(), SessionStoreError> {
-        let mut logs = self.logs.lock().unwrap();
+        let mut logs = self.lock_logs();
         if let Some(writer) = logs.get_mut(&session_id) {
             writer.flush()?;
         }
@@ -196,21 +259,35 @@ impl SessionStore {
     /// Flush and `sync_data` this session's log — the record contents survive
     /// power loss once this returns.
     pub fn durable_flush(&self, session_id: SessionId) -> Result<(), SessionStoreError> {
-        let mut logs = self.logs.lock().unwrap();
+        let mut logs = self.lock_logs();
         if let Some(writer) = logs.get_mut(&session_id) {
             writer.flush()?;
             writer.get_ref().sync_data()?;
+        } else {
+            drop(logs);
+            let path = self.log_path(session_id);
+            if path.exists() {
+                OpenOptions::new().append(true).open(path)?.sync_data()?;
+            }
         }
         Ok(())
     }
 
     /// Push every buffered session log to the OS (e.g. before shutdown).
     pub fn flush_all(&self) -> Result<(), SessionStoreError> {
-        let mut logs = self.logs.lock().unwrap();
-        for writer in logs.values_mut() {
-            writer.flush()?;
+        let mut logs = self.lock_logs();
+        let mut first_error = None;
+        for entry in logs.entries.values_mut() {
+            if let Err(error) = entry.writer.flush() {
+                if first_error.is_none() {
+                    first_error = Some(error);
+                }
+            }
         }
-        Ok(())
+        match first_error {
+            Some(error) => Err(error.into()),
+            None => Ok(()),
+        }
     }
 
     /// Atomically replace the session snapshot. The session log is flushed
@@ -481,7 +558,7 @@ impl SessionStore {
     /// Remove a session's snapshot and event log. Missing files are fine;
     /// returns whether anything was on disk.
     pub fn delete(&self, session_id: SessionId) -> Result<bool, SessionStoreError> {
-        self.logs.lock().unwrap().remove(&session_id);
+        self.lock_logs().remove(&session_id);
         let mut removed = false;
         for path in [
             self.snapshot_path(session_id),
@@ -535,10 +612,12 @@ fn rename_replace(from: &Path, to: &Path) -> std::io::Result<()> {
     for attempt in 1..=ATTEMPTS {
         match fs::rename(from, to) {
             Ok(()) => return Ok(()),
-            Err(error) if attempt < ATTEMPTS && is_transient_replace_error(&error) => {
-                std::thread::sleep(std::time::Duration::from_millis(25 * u64::from(attempt)));
+            Err(error) if is_transient_replace_error(&error) => {
+                if attempt < ATTEMPTS {
+                    std::thread::sleep(std::time::Duration::from_millis(25 * u64::from(attempt)));
+                }
             }
-            Err(_) => break,
+            Err(error) => return Err(error),
         }
     }
     let _ = fs::remove_file(to);
@@ -935,6 +1014,50 @@ mod tests {
             store.recover(session_id),
             Err(SessionStoreError::UnsupportedVersion(999))
         ));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn open_logs_are_bounded_and_eviction_flushes_oldest_writer() {
+        let root = test_root("lru-eviction");
+        let store = SessionStore::open(&root).unwrap();
+        let mut sessions = Vec::new();
+        for index in 0..(MAX_OPEN_LOGS + 4) {
+            let session_id = SessionId::new();
+            sessions.push(session_id);
+            store
+                .append(&record(session_id, 1, &format!("msg-{index}")))
+                .unwrap();
+        }
+        assert_eq!(store.lock_logs().entries.len(), MAX_OPEN_LOGS);
+        // The first four sessions were evicted and flushed to disk on eviction.
+        for &evicted in &sessions[..4] {
+            assert!(!store.lock_logs().entries.contains_key(&evicted));
+            assert!(
+                fs::metadata(store.log_path(evicted)).unwrap().len() > 0,
+                "evicted writer must flush buffered records before closing"
+            );
+        }
+        // Re-appending to an evicted session reopens the log in append mode.
+        let first = sessions[0];
+        store
+            .append_durable(&record(first, 2, "msg-0-second"))
+            .unwrap();
+        let recovered = store.recover(first).unwrap();
+        assert_eq!(recovered.snapshot.conversation.len(), 2);
+        assert_eq!(recovered.last_sequence, 2);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn rename_replace_preserves_destination_on_non_transient_error() {
+        let root = test_root("rename-preserve");
+        fs::create_dir_all(&root).unwrap();
+        let missing_from = root.join("missing.tmp");
+        let existing_to = root.join("existing.json");
+        fs::write(&existing_to, b"keep-me").unwrap();
+        assert!(rename_replace(&missing_from, &existing_to).is_err());
+        assert_eq!(fs::read(&existing_to).unwrap(), b"keep-me");
         fs::remove_dir_all(root).unwrap();
     }
 }

@@ -71,6 +71,31 @@ impl State {
                 .send(json!({"event":"revoked", "reason":reason, "lease":lease}));
         }
     }
+    fn is_escape_held(&self) -> bool {
+        if !self.escape_held.load(Ordering::SeqCst) {
+            return false;
+        }
+        let physically_down =
+            unsafe { (GetAsyncKeyState(i32::from(VK_ESCAPE)) as u16 & 0x8000) != 0 };
+        if !physically_down {
+            self.escape_held.store(false, Ordering::SeqCst);
+        }
+        physically_down
+    }
+}
+
+struct CursorGuard(Arc<State>);
+
+impl Drop for CursorGuard {
+    fn drop(&mut self) {
+        self.0.revoke("owner_disconnected");
+        let _cursor = CURSOR_LOCK
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        if self.0.cursor_active.swap(false, Ordering::SeqCst) {
+            restore_cursor();
+        }
+    }
 }
 
 // Never wait for IPC, stdout or an input worker inside the hook. Windows may
@@ -91,8 +116,9 @@ unsafe extern "system" fn keyboard(code: i32, w: WPARAM, l: LPARAM) -> LRESULT {
                     if state.lease.load(Ordering::SeqCst) != 0 {
                         state.escape_held.store(true, Ordering::SeqCst);
                         state.revoke("escape");
+                        return 1;
                     }
-                    if state.escape_held.load(Ordering::SeqCst) {
+                    if state.is_escape_held() {
                         return 1;
                     }
                 } else if (w as u32 == WM_KEYUP || w as u32 == WM_SYSKEYUP)
@@ -521,6 +547,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
         }
     });
     state.events.send(json!({"event":"ready", "protocol":1}))?;
+    let cursor_guard = CursorGuard(state.clone());
     let mut input = io::stdin().lock();
     loop {
         // Bound each private-channel message even if main misbehaves.
@@ -542,7 +569,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
                 let _cursor = CURSOR_LOCK
                     .lock()
                     .unwrap_or_else(|error| error.into_inner());
-                if state.escape_held.load(Ordering::SeqCst) {
+                if state.is_escape_held() {
                     json!({"id":command.id,"ok":false,"error":"Release Escape before resuming"})
                 } else if !style_cursor() {
                     json!({"id":command.id,"ok":false,"error":"Could not style the system cursor"})
@@ -569,10 +596,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
         };
         state.events.send(reply)?;
     }
-    state.revoke("owner_disconnected");
-    if state.cursor_active.swap(false, Ordering::SeqCst) {
-        restore_cursor();
-    }
+    drop(cursor_guard);
     // Give a bounded input worker a chance to release held keys/buttons on EOF.
     drop(actions);
     std::thread::sleep(Duration::from_millis(100));
@@ -682,5 +706,37 @@ mod tests {
         assert!(injected_is_revoked(TAG | 41));
         assert!(!injected_is_revoked(TAG | 42));
         assert!(!injected_is_revoked(0));
+
+        // Missed WM_KEYUP recovery: if escape_held was left true after the
+        // lease was revoked and Escape is no longer physically pressed,
+        // is_escape_held() clears the stale flag instead of staying wedged.
+        state.lease.store(0, Ordering::SeqCst);
+        state.escape_held.store(true, Ordering::SeqCst);
+        let physically_down =
+            unsafe { (GetAsyncKeyState(i32::from(VK_ESCAPE)) as u16 & 0x8000) != 0 };
+        if !physically_down {
+            assert!(!state.is_escape_held());
+            assert!(!state.escape_held.load(Ordering::SeqCst));
+        }
+    }
+    #[test]
+    fn cursor_guard_revokes_and_clears_active_cursor_on_drop() {
+        let (events, rx) = mpsc::channel();
+        let state = Arc::new(State {
+            lease: AtomicU64::new(99),
+            heartbeat: AtomicU64::new(0),
+            escape_held: AtomicBool::new(false),
+            cursor_active: AtomicBool::new(true),
+            started: Instant::now(),
+            events,
+        });
+        {
+            let _guard = CursorGuard(state.clone());
+        }
+        assert_eq!(state.lease.load(Ordering::SeqCst), 0);
+        assert!(!state.cursor_active.load(Ordering::SeqCst));
+        let event = rx.try_recv().expect("revoked event emitted on drop");
+        assert_eq!(event["event"], "revoked");
+        assert_eq!(event["reason"], "owner_disconnected");
     }
 }

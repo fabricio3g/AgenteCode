@@ -138,6 +138,7 @@ mod unix {
                         Ok(accepted) => accepted,
                         Err(error) => {
                             tracing::warn!(%error, "accept failed");
+                            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
                             continue;
                         }
                     };
@@ -211,6 +212,7 @@ mod windows {
                     let client = std::mem::replace(&mut server, next);
                     if let Err(error) = connected {
                         tracing::warn!(%error, "pipe connection failed");
+                        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
                         continue;
                     }
                     let service = service.clone();

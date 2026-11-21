@@ -24,6 +24,14 @@ fn push_buffered_text(buffer: &mut String, text: &str) {
     }
 }
 
+fn push_progress_chunk(buffer: &mut String, chunk: &str) {
+    if buffer.len() + chunk.len() <= MAX_BUFFERED_TOOL_PROGRESS_BYTES {
+        buffer.push_str(chunk);
+    } else if !buffer.ends_with(TRUNCATION_MARKER) {
+        buffer.push_str(TRUNCATION_MARKER);
+    }
+}
+
 pub(crate) fn forward_legacy_events(
     inner: Arc<RuntimeInner>,
     session_id: SessionId,
@@ -33,6 +41,7 @@ pub(crate) fn forward_legacy_events(
     outcome_sender: oneshot::Sender<TurnOutcome>,
 ) {
     tracing::info!(%session_id, %turn_id, "Forwarding agent turn events");
+    let turn_guard = crate::TurnGuard::new(Arc::clone(&inner), turn_id);
     let mut forwarder = EventForwarder::new(Arc::clone(&inner), session_id, turn_id, sender);
     let mut terminal_outcome = None;
     let mut turn_edits = Vec::new();
@@ -202,9 +211,10 @@ pub(crate) fn forward_legacy_events(
     }
 
     forwarder.flush();
+    drop(forwarder);
     inner.lock_edits().end_turn(session_id, turn_edits);
     inner.persist_edits(session_id);
-    inner.lock_turns().remove(&turn_id);
+    drop(turn_guard);
     inner.prune_finished_children();
     if let Some(outcome) = terminal_outcome {
         tracing::info!(%session_id, %turn_id, status = ?outcome.status, revision = outcome.revision, tokens = outcome.tokens, "Agent turn ended");
@@ -212,6 +222,22 @@ pub(crate) fn forward_legacy_events(
             tracing::debug!("turn outcome receiver dropped before delivery");
         }
     }
+
+    // Background subagents or board cards launched during the turn may outlive
+    // the parent loop and still hold clones of the legacy event sender. Keep
+    // draining their events onto the runtime broadcast channel until all
+    // background tasks finish.
+    while let Ok(task_event) = receiver.recv() {
+        if let Some((event, parent)) = map_event(&inner, task_event.event) {
+            let is_child_finished = matches!(event, RuntimeEvent::ChildFinished { .. });
+            let envelope = inner.envelope(session_id, turn_id, parent, event);
+            inner.publish(&envelope);
+            if is_child_finished {
+                inner.prune_finished_children();
+            }
+        }
+    }
+    inner.prune_finished_children();
 }
 
 /// The protocol event for a core event, and the subagent it came from
@@ -475,6 +501,7 @@ pub(crate) fn replace_conversation(
     session_id: SessionId,
     conversation: Vec<Message>,
 ) -> u64 {
+    let project_dir = inner.session_context(session_id, None).project_dir;
     let commit_lock = inner.commit_lock(session_id);
     let _commit = commit_lock
         .lock()
@@ -493,8 +520,7 @@ pub(crate) fn replace_conversation(
     drop(sessions);
     // The per-session lock preserves revision order; fsync never owns the global map.
     inner.persist_snapshot(&snapshot);
-    let project_dir = inner.session_context(session_id, None).project_dir;
-    inner.update_meta(session_id, &project_dir, |info| {
+    inner.update_meta_locked(session_id, &project_dir, |info| {
         info.message_count = count;
         info.last_active = chrono::Utc::now();
     });
@@ -509,6 +535,7 @@ struct EventForwarder {
     assistant: String,
     reasoning: String,
     progress: HashMap<String, String>,
+    receiver_stalled: bool,
 }
 
 impl EventForwarder {
@@ -526,6 +553,7 @@ impl EventForwarder {
             assistant: String::new(),
             reasoning: String::new(),
             progress: HashMap::new(),
+            receiver_stalled: false,
         }
     }
 
@@ -533,16 +561,121 @@ impl EventForwarder {
         self.emit_from(event, None);
     }
 
+    fn try_flush_deltas(&mut self) -> bool {
+        if !self.reasoning.is_empty() {
+            if self.sender.capacity() == 0 {
+                return false;
+            }
+            let text = std::mem::take(&mut self.reasoning);
+            let envelope = self.inner.envelope(
+                self.session_id,
+                self.turn_id,
+                None,
+                RuntimeEvent::ReasoningDelta { text },
+            );
+            match self.sender.try_send(envelope) {
+                Ok(()) => self.receiver_stalled = false,
+                Err(tokio_mpsc::error::TrySendError::Closed(_)) => {}
+                Err(tokio_mpsc::error::TrySendError::Full(envelope)) => {
+                    if let RuntimeEvent::ReasoningDelta { text } = envelope.event {
+                        self.reasoning = text;
+                    }
+                    return false;
+                }
+            }
+        }
+        if !self.assistant.is_empty() {
+            if self.sender.capacity() == 0 {
+                return false;
+            }
+            let text = std::mem::take(&mut self.assistant);
+            let envelope = self.inner.envelope(
+                self.session_id,
+                self.turn_id,
+                None,
+                RuntimeEvent::AssistantDelta { text },
+            );
+            match self.sender.try_send(envelope) {
+                Ok(()) => self.receiver_stalled = false,
+                Err(tokio_mpsc::error::TrySendError::Closed(_)) => {}
+                Err(tokio_mpsc::error::TrySendError::Full(envelope)) => {
+                    if let RuntimeEvent::AssistantDelta { text } = envelope.event {
+                        self.assistant = text;
+                    }
+                    return false;
+                }
+            }
+        }
+        if !self.progress.is_empty() {
+            let ids: Vec<String> = self.progress.keys().cloned().collect();
+            for id in ids {
+                if self.sender.capacity() == 0 {
+                    return false;
+                }
+                let Some(chunk) = self.progress.remove(&id) else {
+                    continue;
+                };
+                let envelope = self.inner.envelope(
+                    self.session_id,
+                    self.turn_id,
+                    None,
+                    RuntimeEvent::ToolProgress { id, chunk },
+                );
+                match self.sender.try_send(envelope) {
+                    Ok(()) => self.receiver_stalled = false,
+                    Err(tokio_mpsc::error::TrySendError::Closed(_)) => {}
+                    Err(tokio_mpsc::error::TrySendError::Full(envelope)) => {
+                        if let RuntimeEvent::ToolProgress { id, chunk } = envelope.event {
+                            self.progress.insert(id, chunk);
+                        }
+                        return false;
+                    }
+                }
+            }
+        }
+        true
+    }
+
+    fn send_bounded(&mut self, mut envelope: RuntimeEventEnvelope) {
+        if self.sender.capacity() > 0 {
+            self.receiver_stalled = false;
+        }
+        if self.receiver_stalled && self.sender.capacity() == 0 {
+            return;
+        }
+        for _ in 0..50 {
+            match self.sender.try_send(envelope) {
+                Ok(()) => {
+                    self.receiver_stalled = false;
+                    return;
+                }
+                Err(tokio_mpsc::error::TrySendError::Closed(_)) => return,
+                Err(tokio_mpsc::error::TrySendError::Full(returned)) => {
+                    envelope = returned;
+                    std::thread::sleep(std::time::Duration::from_millis(1));
+                }
+            }
+        }
+        if let Ok(()) = self.sender.try_send(envelope) {
+            self.receiver_stalled = false;
+        } else {
+            self.receiver_stalled = true;
+        }
+    }
+
     fn emit_from(&mut self, event: RuntimeEvent, parent: Option<RunId>) {
-        // Deltas buffered during a channel-full window must never be delivered
-        // after a newer non-delta event: flush them first, unconditionally,
-        // before any non-delta send (even when the channel has space again).
-        if !matches!(
+        let is_delta = matches!(
             event,
             RuntimeEvent::AssistantDelta { .. }
                 | RuntimeEvent::ReasoningDelta { .. }
                 | RuntimeEvent::ToolProgress { .. }
-        ) {
+        );
+        if is_delta {
+            self.try_flush_deltas();
+        } else {
+            // Deltas buffered during a channel-full window must never be delivered
+            // after a newer non-delta event: flush them first, unconditionally,
+            // before any non-delta send (even when the channel has space again).
             self.flush();
         }
         let envelope = self
@@ -551,49 +684,58 @@ impl EventForwarder {
         // Runtime-wide subscribers get every event as it happens; only the
         // turn's own channel coalesces deltas while its client is behind.
         self.inner.publish(&envelope);
+        // If a delta buffer of this kind is still non-empty after try_flush_deltas,
+        // coalesce straight into the buffer so newer deltas never overtake older ones.
+        match &envelope.event {
+            RuntimeEvent::AssistantDelta { text } if !self.assistant.is_empty() => {
+                push_buffered_text(&mut self.assistant, text);
+                return;
+            }
+            RuntimeEvent::ReasoningDelta { text } if !self.reasoning.is_empty() => {
+                push_buffered_text(&mut self.reasoning, text);
+                return;
+            }
+            RuntimeEvent::ToolProgress { id, chunk } if self.progress.contains_key(id) => {
+                let buffer = self.progress.entry(id.clone()).or_default();
+                push_progress_chunk(buffer, chunk);
+                return;
+            }
+            _ => {}
+        }
         match self.sender.try_send(envelope) {
-            Ok(()) => {}
+            Ok(()) => self.receiver_stalled = false,
             Err(tokio_mpsc::error::TrySendError::Closed(_)) => {}
-            Err(tokio_mpsc::error::TrySendError::Full(envelope)) => match envelope.event {
-                RuntimeEvent::AssistantDelta { text } => {
-                    push_buffered_text(&mut self.assistant, &text);
-                }
-                RuntimeEvent::ReasoningDelta { text } => {
-                    push_buffered_text(&mut self.reasoning, &text);
-                }
-                RuntimeEvent::ToolProgress { id, chunk } => {
-                    let buffer = self.progress.entry(id).or_default();
-                    if buffer.len() + chunk.len() <= MAX_BUFFERED_TOOL_PROGRESS_BYTES {
-                        buffer.push_str(&chunk);
-                    } else if !buffer.ends_with(TRUNCATION_MARKER) {
-                        buffer.push_str(TRUNCATION_MARKER);
+            Err(tokio_mpsc::error::TrySendError::Full(envelope)) => {
+                if matches!(
+                    envelope.event,
+                    RuntimeEvent::AssistantDelta { .. }
+                        | RuntimeEvent::ReasoningDelta { .. }
+                        | RuntimeEvent::ToolProgress { .. }
+                        | RuntimeEvent::GenerationProgress { .. }
+                ) {
+                    match envelope.event {
+                        RuntimeEvent::AssistantDelta { text } => {
+                            push_buffered_text(&mut self.assistant, &text);
+                        }
+                        RuntimeEvent::ReasoningDelta { text } => {
+                            push_buffered_text(&mut self.reasoning, &text);
+                        }
+                        RuntimeEvent::ToolProgress { id, chunk } => {
+                            let buffer = self.progress.entry(id).or_default();
+                            push_progress_chunk(buffer, &chunk);
+                        }
+                        // Liveness ticks are worthless late: drop rather than block.
+                        RuntimeEvent::GenerationProgress { .. } => {}
+                        _ => unreachable!(),
                     }
+                } else {
+                    self.send_bounded(envelope);
                 }
-                // Liveness ticks are worthless late: drop rather than block.
-                RuntimeEvent::GenerationProgress { .. } => {}
-                // Deltas were already flushed above, so the send can only be
-                // waiting on a full channel, never on stale buffered content.
-                event => {
-                    let envelope =
-                        self.inner
-                            .envelope(self.session_id, self.turn_id, parent, event);
-                    let _ = self.sender.blocking_send(envelope);
-                }
-            },
+            }
         }
     }
 
     fn flush(&mut self) {
-        if !self.assistant.is_empty() {
-            let text = std::mem::take(&mut self.assistant);
-            let envelope = self.inner.envelope(
-                self.session_id,
-                self.turn_id,
-                None,
-                RuntimeEvent::AssistantDelta { text },
-            );
-            let _ = self.sender.blocking_send(envelope);
-        }
         if !self.reasoning.is_empty() {
             let text = std::mem::take(&mut self.reasoning);
             let envelope = self.inner.envelope(
@@ -602,7 +744,17 @@ impl EventForwarder {
                 None,
                 RuntimeEvent::ReasoningDelta { text },
             );
-            let _ = self.sender.blocking_send(envelope);
+            self.send_bounded(envelope);
+        }
+        if !self.assistant.is_empty() {
+            let text = std::mem::take(&mut self.assistant);
+            let envelope = self.inner.envelope(
+                self.session_id,
+                self.turn_id,
+                None,
+                RuntimeEvent::AssistantDelta { text },
+            );
+            self.send_bounded(envelope);
         }
         for (id, chunk) in std::mem::take(&mut self.progress) {
             let envelope = self.inner.envelope(
@@ -611,7 +763,7 @@ impl EventForwarder {
                 None,
                 RuntimeEvent::ToolProgress { id, chunk },
             );
-            let _ = self.sender.blocking_send(envelope);
+            self.send_bounded(envelope);
         }
     }
 }
@@ -993,5 +1145,157 @@ mod tests {
             .iter()
             .any(|e| matches!(e.event, RuntimeEvent::TurnFinished { .. })));
         while rx_env.recv().await.is_some() {}
+    }
+
+    #[tokio::test]
+    async fn buffered_deltas_flush_in_order_before_newer_deltas_of_same_kind() {
+        let inner = test_inner();
+        let session_id = SessionId::new();
+        let turn_id = TurnId::new();
+        let (tx, mut rx) = tokio_mpsc::channel(1);
+        let mut forwarder = EventForwarder::new(Arc::clone(&inner), session_id, turn_id, tx);
+
+        // Fill the single slot, then buffer "first" while full.
+        forwarder.emit(RuntimeEvent::Thinking);
+        forwarder.emit(RuntimeEvent::AssistantDelta {
+            text: "first ".into(),
+        });
+        assert_eq!(forwarder.assistant, "first ");
+
+        // Consumer drains the single slot, opening space.
+        assert!(matches!(
+            rx.recv().await.unwrap().event,
+            RuntimeEvent::Thinking
+        ));
+
+        // Now "second" arrives: "first " must flush into the open slot before "second".
+        forwarder.emit(RuntimeEvent::AssistantDelta {
+            text: "second".into(),
+        });
+        let first_env = rx.recv().await.unwrap();
+        assert!(
+            matches!(&first_env.event, RuntimeEvent::AssistantDelta { text } if text == "first "),
+            "expected 'first ' before 'second', got {:?}",
+            first_env.event
+        );
+        forwarder.flush();
+        let second_env = rx.recv().await.unwrap();
+        assert!(
+            matches!(&second_env.event, RuntimeEvent::AssistantDelta { text } if text == "second"),
+            "expected 'second' second, got {:?}",
+            second_env.event
+        );
+    }
+
+    #[tokio::test]
+    async fn full_channel_reuses_envelope_without_burning_sequence_number() {
+        let inner = test_inner();
+        let session_id = SessionId::new();
+        let turn_id = TurnId::new();
+        let (tx, mut rx) = tokio_mpsc::channel(1);
+        let mut forwarder = EventForwarder::new(Arc::clone(&inner), session_id, turn_id, tx);
+
+        // Sequence 1 fills the single channel slot.
+        forwarder.emit(RuntimeEvent::Thinking);
+        // Channel is full when Retry arrives; run forwarder on a blocking thread
+        // (matching forward_legacy_events) while the async receiver drains.
+        let emitter = tokio::task::spawn_blocking(move || {
+            forwarder.emit(RuntimeEvent::Retry {
+                attempt: 1,
+                max_attempts: 3,
+                delay_ms: 100,
+            });
+        });
+        let first = rx.recv().await.unwrap();
+        let second = rx.recv().await.unwrap();
+        emitter.await.unwrap();
+        assert_eq!(first.sequence, 1);
+        assert_eq!(
+            second.sequence, 2,
+            "must not burn a second sequence number on backpressure"
+        );
+    }
+
+    #[tokio::test]
+    async fn post_turn_board_and_subagent_events_are_forwarded_to_broadcast_subscribers() {
+        let inner = test_inner();
+        let mut attached = inner.events.subscribe();
+        let session_id = SessionId::new();
+        let turn_id = TurnId::new();
+        let (tx_env, _rx_env) = tokio_mpsc::channel(1);
+        let (outcome_tx, outcome_rx) = oneshot::channel();
+        inner.lock_turns().insert(
+            turn_id,
+            TurnControl {
+                trust: agente_protocol::Trust::Owner,
+                cancel: AbortController::new(),
+                inbox: agente_core::agent::UserInbox::default(),
+                events: tx_env.clone(),
+                session_id,
+            },
+        );
+
+        let (legacy_tx, legacy_rx) = std::sync::mpsc::channel();
+        // Emit more events than the 1-slot per-turn channel holds without draining _rx_env
+        // to also verify forward_legacy_events never deadlocks on an unpolled TurnHandle.
+        for _ in 0..5 {
+            legacy_tx.send(task_event(AgentEvent::Thinking)).unwrap();
+        }
+        legacy_tx
+            .send(task_event(AgentEvent::Done {
+                conversation: vec![core_assistant_message("done")],
+                tokens: 10,
+            }))
+            .unwrap();
+
+        let inner2 = Arc::clone(&inner);
+        let handle = tokio::task::spawn_blocking(move || {
+            forward_legacy_events(inner2, session_id, turn_id, legacy_rx, tx_env, outcome_tx);
+        });
+
+        let outcome = tokio::time::timeout(std::time::Duration::from_secs(5), outcome_rx)
+            .await
+            .expect("must not deadlock when per-turn receiver is unpolled")
+            .unwrap();
+        assert_eq!(outcome.status, TurnStatus::Completed);
+        assert!(inner.lock_turns().get(&turn_id).is_none());
+
+        // Now a background board card finishes AFTER the parent turn completed.
+        let mut board = agente_core::swarm::Board::default();
+        board.enabled = true;
+        legacy_tx
+            .send(task_event(AgentEvent::BoardChanged { board }))
+            .unwrap();
+        legacy_tx
+            .send(task_event(AgentEvent::SubagentCompletedNotice {
+                id: "bg-child-1".into(),
+                subagent_type: "general".into(),
+                status: "completed".into(),
+                summary: "card finished".into(),
+            }))
+            .unwrap();
+        legacy_tx
+            .send(task_event(AgentEvent::SubagentDone {
+                id: "bg-child-1".into(),
+                summary: "card finished".into(),
+                is_error: false,
+            }))
+            .unwrap();
+        drop(legacy_tx);
+        handle.await.unwrap();
+
+        let mut broadcast_events = Vec::new();
+        while let Ok(envelope) = attached.try_recv() {
+            broadcast_events.push(envelope.event);
+        }
+        assert!(broadcast_events
+            .iter()
+            .any(|e| matches!(e, RuntimeEvent::BoardChanged { .. })));
+        assert!(broadcast_events
+            .iter()
+            .any(|e| matches!(e, RuntimeEvent::ChildCompletedNotice { .. })));
+        assert!(broadcast_events
+            .iter()
+            .any(|e| matches!(e, RuntimeEvent::ChildFinished { .. })));
     }
 }

@@ -111,6 +111,7 @@ pub async fn serve_tcp(
                     Ok(accepted) => accepted,
                     Err(error) => {
                         tracing::warn!(%error, "accept failed");
+                        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
                         continue;
                     }
                 };

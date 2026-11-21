@@ -33,6 +33,10 @@ impl Drop for Server {
 }
 
 impl Complements {
+    pub(crate) fn clear(&mut self) {
+        self.0.clear();
+    }
+
     pub(crate) fn sync(&mut self, configs: HashMap<String, ComplementConfig>, retry: Option<&str>) {
         self.0.retain(|id, server| {
             Some(&server.config) == configs.get(id) && retry != Some(id.as_str())

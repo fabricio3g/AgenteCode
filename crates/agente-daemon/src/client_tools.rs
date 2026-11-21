@@ -20,6 +20,26 @@ pub(crate) struct ClientTools {
     turns: Mutex<Vec<TurnId>>,
 }
 impl ClientTools {
+    fn lock_definitions(
+        &self,
+    ) -> std::sync::MutexGuard<'_, HashMap<SessionId, Vec<ClientToolDefinition>>> {
+        self.definitions
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    fn lock_pending(&self) -> std::sync::MutexGuard<'_, HashMap<String, PendingCall>> {
+        self.pending
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    fn lock_turns(&self) -> std::sync::MutexGuard<'_, Vec<TurnId>> {
+        self.turns
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
     pub fn register(
         &self,
         session: SessionId,
@@ -41,7 +61,7 @@ impl ClientTools {
         {
             return Err("Invalid or duplicate client tool definitions".into());
         }
-        self.definitions.lock().unwrap().insert(session, tools);
+        self.lock_definitions().insert(session, tools);
         Ok(())
     }
     pub fn tools(
@@ -53,14 +73,12 @@ impl ClientTools {
         complements: Vec<(McpTool, Arc<McpManager>)>,
     ) -> Result<Vec<Box<dyn Tool>>, String> {
         let definitions = self
-            .definitions
-            .lock()
-            .unwrap()
+            .lock_definitions()
             .get(&session)
             .cloned()
             .ok_or("Register Home tools before starting a turn")?;
         let count = Arc::new(AtomicU32::new(0));
-        self.turns.lock().unwrap().push(turn);
+        self.lock_turns().push(turn);
         Ok(definitions
             .into_iter()
             .map(|definition| (definition, None))
@@ -93,25 +111,47 @@ impl ClientTools {
             .collect())
     }
     pub fn result(&self, result: ClientToolResult) -> Result<(), String> {
-        let mut pending = self.pending.lock().unwrap();
+        let mut pending = self.lock_pending();
         let Some((session, turn, _)) = pending.get(&result.request_id) else {
             return Err("Stale or duplicate tool result".into());
         };
         if *session != result.session_id || *turn != result.turn_id {
             return Err("Tool result belongs to another session or turn".into());
         }
-        let (_, _, sender) = pending.remove(&result.request_id).unwrap();
+        let (_, _, sender) = pending.remove(&result.request_id).expect("checked get");
         sender
             .send(result)
             .map_err(|_| "Tool call was cancelled".into())
     }
+    pub fn finish_turn(&self, turn: TurnId) {
+        self.lock_turns().retain(|active| *active != turn);
+        self.lock_pending()
+            .retain(|_, (_, pending_turn, _)| *pending_turn != turn);
+    }
+    pub fn remove_session(&self, session: SessionId) {
+        self.lock_definitions().remove(&session);
+        self.lock_pending()
+            .retain(|_, (pending_session, _, _)| *pending_session != session);
+    }
     pub fn disconnect(&self, runtime: &agente_runtime::RuntimeHandle) {
-        for turn in self.turns.lock().unwrap().drain(..) {
+        for turn in self.lock_turns().drain(..) {
             runtime.cancel(turn);
         }
-        self.pending.lock().unwrap().clear();
+        self.lock_pending().clear();
     }
 }
+
+struct PendingCallGuard<'a> {
+    bridge: &'a ClientTools,
+    request_id: String,
+}
+
+impl Drop for PendingCallGuard<'_> {
+    fn drop(&mut self) {
+        self.bridge.lock_pending().remove(&self.request_id);
+    }
+}
+
 struct ClientTool {
     definition: ClientToolDefinition,
     session: SessionId,
@@ -123,6 +163,17 @@ struct ClientTool {
     attachments: Mutex<HashMap<String, Vec<agente_protocol::Attachment>>>,
     complement: Option<McpToolAdapter>,
 }
+
+impl ClientTool {
+    fn lock_attachments(
+        &self,
+    ) -> std::sync::MutexGuard<'_, HashMap<String, Vec<agente_protocol::Attachment>>> {
+        self.attachments
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+}
+
 #[async_trait]
 impl Tool for ClientTool {
     fn name(&self) -> &str {
@@ -148,11 +199,7 @@ impl Tool for ClientTool {
         if let Some(tool) = &self.complement {
             return tool.take_result_attachments(call_id);
         }
-        self.attachments
-            .lock()
-            .unwrap()
-            .remove(call_id)
-            .unwrap_or_default()
+        self.lock_attachments().remove(call_id).unwrap_or_default()
     }
     fn allowed_in_plan(&self) -> bool {
         self.complement
@@ -194,21 +241,23 @@ impl Tool for ClientTool {
         };
         let (sender, receiver) = oneshot::channel();
         self.bridge
-            .pending
-            .lock()
-            .unwrap()
+            .lock_pending()
             .insert(request_id.clone(), (self.session, self.turn, sender));
+        let _pending_guard = PendingCallGuard {
+            bridge: &self.bridge,
+            request_id,
+        };
         let sent = self
             .outbox
             .send(json!({"jsonrpc":"2.0","method":"client_tools.call","params":call}))
             .await;
-        let result = if sent.is_err() {
+        if sent.is_err() {
             Err(ToolError::ExecutionError("Home client disconnected".into()))
         } else {
             tokio::select! {
                 response = receiver => match response {
                     Ok(result) if !result.is_error => {
-                        if !result.attachments.is_empty() { self.attachments.lock().unwrap().insert(context.call_id.clone(), result.attachments); }
+                        if !result.attachments.is_empty() { self.lock_attachments().insert(context.call_id.clone(), result.attachments); }
                         Ok(result.content)
                     },
                     Ok(result) => Err(ToolError::ExecutionError(result.content)),
@@ -219,9 +268,7 @@ impl Tool for ClientTool {
                     Err(ToolError::ExecutionError("Home tool cancelled".into()))
                 }
             }
-        };
-        self.bridge.pending.lock().unwrap().remove(&request_id);
-        result
+        }
     }
 }
 
@@ -365,5 +412,50 @@ mod tests {
                 Vec::new(),
             )
             .is_err());
+    }
+
+    #[tokio::test]
+    async fn dropping_in_flight_tool_future_clears_pending_and_turn_session_cleanup_prunes_maps() {
+        let bridge = Arc::new(ClientTools::default());
+        let session = SessionId::new();
+        let turn = TurnId::new();
+        bridge
+            .register(session, vec![definition("create_pdf")])
+            .unwrap();
+        let (outbox, mut receiver) = mpsc::channel(4);
+        let tool = bridge
+            .tools(
+                session,
+                turn,
+                &HomeTurnPolicy {
+                    max_iterations: 2,
+                    max_tool_calls: 2,
+                    max_time_ms: 1000,
+                    complements: false,
+                },
+                outbox,
+                Vec::new(),
+            )
+            .unwrap()
+            .pop()
+            .unwrap();
+        assert_eq!(bridge.lock_turns().len(), 1);
+        let controller = AbortController::new();
+        let context = ToolExecutionContext::new(controller.signal());
+        let task =
+            tokio::spawn(async move { tool.execute_with_context(json!({}), ".", context).await });
+        // Wait until the call is emitted so it is definitely inserted in `pending`.
+        let _call = receiver.recv().await.unwrap();
+        assert_eq!(bridge.lock_pending().len(), 1);
+        // Aborting the task drops the future mid-await: the Drop guard must clear `pending`.
+        task.abort();
+        let _ = task.await;
+        assert!(bridge.lock_pending().is_empty());
+
+        bridge.finish_turn(turn);
+        assert!(bridge.lock_turns().is_empty());
+
+        bridge.remove_session(session);
+        assert!(!bridge.lock_definitions().contains_key(&session));
     }
 }

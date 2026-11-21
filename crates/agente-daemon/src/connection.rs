@@ -42,6 +42,7 @@ struct Connection {
     /// the subscription must not send them a second time.
     own_turns: Mutex<HashSet<TurnId>>,
     subscription: Mutex<Option<JoinHandle<()>>>,
+    tasks: Mutex<Vec<tokio::task::AbortHandle>>,
     client_tools: Arc<crate::client_tools::ClientTools>,
     complements: Mutex<crate::complements::Complements>,
 }
@@ -63,8 +64,27 @@ where
     W: AsyncWrite + Unpin + Send + 'static,
 {
     let (outbox, mut outgoing) = mpsc::channel::<Value>(OUTBOX_CAPACITY);
+    let (shutdown_tx, mut shutdown_rx) = tokio::sync::oneshot::channel::<()>();
     let writer_task = tokio::spawn(async move {
         let mut writer = writer;
+        loop {
+            let message = tokio::select! {
+                biased;
+                _ = &mut shutdown_rx => {
+                    outgoing.close();
+                    break;
+                }
+                message = outgoing.recv() => match message {
+                    Some(message) => message,
+                    None => return,
+                },
+            };
+            let mut line = serde_json::to_vec(&message).unwrap_or_default();
+            line.push(b'\n');
+            if writer.write_all(&line).await.is_err() || writer.flush().await.is_err() {
+                return;
+            }
+        }
         while let Some(message) = outgoing.recv().await {
             let mut line = serde_json::to_vec(&message).unwrap_or_default();
             line.push(b'\n');
@@ -79,6 +99,7 @@ where
         outbox,
         own_turns: Mutex::new(HashSet::new()),
         subscription: Mutex::new(None),
+        tasks: Mutex::new(Vec::new()),
         client_tools: Arc::default(),
         complements: Mutex::default(),
     });
@@ -101,17 +122,16 @@ where
                 {
                     // Discovery and smart compaction must not hold up other chats
                     // or control requests on the shared Desktop connection.
-                    let connection = Arc::clone(&connection);
-                    tokio::spawn(async move {
+                    let task_connection = Arc::clone(&connection);
+                    connection.spawn_task(async move {
+                        let connection = task_connection;
                         let outcome = if method == "turn.start" {
                             if params.pointer("/home/complements").and_then(Value::as_bool)
                                 == Some(true)
                             {
                                 let wait = async {
                                     while connection
-                                        .complements
-                                        .lock()
-                                        .unwrap()
+                                        .lock_complements()
                                         .waiting_for_first_connection()
                                     {
                                         tokio::time::sleep(std::time::Duration::from_millis(75))
@@ -121,7 +141,7 @@ where
                                 let _ =
                                     tokio::time::timeout(std::time::Duration::from_secs(4), wait)
                                         .await;
-                                let managers = connection.complements.lock().unwrap().managers();
+                                let managers = connection.lock_complements().managers();
                                 let refresh = async {
                                     for manager in managers {
                                         manager.refresh_stale_tools().await;
@@ -222,8 +242,13 @@ where
     if let Some(task) = connection.lock_subscription().take() {
         task.abort();
     }
+    for task in connection.lock_tasks().drain(..) {
+        task.abort();
+    }
     connection.client_tools.disconnect(&connection.runtime);
+    connection.lock_complements().clear();
     drop(connection);
+    let _ = shutdown_tx.send(());
     let _ = writer_task.await;
     result
 }
@@ -434,6 +459,29 @@ impl Connection {
         self.own_turns
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    fn lock_tasks(&self) -> std::sync::MutexGuard<'_, Vec<tokio::task::AbortHandle>> {
+        self.tasks
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    fn lock_complements(&self) -> std::sync::MutexGuard<'_, crate::complements::Complements> {
+        self.complements
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    fn spawn_task(
+        &self,
+        future: impl std::future::Future<Output = ()> + Send + 'static,
+    ) -> tokio::task::AbortHandle {
+        let mut tasks = self.lock_tasks();
+        tasks.retain(|task| !task.is_finished());
+        let handle = tokio::spawn(future).abort_handle();
+        tasks.push(handle.clone());
+        handle
     }
 
     async fn send(&self, message: Value) {
@@ -678,6 +726,7 @@ impl Connection {
                 let deleted = runtime
                     .delete_session(session_id)
                     .map_err(runtime_failure)?;
+                self.client_tools.remove_session(session_id);
                 Ok(json!({ "deleted": deleted }))
             }
             "session.fork" => {
@@ -704,6 +753,11 @@ impl Connection {
                     agente_core::goal::GoalStore::user()
                         .put(fork.session_id.as_uuid(), &goal)
                         .map_err(|error| (rpc::INTERNAL_ERROR, error.to_string()))?;
+                }
+                if agente_core::swarm::BoardStore::user().enabled(session_id.as_uuid()) {
+                    agente_core::swarm::BoardStore::user()
+                        .set_enabled(fork.session_id.as_uuid(), true)
+                        .map_err(|error| (rpc::INTERNAL_ERROR, error))?;
                 }
                 if let Some(index) = conversation_index {
                     runtime
@@ -742,11 +796,11 @@ impl Connection {
                 for config in servers.values_mut() {
                     config.mcp.trust = false;
                 }
-                let mut complements = self.complements.lock().unwrap();
+                let mut complements = self.lock_complements();
                 complements.sync(servers, retry.as_deref());
                 Ok(complements.status())
             }
-            "complements.status" => Ok(self.complements.lock().unwrap().status()),
+            "complements.status" => Ok(self.lock_complements().status()),
             "client_tools.result" => {
                 self.client_tools
                     .result(parse(params)?)
@@ -764,7 +818,9 @@ impl Connection {
                 {
                     return Err((rpc::INVALID_PARAMS, "Empty message".into()));
                 }
-                let turn = if let Some(policy) = &start.home {
+                let turn_id = TurnId::new();
+                let own_guard = OwnTurnGuard::new(self, turn_id);
+                let (turn, timeout_task) = if let Some(policy) = &start.home {
                     if policy.max_iterations == 0
                         || policy.max_iterations > 500
                         || policy.max_tool_calls > 1000
@@ -773,9 +829,8 @@ impl Connection {
                     {
                         return Err((rpc::INVALID_PARAMS, "Invalid Home turn budgets".into()));
                     }
-                    let turn_id = TurnId::new();
                     let complements = if policy.complements && policy.max_tool_calls > 0 {
-                        self.complements.lock().unwrap().tools()
+                        self.lock_complements().tools()
                     } else {
                         Vec::new()
                     };
@@ -807,16 +862,23 @@ impl Connection {
                         )
                         .map_err(runtime_failure)?;
                     let runtime = runtime.clone();
-                    tokio::spawn(async move {
+                    let timeout_handle = self.spawn_task(async move {
                         tokio::time::sleep(std::time::Duration::from_millis(timeout)).await;
                         runtime.cancel(turn_id);
                     });
-                    turn
+                    (turn, Some(timeout_handle))
                 } else {
-                    runtime.start_turn(start).map_err(runtime_failure)?
+                    (
+                        runtime
+                            .start_turn_with_tools(start, turn_id, None)
+                            .map_err(runtime_failure)?,
+                        None,
+                    )
                 };
                 let conversation_index = turn.conversation_index;
-                Ok(json!({ "turn_id": self.pump(turn), "conversation_index": conversation_index }))
+                let turn_id = self.pump(turn, timeout_task);
+                own_guard.disarm();
+                Ok(json!({ "turn_id": turn_id, "conversation_index": conversation_index }))
             }
             "turn.exec" => {
                 // Whoever can open the socket is the owner: it is created
@@ -826,10 +888,14 @@ impl Connection {
                     tool,
                     arguments,
                 } = parse(params)?;
+                let turn_id = TurnId::new();
+                let own_guard = OwnTurnGuard::new(self, turn_id);
                 let turn = runtime
-                    .exec_tool(session_id, &tool, arguments, Trust::Owner)
+                    .exec_tool_with_id(session_id, turn_id, &tool, arguments, Trust::Owner)
                     .map_err(runtime_failure)?;
-                Ok(json!({ "turn_id": self.pump(turn) }))
+                let turn_id = self.pump(turn, None);
+                own_guard.disarm();
+                Ok(json!({ "turn_id": turn_id }))
             }
             "turn.cancel" => {
                 let TurnParams { turn_id } = parse(params)?;
@@ -925,11 +991,20 @@ impl Connection {
     }
 
     /// Forward a turn this client started: every event, then its outcome.
-    fn pump(self: &Arc<Self>, mut turn: TurnHandle) -> TurnId {
+    fn pump(
+        self: &Arc<Self>,
+        mut turn: TurnHandle,
+        timeout: Option<tokio::task::AbortHandle>,
+    ) -> TurnId {
         let turn_id = turn.turn_id();
         self.lock_own_turns().insert(turn_id);
         let connection = Arc::clone(self);
-        tokio::spawn(async move {
+        self.spawn_task(async move {
+            let mut guard = PumpGuard {
+                connection: Arc::clone(&connection),
+                turn_id,
+                timeout,
+            };
             while let Some(envelope) = turn.recv().await {
                 let terminal = envelope.event.is_terminal();
                 if let Ok(params) = serde_json::to_value(&envelope) {
@@ -939,7 +1014,9 @@ impl Connection {
                     break;
                 }
             }
-            if let Some(outcome) = turn.outcome().await {
+            let outcome = turn.outcome().await;
+            guard.cleanup();
+            if let Some(outcome) = outcome {
                 if let Ok(params) = serde_json::to_value(&outcome) {
                     connection.send(notification("turn.outcome", params)).await;
                 }
@@ -979,5 +1056,253 @@ impl Connection {
         if let Some(previous) = self.lock_subscription().replace(task) {
             previous.abort();
         }
+    }
+}
+
+struct OwnTurnGuard<'a> {
+    connection: &'a Connection,
+    turn_id: TurnId,
+    armed: bool,
+}
+
+impl<'a> OwnTurnGuard<'a> {
+    fn new(connection: &'a Connection, turn_id: TurnId) -> Self {
+        connection.lock_own_turns().insert(turn_id);
+        Self {
+            connection,
+            turn_id,
+            armed: true,
+        }
+    }
+
+    fn disarm(mut self) {
+        self.armed = false;
+    }
+}
+
+impl Drop for OwnTurnGuard<'_> {
+    fn drop(&mut self) {
+        if self.armed {
+            self.connection.client_tools.finish_turn(self.turn_id);
+            self.connection.lock_own_turns().remove(&self.turn_id);
+        }
+    }
+}
+
+struct PumpGuard {
+    connection: Arc<Connection>,
+    turn_id: TurnId,
+    timeout: Option<tokio::task::AbortHandle>,
+}
+
+impl PumpGuard {
+    fn cleanup(&mut self) {
+        if let Some(timeout) = self.timeout.take() {
+            timeout.abort();
+        }
+        self.connection.client_tools.finish_turn(self.turn_id);
+        self.connection.lock_own_turns().remove(&self.turn_id);
+    }
+}
+
+impl Drop for PumpGuard {
+    fn drop(&mut self) {
+        self.cleanup();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use agente_core::config::AppConfig;
+    use agente_runtime::{RuntimeConfig, RuntimeSupervisor};
+    use tokio::io::{duplex, AsyncBufReadExt};
+    use tokio::time::{timeout, Duration};
+
+    fn test_service() -> Service {
+        let runtime =
+            RuntimeSupervisor::start(RuntimeConfig::from_app_config(&AppConfig::default(), "."));
+        Service { runtime }
+    }
+
+    #[tokio::test]
+    async fn disconnect_aborts_tasks_and_finishes_without_hanging() {
+        let service = test_service();
+        let (server_side, client_side) = duplex(64 * 1024);
+        let (server_read, server_write) = tokio::io::split(server_side);
+        let (client_read, mut client_write) = tokio::io::split(client_side);
+
+        let server =
+            tokio::spawn(async move { serve_connection(service, server_read, server_write).await });
+
+        let session_id = SessionId::new();
+        let request = json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "turn.start",
+            "params": {
+                "session_id": session_id,
+                "prompt": { "role": "user", "content": "hi" },
+                "provider": "definitely-not-a-provider"
+            }
+        });
+        let mut line = serde_json::to_string(&request).unwrap();
+        line.push('\n');
+        client_write.write_all(line.as_bytes()).await.unwrap();
+        client_write.flush().await.unwrap();
+
+        // Wait for the turn.start reply (skipping any event notifications emitted
+        // once the pump starts), then disconnect immediately.
+        let mut lines = BufReader::new(client_read).lines();
+        loop {
+            let reply_line = timeout(Duration::from_secs(5), lines.next_line())
+                .await
+                .unwrap()
+                .unwrap()
+                .unwrap();
+            let frame: Value = serde_json::from_str(&reply_line).unwrap();
+            if frame.get("id") == Some(&json!(1)) {
+                break;
+            }
+        }
+        drop(client_write);
+        drop(lines);
+
+        timeout(Duration::from_secs(5), server)
+            .await
+            .expect("serve_connection must not hang on disconnect")
+            .expect("server task panicked")
+            .expect("clean EOF should return Ok(())");
+    }
+
+    #[tokio::test]
+    async fn subscribed_turn_does_not_duplicate_turn_started_and_cleans_own_turns() {
+        let service = test_service();
+        let (server_side, client_side) = duplex(64 * 1024);
+        let (server_read, server_write) = tokio::io::split(server_side);
+        let (client_read, mut client_write) = tokio::io::split(client_side);
+
+        let server =
+            tokio::spawn(async move { serve_connection(service, server_read, server_write).await });
+
+        let mut lines = BufReader::new(client_read).lines();
+        async fn send_frame(
+            writer: &mut tokio::io::WriteHalf<tokio::io::DuplexStream>,
+            value: Value,
+        ) {
+            let mut text = serde_json::to_string(&value).unwrap();
+            text.push('\n');
+            writer.write_all(text.as_bytes()).await.unwrap();
+            writer.flush().await.unwrap();
+        }
+
+        let session_id = SessionId::new();
+        send_frame(
+            &mut client_write,
+            json!({
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "events.subscribe",
+                "params": { "session_ids": [session_id] }
+            }),
+        )
+        .await;
+        let sub_reply: Value = serde_json::from_str(
+            &timeout(Duration::from_secs(5), lines.next_line())
+                .await
+                .unwrap()
+                .unwrap()
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(sub_reply["id"], 1);
+
+        send_frame(
+            &mut client_write,
+            json!({
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "turn.start",
+                "params": {
+                    "session_id": session_id,
+                    "prompt": { "role": "user", "content": "hi" },
+                    "provider": "definitely-not-a-provider"
+                }
+            }),
+        )
+        .await;
+
+        let mut turn_started_count = 0usize;
+        let mut saw_outcome = false;
+        while !saw_outcome {
+            let frame_line = timeout(Duration::from_secs(5), lines.next_line())
+                .await
+                .unwrap()
+                .unwrap()
+                .unwrap();
+            let frame: Value = serde_json::from_str(&frame_line).unwrap();
+            if frame.get("method").and_then(Value::as_str) == Some("event")
+                && frame.pointer("/params/event/type").and_then(Value::as_str)
+                    == Some("turn_started")
+            {
+                turn_started_count += 1;
+            }
+            if frame.get("method").and_then(Value::as_str) == Some("turn.outcome") {
+                saw_outcome = true;
+            }
+        }
+        assert_eq!(
+            turn_started_count, 1,
+            "TurnStarted must not be duplicated between pump and events.subscribe"
+        );
+        drop(client_write);
+        drop(lines);
+        timeout(Duration::from_secs(5), server)
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn home_turn_timeout_task_is_aborted_when_turn_finishes_early() {
+        let service = test_service();
+        let (outbox, _outgoing) = mpsc::channel::<Value>(32);
+        let connection = Arc::new(Connection {
+            runtime: service.runtime,
+            outbox,
+            own_turns: Mutex::new(HashSet::new()),
+            subscription: Mutex::new(None),
+            tasks: Mutex::new(Vec::new()),
+            client_tools: Arc::default(),
+            complements: Mutex::default(),
+        });
+
+        let session_id = SessionId::new();
+        connection
+            .client_tools
+            .register(session_id, Vec::new())
+            .unwrap();
+
+        let timeout_handle = connection.spawn_task(async {
+            tokio::time::sleep(Duration::from_secs(60)).await;
+        });
+        assert!(!timeout_handle.is_finished());
+
+        let turn_id = TurnId::new();
+        connection.lock_own_turns().insert(turn_id);
+        let mut guard = PumpGuard {
+            connection: Arc::clone(&connection),
+            turn_id,
+            timeout: Some(timeout_handle.clone()),
+        };
+        guard.cleanup();
+        tokio::task::yield_now().await;
+
+        assert!(
+            timeout_handle.is_finished(),
+            "timeout task must be aborted when turn finishes early"
+        );
+        assert!(connection.lock_own_turns().is_empty());
     }
 }

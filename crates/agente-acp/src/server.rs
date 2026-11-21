@@ -24,7 +24,7 @@ use std::sync::{Arc, Mutex};
 
 use agente_protocol::{
     ApprovalDecision, ApprovalDecisionKind, Message, RuntimeEvent, RuntimeEventEnvelope, SessionId,
-    StartTurn, TurnId, PROTOCOL_VERSION,
+    StartTurn, TurnId,
 };
 use agente_runtime::RuntimeHandle;
 use serde_json::{json, Value};
@@ -34,6 +34,9 @@ use tokio::sync::Mutex as AsyncMutex;
 use crate::rpc::{self, FrameError, Incoming};
 use crate::updates;
 use crate::AcpError;
+
+/// ACP wire protocol version (distinct from `agente_protocol::PROTOCOL_VERSION`).
+const ACP_PROTOCOL_VERSION: u16 = 1;
 
 /// Maximum size of a single inbound JSON-RPC line (64 MiB).
 const MAX_RPC_LINE_BYTES: usize = 64 * 1024 * 1024;
@@ -48,8 +51,8 @@ pub(crate) struct ServerState {
     sink: SharedSink,
     /// Ids for agent-issued requests (`session/request_permission`).
     next_outgoing_id: AtomicU64,
-    /// Generated JSON-RPC id → runtime approval `request_id`.
-    pending_approvals: Mutex<HashMap<u64, String>>,
+    /// Generated JSON-RPC id → `(turn_id, runtime approval request_id)`.
+    pending_approvals: Mutex<HashMap<u64, (TurnId, String)>>,
     /// Session → most recent active turn (`session/cancel` names a session).
     active_turns: Mutex<HashMap<SessionId, TurnId>>,
     /// Turn → JSON-RPC id of the `session/prompt` awaiting its `stopReason`.
@@ -71,6 +74,49 @@ impl ServerState {
             active_turns: Mutex::new(HashMap::new()),
             pending_prompts: Mutex::new(HashMap::new()),
             forwarders: Mutex::new(HashMap::new()),
+        }
+    }
+
+    fn lock_pending_approvals(&self) -> std::sync::MutexGuard<'_, HashMap<u64, (TurnId, String)>> {
+        self.pending_approvals
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    fn lock_active_turns(&self) -> std::sync::MutexGuard<'_, HashMap<SessionId, TurnId>> {
+        self.active_turns
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    fn lock_pending_prompts(&self) -> std::sync::MutexGuard<'_, HashMap<TurnId, Value>> {
+        self.pending_prompts
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    fn lock_forwarders(
+        &self,
+    ) -> std::sync::MutexGuard<'_, HashMap<TurnId, tokio::task::AbortHandle>> {
+        self.forwarders
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    fn shutdown(&self) {
+        let mut turns_to_cancel: Vec<TurnId> = self
+            .lock_active_turns()
+            .drain()
+            .map(|(_, turn)| turn)
+            .collect();
+        turns_to_cancel.extend(self.lock_pending_prompts().drain().map(|(turn, _)| turn));
+        for (turn, handle) in self.lock_forwarders().drain() {
+            turns_to_cancel.push(turn);
+            handle.abort();
+        }
+        self.lock_pending_approvals().clear();
+        for turn_id in turns_to_cancel {
+            self.runtime.cancel(turn_id);
         }
     }
 
@@ -125,38 +171,43 @@ pub(crate) async fn serve_with_state<R: AsyncRead + Unpin>(
     reader: R,
 ) -> Result<(), AcpError> {
     let mut reader = BufReader::new(reader);
-    while let Some(line) = rpc::read_bounded_line(&mut reader, MAX_RPC_LINE_BYTES).await? {
-        if line.trim().is_empty() {
-            continue;
+    let result = async {
+        while let Some(line) = rpc::read_bounded_line(&mut reader, MAX_RPC_LINE_BYTES).await? {
+            if line.trim().is_empty() {
+                continue;
+            }
+            match rpc::classify(&line) {
+                Ok(incoming) => dispatch(&state, incoming).await?,
+                Err(FrameError::Parse(error)) => {
+                    state
+                        .send_error(
+                            &Value::Null,
+                            rpc::PARSE_ERROR,
+                            &format!("parse error: {error}"),
+                        )
+                        .await?;
+                }
+                Err(FrameError::NotAMessage) => {
+                    state
+                        .send_error(
+                            &Value::Null,
+                            rpc::INVALID_REQUEST,
+                            "expected a JSON-RPC message object",
+                        )
+                        .await?;
+                }
+                Err(FrameError::UnsupportedProtocol(id)) => {
+                    state
+                        .send_error(&id, rpc::INVALID_REQUEST, "jsonrpc must be 2.0")
+                        .await?;
+                }
+            }
         }
-        match rpc::classify(&line) {
-            Ok(incoming) => dispatch(&state, incoming).await?,
-            Err(FrameError::Parse(error)) => {
-                state
-                    .send_error(
-                        &Value::Null,
-                        rpc::PARSE_ERROR,
-                        &format!("parse error: {error}"),
-                    )
-                    .await?;
-            }
-            Err(FrameError::NotAMessage) => {
-                state
-                    .send_error(
-                        &Value::Null,
-                        rpc::INVALID_REQUEST,
-                        "expected a JSON-RPC message object",
-                    )
-                    .await?;
-            }
-            Err(FrameError::UnsupportedProtocol(id)) => {
-                state
-                    .send_error(&id, rpc::INVALID_REQUEST, "jsonrpc must be 2.0")
-                    .await?;
-            }
-        }
+        Ok(())
     }
-    Ok(())
+    .await;
+    state.shutdown();
+    result
 }
 
 /// Route one classified frame. Returns `Err` only for sink failures (the
@@ -214,7 +265,7 @@ async fn handle_request(
 /// no auth methods.
 fn initialize_result() -> Value {
     json!({
-        "protocolVersion": PROTOCOL_VERSION,
+        "protocolVersion": ACP_PROTOCOL_VERSION,
         "agentCapabilities": {
             "loadSession": true,
             "promptCapabilities": { "embeddedContext": true },
@@ -263,6 +314,9 @@ fn legacy_approve(state: &ServerState, params: &Value) -> Result<Value, RequestF
         request_id: request_id.to_string(),
         decision,
     });
+    state
+        .lock_pending_approvals()
+        .retain(|_, (_, pending_id)| pending_id != request_id);
     Ok(json!({ "accepted": accepted }))
 }
 
@@ -297,19 +351,14 @@ async fn handle_prompt(state: &Arc<ServerState>, id: Value, params: Value) -> Re
     };
     let turn_id = turn.turn_id();
     let turn_session = turn.session_id();
-    state
-        .active_turns
-        .lock()
-        .unwrap()
-        .insert(turn_session, turn_id);
-    state.pending_prompts.lock().unwrap().insert(turn_id, id);
+    state.lock_active_turns().insert(turn_session, turn_id);
+    state.lock_pending_prompts().insert(turn_id, id);
+    let mut forwarders = state.lock_forwarders();
     let pump_state = Arc::clone(state);
     let pump = tokio::spawn(pump_turn(pump_state, turn_session, turn_id, turn));
-    state
-        .forwarders
-        .lock()
-        .unwrap()
-        .insert(turn_id, pump.abort_handle());
+    if !pump.is_finished() {
+        forwarders.insert(turn_id, pump.abort_handle());
+    }
     Ok(())
 }
 
@@ -346,19 +395,22 @@ async fn handle_cancel(state: &Arc<ServerState>, params: Value) {
     }
     let turn_id = match explicit_turn {
         Some(turn_id) => Some(turn_id),
-        None => state.active_turns.lock().unwrap().get(&session_id).copied(),
+        None => state.lock_active_turns().get(&session_id).copied(),
     };
     let Some(turn_id) = turn_id else {
         tracing::debug!(%session_id, "session/cancel for a session with no active turn");
         return;
     };
+    state
+        .lock_pending_approvals()
+        .retain(|_, (pending_turn, _)| *pending_turn != turn_id);
     if state.runtime.cancel(turn_id) {
         // The runtime will deliver a terminal `TurnCancelled` envelope; the
         // pump resolves the pending prompt then. Forwarding stays alive so the
         // cancellation tail still streams.
         return;
     }
-    let reply = state.pending_prompts.lock().unwrap().remove(&turn_id);
+    let reply = state.lock_pending_prompts().remove(&turn_id);
     if let Some(id) = reply {
         if let Err(error) = state
             .send(&json!({
@@ -370,10 +422,10 @@ async fn handle_cancel(state: &Arc<ServerState>, params: Value) {
         {
             tracing::warn!(%error, "failed to resolve a cancelled prompt");
         }
-        if let Some(handle) = state.forwarders.lock().unwrap().remove(&turn_id) {
+        if let Some(handle) = state.lock_forwarders().remove(&turn_id) {
             handle.abort();
         }
-        let mut active = state.active_turns.lock().unwrap();
+        let mut active = state.lock_active_turns();
         if active.get(&session_id) == Some(&turn_id) {
             active.remove(&session_id);
         }
@@ -393,7 +445,7 @@ async fn handle_response(
         tracing::debug!(?id, "ignoring response with a non-numeric id");
         return;
     };
-    let Some(approval_id) = state.pending_approvals.lock().unwrap().remove(&jsonrpc_id) else {
+    let Some((_, approval_id)) = state.lock_pending_approvals().remove(&jsonrpc_id) else {
         tracing::debug!(
             jsonrpc_id,
             "ignoring response with no pending agent request"
@@ -422,6 +474,7 @@ async fn handle_response(
 async fn send_permission_request(
     state: &Arc<ServerState>,
     session_id: SessionId,
+    turn_id: TurnId,
     request_id: &str,
     tool_name: &str,
     tool_args: &str,
@@ -431,10 +484,8 @@ async fn send_permission_request(
         .fetch_add(1, Ordering::Relaxed)
         .wrapping_add(1);
     state
-        .pending_approvals
-        .lock()
-        .unwrap()
-        .insert(jsonrpc_id, request_id.to_string());
+        .lock_pending_approvals()
+        .insert(jsonrpc_id, (turn_id, request_id.to_string()));
     let params = updates::request_permission_params(session_id, request_id, tool_name, tool_args);
     let frame = json!({
         "jsonrpc": "2.0",
@@ -444,7 +495,7 @@ async fn send_permission_request(
     });
     if let Err(error) = state.send(&frame).await {
         tracing::warn!(%error, "failed to send session/request_permission");
-        state.pending_approvals.lock().unwrap().remove(&jsonrpc_id);
+        state.lock_pending_approvals().remove(&jsonrpc_id);
     }
 }
 
@@ -522,6 +573,7 @@ async fn pump_turn(
             send_permission_request(
                 &state,
                 envelope.session_id,
+                turn_id,
                 request_id,
                 tool_name,
                 tool_args,
@@ -569,7 +621,9 @@ impl ServerState {
         turn_id: TurnId,
         resolution: TurnResolution,
     ) {
-        let reply = self.pending_prompts.lock().unwrap().remove(&turn_id);
+        self.lock_pending_approvals()
+            .retain(|_, (pending_turn, _)| *pending_turn != turn_id);
+        let reply = self.lock_pending_prompts().remove(&turn_id);
         if let Some(id) = reply {
             let frame = match &resolution {
                 TurnResolution::Finished => json!({
@@ -587,8 +641,8 @@ impl ServerState {
                 tracing::warn!(%error, "failed to deliver the prompt response");
             }
         }
-        self.forwarders.lock().unwrap().remove(&turn_id);
-        let mut active = self.active_turns.lock().unwrap();
+        self.lock_forwarders().remove(&turn_id);
+        let mut active = self.lock_active_turns();
         if active.get(&session_id) == Some(&turn_id) {
             active.remove(&session_id);
         }
@@ -852,7 +906,8 @@ mod tests {
         assert_eq!(reply["id"], 1);
         assert!(reply.get("error").is_none());
         let result = &reply["result"];
-        assert_eq!(result["protocolVersion"], PROTOCOL_VERSION);
+        assert_eq!(result["protocolVersion"], 1);
+        assert_eq!(ACP_PROTOCOL_VERSION, 1);
         assert_eq!(result["agentCapabilities"]["loadSession"], true);
         assert_eq!(
             result["agentCapabilities"]["promptCapabilities"]["embeddedContext"],
@@ -1346,5 +1401,123 @@ mod tests {
         let reply = connection.client.read().await;
         assert_eq!(reply["id"], 1);
         connection.server.abort();
+    }
+
+    #[tokio::test]
+    async fn pending_approvals_are_pruned_on_legacy_approve_and_turn_finish() {
+        let mut connection = start_connection(test_runtime()).await;
+        let session_id = SessionId::new();
+        let turn_id = TurnId::new();
+        let (events, pump) = spawn_pump(&connection, session_id, turn_id, Some(json!(55)));
+
+        events
+            .send(envelope(
+                session_id,
+                turn_id,
+                RuntimeEvent::ApprovalRequested {
+                    request_id: "req-legacy".into(),
+                    source: "parent".into(),
+                    tool_name: "shell".into(),
+                    tool_args: "{}".into(),
+                    description: "run".into(),
+                    is_dangerous: false,
+                    file_path: None,
+                    child_run_id: None,
+                    old_content: None,
+                    new_content: None,
+                },
+            ))
+            .await
+            .unwrap();
+        let perm1 = connection.client.read().await;
+        assert_eq!(perm1["method"], "session/request_permission");
+        assert_eq!(connection.state.lock_pending_approvals().len(), 1);
+
+        // Answering via legacy session/approve prunes the pending entry.
+        connection
+            .client
+            .send(&json!({
+                "jsonrpc": "2.0",
+                "id": 90,
+                "method": "session/approve",
+                "params": { "requestId": "req-legacy", "decision": "deny" }
+            }))
+            .await;
+        let approve_reply = connection.client.read().await;
+        assert_eq!(approve_reply["id"], 90);
+        assert!(connection.state.lock_pending_approvals().is_empty());
+
+        // An unanswered approval when the turn finishes is pruned by finish_turn.
+        events
+            .send(envelope(
+                session_id,
+                turn_id,
+                RuntimeEvent::ApprovalRequested {
+                    request_id: "req-unanswered".into(),
+                    source: "parent".into(),
+                    tool_name: "shell".into(),
+                    tool_args: "{}".into(),
+                    description: "run".into(),
+                    is_dangerous: false,
+                    file_path: None,
+                    child_run_id: None,
+                    old_content: None,
+                    new_content: None,
+                },
+            ))
+            .await
+            .unwrap();
+        let perm2 = connection.client.read().await;
+        assert_eq!(perm2["method"], "session/request_permission");
+        assert_eq!(connection.state.lock_pending_approvals().len(), 1);
+
+        events
+            .send(envelope(
+                session_id,
+                turn_id,
+                RuntimeEvent::TurnFinished { revision: 1 },
+            ))
+            .await
+            .unwrap();
+        drop(events);
+        timeout(TEST_TIMEOUT, pump).await.unwrap().unwrap();
+        assert!(connection.state.lock_pending_approvals().is_empty());
+        connection.server.abort();
+    }
+
+    #[tokio::test]
+    async fn stdin_eof_aborts_forwarders_and_clears_tracking_maps() {
+        let connection = start_connection(test_runtime()).await;
+        let session_id = SessionId::new();
+        let turn_id = TurnId::new();
+        connection
+            .state
+            .lock_active_turns()
+            .insert(session_id, turn_id);
+        connection
+            .state
+            .lock_pending_approvals()
+            .insert(1, (turn_id, "req-eof".into()));
+        let (_events, pump) = spawn_pump(&connection, session_id, turn_id, Some(json!(99)));
+        connection
+            .state
+            .lock_forwarders()
+            .insert(turn_id, pump.abort_handle());
+
+        // Close the client side to simulate stdin EOF.
+        drop(connection.client);
+        timeout(TEST_TIMEOUT, connection.server)
+            .await
+            .expect("server did not exit on EOF")
+            .expect("server task panicked")
+            .expect("server returned an error on clean EOF");
+        timeout(TEST_TIMEOUT, pump)
+            .await
+            .expect("pump was not aborted on EOF")
+            .expect_err("pump should have been aborted");
+        assert!(connection.state.lock_active_turns().is_empty());
+        assert!(connection.state.lock_forwarders().is_empty());
+        assert!(connection.state.lock_pending_prompts().is_empty());
+        assert!(connection.state.lock_pending_approvals().is_empty());
     }
 }

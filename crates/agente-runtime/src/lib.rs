@@ -542,30 +542,34 @@ impl RuntimeInner {
     /// The runtime's own project keeps the shared engine; another project
     /// gets its own, so its approvals and mode never leak across projects.
     fn session_context(&self, session_id: SessionId, project_dir: Option<&str>) -> SessionContext {
-        let mut contexts = self
-            .contexts
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        let saved_project = self
+        {
+            let contexts = self
+                .contexts
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            if let Some(context) = contexts.get(&session_id) {
+                if project_dir.is_none() || project_dir == Some(context.project_dir.as_str()) {
+                    return context.clone();
+                }
+            }
+        }
+        let saved_meta = self
             .config
             .session_store
             .as_ref()
-            .and_then(|store| store.read_meta(session_id).ok().flatten())
-            .map(|meta| meta.info.project_dir);
+            .and_then(|store| store.read_meta(session_id).ok().flatten());
+        let saved_project = saved_meta
+            .as_ref()
+            .map(|meta| meta.info.project_dir.as_str())
+            .filter(|dir| !dir.is_empty());
         let wanted = project_dir
-            .or(saved_project.as_deref())
+            .or(saved_project)
             .unwrap_or(&self.config.project_dir);
-        if let Some(context) = contexts.get(&session_id) {
-            if project_dir.is_none() || context.project_dir == wanted {
-                return context.clone();
-            }
-        }
-        if let Some(store) = &self.config.session_store {
-            if let Ok(Some(meta)) = store.read_meta(session_id) {
-                if let Some(history) = meta.clients.get("runtime_edits") {
-                    self.lock_edits().restore(session_id, history.clone());
-                }
-            }
+        if let Some(history) = saved_meta
+            .as_ref()
+            .and_then(|meta| meta.clients.get("runtime_edits"))
+        {
+            self.lock_edits().restore(session_id, history.clone());
         }
         // Each session has its own engine: its mode, auto-approve and
         // approve-all grants never leak into another session.
@@ -578,6 +582,15 @@ impl RuntimeInner {
             project_dir: wanted.to_string(),
             engine,
         };
+        let mut contexts = self
+            .contexts
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if let Some(existing) = contexts.get(&session_id) {
+            if project_dir.is_none() || existing.project_dir == wanted {
+                return existing.clone();
+            }
+        }
         contexts.insert(session_id, context.clone());
         context
     }
@@ -585,6 +598,22 @@ impl RuntimeInner {
     /// Update the session's saved list entry (creating it on first use).
     /// Failures are logged: metadata never fails a turn.
     fn update_meta(
+        &self,
+        session_id: SessionId,
+        project_dir: &str,
+        change: impl FnOnce(&mut SessionInfo),
+    ) {
+        if self.config.session_store.is_none() {
+            return;
+        }
+        let commit_lock = self.commit_lock(session_id);
+        let _commit = commit_lock
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        self.update_meta_locked(session_id, project_dir, change);
+    }
+
+    pub(crate) fn update_meta_locked(
         &self,
         session_id: SessionId,
         project_dir: &str,
@@ -695,6 +724,10 @@ impl RuntimeInner {
         let Some(store) = &self.config.session_store else {
             return;
         };
+        let commit_lock = self.commit_lock(session_id);
+        let _commit = commit_lock
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let value = self.lock_edits().snapshot(session_id);
         let Ok(Some(mut meta)) = store.read_meta(session_id) else {
             return;
@@ -754,11 +787,18 @@ impl RuntimeInner {
     }
 }
 
-struct CompactionReservation {
+pub(crate) struct TurnGuard {
     inner: Arc<RuntimeInner>,
     turn_id: TurnId,
 }
-impl Drop for CompactionReservation {
+
+impl TurnGuard {
+    pub(crate) fn new(inner: Arc<RuntimeInner>, turn_id: TurnId) -> Self {
+        Self { inner, turn_id }
+    }
+}
+
+impl Drop for TurnGuard {
     fn drop(&mut self) {
         self.inner.lock_turns().remove(&self.turn_id);
     }
@@ -868,6 +908,7 @@ impl RuntimeHandle {
                 },
             );
         }
+        let turn_guard = TurnGuard::new(Arc::clone(&self.inner), turn_id);
 
         // Single snapshot read: reuse the existing conversation and revision
         // instead of cloning the whole session twice per start. A cache miss
@@ -1081,13 +1122,14 @@ impl RuntimeHandle {
         let started = self.envelope(session_id, turn_id, None, RuntimeEvent::TurnStarted);
         self.inner.publish(&started);
         if event_tx.try_send(started).is_err() {
-            // Release the reservation: the caller never receives a handle.
-            self.inner.lock_turns().remove(&turn_id);
+            // Stop the spawned loop and release the reservation: the caller never receives a handle.
+            cancel.abort();
             return Err(RuntimeError::EventStreamClosed);
         }
 
         let inner = Arc::clone(&self.inner);
         tokio::task::spawn_blocking(move || {
+            let _turn_guard = turn_guard;
             bridge::forward_legacy_events(
                 inner, session_id, turn_id, legacy_rx, event_tx, outcome_tx,
             );
@@ -1140,16 +1182,23 @@ impl RuntimeHandle {
         thinking: Option<String>,
         mode: Option<TurnMode>,
     ) -> bool {
-        let turns = self.inner.lock_turns();
-        let Some(control) = turns
-            .get(&turn_id)
-            .filter(|control| !control.inbox.is_closed())
-        else {
-            return false;
+        let (session_id, trust, inbox) = {
+            let turns = self.inner.lock_turns();
+            let Some(control) = turns
+                .get(&turn_id)
+                .filter(|control| !control.inbox.is_closed())
+            else {
+                return false;
+            };
+            (
+                control.session_id,
+                control.trust,
+                Arc::clone(&control.inbox),
+            )
         };
         if let Some(mode) = mode {
-            let context = self.inner.session_context(control.session_id, None);
-            let (mode, auto) = effective_mode(Some(mode), self.inner.config.mode, control.trust);
+            let context = self.inner.session_context(session_id, None);
+            let (mode, auto) = effective_mode(Some(mode), self.inner.config.mode, trust);
             let mut engine = context
                 .engine
                 .write()
@@ -1159,7 +1208,7 @@ impl RuntimeHandle {
                 engine.set_auto_approve(auto);
             }
         }
-        control.inbox.update_settings(thinking);
+        inbox.update_settings(thinking);
         true
     }
 
@@ -1485,25 +1534,30 @@ impl RuntimeHandle {
         }
         let mut next = LiveSettings::from_app_config(app_config, client_providers, &live);
         let mut added = None;
+        let mut old_mcp = None;
         if patch_mcp {
             let mut manager = McpManager::new();
             for (name, server) in &next.app_config.mcp {
                 manager.add_client(name.clone(), server.clone());
             }
             let manager = Arc::new(manager);
-            if let Some(old) = next.mcp_manager.replace(Arc::clone(&manager)) {
-                old.disconnect_all();
-            }
+            old_mcp = next.mcp_manager.replace(Arc::clone(&manager));
             added = Some(manager);
         }
-        *live = Arc::new(next);
-        if patch_mcp || patch_approvals {
-            self.inner
-                .project_mcps
-                .lock()
-                .unwrap_or_else(|error| error.into_inner())
-                .clear();
-        }
+        let prev_live = std::mem::replace(&mut *live, Arc::new(next));
+        drop(live);
+        let old_projects = if patch_mcp || patch_approvals {
+            std::mem::take(
+                &mut *self
+                    .inner
+                    .project_mcps
+                    .lock()
+                    .unwrap_or_else(|error| error.into_inner()),
+            )
+        } else {
+            HashMap::new()
+        };
+        drop((prev_live, old_mcp, old_projects));
         Ok(added)
     }
 
@@ -1626,6 +1680,10 @@ impl RuntimeHandle {
             .session_store
             .as_ref()
             .ok_or_else(|| RuntimeError::Store("persistence is off".into()))?;
+        let commit_lock = self.inner.commit_lock(session_id);
+        let _commit = commit_lock
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let mut meta = store
             .read_meta(session_id)
             .map_err(|error| RuntimeError::Store(error.to_string()))?
@@ -1654,10 +1712,42 @@ impl RuntimeHandle {
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
             .remove(&session_id);
+        self.inner
+            .commit_locks
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .remove(&session_id);
+        self.inner
+            .context_gaps
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .remove(&session_id);
         if let Some(store) = &self.inner.config.session_store {
             existed |= store
                 .delete(session_id)
                 .map_err(|error| RuntimeError::Store(error.to_string()))?;
+            let store_board = store
+                .root()
+                .join("boards")
+                .join(format!("{session_id}.json"));
+            if std::fs::remove_file(store_board).is_ok() {
+                existed = true;
+            }
+        }
+        let user_sessions = std::env::var_os("AGENTE_SESSIONS_DIR")
+            .map(PathBuf::from)
+            .or_else(|| {
+                std::env::var_os("HOME")
+                    .or_else(|| std::env::var_os("USERPROFILE"))
+                    .map(|home| PathBuf::from(home).join(".agente").join("sessions"))
+            });
+        if let Some(sessions_dir) = user_sessions {
+            let board_path = sessions_dir
+                .join("boards")
+                .join(format!("{session_id}.json"));
+            if std::fs::remove_file(board_path).is_ok() {
+                existed = true;
+            }
         }
         Ok(existed)
     }
@@ -1665,10 +1755,7 @@ impl RuntimeHandle {
     /// Shrink the session's conversation now (trimming older turns, keeping
     /// recent ones), like the automatic compaction between model calls.
     /// Refused while a turn runs. Returns the new snapshot.
-    fn reserve_compaction(
-        &self,
-        session_id: SessionId,
-    ) -> Result<CompactionReservation, RuntimeError> {
+    fn reserve_compaction(&self, session_id: SessionId) -> Result<TurnGuard, RuntimeError> {
         let mut turns = self.inner.lock_turns();
         if turns
             .values()
@@ -1690,10 +1777,35 @@ impl RuntimeHandle {
                 session_id,
             },
         );
-        Ok(CompactionReservation {
-            inner: Arc::clone(&self.inner),
-            turn_id,
-        })
+        Ok(TurnGuard::new(Arc::clone(&self.inner), turn_id))
+    }
+
+    fn commit_compaction(
+        &self,
+        session_id: SessionId,
+        messages: Vec<Message>,
+        summary: String,
+        tokens_before: u32,
+        tokens_after: u32,
+        smart: bool,
+    ) -> SessionSnapshot {
+        self.inner.session_context(session_id, None);
+        self.inner.lock_edits().compacted(session_id);
+        self.inner.persist_edits(session_id);
+        let revision = bridge::replace_conversation(&self.inner, session_id, messages);
+        self.inner.publish(&self.envelope(
+            session_id,
+            TurnId::new(),
+            None,
+            RuntimeEvent::ContextCompacted {
+                summary,
+                revision,
+                tokens_before,
+                tokens_after,
+                smart,
+            },
+        ));
+        self.inner.lookup_session(session_id)
     }
 
     pub async fn compact_smart(
@@ -1758,23 +1870,16 @@ impl RuntimeHandle {
                 },
             ));
         }
-        self.inner.lock_edits().compacted(session_id);
-        self.inner.persist_edits(session_id);
-        let revision = bridge::replace_conversation(&self.inner, session_id, result.messages);
-        self.inner.publish(&self.envelope(
+        let updated = self.commit_compaction(
             session_id,
-            TurnId::new(),
-            None,
-            RuntimeEvent::ContextCompacted {
-                summary: result.summary.content,
-                revision,
-                tokens_before: tokens_before as u32,
-                tokens_after: tokens_after as u32,
-                smart,
-            },
-        ));
+            result.messages,
+            result.summary.content,
+            tokens_before as u32,
+            tokens_after as u32,
+            smart,
+        );
         Ok((
-            self.inner.lookup_session(session_id),
+            updated,
             smart,
             if summarizer.attempted() {
                 summarizer.usage()
@@ -1809,24 +1914,14 @@ impl RuntimeHandle {
         }
         let after = result.messages.len();
         let tokens_saved = result.summary.tokens_saved as u32;
-        self.inner.session_context(session_id, None);
-        self.inner.lock_edits().compacted(session_id);
-        self.inner.persist_edits(session_id);
-        let revision = bridge::replace_conversation(&self.inner, session_id, result.messages);
-        let envelope = self.envelope(
+        Ok(self.commit_compaction(
             session_id,
-            TurnId::new(),
-            None,
-            RuntimeEvent::ContextCompacted {
-                summary: format!("{} messages compacted", before.saturating_sub(after)),
-                revision,
-                tokens_before,
-                tokens_after: tokens_before.saturating_sub(tokens_saved),
-                smart: false,
-            },
-        );
-        self.inner.publish(&envelope);
-        Ok(self.inner.lookup_session(session_id))
+            result.messages,
+            format!("{} messages compacted", before.saturating_sub(after)),
+            tokens_before,
+            tokens_before.saturating_sub(tokens_saved),
+            false,
+        ))
     }
 
     /// Run one tool the user asked for directly (the TUI's `!command`),
@@ -1840,6 +1935,17 @@ impl RuntimeHandle {
         arguments: serde_json::Value,
         trust: Trust,
     ) -> Result<TurnHandle, RuntimeError> {
+        self.exec_tool_with_id(session_id, TurnId::new(), tool, arguments, trust)
+    }
+
+    pub fn exec_tool_with_id(
+        &self,
+        session_id: SessionId,
+        turn_id: TurnId,
+        tool: &str,
+        arguments: serde_json::Value,
+        trust: Trust,
+    ) -> Result<TurnHandle, RuntimeError> {
         if trust < Trust::Owner {
             return Err(RuntimeError::NotAllowed(format!(
                 "only the owner can run {tool} directly"
@@ -1848,7 +1954,6 @@ impl RuntimeHandle {
         if tokio::runtime::Handle::try_current().is_err() {
             return Err(RuntimeError::MissingExecutor);
         }
-        let turn_id = TurnId::new();
         let (event_tx, event_rx) = mpsc::channel(EVENT_CAPACITY);
         let (outcome_tx, outcome_rx) = oneshot::channel();
         let cancel = AbortController::new();
@@ -1871,6 +1976,7 @@ impl RuntimeHandle {
                 },
             );
         }
+        let turn_guard = TurnGuard::new(Arc::clone(&self.inner), turn_id);
         let project_dir = self.inner.session_context(session_id, None).project_dir;
         let inner = Arc::clone(&self.inner);
         let tool = tool.to_string();
@@ -1934,7 +2040,7 @@ impl RuntimeHandle {
             } else {
                 RuntimeEvent::TurnFinished { revision }
             });
-            inner.lock_turns().remove(&turn_id);
+            drop(turn_guard);
             let _ = outcome_tx.send(TurnOutcome {
                 turn_id,
                 session_id,
@@ -2056,6 +2162,7 @@ impl RuntimeHandle {
     }
 
     pub fn fork_session(&self, source: SessionId) -> SessionSnapshot {
+        let source_meta = self.session_meta(source);
         let source = self.session_snapshot(source);
         let project_dir = self
             .inner
@@ -2067,11 +2174,22 @@ impl RuntimeHandle {
             revision: 0,
             conversation: source.conversation,
         };
+        let prompt = first_prompt(&snapshot.conversation);
+        let count = chat_message_count(&snapshot.conversation);
         self.inner
             .write_sessions()
             .insert(session_id, snapshot.clone());
         self.inner.session_context(session_id, Some(&project_dir));
-        self.inner.update_meta(session_id, &project_dir, |_| {});
+        self.inner.update_meta(session_id, &project_dir, |info| {
+            info.first_prompt = prompt;
+            info.message_count = count;
+            if let Some(source_info) = source_meta.map(|meta| meta.info) {
+                info.provider = source_info.provider;
+                info.model = source_info.model;
+                info.thinking_level = source_info.thinking_level;
+                info.profile = source_info.profile;
+            }
+        });
         self.inner.persist_snapshot(&snapshot);
         snapshot
     }
@@ -3060,5 +3178,103 @@ mod tests {
             &manager,
             &handle.inner.live().mcp_manager.clone().unwrap()
         ));
+    }
+
+    #[test]
+    fn fork_session_preserves_source_provider_and_model_metadata() {
+        let (config, dir) = persistent_config("fork-meta");
+        let handle = RuntimeSupervisor::start(config);
+        let source = SessionId::new();
+        handle.inner.write_sessions().insert(
+            source,
+            SessionSnapshot {
+                session_id: source,
+                revision: 2,
+                conversation: vec![Message::user("hello fork")],
+            },
+        );
+        handle.inner.update_meta(source, "D:/proj", |info| {
+            info.provider = "openrouter".into();
+            info.model = "anthropic/claude-sonnet-4".into();
+            info.thinking_level = "high".into();
+            info.profile = Some("colina".into());
+        });
+
+        let forked = handle.fork_session(source);
+        let meta = handle
+            .session_meta(forked.session_id)
+            .expect("fork metadata saved");
+        assert_eq!(meta.info.provider, "openrouter");
+        assert_eq!(meta.info.model, "anthropic/claude-sonnet-4");
+        assert_eq!(meta.info.thinking_level, "high");
+        assert_eq!(meta.info.profile.as_deref(), Some("colina"));
+        assert_eq!(meta.info.first_prompt, "hello fork");
+        assert_eq!(meta.info.message_count, 1);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn delete_session_cleans_commit_locks_context_gaps_and_board_file() {
+        let (config, dir) = persistent_config("delete-cleanup");
+        let handle = RuntimeSupervisor::start(config);
+        let session_id = SessionId::new();
+        let _ = handle.inner.commit_lock(session_id);
+        handle.inner.remember_context_gap(session_id, 512);
+        let boards_dir = dir.join("boards");
+        std::fs::create_dir_all(&boards_dir).unwrap();
+        let board_file = boards_dir.join(format!("{session_id}.json"));
+        std::fs::write(&board_file, r#"{"enabled":true,"cards":[]}"#).unwrap();
+
+        assert!(handle.delete_session(session_id).unwrap());
+        assert!(!handle
+            .inner
+            .commit_locks
+            .lock()
+            .unwrap()
+            .contains_key(&session_id));
+        assert_eq!(handle.inner.context_gap(session_id), 0);
+        assert!(!board_file.exists());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn commit_compaction_after_restart_restores_and_preserves_edit_history() {
+        let (config, root) = persistent_config("compaction-edits-restart");
+        let project = root.join("proj");
+        std::fs::create_dir_all(&project).unwrap();
+        let session = SessionId::new();
+        {
+            let runtime = RuntimeSupervisor::start(config);
+            runtime
+                .open_session(session, project.to_str().unwrap())
+                .unwrap();
+            runtime.inner.lock_edits().begin_turn(session, 1);
+            runtime.inner.lock_edits().end_turn(
+                session,
+                vec![edits::FileEdit {
+                    path: "a.txt".into(),
+                    before: Some("old\n".into()),
+                    after: Some("new\n".into()),
+                }],
+            );
+            runtime.inner.persist_edits(session);
+        }
+
+        // Fresh supervisor after restart: session_context has NOT been called yet.
+        let restarted = RuntimeSupervisor::start(persistent_config_at(&root));
+        restarted.commit_compaction(
+            session,
+            vec![Message::user("compacted")],
+            "summary".into(),
+            100,
+            20,
+            true,
+        );
+        let meta = restarted.session_meta(session).unwrap();
+        assert!(
+            !meta.clients["runtime_edits"].is_null(),
+            "runtime_edits must be restored before persist_edits rather than overwritten with null"
+        );
+        let _ = std::fs::remove_dir_all(root);
     }
 }
