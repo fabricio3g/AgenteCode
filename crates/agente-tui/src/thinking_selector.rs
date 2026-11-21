@@ -20,7 +20,7 @@ use ratatui::Frame;
 
 use crate::state::{AppState, HitTarget, ListId};
 use crate::style::{self, *};
-use crate::widgets::{centered_panel, footer_hints, modal_card, modal_footer, panel_row, s};
+use crate::widgets::{centered_panel, panel_row, s, ModalChrome};
 
 /// One-line explanation of what each level costs the model.
 fn level_hint(level: &str) -> &'static str {
@@ -93,34 +93,23 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
             .get_model_display_name(&state.config.current_provider, &state.config.current_model);
         title_spans.push(s(format!(" · {display}"), Style::default().fg(FG_DIM())));
     }
-    let body = modal_card(frame, panel, title_spans);
+    let modal = ModalChrome::new(title_spans)
+        .footer(&[("←→", "move"), ("Enter", "apply"), ("Esc", "close")])
+        .render_in(frame, panel);
 
     if levels.is_empty() {
-        render_unavailable(frame, body, state);
+        render_unavailable(frame, modal.body, state);
     } else {
-        render_scale(frame, body, state);
+        render_scale(frame, modal.inner, state);
     }
-
-    modal_footer(
-        frame,
-        body,
-        footer_hints(
-            &[("←→", "move"), ("Enter", "apply"), ("Esc", "close")],
-            body.width.saturating_sub(2),
-        ),
-    );
 }
 
 /// No levels: explain it here rather than writing to chat history, which is
 /// where this used to land.
-fn render_unavailable(frame: &mut Frame, body: Rect, state: &AppState) {
-    let Some(top) = panel_row(body, 1, 1) else {
+fn render_unavailable(frame: &mut Frame, area: Rect, state: &AppState) {
+    if area.width == 0 || area.height == 0 {
         return;
-    };
-    let area = Rect {
-        height: body.height.saturating_sub(3),
-        ..top
-    };
+    }
     let model = state
         .config
         .resolve_model(&state.config.current_provider, &state.config.current_model);

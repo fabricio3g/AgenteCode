@@ -206,16 +206,14 @@ impl App {
         crate::test_support::sandbox_user_state();
     }
 
-    /// Test-only constructor: same `App` (and therefore the same real key
-    /// handler) without raw mode / alternate screen / discovery / MCP side
-    /// effects, so key-routing tests can drive `handle_key` directly.
-    #[cfg(test)]
-    pub(crate) fn new_for_test(
+    /// Headless constructor: real `App` (same `handle_key` / `handle_mouse`)
+    /// without raw mode, alternate screen, background discovery, MCP, or disk
+    /// persistence. Used by tests and the live browser inspector.
+    pub(crate) fn new_headless(
         config: AppConfig,
         project_dir: String,
         runtime: tokio::runtime::Runtime,
     ) -> anyhow::Result<Self> {
-        Self::sandbox_user_state();
         let backend = CrosstermBackend::new(io::stdout());
         let terminal = Terminal::new(backend)?;
 
@@ -247,6 +245,19 @@ impl App {
             agent_state_label_source: None,
             persistence: persistence::PersistenceWorker::disabled(),
         })
+    }
+
+    /// Test-only constructor: sandboxed user state + [`Self::new_headless`],
+    /// so key-routing tests can drive `handle_key` directly without touching
+    /// `~/.agente`.
+    #[cfg(test)]
+    pub(crate) fn new_for_test(
+        config: AppConfig,
+        project_dir: String,
+        runtime: tokio::runtime::Runtime,
+    ) -> anyhow::Result<Self> {
+        Self::sandbox_user_state();
+        Self::new_headless(config, project_dir, runtime)
     }
 
     /// If the agent is working (not Idle, not WaitingApproval) and no event

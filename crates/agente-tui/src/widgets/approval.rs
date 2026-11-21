@@ -4,6 +4,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 use ratatui::Frame;
 
+use super::action_bar::{render_action_bar, ActionChip};
 use super::pick::RowState;
 use super::{display_width, truncate_cells};
 use crate::state::{AppState, HitTarget};
@@ -213,42 +214,26 @@ fn question(request: &agente_core::types::ApprovalRequest) -> String {
     }
 }
 
-/// Paint `buttons` left to right in `row`, registering each one's hit rect
-/// from its drawn width, from `row`'s left edge (the edge the tool and target
-/// rows share). The hovered button's label gets a lifted band.
+/// Paint `buttons` left to right in `row` via [`render_action_bar`].
 fn render_actions(frame: &mut Frame, state: &AppState, row: Rect, buttons: &[ActionButton]) {
     const GAP: u16 = 3;
-    frame.render_widget(Paragraph::new("").style(style::panel()), row);
-    let widths: Vec<u16> = buttons
+    let chips: Vec<ActionChip> = buttons
         .iter()
-        .map(|b| (display_width(b.key) + display_width(b.label)) as u16)
+        .map(|button| {
+            let target = HitTarget::Approval(button.action.clone());
+            let hovered = state.ui.hovered_hit.as_ref() == Some(&target);
+            let band = RowState::from_flags(false, hovered).bg();
+            let label_style = if hovered {
+                style::text().bg(band)
+            } else {
+                style::muted().bg(band)
+            };
+            let cap = (button.cap)();
+            let cap_style = if cap.bg.is_none() { cap.bg(band) } else { cap };
+            ActionChip::button(button.key, cap_style, button.label, label_style, target)
+        })
         .collect();
-    let mut x = row.x;
-    for (button, width) in buttons.iter().zip(widths) {
-        let rect = Rect::new(x, row.y, width.min(row.right().saturating_sub(x)), 1);
-        if rect.width == 0 {
-            break;
-        }
-        let target = HitTarget::Approval(button.action.clone());
-        let hovered = state.ui.hovered_hit.as_ref() == Some(&target);
-        let band = RowState::from_flags(false, hovered).bg();
-        let label = if hovered {
-            style::text().bg(band)
-        } else {
-            style::muted().bg(band)
-        };
-        let cap = (button.cap)();
-        let cap = if cap.bg.is_none() { cap.bg(band) } else { cap };
-        frame.render_widget(
-            Paragraph::new(Line::from(vec![
-                Span::styled(button.key, cap),
-                Span::styled(button.label, label),
-            ])),
-            rect,
-        );
-        state.ui.hits.push(rect, target);
-        x = x.saturating_add(width + GAP);
-    }
+    render_action_bar(frame, row, &chips, GAP, Vec::new(), &state.ui.hits);
 }
 
 /// Inner width of the review card for an `area` (mirrors the panel sizing in

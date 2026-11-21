@@ -7,8 +7,9 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Paragraph};
 use ratatui::Frame;
 
-use crate::state::{AppState, PlanReviewPhase};
-use crate::style::{self, *};
+use crate::state::{AppState, HitTarget, PlanReviewPhase};
+use crate::style::*;
+use crate::widgets::action_bar::{render_action_bar, ActionChip};
 use crate::widgets::markdown::markdown_display_lines;
 
 const BUTTONS: &[&str] = &["Accept", "Redo", "Comment"];
@@ -103,13 +104,8 @@ pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState) {
 
     let total = lines.len();
     let visible = body_main.height as usize;
-    state.plan_review.body_line_count = total;
-    state.plan_review.body_visible = visible;
-    let max_scroll = state.plan_review.max_scroll();
-    if state.plan_review.scroll > max_scroll {
-        state.plan_review.scroll = max_scroll;
-    }
-    let scroll = state.plan_review.scroll;
+    let scroll = state.plan_review.scroll.sync(total, visible);
+    let viewport = state.plan_review.scroll.viewport();
 
     let start = scroll;
     let end = (start + visible).min(lines.len());
@@ -144,18 +140,17 @@ pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState) {
         frame,
         scroll_col,
         crate::widgets::scrollbar::ScrollSurface::Plan,
-        crate::widgets::scrollbar::Viewport {
-            offset: scroll,
-            visible,
-            total,
-        },
+        viewport,
         BG_PANEL(),
         &state.ui,
     );
 
     // ── Meta: file · version on the left, where you are on the right ─────
     {
-        let position = crate::widgets::scrollbar::position_label(scroll, visible, total)
+        let position = state
+            .plan_review
+            .scroll
+            .position_label()
             .map(|at| format!("↑↓ scroll · {at}"))
             .unwrap_or_default();
         let meta = crate::widgets::justify(
@@ -205,41 +200,37 @@ pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState) {
         );
     } else {
         let selected = state.plan_review.button_index.min(2);
-        let mut spans = Vec::new();
-        let mut x = fin.x;
-        for (i, (label, key)) in BUTTONS.iter().zip(BUTTON_KEYS.iter()).enumerate() {
-            let key_str = format!(" {key} ");
-            let label_str = format!(" {label}  ");
-            let btn_w = (super::display_width(&key_str) + super::display_width(&label_str)) as u16;
-            let hit_w = btn_w.saturating_sub(1).min(fin.right().saturating_sub(x));
-            if hit_w > 0 {
-                state.ui.hits.push(
-                    Rect::new(x, fin.y, hit_w, 1),
-                    crate::state::HitTarget::PlanAction(i),
-                );
-            }
-            x = x.saturating_add(btn_w);
-            let hovered = state.ui.hovered_hit == Some(crate::state::HitTarget::PlanAction(i));
-            let chip = if i == selected {
-                Style::default()
-                    .fg(BG())
-                    .bg(PRIMARY())
-                    .add_modifier(Modifier::BOLD)
-            } else if hovered {
-                Style::default().fg(FG()).bg(BG_HOVER())
-            } else {
-                Style::default().fg(FG()).bg(BG_ELEMENT())
-            };
-            spans.push(Span::styled(key_str, chip));
-            spans.push(Span::styled(
-                label_str,
-                Style::default().fg(FG()).bg(BG_PANEL()),
-            ));
-        }
-        spans.push(Span::styled(
+        let chips: Vec<ActionChip> = BUTTONS
+            .iter()
+            .zip(BUTTON_KEYS.iter())
+            .enumerate()
+            .map(|(i, (label, key))| {
+                let target = HitTarget::PlanAction(i);
+                let hovered = state.ui.hovered_hit == Some(target.clone());
+                let chip_style = if i == selected {
+                    Style::default()
+                        .fg(BG())
+                        .bg(PRIMARY())
+                        .add_modifier(Modifier::BOLD)
+                } else if hovered {
+                    Style::default().fg(FG()).bg(BG_HOVER())
+                } else {
+                    Style::default().fg(FG()).bg(BG_ELEMENT())
+                };
+                ActionChip::button(
+                    format!(" {key} "),
+                    chip_style,
+                    format!(" {label}  "),
+                    Style::default().fg(FG()).bg(BG_PANEL()),
+                    target,
+                )
+                .with_hit_trim(1)
+            })
+            .collect();
+        let trailing = vec![Span::styled(
             "  Esc hide",
             Style::default().fg(FG_DIM()).bg(BG_PANEL()),
-        ));
-        frame.render_widget(Paragraph::new(Line::from(spans)).style(style::panel()), fin);
+        )];
+        render_action_bar(frame, fin, &chips, 0, trailing, &state.ui.hits);
     }
 }

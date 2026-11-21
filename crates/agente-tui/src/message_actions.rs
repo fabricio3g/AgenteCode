@@ -13,9 +13,7 @@ use ratatui::Frame;
 use crate::state::{AppState, ListId};
 use crate::style;
 use crate::widgets::pick::{pick_list, row_label, PickItem};
-use crate::widgets::{
-    centered_panel, footer_hints, modal_card, modal_footer, panel_row, s, truncate_cells,
-};
+use crate::widgets::{s, truncate_cells, ModalChrome};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MessageAction {
@@ -115,34 +113,36 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
         return;
     }
     let list = actions(state, entry_id);
-    // gap + preview(2) + gap + actions + gap + footer inside the border.
-    let panel = centered_panel(
+    let modal = ModalChrome::new(vec![
+        s("Your message", style::bold()),
+        s(
+            format!(
+                " · {}",
+                entry
+                    .timestamp
+                    .with_timezone(&chrono::Local)
+                    .format("%-I:%M %p")
+            ),
+            style::dim(),
+        ),
+    ])
+    .footer(&[
+        ("↑↓", "move"),
+        ("Enter", "choose"),
+        ("r/f/c", "shortcut"),
+        ("Esc", "close"),
+    ])
+    .render_centered(
+        frame,
         area,
         area.width.saturating_sub(4).min(72),
         list.len() as u16 + 8,
     );
-    let body = modal_card(
-        frame,
-        panel,
-        vec![
-            s("Your message", style::bold()),
-            s(
-                format!(
-                    " · {}",
-                    entry
-                        .timestamp
-                        .with_timezone(&chrono::Local)
-                        .format("%-I:%M %p")
-                ),
-                style::dim(),
-            ),
-        ],
-    );
-    let text_w = body.width.saturating_sub(4) as usize;
+    let text_w = modal.body.width.saturating_sub(2) as usize;
     let mut preview = entry.content.lines().filter(|l| !l.trim().is_empty());
-    for dy in [1u16, 2] {
-        if let (Some(row), Some(line)) = (panel_row(body, dy, 1), preview.next()) {
-            let prefix = if dy == 1 { "> " } else { "  " };
+    for dy in [0u16, 1] {
+        if let (Some(row), Some(line)) = (modal.row(dy), preview.next()) {
+            let prefix = if dy == 0 { "> " } else { "  " };
             frame.render_widget(
                 ratatui::widgets::Paragraph::new(ratatui::text::Line::from(vec![
                     s(prefix, style::accent()),
@@ -152,11 +152,7 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
             );
         }
     }
-    if let Some(top) = panel_row(body, 4, 1) {
-        let list_area = Rect {
-            height: body.height.saturating_sub(6),
-            ..top
-        };
+    if let Some(list_area) = modal.slice_from(3) {
         let selected = state.input.message_actions_selected;
         let items = list
             .iter()
@@ -190,19 +186,6 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
             selected,
         );
     }
-    modal_footer(
-        frame,
-        body,
-        footer_hints(
-            &[
-                ("↑↓", "move"),
-                ("Enter", "choose"),
-                ("r/f/c", "shortcut"),
-                ("Esc", "close"),
-            ],
-            body.width.saturating_sub(2),
-        ),
-    );
 }
 
 /// Whether `action` can run right now (the dialog greys out the rest).

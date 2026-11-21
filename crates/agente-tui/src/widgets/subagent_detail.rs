@@ -7,14 +7,12 @@ use ratatui::text::Line;
 use ratatui::widgets::Paragraph;
 use ratatui::Frame;
 
+use super::action_bar::{build_action_spans, ActionChip};
 use super::markdown::{markdown_display_lines, wrap_line};
 use super::pick::RowState;
 use crate::state::{AppState, HitTarget, SubagentDetailTab, SubagentUiState};
 use crate::style::*;
-use crate::widgets::{
-    centered_panel, footer_hints, modal_card_tinted, modal_footer, panel_row, s, truncate_cells,
-    SubagentStatusKind,
-};
+use crate::widgets::{s, truncate_cells, ModalChrome, SubagentStatusKind};
 
 /// Same card chrome as every modal: status + type on the border, the task,
 /// tabs, the scrollable view, and the shared footer hints.
@@ -26,11 +24,8 @@ pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState) {
     if area.width == 0 || area.height == 0 {
         return;
     }
-    let panel = centered_panel(
-        area,
-        area.width.saturating_sub(8).clamp(1, 96),
-        area.height.saturating_sub(4).clamp(1, 30),
-    );
+    let want_w = area.width.saturating_sub(8).clamp(1, 96);
+    let want_h = area.height.saturating_sub(4).clamp(1, 30);
     let snapshot = state.subagent_registry.get(&id);
     let live = state.agent.subagents.get(&id);
     let anchor = state
@@ -75,19 +70,35 @@ pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState) {
     if let Some(cost) = live.and_then(|s| s.spend.cost_label()) {
         meta.push_str(&format!(" · {cost}"));
     }
-    let body = modal_card_tinted(
-        frame,
-        panel,
-        vec![
-            s(kind.glyph(), Style::default().fg(kind.color())),
-            s(format!(" {sub_type}"), bold()),
-            s(meta, dim()),
-        ],
-        kind.border_color(),
-    );
-    let width = body.width.saturating_sub(2) as usize;
-    let paint_row = |frame: &mut Frame, y, line: Line<'static>| {
-        if let Some(row) = panel_row(body, y, 1) {
+    let mut hints = vec![
+        (
+            "Esc",
+            if state.input.show_subagents {
+                "back"
+            } else {
+                "close"
+            },
+        ),
+        ("Tab/1–3", "view"),
+        ("↑↓", "scroll"),
+        ("o", "output"),
+        ("d", "diff"),
+    ];
+    if kind.is_live() {
+        hints.push(("Del", "stop"));
+    }
+    let modal = ModalChrome::new(vec![
+        s(kind.glyph(), Style::default().fg(kind.color())),
+        s(format!(" {sub_type}"), bold()),
+        s(meta, dim()),
+    ])
+    .tinted(kind.border_color())
+    .footer(&hints)
+    .render_centered(frame, area, want_w, want_h);
+
+    let width = modal.body.width as usize;
+    let paint_row = |frame: &mut Frame, dy, line: Line<'static>| {
+        if let Some(row) = modal.row(dy) {
             frame.render_widget(
                 Paragraph::new(line).style(Style::default().bg(BG_PANEL())),
                 row,
@@ -96,46 +107,39 @@ pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState) {
     };
     paint_row(
         frame,
-        1,
+        0,
         Line::from(s(truncate_cells(description, width), text())),
     );
-    if body.height < 8 {
+    if modal.inner.height < 8 {
         return;
     }
 
-    // Tabs are real buttons: click selects, hover lifts, keys still work.
+    // Tabs are real buttons via action_bar: click selects, hover lifts, keys still work.
     let diff_open = state.ui.subagent_diff.is_some();
     let tabs = [
         (SubagentDetailTab::Activity, "1 Activity"),
         (SubagentDetailTab::Handoff, "2 Handoff"),
         (SubagentDetailTab::Result, "3 Result"),
     ];
-    let tab_row_y = body.y + 3;
-    let mut tab_x = body.x + 1;
-    let mut tab_spans = Vec::new();
-    for (tab, label) in tabs {
-        let selected = tab == state.ui.subagent_detail_tab && !diff_open;
-        let target = HitTarget::DetailTab(tab);
-        let hovered = state.ui.hovered_hit.as_ref() == Some(&target);
-        let cell = format!(" {label} ");
-        let width = super::display_width(&cell) as u16;
-        if body.height > 3 && tab_x + width <= body.right() {
-            state
-                .ui
-                .hits
-                .push(Rect::new(tab_x, tab_row_y, width, 1), target);
-        }
-        tab_x += width;
-        let row = RowState::from_flags(selected, hovered);
-        tab_spans.push(s(
-            cell,
-            match row {
+    let tab_chips: Vec<ActionChip> = tabs
+        .into_iter()
+        .map(|(tab, label)| {
+            let selected = tab == state.ui.subagent_detail_tab && !diff_open;
+            let target = HitTarget::DetailTab(tab);
+            let hovered = state.ui.hovered_hit.as_ref() == Some(&target);
+            let row = RowState::from_flags(selected, hovered);
+            let chip_style = match row {
                 RowState::Selected => bold().bg(row.bg()),
                 RowState::Hovered => text().bg(row.bg()),
                 RowState::Idle => muted(),
-            },
-        ));
-    }
+            };
+            ActionChip::chip(format!(" {label} "), chip_style, target)
+        })
+        .collect();
+    let mut tab_spans = modal
+        .row(2)
+        .map(|row| build_action_spans(row, &tab_chips, 0, panel(), &state.ui.hits))
+        .unwrap_or_default();
     if diff_open {
         tab_spans.push(s(" d Diff ", bold().bg(RowState::Selected.bg())));
     }
@@ -200,82 +204,49 @@ pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState) {
             }
         }
     };
-    // Body rows: gap, task, gap, tabs, gap, content…, gap, footer.
-    let visible = body.height.saturating_sub(7) as usize;
-    let max_scroll = content.len().saturating_sub(visible);
-    state.ui.subagent_detail_max_scroll = max_scroll;
-    let scroll = if state.ui.subagent_detail_follow {
-        max_scroll
-    } else {
-        state.ui.subagent_detail_scroll.min(max_scroll)
-    };
-    state.ui.subagent_detail_scroll = scroll;
-    state.ui.subagent_detail_area = Some(Rect::new(
-        body.x + 1,
-        body.y + 5,
-        width as u16,
-        visible as u16,
-    ));
+    // Body rows: task (0), gap (1), tabs (2), gap (3), content (4..).
+    let content_area = modal.slice_from(4).unwrap_or_default();
+    let visible = content_area.height as usize;
+    let scroll = state.ui.subagent_detail_scroll.sync(content.len(), visible);
+    let viewport = state.ui.subagent_detail_scroll.viewport();
+    state.ui.subagent_detail_area = Some(content_area);
     for (i, line) in content.into_iter().skip(scroll).take(visible).enumerate() {
-        paint_row(frame, 5 + i as u16, line);
+        paint_row(frame, 4 + i as u16, line);
     }
     // Scrollbar in the card's right padding column, beside the content.
-    let total = max_scroll + visible;
     super::scrollbar::render(
         frame,
         Rect::new(
-            body.right().saturating_sub(1),
-            body.y + 5,
+            modal.inner.right().saturating_sub(1),
+            content_area.y,
             1,
-            (visible as u16).min(body.height.saturating_sub(5)),
+            content_area.height,
         ),
         super::scrollbar::ScrollSurface::SubagentDetail,
-        super::scrollbar::Viewport {
-            offset: scroll,
-            visible,
-            total,
-        },
+        viewport,
         BG_PANEL(),
         &state.ui,
     );
 
     // Tabs on the left, scroll position (only when it scrolls) on the right.
-    let position = if state.ui.subagent_detail_follow {
+    let position = if state.ui.subagent_detail_scroll.follow {
         "following".to_string()
     } else {
-        super::scrollbar::position_label(scroll, visible, max_scroll + visible).unwrap_or_default()
+        state
+            .ui
+            .subagent_detail_scroll
+            .position_label()
+            .unwrap_or_default()
     };
     paint_row(
         frame,
-        3,
+        2,
         Line::from(super::justify(
             tab_spans,
             vec![s(position, dim())],
             width,
             BG_PANEL(),
         )),
-    );
-    let mut hints = vec![
-        (
-            "Esc",
-            if state.input.show_subagents {
-                "back"
-            } else {
-                "close"
-            },
-        ),
-        ("Tab/1–3", "view"),
-        ("↑↓", "scroll"),
-        ("o", "output"),
-        ("d", "diff"),
-    ];
-    if kind.is_live() {
-        hints.push(("Del", "stop"));
-    }
-    modal_footer(
-        frame,
-        body,
-        footer_hints(&hints, body.width.saturating_sub(2)),
     );
 }
 
@@ -450,10 +421,10 @@ mod tests {
             .get_mut("sub-1")
             .unwrap()
             .streaming_text = format!("{}\nLATEST CHILD UPDATE", "earlier text\n".repeat(500));
-        state.ui.subagent_detail_follow = true;
+        state.ui.subagent_detail_scroll.follow = true;
         assert!(draw(&mut state, 80, 24).contains("LATEST CHILD UPDATE"));
         state.ui.scroll_subagent_detail(-8);
-        let offset = state.ui.subagent_detail_scroll;
+        let offset = state.ui.subagent_detail_scroll.offset;
         state
             .agent
             .subagents
@@ -462,8 +433,8 @@ mod tests {
             .streaming_text
             .push_str("\nnew tail");
         draw(&mut state, 80, 24);
-        assert_eq!(state.ui.subagent_detail_scroll, offset);
-        assert!(!state.ui.subagent_detail_follow);
+        assert_eq!(state.ui.subagent_detail_scroll.offset, offset);
+        assert!(!state.ui.subagent_detail_scroll.follow);
     }
 
     #[test]

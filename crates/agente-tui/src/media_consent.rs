@@ -16,9 +16,7 @@ use ratatui::Frame;
 
 use crate::state::AppState;
 use crate::style;
-use crate::widgets::{
-    centered_panel, footer_hints, modal_card, modal_footer, panel_row, s, truncate_cells,
-};
+use crate::widgets::{s, truncate_cells, ModalChrome};
 
 /// What the user is being asked to allow.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -70,16 +68,14 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
     if area.width < 20 || area.height < 8 {
         return;
     }
-    let panel = centered_panel(area, area.width.saturating_sub(4).min(64), 8);
-    let body = modal_card(
-        frame,
-        panel,
-        vec![s(
-            format!("{} {}?", request.verb(), request.kind.label()),
-            style::bold(),
-        )],
-    );
-    let width = body.width.saturating_sub(2) as usize;
+    let always = format!("always allow {}", plural(request.kind));
+    let modal = ModalChrome::new(vec![s(
+        format!("{} {}?", request.verb(), request.kind.label()),
+        style::bold(),
+    )])
+    .footer(&[("Enter", "allow"), ("a", always.as_str()), ("Esc", "no")])
+    .render_centered(frame, area, area.width.saturating_sub(4).min(64), 8);
+    let width = modal.body.width as usize;
     let detail = match &request.action {
         MediaAction::Open(_) => "Opens in your system viewer.".to_string(),
         _ => "It is copied to ~/.agente/attachments and sent to the model with your message."
@@ -98,20 +94,11 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
         ]),
         Line::from(s(truncate_cells(&detail, width), style::muted())),
     ];
-    for (dy, line) in (1u16..).zip(lines) {
-        if let Some(row) = panel_row(body, dy, 1) {
+    for (dy, line) in (0u16..).zip(lines) {
+        if let Some(row) = modal.row(dy) {
             frame.render_widget(Paragraph::new(line), row);
         }
     }
-    let always = format!("always allow {}", plural(request.kind));
-    modal_footer(
-        frame,
-        body,
-        footer_hints(
-            &[("Enter", "allow"), ("a", always.as_str()), ("Esc", "no")],
-            body.width.saturating_sub(2),
-        ),
-    );
 }
 
 #[cfg(test)]

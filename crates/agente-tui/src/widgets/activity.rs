@@ -49,12 +49,7 @@ fn turn_elapsed(state: &AppState) -> Option<String> {
                 .min()
                 .map(|t| (chrono::Utc::now() - t).num_milliseconds().max(0) as f64 / 1000.0)
         })?;
-    Some(if secs >= 60.0 {
-        let whole = secs as u64;
-        format!("{}m{:02}s", whole / 60, whole % 60)
-    } else {
-        format!("{secs:.1}s")
-    })
+    Some(super::format_elapsed_secs_f64(secs))
 }
 
 /// Seconds without an event before the row says the model is quiet.

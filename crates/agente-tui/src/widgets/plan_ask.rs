@@ -6,8 +6,10 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 use ratatui::Frame;
 
-use super::{footer_hints, modal_card, modal_footer, truncate_cells};
-use crate::state::{AppState, PlanReviewPhase};
+use super::action_bar::{render_action_bar, ActionChip};
+use super::pick::RowState;
+use super::{truncate_cells, ModalChrome};
+use crate::state::{AppState, HitTarget, PlanReviewPhase};
 use crate::style;
 use crate::style::*;
 
@@ -67,29 +69,30 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
         shown_before + active_rows + shown_after
     };
     let height = (reserved + steps_rows).min(cap).max(5);
-    let panel = super::centered_panel(area, width, height);
-
     let (step_i, step_n) = ask.step_display();
-    let body = modal_card(
-        frame,
-        panel,
-        vec![
-            Span::styled("◇ ", style::accent()),
-            Span::styled("Clarify", style::bold()),
-            Span::styled(format!(" · Step {step_i} of {step_n}"), style::dim()),
-        ],
-    );
-    if body.width == 0 || body.height < 3 {
+    let reask = format!("re-ask {}/3", ask.reask_count.min(3));
+    let modal = ModalChrome::new(vec![
+        Span::styled("◇ ", style::accent()),
+        Span::styled("Clarify", style::bold()),
+        Span::styled(format!(" · Step {step_i} of {step_n}"), style::dim()),
+    ])
+    .top_gap(u16::from(roomy))
+    .footer_gap(0)
+    .footer(&[
+        ("Enter", if ask.at_last_step() { "submit" } else { "next" }),
+        ("←→", "options"),
+        ("Ctrl+Q", &reask),
+        ("Esc", "close"),
+    ])
+    .render_centered(frame, area, width, height);
+    if modal.inner.width == 0 || modal.inner.height < 3 {
         return;
     }
 
-    // Uniform popup inset: content sits 2 columns in from the card edges
-    // (1 border + 1 pad).
-    let content_x = body.x + 1;
-    let content_w = body.width.saturating_sub(2);
-
-    let footer_y = body.y + body.height - 1;
-    let mut y = body.y + u16::from(roomy);
+    let content_x = modal.body.x;
+    let content_w = modal.body.width;
+    let footer_y = modal.body.bottom();
+    let mut y = modal.body.y;
 
     if show_comment {
         frame.render_widget(
@@ -159,23 +162,34 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
 
         // Expanded body only for active step
         if active {
-            // Optional chips — never required; user can always type instead
+            // Optional chips — clickable via action_bar; user can always type instead
             if show_chips && y < footer_y {
-                let mut spans = vec![Span::styled("  ", Style::default().bg(BG_PANEL()))];
-                for (oi, opt) in q.options.iter().enumerate() {
-                    let sel = q.selected == Some(oi);
-                    let st = if sel {
-                        style::accent()
-                            .bg(super::pick::RowState::Selected.bg())
-                            .add_modifier(Modifier::BOLD)
-                    } else {
-                        Style::default().fg(FG_MUTED()).bg(BG_PANEL())
-                    };
-                    spans.push(Span::styled(format!(" {opt} "), st));
-                }
-                frame.render_widget(
-                    Paragraph::new(Line::from(spans)),
-                    Rect::new(content_x, y, content_w, 1),
+                let chips: Vec<ActionChip> = q
+                    .options
+                    .iter()
+                    .enumerate()
+                    .map(|(oi, opt)| {
+                        let target = HitTarget::PlanAskOption(oi);
+                        let sel = q.selected == Some(oi);
+                        let hovered = state.ui.hovered_hit.as_ref() == Some(&target);
+                        let row_state = RowState::from_flags(sel, hovered);
+                        let st = match row_state {
+                            RowState::Selected => style::accent()
+                                .bg(row_state.bg())
+                                .add_modifier(Modifier::BOLD),
+                            RowState::Hovered => style::text().bg(row_state.bg()),
+                            RowState::Idle => Style::default().fg(FG_MUTED()).bg(BG_PANEL()),
+                        };
+                        ActionChip::chip(format!(" {opt} "), st, target)
+                    })
+                    .collect();
+                render_action_bar(
+                    frame,
+                    Rect::new(content_x + 2, y, content_w.saturating_sub(2), 1),
+                    &chips,
+                    0,
+                    Vec::new(),
+                    &state.ui.hits,
                 );
                 y = y.saturating_add(1);
             }
@@ -196,21 +210,6 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
             }
         }
     }
-
-    let reask = format!("re-ask {}/3", ask.reask_count.min(3));
-    modal_footer(
-        frame,
-        body,
-        footer_hints(
-            &[
-                ("Enter", if ask.at_last_step() { "submit" } else { "next" }),
-                ("←→", "options"),
-                ("Ctrl+Q", &reask),
-                ("Esc", "close"),
-            ],
-            body.width.saturating_sub(2),
-        ),
-    );
 }
 
 #[cfg(test)]

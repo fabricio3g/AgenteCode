@@ -7,7 +7,7 @@ use ratatui::Frame;
 use crate::state::{AppState, ListId};
 use crate::style::{self, *};
 use crate::widgets::pick::{pick_list, row_label, search_field, PickItem};
-use crate::widgets::{centered_panel, footer_hints, modal_card, modal_footer, panel_row};
+use crate::widgets::{centered_panel, shorten_path, ModalChrome};
 use agente_core::session;
 
 pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
@@ -31,30 +31,6 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
     } else {
         "Sessions"
     };
-    let body = modal_card(
-        frame,
-        panel,
-        vec![Span::styled(
-            title_text,
-            Style::default()
-                .fg(FG())
-                .add_modifier(Modifier::BOLD)
-                .bg(BG_PANEL()),
-        )],
-    );
-
-    // Same rhythm as every modal: gap, search field, gap, list, gap, footer.
-    let Some(folder_area) = panel_row(body, 1, 1) else {
-        return;
-    };
-    let Some(list_top) = panel_row(body, 3, 1) else {
-        return;
-    };
-    let list_area = Rect {
-        height: body.height.saturating_sub(5),
-        ..list_top
-    };
-
     let footer: &[(&str, &str)] = if state.picker.session_picker_browsing {
         if state.picker.session_picker_project_select {
             &[
@@ -89,17 +65,28 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
         ]
     };
 
+    let modal = ModalChrome::new(vec![Span::styled(
+        title_text,
+        Style::default()
+            .fg(FG())
+            .add_modifier(Modifier::BOLD)
+            .bg(BG_PANEL()),
+    )])
+    .footer(footer)
+    .render_in(frame, panel);
+
+    let Some(folder_area) = modal.row(0) else {
+        return;
+    };
+    let Some(list_area) = modal.slice_from(2) else {
+        return;
+    };
+
     if state.picker.session_picker_browsing {
         render_folder_browser(frame, folder_area, list_area, state);
     } else {
         render_session_list(frame, folder_area, list_area, state);
     }
-
-    modal_footer(
-        frame,
-        body,
-        footer_hints(footer, body.width.saturating_sub(2)),
-    );
 }
 
 fn render_folder_browser(frame: &mut Frame, folder_area: Rect, list_area: Rect, state: &AppState) {
@@ -209,7 +196,7 @@ fn render_session_list(frame: &mut Frame, folder_area: Rect, list_area: Rect, st
             vec![
                 Span::styled(title, row_label(i + 1 == selected)),
                 Span::styled(
-                    format!("  {}", shorten_path(&meta.project_dir)),
+                    format!("  {}", shorten_path(&meta.project_dir, None)),
                     style::dim(),
                 ),
             ],
@@ -292,17 +279,6 @@ pub fn list_directory(path: &str) -> Vec<DirEntry> {
     }
 
     entries
-}
-
-fn shorten_path(path: &str) -> String {
-    let clean = agente_core::util::normalize_project_dir(path);
-    if let Some(home) = dirs::home_dir() {
-        let home_s = agente_core::util::normalize_project_dir(home);
-        if let Some(rest) = clean.strip_prefix(&home_s) {
-            return format!("~{rest}");
-        }
-    }
-    clean
 }
 
 #[cfg(test)]

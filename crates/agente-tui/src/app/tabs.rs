@@ -279,7 +279,7 @@ impl App {
         self.state.input.show_model_selector = false;
         self.state.input.model_selector_target = None;
         self.state.input.show_board = false;
-        self.state.input.board_scroll = 0;
+        self.state.input.board_scroll.scroll_to_top();
         self.state.input.show_settings = false;
         self.state.input.show_skills = false;
         self.state.input.show_mcp = false;

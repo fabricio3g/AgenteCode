@@ -11,7 +11,7 @@ use ratatui::Frame;
 
 use crate::state::AppState;
 use crate::style::*;
-use crate::widgets::{centered_panel, footer_hints, modal_card, modal_footer, s, truncate_cells};
+use crate::widgets::{s, truncate_cells, ModalChrome};
 
 #[derive(Debug, Clone)]
 pub struct DiagnosticCheck {
@@ -154,32 +154,19 @@ pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState) {
 
     let desired_w = (area.width.saturating_sub(4)).min(74);
     let desired_h = (area.height.saturating_sub(2)).min(20);
-    let panel = centered_panel(area, desired_w, desired_h);
-
-    let body = modal_card(
-        frame,
-        panel,
-        vec![
-            s("Terminal Doctor ", bold()),
-            s("· Environment & Diagnostics", muted()),
-        ],
-    );
-    modal_footer(
-        frame,
-        body,
-        footer_hints(
-            &[("Esc", "close"), ("q", "quit diagnostics")],
-            body.width.saturating_sub(2),
-        ),
-    );
+    let modal = ModalChrome::new(vec![
+        s("Terminal Doctor ", bold()),
+        s("· Environment & Diagnostics", muted()),
+    ])
+    .top_gap(0)
+    .inset_x(0)
+    .footer(&[("Esc", "close"), ("q", "quit diagnostics")])
+    .render_centered(frame, area, desired_w, desired_h);
 
     if state.input.doctor_checks.is_empty() {
         state.input.doctor_checks = run_diagnostics(state);
     }
-    let content_area = Rect {
-        height: body.height.saturating_sub(2),
-        ..body
-    };
+    let content_area = modal.body;
     let visible = content_area.height as usize;
     let mut lines: Vec<Line<'static>> = Vec::new();
 
@@ -243,9 +230,7 @@ pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState) {
         lines.push(Line::from(row_spans));
     }
 
-    let max_scroll = lines.len().saturating_sub(visible);
-    let scroll = (state.input.doctor_scroll as usize).min(max_scroll);
-    state.input.doctor_scroll = scroll.min(usize::from(u16::MAX)) as u16;
+    let scroll = state.input.doctor_scroll.sync(lines.len(), visible);
     let end = (scroll + visible).min(lines.len());
     let display_lines = lines[scroll..end].to_vec();
 
@@ -303,7 +288,7 @@ mod tests {
             status: CheckStatus::Pass,
             details: "sentinel-cached-value".into(),
         }];
-        state.input.doctor_scroll = 999;
+        state.input.doctor_scroll.offset = 999;
 
         let mut terminal = Terminal::new(TestBackend::new(70, 12)).unwrap();
         terminal
@@ -324,6 +309,9 @@ mod tests {
             screen.contains("Esc") && screen.contains("close"),
             "modal footer must remain visible: {screen}"
         );
-        assert_eq!(state.input.doctor_scroll, 0, "scroll must clamp to max");
+        assert_eq!(
+            state.input.doctor_scroll.offset, 0,
+            "scroll must clamp to max"
+        );
     }
 }

@@ -5,6 +5,8 @@
 //! (theme holes, wide-glyph defects, control characters) and standalone
 //! interactive visual gallery generation for browser testing.
 
+pub(crate) mod theme;
+
 use ratatui::buffer::Buffer;
 use ratatui::style::{Color, Modifier};
 use serde::{Deserialize, Serialize};
@@ -301,384 +303,17 @@ pub fn generate_visual_gallery_html(scenarios_data: &[GalleryEntry]) -> String {
             .collect::<Vec<_>>(),
     )
     .unwrap_or_else(|_| "[]".to_string());
-    let favicon = crate::brand::favicon_link();
+
+    let head = theme::studio_head(
+        "Agente Code — Browser Visual Studio & Invariant Inspector",
+        GALLERY_EXTRA_CSS,
+    );
 
     format!(
-        r##"<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-{favicon}
-<title>Agente Code — Browser Visual Studio & Invariant Inspector</title>
-<style>
-  :root {{
-    --bg-app: #0e0e11;
-    --bg-surface: #151519;
-    --bg-card: #1c1c22;
-    --bg-card-hover: #26262e;
-    --border: #2c2c36;
-    --border-active: #8abeb7;
-    --fg: #e4e4e6;
-    --fg-muted: #9a9aa2;
-    --fg-dim: #65656e;
-    --primary: #8abeb7;
-    --secondary: #61afef;
-    --success: #b5bd68;
-    --warning: #d9a13b;
-    --error: #cc6666;
-    --theme-hole: rgba(255, 50, 50, 0.45);
-    --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'Consolas', 'Courier New', monospace;
-  }}
+        r##"{head}<body>
 
-  * {{ box-sizing: border-box; margin: 0; padding: 0; }}
-  
-  body {{
-    background-color: var(--bg-app);
-    color: var(--fg);
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-    display: flex;
-    height: 100vh;
-    overflow: hidden;
-  }}
-
-  /* Sidebar */
-  #sidebar {{
-    width: 320px;
-    background: var(--bg-surface);
-    border-right: 1px solid var(--border);
-    display: flex;
-    flex-direction: column;
-    flex-shrink: 0;
-  }}
-
-  .sidebar-header {{
-    padding: 16px;
-    border-bottom: 1px solid var(--border);
-  }}
-
-  .sidebar-header h1 {{
-    font-size: 15px;
-    font-weight: 700;
-    letter-spacing: 0.5px;
-    color: var(--primary);
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }}
-
-  .sidebar-header p {{
-    font-size: 12px;
-    color: var(--fg-muted);
-    margin-top: 4px;
-  }}
-
-  .search-box {{
-    margin-top: 12px;
-    position: relative;
-  }}
-
-  .search-box input {{
-    width: 100%;
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 7px 10px;
-    color: var(--fg);
-    font-size: 12px;
-    outline: none;
-  }}
-
-  .search-box input:focus {{
-    border-color: var(--primary);
-  }}
-
-  .scenario-list {{
-    overflow-y: auto;
-    flex: 1;
-    padding: 8px;
-  }}
-
-  .category-group {{
-    margin-bottom: 16px;
-  }}
-
-  .category-title {{
-    font-size: 11px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.8px;
-    color: var(--fg-dim);
-    padding: 6px 8px;
-  }}
-
-  .scenario-item {{
-    padding: 8px 10px;
-    border-radius: 6px;
-    cursor: pointer;
-    margin-bottom: 3px;
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    transition: background 0.15s ease;
-  }}
-
-  .scenario-item:hover {{
-    background: var(--bg-card-hover);
-  }}
-
-  .scenario-item.active {{
-    background: var(--bg-card);
-    border-left: 3px solid var(--primary);
-  }}
-
-  .scenario-item-header {{
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-  }}
-
-  .scenario-name {{
-    font-size: 13px;
-    font-weight: 600;
-    font-family: var(--font-mono);
-  }}
-
-  .badge {{
-    font-size: 10px;
-    padding: 2px 5px;
-    border-radius: 4px;
-    font-weight: 600;
-  }}
-
-  .badge-size {{
-    background: #252530;
-    color: var(--fg-muted);
-  }}
-
-  .badge-pass {{
-    background: rgba(181, 189, 104, 0.2);
-    color: var(--success);
-  }}
-
-  .badge-violation {{
-    background: rgba(204, 102, 102, 0.25);
-    color: var(--error);
-  }}
-
-  .scenario-desc {{
-    font-size: 11px;
-    color: var(--fg-muted);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }}
-
-  /* Main Workspace */
-  #main {{
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    background: var(--bg-app);
-    overflow: hidden;
-  }}
-
-  .toolbar {{
-    height: 52px;
-    background: var(--bg-surface);
-    border-bottom: 1px solid var(--border);
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 0 20px;
-  }}
-
-  .toolbar-left, .toolbar-right {{
-    display: flex;
-    align-items: center;
-    gap: 12px;
-  }}
-
-  .btn-group {{
-    display: flex;
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    overflow: hidden;
-  }}
-
-  .btn {{
-    background: transparent;
-    border: none;
-    color: var(--fg-muted);
-    padding: 6px 12px;
-    font-size: 12px;
-    cursor: pointer;
-    font-weight: 500;
-    transition: all 0.15s ease;
-  }}
-
-  .btn:hover {{
-    color: var(--fg);
-    background: rgba(255, 255, 255, 0.05);
-  }}
-
-  .btn.active {{
-    background: var(--primary);
-    color: #111114;
-    font-weight: 700;
-  }}
-
-  .toggle-btn {{
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    color: var(--fg);
-    border-radius: 6px;
-    padding: 6px 12px;
-    font-size: 12px;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-  }}
-
-  .toggle-btn.active {{
-    border-color: var(--error);
-    background: rgba(204, 102, 102, 0.2);
-    color: #ff9999;
-  }}
-
-  /* Viewport Stage */
-  #viewport-stage {{
-    flex: 1;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 30px;
-    overflow: auto;
-    background: radial-gradient(circle at center, #141418 0%, #0a0a0c 100%);
-  }}
-
-  .terminal-frame-container {{
-    position: relative;
-    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(255, 255, 255, 0.08);
-    border-radius: 8px;
-    overflow: hidden;
-    background: #111114;
-  }}
-
-  .terminal-titlebar {{
-    height: 30px;
-    background: #18181c;
-    border-bottom: 1px solid #282830;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 0 12px;
-  }}
-
-  .titlebar-dots {{
-    display: flex;
-    gap: 6px;
-  }}
-
-  .dot {{
-    width: 10px;
-    height: 10px;
-    border-radius: 50%;
-  }}
-  .dot.red {{ background: #ff5f56; }}
-  .dot.yellow {{ background: #ffbd2e; }}
-  .dot.green {{ background: #27c93f; }}
-
-  .titlebar-title {{
-    font-size: 11px;
-    font-family: var(--font-mono);
-    color: var(--fg-muted);
-  }}
-
-  .titlebar-meta {{
-    font-size: 11px;
-    color: var(--fg-dim);
-    font-family: var(--font-mono);
-  }}
-
-  .terminal-screen {{
-    font-family: var(--font-mono);
-    font-size: 13px;
-    line-height: 1.15;
-    letter-spacing: 0px;
-    white-space: pre;
-    user-select: text;
-    padding: 0;
-    background: #111114;
-    overflow: hidden;
-  }}
-
-  .tui-row {{
-    display: flex;
-    height: 1.15em;
-  }}
-
-  .tui-span {{
-    display: inline-block;
-    height: 100%;
-    flex-shrink: 0;
-  }}
-
-  .theme-hole-active .tui-span.theme-hole {{
-    background-color: var(--theme-hole) !important;
-    outline: 1px dashed #ff3333;
-    animation: pulse-hole 1.5s infinite alternate;
-  }}
-
-  @keyframes pulse-hole {{
-    from {{ background-color: rgba(255, 50, 50, 0.3); }}
-    to {{ background-color: rgba(255, 50, 50, 0.7); }}
-  }}
-
-  /* Diagnostics Drawer */
-  #diagnostics {{
-    height: 140px;
-    background: var(--bg-surface);
-    border-top: 1px solid var(--border);
-    display: flex;
-    flex-direction: column;
-  }}
-
-  .diag-header {{
-    padding: 8px 16px;
-    font-size: 11px;
-    font-weight: 700;
-    text-transform: uppercase;
-    color: var(--fg-dim);
-    border-bottom: 1px solid var(--border);
-    display: flex;
-    justify-content: space-between;
-  }}
-
-  .diag-content {{
-    flex: 1;
-    overflow-y: auto;
-    padding: 10px 16px;
-    font-family: var(--font-mono);
-    font-size: 12px;
-  }}
-
-  .diag-ok {{
-    color: var(--success);
-  }}
-
-  .diag-error {{
-    color: var(--error);
-    margin-bottom: 4px;
-  }}
-</style>
-</head>
-<body>
-
-<div id="sidebar">
-  <div class="sidebar-header">
+<div id="sidebar" class="studio-sidebar">
+  <div class="studio-header">
     <h1>◈ Agente TUI Studio</h1>
     <p>Visual testing, invariant inspector & responsive suite</p>
     <div class="search-box">
@@ -688,27 +323,27 @@ pub fn generate_visual_gallery_html(scenarios_data: &[GalleryEntry]) -> String {
   <div class="scenario-list" id="scenario-list"></div>
 </div>
 
-<div id="main">
-  <div class="toolbar">
-    <div class="toolbar-left">
-      <div class="btn-group" id="size-selector">
-        <button class="btn" data-size="120x40">120x40</button>
-        <button class="btn active" data-size="100x30">100x30</button>
-        <button class="btn" data-size="80x24">80x24</button>
-        <button class="btn" data-size="60x18">60x18</button>
-        <button class="btn" data-size="40x12">40x12</button>
+<div id="main" class="studio-workspace">
+  <div class="studio-toolbar">
+    <div class="studio-toolbar-left">
+      <div class="studio-pill-group" id="size-selector">
+        <button class="studio-pill" data-size="120x40">120x40</button>
+        <button class="studio-pill active" data-size="100x30">100x30</button>
+        <button class="studio-pill" data-size="80x24">80x24</button>
+        <button class="studio-pill" data-size="60x18">60x18</button>
+        <button class="studio-pill" data-size="40x12">40x12</button>
       </div>
-      <button class="toggle-btn" id="theme-holes-toggle">
+      <button class="studio-toggle" id="theme-holes-toggle">
         <span>🚨</span> Show Theme Holes
       </button>
     </div>
-    <div class="toolbar-right">
+    <div class="studio-toolbar-right">
       <span id="current-scenario-label" style="font-size:12px; font-weight:600; color:var(--primary);"></span>
     </div>
   </div>
 
-  <div id="viewport-stage">
-    <div class="terminal-frame-container" id="terminal-container">
+  <div id="viewport-stage" class="studio-stage">
+    <div class="terminal-frame" id="terminal-container">
       <div class="terminal-titlebar">
         <div class="titlebar-dots">
           <div class="dot red"></div>
@@ -722,12 +357,12 @@ pub fn generate_visual_gallery_html(scenarios_data: &[GalleryEntry]) -> String {
     </div>
   </div>
 
-  <div id="diagnostics">
-    <div class="diag-header">
+  <div id="diagnostics" class="studio-drawer">
+    <div class="studio-drawer-header">
       <span>Invariant Diagnostics & Layout Verification</span>
       <span id="diag-summary"></span>
     </div>
-    <div class="diag-content" id="diag-content"></div>
+    <div class="studio-drawer-body" id="diag-content"></div>
   </div>
 </div>
 
@@ -740,7 +375,6 @@ pub fn generate_visual_gallery_html(scenarios_data: &[GalleryEntry]) -> String {
 
   const scenarioListEl = document.getElementById("scenario-list");
   const screenEl = document.getElementById("terminal-screen");
-  const containerEl = document.getElementById("terminal-container");
   const frameTitleEl = document.getElementById("frame-title");
   const frameSizeMetaEl = document.getElementById("frame-size-meta");
   const scenarioLabelEl = document.getElementById("current-scenario-label");
@@ -773,7 +407,6 @@ pub fn generate_visual_gallery_html(scenarios_data: &[GalleryEntry]) -> String {
     const lowerFilter = filter.toLowerCase();
     const unique = getUniqueScenarios();
 
-    // Group by category
     const categories = {{}};
     unique.forEach((s) => {{
       if (filter && !s.name.toLowerCase().includes(lowerFilter) && !s.description.toLowerCase().includes(lowerFilter)) {{
@@ -832,19 +465,12 @@ pub fn generate_visual_gallery_html(scenarios_data: &[GalleryEntry]) -> String {
     scenarioLabelEl.textContent = `${{s.name}} (${{s.width}}x${{s.height}})`;
 
     screenEl.innerHTML = s.html;
+    screenEl.classList.toggle("theme-hole-active", showThemeHoles);
 
-    if (showThemeHoles) {{
-      screenEl.classList.add("theme-hole-active");
-    }} else {{
-      screenEl.classList.remove("theme-hole-active");
-    }}
-
-    // Sync size buttons
-    document.querySelectorAll("#size-selector .btn").forEach(btn => {{
+    document.querySelectorAll("#size-selector .studio-pill").forEach(btn => {{
       btn.classList.toggle("active", btn.dataset.size === `${{s.width}}x${{s.height}}`);
     }});
 
-    // Diagnostics
     if (s.violations.length === 0) {{
       diagSummaryEl.innerHTML = `<span class="diag-ok">✓ All Invariants Passed (0 Violations)</span>`;
       diagContentEl.innerHTML = `<div class="diag-ok">✓ No theme holes (Color::Reset bleed), control characters, or wide-glyph continuation defects detected.</div>`;
@@ -854,7 +480,6 @@ pub fn generate_visual_gallery_html(scenarios_data: &[GalleryEntry]) -> String {
     }}
   }}
 
-  // Event Listeners
   searchInputEl.addEventListener("input", (e) => {{
     renderSidebar(e.target.value);
   }});
@@ -865,16 +490,15 @@ pub fn generate_visual_gallery_html(scenarios_data: &[GalleryEntry]) -> String {
     renderCurrentFrame();
   }});
 
-  document.querySelectorAll("#size-selector .btn").forEach(btn => {{
+  document.querySelectorAll("#size-selector .studio-pill").forEach(btn => {{
     btn.addEventListener("click", () => {{
-      document.querySelectorAll("#size-selector .btn").forEach(b => b.classList.remove("active"));
+      document.querySelectorAll("#size-selector .studio-pill").forEach(b => b.classList.remove("active"));
       btn.classList.add("active");
       currentSize = btn.dataset.size;
       renderCurrentFrame();
     }});
   }});
 
-  // Keyboard navigation
   window.addEventListener("keydown", (e) => {{
     if (document.activeElement === searchInputEl) return;
     const unique = getUniqueScenarios();
@@ -890,7 +514,6 @@ pub fn generate_visual_gallery_html(scenarios_data: &[GalleryEntry]) -> String {
     }}
   }});
 
-  // Initial render
   renderSidebar();
   renderCurrentFrame();
 </script>
@@ -899,3 +522,111 @@ pub fn generate_visual_gallery_html(scenarios_data: &[GalleryEntry]) -> String {
 "##
     )
 }
+
+#[cfg(test)]
+const GALLERY_EXTRA_CSS: &str = r##"
+  .search-box {
+    margin-top: 12px;
+    position: relative;
+  }
+
+  .search-box input {
+    width: 100%;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 7px 10px;
+    color: var(--fg);
+    font-size: 12px;
+    outline: none;
+  }
+
+  .search-box input:focus {
+    border-color: var(--primary);
+  }
+
+  .scenario-list {
+    overflow-y: auto;
+    flex: 1;
+    padding: 8px;
+  }
+
+  .category-group {
+    margin-bottom: 16px;
+  }
+
+  .category-title {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    color: var(--fg-dim);
+    padding: 6px 8px;
+  }
+
+  .scenario-item {
+    padding: 8px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    margin-bottom: 3px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    transition: background 0.09s ease;
+  }
+
+  .scenario-item:hover {
+    background: var(--bg-card-hover);
+  }
+
+  .scenario-item.active {
+    background: var(--bg-card);
+    border-left: 3px solid var(--primary);
+  }
+
+  .scenario-item-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .scenario-name {
+    font-size: 13px;
+    font-weight: 600;
+    font-family: var(--font-mono);
+  }
+
+  .badge {
+    font-size: 10px;
+    padding: 2px 5px;
+    border-radius: 4px;
+    font-weight: 600;
+  }
+
+  .badge-pass {
+    background: rgba(115, 201, 145, 0.2);
+    color: var(--success);
+  }
+
+  .badge-violation {
+    background: rgba(224, 108, 117, 0.25);
+    color: var(--error);
+  }
+
+  .scenario-desc {
+    font-size: 11px;
+    color: var(--fg-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .diag-ok {
+    color: var(--success);
+  }
+
+  .diag-error {
+    color: var(--error);
+    margin-bottom: 4px;
+  }
+"##;

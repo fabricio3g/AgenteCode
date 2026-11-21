@@ -86,15 +86,13 @@ impl PlanAskState {
     }
 }
 
+use crate::widgets::ScrollState;
+
 #[derive(Debug, Clone, Default)]
 pub struct PlanReviewState {
     pub phase: PlanReviewPhase,
     pub pending: Option<PendingPlan>,
-    pub scroll: usize,
-    /// Wrapped body line count from last render (for scroll clamp).
-    pub body_line_count: usize,
-    /// Visible body rows from last render.
-    pub body_visible: usize,
+    pub scroll: ScrollState,
     pub ask: Option<PlanAskState>,
     /// Selected button on review card: 0 Accept, 1 Redo, 2 Comment
     pub button_index: usize,
@@ -118,9 +116,7 @@ impl PlanReviewState {
             version,
         });
         // Phase intentionally unchanged (Idle) — the card opens on promote().
-        self.scroll = 0;
-        self.body_line_count = 0;
-        self.body_visible = 0;
+        self.scroll.reset(false);
         self.button_index = 0;
         self.ask = None;
     }
@@ -133,7 +129,7 @@ impl PlanReviewState {
             return;
         }
         self.phase = PlanReviewPhase::Review;
-        self.scroll = 0;
+        self.scroll.scroll_to_top();
         self.button_index = 0;
         self.ask = None;
     }
@@ -169,17 +165,16 @@ impl PlanReviewState {
     }
 
     pub fn max_scroll(&self) -> usize {
-        self.body_line_count
-            .saturating_sub(self.body_visible.max(1))
+        self.scroll.max_offset_nonempty()
     }
 
     pub fn scroll_by(&mut self, delta: i16) {
         let max = self.max_scroll();
-        if delta < 0 {
-            self.scroll = self.scroll.saturating_sub(delta.unsigned_abs() as usize);
-        } else {
-            self.scroll = self.scroll.saturating_add(delta as usize).min(max);
-        }
+        self.scroll.offset = self
+            .scroll
+            .offset
+            .saturating_add_signed(delta as isize)
+            .min(max);
     }
 }
 
@@ -367,15 +362,13 @@ mod tests {
 
     #[test]
     fn scroll_clamps_to_rendered_body() {
-        let mut s = PlanReviewState {
-            body_line_count: 20,
-            body_visible: 8,
-            ..PlanReviewState::default()
-        };
+        let mut s = PlanReviewState::default();
+        s.scroll.total = 20;
+        s.scroll.visible = 8;
         assert_eq!(s.max_scroll(), 12);
         s.scroll_by(50);
-        assert_eq!(s.scroll, 12);
+        assert_eq!(s.scroll.offset, 12);
         s.scroll_by(-50);
-        assert_eq!(s.scroll, 0);
+        assert_eq!(s.scroll.offset, 0);
     }
 }

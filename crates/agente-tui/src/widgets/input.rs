@@ -364,7 +364,7 @@ fn split_spans_at(
         } else {
             // The cursor falls inside this span — split it.
             let take = char_pos - seen;
-            let byte = char_to_byte(&span.content, take);
+            let byte = super::char_to_byte(&span.content, take);
             let content = span.content.as_ref();
             before.push(Span::styled(content[..byte].to_string(), span.style));
             after.push(Span::styled(content[byte..].to_string(), span.style));
@@ -558,13 +558,6 @@ fn render_body(frame: &mut Frame, area: Rect, state: &AppState) {
     }
 
     frame.render_widget(Paragraph::new(lines).style(Style::default().bg(bg)), area);
-}
-
-fn char_to_byte(s: &str, char_idx: usize) -> usize {
-    s.char_indices()
-        .nth(char_idx)
-        .map(|(i, _)| i)
-        .unwrap_or(s.len())
 }
 
 /// Wrap input text by terminal cells while retaining source character offsets.

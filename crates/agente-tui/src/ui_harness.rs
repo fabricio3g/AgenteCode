@@ -319,8 +319,8 @@ pub(crate) fn scenarios() -> Vec<(&'static str, Build)> {
         ("overlay_help_scrolled", |s| {
             seed_conversation(s);
             s.ui.show_help = true;
-            s.ui.help_scroll = 12;
-            s.ui.help_visible = 14;
+            s.ui.help_scroll.offset = 12;
+            s.ui.help_scroll.visible = 14;
         }),
         ("chat_long_unbreakable_token", |s| {
             s.session.chat_history.push(entry(
@@ -517,7 +517,7 @@ pub(crate) fn scenarios() -> Vec<(&'static str, Build)> {
             seed_conversation(s);
             seed_subagent(s);
             s.ui.subagent_detail_id = Some("sub-1".to_string());
-            s.ui.subagent_detail_scroll = 0;
+            s.ui.subagent_detail_scroll.offset = 0;
         }),
         ("plan_review_card", |s| {
             seed_conversation(s);
@@ -589,7 +589,7 @@ pub(crate) fn scenarios() -> Vec<(&'static str, Build)> {
             seed_conversation(s);
             seed_subagent(s);
             s.ui.subagent_detail_id = Some("sub-1".to_string());
-            s.ui.subagent_detail_scroll = 4;
+            s.ui.subagent_detail_scroll.offset = 4;
         }),
         ("agent_retry_backoff", |s| {
             seed_conversation(s);
@@ -1137,7 +1137,7 @@ fn floating_modals_dim_the_backdrop_but_hide_the_card_area() {
         ("overlay_subagent_detail", |s| {
             seed_subagent(s);
             s.ui.subagent_detail_id = Some("sub-1".to_string());
-            s.ui.subagent_detail_scroll = 0;
+            s.ui.subagent_detail_scroll.offset = 0;
         }),
         ("approval_shell", |s| {
             s.agent.state = AgentState::WaitingApproval;

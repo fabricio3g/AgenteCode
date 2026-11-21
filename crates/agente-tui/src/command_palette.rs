@@ -13,7 +13,7 @@ use ratatui::Frame;
 use crate::state::{AppState, ListId};
 use crate::style::{self, *};
 use crate::widgets::pick::{pick_list, row_label, search_field, PickItem};
-use crate::widgets::{centered_panel, footer_hints, modal_card, modal_footer, panel_row};
+use crate::widgets::{format_elapsed_secs, ModalChrome};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Command {
@@ -436,22 +436,16 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
     let commands = filter_commands(&state.input.command_palette_query);
     let max_rows = area.height.saturating_sub(6).clamp(3, 12) as usize;
     let list_height = commands.len().clamp(1, max_rows) as u16;
-    // gap(1) + search(1) + gap(1) + list + gap(1) + footer(1); title on border.
     let panel_height = list_height + 7;
     let panel_width = area.width.saturating_sub(4).min(64).max(28.min(area.width));
-    let panel = centered_panel(area, panel_width, panel_height);
+    let modal = ModalChrome::new(vec![
+        Span::styled("Commands", style::bold()),
+        Span::styled(format!(" · {}", commands.len()), style::dim()),
+    ])
+    .footer(&[("↑↓", "move"), ("Enter", "run"), ("Esc", "close")])
+    .render_centered(frame, area, panel_width, panel_height);
 
-    let body = modal_card(
-        frame,
-        panel,
-        vec![
-            Span::styled("Commands", style::bold()),
-            Span::styled(format!(" · {}", commands.len()), style::dim()),
-        ],
-    );
-
-    // Search field (solid bar), one gap row under the card title.
-    if let Some(search_area) = panel_row(body, 1, 1) {
+    if let Some(search_area) = modal.row(0) {
         search_field(
             frame,
             search_area,
@@ -460,12 +454,7 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
         );
     }
 
-    // List: from body row 3 down to the gap above the footer.
-    if let Some(list_top) = panel_row(body, 3, 1) {
-        let list_area = Rect {
-            height: body.height.saturating_sub(5),
-            ..list_top
-        };
+    if let Some(list_area) = modal.slice_from(2) {
         render_command_list(
             frame,
             list_area,
@@ -475,15 +464,6 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
             state.input.command_palette_selected,
         );
     }
-
-    modal_footer(
-        frame,
-        body,
-        footer_hints(
-            &[("↑↓", "move"), ("Enter", "run"), ("Esc", "close")],
-            body.width.saturating_sub(2),
-        ),
-    );
 }
 
 /// Render the `/subagents` popup: a floating panel listing running/completed
@@ -497,30 +477,19 @@ pub fn render_subagents(frame: &mut Frame, area: Rect, state: &AppState) {
     let running = state.subagent_registry.running_count();
     let max_rows = area.height.saturating_sub(4).clamp(3, 14) as usize;
     let list_height = entries.len().clamp(1, max_rows) as u16;
-    // gap(1) + list + gap(1) + footer(1); title on the card border.
     let panel_height = list_height + 5;
     let panel_width = area.width.saturating_sub(4).min(70).max(32.min(area.width));
-    let panel = centered_panel(area, panel_width, panel_height);
+    let modal = ModalChrome::new(vec![
+        Span::styled("Subagents", style::bold()),
+        Span::styled(
+            format!(" · {running} running / {} total", entries.len()),
+            style::dim(),
+        ),
+    ])
+    .footer(&[("↑↓", "move"), ("k", "kill"), ("Esc", "close")])
+    .render_centered(frame, area, panel_width, panel_height);
 
-    let body = modal_card(
-        frame,
-        panel,
-        vec![
-            Span::styled("Subagents", style::bold()),
-            Span::styled(
-                format!(" · {running} running / {} total", entries.len()),
-                style::dim(),
-            ),
-        ],
-    );
-
-    // List starts one gap row under the card title.
-    if let Some(list_top) = panel_row(body, 1, 1) {
-        let list_area = Rect {
-            height: body.height.saturating_sub(3),
-            ..list_top
-        };
-
+    if modal.body.width > 0 && modal.body.height > 0 {
         if entries.is_empty() {
             frame.render_widget(
                 Paragraph::new(Line::from(Span::styled(
@@ -528,18 +497,18 @@ pub fn render_subagents(frame: &mut Frame, area: Rect, state: &AppState) {
                     style::dim().bg(BG_PANEL()),
                 )))
                 .style(Style::default().bg(BG_PANEL())),
-                list_area,
+                modal.body,
             );
         } else {
             let selected = state.input.subagents_selected.min(entries.len() - 1);
             let items = entries
                 .iter()
                 .enumerate()
-                .map(|(index, snap)| subagent_item(snap, index == selected, list_area.width))
+                .map(|(index, snap)| subagent_item(snap, index == selected, modal.body.width))
                 .collect();
             pick_list(
                 frame,
-                list_area,
+                modal.body,
                 &state.ui.hits,
                 ListId::Subagents,
                 items,
@@ -547,15 +516,6 @@ pub fn render_subagents(frame: &mut Frame, area: Rect, state: &AppState) {
             );
         }
     }
-
-    modal_footer(
-        frame,
-        body,
-        footer_hints(
-            &[("↑↓", "move"), ("k", "kill"), ("Esc", "close")],
-            body.width.saturating_sub(2),
-        ),
-    );
 }
 
 fn subagent_item(
@@ -569,12 +529,8 @@ fn subagent_item(
         .unwrap_or_else(chrono::Utc::now)
         .signed_duration_since(snap.started_at)
         .num_seconds()
-        .max(0);
-    let time = if elapsed >= 60 {
-        format!("{}m{:02}s", elapsed / 60, elapsed % 60)
-    } else {
-        format!("{elapsed}s")
-    };
+        .max(0) as u64;
+    let time = format_elapsed_secs(elapsed);
     let short: String = snap.id.chars().take(8).collect();
     let meta = format!("{} · {time}  {short}", kind.label());
     let fixed = 4 + snap.subagent_type.len() + 3;

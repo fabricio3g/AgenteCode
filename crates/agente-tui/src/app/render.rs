@@ -175,7 +175,7 @@ fn render_header(frame: &mut ratatui::Frame, area: ratatui::layout::Rect, state:
     let mut spans: Vec<Span<'static>> = vec![
         Span::styled(" ", Style::default().bg(BG())),
         Span::styled(
-            shorten_dir(&state.session.project_dir),
+            widgets::shorten_path(&state.session.project_dir, Some(32)),
             Style::default().fg(FG_DIM()),
         ),
     ];
@@ -218,28 +218,6 @@ fn render_header(frame: &mut ratatui::Frame, area: ratatui::layout::Rect, state:
         Paragraph::new(Line::from(spans)).style(Style::default().bg(BG())),
         area,
     );
-}
-
-/// `~/projects/agente` — home prefix collapsed to `~`, path separators
-/// normalized, and deep paths trimmed to their last two components.
-fn shorten_dir(path: &str) -> String {
-    let normalized = path.replace('\\', "/");
-    let home = dirs::home_dir()
-        .map(|h| h.to_string_lossy().replace('\\', "/"))
-        .filter(|h| !h.is_empty() && normalized.starts_with(h.as_str()));
-    let display = match home {
-        Some(home) => format!("~{}", &normalized[home.len()..]),
-        None => normalized,
-    };
-    if display.chars().count() <= 32 {
-        return display;
-    }
-    let parts: Vec<&str> = display.split('/').filter(|p| !p.is_empty()).collect();
-    match parts.len() {
-        0 => display,
-        1 => format!("…/{}", parts[0]),
-        _ => format!("…/{}/{}", parts[parts.len() - 2], parts[parts.len() - 1]),
-    }
 }
 
 fn render_composer_picker(
@@ -404,10 +382,9 @@ fn render_diff_peek(frame: &mut ratatui::Frame, size: ratatui::layout::Rect, sta
         widgets::diff_view::DiffView::from_content(old_content, new_content, path.clone(), path);
     let visible = usize::from(height.saturating_sub(1));
     let total = view.rendered_height();
-    state.ui.diff_peek_max = total.saturating_sub(visible);
-    let offset = state.ui.diff_peek_scroll.min(state.ui.diff_peek_max);
-    state.ui.diff_peek_scroll = offset;
-    let scrollable = state.ui.diff_peek_max > 0;
+    let offset = state.ui.diff_peek_scroll.sync(total, visible);
+    let scrollable = state.ui.diff_peek_scroll.is_scrollable();
+    let viewport = state.ui.diff_peek_scroll.viewport();
     let mut hints = Vec::new();
     if scrollable {
         hints.push(("↑↓", "scroll"));
@@ -422,16 +399,12 @@ fn render_diff_peek(frame: &mut ratatui::Frame, size: ratatui::layout::Rect, sta
     let inner = Rect::new(panel.x, body.y, panel.width - u16::from(scrollable), height);
     frame.render_widget(view.scrolled(offset), inner);
     if scrollable {
-        use widgets::scrollbar::{self, ScrollSurface, Viewport};
+        use widgets::scrollbar::{self, ScrollSurface};
         scrollbar::render(
             frame,
             Rect::new(inner.right(), inner.y + 1, 1, height.saturating_sub(1)),
             ScrollSurface::DiffPeek,
-            Viewport {
-                offset,
-                visible,
-                total,
-            },
+            viewport,
             BG_PANEL(),
             &state.ui,
         );
@@ -447,13 +420,13 @@ mod tests {
 
     #[test]
     fn shorten_dir_keeps_short_paths_whole() {
-        assert_eq!(shorten_dir("/tmp/x"), "/tmp/x");
+        assert_eq!(widgets::shorten_path("/tmp/x", Some(32)), "/tmp/x");
     }
 
     #[test]
     fn shorten_dir_trims_deep_paths_to_last_two_parts() {
         assert_eq!(
-            shorten_dir("/a/very/long/path/with/many/components/here"),
+            widgets::shorten_path("/a/very/long/path/with/many/components/here", Some(32)),
             "…/components/here"
         );
     }

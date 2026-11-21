@@ -11,7 +11,7 @@ use ratatui::Frame;
 use crate::state::{AppState, ListId};
 use crate::style;
 use crate::widgets::pick::{pick_list, row_label, PickItem};
-use crate::widgets::{centered_panel, footer_hints, modal_card, modal_footer, panel_row, s};
+use crate::widgets::{s, ModalChrome};
 
 /// Every settings row, in display order.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -127,18 +127,15 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
     if !state.input.show_settings || area.width < 12 || area.height < 7 {
         return;
     }
-    // gap + rows + gap + footer inside the border.
-    let panel = centered_panel(
-        area,
-        area.width.saturating_sub(4).min(64),
-        SETTINGS.len() as u16 + 5,
-    );
-    let body = modal_card(frame, panel, vec![s("Settings", style::bold())]);
-    if let Some(top) = panel_row(body, 1, 1) {
-        let list_area = Rect {
-            height: body.height.saturating_sub(3),
-            ..top
-        };
+    let modal = ModalChrome::new(vec![s("Settings", style::bold())])
+        .footer(&[("↑↓", "move"), ("Enter", "change"), ("Esc", "close")])
+        .render_centered(
+            frame,
+            area,
+            area.width.saturating_sub(4).min(64),
+            SETTINGS.len() as u16 + 5,
+        );
+    if modal.body.width > 0 && modal.body.height > 0 {
         let selected = state.input.settings_selected;
         let items = SETTINGS
             .iter()
@@ -153,21 +150,13 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
             .collect();
         pick_list(
             frame,
-            list_area,
+            modal.body,
             &state.ui.hits,
             ListId::Settings,
             items,
             selected,
         );
     }
-    modal_footer(
-        frame,
-        body,
-        footer_hints(
-            &[("↑↓", "move"), ("Enter", "change"), ("Esc", "close")],
-            body.width.saturating_sub(2),
-        ),
-    );
 }
 
 /// The Web search row: the provider, or what it still needs.

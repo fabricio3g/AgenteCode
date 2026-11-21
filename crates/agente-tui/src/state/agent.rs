@@ -311,12 +311,7 @@ pub struct LiveToolCall {
 impl LiveToolCall {
     /// `6m03s` / `42s` since the call started.
     pub fn elapsed_label(&self) -> String {
-        let secs = self.started.elapsed().as_secs();
-        if secs >= 60 {
-            format!("{}m{:02}s", secs / 60, secs % 60)
-        } else {
-            format!("{secs}s")
-        }
+        crate::widgets::format_elapsed_secs(self.started.elapsed().as_secs())
     }
 
     /// The shell command, when this is a shell call.
@@ -562,11 +557,6 @@ impl AgentRuntimeState {
     /// Check if agent is idle.
     pub fn is_idle(&self) -> bool {
         matches!(self.state, AgentState::Idle)
-    }
-
-    /// Check if agent is working (not idle)
-    pub fn is_working(&self) -> bool {
-        !self.is_idle()
     }
 
     /// Check if agent is waiting for approval

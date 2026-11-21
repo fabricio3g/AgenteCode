@@ -90,6 +90,7 @@ impl App {
             }
             HitTarget::Approval(_) => owner == ModalOwner::Approval,
             HitTarget::PlanAction(_) => owner == ModalOwner::PlanReview,
+            HitTarget::PlanAskOption(_) => owner == ModalOwner::PlanAsk,
             HitTarget::DetailTab(_) => owner == ModalOwner::SubagentDetail,
             HitTarget::Row { list, .. } => self.active_list() == Some(*list),
             HitTarget::Scrollbar(geom) => self.scrollbar_is_active(geom.surface, owner),
@@ -129,6 +130,17 @@ impl App {
             HitTarget::PlanAction(index) => {
                 self.state.plan_review.button_index = index.min(2);
                 self.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))?;
+            }
+            HitTarget::PlanAskOption(index) => {
+                if let Some(ask) = self.state.plan_review.ask.as_mut() {
+                    let q_idx = ask.question_index;
+                    if let Some(q) = ask.questions.get_mut(q_idx) {
+                        if index < q.options.len() {
+                            q.selected = Some(index);
+                            q.free_text.clear();
+                        }
+                    }
+                }
             }
             HitTarget::Tab(index) => self.switch_tab(index),
             HitTarget::TabClose(index) => self.close_tab(index),
@@ -190,13 +202,10 @@ impl App {
             match owner {
                 ModalOwner::Help => self.state.ui.scroll_help(i32::from(delta)),
                 ModalOwner::Board => {
-                    if delta < 0 {
-                        self.state.input.board_scroll =
-                            self.state.input.board_scroll.saturating_sub(1);
-                    } else {
-                        self.state.input.board_scroll =
-                            self.state.input.board_scroll.saturating_add(1);
-                    }
+                    self.state
+                        .input
+                        .board_scroll
+                        .scroll_by(if delta < 0 { -1 } else { 1 });
                 }
                 ModalOwner::ProcessView => {
                     if let Some(view) = self.state.ui.process_view.as_mut() {
@@ -241,7 +250,7 @@ impl App {
 }
 
 impl App {
-    pub(super) fn handle_mouse(&mut self, mouse: MouseEvent) -> anyhow::Result<()> {
+    pub(crate) fn handle_mouse(&mut self, mouse: MouseEvent) -> anyhow::Result<()> {
         let before = self.pointer_fingerprint();
         let result = self.route_mouse(mouse);
         if self.pointer_fingerprint() != before {
@@ -483,19 +492,18 @@ impl App {
                 ui.chat_auto_scroll = offset >= geom.max_offset;
             }
             ScrollSurface::Plan => {
-                self.state.plan_review.scroll = offset;
+                self.state.plan_review.scroll.scroll_to(offset);
             }
             ScrollSurface::Process => {
                 if let Some(view) = self.state.ui.process_view.as_mut() {
-                    view.follow = offset >= geom.max_offset;
-                    view.scroll = offset;
+                    view.scroll.scroll_to(offset);
+                    view.scroll.follow = offset >= geom.max_offset;
                 }
             }
             ScrollSurface::SubagentDetail => {
-                ui.subagent_detail_follow = false;
-                ui.subagent_detail_scroll = offset;
+                ui.subagent_detail_scroll.scroll_to(offset);
             }
-            ScrollSurface::DiffPeek => ui.diff_peek_scroll = offset.min(ui.diff_peek_max),
+            ScrollSurface::DiffPeek => ui.diff_peek_scroll.scroll_to(offset),
         }
         self.state.ui.needs_render = true;
     }
@@ -781,7 +789,7 @@ mod tests {
         assert!(find_row(&first, "diff-end-marker").is_none());
         app.handle_mouse(wheel(MouseEventKind::ScrollDown, 20, 10))
             .unwrap();
-        assert_eq!(app.state.ui.diff_peek_scroll, 3);
+        assert_eq!(app.state.ui.diff_peek_scroll.offset, 3);
         app.handle_key(KeyEvent::new(KeyCode::End, KeyModifiers::NONE))
             .unwrap();
         let end = render(&mut app, 80, 24);
@@ -1074,16 +1082,17 @@ mod tests {
         );
 
         let mut process = crate::state::ProcessView::open("hidden".into());
-        process.scroll = 8;
-        process.max_scroll = 20;
+        process.scroll.total = 30;
+        process.scroll.visible = 10;
+        process.scroll.offset = 8;
         app.state.ui.process_view = Some(process);
         app.state.ui.show_help = true;
-        app.state.ui.help_scroll = 2;
+        app.state.ui.help_scroll.offset = 2;
         app.handle_mouse(wheel(MouseEventKind::ScrollDown, 50, 10))
             .unwrap();
 
-        assert_eq!(app.state.ui.process_view.as_ref().unwrap().scroll, 8);
-        assert_eq!(app.state.ui.help_scroll, 2);
+        assert_eq!(app.state.ui.process_view.as_ref().unwrap().scroll.offset, 8);
+        assert_eq!(app.state.ui.help_scroll.offset, 2);
         assert!(
             app.state.ui.chat_scroll > 0,
             "wheel behind a floating approval must scroll the chat"
@@ -1099,8 +1108,8 @@ mod tests {
         app.state.ui.plan_review_area = Some(Rect::new(0, 0, 80, 20));
         // The widget sets these during render (wrapped body vs visible rows);
         // mirror a rendered modal so max_scroll is non-zero.
-        app.state.plan_review.body_line_count = 200;
-        app.state.plan_review.body_visible = 20;
+        app.state.plan_review.scroll.total = 200;
+        app.state.plan_review.scroll.visible = 20;
     }
 
     #[test]
@@ -1126,10 +1135,13 @@ mod tests {
         // Press near the bottom of the track: jump to the end.
         app.handle_mouse(down(col, top + 13)).unwrap();
         let max = app.state.plan_review.max_scroll();
-        assert!(app.state.plan_review.scroll + 2 >= max, "jumped to the end");
+        assert!(
+            app.state.plan_review.scroll.offset + 2 >= max,
+            "jumped to the end"
+        );
         // Drag back to the top: scrub to the start; release ends the drag.
         app.handle_mouse(drag_to(col, top)).unwrap();
-        assert_eq!(app.state.plan_review.scroll, 0);
+        assert_eq!(app.state.plan_review.scroll.offset, 0);
         app.handle_mouse(up(col, top)).unwrap();
         assert!(app.state.ui.scroll_drag.is_none());
     }
@@ -1178,32 +1190,63 @@ mod tests {
     fn wheel_over_plan_modal_scrolls_the_plan() {
         let mut app = test_app();
         open_plan_modal(&mut app);
-        let before = app.state.plan_review.scroll;
+        let before = app.state.plan_review.scroll.offset;
 
         // Wheel down over the modal scrolls the plan body (not the hidden chat).
         app.handle_mouse(wheel(MouseEventKind::ScrollDown, 40, 10))
             .unwrap();
         assert!(
-            app.state.plan_review.scroll > before,
+            app.state.plan_review.scroll.offset > before,
             "wheel over the modal must scroll the plan"
         );
 
         // Wheel up scrolls back.
         app.handle_mouse(wheel(MouseEventKind::ScrollUp, 40, 10))
             .unwrap();
-        assert_eq!(app.state.plan_review.scroll, before);
+        assert_eq!(app.state.plan_review.scroll.offset, before);
     }
 
     #[test]
     fn wheel_outside_plan_modal_does_not_scroll_it() {
         let mut app = test_app();
         open_plan_modal(&mut app);
-        let before = app.state.plan_review.scroll;
+        let before = app.state.plan_review.scroll.offset;
 
         // Pointer below the modal (composer row): the plan stays put.
         app.handle_mouse(wheel(MouseEventKind::ScrollDown, 40, 25))
             .unwrap();
-        assert_eq!(app.state.plan_review.scroll, before);
+        assert_eq!(app.state.plan_review.scroll.offset, before);
+    }
+
+    #[test]
+    fn clicking_plan_ask_option_chip_selects_it() {
+        let mut app = test_app();
+        app.state.ui.show_welcome_screen = false;
+        app.state.plan_review.phase = crate::state::PlanReviewPhase::Asking;
+        app.state.plan_review.ask = Some(crate::state::PlanAskState {
+            original_comment: "make it better".into(),
+            questions: crate::state::template_ask_questions("make it better"),
+            question_index: 0,
+            reask_count: 0,
+        });
+        let buf = render(&mut app, 80, 24);
+        let (x, y) = (0..24u16)
+            .find_map(|y| {
+                let row: String = (0..80u16).map(|x| buf[(x, y)].symbol()).collect();
+                row.find("Scope")
+                    .map(|byte| (row[..byte].chars().count() as u16 + 1, y))
+            })
+            .expect("option chip painted");
+        assert_eq!(
+            app.state.ui.hits.at(x, y),
+            Some(crate::state::HitTarget::PlanAskOption(1))
+        );
+        app.handle_mouse(down(x, y)).unwrap();
+        app.handle_mouse(up(x, y)).unwrap();
+        assert_eq!(
+            app.state.plan_review.ask.as_ref().unwrap().questions[0].selected,
+            Some(1)
+        );
     }
 
     #[test]

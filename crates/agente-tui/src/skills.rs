@@ -14,7 +14,7 @@ use crate::state::{AppState, ListId};
 use crate::style;
 use crate::widgets::markdown::wrap_line;
 use crate::widgets::pick::{pick_list, row_label, PickItem};
-use crate::widgets::{centered_panel, footer_hints, modal_card, modal_footer, panel_row, s};
+use crate::widgets::{s, ModalChrome};
 
 /// Rows the list shows before it scrolls.
 const MAX_ROWS: usize = 10;
@@ -27,44 +27,44 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
     }
     let skills = &state.input.skills;
     let rows = skills.len().clamp(1, MAX_ROWS) as u16;
-    // gap + rows + gap + description + gap + footer inside the border.
-    let panel = centered_panel(
-        area,
-        area.width.saturating_sub(4).min(72),
-        rows + DESCRIPTION_ROWS + 6,
-    );
     let count = match skills.len() {
         1 => " · 1 installed".to_string(),
         n => format!(" · {n} installed"),
     };
-    let body = modal_card(
-        frame,
-        panel,
-        vec![s("Skills", style::bold()), s(count, style::dim())],
-    );
-    let text_w = body.width.saturating_sub(2) as usize;
+    let modal = ModalChrome::new(vec![s("Skills", style::bold()), s(count, style::dim())])
+        .footer(&[("↑↓", "move"), ("Enter", "use"), ("Esc", "close")])
+        .render_centered(
+            frame,
+            area,
+            area.width.saturating_sub(4).min(72),
+            rows + DESCRIPTION_ROWS + 6,
+        );
+    let text_w = modal.body.width as usize;
 
     if skills.is_empty() {
         let lines = [
             s("No skills installed.", style::muted()),
             s("Add one at .agente/skills/<name>/SKILL.md", style::dim()),
         ];
-        for (dy, line) in (1u16..).zip(lines) {
-            if let Some(row) = panel_row(body, dy, 1) {
+        for (dy, line) in (0u16..).zip(lines) {
+            if let Some(row) = modal.row(dy) {
                 frame.render_widget(Paragraph::new(Line::from(line)), row);
             }
         }
-    } else if let Some(top) = panel_row(body, 1, 1) {
+    } else if modal.body.width > 0 && modal.body.height > 0 {
         let selected = state.input.skills_selected.min(skills.len() - 1);
-        // Reserve top gap (1), gap after list (1), description rows, gap (1),
-        // and modal_footer (1) so short terminals never let the list paint
-        // over the description or footer.
         let list_h = rows
-            .min(body.height.saturating_sub(4 + DESCRIPTION_ROWS).max(1))
-            .min(body.height.saturating_sub(2));
+            .min(
+                modal
+                    .body
+                    .height
+                    .saturating_sub(1 + DESCRIPTION_ROWS)
+                    .max(1),
+            )
+            .min(modal.body.height);
         let list_area = Rect {
             height: list_h,
-            ..top
+            ..modal.body
         };
         let items = skills
             .iter()
@@ -93,33 +93,20 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
         let description = Line::from(s(skills[selected].description.clone(), style::muted()));
         let wrapped = wrap_line(&description, text_w);
         let last = wrapped.len();
-        let footer_dy = body.height.saturating_sub(1);
         for (i, mut line) in wrapped
             .into_iter()
             .take(DESCRIPTION_ROWS as usize)
             .enumerate()
         {
-            let dy = list_area.height + 2 + i as u16;
-            if dy >= footer_dy {
-                break;
-            }
+            let dy = list_area.height + 1 + i as u16;
             if i + 1 == DESCRIPTION_ROWS as usize && last > DESCRIPTION_ROWS as usize {
                 line.spans.push(s("…", style::dim()));
             }
-            if let Some(row) = panel_row(body, dy, 1) {
+            if let Some(row) = modal.row(dy) {
                 frame.render_widget(Paragraph::new(line), row);
             }
         }
     }
-
-    modal_footer(
-        frame,
-        body,
-        footer_hints(
-            &[("↑↓", "move"), ("Enter", "use"), ("Esc", "close")],
-            body.width.saturating_sub(2),
-        ),
-    );
 }
 
 #[cfg(test)]

@@ -42,7 +42,6 @@ impl PersistenceWorker {
         }
     }
 
-    #[cfg(test)]
     pub(super) fn disabled() -> Self {
         let (sender, receiver) = mpsc::channel();
         drop(receiver);

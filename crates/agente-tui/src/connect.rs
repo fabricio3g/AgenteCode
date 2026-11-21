@@ -12,49 +12,25 @@ use ratatui::Frame;
 use crate::state::{AppState, ConnectScreen, ListId};
 use crate::style::{self, *};
 use crate::widgets::pick::{pick_list, row_label, search_field, PickItem};
-use crate::widgets::{
-    centered_panel, footer_hints, modal_card, modal_footer, panel_row, s, truncate_cells,
-};
+use crate::widgets::{s, truncate_cells, ModalChrome};
 use agente_core::config::ProviderEntry;
+use agente_core::providers::spec;
 
 // ── Provider metadata ──────────────────────────────────────────────────
 
-/// Static metadata for known providers.
+/// Metadata resolved from [`agente_core::providers::spec`].
 struct ProviderMeta {
-    description: &'static str,
     help_url: &'static str,
     sort_priority: usize,
 }
 
 fn provider_meta(id: &str) -> ProviderMeta {
-    match id {
-        "opencode-go" => ProviderMeta {
-            description: "OpenCode Go coding models",
-            help_url: "https://opencode.ai/auth",
-            sort_priority: 0,
+    match spec::get(id) {
+        Some(spec) => ProviderMeta {
+            help_url: spec.key_url.as_deref().unwrap_or(""),
+            sort_priority: spec.order as usize,
         },
-        "deepseek" => ProviderMeta {
-            description: "DeepSeek Flash and V4 Pro",
-            help_url: "https://platform.deepseek.com/api_keys",
-            sort_priority: 1,
-        },
-        "minimax" => ProviderMeta {
-            description: "MiniMax M3 and M2.7",
-            help_url: "https://platform.minimax.io/user-center/basic-information/interface-key",
-            sort_priority: 2,
-        },
-        "glm" => ProviderMeta {
-            description: "GLM on the standard Z.AI API",
-            help_url: "https://z.ai/manage-apikey/apikey-list",
-            sort_priority: 3,
-        },
-        "openrouter" => ProviderMeta {
-            description: "Models through OpenRouter",
-            help_url: "https://openrouter.ai/settings/keys",
-            sort_priority: 4,
-        },
-        _ => ProviderMeta {
-            description: "",
+        None => ProviderMeta {
             help_url: "",
             sort_priority: 99,
         },
@@ -64,9 +40,9 @@ fn provider_meta(id: &str) -> ProviderMeta {
 /// One-line description for a provider row.
 ///
 /// Prefers the live models.dev catalog -- model count plus a couple of the
-/// largest-context models -- so blurbs never go stale ("Claude 4 Sonnet" was
-/// still shipping long after Claude 5). Falls back to the curated string, then
-/// to the provider's own name, so an offline first run never shows a blank row.
+/// largest-context models -- then falls back to the provider spec's seeded
+/// models, and finally to the provider's own name, so an offline first run
+/// never shows a blank row or stale hardcoded blurb.
 fn provider_description(id: &str, state: &AppState) -> String {
     if let Some(catalog) = state.config.config.catalog.as_ref() {
         if let Some(provider) = catalog.providers.get(id) {
@@ -97,9 +73,23 @@ fn provider_description(id: &str, state: &AppState) -> String {
         }
     }
 
-    let fallback = provider_meta(id).description;
-    if !fallback.is_empty() {
-        return fallback.to_string();
+    if let Some(spec) = spec::get(id) {
+        let count = spec.models_seed.len();
+        if count > 0 {
+            let mut models: Vec<&spec::SeedModel> = spec.models_seed.values().collect();
+            models.sort_by(|a, b| b.context.cmp(&a.context).then_with(|| a.name.cmp(&b.name)));
+            let names: Vec<&str> = models
+                .iter()
+                .take(2)
+                .map(|m| m.name.as_str())
+                .filter(|n| !n.is_empty())
+                .collect();
+            let plural = if count == 1 { "model" } else { "models" };
+            if names.is_empty() {
+                return format!("{count} {plural}");
+            }
+            return format!("{count} {plural} · {}", names.join(", "));
+        }
     }
     state.provider_display_name(id)
 }
@@ -198,28 +188,24 @@ fn render_provider_list(
     // gap(1) + input(1) + gap(1) + list + gap(1) + footer(1); title on border.
     let panel_height = (content_rows + 7) as u16;
     let panel_width = 52u16;
-    let panel = centered_panel(area, panel_width, panel_height);
+    let modal = ModalChrome::new(vec![s(
+        "Providers",
+        Style::default().fg(FG()).add_modifier(Modifier::BOLD),
+    )])
+    .footer(&[
+        ("Enter", "use"),
+        ("Ctrl+K", "key"),
+        ("Del", "disconnect"),
+        ("Esc", "close"),
+    ])
+    .render_centered(frame, area, panel_width, panel_height);
 
-    let body = modal_card(
-        frame,
-        panel,
-        vec![s(
-            "Providers",
-            Style::default().fg(FG()).add_modifier(Modifier::BOLD),
-        )],
-    );
-
-    // Body row 0 is the gap under the card title.
-    if let Some(input_area) = panel_row(body, 1, 1) {
+    if let Some(input_area) = modal.row(0) {
         search_field(frame, input_area, query, "Search providers");
     }
 
-    let Some(list_top) = panel_row(body, 3, 1) else {
+    let Some(list_area) = modal.slice_from(2) else {
         return;
-    };
-    let list_area = Rect {
-        height: body.height.saturating_sub(5),
-        ..list_top
     };
 
     if filtered.is_empty() {
@@ -252,20 +238,6 @@ fn render_provider_list(
             selected,
         );
     }
-
-    modal_footer(
-        frame,
-        body,
-        footer_hints(
-            &[
-                ("Enter", "use"),
-                ("Ctrl+K", "key"),
-                ("Del", "disconnect"),
-                ("Esc", "close"),
-            ],
-            body.width.saturating_sub(2),
-        ),
-    );
 }
 
 /// `● Name  description ······ badge` — connected providers carry a ✓,
@@ -319,7 +291,6 @@ fn render_key_input(
     // gap(1) + input(1) + gap(1) + footer(1), plus the help URL row + its
     // gap, plus the error row when one is shown. Title rides the border.
     let panel_height = 6u16 + if has_help { 2u16 } else { 0 } + u16::from(!error.is_empty());
-    let panel = centered_panel(area, panel_width, panel_height);
 
     let pc = state.config.config.provider.get(provider);
     let display_name = pc
@@ -345,11 +316,13 @@ fn render_key_input(
         ));
     }
 
-    let body = modal_card(frame, panel, title_spans);
+    let modal = ModalChrome::new(title_spans)
+        .footer(&[("Enter", "connect"), ("Esc", "cancel")])
+        .render_centered(frame, area, panel_width, panel_height);
 
     // Help URL, one gap row under the card title.
     if has_help {
-        if let Some(help_area) = panel_row(body, 1, 1) {
+        if let Some(help_area) = modal.row(0) {
             frame.render_widget(
                 Paragraph::new(Line::from(vec![s(
                     meta.help_url.to_string(),
@@ -361,8 +334,8 @@ fn render_key_input(
     }
 
     // Key input sits one gap row below the help URL (or the header).
-    let input_row = if has_help { 3u16 } else { 1u16 };
-    let Some(input_area) = panel_row(body, input_row, 1) else {
+    let input_row = if has_help { 2u16 } else { 0u16 };
+    let Some(input_area) = modal.row(input_row) else {
         return;
     };
 
@@ -371,7 +344,7 @@ fn render_key_input(
 
     // Error message directly under the input, above the footer.
     if !error.is_empty() {
-        if let Some(error_area) = panel_row(body, input_row + 1, 1) {
+        if let Some(error_area) = modal.row(input_row + 1) {
             frame.render_widget(
                 Paragraph::new(Line::from(vec![
                     s("✗ ", Style::default().fg(ERROR())),
@@ -384,15 +357,6 @@ fn render_key_input(
             );
         }
     }
-
-    modal_footer(
-        frame,
-        body,
-        footer_hints(
-            &[("Enter", "connect"), ("Esc", "cancel")],
-            body.width.saturating_sub(2),
-        ),
-    );
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────

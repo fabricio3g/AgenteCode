@@ -13,7 +13,7 @@ use crate::state::{AppState, DiscoveryStatus, ListId, ModelEntry};
 use crate::style::{self, *};
 use crate::widgets::hints::format_token_count;
 use crate::widgets::pick::{current_mark, pick_list, row_label, search_field, PickItem};
-use crate::widgets::{centered_panel, footer_hints, modal_card, modal_footer, panel_row, s};
+use crate::widgets::{centered_panel, s, ModalChrome};
 
 /// Models matching the free-text query, optionally scoped to one provider.
 ///
@@ -129,9 +129,16 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
         title_spans.push(s(badge, style::accent()));
     }
 
-    let body = modal_card(frame, panel, title_spans);
+    let modal = ModalChrome::new(title_spans)
+        .footer(&[
+            ("↑↓", "move"),
+            ("Tab", "provider"),
+            ("Ctrl+R", "refresh"),
+            ("Esc", "close"),
+        ])
+        .render_in(frame, panel);
     if let Some(error) = refresh_error {
-        if let Some(row) = panel_row(body, 2, 1) {
+        if let Some(row) = modal.row(1) {
             frame.render_widget(
                 Paragraph::new(s(
                     crate::widgets::truncate_cells(
@@ -145,21 +152,14 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
         }
     }
 
-    // Row 0 of the body is the gap under the card title.
-
     // Input line
-    if let Some(input_area) = panel_row(body, 1, 1) {
+    if let Some(input_area) = modal.row(0) {
         render_input(frame, input_area, state);
     }
 
-    // Model list or empty message. Body row 2 is a gap; the last body row is
-    // the gap above the footer.
-    let Some(list_top) = panel_row(body, 3, 1) else {
+    // Model list or empty message.
+    let Some(list_area) = modal.slice_from(2) else {
         return;
-    };
-    let list_area = Rect {
-        height: body.height.saturating_sub(5),
-        ..list_top
     };
 
     if !state.is_connected() {
@@ -224,21 +224,6 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
     } else {
         render_models(frame, list_area, state, &filtered);
     }
-
-    // Footer
-    modal_footer(
-        frame,
-        body,
-        footer_hints(
-            &[
-                ("↑↓", "move"),
-                ("Tab", "provider"),
-                ("Ctrl+R", "refresh"),
-                ("Esc", "close"),
-            ],
-            body.width.saturating_sub(2),
-        ),
-    );
 }
 
 fn render_input(frame: &mut Frame, area: Rect, state: &AppState) {

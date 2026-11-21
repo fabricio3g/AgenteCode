@@ -32,9 +32,6 @@ struct Cli {
     api_key: Option<String>,
 
     #[arg(long)]
-    planner_model: Option<String>,
-
-    #[arg(long)]
     executor_model: Option<String>,
 
     #[arg(long)]
@@ -156,6 +153,129 @@ fn main() -> anyhow::Result<()> {
     // files are created.
     let cli = Cli::parse();
 
+    // Subcommands and modes that do not need project config, canonicalization,
+    // or a new diagnostic log file run immediately.
+    if cli.inspect {
+        let runtime = tokio::runtime::Runtime::new()?;
+        let server = std::sync::Arc::new(agente_tui::web_inspector::InspectorServer::new());
+        runtime.block_on(server.run(cli.inspect_port))?;
+        return Ok(());
+    }
+
+    if let Some(Command::Bridge { action }) = cli.command {
+        return bridge_cli::run(action);
+    }
+
+    if let Some(Command::Attach {
+        target,
+        socket,
+        remote,
+        token,
+    }) = cli.command
+    {
+        return attach::run(attach::AttachOptions {
+            target,
+            server: attach::ServerOptions {
+                socket,
+                remote,
+                token,
+            },
+        });
+    }
+
+    if let Some(Command::Serve {
+        socket,
+        status: true,
+        ..
+    }) = cli.command
+    {
+        return run_serve_status(socket);
+    }
+
+    init_logging();
+
+    let project_dir =
+        agente_core::util::normalize_project_dir(std::fs::canonicalize(&cli.project_dir)?);
+
+    let mut config = if let Some(config_path) = &cli.config {
+        let content = std::fs::read_to_string(config_path)?;
+        serde_json::from_str::<AppConfig>(&content)?
+    } else {
+        AppConfig::load(&project_dir)
+    };
+
+    // Apply CLI overrides
+    if let Some(api_base) = cli.api_base {
+        if config.provider.contains_key("custom") {
+            config.default_provider = Some("custom".to_string());
+            if let Some(provider) = config.provider.get_mut("custom") {
+                provider.api = Some(api_base);
+            }
+        } else {
+            eprintln!(
+                "warning: --api-base ignored: no \"custom\" provider exists in the config; \
+                 add one to agente.json first"
+            );
+        }
+    }
+
+    if let Some(executor) = cli.executor_model {
+        config.executor_model = Some(executor);
+    }
+
+    if let Some(ref api_key) = cli.api_key {
+        let provider = config.default_provider.as_deref().unwrap_or("deepseek");
+        config.auth_store.set_key(provider, api_key.clone());
+    }
+
+    if let Some(Command::Serve {
+        socket,
+        status: _,
+        listen,
+        token,
+    }) = cli.command
+    {
+        let options = ServeOptions {
+            socket,
+            listen,
+            token,
+        };
+        return run_serve(&project_dir, config, options);
+    }
+
+    if cli.acp_stdio {
+        run_acp_stdio(&project_dir, config)?;
+        return Ok(());
+    }
+
+    if cli.no_tui {
+        // Run in non-interactive mode
+        run_non_interactive(&project_dir, cli.prompt, config, !cli.no_auto_approve)?;
+    } else {
+        // Run TUI
+        let runtime = tokio::runtime::Runtime::new()?;
+        let mut app = App::new(config, project_dir, runtime)?;
+        if let Some(query) = cli.resume.as_deref() {
+            if let Err(error) = app.resume_session(query) {
+                // Leave the alternate screen before reporting.
+                drop(app);
+                eprintln!("agente: {error}");
+                std::process::exit(2);
+            }
+        }
+        let ran = app.run();
+        agente_core::tools::processes::stop_all();
+        ran?;
+        // The terminal is restored by now: say how to come back.
+        if let Some(hint) = app.resume_hint() {
+            println!("\n{hint}\n");
+        }
+    }
+
+    Ok(())
+}
+
+fn init_logging() {
     // Set up tracing to log to file instead of stdout (which interferes with TUI)
     let log_dir = if let Some(cache) = dirs::cache_dir() {
         let dir = cache.join("agente");
@@ -200,125 +320,30 @@ fn main() -> anyhow::Result<()> {
             .with(tracing_subscriber::EnvFilter::new("off"))
             .init();
     }
-
-    let project_dir =
-        agente_core::util::normalize_project_dir(std::fs::canonicalize(&cli.project_dir)?);
-
-    let mut config = if let Some(config_path) = &cli.config {
-        let content = std::fs::read_to_string(config_path)?;
-        serde_json::from_str::<AppConfig>(&content)?
-    } else {
-        AppConfig::load(&project_dir)
-    };
-
-    // Apply CLI overrides
-    if let Some(api_base) = cli.api_base {
-        if config.provider.contains_key("custom") {
-            config.default_provider = Some("custom".to_string());
-            if let Some(provider) = config.provider.get_mut("custom") {
-                provider.api = Some(api_base);
-            }
-        } else {
-            eprintln!(
-                "warning: --api-base ignored: no \"custom\" provider exists in the config; \
-                 add one to agente.json first"
-            );
-        }
-    }
-
-    if let Some(planner) = cli.planner_model {
-        config.planner_model = Some(planner);
-    }
-    if let Some(executor) = cli.executor_model {
-        config.executor_model = Some(executor);
-    }
-
-    if let Some(ref api_key) = cli.api_key {
-        let provider = config.default_provider.as_deref().unwrap_or("deepseek");
-        config.auth_store.set_key(provider, api_key.clone());
-    }
-
-    if cli.inspect {
-        let runtime = tokio::runtime::Runtime::new()?;
-        let server = std::sync::Arc::new(agente_tui::web_inspector::InspectorServer::new());
-        runtime.block_on(server.run(cli.inspect_port))?;
-        return Ok(());
-    }
-
-    if let Some(Command::Bridge { action }) = cli.command {
-        return bridge_cli::run(action);
-    }
-
-    if let Some(Command::Attach {
-        target,
-        socket,
-        remote,
-        token,
-    }) = cli.command
-    {
-        return attach::run(attach::AttachOptions {
-            target,
-            server: attach::ServerOptions {
-                socket,
-                remote,
-                token,
-            },
-        });
-    }
-
-    if let Some(Command::Serve {
-        socket,
-        status,
-        listen,
-        token,
-    }) = cli.command
-    {
-        let options = ServeOptions {
-            socket,
-            status,
-            listen,
-            token,
-        };
-        return run_serve(&project_dir, config, options);
-    }
-
-    if cli.acp_stdio {
-        run_acp_stdio(&project_dir, config)?;
-        return Ok(());
-    }
-
-    if cli.no_tui {
-        // Run in non-interactive mode
-        run_non_interactive(&project_dir, cli.prompt, config, !cli.no_auto_approve)?;
-    } else {
-        // Run TUI
-        let runtime = tokio::runtime::Runtime::new()?;
-        let mut app = App::new(config, project_dir, runtime)?;
-        if let Some(query) = cli.resume.as_deref() {
-            if let Err(error) = app.resume_session(query) {
-                // Leave the alternate screen before reporting.
-                drop(app);
-                eprintln!("agente: {error}");
-                std::process::exit(2);
-            }
-        }
-        let ran = app.run();
-        agente_core::tools::processes::stop_all();
-        ran?;
-        // The terminal is restored by now: say how to come back.
-        if let Some(hint) = app.resume_hint() {
-            println!("\n{hint}\n");
-        }
-    }
-
-    Ok(())
 }
 
 struct ServeOptions {
     socket: Option<std::path::PathBuf>,
-    status: bool,
     listen: Option<std::net::SocketAddr>,
     token: Option<String>,
+}
+
+fn run_serve_status(socket: Option<std::path::PathBuf>) -> anyhow::Result<()> {
+    let socket = socket.unwrap_or_else(agente_daemon::default_socket_path);
+    let runtime = tokio::runtime::Runtime::new()?;
+    runtime.block_on(async move {
+        let serving = agente_daemon::is_serving(&socket).await;
+        println!(
+            "{} {}",
+            if serving {
+                "serving on"
+            } else {
+                "not serving on"
+            },
+            socket.display()
+        );
+        std::process::exit(if serving { 0 } else { 1 });
+    })
 }
 
 /// Ctrl-C, or SIGTERM (how `docker stop` and service managers ask).
@@ -342,26 +367,12 @@ fn run_serve(project_dir: &str, config: AppConfig, options: ServeOptions) -> any
 
     let ServeOptions {
         socket,
-        status,
         listen,
         token,
     } = options;
     let socket = socket.unwrap_or_else(agente_daemon::default_socket_path);
     let runtime = tokio::runtime::Runtime::new()?;
     runtime.block_on(async move {
-        if status {
-            let serving = agente_daemon::is_serving(&socket).await;
-            println!(
-                "{} {}",
-                if serving {
-                    "serving on"
-                } else {
-                    "not serving on"
-                },
-                socket.display()
-            );
-            std::process::exit(if serving { 0 } else { 1 });
-        }
         if agente_daemon::is_serving(&socket).await {
             anyhow::bail!("agente is already serving on {}", socket.display());
         }
@@ -512,4 +523,25 @@ fn run_acp_stdio(project_dir: &str, config: AppConfig) -> anyhow::Result<()> {
         agente_acp::serve_stdio(handle).await?;
         Ok::<(), anyhow::Error>(())
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cli_rejects_removed_planner_model_flag() {
+        assert!(Cli::try_parse_from(["agente", "--planner-model", "foo"]).is_err());
+    }
+
+    #[test]
+    fn cli_parses_fast_path_subcommands_and_inspect() {
+        let cli = Cli::try_parse_from(["agente", "serve", "--status"]).unwrap();
+        assert!(matches!(
+            cli.command,
+            Some(Command::Serve { status: true, .. })
+        ));
+        let cli = Cli::try_parse_from(["agente", "--inspect"]).unwrap();
+        assert!(cli.inspect);
+    }
 }

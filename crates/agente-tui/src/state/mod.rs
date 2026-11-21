@@ -158,10 +158,10 @@ impl AppState {
         self.agent.is_idle() && self.subagent_registry.running_count() == 0
     }
 
-    /// Reset to a fresh session in the same project, preserving user-level
-    /// choices (provider, model, mode, thinking level, input history).
-    /// The caller flushes the outgoing session to disk first.
-    pub fn reset_for_new_session(&mut self) {
+    /// Shared reset logic for starting a clean session (same or new project).
+    /// Clears runtime buffers, metrics, session state, todos, plans, subagents,
+    /// pickers, and workspace UI while keeping user input history.
+    fn reset_session_core(&mut self, project_dir: String) {
         self.agent.abort_task();
         self.agent.state = agente_core::types::AgentState::Idle;
         self.agent.clear_stream_buffers();
@@ -181,7 +181,7 @@ impl AppState {
         self.agent.spend = Spend::default();
         self.agent.last_response_duration = None;
 
-        self.session = SessionState::new(self.session.project_dir.clone());
+        self.session = SessionState::new(project_dir);
         self.todo = TodoState::default();
         self.plan_review = PlanReviewState::default();
         self.subagent_registry = agente_core::subagent::SubagentRegistry::new();
@@ -191,6 +191,14 @@ impl AppState {
         self.input.input_history_index = self.input.input_history.len();
         self.picker = SessionPickerState::default();
         self.ui.reset_for_workspace();
+    }
+
+    /// Reset to a fresh session in the same project, preserving user-level
+    /// choices (provider, model, mode, thinking level, input history).
+    /// The caller flushes the outgoing session to disk first.
+    pub fn reset_for_new_session(&mut self) {
+        let project_dir = self.session.project_dir.clone();
+        self.reset_session_core(project_dir);
     }
 
     /// The provider the model selector is currently browsing.
@@ -313,30 +321,6 @@ impl AppState {
         let permission_engine =
             shared_permission_engine_with_config(mode, &app_config.auto_approve, &project_dir);
 
-        self.agent.abort_task();
-        self.agent.state = agente_core::types::AgentState::Idle;
-        self.agent.clear_stream_buffers();
-        self.agent.clear_approvals();
-        self.agent.reclaim_inbox();
-        self.agent.message_queue.clear();
-        self.agent.steering_queue.clear();
-        self.agent.mode = mode;
-        self.agent.auto_mode = work_mode == WorkMode::Auto;
-        self.agent.current_turn_mode = mode;
-        self.agent.thinking_level = thinking_level;
-        self.agent.shared_permission_engine = permission_engine;
-        self.agent.subagents.clear();
-        self.agent.board = None;
-        self.agent.context = agent::ContextState::default();
-        self.agent.total_tokens = 0;
-        self.agent.context_measured = false;
-        self.agent.last_turn_prompt_tokens = 0;
-        self.agent.last_turn_completion_tokens = 0;
-        self.agent.last_turn_cache_read_tokens = 0;
-        self.agent.last_turn_cache_creation_tokens = 0;
-        self.agent.spend = Spend::default();
-        self.agent.last_response_duration = None;
-
         // A new session in the same project keeps its live MCP connections.
         let keep_mcp = (self.session.project_dir == project_dir
             && self.config.config.mcp == app_config.mcp
@@ -346,16 +330,12 @@ impl AppState {
         if let Some(manager) = keep_mcp {
             self.config.mcp_manager = manager;
         }
-        self.session = SessionState::new(project_dir);
-        self.todo = TodoState::default();
-        self.plan_review = PlanReviewState::default();
-        self.subagent_registry = agente_core::subagent::SubagentRegistry::new();
-        let input_history = std::mem::take(&mut self.input.input_history);
-        self.input = InputState::default();
-        self.input.input_history = input_history;
-        self.input.input_history_index = self.input.input_history.len();
-        self.picker = SessionPickerState::default();
-        self.ui.reset_for_workspace();
+        self.agent.mode = mode;
+        self.agent.auto_mode = work_mode == WorkMode::Auto;
+        self.agent.current_turn_mode = mode;
+        self.agent.thinking_level = thinking_level;
+        self.agent.shared_permission_engine = permission_engine;
+        self.reset_session_core(project_dir);
     }
 
     /// Add user message to chat history
@@ -512,8 +492,7 @@ impl AppState {
             return;
         }
         self.ui.diff_peek = Some(path.to_string());
-        self.ui.diff_peek_scroll = 0;
-        self.ui.diff_peek_max = 0;
+        self.ui.diff_peek_scroll.reset(false);
         self.ui.needs_render = true;
     }
 

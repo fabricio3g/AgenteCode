@@ -47,6 +47,8 @@ pub enum HitTarget {
     Approval(ApprovalAction),
     /// A plan review action button (0 = Accept, 1 = Redo, 2 = Comment).
     PlanAction(usize),
+    /// A clarifying-question option chip inside the `PlanAsk` modal.
+    PlanAskOption(usize),
     /// A tab of the subagent detail modal.
     DetailTab(super::SubagentDetailTab),
     /// A scrollbar; carries its geometry so a row maps to an offset.

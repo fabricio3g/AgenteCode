@@ -15,9 +15,7 @@ use ratatui::Frame;
 use crate::state::AppState;
 use crate::style;
 use crate::widgets::markdown::wrap_line;
-use crate::widgets::{
-    centered_panel, footer_hints, modal_card, modal_footer, panel_row, s, truncate_cells,
-};
+use crate::widgets::{s, truncate_cells, ModalChrome};
 
 const COLUMNS: [(&str, &[CardStatus]); 4] = [
     ("Backlog", &[CardStatus::Backlog]),
@@ -83,17 +81,11 @@ fn tally(board: &Board) -> String {
     parts.join(" · ")
 }
 
-pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
+pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState) {
     if !state.input.show_board || area.width < 24 || area.height < 8 {
         return;
     }
-    let empty = Board::default();
-    let board = state.agent.board.as_ref().unwrap_or(&empty);
-    let panel = centered_panel(
-        area,
-        area.width.saturating_sub(4).min(120),
-        area.height.saturating_sub(2).min(28),
-    );
+    let board = state.agent.board.clone().unwrap_or_default();
     let mut title = vec![s("Board", style::bold())];
     title.push(s(
         if board.enabled {
@@ -107,10 +99,15 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
             style::dim()
         },
     ));
-    let body = modal_card(frame, panel, title);
+    let modal = ModalChrome::new(title).render_centered(
+        frame,
+        area,
+        area.width.saturating_sub(4).min(120),
+        area.height.saturating_sub(2).min(28),
+    );
 
     let mut scrollable = false;
-    if let Some(top) = panel_row(body, 1, 1) {
+    if let Some(top) = modal.row(0) {
         let inner_width = top.width;
         if board.cards.is_empty() {
             let hint = if board.enabled {
@@ -119,16 +116,16 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
                 "Swarm mode is off. Press s (or /swarm) to let the agent plan work as a board."
             };
             let hint_area = Rect {
-                height: body.height.saturating_sub(3).max(1),
+                height: modal.body.height.max(1),
                 ..top
             };
             let wrapped = wrap_line(&Line::from(s(hint, style::dim())), inner_width as usize);
             frame.render_widget(Paragraph::new(wrapped), hint_area);
         } else {
-            frame.render_widget(Paragraph::new(s(tally(board), style::dim())), top);
+            frame.render_widget(Paragraph::new(s(tally(&board), style::dim())), top);
             let gap = 2u16;
             let column_width = (inner_width.saturating_sub(gap * 3)) / 4;
-            let rows = body.height.saturating_sub(6);
+            let rows = modal.body.height.saturating_sub(3);
             let rows_usize = rows as usize;
             // Each card occupies 2 lines + 1 gap row (the final card needs no gap).
             let full_cap = ((rows_usize + 1) / 3).max(1);
@@ -143,9 +140,8 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
                 })
                 .max()
                 .unwrap_or(0);
-            let max_scroll = max_col_cards.saturating_sub(full_cap);
-            scrollable = max_scroll > 0;
-            let scroll = state.input.board_scroll.min(max_scroll);
+            let scroll = state.input.board_scroll.sync(max_col_cards, full_cap);
+            scrollable = state.input.board_scroll.is_scrollable();
 
             for (index, (label, statuses)) in COLUMNS.iter().enumerate() {
                 let x = top.x + index as u16 * (column_width + gap);
@@ -212,11 +208,7 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
         hints.push(("↑↓", "scroll"));
     }
     hints.push(("Esc", "close"));
-    modal_footer(
-        frame,
-        body,
-        footer_hints(&hints, body.width.saturating_sub(2)),
-    );
+    modal.render_footer(frame, &hints);
 }
 
 #[cfg(test)]
@@ -227,7 +219,7 @@ mod tests {
     use ratatui::backend::TestBackend;
     use ratatui::Terminal;
 
-    fn draw(state: &AppState) -> String {
+    fn draw(state: &mut AppState) -> String {
         let mut terminal = Terminal::new(TestBackend::new(110, 26)).unwrap();
         terminal.draw(|f| render(f, f.area(), state)).unwrap();
         terminal
@@ -257,7 +249,7 @@ mod tests {
         let mut state = AppState::new(AppConfig::default(), "/tmp/board".into());
         state.agent.board = Some(board);
         state.input.show_board = true;
-        let text = draw(&state);
+        let text = draw(&mut state);
         assert!(text.contains("swarm on"), "{text}");
         assert!(text.contains("Working  1"), "{text}");
         assert!(text.contains("● c1 Map code"), "{text}");
@@ -271,11 +263,11 @@ mod tests {
     fn an_empty_board_says_how_to_start() {
         let mut state = AppState::new(AppConfig::default(), "/tmp/board".into());
         state.input.show_board = true;
-        assert!(draw(&state).contains("Swarm mode is off"));
+        assert!(draw(&mut state).contains("Swarm mode is off"));
 
         // Narrow terminal still wraps the hint cleanly across lines.
         let mut terminal = Terminal::new(TestBackend::new(40, 12)).unwrap();
-        terminal.draw(|f| render(f, f.area(), &state)).unwrap();
+        terminal.draw(|f| render(f, f.area(), &mut state)).unwrap();
         let narrow: String = terminal
             .backend()
             .buffer()
@@ -307,7 +299,7 @@ mod tests {
         state.input.show_board = true;
 
         let mut terminal = Terminal::new(TestBackend::new(100, 14)).unwrap();
-        terminal.draw(|f| render(f, f.area(), &state)).unwrap();
+        terminal.draw(|f| render(f, f.area(), &mut state)).unwrap();
         let first: String = terminal
             .backend()
             .buffer()
@@ -318,8 +310,8 @@ mod tests {
         assert!(first.contains("more"), "overflow indicator shown: {first}");
         assert!(first.contains("c1 Task 1"), "{first}");
 
-        state.input.board_scroll = 10;
-        terminal.draw(|f| render(f, f.area(), &state)).unwrap();
+        state.input.board_scroll.offset = 10;
+        terminal.draw(|f| render(f, f.area(), &mut state)).unwrap();
         let scrolled: String = terminal
             .backend()
             .buffer()

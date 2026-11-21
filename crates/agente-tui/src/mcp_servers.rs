@@ -17,9 +17,7 @@ use ratatui::Frame;
 use crate::state::{AppState, ListId};
 use crate::style;
 use crate::widgets::pick::{pick_list, row_label, PickItem};
-use crate::widgets::{
-    centered_panel, footer_hints, modal_card, modal_footer, panel_row, s, truncate_cells,
-};
+use crate::widgets::{s, truncate_cells, ModalChrome};
 
 const MAX_ROWS: usize = 10;
 /// Detail lines under the list: target + status detail.
@@ -77,31 +75,51 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
     }
     let servers = state.config.mcp_manager.snapshots();
     let rows = servers.len().clamp(1, MAX_ROWS) as u16;
-    let panel = centered_panel(
-        area,
-        area.width.saturating_sub(4).min(76),
-        rows + DETAIL_ROWS + 6,
-    );
     let ready = servers
         .iter()
         .filter(|s| s.status == ServerStatus::Ready)
         .count();
-    let body = modal_card(
-        frame,
-        panel,
+    let enter = servers
+        .get(
+            state
+                .input
+                .mcp_selected
+                .min(servers.len().saturating_sub(1)),
+        )
+        .map_or("close", |server| match primary_action(server) {
+            McpAction::Approve => "approve",
+            McpAction::Enable => "enable",
+            McpAction::Reconnect => "reconnect",
+        });
+    let hints: Vec<(&str, &str)> = if servers.is_empty() {
+        vec![("Esc", "close")]
+    } else {
         vec![
-            s("MCP servers", style::bold()),
-            s(
-                if servers.is_empty() {
-                    String::new()
-                } else {
-                    format!(" · {ready} of {} connected", servers.len())
-                },
-                style::dim(),
-            ),
-        ],
+            ("↑↓", "move"),
+            ("Enter", enter),
+            ("d", "turn off"),
+            ("Esc", "close"),
+        ]
+    };
+    let modal = ModalChrome::new(vec![
+        s("MCP servers", style::bold()),
+        s(
+            if servers.is_empty() {
+                String::new()
+            } else {
+                format!(" · {ready} of {} connected", servers.len())
+            },
+            style::dim(),
+        ),
+    ])
+    .footer(&hints)
+    .render_centered(
+        frame,
+        area,
+        area.width.saturating_sub(4).min(76),
+        rows + DETAIL_ROWS + 6,
     );
-    let text_w = body.width.saturating_sub(2) as usize;
+    let text_w = modal.body.width as usize;
 
     if servers.is_empty() {
         let lines = [
@@ -111,22 +129,19 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
                 style::dim(),
             ),
         ];
-        for (dy, line) in (1u16..).zip(lines) {
-            if let Some(row) = panel_row(body, dy, 1) {
+        for (dy, line) in (0u16..).zip(lines) {
+            if let Some(row) = modal.row(dy) {
                 frame.render_widget(Paragraph::new(Line::from(line)), row);
             }
         }
-    } else if let Some(top) = panel_row(body, 1, 1) {
+    } else if modal.body.width > 0 && modal.body.height > 0 {
         let selected = state.input.mcp_selected.min(servers.len() - 1);
-        // Reserve top gap (1), gap after list (1), detail rows, gap (1),
-        // and modal_footer (1) so short terminals never let the list paint
-        // over the detail lines or footer.
         let list_h = rows
-            .min(body.height.saturating_sub(4 + DETAIL_ROWS).max(1))
-            .min(body.height.saturating_sub(2));
+            .min(modal.body.height.saturating_sub(1 + DETAIL_ROWS).max(1))
+            .min(modal.body.height);
         let list_area = Rect {
             height: list_h,
-            ..top
+            ..modal.body
         };
         let items = servers
             .iter()
@@ -155,13 +170,8 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
         if let Some(detail) = status_detail(server) {
             details.push(detail);
         }
-        let footer_dy = body.height.saturating_sub(1);
         for (i, (text, text_style)) in details.into_iter().enumerate() {
-            let dy = list_area.height + 2 + i as u16;
-            if dy >= footer_dy {
-                break;
-            }
-            if let Some(row) = panel_row(body, dy, 1) {
+            if let Some(row) = modal.row(list_area.height + 1 + i as u16) {
                 frame.render_widget(
                     Paragraph::new(Line::from(s(truncate_cells(&text, text_w), text_style))),
                     row,
@@ -169,34 +179,6 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
             }
         }
     }
-
-    let enter = servers
-        .get(
-            state
-                .input
-                .mcp_selected
-                .min(servers.len().saturating_sub(1)),
-        )
-        .map_or("close", |server| match primary_action(server) {
-            McpAction::Approve => "approve",
-            McpAction::Enable => "enable",
-            McpAction::Reconnect => "reconnect",
-        });
-    let hints: Vec<(&str, &str)> = if servers.is_empty() {
-        vec![("Esc", "close")]
-    } else {
-        vec![
-            ("↑↓", "move"),
-            ("Enter", enter),
-            ("d", "turn off"),
-            ("Esc", "close"),
-        ]
-    };
-    modal_footer(
-        frame,
-        body,
-        footer_hints(&hints, body.width.saturating_sub(2)),
-    );
 }
 
 #[cfg(test)]

@@ -66,6 +66,10 @@ impl App {
                 self.state.session.modified_files.clear();
                 self.state.session.file_versions.clear();
                 self.state.session.conversation.clear();
+                self.state.ui.expanded_message_ids.clear();
+                self.state.ui.expanded_thinking_ids.clear();
+                self.state.ui.collapse_all_tools();
+                self.state.ui.toast = None;
                 self.state.ui.chat_scroll = 0;
                 self.state.ui.chat_content_height = 0;
                 self.state.ui.chat_auto_scroll = true;
@@ -208,7 +212,7 @@ impl App {
             Command::Board => {
                 self.state.refresh_board();
                 self.state.input.show_board = true;
-                self.state.input.board_scroll = 0;
+                self.state.input.board_scroll.scroll_to_top();
                 self.state.ui.needs_render = true;
             }
             Command::SubagentModels => {
@@ -226,7 +230,7 @@ impl App {
             Command::Doctor => {
                 self.state.input.doctor_checks = crate::doctor::run_diagnostics(&self.state);
                 self.state.input.show_doctor = true;
-                self.state.input.doctor_scroll = 0;
+                self.state.input.doctor_scroll.scroll_to_top();
                 self.state.ui.needs_render = true;
             }
             Command::ViewPlan => {

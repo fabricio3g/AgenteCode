@@ -17,7 +17,7 @@ use ratatui::Frame;
 use crate::state::{AppState, ListId};
 use crate::style;
 use crate::widgets::pick::{pick_list, row_label, search_field, PickItem};
-use crate::widgets::{centered_panel, footer_hints, modal_card, modal_footer, panel_row, s};
+use crate::widgets::{s, ModalChrome};
 
 /// One selectable row of the dialog, in display order.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -282,14 +282,21 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
     let edit = state.input.subagent_model_edit.as_ref();
     // Title, then rows, gap, detail line, gap, footer.
     let list_rows = rows.len().clamp(4, 16) as u16;
-    let panel = centered_panel(area, area.width.saturating_sub(4).min(76), list_rows + 7);
-    let body = modal_card(frame, panel, vec![s("Subagent models", style::bold())]);
-    let width = body.width.saturating_sub(4) as usize;
+    let modal = ModalChrome::new(vec![s("Subagent models", style::bold())])
+        .footer(hints(rows.get(selected).copied(), edit.is_some()))
+        .render_centered(
+            frame,
+            area,
+            area.width.saturating_sub(4).min(76),
+            list_rows + 7,
+        );
+    let width = modal.body.width.saturating_sub(2) as usize;
 
-    if let Some(top) = panel_row(body, 1, 1) {
+    if modal.body.width > 0 && modal.body.height > 0 {
+        let list_h = modal.body.height.saturating_sub(2);
         let list_area = Rect {
-            height: body.height.saturating_sub(5),
-            ..top
+            height: list_h,
+            ..modal.body
         };
         let items = rows
             .iter()
@@ -305,12 +312,7 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
             selected,
         );
 
-        let detail = Rect {
-            y: list_area.bottom() + 1,
-            height: 1,
-            ..top
-        };
-        if detail.bottom() <= body.bottom().saturating_sub(1) {
+        if let Some(detail) = modal.row(list_h + 1) {
             if let Some(edit) = edit {
                 let placeholder = match edit.field {
                     EditField::Name => "a name the agent picks it by",
@@ -326,14 +328,6 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
             }
         }
     }
-    modal_footer(
-        frame,
-        body,
-        footer_hints(
-            hints(rows.get(selected).copied(), edit.is_some()),
-            body.width.saturating_sub(2),
-        ),
-    );
 }
 
 #[cfg(test)]
