@@ -39,17 +39,25 @@ export class ComputerOverlayWindows {
     const bundled = fs.existsSync(assets) ? fs.readdirSync(assets).find(name => name.startsWith('geist-latin-wght-normal-') && name.endsWith('.woff2')) : undefined;
     const fontPath = app.isPackaged && bundled ? path.join(assets, bundled) : path.join(root, 'renderer', 'node_modules', '@fontsource-variable', 'geist', 'files', 'geist-latin-wght-normal.woff2');
     const font = fs.existsSync(fontPath) ? fs.readFileSync(fontPath).toString('base64') : '';
-    for (const display of displays) {
-      const cover = this.create(display.bounds, 'veil');
-      cover.setIgnoreMouseEvents(true);
-      this.covers.set(display.id, cover);
-      windows.push(cover.loadURL(`data:text/html;base64,${Buffer.from(computerOverlayHtml('veil', font)).toString('base64')}`));
+    try {
+      for (const display of displays) {
+        const cover = this.create(display.bounds, 'veil');
+        cover.setIgnoreMouseEvents(true);
+        this.covers.set(display.id, cover);
+        windows.push(cover.loadURL(`data:text/html;base64,${Buffer.from(computerOverlayHtml('veil', font)).toString('base64')}`));
+      }
+      const width = Math.min(720, primary.workArea.width - 24);
+      const bounds = { x: primary.workArea.x + Math.round((primary.workArea.width - width) / 2), y: primary.workArea.y + 8, width, height: 88 };
+      this.bar = this.create(bounds, 'bar');
+      windows.push(this.bar.loadURL(`data:text/html;base64,${Buffer.from(computerOverlayHtml('bar', font)).toString('base64')}`));
+      await Promise.all(windows);
+    } catch (error) {
+      const partial = [...this.covers.values(), ...(this.bar ? [this.bar] : [])];
+      this.covers.clear();
+      this.bar = undefined;
+      for (const win of partial) if (!win.isDestroyed()) win.destroy();
+      throw error;
     }
-    const width = Math.min(720, primary.workArea.width - 24);
-    const bounds = { x: primary.workArea.x + Math.round((primary.workArea.width - width) / 2), y: primary.workArea.y + 8, width, height: 88 };
-    this.bar = this.create(bounds, 'bar');
-    windows.push(this.bar.loadURL(`data:text/html;base64,${Buffer.from(computerOverlayHtml('bar', font)).toString('base64')}`));
-    await Promise.all(windows);
   }
   private create(bounds: Rectangle, kind: string) {
     const win = new BrowserWindow({ ...bounds, show: false, frame: false, transparent: true, backgroundColor: '#00000000', hasShadow: false,

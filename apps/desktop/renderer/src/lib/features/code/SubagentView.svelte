@@ -39,7 +39,8 @@
   const child = $derived(index >= 0 ? all[index] : undefined);
   const running = $derived(child?.status === 'running');
   const failed = $derived(child?.status === 'error');
-  let stopped = $state(false);
+  let stoppedIds = $state<Record<string, boolean>>({});
+  const stopped = $derived(!!(child && stoppedIds[child.id]));
 
   let now = $state(Date.now());
   $effect(() => {
@@ -62,9 +63,15 @@
   }
   async function stop() {
     if (!child) return;
-    stopped = true;
-    try { await invoke('agente_child_cancel', { runId: child.id }); }
-    catch (error) { stopped = false; toastStore.error(String(error)); }
+    const id = child.id;
+    stoppedIds = { ...stoppedIds, [id]: true };
+    try { await invoke('agente_child_cancel', { runId: id }); }
+    catch (error) {
+      const next = { ...stoppedIds };
+      delete next[id];
+      stoppedIds = next;
+      toastStore.error(String(error));
+    }
   }
   async function copyText() {
     try {

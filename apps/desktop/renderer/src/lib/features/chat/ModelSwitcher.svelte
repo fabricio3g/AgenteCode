@@ -32,7 +32,7 @@
   import ProviderIcon from '$lib/components/ui/ProviderIcon.svelte';
   import SegmentedControl from '$lib/components/ui/SegmentedControl.svelte';
   import type { ModelOption, ChatSession } from '$lib/types/chat';
-  import { buildLocalModelSecondaryText, formatContextLength, localModelMatchesSearch } from '$lib/utils/local-models';
+  import { buildLocalModelSecondaryText, formatContextLength, isLocalModelLoaded, localModelMatchesSearch } from '$lib/utils/local-models';
   import { configuredProviders, defaultBaseUrl } from '$lib/utils/providers';
   import { recentModels } from '$lib/stores/recent-models.svelte';
   import { moveAmongModelRows } from '$lib/features/shared/model-row-keys';
@@ -58,8 +58,6 @@
   let source = $state<Source>('all');
   const showCloud = $derived(source !== 'local');
   const showLocal = $derived(source !== 'cloud' && isElectron());
-  const loadedModelName = $derived(appStore.localModelActive?.name || '');
-  const loadedModelPath = $derived(appStore.localModelActive?.path?.toLowerCase() || '');
 
   let modelSearch = $state('');
   let searchInput = $state<HTMLInputElement | undefined>(undefined);
@@ -157,17 +155,7 @@
   }
 
   function isLoaded(model: Pick<ModelOption, 'id' | 'name' | 'path'>) {
-    if (!appStore.localModelActive) return false;
-    const activePath = loadedModelPath;
-    const activeName = loadedModelName.toLowerCase();
-    const p = String(model.path || '').toLowerCase();
-    const n = String(model.name || model.id || '').toLowerCase();
-    return (
-      (activePath && activePath === p) ||
-      activeName === n ||
-      activeName.includes(n) ||
-      n.includes(activeName)
-    );
+    return isLocalModelLoaded(model, appStore.localModelActive);
   }
 
   function isLoadingModel(model: Pick<ModelOption, 'id'>) {

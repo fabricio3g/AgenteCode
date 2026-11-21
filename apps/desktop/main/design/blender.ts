@@ -126,11 +126,16 @@ function finishJob(event: IpcMainInvokeEvent, chatId: string, job: Job, director
   } catch (error) { console.warn('[design-3d] Could not prune old outputs:', String(error)); }
 }
 
-function startJob(event: IpcMainInvokeEvent, chatId: string, phase: string, owner?: string) {
+function assertCanStartJob(chatId: string): string {
   if (jobs.has(chatId)) throw new Error('This design already has a Blender job running.');
   if (jobs.size) throw new Error('One Blender job is already running. Wait for it to finish; jobs are serialized to keep the desktop responsive.');
   const executable = findBlender();
   if (!executable) throw new Error('Install or choose Blender in Design → 3D first.');
+  return executable;
+}
+
+function startJob(event: IpcMainInvokeEvent, chatId: string, phase: string, owner?: string) {
+  const executable = assertCanStartJob(chatId);
   const { output } = roots(chatId);
   const job: Job = { id: randomUUID(), owner, log: '', stopped: false, phase };
   const directory = path.join(output, job.id);
@@ -149,6 +154,7 @@ async function build(event: IpcMainInvokeEvent, chatId: string, input: unknown, 
   const scene = sceneSchema.parse(input);
   const encoded = JSON.stringify(scene, null, 2);
   if (Buffer.byteLength(encoded) > 512 * 1024) throw new Error('Scene exceeds 512 KB.');
+  assertCanStartJob(chatId);
   const { workspace } = roots(chatId);
   const saved = runDesignFileTool(workspace, 'design_write', { path: 'scene.json', content: encoded });
   if (!saved.ok) throw new Error(saved.content);
@@ -215,11 +221,15 @@ async function inspect(event: IpcMainInvokeEvent, chatId: string): Promise<Blend
   const script = path.join(directory, 'inspect.py');
   const result = path.join(directory, 'inspection.json');
   fs.writeFileSync(script, BLENDER_INSPECT_SCRIPT);
-  const { job, append } = startJob(event, chatId, 'Inspecting Blender scene');
+  const { job, directory: tempDirectory, append } = startJob(event, chatId, 'Inspecting Blender scene');
   try {
     await executeJob(job, executable, script, [path.join(directory, 'scene.blend'), result], append);
   } catch (error) { throw new Error(`Inspection failed. ${String(error).slice(-2000)}`); }
-  finally { jobs.delete(chatId); notify(event, chatId); }
+  finally {
+    try { fs.rmSync(tempDirectory, { recursive: true, force: true }); } catch { /* ignore temp cleanup */ }
+    jobs.delete(chatId);
+    notify(event, chatId);
+  }
   return blenderState(chatId);
 }
 

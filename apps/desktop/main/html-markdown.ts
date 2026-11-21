@@ -138,12 +138,26 @@ function hasBlockChild(el: El): boolean {
   return Array.from(el.children).some((child) => BLOCK_TAGS.has(tagOf(child)) && !isChrome(child));
 }
 
+function rawCodeText(el: El): string {
+  let out = '';
+  for (const child of Array.from(el.childNodes)) {
+    if (child.nodeType === 3) out += child.textContent || '';
+    else if (child.nodeType === 1) {
+      const childEl = child as El;
+      if (isChrome(childEl)) continue;
+      if (tagOf(childEl) === 'br') out += '\n';
+      else out += rawCodeText(childEl);
+    }
+  }
+  return out;
+}
+
 function codeBlock(el: El): string {
   const code = Array.from(el.children).find((c) => tagOf(c) === 'code');
   const classes = `${el.getAttribute('class') || ''} ${code?.getAttribute('class') || ''}`;
   const language = classes.split(/\s+/).map((c) => c.match(/^(?:language|lang)-(.+)$/)?.[1]).find(Boolean) || '';
-  const text = String(el.textContent || '').replace(/^\n+|\s+$/g, '');
-  if (!text) return '';
+  const text = rawCodeText(el).replace(/^\n+|\s+$/g, '');
+  if (!text.trim()) return '';
   const fence = text.includes('```') ? '````' : '```';
   return `${fence}${language}\n${text}\n${fence}`;
 }
@@ -152,17 +166,25 @@ class Writer {
   blocks: string[] = [];
   line: string[] = [];
 
-  constructor(private readonly base: string, private readonly plain: boolean) {}
+  constructor(
+    private readonly base: string,
+    private readonly plain: boolean,
+    private readonly keepSymbols = false
+  ) {}
+
+  private hasContent(text: string): boolean {
+    return this.keepSymbols ? Boolean(text.trim()) : hasWords(text);
+  }
 
   flush() {
     const text = tidyInline(this.line.join(''));
     this.line = [];
-    if (hasWords(text)) this.blocks.push(text);
+    if (this.hasContent(text)) this.blocks.push(text);
   }
 
-  block(text: string) {
+  block(text: string, allowSymbolOnly = false) {
     this.flush();
-    if (hasWords(text)) this.blocks.push(text);
+    if (allowSymbolOnly ? Boolean(text.trim()) : this.hasContent(text)) this.blocks.push(text);
   }
 
   finish(): string {
@@ -178,8 +200,8 @@ class Writer {
     }
   }
 
-  sub(el: El): string {
-    const writer = new Writer(this.base, this.plain);
+  sub(el: El, keepSymbols = this.keepSymbols): string {
+    const writer = new Writer(this.base, this.plain, keepSymbols);
     writer.children(el);
     writer.flush();
     return writer.finish();
@@ -195,8 +217,8 @@ class Writer {
     }
     switch (tag) {
       case 'br': this.line.push('\n'); return;
-      case 'hr': this.block('---'); return;
-      case 'pre': this.block(codeBlock(el)); return;
+      case 'hr': this.block('---', true); return;
+      case 'pre': this.block(codeBlock(el), true); return;
       case 'ul':
       case 'ol': {
         const list = this.list(el, tag === 'ol');
@@ -206,7 +228,7 @@ class Writer {
       }
       case 'table': {
         const table = this.table(el);
-        if (table) this.block(table);
+        if (table) this.block(table, true);
         else { this.flush(); this.children(el); this.flush(); }
         return;
       }
@@ -303,7 +325,7 @@ class Writer {
     const grid = rows
       .map((row) => Array.from(row.children)
         .filter((cell) => tagOf(cell) === 'td' || tagOf(cell) === 'th')
-        .map((cell) => this.sub(cell).replace(/\n+/g, ' ').replace(/\|/g, '\\|').trim()))
+        .map((cell) => this.sub(cell, true).replace(/\n+/g, ' ').replace(/\|/g, '\\|').trim()))
       .filter((row) => row.some(Boolean));
     const columns = Math.max(0, ...grid.map((row) => row.length));
     if (grid.length < 2 || columns < 2) return '';

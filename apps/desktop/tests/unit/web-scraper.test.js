@@ -1,5 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { parseHTML } from 'linkedom';
+import { elementToMarkdown } from '../../main/html-markdown.ts';
 import {
   classifyScrapeQuality,
   compactExtractedText,
@@ -236,5 +238,28 @@ describe('web-scraper helpers', () => {
     for (const junk of ['color:red', 'tracking', 'cookies', 'Blog', 'Hidden promo', 'Privacy']) {
       assert.ok(!result.content.includes(junk), `${junk} leaked: ${result.content}`);
     }
+  });
+
+  it('filters chrome inside <pre> and preserves symbol-only code blocks and table cells', () => {
+    const html = `<html><body><main>
+      <pre><div class="toolbar"><button>Copy</button></div><code class="language-ts">const x = 1;</code></pre>
+      <pre><code>{}</code></pre>
+      <pre><code>---</code></pre>
+      <table>
+        <thead><tr><th>Feature</th><th>Supported</th><th>Fallback</th></tr></thead>
+        <tbody>
+          <tr><td>Streaming</td><td>✓</td><td>—</td></tr>
+          <tr><td>Legacy</td><td>-</td><td>✓</td></tr>
+        </tbody>
+      </table>
+    </main></body></html>`;
+    const { document } = parseHTML(html);
+    const md = elementToMarkdown(document.querySelector('main'), 'https://site.test/');
+    assert.match(md, /```ts\nconst x = 1;\n```/);
+    assert.ok(!md.includes('Copy'), `Copy button leaked into fence: ${md}`);
+    assert.match(md, /```\n\{\}\n```/);
+    assert.match(md, /```\n---\n```/);
+    assert.match(md, /\| Streaming \| ✓ \| — \|/);
+    assert.match(md, /\| Legacy \| - \| ✓ \|/);
   });
 });

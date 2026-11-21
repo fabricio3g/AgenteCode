@@ -93,6 +93,8 @@ class CodeStore {
   #pendingFlush = new Map<string, () => void>();
   /** Invalidates an auto-start already scheduled when the user presses Stop. */
   #stopEpoch = new Map<string, number>();
+  /** Guards against rapid double-send races while ensureChatMessages is awaiting. */
+  #startingTurns = new Set<string>();
 
   constructor() {
     // Deleted conversations must not leave run state behind (unbounded growth)
@@ -407,6 +409,18 @@ class CodeStore {
    */
   evictChat(chatId: string, options: { force?: boolean } = {}): void {
     if (!options.force && this.runs[chatId]?.running) return;
+    const cancelFlush = this.#pendingFlush.get(chatId);
+    if (cancelFlush) {
+      cancelFlush();
+      this.#pendingFlush.delete(chatId);
+    }
+    this.#steerReplies.delete(chatId);
+    this.#stopEpoch.delete(chatId);
+    this.#startingTurns.delete(chatId);
+    if (options.force) {
+      for (const pending of approvalsStore.forChat(chatId)) this.#engineSettled.add(pending.id);
+      approvalsStore.clearForChat(chatId);
+    }
     if (this.runs[chatId]) {
       const next = { ...this.runs };
       delete next[chatId];
@@ -771,33 +785,46 @@ class CodeStore {
 
   /** Start (or resume) the session, record the turn, then `start` it. */
   async #runTurn(chatId: string, text: string, start: () => Promise<{ ok: boolean; error?: string; conversationIndex?: number }>, attachments: Attachment[] = []): Promise<void> {
-    // A turn appends to the history: it must be loaded first (session goals and
-    // computer use can send into a chat nobody has opened this launch).
-    await appStore.ensureChatMessages(chatId);
-    const chat = appStore.chats.find((c) => c.id === chatId);
-    const project = this.projectById(chat?.projectId ?? null);
-    if (!chat || !project || !text.trim()) return;
-
-    const run = this.#requireRun(chatId);
-    if (run.running) {
+    if (!text.trim()) return;
+    if (this.runs[chatId]?.running || this.#startingTurns.has(chatId)) {
       this.queue(chatId, text, attachments);
       return;
     }
+    this.#startingTurns.add(chatId);
+    let chat: ChatSession | undefined;
+    let project: CodeProject | null = null;
+    let run: AgenteRun;
+    try {
+      // A turn appends to the history: it must be loaded first (session goals and
+      // computer use can send into a chat nobody has opened this launch).
+      await appStore.ensureChatMessages(chatId);
+      chat = appStore.chats.find((c) => c.id === chatId);
+      project = this.projectById(chat?.projectId ?? null);
+      if (!chat || !project) return;
 
-    // Keep the last usage report visible between runs — the next turn
-    // refreshes it; it should not blank while the first reply streams.
-    const previousUsage = run.usage;
-    const todos = conversationTodos(chat.messages);
-    Object.assign(run, createCodeRunState(), {
-      todos,
-      running: true,
-      assistantMessageId: undefined,
-      error: undefined,
-      stopReason: undefined,
-      queuedCount: 0,
-      checkpoints: run.checkpoints,
-      usage: previousUsage
-    });
+      run = this.#requireRun(chatId);
+      if (run.running) {
+        this.queue(chatId, text, attachments);
+        return;
+      }
+
+      // Keep the last usage report visible between runs — the next turn
+      // refreshes it; it should not blank while the first reply streams.
+      const previousUsage = run.usage;
+      const todos = conversationTodos(chat.messages);
+      Object.assign(run, createCodeRunState(), {
+        todos,
+        running: true,
+        assistantMessageId: undefined,
+        error: undefined,
+        stopReason: undefined,
+        queuedCount: 0,
+        checkpoints: run.checkpoints,
+        usage: previousUsage
+      });
+    } finally {
+      this.#startingTurns.delete(chatId);
+    }
     this.#ensureEventSubscription();
 
     const failure = await this.#ensureSession(chat, project);

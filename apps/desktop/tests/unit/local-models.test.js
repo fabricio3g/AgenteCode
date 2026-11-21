@@ -7,6 +7,7 @@ import {
   buildLocalModelSummaryChips,
   formatContextLength,
   formatModelParameterCount,
+  isLocalModelLoaded,
   localModelMatchesSearch
 } from '../../renderer/src/lib/utils/local-models.ts';
 
@@ -81,5 +82,14 @@ describe('local model helpers', () => {
     assert.equal(formatContextLength(6144), '6k');
     assert.equal(formatModelParameterCount(2_000_000_000), '2.0B params');
     assert.equal(formatModelParameterCount(0), '');
+  });
+
+  it('matches loaded local models by exact path or normalized basename without quantization false positives', () => {
+    const active = { name: 'Qwen3-8B-Q4_K_M', path: 'C:\\models\\Qwen3\\Qwen3-8B-Q4_K_M.gguf' };
+    assert.equal(isLocalModelLoaded({ id: 'a', name: 'Qwen3-8B', path: 'C:/models/Qwen3/Qwen3-8B-Q4_K_M.gguf' }, active), true);
+    assert.equal(isLocalModelLoaded({ id: 'b', name: 'Qwen3-8B', path: 'C:/models/Qwen3/Qwen3-8B-Q8_0.gguf' }, active), false);
+    assert.equal(isLocalModelLoaded({ id: 'c', name: 'Qwen3-8B' }, active), false);
+    assert.equal(isLocalModelLoaded({ id: 'd', name: 'Qwen3-8B-Q4_K_M.gguf' }, { name: 'Qwen3-8B-Q4_K_M', path: '' }), true);
+    assert.equal(isLocalModelLoaded({ id: 'e', name: 'Qwen3-8B-Q4_K_M-extra' }, { name: 'Qwen3-8B-Q4_K_M', path: '' }), false);
   });
 });

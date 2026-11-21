@@ -45,6 +45,7 @@
   import { deleteLocalModel, getModelsDirPath } from '$lib/services/models';
   import { getInstalledRuntimes } from '$lib/services/files';
   import { licenseInfo } from '$lib/models/license';
+  import { isLocalModelLoaded } from '$lib/utils/local-models';
   import InstancesPanel from './InstancesPanel.svelte';
   import { hfRepoGguf, searchHfModelsPage, fetchHfReadme, openWebviewer, type HfGgufFile, type HfModelSearchItem } from '$lib/services/search';
   import ModelDetailPanel, { type ModelDetail } from './ModelDetailPanel.svelte';
@@ -354,10 +355,7 @@
   }
 
   function isLoaded(model: { id?: string; name?: string; path?: string }): boolean {
-    const active = String(appStore.localModelActive?.path || appStore.localModelActive?.name || '').toLowerCase();
-    return Boolean(active) && [model.id, model.name, model.path]
-      .filter(Boolean)
-      .some((value) => active.includes(String(value).toLowerCase()) || String(value).toLowerCase().includes(active));
+    return isLocalModelLoaded(model, appStore.localModelActive);
   }
 
   function matchesParameterFilter(item: HfModelSearchItem): boolean {

@@ -42,6 +42,14 @@ export function webSyncPayload(search: SearchSettings | undefined): WebSyncPaylo
 }
 
 let lastSynced = '';
+let syncSeq = 0;
+let syncEpoch = 0;
+
+/** Clear the dedupe cache after the daemon closes or restarts so the next connection resyncs. */
+export function resetWebSearchSync(): void {
+  lastSynced = '';
+  syncEpoch += 1;
+}
 
 /**
  * Hand Desktop's search settings to the core. A payload this process already
@@ -52,9 +60,13 @@ export async function syncWebSearchToCore(connect: () => Promise<Rpc>, search: S
   const payload = webSyncPayload(search);
   const signature = JSON.stringify(payload);
   if (signature === lastSynced) return;
+  const epoch = syncEpoch;
+  const seq = ++syncSeq;
   try {
     await (await connect()).request('web.sync', payload);
-    lastSynced = signature;
+    if (epoch === syncEpoch && seq === syncSeq) {
+      lastSynced = signature;
+    }
   } catch (error) {
     if (error instanceof AgenteRpcError && error.code === -32601) return;
     throw error;

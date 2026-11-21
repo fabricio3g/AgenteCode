@@ -1375,8 +1375,8 @@ class AppStore {
 
   persist({ navigationOnly = false }: { navigationOnly?: boolean } = {}) {
     saveChatState<PersistedState>({
-      chats: this.chats,
-      folders: this.folders,
+      chats: isElectron() ? [] : this.chats,
+      folders: isElectron() ? [] : this.folders,
       currentChatId: this.currentChatId,
       activeSpace: this.activeSpace,
       currentChatIdBySpace: this.currentChatIdBySpace
@@ -2847,6 +2847,7 @@ class AppStore {
           })
         });
         exactUsage = agentResult.usage || exactUsage;
+        if (controller.signal.aborted) throw new Error('AbortError');
         markAgentWriting(assistantMessage);
         syncMsg(true);
         this.persist();
@@ -2958,14 +2959,21 @@ class AppStore {
       void this.generateChatTitle(targetChatId, activeProviderApiKey);
     } catch (error) {
       const errorMsg = toErrorMessage(error) || 'Request failed';
-      const aborted = isAbortLikeError(errorMsg);
+      const aborted = controller.signal.aborted || isAbortLikeError(errorMsg);
       // Don't show toast for user-initiated abort
       if (!aborted) {
         toastStore.error(errorMsg.length > 80 ? errorMsg.slice(0, 80) + '…' : errorMsg);
       }
+      const currentInChat = this.findChat(targetChatId)?.messages.find((m) => m.id === assistantMessage.id);
+      if (aborted && currentInChat) {
+        if ((currentInChat.content || '').trim()) assistantMessage.content = currentInChat.content;
+        if (currentInChat.agentSteps?.length) assistantMessage.agentSteps = currentInChat.agentSteps;
+      }
       assistantMessage.done = true;
       assistantMessage.status = aborted ? 'idle' : 'error';
-      assistantMessage.content = aborted ? (assistantMessage.content || '') : (assistantMessage.content || errorMsg);
+      assistantMessage.content = aborted
+        ? ((assistantMessage.content || '').trim() ? assistantMessage.content : 'Stopped by user.')
+        : (assistantMessage.content || errorMsg);
       const timing = (Date.now() - startTime) / 1000;
       assistantMessage.metadata = finalizeAssistantMetadata({
         existing: assistantMessage.metadata,
@@ -2989,7 +2997,7 @@ class AppStore {
         }
       }
       this.error = aborted ? null : assistantMessage.content;
-      if (turn.sanitize) {
+      if (turn.sanitize && (!aborted || assistantMessage.content !== 'Stopped by user.')) {
         assistantMessage.content = turn.sanitize(assistantMessage.content);
       }
       if (userMessage) userMessage.attachments = sentAttachments;
@@ -3208,9 +3216,11 @@ class AppStore {
     const target = this.continuable(messageId);
     if (!target) return;
     const { chat, message, index, targetChatId } = target;
-    const activeBackendMode = this.backendMode as GenerationBackendMode;
-    const activeProvider = this.activeProvider;
-    if (!this.canStartGeneration({ backendMode: activeBackendMode, targetChatId, activeProvider, localBusyActionText: 'continuing here' })) return;
+    const selectedConfig = this.configForChat(chat);
+    const selection = captureChatModel(selectedConfig, this.backendMode);
+    const activeBackendMode = selection.backendMode as GenerationBackendMode;
+    const activeProvider = selectedConfig.llm?.providers?.[selection.provider] || null;
+    if (!this.canStartGeneration({ backendMode: activeBackendMode, targetChatId, activeProvider, selectedLocalModelPath: selection.localModelPath, localBusyActionText: 'continuing here' })) return;
 
     const snapshot = message.versions?.[message.activeVersion ?? 0]?.metadata?.roleplay ?? message.metadata?.roleplay;
     const turn = roleplayStore.prepareTurn(chat, { speakerId: message.speakerId, snapshot, historyEnd: index });
@@ -3227,7 +3237,7 @@ class AppStore {
       this.beginGenerationRun(targetChatId, { controller, messageId: message.id, backendMode: activeBackendMode, mode: 'chat', startedAt: Date.now() });
       const request = await this.roleplayRequest(turn, chat, history, activeBackendMode);
       await streamAssistantReply({
-        config: this.configForChat(chat),
+        config: selectedConfig,
         messages: [...request.messages, { role: 'system', content: CONTINUE_INSTRUCTION }],
         signal: controller.signal,
         apiKey: activeProvider?.api_key,
@@ -3274,13 +3284,16 @@ class AppStore {
     );
     if (!previousMessages.length) return;
 
-    const activeBackendMode = this.backendMode as GenerationBackendMode;
-    const activeModelLabel = this.activeModelLabel;
-    const activeProvider = this.activeProvider;
+    const selectedConfig = this.configForChat(chat);
+    const selection = captureChatModel(selectedConfig, this.backendMode);
+    const activeBackendMode = selection.backendMode as GenerationBackendMode;
+    const activeModelLabel = activeBackendMode === 'local' ? selection.localModel : selection.model;
+    const activeProvider = selectedConfig.llm?.providers?.[selection.provider] || null;
     if (!this.canStartGeneration({
       backendMode: activeBackendMode,
       targetChatId,
       activeProvider,
+      selectedLocalModelPath: selection.localModelPath,
       localBusyActionText: 'retrying here'
     })) return;
     // An earlier Roleplay beat can't be rewritten under the turns that followed it.
@@ -3294,6 +3307,13 @@ class AppStore {
         danger: true
       });
       if (!ok || this.currentChatId !== targetChatId) return;
+      if (!this.canStartGeneration({
+        backendMode: activeBackendMode,
+        targetChatId,
+        activeProvider,
+        selectedLocalModelPath: selection.localModelPath,
+        localBusyActionText: 'retrying here'
+      })) return;
       chat.messages = chat.messages.slice(0, index + 1);
     }
 
@@ -3389,7 +3409,9 @@ class AppStore {
         speakerId: turn.speakerId,
         roleplaySnapshot: { roleplay: turn.snapshot }
       });
-      const reasoningLevel = this.roleplayThinking(chat, activeBackendMode);
+      const reasoningLevel = chat.contextMode === 'roleplay'
+        ? this.roleplayThinking(chat, activeBackendMode)
+        : (chat.reasoningLevel ?? this.reasoningLevel);
       if (agentic) {
         const agentResult = await (getSpaceForSession(chat) === 'design' ? runDesignTask : runAgentTask)({
           chatId: targetChatId,
@@ -3580,21 +3602,25 @@ class AppStore {
     this.persist();
   }
 
-  private async commitConfig(next: AppConfig, options: ConfigCommitOptions = {}) {
-    // Capture the owner before asynchronous persistence: switching chats while
-    // saving must never pin the choice onto the newly visible conversation.
-    const chat = this.currentChat;
-    const selection = captureChatModel(next, this.backendMode);
-    const selectionChanged = chat && JSON.stringify(chat.modelSelection) !== JSON.stringify(selection);
-    if (selectionChanged) {
-      chat.modelSelection = selection;
-      this.markChatDirty(chat.id);
-      this.persist();
-    }
-    this.config = next;
-    if (selectionChanged) {
-      ++this.contextBudgetRequestId;
-      this.contextBudget = null;
+  private async commitConfig(next: AppConfig, options: ConfigCommitOptions & { captureModel?: boolean } = {}) {
+    if (options.captureModel !== false) {
+      // Capture the owner before asynchronous persistence: switching chats while
+      // saving must never pin the choice onto the newly visible conversation.
+      const chat = this.currentChat;
+      const selection = captureChatModel(next, this.backendMode);
+      const selectionChanged = chat && JSON.stringify(chat.modelSelection) !== JSON.stringify(selection);
+      if (selectionChanged) {
+        chat.modelSelection = selection;
+        this.markChatDirty(chat.id);
+        this.persist();
+      }
+      this.config = next;
+      if (selectionChanged) {
+        ++this.contextBudgetRequestId;
+        this.contextBudget = null;
+      }
+    } else {
+      this.config = next;
     }
     await saveAppConfig(next);
     if (options.invalidateModels) invalidateModels();
@@ -3661,7 +3687,7 @@ class AppStore {
   async setLocalParallel(slots: number) {
     const value = Math.max(1, Math.min(16, Math.floor(slots) || 1));
     this.localModelLoadParallel = String(value);
-    await this.commitConfig({ ...this.config, llm: { ...this.config.llm, local: { ...(this.config.llm?.local ?? {}), parallel: value } } });
+    await this.commitConfig({ ...this.globalConfig, llm: { ...this.globalConfig.llm, local: { ...(this.globalConfig.llm?.local ?? {}), parallel: value } } }, { captureModel: false });
   }
 
   async setLocalRuntimePath(path: string) {
@@ -3678,7 +3704,7 @@ class AppStore {
     roleplay_enabled?: boolean;
     editor?: string;
   }) {
-    await this.commitConfig(mergeUiSettingsConfig(this.config, partial));
+    await this.commitConfig(mergeUiSettingsConfig(this.globalConfig, partial), { captureModel: false });
   }
 
   /** The editor "Open in editor" launches; empty means auto-detect. */
@@ -3733,7 +3759,7 @@ class AppStore {
   async updateArtifactToggles(partial: Record<string, boolean>) {
     const current = this.getArtifactToggles();
     const merged = { ...current, ...partial };
-    await this.commitConfig(mergeUiSettingsConfig(this.config, { artifact_toggles: merged }));
+    await this.commitConfig(mergeUiSettingsConfig(this.globalConfig, { artifact_toggles: merged }), { captureModel: false });
   }
 
   async updatePromptSettings(partial: {
@@ -3741,7 +3767,7 @@ class AppStore {
     user_prompt?: string;
     local_system_prompt?: string;
   }) {
-    await this.commitConfig(mergePromptSettingsConfig(this.config, partial));
+    await this.commitConfig(mergePromptSettingsConfig(this.globalConfig, partial), { captureModel: false });
   }
 
   async updateSearchSettings(partial: {
@@ -3752,15 +3778,15 @@ class AppStore {
     safe_search?: number;
     providers?: NonNullable<AppConfig['search']>['providers'];
   }) {
-    await this.commitConfig(mergeSearchSettingsConfig(this.config, partial));
+    await this.commitConfig(mergeSearchSettingsConfig(this.globalConfig, partial), { captureModel: false });
   }
 
   async updateTtsSettings(partial: Partial<NonNullable<AppConfig['tts']>>) {
-    await this.commitConfig(mergeTtsSettingsConfig(this.config, partial));
+    await this.commitConfig(mergeTtsSettingsConfig(this.globalConfig, partial), { captureModel: false });
   }
 
   async updateSttSettings(partial: Partial<NonNullable<AppConfig['stt']>>) {
-    await this.commitConfig({ ...this.config, stt: { ...(this.config.stt ?? {}), ...partial } });
+    await this.commitConfig({ ...this.globalConfig, stt: { ...(this.globalConfig.stt ?? {}), ...partial } }, { captureModel: false });
   }
 }
 

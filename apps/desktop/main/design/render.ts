@@ -147,8 +147,11 @@ async function capturePng(win: BrowserWindow): Promise<string> {
 /**
  * A guest window with the page loaded and its first frame painted.
  */
-async function openStage(html: string, width: number, height: number): Promise<BrowserWindow> {
+async function openStage(html: string, width: number, height: number, signal?: AbortSignal): Promise<BrowserWindow> {
+  signal?.throwIfAborted();
   const win = createArtifactWindow(true, { offscreen: true });
+  const onAbort = () => { if (!win.isDestroyed()) win.destroy(); };
+  signal?.addEventListener('abort', onAbort, { once: true });
   win.webContents.setBackgroundThrottling(false);
   win.setContentSize(width, height);
   try {
@@ -156,19 +159,24 @@ async function openStage(html: string, width: number, height: number): Promise<B
     const page = probed.includes(ERROR_PROBE) ? probed : ERROR_PROBE + probed;
     // The previous stage's window clears the shared guest session as it closes, and a load that overlaps that clear is cancelled: retry after it.
     for (let attempt = 0; ; attempt += 1) {
+      signal?.throwIfAborted();
       try {
         await loadArtifactHtml(win, page, true);
         break;
       } catch (error) {
-        if (attempt >= 2) throw error;
+        if (signal?.aborted || attempt >= 2) throw error;
         await new Promise((resolve) => setTimeout(resolve, 300 * (attempt + 1)));
       }
     }
+    signal?.throwIfAborted();
     await paint(win);
+    signal?.throwIfAborted();
     return win;
   } catch (error) {
     if (!win.isDestroyed()) win.destroy();
     throw error;
+  } finally {
+    signal?.removeEventListener('abort', onAbort);
   }
 }
 
@@ -192,16 +200,22 @@ async function emulateReduced(win: BrowserWindow): Promise<void> {
  * again after any hover or focus. Then the page is reloaded under reduced motion,
  * and whatever still runs a moment after it starts is reported.
  */
-async function renderMotion(request: DesignRenderRequest, html: string, width: number, height: number): Promise<DesignRenderResult> {
-  const win = await openStage(html, width, height);
+async function renderMotion(request: DesignRenderRequest, html: string, width: number, height: number, signal?: AbortSignal): Promise<DesignRenderResult> {
+  signal?.throwIfAborted();
+  const win = await openStage(html, width, height, signal);
+  const onAbort = () => { if (!win.isDestroyed()) win.destroy(); };
+  signal?.addEventListener('abort', onAbort, { once: true });
   try {
     const error = await triggerState(win, request);
     if (error) return { ok: false, error, width, height, consoleErrors: [] };
+    signal?.throwIfAborted();
     await paint(win);
     const animations = await win.webContents.executeJavaScript(ANIMATION_SCRIPT, false) as DesignAnimation[];
+    signal?.throwIfAborted();
     await emulateReduced(win);
     const reducedError = await triggerState(win, request);
     if (reducedError) return { ok: false, error: reducedError, width, height, consoleErrors: [] };
+    signal?.throwIfAborted();
     await paint(win);
     const running = (await win.webContents.executeJavaScript(ANIMATION_SCRIPT, false) as DesignAnimation[])
       .filter((animation) => animation.playState === 'running' || animation.playState === 'pending');
@@ -215,6 +229,7 @@ async function renderMotion(request: DesignRenderRequest, html: string, width: n
       outline: motionReport({ animations, reducedRunning: running, hovered: request.hover, focused: request.focus })
     };
   } finally {
+    signal?.removeEventListener('abort', onAbort);
     if (!win.isDestroyed()) win.destroy();
   }
 }
@@ -227,20 +242,26 @@ async function renderMotion(request: DesignRenderRequest, html: string, width: n
  * and only then is the frame painted and captured, so every frame is the same
  * moment on the timeline.
  */
-async function renderFrames(request: DesignRenderRequest, html: string, width: number, height: number): Promise<DesignRenderResult> {
+async function renderFrames(request: DesignRenderRequest, html: string, width: number, height: number, signal?: AbortSignal): Promise<DesignRenderResult> {
   const frames: DesignFrame[] = [];
   for (const t of frameTimes(request.frames, request.durationMs)) {
-    const win = await openStage(html, width, height);
+    signal?.throwIfAborted();
+    const win = await openStage(html, width, height, signal);
+    const onAbort = () => { if (!win.isDestroyed()) win.destroy(); };
+    signal?.addEventListener('abort', onAbort, { once: true });
     try {
       const error = await triggerState(win, request);
       if (error) return { ok: false, error, width, height, consoleErrors: [] };
+      signal?.throwIfAborted();
       await win.webContents.executeJavaScript(seekScript(t), false);
       await paint(win);
       const samples = await win.webContents.executeJavaScript(SAMPLE_SCRIPT, false) as DesignMotionSample[];
+      signal?.throwIfAborted();
       // The first capture of a stage is the one that returns; the picture is only kept when a vision model reads it.
       const png = request.withImages ? await capturePng(win) : '';
       frames.push({ t, png, samples });
     } finally {
+      signal?.removeEventListener('abort', onAbort);
       if (!win.isDestroyed()) win.destroy();
     }
   }
@@ -256,14 +277,17 @@ export async function renderDesign(request: DesignRenderRequest): Promise<Design
   const height = clamp(request.height, 300, 2400, 900);
   if (typeof request.html !== 'string' || !request.html) return { ok: false, error: 'Nothing to render.', width, height, consoleErrors: [] };
   if (request.mode === 'frames' || request.mode === 'motion') {
+    const controller = new AbortController();
     const flow = request.mode === 'frames' ? renderFrames : renderMotion;
-    return withArtifactTimeout(flow(request, request.html, width, height), 60_000).catch((error: unknown) => ({
-      ok: false,
-      error: error instanceof Error ? error.message : String(error),
-      width,
-      height,
-      consoleErrors: []
-    }));
+    return withArtifactTimeout(flow(request, request.html, width, height, controller.signal), 60_000)
+      .catch((error: unknown) => ({
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+        width,
+        height,
+        consoleErrors: []
+      }))
+      .finally(() => controller.abort());
   }
   const win = createArtifactWindow(true);
   win.webContents.setBackgroundThrottling(false);

@@ -177,9 +177,9 @@ function loadLegacyChats(): { chats: ChatSession[]; folders: ChatFolder[] } {
 
 export function saveChatState<T>(value: T): void {
   if (isElectronEnv() && value && typeof value === 'object' && 'chats' in value) {
-    // SQLite owns complete transcripts. Keep the old backup for migration, but
+    // SQLite owns complete transcripts and folders. Keep the old backup for migration, but
     // stop serializing attachments and every conversation on the UI thread.
-    const { chats: _chats, ...navigation } = value as Record<string, unknown>;
+    const { chats: _chats, folders: _folders, ...navigation } = value as Record<string, unknown>;
     localStorage.setItem(`${CHAT_STATE_KEY}.navigation`, JSON.stringify(navigation));
   } else localStorage.setItem(CHAT_STATE_KEY, JSON.stringify(value));
 }

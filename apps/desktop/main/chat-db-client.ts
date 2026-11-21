@@ -1,14 +1,21 @@
+import { existsSync } from 'node:fs';
 import { Worker } from 'node:worker_threads';
 import { join } from 'node:path';
-import { getAppPaths } from './paths';
-import { moduleDirname } from './module-env';
+import { getAppPaths } from './paths.ts';
+import { moduleDirname } from './module-env.ts';
+
+function defaultWorkerPath(): string {
+  const dir = moduleDirname(import.meta.url);
+  const bundled = join(dir, 'chat-db-worker.cjs');
+  return existsSync(bundled) ? bundled : join(dir, 'chat-db-worker.ts');
+}
 
 export class ChatDatabaseWorker {
   private worker: Worker | null = null;
   private nextId = 0;
   private closing = false;
   private pending = new Map<number, { resolve: (value: unknown) => void; reject: (error: Error) => void }>();
-  constructor(private readonly workerPath = join(moduleDirname(import.meta.url), 'chat-db-worker.cjs'), private readonly databasePath?: string,
+  constructor(private readonly workerPath = defaultWorkerPath(), private readonly databasePath?: string,
     private readonly createWorker: (path: string, options: ConstructorParameters<typeof Worker>[1]) => Worker = (path, options) => new Worker(path, options)) {}
   request<T = unknown>(operation: string, ...args: unknown[]): Promise<T> {
     if (this.closing) return Promise.reject(new Error('Database is closing'));
@@ -45,7 +52,7 @@ export class ChatDatabaseWorker {
     const worker = this.worker;
     const drained = this.request('close');
     this.closing = true;
-    try { await drained; } finally { await worker.terminate(); this.worker = null; }
+    try { await drained; } finally { await worker.terminate(); this.worker = null; this.closing = false; }
   }
 }
 

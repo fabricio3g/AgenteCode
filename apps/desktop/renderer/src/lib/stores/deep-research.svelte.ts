@@ -128,7 +128,7 @@ function buildAnswerContext(task: DeepResearchTask): string {
     .join('\n\n');
 }
 
-async function compressResearchEvidence(task: DeepResearchTask, sourceLines: string, answerContext: string): Promise<string> {
+async function compressResearchEvidence(task: DeepResearchTask, sourceLines: string, answerContext: string, signal?: AbortSignal): Promise<string> {
   const query = task.enhancedQuery || task.query;
   const medical = isMedicalResearchQuery(query);
   const messages: RequestMessage[] = [
@@ -165,7 +165,7 @@ async function compressResearchEvidence(task: DeepResearchTask, sourceLines: str
     }
   ];
 
-  const completion = await completeAssistantReply({ messages });
+  const completion = await raceWithAbort(completeAssistantReply({ messages, signal }), signal);
   return completion.content.trim();
 }
 
@@ -189,14 +189,28 @@ function finalReportRequest(mode: 'deep' | 'max', medical: boolean): string {
   return [buildResearchReportInstruction(mode, medical), '', ...pipelineSpecific].join('\n');
 }
 
-async function synthesizeResearch(task: DeepResearchTask): Promise<string> {
+function raceWithAbort<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
+  if (!signal) return promise;
+  if (signal.aborted) return Promise.reject(new Error('AbortError'));
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => reject(new Error('AbortError'));
+    signal.addEventListener('abort', onAbort, { once: true });
+    promise.then(
+      (value) => { signal.removeEventListener('abort', onAbort); resolve(value); },
+      (err) => { signal.removeEventListener('abort', onAbort); reject(err); }
+    );
+  });
+}
+
+async function synthesizeResearch(task: DeepResearchTask, signal?: AbortSignal): Promise<string> {
   const sourceLines = buildSourceLines(task, task.mode === 'max' ? 40 : 24);
   const answerContext = buildAnswerContext(task);
   const query = task.enhancedQuery || task.query;
   const medical = isMedicalResearchQuery(query);
   const evidenceDossier = task.mode === 'max'
-    ? await compressResearchEvidence(task, sourceLines, answerContext)
+    ? await compressResearchEvidence(task, sourceLines, answerContext, signal)
     : '';
+  signal?.throwIfAborted();
 
   const messages: RequestMessage[] = [
     {
@@ -231,11 +245,11 @@ async function synthesizeResearch(task: DeepResearchTask): Promise<string> {
     }
   ];
 
-  const completion = await completeAssistantReply({ messages });
+  const completion = await raceWithAbort(completeAssistantReply({ messages, signal }), signal);
   return completion.content.trim() || 'Research synthesis completed, but no summary text was returned.';
 }
 
-async function generateSubQueries(mainQuery: string, mode: 'deep' | 'max'): Promise<string[]> {
+async function generateSubQueries(mainQuery: string, mode: 'deep' | 'max', signal?: AbortSignal): Promise<string[]> {
   const numQueries = mode === 'max' ? 8 : 4;
   const messages: RequestMessage[] = [
     {
@@ -251,10 +265,11 @@ async function generateSubQueries(mainQuery: string, mode: 'deep' | 'max'): Prom
   ];
 
   try {
-    const completion = await completeAssistantReply({ messages });
+    const completion = await raceWithAbort(completeAssistantReply({ messages, signal }), signal);
     const lines = completion.content.trim().split('\n').map((line) => line.trim()).filter(Boolean);
     return lines.slice(0, numQueries);
-  } catch {
+  } catch (err) {
+    if (signal?.aborted) throw err;
     return [mainQuery];
   }
 }
@@ -366,6 +381,8 @@ class DeepResearchStore {
   initialized = false;
   private unlisten: (() => void) | null = null;
   private queue: string[] = [];
+  private processing = false;
+  private controllers = new Map<string, AbortController>();
   private waiters = new Map<string, { resolve: (task: DeepResearchTask) => void; reject: (error: unknown) => void }>();
   private inputWaiters = new Map<string, { resolve: (answers: Record<string, string>) => void }>();
 
@@ -530,7 +547,7 @@ class DeepResearchStore {
     };
 
     this.tasks = [task, ...this.tasks].slice(0, 20);
-    if (isAwaitingInput) this.activeTaskId = task.id;
+    this.controllers.set(task.id, new AbortController());
     persistTasks(this.tasks);
 
     const promise = new Promise<DeepResearchTask>((resolve, reject) => {
@@ -543,15 +560,26 @@ class DeepResearchStore {
   }
 
   private async processQueue() {
-    if (this.queue.length === 0) return;
-    
-    let taskId = this.activeTaskId;
-    if (!taskId) {
+    if (this.processing) return;
+    let taskId: string | undefined;
+    while (this.queue.length > 0) {
       const next = this.queue.shift();
-      if (!next) return;
-      taskId = next;
-      this.activeTaskId = taskId;
+      if (!next) continue;
+      this.queue = this.queue.filter((id) => id !== next);
+      const candidate = this.getTask(next);
+      if (candidate && !['completed', 'failed', 'cancelled'].includes(candidate.status)) {
+        taskId = next;
+        break;
+      }
+      this.controllers.delete(next);
     }
+    if (!taskId) return;
+
+    this.processing = true;
+    this.activeTaskId = taskId;
+    const controller = this.controllers.get(taskId) ?? new AbortController();
+    this.controllers.set(taskId, controller);
+    const { signal } = controller;
 
     try {
       let task = this.getTask(taskId);
@@ -560,7 +588,7 @@ class DeepResearchStore {
       if (task.status === 'awaiting_input') {
         await this.waitForTaskInput(taskId);
         task = this.getTask(taskId);
-        if (!task || task.status === 'cancelled') return;
+        if (signal.aborted || !task || task.status === 'cancelled') return;
         if (task.status !== 'searching') return;
       }
 
@@ -573,10 +601,11 @@ class DeepResearchStore {
       }));
 
       task = this.getTask(taskId);
-      if (!task) return;
+      if (signal.aborted || !task || task.status === 'cancelled') return;
       const enhancedQuery = mergeAnswersIntoQuery(task.query, task.questions, task.answers);
       const planningQuery = [task.conversationContext ? `Conversation context:\n${task.conversationContext}` : '', `Current research request:\n${enhancedQuery}`].filter(Boolean).join('\n\n');
-      const subQueries = await generateSubQueries(planningQuery, task.mode);
+      const subQueries = await generateSubQueries(planningQuery, task.mode, signal);
+      if (signal.aborted || this.getTask(taskId)?.status === 'cancelled') return;
       const allQueries = [enhancedQuery, ...subQueries.filter((query) => query !== enhancedQuery)];
 
       this.updateTask(taskId, (entry) => ({
@@ -587,11 +616,14 @@ class DeepResearchStore {
         progressLog: [...entry.progressLog, { step: 'planning', detail: `Generated ${subQueries.length} sub-queries`, at: Date.now() }].slice(-40)
       }));
 
-      const searchResults = await Promise.allSettled(
-        allQueries.map((query) => searchWithFallback(query, entryMode(taskId, this.tasks), task?.conversationContext))
+      const searchResults = await raceWithAbort(
+        Promise.allSettled(
+          allQueries.map((query) => searchWithFallback(query, entryMode(taskId, this.tasks), task?.conversationContext, signal))
+        ),
+        signal
       );
 
-      if (this.getTask(taskId)?.status === 'cancelled') return;
+      if (signal.aborted || this.getTask(taskId)?.status === 'cancelled') return;
 
       const allResults: SearchResult[] = [];
       let combinedContext = '';
@@ -623,21 +655,26 @@ class DeepResearchStore {
       }));
 
       const crawlSeeds = dedupedResults.map((item) => item.url).filter(Boolean).slice(0, task.mode === 'max' ? 16 : 8);
-      const crawl = await invoke<{
-        results: SearchResult[];
-        context: string;
-        stats: {
-          pages_crawled: number;
-          pages_discovered: number;
-          truncated: boolean;
-          max_depth_reached: number;
-        };
-      }>('crawl_web', {
-        query: enhancedQuery,
-        context: task.conversationContext,
-        mode: task.mode,
-        seed_urls: crawlSeeds
-      });
+      const crawl = await raceWithAbort(
+        invoke<{
+          results: SearchResult[];
+          context: string;
+          stats: {
+            pages_crawled: number;
+            pages_discovered: number;
+            truncated: boolean;
+            max_depth_reached: number;
+          };
+        }>('crawl_web', {
+          query: enhancedQuery,
+          context: task.conversationContext,
+          mode: task.mode,
+          seed_urls: crawlSeeds
+        }),
+        signal
+      );
+
+      if (signal.aborted || this.getTask(taskId)?.status === 'cancelled') return;
 
       const merged = dedupeResults([...(dedupedResults || []), ...((crawl?.results || []) as SearchResult[])]).slice(0, task.mode === 'max' ? 70 : 36);
       const mergedContext = [combinedContext, crawl?.context || ''].filter(Boolean).join('\n\n---\n\n');
@@ -659,9 +696,9 @@ class DeepResearchStore {
       }));
 
       const latest = this.getTask(taskId);
-      if (!latest || latest.status === 'cancelled') return;
-      const summary = await synthesizeResearch({ ...latest, results: merged, context: mergedContext });
-      if (this.getTask(taskId)?.status === 'cancelled') return;
+      if (signal.aborted || !latest || latest.status === 'cancelled') return;
+      const summary = await synthesizeResearch({ ...latest, results: merged, context: mergedContext }, signal);
+      if (signal.aborted || this.getTask(taskId)?.status === 'cancelled') return;
 
       let finalTask: DeepResearchTask | null = null;
       this.updateTask(taskId, (entry) => {
@@ -680,7 +717,7 @@ class DeepResearchStore {
       });
       if (finalTask) this.settleTask(taskId, finalTask);
     } catch (error) {
-      if (this.getTask(taskId)?.status === 'cancelled') return;
+      if (signal.aborted || this.getTask(taskId)?.status === 'cancelled') return;
       let failedTask: DeepResearchTask | null = null;
       this.updateTask(taskId, (entry) => {
         failedTask = {
@@ -696,7 +733,9 @@ class DeepResearchStore {
       });
       this.settleTask(taskId, failedTask!, error);
     } finally {
-      this.activeTaskId = null;
+      this.controllers.delete(taskId);
+      if (this.activeTaskId === taskId) this.activeTaskId = null;
+      this.processing = false;
       void this.processQueue();
     }
   }
@@ -705,6 +744,11 @@ class DeepResearchStore {
     const task = this.getTask(taskId);
     if (!task) return;
     this.queue = this.queue.filter((id) => id !== taskId);
+    const controller = this.controllers.get(taskId);
+    if (controller) {
+      this.controllers.delete(taskId);
+      controller.abort();
+    }
     this.updateTask(taskId, (entry) => ({
       ...entry,
       status: 'cancelled',
@@ -784,8 +828,9 @@ function isAuthFailure(searchError: unknown) {
     || text.includes('authentication');
 }
 
-async function searchWithFallback(query: string, mode: 'deep' | 'max', context?: string) {
-  const primary = await webSearch({ query, context, deep: true, mode });
+async function searchWithFallback(query: string, mode: 'deep' | 'max', context?: string, signal?: AbortSignal) {
+  signal?.throwIfAborted();
+  const primary = await raceWithAbort(webSearch({ query, context, deep: true, mode }), signal);
   const primaryResults = Array.isArray(primary?.results) ? primary.results : [];
   if (primaryResults.length > 0) return primary;
 
@@ -793,7 +838,8 @@ async function searchWithFallback(query: string, mode: 'deep' | 'max', context?:
     return primary;
   }
 
-  const fallback = await webSearch({
+  signal?.throwIfAborted();
+  const fallback = await raceWithAbort(webSearch({
     query,
     context,
     deep: true,
@@ -802,12 +848,13 @@ async function searchWithFallback(query: string, mode: 'deep' | 'max', context?:
       provider: 'aggregator',
       max_results: mode === 'max' ? 18 : 12
     }
-  });
+  }), signal);
 
   const fallbackResults = Array.isArray(fallback?.results) ? fallback.results : [];
   if (fallbackResults.length > 0) return fallback;
 
-  const secondFallback = await webSearch({
+  signal?.throwIfAborted();
+  const secondFallback = await raceWithAbort(webSearch({
     query,
     context,
     deep: true,
@@ -816,7 +863,7 @@ async function searchWithFallback(query: string, mode: 'deep' | 'max', context?:
       provider: 'aggregator',
       max_results: mode === 'max' ? 18 : 12
     }
-  });
+  }), signal);
 
   return secondFallback;
 }

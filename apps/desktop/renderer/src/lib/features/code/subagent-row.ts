@@ -30,9 +30,15 @@ export function childModelLabel(child: Pick<CodeChild, 'model' | 'seat'>): strin
  * string the child reports. Two spawns that asked for the same description pair
  * in the order they were admitted.
  */
+function firstLine(text: string, max = 160): string {
+  const line = text.split('\n')[0] ?? '';
+  return line.length > max ? `${line.slice(0, max - 1)}…` : line;
+}
+
 export function linkChildToStep(steps: AgentStep[], description: string): string | undefined {
-  if (!description) return undefined;
-  return steps.find((step) => step.toolName === 'task' && !step.subagentId && step.detail === description)?.id;
+  const normalized = firstLine(description, 160);
+  if (!normalized) return undefined;
+  return steps.find((step) => step.toolName === 'task' && !step.subagentId && (step.detail === normalized || step.detail === description))?.id;
 }
 
 /**

@@ -97,3 +97,37 @@ export function buildLocalModelSummaryChips(
 
   return chips;
 }
+
+function normalizeLocalModelPath(value?: string | null): string {
+  return String(value || '').trim().replace(/\\/g, '/').toLowerCase();
+}
+
+function normalizeLocalModelBasename(value?: string | null): string {
+  const normalized = normalizeLocalModelPath(value);
+  const base = normalized.split('/').pop() || '';
+  return base.replace(/\.gguf$/i, '');
+}
+
+/**
+ * Exact path or normalized basename match for local GGUF models, preventing
+ * substring false positives across quantizations (e.g. Q4_K_M vs Q8_0).
+ */
+export function isLocalModelLoaded(
+  model: { id?: string; name?: string; path?: string } | null | undefined,
+  active: { name?: string; path?: string } | null | undefined
+): boolean {
+  if (!model || !active) return false;
+  const activePath = normalizeLocalModelPath(active.path);
+  const modelPath = normalizeLocalModelPath(model.path);
+  if (activePath && modelPath) {
+    if (activePath === modelPath) return true;
+    if (activePath.includes('/') && modelPath.includes('/')) return false;
+  }
+  const activeStem = normalizeLocalModelBasename(active.path || active.name);
+  const activeName = normalizeLocalModelBasename(active.name);
+  if (!activeStem && !activeName) return false;
+  return [model.path, model.id, model.name]
+    .map(normalizeLocalModelBasename)
+    .filter(Boolean)
+    .some((candidate) => (activeStem && candidate === activeStem) || (activeName && candidate === activeName));
+}

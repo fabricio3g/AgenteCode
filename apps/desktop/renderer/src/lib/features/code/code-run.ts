@@ -381,14 +381,25 @@ function describeToolArgs(toolName: string, args: unknown): string {
   }
 }
 
-/** Close a run as failed: record why and mark the step that was mid-flight. */
+/** Close a run as failed: record why and mark any in-flight steps and subagents. */
 function failRun(state: CodeRunState, message: string): void {
   state.error = message;
   state.retrying = null;
   state.done = true;
   state.stopReason ??= 'error';
-  const broken = state.steps.find((s) => s.status === 'running');
-  if (broken) broken.status = 'error';
+  const now = Date.now();
+  for (const step of state.steps) {
+    if (step.status === 'running') step.status = 'error';
+  }
+  for (const child of state.children) {
+    if (child.status === 'running') {
+      child.status = 'error';
+      child.finishedAt ??= now;
+    }
+    for (const tool of child.tools) {
+      if (tool.status === 'running') tool.status = 'error';
+    }
+  }
   stopRunClock(state);
 }
 
@@ -709,10 +720,22 @@ export function applyCodeAgentEvent(state: CodeRunState, event: CodeAgentEvent):
       stopRunClock(state);
       state.retrying = null;
       state.preparing = null;
-      // A still-running step at the end of a run only means failure if the
-      // run itself failed; on success it was simply never closed out.
-      const running = state.steps.find((s) => s.status === 'running');
-      if (running) running.status = state.error ? 'error' : 'done';
+      // A still-running step or child at the end of a run only means failure if
+      // the run itself failed; on success it was simply never closed out.
+      const terminalStatus = state.error ? 'error' : 'done';
+      const now = Date.now();
+      for (const step of state.steps) {
+        if (step.status === 'running') step.status = terminalStatus;
+      }
+      for (const child of state.children) {
+        if (child.status === 'running') {
+          child.status = terminalStatus;
+          child.finishedAt ??= now;
+        }
+        for (const tool of child.tools) {
+          if (tool.status === 'running') tool.status = terminalStatus;
+        }
+      }
       return true;
     }
     default:

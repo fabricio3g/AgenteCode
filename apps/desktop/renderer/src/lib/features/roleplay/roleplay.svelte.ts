@@ -445,40 +445,42 @@ class RoleplayStore {
    */
   prepareTurn(chat: ChatSession, options: { speakerId?: string | null; consumeRouting?: boolean; snapshot?: RoleplayTurnSnapshot; historyEnd?: number; reroll?: boolean } = {}): RoleplayTurn {
     if (!isRoleplay(chat)) return PASSTHROUGH_TURN;
-    let speakerId = options.speakerId ?? this.speakerId(chat);
-    const history = options.historyEnd == null ? chat : { ...chat, messages: chat.messages.slice(0, options.historyEnd) };
-    const settings = options.snapshot?.settings ?? this.settings(chat);
-    const selected = options.snapshot && !options.reroll ? options.snapshot : decideTurn(history, settings,
-      options.snapshot?.sceneBefore ?? sceneForChat(history), Math.floor(Math.random() * 4294967296));
-    const snapshot: RoleplayTurnSnapshot = { ...selected, settled: false, sceneAfter: copyScene(selected.sceneBefore), contributions: [], choices: [], props: [] };
-    if (!snapshot.participantIds) {
-      const available = [...this.cast(history).filter((card) => snapshot.sceneBefore.presentIds.includes(card.id)),
-        ...snapshot.sceneBefore.npcs.map((npc) => emptyCharacter({ id: npc.id, name: npc.name, description: npc.description }))]
-        .filter((card) => !settings.mutedIds?.includes(card.id));
-      const latest = [...history.messages].reverse().find((message) => message.role === 'user');
-      const latestText = latest ? this.resolveMessage(history, latest).content : '';
-      snapshot.participantIds = selectTurnParticipants(latestText, available, speakerId, ensembleEnabled(settings));
+    try {
+      let speakerId = options.speakerId ?? this.speakerId(chat);
+      const history = options.historyEnd == null ? chat : { ...chat, messages: chat.messages.slice(0, options.historyEnd) };
+      const settings = options.snapshot?.settings ?? this.settings(chat);
+      const selected = options.snapshot && !options.reroll ? options.snapshot : decideTurn(history, settings,
+        options.snapshot?.sceneBefore ?? sceneForChat(history), Math.floor(Math.random() * 4294967296));
+      const snapshot: RoleplayTurnSnapshot = { ...selected, settled: false, sceneAfter: copyScene(selected.sceneBefore), contributions: [], choices: [], props: [] };
+      if (!snapshot.participantIds) {
+        const available = [...this.cast(history).filter((card) => snapshot.sceneBefore.presentIds.includes(card.id)),
+          ...snapshot.sceneBefore.npcs.map((npc) => emptyCharacter({ id: npc.id, name: npc.name, description: npc.description }))]
+          .filter((card) => !settings.mutedIds?.includes(card.id));
+        const latest = [...history.messages].reverse().find((message) => message.role === 'user');
+        const latestText = latest ? this.resolveMessage(history, latest).content : '';
+        snapshot.participantIds = selectTurnParticipants(latestText, available, speakerId, ensembleEnabled(settings));
+      }
+      speakerId = snapshot.participantIds[0] ?? speakerId;
+      if (!snapshot.persona) {
+        const persona = charactersStore.getPersonaById(chat.personaId) ?? charactersStore.defaultPersona;
+        snapshot.persona = { id: persona?.id ?? null, name: persona?.name || this.host.userName || 'User', avatar: persona?.avatar };
+      }
+      const parts = this.promptParts(history, speakerId, snapshot);
+      snapshot.recall = parts.recall;
+      return createRoleplayTurn({
+        speakerId,
+        attribution: this.attribution(history, speakerId, snapshot),
+        sampling: parts.sampling,
+        stop: parts.stop,
+        prompt: parts.build,
+        sanitize: this.outputSanitizer(chat, settings, snapshot.sceneBefore, snapshot.participantIds, speakerId),
+        choices: !!settings.adventureChoices,
+        storyTurn: this.takeStoryTurn(chat.id),
+        snapshot
+      });
+    } finally {
+      if (options.consumeRouting) delete this.speakerOverrides[chat.id];
     }
-    speakerId = snapshot.participantIds[0] ?? speakerId;
-    if (!snapshot.persona) {
-      const persona = charactersStore.getPersonaById(chat.personaId) ?? charactersStore.defaultPersona;
-      snapshot.persona = { id: persona?.id ?? null, name: persona?.name || this.host.userName || 'User', avatar: persona?.avatar };
-    }
-    const parts = this.promptParts(history, speakerId, snapshot);
-    snapshot.recall = parts.recall;
-    const turn = createRoleplayTurn({
-      speakerId,
-      attribution: this.attribution(history, speakerId, snapshot),
-      sampling: parts.sampling,
-      stop: parts.stop,
-      prompt: parts.build,
-      sanitize: this.outputSanitizer(chat, settings, snapshot.sceneBefore, snapshot.participantIds, speakerId),
-      choices: !!settings.adventureChoices,
-      storyTurn: this.takeStoryTurn(chat.id),
-      snapshot
-    });
-    if (options.consumeRouting) delete this.speakerOverrides[chat.id];
-    return turn;
   }
 
   /** Speaker attribution for the request pipeline (group scenes only). */
@@ -1146,6 +1148,13 @@ class RoleplayStore {
     if (first && first.role === 'assistant') {
       first.content = greeting;
       first.speakerId = character.id;
+      if (Array.isArray(first.versions) && first.versions.length) {
+        const activeIndex = typeof first.activeVersion === 'number'
+          ? Math.max(0, Math.min(first.activeVersion, first.versions.length - 1))
+          : 0;
+        first.versions[activeIndex] = { ...first.versions[activeIndex], content: greeting };
+        first.activeVersion = activeIndex;
+      }
     } else {
       chat.messages.unshift({
         id: createId('msg'),

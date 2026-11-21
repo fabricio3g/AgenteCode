@@ -123,7 +123,7 @@
     </div>
 
     {#if !tally.working}
-      <div class="foot"><Button size="sm" variant="ghost" onclick={() => void swarmStore.clear(chatId)}>{$t('code.swarm.clear')}</Button></div>
+      <div class="foot"><Button size="sm" variant="ghost" onclick={() => void swarmStore.clear(chatId).catch((error) => toastStore.error(String(error)))}>{$t('code.swarm.clear')}</Button></div>
     {/if}
   {/if}
 </div>

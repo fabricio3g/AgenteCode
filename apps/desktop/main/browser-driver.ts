@@ -148,10 +148,13 @@ export async function click(ref: string, tabId?: string): Promise<BrowserSnapsho
     el && el.addEventListener('click', () => { window.__agentClickLanded = true; }, { once: true, capture: true });
     return true;
   })()`);
+  const beforeUrl = tab.view.webContents.getURL();
   await glide(tab, x, y);
   await mouse(tab, 'mousePressed', x, y);
   await mouse(tab, 'mouseReleased', x, y);
-  const landed = await evaluate<boolean>(tab, 'window.__agentClickLanded === true').catch(() => true);
+  const landed = tab.view.webContents.getURL() !== beforeUrl
+    || tab.view.webContents.isLoadingMainFrame()
+    || await evaluate<boolean>(tab, 'window.__agentClickLanded !== false').catch(() => true);
   if (!landed) await evaluate(tab, `(() => { document.querySelector(${selector})?.click(); return true; })()`).catch(() => {});
   await settle(tab);
   return snapshot(tab.id);

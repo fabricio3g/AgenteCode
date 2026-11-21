@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { syncWebSearchToCore, webSyncPayload } from '../../main/agente/core-web.ts';
+import { resetWebSearchSync, syncWebSearchToCore, webSyncPayload } from '../../main/agente/core-web.ts';
 
 describe('core web search sync', () => {
   it('sends the choice, the keyed providers and the SearXNG URL', () => {
@@ -48,5 +48,62 @@ describe('core web search sync', () => {
     let calls = 0;
     await syncWebSearchToCore(async () => ({ request: async () => { calls += 1; } }), { provider: 'retry-me' });
     assert.equal(calls, 1, 'a failed payload is sent again');
+  });
+
+  it('resets dedupe cache on daemon close and prevents out-of-order saves from clobbering lastSynced', async () => {
+    resetWebSearchSync();
+    const sent = [];
+    const send = async () => ({
+      request: async (_method, params) => { sent.push(params.provider); return {}; }
+    });
+
+    await syncWebSearchToCore(send, { provider: 'brave' });
+    await syncWebSearchToCore(send, { provider: 'brave' });
+    assert.deepEqual(sent, ['brave']);
+
+    resetWebSearchSync();
+    await syncWebSearchToCore(send, { provider: 'brave' });
+    assert.deepEqual(sent, ['brave', 'brave'], 'reset forces resync after disconnect');
+
+    // Out-of-order completion: save A starts first and hangs, save B completes first, then save A resolves.
+    resetWebSearchSync();
+    sent.length = 0;
+    let releaseA;
+    const first = syncWebSearchToCore(async () => ({
+      request: async (_method, params) => {
+        sent.push(params.provider);
+        await new Promise((resolve) => { releaseA = resolve; });
+        return {};
+      }
+    }), { provider: 'first-a' });
+    // Yield so `first` reaches request()
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await syncWebSearchToCore(send, { provider: 'second-b' });
+    releaseA();
+    await first;
+
+    // `second-b` must remain the deduped signature, not stale `first-a`.
+    await syncWebSearchToCore(send, { provider: 'second-b' });
+    assert.deepEqual(sent, ['first-a', 'second-b']);
+    await syncWebSearchToCore(send, { provider: 'first-a' });
+    assert.deepEqual(sent, ['first-a', 'second-b', 'first-a']);
+
+    // A reset while a sync is in flight prevents the stale completion from caching.
+    resetWebSearchSync();
+    sent.length = 0;
+    let releaseInflight;
+    const inflight = syncWebSearchToCore(async () => ({
+      request: async (_method, params) => {
+        sent.push(params.provider);
+        await new Promise((resolve) => { releaseInflight = resolve; });
+        return {};
+      }
+    }), { provider: 'during-close' });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    resetWebSearchSync();
+    releaseInflight();
+    await inflight;
+    await syncWebSearchToCore(send, { provider: 'during-close' });
+    assert.deepEqual(sent, ['during-close', 'during-close']);
   });
 });

@@ -1,4 +1,5 @@
 import { spawnSync } from 'node:child_process';
+import fs from 'node:fs';
 import path from 'node:path';
 
 export type LlamaRuntimeCapabilities = {
@@ -7,6 +8,15 @@ export type LlamaRuntimeCapabilities = {
 };
 
 const capabilitiesCache = new Map<string, LlamaRuntimeCapabilities>();
+
+function cacheKeyForBinary(binaryPath: string): string {
+  try {
+    const stat = fs.statSync(binaryPath);
+    return `${binaryPath}:${stat.mtimeMs}:${stat.size}`;
+  } catch {
+    return binaryPath;
+  }
+}
 
 export function isLlamaServerBinary(binaryPath: string): boolean {
   const name = path.basename(String(binaryPath || '')).toLowerCase();
@@ -29,7 +39,8 @@ export function inspectLlamaServer(binaryPath: string): LlamaRuntimeCapabilities
   if (!isLlamaServerBinary(binaryPath)) {
     throw new Error('Selected runtime is not llama-server. Select a llama-server binary, not llama-cli.');
   }
-  const cached = capabilitiesCache.get(binaryPath);
+  const cacheKey = cacheKeyForBinary(binaryPath);
+  const cached = capabilitiesCache.get(cacheKey);
   if (cached) return cached;
 
   const help = commandOutput(binaryPath, ['--help']);
@@ -42,7 +53,7 @@ export function inspectLlamaServer(binaryPath: string): LlamaRuntimeCapabilities
     throw new Error('Selected llama-server does not expose the required server flags. Install a current llama.cpp runtime.');
   }
   const capabilities = { version, supportedFlags };
-  capabilitiesCache.set(binaryPath, capabilities);
+  capabilitiesCache.set(cacheKey, capabilities);
   return capabilities;
 }
 

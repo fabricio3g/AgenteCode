@@ -27,7 +27,7 @@ import { serveDesktopTools, type DesktopToolServer } from './desktop-tools-mcp.t
 import { RustProcessBridge } from './rust-processes.ts';
 import { RustTurnTranslator } from './rust-events.ts';
 import { coreProviderStatus, migrateKeysToCore } from './core-providers.ts';
-import { syncWebSearchToCore } from './core-web.ts';
+import { resetWebSearchSync, syncWebSearchToCore } from './core-web.ts';
 import { modelTransportConfig, providerTransportPolicy, type ModelTransport } from './model-transport.ts';
 import type { AgenteCheckpointSummary, AgenteRuntimeMode, AgenteStartSessionArgs, ApprovalDecision, CodeAgentEvent, LocalModelSelection, SubagentModelEntry, SubagentSettings } from '../../shared/agente-protocol.ts';
 import type { Attachment, Message, RuntimeEventEnvelope, SessionSnapshot, TurnMode, TurnOutcome } from '../../shared/agente-protocol.gen.ts';
@@ -38,6 +38,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 type ChatState = {
   owner?: WebContents;
+  unbindOwner?: () => void;
   chatId: string;
   sessionId: string;
   projectRoot: string;
@@ -160,6 +161,7 @@ async function openConnection(): Promise<AgenteClient> {
         listening = null;
         connectionPromise = null;
         configured.clear();
+        resetWebSearchSync();
         for (const chat of chats.values()) {
           clearStopGrace(chat);
           if (!chat.turnId) continue;
@@ -461,12 +463,27 @@ function codeComputerOwner(chat: ChatState): ComputerOwner | undefined {
   return { sessionId: chat.sessionId, turnId: chat.turnId, chatId: chat.chatId, space: 'code', webContentsId: chat.owner.id,
     stop: () => { void abort(chat.chatId); }, resume: () => { if (chat.owner && !chat.owner.isDestroyed()) chat.owner.send('computer_resume', { chatId: chat.chatId, space: 'code' }); } };
 }
+function unbindChatWindow(chat: ChatState): void {
+  chat.unbindOwner?.();
+  chat.unbindOwner = undefined;
+  chat.owner = undefined;
+}
 function bindChatWindow(chat: ChatState, owner?: WebContents) {
   if (!owner || chat.owner === owner) return;
   if (chat.owner && (chat.turnId || computerSession.owner?.sessionId === chat.sessionId)) throw new Error('This Code chat is active in another window.');
+  unbindChatWindow(chat);
   chat.owner = owner;
-  const release = () => { if (chat.owner === owner) { computerSession.releaseOwner(owner.id); void abort(chat.chatId); } };
-  owner.once('destroyed', release); owner.once('render-process-gone', release);
+  const release = () => {
+    unbindChatWindow(chat);
+    computerSession.releaseOwner(owner.id);
+    void abort(chat.chatId);
+  };
+  owner.once('destroyed', release);
+  owner.once('render-process-gone', release);
+  chat.unbindOwner = () => {
+    owner.removeListener('destroyed', release);
+    owner.removeListener('render-process-gone', release);
+  };
 }
 async function startSession(args: AgenteStartSessionArgs, owner?: WebContents): Promise<{ sessionId: string; resumed: boolean; conversationIndex: number }> {
   await ensureProvider(resolveTransport(args.provider, args.model, args.localSelection));
@@ -797,7 +814,11 @@ function sessionIdsToDelete(args: { chatIds?: string[]; sessionIds?: string[] })
   const ids = new Set(args.sessionIds ?? []);
   for (const chatId of args.chatIds ?? []) {
     const chat = chats.get(chatId);
-    if (chat) ids.add(chat.sessionId);
+    if (chat) {
+      clearStopGrace(chat);
+      unbindChatWindow(chat);
+      ids.add(chat.sessionId);
+    }
     chats.delete(chatId);
   }
   return [...ids].filter((id) => UUID.test(id));
@@ -816,10 +837,12 @@ async function deleteSessionData(args: { chatIds?: string[]; sessionIds?: string
 function disposeAllSessions(): void {
   for (const chat of chats.values()) {
     clearStopGrace(chat);
+    unbindChatWindow(chat);
     cancelComputerTurn(chat.sessionId, 'runtime_closed');
     if (chat.turnId) settleComputerTurn(chat.sessionId, chat.turnId);
   }
   chats.clear();
+  resetWebSearchSync();
   daemon?.stop();
   daemon = null;
   listening = null;

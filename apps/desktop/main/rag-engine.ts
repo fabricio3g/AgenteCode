@@ -12,11 +12,7 @@ import type { DocumentIngestPayload } from '../shared/document-ingestion.ts';
 import { ensureRagEmbeddingRuntime } from './rag/embedding-runtime.ts';
 import { chunkMarkdown, searchableText } from './rag/chunking.ts';
 import { Bm25, blendScores, buildContext, citationOf, selectDiverse, type Candidate } from './rag/ranking.ts';
-import {
-  saveRagDocument, deleteRagDocumentDb,
-  deleteRagDocumentsByChat, upsertFileRecord, getFileRecord, getFileRecordByDocId,
-  listFileRecords, linkFileRef, setFileStatus
-} from './chat-db.ts';
+import { chatDatabase } from './chat-db-client.ts';
 import { createLogger } from './utils/logger.ts';
 
 function toErrorMessage(err: unknown): string {
@@ -197,10 +193,16 @@ function serializeStore(): { version: number; chats: unknown[] } {
 function persistStore(): void {
   const storePath = getStorePath();
   const directory = path.dirname(storePath);
-  const tmpPath = `${storePath}.tmp`;
+  const tmpPath = `${storePath}.${randomUUID()}.tmp`;
   fs.mkdirSync(directory, { recursive: true });
   fs.writeFileSync(tmpPath, JSON.stringify(serializeStore(), null, 2));
   fs.renameSync(tmpPath, storePath);
+  try {
+    storeMtime = fs.statSync(storePath).mtimeMs;
+    storeLoaded = true;
+  } catch {
+    // ignore stat race
+  }
 }
 
 function hydrateStore(raw: unknown): void {
@@ -343,7 +345,7 @@ async function ingestTextInternal({ source, text, chat_id, file_type, chunk_size
 
   // Save metadata to SQLite
   try {
-    saveRagDocument(record.doc);
+    await chatDatabase.request('saveRagDocument', record.doc);
   } catch (err: unknown) {
     log.warn('Failed to save doc metadata to SQLite:', toErrorMessage(err));
   }
@@ -371,12 +373,12 @@ export async function ingestDocument(payload: DocumentIngestPayload): Promise<Re
   // Already indexed somewhere on this machine: reuse the parsed chunks, and the
   // vectors too when the first ingest got that far. Re-parsing a 200-page PDF
   // because it was attached in a second chat is the cost this avoids.
-  const known = getFileRecord(hash);
+  const known = await chatDatabase.request<{ ragDocId?: string | null; kind?: string } | null>('getFileRecord', hash).catch(() => null);
   if (known?.ragDocId) {
     const reused = await adoptStoredDocument(String(known.ragDocId), chatId);
     if (reused) {
-      upsertFileRecord({ hash, name: fileName, bytes, kind: known.kind, storedPath });
-      linkFileRef({ hash, chatId, messageId: message_id || '' });
+      await chatDatabase.request('upsertFileRecord', { hash, name: fileName, bytes, kind: known.kind, storedPath });
+      await chatDatabase.request('linkFileRef', { hash, chatId, messageId: message_id || '' });
       return { ...reused, hash, stored_path: storedPath };
     }
   }
@@ -385,14 +387,14 @@ export async function ingestDocument(payload: DocumentIngestPayload): Promise<Re
   try {
     extracted = await extractText(storedPath, payload);
   } catch (err: unknown) {
-    upsertFileRecord({
+    await chatDatabase.request('upsertFileRecord', {
       hash, name: fileName, bytes, kind: kindForPath(file_path),
       storedPath, extractStatus: 'failed'
-    });
+    }).catch(() => {});
     throw err;
   }
 
-  upsertFileRecord({
+  await chatDatabase.request('upsertFileRecord', {
     hash, name: fileName, bytes, kind: extracted.fileType || kindForPath(file_path),
     storedPath
   });
@@ -419,12 +421,12 @@ export async function ingestDocument(payload: DocumentIngestPayload): Promise<Re
   if (indexed) Object.assign(indexed.doc, doc);
   persistStore();
 
-  setFileStatus(hash, {
+  await chatDatabase.request('setFileStatus', hash, {
     extractStatus: 'ready',
     extractedChars: extracted.text.length,
     ragDocId: String(doc.id)
   });
-  linkFileRef({ hash, chatId, messageId: message_id || '' });
+  await chatDatabase.request('linkFileRef', { hash, chatId, messageId: message_id || '' });
   return { ...doc, hash, stored_path: storedPath };
 }
 
@@ -492,7 +494,8 @@ async function queryDocumentsHybrid({ query, chat_id, top_k, scope, files, file_
   const libraryScope = String(scope || '').toLowerCase() === 'library';
   const pinnedDocIds = new Set<string>();
   try {
-    for (const file of listFileRecords()) {
+    const records = await chatDatabase.request<Array<{ hash?: string; name?: string; pinned?: boolean; ragDocId?: string | null }>>('listFileRecords');
+    for (const file of records) {
       if (file.pinned && file.ragDocId) pinnedDocIds.add(String(file.ragDocId));
     }
   } catch {
@@ -504,7 +507,7 @@ async function queryDocumentsHybrid({ query, chat_id, top_k, scope, files, file_
   if (wanted.length) {
     wantedDocIds = new Set<string>();
     try {
-      const records = listFileRecords();
+      const records = await chatDatabase.request<Array<{ hash?: string; name?: string; ragDocId?: string | null }>>('listFileRecords');
       const byHash = new Map(records.map((file) => [String(file.hash), file]));
       const byName = new Map(records.map((file) => [String(file.name).toLowerCase(), file]));
       for (const entry of wanted) {
@@ -583,11 +586,10 @@ async function queryDocumentsHybrid({ query, chat_id, top_k, scope, files, file_
     const top = candidates.slice(0, Math.min(Math.max(k * 2, 6), candidates.length)).filter((c) => c.score > 0);
     if (top.length > 1) {
       try {
-        const reranked = await rerankChunks(query, top.map((c) => c.text), Math.min(k, top.length));
+        const reranked = await rerankChunks(query, top.map((c) => ({ text: c.text })), Math.min(k, top.length));
         if (reranked.length > 0 && reranked[0].rerankScore != null) {
           const byText = new Map(reranked.map((r: { text: string; rerankScore: number }) => [r.text, r.rerankScore]));
-          const maxRerank = Math.max(...reranked.map((r: { rerankScore: number }) => r.rerankScore)) || 1;
-          for (const c of top) if (byText.has(c.text)) c.score = 1 + byText.get(c.text)! / maxRerank;
+          for (const c of top) if (byText.has(c.text)) c.score = 1 + 1 / (1 + Math.exp(-byText.get(c.text)!));
           ranked = [...top.sort((a, b) => b.score - a.score), ...candidates.slice(top.length)];
         }
       } catch {
@@ -668,10 +670,10 @@ export async function removeRagDocument(docId: string, chatId: string): Promise<
       }
       // Let a later attach of the same file index it from scratch.
       try {
-        const file = getFileRecordByDocId(docId);
-        if (file) setFileStatus(file.hash, { ragDocId: null });
+        const file = await chatDatabase.request<{ hash: string } | null>('getFileRecordByDocId', docId);
+        if (file) await chatDatabase.request('setFileStatus', file.hash, { ragDocId: null });
       } catch {}
-      try { deleteRagDocumentDb(docId); } catch {}
+      try { await chatDatabase.request('deleteRagDocumentDb', docId); } catch {}
     }
   }
   return removed;
@@ -689,13 +691,18 @@ export async function clearRagDocuments(chatId: string): Promise<boolean> {
       if (otherChat === key) continue;
       for (const docId of otherStore.keys()) stillHeld.add(docId);
     }
-    if (vectorStoreReady) {
-      for (const docId of ownDocIds) {
-        if (stillHeld.has(docId)) continue;
+    for (const docId of ownDocIds) {
+      if (stillHeld.has(docId)) continue;
+      if (vectorStoreReady) {
         try { await vectorStore.deleteDocument(docId); } catch {}
       }
+      try {
+        const file = await chatDatabase.request<{ hash: string } | null>('getFileRecordByDocId', docId);
+        if (file) await chatDatabase.request('setFileStatus', file.hash, { ragDocId: null });
+      } catch {}
+      try { await chatDatabase.request('deleteRagDocumentDb', docId); } catch {}
     }
-    try { deleteRagDocumentsByChat(key); } catch {}
+    try { await chatDatabase.request('deleteRagDocumentsByChat', key); } catch {}
   }
   return removed;
 }

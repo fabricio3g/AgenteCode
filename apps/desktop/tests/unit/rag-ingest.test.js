@@ -24,6 +24,7 @@ let tempDir;
 let documentPath;
 let rag;
 let chatDb;
+let chatDbClient;
 let sqliteUnavailable = '';
 
 function installElectronMock(root) {
@@ -76,9 +77,11 @@ before(async () => {
 
   rag = await import('../../main/rag-engine.ts');
   chatDb = await import('../../main/chat-db.ts');
+  chatDbClient = await import('../../main/chat-db-client.ts');
 });
 
-after(() => {
+after(async () => {
+  await chatDbClient?.chatDatabase?.close();
   chatDb?.closeDb();
   delete process.env.TALAMOLM_HOME;
   if (tempDir) fs.rmSync(tempDir, { recursive: true, force: true });
@@ -217,5 +220,76 @@ describe('document ingest', () => {
     const gone = await rag.queryDocuments({ query: 'northern region', chat_id: 'chat-b' });
     assert.equal(gone.results.length, 0);
     assert.equal(chatDb.getFileRecord(sha256(documentPath)).ragDocId, null, 'a later attach indexes it again');
+  });
+
+  it('clears stale files.rag_doc_id pointers when clearRagDocuments drops the last chat holding a file', async (t) => {
+    if (sqliteUnavailable) { t.skip(`better-sqlite3 unavailable: ${sqliteUnavailable}`); return; }
+
+    const clearFile = path.join(tempDir, 'clear-me.md');
+    fs.writeFileSync(clearFile, '# Clear me\n\nTemporary content for clearRagDocuments verification.\n');
+    const hash = sha256(clearFile);
+
+    const doc = await rag.ingestDocument({ file_path: clearFile, chat_id: 'clear-a' });
+    await rag.ingestDocument({ file_path: clearFile, chat_id: 'clear-b' });
+    assert.equal(chatDb.getFileRecord(hash).ragDocId, doc.id);
+
+    await rag.clearRagDocuments('clear-a');
+    assert.equal(chatDb.getFileRecord(hash).ragDocId, doc.id, 'kept while clear-b still holds it');
+
+    await rag.clearRagDocuments('clear-b');
+    assert.equal(chatDb.getFileRecord(hash).ragDocId, null, 'cleared once the last chat drops it');
+  });
+
+  it('preserves monotonic ordering when bge-reranker returns all-negative logits', async (t) => {
+    if (sqliteUnavailable) { t.skip(`better-sqlite3 unavailable: ${sqliteUnavailable}`); return; }
+
+    const { loadConfig, saveConfig } = await import('../../main/config.ts');
+    const prevConfig = loadConfig();
+    saveConfig({ ...prevConfig, rag: { ...(prevConfig.rag || {}), rerank: true } });
+
+    const originalFetch = globalThis.fetch;
+    let rerankCalled = false;
+    globalThis.fetch = async (url, init) => {
+      if (String(url).includes('/v1/rerank')) {
+        rerankCalled = true;
+        const body = JSON.parse(String(init?.body || '{}'));
+        const docs = Array.isArray(body.documents) ? body.documents : [];
+        // Assign all-negative cross-encoder logits where the better answer has -0.5
+        // and the noisier keyword-stuffed chunk has -4.0.
+        const results = docs.map((doc, index) => ({
+          index,
+          relevance_score: String(doc).includes('exact answer') ? -0.5 : -4.0
+        }));
+        return new Response(JSON.stringify({ results }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' }
+        });
+      }
+      return originalFetch(url, init);
+    };
+
+    try {
+      await rag.ingestText({
+        source: 'stuffed.md',
+        text: 'telemetry telemetry telemetry telemetry noise without real info.',
+        chat_id: 'rerank-chat',
+        file_type: 'markdown'
+      });
+      await rag.ingestText({
+        source: 'answer.md',
+        text: 'The telemetry exact answer is forty-two.',
+        chat_id: 'rerank-chat',
+        file_type: 'markdown'
+      });
+
+      const res = await rag.queryDocuments({ query: 'telemetry', chat_id: 'rerank-chat', top_k: 2 });
+      assert.equal(rerankCalled, true, 'reranker endpoint must be called');
+      assert.equal(res.results.length, 2);
+      assert.equal(res.results[0].document.source, 'answer.md', 'less-negative logit (-0.5) must rank above more-negative logit (-4.0)');
+      assert.ok(res.results[0].score > res.results[1].score);
+    } finally {
+      globalThis.fetch = originalFetch;
+      saveConfig(prevConfig);
+    }
   });
 });

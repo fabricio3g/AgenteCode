@@ -323,23 +323,27 @@
   $effect(() => {
     const model = target;
     if (!model?.path) return;
+    let cancelled = false;
     loadingMeta = true;
     metadata = null;
     hardware = null;
     recommended = null;
-    // Don't track the sliders — fetch once per model, not on every tick.
+    // Don't track the sliders or runtime path — fetch once per model, not on every tick.
     const ctx = untrack(() => Number(appStore.localModelLoadContextLength || 0)) || undefined;
     const gpu = untrack(() => Number(appStore.localModelLoadGpuLayers || 0)) || undefined;
+    const runtimePath = untrack(() => appStore.localModelLoadRuntimePath || appStore.config?.llm?.local?.runtime_path);
     void Promise.allSettled([
       getGgufMetadata(model.path),
       getHardwareLimits(),
-      getRecommendedSettings(model.path, ctx, gpu, appStore.localModelLoadRuntimePath || appStore.config?.llm?.local?.runtime_path)
+      getRecommendedSettings(model.path, ctx, gpu, runtimePath)
     ]).then(([metaResult, hardwareResult, recommendedResult]) => {
+      if (cancelled) return;
       if (metaResult.status === 'fulfilled') metadata = metaResult.value;
       if (hardwareResult.status === 'fulfilled') hardware = hardwareResult.value;
       if (recommendedResult.status === 'fulfilled') recommended = recommendedResult.value;
       loadingMeta = false;
     });
+    return () => { cancelled = true; };
   });
 
   let hasRuntime = $state<boolean | null>(null);

@@ -755,7 +755,7 @@ export function resolveRuntimeConfig(options = {}) {
   const resolved = {
     backend,
     selectedDevice,
-    runtimePath: runtimePath || null,
+    runtimePath: effectiveRuntimePath || null,
     availableBackends: runtimeCaps.availableBackends || ['cpu'],
     /** 'list_devices' when the build answered; anything else means we do not know its devices. */
     deviceSource: runtimeCaps.source,
@@ -764,7 +764,7 @@ export function resolveRuntimeConfig(options = {}) {
     batchSize: effectiveBatchSize,
     ubatchSize: effectiveUbatchSize,
     tensorSplit: tensorSplit || null,
-    mainGpu: mainGpu || null,
+    mainGpu: mainGpu ?? null,
     ggufContextLength,
     ggufBlockCount: hasModelBlockCount ? ggufBlockCount : null,
     contextSource,
