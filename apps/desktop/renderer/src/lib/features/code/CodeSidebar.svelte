@@ -409,14 +409,15 @@
 <style>
   /*
    * Conversations hang from a hairline under the folder icon: the indent puts
-   * the rule at the icon's centre, which is also where the row's padding and
-   * gap put the icon itself.
+   * the rule at the icon's centre — the row's inset plus half the one icon
+   * token — so it stays aligned when that token changes with the composer's
+   * glyph scale.
    */
   .tree-children {
     display: flex;
     flex-direction: column;
     gap: 1px;
-    margin: 1px 0 0.375rem 1.0625rem;
+    margin: 1px 0 0.375rem calc(0.5rem + var(--sidebar-icon) / 2);
     padding-left: 0.25rem;
     border-left: 1px solid color-mix(in srgb, var(--sidebar-border) 70%, transparent);
   }

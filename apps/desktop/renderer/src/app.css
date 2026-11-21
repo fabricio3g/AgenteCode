@@ -290,9 +290,10 @@
   --dock-gap: 8px;
   /* One height for every row in the sidebar rail (.sidebar-row), and one size
      for the mark that leads it. Rows stepped up to 2rem so the whole left edge
-     reads at one scale. */
+     reads at one scale; the icon matches the composer bar's glyphs, so a row
+     and a control at the bottom of the window are the same size of object. */
   --sidebar-row-h: 2rem;
-  --sidebar-icon: 16px;
+  --sidebar-icon: 0.875rem;
   /*
    * Width of blocks rendered inside an assistant turn — charts, artifacts, the
    * research widget, the file-changes card.
@@ -942,33 +943,52 @@ textarea {
   padding: 0;
 }
 
-/* Decluttered Prompt Shell: textarea + Send/Stop button only. */
+/* Decluttered Prompt Shell: textarea + Send/Stop button only.
+
+   One row: the field, the microphone and the send square share a line, the
+   square centred on it. Past one row the square drops to the bottom edge, so
+   it stays beside the last line instead of floating in the middle of a tall
+   field. Dictation is never offered while there is something to send, so from
+   the first newline on the square has that corner to itself. */
 .composer-input-row {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   gap: 0.5rem;
-  padding: 0.625rem 0.625rem 0.625rem 1rem;
+  padding: 0.5rem 0.5rem 0.5rem 1rem;
+}
+
+.composer-input-row.is-grown {
+  align-items: flex-end;
 }
 
 .composer-send-slot {
   display: flex;
   align-items: center;
   flex: none;
-  padding-bottom: 0.0625rem;
+  padding-bottom: 0;
 }
 
+/* One row of prose, declared here rather than inherited from a utility: the
+   field's height, its five-row cap and the square beside it are all measured
+   in these rows, so a `leading-*` utility quietly changing the line box would
+   knock the three out of alignment. `--text-prose` moves it with
+   Settings → Text size. */
 .composer-textarea {
+  --composer-line: calc(var(--text-prose) * 1.5);
   display: block;
   margin: 0;
   flex: 1 1 auto;
   min-width: 0;
   box-sizing: border-box;
-  min-height: 2.25rem;
-  max-height: 13rem;
-  padding: 0.25rem 0;
+  /* One row tall, five at most: the field grows into the room it needs and
+     scrolls past that, instead of pushing the conversation up the screen. */
+  min-height: var(--composer-line);
+  max-height: calc(var(--composer-line) * 5);
+  /* No vertical padding: the row's own inset spaces the line, so one row of
+     prose measures exactly its line box. */
+  padding: 0;
   font-family: inherit;
-  /* The prompt is prose, so it takes the prose token: Settings → Text size
-     scales the sentence the user is writing with everything else. */
+  /* The prompt is prose, so it takes the prose token. */
   font-size: var(--text-prose);
   line-height: 1.5;
   letter-spacing: 0;
@@ -1007,7 +1027,7 @@ textarea {
   align-items: center;
   justify-content: space-between;
   gap: 0.5rem;
-  padding: 0.5rem 0.625rem 0.5rem 1rem;
+  padding: 0.5rem 0.5rem 0.5rem 1rem;
 }
 
 .composer-bar-leading,
@@ -1759,12 +1779,17 @@ textarea {
   color: var(--foreground);
 }
 
-/* The open item: a subtly machined chip (fill + hairline + top bevel), so it
-   reads as selected on the sidebar in both themes without heavy chrome. */
+/*
+ * The open item is the rail's one changed value: a flat fill and full-strength
+ * text, the same two states the composer's controls use. No hairline, no top
+ * bevel — a second edge on one row breaks Prägnanz (the eye reads the simplest
+ * shape that fits) and makes the column look like a stack of cards instead of
+ * one list. The fill plus the weight is enough to find it in a scan.
+ */
 .sidebar-row.is-current,
 .sidebar-row.is-current:hover {
-  background: var(--sidebar-accent);
-  box-shadow: inset 0 1px 0 var(--composer-crown), inset 0 0 0 1px var(--float-border);
+  background: var(--float-row-selected);
+  box-shadow: none;
   color: var(--foreground);
   font-weight: 500;
 }
@@ -1876,10 +1901,21 @@ button.sidebar-section:hover {
   opacity: 0.7;
 }
 
-/* A row's trailing controls: revealed on hover or keyboard focus, never hidden from Tab. */
+/* A row's trailing controls: revealed on hover or keyboard focus, never hidden from Tab.
+   They are the composer bar's controls at the rail's scale — no box, one round
+   hover band, grey until the row or the pointer picks one out. Hick's Law: the
+   list shows one primary action per row; the rest arrive only when you look at
+   that row. */
 .sidebar-row-action {
   opacity: 0;
-  transition: opacity var(--motion-fast) var(--motion-ease);
+  border-color: transparent;
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--text-secondary);
+  transition:
+    opacity var(--motion-fast) var(--motion-ease),
+    background-color var(--motion-instant) var(--motion-ease),
+    color var(--motion-instant) var(--motion-ease);
 }
 
 /* A section heading that carries an action (list options, delete all): the
@@ -1910,6 +1946,8 @@ button.sidebar-section:hover {
 
 .sidebar-row-action:hover {
   opacity: 1;
+  background: var(--float-row-hover);
+  color: var(--foreground);
 }
 
 /* A disabled action stays out of the way even on hover (missing folder). */
@@ -2911,24 +2949,26 @@ html.a11y-reduce-motion *::after {
 .composer-bar .model-slot { display:flex;min-width:4rem;max-width:12.5rem;flex:0 1 auto; }
 /* The pill's tooltip anchor must shrink with the slot, or a long model name runs over the buttons beside it. */
 .composer-bar .model-slot > * { min-width:0;max-width:100%;flex-shrink:1; }
+/* The model name is the one label worth reading in the bar, so it stays text:
+   flat, no tile, and grey until the pointer or the open menu picks it out. */
 .composer-bar .composer-selector {
-  height:1.75rem; gap:0.375rem; padding-inline:0.55rem;
-  border:1px solid var(--border); border-radius:var(--radius-sm);
-  background:var(--composer-control-bg); box-shadow:var(--control-shadow);
-  color:var(--foreground); font-size:var(--chrome-font-size); font-weight:500;
-  transition:background-color var(--motion-instant) var(--motion-ease), border-color var(--motion-instant) var(--motion-ease), color var(--motion-instant) var(--motion-ease), transform var(--motion-instant) var(--motion-ease);
+  height:var(--ui-icon-button-size, 1.625rem); gap:0.375rem; padding-inline:0.5rem;
+  border:0; border-radius:var(--radius-full);
+  background:transparent; box-shadow:none;
+  color:var(--text-secondary); font-size:var(--chrome-font-size); font-weight:500;
+  transition:background-color var(--motion-instant) var(--motion-ease), color var(--motion-instant) var(--motion-ease);
 }
 .composer-bar .composer-selector:is(:hover, [aria-expanded='true']) {
-  background:var(--surface-active); border-color:var(--border-hover); color:var(--foreground);
+  background:var(--float-row-hover); color:var(--foreground);
 }
-.composer-bar .composer-selector:active { transform:translateY(1px); }
+.composer-bar .composer-selector:active { transform:none; background:var(--float-row-selected); }
 .composer-bar .trigger-label { font-size:inherit;font-weight:inherit; }
 .composer-bar .model-pill { border-radius:var(--radius-sm); color:var(--foreground); font-size:var(--chrome-font-size); }
 .composer-bar .model-pill .pill-label { letter-spacing:inherit; }
 .composer-bar .selected-mode-bar { padding:0; }
 /* One control height in the bar, label or glyph; this sits after (and outranks)
    the 1.75rem the selected-mode row gives a chip outside the bar. */
-.composer-bar .selected-mode-bar .mode-trigger { font-size:var(--chrome-font-size); height:var(--ui-icon-button-size, 1.75rem); padding-inline:0.625rem; gap:0.35rem; }
+.composer-bar .selected-mode-bar .mode-trigger { font-size:var(--chrome-font-size); height:var(--ui-icon-button-size, 1.625rem); padding-inline:0.5rem; gap:0.35rem; }
 /* The input sits over the strip's open seam, so there is only one edge there. */
 .composer-shell { z-index:1; }
 /* Narrow ladder: dividers tighten, then the secondary controls (thinking,
@@ -3204,28 +3244,35 @@ html.a11y-reduce-motion *::after {
   transition: width var(--motion-smooth) var(--motion-ease);
 }
 
-/* Compact composer controls use the shared Tactile Machined recipe. */
-.composer-bar { --ui-icon-button-size:1.75rem; }
+/* One control height in the composer bar: 26px, the same band the input row
+   gives its field, so the field and the strip of controls beneath it read as
+   one object instead of two sizes stacked. */
+.composer-bar { --ui-icon-button-size:1.625rem; }
+/*
+ * Borderless controls: flat on the sheet, a round hover band and nothing else.
+ * A box per glyph put four hard edges under the field's one soft one, and the
+ * tray read as a second toolbar bolted under the composer.
+ */
 .composer-bar .composer-icon-control,
 .composer-bar .tools-trigger.is-compact {
   width:var(--ui-icon-button-size) !important; height:var(--ui-icon-button-size) !important; min-width:var(--ui-icon-button-size); min-height:var(--ui-icon-button-size); padding:0 !important;
-  border:1px solid var(--border); border-radius:var(--radius-sm);
-  background:var(--composer-control-bg); color:var(--foreground); box-shadow:var(--control-shadow);
-  transition:background-color var(--motion-instant) var(--motion-ease), border-color var(--motion-instant) var(--motion-ease), color var(--motion-instant) var(--motion-ease), transform var(--motion-instant) var(--motion-ease);
+  border:0; border-radius:var(--radius-full);
+  background:transparent; color:var(--text-secondary); box-shadow:none;
+  transition:background-color var(--motion-instant) var(--motion-ease), color var(--motion-instant) var(--motion-ease), transform var(--motion-instant) var(--motion-ease);
 }
 .composer-bar .composer-icon-control:is(:hover, [aria-expanded='true']),
 .composer-bar .tools-trigger.is-compact:is(:hover, [aria-expanded='true']) {
-  background:var(--surface-active); border-color:var(--border-hover); color:var(--foreground);
+  background:var(--float-row-hover); color:var(--foreground);
 }
 .composer-bar .composer-icon-control:active,
-.composer-bar .tools-trigger.is-compact:active { transform:translateY(1px); }
+.composer-bar .tools-trigger.is-compact:active { transform:none; background:var(--float-row-selected); }
 .composer-bar .composer-icon-control svg,
-.composer-bar .tools-trigger.is-compact svg { width:0.875rem; height:0.875rem; }
+.composer-bar .tools-trigger.is-compact svg { width:0.9375rem; height:0.9375rem; }
 
-/* A chip in the bar shares the same machined radius and bevel. */
+/* A chip in the bar carries the label, so it stays flat text beside the glyphs. */
 .composer-bar .thinking-trigger {
-  height:1.75rem; padding-inline:0.55rem;
-  border:1px solid var(--border); border-radius:var(--radius-sm);
-  background:var(--composer-control-bg); box-shadow:var(--control-shadow);
+  height:var(--ui-icon-button-size); padding-inline:0.5rem;
+  border:0; border-radius:var(--radius-full);
+  background:transparent; box-shadow:none;
 }
-.composer-bar .thinking-trigger:hover { background:var(--surface-active); border-color:var(--border-hover); }
+.composer-bar .thinking-trigger:hover { background:var(--float-row-hover); }

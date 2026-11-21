@@ -144,21 +144,26 @@
     justify-content: center;
     height: var(--ui-icon-button-size, 1.75rem);
     width: var(--ui-icon-button-size, 1.75rem);
+    color: var(--text-secondary);
+  }
+  /* Borderless: the glyph floats on the sheet and only the pointer tints it. */
+  :global(.add-trigger:hover.ui-local-0d4ea47c),
+  :global(.add-trigger.is-open.ui-local-0d4ea47c) {
     color: var(--foreground);
   }
 
-  /* Active depth chip: matches the machined controls beside it. */
+  /* Active depth chip: matches the flat controls beside it. */
   .mode-chip {
     display: inline-flex;
     height: var(--ui-icon-button-size, 1.75rem);
     align-items: center;
     gap: 0.3125rem;
-    padding: 0 0.25rem 0 0.5625rem;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    background: var(--composer-control-bg);
-    box-shadow: var(--control-shadow);
-    color: var(--foreground);
+    padding: 0 0.25rem 0 0.5rem;
+    border: 0;
+    border-radius: var(--radius-full);
+    background: transparent;
+    box-shadow: none;
+    color: var(--text-secondary);
     font-size: var(--chrome-font-size, var(--text-xs));
     font-weight: 500;
     white-space: nowrap;
@@ -180,7 +185,7 @@
 
   :global(.mode-chip-clear:hover.ui-local-0d4ea47c) {
     opacity: 1;
-    background: color-mix(in srgb, var(--primary) 14%, transparent);
+    background: var(--float-row-hover);
   }
 
   :global(.add-trigger:focus-visible.ui-local-0d4ea47c) {

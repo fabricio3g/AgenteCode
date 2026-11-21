@@ -44,7 +44,7 @@
       {#if actions}<div class="flex shrink-0 items-center gap-1.5">{@render actions()}</div>{/if}
     </div>
   {/if}
-  <div class={cn('settings-card', tone === 'danger' && 'is-danger', flush && 'py-1')}>
+  <div class={cn('settings-card', tone === 'danger' && 'is-danger', flush && 'is-flush py-1')}>
     <div class="settings-rows">
       {@render children()}
     </div>
@@ -77,12 +77,15 @@
      machined card with a subtle B1 top crown and hairline row dividers. */
   .settings-card {
     position: relative;
-    overflow: hidden;
+    overflow: visible;
     border: 1px solid var(--float-border);
     border-radius: var(--float-radius);
     background: color-mix(in srgb, var(--foreground) 1.8%, var(--card));
     padding-inline: 1rem;
     box-shadow: var(--control-shadow);
+  }
+  .settings-card.is-flush {
+    padding-inline: 0;
   }
   .settings-card::after {
     content: '';

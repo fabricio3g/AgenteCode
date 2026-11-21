@@ -32,6 +32,7 @@
   import ComposerToolsMenu from './composer/ComposerToolsMenu.svelte';
   import ComposerBar from './composer/ComposerBar.svelte';
   import DictationButton from './composer/DictationButton.svelte';
+  import MicBars from '$lib/features/shared/composer/MicBars.svelte';
   import SendButton from '$lib/features/shared/composer/SendButton.svelte';
   import ComposerPicker from '$lib/features/shared/composer/ComposerPicker.svelte';
   import { matchSlashCommands, slashQuery } from '$lib/features/shared/composer/slash-commands';
@@ -45,7 +46,7 @@
   import DictationSetupPopover from './composer/DictationSetupPopover.svelte';
   import { ComposerAttachments } from './composer/use-attachments.svelte';
   import { Dictation } from './composer/use-dictation.svelte';
-  import { MAX_COMPOSER_TEXTAREA_PX, autogrowTextarea } from '$lib/features/shared/composer-autogrow';
+  import { autogrowTextarea } from '$lib/features/shared/composer-autogrow';
   import NameCompletion from '$lib/features/shared/NameCompletion.svelte';
   import PromptQueue from '$lib/features/shared/PromptQueue.svelte';
   import ApprovalBar from '$lib/features/shared/composer/ApprovalBar.svelte';
@@ -63,12 +64,15 @@
     /** Context usage on a strip under the input, as Code draws it, so a narrow composer keeps its bar for the controls. */
   } = $props();
 
-  /** Textarea grows with content up to this height, then scrolls. */
-  const MAX_TEXTAREA_PX = MAX_COMPOSER_TEXTAREA_PX;
   let goalControl = $state<{ command: (value: GoalCommand) => Promise<void> }>();
   const slashId = $props.id();
   let slashDismissed = $state(false);
   let slashIndex = $state(0);
+  /**
+   * Past one row: the send square belongs at the bottom edge, beside the last
+   * line, rather than in the middle of a tall field.
+   */
+  let grown = $state(false);
   const supportsGoals = $derived(appStore.currentContextMode === 'home' || appStore.currentContextMode === 'design');
   const slashCommands = $derived([
     { name: 'goal', icon: Target, hint: $t('goal.hint') },
@@ -174,6 +178,13 @@
         )
   );
   const sendDisabled = $derived(!generating && (!backendReady || localBusyElsewhere));
+  /** Nothing typed and nothing attached: the field has no message to send. */
+  const fieldEmpty = $derived(!appStore.composer.trim() && !appStore.pendingAttachments.some(item => item.status === 'ready'));
+  /** The send slot's microphone: the bar's own button, moved into the empty field's corner. */
+  const slotDictation = $derived(!generating && fieldEmpty && dictation.supported && !voiceMode
+    ? { label: copy.composer.dictate, onclick: () => dictation.toggle(false),
+        glyph: dictation.listening ? listeningBars : undefined }
+    : undefined);
 
   /**
    * Size the input to its content.
@@ -181,11 +192,13 @@
    * Measured against the *empty* height rather than trusting `scrollHeight`
    * outright: when this runs before layout has settled — which it does on
    * mount — `scrollHeight` can come back far too large, and the old version
-   * would clamp that to MAX_TEXTAREA_PX and leave an empty composer stuck at
-   * full height until the next keystroke.
+   * would clamp that to the cap and leave an empty composer stuck at full
+   * height until the next keystroke.
+   *
+   * The cap is the stylesheet's: five rows of the field's own text.
    */
   function autoGrow(element: HTMLTextAreaElement) {
-    autogrowTextarea(element, MAX_TEXTAREA_PX);
+    autogrowTextarea(element, null, (isGrown) => { grown = isGrown; });
   }
 
   function focusComposer(moveCursorToEnd = true) {
@@ -415,6 +428,9 @@
   });
 </script>
 
+<!-- The bars that dance in the send square while it is listening. -->
+{#snippet listeningBars()}<MicBars />{/snippet}
+
 <div
   class="composer-dock relative z-20 w-full shrink-0 px-3 pb-2 pt-2 md:px-6 md:pb-3 {attachments.windowDragActive
     ? 'pointer-events-auto'
@@ -529,7 +545,7 @@
             {#if generating}<SendButton compact running={true} disabled={false} sendLabel={copy.composer.send} stopLabel={copy.composer.stop} onsend={() => void submit()} onstop={() => appStore.stopStreaming()} />{/if}
           </div>
         {:else}
-          <div class="composer-input-row">
+          <div class="composer-input-row" class:is-grown={grown}>
             <UiTextarea variant="composer"
               bind:ref={textarea}
               class={uiClass("composer-textarea w-full resize-none bg-transparent text-foreground outline-none")}
@@ -542,7 +558,8 @@
               onkeydown={onKeydown}
             ></UiTextarea>
             <div class="composer-send-slot">
-              <SendButton compact running={generating} disabled={sendDisabled || (!appStore.composer.trim() && !appStore.pendingAttachments.some(item => item.status === 'ready'))}
+              <SendButton compact running={generating} disabled={sendDisabled || fieldEmpty}
+                dictation={slotDictation}
                 sendLabel={copy.composer.send} stopLabel={copy.composer.stop}
                 onsend={() => void submit()} onstop={() => appStore.stopStreaming()} />
             </div>
@@ -556,7 +573,7 @@
           {#snippet attach()}<ComposerAddMenu onattach={() => fileInput?.click()} />{/snippet}
           {#snippet extras()}<ComposerToolsMenu compact />{#if appStore.activeSpace === 'home'}<SelectedModes />{/if}{/snippet}
           {#snippet model()}<ModelMenu compact />{/snippet}
-          {#snippet microphone()}<DictationButton {dictation} oncall={() => void enterVoiceMode()} />{/snippet}
+          {#snippet microphone()}<DictationButton {dictation} hidden={!!slotDictation} oncall={() => void enterVoiceMode()} />{/snippet}
           {#snippet trailing()}<HomeContextStatus />{/snippet}
         </ComposerBar>
       </div>

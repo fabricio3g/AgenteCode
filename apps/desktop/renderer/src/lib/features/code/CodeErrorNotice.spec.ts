@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
-import { cleanup, render } from '@testing-library/svelte';
+import { cleanup, fireEvent, render } from '@testing-library/svelte';
 import { afterEach, describe, expect, it } from 'vitest';
 import { addMessages, init, locale } from 'svelte-i18n';
+import { copy } from '$lib/copy';
 import CodeErrorNotice from './CodeErrorNotice.svelte';
 
 const locales = import.meta.glob<{ default: { code: { errors: Record<string, string>; runtimeLocalModelNotRunning: string } } }>('../../locales/*.json', { eager: true });
@@ -38,5 +39,17 @@ describe('Code error notice', () => {
     expect(view.container.querySelector('img')).toBeNull();
     expect(view.container.textContent).not.toContain('example-credential');
     expect(view.container.querySelector('pre')!.textContent).toContain('<img src=x onerror=alert(1)>');
+  });
+
+  /* The X dismisses the surface, not the session: the notice is gone until a
+     different failure arrives in the same component. */
+  it('dismisses with the close button and returns for a new failure', async () => {
+    await locale.set('en');
+    const view = render(CodeErrorNotice, { detail: 'HTTP 502 provider unavailable' });
+    expect(view.queryByRole('alert')).not.toBeNull();
+    await fireEvent.click(view.getByRole('button', { name: copy.actions.close }));
+    expect(view.queryByRole('alert')).toBeNull();
+    await view.rerender({ detail: 'A different failure' });
+    expect(view.queryByRole('alert')).not.toBeNull();
   });
 });

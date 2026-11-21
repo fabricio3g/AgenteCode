@@ -4,13 +4,16 @@ import { MAX_COMPOSER_TEXTAREA_PX, autogrowTextarea } from './composer-autogrow'
 
 /** The shape `autogrowTextarea` actually touches; jsdom never lays out, so a
  *  real textarea would report a zero width for every case. */
-function field({ width, value, scrollHeight }: { width: number; value: string; scrollHeight: number }) {
+function field({ width, value, scrollHeight, lineHeight = 24 }: { width: number; value: string; scrollHeight: number; lineHeight?: number }) {
   const element = {
     isConnected: true,
     clientWidth: width,
     scrollHeight,
     value,
-    style: { height: '' }
+    style: { height: '' },
+    ownerDocument: {
+      defaultView: { getComputedStyle: () => ({ lineHeight: `${lineHeight}px`, maxHeight: '' }) }
+    }
   };
   return element as unknown as HTMLTextAreaElement & { style: { height: string } };
 }
@@ -44,5 +47,28 @@ describe('composer autogrow', () => {
     element.style.height = '220px';
     autogrowTextarea(element);
     expect(element.style.height).toBe('');
+  });
+
+  /* The send square's corner: one row keeps it centred, anything taller puts
+     it on the bottom edge beside the last line. */
+  it('reports a single row as not grown', () => {
+    const element = field({ width: 400, value: 'One line', scrollHeight: 24, lineHeight: 24 });
+    const seen: boolean[] = [];
+    autogrowTextarea(element, null, (grown) => seen.push(grown));
+    expect(seen).toEqual([false]);
+  });
+
+  it('reports more than one row as grown', () => {
+    const element = field({ width: 400, value: 'Two\nlines', scrollHeight: 48, lineHeight: 24 });
+    const seen: boolean[] = [];
+    autogrowTextarea(element, null, (grown) => seen.push(grown));
+    expect(seen).toEqual([true]);
+  });
+
+  it('does not call the listener when layout has not settled', () => {
+    const element = field({ width: 0, value: 'Two\nlines', scrollHeight: 48 });
+    const seen: boolean[] = [];
+    autogrowTextarea(element, null, (grown) => seen.push(grown));
+    expect(seen).toEqual([]);
   });
 });

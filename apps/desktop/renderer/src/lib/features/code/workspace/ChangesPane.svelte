@@ -185,12 +185,12 @@
       <!-- The diff sits in an inset box, like the browser's page. -->
       <div class="diff-box">
         <div class="diff-bar">
-          <span class="min-w-0 flex-1 truncate font-mono" title={selected.path}>{selected.path}</span>
+          <span class="min-w-0 flex-1 truncate" title={selected.path}>{selected.path}</span>
           {#if selected.kind !== 'deleted'}
-            <Button variant="outline" size="sm" type="button" onclick={() => openFile(selected.path)} title={$t('codeWs.openFile')}><FolderOpen /> {$t('codeWs.open')}</Button>
+            <Button variant="outline" size="xs" type="button" onclick={() => openFile(selected.path)} title={$t('codeWs.openFile')}><FolderOpen /> {$t('codeWs.open')}</Button>
           {/if}
           {#if !selected.patches}
-            <Button variant="outline" size="sm" type="button" onclick={() => void revert(selected)} title={$t('codeWs.revert')}><Undo2 /> {$t('codeWs.revert')}</Button>
+            <Button variant="outline" size="xs" type="button" onclick={() => void revert(selected)} title={$t('codeWs.revert')}><Undo2 /> {$t('codeWs.revert')}</Button>
           {/if}
         </div>
         <div class="diff-scroll">

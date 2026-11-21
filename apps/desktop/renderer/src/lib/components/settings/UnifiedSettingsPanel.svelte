@@ -35,7 +35,10 @@
   ]);
   let searchSafeSearch = $state(String(appStore.config.search?.safe_search ?? 2));
   let aggregatorProviders = $state<Record<string, Record<string, unknown>>>(
-    structuredClone((appStore.config.search?.providers || {}) as Record<string, Record<string, unknown>>)
+    // `appStore.config` is a $state proxy; structuredClone refuses proxies and
+    // throws in Electron (where config has data). $state.snapshot deep-clones it
+    // into a plain object first.
+    $state.snapshot((appStore.config.search?.providers || {}) as Record<string, Record<string, unknown>>)
   );
 
   let generalStatus = $state<AutosaveState>('idle');

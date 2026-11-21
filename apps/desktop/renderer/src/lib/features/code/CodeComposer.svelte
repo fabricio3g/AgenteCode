@@ -57,13 +57,14 @@
   import SendButton from '$lib/features/shared/composer/SendButton.svelte';
   import ComposerGlyph from '$lib/features/shared/composer/ComposerGlyph.svelte';
   import DictationButton from '$lib/features/chat/composer/DictationButton.svelte';
+  import MicBars from '$lib/features/shared/composer/MicBars.svelte';
   import DictationSetupPopover from '$lib/features/chat/composer/DictationSetupPopover.svelte';
   import ComposerRecorder from '$lib/features/chat/composer/ComposerRecorder.svelte';
   import ApprovalBar from '$lib/features/shared/composer/ApprovalBar.svelte';
   import { Dictation } from '$lib/features/chat/composer/use-dictation.svelte';
   import { approvalsStore } from '$lib/stores/approvals.svelte';
   import { copy } from '$lib/copy';
-  import { MAX_COMPOSER_TEXTAREA_PX, autogrowTextarea } from '$lib/features/shared/composer-autogrow';
+  import { autogrowTextarea } from '$lib/features/shared/composer-autogrow';
   import { mergeDraft } from '$lib/features/canvas/canvas-doc';
 
   let { chat }: { chat: ChatSession } = $props();
@@ -84,11 +85,13 @@
     textarea?.setSelectionRange(textarea.value.length, textarea.value.length);
   }
 
-  /** Textarea grows with content up to this height, then scrolls (Home parity). */
-  const MAX_TEXTAREA_PX = MAX_COMPOSER_TEXTAREA_PX;
-
   let textarea = $state<HTMLTextAreaElement | undefined>(undefined);
   let text = $state(untrack(() => chat.draft || ''));
+  /**
+   * Past one row: the send square belongs at the bottom edge, beside the last
+   * line, rather than in the middle of a tall field.
+   */
+  let grown = $state(false);
   const dictation = new Dictation((addition) => { text = text.trimEnd() ? `${text.trimEnd()} ${addition}` : addition; });
   let modeMenuOpen = $state(false);
   let toolsMenuOpen = $state(false);
@@ -134,6 +137,13 @@
   // of letting a send die inside the provider.
   const modelReady = $derived(ownBackend === 'local' ? !!(ownConfig.llm?.local?.selected_model_path && appStore.localModelActive) : !!(ownModel && (ownConfig.llm?.providers?.[ownProvider]?.api_key || ownConfig.llm?.providers?.[ownProvider]?.has_api_key)));
   const canSend = $derived((!!text.trim() || attachments.length > 0) && !attaching && (modelReady || running));
+  /** Nothing typed and nothing attached: the send slot has no message to send. */
+  const fieldEmpty = $derived(!text.trim() && attachments.length === 0 && !attaching);
+  /** The send slot's microphone: the bar's own button, moved into the empty field's corner. */
+  const slotDictation = $derived(!running && fieldEmpty && dictation.supported
+    ? { label: copy.composer.dictate, onclick: () => dictation.toggle(false),
+        glyph: dictation.listening ? listeningBars : undefined }
+    : undefined);
   // Real accounting from the engine: promptTokens of the last call is the
   // context footprint. Hidden until the first report, like Home's ring.
   const usage = $derived(run?.usage ?? [...chat.messages].reverse().find((message) => message.metadata?.codeUsage)?.metadata?.codeUsage);
@@ -354,8 +364,9 @@
     return false;
   }
 
+  /** Grow with the content; the stylesheet caps it at five rows (Home parity). */
   function autoGrow(element: HTMLTextAreaElement) {
-    autogrowTextarea(element, MAX_TEXTAREA_PX);
+    autogrowTextarea(element, null, (isGrown) => { grown = isGrown; });
   }
 
   function focusComposer() {
@@ -667,6 +678,9 @@
   onDestroy(() => { dictation.dispose(); appStore.persist(); });
 </script>
 
+<!-- The bars that dance in the send square while it is listening. -->
+{#snippet listeningBars()}<MicBars />{/snippet}
+
 {#if dialog && (project || !PROJECT_SECTIONS.includes(dialog))}<CodeProjectDialog chatId={chat.id} projectRoot={project?.rootPath} section={dialog} onclose={() => { dialog = null; void refreshSettings(); }} />{/if}
 {#if pendingMedia.length}
   <Dialog title={$t('code.media.title')} onclose={() => (pendingMedia = [])} size="sm">
@@ -764,7 +778,7 @@
             {#if running}<SendButton compact stopShortcut="escape" {running} disabled={false} sendLabel={$t('code.send')} stopLabel={$t('code.stop')} onsend={() => void submit()} onstop={() => void codeStore.stop(chat.id)} />{/if}
           </div>
         {:else}
-          <div class="composer-input-row">
+          <div class="composer-input-row" class:is-grown={grown}>
             <UiTextarea variant="composer"
               bind:ref={textarea}
               class={uiClass("composer-textarea w-full resize-none bg-transparent text-foreground outline-none", "ui-local-49e9c79c")}
@@ -779,6 +793,7 @@
               <SendButton compact stopShortcut="escape"
                 {running}
                 disabled={!canSend}
+                dictation={slotDictation}
                 sendLabel={$t('code.send')}
                 stopLabel={$t('code.stop')}
                 onsend={() => void submit()}
@@ -828,7 +843,7 @@
               </Tooltip>
             {/if}
           {/snippet}
-          {#snippet microphone()}<DictationButton {dictation} />{/snippet}
+          {#snippet microphone()}<DictationButton {dictation} hidden={!!slotDictation} />{/snippet}
           {#snippet trailing()}
             {#if showContextRing && usage && !(projectControls.open && chat.projectId)}
               <ContextUsageRing showLabel usedTokens={usage.promptTokens} maxTokens={usage.contextWindow ?? 0} breakdown={usage.breakdown} {spend} />

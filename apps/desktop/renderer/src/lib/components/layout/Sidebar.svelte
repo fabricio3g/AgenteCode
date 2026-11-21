@@ -306,15 +306,35 @@
   .sidebar-head { display: flex; flex-shrink: 0; align-items: center; justify-content: space-between; gap: 0.5rem; height: 3rem; padding: 0 0.5rem; -webkit-app-region: drag; }
   .sidebar-head :global(button) { -webkit-app-region: no-drag; }
   .sidebar-head :global(.space-group) { padding-inline: 0; }
+  /* The spaces are the rail's own controls, so they use the rail's two states:
+     no track, no bordered chip — one flat fill on the space in effect, the same
+     band the selected row and the composer's bar use. Nothing else competes for
+     the eye when you scan for "where am I". */
+  .sidebar-head :global(.space-strip) {
+    border-color: transparent;
+    background: transparent;
+  }
+  .sidebar-head :global(.space-strip > span[aria-hidden='true']) {
+    border-color: transparent;
+    border-radius: var(--float-row-radius);
+    background: var(--float-row-selected);
+    box-shadow: none;
+  }
+  /* Inactive spaces get the composer's hover band, not just a colour change:
+     the band is the feedback that says "this is a target" before you click. */
+  .sidebar-head :global(.space-strip button:not([aria-selected='true']):hover) {
+    background: var(--float-row-hover);
+    color: var(--foreground);
+  }
   .sidebar-head.is-mac { padding-inline-start: 78px; }
 
   .sidebar-footer {
     display: flex;
     flex-direction: column;
     gap: 0.125rem;
-    margin-top: 0.5rem;
-    padding-top: 0.5rem;
-    /* The utilities under the list are a different kind of row: one hairline says so. */
-    border-top: 1px solid var(--border-subtle);
+    /* Places, not actions: distance says "different group" without drawing a
+       second edge into a column that is otherwise one sheet. The composer's
+       bar is one line of controls with no dividers; the rail follows it. */
+    margin-top: 0.75rem;
   }
 </style>
