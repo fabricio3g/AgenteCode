@@ -316,7 +316,11 @@ pub(crate) async fn run_agent_loop(cfg: AgentRunConfig) -> Result<(), AgentLoopF
         && only_tools.is_none()
         && crate::swarm::BoardStore::user().enabled(session_id)
     {
-        tool_registry.register(Box::new(crate::swarm::BoardTool));
+        let menu = subagent_host
+            .as_ref()
+            .map(SubagentHost::model_menu)
+            .unwrap_or_default();
+        tool_registry.register(Box::new(crate::swarm::BoardTool::with_models(&menu)));
     }
 
     // Children get a pruned registry containing only tools their capability and
@@ -329,6 +333,7 @@ pub(crate) async fn run_agent_loop(cfg: AgentRunConfig) -> Result<(), AgentLoopF
             .map(|d| d.name)
             .collect();
         tool_registry.retain_named(&keep.iter().map(|s| s.as_str()).collect::<Vec<_>>());
+        tool_registry.set_tool_policy(policy.clone());
     }
 
     tool_registry.set_shell_env(shell_env);
@@ -583,11 +588,8 @@ pub(crate) async fn run_agent_loop(cfg: AgentRunConfig) -> Result<(), AgentLoopF
                     // The override carries its own thinking level; without one
                     // the checkpoint follows the model's configured default.
                     if let Some(level) = &chosen.thinking {
-                        apply_thinking_level(
-                            &mut summary_model,
-                            summary_provider.info().api_format,
-                            level,
-                        );
+                        let summary_format = summary_provider.request_api_format(&summary_model);
+                        apply_thinking_level(&mut summary_model, summary_format, level);
                     }
                     (summary_provider, summary_model)
                 })
@@ -665,7 +667,7 @@ pub(crate) async fn run_agent_loop(cfg: AgentRunConfig) -> Result<(), AgentLoopF
                 Ok(r) => Some(r),
                 Err(e) => {
                     tracing::warn!(error = %e, "compaction task failed; continuing un-compacted");
-                    Some(ContextCompactor::new(strategy.clone()).compact_forced(messages.clone()))
+                    None
                 }
             };
             if let Some(usage) = summarizer
@@ -744,6 +746,7 @@ pub(crate) async fn run_agent_loop(cfg: AgentRunConfig) -> Result<(), AgentLoopF
                     running_tokens = tokens_after;
                     tokens_measured = false;
                     compacted_recently = true;
+                    todo_review_at = None;
                 }
             }
         }
@@ -811,9 +814,15 @@ pub(crate) async fn run_agent_loop(cfg: AgentRunConfig) -> Result<(), AgentLoopF
             compacted_recently = false;
         }
         if let Some(index) = todo_review_at {
+            let mut insert_at = index.min(messages_clone.len());
+            // Never insert between an Assistant(tool_calls) message and its
+            // matching Role::Tool results.
+            while insert_at < messages_clone.len() && messages_clone[insert_at].role == Role::Tool {
+                insert_at += 1;
+            }
             let note = Message::user("Before finishing, review the current todo list against the user's request. Complete remaining relevant work if possible, and update each status to reflect what was actually done. If work is blocked, needs user input, or is no longer relevant, say so; never mark it complete without doing it.");
             reminder_tokens += crate::context::budget::estimated_message_cost(&note);
-            messages_clone.insert(index.min(messages_clone.len()), note);
+            messages_clone.insert(insert_at, note);
         }
         let request_context = crate::providers::RequestContext::new(session_id);
         // What we believe goes on the wire, including the reminder: the gap
@@ -1097,6 +1106,7 @@ pub(crate) async fn run_agent_loop(cfg: AgentRunConfig) -> Result<(), AgentLoopF
                     running_tokens = crate::context::estimate_message_tokens(&messages);
                     tokens_measured = false;
                     compacted_recently = true;
+                    todo_review_at = None;
                     send_event(
                         &sender,
                         task_id,
@@ -1108,6 +1118,7 @@ pub(crate) async fn run_agent_loop(cfg: AgentRunConfig) -> Result<(), AgentLoopF
                             compacted_conversation: messages.clone(),
                         },
                     );
+                    iteration = iteration.saturating_sub(1);
                     continue;
                 }
                 messages = forced.messages;
@@ -1154,6 +1165,7 @@ pub(crate) async fn run_agent_loop(cfg: AgentRunConfig) -> Result<(), AgentLoopF
                     );
                     return Ok(());
                 }
+                iteration = iteration.saturating_sub(1);
                 continue;
             }
             let user_msg =
@@ -1201,6 +1213,7 @@ pub(crate) async fn run_agent_loop(cfg: AgentRunConfig) -> Result<(), AgentLoopF
                     iteration,
                     "Empty completion; retrying once"
                 );
+                iteration = iteration.saturating_sub(1);
                 continue;
             }
             return Err(AgentLoopFailure {
@@ -1300,6 +1313,29 @@ pub(crate) async fn run_agent_loop(cfg: AgentRunConfig) -> Result<(), AgentLoopF
         // Check cancel before executing any tools
         if cancel_signal.is_aborted() {
             tracing::info!("Chat task cancelled before tool execution");
+            let cancel_msg = "Skipped: turn was interrupted before tool execution.".to_string();
+            for call in &tool_calls {
+                send_event(
+                    &sender,
+                    task_id,
+                    AgentEvent::ToolCallResult {
+                        id: call.id.clone(),
+                        name: call.function.name.clone(),
+                        result: cancel_msg.clone(),
+                        is_error: true,
+                    },
+                );
+                messages.push(Message {
+                    role: Role::Tool,
+                    content: cancel_msg.clone(),
+                    tool_calls: None,
+                    tool_call_id: Some(call.id.clone()),
+                    thinking: None,
+                    thinking_signature: None,
+                    continuation: None,
+                    attachments: Vec::new(),
+                });
+            }
             send_turn_usage(
                 &sender,
                 task_id,

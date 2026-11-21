@@ -660,11 +660,10 @@ pub fn resolve_model_info(
 }
 
 /// A llama-server serves one model, under whatever id it chose. Whatever the
-/// client calls it, it gets the thinking controls discovery read from `/props`.
+/// client calls it, it gets the thinking controls and context size (`n_ctx`)
+/// discovery read from `/props`.
 fn adopt_served_thinking(registry: &ProviderRegistry, provider_id: &str, model: &mut ModelInfo) {
-    if !model.reasoning_options.is_empty()
-        || !spec::get(provider_id).is_some_and(|s| s.models == spec::ModelSource::Llamacpp)
-    {
+    if !spec::get(provider_id).is_some_and(|s| s.models == spec::ModelSource::Llamacpp) {
         return;
     }
     let served = registry
@@ -673,10 +672,18 @@ fn adopt_served_thinking(registry: &ProviderRegistry, provider_id: &str, model: 
         .get(provider_id)
         .and_then(|models| models.first().cloned());
     if let Some(served) = served {
-        model.compat = served.compat;
-        if !served.reasoning_options.is_empty() {
-            model.reasoning_options = served.reasoning_options;
-            model.capabilities.reasoning = true;
+        if model.reasoning_options.is_empty() {
+            model.compat = served.compat;
+            if !served.reasoning_options.is_empty() {
+                model.reasoning_options = served.reasoning_options;
+                model.capabilities.reasoning = true;
+            }
+        }
+        if served.limits.context > 0
+            && (model.limits.context == 0
+                || model.limits.context == crate::catalog::DEFAULT_CONTEXT_WINDOW)
+        {
+            model.limits.context = served.limits.context;
         }
     }
 }
@@ -1171,5 +1178,31 @@ mod resolve_tests {
         assert!(model_accepts(&info, AttachmentKind::Image));
         assert!(model_accepts(&info, AttachmentKind::Video));
         assert!(!model_accepts(&info, AttachmentKind::Audio));
+    }
+
+    #[test]
+    fn adopt_served_thinking_preserves_llamacpp_context_window() {
+        let registry = ProviderRegistry::new();
+        let mut served = fallback_model_info("llamacpp", "served-model");
+        served.limits.context = 65_536;
+        registry.replace_runtime_models("llamacpp", vec![served]);
+
+        let mut target = fallback_model_info("llamacpp", "alias-model");
+        assert_eq!(
+            target.limits.context,
+            crate::catalog::DEFAULT_CONTEXT_WINDOW
+        );
+        adopt_served_thinking(&registry, "llamacpp", &mut target);
+        assert_eq!(target.limits.context, 65_536);
+
+        // Also preserved when reasoning_options is already populated.
+        let mut target_with_reasoning = fallback_model_info("llamacpp", "alias-model-2");
+        target_with_reasoning
+            .reasoning_options
+            .push(ReasoningOption::Effort {
+                values: vec!["low".into(), "high".into()],
+            });
+        adopt_served_thinking(&registry, "llamacpp", &mut target_with_reasoning);
+        assert_eq!(target_with_reasoning.limits.context, 65_536);
     }
 }

@@ -45,8 +45,12 @@ pub fn extract(html: &str, base: Option<&reqwest::Url>) -> Page {
     writer.flush();
     let mut markdown = writer.finish();
     // The heading the page opens with is usually its title, said again.
-    if let Some(rest) = markdown.strip_prefix(&format!("# {title}")) {
-        markdown = rest.trim_start().to_string();
+    if !title.is_empty() {
+        if let Some(rest) = markdown.strip_prefix(&format!("# {title}")) {
+            if rest.is_empty() || rest.starts_with('\n') {
+                markdown = rest.trim_start().to_string();
+            }
+        }
     }
     Page {
         title,
@@ -97,10 +101,16 @@ fn content_root<'a>(document: &'a Html, body: ElementRef<'a>, body_chars: usize)
         .unwrap_or(body)
 }
 
+/// Maximum DOM traversal depth to prevent stack overflow on pathological HTML.
+const MAX_DEPTH: usize = 128;
+
 /// Readable characters under `el`, link text counted at a third: menus and
 /// link farms are mostly links, prose is mostly not.
 fn score(el: ElementRef) -> usize {
-    fn walk(el: ElementRef, in_link: bool, prose: &mut usize, links: &mut usize) {
+    fn walk(el: ElementRef, in_link: bool, depth: usize, prose: &mut usize, links: &mut usize) {
+        if depth >= MAX_DEPTH {
+            return;
+        }
         for child in el.children() {
             match child.value() {
                 Node::Text(text) => {
@@ -115,7 +125,7 @@ fn score(el: ElementRef) -> usize {
                     if let Some(child) = ElementRef::wrap(child) {
                         if !skipped(&child) {
                             let link = in_link || child.value().name() == "a";
-                            walk(child, link, prose, links);
+                            walk(child, link, depth + 1, prose, links);
                         }
                     }
                 }
@@ -124,7 +134,7 @@ fn score(el: ElementRef) -> usize {
         }
     }
     let (mut prose, mut links) = (0, 0);
-    walk(el, false, &mut prose, &mut links);
+    walk(el, false, 0, &mut prose, &mut links);
     prose + links / 3
 }
 
@@ -275,6 +285,8 @@ struct Writer<'b> {
     blocks: Vec<String>,
     line: String,
     base: Option<&'b reqwest::Url>,
+    depth: usize,
+    keep_symbols: bool,
 }
 
 impl<'b> Writer<'b> {
@@ -283,20 +295,37 @@ impl<'b> Writer<'b> {
             blocks: Vec::new(),
             line: String::new(),
             base,
+            depth: 0,
+            keep_symbols: false,
+        }
+    }
+
+    fn keep_text(&self, text: &str) -> bool {
+        if self.keep_symbols {
+            !text.trim().is_empty()
+        } else {
+            has_words(text)
         }
     }
 
     fn flush(&mut self) {
         let text = tidy_inline(&self.line);
         self.line.clear();
-        if has_words(&text) {
+        if self.keep_text(&text) {
             self.blocks.push(text);
         }
     }
 
     fn block(&mut self, text: String) {
         self.flush();
-        if has_words(&text) {
+        if self.keep_text(&text) {
+            self.blocks.push(text);
+        }
+    }
+
+    fn raw_block(&mut self, text: String) {
+        self.flush();
+        if !text.trim().is_empty() {
             self.blocks.push(text);
         }
     }
@@ -313,6 +342,9 @@ impl<'b> Writer<'b> {
     }
 
     fn children(&mut self, el: ElementRef) {
+        if self.depth >= MAX_DEPTH {
+            return;
+        }
         for child in el.children() {
             match child.value() {
                 Node::Text(text) => push_text(&mut self.line, text),
@@ -327,9 +359,10 @@ impl<'b> Writer<'b> {
     }
 
     fn element(&mut self, el: ElementRef) {
-        if skipped(&el) {
+        if self.depth >= MAX_DEPTH || skipped(&el) {
             return;
         }
+        self.depth += 1;
         let tag = el.value().name();
         match tag {
             "h1" | "h2" | "h3" | "h4" | "h5" | "h6" => {
@@ -340,8 +373,8 @@ impl<'b> Writer<'b> {
                 }
             }
             "br" => self.line.push('\n'),
-            "hr" => self.block("---".into()),
-            "pre" => self.block(code_block(el)),
+            "hr" => self.raw_block("---".into()),
+            "pre" => self.raw_block(code_block(el, self.depth)),
             "ul" | "ol" => {
                 let list = self.list(el, tag == "ol");
                 if list.is_empty() {
@@ -353,7 +386,7 @@ impl<'b> Writer<'b> {
                 }
             }
             "table" => match self.table(el) {
-                Some(table) => self.block(table),
+                Some(table) => self.raw_block(table),
                 None => {
                     self.flush();
                     self.children(el);
@@ -387,28 +420,49 @@ impl<'b> Writer<'b> {
                 self.flush();
             }
             _ => {
-                let text = self.inline(el);
+                let text = self.inline(el, self.depth);
                 self.line.push_str(&text);
             }
         }
+        self.depth -= 1;
     }
 
     /// Render `el`'s children as their own document.
     fn sub(&self, el: ElementRef) -> String {
-        let mut writer = Writer::new(self.base);
+        self.sub_with_mode(el, self.keep_symbols)
+    }
+
+    fn sub_with_mode(&self, el: ElementRef, keep_symbols: bool) -> String {
+        if self.depth >= MAX_DEPTH {
+            return String::new();
+        }
+        let mut writer = Writer {
+            blocks: Vec::new(),
+            line: String::new(),
+            base: self.base,
+            depth: self.depth + 1,
+            keep_symbols,
+        };
         writer.children(el);
         writer.flush();
         writer.finish()
     }
 
     fn inline_children(&self, el: ElementRef) -> String {
+        self.inline_children_at(el, self.depth)
+    }
+
+    fn inline_children_at(&self, el: ElementRef, depth: usize) -> String {
+        if depth >= MAX_DEPTH {
+            return String::new();
+        }
         let mut out = String::new();
         for child in el.children() {
             match child.value() {
                 Node::Text(text) => push_text(&mut out, text),
                 Node::Element(_) => {
                     if let Some(child) = ElementRef::wrap(child) {
-                        out.push_str(&self.inline(child));
+                        out.push_str(&self.inline(child, depth + 1));
                     }
                 }
                 _ => {}
@@ -417,14 +471,16 @@ impl<'b> Writer<'b> {
         out
     }
 
-    fn inline(&self, el: ElementRef) -> String {
-        if skipped(&el) {
+    fn inline(&self, el: ElementRef, depth: usize) -> String {
+        if depth >= MAX_DEPTH || skipped(&el) {
             return String::new();
         }
         match el.value().name() {
             "br" => "\n".into(),
             "code" | "kbd" | "samp" | "tt" => {
-                let text = collapse(&el.text().collect::<String>());
+                let mut raw = String::new();
+                collect_code_text(el, depth, &mut raw);
+                let text = collapse(&raw);
                 if text.is_empty() {
                     String::new()
                 } else if text.contains('`') {
@@ -433,11 +489,11 @@ impl<'b> Writer<'b> {
                     format!("`{text}`")
                 }
             }
-            "strong" | "b" => wrap(&self.inline_children(el), "**"),
-            "em" | "i" => wrap(&self.inline_children(el), "_"),
+            "strong" | "b" => wrap(&self.inline_children_at(el, depth), "**"),
+            "em" | "i" => wrap(&self.inline_children_at(el, depth), "_"),
             "a" => {
-                let text = tidy_inline(&self.inline_children(el)).replace('\n', " ");
-                if !has_words(&text) {
+                let text = tidy_inline(&self.inline_children_at(el, depth)).replace('\n', " ");
+                if !self.keep_text(&text) {
                     return String::new();
                 }
                 match el.value().attr("href").and_then(|href| self.link(href)) {
@@ -445,8 +501,8 @@ impl<'b> Writer<'b> {
                     _ => text,
                 }
             }
-            tag if is_block(tag) => format!(" {} ", self.inline_children(el)),
-            _ => self.inline_children(el),
+            tag if is_block(tag) => format!(" {} ", self.inline_children_at(el, depth)),
+            _ => self.inline_children_at(el, depth),
         }
     }
 
@@ -512,7 +568,11 @@ impl<'b> Writer<'b> {
                 _ => {}
             }
         }
-        if el.select(sel("table table")).next().is_some() {
+        if el
+            .descendants()
+            .skip(1)
+            .any(|node| ElementRef::wrap(node).is_some_and(|child| child.value().name() == "table"))
+        {
             return None;
         }
         let grid: Vec<Vec<String>> = rows
@@ -521,7 +581,7 @@ impl<'b> Writer<'b> {
                 row.child_elements()
                     .filter(|c| matches!(c.value().name(), "td" | "th"))
                     .map(|cell| {
-                        self.sub(cell)
+                        self.sub_with_mode(cell, true)
                             .replace('\n', " ")
                             .replace('|', "\\|")
                             .trim()
@@ -553,7 +613,28 @@ fn has_block_child(el: ElementRef) -> bool {
         .any(|child| is_block(child.value().name()) && !skipped(&child))
 }
 
-fn code_block(el: ElementRef) -> String {
+fn collect_code_text(el: ElementRef, depth: usize, out: &mut String) {
+    if depth >= MAX_DEPTH || skipped(&el) {
+        return;
+    }
+    for child in el.children() {
+        match child.value() {
+            Node::Text(text) => out.push_str(text),
+            Node::Element(_) => {
+                if let Some(child_el) = ElementRef::wrap(child) {
+                    if child_el.value().name() == "br" {
+                        out.push('\n');
+                    } else {
+                        collect_code_text(child_el, depth + 1, out);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+fn code_block(el: ElementRef, depth: usize) -> String {
     let class = el
         .value()
         .attr("class")
@@ -570,7 +651,8 @@ fn code_block(el: ElementRef) -> String {
                 .or_else(|| c.strip_prefix("lang-"))
         })
         .unwrap_or_default();
-    let text: String = el.text().collect();
+    let mut text = String::new();
+    collect_code_text(el, depth, &mut text);
     let text = text.trim_matches('\n').trim_end();
     if text.is_empty() {
         return String::new();
@@ -800,5 +882,78 @@ mod tests {
         );
         assert_eq!(page.title, "OG Title");
         assert_eq!(page.description, "About it");
+    }
+
+    #[test]
+    fn title_prefix_strip_requires_exact_heading_line() {
+        // Title "API" must NOT strip the prefix from "# API Reference".
+        let page = extract(
+            "<html><head><title>API</title></head><body><h1>API Reference</h1><p>Body text.</p></body></html>",
+            None,
+        );
+        assert!(
+            page.markdown.starts_with("# API Reference"),
+            "{}",
+            page.markdown
+        );
+
+        // Empty title must NOT strip "# " from the first heading.
+        let no_title = extract(
+            "<html><body><h1>Hello</h1><p>Body text.</p></body></html>",
+            None,
+        );
+        assert_eq!(no_title.title, "Hello");
+        assert_eq!(no_title.markdown, "Body text.");
+
+        // Document with no title/h1-text fallback but an h1 with text after empty title
+        let page2 = extract(
+            "<html><head><title></title></head><body><h1>Hello</h1><p>World</p></body></html>",
+            None,
+        );
+        assert_eq!(page2.markdown, "World");
+    }
+
+    #[test]
+    fn inner_data_table_inside_layout_table_is_preserved() {
+        let html = r#"<body><table><tr><td>
+            <table>
+                <thead><tr><th>Feature</th><th>Status</th></tr></thead>
+                <tbody><tr><td>Sync</td><td>✓</td></tr><tr><td>Offline</td><td>—</td></tr><tr><td>Legacy</td><td>-</td></tr></tbody>
+            </table>
+        </td></tr></table></body>"#;
+        let out = md(html);
+        assert!(
+            out.contains("| Feature | Status |\n| --- | --- |\n| Sync | ✓ |\n| Offline | — |\n| Legacy | - |"),
+            "{out}"
+        );
+    }
+
+    #[test]
+    fn pre_filters_chrome_and_keeps_symbol_only_blocks_and_hr() {
+        let html = r#"<body><main>
+            <p>Before</p>
+            <hr>
+            <pre><button>Copy</button><code>{}</code></pre>
+            <p>After</p>
+        </main></body>"#;
+        let out = md(html);
+        assert!(out.contains("---"), "hr must not be dropped: {out}");
+        assert!(
+            out.contains("```\n{}\n```"),
+            "symbol-only pre block must survive without Copy button: {out}"
+        );
+        assert!(
+            !out.contains("Copy"),
+            "button chrome leaked into pre: {out}"
+        );
+    }
+
+    #[test]
+    fn deeply_nested_html_respects_max_depth() {
+        let open = "<div>".repeat(400);
+        let close = "</div>".repeat(400);
+        let html = format!("<body><p>Top</p>{open}<p>Deep</p>{close}</body>");
+        let page = extract(&html, None);
+        assert!(page.markdown.contains("Top"));
     }
 }

@@ -124,7 +124,15 @@ impl ToolCore for ApplyPatchTool {
 }
 
 /// Extract target file path from unified diff headers (`--- a/...`, `+++ b/...`)
-fn extract_target_file_from_patch(patch: &str) -> Option<String> {
+pub(crate) fn extract_target_file_from_patch(patch: &str) -> Option<String> {
+    extract_all_target_files_from_patch(patch)
+        .into_iter()
+        .next()
+}
+
+/// Extract all target file paths from unified diff headers (`+++ b/...`).
+pub(crate) fn extract_all_target_files_from_patch(patch: &str) -> Vec<String> {
+    let mut out = Vec::new();
     for line in patch.lines() {
         if let Some(rest) = line.strip_prefix("+++ ") {
             let clean = rest.trim();
@@ -133,12 +141,12 @@ fn extract_target_file_from_patch(patch: &str) -> Option<String> {
                 .strip_prefix("b/")
                 .or_else(|| clean.strip_prefix("a/"))
                 .unwrap_or(clean);
-            if path != "/dev/null" && !path.is_empty() {
-                return Some(path.to_string());
+            if path != "/dev/null" && !path.is_empty() && !out.iter().any(|p| p == path) {
+                out.push(path.to_string());
             }
         }
     }
-    None
+    out
 }
 
 /// Parse unified diff text into structured hunks

@@ -130,7 +130,7 @@ impl GoogleProvider {
                         for call in calls {
                             parts.push(json!({"functionCall": {
                                 "name": call.function.name,
-                                "args": serde_json::from_str::<Value>(&call.function.arguments)?,
+                                "args": serde_json::from_str::<Value>(&call.function.arguments).unwrap_or_else(|_| json!({})),
                             }}));
                         }
                     }
@@ -168,7 +168,7 @@ impl GoogleProvider {
                         .extend(value.as_object().unwrap().clone());
                 }
                 "thinking" | "reasoning" | "reasoning_effort" | "reasoning_summary"
-                | "stream_options" => {}
+                | "stream_options" | "prompt_cache_key" => {}
                 _ => body[&key] = value,
             }
         }
@@ -208,10 +208,7 @@ impl Provider for GoogleProvider {
                 "Invalid Google model identifier".into(),
             ));
         }
-        let mut body = self.request_body(messages, tools, model)?;
-        if let Some(key) = super::cache::prompt_cache_key(&self.info, model, context.session_id) {
-            body["prompt_cache_key"] = json!(key);
-        }
+        let body = self.request_body(messages, tools, model)?;
         let response = super::send_request(
             &self.info,
             model,
@@ -220,8 +217,9 @@ impl Provider for GoogleProvider {
             context,
         )
         .await?;
+        let resolved_url = response.url().to_string();
         let mut stream =
-            super::sse::EventStream::for_completion(response.bytes_stream(), &self.info.base_url);
+            super::sse::EventStream::for_completion(response.bytes_stream(), &resolved_url);
         let mut parts = Vec::new();
         let mut call_ids = Vec::new();
         let mut usage = Usage::default();
@@ -235,7 +233,7 @@ impl Provider for GoogleProvider {
                 break;
             }
             let event: Value = serde_json::from_str(&data)?;
-            if let Some(error) = event.get("error") {
+            if let Some(error) = event.get("error").filter(|v| !v.is_null()) {
                 return Err(super::stream_error(&self.info.name, error));
             }
             if event["promptFeedback"]["blockReason"].is_string() {
@@ -334,5 +332,43 @@ impl Provider for GoogleProvider {
 
     async fn list_models(&self) -> Result<Vec<ModelInfo>, LlmError> {
         Ok(self.info.models.clone())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::types::{FunctionCall, ToolCall};
+
+    #[test]
+    fn malformed_historical_tool_args_fall_back_to_empty_object() {
+        let provider = GoogleProvider::from_info(ProviderInfo {
+            id: "google".into(),
+            name: "Google".into(),
+            ..Default::default()
+        });
+        let model = super::super::fallback_model_info("google", "gemini-2.5-pro");
+        let assistant = Message {
+            role: Role::Assistant,
+            content: String::new(),
+            tool_calls: Some(vec![ToolCall {
+                id: "c1".into(),
+                call_type: "function".into(),
+                function: FunctionCall {
+                    name: "read_file".into(),
+                    arguments: "{broken json".into(),
+                },
+            }]),
+            tool_call_id: None,
+            thinking: None,
+            thinking_signature: None,
+            continuation: None,
+            attachments: Vec::new(),
+        };
+        let body = provider.request_body(&[assistant], None, &model).unwrap();
+        assert_eq!(
+            body["contents"][0]["parts"][0]["functionCall"]["args"],
+            json!({})
+        );
     }
 }

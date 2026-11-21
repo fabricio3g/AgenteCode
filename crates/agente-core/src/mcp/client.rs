@@ -88,6 +88,20 @@ struct Server {
     connecting: AtomicBool,
 }
 
+struct ConnectingGuard<'a>(&'a AtomicBool);
+
+impl Drop for ConnectingGuard<'_> {
+    fn drop(&mut self) {
+        self.0.store(false, Ordering::SeqCst);
+    }
+}
+
+impl Drop for Server {
+    fn drop(&mut self) {
+        self.disconnect();
+    }
+}
+
 impl Server {
     fn snapshot(&self) -> ServerSnapshot {
         let connection = self.connection.read().clone();
@@ -115,9 +129,17 @@ impl Server {
         if self.connecting.swap(true, Ordering::SeqCst) {
             return;
         }
+        let _connecting_guard = ConnectingGuard(&self.connecting);
         *self.status.write() = ServerStatus::Connecting;
         self.disconnect();
         let result = tokio::time::timeout(CONNECT_TIMEOUT, self.open()).await;
+        let mut status_guard = self.status.write();
+        if *status_guard == ServerStatus::Disabled {
+            if let Ok(Ok(connection)) = result {
+                connection.service.cancellation_token().cancel();
+            }
+            return;
+        }
         let status = match result {
             Ok(Ok(connection)) => {
                 *self.connection.write() = Some(Arc::new(connection));
@@ -133,8 +155,7 @@ impl Server {
                 ServerStatus::Failed(format!("timed out after {}s", CONNECT_TIMEOUT.as_secs()))
             }
         };
-        *self.status.write() = status;
-        self.connecting.store(false, Ordering::SeqCst);
+        *status_guard = status;
     }
 
     async fn open(&self) -> anyhow::Result<Connection> {
@@ -529,8 +550,8 @@ impl McpManager {
     /// Stop a server and mark it disabled (for this session).
     pub fn disable(&self, name: &str) {
         if let Some(server) = self.server(name) {
-            server.disconnect();
             *server.status.write() = ServerStatus::Disabled;
+            server.disconnect();
         }
     }
 
@@ -624,12 +645,6 @@ impl McpManager {
             }
         };
         Ok(render_call_result(&serde_json::to_value(&result)?))
-    }
-}
-
-impl Drop for McpManager {
-    fn drop(&mut self) {
-        self.disconnect_all();
     }
 }
 
@@ -928,5 +943,39 @@ server.serve_forever()
         let approved = [super::super::approval_key(&project, "repo")];
         let manager = McpManager::from_sources(&HashMap::new(), &project, &approved);
         assert_eq!(manager.snapshots()[1].status, ServerStatus::Connecting);
+    }
+
+    #[test]
+    fn for_project_drop_preserves_shared_config_servers_and_guard_resets_connecting() {
+        let dir = tempfile::tempdir().unwrap();
+        let project = dir.path().to_string_lossy().into_owned();
+        let mut global = McpManager::new();
+        global.add_client(
+            "shared".into(),
+            McpConfig {
+                command: vec!["true".into()],
+                ..McpConfig::default()
+            },
+        );
+        let shared = Arc::clone(global.server("shared").unwrap());
+        *shared.status.write() = ServerStatus::Ready;
+
+        {
+            let scoped = global.for_project(&project, &[]);
+            assert_eq!(Arc::strong_count(&shared), 3);
+            assert_eq!(scoped.snapshots()[0].status, ServerStatus::Ready);
+        }
+
+        // Dropping the project manager must not disconnect the shared global server.
+        assert_eq!(Arc::strong_count(&shared), 2);
+        assert_eq!(*shared.status.read(), ServerStatus::Ready);
+
+        // ConnectingGuard must always clear the atomic connecting flag on drop.
+        shared.connecting.store(true, Ordering::SeqCst);
+        {
+            let _guard = ConnectingGuard(&shared.connecting);
+            assert!(shared.connecting.load(Ordering::SeqCst));
+        }
+        assert!(!shared.connecting.load(Ordering::SeqCst));
     }
 }

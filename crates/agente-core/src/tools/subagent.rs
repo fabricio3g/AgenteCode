@@ -49,11 +49,7 @@ impl TaskTool {
         }
         self.description
             .push_str(&crate::subagent::routing::menu_text(menu));
-        self.model_names = menu
-            .iter()
-            .map(|entry| entry.name.clone())
-            .chain(std::iter::once(crate::config::MAIN_MODEL.to_string()))
-            .collect();
+        self.model_names = crate::subagent::routing::model_names_from_menu(menu);
         self
     }
 }
@@ -166,12 +162,11 @@ impl Tool for TaskTool {
                 "description": "Launch one of the user's own agents by name instead of creating one."
             });
         }
-        if !self.model_names.is_empty() {
-            schema["properties"]["model"] = serde_json::json!({
-                "type": "string",
-                "enum": self.model_names,
-                "description": "Which of the user's subagent models runs this child (see the list in the tool description); \"main\" is your own model. Omit to use the user's default. Not allowed with resume_from."
-            });
+        if let Some(model_prop) = crate::subagent::routing::subagent_model_schema(
+            &self.model_names,
+            "Which of the user's subagent models runs this child (see the list in the tool description); \"main\" is your own model. Omit to use the user's default. Not allowed with resume_from.",
+        ) {
+            schema["properties"]["model"] = model_prop;
         }
         schema
     }

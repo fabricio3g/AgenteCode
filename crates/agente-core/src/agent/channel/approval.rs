@@ -4,16 +4,31 @@ use super::ToolCallOutcome;
 use crate::permissions::{is_dangerous_command, shell_outside_paths, OUTSIDE_PROJECT_PREFIX};
 use crate::types::{ApprovalRequest, ToolCall};
 
+fn target_path_for_approval(tool_name: &str, args: &serde_json::Value) -> Option<String> {
+    if let Some(path) = args
+        .get("path")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
+        return Some(path.to_string());
+    }
+    if tool_name == "apply_patch" {
+        return args
+            .get("patch")
+            .and_then(|v| v.as_str())
+            .and_then(crate::tools::patch::extract_target_file_from_patch);
+    }
+    None
+}
+
 pub(crate) async fn build_approval_request(
     tool_call: &ToolCall,
     args: &serde_json::Value,
     project_dir: &str,
 ) -> ApprovalRequest {
     let tool_name = tool_call.function.name.clone();
-    let file_path = args
-        .get("path")
-        .and_then(|v| v.as_str())
-        .map(|s| s.to_string());
+    let file_path = target_path_for_approval(&tool_name, args);
     let is_dangerous = if tool_name == "shell" {
         args.get("command")
             .and_then(|v| v.as_str())
@@ -74,11 +89,11 @@ pub(crate) async fn approval_diff_preview(
     args: &serde_json::Value,
     project_dir: &str,
 ) -> (Option<String>, Option<String>) {
-    let Some(path) = args.get("path").and_then(|v| v.as_str()) else {
+    let Some(path) = target_path_for_approval(tool_name, args) else {
         return (None, None);
     };
 
-    let Ok(resolved) = crate::tools::resolve_project_path(path, project_dir) else {
+    let Ok(resolved) = crate::tools::resolve_project_path(&path, project_dir) else {
         return (None, None);
     };
 

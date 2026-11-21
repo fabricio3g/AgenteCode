@@ -2,7 +2,9 @@
 //! (for `resume_from`), and per-child completion signals for `task_output`.
 
 use std::collections::{HashMap, VecDeque};
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
+
+use parking_lot::RwLock;
 
 use crate::cancellation::AbortController;
 use crate::types::Message;
@@ -24,6 +26,9 @@ struct RegistryInner {
     /// Per-subagent completion signal: `false` while running, `true` once the
     /// child reaches a terminal state.
     completions: HashMap<String, tokio::sync::watch::Sender<bool>>,
+    /// Dedicated watchdog completion signal so `enforce_timeout` exits as soon
+    /// as the child finishes without inflating [`SubagentRegistry::receiver_count`].
+    watchdogs: HashMap<String, tokio::sync::watch::Sender<bool>>,
     /// Per-subagent controller so `kill_task` (and the `/subagents` UI) can
     /// stop a specific running child without cancelling the whole turn.
     cancels: HashMap<String, AbortController>,
@@ -51,25 +56,21 @@ impl SubagentRegistry {
     pub fn insert(&self, snapshot: SubagentSnapshot) -> tokio::sync::watch::Receiver<bool> {
         let id = snapshot.id.clone();
         let (tx, rx) = tokio::sync::watch::channel(false);
-        let mut inner = self.inner.write().unwrap();
+        let (wd_tx, _wd_rx) = tokio::sync::watch::channel(false);
+        let mut inner = self.inner.write();
         inner.subagents.insert(id.clone(), snapshot);
-        inner.completions.insert(id, tx);
+        inner.completions.insert(id.clone(), tx);
+        inner.watchdogs.insert(id, wd_tx);
         rx
     }
 
     pub fn get(&self, id: &str) -> Option<SubagentSnapshot> {
-        self.inner.read().unwrap().subagents.get(id).cloned()
+        self.inner.read().subagents.get(id).cloned()
     }
 
     pub fn list(&self) -> Vec<SubagentSnapshot> {
-        let mut out: Vec<SubagentSnapshot> = self
-            .inner
-            .read()
-            .unwrap()
-            .subagents
-            .values()
-            .cloned()
-            .collect();
+        let mut out: Vec<SubagentSnapshot> =
+            self.inner.read().subagents.values().cloned().collect();
         out.sort_by_key(|a| a.started_at);
         out
     }
@@ -84,7 +85,6 @@ impl SubagentRegistry {
     pub fn running_count(&self) -> usize {
         self.inner
             .read()
-            .unwrap()
             .subagents
             .values()
             .filter(|snapshot| !snapshot.status.is_terminal())
@@ -96,7 +96,6 @@ impl SubagentRegistry {
     pub fn started_count(&self) -> usize {
         self.inner
             .read()
-            .unwrap()
             .subagents
             .values()
             .filter(|s| s.status == SubagentStatus::Running)
@@ -111,7 +110,7 @@ impl SubagentRegistry {
         item: QueuedSpawn,
         max_concurrent: usize,
     ) -> Result<SpawnAdmission, String> {
-        let mut inner = self.inner.write().unwrap();
+        let mut inner = self.inner.write();
         let id = snapshot.id.clone();
         if inner.subagents.contains_key(&id) {
             return Err(format!("Subagent id '{id}' already exists"));
@@ -130,8 +129,10 @@ impl SubagentRegistry {
         // A queued task already returns its handle, even if originally inline.
         snapshot.background |= queued;
         let (tx, rx) = tokio::sync::watch::channel(false);
+        let (wd_tx, _wd_rx) = tokio::sync::watch::channel(false);
         inner.subagents.insert(id.clone(), snapshot);
         inner.completions.insert(id.clone(), tx);
+        inner.watchdogs.insert(id.clone(), wd_tx);
         inner.cancels.insert(id, item.controller.clone());
         if queued {
             inner.queue.push_back(item);
@@ -146,7 +147,7 @@ impl SubagentRegistry {
 
     /// Claim the next eligible queued child and its slot atomically.
     pub(crate) fn start_next_queued(&self, max_concurrent: usize) -> Option<(QueuedSpawn, String)> {
-        let mut inner = self.inner.write().unwrap();
+        let mut inner = self.inner.write();
         let running = inner
             .subagents
             .values()
@@ -172,7 +173,7 @@ impl SubagentRegistry {
     /// Take a queued spawn by id (kill-before-start). Returns the payload so
     /// the caller can abort its controller; `None` when not queued.
     pub fn take_queued(&self, id: &str) -> Option<QueuedSpawn> {
-        let mut inner = self.inner.write().unwrap();
+        let mut inner = self.inner.write();
         let pos = inner.queue.iter().position(|item| item.id == id)?;
         Some(inner.queue.remove(pos).expect("queued position just found"))
     }
@@ -181,7 +182,6 @@ impl SubagentRegistry {
     pub fn queued_position(&self, id: &str) -> Option<usize> {
         self.inner
             .read()
-            .unwrap()
             .queue
             .iter()
             .position(|item| item.id == id)
@@ -189,11 +189,11 @@ impl SubagentRegistry {
     }
 
     pub fn queued_count(&self) -> usize {
-        self.inner.read().unwrap().queue.len()
+        self.inner.read().queue.len()
     }
 
     pub fn contains(&self, id: &str) -> bool {
-        self.inner.read().unwrap().subagents.contains_key(id)
+        self.inner.read().subagents.contains_key(id)
     }
 
     /// Keep the live tail of a running child's output, so a `task_output` poll
@@ -214,7 +214,7 @@ impl SubagentRegistry {
         } else {
             0
         };
-        let mut inner = self.inner.write().unwrap();
+        let mut inner = self.inner.write();
         if let Some(snapshot) = inner.subagents.get_mut(id) {
             if snapshot.status.is_terminal() {
                 return;
@@ -231,7 +231,7 @@ impl SubagentRegistry {
         summary: String,
         conversation: Vec<Message>,
     ) {
-        let mut inner = self.inner.write().unwrap();
+        let mut inner = self.inner.write();
         if let Some(snapshot) = inner.subagents.get_mut(id) {
             snapshot.status = status;
             snapshot.summary = Some(summary);
@@ -243,6 +243,9 @@ impl SubagentRegistry {
             // children must still look completed to a later subscriber.
             tx.send_replace(true);
         }
+        if let Some(wd_tx) = inner.watchdogs.get(id) {
+            wd_tx.send_replace(true);
+        }
         inner.cancels.remove(id);
     }
 
@@ -251,7 +254,6 @@ impl SubagentRegistry {
     pub fn register_cancel(&self, id: &str, controller: AbortController) {
         self.inner
             .write()
-            .unwrap()
             .cancels
             .insert(id.to_string(), controller);
     }
@@ -260,7 +262,7 @@ impl SubagentRegistry {
     /// a child with that id exists (running or already finished).
     pub fn cancel(&self, id: &str) -> bool {
         let (controller, known) = {
-            let inner = self.inner.read().unwrap();
+            let inner = self.inner.read();
             (
                 inner.cancels.get(id).cloned(),
                 inner.subagents.contains_key(id),
@@ -274,16 +276,17 @@ impl SubagentRegistry {
 
     /// Update live fields (status/text) without finishing.
     pub fn update(&self, id: &str, f: impl FnOnce(&mut SubagentSnapshot)) {
-        let mut inner = self.inner.write().unwrap();
+        let mut inner = self.inner.write();
         if let Some(snapshot) = inner.subagents.get_mut(id) {
             f(snapshot);
         }
     }
 
     pub fn remove(&self, id: &str) {
-        let mut inner = self.inner.write().unwrap();
+        let mut inner = self.inner.write();
         inner.subagents.remove(id);
         inner.completions.remove(id);
+        inner.watchdogs.remove(id);
         if let Some(controller) = inner.cancels.remove(id) {
             controller.abort();
         }
@@ -296,10 +299,15 @@ impl SubagentRegistry {
     pub fn completion_receiver(&self, id: &str) -> Option<tokio::sync::watch::Receiver<bool>> {
         self.inner
             .read()
-            .unwrap()
             .completions
             .get(id)
             .map(|tx| tx.subscribe())
+    }
+
+    /// Watchdog-only completion watcher: signals on `finish` without counting
+    /// as an inline waiter in [`Self::receiver_count`].
+    pub(crate) fn watchdog_receiver(&self, id: &str) -> Option<tokio::sync::watch::Receiver<bool>> {
+        self.inner.read().watchdogs.get(id).map(|tx| tx.subscribe())
     }
 
     /// Live waiter count on the completion signal: foreground spawns hold
@@ -308,7 +316,6 @@ impl SubagentRegistry {
     pub fn receiver_count(&self, id: &str) -> usize {
         self.inner
             .read()
-            .unwrap()
             .completions
             .get(id)
             .map(|tx| tx.receiver_count())
@@ -317,12 +324,12 @@ impl SubagentRegistry {
 
     /// Record that the model already holds this child's terminal result.
     pub fn mark_observed(&self, id: &str) {
-        self.inner.write().unwrap().observed.insert(id.to_string());
+        self.inner.write().observed.insert(id.to_string());
     }
 
     /// True when the terminal result was already delivered to the model.
     pub fn was_observed(&self, id: &str) -> bool {
-        self.inner.read().unwrap().observed.contains(id)
+        self.inner.read().observed.contains(id)
     }
 
     /// Record a watchdog timeout abort. The forwarder converts the resulting
@@ -330,14 +337,13 @@ impl SubagentRegistry {
     pub fn mark_timed_out(&self, id: &str, timeout_ms: u64) {
         self.inner
             .write()
-            .unwrap()
             .timed_out
             .insert(id.to_string(), timeout_ms);
     }
 
     /// Take a recorded timeout, if any.
     pub fn take_timed_out(&self, id: &str) -> Option<u64> {
-        self.inner.write().unwrap().timed_out.remove(id)
+        self.inner.write().timed_out.remove(id)
     }
 }
 

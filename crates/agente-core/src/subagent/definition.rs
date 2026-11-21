@@ -413,6 +413,7 @@ mod tests {
             instructions: None,
             model: None,
             task_id: None,
+            owns: Vec::new(),
         }
     }
 

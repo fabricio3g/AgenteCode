@@ -85,6 +85,20 @@ pub(crate) fn normalize_tool_args(
         }
         "apply_patch" => {
             normalize_alias(obj, "patch", &["diff", "unified_diff", "content"]);
+            let has_path = obj
+                .get("path")
+                .and_then(|v| v.as_str())
+                .map(str::trim)
+                .is_some_and(|s| !s.is_empty());
+            if !has_path {
+                if let Some(patch_text) = obj.get("patch").and_then(|v| v.as_str()) {
+                    if let Some(extracted) =
+                        crate::tools::patch::extract_target_file_from_patch(patch_text)
+                    {
+                        obj.insert("path".to_string(), serde_json::Value::String(extracted));
+                    }
+                }
+            }
         }
         _ => {}
     }

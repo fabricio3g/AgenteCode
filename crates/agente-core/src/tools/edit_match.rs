@@ -539,15 +539,16 @@ fn relative_len(haystack: &str, at: usize, needle: &str) -> usize {
 pub fn unique_snippet(content: &str, old: &str, line: usize) -> Option<String> {
     let file_lines = split_lines(content);
     let old_lines = split_lines(old);
-    if old_lines.is_empty() {
+    if old_lines.is_empty() || file_lines.is_empty() {
         return None;
     }
-    let first = old_lines[0].0;
-    let last = old_lines[old_lines.len() - 1];
-    let start_index = file_lines.iter().position(|(offset, _)| *offset == first)?;
+    let start_index = line.saturating_sub(1);
+    if start_index >= file_lines.len() {
+        return None;
+    }
     let count = old_lines.len();
     for extra in 0..=3usize {
-        for (before, after) in [(0, extra), (extra, 0)] {
+        for (before, after) in [(0, extra), (extra, 0), (extra, extra)] {
             let from = start_index.saturating_sub(before);
             let to = (start_index + count - 1 + after).min(file_lines.len().saturating_sub(1));
             if from > start_index || to < start_index + count - 1 {
@@ -559,8 +560,6 @@ pub fn unique_snippet(content: &str, old: &str, line: usize) -> Option<String> {
             }
         }
     }
-    let _ = last;
-    let _ = line;
     None
 }
 
@@ -950,6 +949,11 @@ mod tests {
         let snippet = unique_snippet(content, "    run();", 2).expect("snippet");
         assert!(is_unique(content, &snippet), "{snippet}");
         assert!(snippet.contains("fn a()"), "{snippet}");
+
+        let second = unique_snippet(content, "    run();", 5).expect("second snippet");
+        assert!(is_unique(content, &second), "{second}");
+        assert!(second.contains("fn b()"), "{second}");
+        assert!(!second.contains("fn a()"), "{second}");
     }
 
     #[test]

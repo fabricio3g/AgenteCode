@@ -217,6 +217,35 @@ pub fn menu_text(menu: &[ModelMenuEntry]) -> String {
     out
 }
 
+/// Pickable model names (`menu` entries plus `main`), or empty when the
+/// orchestrator may not pick models.
+pub fn model_names_from_menu(menu: &[ModelMenuEntry]) -> Vec<String> {
+    if menu.is_empty() {
+        return Vec::new();
+    }
+    menu.iter()
+        .map(|entry| entry.name.clone())
+        .chain(std::iter::once(MAIN_MODEL.to_string()))
+        .collect()
+}
+
+/// Shared JSON-Schema property for the `model` parameter on `task` and
+/// `board` card specs. Returns `None` when `model_names` is empty so the
+/// property is omitted whenever `orchestrator_picks` is off or no models are
+/// configured.
+pub fn subagent_model_schema(
+    model_names: &[String],
+    description: &str,
+) -> Option<serde_json::Value> {
+    (!model_names.is_empty()).then(|| {
+        serde_json::json!({
+            "type": "string",
+            "enum": model_names,
+            "description": description,
+        })
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

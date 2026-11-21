@@ -148,24 +148,104 @@ fn trim_limit(text: &str, limit: usize) -> String {
 
 /// `src/parser/**` and `src/parser/` own the directory; anything else is a
 /// file. Two claims overlap when one contains the other.
-fn claim(path: &str) -> String {
-    let path = path.trim().replace('\\', "/");
-    let path = path.trim_start_matches("./");
-    let dir = path
-        .strip_suffix("/**")
-        .or_else(|| path.strip_suffix("/*"))
-        .or_else(|| path.strip_suffix('/'));
-    match dir {
-        Some(dir) => format!("{dir}/"),
-        None => path.to_string(),
+pub(crate) fn claim(path: &str) -> String {
+    let raw = path.trim().replace('\\', "/");
+    if raw.is_empty() {
+        return String::new();
+    }
+    #[cfg(windows)]
+    let raw = raw.to_lowercase();
+    let mut is_dir = raw.ends_with('/') || raw.ends_with("/.") || raw.ends_with("/..");
+    let mut segments: Vec<&str> = Vec::new();
+    for seg in raw.split('/') {
+        if seg.is_empty() || seg == "." {
+            continue;
+        }
+        if seg == ".." {
+            if segments.last().is_some_and(|last| *last != "..") {
+                segments.pop();
+            } else {
+                segments.push("..");
+            }
+            continue;
+        }
+        if seg.contains(['*', '?', '[']) {
+            is_dir = true;
+            break;
+        }
+        segments.push(seg);
+    }
+    if segments.is_empty() {
+        return "/".to_string();
+    }
+    let joined = segments.join("/");
+    if is_dir {
+        format!("{joined}/")
+    } else {
+        joined
     }
 }
 
-fn overlaps(a: &str, b: &str) -> bool {
+pub(crate) fn overlaps(a: &str, b: &str) -> bool {
     let (a, b) = (claim(a), claim(b));
+    if a.is_empty() || b.is_empty() {
+        return false;
+    }
+    if a == "/" || b == "/" {
+        return true;
+    }
     a.trim_end_matches('/') == b.trim_end_matches('/')
         || (a.ends_with('/') && b.starts_with(&a))
         || (b.ends_with('/') && a.starts_with(&b))
+}
+
+/// True when `owned` (a card's `owns` entry) covers the project-relative file
+/// `target`. Unlike [`overlaps`], this is directional: a file claim does not
+/// cover a parent directory, and parent-traversal paths (`..`) never match.
+pub(crate) fn path_is_owned(owned: &str, target: &str) -> bool {
+    let (owned, target) = (claim(owned), claim(target));
+    if owned.is_empty()
+        || target.is_empty()
+        || target == "/"
+        || target == ".."
+        || target.starts_with("../")
+    {
+        return false;
+    }
+    if owned == "/" {
+        return true;
+    }
+    if owned.ends_with('/') {
+        target.starts_with(&owned)
+    } else {
+        !target.ends_with('/') && owned == target
+    }
+}
+
+/// True when a card with `from_deps` transitively waits for `target_id` through
+/// open cards (`Backlog`/`Working`/`Review`).
+fn waits_for_open(cards: &[Card], staged: &[Card], from_deps: &[String], target_id: &str) -> bool {
+    let mut stack: Vec<&str> = from_deps.iter().map(String::as_str).collect();
+    let mut visited: Vec<&str> = Vec::new();
+    while let Some(dep_id) = stack.pop() {
+        if dep_id == target_id {
+            return true;
+        }
+        if visited.contains(&dep_id) {
+            continue;
+        }
+        visited.push(dep_id);
+        if let Some(dep_card) = cards
+            .iter()
+            .chain(staged.iter())
+            .find(|card| card.id == dep_id && card.status.is_open())
+        {
+            for next in &dep_card.depends_on {
+                stack.push(next.as_str());
+            }
+        }
+    }
+    false
 }
 
 impl Board {
@@ -179,7 +259,8 @@ impl Board {
 
     /// Add cards. Every card is checked before any is added: dependencies
     /// must name a card (by id or title), and a writer's files must not
-    /// overlap another open writer's. Returns the new ids.
+    /// overlap another open writer's (unless one waits for the other).
+    /// Returns the new ids.
     pub fn add(&mut self, specs: Vec<CardSpec>) -> Result<Vec<String>, String> {
         if specs.is_empty() {
             return Err("add needs at least one card".into());
@@ -231,6 +312,9 @@ impl Board {
                 .chain(staged.iter())
                 .filter(|card| card.is_writer() && card.status.is_open())
             {
+                if waits_for_open(&self.cards, &staged, &depends_on, &other.id) {
+                    continue;
+                }
                 if let Some((mine, theirs)) = owns.iter().find_map(|mine| {
                     other
                         .owns
@@ -296,6 +380,21 @@ impl Board {
         }
     }
 
+    /// Record the effective capability a card's subagent actually launched with
+    /// (e.g. after Plan-mode coercion to `ReadOnly`).
+    pub fn set_capability(&mut self, id: &str, capability: SubagentCapabilityMode) {
+        if let Some(card) = self.card_mut(id) {
+            card.capability = capability;
+        }
+    }
+
+    /// Clear a dangling `child_id` when a spawn fails before admission.
+    pub fn clear_child_id(&mut self, id: &str) {
+        if let Some(card) = self.card_mut(id) {
+            card.child_id = None;
+        }
+    }
+
     /// A subagent finished: its card goes to review (a writer) or done (a
     /// reader), or failed. Returns the card id when the child was a card's.
     pub fn child_finished(&mut self, child_id: &str, ok: bool, summary: &str) -> Option<String> {
@@ -318,14 +417,43 @@ impl Board {
     /// The main model moves a card: accept it, send it back with feedback,
     /// or give up on it. A working card cannot move; stop its subagent first.
     pub fn move_card(&mut self, id: &str, to: MoveTo, note: Option<&str>) -> Result<(), String> {
-        let card = self
-            .card_mut(id)
+        let target = self
+            .card(id)
             .ok_or_else(|| format!("no card {id} on the board"))?;
-        if card.status == CardStatus::Working {
+        if target.status == CardStatus::Working {
             return Err(format!(
                 "{id} is still working; wait for it or stop its subagent with kill_task first"
             ));
         }
+        if to == MoveTo::Backlog && target.is_writer() {
+            for other in self
+                .cards
+                .iter()
+                .filter(|card| card.id != id && card.is_writer() && card.status.is_open())
+            {
+                let card_waits = waits_for_open(&self.cards, &[], &target.depends_on, &other.id);
+                let other_waits = other.status == CardStatus::Backlog
+                    && waits_for_open(&self.cards, &[], &other.depends_on, id);
+                if card_waits || other_waits {
+                    continue;
+                }
+                if let Some((mine, theirs)) = target.owns.iter().find_map(|mine| {
+                    other
+                        .owns
+                        .iter()
+                        .find(|theirs| overlaps(mine, theirs))
+                        .map(|theirs| (mine, theirs))
+                }) {
+                    return Err(format!(
+                        "card \"{}\" owns {mine}, but {} \"{}\" already owns {theirs}: one writer per file — split the files or make one card wait for the other",
+                        target.title, other.id, other.title
+                    ));
+                }
+            }
+        }
+        let card = self
+            .card_mut(id)
+            .ok_or_else(|| format!("no card {id} on the board"))?;
         if let Some(note) = note.map(str::trim).filter(|note| !note.is_empty()) {
             card.notes.push(note.to_string());
         }
@@ -546,7 +674,37 @@ pub enum BoardAction {
 
 /// The `board` tool. Hosted like `task`: its schema is exposed through the
 /// registry, its calls run in `SubagentHost` (they start subagents).
-pub struct BoardTool;
+pub struct BoardTool {
+    description: String,
+    model_names: Vec<String>,
+}
+
+impl Default for BoardTool {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl BoardTool {
+    pub fn new() -> Self {
+        Self {
+            description: BOARD_DESCRIPTION.to_string(),
+            model_names: Vec::new(),
+        }
+    }
+
+    /// Offer the user's subagent models: their menu joins the description
+    /// and their names (plus `main`) become the card `model` enum.
+    pub fn with_models(menu: &[crate::subagent::routing::ModelMenuEntry]) -> Self {
+        let mut tool = Self::new();
+        if !menu.is_empty() {
+            tool.description
+                .push_str(&crate::subagent::routing::menu_text(menu));
+            tool.model_names = crate::subagent::routing::model_names_from_menu(menu);
+        }
+        tool
+    }
+}
 
 const BOARD_DESCRIPTION: &str = "\
 Swarm mode is on: plan the work as a board of cards and let a swarm of subagents you create work it. \
@@ -577,11 +735,11 @@ impl crate::tools::Tool for BoardTool {
     }
 
     fn description(&self) -> &str {
-        BOARD_DESCRIPTION
+        &self.description
     }
 
     fn parameters(&self) -> serde_json::Value {
-        serde_json::json!({
+        let mut schema = serde_json::json!({
             "type": "object",
             "properties": {
                 "action": { "type": "string", "enum": ["add", "move", "show"] },
@@ -595,7 +753,6 @@ impl crate::tools::Tool for BoardTool {
                             "role": { "type": "string", "description": "Who the subagent created for it is." },
                             "instructions": { "type": "string" },
                             "capability_mode": { "type": "string", "enum": ["read-only", "read-write", "execute"] },
-                            "model": { "type": "string", "description": "A name from the user's subagent model list, or \"main\"." },
                             "prompt": { "type": "string", "description": "Everything the subagent needs: it sees nothing else." },
                             "depends_on": { "type": "array", "items": { "type": "string" } },
                             "owns": { "type": "array", "items": { "type": "string" } }
@@ -608,7 +765,14 @@ impl crate::tools::Tool for BoardTool {
                 "note": { "type": "string", "description": "For move to backlog: what to fix." }
             },
             "required": ["action"]
-        })
+        });
+        if let Some(model_prop) = crate::subagent::routing::subagent_model_schema(
+            &self.model_names,
+            "A name from the user's subagent model list, or \"main\".",
+        ) {
+            schema["properties"]["cards"]["items"]["properties"]["model"] = model_prop;
+        }
+        schema
     }
 
     fn execution_mode(&self) -> crate::tools::ToolExecutionMode {
@@ -810,7 +974,78 @@ mod tests {
         assert!(overlaps("src/parser/**", "src/parser/lexer.rs"));
         assert!(overlaps("src/parser/", "src/parser"));
         assert!(overlaps("./src/a.rs", "src/a.rs"));
+        assert!(overlaps("src/a/../b.rs", "src/b.rs"));
+        assert!(overlaps("src//parser//lexer.rs", "src/parser/lexer.rs"));
+        assert!(overlaps(".", "src/a.rs"));
+        assert!(overlaps("./", "src/a.rs"));
+        assert!(overlaps("/**", "src/a.rs"));
+        assert!(overlaps("src/*.rs", "src/lib.rs"));
+        assert!(overlaps("src/**/*.rs", "src/sub/mod.rs"));
+        #[cfg(windows)]
+        assert!(overlaps("Src/Parser/Lexer.rs", "src/parser/lexer.rs"));
         assert!(!overlaps("src/parser/**", "src/parsers.rs"));
         assert!(!overlaps("src/a.rs", "src/b.rs"));
+
+        assert!(path_is_owned("src/parser/**", "src/parser/lexer.rs"));
+        assert!(path_is_owned("src/a.rs", "./src/b/../a.rs"));
+        assert!(path_is_owned(".", "src/a.rs"));
+        assert!(!path_is_owned("src/a.rs", "src/"));
+        assert!(!path_is_owned("src/**", "../outside.rs"));
+    }
+
+    #[test]
+    fn dependent_writers_on_same_file_are_allowed_and_move_to_backlog_rechecks_owns() {
+        let mut board = Board::default();
+        // Sequential chain c1 -> c2 -> c3 on the same file can be planned together.
+        let ids = board
+            .add(vec![
+                spec("Step 1", true, &[], &["src/a.rs"]),
+                spec("Step 2", true, &["Step 1"], &["src/a.rs"]),
+                spec("Step 3", true, &["Step 2"], &["src/a.rs"]),
+            ])
+            .unwrap();
+        assert_eq!(ids, ["c1", "c2", "c3"]);
+
+        // If c1 finishes and is accepted (Done), and an independent writer c4 is added on src/a.rs
+        // after c2/c3 are failed/done, moving c1 back to Backlog must fail because c4 is open.
+        board.cards[0].status = CardStatus::Done;
+        board.cards[1].status = CardStatus::Failed;
+        board.cards[2].status = CardStatus::Failed;
+        board
+            .add(vec![spec("Parallel writer", true, &[], &["src/a.rs"])])
+            .unwrap();
+        let err = board.move_card("c1", MoveTo::Backlog, None).unwrap_err();
+        assert!(err.contains("one writer per file"), "{err}");
+
+        // Once c4 is Done, c1 can move back to Backlog.
+        board.cards[3].status = CardStatus::Done;
+        assert!(board.move_card("c1", MoveTo::Backlog, None).is_ok());
+    }
+
+    #[test]
+    fn board_tool_gates_model_property_on_menu() {
+        use crate::subagent::routing::ModelMenuEntry;
+        use crate::tools::Tool;
+
+        let default_schema = BoardTool::new().parameters();
+        assert!(default_schema["properties"]["cards"]["items"]["properties"]
+            .get("model")
+            .is_none());
+
+        let with_menu = BoardTool::with_models(&[ModelMenuEntry {
+            name: "scout".into(),
+            price: "free".into(),
+            context: 128_000,
+            use_for: "fast reads".into(),
+        }]);
+        let schema = with_menu.parameters();
+        let model_enum = schema["properties"]["cards"]["items"]["properties"]["model"]["enum"]
+            .as_array()
+            .unwrap();
+        assert_eq!(
+            model_enum,
+            &[serde_json::json!("scout"), serde_json::json!("main")]
+        );
+        assert!(with_menu.description().contains("Models you can assign"));
     }
 }

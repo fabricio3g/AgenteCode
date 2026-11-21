@@ -42,12 +42,13 @@ const DEFAULT_TASK_OUTPUT_WAIT_MS: u64 = 120_000;
 /// Liveness tick while `task_output` waits on a still-running child.
 const TASK_OUTPUT_HEARTBEAT_MS: u64 = 15_000;
 
-/// Tool gating policy applied to a child agent's registry (capability mode +
-/// optional type allowlist).
+/// Tool gating policy applied to a child agent's registry (capability mode,
+/// optional type allowlist, and optional board `owns` path scope).
 #[derive(Debug, Clone)]
 pub struct ToolPolicy {
     pub capability: SubagentCapabilityMode,
     pub allowlist: Option<Vec<String>>,
+    pub owns: Vec<String>,
 }
 
 impl ToolPolicy {
@@ -62,9 +63,106 @@ impl ToolPolicy {
             && crate::subagent::definition::tool_allowed_by_capability(tool_name, self.capability)
     }
 
+    /// True when `path` is within at least one of this card's `owns` patterns
+    /// (or when `owns` is empty).
+    pub fn allows_path(&self, path: &str, project_dir: &str) -> bool {
+        if self.owns.is_empty() {
+            return true;
+        }
+        let Some(rel) = relative_to_project(path, project_dir) else {
+            return false;
+        };
+        self.owns
+            .iter()
+            .any(|owned| crate::swarm::path_is_owned(owned, &rel))
+    }
+
+    /// Validate a tool call against capability, allowlist, and (for mutating
+    /// file tools `write_file`, `edit_file`, `apply_patch`) board `owns` scope.
+    pub fn check_tool_call(
+        &self,
+        tool_name: &str,
+        args: &serde_json::Value,
+        project_dir: &str,
+    ) -> Result<(), String> {
+        if !self.allows(tool_name) {
+            return Err(format!(
+                "Tool '{tool_name}' is not allowed by subagent policy"
+            ));
+        }
+        if !self.owns.is_empty() && matches!(tool_name, "write_file" | "edit_file" | "apply_patch")
+        {
+            let mut targets: Vec<String> = Vec::new();
+            if let Some(path) = args
+                .get("path")
+                .or_else(|| args.get("file_path"))
+                .or_else(|| args.get("filePath"))
+                .or_else(|| args.get("filepath"))
+                .or_else(|| args.get("file"))
+                .or_else(|| args.get("filename"))
+                .and_then(|v| v.as_str())
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+            {
+                targets.push(path.to_string());
+            }
+            if tool_name == "apply_patch" {
+                if let Some(patch_text) = args
+                    .get("patch")
+                    .or_else(|| args.get("diff"))
+                    .or_else(|| args.get("unified_diff"))
+                    .and_then(|v| v.as_str())
+                {
+                    for extracted in
+                        crate::tools::patch::extract_all_target_files_from_patch(patch_text)
+                    {
+                        if !targets.contains(&extracted) {
+                            targets.push(extracted);
+                        }
+                    }
+                }
+            }
+            if targets.is_empty() {
+                return Err(format!(
+                    "Access denied: '{tool_name}' requires a target path within owned paths ({})",
+                    self.owns.join(", ")
+                ));
+            }
+            for target in &targets {
+                if !self.allows_path(target, project_dir) {
+                    return Err(format!(
+                        "Access denied: '{target}' is outside this card's owned paths ({})",
+                        self.owns.join(", ")
+                    ));
+                }
+            }
+        }
+        Ok(())
+    }
+
     /// Filter tool definitions for the child's request.
     pub fn filter_definitions(&self, definitions: Vec<ToolDefinition>) -> Vec<ToolDefinition> {
         filter_tool_definitions(definitions, self.capability, self.allowlist.as_deref())
+    }
+}
+
+fn relative_to_project(path: &str, project_dir: &str) -> Option<String> {
+    let base_path = Path::new(project_dir);
+    if base_path.exists() {
+        let resolved = crate::tools::resolve_project_path(path, project_dir).ok()?;
+        let canonical_base = crate::tools::canonical_base_cached(project_dir);
+        let rel = crate::tools::comparable_path(&resolved)
+            .strip_prefix(crate::tools::comparable_path(&canonical_base))
+            .ok()?
+            .to_path_buf();
+        return Some(rel.to_string_lossy().replace('\\', "/"));
+    }
+    let candidate = Path::new(path);
+    if candidate.is_absolute() {
+        let rel = candidate.strip_prefix(base_path).ok()?;
+        Some(rel.to_string_lossy().replace('\\', "/"))
+    } else {
+        Some(path.to_string())
     }
 }
 
@@ -159,11 +257,30 @@ fn should_notify_completion(background: bool, receiver_count: usize, observed: b
     background && receiver_count == 0 && !observed
 }
 
-/// Watchdog for one child: abort it once its wall-clock budget expires.
+/// Watchdog for one child: abort it once its wall-clock budget expires, or
+/// exit immediately as soon as the child reaches a terminal state.
 /// Already-terminal children are left alone; the forwarder converts the
 /// resulting cancellation into a timeout failure (see `take_timed_out`).
-async fn enforce_timeout(registry: SubagentRegistry, id: String, timeout_ms: u64) {
-    tokio::time::sleep(std::time::Duration::from_millis(timeout_ms)).await;
+async fn enforce_timeout(
+    registry: SubagentRegistry,
+    id: String,
+    timeout_ms: u64,
+    mut completion_rx: Option<tokio::sync::watch::Receiver<bool>>,
+) {
+    if completion_rx.as_ref().is_some_and(|rx| *rx.borrow()) {
+        return;
+    }
+    tokio::select! {
+        _ = tokio::time::sleep(std::time::Duration::from_millis(timeout_ms)) => {}
+        _ = async {
+            match completion_rx.as_mut() {
+                Some(rx) => {
+                    let _ = rx.changed().await;
+                }
+                None => std::future::pending::<()>().await,
+            }
+        } => return,
+    }
     let still_running = registry
         .get(&id)
         .is_some_and(|snap| !snap.status.is_terminal());
@@ -223,6 +340,9 @@ struct PreparedLaunch {
     /// Foreground waiter for inline spawns; `None` always runs detached
     /// (background spawns and dequeued launches).
     completion_rx: Option<tokio::sync::watch::Receiver<bool>>,
+    /// Emit `SubagentStarted` on launch. `false` for dequeued launches because
+    /// admission already announced the card when it entered the queue.
+    announce_start: bool,
 }
 
 /// Worktree + conversation resolution shared by the immediate and queued
@@ -486,6 +606,7 @@ impl SubagentHost {
                     is_error: true,
                 },
             });
+            self.board_child_finished(task_id);
             return ToolCallOutcome {
                 tool_call_id,
                 tool_name: "kill_task".to_string(),
@@ -744,6 +865,7 @@ impl SubagentHost {
             timeout_ms,
             max_iterations: prep.max_iterations,
             completion_rx,
+            announce_start: true,
         })
         .await
     }
@@ -751,6 +873,7 @@ impl SubagentHost {
     /// Finish a child that failed before its loop started (prep errors) so the
     /// registry never strands a `Running` entry with no forwarder.
     fn fail_child(&self, id: &str, message: &str) {
+        settle_worktree_blocking(self, id);
         self.inner
             .registry
             .finish(id, SubagentStatus::Failed, message.to_string(), Vec::new());
@@ -763,6 +886,7 @@ impl SubagentHost {
             },
         });
         maybe_notify_completion(self, id, SubagentStatus::Failed, message);
+        self.board_child_finished(id);
         self.try_start_queued();
     }
 
@@ -897,6 +1021,7 @@ impl SubagentHost {
             timeout_ms,
             max_iterations,
             completion_rx,
+            announce_start,
         } = prepared;
         // A child token is linked to the parent without a relay task. The
         // registry keeps the controller so kill_task can cancel just this
@@ -907,17 +1032,20 @@ impl SubagentHost {
         let background = request.resolved_run_in_background();
 
         // Tell the UI a subagent card exists (the forwarder streams the rest).
-        let seat = self.inner.registry.get(&id).and_then(|snap| snap.seat);
-        let _ = self.inner.config.event_sender.send(AgentTaskEvent {
-            task_id: self.inner.config.task_id,
-            event: AgentEvent::SubagentStarted {
-                id: id.clone(),
-                subagent_type: request.subagent_type.clone(),
-                description: request.description.clone(),
-                model: model.clone(),
-                seat,
-            },
-        });
+        // Queued spawns already emitted SubagentStarted on admission.
+        if announce_start {
+            let seat = self.inner.registry.get(&id).and_then(|snap| snap.seat);
+            let _ = self.inner.config.event_sender.send(AgentTaskEvent {
+                task_id: self.inner.config.task_id,
+                event: AgentEvent::SubagentStarted {
+                    id: id.clone(),
+                    subagent_type: request.subagent_type.clone(),
+                    description: request.description.clone(),
+                    model: model.clone(),
+                    seat,
+                },
+            });
+        }
 
         // Child events flow through a private channel; the forwarder re-emits
         // them as Subagent* events on the parent's channel.
@@ -1007,6 +1135,7 @@ impl SubagentHost {
             tool_policy: Some(ToolPolicy {
                 capability: cfg.capability,
                 allowlist: cfg.tools.clone(),
+                owns: request.owns.clone(),
             }),
             is_subagent: true,
             depth: depth + 1,
@@ -1052,20 +1181,23 @@ impl SubagentHost {
         {
             let watchdog_registry = self.inner.registry.clone();
             let watchdog_id = id.clone();
+            let watchdog_rx = self.inner.registry.watchdog_receiver(&id);
             tokio::spawn(async move {
-                enforce_timeout(watchdog_registry, watchdog_id, timeout_ms).await;
+                enforce_timeout(watchdog_registry, watchdog_id, timeout_ms, watchdog_rx).await;
             });
         }
 
         let foreground = if background { None } else { completion_rx };
         if let Some(mut completion) = foreground {
             // Foreground: wait for the child to finish (or parent cancel).
+            let mut parent_aborted = false;
             loop {
                 tokio::select! {
-                    _ = completion.changed() => {
-                        if *completion.borrow() { break; }
+                    changed = completion.changed() => {
+                        if changed.is_err() || *completion.borrow() { break; }
                     }
                     _ = parent_cancel.wait_aborted() => {
+                        parent_aborted = true;
                         self.inner.registry.cancel(&id);
                         break;
                     }
@@ -1094,15 +1226,20 @@ impl SubagentHost {
                     cwd: None,
                     worktree: None,
                 });
+            let (status, summary) = if parent_aborted && !snap.status.is_terminal() {
+                (
+                    SubagentStatus::Cancelled,
+                    snap.summary.or_else(|| Some("cancelled".to_string())),
+                )
+            } else {
+                (snap.status, snap.summary)
+            };
             SubagentResult {
                 id: id.clone(),
-                status: snap.status,
-                summary: snap.summary,
+                status,
+                summary,
                 resume_from_hint: Some(id),
-                is_error: matches!(
-                    snap.status,
-                    SubagentStatus::Failed | SubagentStatus::Cancelled
-                ),
+                is_error: matches!(status, SubagentStatus::Failed | SubagentStatus::Cancelled),
             }
         } else {
             // Background spawns and dequeued launches run detached: the
@@ -1158,6 +1295,7 @@ impl SubagentHost {
                     timeout_ms: resolve_timeout_ms(item.request.timeout_ms),
                     max_iterations: prep.max_iterations,
                     completion_rx: None,
+                    announce_start: false,
                 })
                 .await;
             });
@@ -1647,6 +1785,7 @@ mod tests {
             instructions: None,
             model: None,
             task_id: None,
+            owns: Vec::new(),
         }
     }
 
@@ -2142,8 +2281,10 @@ mod tests {
         registry.insert(snap);
         registry.finish("fast", SubagentStatus::Completed, "done".into(), vec![]);
 
-        enforce_timeout(registry.clone(), "slow".into(), 20).await;
-        enforce_timeout(registry.clone(), "fast".into(), 20).await;
+        let slow_rx = registry.watchdog_receiver("slow");
+        let fast_rx = registry.watchdog_receiver("fast");
+        enforce_timeout(registry.clone(), "slow".into(), 20, slow_rx).await;
+        enforce_timeout(registry.clone(), "fast".into(), 20, fast_rx).await;
 
         assert_eq!(registry.take_timed_out("slow"), Some(20));
         assert_eq!(registry.take_timed_out("fast"), None);
@@ -2212,6 +2353,7 @@ mod tests {
         let read_only = ToolPolicy {
             capability: ReadOnly,
             allowlist: None,
+            owns: Vec::new(),
         };
         assert!(read_only.allows("read_file"));
         assert!(read_only.allows("grep"));
@@ -2223,6 +2365,7 @@ mod tests {
         let rw = ToolPolicy {
             capability: ReadWrite,
             allowlist: None,
+            owns: Vec::new(),
         };
         assert!(rw.allows("edit_file"));
         assert!(!rw.allows("shell"));
@@ -2231,6 +2374,7 @@ mod tests {
         let exec = ToolPolicy {
             capability: Execute,
             allowlist: None,
+            owns: Vec::new(),
         };
         assert!(exec.allows("shell"));
         assert!(!exec.allows("task"));
@@ -2239,6 +2383,7 @@ mod tests {
         let all = ToolPolicy {
             capability: All,
             allowlist: None,
+            owns: Vec::new(),
         };
         assert!(all.allows("task"));
         assert!(all.allows("task_output"));
@@ -2249,6 +2394,7 @@ mod tests {
         let narrowed = ToolPolicy {
             capability: All,
             allowlist: Some(vec!["read_file".to_string(), "grep".to_string()]),
+            owns: Vec::new(),
         };
         assert!(narrowed.allows("read_file"));
         assert!(!narrowed.allows("shell"));
@@ -2260,6 +2406,7 @@ mod tests {
         let policy = ToolPolicy {
             capability: SubagentCapabilityMode::ReadOnly,
             allowlist: Some(vec!["read_file".to_string(), "write_file".to_string()]),
+            owns: Vec::new(),
         };
         let defs = vec![
             def("read_file"),
@@ -2274,6 +2421,95 @@ mod tests {
             .map(|d| d.name)
             .collect();
         assert_eq!(names, vec!["read_file"]);
+    }
+
+    #[test]
+    fn tool_policy_enforces_card_owns_on_mutating_file_tools() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().to_str().unwrap();
+        let policy = ToolPolicy {
+            capability: SubagentCapabilityMode::ReadWrite,
+            allowlist: None,
+            owns: vec!["src/parser/**".into(), "docs/readme.md".into()],
+        };
+
+        assert!(policy
+            .check_tool_call(
+                "write_file",
+                &serde_json::json!({"path": "src/parser/lexer.rs", "content": "ok"}),
+                root
+            )
+            .is_ok());
+        assert!(policy
+            .check_tool_call(
+                "edit_file",
+                &serde_json::json!({"path": "./docs/readme.md", "search": "a", "replace": "b"}),
+                root
+            )
+            .is_ok());
+        assert!(policy
+            .check_tool_call(
+                "apply_patch",
+                &serde_json::json!({"patch": "--- a/src/parser/mod.rs\n+++ b/src/parser/mod.rs\n@@ -1 +1 @@\n-old\n+new\n"}),
+                root
+            )
+            .is_ok());
+
+        let denied_write = policy
+            .check_tool_call(
+                "write_file",
+                &serde_json::json!({"path": "src/other.rs", "content": "bad"}),
+                root,
+            )
+            .unwrap_err();
+        assert!(
+            denied_write.contains("outside this card's owned paths"),
+            "{denied_write}"
+        );
+
+        let denied_traversal = policy
+            .check_tool_call(
+                "edit_file",
+                &serde_json::json!({"path": "src/parser/../other.rs", "search": "a", "replace": "b"}),
+                root,
+            )
+            .unwrap_err();
+        assert!(
+            denied_traversal.contains("outside this card's owned paths"),
+            "{denied_traversal}"
+        );
+
+        let denied_patch = policy
+            .check_tool_call(
+                "apply_patch",
+                &serde_json::json!({"patch": "--- a/src/main.rs\n+++ b/src/main.rs\n@@ -1 +1 @@\n-old\n+new\n"}),
+                root,
+            )
+            .unwrap_err();
+        assert!(
+            denied_patch.contains("outside this card's owned paths"),
+            "{denied_patch}"
+        );
+    }
+
+    #[tokio::test]
+    async fn enforce_timeout_exits_early_when_completion_signals() {
+        let registry = SubagentRegistry::new();
+        registry.insert(test_snapshot("early"));
+        let rx = registry.watchdog_receiver("early");
+        let reg_clone = registry.clone();
+        let started = std::time::Instant::now();
+        let handle = tokio::spawn(async move {
+            enforce_timeout(reg_clone, "early".into(), 60_000, rx).await;
+        });
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        registry.finish("early", SubagentStatus::Completed, "done".into(), vec![]);
+        tokio::time::timeout(std::time::Duration::from_secs(1), handle)
+            .await
+            .expect("watchdog must exit promptly on finish")
+            .unwrap();
+        assert!(started.elapsed() < std::time::Duration::from_secs(1));
+        assert_eq!(registry.take_timed_out("early"), None);
     }
 
     #[tokio::test]

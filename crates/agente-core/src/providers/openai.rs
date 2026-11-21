@@ -193,7 +193,9 @@ impl Provider for OpenAIProvider {
         // OpenRouter always reports the real charge (`usage.cost`) in the
         // final chunk — the old `usage: {include: true}` flag is deprecated.
         // A configured session cache key keeps successive turns on one cache.
-        if let Some(key) = super::cache::prompt_cache_key(&self.info, model, context.session_id) {
+        if let Some(key) =
+            super::cache::prompt_cache_key(ApiFormat::OpenAI, &self.info, model, context.session_id)
+        {
             body["prompt_cache_key"] = serde_json::json!(key);
         }
 
@@ -239,11 +241,12 @@ impl Provider for OpenAIProvider {
             super::send_with_cache_fallback(&self.info, model, "chat/completions", &body, context)
                 .await?;
 
+        let resolved_url = response.url().to_string();
         let mut stream =
-            super::sse::EventStream::for_completion(response.bytes_stream(), &self.info.base_url);
+            super::sse::EventStream::for_completion(response.bytes_stream(), &resolved_url);
         let mut usage = Usage::default();
         let mut stop_reason = StopReason::Unknown;
-        let mut tool_calls_in_progress: HashMap<usize, PendingToolCall> = HashMap::new();
+        let mut tool_calls_in_progress: BTreeMap<usize, PendingToolCall> = BTreeMap::new();
         let mut details = BTreeMap::new();
         let mut observed_reasoning: BTreeMap<String, String> = BTreeMap::new();
         let mut content = String::new();
@@ -385,9 +388,7 @@ impl Provider for OpenAIProvider {
                     }
                     finished = true;
                     stop_reason = StopReason::parse(reason);
-                    let mut pending: Vec<_> = tool_calls_in_progress.iter().collect();
-                    pending.sort_by_key(|(index, _)| **index);
-                    for (_, call) in pending {
+                    for call in tool_calls_in_progress.values() {
                         if call.id.is_empty() || call.name.is_empty() {
                             return Err(LlmError::StreamError(
                                 "Chat stream returned an incomplete tool call".into(),
@@ -532,12 +533,18 @@ impl Provider for OpenAIProvider {
             if let Some(cursor) = &after_id {
                 url.query_pairs_mut().append_pair("after_id", cursor);
             }
-            let mut request = self.client.get(url.clone());
+            let mut request = self
+                .client
+                .get(url.clone())
+                .timeout(std::time::Duration::from_secs(30));
             for (key, value) in &self.info.headers {
                 request = request.header(key.as_str(), value.as_str());
             }
             if let Some((name, session)) = super::wire::session_header(&self.info, None) {
                 request = request.header(name, session);
+            }
+            if self.info.api_format == ApiFormat::Anthropic {
+                request = request.header("anthropic-version", "2023-06-01");
             }
             if let Some(api_key) = &api_key {
                 request = if self.info.api_format == ApiFormat::Anthropic {
@@ -877,13 +884,23 @@ fn merge_reasoning_detail(
         .or_insert_with(|| serde_json::json!({}));
     if let Some(fields) = block.as_object() {
         for (key, value) in fields {
-            if matches!(key.as_str(), "text" | "summary" | "data") && value.is_string() {
-                let mut text = entry[key].as_str().unwrap_or_default().to_string();
-                text.push_str(value.as_str().unwrap());
-                entry[key] = serde_json::json!(text);
-            } else {
-                entry[key] = value.clone();
+            if matches!(key.as_str(), "text" | "summary" | "data") {
+                if let Some(delta) = value.as_str() {
+                    if let Some(map) = entry.as_object_mut() {
+                        match map.get_mut(key) {
+                            Some(serde_json::Value::String(existing)) => existing.push_str(delta),
+                            _ => {
+                                map.insert(
+                                    key.clone(),
+                                    serde_json::Value::String(delta.to_string()),
+                                );
+                            }
+                        }
+                    }
+                    continue;
+                }
             }
+            entry[key] = value.clone();
         }
     }
 }

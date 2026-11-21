@@ -156,11 +156,8 @@ fn grep_blocking(
     limit: usize,
     tool_context: ToolExecutionContext,
 ) -> Vec<String> {
-    use std::sync::{
-        atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
-        Mutex,
-    };
-    let results = Mutex::new(Vec::<(std::path::PathBuf, Vec<String>)>::new());
+    use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
+    let results = parking_lot::Mutex::new(Vec::<(std::path::PathBuf, Vec<String>)>::new());
     let skipped = AtomicUsize::new(0);
     let scanned = AtomicU64::new(0);
     let matches = AtomicUsize::new(0);
@@ -214,10 +211,8 @@ fn grep_blocking(
         let Ok(content) = std::fs::read_to_string(entry.path()) else {
             return ignore::WalkState::Continue;
         };
-        // Allocate context lines only when requested; preserve per-line anchors.
-        let lines = (context > 0).then(|| content.lines().collect::<Vec<_>>());
         let mut output = Vec::new();
-        let mut last_emitted = None;
+        let mut matched_lines = Vec::new();
         for (line_num, line) in content.lines().enumerate() {
             if tool_context.cancellation.is_aborted() {
                 return ignore::WalkState::Quit;
@@ -233,15 +228,30 @@ fn grep_blocking(
             {
                 break;
             }
-            if let Some(lines) = &lines {
-                let start = line_num.saturating_sub(context);
+            if context > 0 {
+                matched_lines.push(line_num);
+            } else {
+                output.push(format!(
+                    "{}:{}: {}",
+                    entry.path().display(),
+                    line_num + 1,
+                    truncate_search_line(line)
+                ));
+            }
+        }
+        if context > 0 && !matched_lines.is_empty() {
+            let lines: Vec<&str> = content.lines().collect();
+            let mut last_emitted: Option<usize> = None;
+            for &line_num in &matched_lines {
+                let raw_start = line_num.saturating_sub(context);
                 let end = line_num.saturating_add(context + 1).min(lines.len());
-                if last_emitted.is_some_and(|prev| start > prev + 1) {
+                if last_emitted.is_some_and(|prev| raw_start > prev + 1) {
                     output.push("--".to_string());
                 }
-                for (index, text) in lines[start..end].iter().enumerate() {
-                    let actual = start + index;
-                    let marker = if actual == line_num {
+                let start = last_emitted.map_or(raw_start, |prev| raw_start.max(prev + 1));
+                for (offset, text) in lines[start..end].iter().enumerate() {
+                    let actual = start + offset;
+                    let marker = if matched_lines.binary_search(&actual).is_ok() {
                         ":"
                     } else if actual < line_num {
                         "-"
@@ -257,20 +267,10 @@ fn grep_blocking(
                     ));
                     last_emitted = Some(actual);
                 }
-            } else {
-                output.push(format!(
-                    "{}:{}: {}",
-                    entry.path().display(),
-                    line_num + 1,
-                    truncate_search_line(line)
-                ));
             }
         }
         if !output.is_empty() {
-            results
-                .lock()
-                .unwrap()
-                .push((entry.path().to_owned(), output));
+            results.lock().push((entry.path().to_owned(), output));
         }
         ignore::WalkState::Continue
     };
@@ -287,7 +287,7 @@ fn grep_blocking(
             .build_parallel()
             .run(|| Box::new(&scan));
     }
-    let mut files = results.into_inner().unwrap();
+    let mut files = results.into_inner();
     files.sort_by(|a, b| a.0.cmp(&b.0));
     let mut results: Vec<String> = files.into_iter().flat_map(|(_, lines)| lines).collect();
     if matches.load(Ordering::Relaxed) >= limit {
@@ -578,6 +578,25 @@ mod extra_tests {
         assert!(out.contains("files skipped"), "{out}");
 
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn grep_overlapping_context_lines_are_not_duplicated() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("a.txt"), "one\nmatch_a\nmatch_b\ntwo\n").unwrap();
+        let output = TypedTool::new(GrepTool)
+            .execute(
+                json!({"pattern": "match_", "path": ".", "context": 2}),
+                dir.path().to_str().unwrap(),
+            )
+            .await
+            .unwrap();
+        let lines: Vec<&str> = output.lines().collect();
+        assert_eq!(lines.len(), 4, "{output}");
+        assert!(lines[0].ends_with(":1- one"), "{output}");
+        assert!(lines[1].ends_with(":2: match_a"), "{output}");
+        assert!(lines[2].ends_with(":3: match_b"), "{output}");
+        assert!(lines[3].ends_with(":4+ two"), "{output}");
     }
 
     #[test]

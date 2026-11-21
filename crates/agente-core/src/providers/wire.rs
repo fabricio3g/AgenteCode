@@ -76,13 +76,11 @@ pub(super) fn stream_error(provider: &str, value: &Value) -> LlmError {
     LlmError::StreamError(raw.chars().take(1500).collect())
 }
 
-pub(super) fn completion_request(
+pub(super) fn resolve_completion_url(
     info: &ProviderInfo,
     model: &ModelInfo,
     path: &str,
-    body: &Value,
-    context: RequestContext,
-) -> Result<reqwest::RequestBuilder, LlmError> {
+) -> Result<String, LlmError> {
     let base_url = if crate::config::provider_is_supported(&info.id) {
         info.resolve_base_url()
     } else {
@@ -99,7 +97,20 @@ pub(super) fn completion_request(
             "OpenCode Go requires its official Go endpoint".into(),
         ));
     }
-    let url = super::join_url(&crate::util::expand_env_templates(&base_url), path);
+    Ok(super::join_url(
+        &crate::util::expand_env_templates(&base_url),
+        path,
+    ))
+}
+
+pub(super) fn completion_request(
+    info: &ProviderInfo,
+    model: &ModelInfo,
+    path: &str,
+    body: &Value,
+    context: RequestContext,
+) -> Result<reqwest::RequestBuilder, LlmError> {
+    let url = resolve_completion_url(info, model, path)?;
     tracing::info!(provider = %info.id, model = %model.api_id, session_id = %context.session_id, format = ?model.api.format.unwrap_or(info.api_format), path, "Sending provider HTTP request");
     let mut request = crate::util::http_client()
         .post(url)
@@ -128,6 +139,7 @@ pub(super) fn completion_request(
         if crate::config::provider_is_supported(super::canonical_provider_id(&info.id))
             && (key.eq_ignore_ascii_case("authorization")
                 || key.eq_ignore_ascii_case("x-api-key")
+                || key.eq_ignore_ascii_case("x-goog-api-key")
                 || info
                     .transport_policy()
                     .cache
@@ -346,6 +358,7 @@ async fn send_http(
     body: &Value,
     context: RequestContext,
 ) -> Result<reqwest::Response, HttpFailure> {
+    let resolved_url = resolve_completion_url(info, model, path)?;
     let request = completion_request(info, model, path, body, context)?;
     let shape = RequestShape::of(body);
     tracing::info!(
@@ -369,7 +382,7 @@ async fn send_http(
     // response headers, at the idle timeout: a response that starts inside it
     // is never cut off, and a silent one becomes a retryable failure.
     // A local model server may hold its headers until it has read the prompt.
-    let wait = if crate::util::is_local_endpoint(&info.base_url) {
+    let wait = if crate::util::is_local_endpoint(&resolved_url) {
         crate::util::local_first_byte_timeout()
     } else {
         crate::util::stream_idle_timeout()
@@ -625,5 +638,28 @@ mod tests {
         .await
         .expect("an answered call must pass through");
         assert_eq!(value, 7);
+    }
+
+    #[test]
+    fn x_goog_api_key_header_override_is_rejected() {
+        let mut info = ProviderInfo {
+            id: "openrouter".into(),
+            name: "OpenRouter".into(),
+            base_url: "https://openrouter.ai/api/v1".into(),
+            api_key: Some("secret".into()),
+            ..Default::default()
+        };
+        info.headers
+            .insert("x-goog-api-key".into(), "attacker".into());
+        let model = super::super::fallback_model_info("openrouter", "test");
+        let err = completion_request(
+            &info,
+            &model,
+            "chat/completions",
+            &json!({}),
+            RequestContext::new(uuid::Uuid::new_v4()),
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("cannot be overridden"), "{err}");
     }
 }

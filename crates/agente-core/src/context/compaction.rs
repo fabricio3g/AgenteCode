@@ -603,7 +603,7 @@ impl ContextCompactor {
                 // If compression didn't help, remove the message
                 if before <= after * 2 {
                     grouped.remove(idx);
-                    current_tokens -= after;
+                    current_tokens = current_tokens.saturating_sub(after.min(before));
                 }
             } else {
                 break;
@@ -1528,6 +1528,27 @@ mod tests {
             .messages
             .iter()
             .any(|message| message.content == "Keep this latest request intact"));
+    }
+
+    #[test]
+    fn compact_messages_grouped_does_not_underflow_when_compression_grows() {
+        let compactor = ContextCompactor::new(CompactionStrategy {
+            max_tokens: 10,
+            keep_recent: 1,
+            summarize_threshold: 0.5,
+            target_reduction: 0.5,
+            reserve_tokens: 1,
+        });
+        // 16 tiny 1-char lines: compressing truncates 1 line and appends
+        // "... [User message truncated] ...", making `after > before`.
+        let tiny_many_lines = "a\n".repeat(16);
+        let messages = vec![
+            create_message(Role::User, &tiny_many_lines),
+            create_message(Role::User, "latest"),
+        ];
+        let (compacted, saved) = compactor.compact_messages(messages, 1);
+        assert!(compacted.len() <= 2);
+        let _ = saved;
     }
 
     #[test]

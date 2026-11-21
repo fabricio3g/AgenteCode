@@ -23,12 +23,24 @@ pub(crate) fn wants_breakpoints(
     info.transport_policy().breakpoints(format, model)
 }
 
+/// Whether the wire format accepts top-level OpenAI-style `prompt_cache_key`.
+/// Anthropic Messages and Google generateContent reject unknown top-level
+/// fields with HTTP 400.
+pub(crate) fn supports_prompt_cache_key(format: super::ApiFormat) -> bool {
+    matches!(
+        format,
+        super::ApiFormat::OpenAI | super::ApiFormat::Responses
+    )
+}
+
 pub(crate) fn prompt_cache_key(
+    format: super::ApiFormat,
     info: &super::ProviderInfo,
     model: &ModelInfo,
     session_id: uuid::Uuid,
 ) -> Option<String> {
-    (info.transport_policy().cache.prompt_cache_key == Some(true)
+    (supports_prompt_cache_key(format)
+        && info.transport_policy().cache.prompt_cache_key == Some(true)
         && !super::model_options(&model.options).contains_key("prompt_cache_key"))
     .then(|| session_id.to_string())
 }

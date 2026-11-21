@@ -454,11 +454,19 @@ enum RawReasoningOption {
         #[serde(default)]
         supports_max_tokens: bool,
     },
+    LlamaCpp {
+        #[serde(default)]
+        per_request: bool,
+        #[serde(default)]
+        effort_kwarg: bool,
+    },
+    #[serde(other)]
+    Unknown,
 }
 
 impl RawReasoningOption {
-    fn into_option(self) -> ReasoningOption {
-        match self {
+    fn into_option(self) -> Option<ReasoningOption> {
+        Some(match self {
             RawReasoningOption::Toggle => ReasoningOption::Toggle,
             RawReasoningOption::Effort { values } => ReasoningOption::Effort {
                 values: values
@@ -488,7 +496,15 @@ impl RawReasoningOption {
                 mandatory,
                 supports_max_tokens,
             },
-        }
+            RawReasoningOption::LlamaCpp {
+                per_request,
+                effort_kwarg,
+            } => ReasoningOption::LlamaCpp {
+                per_request,
+                effort_kwarg,
+            },
+            RawReasoningOption::Unknown => return None,
+        })
     }
 }
 
@@ -542,7 +558,7 @@ impl RawModel {
         let reasoning_options: Vec<ReasoningOption> = self
             .reasoning_options
             .into_iter()
-            .map(RawReasoningOption::into_option)
+            .filter_map(RawReasoningOption::into_option)
             .collect();
 
         let reasoning_stream_field = self
@@ -897,12 +913,21 @@ impl ModelCatalog {
     pub fn save_to_cache(&self) -> anyhow::Result<()> {
         let path = Self::cache_path()
             .ok_or_else(|| anyhow::anyhow!("no cache directory available for model catalog"))?;
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
+        self.save_to_path(&path)
+    }
+
+    pub(crate) fn save_to_path(&self, path: &std::path::Path) -> anyhow::Result<()> {
+        use std::io::Write;
+        let parent = path
+            .parent()
+            .ok_or_else(|| anyhow::anyhow!("cache path has no parent directory"))?;
+        std::fs::create_dir_all(parent)?;
         // Compact JSON — models.dev is multi-MB; pretty doubles size.
         let content = serde_json::to_string(self)?;
-        std::fs::write(&path, content)?;
+        let mut temp = tempfile::NamedTempFile::new_in(parent)?;
+        temp.write_all(content.as_bytes())?;
+        temp.as_file_mut().sync_all()?;
+        temp.persist(path).map_err(|e| e.error)?;
         Ok(())
     }
 
@@ -1229,5 +1254,46 @@ mod tests {
             }
             other => panic!("unexpected options: {other:?}"),
         }
+    }
+
+    #[test]
+    fn catalog_handles_llamacpp_and_unknown_reasoning_options_and_saves_atomically() {
+        let json = r#"{
+          "llamacpp": {
+            "id": "llamacpp",
+            "name": "Local",
+            "models": {
+              "m": {
+                "id": "m",
+                "name": "M",
+                "reasoning": true,
+                "reasoning_options": [
+                  { "type": "llama_cpp", "per_request": true, "effort_kwarg": false },
+                  { "type": "some_future_option", "extra": 42 }
+                ]
+              }
+            }
+          }
+        }"#;
+        let catalog = ModelCatalog::parse_json(json).expect("unknown options must not fail parse");
+        let m = catalog.find_model("llamacpp", "m").unwrap();
+        assert_eq!(
+            m.reasoning_options,
+            vec![ReasoningOption::LlamaCpp {
+                per_request: true,
+                effort_kwarg: false
+            }]
+        );
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("catalog.json");
+        catalog.save_to_path(&path).unwrap();
+        let reloaded = ModelCatalog::parse_json(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(
+            reloaded
+                .find_model("llamacpp", "m")
+                .unwrap()
+                .reasoning_options,
+            m.reasoning_options
+        );
     }
 }

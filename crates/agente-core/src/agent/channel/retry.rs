@@ -59,7 +59,7 @@ pub(crate) async fn wait_retry_or_cancel(signal: &AbortSignal, delay: std::time:
 /// storms from many clients so a recovering provider is not hit in lockstep.
 pub(crate) fn jittered_backoff(base_delay_ms: u64, attempt: u32) -> std::time::Duration {
     let doubling = 1u64.checked_shl(attempt.min(20)).unwrap_or(u64::MAX);
-    let capped = base_delay_ms.saturating_mul(doubling).min(30_000);
+    let capped = base_delay_ms.max(1).saturating_mul(doubling).min(30_000);
     let jitter_range = (capped / 5).max(1);
     // Nanosecond sub-second entropy is enough spread for retry pacing and
     // keeps this dependency-free and deterministic in cost.
@@ -68,7 +68,7 @@ pub(crate) fn jittered_backoff(base_delay_ms: u64, attempt: u32) -> std::time::D
         .map(|d| d.subsec_nanos() as u64)
         .unwrap_or(0);
     let offset = nanos % (2 * jitter_range + 1);
-    std::time::Duration::from_millis(capped - jitter_range + offset)
+    std::time::Duration::from_millis(capped.saturating_sub(jitter_range) + offset)
 }
 
 #[cfg(test)]
@@ -162,5 +162,13 @@ mod tests {
     fn backoff_never_overflows_on_large_attempts() {
         let delay = jittered_backoff(u64::MAX / 2, 40).as_millis() as u64;
         assert!(delay <= 36_000);
+    }
+
+    #[test]
+    fn backoff_handles_zero_base_delay_without_panicking() {
+        for _ in 0..20 {
+            let delay = jittered_backoff(0, 0).as_millis() as u64;
+            assert!(delay <= 3, "unexpected delay for 0ms base: {delay}ms");
+        }
     }
 }

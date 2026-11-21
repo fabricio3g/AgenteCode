@@ -98,6 +98,23 @@ pub(crate) async fn prepare_tool_call(
         });
     }
 
+    if let Some(policy) = tool_registry.tool_policy() {
+        if let Err(reason) = policy.check_tool_call(tool_name, &args, project_dir) {
+            return Err(ToolCallOutcome {
+                tool_call_id: tool_call.id.clone(),
+                tool_name: tool_name.clone(),
+                content: format!("Error: {reason}"),
+                is_error: true,
+                path_changed: None,
+                changed_path: None,
+                file_before: None,
+                file_after: None,
+                todos: None,
+                attachments: Vec::new(),
+            });
+        }
+    }
+
     // Check permission using the permission engine. Filesystem facts are
     // collected BEFORE the lock so slow disks never stall other permission
     // decisions while the shared engine is held.
@@ -380,10 +397,10 @@ pub(crate) async fn execute_prepared_tool(
                         .filter(|(tracked, _)| tracked == &clean)
                         .and_then(|(_, content)| content.clone());
                     after_content = tokio::fs::read_to_string(&full_path).await.ok();
-                    if let Ok(file_content) = tokio::fs::read_to_string(&full_path).await {
+                    if let Some(ref file_content) = after_content {
                         let diagnostics = crate::lsp::quick_validate_syntax(
                             &full_path.to_string_lossy(),
-                            &file_content,
+                            file_content,
                         );
                         if !diagnostics.is_empty() {
                             content.push_str("\n\n[diagnostics]\n");
@@ -491,88 +508,9 @@ pub(crate) fn finalize_tool_result(
     }
 }
 
-#[allow(clippy::too_many_arguments)]
-async fn execute_tool_calls_sequential(
-    tool_calls: &[ToolCall],
-    tool_registry: Arc<ToolRegistry>,
-    sender: Sender<AgentTaskEvent>,
-    task_id: u64,
-    permission_engine: &SharedPermissionEngine,
-    broker: &ApprovalBroker,
-    cancel_signal: AbortSignal,
-    project_dir: &str,
-    depth: u32,
-    host: Option<&SubagentHost>,
-) -> Vec<ToolCallOutcome> {
-    let mut outcomes = Vec::new();
-    // Files this batch already changed. A second edit to the same file is a
-    // real dependency (the text moved), so it is skipped with a stated reason
-    // rather than left to fail on the freshness guard. Anything else runs.
-    let mut mutated: Vec<(String, String)> = Vec::new();
-    for tool_call in tool_calls {
-        tracing::info!(task_id, tool_id = %tool_call.id, tool = %tool_call.function.name, "Tool started");
-        if cancel_signal.is_aborted() {
-            tracing::info!("Sequential tool execution cancelled mid-batch");
-            break;
-        }
-        if let Some(target) = mutating_target(tool_call) {
-            if let Some((_, earlier)) = mutated.iter().find(|(path, _)| path == &target) {
-                let outcome = ToolCallOutcome::error(
-                    tool_call.id.clone(),
-                    tool_call.function.name.clone(),
-                    format!(
-                        "Not run: an earlier call in this batch ({earlier}) changed {target}. \
-                         Read the file again with read_file, then retry this edit."
-                    ),
-                );
-                finalize_tool_result(&outcome, &sender, task_id);
-                outcomes.push(outcome);
-                continue;
-            }
-        }
-        let outcome = match prepare_tool_call(
-            tool_call,
-            &tool_registry,
-            permission_engine,
-            &sender,
-            task_id,
-            broker,
-            &cancel_signal,
-            project_dir,
-        )
-        .await
-        {
-            Ok(prepared) => {
-                if is_hosted_tool(prepared.tool_call.function.name.as_str()) {
-                    execute_hosted_tool(host, prepared, &cancel_signal, &sender, task_id, depth)
-                        .await
-                } else {
-                    execute_prepared_tool(
-                        prepared,
-                        &tool_registry,
-                        &cancel_signal,
-                        &sender,
-                        task_id,
-                    )
-                    .await
-                }
-            }
-            Err(outcome) => outcome,
-        };
-        finalize_tool_result(&outcome, &sender, task_id);
-        if let Some(path) = outcome.changed_path.clone() {
-            mutated.push((path, tool_call.function.name.clone()));
-        }
-        // A failure does not end the batch. Sibling calls are independent, and
-        // stopping here is how one bad edit used to discard the good ones.
-        outcomes.push(outcome);
-    }
-    finalize_skipped_calls(tool_calls, &mut outcomes, &sender, task_id);
-    outcomes
-}
-
-/// The file a mutating call will touch, from its own arguments. Used only to
-/// detect same-file dependencies inside one batch.
+/// The file a mutating call will touch, from its normalized arguments
+/// (including `apply_patch` `+++ b/...` headers). Used only to detect
+/// same-file dependencies inside one batch.
 fn mutating_target(tool_call: &ToolCall) -> Option<String> {
     if !matches!(
         tool_call.function.name.as_str(),
@@ -580,12 +518,15 @@ fn mutating_target(tool_call: &ToolCall) -> Option<String> {
     ) {
         return None;
     }
-    let args: serde_json::Value = serde_json::from_str(&tool_call.function.arguments).ok()?;
+    let args = normalize_tool_args(
+        &tool_call.function.name,
+        parse_tool_args(&tool_call.function.arguments),
+    );
     let path = args
         .get("path")
-        .or_else(|| args.get("file_path"))
-        .or_else(|| args.get("file"))
-        .and_then(|value| value.as_str())?;
+        .and_then(|value| value.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())?;
     Some(crate::util::clean_path(path))
 }
 
@@ -759,6 +700,10 @@ pub(crate) async fn execute_tool_calls_batched(
 ) -> Vec<ToolCallOutcome> {
     let mut outcomes = Vec::new();
     let mut parallel_batch: Vec<ToolCall> = Vec::new();
+    // Files this batch already changed. A second edit to the same file is a
+    // real dependency (the text moved), so it is skipped with a stated reason
+    // rather than left to fail on the freshness guard. Anything else runs.
+    let mut mutated: Vec<(String, String)> = Vec::new();
 
     for tool_call in tool_calls {
         if cancel_signal.is_aborted() {
@@ -788,27 +733,58 @@ pub(crate) async fn execute_tool_calls_batched(
                 }
             }
 
-            let seq_outcomes = execute_tool_calls_sequential(
-                std::slice::from_ref(tool_call),
-                Arc::clone(&tool_registry),
-                sender.clone(),
-                task_id,
-                permission_engine,
-                broker,
-                cancel_signal.clone(),
-                project_dir,
-                depth,
-                host,
-            )
-            .await;
-            let seq_failed = seq_outcomes.iter().any(|o| o.is_error);
-            outcomes.extend(seq_outcomes);
-            if seq_failed {
-                // A sequential tool failed; drop the remaining tool calls in
-                // this batch (parallel + sequential) to avoid cascading.
-                tracing::info!("Sequential tool failed; dropping remaining batched calls");
-                break;
+            tracing::info!(task_id, tool_id = %tool_call.id, tool = %tool_call.function.name, "Tool started");
+            if let Some(target) = mutating_target(tool_call) {
+                if let Some((_, earlier)) = mutated.iter().find(|(path, _)| path == &target) {
+                    let outcome = ToolCallOutcome::error(
+                        tool_call.id.clone(),
+                        tool_call.function.name.clone(),
+                        format!(
+                            "Not run: an earlier call in this batch ({earlier}) changed {target}. \
+                             Read the file again with read_file, then retry this edit."
+                        ),
+                    );
+                    finalize_tool_result(&outcome, &sender, task_id);
+                    outcomes.push(outcome);
+                    continue;
+                }
             }
+            let outcome = match prepare_tool_call(
+                tool_call,
+                &tool_registry,
+                permission_engine,
+                &sender,
+                task_id,
+                broker,
+                cancel_signal,
+                project_dir,
+            )
+            .await
+            {
+                Ok(prepared) => {
+                    if is_hosted_tool(prepared.tool_call.function.name.as_str()) {
+                        execute_hosted_tool(host, prepared, cancel_signal, &sender, task_id, depth)
+                            .await
+                    } else {
+                        execute_prepared_tool(
+                            prepared,
+                            &tool_registry,
+                            cancel_signal,
+                            &sender,
+                            task_id,
+                        )
+                        .await
+                    }
+                }
+                Err(outcome) => outcome,
+            };
+            finalize_tool_result(&outcome, &sender, task_id);
+            if let Some(path) = outcome.changed_path.clone() {
+                mutated.push((path, tool_call.function.name.clone()));
+            }
+            // A failure does not end the batch. Sibling calls are independent,
+            // and stopping here is how one bad edit used to discard the good ones.
+            outcomes.push(outcome);
         } else {
             parallel_batch.push(tool_call.clone());
         }
@@ -994,5 +970,97 @@ mod tests {
             &outcome.content[..outcome.content.len().min(400)]
         );
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn batched_execution_skips_same_file_second_edit_while_running_siblings_and_patch_target()
+    {
+        let dir = tempfile::tempdir().unwrap();
+        let project = dir.path().to_string_lossy().to_string();
+        let path_a = dir.path().join("a.txt");
+        let path_b = dir.path().join("b.txt");
+        std::fs::write(&path_a, "hello\n").unwrap();
+        std::fs::write(&path_b, "world\n").unwrap();
+        crate::tools::atomic_fs::record_read(&path_a, "hello\n");
+        crate::tools::atomic_fs::record_read(&path_b, "world\n");
+
+        let engine = shared_permission_engine_with_config(
+            AgentMode::Build,
+            &crate::config::AutoApproveConfig::default(),
+            &project,
+        );
+        engine.write().unwrap().set_auto_approve(true);
+        let registry = std::sync::Arc::new(ToolRegistry::new(project.clone()));
+        let broker = ApprovalBroker::new();
+        let (sender, _rx) = std::sync::mpsc::channel();
+
+        let calls = vec![
+            // apply_patch WITHOUT explicit `path` — extracted from `+++ b/a.txt`.
+            ToolCall {
+                id: "c1".into(),
+                call_type: "function".into(),
+                function: FunctionCall {
+                    name: "apply_patch".into(),
+                    arguments: serde_json::json!({
+                        "patch": "--- a/a.txt\n+++ b/a.txt\n@@ -1 +1 @@\n-hello\n+hello2\n"
+                    })
+                    .to_string(),
+                },
+            },
+            // Second edit to the same file in the same batch must be skipped.
+            ToolCall {
+                id: "c2".into(),
+                call_type: "function".into(),
+                function: FunctionCall {
+                    name: "edit_file".into(),
+                    arguments: serde_json::json!({
+                        "path": "a.txt",
+                        "edits": [{"old": "hello2", "new": "hello3"}]
+                    })
+                    .to_string(),
+                },
+            },
+            // Independent sibling edit must still run despite c2 being skipped.
+            ToolCall {
+                id: "c3".into(),
+                call_type: "function".into(),
+                function: FunctionCall {
+                    name: "edit_file".into(),
+                    arguments: serde_json::json!({
+                        "path": "b.txt",
+                        "edits": [{"old": "world", "new": "world2"}]
+                    })
+                    .to_string(),
+                },
+            },
+        ];
+
+        let outcomes = super::execute_tool_calls_batched(
+            &calls,
+            registry,
+            sender,
+            1,
+            &engine,
+            &broker,
+            &AbortSignal::never(),
+            &project,
+            0,
+            None,
+        )
+        .await;
+
+        assert_eq!(outcomes.len(), 3);
+        assert!(!outcomes[0].is_error, "{}", outcomes[0].content);
+        assert_eq!(outcomes[0].changed_path.as_deref(), Some("a.txt"));
+        assert_eq!(outcomes[0].file_before.as_deref(), Some("hello\n"));
+        assert!(outcomes[1].is_error, "second edit to a.txt must be skipped");
+        assert!(
+            outcomes[1].content.contains("changed a.txt"),
+            "{}",
+            outcomes[1].content
+        );
+        assert!(!outcomes[2].is_error, "{}", outcomes[2].content);
+        assert_eq!(std::fs::read_to_string(&path_a).unwrap(), "hello2\n");
+        assert_eq!(std::fs::read_to_string(&path_b).unwrap(), "world2\n");
     }
 }

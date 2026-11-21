@@ -908,8 +908,13 @@ async fn fallback_preserves_the_original_request_on_both_transports() {
         );
         assert_eq!(first["tools"], second["tools"]);
         assert_eq!(first["metadata"], second["metadata"]);
-        assert_eq!(first["prompt_cache_key"], session.to_string());
-        assert_eq!(first["prompt_cache_key"], second["prompt_cache_key"]);
+        if format == ApiFormat::OpenAI {
+            assert_eq!(first["prompt_cache_key"], session.to_string());
+            assert_eq!(first["prompt_cache_key"], second["prompt_cache_key"]);
+        } else {
+            assert!(first.get("prompt_cache_key").is_none());
+            assert!(second.get("prompt_cache_key").is_none());
+        }
         assert_eq!(first["model"], second["model"]);
         let schema = if format == ApiFormat::Anthropic {
             &second["tools"][0]["input_schema"]
@@ -1134,8 +1139,8 @@ fn declared_go_routes_and_aliases_use_the_shared_resolver_and_request_policy() {
             );
             let session = uuid::Uuid::new_v4();
             assert_eq!(
-                super::cache::prompt_cache_key(&descriptor, &selected, session),
-                Some(session.to_string())
+                super::cache::prompt_cache_key(format, &descriptor, &selected, session),
+                super::cache::supports_prompt_cache_key(format).then(|| session.to_string())
             );
         }
     }
@@ -1350,7 +1355,13 @@ fn provider_policy_overrides_are_partial_and_persist_without_losing_defaults() {
         go.info().transport_policy().model_routes["minimax-m3"],
         ApiFormat::Anthropic
     );
-    assert!(super::cache::prompt_cache_key(go.info(), &selected, uuid::Uuid::new_v4()).is_none());
+    assert!(super::cache::prompt_cache_key(
+        ApiFormat::Responses,
+        go.info(),
+        &selected,
+        uuid::Uuid::new_v4()
+    )
+    .is_none());
     let metadata = crate::models::transport_json(&selected);
     let alias_config = serde_json::from_value(json!({
         "transport": metadata["policy"],
@@ -1366,9 +1377,13 @@ fn provider_policy_overrides_are_partial_and_persist_without_losing_defaults() {
     let alias = aliases.get("desktop-opencode-go").unwrap();
     let selected = resolve_model_info(&aliases, None, "desktop-opencode-go", "future-model");
     assert_eq!(selected.api.resolved_format, Some(ApiFormat::Responses));
-    assert!(
-        super::cache::prompt_cache_key(alias.info(), &selected, uuid::Uuid::new_v4()).is_none()
-    );
+    assert!(super::cache::prompt_cache_key(
+        ApiFormat::Responses,
+        alias.info(),
+        &selected,
+        uuid::Uuid::new_v4()
+    )
+    .is_none());
     let router = registry.get("openrouter").unwrap();
     let selected = fallback_model_info("openrouter", "anthropic/future");
     assert!(!router
@@ -1459,10 +1474,17 @@ async fn session_cache_keys_follow_policy_on_every_transport() {
                 .await;
             server.join().unwrap();
             let (_, request) = requests.recv().unwrap();
-            assert_eq!(
-                request["prompt_cache_key"],
-                override_key.map_or_else(|| session.to_string(), str::to_owned)
-            );
+            if super::cache::supports_prompt_cache_key(format) {
+                assert_eq!(
+                    request["prompt_cache_key"],
+                    override_key.map_or_else(|| session.to_string(), str::to_owned)
+                );
+            } else {
+                assert!(
+                    request.get("prompt_cache_key").is_none(),
+                    "{format:?} must not receive top-level prompt_cache_key: {request}"
+                );
+            }
         }
     }
 }

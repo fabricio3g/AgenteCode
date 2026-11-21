@@ -121,6 +121,9 @@ pub struct SubagentSpawnRequest {
     /// Server-injected before execution. Becomes the subagent's id.
     #[serde(skip)]
     pub task_id: Option<String>,
+    /// Server-injected owned-path scope for board writer cards.
+    #[serde(skip)]
+    pub owns: Vec<String>,
 }
 
 impl SubagentSpawnRequest {

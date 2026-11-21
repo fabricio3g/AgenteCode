@@ -66,7 +66,7 @@ impl ToolCore for ReadFileTool {
                 ToolError::ExecutionError(format!("Failed to read file {resolved_str}: {e}"))
             })?;
 
-            let start_line = args.start_line.unwrap_or(1) as usize;
+            let start_line = args.start_line.unwrap_or(1).max(1) as usize;
             let end_line = args.end_line.map(|v| v as usize);
             let range_requested = start_line > 1 || end_line.is_some();
 
@@ -411,6 +411,7 @@ impl ToolCore for EditFileTool {
                     super::MAX_EDIT_FILE_BYTES
                 )));
             }
+            atomic_fs::ensure_fresh(&resolved).await?;
             let content = tokio::fs::read_to_string(&resolved).await.map_err(|e| {
                 ToolError::ExecutionError(format!("Failed to read file {resolved_str}: {e}"))
             })?;
@@ -488,7 +489,6 @@ impl ToolCore for EditFileTool {
                 new_content = edit_match::apply(&new_content, range.clone(), replacement);
             }
 
-            atomic_fs::ensure_fresh(&resolved).await?;
             ensure_not_cancelled(&signal)?;
             atomic_fs::write_and_record(&resolved, &new_content).await?;
 
@@ -597,8 +597,9 @@ impl ToolCore for ListDirTool {
         &self,
         args: ListDirArgs,
         project_dir: &str,
-        _context: &ToolExecutionContext,
+        context: &ToolExecutionContext,
     ) -> Result<String, ToolError> {
+        ensure_not_cancelled(&context.cancellation)?;
         let path = args
             .path
             .ok_or_else(|| ToolError::InvalidArguments("Missing 'path' parameter".to_string()))?;
@@ -616,6 +617,7 @@ impl ToolCore for ListDirTool {
             .await
             .map_err(|e| ToolError::ExecutionError(format!("Failed to read entry: {e}")))?
         {
+            ensure_not_cancelled(&context.cancellation)?;
             let name = entry.file_name().to_string_lossy().to_string();
             let file_type = entry
                 .file_type()
@@ -823,6 +825,7 @@ mod tests {
         let dir = temp_dir("multi_edit_dup");
         let path = dir.join("a.txt");
         tokio::fs::write(&path, "dup\ndup\n").await.unwrap();
+        atomic_fs::record_read(&path, "dup\ndup\n");
         let tool = TypedTool::new(EditFileTool);
         let path_arg = path.to_string_lossy().to_string();
 
@@ -840,6 +843,62 @@ mod tests {
             .await;
         assert!(res.is_err());
         assert!(res.unwrap_err().to_string().contains("unique"));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn read_file_clamps_zero_start_line_and_list_dir_checks_cancel() {
+        let dir = temp_dir("clamp_and_cancel");
+        let path = dir.join("a.txt");
+        tokio::fs::write(&path, "line1\nline2\nline3\n")
+            .await
+            .unwrap();
+        let read = ReadFileTool;
+        let out = read
+            .run(
+                ReadFileArgs {
+                    path: Some("a.txt".into()),
+                    start_line: Some(0),
+                    end_line: Some(2),
+                },
+                dir.to_str().unwrap(),
+                &ToolExecutionContext::default(),
+            )
+            .await
+            .unwrap();
+        assert!(out.starts_with("[Lines 1-2"), "{out}");
+
+        let cancel = crate::cancellation::AbortController::new();
+        cancel.abort();
+        let ctx = ToolExecutionContext::new(cancel.signal());
+        let list_err = ListDirTool
+            .run(
+                ListDirArgs {
+                    path: Some(".".into()),
+                },
+                dir.to_str().unwrap(),
+                &ctx,
+            )
+            .await
+            .unwrap_err();
+        assert!(list_err.to_string().contains("cancelled"), "{list_err}");
+
+        // EditFileTool must enforce ensure_fresh before matching (unread file).
+        tokio::fs::write(dir.join("unread.txt"), "hello\n")
+            .await
+            .unwrap();
+        let edit_err = TypedTool::new(EditFileTool)
+            .execute(
+                json!({"path": "unread.txt", "search": "missing", "replace": "x"}),
+                dir.to_str().unwrap(),
+            )
+            .await
+            .unwrap_err();
+        assert!(
+            edit_err.to_string().contains("read_file"),
+            "expected freshness error before match: {edit_err}"
+        );
 
         let _ = std::fs::remove_dir_all(&dir);
     }

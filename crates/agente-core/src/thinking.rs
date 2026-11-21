@@ -227,11 +227,13 @@ fn budget_levels(
         0 => crate::catalog::DEFAULT_OUTPUT_TOKENS,
         n => n,
     };
+    let max_allowed = output.saturating_sub(1);
     let low = min.unwrap_or(floor).max(floor).max(1);
-    let high = max
-        .unwrap_or(u32::MAX)
-        .min(output.saturating_mul(3) / 4)
-        .max(low);
+    let cap = max.unwrap_or(u32::MAX).min(max_allowed);
+    if low > cap {
+        return Vec::new();
+    }
+    let high = cap.min(output.saturating_mul(3) / 4).max(low);
     let mut levels: Vec<ThinkingLevel> = Vec::new();
     for (id, budget) in BUDGET_LADDER {
         let budget = (*budget).clamp(low, high);
@@ -546,21 +548,28 @@ fn apply_anthropic(model: &mut ModelInfo, choice: &ThinkingLevel) {
         return;
     }
     model.options.remove("temperature");
+    let output = match model.limits.output {
+        0 => crate::catalog::DEFAULT_OUTPUT_TOKENS,
+        n => n,
+    };
+    let max_budget = output.saturating_sub(1);
     if let Some(budget) = choice.budget_tokens {
-        set(
-            model,
-            "thinking",
-            serde_json::json!({"type": "enabled", "budget_tokens": budget}),
-        );
+        let clamped = budget.max(1024).min(max_budget);
+        if clamped >= 1024 && clamped < output {
+            set(
+                model,
+                "thinking",
+                serde_json::json!({"type": "enabled", "budget_tokens": clamped}),
+            );
+        }
         return;
     }
     let catalog_budget = model.reasoning_options.iter().find_map(|o| match o {
-        ReasoningOption::BudgetTokens { min, max } => Some(
-            min.or(*max)
-                .unwrap_or(1024)
-                .max(1)
-                .min(max.unwrap_or(u32::MAX)),
-        ),
+        ReasoningOption::BudgetTokens { min, max } => {
+            let upper = max.unwrap_or(u32::MAX).min(max_budget);
+            let budget = min.or(*max).unwrap_or(1024).max(1024).min(upper);
+            (budget >= 1024 && budget < output).then_some(budget)
+        }
         _ => None,
     });
     if choice.id == "on" {
@@ -1262,5 +1271,38 @@ mod tests {
         let cm = cat.find_model("deepseek", "deepseek-v4-flash").unwrap();
         let m = crate::providers::model_info_from_catalog(cm, "deepseek");
         assert_eq!(supported_thinking_levels(&m), vec!["off", "high", "max"]);
+    }
+
+    #[test]
+    fn anthropic_budget_tokens_clamps_to_at_least_1024_and_below_max_tokens() {
+        let mut model = crate::providers::fallback_model_info("minimax", "test-model");
+        model.capabilities.reasoning = true;
+        model.limits.output = 8192;
+        model.reasoning_options = vec![
+            ReasoningOption::BudgetTokens {
+                min: Some(0),
+                max: Some(4096),
+            },
+            ReasoningOption::Effort {
+                values: vec!["high".into()],
+            },
+        ];
+        apply_thinking_level(&mut model, ApiFormat::Anthropic, "high");
+        assert_eq!(model.options["thinking"]["budget_tokens"], 1024);
+
+        // When output <= 1024, no invalid budget >= max_tokens is produced.
+        let mut tiny = crate::providers::fallback_model_info("minimax", "tiny-model");
+        tiny.capabilities.reasoning = true;
+        tiny.limits.output = 1024;
+        tiny.reasoning_options = vec![ReasoningOption::BudgetTokens {
+            min: None,
+            max: None,
+        }];
+        let p = profile_for(&tiny, ApiFormat::Anthropic);
+        assert!(
+            p.levels.iter().all(|l| l.budget_tokens.is_none()),
+            "levels: {:?}",
+            p.levels
+        );
     }
 }

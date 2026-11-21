@@ -234,7 +234,7 @@ impl Default for ToolExecutionContext {
 /// preparation used to re-canonicalize the same root (two syscalls per call).
 /// Only canonicalized (existing) roots are cached so a path checked before the
 /// directory exists never permanently pins a non-canonical form.
-fn canonical_base_cached(project_dir: &str) -> std::path::PathBuf {
+pub(crate) fn canonical_base_cached(project_dir: &str) -> std::path::PathBuf {
     static CACHE: std::sync::OnceLock<
         std::sync::Mutex<std::collections::HashMap<String, std::path::PathBuf>>,
     > = std::sync::OnceLock::new();
@@ -314,7 +314,7 @@ pub fn resolve_read_path(path: &str, project_dir: &str) -> Result<std::path::Pat
 
 /// Strip Windows verbatim prefixes so canonicalized and normalized paths can
 /// be compared; identity on other platforms.
-fn comparable_path(path: &std::path::Path) -> std::path::PathBuf {
+pub(crate) fn comparable_path(path: &std::path::Path) -> std::path::PathBuf {
     #[cfg(windows)]
     {
         const VERBATIM: &str = r"\\?\";
@@ -947,6 +947,8 @@ pub struct ToolRegistry {
     project_dir: String,
     /// Stamped onto every call's context (see [`ShellEnv`]).
     shell_env: ShellEnv,
+    /// Active subagent tool policy (including board `owns` path scope).
+    tool_policy: Option<crate::subagent::ToolPolicy>,
 }
 
 impl ToolRegistry {
@@ -966,6 +968,7 @@ impl ToolRegistry {
             tools: HashMap::new(),
             project_dir: project_dir.into(),
             shell_env: ShellEnv::Inherit,
+            tool_policy: None,
         };
         registry.register_typed::<ShellTool>();
         registry.register_typed::<processes::ProcessListTool>();
@@ -996,20 +999,25 @@ impl ToolRegistry {
         registry
     }
 
-    /// Offer the user's subagent models on the `task` tool (rebuilt from the
-    /// same roster, so its description stays byte-stable per list).
+    /// Offer the user's subagent models on the `task` and `board` tools (rebuilt
+    /// from the same roster, so descriptions stay byte-stable per list).
     pub fn offer_subagent_models(
         &mut self,
         agents: &[crate::subagent::AgentDefinition],
         menu: &[crate::subagent::routing::ModelMenuEntry],
     ) {
-        if menu.is_empty() || !self.tools.contains_key("task") {
+        if menu.is_empty() {
             return;
         }
-        self.register(Box::new(
-            TaskTool::with_roster(crate::subagent::definition::agent_roster(agents))
-                .with_models(menu),
-        ));
+        if self.tools.contains_key("task") {
+            self.register(Box::new(
+                TaskTool::with_roster(crate::subagent::definition::agent_roster(agents))
+                    .with_models(menu),
+            ));
+        }
+        if self.tools.contains_key("board") {
+            self.register(Box::new(crate::swarm::BoardTool::with_models(menu)));
+        }
     }
 
     /// Register pre-built MCP tool adapters.
@@ -1121,6 +1129,12 @@ impl ToolRegistry {
             .tools
             .get(name)
             .ok_or_else(|| ToolError::NotFound(name.to_string()))?;
+        if let Some(policy) = &self.tool_policy {
+            let normalized = crate::agent::channel::args::normalize_tool_args(name, args.clone());
+            if let Err(reason) = policy.check_tool_call(name, &normalized, &self.project_dir) {
+                return Err(ToolError::ExecutionError(reason));
+            }
+        }
         let context = context.with_shell_env(self.shell_env.clone());
         let result = tool
             .execute_with_context(args, &self.project_dir, context)
@@ -1155,6 +1169,16 @@ impl ToolRegistry {
     /// The environment the commands this turn's tools start get.
     pub fn set_shell_env(&mut self, shell_env: ShellEnv) {
         self.shell_env = shell_env;
+    }
+
+    /// Attach a subagent [`crate::subagent::ToolPolicy`] (including board `owns`
+    /// path scope) so mutating file calls are validated against owned paths.
+    pub fn set_tool_policy(&mut self, policy: crate::subagent::ToolPolicy) {
+        self.tool_policy = Some(policy);
+    }
+
+    pub fn tool_policy(&self) -> Option<&crate::subagent::ToolPolicy> {
+        self.tool_policy.as_ref()
     }
 }
 

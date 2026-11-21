@@ -12,7 +12,7 @@
 //! - [`loop_detection`] — identical-tool-call ("action stationarity") detector
 
 mod approval;
-mod args;
+pub(crate) mod args;
 mod config;
 mod discovery;
 mod errors;

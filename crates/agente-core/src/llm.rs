@@ -90,10 +90,10 @@ pub struct PendingToolCall {
 /// `id`/`name` only completed late, then close them all so the agent loop's
 /// accumulator never sees an orphaned `ToolCallEnd`.
 pub(crate) async fn drain_pending_tool_calls(
-    pending: &mut std::collections::HashMap<usize, PendingToolCall>,
+    pending: &mut std::collections::BTreeMap<usize, PendingToolCall>,
     sender: &tokio::sync::mpsc::Sender<StreamEvent>,
 ) {
-    for (_, call) in pending.drain() {
+    for (_, call) in std::mem::take(pending) {
         if !call.started {
             if call.id.is_empty() || call.name.is_empty() {
                 tracing::warn!(
@@ -108,6 +108,14 @@ pub(crate) async fn drain_pending_tool_calls(
                     id: call.id.clone(),
                 })
                 .await;
+            if !call.args.is_empty() {
+                let _ = sender
+                    .send(StreamEvent::ToolCallDelta {
+                        id: call.id.clone(),
+                        args_delta: call.args,
+                    })
+                    .await;
+            }
         }
         let _ = sender.send(StreamEvent::ToolCallEnd { id: call.id }).await;
     }
@@ -133,4 +141,49 @@ pub struct Usage {
     pub cost_usd: Option<f64>,
     /// The reported amount is a provider estimate rather than measured spend.
     pub cost_estimated: bool,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn drain_pending_tool_calls_is_ordered_and_emits_buffered_args() {
+        let mut pending = std::collections::BTreeMap::new();
+        pending.insert(
+            2,
+            PendingToolCall {
+                id: "call-2".into(),
+                name: "second".into(),
+                args: "{\"b\":2}".into(),
+                started: false,
+            },
+        );
+        pending.insert(
+            0,
+            PendingToolCall {
+                id: "call-0".into(),
+                name: "first".into(),
+                args: "{\"a\":1}".into(),
+                started: false,
+            },
+        );
+        let (tx, mut rx) = tokio::sync::mpsc::channel(16);
+        drain_pending_tool_calls(&mut pending, &tx).await;
+        drop(tx);
+        let mut events = Vec::new();
+        while let Some(ev) = rx.recv().await {
+            events.push(ev);
+        }
+        assert!(matches!(&events[0], StreamEvent::ToolCallStart { id, .. } if id == "call-0"));
+        assert!(
+            matches!(&events[1], StreamEvent::ToolCallDelta { id, args_delta } if id == "call-0" && args_delta == "{\"a\":1}")
+        );
+        assert!(matches!(&events[2], StreamEvent::ToolCallEnd { id } if id == "call-0"));
+        assert!(matches!(&events[3], StreamEvent::ToolCallStart { id, .. } if id == "call-2"));
+        assert!(
+            matches!(&events[4], StreamEvent::ToolCallDelta { id, args_delta } if id == "call-2" && args_delta == "{\"b\":2}")
+        );
+        assert!(matches!(&events[5], StreamEvent::ToolCallEnd { id } if id == "call-2"));
+    }
 }

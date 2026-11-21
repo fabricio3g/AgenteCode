@@ -91,7 +91,7 @@ impl MessagesProvider {
             match key.as_str() {
                 "max_output_tokens" | "max_completion_tokens" => body["max_tokens"] = value,
                 "reasoning_effort" => body["output_config"]["effort"] = value,
-                "reasoning_summary" | "stream_options" => {}
+                "reasoning_summary" | "stream_options" | "prompt_cache_key" => {}
                 _ => body[&key] = value,
             }
         }
@@ -139,9 +139,14 @@ fn anthropic_media_blocks(message: &Message, model: &ModelInfo) -> Vec<Value> {
 }
 
 fn append_text(object: &mut Value, field: &str, delta: &str) {
-    let mut value = object[field].as_str().unwrap_or_default().to_string();
-    value.push_str(delta);
-    object[field] = json!(value);
+    if let Some(map) = object.as_object_mut() {
+        match map.get_mut(field) {
+            Some(Value::String(existing)) => existing.push_str(delta),
+            _ => {
+                map.insert(field.to_string(), Value::String(delta.to_string()));
+            }
+        }
+    }
 }
 
 impl MessageStream {
@@ -155,7 +160,12 @@ impl MessageStream {
         match block["type"].as_str() {
             Some("tool_use") => {
                 if let Some(arguments) = self.arguments.remove(&index) {
-                    block["input"] = serde_json::from_str(&arguments)?;
+                    if !arguments.trim().is_empty() {
+                        block["input"] =
+                            serde_json::from_str(&arguments).unwrap_or_else(|_| json!({}));
+                    } else if block.get("input").is_none() || block["input"].is_null() {
+                        block["input"] = json!({});
+                    }
                 } else {
                     let input = block.get("input").cloned().unwrap_or_else(|| json!({}));
                     let _ = sender
@@ -255,7 +265,8 @@ impl MessageStream {
                         }
                     }
                     Some("input_json_delta") => {
-                        if let Some(text) = delta["partial_json"].as_str() {
+                        if let Some(text) = delta["partial_json"].as_str().filter(|s| !s.is_empty())
+                        {
                             self.arguments.entry(index).or_default().push_str(text);
                             let _ = sender
                                 .send(StreamEvent::ToolCallDelta {
@@ -315,16 +326,14 @@ impl Provider for MessagesProvider {
         sender: Sender<StreamEvent>,
         context: RequestContext,
     ) -> Result<Usage, LlmError> {
-        let mut body = self.request_body(messages, tools, model);
-        if let Some(key) = super::cache::prompt_cache_key(&self.info, model, context.session_id) {
-            body["prompt_cache_key"] = json!(key);
-        }
+        let body = self.request_body(messages, tools, model);
         let body =
             super::cache::PreparedRequest::new(body, ApiFormat::Anthropic, &self.info, model);
         let response =
             super::send_with_cache_fallback(&self.info, model, "messages", &body, context).await?;
+        let resolved_url = response.url().to_string();
         let mut stream =
-            super::sse::EventStream::for_completion(response.bytes_stream(), &self.info.base_url);
+            super::sse::EventStream::for_completion(response.bytes_stream(), &resolved_url);
         let mut state = MessageStream::default();
         let _ = sender.send(StreamEvent::TextStart).await;
         while let Some(data) = stream
@@ -424,5 +433,76 @@ mod signature_tests {
             blocks[2]["type"], "text",
             "no audio block in the Messages API"
         );
+    }
+
+    #[tokio::test]
+    async fn empty_partial_json_and_truncated_tool_json_do_not_fail_stream() {
+        let (tx, mut rx) = tokio::sync::mpsc::channel(32);
+        let mut state = MessageStream::default();
+        // 0-arg tool receiving an empty partial_json delta.
+        state
+            .event(
+                json!({
+                    "type": "content_block_start",
+                    "index": 0,
+                    "content_block": {"type": "tool_use", "id": "t1", "name": "ping", "input": {}}
+                }),
+                &tx,
+            )
+            .await
+            .unwrap();
+        state
+            .event(
+                json!({
+                    "type": "content_block_delta",
+                    "index": 0,
+                    "delta": {"type": "input_json_delta", "partial_json": ""}
+                }),
+                &tx,
+            )
+            .await
+            .unwrap();
+        state
+            .event(json!({"type": "content_block_stop", "index": 0}), &tx)
+            .await
+            .unwrap();
+        assert_eq!(state.blocks[&0]["input"], json!({}));
+
+        // Truncated tool JSON falls back gracefully instead of returning Err.
+        state
+            .event(
+                json!({
+                    "type": "content_block_start",
+                    "index": 1,
+                    "content_block": {"type": "tool_use", "id": "t2", "name": "write", "input": {}}
+                }),
+                &tx,
+            )
+            .await
+            .unwrap();
+        state
+            .event(
+                json!({
+                    "type": "content_block_delta",
+                    "index": 1,
+                    "delta": {"type": "input_json_delta", "partial_json": "{\"path\":\"a.rs\""}
+                }),
+                &tx,
+            )
+            .await
+            .unwrap();
+        state
+            .event(json!({"type": "content_block_stop", "index": 1}), &tx)
+            .await
+            .unwrap();
+        assert_eq!(state.blocks[&1]["input"], json!({}));
+        drop(tx);
+        let mut deltas = Vec::new();
+        while let Some(ev) = rx.recv().await {
+            if let StreamEvent::ToolCallDelta { id, args_delta } = ev {
+                deltas.push((id, args_delta));
+            }
+        }
+        assert!(deltas.iter().any(|(id, a)| id == "t1" && a == "{}"));
     }
 }

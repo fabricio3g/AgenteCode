@@ -94,6 +94,32 @@ pub struct AutoApproveConfig {
     /// Destructive shell commands (recursive rm, force push, mkfs, DROP
     /// TABLE…) still ask in auto mode.
     pub confirm_destructive: bool,
+    /// Internal provenance: true when explicitly present during deserialization
+    /// so an absent project `auto_approve` never clobbers global settings.
+    #[doc(hidden)]
+    #[serde(skip)]
+    pub explicit: bool,
+}
+
+impl PartialEq for AutoApproveConfig {
+    fn eq(&self, other: &Self) -> bool {
+        self.read_operations == other.read_operations
+            && self.write_new_files == other.write_new_files
+            && self.safe_commands == other.safe_commands
+            && self.max_auto_edit_lines == other.max_auto_edit_lines
+            && self.confirm_destructive == other.confirm_destructive
+    }
+}
+
+impl Eq for AutoApproveConfig {}
+
+fn deserialize_auto_approve_present<'de, D>(deserializer: D) -> Result<AutoApproveConfig, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let mut cfg = AutoApproveConfig::deserialize(deserializer)?;
+    cfg.explicit = true;
+    Ok(cfg)
 }
 
 impl Default for AutoApproveConfig {
@@ -115,6 +141,7 @@ impl Default for AutoApproveConfig {
             ],
             max_auto_edit_lines: 10,
             confirm_destructive: true,
+            explicit: false,
         }
     }
 }
@@ -371,7 +398,7 @@ pub struct AppConfig {
     pub executor_model: Option<String>,
     #[serde(default)]
     pub editor: Option<String>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_auto_approve_present")]
     pub auto_approve: AutoApproveConfig,
     #[serde(default, deserialize_with = "crate::mcp::lenient_server_map")]
     pub mcp: HashMap<String, McpConfig>,
@@ -682,19 +709,13 @@ impl AppConfig {
 
         // Always write global first.
         if let Some(global_path) = Self::global_config_path() {
-            if let Some(parent) = global_path.parent() {
-                std::fs::create_dir_all(parent)?;
-            }
-            std::fs::write(&global_path, &content)?;
+            write_config_atomic(&global_path, &content)?;
         }
 
         // Mirror to workspace if given.
         if let Some(dir) = project_dir {
             let workspace_path = PathBuf::from(dir).join("agente.json");
-            if let Some(parent) = workspace_path.parent() {
-                std::fs::create_dir_all(parent)?;
-            }
-            std::fs::write(&workspace_path, &content)?;
+            write_config_atomic(&workspace_path, &content)?;
         }
 
         Ok(())
@@ -718,7 +739,10 @@ impl AppConfig {
             return;
         };
         for (id, provider) in self.provider.iter_mut() {
-            let Some(catalog_provider) = catalog.providers.get(id) else {
+            let Some(catalog_provider) = catalog
+                .providers
+                .get(crate::providers::spec::catalog_id(id))
+            else {
                 continue;
             };
             provider.models.retain(|model_id, model| {
@@ -931,6 +955,9 @@ impl AppConfig {
         if other.max_parallel_subagents.is_some() {
             self.max_parallel_subagents = other.max_parallel_subagents;
         }
+        if other.max_iterations.is_some() {
+            self.max_iterations = other.max_iterations;
+        }
         // Per-type entries: the workspace wins for the types it names.
         self.subagent_models.extend(other.subagent_models);
         self.subagents.merge(other.subagents);
@@ -942,7 +969,9 @@ impl AppConfig {
                 self.approved_mcp_servers.push(key);
             }
         }
-        self.auto_approve = other.auto_approve;
+        if other.auto_approve.explicit || other.auto_approve != AutoApproveConfig::default() {
+            self.auto_approve = other.auto_approve;
+        }
         self
     }
 
@@ -1208,6 +1237,22 @@ fn infer_api_format_from_npm(npm: &str) -> String {
         ApiFormat::OpenAI => "openai",
     }
     .into()
+}
+
+fn write_config_atomic(path: &std::path::Path, content: &str) -> std::io::Result<()> {
+    use std::io::Write;
+    let parent = path.parent().ok_or_else(|| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "config path has no parent directory",
+        )
+    })?;
+    std::fs::create_dir_all(parent)?;
+    let mut temp = tempfile::NamedTempFile::new_in(parent)?;
+    temp.write_all(content.as_bytes())?;
+    temp.as_file_mut().sync_all()?;
+    temp.persist(path).map_err(|e| e.error)?;
+    Ok(())
 }
 
 #[cfg(test)]
@@ -1899,5 +1944,82 @@ mod tests {
             "persisted config must stay small, got {} bytes",
             written.len()
         );
+    }
+
+    #[test]
+    fn merge_keeps_global_auto_approve_merges_max_iterations_and_strips_catalog_aliases() {
+        use crate::catalog::{
+            CatalogModel, CatalogProvider, ModelCapabilities, ModelCatalog, ModelCost, ModelLimits,
+            ModelStatus,
+        };
+
+        let mut global = AppConfig::default();
+        global.auto_approve.write_new_files = true;
+        global.auto_approve.max_auto_edit_lines = 42;
+        global.max_iterations = Some(25);
+
+        // Absent `auto_approve` in project config must not clobber global.
+        let project_without_auto: AppConfig =
+            serde_json::from_str(r#"{"max_iterations": 60}"#).unwrap();
+        let merged = global.clone().merge(project_without_auto);
+        assert_eq!(merged.max_iterations, Some(60));
+        assert!(merged.auto_approve.write_new_files);
+        assert_eq!(merged.auto_approve.max_auto_edit_lines, 42);
+
+        // Explicit `auto_approve` in project config overrides global.
+        let project_with_auto: AppConfig = serde_json::from_str(
+            r#"{"auto_approve": {"write_new_files": false, "max_auto_edit_lines": 5}}"#,
+        )
+        .unwrap();
+        let merged = global.merge(project_with_auto);
+        assert!(!merged.auto_approve.write_new_files);
+        assert_eq!(merged.auto_approve.max_auto_edit_lines, 5);
+
+        // `strip_catalog_derived` resolves provider aliases via `catalog_id` (`glm` -> `zai`).
+        let cat_model = CatalogModel {
+            provider: None,
+            id: "glm-test".to_string(),
+            provider_id: "zai".to_string(),
+            name: "GLM Test".to_string(),
+            family: None,
+            capabilities: ModelCapabilities::default(),
+            cost: ModelCost::default(),
+            limit: ModelLimits::default(),
+            status: ModelStatus::Active,
+            api_id: "glm-test".to_string(),
+            reasoning_options: Vec::new(),
+            reasoning_stream_field: None,
+            headers: HashMap::new(),
+            options: HashMap::new(),
+            variants: HashMap::new(),
+        };
+        let mut catalog = ModelCatalog::default();
+        catalog.providers.insert(
+            "zai".to_string(),
+            CatalogProvider {
+                id: "zai".to_string(),
+                name: "Z.AI".to_string(),
+                env: vec!["ZAI_API_KEY".to_string()],
+                api: String::new(),
+                npm: String::new(),
+                models: [("glm-test".to_string(), cat_model)].into_iter().collect(),
+                whitelist: Vec::new(),
+                blacklist: Vec::new(),
+            },
+        );
+        let mut cfg = AppConfig::default();
+        cfg.merge_catalog(&catalog);
+        assert!(cfg.provider["glm"].models.contains_key("glm-test"));
+        let mut persisted = cfg.strip_secrets();
+        persisted.strip_catalog_derived(cfg.catalog.as_ref());
+        assert!(!persisted.provider["glm"].models.contains_key("glm-test"));
+
+        // `save_to` writes atomically and round-trips cleanly.
+        let dir = tempfile::tempdir().unwrap();
+        let project = dir.path().to_string_lossy().to_string();
+        cfg.save_to(Some(&project)).unwrap();
+        let saved_json = std::fs::read_to_string(dir.path().join("agente.json")).unwrap();
+        let loaded: AppConfig = serde_json::from_str(&saved_json).unwrap();
+        assert_eq!(loaded.default_provider, cfg.default_provider);
     }
 }

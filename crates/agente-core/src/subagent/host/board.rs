@@ -86,11 +86,7 @@ impl SubagentHost {
             Err(error) => return outcome(format!("Error: {error}"), true),
         };
         let started = self.start_ready_cards(session).await;
-        let board = if started.is_empty() {
-            board
-        } else {
-            store.get(session).unwrap_or(board)
-        };
+        let board = store.get(session).unwrap_or(board);
         self.send_board(&board);
         let mut text = said;
         if !started.is_empty() {
@@ -109,6 +105,13 @@ impl SubagentHost {
         if lead.cancel.is_aborted() {
             return Vec::new();
         }
+        let parent_mode = self
+            .inner
+            .config
+            .permission_engine
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .mode;
         let store = BoardStore::user();
         // Claim the ready cards in one locked update so two finishing
         // children never start the same card twice.
@@ -118,6 +121,11 @@ impl SubagentHost {
                 let child_id = uuid::Uuid::new_v4().to_string();
                 let prompt = board.child_prompt(&id).unwrap_or_default();
                 board.start(&id, &child_id);
+                if let Some(card) = board.card(&id) {
+                    let (effective_cap, _) =
+                        capability_for_parent_mode(parent_mode, card.capability);
+                    board.set_capability(&id, effective_cap);
+                }
                 if let Some(card) = board.card(&id) {
                     starts.push((card.clone(), child_id, prompt));
                 }
@@ -129,6 +137,11 @@ impl SubagentHost {
         };
         let mut started = Vec::new();
         for (card, child_id, prompt) in starts {
+            let owns = if card.capability == SubagentCapabilityMode::ReadOnly {
+                Vec::new()
+            } else {
+                card.owns.clone()
+            };
             let request = SubagentSpawnRequest {
                 prompt,
                 description: card.title.clone(),
@@ -144,16 +157,22 @@ impl SubagentHost {
                 resume_from: None,
                 model: card.model.clone(),
                 task_id: Some(child_id.clone()),
+                owns,
             };
             let result = Box::pin(self.spawn(request, lead.cancel.clone(), lead.depth)).await;
             if result.is_error {
                 let summary = result.summary.unwrap_or_else(|| "could not start".into());
+                let clear_child = !self.inner.registry.contains(&child_id);
                 let _ = store.update(session, |board| {
                     board.child_finished(&child_id, false, &summary);
+                    if clear_child {
+                        board.clear_child_id(&card.id);
+                    }
                     Ok(())
                 });
+            } else {
+                started.push(card.id);
             }
-            started.push(card.id);
         }
         started
     }
@@ -185,10 +204,9 @@ impl SubagentHost {
         };
         let host = self.clone();
         scheduler.spawn(async move {
-            if !host.start_ready_cards(session).await.is_empty() {
-                if let Ok(board) = BoardStore::user().get(session) {
-                    host.send_board(&board);
-                }
+            let _ = host.start_ready_cards(session).await;
+            if let Ok(board) = BoardStore::user().get(session) {
+                host.send_board(&board);
             }
         });
     }
