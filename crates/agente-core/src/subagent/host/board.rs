@@ -7,6 +7,7 @@
 //! approvals are the same as for any `task`.
 
 use super::*;
+use crate::subagent::definition::capability_for_parent_mode;
 use crate::swarm::{BoardAction, BoardArgs, BoardStore};
 
 /// What a card start needs from the lead's turn: its cancel signal (a card
@@ -40,17 +41,12 @@ impl SubagentHost {
         cancel: AbortSignal,
         depth: u32,
     ) -> ToolCallOutcome {
-        let outcome = |content: String, is_error: bool| ToolCallOutcome {
-            tool_call_id: tool_call_id.clone(),
-            tool_name: "board".to_string(),
-            content,
-            is_error,
-            path_changed: None,
-            changed_path: None,
-            file_before: None,
-            file_after: None,
-            todos: None,
-            attachments: Vec::new(),
+        let outcome = |content: String, is_error: bool| {
+            if is_error {
+                ToolCallOutcome::err_raw(tool_call_id.clone(), "board", content)
+            } else {
+                ToolCallOutcome::ok(tool_call_id.clone(), "board", content)
+            }
         };
         let Some(session) = self.board_session() else {
             return outcome("Error: the board needs a session".into(), true);

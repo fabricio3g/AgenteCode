@@ -12,7 +12,6 @@
 //! drifts.
 
 use std::collections::HashMap;
-use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::{LazyLock, Mutex, MutexGuard, PoisonError};
 use std::time::SystemTime;
@@ -208,51 +207,13 @@ pub async fn write_and_record(path: &Path, content: &str) -> Result<(), ToolErro
 pub async fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), ToolError> {
     let path = path.to_path_buf();
     let bytes = bytes.to_vec();
-    tokio::task::spawn_blocking(move || write_atomic_blocking(&path, &bytes))
-        .await
-        .map_err(|e| ToolError::ExecutionError(format!("Atomic write task failed: {e}")))?
-}
-
-fn write_atomic_blocking(path: &Path, bytes: &[u8]) -> Result<(), ToolError> {
-    let parent = path
-        .parent()
-        .filter(|p| !p.as_os_str().is_empty())
-        .map(Path::to_path_buf)
-        .unwrap_or_else(|| PathBuf::from("."));
-
-    let mut temp = tempfile::Builder::new()
-        .prefix(".agente-tmp-")
-        .tempfile_in(&parent)
-        .map_err(|e| {
-            ToolError::ExecutionError(format!(
-                "Failed to create a temp file in {}: {e}",
-                parent.display()
-            ))
-        })?;
-    temp.write_all(bytes)
-        .map_err(|e| ToolError::ExecutionError(format!("Failed to write temp file: {e}")))?;
-    temp.as_file()
-        .sync_all()
-        .map_err(|e| ToolError::ExecutionError(format!("Failed to flush temp file: {e}")))?;
-
-    let mut attempts = 0u32;
-    loop {
-        match temp.persist(path) {
-            Ok(_) => return Ok(()),
-            Err(err) => {
-                attempts += 1;
-                if attempts >= 5 {
-                    return Err(ToolError::ExecutionError(format!(
-                        "Failed to replace {}: {}",
-                        path.display(),
-                        err.error
-                    )));
-                }
-                std::thread::sleep(std::time::Duration::from_millis(40 * u64::from(attempts)));
-                temp = err.file;
-            }
-        }
-    }
+    tokio::task::spawn_blocking(move || {
+        crate::fs_atomic::write_atomic(&path, &bytes).map_err(|error| {
+            ToolError::ExecutionError(format!("Failed to replace {}: {error}", path.display()))
+        })
+    })
+    .await
+    .map_err(|e| ToolError::ExecutionError(format!("Atomic write task failed: {e}")))?
 }
 
 #[cfg(test)]

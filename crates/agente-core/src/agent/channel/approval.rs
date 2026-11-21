@@ -180,18 +180,11 @@ pub(crate) fn check_missing_args(
         .collect();
 
     if !missing.is_empty() {
-        return Some(ToolCallOutcome {
-            tool_call_id: tool_call_id.to_string(),
-            tool_name: tool_name.to_string(),
-            content: format!("Error: Missing required arguments: {}", missing.join(", ")),
-            is_error: true,
-            path_changed: None,
-            changed_path: None,
-            file_before: None,
-            file_after: None,
-            todos: None,
-            attachments: Vec::new(),
-        });
+        return Some(ToolCallOutcome::error(
+            tool_call_id,
+            tool_name,
+            format!("Missing required arguments: {}", missing.join(", ")),
+        ));
     }
     None
 }

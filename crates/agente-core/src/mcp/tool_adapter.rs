@@ -7,9 +7,7 @@ use parking_lot::Mutex;
 
 use crate::mcp::client::McpManager;
 use crate::permissions::Permission;
-use crate::tools::{
-    Tool, ToolError, ToolExecutionContext, ToolExecutionMode, ToolKind, TOOL_HEARTBEAT_MS,
-};
+use crate::tools::{Tool, ToolError, ToolExecutionContext, ToolExecutionMode, ToolKind};
 use crate::types::AgentMode;
 
 /// Makes an MCP tool look like a native [`Tool`] to the registry.
@@ -196,24 +194,7 @@ impl Tool for McpToolAdapter {
         _project_dir: &str,
         context: ToolExecutionContext,
     ) -> Result<String, ToolError> {
-        if context.cancellation.is_aborted() {
-            return Err(ToolError::ExecutionError("Tool execution cancelled".into()));
-        }
-        let run = self.call(args, &context.call_id);
-        tokio::pin!(run);
-        let mut heartbeat =
-            tokio::time::interval(std::time::Duration::from_millis(TOOL_HEARTBEAT_MS));
-        heartbeat.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
-        heartbeat.tick().await;
-        loop {
-            tokio::select! {
-                result = &mut run => return result,
-                _ = context.cancellation.wait_aborted() => {
-                    return Err(ToolError::ExecutionError("Tool execution cancelled".into()));
-                }
-                _ = heartbeat.tick() => context.heartbeat(),
-            }
-        }
+        crate::tools::runner::run_with_heartbeat(&context, self.call(args, &context.call_id)).await
     }
 
     fn take_result_attachments(&self, call_id: &str) -> Vec<agente_protocol::Attachment> {

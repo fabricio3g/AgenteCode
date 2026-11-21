@@ -38,18 +38,17 @@ pub(crate) struct ToolCallOutcome {
 }
 
 impl ToolCallOutcome {
-    /// An errored outcome for a call that was not executed (permission
-    /// denial, missing args, skipped by an early batch break).
-    pub(crate) fn error(
-        tool_call_id: String,
+    /// A successful plain-text tool outcome with no file/todo/attachment side effects.
+    pub(crate) fn ok(
+        tool_call_id: impl Into<String>,
         tool_name: impl Into<String>,
-        message: impl std::fmt::Display,
+        content: impl Into<String>,
     ) -> Self {
         Self {
-            tool_call_id,
+            tool_call_id: tool_call_id.into(),
             tool_name: tool_name.into(),
-            content: format!("Error: {message}"),
-            is_error: true,
+            content: content.into(),
+            is_error: false,
             path_changed: None,
             changed_path: None,
             file_before: None,
@@ -57,6 +56,28 @@ impl ToolCallOutcome {
             todos: None,
             attachments: Vec::new(),
         }
+    }
+
+    /// An errored outcome with verbatim `content` (no automatic `"Error: "` prefix).
+    pub(crate) fn err_raw(
+        tool_call_id: impl Into<String>,
+        tool_name: impl Into<String>,
+        content: impl Into<String>,
+    ) -> Self {
+        Self {
+            is_error: true,
+            ..Self::ok(tool_call_id, tool_name, content)
+        }
+    }
+
+    /// An errored outcome for a call that was not executed (permission
+    /// denial, missing args, skipped by an early batch break).
+    pub(crate) fn error(
+        tool_call_id: impl Into<String>,
+        tool_name: impl Into<String>,
+        message: impl std::fmt::Display,
+    ) -> Self {
+        Self::err_raw(tool_call_id, tool_name, format!("Error: {message}"))
     }
 }
 

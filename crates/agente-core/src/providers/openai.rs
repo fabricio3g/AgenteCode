@@ -11,7 +11,7 @@ use crate::catalog::{ModelCost, ModelLimits, ModelStatus};
 use crate::llm::{
     drain_pending_tool_calls, LlmError, PendingToolCall, StopReason, StreamEvent, Usage,
 };
-use crate::types::{Message, ProviderContinuation, Role, ToolDefinition};
+use crate::types::{Message, Role, ToolDefinition};
 
 /// OpenAI-compatible provider implementation
 pub struct OpenAIProvider {
@@ -241,9 +241,7 @@ impl Provider for OpenAIProvider {
             super::send_with_cache_fallback(&self.info, model, "chat/completions", &body, context)
                 .await?;
 
-        let resolved_url = response.url().to_string();
-        let mut stream =
-            super::sse::EventStream::for_completion(response.bytes_stream(), &resolved_url);
+        let mut sse = super::wire::begin_sse_stream(response, &sender).await;
         let mut usage = Usage::default();
         let mut stop_reason = StopReason::Unknown;
         let mut tool_calls_in_progress: BTreeMap<usize, PendingToolCall> = BTreeMap::new();
@@ -254,19 +252,10 @@ impl Provider for OpenAIProvider {
         let mut text_filter = super::text_tools::TextToolFilter::default();
         let mut text_calls = 0usize;
         let mut finished = false;
-        let mut done_marker = false;
         let mut event_count = 0usize;
 
-        let _ = sender.send(StreamEvent::TextStart).await;
-
-        let idle = crate::util::stream_idle_timeout();
-        while let Some(data) = stream.next_event(idle).await? {
-            if data == "[DONE]" {
-                done_marker = true;
-                break;
-            }
+        while let Some(json) = sse.next_json().await? {
             event_count += 1;
-            let json: serde_json::Value = serde_json::from_str(&data)?;
             if let Some(error) = json.get("error").filter(|value| !value.is_null()) {
                 return Err(LlmError::StreamError(crate::util::redact_secrets(
                     &format!("{}: {}", self.info.name, error),
@@ -459,7 +448,7 @@ impl Provider for OpenAIProvider {
         }
 
         if !finished || !tool_calls_in_progress.is_empty() {
-            tracing::warn!(provider = %self.info.id, model = %model.api_id, event_count, done_marker, finish_reason_seen = finished, pending_tool_calls = tool_calls_in_progress.len(), "Chat stream ended before completion");
+            tracing::warn!(provider = %self.info.id, model = %model.api_id, event_count, done_marker = sse.done_marker, finish_reason_seen = finished, pending_tool_calls = tool_calls_in_progress.len(), "Chat stream ended before completion");
             return Err(LlmError::StreamError(
                 "Chat stream ended before completion".into(),
             ));
@@ -467,7 +456,7 @@ impl Provider for OpenAIProvider {
         // Preserve the fields the endpoint actually returned, even if live
         // discovery has not learned the model's reasoning capability yet.
         // Native continuations replay only to the same provider and model.
-        if !details.is_empty() || !observed_reasoning.is_empty() {
+        let continuation_blocks = if !details.is_empty() || !observed_reasoning.is_empty() {
             let mut message = serde_json::json!({"role": "assistant", "content": content});
             if !details.is_empty() {
                 message["reasoning_details"] =
@@ -479,26 +468,20 @@ impl Provider for OpenAIProvider {
             if !completed_calls.is_empty() {
                 message["tool_calls"] = serde_json::json!(completed_calls);
             }
-            let _ = sender
-                .send(StreamEvent::Continuation(ProviderContinuation {
-                    provider_id: self.info.id.clone(),
-                    model_id: model.api_id.clone(),
-                    blocks: vec![
-                        serde_json::json!({"type": "chat_completion", "message": message}),
-                    ],
-                }))
-                .await;
-        }
+            vec![serde_json::json!({"type": "chat_completion", "message": message})]
+        } else {
+            Vec::new()
+        };
 
-        let _ = sender.send(StreamEvent::TextEnd).await;
-        let _ = sender
-            .send(StreamEvent::Done {
-                usage: usage.clone(),
-                stop_reason,
-            })
-            .await;
-
-        Ok(usage)
+        super::wire::finish_sse_stream(
+            &self.info,
+            model,
+            &sender,
+            usage,
+            stop_reason,
+            continuation_blocks,
+        )
+        .await
     }
 
     async fn list_models(&self) -> Result<Vec<ModelInfo>, LlmError> {
@@ -623,26 +606,8 @@ impl OpenAIProvider {
                 .flatten();
         // Prefer registry/catalog-backed entry when this provider already has it.
         // Full catalog enrich also runs in the TUI on ModelsDiscovered.
-        if let Some(mut known) = self
-            .info
-            .models
-            .iter()
-            .find(|m| m.id == id || m.api_id == id)
-            .cloned()
-            .or_else(|| {
-                if let Some((prefix, bare)) = id.split_once('/') {
-                    if prefix != self.info.id {
-                        return None;
-                    }
-                    self.info
-                        .models
-                        .iter()
-                        .find(|m| m.id == bare || m.api_id == bare)
-                        .cloned()
-                } else {
-                    None
-                }
-            })
+        if let Some(mut known) =
+            super::wire::find_model(&self.info.models, &self.info.id, id).cloned()
         {
             let live_context = raw
                 .get("context_window")

@@ -6,7 +6,7 @@ use tokio::sync::mpsc::Sender;
 
 use super::{ModelInfo, Provider, ProviderInfo, RequestContext};
 use crate::llm::{LlmError, StopReason, StreamEvent, Usage};
-use crate::types::{Message, ProviderContinuation, Role, ToolDefinition};
+use crate::types::{Message, Role, ToolDefinition};
 
 pub struct ResponsesProvider {
     info: ProviderInfo,
@@ -386,19 +386,10 @@ impl Provider for ResponsesProvider {
             body["prompt_cache_key"] = json!(key);
         }
         let response = super::send_request(&self.info, model, "responses", &body, context).await?;
-        let resolved_url = response.url().to_string();
-        let mut stream =
-            super::sse::EventStream::for_completion(response.bytes_stream(), &resolved_url);
+        let mut sse = super::wire::begin_sse_stream(response, &sender).await;
         let mut state = ResponseState::default();
-        let _ = sender.send(StreamEvent::TextStart).await;
-        while let Some(data) = stream
-            .next_event(crate::util::stream_idle_timeout())
-            .await?
-        {
-            if data == "[DONE]" {
-                break;
-            }
-            state.event(serde_json::from_str(&data)?, &sender).await?;
+        while let Some(event) = sse.next_json().await? {
+            state.event(event, &sender).await?;
             if state.terminal {
                 break;
             }
@@ -408,23 +399,15 @@ impl Provider for ResponsesProvider {
                 "Responses stream ended before the response completed".into(),
             ));
         }
-        if !state.output.is_empty() {
-            let _ = sender
-                .send(StreamEvent::Continuation(ProviderContinuation {
-                    provider_id: self.info.id.clone(),
-                    model_id: model.api_id.clone(),
-                    blocks: state.output.into_values().collect(),
-                }))
-                .await;
-        }
-        let _ = sender.send(StreamEvent::TextEnd).await;
-        let _ = sender
-            .send(StreamEvent::Done {
-                usage: state.usage.clone(),
-                stop_reason: state.stop.unwrap_or(StopReason::Unknown),
-            })
-            .await;
-        Ok(state.usage)
+        super::wire::finish_sse_stream(
+            &self.info,
+            model,
+            &sender,
+            state.usage,
+            state.stop.unwrap_or(StopReason::Unknown),
+            state.output.into_values().collect(),
+        )
+        .await
     }
 
     async fn list_models(&self) -> Result<Vec<ModelInfo>, LlmError> {

@@ -7,16 +7,16 @@
 
 use crate::driver::{offline_text, ActionResult, Offline};
 use crate::pairing::Pairing;
+use crate::pending::{await_pending, fail_all, PendingMap};
 use crate::protocol::{ClientInfo, Frame, Role};
 use futures::{SinkExt, StreamExt};
 use serde_json::Value;
-use std::collections::HashMap;
 use std::net::Ipv4Addr;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::net::{TcpListener, TcpStream};
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::mpsc;
 use tokio_tungstenite::tungstenite::{Bytes, Message};
 
 /// How long the browser has to answer one action before the tool gives up
@@ -40,7 +40,7 @@ struct Inner {
     extension: Option<Link>,
     /// Agente Desktop, answering the extension's chat panel.
     app: Option<Link>,
-    pending: HashMap<String, oneshot::Sender<ActionResult>>,
+    pending: PendingMap,
 }
 
 /// Equal strings, compared in time that doesn't depend on where they differ.
@@ -114,8 +114,7 @@ impl Hub {
                 return ActionResult::error(offline_text(&self.pairing, &Offline::NoBrowser));
             };
             let id = uuid::Uuid::new_v4().to_string();
-            let (sender, receiver) = oneshot::channel();
-            inner.pending.insert(id.clone(), sender);
+            let receiver = inner.pending.register(id.clone());
             let frame = Frame::Action {
                 id: id.clone(),
                 action: action.to_string(),
@@ -131,22 +130,24 @@ impl Hub {
             (id, receiver)
         };
 
-        match tokio::time::timeout(REQUEST_TIMEOUT, receiver).await {
-            Ok(Ok(result)) => result,
-            Ok(Err(_)) => {
-                self.forget(&id);
-                ActionResult::error(format!(
+        await_pending(
+            id,
+            receiver,
+            REQUEST_TIMEOUT,
+            || {
+                format!(
                     "The browser disconnected while running {action}. Reconnect the extension and retry."
-                ))
-            }
-            Err(_) => {
-                self.forget(&id);
-                ActionResult::error(format!(
+                )
+            },
+            || {
+                format!(
                     "The browser did not answer {action} within {}s — a modal dialog, a permission prompt or a sleeping tab will do that. Check the window and retry.",
                     REQUEST_TIMEOUT.as_secs()
-                ))
-            }
-        }
+                )
+            },
+            |id| self.forget(id),
+        )
+        .await
     }
 
     fn forget(&self, id: &str) {
@@ -296,7 +297,7 @@ impl Hub {
                 image,
                 url,
             } if role == Role::Extension => {
-                let sender = self.inner.lock().expect("hub state").pending.remove(&id);
+                let sender = self.inner.lock().expect("hub state").pending.take(&id);
                 if let Some(sender) = sender {
                     let _ = sender.send(ActionResult {
                         ok,
@@ -400,13 +401,9 @@ impl Hub {
         }
         inner.extension = None;
         // Every pending action needed that browser.
-        let pending: Vec<_> = inner.pending.drain().map(|(_, sender)| sender).collect();
+        let pending = inner.pending.drain_senders();
         drop(inner);
-        for sender in pending {
-            let _ = sender.send(ActionResult::error(
-                "The browser disconnected before answering.",
-            ));
-        }
+        fail_all(pending, "The browser disconnected before answering.");
     }
 }
 

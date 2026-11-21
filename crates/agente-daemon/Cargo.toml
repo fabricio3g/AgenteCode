@@ -7,7 +7,6 @@ license.workspace = true
 description = "agente serve: the runtime over a local socket, for Desktop and attach"
 
 [dependencies]
-agente-acp = { workspace = true }
 agente-core = { workspace = true }
 agente-protocol = { workspace = true }
 agente-runtime = { workspace = true }

@@ -49,33 +49,21 @@ pub fn authorize_url(client_id: &str, redirect_uri: &str, state: &str, challenge
     let scopes = SCOPES.join(" ");
     format!(
         "{AUTH_URL}?client_id={}&redirect_uri={}&response_type=code&scope={}&code_challenge={}&code_challenge_method=S256&state={}&access_type=offline&prompt=consent",
-        urlencode(client_id),
-        urlencode(redirect_uri),
-        urlencode(&scopes),
-        urlencode(challenge),
-        urlencode(state),
+        crate::google::encode(client_id),
+        crate::google::encode(redirect_uri),
+        crate::google::encode(&scopes),
+        crate::google::encode(challenge),
+        crate::google::encode(state),
     )
 }
 
-pub async fn exchange_code(
+async fn post_token_form(
     http: &reqwest::Client,
-    client_id: &str,
-    client_secret: &str,
-    code: &str,
-    verifier: &str,
-    redirect_uri: &str,
+    form: &[(&str, &str)],
 ) -> Result<OAuthGrant, String> {
-    let form = vec![
-        ("client_id", client_id.to_string()),
-        ("client_secret", client_secret.to_string()),
-        ("code", code.to_string()),
-        ("code_verifier", verifier.to_string()),
-        ("grant_type", "authorization_code".to_string()),
-        ("redirect_uri", redirect_uri.to_string()),
-    ];
     let response = http
         .post(TOKEN_URL)
-        .form(&form)
+        .form(form)
         .send()
         .await
         .map_err(|error| format!("Could not reach Google's token endpoint: {error}"))?;
@@ -89,32 +77,44 @@ pub async fn exchange_code(
     crate::google::grant_from_token_response(&body)
 }
 
+pub async fn exchange_code(
+    http: &reqwest::Client,
+    client_id: &str,
+    client_secret: &str,
+    code: &str,
+    verifier: &str,
+    redirect_uri: &str,
+) -> Result<OAuthGrant, String> {
+    post_token_form(
+        http,
+        &[
+            ("client_id", client_id),
+            ("client_secret", client_secret),
+            ("code", code),
+            ("code_verifier", verifier),
+            ("grant_type", "authorization_code"),
+            ("redirect_uri", redirect_uri),
+        ],
+    )
+    .await
+}
+
 pub async fn refresh(
     http: &reqwest::Client,
     client_id: &str,
     client_secret: &str,
     refresh_token: &str,
 ) -> Result<OAuthGrant, String> {
-    let form = vec![
-        ("client_id", client_id.to_string()),
-        ("client_secret", client_secret.to_string()),
-        ("refresh_token", refresh_token.to_string()),
-        ("grant_type", "refresh_token".to_string()),
-    ];
-    let response = http
-        .post(TOKEN_URL)
-        .form(&form)
-        .send()
-        .await
-        .map_err(|error| format!("Could not reach Google's token endpoint: {error}"))?;
-    let status = response.status().as_u16();
-    let body: serde_json::Value = response.json().await.map_err(|error| {
-        format!("Google's token endpoint answered something unreadable: {error}")
-    })?;
-    if !(200..300).contains(&status) {
-        return Err(crate::google::http_error_text(status, &body.to_string()));
-    }
-    let mut grant = crate::google::grant_from_token_response(&body)?;
+    let mut grant = post_token_form(
+        http,
+        &[
+            ("client_id", client_id),
+            ("client_secret", client_secret),
+            ("refresh_token", refresh_token),
+            ("grant_type", "refresh_token"),
+        ],
+    )
+    .await?;
     // A refresh response usually omits the refresh token; keep the one we have.
     if grant.refresh_token.is_none() {
         grant.refresh_token = Some(refresh_token.to_string());
@@ -252,19 +252,6 @@ fn open_browser(url: &str) {
     if let Err(error) = std::process::Command::new(opener).arg(url).spawn() {
         tracing::debug!(%error, "could not open a browser; the URL is printed above");
     }
-}
-
-fn urlencode(value: &str) -> String {
-    let mut out = String::with_capacity(value.len());
-    for byte in value.bytes() {
-        match byte {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
-                out.push(byte as char)
-            }
-            _ => out.push_str(&format!("%{byte:02X}")),
-        }
-    }
-    out
 }
 
 fn urldecode(value: &str) -> String {

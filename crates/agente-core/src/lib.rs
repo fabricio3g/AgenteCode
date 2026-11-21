@@ -6,6 +6,7 @@ pub mod catalog;
 pub mod config;
 pub mod context;
 pub mod extensions;
+pub mod fs_atomic;
 #[cfg(feature = "execution")]
 pub mod goal;
 pub mod llm;

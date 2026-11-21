@@ -1,9 +1,10 @@
 //! Shared HTTP and option handling for provider transports.
 use super::{ApiFormat, ModelInfo, ProviderInfo, RequestContext};
-use crate::llm::LlmError;
-use crate::types::{Message, Role};
+use crate::llm::{LlmError, StopReason, StreamEvent, Usage};
+use crate::types::{Message, ProviderContinuation, Role};
 use serde_json::{json, Value};
 use std::collections::HashMap;
+use tokio::sync::mpsc::Sender;
 
 /// Routing identity is a declarative provider policy, shared by every dialect.
 /// Discovery has no conversation, so it uses a stable process identity.
@@ -538,6 +539,101 @@ pub(super) fn tool_output(text: &str) -> Value {
         .ok()
         .filter(Value::is_object)
         .unwrap_or_else(|| json!({"output": text}))
+}
+
+/// Look up a model by exact `id`/`api_id`, or by `provider_id/`-stripped /
+/// `provider_id/`-prefixed form without stripping another vendor's prefix.
+pub(super) fn find_model<'a>(
+    models: &'a [ModelInfo],
+    provider_id: &str,
+    model_id: &str,
+) -> Option<&'a ModelInfo> {
+    models
+        .iter()
+        .find(|m| m.id == model_id || m.api_id == model_id)
+        .or_else(|| {
+            if let Some((prefix, bare)) = model_id.split_once('/') {
+                if prefix != provider_id {
+                    return None;
+                }
+                models.iter().find(|m| m.id == bare || m.api_id == bare)
+            } else {
+                let prefixed = format!("{provider_id}/{model_id}");
+                models
+                    .iter()
+                    .find(|m| m.id == prefixed || m.api_id == prefixed)
+            }
+        })
+}
+
+/// Shared SSE JSON completion stream shell: wraps `EventStream`, sends
+/// `TextStart`, applies the idle timeout, handles `[DONE]`, and decodes JSON.
+pub(super) struct SseJsonStream<S> {
+    stream: super::sse::EventStream<S>,
+    idle: std::time::Duration,
+    pub done_marker: bool,
+}
+
+impl<S, B, E> SseJsonStream<S>
+where
+    S: futures::Stream<Item = Result<B, E>> + Unpin,
+    B: AsRef<[u8]>,
+    E: std::fmt::Display,
+{
+    pub(super) async fn next_json(&mut self) -> Result<Option<Value>, LlmError> {
+        let Some(data) = self.stream.next_event(self.idle).await? else {
+            return Ok(None);
+        };
+        if data == "[DONE]" {
+            self.done_marker = true;
+            return Ok(None);
+        }
+        Ok(Some(serde_json::from_str(&data)?))
+    }
+}
+
+/// Open an SSE completion stream from `response` and emit `StreamEvent::TextStart`.
+pub(super) async fn begin_sse_stream(
+    response: reqwest::Response,
+    sender: &Sender<StreamEvent>,
+) -> SseJsonStream<impl futures::Stream<Item = Result<impl AsRef<[u8]>, reqwest::Error>> + Unpin> {
+    let resolved_url = response.url().to_string();
+    let stream = super::sse::EventStream::for_completion(response.bytes_stream(), &resolved_url);
+    let _ = sender.send(StreamEvent::TextStart).await;
+    SseJsonStream {
+        stream,
+        idle: crate::util::stream_idle_timeout(),
+        done_marker: false,
+    }
+}
+
+/// Finalize a completion stream: emit optional `Continuation`, `TextEnd`, and
+/// `Done`, returning `usage`.
+pub(super) async fn finish_sse_stream(
+    info: &ProviderInfo,
+    model: &ModelInfo,
+    sender: &Sender<StreamEvent>,
+    usage: Usage,
+    stop_reason: StopReason,
+    continuation_blocks: Vec<Value>,
+) -> Result<Usage, LlmError> {
+    if !continuation_blocks.is_empty() {
+        let _ = sender
+            .send(StreamEvent::Continuation(ProviderContinuation {
+                provider_id: info.id.clone(),
+                model_id: model.api_id.clone(),
+                blocks: continuation_blocks,
+            }))
+            .await;
+    }
+    let _ = sender.send(StreamEvent::TextEnd).await;
+    let _ = sender
+        .send(StreamEvent::Done {
+            usage: usage.clone(),
+            stop_reason,
+        })
+        .await;
+    Ok(usage)
 }
 
 #[cfg(test)]

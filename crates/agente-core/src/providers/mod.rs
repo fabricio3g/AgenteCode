@@ -252,22 +252,7 @@ pub trait Provider: Send + Sync {
 
     /// Get model by ID (matches `id` or `api_id`, plus bare/prefixed variants).
     fn get_model(&self, model_id: &str) -> Option<&ModelInfo> {
-        let models = &self.info().models;
-        if let Some(m) = models
-            .iter()
-            .find(|m| m.id == model_id || m.api_id == model_id)
-        {
-            return Some(m);
-        }
-        if let Some((prefix, bare)) = model_id.split_once('/') {
-            if prefix != self.info().id {
-                return None;
-            }
-            if let Some(m) = models.iter().find(|m| m.id == bare || m.api_id == bare) {
-                return Some(m);
-            }
-        }
-        None
+        wire::find_model(&self.info().models, &self.info().id, model_id)
     }
 
     /// Transform messages for this provider's API format
@@ -526,7 +511,7 @@ impl ProviderRegistry {
         self.runtime_models
             .read()
             .get(provider)
-            .and_then(|models| find_model(models, provider, model_id))
+            .and_then(|models| wire::find_model(models, provider, model_id).cloned())
     }
 
     pub fn get_model(&self, provider_id: &str, model_id: &str) -> Option<ModelInfo> {
@@ -536,35 +521,8 @@ impl ProviderRegistry {
         self.providers
             .read()
             .get(provider_id)
-            .and_then(|p| find_model(&p.info().models, provider_id, model_id))
+            .and_then(|p| wire::find_model(&p.info().models, provider_id, model_id).cloned())
     }
-}
-
-fn find_model(models: &[ModelInfo], provider_id: &str, model_id: &str) -> Option<ModelInfo> {
-    models
-        .iter()
-        .find(|m| m.id == model_id || m.api_id == model_id)
-        .cloned()
-        .or_else(|| {
-            // Accept provider/model IDs only when the prefix names this
-            // provider. Never strip a vendor prefix from a gateway model ID
-            // and accidentally match another model.
-            if let Some((prefix, bare)) = model_id.split_once('/') {
-                if prefix != provider_id {
-                    return None;
-                }
-                models
-                    .iter()
-                    .find(|m| m.id == bare || m.api_id == bare)
-                    .cloned()
-            } else {
-                let prefixed = format!("{provider_id}/{model_id}");
-                models
-                    .iter()
-                    .find(|m| m.id == prefixed || m.api_id == prefixed)
-                    .cloned()
-            }
-        })
 }
 
 /// Convert a catalog entry into runtime `ModelInfo`.
@@ -640,8 +598,8 @@ pub fn resolve_model_info(
     spec::apply_fallback_reasoning(&mut model);
     // Reconfiguration wins over stale live snapshots.
     if let Some(provider) = registry.get(provider_id) {
-        if let Some(configured) = find_model(&provider.info().models, provider_id, model_id) {
-            overlay_transport(&mut model, &configured);
+        if let Some(configured) = wire::find_model(&provider.info().models, provider_id, model_id) {
+            overlay_transport(&mut model, configured);
         }
         resolve_registered_transport(&mut model, provider.as_ref());
     } else if let Some(spec) = spec::get(canonical_provider_id(provider_id)) {
@@ -701,7 +659,7 @@ fn resolve_known_model_info(
     if let Some(mut m) = registry.runtime_model(provider_id, model_id) {
         let refresh_catalog = catalog.is_some()
             || registry.get(provider_id).is_some_and(|provider| {
-                find_model(&provider.info().models, provider_id, model_id)
+                wire::find_model(&provider.info().models, provider_id, model_id)
                     .is_some_and(|model| model.api.format_source == policy::MetadataSource::Catalog)
             });
         reset_derived_transport(&mut m, refresh_catalog);

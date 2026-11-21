@@ -19,6 +19,7 @@ pub mod google;
 pub mod hub;
 pub mod pairing;
 pub mod peer;
+mod pending;
 pub mod protocol;
 pub mod server;
 pub mod text;

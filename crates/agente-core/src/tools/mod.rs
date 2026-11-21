@@ -8,12 +8,8 @@
 
 use async_trait::async_trait;
 use std::collections::HashMap;
-use std::path::Path;
-use std::sync::Arc;
 use thiserror::Error;
-use tokio::sync::Mutex as AsyncMutex;
 
-use crate::cancellation::AbortSignal;
 use crate::types::ToolDefinition;
 
 // Re-export individual tool modules
@@ -21,20 +17,34 @@ pub mod atomic_fs;
 pub mod edit_match;
 pub mod exec;
 pub mod file;
+mod mutation_queue;
 pub mod outline;
+mod output;
 pub mod patch;
+mod path;
+pub mod processes;
+pub(crate) mod runner;
 pub mod search;
 pub mod skill;
 pub mod subagent;
 pub mod task;
 pub mod web;
 
-// Re-export tool implementations
+// Re-export tool implementations and shared helpers
 pub use exec::ShellTool;
-pub mod processes;
 pub use file::{EditFileTool, ListDirTool, ReadFileTool, WriteFileTool};
+pub use mutation_queue::{ensure_not_cancelled, with_file_mutation_queue};
 pub use outline::FileOutlineTool;
+pub use output::{truncate_output, truncate_tool_output, ToolOutput};
+pub(crate) use output::{
+    MAX_DIR_ENTRIES, MAX_EDIT_FILE_BYTES, MAX_FILE_LINES, MAX_GREP_LINE_LEN, MAX_LINE_BYTES,
+    MAX_READ_FILE_BYTES, MAX_SHELL_LINES,
+};
+use output::{MAX_OUTPUT_BYTES, MAX_OUTPUT_LINES};
 pub use patch::ApplyPatchTool;
+pub(crate) use path::{canonical_base_cached, comparable_path};
+pub use path::{resolve_project_path, resolve_read_path};
+pub use runner::{ShellEnv, ToolExecutionContext, ToolOutputStream, ToolProgress};
 pub use search::{FindTool, GrepTool};
 pub use skill::SkillTool;
 pub use subagent::{KillTaskTool, TaskOutputTool, TaskTool};
@@ -42,430 +52,6 @@ pub use task::{
     parse_plan_ready_output, plan_file_rel, PresentPlanTool, TodoWriteTool, PLANS_DIR_REL,
 };
 pub use web::{WebFetchTool, WebSearchTool};
-
-const MAX_OUTPUT_LINES: usize = 2000;
-const MAX_OUTPUT_BYTES: usize = 50 * 1024;
-// MAX_SHELL_LINES, MAX_DIR_ENTRIES, MAX_GREP_LINE_LEN are used in submodules
-pub(crate) const MAX_SHELL_LINES: usize = 500;
-pub(crate) const MAX_FILE_LINES: usize = 2000;
-pub(crate) const MAX_DIR_ENTRIES: usize = 500;
-pub(crate) const MAX_GREP_LINE_LEN: usize = 200;
-/// A full `read_file` above this size is refused with a pagination hint
-/// instead of being buffered whole (a multi-GB log would OOM the agent).
-pub(crate) const MAX_READ_FILE_BYTES: u64 = 1024 * 1024;
-/// Per-line cap so a single minified/JSONL line cannot blow the result.
-pub(crate) const MAX_LINE_BYTES: usize = 2000;
-/// Wholesale rewrites above this size must go through shell/split edits.
-pub(crate) const MAX_EDIT_FILE_BYTES: u64 = 8 * 1024 * 1024;
-/// Liveness tick for every tool invocation. Tools that emit no progress
-/// (grep over a huge tree, a slow web fetch, a big read) would otherwise look
-/// dead to the TUI stuck-guard and get force-cancelled mid-work.
-pub(crate) const TOOL_HEARTBEAT_MS: u64 = 15_000;
-
-/// Which output stream produced a tool progress chunk.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ToolOutputStream {
-    Stdout,
-    Stderr,
-}
-
-/// A bounded, incremental output update emitted by a context-aware tool.
-#[derive(Debug, Clone)]
-pub struct ToolProgress {
-    pub stream: ToolOutputStream,
-    pub content: String,
-}
-
-type ToolProgressCallback = Arc<dyn Fn(ToolProgress) + Send + Sync>;
-
-/// How a command a tool starts (`shell`, background processes) runs.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub enum ShellEnv {
-    /// With everything the host process has: the coding agent's usual shell.
-    #[default]
-    Inherit,
-    /// With only a short allowlist (path, locale, time zone, temp dir) and
-    /// the home folder set to the project: no keys or tokens from the host
-    /// (provider keys, `AGENTE_TOKEN`, cloud credentials). Bot turns where
-    /// no sandbox exists.
-    Clean,
-    /// Clean, and inside the sandbox ([`crate::sandbox`]): writes only the
-    /// project, reads nothing of the user's, network only if allowed.
-    Boxed(crate::sandbox::SandboxPolicy),
-}
-
-/// What a clean environment keeps from the host.
-const CLEAN_ENV_VARS: &[&str] = &[
-    "PATH",
-    "LANG",
-    "LC_ALL",
-    "LC_CTYPE",
-    "TZ",
-    "TERM",
-    "TMPDIR",
-    "TEMP",
-    "TMP",
-    "USER",
-    "LOGNAME",
-    "SHELL",
-    "SystemRoot",
-    "SystemDrive",
-    "WINDIR",
-    "ComSpec",
-    "PATHEXT",
-    "NUMBER_OF_PROCESSORS",
-    "PROCESSOR_ARCHITECTURE",
-];
-
-impl ShellEnv {
-    /// The command that runs `command` through the shell (`sh -c`, or
-    /// `cmd /C` on Windows) in `project_dir`, this way. A command that must be
-    /// boxed but can't be is refused, never run unboxed.
-    pub(crate) fn shell(
-        &self,
-        command: &str,
-        project_dir: &str,
-    ) -> Result<processkit::Command, ToolError> {
-        let cmd = match self {
-            ShellEnv::Boxed(policy) => crate::sandbox::command(command, project_dir, policy)
-                .map_err(|reason| {
-                    ToolError::ExecutionError(format!(
-                        "This can't run here: the sandbox isn't available ({reason})."
-                    ))
-                })?,
-            ShellEnv::Inherit | ShellEnv::Clean => plain_shell(command),
-        };
-        Ok(match self {
-            ShellEnv::Inherit => cmd,
-            ShellEnv::Clean | ShellEnv::Boxed(_) => cmd
-                .inherit_env(CLEAN_ENV_VARS)
-                .env("HOME", project_dir)
-                .env("USERPROFILE", project_dir),
-        })
-    }
-}
-
-/// `sh -c <command>`, or on Windows `ComSpec` (falling back to `cmd.exe`,
-/// extension included: a bare `cmd` can be shadowed by an unrelated tool on
-/// PATH, nvm for Windows ships one).
-fn plain_shell(command: &str) -> processkit::Command {
-    if cfg!(target_os = "windows") {
-        processkit::Command::new(std::env::var("ComSpec").unwrap_or_else(|_| "cmd.exe".to_string()))
-            .args(["/D", "/C", command])
-    } else {
-        processkit::Command::new("sh").args(["-c", command])
-    }
-}
-
-/// Runtime context supplied to a tool invocation.
-///
-/// The default context never cancels and emits no progress, so existing tools
-/// and external implementations remain source-compatible. Tool implementations
-/// that support cooperative progress can call [`ToolExecutionContext::report`].
-#[derive(Clone)]
-pub struct ToolExecutionContext {
-    pub cancellation: AbortSignal,
-    pub call_id: String,
-    progress: Option<ToolProgressCallback>,
-    heartbeat: Option<Arc<dyn Fn() + Send + Sync>>,
-    shell_env: ShellEnv,
-}
-
-impl ToolExecutionContext {
-    pub fn new(cancellation: AbortSignal) -> Self {
-        Self {
-            cancellation,
-            call_id: String::new(),
-            progress: None,
-            heartbeat: None,
-            shell_env: ShellEnv::Inherit,
-        }
-    }
-
-    /// How commands started by this call run.
-    pub fn shell_env(&self) -> &ShellEnv {
-        &self.shell_env
-    }
-
-    pub fn with_shell_env(mut self, shell_env: ShellEnv) -> Self {
-        self.shell_env = shell_env;
-        self
-    }
-
-    pub fn with_progress<F>(mut self, callback: F) -> Self
-    where
-        F: Fn(ToolProgress) + Send + Sync + 'static,
-    {
-        self.progress = Some(Arc::new(callback));
-        self
-    }
-
-    /// Register a liveness callback. Long-running tools fire it periodically
-    /// (even after their progress budget is exhausted) so the TUI's stuck
-    /// guard can tell "working" from "dead".
-    pub fn with_heartbeat<F>(mut self, callback: F) -> Self
-    where
-        F: Fn() + Send + Sync + 'static,
-    {
-        self.heartbeat = Some(Arc::new(callback));
-        self
-    }
-
-    pub fn report(&self, progress: ToolProgress) {
-        if let Some(callback) = &self.progress {
-            callback(progress);
-        }
-    }
-
-    pub fn heartbeat(&self) {
-        if let Some(callback) = &self.heartbeat {
-            callback();
-        }
-    }
-}
-
-impl Default for ToolExecutionContext {
-    fn default() -> Self {
-        Self::new(AbortSignal::never())
-    }
-}
-
-/// Canonical form of the project directory, cached per process: every tool
-/// preparation used to re-canonicalize the same root (two syscalls per call).
-/// Only canonicalized (existing) roots are cached so a path checked before the
-/// directory exists never permanently pins a non-canonical form.
-pub(crate) fn canonical_base_cached(project_dir: &str) -> std::path::PathBuf {
-    static CACHE: std::sync::OnceLock<
-        std::sync::Mutex<std::collections::HashMap<String, std::path::PathBuf>>,
-    > = std::sync::OnceLock::new();
-    let cache = CACHE.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()));
-    {
-        let guard = cache
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        if let Some(cached) = guard.get(project_dir) {
-            return cached.clone();
-        }
-    }
-    let base = std::path::Path::new(project_dir);
-    match std::fs::canonicalize(base) {
-        Ok(canonical) => {
-            let mut guard = cache
-                .lock()
-                .unwrap_or_else(|poisoned| poisoned.into_inner());
-            guard.insert(project_dir.to_string(), canonical.clone());
-            canonical
-        }
-        Err(_) => base.to_path_buf(),
-    }
-}
-
-/// Resolve a path relative to the project directory and ensure it doesn't escape.
-/// Returns the canonicalized path or an error if path traversal is detected.
-pub fn resolve_project_path(
-    path: &str,
-    project_dir: &str,
-) -> Result<std::path::PathBuf, ToolError> {
-    let base = std::path::Path::new(project_dir);
-    let target = base.join(path);
-
-    let canonical_base = canonical_base_cached(project_dir);
-
-    let canonical_target = match std::fs::canonicalize(&target) {
-        Ok(canonical) => canonical,
-        // `canonicalize` fails for not-yet-existing paths (every new-file
-        // write) and for dangling symlinks. Resolving only the nearest
-        // existing ancestor keeps symlinked parents (or a symlinked leaf)
-        // from slipping past the check on a purely lexical fallback.
-        Err(_) => canonicalize_closest_ancestor(&resolve_leaf_symlink(&target)?)?,
-    };
-
-    // Containment is compared on verbatim-prefix-stripped forms: canonicalize
-    // yields `\\?\C:\...` while the fallback normalization of a not-yet-
-    // existing target does not, and a raw prefix compare would deny every
-    // NEW file (write_file) under a plain project root.
-    if !comparable_path(&canonical_target).starts_with(comparable_path(&canonical_base)) {
-        return Err(ToolError::ExecutionError(format!(
-            "Access denied: '{path}' is outside the project directory"
-        )));
-    }
-
-    Ok(canonical_target)
-}
-
-/// [`resolve_project_path`] for the read-only tools, which may also open
-/// files bundled with a discovered skill (a user-level skill lives outside
-/// the project, and its instructions point at its own `scripts/` and
-/// `references/`).
-pub fn resolve_read_path(path: &str, project_dir: &str) -> Result<std::path::PathBuf, ToolError> {
-    resolve_project_path(path, project_dir).or_else(|denied| {
-        let candidate = std::path::Path::new(path);
-        match std::fs::canonicalize(candidate) {
-            Ok(canonical)
-                if candidate.is_absolute()
-                    && crate::extensions::skills::within_skill_dir(project_dir, &canonical) =>
-            {
-                Ok(canonical)
-            }
-            _ => Err(denied),
-        }
-    })
-}
-
-/// Strip Windows verbatim prefixes so canonicalized and normalized paths can
-/// be compared; identity on other platforms.
-pub(crate) fn comparable_path(path: &std::path::Path) -> std::path::PathBuf {
-    #[cfg(windows)]
-    {
-        const VERBATIM: &str = r"\\?\";
-        const VERBATIM_UNC: &str = r"\\?\UNC\";
-        let text = path.to_string_lossy();
-        if let Some(rest) = text.strip_prefix(VERBATIM_UNC) {
-            return std::path::PathBuf::from(format!(r"\\{rest}"));
-        }
-        if let Some(rest) = text.strip_prefix(VERBATIM) {
-            return std::path::PathBuf::from(rest);
-        }
-        path.to_path_buf()
-    }
-    #[cfg(not(windows))]
-    {
-        path.to_path_buf()
-    }
-}
-
-/// Maximum symlink expansions allowed while resolving dangling or chained links
-/// (matches POSIX `SYMLOOP_MAX` / Linux `MAXSYMLINKS`).
-const MAX_SYMLINK_HOPS: usize = 40;
-
-fn is_symlink(path: &std::path::Path) -> bool {
-    std::fs::symlink_metadata(path)
-        .map(|m| m.file_type().is_symlink())
-        .unwrap_or(false)
-}
-
-/// Follow a leaf symlink chain (including dangling links, which `canonicalize`
-/// refuses to resolve) up to [`MAX_SYMLINK_HOPS`] hops so the containment check
-/// sees the real destination instead of the link's location.
-fn resolve_leaf_symlink(target: &std::path::Path) -> Result<std::path::PathBuf, ToolError> {
-    let mut current = target.to_path_buf();
-    for _ in 0..MAX_SYMLINK_HOPS {
-        if !is_symlink(&current) {
-            return Ok(current);
-        }
-        let link = std::fs::read_link(&current).map_err(|_| {
-            ToolError::ExecutionError(format!(
-                "Access denied: cannot resolve symlink '{}'",
-                target.display()
-            ))
-        })?;
-        current = if link.is_absolute() {
-            link
-        } else {
-            current.parent().map(|p| p.join(&link)).unwrap_or(link)
-        };
-    }
-    if is_symlink(&current) {
-        return Err(ToolError::ExecutionError(format!(
-            "Access denied: symlink chain exceeds {MAX_SYMLINK_HOPS} hops for '{}'",
-            target.display()
-        )));
-    }
-    Ok(current)
-}
-
-/// Canonicalize the nearest existing ancestor of `target` and re-attach the
-/// missing remainder. Unlike a purely lexical normalization this resolves
-/// symlinked parent directories — including intermediate dangling symlink
-/// directories and chained symlinks — so a new file under `link -> /outside/missing`
-/// cannot slip past the project-containment check.
-fn canonicalize_closest_ancestor(
-    target: &std::path::Path,
-) -> Result<std::path::PathBuf, ToolError> {
-    let mut current = resolve_leaf_symlink(target)?;
-    let mut hops = 0usize;
-
-    'resolve: loop {
-        let mut ancestor = current.as_path();
-        let mut remainder: Vec<std::ffi::OsString> = Vec::new();
-        loop {
-            if let Ok(canonical) = std::fs::canonicalize(ancestor) {
-                let mut out = canonical;
-                for component in remainder.iter().rev() {
-                    if component == ".." {
-                        out.pop();
-                    } else if component != "." {
-                        out.push(component);
-                    }
-                }
-                return Ok(normalize_path(&out));
-            }
-            // An intermediate component may itself be a dangling symlink (or
-            // chain of symlinks) pointing outside the project: `canonicalize`
-            // fails on dangling links, so expand the link and keep resolving
-            // instead of walking past it to an in-project parent.
-            if is_symlink(ancestor) {
-                hops += 1;
-                if hops > MAX_SYMLINK_HOPS {
-                    return Err(ToolError::ExecutionError(format!(
-                        "Access denied: symlink chain exceeds {MAX_SYMLINK_HOPS} hops for '{}'",
-                        target.display()
-                    )));
-                }
-                let mut next = resolve_leaf_symlink(ancestor)?;
-                for component in remainder.iter().rev() {
-                    next.push(component);
-                }
-                current = next;
-                continue 'resolve;
-            }
-            match ancestor.parent() {
-                Some(parent) => {
-                    match ancestor.components().next_back() {
-                        Some(std::path::Component::Normal(name)) => {
-                            remainder.push(name.to_os_string());
-                        }
-                        Some(std::path::Component::ParentDir) => {
-                            remainder.push(std::ffi::OsString::from(".."));
-                        }
-                        _ => {}
-                    }
-                    ancestor = parent;
-                }
-                None => {
-                    return Err(ToolError::ExecutionError(format!(
-                        "Access denied: '{}' is outside the project directory",
-                        target.display()
-                    )));
-                }
-            }
-        }
-    }
-}
-
-/// Normalize a path by resolving `.` and `..` components without requiring the
-/// path to exist. On Windows, verbatim paths (`\\?\...`) emit `.` and `..` as
-/// `Component::Normal` rather than `CurDir`/`ParentDir`, so those are collapsed
-/// here too.
-fn normalize_path(path: &std::path::Path) -> std::path::PathBuf {
-    let mut result = std::path::PathBuf::new();
-    for component in path.components() {
-        match component {
-            std::path::Component::Prefix(p) => result.push(p.as_os_str()),
-            std::path::Component::RootDir => result.push(std::path::MAIN_SEPARATOR_STR),
-            std::path::Component::CurDir => {}
-            std::path::Component::Normal(p) if p == "." => {}
-            std::path::Component::ParentDir => {
-                result.pop();
-            }
-            std::path::Component::Normal(p) if p == ".." => {
-                result.pop();
-            }
-            std::path::Component::Normal(p) => result.push(p),
-        }
-    }
-    result
-}
 
 #[derive(Error, Debug)]
 pub enum ToolError {
@@ -476,165 +62,6 @@ pub enum ToolError {
     #[error("Tool not found: {0}")]
     NotFound(String),
 }
-
-#[derive(Debug, Clone)]
-pub struct ToolOutput {
-    pub content: String,
-    pub truncated: bool,
-}
-
-impl ToolOutput {
-    pub fn new(content: String) -> Self {
-        Self {
-            content,
-            truncated: false,
-        }
-    }
-
-    pub fn truncated(content: String) -> Self {
-        Self {
-            content,
-            truncated: true,
-        }
-    }
-}
-
-impl From<String> for ToolOutput {
-    fn from(content: String) -> Self {
-        Self::new(content)
-    }
-}
-
-pub fn truncate_output(content: &str) -> ToolOutput {
-    let byte_len = content.len();
-    let line_count = content.lines().count();
-
-    if byte_len <= MAX_OUTPUT_BYTES && line_count <= MAX_OUTPUT_LINES {
-        return ToolOutput::new(content.to_string());
-    }
-
-    let all_lines: Vec<&str> = content.lines().collect();
-    let mut truncated = false;
-
-    let truncated_content = if all_lines.len() > MAX_OUTPUT_LINES {
-        let head = MAX_OUTPUT_LINES / 2;
-        let tail = MAX_OUTPUT_LINES / 2;
-        let omitted = all_lines.len() - head - tail;
-        let head_part = all_lines[..head].join("\n");
-        let tail_part = all_lines[all_lines.len() - tail..].join("\n");
-        truncated = true;
-        format!("{head_part}\n\n... {omitted} lines omitted ...\n\n{tail_part}")
-    } else {
-        content.to_string()
-    };
-
-    let final_result = if truncated_content.len() > MAX_OUTPUT_BYTES {
-        truncated = true;
-        format!(
-            "{}\n\n... output truncated ...",
-            crate::util::truncate_at_char_boundary(&truncated_content, MAX_OUTPUT_BYTES)
-        )
-    } else {
-        truncated_content
-    };
-
-    if truncated {
-        ToolOutput::truncated(final_result)
-    } else {
-        ToolOutput::new(final_result)
-    }
-}
-
-pub fn truncate_tool_output(output: &str, max_lines: usize, mode: &str) -> String {
-    let lines: Vec<&str> = output.lines().collect();
-    if lines.len() <= max_lines {
-        return output.to_string();
-    }
-    let total = lines.len();
-    match mode {
-        "tail" => {
-            let kept: Vec<&str> = lines.iter().rev().take(max_lines).rev().copied().collect();
-            format!(
-                "[Output truncated: showing last {} of {} lines]\n{}",
-                max_lines,
-                total,
-                kept.join("\n")
-            )
-        }
-        _ => {
-            let kept: Vec<&str> = lines.iter().take(max_lines).copied().collect();
-            format!(
-                "[Output truncated: showing first {} of {} lines. Use start_line/end_line parameters to read specific sections.]\n{}",
-                max_lines, total, kept.join("\n")
-            )
-        }
-    }
-}
-
-type FileMutationQueues = Arc<AsyncMutex<HashMap<String, Arc<AsyncMutex<()>>>>>;
-static FILE_MUTATION_QUEUES: std::sync::LazyLock<FileMutationQueues> =
-    std::sync::LazyLock::new(|| Arc::new(AsyncMutex::new(HashMap::new())));
-
-/// Refuse a mutation that has not started its commit yet.
-pub fn ensure_not_cancelled(signal: &AbortSignal) -> Result<(), ToolError> {
-    if signal.is_aborted() {
-        return Err(ToolError::ExecutionError("Tool execution cancelled".into()));
-    }
-    Ok(())
-}
-
-/// Serialize mutations of one path and keep the path lock owned until the
-/// mutation finishes, even when its caller is cancelled.
-///
-/// The mutation runs in its own task. Dropping the caller's await (turn
-/// cancellation, aborted handle) never drops a half-issued atomic write: the
-/// detached task holds the same lock until commit and read-state recording
-/// complete, so a second writer cannot interleave. `signal` is checked before
-/// the mutation starts; call [`ensure_not_cancelled`] inside `f` to honor
-/// cancellation before the actual commit.
-pub async fn with_file_mutation_queue<F, Fut, T>(
-    path: &str,
-    signal: AbortSignal,
-    f: F,
-) -> Result<T, ToolError>
-where
-    F: FnOnce(AbortSignal) -> Fut + Send + 'static,
-    Fut: std::future::Future<Output = Result<T, ToolError>> + Send + 'static,
-    T: Send + 'static,
-{
-    let canonical = std::fs::canonicalize(path).unwrap_or_else(|_| Path::new(path).to_path_buf());
-    let key = canonical.to_string_lossy().to_string();
-
-    let mutex = {
-        let mut queues = FILE_MUTATION_QUEUES.lock().await;
-        queues
-            .entry(key.clone())
-            .or_insert_with(|| Arc::new(AsyncMutex::new(())))
-            .clone()
-    };
-
-    let (tx, rx) = tokio::sync::oneshot::channel();
-    tokio::spawn(async move {
-        let _guard = mutex.lock().await;
-        let result = if signal.is_aborted() {
-            Err(ToolError::ExecutionError("Tool execution cancelled".into()))
-        } else {
-            f(signal).await
-        };
-        let _ = tx.send(result);
-    });
-
-    match rx.await {
-        Ok(result) => result,
-        Err(_) => Err(ToolError::ExecutionError("Tool execution cancelled".into())),
-    }
-}
-
-// Editing matches through `tools::edit_match`, the one ladder (exact →
-// whitespace → normalized → blank-line tolerant → similar). The old
-// `normalize_with_mapping` / `fuzzy_find_text` pair here was a second,
-// materially different matcher: it took the first fuzzy hit instead of
-// refusing on ambiguity, so an edit could land in the wrong place.
 
 /// Behavioral class of a tool. ONE source of truth for everything that used
 /// to be name-based match lists: Plan-mode gating, subagent capability
@@ -754,26 +181,7 @@ pub trait Tool: Send + Sync {
         project_dir: &str,
         context: ToolExecutionContext,
     ) -> Result<String, ToolError> {
-        if context.cancellation.is_aborted() {
-            return Err(ToolError::ExecutionError("Tool execution cancelled".into()));
-        }
-        let run = self.execute(args, project_dir);
-        tokio::pin!(run);
-        // Schedule the first heartbeat in the future. Awaiting interval's
-        // immediate first tick before polling the tool imposed a timer wakeup
-        // (~1 ms) on every read/search, even when the tool completed instantly.
-        let period = std::time::Duration::from_millis(TOOL_HEARTBEAT_MS);
-        let mut heartbeat = tokio::time::interval_at(tokio::time::Instant::now() + period, period);
-        heartbeat.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
-        loop {
-            tokio::select! {
-                result = &mut run => return result,
-                _ = context.cancellation.wait_aborted() => {
-                    return Err(ToolError::ExecutionError("Tool execution cancelled".into()));
-                }
-                _ = heartbeat.tick() => context.heartbeat(),
-            }
-        }
+        runner::run_with_heartbeat(&context, self.execute(args, project_dir)).await
     }
 }
 
@@ -916,23 +324,7 @@ impl<C: ToolCore> Tool for TypedTool<C> {
         }
         let parsed: C::Args = serde_json::from_value(args)
             .map_err(|e| ToolError::InvalidArguments(format!("Invalid arguments: {e}")))?;
-        let run = self.0.run(parsed, project_dir, &context);
-        tokio::pin!(run);
-        // Schedule the first heartbeat in the future. Awaiting interval's
-        // immediate first tick before polling the tool imposed a timer wakeup
-        // (~1 ms) on every read/search, even when the tool completed instantly.
-        let period = std::time::Duration::from_millis(TOOL_HEARTBEAT_MS);
-        let mut heartbeat = tokio::time::interval_at(tokio::time::Instant::now() + period, period);
-        heartbeat.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
-        loop {
-            tokio::select! {
-                result = &mut run => return result,
-                _ = context.cancellation.wait_aborted() => {
-                    return Err(ToolError::ExecutionError("Tool execution cancelled".into()));
-                }
-                _ = heartbeat.tick() => context.heartbeat(),
-            }
-        }
+        runner::run_with_heartbeat(&context, self.0.run(parsed, project_dir, &context)).await
     }
 }
 
@@ -1020,7 +412,6 @@ impl ToolRegistry {
         }
     }
 
-    /// Register pre-built MCP tool adapters.
     /// Register a typed tool: schema comes from the
     /// args struct, arguments are parsed into it before `run`.
     pub fn register_typed<C>(&mut self)
@@ -1030,6 +421,7 @@ impl ToolRegistry {
         self.register(TypedTool::<C>::boxed());
     }
 
+    /// Register pre-built MCP tool adapters.
     pub fn register_mcp_adapters(&mut self, adapters: Vec<Box<dyn Tool>>) {
         for adapter in adapters {
             self.register(adapter);
@@ -1083,14 +475,12 @@ impl ToolRegistry {
         let mut defs: Vec<ToolDefinition> = self
             .tools
             .values()
-            .filter(|t| {
-                match mode {
-                    crate::types::AgentMode::Plan => {
-                        // Plan mode: read-only tools only
-                        !t.kind().mutates_project() && t.allowed_in_plan()
-                    }
-                    crate::types::AgentMode::Build => true,
+            .filter(|t| match mode {
+                crate::types::AgentMode::Plan => {
+                    // Plan mode: read-only tools only
+                    !t.kind().mutates_project() && t.allowed_in_plan()
                 }
+                crate::types::AgentMode::Build => true,
             })
             .map(|t| ToolDefinition {
                 name: t.name().to_string(),
@@ -1266,9 +656,6 @@ mod typed_path_tests {
 mod tests {
     use super::*;
 
-    /// Tool schemas ride in every request, so the document furniture
-    /// `schemars` adds has to go — while what the model needs to call the
-    /// tool stays.
     #[test]
     fn tool_schemas_drop_document_furniture_but_keep_the_contract() {
         let schema = compact_schema(serde_json::json!({
@@ -1282,8 +669,6 @@ mod tests {
                     "type": "string"
                 },
                 "mode": { "enum": ["fast", "thorough"] },
-                // An argument may be *named* title (`present_plan` takes one):
-                // its name is not furniture and must survive.
                 "title": {
                     "title": "Title",
                     "description": "Short plan title",
@@ -1306,9 +691,6 @@ mod tests {
         assert_eq!(schema["type"], "object");
     }
 
-    /// The real registry: every emitted schema is compact and still declares
-    /// its arguments. `title` may appear as an argument *name* (`present_plan`
-    /// takes one); it must never appear as schema furniture.
     #[test]
     fn every_registered_tool_schema_is_compact() {
         fn furniture(value: &serde_json::Value, property_names: bool) -> Option<&'static str> {
@@ -1349,8 +731,6 @@ mod tests {
                 def.name
             );
         }
-        // A tool with arguments keeps them: compaction must not eat the
-        // contract, only the boilerplate. `process_list` legitimately has none.
         let read_file = defs
             .iter()
             .find(|def| def.name == "read_file")
@@ -1359,131 +739,10 @@ mod tests {
         assert_eq!(read_file.parameters["required"][0], "path");
     }
 
-    /// Dropping the caller's future must not release the path lock while an
-    /// already-started mutation is still committing. The second mutation has
-    /// to observe the first one's result.
-    #[tokio::test(flavor = "multi_thread")]
-    async fn cancelled_mutation_keeps_its_path_lock_until_it_finishes() {
-        let dir = std::env::temp_dir().join(format!("agente-mut-queue-{}", uuid::Uuid::new_v4()));
-        std::fs::create_dir_all(&dir).unwrap();
-        let file = dir.join("f.txt");
-        let path = file.to_string_lossy().to_string();
-
-        let controller = crate::cancellation::AbortController::new();
-        let signal = controller.signal();
-        let first_path = file.clone();
-        let first = tokio::spawn(async move {
-            with_file_mutation_queue(&path, signal, move |_| async move {
-                tokio::time::sleep(std::time::Duration::from_millis(250)).await;
-                std::fs::write(&first_path, "A").unwrap();
-                Ok(())
-            })
-            .await
-        });
-        // Let the first mutation start, then abort its caller.
-        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-        controller.abort();
-        first.abort();
-
-        let second_path = file.clone();
-        let observed = with_file_mutation_queue(
-            &file.to_string_lossy(),
-            crate::cancellation::AbortSignal::never(),
-            move |_| async move {
-                let seen = std::fs::read_to_string(&second_path).unwrap_or_default();
-                std::fs::write(&second_path, "B").unwrap();
-                Ok(seen)
-            },
-        )
-        .await
-        .expect("second mutation");
-
-        assert_eq!(
-            observed, "A",
-            "the cancelled commit must finish under its lock before the next writer"
-        );
-        assert_eq!(std::fs::read_to_string(&file).unwrap(), "B");
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    /// A mutation that has not started yet must refuse to run once its signal
-    /// is aborted.
-    #[tokio::test(flavor = "multi_thread")]
-    async fn aborted_mutation_never_writes() {
-        let dir = std::env::temp_dir().join(format!("agente-mut-abort-{}", uuid::Uuid::new_v4()));
-        std::fs::create_dir_all(&dir).unwrap();
-        let file = dir.join("f.txt");
-        let controller = crate::cancellation::AbortController::new();
-        controller.abort();
-
-        let target = file.clone();
-        let result = with_file_mutation_queue(
-            &file.to_string_lossy(),
-            controller.signal(),
-            move |_| async move {
-                std::fs::write(&target, "nope").unwrap();
-                Ok(())
-            },
-        )
-        .await;
-        assert!(result.is_err(), "aborted mutation must not report success");
-        assert!(!file.exists(), "aborted mutation must not write");
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn test_tool_output_new() {
-        let output = ToolOutput::new("test content".to_string());
-        assert_eq!(output.content, "test content");
-        assert!(!output.truncated);
-    }
-
-    #[test]
-    fn test_tool_output_truncated() {
-        let output = ToolOutput::truncated("test content".to_string());
-        assert_eq!(output.content, "test content");
-        assert!(output.truncated);
-    }
-
-    #[test]
-    fn truncate_output_preserves_utf8_at_byte_limit() {
-        let prefix = "a".repeat(MAX_OUTPUT_BYTES - 1);
-        let result = truncate_output(&format!("{prefix}🎉tail"));
-        assert!(result.truncated);
-        assert_eq!(
-            result.content,
-            format!("{prefix}\n\n... output truncated ...")
-        );
-    }
-
-    #[test]
-    fn test_truncate_output_empty() {
-        let result = truncate_output("");
-        assert_eq!(result.content, "");
-        assert!(!result.truncated);
-    }
-
-    #[test]
-    fn test_truncate_output_small() {
-        let content = "small content";
-        let result = truncate_output(content);
-        assert_eq!(result.content, content);
-        assert!(!result.truncated);
-    }
-
     #[test]
     fn test_tool_error_display() {
         let err = ToolError::NotFound("test_tool".to_string());
         assert!(err.to_string().contains("test_tool"));
-    }
-
-    #[test]
-    fn test_max_output_constants() {
-        const {
-            assert!(MAX_OUTPUT_LINES > 0);
-            assert!(MAX_OUTPUT_BYTES > 0);
-        }
-        assert_eq!(MAX_OUTPUT_BYTES, 50 * 1024);
     }
 
     struct BuildOnlyTool;
@@ -1603,9 +862,6 @@ mod tests {
         assert_eq!(updated, "say \"goodbye\" world");
     }
 
-    /// Every tool Plan mode advertises must also pass the permission engine,
-    /// or the model is offered a tool that then fails ("not allowed in current
-    /// mode"). `find` was advertised but had no Plan rule.
     #[test]
     fn plan_mode_tools_pass_the_permission_engine() {
         use crate::permissions::{Permission, PermissionEngine, ToolFsFacts};
@@ -1699,7 +955,6 @@ mod tests {
         tokio::fs::create_dir_all(&temp_dir).await.unwrap();
         let reg = ToolRegistry::new(&*temp_dir.to_string_lossy());
 
-        // write_file with file_path and contents aliases
         reg.execute(
             "write_file",
             serde_json::json!({"file_path": "alias.txt", "contents": "hello from alias"}),
@@ -1707,14 +962,12 @@ mod tests {
         .await
         .unwrap();
 
-        // read_file with file alias
         let content = reg
             .execute("read_file", serde_json::json!({"file": "alias.txt"}))
             .await
             .unwrap();
         assert!(content.contains("hello from alias"));
 
-        // edit_file with filepath, query, and replacement aliases
         reg.execute(
             "edit_file",
             serde_json::json!({
@@ -1734,174 +987,6 @@ mod tests {
 
         let _ = tokio::fs::remove_dir_all(&temp_dir).await;
     }
-
-    /// Best-effort symlink creation: Windows machines without Developer Mode
-    /// cannot create symlinks, so those environments skip instead of failing.
-    #[cfg(test)]
-    fn try_symlink_dir(original: &std::path::Path, link: &std::path::Path) -> bool {
-        #[cfg(unix)]
-        let made = std::os::unix::fs::symlink(original, link).is_ok();
-        #[cfg(windows)]
-        let made = std::os::windows::fs::symlink_dir(original, link).is_ok();
-        if !made {
-            eprintln!("skipping symlink test: cannot create symlinks on this machine");
-        }
-        made
-    }
-
-    #[test]
-    fn resolve_project_path_rejects_new_file_through_symlinked_parent() {
-        let tmp = tempfile::tempdir().unwrap();
-        let project = tmp.path().join("proj");
-        let outside = tmp.path().join("outside");
-        std::fs::create_dir_all(&project).unwrap();
-        std::fs::create_dir_all(&outside).unwrap();
-        if !try_symlink_dir(&outside, &project.join("link")) {
-            return;
-        }
-
-        let err = resolve_project_path("link/new.txt", &project.to_string_lossy())
-            .expect_err("new file through a symlinked parent must be rejected");
-        assert!(err.to_string().contains("outside the project directory"));
-    }
-
-    #[test]
-    fn resolve_project_path_rejects_dangling_symlink_pointing_outside() {
-        let tmp = tempfile::tempdir().unwrap();
-        let project = tmp.path().join("proj");
-        let outside = tmp.path().join("outside");
-        std::fs::create_dir_all(&project).unwrap();
-        std::fs::create_dir_all(&outside).unwrap();
-        // Dangling on purpose: outside/target.txt is never created.
-        if !try_symlink_dir(&outside.join("target.txt"), &project.join("evil")) {
-            return;
-        }
-
-        let err = resolve_project_path("evil", &project.to_string_lossy())
-            .expect_err("dangling symlink pointing outside must be rejected");
-        assert!(err.to_string().contains("outside the project directory"));
-    }
-
-    #[test]
-    fn resolve_project_path_allows_new_file_and_in_project_symlink() {
-        let tmp = tempfile::tempdir().unwrap();
-        let project = tmp.path().join("proj");
-        std::fs::create_dir_all(&project).unwrap();
-        std::fs::write(project.join("real.txt"), "x").unwrap();
-
-        // Plain new file inside the project still resolves. New files now
-        // come back canonical (verbatim `\\?\` on Windows), exactly like
-        // existing files already did — compare against the canonical root.
-        let canon_project = std::fs::canonicalize(&project).unwrap();
-        let resolved = resolve_project_path("new.txt", &project.to_string_lossy()).unwrap();
-        assert!(resolved.starts_with(&canon_project));
-
-        // Existing file reached through a symlink that stays inside the
-        // project keeps working (no over-blocking).
-        if !try_symlink_dir(&project, &project.join("self")) {
-            return;
-        }
-        let resolved = resolve_project_path("self/real.txt", &project.to_string_lossy()).unwrap();
-        // `canonicalize` returns a verbatim (`\\?\`) path on Windows, so
-        // compare against the canonical project root, not the plain join.
-        assert!(resolved.starts_with(&canon_project));
-        // Fully resolved to the real file, not left pointing at the link.
-        assert_eq!(std::fs::read_to_string(&resolved).unwrap(), "x");
-    }
-
-    #[test]
-    fn resolve_project_path_rejects_chained_dangling_symlinks_pointing_outside() {
-        let tmp = tempfile::tempdir().unwrap();
-        let project = tmp.path().join("proj");
-        let outside = tmp.path().join("outside");
-        std::fs::create_dir_all(&project).unwrap();
-        std::fs::create_dir_all(&outside).unwrap();
-        // proj/a -> proj/b -> /outside/missing
-        if !try_symlink_dir(&outside.join("missing"), &project.join("b")) {
-            return;
-        }
-        if !try_symlink_dir(&project.join("b"), &project.join("a")) {
-            return;
-        }
-
-        let err = resolve_project_path("a", &project.to_string_lossy())
-            .expect_err("chained dangling symlink pointing outside must be rejected");
-        assert!(err.to_string().contains("outside the project directory"));
-    }
-
-    #[test]
-    fn resolve_project_path_rejects_new_file_under_dangling_symlink_dir() {
-        let tmp = tempfile::tempdir().unwrap();
-        let project = tmp.path().join("proj");
-        let outside = tmp.path().join("outside");
-        std::fs::create_dir_all(&project).unwrap();
-        std::fs::create_dir_all(&outside).unwrap();
-        // proj/dangling_dir -> /outside/missing (does not exist)
-        if !try_symlink_dir(&outside.join("missing"), &project.join("dangling_dir")) {
-            return;
-        }
-
-        let err = resolve_project_path("dangling_dir/new.txt", &project.to_string_lossy())
-            .expect_err("new file under dangling symlink dir pointing outside must be rejected");
-        assert!(err.to_string().contains("outside the project directory"));
-    }
-
-    #[test]
-    fn resolve_project_path_rejects_symlink_cycle() {
-        let tmp = tempfile::tempdir().unwrap();
-        let project = tmp.path().join("proj");
-        std::fs::create_dir_all(&project).unwrap();
-        if !try_symlink_dir(&project.join("b"), &project.join("a")) {
-            return;
-        }
-        if !try_symlink_dir(&project.join("a"), &project.join("b")) {
-            return;
-        }
-
-        let err = resolve_project_path("a", &project.to_string_lossy())
-            .expect_err("symlink cycle must fail closed");
-        assert!(err.to_string().contains("symlink chain exceeds"));
-
-        let err_nested = resolve_project_path("a/new.txt", &project.to_string_lossy())
-            .expect_err("nested path through symlink cycle must fail closed");
-        assert!(err_nested.to_string().contains("symlink chain exceeds"));
-    }
-
-    #[test]
-    fn canonical_base_cached_does_not_pin_missing_project_dir() {
-        let tmp = tempfile::tempdir().unwrap();
-        let project = tmp.path().join("created-later");
-        let project_str = project.to_string_lossy().into_owned();
-
-        // First call before the directory exists falls back without caching.
-        let before = canonical_base_cached(&project_str);
-        assert_eq!(before, project);
-
-        // Once created, subsequent calls return the canonicalized path.
-        std::fs::create_dir_all(&project).unwrap();
-        let after = canonical_base_cached(&project_str);
-        let expected = std::fs::canonicalize(&project).unwrap();
-        assert_eq!(after, expected);
-    }
-
-    #[test]
-    fn resolve_project_path_rejects_parent_traversal_after_nonexistent_dir() {
-        let tmp = tempfile::tempdir().unwrap();
-        let project = tmp.path().join("proj");
-        std::fs::create_dir_all(&project).unwrap();
-        let project_str = project.to_string_lossy().into_owned();
-
-        // `..` after a nonexistent directory must collapse even on Windows
-        // verbatim (`\\?\`) paths and be rejected when escaping the project.
-        let err = resolve_project_path("nonexistent/../../outside.txt", &project_str)
-            .expect_err("traversal through nonexistent/../.. must be rejected");
-        assert!(err.to_string().contains("outside the project directory"));
-
-        // Staying inside the project still resolves cleanly with `..` collapsed.
-        let canon_project = std::fs::canonicalize(&project).unwrap();
-        let inside = resolve_project_path("nonexistent/../inside.txt", &project_str).unwrap();
-        assert_eq!(inside, canon_project.join("inside.txt"));
-    }
 }
 
 #[cfg(test)]
@@ -1912,8 +997,6 @@ mod ordering_tests {
         defs.into_iter().map(|d| d.name).collect()
     }
 
-    /// Each turn builds a fresh registry; the tools array is part of the
-    /// cached prompt prefix and must never reshuffle between turns.
     #[test]
     fn tool_order_is_identical_across_registries() {
         let first = names(ToolRegistry::new("/tmp/order").definitions());

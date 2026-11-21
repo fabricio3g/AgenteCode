@@ -65,18 +65,11 @@ pub(crate) async fn prepare_tool_call(
     }
 
     if tool_registry.get(tool_name).is_none() {
-        return Err(ToolCallOutcome {
-            tool_call_id: tool_call.id.clone(),
-            tool_name: tool_name.clone(),
-            content: unknown_tool_message(tool_name, &tool_registry.names()),
-            is_error: true,
-            path_changed: None,
-            changed_path: None,
-            file_before: None,
-            file_after: None,
-            todos: None,
-            attachments: Vec::new(),
-        });
+        return Err(ToolCallOutcome::err_raw(
+            tool_call.id.clone(),
+            tool_name.clone(),
+            unknown_tool_message(tool_name, &tool_registry.names()),
+        ));
     }
 
     let mode = permission_engine
@@ -84,34 +77,20 @@ pub(crate) async fn prepare_tool_call(
         .unwrap_or_else(std::sync::PoisonError::into_inner)
         .mode;
     if !tool_registry.is_allowed_in_mode(tool_name, mode) {
-        return Err(ToolCallOutcome {
-            tool_call_id: tool_call.id.clone(),
-            tool_name: tool_name.clone(),
-            content: format!("Error: Tool '{tool_name}' is not allowed in current mode"),
-            is_error: true,
-            path_changed: None,
-            changed_path: None,
-            file_before: None,
-            file_after: None,
-            todos: None,
-            attachments: Vec::new(),
-        });
+        return Err(ToolCallOutcome::error(
+            tool_call.id.clone(),
+            tool_name.clone(),
+            format!("Tool '{tool_name}' is not allowed in current mode"),
+        ));
     }
 
     if let Some(policy) = tool_registry.tool_policy() {
         if let Err(reason) = policy.check_tool_call(tool_name, &args, project_dir) {
-            return Err(ToolCallOutcome {
-                tool_call_id: tool_call.id.clone(),
-                tool_name: tool_name.clone(),
-                content: format!("Error: {reason}"),
-                is_error: true,
-                path_changed: None,
-                changed_path: None,
-                file_before: None,
-                file_after: None,
-                todos: None,
-                attachments: Vec::new(),
-            });
+            return Err(ToolCallOutcome::error(
+                tool_call.id.clone(),
+                tool_name.clone(),
+                reason,
+            ));
         }
     }
 
@@ -142,37 +121,23 @@ pub(crate) async fn prepare_tool_call(
 
     match permission {
         crate::permissions::Permission::Deny => {
-            return Err(ToolCallOutcome {
-                tool_call_id: tool_call.id.clone(),
-                tool_name: tool_name.clone(),
-                content: format!("Error: Tool '{tool_name}' is not allowed in current mode"),
-                is_error: true,
-                path_changed: None,
-                changed_path: None,
-                file_before: None,
-                file_after: None,
-                todos: None,
-                attachments: Vec::new(),
-            });
+            return Err(ToolCallOutcome::error(
+                tool_call.id.clone(),
+                tool_name.clone(),
+                format!("Tool '{tool_name}' is not allowed in current mode"),
+            ));
         }
         crate::permissions::Permission::Ask => {
             let request = tokio::select! {
-                    request = build_approval_request(tool_call, &args, project_dir) => request,
-                    _ = cancel_signal.wait_aborted() => {
-                        return Err(ToolCallOutcome {
-                            tool_call_id: tool_call.id.clone(),
-                            tool_name: tool_name.clone(),
-                            content: format!("Tool '{tool_name}' canceled by user"),
-                            is_error: true,
-                            path_changed: None,
-                            changed_path: None,
-                            file_before: None,
-                            file_after: None,
-                            todos: None,
-            attachments: Vec::new(),
-                        });
-                    }
-                };
+                request = build_approval_request(tool_call, &args, project_dir) => request,
+                _ = cancel_signal.wait_aborted() => {
+                    return Err(ToolCallOutcome::err_raw(
+                        tool_call.id.clone(),
+                        tool_name.clone(),
+                        format!("Tool '{tool_name}' canceled by user"),
+                    ));
+                }
+            };
 
             // Register before publishing. A fast UI response must never race
             // the broker and get discarded because no waiter existed yet.
@@ -205,22 +170,15 @@ pub(crate) async fn prepare_tool_call(
                     engine.set_auto_approve(true);
                 }
                 Some(ApprovalAction::Deny) | Some(ApprovalAction::Cancel) | None => {
-                    return Err(ToolCallOutcome {
-                        tool_call_id: tool_call.id.clone(),
-                        tool_name: tool_name.clone(),
-                        content: if cancel_signal.is_aborted() {
+                    return Err(ToolCallOutcome::err_raw(
+                        tool_call.id.clone(),
+                        tool_name.clone(),
+                        if cancel_signal.is_aborted() {
                             format!("Tool '{tool_name}' canceled by user")
                         } else {
                             format!("Tool '{tool_name}' was denied by user")
                         },
-                        is_error: true,
-                        path_changed: None,
-                        changed_path: None,
-                        file_before: None,
-                        file_after: None,
-                        todos: None,
-                        attachments: Vec::new(),
-                    });
+                    ));
                 }
             }
         }
@@ -643,18 +601,11 @@ async fn execute_tool_calls_parallel(
                             .unwrap_or_default();
                         results.push((
                             index,
-                            ToolCallOutcome {
-                                tool_call_id: owner_id,
-                                tool_name: owner_name,
-                                content: format!("Error: Task join error: {e}"),
-                                is_error: true,
-                                path_changed: None,
-                                changed_path: None,
-                                file_before: None,
-                                file_after: None,
-                                todos: None,
-        attachments: Vec::new(),
-                            },
+                            ToolCallOutcome::error(
+                                owner_id,
+                                owner_name,
+                                format!("Task join error: {e}"),
+                            ),
                         ));
                     }
                     None => break,

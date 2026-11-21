@@ -917,17 +917,12 @@ impl ModelCatalog {
     }
 
     pub(crate) fn save_to_path(&self, path: &std::path::Path) -> anyhow::Result<()> {
-        use std::io::Write;
-        let parent = path
-            .parent()
-            .ok_or_else(|| anyhow::anyhow!("cache path has no parent directory"))?;
-        std::fs::create_dir_all(parent)?;
+        if path.parent().is_none() {
+            anyhow::bail!("cache path has no parent directory");
+        }
         // Compact JSON — models.dev is multi-MB; pretty doubles size.
         let content = serde_json::to_string(self)?;
-        let mut temp = tempfile::NamedTempFile::new_in(parent)?;
-        temp.write_all(content.as_bytes())?;
-        temp.as_file_mut().sync_all()?;
-        temp.persist(path).map_err(|e| e.error)?;
+        crate::fs_atomic::write_atomic(path, content.as_bytes())?;
         Ok(())
     }
 

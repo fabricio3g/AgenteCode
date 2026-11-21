@@ -1,5 +1,7 @@
 //! Stable, dependency-light contracts shared by every Agente client.
 
+pub mod rpc;
+
 use chrono::{DateTime, Utc};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};

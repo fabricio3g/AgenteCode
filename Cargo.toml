@@ -10,7 +10,6 @@ members = [
     "crates/agente-tui",
     "crates/agente-cli",
     "crates/agente-bridge",
-    "crates/agente-node",
     "crates/agente-computer",
 ]
 resolver = "2"

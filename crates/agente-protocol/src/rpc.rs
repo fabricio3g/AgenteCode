@@ -1,12 +1,13 @@
-//! JSON-RPC 2.0 wire layer: inbound-frame classification.
+//! JSON-RPC 2.0 wire layer: bounded line reading, inbound-frame classification,
+//! and reply/notification constructors shared across transports (ACP stdio,
+//! daemon local socket/TCP).
 //!
-//! ACP transports one JSON object per line. A line is classified as a request
-//! (has `id` + `method`), a response (has `id`, no `method` — the answer to an
-//! agent-issued request such as `session/request_permission`) or a
+//! Each transport carries one JSON object per line. A line is classified as a
+//! request (has `id` + `method`), a response (has `id`, no `method`) or a
 //! notification (no `id`). Unparseable lines become `FrameError` values so the
 //! connection loop can answer `-32700`/`-32600` and keep going.
 
-use serde_json::Value;
+use serde_json::{json, Value};
 use tokio::io::{AsyncBufRead, AsyncBufReadExt};
 
 pub const PARSE_ERROR: i32 = -32700;
@@ -14,6 +15,25 @@ pub const INVALID_REQUEST: i32 = -32600;
 pub const METHOD_NOT_FOUND: i32 = -32601;
 pub const INVALID_PARAMS: i32 = -32602;
 pub const INTERNAL_ERROR: i32 = -32603;
+
+/// Build a JSON-RPC 2.0 success response frame.
+pub fn result_reply(id: Value, result: Value) -> Value {
+    json!({ "jsonrpc": "2.0", "id": id, "result": result })
+}
+
+/// Build a JSON-RPC 2.0 error response frame.
+pub fn error_reply(id: Value, code: i32, message: &str) -> Value {
+    json!({
+        "jsonrpc": "2.0",
+        "id": id,
+        "error": { "code": code, "message": message }
+    })
+}
+
+/// Build a JSON-RPC 2.0 notification frame.
+pub fn notification(method: &str, params: Value) -> Value {
+    json!({ "jsonrpc": "2.0", "method": method, "params": params })
+}
 
 /// Read a single `\n`-terminated line (stripping trailing `\n` and optional
 /// `\r`) while bounding memory to `max_bytes`. Returns `Ok(None)` on clean EOF
@@ -72,7 +92,30 @@ pub enum FrameError {
     UnsupportedProtocol(Value),
 }
 
-/// One inbound line, classified per the ACP transport.
+impl FrameError {
+    /// Convert a framing error into `(id, code, message)`.
+    pub fn into_error_parts(self) -> (Value, i32, String) {
+        match self {
+            Self::Parse(error) => (Value::Null, PARSE_ERROR, format!("parse error: {error}")),
+            Self::NotAMessage => (
+                Value::Null,
+                INVALID_REQUEST,
+                "expected a JSON-RPC message object".to_string(),
+            ),
+            Self::UnsupportedProtocol(id) => {
+                (id, INVALID_REQUEST, "jsonrpc must be 2.0".to_string())
+            }
+        }
+    }
+
+    /// Convert a framing error directly into a JSON-RPC error response frame.
+    pub fn into_error_reply(self) -> Value {
+        let (id, code, message) = self.into_error_parts();
+        error_reply(id, code, &message)
+    }
+}
+
+/// One inbound line, classified as a JSON-RPC request, notification, or response.
 #[derive(Debug)]
 pub enum Incoming {
     Request {

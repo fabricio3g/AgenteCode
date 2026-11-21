@@ -10,7 +10,7 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 
 use crate::connection::{parse, Failure};
-use agente_acp::rpc;
+use agente_protocol::rpc;
 use base64::Engine;
 
 pub(crate) fn import_media(params: Value) -> Result<Value, Failure> {

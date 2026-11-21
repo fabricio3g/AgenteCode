@@ -21,7 +21,7 @@
 //! `session/request_permission` requests keyed by a generated JSON-RPC id whose
 //! response is routed back to the runtime's approval broker.
 
-pub mod rpc;
+pub use agente_protocol::rpc;
 mod server;
 mod updates;
 

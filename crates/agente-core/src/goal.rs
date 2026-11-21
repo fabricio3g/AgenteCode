@@ -4,8 +4,7 @@
 //! history or turn a reminder into a permanent user message.
 
 use std::fs;
-use std::io::Write;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -63,11 +62,8 @@ impl GoalStore {
     pub fn put(&self, session: Uuid, goal: &Goal) -> anyhow::Result<()> {
         anyhow::ensure!(!goal.objective.trim().is_empty(), "goal cannot be empty");
         anyhow::ensure!(goal.objective.len() <= 16_384, "goal is too long");
-        write_atomic(
-            &self.directory,
-            &self.path(session),
-            &serde_json::to_vec(goal)?,
-        )
+        crate::fs_atomic::write_atomic(&self.path(session), &serde_json::to_vec(goal)?)?;
+        Ok(())
     }
 
     pub fn clear(&self, session: Uuid) -> anyhow::Result<()> {
@@ -77,15 +73,6 @@ impl GoalStore {
             Err(error) => Err(error.into()),
         }
     }
-}
-
-fn write_atomic(directory: &Path, path: &Path, bytes: &[u8]) -> anyhow::Result<()> {
-    fs::create_dir_all(directory)?;
-    let mut file = tempfile::NamedTempFile::new_in(directory)?;
-    file.write_all(bytes)?;
-    file.as_file_mut().sync_all()?;
-    file.persist(path).map_err(|error| error.error)?;
-    Ok(())
 }
 
 impl Goal {

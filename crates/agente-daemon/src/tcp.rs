@@ -9,7 +9,7 @@
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 
-use agente_acp::rpc::{self, Incoming};
+use agente_protocol::rpc::{self, Incoming};
 use serde_json::{json, Value};
 use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt, BufReader};
 use tokio::net::TcpListener;

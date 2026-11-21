@@ -13,8 +13,7 @@
 //! the session goals, written atomically, so a restart keeps it.
 
 use std::fs;
-use std::io::Write;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
@@ -610,8 +609,7 @@ impl BoardStore {
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         let mut board = self.get(session).map_err(|error| error.to_string())?;
         let value = change(&mut board)?;
-        write_atomic(
-            &self.directory,
+        crate::fs_atomic::write_atomic(
             &self.path(session),
             &serde_json::to_vec_pretty(&board).map_err(|error| error.to_string())?,
         )
@@ -639,15 +637,6 @@ impl BoardStore {
         })
         .map(|(_, board)| board)
     }
-}
-
-fn write_atomic(directory: &Path, path: &Path, bytes: &[u8]) -> anyhow::Result<()> {
-    fs::create_dir_all(directory)?;
-    let mut file = tempfile::NamedTempFile::new_in(directory)?;
-    file.write_all(bytes)?;
-    file.as_file_mut().sync_all()?;
-    file.persist(path).map_err(|error| error.error)?;
-    Ok(())
 }
 
 /// Arguments of the `board` tool.

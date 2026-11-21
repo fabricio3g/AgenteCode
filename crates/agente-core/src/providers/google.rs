@@ -1,7 +1,7 @@
 //! Native generateContent transport for model-routed gateways.
 use super::{ModelInfo, Provider, ProviderInfo, RequestContext};
 use crate::llm::{LlmError, StopReason, StreamEvent, Usage};
-use crate::types::{Message, ProviderContinuation, Role, ToolDefinition};
+use crate::types::{Message, Role, ToolDefinition};
 use async_trait::async_trait;
 use serde_json::{json, Value};
 use std::collections::HashMap;
@@ -217,22 +217,12 @@ impl Provider for GoogleProvider {
             context,
         )
         .await?;
-        let resolved_url = response.url().to_string();
-        let mut stream =
-            super::sse::EventStream::for_completion(response.bytes_stream(), &resolved_url);
+        let mut sse = super::wire::begin_sse_stream(response, &sender).await;
         let mut parts = Vec::new();
         let mut call_ids = Vec::new();
         let mut usage = Usage::default();
         let mut stop_reason = None;
-        let _ = sender.send(StreamEvent::TextStart).await;
-        while let Some(data) = stream
-            .next_event(crate::util::stream_idle_timeout())
-            .await?
-        {
-            if data == "[DONE]" {
-                break;
-            }
-            let event: Value = serde_json::from_str(&data)?;
+        while let Some(event) = sse.next_json().await? {
             if let Some(error) = event.get("error").filter(|v| !v.is_null()) {
                 return Err(super::stream_error(&self.info.name, error));
             }
@@ -309,25 +299,20 @@ impl Provider for GoogleProvider {
         if !call_ids.is_empty() && stop_reason == StopReason::Stop {
             stop_reason = StopReason::ToolUse;
         }
-        if !parts.is_empty() {
-            let _ = sender
-                .send(StreamEvent::Continuation(ProviderContinuation {
-                    provider_id: self.info.id.clone(),
-                    model_id: model.api_id.clone(),
-                    blocks: vec![
-                        json!({"type": "google_content", "parts": parts, "call_ids": call_ids}),
-                    ],
-                }))
-                .await;
-        }
-        let _ = sender.send(StreamEvent::TextEnd).await;
-        let _ = sender
-            .send(StreamEvent::Done {
-                usage: usage.clone(),
-                stop_reason,
-            })
-            .await;
-        Ok(usage)
+        let continuation_blocks = if parts.is_empty() {
+            Vec::new()
+        } else {
+            vec![json!({"type": "google_content", "parts": parts, "call_ids": call_ids})]
+        };
+        super::wire::finish_sse_stream(
+            &self.info,
+            model,
+            &sender,
+            usage,
+            stop_reason,
+            continuation_blocks,
+        )
+        .await
     }
 
     async fn list_models(&self) -> Result<Vec<ModelInfo>, LlmError> {

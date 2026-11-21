@@ -1,7 +1,6 @@
 //! Crash-safe session snapshot persistence with NDJSON and legacy JSON support.
 
 use std::fs;
-use std::io::Write;
 use std::path::PathBuf;
 
 use chrono::{DateTime, Utc};
@@ -199,14 +198,10 @@ pub fn save_session(state: &SessionState) -> anyhow::Result<()> {
 }
 
 fn atomic_write(path: &std::path::Path, content: &[u8]) -> anyhow::Result<()> {
-    let parent = path
-        .parent()
-        .ok_or_else(|| anyhow::anyhow!("Missing parent directory for {}", path.display()))?;
-    fs::create_dir_all(parent)?;
-    let mut temp = tempfile::NamedTempFile::new_in(parent)?;
-    temp.write_all(content)?;
-    temp.as_file_mut().sync_all()?;
-    temp.persist(path).map_err(|error| error.error)?;
+    if path.parent().is_none() {
+        anyhow::bail!("Missing parent directory for {}", path.display());
+    }
+    crate::fs_atomic::write_atomic(path, content)?;
     Ok(())
 }
 

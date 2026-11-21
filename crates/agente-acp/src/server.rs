@@ -31,7 +31,7 @@ use serde_json::{json, Value};
 use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt, BufReader};
 use tokio::sync::Mutex as AsyncMutex;
 
-use crate::rpc::{self, FrameError, Incoming};
+use crate::rpc::{self, Incoming};
 use crate::updates;
 use crate::AcpError;
 
@@ -131,22 +131,16 @@ impl ServerState {
     }
 
     async fn send_result(&self, id: &Value, result: Value) -> Result<(), AcpError> {
-        self.send(&json!({ "jsonrpc": "2.0", "id": id, "result": result }))
-            .await
+        self.send(&rpc::result_reply(id.clone(), result)).await
     }
 
     async fn send_error(&self, id: &Value, code: i32, message: &str) -> Result<(), AcpError> {
-        self.send(&json!({
-            "jsonrpc": "2.0",
-            "id": id,
-            "error": { "code": code, "message": message }
-        }))
-        .await
+        self.send(&rpc::error_reply(id.clone(), code, message))
+            .await
     }
 
     async fn send_notification(&self, method: &str, params: Value) -> Result<(), AcpError> {
-        self.send(&json!({ "jsonrpc": "2.0", "method": method, "params": params }))
-            .await
+        self.send(&rpc::notification(method, params)).await
     }
 }
 
@@ -178,28 +172,9 @@ pub(crate) async fn serve_with_state<R: AsyncRead + Unpin>(
             }
             match rpc::classify(&line) {
                 Ok(incoming) => dispatch(&state, incoming).await?,
-                Err(FrameError::Parse(error)) => {
-                    state
-                        .send_error(
-                            &Value::Null,
-                            rpc::PARSE_ERROR,
-                            &format!("parse error: {error}"),
-                        )
-                        .await?;
-                }
-                Err(FrameError::NotAMessage) => {
-                    state
-                        .send_error(
-                            &Value::Null,
-                            rpc::INVALID_REQUEST,
-                            "expected a JSON-RPC message object",
-                        )
-                        .await?;
-                }
-                Err(FrameError::UnsupportedProtocol(id)) => {
-                    state
-                        .send_error(&id, rpc::INVALID_REQUEST, "jsonrpc must be 2.0")
-                        .await?;
+                Err(error) => {
+                    let (id, code, message) = error.into_error_parts();
+                    state.send_error(&id, code, &message).await?;
                 }
             }
         }

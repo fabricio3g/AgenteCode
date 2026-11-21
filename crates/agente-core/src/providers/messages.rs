@@ -1,6 +1,6 @@
 use super::{ApiFormat, ModelInfo, Provider, ProviderInfo, RequestContext};
 use crate::llm::{LlmError, StopReason, StreamEvent, Usage};
-use crate::types::{Message, ProviderContinuation, Role, ToolDefinition};
+use crate::types::{Message, Role, ToolDefinition};
 use async_trait::async_trait;
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -331,19 +331,10 @@ impl Provider for MessagesProvider {
             super::cache::PreparedRequest::new(body, ApiFormat::Anthropic, &self.info, model);
         let response =
             super::send_with_cache_fallback(&self.info, model, "messages", &body, context).await?;
-        let resolved_url = response.url().to_string();
-        let mut stream =
-            super::sse::EventStream::for_completion(response.bytes_stream(), &resolved_url);
+        let mut sse = super::wire::begin_sse_stream(response, &sender).await;
         let mut state = MessageStream::default();
-        let _ = sender.send(StreamEvent::TextStart).await;
-        while let Some(data) = stream
-            .next_event(crate::util::stream_idle_timeout())
-            .await?
-        {
-            if data == "[DONE]" {
-                break;
-            }
-            state.event(serde_json::from_str(&data)?, &sender).await?;
+        while let Some(event) = sse.next_json().await? {
+            state.event(event, &sender).await?;
             if state.complete {
                 break;
             }
@@ -356,29 +347,21 @@ impl Provider for MessagesProvider {
         for index in state.blocks.keys().copied().collect::<Vec<_>>() {
             state.close(index, &sender).await?;
         }
-        if !state.blocks.is_empty() {
-            let _ = sender
-                .send(StreamEvent::Continuation(ProviderContinuation {
-                    provider_id: self.info.id.clone(),
-                    model_id: model.api_id.clone(),
-                    blocks: state.blocks.into_values().collect(),
-                }))
-                .await;
-        }
         state.usage.total_tokens = state
             .usage
             .prompt_tokens
             .saturating_add(state.usage.completion_tokens)
             .saturating_add(state.usage.cache_creation_tokens)
             .saturating_add(state.usage.cache_read_tokens);
-        let _ = sender.send(StreamEvent::TextEnd).await;
-        let _ = sender
-            .send(StreamEvent::Done {
-                usage: state.usage.clone(),
-                stop_reason: state.stop.unwrap_or(StopReason::Stop),
-            })
-            .await;
-        Ok(state.usage)
+        super::wire::finish_sse_stream(
+            &self.info,
+            model,
+            &sender,
+            state.usage,
+            state.stop.unwrap_or(StopReason::Stop),
+            state.blocks.into_values().collect(),
+        )
+        .await
     }
     async fn list_models(&self) -> Result<Vec<ModelInfo>, LlmError> {
         Ok(self.info.models.clone())
