@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { AgentTool, ToolExecContext } from '../../../shared/agent-core/types.ts';
+import type { AgentTool, CoreToolResult, ToolExecContext } from '../../../shared/agent-core/types.ts';
 import { computerSession, type ComputerOwner } from '../../computer/desktop.ts';
 import { defineTool } from './define-tool.ts';
 
@@ -18,7 +18,7 @@ const action = z.discriminatedUnion('kind', [
 ]);
 
 export function createComputerTools(options: ComputerToolOptions): AgentTool[] {
-  function tool<T extends z.ZodType>(name: string, description: string, schema: T, execute: (args: z.output<T>, owner: ComputerOwner, context: ToolExecContext) => Promise<import('../../../shared/agent-core/types.ts').ToolResult>): AgentTool {
+  function tool<T extends z.ZodType>(name: string, description: string, schema: T, execute: (args: z.output<T>, owner: ComputerOwner, context: ToolExecContext) => Promise<CoreToolResult>): AgentTool {
     return defineTool({ name, description, schema, executionMode: 'sequential', mutating: true,
       async execute(args, context) {
         const owner = options.owner(context);

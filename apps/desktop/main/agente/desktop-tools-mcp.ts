@@ -9,7 +9,7 @@
 import crypto from 'node:crypto';
 import http from 'node:http';
 import type { AddressInfo } from 'node:net';
-import type { AgentTool, ToolResult, ToolExecContext } from '../../shared/agent-core/types.ts';
+import type { AgentTool, CoreToolResult, ToolExecContext } from '../../shared/agent-core/types.ts';
 
 const PROTOCOL_VERSION = '2025-06-18';
 const MAX_BODY_BYTES = 4 * 1024 * 1024;
@@ -41,7 +41,7 @@ function toolList(tools: AgentTool[]) {
   }));
 }
 
-function callResult(result: ToolResult) {
+function callResult(result: CoreToolResult) {
   return {
     content: [
       { type: 'text', text: result.content },

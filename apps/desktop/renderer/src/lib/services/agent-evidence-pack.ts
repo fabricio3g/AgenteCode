@@ -1,20 +1,15 @@
 import type { SearchResult } from '$lib/types/bridge';
 import type { RequestMessage } from '$lib/services/chat/types';
 import type { ToolObservation } from '$lib/services/agent-types';
+import { domainLabel as sharedDomainLabel } from '$lib/ui/message-utils';
+
+const domainLabel = (url: string): string => sharedDomainLabel(url, '');
 
 function clean(value: unknown, max = 900): string {
   return String(value ?? '')
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, max);
-}
-
-function domainLabel(url: string): string {
-  try {
-    return new URL(url).hostname.replace(/^www\./, '');
-  } catch {
-    return '';
-  }
 }
 
 function queryTerms(query: string): string[] {

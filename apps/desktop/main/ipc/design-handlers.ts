@@ -12,7 +12,7 @@ import { clampExportWidth, exportImageName, pngBytes } from '../design/export.ts
 import { setFlows } from '../design/flows.ts';
 import { isDesignFileTool, runDesignFileTool } from '../design/tools.ts';
 import { checkExportHtml, collectFiles, DesignPathError, ensureWorkspace, exportFileName, listVersions, promoteVariant, removePage, restore, snapshot, workspaceRoot } from '../design/workspace.ts';
-import { buildHandoffBundle, checkHandoffPages, checkHandoffText, deliverToProject, slugify } from '../design/handoff.ts';
+import { buildHandoffBundle, checkHandoffPages, checkHandoffText, deliverToProject, designSlug } from '../design/handoff.ts';
 import { runDesignSystemRequest } from '../design/systems.ts';
 import { addReference, addReferenceFile, removeReference } from '../design/references.ts';
 import type { DesignChangedEvent, DesignHandoffRequest, DesignHandoffResult, DesignManageRequest, DesignRenderRequest, DesignSystemRequest, DesignToolResult } from '../../shared/design.ts';
@@ -151,7 +151,7 @@ export function registerDesignHandlers(ipcMain: IpcMain): void {
     if (request.action === 'bundle') {
       const pages = checkHandoffPages(request.pages);
       const result = await dialog.showSaveDialog({
-        defaultPath: `${slugify(title)}-handoff.zip`,
+        defaultPath: `${designSlug(title)}-handoff.zip`,
         filters: [{ name: 'Zip', extensions: ['zip'] }]
       });
       if (result.canceled || !result.filePath) return { saved: false };

@@ -8,6 +8,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import JSZip from 'jszip';
 import { DesignPathError, EXPORT_MAX_BYTES, exportFileName, listFiles } from './workspace.ts';
+import { toSlug } from '../../shared/slug.ts';
 
 const HANDOFF_FILE = 'HANDOFF.md';
 /** The HANDOFF.md document: a generated summary, kept well under a megabyte. */
@@ -50,17 +51,12 @@ export function checkHandoffPages(value: unknown): HandoffPage[] {
 }
 
 /** A URL- and folder-safe name from a design title: "Pricing page!" → "pricing-page". */
-export function slugify(title: unknown): string {
-  const text = typeof title === 'string' ? title : '';
-  const slug = text
-    .normalize('NFKD')
-    .replace(/[̀-ͯ]/g, '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, SLUG_MAX)
-    .replace(/-+$/g, '');
-  return slug || 'design';
+export function designSlug(title: unknown): string {
+  return toSlug(typeof title === 'string' ? title : '', {
+    fallback: 'design',
+    maxLength: SLUG_MAX,
+    normalizeUnicode: true
+  });
 }
 
 /**
@@ -106,7 +102,7 @@ function projectDesignsDir(projectRoot: unknown): string {
  */
 export function deliverToProject(root: string, projectRoot: unknown, title: unknown, handoff: string): DeliveredDesign {
   const designs = projectDesignsDir(projectRoot);
-  const base = slugify(title);
+  const base = designSlug(title);
   let slug = base;
   let dir = path.join(designs, slug);
   for (let n = 2; ; n += 1) {

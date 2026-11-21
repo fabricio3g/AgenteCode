@@ -4,7 +4,7 @@
 // identical definitions.
 
 import { z } from 'zod';
-import type { AgentTool, ToolExecContext, ToolResult } from '../../../shared/agent-core/types.ts';
+import type { AgentTool, CoreToolResult, ToolExecContext } from '../../../shared/agent-core/types.ts';
 
 export interface ToolDefinitionInput<T extends z.ZodType> {
   name: string;
@@ -14,7 +14,7 @@ export interface ToolDefinitionInput<T extends z.ZodType> {
   /** Ask for approval on this particular call (see AgentTool.requiresApproval). */
   requiresApproval?(args: z.output<T>): boolean;
   executionMode?: 'sequential' | 'parallel';
-  execute(args: z.output<T>, ctx: ToolExecContext, toolCallId: string): Promise<ToolResult>;
+  execute(args: z.output<T>, ctx: ToolExecContext, toolCallId: string): Promise<CoreToolResult>;
 }
 
 export function defineTool<T extends z.ZodType>(input: ToolDefinitionInput<T>): AgentTool {

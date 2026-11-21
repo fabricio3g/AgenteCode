@@ -2,7 +2,7 @@ import type { AgentActivity, AgentOutcome, AgentStopReason, ChatContextMode, Cha
 import { compactStoredScene } from '$lib/features/roleplay/roleplay-settings';
 import type { SearchResult } from '$lib/types/bridge';
 import type { CompletionResult, RequestMessage } from '$lib/services/chat/types';
-import { runAgentTask } from '$lib/services/agent';
+import type { AgentTaskResult } from '$lib/services/agent-types';
 import { normalizeStreamingReasoningDelta } from '$lib/services/streaming';
 import { isElectron } from '$lib/services/bridge';
 import { generationRate } from '$shared/generation-speed';
@@ -44,7 +44,7 @@ export function toInvoke(api: ElectronApi): ElectronApi['invoke'] {
   return (channel, payload) => api.invoke(channel, payload);
 }
 
-type AgentStoreResult = Awaited<ReturnType<typeof runAgentTask>>;
+type AgentStoreResult = AgentTaskResult;
 
 export function hasUsableAgentResult(result: AgentStoreResult): boolean {
   return !!(

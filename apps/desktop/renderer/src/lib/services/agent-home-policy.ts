@@ -13,8 +13,8 @@
  */
 
 import type { AgentStep } from '$lib/types/chat';
-import type { AgentLoopHooks } from '$shared/agent-core/agent-loop';
-import type { AssistantMessage, ToolCall, UserMessage } from '$shared/agent-core/types';
+import type { AgentLoopHooks } from '$lib/services/agent-types';
+import type { AssistantMessage, CoreToolCall as ToolCall, UserMessage } from '$shared/agent-core/types';
 import { hasToolIntent, sanitizeAgentVisibleText, stripToolCallArtifacts } from '$lib/services/agent-parsing';
 import { activityLabel } from '$lib/utils/tool-ui';
 import { FINAL_ANSWER_CONTRACT_REMINDER } from '$lib/services/agent-prompts';

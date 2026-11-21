@@ -44,7 +44,7 @@ export function matchLessonCommand(text: string, contextMode?: string | null): L
 }
 
 /** The instruction the agent receives. `topic` may be a quoted answer. */
-export function buildDirective(mode: LessonMode, topic: string): string {
+function buildDirective(mode: LessonMode, topic: string): string {
   const subject = topic.trim() || 'the topic we have been discussing';
   return mode === 'practice'
     ? `${LESSON_DIRECTIVES.practice}${subject}. Same concept, no hints, no visuals, choice and numeric blocks only, mixed with the previous concept where it fits. End with a summary.`

@@ -10,7 +10,7 @@ export interface CoreTokenUsage {
   total_tokens?: number;
 }
 
-export interface ToolCall {
+export interface CoreToolCall {
   id: string;
   name: string;
   arguments: Record<string, unknown>;
@@ -29,7 +29,7 @@ export interface AssistantMessage {
   role: 'assistant';
   content: string;
   reasoning?: string;
-  toolCalls?: ToolCall[];
+  toolCalls?: CoreToolCall[];
   usage?: CoreTokenUsage | null;
   stopReason?: StopReason;
   errorMessage?: string;
@@ -81,7 +81,7 @@ export interface WireTool {
   };
 }
 
-export interface ToolResult {
+export interface CoreToolResult {
   /** Text sent back to the model. */
   content: string;
   /** Images for vision models (e.g. a browser screenshot), sent after the batch. */
@@ -120,7 +120,7 @@ export interface AgentTool {
   requiresApproval?(args: Record<string, unknown>): boolean;
   /** Parallel-friendly tools run concurrently within a turn. */
   executionMode?: 'sequential' | 'parallel';
-  execute(toolCallId: string, args: Record<string, unknown>, ctx: ToolExecContext): Promise<ToolResult>;
+  execute(toolCallId: string, args: Record<string, unknown>, ctx: ToolExecContext): Promise<CoreToolResult>;
 }
 
 // ── Events (the loop's only side channel) ──────────────────────────────

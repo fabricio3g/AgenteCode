@@ -13,7 +13,7 @@ import { subscribeToCodeAgentEvents } from './code-events.svelte';
 import { codeStore } from './code.svelte';
 
 /** The board's columns, left to right; failed cards sit with the done ones. */
-export const SWARM_COLUMNS: ReadonlyArray<{ id: 'backlog' | 'working' | 'review' | 'done'; statuses: SwarmCardStatus[] }> = [
+const SWARM_COLUMNS: ReadonlyArray<{ id: 'backlog' | 'working' | 'review' | 'done'; statuses: SwarmCardStatus[] }> = [
   { id: 'backlog', statuses: ['backlog'] },
   { id: 'working', statuses: ['working'] },
   { id: 'review', statuses: ['review'] },

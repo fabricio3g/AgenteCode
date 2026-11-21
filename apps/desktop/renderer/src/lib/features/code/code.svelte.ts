@@ -1,4 +1,5 @@
 import { appStore } from '$lib/stores/app.svelte';
+import { isConfigModelReady } from '$lib/stores/chat-model';
 import { approvalsStore } from '$lib/stores/approvals.svelte';
 import {
   loadCodeProjectsFromDb,
@@ -378,11 +379,7 @@ class CodeStore {
    * needs a loaded model, API needs a key AND a model id.
    */
   get modelReady(): boolean {
-    if (appStore.backendMode === 'local') {
-      return !!(appStore.selectedLocalModelPath && appStore.localModelActive);
-    }
-    const provider = appStore.activeProvider;
-    return !!(provider && (provider.has_api_key || provider.api_key) && provider.model);
+    return isConfigModelReady(appStore.config, appStore.localModelActive);
   }
 
   // ── Live runs ────────────────────────────────────────────────────────

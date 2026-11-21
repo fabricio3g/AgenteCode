@@ -27,15 +27,13 @@ import {
   ingestDocument, readIngestedDocument, ingestText, ingestTextFast, queryDocuments,
   listRagDocuments, removeRagDocument, clearRagDocuments, hasRagDocuments
 } from './rag-engine.ts';
-import {
-  webSearch, ingestSearchContext, fetchModelCatalog,
-  searchHfModels, hfRepoGguf, fetchHfReadme
-} from './search-engine.ts';
+import { webSearch, ingestSearchContext } from './search-engine.ts';
+import { fetchModelCatalog, searchHfModels, hfRepoGguf, fetchHfReadme } from './hf-models.ts';
 import { scrapeUrlStructured } from './web-scraper.ts';
 import { crawlWeb } from './web-crawler.ts';
 import { getAggregatorCatalog, probeAggregatorEngines } from './search-providers/aggregator.ts';
 import {
-  pathExists, openModelsFolder, pickWorkspaceFolder, pickModelFile, pickMmprojFile, pickWhisperRuntimeFile,
+  pathExists, listMmprojCandidates, openModelsFolder, pickWorkspaceFolder, pickModelFile, pickMmprojFile, pickWhisperRuntimeFile,
   indexWorkspaceFolder, writeWorkspaceFile, writeWorkspaceBinary, readWorkspaceFile,
   createWorkspaceDocument, renameWorkspaceFile, deleteWorkspaceFile,
   openWorkspaceFile, createWorkspaceFolder, workspaceExec, writeTempFile,
@@ -91,14 +89,10 @@ import { registerBrowserChat, stopBrowserChat } from './agente/browser-chat.ts';
 import { registerDesignHandlers } from './ipc/design-handlers.ts';
 import { registerDesignReferenceHandlers } from './ipc/design-reference-handlers.ts';
 import { registerComputerHandlers } from './computer/desktop.ts';
-import type { ErrorMessageFn } from './ipc/types.ts';
 import { createLogger } from './utils/logger.ts';
+import { toErrorMessage } from '../shared/errors.ts';
 
 const log = createLogger('[IPC]');
-
-const toErrorMessage: ErrorMessageFn = (err: unknown): string => {
-  return err instanceof Error ? err.message : String(err);
-};
 
 export function registerIpcHandlers() {
   // ── Window controls ──
@@ -330,6 +324,7 @@ export function registerIpcHandlers() {
   registerWorkspaceHandlers({
     ipcMain,
     pathExists,
+    listMmprojCandidates,
     openModelsFolder,
     pickWorkspaceFolder,
     pickModelFile,

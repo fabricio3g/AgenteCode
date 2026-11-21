@@ -7,7 +7,7 @@
  * evidence observation. The model-facing text is the capped JSON payload.
  */
 
-import type { AgentTool, ToolResult as CoreToolResult } from '$shared/agent-core/types';
+import type { AgentTool, CoreToolResult } from '$shared/agent-core/types';
 import type { ToolCall } from '$lib/services/agent-types';
 import { STEP_TYPE } from '$lib/services/agent-tooling';
 import { summarizeToolObservation } from '$lib/services/agent-evidence';

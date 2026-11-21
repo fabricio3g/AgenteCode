@@ -2,6 +2,7 @@ import type { AgentArtifact, ChatMessage, MessageVersion, SearchMeta } from '$li
 import type { DocumentSurfaceItem } from '$lib/features/chat/document-surface';
 import { artifactsForMessage } from '$lib/stores/app-store-artifacts';
 import { homeWorkSteps } from '$lib/features/home/home-live';
+import { toSlug } from '$shared/slug';
 
 /**
  * The ordered contents of an assistant message.
@@ -61,10 +62,6 @@ function cleanReportTitle(value: string): string {
     .replace(/__(.*?)__/g, '$1')
     .replace(/`([^`]+)`/g, '$1')
     .trim();
-}
-
-function slugify(value: string): string {
-  return value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 }
 
 function resolveReasoningTiming(metadata: MessageVersion['metadata'] | null | undefined) {
@@ -206,7 +203,7 @@ export function buildMessageParts(input: BuildMessagePartsInput): MessagePart[] 
       docs: [
         {
           id: `${message.id}:report`,
-          name: `${slugify(title) || 'document'}.md`,
+          name: `${toSlug(title) || 'document'}.md`,
           title,
           content: displayContent,
           kind: 'report',

@@ -11,10 +11,7 @@ import { resolveRuntimeConfig, readGgufMetadataFields } from './runtime-config-r
 import { inspectLlamaServer, supportsLlamaFlag } from './llama-runtime.ts';
 import { startLlamaSession, endLlamaSession, llamaSessionHeaders } from './llama-session.ts';
 import { setEmbeddingStatus, getEmbeddingStatus as getEmbeddingStatusState } from './embedding-state.ts';
-
-function toErrorMessage(err: unknown): string {
-  return err instanceof Error ? err.message : String(err);
-}
+import { toErrorMessage } from '../shared/errors.ts';
 
 // ── Managed process instances ──
 

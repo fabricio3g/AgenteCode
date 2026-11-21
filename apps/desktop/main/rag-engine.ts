@@ -14,10 +14,7 @@ import { chunkMarkdown, searchableText } from './rag/chunking.ts';
 import { Bm25, blendScores, buildContext, citationOf, selectDiverse, type Candidate } from './rag/ranking.ts';
 import { chatDatabase } from './chat-db-client.ts';
 import { createLogger } from './utils/logger.ts';
-
-function toErrorMessage(err: unknown): string {
-  return err instanceof Error ? err.message : String(err);
-}
+import { toErrorMessage } from '../shared/errors.ts';
 
 const log = createLogger('[RAG]');
 

@@ -1,6 +1,7 @@
 import type { SearchResult } from '$lib/types/bridge';
 import type { ToolContext, ToolObservation, ToolResult } from '$lib/services/agent-types';
 import { say } from '$lib/copy';
+import { domainLabel as sharedDomainLabel } from '$lib/ui/message-utils';
 
 /** How to shape partial answers when the model did not finish. */
 export type FallbackMode = 'research' | 'chat';
@@ -39,13 +40,7 @@ function sourceKey(source: { title?: string; url?: string }): string {
   return cleanText(source.url || source.title || '').toLowerCase().replace(/#.*$/, '');
 }
 
-function domainLabel(url: string): string {
-  try {
-    return new URL(url).hostname.replace(/^www\./, '');
-  } catch {
-    return '';
-  }
-}
+const domainLabel = (url: string): string => sharedDomainLabel(url, '');
 
 function fileTypeLabel(source: SearchResult): string {
   const inferred = String(source.url || '').match(/\.(pdf|docx?|pptx?|xlsx?|rtf|epub|odt|ods|odp)(?:$|[?#])/i)?.[1] || '';

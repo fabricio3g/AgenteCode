@@ -5,6 +5,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import { toSlug } from '../shared/slug.ts';
 
 /**
  * Converts a string to a URL-safe slug.
@@ -15,10 +16,7 @@ import path from 'node:path';
  * slugify('My Model Name!') // 'my-model-name'
  */
 export function slugify(input: string | null | undefined): string {
-  return String(input || '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '') || 'model';
+  return toSlug(input, { fallback: 'model' });
 }
 
 /**

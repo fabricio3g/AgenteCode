@@ -5,6 +5,10 @@ export async function pathExists(path: string): Promise<boolean> {
   return invoke<boolean>('path_exists', { path });
 }
 
+export async function listMmprojCandidates(modelPath: string): Promise<string[]> {
+  return invoke<string[]>('list_mmproj_candidates', { modelPath });
+}
+
 export async function openModelsFolder(): Promise<void> {
   await invoke<void>('open_models_folder');
 }

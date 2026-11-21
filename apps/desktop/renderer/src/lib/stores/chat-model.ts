@@ -37,3 +37,18 @@ export function configForChatModel(config: AppConfig, selection?: ChatModelSelec
     }
   };
 }
+
+/**
+ * True when the given config can actually send: local needs a selected AND
+ * currently loaded model; API needs both credentials and a model id.
+ */
+export function isConfigModelReady(config: AppConfig | null | undefined, localModelActive: unknown): boolean {
+  const llm = config?.llm;
+  const backend = llm?.backend_mode ?? 'local';
+  if (backend === 'local') {
+    return !!(llm?.local?.selected_model_path && localModelActive);
+  }
+  const providerName = llm?.provider ?? '';
+  const provider = providerName ? llm?.providers?.[providerName] : undefined;
+  return !!(provider?.model && (provider.has_api_key || provider.api_key));
+}

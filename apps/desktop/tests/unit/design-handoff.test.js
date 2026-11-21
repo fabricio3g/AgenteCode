@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import JSZip from 'jszip';
-import { buildHandoffBundle, checkHandoffPages, checkHandoffText, deliverToProject, slugify } from '../../main/design/handoff.ts';
+import { buildHandoffBundle, checkHandoffPages, checkHandoffText, deliverToProject, designSlug as slugify } from '../../main/design/handoff.ts';
 
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'design-handoff-'));
 

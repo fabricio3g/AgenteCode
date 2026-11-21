@@ -38,6 +38,7 @@ async function browseFolders(requested?: string) {
 type WorkspaceHandlerDeps = {
   ipcMain: IpcMain;
   pathExists: (path: string) => unknown;
+  listMmprojCandidates: (modelPath: string) => unknown;
   openModelsFolder: () => unknown;
   pickWorkspaceFolder: () => unknown;
   pickModelFile: () => unknown;
@@ -60,6 +61,7 @@ type WorkspaceHandlerDeps = {
 export function registerWorkspaceHandlers({
   ipcMain,
   pathExists,
+  listMmprojCandidates,
   openModelsFolder,
   pickWorkspaceFolder,
   pickModelFile,
@@ -78,6 +80,7 @@ export function registerWorkspaceHandlers({
   resetMediaPermissions,
 }: WorkspaceHandlerDeps): void {
   ipcMain.handle('path_exists', (_e, { path }) => pathExists(path));
+  ipcMain.handle('list_mmproj_candidates', (_e, { modelPath }) => listMmprojCandidates(modelPath));
   ipcMain.handle('browse_folders', (_e, { path } = {}) => browseFolders(typeof path === 'string' ? path : undefined));
   ipcMain.handle('open_models_folder', () => openModelsFolder());
   ipcMain.handle('pick_workspace_folder', () => pickWorkspaceFolder());

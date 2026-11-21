@@ -7,11 +7,11 @@
  * that is not plain data — a function, a DOM node — and `toIpc` falls back to
  * the old JSON round trip for exactly that case, which drops such values.
  */
-export function plain<T>(value: T): T {
+function plain<T>(value: T): T {
   return $state.snapshot(value) as T;
 }
 
-export function isCloneError(error: unknown): boolean {
+function isCloneError(error: unknown): boolean {
   const text = error instanceof Error ? `${error.name} ${error.message}` : String(error);
   return /DataCloneError|could not be cloned/i.test(text);
 }

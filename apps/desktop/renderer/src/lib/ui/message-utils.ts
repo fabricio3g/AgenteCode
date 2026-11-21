@@ -45,10 +45,10 @@ export function getSearchStatus(meta: SearchMeta | null): SearchStatusInfo | nul
   };
 }
 
-export function domainLabel(url: string) {
+export function domainLabel(url: string, fallback = url): string {
   try {
     return new URL(url).hostname.replace(/^www\./, '');
   } catch {
-    return url;
+    return fallback;
   }
 }

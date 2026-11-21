@@ -11,13 +11,12 @@
 -->
 
 <script lang="ts">
-  import UiTextarea from '$lib/components/ui/Textarea.svelte';
   import UiFileInput from '$lib/components/ui/FileInput.svelte';
   import UiIconButton from '$lib/components/ui/IconButton.svelte';
   import { cn as uiClass } from '$lib/utils/cn';
 
   import { onDestroy, tick, untrack } from 'svelte';
-  import { ArrowUp, ChevronDown, ClipboardList, Eye, EyeOff, File as FileIcon, Paperclip, Play, ShieldCheck, Settings2, Target, Wrench, X, Zap } from '$lib/icons';
+  import { ChevronDown, ClipboardList, Eye, EyeOff, File as FileIcon, Play, ShieldCheck, Settings2, Target, Wrench, Zap } from '$lib/icons';
   import { toastStore } from '$lib/stores/toast.svelte';
   import { codeWorkspace } from './workspace.svelte';
   import { exactSlashCommand, matchSlashCommands, slashQuery } from '$lib/features/shared/composer/slash-commands';
@@ -26,6 +25,7 @@
   import { t } from 'svelte-i18n';
   import type { ChatSession, ReasoningLevel } from '$lib/types/chat';
   import { appStore } from '$lib/stores/app.svelte';
+  import { isConfigModelReady } from '$lib/stores/chat-model';
   import { fetchReasoningCapabilities } from '$lib/services/chat-api';
   import { isElectron } from '$lib/services/bridge';
   import { ThinkingCapabilitiesController } from '$lib/stores/models/thinking-capabilities.svelte';
@@ -54,13 +54,11 @@
   import Menu from '$lib/components/ui/Menu.svelte';
   import MenuItem from '$lib/components/ui/MenuItem.svelte';
   import Tooltip from '$lib/components/ui/Tooltip.svelte';
-  import SendButton from '$lib/features/shared/composer/SendButton.svelte';
   import ComposerGlyph from '$lib/features/shared/composer/ComposerGlyph.svelte';
   import DictationButton from '$lib/features/chat/composer/DictationButton.svelte';
   import MicBars from '$lib/features/shared/composer/MicBars.svelte';
-  import DictationSetupPopover from '$lib/features/chat/composer/DictationSetupPopover.svelte';
-  import ComposerRecorder from '$lib/features/chat/composer/ComposerRecorder.svelte';
-  import ApprovalBar from '$lib/features/shared/composer/ApprovalBar.svelte';
+  import ComposerShell from '$lib/features/shared/composer/ComposerShell.svelte';
+  import { dictationSlotFor, handleApprovalKey, handlePickerKey, recallLastQueuedPrompt } from '$lib/features/shared/composer/composer-shared';
   import { Dictation } from '$lib/features/chat/composer/use-dictation.svelte';
   import { approvalsStore } from '$lib/stores/approvals.svelte';
   import { copy } from '$lib/copy';
@@ -135,15 +133,20 @@
   const runtimeMode = $derived(chat.codeAgent?.runtimeMode ?? codeStore.defaultMode);
   // Honest model visibility: without a usable model the bar says so instead
   // of letting a send die inside the provider.
-  const modelReady = $derived(ownBackend === 'local' ? !!(ownConfig.llm?.local?.selected_model_path && appStore.localModelActive) : !!(ownModel && (ownConfig.llm?.providers?.[ownProvider]?.api_key || ownConfig.llm?.providers?.[ownProvider]?.has_api_key)));
+  const modelReady = $derived(isConfigModelReady(ownConfig, appStore.localModelActive));
   const canSend = $derived((!!text.trim() || attachments.length > 0) && !attaching && (modelReady || running));
   /** Nothing typed and nothing attached: the send slot has no message to send. */
   const fieldEmpty = $derived(!text.trim() && attachments.length === 0 && !attaching);
   /** The send slot's microphone: the bar's own button, moved into the empty field's corner. */
-  const slotDictation = $derived(!running && fieldEmpty && dictation.supported
-    ? { label: copy.composer.dictate, onclick: () => dictation.toggle(false),
-        glyph: dictation.listening ? listeningBars : undefined }
-    : undefined);
+  const slotDictation = $derived(dictationSlotFor({
+    running,
+    fieldEmpty,
+    supported: dictation.supported,
+    listening: dictation.listening,
+    label: copy.composer.dictate,
+    onToggle: () => dictation.toggle(false),
+    glyph: listeningBars
+  }));
   // Real accounting from the engine: promptTokens of the last call is the
   // context footprint. Hidden until the first report, like Home's ring.
   const usage = $derived(run?.usage ?? [...chat.messages].reverse().find((message) => message.metadata?.codeUsage)?.metadata?.codeUsage);
@@ -295,16 +298,14 @@
     void Promise.resolve().then(() => { textarea?.focus(); textarea?.setSelectionRange(caret, caret); });
   }
   function onFileKey(event: KeyboardEvent): boolean {
-    if (!fileOpen) return false;
-    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-      event.preventDefault();
-      fileIndex = (fileIndex + (event.key === 'ArrowDown' ? 1 : -1) + fileMatches.length) % fileMatches.length;
-    } else if (event.key === 'Tab' || (event.key === 'Enter' && !event.shiftKey && !event.isComposing)) {
-      event.preventDefault(); chooseFile(fileMatches[fileIndex]!);
-    } else if (event.key === 'Escape') {
-      event.preventDefault(); fileDismissed = true;
-    } else return false;
-    return true;
+    return handlePickerKey(event, {
+      open: fileOpen,
+      count: fileMatches.length,
+      index: fileIndex,
+      onIndex: (next) => (fileIndex = next),
+      onSelect: (index) => chooseFile(fileMatches[index]!),
+      onDismiss: () => (fileDismissed = true)
+    });
   }
 
   let slashIndex = $state(0);
@@ -339,29 +340,15 @@
 
   /** Keys the open slash menu handles; true when the key was used. */
   function onSlashKey(event: KeyboardEvent): boolean {
-    if (!slashOpen) return false;
-    const count = slashMatches.length;
-    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-      event.preventDefault();
-      slashIndex = (slashIndex + (event.key === 'ArrowDown' ? 1 : -1) + count) % count;
-      return true;
-    }
-    if (event.key === 'Tab') {
-      event.preventDefault();
-      completeCommand(slashMatches[slashIndex]!);
-      return true;
-    }
-    if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
-      event.preventDefault();
-      void runCommand(slashMatches[slashIndex]!);
-      return true;
-    }
-    if (event.key === 'Escape') {
-      event.preventDefault();
-      slashDismissed = true;
-      return true;
-    }
-    return false;
+    return handlePickerKey(event, {
+      open: slashOpen,
+      count: slashMatches.length,
+      index: slashIndex,
+      onIndex: (next) => (slashIndex = next),
+      onComplete: (index) => completeCommand(slashMatches[index]!),
+      onSelect: (index) => void runCommand(slashMatches[index]!),
+      onDismiss: () => (slashDismissed = true)
+    });
   }
 
   /** Grow with the content; the stylesheet caps it at five rows (Home parity). */
@@ -531,16 +518,16 @@
   }
 
   function onKeydown(event: KeyboardEvent) {
-    if (event.key === 'ArrowUp' && !text && !attachments.length && !event.isComposing) {
-      const item = [...(chat.pendingPrompts ?? [])].reverse().find(item => !item.sending);
-      if (item) {
-        event.preventDefault();
+    if (recallLastQueuedPrompt(event, {
+      isEmpty: !text && !attachments.length,
+      prompts: chat.pendingPrompts,
+      onRecall: (item) => {
         appStore.removeQueuedPrompt(chat.id, item.id);
-        text = item.content; attachments = item.codeAttachments ?? [];
+        text = item.content;
+        attachments = item.codeAttachments ?? [];
         void Promise.resolve().then(focusComposer);
-        return;
       }
-    }
+    })) return;
     if (event.key === 'Backspace' && !text && attachments.length) { event.preventDefault(); attachments = attachments.slice(0, -1); return; }
     if (onFileKey(event)) return;
     if (onSlashKey(event)) return;
@@ -560,13 +547,11 @@
      * stop the whole run while the card said "Esc deny"), and Enter on an empty
      * field allows it. With words in the field Enter still sends them.
      */
-    const approval = pendingApprovals[0];
-    if (approval && !event.isComposing && (event.key === 'Escape' || (event.key === 'Enter' && !event.shiftKey && !text.trim() && !attachments.length))) {
-      event.preventDefault();
-      event.stopPropagation();
-      approvalsStore.resolve(approval.id, event.key === 'Enter');
-      return;
-    }
+    if (handleApprovalKey(event, {
+      approval: pendingApprovals[0],
+      isEmpty: !text.trim() && !attachments.length,
+      resolve: (id, allow) => approvalsStore.resolve(id, allow)
+    })) return;
     // Escape stops a live run (the shortcut help promises it).
     if (event.key === 'Escape' && running) {
       event.preventDefault();
@@ -738,12 +723,31 @@
             </Menu>
 {/snippet}
 
-<div class="composer-dock relative z-20 w-full shrink-0 px-3 pb-2 pt-2 md:px-6 md:pb-3" role="region" aria-label={$t('code.composerRegion')}
+<ComposerShell
+  ariaLabel={$t('code.composerRegion')}
+  dockFade="compact"
+  {dictation}
+  {running}
+  value={text}
+  {placeholder}
+  {grown}
+  bind:textarea
+  textareaClass="ui-local-49e9c79c"
+  sendDisabled={!canSend}
+  sendLabel={$t('code.send')}
+  stopLabel={$t('code.stop')}
+  stopShortcut="escape"
+  dictationSlot={slotDictation}
+  {pendingApprovals}
+  {approvalStep}
   onpaste={onPaste}
-  ondragover={(event) => { if (event.dataTransfer?.types.includes('Files')) event.preventDefault(); }}
-  ondrop={(event) => { const selected = [...(event.dataTransfer?.files || [])]; if (selected.length && !event.defaultPrevented) { event.preventDefault(); event.stopPropagation(); void attachFiles(selected); } }}>
-  <div class="composer-frame mx-auto w-full" style="max-width: var(--thread-width);">
-    {#if dictation.phase === 'choose'}<DictationSetupPopover {dictation} />{/if}
+  oninput={onInput}
+  onkeydown={onKeydown}
+  onselect={() => { if (textarea) caret = textarea.selectionStart; }}
+  onsend={() => void submit()}
+  onstop={() => void codeStore.stop(chat.id)}
+>
+  {#snippet beforeShell()}
     {#if fileOpen}
       <ComposerPicker label={$t('code.projectFiles')} selected={fileIndex}
         items={fileMatches.map(file => ({ id: file, label: file, icon: FileIcon }))}
@@ -761,105 +765,62 @@
     {/if}
     <SessionGoal bind:this={goalControl} chatId={chat.id} space="code" sessionId={chat.codeAgent?.sessionId} ensureSession={ensureGoalSession} />
     <CodeAttachmentShelf {attachments} onremove={path => attachments = attachments.filter(item => item.path !== path)} />
-    <div class="composer-shell ui-composer pointer-events-auto transition">
-      {#if pendingApprovals.length}
-        {@const approval = pendingApprovals[0]!}
-        <ApprovalBar
-          {approval}
-          step={approvalStep(approval.requestId)}
-          total={pendingApprovals.length}
-          onanswer={(allow) => approvalsStore.resolve(approval.id, allow)}
-        />
-      {/if}
-      <div class="composer-body">
-        {#if dictation.uiActive && dictation.phase !== 'choose'}
-          <div class="composer-recorder-row">
-            <ComposerRecorder {dictation} />
-            {#if running}<SendButton compact stopShortcut="escape" {running} disabled={false} sendLabel={$t('code.send')} stopLabel={$t('code.stop')} onsend={() => void submit()} onstop={() => void codeStore.stop(chat.id)} />{/if}
-          </div>
-        {:else}
-          <div class="composer-input-row" class:is-grown={grown}>
-            <UiTextarea variant="composer"
-              bind:ref={textarea}
-              class={uiClass("composer-textarea w-full resize-none bg-transparent text-foreground outline-none", "ui-local-49e9c79c")}
-              {placeholder}
-              rows={1}
-              value={text}
-              oninput={onInput}
-              onkeydown={onKeydown}
-              onselect={() => { if (textarea) caret = textarea.selectionStart; }}
-            ></UiTextarea>
-            <div class="composer-send-slot">
-              <SendButton compact stopShortcut="escape"
-                {running}
-                disabled={!canSend}
-                dictation={slotDictation}
-                sendLabel={$t('code.send')}
-                stopLabel={$t('code.stop')}
-                onsend={() => void submit()}
-                onstop={() => void codeStore.stop(chat.id)}
-              />
-            </div>
-          </div>
+  {/snippet}
+
+  {#snippet tray()}
+    <ComposerBar>
+      {#snippet attach()}
+        <UiFileInput bind:ref={mediaPicker}  class={uiClass("hidden", "ui-local-49e9c79c")} accept="*/*" multiple onchange={(event) => { void attachFiles([...((event.currentTarget as HTMLInputElement).files || [])]); event.currentTarget.value = ''; }} />
+        <Tooltip label={$t('code.attach')} position="top">
+          <UiIconButton label={$t('code.attach')} size="xs" type="button" class={uiClass("composer-icon-control", "ui-local-49e9c79c")}  disabled={attaching} onclick={() => mediaPicker?.click()}><ComposerGlyph name="add" /></UiIconButton>
+        </Tooltip>
+      {/snippet}
+      {#snippet extras()}
+        {@render overflowMenu()}
+        {@render selectedMode()}
+        {#if ownBackend !== 'local' && !modelReady}
+          <Tooltip label={copy.model.configureProvider} position="top"><UiIconButton label={copy.model.configureProvider} size="xs" type="button" class={uiClass(" provider-setup", "ui-local-49e9c79c")}  onclick={()=>appStore.openSettings('providers')}><Settings2 class="size-3" /></UiIconButton></Tooltip>
         {/if}
-      </div>
-    </div>
+      {/snippet}
+      {#snippet model()}<ModelMenu compact {chat} capabilities={ownThinking} level={chat.reasoningLevel} onlevel={setThinking} />{/snippet}
+      {#snippet status()}
+        <GenerationSpeed value={speed} />
+        {#if modelReady && modelInputs}
+          <!-- Capability and policy in one glyph: what the model sees, and
+               the door to the toggles that decide what gets attached. -->
+          <Tooltip label={mediaLabel} position="top">
+            <Button variant="plain" type="button" class={uiClass("media-status", "ui-local-49e9c79c")} aria-label={mediaLabel} onclick={() => (dialog = 'settings')}>
+              {#if vision}<Eye class="size-3.5" />{:else}<EyeOff class="size-3.5" />{$t('code.media.textOnly')}{/if}
+            </Button>
+          </Tooltip>
+        {/if}
+        {#if modelReady && canContinue && !text.trim()}
+          <!-- The run stopped short: one click picks the work back up. -->
+          <Tooltip label={$t('code.continue')} position="top">
+            <Button variant="plain" type="button" class={uiClass("composer-chip", "ui-local-49e9c79c")} onclick={() => void codeStore.followUp(chat.id, $t('code.continuePrompt'))}>
+              <Play class="size-3.5" />
+              {$t('code.continue')}
+            </Button>
+          </Tooltip>
+        {/if}
+      {/snippet}
+      {#snippet microphone()}<DictationButton {dictation} hidden={!!slotDictation} />{/snippet}
+      {#snippet trailing()}
+        {#if showContextRing && usage && !(projectControls.open && chat.projectId)}
+          <ContextUsageRing showLabel usedTokens={usage.promptTokens} maxTokens={usage.contextWindow ?? 0} breakdown={usage.breakdown} {spend} />
+        {/if}
+      {/snippet}
+    </ComposerBar>
+  {/snippet}
 
-    {#if !(dictation.uiActive && dictation.phase !== 'choose')}
-      <div class="composer-tray">
-        <ComposerBar>
-          {#snippet attach()}
-            <UiFileInput bind:ref={mediaPicker}  class={uiClass("hidden", "ui-local-49e9c79c")} accept="*/*" multiple onchange={(event) => { void attachFiles([...((event.currentTarget as HTMLInputElement).files || [])]); event.currentTarget.value = ''; }} />
-            <Tooltip label={$t('code.attach')} position="top">
-              <UiIconButton label={$t('code.attach')} size="xs" type="button" class={uiClass("composer-icon-control", "ui-local-49e9c79c")}  disabled={attaching} onclick={() => mediaPicker?.click()}><ComposerGlyph name="add" /></UiIconButton>
-            </Tooltip>
-          {/snippet}
-          {#snippet extras()}
-            {@render overflowMenu()}
-            {@render selectedMode()}
-            {#if ownBackend !== 'local' && !modelReady}
-              <Tooltip label={copy.model.configureProvider} position="top"><UiIconButton label={copy.model.configureProvider} size="xs" type="button" class={uiClass(" provider-setup", "ui-local-49e9c79c")}  onclick={()=>appStore.openSettings('providers')}><Settings2 class="size-3" /></UiIconButton></Tooltip>
-            {/if}
-          {/snippet}
-          {#snippet model()}<ModelMenu compact {chat} capabilities={ownThinking} level={chat.reasoningLevel} onlevel={setThinking} />{/snippet}
-          {#snippet status()}
-            <GenerationSpeed value={speed} />
-            {#if modelReady && modelInputs}
-              <!-- Capability and policy in one glyph: what the model sees, and
-                   the door to the toggles that decide what gets attached. -->
-              <Tooltip label={mediaLabel} position="top">
-                <Button variant="plain" type="button" class={uiClass("media-status", "ui-local-49e9c79c")} aria-label={mediaLabel} onclick={() => (dialog = 'settings')}>
-                  {#if vision}<Eye class="size-3.5" />{:else}<EyeOff class="size-3.5" />{$t('code.media.textOnly')}{/if}
-                </Button>
-              </Tooltip>
-            {/if}
-            {#if modelReady && canContinue && !text.trim()}
-              <!-- The run stopped short: one click picks the work back up. -->
-              <Tooltip label={$t('code.continue')} position="top">
-                <Button variant="plain" type="button" class={uiClass("composer-chip", "ui-local-49e9c79c")} onclick={() => void codeStore.followUp(chat.id, $t('code.continuePrompt'))}>
-                  <Play class="size-3.5" />
-                  {$t('code.continue')}
-                </Button>
-              </Tooltip>
-            {/if}
-          {/snippet}
-          {#snippet microphone()}<DictationButton {dictation} hidden={!!slotDictation} />{/snippet}
-          {#snippet trailing()}
-            {#if showContextRing && usage && !(projectControls.open && chat.projectId)}
-              <ContextUsageRing showLabel usedTokens={usage.promptTokens} maxTokens={usage.contextWindow ?? 0} breakdown={usage.breakdown} {spend} />
-            {/if}
-          {/snippet}
-        </ComposerBar>
-      </div>
-    {/if}
-
+  {#snippet afterTray()}
     <p class="composer-hint sr-only mx-auto mt-[var(--dock-gap)] px-1 text-center text-xs text-muted-foreground opacity-70">
       {#if hint}
         {hint}
       {/if}
     </p>
-  </div>
-</div>
+  {/snippet}
+</ComposerShell>
 
 <style>
 
@@ -884,33 +845,6 @@
     white-space:nowrap;
   }
   .slot::before { content:"+";opacity:0.7; }
-  /* The labelled context ring keeps its own width; squeezing it to an icon
-     slot spilled the ring over the media glyph beside it. */
-
-  .composer-dock {
-    background: var(--chat-bg);
-  }
-  /* Fade the transcript out into the dock rather than cutting it off. One
-     `--dock-gap` deep, matching the padding the transcript keeps under its last
-     row, so the fade never reaches a line of text. */
-  .composer-dock::before {
-    content: '';
-    position: absolute;
-    inset-inline: 0;
-    top: calc(-1 * var(--dock-gap, 8px));
-    height: var(--dock-gap, 8px);
-    pointer-events: none;
-    background: linear-gradient(
-      to bottom,
-      transparent,
-      color-mix(in srgb, var(--chat-bg) 72%, transparent) 58%,
-      var(--chat-bg)
-    );
-  }
-  .composer-frame {
-    position: relative;
-    min-width: 0;
-  }
   /* One muted base for both states: "Text only" is a quiet note, not the
      brightest thing on the bar. */
   :global(.media-status.ui-local-49e9c79c) {

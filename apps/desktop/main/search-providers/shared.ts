@@ -1,4 +1,5 @@
 // Shared search utilities, constants, and result-processing helpers
+import { toErrorMessage } from '../../shared/errors.ts';
 
 /*
  * Only providers reached through an interface offered for programmatic use:
@@ -59,9 +60,7 @@ export function setCachedResult(key: string, result: unknown): void {
   searchCache.set(key, { result, expires: Date.now() + SEARCH_CACHE_TTL_MS });
 }
 
-export function toErrorMessage(err: unknown): string {
-  return err instanceof Error ? err.message : String(err);
-}
+export { toErrorMessage };
 
 export function classifyNetworkError(err: unknown) {
   const msg = toErrorMessage(err).toLowerCase();

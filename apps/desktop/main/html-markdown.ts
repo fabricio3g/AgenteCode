@@ -50,7 +50,7 @@ function isHidden(el: El): boolean {
 }
 
 /** Chrome: hidden, navigational, or named like a banner, menu or share bar. */
-export function isChrome(el: El): boolean {
+function isChrome(el: El): boolean {
   const tag = tagOf(el);
   if (DROP_TAGS.has(tag) || isHidden(el)) return true;
   const role = el.getAttribute?.('role');
@@ -70,7 +70,7 @@ export function removeNoise(document: Document): void {
 }
 
 /** Readable characters under `el`, link text counted at a third. */
-export function contentScore(el: El): number {
+function contentScore(el: El): number {
   let prose = 0;
   let links = 0;
   const walk = (node: El, inLink: boolean) => {

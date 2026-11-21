@@ -1,5 +1,6 @@
 import type { HomeRuntimeMeta } from '$shared/home-runtime';
 import type { CodeSpend } from '$shared/agente-protocol';
+import type { AssistantMessage, CoreToolCall, CoreToolResult, UserMessage } from '$shared/agent-core/types';
 import type { AgentArtifact, AppConfig, AgentOutcome, AgentStep, AgentStopReason, ArtifactManifest, ReasoningLevel, WorkspaceFile } from '$lib/types/chat';
 import type { CompletionResult, RequestMessage } from '$lib/services/chat/types';
 import type { SearchResult } from '$lib/types/bridge';
@@ -157,3 +158,23 @@ export type RunAgentTaskArgs = {
   /** When true, skip token-budget trimming so uploaded/RAG document context stays intact. */
   preserveDocumentContext?: boolean;
 };
+
+export interface AgentLoopHooks {
+  /** Pre-execution gate (approvals, extension blocks). Return a string to fail the call. */
+  beforeToolCall?(toolCallId: string, toolName: string, args: Record<string, unknown>): Promise<{ block?: string } | void>;
+  /** Post-execution observer (extensions may override result fields). */
+  afterToolCall?(toolCallId: string, toolName: string, result: CoreToolResult): Promise<Partial<CoreToolResult> | void>;
+  /** Called between turns; return { stop: true } to end the run. */
+  prepareNextTurn?(turnIndex: number): Promise<{ stop?: boolean } | void>;
+  /**
+   * Called with a turn's tool calls before any of them run (budgets, loop
+   * guards). Return { stop: true } to end the run without executing them.
+   */
+  beforeToolBatch?(toolCalls: CoreToolCall[], turnIndex: number): Promise<{ stop?: boolean } | void>;
+  /**
+   * Called when the model stops without tool calls. Return { retry } to reject
+   * the reply and give the model another turn with those messages appended
+   * (a missing deliverable, an unreadable tool call).
+   */
+  reviewFinalReply?(message: AssistantMessage, turnIndex: number): Promise<{ retry?: UserMessage[] } | void>;
+}

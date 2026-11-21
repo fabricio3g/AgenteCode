@@ -8,7 +8,7 @@
 
   import { AlertCircle, Download, ExternalLink, FileText, X } from '$lib/icons';
   import { motionFade } from '$lib/utils/transitions';
-  import Portal from '$lib/ui/components/Portal.svelte';
+  import Portal from '$lib/components/ui/Portal.svelte';
   import { getFileIcon, getViewerKind, downloadFromDataUrl, downloadFromSrc } from '$lib/utils/doc-utils';
   import type { ViewerKind } from '$lib/utils/doc-utils';
   import DocumentViewer from './DocumentViewer.svelte';
@@ -222,7 +222,7 @@
     {/if}
 
     {#if open}
-      <Portal className="document-reader-portal">
+      <Portal class="document-reader-portal">
         <div class="document-reader-layer" use:modalLayer={{ onclose: closeReader }} transition:motionFade={{ duration: 120 }}>
           <UiButton variant="plain" class={uiClass("document-reader-scrim", "ui-local-77e16915")} aria-label={$t('artifacts.reader.close')} onclick={closeReader}></UiButton>
         <!-- svelte-ignore a11y_no_static_element_interactions -->

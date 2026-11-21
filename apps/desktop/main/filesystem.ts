@@ -78,7 +78,7 @@ function realpathOfNearestExistingAncestor(targetPath: string): string {
  * prefix collisions (`root-evil` vs `root`), and symlink escapes like
  * `symlink_out/new_subdir/file.txt` cannot escape.
  */
-export function resolveWorkspacePath(workspaceRoot, relativePath) {
+function resolveWorkspacePath(workspaceRoot, relativePath) {
   if (typeof workspaceRoot !== 'string' || !workspaceRoot.trim()) {
     throw new Error('Workspace root is required');
   }
@@ -107,6 +107,50 @@ export function resolveWorkspacePath(workspaceRoot, relativePath) {
 
 export async function pathExists(targetPath) {
   return fs.existsSync(targetPath);
+}
+
+/**
+ * Single-IPC projector lookup next to a GGUF model (or inside a directory),
+ * replacing the renderer's N×36 `path_exists` round-trip loop.
+ */
+export async function listMmprojCandidates(modelPath: string): Promise<string[]> {
+  if (typeof modelPath !== 'string' || !modelPath.trim()) return [];
+  let dir = path.dirname(modelPath);
+  try {
+    if (fs.existsSync(modelPath) && fs.statSync(modelPath).isDirectory()) {
+      dir = modelPath;
+    }
+  } catch {
+    // Keep dirname fallback when stat fails.
+  }
+  const orderedNames = [
+    'mmproj-BF16.gguf',
+    'mmproj-F16.gguf',
+    'mmproj-F32.gguf',
+    'mmproj.gguf'
+  ];
+  const modelBase = path.basename(modelPath).replace(/\.gguf$/i, '');
+  if (modelBase) {
+    orderedNames.push(
+      `mmproj-${modelBase}.gguf`,
+      `${modelBase}-mmproj.gguf`,
+      `${modelBase}.mmproj.gguf`,
+      `${modelBase}.projector.gguf`,
+      `projector-${modelBase}.gguf`
+    );
+  }
+  const found: string[] = [];
+  for (const name of orderedNames) {
+    const candidate = path.join(dir, name);
+    try {
+      if (fs.existsSync(candidate) && !found.includes(candidate)) {
+        found.push(candidate);
+      }
+    } catch {
+      // Ignore unreadable entries.
+    }
+  }
+  return found;
 }
 
 export async function openModelsFolder() {

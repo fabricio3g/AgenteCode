@@ -26,14 +26,13 @@
   import { toastStore } from '$lib/stores/toast.svelte';
   import RichContent from '$lib/ui/components/RichContent.svelte';
   import { writeToClipboard } from '$lib/utils/clipboard';
-  import { formatToolDuration, titleCaseToolName } from '$lib/utils/tool-ui';
+  import { formatToolDuration } from '$lib/utils/tool-ui';
   import ClampedBlock from './ClampedBlock.svelte';
-  import CodeStepRow from './CodeStepRow.svelte';
+  import ToolStepRow from './ToolStepRow.svelte';
   import CodeErrorNotice from './CodeErrorNotice.svelte';
   import Disclosure from './Disclosure.svelte';
   import TileMeter from '$lib/components/ui/TileMeter.svelte';
-  import { childActivity, childElapsedMs, childModelLabel } from './subagent-row';
-  import { spendCostLabel, spendLabel } from './accounting';
+  import { cancelSubagentRun, childModelLabel, copySubagentAnswer, subagentDisplay } from './subagent-row';
 
   let {
     child,
@@ -50,15 +49,23 @@
     pending?: boolean;
   } = $props();
 
-  const failed = $derived(child.status === 'error');
-  const running = $derived(pending || child.status === 'running');
+  let stopped = $state(false);
+  let now = $state(Date.now());
+  const view = $derived(subagentDisplay(child, { now, pending }));
+  const failed = $derived(view.failed);
+  const running = $derived(view.running);
+
+  $effect(() => {
+    if (!running) return;
+    const timer = setInterval(() => (now = Date.now()), 500);
+    return () => clearInterval(timer);
+  });
 
   /**
    * Stop was pressed here, or on the turn this child belongs to. Either way the
    * meter freezes at once: the engine needs a moment to unwind, and a child that
    * has been told to stop should not go on raining while it does.
    */
-  let stopped = $state(false);
   const stopping = $derived(stopped || (chatId ? !!codeStore.runFor(chatId)?.stopping : false));
   const meter: 'busy' | 'quiet' | 'stopped' = $derived(stopping ? 'stopped' : running ? 'busy' : 'quiet');
 
@@ -70,48 +77,26 @@
         ? copy.tool.done
         : pending
           ? $t('code.subagent.starting')
-          : (childActivity(child) ?? copy.status.working)
+          : (view.activity ?? copy.status.working)
   );
 
-  // Wall-clock stamps rather than a stopwatch: the same numbers a saved turn
-  // carries, so a reopened conversation shows the duration it really took.
-  let now = $state(Date.now());
-  $effect(() => {
-    if (!running) return;
-    const timer = setInterval(() => (now = Date.now()), 500);
-    return () => clearInterval(timer);
-  });
-  const elapsed = $derived(childElapsedMs(child, now));
+  const Icon = $derived(/explore/i.test(child.kind) ? Telescope : /plan/i.test(child.kind) ? ListChecks : Bot);
+  const toolCount = $derived(child.tools.length);
 
-  const kindLabel = $derived(titleCaseToolName(child.kind || 'subagent'));
-  const Icon = $derived(/explore/i.test(child.kind) ? Telescope : /plan/i.test(child.kind) ? ListChecks : Bot);  const toolCount = $derived(child.tools.length);
-  const cost = $derived(spendCostLabel(child.spend));
-
-  const answer = $derived(child.summary || child.text);
-  const errorDetail = $derived(failed ? child.summary || child.text : '');
-  const reply = $derived(failed && child.text.trim() === errorDetail.trim() ? '' : child.text);
-  /** The cache rate is the one thing the row's own line cannot carry. */
-  const spendDetail = $derived(spendLabel(child.spend).includes('cached') ? spendLabel(child.spend) : '');
-
-  /*
-   * While the child is running its text arrives a delta at a time. Marking it
-   * streaming keeps the renderer on its cheap path — the settled prefix is
-   * written once and only the tail re-renders — instead of re-parsing the whole
-   * answer, syntax highlighting included, on every delta.
-   */
-  const streamStatus = $derived(failed ? 'error' : running ? 'streaming' : 'idle');
-
-  async function stop() {
-    stopped = true;
-    try { await invoke('agente_child_cancel', { runId: child.id }); }
-    catch (error) { stopped = false; toastStore.error(String(error)); }
+  function stop() {
+    void cancelSubagentRun(child.id, {
+      invoke,
+      setStopped: (value) => (stopped = value),
+      onError: (error) => toastStore.error(String(error))
+    });
   }
 
-  async function copyText() {
-    try {
-      if (!await writeToClipboard(answer)) throw new Error('Could not copy the subagent text');
-      toastStore.success($t('chat.copied'));
-    } catch (error) { toastStore.error(String(error)); }
+  function copyText() {
+    void copySubagentAnswer(view.answer, {
+      write: writeToClipboard,
+      onSuccess: () => toastStore.success($t('chat.copied')),
+      onError: (error) => toastStore.error(String(error))
+    });
   }
 </script>
 
@@ -130,13 +115,13 @@
       <span class="summary">
         <span class="identity min-w-0">
           <Icon class="kind-icon size-3.5 shrink-0" />
-          <span class="kind shrink-0">{kindLabel}</span>
+          <span class="kind shrink-0">{view.kindLabel}</span>
           {#if child.description}<span class="description min-w-0 truncate">· {child.description}</span>{/if}
         </span>
         <span class="live min-w-0" class:text-error={failed}>
           {#if running}<TileMeter mode={meter} />{:else}<span class="dot" aria-hidden="true"></span>{/if}
           <span class="state min-w-0" class:ui-shimmer-text={running}>{status}</span>
-          {#if elapsed !== undefined}<span class="elapsed shrink-0 tabular-nums">· {formatToolDuration(elapsed)}</span>{/if}
+          {#if view.elapsed !== undefined}<span class="elapsed shrink-0 tabular-nums">· {formatToolDuration(view.elapsed)}</span>{/if}
         </span>
       </span>
     </span>
@@ -155,18 +140,18 @@
   {/snippet}
 
   {#snippet body()}
-    {#if toolCount || child.model || spendDetail || cost}
+    {#if toolCount || child.model || view.spendDetail || view.cost}
       <div class="foot min-w-0">
         {#if toolCount}<span class="tabular-nums">{$t('code.subagent.tools', { values: { n: toolCount } })}</span>{/if}
         {#if child.model}<span class="model min-w-0 truncate" title={child.model}>{childModelLabel(child)}</span>{/if}
-        {#if spendDetail}<span class="tabular-nums">{spendDetail}</span>{:else if cost}<span class="tabular-nums">{cost}</span>{/if}
+        {#if view.spendDetail}<span class="tabular-nums">{view.spendDetail}</span>{:else if view.cost}<span class="tabular-nums">{view.cost}</span>{/if}
       </div>
     {/if}
-    {#if failed && errorDetail}<CodeErrorNotice detail={errorDetail} />{/if}
-    {#if reply}
+    {#if failed && view.errorDetail}<CodeErrorNotice detail={view.errorDetail} />{/if}
+    {#if view.reply}
       <div>
         <ClampedBlock max="22rem" tail={running}>
-          <RichContent content={reply} status={streamStatus} />
+          <RichContent content={view.reply} status={view.streamStatus} />
         </ClampedBlock>
         {#if !running}
           <UiButton variant="plain" type="button" class={uiClass("card-action", "ui-local-b304b300")} onclick={copyText}><Copy class="size-3" />{copy.actions.copy}</UiButton>
@@ -174,9 +159,9 @@
       </div>
     {/if}
     {#each child.tools as tool (tool.id)}
-      <CodeStepRow step={{ id: tool.id, type: 'tool', label: tool.name, toolName: tool.name, status: tool.status, output: tool.output }} id={`${id}:t:${tool.id}`} />
+      <ToolStepRow step={{ id: tool.id, type: 'tool', label: tool.name, toolName: tool.name, status: tool.status, output: tool.output }} id={`${id}:t:${tool.id}`} />
     {/each}
-    {#if !failed && child.summary && !child.text.trimEnd().endsWith(child.summary.trim())}<RichContent content={child.summary} />{/if}
+    {#if view.hasDistinctSummary && child.summary}<RichContent content={child.summary} />{/if}
   {/snippet}
 </Disclosure>
 

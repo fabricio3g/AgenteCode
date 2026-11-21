@@ -11,7 +11,6 @@
 
 <script lang="ts">
   import UiFileInput from '$lib/components/ui/FileInput.svelte';
-  import UiTextarea from '$lib/components/ui/Textarea.svelte';
   import { cn as uiClass } from '$lib/utils/cn';
 
   import type { Snippet } from 'svelte';
@@ -19,9 +18,9 @@
   import { Globe2, GraduationCap, ListChecks, Paperclip, Radar, Target, Wrench, Zap } from '$lib/icons';
   import { t } from 'svelte-i18n';
   import { appStore } from '$lib/stores/app.svelte';
+  import { isConfigModelReady } from '$lib/stores/chat-model';
   import { toastStore } from '$lib/stores/toast.svelte';
   import { ttsStore } from '$lib/stores/tts.svelte';
-  import { isElectron } from '$lib/services/bridge';
   import { copy, say } from '$lib/copy';
   import { matchLessonCommand } from './lesson-entry';
 
@@ -33,7 +32,8 @@
   import ComposerBar from './composer/ComposerBar.svelte';
   import DictationButton from './composer/DictationButton.svelte';
   import MicBars from '$lib/features/shared/composer/MicBars.svelte';
-  import SendButton from '$lib/features/shared/composer/SendButton.svelte';
+  import ComposerShell from '$lib/features/shared/composer/ComposerShell.svelte';
+  import { dictationSlotFor, handleApprovalKey, handlePickerKey, recallLastQueuedPrompt } from '$lib/features/shared/composer/composer-shared';
   import ComposerPicker from '$lib/features/shared/composer/ComposerPicker.svelte';
   import { matchSlashCommands, slashQuery } from '$lib/features/shared/composer/slash-commands';
   import HomeContextStatus from './composer/HomeContextStatus.svelte';
@@ -42,14 +42,11 @@
   import { parseHomeModeCommand } from '$shared/composer-command';
   import SelectedTextCard from './composer/SelectedTextCard.svelte';
   import VoiceCallPanel from './composer/VoiceCallPanel.svelte';
-  import ComposerRecorder from './composer/ComposerRecorder.svelte';
-  import DictationSetupPopover from './composer/DictationSetupPopover.svelte';
   import { ComposerAttachments } from './composer/use-attachments.svelte';
   import { Dictation } from './composer/use-dictation.svelte';
   import { autogrowTextarea } from '$lib/features/shared/composer-autogrow';
   import NameCompletion from '$lib/features/shared/NameCompletion.svelte';
   import PromptQueue from '$lib/features/shared/PromptQueue.svelte';
-  import ApprovalBar from '$lib/features/shared/composer/ApprovalBar.svelte';
   import { approvalsStore } from '$lib/stores/approvals.svelte';
   import SessionGoal from '$lib/features/shared/SessionGoal.svelte';
   import type { NameCandidate } from '$lib/features/shared/name-completion';
@@ -169,22 +166,21 @@
   );
 
   // Mirrors the guards inside sendCurrentMessage so the button reflects reality.
-  const backendReady = $derived(
-    appStore.backendMode === 'local'
-      ? !!(appStore.selectedLocalModelPath && appStore.localModelActive)
-      : !!(
-          (appStore.activeProvider?.has_api_key || appStore.activeProvider?.api_key) &&
-          appStore.activeProvider?.model
-        )
-  );
+  const backendReady = $derived(isConfigModelReady(appStore.config, appStore.localModelActive));
   const sendDisabled = $derived(!generating && (!backendReady || localBusyElsewhere));
   /** Nothing typed and nothing attached: the field has no message to send. */
   const fieldEmpty = $derived(!appStore.composer.trim() && !appStore.pendingAttachments.some(item => item.status === 'ready'));
   /** The send slot's microphone: the bar's own button, moved into the empty field's corner. */
-  const slotDictation = $derived(!generating && fieldEmpty && dictation.supported && !voiceMode
-    ? { label: copy.composer.dictate, onclick: () => dictation.toggle(false),
-        glyph: dictation.listening ? listeningBars : undefined }
-    : undefined);
+  const slotDictation = $derived(dictationSlotFor({
+    running: generating,
+    fieldEmpty,
+    supported: dictation.supported,
+    listening: dictation.listening,
+    hidden: voiceMode,
+    label: copy.composer.dictate,
+    onToggle: () => dictation.toggle(false),
+    glyph: listeningBars
+  }));
 
   /**
    * Size the input to its content.
@@ -266,33 +262,30 @@
   function onKeydown(event: KeyboardEvent) {
     if (event.isComposing || event.defaultPrevented) return;
     // A held call owns Escape (deny) and Enter on an empty field (allow).
-    const approval = pendingApprovals[0];
-    if (approval && (event.key === 'Escape' || (event.key === 'Enter' && !event.shiftKey && !appStore.composer.trim() && !appStore.pendingAttachments.length))) {
-      event.preventDefault();
-      event.stopPropagation();
-      approvalsStore.resolve(approval.id, event.key === 'Enter');
-      return;
-    }
-    if (slashOpen && event.key === 'Escape') { event.preventDefault(); slashDismissed = true; return; }
-    if (slashOpen && (event.key === 'ArrowDown' || event.key === 'ArrowUp')) {
-      event.preventDefault();
-      const count = slashMatches.length;
-      slashIndex = (slashIndex + (event.key === 'ArrowDown' ? 1 : -1) + count) % count;
-      return;
-    }
-    if (slashOpen && !event.shiftKey && (event.key === 'Tab' || event.key === 'Enter')) {
-      event.preventDefault();
-      void selectSlash(slashIndex, event.key === 'Tab');
-      return;
-    }
-    if (event.key === 'ArrowUp' && !appStore.composer && !appStore.pendingAttachments.length) {
-      const item = [...(appStore.currentChat?.pendingPrompts ?? [])].reverse().find(item => !item.sending);
-      if (item && appStore.currentChatId) {
-        event.preventDefault(); appStore.removeQueuedPrompt(appStore.currentChatId, item.id);
-        appStore.updateComposer(item.content); appStore.pendingAttachments = item.attachments ?? [];
-        return;
+    if (handleApprovalKey(event, {
+      approval: pendingApprovals[0],
+      isEmpty: !appStore.composer.trim() && !appStore.pendingAttachments.length,
+      resolve: (id, allow) => approvalsStore.resolve(id, allow)
+    })) return;
+    if (handlePickerKey(event, {
+      open: slashOpen,
+      count: slashMatches.length,
+      index: slashIndex,
+      onIndex: (next) => (slashIndex = next),
+      onComplete: (index) => void selectSlash(index, true),
+      onSelect: (index) => void selectSlash(index, false),
+      onDismiss: () => (slashDismissed = true)
+    })) return;
+    if (recallLastQueuedPrompt(event, {
+      isEmpty: !appStore.composer && !appStore.pendingAttachments.length,
+      prompts: appStore.currentChat?.pendingPrompts,
+      onRecall: (item) => {
+        if (!appStore.currentChatId) return;
+        appStore.removeQueuedPrompt(appStore.currentChatId, item.id);
+        appStore.updateComposer(item.content);
+        appStore.pendingAttachments = item.attachments ?? [];
       }
-    }
+    })) return;
     if (event.key !== 'Enter' || event.shiftKey) return;
     event.preventDefault();
     void submit();
@@ -431,60 +424,63 @@
 <!-- The bars that dance in the send square while it is listening. -->
 {#snippet listeningBars()}<MicBars />{/snippet}
 
-<div
-  class="composer-dock relative z-20 w-full shrink-0 px-3 pb-2 pt-2 md:px-6 md:pb-3 {attachments.windowDragActive
-    ? 'pointer-events-auto'
-    : 'pointer-events-none'}"
-  role="region"
-  aria-label="Message composer"
+<ComposerShell
+  ariaLabel="Message composer"
+  dockFade="tall"
+  dockClass={attachments.windowDragActive ? 'pointer-events-auto' : 'pointer-events-none'}
+  {dictation}
+  {voiceMode}
+  running={generating}
+  value={appStore.composer}
+  {placeholder}
+  {grown}
+  bind:textarea
+  ariaControls={slashOpen ? slashId : undefined}
+  ariaActivedescendant={slashOpen ? `${slashId}-${slashIndex}` : undefined}
+  sendDisabled={sendDisabled || fieldEmpty}
+  sendLabel={copy.composer.send}
+  stopLabel={copy.composer.stop}
+  dictationSlot={slotDictation}
+  {pendingApprovals}
+  approvalService
+  bodyClass={quotedText ? 'pt-1' : ''}
   onpaste={(event) => attachments.handlePaste(event)}
   ondrop={(event) => attachments.handleDrop(event)}
   ondragover={(event) => attachments.handleDragOver(event)}
   ondragleave={(event) => attachments.handleDragLeave(event)}
+  oninput={onInput}
+  onkeydown={onKeydown}
+  onsend={() => void submit()}
+  onstop={() => appStore.stopStreaming()}
 >
-  <UiFileInput
-    bind:ref={fileInput}
-    class={uiClass("hidden")}
+  {#snippet dockOverlay()}
+    <UiFileInput
+      bind:ref={fileInput}
+      class={uiClass("hidden")}
+      multiple
+      accept="*/*"
+      oninput={(event) => void attachments.handleFileInput(event)}
+    />
 
-    multiple
-    accept="*/*"
-    oninput={(event) => void attachments.handleFileInput(event)}
-  />
-
-  {#if attachments.dragOver}
-    <div class="drop-overlay">
-      <div class="text-center">
-        <Paperclip class="mx-auto mb-2 size-8 text-muted-foreground" />
-        <p class="text-sm font-medium text-foreground">{copy.composer.dropFiles}</p>
+    {#if attachments.dragOver}
+      <div class="drop-overlay">
+        <div class="text-center">
+          <Paperclip class="mx-auto mb-2 size-8 text-muted-foreground" />
+          <p class="text-sm font-medium text-foreground">{copy.composer.dropFiles}</p>
+        </div>
       </div>
-    </div>
-  {/if}
+    {/if}
+  {/snippet}
 
-  <div
-    class="composer-frame mx-auto w-full"
-    style="max-width: var(--thread-width);"
-  >
-    <!-- The dock ignores the pointer so the thread scrolls behind it; what
-         sits above the input opts back in, or it renders but never clicks. -->
-    <!-- Nothing sits above the input by default: the model pill says when a
-         model is missing or loading, so there is no notice line here. -->
+  {#snippet beforeShell()}
     <div class="composer-above">
       {@render above?.()}
     </div>
-
-    {#if dictation.phase === 'choose'}
-      <DictationSetupPopover {dictation} />
-    {/if}
-
-    <!-- The way back to the live edge is drawn by the thread itself, so Home
-         and Code raise the same button in the same place. -->
 
     {#if voiceMode}
       <VoiceCallPanel onend={exitVoiceMode} />
     {/if}
 
-    <!-- Radius comes from --composer-radius on .ui-composer; the rounded-*
-         utilities that used to sit here fought it at equal specificity. -->
     {#if slashOpen}
       <ComposerPicker id={slashId} label={$t('code.slash.title')} selected={slashIndex} floating
         items={slashMatches.map(command => ({ id: command.name, label: `/${command.name}`, icon: command.icon, hint: command.hint }))}
@@ -499,122 +495,55 @@
       {/key}
     {/if}
     <AttachmentCards />
-    <div class="composer-shell ui-composer pointer-events-auto transition">
-      {#if pendingApprovals.length}
-        {@const approval = pendingApprovals[0]!}
-        <ApprovalBar {approval} service total={pendingApprovals.length} onanswer={(allow) => approvalsStore.resolve(approval.id, allow)} />
-      {/if}
-      {#if nameCompletion}
-        <NameCompletion {textarea} text={appStore.composer} {...nameCompletion} onchange={(text) => appStore.updateComposer(text)} />
-      {/if}
-      {#if attachments.ocrLabel}
-        <div class="px-3 pt-1">
-          <div class="inline-flex items-center gap-1.5 px-2 py-1 text-[length:var(--text-xs)] font-medium text-muted-foreground">
-            <span
-              class="size-1.5 rounded-[2px] bg-muted-foreground"
-              class:animate-pulse={!attachments.ocrSettled}
-            ></span>
-            <span>{attachments.ocrLabel}</span>
-          </div>
+  {/snippet}
+
+  {#snippet shellTop()}
+    {#if nameCompletion}
+      <NameCompletion {textarea} text={appStore.composer} {...nameCompletion} onchange={(text) => appStore.updateComposer(text)} />
+    {/if}
+    {#if attachments.ocrLabel}
+      <div class="px-3 pt-1">
+        <div class="inline-flex items-center gap-1.5 px-2 py-1 text-[length:var(--text-xs)] font-medium text-muted-foreground">
+          <span
+            class="size-1.5 rounded-[2px] bg-muted-foreground"
+            class:animate-pulse={!attachments.ocrSettled}
+          ></span>
+          <span>{attachments.ocrLabel}</span>
         </div>
-      {/if}
-
-
-      {#if localBusyElsewhere}
-        <div class="px-4 pt-1 text-[length:var(--text-xs)] text-muted-foreground">
-          {$t('chat.localBusy')}
-        </div>
-      {/if}
-
-      {#if quotedText}
-        <div class="px-4 pt-3">
-          <SelectedTextCard bind:text={quotedText} ondiscard={() => { clearQuote(); requestAnimationFrame(() => focusComposer()); }} />
-        </div>
-      {/if}
-
-      <!--
-        Prompt shell holds only the typing surface and the primary Send/Stop
-        key; all configuration controls and the model selector sit in the
-        Tactile Machined tray directly beneath the shell.
-      -->
-      <div class="composer-body {quotedText ? 'pt-1' : ''}">
-        {#if dictation.uiActive && !voiceMode && dictation.phase !== 'choose'}
-          <!-- Dictation takes over the shell: waveform, timer, cancel, done. -->
-          <div class="composer-recorder-row">
-            <ComposerRecorder {dictation} />
-            {#if generating}<SendButton compact running={true} disabled={false} sendLabel={copy.composer.send} stopLabel={copy.composer.stop} onsend={() => void submit()} onstop={() => appStore.stopStreaming()} />{/if}
-          </div>
-        {:else}
-          <div class="composer-input-row" class:is-grown={grown}>
-            <UiTextarea variant="composer"
-              bind:ref={textarea}
-              class={uiClass("composer-textarea w-full resize-none bg-transparent text-foreground outline-none")}
-              {placeholder}
-              rows={1}
-              value={appStore.composer}
-              aria-controls={slashOpen ? slashId : undefined}
-              aria-activedescendant={slashOpen ? `${slashId}-${slashIndex}` : undefined}
-              oninput={onInput}
-              onkeydown={onKeydown}
-            ></UiTextarea>
-            <div class="composer-send-slot">
-              <SendButton compact running={generating} disabled={sendDisabled || fieldEmpty}
-                dictation={slotDictation}
-                sendLabel={copy.composer.send} stopLabel={copy.composer.stop}
-                onsend={() => void submit()} onstop={() => appStore.stopStreaming()} />
-            </div>
-          </div>
-        {/if}
-      </div>
-    </div>
-    {#if !(dictation.uiActive && !voiceMode && dictation.phase !== 'choose')}
-      <div class="composer-tray">
-        <ComposerBar>
-          {#snippet attach()}<ComposerAddMenu onattach={() => fileInput?.click()} />{/snippet}
-          {#snippet extras()}<ComposerToolsMenu compact />{#if appStore.activeSpace === 'home'}<SelectedModes />{/if}{/snippet}
-          {#snippet model()}<ModelMenu compact />{/snippet}
-          {#snippet microphone()}<DictationButton {dictation} hidden={!!slotDictation} oncall={() => void enterVoiceMode()} />{/snippet}
-          {#snippet trailing()}<HomeContextStatus />{/snippet}
-        </ComposerBar>
       </div>
     {/if}
+    {#if localBusyElsewhere}
+      <div class="px-4 pt-1 text-[length:var(--text-xs)] text-muted-foreground">
+        {$t('chat.localBusy')}
+      </div>
+    {/if}
+    {#if quotedText}
+      <div class="px-4 pt-3">
+        <SelectedTextCard bind:text={quotedText} ondiscard={() => { clearQuote(); requestAnimationFrame(() => focusComposer()); }} />
+      </div>
+    {/if}
+  {/snippet}
+
+  {#snippet tray()}
+    <ComposerBar>
+      {#snippet attach()}<ComposerAddMenu onattach={() => fileInput?.click()} />{/snippet}
+      {#snippet extras()}<ComposerToolsMenu compact />{#if appStore.activeSpace === 'home'}<SelectedModes />{/if}{/snippet}
+      {#snippet model()}<ModelMenu compact />{/snippet}
+      {#snippet microphone()}<DictationButton {dictation} hidden={!!slotDictation} oncall={() => void enterVoiceMode()} />{/snippet}
+      {#snippet trailing()}<HomeContextStatus />{/snippet}
+    </ComposerBar>
+  {/snippet}
+
+  {#snippet afterTray()}
     {#if threadIsEmpty && suggestions}
       <!-- await tick() so the textarea holds the inserted prompt before we
            focus it; otherwise the caret lands at the pre-insert length. -->
       <ComposerSuggestions onpick={async () => { previewPrompt = ''; await tick(); focusComposer(); }} onpreview={(starter) => (previewPrompt = starter?.preview ?? '')} />
     {/if}
-  </div>
-</div>
+  {/snippet}
+</ComposerShell>
 
 <style>
-  .composer-dock {
-    background: var(--chat-bg);
-  }
-  /* Fade the thread out into the dock rather than cutting it off. */
-  .composer-dock::before {
-    content: '';
-    position: absolute;
-    inset-inline: 0;
-    top: -2rem;
-    height: 2rem;
-    pointer-events: none;
-    background: linear-gradient(
-      to bottom,
-      transparent,
-      color-mix(in srgb, var(--chat-bg) 62%, transparent) 65%,
-      var(--chat-bg)
-    );
-  }
-  .composer-frame {
-    position: relative;
-  }
-  /* The dock is pointer-events:none so the thread stays scrollable behind its
-     empty edges. Everything drawn in the frame — the mode tabs, the call panel,
-     the queue, the shell, the model row — takes clicks again. Opting in one
-     widget at a time left the call panel and the thinking button dead. */
-  .composer-frame > :global(*) {
-    pointer-events: auto;
-  }
   .drop-overlay {
     pointer-events: none;
     position: absolute;
@@ -627,5 +556,4 @@
     border-radius: 1rem;
     background: var(--surface-hover);
   }
-
 </style>

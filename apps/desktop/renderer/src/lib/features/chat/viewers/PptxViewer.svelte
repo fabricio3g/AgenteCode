@@ -20,7 +20,7 @@
   import ViewerStatus from './ViewerStatus.svelte';
   import { renderPptx, type RenderedDeck } from './pptx-render';
   import DeckSlideView from './DeckSlideView.svelte';
-  import Portal from '$lib/ui/components/Portal.svelte';
+  import Portal from '$lib/components/ui/Portal.svelte';
   import { deckSlideText, type DeckSpec } from '$shared/deck';
 
   import { registerViewerControls, useViewerControls } from './viewer-controls.svelte';

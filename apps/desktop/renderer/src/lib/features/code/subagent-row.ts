@@ -11,6 +11,7 @@ import type { CodeChild } from '$shared/agente-protocol';
 import { toolKind } from '$shared/tool-kinds';
 import { titleCaseToolName } from '$lib/utils/tool-ui';
 import { shortModel } from '$lib/utils/format';
+import { spendCostLabel, spendLabel } from './accounting';
 
 /**
  * How a card names a child's model: `scout · qwen3-coder:free` when it came
@@ -125,4 +126,75 @@ export function sessionChildren(messages: ReadonlyArray<{ metadata?: { codeChild
   for (const message of messages) for (const child of message.metadata?.codeChildren ?? []) byId.set(child.id, child);
   for (const child of live) byId.set(child.id, child);
   return [...byId.values()].reverse();
+}
+
+export interface SubagentDisplay {
+  failed: boolean;
+  running: boolean;
+  kindLabel: string;
+  elapsed: number | undefined;
+  cost: string;
+  spendDetail: string;
+  answer: string;
+  errorDetail: string;
+  reply: string;
+  hasDistinctSummary: boolean;
+  streamStatus: 'error' | 'streaming' | 'idle';
+  activity: string | undefined;
+}
+
+/** Shared derived view model for both `SubagentCard` and `SubagentView`. */
+export function subagentDisplay(child: CodeChild, options: { now: number; pending?: boolean }): SubagentDisplay {
+  const failed = child.status === 'error';
+  const running = !!options.pending || child.status === 'running';
+  const errorDetail = failed ? child.summary || child.text : '';
+  const reply = failed && child.text.trim() === errorDetail.trim() ? '' : child.text;
+  const fullSpend = spendLabel(child.spend);
+  return {
+    failed,
+    running,
+    kindLabel: titleCaseToolName(child.kind || 'subagent'),
+    elapsed: childElapsedMs(child, options.now),
+    cost: spendCostLabel(child.spend),
+    spendDetail: fullSpend.includes('cached') ? fullSpend : '',
+    answer: child.summary || child.text,
+    errorDetail,
+    reply,
+    hasDistinctSummary: !failed && !!child.summary && !child.text.trimEnd().endsWith(child.summary.trim()),
+    streamStatus: failed ? 'error' : running ? 'streaming' : 'idle',
+    activity: childActivity(child)
+  };
+}
+
+export async function cancelSubagentRun(
+  runId: string,
+  deps: {
+    invoke: (command: string, payload: Record<string, unknown>) => Promise<unknown>;
+    setStopped: (stopped: boolean) => void;
+    onError: (error: unknown) => void;
+  }
+): Promise<void> {
+  deps.setStopped(true);
+  try {
+    await deps.invoke('agente_child_cancel', { runId });
+  } catch (error) {
+    deps.setStopped(false);
+    deps.onError(error);
+  }
+}
+
+export async function copySubagentAnswer(
+  text: string,
+  deps: {
+    write: (value: string) => Promise<boolean>;
+    onSuccess: () => void;
+    onError: (error: unknown) => void;
+  }
+): Promise<void> {
+  try {
+    if (!text || !(await deps.write(text))) throw new Error('Could not copy the subagent text');
+    deps.onSuccess();
+  } catch (error) {
+    deps.onError(error);
+  }
 }

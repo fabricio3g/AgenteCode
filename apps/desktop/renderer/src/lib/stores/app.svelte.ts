@@ -1,17 +1,20 @@
 import { ModelDiscoveryController } from './models/model-discovery.svelte';
 import { ThinkingCapabilitiesController } from './models/thinking-capabilities.svelte';
 import { ModelSettingsController, type ConfigCommitOptions } from './models/model-settings';
-import type { AgentArtifact, AppConfig, Attachment, ChatContextMode, ChatFolder, ChatMessage, ChatSession, LocalThinkingMode, MessageVersion, QueuedPrompt, ModelOption, ReasoningCapabilities, ReasoningLevel, WorkspaceFile } from '$lib/types/chat';
+import { LocalModelsController } from './local-models.svelte';
+import { WorkspaceController } from './workspace-controller.svelte';
+import { executeChatTurn, type ChatTurnHost } from './chat-turn';
+import type { AgentArtifact, AppConfig, Attachment, ChatContextMode, ChatFolder, ChatMessage, ChatSession, LocalThinkingMode, MessageVersion, QueuedPrompt, ModelOption, ReasoningCapabilities, ReasoningLevel } from '$lib/types/chat';
 import type { Attachment as CodeAttachment } from '$shared/agente-protocol.gen';
 import { captureChatModel, configForChatModel, homeRuntimeMatchesModel } from './chat-model';
 import { SPACES, normalizeSpace } from '$lib/spaces';
 import { getSpaceForSession } from '$lib/features/shared/session-guards';
 import { approvalsStore } from '$lib/stores/approvals.svelte';
 import type { IndexedDocument, SearchResult } from '$lib/types/bridge';
-import { countOf } from '$lib/utils/format';
-import { runAgentTask } from '$lib/services/agent';
-import { captureDesignTurnContext, runDesignTask } from '$lib/services/agent-design-runtime';
-import { applyHomeAgentResult, homeAgentCallbacks, homeToolRequest, initialHomeActivity, planHomeAgentRun, settleAgentSteps } from '$lib/features/home/home-turn';
+import { registerHomeToolDeps } from '$lib/services/agent-tool-home';
+import { createHomeToolDeps } from '$lib/services/agent-tool-home-deps';
+import { captureDesignTurnContext } from '$lib/services/agent-design-runtime';
+import { homeToolRequest, initialHomeActivity, planHomeAgentRun } from '$lib/features/home/home-turn';
 import { updateHomeLive } from '$lib/features/home/home-live';
 import { roleplayStore } from '$lib/features/roleplay/roleplay.svelte';
 import { messageSpeechParts } from '$lib/features/roleplay/roleplay-voice';
@@ -24,12 +27,10 @@ import { localRoleplaySampling, type RoleplaySampling } from '$lib/services/role
 import { getSupervisorStatus } from '$lib/services/runtime';
 import { resolveComposerRoute, shouldUseToolLoop } from '$lib/services/composer-route';
 import { parseSlidesFromMarkdown } from '$lib/services/slides';
-import { writeTempFile, pathExists, pickWorkspaceFolder as pickWorkspaceFolderDialog, indexWorkspaceFolder, createWorkspaceDocument, renameWorkspaceFile, deleteWorkspaceFile, readWorkspaceFile, openWorkspaceFile, createWorkspaceFolder } from '$lib/services/files';
-import { ingestAttachment } from '$lib/services/attachment-ingestion';
-import { INGESTED_DOCUMENT_GUIDANCE, ingestionFileType } from '$shared/document-ingestion';
-import { clearRagDocuments, ingestDocument, ingestText, ingestTextFast, listRagDocuments, queryDocuments, removeRagDocument } from '$lib/services/rag';
+import { INGESTED_DOCUMENT_GUIDANCE } from '$shared/document-ingestion';
+import { clearRagDocuments, ingestTextFast, queryDocuments, removeRagDocument } from '$lib/services/rag';
 import { webSearch } from '$lib/services/search';
-import { loadLocalModel, onSupervisorEvent, stopLlama } from '$lib/services/runtime';
+import { stopLlama } from '$lib/services/runtime';
 import { activeLoadConfig, type LocalLoadConfig } from '$shared/local-launch';
 import { invoke, isElectron } from '$lib/services/bridge';
 import { checkIsFirstRun } from '$lib/services/onboarding';
@@ -42,11 +43,10 @@ import { toastStore } from '$lib/stores/toast.svelte';
 import { confirmStore } from '$lib/stores/confirm.svelte';
 import { get } from 'svelte/store';
 import { _ as translate } from 'svelte-i18n';
-import type { CompletionResult, RequestMessage } from '$lib/services/chat/types';
-import { cachedModels, completeAssistantReply, detectToolSupport, fetchModels, fetchReasoningCapabilities, hasConfiguredVisionModel, invalidateModels, loadChatConfig, reasoningRouteIdentity, streamAssistantReply } from '$lib/services/chat-api';
+import type { RequestMessage } from '$lib/services/chat/types';
+import { cachedModels, completeAssistantReply, detectToolSupport, fetchModels, fetchReasoningCapabilities, invalidateModels, loadChatConfig, reasoningRouteIdentity, streamAssistantReply } from '$lib/services/chat-api';
 import { loadChatState, saveChatState, saveAppConfig, saveChatDraftToDb, saveChatStateToDb, loadChatStateFromDb, deleteChatFromDb, loadChatMessagesFromDb } from '$lib/utils/storage';
 import { toErrorMessage } from '$lib/utils/errors';
-import { describeLocalLoadError } from '$lib/utils/local-load-errors';
 import { estimateContextBreakdown, homeRuntimeBudget } from '$lib/stores/app-context-budget';
 import type { RunAgentTaskArgs } from '$lib/services/agent-types';
 import { resolveContextBudgetPreview } from '$lib/stores/app-context-budget-preview';
@@ -72,22 +72,8 @@ import {
   type LocalSettingsUpdate,
 } from '$lib/stores/app-store-config';
 import { findLatestArtifactMessage, removeArtifactFromMessage, resolveArtifactForMessage, upsertArtifactOnMessage } from '$lib/stores/app-store-artifacts';
-import {
-  DEFAULT_LOCAL_PARALLEL,
-  resolveLocalModelLoadState,
-  localWithLoadState,
-  type LocalModelLoadState
-} from '$lib/stores/app-store-local-model';
-import {
-  buildWorkspaceFromIndexResult,
-  buildWorkspacePrompt,
-  getWorkspaceExtension,
-  getWorkspacePath,
-  isSupportedWorkspaceFile,
-  recalculateWorkspace,
-  shouldIgnoreWorkspacePath,
-  trimWorkspaceText
-} from '$lib/stores/app-store-workspace';
+import type { LocalModelLoadState } from '$lib/stores/app-store-local-model';
+import { buildWorkspacePrompt } from '$lib/stores/app-store-workspace';
 import type {
   ActiveGenerationRun,
   ChatSearchState,
@@ -103,21 +89,15 @@ import { createId } from '$lib/utils/id';
 import {
   USER_NAME_KEY,
   WEB_RAG_MIN_ANSWER_CHARS,
-  WORKSPACE_MAX_FILES,
-  WORKSPACE_MAX_FILE_SIZE_BYTES,
-  appendStreamingContent,
-  appendStreamingReasoning,
   buildContextualPrompt as buildContextualPromptHelper,
   buildRequestMessagesFromHistory,
   canStartGeneration as canStartGenerationHelper,
   buildSearchConversationContext,
   buildWebRagPayload,
   executionMetadata,
-  finalizeAssistantMetadata,
   getElectronApi,
   getMessageRequestContent,
   isAbortLikeError,
-  markAgentWriting,
   markAgentStopped,
   normalizeChat,
   normalizeContextMode,
@@ -127,11 +107,8 @@ import {
   normalizeSessionSearchMode,
   normalizeText,
   optimisticAck,
-  readBlobAsDataUrl,
   repairRoleplayChat,
-  startReasoningTimer,
   toInvoke,
-  updateStreamingVersion,
   withTimeout,
   isDefaultChatTitle,
   type ApiModelMetadata,
@@ -247,8 +224,20 @@ class AppStore {
   set reasoningCapabilities(value: ReasoningCapabilities) { this.thinkingCapabilities.capabilities = value; }
   composerMode = $state<'chat' | 'instant' | 'agent'>('agent');
   pendingAttachments = $state<Attachment[]>([]);
-  workspaceIndexing = $state(false);
-  ragDocumentsByChat = $state<Record<string, IndexedDocument[]>>({});
+  private readonly workspaceController = new WorkspaceController({
+    getCurrentChatId: () => this.currentChatId,
+    findChat: (chatId) => this.findChat(chatId),
+    configForChat: (chat) => this.configForChat(chat),
+    getPendingAttachments: () => this.pendingAttachments,
+    setPendingAttachments: (items) => { this.pendingAttachments = items; },
+    setError: (error) => { this.error = error; },
+    touchChats: () => this.touchChats(),
+    persist: () => this.persist()
+  });
+  get workspaceIndexing() { return this.workspaceController.indexing; }
+  set workspaceIndexing(value: boolean) { this.workspaceController.indexing = value; }
+  get ragDocumentsByChat() { return this.workspaceController.ragDocumentsByChat; }
+  set ragDocumentsByChat(value: Record<string, IndexedDocument[]>) { this.workspaceController.ragDocumentsByChat = value; }
   contextBudget = $state<ContextBudget | null>(null);
   apiModelMetadataByKey = $state<Record<string, ApiModelMetadata>>({});
   currentArtifact = $state<AgentArtifact | null>(null);
@@ -258,77 +247,87 @@ class AppStore {
   activityDrawerTab = $state<'activity' | 'sources'>('activity');
   /** Per-code-chat drawer open state (isolated across sessions). */
 
-  localModelLoadTarget = $state<LocalModelLoadTarget | null>(null);
-  /** The load dialog starts another instance (Models → Running) instead of replacing the chat model. */
-  localModelLoadAsInstance = $state(false);
-  /** Instance mode: bind to the local network. */
-  localModelLoadShare = $state(false);
-  // Empty means auto: llama.cpp's --fit sizes these against real device memory.
-  localModelLoadContextLength = $state('');
-  localModelLoadGpuLayers = $state('');
-  localModelLoadCpuThreads = $state('4');
-  localModelLoadBatchSize = $state('512');
-  localModelLoadRuntimePath = $state('');
-  localModelLoadFlashAttention = $state(true);
-  localModelLoadOffloadKvCache = $state(true);
-  localModelLoadKeepInMemory = $state(false);
-  localModelLoadMmap = $state(true);
-  localModelLoadSeed = $state('');
-  localModelLoadParallel = $state(String(DEFAULT_LOCAL_PARALLEL));
-  /** Guards against an older open finishing after a newer one. */
-  private localModelLoadOpenToken = 0;
-  localModelLoadRopeFreqBase = $state('');
-  localModelLoadRopeFreqScale = $state('');
-  localModelLoadCacheTypeK = $state('f16');
-  localModelLoadCacheTypeV = $state('f16');
-  localModelLoadMmprojPath = $state('');
-  /** Thinking default for this load: 'auto' omits --reasoning (server detects). */
-  localModelLoadThinkingMode = $state<LocalThinkingMode>('auto');
-  localModelLoadMtpEnabled = $state(false);
-  localModelLoadMtpDraftPath = $state('');
-  localModelLoadMtpDraftNMax = $state('');
-  localModelLoadCpuMoe = $state(false);
-  localModelLoadNCpuMoe = $state('');
-  localModelLoadContextShift = $state(false);
-  localModelLoadCacheRamMb = $state('');
-  localModelLoadCacheReuse = $state('');
-  localModelLoadSwaFull = $state(false);
-  localModelLoadSplitMode = $state('');
-  localModelLoadProgress = $state(0);
-  localModelLoadPhase = $state('');
-  /** Why the last load failed, in words; cleared when a new load starts. */
-  localModelLoadError = $state('');
-  localModelLoading = $state(false);
-  localModelActive = $state<{ name: string; path: string; hasMmproj: boolean } | null>(null);
-  /** The model the main server last reported ready (an extra instance in chat is not it). */
-  private mainServerModelPath: string | null = null;
+  private readonly localModels = new LocalModelsController({
+    getConfig: () => this.config,
+    commitConfig: (next) => this.commitConfig(next),
+    setBackendMode: (mode) => this.setBackendMode(mode),
+    updateLocalModel: (model) => this.updateLocalModel(model),
+    refreshReasoningCapabilities: (force) => this.refreshReasoningCapabilities(force)
+  });
 
-  /**
-   * The loaded model follows the server, not the last button pressed: set
-   * when the main server reports ready (also after the app restarts), cleared
-   * when it stops or fails. It used to be a copy set only by a load from this
-   * window, so the pill named a model whose server had died, and a model
-   * already running at startup read as "none loaded".
-   */
+  get localModelLoadTarget() { return this.localModels.loadTarget; }
+  set localModelLoadTarget(v: LocalModelLoadTarget | null) { this.localModels.loadTarget = v; }
+  get localModelLoadAsInstance() { return this.localModels.loadAsInstance; }
+  set localModelLoadAsInstance(v: boolean) { this.localModels.loadAsInstance = v; }
+  get localModelLoadShare() { return this.localModels.loadShare; }
+  set localModelLoadShare(v: boolean) { this.localModels.loadShare = v; }
+  get localModelLoadContextLength() { return this.localModels.loadContextLength; }
+  set localModelLoadContextLength(v: string) { this.localModels.loadContextLength = v; }
+  get localModelLoadGpuLayers() { return this.localModels.loadGpuLayers; }
+  set localModelLoadGpuLayers(v: string) { this.localModels.loadGpuLayers = v; }
+  get localModelLoadCpuThreads() { return this.localModels.loadCpuThreads; }
+  set localModelLoadCpuThreads(v: string) { this.localModels.loadCpuThreads = v; }
+  get localModelLoadBatchSize() { return this.localModels.loadBatchSize; }
+  set localModelLoadBatchSize(v: string) { this.localModels.loadBatchSize = v; }
+  get localModelLoadRuntimePath() { return this.localModels.loadRuntimePath; }
+  set localModelLoadRuntimePath(v: string) { this.localModels.loadRuntimePath = v; }
+  get localModelLoadFlashAttention() { return this.localModels.loadFlashAttention; }
+  set localModelLoadFlashAttention(v: boolean) { this.localModels.loadFlashAttention = v; }
+  get localModelLoadOffloadKvCache() { return this.localModels.loadOffloadKvCache; }
+  set localModelLoadOffloadKvCache(v: boolean) { this.localModels.loadOffloadKvCache = v; }
+  get localModelLoadKeepInMemory() { return this.localModels.loadKeepInMemory; }
+  set localModelLoadKeepInMemory(v: boolean) { this.localModels.loadKeepInMemory = v; }
+  get localModelLoadMmap() { return this.localModels.loadMmap; }
+  set localModelLoadMmap(v: boolean) { this.localModels.loadMmap = v; }
+  get localModelLoadSeed() { return this.localModels.loadSeed; }
+  set localModelLoadSeed(v: string) { this.localModels.loadSeed = v; }
+  get localModelLoadParallel() { return this.localModels.loadParallel; }
+  set localModelLoadParallel(v: string) { this.localModels.loadParallel = v; }
+  get localModelLoadRopeFreqBase() { return this.localModels.loadRopeFreqBase; }
+  set localModelLoadRopeFreqBase(v: string) { this.localModels.loadRopeFreqBase = v; }
+  get localModelLoadRopeFreqScale() { return this.localModels.loadRopeFreqScale; }
+  set localModelLoadRopeFreqScale(v: string) { this.localModels.loadRopeFreqScale = v; }
+  get localModelLoadCacheTypeK() { return this.localModels.loadCacheTypeK; }
+  set localModelLoadCacheTypeK(v: string) { this.localModels.loadCacheTypeK = v; }
+  get localModelLoadCacheTypeV() { return this.localModels.loadCacheTypeV; }
+  set localModelLoadCacheTypeV(v: string) { this.localModels.loadCacheTypeV = v; }
+  get localModelLoadMmprojPath() { return this.localModels.loadMmprojPath; }
+  set localModelLoadMmprojPath(v: string) { this.localModels.loadMmprojPath = v; }
+  get localModelLoadThinkingMode() { return this.localModels.loadThinkingMode; }
+  set localModelLoadThinkingMode(v: LocalThinkingMode) { this.localModels.loadThinkingMode = v; }
+  get localModelLoadMtpEnabled() { return this.localModels.loadMtpEnabled; }
+  set localModelLoadMtpEnabled(v: boolean) { this.localModels.loadMtpEnabled = v; }
+  get localModelLoadMtpDraftPath() { return this.localModels.loadMtpDraftPath; }
+  set localModelLoadMtpDraftPath(v: string) { this.localModels.loadMtpDraftPath = v; }
+  get localModelLoadMtpDraftNMax() { return this.localModels.loadMtpDraftNMax; }
+  set localModelLoadMtpDraftNMax(v: string) { this.localModels.loadMtpDraftNMax = v; }
+  get localModelLoadCpuMoe() { return this.localModels.loadCpuMoe; }
+  set localModelLoadCpuMoe(v: boolean) { this.localModels.loadCpuMoe = v; }
+  get localModelLoadNCpuMoe() { return this.localModels.loadNCpuMoe; }
+  set localModelLoadNCpuMoe(v: string) { this.localModels.loadNCpuMoe = v; }
+  get localModelLoadContextShift() { return this.localModels.loadContextShift; }
+  set localModelLoadContextShift(v: boolean) { this.localModels.loadContextShift = v; }
+  get localModelLoadCacheRamMb() { return this.localModels.loadCacheRamMb; }
+  set localModelLoadCacheRamMb(v: string) { this.localModels.loadCacheRamMb = v; }
+  get localModelLoadCacheReuse() { return this.localModels.loadCacheReuse; }
+  set localModelLoadCacheReuse(v: string) { this.localModels.loadCacheReuse = v; }
+  get localModelLoadSwaFull() { return this.localModels.loadSwaFull; }
+  set localModelLoadSwaFull(v: boolean) { this.localModels.loadSwaFull = v; }
+  get localModelLoadSplitMode() { return this.localModels.loadSplitMode; }
+  set localModelLoadSplitMode(v: string) { this.localModels.loadSplitMode = v; }
+  get localModelLoadProgress() { return this.localModels.loadProgress; }
+  set localModelLoadProgress(v: number) { this.localModels.loadProgress = v; }
+  get localModelLoadPhase() { return this.localModels.loadPhase; }
+  set localModelLoadPhase(v: string) { this.localModels.loadPhase = v; }
+  get localModelLoadError() { return this.localModels.loadError; }
+  set localModelLoadError(v: string) { this.localModels.loadError = v; }
+  get localModelLoading() { return this.localModels.loading; }
+  set localModelLoading(v: boolean) { this.localModels.loading = v; }
+  get localModelActive() { return this.localModels.active; }
+  set localModelActive(v: { name: string; path: string; hasMmproj: boolean } | null) { this.localModels.active = v; }
+
   syncLocalModelFromStatus(status: { state?: unknown; model_path?: string | null } | null) {
-    const path = typeof status?.model_path === 'string' ? status.model_path : null;
-    // The supervisor reports a failure as `{ Error: message }`.
-    const state = typeof status?.state === 'string' ? status.state : status?.state ? 'error' : undefined;
-    if (state === 'ready' && path) {
-      this.mainServerModelPath = path;
-      if (this.localModelActive?.path?.toLowerCase() !== path.toLowerCase()) {
-        const name = path.split(/[\\/]/).pop()?.replace(/\.gguf$/i, '') || path;
-        this.localModelActive = { name, path, hasMmproj: !!activeLoadConfig(this.config.llm?.local as Record<string, unknown> | undefined).mmproj_path };
-      }
-      return;
-    }
-    if (this.localModelLoading) return;
-    if (state === 'idle' || state === 'error') {
-      const was = this.mainServerModelPath;
-      this.mainServerModelPath = null;
-      // Only the main server's model goes; a chat on an extra instance stays.
-      if (this.localModelActive && (!was || this.localModelActive.path.toLowerCase() === was.toLowerCase())) this.localModelActive = null;
-    }
+    this.localModels.syncFromStatus(status);
   }
   onboardingOpen = $state(false);
   onboardingCompleted = $state(false);
@@ -925,337 +924,32 @@ class AppStore {
     this.activityDrawerOpen = false;
   }
 
-  /**
-   * Opens the load settings for `model`, filled from that model's own saved
-   * config (auto for anything it never had). The dialog appears once its
-   * fields are ready, so it never shows the previous model's values first.
-   */
-  async openLocalModelLoadDialog(model: LocalModelLoadTarget, options: { asInstance?: boolean } = {}) {
-    if (!model.path) return;
-    // Reopening during a load shows its progress, not a fresh form.
-    if (this.localModelLoading) {
-      this.localModelLoadTarget = model;
-      return;
-    }
-    const opening = ++this.localModelLoadOpenToken;
-    const runtimePath = this.config.llm?.local?.runtime_path || '';
-    const detectedProjector = await this.detectMmprojForModel(model.path);
-    if (opening !== this.localModelLoadOpenToken) return;
-    const resolved = resolveLocalModelLoadState({ config: this.config, model, runtimePath, mmprojPath: detectedProjector });
-    this.localModelLoadAsInstance = !!options.asInstance;
-    this.localModelLoadShare = false;
-    this.localModelLoadProgress = 0;
-    this.localModelLoadPhase = '';
-    this.localModelLoadError = '';
-    this.localModelLoadRuntimePath = resolved.runtimePath;
-    this.localModelLoadContextLength = resolved.contextLength;
-    this.localModelLoadGpuLayers = resolved.gpuLayers;
-    this.localModelLoadCpuThreads = resolved.cpuThreads;
-    this.localModelLoadBatchSize = resolved.batchSize;
-    this.localModelLoadFlashAttention = resolved.flashAttention;
-    this.localModelLoadOffloadKvCache = resolved.offloadKvCache;
-    this.localModelLoadKeepInMemory = resolved.keepInMemory;
-    this.localModelLoadMmap = resolved.mmap;
-    this.localModelLoadSeed = resolved.seed;
-    this.localModelLoadParallel = resolved.parallel;
-    this.localModelLoadRopeFreqBase = resolved.ropeFreqBase;
-    this.localModelLoadRopeFreqScale = resolved.ropeFreqScale;
-    this.localModelLoadCacheTypeK = resolved.cacheTypeK;
-    this.localModelLoadCacheTypeV = resolved.cacheTypeV;
-    this.localModelLoadMmprojPath = resolved.mmprojPath;
-    this.localModelLoadThinkingMode = resolved.thinkingMode;
-    this.localModelLoadMtpEnabled = resolved.mtpEnabled;
-    this.localModelLoadMtpDraftPath = resolved.mtpDraftPath;
-    this.localModelLoadMtpDraftNMax = resolved.mtpDraftNMax;
-    this.localModelLoadCpuMoe = resolved.cpuMoe;
-    this.localModelLoadNCpuMoe = resolved.nCpuMoe;
-    this.localModelLoadContextShift = resolved.contextShift;
-    this.localModelLoadCacheRamMb = resolved.cacheRamMb;
-    this.localModelLoadCacheReuse = resolved.cacheReuse;
-    this.localModelLoadSwaFull = resolved.swaFull;
-    this.localModelLoadSplitMode = resolved.splitMode;
-    this.localModelLoadTarget = model;
+  openLocalModelLoadDialog(model: LocalModelLoadTarget, options: { asInstance?: boolean } = {}) {
+    return this.localModels.openLoadDialog(model, options);
   }
 
-  /** The load dialog's current values as one state (what Load saves and launches). */
   get localModelLoadState(): LocalModelLoadState {
-    return {
-      contextLength: this.localModelLoadContextLength,
-      gpuLayers: this.localModelLoadGpuLayers,
-      cpuThreads: this.localModelLoadCpuThreads,
-      batchSize: this.localModelLoadBatchSize,
-      runtimePath: this.localModelLoadRuntimePath,
-      flashAttention: this.localModelLoadFlashAttention,
-      offloadKvCache: this.localModelLoadOffloadKvCache,
-      keepInMemory: this.localModelLoadKeepInMemory,
-      mmap: this.localModelLoadMmap,
-      seed: this.localModelLoadSeed,
-      parallel: this.localModelLoadParallel,
-      ropeFreqBase: this.localModelLoadRopeFreqBase,
-      ropeFreqScale: this.localModelLoadRopeFreqScale,
-      cacheTypeK: this.localModelLoadCacheTypeK,
-      cacheTypeV: this.localModelLoadCacheTypeV,
-      mmprojPath: this.localModelLoadMmprojPath,
-      thinkingMode: this.localModelLoadThinkingMode,
-      mtpEnabled: this.localModelLoadMtpEnabled,
-      mtpDraftPath: this.localModelLoadMtpDraftPath,
-      mtpDraftNMax: this.localModelLoadMtpDraftNMax,
-      cpuMoe: this.localModelLoadCpuMoe,
-      nCpuMoe: this.localModelLoadNCpuMoe,
-      contextShift: this.localModelLoadContextShift,
-      cacheRamMb: this.localModelLoadCacheRamMb,
-      cacheReuse: this.localModelLoadCacheReuse,
-      swaFull: this.localModelLoadSwaFull,
-      splitMode: this.localModelLoadSplitMode
-    };
+    return this.localModels.loadState;
   }
 
-  /** Hides the dialog. A load in progress keeps running and reporting. */
   closeLocalModelLoadDialog() {
-    this.localModelLoadTarget = null;
-    this.localModelLoadAsInstance = false;
-    if (this.localModelLoading) return;
-    this.localModelLoadProgress = 0;
-    this.localModelLoadPhase = '';
+    this.localModels.closeLoadDialog();
   }
 
-  async detectMmprojForModel(modelPath: string): Promise<string> {
-    const candidates = await this.listProjectorCandidates(modelPath);
-    return candidates[0] || '';
+  detectMmprojForModel(modelPath: string): Promise<string> {
+    return this.localModels.detectMmprojForModel(modelPath);
   }
 
-  async listProjectorCandidates(modelPath: string): Promise<string[]> {
-    if (!modelPath) return [];
-    let dir = modelPath.replace(/[/\\][^/\\]+$/, '');
-    try {
-      const direct = await pathExists(modelPath);
-      if (direct && !/\.gguf$/i.test(modelPath)) {
-        dir = modelPath;
-      }
-    } catch {
-      // ignore path probing errors
-    }
-    const normalizedDir = dir.replace(/\\/g, '/');
-    const windowsDir = dir.replace(/\//g, '\\');
-    const orderedNames = [
-      'mmproj-BF16.gguf',
-      'mmproj-F16.gguf',
-      'mmproj-F32.gguf',
-      'mmproj.gguf'
-    ];
-    const modelBase = (modelPath.split(/[/\\]/).pop() || '').replace(/\.gguf$/i, '');
-    if (modelBase) {
-      orderedNames.push(
-        `mmproj-${modelBase}.gguf`,
-        `${modelBase}-mmproj.gguf`,
-        `${modelBase}.mmproj.gguf`,
-        `${modelBase}.projector.gguf`,
-        `projector-${modelBase}.gguf`
-      );
-    }
-
-    const found: string[] = [];
-    for (const name of orderedNames) {
-      const fullPathCandidates = Array.from(new Set([
-        `${normalizedDir}/${name}`,
-        `${windowsDir}\\${name}`,
-        `${dir}/${name}`,
-        `${dir}\\${name}`
-      ]));
-      for (const fullPath of fullPathCandidates) {
-        try {
-          const exists = await pathExists(fullPath);
-          if (exists && !found.includes(fullPath)) found.push(fullPath);
-        } catch { /* ignore */ }
-      }
-    }
-    return found;
+  listProjectorCandidates(modelPath: string): Promise<string[]> {
+    return this.localModels.listProjectorCandidates(modelPath);
   }
 
-  /**
-   * Mirrors llama-server's real startup stages onto the load dialog while the
-   * launch is in flight. Returns an unsubscribe function; the caller owns it.
-   *
-   * The server's own 0-100 scale is remapped into the 24-95 band the dialog
-   * has already reserved for the launch step.
-   */
-  private async subscribeToLoadProgress(): Promise<() => void> {
-    if (!isElectron()) return () => {};
-    try {
-      const unlisten = await onSupervisorEvent((event) => {
-        const progress = Number((event as { load_progress?: unknown }).load_progress);
-        const phase = (event as { load_phase?: unknown }).load_phase;
-        if (Number.isFinite(progress) && progress > 0) {
-          this.localModelLoadProgress = Math.min(95, 24 + Math.round(progress * 0.71));
-        }
-        if (typeof phase === 'string' && phase) this.localModelLoadPhase = phase;
-      });
-      return unlisten;
-    } catch {
-      return () => {};
-    }
+  reloadLocalModel() {
+    return this.localModels.reloadLocalModel();
   }
 
-  /** The full launch config from the dialog, for another instance (no port/host: main picks them). */
-  private buildInstanceLaunchConfig(path: string): Record<string, unknown> {
-    const num = (value: unknown) => (value === '' || value == null || !Number.isFinite(Number(value)) ? undefined : Number(value));
-    return {
-      model_path: path,
-      backend_mode: 'auto',
-      runtime_path: this.localModelLoadRuntimePath || this.config.llm?.local?.runtime_path || undefined,
-      context_length: num(this.localModelLoadContextLength) || undefined,
-      gpu_offload: num(this.localModelLoadGpuLayers),
-      cpu_threads: num(this.localModelLoadCpuThreads) || undefined,
-      batch_size: num(this.localModelLoadBatchSize) || undefined,
-      flash_attention: this.localModelLoadFlashAttention,
-      offload_kv_cache: this.localModelLoadOffloadKvCache,
-      keep_in_memory: this.localModelLoadKeepInMemory,
-      mmap: this.localModelLoadMmap,
-      seed: num(this.localModelLoadSeed),
-      parallel: num(this.localModelLoadParallel),
-      rope_freq_base: num(this.localModelLoadRopeFreqBase),
-      rope_freq_scale: num(this.localModelLoadRopeFreqScale),
-      cache_type_k: this.localModelLoadCacheTypeK || undefined,
-      cache_type_v: this.localModelLoadCacheTypeV || undefined,
-      mmproj_path: this.localModelLoadMmprojPath || undefined,
-      thinking_mode: this.localModelLoadThinkingMode === 'auto' ? undefined : this.localModelLoadThinkingMode,
-      mtp: this.localModelLoadMtpEnabled,
-      mtp_draft_path: this.localModelLoadMtpDraftPath || undefined,
-      mtp_draft_n_max: num(this.localModelLoadMtpDraftNMax),
-      cpu_moe: this.localModelLoadCpuMoe,
-      n_cpu_moe: num(this.localModelLoadNCpuMoe),
-      context_shift: this.localModelLoadContextShift,
-      cache_ram_mb: num(this.localModelLoadCacheRamMb),
-      cache_reuse: num(this.localModelLoadCacheReuse),
-      swa_full: this.localModelLoadSwaFull,
-      split_mode: this.localModelLoadSplitMode || undefined
-    };
-  }
-
-  /** Instance mode: launch next to the running models, leave chat as it is. */
-  private async startLocalInstanceFromDialog(path: string) {
-    this.localModelLoading = true;
-    this.localModelLoadError = '';
-    this.localModelLoadProgress = 20;
-    this.localModelLoadPhase = 'Starting another instance';
-    try {
-      await invoke('start_instance', { model_path: path, config: this.buildInstanceLaunchConfig(path), share: this.localModelLoadShare });
-      this.localModelLoadTarget = null;
-      this.localModelLoadAsInstance = false;
-    } catch (err) {
-      this.localModelLoadError = err instanceof Error ? err.message : String(err);
-    } finally {
-      this.localModelLoading = false;
-      this.localModelLoadProgress = 0;
-      this.localModelLoadPhase = '';
-    }
-  }
-
-  /**
-   * Restarts the selected model with its saved config and the app-wide
-   * settings (Settings → Local server's "Apply and restart"). No dialog and
-   * no second copy of the settings: it is the same launch a chat makes.
-   */
-  async reloadLocalModel() {
-    const path = this.config.llm?.local?.selected_model_path;
-    if (!path || this.localModelLoading) return;
-    this.localModelLoading = true;
-    this.localModelLoadError = '';
-    try {
-      await loadLocalModel(await loadChatConfig(), path);
-      await modelsStore.refreshStatus();
-    } catch (error) {
-      const message = describeLocalLoadError(toErrorMessage(error));
-      this.localModelLoadError = message;
-      this.localModelActive = null;
-      void modelsStore.refreshStatus();
-      toastStore.error(message);
-    } finally {
-      this.localModelLoading = false;
-    }
-  }
-
-  async confirmLocalModelLoad() {
-    // The dialog can be hidden mid-load, which clears localModelLoadTarget.
-    const target = this.localModelLoadTarget;
-    if (!target?.path || this.localModelLoading) return;
-    if (this.localModelLoadAsInstance) {
-      await this.startLocalInstanceFromDialog(target.path);
-      return;
-    }
-    this.localModelLoading = true;
-    this.localModelLoadError = '';
-    this.localModelLoadProgress = 5;
-    this.localModelLoadPhase = 'Preparing load configuration';
-    try {
-      // Re-detect mmproj in case it wasn't found during dialog open
-      if (!this.localModelLoadMmprojPath && target.path) {
-        this.localModelLoadMmprojPath = await this.detectMmprojForModel(target.path);
-      }
-      const loadState = this.localModelLoadState;
-      // This model's config, plus the app-wide engine and slots. Written
-      // before the selection moves, so a legacy config that described the
-      // previous model is kept as that model's entry.
-      await this.commitConfig({
-        ...this.config,
-        llm: { ...this.config.llm, local: localWithLoadState(this.config.llm?.local, target.path, loadState) }
-      });
-      await this.setBackendMode('local');
-      this.localModelLoadProgress = 12;
-      this.localModelLoadPhase = 'Saving local model selection';
-      await this.updateLocalModel({
-        id: target.id,
-        name: target.name,
-        path: target.path,
-        source: 'local',
-        details: target.details
-      });
-      const config = await loadChatConfig();
-      this.localModelLoadProgress = 24;
-      this.localModelLoadPhase = 'Launching local runtime';
-      // From here the server reports its own stages (weights, KV cache, warmup)
-      // over `supervisor-event`; see subscribeToLoadProgress.
-      const stopTrackingProgress = await this.subscribeToLoadProgress();
-      try {
-        // Launched from what was just saved, through the same mapping every
-        // other start uses (shared/local-launch.ts).
-        await loadLocalModel(config, target.path);
-      } finally {
-        stopTrackingProgress();
-      }
-      this.localModelLoadProgress = 96;
-      this.localModelLoadPhase = 'Refreshing local model state';
-      await modelsStore.refreshIndex();
-      await modelsStore.refreshStatus();
-      this.localModelLoadProgress = 100;
-      this.localModelLoadPhase = 'Model ready';
-      this.localModelActive = {
-        name: target.name || 'local model',
-        path: target.path || '',
-        hasMmproj: !!(this.localModelLoadMmprojPath),
-      };
-      toastStore.success(`Model loaded: ${target.name || 'local model'}`);
-      if (isElectron()) {
-        detectToolSupport().catch(() => {});
-        // Forced: a fresh server just came up, so re-probe even when the
-        // model identity is unchanged.
-        this.refreshReasoningCapabilities(true).catch(() => {});
-      }
-      if (this.localModelLoadTarget === target) this.localModelLoadTarget = null;
-    } catch (error) {
-      const message = describeLocalLoadError(toErrorMessage(error));
-      this.localModelLoadError = message;
-      // The previous server was stopped to make room: nothing is loaded now,
-      // and the pill must not keep naming the old model.
-      this.localModelActive = null;
-      void modelsStore.refreshStatus();
-      this.localModelLoadProgress = 0;
-      this.localModelLoadPhase = '';
-      // The dialog may be hidden: the toast is how the failure reaches the user.
-      toastStore.error(message);
-    } finally {
-      this.localModelLoading = false;
-    }
+  confirmLocalModelLoad() {
+    return this.localModels.confirmLoad();
   }
 
   async init() {
@@ -1815,7 +1509,7 @@ class AppStore {
     delete activeRuns[chatId];
     this.activeRunsByChat = activeRuns;
     this.refreshGenerationState();
-    delete this.ragDocumentsByChat[chatId];
+    this.workspaceController.deleteChatRag(chatId);
     const searchStates = { ...this.searchStateByChat };
     delete searchStates[chatId];
     this.searchStateByChat = searchStates;
@@ -2103,357 +1797,68 @@ class AppStore {
     this.persist();
   }
 
-  async refreshRagDocuments(chatId = this.currentChatId || '') {
-    if (!isElectron() || !chatId) return;
-    try {
-      const docs = await listRagDocuments(chatId);
-      this.ragDocumentsByChat = {
-        ...this.ragDocumentsByChat,
-        [chatId]: docs
-      };
-    } catch {
-      this.ragDocumentsByChat = {
-        ...this.ragDocumentsByChat,
-        [chatId]: []
-      };
-    }
+  refreshRagDocuments(chatId = this.currentChatId || '') {
+    return this.workspaceController.refreshRagDocuments(chatId);
   }
 
-  async clearRag() {
-    const targetChatId = this.currentChatId;
-    const targetChat = this.findChat(targetChatId);
-    if (!isElectron() || !targetChatId || !targetChat) return;
-    await clearRagDocuments(targetChatId);
-    this.pendingAttachments = [];
-    // Clear workspace files but never demote Work → Chat
-    if (targetChat.workspace && normalizeContextMode(targetChat.contextMode) === 'code') {
-      targetChat.workspace = null;
-      this.touchChats();
-      this.persist();
-    }
-    await this.refreshRagDocuments(targetChatId);
+  clearRag() {
+    return this.workspaceController.clearRag();
   }
 
   private documentStillReferenced(chatId: string, docId: string): boolean {
-    const chat = this.findChat(chatId);
-    return (this.currentChatId === chatId && this.pendingAttachments.some((item) => item.docId === docId))
-      || !!chat?.messages.some((message) => message.attachments?.some((item) => item.docId === docId))
-      || !!chat?.workspace?.files.some((file) => file.docId === docId);
+    return this.workspaceController.documentStillReferenced(chatId, docId);
   }
 
   removeAttachment(attachmentId: string) {
-    const attachment = this.pendingAttachments.find((a) => a.id === attachmentId);
-    this.pendingAttachments = this.pendingAttachments.filter((a) => a.id !== attachmentId);
-    // If image, revoke the blob URL to free memory
-    if (attachment?.preview?.startsWith('blob:')) {
-      URL.revokeObjectURL(attachment.preview);
-    }
-    // If it's a RAG document, remove from backend too
-    if (attachment?.docId && isElectron() && this.currentChatId && !this.documentStillReferenced(this.currentChatId, attachment.docId)) {
-      removeRagDocument(attachment.docId, this.currentChatId).catch(() => {});
-      this.refreshRagDocuments().catch(() => {});
-    }
+    this.workspaceController.removeAttachment(attachmentId);
   }
 
-  async removeRagDoc(docId: string) {
-    if (!isElectron() || !this.currentChatId) return;
-    await removeRagDocument(docId, this.currentChatId);
-    this.pendingAttachments = this.pendingAttachments.filter((attachment) => attachment.docId !== docId);
-    if (this.currentChat?.workspace) {
-      const nextFiles = this.currentChat.workspace.files.filter((file) => file.docId !== docId);
-      if (nextFiles.length !== this.currentChat.workspace.files.length) {
-        this.currentChat.workspace = nextFiles.length
-          ? recalculateWorkspace({
-              ...this.currentChat.workspace,
-              files: nextFiles
-            })
-          : null;
-        // Keep contextMode; empty workspace does not convert Work → Chat
-        this.touchChats();
-        this.persist();
-      }
-    }
-    await this.refreshRagDocuments();
+  removeRagDoc(docId: string) {
+    return this.workspaceController.removeRagDoc(docId);
   }
 
-  async addFiles(files: File[]) {
-    const targetChatId = this.currentChatId;
-    if (!files.length || !targetChatId) return;
-
-    const attachments: Attachment[] = files.map((file) => {
-      const { kind, mime } = ingestionFileType(file.name, file.type);
-      return {
-        id: createId('attachment'), name: file.name, size: file.size, type: mime,
-        kind: kind === 'image' ? 'image' : 'document', status: 'processing',
-        processingMode: kind === 'audio' || kind === 'video' ? 'transcription' : kind === 'image' ? 'ocr' : 'document_text'
-      };
-    });
-    // Publish before reading so progress/errors are visible and Enter cannot
-    // send a draft while one of its files is still being extracted.
-    this.pendingAttachments = [...this.pendingAttachments, ...attachments];
-    const uploadConfig = this.configForChat(this.findChat(targetChatId)!);
-    for (let i = 0; i < files.length; i++) {
-      const result = await ingestAttachment(files[i], { ...attachments[i] }, targetChatId, {
-        visionAvailable: () => hasConfiguredVisionModel(uploadConfig),
-        dataUrl: readBlobAsDataUrl,
-        writeFile: (name, bytes) => writeTempFile(`${Date.now()}_${name}`, bytes),
-        ingest: ingestDocument,
-        extractFallback: async (file) => (await import('$lib/services/ocr')).extractFileContent(file)
-      });
-      if (this.currentChatId === targetChatId) {
-        // A removed processing chip must not leave hidden source context behind.
-        if (!this.pendingAttachments.some((item) => item.id === result.id) && result.docId && !this.documentStillReferenced(targetChatId, result.docId)) {
-          await removeRagDocument(result.docId, targetChatId);
-        }
-        // Publish ready only once the turn's document context has caught up.
-        await this.refreshRagDocuments(targetChatId);
-        this.pendingAttachments = this.pendingAttachments.map((item) => item.id === result.id ? result : item);
-      }
-    }
-
-    await this.refreshRagDocuments(targetChatId);
+  addFiles(files: File[]) {
+    return this.workspaceController.addFiles(files);
   }
 
-  private async clearWorkspaceDocs(chatId = this.currentChatId || '') {
-    const chat = this.findChat(chatId);
-    if (!chatId || !chat?.workspace?.files?.length) return;
-    await Promise.allSettled(
-      chat.workspace.files
-        .map((file) => file.docId)
-        .filter((docId): docId is string => !!docId)
-        .map((docId) => removeRagDocument(docId, chatId))
-    );
+  pickWorkspaceFolder() {
+    return this.workspaceController.pickWorkspaceFolder();
   }
 
-  async pickWorkspaceFolder() {
-    const targetChatId = this.currentChatId;
-    const targetChat = this.findChat(targetChatId);
-    if (!isElectron() || !targetChatId || !targetChat) return;
-    if (normalizeContextMode(targetChat.contextMode) !== 'code') {
-      toastStore.info('Switch to the Code tab to attach a folder.', 2800);
-      return;
-    }
-    const selectedPath = await pickWorkspaceFolderDialog();
-    if (!selectedPath) return;
-
-    this.workspaceIndexing = true;
-    this.error = null;
-
-    try {
-      await this.clearWorkspaceDocs(targetChatId);
-      const result = await indexWorkspaceFolder(selectedPath, targetChatId);
-      const chat = this.findChat(targetChatId);
-      if (!chat) return;
-      chat.workspace = buildWorkspaceFromIndexResult(result, Date.now());
-      // contextMode stays 'code' — never convert sessions between spaces
-      this.touchChats();
-      this.persist();
-      await this.refreshRagDocuments(targetChatId);
-      toastStore.success(
-        result.indexed_count > 0
-          ? `Workspace ready: ${countOf(result.indexed_count, 'file')} indexed`
-          : 'Workspace attached, but no files could be indexed.'
-      );
-    } finally {
-      this.workspaceIndexing = false;
-    }
+  addWorkspaceFolder(files: File[]) {
+    return this.workspaceController.addWorkspaceFolder(files);
   }
 
-  async addWorkspaceFolder(files: File[]) {
-    if (!isElectron()) {
-      toastStore.error('Work mode is only available in the desktop app.');
-      return;
-    }
-    const targetChatId = this.currentChatId;
-    const targetChat = this.findChat(targetChatId);
-    if (!files.length || !targetChatId || !targetChat) return;
-    if (normalizeContextMode(targetChat.contextMode) !== 'code') {
-      toastStore.info('Switch to the Code tab to attach a folder.', 2800);
-      return;
-    }
-
-    this.workspaceIndexing = true;
-    this.error = null;
-    try {
-      await this.clearWorkspaceDocs(targetChatId);
-
-      const sortedFiles = [...files].sort((left, right) => getWorkspacePath(left).localeCompare(getWorkspacePath(right)));
-      const workspaceFiles: WorkspaceFile[] = [];
-      let indexedCount = 0;
-      let skippedCount = 0;
-      let indexedSoFar = 0;
-
-      for (const file of sortedFiles) {
-        const relativePath = getWorkspacePath(file);
-        if (!relativePath || shouldIgnoreWorkspacePath(relativePath)) {
-          skippedCount += 1;
-          continue;
-        }
-
-        const workspaceFile: WorkspaceFile = {
-          path: relativePath,
-          name: file.name,
-          size: file.size,
-          type: getWorkspaceExtension(relativePath),
-          status: 'ready'
-        };
-
-        if (!isSupportedWorkspaceFile(relativePath)) {
-          workspaceFile.status = 'skipped';
-          workspaceFile.reason = 'Unsupported file type';
-          skippedCount += 1;
-          workspaceFiles.push(workspaceFile);
-          continue;
-        }
-
-        if (file.size > WORKSPACE_MAX_FILE_SIZE_BYTES) {
-          workspaceFile.status = 'skipped';
-          workspaceFile.reason = 'File too large';
-          skippedCount += 1;
-          workspaceFiles.push(workspaceFile);
-          continue;
-        }
-
-        if (indexedSoFar >= WORKSPACE_MAX_FILES) {
-          workspaceFile.status = 'skipped';
-          workspaceFile.reason = 'Workspace file limit reached';
-          skippedCount += 1;
-          workspaceFiles.push(workspaceFile);
-          continue;
-        }
-
-        try {
-          const text = trimWorkspaceText(await file.text());
-          if (!text) {
-            workspaceFile.status = 'skipped';
-            workspaceFile.reason = 'Empty text content';
-            skippedCount += 1;
-          } else {
-            const doc = await ingestText({
-              source: relativePath,
-              text,
-              chat_id: targetChatId,
-              file_type: workspaceFile.type
-            });
-            workspaceFile.docId = doc.id;
-            indexedCount += 1;
-            indexedSoFar += 1;
-          }
-        } catch (error) {
-          workspaceFile.status = 'error';
-          workspaceFile.reason = toErrorMessage(error) || 'Failed to index file';
-          skippedCount += 1;
-        }
-
-        workspaceFiles.push(workspaceFile);
-      }
-
-      const rootName = workspaceFiles[0]?.path.split('/')[0] || sortedFiles[0]?.name || 'Workspace';
-      const chat = this.findChat(targetChatId);
-      if (!chat) return;
-      chat.workspace = {
-        rootName,
-        rootPath: undefined,
-        attachedAt: Date.now(),
-        fileCount: workspaceFiles.length,
-        indexedCount,
-        skippedCount,
-        files: workspaceFiles
-      };
-      // contextMode stays 'code'
-      this.touchChats();
-      this.persist();
-      await this.refreshRagDocuments(targetChatId);
-
-      toastStore.success(
-        indexedCount > 0
-          ? `Workspace ready: ${countOf(indexedCount, 'file')} indexed`
-          : 'Workspace attached, but no files could be indexed.'
-      );
-    } finally {
-      this.workspaceIndexing = false;
-    }
+  clearWorkspace() {
+    return this.workspaceController.clearWorkspace();
   }
 
-  async clearWorkspace() {
-    const targetChatId = this.currentChatId;
-    const targetChat = this.findChat(targetChatId);
-    if (!targetChatId || !targetChat?.workspace) return;
-    const docIds = targetChat.workspace.files
-      .map((file) => file.docId)
-      .filter((docId): docId is string => !!docId);
-    await Promise.allSettled(docIds.map((docId) => removeRagDocument(docId, targetChatId)));
-    targetChat.workspace = null;
-    // Stay in Work — never demote to Chat
-    this.touchChats();
-    this.persist();
-    await this.refreshRagDocuments(targetChatId);
-    toastStore.info('Workspace removed from this work session.', 2200);
+  refreshWorkspace(chatId = this.currentChatId || '') {
+    return this.workspaceController.refreshWorkspace(chatId);
   }
 
-  /** Re-scan the workspace folder after LLM creates new files */
-  async refreshWorkspace(chatId = this.currentChatId || '') {
-    const chat = this.findChat(chatId);
-    const rootPath = chat?.workspace?.rootPath;
-    if (!rootPath || !chatId || !isElectron()) return;
-    this.workspaceIndexing = true;
-    try {
-      await this.clearWorkspaceDocs(chatId);
-      const result = await indexWorkspaceFolder(rootPath, chatId);
-      chat!.workspace = buildWorkspaceFromIndexResult(result, chat!.workspace!.attachedAt);
-      this.touchChats();
-      this.persist();
-      await this.refreshRagDocuments(chatId);
-    } finally {
-      this.workspaceIndexing = false;
-    }
+  createWorkspaceFile(relativePath: string, docType: string, content: string): Promise<string> {
+    return this.workspaceController.createWorkspaceFile(relativePath, docType, content);
   }
 
-  private requireCurrentWorkspace(): { chatId: string; rootPath: string } {
-    const chatId = this.currentChatId || '';
-    const rootPath = this.findChat(chatId)?.workspace?.rootPath;
-    if (!rootPath) throw new Error('No workspace attached');
-    return { chatId, rootPath };
+  renameWorkspaceFile(oldRelPath: string, newRelPath: string): Promise<void> {
+    return this.workspaceController.renameWorkspaceFile(oldRelPath, newRelPath);
   }
 
-  /** Create a file inside the workspace from the UI */
-  async createWorkspaceFile(relativePath: string, docType: string, content: string): Promise<string> {
-    const { chatId, rootPath } = this.requireCurrentWorkspace();
-    const fullPath = await createWorkspaceDocument(rootPath, relativePath, docType, content);
-    await this.refreshWorkspace(chatId);
-    return fullPath;
+  deleteWorkspaceFile(relativePath: string): Promise<void> {
+    return this.workspaceController.deleteWorkspaceFile(relativePath);
   }
 
-  async renameWorkspaceFile(oldRelPath: string, newRelPath: string): Promise<void> {
-    const { chatId, rootPath } = this.requireCurrentWorkspace();
-    await renameWorkspaceFile(rootPath, oldRelPath, newRelPath);
-    await this.refreshWorkspace(chatId);
-    toastStore.info(`Renamed to ${newRelPath.split('/').pop()}`, 2000);
+  readWorkspaceFile(relativePath: string): Promise<string> {
+    return this.workspaceController.readWorkspaceFile(relativePath);
   }
 
-  async deleteWorkspaceFile(relativePath: string): Promise<void> {
-    const { chatId, rootPath } = this.requireCurrentWorkspace();
-    await deleteWorkspaceFile(rootPath, relativePath);
-    await this.refreshWorkspace(chatId);
-    toastStore.info(`Deleted ${relativePath.split('/').pop()}`, 2000);
+  openWorkspaceFile(relativePath: string): Promise<void> {
+    return this.workspaceController.openWorkspaceFile(relativePath);
   }
 
-  async readWorkspaceFile(relativePath: string): Promise<string> {
-    const { rootPath } = this.requireCurrentWorkspace();
-    return readWorkspaceFile(rootPath, relativePath);
-  }
-
-  async openWorkspaceFile(relativePath: string): Promise<void> {
-    const { rootPath } = this.requireCurrentWorkspace();
-    const fullPath = `${rootPath}/${relativePath}`;
-    await openWorkspaceFile(fullPath, rootPath);
-  }
-
-  async createWorkspaceFolder(relativePath: string): Promise<void> {
-    const { chatId, rootPath } = this.requireCurrentWorkspace();
-    await createWorkspaceFolder(rootPath, relativePath);
-    await this.refreshWorkspace(chatId);
-    toastStore.info(`Folder created`, 2000);
+  createWorkspaceFolder(relativePath: string): Promise<void> {
+    return this.workspaceController.createWorkspaceFolder(relativePath);
   }
 
   private canStartGeneration(params: {
@@ -2473,6 +1878,26 @@ class AppStore {
       error: (message) => toastStore.error(message)
     });
   }
+
+  private readonly chatTurnHost: ChatTurnHost = {
+    beginGenerationRun: (chatId, run) => this.beginGenerationRun(chatId, run),
+    endGenerationRun: (chatId, controller) => this.endGenerationRun(chatId, controller),
+    touchRun: (chatId) => this.touchRun(chatId),
+    syncMessage: (chatId, message) => {
+      const chat = this.findChat(chatId);
+      if (!chat) return;
+      const idx = chat.messages.findIndex((m) => m.id === message.id);
+      if (idx >= 0) {
+        chat.messages[idx] = { ...message };
+        chat.updatedAt = Date.now();
+        this.markChatDirty(chatId);
+      }
+    },
+    focusArtifact: (chatId, messageId, artifact) => this.focusArtifact(chatId, messageId, artifact),
+    findMessage: (chatId, messageId) => this.findChat(chatId)?.messages.find((m) => m.id === messageId),
+    setError: (error) => { this.error = error; },
+    persist: () => this.persist()
+  };
 
   /**
    * Send the composer as a user turn, or — with `silent` — generate a
@@ -2630,397 +2055,212 @@ class AppStore {
 
     this.appendMessageToChat(targetChatId, assistantMessage);
 
-    const SYNC_INTERVAL_MS = 50;
-    let lastSyncTime = 0;
-    let trailingSync: ReturnType<typeof setTimeout> | undefined;
-    const cancelTrailingSync = () => {
-      if (trailingSync === undefined) return;
-      clearTimeout(trailingSync);
-      trailingSync = undefined;
-    };
-    const syncMsg = (force = false) => {
-      const now = Date.now();
-      if (!force && now - lastSyncTime < SYNC_INTERVAL_MS) {
-        // Trailing edge: the last chunk of a burst must land even when no
-        // further chunk arrives, or short answers stall mid-sentence.
-        if (trailingSync === undefined) {
-          trailingSync = setTimeout(() => {
-            trailingSync = undefined;
-            syncMsg(true);
-          }, Math.max(1, SYNC_INTERVAL_MS - (now - lastSyncTime)));
+    await executeChatTurn(this.chatTurnHost, {
+      chatId: targetChatId,
+      message: assistantMessage,
+      backendMode: activeBackendMode,
+      runMode: activeComposerMode,
+      modelLabel: activeModelLabel,
+      turn,
+      toastOnError: true,
+      stopFallbackText: 'Stopped by user.',
+      markLastStepOnError: true,
+      syncIntervalMs: 50,
+      prepare: async ({ sync }) => {
+        const searchConversationContext = userMessage
+          ? this.buildSearchConversationContext(userMessage.id, targetChatId)
+          : '';
+        // Reset modes on the target session (and store mirrors only if still viewing it).
+        const postSendComposer = activeComposerMode === 'agent' ? 'agent' as const : activeComposerMode === 'instant' ? 'instant' as const : 'chat' as const;
+        targetChat.searchMode = 'chat';
+        targetChat.composerMode = postSendComposer;
+        if (this.currentChatId === targetChatId) {
+          this.searchMode = 'chat';
+          this.composerMode = targetChat.composerMode || postSendComposer;
         }
-        return;
-      }
-      cancelTrailingSync();
-      lastSyncTime = now;
-      const chat = this.findChat(targetChatId);
-      if (!chat) return;
-      const idx = chat.messages.findIndex((m) => m.id === assistantMessage.id);
-      if (idx >= 0) {
-        chat.messages[idx] = { ...assistantMessage };
-        chat.updatedAt = Date.now();
-      }
-    };
-    const snapshotVersion = () => {
-      assistantMessage.versions = [{
-        content: assistantMessage.content,
-        createdAt: assistantMessage.createdAt,
-        reasoning: assistantMessage.reasoning,
-        metadata: assistantMessage.metadata
-      }];
-    };
+        let ragContext = '';
+        let ragDocuments: IndexedDocument[] = [];
 
-    const controller = new AbortController();
-    const startTime = Date.now();
-    const reasoningTimer = startReasoningTimer();
-    let exactUsage: CompletionResult['usage'] = null;
+        if (isElectron() && targetRagDocuments.length && activeSearchMode === 'chat') {
+          const ragResponse = await queryDocuments({
+            query: content || 'summarize key points from the attached documents',
+            chat_id: targetChatId,
+            top_k: 20
+          });
+          ragContext = ragResponse.context || '';
+          const docIds = new Set(ragResponse.results.map((result) => result.chunk.doc_id));
+          ragDocuments = targetRagDocuments.filter((doc) => docIds.has(doc.id));
+        }
+        const preserveDocuments = targetRagDocuments.length > 0 || sentAttachments.length > 0 || !!ragContext;
 
-    /*
-     * The run begins inside the `try`, so the `finally` that ends it covers
-     * everything. Anything that threw between starting and the `try` used to
-     * leave a run with no matching end: "generating" forever, and
-     * `canStartGeneration` blocking that chat until a reload.
-     */
-    try {
-      this.beginGenerationRun(targetChatId, {
-        controller,
-        messageId: assistantMessage.id,
-        backendMode: activeBackendMode,
-        mode: activeComposerMode,
-        startedAt: Date.now()
-      });
-      const searchConversationContext = userMessage
-        ? this.buildSearchConversationContext(userMessage.id, targetChatId)
-        : '';
-      // Reset modes on the target session (and store mirrors only if still viewing it).
-      // The tab is a persistent per-chat preference: Agent and Instant stick,
-      // only the one-shot search depth resets.
-      const postSendComposer = activeComposerMode === 'agent' ? 'agent' as const : activeComposerMode === 'instant' ? 'instant' as const : 'chat' as const;
-      targetChat.searchMode = 'chat';
-      targetChat.composerMode = postSendComposer;
-      if (this.currentChatId === targetChatId) {
-        this.searchMode = 'chat';
-        this.composerMode = targetChat.composerMode || postSendComposer;
-      }
-      let ragContext = '';
-      let ragDocuments: IndexedDocument[] = [];
+        assistantMessage.sources = [];
+        assistantMessage.searchMeta = null;
+        assistantMessage.ragDocuments = ragDocuments;
+        sync(true);
+        this.persist();
 
-      if (isElectron() && targetRagDocuments.length && activeSearchMode === 'chat') {
-        // No tight retrieval budget when the user attached documents — pull more chunks.
-        const ragResponse = await queryDocuments({
-          query: content || 'summarize key points from the attached documents',
-          chat_id: targetChatId,
-          top_k: 20
-        });
-        ragContext = ragResponse.context || '';
-        const docIds = new Set(ragResponse.results.map((result) => result.chunk.doc_id));
-        ragDocuments = targetRagDocuments.filter((doc) => docIds.has(doc.id));
-      }
-      const preserveDocuments = targetRagDocuments.length > 0 || sentAttachments.length > 0 || !!ragContext;
-
-      assistantMessage.sources = [];
-      assistantMessage.searchMeta = null;
-      assistantMessage.ragDocuments = ragDocuments;
-      syncMsg(true);
-      this.persist();
-
-      // Roleplay history reaches the model as the viewer reads it (macros resolved
-      // per message, for this turn's persona); other chats pass through unchanged.
-      const history = roleplayStore.resolveHistory(targetChat, targetChat.messages, { user: turn.attribution?.userName });
-      // A failed reply is an error notice, never the character's words: the model does not read it back.
-      const wireHistory = activeContextMode === 'roleplay' ? dropFailedReplies(history) : history;
-      const requestMessages = userMessage
-        ? buildRequestMessagesWithPatchedUser({
-            messages: wireHistory,
-            assistantMessageId: assistantMessage.id,
-            userMessageId: userMessage.id,
-            userContent: history.find((message) => message.id === userMessage.id)?.content ?? content,
-            attribution: turn.attribution,
-            buildContextualPrompt: (userContent) => this.buildContextualPrompt({
-              content: userContent,
-              searchContext: '',
-              researchSummary: '',
-              ragContext,
-              workspaceContext: '',
-              mode: activeComposerMode,
-              searchMode: activeSearchMode
+        const history = roleplayStore.resolveHistory(targetChat, targetChat.messages, { user: turn.attribution?.userName });
+        const wireHistory = activeContextMode === 'roleplay' ? dropFailedReplies(history) : history;
+        const requestMessages = userMessage
+          ? buildRequestMessagesWithPatchedUser({
+              messages: wireHistory,
+              assistantMessageId: assistantMessage.id,
+              userMessageId: userMessage.id,
+              userContent: history.find((message) => message.id === userMessage.id)?.content ?? content,
+              attribution: turn.attribution,
+              buildContextualPrompt: (userContent) => this.buildContextualPrompt({
+                content: userContent,
+                searchContext: '',
+                researchSummary: '',
+                ragContext,
+                workspaceContext: '',
+                mode: activeComposerMode,
+                searchMode: activeSearchMode
+              })
             })
-          })
-        : buildRequestMessagesFromHistory(
-            wireHistory,
-            wireHistory.length - 1,
-            turn.attribution
-          );
+          : buildRequestMessagesFromHistory(
+              wireHistory,
+              wireHistory.length - 1,
+              turn.attribution
+            );
 
-      // A roleplay request is composed by its turn (stable block, history, volatile tail) and fitted to the window.
-      const roleplayRequest = activeContextMode === 'roleplay'
-        ? await this.roleplayRequest(turn, targetChat, requestMessages, activeBackendMode)
-        : null;
-      let systemPrompt = roleplayRequest ? '' : this.buildSystemPromptForMode({
-        backendMode: activeBackendMode,
-        providerPrompt: activeProvider?.system_prompt,
-        includeChartHint: activeComposerMode !== 'agent',
-        chat: targetChat,
-        speakerId: turn.speakerId,
-        roleplaySnapshot: { roleplay: turn.snapshot }
-      });
-      if (targetRagDocuments.length && !roleplayRequest && activeContextMode !== 'design') {
-        const sources = targetRagDocuments.map((doc) => ({ name: doc.source, method: doc.extraction_method, warning: doc.extraction_warning }));
-        systemPrompt += `\n\n${INGESTED_DOCUMENT_GUIDANCE}\n<attached_sources>\n${JSON.stringify(sources)}\n</attached_sources>`;
-      }
-
-      const outboundMessages = roleplayRequest?.messages ?? buildOutboundMessages({ messages: requestMessages, systemPrompt });
-      // Context window budget check (local mode only). Roleplay fits its own budget above.
-      if (!useToolLoop && activeBackendMode === 'local' && isElectron() && !roleplayRequest) {
-        try {
-          const electronApi = getElectronApi();
-          if (electronApi) {
-            await applyLocalContextBudgetTruncation({
-              backendMode: activeBackendMode,
-              isElectron: true,
-              config: selectedConfig,
-              messages: outboundMessages,
-              invoke: toInvoke(electronApi),
-              // Uploaded / RAG document context must not be token-budget trimmed away.
-              preserveDocuments,
-              onTruncated: (removed) => {
-                toastStore.info(`Context window full. ${removed} older message(s) truncated to fit.`, 4000);
-              }
-            });
-          }
-        } catch {
-          // Silently continue if budget check fails
-        }
-      }
-
-      // Home answers through the Rust runtime on every provider; a plain
-      // Instant reply is just a turn without tools. Roleplay keeps its stream.
-      if (useToolLoop || normalizeSpace(activeContextMode) === 'home') {
-        // Design turns share Home's runtime; they swap in the design tools and prompt.
-        const agentResult = await (activeContextMode === 'design' ? runDesignTask : runAgentTask)({
-          chatId: targetChatId,
-          designContext,
-          ...this.homeRuntimeArgs(targetChat, assistantMessage, targetChat.messages.filter((entry) => entry.id !== assistantMessage.id).map((entry) => entry.id)),
-          systemPrompt,
-          messages: requestMessages,
-          rawPrompt: content,
-          conversationContext: searchConversationContext || (ragContext ? `<documents>\n${ragContext}\n</documents>` : undefined),
-          executionMode: 'sandbox',
-          contextMode: activeContextMode,
-          toolMode: plan.toolMode,
-          noTools: !useToolLoop,
-          agentProfile: plan.agentProfile,
-          searchMode: plan.searchMode,
-          reasoningLevel: activeReasoningLevel,
-          quietActivity: plan.instant,
-          preserveDocumentContext: preserveDocuments,
-          onMessagesInjected: (messages) => {
-            const ids = this.voiceSteering.get(targetChatId);
-            const accepted: ChatMessage[] = [];
-            for (const text of messages) {
-              const item = targetChat.pendingPrompts?.find(item => ids?.has(item.id) && item.content === text);
-              if (!item) continue;
-              ids!.delete(item.id);
-              targetChat.pendingPrompts = targetChat.pendingPrompts!.filter(entry => entry.id !== item.id);
-              accepted.push({ id: createId('msg'), role: 'user', content: text, createdAt: Date.now(), done: true, status: 'idle' });
-            }
-            if (!accepted.length) return;
-            const index = targetChat.messages.findIndex(message => message.id === assistantMessage.id);
-            if (index < 0) return;
-            const prefix: ChatMessage[] = assistantMessage.content.trim()
-              ? [{ ...assistantMessage, id: createId('msg'), done: true, status: 'idle', metadata: { ...assistantMessage.metadata, codeSpend: undefined }, agentSteps: undefined }]
-              : [];
-            assistantMessage.content = ''; assistantMessage.reasoning = '';
-            targetChat.messages.splice(index, 0, ...prefix, ...accepted);
-            syncMsg(true); this.persist();
-          },
-          ...plan.budget,
-          signal: controller.signal,
-          ...homeAgentCallbacks({
-            message: assistantMessage,
-            quiet: plan.instant,
-            sync: syncMsg,
-            persist: () => this.persist(),
-            onReasoningStart: () => reasoningTimer.markStarted(),
-            onArtifacts: (latest) => this.focusArtifact(targetChatId, assistantMessage.id, latest),
-            touch: () => this.touchRun(targetChatId)
-          })
-        });
-        exactUsage = agentResult.usage || exactUsage;
-        if (controller.signal.aborted) throw new Error('AbortError');
-        markAgentWriting(assistantMessage);
-        syncMsg(true);
-        this.persist();
-        applyHomeAgentResult(assistantMessage, agentResult, {
-          modelName: activeModelLabel,
+        const roleplayRequest = activeContextMode === 'roleplay'
+          ? await this.roleplayRequest(turn, targetChat, requestMessages, activeBackendMode)
+          : null;
+        let systemPrompt = roleplayRequest ? '' : this.buildSystemPromptForMode({
           backendMode: activeBackendMode,
-          searchMode: plan.searchMode,
-          requestedProvider: selectedConfig.search?.provider || 'aggregator'
+          providerPrompt: activeProvider?.system_prompt,
+          includeChartHint: activeComposerMode !== 'agent',
+          chat: targetChat,
+          speakerId: turn.speakerId,
+          roleplaySnapshot: { roleplay: turn.snapshot }
         });
-        if (selectedConfig.ui?.agent_debug_logs && (agentResult.warning || agentResult.error)) {
-          console.info('[agent]', agentResult.warning || agentResult.error);
+        if (targetRagDocuments.length && !roleplayRequest && activeContextMode !== 'design') {
+          const sources = targetRagDocuments.map((doc) => ({ name: doc.source, method: doc.extraction_method, warning: doc.extraction_warning }));
+          systemPrompt += `\n\n${INGESTED_DOCUMENT_GUIDANCE}\n<attached_sources>\n${JSON.stringify(sources)}\n</attached_sources>`;
         }
-        syncMsg(true);
-        this.persist();
-        this.focusArtifact(targetChatId, assistantMessage.id, agentResult.artifact);
-      } else {
-        await streamAssistantReply({
+
+        const outboundMessages = roleplayRequest?.messages ?? buildOutboundMessages({ messages: requestMessages, systemPrompt });
+        if (!useToolLoop && activeBackendMode === 'local' && isElectron() && !roleplayRequest) {
+          try {
+            const electronApi = getElectronApi();
+            if (electronApi) {
+              await applyLocalContextBudgetTruncation({
+                backendMode: activeBackendMode,
+                isElectron: true,
+                config: selectedConfig,
+                messages: outboundMessages,
+                invoke: toInvoke(electronApi),
+                preserveDocuments,
+                onTruncated: (removed) => {
+                  toastStore.info(`Context window full. ${removed} older message(s) truncated to fit.`, 4000);
+                }
+              });
+            }
+          } catch {
+            // Silently continue if budget check fails
+          }
+        }
+
+        if (useToolLoop || normalizeSpace(activeContextMode) === 'home') {
+          return {
+            kind: 'agent',
+            isDesign: activeContextMode === 'design',
+            plan,
+            requestedSearchProvider: selectedConfig.search?.provider || 'aggregator',
+            agentDebugLogs: !!selectedConfig.ui?.agent_debug_logs,
+            abortAfterAgent: true,
+            buildArgs: ({ signal, sync: syncTurn }) => ({
+              chatId: targetChatId,
+              designContext,
+              ...this.homeRuntimeArgs(targetChat, assistantMessage, targetChat.messages.filter((entry) => entry.id !== assistantMessage.id).map((entry) => entry.id)),
+              systemPrompt,
+              messages: requestMessages,
+              rawPrompt: content,
+              conversationContext: searchConversationContext || (ragContext ? `<documents>\n${ragContext}\n</documents>` : undefined),
+              executionMode: 'sandbox',
+              contextMode: activeContextMode,
+              toolMode: plan.toolMode,
+              noTools: !useToolLoop,
+              agentProfile: plan.agentProfile,
+              searchMode: plan.searchMode,
+              reasoningLevel: activeReasoningLevel,
+              quietActivity: plan.instant,
+              preserveDocumentContext: preserveDocuments,
+              onMessagesInjected: (messages) => {
+                const ids = this.voiceSteering.get(targetChatId);
+                const accepted: ChatMessage[] = [];
+                for (const text of messages) {
+                  const item = targetChat.pendingPrompts?.find(item => ids?.has(item.id) && item.content === text);
+                  if (!item) continue;
+                  ids!.delete(item.id);
+                  targetChat.pendingPrompts = targetChat.pendingPrompts!.filter(entry => entry.id !== item.id);
+                  accepted.push({ id: createId('msg'), role: 'user', content: text, createdAt: Date.now(), done: true, status: 'idle' });
+                }
+                if (!accepted.length) return;
+                const index = targetChat.messages.findIndex(message => message.id === assistantMessage.id);
+                if (index < 0) return;
+                const prefix: ChatMessage[] = assistantMessage.content.trim()
+                  ? [{ ...assistantMessage, id: createId('msg'), done: true, status: 'idle', metadata: { ...assistantMessage.metadata, codeSpend: undefined }, agentSteps: undefined }]
+                  : [];
+                assistantMessage.content = ''; assistantMessage.reasoning = '';
+                targetChat.messages.splice(index, 0, ...prefix, ...accepted);
+                syncTurn(true); this.persist();
+              },
+              ...plan.budget,
+              signal
+            })
+          };
+        }
+
+        return {
+          kind: 'stream',
           config: this.configForChat(targetChat),
           messages: outboundMessages,
-          signal: controller.signal,
           apiKey: activeProviderApiKey,
           reasoningLevel: activeReasoningLevel,
           sampling: roleplayRequest?.sampling ?? turn.sampling,
           stop: turn.stop,
-          extraParams: roleplayRequest?.extraParams,
-          onChunk: (value) => {
-            reasoningTimer.markStopped();
-            turn.record(value);
-            appendStreamingContent(
-              assistantMessage,
-              value,
-              assistantMessage.reasoning || '',
-              assistantMessage.metadata,
-              turn.sanitize
-            );
-            if (assistantMessage.agentSteps?.length) {
-              assistantMessage.agentSteps = assistantMessage.agentSteps.map((step, index, all) => {
-                if (index === all.length - 1) {
-                  return { ...step, status: 'running', detail: 'Streaming response' };
-                }
-                return step;
-              });
-            }
-            syncMsg(); // ← CRITICAL: replace array slot so Svelte 5 sees the new object
-          },
-          onReasoning: (value) => {
-            reasoningTimer.markStarted();
-            assistantMessage.reasoning = appendStreamingReasoning(assistantMessage.reasoning || '', value);
-            updateStreamingVersion(
-              assistantMessage,
-              assistantMessage.content,
-              assistantMessage.reasoning,
-              assistantMessage.metadata
-            );
-            syncMsg();
-          },
-          onUsage: (usage) => {
-            exactUsage = usage || exactUsage;
-          }
-        });
-      }
-
-      assistantMessage.done = true;
-      turn.finalize(assistantMessage);
-      // Only set status to 'idle' if it wasn't already set to 'error'
-      if (assistantMessage.status !== 'error') {
-        assistantMessage.status = 'idle';
-      }
-      const timing = (Date.now() - startTime) / 1000;
-      assistantMessage.metadata = finalizeAssistantMetadata({
-        existing: assistantMessage.metadata,
-        modelName: activeModelLabel,
-        backendMode: activeBackendMode,
-        usage: exactUsage,
-        elapsedSeconds: timing,
-        totalElapsedSeconds: timing,
-        reasoningElapsedSeconds: reasoningTimer.elapsedSeconds()
-      });
-      assistantMessage.model = activeModelLabel;
-      snapshotVersion();
-      if (assistantMessage.agentSteps?.length) {
-        assistantMessage.agentSteps = settleAgentSteps(assistantMessage.agentSteps, assistantMessage.metadata);
-      }
-
-      const responseSources = (assistantMessage.sources || []) as SearchResult[];
-      if (responseSources.length > 0) {
-        this.queueWebAnswerRagIngest({
-          chatId: targetChatId,
-          query: content,
-          answer: assistantMessage.content,
-          sources: responseSources
-        });
-      }
-
-      syncMsg(true);
-      this.persist();
-
-      if (!this.voiceModeActive && selectedConfig.tts?.enable_voice_output && selectedConfig.tts?.auto_play_voice && assistantMessage.content
-        && (activeContextMode !== 'roleplay' || roleplayStore.settings(targetChat).voicePlayback !== false)) {
-        try {
-          if (activeContextMode === 'roleplay') ttsStore.speakSequence(messageSpeechParts(roleplayStore.resolveMessage(targetChat, assistantMessage), charactersStore.characters, this.config));
-          else void ttsStore.speak(assistantMessage.id, assistantMessage.content, this.config);
-        } catch {
-          // ignore TTS auto-play failures
-        }
-      }
-
-      // Auto-generate a smarter chat title after the first exchange
-      void this.generateChatTitle(targetChatId, activeProviderApiKey);
-    } catch (error) {
-      const errorMsg = toErrorMessage(error) || 'Request failed';
-      const aborted = controller.signal.aborted || isAbortLikeError(errorMsg);
-      // Don't show toast for user-initiated abort
-      if (!aborted) {
-        toastStore.error(errorMsg.length > 80 ? errorMsg.slice(0, 80) + '…' : errorMsg);
-      }
-      const currentInChat = this.findChat(targetChatId)?.messages.find((m) => m.id === assistantMessage.id);
-      if (aborted && currentInChat) {
-        if ((currentInChat.content || '').trim()) assistantMessage.content = currentInChat.content;
-        if (currentInChat.agentSteps?.length) assistantMessage.agentSteps = currentInChat.agentSteps;
-      }
-      assistantMessage.done = true;
-      assistantMessage.status = aborted ? 'idle' : 'error';
-      assistantMessage.content = aborted
-        ? ((assistantMessage.content || '').trim() ? assistantMessage.content : 'Stopped by user.')
-        : (assistantMessage.content || errorMsg);
-      const timing = (Date.now() - startTime) / 1000;
-      assistantMessage.metadata = finalizeAssistantMetadata({
-        existing: assistantMessage.metadata,
-        modelName: activeModelLabel,
-        backendMode: activeBackendMode,
-        elapsedSeconds: timing,
-        totalElapsedSeconds: timing,
-        reasoningElapsedSeconds: reasoningTimer.elapsedSeconds(),
-        overrides: aborted ? {} : { error: true, errorMessage: errorMsg }
-      });
-      assistantMessage.model = activeModelLabel;
-      snapshotVersion();
-      if (assistantMessage.agentSteps?.length) {
-        if (aborted) {
-          markAgentStopped(assistantMessage);
-        } else {
-          assistantMessage.agentSteps = assistantMessage.agentSteps.map((step, index, all) => {
-            if (index === all.length - 1) return { ...step, status: 'error', detail: assistantMessage.content };
-            return step;
+          extraParams: roleplayRequest?.extraParams
+        };
+      },
+      onSuccess: () => {
+        const responseSources = (assistantMessage.sources || []) as SearchResult[];
+        if (responseSources.length > 0) {
+          this.queueWebAnswerRagIngest({
+            chatId: targetChatId,
+            query: content,
+            answer: assistantMessage.content,
+            sources: responseSources
           });
         }
+        if (!this.voiceModeActive && selectedConfig.tts?.enable_voice_output && selectedConfig.tts?.auto_play_voice && assistantMessage.content
+          && (activeContextMode !== 'roleplay' || roleplayStore.settings(targetChat).voicePlayback !== false)) {
+          try {
+            if (activeContextMode === 'roleplay') ttsStore.speakSequence(messageSpeechParts(roleplayStore.resolveMessage(targetChat, assistantMessage), charactersStore.characters, this.config));
+            else void ttsStore.speak(assistantMessage.id, assistantMessage.content, this.config);
+          } catch {
+            // ignore TTS auto-play failures
+          }
+        }
+        void this.generateChatTitle(targetChatId, activeProviderApiKey);
+      },
+      onError: () => {
+        if (userMessage) userMessage.attachments = sentAttachments;
+      },
+      onFinally: ({ controller }) => {
+        const unsentVoice = this.voiceSteering.get(targetChatId);
+        for (const item of this.findChat(targetChatId)?.pendingPrompts ?? []) if (unsentVoice?.has(item.id)) item.sending = false;
+        this.voiceSteering.delete(targetChatId);
+        const continueQueued = this.queuedContinuation.delete(targetChatId) || (!controller.signal.aborted && assistantMessage.status !== 'error');
+        if (continueQueued && this.findChat(targetChatId)?.pendingPrompts?.length) {
+          void this.startNextQueuedPrompt(targetChatId);
+        } else {
+          roleplayStore.continueAuto(targetChatId, controller.signal.aborted || assistantMessage.status === 'error');
+          roleplayStore.afterTurn(targetChatId, controller.signal.aborted || assistantMessage.status === 'error');
+        }
       }
-      this.error = aborted ? null : assistantMessage.content;
-      if (turn.sanitize && (!aborted || assistantMessage.content !== 'Stopped by user.')) {
-        assistantMessage.content = turn.sanitize(assistantMessage.content);
-      }
-      if (userMessage) userMessage.attachments = sentAttachments;
-      syncMsg(true);
-      this.persist();
-    } finally {
-      // The trailing timer must not outlive the run — it would write to a message
-      // the user may have already stopped.
-      cancelTrailingSync();
-      this.endGenerationRun(targetChatId, controller);
-      const unsentVoice = this.voiceSteering.get(targetChatId);
-      for (const item of this.findChat(targetChatId)?.pendingPrompts ?? []) if (unsentVoice?.has(item.id)) item.sending = false;
-      this.voiceSteering.delete(targetChatId);
-      // Group auto mode: queue the next character turn once this one settles.
-      // A stopped or failed turn ends the chain instead of retrying.
-      const continueQueued = this.queuedContinuation.delete(targetChatId) || (!controller.signal.aborted && assistantMessage.status !== 'error');
-      if (continueQueued && this.findChat(targetChatId)?.pendingPrompts?.length) {
-        void this.startNextQueuedPrompt(targetChatId);
-      } else {
-        roleplayStore.continueAuto(targetChatId, controller.signal.aborted || assistantMessage.status === 'error');
-        roleplayStore.afterTurn(targetChatId, controller.signal.aborted || assistantMessage.status === 'error');
-      }
-    }
+    });
   }
 
   /** Show a run's artifact when its chat is on screen and the studio follows this message. */
@@ -3331,11 +2571,6 @@ class AppStore {
     const plan = planHomeAgentRun({ composerMode: message.mode, searchMode: message.searchMode, request: homeToolRequest(regenPrompt, getSpaceForSession(chat)) });
 
     this.error = null;
-    const controller = new AbortController();
-    const startTime = Date.now();
-    const reasoningTimer = startReasoningTimer();
-    let exactUsage: CompletionResult['usage'] = null;
-
     const nextVersion: MessageVersion = {
       content: '',
       reasoning: '',
@@ -3346,13 +2581,6 @@ class AppStore {
         ...executionMetadata(activeBackendMode)
       }
     };
-    /** Keep the new version in step with what the message shows. */
-    const mirrorVersion = () => {
-      nextVersion.content = message.content;
-      nextVersion.reasoning = message.reasoning;
-      const { currentActivity, activityLabel: label, codeTimeline } = message.metadata || {};
-      if (currentActivity) nextVersion.metadata = { ...(nextVersion.metadata || {}), currentActivity, activityLabel: label, codeTimeline };
-    };
 
     // A reply that never recorded its first version keeps it as version 1.
     if (!message.versions?.length && message.content) {
@@ -3360,8 +2588,6 @@ class AppStore {
     }
     message.versions = [...(message.versions || []), nextVersion];
     message.activeVersion = message.versions.length - 1;
-    // Same optimistic ack as a fresh send: intent confirmation now, replaced
-    // wholesale by the engine's first content.
     message.content = agentic ? optimisticAck(regenPrompt, message.mode === 'agent' ? 'work' : 'lookup') : '';
     message.reasoning = '';
     message.done = false;
@@ -3379,7 +2605,9 @@ class AppStore {
         currentActivity: initial.activity,
         activityLabel: activityLabel(initial.activity)
       };
-      mirrorVersion();
+      nextVersion.content = message.content;
+      nextVersion.reasoning = message.reasoning;
+      nextVersion.metadata = { ...(nextVersion.metadata || {}), currentActivity: initial.activity, activityLabel: activityLabel(initial.activity), codeTimeline: undefined };
       message.artifact = null;
       message.artifacts = [];
       if (this.currentArtifactMessageId === message.id) {
@@ -3388,176 +2616,79 @@ class AppStore {
     }
     this.touchChats();
 
-    /*
-     * The run begins inside the `try` so the `finally` that ends it always runs.
-     * `persist()` writes localStorage synchronously; a quota error before the
-     * `try` recorded a run that could never be ended.
-     */
-    try {
-      this.beginGenerationRun(targetChatId, {
-        controller,
-        messageId: message.id,
-        backendMode: activeBackendMode,
-        mode: (message.mode === 'instant' ? 'instant' : message.mode === 'agent' ? 'agent' : 'chat'),
-        startedAt: Date.now()
-      });
-      this.persist();
-      const systemPrompt = this.buildSystemPromptForMode({
-        backendMode: activeBackendMode,
-        providerPrompt: activeProvider?.system_prompt,
-        chat,
-        speakerId: turn.speakerId,
-        roleplaySnapshot: { roleplay: turn.snapshot }
-      });
-      const reasoningLevel = chat.contextMode === 'roleplay'
-        ? this.roleplayThinking(chat, activeBackendMode)
-        : (chat.reasoningLevel ?? this.reasoningLevel);
-      if (agentic) {
-        const agentResult = await (getSpaceForSession(chat) === 'design' ? runDesignTask : runAgentTask)({
-          chatId: targetChatId,
-          ...this.homeRuntimeArgs(chat, message, chat.messages.slice(0, index).map((entry) => entry.id)),
-          forkIndex: message.metadata?.homeSessionId === chat.homeRuntime?.sessionId && message.metadata?.homeRevision === chat.homeRuntime?.revision ? message.metadata?.homeConversationIndex : undefined,
-          systemPrompt,
-          messages: previousMessages,
-          rawPrompt: regenPrompt,
-          executionMode: 'sandbox',
-          contextMode: getSpaceForSession(chat),
-          toolMode: plan.toolMode,
-          agentProfile: plan.agentProfile,
-          searchMode: plan.searchMode,
-          quietActivity: plan.instant,
-          conversationContext: this.buildSearchConversationContext(message.id, targetChatId),
-          reasoningLevel,
-          ...plan.budget,
-          signal: controller.signal,
-          ...homeAgentCallbacks({
-            message,
-            quiet: plan.instant,
-            sync: () => {
-              mirrorVersion();
-              this.touchChats();
-            },
-            persist: () => this.persist(),
-            onReasoningStart: () => reasoningTimer.markStarted(),
-            onArtifacts: (latest) => this.focusArtifact(targetChatId, message.id, latest),
-            touch: () => this.touchRun(targetChatId)
-          })
-        });
-        exactUsage = agentResult.usage || exactUsage;
-        markAgentWriting(message);
-        mirrorVersion();
-        this.touchChats();
+    await executeChatTurn(this.chatTurnHost, {
+      chatId: targetChatId,
+      message,
+      targetVersion: nextVersion,
+      backendMode: activeBackendMode,
+      runMode: message.mode === 'instant' ? 'instant' : message.mode === 'agent' ? 'agent' : 'chat',
+      modelLabel: activeModelLabel,
+      turn,
+      prepare: async () => {
         this.persist();
-        applyHomeAgentResult(message, agentResult, {
-          modelName: activeModelLabel,
+        const systemPrompt = this.buildSystemPromptForMode({
           backendMode: activeBackendMode,
-          searchMode: plan.searchMode,
-          requestedProvider: this.config.search?.provider || 'aggregator'
+          providerPrompt: activeProvider?.system_prompt,
+          chat,
+          speakerId: turn.speakerId,
+          roleplaySnapshot: { roleplay: turn.snapshot }
         });
-        nextVersion.content = message.content;
-        nextVersion.reasoning = message.reasoning;
-        nextVersion.metadata = message.metadata;
-        this.focusArtifact(targetChatId, message.id, agentResult.artifact);
-        this.touchChats();
-        this.persist();
-      } else {
-        // Regenerate serves every chat: only a roleplay turn composes its own request.
+        const reasoningLevel = chat.contextMode === 'roleplay'
+          ? this.roleplayThinking(chat, activeBackendMode)
+          : (chat.reasoningLevel ?? this.reasoningLevel);
+
+        if (agentic) {
+          return {
+            kind: 'agent',
+            isDesign: getSpaceForSession(chat) === 'design',
+            plan,
+            requestedSearchProvider: this.config.search?.provider || 'aggregator',
+            buildArgs: ({ signal }) => ({
+              chatId: targetChatId,
+              ...this.homeRuntimeArgs(chat, message, chat.messages.slice(0, index).map((entry) => entry.id)),
+              forkIndex: message.metadata?.homeSessionId === chat.homeRuntime?.sessionId && message.metadata?.homeRevision === chat.homeRuntime?.revision ? message.metadata?.homeConversationIndex : undefined,
+              systemPrompt,
+              messages: previousMessages,
+              rawPrompt: regenPrompt,
+              executionMode: 'sandbox',
+              contextMode: getSpaceForSession(chat),
+              toolMode: plan.toolMode,
+              agentProfile: plan.agentProfile,
+              searchMode: plan.searchMode,
+              quietActivity: plan.instant,
+              conversationContext: this.buildSearchConversationContext(message.id, targetChatId),
+              reasoningLevel,
+              ...plan.budget,
+              signal
+            })
+          };
+        }
+
         const request = chat.contextMode === 'roleplay'
           ? await this.roleplayRequest(turn, chat, previousMessages, activeBackendMode)
           : { messages: turn.decorate(buildOutboundMessages({ messages: previousMessages, systemPrompt })), sampling: turn.sampling, extraParams: undefined };
-        await streamAssistantReply({
+        return {
+          kind: 'stream',
           config: this.configForChat(chat),
           messages: request.messages,
-          signal: controller.signal,
           apiKey: activeProvider?.api_key,
           reasoningLevel,
           sampling: request.sampling,
           stop: turn.stop,
-          extraParams: request.extraParams,
-          onChunk: (value) => {
-            reasoningTimer.markStopped();
-            turn.record(value);
-            const nextContent = nextVersion.content + value;
-            nextVersion.content = turn.sanitize ? turn.sanitize(nextContent) : nextContent;
-            message.content = nextVersion.content;
-            nextVersion.reasoning = message.reasoning;
-            this.touchChats();
-          },
-          onReasoning: (value) => {
-            reasoningTimer.markStarted();
-            nextVersion.reasoning = appendStreamingReasoning(nextVersion.reasoning || '', value);
-            message.reasoning = nextVersion.reasoning;
-            this.touchChats();
-          },
-          onUsage: (usage) => {
-            exactUsage = usage || exactUsage;
+          extraParams: request.extraParams
+        };
+      },
+      onSuccess: async () => {
+        if (message.mode === 'slides') {
+          try {
+            const slides = await parseSlidesFromMarkdown(nextVersion.content);
+            message.slides = slides.length ? slides : [];
+          } catch {
+            message.slides = [];
           }
-        });
-      }
-
-      const timing = (Date.now() - startTime) / 1000;
-      nextVersion.metadata = finalizeAssistantMetadata({
-        existing: nextVersion.metadata,
-        modelName: activeModelLabel,
-        backendMode: activeBackendMode,
-        usage: exactUsage,
-        elapsedSeconds: timing,
-        totalElapsedSeconds: timing,
-        reasoningElapsedSeconds: reasoningTimer.elapsedSeconds()
-      });
-      message.content = nextVersion.content;
-      message.metadata = nextVersion.metadata;
-      turn.finalize(message);
-      nextVersion.content = message.content;
-      nextVersion.metadata = message.metadata;
-      message.model = activeModelLabel;
-      message.done = true;
-      // Only set status to 'idle' if the agent result didn't already set 'error'
-      // (it mutates the message, so TS still sees the 'streaming' assignment).
-      if ((message.status as ChatMessage['status']) !== 'error') {
-        message.status = 'idle';
-      }
-      if (message.mode === 'slides') {
-        try {
-          const slides = await parseSlidesFromMarkdown(nextVersion.content);
-          message.slides = slides.length ? slides : [];
-        } catch {
-          message.slides = [];
         }
       }
-      if (message.agentSteps?.length) {
-        message.agentSteps = settleAgentSteps(message.agentSteps, message.metadata);
-      }
-      this.touchChats();
-      this.persist();
-    } catch (error) {
-      const timing = (Date.now() - startTime) / 1000;
-      const failure = toErrorMessage(error) || 'Request failed';
-      const aborted = isAbortLikeError(failure);
-      nextVersion.content = aborted ? (nextVersion.content || '') : (nextVersion.content || failure);
-      nextVersion.metadata = finalizeAssistantMetadata({
-        existing: nextVersion.metadata,
-        modelName: activeModelLabel,
-        backendMode: activeBackendMode,
-        elapsedSeconds: timing,
-        totalElapsedSeconds: timing,
-        reasoningElapsedSeconds: reasoningTimer.elapsedSeconds(),
-        overrides: aborted ? {} : { error: true, errorMessage: failure }
-      });
-      message.content = nextVersion.content;
-      message.reasoning = nextVersion.reasoning || '';
-      message.metadata = nextVersion.metadata;
-      message.done = true;
-      message.status = aborted ? 'idle' : 'error';
-      this.error = aborted ? null : failure;
-      if (aborted && message.agentSteps?.length) {
-        markAgentStopped(message);
-      }
-      this.touchChats();
-      this.persist();
-    } finally {
-      this.endGenerationRun(targetChatId, controller);
-    }
+    });
   }
 
   setMessageActiveVersion(messageId: string, direction: -1 | 1) {
@@ -3792,3 +2923,9 @@ class AppStore {
 
 export const appStore = new AppStore();
 roleplayStore.bind(appStore);
+registerHomeToolDeps(createHomeToolDeps({
+  getChats: () => appStore.chats,
+  getCurrentChatId: () => appStore.currentChatId,
+  getPendingAttachments: () => appStore.pendingAttachments,
+  getConfig: () => appStore.config
+}));

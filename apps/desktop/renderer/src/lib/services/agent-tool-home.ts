@@ -25,6 +25,16 @@ export interface HomeToolDeps {
   readIngested?: (chatId: string, docId: string) => Promise<{ text: string; file_type: string; warning?: string }>;
 }
 
+let defaultDepsFactory: (() => Promise<HomeToolDeps>) | null = null;
+
+/**
+ * Registers the app-wired dependency factory from the composition root so
+ * `agent-tool-home.ts` stays a leaf with zero imports of the store layer.
+ */
+export function registerHomeToolDeps(factory: () => Promise<HomeToolDeps>): void {
+  defaultDepsFactory = factory;
+}
+
 type Source = { name: string; type: string; bytes: ArrayBuffer; ocrText?: string; base64?: string; docId?: string };
 
 type Want = 'document' | 'image' | 'audio';
@@ -233,7 +243,8 @@ export async function runHomeTool(name: string, args: Record<string, unknown>, c
         }
       }
     }
-    const d = deps ?? (await (await import('./agent-tool-home-deps')).defaultDeps());
+    const d = deps ?? (defaultDepsFactory ? await defaultDepsFactory() : null);
+    if (!d) throw new Error('Home tool dependencies have not been registered.');
     switch (name) {
       case 'read_document': {
         const doc = await readDocument(args, ctx, d);

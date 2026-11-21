@@ -5,22 +5,6 @@ import { DOMAIN_TOOL_DEFS } from '$shared/domains';
 import { filterEnabledTools } from '$lib/services/agent-tool-registry';
 import { getAllArtifacts, getEnabledArtifactIds } from '$lib/services/artifact-registry';
 
-/** Pi-inspired coding tools (Agente code profile) + web + diagnostics. */
-export const CODE_AGENT_TOOL_NAMES = new Set([
-  'read_file',
-  'write_file',
-  'edit_file',
-  'delete_file',
-  'list_files',
-  'search_files',
-  'bash',
-  'web_search',
-  'fetch_url',
-  'query_knowledge',
-  'get_diagnostics',
-  ...DOMAIN_TOOL_DEFS.map(def => def.name)
-]);
-
 /** Simple Chat Agent: research + calc + sandbox files (no host bash). */
 export const CHAT_AGENT_TOOL_NAMES = new Set([
   'web_search',
@@ -495,9 +479,6 @@ function buildToolDefinitions(
     },
   ];
 
-  if (agentProfile === 'code') {
-    return tools.filter((tool) => CODE_AGENT_TOOL_NAMES.has(tool.function.name));
-  }
   if (agentProfile === 'chat') {
     // Chat agent: no host bash/edit_file/delete_file/diagnostics
     return tools.filter((tool) => CHAT_AGENT_TOOL_NAMES.has(tool.function.name));

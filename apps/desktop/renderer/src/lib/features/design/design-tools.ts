@@ -4,7 +4,7 @@
  * the same inlined document the canvas shows and have main render it in the
  * offline guest. Nothing here touches a path itself.
  */
-import type { AgentTool, ToolResult } from '$shared/agent-core/types';
+import type { AgentTool, CoreToolResult as ToolResult } from '$shared/agent-core/types';
 import {
   DESIGN_BORROWED_TOOLS, DESIGN_ENTRY, DESIGN_RESEARCH_TOOL_SPECS, DESIGN_TOOL_SPECS,
   type DesignFiles, type DesignImageResult, type DesignReferenceResult, type DesignRenderRequest, type DesignRenderResult, type DesignToolResult

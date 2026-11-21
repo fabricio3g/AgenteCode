@@ -1,5 +1,6 @@
 import type { SearchResult } from '$lib/types/bridge';
 import type { SearchMeta } from '$lib/types/chat';
+import { domainLabel as sharedDomainLabel } from '$lib/ui/message-utils';
 
 export type ResearchExportKind =
   | 'citations'
@@ -35,13 +36,7 @@ function clean(value: unknown, max = 500): string {
     .slice(0, max);
 }
 
-function domainLabel(url: string): string {
-  try {
-    return new URL(url).hostname.replace(/^www\./, '');
-  } catch {
-    return '';
-  }
-}
+const domainLabel = (url: string): string => sharedDomainLabel(url, '');
 
 function slugKey(title: string, index: number): string {
   const base = clean(title, 48)
