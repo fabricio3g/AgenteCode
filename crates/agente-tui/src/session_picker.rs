@@ -163,15 +163,14 @@ fn render_session_list(frame: &mut Frame, folder_area: Rect, list_area: Rect, st
         );
     }
 
-    // Read from state, not the filesystem: this runs on every paint while the
-    // picker is open, and re-parsing the whole session index per frame also
-    // made the harness scenario render whatever sessions happened to exist on
-    // the machine running the tests. `refresh_recent_sessions` keeps it current.
+    // Read from `state.picker.sessions`, not the filesystem: this runs on
+    // every paint while the picker is open, and both the renderer and the key
+    // handler must see the exact same unfiltered list (`picker.open()` loads
+    // it once, and delete updates it in place).
     let folder = picker.session_picker_folder_input.trim();
     let query = picker.session_picker_query.to_lowercase();
-    let filtered: Vec<&session::SessionMeta> = state
-        .ui
-        .recent_sessions
+    let filtered: Vec<&session::SessionMeta> = picker
+        .sessions
         .iter()
         .filter(|meta| session_matches(meta, folder, &query))
         .collect();
@@ -230,10 +229,11 @@ fn render_session_list(frame: &mut Frame, folder_area: Rect, list_area: Rect, st
     );
 }
 
-fn session_matches(meta: &session::SessionMeta, folder: &str, query: &str) -> bool {
+pub(crate) fn session_matches(meta: &session::SessionMeta, folder: &str, query: &str) -> bool {
     let matches_folder = folder.is_empty() || meta.project_dir.contains(folder);
     let matches_query = query.is_empty()
         || meta.title.to_lowercase().contains(query)
+        || meta.first_prompt.to_lowercase().contains(query)
         || meta.project_dir.to_lowercase().contains(query)
         || meta.provider.to_lowercase().contains(query)
         || meta.model.to_lowercase().contains(query);

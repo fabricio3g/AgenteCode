@@ -166,9 +166,12 @@ impl AppState {
         self.agent.state = agente_core::types::AgentState::Idle;
         self.agent.clear_stream_buffers();
         self.agent.clear_approvals();
+        self.agent.reclaim_inbox();
         self.agent.message_queue.clear();
         self.agent.steering_queue.clear();
         self.agent.subagents.clear();
+        self.agent.board = None;
+        self.agent.context = agent::ContextState::default();
         self.agent.total_tokens = 0;
         self.agent.context_measured = false;
         self.agent.last_turn_prompt_tokens = 0;
@@ -314,6 +317,7 @@ impl AppState {
         self.agent.state = agente_core::types::AgentState::Idle;
         self.agent.clear_stream_buffers();
         self.agent.clear_approvals();
+        self.agent.reclaim_inbox();
         self.agent.message_queue.clear();
         self.agent.steering_queue.clear();
         self.agent.mode = mode;
@@ -322,6 +326,8 @@ impl AppState {
         self.agent.thinking_level = thinking_level;
         self.agent.shared_permission_engine = permission_engine;
         self.agent.subagents.clear();
+        self.agent.board = None;
+        self.agent.context = agent::ContextState::default();
         self.agent.total_tokens = 0;
         self.agent.context_measured = false;
         self.agent.last_turn_prompt_tokens = 0;
@@ -629,6 +635,7 @@ impl AppState {
     /// Load session data
     pub fn load_from_session(&mut self, data: &agente_core::session::SessionData) {
         self.session.load_from_session(data);
+        self.refresh_board();
         self.ui.clear_chat_render_cache();
         if !data.meta.provider.is_empty() {
             self.config.current_provider = data.meta.provider.clone();
@@ -1104,6 +1111,14 @@ mod tests {
             .plan_review
             .open_review("old-plan.md".into(), "Old".into(), "body".into());
         state.agent.total_tokens = 99;
+        state
+            .agent
+            .record_budget(50_000, 100_000, 128_000, 2_000, 500, true);
+        let mut board = agente_core::swarm::Board::default();
+        board.enabled = true;
+        state.agent.board = Some(board);
+        state.agent.queue_message(QueuedMessage::new("pending"));
+        state.agent.send_queue_now();
         let old_id = state.session.session_id;
 
         assert!(state.can_replace_session());
@@ -1117,6 +1132,9 @@ mod tests {
         assert!(state.todo.get_all().is_empty());
         assert!(state.plan_review.pending.is_none());
         assert_eq!(state.agent.total_tokens, 0);
+        assert_eq!(state.agent.context, agent::ContextState::default());
+        assert!(state.agent.board.is_none());
+        assert!(state.agent.user_inbox.lock().is_empty());
         // User-level choices survive the reset.
         assert_eq!(state.config.current_provider, "provider-one");
         assert_eq!(state.config.current_model, "model-one");
@@ -1153,6 +1171,14 @@ mod tests {
             end_col: 1,
         });
         state.agent.total_tokens = 99;
+        state
+            .agent
+            .record_budget(40_000, 90_000, 128_000, 1_500, 400, true);
+        let mut board = agente_core::swarm::Board::default();
+        board.enabled = true;
+        state.agent.board = Some(board);
+        state.agent.queue_message(QueuedMessage::new("pending"));
+        state.agent.send_queue_now();
         state.agent.last_response_duration = Some(12.0);
         state
             .plan_review
@@ -1173,6 +1199,9 @@ mod tests {
         assert!(!state.input.show_at_picker);
         assert!(state.ui.diff_peek.is_none() && state.ui.selection.is_none());
         assert_eq!(state.agent.total_tokens, 0);
+        assert_eq!(state.agent.context, agent::ContextState::default());
+        assert!(state.agent.board.is_none());
+        assert!(state.agent.user_inbox.lock().is_empty());
         assert!(state.agent.last_response_duration.is_none());
         assert_eq!(state.agent.mode, AgentMode::Plan);
         assert_eq!(

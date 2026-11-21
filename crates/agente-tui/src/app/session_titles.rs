@@ -94,6 +94,15 @@ impl App {
                         .iter_mut()
                         .find(|meta| meta.session_id == event.session_id)
                     {
+                        meta.title = title.clone();
+                    }
+                    if let Some(meta) = self
+                        .state
+                        .picker
+                        .sessions
+                        .iter_mut()
+                        .find(|meta| meta.session_id == event.session_id)
+                    {
                         meta.title = title;
                     }
                     self.state.ui.needs_render = true;

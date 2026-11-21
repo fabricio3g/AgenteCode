@@ -194,6 +194,8 @@ pub struct StreamMarkdownCache {
     pub block_lines: Vec<String>,
     /// Language of the fence currently open (`""` = bare fence).
     pub fence_lang: Option<String>,
+    /// Number of opening backticks for the active fence (at least 3).
+    pub fence_ticks: usize,
     /// First bytes of the settled prefix (corruption guard).
     pub head: [u8; 8],
     /// Last bytes of the settled prefix (corruption guard).
@@ -217,6 +219,7 @@ impl StreamMarkdownCache {
     fn flush_block(&mut self, width: usize) {
         if self.block_lines.is_empty() {
             self.fence_lang = None;
+            self.fence_ticks = 0;
             return;
         }
         // Preserve source newlines exactly: a blank source line is a blank
@@ -230,6 +233,7 @@ impl StreamMarkdownCache {
         }
         self.block_lines.clear();
         self.fence_lang = None;
+        self.fence_ticks = 0;
     }
 
     /// Ingest one newline-terminated source line into the checkpoint model.
@@ -239,8 +243,11 @@ impl StreamMarkdownCache {
     /// correctly INSIDE a block via the markdown pipeline), a fence opening
     /// flushes whatever preceded it. Everything else accumulates.
     pub fn ingest_line(&mut self, line: &str, width: usize) {
+        let raw_len = line.len();
+        let line = line.trim_end_matches('\r');
         if self.fence_lang.is_some() {
-            let closing = line.starts_with("```");
+            let ticks = line.bytes().take_while(|&b| b == b'`').count();
+            let closing = ticks >= self.fence_ticks.max(3) && line[ticks..].trim().is_empty();
             self.block_lines.push(line.to_string());
             if closing {
                 self.flush_block(width);
@@ -255,9 +262,11 @@ impl StreamMarkdownCache {
             return;
         }
         if line.starts_with("```") {
+            let ticks = line.bytes().take_while(|&b| b == b'`').count();
             self.flush_block(width);
-            self.consumed = self.settled.saturating_sub(line.len() + 1);
-            self.fence_lang = Some(line.trim_start_matches('`').trim().to_string());
+            self.consumed = self.settled.saturating_sub(raw_len + 1);
+            self.fence_lang = Some(line[ticks..].trim().to_string());
+            self.fence_ticks = ticks;
             self.block_lines.push(line.to_string());
             return;
         }
@@ -440,6 +449,9 @@ pub struct UiState {
     pub last_stream_paint_at: Option<std::time::Instant>,
     /// Mouse down origin for drag threshold
     pub mouse_down: Option<(u16, u16)>,
+    /// Modal owner when the left mouse button was pressed (guards against a
+    /// modal popping up mid-click and receiving the release).
+    pub mouse_down_owner: Option<super::ModalOwner>,
     /// True once drag exceeds click threshold
     pub drag_selecting: bool,
     /// A Down-arm chrome claim (jump-to-bottom chip) consumed the press: skip
@@ -550,6 +562,7 @@ impl Default for UiState {
             suppress_hover_until_move: false,
             last_stream_paint_at: None,
             mouse_down: None,
+            mouse_down_owner: None,
             drag_selecting: false,
             suppress_click_on_up: false,
             mouse_pos: None,
@@ -795,12 +808,13 @@ impl UiState {
     }
 
     /// Drop all cached chat blocks (session cleared / reloaded / switched).
-    /// Also drops the frame snapshot and the eviction order, which both
-    /// reference block identities.
+    /// Also drops the frame snapshot, the eviction order, and the live
+    /// streaming markdown cache.
     pub fn clear_chat_render_cache(&mut self) {
         self.chat_render_cache.clear();
         self.chat_cache_order.clear();
         self.chat_frame_snapshot = None;
+        self.stream_markdown_cache.reset(0);
     }
 
     /// One cached block became stale (entry edited in place). The block must
@@ -870,6 +884,7 @@ impl UiState {
         self.suppress_hover_until_move = false;
         self.last_stream_paint_at = None;
         self.mouse_down = None;
+        self.mouse_down_owner = None;
         self.drag_selecting = false;
         self.suppress_click_on_up = false;
         self.selection = None;
@@ -1027,17 +1042,14 @@ impl UiState {
         let indent = lines
             .iter()
             .filter(|l| !l.trim().is_empty())
-            .map(|l| l.len() - l.trim_start().len())
+            .map(|l| l.chars().take_while(|c| c.is_whitespace()).count())
             .min()
             .unwrap_or(0);
         lines
             .iter()
             .map(|l| l.trim_end().chars().skip(indent).collect::<String>())
             .collect::<Vec<_>>()
-            .join(
-                "
-",
-            )
+            .join("\n")
     }
 
     /// Whether a content cell is inside the active selection
@@ -1426,5 +1438,63 @@ mod interaction_state_tests {
             ui.sample_animation_time(origin + std::time::Duration::from_millis(1600));
             assert_eq!(ui.anim_frame, 1600 / 33);
         }
+    }
+
+    #[test]
+    fn stream_markdown_cache_handles_crlf_and_four_backtick_fences() {
+        let mut cache = StreamMarkdownCache {
+            width: 80,
+            ..StreamMarkdownCache::default()
+        };
+        let doc = "intro\r\n````markdown\r\n```rust\r\nfn main() {}\r\n```\r\n````\r\nafter\r\n";
+        while doc.len() > cache.settled {
+            let rest = &doc[cache.settled..];
+            let Some(pos) = rest.find('\n') else {
+                break;
+            };
+            let line = &rest[..pos];
+            cache.settled += pos + 1;
+            cache.ingest_line(line, 80);
+        }
+        assert!(
+            cache.fence_lang.is_none(),
+            "outer 4-backtick fence should close cleanly after CRLF"
+        );
+        let joined = cache.plain.join("\n");
+        assert!(joined.contains("intro"), "{joined}");
+        assert!(
+            joined.contains("```rust"),
+            "inner 3-backtick fence must stay inside the 4-backtick code block: {joined}"
+        );
+        assert!(joined.contains("fn main() {}"), "{joined}");
+
+        let mut ui = UiState {
+            stream_markdown_cache: cache,
+            ..Default::default()
+        };
+        ui.clear_chat_render_cache();
+        assert_eq!(ui.stream_markdown_cache.settled, 0);
+        assert!(ui.stream_markdown_cache.rows.is_empty());
+    }
+
+    #[test]
+    fn cleaned_screen_text_strips_multibyte_whitespace_indent_by_chars() {
+        let ui = UiState {
+            chat_plain_lines: vec![
+                ChatPlainLine {
+                    entry_id: None,
+                    plain: Arc::from("\u{3000}alpha"),
+                },
+                ChatPlainLine {
+                    entry_id: None,
+                    plain: Arc::from("\u{3000}\u{3000}beta"),
+                },
+            ],
+            ..Default::default()
+        };
+        // One \u{3000} is 3 UTF-8 bytes but 1 char; byte-based indent would
+        // skip 3 chars and eat "al" from "alpha".
+        let cleaned = ui.cleaned_screen_text(0, 1, 0, 20);
+        assert_eq!(cleaned, "alpha\n\u{3000}beta");
     }
 }

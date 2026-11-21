@@ -36,4 +36,4 @@ pub(crate) mod widgets;
 // The crate root exposes only what a consumer actually binds to: the `agente`
 // binary runs `App` and `agente --inspect` serves `web_inspector`. Everything
 // else is crate-private, so the `dead_code` lint sees it.
-pub use app::App;
+pub use app::{restore_terminal_best_effort, App};

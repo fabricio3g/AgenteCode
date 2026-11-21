@@ -14,7 +14,10 @@ use ratatui::Frame;
 
 use crate::state::AppState;
 use crate::style;
-use crate::widgets::{centered_panel, footer_hints, modal_card, modal_footer, panel_row, s};
+use crate::widgets::markdown::wrap_line;
+use crate::widgets::{
+    centered_panel, footer_hints, modal_card, modal_footer, panel_row, s, truncate_cells,
+};
 
 const COLUMNS: [(&str, &[CardStatus]); 4] = [
     ("Backlog", &[CardStatus::Backlog]),
@@ -22,15 +25,6 @@ const COLUMNS: [(&str, &[CardStatus]); 4] = [
     ("Review", &[CardStatus::Review]),
     ("Done", &[CardStatus::Done, CardStatus::Failed]),
 ];
-
-fn clip(text: &str, width: usize) -> String {
-    if text.chars().count() <= width {
-        return text.to_string();
-    }
-    let mut out: String = text.chars().take(width.saturating_sub(1)).collect();
-    out.push('…');
-    out
-}
 
 fn card_lines(card: &Card, width: usize) -> [Line<'static>; 2] {
     let (mark, mark_style) = match card.status {
@@ -48,7 +42,7 @@ fn card_lines(card: &Card, width: usize) -> [Line<'static>; 2] {
     let title = Line::from(vec![
         s(mark, mark_style),
         s(
-            clip(
+            truncate_cells(
                 &format!("{} {}", card.id, card.title),
                 width.saturating_sub(2),
             ),
@@ -64,7 +58,10 @@ fn card_lines(card: &Card, width: usize) -> [Line<'static>; 2] {
     }
     let detail = Line::from(vec![
         s("  ", style::dim()),
-        s(clip(&detail, width.saturating_sub(2)), style::dim()),
+        s(
+            truncate_cells(&detail, width.saturating_sub(2)),
+            style::dim(),
+        ),
     ]);
     [title, detail]
 }
@@ -112,6 +109,7 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
     ));
     let body = modal_card(frame, panel, title);
 
+    let mut scrollable = false;
     if let Some(top) = panel_row(body, 1, 1) {
         let inner_width = top.width;
         if board.cards.is_empty() {
@@ -120,12 +118,35 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
             } else {
                 "Swarm mode is off. Press s (or /swarm) to let the agent plan work as a board."
             };
-            frame.render_widget(Paragraph::new(s(hint, style::dim())), top);
+            let hint_area = Rect {
+                height: body.height.saturating_sub(3).max(1),
+                ..top
+            };
+            let wrapped = wrap_line(&Line::from(s(hint, style::dim())), inner_width as usize);
+            frame.render_widget(Paragraph::new(wrapped), hint_area);
         } else {
             frame.render_widget(Paragraph::new(s(tally(board), style::dim())), top);
             let gap = 2u16;
             let column_width = (inner_width.saturating_sub(gap * 3)) / 4;
             let rows = body.height.saturating_sub(6);
+            let rows_usize = rows as usize;
+            // Each card occupies 2 lines + 1 gap row (the final card needs no gap).
+            let full_cap = ((rows_usize + 1) / 3).max(1);
+            let max_col_cards = COLUMNS
+                .iter()
+                .map(|(_, statuses)| {
+                    board
+                        .cards
+                        .iter()
+                        .filter(|card| statuses.contains(&card.status))
+                        .count()
+                })
+                .max()
+                .unwrap_or(0);
+            let max_scroll = max_col_cards.saturating_sub(full_cap);
+            scrollable = max_scroll > 0;
+            let scroll = state.input.board_scroll.min(max_scroll);
+
             for (index, (label, statuses)) in COLUMNS.iter().enumerate() {
                 let x = top.x + index as u16 * (column_width + gap);
                 let cards: Vec<&Card> = board
@@ -141,33 +162,60 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
                     ])),
                     header,
                 );
+                let col_scroll = scroll.min(cards.len().saturating_sub(full_cap));
+                let remaining = &cards[col_scroll..];
                 let mut lines: Vec<Line<'static>> = Vec::new();
-                for card in cards {
-                    lines.extend(card_lines(card, column_width as usize));
-                    lines.push(Line::from(""));
+                if rows_usize > 0 {
+                    let overflow = remaining.len() > full_cap;
+                    let shown = if overflow {
+                        // Reserve 1 row for `+N more`.
+                        let avail = rows_usize.saturating_sub(1);
+                        if avail >= 2 {
+                            ((avail + 1) / 3)
+                                .max(1)
+                                .min(remaining.len().saturating_sub(1))
+                        } else {
+                            0
+                        }
+                    } else {
+                        remaining.len()
+                    };
+                    for (card_idx, card) in remaining.iter().take(shown).enumerate() {
+                        lines.extend(card_lines(card, column_width as usize));
+                        let need_gap =
+                            card_idx + 1 < shown || (overflow && lines.len() + 2 <= rows_usize);
+                        if need_gap {
+                            lines.push(Line::from(""));
+                        }
+                    }
+                    let hidden = remaining.len().saturating_sub(shown);
+                    if hidden > 0 {
+                        let more =
+                            truncate_cells(&format!("  +{hidden} more"), column_width as usize);
+                        lines.push(Line::from(s(more, style::dim())));
+                    }
                 }
                 let list = Rect::new(x, top.y + 3, column_width, rows);
                 frame.render_widget(Paragraph::new(lines), list);
             }
         }
     }
+    let mut hints = vec![(
+        "s",
+        if board.enabled {
+            "swarm off"
+        } else {
+            "swarm on"
+        },
+    )];
+    if scrollable {
+        hints.push(("↑↓", "scroll"));
+    }
+    hints.push(("Esc", "close"));
     modal_footer(
         frame,
         body,
-        footer_hints(
-            &[
-                (
-                    "s",
-                    if board.enabled {
-                        "swarm off"
-                    } else {
-                        "swarm on"
-                    },
-                ),
-                ("Esc", "close"),
-            ],
-            body.width.saturating_sub(2),
-        ),
+        footer_hints(&hints, body.width.saturating_sub(2)),
     );
 }
 
@@ -224,5 +272,64 @@ mod tests {
         let mut state = AppState::new(AppConfig::default(), "/tmp/board".into());
         state.input.show_board = true;
         assert!(draw(&state).contains("Swarm mode is off"));
+
+        // Narrow terminal still wraps the hint cleanly across lines.
+        let mut terminal = Terminal::new(TestBackend::new(40, 12)).unwrap();
+        terminal.draw(|f| render(f, f.area(), &state)).unwrap();
+        let narrow: String = terminal
+            .backend()
+            .buffer()
+            .content
+            .iter()
+            .map(|c| c.symbol())
+            .collect();
+        assert!(narrow.contains("Swarm mode is off"), "{narrow}");
+        assert!(narrow.contains("board."), "wrapped tail visible: {narrow}");
+    }
+
+    #[test]
+    fn overflowing_column_shows_more_indicator_and_scrolls() {
+        let mut board = Board::default();
+        board.enabled = true;
+        let specs: Vec<CardSpec> = (1..=8)
+            .map(|i| {
+                serde_json::from_value(serde_json::json!({
+                    "title": format!("Task {i}"),
+                    "role": "Worker",
+                    "prompt": "p",
+                }))
+                .unwrap()
+            })
+            .collect();
+        board.add(specs).unwrap();
+        let mut state = AppState::new(AppConfig::default(), "/tmp/board-overflow".into());
+        state.agent.board = Some(board);
+        state.input.show_board = true;
+
+        let mut terminal = Terminal::new(TestBackend::new(100, 14)).unwrap();
+        terminal.draw(|f| render(f, f.area(), &state)).unwrap();
+        let first: String = terminal
+            .backend()
+            .buffer()
+            .content
+            .iter()
+            .map(|c| c.symbol())
+            .collect();
+        assert!(first.contains("more"), "overflow indicator shown: {first}");
+        assert!(first.contains("c1 Task 1"), "{first}");
+
+        state.input.board_scroll = 10;
+        terminal.draw(|f| render(f, f.area(), &state)).unwrap();
+        let scrolled: String = terminal
+            .backend()
+            .buffer()
+            .content
+            .iter()
+            .map(|c| c.symbol())
+            .collect();
+        assert!(
+            scrolled.contains("c8 Task 8"),
+            "scrolling reaches bottom cards: {scrolled}"
+        );
     }
 }

@@ -208,6 +208,7 @@ impl App {
             Command::Board => {
                 self.state.refresh_board();
                 self.state.input.show_board = true;
+                self.state.input.board_scroll = 0;
                 self.state.ui.needs_render = true;
             }
             Command::SubagentModels => {
@@ -223,6 +224,7 @@ impl App {
                 self.state.ui.needs_render = true;
             }
             Command::Doctor => {
+                self.state.input.doctor_checks = crate::doctor::run_diagnostics(&self.state);
                 self.state.input.show_doctor = true;
                 self.state.input.doctor_scroll = 0;
                 self.state.ui.needs_render = true;
@@ -357,6 +359,7 @@ impl App {
                 let title = self.state.session.title.clone();
                 // Keep the original resumable, then branch in place.
                 self.flush_state_to_disk();
+                self.clear_active_task_ids();
                 self.current_task_id = self.next_task_id();
                 self.state.reset_for_new_session();
                 self.state.session.chat_history = chat;

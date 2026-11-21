@@ -33,9 +33,11 @@ impl App {
     pub(super) fn apply_agent_event(&mut self, task_event: agente_core::agent::AgentTaskEvent) {
         // Discovery events use task_id 0; chat events must match the
         // current turn, otherwise they belong to a stale/canceled task.
-        // Subagent events are exempt: background subagents legitimately
-        // outlive the parent turn that spawned them.
-        let is_subagent_event = matches!(
+        // Subagent and swarm-board events are exempt for earlier turns of
+        // THIS tab: background subagents and board cards legitimately outlive
+        // the parent turn that spawned them, while events from closed tabs or
+        // replaced sessions are rejected by `active_owns`.
+        let is_session_background_event = matches!(
             task_event.event,
             AgentEvent::SubagentStarted { .. }
                 | AgentEvent::SubagentText { .. }
@@ -44,6 +46,7 @@ impl App {
                 | AgentEvent::SubagentToolCallResult { .. }
                 | AgentEvent::SubagentDone { .. }
                 | AgentEvent::SubagentCompletedNotice { .. }
+                | AgentEvent::BoardChanged { .. }
                 | AgentEvent::GenerationProgress { subagent_id: Some(_), .. }
                 // Child-origin effects carry their source, so a late one
                 // from a previous turn is attributed, not confused with
@@ -56,9 +59,13 @@ impl App {
                     ..
                 }
         );
+        let owned_background = is_session_background_event
+            && self
+                .tabs
+                .active_owns(task_event.task_id, self.current_task_id);
         if task_event.task_id != 0
             && task_event.task_id != self.current_task_id
-            && !is_subagent_event
+            && !owned_background
         {
             tracing::debug!(task_id = task_event.task_id, "Ignoring stale agent event");
             return;
@@ -98,11 +105,13 @@ impl App {
                 }
                 self.state.agent.streaming_text.clear();
                 self.state.agent.reasoning_text.clear();
+                self.state.ui.stream_markdown_cache.reset(0);
                 self.state.agent.state = AgentState::StreamingResponse;
             }
             AgentEvent::AssistantText(text) => {
                 self.state.agent.retry_status = None;
                 self.state.agent.streaming_text.clear();
+                self.state.ui.stream_markdown_cache.reset(0);
                 self.state.add_assistant_message(text);
                 self.state.agent.state = AgentState::Executing;
             }
@@ -172,12 +181,19 @@ impl App {
                 {
                     view.finished = live.clone();
                 }
-                let duration_ms = self
-                    .state
-                    .agent
-                    .current_tool_start
-                    .take()
-                    .map(|t| t.elapsed().as_millis() as f64);
+                let duration_ms = live
+                    .as_ref()
+                    .map(|call| call.started.elapsed().as_millis() as f64)
+                    .or_else(|| {
+                        self.state
+                            .agent
+                            .current_tool_start
+                            .take()
+                            .map(|t| t.elapsed().as_millis() as f64)
+                    });
+                if self.state.agent.live_tool_calls.is_empty() {
+                    self.state.agent.current_tool_start = None;
+                }
                 if live.as_ref().map(|call| call.direct).unwrap_or(false) {
                     let command = live
                         .as_ref()
@@ -198,11 +214,26 @@ impl App {
                     };
                     self.state
                         .add_system_message(format!("$ {command}\n{display}"));
+                    let steering_pending = !self.state.agent.steering_queue.is_empty();
+                    let mut had_notices = if steering_pending {
+                        false
+                    } else {
+                        self.state.session.drain_notices()
+                    };
                     self.state.agent.clear_stream_buffers();
-                    self.state.agent.clear_approvals();
+                    self.state.ui.stream_markdown_cache.reset(0);
+                    self.state
+                        .agent
+                        .remove_approvals_from(&agente_core::agent::ApprovalSource::Parent);
                     self.state.agent.end_parent_turn();
                     self.queue_session_snapshot();
-                    self.drain_queues_and_continue();
+                    let started = self.drain_queues_and_continue();
+                    if steering_pending && self.state.agent.is_idle() {
+                        had_notices = self.state.session.drain_notices();
+                    }
+                    if had_notices && !started && self.state.agent.is_idle() {
+                        let _ = self.start_chat_turn();
+                    }
                     return;
                 }
                 // present_plan → store the plan but do NOT open the
@@ -281,8 +312,15 @@ impl App {
                 self.state.session.conversation = conversation;
                 // Flush background-child completion notices queued
                 // mid-turn: the replace above would otherwise clobber a
-                // direct push, and the model must see them next turn.
-                let had_notices = self.state.session.drain_notices();
+                // direct push, and the model must see them next turn. Defer
+                // while `!cmd` steering is pending so the shell command runs
+                // first and notices drain when it finishes.
+                let steering_pending = !self.state.agent.steering_queue.is_empty();
+                let mut had_notices = if steering_pending {
+                    false
+                } else {
+                    self.state.session.drain_notices()
+                };
                 // Commit any leftover streamed answer before clearing.
                 if !self.state.agent.streaming_text.is_empty() {
                     let text = self.state.agent.streaming_text.clone();
@@ -292,6 +330,7 @@ impl App {
                     self.state.flush_live_reasoning();
                 }
                 self.state.agent.clear_stream_buffers();
+                self.state.ui.stream_markdown_cache.reset(0);
                 self.state
                     .agent
                     .remove_approvals_from(&agente_core::agent::ApprovalSource::Parent);
@@ -302,10 +341,14 @@ impl App {
                 self.maybe_spawn_session_title();
 
                 let started = self.drain_queues_and_continue();
+                if steering_pending && self.state.agent.is_idle() {
+                    had_notices = self.state.session.drain_notices();
+                }
                 // A background child finished during the turn: resume the
                 // model so it consumes the result now instead of waiting
-                // for the next user message.
-                if had_notices && !started {
+                // for the next user message (only when idle so a just-started
+                // `!cmd` steering shell is never aborted).
+                if had_notices && !started && self.state.agent.is_idle() {
                     let _ = self.start_chat_turn();
                 }
             }
@@ -324,8 +367,14 @@ impl App {
                     .agent
                     .recompute_total_from_conversation(&conversation);
                 self.state.session.conversation = conversation;
-                let had_notices = self.state.session.drain_notices();
+                let steering_pending = !self.state.agent.steering_queue.is_empty();
+                let mut had_notices = if steering_pending {
+                    false
+                } else {
+                    self.state.session.drain_notices()
+                };
                 self.state.agent.clear_stream_buffers();
+                self.state.ui.stream_markdown_cache.reset(0);
                 self.state
                     .agent
                     .remove_approvals_from(&agente_core::agent::ApprovalSource::Parent);
@@ -335,7 +384,10 @@ impl App {
                 self.queue_session_snapshot();
 
                 let started = self.drain_queues_and_continue();
-                if had_notices && !started {
+                if steering_pending && self.state.agent.is_idle() {
+                    had_notices = self.state.session.drain_notices();
+                }
+                if had_notices && !started && self.state.agent.is_idle() {
                     let _ = self.start_chat_turn();
                 }
             }
@@ -483,6 +535,7 @@ impl App {
                     attachments: Vec::new(),
                 });
                 self.state.agent.clear_stream_buffers();
+                self.state.ui.stream_markdown_cache.reset(0);
                 self.state
                     .agent
                     .remove_approvals_from(&agente_core::agent::ApprovalSource::Parent);
@@ -878,7 +931,8 @@ impl App {
             return;
         }
 
-        self.state.input.model_selector_query = provider.to_string();
+        self.state.input.model_selector_provider = Some(provider.to_string());
+        self.state.input.model_selector_query.clear();
         self.state.input.show_model_selector = true;
         self.state.input.model_selector_selected = 0;
     }
@@ -1768,5 +1822,194 @@ mod tests {
             app.state.session.conversation[0].content
         );
         assert!(app.state.session.pending_notices.is_empty());
+    }
+
+    #[test]
+    fn board_changed_accepted_for_earlier_turn_in_same_tab_and_rejected_for_closed_tab() {
+        let mut app = notice_test_app("/tmp/board-routing");
+        let t1 = app.next_task_id();
+        app.current_task_id = t1;
+        // Start turn 2 in the same tab.
+        let t2 = app.next_task_id();
+        app.current_task_id = t2;
+
+        let mut board1 = agente_core::swarm::Board::default();
+        board1.enabled = true;
+        app.agent_tx
+            .send(AgentTaskEvent {
+                task_id: t1,
+                event: AgentEvent::BoardChanged {
+                    board: board1.clone(),
+                },
+            })
+            .unwrap();
+        app.process_agent_events();
+        assert!(
+            app.state.agent.board.as_ref().is_some_and(|b| b.enabled),
+            "earlier turn's BoardChanged in same tab must be accepted"
+        );
+
+        // Open tab 2 and close tab 1; stale BoardChanged from closed tab 1 must be ignored.
+        app.open_new_tab();
+        app.close_tab(0);
+        let mut stale_board = agente_core::swarm::Board::default();
+        stale_board.enabled = true;
+        app.agent_tx
+            .send(AgentTaskEvent {
+                task_id: t1,
+                event: AgentEvent::BoardChanged { board: stale_board },
+            })
+            .unwrap();
+        app.process_agent_events();
+        assert!(
+            app.state.agent.board.is_none(),
+            "closed tab's BoardChanged must not contaminate the active tab"
+        );
+    }
+
+    #[test]
+    fn direct_shell_result_drains_queued_notices() {
+        let mut app = notice_test_app("/tmp/direct-notice");
+        app.state.agent.state = AgentState::Executing;
+        app.state
+            .session
+            .queue_notice("child finished while !cmd ran".into());
+        app.state.agent.start_live_tool(
+            "direct-1".into(),
+            "shell".into(),
+            "{\"command\":\"echo ok\"}".into(),
+            true,
+        );
+        app.inject_agent_event(AgentEvent::ToolCallResult {
+            id: "direct-1".into(),
+            name: "shell".into(),
+            result: "ok".into(),
+            is_error: false,
+        });
+        app.process_agent_events();
+        assert!(app.state.session.pending_notices.is_empty());
+        assert!(app
+            .state
+            .session
+            .conversation
+            .iter()
+            .any(|m| m.content.contains("child finished while !cmd ran")));
+    }
+
+    #[test]
+    fn done_with_bang_steering_and_notice_does_not_abort_started_shell() {
+        let mut app = notice_test_app("/tmp/done-bang");
+        app.state.config.current_provider = "test-provider".into();
+        app.state.config.current_model = "test-model".into();
+        app.state.agent.state = AgentState::Executing;
+        app.state.session.queue_notice("subagent done".into());
+        app.state.agent.steering_queue.push("!echo steered".into());
+
+        app.inject_agent_event(AgentEvent::Done {
+            conversation: Vec::new(),
+            tokens: 0,
+        });
+        app.process_agent_events();
+
+        // `!echo steered` should still be running (`Executing`), not replaced by
+        // `start_chat_turn()` (`StreamingResponse`).
+        assert_eq!(app.state.agent.state, AgentState::Executing);
+        assert_eq!(
+            app.state.session.pending_notices.len(),
+            1,
+            "notice stays queued until the steering shell finishes"
+        );
+        app.state.agent.abort_task();
+    }
+
+    #[test]
+    fn idle_completion_notice_does_not_abort_active_board_subagent_signal() {
+        let mut app = notice_test_app("/tmp/notice-no-abort");
+        app.state.agent.state = AgentState::Idle;
+        app.state.config.current_provider = "test-provider".into();
+        app.state.config.current_model = "test-model".into();
+
+        // Simulate a background/board subagent holding a signal from turn 1's cancel_tx.
+        let active_board_signal = app.state.cancel_tx.signal();
+        let runtime = std::mem::replace(
+            &mut app.runtime,
+            tokio::runtime::Builder::new_current_thread()
+                .build()
+                .unwrap(),
+        );
+        runtime.block_on(async {
+            app.inject_agent_event(completed_notice("s-board", "worker", "completed", "done"));
+            app.process_agent_events();
+        });
+        app.runtime = runtime;
+
+        assert!(
+            !active_board_signal.is_aborted(),
+            "follow-up turn must not abort active board subagents from the previous turn"
+        );
+        app.state.agent.abort_task();
+    }
+
+    #[test]
+    fn parallel_tool_calls_keep_independent_durations() {
+        let mut app = notice_test_app("/tmp/parallel-duration");
+        app.inject_agent_event(AgentEvent::ToolCallStart {
+            id: "c1".into(),
+            name: "read_file".into(),
+            args: "{\"path\":\"a.rs\"}".into(),
+        });
+        app.inject_agent_event(AgentEvent::ToolCallStart {
+            id: "c2".into(),
+            name: "read_file".into(),
+            args: "{\"path\":\"b.rs\"}".into(),
+        });
+        app.inject_agent_event(AgentEvent::ToolCallResult {
+            id: "c1".into(),
+            name: "read_file".into(),
+            result: "a".into(),
+            is_error: false,
+        });
+        app.inject_agent_event(AgentEvent::ToolCallResult {
+            id: "c2".into(),
+            name: "read_file".into(),
+            result: "b".into(),
+            is_error: false,
+        });
+        app.process_agent_events();
+
+        let durations: Vec<Option<f64>> = app
+            .state
+            .session
+            .chat_history
+            .iter()
+            .filter(|e| e.role == Role::Tool && e.response_duration.is_some())
+            .map(|e| e.response_duration)
+            .collect();
+        assert_eq!(
+            durations.len(),
+            2,
+            "both parallel tool results must retain their own duration"
+        );
+    }
+
+    #[test]
+    fn discovery_scopes_model_selector_provider_and_clears_query() {
+        let mut app = notice_test_app("/tmp/discovery-scope");
+        app.state.config.connected_providers = vec!["openai".into()];
+        app.state.config.set_discovered_models(
+            "openai",
+            vec![
+                agente_core::providers::fallback_model_info("openai", "gpt-4o"),
+                agente_core::providers::fallback_model_info("openai", "gpt-4o-mini"),
+            ],
+        );
+        app.state.input.model_selector_query = "stale-query".into();
+        app.refresh_model_selection_after_discovery("openai");
+        assert!(app.state.input.show_model_selector);
+        assert_eq!(
+            app.state.input.model_selector_provider.as_deref(),
+            Some("openai")
+        );
+        assert!(app.state.input.model_selector_query.is_empty());
     }
 }

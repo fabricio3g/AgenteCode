@@ -21,6 +21,8 @@ pub struct TabState {
     pub config: ConfigState,
     pub input_text: String,
     pub input_cursor: usize,
+    pub pasted_blocks: Vec<super::input::PastedBlock>,
+    pub attachments: Vec<agente_core::media::Attachment>,
     pub chat_scroll: usize,
     pub chat_auto_scroll: bool,
     pub scroll_target: Option<usize>,
@@ -58,6 +60,8 @@ impl TabState {
             config: state.config.clone(),
             input_text: String::new(),
             input_cursor: 0,
+            pasted_blocks: Vec::new(),
+            attachments: Vec::new(),
             chat_scroll: 0,
             chat_auto_scroll: true,
             scroll_target: None,
@@ -79,6 +83,8 @@ impl TabState {
         swap(&mut self.config, &mut state.config);
         swap(&mut self.input_text, &mut state.input.input_text);
         swap(&mut self.input_cursor, &mut state.input.input_cursor);
+        swap(&mut self.pasted_blocks, &mut state.input.pasted_blocks);
+        swap(&mut self.attachments, &mut state.input.attachments);
         swap(&mut self.chat_scroll, &mut state.ui.chat_scroll);
         swap(&mut self.chat_auto_scroll, &mut state.ui.chat_auto_scroll);
         swap(&mut self.scroll_target, &mut state.ui.scroll_target);

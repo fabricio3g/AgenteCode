@@ -166,6 +166,13 @@ impl App {
                 }
                 self.state.ui.needs_render = true;
             }
+            ModalOwner::SubagentModels => {
+                if let Some(edit) = self.state.input.subagent_model_edit.as_mut() {
+                    let single_line = normalized.replace('\n', " ");
+                    edit.text.push_str(&single_line);
+                    self.state.ui.needs_render = true;
+                }
+            }
             ModalOwner::Approval
             | ModalOwner::PlanReview
             | ModalOwner::DiffPeek
@@ -173,7 +180,6 @@ impl App {
             | ModalOwner::Help
             | ModalOwner::Subagents
             | ModalOwner::SubagentDetail
-            | ModalOwner::SubagentModels
             | ModalOwner::Board
             | ModalOwner::Settings
             | ModalOwner::Skills
@@ -426,6 +432,7 @@ impl App {
                 match key.code {
                     KeyCode::Esc | KeyCode::Char('q') | KeyCode::Enter => {
                         self.state.input.show_doctor = false;
+                        self.state.input.doctor_checks.clear();
                         self.state.ui.needs_render = true;
                     }
                     KeyCode::Up => {
@@ -502,8 +509,28 @@ impl App {
             }
             ModalOwner::Board => {
                 match key.code {
-                    KeyCode::Esc => self.state.input.show_board = false,
+                    KeyCode::Esc => {
+                        self.state.input.show_board = false;
+                        self.state.input.board_scroll = 0;
+                    }
                     KeyCode::Char('s') => self.state.toggle_swarm(),
+                    KeyCode::Up => {
+                        self.state.input.board_scroll =
+                            self.state.input.board_scroll.saturating_sub(1);
+                    }
+                    KeyCode::Down => {
+                        self.state.input.board_scroll =
+                            self.state.input.board_scroll.saturating_add(1);
+                    }
+                    KeyCode::PageUp => {
+                        self.state.input.board_scroll =
+                            self.state.input.board_scroll.saturating_sub(4);
+                    }
+                    KeyCode::PageDown => {
+                        self.state.input.board_scroll =
+                            self.state.input.board_scroll.saturating_add(4);
+                    }
+                    KeyCode::Home => self.state.input.board_scroll = 0,
                     _ => {}
                 }
                 self.state.ui.needs_render = true;
@@ -703,6 +730,7 @@ impl App {
                     if let Some(queued) = self.state.agent.pop_unsent() {
                         self.state.input.input_cursor = queued.display.chars().count();
                         self.state.input.input_text = queued.display;
+                        self.state.input.attachments.extend(queued.attachments);
                         return Ok(());
                     }
                 }
@@ -1069,7 +1097,7 @@ impl App {
                         // Delete the word before cursor
                         let last_space = trimmed.rfind(|c: char| c.is_whitespace());
                         let new_cursor = if let Some(pos) = last_space {
-                            trimmed[..=pos].chars().count()
+                            trimmed[..pos].chars().count() + 1
                         } else {
                             0
                         };
@@ -1532,8 +1560,8 @@ impl App {
                     edit.text.pop();
                     self.state.input.subagent_model_edit = Some(edit);
                 }
-                KeyCode::Char(c) if !key.modifiers.contains(KeyModifiers::CONTROL) => {
-                    edit.text.push(c);
+                KeyCode::Char(c) if is_text_char_modifiers(key.modifiers) => {
+                    edit.text.push(resolve_text_char(c, key.modifiers));
                     self.state.input.subagent_model_edit = Some(edit);
                 }
                 _ => self.state.input.subagent_model_edit = Some(edit),
@@ -1549,6 +1577,7 @@ impl App {
             if app.state.is_connected() {
                 app.state.input.model_selector_target = Some(target);
                 app.state.input.show_model_selector = true;
+                app.state.input.model_selector_provider = None;
                 app.state.input.model_selector_query.clear();
                 app.state.input.model_selector_selected = 0;
             } else {
@@ -2228,11 +2257,12 @@ impl App {
                             }
                         }
                     }
-                    KeyCode::Char(c) if !key.modifiers.contains(KeyModifiers::CONTROL) => {
+                    KeyCode::Char(c) if is_text_char_modifiers(key.modifiers) => {
+                        let ch = resolve_text_char(c, key.modifiers);
                         if let Some(ask) = self.state.plan_review.ask.as_mut() {
                             let qi = ask.question_index;
                             if let Some(q) = ask.questions.get_mut(qi) {
-                                q.free_text.push(c);
+                                q.free_text.push(ch);
                             }
                         }
                     }
@@ -2687,7 +2717,6 @@ impl App {
             return Ok(());
         }
 
-        let sessions = session::list_sessions();
         let folder = self
             .state
             .picker
@@ -2695,9 +2724,12 @@ impl App {
             .trim()
             .to_string();
         let query = self.state.picker.session_picker_query.to_lowercase();
-        let filtered_count = sessions
+        let filtered_count = self
+            .state
+            .picker
+            .sessions
             .iter()
-            .filter(|session| util::session_matches(session, &folder, &query))
+            .filter(|session| crate::session_picker::session_matches(session, &folder, &query))
             .count();
         let total_items = 1 + filtered_count;
 
@@ -2726,6 +2758,7 @@ impl App {
                             .to_string(),
                     );
                 } else {
+                    let sessions = self.state.picker.sessions.clone();
                     self.perform_session_switch(idx, &sessions, &folder, &query)?;
                 }
             }
@@ -2747,14 +2780,19 @@ impl App {
                     if self.state.picker.session_picker_confirm_delete {
                         let folder = self.state.picker.session_picker_folder_input.trim();
                         let query = self.state.picker.session_picker_query.to_lowercase();
-                        let sessions = session::list_sessions();
-                        let filtered: Vec<_> = sessions
+                        let sid = self
+                            .state
+                            .picker
+                            .sessions
                             .iter()
-                            .filter(|session| util::session_matches(session, folder, &query))
-                            .collect();
-                        if let Some(meta) = filtered.get(idx - 1) {
-                            let sid = meta.session_id;
+                            .filter(|session| {
+                                crate::session_picker::session_matches(session, folder, &query)
+                            })
+                            .nth(idx - 1)
+                            .map(|meta| meta.session_id);
+                        if let Some(sid) = sid {
                             self.persistence.delete(sid);
+                            self.state.picker.sessions.retain(|s| s.session_id != sid);
                             self.state
                                 .ui
                                 .recent_sessions
@@ -2802,7 +2840,7 @@ impl App {
         } else {
             let filtered: Vec<_> = sessions
                 .iter()
-                .filter(|session| util::session_matches(session, folder, query))
+                .filter(|session| crate::session_picker::session_matches(session, folder, query))
                 .collect();
             if let Some(meta) = filtered.get(idx - 1) {
                 if let Ok(data) = session::load_session(&meta.session_id) {
@@ -2930,6 +2968,7 @@ impl App {
         // Persist the outgoing session so it stays resumable from the picker,
         // then replace it in place with a fresh session identity.
         self.flush_state_to_disk();
+        self.clear_active_task_ids();
         self.current_task_id = self.next_task_id();
         self.state.reset_for_new_session();
         // Straight to work: the hero steps aside and every key goes to the
@@ -2949,6 +2988,7 @@ impl App {
         project_dir: String,
         config: agente_core::config::AppConfig,
     ) {
+        self.clear_active_task_ids();
         self.current_task_id = self.next_task_id();
         let before = std::sync::Arc::clone(&self.state.config.mcp_manager);
         self.state.reset_for_project(project_dir, config);
@@ -3914,5 +3954,155 @@ mod tests {
         app.handle_key(key(KeyCode::Char('x'), KeyModifiers::CONTROL))
             .unwrap();
         assert_eq!(app.state.input.command_palette_query, "[");
+    }
+
+    #[test]
+    fn ctrl_w_handles_multibyte_unicode_whitespace_without_panicking() {
+        let mut app = test_app();
+        app.state.ui.show_welcome_screen = false;
+
+        // NBSP (\u{00A0}, 2 bytes)
+        app.state.input.input_text = "hello\u{00A0}world".into();
+        app.state.input.input_cursor = app.state.input.input_text.chars().count();
+        app.handle_key(key(KeyCode::Char('w'), KeyModifiers::CONTROL))
+            .unwrap();
+        assert_eq!(app.state.input.input_text, "hello\u{00A0}");
+        assert_eq!(app.state.input.input_cursor, 6);
+
+        // Ideographic space (\u{3000}, 3 bytes)
+        app.state.input.input_text = "alpha\u{3000}beta".into();
+        app.state.input.input_cursor = app.state.input.input_text.chars().count();
+        app.handle_key(key(KeyCode::Char('w'), KeyModifiers::CONTROL))
+            .unwrap();
+        assert_eq!(app.state.input.input_text, "alpha\u{3000}");
+        assert_eq!(app.state.input.input_cursor, 6);
+    }
+
+    #[test]
+    fn up_on_empty_composer_restores_queued_attachments() {
+        use agente_core::media::{Attachment, AttachmentKind};
+
+        let mut app = test_app();
+        app.state.ui.show_welcome_screen = false;
+        let att = Attachment {
+            kind: AttachmentKind::Image,
+            name: "diagram.png".into(),
+            mime: "image/png".into(),
+            path: "/tmp/diagram.png".into(),
+            bytes: 256,
+        };
+        app.state.agent.queue_message(
+            crate::state::QueuedMessage::new("inspect this").with_attachments(vec![att.clone()]),
+        );
+
+        app.handle_key(key(KeyCode::Up, KeyModifiers::NONE))
+            .unwrap();
+        assert_eq!(app.state.input.input_text, "inspect this");
+        assert_eq!(app.state.input.attachments, vec![att]);
+        assert!(app.state.agent.message_queue.is_empty());
+    }
+
+    #[test]
+    fn subagent_models_edit_accepts_paste_and_altgr_and_clears_provider_filter() {
+        use crate::subagent_models::{Edit, EditField};
+        use agente_core::config::SubagentModelEntry;
+
+        let mut app = test_app();
+        app.state.config.connected_providers = vec!["openai".into(), "anthropic".into()];
+        app.state
+            .config
+            .config
+            .subagents
+            .models
+            .push(SubagentModelEntry {
+                name: "scout".into(),
+                provider: "openai".into(),
+                model: "gpt-4o".into(),
+                thinking: None,
+                use_for: String::new(),
+            });
+        app.state.input.show_subagent_models = true;
+        app.state.input.subagent_model_edit = Some(Edit {
+            index: 0,
+            field: EditField::Note,
+            text: String::new(),
+        });
+
+        app.insert_owned_paste("fast code\nsearch");
+        app.handle_key(key(
+            KeyCode::Char('@'),
+            KeyModifiers::CONTROL | KeyModifiers::ALT,
+        ))
+        .unwrap();
+        let edit = app.state.input.subagent_model_edit.as_ref().unwrap();
+        assert_eq!(edit.text, "fast code search@");
+
+        // Commit edit, then open the model picker from SubagentModels: any
+        // stale provider scope must be cleared.
+        app.handle_key(key(KeyCode::Enter, KeyModifiers::NONE))
+            .unwrap();
+        app.state.input.model_selector_provider = Some("anthropic".into());
+        app.handle_key(key(KeyCode::Enter, KeyModifiers::NONE))
+            .unwrap();
+        assert!(app.state.input.show_model_selector);
+        assert_eq!(app.state.input.model_selector_provider, None);
+    }
+
+    #[test]
+    fn plan_ask_free_text_accepts_altgr() {
+        use crate::state::{AskQuestion, PlanAskState, PlanReviewPhase};
+
+        let mut app = test_app();
+        app.state.plan_review.phase = PlanReviewPhase::Asking;
+        app.state.plan_review.ask = Some(PlanAskState {
+            original_comment: "fix".into(),
+            questions: vec![AskQuestion {
+                prompt: "What?".into(),
+                options: vec![],
+                selected: None,
+                free_text: String::new(),
+            }],
+            question_index: 0,
+            reask_count: 0,
+        });
+
+        app.handle_key(key(
+            KeyCode::Char('@'),
+            KeyModifiers::CONTROL | KeyModifiers::ALT,
+        ))
+        .unwrap();
+        assert_eq!(
+            app.state.plan_review.ask.as_ref().unwrap().questions[0].free_text,
+            "@"
+        );
+    }
+
+    #[test]
+    fn session_picker_matches_title_and_deletes_from_shared_snapshot() {
+        let mut app = test_app();
+        let mut s1 = agente_core::session::create_session_meta("/tmp/proj-a");
+        s1.title = "Refactor Auth Flow".into();
+        let mut s2 = agente_core::session::create_session_meta("/tmp/proj-a");
+        s2.title = "Database Migration".into();
+        app.state.picker.show_session_picker = true;
+        app.state.picker.session_picker_folder_input = "/tmp/proj-a".into();
+        app.state.picker.sessions = vec![s1.clone(), s2.clone()];
+
+        // Filter by title ("migration") — matches s2 only.
+        for ch in "migration".chars() {
+            app.handle_key(key(KeyCode::Char(ch), KeyModifiers::NONE))
+                .unwrap();
+        }
+        // Move down to row 1 (s2) and delete twice (confirm).
+        app.handle_key(key(KeyCode::Down, KeyModifiers::NONE))
+            .unwrap();
+        assert_eq!(app.state.picker.session_picker_selected, 1);
+        app.handle_key(key(KeyCode::Delete, KeyModifiers::NONE))
+            .unwrap();
+        assert!(app.state.picker.session_picker_confirm_delete);
+        app.handle_key(key(KeyCode::Delete, KeyModifiers::NONE))
+            .unwrap();
+        assert_eq!(app.state.picker.sessions.len(), 1);
+        assert_eq!(app.state.picker.sessions[0].session_id, s1.session_id);
     }
 }

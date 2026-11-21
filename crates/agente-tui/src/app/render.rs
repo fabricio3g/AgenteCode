@@ -99,11 +99,12 @@ pub(crate) fn render_app(frame: &mut ratatui::Frame, state: &mut AppState) {
     let mut input_height = if hide_composer {
         0
     } else {
-        (widgets::input::desired_height(
+        widgets::input::desired_height(
             &state.input.input_text,
             size.width,
             state.agent.message_queue.len(),
-        ) + u16::from(!state.input.attachments.is_empty()))
+            !state.input.attachments.is_empty(),
+        )
         .max(widgets::input::min_height())
     };
     // Layout chrome: chat fills the middle, an activity strip

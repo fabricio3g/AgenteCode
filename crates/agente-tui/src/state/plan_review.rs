@@ -90,11 +90,11 @@ impl PlanAskState {
 pub struct PlanReviewState {
     pub phase: PlanReviewPhase,
     pub pending: Option<PendingPlan>,
-    pub scroll: u16,
+    pub scroll: usize,
     /// Wrapped body line count from last render (for scroll clamp).
-    pub body_line_count: u16,
+    pub body_line_count: usize,
     /// Visible body rows from last render.
-    pub body_visible: u16,
+    pub body_visible: usize,
     pub ask: Option<PlanAskState>,
     /// Selected button on review card: 0 Accept, 1 Redo, 2 Comment
     pub button_index: usize,
@@ -168,7 +168,7 @@ impl PlanReviewState {
             )
     }
 
-    pub fn max_scroll(&self) -> u16 {
+    pub fn max_scroll(&self) -> usize {
         self.body_line_count
             .saturating_sub(self.body_visible.max(1))
     }
@@ -176,9 +176,9 @@ impl PlanReviewState {
     pub fn scroll_by(&mut self, delta: i16) {
         let max = self.max_scroll();
         if delta < 0 {
-            self.scroll = self.scroll.saturating_sub((-delta) as u16);
+            self.scroll = self.scroll.saturating_sub(delta.unsigned_abs() as usize);
         } else {
-            self.scroll = (self.scroll.saturating_add(delta as u16)).min(max);
+            self.scroll = self.scroll.saturating_add(delta as usize).min(max);
         }
     }
 }

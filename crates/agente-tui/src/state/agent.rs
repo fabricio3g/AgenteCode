@@ -602,10 +602,20 @@ impl AgentRuntimeState {
 
     /// Remove every queued approval whose origin is `source` (used when that
     /// agent terminates). If the shown request is removed, the next one takes
-    /// its place.
-    pub fn remove_approvals_from(&mut self, source: &ApprovalSource) {
-        self.approval_queue.retain(|entry| &entry.source != source);
+    /// its place. Returns the removed request IDs so the caller can cancel
+    /// only those entries in the shared broker.
+    pub fn remove_approvals_from(&mut self, source: &ApprovalSource) -> Vec<String> {
+        let mut removed = Vec::new();
+        self.approval_queue.retain(|entry| {
+            if &entry.source == source {
+                removed.push(entry.request.request_id.clone());
+                false
+            } else {
+                true
+            }
+        });
         self.refresh_approval_state();
+        removed
     }
 
     pub fn has_pending_approval(&self) -> bool {
@@ -732,6 +742,8 @@ impl AgentRuntimeState {
     pub fn force_reset_to_idle(&mut self) {
         self.state = AgentState::Idle;
         self.approval_queue.clear();
+        self.reclaim_inbox();
+        self.steering_queue.clear();
         self.clear_stream_buffers();
     }
 

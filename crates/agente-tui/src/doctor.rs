@@ -60,8 +60,9 @@ pub fn run_diagnostics(state: &AppState) -> Vec<DiagnosticCheck> {
         details: format!("Render test: {glyphs}"),
     });
 
-    // 3. System Clipboard
-    let clipboard_ok = arboard::Clipboard::new().is_ok();
+    // 3. System Clipboard (probe the process-wide singleton, never a fresh
+    // instance that would drop immediately and print a warning on Linux).
+    let clipboard_ok = crate::clipboard::is_available();
     checks.push(DiagnosticCheck {
         name: "System Clipboard (arboard)",
         status: if clipboard_ok {
@@ -172,8 +173,14 @@ pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState) {
         ),
     );
 
-    let checks = run_diagnostics(state);
-    let visible = body.height as usize;
+    if state.input.doctor_checks.is_empty() {
+        state.input.doctor_checks = run_diagnostics(state);
+    }
+    let content_area = Rect {
+        height: body.height.saturating_sub(2),
+        ..body
+    };
+    let visible = content_area.height as usize;
     let mut lines: Vec<Line<'static>> = Vec::new();
 
     // 24-bit RGB gradient preview bar
@@ -205,7 +212,7 @@ pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState) {
     ]));
     lines.push(Line::from(vec![s("", dim())]));
 
-    for check in checks {
+    for check in &state.input.doctor_checks {
         let (badge_text, badge_color) = check.status.badge();
         // A pass is the expected state: it stays quiet so warnings and failures find the eye.
         let badge_style = if matches!(check.status, CheckStatus::Pass) {
@@ -226,20 +233,25 @@ pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState) {
             ),
             s(" ", dim()),
             Span::styled(
-                truncate_cells(&check.details, (body.width as usize).saturating_sub(32)),
+                truncate_cells(
+                    &check.details,
+                    (content_area.width as usize).saturating_sub(32),
+                ),
                 Style::default().fg(FG_MUTED()).bg(BG_PANEL()),
             ),
         ];
         lines.push(Line::from(row_spans));
     }
 
-    let scroll = (state.input.doctor_scroll as usize).min(lines.len().saturating_sub(visible));
+    let max_scroll = lines.len().saturating_sub(visible);
+    let scroll = (state.input.doctor_scroll as usize).min(max_scroll);
+    state.input.doctor_scroll = scroll.min(usize::from(u16::MAX)) as u16;
     let end = (scroll + visible).min(lines.len());
     let display_lines = lines[scroll..end].to_vec();
 
     frame.render_widget(
         Paragraph::new(display_lines).style(Style::default().bg(BG_PANEL())),
-        body,
+        content_area,
     );
 }
 
@@ -277,5 +289,41 @@ mod tests {
         assert_eq!(after.len(), 1);
         assert!(matches!(after[0].status, CheckStatus::Pass));
         assert!(after[0].details.contains("(12,34)"));
+    }
+
+    #[test]
+    fn doctor_render_reuses_cached_checks_preserves_footer_and_clamps_scroll() {
+        use ratatui::backend::TestBackend;
+        use ratatui::Terminal;
+
+        let mut state = AppState::new(AppConfig::default(), "/tmp/doctor-render".to_string());
+        state.input.show_doctor = true;
+        state.input.doctor_checks = vec![DiagnosticCheck {
+            name: "Cached Probe",
+            status: CheckStatus::Pass,
+            details: "sentinel-cached-value".into(),
+        }];
+        state.input.doctor_scroll = 999;
+
+        let mut terminal = Terminal::new(TestBackend::new(70, 12)).unwrap();
+        terminal
+            .draw(|frame| render(frame, frame.area(), &mut state))
+            .unwrap();
+        let screen: String = terminal
+            .backend()
+            .buffer()
+            .content
+            .iter()
+            .map(|c| c.symbol())
+            .collect();
+        assert!(
+            screen.contains("sentinel-cached-value"),
+            "render must use cached diagnostics instead of re-probing: {screen}"
+        );
+        assert!(
+            screen.contains("Esc") && screen.contains("close"),
+            "modal footer must remain visible: {screen}"
+        );
+        assert_eq!(state.input.doctor_scroll, 0, "scroll must clamp to max");
     }
 }

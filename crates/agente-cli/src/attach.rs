@@ -3,7 +3,7 @@
 //! anywhere stream here; lines typed here become new turns, or steer the
 //! turn that is running. Approvals are answered inline.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::io::Write;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -307,7 +307,7 @@ async fn attach(options: AttachOptions) -> anyhow::Result<()> {
 
     let mut stdin = BufReader::new(tokio::io::stdin()).lines();
     let mut running: Option<String> = None;
-    let mut approval: Option<String> = None;
+    let mut approvals: VecDeque<String> = VecDeque::new();
     loop {
         tokio::select! {
             line = stdin.next_line() => {
@@ -316,11 +316,11 @@ async fn attach(options: AttachOptions) -> anyhow::Result<()> {
                 if text.is_empty() {
                     continue;
                 }
-                if let Some(request_id) = approval.clone() {
+                if let Some(request_id) = approvals.front().cloned() {
                     match decision(text) {
                         Some(kind) => {
                             client.call("approval.respond", json!({ "request_id": request_id, "decision": kind })).await?;
-                            approval = None;
+                            approvals.pop_front();
                         }
                         None => eprint!("Answer y, a or n: "),
                     }
@@ -357,15 +357,7 @@ async fn attach(options: AttachOptions) -> anyhow::Result<()> {
                 if target.session() != Some(envelope.session_id.to_string().as_str()) {
                     continue;
                 }
-                if envelope.event.is_terminal() {
-                    running = None;
-                    approval = None;
-                } else {
-                    running = Some(envelope.turn_id.to_string());
-                }
-                if let RuntimeEvent::ApprovalRequested { request_id, .. } = &envelope.event {
-                    approval = Some(request_id.clone());
-                }
+                apply_event_state(&envelope, &mut running, &mut approvals);
                 if let Some(text) = render(&envelope.event) {
                     print!("{text}");
                     let _ = std::io::stdout().flush();
@@ -374,6 +366,25 @@ async fn attach(options: AttachOptions) -> anyhow::Result<()> {
         }
     }
     Ok(())
+}
+
+/// Update tracked turn id and FIFO approval queue from an incoming event.
+fn apply_event_state(
+    envelope: &RuntimeEventEnvelope,
+    running: &mut Option<String>,
+    approvals: &mut VecDeque<String>,
+) {
+    if envelope.event.is_terminal() {
+        *running = None;
+        approvals.clear();
+    } else {
+        *running = Some(envelope.turn_id.to_string());
+    }
+    if let RuntimeEvent::ApprovalRequested { request_id, .. } = &envelope.event {
+        if !approvals.contains(request_id) {
+            approvals.push_back(request_id.clone());
+        }
+    }
 }
 
 /// Start a turn with `text` in the target's session.
@@ -438,5 +449,71 @@ mod tests {
         assert_eq!(decision("a"), Some("approve_all"));
         assert_eq!(decision("no"), Some("deny"));
         assert_eq!(decision("maybe"), None);
+    }
+
+    #[test]
+    fn concurrent_approvals_queue_in_fifo_order() {
+        let session_id = agente_protocol::SessionId::new();
+        let turn_id = agente_protocol::TurnId::new();
+        let mut running = None;
+        let mut approvals = VecDeque::new();
+
+        let make_env = |event: RuntimeEvent| -> RuntimeEventEnvelope {
+            serde_json::from_value(json!({
+                "protocol_version": agente_protocol::PROTOCOL_VERSION,
+                "sequence": 1,
+                "session_id": session_id,
+                "turn_id": turn_id,
+                "timestamp": "2026-01-01T00:00:00Z",
+                "event": event,
+            }))
+            .expect("valid runtime event envelope")
+        };
+
+        for id in ["req-1", "req-2", "req-1"] {
+            let env = make_env(RuntimeEvent::ApprovalRequested {
+                request_id: id.into(),
+                source: "parent".into(),
+                tool_name: "shell".into(),
+                tool_args: "{}".into(),
+                description: id.into(),
+                is_dangerous: false,
+                file_path: None,
+                old_content: None,
+                new_content: None,
+                child_run_id: None,
+            });
+            apply_event_state(&env, &mut running, &mut approvals);
+        }
+
+        assert_eq!(running.as_deref(), Some(turn_id.to_string().as_str()));
+        assert_eq!(approvals.pop_front().as_deref(), Some("req-1"));
+        assert_eq!(approvals.pop_front().as_deref(), Some("req-2"));
+        assert!(approvals.is_empty());
+
+        // Terminal events clear any remaining approvals and running turn state.
+        apply_event_state(
+            &make_env(RuntimeEvent::ApprovalRequested {
+                request_id: "req-3".into(),
+                source: "parent".into(),
+                tool_name: "shell".into(),
+                tool_args: "{}".into(),
+                description: "req-3".into(),
+                is_dangerous: false,
+                file_path: None,
+                old_content: None,
+                new_content: None,
+                child_run_id: None,
+            }),
+            &mut running,
+            &mut approvals,
+        );
+        apply_event_state(
+            &make_env(RuntimeEvent::TurnFinished { revision: 1 }),
+            &mut running,
+            &mut approvals,
+        );
+        assert!(running.is_none());
+        assert!(approvals.is_empty());
     }
 }

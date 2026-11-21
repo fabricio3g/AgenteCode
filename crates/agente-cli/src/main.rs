@@ -122,9 +122,10 @@ fn main() -> anyhow::Result<()> {
         agente_core::sandbox::helper_main(&args[2..]);
     }
 
-    // Set up panic hook that logs to file
+    // Set up panic hook that restores the terminal first, then logs to file
     let default_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
+        agente_tui::restore_terminal_best_effort();
         let msg = if let Some(s) = info.payload().downcast_ref::<&str>() {
             s.to_string()
         } else if let Some(s) = info.payload().downcast_ref::<String>() {

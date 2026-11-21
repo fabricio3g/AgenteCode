@@ -60,6 +60,15 @@ impl Tabs {
         })
     }
 
+    /// True when `task_id` belongs to the currently swapped-in tab (or is a
+    /// synthetic single-tab unit test where `next_task_id` has not run yet).
+    pub(crate) fn active_owns(&self, task_id: u64, current_task_id: u64) -> bool {
+        task_id == 0
+            || task_id == current_task_id
+            || self.active_task_ids.contains(&task_id)
+            || (self.counter == 0 && self.slots.len() == 1)
+    }
+
     fn background_indices(&self) -> Vec<usize> {
         (0..self.slots.len())
             .filter(|&i| i != self.active)
@@ -91,6 +100,11 @@ impl App {
         self.tabs.counter = id;
         remember(&mut self.tabs.active_task_ids, id);
         id
+    }
+
+    /// Drop the active tab's remembered task ids when its session is replaced.
+    pub(super) fn clear_active_task_ids(&mut self) {
+        self.tabs.active_task_ids.clear();
     }
 
     /// Run `f` with background tab `index` swapped into `self.state`.
@@ -260,19 +274,39 @@ impl App {
     fn after_tab_change(&mut self) {
         self.state.input.close_at_picker();
         self.state.input.show_slash_picker = false;
+        self.state.input.show_subagent_models = false;
+        self.state.input.subagent_model_edit = None;
+        self.state.input.show_model_selector = false;
+        self.state.input.model_selector_target = None;
+        self.state.input.show_board = false;
+        self.state.input.board_scroll = 0;
+        self.state.input.show_settings = false;
+        self.state.input.show_skills = false;
+        self.state.input.show_mcp = false;
+        self.state.input.show_command_palette = false;
+        self.state.input.close_subagents();
+        self.state.input.close_thinking_selector();
+        self.state.input.show_doctor = false;
+        self.state.input.doctor_checks.clear();
+        self.state.config.close_connect_screen();
+        self.state.picker.close();
         let ui = &mut self.state.ui;
+        ui.media_consent = None;
         ui.message_actions = None;
         ui.process_view = None;
         ui.subagent_detail_id = None;
         ui.diff_peek = None;
+        ui.show_help = false;
         if ui.scroll_drag.take().is_some() {
             ui.suppress_click_on_up = true;
         }
         ui.hits.begin_frame();
         ui.mouse_down = None;
+        ui.mouse_down_owner = None;
         ui.selection = None;
         ui.hovered_entry_id = None;
         ui.clear_chat_render_cache();
+        ui.stream_markdown_cache.reset(0);
         if !ui.reduce_motion {
             ui.surface_fade = Some(crate::state::anim::Tween::start(
                 crate::state::anim::MODAL_MS,
@@ -473,5 +507,40 @@ mod tests {
         app.close_tab(1);
         assert_eq!(app.tabs.len(), 1);
         assert_eq!(app.tabs.active(), 0);
+    }
+
+    #[test]
+    fn switching_tabs_swaps_pastes_and_attachments_and_clears_global_modals() {
+        use agente_core::media::{Attachment, AttachmentKind};
+
+        let mut app = test_app();
+        let placeholder = app.state.input.stash_paste("line 1\nline 2\nline 3");
+        app.state.input.input_text = placeholder;
+        app.state.input.attachments.push(Attachment {
+            kind: AttachmentKind::Image,
+            name: "tab0.png".into(),
+            mime: "image/png".into(),
+            path: "/tmp/tab0.png".into(),
+            bytes: 64,
+        });
+        app.state.input.show_settings = true;
+        app.state.input.show_board = true;
+        app.state.input.show_command_palette = true;
+        app.state.picker.show_session_picker = true;
+        app.state.ui.stream_markdown_cache.settled = 12;
+
+        app.open_new_tab();
+        assert!(app.state.input.pasted_blocks.is_empty());
+        assert!(app.state.input.attachments.is_empty());
+        assert!(!app.state.input.show_settings);
+        assert!(!app.state.input.show_board);
+        assert!(!app.state.input.show_command_palette);
+        assert!(!app.state.picker.show_session_picker);
+        assert_eq!(app.state.ui.stream_markdown_cache.settled, 0);
+
+        app.switch_tab(0);
+        assert_eq!(app.state.input.pasted_blocks.len(), 1);
+        assert_eq!(app.state.input.attachments.len(), 1);
+        assert_eq!(app.state.input.attachments[0].name, "tab0.png");
     }
 }

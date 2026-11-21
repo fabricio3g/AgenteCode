@@ -29,6 +29,9 @@ pub struct SessionPickerState {
     pub session_picker_confirm_delete: bool,
     /// Use the picker as a project/folder selector instead of only a session picker.
     pub session_picker_project_select: bool,
+    /// Snapshot of saved sessions loaded when the picker opens (and pruned on
+    /// delete), shared by the renderer and the key handler so they never drift.
+    pub sessions: Vec<agente_core::session::SessionMeta>,
 }
 
 impl SessionPickerState {
@@ -37,6 +40,8 @@ impl SessionPickerState {
         self.show_session_picker = true;
         self.session_picker_query.clear();
         self.session_picker_selected = 0;
+        self.session_picker_confirm_delete = false;
+        self.sessions = agente_core::session::list_sessions();
     }
 
     /// Open as the normal session picker, scoped to the current project.
@@ -69,5 +74,6 @@ impl SessionPickerState {
         self.session_picker_browse_path.clear();
         self.session_picker_browse_selected = 0;
         self.session_picker_project_select = false;
+        self.sessions.clear();
     }
 }

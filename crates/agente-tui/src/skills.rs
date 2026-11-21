@@ -56,8 +56,14 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
         }
     } else if let Some(top) = panel_row(body, 1, 1) {
         let selected = state.input.skills_selected.min(skills.len() - 1);
+        // Reserve top gap (1), gap after list (1), description rows, gap (1),
+        // and modal_footer (1) so short terminals never let the list paint
+        // over the description or footer.
+        let list_h = rows
+            .min(body.height.saturating_sub(4 + DESCRIPTION_ROWS).max(1))
+            .min(body.height.saturating_sub(2));
         let list_area = Rect {
-            height: rows.min(body.height.saturating_sub(1)),
+            height: list_h,
             ..top
         };
         let items = skills
@@ -87,15 +93,20 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
         let description = Line::from(s(skills[selected].description.clone(), style::muted()));
         let wrapped = wrap_line(&description, text_w);
         let last = wrapped.len();
+        let footer_dy = body.height.saturating_sub(1);
         for (i, mut line) in wrapped
             .into_iter()
             .take(DESCRIPTION_ROWS as usize)
             .enumerate()
         {
+            let dy = list_area.height + 2 + i as u16;
+            if dy >= footer_dy {
+                break;
+            }
             if i + 1 == DESCRIPTION_ROWS as usize && last > DESCRIPTION_ROWS as usize {
                 line.spans.push(s("…", style::dim()));
             }
-            if let Some(row) = panel_row(body, rows + 2 + i as u16, 1) {
+            if let Some(row) = panel_row(body, dy, 1) {
                 frame.render_widget(Paragraph::new(line), row);
             }
         }
@@ -172,5 +183,34 @@ mod tests {
         let text = screen(&state);
         assert!(text.contains("No skills installed"), "{text}");
         assert!(text.contains(".agente/skills/<name>/SKILL.md"), "{text}");
+    }
+
+    #[test]
+    fn short_terminal_keeps_description_and_footer_visible() {
+        let mut state = AppState::new(AppConfig::default(), "/tmp/skills-short".into());
+        state.input.show_skills = true;
+        state.input.skills = (0..10)
+            .map(|i| Skill {
+                name: format!("skill-{i}"),
+                description: format!("Desc for skill {i}"),
+                source: format!("/s/skill-{i}/SKILL.md").into(),
+                dir: format!("/s/skill-{i}").into(),
+                scope: SkillScope::User,
+                model_invocable: true,
+                compatibility: None,
+            })
+            .collect();
+        let mut terminal = Terminal::new(TestBackend::new(60, 10)).unwrap();
+        terminal.draw(|f| render(f, f.area(), &state)).unwrap();
+        let text: String = terminal
+            .backend()
+            .buffer()
+            .content
+            .iter()
+            .map(|c| c.symbol())
+            .collect();
+        assert!(text.contains("skill-0"), "{text}");
+        assert!(text.contains("Desc for skill 0"), "{text}");
+        assert!(text.contains("Esc") && text.contains("close"), "{text}");
     }
 }

@@ -202,15 +202,11 @@ fn item(state: &AppState, row: Row, selected: bool, width: usize) -> PickItem {
                 s(entry.name.clone(), row_label(selected)),
             ];
             let note = entry.use_for.trim();
-            let budget = width.saturating_sub(entry.name.len() + 30);
+            let budget = width.saturating_sub(crate::widgets::display_width(&entry.name) + 30);
             if note.is_empty() {
                 lead.push(s("  no note yet", style::dim()));
             } else if budget > 8 {
-                let mut shown: String = note.chars().take(budget).collect();
-                if shown.chars().count() < note.chars().count() {
-                    shown.pop();
-                    shown.push('…');
-                }
+                let shown = crate::widgets::truncate_cells(note, budget);
                 lead.push(s(format!("  {shown}"), style::muted()));
             }
             PickItem::row_with_trail(lead, vec![s(short_model(&entry.model), style::dim())])

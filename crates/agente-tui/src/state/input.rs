@@ -81,6 +81,8 @@ pub struct InputState {
 
     /// The swarm board (`/board`).
     pub show_board: bool,
+    /// Card scroll offset inside `/board` columns.
+    pub board_scroll: usize,
 
     // Subagent models dialog (/subagent-models)
     pub show_subagent_models: bool,
@@ -120,6 +122,8 @@ pub struct InputState {
     pub show_doctor: bool,
     /// Scroll offset in doctor dialog
     pub doctor_scroll: u16,
+    /// Cached diagnostic results populated when `/doctor` opens.
+    pub doctor_checks: Vec<crate::doctor::DiagnosticCheck>,
 }
 
 /// A large paste held out of the composer, referenced by a short placeholder.

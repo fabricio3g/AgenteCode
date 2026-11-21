@@ -208,13 +208,34 @@ pub fn search_field(frame: &mut Frame, area: Rect, text: &str, placeholder: &str
             s(placeholder.to_string(), style::dim().bg(bg)),
         ])
     } else {
-        // Keep the caret visible: show the tail of an over-long value.
+        // Keep the caret visible: show the trailing suffix that fits within
+        // `budget` terminal cells (CJK/emoji count as 2 cells).
         let budget = (area.width as usize).saturating_sub(3);
-        let skip = display_width(text).saturating_sub(budget);
-        let shown: String = text.chars().skip(skip).collect();
+        let shown = tail_cells(text, budget);
         Line::from(vec![pad, s(shown, style::text().bg(bg)), caret])
     };
     frame.render_widget(Paragraph::new(line).style(Style::default().bg(bg)), area);
+}
+
+/// Trailing suffix of `text` whose terminal cell width fits in `budget`.
+fn tail_cells(text: &str, budget: usize) -> String {
+    if budget == 0 {
+        return String::new();
+    }
+    if display_width(text) <= budget {
+        return text.to_string();
+    }
+    let mut used = 0usize;
+    let mut start = text.len();
+    for (idx, ch) in text.char_indices().rev() {
+        let w = if super::is_wide_char(ch) { 2 } else { 1 };
+        if used + w > budget {
+            break;
+        }
+        used += w;
+        start = idx;
+    }
+    text[start..].to_string()
 }
 
 #[cfg(test)]
@@ -282,5 +303,23 @@ mod tests {
         );
         let text: String = line.spans.iter().map(|sp| sp.content.as_ref()).collect();
         assert_eq!(text, "  name  a very lo…  key ");
+    }
+
+    #[test]
+    fn search_field_tail_scrolls_cjk_by_display_cells() {
+        assert_eq!(tail_cells("你好世界测试", 6), "界测试");
+        assert_eq!(tail_cells("你好世界测试", 5), "测试");
+        assert_eq!(tail_cells("abc", 10), "abc");
+
+        let mut terminal = Terminal::new(TestBackend::new(10, 1)).unwrap();
+        terminal
+            .draw(|frame| search_field(frame, frame.area(), "你好世界测试", "Search"))
+            .unwrap();
+        let row = row_text(terminal.backend().buffer(), 0);
+        let compact: String = row.chars().filter(|c| !c.is_whitespace()).collect();
+        assert!(
+            compact.contains("界测试▌"),
+            "tail CJK chars and caret must stay visible: {row:?}"
+        );
     }
 }

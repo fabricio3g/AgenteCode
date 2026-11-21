@@ -36,11 +36,15 @@ fn available_text_width(width: u16) -> usize {
 }
 
 /// Height the composer needs for the given text.
-/// `queued` follow-up messages render as up to two preview rows.
-pub fn desired_height(text: &str, width: u16, queued: usize) -> u16 {
+/// `queued` follow-up messages render as up to two preview rows; attached
+/// media takes one header row above them.
+pub fn desired_height(text: &str, width: u16, queued: usize, has_attachments: bool) -> u16 {
     let preview_rows = queued_preview_rows(queued);
-    let content_rows = (wrap_input_text(text, available_text_width(width)).len() + preview_rows)
-        .clamp(MIN_BODY_ROWS as usize, MAX_BODY_ROWS as usize + 2) as u16;
+    let attachment_rows = usize::from(has_attachments);
+    let header_rows = preview_rows + attachment_rows;
+    let content_rows = (wrap_input_text(text, available_text_width(width)).len() + header_rows)
+        .clamp(MIN_BODY_ROWS as usize, MAX_BODY_ROWS as usize + header_rows)
+        as u16;
     // borders (2) + body. Approval prompts live on the floating card only.
     2 + content_rows
 }
@@ -507,17 +511,15 @@ fn render_body(frame: &mut Frame, area: Rect, state: &AppState) {
             .position(|line| cursor_char >= line.start_char && cursor_char <= line.end_char)
             .unwrap_or_else(|| wrapped.len().saturating_sub(1));
 
-        let max_visible = area.height as usize - preview_rows;
-        let scroll = if cursor_line >= max_visible {
+        let header_rows = lines.len();
+        let max_visible = (area.height as usize).saturating_sub(header_rows);
+        let scroll = if max_visible > 0 && cursor_line >= max_visible {
             cursor_line - max_visible + 1
         } else {
             0
         };
 
-        for (i, wrapped_line) in wrapped.iter().enumerate().skip(scroll) {
-            if lines.len() >= max_visible {
-                break;
-            }
+        for (i, wrapped_line) in wrapped.iter().enumerate().skip(scroll).take(max_visible) {
             let line_text = &wrapped_line.text;
             // The activity strip already spins while running, so
             // the composer keeps its static ❯ — two stacked spinners read as
@@ -547,7 +549,7 @@ fn render_body(frame: &mut Frame, area: Rect, state: &AppState) {
             }
         }
 
-        while lines.len() < max_visible {
+        while lines.len() < area.height as usize {
             lines.push(Line::from(Span::styled(
                 " ".repeat(area.width as usize),
                 Style::default().bg(bg),
@@ -632,7 +634,7 @@ mod tests {
 
     #[test]
     fn empty_composer_is_compact() {
-        let h = desired_height("", 80, 0);
+        let h = desired_height("", 80, 0, false);
         assert_eq!(h, min_height());
         assert_eq!(h, 3);
     }
@@ -658,8 +660,8 @@ mod tests {
 
     #[test]
     fn desired_height_grows_with_content() {
-        let short = desired_height("hi", 80, 0);
-        let multi = desired_height("one\ntwo\nthree\nfour", 80, 0);
+        let short = desired_height("hi", 80, 0, false);
+        let multi = desired_height("one\ntwo\nthree\nfour", 80, 0, false);
         assert!(multi >= short);
         assert!(multi <= 2 + MAX_BODY_ROWS + 3);
     }
@@ -667,20 +669,80 @@ mod tests {
     #[test]
     fn approval_no_longer_adds_a_duplicate_footer() {
         // The floating approval card is the single Y/A/N surface.
-        assert_eq!(desired_height("x", 80, 0), 3);
+        assert_eq!(desired_height("x", 80, 0, false), 3);
     }
 
     #[test]
     fn queued_messages_reserve_preview_rows() {
-        assert_eq!(desired_height("", 80, 2), desired_height("", 80, 0) + 2);
+        assert_eq!(
+            desired_height("", 80, 2, false),
+            desired_height("", 80, 0, false) + 2
+        );
         // Overflow beyond two collapses into the second preview row.
-        assert_eq!(desired_height("", 80, 5), desired_height("", 80, 2));
+        assert_eq!(
+            desired_height("", 80, 5, false),
+            desired_height("", 80, 2, false)
+        );
+        assert_eq!(
+            desired_height("", 80, 1, true),
+            desired_height("", 80, 1, false) + 1
+        );
     }
 
     #[test]
     fn desired_height_handles_narrow() {
-        let h = desired_height("long input", 0, 0);
+        let h = desired_height("long input", 0, 0, false);
         assert!(h >= min_height());
+    }
+
+    #[test]
+    fn typed_text_renders_with_queued_messages_and_survives_tight_heights() {
+        use crate::state::QueuedMessage;
+        use agente_core::media::{Attachment, AttachmentKind};
+        use ratatui::{backend::TestBackend, Terminal};
+
+        let mut state = AppState::new(Default::default(), "/tmp/agente".into());
+        state.agent.state = AgentState::Executing;
+        state.input.input_text = "visible draft".into();
+        state.input.input_cursor = state.input.input_text.chars().count();
+
+        for count in [1usize, 2] {
+            state.agent.message_queue = (0..count)
+                .map(|i| QueuedMessage::new(format!("queued-{i}")))
+                .collect();
+            let h = desired_height(&state.input.input_text, 60, count, false);
+            let mut terminal = Terminal::new(TestBackend::new(60, h)).unwrap();
+            terminal
+                .draw(|frame| render(frame, frame.area(), &state))
+                .unwrap();
+            let text: String = terminal
+                .backend()
+                .buffer()
+                .content()
+                .iter()
+                .map(|c| c.symbol())
+                .collect();
+            assert!(
+                text.contains("visible draft"),
+                "typed text must render with {count} queued message(s): {text}"
+            );
+            assert!(text.contains("queued-0"), "{text}");
+        }
+
+        // Tight heights smaller than header rows (queue + attachment) must never underflow.
+        state.input.attachments.push(Attachment {
+            kind: AttachmentKind::Image,
+            name: "shot.png".into(),
+            mime: "image/png".into(),
+            path: "/tmp/shot.png".into(),
+            bytes: 128,
+        });
+        for tight_h in [1u16, 2, 3, 4] {
+            let mut terminal = Terminal::new(TestBackend::new(40, tight_h)).unwrap();
+            terminal
+                .draw(|frame| render_body(frame, frame.area(), &state))
+                .unwrap();
+        }
     }
 
     #[test]

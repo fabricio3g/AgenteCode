@@ -45,6 +45,8 @@ pub enum HitTarget {
     Row { list: ListId, index: usize },
     /// An approval dialog action button.
     Approval(ApprovalAction),
+    /// A plan review action button (0 = Accept, 1 = Redo, 2 = Comment).
+    PlanAction(usize),
     /// A tab of the subagent detail modal.
     DetailTab(super::SubagentDetailTab),
     /// A scrollbar; carries its geometry so a row maps to an offset.

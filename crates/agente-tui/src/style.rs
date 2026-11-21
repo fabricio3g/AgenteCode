@@ -86,9 +86,8 @@ pub mod dark {
     pub const ERROR: Color = Color::Rgb(240, 123, 114); // #f07b72
 
     // Borders - quiet, barely-there
-    pub const BORDER_SUBTLE: Color = Color::Rgb(41, 41, 41); // #292929
     pub const BORDER_ACTIVE: Color = Color::Rgb(60, 60, 60); // #3c3c3c
-    /// Barely-visible full-width rule under popup headers, between SUBTLE and BORDER.
+    /// Barely-visible full-width rule under popup headers.
     pub const BORDER_RULE: Color = Color::Rgb(43, 43, 43); // #2b2b2b
 
     // Diff colors
@@ -147,9 +146,8 @@ pub mod light {
     pub const ERROR: Color = Color::Rgb(217, 48, 37); // #d93025
 
     // Borders
-    pub const BORDER_SUBTLE: Color = Color::Rgb(235, 235, 235); // #ebebeb
     pub const BORDER_ACTIVE: Color = Color::Rgb(200, 200, 200); // #c8c8c8
-    /// Barely-visible full-width rule under popup headers, between SUBTLE and BORDER.
+    /// Barely-visible full-width rule under popup headers.
     pub const BORDER_RULE: Color = Color::Rgb(237, 237, 237); // #ededed
 
     // Diff colors
@@ -201,7 +199,6 @@ theme_color!(ACCENT);
 theme_color!(SUCCESS);
 theme_color!(WARNING);
 theme_color!(ERROR);
-theme_color!(BORDER_SUBTLE);
 theme_color!(BORDER_ACTIVE);
 theme_color!(BORDER_RULE);
 theme_color!(MACHINERY);

@@ -358,6 +358,11 @@ pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState) {
                 None,
             );
         }
+    } else if state.ui.stream_markdown_cache.settled > 0
+        || !state.ui.stream_markdown_cache.rows.is_empty()
+        || !state.ui.stream_markdown_cache.block_lines.is_empty()
+    {
+        state.ui.stream_markdown_cache.reset(chat_width);
     }
 
     // Empty state (non-welcome path)
@@ -4052,9 +4057,13 @@ mod snapshot_tests {
                 // Mimic app layout: content + input + status
                 use ratatui::layout::{Constraint, Layout};
                 let size = f.area();
-                let input_h =
-                    crate::widgets::input::desired_height(&state.input.input_text, size.width, 0)
-                        .max(crate::widgets::input::min_height());
+                let input_h = crate::widgets::input::desired_height(
+                    &state.input.input_text,
+                    size.width,
+                    0,
+                    false,
+                )
+                .max(crate::widgets::input::min_height());
                 let [content, input, status] = Layout::vertical([
                     Constraint::Fill(1),
                     Constraint::Length(input_h.min(size.height.saturating_sub(2))),

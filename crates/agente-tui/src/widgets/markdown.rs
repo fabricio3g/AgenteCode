@@ -31,6 +31,7 @@ pub(crate) fn render_markdown(content: &str) -> Vec<Line<'static>> {
 pub(crate) fn render_markdown_at_width(content: &str, width: usize) -> Vec<Line<'static>> {
     let mut lines = Vec::new();
     let mut in_code_block = false;
+    let mut code_fence_ticks = 0usize;
     let mut code_lang = String::new();
     let mut code_buffer = String::new();
     let mut table_buffer: Vec<String> = Vec::new();
@@ -47,26 +48,31 @@ pub(crate) fn render_markdown_at_width(content: &str, width: usize) -> Vec<Line<
             table_buffer.push(line.trim().to_string());
             continue;
         }
-        if line.starts_with("```") {
-            if !in_code_block {
-                in_code_block = true;
-                code_lang = line.trim_start_matches('`').trim().to_string();
-                code_buffer.clear();
-                let lang_display = if code_lang.is_empty() {
-                    "code"
-                } else {
-                    &code_lang
-                };
-                lines.push(Line::from(vec![
-                    sp("  "),
-                    sf("┌", FG_DIM()),
-                    sp("─ "),
-                    // A quiet caption, as on desktop: the code under it is what
-                    // carries colour.
-                    s(lang_display.to_string(), Style::default().fg(FG_DIM())),
-                ]));
+        if !in_code_block && line.starts_with("```") {
+            in_code_block = true;
+            code_fence_ticks = line.bytes().take_while(|&b| b == b'`').count();
+            code_lang = line[code_fence_ticks..].trim().to_string();
+            code_buffer.clear();
+            let lang_display = if code_lang.is_empty() {
+                "code"
             } else {
+                &code_lang
+            };
+            lines.push(Line::from(vec![
+                sp("  "),
+                sf("┌", FG_DIM()),
+                sp("─ "),
+                // A quiet caption, as on desktop: the code under it is what
+                // carries colour.
+                s(lang_display.to_string(), Style::default().fg(FG_DIM())),
+            ]));
+            continue;
+        }
+        if in_code_block {
+            let ticks = line.bytes().take_while(|&b| b == b'`').count();
+            if ticks >= code_fence_ticks.max(3) && line[ticks..].trim().is_empty() {
                 in_code_block = false;
+                code_fence_ticks = 0;
                 let highlighted = crate::syntax_highlight::highlight_code(&code_buffer, &code_lang);
                 for hl_line in highlighted {
                     let mut new_spans = vec![sp("  "), sf("│", FG_DIM()), sp(" ")];
@@ -79,13 +85,10 @@ pub(crate) fn render_markdown_at_width(content: &str, width: usize) -> Vec<Line<
                     lines.push(Line::from(new_spans));
                 }
                 lines.push(Line::from(vec![sp("  "), sf("└", FG_DIM())]));
+            } else {
+                code_buffer.push_str(line);
+                code_buffer.push('\n');
             }
-            continue;
-        }
-
-        if in_code_block {
-            code_buffer.push_str(line);
-            code_buffer.push('\n');
             continue;
         }
 

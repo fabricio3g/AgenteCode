@@ -118,8 +118,14 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
         }
     } else if let Some(top) = panel_row(body, 1, 1) {
         let selected = state.input.mcp_selected.min(servers.len() - 1);
+        // Reserve top gap (1), gap after list (1), detail rows, gap (1),
+        // and modal_footer (1) so short terminals never let the list paint
+        // over the detail lines or footer.
+        let list_h = rows
+            .min(body.height.saturating_sub(4 + DETAIL_ROWS).max(1))
+            .min(body.height.saturating_sub(2));
         let list_area = Rect {
-            height: rows.min(body.height.saturating_sub(1)),
+            height: list_h,
             ..top
         };
         let items = servers
@@ -149,8 +155,13 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
         if let Some(detail) = status_detail(server) {
             details.push(detail);
         }
+        let footer_dy = body.height.saturating_sub(1);
         for (i, (text, text_style)) in details.into_iter().enumerate() {
-            if let Some(row) = panel_row(body, rows + 2 + i as u16, 1) {
+            let dy = list_area.height + 2 + i as u16;
+            if dy >= footer_dy {
+                break;
+            }
+            if let Some(row) = panel_row(body, dy, 1) {
                 frame.render_widget(
                     Paragraph::new(Line::from(s(truncate_cells(&text, text_w), text_style))),
                     row,
@@ -232,5 +243,37 @@ mod tests {
             failed.0, "exit 1 · ENOENT npx",
             "the stderr tail explains it"
         );
+    }
+
+    #[test]
+    fn short_terminal_keeps_footer_visible_without_list_overlap() {
+        use ratatui::backend::TestBackend;
+        use ratatui::Terminal;
+
+        let mut cfg = agente_core::config::AppConfig::default();
+        for i in 0..8 {
+            cfg.mcp.insert(
+                format!("srv-{i}"),
+                agente_core::mcp::McpConfig {
+                    command: vec!["echo".into(), format!("{i}")],
+                    enabled: false,
+                    ..Default::default()
+                },
+            );
+        }
+        let mut state = AppState::new(cfg, "/tmp/mcp-short".into());
+        state.input.show_mcp = true;
+        let mut terminal = Terminal::new(TestBackend::new(60, 10)).unwrap();
+        terminal.draw(|f| render(f, f.area(), &state)).unwrap();
+        let text: String = terminal
+            .backend()
+            .buffer()
+            .content
+            .iter()
+            .map(|c| c.symbol())
+            .collect();
+        assert!(text.contains("srv-0"), "{text}");
+        assert!(text.contains("stdio · echo"), "{text}");
+        assert!(text.contains("Esc") && text.contains("close"), "{text}");
     }
 }

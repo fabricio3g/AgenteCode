@@ -31,6 +31,7 @@ pub(crate) use render::render_app;
 
 use std::collections::HashSet;
 use std::io::{self, Write as _};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 use std::time::Duration;
 
@@ -38,6 +39,30 @@ use crossterm::terminal::{enable_raw_mode, EnterAlternateScreen};
 use crossterm::ExecutableCommand;
 use ratatui::backend::CrosstermBackend;
 use ratatui::Terminal;
+
+/// Tracks whether the process has entered TUI terminal mode (raw mode /
+/// alternate screen / mouse capture / bracketed paste). `false` in
+/// `App::new_for_test` and headless CLI invocations so `Drop` and the panic
+/// hook never emit terminal escape sequences when the TUI is not active.
+pub(crate) static TERMINAL_ACTIVE: AtomicBool = AtomicBool::new(false);
+
+/// Best-effort terminal teardown for panic hooks, startup rollback, and `Drop`.
+///
+/// Only runs when [`TERMINAL_ACTIVE`] is set, and each step ignores its own
+/// error so an early failure never skips the remaining teardown steps.
+pub fn restore_terminal_best_effort() {
+    if !TERMINAL_ACTIVE.swap(false, Ordering::SeqCst) {
+        return;
+    }
+    let mut stdout = io::stdout();
+    let _ = stdout.write_all(b"\x1b[?2026l");
+    let _ = stdout.execute(crossterm::event::DisableBracketedPaste);
+    let _ = stdout.execute(crossterm::event::DisableMouseCapture);
+    let _ = crossterm::terminal::disable_raw_mode();
+    let _ = stdout.execute(crossterm::terminal::LeaveAlternateScreen);
+    let _ = stdout.execute(crossterm::cursor::Show);
+    let _ = stdout.flush();
+}
 
 use agente_core::agent::{spawn_discovery_task, AgentTaskEvent};
 use agente_core::config::AppConfig;
@@ -107,16 +132,25 @@ impl App {
         project_dir: String,
         runtime: tokio::runtime::Runtime,
     ) -> anyhow::Result<Self> {
-        enable_raw_mode()?;
-        io::stdout().execute(EnterAlternateScreen)?;
-        io::stdout().execute(crossterm::terminal::SetTitle(crate::brand::PRODUCT_NAME))?;
-        crossterm::execute!(
-            io::stdout(),
-            crossterm::event::EnableMouseCapture,
-            crossterm::event::EnableBracketedPaste
-        )?;
-        let backend = CrosstermBackend::new(io::stdout());
-        let terminal = Terminal::new(backend)?;
+        TERMINAL_ACTIVE.store(true, Ordering::SeqCst);
+        let terminal = match (|| -> anyhow::Result<Terminal<CrosstermBackend<io::Stdout>>> {
+            enable_raw_mode()?;
+            io::stdout().execute(EnterAlternateScreen)?;
+            io::stdout().execute(crossterm::terminal::SetTitle(crate::brand::PRODUCT_NAME))?;
+            crossterm::execute!(
+                io::stdout(),
+                crossterm::event::EnableMouseCapture,
+                crossterm::event::EnableBracketedPaste
+            )?;
+            let backend = CrosstermBackend::new(io::stdout());
+            Ok(Terminal::new(backend)?)
+        })() {
+            Ok(terminal) => terminal,
+            Err(error) => {
+                restore_terminal_best_effort();
+                return Err(error);
+            }
+        };
 
         let mut state = AppState::new(config, project_dir);
         state.ui.reduce_motion = state.config.config.reduce_motion;
@@ -246,7 +280,17 @@ impl App {
         );
         self.state.cancel_tx.abort();
         self.current_task_id = self.next_task_id();
+        for id in self
+            .state
+            .agent
+            .remove_approvals_from(&agente_core::agent::ApprovalSource::Parent)
+        {
+            self.approval_broker.cancel(&id);
+        }
+        self.state.agent.reclaim_inbox();
+        self.state.agent.steering_queue.clear();
         self.state.agent.force_reset_to_idle();
+        self.state.ui.stream_markdown_cache.reset(0);
         self.state.ui.needs_render = true;
     }
 
@@ -410,7 +454,7 @@ impl Drop for App {
         // Best-effort flush before terminal teardown so config survives a panic.
         self.flush_state_to_disk();
         self.persistence.shutdown();
-        let _ = self.restore_terminal();
+        restore_terminal_best_effort();
     }
 }
 
@@ -473,5 +517,26 @@ mod stuck_guard_tests {
         assert!(agent.secs_since_last_agent_event().is_none());
         agent.mark_agent_event();
         assert_eq!(agent.secs_since_last_agent_event(), Some(0));
+    }
+
+    #[test]
+    fn test_app_leaves_terminal_inactive_and_restore_is_noop() {
+        use std::sync::atomic::Ordering;
+
+        assert!(!super::TERMINAL_ACTIVE.load(Ordering::SeqCst));
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let app = super::App::new_for_test(
+            agente_core::config::AppConfig::default(),
+            "/tmp/term-flag".into(),
+            runtime,
+        )
+        .unwrap();
+        assert!(!super::TERMINAL_ACTIVE.load(Ordering::SeqCst));
+        drop(app);
+        super::restore_terminal_best_effort();
+        assert!(!super::TERMINAL_ACTIVE.load(Ordering::SeqCst));
     }
 }

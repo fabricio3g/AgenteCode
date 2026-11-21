@@ -8,9 +8,7 @@ use agente_core::cancellation::AbortController;
 use agente_core::context;
 use agente_core::tools::{ToolExecutionContext, ToolOutputStream, ToolRegistry};
 use agente_core::types::{self, AgentState, Message, Role};
-use crossterm::terminal::{
-    disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
-};
+use crossterm::terminal::{enable_raw_mode, EnterAlternateScreen};
 use crossterm::ExecutableCommand;
 
 use crate::command_palette::Command;
@@ -57,6 +55,7 @@ impl App {
         self.state.agent.state = AgentState::StreamingResponse;
         self.state.agent.streaming_text.clear();
         self.state.agent.reasoning_text.clear();
+        self.state.ui.stream_markdown_cache.reset(0);
         self.state.agent.thinking_start_time = Some(chrono::Utc::now());
         // Arm the stuck-guard clock for this turn (even before the first event).
         self.state.agent.mark_agent_event();
@@ -98,11 +97,13 @@ impl App {
         }
 
         // Bump task id and create a one-shot cancellation controller for this
-        // turn. Explicitly abort the previous controller before replacing it;
-        // dropping a controller is intentionally not itself cancellation.
+        // turn. Do NOT abort the previous `cancel_tx` here: background and
+        // board subagents spawned in an earlier turn hold child tokens of it
+        // and legitimately outlive the parent turn. Explicit user stops
+        // (`stop_current_operation`, `!cmd` steering interrupt, stuck reset)
+        // abort `cancel_tx` directly.
         self.current_task_id = self.next_task_id();
         self.state.agent.abort_task();
-        self.state.cancel_tx.abort();
         let cancel_controller = AbortController::new();
         let cancel_signal = cancel_controller.signal();
         self.state.cancel_tx = cancel_controller;
@@ -198,7 +199,6 @@ impl App {
 
         let project_dir = self.state.session.project_dir.clone();
         self.state.agent.abort_task();
-        self.state.cancel_tx.abort();
         self.current_task_id = self.next_task_id();
         let task_id = self.current_task_id;
         let controller = AbortController::new();
@@ -575,14 +575,7 @@ impl App {
     }
 
     pub(super) fn restore_terminal(&mut self) -> anyhow::Result<()> {
-        disable_raw_mode()?;
-        crossterm::execute!(
-            io::stdout(),
-            crossterm::event::DisableBracketedPaste,
-            crossterm::event::DisableMouseCapture
-        )?;
-        io::stdout().execute(LeaveAlternateScreen)?;
-        self.terminal.show_cursor()?;
+        super::restore_terminal_best_effort();
         Ok(())
     }
 
@@ -607,16 +600,23 @@ impl App {
     }
 
     pub(super) fn reinit_terminal(&mut self) -> anyhow::Result<()> {
-        enable_raw_mode()?;
-        io::stdout().execute(EnterAlternateScreen)?;
-        crossterm::execute!(
-            io::stdout(),
-            crossterm::event::EnableMouseCapture,
-            crossterm::event::EnableBracketedPaste
-        )?;
-        // Re-query graphics after leaving/re-entering alt screen (e.g. external editor).
-        self.terminal.clear()?;
-        Ok(())
+        super::TERMINAL_ACTIVE.store(true, std::sync::atomic::Ordering::SeqCst);
+        let init = (|| -> anyhow::Result<()> {
+            enable_raw_mode()?;
+            io::stdout().execute(EnterAlternateScreen)?;
+            crossterm::execute!(
+                io::stdout(),
+                crossterm::event::EnableMouseCapture,
+                crossterm::event::EnableBracketedPaste
+            )?;
+            // Re-query graphics after leaving/re-entering alt screen (e.g. external editor).
+            self.terminal.clear()?;
+            Ok(())
+        })();
+        if init.is_err() {
+            super::restore_terminal_best_effort();
+        }
+        init
     }
 
     /// Decisively interrupt and stop the running operation or turn.
@@ -642,11 +642,16 @@ impl App {
         // 2. Hard-abort the background task handle so it cannot linger
         self.state.agent.abort_task();
 
-        // 3. Cancel all pending approvals in broker and queue
-        self.approval_broker.cancel_all();
-        self.state
+        // 3. Cancel only the active tab's parent approvals in broker and queue
+        for id in self
+            .state
             .agent
-            .remove_approvals_from(&agente_core::agent::ApprovalSource::Parent);
+            .remove_approvals_from(&agente_core::agent::ApprovalSource::Parent)
+        {
+            self.approval_broker.cancel(&id);
+        }
+        self.state.agent.reclaim_inbox();
+        self.state.agent.steering_queue.clear();
 
         // 4. If there was streaming text, preserve it as an interrupted message
         if !self.state.agent.streaming_text.is_empty() {
@@ -657,6 +662,7 @@ impl App {
 
         // 5. Clear stream buffers and live tools
         self.state.agent.clear_stream_buffers();
+        self.state.ui.stream_markdown_cache.reset(0);
         self.state.agent.live_tool_calls.clear();
 
         // 6. Reset agent state
@@ -718,5 +724,82 @@ mod tests {
             text.push('\n');
         }
         assert!(text.contains("Diff:"), "diff peek header must paint");
+    }
+
+    #[test]
+    fn stop_cancels_only_active_parent_approvals_and_reclaims_inbox() {
+        use agente_core::agent::ApprovalSource;
+        use agente_core::types::{AgentState, ApprovalRequest};
+
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let mut app = crate::app::App::new_for_test(
+            agente_core::config::AppConfig::default(),
+            "/tmp/stop-scoped".to_string(),
+            runtime,
+        )
+        .unwrap();
+
+        let mk_req = |id: &str| ApprovalRequest {
+            request_id: id.into(),
+            tool_name: "shell".into(),
+            tool_args: "{}".into(),
+            description: id.into(),
+            is_dangerous: false,
+            old_content: None,
+            new_content: None,
+            file_path: None,
+        };
+
+        // Tab 0 has a pending approval on the shared broker.
+        let bg_req = mk_req("bg-tab-req");
+        let mut bg_rx = app.approval_broker.request(&bg_req);
+        app.state
+            .agent
+            .enqueue_approval(ApprovalSource::Parent, bg_req);
+
+        // Open Tab 1 with a parent approval, a subagent approval, an inbox message, and steering.
+        app.open_new_tab();
+        let parent_req = mk_req("active-parent-req");
+        let mut parent_rx = app.approval_broker.request(&parent_req);
+        let child_req = mk_req("active-child-req");
+        let mut child_rx = app.approval_broker.request(&child_req);
+        app.state
+            .agent
+            .enqueue_approval(ApprovalSource::Parent, parent_req);
+        app.state
+            .agent
+            .enqueue_approval(ApprovalSource::Subagent { id: "c1".into() }, child_req);
+        app.state
+            .agent
+            .queue_message(crate::state::QueuedMessage::new("queued follow-up"));
+        app.state.agent.send_queue_now();
+        app.state.agent.steering_queue.push("!ls".into());
+        app.state.agent.state = AgentState::WaitingApproval;
+
+        app.stop_current_operation();
+
+        // Active tab's parent approval was cancelled (oneshot closed).
+        assert!(matches!(
+            parent_rx.try_recv(),
+            Err(tokio::sync::oneshot::error::TryRecvError::Closed)
+        ));
+        // Background tab's and subagent's approvals stay live in the broker!
+        assert!(matches!(
+            bg_rx.try_recv(),
+            Err(tokio::sync::oneshot::error::TryRecvError::Empty)
+        ));
+        assert!(matches!(
+            child_rx.try_recv(),
+            Err(tokio::sync::oneshot::error::TryRecvError::Empty)
+        ));
+        assert!(app.state.agent.steering_queue.is_empty());
+        assert!(app.state.agent.user_inbox.lock().is_empty());
+        assert!(
+            !app.state.agent.message_queue[0].sending,
+            "inbox messages must be reclaimed back to unsent"
+        );
     }
 }

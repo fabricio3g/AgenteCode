@@ -77,15 +77,42 @@ impl App {
         })
     }
 
+    /// Whether `hit` belongs to the surface that currently owns the pointer.
+    ///
+    /// A floating dialog only clears/paints its own centered card rect, so
+    /// hits registered earlier in the frame outside that rect (e.g. session
+    /// tabs on row 0, or plan review buttons beneath an approval popup) remain
+    /// in `state.ui.hits` and must be gated against `owner`.
+    fn hit_is_active(&self, hit: &HitTarget, owner: ModalOwner) -> bool {
+        match hit {
+            HitTarget::Tab(_) | HitTarget::TabClose(_) | HitTarget::NewTab => {
+                !owner.is_modal() && !owner.blocks_chat_mouse()
+            }
+            HitTarget::Approval(_) => owner == ModalOwner::Approval,
+            HitTarget::PlanAction(_) => owner == ModalOwner::PlanReview,
+            HitTarget::DetailTab(_) => owner == ModalOwner::SubagentDetail,
+            HitTarget::Row { list, .. } => self.active_list() == Some(*list),
+            HitTarget::Scrollbar(geom) => self.scrollbar_is_active(geom.surface, owner),
+        }
+    }
+
     /// Pointer moved onto `hit`: remember it for hover styling, and move a
     /// list's selection onto the hovered row (hover-to-select).
     fn hover_hit(&mut self, hit: Option<HitTarget>) {
-        if let Some(HitTarget::Row { list, index }) = hit {
-            if self.active_list() == Some(list) {
-                if let Some(selected) = self.list_selection_mut(list) {
-                    *selected = index;
+        let owner = modal_owner(&self.state);
+        let hit = hit.filter(|target| self.hit_is_active(target, owner));
+        match hit {
+            Some(HitTarget::Row { list, index }) => {
+                if self.active_list() == Some(list) {
+                    if let Some(selected) = self.list_selection_mut(list) {
+                        *selected = index;
+                    }
                 }
             }
+            Some(HitTarget::PlanAction(index)) if owner == ModalOwner::PlanReview => {
+                self.state.plan_review.button_index = index.min(2);
+            }
+            _ => {}
         }
         self.state.ui.hovered_hit = hit;
     }
@@ -93,8 +120,16 @@ impl App {
     /// Click on a registered target. Rows select then confirm exactly like
     /// Enter, so mouse and keyboard can never disagree about what a row does.
     fn activate_hit(&mut self, hit: HitTarget) -> anyhow::Result<()> {
+        let owner = modal_owner(&self.state);
+        if !self.hit_is_active(&hit, owner) {
+            return Ok(());
+        }
         match hit {
             HitTarget::Approval(action) => self.handle_approval_action(action)?,
+            HitTarget::PlanAction(index) => {
+                self.state.plan_review.button_index = index.min(2);
+                self.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))?;
+            }
             HitTarget::Tab(index) => self.switch_tab(index),
             HitTarget::TabClose(index) => self.close_tab(index),
             HitTarget::NewTab => self.open_new_tab(),
@@ -154,6 +189,15 @@ impl App {
             let rows = delta * 3;
             match owner {
                 ModalOwner::Help => self.state.ui.scroll_help(i32::from(delta)),
+                ModalOwner::Board => {
+                    if delta < 0 {
+                        self.state.input.board_scroll =
+                            self.state.input.board_scroll.saturating_sub(1);
+                    } else {
+                        self.state.input.board_scroll =
+                            self.state.input.board_scroll.saturating_add(1);
+                    }
+                }
                 ModalOwner::ProcessView => {
                     if let Some(view) = self.state.ui.process_view.as_mut() {
                         view.scroll_by(rows as isize);
@@ -224,11 +268,14 @@ impl App {
             // a drag, drags scrub, release ends it.
             MouseEventKind::Down(MouseButton::Left) => {
                 self.state.ui.suppress_click_on_up = false;
+                self.state.ui.mouse_down = Some((x, y));
+                self.state.ui.mouse_down_owner = Some(owner);
+                self.state.ui.drag_selecting = false;
                 if let Some(HitTarget::Scrollbar(geom)) = self.state.ui.hits.at(x, y) {
                     if self.scrollbar_is_active(geom.surface, owner) {
                         self.state.ui.scroll_drag = Some(geom);
                         self.state.ui.mouse_down = None;
-                        self.state.ui.drag_selecting = false;
+                        self.state.ui.mouse_down_owner = None;
                         self.state.ui.selection = None;
                         self.scroll_surface_to(geom, y);
                         return Ok(());
@@ -245,19 +292,46 @@ impl App {
             }
             MouseEventKind::Up(MouseButton::Left) if self.state.ui.scroll_drag.is_some() => {
                 self.state.ui.scroll_drag = None;
+                self.state.ui.mouse_down = None;
+                self.state.ui.mouse_down_owner = None;
                 self.state.ui.needs_render = true;
                 return Ok(());
             }
             MouseEventKind::Up(MouseButton::Left) if self.state.ui.suppress_click_on_up => {
                 self.state.ui.suppress_click_on_up = false;
+                self.state.ui.mouse_down = None;
+                self.state.ui.mouse_down_owner = None;
+                return Ok(());
+            }
+            MouseEventKind::Up(MouseButton::Left)
+                if self
+                    .state
+                    .ui
+                    .mouse_down_owner
+                    .is_some_and(|down_owner| down_owner != owner) =>
+            {
+                // A modal appeared or closed between press and release (for
+                // example an approval dialog popping up mid-click): drop the
+                // release so it can never accidentally click Allow/Deny.
+                self.state.ui.mouse_down = None;
+                self.state.ui.mouse_down_owner = None;
+                self.state.ui.drag_selecting = false;
+                self.state.ui.selection = None;
                 return Ok(());
             }
             MouseEventKind::Up(MouseButton::Left) if !self.state.ui.drag_selecting => {
                 // Resolve at the press position so release jitter can't
                 // retarget the click onto a neighbouring row.
                 let (px, py) = self.state.ui.mouse_down.unwrap_or((x, y));
-                if let Some(target) = self.state.ui.hits.at(px, py) {
+                if let Some(target) = self
+                    .state
+                    .ui
+                    .hits
+                    .at(px, py)
+                    .filter(|t| self.hit_is_active(t, owner))
+                {
                     self.state.ui.mouse_down = None;
+                    self.state.ui.mouse_down_owner = None;
                     self.state.ui.selection = None;
                     return self.activate_hit(target);
                 }
@@ -271,6 +345,8 @@ impl App {
             // [stop] in the activity strip must ALWAYS be clickable, even when
             // an approval dialog or modal is open.
             if let MouseEventKind::Up(MouseButton::Left) = mouse.kind {
+                self.state.ui.mouse_down = None;
+                self.state.ui.mouse_down_owner = None;
                 if hit(self.state.ui.stop_hitbox, x, y) {
                     self.stop_current_operation();
                     return Ok(());
@@ -288,6 +364,7 @@ impl App {
                 if hit(self.state.ui.jump_bottom_area, x, y) {
                     self.state.ui.scroll_to_bottom();
                     self.state.ui.mouse_down = None;
+                    self.state.ui.mouse_down_owner = None;
                     self.state.ui.drag_selecting = false;
                     self.state.ui.selection = None;
                     self.state.ui.suppress_click_on_up = true;
@@ -296,6 +373,7 @@ impl App {
                 }
                 {
                     self.state.ui.mouse_down = Some((mouse.column, mouse.row));
+                    self.state.ui.mouse_down_owner = Some(owner);
                     self.state.ui.drag_selecting = false;
                     self.state.ui.selection = None;
                     if let Some((line, col)) =
@@ -365,6 +443,7 @@ impl App {
                     let _ = self.handle_click(cx, cy);
                 }
                 self.state.ui.mouse_down = None;
+                self.state.ui.mouse_down_owner = None;
                 self.state.ui.needs_render = true;
             }
             MouseEventKind::Moved => {
@@ -404,7 +483,7 @@ impl App {
                 ui.chat_auto_scroll = offset >= geom.max_offset;
             }
             ScrollSurface::Plan => {
-                self.state.plan_review.scroll = offset.min(usize::from(u16::MAX)) as u16;
+                self.state.plan_review.scroll = offset;
             }
             ScrollSurface::Process => {
                 if let Some(view) = self.state.ui.process_view.as_mut() {
@@ -1241,5 +1320,93 @@ mod tests {
 
         assert_eq!(rx.try_recv().unwrap(), ApprovalAction::ApproveOnce);
         assert!(app.state.agent.current_approval().is_none());
+    }
+
+    #[test]
+    fn modal_blocks_tab_strip_clicks_and_mid_click_approval_popup() {
+        use agente_core::agent::ApprovalSource;
+        use agente_core::types::{ApprovalAction, ApprovalRequest};
+
+        let mut app = test_app();
+        app.state.ui.show_welcome_screen = false;
+        app.open_new_tab();
+        assert_eq!(app.tabs.active(), 1);
+        app.state.input.show_settings = true;
+        app.state
+            .ui
+            .hits
+            .push(Rect::new(0, 0, 12, 1), crate::state::HitTarget::Tab(0));
+        app.state
+            .ui
+            .hits
+            .push(Rect::new(13, 0, 3, 1), crate::state::HitTarget::TabClose(1));
+        app.state
+            .ui
+            .hits
+            .push(Rect::new(17, 0, 3, 1), crate::state::HitTarget::NewTab);
+
+        // Clicking tab / close / new-tab while a modal owns the screen is ignored.
+        for (x, y) in [(4, 0), (14, 0), (18, 0)] {
+            app.handle_mouse(down(x, y)).unwrap();
+            app.handle_mouse(up(x, y)).unwrap();
+        }
+        assert_eq!(app.tabs.active(), 1);
+        assert_eq!(app.tabs.len(), 2);
+
+        // Close settings; press on chat, then an approval modal pops up before release.
+        app.state.input.show_settings = false;
+        app.handle_mouse(down(12, 5)).unwrap();
+        let req = ApprovalRequest {
+            request_id: "req-midclick".into(),
+            tool_name: "shell".into(),
+            tool_args: "{}".into(),
+            description: "run cmd".into(),
+            is_dangerous: false,
+            old_content: None,
+            new_content: None,
+            file_path: None,
+        };
+        let mut rx = app.approval_broker.request(&req);
+        app.state
+            .agent
+            .enqueue_approval(ApprovalSource::Parent, req);
+        app.state.ui.hits.push(
+            Rect::new(10, 5, 17, 1),
+            crate::state::HitTarget::Approval(ApprovalAction::ApproveOnce),
+        );
+
+        app.handle_mouse(up(12, 5)).unwrap();
+        assert!(
+            rx.try_recv().is_err(),
+            "release from a pre-modal press must never approve a newly popped dialog"
+        );
+        assert!(app.state.agent.current_approval().is_some());
+    }
+
+    #[test]
+    fn clicking_plan_review_comment_button_opens_comment_mode() {
+        let mut app = test_app();
+        app.state.ui.show_welcome_screen = false;
+        app.state.plan_review.open_review(
+            "/tmp/plan.md".into(),
+            "Plan".into(),
+            "# Plan\n\nstep 1".into(),
+        );
+        let buf = render(&mut app, 80, 24);
+        let row = find_row(&buf, "Comment").expect("plan actions rendered");
+        let col = (0..80u16)
+            .find(|&x| {
+                matches!(
+                    app.state.ui.hits.at(x, row),
+                    Some(crate::state::HitTarget::PlanAction(2))
+                )
+            })
+            .expect("Comment button hit registered");
+        app.handle_mouse(down(col, row)).unwrap();
+        app.handle_mouse(up(col, row)).unwrap();
+        assert_eq!(
+            app.state.plan_review.phase,
+            crate::state::PlanReviewPhase::AwaitingComment
+        );
     }
 }

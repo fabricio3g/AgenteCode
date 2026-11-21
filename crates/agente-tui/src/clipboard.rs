@@ -28,6 +28,12 @@ fn with_clipboard<T>(
     result
 }
 
+/// Whether the shared OS clipboard can be initialized (never creates a
+/// short-lived `arboard::Clipboard` that would drop and warn on Linux).
+pub fn is_available() -> bool {
+    with_clipboard(|_| Ok(())).is_ok()
+}
+
 /// Put `text` on the system clipboard.
 pub fn copy(text: &str) -> Result<(), arboard::Error> {
     with_clipboard(|c| c.set_text(text))
