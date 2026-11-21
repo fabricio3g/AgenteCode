@@ -3,12 +3,12 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Agente Code — one agent core for your desktop, terminal and server</title>
-  <meta name="description" content="Agente Code is an open-source Rust coding agent: a calm desktop app, a keyboard-first terminal, and a server you host. Bring any model, read every step, approve every change." />
+  <title>Agente Code — Rust coding agent for desktop, terminal, and server</title>
+  <meta name="description" content="Agente Code is an open-source Rust coding agent and local AI workspace that runs as a desktop app, a terminal UI, and a headless server." />
   <meta name="color-scheme" content="dark light" />
   <meta name="theme-color" content="#1c1c1c" />
   <meta property="og:title" content="Agente Code" />
-  <meta property="og:description" content="One agent core for your desktop, your terminal and your server. Bring any model, read every step, approve every change." />
+  <meta property="og:description" content="Rust coding agent and local AI workspace for desktop, terminal, and server." />
   <meta property="og:image" content="assets/og.png" />
   <meta name="twitter:card" content="summary_large_image" />
   <link rel="icon" href="assets/favicon.ico" />
@@ -64,13 +64,13 @@
   </header>
 
   <main id="main">
-    <!-- 1 · Hero: the tile field the terminal greets you with, behind one sentence and the product. -->
+    <!-- 1 · Hero -->
     <section class="hero" id="top">
       <canvas class="hero-tiles" id="hero-tiles" aria-hidden="true"></canvas>
       <div class="wrap hero-grid">
         <div class="hero-copy">
-          <h1>One agent for your desktop, terminal and server.</h1>
-          <p class="lede">Agente Code plans, edits and builds with you. Bring any model, read every step as it happens, and approve every change before it lands.</p>
+          <h1>Rust coding agent and local AI workspace.</h1>
+          <p class="lede">Agente Code runs as a desktop application, a terminal UI, and a headless server. Connect cloud or local models, inspect tool calls in real time, and review diffs before changes are written.</p>
           <div class="actions">
             <a class="btn btn-solid btn-lg" href="#install"><svg aria-hidden="true"><use href="#i-download" /></svg>Download Desktop</a>
             <a class="btn btn-outline btn-lg" href="#install" data-install="cli"><svg aria-hidden="true"><use href="#i-terminal" /></svg>Install the CLI</a>
@@ -86,9 +86,9 @@
     <section class="section" id="surfaces">
       <div class="wrap">
         <header class="section-head" data-reveal>
-          <p class="kicker">Three surfaces, one core</p>
-          <h2>Work where you already are.</h2>
-          <p>The same Rust agent runs the desktop app, the terminal and the server, so a session, a model or a tool behaves the same in all three.</p>
+          <p class="kicker">Surfaces</p>
+          <h2>Desktop, terminal, and server</h2>
+          <p>All three interfaces use the same Rust agent core, session storage, model settings, and tool execution loop.</p>
         </header>
 
         <div class="seg-wrap" data-reveal>
@@ -105,16 +105,16 @@
             <figure class="window"><img src="assets/desktop-home.webp" width="2160" height="1350" alt="Agente Code Desktop in Home: a board pack request answered with a report, a review deck and an operating model as file cards" loading="lazy" /></figure>
             <div class="panel-copy">
               <h3>Desktop</h3>
-              <p>A calm workspace for the whole task. Ask in Home and get documents, decks and spreadsheets back as files; switch to Code for a project, or Design for pages you can point at.</p>
-              <ul class="ticks"><li>Home, Code and Design spaces</li><li>Artifacts you open, edit and download</li><li>Local models with llama.cpp, CPU or GPU</li><li>Voice in and out · seven languages</li></ul>
+              <p>Use Home for chat, web search, and generating DOCX, PPTX, and XLSX files. Switch to Code for repository work, or Design for visual HTML prototyping.</p>
+              <ul class="ticks"><li>Home, Code, and Design workspaces</li><li>Preview, edit, and download generated file artifacts</li><li>Local GGUF inference with llama.cpp (CPU or GPU)</li><li>Speech-to-text and text-to-speech · seven UI languages</li></ul>
             </div>
           </article>
           <article class="panel" role="tabpanel" id="p-terminal" aria-labelledby="t-terminal">
             <figure class="window window-dark"><img src="assets/terminal-welcome.webp" width="1371" height="896" alt="Agente Code’s terminal welcome card with the app mark, the session menu, and the tile field behind it" loading="lazy" /></figure>
             <div class="panel-copy">
               <h3>Terminal</h3>
-              <p>A keyboard-first agent that stays in your repository. It plans first, asks before it acts, and keeps several sessions running in tabs.</p>
-              <ul class="ticks"><li>Plan → build → auto, one key</li><li>Parallel subagents in their own worktrees</li><li>Revert or fork from any message</li><li>ACP for editors</li></ul>
+              <p>Terminal UI for repository tasks with read-only planning, tool confirmation prompts, inline diffs, and multiple session tabs.</p>
+              <ul class="ticks"><li>Cycle Plan, Build, and Auto modes with Shift+Tab</li><li>Parallel subagents in isolated git worktrees</li><li>Revert or fork sessions from any user message</li><li>Agent Client Protocol (ACP) stdio support for editors</li></ul>
             </div>
           </article>
           <article class="panel" role="tabpanel" id="p-server" aria-labelledby="t-server">
@@ -134,28 +134,28 @@
             </figure>
             <div class="panel-copy">
               <h3>Server <span class="tag">Preview</span></h3>
-              <p>The runtime behind Desktop, headless on a machine you control. Start a task, close the laptop, attach later from anywhere.</p>
-              <ul class="ticks"><li>Persistent sessions</li><li>Shared agent tools</li><li>Token-authenticated</li><li>One Docker image</li></ul>
+              <p>Run the agent runtime as a background daemon on a local machine or server, and attach to active sessions from a terminal or Desktop client.</p>
+              <ul class="ticks"><li>Persistent background sessions</li><li>Shared agent loop and tool execution</li><li>Token-authenticated HTTP and WebSocket API</li><li>Prebuilt Docker container image</li></ul>
             </div>
           </article>
         </div>
       </div>
     </section>
 
-    <!-- 3 · Features: each card draws the thing it describes, in the app's own grammar. -->
+    <!-- 3 · Features -->
     <section class="section section-alt" id="features">
       <div class="wrap">
         <header class="section-head" data-reveal>
-          <p class="kicker">Built for trust</p>
-          <h2>You can see what it does, and say no.</h2>
-          <p>Every surface follows one rule: each fact about a run has one place, and nothing lands on your disk without a yes.</p>
+          <p class="kicker">Features</p>
+          <h2>Tool approvals, diffs, and session controls</h2>
+          <p>Inspect tool execution as it runs, review file modifications before confirming, and manage context usage and session history.</p>
         </header>
 
         <div class="bento">
           <article class="card card-wide" data-reveal>
             <div class="card-copy">
-              <h3>Asks before it acts</h3>
-              <p>Edits and commands wait for you right where your hands are. Enter allows, Esc denies, and destructive calls turn red.</p>
+              <h3>Tool and edit confirmations</h3>
+              <p>File edits and shell commands pause for confirmation above the prompt. Press Enter to allow or Esc to deny; destructive commands are highlighted in red.</p>
             </div>
             <div class="mock mock-ask" aria-hidden="true">
               <div class="ask">
@@ -170,8 +170,8 @@
 
           <article class="card" data-reveal style="--d:60ms">
             <div class="card-copy">
-              <h3>Live work you can read</h3>
-              <p>Every call is a row you can open. The one running now is the only bright line.</p>
+              <h3>Streaming tool log</h3>
+              <p>Each tool call renders as an expandable row showing target paths, elapsed duration, and live process output.</p>
             </div>
             <div class="mock mock-rows" aria-hidden="true">
               <div class="row"><span class="ic">▤</span><span class="verb">Read</span><code>src/index.ts</code><span class="time">&lt;1s</span></div>
@@ -183,8 +183,8 @@
 
           <article class="card" data-reveal style="--d:120ms">
             <div class="card-copy">
-              <h3>Files, not walls of text</h3>
-              <p>Reports, decks and spreadsheets arrive as files you open, edit and download.</p>
+              <h3>Document artifacts</h3>
+              <p>Generate DOCX documents, PPTX presentations, XLSX spreadsheets, and HTML pages that can be previewed, edited, and downloaded.</p>
             </div>
             <div class="mock mock-files" aria-hidden="true">
               <div class="file"><span class="sheet doc">▤</span><span><b>Q3 Board Report</b><small>Document · DOCX</small></span></div>
@@ -195,8 +195,8 @@
 
           <article class="card" data-reveal>
             <div class="card-copy">
-              <h3>Subagents in parallel</h3>
-              <p>Hand off exploration and fixes to children that run side by side, each in its own worktree, each with a Stop.</p>
+              <h3>Parallel subagents</h3>
+              <p>Spawn task subagents for codebase search, planning, or edits. Writing subagents run in separate git worktrees and can be stopped individually.</p>
             </div>
             <div class="mock mock-agents" aria-hidden="true">
               <div class="agent"><span class="st run"></span><b>Explore</b><span>Find every retry call site</span><em>12.0s</em></div>
@@ -207,8 +207,8 @@
 
           <article class="card" data-reveal style="--d:60ms">
             <div class="card-copy">
-              <h3>Undo is one message away</h3>
-              <p>Revert the edits made after any prompt, or fork a new session from it. Redo works too.</p>
+              <h3>Revert and fork</h3>
+              <p>Revert file changes made after any prompt, redo reverted edits, or fork a conversation into a new session from an earlier message.</p>
             </div>
             <div class="mock mock-msg" aria-hidden="true">
               <div class="bubble">Add a retry guard to the provider client</div>
@@ -218,8 +218,8 @@
 
           <article class="card card-full" data-reveal>
             <div class="card-copy">
-              <h3>Honest spend</h3>
-              <p>Cost per call, cache rate and context left, with estimates labelled as estimates.</p>
+              <h3>Context and cost tracking</h3>
+              <p>Status bar shows active mode, request cost, prompt cache hit rate, and token usage against the context window budget.</p>
             </div>
             <div class="mock mock-spend" aria-hidden="true">
               <div class="status"><span class="mode">build</span><span>$0.042 · 82% cached</span><span class="ctx"><i style="width:38%"></i></span><span>48k / 128k</span></div>
@@ -229,25 +229,25 @@
       </div>
     </section>
 
-    <!-- 4 · Models + principles -->
+    <!-- 4 · Models + configuration -->
     <section class="section" id="models">
       <div class="wrap">
         <header class="section-head" data-reveal>
-          <p class="kicker">Your models, your machine</p>
-          <h2>Bring a key, or bring nothing at all.</h2>
+          <p class="kicker">Models and storage</p>
+          <h2>Cloud APIs and local inference</h2>
         </header>
         <div class="principles">
           <div data-reveal>
-            <h3>Any model</h3>
-            <p>Use your own keys with the providers below, or run GGUF models locally with llama.cpp, Ollama or LM Studio. Thinking levels follow what each model supports.</p>
+            <h3>Model providers</h3>
+            <p>Connect cloud providers with your own API keys, or run GGUF models locally via llama.cpp, Ollama, or LM Studio. Reasoning effort levels adapt to each model's capabilities.</p>
           </div>
           <div data-reveal style="--d:80ms">
-            <h3>Your control</h3>
-            <p>Start with a read-only plan, approve each tool as you build, or go auto for a turn. Review every diff before and after it lands.</p>
+            <h3>Execution modes</h3>
+            <p>Switch between read-only Plan mode, per-action approvals in Build mode, or Auto mode for a turn. Inspect diffs in the transcript and Changes panel.</p>
           </div>
           <div data-reveal style="--d:160ms">
-            <h3>Your disk</h3>
-            <p>Sessions, attachments and project files stay on your machine. Keep them running on your own server with <code>agente serve</code>.</p>
+            <h3>Local storage</h3>
+            <p>Session transcripts, attachments, and configuration files are stored on disk under <code>~/.agente</code>, or on your own host when running <code>agente serve</code>.</p>
           </div>
         </div>
         <div class="providers" data-reveal>
@@ -268,7 +268,7 @@
       <div class="wrap narrow">
         <header class="section-head center" data-reveal>
           <p class="kicker">Install</p>
-          <h2>Running in a minute.</h2>
+          <h2>Downloads and packages</h2>
         </header>
         <div class="seg-wrap" data-reveal>
           <div class="segmented" role="tablist" aria-label="Install" id="install-tabs">
@@ -282,10 +282,10 @@
           <div class="panel is-active" role="tabpanel" id="gp-desktop" aria-labelledby="g-desktop">
             <div class="dl-list">
               <a class="dl-row" href="https://github.com/fabricio3g/AgenteCode/releases/latest/download/AgenteDesktop-windows-x64.exe"><span class="dl-name">Windows</span><span class="dl-meta">x64 installer · AgenteDesktop-windows-x64.exe</span><span class="dl-go">Download<svg aria-hidden="true"><use href="#i-download" /></svg></span></a>
-              <a class="dl-row" href="https://github.com/fabricio3g/AgenteCode/releases/latest/download/AgenteDesktop-linux-x64.AppImage"><span class="dl-name">Linux</span><span class="dl-meta">AppImage · runs on most distributions</span><span class="dl-go">Download<svg aria-hidden="true"><use href="#i-download" /></svg></span></a>
+              <a class="dl-row" href="https://github.com/fabricio3g/AgenteCode/releases/latest/download/AgenteDesktop-linux-x64.AppImage"><span class="dl-name">Linux</span><span class="dl-meta">AppImage · x64 portable binary</span><span class="dl-go">Download<svg aria-hidden="true"><use href="#i-download" /></svg></span></a>
               <a class="dl-row" href="https://github.com/fabricio3g/AgenteCode/releases/latest/download/AgenteDesktop-linux-amd64.deb"><span class="dl-name">Debian / Ubuntu</span><span class="dl-meta">amd64 · .deb package</span><span class="dl-go">Download<svg aria-hidden="true"><use href="#i-download" /></svg></span></a>
             </div>
-            <p class="note">Verify with <a href="https://github.com/fabricio3g/AgenteCode/releases/latest/download/AgenteDesktop-SHA256SUMS">AgenteDesktop-SHA256SUMS</a>. On macOS, build from source with the <a href="https://github.com/fabricio3g/AgenteCode/blob/main/apps/desktop/README.md">Desktop guide</a>.</p>
+            <p class="note">Verify checksums with <a href="https://github.com/fabricio3g/AgenteCode/releases/latest/download/AgenteDesktop-SHA256SUMS">AgenteDesktop-SHA256SUMS</a>. On macOS, build from source using the <a href="https://github.com/fabricio3g/AgenteCode/blob/main/apps/desktop/README.md">Desktop guide</a>.</p>
           </div>
           <div class="panel" role="tabpanel" id="gp-cli" aria-labelledby="g-cli">
             <div class="block">
@@ -302,7 +302,7 @@ agente</code></pre>
               <a href="https://github.com/fabricio3g/AgenteCode/releases/latest/download/AgenteCode-linux-amd64.deb">Debian amd64</a> ·
               <a href="https://github.com/fabricio3g/AgenteCode/releases/latest/download/AgenteCode-linux-arm64.deb">Debian arm64</a> ·
               <a href="https://github.com/fabricio3g/AgenteCode/releases/latest/download/AgenteCode-SHA256SUMS">SHA256SUMS</a>.
-              Then run <code>/provider</code> and <code>/model</code>.</p>
+              Configure a provider and model on first launch with <code>/provider</code> and <code>/model</code>.</p>
           </div>
           <div class="panel" role="tabpanel" id="gp-server" aria-labelledby="g-server">
             <div class="block">
@@ -315,7 +315,7 @@ docker run -d --name agente \
   ghcr.io/fabricio3g/agente-server:latest</code></pre>
               <button class="copy" type="button" data-copy-from="cmd-server"><span class="copy-label">Copy</span></button>
             </div>
-            <p class="note">Preview image. Keep the token: clients need it. See the <a href="https://github.com/fabricio3g/AgenteCode/blob/main/docs/SERVER.md">Server guide</a>.</p>
+            <p class="note">Preview image. Save <code>AGENTE_TOKEN</code> to authenticate clients. See the <a href="https://github.com/fabricio3g/AgenteCode/blob/main/docs/SERVER.md">Server guide</a>.</p>
           </div>
         </div>
       </div>
@@ -325,10 +325,10 @@ docker run -d --name agente \
     <section class="cta" data-reveal>
       <div class="wrap cta-inner">
         <svg class="cta-mark" aria-hidden="true"><use href="#mark" /></svg>
-        <h2>Give it a task, keep the last word.</h2>
+        <h2>Install Agente Code or build from source.</h2>
         <div class="actions">
-          <a class="btn btn-solid btn-lg" href="#install">Get Agente Code<svg aria-hidden="true"><use href="#i-arrow" /></svg></a>
-          <a class="btn btn-outline btn-lg" href="https://github.com/fabricio3g/AgenteCode"><svg aria-hidden="true"><use href="#i-github" /></svg>Star on GitHub</a>
+          <a class="btn btn-solid btn-lg" href="#install">Download<svg aria-hidden="true"><use href="#i-arrow" /></svg></a>
+          <a class="btn btn-outline btn-lg" href="https://github.com/fabricio3g/AgenteCode"><svg aria-hidden="true"><use href="#i-github" /></svg>View on GitHub</a>
         </div>
       </div>
     </section>
