@@ -5,7 +5,7 @@ const root = document.documentElement;
 
 export function initTheme(defaultTheme = "dark") {
   let stored = null;
-  try { stored = localStorage.getItem("agente-folio-theme"); } catch {}
+  try { stored = localStorage.getItem("agente-theme"); } catch {}
 
   const apply = (t) => {
     root.dataset.theme = t;
@@ -19,7 +19,7 @@ export function initTheme(defaultTheme = "dark") {
   const btn = document.getElementById("theme-toggle");
   btn?.addEventListener("click", () => {
     const next = root.dataset.theme === "dark" ? "light" : "dark";
-    try { localStorage.setItem("agente-folio-theme", next); } catch {}
+    try { localStorage.setItem("agente-theme", next); } catch {}
     if (!document.startViewTransition || reduceMotion.matches) return apply(next);
     const b = btn.getBoundingClientRect();
     const x = b.left + b.width / 2;
