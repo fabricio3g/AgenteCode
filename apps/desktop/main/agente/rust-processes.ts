@@ -30,10 +30,16 @@ export function isRustProcessId(id: string): boolean {
   return id.startsWith(PREFIX);
 }
 
+type RuntimeProcessPush =
+  | { type: 'started'; id: string; project_dir: string; command: string; started_at: number }
+  | { type: 'output'; id: string; project_dir: string; chunk: string; urls: string[] }
+  | { type: 'status'; id: string; project_dir: string; status: ProcessStatus; exit_code: number | null; urls: string[] };
+
 export class RustProcessBridge {
   private readonly known = new Map<string, ProcessInfo>();
   private readonly outputLength = new Map<string, number>();
   private readonly settledOutput = new Set<string>();
+  private pushActive = false;
   private timer: ReturnType<typeof setTimeout> | null = null;
   private sink: (event: ProcessEvent) => void = () => {};
 
@@ -46,8 +52,69 @@ export class RustProcessBridge {
     this.sink = sink;
   }
 
-  /** Something may have started: look now, and keep looking while it runs. */
+  /** Real-time daemon push (`process.event`): zero polling, delta chunks only. */
+  handlePushEvent(event: RuntimeProcessPush): void {
+    if (!event || !event.id || !event.project_dir) return;
+    this.pushActive = true;
+    const chatId = this.projects().find((p) => p.projectRoot === event.project_dir)?.chatId;
+    const id = `${PREFIX}${event.id}`;
+    if (event.type === 'started') {
+      if (!chatId) return;
+      const info: ProcessInfo = {
+        id,
+        chatId,
+        command: event.command,
+        cwd: event.project_dir,
+        pid: null,
+        status: 'running',
+        exitCode: null,
+        startedAt: event.started_at,
+        endedAt: null,
+        urls: []
+      };
+      this.known.set(id, info);
+      this.outputLength.set(id, 0);
+      this.settledOutput.delete(id);
+      this.sink({ type: 'process_start', process: info });
+      return;
+    }
+    const existing = this.known.get(id);
+    if (!existing) {
+      if (chatId) this.nudge();
+      return;
+    }
+    if (event.type === 'output') {
+      const nextUrls = event.urls ?? existing.urls;
+      const newUrl = nextUrls.find((url) => !existing.urls.includes(url));
+      const updated: ProcessInfo = newUrl ? { ...existing, urls: nextUrls } : existing;
+      if (newUrl) {
+        this.known.set(id, updated);
+        this.sink({ type: 'process_url', process: updated, url: newUrl });
+      }
+      if (event.chunk) {
+        this.outputLength.set(id, (this.outputLength.get(id) ?? 0) + event.chunk.length);
+        this.sink({ type: 'process_output', id, chatId: updated.chatId, chunk: event.chunk });
+      }
+      return;
+    }
+    if (event.type === 'status') {
+      const running = event.status === 'running';
+      const updated: ProcessInfo = {
+        ...existing,
+        status: event.status,
+        exitCode: event.exit_code,
+        endedAt: running ? null : (existing.endedAt ?? Date.now()),
+        urls: event.urls ?? existing.urls
+      };
+      this.known.set(id, updated);
+      if (!running) this.settledOutput.add(id);
+      this.reportChanges(existing, updated);
+    }
+  }
+
+  /** Something may have started: look now, and keep looking while it runs (only if push isn't active). */
   nudge(): void {
+    if (this.pushActive) return;
     if (this.timer) clearTimeout(this.timer);
     this.timer = setTimeout(() => void this.poll(), 300);
   }
@@ -120,6 +187,7 @@ export class RustProcessBridge {
   dispose(): void {
     if (this.timer) clearTimeout(this.timer);
     this.timer = null;
+    this.pushActive = false;
     this.known.clear();
     this.outputLength.clear();
     this.settledOutput.clear();
@@ -140,7 +208,7 @@ export class RustProcessBridge {
       const listed = await client.request<RuntimeProcess[]>('processes.list', { project_dir: projectRoot }).catch(() => []);
       for (const process of listed) await this.update(client, chatId, process);
     }
-    if ([...this.known.values()].some((info) => info.status === 'running')) {
+    if (!this.pushActive && [...this.known.values()].some((info) => info.status === 'running')) {
       this.timer = setTimeout(() => void this.poll(), POLL_MS);
     }
   }

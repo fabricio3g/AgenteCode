@@ -113,7 +113,7 @@ Build a development-engineer tool: a keyboard-first terminal coding agent (Rust)
 - `crates/agente-core` — agent loop, tools, providers, permissions, subagents, context/compaction
 - `crates/agente-tui` — terminal UI (`app/` run loop, `state/`, `widgets/`, dialogs, `ui_harness.rs`)
 - `crates/agente-cli` — `agente` binary (TUI + headless)
-- `crates/agente-{acp,runtime,session,protocol,node}` — embedding, persistence, Electron/Node surfaces
+- `crates/agente-{acp,daemon,runtime,session,protocol}` — embedding, persistence, local-socket/TCP daemon for Desktop & `agente attach`
 - `crates/agente-bridge` — `agente bridge`: browser-extension hub + `web` MCP tools + Google Docs/Sheets/Drive; `apps/desktop/extension` — the Chrome/Firefox extension
 - `<project>/agente.json` — project config (`agente.json.example` is the template); `<project>/.agente/` — sessions, worktrees, commands, agents, skills
 
@@ -129,7 +129,7 @@ Test-only module rendering the composed frame for a catalogue of realistic app s
 - fsnotify-based file-change detection + write-conflict guard
 - MCP OAuth flows (bearer tokens via `headers` work), MCP resources/prompts, and deferred tool search for large MCP tool sets
 - Project skills load with AGENTS.md's trust (no per-repo trust prompt yet); project `.mcp.json` servers already wait for approval
-- Electron bindings expansion (streaming/turn surface for agente-node)
+- Converging `agente-tui` onto `agente-runtime`/`agente-session` (one turn engine and session store across TUI, Desktop, CLI, and ACP)
 - Desktop attention notifications; audio/video playback previews in the TUI
 - `CodeStepRow` still spins a `Loader2` while a step runs: every other working surface now speaks the tile meter, but that icon doubles as the done/error/approval mark, so replacing only its running state is its own change
 - `tests/electron/subagent-rendering.smoke.ts` fails on its compaction assertion (`Compaction token counts missing`) on unmodified code — the report no longer prints the formatted `12,000` the test looks for. The card assertions in the same file pass and are worth keeping green

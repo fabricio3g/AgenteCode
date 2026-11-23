@@ -15,7 +15,35 @@ import {
 import { searchAggregator } from './search-providers/aggregator.ts';
 import { isSafePublicUrl, scrapeUrlStructured } from './web-scraper.ts';
 
+const RUST_CORE_SEARCH_PROVIDERS = new Set(['duckduckgo', 'brave', 'tavily', 'exa', 'searxng']);
+
+async function tryRustProviderSearch(provider: string, query: string, maxResults: number, options: Record<string, unknown>): Promise<SearchResult[] | null> {
+  if (!RUST_CORE_SEARCH_PROVIDERS.has(provider)) return null;
+  // If the caller passed an explicit per-request key/URL override not yet synced, stay on TS.
+  if (options.api_key || options.searxng_url) return null;
+  try {
+    const { runtimeConnection } = await import('./agente/rust-engine.ts');
+    const client = await runtimeConnection();
+    const res = await client.request<{ hits?: Array<{ title: string; url: string; snippet: string }> }>('web.search', {
+      query,
+      max_results: maxResults,
+      provider
+    });
+    if (!Array.isArray(res?.hits) || !res.hits.length) return null;
+    return res.hits.map((hit) => ({
+      title: hit.title,
+      url: hit.url,
+      snippet: hit.snippet,
+      source: provider
+    }));
+  } catch {
+    return null;
+  }
+}
+
 async function runProviderSearch(provider: string, query: string, maxResults: number, options: Record<string, unknown>): Promise<SearchResult[]> {
+  const fromRust = await tryRustProviderSearch(provider, query, maxResults, options);
+  if (fromRust) return fromRust;
   switch (provider) {
     case 'aggregator': return searchAggregator(query, maxResults, options);
     case 'tavily': return searchTavily(query, maxResults, options);
@@ -43,6 +71,22 @@ type FetchedPage = {
 async function fetchPageContent(url: string, options: Record<string, unknown> = {}): Promise<FetchedPage | null> {
   if (!isSafePublicUrl(url)) return null;
   try {
+    // Fast path: use Rust's compiled html5ever/scraper + connect-time DNS SSRF
+    // fetcher for regular HTML pages (PDF/DOCX stay on Desktop's binary readers).
+    const lowerUrl = url.toLowerCase();
+    if (options?.use_local_readability !== false && !lowerUrl.endsWith('.pdf') && !lowerUrl.endsWith('.docx')) {
+      try {
+        const { runtimeConnection } = await import('./agente/rust-engine.ts');
+        const client = await runtimeConnection();
+        const page = await client.request<{ url?: string; title?: string; text?: string }>('web.fetch', { url });
+        const text = String(page?.text || '').trim();
+        if (text.length >= 200) {
+          return { content: text, title: page?.title || undefined, quality: 'ok' };
+        }
+      } catch {
+        // Fall through to Desktop scraper when daemon is offline or page needs Readability/PDF extraction.
+      }
+    }
     if (options?.use_local_readability !== false) {
       const scraped = await scrapeUrlStructured({
         url,

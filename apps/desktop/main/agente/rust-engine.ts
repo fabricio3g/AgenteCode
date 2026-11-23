@@ -184,6 +184,10 @@ async function openConnection(): Promise<AgenteClient> {
           if (chat && (!chat.turnId || chat.turnId === outcome.turn_id)) continueWithFollowUp(chat, outcome.status === 'completed');
           return;
         }
+        if (method === 'process.event') {
+          rustProcesses.handlePushEvent(params as Parameters<typeof rustProcesses.handlePushEvent>[0]);
+          return;
+        }
         if (method === 'events.lagged') {
           const skipped = (params as { skipped?: number } | undefined)?.skipped;
           console.warn(`[agente] daemon event stream lagged (skipped=${skipped ?? 'unknown'}); nudging process bridge`);
@@ -197,7 +201,7 @@ async function openConnection(): Promise<AgenteClient> {
     }
     // Turns started by another client arrive this way;
     // the runtime never sends a turn twice to the client that started it.
-    await client.request('events.subscribe', {}).catch(() => {});
+    await client.request('events.subscribe', { include_processes: true }).catch(() => {});
     await registerDesktopTools(client).catch((error: unknown) => {
       console.warn(`[agente] desktop tools unavailable: ${error instanceof Error ? error.message : String(error)}`);
     });

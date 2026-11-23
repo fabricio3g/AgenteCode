@@ -314,13 +314,40 @@ impl ToolCore for WebFetchTool {
     }
 }
 
+/// Fetch and extract a public HTTP/HTTPS page into structured markdown + metadata
+/// (reusing the connect-time DNS SSRF guard and in-memory page cache).
+pub async fn fetch_url_structured(url: &str) -> Result<Fetched, ToolError> {
+    let url = url.trim().to_string();
+    let parsed = reqwest::Url::parse(&url)
+        .map_err(|e| ToolError::InvalidArguments(format!("Invalid URL: {e}")))?;
+    if !matches!(parsed.scheme(), "http" | "https") {
+        return Err(ToolError::InvalidArguments(format!(
+            "Only http and https URLs can be fetched, not {}",
+            parsed.scheme()
+        )));
+    }
+    if is_forbidden_host(&parsed) {
+        return Err(ToolError::ExecutionError(format!(
+            "Refusing to fetch {url}: private/loopback addresses are blocked"
+        )));
+    }
+    let cache_key = parsed.as_str().to_string();
+    if let Some(page) = cached(&cache_key) {
+        return Ok((*page).clone());
+    }
+    let (fetched, status) = fetch_page(parsed).await?;
+    let page = Arc::new(fetched.clone());
+    remember_if_success(&cache_key, status, page);
+    Ok(fetched)
+}
+
 /// A page as read: its text and what the reader should know about it.
-#[derive(Debug, Clone, Default)]
-struct Fetched {
-    url: String,
-    title: String,
-    text: String,
-    notes: Vec<String>,
+#[derive(Debug, Clone, Default, serde::Serialize)]
+pub struct Fetched {
+    pub url: String,
+    pub title: String,
+    pub text: String,
+    pub notes: Vec<String>,
 }
 
 type PageCache = parking_lot::Mutex<Vec<(String, Instant, Arc<Fetched>)>>;

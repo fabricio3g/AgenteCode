@@ -153,6 +153,9 @@ struct SubscribeParams {
     /// Only these sessions; all sessions when absent.
     #[serde(default)]
     session_ids: Option<Vec<SessionId>>,
+    /// Also stream real-time `process.event` notifications on this connection.
+    #[serde(default)]
+    include_processes: bool,
 }
 
 #[derive(Deserialize)]
@@ -216,6 +219,20 @@ struct LlmStreamParams {
 #[derive(Deserialize)]
 struct LlmCancelParams {
     stream_id: String,
+}
+
+#[derive(Deserialize)]
+struct WebSearchParams {
+    query: String,
+    #[serde(default)]
+    max_results: Option<usize>,
+    #[serde(default)]
+    provider: Option<agente_core::tools::web::settings::SearchProvider>,
+}
+
+#[derive(Deserialize)]
+struct WebFetchParams {
+    url: String,
 }
 
 #[derive(Deserialize)]
@@ -615,6 +632,31 @@ impl Connection {
         .await
         .map_err(|error| (rpc::INTERNAL_ERROR, error.to_string()))?;
         Ok(process_json(&process))
+    }
+
+    pub(super) async fn web_search(&self, params: Value) -> Result<Value, Failure> {
+        let WebSearchParams {
+            query,
+            max_results,
+            provider,
+        } = parse(params)?;
+        let (used_provider, hits, notes) =
+            agente_core::tools::web::search::search_structured(&query, max_results, provider)
+                .await
+                .map_err(|error| (rpc::INTERNAL_ERROR, error.to_string()))?;
+        Ok(json!({
+            "provider": used_provider,
+            "hits": hits,
+            "notes": notes,
+        }))
+    }
+
+    pub(super) async fn web_fetch(&self, params: Value) -> Result<Value, Failure> {
+        let WebFetchParams { url } = parse(params)?;
+        let page = agente_core::tools::web::fetch_url_structured(&url)
+            .await
+            .map_err(|error| (rpc::INTERNAL_ERROR, error.to_string()))?;
+        to_json(page)
     }
 
     pub(super) fn handle(self: &Arc<Self>, method: &str, params: Value) -> Result<Value, Failure> {
@@ -1025,12 +1067,18 @@ impl Connection {
                 Ok(json!({ "cancelled": cancelled }))
             }
             "events.subscribe" => {
-                let SubscribeParams { session_ids } = if params.is_null() {
+                let SubscribeParams {
+                    session_ids,
+                    include_processes,
+                } = if params.is_null() {
                     SubscribeParams::default()
                 } else {
                     parse(params)?
                 };
-                self.subscribe(session_ids.map(|ids| ids.into_iter().collect()));
+                self.subscribe(
+                    session_ids.map(|ids| ids.into_iter().collect()),
+                    include_processes,
+                );
                 Ok(json!({ "ok": true }))
             }
             "client_state.save" => {

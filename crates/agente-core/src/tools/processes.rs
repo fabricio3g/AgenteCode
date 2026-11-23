@@ -29,6 +29,39 @@ pub enum ProcessStatus {
     Stopped,
 }
 
+#[derive(Debug, Clone)]
+pub struct ProcessEvent {
+    pub id: String,
+    pub project_dir: String,
+    pub kind: ProcessEventKind,
+}
+
+#[derive(Debug, Clone)]
+pub enum ProcessEventKind {
+    Started {
+        command: String,
+        started_at: u64,
+    },
+    Output {
+        chunk: String,
+        urls: Vec<String>,
+    },
+    StatusChanged {
+        status: ProcessStatus,
+        urls: Vec<String>,
+    },
+}
+
+fn event_bus() -> &'static tokio::sync::broadcast::Sender<ProcessEvent> {
+    static BUS: OnceLock<tokio::sync::broadcast::Sender<ProcessEvent>> = OnceLock::new();
+    BUS.get_or_init(|| tokio::sync::broadcast::channel(256).0)
+}
+
+/// Subscribe to real-time background process lifecycle and output events.
+pub fn subscribe() -> tokio::sync::broadcast::Receiver<ProcessEvent> {
+    event_bus().subscribe()
+}
+
 pub struct BackgroundProcess {
     pub id: String,
     pub command: String,
@@ -83,28 +116,58 @@ impl BackgroundProcess {
     }
 
     fn append(&self, text: &str) {
-        let mut tail = self
-            .tail
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        tail.push_str(text);
-        if tail.len() > MAX_TAIL_BYTES {
-            let mut cut = tail.len() - MAX_TAIL_BYTES;
-            while !tail.is_char_boundary(cut) {
-                cut += 1;
+        if text.is_empty() {
+            return;
+        }
+        {
+            let mut tail = self
+                .tail
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            tail.push_str(text);
+            if tail.len() > MAX_TAIL_BYTES {
+                let mut cut = tail.len() - MAX_TAIL_BYTES;
+                while !tail.is_char_boundary(cut) {
+                    cut += 1;
+                }
+                tail.drain(..cut);
             }
-            tail.drain(..cut);
+        }
+        if event_bus().receiver_count() > 0 {
+            let _ = event_bus().send(ProcessEvent {
+                id: self.id.clone(),
+                project_dir: self.project_dir.clone(),
+                kind: ProcessEventKind::Output {
+                    chunk: text.to_string(),
+                    urls: self.urls(),
+                },
+            });
         }
     }
 
     fn set_status(&self, status: ProcessStatus) {
-        let mut current = self
-            .status
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        // A stop wins over the exit it causes.
-        if *current != ProcessStatus::Stopped {
-            *current = status;
+        let changed = {
+            let mut current = self
+                .status
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            // A stop wins over the exit it causes.
+            if *current != ProcessStatus::Stopped && *current != status {
+                *current = status.clone();
+                true
+            } else {
+                false
+            }
+        };
+        if changed && event_bus().receiver_count() > 0 {
+            let _ = event_bus().send(ProcessEvent {
+                id: self.id.clone(),
+                project_dir: self.project_dir.clone(),
+                kind: ProcessEventKind::StatusChanged {
+                    status,
+                    urls: self.urls(),
+                },
+            });
         }
     }
 
@@ -232,6 +295,16 @@ pub async fn start(
     });
 
     lock_registry().push(Arc::clone(&process));
+    if event_bus().receiver_count() > 0 {
+        let _ = event_bus().send(ProcessEvent {
+            id: process.id.clone(),
+            project_dir: process.project_dir.clone(),
+            kind: ProcessEventKind::Started {
+                command: process.command.clone(),
+                started_at: process.started_at,
+            },
+        });
+    }
     Ok(process)
 }
 

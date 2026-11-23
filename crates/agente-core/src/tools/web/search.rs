@@ -25,11 +25,46 @@ pub struct WebSearchArgs {
 }
 
 /// One search hit.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
 pub struct Hit {
     pub title: String,
     pub url: String,
     pub snippet: String,
+}
+
+/// Structured web search using the configured (or overridden) core provider,
+/// falling back to DuckDuckGo when needed.
+pub async fn search_structured(
+    query: &str,
+    max_results: Option<usize>,
+    provider_override: Option<SearchProvider>,
+) -> Result<(SearchProvider, Vec<Hit>, Vec<String>), ToolError> {
+    let query = query.trim().to_string();
+    if query.is_empty() {
+        return Err(ToolError::InvalidArguments("Query is empty".into()));
+    }
+    let settings = WebSettings::load();
+    let count = max_results.unwrap_or(settings.results()).clamp(1, 20);
+    let configured = provider_override.unwrap_or(settings.search_provider);
+
+    let mut notes = Vec::new();
+    if configured != SearchProvider::DuckDuckGo {
+        match search_with(configured, &settings, &query, count).await {
+            Ok(hits) if !hits.is_empty() => return Ok((configured, hits, notes)),
+            Ok(_) => notes.push(format!("{} found nothing.", configured.label())),
+            Err(err) => notes.push(format!("{} failed: {err}.", configured.label())),
+        }
+    }
+    match duckduckgo(&query, count).await {
+        Ok(hits) => Ok((SearchProvider::DuckDuckGo, hits, notes)),
+        Err(err) => {
+            notes.push(format!("DuckDuckGo failed: {err}."));
+            Err(ToolError::ExecutionError(format!(
+                "Search failed for \"{query}\".\n{}",
+                notes.join("\n")
+            )))
+        }
+    }
 }
 
 #[derive(Default)]

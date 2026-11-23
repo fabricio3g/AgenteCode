@@ -53,7 +53,7 @@ pub(crate) fn initialize_result() -> Value {
         "protocol_version": agente_protocol::PROTOCOL_VERSION,
         "server": "agente",
         "version": env!("CARGO_PKG_VERSION"),
-        "capabilities": ["project", "processes", "sessions", "turns", "edits", "desktop_v1", "home_turns_v1", "provider_settings_v1", "complements_v1", "llm_stream_v1"],
+        "capabilities": ["project", "processes", "sessions", "turns", "edits", "desktop_v1", "home_turns_v1", "provider_settings_v1", "complements_v1", "llm_stream_v1", "process_push_v1", "web_v1"],
     })
 }
 
@@ -130,6 +130,8 @@ where
                         | "runtime.configure"
                         | "processes.start"
                         | "project.files"
+                        | "web.search"
+                        | "web.fetch"
                 ) {
                     // Long-running and network-bound RPCs must never block the
                     // JSON-RPC reader loop (so turn.cancel, approval.respond,
@@ -161,6 +163,8 @@ where
                                 .await
                                 .unwrap_or_else(|error| Err((rpc::INTERNAL_ERROR, error.to_string())))
                             }
+                            "web.search" => connection.web_search(params).await,
+                            "web.fetch" => connection.web_fetch(params).await,
                             _ => unreachable!(),
                         };
                         let reply = match outcome {
@@ -314,31 +318,82 @@ impl Connection {
         turn_id
     }
 
-    /// Replace this client's subscription to other turns' events.
-    fn subscribe(self: &Arc<Self>, sessions: Option<HashSet<SessionId>>) {
+    /// Replace this client's subscription to other turns' events and optional
+    /// live background process push events.
+    fn subscribe(
+        self: &Arc<Self>,
+        sessions: Option<HashSet<SessionId>>,
+        include_processes: bool,
+    ) {
         let mut events = self.runtime.subscribe();
+        let mut proc_events = include_processes.then(agente_core::tools::processes::subscribe);
         let connection = Arc::clone(self);
         let task = tokio::spawn(async move {
             loop {
-                let envelope = match events.recv().await {
-                    Ok(envelope) => envelope,
-                    Err(broadcast::error::RecvError::Lagged(missed)) => {
-                        // The client should re-read the sessions it shows.
-                        connection
-                            .send(notification("events.lagged", json!({ "missed": missed })))
-                            .await;
-                        continue;
+                tokio::select! {
+                    recv = events.recv() => {
+                        let envelope = match recv {
+                            Ok(envelope) => envelope,
+                            Err(broadcast::error::RecvError::Lagged(missed)) => {
+                                // The client should re-read the sessions it shows.
+                                connection
+                                    .send(notification("events.lagged", json!({ "missed": missed })))
+                                    .await;
+                                continue;
+                            }
+                            Err(broadcast::error::RecvError::Closed) => break,
+                        };
+                        let wanted = sessions
+                            .as_ref()
+                            .is_none_or(|ids| ids.contains(&envelope.session_id));
+                        if !wanted || connection.lock_own_turns().contains(&envelope.turn_id) {
+                            continue;
+                        }
+                        if let Ok(params) = serde_json::to_value(&envelope) {
+                            connection.send(notification("event", params)).await;
+                        }
                     }
-                    Err(broadcast::error::RecvError::Closed) => break,
-                };
-                let wanted = sessions
-                    .as_ref()
-                    .is_none_or(|ids| ids.contains(&envelope.session_id));
-                if !wanted || connection.lock_own_turns().contains(&envelope.turn_id) {
-                    continue;
-                }
-                if let Ok(params) = serde_json::to_value(&envelope) {
-                    connection.send(notification("event", params)).await;
+                    proc = async {
+                        match proc_events.as_mut() {
+                            Some(rx) => rx.recv().await,
+                            None => std::future::pending().await,
+                        }
+                    } => {
+                        use agente_core::tools::processes::{ProcessEventKind, ProcessStatus};
+                        let Ok(update) = proc else { continue; };
+                        let payload = match update.kind {
+                            ProcessEventKind::Started { command, started_at } => json!({
+                                "type": "started",
+                                "id": update.id,
+                                "project_dir": update.project_dir,
+                                "command": command,
+                                "started_at": started_at,
+                            }),
+                            ProcessEventKind::Output { chunk, urls } => json!({
+                                "type": "output",
+                                "id": update.id,
+                                "project_dir": update.project_dir,
+                                "chunk": chunk,
+                                "urls": urls,
+                            }),
+                            ProcessEventKind::StatusChanged { status, urls } => {
+                                let (state, exit_code) = match status {
+                                    ProcessStatus::Running => ("running", None),
+                                    ProcessStatus::Exited(code) => ("exited", code),
+                                    ProcessStatus::Stopped => ("stopped", None),
+                                };
+                                json!({
+                                    "type": "status",
+                                    "id": update.id,
+                                    "project_dir": update.project_dir,
+                                    "status": state,
+                                    "exit_code": exit_code,
+                                    "urls": urls,
+                                })
+                            }
+                        };
+                        connection.send(notification("process.event", payload)).await;
+                    }
                 }
             }
         });
