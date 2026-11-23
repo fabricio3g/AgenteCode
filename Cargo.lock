@@ -131,6 +131,7 @@ dependencies = [
  "agente-runtime",
  "async-trait",
  "base64 0.22.1",
+ "ignore",
  "serde",
  "serde_json",
  "thiserror 1.0.69",

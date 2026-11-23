@@ -142,6 +142,12 @@ struct RewindParams {
     conversation_index: usize,
 }
 
+#[derive(Deserialize)]
+struct RollbackTurnParams {
+    session_id: SessionId,
+    turn_index: usize,
+}
+
 #[derive(Deserialize, Default)]
 struct SubscribeParams {
     /// Only these sessions; all sessions when absent.
@@ -184,6 +190,32 @@ struct LlmCompleteParams {
     max_tokens: Option<usize>,
     #[serde(default)]
     session_id: Option<SessionId>,
+}
+
+#[derive(Deserialize)]
+struct LlmStreamParams {
+    #[serde(default)]
+    stream_id: Option<String>,
+    provider: String,
+    model: String,
+    messages: Vec<Message>,
+    #[serde(default)]
+    tools: Option<Vec<agente_core::types::ToolDefinition>>,
+    #[serde(default)]
+    thinking_level: Option<String>,
+    #[serde(default)]
+    temperature: Option<f64>,
+    #[serde(default)]
+    top_p: Option<f64>,
+    #[serde(default)]
+    max_tokens: Option<usize>,
+    #[serde(default)]
+    session_id: Option<SessionId>,
+}
+
+#[derive(Deserialize)]
+struct LlmCancelParams {
+    stream_id: String,
 }
 
 #[derive(Deserialize)]
@@ -368,6 +400,171 @@ impl Connection {
             .test_provider(&provider)
             .await
             .map_err(runtime_failure)
+    }
+
+    pub(super) fn start_llm_stream(
+        self: &Arc<Self>,
+        params: Value,
+    ) -> Result<Value, Failure> {
+        let LlmStreamParams {
+            stream_id,
+            provider: provider_id,
+            model: model_id,
+            messages,
+            tools,
+            thinking_level,
+            temperature,
+            top_p,
+            max_tokens,
+            session_id,
+        } = parse(params)?;
+
+        let (provider, model) = self
+            .runtime
+            .resolve_llm_request(
+                &provider_id,
+                &model_id,
+                thinking_level.as_deref(),
+                temperature,
+                top_p,
+                max_tokens,
+            )
+            .map_err(runtime_failure)?;
+
+        let stream_id = stream_id
+            .filter(|id| !id.trim().is_empty())
+            .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+
+        let ctx = agente_core::providers::RequestContext::new(
+            session_id
+                .unwrap_or_else(SessionId::new)
+                .as_uuid(),
+        );
+        let connection = Arc::clone(self);
+        let id_for_task = stream_id.clone();
+
+        let task = tokio::spawn(async move {
+            struct StreamCleanup {
+                connection: Arc<Connection>,
+                stream_id: String,
+                producer: tokio::task::AbortHandle,
+            }
+            impl Drop for StreamCleanup {
+                fn drop(&mut self) {
+                    self.producer.abort();
+                    self.connection.lock_llm_streams().remove(&self.stream_id);
+                }
+            }
+
+            let (tx, mut rx) = tokio::sync::mpsc::channel(256);
+            let producer = tokio::spawn(async move {
+                if let Err(error) = provider
+                    .stream_completion(&messages, tools.as_deref(), &model, tx.clone(), ctx)
+                    .await
+                {
+                    let _ = tx
+                        .send(agente_core::llm::StreamEvent::Error(error.to_string()))
+                        .await;
+                }
+            });
+            let _cleanup = StreamCleanup {
+                connection: Arc::clone(&connection),
+                stream_id: id_for_task.clone(),
+                producer: producer.abort_handle(),
+            };
+
+            let mut saw_terminal = false;
+            while let Some(event) = rx.recv().await {
+                use agente_core::llm::{StopReason, StreamEvent};
+                let payload = match event {
+                    StreamEvent::TextDelta(text) => json!({
+                        "stream_id": id_for_task,
+                        "type": "content",
+                        "text": text,
+                    }),
+                    StreamEvent::ReasoningDelta(text) => json!({
+                        "stream_id": id_for_task,
+                        "type": "reasoning",
+                        "text": text,
+                    }),
+                    StreamEvent::ToolCallStart { id, name } => json!({
+                        "stream_id": id_for_task,
+                        "type": "tool_call_start",
+                        "id": id,
+                        "name": name,
+                    }),
+                    StreamEvent::ToolCallDelta { id, args_delta } => json!({
+                        "stream_id": id_for_task,
+                        "type": "tool_call_delta",
+                        "id": id,
+                        "args_delta": args_delta,
+                    }),
+                    StreamEvent::ToolCallEnd { id } => json!({
+                        "stream_id": id_for_task,
+                        "type": "tool_call_end",
+                        "id": id,
+                    }),
+                    StreamEvent::Done { usage, stop_reason } => {
+                        saw_terminal = true;
+                        let reason = match stop_reason {
+                            StopReason::Stop => "stop",
+                            StopReason::ToolUse => "tool_calls",
+                            StopReason::Length => "length",
+                            StopReason::Safety => "content_filter",
+                            StopReason::Unknown => "unknown",
+                        };
+                        json!({
+                            "stream_id": id_for_task,
+                            "type": "done",
+                            "stop_reason": reason,
+                            "usage": {
+                                "prompt_tokens": usage.prompt_tokens,
+                                "completion_tokens": usage.completion_tokens,
+                                "total_tokens": usage.total_tokens,
+                                "cache_read_tokens": usage.cache_read_tokens,
+                                "cache_creation_tokens": usage.cache_creation_tokens,
+                            },
+                        })
+                    }
+                    StreamEvent::Error(message) => {
+                        saw_terminal = true;
+                        json!({
+                            "stream_id": id_for_task,
+                            "type": "error",
+                            "error": message,
+                        })
+                    }
+                    StreamEvent::TextStart
+                    | StreamEvent::TextEnd
+                    | StreamEvent::ReasoningStart
+                    | StreamEvent::ReasoningEnd
+                    | StreamEvent::ThinkingSignature(_)
+                    | StreamEvent::Continuation(_) => continue,
+                };
+                connection
+                    .send(rpc::notification("llm.chunk", payload))
+                    .await;
+                if saw_terminal {
+                    break;
+                }
+            }
+            if !saw_terminal {
+                connection
+                    .send(rpc::notification(
+                        "llm.chunk",
+                        json!({
+                            "stream_id": id_for_task,
+                            "type": "done",
+                            "stop_reason": "stop",
+                        }),
+                    ))
+                    .await;
+            }
+        });
+
+        self.lock_llm_streams()
+            .insert(stream_id.clone(), task.abort_handle());
+        Ok(json!({ "stream_id": stream_id }))
     }
 
     pub(super) async fn llm_complete(&self, params: Value) -> Result<Value, Failure> {
@@ -806,6 +1003,26 @@ impl Connection {
                     .rewind(session_id, conversation_index)
                     .map_err(runtime_failure)?;
                 Ok(json!({ "reverted": reverted }))
+            }
+            "edits.rollback_to_turn" => {
+                let RollbackTurnParams {
+                    session_id,
+                    turn_index,
+                } = parse(params)?;
+                let paths = runtime
+                    .rollback_to_turn(session_id, turn_index)
+                    .map_err(runtime_failure)?;
+                Ok(json!({ "paths": paths }))
+            }
+            "llm.stream" => self.start_llm_stream(params),
+            "llm.cancel" => {
+                let LlmCancelParams { stream_id } = parse(params)?;
+                let cancelled = self
+                    .lock_llm_streams()
+                    .remove(&stream_id)
+                    .map(|handle| handle.abort())
+                    .is_some();
+                Ok(json!({ "cancelled": cancelled }))
             }
             "events.subscribe" => {
                 let SubscribeParams { session_ids } = if params.is_null() {

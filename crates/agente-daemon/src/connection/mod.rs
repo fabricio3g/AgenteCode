@@ -8,7 +8,7 @@
 
 mod handlers;
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 
 use agente_protocol::rpc::{self, Incoming};
@@ -42,6 +42,7 @@ struct Connection {
     own_turns: Mutex<HashSet<TurnId>>,
     subscription: Mutex<Option<JoinHandle<()>>>,
     tasks: Mutex<Vec<tokio::task::AbortHandle>>,
+    llm_streams: Mutex<HashMap<String, tokio::task::AbortHandle>>,
     client_tools: Arc<crate::client_tools::ClientTools>,
     complements: Mutex<crate::complements::Complements>,
 }
@@ -52,7 +53,7 @@ pub(crate) fn initialize_result() -> Value {
         "protocol_version": agente_protocol::PROTOCOL_VERSION,
         "server": "agente",
         "version": env!("CARGO_PKG_VERSION"),
-        "capabilities": ["project", "processes", "sessions", "turns", "edits", "desktop_v1", "home_turns_v1", "provider_settings_v1", "complements_v1"],
+        "capabilities": ["project", "processes", "sessions", "turns", "edits", "desktop_v1", "home_turns_v1", "provider_settings_v1", "complements_v1", "llm_stream_v1"],
     })
 }
 
@@ -99,6 +100,7 @@ where
         own_turns: Mutex::new(HashSet::new()),
         subscription: Mutex::new(None),
         tasks: Mutex::new(Vec::new()),
+        llm_streams: Mutex::new(HashMap::new()),
         client_tools: Arc::default(),
         complements: Mutex::default(),
     });
@@ -127,6 +129,7 @@ where
                         | "mcp.control"
                         | "runtime.configure"
                         | "processes.start"
+                        | "project.files"
                 ) {
                     // Long-running and network-bound RPCs must never block the
                     // JSON-RPC reader loop (so turn.cancel, approval.respond,
@@ -150,6 +153,14 @@ where
                                 .map(|()| json!({ "ok": true }))
                                 .map_err(runtime_failure),
                             "processes.start" => connection.start_process(params).await,
+                            "project.files" => {
+                                let runtime = connection.runtime.clone();
+                                tokio::task::spawn_blocking(move || {
+                                    crate::project::handle(&runtime, "project.files", params)
+                                })
+                                .await
+                                .unwrap_or_else(|error| Err((rpc::INTERNAL_ERROR, error.to_string())))
+                            }
                             _ => unreachable!(),
                         };
                         let reply = match outcome {
@@ -181,6 +192,9 @@ where
     }
     for task in connection.lock_tasks().drain(..) {
         task.abort();
+    }
+    for (_, handle) in connection.lock_llm_streams().drain() {
+        handle.abort();
     }
     connection.client_tools.disconnect(&connection.runtime);
     connection.lock_complements().clear();
@@ -231,6 +245,14 @@ impl Connection {
 
     fn lock_tasks(&self) -> std::sync::MutexGuard<'_, Vec<tokio::task::AbortHandle>> {
         self.tasks
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    fn lock_llm_streams(
+        &self,
+    ) -> std::sync::MutexGuard<'_, HashMap<String, tokio::task::AbortHandle>> {
+        self.llm_streams
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
@@ -541,6 +563,7 @@ mod tests {
             own_turns: Mutex::new(HashSet::new()),
             subscription: Mutex::new(None),
             tasks: Mutex::new(Vec::new()),
+            llm_streams: Mutex::new(HashMap::new()),
             client_tools: Arc::default(),
             complements: Mutex::default(),
         });

@@ -66,6 +66,13 @@ struct ProjectParams {
 }
 
 #[derive(Deserialize)]
+struct ProjectFilesParams {
+    project_dir: String,
+    #[serde(default)]
+    limit: Option<usize>,
+}
+
+#[derive(Deserialize)]
 struct ExpandParams {
     project_dir: String,
     text: String,
@@ -80,6 +87,11 @@ pub(crate) fn handle(
         "project.info" => {
             let ProjectParams { project_dir } = parse(params)?;
             Ok(info(&project_dir))
+        }
+        "project.files" => {
+            let ProjectFilesParams { project_dir, limit } = parse(params)?;
+            let max_files = limit.unwrap_or(20_000).min(100_000);
+            Ok(json!({ "files": list_files(&project_dir, max_files) }))
         }
         "project.init" => {
             let ProjectParams { project_dir } = parse(params)?;
@@ -120,6 +132,59 @@ pub(crate) fn handle(
         }
         _ => Err((rpc::METHOD_NOT_FOUND, format!("unknown method {method}"))),
     }
+}
+
+fn list_files(project_dir: &str, max_files: usize) -> Vec<String> {
+    let root = std::path::Path::new(project_dir);
+    if !root.is_dir() || max_files == 0 {
+        return Vec::new();
+    }
+    const SKIP_DIRS: &[&str] = &[
+        ".git",
+        "node_modules",
+        "target",
+        "dist",
+        "build",
+        ".next",
+        ".svelte-kit",
+        ".venv",
+        "venv",
+        "__pycache__",
+        ".cache",
+    ];
+    let mut files = Vec::new();
+    let walker = ignore::WalkBuilder::new(root)
+        .hidden(false)
+        .filter_entry(|entry| {
+            if entry.depth() == 0 {
+                return true;
+            }
+            if entry.file_type().is_some_and(|ft| ft.is_dir()) {
+                if let Some(name) = entry.file_name().to_str() {
+                    if SKIP_DIRS.contains(&name) {
+                        return false;
+                    }
+                }
+            }
+            true
+        })
+        .build();
+    for entry in walker.flatten() {
+        if !entry.file_type().is_some_and(|ft| ft.is_file()) {
+            continue;
+        }
+        if let Ok(rel) = entry.path().strip_prefix(root) {
+            let normalized = rel.to_string_lossy().replace('\\', "/");
+            if !normalized.is_empty() {
+                files.push(normalized);
+                if files.len() >= max_files {
+                    break;
+                }
+            }
+        }
+    }
+    files.sort();
+    files
 }
 
 fn info(project_dir: &str) -> Value {
@@ -217,6 +282,19 @@ mod tests {
         let init = agente_core::extensions::init_project(&dir.to_string_lossy()).unwrap();
         assert!(init.contains("Created AGENTS.md"));
         assert_eq!(info(&dir.to_string_lossy())["agents_md"], true);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn list_files_skips_build_dirs_and_sorts() {
+        let dir = tempfile_dir("files");
+        std::fs::create_dir_all(dir.join("src")).unwrap();
+        std::fs::create_dir_all(dir.join("node_modules/pkg")).unwrap();
+        std::fs::write(dir.join("src/b.rs"), "").unwrap();
+        std::fs::write(dir.join("src/a.rs"), "").unwrap();
+        std::fs::write(dir.join("node_modules/pkg/index.js"), "").unwrap();
+        let files = list_files(&dir.to_string_lossy(), 100);
+        assert_eq!(files, vec!["src/a.rs", "src/b.rs"]);
         let _ = std::fs::remove_dir_all(dir);
     }
 

@@ -727,6 +727,64 @@ impl RuntimeHandle {
         }))
     }
 
+    /// Resolve a provider and fully prepared `ModelInfo` (with thinking patch
+    /// and sampling overrides) for a direct `llm.stream` / `llm.complete` call.
+    pub fn resolve_llm_request(
+        &self,
+        provider_id: &str,
+        model_id: &str,
+        thinking_level: Option<&str>,
+        temperature: Option<f64>,
+        top_p: Option<f64>,
+        max_tokens: Option<usize>,
+    ) -> Result<
+        (
+            Arc<dyn agente_core::providers::Provider>,
+            agente_core::providers::ModelInfo,
+        ),
+        RuntimeError,
+    > {
+        let live = self.inner.live();
+        let provider = live
+            .provider_registry
+            .get(provider_id)
+            .ok_or_else(|| RuntimeError::Config(format!("Unknown provider: {provider_id}")))?;
+        let mut model = agente_core::providers::resolve_model_info(
+            &live.provider_registry,
+            live.catalog.as_deref(),
+            provider_id,
+            model_id,
+        );
+        if let Some(error) = model.api.route_error.as_ref() {
+            return Err(RuntimeError::Config(error.clone()));
+        }
+        model.options = provider.get_request_options(&model);
+        let format = provider.request_api_format(&model);
+        if let Some(level) = thinking_level.filter(|level| !level.is_empty()) {
+            let patch = agente_core::thinking::request_patch(&model, format, level);
+            for (k, v) in patch {
+                model.options.insert(k, v);
+            }
+        }
+        if let Some(temp) = temperature {
+            model
+                .options
+                .insert("temperature".into(), serde_json::json!(temp));
+        }
+        if let Some(tp) = top_p {
+            model.options.insert("top_p".into(), serde_json::json!(tp));
+        }
+        if let Some(limit) = max_tokens.filter(|limit| *limit > 0) {
+            model.limits.output = model
+                .limits
+                .output
+                .min(limit.try_into().unwrap_or(model.limits.output));
+            model.options.remove("max_tokens");
+            model.options.remove("max_completion_tokens");
+        }
+        Ok((provider, model))
+    }
+
     /// Run a stateless, no-tools text completion through the core provider
     /// stack (supports every wire format: OpenAI, Anthropic, Responses, Google).
     pub async fn complete_text(

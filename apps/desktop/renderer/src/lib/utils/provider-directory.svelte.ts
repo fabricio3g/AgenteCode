@@ -41,9 +41,11 @@ function label(spec: ProviderSpec): string {
 
 export function metaFromSpec(spec: ProviderSpec): CloudProviderMeta | null {
   if (OWN_SECTION.has(spec.id)) return null;
-  // Desktop chat speaks OpenAI chat completions only.
+  // Rust daemon (`llm.stream` / `turn.start`) speaks every provider's native
+  // wire format; prefer `openai_compatible_url` only as the display base URL
+  // for legacy fallback callers, otherwise keep the provider's native `base_url`.
   const openai = spec.api_format === 'openai' || spec.api_format === 'responses';
-  const baseUrl = openai ? spec.base_url : spec.openai_compatible_url;
+  const baseUrl = openai ? spec.base_url : (spec.openai_compatible_url || spec.base_url);
   if (!baseUrl) return null;
   return {
     id: spec.id,

@@ -27,6 +27,27 @@ type ProviderHandlerDeps = {
 
 export function registerProviderHandlers({ ipcMain, resolveProvider, resolveApiKey, onModelsRefreshed }: ProviderHandlerDeps): void {
   ipcMain.handle('fetch_provider_models', async (_e, { baseUrl, apiKey, providerName }) => {
+    const named = String(providerName || '').trim();
+    // Delegate saved core cloud providers to Rust `models.discover` (handles
+    // OpenRouter reasoning metadata, Anthropic paging, and models.dev enrichment
+    // in one native call without duplicating /models fetching in TS).
+    if (named && !apiKey && named !== 'local' && named !== 'llamacpp' && named !== 'lmstudio' && named !== 'ollama' && named !== 'custom') {
+      try {
+        const { runtimeConnection } = await import('../agente/rust-engine.ts');
+        const client = await runtimeConnection();
+        const [discovered, catalog] = await Promise.all([
+          client.request<{ models?: Array<{ id: string }> }>('models.discover', { provider: named }),
+          coreCatalogModels(named).catch(() => [])
+        ]);
+        const liveIds = (discovered?.models ?? []).map((m) => String(m.id)).filter(Boolean);
+        if (liveIds.length > 0) {
+          onModelsRefreshed?.(named);
+          return mergeModelLists(liveIds, catalog);
+        }
+      } catch {
+        // Fall through to TS dialect fetch if daemon is offline or provider has an unsaved baseUrl.
+      }
+    }
     const provider = resolveProvider(providerName, baseUrl);
     const realKey = resolveApiKey(apiKey, baseUrl, providerName);
     if (!realKey && provider.dialect.group === 'cloud') {

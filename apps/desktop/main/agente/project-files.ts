@@ -46,5 +46,18 @@ export function walkFiles(root: string, limit = MAX_FILES): string[] {
 
 export async function listProjectFiles(root: string): Promise<string[]> {
   if (!root || !fs.existsSync(root)) return [];
+  // Prefer the compiled Rust .gitignore-aware walker (`project.files`) when the
+  // daemon is reachable; fall back to git/JS walk if offline or in unit tests.
+  try {
+    const { runtimeConnection } = await import('./rust-engine.ts');
+    const client = await runtimeConnection();
+    const result = await client.request<{ files?: string[] }>('project.files', {
+      project_dir: root,
+      limit: MAX_FILES
+    });
+    if (Array.isArray(result?.files)) return result.files;
+  } catch {
+    // Fall through to local git / directory walk.
+  }
   return (await gitFiles(root)) ?? walkFiles(root);
 }

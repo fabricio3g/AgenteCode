@@ -1,10 +1,11 @@
 import type { DownloadJob } from '$lib/types/bridge';
 import { cancelDownloadJob, clearFinishedDownloads, getDownloadJobs, pauseDownloadJob, removeDownloadJob, retryDownloadJob, startDownloadHf } from '$lib/services/downloads';
 import { getModelsDirPath } from '$lib/services/models';
-import { isElectron } from '$lib/services/bridge';
+import { isElectron, listen } from '$lib/services/bridge';
 
 const ACTIVE_STATUSES = new Set(['starting', 'running']);
-const POLL_INTERVAL_MS = 1000;
+const POLL_FALLBACK_MS = 10_000;
+const MIN_SPEED_SAMPLE_MS = 250;
 const EMA_ALPHA = 0.3;
 
 interface SpeedSample {
@@ -24,6 +25,8 @@ class DownloadsStore {
   error = $state<string | null>(null);
 
   private _pollerHandle: ReturnType<typeof setInterval> | null = null;
+  private _unlistenProgress: (() => void) | null = null;
+  private _listeningPromise: Promise<void> | null = null;
   private _speedSamples = new Map<string, SpeedSample>();
 
   get hasActive() {
@@ -56,6 +59,7 @@ class DownloadsStore {
       this.jobs = [];
       return;
     }
+    this._ensurePushListener();
 
     this.loading = true;
     this.error = null;
@@ -72,10 +76,34 @@ class DownloadsStore {
     this._syncPoller();
   }
 
-  /** Start polling when there are active downloads, stop when idle. */
+  private _ensurePushListener() {
+    if (!isElectron() || this._unlistenProgress || this._listeningPromise) return;
+    this._listeningPromise = listen<DownloadJob>('download-progress', (job) => {
+      if (!job || !job.id) return;
+      const idx = this.jobs.findIndex((existing) => existing.id === job.id);
+      if (idx >= 0) {
+        const next = this.jobs.slice();
+        next[idx] = job;
+        this.jobs = next;
+      } else {
+        this.jobs = [job, ...this.jobs];
+      }
+      this._updateSpeedSample(job);
+      this._syncPoller();
+    })
+      .then((unlisten) => {
+        this._unlistenProgress = unlisten;
+      })
+      .catch(() => {
+        this._listeningPromise = null;
+      });
+  }
+
+  /** Subscribe to push progress events and keep only a low-frequency fallback timer while active. */
   startPolling() {
+    this._ensurePushListener();
     if (this._pollerHandle !== null) return;
-    this._pollerHandle = setInterval(() => void this._pollTick(), POLL_INTERVAL_MS);
+    this._pollerHandle = setInterval(() => void this._pollTick(), POLL_FALLBACK_MS);
   }
 
   stopPolling() {
@@ -98,8 +126,36 @@ class DownloadsStore {
     this._syncPoller();
   }
 
-  private _updateSpeedSamples() {
+  private _updateSpeedSample(job: DownloadJob) {
+    if (job.status !== 'running') {
+      this._speedSamples.delete(job.id);
+      return;
+    }
     const now = Date.now();
+    const prev = this._speedSamples.get(job.id);
+    if (!prev) {
+      this._speedSamples.set(job.id, {
+        bytesAtLastSample: job.downloaded_bytes,
+        timeAtLastSample: now,
+        speedBps: 0
+      });
+      return;
+    }
+    const elapsedMs = now - prev.timeAtLastSample;
+    if (elapsedMs < MIN_SPEED_SAMPLE_MS) return;
+    const dt = elapsedMs / 1000;
+    const instantSpeed = (job.downloaded_bytes - prev.bytesAtLastSample) / dt;
+    const smoothed = prev.speedBps > 0
+      ? EMA_ALPHA * instantSpeed + (1 - EMA_ALPHA) * prev.speedBps
+      : instantSpeed;
+    this._speedSamples.set(job.id, {
+      bytesAtLastSample: job.downloaded_bytes,
+      timeAtLastSample: now,
+      speedBps: Math.max(0, smoothed)
+    });
+  }
+
+  private _updateSpeedSamples() {
     const currentJobIds = new Set(this.jobs.map((j) => j.id));
 
     // Clean up samples for jobs no longer present
@@ -108,35 +164,7 @@ class DownloadsStore {
     }
 
     for (const job of this.jobs) {
-      if (job.status !== 'running') {
-        this._speedSamples.delete(job.id);
-        continue;
-      }
-
-      const prev = this._speedSamples.get(job.id);
-      if (!prev) {
-        // First sample – seed with current values, speed unknown
-        this._speedSamples.set(job.id, {
-          bytesAtLastSample: job.downloaded_bytes,
-          timeAtLastSample: now,
-          speedBps: 0
-        });
-        continue;
-      }
-
-      const dt = (now - prev.timeAtLastSample) / 1000; // seconds
-      if (dt <= 0) continue;
-
-      const instantSpeed = (job.downloaded_bytes - prev.bytesAtLastSample) / dt;
-      const smoothed = prev.speedBps > 0
-        ? EMA_ALPHA * instantSpeed + (1 - EMA_ALPHA) * prev.speedBps
-        : instantSpeed;
-
-      this._speedSamples.set(job.id, {
-        bytesAtLastSample: job.downloaded_bytes,
-        timeAtLastSample: now,
-        speedBps: Math.max(0, smoothed)
-      });
+      this._updateSpeedSample(job);
     }
   }
 

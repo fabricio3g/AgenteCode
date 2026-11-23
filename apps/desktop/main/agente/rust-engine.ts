@@ -797,16 +797,17 @@ async function rollback(chatId: string, turnIndex: number, options: { sessionId?
   const chat = chats.get(chatId);
   const sessionId = chat?.sessionId ?? options.sessionId;
   if (!sessionId) return { ok: false, error: 'No checkpoints for this conversation' };
-  const later = (await listCheckpoints(chatId, sessionId)).filter((checkpoint) => checkpoint.turnIndex >= turnIndex);
   try {
     const client = await connect();
-    const files = new Set<string>();
-    for (let i = 0; i < later.length; i += 1) {
-      const undone = await client.request<{ paths: string[] }>('edits.undo', { session_id: sessionId });
-      for (const file of undone.paths) files.add(file);
-    }
+    // Atomic single-RPC rollback: Rust validates every affected file before
+    // writing any, avoiding partial undo states across turns.
+    const result = await client.request<{ paths: string[] }>('edits.rollback_to_turn', {
+      session_id: sessionId,
+      turn_index: turnIndex
+    });
+    const files = Array.isArray(result.paths) ? result.paths : [];
     if (chat) chat.checkpoints = chat.checkpoints.filter((checkpoint) => checkpoint.turnIndex < turnIndex);
-    return { ok: true, restored: files.size, files: [...files] };
+    return { ok: true, restored: files.length, files };
   } catch (error: unknown) {
     return { ok: false, error: error instanceof Error ? error.message : String(error) };
   }

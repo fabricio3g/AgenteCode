@@ -136,6 +136,36 @@ impl EditLog {
         Ok(undone)
     }
 
+    /// Atomically undo every batch whose `turn_index >= turn_index` without
+    /// modifying the conversation transcript. Checks every file before writing
+    /// any, so a conflict leaves disk and history untouched.
+    pub fn rollback_to_turn(
+        &mut self,
+        session_id: SessionId,
+        turn_index: usize,
+        project_dir: &str,
+    ) -> Result<Vec<String>, String> {
+        let history = self.sessions.entry(session_id).or_default();
+        let first = history
+            .undo
+            .iter()
+            .position(|batch| batch.turn_index >= turn_index)
+            .unwrap_or(history.undo.len());
+        if first == history.undo.len() {
+            return Ok(Vec::new());
+        }
+        let edits = merge(
+            history.undo[first..]
+                .iter()
+                .flat_map(|batch| batch.edits.clone())
+                .collect(),
+        );
+        let paths = apply(&edits, project_dir, Side::Before)?;
+        let batches = history.undo.split_off(first);
+        history.redo.extend(batches.into_iter().rev());
+        Ok(paths)
+    }
+
     pub fn restore(&mut self, session_id: SessionId, value: serde_json::Value) {
         if let std::collections::hash_map::Entry::Vacant(entry) = self.sessions.entry(session_id) {
             if let Ok(history) = serde_json::from_value(value) {
@@ -392,6 +422,35 @@ mod tests {
         assert!(log.rewind(session, 1, root).unwrap_err().contains("a.txt"));
         assert_eq!(read(&dir, "b.txt").as_deref(), Some("new"));
         assert_eq!(log.checkpoints(session).as_array().unwrap().len(), 2);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn rollback_to_turn_is_atomic_and_preserves_earlier_turns() {
+        let dir = project("rollback-turn");
+        let root = dir.to_str().unwrap();
+        let session = SessionId::new();
+        std::fs::write(dir.join("a.txt"), "t3").unwrap();
+        std::fs::write(dir.join("b.txt"), "b2").unwrap();
+        let mut log = EditLog::default();
+        log.begin_turn(session, 1);
+        log.end_turn(session, vec![edit("a.txt", Some("t0"), Some("t1"))]);
+        log.begin_turn(session, 3);
+        log.end_turn(session, vec![edit("a.txt", Some("t1"), Some("t2"))]);
+        log.begin_turn(session, 5);
+        log.end_turn(
+            session,
+            vec![
+                edit("a.txt", Some("t2"), Some("t3")),
+                edit("b.txt", None, Some("b2")),
+            ],
+        );
+
+        let paths = log.rollback_to_turn(session, 2, root).unwrap();
+        assert_eq!(paths.len(), 2);
+        assert_eq!(read(&dir, "a.txt").as_deref(), Some("t1"));
+        assert_eq!(read(&dir, "b.txt"), None);
+        assert_eq!(log.checkpoints(session).as_array().unwrap().len(), 1);
         let _ = std::fs::remove_dir_all(dir);
     }
 }

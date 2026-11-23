@@ -589,6 +589,18 @@ impl RuntimeHandle {
         self.edit_files(session_id, |log, project| log.redo(session_id, project))
     }
 
+    /// Atomically restore files back to before `turn_index`, keeping the
+    /// conversation transcript intact.
+    pub fn rollback_to_turn(
+        &self,
+        session_id: SessionId,
+        turn_index: usize,
+    ) -> Result<Vec<String>, RuntimeError> {
+        self.edit_files(session_id, |log, project| {
+            log.rollback_to_turn(session_id, turn_index, project)
+        })
+    }
+
     /// Go back to before `conversation_index` (a user message): undo the file
     /// edits of every turn from there on and drop those messages. Returns how
     /// many turns' edits were reverted.
