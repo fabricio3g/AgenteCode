@@ -1,23 +1,22 @@
-import { mountTiles } from "./js/tiles.js?v=20";
-import { initTheme, initSegmented, initCopy, initReveal, initScroll } from "./js/ui.js?v=20";
+import { bootFolio } from "./js/folio-fx.js?v=21";
+import { mountSupernova } from "./js/supernova-bg.js?v=21";
 
-initTheme();
-initSegmented();
-initCopy();
-initReveal();
-initScroll();
+bootFolio({ defaultTheme: "light" });
 
-// The tile field the terminal's welcome card floats on, glowing up from the product shot.
-const tiles = document.getElementById("hero-tiles");
-if (tiles) mountTiles(tiles, { focus: [0.7, 0.85] });
+mountSupernova(document.getElementById("bg-horizon"), {
+  mode: "wash",
+  focus: [0.50, 0.30],
+  strength: 0.72,
+});
 
-// The browser chrome follows the page theme.
-const themeColor = document.querySelector('meta[name="theme-color"]');
-const syncChrome = () => themeColor?.setAttribute("content", document.documentElement.dataset.theme === "light" ? "#ffffff" : "#1c1c1c");
-document.addEventListener("themechange", syncChrome);
-syncChrome();
+mountSupernova(document.getElementById("bg-cta"), {
+  mode: "supernova",
+  focus: [0.50, 0.50],
+  strength: 0.55,
+});
 
-// "Install the CLI" lands on the install section with the CLI tab open.
 document.querySelectorAll("[data-install]").forEach((link) => {
-  link.addEventListener("click", () => document.getElementById(`g-${link.dataset.install}`)?.click());
+  link.addEventListener("click", () => {
+    document.getElementById(`g-${link.dataset.install}`)?.click();
+  });
 });
