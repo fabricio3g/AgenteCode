@@ -3,202 +3,111 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Variant B — The Naturalist's Field Guide · Agente Code</title>
+  <title>Variant B — Naturalist Horizon · Agente Code</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Inter:wght@400;500;600&family=Newsreader:ital,opsz,wght@0,6..72,300..600;1,6..72,400&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Inter:wght@400;500;600&family=Newsreader:ital,opsz,wght@0,6..72,300..500;1,6..72,400&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="folio-base.css" />
   <script>document.documentElement.classList.add("js");</script>
   <style>
-    /* Variant B — The Naturalist's Field Guide (Centered Book Title + Open-Book Spreads) */
+    /* Variant B — Naturalist Horizon (Centered Anthropic Essay + Obsidian Product Stage) */
     .hero {
       position: relative;
-      padding: 148px 0 88px;
+      min-height: min(860px, 94svh);
+      padding: 164px 0 140px;
       text-align: center;
+      display: flex;
+      align-items: center;
       overflow: clip;
       isolation: isolate;
     }
-    .hero-botanical {
-      position: absolute;
-      right: -6%;
-      bottom: -20px;
-      width: min(860px, 72vw);
-      z-index: -1;
-      opacity: 0.42;
-      -webkit-mask-image: radial-gradient(ellipse 75% 75% at 72% 70%, #000 35%, transparent 94%);
-              mask-image: radial-gradient(ellipse 75% 75% at 72% 70%, #000 35%, transparent 94%);
-    }
-    .hero-orbital-left {
-      position: absolute;
-      left: -18%;
-      top: 40px;
-      width: min(640px, 52vw);
-      z-index: -1;
-      opacity: 0.2;
-      transform: scaleX(-1);
-      -webkit-mask-image: radial-gradient(ellipse 68% 68% at 50% 50%, #000 30%, transparent 92%);
-              mask-image: radial-gradient(ellipse 68% 68% at 50% 50%, #000 30%, transparent 92%);
-    }
-    .book-rule {
-      display: inline-flex;
-      align-items: center;
-      gap: 14px;
-      font: 400 11.5px/1 var(--font-mono);
-      letter-spacing: 0.12em;
-      text-transform: uppercase;
-      color: var(--ink-3);
-    }
-    .book-rule::before, .book-rule::after {
-      content: "";
-      width: 32px;
-      height: 1px;
-      background: var(--rule-strong);
-    }
+    .hero-inner { position: relative; z-index: 2; }
     .hero h1 {
-      margin: 26px auto 0;
-      font-size: clamp(46px, 6.2vw, 78px);
-      line-height: 1.01;
-      letter-spacing: -0.035em;
+      margin: 22px auto 0;
+      font-size: clamp(48px, 6.4vw, 82px);
+      line-height: 1.02;
+      letter-spacing: -0.034em;
       max-width: 15ch;
     }
-    .hero h1 em { font-style: italic; color: var(--ink-2); }
+    .hero h1 em { font-style: italic; }
     .hero .lede {
       margin: 26px auto 0;
       max-width: 560px;
-      font-size: 18px;
+      font-size: 18.5px;
       line-height: 1.62;
       color: var(--ink-2);
     }
-    .hero .actions { justify-content: center; margin-top: 36px; display: flex; flex-wrap: wrap; gap: 12px; }
+    .hero .actions { justify-content: center; margin-top: 38px; display: flex; flex-wrap: wrap; gap: 12px; }
 
-    /* Centered Exhibition Plate */
-    .exhibit-wrap {
-      margin-top: 72px;
-      position: relative;
-      padding: 28px;
-      border-radius: 22px;
-      background: var(--sheet);
-      border: 1px solid var(--rule);
-      box-shadow: 0 30px 70px -40px rgb(25 23 20 / 0.22);
-    }
-    .corner {
-      position: absolute;
-      width: 12px;
-      height: 12px;
-      border-color: var(--rule-strong);
-      border-style: solid;
-      pointer-events: none;
-    }
-    .c-tl { top: 10px; left: 10px; border-width: 1px 0 0 1px; }
-    .c-tr { top: 10px; right: 10px; border-width: 1px 1px 0 0; }
-    .c-bl { bottom: 10px; left: 10px; border-width: 0 0 1px 1px; }
-    .c-br { bottom: 10px; right: 10px; border-width: 0 1px 1px 0; }
-    .exhibit-caption {
-      display: flex;
-      justify-content: space-between;
-      margin-top: 16px;
-      font: 400 12px/1.4 var(--font-mono);
-      color: var(--ink-3);
-    }
-
-    /* Open-Book Specimen Spreads */
-    .spread {
+    /* Signature Anthropic High-Contrast Obsidian Product Showcase Band */
+    .obsidian-band {
+      background: #141413;
+      color: #f4f1ea;
       padding: 112px 0;
-      border-top: 1px solid var(--rule);
     }
-    .spread-alt { background: var(--paper-alt); }
-    .spread-grid {
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
-      gap: 64px;
-      align-items: center;
-    }
-    .spread-grid.flip .spread-visual { order: -1; }
-    .spread-copy h2 {
-      margin-top: 16px;
-      font-size: clamp(32px, 3.8vw, 46px);
-      line-height: 1.08;
-    }
-    .spread-copy p {
-      margin-top: 16px;
-      font-size: 16.5px;
-      line-height: 1.65;
-      color: var(--ink-2);
-    }
-    .spec-list {
-      margin: 28px 0 0;
-      padding: 0;
-      list-style: none;
-      border-top: 1px solid var(--rule);
-    }
-    .spec-list li {
+    .obsidian-head {
       display: flex;
       justify-content: space-between;
-      gap: 16px;
-      padding: 12px 0;
-      border-bottom: 1px solid var(--rule-soft);
-      font-size: 14.5px;
+      align-items: flex-end;
+      gap: 32px;
+      flex-wrap: wrap;
+      margin-bottom: 44px;
     }
-    .spec-list span { color: var(--ink-3); font-family: var(--font-mono); font-size: 12.5px; }
-
-    .spread-visual {
-      position: relative;
-      padding: 28px;
-      border-radius: 18px;
-      background: var(--sheet);
-      border: 1px solid var(--rule);
-      overflow: hidden;
-    }
-    .spread-plate-img {
-      width: 100%;
-      aspect-ratio: 16 / 10;
-      object-fit: cover;
-      border-radius: 10px;
-    }
-    .spread-note {
-      margin-top: 14px;
+    .obsidian-head h2 { font-size: clamp(32px, 4vw, 48px); max-width: 16ch; }
+    .obsidian-head p { max-width: 420px; color: #aba59a; font-size: 16px; }
+    .obsidian-band .segmented { background: rgb(255 255 255 / 0.06); border-color: rgb(255 255 255 / 0.12); }
+    .obsidian-band .segmented button { color: #aba59a; }
+    .obsidian-band .segmented button[aria-selected="true"] { color: #f4f1ea; }
+    .obsidian-band .seg-thumb { background: rgb(255 255 255 / 0.14); box-shadow: none; }
+    .obsidian-cap {
       display: flex;
       justify-content: space-between;
-      font: 400 11.5px/1 var(--font-mono);
-      color: var(--ink-3);
-      text-transform: uppercase;
-      letter-spacing: 0.06em;
+      margin-top: 18px;
+      font: 400 12.5px var(--font-mono);
+      color: #8a847a;
     }
 
-    /* Install Strip */
-    .install-band { padding: 108px 0; border-top: 1px solid var(--rule); text-align: center; }
-    .install-band h2 { font-size: clamp(34px, 4.2vw, 50px); margin-top: 16px; }
-    .install-cards {
+    /* Spacious Editorial Chapters */
+    .section { padding: 132px 0; }
+    .chapter-grid {
       display: grid;
       grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 18px;
-      margin-top: 44px;
-      text-align: left;
+      gap: 44px;
+      margin-top: 56px;
     }
-    .icard {
-      padding: 26px;
-      border-radius: 16px;
-      background: var(--sheet);
+    .chapter {
+      padding-top: 24px;
+      border-top: 1px solid var(--rule-strong);
+    }
+    .chapter span { font: 400 12px var(--font-mono); color: var(--accent); letter-spacing: 0.06em; }
+    .chapter h3 { font-size: 26px; margin-top: 14px; }
+    .chapter p { margin-top: 12px; font-size: 15.5px; color: var(--ink-2); line-height: 1.65; }
+
+    /* Framed Art Feature Band */
+    .art-feature {
+      padding: 0 0 132px;
+    }
+    .art-card {
+      position: relative;
+      border-radius: 24px;
+      overflow: hidden;
       border: 1px solid var(--rule);
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
+      padding: 84px 64px;
+      isolation: isolate;
     }
-    .icard h3 { font-size: 24px; }
-    .icard p { font-size: 14.5px; color: var(--ink-2); margin-bottom: 8px; }
-    .icard a { margin-top: auto; font: 500 13.5px var(--font-mono); color: var(--ink); display: inline-flex; gap: 8px; align-items: center; }
-    .icard a:hover { color: var(--accent); }
+    .art-card-inner { position: relative; z-index: 2; max-width: 540px; }
+    .art-card h2 { margin-top: 16px; font-size: clamp(32px, 3.8vw, 48px); line-height: 1.07; }
+    .art-card p { margin-top: 16px; font-size: 16.5px; color: var(--ink-2); line-height: 1.65; }
+    .art-card .actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 32px; }
 
     @media (max-width: 900px) {
-      .spread-grid, .install-cards { grid-template-columns: 1fr; gap: 32px; }
-      .spread-grid.flip .spread-visual { order: 0; }
+      .chapter-grid { grid-template-columns: 1fr; gap: 32px; }
+      .art-card { padding: 56px 28px; }
       .nav-links { display: none; }
     }
   </style>
 </head>
 <body>
-  <div class="paper-grain" aria-hidden="true"></div>
-
   <svg width="0" height="0" style="position:absolute" aria-hidden="true">
     <symbol id="mark" viewBox="8 8 104 104"><g fill="currentColor" stroke="none"><rect x="37.63" y="17.23" width="3.94" height="3.94" rx="0.87" fill-opacity="0.85"/><rect x="43.85" y="30.25" width="5.10" height="5.10" rx="1.12"/><rect x="84.65" y="30.25" width="5.10" height="5.10" rx="1.12"/><rect x="90.94" y="29.74" width="6.12" height="6.12" rx="1.35"/><rect x="43.85" y="37.05" width="5.10" height="5.10" rx="1.12"/><rect x="50.65" y="37.05" width="5.10" height="5.10" rx="1.12"/><rect x="57.45" y="37.05" width="5.10" height="5.10" rx="1.12"/><rect x="63.74" y="36.54" width="6.12" height="6.12" rx="1.35"/><rect x="70.54" y="36.54" width="6.12" height="6.12" rx="1.35"/><rect x="77.34" y="36.54" width="6.12" height="6.12" rx="1.35"/><rect x="84.14" y="36.54" width="6.12" height="6.12" rx="1.35"/><rect x="90.94" y="36.54" width="6.12" height="6.12" rx="1.35"/><rect x="43.34" y="43.34" width="6.12" height="6.12" rx="1.35"/><rect x="50.14" y="43.34" width="6.12" height="6.12" rx="1.35"/><rect x="56.94" y="43.34" width="6.12" height="6.12" rx="1.35"/><rect x="63.74" y="43.34" width="6.12" height="6.12" rx="1.35"/><rect x="70.54" y="43.34" width="6.12" height="6.12" rx="1.35"/><rect x="90.94" y="43.34" width="6.12" height="6.12" rx="1.35"/><rect x="36.54" y="50.14" width="6.12" height="6.12" rx="1.35"/><rect x="43.34" y="50.14" width="6.12" height="6.12" rx="1.35"/><rect x="70.54" y="50.14" width="6.12" height="6.12" rx="1.35"/><rect x="90.94" y="50.14" width="6.12" height="6.12" rx="1.35"/><rect x="29.74" y="56.94" width="6.12" height="6.12" rx="1.35"/><rect x="43.34" y="56.94" width="6.12" height="6.12" rx="1.35"/><rect x="70.54" y="56.94" width="6.12" height="6.12" rx="1.35"/><rect x="84.14" y="56.94" width="6.12" height="6.12" rx="1.35"/><rect x="22.94" y="63.74" width="6.12" height="6.12" rx="1.35"/><rect x="43.34" y="63.74" width="6.12" height="6.12" rx="1.35"/><rect x="70.54" y="63.74" width="6.12" height="6.12" rx="1.35"/><rect x="77.34" y="63.74" width="6.12" height="6.12" rx="1.35"/><rect x="16.14" y="70.54" width="6.12" height="6.12" rx="1.35"/><rect x="22.94" y="70.54" width="6.12" height="6.12" rx="1.35"/><rect x="43.34" y="70.54" width="6.12" height="6.12" rx="1.35"/><rect x="50.14" y="70.54" width="6.12" height="6.12" rx="1.35"/><rect x="56.94" y="70.54" width="6.12" height="6.12" rx="1.35"/><rect x="63.74" y="70.54" width="6.12" height="6.12" rx="1.35"/><rect x="70.54" y="70.54" width="6.12" height="6.12" rx="1.35"/><rect x="16.14" y="77.34" width="6.12" height="6.12" rx="1.35"/><rect x="22.94" y="77.34" width="6.12" height="6.12" rx="1.35"/><rect x="29.74" y="77.34" width="6.12" height="6.12" rx="1.35"/><rect x="36.54" y="77.34" width="6.12" height="6.12" rx="1.35"/><rect x="43.34" y="77.34" width="6.12" height="6.12" rx="1.35"/><rect x="50.14" y="77.34" width="6.12" height="6.12" rx="1.35"/><rect x="22.94" y="84.14" width="6.12" height="6.12" rx="1.35"/></g></symbol>
   </svg>
@@ -207,138 +116,112 @@
     <div class="wrap nav-inner">
       <a class="brand" href="#top"><svg class="brand-mark"><use href="#mark" /></svg> Agente <span>Code</span></a>
       <nav class="nav-links">
-        <a href="#spread-1">Surfaces</a>
-        <a href="#spread-2">Worktrees</a>
-        <a href="#spread-3">Local Strata</a>
+        <a href="#showcase">Workspace</a>
+        <a href="#craft">Principles</a>
         <a href="#install">Download</a>
       </nav>
       <div class="nav-actions">
-        <button class="icon-btn" id="theme-toggle" type="button" aria-label="Toggle theme">
+        <button class="icon-btn" id="theme-toggle" type="button" aria-label="Switch theme">
           <svg class="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2m-7.07-2.93 1.41-1.41M17.66 6.34l1.41-1.41M2 12h2m16 0h2M4.93 4.93l1.41 1.41m11.32 11.32 1.41 1.41"/></svg>
           <svg class="i-moon" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
         </button>
-        <a class="btn btn-solid btn-sm" href="#install">Install</a>
+        <a class="btn btn-solid btn-sm" href="#install">Download</a>
       </div>
     </div>
   </header>
 
   <main id="top">
+    <!-- Centered Hero over Sunlit Pastel Wash + 1838 Coastal Mountain Engraving -->
     <section class="hero">
-      <img class="plate-art hero-botanical" src="../assets/plates/plate-botanical.jpg" alt="" data-parallax="0.1" data-drift="9" />
-      <img class="plate-art hero-orbital-left" src="../assets/plates/plate-orbital.jpg" alt="" data-parallax="0.06" data-drift="6" />
-
-      <div class="wrap">
-        <div class="book-rule">Natural Philosophy of Software &middot; Vol. I</div>
-        <h1>An open-source Rust agent for <em>quiet, exact</em> engineering.</h1>
-        <p class="lede">Desktop app, keyboard-first terminal UI, and headless server — sharing one transparent tool loop, inline diff approvals, and local GGUF inference.</p>
+      <div class="living-bg" aria-hidden="true">
+        <canvas id="bg-horizon"></canvas>
+        <img class="plate-layer" src="../assets/plates/bg-coastal-vista.jpg" alt="" data-parallax="0.07" data-drift="6" />
+      </div>
+      <div class="wrap hero-inner">
+        <p class="eyebrow"><i></i>Desktop &middot; Terminal &middot; Server</p>
+        <h1>A local coding agent built for <em>calm</em> precision.</h1>
+        <p class="lede">Connect cloud models or run GGUF locally with llama.cpp. Review inline diffs, branch parallel subagents in git worktrees, and keep every session on your disk.</p>
         <div class="actions">
           <a class="btn btn-solid btn-lg" href="#install">Download Desktop</a>
-          <a class="btn btn-outline btn-lg" href="#install">Install CLI</a>
-        </div>
-
-        <div class="exhibit-wrap" data-reveal>
-          <span class="corner c-tl"></span><span class="corner c-tr"></span>
-          <span class="corner c-bl"></span><span class="corner c-br"></span>
-          <figure class="window">
-            <img src="../assets/desktop-code.webp" alt="Agente Code Desktop" />
-          </figure>
-          <div class="exhibit-caption">
-            <span>PLATE I &mdash; Desktop Code Surface with Inline Edit Confirmation</span>
-            <span>Enter: Allow &middot; Esc: Deny</span>
-          </div>
+          <a class="btn btn-outline btn-lg" href="#showcase">Explore Workspace</a>
         </div>
       </div>
     </section>
 
-    <!-- Spread 1: Instruments -->
-    <section class="spread spread-alt" id="spread-1">
-      <div class="wrap spread-grid">
-        <div class="spread-copy" data-reveal>
-          <p class="plate-caption"><span class="dot"></span>Chapter I &middot; <em>Three Calibrated Instruments</em></p>
-          <h2>Desktop, terminal, and server from one core.</h2>
-          <p>Move between the Desktop workspace (Home, Code, Design), the minimal Rust TUI, and a persistent remote daemon without changing how sessions, plans, or approvals behave.</p>
-          <ul class="spec-list">
-            <li><strong>Desktop</strong><span>Home &middot; Code &middot; Design &middot; DOCX/PPTX/XLSX</span></li>
-            <li><strong>Terminal</strong><span>Plan / Build / Auto &middot; ACP stdio</span></li>
-            <li><strong>Server</strong><span>agente serve &middot; Docker &middot; WebSocket</span></li>
-          </ul>
-        </div>
-        <div class="spread-visual" data-reveal style="--d:80ms">
-          <img class="plate-art spread-plate-img" src="../assets/plates/plate-instruments.jpg" alt="Drafting instruments engraving" data-parallax="0.05" data-drift="5" />
-          <div class="spread-note">
-            <span>Fig. 02 &mdash; Precision Instruments</span>
-            <span>Copperplate Study</span>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- Spread 2: Botanical / Worktrees -->
-    <section class="spread" id="spread-2">
-      <div class="wrap spread-grid flip">
-        <div class="spread-copy" data-reveal>
-          <p class="plate-caption"><span class="dot"></span>Chapter II &middot; <em>Organic Parallelism</em></p>
-          <h2>Branching subagents in isolated git worktrees.</h2>
-          <p>Delegate exploration, planning, and parallel edits to child agents that each own their own worktree, cost counter, and stop button — and revert or fork any conversation from any message.</p>
-          <ul class="spec-list">
-            <li><strong>Parallel reads</strong><span>Read, grep, and list run concurrently</span></li>
-            <li><strong>Isolated writes</strong><span>Each editing subagent gets a worktree</span></li>
-            <li><strong>Time travel</strong><span>Revert file edits or fork from any prompt</span></li>
-          </ul>
-        </div>
-        <div class="spread-visual" data-reveal style="--d:80ms">
-          <img class="plate-art spread-plate-img" src="../assets/plates/plate-botanical.jpg" alt="Botanical network engraving" data-parallax="0.05" data-drift="5" />
-          <div class="spread-note">
-            <span>Fig. 03 &mdash; Branching Mycelium &amp; Fronds</span>
-            <span>Naturalist Specimen</span>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- Spread 3: Geology / Storage & Models -->
-    <section class="spread spread-alt" id="spread-3">
-      <div class="wrap spread-grid">
-        <div class="spread-copy" data-reveal>
-          <p class="plate-caption"><span class="dot"></span>Chapter III &middot; <em>Strata &amp; Local Memory</em></p>
-          <h2>Cloud APIs or local GGUF weights, stored plainly on disk.</h2>
-          <p>One context budget governs compaction, token warnings, and cache telemetry across OpenRouter, DeepSeek, MiniMax, Ollama, LM Studio, and built-in llama.cpp.</p>
-          <ul class="spec-list">
-            <li><strong>Local inference</strong><span>GGUF on CPU or GPU via llama.cpp</span></li>
-            <li><strong>Context arithmetic</strong><span>Single budget for meter &amp; compaction</span></li>
-            <li><strong>Ownership</strong><span>Everything in ~/.agente on your machine</span></li>
-          </ul>
-        </div>
-        <div class="spread-visual" data-reveal style="--d:80ms">
-          <img class="plate-art spread-plate-img" src="../assets/plates/plate-geology.jpg" alt="Geological crystal and ammonite engraving" data-parallax="0.05" data-drift="5" />
-          <div class="spread-note">
-            <span>Fig. 04 &mdash; Mineral Strata &amp; Spiral</span>
-            <span>Geological Section</span>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- Install -->
-    <section class="install-band" id="install">
+    <!-- High-Contrast Obsidian Product Stage -->
+    <section class="obsidian-band" id="showcase">
       <div class="wrap">
-        <p class="plate-caption"><span class="dot"></span>Appendix &middot; <em>Acquisition</em></p>
-        <h2>Begin with Desktop, CLI, or Server.</h2>
-        <div class="install-cards">
-          <div class="icard" data-reveal>
-            <h3>Desktop</h3>
-            <p>Installers for Windows x64, Linux AppImage, and Debian/Ubuntu .deb.</p>
-            <a href="#">Download latest &rarr;</a>
+        <div class="obsidian-head">
+          <div>
+            <p class="eyebrow" style="color:#aba59a; margin-bottom:14px"><i></i>Three Interfaces</p>
+            <h2>One Rust core across every surface.</h2>
           </div>
-          <div class="icard" data-reveal style="--d:60ms">
-            <h3>Terminal CLI</h3>
-            <p>Single Rust binary for Linux x64/arm64, Windows, and macOS from source.</p>
-            <a href="#">Copy curl script &rarr;</a>
+          <div class="segmented" role="tablist" aria-label="Surface preview">
+            <span class="seg-thumb" aria-hidden="true"></span>
+            <button role="tab" id="b-code" aria-controls="bp-code" aria-selected="true">Code</button>
+            <button role="tab" id="b-home" aria-controls="bp-home" aria-selected="false" tabindex="-1">Home</button>
+            <button role="tab" id="b-tui" aria-controls="bp-tui" aria-selected="false" tabindex="-1">Terminal</button>
           </div>
-          <div class="icard" data-reveal style="--d:120ms">
-            <h3>Headless Server</h3>
-            <p>Prebuilt Docker image or <code>agente serve</code> on your own machine.</p>
-            <a href="#">Read server guide &rarr;</a>
+        </div>
+
+        <div class="stage">
+          <div class="panel is-active" id="bp-code">
+            <figure class="window"><img src="../assets/desktop-code.webp" alt="Desktop Code" /></figure>
+            <div class="obsidian-cap"><span>Desktop Code &mdash; Inline diff approval above the composer</span><span>Build Mode &middot; Enter / Esc</span></div>
+          </div>
+          <div class="panel" id="bp-home">
+            <figure class="window"><img src="../assets/desktop-home.webp" alt="Desktop Home" loading="lazy" /></figure>
+            <div class="obsidian-cap"><span>Desktop Home &mdash; Research &amp; DOCX, PPTX, XLSX artifacts</span><span>Local Workspace</span></div>
+          </div>
+          <div class="panel" id="bp-tui">
+            <figure class="window"><img src="../assets/terminal-welcome.webp" alt="Terminal UI" loading="lazy" /></figure>
+            <div class="obsidian-cap"><span>Terminal UI &mdash; Keyboard-first Rust TUI with session tabs</span><span>Plan / Build / Auto</span></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Editorial Chapters -->
+    <section class="section" id="craft">
+      <div class="wrap">
+        <p class="eyebrow"><i></i>Natural-science clarity</p>
+        <h2 style="margin-top:16px; font-size:clamp(34px,4.2vw,52px); max-width:16ch">Designed so you can read the work, not fight the chrome.</h2>
+        <div class="chapter-grid">
+          <div class="chapter" data-reveal>
+            <span>01 / APPROVALS</span>
+            <h3>Confirm before writing</h3>
+            <p>Edits and shell commands pause cleanly above the composer with exact diffs and destructive-command warnings.</p>
+          </div>
+          <div class="chapter" data-reveal style="--d:70ms">
+            <span>02 / WORKTREES</span>
+            <h3>Isolated parallel subagents</h3>
+            <p>Explore, plan, and patch in parallel; writing subagents run in separate git worktrees and can be stopped individually.</p>
+          </div>
+          <div class="chapter" data-reveal style="--d:140ms">
+            <span>03 / LOCAL FIRST</span>
+            <h3>Your models, your disk</h3>
+            <p>Use OpenRouter, DeepSeek, MiniMax, Ollama, LM Studio, or built-in llama.cpp GGUF. Sessions live in <code>~/.agente</code>.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Framed Illuminated Art CTA Card (Anthropic signature) -->
+    <section class="art-feature" id="install">
+      <div class="wrap">
+        <div class="art-card" data-reveal>
+          <div class="living-bg" aria-hidden="true">
+            <canvas id="bg-card"></canvas>
+            <img class="plate-layer" src="../assets/plates/bg-orbital-folio.jpg" alt="" />
+          </div>
+          <div class="art-card-inner">
+            <p class="eyebrow"><i></i>Open Source &middot; MIT</p>
+            <h2>Install Agente Code on Windows, Linux, or Docker.</h2>
+            <p>Download the Desktop installer, grab the standalone Rust CLI binary, or run <code>agente serve</code> as a persistent background server.</p>
+            <div class="actions">
+              <a class="btn btn-solid btn-lg" href="https://github.com/fabricio3g/AgenteCode/releases">Download Latest</a>
+              <a class="btn btn-outline btn-lg" href="https://github.com/fabricio3g/AgenteCode">GitHub Repository</a>
+            </div>
           </div>
         </div>
       </div>
@@ -347,9 +230,9 @@
 
   <footer class="footer">
     <div class="wrap footer-inner">
-      <span class="brand"><svg class="brand-mark"><use href="#mark" /></svg> Agente Code</span>
+      <span class="brand"><svg class="brand-mark"><use href="#mark" /></svg> Agente <span>Code</span></span>
       <nav>
-        <a href="index.html">All Variants</a>
+        <a href="index.html">Mockup Gallery</a>
         <a href="https://github.com/fabricio3g/AgenteCode">GitHub</a>
       </nav>
     </div>
@@ -358,14 +241,17 @@
   <div class="mockup-dock" aria-label="Mockup switcher">
     <a href="index.html">Gallery</a>
     <span class="sep"></span>
-    <a href="variant-a.html">A &middot; Atlas</a>
-    <a class="active" href="variant-b.html">B &middot; Field Guide</a>
-    <a href="variant-c.html">C &middot; Folio Grid</a>
+    <a href="variant-a.html">A &middot; Supernova</a>
+    <a class="active" href="variant-b.html">B &middot; Horizon</a>
+    <a href="variant-c.html">C &middot; Corona</a>
   </div>
 
   <script type="module">
     import { bootFolio } from "./folio-fx.js";
+    import { mountSupernova } from "./supernova-bg.js";
     bootFolio({ defaultTheme: "light" });
+    mountSupernova(document.getElementById("bg-horizon"), { mode: "wash" });
+    mountSupernova(document.getElementById("bg-card"), { mode: "supernova" });
   </script>
 </body>
 </html>
