@@ -1,14 +1,19 @@
-// Calm, tactile motion & interaction layer for the Natural Science Folio mockups.
+// Minimal, tactile interaction & motion layer for the Agente Code landing mockups.
 
 const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)");
 const root = document.documentElement;
 
-export function initTheme(defaultTheme = "light") {
-  const stored = (() => { try { return localStorage.getItem("agente-folio-theme"); } catch { return null; } })();
+export function initTheme(defaultTheme = "dark") {
+  let stored = null;
+  try { stored = localStorage.getItem("agente-folio-theme"); } catch {}
+
   const apply = (t) => {
     root.dataset.theme = t;
+    const meta = document.querySelector('meta[name="theme-color"]');
+    meta?.setAttribute("content", t === "light" ? "#faf9f5" : "#181817");
     document.dispatchEvent(new Event("themechange"));
   };
+
   apply(stored || defaultTheme);
 
   const btn = document.getElementById("theme-toggle");
@@ -23,7 +28,7 @@ export function initTheme(defaultTheme = "light") {
     document.startViewTransition(() => apply(next)).ready.then(() => {
       root.animate(
         { clipPath: [`circle(0px at ${x}px ${y}px)`, `circle(${r}px at ${x}px ${y}px)`] },
-        { duration: 460, easing: "cubic-bezier(.16,1,.3,1)", pseudoElement: "::view-transition-new(root)" },
+        { duration: 420, easing: "cubic-bezier(.16,1,.3,1)", pseudoElement: "::view-transition-new(root)" },
       );
     });
   });
@@ -32,13 +37,13 @@ export function initTheme(defaultTheme = "light") {
 export function initScrollNav() {
   const nav = document.querySelector(".nav");
   if (!nav) return;
-  const sync = () => nav.classList.toggle("scrolled", scrollY > 18);
+  const sync = () => nav.classList.toggle("scrolled", scrollY > 16);
   addEventListener("scroll", sync, { passive: true });
   sync();
 }
 
 export function initReveal() {
-  const targets = [...document.querySelectorAll("[data-reveal], .hairline")];
+  const targets = [...document.querySelectorAll("[data-reveal]")];
   if (!targets.length) return;
   if (reduceMotion.matches || !("IntersectionObserver" in window)) {
     targets.forEach((el) => el.classList.add("in"));
@@ -52,13 +57,13 @@ export function initReveal() {
         io.unobserve(e.target);
       }
     },
-    { threshold: 0.12, rootMargin: "0px 0px -30px 0px" },
+    { threshold: 0.1, rootMargin: "0px 0px -24px 0px" },
   );
   targets.forEach((el) => io.observe(el));
 }
 
 export function initSegmented() {
-  document.querySelectorAll(".segmented[role=tablist]").forEach((list) => {
+  document.querySelectorAll("[role=tablist]").forEach((list) => {
     const tabs = [...list.querySelectorAll("[role=tab]")];
     const panels = tabs.map((t) => document.getElementById(t.getAttribute("aria-controls")));
     const thumb = list.querySelector(".seg-thumb");
@@ -72,7 +77,7 @@ export function initSegmented() {
       thumb.style.transform = `translateX(${btn.offsetLeft - inset}px)`;
     };
 
-    const select = (i) => {
+    const select = (i, focus = false) => {
       index = (i + tabs.length) % tabs.length;
       tabs.forEach((t, j) => {
         const on = j === index;
@@ -81,9 +86,22 @@ export function initSegmented() {
         panels[j]?.classList.toggle("is-active", on);
       });
       place();
+      if (focus) tabs[index]?.focus();
     };
 
-    tabs.forEach((t, i) => t.addEventListener("click", () => select(i)));
+    tabs.forEach((t, i) => {
+      t.addEventListener("click", () => select(i));
+      t.addEventListener("keydown", (e) => {
+        if (e.key === "ArrowRight" || e.key === "ArrowDown") {
+          e.preventDefault();
+          select(i + 1, true);
+        } else if (e.key === "ArrowLeft" || e.key === "ArrowUp") {
+          e.preventDefault();
+          select(i - 1, true);
+        }
+      });
+    });
+
     new ResizeObserver(place).observe(list);
     document.fonts?.ready.then(place);
     select(index);
@@ -96,7 +114,8 @@ export function initCopy() {
     btn.addEventListener("click", async () => {
       const el = document.getElementById(btn.dataset.copyFrom);
       if (!el) return;
-      try { await navigator.clipboard.writeText(el.textContent.trim()); } catch {}
+      const raw = el.textContent.replace(/^\$\s*/gm, "").trim();
+      try { await navigator.clipboard.writeText(raw); } catch {}
       const label = btn.querySelector("span") || btn;
       const prev = label.textContent;
       btn.classList.add("copied");
@@ -106,7 +125,7 @@ export function initCopy() {
   });
 }
 
-// Gentle scroll parallax + damped pointer drift for engraved plates.
+// Gentle, barely-there parallax drift on engraved plates.
 export function initPlateMotion() {
   if (reduceMotion.matches) return;
   const plates = [...document.querySelectorAll("[data-parallax]")];
@@ -117,15 +136,15 @@ export function initPlateMotion() {
 
   const state = plates.map((el) => ({
     el,
-    speed: Number(el.dataset.parallax || 0.08),
-    drift: Number(el.dataset.drift || 8),
+    speed: Number(el.dataset.parallax || 0.04),
+    drift: Number(el.dataset.drift || 4),
     curY: 0,
   }));
 
   const tick = () => {
     raf = 0;
-    tx += (mx - tx) * 0.06;
-    ty += (my - ty) * 0.06;
+    tx += (mx - tx) * 0.05;
+    ty += (my - ty) * 0.05;
     let moving = Math.abs(mx - tx) > 0.002 || Math.abs(my - ty) > 0.002;
 
     const vh = innerHeight;
@@ -133,11 +152,11 @@ export function initPlateMotion() {
       const r = s.el.parentElement.getBoundingClientRect();
       if (r.bottom < -120 || r.top > vh + 120) continue;
       const center = (r.top + r.height * 0.5 - vh * 0.5) / vh;
-      const targetY = center * s.speed * 220;
-      s.curY += (targetY - s.curY) * 0.12;
+      const targetY = center * s.speed * 140;
+      s.curY += (targetY - s.curY) * 0.1;
       if (Math.abs(targetY - s.curY) > 0.08) moving = true;
       const dx = tx * s.drift;
-      const dy = s.curY + ty * s.drift * 0.6;
+      const dy = s.curY + ty * s.drift * 0.5;
       s.el.style.transform = `translate3d(${dx.toFixed(2)}px, ${dy.toFixed(2)}px, 0)`;
     }
     if (moving) raf = requestAnimationFrame(tick);
@@ -154,7 +173,7 @@ export function initPlateMotion() {
 }
 
 export function bootFolio(opts = {}) {
-  initTheme(opts.defaultTheme || "light");
+  initTheme(opts.defaultTheme || "dark");
   initScrollNav();
   initReveal();
   initSegmented();
