@@ -1,5 +1,6 @@
 import { APP_USER_AGENT } from '../shared/brand.ts';
-import { BrowserWindow } from 'electron';
+import { createHash } from 'node:crypto';
+import type { BrowserWindow } from 'electron';
 import {
   fetchWithRetry, normalizeWhitespace, compactSearchContext, buildEffectiveSearchQuery,
   normalizeProviderName, providerHasCredentials, providerDisplayName, providerCandidates,
@@ -224,9 +225,17 @@ export async function webSearch({ query, context, deep, mode, options }: { query
     return { query: normalizedQuery, results: [], context: '', provider_used: 'none', search_mode: searchMode };
   }
 
-  const cacheDiscriminator = explicitProvider === 'aggregator' || explicitProvider === 'auto'
-    ? JSON.stringify([options?.aggregator_engines || [], options?.safe_search ?? 2])
-    : '';
+  // Search config arrives as flat options, plus the ordered list of aggregator engines.
+  // Digest it so a changed credential partitions the cache without storing the raw key.
+  const cacheOptions = Object.entries(options ?? {})
+    .filter(([key, value]) => key !== 'provider' && key !== 'max_results' && (
+      typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean'
+      || (key === 'aggregator_engines' && Array.isArray(value) && value.every((engine) => typeof engine === 'string'))
+    ))
+    .sort(([left], [right]) => left.localeCompare(right));
+  const cacheDiscriminator = createHash('sha256')
+    .update(JSON.stringify([maxResults, conversationContext, cacheOptions]))
+    .digest('hex');
   const cacheKey = getCacheKey(effectiveQuery, searchMode, explicitProvider, cacheDiscriminator);
   const cached = getCachedResult(cacheKey);
   if (cached) {
