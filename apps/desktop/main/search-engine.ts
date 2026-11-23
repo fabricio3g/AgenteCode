@@ -1,5 +1,6 @@
 import { APP_USER_AGENT } from '../shared/brand.ts';
-import { BrowserWindow } from 'electron';
+import { createHash } from 'node:crypto';
+import type { BrowserWindow } from 'electron';
 import {
   fetchWithRetry, normalizeWhitespace, compactSearchContext, buildEffectiveSearchQuery,
   normalizeProviderName, providerHasCredentials, providerDisplayName, providerCandidates,
@@ -199,6 +200,34 @@ async function enrichWithDeepContent(results: SearchResult[], limit: number, emi
   });
 }
 
+const CACHE_KEY_OMITTED_OPTIONS = new Set(['provider', 'max_results', 'conversation_context']);
+const CACHEABLE_PRIMITIVE_TYPES = new Set(['string', 'number', 'boolean']);
+
+function isCacheableOptionValue(key: string, value: unknown): boolean {
+  if (CACHEABLE_PRIMITIVE_TYPES.has(typeof value)) return true;
+  if (key !== 'aggregator_engines' || !Array.isArray(value)) return false;
+  return value.every((engine) => typeof engine === 'string');
+}
+
+function compareCacheKeys([left]: [string, unknown], [right]: [string, unknown]): number {
+  return left < right ? -1 : left > right ? 1 : 0;
+}
+
+// Search config arrives as flat options, plus the ordered list of aggregator engines.
+// Digest it so a changed credential partitions the cache without storing the raw key.
+function buildCacheDiscriminator(
+  maxResults: number,
+  conversationContext: string,
+  options?: Record<string, unknown>,
+): string {
+  const cacheOptions = Object.entries(options ?? {})
+    .filter(([key, value]) => !CACHE_KEY_OMITTED_OPTIONS.has(key) && isCacheableOptionValue(key, value))
+    .sort(compareCacheKeys);
+  return createHash('sha256')
+    .update(JSON.stringify([maxResults, conversationContext, cacheOptions]))
+    .digest('hex');
+}
+
 export async function webSearch({ query, context, deep, mode, options }: { query: string; context?: string; deep?: boolean; mode?: string; options?: Record<string, unknown> }, win: BrowserWindow | null = null) {
   const normalizedQuery = normalizeWhitespace(query);
   const conversationContext = compactSearchContext(context || options?.conversation_context || '');
@@ -224,9 +253,7 @@ export async function webSearch({ query, context, deep, mode, options }: { query
     return { query: normalizedQuery, results: [], context: '', provider_used: 'none', search_mode: searchMode };
   }
 
-  const cacheDiscriminator = explicitProvider === 'aggregator' || explicitProvider === 'auto'
-    ? JSON.stringify([options?.aggregator_engines || [], options?.safe_search ?? 2])
-    : '';
+  const cacheDiscriminator = buildCacheDiscriminator(maxResults, conversationContext, options);
   const cacheKey = getCacheKey(effectiveQuery, searchMode, explicitProvider, cacheDiscriminator);
   const cached = getCachedResult(cacheKey);
   if (cached) {
