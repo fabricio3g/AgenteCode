@@ -402,7 +402,7 @@ impl RuntimeHandle {
     fn reserve_compaction(
         &self,
         session_id: SessionId,
-    ) -> Result<(TurnGuard, agente_core::AbortSignal), RuntimeError> {
+    ) -> Result<(TurnGuard, agente_core::cancellation::AbortSignal), RuntimeError> {
         let mut turns = self.inner.lock_turns();
         if turns
             .values()
@@ -503,7 +503,7 @@ impl RuntimeHandle {
             .with_summarizer(summarizer.clone());
         let result = tokio::select! {
             res = compactor.compact_async_forced(snapshot.conversation.clone()) => res,
-            _ = cancel_signal.cancelled() => {
+            _ = cancel_signal.wait_aborted() => {
                 return Err(RuntimeError::Config("Compaction cancelled".into()));
             }
         };

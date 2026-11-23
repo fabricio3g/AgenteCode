@@ -651,8 +651,13 @@ impl RuntimeHandle {
                 let mut approved = self.inner.live().app_config.approved_mcp_servers.clone();
                 let key = agente_core::mcp::approval_key(project_dir, name);
                 if !approved.contains(&key) {
-                    approved.push(key);
+                    approved.push(key.clone());
                 }
+                let _ = AppConfig::edit_global(|cfg| {
+                    if !cfg.approved_mcp_servers.contains(&key) {
+                        cfg.approved_mcp_servers.push(key.clone());
+                    }
+                });
                 self.configure(serde_json::json!({ "approved_mcp_servers": approved }))?;
                 self.inner.project_mcp(project_dir).reconnect(name).await;
             }
@@ -666,5 +671,167 @@ impl RuntimeHandle {
             }
         }
         Ok(())
+    }
+
+    /// Fetch the latest models.dev catalog, persist it to disk cache, and swap
+    /// it into live settings so subsequent `models.info` / `models.discover`
+    /// calls see updated limits, modalities, and thinking profiles without
+    /// restarting the daemon.
+    pub async fn refresh_catalog(&self) -> Result<usize, RuntimeError> {
+        let fetched = agente_core::catalog::ModelCatalog::fetch()
+            .await
+            .map_err(|error| RuntimeError::Config(error.to_string()))?;
+        let count = fetched.model_count();
+        let _ = fetched.save_to_cache();
+        let catalog = Arc::new(fetched);
+        let mut live = self
+            .inner
+            .live
+            .write()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let next = Arc::make_mut(&mut live);
+        next.catalog = Some(Arc::clone(&catalog));
+        next.app_config.catalog = Some((*catalog).clone());
+        Ok(count)
+    }
+
+    /// Test connectivity and authentication for `provider_id` using the core
+    /// provider registry (honoring `auth.json`, env vars, and TOML specs).
+    pub async fn test_provider(
+        &self,
+        provider_id: &str,
+    ) -> Result<serde_json::Value, RuntimeError> {
+        let started = std::time::Instant::now();
+        let live = self.inner.live();
+        if live.provider_registry.get(provider_id).is_none() {
+            return Err(RuntimeError::Config(format!(
+                "Unknown provider: {provider_id}"
+            )));
+        }
+        if let Some(spec) = agente_core::providers::spec::get(provider_id) {
+            if spec.group == agente_core::providers::spec::ProviderGroup::Cloud
+                && !live.app_config.has_api_key(provider_id)
+            {
+                return Err(RuntimeError::Config(format!(
+                    "No API key configured for {}",
+                    spec.name
+                )));
+            }
+        }
+        let models = self.discover_models(provider_id).await?;
+        Ok(serde_json::json!({
+            "ok": true,
+            "provider": provider_id,
+            "count": models.len(),
+            "latency_ms": started.elapsed().as_millis() as u64,
+        }))
+    }
+
+    /// Run a stateless, no-tools text completion through the core provider
+    /// stack (supports every wire format: OpenAI, Anthropic, Responses, Google).
+    pub async fn complete_text(
+        &self,
+        provider_id: &str,
+        model_id: &str,
+        messages: Vec<agente_protocol::Message>,
+        max_tokens: Option<usize>,
+        session_id: Option<agente_protocol::SessionId>,
+    ) -> Result<String, RuntimeError> {
+        let live = self.inner.live();
+        let provider = live
+            .provider_registry
+            .get(provider_id)
+            .ok_or_else(|| RuntimeError::Config(format!("Unknown provider: {provider_id}")))?;
+        let mut model = agente_core::providers::resolve_model_info(
+            &live.provider_registry,
+            live.catalog.as_deref(),
+            provider_id,
+            model_id,
+        );
+        model.options = provider.get_request_options(&model);
+        if let Some(limit) = max_tokens.filter(|limit| *limit > 0) {
+            model.limits.output = model
+                .limits
+                .output
+                .min(limit.try_into().unwrap_or(model.limits.output));
+            model.options.remove("max_tokens");
+            model.options.remove("max_completion_tokens");
+        }
+        let ctx = agente_core::providers::RequestContext::new(
+            session_id
+                .unwrap_or_else(agente_protocol::SessionId::new)
+                .as_uuid(),
+        );
+        agente_core::providers::summarizer::complete_text(provider, model, &messages, ctx)
+            .await
+            .map_err(|error| RuntimeError::Config(error.to_string()))
+    }
+
+    /// Generate a concise session title via the core title helper.
+    pub async fn generate_title(
+        &self,
+        provider_id: &str,
+        model_id: &str,
+        user_text: &str,
+        assistant_text: &str,
+        session_id: Option<agente_protocol::SessionId>,
+    ) -> Result<String, RuntimeError> {
+        let live = self.inner.live();
+        let provider = live
+            .provider_registry
+            .get(provider_id)
+            .ok_or_else(|| RuntimeError::Config(format!("Unknown provider: {provider_id}")))?;
+        let mut model = agente_core::providers::resolve_model_info(
+            &live.provider_registry,
+            live.catalog.as_deref(),
+            provider_id,
+            model_id,
+        );
+        model.options = provider.get_request_options(&model);
+        let ctx = agente_core::providers::RequestContext::new(
+            session_id
+                .unwrap_or_else(agente_protocol::SessionId::new)
+                .as_uuid(),
+        );
+        agente_core::providers::generate_session_title(
+            provider,
+            model,
+            user_text,
+            assistant_text,
+            ctx,
+        )
+        .await
+        .map_err(|error| RuntimeError::Config(error.to_string()))
+    }
+
+    /// Snapshot every subagent currently tracked by the runtime registry so
+    /// clients can resync after `events.lagged` or window reload.
+    pub fn list_children(&self) -> Vec<serde_json::Value> {
+        let id_map = self.inner.lock_children().clone();
+        self.inner
+            .config
+            .subagent_registry
+            .list()
+            .into_iter()
+            .map(|snap| {
+                let run_id = id_map.get(&snap.id).copied();
+                serde_json::json!({
+                    "id": snap.id,
+                    "run_id": run_id,
+                    "kind": snap.subagent_type,
+                    "description": snap.description,
+                    "model": snap.model,
+                    "seat": snap.seat,
+                    "provider": snap.provider,
+                    "status": format!("{:?}", snap.status).to_ascii_lowercase(),
+                    "summary": snap.summary,
+                    "depth": snap.depth,
+                    "background": snap.background,
+                    "started_at": snap.started_at,
+                    "finished_at": snap.finished_at,
+                    "cwd": snap.cwd,
+                })
+            })
+            .collect()
     }
 }

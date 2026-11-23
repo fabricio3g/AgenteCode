@@ -83,11 +83,11 @@
     return () => { clearInterval(timer); clock.pause(); };
   });
 
-  // The store is reactive now, so this is a read rather than a subscription.
-  // Matched on the id the engine asked with: the store may have suffixed its
-  // own key, and a row whose request was answered must find nothing.
+  // Matched on the id the engine asked with: only show approval actions while
+  // the request is actually pending in approvalsStore (never leave stale buttons
+  // on settled steps whose status stayed 'awaiting_approval').
   const pendingMatch = $derived(approvalsStore.forRequest(step.id));
-  const showApproval = $derived(isApproval || !!pendingMatch);
+  const showApproval = $derived(!!pendingMatch);
   const durationText = $derived(
     elapsedMs !== undefined && (isRunning || step.status === 'done' || isError)
       ? formatToolDuration(elapsedMs)

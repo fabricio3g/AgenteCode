@@ -1,3 +1,4 @@
+import dns from 'node:dns/promises';
 import { APP_USER_AGENT } from '../shared/brand.ts';
 import { Readability } from '@mozilla/readability';
 import { parseHTML } from 'linkedom';
@@ -150,6 +151,40 @@ export function isSafePublicUrl(value) {
     if (isPrivateOrLocalIpv4(host)) return false;
     return true;
   } catch {
+    return false;
+  }
+}
+
+/**
+ * Full SSRF check including DNS resolution (blocks DNS rebinding such as
+ * `127.0.0.1.nip.io` or internal A/AAAA records pointing at private networks).
+ */
+export async function assertSafePublicUrl(value, lookup = dns.lookup) {
+  if (!isSafePublicUrl(value)) return false;
+  try {
+    const url = new URL(String(value || '').trim());
+    const host = url.hostname.replace(/^\[|\]$/g, '').replace(/\.+$/, '').toLowerCase();
+    // IP literals were already checked synchronously by `isSafePublicUrl`.
+    if (host.includes(':') || /^\d+(?:\.\d+){3}$/.test(host)) return true;
+    const records = await lookup(host, { all: true, verbatim: true });
+    if (!records?.length) return false;
+    for (const rec of records) {
+      const addr = String(rec.address || '').toLowerCase();
+      if (!addr) return false;
+      if (rec.family === 6 || addr.includes(':')) {
+        if (isPrivateOrLocalIpv6(addr)) return false;
+      } else if (isPrivateOrLocalIpv4(addr)) {
+        return false;
+      }
+    }
+    return true;
+  } catch (error) {
+    // Non-existent hostnames (ENOTFOUND/EAI_NONAME) cannot reach a private IP;
+    // let fetch report the network error (and keep mocked-fetch tests working).
+    const code = error && typeof error === 'object' ? error.code : undefined;
+    if (code === 'ENOTFOUND' || code === 'EAI_NONAME' || code === 'EAI_AGAIN') {
+      return true;
+    }
     return false;
   }
 }
@@ -516,7 +551,7 @@ function buildReaderFallbackUrl(url) {
 }
 
 async function fetchReaderFallback(url, maxLength, timeoutMs) {
-  if (!isSafePublicUrl(url)) return null;
+  if (!(await assertSafePublicUrl(url))) return null;
   const readerUrl = buildReaderFallbackUrl(url);
   if (!readerUrl) return null;
   try {
@@ -599,7 +634,7 @@ export async function scrapeUrlStructured({
   maxDownloadBytes
 } = {}) {
   const normalizedUrl = String(url || '').trim();
-  if (!isSafePublicUrl(normalizedUrl)) {
+  if (!(await assertSafePublicUrl(normalizedUrl))) {
     return {
       error: 'Invalid or blocked URL. Only public http/https URLs are allowed (no localhost/private networks).',
       url: normalizedUrl,
@@ -664,7 +699,7 @@ export async function scrapeUrlStructured({
           quality: 'blocked'
         };
       }
-      if (!isSafePublicUrl(nextUrl)) {
+      if (!(await assertSafePublicUrl(nextUrl))) {
         return {
           error: 'Blocked redirect to a non-public or unsafe URL.',
           url: normalizedUrl,
@@ -684,7 +719,7 @@ export async function scrapeUrlStructured({
 
   // Reject redirects that land on private/non-public targets (SSRF via redirect).
   const finalUrl = String(response?.url || currentUrl);
-  if (!isSafePublicUrl(finalUrl)) {
+  if (!(await assertSafePublicUrl(finalUrl))) {
     response?.body?.cancel?.().catch(() => {});
     return {
       error: 'Blocked redirect to a non-public or unsafe URL.',

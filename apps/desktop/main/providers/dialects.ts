@@ -64,6 +64,17 @@ const DIALECTS: Dialect[] = [
     }
   },
   {
+    id: 'opencode',
+    label: 'OpenCode',
+    group: 'cloud',
+    defaultBaseUrl: 'https://opencode.ai/zen/v1',
+    transport: 'sdk',
+    streamUsage: true,
+    headers() {
+      return { 'x-opencode-session': OPENCODE_SESSION };
+    }
+  },
+  {
     id: 'openrouter',
     label: 'OpenRouter',
     group: 'cloud',
@@ -71,9 +82,28 @@ const DIALECTS: Dialect[] = [
     transport: 'sdk',
     matchHosts: ['openrouter.ai'],
     keyCheckPath: '/key',
+    streamUsage: true,
     headers() {
       return { 'HTTP-Referer': APP_REPO_URL, 'X-Title': APP_NAME };
     }
+  },
+  {
+    id: 'minimax',
+    label: 'MiniMax',
+    group: 'cloud',
+    defaultBaseUrl: 'https://api.minimax.io/v1',
+    transport: 'sdk',
+    matchHosts: ['api.minimax.io'],
+    streamUsage: true
+  },
+  {
+    id: 'glm',
+    label: 'GLM (Z.AI API)',
+    group: 'cloud',
+    defaultBaseUrl: 'https://api.z.ai/api/paas/v4',
+    transport: 'sdk',
+    matchHosts: ['api.z.ai'],
+    streamUsage: true
   },
   {
     id: 'deepseek',

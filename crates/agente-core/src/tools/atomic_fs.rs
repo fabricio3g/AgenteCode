@@ -406,6 +406,7 @@ mod tests {
                 lines: 2,
                 full: false,
                 hash: None,
+                seq: 0,
             },
         );
 
@@ -417,6 +418,39 @@ mod tests {
 
         record_read(&path, "hello\nworld\n");
         assert!(ensure_fresh_full_overwrite(&path).await.is_ok());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn session_scopes_isolate_read_before_write_state() {
+        let dir = temp_dir("session-scope");
+        let path = dir.join("shared.txt");
+        tokio::fs::write(&path, "hello").await.unwrap();
+
+        let session_a = uuid::Uuid::new_v4();
+        let session_b = uuid::Uuid::new_v4();
+
+        scope_session(session_a, async {
+            record_read(&path, "hello");
+            assert!(ensure_fresh(&path).await.is_ok());
+        })
+        .await;
+
+        scope_session(session_b, async {
+            let err = ensure_fresh(&path).await.unwrap_err();
+            assert!(
+                err.to_string().contains("read the file with read_file first"),
+                "{err}"
+            );
+        })
+        .await;
+
+        forget_session_reads(session_a);
+        scope_session(session_a, async {
+            assert!(ensure_fresh(&path).await.is_err());
+        })
+        .await;
+
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

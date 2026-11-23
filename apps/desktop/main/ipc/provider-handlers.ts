@@ -42,7 +42,22 @@ export function registerProviderHandlers({ ipcMain, resolveProvider, resolveApiK
   });
 
   ipcMain.handle('test_provider_connection', async (_e, { baseUrl, apiKey, providerName }) => {
-    const dialect = getDialect(String(providerName || '')) ?? resolveDialect(providerName, baseUrl);
+    const named = String(providerName || '').trim();
+    // Delegate saved core provider checks to Rust (honors TOML specs, env keys,
+    // and non-OpenAI formats like MiniMax/GLM/OpenCode without duplicating HTTP logic).
+    if (named && !apiKey && named !== 'local' && named !== 'custom') {
+      try {
+        const { runtimeConnection } = await import('../agente/rust-engine.ts');
+        const client = await runtimeConnection();
+        const tested = await client.request<{ ok: boolean; count?: number; latency_ms?: number }>('providers.test', { provider: named });
+        if (tested?.ok) {
+          return { ok: true, modelCount: tested.count ?? 0, latencyMs: tested.latency_ms ?? 0 };
+        }
+      } catch {
+        // Fall through to the direct dialect probe when testing an unsaved custom URL/draft.
+      }
+    }
+    const dialect = getDialect(named) ?? resolveDialect(providerName, baseUrl);
     return testProviderConnection({
       dialect,
       baseUrl,
@@ -65,6 +80,18 @@ export function registerProviderHandlers({ ipcMain, resolveProvider, resolveApiK
   });
 
   ipcMain.handle('detect_tool_support', async (_e, { baseUrl, apiKey, providerName, model, modelPath }) => {
+    // Fast path: ask Rust's catalog (`models.info`) before burning a 12s live completion probe.
+    const named = String(providerName || '').trim();
+    if (named && model && named !== 'local' && named !== 'llamacpp' && named !== 'lmstudio' && named !== 'ollama' && named !== 'custom') {
+      try {
+        const card = await modelCard(named, String(model));
+        if (card.tools) {
+          return { supported: true, source: 'core-catalog' };
+        }
+      } catch {
+        // Fall through to live probe if daemon is unavailable.
+      }
+    }
     const provider = resolveProvider(providerName, baseUrl);
     const realKey = resolveApiKey(apiKey, baseUrl, providerName);
     return provider.checkToolSupport({

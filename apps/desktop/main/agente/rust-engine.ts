@@ -8,7 +8,7 @@ import crypto from 'node:crypto';
 import { conversationScope } from '../../shared/workspace-scope.ts';
 import fs from 'node:fs';
 import path from 'node:path';
-import { app, type WebContents } from 'electron';
+import { app, BrowserWindow, type WebContents } from 'electron';
 import { createComputerTools } from './tools/computer.ts';
 import { bindComputerOwner, cancelComputerTurn, settleComputerTurn, computerSession, type ComputerOwner } from '../computer/desktop.ts';
 import { resolveApiKey } from '../provider-auth.ts';
@@ -60,6 +60,7 @@ type ChatState = {
 };
 
 const chats = new Map<string, ChatState>();
+const chatsBySession = new Map<string, ChatState>();
 const manualCompactions = new Set<string>();
 const attachedClients = new WeakSet<AgenteClient>();
 let daemon: AgenteDaemon | null = null;
@@ -100,15 +101,16 @@ async function registerDesktopTools(client: AgenteClient): Promise<void> {
   desktopTools ??= serveDesktopTools(
     [...createBrowserTools({
       canSeeImages: async (context) => {
-        const chat = [...chats.values()].find((owner) => owner.sessionId === context.sessionId);
+        const chat = chatsBySession.get(context.sessionId);
         return !!chat && (await modelSeesImages(chat.provider, chat.model));
       }
     }), ...createDomainTools(), ...createComputerTools({
-      owner: context => { const chat = [...chats.values()].find(chat => chat.sessionId === context.sessionId); return chat && context.computerTurnId === chat.turnId ? codeComputerOwner(chat) : undefined; },
-      canSeeImages: async context => { const chat = [...chats.values()].find(chat => chat.sessionId === context.sessionId); return !!chat && await modelSeesImages(chat.provider, chat.model); },
+      owner: context => { const chat = chatsBySession.get(context.sessionId); return chat && context.computerTurnId === chat.turnId ? codeComputerOwner(chat) : undefined; },
+      canSeeImages: async context => { const chat = chatsBySession.get(context.sessionId); return !!chat && await modelSeesImages(chat.provider, chat.model); },
     })],
     { resolveContext: async (meta) => {
-      const chat = [...chats.values()].find((owner) => owner.sessionId === meta['agente/sessionId']);
+      const sid = typeof meta['agente/sessionId'] === 'string' ? meta['agente/sessionId'] : '';
+      const chat = chatsBySession.get(sid);
       if (chat) return { sessionId: chat.sessionId, computerTurnId: typeof meta['agente/turnId'] === 'string' ? meta['agente/turnId'] : undefined, browserScope: conversationScope(chat.chatId), workspaceRoot: chat.projectRoot };
       throw new Error('Browser call has no owning conversation');
     } }
@@ -178,8 +180,14 @@ async function openConnection(): Promise<AgenteClient> {
       client.onNotification((method, params) => {
         if (method === 'turn.outcome') {
           const outcome = params as TurnOutcome;
-          const chat = [...chats.values()].find((state) => state.sessionId === outcome.session_id);
+          const chat = chatsBySession.get(outcome.session_id);
           if (chat && (!chat.turnId || chat.turnId === outcome.turn_id)) continueWithFollowUp(chat, outcome.status === 'completed');
+          return;
+        }
+        if (method === 'events.lagged') {
+          const skipped = (params as { skipped?: number } | undefined)?.skipped;
+          console.warn(`[agente] daemon event stream lagged (skipped=${skipped ?? 'unknown'}); nudging process bridge`);
+          rustProcesses.nudge();
           return;
         }
         if (method !== 'event') return;
@@ -335,8 +343,9 @@ export function runtimeConnection(): Promise<AgenteClient> {
   return connect();
 }
 
-function emit(event: CodeAgentEvent): void {
-  emitCodeAgentEvent(null, event);
+function emit(event: CodeAgentEvent, chat?: ChatState): void {
+  const ownerWin = chat?.owner && !chat.owner.isDestroyed() ? BrowserWindow.fromWebContents(chat.owner) : null;
+  emitCodeAgentEvent(ownerWin ?? getCodeMainWindow(), event);
 }
 
 function recordCheckpoint(chat: ChatState, event: Extract<CodeAgentEvent, { type: 'checkpoint_finalized' }>): void {
@@ -363,7 +372,7 @@ function continueWithFollowUp(chat: ChatState, completed: boolean): void {
 }
 
 function route(envelope: RuntimeEventEnvelope): void {
-  const chat = [...chats.values()].find((state) => state.sessionId === envelope.session_id);
+  const chat = chatsBySession.get(envelope.session_id);
   if (!chat) return;
   if (envelope.event.type === 'context_compacted' && manualCompactions.has(chat.sessionId)) return;
   if (['turn_finished', 'turn_cancelled', 'turn_failed'].includes(envelope.event.type) && !chat.settlement) {
@@ -374,7 +383,7 @@ function route(envelope: RuntimeEventEnvelope): void {
   if (envelope.event.type === 'turn_started' && !envelope.parent_run_id) chat.turnId = envelope.turn_id;
   for (const event of chat.translator.translate(envelope)) {
     if (event.type === 'checkpoint_finalized') recordCheckpoint(chat, event);
-    emit(event);
+    emit(event, chat);
     // A command may have left a server running in the background.
     if (event.type === 'tool_end') rustProcesses.nudge();
   }
@@ -404,19 +413,25 @@ function providerConfig(providerName: string, models: string[], selection?: Loca
   };
 }
 
-/** Pasted images become stored files the runtime can attach. */
-function storeImages(images: Array<{ data: string; mimeType: string }> | undefined): Attachment[] {
+/** Pasted images become stored files in the Rust core's content-addressed media store. */
+async function storeImages(client: AgenteClient, images: Array<{ data: string; mimeType: string }> | undefined): Promise<Attachment[]> {
   if (!images?.length) return [];
-  const dir = path.join(getAppPaths().appData, 'agente', 'attachments');
-  fs.mkdirSync(dir, { recursive: true });
-  return images.map((image, index) => {
+  return Promise.all(images.map(async (image, index) => {
     const extension = image.mimeType.split('/')[1]?.replace(/[^a-z0-9]/gi, '') || 'png';
     const name = `image-${index + 1}.${extension}`;
+    try {
+      const imported = await client.request<{ attachment: Attachment }>('media.import', { name, data: image.data });
+      if (imported?.attachment) return imported.attachment;
+    } catch {
+      // Fallback to local appData attachment file only if daemon media.import fails.
+    }
+    const dir = path.join(getAppPaths().appData, 'agente', 'attachments');
+    fs.mkdirSync(dir, { recursive: true });
     const file = path.join(dir, `${crypto.randomUUID()}.${extension}`);
     const bytes = Buffer.from(image.data.replace(/^data:[^,]*,/, ''), 'base64');
     fs.writeFileSync(file, bytes);
     return { kind: 'image', mime: image.mimeType, name, path: file, bytes: bytes.length };
-  });
+  }));
 }
 
 /**
@@ -516,7 +531,10 @@ async function startSession(args: AgenteStartSessionArgs, owner?: WebContents): 
     checkpoints: []
   };
   chat.translator = new RustTurnTranslator(args.chatId, () => chat.contextWindow);
+  const existingChat = chats.get(args.chatId);
+  if (existingChat && existingChat.sessionId !== sessionId) chatsBySession.delete(existingChat.sessionId);
   chats.set(args.chatId, chat);
+  chatsBySession.set(sessionId, chat);
   bindChatWindow(chat, owner);
   refreshContextWindow(chat);
   return { sessionId, resumed, conversationIndex: existing.snapshot.conversation.length };
@@ -536,7 +554,7 @@ async function prompt(chatId: string, text: string, images?: Array<{ data: strin
     const client = await connect();
     const provider = await useProvider(client, chat.provider, chat.model, chat.localSelection);
     const expanded = await client.request<{ text: string }>('project.expand_prompt', { project_dir: chat.projectRoot, text });
-    const media = [...attachments, ...storeImages(images)];
+    const media = [...attachments, ...(await storeImages(client, images))];
     if (media.length) {
       const info = await client.request<{ capabilities: { input_modalities?: string[]; vision: boolean } }>('models.info', { provider: provider.id, model: provider.model });
       const modalities = info.capabilities.input_modalities || [];
@@ -818,6 +836,7 @@ function sessionIdsToDelete(args: { chatIds?: string[]; sessionIds?: string[] })
       clearStopGrace(chat);
       unbindChatWindow(chat);
       ids.add(chat.sessionId);
+      chatsBySession.delete(chat.sessionId);
     }
     chats.delete(chatId);
   }
@@ -842,6 +861,7 @@ function disposeAllSessions(): void {
     if (chat.turnId) settleComputerTurn(chat.sessionId, chat.turnId);
   }
   chats.clear();
+  chatsBySession.clear();
   resetWebSearchSync();
   daemon?.stop();
   daemon = null;

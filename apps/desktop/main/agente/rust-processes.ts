@@ -33,6 +33,7 @@ export function isRustProcessId(id: string): boolean {
 export class RustProcessBridge {
   private readonly known = new Map<string, ProcessInfo>();
   private readonly outputLength = new Map<string, number>();
+  private readonly settledOutput = new Set<string>();
   private timer: ReturnType<typeof setTimeout> | null = null;
   private sink: (event: ProcessEvent) => void = () => {};
 
@@ -56,6 +57,23 @@ export class RustProcessBridge {
     return chatId ? all.filter((info) => info.chatId === chatId) : all;
   }
 
+  async start(args: { chatId: string; command: string; cwd: string }): Promise<ProcessInfo | null> {
+    const pending = this.client();
+    if (!pending) return null;
+    const client = await pending.catch(() => null);
+    if (!client) return null;
+    const started = await client
+      .request<RuntimeProcess>('processes.start', { project_dir: args.cwd, command: args.command })
+      .catch(() => null);
+    if (!started) return null;
+    const info = this.toInfo(args.chatId, started);
+    this.known.set(info.id, info);
+    this.settledOutput.delete(info.id);
+    this.sink({ type: 'process_start', process: info });
+    this.nudge();
+    return info;
+  }
+
   async output(id: string): Promise<string> {
     const info = this.known.get(id);
     const client = this.client();
@@ -73,11 +91,38 @@ export class RustProcessBridge {
     return result.stopped;
   }
 
+  async prune(chatId?: string): Promise<number> {
+    const removedCwds = new Set<string>();
+    let removed = 0;
+    for (const [id, info] of this.known) {
+      if (chatId && info.chatId !== chatId) continue;
+      if (info.status === 'running') continue;
+      removedCwds.add(info.cwd);
+      this.known.delete(id);
+      this.outputLength.delete(id);
+      this.settledOutput.delete(id);
+      removed += 1;
+    }
+    const pending = this.client();
+    if (pending && removedCwds.size > 0) {
+      const client = await pending.catch(() => null);
+      if (client) {
+        await Promise.all(
+          [...removedCwds].map((cwd) =>
+            client.request('processes.prune', { project_dir: cwd }).catch(() => {})
+          )
+        );
+      }
+    }
+    return removed;
+  }
+
   dispose(): void {
     if (this.timer) clearTimeout(this.timer);
     this.timer = null;
     this.known.clear();
     this.outputLength.clear();
+    this.settledOutput.clear();
   }
 
   private runtimeId(id: string): string {
@@ -105,7 +150,10 @@ export class RustProcessBridge {
     const previous = this.known.get(info.id);
     this.known.set(info.id, info);
     if (!previous) this.sink({ type: 'process_start', process: info });
-    await this.forwardOutput(client, info, process.id);
+    if (info.status === 'running' || !this.settledOutput.has(info.id)) {
+      await this.forwardOutput(client, info, process.id);
+      if (info.status !== 'running') this.settledOutput.add(info.id);
+    }
     if (previous) this.reportChanges(previous, info);
   }
 

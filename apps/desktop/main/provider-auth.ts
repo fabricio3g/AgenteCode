@@ -47,6 +47,29 @@ export function resolveApiKeyFromConfig(cfg: AuthConfig | null | undefined, apiK
   return namedKey(providers, providerName) || urlKey(providers, baseUrl) || defaultKey(cfg, providerName);
 }
 
+const PROVIDER_ENV_VARS: Record<string, string[]> = {
+  openrouter: ['OPENROUTER_API_KEY'],
+  deepseek: ['DEEPSEEK_API_KEY'],
+  glm: ['ZAI_API_KEY', 'ZHIPU_API_KEY', 'GLM_API_KEY'],
+  minimax: ['MINIMAX_API_KEY'],
+  opencode: ['OPENCODE_API_KEY'],
+  'opencode-go': ['OPENCODE_API_KEY'],
+  anthropic: ['ANTHROPIC_API_KEY'],
+  openai: ['OPENAI_API_KEY'],
+  google: ['GEMINI_API_KEY', 'GOOGLE_API_KEY']
+};
+
+function envKey(providerName?: string): string {
+  if (!providerName) return '';
+  const vars = PROVIDER_ENV_VARS[providerName.toLowerCase()];
+  if (!vars) return '';
+  for (const name of vars) {
+    const value = process.env[name]?.trim();
+    if (value) return value;
+  }
+  return '';
+}
+
 export function resolveApiKey(apiKey?: string, baseUrl?: string, providerName?: string): string {
   // The local llama-server is launched with a generated per-run --api-key that
   // is never written to config, so it has to be resolved from the live session.
@@ -54,5 +77,5 @@ export function resolveApiKey(apiKey?: string, baseUrl?: string, providerName?: 
   if (sessionKey) return sessionKey;
   // The Rust core's store (shared with the TUI) holds the keys of the
   // providers it offers; Desktop's own config keeps custom endpoints'.
-  return apiKey || coreKey(providerName) || resolveApiKeyFromConfig(getCachedConfig(), '', baseUrl, providerName);
+  return apiKey || coreKey(providerName) || resolveApiKeyFromConfig(getCachedConfig(), '', baseUrl, providerName) || envKey(providerName);
 }

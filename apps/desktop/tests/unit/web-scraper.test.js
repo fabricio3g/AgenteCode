@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { parseHTML } from 'linkedom';
 import { elementToMarkdown } from '../../main/html-markdown.ts';
 import {
+  assertSafePublicUrl,
   classifyScrapeQuality,
   compactExtractedText,
   detectDocumentKind,
@@ -72,6 +73,21 @@ describe('web-scraper helpers', () => {
     assert.equal(isSafePublicUrl('http://[::ffff:10.0.0.1]/'), false);
     assert.equal(isSafePublicUrl('https://user:pass@example.com/a'), false);
     assert.equal(isSafePublicUrl('file:///etc/passwd'), false);
+  });
+
+  it('blocks DNS-rebinding hosts that resolve to loopback or private IPs', async () => {
+    const loopbackLookup = async () => [{ address: '127.0.0.1', family: 4 }];
+    const privateV6Lookup = async () => [{ address: '::1', family: 6 }];
+    const mixedLookup = async () => [
+      { address: '93.184.216.34', family: 4 },
+      { address: '10.0.0.5', family: 4 }
+    ];
+    const publicLookup = async () => [{ address: '93.184.216.34', family: 4 }];
+
+    assert.equal(await assertSafePublicUrl('https://rebind.example/a', loopbackLookup), false);
+    assert.equal(await assertSafePublicUrl('https://rebind.example/a', privateV6Lookup), false);
+    assert.equal(await assertSafePublicUrl('https://rebind.example/a', mixedLookup), false);
+    assert.equal(await assertSafePublicUrl('https://rebind.example/a', publicLookup), true);
   });
 
   it('blocks SSRF redirects before fetching the private hop and enforces redirect cap', async () => {

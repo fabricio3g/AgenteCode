@@ -18,9 +18,11 @@ import { parseComplementTool } from '../../shared/complements.ts';
 
 type Run = { runId: string; sessionId: string; turnId?: string; owner: WebContents; client: AgenteClient; pending: Set<string>; approvals: Set<string>; complementNames?: Map<string, string>; cancelled?: boolean; dispose?: () => void; chatId?: string; computerTools?: Map<string, AgentTool>; computerCalls?: Map<string, AbortController> };
 const runs = new Map<string, Run>();
+const runsBySession = new Map<string, Run>();
 function release(run: Run) {
   if (runs.get(run.runId) !== run) return;
   runs.delete(run.runId);
+  if (runsBySession.get(run.sessionId) === run) runsBySession.delete(run.sessionId);
   if (run.turnId) settleComputerTurn(run.sessionId, run.turnId);
   for (const call of run.computerCalls?.values() ?? []) call.abort();
   run.dispose?.();
@@ -73,17 +75,20 @@ function connectNotifications(client: AgenteClient) {
   client.onNotification((method, params) => {
     if (method === 'client_tools.call' || method === 'client_tools.cancel') {
       const call = params as ClientToolCall;
-      const run = [...runs.values()].find((run) => run.sessionId === call.session_id && (!run.turnId || run.turnId === call.turn_id));
-      if (!run) return;
+      const run = runsBySession.get(call.session_id);
+      if (!run || (run.turnId && run.turnId !== call.turn_id)) return;
       run.turnId = call.turn_id;
       if (method === 'client_tools.call') run.pending.add(call.request_id);
       else { run.pending.delete(call.request_id); run.computerCalls?.get(call.request_id)?.abort(); }
       if (run.computerTools?.has(call.name)) { if (method === 'client_tools.call') void executeComputerCall(run, call); return; }
       send(run, { runId: run.runId, type: method === 'client_tools.call' ? 'call' : 'cancel', call });
+    } else if (method === 'events.lagged') {
+      const skipped = (params as { skipped?: number } | undefined)?.skipped;
+      console.warn(`[agente-home] daemon event stream lagged (skipped=${skipped ?? 'unknown'})`);
     } else if (method === 'event') {
       const envelope = params as RuntimeEventEnvelope;
-      const run = [...runs.values()].find((run) => run.sessionId === envelope.session_id && (!run.turnId || run.turnId === envelope.turn_id));
-      if (!run) return;
+      const run = runsBySession.get(envelope.session_id);
+      if (!run || (run.turnId && run.turnId !== envelope.turn_id)) return;
       run.turnId = envelope.turn_id;
       const event = envelope.event;
       if (event.type === 'approval_requested') run.approvals.add(event.request_id);
@@ -92,8 +97,8 @@ function connectNotifications(client: AgenteClient) {
       send(run, { runId: run.runId, type: 'event', envelope, serviceName: complement && run.complementNames?.get(complement.id) });
     } else if (method === 'turn.outcome') {
       const outcome = params as TurnOutcome;
-      const run = [...runs.values()].find((run) => run.sessionId === outcome.session_id && (!run.turnId || run.turnId === outcome.turn_id));
-      if (!run) return;
+      const run = runsBySession.get(outcome.session_id);
+      if (!run || (run.turnId && run.turnId !== outcome.turn_id)) return;
       if (run.chatId && outcome.status !== 'cancelled') notifyActivity({ id: `home-${outcome.turn_id}`, chatId: run.chatId, space: 'home', title: outcome.status === 'completed' ? 'Task finished' : 'Task failed', body: outcome.status === 'completed' ? 'Your result is ready.' : 'Open the chat to review the error.' }, run.owner);
       void client.request<{ snapshot: SessionSnapshot }>('session.get', { session_id: run.sessionId }).then(({ snapshot }) => {
         send(run, { runId: run.runId, type: 'outcome', outcome, snapshot });
@@ -113,7 +118,7 @@ export function registerHomeRuntimeHandlers(ipcMain: IpcMain) {
       const snapshot = await client.request<SessionSnapshot>('session.fork', { session_id: sessionId, conversation_index: args.forkIndex });
       sessionId = snapshot.session_id;
     }
-    if ([...runs.values()].some((run) => run.sessionId === sessionId)) throw new Error('This Home chat is already working.');
+    if (runsBySession.has(sessionId)) throw new Error('This Home chat is already working.');
     const provider = await useProvider(client, args.provider, args.model, args.localSelection);
     const helperAvailable = !!computerHelperPath();
     const computerEnabled = args.computerEnabled && !!args.chatId && helperAvailable && await modelSeesImages(args.provider, args.model);
@@ -130,6 +135,7 @@ export function registerHomeRuntimeHandlers(ipcMain: IpcMain) {
     const computerDefinitions = [...(run.computerTools?.values() ?? [])].map(tool => ({ name: tool.name, description: tool.description, parameters: tool.parameters, sequential: true, mutating: true }));
     await client.request('client_tools.register', { session_id: sessionId, tools: [...args.tools.filter(tool => !tool.name.startsWith('computer_')), ...computerDefinitions] });
     runs.set(args.runId, run);
+    runsBySession.set(sessionId, run);
     const disconnect = () => { computerSession.releaseOwner(event.sender.id); void cancel(run); release(run); };
     event.sender.once('destroyed', disconnect);
     event.sender.once('render-process-gone', disconnect);
@@ -162,13 +168,13 @@ export function registerHomeRuntimeHandlers(ipcMain: IpcMain) {
     return run.client.request('client_tools.result', args.result);
   });
   ipcMain.handle('home_runtime_update', async (event, args: { sessionId: string; thinkingLevel?: string }) => {
-    const run = [...runs.values()].find(run => run.sessionId === args.sessionId && run.owner.id === event.sender.id);
-    if (!run?.turnId) return { ok: false };
+    const run = runsBySession.get(args.sessionId);
+    if (!run || run.owner.id !== event.sender.id || !run.turnId) return { ok: false };
     return run.client.request('turn.update', { turn_id: run.turnId, thinking_level: args.thinkingLevel || 'auto' });
   });
   ipcMain.handle('home_runtime_steer', async (event, args: { sessionId: string; content: string }) => {
-    const run = [...runs.values()].find(run => run.sessionId === args.sessionId && run.owner.id === event.sender.id);
-    if (!run?.turnId || !args.content?.trim()) return { ok: false };
+    const run = runsBySession.get(args.sessionId);
+    if (!run || run.owner.id !== event.sender.id || !run.turnId || !args.content?.trim()) return { ok: false };
     return run.client.request('turn.steer', { turn_id: run.turnId, content: args.content.trim(), attachments: [] });
   });
   ipcMain.handle('home_runtime_cancel', async (event, args: { runId: string }) => {

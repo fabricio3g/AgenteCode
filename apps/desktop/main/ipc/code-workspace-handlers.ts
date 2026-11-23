@@ -38,11 +38,18 @@ export function registerCodeWorkspaceHandlers(ipcMain: IpcMain): void {
   ipcMain.handle('agente_process_output', (_e, args: { id: string }) =>
     isRustProcessId(args.id) ? rustProcesses.output(args.id) : (processRegistry.output(args.id) ?? '')
   );
-  ipcMain.handle('agente_process_start', (_e, args: { chatId: string; command: string; cwd: string }) => processRegistry.start(args));
+  ipcMain.handle('agente_process_start', async (_e, args: { chatId: string; command: string; cwd: string }) => {
+    const started = await rustProcesses.start(args);
+    return started ?? processRegistry.start(args);
+  });
   ipcMain.handle('agente_process_stop', (_e, args: { id: string }) =>
     isRustProcessId(args.id) ? rustProcesses.stop(args.id) : processRegistry.stop(args.id)
   );
-  ipcMain.handle('agente_process_clear', (_e, args: { chatId?: string }) => processRegistry.prune(args?.chatId));
+  ipcMain.handle('agente_process_clear', async (_e, args: { chatId?: string }) => {
+    const localPruned = processRegistry.prune(args?.chatId);
+    const rustPruned = await rustProcesses.prune(args?.chatId);
+    return localPruned + rustPruned;
+  });
 
   ipcMain.handle('agente_changes', (_e, args: ChangesArgs) =>
     listChanges(args.projectRoot)

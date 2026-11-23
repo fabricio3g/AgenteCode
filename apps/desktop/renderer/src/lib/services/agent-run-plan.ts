@@ -10,7 +10,7 @@
 import type { RequestMessage } from '$lib/services/chat/types';
 import type { RunAgentTaskArgs } from '$lib/services/agent-types';
 import type { AppConfig } from '$lib/types/chat';
-import { supportsNativeTools } from '$lib/services/agent-llm';
+import { supportsNativeTools } from '$lib/services/chat-api';
 import { getToolDefinitions } from '$lib/services/agent-tooling';
 import { isWebsiteBuildRequest } from '$lib/services/agent-flow';
 import { compactText } from '$lib/services/agent-evidence';

@@ -170,6 +170,33 @@ struct ProcessParams {
 }
 
 #[derive(Deserialize)]
+struct StartProcessParams {
+    project_dir: String,
+    command: String,
+}
+
+#[derive(Deserialize)]
+struct LlmCompleteParams {
+    provider: String,
+    model: String,
+    messages: Vec<Message>,
+    #[serde(default)]
+    max_tokens: Option<usize>,
+    #[serde(default)]
+    session_id: Option<SessionId>,
+}
+
+#[derive(Deserialize)]
+struct GenerateTitleParams {
+    provider: String,
+    model: String,
+    user_text: String,
+    assistant_text: String,
+    #[serde(default)]
+    session_id: Option<SessionId>,
+}
+
+#[derive(Deserialize)]
 struct ClientStateParams {
     session_id: SessionId,
     client: String,
@@ -326,6 +353,73 @@ impl Connection {
         }))
     }
 
+    pub(super) async fn refresh_catalog(&self) -> Result<Value, Failure> {
+        let count = self
+            .runtime
+            .refresh_catalog()
+            .await
+            .map_err(runtime_failure)?;
+        Ok(json!({ "ok": true, "model_count": count }))
+    }
+
+    pub(super) async fn test_provider(&self, params: Value) -> Result<Value, Failure> {
+        let ProviderParams { provider } = parse(params)?;
+        self.runtime
+            .test_provider(&provider)
+            .await
+            .map_err(runtime_failure)
+    }
+
+    pub(super) async fn llm_complete(&self, params: Value) -> Result<Value, Failure> {
+        let LlmCompleteParams {
+            provider,
+            model,
+            messages,
+            max_tokens,
+            session_id,
+        } = parse(params)?;
+        let text = self
+            .runtime
+            .complete_text(&provider, &model, messages, max_tokens, session_id)
+            .await
+            .map_err(runtime_failure)?;
+        Ok(json!({ "text": text }))
+    }
+
+    pub(super) async fn generate_title(&self, params: Value) -> Result<Value, Failure> {
+        let GenerateTitleParams {
+            provider,
+            model,
+            user_text,
+            assistant_text,
+            session_id,
+        } = parse(params)?;
+        let title = self
+            .runtime
+            .generate_title(&provider, &model, &user_text, &assistant_text, session_id)
+            .await
+            .map_err(runtime_failure)?;
+        Ok(json!({ "title": title }))
+    }
+
+    pub(super) async fn start_process(&self, params: Value) -> Result<Value, Failure> {
+        let StartProcessParams {
+            project_dir,
+            command,
+        } = parse(params)?;
+        if command.trim().is_empty() {
+            return Err((rpc::INVALID_PARAMS, "command cannot be empty".into()));
+        }
+        let process = agente_core::tools::processes::start(
+            &command,
+            &project_dir,
+            &agente_core::tools::ShellEnv::Inherit,
+        )
+        .await
+        .map_err(|error| (rpc::INTERNAL_ERROR, error.to_string()))?;
+        Ok(process_json(&process))
+    }
+
     pub(super) fn handle(self: &Arc<Self>, method: &str, params: Value) -> Result<Value, Failure> {
         let runtime = &self.runtime;
         match method {
@@ -423,6 +517,7 @@ impl Connection {
                     .map_err(|error| (rpc::INVALID_PARAMS, error.to_string()))?;
                 Ok(json!({ "path": path }))
             }
+            "children.list" => Ok(Value::Array(runtime.list_children())),
             "children.cancel" => {
                 let CancelChildParams { run_id } = parse(params)?;
                 Ok(json!({ "ok": runtime.cancel_child(run_id) }))
@@ -749,6 +844,11 @@ impl Connection {
                 let params: ProcessParams = parse(params)?;
                 let process = find_process(&params)?;
                 Ok(json!({ "stopped": agente_core::tools::processes::stop(&process) }))
+            }
+            "processes.prune" => {
+                let ProjectParams { project_dir } = parse(params)?;
+                let pruned = agente_core::tools::processes::prune(&project_dir);
+                Ok(json!({ "pruned": pruned }))
             }
             "project.info" | "project.init" | "project.expand_prompt" | "mcp.status" => {
                 crate::project::handle(runtime, method, params)
