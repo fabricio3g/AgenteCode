@@ -23,13 +23,14 @@ describe('space switcher', () => {
     const view = render(SpaceSwitcher);
     expect(view.container.querySelector('[data-space-switcher]')).toBeTruthy();
 
-    // Bots no longer appears in the product navigation. Every space is a glyph,
-    // named for assistive tech and on hover.
+    // Bots no longer appears in the product navigation. The active space shows
+    // its name; inactive spaces stay icon-only, named for assistive tech and on hover.
     const tabs = view.getAllByRole('tab');
     const nameOf = (tab: HTMLElement) => tab.getAttribute('aria-label') ?? tab.textContent?.trim();
     expect(tabs.map(nameOf)).toEqual(['Home', 'Code', 'Design', 'Roleplay']);
-    expect(tabs.every((tab) => !tab.textContent?.trim())).toBe(true);
     const [home, code, design, roleplay] = tabs;
+    expect(home.textContent?.trim()).toBe('Home');
+    expect([code, design, roleplay].every((tab) => !tab.textContent?.trim())).toBe(true);
     home.focus();
     await fireEvent.keyDown(home, { key: 'ArrowRight' });
     expect(document.activeElement).toBe(code);
@@ -65,7 +66,7 @@ describe('space switcher', () => {
     expect(view.getAllByRole('tab').map((tab) => tab.getAttribute('aria-label') ?? tab.textContent?.trim())).toEqual(['Home', 'Code', 'Design']);
   });
 
-  it('names every space on hover, the one in effect included', async () => {
+  it('names inactive spaces on hover and suppresses the redundant tooltip on the active one', async () => {
     appStore.activeSpace = 'home';
     appStore.config = { ...appStore.config, ui: { ...appStore.config.ui, roleplay_enabled: false } };
     const view = render(SpaceSwitcher);
@@ -74,10 +75,10 @@ describe('space switcher', () => {
     await fireEvent.mouseEnter(anchor('Code'));
     await vi.waitFor(() => expect(view.getByRole('tooltip').textContent?.trim()).toBe('Code'));
 
-    // No segment shows its name, so the selected one needs the pill too.
+    // The active segment already shows its name, so it needs no tooltip pill.
     await fireEvent.mouseLeave(anchor('Code'));
     await fireEvent.mouseEnter(anchor('Home'));
-    await vi.waitFor(() => expect(view.getByRole('tooltip').textContent?.trim()).toBe('Home'));
+    await vi.waitFor(() => expect(view.queryByRole('tooltip')).toBeNull());
   });
 
   it('switches spaces when a tab is chosen', async () => {
@@ -92,9 +93,9 @@ describe('space switcher', () => {
   it('uses the shared segmented control and keeps navigation out of the drag region', () => {
     const modules = import.meta.glob<string>('./SpaceSwitcher.svelte', { query: '?raw', import: 'default', eager: true });
     const row = modules['./SpaceSwitcher.svelte'];
-    // Glyphs only; the segmented control names each one in its own tooltip.
+    // Active space shows its label; inactive glyphs name themselves via SegmentedControl's tooltip.
     expect(row).toContain('<SegmentedControl');
-    expect(row).toContain('labels="none"');
+    expect(row).toContain('labels="active"');
     expect(row).not.toContain('<Tooltip');
     const style = row.slice(row.indexOf('<style>'));
 

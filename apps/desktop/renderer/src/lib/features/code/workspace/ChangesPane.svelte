@@ -268,7 +268,7 @@
     color: var(--foreground);
   }
   :is(.file-row.is-active, :global(.file-row.is-active.ui-local-8f978f5f)) {
-    background: var(--sidebar-accent);
+    background: var(--float-row-selected);
     box-shadow: inset 0 1px 0 var(--composer-crown), inset 0 0 0 1px var(--float-border);
     color: var(--foreground);
     font-weight: 500;

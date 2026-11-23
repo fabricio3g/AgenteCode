@@ -263,17 +263,17 @@
         onkeydown={onKeydown}
       />
       <span class="shrink-0 text-xs tabular-nums text-muted-foreground">{countOf(results.length, 'conversation')}</span>
-      <button
+      <UiButton
+        variant="plain"
         type="button"
-        class="preview-toggle"
-        class:is-on={previewEnabled}
+        class={uiClass('preview-toggle', 'ui-local-63f6f05b', { 'is-on': previewEnabled })}
         aria-pressed={previewEnabled}
         onclick={togglePreview}
         title={previewEnabled ? 'Simple view' : 'Preview view'}
       >
         <PanelRight class="size-3.5" />
         <span>Preview</span>
-      </button>
+      </UiButton>
     </div>
 
     <div class="search-body">
@@ -427,7 +427,7 @@
     color: var(--muted-foreground);
   }
 
-  .preview-toggle {
+  .search-field :global(.preview-toggle.ui-local-63f6f05b) {
     display: inline-flex;
     height: 1.75rem;
     flex-shrink: 0;
@@ -444,16 +444,16 @@
     transition: background-color var(--motion-instant) var(--motion-ease), border-color var(--motion-instant) var(--motion-ease), color var(--motion-instant) var(--motion-ease), transform var(--motion-instant) var(--motion-ease);
   }
 
-  .preview-toggle:hover {
+  .search-field :global(.preview-toggle.ui-local-63f6f05b:hover) {
     background: var(--surface-hover);
     color: var(--foreground);
   }
 
-  .preview-toggle:active {
+  .search-field :global(.preview-toggle.ui-local-63f6f05b:active) {
     transform: translateY(1px);
   }
 
-  .preview-toggle.is-on {
+  .search-field :global(.preview-toggle.ui-local-63f6f05b.is-on) {
     border-color: var(--float-border);
     background: var(--composer-control-bg);
     box-shadow: var(--control-shadow);
