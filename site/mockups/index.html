@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Landing Page Mockup Variants · Agente Code</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Inter:wght@400;500;600&family=Newsreader:ital,opsz,wght@0,6..72,300..600;1,6..72,400&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="folio-base.css" />
+  <script>document.documentElement.classList.add("js");</script>
+  <style>
+    .gal-head { padding: 112px 0 48px; border-bottom: 1px solid var(--rule); }
+    .gal-head h1 { font-size: clamp(38px, 4.8vw, 58px); margin-top: 14px; }
+    .gal-head h1 em { font-style: italic; color: var(--ink-2); }
+    .gal-head p { margin-top: 16px; max-width: 620px; font-size: 16.5px; color: var(--ink-2); }
+
+    .variants { padding: 56px 0 72px; }
+    .v-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 22px; }
+    .v-card {
+      display: flex; flex-direction: column;
+      border-radius: 18px;
+      background: var(--sheet);
+      border: 1px solid var(--rule);
+      overflow: hidden;
+      transition: transform var(--t-normal) var(--ease-out), border-color var(--t-fast) var(--ease);
+    }
+    .v-card:hover { transform: translateY(-3px); border-color: var(--rule-strong); }
+    .v-thumb {
+      aspect-ratio: 16 / 10;
+      background: var(--paper-alt);
+      border-bottom: 1px solid var(--rule);
+      padding: 18px;
+      display: grid;
+      place-items: center;
+      overflow: hidden;
+    }
+    .v-thumb img { width: 100%; height: 100%; object-fit: contain; }
+    .v-body { padding: 24px; display: flex; flex-direction: column; gap: 10px; flex: 1; }
+    .v-tag { font: 400 11.5px/1 var(--font-mono); color: var(--accent); letter-spacing: 0.08em; text-transform: uppercase; }
+    .v-body h2 { font-size: 26px; }
+    .v-body p { font-size: 14.5px; color: var(--ink-2); line-height: 1.55; }
+    .v-meta { margin-top: 6px; font: 400 12px/1.6 var(--font-mono); color: var(--ink-3); }
+    .v-foot { margin-top: auto; padding-top: 18px; display: flex; align-items: center; justify-content: space-between; border-top: 1px solid var(--rule-soft); font: 500 13.5px var(--font-mono); }
+
+    .plates-sec { padding: 64px 0 96px; border-top: 1px solid var(--rule); background: var(--paper-alt); }
+    .plates-sec h2 { font-size: 32px; margin-top: 10px; }
+    .plates-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; margin-top: 28px; }
+    .p-tile {
+      padding: 16px;
+      border-radius: 14px;
+      background: var(--sheet);
+      border: 1px solid var(--rule);
+    }
+    .p-tile img { width: 100%; aspect-ratio: 16 / 10; object-fit: contain; }
+    .p-tile figcaption { margin-top: 10px; font: 400 11.5px/1.3 var(--font-mono); color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.06em; }
+
+    @media (max-width: 960px) {
+      .v-grid { grid-template-columns: 1fr; }
+      .plates-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+  </style>
+</head>
+<body>
+  <div class="paper-grain" aria-hidden="true"></div>
+
+  <header class="nav">
+    <div class="wrap nav-inner">
+      <a class="brand" href="index.html">Agente <span>Code &middot; Mockups</span></a>
+      <div class="nav-actions">
+        <button class="icon-btn" id="theme-toggle" type="button" aria-label="Toggle light or dark plate">
+          <svg class="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2m-7.07-2.93 1.41-1.41M17.66 6.34l1.41-1.41M2 12h2m16 0h2M4.93 4.93l1.41 1.41m11.32 11.32 1.41 1.41"/></svg>
+          <svg class="i-moon" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <section class="gal-head">
+      <div class="wrap">
+        <p class="plate-caption"><span class="dot"></span>Branch: landing-page &middot; <em>Review Gallery</em></p>
+        <h1>Natural Science Folio — <em>Three Variants</em></h1>
+        <p>Each variant uses custom monochrome copperplate engravings blended natively into warm uncoated paper (Light) and inverted soot plate (Dark), paired with calm scroll parallax and tactile hairlines. Toggle Light/Dark top-right to inspect both polarities.</p>
+      </div>
+    </section>
+
+    <section class="variants">
+      <div class="wrap v-grid">
+        <a class="v-card" href="variant-a.html">
+          <div class="v-thumb"><img class="plate-art" src="../assets/plates/plate-orbital.jpg" alt="Orbital armillary plate" /></div>
+          <div class="v-body">
+            <span class="v-tag">Variant A</span>
+            <h2>The Astronomical Atlas</h2>
+            <p>Anthropic-style left-aligned editorial hero with the tilted armillary sphere &amp; slowly rotating SVG orbital rings on the right, followed by exhibition mats, tabbed surfaces, and specimen bento.</p>
+            <div class="v-meta">Best for: Balanced product showcase + editorial gravitas</div>
+            <div class="v-foot"><span>Open Variant A</span><span>&rarr;</span></div>
+          </div>
+        </a>
+
+        <a class="v-card" href="variant-b.html">
+          <div class="v-thumb"><img class="plate-art" src="../assets/plates/plate-botanical.jpg" alt="Botanical fern and mycelium plate" /></div>
+          <div class="v-body">
+            <span class="v-tag">Variant B</span>
+            <h2>The Naturalist's Field Guide</h2>
+            <p>Centered antique monograph title page framed by botanical fronds and registration corners, opening into alternating two-column natural-history specimen spreads.</p>
+            <div class="v-meta">Best for: Storytelling, warmth &amp; book-like rhythm</div>
+            <div class="v-foot"><span>Open Variant B</span><span>&rarr;</span></div>
+          </div>
+        </a>
+
+        <a class="v-card" href="variant-c.html">
+          <div class="v-thumb"><img class="plate-art" src="../assets/plates/plate-instruments.jpg" alt="Scientific drafting instruments plate" /></div>
+          <div class="v-body">
+            <span class="v-tag">Variant C</span>
+            <h2>The Instrument Maker's Folio</h2>
+            <p>Swiss-meets-Encyclop&eacute;die hairline grid with numbered index strips, split drafting-instruments hero, tabular capability ledger, and dual-column strata &amp; downloads.</p>
+            <div class="v-meta">Best for: Technical precision &amp; rapid scanning</div>
+            <div class="v-foot"><span>Open Variant C</span><span>&rarr;</span></div>
+          </div>
+        </a>
+      </div>
+    </section>
+
+    <section class="plates-sec">
+      <div class="wrap">
+        <p class="plate-caption"><span class="dot"></span>Generated Assets &middot; <em>Monochrome Copperplate Series</em></p>
+        <h2>Four Custom Engraving Plates</h2>
+        <div class="plates-grid">
+          <figure class="p-tile"><img class="plate-art" src="../assets/plates/plate-orbital.jpg" alt="Plate I" /><figcaption>Plate I &middot; Orbital Armillary</figcaption></figure>
+          <figure class="p-tile"><img class="plate-art" src="../assets/plates/plate-botanical.jpg" alt="Plate II" /><figcaption>Plate II &middot; Botanical Mycelium</figcaption></figure>
+          <figure class="p-tile"><img class="plate-art" src="../assets/plates/plate-instruments.jpg" alt="Plate III" /><figcaption>Plate III &middot; Drafting Instruments</figcaption></figure>
+          <figure class="p-tile"><img class="plate-art" src="../assets/plates/plate-geology.jpg" alt="Plate IV" /><figcaption>Plate IV &middot; Mineral Strata</figcaption></figure>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script type="module">
+    import { bootFolio } from "./folio-fx.js";
+    bootFolio({ defaultTheme: "light" });
+  </script>
+</body>
+</html>

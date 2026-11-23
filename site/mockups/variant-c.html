@@ -1,0 +1,390 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Variant C — The Instrument Maker's Folio · Agente Code</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Inter:wght@400;500;600&family=Newsreader:ital,opsz,wght@0,6..72,300..600;1,6..72,400&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="folio-base.css" />
+  <script>document.documentElement.classList.add("js");</script>
+  <style>
+    /* Variant C — The Instrument Maker's Folio (Swiss Hairline Grid + Encyclopedie Plates) */
+    .folio-frame {
+      margin-top: 64px;
+      border-top: 1px solid var(--rule);
+    }
+    .index-strip {
+      border-bottom: 1px solid var(--rule);
+      padding: 12px 0;
+      font: 400 11.5px/1 var(--font-mono);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--ink-3);
+    }
+    .index-strip .wrap {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+
+    .hero-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
+      border-bottom: 1px solid var(--rule);
+    }
+    .hero-left {
+      padding: 72px 48px 72px 0;
+      border-right: 1px solid var(--rule);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+    .hero-left h1 {
+      font-size: clamp(42px, 5vw, 66px);
+      line-height: 1.02;
+      letter-spacing: -0.035em;
+    }
+    .hero-left h1 em { font-style: italic; color: var(--ink-2); }
+    .hero-left .lede {
+      margin-top: 22px;
+      font-size: 16.5px;
+      line-height: 1.62;
+      color: var(--ink-2);
+      max-width: 460px;
+    }
+    .hero-left .actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 32px; }
+
+    .hero-right {
+      position: relative;
+      padding: 40px 0 40px 44px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      overflow: hidden;
+      min-height: 520px;
+    }
+    .hero-right-plate {
+      width: 118%;
+      max-width: none;
+      margin-left: -14%;
+      margin-block: auto;
+    }
+    .plate-footer {
+      display: flex;
+      justify-content: space-between;
+      font: 400 11.5px/1 var(--font-mono);
+      color: var(--ink-3);
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      padding-top: 16px;
+      border-top: 1px solid var(--rule-soft);
+    }
+
+    /* 3-Column Instrument Index right below fold */
+    .tri-strip { border-bottom: 1px solid var(--rule); }
+    .tri-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .tri-cell {
+      padding: 32px 28px;
+      transition: background-color var(--t-fast) var(--ease);
+    }
+    .tri-cell:first-child { padding-left: 0; }
+    .tri-cell + .tri-cell { border-left: 1px solid var(--rule); }
+    .tri-cell:hover { background: var(--wash); }
+    .tri-num { font: 400 11.5px/1 var(--font-mono); color: var(--accent); letter-spacing: 0.08em; }
+    .tri-cell h3 { font-size: 24px; margin-top: 12px; }
+    .tri-cell p { margin-top: 8px; font-size: 14.5px; color: var(--ink-2); }
+
+    /* Ledger Feature Table */
+    .ledger-section {
+      position: relative;
+      padding: 96px 0;
+      border-bottom: 1px solid var(--rule);
+      overflow: clip;
+      isolation: isolate;
+    }
+    .ledger-bg {
+      position: absolute;
+      right: -8%;
+      top: 50%;
+      translate: 0 -50%;
+      width: min(780px, 60vw);
+      opacity: 0.22;
+      z-index: -1;
+      -webkit-mask-image: radial-gradient(ellipse 72% 72% at 62% 50%, #000 35%, transparent 94%);
+              mask-image: radial-gradient(ellipse 72% 72% at 62% 50%, #000 35%, transparent 94%);
+    }
+    .ledger-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      gap: 24px;
+      flex-wrap: wrap;
+      margin-bottom: 44px;
+    }
+    .ledger-head h2 { font-size: clamp(32px, 4vw, 48px); }
+    .ledger-list { border-top: 1px solid var(--rule-strong); }
+    .ledger-row {
+      display: grid;
+      grid-template-columns: 90px minmax(0, 0.9fr) minmax(0, 1.3fr);
+      gap: 24px;
+      padding: 26px 0;
+      border-bottom: 1px solid var(--rule);
+      align-items: baseline;
+    }
+    .ledger-idx { font: 400 12px/1 var(--font-mono); color: var(--ink-3); }
+    .ledger-row h3 { font-size: 24px; }
+    .ledger-row p { font-size: 15px; color: var(--ink-2); }
+
+    /* Exhibition Preview */
+    .exhibit-band {
+      padding: 96px 0;
+      background: var(--paper-alt);
+      border-bottom: 1px solid var(--rule);
+    }
+    .exhibit-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.45fr) minmax(0, 0.9fr);
+      gap: 44px;
+      align-items: center;
+      margin-top: 28px;
+    }
+    .exhibit-meta-card {
+      padding: 28px;
+      border-radius: 14px;
+      background: var(--sheet);
+      border: 1px solid var(--rule);
+    }
+    .exhibit-meta-card h3 { font-size: 26px; }
+    .exhibit-meta-card p { margin-top: 10px; font-size: 15px; color: var(--ink-2); }
+
+    /* Strata + Downloads */
+    .bottom-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    }
+    .bottom-col { padding: 84px 0; }
+    .bottom-col:first-child { padding-right: 48px; border-right: 1px solid var(--rule); position: relative; overflow: hidden; }
+    .bottom-col:last-child { padding-left: 48px; }
+    .bottom-col h2 { font-size: clamp(28px, 3.2vw, 40px); margin-top: 12px; }
+    .bottom-col p { margin-top: 12px; color: var(--ink-2); font-size: 15.5px; }
+    .mini-plate { margin-top: 28px; width: 100%; border-radius: 12px; }
+
+    .dl-table { margin-top: 28px; border-top: 1px solid var(--rule-strong); }
+    .dl-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 16px 0;
+      border-bottom: 1px solid var(--rule);
+      font-size: 15px;
+    }
+    .dl-item span { font-family: var(--font-mono); font-size: 12.5px; color: var(--ink-3); }
+    .dl-item:hover strong { color: var(--accent); }
+
+    @media (max-width: 920px) {
+      .hero-grid, .tri-grid, .ledger-row, .exhibit-grid, .bottom-grid { grid-template-columns: 1fr; }
+      .hero-left { padding: 56px 0 36px; border-right: 0; border-bottom: 1px solid var(--rule); }
+      .hero-right { padding: 32px 0; min-height: 0; }
+      .tri-cell { padding: 24px 0; border-left: 0 !important; border-top: 1px solid var(--rule); }
+      .tri-cell:first-child { border-top: 0; }
+      .bottom-col:first-child { padding-right: 0; border-right: 0; border-bottom: 1px solid var(--rule); }
+      .bottom-col:last-child { padding-left: 0; }
+      .nav-links { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="paper-grain" aria-hidden="true"></div>
+
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <symbol id="mark" viewBox="8 8 104 104"><g fill="currentColor" stroke="none"><rect x="37.63" y="17.23" width="3.94" height="3.94" rx="0.87" fill-opacity="0.85"/><rect x="43.85" y="30.25" width="5.10" height="5.10" rx="1.12"/><rect x="84.65" y="30.25" width="5.10" height="5.10" rx="1.12"/><rect x="90.94" y="29.74" width="6.12" height="6.12" rx="1.35"/><rect x="43.85" y="37.05" width="5.10" height="5.10" rx="1.12"/><rect x="50.65" y="37.05" width="5.10" height="5.10" rx="1.12"/><rect x="57.45" y="37.05" width="5.10" height="5.10" rx="1.12"/><rect x="63.74" y="36.54" width="6.12" height="6.12" rx="1.35"/><rect x="70.54" y="36.54" width="6.12" height="6.12" rx="1.35"/><rect x="77.34" y="36.54" width="6.12" height="6.12" rx="1.35"/><rect x="84.14" y="36.54" width="6.12" height="6.12" rx="1.35"/><rect x="90.94" y="36.54" width="6.12" height="6.12" rx="1.35"/><rect x="43.34" y="43.34" width="6.12" height="6.12" rx="1.35"/><rect x="50.14" y="43.34" width="6.12" height="6.12" rx="1.35"/><rect x="56.94" y="43.34" width="6.12" height="6.12" rx="1.35"/><rect x="63.74" y="43.34" width="6.12" height="6.12" rx="1.35"/><rect x="70.54" y="43.34" width="6.12" height="6.12" rx="1.35"/><rect x="90.94" y="43.34" width="6.12" height="6.12" rx="1.35"/><rect x="36.54" y="50.14" width="6.12" height="6.12" rx="1.35"/><rect x="43.34" y="50.14" width="6.12" height="6.12" rx="1.35"/><rect x="70.54" y="50.14" width="6.12" height="6.12" rx="1.35"/><rect x="90.94" y="50.14" width="6.12" height="6.12" rx="1.35"/><rect x="29.74" y="56.94" width="6.12" height="6.12" rx="1.35"/><rect x="43.34" y="56.94" width="6.12" height="6.12" rx="1.35"/><rect x="70.54" y="56.94" width="6.12" height="6.12" rx="1.35"/><rect x="84.14" y="56.94" width="6.12" height="6.12" rx="1.35"/><rect x="22.94" y="63.74" width="6.12" height="6.12" rx="1.35"/><rect x="43.34" y="63.74" width="6.12" height="6.12" rx="1.35"/><rect x="70.54" y="63.74" width="6.12" height="6.12" rx="1.35"/><rect x="77.34" y="63.74" width="6.12" height="6.12" rx="1.35"/><rect x="16.14" y="70.54" width="6.12" height="6.12" rx="1.35"/><rect x="22.94" y="70.54" width="6.12" height="6.12" rx="1.35"/><rect x="43.34" y="70.54" width="6.12" height="6.12" rx="1.35"/><rect x="50.14" y="70.54" width="6.12" height="6.12" rx="1.35"/><rect x="56.94" y="70.54" width="6.12" height="6.12" rx="1.35"/><rect x="63.74" y="70.54" width="6.12" height="6.12" rx="1.35"/><rect x="70.54" y="70.54" width="6.12" height="6.12" rx="1.35"/><rect x="16.14" y="77.34" width="6.12" height="6.12" rx="1.35"/><rect x="22.94" y="77.34" width="6.12" height="6.12" rx="1.35"/><rect x="29.74" y="77.34" width="6.12" height="6.12" rx="1.35"/><rect x="36.54" y="77.34" width="6.12" height="6.12" rx="1.35"/><rect x="43.34" y="77.34" width="6.12" height="6.12" rx="1.35"/><rect x="50.14" y="77.34" width="6.12" height="6.12" rx="1.35"/><rect x="22.94" y="84.14" width="6.12" height="6.12" rx="1.35"/></g></symbol>
+  </svg>
+
+  <header class="nav">
+    <div class="wrap nav-inner">
+      <a class="brand" href="#top"><svg class="brand-mark"><use href="#mark" /></svg> Agente <span>Code</span></a>
+      <nav class="nav-links">
+        <a href="#exhibit">Interfaces</a>
+        <a href="#ledger">Capabilities</a>
+        <a href="#install">Packages</a>
+      </nav>
+      <div class="nav-actions">
+        <button class="icon-btn" id="theme-toggle" type="button" aria-label="Toggle theme">
+          <svg class="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2m-7.07-2.93 1.41-1.41M17.66 6.34l1.41-1.41M2 12h2m16 0h2M4.93 4.93l1.41 1.41m11.32 11.32 1.41 1.41"/></svg>
+          <svg class="i-moon" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
+        </button>
+        <a class="btn btn-solid btn-sm" href="#install">Download</a>
+      </div>
+    </div>
+  </header>
+
+  <main id="top" class="folio-frame">
+    <div class="index-strip">
+      <div class="wrap">
+        <span>Folio 03 &middot; Agente Code Runtime</span>
+        <span>Rust Core &middot; Local GGUF &middot; MIT</span>
+      </div>
+    </div>
+
+    <section class="wrap hero-grid">
+      <div class="hero-left">
+        <p class="plate-caption" style="margin-bottom:20px"><span class="dot"></span>Instrument Monograph</p>
+        <h1>Precision tools for <em>autonomous</em> code.</h1>
+        <p class="lede">An open-source Rust coding agent for desktop, terminal, and server. Review every diff, run local models via llama.cpp, and branch subagents in isolated git worktrees.</p>
+        <div class="actions">
+          <a class="btn btn-solid btn-lg" href="#install">Download Desktop</a>
+          <a class="btn btn-outline btn-lg" href="#install">Install CLI</a>
+        </div>
+      </div>
+      <div class="hero-right">
+        <img class="plate-art hero-right-plate" src="../assets/plates/plate-instruments.jpg" alt="Engraved scientific instruments" data-parallax="0.08" data-drift="8" />
+        <div class="plate-footer">
+          <span>Plate I &mdash; Dividers &amp; Astrolabe</span>
+          <span>1:1 Scale Study</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="tri-strip">
+      <div class="wrap tri-grid">
+        <div class="tri-cell">
+          <div class="tri-num">01 / DESKTOP</div>
+          <h3>Home, Code &amp; Design</h3>
+          <p>Generate DOCX, PPTX, and XLSX artifacts, inspect diffs, and run GGUF models locally.</p>
+        </div>
+        <div class="tri-cell">
+          <div class="tri-num">02 / TERMINAL</div>
+          <h3>Keyboard-first TUI</h3>
+          <p>Plan, Build, and Auto modes with session tabs, inline diffs, and ACP stdio support.</p>
+        </div>
+        <div class="tri-cell">
+          <div class="tri-num">03 / SERVER</div>
+          <h3>Persistent Daemon</h3>
+          <p>Run <code>agente serve</code> or Docker and attach from any terminal or desktop client.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="exhibit-band" id="exhibit">
+      <div class="wrap">
+        <div class="segmented" role="tablist" aria-label="Surface preview">
+          <span class="seg-thumb" aria-hidden="true"></span>
+          <button role="tab" id="c-code" aria-controls="cp-code" aria-selected="true">Desktop Code</button>
+          <button role="tab" id="c-home" aria-controls="cp-home" aria-selected="false" tabindex="-1">Desktop Home</button>
+          <button role="tab" id="c-tui" aria-controls="cp-tui" aria-selected="false" tabindex="-1">Terminal UI</button>
+        </div>
+
+        <div class="stage">
+          <div class="panel is-active exhibit-grid" id="cp-code">
+            <figure class="window"><img src="../assets/desktop-code.webp" alt="Desktop Code" /></figure>
+            <div class="exhibit-meta-card">
+              <p class="plate-caption" style="margin-bottom:12px"><span class="dot"></span>Surface 01</p>
+              <h3>Inline edit approvals</h3>
+              <p>Every file modification and shell command pauses cleanly above the composer. Review the exact diff, press Enter to approve or Esc to deny.</p>
+            </div>
+          </div>
+          <div class="panel exhibit-grid" id="cp-home">
+            <figure class="window"><img src="../assets/desktop-home.webp" alt="Desktop Home" loading="lazy" /></figure>
+            <div class="exhibit-meta-card">
+              <p class="plate-caption" style="margin-bottom:12px"><span class="dot"></span>Surface 02</p>
+              <h3>Document artifacts</h3>
+              <p>Draft reports, decks, and spreadsheets as downloadable DOCX, PPTX, and XLSX cards right inside the workspace.</p>
+            </div>
+          </div>
+          <div class="panel exhibit-grid" id="cp-tui">
+            <figure class="window"><img src="../assets/terminal-welcome.webp" alt="Terminal UI" loading="lazy" /></figure>
+            <div class="exhibit-meta-card">
+              <p class="plate-caption" style="margin-bottom:12px"><span class="dot"></span>Surface 03</p>
+              <h3>Minimal Rust TUI</h3>
+              <p>Fast startup, manual word-wrapping, eased scrolling, and multiple concurrent session tabs in your terminal.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="ledger-section" id="ledger">
+      <img class="plate-art ledger-bg" src="../assets/plates/plate-orbital.jpg" alt="" data-parallax="0.07" data-drift="6" />
+      <div class="wrap">
+        <div class="ledger-head" data-reveal>
+          <div>
+            <p class="plate-caption" style="margin-bottom:12px"><span class="dot"></span>Index of Capabilities</p>
+            <h2>Built for transparency at every step.</h2>
+          </div>
+          <span class="plate-caption"><em>Four core guarantees</em></span>
+        </div>
+
+        <div class="ledger-list">
+          <div class="ledger-row" data-reveal>
+            <span class="ledger-idx">FIG. 01</span>
+            <h3>Graded edit matching</h3>
+            <p>Edits match deterministically without guessing; ambiguous hunks refuse cleanly and surface exact candidates.</p>
+          </div>
+          <div class="ledger-row" data-reveal>
+            <span class="ledger-idx">FIG. 02</span>
+            <h3>Parallel worktree subagents</h3>
+            <p>Read-only tools run in parallel; writing subagents run in isolated git worktrees with independent cost and stop controls.</p>
+          </div>
+          <div class="ledger-row" data-reveal>
+            <span class="ledger-idx">FIG. 03</span>
+            <h3>Revert &amp; fork history</h3>
+            <p>Rewind file edits back to any sent prompt with redo support, or fork an earlier turn into a fresh session.</p>
+          </div>
+          <div class="ledger-row" data-reveal>
+            <span class="ledger-idx">FIG. 04</span>
+            <h3>Unified context budget</h3>
+            <p>One arithmetic drives the token meter, compaction trigger, and provider cache reporting across all surfaces.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="wrap bottom-grid" id="install">
+      <div class="bottom-col" data-reveal>
+        <p class="plate-caption"><span class="dot"></span>Local Strata</p>
+        <h2>Cloud APIs or local GGUF.</h2>
+        <p>Connect OpenRouter, DeepSeek, MiniMax, Z.AI, Ollama, LM Studio, or run GGUF models directly with llama.cpp. Everything persists under <code>~/.agente</code>.</p>
+        <img class="plate-art mini-plate" src="../assets/plates/plate-geology.jpg" alt="Geological strata engraving" />
+      </div>
+      <div class="bottom-col" data-reveal style="--d:80ms">
+        <p class="plate-caption"><span class="dot"></span>Packages &amp; Binaries</p>
+        <h2>Install Agente Code</h2>
+        <p>Download prebuilt installers or drop the standalone Rust binary into your PATH.</p>
+        <div class="dl-table">
+          <a class="dl-item" href="#"><strong>Windows x64 Desktop</strong><span>.exe installer &rarr;</span></a>
+          <a class="dl-item" href="#"><strong>Linux x64 Desktop</strong><span>AppImage &rarr;</span></a>
+          <a class="dl-item" href="#"><strong>Debian / Ubuntu</strong><span>amd64 .deb &rarr;</span></a>
+          <a class="dl-item" href="#"><strong>Standalone CLI</strong><span>Linux &middot; Windows &rarr;</span></a>
+          <a class="dl-item" href="#"><strong>Docker Server</strong><span>ghcr.io/fabricio3g/agente-server &rarr;</span></a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="wrap footer-inner">
+      <span class="brand"><svg class="brand-mark"><use href="#mark" /></svg> Agente Code</span>
+      <nav>
+        <a href="index.html">All Variants</a>
+        <a href="https://github.com/fabricio3g/AgenteCode">GitHub</a>
+      </nav>
+    </div>
+  </footer>
+
+  <div class="mockup-dock" aria-label="Mockup switcher">
+    <a href="index.html">Gallery</a>
+    <span class="sep"></span>
+    <a href="variant-a.html">A &middot; Atlas</a>
+    <a href="variant-b.html">B &middot; Field Guide</a>
+    <a class="active" href="variant-c.html">C &middot; Folio Grid</a>
+  </div>
+
+  <script type="module">
+    import { bootFolio } from "./folio-fx.js";
+    bootFolio({ defaultTheme: "light" });
+  </script>
+</body>
+</html>
