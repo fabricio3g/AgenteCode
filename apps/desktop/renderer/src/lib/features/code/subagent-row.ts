@@ -128,6 +128,12 @@ export function sessionChildren(messages: ReadonlyArray<{ metadata?: { codeChild
   return [...byId.values()].reverse();
 }
 
+/** Keep history in the transcript and any known active children at the composer. */
+export function composerChildren(run: { running: boolean; children: CodeChild[] } | null): CodeChild[] {
+  if (!run) return [];
+  return run.running ? run.children : run.children.filter((child) => child.status === 'running');
+}
+
 export interface SubagentDisplay {
   failed: boolean;
   running: boolean;

@@ -30,6 +30,7 @@
   import MediaAttachmentCard from './MediaAttachmentCard.svelte';
   import CodeWorkBlock from './CodeWorkBlock.svelte';
   import SubagentTally from './SubagentTally.svelte';
+  import { composerChildren } from './subagent-row';
   import { subagentFocus } from './subagent-focus.svelte';
   import CodeLiveStatus from './CodeLiveStatus.svelte';
   import CodeErrorNotice from './CodeErrorNotice.svelte';
@@ -53,7 +54,7 @@
   import { restoreCodeEdits } from './code-edits';
   import { appStore } from '$lib/stores/app.svelte';
 
-  let { messages, chatId }: { messages: ChatMessage[]; chatId: string } = $props();
+  let { messages, chatId, liveSubagentDock = false }: { messages: ChatMessage[]; chatId: string; liveSubagentDock?: boolean } = $props();
 
   let viewport = $state<HTMLDivElement | undefined>(undefined);
   const follow = new ConversationFollow();
@@ -66,6 +67,7 @@
 
   /** Live run state for retry + todo visibility while streaming. */
   const run = $derived(codeStore.runFor(chatId));
+  const dockedChildren = $derived(new Set(liveSubagentDock ? composerChildren(run).map((child) => child.id) : []));
   const plan = $derived(pendingPlan(messages));
 
   /* Undo reverts the latest edits, so only the last reply that edited offers it. */
@@ -207,8 +209,7 @@
 
   function entriesFor(message: ChatMessage) {
     const live = message.status === 'streaming' && run?.assistantMessageId === message.id ? run.timeline : undefined;
-    // Subagents have one place, the pill over the composer and its pane: their
-    // spawn steps are not drawn here, so the step count leaves them out too.
+    // The turn tally opens the subagent pane, so omit duplicate spawn steps.
     return withoutCodeErrorText(orderedEntries(message, live), diagnosticFor(message)).filter((entry) => entry.step?.toolName !== 'task');
   }
 
@@ -278,6 +279,7 @@
         {@const live = run?.assistantMessageId === message.id}
         {@const entries = entriesFor(message)}
         {@const children = live ? run?.children ?? [] : message.metadata?.codeChildren ?? []}
+        {@const transcriptChildren = children.filter((child) => !dockedChildren.has(child.id))}
         {@const diagnostics = live ? run?.diagnostics ?? [] : message.metadata?.codeDiagnostics ?? []}
         {@const blocks = replyBlocks(entries)}
         <div class="group flex min-w-0 flex-col gap-[var(--thread-gap)]">
@@ -307,10 +309,10 @@
           {/if}
 
           <!-- The turn's subagents in one line; the pane holds the detail. -->
-          {#if children.length}
+          {#if transcriptChildren.length}
             <Button variant="plain" type="button" class="subagent-line ui-local-3e9cc53a" data-subagent-line={message.id}
-              onclick={() => subagentFocus.open(chatId, (children.find((child) => child.status === 'running') ?? children[0]).id)}>
-              <SubagentTally {children} stopping={live && !!run?.stopping} />
+              onclick={() => subagentFocus.open(chatId, (transcriptChildren.find((child) => child.status === 'running') ?? transcriptChildren[0]).id)}>
+              <SubagentTally children={transcriptChildren} stopping={live && !!run?.stopping} />
             </Button>
           {/if}
           {#if diagnostics.length}
@@ -325,7 +327,8 @@
 
           {#if message.status === 'error'}
             {@const reason = message.metadata?.errorMessage || message.content || copy.tool.failed}
-            <CodeErrorNotice detail={reason} />
+            {@const current = live && run?.dismissedErrorMessageId !== message.id}
+            <CodeErrorNotice detail={reason} compact={!current} onDismiss={() => { if (run) run.dismissedErrorMessageId = message.id; }} />
           {:else if message.done && !streaming}
             {@const reason = message.metadata?.codeStopReason}
             {@const elapsed = elapsedLabel(message)}

@@ -41,6 +41,7 @@ interface AgenteRun extends CodeRunState {
   running: boolean;
   /** Stable transcript target; queued user inputs can follow this message. */
   assistantMessageId?: string;
+  dismissedErrorMessageId?: string;
   checkpoints: AgenteCheckpointSummary[];
   /**
    * Input handed to the engine but not yet consumed by a turn (steers and

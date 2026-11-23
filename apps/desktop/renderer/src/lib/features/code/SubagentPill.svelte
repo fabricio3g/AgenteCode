@@ -1,9 +1,8 @@
 <svelte:options runes={true} />
 
 <!--
-  The conversation's subagents, in one line over the composer: how many there
-  are and how many are still working. This is their one place — the transcript
-  draws no subagent rows. Hovering or focusing the pill lifts a plain list
+  The active run's subagents, in one line over the composer. Settled runs
+  are available from the transcript. Hovering or focusing the pill lifts a list
   above it (the transcript never moves): one line per child, a status dot, its
   task, then what it is doing and for how long. A row opens the child in the
   Subagent pane.
@@ -14,6 +13,7 @@
 
 <script lang="ts">
   import Button from '$lib/components/ui/Button.svelte';
+  import { onDestroy, tick } from 'svelte';
   import { t } from 'svelte-i18n';
   import { ChevronUp } from '$lib/icons';
   import type { ChatSession } from '$lib/types/chat';
@@ -21,13 +21,14 @@
   import { copy } from '$lib/copy';
   import { formatToolDuration, titleCaseToolName } from '$lib/utils/tool-ui';
   import { codeStore } from './code.svelte';
-  import { childActivity, childElapsedMs, sessionChildren } from './subagent-row';
+  import { childActivity, childElapsedMs, composerChildren } from './subagent-row';
   import { subagentFocus } from './subagent-focus.svelte';
+  import { codeErrorSummaryKey } from './code-error';
 
   let { chat }: { chat: ChatSession } = $props();
 
   const run = $derived(codeStore.runFor(chat.id));
-  const children = $derived(sessionChildren(chat.messages, run?.children ?? []));
+  const children = $derived(composerChildren(run));
   const working = $derived(children.filter((child) => child.status === 'running').length);
 
   let hovered = $state(false);
@@ -44,35 +45,55 @@
     const timer = setInterval(() => (now = Date.now()), 1000);
     return () => clearInterval(timer);
   });
+  $effect.pre(() => {
+    const focused = document.activeElement;
+    const hadFocus = root?.contains(focused);
+    if (!children.length) {
+      if (hadFocus) window.dispatchEvent(new Event('focus-composer'));
+      resetList();
+    } else if (hadFocus) {
+      const childId = focused?.getAttribute('data-subagent-pick');
+      if (childId && !children.some((child) => child.id === childId)) summary?.focus();
+    }
+  });
+  onDestroy(() => clearTimeout(leaveTimer));
 
   function enter() { clearTimeout(leaveTimer); hovered = true; }
   // A short grace, so the pointer can cross the gap between pill and list.
   function leave() { leaveTimer = setTimeout(() => (hovered = false), 160); }
 
-  function pick(id: string) {
-    subagentFocus.open(chat.id, id);
+  function resetList() {
+    clearTimeout(leaveTimer);
     pinned = false;
     hovered = false;
-    // Focus goes back to the pill for the keyboard, but the list folds.
-    summary?.focus();
     focusInside = false;
   }
 
-  function onKeydown(event: KeyboardEvent) {
-    const rows = [...(root?.querySelectorAll<HTMLButtonElement>('[data-subagent-pick]') ?? [])];
-    const index = rows.indexOf(document.activeElement as HTMLButtonElement);
+  function closeList() {
+    summary?.focus();
+    resetList();
+  }
+
+  function pick(id: string) {
+    subagentFocus.open(chat.id, id);
+    closeList();
+  }
+
+  async function onKeydown(event: KeyboardEvent) {
     if (event.key === 'Escape' && open) {
       event.preventDefault();
       event.stopPropagation();
-      pinned = false;
-      hovered = false;
-      summary?.focus();
+      closeList();
     } else if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
-      if (!rows.length) return;
       event.preventDefault();
       pinned = true;
-      // The list sits above the pill, so Up from the pill enters at the bottom.
-      const next = index < 0 ? rows.length - 1 : (index + (event.key === 'ArrowDown' ? 1 : -1) + rows.length) % rows.length;
+      await tick();
+      if (!open) return;
+      const rows = [...(root?.querySelectorAll<HTMLButtonElement>('[data-subagent-pick]') ?? [])];
+      if (!rows.length) return;
+      const index = rows.indexOf(document.activeElement as HTMLButtonElement);
+      const down = event.key === 'ArrowDown';
+      const next = index < 0 ? (down ? 0 : rows.length - 1) : (index + (down ? 1 : -1) + rows.length) % rows.length;
       rows[next]?.focus();
     }
   }
@@ -87,11 +108,13 @@
         <ul class="list" aria-label={$t('sessionHud.subagents')}>
           {#each children as child (child.id)}
             {@const elapsed = childElapsedMs(child, now)}
+            {@const failure = child.status === 'error' && (child.summary || child.text)}
+            {@const task = child.description || titleCaseToolName(child.kind)}
             <li>
               <Button variant="plain" type="button" class="row {subagentFocus.get(chat.id) === child.id ? 'is-active' : ''} ui-local-034c360f" data-subagent-pick={child.id}
-                title={`${titleCaseToolName(child.kind)} · ${child.description}`} onclick={() => pick(child.id)}>
+                title={failure ? `${task} · ${$t(codeErrorSummaryKey(failure))}` : task} onclick={() => pick(child.id)}>
                 <span class="dot" data-state={child.status} aria-hidden="true"></span>
-                <span class="title">{child.description || titleCaseToolName(child.kind)}</span>
+                <span class="title">{task}</span>
                 <span class="aside" class:text-error={child.status === 'error'}>
                   {#if child.status === 'running'}<span class="ui-shimmer-text">{childActivity(child) ?? copy.status.working}</span>
                   {:else if child.status === 'error'}{copy.tool.failed}{/if}
@@ -103,7 +126,7 @@
         </ul>
       {/if}
       <Button variant="plain" type="button" class="pill ui-local-034c360f" bind:ref={summary} aria-expanded={open} data-subagent-pill
-        onclick={() => (pinned = !pinned)}>
+        onclick={() => { if (pinned) closeList(); else pinned = true; }}>
         <SubagentTally {children} stopping={!!run?.stopping} />
         <ChevronUp class="chevron size-3.5" />
       </Button>

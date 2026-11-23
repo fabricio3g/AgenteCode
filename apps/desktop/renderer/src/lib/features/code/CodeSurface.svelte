@@ -203,7 +203,7 @@
           {/if}
         {:else}
           <div class="ui-top-fade flex min-h-0 min-w-0 flex-1 flex-col">
-            {#key chat.id}<CodeTranscript messages={chat.messages} chatId={chat.id} />{/key}
+            {#key chat.id}<CodeTranscript messages={chat.messages} chatId={chat.id} liveSubagentDock />{/key}
           </div>
         {/if}
 

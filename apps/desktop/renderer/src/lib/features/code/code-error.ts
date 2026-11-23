@@ -33,6 +33,11 @@ export function classifyCodeError(detail: string): CodeErrorKind {
   return 'failed';
 }
 
+export function codeErrorSummaryKey(detail: string): string {
+  const kind = classifyCodeError(detail);
+  return kind === 'localModelNotRunning' ? 'code.runtimeLocalModelNotRunning' : `code.errors.${kind}`;
+}
+
 /** Older saved errors sometimes put the diagnostic in the answer as well. */
 export function withoutCodeErrorText<T extends { text?: string }>(entries: T[], errorDetail?: string): T[] {
   return entries.filter((entry) => !(errorDetail && entry.text?.trim() === errorDetail.trim()));

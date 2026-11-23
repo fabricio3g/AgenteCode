@@ -131,7 +131,9 @@
       {#each facts as fact (fact.label)}<div><dt>{fact.label}</dt><dd>{fact.value}</dd></div>{/each}
     </dl>
 
-    {#if failed && view.errorDetail}<CodeErrorNotice detail={view.errorDetail} />{/if}
+    {#if failed && view.errorDetail}
+      {#key child.id}<CodeErrorNotice detail={view.errorDetail} />{/key}
+    {/if}
 
     {#if running}{@render activity()}{@render answer()}{:else}{@render answer()}{@render activity()}{/if}
 
