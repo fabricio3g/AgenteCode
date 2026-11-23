@@ -27,6 +27,9 @@ export interface Starter {
    * way, which is why the blank is never punctuation inside `label`.
    */
   slot?: string;
+  /** Optional group key; when adjacent items change group in `links` mode, a
+   *  quiet hairline separates the groups so distinct modes don't blur together. */
+  group?: string;
   /** The key that picks this row, e.g. `⌘⌥2`. */
   key?: string;
 }

@@ -16,6 +16,7 @@ import {
   handleCreateLesson,
   handleCreateMap,
   handleCreateReport,
+  handleCreateScene3D,
   handleCreateWorkProduct
 } from '$lib/services/agent-tool-artifacts';
 import { lessonsEnabled } from '$lib/services/lesson-surface';
@@ -62,6 +63,7 @@ const executors = {
   create_html_card: (args, ctx, runtime) => invoke(handleCreateHtmlCard, args, ctx, runtime),
   create_widget: (args, ctx, runtime) => invoke(handleCreateWidget, args, ctx, runtime),
   create_lesson: (args, ctx, runtime) => invoke(handleCreateLesson, args, ctx, runtime),
+  create_scene_3d: (args, ctx, runtime) => invoke(handleCreateScene3D, args, ctx, runtime),
   create_chart: (args, ctx, runtime) => invoke(handleCreateChart, args, ctx, runtime),
   create_diagram: (args, ctx, runtime) => invoke(handleCreateDiagram, args, ctx, runtime),
   create_map: (args, ctx, runtime) => invoke(handleCreateMap, args, ctx, runtime),

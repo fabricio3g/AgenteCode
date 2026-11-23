@@ -1,27 +1,29 @@
 <svelte:options runes={true} />
 
 <!--
-  An in-app folder browser for picking a project, styled like a native file
-  dialog: places on the left, a breadcrumb and an up button on top, the
-  folders below (project roots first, marked). Click selects, double-click or
-  → goes in, Enter opens the selection (or the current folder), Backspace goes
-  up. "Browse…" falls back to the system dialog, and is all there is when the
-  listing is unavailable (the browser preview).
+  Minimal in-app project folder picker: one flat surface, no inner boxes.
+  Top line: Up + bare breadcrumb path on the left, quick places on the right.
+  Middle: flat folder rows with bare icons (project roots in accent).
+  Bottom: Browse… on the left, Open <name> on the right.
 -->
 
 <script lang="ts">
-  import UiToolbar from '$lib/components/ui/Toolbar.svelte';
-
   import UiIconButton from '$lib/components/ui/IconButton.svelte';
-  import { cn as uiClass } from '$lib/utils/cn';
-
   import { onMount, tick } from 'svelte';
   import { t } from 'svelte-i18n';
-  import { ArrowUp, ChevronRight, Folder, FolderGit2, House, LoaderCircle } from '$lib/icons';
+  import { ArrowUp, ChevronRight, Folder, FolderGit2, FolderOpen, LoaderCircle } from '$lib/icons';
   import { Button } from '$lib/components/ui';
   import { browseFolders, type FolderListing } from '$lib/services/files';
 
-  let { onopen, onsystem, embedded = false }: { onopen: (path: string) => void; onsystem: () => void; /** Inside a dialog: no card chrome of its own. */ embedded?: boolean } = $props();
+  let {
+    onopen,
+    onsystem,
+    embedded = false
+  }: {
+    onopen: (path: string) => void;
+    onsystem: () => void;
+    embedded?: boolean;
+  } = $props();
 
   let listing = $state<FolderListing | null>(null);
   let loading = $state(true);
@@ -46,7 +48,6 @@
 
   onMount(() => void go());
 
-  /** The path as clickable segments, from the root down. */
   const crumbs = $derived.by(() => {
     if (!listing) return [];
     const { path, sep } = listing;
@@ -84,143 +85,335 @@
 </script>
 
 {#if failed && !listing}
-  <div class="fallback"><Button onclick={onsystem}>{$t('code.browseSystem')}</Button></div>
+  <div class="fallback">
+    <Button onclick={onsystem}>
+      <FolderOpen class="size-4" />
+      {$t('code.browseSystem')}
+    </Button>
+  </div>
 {:else}
   <div class="browser" class:is-embedded={embedded} role="application" aria-label={$t('code.addProject')}>
-    <nav class="places" aria-label={$t('code.browsePlaces')}>
-      {#each listing?.places ?? [] as place (place.path)}
-        <Button variant="plain" type="button" class={uiClass("place", "ui-local-2ec0e574", {"is-current": listing?.path === place.path})}  onclick={() => void go(place.path)}>
-          {#if place.path === listing?.home}<House />{:else}<Folder />{/if}
-          <span>{place.path === listing?.home ? place.name : place.name}</span>
-        </Button>
-      {/each}
-    </nav>
+    <div class="bar">
+      <UiIconButton
+        label={$t('code.browseUp')}
+        size="xs"
+        type="button"
+        title={$t('code.browseUp')}
+        disabled={!listing?.parent}
+        onclick={() => listing?.parent && void go(listing.parent)}
+      >
+        <ArrowUp />
+      </UiIconButton>
 
-    <div class="main">
-      <UiToolbar wrap={false} class={uiClass("toolbar", "ui-local-2ec0e574")}>
-        <UiIconButton label={$t('code.browseUp')} size="xs" type="button" class={uiClass(" ", "ui-local-2ec0e574")}  title={$t('code.browseUp')} disabled={!listing?.parent} onclick={() => listing?.parent && void go(listing.parent)}><ArrowUp /></UiIconButton>
-        <div class="crumbs">
-          {#each crumbs as crumb, index (crumb.path)}
-            {#if index > 0}<ChevronRight class="crumb-sep" />{/if}
-            <Button variant="plain" type="button" class={uiClass("crumb", "ui-local-2ec0e574", {"is-last": index === crumbs.length - 1})}  onclick={() => void go(crumb.path)}>{crumb.name}</Button>
-          {/each}
-        </div>
-        {#if loading}<LoaderCircle class="spin" />{/if}
-      </UiToolbar>
+      <div class="crumbs" title={listing?.path}>
+        {#each crumbs as crumb, index (crumb.path)}
+          {#if index > 0}<span class="crumb-sep" aria-hidden="true">/</span>{/if}
+          <button
+            type="button"
+            class="crumb"
+            class:is-last={index === crumbs.length - 1}
+            onclick={() => void go(crumb.path)}
+          >
+            {crumb.name}
+          </button>
+        {/each}
+      </div>
 
-      <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-      <div class="list" bind:this={listEl} role="listbox" tabindex="0" aria-label={listing?.path} {onkeydown}>
-        {#if failed}
-          <p class="empty">{$t('code.browseUnreadable')}</p>
-        {:else if listing && !listing.folders.length}
-          <p class="empty">{$t('code.browseEmpty')}</p>
-        {:else}
-          {#each listing?.folders ?? [] as folder, index (folder.path)}
-            <Button variant="plain"
+      {#if loading}
+        <LoaderCircle class="spin" />
+      {:else if listing?.places.length}
+        <nav class="places" aria-label={$t('code.browsePlaces')}>
+          {#each listing.places as place (place.path)}
+            <button
               type="button"
-              id="fb-{index}"
-              class={uiClass("row", "ui-local-2ec0e574", {"is-selected": selected === folder.path})}
-              
-              role="option"
-              aria-selected={selected === folder.path}
-              tabindex={-1}
-              onclick={() => (selected = folder.path)}
-              ondblclick={() => void go(folder.path)}
+              class="place"
+              class:is-current={listing.path === place.path}
+              onclick={() => void go(place.path)}
             >
-              {#if folder.isProject}<FolderGit2 class="row-icon is-project" />{:else}<Folder class="row-icon" />{/if}
-              <span class="row-name">{folder.name}</span>
-              {#if folder.isProject}<span class="row-tag">{$t('code.browseProject')}</span>{/if}
-            </Button>
+              {place.name}
+            </button>
           {/each}
-        {/if}
-      </div>
+        </nav>
+      {/if}
+    </div>
 
-      <div class="footer" title={$t('code.browseHint')}>
-        <Button variant="ghost" size="sm" onclick={onsystem}>{$t('code.browseSystem')}</Button>
-        <Button size="sm" disabled={!target} onclick={() => target && onopen(target)}>
-          <span class="open-label">{$t('code.browseOpenNamed', { values: { name: targetName } })}</span>
-        </Button>
-      </div>
+    <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+    <div class="list" bind:this={listEl} role="listbox" tabindex="0" aria-label={listing?.path} {onkeydown}>
+      {#if failed}
+        <p class="empty">{$t('code.browseUnreadable')}</p>
+      {:else if listing && !listing.folders.length}
+        <p class="empty">{$t('code.browseEmpty')}</p>
+      {:else}
+        {#each listing?.folders ?? [] as folder, index (folder.path)}
+          {@const isSelected = selected === folder.path}
+          <div
+            id="fb-{index}"
+            class="row"
+            class:is-selected={isSelected}
+            role="option"
+            aria-selected={isSelected}
+            tabindex={-1}
+            onclick={() => (selected = folder.path)}
+            ondblclick={() => void go(folder.path)}
+            onkeydown={onkeydown}
+          >
+            {#if folder.isProject}
+              <FolderGit2 class="row-icon is-project" />
+            {:else}
+              <Folder class="row-icon" />
+            {/if}
+            <span class="row-name">{folder.name}</span>
+            {#if folder.isProject}
+              <span class="row-tag">{$t('code.browseProject')}</span>
+            {/if}
+            <button
+              type="button"
+              class="row-enter"
+              tabindex={-1}
+              aria-label={`Open ${folder.name}`}
+              onclick={(event) => {
+                event.stopPropagation();
+                void go(folder.path);
+              }}
+            >
+              <ChevronRight class="size-3.5" />
+            </button>
+          </div>
+        {/each}
+      {/if}
+    </div>
+
+    <div class="footer">
+      <Button variant="ghost" size="sm" onclick={onsystem}>{$t('code.browseSystem')}</Button>
+      <Button size="sm" disabled={!target} onclick={() => target && onopen(target)}>
+        <span class="open-label">{$t('code.browseOpenNamed', { values: { name: targetName } })}</span>
+      </Button>
     </div>
   </div>
 {/if}
 
 <style>
   .browser {
-    display: grid;
-    grid-template-columns: 11rem minmax(0, 1fr);
-    width: min(46rem, 100%);
-    height: min(26rem, 60vh);
+    display: flex;
+    flex-direction: column;
+    width: min(40rem, 100%);
+    height: min(26rem, 62vh);
     overflow: hidden;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-lg, 0.75rem);
-    background: var(--card);
-    box-shadow: var(--float-shadow);
     text-align: left;
   }
 
-  .browser.is-embedded { width: 100%; height: min(28rem, 62vh); border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+  .browser.is-embedded {
+    width: 100%;
+    height: min(27rem, 62vh);
+  }
+
+  .bar {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.5rem 1rem 0.5rem 0.75rem;
+  }
+
+  .crumbs {
+    display: flex;
+    min-width: 0;
+    flex: 1;
+    align-items: center;
+    gap: 0.125rem;
+    overflow-x: auto;
+    scrollbar-width: none;
+    white-space: nowrap;
+  }
+
+  .crumb-sep {
+    color: var(--text-tertiary);
+    opacity: 0.5;
+    font-size: var(--text-xs);
+    user-select: none;
+  }
+
+  .crumb {
+    flex-shrink: 0;
+    padding: 0.125rem 0.3rem;
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--muted-foreground);
+    font-size: var(--text-sm);
+    cursor: pointer;
+    transition: color var(--motion-instant) var(--motion-ease),
+      background-color var(--motion-instant) var(--motion-ease);
+  }
+
+  .crumb:hover {
+    color: var(--foreground);
+    background: var(--float-row-hover);
+  }
+
+  .crumb.is-last {
+    color: var(--foreground);
+    font-weight: 500;
+  }
 
   .places {
     display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    flex-shrink: 0;
+  }
+
+  .place {
+    padding: 0.125rem 0.4rem;
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--text-tertiary);
+    font-size: var(--text-xs);
+    cursor: pointer;
+    transition: color var(--motion-instant) var(--motion-ease);
+  }
+
+  .place:hover {
+    color: var(--foreground);
+  }
+
+  .place.is-current {
+    color: var(--foreground);
+    font-weight: 500;
+  }
+
+  .bar :global(.spin) {
+    width: 0.875rem;
+    height: 0.875rem;
+    color: var(--muted-foreground);
+    animation: spin 0.9s linear infinite;
+  }
+
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+
+  .list {
+    display: flex;
+    flex: 1;
+    min-height: 0;
     flex-direction: column;
     gap: 1px;
     overflow-y: auto;
-    padding: 0.625rem 0.5rem;
-    border-right: 1px solid var(--border-subtle);
-    background: color-mix(in srgb, var(--foreground) 2.5%, transparent);
+    padding: 0.25rem 0.75rem 0.5rem;
+    outline: none;
   }
-  :global(.place.ui-local-2ec0e574) {
-    display: flex; align-items: center; gap: 0.5rem; min-width: 0;
-    padding: 0.3125rem 0.5rem; border-radius: var(--float-row-radius);
-    color: var(--text-secondary); font-size: var(--text-sm); text-align: left;
+
+  .empty {
+    padding: 1.5rem 0.5rem;
+    color: var(--muted-foreground);
+    font-size: var(--text-sm);
   }
-  :global(.place.ui-local-2ec0e574) :global(svg) { width: 0.875rem; height: 0.875rem; flex-shrink: 0; color: var(--muted-foreground); }
-  :global(.place.ui-local-2ec0e574) span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  :global(.place:hover.ui-local-2ec0e574) { background: var(--float-row-hover); color: var(--foreground); }
-  :global(.place.is-current.ui-local-2ec0e574) { background: var(--float-row-selected); color: var(--foreground); }
 
-  .main { display: flex; min-width: 0; min-height: 0; flex-direction: column; }
-
-  :global(.toolbar.ui-local-2ec0e574) {
-    display: flex; align-items: center; gap: 0.5rem;
-    padding: 0.5rem 0.625rem; border-bottom: 1px solid var(--border-subtle);
+  .row {
+    display: flex;
+    width: 100%;
+    align-items: center;
+    gap: 0.625rem;
+    height: 2.125rem;
+    padding: 0 0.5rem;
+    border-radius: var(--float-row-radius);
+    color: var(--foreground);
+    font-size: var(--text-sm);
+    cursor: pointer;
+    user-select: none;
+    transition: background-color var(--motion-instant) var(--motion-ease);
   }
-  .crumbs { display: flex; min-width: 0; flex: 1; align-items: center; gap: 0.125rem; overflow: hidden; white-space: nowrap; }
-  .crumbs :global(.crumb-sep) { width: 0.75rem; height: 0.75rem; flex-shrink: 0; color: var(--text-muted); }
-  :global(.crumb.ui-local-2ec0e574) { flex-shrink: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; padding: 0.125rem 0.3125rem; border-radius: 0.375rem; color: var(--muted-foreground); font-size: var(--text-sm); }
-  :global(.crumb:hover.ui-local-2ec0e574) { background: var(--float-row-hover); color: var(--foreground); }
-  :global(.crumb.is-last.ui-local-2ec0e574) { flex-shrink: 0; color: var(--foreground); font-weight: 500; }
-  :global(.toolbar.ui-local-2ec0e574) :global(.spin) { width: 0.875rem; height: 0.875rem; color: var(--muted-foreground); animation: spin 0.9s linear infinite; }
-  @keyframes spin { to { transform: rotate(360deg); } }
 
-  .list { flex: 1; min-height: 0; overflow-y: auto; padding: 0.375rem; outline: none; }
-  .list:focus-visible { box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--brand-accent) 45%, transparent); }
-  .empty { padding: 0.75rem 0.625rem; color: var(--muted-foreground); font-size: var(--text-sm); }
-
-  :global(.row.ui-local-2ec0e574) {
-    display: flex; width: 100%; align-items: center; gap: 0.625rem;
-    padding: 0.375rem 0.625rem; border-radius: var(--float-row-radius);
-    color: var(--foreground); font-size: var(--text-sm); text-align: left; cursor: default;
+  .row:hover {
+    background: var(--float-row-hover);
   }
-  :global(.row:hover.ui-local-2ec0e574) { background: var(--float-row-hover); }
-  :global(.row.is-selected.ui-local-2ec0e574) { background: var(--float-row-selected); }
-  :global(.row.ui-local-2ec0e574) :global(.row-icon) { width: 1rem; height: 1rem; flex-shrink: 0; color: var(--muted-foreground); }
-  :global(.row.ui-local-2ec0e574) :global(.row-icon.is-project) { color: var(--brand-accent); }
-  .row-name { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .row-tag { flex-shrink: 0; padding: 0 0.375rem; border-radius: var(--radius-full); background: var(--muted); color: var(--muted-foreground); font-size: var(--text-xs); }
+
+  .row.is-selected {
+    background: var(--float-row-selected);
+  }
+
+  .row :global(.row-icon) {
+    width: 0.9375rem;
+    height: 0.9375rem;
+    flex-shrink: 0;
+    color: var(--muted-foreground);
+  }
+
+  .row :global(.row-icon.is-project) {
+    color: var(--brand-accent);
+  }
+
+  .row-name {
+    min-width: 0;
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .row-tag {
+    flex-shrink: 0;
+    color: var(--text-tertiary);
+    font-size: var(--text-xs);
+  }
+
+  .row-enter {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.375rem;
+    height: 1.375rem;
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--muted-foreground);
+    opacity: 0;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: opacity var(--motion-instant) var(--motion-ease),
+      color var(--motion-instant) var(--motion-ease);
+  }
+
+  .row:hover .row-enter,
+  .row.is-selected .row-enter {
+    opacity: 0.85;
+  }
+
+  .row-enter:hover {
+    color: var(--foreground);
+  }
 
   .footer {
-    display: flex; align-items: center; justify-content: flex-end; gap: 0.5rem;
-    padding: 0.5rem 0.625rem; border-top: 1px solid var(--border-subtle);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 0.625rem 1rem 0.75rem;
   }
-  .open-label { max-width: 12rem; overflow: hidden; text-overflow: ellipsis; }
 
-  .fallback { display: flex; justify-content: center; padding: 1.5rem; }
-
-  @media (max-width: 40rem) {
-    .browser { grid-template-columns: minmax(0, 1fr); }
-    .places { display: none; }
+  .open-label {
+    max-width: 14rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
-  @media (prefers-reduced-motion: reduce) { :global(.toolbar.ui-local-2ec0e574) :global(.spin) { animation: none; } }
+
+  .fallback {
+    display: flex;
+    justify-content: center;
+    padding: 1.5rem;
+  }
+
+  @media (max-width: 36rem) {
+    .places {
+      display: none;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .bar :global(.spin) {
+      animation: none;
+    }
+  }
 </style>

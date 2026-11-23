@@ -2363,6 +2363,8 @@
     "fontDefault": "Inter (Standard)",
     "fontHyperlegible": "Atkinson Hyperlegible",
     "fontSystem": "Systemschrift",
+    "fontSmoothing": "Schriftglättung",
+    "fontSmoothingDesc": "Glättet Text für schärfere Kanten. Deaktivieren für Subpixel-Rendering des Systems.",
     "relaxed": "Großzügige Abstände",
     "relaxedDesc": "Mehr Abstand zwischen Zeilen, Buchstaben und Wörtern in Nachrichten.",
     "underlineLinks": "Links unterstreichen",

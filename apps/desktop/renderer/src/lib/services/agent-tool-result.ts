@@ -7,6 +7,7 @@ const OPTIONAL_PRESENTATION_TOOLS = new Set([
   'create_info_card',
   'create_html_card',
   'create_widget',
+  'create_scene_3d',
   'create_chart',
   'create_dashboard',
   'create_diagram',
@@ -70,6 +71,7 @@ export function displayToolLabel(name: string): string {
     case 'create_html_card': return 'HTML card';
     case 'create_widget': return 'Widget';
     case 'create_lesson': return 'Lesson';
+    case 'create_scene_3d': return '3D scene';
     case 'create_chart': return 'Chart';
     case 'create_dashboard': return 'Dashboard';
     case 'get_weather': return 'Weather';

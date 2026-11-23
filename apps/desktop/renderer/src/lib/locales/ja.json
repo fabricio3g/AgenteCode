@@ -2363,6 +2363,8 @@
     "fontDefault": "Inter（標準）",
     "fontHyperlegible": "Atkinson Hyperlegible",
     "fontSystem": "システムフォント",
+    "fontSmoothing": "フォントスムージング",
+    "fontSmoothingDesc": "テキストをアンチエイリアスして輪郭をくっきりさせます。オフにするとOSのサブピクセル描画を使用します。",
     "relaxed": "ゆったりした間隔",
     "relaxedDesc": "メッセージの行間、文字間、単語間を広げます。",
     "underlineLinks": "リンクに下線を表示",

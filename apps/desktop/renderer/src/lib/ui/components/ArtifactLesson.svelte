@@ -1,8 +1,9 @@
 <svelte:options runes={true} />
 
 <!--
-  An interactive lesson: one block at a time, a rail of ticks, and a footer that
-  always has exactly one obvious next action.
+  An interactive lesson or practice set: one block at a time, a minimal
+  segmented track across the top, and a quiet footer with one obvious next
+  action.
 
   Nothing here counts, grades or rewards. There is no score, no streak, no
   percentage, no progress ring — the only thing kept between visits is which
@@ -26,10 +27,17 @@
   import { loadLessonProgress, lessonProgressKey, saveLessonProgress } from './lesson-progress';
   import LessonExplore from './LessonExplore.svelte';
   import LessonPredict from './LessonPredict.svelte';
+  import LessonGraphChallenge from './LessonGraphChallenge.svelte';
+  import LessonVisualChoice from './LessonVisualChoice.svelte';
+  import LessonHotspot from './LessonHotspot.svelte';
+  import LessonTimeline from './LessonTimeline.svelte';
+  import LessonAlgoStepper from './LessonAlgoStepper.svelte';
   import ChartBlock from '$lib/features/chat/ChartBlock.svelte';
   import ArtifactDiagram from './ArtifactDiagram.svelte';
   import ArtifactInfoCard from './ArtifactInfoCard.svelte';
+  import VizHeading from './VizHeading.svelte';
   import { renderMarkdown } from '$lib/utils/markdown';
+  import { ArrowLeft, ArrowRight, Check, ListChecks, X } from '$lib/icons';
   import Button from '$lib/components/ui/Button.svelte';
   import Input from '$lib/components/ui/Input.svelte';
 
@@ -101,17 +109,28 @@
     lessonState = reduceLesson(lessonState, { type: 'back' });
   }
 
+  function gotoBlock(index: number) {
+    if (readOnly || index === lessonState.index || index > lessonState.index) return;
+    lessonState = reduceLesson(lessonState, { type: 'goto', index, count: blocks.length });
+  }
+
   function askHelp() {
     edit('stuck', buildStuckMessage({ title: payload.title, index: lessonState.index, blocks, state: lessonState, block: current }));
   }
 
   function choiceClass(chosen: boolean, correct: boolean, answeredNow: boolean): string {
-    return ['choice', chosen ? 'is-chosen' : '', answeredNow && correct ? 'is-correct' : '', chosen && !correct ? 'is-wrong' : '']
+    return [
+      'choice',
+      chosen ? 'is-chosen' : '',
+      answeredNow && correct ? 'is-correct' : '',
+      chosen && !correct ? 'is-wrong' : '',
+      answeredNow && !chosen && !correct ? 'is-dim' : ''
+    ]
       .filter(Boolean)
       .join(' ');
   }
 
-  function chooseChoice(choice: LessonChoice, index: number) {
+  function chooseChoice(choice: LessonChoice) {
     if (answered || readOnly) return;
     answerWith(lessonState.index, choice.text, choice.correct === true);
   }
@@ -139,10 +158,10 @@
     if (event.key === 'ArrowRight' && !typing) { event.preventDefault(); next(); return; }
     if (event.key === 'ArrowLeft' && !typing) { event.preventDefault(); back(); return; }
     if (typing) return;
-    if (/^[1-5]$/.test(event.key) && current && (current.type === 'choice' || current.type === 'pretest')) {
+    if (/^[1-5]$/.test(event.key) && current && (current.type === 'choice' || current.type === 'visual_choice' || current.type === 'pretest')) {
       const choices = current.choices ?? [];
       const choice = choices[Number(event.key) - 1];
-      if (choice) { event.preventDefault(); chooseChoice(choice, Number(event.key) - 1); }
+      if (choice) { event.preventDefault(); chooseChoice(choice); }
     }
     if (event.key === 'Enter' && !typing) { event.preventDefault(); next(); }
   }
@@ -158,159 +177,236 @@
   <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
   <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
   <section
-    class="lesson"
+    class="viz-surface lesson"
     class:is-practice={isPractice}
     tabindex="0"
     role="application"
     aria-label={payload.title}
     onkeydown={onKeydown}
   >
-    <header class="lesson-header">
-      <div class="lesson-heading">
-        <h3 class="lesson-title">{payload.title}</h3>
-        {#if payload.subtitle}<p class="lesson-subtitle">{payload.subtitle}</p>{/if}
-      </div>
-      <span class="lesson-position">{lessonState.index + 1} / {blocks.length}</span>
+    <header class="viz-header lesson-header">
+      <VizHeading
+        kind="lesson"
+        icon={isPractice ? ListChecks : undefined}
+        title={payload.title}
+        subtitle={payload.subtitle}
+      />
+      <span class="lesson-position" aria-live="polite">{lessonState.index + 1} / {blocks.length}</span>
     </header>
 
-    <div class="lesson-body">
-      <ol class="lesson-rail" aria-hidden="true">
-        {#each blocks as _block, index}
-          <li class:is-current={index === lessonState.index} class:is-done={index < lessonState.index}></li>
+    {#if blocks.length > 1}
+      <div class="lesson-track" role="presentation">
+        {#each blocks as _block, index (index)}
+          {@const done = index < lessonState.index}
+          {@const active = index === lessonState.index}
+          <Button
+            variant="plain"
+            type="button"
+            class={`lesson-segment${done ? ' is-done' : ''}${active ? ' is-current' : ''}`}
+            disabled={!done || readOnly}
+            tabindex={done && !readOnly ? 0 : -1}
+            aria-label={`${index + 1} / ${blocks.length}`}
+            onclick={() => gotoBlock(index)}
+          />
         {/each}
-      </ol>
+      </div>
+    {/if}
 
-      <div class="lesson-block" class:scrolls={!!$t('artifacts.lesson.steps')}>
-        {#if current}
-          {@const blockPrompt = 'prompt' in current ? current.prompt : ''}
-          {#if blockPrompt}
-            <p class="lesson-prompt">{blockPrompt}</p>
-          {/if}
+    <div class="lesson-block">
+      {#if current}
+        {@const blockPrompt = 'prompt' in current ? current.prompt : ''}
+        {#if blockPrompt && current.type !== 'reveal'}
+          <p class="lesson-prompt">{blockPrompt}</p>
+        {/if}
 
-          {#if 'formula' in current && current.formula}
-            <div class="lesson-formula">{@html formula(current.formula)}</div>
-          {/if}
+        {#if 'formula' in current && current.formula}
+          <div class="lesson-formula">{@html formula(current.formula)}</div>
+        {/if}
 
-          {#if current.type === 'choice' || current.type === 'pretest'}
-            {@const choices = current.choices ?? []}
-            {#if choices.length}
-              <ul class="choices">
-                {#each choices as choice, index (index)}
-                  {@const chosen = answered?.value === choice.text}
-                  {@const correct = choice.correct === true}
-                  <li>
-                    <Button
-                      variant="ghost"
-                      class={choiceClass(chosen, correct, !!answered)}
-                      disabled={!!answered || readOnly}
-                      onclick={() => chooseChoice(choice, index)}
-                    >
-                      <span class="choice-key">{index + 1}</span>
-                      <span class="choice-text">{choice.text}</span>
-                    </Button>
-                    {#if answered && (chosen || correct) && choice.why}
-                      <p class="choice-why" class:is-good={correct}>{choice.why}</p>
-                    {/if}
-                  </li>
-                {/each}
-              </ul>
-            {:else if current.type === 'pretest' && current.numeric}
-              <div class="numeric">
-                <Input
-                  class="answer"
-                  inputmode="decimal"
-                  bind:value={numericDraft}
-                  disabled={!!answered || readOnly}
-                  aria-label={$t('artifacts.lesson.yourAnswer')}
-                  onkeydown={(event) => { if (event.key === 'Enter') { event.stopPropagation(); submitPretestNumeric(current); } }}
-                />
-                <Button size="sm" disabled={!!answered || readOnly} onclick={() => submitPretestNumeric(current)}>
-                  {$t('artifacts.lesson.check')}
-                </Button>
-              </div>
-            {/if}
-            {#if answered && current.type === 'pretest' && current.why}
-              <p class="lesson-note">{current.why}</p>
-            {/if}
-          {:else if current.type === 'numeric'}
+        {#if current.type === 'choice' || current.type === 'pretest'}
+          {@const choices = current.choices ?? []}
+          {#if choices.length}
+            <ul class="choices">
+              {#each choices as choice, index (index)}
+                {@const chosen = answered?.value === choice.text}
+                {@const correct = choice.correct === true}
+                <li>
+                  <Button
+                    variant="plain"
+                    class={choiceClass(chosen, correct, !!answered)}
+                    disabled={!!answered || readOnly}
+                    onclick={() => chooseChoice(choice)}
+                  >
+                    <span class="choice-key" aria-hidden="true">
+                      {#if answered && correct}
+                        <Check class="size-3.5" />
+                      {:else if chosen && !correct}
+                        <X class="size-3.5" />
+                      {:else}
+                        {index + 1}
+                      {/if}
+                    </span>
+                    <span class="choice-text">{choice.text}</span>
+                  </Button>
+                  {#if answered && (chosen || correct) && choice.why}
+                    <p class="choice-why" class:is-good={correct}>{choice.why}</p>
+                  {/if}
+                </li>
+              {/each}
+            </ul>
+          {:else if current.type === 'pretest' && current.numeric}
             <div class="numeric">
               <Input
                 class="answer"
                 inputmode="decimal"
+                placeholder="0"
                 bind:value={numericDraft}
                 disabled={!!answered || readOnly}
                 aria-label={$t('artifacts.lesson.yourAnswer')}
-                onkeydown={(event) => { if (event.key === 'Enter') { event.stopPropagation(); submitNumeric(current); } }}
+                onkeydown={(event) => { if (event.key === 'Enter') { event.stopPropagation(); submitPretestNumeric(current); } }}
               />
-              {#if current.unit}<span class="unit">{current.unit}</span>{/if}
-              <Button size="sm" disabled={!!answered || readOnly} onclick={() => submitNumeric(current)}>
+              <Button size="sm" disabled={!!answered || readOnly || !numericDraft.trim()} onclick={() => submitPretestNumeric(current)}>
                 {$t('artifacts.lesson.check')}
               </Button>
             </div>
-          {:else if current.type === 'explore'}
-            <LessonExplore model={current.model} insight={current.insight} {readOnly} />
-          {:else if current.type === 'predict'}
-            <LessonPredict
-              expression={current.expression}
-              series={current.series}
-              xRange={current.xRange}
-              yRange={current.yRange}
-              label={current.label}
-              insight={current.insight}
-              {readOnly}
-              onSettle={() => answerWith(lessonState.index, 'drawn', true)}
-            />
-          {:else if current.type === 'steps'}
-            <ol class="steps">
-              {#each current.steps as step, index (index)}
-                {#if index <= stepsShown}
-                  <li>
-                    <span class="step-note">{step.note}</span>
-                    {#if step.formula}<span class="step-formula">{@html formula(step.formula)}</span>{/if}
-                  </li>
+            {#if answered}
+              <p class="numeric-feedback" class:is-good={answered.correct} class:is-wrong={!answered.correct}>
+                {#if answered.correct}
+                  <Check class="size-3.5 shrink-0" />
+                  <span>{current.numeric.answer}</span>
+                {:else}
+                  <X class="size-3.5 shrink-0" />
+                  <span>{current.numeric.answer}</span>
                 {/if}
-              {/each}
-            </ol>
-            {#if stepsShown < current.steps.length - 1}
+              </p>
+            {/if}
+          {/if}
+          {#if answered && current.type === 'pretest' && current.why}
+            <p class="lesson-note">{current.why}</p>
+          {/if}
+        {:else if current.type === 'numeric'}
+          <div class="numeric">
+            <Input
+              class="answer"
+              inputmode="decimal"
+              placeholder="0"
+              bind:value={numericDraft}
+              disabled={!!answered || readOnly}
+              aria-label={$t('artifacts.lesson.yourAnswer')}
+              onkeydown={(event) => { if (event.key === 'Enter') { event.stopPropagation(); submitNumeric(current); } }}
+            />
+            {#if current.unit}<span class="unit">{current.unit}</span>{/if}
+            <Button size="sm" disabled={!!answered || readOnly || !numericDraft.trim()} onclick={() => submitNumeric(current)}>
+              {$t('artifacts.lesson.check')}
+            </Button>
+          </div>
+          {#if answered}
+            <p class="numeric-feedback" class:is-good={answered.correct} class:is-wrong={!answered.correct}>
+              {#if answered.correct}
+                <Check class="size-3.5 shrink-0" />
+                <span>{current.answer}{#if current.unit} {current.unit}{/if}</span>
+              {:else}
+                <X class="size-3.5 shrink-0" />
+                <span>{current.answer}{#if current.unit} {current.unit}{/if}</span>
+              {/if}
+            </p>
+          {/if}
+        {:else if current.type === 'visual_choice'}
+          <LessonVisualChoice
+            choices={current.choices ?? []}
+            answeredValue={answered?.value}
+            {readOnly}
+            onChoose={(choice) => chooseChoice(choice)}
+          />
+        {:else if current.type === 'graph_challenge'}
+          <LessonGraphChallenge
+            expression={current.expression}
+            xRange={current.xRange}
+            initialX={current.initialX}
+            metric={current.metric}
+            target={current.target}
+            tolerance={current.tolerance}
+            explanation={current.explanation}
+            {readOnly}
+            onAnswer={(value, correct) => answerWith(lessonState.index, value, correct)}
+          />
+        {:else if current.type === 'hotspot_diagram'}
+          <LessonHotspot pins={current.pins ?? []} />
+        {:else if current.type === 'timeline_story'}
+          <LessonTimeline eras={current.eras ?? []} />
+        {:else if current.type === 'algo_stepper'}
+          <LessonAlgoStepper data={current.data ?? []} steps={current.steps ?? []} />
+        {:else if current.type === 'explore'}
+          <LessonExplore model={current.model} insight={current.insight} {readOnly} />
+        {:else if current.type === 'predict'}
+          <LessonPredict
+            expression={current.expression}
+            series={current.series}
+            xRange={current.xRange}
+            yRange={current.yRange}
+            label={current.label}
+            insight={current.insight}
+            {readOnly}
+            onSettle={() => answerWith(lessonState.index, 'drawn', true)}
+          />
+        {:else if current.type === 'steps'}
+          <ol class="steps">
+            {#each current.steps as step, index (index)}
+              {#if index <= stepsShown}
+                <li>
+                  <span class="step-index">{index + 1}</span>
+                  <div class="step-content">
+                    <span class="step-note">{step.note}</span>
+                    {#if step.formula}<div class="step-formula">{@html formula(step.formula)}</div>{/if}
+                  </div>
+                </li>
+              {/if}
+            {/each}
+          </ol>
+          {#if stepsShown < current.steps.length - 1}
+            <div class="steps-action">
               <Button variant="ghost" size="sm" onclick={() => (stepsShown += 1)}>
                 {$t('artifacts.lesson.nextStep')}
               </Button>
-            {/if}
-          {:else if current.type === 'reveal'}
-            <details class="reveal">
-              <summary>{current.prompt}</summary>
-              <div class="reveal-body">{@html markdown(current.body)}</div>
-            </details>
-          {:else if current.type === 'figure'}
-            {#if current.chart}
-              <ChartBlock type={current.chart.chartType ?? 'bar'} title={current.chart.title ?? ''} raw={JSON.stringify(current.chart)} variant="artifact" />
-            {:else if current.diagram}
-              <ArtifactDiagram payload={{ kind: 'diagram', title: current.diagram.title ?? '', source: current.diagram.source, diagramType: current.diagram.diagramType }} />
-            {:else if current.infoCard}
-              <ArtifactInfoCard payload={{ ...current.infoCard, kind: 'info_card' }} />
-            {/if}
-          {:else if current.type === 'summary'}
-            <ul class="summary-points">
-              {#each current.points as point (point)}
-                <li>{@html markdown(point)}</li>
-              {/each}
-            </ul>
-            {#if current.next?.length}
-              <div class="next-chips">
-                {#each current.next as question (question)}
-                  <Button variant="ghost" size="xs" class="chip" onclick={() => edit('next', question)}>{question}</Button>
-                {/each}
-              </div>
-            {/if}
+            </div>
           {/if}
-
-          {#if !isPractice && helpLevel > 0 && isQuestion(current)}
-            {#if helpLevel >= 2 && 'hint' in current && current.hint}
-              <p class="lesson-note">{current.hint}</p>
-            {/if}
+        {:else if current.type === 'reveal'}
+          <details class="reveal">
+            <summary>{current.prompt}</summary>
+            <div class="reveal-body">{@html markdown(current.body)}</div>
+          </details>
+        {:else if current.type === 'figure'}
+          {#if current.chart}
+            <ChartBlock type={current.chart.chartType ?? 'bar'} title={current.chart.title ?? ''} raw={JSON.stringify(current.chart)} variant="artifact" />
+          {:else if current.diagram}
+            <ArtifactDiagram payload={{ kind: 'diagram', title: current.diagram.title ?? '', source: current.diagram.source, diagramType: current.diagram.diagramType }} />
+          {:else if current.infoCard}
+            <ArtifactInfoCard payload={{ ...current.infoCard, kind: 'info_card' }} />
+          {/if}
+        {:else if current.type === 'summary'}
+          <ul class="summary-points">
+            {#each current.points as point (point)}
+              <li>{@html markdown(point)}</li>
+            {/each}
+          </ul>
+          {#if current.next?.length}
+            <div class="next-chips">
+              {#each current.next as question (question)}
+                <Button variant="plain" size="xs" class="chip" onclick={() => edit('next', question)}>
+                  <span>{question}</span>
+                  <ArrowRight class="size-3 shrink-0 opacity-60" />
+                </Button>
+              {/each}
+            </div>
           {/if}
         {/if}
-      </div>
+
+        {#if !isPractice && helpLevel > 0 && isQuestion(current)}
+          {#if helpLevel >= 2 && 'hint' in current && current.hint}
+            <p class="lesson-note">{current.hint}</p>
+          {/if}
+        {/if}
+      {/if}
     </div>
 
     <footer class="lesson-footer">
@@ -321,11 +417,15 @@
       {/if}
       <span class="spacer"></span>
       {#if lessonState.index > 0}
-        <Button variant="ghost" size="sm" onclick={back}>{$t('artifacts.lesson.back')}</Button>
+        <Button variant="ghost" size="sm" onclick={back}>
+          <ArrowLeft class="size-3.5" />
+          <span>{$t('artifacts.lesson.back')}</span>
+        </Button>
       {/if}
       {#if lessonState.index < blocks.length - 1}
         <Button size="sm" onclick={next} disabled={!canAdvance(lessonState, current)}>
-          {$t('artifacts.lesson.continue')}
+          <span>{$t('artifacts.lesson.continue')}</span>
+          <ArrowRight class="size-3.5" />
         </Button>
       {/if}
     </footer>
@@ -336,79 +436,68 @@
   .lesson {
     display: flex;
     flex-direction: column;
-    gap: 0.6rem;
-    width: var(--inline-block-width, 100%);
-    max-width: 100%;
-    margin-top: 0.65rem;
-    padding: 0.85rem 0.95rem;
-    border-radius: var(--artifact-radius, 12px);
-    background: var(--artifact-surface, var(--card));
+    gap: 0.875rem;
     outline: none;
   }
 
   .lesson:focus-visible {
-    box-shadow: 0 0 0 2px var(--border);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--brand-accent) 45%, transparent);
   }
 
   .lesson-header {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 0.75rem;
-  }
-
-  .lesson-heading { min-width: 0; }
-
-  .lesson-title {
-    margin: 0;
-    font-size: var(--text-base);
-    font-weight: 600;
-    letter-spacing: -0.015em;
-  }
-
-  .lesson-subtitle {
-    margin: 0.1rem 0 0;
-    font-size: var(--text-xs);
-    color: var(--text-tertiary, var(--text-secondary));
+    align-items: center;
+    margin-bottom: 0;
   }
 
   .lesson-position {
+    flex-shrink: 0;
     font-size: var(--text-xs);
-    color: var(--text-tertiary, var(--text-secondary));
+    font-weight: 500;
+    color: var(--muted-foreground);
     font-variant-numeric: tabular-nums;
   }
 
-  .lesson-body {
+  /* Minimal horizontal segmented track: full width, zero visual clutter. */
+  .lesson-track {
     display: grid;
-    grid-template-columns: auto 1fr;
-    gap: 0.8rem;
-    align-items: start;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 1fr);
+    gap: 0.25rem;
+    padding: 0;
   }
 
-  .lesson-rail {
-    display: flex;
-    flex-direction: column;
-    gap: 0.3rem;
-    margin: 0;
-    padding: 0.15rem 0;
-    list-style: none;
+  .lesson :global(.lesson-segment) {
+    height: 3px;
+    min-height: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--foreground) 10%, transparent);
+    cursor: default;
+    transition: background-color var(--motion-fast) var(--motion-ease), opacity var(--motion-fast) var(--motion-ease);
   }
 
-  .lesson-rail li {
-    width: 3px;
-    height: 0.55rem;
-    border-radius: 2px;
-    background: var(--border-subtle);
-    transition: background-color var(--motion-fast) var(--motion-ease);
+  .lesson :global(.lesson-segment.is-done) {
+    background: color-mix(in srgb, var(--foreground) 34%, transparent);
+    cursor: pointer;
   }
 
-  .lesson-rail li.is-done { background: var(--border); }
-  .lesson-rail li.is-current { background: var(--chart-1, var(--foreground)); }
+  .lesson :global(.lesson-segment.is-done:hover) {
+    background: color-mix(in srgb, var(--foreground) 58%, transparent);
+  }
+
+  .lesson :global(.lesson-segment.is-current) {
+    background: var(--brand-accent, var(--foreground));
+  }
+
+  .lesson.is-practice :global(.lesson-segment.is-current) {
+    background: var(--foreground);
+  }
 
   .lesson-block {
     display: flex;
     flex-direction: column;
-    gap: 0.55rem;
+    gap: 0.75rem;
     min-width: 0;
     max-height: min(56vh, 460px);
     overflow-y: auto;
@@ -418,101 +507,270 @@
 
   .lesson-prompt {
     margin: 0;
+    color: var(--foreground);
     font-size: var(--text-sm);
-    line-height: 1.55;
+    font-weight: 450;
+    line-height: 1.6;
   }
 
-  .lesson-formula { overflow-x: auto; }
+  .lesson-formula {
+    padding: 0.5rem 0.75rem;
+    border-radius: var(--radius-md);
+    background: color-mix(in srgb, var(--foreground) 3%, transparent);
+    overflow-x: auto;
+  }
 
-  .choices { display: flex; flex-direction: column; gap: 0.35rem; margin: 0; padding: 0; list-style: none; }
+  .choices {
+    display: flex;
+    flex-direction: column;
+    gap: 0.375rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
 
   .lesson :global(.choice) {
     display: flex;
-    align-items: baseline;
-    gap: 0.55rem;
+    align-items: center;
+    gap: 0.625rem;
     width: 100%;
-    padding: 0.5rem 0.6rem;
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-sm);
-    background: transparent;
+    min-height: 2.5rem;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid transparent;
+    border-radius: var(--radius-md);
+    background: color-mix(in srgb, var(--foreground) 3.5%, transparent);
+    color: var(--foreground);
     font: inherit;
     font-size: var(--text-sm);
+    line-height: 1.45;
     text-align: left;
     cursor: pointer;
-    transition: background-color var(--motion-fast) var(--motion-ease), border-color var(--motion-fast) var(--motion-ease);
+    transition:
+      background-color var(--motion-instant) var(--motion-ease),
+      border-color var(--motion-instant) var(--motion-ease),
+      opacity var(--motion-fast) var(--motion-ease);
   }
 
-  .lesson :global(.choice:hover:not(:disabled)) { background: var(--muted); }
+  .lesson :global(.choice:hover:not(:disabled)) {
+    background: var(--surface-hover);
+    border-color: color-mix(in srgb, var(--foreground) 10%, transparent);
+  }
+
+  .lesson :global(.choice:active:not(:disabled)) {
+    background: color-mix(in srgb, var(--foreground) 9%, transparent);
+  }
+
   .lesson :global(.choice:disabled) { cursor: default; }
-  .lesson :global(.choice.is-chosen) { border-color: var(--border); }
-  .lesson :global(.choice.is-correct) { border-color: var(--accent-green-text); background: var(--accent-green-bg); }
-  .lesson :global(.choice.is-wrong) { background: var(--accent-red-bg); border-color: transparent; }
+  .lesson :global(.choice.is-dim) { opacity: 0.48; }
+  .lesson :global(.choice.is-chosen) { border-color: color-mix(in srgb, var(--foreground) 16%, transparent); }
+  .lesson :global(.choice.is-correct) {
+    border-color: color-mix(in srgb, var(--accent-green-text) 40%, transparent);
+    background: var(--accent-green-bg);
+  }
+  .lesson :global(.choice.is-wrong) {
+    border-color: color-mix(in srgb, var(--accent-red-text) 35%, transparent);
+    background: var(--accent-red-bg);
+  }
 
   .choice-key {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.375rem;
+    height: 1.375rem;
+    flex-shrink: 0;
+    border-radius: 0.375rem;
+    background: color-mix(in srgb, var(--foreground) 6%, transparent);
+    color: var(--muted-foreground);
+    font-family: var(--font-mono);
     font-size: var(--text-xs);
-    color: var(--text-tertiary, var(--text-secondary));
     font-variant-numeric: tabular-nums;
-    min-width: 0.8rem;
   }
 
-  .choice-text { flex: 1; }
+  .lesson :global(.choice.is-correct .choice-key) {
+    background: color-mix(in srgb, var(--accent-green-text) 16%, transparent);
+    color: var(--accent-green-text);
+  }
+
+  .lesson :global(.choice.is-wrong .choice-key) {
+    background: color-mix(in srgb, var(--accent-red-text) 16%, transparent);
+    color: var(--accent-red-text);
+  }
+
+  .choice-text { flex: 1; min-width: 0; }
 
   .choice-why {
-    margin: 0.2rem 0 0.3rem 1.35rem;
+    margin: 0.3rem 0 0.2rem 2.75rem;
     font-size: var(--text-xs);
+    line-height: 1.5;
     color: var(--text-secondary);
   }
 
   .choice-why.is-good { color: var(--accent-green-text); }
 
-  .numeric { display: flex; align-items: center; gap: 0.5rem; }
+  .numeric {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+  }
 
   .lesson :global(.answer) {
-    width: 8rem;
+    width: 9.5rem;
     font-variant-numeric: tabular-nums;
   }
 
-  .unit { font-size: var(--text-xs); color: var(--text-secondary); }
+  .unit {
+    font-size: var(--text-xs);
+    color: var(--muted-foreground);
+  }
 
-  .steps { display: flex; flex-direction: column; gap: 0.5rem; margin: 0; padding-left: 1.1rem; }
-  .steps li { display: flex; flex-direction: column; gap: 0.15rem; font-size: var(--text-sm); }
-  .step-note { color: var(--text-secondary); }
+  .numeric-feedback {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    margin: 0;
+    padding: 0.3rem 0.625rem;
+    border-radius: var(--radius-sm);
+    font-size: var(--text-xs);
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+    align-self: flex-start;
+  }
+
+  .numeric-feedback.is-good {
+    background: var(--accent-green-bg);
+    color: var(--accent-green-text);
+  }
+
+  .numeric-feedback.is-wrong {
+    background: var(--accent-red-bg);
+    color: var(--accent-red-text);
+  }
+
+  .steps {
+    display: flex;
+    flex-direction: column;
+    gap: 0.625rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .steps li {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.625rem;
+    font-size: var(--text-sm);
+  }
+
+  .step-index {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.375rem;
+    height: 1.375rem;
+    flex-shrink: 0;
+    margin-top: 0.05rem;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--foreground) 6%, transparent);
+    color: var(--muted-foreground);
+    font-size: var(--text-xs);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .step-content {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    min-width: 0;
+    flex: 1;
+  }
+
+  .step-note { color: var(--text-secondary); line-height: 1.5; }
   .step-formula { overflow-x: auto; }
+  .steps-action { display: flex; }
 
-  .reveal { font-size: var(--text-sm); }
-  .reveal summary { cursor: pointer; }
-  .reveal-body { margin-top: 0.4rem; color: var(--text-secondary); }
+  .reveal {
+    border-radius: var(--radius-md);
+    background: color-mix(in srgb, var(--foreground) 3%, transparent);
+    padding: 0.625rem 0.8rem;
+    font-size: var(--text-sm);
+  }
 
-  .summary-points { margin: 0; padding-left: 1.1rem; font-size: var(--text-sm); }
-  .summary-points li { margin-bottom: 0.25rem; }
+  .reveal summary {
+    cursor: pointer;
+    font-weight: 500;
+    color: var(--foreground);
+    list-style: none;
+  }
 
-  .next-chips { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+  .reveal summary::-webkit-details-marker { display: none; }
+  .reveal summary::after {
+    content: '+';
+    float: right;
+    color: var(--muted-foreground);
+    transition: transform var(--motion-fast) var(--motion-ease);
+  }
+  .reveal[open] summary::after { transform: rotate(45deg); }
+  .reveal-body { margin-top: 0.5rem; color: var(--text-secondary); line-height: 1.6; }
+
+  .summary-points {
+    display: flex;
+    flex-direction: column;
+    gap: 0.375rem;
+    margin: 0;
+    padding-left: 1.15rem;
+    font-size: var(--text-sm);
+    line-height: 1.55;
+    color: var(--text-secondary);
+  }
+
+  .next-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.375rem;
+    padding-top: 0.25rem;
+  }
 
   .lesson :global(.chip) {
-    height: 1.7rem;
-    padding: 0 0.6rem;
-    border: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    height: 1.85rem;
+    padding: 0 0.7rem;
+    border: 1px solid transparent;
     border-radius: 999px;
-    background: var(--muted);
+    background: color-mix(in srgb, var(--foreground) 4%, transparent);
     color: var(--text-secondary);
     font: inherit;
     font-size: var(--text-xs);
+    font-weight: 500;
     cursor: pointer;
+    transition: background-color var(--motion-instant) var(--motion-ease), color var(--motion-instant) var(--motion-ease);
   }
 
-  .lesson :global(.chip:hover) { color: var(--foreground); }
+  .lesson :global(.chip:hover) {
+    background: var(--surface-hover);
+    color: var(--foreground);
+  }
 
   .lesson-note {
     margin: 0;
+    padding: 0.5rem 0.7rem;
+    border-radius: var(--radius-md);
+    background: color-mix(in srgb, var(--foreground) 3%, transparent);
     font-size: var(--text-xs);
-    color: var(--text-tertiary, var(--text-secondary));
+    line-height: 1.55;
+    color: var(--text-secondary);
   }
 
   .lesson-footer {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
-    padding-top: 0.15rem;
+    gap: 0.375rem;
+    padding-top: 0.625rem;
+    border-top: 1px solid var(--border-subtle);
   }
 
   .spacer { flex: 1; }
@@ -520,22 +778,20 @@
   .lesson-poster {
     width: var(--inline-block-width, 100%);
     margin-top: 0.65rem;
-    padding: 0.75rem 0.85rem;
-    border-radius: var(--artifact-radius, 12px);
+    padding: 0.85rem 1rem;
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--artifact-radius, 14px);
     background: var(--artifact-surface, var(--card));
   }
 
-  .poster-title { margin: 0; font-size: var(--text-sm); font-weight: 600; }
+  .poster-title { margin: 0; font-size: var(--text-sm); font-weight: 600; color: var(--foreground); }
   .poster-subtitle { margin: 0.15rem 0 0; font-size: var(--text-xs); color: var(--text-secondary); }
-  .poster-meta { margin: 0.35rem 0 0; font-size: var(--text-xs); color: var(--text-tertiary, var(--text-secondary)); }
-
-  @media (max-width: 520px) {
-    .lesson-body { grid-template-columns: 1fr; }
-    .lesson-rail { flex-direction: row; }
-    .lesson-rail li { height: 3px; width: 0.7rem; }
-  }
+  .poster-meta { margin: 0.4rem 0 0; font-size: var(--text-xs); color: var(--muted-foreground); }
 
   @media (prefers-reduced-motion: reduce) {
-    .lesson-rail li, .lesson :global(.choice) { transition: none; }
+    .lesson :global(.lesson-segment),
+    .lesson :global(.choice),
+    .lesson :global(.chip),
+    .reveal summary::after { transition: none; }
   }
 </style>

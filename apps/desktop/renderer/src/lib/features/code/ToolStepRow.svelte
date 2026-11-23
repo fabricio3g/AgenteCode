@@ -204,10 +204,10 @@
     color: var(--brand-accent);
   }
   .chip {
-    font-family: inherit;
+    font-family: var(--font-mono);
     font-variant-numeric: tabular-nums;
     font-size: var(--text-xs);
-    color: var(--muted-foreground);
+    color: var(--text-secondary);
   }
   .model-chip {
     opacity: 0.75;
@@ -254,11 +254,12 @@
   pre {
     margin: 0;
     font-family: var(--font-mono, ui-monospace, monospace);
-    font-size: var(--text-xs);
+    font-size: var(--text-code);
     line-height: 1.55;
   }
   .out {
     border-radius: 0.5rem;
+    border: 1px solid var(--border-subtle);
     background: var(--muted);
     color: var(--foreground);
   }
@@ -273,17 +274,17 @@
   .term {
     overflow: hidden;
     border-radius: 0.625rem;
-    border: 1px solid var(--border-subtle);
-    background: var(--background);
+    border: 1px solid var(--border);
+    background: var(--card);
   }
   .term-head {
     display:flex; align-items:center; justify-content:space-between; gap:0.5rem;
     padding: 0.375rem 0.625rem;
-    border-bottom: 1px solid var(--border-subtle);
+    border-bottom: 1px solid var(--border);
     white-space: pre-wrap;
     overflow-wrap: anywhere;
     font-family: var(--font-mono, ui-monospace, monospace);
-    font-size: var(--text-xs);
+    font-size: var(--text-code);
     color: var(--foreground);
   }
   .term-command { min-width:0; overflow-wrap:anywhere; }

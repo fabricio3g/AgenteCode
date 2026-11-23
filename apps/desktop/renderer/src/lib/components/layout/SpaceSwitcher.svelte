@@ -63,12 +63,40 @@
 </div>
 
 <style>
-  /* The head is a window drag region: without this a press on a segment drags
+  /* The head is a window drag region: without this a press on a tab drags
      the window instead of switching the space. */
-  .space-group { display: flex; align-items: center; padding-inline: 0.375rem; -webkit-app-region: no-drag; }
-  /* Quiet borderless recess so the active machined pill never sits inside a second border. */
+  .space-group {
+    display: flex;
+    align-items: stretch;
+    height: 100%;
+    padding-inline: 0.375rem;
+    -webkit-app-region: no-drag;
+  }
+
+  /* Flush tab strip: no pill track, no floating capsule — just clean tabs
+     with a sliding 2px accent underline on the active space. */
   .space-group :global(.space-strip) {
-    border-color: transparent;
-    background: color-mix(in srgb, var(--foreground) 4%, transparent);
+    align-items: stretch;
+    gap: 0.125rem;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+  }
+
+  .space-group :global(.space-strip > span[aria-hidden='true']) {
+    top: auto !important;
+    bottom: 0;
+    height: 2px !important;
+    border: 0;
+    border-radius: 9999px;
+    background: var(--brand-accent);
+    box-shadow: none;
+  }
+
+  .space-group :global(.space-strip [role='tab']) {
+    height: 100%;
+    min-height: 2rem;
+    border-radius: 0;
   }
 </style>

@@ -418,6 +418,36 @@ export function handleCreateLesson(params: {
   return params.ok({ title, path, mode, blocks: blocks.length }, { createdFiles: [path] });
 }
 
+export function handleCreateScene3D(params: {
+  args: Record<string, unknown>;
+  ctx: ToolContext;
+  normPath: (value: unknown) => string;
+  ok: (output: unknown, extra?: Record<string, unknown>) => ToolResult;
+  fail: (error: string, note?: string) => ToolResult;
+}): ToolResult {
+  const title = String(params.args.title || '').trim() || '3D Scene';
+  const preset = String(params.args.preset || 'custom');
+  const subtitle = String(params.args.subtitle || '').trim();
+  const paramLabel = String(params.args.paramLabel || '').trim();
+  const takeaway = String(params.args.takeaway || '').trim();
+  const payload = {
+    kind: 'scene_3d',
+    title,
+    preset,
+    ...(subtitle ? { subtitle } : {}),
+    ...(paramLabel ? { paramLabel } : {}),
+    ...(typeof params.args.paramValue === 'number' ? { paramValue: params.args.paramValue } : {}),
+    ...(takeaway ? { takeaway } : {}),
+    ...(Array.isArray(params.args.layers) ? { layers: params.args.layers } : {}),
+    ...(Array.isArray(params.args.nodes) ? { nodes: params.args.nodes } : {}),
+    ...(Array.isArray(params.args.edges) ? { edges: params.args.edges } : {}),
+    ...(typeof params.args.autoRotate === 'boolean' ? { autoRotate: params.args.autoRotate } : {})
+  };
+  const path = artifactDataPath(params.normPath(params.args.path), 'scene-3d.json');
+  writeInlineArtifact(params.ctx, path, payload);
+  return params.ok({ title, path, preset }, { createdFiles: [path] });
+}
+
 export function handleCreateInfoCard(params: {
   args: Record<string, unknown>;
   ctx: ToolContext;

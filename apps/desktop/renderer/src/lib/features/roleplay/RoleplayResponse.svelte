@@ -106,7 +106,7 @@
   .bubble {
     min-width: 0;
     padding: 0.5rem 0.625rem;
-    border-radius: var(--radius-xl);
+    border-radius: var(--bubble-radius);
     background: color-mix(in srgb, var(--foreground) 3.5%, transparent);
   }
 

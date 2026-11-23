@@ -105,7 +105,7 @@
   /* The chevron is an icon component: its svg carries no scope class of ours,
      so every rule that reaches it goes through :global. */
   :is(.head, :global(.head.ui-local-2c22291d)) :global(.chev) {
-    opacity: 0.55;
+    opacity: 0.75;
     transition: transform var(--motion-fast) var(--motion-ease-out), opacity var(--motion-instant) var(--motion-ease);
   }
   :is(.head:hover, :global(.head:hover.ui-local-2c22291d)) :global(.chev),
@@ -116,7 +116,7 @@
   /* A block and a subagent are structural: their chevron is always in view. */
   .level-block :global(.chev),
   .level-subagent :global(.chev) {
-    opacity: 0.55;
+    opacity: 0.75;
   }
   .level-block :is(.head:hover, :global(.head:hover.ui-local-2c22291d)) :global(.chev),
   .level-block :is(.head:focus-visible, :global(.head:focus-visible.ui-local-2c22291d)) :global(.chev),
@@ -187,7 +187,6 @@
     padding: 0.3125rem 0.5rem;
     border-radius: 0.5rem;
     font-size: var(--text-code);
-    opacity: 0.85;
   }
   .level-thought > .body {
     margin: 0.125rem 0 0.375rem 0.5rem;

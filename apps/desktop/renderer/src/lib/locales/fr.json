@@ -2363,6 +2363,8 @@
     "fontDefault": "Inter (par défaut)",
     "fontHyperlegible": "Atkinson Hyperlegible",
     "fontSystem": "Police du système",
+    "fontSmoothing": "Lissage des polices",
+    "fontSmoothingDesc": "Anticrénelage du texte pour des contours plus nets. Désactivez pour utiliser le rendu sous-pixel du système.",
     "relaxed": "Espacement aéré",
     "relaxedDesc": "Plus d'espace entre les lignes, les lettres et les mots des messages.",
     "underlineLinks": "Souligner les liens",

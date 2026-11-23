@@ -15,6 +15,7 @@
   import type { AgentStep } from '$lib/types/chat';
   import type { PendingApproval } from '$lib/stores/approvals.svelte';
   import { approvalsStore } from '$lib/stores/approvals.svelte';
+  import { appearanceStore } from '$lib/stores/appearance.svelte';
   import type { Dictation } from '$lib/features/chat/composer/use-dictation.svelte';
   import DictationSetupPopover from '$lib/features/chat/composer/DictationSetupPopover.svelte';
   import ComposerRecorder from '$lib/features/chat/composer/ComposerRecorder.svelte';
@@ -98,6 +99,9 @@
   } = $props();
 
   const recorderActive = $derived(dictation.uiActive && !voiceMode && dictation.phase !== 'choose');
+  const composerStyle = $derived(appearanceStore.prefs.composerStyle);
+  const integratedTray = $derived(appearanceStore.integratedComposer && !!tray);
+  const sendInFooter = $derived(integratedTray && (composerStyle === 'pill' || composerStyle === 'card'));
 </script>
 
 <div
@@ -150,7 +154,10 @@
             {/if}
           </div>
         {:else}
-          <div class="composer-input-row" class:is-grown={grown}>
+          <div class="composer-input-row" class:is-grown={grown} class:has-footer-send={sendInFooter}>
+            {#if composerStyle === 'terminal'}
+              <span class="composer-terminal-prompt" aria-hidden="true">›</span>
+            {/if}
             <UiTextarea
               variant="composer"
               bind:ref={textarea}
@@ -164,6 +171,31 @@
               {onkeydown}
               {onselect}
             ></UiTextarea>
+            {#if !sendInFooter}
+              <div class="composer-send-slot">
+                <SendButton
+                  compact
+                  {stopShortcut}
+                  {running}
+                  disabled={sendDisabled}
+                  dictation={dictationSlot}
+                  {sendLabel}
+                  {stopLabel}
+                  {onsend}
+                  {onstop}
+                />
+              </div>
+            {/if}
+          </div>
+        {/if}
+      </div>
+
+      {#if !recorderActive && integratedTray && tray}
+        <div class="composer-shell-footer" class:has-send={sendInFooter}>
+          <div class="composer-tray is-integrated">
+            {@render tray()}
+          </div>
+          {#if sendInFooter}
             <div class="composer-send-slot">
               <SendButton
                 compact
@@ -177,12 +209,12 @@
                 {onstop}
               />
             </div>
-          </div>
-        {/if}
-      </div>
+          {/if}
+        </div>
+      {/if}
     </div>
 
-    {#if !recorderActive && tray}
+    {#if !recorderActive && !integratedTray && tray}
       <div class="composer-tray">
         {@render tray()}
       </div>

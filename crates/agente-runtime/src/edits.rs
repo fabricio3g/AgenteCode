@@ -198,19 +198,20 @@ fn merge(edits: Vec<FileEdit>) -> Vec<FileEdit> {
 }
 
 fn line_delta(edit: &FileEdit) -> (usize, usize) {
-    let mut before = HashMap::<&str, usize>::new();
-    for line in edit.before.as_deref().unwrap_or_default().lines() {
-        *before.entry(line).or_default() += 1;
-    }
-    let mut additions = 0;
-    for line in edit.after.as_deref().unwrap_or_default().lines() {
-        if let Some(count) = before.get_mut(line).filter(|count| **count > 0) {
-            *count -= 1;
-        } else {
-            additions += 1;
+    let diff = similar::TextDiff::from_lines(
+        edit.before.as_deref().unwrap_or_default(),
+        edit.after.as_deref().unwrap_or_default(),
+    );
+    let mut additions = 0usize;
+    let mut deletions = 0usize;
+    for change in diff.iter_all_changes() {
+        match change.tag() {
+            similar::ChangeTag::Insert => additions += 1,
+            similar::ChangeTag::Delete => deletions += 1,
+            similar::ChangeTag::Equal => {}
         }
     }
-    (additions, before.values().sum())
+    (additions, deletions)
 }
 
 #[derive(Clone, Copy)]

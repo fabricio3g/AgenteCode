@@ -243,15 +243,17 @@
     max-width: 100%;
     margin-top: 0.75rem;
   }
-  /* Expand sits at the end of the artifact's own header row, so it costs no
-     line of its own; the header leaves it room. */
+  .art-inline > :global(.viz-surface) {
+    margin-top: 0;
+  }
+  /* Expand sits cleanly inside the widget's top-right corner; the header leaves it room. */
   .art-inline > :global(.viz-surface > .viz-header) {
     padding-right: 2.25rem;
   }
   :global(.art-expand.ui-local-51be238f) {
     position: absolute;
-    top: 2.375rem;
-    right: 0;
+    top: 0.875rem;
+    right: 0.875rem;
     display: inline-flex;
     width: 1.75rem;
     height: 1.75rem;
@@ -261,14 +263,15 @@
     border-radius: 0.5rem;
     background: transparent;
     color: var(--muted-foreground);
-    opacity: 0.7;
-    transition: opacity var(--motion-fast) var(--motion-ease), color var(--motion-fast) var(--motion-ease);
+    opacity: 0.65;
+    transition: opacity var(--motion-fast) var(--motion-ease), background-color var(--motion-instant) var(--motion-ease), color var(--motion-fast) var(--motion-ease);
   }
   .art-inline:hover :global(.art-expand.ui-local-51be238f),
   :global(.art-expand:focus-visible.ui-local-51be238f) {
     opacity: 1;
   }
   :global(.art-expand:hover.ui-local-51be238f) {
+    background: var(--surface-hover);
     color: var(--foreground);
   }
   @media (hover: none) {

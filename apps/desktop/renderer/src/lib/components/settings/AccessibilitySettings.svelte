@@ -87,6 +87,10 @@
       />
     </SettingsRow>
 
+    <SettingsRow label={$t('accessibility.fontSmoothing')} description={$t('accessibility.fontSmoothingDesc')} control="auto">
+      <Switch label={$t('accessibility.fontSmoothing')} checked={prefs.fontSmoothing} onchange={(checked) => accessibilityStore.update({ fontSmoothing: checked })} />
+    </SettingsRow>
+
     <SettingsRow label={$t('accessibility.relaxed')} description={$t('accessibility.relaxedDesc')} control="auto">
       <Switch label={$t('accessibility.relaxed')} checked={prefs.relaxedSpacing} onchange={(checked) => accessibilityStore.update({ relaxedSpacing: checked })} />
     </SettingsRow>

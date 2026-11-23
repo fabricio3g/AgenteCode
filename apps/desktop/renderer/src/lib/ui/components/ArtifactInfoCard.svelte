@@ -47,19 +47,19 @@
   .info-row {
     display: grid;
     grid-template-columns: minmax(5.5rem, 34%) 1fr;
-    gap: 0.55rem 0.85rem;
+    gap: 0.5rem 0.85rem;
     align-items: baseline;
-    padding: 0.625rem 0;
+    padding: 0.55rem 0;
     border-top: 1px solid var(--border-subtle);
   }
 
   .info-row dt {
     margin: 0;
     font-size: var(--text-xs);
-    font-weight: 400;
-    color: var(--text-tertiary, var(--text-secondary));
+    font-weight: 450;
+    color: var(--muted-foreground);
     text-transform: none;
-    letter-spacing: 0.01em;
+    letter-spacing: 0.005em;
   }
 
   .info-row dd {
@@ -73,22 +73,22 @@
   }
 
   .value {
-    font-size: var(--text-base);
+    font-size: var(--text-sm);
     font-weight: 500;
-    color: var(--text);
+    color: var(--foreground);
   }
 
   .hint {
     font-size: var(--text-xs);
-    color: var(--text-tertiary, var(--text-secondary));
+    color: var(--muted-foreground);
   }
 
   .info-footer {
-    margin-top: 0.75rem;
+    margin-top: 0.625rem;
     padding-top: 0.55rem;
     border-top: 1px solid var(--border-subtle);
     font-size: var(--text-xs);
-    color: var(--text-tertiary, var(--text-secondary));
+    color: var(--muted-foreground);
   }
 
   @media (max-width: 480px) {

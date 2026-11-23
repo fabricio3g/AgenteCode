@@ -21,7 +21,7 @@
   import { t } from 'svelte-i18n';
   import { openConversationWindow } from './conversation-window';
   import { tick } from 'svelte';
-  import { FileDown, MoreHorizontal, PanelBottom, PanelRight, ExternalLink, Pencil, Trash2 } from '$lib/icons';
+  import { FileDown, MoreHorizontal, PanelBottom, PanelRight, ExternalLink, Pencil, Pin, PinOff, Trash2 } from '$lib/icons';
   import Tooltip from '$lib/components/ui/Tooltip.svelte';
   import SessionMetadata from './SessionMetadata.svelte';
   import Menu from '$lib/components/ui/Menu.svelte';
@@ -58,9 +58,13 @@
     onsplit?: (edge: 'right' | 'bottom') => void;
     /** Shown in a pane beside the one being read (the sidebar marks those). */
     open?: boolean;
+    /** Optional quiet suffix tag (e.g. project name in flat thread lists). */
+    badge?: string;
+    pinned?: boolean;
+    onpin?: () => void;
   }
 
-  let { chat, active, onselect, status = null, statusLabel = '', menuLabel = copy.actions.more, onsplit, open = false, extraActions, ondragstart, ondragend, ondragover, ondrop, dropActive = false }: Props = $props();
+  let { chat, active, onselect, status = null, statusLabel = '', menuLabel = copy.actions.more, onsplit, open = false, badge = '', pinned = false, onpin, extraActions, ondragstart, ondragend, ondragover, ondrop, dropActive = false }: Props = $props();
 
   const title = $derived(displayChatTitle(chat));
 
@@ -158,7 +162,13 @@
       onblur={commitRename}
     />
   {:else}
+    {#if pinned}
+      <Pin class="session-pin" aria-hidden="true" />
+    {/if}
     <div class="sidebar-row-label">{title}</div>
+    {#if badge}
+      <span class="session-badge">{badge}</span>
+    {/if}
   {/if}
 
   {#if status && !renaming}
@@ -185,6 +195,9 @@
           <MoreHorizontal />
         </IconButton>
       {/snippet}
+      {#if onpin}
+        <MenuItem icon={pinned ? PinOff : Pin} label={$t(pinned ? 'code.unpin' : 'code.pin')} onselect={onpin} />
+      {/if}
       {#if onsplit}
         <MenuItem icon={PanelRight} label={copy.actions.splitRight} onselect={() => onsplit('right')} />
         <MenuItem icon={PanelBottom} label={copy.actions.splitBelow} onselect={() => onsplit('bottom')} />
@@ -202,4 +215,21 @@
 
 <style>
   :global(.session-tip) { display: flex; width: 100%; min-width: 0; }
+  :global(.session-pin) {
+    width: 0.72rem;
+    height: 0.72rem;
+    flex-shrink: 0;
+    color: var(--brand-accent);
+    opacity: 0.85;
+  }
+  .session-badge {
+    max-width: 5.5rem;
+    flex-shrink: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 0.6875rem;
+    color: var(--text-tertiary);
+    opacity: 0.85;
+  }
 </style>

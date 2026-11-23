@@ -20,6 +20,7 @@ export interface AccessibilityPrefs {
   textScale: number;
   textWeight: TextWeight;
   font: ReadingFont;
+  fontSmoothing: boolean;
   relaxedSpacing: boolean;
   reduceMotion: ReduceMotion;
   highContrast: boolean;
@@ -41,6 +42,7 @@ export const DEFAULT_ACCESSIBILITY: AccessibilityPrefs = {
   textScale: 1,
   textWeight: 'regular',
   font: 'default',
+  fontSmoothing: true,
   relaxedSpacing: false,
   reduceMotion: 'system',
   highContrast: false,
@@ -69,6 +71,7 @@ export function parseAccessibility(raw: string | null): AccessibilityPrefs {
     textScale: clamp(saved.textScale, 0.75, 2, base.textScale),
     textWeight: saved.textWeight === 'medium' ? 'medium' : 'regular',
     font: saved.font === 'system' || saved.font === 'hyperlegible' ? saved.font : 'default',
+    fontSmoothing: saved.fontSmoothing !== false,
     relaxedSpacing: saved.relaxedSpacing === true,
     reduceMotion: saved.reduceMotion === 'on' || saved.reduceMotion === 'off' ? saved.reduceMotion : 'system',
     highContrast: saved.highContrast === true,
@@ -152,6 +155,13 @@ class AccessibilityStore {
       void import('@fontsource-variable/atkinson-hyperlegible-mono');
     }
     root.dataset.font = prefs.font;
+    if (prefs.fontSmoothing) {
+      root.style.setProperty('-webkit-font-smoothing', 'antialiased');
+      root.style.setProperty('-moz-osx-font-smoothing', 'grayscale');
+    } else {
+      root.style.setProperty('-webkit-font-smoothing', 'auto');
+      root.style.setProperty('-moz-osx-font-smoothing', 'auto');
+    }
     root.classList.toggle('a11y-relaxed', prefs.relaxedSpacing);
     setMotionPreference(prefs.reduceMotion);
     root.classList.toggle('a11y-reduce-motion', prefs.reduceMotion === 'on');

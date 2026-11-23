@@ -13,7 +13,8 @@ import { z } from 'zod';
 const choiceSchema = z.object({
   text: z.string().min(1),
   correct: z.boolean().optional(),
-  why: z.string().optional()
+  why: z.string().optional(),
+  plot: z.string().optional()
 }).passthrough();
 
 const variableSchema = z.object({
@@ -74,7 +75,11 @@ const infoCardFigureSchema = z.object({
 }).passthrough();
 
 const blockSchema = z.object({
-  type: z.enum(['pretest', 'explore', 'predict', 'choice', 'numeric', 'steps', 'reveal', 'figure', 'summary']),
+  type: z.enum([
+    'pretest', 'explore', 'predict', 'choice', 'visual_choice', 'graph_challenge',
+    'hotspot_diagram', 'timeline_story', 'algo_stepper',
+    'numeric', 'steps', 'reveal', 'figure', 'summary'
+  ]),
   prompt: z.string().optional(),
   formula: z.string().optional(),
   choices: z.array(choiceSchema).optional(),
@@ -89,11 +94,38 @@ const blockSchema = z.object({
   model: modelSchema.optional(),
   insight: z.string().optional(),
   expression: z.string().optional(),
+  initialX: z.coerce.number().optional(),
+  metric: z.enum(['slope', 'value']).optional(),
+  target: z.coerce.number().optional(),
+  tolerance: z.coerce.number().nonnegative().optional(),
+  explanation: z.string().optional(),
+  pins: z.array(z.object({
+    id: z.string().min(1),
+    label: z.string().min(1),
+    role: z.string().optional(),
+    description: z.string().min(1),
+    x: z.coerce.number().min(0).max(100),
+    y: z.coerce.number().min(0).max(100)
+  }).passthrough()).optional(),
+  eras: z.array(z.object({
+    year: z.coerce.string(),
+    title: z.string().min(1),
+    trigger: z.string().min(1),
+    unlocked: z.string().min(1)
+  }).passthrough()).optional(),
+  data: z.array(z.union([z.coerce.number(), z.string()])).optional(),
   series: z.array(z.object({ x: z.coerce.number(), y: z.coerce.number() }).passthrough()).optional(),
   xRange: z.tuple([z.coerce.number(), z.coerce.number()]).optional(),
   yRange: z.tuple([z.coerce.number(), z.coerce.number()]).optional(),
   label: z.string().optional(),
-  steps: z.array(z.object({ formula: z.string().optional(), note: z.string().min(1) }).passthrough()).optional(),
+  steps: z.array(z.object({
+    formula: z.string().optional(),
+    note: z.string().min(1),
+    low: z.coerce.number().int().optional(),
+    mid: z.coerce.number().int().optional(),
+    high: z.coerce.number().int().optional(),
+    found: z.coerce.number().int().optional()
+  }).passthrough()).optional(),
   body: z.string().optional(),
   tone: z.enum(['why', 'try', 'careful']).optional(),
   chart: chartFigureSchema.optional(),

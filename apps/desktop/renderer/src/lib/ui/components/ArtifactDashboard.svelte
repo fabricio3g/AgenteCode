@@ -39,17 +39,16 @@
   {/if}
 </section>
 <style>
-  .metrics-strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(6.5rem, 1fr)); margin: 0; border-block: 1px solid var(--border-subtle); }
-  .metric { min-width: 0; padding: 0.75rem 0.875rem; border-right: 1px solid var(--border-subtle); border-radius: 0; background: transparent; }
-  .metric:first-child { padding-left: 0; } .metric:last-child { border-right: 0; }
+  .metrics-strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(7.25rem, 1fr)); gap: 0.5rem; margin: 0; }
+  .metric { min-width: 0; padding: 0.7rem 0.85rem; border-radius: var(--radius-md); background: color-mix(in srgb, var(--foreground) 3%, transparent); }
   .metric dd { margin: 0; }
-  .metric-value { color: var(--foreground); font-size: calc(var(--text-base) * 1.4); font-weight: 600; letter-spacing: -0.035em; line-height: 1.2; overflow-wrap: anywhere; }
-  .metric-value span { margin-left: 0.2rem; font-size: var(--text-sm); font-weight: 400; color: var(--text-secondary); }
-  .metric-label { margin-top: 0.3rem; color: var(--text-secondary); font-size: var(--text-xs); line-height: 1.4; }
-  .metric .metric-trend { margin-top: 0.375rem; color: var(--metric-accent); font-size: var(--text-xs); font-weight: 500; }
+  .metric-value { color: var(--foreground); font-size: calc(var(--text-base) * 1.3); font-weight: 600; letter-spacing: -0.03em; line-height: 1.2; overflow-wrap: anywhere; }
+  .metric-value span { margin-left: 0.2rem; font-size: var(--text-xs); font-weight: 400; color: var(--muted-foreground); }
+  .metric-label { margin-top: 0.25rem; color: var(--muted-foreground); font-size: var(--text-xs); line-height: 1.35; }
+  .metric .metric-trend { margin-top: 0.35rem; color: var(--metric-accent); font-size: var(--text-xs); font-weight: 500; }
   .metric .metric-trend[data-tone='up'] { color: var(--accent-green-text); }
   .metric .metric-trend[data-tone='down'] { color: var(--accent-red-text); }
-  .metric .metric-trend[data-tone='flat'] { color: var(--text-secondary); font-weight: 400; }
-  .dashboard-sections { display: grid; gap: 1rem; margin-top: 1.125rem; }
-  .dashboard-sections p { margin: 0.3rem 0 0; color: var(--text-secondary); font-size: var(--text-sm); line-height: 1.6; }
+  .metric .metric-trend[data-tone='flat'] { color: var(--muted-foreground); font-weight: 400; }
+  .dashboard-sections { display: grid; gap: 0.875rem; margin-top: 1rem; }
+  .dashboard-sections p { margin: 0.25rem 0 0; color: var(--text-secondary); font-size: var(--text-sm); line-height: 1.6; }
 </style>

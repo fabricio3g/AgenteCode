@@ -8,8 +8,8 @@ describe('parseAccessibility', () => {
   });
 
   it('keeps valid values and drops unknown ones', () => {
-    const prefs = parseAccessibility(JSON.stringify({ uiScale: 1.25, font: 'hyperlegible', reduceMotion: 'on', highContrast: true, extra: 1 }));
-    expect(prefs).toEqual({ ...DEFAULT_ACCESSIBILITY, uiScale: 1.25, font: 'hyperlegible', reduceMotion: 'on', highContrast: true });
+    const prefs = parseAccessibility(JSON.stringify({ uiScale: 1.25, font: 'hyperlegible', fontSmoothing: false, reduceMotion: 'on', highContrast: true, extra: 1 }));
+    expect(prefs).toEqual({ ...DEFAULT_ACCESSIBILITY, uiScale: 1.25, font: 'hyperlegible', fontSmoothing: false, reduceMotion: 'on', highContrast: true });
   });
 
   it('clamps sizes and rejects unknown choices', () => {

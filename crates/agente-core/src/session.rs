@@ -70,7 +70,7 @@ pub struct SessionState {
 /// invocation) never writes into the user's real store. Test sessions used to
 /// land in `~/.opendev/sessions` alongside real ones — several rooted at
 /// `target/debug`, from harness runs.
-fn sessions_dir() -> PathBuf {
+pub(crate) fn sessions_dir() -> PathBuf {
     if let Some(dir) = std::env::var_os("AGENTE_SESSIONS_DIR") {
         return PathBuf::from(dir);
     }

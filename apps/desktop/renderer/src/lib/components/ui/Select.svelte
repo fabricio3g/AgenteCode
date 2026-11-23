@@ -288,7 +288,7 @@
       aria-label={ariaLabel}
       aria-labelledby={ariaLabel ? undefined : (ariaLabelledby || triggerId)}
       class={cn(
-        'ui-menu fixed overflow-y-auto',
+        'ui-menu ui-select-menu',
         placement === 'top' ? 'origin-bottom' : 'origin-top',
         menuClass,
       )}
@@ -321,3 +321,13 @@
     </div>
   {/if}
 </Portal>
+
+<style>
+  .ui-select-menu {
+    position: fixed;
+    z-index: var(--z-menu);
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+</style>

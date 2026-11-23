@@ -379,6 +379,11 @@ impl TurnState {
 /// events), so the loop itself does not need to know parent vs child.
 #[tracing::instrument(skip_all, fields(session_id = %cfg.session_id, task_id = cfg.task_id, role = if cfg.is_subagent { "child" } else { "parent" }, provider = %cfg.provider_id, model = %cfg.model))]
 pub(crate) async fn run_agent_loop(cfg: AgentRunConfig) -> Result<(), AgentLoopFailure> {
+    let session_id = cfg.session_id;
+    crate::tools::atomic_fs::scope_session(session_id, run_agent_loop_inner(cfg)).await
+}
+
+async fn run_agent_loop_inner(cfg: AgentRunConfig) -> Result<(), AgentLoopFailure> {
     let AgentRunConfig {
         session_id,
         task_id,

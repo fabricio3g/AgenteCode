@@ -3,7 +3,8 @@
 <script lang="ts">
   import { SUPPORTED_UI_LANGUAGES, normalizeLocaleCode, setUiLocale } from '$lib/i18n';
   import { appStore } from '$lib/stores/app.svelte';
-  import { themeStore } from '$lib/stores/theme.svelte';
+  import { appearanceStore } from '$lib/stores/appearance.svelte';
+  import type { ColorMode } from '$shared/appearance';
   import { t } from 'svelte-i18n';
   import { locale } from 'svelte-i18n';
   import { Button, Input, SegmentedControl, Select, Switch } from '$lib/components/ui';
@@ -68,9 +69,13 @@
     >
       <SegmentedControl
         label={$t('generalSettings.theme')}
-        value={themeStore.current}
-        options={[{ value: 'light', label: $t('generalSettings.light') }, { value: 'dark', label: $t('generalSettings.dark') }]}
-        onchange={(value) => themeStore.set(value as 'light' | 'dark')}
+        value={appearanceStore.prefs.mode}
+        options={[
+          { value: 'system', label: $t('appearance.modeSystem') },
+          { value: 'light', label: $t('generalSettings.light') },
+          { value: 'dark', label: $t('generalSettings.dark') }
+        ]}
+        onchange={(value) => appearanceStore.setMode(value as ColorMode)}
       />
     </SettingsRow>
   </SettingsSection>

@@ -25,16 +25,23 @@
   } = $props();
   const folders = $derived(organization.folders(project.id));
   const rootKey = $derived(`root:${project.id}`);
-  const entries = $derived(organization.list(rootKey, [
-    ...folders.map(folder => ({ id: folder.id, folder, chat: null as ChatSession | null })),
-    ...sessions.filter(chat => !folders.some(folder => folder.id === chat.folderId)).map(chat => ({ id: chat.id, folder: null as ChatFolder | null, chat }))
-  ]));
+  const entries = $derived(
+    organization.list(rootKey, [
+      ...folders.map(folder => ({ id: folder.id, folder, chat: null as ChatSession | null })),
+      ...organization.pinnedFirst('chats', sessions.filter(chat => !folders.some(folder => folder.id === chat.folderId)))
+        .map(chat => ({ id: chat.id, folder: null as ChatFolder | null, chat }))
+    ]).sort((a, b) => {
+      const pa = a.chat ? organization.isPinned('chats', a.chat.id) : false;
+      const pb = b.chat ? organization.isPinned('chats', b.chat.id) : false;
+      return Number(pb) - Number(pa);
+    })
+  );
   let newName = $state('');
   let editing = $state('');
   let rename = $state('');
   let input = $state<HTMLInputElement>();
   const chatGroup = (folderId: string | null) => folderId ? `chats:${folderId}` : rootKey;
-  const children = (folderId: string) => organization.list(chatGroup(folderId), sessions.filter(chat => chat.folderId === folderId));
+  const children = (folderId: string) => organization.pinnedFirst('chats', organization.list(chatGroup(folderId), sessions.filter(chat => chat.folderId === folderId)));
   const folderItem = (folder: ChatFolder): SidebarItem => ({kind:'folder',id:folder.id,projectId:project.id});
   const chatItem = (chat: ChatSession): SidebarItem => ({kind:'chat',id:chat.id,projectId:project.id});
   const idsIn = (chat: ChatSession) => chat.folderId && folders.some(folder => folder.id === chat.folderId) ? children(chat.folderId).map(item=>item.id) : entries.map(item=>item.id);
@@ -65,6 +72,7 @@
 {#snippet conversation(chat: ChatSession)}
   {@const status=statusFor(chat.id)}
   <SessionRow {chat} active={appStore.currentChatId===chat.id} open={!!workspaceLayout.paneForChat(chat.id)}
+    pinned={organization.isPinned('chats', chat.id)} onpin={()=>organization.togglePin('chats', chat.id)}
     onselect={()=>codeStore.openConversation(chat.id)} onsplit={(edge)=>onsplit(chat.id,edge)} {status}
     statusLabel={status==='approval'?$t('code.awaitingApproval'):$t('code.running')} menuLabel={$t('code.conversationOptions')}
     ondragstart={(event)=>organization.start(event,chatItem(chat))} ondragend={()=>organization.end()}

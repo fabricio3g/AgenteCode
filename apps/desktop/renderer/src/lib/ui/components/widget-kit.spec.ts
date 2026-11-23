@@ -42,4 +42,13 @@ describe('buildWidgetDocument', () => {
     const doc = buildWidgetDocument({ html: '', script: 'const s = "</script><img src=x>";', tokens: '' });
     expect(doc).toContain('<\\/script><img src=x>');
   });
+
+  it('exposes minimal layout classes and fx.plot / fx.scene3d / fx.sound helpers', () => {
+    const doc = buildWidgetDocument({ html: '<div class="fx-stage"></div>', script: 'fx.plot("#a", {});', tokens: ':root{}' });
+    expect(doc).toContain('.fx-stage');
+    expect(doc).toContain('.fx-kpis');
+    expect(doc).toContain('.fx-takeaway');
+    expect(doc).toContain('scene3d');
+    expect(doc).toContain('sound');
+  });
 });

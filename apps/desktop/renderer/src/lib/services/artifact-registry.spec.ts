@@ -165,6 +165,7 @@ const REALISTIC_CALLS: Record<string, Record<string, unknown>> = {
   create_info_card: { title: 'Fact', rows: [{ label: 'A', value: 'B' }], source: 'https://x.test' },
   create_html_card: { title: 'Card', html: '<p>hi</p>', description: 'a card' },
   create_widget: { title: 'Tip calculator', html: '<input type="range" id="t"><div id="out"></div>', script: 'fx.$("#t").oninput = () => {};' },
+  create_scene_3d: { title: 'DNA Helix', preset: 'dna' },
   create_lesson: {
     title: 'The chain rule',
     mode: 'lesson',

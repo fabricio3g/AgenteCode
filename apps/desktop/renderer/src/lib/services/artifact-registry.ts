@@ -4,6 +4,7 @@ import type { ToolDefinition } from '$lib/services/chat/types';
 import type { ArtifactKind, ArtifactPresentation } from '$lib/types/chat';
 import { lessonArgsSchema, repairLessonArgs } from '$lib/services/lesson-schema';
 import { lintLesson, pedagogyIssues, type LessonLintIssue } from '$lib/services/lesson-lint';
+import { repairScene3dArgs, scene3dArgsSchema } from '$lib/services/scene3d-schema';
 
 export const ARTIFACT_ICON_NAMES = [
   'file-text',
@@ -19,7 +20,8 @@ export const ARTIFACT_ICON_NAMES = [
   'code',
   'library',
   'sparkles',
-  'graduation-cap'
+  'graduation-cap',
+  'box'
 ] as const;
 
 export type ArtifactIconName = typeof ARTIFACT_ICON_NAMES[number];
@@ -286,8 +288,8 @@ const builtinArtifacts = [
     toolDescription: [
       'Build a small interactive view inline in chat (dynamic view): a calculator with sliders, a comparison with toggles, a quiz or flashcards, a checklist, a timeline, a step-by-step explainer with tabs, a what-if simulation.',
       'html: the markup. script: plain JavaScript that makes it interactive (optional). Runs offline in a sealed frame: no network, no external libraries, no storage.',
-      'Style with the built-in classes, not your own colors: fx-stack, fx-row, fx-between, fx-grid, fx-metrics (compact KPI strip), fx-card, fx-chart, fx-insight, fx-caption, fx-label, fx-value, fx-muted, fx-small, fx-btn (primary, ghost), fx-seg (buttons with class on), fx-tabs, fx-chip (good, bad, warn, info), fx-bar > span, fx-list, fx-timeline, fx-up, fx-down, fx-divider; plain table, details/summary, input[type=range] are styled too.',
-      'Helpers in script: fx.$(sel), fx.$$(sel), fx.num(n), fx.money(n, "EUR"), fx.pct(0.12), fx.ask("follow-up question") to suggest a next question.',
+      'Style with the built-in classes, not your own colors: fx-stack, fx-row, fx-between, fx-grid, fx-metrics, fx-kpis > fx-kpi (hairline KPI strip), fx-stage (inset graphic stage), fx-takeaway (1-line dynamic footer), fx-card, fx-chart, fx-insight, fx-caption, fx-label, fx-value, fx-muted, fx-small, fx-btn (primary, ghost), fx-seg (buttons with class on), fx-tabs, fx-chip (good, bad, warn, info), fx-bar > span, fx-list, fx-timeline, fx-up, fx-down, fx-divider; plain table, details/summary, input[type=range] are styled too.',
+      'Helpers in script: fx.$(sel), fx.$$(sel), fx.num(n), fx.money(n, "EUR"), fx.pct(0.12), fx.plot(el, { xRange, yRange, series, points }), fx.scene3d(canvas, { height, draw({ ctx, proj, w, h, t, accent, ink }) }), fx.sound([261.6, 329.6, 392]), fx.ask("follow-up question") to suggest a next question.',
       'Use real numbers from the conversation or tools. Keep it compact.'
     ].join(' '),
     argsSchema: z.object({ title: z.string().min(1), html: z.string().min(1), script: z.string().optional(), path: pathSchema })
@@ -298,8 +300,8 @@ const builtinArtifacts = [
     toolDescription: [
       'Build an interactive lesson in Home: a guided explanation (mode "lesson") or a scaffold-free practice set (mode "practice").',
       'Build one only when the user asked for it — said "teach me", "explain interactively", "quiz me", used /teach or /practice, or clicked an offer to turn an answer into a lesson. Never replace a direct answer with a lesson, and never create a second artifact for a follow-up question.',
-      'mode "lesson": blocks in this order — pretest (a question BEFORE any explanation), explore (1–6 sliders, expression-based outputs, optional plot), predict (reader drags a guess, then the true curve appears), steps (worked lines with LaTeX), reveal, figure (one of chart / diagram / infoCard), summary. The first block must be a question, at most two explanation blocks in a row, the last block is summary.',
-      'mode "practice": choice and numeric blocks only, no hints, no visuals, ends with summary. Use it for retrieval practice after a lesson.',
+      'mode "lesson": blocks in this order — pretest (a question BEFORE any explanation), explore (1–6 sliders, expression-based outputs, optional plot), predict (reader drags a guess, then the true curve appears), graph_challenge (drag point to hit target slope/value), visual_choice (2x2 choices with miniature curves), hotspot_diagram (labeled pins for biology/hardware/anatomy), timeline_story (cause-and-effect eras), algo_stepper (step-by-step array/pointer state), steps (worked lines with LaTeX), reveal, figure (one of chart / diagram / infoCard), summary. The first block must be a question, at most two explanation blocks in a row, the last block is summary.',
+      'mode "practice": choice, visual_choice, graph_challenge, and numeric blocks only, no hints, ends with summary. Use it for active retrieval practice.',
       'Rules that fail the call: prose before the first question, a wrong option without its own why, a hint or explore block in practice, a fractional answer without tolerance, a last block that is not summary.',
       'Expressions are evaluated safely (no scripts): + - * / ^, parentheses, sin cos tan sqrt abs exp ln log, pi e tau, variable keys. LaTeX goes in prompt/formula/note fields.',
       'Shape: { title, subtitle?, subject?: math|physics|chemistry|biology|cs|data|general, mode, blocks: [ { type: "choice", prompt, choices: [{ text, correct?, why }] }, { type: "explore", prompt, model: { variables: [{ key, label, value, min, max, step?, unit? }], outputs: [{ key, label, expression, unit?, format? }], plot?: { expression, variable } } }, { type: "summary", points: [] } ] }. Real numbers only: no invented data, no scores.'
@@ -307,6 +309,17 @@ const builtinArtifacts = [
     repairArgs: repairLessonArgs,
     lintArgs: lintLesson,
     argsSchema: lessonArgsSchema
+  }),
+  defineArtifact({
+    id: 'scene_3d', name: '3D scenes', description: 'Interactive orbitable 3D models for biology, chemistry, astronomy, systems, and surfaces', icon: 'box', category: 'visuals', presentation: 'inline', defaultEnabled: true,
+    toolName: 'create_scene_3d',
+    toolDescription: [
+      'Create an interactive, orbitable 3D visualization inline in chat (no JS required).',
+      'Presets: "dna" (double helix), "molecule" (tetrahedral CH4), "orbit" (planetary orbital planes), "exploded_stack" (3D layered architecture — pass custom layers: [{ label, accent? }]), "surface" (3D wave/terrain mesh), or "custom" (pass nodes: [{ id?, x, y, z, label?, radius?, accent? }] and edges: [{ from, to, accent? }]).',
+      'Include a concise takeaway explaining what the user should notice as they rotate or scrub the slider.'
+    ].join(' '),
+    repairArgs: repairScene3dArgs,
+    argsSchema: scene3dArgsSchema
   })
   // Research exports (citations, evidence matrix, …) are not an artifact: the
   // research widget on Search / Deep / Max answers builds them on demand.

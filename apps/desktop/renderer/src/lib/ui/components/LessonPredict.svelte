@@ -96,7 +96,7 @@
   .predict {
     display: flex;
     flex-direction: column;
-    gap: 0.55rem;
+    gap: 0.75rem;
   }
 
   .actions {
@@ -108,7 +108,8 @@
 
   .insight {
     margin: 0;
-    font-size: var(--text-sm);
+    font-size: var(--text-xs);
+    line-height: 1.55;
     color: var(--text-secondary);
   }
 </style>

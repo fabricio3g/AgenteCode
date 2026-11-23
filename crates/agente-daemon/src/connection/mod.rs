@@ -115,21 +115,42 @@ where
         }
         match rpc::classify(&line) {
             Ok(Incoming::Request { id, method, params }) => {
-                if method == "models.discover"
-                    || method == "session.compact"
-                    || method == "turn.start"
-                {
-                    // Discovery and smart compaction must not hold up other chats
-                    // or control requests on the shared Desktop connection.
+                if matches!(
+                    method.as_str(),
+                    "models.discover"
+                        | "models.refresh_catalog"
+                        | "providers.test"
+                        | "session.compact"
+                        | "session.generate_title"
+                        | "llm.complete"
+                        | "turn.start"
+                        | "mcp.control"
+                        | "runtime.configure"
+                        | "processes.start"
+                ) {
+                    // Long-running and network-bound RPCs must never block the
+                    // JSON-RPC reader loop (so turn.cancel, approval.respond,
+                    // and client_tools.result stay responsive across all tabs).
                     let task_connection = Arc::clone(&connection);
                     connection.spawn_task(async move {
                         let connection = task_connection;
-                        let outcome = if method == "turn.start" {
-                            connection.start_turn_async(params).await
-                        } else if method == "session.compact" {
-                            connection.compact_session(params).await
-                        } else {
-                            connection.discover_models(params).await
+                        let outcome = match method.as_str() {
+                            "turn.start" => connection.start_turn_async(params).await,
+                            "session.compact" => connection.compact_session(params).await,
+                            "models.discover" => connection.discover_models(params).await,
+                            "models.refresh_catalog" => connection.refresh_catalog().await,
+                            "providers.test" => connection.test_provider(params).await,
+                            "session.generate_title" => connection.generate_title(params).await,
+                            "llm.complete" => connection.llm_complete(params).await,
+                            "mcp.control" => connection.control_mcp(params).await,
+                            "runtime.configure" => connection
+                                .runtime
+                                .configure_and_connect(params)
+                                .await
+                                .map(|()| json!({ "ok": true }))
+                                .map_err(runtime_failure),
+                            "processes.start" => connection.start_process(params).await,
+                            _ => unreachable!(),
                         };
                         let reply = match outcome {
                             Ok(result) => rpc::result_reply(id, result),
@@ -139,20 +160,7 @@ where
                     });
                     continue;
                 }
-                let outcome = if method == "mcp.control" {
-                    connection.control_mcp(params).await
-                } else if method == "runtime.configure" {
-                    // Waits for the MCP servers the patch names, so the next
-                    // turn already sees their tools.
-                    connection
-                        .runtime
-                        .configure_and_connect(params)
-                        .await
-                        .map(|()| json!({ "ok": true }))
-                        .map_err(runtime_failure)
-                } else {
-                    connection.handle(&method, params)
-                };
+                let outcome = connection.handle(&method, params);
                 let reply = match outcome {
                     Ok(result) => rpc::result_reply(id, result),
                     Err((code, message)) => error_reply(id, code, &message),

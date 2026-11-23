@@ -2363,6 +2363,8 @@
     "fontDefault": "Inter (padrão)",
     "fontHyperlegible": "Atkinson Hyperlegible",
     "fontSystem": "Fonte do sistema",
+    "fontSmoothing": "Suavização de fonte",
+    "fontSmoothingDesc": "Suaviza o texto para bordas mais nítidas. Desative para usar a renderização subpixel do sistema.",
     "relaxed": "Espaçamento amplo",
     "relaxedDesc": "Mais espaço entre linhas, letras e palavras nas mensagens.",
     "underlineLinks": "Sublinhar links",

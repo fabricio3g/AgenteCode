@@ -47,7 +47,7 @@ export const HOME_TOOL_GROUPS: readonly HomeToolGroup[] = [
     label: 'Data & charts',
     tools: [
       'calculator', 'get_weather', 'convert_currency', 'get_quote',
-      'create_chart', 'create_dashboard', 'create_info_card', 'create_html_card', 'create_widget', 'create_diagram', 'create_map'
+      'create_chart', 'create_dashboard', 'create_info_card', 'create_html_card', 'create_widget', 'create_diagram', 'create_map', 'create_scene_3d'
     ]
   },
   { id: 'code', label: 'Code', tools: ['bash', 'get_diagnostics', 'preview_project'] }

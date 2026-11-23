@@ -46,7 +46,7 @@ export function resizeCorners(dividers: Divider[], bounds: Rect): ResizeCorner[]
   for (const x of dividers.filter((item) => item.axis === 'x' && item.region)) {
     for (const y of dividers.filter((item) => item.axis === 'y' && item.region === x.region)) {
       const cx = x.rect.x + x.rect.width / 2, cy = y.rect.y + y.rect.height / 2;
-      if (cx < y.rect.x - 1 || cx > y.rect.x + y.rect.width + 1 || cy < x.rect.y - 1 || cy > x.rect.y + x.rect.height + 1) continue;
+      if (cx < y.rect.x - GAP || cx > y.rect.x + y.rect.width + GAP || cy < x.rect.y - GAP || cy > x.rect.y + x.rect.height + GAP) continue;
       result.push({ id: `${x.id}:${y.id}`, x, y, edge: `${y.outer === 'bottomHeight' || y.outer === 'rightTop' ? 'n' : 's'}${x.outer === 'rightWidth' ? 'w' : 'e'}`, rect: {
         x: Math.max(bounds.x, Math.min(bounds.x + bounds.width - 24, cx - 12)),
         y: Math.max(bounds.y, Math.min(bounds.y + bounds.height - 24, cy - 12)), width: 24, height: 24
@@ -147,7 +147,7 @@ export function measurePanes(root: PaneNode | null, rect: Rect, focused = ''): {
     const size = Math.max(share, Math.min(length - share, length * node.ratio));
     const a = { ...box, ...(horizontal ? { width: size } : { height: size }) };
     const b = { ...box, ...(horizontal ? { x: box.x + size + GAP, width: length - size } : { y: box.y + size + GAP, height: length - size }) };
-    dividers.push({ id: node.id, axis: node.axis, length, ratio: size / length, region: null, rect: horizontal ? { x: box.x + size - 5, y: box.y, width: 14, height: box.height } : { x: box.x, y: box.y + size - 5, width: box.width, height: 14 } });
+    dividers.push({ id: node.id, axis: node.axis, length, ratio: size / length, region: null, rect: horizontal ? { x: box.x + size - 1, y: box.y, width: GAP + 2, height: box.height } : { x: box.x, y: box.y + size - 1, width: box.width, height: GAP + 2 } });
     walk(node.a, a); walk(node.b, b);
   }
   if (root) walk(root, rect);
@@ -352,7 +352,7 @@ export function measureWorkspace(layout: WorkspaceLayout, bounds: Rect, visible:
     const size = Math.max(horizontal ? amin.width : amin.height, Math.min(length - (horizontal ? bmin.width : bmin.height), length * node.ratio));
     const a = { ...rect, ...(horizontal ? { width: size } : { height: size }) };
     const b = { ...rect, ...(horizontal ? { x: rect.x + size + GAP, width: length - size } : { y: rect.y + size + GAP, height: length - size }) };
-    dividers.push({ id: node.id, axis: node.axis, region, length, ratio: size / length, floatingId, rect: horizontal ? { x: rect.x + size - 5, y: rect.y, width: 14, height: rect.height } : { x: rect.x, y: rect.y + size - 5, width: rect.width, height: 14 } });
+    dividers.push({ id: node.id, axis: node.axis, region, length, ratio: size / length, floatingId, rect: horizontal ? { x: rect.x + size - 1, y: rect.y, width: GAP + 2, height: rect.height } : { x: rect.x, y: rect.y + size - 1, width: rect.width, height: GAP + 2 } });
     walk(node.a, a, region, z, maximized, floatingId); walk(node.b, b, region, z, maximized, floatingId);
   }
   if (compact && (right || bottom)) {
@@ -368,12 +368,19 @@ export function measureWorkspace(layout: WorkspaceLayout, bounds: Rect, visible:
     const top = Math.min(layout.rightTop, Math.max(0, frame.height - MIN_HEIGHT));
     const rect = { x: frame.x + frame.width - rw, y: frame.y + top, width: rw, height: Math.min(frame.height - top, layout.rightHeight ?? frame.height) };
     walk(right, rect, 'right');
-    dividers.push({ id: 'rightWidth', outer: 'rightWidth', axis: 'x', region: 'right', length: bounds.width, rect: { x: rect.x - 7, y: rect.y, width: 14, height: rect.height } }, { id: 'rightHeight', outer: 'rightHeight', axis: 'y', region: 'right', length: bounds.height - top, rect: { x: rect.x, y: rect.y + rect.height - 12, width: rect.width, height: 14 } }, { id: 'rightTop', outer: 'rightTop', axis: 'y', region: 'right', length: rect.height, rect: { x: rect.x, y: Math.max(bounds.y, rect.y - 5), width: rect.width, height: 10 } });
+    dividers.push(
+      { id: 'rightWidth', outer: 'rightWidth', axis: 'x', region: 'right', length: bounds.width, rect: { x: rect.x - GAP - 1, y: rect.y, width: GAP + 2, height: rect.height } },
+      { id: 'rightHeight', outer: 'rightHeight', axis: 'y', region: 'right', length: bounds.height - top, rect: { x: rect.x, y: Math.min(bounds.y + bounds.height - 8, rect.y + rect.height - 2), width: rect.width, height: 8 } },
+      { id: 'rightTop', outer: 'rightTop', axis: 'y', region: 'right', length: rect.height, rect: { x: rect.x, y: Math.max(bounds.y, rect.y - 6), width: rect.width, height: 8 } }
+    );
   }
   if (bottom && !compact) {
     const rect = { x: frame.x, y: frame.y + frame.height - bh, width: Math.min(mainWidth, layout.bottomWidth ?? mainWidth), height: bh };
     walk(bottom, rect, 'bottom');
-    dividers.push({ id: 'bottomHeight', outer: 'bottomHeight', axis: 'y', region: 'bottom', length: bounds.height, rect: { x: rect.x, y: rect.y - 7, width: rect.width, height: 14 } }, { id: 'bottomWidth', outer: 'bottomWidth', axis: 'x', region: 'bottom', length: mainWidth, rect: { x: rect.x + rect.width - 12, y: rect.y, width: 14, height: rect.height } });
+    dividers.push(
+      { id: 'bottomHeight', outer: 'bottomHeight', axis: 'y', region: 'bottom', length: bounds.height, rect: { x: rect.x, y: rect.y - GAP - 1, width: rect.width, height: GAP + 2 } },
+      { id: 'bottomWidth', outer: 'bottomWidth', axis: 'x', region: 'bottom', length: mainWidth, rect: { x: Math.min(bounds.x + bounds.width - 8, rect.x + rect.width - 2), y: rect.y, width: 8, height: rect.height } }
+    );
   }
   for (const item of layout.floating) {
     const node = filterNode(item.group, visible);

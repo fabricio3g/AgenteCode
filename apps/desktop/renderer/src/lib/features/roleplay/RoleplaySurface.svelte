@@ -281,7 +281,7 @@
   .roleplay-panel {
     background: var(--background);
     border: 0;
-    border-radius: var(--radius-2xl) 0 0 0;
+    border-radius: var(--sheet-radius) 0 0 0;
   }
 
   .scene-banner {

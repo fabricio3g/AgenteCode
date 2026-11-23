@@ -7,7 +7,7 @@
   import { initMotion } from '$lib/utils/motion.svelte';
   import { appStore } from '$lib/stores/app.svelte';
   import { deepResearchStore } from '$lib/stores/deep-research.svelte';
-  import { themeStore } from '$lib/stores/theme.svelte';
+  import { appearanceStore } from '$lib/stores/appearance.svelte';
   import { i18nReady } from '$lib/i18n';
   import { installReferenceIconFallback } from '$lib/utils/markdown-references';
   import { installCodeCopyDelegate } from '$lib/utils/code-copy';
@@ -80,7 +80,7 @@
       startupHintIndex = (startupHintIndex + 1) % startupHints.length;
     }, 1400);
 
-    step('theme', () => themeStore.set(themeStore.current));
+    step('theme', () => appearanceStore.sync());
     step('deep-research', () => deepResearchStore.init());
     activeWorkSyncInterval = setInterval(() => {
       step('work-sync', () => void appStore.syncWindowActiveWork());

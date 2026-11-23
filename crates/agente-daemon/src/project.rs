@@ -93,19 +93,21 @@ pub(crate) fn handle(
                 return Ok(json!({ "text": text }));
             };
             let (name, args) = slash.split_once(char::is_whitespace).unwrap_or((slash, ""));
+            let commands = agente_core::extensions::discover_commands(&project_dir);
+            if let Some(command) = commands.iter().find(|command| command.name == name) {
+                let expanded = agente_core::extensions::expand_command_template(
+                    &command.template,
+                    args.trim(),
+                );
+                return Ok(json!({ "text": expanded }));
+            }
             if let Some(skill) = agente_core::extensions::skills::find(&project_dir, name) {
                 let expanded =
                     agente_core::extensions::skills::user_invocation(&skill, args.trim())
                         .map_err(|error| (rpc::INTERNAL_ERROR, error.to_string()))?;
                 return Ok(json!({ "text": expanded }));
             }
-            let commands = agente_core::extensions::discover_commands(&project_dir);
-            let expanded = commands
-                .iter()
-                .find(|command| command.name == name)
-                .map(|command| command.template.replace("$ARGUMENTS", args.trim()))
-                .unwrap_or(text);
-            Ok(json!({ "text": expanded }))
+            Ok(json!({ "text": text }))
         }
         "mcp.status" => {
             let snapshots = if params.get("project_dir").is_some() {

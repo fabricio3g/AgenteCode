@@ -73,7 +73,7 @@ export function answerFor(state: LessonState, index: number): LessonAnswer | und
 
 /** Blocks that hold the reader until they answer; everything else just advances. */
 export function isQuestion(block: LessonBlock | undefined): boolean {
-  return !!block && ['pretest', 'choice', 'numeric', 'predict'].includes(block.type);
+  return !!block && ['pretest', 'choice', 'visual_choice', 'graph_challenge', 'numeric', 'predict'].includes(block.type);
 }
 
 export function canAdvance(state: LessonState, block: LessonBlock | undefined): boolean {

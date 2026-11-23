@@ -2363,6 +2363,8 @@
     "fontDefault": "Inter（默认）",
     "fontHyperlegible": "Atkinson Hyperlegible",
     "fontSystem": "系统字体",
+    "fontSmoothing": "字体平滑",
+    "fontSmoothingDesc": "启用文本抗锯齿以获得更清晰的边缘。关闭以使用系统子像素渲染。",
     "relaxed": "宽松间距",
     "relaxedDesc": "增加消息中的行距、字距和词距。",
     "underlineLinks": "为链接加下划线",

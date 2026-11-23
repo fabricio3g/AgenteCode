@@ -6,7 +6,8 @@
 // repainted with the colour the backdrop would have produced, so the frame
 // does not read brighter than the sheet inside it.
 
-import { WINDOW_THEME_COLORS } from '$shared/window-theme';
+import { getTitlebarColors } from '$shared/appearance';
+import { appearanceStore } from '$lib/stores/appearance.svelte';
 import { appWindow } from './window';
 
 function rgb(hex: string): [number, number, number] {
@@ -36,7 +37,7 @@ function blend(base: string, top: { color: number[]; alpha: number }): string {
 
 export function dimCaption(dimmed: boolean): void {
   if (typeof document === 'undefined') return;
-  const theme = WINDOW_THEME_COLORS[document.documentElement.classList.contains('dark') ? 'dark' : 'light'];
+  const theme = getTitlebarColors(appearanceStore.prefs.theme, appearanceStore.resolvedMode);
   if (!dimmed) {
     void appWindow.setTitlebarOverlay(theme).catch(() => {});
     return;

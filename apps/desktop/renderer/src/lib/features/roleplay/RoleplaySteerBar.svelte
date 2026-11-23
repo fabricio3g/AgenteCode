@@ -48,10 +48,10 @@
       <PenLine />
       {$t('roleplay.steer.impersonate')}
     </Button>
-    <Button variant="outline" size="xs" class={noteOpen || note.trim() ? 'bg-[var(--surface-hover)]' : ''} aria-expanded={noteOpen} title={$t('roleplay.steer.noteHint')} onclick={() => (noteOpen = !noteOpen)}>
+    <Button variant="outline" size="xs" class={noteOpen || note.trim() ? 'steer-active' : ''} aria-expanded={noteOpen} title={$t('roleplay.steer.noteHint')} onclick={() => (noteOpen = !noteOpen)}>
       <StickyNote class="size-3" /> {$t('roleplay.steer.note')}
     </Button>
-    <Button variant="outline" size="xs" class={settings.adventureChoices ? 'bg-[var(--surface-hover)]' : ''} aria-pressed={!!settings.adventureChoices} title={$t('roleplay.steer.choicesHint')} onclick={() => roleplayStore.setOption('adventureChoices', !settings.adventureChoices)}>
+    <Button variant="outline" size="xs" class={settings.adventureChoices ? 'steer-active' : ''} aria-pressed={!!settings.adventureChoices} title={$t('roleplay.steer.choicesHint')} onclick={() => roleplayStore.setOption('adventureChoices', !settings.adventureChoices)}>
       <ListOrdered class="size-3" /> {$t('roleplay.steer.choices')}
     </Button>
     {#if settings.interactionMode === 'dynamic'}
@@ -80,5 +80,11 @@
     resize: vertical;
     font-size: var(--text-sm);
     line-height: 1.45;
+  }
+
+  .chips :global(.steer-active) {
+    border-color: color-mix(in srgb, var(--brand-accent) 45%, var(--border));
+    background: color-mix(in srgb, var(--brand-accent) 10%, var(--card));
+    color: var(--foreground);
   }
 </style>

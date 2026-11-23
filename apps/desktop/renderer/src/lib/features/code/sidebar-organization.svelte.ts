@@ -4,8 +4,10 @@ import { createId } from '$lib/utils/id';
 import type { ChatFolder, ChatSession } from '$lib/types/chat';
 
 const KEY = 'agente.sidebarOrder';
+const PINS_KEY = 'agente.sidebarPins';
 const SIDEBAR_DRAG = 'application/x-agente-sidebar';
 export type SidebarItem = { kind: 'project' | 'folder' | 'chat'; id: string; projectId?: string };
+export type PinKind = 'projects' | 'chats';
 export const itemKey = (item: SidebarItem) => `${item.kind}:${item.id}`;
 function ordered<T extends { id: string }>(items: T[], ids: string[]): T[] {
   const rank = new Map(ids.map((id, index) => [id, index]));
@@ -17,12 +19,43 @@ function read(): Record<string, string[]> {
     return Object.fromEntries(Object.entries(saved).filter((entry): entry is [string, string[]] => Array.isArray(entry[1]) && entry[1].every(id => typeof id === 'string')));
   } catch { return {}; }
 }
+function readPins(): { projects: string[]; chats: string[] } {
+  try {
+    const saved = JSON.parse(localStorage.getItem(PINS_KEY) ?? '{}');
+    const projects: string[] = Array.isArray(saved?.projects) ? saved.projects.filter((id: unknown): id is string => typeof id === 'string') : [];
+    const chats: string[] = Array.isArray(saved?.chats) ? saved.chats.filter((id: unknown): id is string => typeof id === 'string') : [];
+    return { projects: [...new Set<string>(projects)], chats: [...new Set<string>(chats)] };
+  } catch { return { projects: [], chats: [] }; }
+}
 export class SidebarOrganization {
   orders = $state(read());
+  pins = $state(readPins());
   expanded = $state<Record<string, boolean>>({});
   dragging = $state<SidebarItem | null>(null);
   hover = $state('');
   creatingIn = $state<string | null>(null);
+  isPinned(kind: PinKind, id: string): boolean { return this.pins[kind].includes(id); }
+  togglePin(kind: PinKind, id: string) {
+    const current = this.pins[kind];
+    this.pins[kind] = current.includes(id) ? current.filter(entry => entry !== id) : [id, ...current];
+    try { localStorage.setItem(PINS_KEY, JSON.stringify(this.pins)); } catch { /* Session-only. */ }
+  }
+  pinnedFirst<T extends { id: string }>(kind: PinKind, items: T[]): T[] {
+    const pinned = this.pins[kind];
+    if (!pinned.length) return items;
+    const rank = new Map(pinned.map((id, index) => [id, index]));
+    return items
+      .map((item, index) => ({ item, index }))
+      .sort((a, b) => {
+        const ra = rank.get(a.item.id);
+        const rb = rank.get(b.item.id);
+        if (ra !== undefined && rb !== undefined) return ra - rb;
+        if (ra !== undefined) return -1;
+        if (rb !== undefined) return 1;
+        return a.index - b.index;
+      })
+      .map(({ item }) => item);
+  }
   list<T extends { id: string }>(group: string, items: T[]): T[] { return ordered(items, this.orders[group] ?? []); }
   reorder(group: string, ids: string[], id: string, before: string | null) {
     if (!ids.includes(id) || id === before) return;

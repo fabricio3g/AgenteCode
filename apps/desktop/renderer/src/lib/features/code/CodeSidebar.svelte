@@ -23,22 +23,30 @@
   import {
     ArrowUp,
     ArrowDown,
+    Check,
     FolderPlus,
     Copy as CopyIcon,
     Folder,
     FolderOpen,
     FolderSearch,
+    FolderTree,
+    LayoutList,
     MoreHorizontal,
     Pencil,
+    Pin,
+    PinOff,
     Plus,
+    SlidersHorizontal,
     Trash2,
-    TriangleAlert
+    TriangleAlert,
+    X
   } from '$lib/icons';
   import { t } from 'svelte-i18n';
   import Menu from '$lib/components/ui/Menu.svelte';
   import MenuItem from '$lib/components/ui/MenuItem.svelte';
   import IconButton from '$lib/components/ui/IconButton.svelte';
   import StatusDot from '$lib/components/ui/StatusDot.svelte';
+  import Tooltip from '$lib/components/ui/Tooltip.svelte';
   import ProjectConversations from './ProjectConversations.svelte';
   import { sidebarOrganization as organization } from './sidebar-organization.svelte';
   import SessionRow from '$lib/features/shared/SessionRow.svelte';
@@ -117,6 +125,97 @@
       bucket.sort((a, b) => (b.updatedAt || b.createdAt) - (a.updatedAt || a.createdAt));
     }
     return { byProject, status, busyProjects };
+  });
+
+  const SIDEBAR_MODE_KEY = 'agente_code_sidebar_mode';
+  type CodeSidebarMode = 'projects' | 'threads';
+  type CodeSidebarFilter = 'all' | 'active' | 'pinned';
+
+  let sidebarMode = $state<CodeSidebarMode>(
+    typeof localStorage !== 'undefined' && localStorage.getItem(SIDEBAR_MODE_KEY) === 'threads'
+      ? 'threads'
+      : 'projects'
+  );
+  let filterKind = $state<CodeSidebarFilter>('all');
+
+  const hasFilter = $derived(filterKind !== 'all');
+
+  function setSidebarMode(next: CodeSidebarMode) {
+    if (sidebarMode === next) return;
+    sidebarMode = next;
+    try {
+      localStorage.setItem(SIDEBAR_MODE_KEY, next);
+    } catch {
+      /* private mode */
+    }
+  }
+
+  function clearFilters() {
+    filterKind = 'all';
+  }
+
+  function startOfDay(ms: number): number {
+    const date = new Date(ms);
+    date.setHours(0, 0, 0, 0);
+    return date.getTime();
+  }
+
+  const projectNames = $derived(new Map(codeStore.projects.map((project) => [project.id, project.rootName])));
+
+  function matchesChat(chat: ChatSession): boolean {
+    if (filterKind === 'active') return tree.status.has(chat.id);
+    if (filterKind === 'pinned') return organization.isPinned('chats', chat.id);
+    return true;
+  }
+
+  const visibleProjects = $derived.by(() => {
+    const ordered = organization.pinnedFirst('projects', organization.list('projects', codeStore.projects));
+    if (!hasFilter) {
+      return ordered.map((project) => ({ project, sessions: sessionsFor(project.id) }));
+    }
+    return ordered.flatMap((project) => {
+      const all = sessionsFor(project.id);
+      const matchedSessions = all.filter((chat) => matchesChat(chat));
+      if (filterKind === 'pinned') {
+        if (organization.isPinned('projects', project.id)) return [{ project, sessions: all }];
+        return matchedSessions.length ? [{ project, sessions: matchedSessions }] : [];
+      }
+      return matchedSessions.length ? [{ project, sessions: matchedSessions }] : [];
+    });
+  });
+
+  const threadGroups = $derived.by(() => {
+    type ThreadGroup = { key: number; label: string; chats: ChatSession[] };
+    const map = new Map<number, ThreadGroup>();
+    const now = startOfDay(Date.now());
+    const sorted = [...appStore.visibleCodeChats]
+      .filter((chat) => matchesChat(chat))
+      .sort((a, b) => (b.updatedAt || b.createdAt) - (a.updatedAt || a.createdAt));
+    const labelFor = (bucket: number) => {
+      switch (bucket) {
+        case -2: return $t('code.activeThreads');
+        case -1: return $t('code.pinned');
+        case 0: return $t('sidebar.today');
+        case 1: return $t('sidebar.yesterday');
+        case 2: return $t('sidebar.previous7Days');
+        case 3: return $t('sidebar.previous30Days');
+        default: return $t('sidebar.older');
+      }
+    };
+    for (const chat of sorted) {
+      const live = tree.status.has(chat.id);
+      const pinned = organization.isPinned('chats', chat.id);
+      const day = startOfDay(chat.updatedAt || chat.createdAt);
+      const diff = Math.floor((now - day) / 86400000);
+      const bucket = live ? -2 : pinned ? -1 : diff <= 0 ? 0 : diff === 1 ? 1 : diff <= 6 ? 2 : diff <= 29 ? 3 : 4;
+      let group = map.get(bucket);
+      if (!group) {
+        group = { key: bucket, label: labelFor(bucket), chats: [] };
+        map.set(bucket, group);
+      }
+      group.chats.push(chat);
+    }
+    return Array.from(map.values()).sort((a, b) => a.key - b.key);
   });
 
   /** One read of the unlinked list instead of one per reference in the markup. */
@@ -207,9 +306,105 @@
 </script>
 
 <div class="flex flex-col gap-0.5 pb-2">
-  <span class="sidebar-section">{$t('code.projects')}</span>
+  <div class="sidebar-section-row">
+    <span class="sidebar-section">{$t(sidebarMode === 'threads' ? 'code.threads' : 'code.projects')}</span>
+    <div class="sidebar-header-controls">
+      <Menu placement="bottom-end" label={$t('code.filterToggle')}>
+        {#snippet trigger(props)}
+          <Tooltip label={$t('code.filterToggle')} position="bottom">
+            <button
+              {...props}
+              type="button"
+              class="mode-btn filter-btn"
+              class:is-active={hasFilter}
+              class:has-filter={hasFilter}
+              aria-label={$t('code.filterToggle')}
+            >
+              <SlidersHorizontal class="size-3.5" />
+            </button>
+          </Tooltip>
+        {/snippet}
+        <MenuItem icon={filterKind === 'all' ? Check : undefined} label={$t('code.filterAll')} onselect={() => (filterKind = 'all')} />
+        <MenuItem icon={filterKind === 'active' ? Check : undefined} label={$t('code.filterActive')} onselect={() => (filterKind = 'active')} />
+        <MenuItem icon={filterKind === 'pinned' ? Check : undefined} label={$t('code.filterPinned')} onselect={() => (filterKind = 'pinned')} />
+      </Menu>
+      <div class="sidebar-mode-toggle" role="group" aria-label={$t('code.threads')}>
+        <Tooltip label={$t('code.viewProjects')} position="bottom">
+          <button
+            type="button"
+            class="mode-btn"
+            class:is-active={sidebarMode === 'projects'}
+            aria-pressed={sidebarMode === 'projects'}
+            aria-label={$t('code.viewProjects')}
+            onclick={() => setSidebarMode('projects')}
+          >
+            <FolderTree class="size-3.5" />
+          </button>
+        </Tooltip>
+        <Tooltip label={$t('code.viewThreads')} position="bottom">
+          <button
+            type="button"
+            class="mode-btn"
+            class:is-active={sidebarMode === 'threads'}
+            aria-pressed={sidebarMode === 'threads'}
+            aria-label={$t('code.viewThreads')}
+            onclick={() => setSidebarMode('threads')}
+          >
+            <LayoutList class="size-3.5" />
+          </button>
+        </Tooltip>
+      </div>
+    </div>
+  </div>
 
-  {#if !codeStore.loading && !codeStore.projects.length}
+  {#if sidebarMode === 'threads'}
+    {#if !codeStore.loading && !threadGroups.length}
+      <p class="px-2.5 py-2 text-[length:var(--text-sm)] leading-relaxed text-[var(--text-muted)]">
+        {$t(hasFilter ? 'code.noFilterMatches' : codeStore.projects.length ? 'code.noThreads' : 'code.noProjects')}
+      </p>
+      {#if hasFilter}
+        <UiListRow type="button" class={uiClass("sidebar-row is-emphasis")} onclick={clearFilters}>
+          <X class="sidebar-row-icon" />
+          <span class="sidebar-row-label">{$t('code.clearFilters')}</span>
+        </UiListRow>
+      {:else}
+        <UiListRow
+          type="button"
+          class={uiClass("sidebar-row is-emphasis")}
+          onclick={() => {
+            const target = codeStore.projects.find((p) => p.id === codeStore.activeProjectId) ?? codeStore.projects[0];
+            if (target) codeStore.newConversation(target);
+            else void codeStore.addProject();
+          }}
+        >
+          <Plus class="sidebar-row-icon" />
+          <span class="sidebar-row-label">{$t(codeStore.projects.length ? 'code.newConversation' : 'code.addProject')}</span>
+        </UiListRow>
+      {/if}
+    {:else}
+      {#each threadGroups as group (group.key)}
+        <div class="mt-1 first:mt-0">
+          <span class="sidebar-section thread-group-label">{group.label}</span>
+          <div class="space-y-0.5">
+            {#each group.chats as chat (chat.id)}
+              <SessionRow
+                {chat}
+                active={appStore.currentChatId === chat.id}
+                open={!!workspaceLayout.paneForChat(chat.id)}
+                status={statusFor(chat.id)}
+                pinned={organization.isPinned('chats', chat.id)}
+                onpin={() => organization.togglePin('chats', chat.id)}
+                badge={chat.projectId ? (projectNames.get(chat.projectId) ?? '') : ''}
+                onselect={() => codeStore.openConversation(chat.id)}
+                onsplit={(edge) => splitWith(chat.id, edge)}
+                menuLabel={$t('code.conversationOptions')}
+              />
+            {/each}
+          </div>
+        </div>
+      {/each}
+    {/if}
+  {:else if !codeStore.loading && !codeStore.projects.length}
     <p class="px-2.5 py-2 text-[length:var(--text-sm)] leading-relaxed text-[var(--text-muted)]">
       {$t('code.noProjects')}
     </p>
@@ -221,11 +416,19 @@
       <Plus class="sidebar-row-icon" />
       <span class="sidebar-row-label">{$t('code.addProject')}</span>
     </UiListRow>
+  {:else if hasFilter && !visibleProjects.length}
+    <p class="px-2.5 py-2 text-[length:var(--text-sm)] leading-relaxed text-[var(--text-muted)]">
+      {$t('code.noFilterMatches')}
+    </p>
+    <UiListRow type="button" class={uiClass("sidebar-row is-emphasis")} onclick={clearFilters}>
+      <X class="sidebar-row-icon" />
+      <span class="sidebar-row-label">{$t('code.clearFilters')}</span>
+    </UiListRow>
   {:else}
-    {#each organization.list('projects',codeStore.projects) as project (project.id)}
-      {@const expanded = !!codeStore.expandedProjects[project.id]}
-      {@const sessions = sessionsFor(project.id)}
+    {#each visibleProjects as { project, sessions } (project.id)}
+      {@const expanded = hasFilter || !!codeStore.expandedProjects[project.id]}
       {@const missing = !!codeStore.missingProjects[project.id]}
+      {@const pinnedProject = organization.isPinned('projects', project.id)}
       <div class="project" data-sidebar-project={project.id}>
         <div
           class="sidebar-row is-strong group relative"
@@ -290,6 +493,9 @@
             />
           {:else}
             <span class="sidebar-row-label" class:line-through={missing}>{project.rootName}</span>
+            {#if pinnedProject}
+              <Pin class="project-pin" aria-hidden="true" />
+            {/if}
             {#if projectRunning(project.id) && !expanded}
               <StatusDot tone="running" />
             {/if}
@@ -330,6 +536,7 @@
                   <MoreHorizontal />
                 </IconButton>
               {/snippet}
+              <MenuItem icon={pinnedProject ? PinOff : Pin} label={$t(pinnedProject ? 'code.unpin' : 'code.pin')} onselect={() => organization.togglePin('projects', project.id)} />
               {#if missing}
                 <MenuItem icon={FolderSearch} label={$t('code.locateFolder')} onselect={() => void codeStore.locateProject(project.id)} />
               {:else}
@@ -366,7 +573,7 @@
     {/each}
   {/if}
 
-  {#if unlinked.length}
+  {#if sidebarMode === 'projects' && unlinked.length}
     <div class="mt-1.5">
       <div class="sidebar-section-row">
         <UiButton variant="plain"
@@ -407,6 +614,63 @@
 </div>
 
 <style>
+  .sidebar-header-controls {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+  }
+
+  .sidebar-mode-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    padding: 2px;
+    border-radius: var(--radius-sm);
+    background: var(--accent);
+  }
+
+  .mode-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.375rem;
+    height: 1.375rem;
+    border: 0;
+    border-radius: calc(var(--radius-sm) - 1px);
+    background: transparent;
+    color: var(--muted-foreground);
+    cursor: pointer;
+    transition: color var(--motion-instant) var(--motion-ease),
+      background-color var(--motion-instant) var(--motion-ease);
+  }
+
+  .mode-btn:hover {
+    color: var(--foreground);
+  }
+
+  .mode-btn.is-active {
+    background: var(--segment-active-bg);
+    color: var(--foreground);
+    box-shadow: var(--segment-active-shadow);
+  }
+
+  .filter-btn.has-filter {
+    color: var(--brand-accent);
+  }
+
+  :global(.project-pin) {
+    width: 0.72rem;
+    height: 0.72rem;
+    flex-shrink: 0;
+    color: var(--brand-accent);
+    opacity: 0.85;
+  }
+
+  .thread-group-label {
+    font-size: 0.6875rem;
+    opacity: 0.8;
+  }
+
   /*
    * Conversations hang from a hairline under the folder icon: the indent puts
    * the rule at the icon's centre — the row's inset plus half the one icon

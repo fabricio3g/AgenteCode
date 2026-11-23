@@ -1,19 +1,15 @@
-// Every font is bundled and OFL-1.1 (open source, free for commercial use), so
-// no surface falls back to a licensed platform face and nothing needs a
-// network fetch at runtime:
-//   Geist Variable            (OFL) UI and reading text
-//   Geist Mono Variable       (OFL) code, diffs and the terminal
+// Every bundled font is OFL-1.1 (open source, free for commercial use) so
+// nothing needs a network fetch at runtime:
+//   Inter Variable (opsz)     (OFL) UI and reading fallback beside native OS sans
 //   Atkinson Hyperlegible     (OFL) optional reading font, loaded on demand
 //   Atkinson Hyperlegible Mono(OFL) its code companion, loaded with it
-// A new face only lands here if it is OFL or otherwise free for commercial use.
 //
-import '@fontsource-variable/geist';
-import '@fontsource-variable/geist/wght-italic.css';
-import '@fontsource-variable/geist-mono';
-import '@fontsource-variable/geist-mono/wght-italic.css';
+import '@fontsource-variable/inter/opsz.css';
+import '@fontsource-variable/inter/opsz-italic.css';
 import './app.css';
 import '$lib/i18n/index';
-// Interface size, contrast, motion… before the first paint.
+// Interface size, contrast, motion, theme, and appearance… before the first paint.
+import '$lib/stores/appearance.svelte';
 import '$lib/stores/accessibility.svelte';
 import App from './App.svelte';
 import { mount } from 'svelte';

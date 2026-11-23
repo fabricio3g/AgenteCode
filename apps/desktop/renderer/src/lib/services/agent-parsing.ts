@@ -9,7 +9,7 @@ const KNOWN_TOOL_NAMES = new Set([
   'web_search', 'fetch_url', 'query_knowledge', 'calculator',
   'read_file', 'write_file', 'edit_file', 'delete_file', 'list_files', 'search_files',
   'create_report', 'create_work_product', 'create_document', 'create_spreadsheet',
-  'create_presentation', 'create_pdf', 'create_info_card', 'create_html_card', 'create_widget', 'create_lesson',
+  'create_presentation', 'create_pdf', 'create_info_card', 'create_html_card', 'create_widget', 'create_lesson', 'create_scene_3d',
   'create_chart', 'create_dashboard', 'create_diagram', 'create_map',
   'get_weather', 'convert_currency', 'get_quote', 'preview_project',
   'get_diagnostics'

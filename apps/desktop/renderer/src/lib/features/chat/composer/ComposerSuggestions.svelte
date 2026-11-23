@@ -14,11 +14,22 @@
 <script lang="ts">
   import { tick } from 'svelte';
   import { t } from 'svelte-i18n';
+  import { BarChart3, Code2, GraduationCap, ListChecks, PenLine, Sparkles, SunMedium } from '$lib/icons';
   import StarterList from '$lib/components/ui/StarterList.svelte';
-  import type { Starter } from '$lib/components/ui/starter-list';
+  import type { Starter, StarterIcon } from '$lib/components/ui/starter-list';
   import { appStore } from '$lib/stores/app.svelte';
   import { copy } from '$lib/copy';
   import { lessonsEnabled } from '$lib/services/lesson-surface';
+
+  const ICONS: Record<string, StarterIcon> = {
+    weather: SunMedium,
+    code: Code2,
+    write: PenLine,
+    analyze: BarChart3,
+    brainstorm: Sparkles,
+    teach: GraduationCap,
+    practice: ListChecks
+  };
 
   interface Props {
     /** Focuses the composer textarea after the prompt is inserted. */
@@ -33,16 +44,21 @@
      way in. They leave the command in the field for the topic to follow, and
      sending it turns the lesson type on (Composer's `/teach` handling). */
   const lessonStarters = $derived(lessonsEnabled(appStore.currentContextMode) ? [
-    { id: 'teach', label: $t('artifacts.lesson.teach'), prompt: '/teach ' },
-    { id: 'practice', label: $t('artifacts.lesson.practice'), prompt: '/practice ' }
+    { id: 'teach', label: $t('artifacts.lesson.teach'), prompt: '/teach ', group: 'learn' },
+    { id: 'practice', label: $t('artifacts.lesson.practice'), prompt: '/practice ', group: 'learn' }
   ] : []);
-  const suggestions = $derived([...copy.emptyState.suggestions, ...lessonStarters]);
+  const suggestions = $derived([
+    ...copy.emptyState.suggestions.map((item) => ({ ...item, group: 'general' })),
+    ...lessonStarters
+  ]);
 
   const starters = $derived<Starter[]>(
     suggestions.map((suggestion) => ({
       id: suggestion.id,
+      icon: ICONS[suggestion.id],
       label: suggestion.label,
-      preview: suggestion.prompt
+      preview: suggestion.prompt,
+      group: suggestion.group
     }))
   );
 

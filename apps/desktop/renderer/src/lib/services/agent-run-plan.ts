@@ -51,6 +51,7 @@ const SEARCH_TOOL_NAMES = new Set([
   'create_info_card',
   'create_html_card',
   'create_widget',
+  'create_scene_3d',
   'create_diagram',
   'create_map'
 ]);

@@ -13,7 +13,6 @@
 <script lang="ts">
   import EmptyState from '$lib/components/ui/EmptyState.svelte';
   import UiListRow from '$lib/components/ui/ListRow.svelte';
-  import UiButton from '$lib/components/ui/Button.svelte';
   import UiInput from '$lib/components/ui/Input.svelte';
   import { cn as uiClass } from '$lib/utils/cn';
 
@@ -37,9 +36,9 @@
   function readPreviewPref(): boolean {
     try {
       const raw = localStorage.getItem(PREVIEW_KEY);
-      return raw === null ? true : raw === '1';
+      return raw === '1';
     } catch {
-      return true;
+      return false;
     }
   }
 
@@ -268,8 +267,9 @@
         type="button"
         class={uiClass('preview-toggle', 'ui-local-63f6f05b', { 'is-on': previewEnabled })}
         aria-pressed={previewEnabled}
+        aria-label={previewEnabled ? 'Hide preview' : 'Show preview'}
         onclick={togglePreview}
-        title={previewEnabled ? 'Simple view' : 'Preview view'}
+        title={previewEnabled ? 'Hide preview' : 'Show preview'}
       >
         <PanelRight class="size-3.5" />
         <span>Preview</span>
@@ -320,16 +320,11 @@
         <aside class="search-preview" aria-label="Conversation preview">
           {#if activeHit}
             <header class="preview-head">
-              <div class="min-w-0 flex-1">
-                <p class="preview-title">{displayChatTitle(activeHit.chat)}</p>
-                <p class="preview-meta">
-                  {relativeDate(activeHit.chat.updatedAt || activeHit.chat.createdAt)}
-                  {#if previewMessages.length} · {countOf(previewMessages.length, 'message')}{/if}
-                </p>
-              </div>
-              <UiButton size="xs" variant="secondary" onclick={() => open(activeHit)}>
-                {$t('search.keysOpen')}
-              </UiButton>
+              <p class="preview-title">{displayChatTitle(activeHit.chat)}</p>
+              <p class="preview-meta">
+                {relativeDate(activeHit.chat.updatedAt || activeHit.chat.createdAt)}
+                {#if previewMessages.length} · {countOf(previewMessages.length, 'message')}{/if}
+              </p>
             </header>
 
             <div bind:this={previewScroll} class="preview-scroll">
@@ -364,8 +359,10 @@
     </div>
 
     <footer class="search-footer">
-      <span><kbd>↑</kbd><kbd>↓</kbd> {$t('search.keysMove')}</span>
+      <span><kbd>↑↓</kbd> {$t('search.keysMove')}</span>
+      <span class="footer-sep" aria-hidden="true">·</span>
       <span><kbd>Enter</kbd> {$t('search.keysOpen')}</span>
+      <span class="footer-sep" aria-hidden="true">·</span>
       <span><kbd>Esc</kbd> {$t('search.keysClose')}</span>
     </footer>
   </div>
@@ -374,18 +371,18 @@
 <style>
   .search-backdrop {
     align-items: flex-start;
-    padding-top: 10vh;
+    padding-top: 12vh;
   }
 
   .search-dialog {
     display: flex;
     width: 100%;
-    max-width: 38rem;
-    max-height: min(34rem, 78vh);
+    max-width: 36rem;
+    max-height: min(32rem, 74vh);
     flex-direction: column;
     overflow: hidden;
-    border: 1px solid var(--float-border);
-    border-radius: var(--float-radius);
+    border: 1px solid var(--border);
+    border-radius: 1rem;
     background: var(--float-bg);
     box-shadow: var(--float-shadow);
     outline: none;
@@ -393,16 +390,16 @@
   }
 
   .search-dialog.has-preview {
-    max-width: min(60rem, calc(100vw - 2rem));
-    height: min(38rem, 80vh);
-    max-height: min(38rem, 80vh);
+    max-width: min(56rem, calc(100vw - 2rem));
+    height: min(36rem, 78vh);
+    max-height: min(36rem, 78vh);
   }
 
   .search-field {
     display: flex;
     align-items: center;
-    gap: 0.625rem;
-    padding: 0.625rem 0.875rem;
+    gap: 0.75rem;
+    padding: 0.875rem 1.125rem;
     border-bottom: 1px solid var(--border-subtle);
   }
 
@@ -432,16 +429,16 @@
     height: 1.75rem;
     flex-shrink: 0;
     align-items: center;
-    gap: 0.375rem;
+    justify-content: center;
+    gap: 0.35rem;
     padding: 0 0.55rem;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
+    border: 1px solid transparent;
+    border-radius: var(--radius-md);
     background: transparent;
     color: var(--muted-foreground);
     font-size: var(--text-xs);
-    font-weight: 500;
     cursor: pointer;
-    transition: background-color var(--motion-instant) var(--motion-ease), border-color var(--motion-instant) var(--motion-ease), color var(--motion-instant) var(--motion-ease), transform var(--motion-instant) var(--motion-ease);
+    transition: background-color var(--motion-instant) var(--motion-ease), color var(--motion-instant) var(--motion-ease);
   }
 
   .search-field :global(.preview-toggle.ui-local-63f6f05b:hover) {
@@ -471,16 +468,16 @@
     min-height: 0;
     flex: 1;
     overflow-y: auto;
-    padding: var(--float-pad);
+    padding: 0.5rem 0.625rem;
   }
 
   .search-dialog.has-preview .search-list {
-    flex: 0 0 21rem;
+    flex: 0 0 20rem;
     border-right: 1px solid var(--border-subtle);
   }
 
   :global(.search-hit.ui-local-63f6f05b) {
-    min-height: 2.5rem;
+    min-height: 2.375rem;
   }
 
   .search-preview {
@@ -489,17 +486,15 @@
     min-height: 0;
     flex: 1;
     flex-direction: column;
-    background: color-mix(in srgb, var(--foreground) 1.5%, var(--background));
+    background: transparent;
   }
 
   .preview-head {
     display: flex;
     flex-shrink: 0;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.75rem;
-    padding: 0.625rem 1rem;
-    border-bottom: 1px solid var(--border-subtle);
+    flex-direction: column;
+    gap: 0.125rem;
+    padding: 0.875rem 1.25rem 0.5rem;
   }
 
   .preview-title {
@@ -513,7 +508,7 @@
   }
 
   .preview-meta {
-    margin: 0.125rem 0 0;
+    margin: 0;
     color: var(--muted-foreground);
     font-size: var(--text-xs);
     font-variant-numeric: tabular-nums;
@@ -527,7 +522,7 @@
     gap: 0.875rem;
     overflow-y: auto;
     overscroll-behavior: contain;
-    padding: 1rem 1.125rem;
+    padding: 0.625rem 1.25rem 1.125rem;
   }
 
   .preview-turn {
@@ -549,7 +544,6 @@
   .preview-user-bubble {
     max-width: 85%;
     padding: 0.5rem 0.75rem;
-    border: 1px solid var(--float-border);
     border-radius: 0.75rem 0.75rem 0.25rem 0.75rem;
     background: var(--user-bubble);
     color: var(--user-bubble-text);
@@ -584,31 +578,33 @@
   .search-footer {
     display: flex;
     flex-shrink: 0;
-    gap: 1rem;
-    padding: 0.5rem 0.875rem;
-    border-top: 1px solid var(--border-subtle);
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.625rem 1.125rem;
     color: var(--muted-foreground);
     font-size: var(--text-xs);
   }
 
+  .footer-sep {
+    opacity: 0.45;
+  }
+
   kbd {
-    display: inline-flex;
-    min-width: 1.25rem;
-    justify-content: center;
-    margin-right: 0.15rem;
-    padding: 0.05rem 0.3rem;
-    border: 1px solid var(--float-border);
-    border-radius: 0.3125rem;
-    background: color-mix(in srgb, var(--foreground) 4%, transparent);
-    box-shadow: 0 1px 0 var(--float-border), inset 0 1px 0 rgb(255 255 255 / 0.08);
+    display: inline;
+    margin-right: 0.25rem;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--text-secondary);
     font-family: inherit;
+    font-weight: 500;
     font-variant-numeric: tabular-nums;
-    font-size: 0.6875rem;
+    font-size: var(--text-xs);
   }
 
   @media (max-width: 720px) {
     .search-preview { display: none; }
-    .search-dialog.has-preview { max-width: 38rem; height: auto; }
+    .search-dialog.has-preview { max-width: 36rem; height: auto; }
     .search-dialog.has-preview .search-list { flex: 1; border-right: 0; }
   }
 </style>

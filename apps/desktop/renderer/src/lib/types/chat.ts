@@ -250,6 +250,8 @@ export interface LessonChoice {
   correct?: boolean;
   /** Why this option is right/wrong — the only feedback a lesson gives. */
   why?: string;
+  /** Optional expression rendered as a miniature curve in `visual_choice` blocks. */
+  plot?: string;
 }
 
 export interface LessonVariable {
@@ -290,6 +292,11 @@ export type LessonBlock =
   | { type: 'explore'; prompt: string; model: LessonModel; insight?: string }
   | { type: 'predict'; prompt: string; expression?: string; series?: Array<{ x: number; y: number }>; xRange: [number, number]; yRange?: [number, number]; label?: string; insight?: string }
   | { type: 'choice'; prompt: string; formula?: string; choices: LessonChoice[]; hint?: string }
+  | { type: 'visual_choice'; prompt: string; formula?: string; choices: LessonChoice[]; hint?: string }
+  | { type: 'graph_challenge'; prompt: string; expression: string; xRange?: [number, number]; initialX?: number; metric?: 'slope' | 'value'; target: number; tolerance?: number; explanation?: string; hint?: string }
+  | { type: 'hotspot_diagram'; prompt?: string; pins: Array<{ id: string; label: string; role?: string; description: string; x: number; y: number }> }
+  | { type: 'timeline_story'; prompt?: string; eras: Array<{ year: string; title: string; trigger: string; unlocked: string }> }
+  | { type: 'algo_stepper'; prompt?: string; data: Array<string | number>; steps: Array<{ low?: number; mid?: number; high?: number; found?: number; note: string }> }
   | { type: 'numeric'; prompt: string; formula?: string; answer: number; tolerance?: number; unit?: string; hint?: string }
   | { type: 'steps'; prompt: string; steps: Array<{ formula?: string; note: string }> }
   | { type: 'reveal'; prompt: string; body: string; tone?: LessonCalloutTone }
@@ -305,6 +312,20 @@ export type LessonArtifactPayload = {
   blocks: LessonBlock[];
 };
 
+export type Scene3DArtifactPayload = {
+  kind: 'scene_3d';
+  title: string;
+  subtitle?: string;
+  preset: 'dna' | 'molecule' | 'orbit' | 'exploded_stack' | 'surface' | 'custom';
+  paramLabel?: string;
+  paramValue?: number;
+  takeaway?: string;
+  layers?: Array<{ label: string; accent?: boolean }>;
+  nodes?: Array<{ id?: string; x: number; y: number; z: number; label?: string; radius?: number; accent?: boolean }>;
+  edges?: Array<{ from: number | string; to: number | string; accent?: boolean }>;
+  autoRotate?: boolean;
+};
+
 export type InlineArtifactPayload =
   | ChartArtifactPayload
   | MapArtifactPayload
@@ -312,7 +333,8 @@ export type InlineArtifactPayload =
   | DashboardArtifactPayload
   | InfoCardArtifactPayload
   | HtmlCardArtifactPayload
-  | LessonArtifactPayload;
+  | LessonArtifactPayload
+  | Scene3DArtifactPayload;
 
 export type ArtifactKind =
   | 'report'
@@ -329,6 +351,7 @@ export type ArtifactKind =
   | 'html_card'
   | 'widget'
   | 'lesson'
+  | 'scene_3d'
   | 'research_package'
   | 'web'
   | 'files';

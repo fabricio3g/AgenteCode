@@ -268,8 +268,8 @@
   }
 
   .cast-member.is-next :global(.cast-avatar.ui-local-0298d9bd) {
-    border-color: var(--primary);
-    box-shadow: 0 0 0 1px var(--primary);
+    border-color: var(--brand-accent);
+    box-shadow: 0 0 0 1px var(--brand-accent);
   }
 
   .cast-member.is-muted :global(.cast-avatar.ui-local-0298d9bd) {

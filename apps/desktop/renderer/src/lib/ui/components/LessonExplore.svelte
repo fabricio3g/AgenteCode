@@ -115,69 +115,73 @@
   .explore {
     display: flex;
     flex-direction: column;
-    gap: 0.7rem;
+    gap: 0.875rem;
   }
 
   .metrics {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(7rem, 1fr));
+    gap: 0.5rem;
     margin: 0;
-    border-block: 1px solid var(--border-subtle);
   }
 
   .metric {
     display: flex;
     flex-direction: column;
-    gap: 0.1rem;
-    padding: 0.6rem 0.7rem;
-    border-right: 1px solid var(--border-subtle);
+    gap: 0.15rem;
+    padding: 0.625rem 0.75rem;
+    border-radius: var(--radius-md);
+    background: color-mix(in srgb, var(--foreground) 3%, transparent);
   }
-
-  .metric:first-child { padding-left: 0; }
-  .metric:last-child { border-right: 0; }
 
   .metric dt {
     margin: 0;
     font-size: var(--text-xs);
-    color: var(--text-tertiary, var(--text-secondary));
+    color: var(--muted-foreground);
   }
 
   .metric dd {
     margin: 0;
-    font-size: calc(var(--text-base) * 1.35);
+    font-size: calc(var(--text-base) * 1.25);
     font-weight: 600;
-    letter-spacing: -0.03em;
+    letter-spacing: -0.025em;
     font-variant-numeric: tabular-nums;
   }
 
-  .metric dd.is-invalid { color: var(--text-tertiary, var(--text-secondary)); }
+  .metric dd.is-invalid { color: var(--muted-foreground); }
 
   .controls {
     display: flex;
     flex-direction: column;
-    gap: 0.45rem;
+    gap: 0.5rem;
+    padding: 0.625rem 0.75rem;
+    border-radius: var(--radius-md);
+    background: color-mix(in srgb, var(--foreground) 2.5%, transparent);
   }
 
   .control {
     display: grid;
     grid-template-columns: minmax(6rem, 30%) 1fr auto;
     align-items: center;
-    gap: 0.6rem;
-    font-size: var(--text-sm);
+    gap: 0.625rem;
+    font-size: var(--text-xs);
   }
 
-  .control-label { color: var(--text-secondary); }
+  .control-label { color: var(--text-secondary); font-weight: 500; }
 
   .control-value {
+    font-family: var(--font-mono);
     font-variant-numeric: tabular-nums;
     font-weight: 500;
+    color: var(--foreground);
     min-width: 3.5rem;
     text-align: right;
   }
 
   .insight {
     margin: 0;
-    font-size: var(--text-sm);
+    font-size: var(--text-xs);
+    line-height: 1.55;
     color: var(--text-secondary);
   }
 

@@ -585,7 +585,7 @@ impl Connection {
                 // Nothing to answer: a blank prompt would start a whole turn
                 // of the model exploring on its own.
                 if start.conversation.is_empty()
-                    && start.prompt.as_ref().is_some_and(|prompt| {
+                    && start.prompt.as_ref().is_none_or(|prompt| {
                         prompt.content.trim().is_empty() && prompt.attachments.is_empty()
                     })
                 {

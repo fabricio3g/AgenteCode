@@ -8,21 +8,23 @@
 -->
 
 <script lang="ts">
-  import { AppWindow, BarChart3, GraduationCap, Info, LayoutDashboard, MapPin, SlidersHorizontal, Workflow } from '$lib/icons';
+  import { AppWindow, BarChart3, Box, GraduationCap, Info, LayoutDashboard, MapPin, SlidersHorizontal, Workflow, type Icon as AppIcon } from '$lib/icons';
   import type { ArtifactKind } from '$lib/types/chat';
   import { artifactKindAccent } from './artifact-accent';
 
-  type HeadingKind = Extract<ArtifactKind, 'chart' | 'map' | 'diagram' | 'dashboard' | 'info_card' | 'html_card' | 'widget' | 'lesson'>;
+  type HeadingKind = Extract<ArtifactKind, 'chart' | 'map' | 'diagram' | 'dashboard' | 'info_card' | 'html_card' | 'widget' | 'lesson' | 'scene_3d'>;
 
   interface Props {
     kind: HeadingKind;
     title?: string;
     subtitle?: string;
+    /** Optional glyph override (e.g. practice sets use ListChecks instead of GraduationCap). */
+    icon?: AppIcon;
   }
 
-  let { kind, title = '', subtitle = '' }: Props = $props();
+  let { kind, title = '', subtitle = '', icon }: Props = $props();
 
-  const ICONS: Record<HeadingKind, typeof BarChart3> = {
+  const ICONS: Record<HeadingKind, AppIcon> = {
     chart: BarChart3,
     map: MapPin,
     diagram: Workflow,
@@ -30,13 +32,14 @@
     info_card: Info,
     html_card: AppWindow,
     widget: SlidersHorizontal,
-    lesson: GraduationCap
+    lesson: GraduationCap,
+    scene_3d: Box
   };
-  const Icon = $derived(ICONS[kind]);
+  const Icon = $derived(icon ?? ICONS[kind]);
 </script>
 
 <div class="viz-heading">
-  <span class="artifact-kind-tile size-8 rounded-lg" style:--artifact-accent={artifactKindAccent(kind)} aria-hidden="true"><Icon class="size-4" /></span>
+  <span class="artifact-kind-tile size-7 rounded-md" style:--artifact-accent={artifactKindAccent(kind)} aria-hidden="true"><Icon class="size-3.5" /></span>
   <div class="min-w-0">
     {#if title}<h3 class="viz-title">{title}</h3>{/if}
     {#if subtitle}<p class="viz-subtitle">{subtitle}</p>{/if}

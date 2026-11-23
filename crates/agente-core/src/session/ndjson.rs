@@ -50,15 +50,8 @@ pub enum SessionEntry {
     ModifiedFile { file: ModifiedFile },
 }
 
-fn ndjson_sessions_dir() -> PathBuf {
-    dirs::home_dir()
-        .unwrap_or_else(|| PathBuf::from("."))
-        .join(".agente")
-        .join("sessions")
-}
-
 pub fn ndjson_session_path(id: &Uuid) -> PathBuf {
-    ndjson_sessions_dir().join(format!("{id}.ndjson"))
+    super::sessions_dir().join(format!("{id}.ndjson"))
 }
 
 /// Reconstruct a full session from its NDJSON file.

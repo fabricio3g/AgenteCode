@@ -11,6 +11,7 @@
   import { Terminal } from '@xterm/xterm';
   import { FitAddon } from '@xterm/addon-fit';
   import '@xterm/xterm/css/xterm.css';
+  import { appearanceStore } from '$lib/stores/appearance.svelte';
   import { themeStore } from '$lib/stores/theme.svelte';
   import { accessibilityStore } from '$lib/stores/accessibility.svelte';
   import { codeFontFamily, codeFontSize, cssToken } from '$lib/utils/type-tokens';
@@ -74,6 +75,8 @@
 
   $effect(() => {
     void themeStore.current;
+    void appearanceStore.prefs.theme;
+    void appearanceStore.prefs.accent;
     if (term) term.options.theme = theme();
   });
 

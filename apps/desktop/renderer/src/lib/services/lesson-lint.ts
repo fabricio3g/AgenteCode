@@ -20,10 +20,10 @@ export interface LessonLintResult {
   warnings: LessonLintIssue[];
 }
 
-const QUESTION_TYPES = new Set(['pretest', 'choice', 'numeric', 'predict']);
+const QUESTION_TYPES = new Set(['pretest', 'choice', 'visual_choice', 'graph_challenge', 'numeric', 'predict']);
 /** Blocks that are explanation rather than interaction, for the wall-of-text rule. */
 const READING_TYPES = new Set(['steps', 'reveal', 'figure']);
-const PRACTICE_TYPES = new Set(['choice', 'numeric', 'summary']);
+const PRACTICE_TYPES = new Set(['choice', 'visual_choice', 'graph_challenge', 'numeric', 'summary']);
 
 const PROMPT_WORD_LIMIT = 60;
 const BODY_WORD_LIMIT = 220;
@@ -187,8 +187,34 @@ export function lintLesson(args: AnyRecord): LessonLintResult {
         break;
       }
       case 'choice':
+      case 'visual_choice':
         checkChoices(Array.isArray(block.choices) ? block.choices : [], `${path}.choices`, errors);
         break;
+      case 'graph_challenge': {
+        if (!String(block.expression || '').trim()) {
+          errors.push({ path: `${path}.expression`, message: 'graph_challenge needs a math expression in x.' });
+        }
+        if (!finite(block.target)) {
+          errors.push({ path: `${path}.target`, message: 'graph_challenge needs a finite numeric target.' });
+        }
+        break;
+      }
+      case 'hotspot_diagram': {
+        const pins = Array.isArray(block.pins) ? block.pins : [];
+        if (pins.length < 2) errors.push({ path: `${path}.pins`, message: 'hotspot_diagram needs at least two labeled pins.' });
+        break;
+      }
+      case 'timeline_story': {
+        const eras = Array.isArray(block.eras) ? block.eras : [];
+        if (eras.length < 2) errors.push({ path: `${path}.eras`, message: 'timeline_story needs at least two eras.' });
+        break;
+      }
+      case 'algo_stepper': {
+        const data = Array.isArray(block.data) ? block.data : [];
+        const steps = Array.isArray(block.steps) ? block.steps : [];
+        if (!data.length || !steps.length) errors.push({ path, message: 'algo_stepper needs data items and at least one step.' });
+        break;
+      }
       case 'numeric':
         checkNumericAnswer(block, path, errors);
         break;

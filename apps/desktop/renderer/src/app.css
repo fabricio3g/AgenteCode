@@ -8,16 +8,15 @@
 
 /* ─── Flaxeo-aligned design tokens (monochrome) ─────────────────────────── */
 :root {
-  /* Bundled fonts only, all OFL (see the import list in main.ts): Geist,
-     Geist Mono and the Atkinson Hyperlegible pair. Nothing here may resolve to
-     a licensed system face. The sans stack keeps emoji and CJK hooks because
-     Inter covers neither: without them a CJK session depends on whatever the
-     platform picks after `system-ui`. */
-  --font-sans: 'Geist Variable', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, 'Noto Sans', 'Noto Sans CJK SC', 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', sans-serif;
+  /* Native macOS SF Pro first, then Inter Variable (optical-sizing build) and
+     hinted system sans/mono so UI text and code stay crisp on both HiDPI and
+     100%–125% Windows displays. Keep emoji and CJK hooks so mixed-script
+     sessions don't depend on arbitrary platform fallbacks. */
+  --font-sans: -apple-system, BlinkMacSystemFont, 'Inter Variable', 'Segoe UI', system-ui, 'Noto Sans', 'Noto Sans CJK SC', 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', sans-serif;
   /* Optional local faces, never bundled: a machine that has one of these
      installed should use it before Georgia. Nothing is fetched at runtime. */
   --font-serif: 'Source Serif 4', 'Source Serif Pro', 'Noto Serif', Georgia, Cambria, 'Times New Roman', serif;
-  --font-mono: 'Geist Mono Variable', 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
+  --font-mono: ui-monospace, 'SF Mono', 'SFMono-Regular', Menlo, Consolas, 'Liberation Mono', monospace;
   /* One multiplier drives every text tier: Settings → Text size moves
      captions, chrome, prose and code together, the way text-only zoom does,
      instead of resizing prose alone. Interface size is a window zoom on top. */
@@ -390,7 +389,7 @@
   --card: #232323;
   --card-foreground: var(--foreground);
   --popover: #272727;
-  --prose-ink: color-mix(in srgb, var(--foreground) 86%, var(--background));
+  --prose-ink: color-mix(in srgb, var(--foreground) 93%, var(--background));
   --popover-foreground: var(--foreground);
   --primary: #ffffff;
   --primary-foreground: #000000;
@@ -552,6 +551,228 @@
   --code-terminal-warn: var(--warning);
 }
 
+/* ─── Appearance: Theme Surface Palettes ───────────────────────────────── */
+:root[data-theme='parchment'] {
+  --theme-background: #f6f4ef;
+  --theme-foreground: #1f1d1a;
+  --card: #fcfbf8;
+  --card-foreground: #1f1d1a;
+  --popover: #fcfbf8;
+  --popover-foreground: #1f1d1a;
+  --secondary: #ede9df;
+  --muted: #ede9df;
+  --muted-foreground: #5f5a51;
+  --text-secondary: #5a554c;
+  --text-tertiary: #767065;
+  --sidebar: #efece5;
+  --sheet-rail: #efece5;
+  --surface-hover: #e9e4d9;
+  --surface-active: #e4dfd3;
+  --nav-current-bg: #fcfbf8;
+  --user-bubble: #ebe6dc;
+  --composer-surface: #fdfcf9;
+  --composer-control-bg: #fdfcf9;
+  --border: rgb(31 29 26 / 0.09);
+  --sidebar-border: rgb(31 29 26 / 0.09);
+  --composer-ring: rgb(31 29 26 / 0.11);
+}
+
+:root.dark[data-theme='parchment'] {
+  --theme-background: #1f1d1a;
+  --theme-foreground: #f4f0e8;
+  --card: #272420;
+  --popover: #2d2924;
+  --secondary: #302c26;
+  --muted: #302c26;
+  --muted-foreground: #b5aea1;
+  --text-secondary: #cbc4b8;
+  --sidebar: #25221e;
+  --sheet-rail: #25221e;
+  --surface-hover: #34302a;
+  --surface-active: #2e2a24;
+  --nav-current-bg: #2c2823;
+  --user-bubble: #2f2b25;
+  --composer-surface: #292621;
+  --composer-control-bg: #322e28;
+  --border: rgb(244 240 232 / 0.09);
+  --sidebar-border: rgb(244 240 232 / 0.09);
+  --composer-ring: rgb(244 240 232 / 0.12);
+}
+
+:root[data-theme='midnight'] {
+  --theme-background: #f8f9fb;
+  --theme-foreground: #0f1218;
+  --card: #ffffff;
+  --card-foreground: #0f1218;
+  --popover: #ffffff;
+  --popover-foreground: #0f1218;
+  --secondary: #eef1f6;
+  --muted: #eef1f6;
+  --muted-foreground: #505868;
+  --text-secondary: #4a5262;
+  --text-tertiary: #677082;
+  --sidebar: #f1f3f7;
+  --sheet-rail: #f1f3f7;
+  --surface-hover: #e7ebf2;
+  --surface-active: #dfe4ee;
+  --nav-current-bg: #ffffff;
+  --user-bubble: #eceff5;
+  --composer-surface: #ffffff;
+  --composer-control-bg: #ffffff;
+}
+
+:root.dark[data-theme='midnight'] {
+  --theme-background: #0f1012;
+  --theme-foreground: #f3f4f6;
+  --card: #16181c;
+  --popover: #1b1e24;
+  --secondary: #1e2128;
+  --muted: #1e2128;
+  --muted-foreground: #9fa6b4;
+  --text-secondary: #c1c7d2;
+  --sidebar: #14161a;
+  --sheet-rail: #14161a;
+  --surface-hover: #232730;
+  --surface-active: #1d2028;
+  --nav-current-bg: #1c1f26;
+  --user-bubble: #1c1f26;
+  --composer-surface: #171a1f;
+  --composer-control-bg: #20242c;
+  --code-terminal-bg: #0a0b0d;
+}
+
+:root[data-theme='slate'] {
+  --theme-background: #f2f5f8;
+  --theme-foreground: #121821;
+  --card: #fafbfd;
+  --card-foreground: #121821;
+  --popover: #ffffff;
+  --popover-foreground: #121821;
+  --secondary: #e6ecf3;
+  --muted: #e6ecf3;
+  --muted-foreground: #4c596b;
+  --text-secondary: #455264;
+  --text-tertiary: #637185;
+  --sidebar: #e9eef4;
+  --sheet-rail: #e9eef4;
+  --surface-hover: #dfe6ef;
+  --surface-active: #d7e0eb;
+  --nav-current-bg: #fafbfd;
+  --user-bubble: #e4ebf3;
+  --composer-surface: #fcfdff;
+  --composer-control-bg: #fcfdff;
+  --border: rgb(18 24 33 / 0.09);
+  --sidebar-border: rgb(18 24 33 / 0.09);
+}
+
+:root.dark[data-theme='slate'] {
+  --theme-background: #181c23;
+  --theme-foreground: #eef2f7;
+  --card: #1f242e;
+  --popover: #242b36;
+  --secondary: #262d39;
+  --muted: #262d39;
+  --muted-foreground: #a2aec0;
+  --text-secondary: #c2ccd9;
+  --sidebar: #1d222b;
+  --sheet-rail: #1d222b;
+  --surface-hover: #2b3341;
+  --surface-active: #252c38;
+  --nav-current-bg: #252c38;
+  --user-bubble: #252c38;
+  --composer-surface: #212732;
+  --composer-control-bg: #2a3240;
+  --border: rgb(238 242 247 / 0.09);
+  --sidebar-border: rgb(238 242 247 / 0.09);
+}
+
+:root[data-theme='sepia'] {
+  --theme-background: #f4efe4;
+  --theme-foreground: #26221b;
+  --card: #faf6ec;
+  --card-foreground: #26221b;
+  --popover: #fcf9f2;
+  --popover-foreground: #26221b;
+  --secondary: #e9e2d2;
+  --muted: #e9e2d2;
+  --muted-foreground: #625a4c;
+  --text-secondary: #5a5245;
+  --text-tertiary: #786f5f;
+  --sidebar: #ece6d8;
+  --sheet-rail: #ece6d8;
+  --surface-hover: #e3dbca;
+  --surface-active: #dcd3c0;
+  --nav-current-bg: #faf6ec;
+  --user-bubble: #e8e0cf;
+  --composer-surface: #fbf8f0;
+  --composer-control-bg: #fbf8f0;
+  --border: rgb(38 34 27 / 0.1);
+  --sidebar-border: rgb(38 34 27 / 0.1);
+}
+
+:root.dark[data-theme='sepia'] {
+  --theme-background: #1d1e19;
+  --theme-foreground: #efeae0;
+  --card: #24251f;
+  --popover: #2a2b24;
+  --secondary: #2d2e27;
+  --muted: #2d2e27;
+  --muted-foreground: #b0aa9c;
+  --text-secondary: #c7c1b3;
+  --sidebar: #22231d;
+  --sheet-rail: #22231d;
+  --surface-hover: #32332b;
+  --surface-active: #2b2c25;
+  --nav-current-bg: #292a23;
+  --user-bubble: #2b2c24;
+  --composer-surface: #262720;
+  --composer-control-bg: #303129;
+  --border: rgb(239 234 224 / 0.09);
+  --sidebar-border: rgb(239 234 224 / 0.09);
+}
+
+/* ─── Appearance: Optional Tinted Sent Bubbles ─────────────────────────── */
+:root.appearance-tinted-bubbles {
+  --user-bubble: color-mix(in srgb, var(--brand-accent) 11%, var(--background));
+}
+:root.dark.appearance-tinted-bubbles {
+  --user-bubble: color-mix(in srgb, var(--brand-accent) 16%, var(--card));
+}
+
+/* ─── Appearance: UI Styles ────────────────────────────────────────────── */
+:root[data-ui-style='soft'] {
+  --radius: 0.875rem;
+  --radius-input: 10px;
+  --float-radius: 1rem;
+  --float-row-radius: 0.625rem;
+  --bubble-radius: 1.125rem;
+  --sheet-radius: 1.25rem;
+}
+
+:root[data-ui-style='sharp'] {
+  --radius: 0.25rem;
+  --radius-input: 3px;
+  --float-radius: 0.375rem;
+  --float-row-radius: 0.25rem;
+  --bubble-radius: 0.375rem;
+  --sheet-radius: 0.375rem;
+  --surface-shadow: none;
+  --surface-shadow-focus: 0 0 #0000;
+  --sheet-shadow: 0 0 0 1px var(--border);
+}
+
+:root[data-ui-style='minimal'] {
+  --radius: 0.5rem;
+  --border: color-mix(in srgb, var(--foreground) 5%, transparent);
+  --sidebar-border: transparent;
+  --border-subtle: transparent;
+  --input: color-mix(in srgb, var(--foreground) 7%, transparent);
+  --surface-shadow: none;
+  --surface-shadow-focus: 0 0 #0000;
+  --sheet-shadow: none;
+  --nav-current-ring: none;
+}
+
 html,
 body,
 #app {
@@ -610,9 +831,7 @@ body {
   /* Body copy tracks at zero. Negative tracking belongs to large display type
      (OpenAI uses -0.03em at 48px, -0.02em at 28px); tightening a 15px face
      instead crowds the counters and reads as blur. */
-  letter-spacing: -0.011em;
-  -webkit-font-smoothing: auto;
-  -moz-osx-font-smoothing: auto;
+  letter-spacing: 0;
   font-synthesis: none;
   font-optical-sizing: auto;
   background: var(--background);
@@ -723,23 +942,33 @@ textarea {
   }
 }
 
-/* Analytical visuals share the transcript's typography and an open, quiet canvas. */
+/* Analytical visuals and inline widgets share one quiet, minimal sheet. */
 .viz-surface {
   container-type: inline-size;
   width: var(--inline-block-width);
   max-width: 100%;
-  margin: 1.25rem 0 0;
-  padding: 1rem 0 0;
-  border-top: 1px solid var(--border-subtle);
-  background: transparent;
+  margin: 0.75rem 0 0;
+  padding: 1rem 1.125rem;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--artifact-radius, 14px);
+  background: var(--artifact-surface);
   color: var(--foreground);
   font-family: var(--font-sans);
   font-variant-numeric: tabular-nums;
 }
-.viz-header { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 0.5rem 1rem; margin-bottom: 0.875rem; }
+/* Nested visuals inside a dashboard or lesson drop their outer frame: no borders on borders. */
+.viz-surface .viz-surface {
+  margin-top: 0.5rem;
+  padding: 0.75rem 0 0;
+  border: 0;
+  border-top: 1px solid var(--border-subtle);
+  border-radius: 0;
+  background: transparent;
+}
+.viz-header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem 0.75rem; margin-bottom: 0.875rem; }
 .viz-heading { display: flex; flex: 1; min-width: 0; align-items: center; gap: 0.625rem; }
-.viz-title { margin: 0; color: var(--foreground); font-size: var(--text-sm); font-weight: 600; line-height: 1.4; letter-spacing: -0.015em; text-wrap: balance; }
-.viz-subtitle { margin: 0.25rem 0 0; color: var(--text-secondary); font-size: var(--text-xs); line-height: 1.5; }
+.viz-title { margin: 0; color: var(--foreground); font-size: var(--text-sm); font-weight: 600; line-height: 1.35; letter-spacing: -0.015em; text-wrap: balance; }
+.viz-subtitle { margin: 0.15rem 0 0; color: var(--muted-foreground); font-size: var(--text-xs); line-height: 1.45; }
 .viz-error { margin: 0.5rem 0; color: var(--error); font-size: var(--text-sm); }
 
 /* ─── Pane bodies ────────────────────────────────────────────────────────
@@ -922,7 +1151,7 @@ textarea {
   flex-shrink: 0;
   align-items: center;
   justify-content: center;
-  background: color-mix(in srgb, var(--artifact-accent) 18%, var(--background));
+  background: color-mix(in srgb, var(--artifact-accent) 13%, transparent);
   color: var(--artifact-accent);
 }
 
@@ -1012,6 +1241,144 @@ textarea {
   padding: 0.5rem 0.125rem 0;
 }
 
+.composer-tray.is-integrated {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0;
+}
+
+.composer-shell-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.375rem;
+  padding: 0.25rem 0.625rem 0.5rem 0.75rem;
+}
+
+.composer-terminal-prompt {
+  font-family: var(--font-mono);
+  font-size: var(--text-prose);
+  font-weight: 600;
+  color: var(--brand-accent);
+  line-height: 1.5;
+  user-select: none;
+  flex: none;
+}
+
+/* ─── Appearance: Prompt Shell Styles ──────────────────────────────────── */
+:root[data-composer-style='pill'] {
+  --composer-radius: 1.625rem;
+}
+:root[data-composer-style='pill'] .ui-composer::after {
+  display: none;
+}
+:root[data-composer-style='pill'] .composer-shell {
+  --radius-full: 9999px;
+}
+:root[data-composer-style='pill'] .composer-input-row.has-footer-send {
+  padding: 0.875rem 1.125rem 0.375rem;
+}
+:root[data-composer-style='pill'] .composer-shell-footer {
+  padding: 0.25rem 0.625rem 0.5625rem 0.875rem;
+}
+:root[data-composer-style='pill'] .composer-send.ui-local-2f6b41d9 {
+  width: 2rem;
+  height: 2rem;
+  border-radius: 9999px;
+  background: var(--foreground);
+  color: var(--background);
+}
+:root[data-composer-style='pill'] .composer-send.ui-local-2f6b41d9:disabled,
+:root[data-composer-style='pill'] .composer-send.ui-local-2f6b41d9.is-dictate {
+  background: color-mix(in srgb, var(--foreground) 12%, transparent);
+  color: var(--muted-foreground);
+}
+:root[data-composer-style='pill'] .composer-send.ui-local-2f6b41d9:not(:disabled):hover {
+  opacity: 0.88;
+  background: var(--foreground);
+  color: var(--background);
+}
+
+:root[data-composer-style='card'] {
+  --composer-radius: 1.125rem;
+}
+:root[data-composer-style='card'] .ui-composer::after {
+  display: none;
+}
+:root[data-composer-style='card'] .composer-input-row.has-footer-send {
+  padding: 0.9375rem 1rem 0.625rem;
+}
+:root[data-composer-style='card'] .composer-textarea {
+  min-height: calc(var(--composer-line) * 1.45);
+}
+:root[data-composer-style='card'] .composer-shell-footer {
+  padding: 0.25rem 0.625rem 0.625rem 0.75rem;
+}
+:root[data-composer-style='card'] .composer-send.ui-local-2f6b41d9 {
+  width: 1.875rem;
+  height: 1.875rem;
+  border-radius: 0.5625rem;
+  background: var(--brand-accent);
+  color: #ffffff;
+}
+:root[data-composer-style='card'] .composer-send.ui-local-2f6b41d9:disabled,
+:root[data-composer-style='card'] .composer-send.ui-local-2f6b41d9.is-dictate {
+  background: color-mix(in srgb, var(--brand-accent) 18%, transparent);
+  color: var(--muted-foreground);
+}
+:root[data-composer-style='card'] .composer-send.ui-local-2f6b41d9:not(:disabled):hover {
+  background: var(--brand-accent-strong);
+  color: #ffffff;
+}
+
+:root[data-composer-style='terminal'] {
+  --composer-radius: 0.375rem;
+}
+:root[data-composer-style='terminal'] .ui-composer {
+  border-left: 2px solid var(--border-hover);
+  box-shadow: none;
+}
+:root[data-composer-style='terminal'] .ui-composer:focus-within {
+  border-left-color: var(--brand-accent);
+  box-shadow: none;
+}
+:root[data-composer-style='terminal'] .ui-composer::after {
+  display: none;
+}
+:root[data-composer-style='terminal'] .composer-input-row {
+  padding: 0.4375rem 0.5rem 0.4375rem 0.75rem;
+}
+:root[data-composer-style='terminal'] .composer-textarea {
+  font-family: var(--font-mono);
+  font-size: var(--text-code);
+}
+:root[data-composer-style='terminal'] .composer-shell-footer {
+  padding: 0.25rem 0.5rem 0.375rem 0.75rem;
+  border-top: 1px solid var(--border-subtle);
+}
+
+:root[data-composer-style='minimal'] .ui-composer {
+  background: transparent;
+  border-color: transparent;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+  box-shadow: none;
+}
+:root[data-composer-style='minimal'] .ui-composer:focus-within {
+  border-color: transparent;
+  border-bottom-color: var(--brand-accent);
+  box-shadow: none;
+}
+:root[data-composer-style='minimal'] .ui-composer::after {
+  display: none;
+}
+:root[data-composer-style='minimal'] .composer-input-row {
+  padding: 0.5rem 0.25rem;
+}
+:root[data-composer-style='minimal'] .composer-shell-footer {
+  padding: 0.25rem 0.125rem 0.375rem;
+}
+
 .composer-bar {
   display: flex;
   min-height: 1.875rem;
@@ -1081,9 +1448,12 @@ textarea {
  * one row every list inside it uses (menu items, select options, slash and
  * mention suggestions), so a dropdown looks the same wherever it opens.
  */
+:where(.ui-float, .ui-menu) {
+  position: relative;
+}
+
 .ui-float,
 .ui-menu {
-  position: relative;
   border: 1px solid var(--float-border);
   border-radius: var(--float-radius);
   background: var(--float-bg);
@@ -2119,8 +2489,6 @@ kbd {
 
 .markdown-body {
   contain: layout style;
-  -webkit-font-smoothing: auto;
-  -moz-osx-font-smoothing: auto;
   font-synthesis: none;
   /* Engaged by the `opsz` build of Inter imported in main.ts — the default
      entry only carries `wght`, so this was silently a no-op. */
@@ -2383,15 +2751,17 @@ kbd {
   transform: scale(1);
 }
 
-/* Inline code is code: mono, one step down from prose, on a soft fill. */
+/* Inline code is code: mono, one step down from prose, on a crisp soft fill. */
 .markdown-body code:not(pre code) {
   border-radius: var(--radius-sm);
-  padding: 0.0625em 0.3em;
-  background: color-mix(in srgb, var(--foreground) 7%, transparent);
+  padding: 0.08em 0.34em;
+  background: color-mix(in srgb, var(--foreground) 10%, transparent);
   color: var(--foreground);
   font-family: var(--font-mono);
-  font-size: 0.9em;
-  border: 0;
+  font-size: 0.875em;
+  border: 1px solid color-mix(in srgb, var(--foreground) 8%, transparent);
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
   overflow-wrap: break-word;
 }
 
@@ -2768,12 +3138,11 @@ input[type="range"]::-moz-range-thumb {
 @font-face { font-family: 'Cambria'; src: local('Cambria'), local('Caladea'), local('Liberation Serif'), local('Georgia'); }
 
 /* ── Icons ──────────────────────────────────────────────────────────────
-   The app's own set (`lib/icons`), drawn on a 16px grid. The app runs it at
-   the slim weight (1 instead of 1.5): `ag-icon-slim` on <html> in index.html;
-   drop the class for regular. Each icon carries its own hover motion,
-   generated into `lib/icons/generated/icons.css`; nothing here animates
-   them. The 12px and smaller icons keep a touch more weight so they don't go
-   hairline. */
+   The app's own set (`lib/icons`), drawn on a 16px grid at 1.5 stroke so
+   lines never fall below 1 physical pixel at 14px–16px. Each icon carries its
+   own hover motion, generated into `lib/icons/generated/icons.css`; nothing
+   here animates them. The 12px and smaller icons keep a touch more weight so
+   they don't go hairline. */
 svg.ag-icon:is(.size-2, .size-2\.5, .size-3, .h-3, .h-2\.5) {
   --ag-icon-stroke: 1.25;
 }

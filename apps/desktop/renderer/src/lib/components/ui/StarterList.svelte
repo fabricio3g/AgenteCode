@@ -31,8 +31,11 @@
 
 {#if variant === 'links'}
   <nav class="starter-links" aria-label={label}>
-    {#each starters as starter (starter.id)}
+    {#each starters as starter, index (starter.id)}
       {@const Icon = starter.icon}
+      {#if index > 0 && starter.group && starters[index - 1]?.group && starter.group !== starters[index - 1]?.group}
+        <span class="starter-links-sep" aria-hidden="true"></span>
+      {/if}
       <!-- Pointing at a chip writes its prompt into the composer's placeholder. -->
       <Button
         variant="plain"
@@ -202,14 +205,22 @@
     :global(.starter-row), .key { transition: none; }
   }
 
-  /* ── Machined Starter Chips under the composer ─────────────────────────── */
+  /* ── Minimal Starter Strip under the composer ───────────────────────────── */
   .starter-links {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
     justify-content: center;
-    gap: 0.375rem;
-    padding-top: 0.25rem;
+    gap: 0.25rem;
+    padding-top: 0.125rem;
+  }
+
+  .starter-links-sep {
+    width: 1px;
+    height: 0.875rem;
+    margin: 0 0.25rem;
+    background: var(--border-subtle);
+    flex-shrink: 0;
   }
 
   :global(.starter-link) {
@@ -217,10 +228,10 @@
     height: 1.875rem;
     align-items: center;
     gap: 0.375rem;
-    padding: 0 0.7rem;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    background: color-mix(in srgb, var(--foreground) 2%, transparent);
+    padding: 0 0.6875rem;
+    border: 1px solid transparent;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--foreground) 3%, transparent);
     color: var(--text-secondary);
     font: inherit;
     font-size: var(--text-xs);
@@ -231,9 +242,7 @@
     transition:
       background-color var(--motion-instant) var(--motion-ease),
       border-color var(--motion-instant) var(--motion-ease),
-      color var(--motion-instant) var(--motion-ease),
-      box-shadow var(--motion-instant) var(--motion-ease),
-      transform var(--motion-instant) var(--motion-ease-out);
+      color var(--motion-instant) var(--motion-ease);
   }
 
   :global(.starter-link .starter-link-icon) {
@@ -241,32 +250,31 @@
     height: 0.8125rem;
     flex-shrink: 0;
     color: var(--muted-foreground);
-    transition: color var(--motion-instant) var(--motion-ease);
+    opacity: 0.8;
+    transition: color var(--motion-instant) var(--motion-ease), opacity var(--motion-instant) var(--motion-ease);
   }
 
   :global(.starter-link:hover),
   :global(.starter-link:focus-visible) {
-    border-color: var(--border-hover);
-    background: var(--composer-control-bg);
-    box-shadow: var(--control-shadow);
+    border-color: color-mix(in srgb, var(--foreground) 10%, transparent);
+    background: var(--surface-hover);
     color: var(--foreground);
-    transform: translateY(-1px);
   }
 
   :global(.starter-link:hover .starter-link-icon),
   :global(.starter-link:focus-visible .starter-link-icon) {
     color: var(--foreground);
+    opacity: 1;
   }
 
   :global(.starter-link:active) {
-    transform: translateY(1px);
-    box-shadow: inset 0 1px 2px rgb(0 0 0 / 0.18);
+    background: color-mix(in srgb, var(--foreground) 9%, transparent);
   }
 
   :global(.starter-link:focus-visible) { outline: 2px solid var(--brand-accent); outline-offset: 2px; }
 
   @media (prefers-reduced-motion: reduce) {
-    :global(.starter-link) { transition: none; }
-    :global(.starter-link:hover) { transform: none; }
+    :global(.starter-link),
+    :global(.starter-link .starter-link-icon) { transition: none; }
   }
 </style>

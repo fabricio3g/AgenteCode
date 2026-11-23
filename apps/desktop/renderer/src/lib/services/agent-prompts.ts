@@ -75,7 +75,7 @@ export const LEARNING_ANSWER_FIRST = [
 
 /** Artifacts render in the user's app, not on the open web. */
 const ARTIFACTS_SELF_CONTAINED =
-  'Artifacts must be self-contained and deterministic: no CDN scripts, remote assets, network map tiles or network-dependent rendering. create_map draws real coastlines and borders from geometry bundled with the app. Prefer the native inline tools (create_chart, create_dashboard, create_diagram, create_map, create_info_card, create_html_card) over raw HTML in markdown.';
+  'Artifacts must be self-contained and deterministic: no CDN scripts, remote assets, network map tiles or network-dependent rendering. create_map draws real coastlines and borders from geometry bundled with the app. Prefer the native inline tools (create_chart, create_dashboard, create_diagram, create_map, create_scene_3d, create_info_card, create_html_card) over raw HTML in markdown.';
 
 /** Guidance for the document, productivity and media tools. */
 const HOME_TOOLS_GUIDANCE =

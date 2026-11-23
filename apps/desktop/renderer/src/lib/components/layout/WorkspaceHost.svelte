@@ -175,9 +175,30 @@
     resizeDivider(corner.x, delta[0], dividerValue(corner.x), snapshot); resizeDivider(corner.y, delta[1], dividerValue(corner.y), snapshot); workspaceLayout.save();
   }
   function edgeRect(rect: Rect, edge: string): Rect {
-    if (edge.length === 2) return { x: Math.max(0, Math.min(bounds.width - 24, (edge.includes('w') ? rect.x : rect.x + rect.width) - 12)), y: Math.max(0, Math.min(bounds.height - 24, (edge.includes('n') ? rect.y : rect.y + rect.height) - 12)), width: 24, height: 24 };
-    if (edge === 'n' || edge === 's') return { x: rect.x + 12, y: Math.max(0, Math.min(bounds.height - 14, (edge === 'n' ? rect.y : rect.y + rect.height) - 7)), width: Math.max(0, rect.width - 24), height: 14 };
-    return { x: Math.max(0, Math.min(bounds.width - 14, (edge === 'w' ? rect.x : rect.x + rect.width) - 7)), y: rect.y + 12, width: 14, height: Math.max(0, rect.height - 24) };
+    if (edge.length === 2) {
+      return {
+        x: Math.max(0, Math.min(bounds.width - 24, (edge.includes('w') ? rect.x : rect.x + rect.width) - 12)),
+        y: Math.max(0, Math.min(bounds.height - 24, (edge.includes('n') ? rect.y : rect.y + rect.height) - 12)),
+        width: 24,
+        height: 24
+      };
+    }
+    // Anchor edge handles outward (at most 2px inside the panel) so they never
+    // cover the right scrollbar, bottom controls, or header buttons near edges.
+    if (edge === 'n') {
+      const y = Math.max(0, rect.y - 8);
+      return { x: rect.x + 12, y, width: Math.max(0, rect.width - 24), height: Math.max(4, Math.min(10, rect.y + 2 - y)) };
+    }
+    if (edge === 's') {
+      const y = Math.min(bounds.height - 4, rect.y + rect.height - 2);
+      return { x: rect.x + 12, y, width: Math.max(0, rect.width - 24), height: Math.max(4, Math.min(10, bounds.height - y)) };
+    }
+    if (edge === 'w') {
+      const x = Math.max(0, rect.x - 8);
+      return { x, y: rect.y + 12, width: Math.max(4, Math.min(10, rect.x + 2 - x)), height: Math.max(0, rect.height - 24) };
+    }
+    const x = Math.min(bounds.width - 4, rect.x + rect.width - 2);
+    return { x, y: rect.y + 12, width: Math.max(4, Math.min(10, bounds.width - x)), height: Math.max(0, rect.height - 24) };
   }
   function resizeFloating(event: PointerEvent, id: string, edge: string, rect: Rect) {
     const snapshot = workspaceLayout.snapshot(); workspaceLayout.activate(id);
@@ -272,15 +293,15 @@
    * soft lift. The chrome stays thin (the header is a single quiet row) and
    * wakes up only for the pane you are in.
    */
-  .workspace-panel { position: absolute; display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; border-radius: var(--radius-lg); background: var(--card); box-shadow: 0 1px 2px rgb(0 0 0 / 0.12); animation: pane-in var(--motion-fast) var(--motion-ease-out); }
+  .workspace-panel { position: absolute; display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; border-radius: var(--sheet-radius, var(--radius-lg)); background: var(--card); box-shadow: 0 1px 2px rgb(0 0 0 / 0.12); animation: pane-in var(--motion-fast) var(--motion-ease-out); }
   /* The edge is drawn on top of the content: an inset shadow sat under children
      with their own fill (the canvas board, the browser), so those panels lost it. */
   .workspace-panel::after { content: ''; position: absolute; inset: 0; z-index: 30; border: 1px solid var(--border-subtle); border-radius: inherit; pointer-events: none; transition: border-color var(--motion-fast) var(--motion-ease); }
-  .workspace-panel:focus-within::after { border-color: var(--border); }
+  .workspace-panel:focus-within::after { border-color: color-mix(in srgb, var(--brand-accent) 32%, var(--border)); }
   .workspace-panel[hidden] { display: none; }
   .workspace-panel.floating { background:var(--float-bg);border-radius:var(--float-radius);box-shadow:var(--float-shadow); }
   .workspace-panel.floating::after { border-color:var(--float-border); }
-  .workspace-panel.resize-ready::after { border-color: var(--split-line); }
+  .workspace-panel.resize-ready::after { border-color: color-mix(in srgb, var(--brand-accent) 55%, var(--split-line)); }
   @keyframes pane-in { from { opacity: 0; } }
   /* Nothing fades while a pane is being dragged or resized. */
   .workspace[data-workspace-interacting] .workspace-panel { animation: none; }

@@ -25,3 +25,15 @@ it('reopens setup from general settings without resetting installed preferences'
   expect(state.onboardingOpen).toBe(true);
   expect(state.editorCommand).toBe('');
 });
+it('opens the language selector in general settings and switches the UI locale',async()=>{
+  const view=render(GeneralSettings,{enableThinking:true,hfToken:'',onsaveHfToken:()=>{}});
+  const trigger=view.getByRole('combobox',{name:/Language/i});
+  await fireEvent.click(trigger);
+  const spanish=view.getByRole('option',{name:'Español'});
+  await fireEvent.click(spanish);
+  expect(localStorage.getItem('chatealm_locale')).toBe('es');
+  // Restore English so other tests start cleanly.
+  await fireEvent.click(view.getByRole('combobox'));
+  await fireEvent.click(view.getByRole('option',{name:'English'}));
+  expect(localStorage.getItem('chatealm_locale')).toBe('en');
+});

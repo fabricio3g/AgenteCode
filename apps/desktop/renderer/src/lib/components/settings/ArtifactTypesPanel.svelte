@@ -5,6 +5,7 @@
 <script lang="ts">
   import {
     BarChart3,
+    Box,
     Briefcase,
     Code,
     File,
@@ -63,7 +64,8 @@
     code: Code,
     library: Library,
     sparkles: Sparkles,
-    'graduation-cap': GraduationCap
+    'graduation-cap': GraduationCap,
+    box: Box
   };
 
   /** One muted hue per kind, so the list scans by colour as well as glyph. */
@@ -81,7 +83,8 @@
     code: 280,
     library: 60,
     sparkles: 330,
-    'graduation-cap': 210
+    'graduation-cap': 210,
+    box: 30
   };
 
   function isEnabled(artifact: ArtifactTypeEntry): boolean {

@@ -31,6 +31,31 @@
   import SessionRow from '$lib/features/shared/SessionRow.svelte';
 
   let collapsedGroups = $state<Set<number>>(new Set([4]));
+  let scrollEl = $state<HTMLDivElement>();
+  let fadeTop = $state(false);
+  let fadeBottom = $state(false);
+
+  function syncScrollFades() {
+    if (!scrollEl) {
+      fadeTop = false;
+      fadeBottom = false;
+      return;
+    }
+    fadeTop = scrollEl.scrollTop > 4;
+    fadeBottom = scrollEl.scrollHeight - scrollEl.scrollTop - scrollEl.clientHeight > 4;
+  }
+
+  $effect(() => {
+    void listChats.length;
+    void collapsedGroups;
+    void appStore.activeSpace;
+    const el = scrollEl;
+    if (!el) return;
+    syncScrollFades();
+    const ro = new ResizeObserver(syncScrollFades);
+    ro.observe(el);
+    return () => ro.disconnect();
+  });
 
   /** The session list for the active space (home and roleplay share a layout). */
   const listChats = $derived(
@@ -172,7 +197,9 @@
       </UiListRow>
     </div>
 
-    <div class="chat-list sidebar-scroll flex-1 overflow-y-auto">
+    <div class="sidebar-scroll-wrap relative flex min-h-0 flex-1 flex-col">
+    <div class="sidebar-fade sidebar-fade-top" class:is-visible={fadeTop} aria-hidden="true"></div>
+    <div bind:this={scrollEl} onscroll={syncScrollFades} class="chat-list sidebar-scroll flex-1 overflow-y-auto pb-3">
       <!-- Code tab: the sidebar is a project-folder tree; each folder holds
            that project's agent conversations. -->
       {#if appStore.activeSpace === 'code'}
@@ -233,6 +260,8 @@
           <EmptyState size="compact" icon={MessageSquare} title={$t('sidebar.noConversations')} description={$t('sidebar.emptyHint')} />
         {/if}
       {/if}
+    </div>
+    <div class="sidebar-fade sidebar-fade-bottom" class:is-visible={fadeBottom} aria-hidden="true"></div>
     </div>
 
     <!-- The running-model list sits here rather than above the search field:
@@ -327,6 +356,45 @@
     color: var(--foreground);
   }
   .sidebar-head.is-mac { padding-inline-start: 78px; }
+
+  .sidebar-scroll-wrap {
+    isolation: isolate;
+  }
+
+  .sidebar-fade {
+    position: absolute;
+    left: 0;
+    right: 0.5rem;
+    height: 2rem;
+    z-index: 2;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity var(--motion-fast) var(--motion-ease);
+  }
+
+  .sidebar-fade.is-visible {
+    opacity: 1;
+  }
+
+  .sidebar-fade-top {
+    top: 0;
+    background: linear-gradient(
+      to bottom,
+      var(--sidebar) 0%,
+      color-mix(in srgb, var(--sidebar) 72%, transparent) 45%,
+      transparent 100%
+    );
+  }
+
+  .sidebar-fade-bottom {
+    bottom: 0;
+    background: linear-gradient(
+      to top,
+      var(--sidebar) 0%,
+      color-mix(in srgb, var(--sidebar) 72%, transparent) 45%,
+      transparent 100%
+    );
+  }
 
   .sidebar-footer {
     display: flex;

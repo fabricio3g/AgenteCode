@@ -391,13 +391,18 @@ impl RuntimeHandle {
                 existed = true;
             }
         }
+        let _ = agente_core::goal::GoalStore::user().clear(session_id.as_uuid());
+        agente_core::tools::atomic_fs::forget_session_reads(session_id.as_uuid());
         Ok(existed)
     }
 
     /// Shrink the session's conversation now (trimming older turns, keeping
     /// recent ones), like the automatic compaction between model calls.
     /// Refused while a turn runs. Returns the new snapshot.
-    fn reserve_compaction(&self, session_id: SessionId) -> Result<TurnGuard, RuntimeError> {
+    fn reserve_compaction(
+        &self,
+        session_id: SessionId,
+    ) -> Result<(TurnGuard, agente_core::AbortSignal), RuntimeError> {
         let mut turns = self.inner.lock_turns();
         if turns
             .values()
@@ -409,17 +414,19 @@ impl RuntimeHandle {
         let inbox = UserInbox::default();
         inbox.close();
         let (events, _rx) = mpsc::channel(1);
+        let cancel = AbortController::new();
+        let signal = cancel.signal();
         turns.insert(
             turn_id,
             TurnControl {
                 trust: Trust::Owner,
-                cancel: AbortController::new(),
+                cancel,
                 inbox,
                 events,
                 session_id,
             },
         );
-        Ok(TurnGuard::new(Arc::clone(&self.inner), turn_id))
+        Ok((TurnGuard::new(Arc::clone(&self.inner), turn_id), signal))
     }
 
     pub(crate) fn commit_compaction(
@@ -454,7 +461,7 @@ impl RuntimeHandle {
         &self,
         session_id: SessionId,
     ) -> Result<(SessionSnapshot, bool, Option<agente_core::llm::Usage>), RuntimeError> {
-        let _reservation = self.reserve_compaction(session_id)?;
+        let (_reservation, cancel_signal) = self.reserve_compaction(session_id)?;
         let snapshot = self.inner.lookup_session(session_id);
         let meta = self.session_meta(session_id).ok_or_else(|| {
             RuntimeError::Config(
@@ -492,10 +499,14 @@ impl RuntimeHandle {
             model,
             agente_core::providers::RequestContext::new(session_id.as_uuid()),
         ));
-        let result = agente_core::context::ContextCompactor::new(strategy)
-            .with_summarizer(summarizer.clone())
-            .compact_async_forced(snapshot.conversation.clone())
-            .await;
+        let compactor = agente_core::context::ContextCompactor::new(strategy)
+            .with_summarizer(summarizer.clone());
+        let result = tokio::select! {
+            res = compactor.compact_async_forced(snapshot.conversation.clone()) => res,
+            _ = cancel_signal.cancelled() => {
+                return Err(RuntimeError::Config("Compaction cancelled".into()));
+            }
+        };
         let smart = matches!(
             result.summary.metadata.summary_type,
             agente_core::context::SummaryType::Semantic
@@ -532,7 +543,7 @@ impl RuntimeHandle {
     }
 
     pub fn compact(&self, session_id: SessionId) -> Result<SessionSnapshot, RuntimeError> {
-        let _reservation = self.reserve_compaction(session_id)?;
+        let (_reservation, _cancel) = self.reserve_compaction(session_id)?;
         let snapshot = self.inner.lookup_session(session_id);
         let before = snapshot.conversation.len();
         let tokens_before =

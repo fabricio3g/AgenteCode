@@ -12,7 +12,9 @@
 //! drifts.
 
 use std::collections::HashMap;
+use std::future::Future;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{LazyLock, Mutex, MutexGuard, PoisonError};
 use std::time::SystemTime;
 
@@ -20,6 +22,26 @@ use sha2::{Digest, Sha256};
 
 use super::ToolError;
 use crate::util::clean_path;
+
+/// Upper bound on cached file read records across the daemon process so a
+/// long-lived `agente serve` never grows memory unboundedly.
+const MAX_READ_STATES: usize = 2048;
+
+tokio::task_local! {
+    static READ_SESSION: uuid::Uuid;
+}
+
+/// Scope read-before-write tracking inside `fut` to `session_id` so concurrent
+/// daemon sessions cannot satisfy each other's freshness checks.
+pub async fn scope_session<F: Future>(session_id: uuid::Uuid, fut: F) -> F::Output {
+    READ_SESSION.scope(session_id, fut).await
+}
+
+fn current_session() -> Option<uuid::Uuid> {
+    READ_SESSION.try_with(|id| *id).ok()
+}
+
+type StateKey = (Option<uuid::Uuid>, PathBuf);
 
 #[derive(Clone)]
 struct ReadState {
@@ -34,17 +56,41 @@ struct ReadState {
     /// `None` only when the file is too large to hash; freshness then falls
     /// back to len+timestamp.
     hash: Option<[u8; 32]>,
+    /// Monotonic touch sequence for bounded eviction.
+    seq: u64,
 }
 
-static READ_STATES: LazyLock<Mutex<HashMap<PathBuf, ReadState>>> =
+static READ_SEQ: AtomicU64 = AtomicU64::new(1);
+
+static READ_STATES: LazyLock<Mutex<HashMap<StateKey, ReadState>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
-fn state_key(path: &Path) -> PathBuf {
-    std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf())
+fn state_key(path: &Path) -> StateKey {
+    let canonical = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+    (current_session(), canonical)
 }
 
-fn lock_states() -> MutexGuard<'static, HashMap<PathBuf, ReadState>> {
+fn lock_states() -> MutexGuard<'static, HashMap<StateKey, ReadState>> {
     READ_STATES.lock().unwrap_or_else(PoisonError::into_inner)
+}
+
+fn insert_state(key: StateKey, mut state: ReadState) {
+    state.seq = READ_SEQ.fetch_add(1, Ordering::Relaxed);
+    let mut states = lock_states();
+    if states.len() >= MAX_READ_STATES && !states.contains_key(&key) {
+        // Evict the oldest 25% of entries so insertion stays O(1) amortized.
+        let mut seqs: Vec<u64> = states.values().map(|s| s.seq).collect();
+        let cutoff_idx = seqs.len() / 4;
+        let (_, cutoff, _) = seqs.select_nth_unstable(cutoff_idx);
+        let cutoff = *cutoff;
+        states.retain(|_, s| s.seq > cutoff);
+    }
+    states.insert(key, state);
+}
+
+/// Drop all cached read records owned by `session_id` (e.g. on session delete).
+pub fn forget_session_reads(session_id: uuid::Uuid) {
+    lock_states().retain(|(sid, _), _| *sid != Some(session_id));
 }
 
 fn content_hash(bytes: &[u8]) -> [u8; 32] {
@@ -61,7 +107,7 @@ pub fn record_read(path: &Path, content: &str) {
     // the shared mutex so simultaneous agents only serialize the map insert.
     let key = state_key(path);
     let hash = content_hash(content.as_bytes());
-    lock_states().insert(
+    insert_state(
         key,
         ReadState {
             modified,
@@ -69,6 +115,7 @@ pub fn record_read(path: &Path, content: &str) {
             lines: line_count(content),
             full: true,
             hash: Some(hash),
+            seq: 0,
         },
     );
 }
@@ -91,7 +138,7 @@ pub fn record_read_range(path: &Path) {
         .map(|bytes| line_count(&String::from_utf8_lossy(bytes)))
         .unwrap_or(0);
     let key = state_key(path);
-    lock_states().insert(
+    insert_state(
         key,
         ReadState {
             modified,
@@ -99,6 +146,7 @@ pub fn record_read_range(path: &Path) {
             lines,
             full: false,
             hash,
+            seq: 0,
         },
     );
 }
@@ -134,7 +182,7 @@ pub async fn ensure_fresh(path: &Path) -> Result<(), ToolError> {
     match recorded.hash {
         Some(hash) => match tokio::fs::read(path).await {
             Ok(bytes) if content_hash(&bytes) == hash => {
-                lock_states().insert(
+                insert_state(
                     key,
                     ReadState {
                         modified,
@@ -142,6 +190,7 @@ pub async fn ensure_fresh(path: &Path) -> Result<(), ToolError> {
                         lines: recorded.lines,
                         full: recorded.full,
                         hash: Some(hash),
+                        seq: 0,
                     },
                 );
                 Ok(())

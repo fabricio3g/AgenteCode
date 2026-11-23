@@ -209,7 +209,7 @@
     /* Keep navigation and window actions visible while the drag space shrinks. */
     grid-template-columns: auto minmax(0, 1fr) auto;
     align-items: center;
-    overflow: hidden;
+    overflow: visible;
   }
 
   /*
@@ -227,13 +227,13 @@
 
   .titlebar-right {
     justify-self: end;
-    overflow: hidden;
+    overflow: visible;
   }
 
   .titlebar-left {
     flex-shrink: 0;
     justify-self: start;
-    overflow: hidden;
+    overflow: visible;
   }
 
   @container (max-width: 520px) {

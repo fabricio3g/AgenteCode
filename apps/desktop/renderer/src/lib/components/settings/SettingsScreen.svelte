@@ -29,7 +29,7 @@
 <script lang="ts">
   import DialogActions from '$lib/components/ui/DialogActions.svelte';
 
-  import { Accessibility, Box, Compass, Cpu, Layers, Search as SearchIcon, Settings as SettingsIcon, Shapes, Volume2 } from '$lib/icons';
+  import { Accessibility, Box, Compass, Cpu, Layers, Palette, Search as SearchIcon, Settings as SettingsIcon, Shapes, Volume2 } from '$lib/icons';
   import { onMount, untrack } from 'svelte';
   import { t } from 'svelte-i18n';
   import { Dialog, Input } from '$lib/components/ui';
@@ -42,6 +42,7 @@
   import { DEFAULT_PROVIDER_ID } from '$shared/providers';
   import { resolveModelHubRoute } from '$lib/utils/model-hub-routing';
   import AccessibilitySettings from './AccessibilitySettings.svelte';
+  import AppearanceSettings from './AppearanceSettings.svelte';
   import ArtifactTypesPanel from './ArtifactTypesPanel.svelte';
   import DomainsSettings from './DomainsSettings.svelte';
   import ModelWorkspace from './ModelWorkspace.svelte';
@@ -187,6 +188,7 @@
       title: $t('settingsNav.groupPreferences'),
       items: [
         { kind: 'section', id: 'general', label: $t('settingsNav.general'), icon: SettingsIcon },
+        { kind: 'section', id: 'appearance', label: $t('settingsNav.appearance'), icon: Palette },
         { kind: 'section', id: 'search', label: $t('settingsNav.search'), icon: SearchIcon },
         { kind: 'section', id: 'artifacts', label: $t('settingsNav.artifacts'), icon: Shapes },
         { kind: 'section', id: 'domains', label: 'Domains', icon: Layers },
@@ -260,6 +262,8 @@
         <VoiceSection bind:voiceMode />
       {:else if activeSection === 'general'}
         <UnifiedSettingsPanel activeTab="General" />
+      {:else if activeSection === 'appearance'}
+        <AppearanceSettings />
       {:else if activeSection === 'search'}
         <UnifiedSettingsPanel activeTab="Search" />
       {:else if activeSection === 'artifacts'}

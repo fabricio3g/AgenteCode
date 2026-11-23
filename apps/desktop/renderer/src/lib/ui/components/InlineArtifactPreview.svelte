@@ -13,6 +13,7 @@
   import ArtifactInfoCard from './ArtifactInfoCard.svelte';
   import ArtifactHtmlCard from './ArtifactHtmlCard.svelte';
   import ArtifactLesson from './ArtifactLesson.svelte';
+  import ArtifactScene3D from './ArtifactScene3D.svelte';
   import { FileQuestion } from '$lib/icons';
 
   interface Props {
@@ -58,6 +59,8 @@
   <ArtifactHtmlCard payload={artifact.inline} />
 {:else if artifact.inline?.kind === 'lesson'}
   <ArtifactLesson payload={artifact.inline} entryKey={artifact.manifest?.entryPath} {poster} {readOnly} />
+{:else if artifact.inline?.kind === 'scene_3d'}
+  <ArtifactScene3D payload={artifact.inline} />
 {:else if previewSrc}
   <div class="inline-html-artifact">
     <iframe

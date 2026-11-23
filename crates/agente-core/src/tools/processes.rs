@@ -162,6 +162,17 @@ pub fn stop(process: &BackgroundProcess) -> bool {
     running
 }
 
+/// Remove finished (exited or stopped) processes for `project_dir` from the
+/// registry, keeping running ones untouched. Returns the number removed.
+pub fn prune(project_dir: &str) -> usize {
+    let mut reg = lock_registry();
+    let before = reg.len();
+    reg.retain(|process| {
+        process.project_dir != project_dir || process.status() == ProcessStatus::Running
+    });
+    before - reg.len()
+}
+
 /// Stop every background process (on shutdown).
 pub fn stop_all() {
     for process in lock_registry().iter() {
