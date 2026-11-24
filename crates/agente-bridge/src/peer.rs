@@ -46,14 +46,20 @@ impl Peer {
         tokio::spawn(reconnect_loop(Arc::clone(&peer)));
         Ok(peer)
     }
+    fn lock_inner(&self) -> std::sync::MutexGuard<'_, Inner> {
+        self.inner
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
     pub fn extension(&self) -> Option<ClientInfo> {
-        self.inner.lock().expect("peer state").extension.clone()
+        self.lock_inner().extension.clone()
     }
 
     /// Forward one action to the hub, which forwards it to the browser.
     pub async fn request(&self, action: &str, args: Value) -> ActionResult {
         let (id, receiver) = {
-            let mut inner = self.inner.lock().expect("peer state");
+            let mut inner = self.lock_inner();
             let Some(tx) = inner.tx.clone() else {
                 return ActionResult::error(crate::driver::offline_text(
                     &self.pairing,
@@ -95,17 +101,17 @@ impl Peer {
     }
 
     fn forget(&self, id: &str) {
-        self.inner.lock().expect("peer state").pending.remove(id);
+        self.lock_inner().pending.remove(id);
     }
 
     fn set_connected(&self, tx: mpsc::UnboundedSender<Frame>, extension: Option<ClientInfo>) {
-        let mut inner = self.inner.lock().expect("peer state");
+        let mut inner = self.lock_inner();
         inner.tx = Some(tx);
         inner.extension = extension;
     }
 
     fn set_disconnected(&self) {
-        let mut inner = self.inner.lock().expect("peer state");
+        let mut inner = self.lock_inner();
         inner.tx = None;
         inner.extension = None;
         let pending = inner.pending.drain_senders();
@@ -114,7 +120,7 @@ impl Peer {
     }
 
     fn resolve(&self, id: &str, result: ActionResult) {
-        let sender = self.inner.lock().expect("peer state").pending.take(id);
+        let sender = self.lock_inner().pending.take(id);
         if let Some(sender) = sender {
             let _ = sender.send(result);
         }

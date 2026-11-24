@@ -92,15 +92,19 @@ impl Hub {
         })
     }
 
+    fn lock_inner(&self) -> std::sync::MutexGuard<'_, Inner> {
+        self.inner
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
     pub fn pairing(&self) -> &Pairing {
         &self.pairing
     }
 
     /// The attached browser, if one is connected.
     pub fn extension(&self) -> Option<ClientInfo> {
-        self.inner
-            .lock()
-            .expect("hub state")
+        self.lock_inner()
             .extension
             .as_ref()
             .map(|link| link.info.clone())
@@ -109,7 +113,7 @@ impl Hub {
     /// Ask the browser to run one action.
     pub async fn request(&self, action: &str, args: Value) -> ActionResult {
         let (id, receiver) = {
-            let mut inner = self.inner.lock().expect("hub state");
+            let mut inner = self.lock_inner();
             let Some(link) = inner.extension.clone() else {
                 return ActionResult::error(offline_text(&self.pairing, &Offline::NoBrowser));
             };
@@ -151,7 +155,7 @@ impl Hub {
     }
 
     fn forget(&self, id: &str) {
-        self.inner.lock().expect("hub state").pending.remove(id);
+        self.lock_inner().pending.remove(id);
     }
 
     fn accept(self: &Arc<Self>, stream: TcpStream) {

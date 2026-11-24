@@ -223,7 +223,7 @@ async fn handle_request(
     }
     let outcome: Result<Value, RequestFailure> = match method.as_str() {
         "initialize" => Ok(initialize_result()),
-        "session/new" => Ok(json!({ "sessionId": SessionId::new().to_string() })),
+        "session/new" => new_session(state, &params),
         "session/load" => load_session(state, &params),
         "session/fork" => fork_session(state, &params),
         "session/approve" => legacy_approve(state, &params),
@@ -248,6 +248,17 @@ fn initialize_result() -> Value {
         },
         "authMethods": []
     })
+}
+
+fn new_session(state: &ServerState, params: &Value) -> Result<Value, RequestFailure> {
+    let session_id = SessionId::new();
+    if let Some(cwd) = optional_string(params, "cwd") {
+        state
+            .runtime
+            .open_session(session_id, &cwd)
+            .map_err(|error| invalid_params(error.to_string()))?;
+    }
+    Ok(json!({ "sessionId": session_id.to_string() }))
 }
 
 fn load_session(state: &ServerState, params: &Value) -> Result<Value, RequestFailure> {
@@ -306,11 +317,9 @@ async fn handle_prompt(state: &Arc<ServerState>, id: Value, params: Value) -> Re
         Ok(prompt) => prompt,
         Err(message) => return state.send_error(&id, rpc::INVALID_PARAMS, &message).await,
     };
-    let mut conversation = state.runtime.session_snapshot(session_id).conversation;
-    conversation.push(Message::user(prompt));
     let start = StartTurn {
         session_id,
-        conversation,
+        prompt: Some(Message::user(prompt)),
         provider: optional_string(&params, "provider"),
         model: optional_string(&params, "model"),
         thinking_level: optional_string(&params, "thinkingLevel"),

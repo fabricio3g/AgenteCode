@@ -10,7 +10,6 @@ type RagHandlerDeps = {
   listRagDocuments: (chatId: string) => unknown;
   removeRagDocument: (docId: string, chatId: string) => unknown;
   clearRagDocuments: (chatId: string) => unknown;
-  hasRagDocuments: (chatId: string) => unknown;
 };
 
 export function registerRagHandlers({
@@ -23,7 +22,6 @@ export function registerRagHandlers({
   listRagDocuments,
   removeRagDocument,
   clearRagDocuments,
-  hasRagDocuments,
 }: RagHandlerDeps): void {
   ipcMain.handle('ingest_document', (_e, { payload }) => ingestDocument(payload));
   ipcMain.handle('read_ingested_document', (_e, { payload }) => readIngestedDocument(payload));
@@ -33,5 +31,4 @@ export function registerRagHandlers({
   ipcMain.handle('list_rag_documents', (_e, { payload }) => listRagDocuments(payload.chat_id));
   ipcMain.handle('remove_rag_document', (_e, { docId, payload }) => removeRagDocument(docId, payload.chat_id));
   ipcMain.handle('clear_rag_documents', (_e, { payload }) => clearRagDocuments(payload.chat_id));
-  ipcMain.handle('has_rag_documents', (_e, { payload }) => hasRagDocuments(payload.chat_id));
 }

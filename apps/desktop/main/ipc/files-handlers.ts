@@ -7,10 +7,8 @@ type FilesHandlerDeps = {
   ipcMain: IpcMain;
   listFiles: () => unknown;
   getFile: (hash: string) => Promise<StoredFileRow> | StoredFileRow;
-  listFileRefs: (hash: string) => unknown;
   setFilePinned: (hash: string, pinned: boolean) => unknown;
   deleteFile: (hash: string) => Promise<unknown> | unknown;
-  fileStats: () => unknown;
   /** Electron's `shell.trashItem`: the OS trash, never a hard delete. */
   trashItem: (path: string) => Promise<void>;
 };
@@ -19,17 +17,12 @@ export function registerFilesHandlers({
   ipcMain,
   listFiles,
   getFile,
-  listFileRefs,
   setFilePinned,
   deleteFile,
-  fileStats,
   trashItem,
 }: FilesHandlerDeps): void {
   ipcMain.handle('files_list', () => listFiles());
-  ipcMain.handle('files_get', (_e, { hash }) => getFile(hash));
-  ipcMain.handle('files_refs', (_e, { hash }) => listFileRefs(hash));
   ipcMain.handle('files_pin', (_e, { hash, pinned }) => setFilePinned(hash, !!pinned));
-  ipcMain.handle('files_stats', () => fileStats());
 
   /**
    * Moves a stored file to the OS trash and forgets its registry row. Only paths

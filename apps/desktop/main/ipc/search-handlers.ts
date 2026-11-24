@@ -7,8 +7,6 @@ type SearchHandlerDeps = {
   shell: { openExternal: (url: string) => unknown };
   getMainWindow: () => BrowserWindow | null;
   webSearch: (args: unknown, win: BrowserWindow | null) => unknown;
-  ingestSearchContext: (chatId: string, context: string, sources: unknown) => unknown;
-  fetchModelCatalog: () => unknown;
   searchHfModels: (query: string, sort: string, limit: number, hfToken?: string, cursor?: string, paged?: boolean) => unknown;
   hfRepoGguf: (repoId: string, hfToken?: string) => unknown;
   fetchHfReadme: (repoId: string, hfToken?: string) => unknown;
@@ -25,8 +23,6 @@ export function registerSearchHandlers({
   shell,
   getMainWindow,
   webSearch,
-  ingestSearchContext,
-  fetchModelCatalog,
   searchHfModels,
   hfRepoGguf,
   fetchHfReadme,
@@ -41,8 +37,6 @@ export function registerSearchHandlers({
   ipcMain.handle('search:get-catalog', () => getAggregatorCatalog());
   ipcMain.handle('search:probe-engines', (_e, args: { engine_ids?: unknown; options?: Record<string, unknown>; query?: string } = {}) =>
     probeAggregatorEngines(args.engine_ids, args.options || {}, args.query));
-  ipcMain.handle('ingest_search_context', (_e, { chatId, context, sources }) => ingestSearchContext(chatId, context, sources));
-  ipcMain.handle('fetch_model_catalog', () => fetchModelCatalog());
   ipcMain.handle('search_hf_models', (_e, { query, sort, limit, hfToken, cursor, paged }) =>
     searchHfModels(query, sort, limit, hfToken, cursor, paged));
   ipcMain.handle('hf_repo_gguf', (_e, { repoId, hfToken }) => hfRepoGguf(repoId, hfToken));

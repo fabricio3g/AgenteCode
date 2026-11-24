@@ -55,7 +55,6 @@ type WorkspaceHandlerDeps = {
   createWorkspaceFolder: (workspaceRoot: string, relativePath: string) => unknown;
   workspaceExec: (payload: unknown) => unknown;
   writeTempFile: (name: string, data: unknown) => unknown;
-  resetMediaPermissions: () => unknown;
 };
 
 export function registerWorkspaceHandlers({
@@ -77,7 +76,6 @@ export function registerWorkspaceHandlers({
   createWorkspaceFolder,
   workspaceExec,
   writeTempFile,
-  resetMediaPermissions,
 }: WorkspaceHandlerDeps): void {
   ipcMain.handle('path_exists', (_e, { path }) => pathExists(path));
   ipcMain.handle('list_mmproj_candidates', (_e, { modelPath }) => listMmprojCandidates(modelPath));
@@ -100,5 +98,4 @@ export function registerWorkspaceHandlers({
   ipcMain.handle('create_workspace_folder', (_e, { workspaceRoot, relativePath }) => createWorkspaceFolder(workspaceRoot, relativePath));
   ipcMain.handle('workspace_exec', (_e, payload) => workspaceExec(payload));
   ipcMain.handle('write_temp_file', (_e, { name, data }) => writeTempFile(name, data));
-  ipcMain.handle('reset_media_permissions', () => resetMediaPermissions());
 }

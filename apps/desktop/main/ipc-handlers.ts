@@ -7,17 +7,16 @@ import { redactConfig } from './config.redact.ts';
 import { getHardwareLimits, getSystemInfo } from './system-info.ts';
 import {
   getLocalModels, getGgufMetadata, deleteLocalModel, getModelsDirPath,
-  getIndexedModels, refreshModelIndex, invalidateModelCache, importLocalModel
+  getIndexedModels, refreshModelIndex, importLocalModel
 } from './model-manager.ts';
 import {
   startLlama, stopLlama, getInstalledRuntimes, deleteRuntimeBinary,
-  getSupervisorStatus, getRuntimeTelemetry, supervisorHealthCheck, getLoadedModels,
-  unloadModel, getRecommendedSettings, previewLocalModelCommand
+  getSupervisorStatus, getRuntimeTelemetry, getRecommendedSettings, previewLocalModelCommand
 } from './llm-runner.ts';
 import { getEmbeddingStatus } from './embedding-state.ts';
-import { initTts, generateTtsStream, cancelTtsStream, unloadTts, listVoices, onWorkerMessage } from './voice/audiocpp-tts.ts';
+import { initTts, generateTtsStream, cancelTtsStream, onWorkerMessage } from './voice/audiocpp-tts.ts';
 import { registerVoiceModelHandlers } from './voice/voice-model-handlers.ts';
-import { transcribeAudio, getSttStatus, preloadWhisper, unloadWhisper } from './stt-engine.ts';
+import { transcribeAudio, preloadWhisper } from './stt-engine.ts';
 import {
   startDownloadHf, getDownloadJobs, cancelDownloadJob,
   pauseDownloadJob, clearFinishedDownloads, removeDownloadJob,
@@ -25,10 +24,10 @@ import {
 } from './model-download.ts';
 import {
   ingestDocument, readIngestedDocument, ingestText, ingestTextFast, queryDocuments,
-  listRagDocuments, removeRagDocument, clearRagDocuments, hasRagDocuments
+  listRagDocuments, removeRagDocument, clearRagDocuments
 } from './rag-engine.ts';
-import { webSearch, ingestSearchContext } from './search-engine.ts';
-import { fetchModelCatalog, searchHfModels, hfRepoGguf, fetchHfReadme } from './hf-models.ts';
+import { webSearch } from './search-engine.ts';
+import { searchHfModels, hfRepoGguf, fetchHfReadme } from './hf-models.ts';
 import { scrapeUrlStructured } from './web-scraper.ts';
 import { crawlWeb } from './web-crawler.ts';
 import { getAggregatorCatalog, probeAggregatorEngines } from './search-providers/aggregator.ts';
@@ -36,20 +35,19 @@ import {
   pathExists, listMmprojCandidates, openModelsFolder, pickWorkspaceFolder, pickModelFile, pickMmprojFile, pickWhisperRuntimeFile,
   indexWorkspaceFolder, writeWorkspaceFile, writeWorkspaceBinary, readWorkspaceFile,
   createWorkspaceDocument, renameWorkspaceFile, deleteWorkspaceFile,
-  openWorkspaceFile, createWorkspaceFolder, workspaceExec, writeTempFile,
-  resetMediaPermissions
+  openWorkspaceFile, createWorkspaceFolder, workspaceExec, writeTempFile
 } from './filesystem.ts';
 import { downloadRuntime } from './runtime-download.ts';
 
 import {
-  panelOpenTab, panelListTabs, panelSetActive, panelCloseTab, panelCloseAll,
-  panelSetVisible, panelSetOccluded, panelSetBounds, panelSetPresentation, panelSetViewport,
+  panelOpenTab, panelSetActive, panelCloseTab,
+  panelSetVisible, panelSetPresentation, panelSetViewport,
   panelNavigate as browserNavigate, panelSnapshot as browserSnapshot,
   panelClick as browserClick, panelScreenshot as browserScreenshot,
   panelCloseTab as browserClose
 } from './browser-panel.ts';
 import {
-  generatePptx, parseSlidesFromMarkdown, slidesToMarkdown
+  generatePptx, parseSlidesFromMarkdown
 } from './slides.ts';
 import {
   generateDocx, generateXlsx, generatePdf
@@ -130,7 +128,6 @@ export function registerIpcHandlers() {
     getModelsDirPath,
     getIndexedModels,
     refreshModelIndex,
-    invalidateModelCache,
     importLocalModel,
   });
 
@@ -142,9 +139,6 @@ export function registerIpcHandlers() {
     stopLlama,
     getSupervisorStatus,
     getRuntimeTelemetry,
-    supervisorHealthCheck,
-    getLoadedModels,
-    unloadModel,
     getRecommendedSettings,
     previewLocalModelCommand,
     getEmbeddingStatus,
@@ -166,8 +160,6 @@ export function registerIpcHandlers() {
     initTts,
     generateTtsStream,
     cancelTtsStream,
-    unloadTts,
-    listVoices,
     onWorkerMessage,
     logger: (message, ...args) => log.info(message, ...args),
   });
@@ -180,14 +172,11 @@ export function registerIpcHandlers() {
     ipcMain,
     transcribeAudio,
     preloadWhisper,
-    getSttStatus,
-    unloadWhisper,
   });
 
   // ── Whisper runtime management ──
   registerWhisperHandlers({
     ipcMain,
-    getMainWindow,
   });
 
 
@@ -243,10 +232,8 @@ export function registerIpcHandlers() {
     ipcMain,
     listFiles: () => chatDatabase.request('listFileRecords'),
     getFile: (hash) => chatDatabase.request('getFileRecord', hash),
-    listFileRefs: (hash) => chatDatabase.request('listFileRefs', hash),
     setFilePinned: (hash, pinned) => chatDatabase.request('setFilePinned', hash, pinned),
     deleteFile: (hash) => chatDatabase.request('deleteFileRecord', hash),
-    fileStats: () => chatDatabase.request('fileStoreStats'),
     trashItem: (target) => shell.trashItem(target),
   });
 
@@ -295,7 +282,6 @@ export function registerIpcHandlers() {
     listRagDocuments,
     removeRagDocument,
     clearRagDocuments,
-    hasRagDocuments,
   });
 
   // ── Search ──
@@ -304,8 +290,6 @@ export function registerIpcHandlers() {
     shell,
     getMainWindow,
     webSearch,
-    ingestSearchContext,
-    fetchModelCatalog,
     searchHfModels,
     hfRepoGguf,
     fetchHfReadme,
@@ -341,7 +325,6 @@ export function registerIpcHandlers() {
     createWorkspaceFolder,
     workspaceExec,
     writeTempFile,
-    resetMediaPermissions,
   });
 
   // ── Sandbox / browser / slides ──
@@ -351,13 +334,9 @@ export function registerIpcHandlers() {
   registerToolingHandlers({
     ipcMain,
     panelOpenTab,
-    panelListTabs,
     panelSetActive,
     panelCloseTab,
-    panelCloseAll,
     panelSetVisible,
-    panelSetOccluded,
-    panelSetBounds,
     panelSetPresentation,
     panelSetViewport,
     browserNavigate,
@@ -367,7 +346,6 @@ export function registerIpcHandlers() {
     browserClose,
     generatePptx,
     parseSlidesFromMarkdown,
-    slidesToMarkdown,
     generateDocx,
     generateXlsx,
     generatePdf,

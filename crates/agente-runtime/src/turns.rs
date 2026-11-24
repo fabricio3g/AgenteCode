@@ -236,31 +236,8 @@ impl RuntimeHandle {
         }
         // Project instructions (AGENTS.md) as a user-message reminder;
         // idempotent, so it also re-attaches after compaction dropped it.
-        if home.is_none()
-            && !agente_core::context::conversation_has_reminder(
-                conversation.iter().map(|m| m.content.as_str()),
-            )
-        {
-            if let Some(reminder) = agente_core::context::agents_md_reminder(&context.project_dir) {
-                let insert_at = conversation
-                    .iter()
-                    .position(|m| m.role == agente_protocol::Role::System)
-                    .map(|i| i + 1)
-                    .unwrap_or(0);
-                conversation.insert(
-                    insert_at,
-                    agente_protocol::Message {
-                        role: agente_protocol::Role::User,
-                        content: reminder,
-                        tool_calls: None,
-                        tool_call_id: None,
-                        thinking: None,
-                        thinking_signature: None,
-                        continuation: None,
-                        attachments: Vec::new(),
-                    },
-                );
-            }
+        if home.is_none() {
+            agente_core::context::inject_project_reminder(&mut conversation, &context.project_dir);
         }
         let conversation_index = conversation
             .iter()

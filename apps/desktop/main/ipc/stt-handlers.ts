@@ -5,8 +5,6 @@ import type { UnknownRecord } from './types.ts';
 type SttHandlerDeps = {
   ipcMain: IpcMain;
   transcribeAudio: (args?: UnknownRecord) => Promise<unknown>;
-  getSttStatus: () => unknown;
-  unloadWhisper: () => void;
   preloadWhisper: () => Promise<void>;
 };
 
@@ -27,15 +25,13 @@ function normalizeIpcAudioArgs(args: UnknownRecord = {}): UnknownRecord {
   return normalized;
 }
 
-export function registerSttHandlers({ ipcMain, transcribeAudio, getSttStatus, unloadWhisper, preloadWhisper }: SttHandlerDeps): void {
+export function registerSttHandlers({ ipcMain, transcribeAudio, preloadWhisper }: SttHandlerDeps): void {
   ipcMain.handle('stt_transcribe', (_e, args) => {
     const normalizedArgs = normalizeIpcAudioArgs((args || {}) as UnknownRecord);
     return transcribeAudio(normalizedArgs);
   });
 
-  ipcMain.handle('get_stt_status', () => getSttStatus());
   ipcMain.handle('preload_whisper', () => preloadWhisper());
-  ipcMain.handle('unload_whisper', () => unloadWhisper());
   ipcMain.handle('voice_setup_plan', (_e, args?: { quality?: string }) => voiceSetupPlan(args?.quality));
   ipcMain.handle('setup_voice', (e, args?: { quality?: string }) => setupVoice(BrowserWindow.fromWebContents(e.sender), args?.quality));
   ipcMain.handle('list_speech_models', () => listSpeechModels());

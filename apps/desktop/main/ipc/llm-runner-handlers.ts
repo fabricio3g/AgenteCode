@@ -7,9 +7,6 @@ type LlmRunnerHandlerDeps = {
   stopLlama: (win: BrowserWindow | null) => unknown;
   getSupervisorStatus: () => unknown;
   getRuntimeTelemetry: () => unknown;
-  supervisorHealthCheck: () => unknown;
-  getLoadedModels: () => unknown;
-  unloadModel: (modelId: string, win: BrowserWindow | null) => unknown;
   getRecommendedSettings: (modelPath: string, userContext: unknown, userGpuLayers: unknown, runtimePath: string) => unknown;
   previewLocalModelCommand: (config: unknown) => unknown;
   getEmbeddingStatus: () => unknown;
@@ -22,9 +19,6 @@ export function registerLlmRunnerHandlers({
   stopLlama,
   getSupervisorStatus,
   getRuntimeTelemetry,
-  supervisorHealthCheck,
-  getLoadedModels,
-  unloadModel,
   getRecommendedSettings,
   previewLocalModelCommand,
   getEmbeddingStatus,
@@ -33,9 +27,6 @@ export function registerLlmRunnerHandlers({
   ipcMain.handle('stop_llama', () => stopLlama(getMainWindow()));
   ipcMain.handle('get_supervisor_status', () => getSupervisorStatus());
   ipcMain.handle('get_runtime_telemetry', () => getRuntimeTelemetry());
-  ipcMain.handle('supervisor_health_check', () => supervisorHealthCheck());
-  ipcMain.handle('get_loaded_models', () => getLoadedModels());
-  ipcMain.handle('unload_model', (_e, { modelId }) => unloadModel(modelId, getMainWindow()));
   ipcMain.handle('get_recommended_settings', (_e, { modelPath, userContext, userGpuLayers, runtimePath }) =>
     getRecommendedSettings(modelPath, userContext, userGpuLayers, runtimePath));
   ipcMain.handle('preview_local_model_command', (_e, { config }) => previewLocalModelCommand(config));

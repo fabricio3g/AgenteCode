@@ -8,7 +8,6 @@ type ModelHandlerDeps = {
   getModelsDirPath: () => unknown;
   getIndexedModels: () => unknown;
   refreshModelIndex: () => unknown;
-  invalidateModelCache: (path: string) => unknown;
   importLocalModel: (args: unknown) => unknown;
 };
 
@@ -20,7 +19,6 @@ export function registerModelManagementHandlers({
   getModelsDirPath,
   getIndexedModels,
   refreshModelIndex,
-  invalidateModelCache,
   importLocalModel,
 }: ModelHandlerDeps): void {
   ipcMain.handle('get_local_models', () => getLocalModels());
@@ -34,6 +32,5 @@ export function registerModelManagementHandlers({
   ipcMain.handle('get_models_dir_path', () => getModelsDirPath());
   ipcMain.handle('get_indexed_models', () => getIndexedModels());
   ipcMain.handle('refresh_model_index', () => refreshModelIndex());
-  ipcMain.handle('invalidate_model_cache', (_e, { path }) => invalidateModelCache(path));
   ipcMain.handle('import_local_model', (_e, args) => importLocalModel(args));
 }

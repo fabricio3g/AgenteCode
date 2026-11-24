@@ -19,8 +19,6 @@ type TtsHandlerDeps = {
   initTts: () => Promise<string[]>;
   generateTtsStream: (request: unknown, win: BrowserWindow | null) => void | Promise<void>;
   cancelTtsStream: () => void;
-  unloadTts: () => void | Promise<void>;
-  listVoices: () => string[];
   onWorkerMessage: (handler: (msg: TtsWorkerMessage) => void) => void;
   logger?: (message: string, ...args: unknown[]) => void;
 };
@@ -31,8 +29,6 @@ export function registerTtsHandlers({
   initTts,
   generateTtsStream,
   cancelTtsStream,
-  unloadTts,
-  listVoices,
   onWorkerMessage,
   logger,
 }: TtsHandlerDeps): void {
@@ -114,9 +110,7 @@ export function registerTtsHandlers({
     cancelTtsStream();
   });
 
-  ipcMain.handle('unload_tts', () => unloadTts());
   ipcMain.handle('preload_tts', async () => initTts());
-  ipcMain.handle('list_tts_voices', () => listVoices());
   ipcMain.handle('list_speech_voices', async (_e, { provider: id }) => {
     const provider = loadConfig().tts?.providers?.[id];
     return provider ? apiVoices(provider) : [];
