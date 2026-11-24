@@ -158,12 +158,12 @@
     const target = event.target as HTMLElement;
     const inInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
 
-    if (ctrl && event.key === 'k' && !event.shiftKey) {
+    if (ctrl && event.key.toLowerCase() === 'k' && !event.shiftKey) {
       event.preventDefault();
       startNewSession();
       return;
     }
-    if (ctrl && event.key === 'k' && event.shiftKey) {
+    if (ctrl && event.key.toLowerCase() === 'k' && event.shiftKey) {
       event.preventDefault(); appStore.openSearch(); return;
     }
     if (ctrl && event.key === ',') {
@@ -179,6 +179,13 @@
       if (openModalLayerCount() > 0) return;
       event.preventDefault();
       closeSettings();
+      return;
+    }
+    if (ctrl && event.altKey && !event.shiftKey && event.code === 'Digit0' && !settingsShowing) {
+      if (appStore.activeTab === 'code' && appStore.currentChat?.projectId) {
+        event.preventDefault();
+        workspaceLayout.scoped(conversationScope(appStore.currentChat.id)).toggle('session');
+      }
       return;
     }
     if (ctrl && event.key === 'b') {

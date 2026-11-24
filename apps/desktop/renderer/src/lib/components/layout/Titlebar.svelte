@@ -25,6 +25,7 @@
   import WindowControls from './WindowControls.svelte';
   import { PanelRight as ContextIcon } from '$lib/icons';
   import ComputerButton from '$lib/features/computer/ComputerButton.svelte';
+  import { computerStore } from '$lib/features/computer/computer.svelte';
   import NotificationsButton from '$lib/features/shared/NotificationsButton.svelte';
 
   let { sidebarPreview = false, settingsOpen = false, onSidebarEnter, onSidebarLeave, onSidebarToggle }: {
@@ -56,6 +57,15 @@
   });
   // Settings owns the window: a conversation's pane toggles have nothing to act on there.
   const toolsHere = $derived(!settingsOpen && workspaceLayout.panes.length < 2);
+  // Auto-hide idle utilities in Code to keep the titlebar calm; Computer use
+  // stays reachable in Session → Connections when ready and pops up here while active.
+  const computerActive = $derived(['active', 'preparing', 'paused', 'requesting'].includes(computerStore.state.phase));
+  const showComputer = $derived(
+    !settingsOpen &&
+      !!appStore.currentChat &&
+      (appStore.activeSpace === 'home' || (appStore.activeSpace === 'code' && computerActive))
+  );
+  const showDownloads = $derived(downloadsStore.hasActive || downloadsStore.jobs.length > 0);
 
   const platform = typeof window !== 'undefined' ? (window.electronAPI?.platform ?? 'linux') : 'linux';
   const isMac = platform === 'darwin';
@@ -110,19 +120,19 @@
         </Tooltip>
       {/if}
     {/if}
-    {#if !settingsOpen && appStore.currentChat && (appStore.activeSpace === 'home' || appStore.activeSpace === 'code')}
+    {#if showComputer}
       <ComputerButton />
     {/if}
-    <DownloadsButton />
+    {#if showDownloads}
+      <DownloadsButton />
+    {/if}
     <NotificationsButton />
     <Tooltip label={$t('titlebar.theme')} position="bottom">
-      <UiIconButton label={$t('titlebar.theme')} size="sm"
-
+      <UiIconButton label={$t('titlebar.theme')} title="" size="sm" class="titlebar-no-drag"
         onclick={(e) => {
           const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
           themeStore.toggle({ x: r.left + r.width / 2, y: r.top + r.height / 2 });
         }}
-
       >
         {#if themeStore.current === 'dark'}
           <SunMedium class="size-4" />

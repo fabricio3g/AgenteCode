@@ -95,7 +95,7 @@ class AppearanceStore {
     if (typeof document === 'undefined') return;
     const root = document.documentElement;
     const resolved = this.resolvedMode;
-    const { theme, accent, customAccentHex, uiStyle, composerStyle, tintedUserBubbles } = this.prefs;
+    const { theme, accent, customAccentHex, uiStyle, composerStyle, agentStyle, tintedUserBubbles } = this.prefs;
 
     if (isElectron()) {
       root.dataset.themeSwitching = 'true';
@@ -112,6 +112,7 @@ class AppearanceStore {
     root.dataset.accent = accent;
     root.dataset.uiStyle = uiStyle;
     root.dataset.composerStyle = composerStyle;
+    root.dataset.agentStyle = agentStyle;
     root.classList.toggle('appearance-tinted-bubbles', tintedUserBubbles);
 
     if (accent === 'custom') {

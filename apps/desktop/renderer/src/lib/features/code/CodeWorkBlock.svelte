@@ -122,9 +122,9 @@
 {/snippet}
 
 {#if folded.length === 1}
-  <div class="min-w-0">{@render row(folded[0])}</div>
+  <div class="work work-single min-w-0">{@render row(folded[0])}</div>
 {:else if folded.length}
-  <div class="work min-w-0">
+  <div class="work work-multi min-w-0">
     <Disclosure {id} level="block" chevron="leading" {defaultOpen}>
       {#snippet header()}
         <span class="min-w-0 truncate tabular-nums">{line}</span>
@@ -138,7 +138,7 @@
     </Disclosure>
   </div>
 {/if}
-{#each waiting as item (item.key)}<div class="min-w-0">{@render row(item)}</div>{/each}
+{#each waiting as item (item.key)}<div class="work work-waiting min-w-0">{@render row(item)}</div>{/each}
 
 <style>
   .span {

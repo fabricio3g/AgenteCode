@@ -287,7 +287,7 @@
 
 <style>
   .workspace { position: relative; flex: 1; min-width: 0; min-height: 0; overflow: hidden; }
-  .workspace-main { position: absolute; z-index: 0; display: flex; max-width:100%;max-height:100%; min-width: 0; min-height: 0; overflow: hidden; }
+  .workspace-main { position: absolute; z-index: 0; isolation: isolate; display: flex; max-width:100%;max-height:100%; min-width: 0; min-height: 0; overflow: hidden; }
   /*
    * A pane is a sheet one step above the page: its own tone, one hairline, a
    * soft lift. The chrome stays thin (the header is a single quiet row) and

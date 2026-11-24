@@ -12,6 +12,7 @@
 
 <script lang="ts">
   import EmptyState from '$lib/components/ui/EmptyState.svelte';
+  import UiButton from '$lib/components/ui/Button.svelte';
   import UiListRow from '$lib/components/ui/ListRow.svelte';
   import UiInput from '$lib/components/ui/Input.svelte';
   import { cn as uiClass } from '$lib/utils/cn';
@@ -105,9 +106,9 @@
         hits.push({ chat, matchMessageId: null, snippet: null });
         continue;
       }
-      const titleHit = (chat.title || '').toLowerCase().includes(q);
+      const titleHit = (chat.title || '').toLowerCase().includes(q) || displayChatTitle(chat).toLowerCase().includes(q);
       const stored = chat.messagesLoaded === false ? dbMatches[chat.id] : undefined;
-      const msg = stored ? { id: stored.messageId, content: stored.content } : chat.messages.find((m) => (m.content || '').toLowerCase().includes(q));
+      const msg = stored ? { id: stored.messageId, content: stored.content } : (chat.messages ?? []).find((m) => (m.content || '').toLowerCase().includes(q));
       if (!titleHit && !msg) continue;
       let snippet: string | null = null;
       if (msg) {
@@ -164,6 +165,7 @@
   $effect(() => {
     const id = activeHit?.chat.id;
     const matchId = activeHit?.matchMessageId;
+    void previewMessages.length;
     if (!id || !previewEnabled) return;
     void tick().then(() => {
       if (!previewScroll) return;

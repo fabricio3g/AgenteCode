@@ -25,6 +25,7 @@
   import CodeTranscript from './CodeTranscript.svelte';
   import CodeComposer from './CodeComposer.svelte';
   import SubagentPill from './SubagentPill.svelte';
+  import TasksPanel from './TasksPanel.svelte';
   import { isCodeSession } from '$lib/features/shared/session-guards';
   import type { ChatSession } from '$lib/types/chat';
   import { spaceVisible } from '$lib/components/layout/space-visibility';
@@ -189,7 +190,7 @@
            first message never remounts it and never drops the keyboard. -->
       <div class="flex min-h-0 min-w-0 flex-1 flex-col" class:is-empty={!unlinked && empty}>
         {#if unlinked}
-          <div class="ui-top-fade flex min-h-0 min-w-0 flex-1 flex-col">
+          <div class="ui-top-fade ui-bottom-fade flex min-h-0 min-w-0 flex-1 flex-col">
             {#key chat.id}<CodeTranscript messages={chat.messages} chatId={chat.id} />{/key}
           </div>
         {:else if empty}
@@ -202,7 +203,7 @@
             </p>
           {/if}
         {:else}
-          <div class="ui-top-fade flex min-h-0 min-w-0 flex-1 flex-col">
+          <div class="ui-top-fade ui-bottom-fade flex min-h-0 min-w-0 flex-1 flex-col">
             {#key chat.id}<CodeTranscript messages={chat.messages} chatId={chat.id} liveSubagentDock />{/key}
           </div>
         {/if}
@@ -212,7 +213,7 @@
             {$t('code.unlinkedHint')}
           </p>
         {:else}
-          {#key chat.id}<SubagentPill {chat} /><CodeComposer {chat} />{/key}
+          {#key chat.id}<SubagentPill {chat} /><div class="chat-todos-wrap composer-column px-3 md:px-6"><TasksPanel {chat} /></div><CodeComposer {chat} />{/key}
           {#if empty}
             <div class="empty-links composer-column px-3 md:px-6">
               <StarterList {starters} label={$t('code.starters.title')} onpick={useStarter} onpreview={previewStarter} variant="links" />
@@ -261,4 +262,6 @@
   .empty-project-path { overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:var(--font-mono);font-size:var(--text-xs); }
 
   .empty-links { margin-top:0.75rem; }
+  .chat-todos-wrap { flex-shrink: 0; margin-top: 0.375rem; margin-bottom: 0.25rem; }
+  .chat-todos-wrap:empty { display: none; }
 </style>

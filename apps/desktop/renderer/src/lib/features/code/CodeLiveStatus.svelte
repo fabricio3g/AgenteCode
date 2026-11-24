@@ -14,11 +14,14 @@
   import { codeRunElapsed, type CodeRunState } from './code-run';
   import { toolKind } from '$shared/tool-kinds';
   import TileMeter from '$lib/components/ui/TileMeter.svelte';
+  import { appearanceStore } from '$lib/stores/appearance.svelte';
   import { liveStatus, QUIET_MS, type LiveStatus } from './work-blocks';
   import { runMeterMode, type MeterRun } from './tile-meter';
 
   type LiveRun = MeterRun & Pick<CodeRunState, 'startedAt' | 'endedAt' | 'elapsedMs' | 'activeStartedAt'> & Partial<Pick<CodeRunState, 'children'>>;
   let { run, awaitingApproval = false }: { run: LiveRun; awaitingApproval?: boolean } = $props();
+
+  const agentStyle = $derived(appearanceStore.prefs.agentStyle);
 
   let now = $state(Date.now());
   $effect(() => {
@@ -78,7 +81,7 @@
 <!-- An approval is already on screen with its diff and its Allow / Deny: a
      third "waiting for your approval" line here only repeated it. -->
 {#if status.kind !== 'approval'}
-<div class="live" role="status" aria-live="polite">
+<div class="live" data-live-style={agentStyle} role="status" aria-live="polite">
   <TileMeter {mode} />
   <span class="min-w-0 truncate">
     <span class="text-foreground" class:ui-shimmer-text={mode !== 'stopped' && mode !== 'attention'}>{label}</span>

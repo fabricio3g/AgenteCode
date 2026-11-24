@@ -66,7 +66,7 @@ export const EDGE = 6;
 const MIN_WIDTH = 240;
 const MIN_CHAT_WIDTH = 400;
 const MIN_HEIGHT = 140;
-const known = new Set(['changes', 'files', 'plan', 'tasks', 'browser', 'artifact', 'routines', 'processes', 'canvas', 'context', 'subagent', 'board']);
+const known = new Set(['session', 'changes', 'files', 'plan', 'tasks', 'browser', 'artifact', 'routines', 'processes', 'canvas', 'context', 'subagent', 'board']);
 const validId = (id: unknown): id is string => typeof id === 'string' && (known.has(id) || /^terminal:[\w-]+$/.test(id));
 const finite = (value: unknown, fallback: number, min = 1, max = 10000) => typeof value === 'number' && Number.isFinite(value) ? Math.min(max, Math.max(min, value)) : fallback;
 const json = (raw: string | null): Record<string, unknown> => {
@@ -375,11 +375,12 @@ export function measureWorkspace(layout: WorkspaceLayout, bounds: Rect, visible:
     );
   }
   if (bottom && !compact) {
-    const rect = { x: frame.x, y: frame.y + frame.height - bh, width: Math.min(mainWidth, layout.bottomWidth ?? mainWidth), height: bh };
+    const bottomMaxWidth = Math.max(0, frame.width - (right ? rw + GAP : 0));
+    const rect = { x: frame.x, y: frame.y + frame.height - bh, width: Math.min(bottomMaxWidth, layout.bottomWidth ?? bottomMaxWidth), height: bh };
     walk(bottom, rect, 'bottom');
     dividers.push(
       { id: 'bottomHeight', outer: 'bottomHeight', axis: 'y', region: 'bottom', length: bounds.height, rect: { x: rect.x, y: rect.y - GAP - 1, width: rect.width, height: GAP + 2 } },
-      { id: 'bottomWidth', outer: 'bottomWidth', axis: 'x', region: 'bottom', length: mainWidth, rect: { x: Math.min(bounds.x + bounds.width - 8, rect.x + rect.width - 2), y: rect.y, width: 8, height: rect.height } }
+      { id: 'bottomWidth', outer: 'bottomWidth', axis: 'x', region: 'bottom', length: bottomMaxWidth, rect: { x: Math.min(bounds.x + bounds.width - 8, rect.x + rect.width - 2), y: rect.y, width: 8, height: rect.height } }
     );
   }
   for (const item of layout.floating) {

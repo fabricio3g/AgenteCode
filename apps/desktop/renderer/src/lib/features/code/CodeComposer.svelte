@@ -34,7 +34,8 @@
   import GenerationSpeed from '$lib/features/shared/composer/GenerationSpeed.svelte';
   import { latestGenerationSpeed } from '$lib/utils/generation-speed';
   import ContextUsageRing from '$lib/features/chat/composer/ContextUsageRing.svelte';
-  import { projectControls } from './workspace/project-controls.svelte';
+  import { conversationScope } from '$shared/workspace-scope';
+  import { workspaceLayout } from '$lib/stores/workspace-layout.svelte';
   import { codeStore } from './code.svelte';
   import { initProject, projectFiles, setAgenteModel } from './code-ipc';
   import { restoreCodeEdits } from './code-edits';
@@ -806,7 +807,8 @@
       {/snippet}
       {#snippet microphone()}<DictationButton {dictation} hidden={!!slotDictation} />{/snippet}
       {#snippet trailing()}
-        {#if showContextRing && usage && !(projectControls.open && chat.projectId)}
+        {@const sessionOpen = !!chat.projectId && (workspaceLayout.layouts[conversationScope(chat.id)]?.open.includes('session') ?? false)}
+        {#if showContextRing && usage && !sessionOpen}
           <ContextUsageRing showLabel usedTokens={usage.promptTokens} maxTokens={usage.contextWindow ?? 0} breakdown={usage.breakdown} {spend} />
         {/if}
       {/snippet}

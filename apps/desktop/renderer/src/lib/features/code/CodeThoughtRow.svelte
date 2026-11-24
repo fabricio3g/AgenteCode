@@ -35,7 +35,7 @@
   onDestroy(() => { if (scrollFrame) cancelAnimationFrame(scrollFrame); });
 </script>
 
-<Disclosure {id} level="thought" chevron="trailing" defaultOpen={false}>
+<Disclosure {id} level="thought" kind="thought" running={live} chevron="trailing" defaultOpen={false}>
   {#snippet header()}
     {#if live}<TileMeter mode="busy" />{/if}
     <span class="shrink-0">{live ? $t('code.thinking') : $t('code.thought')}</span>
@@ -54,13 +54,18 @@
   .thought-body {
     max-height: 16rem;
     overflow-y: auto;
+    padding-block: 0.75rem;
     white-space: pre-wrap;
     overflow-wrap: anywhere;
     color: var(--muted-foreground);
+    mask-image: linear-gradient(to bottom, transparent 0%, #000 0.75rem, #000 calc(100% - 0.75rem), transparent 100%);
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0%, #000 0.75rem, #000 calc(100% - 0.75rem), transparent 100%);
   }
-  /* Live: a short window on the newest lines, fading out at the top. */
+  /* Live: a short window on the newest lines, fading cleanly at both top and bottom. */
   .thought-body.is-live {
     max-height: 7.5rem;
-    mask-image: linear-gradient(to bottom, transparent, #000 1.5rem);
+    padding-block: 0.875rem;
+    mask-image: linear-gradient(to bottom, transparent 0%, #000 0.875rem, #000 calc(100% - 0.875rem), transparent 100%);
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0%, #000 0.875rem, #000 calc(100% - 0.875rem), transparent 100%);
   }
 </style>
