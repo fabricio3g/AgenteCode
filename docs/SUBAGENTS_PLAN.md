@@ -177,7 +177,16 @@ model gets the `board` tool, adds cards (role, model, prompt, depends_on,
 owns), and the host starts ready cards as created subagents, moving them
 Backlog → Working → Review/Done/Failed and starting dependents as cards
 finish. One writer per path. Board views: TUI `/board`, Desktop Board pane.
-Still to build below: `race` and `best_of`.
+Members talk to each other through a findings log on the board (built
+2026-11-24): each card's subagent gets the `swarm` tool — `post` a finding
+(optionally `to` some cards) or `read` the cards and log — and an inbox, so a
+post lands in the working members' conversations at their next step and in
+the prompt of every card that starts later. The lead reads the newest findings
+in every `board` result and broadcasts with `board` `post`. Display: a turn's
+members draw as one swarm block (lanes + findings) on Desktop and as lane-named
+cards with their newest finding in the TUI.
+Still to build below: `race` and `best_of`; a member asking the lead and
+waiting (`ask_lead`); steering one running card.
 
 - Hosted `swarm` tool: the parent creates every member in one call —
   `{ strategy: "fan_out" | "race" | "best_of", members: [{ role,
@@ -197,6 +206,7 @@ Still to build below: `race` and `best_of`.
 ## Out of scope (for now)
 
 - Subagents in Home / Design (the TypeScript runtime has none).
-- Agents messaging each other (agent teams).
+- Free-form chat between agents (members share findings through the board,
+  not conversations).
 - Learned / automatic routing; the parent picks by your notes.
 - Project-level model lists.

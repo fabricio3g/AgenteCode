@@ -75,7 +75,7 @@ describe('getDefaultSearchConfig', () => {
   it('searches with auto and the free API sources by default', () => {
     const search = getDefaultSearchConfig();
     assert.strictEqual(search.provider, 'auto');
-    assert.strictEqual(search.max_results, 6);
+    assert.strictEqual('max_results' in search, false);
     assert.deepStrictEqual(search.aggregator_engines, ['wikipedia', 'arxiv', 'crossref', 'pubmed']);
   });
 });

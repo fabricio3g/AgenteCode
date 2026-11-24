@@ -141,10 +141,27 @@ export interface SwarmCard {
   notes?: string[];
 }
 
+/**
+ * One entry in the swarm's findings log (`agente_core::swarm::Finding`): what a
+ * member — or the lead (`from: 'lead'`) — told the others while working.
+ */
+export interface SwarmFinding {
+  id: number;
+  /** The card whose subagent posted it, or `lead`. */
+  from: string;
+  text: string;
+  /** Cards it was addressed to; absent means every member. */
+  to?: string[];
+  /** Unix milliseconds. */
+  at?: number;
+}
+
 /** A session's swarm board (`agente_core::swarm::Board`); `enabled` is the swarm switch. */
 export interface SwarmBoard {
   enabled: boolean;
   cards: SwarmCard[];
+  /** Oldest first; absent while nobody has posted. */
+  findings?: SwarmFinding[];
 }
 
 /** One model the user offers to subagents, under the name the orchestrator picks it by. */

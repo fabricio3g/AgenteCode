@@ -1,6 +1,18 @@
 import type { ToolContext, ToolResult } from '$lib/services/agent-types';
 import type { SearchResult } from '$lib/types/bridge';
 
+/** The most results one `web_search` call may ask for. */
+export const MAX_SEARCH_RESULTS = 50;
+
+/** How many results a call gets when the model does not say. */
+const MODE_RESULTS = { search: 8, deep: 12, max: 18 } as const;
+
+/** The model's own count when it gave a usable one, else the mode's. */
+export function searchResultCount(requested: unknown, mode: 'search' | 'deep' | 'max'): number {
+  const count = Math.round(Number(requested));
+  return Number.isFinite(count) && count >= 1 ? Math.min(count, MAX_SEARCH_RESULTS) : MODE_RESULTS[mode];
+}
+
 export async function handleWebSearch(params: {
   args: Record<string, unknown>;
   ctx: ToolContext;
@@ -14,7 +26,9 @@ export async function handleWebSearch(params: {
     ? (params.args.mode as 'search' | 'deep' | 'max')
     : params.ctx.searchMode || 'search';
   try {
-    const resultBudget = mode === 'max' ? 18 : mode === 'deep' ? 12 : 8;
+    // The model decides how many results it needs (a few for one fact, many
+    // for a survey); the mode only fills in when it does not say.
+    const resultBudget = searchResultCount(params.args.max_results, mode);
     const result = await params.webSearch({
       query,
       context: params.ctx.conversationContext,

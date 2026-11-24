@@ -9,6 +9,12 @@
 //! main model accepts a review, or sends a card back with feedback. One
 //! writer per file: a writer's `owns` may not overlap another open writer's.
 //!
+//! Members talk through the board's findings log: each card's subagent gets
+//! the `swarm` tool to post a finding (a fact, a decision, a changed
+//! signature) and to read what the others posted. A post reaches the members
+//! still working at their next step and every card that starts later; the
+//! main model sees the log in each board result and may post to it too.
+//!
 //! The board is session state, not transcript: one file per session beside
 //! the session goals, written atomically, so a restart keeps it.
 
@@ -99,8 +105,53 @@ pub struct Board {
     pub enabled: bool,
     #[serde(default)]
     pub cards: Vec<Card>,
+    /// What members (and the lead) told each other, oldest first.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub findings: Vec<Finding>,
     #[serde(default)]
     next_id: u32,
+}
+
+/// Who posted a finding when no card did: the main model.
+pub const LEAD: &str = "lead";
+
+/// The log keeps the newest findings; older ones fall off.
+const MAX_FINDINGS: usize = 200;
+/// Findings a starting member's prompt carries.
+const PROMPT_FINDINGS: usize = 20;
+/// Findings the main model's board result carries.
+const SUMMARY_FINDINGS: usize = 10;
+
+impl Finding {
+    /// Who it came from and went to: `c1 → c2, c3`, `lead`, `c4`.
+    pub fn route(&self) -> String {
+        if self.to.is_empty() {
+            self.from.clone()
+        } else {
+            format!("{} \u{2192} {}", self.from, self.to.join(", "))
+        }
+    }
+
+    /// True when `card` wrote it or it was addressed to `card`.
+    pub fn touches(&self, card: &str) -> bool {
+        self.from == card || self.to.iter().any(|to| to == card)
+    }
+}
+
+/// One entry in the swarm's findings log.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Finding {
+    /// 1, 2, … in the order posted.
+    pub id: u32,
+    /// The card whose subagent posted it, or [`LEAD`].
+    pub from: String,
+    pub text: String,
+    /// Cards it is addressed to; empty means everyone.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub to: Vec<String>,
+    /// Unix milliseconds.
+    #[serde(default)]
+    pub at: i64,
 }
 
 /// A card as the main model writes it (`board` `add`).
@@ -467,6 +518,121 @@ impl Board {
         Ok(())
     }
 
+    /// Post a finding. `from` is a card id or [`LEAD`]; `to` names cards by
+    /// id or title (empty = everyone). Returns the finding.
+    pub fn post(&mut self, from: &str, text: &str, to: &[String]) -> Result<Finding, String> {
+        let text = text.trim();
+        if text.is_empty() {
+            return Err("a finding needs text".into());
+        }
+        if from != LEAD && self.card(from).is_none() {
+            return Err(format!("no card {from}"));
+        }
+        let mut targets: Vec<String> = Vec::new();
+        for name in to {
+            let name = name.trim();
+            let Some(card) = self
+                .cards
+                .iter()
+                .find(|card| card.id == name || card.title.eq_ignore_ascii_case(name))
+            else {
+                return Err(format!("no card {name}"));
+            };
+            if !targets.contains(&card.id) {
+                targets.push(card.id.clone());
+            }
+        }
+        let finding = Finding {
+            id: self.findings.last().map_or(1, |last| last.id + 1),
+            from: from.to_string(),
+            text: trim_limit(text, 1_200),
+            to: targets,
+            at: chrono::Utc::now().timestamp_millis(),
+        };
+        self.findings.push(finding.clone());
+        if self.findings.len() > MAX_FINDINGS {
+            let excess = self.findings.len() - MAX_FINDINGS;
+            self.findings.drain(..excess);
+        }
+        Ok(finding)
+    }
+
+    /// The subagents a finding goes to now: every working card's but the
+    /// author's, narrowed to the addressees when it names any.
+    pub fn recipients(&self, finding: &Finding) -> Vec<String> {
+        self.cards
+            .iter()
+            .filter(|card| card.status == CardStatus::Working && card.id != finding.from)
+            .filter(|card| finding.to.is_empty() || finding.to.contains(&card.id))
+            .filter_map(|card| card.child_id.clone())
+            .collect()
+    }
+
+    /// How a finding reads to a member or the lead:
+    /// `#3 c1 "Parse" (Parser refactorer) → c2: text`.
+    pub fn finding_line(&self, finding: &Finding) -> String {
+        let author = match self.card(&finding.from) {
+            Some(card) => format!("{} \"{}\" ({})", card.id, card.title, card.role),
+            None => "the lead".to_string(),
+        };
+        let to = if finding.to.is_empty() {
+            String::new()
+        } else {
+            format!(" \u{2192} {}", finding.to.join(", "))
+        };
+        format!("#{} {author}{to}: {}", finding.id, finding.text)
+    }
+
+    /// The findings a card may read — everyone's, its own and those
+    /// addressed to it; every finding for the lead (`None`) — newest `limit`.
+    fn findings_for(&self, card: Option<&str>, limit: usize) -> Vec<&Finding> {
+        let visible: Vec<&Finding> = self
+            .findings
+            .iter()
+            .filter(|finding| match card {
+                None => true,
+                Some(id) => {
+                    finding.to.is_empty()
+                        || finding.from == id
+                        || finding.to.iter().any(|to| to == id)
+                }
+            })
+            .collect();
+        let skip = visible.len().saturating_sub(limit);
+        visible.into_iter().skip(skip).collect()
+    }
+
+    /// What `swarm` `read` returns to a member: every card's state, then the
+    /// findings it may read.
+    pub fn member_view(&self, card_id: &str) -> String {
+        let mut out = String::from("Cards:\n");
+        for card in &self.cards {
+            let me = if card.id == card_id { " (you)" } else { "" };
+            out.push_str(&format!(
+                "- {} {} [{} · {}]{me}",
+                card.id,
+                card.title,
+                card.role,
+                card.status.as_str()
+            ));
+            if !card.owns.is_empty() {
+                out.push_str(&format!(" owns {}", card.owns.join(", ")));
+            }
+            out.push('\n');
+        }
+        let findings = self.findings_for(Some(card_id), MAX_FINDINGS);
+        if findings.is_empty() {
+            out.push_str("No findings yet.");
+        } else {
+            out.push_str("Findings:\n");
+            for finding in findings {
+                out.push_str(&self.finding_line(finding));
+                out.push('\n');
+            }
+        }
+        out.trim_end().to_string()
+    }
+
     /// The prompt a card's subagent gets: the card's own, then what the
     /// swarm needs it to know — its files and the results it builds on.
     pub fn child_prompt(&self, id: &str) -> Option<String> {
@@ -505,6 +671,14 @@ impl Board {
                 ));
             }
         }
+        let findings = self.findings_for(Some(&card.id), PROMPT_FINDINGS);
+        if !findings.is_empty() {
+            out.push_str("\n\nFindings the swarm has posted so far:");
+            for finding in findings {
+                out.push_str(&format!("\n- {}", self.finding_line(finding)));
+            }
+        }
+        out.push_str(&format!("\n\n{MEMBER_GUIDE} Your card id is {}.", card.id));
         Some(out)
     }
 
@@ -546,9 +720,24 @@ impl Board {
                 out.push('\n');
             }
         }
+        let findings = self.findings_for(None, SUMMARY_FINDINGS);
+        if !findings.is_empty() {
+            out.push_str("findings:\n");
+            for finding in findings {
+                out.push_str(&format!("- {}\n", self.finding_line(finding)));
+            }
+        }
         out.trim_end().to_string()
     }
 }
+
+/// How a member works with the others; ends every card's prompt.
+const MEMBER_GUIDE: &str = "\
+The other members work at the same time. Use the `swarm` tool to post what they need to know the \
+moment you learn it — a fact about the code, a decision you made, a signature or file you changed — \
+in one or two sentences, addressed with `to` when it concerns only some cards. Findings from the \
+others arrive in your conversation as you work; `swarm` `read` shows the cards and every finding. \
+Do not post your final report: your last message goes to the lead.";
 
 /// One board file per session, written atomically. Session ids are UUIDs and
 /// cannot escape the directory. Read-modify-write goes through one process
@@ -651,6 +840,12 @@ pub struct BoardArgs {
     pub to: Option<MoveTo>,
     #[serde(default)]
     pub note: Option<String>,
+    /// For post: what to tell the members.
+    #[serde(default)]
+    pub text: Option<String>,
+    /// For post: the cards it is for (ids or titles); empty = every member.
+    #[serde(default)]
+    pub recipients: Vec<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
@@ -659,6 +854,135 @@ pub enum BoardAction {
     Add,
     Move,
     Show,
+    Post,
+}
+
+/// Hands a new finding to the members working now (their inboxes) and
+/// tells the UI the board changed. The host builds it; the `board` and
+/// `swarm` tools call it after every post.
+pub type DeliverFinding = std::sync::Arc<dyn Fn(&Board, &Finding) + Send + Sync>;
+
+/// Post to a session's board and deliver the finding. Returns the line the
+/// poster gets back.
+pub fn post_and_deliver(
+    session: Uuid,
+    from: &str,
+    text: &str,
+    to: &[String],
+    deliver: &DeliverFinding,
+) -> Result<String, String> {
+    let (finding, board) = BoardStore::user().update(session, |board| board.post(from, text, to))?;
+    let reached = board.recipients(&finding).len();
+    deliver(&board, &finding);
+    Ok(match reached {
+        0 => format!("Posted #{}. No other member is working right now; cards that start later will see it.", finding.id),
+        1 => format!("Posted #{} to 1 working member.", finding.id),
+        n => format!("Posted #{} to {n} working members.", finding.id),
+    })
+}
+
+/// The `swarm` tool a card's subagent gets: post a finding to the other
+/// members, or read the cards and the findings log.
+pub struct SwarmTool {
+    session: Uuid,
+    card_id: String,
+    deliver: DeliverFinding,
+}
+
+impl SwarmTool {
+    pub fn new(session: Uuid, card_id: impl Into<String>, deliver: DeliverFinding) -> Self {
+        Self {
+            session,
+            card_id: card_id.into(),
+            deliver,
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct SwarmArgs {
+    action: SwarmAction,
+    #[serde(default)]
+    text: Option<String>,
+    #[serde(default)]
+    to: Vec<String>,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum SwarmAction {
+    Post,
+    Read,
+}
+
+const SWARM_DESCRIPTION: &str = "\
+Talk to the other members of your swarm. action \"post\": share a finding the moment you have it — \
+a fact about the code, a decision, a signature or file you changed — in one or two sentences \
+(`text`); `to` addresses some cards (ids like c2, or titles), otherwise every member sees it. \
+Members working now get it at their next step; cards that start later get it in their prompt. \
+action \"read\": every card's state and the findings you may read. Your final report is not a \
+finding: end with it as your last message.";
+
+#[async_trait::async_trait]
+impl crate::tools::Tool for SwarmTool {
+    fn name(&self) -> &str {
+        "swarm"
+    }
+
+    fn kind(&self) -> crate::tools::ToolKind {
+        crate::tools::ToolKind::Todo
+    }
+
+    fn description(&self) -> &str {
+        SWARM_DESCRIPTION
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "action": { "type": "string", "enum": ["post", "read"] },
+                "text": { "type": "string", "description": "For post: the finding, one or two sentences." },
+                "to": { "type": "array", "items": { "type": "string" }, "description": "For post: the cards it is for; omit for every member." }
+            },
+            "required": ["action"]
+        })
+    }
+
+    fn execution_mode(&self) -> crate::tools::ToolExecutionMode {
+        crate::tools::ToolExecutionMode::Sequential
+    }
+
+    fn uses_host_filesystem(&self) -> bool {
+        false
+    }
+
+    fn default_permission(
+        &self,
+        _mode: crate::types::AgentMode,
+    ) -> Option<crate::permissions::Permission> {
+        Some(crate::permissions::Permission::Allow)
+    }
+
+    async fn execute(
+        &self,
+        args: serde_json::Value,
+        _project_dir: &str,
+    ) -> Result<String, crate::tools::ToolError> {
+        let args: SwarmArgs = serde_json::from_value(args)
+            .map_err(|e| crate::tools::ToolError::InvalidArguments(e.to_string()))?;
+        match args.action {
+            SwarmAction::Read => BoardStore::user()
+                .get(self.session)
+                .map(|board| board.member_view(&self.card_id))
+                .map_err(|e| crate::tools::ToolError::ExecutionError(e.to_string())),
+            SwarmAction::Post => {
+                let text = args.text.unwrap_or_default();
+                post_and_deliver(self.session, &self.card_id, &text, &args.to, &self.deliver)
+                    .map_err(crate::tools::ToolError::InvalidArguments)
+            }
+        }
+    }
 }
 
 /// The `board` tool. Hosted like `task`: its schema is exposed through the
@@ -707,7 +1031,11 @@ subagent; the rest start as their dependencies finish. Readers go to done when t
 to review.\n\
 - action \"move\": accept a reviewed card (`to`: \"done\"), send one back with a `note` of what to fix \
 (`to`: \"backlog\" — a new subagent retries with your note), or give up on one (`to`: \"failed\").\n\
-- action \"show\": the board.\n\
+- action \"show\": the board and the newest findings.\n\
+- action \"post\": tell the working members something (`text`; `recipients` to address some cards) — \
+a decision, a correction, a change of plan. It reaches them at their next step.\n\
+Members post findings to each other as they work (they have a `swarm` tool), so related cards can run \
+at once instead of waiting; the newest findings come back with every board result. \
 Plan for parallel work: independent cards run at once, so split by area and give each writer its \
 own files. Results of finished cards reach the cards that wait for them. You are told as cards \
 finish; review writers' work (read the files, run the tests) before accepting it, and finish by \
@@ -731,7 +1059,7 @@ impl crate::tools::Tool for BoardTool {
         let mut schema = serde_json::json!({
             "type": "object",
             "properties": {
-                "action": { "type": "string", "enum": ["add", "move", "show"] },
+                "action": { "type": "string", "enum": ["add", "move", "show", "post"] },
                 "cards": {
                     "type": "array",
                     "description": "For add: the cards to put on the board.",
@@ -751,7 +1079,9 @@ impl crate::tools::Tool for BoardTool {
                 },
                 "id": { "type": "string", "description": "For move: the card (c1, c2, …)." },
                 "to": { "type": "string", "enum": ["done", "backlog", "failed"] },
-                "note": { "type": "string", "description": "For move to backlog: what to fix." }
+                "note": { "type": "string", "description": "For move to backlog: what to fix." },
+                "text": { "type": "string", "description": "For post: what to tell the working members." },
+                "recipients": { "type": "array", "items": { "type": "string" }, "description": "For post: the cards it is for; omit for every member." }
             },
             "required": ["action"]
         });
@@ -929,6 +1259,65 @@ mod tests {
             "{text}"
         );
         assert_eq!(Board::default().summary(), "The board is empty.");
+    }
+
+    #[test]
+    fn findings_reach_working_members_and_later_cards() {
+        let mut board = Board::default();
+        board
+            .add(vec![
+                spec("Map", false, &[], &[]),
+                spec("Parse", true, &[], &["src/parse.rs"]),
+                spec("Docs", false, &[], &[]),
+                spec("Wire", true, &["c1"], &["src/main.rs"]),
+            ])
+            .unwrap();
+        board.start("c1", "child-1");
+        board.start("c2", "child-2");
+        board.start("c3", "child-3");
+
+        // Everyone working but the author hears a broadcast.
+        let all = board.post("c1", "  Tokens live in lexer.rs  ", &[]).unwrap();
+        assert_eq!((all.id, all.text.as_str()), (1, "Tokens live in lexer.rs"));
+        assert_eq!(board.recipients(&all), vec!["child-2", "child-3"]);
+
+        // Addressed by id or title, only the addressee.
+        let one = board.post("c2", "parse() now returns Result", &["docs".into()]).unwrap();
+        assert_eq!(one.to, vec!["c3"]);
+        assert_eq!(board.recipients(&one), vec!["child-3"]);
+        assert!(board.post("c2", "x", &["nope".into()]).is_err());
+        assert!(board.post("c9", "x", &[]).is_err());
+        assert!(board.post("c1", "   ", &[]).is_err());
+
+        // The lead posts too, and sees everything in its summary.
+        board.post(LEAD, "Keep the public API", &[]).unwrap();
+        let summary = board.summary();
+        assert!(summary.contains("findings:\n- #1 c1 \"Map\" (Map role): Tokens live in lexer.rs"), "{summary}");
+        assert!(summary.contains("#2 c2 \"Parse\" (Parse role) \u{2192} c3: parse() now returns Result"), "{summary}");
+        assert!(summary.contains("#3 the lead: Keep the public API"), "{summary}");
+
+        // A card starting later gets the broadcasts, not others' private notes.
+        let prompt = board.child_prompt("c4").unwrap();
+        assert!(prompt.contains("Tokens live in lexer.rs"), "{prompt}");
+        assert!(prompt.contains("Keep the public API"), "{prompt}");
+        assert!(!prompt.contains("returns Result"), "{prompt}");
+        assert!(prompt.contains("`swarm` tool") && prompt.contains("Your card id is c4."), "{prompt}");
+
+        // The addressee's view has it.
+        assert!(board.member_view("c3").contains("returns Result"));
+        assert!(board.member_view("c3").contains("c3 Docs [Docs role · working] (you)"));
+    }
+
+    #[test]
+    fn the_findings_log_keeps_the_newest() {
+        let mut board = Board::default();
+        board.add(vec![spec("Map", false, &[], &[])]).unwrap();
+        for n in 0..(MAX_FINDINGS + 5) {
+            board.post("c1", &format!("note {n}"), &[]).unwrap();
+        }
+        assert_eq!(board.findings.len(), MAX_FINDINGS);
+        assert_eq!(board.findings[0].id, 6);
+        assert_eq!(board.findings.last().unwrap().id as usize, MAX_FINDINGS + 5);
     }
 
     #[test]

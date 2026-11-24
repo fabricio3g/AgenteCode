@@ -337,6 +337,21 @@ pub(super) fn subagent_fingerprint(
             .as_ref()
             .map(|wt| format!("{}:{}", wt.branch, wt.dirty))
             .unwrap_or_default();
+        // A board change (a finding, a card it feeds) reshapes a member's card.
+        let swarm = state
+            .swarm
+            .as_ref()
+            .map(|lane| {
+                format!(
+                    "{}|{}|{}|{}|{}",
+                    lane.card_id,
+                    lane.title,
+                    lane.role,
+                    lane.feeds.join(","),
+                    lane.latest.as_deref().unwrap_or_default()
+                )
+            })
+            .unwrap_or_default();
         for byte in state
             .description
             .bytes()
@@ -347,6 +362,7 @@ pub(super) fn subagent_fingerprint(
             // Cost shows on the card: a new tenth of a cent re-renders it.
             .chain(((state.spend.cost_usd * 1000.0).round() as u64).to_le_bytes())
             .chain((state.tool_rows.len() as u64).to_le_bytes())
+            .chain(swarm.bytes())
         {
             h = (h ^ u64::from(byte)).wrapping_mul(0x100_0000_01B3);
         }

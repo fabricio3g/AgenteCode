@@ -1001,8 +1001,19 @@ pub(super) fn render_subagent(
         "completed"
     });
     let kind = SubagentStatusKind::from_status(status);
-    let type_label = capitalize_label(entry.subagent_type.as_deref().unwrap_or("subagent"));
-    let description = ui.map(|u| u.description.as_str()).unwrap_or(&entry.content);
+    // A swarm member is its card: `c2 Parse lexer` then the role, so the
+    // members of one swarm read as one team instead of unrelated spawns.
+    let lane = ui.and_then(|u| u.swarm.as_ref());
+    let (type_label, description) = match lane {
+        Some(lane) => (
+            format!("{} {}", lane.card_id, lane.title),
+            lane.role.as_str(),
+        ),
+        None => (
+            capitalize_label(entry.subagent_type.as_deref().unwrap_or("subagent")),
+            ui.map(|u| u.description.as_str()).unwrap_or(&entry.content),
+        ),
+    };
 
     // One-column inset, aligned with the `◆` of ordinary tool rows.
     let mut lead = vec![
@@ -1062,13 +1073,28 @@ pub(super) fn render_subagent(
                 on(Style::default().fg(FG_DIM())),
             ));
         }
+        if let Some(lane) = lane.filter(|lane| !lane.feeds.is_empty()) {
+            detail.push(Span::styled(
+                format!(" · feeds {}", lane.feeds.join(", ")),
+                on(Style::default().fg(FG_DIM())),
+            ));
+        }
     }
 
-    vec![
-        Line::from(header),
-        Line::from(fill_row(detail, width, bg)),
-        themed_blank_row(width),
-    ]
+    let mut lines = vec![Line::from(header), Line::from(fill_row(detail, width, bg))];
+    // The newest finding this member posted or was sent: `✎ c1 → c2  text`.
+    if let Some(latest) = lane.and_then(|lane| lane.latest.as_deref()) {
+        let finding = vec![
+            Span::styled("   \u{270e} ", on(Style::default().fg(FG_DIM()))),
+            Span::styled(
+                truncate_cells(latest, width.saturating_sub(6)),
+                on(Style::default().fg(FG_MUTED())),
+            ),
+        ];
+        lines.push(Line::from(fill_row(finding, width, bg)));
+    }
+    lines.push(themed_blank_row(width));
+    lines
 }
 
 /// `explore` to `Explore`; other labels keep their shape after the first char.

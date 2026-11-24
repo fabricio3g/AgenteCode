@@ -66,7 +66,6 @@
 
   let {
     searchProvider = $bindable(),
-    searchMaxResults = $bindable(),
     searchApiKey = $bindable(),
     searchBaseUrl = $bindable(),
     searchModel = $bindable(),
@@ -78,7 +77,6 @@
     savingConfiguration = false,
   }: {
     searchProvider: string;
-    searchMaxResults: string;
     searchApiKey: string;
     searchBaseUrl: string;
     searchModel: string;
@@ -215,21 +213,6 @@
         id="search-provider"
         bind:value={searchProvider}
         options={SEARCH_PROVIDERS.map((provider) => ({ value: provider.id, label: provider.id === 'auto' ? $t('searchSettings.auto') : provider.label }))}
-      />
-    </SettingsRow>
-
-    <SettingsRow
-      label={$t('searchSettings.targetResults')}
-      description={$t('searchSettings.targetResultsHint')}
-      htmlFor="search-result-target"
-    >
-      <Input
-        id="search-result-target"
-        type="number"
-        min="1"
-        max="20"
-        inputmode="numeric"
-        bind:value={searchMaxResults}
       />
     </SettingsRow>
 

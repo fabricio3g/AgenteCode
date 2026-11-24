@@ -6,7 +6,6 @@ describe('core web search sync', () => {
   it('sends the choice, the keyed providers and the SearXNG URL', () => {
     assert.deepEqual(webSyncPayload({
       provider: 'brave',
-      max_results: 8,
       providers: {
         brave: { api_key: ' b-key ' },
         tavily: { api_key: '' },
@@ -16,7 +15,6 @@ describe('core web search sync', () => {
       },
     }), {
       provider: 'brave',
-      max_results: 8,
       searxng_url: 'https://search.example/',
       keys: { brave: 'b-key', exa: 'e-key' },
     });

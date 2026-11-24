@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { handleWebSearch } from '$lib/services/agent-tool-core';
+import { MAX_SEARCH_RESULTS, handleWebSearch, searchResultCount } from '$lib/services/agent-tool-core';
 import type { ToolContext } from '$lib/services/agent-types';
 
 const baseCtx = {
@@ -48,5 +48,30 @@ describe('handleWebSearch', () => {
     expect(String(results[0].full_content).length).toBeLessThanOrEqual(1800);
     expect(results[1].full_content).toBeUndefined();
     expect(output.next_step).toMatch(/full_content/i);
+  });
+});
+
+describe('web_search result count', () => {
+  it('uses the count the model asked for', async () => {
+    expect(searchResultCount(3, 'search')).toBe(3);
+    expect(searchResultCount('30', 'deep')).toBe(30);
+    expect(searchResultCount(500, 'max')).toBe(MAX_SEARCH_RESULTS);
+
+    const webSearch = vi.fn(async () => ({ results: [] }));
+    await handleWebSearch({
+      args: { query: 'q', mode: 'search', max_results: 25 },
+      ctx: baseCtx,
+      webSearch,
+      ok: (output) => ({ success: true, output }),
+      fail: (error) => ({ success: false, error }),
+      failFromError: (err) => ({ success: false, error: String(err) })
+    });
+    expect(webSearch).toHaveBeenCalledWith(expect.objectContaining({ options: { max_results: 25 } }));
+  });
+
+  it('falls back to the mode only when the model gave none', () => {
+    expect(searchResultCount(undefined, 'search')).toBe(8);
+    expect(searchResultCount(0, 'deep')).toBe(12);
+    expect(searchResultCount('lots', 'max')).toBe(18);
   });
 });

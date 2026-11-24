@@ -71,7 +71,6 @@ export async function webSearch(args: {
     deep: args.deep ?? false,
     mode: args.mode,
     options: {
-      max_results: stored.search?.max_results,
       provider: stored.search?.provider || 'aggregator',
       aggregator_engines: stored.search?.aggregator_engines,
       safe_search: stored.search?.safe_search,

@@ -157,7 +157,6 @@ export function getDefaultSearchConfig(): SearchConfig {
   return {
     // Auto: a keyed search API when one is set up, else the free API sources.
     provider: 'auto',
-    max_results: 6,
     aggregator_engines: [...DEFAULT_AGGREGATOR_ENGINES],
     safe_search: 2,
     providers: {},

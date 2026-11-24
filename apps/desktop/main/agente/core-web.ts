@@ -9,13 +9,11 @@ type Rpc = Pick<AgenteClient, 'request'>;
 
 type SearchSettings = {
   provider?: string;
-  max_results?: number;
   providers?: Record<string, { api_key?: unknown; base_url?: unknown } | undefined>;
 };
 
 export type WebSyncPayload = {
   provider: string;
-  max_results?: number;
   searxng_url?: string;
   keys: Record<string, string>;
 };
@@ -36,8 +34,6 @@ export function webSyncPayload(search: SearchSettings | undefined): WebSyncPaylo
   const payload: WebSyncPayload = { provider: text(search?.provider) || 'auto', keys };
   const searxng = text(providers.searxng?.base_url);
   if (searxng) payload.searxng_url = searxng;
-  const max = Number(search?.max_results);
-  if (Number.isFinite(max) && max > 0) payload.max_results = Math.round(max);
   return payload;
 }
 

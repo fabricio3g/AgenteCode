@@ -19,7 +19,9 @@ pub struct WebSearchArgs {
     /// Search query
     #[serde(default)]
     pub query: Option<String>,
-    /// How many results to return (1-20; default from settings, usually 8)
+    /// How many results you want (1-20). Choose it for the question: a few
+    /// for one fact, many for a survey. Without it you get 8. Search as many
+    /// times as the task needs.
     #[serde(default)]
     pub max_results: Option<usize>,
 }

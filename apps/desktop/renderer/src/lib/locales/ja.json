@@ -430,7 +430,15 @@
       },
       "waitsFor": "{cards} を待機中",
       "openCard": "サブエージェントを開く",
-      "clear": "ボードを空にする"
+      "clear": "ボードを空にする",
+      "lane": {
+        "title": "スウォーム",
+        "feeds": "{cards} に渡す",
+        "failed": "失敗",
+        "findings": "共有メモ",
+        "lead": "リード",
+        "more": "ボードに以前のメモ {n} 件"
+      }
     },
     "traceCopyInput": "入力をコピー",
     "traceCopyOutput": "出力をコピー",
@@ -1460,8 +1468,6 @@
     "providerSection": "Provider",
     "provider": "Search provider",
     "providerHint": "Use one provider directly, or combine an engine pool.",
-    "targetResults": "Target results",
-    "targetResultsHint": "Standard web searches request 1–20 results. Deep modes use their own larger research budget.",
     "safeSearch": "Safe search",
     "safeSearchHint": "Applied when the selected engine supports it.",
     "safeOff": "Off",

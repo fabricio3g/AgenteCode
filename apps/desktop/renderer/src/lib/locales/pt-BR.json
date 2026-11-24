@@ -430,7 +430,15 @@
       },
       "waitsFor": "Espera {cards}",
       "openCard": "Abrir o subagente",
-      "clear": "Limpar quadro"
+      "clear": "Limpar quadro",
+      "lane": {
+        "title": "Enxame",
+        "feeds": "Alimenta {cards}",
+        "failed": "Falhou",
+        "findings": "Descobertas",
+        "lead": "Líder",
+        "more": "{n, plural, one {# descoberta anterior} other {# descobertas anteriores}} no quadro"
+      }
     },
     "traceCopyInput": "Copiar entrada",
     "traceCopyOutput": "Copiar resultado",
@@ -1460,8 +1468,6 @@
     "providerSection": "Provider",
     "provider": "Search provider",
     "providerHint": "Use one provider directly, or combine an engine pool.",
-    "targetResults": "Target results",
-    "targetResultsHint": "Standard web searches request 1–20 results. Deep modes use their own larger research budget.",
     "safeSearch": "Safe search",
     "safeSearchHint": "Applied when the selected engine supports it.",
     "safeOff": "Off",

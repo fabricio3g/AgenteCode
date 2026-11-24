@@ -430,7 +430,15 @@
       },
       "waitsFor": "等待 {cards}",
       "openCard": "打开其子智能体",
-      "clear": "清空看板"
+      "clear": "清空看板",
+      "lane": {
+        "title": "蜂群",
+        "feeds": "供给 {cards}",
+        "failed": "失败",
+        "findings": "发现",
+        "lead": "主控",
+        "more": "看板上还有 {n} 条更早的发现"
+      }
     },
     "traceCopyInput": "复制输入",
     "traceCopyOutput": "复制输出",
@@ -1460,8 +1468,6 @@
     "providerSection": "Provider",
     "provider": "Search provider",
     "providerHint": "Use one provider directly, or combine an engine pool.",
-    "targetResults": "Target results",
-    "targetResultsHint": "Standard web searches request 1–20 results. Deep modes use their own larger research budget.",
     "safeSearch": "Safe search",
     "safeSearchHint": "Applied when the selected engine supports it.",
     "safeOff": "Off",

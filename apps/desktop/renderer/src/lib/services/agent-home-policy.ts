@@ -2,8 +2,8 @@
  * Home's run policy, expressed as shared agent-core loop hooks.
  *
  * - beforeToolBatch   tool budget, loop and explore guards — before tools run
- * - beforeToolCall    research write phase: no more searching
- * - prepareNextTurn   time budget, research write switch, step-limit nudges
+ * - prepareNextTurn   time budget, research write switch (labels and
+ *                     nudges only: a search is never refused), step-limit nudges
  * - reviewFinalReply  a reply without tool calls is the answer — unless it is
  *                     missing a website, a readable tool call, a visual or a
  *                     requested file, which earns one targeted retry
@@ -162,9 +162,7 @@ function nearEndNudge(run: AgentRun, state: PolicyState): string {
   }
   if (plan.isResearchChat) {
     return [
-      state.researchForceWrite
-        ? 'Enough sources have been gathered. Do NOT call more tools.'
-        : 'You are almost out of research steps. Do NOT call more tools unless one critical source is missing.',
+      'You are almost out of research steps. Do NOT call more tools unless one critical source is missing.',
       'Write the final answer now using the RESEARCH EVIDENCE PACK. Never title a section "Gathered Evidence". Never mention tools or step limits.',
       FINAL_ANSWER_CONTRACT_REMINDER
     ].join('\n\n');
@@ -304,16 +302,9 @@ export function createHomeHooks(run: AgentRun, state: PolicyState): AgentLoopHoo
       if (researchWantsWrite(run)) state.researchForceWrite = true;
       if (plan.isCodeProfile && await exploreGuardStops(run, state, toolCalls)) return { stop: true };
       if (await loopGuardStops(run, state, toolCalls)) return { stop: true };
-      // Research write phase: a batch of nothing but searches ends the gathering.
-      if (plan.isResearchChat && state.researchForceWrite && toolCalls.every((call) => call.name === 'web_search')) {
-        return { stop: true };
-      }
-    },
-
-    async beforeToolCall(_id: string, toolName: string) {
-      if (plan.isResearchChat && state.researchForceWrite && toolName === 'web_search') {
-        return { block: 'Enough sources have been gathered. Write the report from the evidence pack instead of searching again.' };
-      }
+      // Research never refuses a search: the model decides how much to
+      // gather. Only the turn's tool budget and the loop guard (identical
+      // repeats) bound it.
     },
 
     async prepareNextTurn(turn: number) {

@@ -10,6 +10,7 @@ impl App {
         match event {
             AgentEvent::BoardChanged { board } => {
                 self.state.agent.board = Some(board);
+                self.sync_swarm_lanes();
             }
             AgentEvent::SubagentStarted {
                 id,
@@ -66,6 +67,7 @@ impl App {
                         description.clone(),
                     );
                 }
+                self.sync_swarm_lanes();
                 tracing::info!(
                     subagent_id = %id,
                     subagent_type = %subagent_type,
@@ -268,5 +270,19 @@ impl App {
             .subagents
             .get_mut(id)
             .expect("subagent card just inserted")
+    }
+
+    /// Give every subagent working a board card its lane (card, feeds, the
+    /// newest finding touching it), so its transcript card reads as part of
+    /// the swarm. Runs when the board changes and when a child appears.
+    fn sync_swarm_lanes(&mut self) {
+        let Some(board) = self.state.agent.board.as_ref() else {
+            return;
+        };
+        for (id, card) in self.state.agent.subagents.iter_mut() {
+            if let Some(lane) = crate::state::SwarmLane::of(board, id) {
+                card.swarm = Some(lane);
+            }
+        }
     }
 }

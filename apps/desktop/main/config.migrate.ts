@@ -215,8 +215,10 @@ export function ensureSearchConfig(cfg: AppConfig): boolean {
     }
   }
 
-  if (!search.max_results) {
-    search.max_results = 6;
+  // The result-count setting is gone: each search mode and agent tool
+  // asks for its own count. Drop a value saved by an older version.
+  if ('max_results' in search) {
+    delete search.max_results;
     dirty = true;
   }
 

@@ -522,6 +522,12 @@ impl SubagentHost {
             }
         }
 
+        // A swarm card's child talks to the other members: the `swarm` tool
+        // to post and read findings, an inbox where theirs arrive.
+        let (swarm_inbox, swarm_tools) = match self.swarm_member_tools(&id) {
+            Some((inbox, tool)) => (Some(inbox), vec![tool]),
+            None => (None, Vec::new()),
+        };
         let run_config = AgentRunConfig {
             session_id: uuid::Uuid::new_v4(),
             sender: child_tx.clone(),
@@ -561,8 +567,8 @@ impl SubagentHost {
             smart_compaction: false,
             compaction_model: None,
             initial_gap: 0,
-            user_inbox: None,
-            extra_tools: Vec::new(),
+            user_inbox: swarm_inbox,
+            extra_tools: swarm_tools,
             only_tools: host.inner.config.only_tools.clone(),
             shell_env: host.inner.config.shell_env.clone(),
         };

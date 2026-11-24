@@ -305,8 +305,7 @@ export async function loadChatConfig(): Promise<AppConfig> {
     },
     search: {
       ...(config.search || {}),
-      provider: config.search?.provider || 'aggregator',
-      max_results: config.search?.max_results || 6
+      provider: config.search?.provider || 'aggregator'
     },
     tts: {
       ...(config.tts || {}),

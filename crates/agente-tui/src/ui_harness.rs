@@ -703,6 +703,7 @@ fn seed_subagent(state: &mut AppState) {
             finished_at: None,
             worktree: Some(worktree),
             spend: Default::default(),
+            swarm: None,
         },
     );
 }

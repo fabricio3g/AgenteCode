@@ -26,7 +26,7 @@ pub use session::diff_line_counts;
 
 pub use agent::{
     AgentRuntimeState, LiveToolCall, QueuedMessage, RetryStatus, Spend, SubagentToolRow,
-    SubagentUiState, WorkMode,
+    SubagentUiState, SwarmLane, WorkMode,
 };
 pub use config::{ConfigState, ConnectScreen, DiscoveryStatus, ModelEntry};
 pub use hits::{HitMap, HitTarget, ListId};

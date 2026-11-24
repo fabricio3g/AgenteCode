@@ -3,6 +3,7 @@ import type { ToolDefinition } from '$lib/services/chat/types';
 import { HOME_EXTRA_TOOL_DEFS } from '$lib/services/agent-tool-home-schemas';
 import { DOMAIN_TOOL_DEFS } from '$shared/domains';
 import { filterEnabledTools } from '$lib/services/agent-tool-registry';
+import { MAX_SEARCH_RESULTS } from '$lib/services/agent-tool-core';
 import { getAllArtifacts, getEnabledArtifactIds } from '$lib/services/artifact-registry';
 
 /** Simple Chat Agent: research + calc + sandbox files (no host bash). */
@@ -88,12 +89,18 @@ function buildToolDefinitions(
     {
       type: 'function', function: {
         name: 'web_search',
-        description: 'Search the web for up-to-date information. The tool automatically receives recent conversation context, so write a focused query and include key entities when helpful.',
+        description: 'Search the web for up-to-date information. The tool automatically receives recent conversation context, so write a focused query and include key entities when helpful. Search as many times as the question needs: refine, follow leads, and cover each sub-question with its own query.',
         parameters: {
           type: 'object',
           properties: {
             query: { type: 'string', description: 'Search query' },
-            mode: { type: 'string', description: 'Depth mode: "search" (fast), "deep" (thorough), or "max" (exhaustive)' }
+            mode: { type: 'string', description: 'Depth mode: "search" (fast), "deep" (thorough), or "max" (exhaustive)' },
+            max_results: {
+              type: 'integer',
+              minimum: 1,
+              maximum: MAX_SEARCH_RESULTS,
+              description: `How many results you want (1–${MAX_SEARCH_RESULTS}). Choose it for the question: a few for one fact, many for a survey or comparison. Without it the mode decides (8, 12 or 18).`
+            }
           },
           required: ['query']
         }

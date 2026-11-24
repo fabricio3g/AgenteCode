@@ -430,7 +430,15 @@
       },
       "waitsFor": "Espera a {cards}",
       "openCard": "Abrir su subagente",
-      "clear": "Vaciar tablero"
+      "clear": "Vaciar tablero",
+      "lane": {
+        "title": "Enjambre",
+        "feeds": "Alimenta a {cards}",
+        "failed": "Falló",
+        "findings": "Hallazgos",
+        "lead": "Líder",
+        "more": "{n, plural, one {# hallazgo anterior} other {# hallazgos anteriores}} en el tablero"
+      }
     },
     "traceCopyInput": "Copiar entrada",
     "traceCopyOutput": "Copiar resultado",
@@ -1460,8 +1468,6 @@
     "providerSection": "Proveedor",
     "provider": "Proveedor de búsqueda",
     "providerHint": "Usa un proveedor directamente o combina un grupo de motores.",
-    "targetResults": "Resultados objetivo",
-    "targetResultsHint": "Las búsquedas web normales piden de 1 a 20 resultados. Los modos profundos usan su propio presupuesto de investigación, mayor.",
     "safeSearch": "Búsqueda segura",
     "safeSearchHint": "Se aplica cuando el motor seleccionado lo admite.",
     "safeOff": "Desactivada",

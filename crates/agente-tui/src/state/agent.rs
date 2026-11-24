@@ -356,6 +356,50 @@ pub struct SubagentUiState {
     pub worktree: Option<agente_core::subagent::WorktreeInfo>,
     /// What this child's model calls cost (its own nested children included).
     pub spend: Spend,
+    /// The swarm card this child works, when a board started it.
+    pub swarm: Option<SwarmLane>,
+}
+
+/// A subagent's place in a swarm, read from the board: its card, whom its
+/// result feeds, and the newest finding it posted or was sent.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct SwarmLane {
+    pub card_id: String,
+    pub title: String,
+    pub role: String,
+    /// Cards that wait on this one.
+    pub feeds: Vec<String>,
+    /// `c1 → c2  text` — the newest finding touching this card.
+    pub latest: Option<String>,
+}
+
+impl SwarmLane {
+    /// The lane for `child_id` on `board`, if a card of it is that child's.
+    pub fn of(board: &agente_core::swarm::Board, child_id: &str) -> Option<Self> {
+        let card = board
+            .cards
+            .iter()
+            .find(|card| card.child_id.as_deref() == Some(child_id))?;
+        let feeds = board
+            .cards
+            .iter()
+            .filter(|other| other.depends_on.iter().any(|dep| dep == &card.id))
+            .map(|other| other.id.clone())
+            .collect();
+        let latest = board
+            .findings
+            .iter()
+            .rev()
+            .find(|finding| finding.touches(&card.id))
+            .map(|finding| format!("{}  {}", finding.route(), finding.text));
+        Some(Self {
+            card_id: card.id.clone(),
+            title: card.title.clone(),
+            role: card.role.clone(),
+            feeds,
+            latest,
+        })
+    }
 }
 
 impl SubagentUiState {

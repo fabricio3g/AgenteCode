@@ -430,7 +430,15 @@
       },
       "waitsFor": "Wartet auf {cards}",
       "openCard": "Subagent öffnen",
-      "clear": "Board leeren"
+      "clear": "Board leeren",
+      "lane": {
+        "title": "Schwarm",
+        "feeds": "Liefert an {cards}",
+        "failed": "Fehlgeschlagen",
+        "findings": "Erkenntnisse",
+        "lead": "Leitung",
+        "more": "{n, plural, one {# frühere Erkenntnis} other {# frühere Erkenntnisse}} auf dem Board"
+      }
     },
     "traceCopyInput": "Eingabe kopieren",
     "traceCopyOutput": "Ausgabe kopieren",
@@ -1460,8 +1468,6 @@
     "providerSection": "Provider",
     "provider": "Search provider",
     "providerHint": "Use one provider directly, or combine an engine pool.",
-    "targetResults": "Target results",
-    "targetResultsHint": "Standard web searches request 1–20 results. Deep modes use their own larger research budget.",
     "safeSearch": "Safe search",
     "safeSearchHint": "Applied when the selected engine supports it.",
     "safeOff": "Off",

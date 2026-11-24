@@ -8,7 +8,7 @@
 
 use super::*;
 use crate::subagent::definition::capability_for_parent_mode;
-use crate::swarm::{BoardAction, BoardArgs, BoardStore};
+use crate::swarm::{BoardAction, BoardArgs, BoardStore, DeliverFinding, SwarmTool, LEAD};
 
 /// What a card start needs from the lead's turn: its cancel signal (a card
 /// started after the turn ends still stops with it) and its depth.
@@ -66,6 +66,14 @@ impl SubagentHost {
             BoardAction::Add => store
                 .update(session, |board| board.add(args.cards))
                 .map(|(ids, board)| (format!("Added {}.", ids.join(", ")), board)),
+            BoardAction::Post => {
+                let text = args.text.as_deref().or(args.note.as_deref()).unwrap_or_default();
+                let deliver = self.finding_deliverer();
+                match crate::swarm::post_and_deliver(session, LEAD, text, &args.recipients, &deliver) {
+                    Ok(said) => store.get(session).map(|board| (said, board)).map_err(|e| e.to_string()),
+                    Err(error) => Err(error),
+                }
+            }
             BoardAction::Move => {
                 let (Some(id), Some(to)) = (args.id.as_deref(), args.to) else {
                     return outcome("Error: move needs `id` and `to`".into(), true);
@@ -133,6 +141,10 @@ impl SubagentHost {
         };
         let mut started = Vec::new();
         for (card, child_id, prompt) in starts {
+            self.inner
+                .swarm_members
+                .lock()
+                .insert(child_id.clone(), card.id.clone());
             let owns = if card.capability == SubagentCapabilityMode::ReadOnly {
                 Vec::new()
             } else {
@@ -157,6 +169,7 @@ impl SubagentHost {
             };
             let result = Box::pin(self.spawn(request, lead.cancel.clone(), lead.depth)).await;
             if result.is_error {
+                self.forget_swarm_member(&child_id);
                 let summary = result.summary.unwrap_or_else(|| "could not start".into());
                 let clear_child = !self.inner.registry.contains(&child_id);
                 let _ = store.update(session, |board| {
@@ -177,6 +190,7 @@ impl SubagentHost {
     /// and start the cards that were waiting on it. Runs on the child's
     /// forwarder thread.
     pub(super) fn board_child_finished(&self, child_id: &str) {
+        self.forget_swarm_member(child_id);
         let Some(session) = self.board_session() else {
             return;
         };
@@ -205,5 +219,55 @@ impl SubagentHost {
                 host.send_board(&board);
             }
         });
+    }
+
+    /// For a swarm card's child (registered by `start_ready_cards`): its
+    /// inbox, now open for findings, and its `swarm` tool.
+    pub(super) fn swarm_member_tools(
+        &self,
+        child_id: &str,
+    ) -> Option<(crate::agent::channel::UserInbox, Box<dyn crate::tools::Tool>)> {
+        let card_id = self.inner.swarm_members.lock().get(child_id).cloned()?;
+        let session = self.board_session()?;
+        let inbox = crate::agent::channel::UserInbox::default();
+        self.inner
+            .swarm_inboxes
+            .lock()
+            .insert(child_id.to_string(), inbox.clone());
+        let tool = SwarmTool::new(session, card_id, self.finding_deliverer());
+        Some((inbox, Box::new(tool)))
+    }
+
+    fn forget_swarm_member(&self, child_id: &str) {
+        self.inner.swarm_members.lock().remove(child_id);
+        self.inner.swarm_inboxes.lock().remove(child_id);
+    }
+
+    /// Delivers a finding: one message into each recipient's inbox, taken at
+    /// its next step, then the board to the UI. Holds the host weakly — the
+    /// tool lives in a child's registry, and must not keep the host alive.
+    pub(super) fn finding_deliverer(&self) -> DeliverFinding {
+        let host = std::sync::Arc::downgrade(&self.inner);
+        std::sync::Arc::new(move |board, finding| {
+            let Some(inner) = host.upgrade() else {
+                return;
+            };
+            let host = SubagentHost { inner };
+            let message = format!(
+                "Swarm finding {}
+(From another member of your swarm. Use it if it bears on your card;                  there is no need to reply.)",
+                board.finding_line(finding)
+            );
+            let inboxes = host.inner.swarm_inboxes.lock();
+            for child_id in board.recipients(finding) {
+                if let Some(inbox) = inboxes.get(&child_id) {
+                    if !inbox.is_closed() {
+                        inbox.lock().push(crate::types::Message::user(message.clone()));
+                    }
+                }
+            }
+            drop(inboxes);
+            host.send_board(board);
+        })
     }
 }

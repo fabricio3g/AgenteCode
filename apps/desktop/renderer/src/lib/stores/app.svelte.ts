@@ -2917,7 +2917,6 @@ class AppStore {
 
   async updateSearchSettings(partial: {
     provider?: string;
-    max_results?: number;
     context_budget_chars?: number;
     aggregator_engines?: string[];
     safe_search?: number;
