@@ -70,9 +70,9 @@ export function registerProviderHandlers({ ipcMain, resolveProvider, resolveApiK
       try {
         const { runtimeConnection } = await import('../agente/rust-engine.ts');
         const client = await runtimeConnection();
-        const tested = await client.request<{ ok: boolean; count?: number; latency_ms?: number }>('providers.test', { provider: named });
+        const tested = await client.request<{ ok: boolean; models?: string[]; count?: number; latency_ms?: number }>('providers.test', { provider: named });
         if (tested?.ok) {
-          return { ok: true, modelCount: tested.count ?? 0, latencyMs: tested.latency_ms ?? 0 };
+          return { ok: true, models: Array.isArray(tested.models) ? tested.models : [] };
         }
       } catch {
         // Fall through to the direct dialect probe when testing an unsaved custom URL/draft.

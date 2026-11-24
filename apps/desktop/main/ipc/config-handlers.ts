@@ -1,6 +1,6 @@
 import type { IpcMain } from 'electron';
 import type { AppConfigLike } from './types.ts';
-import { flagCoreKeys, routeKeysToCore } from '../agente/core-providers.ts';
+import { flagCoreKeys, syncProvidersToCore } from '../agente/core-providers.ts';
 import { syncWebSearchToCore } from '../agente/core-web.ts';
 import { forgetProviderKey } from '../config.ts';
 
@@ -18,7 +18,7 @@ function mergeRedactedProviderKeys(cfg: AppConfigLike, diskConfig: AppConfigLike
   const diskProviders = diskConfig.llm?.providers || {};
 
   for (const [name, provider] of Object.entries(incomingProviders)) {
-    if (!provider.api_key && diskProviders[name]?.api_key) {
+    if (!provider.api_key && provider.has_api_key !== false && diskProviders[name]?.api_key) {
       provider.api_key = diskProviders[name]?.api_key;
     }
     delete provider.has_api_key;
@@ -61,8 +61,8 @@ export function registerConfigHandlers({
   ipcMain.handle('save_config', async (_e, cfg) => {
     const diskConfig = loadConfigFromDisk() as AppConfigLike;
     const nextConfig = (cfg || {}) as AppConfigLike;
+    await syncProvidersToCore(runtime, nextConfig.llm, diskConfig.llm, forgetProviderKey);
     mergeRedactedProviderKeys(nextConfig, diskConfig);
-    await routeKeysToCore(runtime, nextConfig.llm?.providers, forgetProviderKey);
     void forgetThinkingRoutes();
     const saved = saveConfig(nextConfig);
     syncSearch();
@@ -70,7 +70,8 @@ export function registerConfigHandlers({
   });
 
   ipcMain.handle('update_config', async (_e, partial) => {
-    await routeKeysToCore(runtime, (partial as AppConfigLike | undefined)?.llm?.providers, forgetProviderKey);
+    const diskConfig = loadConfigFromDisk() as AppConfigLike;
+    await syncProvidersToCore(runtime, (partial as AppConfigLike | undefined)?.llm, diskConfig.llm, forgetProviderKey);
     void forgetThinkingRoutes();
     const updated = await updateConfig(partial);
     if ((partial as AppConfigLike | undefined)?.search) syncSearch();

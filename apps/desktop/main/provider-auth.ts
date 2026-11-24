@@ -47,7 +47,7 @@ export function resolveApiKeyFromConfig(cfg: AuthConfig | null | undefined, apiK
   return namedKey(providers, providerName) || urlKey(providers, baseUrl) || defaultKey(cfg, providerName);
 }
 
-const PROVIDER_ENV_VARS: Record<string, string[]> = {
+export const PROVIDER_ENV_VARS: Record<string, string[]> = {
   openrouter: ['OPENROUTER_API_KEY'],
   deepseek: ['DEEPSEEK_API_KEY'],
   glm: ['ZAI_API_KEY', 'ZHIPU_API_KEY', 'GLM_API_KEY'],

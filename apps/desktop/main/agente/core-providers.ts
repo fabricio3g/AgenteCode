@@ -57,45 +57,134 @@ export async function coreProviderStatus(client: Rpc): Promise<CoreProviderStatu
   }
 }
 
-/** Providers the core offers itself; Desktop keeps keys for the rest (custom endpoints). */
-async function coreOfferedIds(client: Rpc): Promise<Set<string> | null> {
-  const status = await coreProviderStatus(client);
-  return status ? new Set(status.providers.map((provider) => provider.id)) : null;
-}
+type ProviderEntry = { api_key?: string; has_api_key?: boolean; base_url?: string; model?: string };
+type KeyedProviders = Record<string, ProviderEntry>;
+type LlmConfigSlice = { provider?: string; providers?: KeyedProviders };
 
-type KeyedProviders = Record<string, { api_key?: string }>;
+const CORE_ENV_VARS: Record<string, readonly string[]> = {
+  openrouter: ['OPENROUTER_API_KEY'],
+  deepseek: ['DEEPSEEK_API_KEY'],
+  glm: ['ZAI_API_KEY', 'ZHIPU_API_KEY', 'GLM_API_KEY'],
+  minimax: ['MINIMAX_API_KEY'],
+  opencode: ['OPENCODE_API_KEY'],
+  'opencode-go': ['OPENCODE_API_KEY']
+};
+
+/**
+ * Sync provider credentials, explicit disconnects, changed base URLs, and
+ * default provider/model from a Desktop config write into the Rust core.
+ *
+ * Newly typed keys of core-offered providers are saved in the core (`auth.json`)
+ * and stripped from `llm.providers`, calling `forget(id)` to drop Desktop's copy.
+ */
+export async function syncProvidersToCore(
+  connect: () => Promise<Rpc>,
+  llm: LlmConfigSlice | undefined,
+  previousLlm: LlmConfigSlice | undefined,
+  forget: (id: string) => void
+): Promise<void> {
+  if (!llm) return;
+  const providers = llm.providers || {};
+  const prevProviders = previousLlm?.providers || {};
+
+  const hasWork =
+    Object.entries(providers).some(([id, p]) => {
+      if (p?.api_key?.trim()) return true;
+      if (p?.has_api_key === false) return true;
+      const nextUrl = p?.base_url?.trim();
+      const prevUrl = prevProviders[id]?.base_url?.trim();
+      if (nextUrl !== undefined && nextUrl !== prevUrl) return true;
+      return false;
+    })
+    || (!!llm.provider && llm.provider !== 'local');
+
+  if (!hasWork) return;
+
+  const client = await connect().catch(() => null);
+  const status = client && (await coreProviderStatus(client).catch(() => null));
+  if (!client || !status) return;
+
+  const statusById = new Map(status.providers.map((entry) => [entry.id, entry]));
+
+  for (const [id, provider] of Object.entries(providers)) {
+    const coreEntry = statusById.get(id);
+    if (!coreEntry) continue;
+
+    const nextKey = provider?.api_key?.trim() || '';
+    const nextUrl = provider?.base_url?.trim();
+    const prevUrl = prevProviders[id]?.base_url?.trim();
+    const urlChanged = nextUrl !== undefined && nextUrl !== prevUrl;
+
+    if (!nextKey && provider?.has_api_key === false && coreEntry.stored_key) {
+      try {
+        await client.request('providers.disconnect', { id });
+        forget(id);
+      } catch (error) {
+        console.warn(`[agente] could not disconnect ${id} in the core: ${error instanceof Error ? error.message : String(error)}`);
+      }
+      continue;
+    }
+
+    if (nextKey || urlChanged) {
+      try {
+        await client.request('providers.connect', {
+          id,
+          ...(nextKey ? { api_key: nextKey } : {}),
+          ...(urlChanged ? { base_url: nextUrl } : {})
+        });
+      } catch (error) {
+        // Keep it in Desktop rather than lose it; the next start moves it.
+        console.warn(`[agente] could not save ${id} in the core: ${error instanceof Error ? error.message : String(error)}`);
+        continue;
+      }
+      if (nextKey) {
+        delete provider.api_key;
+        forget(id);
+      }
+    }
+  }
+
+  const activeProvider = llm.provider?.trim();
+  if (activeProvider && statusById.has(activeProvider)) {
+    const activeModel =
+      providers[activeProvider]?.model?.trim()
+      || prevProviders[activeProvider]?.model?.trim()
+      || '';
+    if (
+      activeModel
+      && (activeProvider !== status.default_provider || activeModel !== status.default_model)
+    ) {
+      try {
+        await client.request('providers.set_default', { provider: activeProvider, model: activeModel });
+      } catch (error) {
+        console.warn(`[agente] could not sync default model to the core: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+  }
+}
 
 /**
  * Pull newly typed keys of core-offered providers out of a Desktop config
  * write and save them in the core instead (an empty key means "unchanged");
- * `forget` then drops Desktop's own copy. Without a core that has provider
- * settings, the write stays as it is.
+ * `forget` then drops Desktop's own copy.
  */
 export async function routeKeysToCore(connect: () => Promise<Rpc>, providers: KeyedProviders | undefined, forget: (id: string) => void): Promise<void> {
-  const keyed = Object.entries(providers || {}).filter(([, provider]) => provider?.api_key?.trim());
-  if (!keyed.length) return;
-  const client = await connect().catch(() => null);
-  const offered = client && (await coreOfferedIds(client).catch(() => null));
-  if (!client || !offered) return;
-  for (const [id, provider] of keyed) {
-    if (!offered.has(id)) continue;
-    try {
-      await client.request('providers.connect', { id, api_key: provider.api_key });
-    } catch (error) {
-      // Keep it in Desktop rather than lose it; the next start moves it.
-      console.warn(`[agente] could not save the ${id} key in the core: ${error instanceof Error ? error.message : String(error)}`);
-      continue;
-    }
-    delete provider.api_key;
-    forget(id);
-  }
+  await syncProvidersToCore(connect, { providers }, undefined, forget);
 }
 
-/** The renderer sees only `has_api_key`: providers with a key in the core have one. */
-export function flagCoreKeys(providers: Record<string, { has_api_key?: boolean }>): void {
+/** The renderer sees only `has_api_key`: providers with a key in the core (or env) have one. */
+export function flagCoreKeys(
+  providers: Record<string, { has_api_key?: boolean }>,
+  env: NodeJS.ProcessEnv = process.env
+): void {
   for (const id of Object.keys(coreKeys())) {
     if (id.includes(':')) continue;
     providers[id] = { ...providers[id], has_api_key: true };
+  }
+  for (const [id, vars] of Object.entries(CORE_ENV_VARS)) {
+    if (vars.some((name) => Boolean(env[name]?.trim()))) {
+      providers[id] = { ...providers[id], has_api_key: true };
+    }
   }
 }
 

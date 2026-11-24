@@ -719,10 +719,12 @@ impl RuntimeHandle {
             }
         }
         let models = self.discover_models(provider_id).await?;
+        let model_ids: Vec<&str> = models.iter().map(|m| m.id.as_str()).collect();
         Ok(serde_json::json!({
             "ok": true,
             "provider": provider_id,
-            "count": models.len(),
+            "count": model_ids.len(),
+            "models": model_ids,
             "latency_ms": started.elapsed().as_millis() as u64,
         }))
     }
