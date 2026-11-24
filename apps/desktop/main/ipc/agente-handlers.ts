@@ -10,7 +10,6 @@ import { registerCalendarSyncHandlers } from '../calendar/sync.ts';
 import { registerSessionGoals } from '../session-goals.ts';
 import { modelSeesImages, rustEngine as engine } from '../agente/rust-engine.ts';
 import { setMainWindowGetter } from '../agente/event-bridge.ts';
-import { listProjectFiles } from '../agente/project-files.ts';
 import { historyTurns } from '../agente/bot-history.ts';
 import type { Attachment, SessionSnapshot } from '../../shared/agente-protocol.gen.ts';
 import type { AgenteRuntimeMode, AgenteStartSessionArgs, ApprovalDecision, SubagentSettings } from '../../shared/agente-protocol.ts';
@@ -70,7 +69,10 @@ export function registerAgenteHandlers({ ipcMain, getMainWindow }: AgenteHandler
     }
     return result;
   });
-  ipcMain.handle('agente_project_files', (_e, args: { projectRoot: string }) => listProjectFiles(args.projectRoot));
+  ipcMain.handle('agente_project_files', async (_e, args: { projectRoot: string }) => {
+    const res = await engine.runtimeRequest<{ files?: string[] }>('project.files', { project_dir: args.projectRoot });
+    return Array.isArray(res?.files) ? res.files : [];
+  });
   ipcMain.handle('agente_message_action', (_e, args: { chatId: string; action: 'fork' | 'rewind'; conversationIndex: number }) => engine.messageAction(args.chatId, args.action, args.conversationIndex));
   ipcMain.handle('agente_session_snapshot', (_e, args: { sessionId: string }) => engine.runtimeRequest('session.get', { session_id: args.sessionId }));
   registerSessionGoals(ipcMain, async () => { const { runtimeConnection } = await import('../agente/rust-engine.ts'); return runtimeConnection(); });

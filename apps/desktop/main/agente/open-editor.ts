@@ -12,7 +12,7 @@ import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import type { OpenInEditorArgs, OpenInEditorResult } from '../../shared/code-workspace.ts';
-import { resolveInRoot } from './changes.ts';
+import { resolveInRoot } from './path-root.ts';
 
 export interface EditorInvocation {
   command: string;

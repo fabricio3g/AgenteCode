@@ -1,24 +1,13 @@
 // ── Code space panes: terminal, background processes, changes ──────────
+// Background processes and git operations live in the Rust daemon (`agente serve`);
+// Electron only forwards IPC and native OS actions (terminal, open editor, reveal/trash).
 
 import { BrowserWindow, type IpcMain } from 'electron';
+import type { ChangeList, FileDiff, GitBranches, ProcessEvent, PullRequestState, SwitchBranchResult } from '../../shared/code-workspace.ts';
 import { createTerminal, killAllTerminals, killTerminal, resizeTerminal, writeTerminal } from '../terminal.ts';
-import { processRegistry, type ProcessEvent } from '../agente/processes.ts';
-import { fileDiff, listChanges, revertFile } from '../agente/changes.ts';
-import { branchState, switchBranch } from '../agente/git-branches.ts';
-import { pullRequestState } from '../agente/pull-request.ts';
 import { openInEditor } from '../agente/open-editor.ts';
 import { revealPath, trashPath } from '../agente/reveal.ts';
 import { runtimeConnection, rustProcesses } from '../agente/rust-engine.ts';
-import { isRustProcessId } from '../agente/rust-processes.ts';
-
-async function tryDaemonGit<T>(method: string, params: Record<string, unknown>): Promise<T | null> {
-  try {
-    const client = await runtimeConnection();
-    return await client.request<T>(method, params);
-  } catch {
-    return null;
-  }
-}
 
 function broadcast(event: ProcessEvent): void {
   for (const win of BrowserWindow.getAllWindows()) {
@@ -26,10 +15,14 @@ function broadcast(event: ProcessEvent): void {
   }
 }
 
+async function daemonGit<T>(method: string, params: Record<string, unknown>): Promise<T> {
+  const client = await runtimeConnection();
+  return client.request<T>(method, params);
+}
+
 type ChangesArgs = { chatId: string; projectRoot: string };
 
 export function registerCodeWorkspaceHandlers(ipcMain: IpcMain): void {
-  processRegistry.onEvent(broadcast);
   rustProcesses.onEvent(broadcast);
 
   ipcMain.handle('terminal_create', (event, args: { cwd?: string; cols?: number; rows?: number }) =>
@@ -39,54 +32,59 @@ export function registerCodeWorkspaceHandlers(ipcMain: IpcMain): void {
   ipcMain.handle('terminal_resize', (_e, args: { id: string; cols: number; rows: number }) => resizeTerminal(args.id, args.cols, args.rows));
   ipcMain.handle('terminal_kill', (_e, args: { id: string }) => killTerminal(args.id));
 
-  // Processes of Rust-engine chats live in the runtime (rs- ids).
-  ipcMain.handle('agente_process_list', (_e, args: { chatId?: string }) => [
-    ...processRegistry.list(args?.chatId),
-    ...rustProcesses.list(args?.chatId)
-  ]);
+  ipcMain.handle('agente_process_list', (_e, args: { chatId?: string }) =>
+    rustProcesses.list(args?.chatId)
+  );
   ipcMain.handle('agente_process_output', (_e, args: { id: string }) =>
-    isRustProcessId(args.id) ? rustProcesses.output(args.id) : (processRegistry.output(args.id) ?? '')
+    rustProcesses.output(args.id)
   );
   ipcMain.handle('agente_process_start', async (_e, args: { chatId: string; command: string; cwd: string }) => {
     const started = await rustProcesses.start(args);
-    return started ?? processRegistry.start(args);
+    if (!started) throw new Error('Rust runtime is unavailable to start background processes.');
+    return started;
   });
   ipcMain.handle('agente_process_stop', (_e, args: { id: string }) =>
-    isRustProcessId(args.id) ? rustProcesses.stop(args.id) : processRegistry.stop(args.id)
+    rustProcesses.stop(args.id)
   );
-  ipcMain.handle('agente_process_clear', async (_e, args: { chatId?: string }) => {
-    const localPruned = processRegistry.prune(args?.chatId);
-    const rustPruned = await rustProcesses.prune(args?.chatId);
-    return localPruned + rustPruned;
-  });
+  ipcMain.handle('agente_process_clear', (_e, args: { chatId?: string }) =>
+    rustProcesses.prune(args?.chatId)
+  );
 
-  ipcMain.handle('agente_changes', async (_e, args: ChangesArgs) =>
-    (await tryDaemonGit('git.changes', { project_dir: args.projectRoot })) ?? listChanges(args.projectRoot)
+  ipcMain.handle('agente_changes', async (_e, args: ChangesArgs): Promise<ChangeList> =>
+    daemonGit<ChangeList>('git.changes', { project_dir: args.projectRoot }).catch(() => ({ source: 'none', files: [] }))
   );
-  ipcMain.handle('agente_file_diff', async (_e, args: ChangesArgs & { path: string }) =>
-    (await tryDaemonGit('git.diff', { project_dir: args.projectRoot, path: args.path })) ?? fileDiff(args.projectRoot, args.path)
+  ipcMain.handle('agente_file_diff', (_e, args: ChangesArgs & { path: string }): Promise<FileDiff> =>
+    daemonGit<FileDiff>('git.diff', { project_dir: args.projectRoot, path: args.path })
   );
   ipcMain.handle('agente_revert_file', async (_e, args: ChangesArgs & { path: string }) => {
-    const fromDaemon = await tryDaemonGit<{ ok: boolean }>('git.revert', { project_dir: args.projectRoot, path: args.path });
-    if (fromDaemon?.ok) return fromDaemon;
     try {
-      await revertFile(args.projectRoot, args.path);
+      await daemonGit('git.revert', { project_dir: args.projectRoot, path: args.path });
       return { ok: true };
     } catch (error) {
       return { ok: false, error: (error as Error).message };
     }
   });
 
-  ipcMain.handle('agente_git_branches', async (_e, args: { projectRoot: string }) =>
-    (await tryDaemonGit('git.branches', { project_dir: args.projectRoot })) ?? branchState(args.projectRoot)
+  ipcMain.handle('agente_git_branches', async (_e, args: { projectRoot: string }): Promise<GitBranches> =>
+    daemonGit<GitBranches>('git.branches', { project_dir: args.projectRoot })
+      .catch(() => ({ source: 'none', current: null, detached: false, dirty: false, branches: [] }))
   );
-  ipcMain.handle('agente_git_pull_request', async (_e, args: { projectRoot: string }) =>
-    (await tryDaemonGit('git.pull_request', { project_dir: args.projectRoot })) ?? pullRequestState(args.projectRoot)
+  ipcMain.handle('agente_git_pull_request', async (_e, args: { projectRoot: string }): Promise<PullRequestState> =>
+    daemonGit<PullRequestState>('git.pull_request', { project_dir: args.projectRoot })
+      .catch(() => ({ source: 'none', branch: null, base: null, ahead: 0, compareUrl: null, pr: null }))
   );
-  ipcMain.handle('agente_git_switch_branch', async (_e, args: { projectRoot: string; name: string; create?: boolean }) =>
-    (await tryDaemonGit('git.switch_branch', { project_dir: args.projectRoot, branch: args.name, create: args.create === true }))
-      ?? switchBranch(args.projectRoot, args.name, args.create === true)
-  );
+  ipcMain.handle('agente_git_switch_branch', async (_e, args: { projectRoot: string; name: string; create?: boolean }): Promise<SwitchBranchResult> => {
+    try {
+      return await daemonGit<SwitchBranchResult>('git.switch_branch', {
+        project_dir: args.projectRoot,
+        branch: args.name,
+        create: args.create === true
+      });
+    } catch (error) {
+      return { ok: false, error: (error as Error).message };
+    }
+  });
+
   ipcMain.handle('agente_open_in_editor', (_e, args: { projectRoot: string; path: string; line?: number; editor?: string }) =>
     openInEditor(args)
   );
@@ -100,5 +98,4 @@ export function registerCodeWorkspaceHandlers(ipcMain: IpcMain): void {
 
 export function disposeCodeWorkspace(): void {
   killAllTerminals();
-  processRegistry.killAll();
 }

@@ -6,7 +6,7 @@
 import { shell } from 'electron';
 import fs from 'node:fs';
 import { resolve as resolvePath } from 'node:path';
-import { resolveInRoot } from './changes.ts';
+import { resolveInRoot } from './path-root.ts';
 
 /**
  * Move a project file to the OS trash — the Files screen's delete. Never a hard
