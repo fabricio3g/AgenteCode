@@ -13,7 +13,7 @@ use crate::connection::{parse, Failure};
 use agente_protocol::rpc;
 use base64::Engine;
 
-pub(crate) fn import_media(params: Value) -> Result<Value, Failure> {
+pub(crate) fn import_media(runtime: &RuntimeHandle, params: Value) -> Result<Value, Failure> {
     #[derive(Deserialize)]
     struct MediaParams {
         #[serde(default)]
@@ -35,8 +35,15 @@ pub(crate) fn import_media(params: Value) -> Result<Value, Failure> {
         let path =
             agente_core::media::media_path_from_paste(&path, project_dir.as_deref().unwrap_or("."));
         match path {
-            Some(path) => agente_core::media::attach_file(&path)
-                .map_err(|error| (rpc::INVALID_PARAMS, error.to_string()))?,
+            Some(path) => {
+                if let Some((kind, _)) = agente_core::media::kind_for_path(&path) {
+                    runtime
+                        .check_media_kind_allowed(kind)
+                        .map_err(|error| (rpc::INVALID_PARAMS, error.to_string()))?;
+                }
+                agente_core::media::attach_file(&path)
+                    .map_err(|error| (rpc::INVALID_PARAMS, error.to_string()))?
+            }
             None => None,
         }
     } else {
@@ -48,7 +55,16 @@ pub(crate) fn import_media(params: Value) -> Result<Value, Failure> {
                     "choose an image, audio, video or PDF file".into(),
                 )
             })?;
+        runtime
+            .check_media_kind_allowed(kind)
+            .map_err(|error| (rpc::INVALID_PARAMS, error.to_string()))?;
         let data = data.ok_or_else(|| (rpc::INVALID_PARAMS, "media data is required".into()))?;
+        if data.len() > agente_core::media::max_base64_len(kind) {
+            return Err((
+                rpc::INVALID_PARAMS,
+                format!("{} payload exceeds size limit", kind.label()),
+            ));
+        }
         let bytes = base64::engine::general_purpose::STANDARD
             .decode(&data)
             .map_err(|error| (rpc::INVALID_PARAMS, error.to_string()))?;

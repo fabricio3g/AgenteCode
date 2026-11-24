@@ -27,7 +27,7 @@
 
   let { chatId, projectRoot, section, onclose }: { chatId: string; projectRoot?: string; section: CodeDialog; onclose: () => void } = $props();
 
-  type Settings = { smart_compaction: boolean; compaction_model?: {provider: string; model: string; thinking?: string}; max_parallel_subagents: number; allow_media: string[] };
+  type Settings = { smart_compaction: boolean; compaction_model?: {provider: string; model: string; thinking?: string}; max_parallel_subagents: number; allow_media: string[]; deny_media: string[] };
 
   let info = $state<ProjectInfo | null>(null);
   let servers = $state<McpServer[]>([]);
@@ -40,14 +40,15 @@
   }
   let loading = $state(true);
   let loaded = $state(false);
-  let settings = $state<Settings>({ smart_compaction: false, max_parallel_subagents: 8, allow_media: [] });
+  let settings = $state<Settings>({ smart_compaction: false, max_parallel_subagents: 8, allow_media: [], deny_media: [] });
   const run = $derived(codeStore.runFor(chatId));
   const compactReport = $derived.by(() => {
     const messages = appStore.chats.find(chat => chat.id === chatId)?.messages ?? [];
     for (let index = messages.length - 1; index >= 0; index--) if (messages[index]!.metadata?.codeCompaction) return messages[index]!.metadata!.codeCompaction;
     return undefined;
   });
-  const MEDIA = ['image', 'audio', 'video'] as const;
+  const MEDIA = ['image', 'audio', 'video', 'pdf'] as const;
+  type MediaPolicy = 'ask' | 'allow' | 'block';
   /** Only these sections ask the engine about a project directory. */
   const needsProject = $derived(['skills', 'agents', 'mcp'].includes(section));
 
@@ -60,7 +61,18 @@
     try {
       if (section === 'mcp') servers = await mcpStatus(projectRoot!);
       else if (section === 'sessions') sessions = await invoke<SessionInfo[]>('agente_session_list');
-      else if (section === 'settings') settings = await invoke<Settings>('agente_runtime_settings') ?? settings;
+      else if (section === 'settings') {
+        const fetched = await invoke<Partial<Settings>>('agente_runtime_settings');
+        if (fetched) {
+          settings = {
+            smart_compaction: !!fetched.smart_compaction,
+            compaction_model: fetched.compaction_model,
+            max_parallel_subagents: Number(fetched.max_parallel_subagents ?? 8),
+            allow_media: Array.isArray(fetched.allow_media) ? fetched.allow_media : [],
+            deny_media: Array.isArray(fetched.deny_media) ? fetched.deny_media : []
+          };
+        }
+      }
       else {
         info = projectRoot ? await projectInfo(projectRoot) : null;
       }
@@ -88,8 +100,19 @@
     onclose();
   }
 
-  function toggleMedia(kind: string, on: boolean) {
-    settings.allow_media = on ? [...new Set([...settings.allow_media, kind])] : settings.allow_media.filter((item) => item !== kind);
+  function mediaPolicy(kind: string): MediaPolicy {
+    if (settings.deny_media.includes(kind)) return 'block';
+    if (settings.allow_media.includes(kind)) return 'allow';
+    return 'ask';
+  }
+
+  function setMediaPolicy(kind: string, policy: MediaPolicy) {
+    settings.allow_media = policy === 'allow'
+      ? [...new Set([...settings.allow_media, kind])]
+      : settings.allow_media.filter((item) => item !== kind);
+    settings.deny_media = policy === 'block'
+      ? [...new Set([...settings.deny_media, kind])]
+      : settings.deny_media.filter((item) => item !== kind);
   }
 
   /** Settings apply as they change: there is no Save to forget. */
@@ -97,7 +120,8 @@
     smart: settings.smart_compaction,
     model: settings.compaction_model ?? null,
     parallel: Math.max(1, Math.min(32, Math.round(Number(settings.max_parallel_subagents) || 1))),
-    media: [...settings.allow_media].sort()
+    media: [...settings.allow_media].sort(),
+    deny: [...settings.deny_media].sort()
   });
   let lastSaved = '';
   let saveState = $state<'idle' | 'saving' | 'saved'>('idle');
@@ -106,12 +130,13 @@
   async function saveSettings(next: string, updateUi = true): Promise<void> {
     if (updateUi) saveState = 'saving';
     try {
-      const value = JSON.parse(next) as { smart: boolean; model: Settings['compaction_model'] | null; parallel: number; media: string[] };
+      const value = JSON.parse(next) as { smart: boolean; model: Settings['compaction_model'] | null; parallel: number; media: string[]; deny: string[] };
       await invoke('agente_runtime_configure', {
         smart_compaction: value.smart,
         compaction_model: value.model,
         max_parallel_subagents: value.parallel,
-        allow_media: value.media
+        allow_media: value.media,
+        deny_media: value.deny
       });
       lastSaved = next;
       if (updateUi) {
@@ -236,9 +261,22 @@
 
       <h3 class="group">{$t('code.project.settings.media')}</h3>
       {#each MEDIA as kind (kind)}
+        {@const current = mediaPolicy(kind)}
         <div class="row">
-          <span class="min-w-0 flex-1 row-title">{$t(`code.project.settings.${kind}`)}</span>
-          <Switch label={$t(`code.project.settings.${kind}`)} checked={settings.allow_media.includes(kind)} onchange={(on) => toggleMedia(kind, on)} />
+          <span class="min-w-0 flex-1 row-title">{kind === 'pdf' ? 'PDFs' : $t(`code.project.settings.${kind}`)}</span>
+          <div class="media-policy" role="radiogroup" aria-label={kind === 'pdf' ? 'PDFs' : $t(`code.project.settings.${kind}`)}>
+            {#each (['ask', 'allow', 'block'] as const) as mode (mode)}
+              <button
+                type="button"
+                role="radio"
+                aria-checked={current === mode}
+                class="policy-btn"
+                class:active={current === mode}
+                class:blocked={current === mode && mode === 'block'}
+                onclick={() => setMediaPolicy(kind, mode)}
+              >{mode === 'ask' ? 'Ask' : mode === 'allow' ? 'Allow' : 'Block'}</button>
+            {/each}
+          </div>
         </div>
       {/each}
       <p class="save-state" role="status" aria-live="polite">{saveState === 'saving' ? $t('code.project.settings.saving') : saveState === 'saved' ? $t('code.project.settings.saved') : ''}</p>
@@ -276,5 +314,32 @@
     padding: 0.75rem 0.625rem;
     font-size: var(--text-sm);
     color: var(--muted-foreground);
+  }
+  .media-policy {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.125rem;
+    padding: 0.125rem;
+    border-radius: 0.5rem;
+    background: var(--surface-subtle, rgba(255, 255, 255, 0.04));
+  }
+  .policy-btn {
+    border: 0;
+    background: transparent;
+    color: var(--muted-foreground);
+    font-size: var(--text-xs);
+    font-weight: 500;
+    padding: 0.25rem 0.5rem;
+    border-radius: 0.375rem;
+    cursor: pointer;
+    transition: background var(--motion-instant, 90ms), color var(--motion-instant, 90ms);
+  }
+  .policy-btn:hover { color: var(--foreground); }
+  .policy-btn.active {
+    background: var(--surface-active, rgba(255, 255, 255, 0.1));
+    color: var(--foreground);
+  }
+  .policy-btn.blocked {
+    color: var(--status-warning, #e8793a);
   }
 </style>

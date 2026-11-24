@@ -315,8 +315,35 @@ impl RuntimeHandle {
             "max_parallel_subagents": config.max_parallel_subagents.unwrap_or(8),
             "subagents": config.subagent_settings(),
             "allow_media": config.allow_media,
+            "deny_media": config.deny_media,
             "approved_mcp_servers": config.approved_mcp_servers,
         })
+    }
+
+    /// Reject a media kind when disabled in `deny_media`.
+    pub fn check_media_kind_allowed(
+        &self,
+        kind: agente_protocol::AttachmentKind,
+    ) -> Result<(), RuntimeError> {
+        let live = self.inner.live();
+        if live.app_config.is_media_denied(kind) {
+            return Err(RuntimeError::Config(format!(
+                "{} attachments are disabled in settings",
+                kind.label()
+            )));
+        }
+        Ok(())
+    }
+
+    /// Reject any attachment whose media kind is disabled in `deny_media`.
+    pub fn check_attachments_allowed(
+        &self,
+        attachments: &[agente_protocol::Attachment],
+    ) -> Result<(), RuntimeError> {
+        let live = self.inner.live();
+        live.app_config
+            .check_attachments_allowed(attachments)
+            .map_err(RuntimeError::Config)
     }
 
     /// Each offered provider: whether a key is on hand (auth.json, config or
@@ -731,6 +758,10 @@ impl RuntimeHandle {
 
     /// Resolve a provider and fully prepared `ModelInfo` (with thinking patch
     /// and sampling overrides) for a direct `llm.stream` / `llm.complete` call.
+    /// Supports optional ad-hoc `base_url` / `api_key` overrides for local or
+    /// custom OpenAI-compatible endpoints (strictly validating URL scheme/host
+    /// and rejecting embedded credentials).
+    #[allow(clippy::too_many_arguments)]
     pub fn resolve_llm_request(
         &self,
         provider_id: &str,
@@ -739,6 +770,8 @@ impl RuntimeHandle {
         temperature: Option<f64>,
         top_p: Option<f64>,
         max_tokens: Option<usize>,
+        base_url: Option<&str>,
+        api_key: Option<&str>,
     ) -> Result<
         (
             Arc<dyn agente_core::providers::Provider>,
@@ -747,14 +780,45 @@ impl RuntimeHandle {
         RuntimeError,
     > {
         let live = self.inner.live();
-        let provider = live
-            .provider_registry
-            .get(provider_id)
-            .ok_or_else(|| RuntimeError::Config(format!("Unknown provider: {provider_id}")))?;
+        let canonical_id = if provider_id == "local" {
+            "llamacpp"
+        } else {
+            provider_id
+        };
+        let ad_hoc_url = base_url.map(str::trim).filter(|u| !u.is_empty());
+        let ad_hoc_key = api_key.map(str::trim).filter(|k| !k.is_empty());
+        let is_local_or_custom = matches!(
+            canonical_id,
+            "llamacpp" | "ollama" | "lmstudio" | "custom"
+        ) || canonical_id.starts_with("custom");
+
+        let (provider, effective_id): (Arc<dyn agente_core::providers::Provider>, &str) =
+            if let Some(raw_url) = ad_hoc_url.filter(|_| is_local_or_custom) {
+                let template_id = if live.provider_registry.get(canonical_id).is_some() {
+                    canonical_id
+                } else {
+                    "custom"
+                };
+                let template_provider = live.provider_registry.get(template_id);
+                let built = agente_core::providers::ad_hoc_openai_provider(
+                    template_provider.as_deref().map(|p| p.info()),
+                    template_id,
+                    raw_url,
+                    ad_hoc_key,
+                )
+                .map_err(RuntimeError::Config)?;
+                (built, template_id)
+            } else {
+                let p = live.provider_registry.get(canonical_id).ok_or_else(|| {
+                    RuntimeError::Config(format!("Unknown provider: {provider_id}"))
+                })?;
+                (p, canonical_id)
+            };
+
         let mut model = agente_core::providers::resolve_model_info(
             &live.provider_registry,
             live.catalog.as_deref(),
-            provider_id,
+            effective_id,
             model_id,
         );
         if let Some(error) = model.api.route_error.as_ref() {
@@ -789,6 +853,7 @@ impl RuntimeHandle {
 
     /// Run a stateless, no-tools text completion through the core provider
     /// stack (supports every wire format: OpenAI, Anthropic, Responses, Google).
+    #[allow(clippy::too_many_arguments)]
     pub async fn complete_text(
         &self,
         provider_id: &str,
@@ -796,27 +861,19 @@ impl RuntimeHandle {
         messages: Vec<agente_protocol::Message>,
         max_tokens: Option<usize>,
         session_id: Option<agente_protocol::SessionId>,
+        base_url: Option<&str>,
+        api_key: Option<&str>,
     ) -> Result<String, RuntimeError> {
-        let live = self.inner.live();
-        let provider = live
-            .provider_registry
-            .get(provider_id)
-            .ok_or_else(|| RuntimeError::Config(format!("Unknown provider: {provider_id}")))?;
-        let mut model = agente_core::providers::resolve_model_info(
-            &live.provider_registry,
-            live.catalog.as_deref(),
+        let (provider, model) = self.resolve_llm_request(
             provider_id,
             model_id,
-        );
-        model.options = provider.get_request_options(&model);
-        if let Some(limit) = max_tokens.filter(|limit| *limit > 0) {
-            model.limits.output = model
-                .limits
-                .output
-                .min(limit.try_into().unwrap_or(model.limits.output));
-            model.options.remove("max_tokens");
-            model.options.remove("max_completion_tokens");
-        }
+            None,
+            None,
+            None,
+            max_tokens,
+            base_url,
+            api_key,
+        )?;
         let ctx = agente_core::providers::RequestContext::new(
             session_id
                 .unwrap_or_else(agente_protocol::SessionId::new)

@@ -8,14 +8,34 @@ import type { AgenteClient } from './agente-client.ts';
 
 const activeStreams = new Map();
 
-const RUST_CORE_CLOUD_PROVIDERS = new Set([
+const RUST_CORE_PROVIDERS = new Set([
   'openrouter',
   'deepseek',
   'opencode',
   'opencode-go',
   'minimax',
-  'glm'
+  'glm',
+  'ollama',
+  'lmstudio',
+  'local',
+  'llamacpp',
+  'custom'
 ]);
+
+const LOCAL_OR_CUSTOM_PROVIDERS = new Set(['local', 'llamacpp', 'ollama', 'lmstudio', 'custom']);
+
+function isStrictPolicyError(error: unknown): boolean {
+  const msg = String((error as { message?: string })?.message || error || '').toLowerCase();
+  return (
+    msg.includes('disabled in settings')
+    || msg.includes('only inline base64')
+    || msg.includes('unsupported media type')
+    || msg.includes('signature')
+    || msg.includes('exceeds')
+    || msg.includes('embedded credentials')
+    || msg.includes('invalid base_url')
+  );
+}
 
 type RustChunkNotification = {
   stream_id?: string;
@@ -141,17 +161,23 @@ function toRustMessages(messages: unknown): Array<Record<string, unknown>> | nul
     const msg = raw as Record<string, unknown>;
     const role = String(msg.role || '');
     if (!['system', 'user', 'assistant', 'tool'].includes(role)) return null;
-    let content = '';
+    let content: string | Array<Record<string, unknown>> = '';
     if (typeof msg.content === 'string') {
       content = msg.content;
     } else if (Array.isArray(msg.content)) {
-      // Only convert pure text-part arrays; multimodal image_url parts keep TS path for now.
-      const parts: string[] = [];
+      const parts: Array<Record<string, unknown>> = [];
       for (const part of msg.content) {
-        if (!part || typeof part !== 'object' || (part as Record<string, unknown>).type !== 'text') return null;
-        parts.push(String((part as Record<string, unknown>).text || ''));
+        if (!part || typeof part !== 'object') return null;
+        const p = part as Record<string, unknown>;
+        if (p.type === 'text') {
+          parts.push({ type: 'text', text: String(p.text || '') });
+        } else if (p.type === 'image_url') {
+          parts.push({ type: 'image_url', image_url: p.image_url });
+        } else {
+          return null;
+        }
       }
-      content = parts.join('\n');
+      content = parts;
     } else if (msg.content != null) {
       return null;
     }
@@ -188,8 +214,9 @@ function thinkingLevelFromBody(body: Record<string, unknown>): string | undefine
 
 function canDelegateToRust(providerName: string | undefined, apiKey: string | undefined, body: Record<string, unknown> | undefined): boolean {
   const id = String(providerName || '').trim().toLowerCase();
-  if (!RUST_CORE_CLOUD_PROVIDERS.has(id)) return false;
-  if (apiKey) return false; // Unsaved draft key override
+  if (!RUST_CORE_PROVIDERS.has(id) && !id.startsWith('custom')) return false;
+  // Unsaved draft key overrides for cloud providers stay on TS; local/custom pass ad-hoc api_key to Rust.
+  if (apiKey && !LOCAL_OR_CUSTOM_PROVIDERS.has(id) && !id.startsWith('custom')) return false;
   if (!body || !body.model) return false;
   if (body.response_format || body.stop || body.tool_choice || body.extra_params) return false;
   return true;
@@ -248,10 +275,15 @@ export async function completeChatRequest({ baseUrl, apiKey, providerName, body 
       try {
         const { runtimeConnection } = await import('./agente/rust-engine.ts');
         const client = await runtimeConnection();
+        const providerId = String(providerName).trim().toLowerCase();
+        const isLocalOrCustom = LOCAL_OR_CUSTOM_PROVIDERS.has(providerId) || providerId.startsWith('custom');
+        const resolvedKey = isLocalOrCustom ? resolveApiKey(apiKey, baseUrl, providerName) : undefined;
         const result = await client.request<{ text: string }>('llm.complete', {
-          provider: String(providerName).trim().toLowerCase(),
+          provider: providerId,
           model: String(body.model),
           messages: rustMessages,
+          ...(isLocalOrCustom && baseUrl ? { base_url: String(baseUrl) } : {}),
+          ...(isLocalOrCustom && resolvedKey ? { api_key: resolvedKey } : {}),
           ...(typeof body.max_tokens === 'number' ? { max_tokens: body.max_tokens } : {})
         });
         return {
@@ -261,7 +293,8 @@ export async function completeChatRequest({ baseUrl, apiKey, providerName, body 
           toolCalls: null,
           finishReason: { kind: 'stop', raw: 'stop' }
         };
-      } catch {
+      } catch (err) {
+        if (isStrictPolicyError(err)) throw err;
         // Fall back to TS provider if daemon is offline or route requires TS options.
       }
     }
@@ -347,11 +380,16 @@ export async function startChatStream({ baseUrl, apiKey, providerName, body }, w
           cancelled: false
         });
         try {
+          const providerId = String(providerName).trim().toLowerCase();
+          const isLocalOrCustom = LOCAL_OR_CUSTOM_PROVIDERS.has(providerId) || providerId.startsWith('custom');
+          const resolvedKey = isLocalOrCustom ? resolveApiKey(apiKey, baseUrl, providerName) : undefined;
           await client.request('llm.stream', {
             stream_id: streamId,
-            provider: String(providerName).trim().toLowerCase(),
+            provider: providerId,
             model: String(body.model),
             messages: rustMessages,
+            ...(isLocalOrCustom && baseUrl ? { base_url: String(baseUrl) } : {}),
+            ...(isLocalOrCustom && resolvedKey ? { api_key: resolvedKey } : {}),
             ...(Array.isArray(body.tools) && body.tools.length ? { tools: body.tools } : {}),
             ...(thinkingLevelFromBody(body) ? { thinking_level: thinkingLevelFromBody(body) } : {}),
             ...(typeof body.temperature === 'number' ? { temperature: body.temperature } : {}),
@@ -364,7 +402,21 @@ export async function startChatStream({ baseUrl, apiKey, providerName, body }, w
           rustStreams.delete(streamId);
           throw rpcError;
         }
-      } catch {
+      } catch (err) {
+        if (isStrictPolicyError(err)) {
+          const streamId = crypto.randomUUID();
+          setImmediate(() => {
+            try {
+              win?.webContents?.send('chat-stream-event', {
+                streamId,
+                type: 'error',
+                error: (err as Error)?.message || String(err),
+                errorCode: 'POLICY'
+              });
+            } catch { /* window closed */ }
+          });
+          return { streamId };
+        }
         // Fall through to TS dialect stream if daemon is offline or provider is unconfigured in Rust.
       }
     }

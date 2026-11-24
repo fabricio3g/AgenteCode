@@ -27,8 +27,16 @@ impl App {
         })
     }
 
-    /// Ask first when this kind needs it, otherwise do it.
+    /// Refuse when blocked, ask when this kind needs consent, otherwise do it.
     pub(super) fn request_media(&mut self, request: MediaRequest) {
+        if self.state.config.config.is_media_denied(request.kind) {
+            self.state.ui.show_toast(format!(
+                "{} is disabled in /settings",
+                request.kind.label()
+            ));
+            self.state.ui.needs_render = true;
+            return;
+        }
         if request.needs_consent(&self.state.config.config.allow_media) {
             self.state.ui.media_consent = Some(request);
         } else {

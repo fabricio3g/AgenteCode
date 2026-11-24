@@ -109,9 +109,15 @@ pub struct AppConfig {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub approved_mcp_servers: Vec<String>,
     /// Media kinds opened or attached without asking (`image`, `audio`,
-    /// `video`). Everything else asks first (`/settings`).
+    /// `video`, `pdf`). Everything else asks first (`/settings`), unless
+    /// listed in [`Self::deny_media`].
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub allow_media: Vec<agente_protocol::AttachmentKind>,
+    /// Media kinds strictly disabled across all surfaces (TUI, Desktop,
+    /// daemon `media.import`, `turn.start`, `llm.stream`, `llm.complete`).
+    /// Takes strict precedence over [`Self::allow_media`].
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub deny_media: Vec<agente_protocol::AttachmentKind>,
     /// Persistent agent mode (Plan / Build). Used to restore the mode on next launch.
     #[serde(default)]
     pub default_mode: Option<String>,
@@ -186,6 +192,7 @@ impl Default for AppConfig {
             subagents: SubagentSettings::default(),
             approved_mcp_servers: Vec::new(),
             allow_media: Vec::new(),
+            deny_media: Vec::new(),
             max_iterations: None,
             default_thinking_level: None,
             discovered_models: HashMap::new(),
@@ -443,6 +450,9 @@ impl AppConfig {
         if !other.allow_media.is_empty() {
             self.allow_media = other.allow_media;
         }
+        if !other.deny_media.is_empty() {
+            self.deny_media = other.deny_media;
+        }
         for key in other.approved_mcp_servers {
             if !self.approved_mcp_servers.contains(&key) {
                 self.approved_mcp_servers.push(key);
@@ -467,6 +477,28 @@ impl AppConfig {
                 self.default_model = Some(m);
             }
         }
+    }
+
+    /// True when the user explicitly disabled this media kind (strictly
+    /// overrides `allow_media` across TUI, Desktop, and daemon RPCs).
+    pub fn is_media_denied(&self, kind: agente_protocol::AttachmentKind) -> bool {
+        self.deny_media.contains(&kind)
+    }
+
+    /// Reject any attachment whose media kind is disabled by `deny_media`.
+    pub fn check_attachments_allowed(
+        &self,
+        attachments: &[agente_protocol::Attachment],
+    ) -> Result<(), String> {
+        for attachment in attachments {
+            if self.is_media_denied(attachment.kind) {
+                return Err(format!(
+                    "{} attachments are disabled in settings",
+                    attachment.kind.label()
+                ));
+            }
+        }
+        Ok(())
     }
 
     /// Return a copy of this config with secrets stripped for serialization.

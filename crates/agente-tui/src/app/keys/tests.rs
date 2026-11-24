@@ -85,7 +85,7 @@ fn dropped_media_asks_attaches_and_travels_with_the_message() {
     app.state.config.current_model = "stub-text".into();
     let dir = tempfile::tempdir().unwrap();
     let shot = dir.path().join("my shot.png");
-    std::fs::write(&shot, b"not really a png").unwrap();
+    std::fs::write(&shot, b"\x89PNG\r\n\x1a\n\0\0\0\0").unwrap();
 
     // A terminal drop pastes the (quoted) path.
     app.insert_paste(&format!("'{}'", shot.display()));
@@ -159,10 +159,24 @@ fn always_allow_skips_the_question_next_time() {
     assert_eq!(app.state.input.attachments.len(), 1);
     // Esc on a question declines.
     let png = dir.path().join("x.png");
-    std::fs::write(&png, b"png").unwrap();
+    std::fs::write(&png, b"\x89PNG\r\n\x1a\n\0\0\0\0").unwrap();
     app.insert_paste(&png.to_string_lossy());
     app.handle_key(key(KeyCode::Esc, KeyModifiers::NONE))
         .unwrap();
+    assert_eq!(app.state.input.attachments.len(), 1);
+
+    // Blocked media in deny_media refuses immediately without asking.
+    app.state
+        .config
+        .config
+        .deny_media
+        .push(agente_core::media::AttachmentKind::Image);
+    app.insert_paste(&png.to_string_lossy());
+    assert!(
+        app.state.ui.media_consent.is_none(),
+        "blocked media must not prompt"
+    );
+    assert_eq!(app.state.input.attachments.len(), 1);
     assert_eq!(app.state.input.attachments.len(), 1, "declined");
 }
 

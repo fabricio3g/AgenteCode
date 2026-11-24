@@ -149,13 +149,24 @@ impl App {
                             .show_toast("Change this while the agent is idle".to_string());
                     }
                 }
-                Setting::MediaImages | Setting::MediaAudio | Setting::MediaVideo => {
+                Setting::MediaImages
+                | Setting::MediaAudio
+                | Setting::MediaVideo
+                | Setting::MediaPdf => {
                     if let Some(kind) = SETTINGS[selected].media_kind() {
-                        let allow = &mut self.state.config.config.allow_media;
-                        if let Some(at) = allow.iter().position(|k| *k == kind) {
-                            allow.remove(at);
+                        let cfg = &mut self.state.config.config;
+                        if cfg.deny_media.contains(&kind) {
+                            // block → ask
+                            cfg.deny_media.retain(|k| *k != kind);
+                            cfg.allow_media.retain(|k| *k != kind);
+                        } else if cfg.allow_media.contains(&kind) {
+                            // allow → block
+                            cfg.allow_media.retain(|k| *k != kind);
+                            cfg.deny_media.push(kind);
                         } else {
-                            allow.push(kind);
+                            // ask → allow
+                            cfg.deny_media.retain(|k| *k != kind);
+                            cfg.allow_media.push(kind);
                         }
                         self.state.persist_config();
                     }

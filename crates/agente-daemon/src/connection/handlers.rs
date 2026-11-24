@@ -188,11 +188,15 @@ struct StartProcessParams {
 struct LlmCompleteParams {
     provider: String,
     model: String,
-    messages: Vec<Message>,
+    messages: Vec<Value>,
     #[serde(default)]
     max_tokens: Option<usize>,
     #[serde(default)]
     session_id: Option<SessionId>,
+    #[serde(default)]
+    base_url: Option<String>,
+    #[serde(default)]
+    api_key: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -201,7 +205,7 @@ struct LlmStreamParams {
     stream_id: Option<String>,
     provider: String,
     model: String,
-    messages: Vec<Message>,
+    messages: Vec<Value>,
     #[serde(default)]
     tools: Option<Vec<agente_core::types::ToolDefinition>>,
     #[serde(default)]
@@ -214,6 +218,68 @@ struct LlmStreamParams {
     max_tokens: Option<usize>,
     #[serde(default)]
     session_id: Option<SessionId>,
+    #[serde(default)]
+    base_url: Option<String>,
+    #[serde(default)]
+    api_key: Option<String>,
+}
+
+/// Convert JSON chat messages (supporting both native `Message` objects and
+/// OpenAI-style multimodal `content` arrays with `text` / `image_url` parts)
+/// into core `Message`s while strictly enforcing `deny_media` and inline
+/// base64-only media sandboxing.
+fn parse_llm_messages(
+    runtime: &agente_runtime::RuntimeHandle,
+    raw_messages: Vec<Value>,
+) -> Result<Vec<Message>, Failure> {
+    let mut out = Vec::with_capacity(raw_messages.len());
+    for mut raw in raw_messages {
+        let mut inline_attachments = Vec::new();
+        if let Some(obj) = raw.as_object_mut() {
+            if let Some(parts) = obj.get("content").and_then(Value::as_array).cloned() {
+                let mut text_parts = Vec::new();
+                for part in parts {
+                    let kind = part.get("type").and_then(Value::as_str).unwrap_or("");
+                    match kind {
+                        "text" | "input_text" => {
+                            if let Some(t) = part.get("text").and_then(Value::as_str) {
+                                text_parts.push(t.to_string());
+                            }
+                        }
+                        "image_url" | "input_image" => {
+                            runtime
+                                .check_media_kind_allowed(agente_protocol::AttachmentKind::Image)
+                                .map_err(runtime_failure)?;
+                            let url = part
+                                .get("image_url")
+                                .and_then(|v| v.as_str().or_else(|| v.get("url").and_then(Value::as_str)))
+                                .ok_or_else(|| {
+                                    (rpc::INVALID_PARAMS, "image_url part missing url".into())
+                                })?;
+                            let att = agente_core::media::import_data_url(url, "inline-image")
+                                .map_err(|e| (rpc::INVALID_PARAMS, e.to_string()))?;
+                            inline_attachments.push(att);
+                        }
+                        other => {
+                            return Err((
+                                rpc::INVALID_PARAMS,
+                                format!("unsupported content part type: {other}"),
+                            ));
+                        }
+                    }
+                }
+                obj.insert("content".into(), Value::String(text_parts.join("\n")));
+            }
+        }
+        let mut message: Message = serde_json::from_value(raw)
+            .map_err(|e| (rpc::INVALID_PARAMS, format!("invalid message: {e}")))?;
+        message.attachments.extend(inline_attachments);
+        runtime
+            .check_attachments_allowed(&message.attachments)
+            .map_err(runtime_failure)?;
+        out.push(message);
+    }
+    Ok(out)
 }
 
 #[derive(Deserialize)]
@@ -427,14 +493,18 @@ impl Connection {
             stream_id,
             provider: provider_id,
             model: model_id,
-            messages,
+            messages: raw_messages,
             tools,
             thinking_level,
             temperature,
             top_p,
             max_tokens,
             session_id,
+            base_url,
+            api_key,
         } = parse(params)?;
+
+        let messages = parse_llm_messages(&self.runtime, raw_messages)?;
 
         let (provider, model) = self
             .runtime
@@ -445,6 +515,8 @@ impl Connection {
                 temperature,
                 top_p,
                 max_tokens,
+                base_url.as_deref(),
+                api_key.as_deref(),
             )
             .map_err(runtime_failure)?;
 
@@ -588,13 +660,24 @@ impl Connection {
         let LlmCompleteParams {
             provider,
             model,
-            messages,
+            messages: raw_messages,
             max_tokens,
             session_id,
+            base_url,
+            api_key,
         } = parse(params)?;
+        let messages = parse_llm_messages(&self.runtime, raw_messages)?;
         let text = self
             .runtime
-            .complete_text(&provider, &model, messages, max_tokens, session_id)
+            .complete_text(
+                &provider,
+                &model,
+                messages,
+                max_tokens,
+                session_id,
+                base_url.as_deref(),
+                api_key.as_deref(),
+            )
             .await
             .map_err(runtime_failure)?;
         Ok(json!({ "text": text }))
@@ -749,7 +832,7 @@ impl Connection {
                 }
                 Ok(json!({ "body": runtime.thinking_request(&provider, &model, &level) }))
             }
-            "media.import" => crate::project::import_media(params),
+            "media.import" => crate::project::import_media(runtime, params),
             "media.preview_path" => {
                 let PreviewParams { path } = parse(params)?;
                 let path = agente_core::media::stored_image_path(&path)
@@ -916,6 +999,17 @@ impl Connection {
             }
             "turn.start" => {
                 let mut start: StartTurn = parse(params)?;
+                // Strictly enforce user's disabled media kinds on all incoming attachments.
+                if let Some(prompt) = &start.prompt {
+                    runtime
+                        .check_attachments_allowed(&prompt.attachments)
+                        .map_err(runtime_failure)?;
+                }
+                for msg in &start.conversation {
+                    runtime
+                        .check_attachments_allowed(&msg.attachments)
+                        .map_err(runtime_failure)?;
+                }
                 // Nothing to answer: a blank prompt would start a whole turn
                 // of the model exploring on its own.
                 if start.conversation.is_empty()
@@ -1020,6 +1114,9 @@ impl Connection {
                     content,
                     attachments,
                 } = parse(params)?;
+                runtime
+                    .check_attachments_allowed(&attachments)
+                    .map_err(runtime_failure)?;
                 let mut message = Message::user(content);
                 message.attachments = attachments;
                 Ok(json!({ "ok": runtime.steer_message(turn_id, message) }))

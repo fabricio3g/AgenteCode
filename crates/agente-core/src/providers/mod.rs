@@ -35,6 +35,44 @@ mod transport_tests;
 pub use summarizer::ProviderSummarizer;
 pub use title::generate_session_title;
 
+/// Build an ad-hoc OpenAI-compatible provider for local or custom endpoints,
+/// strictly validating the URL scheme, host, and absence of embedded credentials.
+pub fn ad_hoc_openai_provider(
+    template: Option<&ProviderInfo>,
+    id: &str,
+    base_url: &str,
+    api_key: Option<&str>,
+) -> Result<Arc<dyn Provider>, String> {
+    let raw_url = base_url.trim();
+    let parsed = reqwest::Url::parse(raw_url).map_err(|e| format!("Invalid base_url: {e}"))?;
+    if !matches!(parsed.scheme(), "http" | "https") {
+        return Err("base_url must use http:// or https://".into());
+    }
+    if parsed.host_str().is_none() {
+        return Err("base_url must include a host".into());
+    }
+    if !parsed.username().is_empty() || parsed.password().is_some() {
+        return Err("base_url must not contain embedded credentials".into());
+    }
+    let mut info = template.cloned().unwrap_or_else(|| ProviderInfo {
+        id: id.to_string(),
+        name: id.to_string(),
+        api_format: ApiFormat::OpenAI,
+        base_url: String::new(),
+        api_key: None,
+        env_keys: Vec::new(),
+        headers: HashMap::new(),
+        capabilities: Default::default(),
+        transport: Default::default(),
+        models: Vec::new(),
+    });
+    info.base_url = raw_url.trim_end_matches('/').to_string();
+    if let Some(key) = api_key.map(str::trim).filter(|k| !k.is_empty()) {
+        info.api_key = Some(key.to_string());
+    }
+    Ok(Arc::new(routed::RoutedProvider::new(info, HashMap::new())))
+}
+
 /// Desktop wraps built-in providers in runtime-scoped configuration entries.
 /// Their transport contracts still belong to the underlying provider.
 pub(crate) fn canonical_provider_id(id: &str) -> &str {

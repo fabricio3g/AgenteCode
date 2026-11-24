@@ -97,6 +97,88 @@ fn stored_image_in(root: &Path, path: &Path) -> anyhow::Result<PathBuf> {
     Ok(path)
 }
 
+/// Kind and canonical MIME type from an HTTP/data-URL MIME string.
+/// Strictly allowlists raster images, audio, video, and PDF — rejects SVG,
+/// HTML, scripts, and arbitrary binary types.
+pub fn kind_for_mime(mime: &str) -> Option<(AttachmentKind, &'static str)> {
+    let clean = mime.split(';').next()?.trim().to_ascii_lowercase();
+    Some(match clean.as_str() {
+        "image/png" => (AttachmentKind::Image, "image/png"),
+        "image/jpeg" | "image/jpg" => (AttachmentKind::Image, "image/jpeg"),
+        "image/gif" => (AttachmentKind::Image, "image/gif"),
+        "image/webp" => (AttachmentKind::Image, "image/webp"),
+        "audio/mpeg" | "audio/mp3" => (AttachmentKind::Audio, "audio/mpeg"),
+        "audio/wav" | "audio/x-wav" => (AttachmentKind::Audio, "audio/wav"),
+        "audio/mp4" | "audio/m4a" => (AttachmentKind::Audio, "audio/mp4"),
+        "audio/ogg" => (AttachmentKind::Audio, "audio/ogg"),
+        "audio/flac" => (AttachmentKind::Audio, "audio/flac"),
+        "audio/aac" => (AttachmentKind::Audio, "audio/aac"),
+        "video/mp4" => (AttachmentKind::Video, "video/mp4"),
+        "video/quicktime" => (AttachmentKind::Video, "video/quicktime"),
+        "video/webm" => (AttachmentKind::Video, "video/webm"),
+        "video/mpeg" => (AttachmentKind::Video, "video/mpeg"),
+        "application/pdf" => (AttachmentKind::Pdf, "application/pdf"),
+        _ => return None,
+    })
+}
+
+/// Verify file signature magic bytes for raster images and PDFs so forged
+/// MIME types or script payloads cannot masquerade as media.
+pub fn validate_magic_bytes(bytes: &[u8], kind: AttachmentKind, mime: &str) -> anyhow::Result<()> {
+    let valid = match (kind, mime) {
+        (AttachmentKind::Image, "image/png") => bytes.starts_with(&[0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A]),
+        (AttachmentKind::Image, "image/jpeg") => bytes.len() >= 3 && bytes[0] == 0xFF && bytes[1] == 0xD8 && bytes[2] == 0xFF,
+        (AttachmentKind::Image, "image/gif") => bytes.starts_with(b"GIF87a") || bytes.starts_with(b"GIF89a"),
+        (AttachmentKind::Image, "image/webp") => bytes.len() >= 12 && &bytes[0..4] == b"RIFF" && &bytes[8..12] == b"WEBP",
+        (AttachmentKind::Pdf, "application/pdf") => bytes.starts_with(b"%PDF-"),
+        _ => true,
+    };
+    if !valid {
+        anyhow::bail!("file contents do not match expected {mime} signature");
+    }
+    Ok(())
+}
+
+/// Maximum base64 character length accepted for `kind` before decoding.
+pub fn max_base64_len(kind: AttachmentKind) -> usize {
+    ((max_bytes(kind) as usize) / 3 + 2) * 4 + 64
+}
+
+/// Decode and store a `data:<mime>;base64,<payload>` URL into the content-addressed
+/// attachment store. Rejects remote URLs (`http:`, `https:`, `file:`), SVGs,
+/// oversized base64 strings (before decoding), and invalid magic bytes.
+pub fn import_data_url(data_url: &str, name: &str) -> anyhow::Result<Attachment> {
+    let trimmed = data_url.trim();
+    let rest = trimmed
+        .strip_prefix("data:")
+        .ok_or_else(|| anyhow::anyhow!("only inline base64 data: URLs are accepted"))?;
+    let (header, b64) = rest
+        .split_once(',')
+        .ok_or_else(|| anyhow::anyhow!("malformed data: URL"))?;
+    let is_base64 = header
+        .split(';')
+        .skip(1)
+        .any(|part| part.trim().eq_ignore_ascii_case("base64"));
+    if !is_base64 {
+        anyhow::bail!("data: URL must be base64-encoded");
+    }
+    let mime_raw = header.split(';').next().unwrap_or("").trim();
+    let (kind, mime) = kind_for_mime(mime_raw)
+        .ok_or_else(|| anyhow::anyhow!("unsupported media type: {mime_raw}"))?;
+    if b64.len() > max_base64_len(kind) {
+        anyhow::bail!(
+            "{name} exceeds {} limit for {} attachments",
+            human_bytes(max_bytes(kind)),
+            kind.label()
+        );
+    }
+    let clean_b64: String = b64.chars().filter(|c| !c.is_ascii_whitespace()).collect();
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(&clean_b64)
+        .map_err(|e| anyhow::anyhow!("invalid base64 media payload: {e}"))?;
+    store_bytes(&bytes, name, kind, mime)
+}
+
 /// Store `bytes` (content-addressed, so the same file is kept once).
 pub fn store_bytes(
     bytes: &[u8],
@@ -116,6 +198,7 @@ pub fn store_bytes(
             human_bytes(max_bytes(kind))
         );
     }
+    validate_magic_bytes(bytes, kind, mime)?;
     use sha2::Digest;
     let digest = sha2::Sha256::digest(bytes);
     let hash: String = digest.iter().take(12).map(|b| format!("{b:02x}")).collect();
@@ -542,5 +625,23 @@ pub(crate) mod tests {
             !model_accepts(&model, AttachmentKind::Image),
             "listed modalities win"
         );
+    }
+
+    #[test]
+    fn import_data_url_enforces_sandbox_and_magic_bytes() {
+        // Remote URLs and file:// URLs must be rejected (no SSRF / local file read).
+        assert!(import_data_url("https://example.com/a.png", "a.png").is_err());
+        assert!(import_data_url("file:///etc/passwd", "passwd").is_err());
+        // SVG is scriptable and must be rejected.
+        let svg_b64 = base64::engine::general_purpose::STANDARD.encode("<svg></svg>");
+        assert!(import_data_url(&format!("data:image/svg+xml;base64,{svg_b64}"), "x.svg").is_err());
+        // Forged PNG (HTML bytes with image/png MIME) must be rejected by magic bytes.
+        let forged_b64 = base64::engine::general_purpose::STANDARD.encode("<html>nope</html>");
+        assert!(import_data_url(&format!("data:image/png;base64,{forged_b64}"), "x.png").is_err());
+        // Valid PNG signature passes validation.
+        let png_bytes = [0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A, 0, 0, 0, 0];
+        assert!(validate_magic_bytes(&png_bytes, AttachmentKind::Image, "image/png").is_ok());
+        assert!(validate_magic_bytes(b"%PDF-1.7\n", AttachmentKind::Pdf, "application/pdf").is_ok());
+        assert!(validate_magic_bytes(b"not a pdf", AttachmentKind::Pdf, "application/pdf").is_err());
     }
 }

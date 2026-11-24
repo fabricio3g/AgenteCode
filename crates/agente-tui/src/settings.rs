@@ -20,10 +20,11 @@ pub enum Setting {
     ParallelSubagents,
     ReduceMotion,
     AutoApprove,
-    /// Open/attach images without asking.
+    /// Media capabilities: cycle `ask` → `allow` → `block`.
     MediaImages,
     MediaAudio,
     MediaVideo,
+    MediaPdf,
     Theme,
     /// Which provider `web_search` uses (`web.json`).
     WebSearch,
@@ -38,6 +39,7 @@ pub const SETTINGS: &[Setting] = &[
     Setting::MediaImages,
     Setting::MediaAudio,
     Setting::MediaVideo,
+    Setting::MediaPdf,
     Setting::Theme,
     Setting::WebSearch,
     Setting::SubagentModels,
@@ -50,9 +52,10 @@ impl Setting {
             Self::ParallelSubagents => "Parallel subagents",
             Self::ReduceMotion => "Reduce motion",
             Self::AutoApprove => "Always approve tool calls",
-            Self::MediaImages => "Images",
+            Self::MediaImages => "Images / Vision",
             Self::MediaAudio => "Audio",
             Self::MediaVideo => "Video",
+            Self::MediaPdf => "PDFs",
             Self::Theme => "Theme",
             Self::WebSearch => "Web search",
             Self::SubagentModels => "Subagent models",
@@ -66,6 +69,7 @@ impl Setting {
             Self::MediaImages => Some(AttachmentKind::Image),
             Self::MediaAudio => Some(AttachmentKind::Audio),
             Self::MediaVideo => Some(AttachmentKind::Video),
+            Self::MediaPdf => Some(AttachmentKind::Pdf),
             _ => None,
         }
     }
@@ -75,6 +79,15 @@ impl Setting {
     fn value(self, state: &AppState) -> (String, Style) {
         if self == Self::WebSearch {
             return web_search_value(&WebSettings::load());
+        }
+        if let Some(kind) = self.media_kind() {
+            if state.config.config.is_media_denied(kind) {
+                return ("block".to_string(), style::warning());
+            }
+            if state.config.config.allow_media.contains(&kind) {
+                return ("allow".to_string(), style::accent());
+            }
+            return ("ask".to_string(), style::dim());
         }
         let (text, on) = self.toggle_value(state);
         (text, if on { style::accent() } else { style::dim() })
@@ -93,12 +106,9 @@ impl Setting {
             ),
             Self::ReduceMotion => on_off(state.ui.reduce_motion, "on", "off"),
             Self::AutoApprove => on_off(state.agent.auto_approve_persistent, "on", "off"),
-            Self::MediaImages | Self::MediaAudio | Self::MediaVideo => on_off(
-                self.media_kind()
-                    .is_some_and(|kind| state.config.config.allow_media.contains(&kind)),
-                "allow",
-                "ask",
-            ),
+            Self::MediaImages | Self::MediaAudio | Self::MediaVideo | Self::MediaPdf => {
+                (String::new(), false)
+            }
             Self::Theme => (
                 match crate::style::current_theme() {
                     crate::style::Theme::Dark => "dark",

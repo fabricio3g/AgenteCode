@@ -765,7 +765,7 @@ async function subagentSettings(next: SubagentSettings): Promise<{ ok: boolean }
 
 /** Persist only user settings; endpoint keys and Desktop's MCP token stay live. */
 async function configureSettings(patch: Record<string, unknown>): Promise<{ ok: boolean }> {
-  const allowed = ['smart_compaction', 'compaction_model', 'max_parallel_subagents', 'subagents', 'subagent_models', 'allow_media', 'approved_mcp_servers'];
+  const allowed = ['smart_compaction', 'compaction_model', 'max_parallel_subagents', 'subagents', 'subagent_models', 'allow_media', 'deny_media', 'approved_mcp_servers'];
   if (Object.keys(patch).some((key) => !allowed.includes(key))) throw new Error('Unknown agent setting.');
   if ('max_parallel_subagents' in patch && (!Number.isInteger(patch.max_parallel_subagents) || Number(patch.max_parallel_subagents) < 1 || Number(patch.max_parallel_subagents) > 32)) throw new Error('Choose 1–32 parallel subagents.');
   if (patch.compaction_model != null) {
