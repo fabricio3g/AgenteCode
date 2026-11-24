@@ -197,6 +197,46 @@
     return () => cancelAnimationFrame(frame);
   });
 
+  /*
+   * Conversation search opens a chat and then asks for the message it
+   * matched. The session may still be loading, so the request waits until
+   * that message is in the transcript (or gives up after a few seconds)
+   * instead of leaving the view on the latest turn.
+   */
+  let pendingScrollId = $state<string | null>(null);
+  let pendingScrollTimer: ReturnType<typeof setTimeout> | undefined;
+  $effect(() => {
+    const onRequest = (event: Event) => {
+      const messageId = (event as CustomEvent<{ messageId?: string }>).detail?.messageId;
+      if (!messageId) return;
+      pendingScrollId = messageId;
+      if (pendingScrollTimer) clearTimeout(pendingScrollTimer);
+      pendingScrollTimer = setTimeout(() => (pendingScrollId = null), 5000);
+    };
+    window.addEventListener('scroll-to-chat-message', onRequest);
+    return () => {
+      window.removeEventListener('scroll-to-chat-message', onRequest);
+      if (pendingScrollTimer) clearTimeout(pendingScrollTimer);
+    };
+  });
+  $effect(() => {
+    const messageId = pendingScrollId;
+    if (!messageId || !viewport) return;
+    const index = messages.findIndex((message) => message.id === messageId);
+    if (index < 0) return;
+    pendingScrollId = null;
+    follow.pause();
+    browseTimeline(index);
+    // Two frames: slots off screen render at an estimated height until
+    // laid out, so the second pass lands on the real position.
+    const reveal = () => viewport?.querySelectorAll<HTMLElement>('.code-message-slot')[index]?.scrollIntoView({ block: 'center' });
+    const frame = requestAnimationFrame(() => {
+      reveal();
+      requestAnimationFrame(reveal);
+    });
+    return () => cancelAnimationFrame(frame);
+  });
+
   async function messageAction(message: ChatMessage, action: 'copy' | 'fork' | 'rewind') {
     try {
       if (action === 'copy') {

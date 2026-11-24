@@ -68,4 +68,35 @@ describe('createAutosaveController', () => {
     controller.dispose();
     vi.useRealTimers();
   });
+
+  it('cancel drops a pending write and waits for one under way', async () => {
+    vi.useFakeTimers();
+    const pending = vi.fn(async () => undefined);
+    const idle = createAutosaveController<string>(pending, () => undefined, 300);
+    idle.schedule('aggregator');
+    await idle.cancel();
+    await vi.advanceTimersByTimeAsync(300);
+    expect(pending).not.toHaveBeenCalled();
+    idle.dispose();
+
+    let release: (() => void) | undefined;
+    const order: string[] = [];
+    const running = vi.fn((value: string) => {
+      order.push(`start ${value}`);
+      return new Promise<void>((resolve) => {
+        release = () => { order.push(`end ${value}`); resolve(); };
+      });
+    });
+    const busy = createAutosaveController<string>(running, () => undefined, 10);
+    busy.schedule('aggregator');
+    await vi.advanceTimersByTimeAsync(10);
+    busy.schedule('later');
+    const cancelled = busy.cancel().then(() => order.push('cancelled'));
+    release?.();
+    await cancelled;
+    await vi.advanceTimersByTimeAsync(50);
+    expect(order).toEqual(['start aggregator', 'end aggregator', 'cancelled']);
+    busy.dispose();
+    vi.useRealTimers();
+  });
 });

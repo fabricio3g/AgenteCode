@@ -675,3 +675,66 @@ fn serialize_conversation_includes_roles_and_tool_calls() {
     assert!(text.contains("read_file"));
     assert!(text.contains("a.rs"));
 }
+
+#[test]
+fn normalize_reports_no_change_for_a_valid_exchange() {
+    let mut messages = vec![create_message(Role::User, "go")];
+    messages.extend(tool_exchange(&["a", "b"]));
+    let (_, changed) = normalize_tool_messages_tracked(messages);
+    assert!(!changed, "a complete exchange must not force a token recount");
+}
+
+#[test]
+fn role_order_after_compaction_never_starts_or_doubles_on_assistant() {
+    let messages = vec![
+        create_message(Role::System, "system"),
+        create_message(Role::Assistant, "kept reply"),
+        create_message(Role::Assistant, "another reply"),
+        create_message(Role::User, "next"),
+    ];
+    let repaired = super::normalize::repair_role_order(messages);
+    let roles: Vec<Role> = repaired.iter().map(|m| m.role.clone()).collect();
+    assert_eq!(
+        roles,
+        [
+            Role::System,
+            Role::User,
+            Role::Assistant,
+            Role::User,
+            Role::Assistant,
+            Role::User
+        ]
+    );
+    assert_eq!(repaired[1].content, COMPACTED_GAP_NOTE);
+}
+
+#[test]
+fn consecutive_user_turns_merge_on_the_request_copy() {
+    let mut messages = vec![
+        create_message(Role::System, "system"),
+        create_message(Role::User, "prompt"),
+        create_message(Role::User, "goal reminder"),
+        create_message(Role::User, "budget notice"),
+    ];
+    merge_consecutive_user_turns(&mut messages);
+    assert_eq!(messages.len(), 2);
+    assert_eq!(messages[1].content, "prompt\n\ngoal reminder\n\nbudget notice");
+    assert!(summary_message("x").role == Role::User);
+}
+
+#[test]
+fn a_huge_single_line_recent_tool_result_still_shrinks() {
+    let mut messages = vec![
+        create_message(Role::System, "system"),
+        create_message(Role::User, "read it"),
+    ];
+    let mut exchange = tool_exchange(&["big"]);
+    exchange[1].content = "x".repeat(400_000);
+    messages.extend(exchange);
+    let before = estimate_tokens_for_test(&messages);
+    let compactor = ContextCompactor::new(CompactionStrategy::new(20_000, 8, 0.85));
+    let result = compactor.compact_forced(messages);
+    assert!(result.summary.tokens_saved > 0);
+    assert!(estimate_tokens_for_test(&result.messages) < before / 10);
+    assert!(result.messages.iter().any(|m| m.content.contains("Tool output truncated")));
+}

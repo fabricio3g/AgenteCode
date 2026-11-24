@@ -323,9 +323,10 @@ impl RuntimeHandle {
                     info.last_active = Utc::now();
                 });
         }
+        let turn_prompt = conversation_index.map(|index| conversation[index].content.as_str());
         self.inner
             .lock_edits()
-            .begin_turn(session_id, conversation.len());
+            .begin_turn(session_id, conversation.len(), turn_prompt);
         let task_id = self
             .inner
             .task_sequence

@@ -123,6 +123,8 @@
   <Disclosure
     {id}
     level="step"
+    {kind}
+    {running}
     chevron="trailing"
     disabled={!expandable}
     defaultOpen={isApproval}
@@ -259,8 +261,8 @@
   }
   .out {
     border-radius: 0.5rem;
-    border: 1px solid var(--border-subtle);
-    background: var(--muted);
+    border: 1px solid var(--step-surface-border, var(--border-subtle));
+    background: var(--step-surface-bg, var(--muted));
     color: var(--foreground);
   }
   .out pre {
@@ -274,13 +276,13 @@
   .term {
     overflow: hidden;
     border-radius: 0.625rem;
-    border: 1px solid var(--border);
-    background: var(--card);
+    border: 1px solid var(--step-surface-border, var(--border));
+    background: var(--step-term-bg, var(--card));
   }
   .term-head {
     display:flex; align-items:center; justify-content:space-between; gap:0.5rem;
     padding: 0.375rem 0.625rem;
-    border-bottom: 1px solid var(--border);
+    border-bottom: 1px solid var(--step-surface-border, var(--border));
     white-space: pre-wrap;
     overflow-wrap: anywhere;
     font-family: var(--font-mono, ui-monospace, monospace);

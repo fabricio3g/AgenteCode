@@ -77,6 +77,12 @@ export function classifyNetworkError(err: unknown) {
   return { error_type: 'unknown', retryable: false, hint: 'Unexpected error.' };
 }
 
+const NULL_BODY_STATUSES = new Set([101, 204, 205, 304]);
+
+/**
+ * `fetch` with retries, a timeout and the caller's abort signal covering the
+ * whole exchange: the response comes back with its body already read.
+ */
 export async function fetchWithRetry(url: string, opts: Record<string, unknown> = {}): Promise<Response> {
   const retries = (opts.retries as number | undefined) ?? 2;
   const timeoutMs = (opts.timeout_ms as number | undefined) ?? 15000;
@@ -88,7 +94,7 @@ export async function fetchWithRetry(url: string, opts: Record<string, unknown> 
     const abortFromExternal = () => ctrl.abort(externalSignal?.reason);
     if (externalSignal?.aborted) abortFromExternal();
     else externalSignal?.addEventListener('abort', abortFromExternal, { once: true });
-    const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+    const timer = setTimeout(() => ctrl.abort(new DOMException('Request timeout', 'TimeoutError')), timeoutMs);
     try {
       const resp = await fetch(url, {
         method: (opts.method as string) || 'GET',
@@ -96,9 +102,19 @@ export async function fetchWithRetry(url: string, opts: Record<string, unknown> 
         headers: opts.headers as Record<string, string> | undefined,
         body: opts.body as string | undefined
       });
+      // Read the body while the deadline and the caller's signal still hold:
+      // headers can arrive promptly and the body stall, and a read started
+      // after this returned would outlive both.
+      const body = NULL_BODY_STATUSES.has(resp.status) ? null : await resp.arrayBuffer();
       clearTimeout(timer);
       externalSignal?.removeEventListener('abort', abortFromExternal);
-      return resp;
+      const buffered = new Response(body, {
+        status: resp.status,
+        statusText: resp.statusText,
+        headers: resp.headers
+      });
+      Object.defineProperty(buffered, 'url', { value: resp.url });
+      return buffered;
     } catch (err: unknown) {
       clearTimeout(timer);
       externalSignal?.removeEventListener('abort', abortFromExternal);
@@ -163,18 +179,51 @@ export function coerceSearchText(value: unknown, maxChars = 4000): string {
   return '';
 }
 
+const wordSegmenter = typeof Intl.Segmenter === 'function'
+  ? new Intl.Segmenter(undefined, { granularity: 'word' })
+  : null;
+
+/**
+ * Words of any script: letters and digits, so Arabic, accented Latin and
+ * Japanese queries keep their terms. Text outside ASCII goes through the
+ * word segmenter, which splits unspaced scripts into words.
+ */
 export function tokenize(text: string): string[] {
-  return normalizeWhitespace(text).toLowerCase().match(/[a-z0-9]+/g) || [];
+  const normalized = normalizeWhitespace(text).toLowerCase();
+  if (!normalized) return [];
+  // eslint-disable-next-line no-control-regex
+  if (!wordSegmenter || /^[\x00-\x7f]*$/.test(normalized)) {
+    return normalized.match(/[\p{L}\p{N}]+/gu) || [];
+  }
+  const tokens: string[] = [];
+  for (const part of wordSegmenter.segment(normalized)) {
+    if (part.isWordLike) tokens.push(...(part.segment.match(/[\p{L}\p{N}]+/gu) || []));
+  }
+  return tokens;
 }
 
 export function compactSearchContext(context: unknown, max = 1800): string {
   return normalizeWhitespace(context).slice(0, max);
 }
 
+/**
+ * Whether a query only makes sense with the conversation ("what changed in
+ * that release?"). Freshness words alone ("latest Node.js releases") are not
+ * a reference, and a query that names its subject (a capitalized name, a
+ * version, a dotted name) or is quoted is explicit and sent as typed.
+ */
 function looksContextDependent(query: string): boolean {
-  const normalized = normalizeWhitespace(query).toLowerCase();
+  const normalized = normalizeWhitespace(query);
   if (!normalized) return false;
-  return /\b(this|that|these|those|it|its|he|him|his|she|her|hers|they|them|their|there|latest|recent|current|today|now|news|update|price|stock|version|release)\b/i.test(normalized);
+  if (/["“”]/.test(normalized)) return false;
+  const namesSubject = /\s[A-Z]|\d|\w\.\w/.test(normalized) || /^[A-Z][a-z]*[A-Z]/.test(normalized);
+  const refers = /\b(this|that|these|those|it|its|he|him|his|she|her|hers|they|them|their|there)\b/i.test(normalized);
+  if (refers) {
+    // "that release", "this one": a reference even next to a named subject.
+    return !namesSubject || /\b(this|that|these|those)\s+(one|ones|release|version|update|change|model|product|company|article|paper|page|thing)\b/i.test(normalized);
+  }
+  // A bare follow-up ("and the price?", "why") with no subject of its own.
+  return !namesSubject && tokenize(normalized).length <= 2;
 }
 
 function extractContextTerms(context: string): string[] {
@@ -220,7 +269,7 @@ export function buildEffectiveSearchQuery(query: string, context: string): strin
   const normalizedQuery = normalizeWhitespace(query);
   const normalizedContext = compactSearchContext(context);
   if (!normalizedQuery || !normalizedContext) return normalizedQuery;
-  if (!looksContextDependent(normalizedQuery) && normalizedQuery.length >= 16) return normalizedQuery;
+  if (!looksContextDependent(normalizedQuery)) return normalizedQuery;
 
   const queryTokens = new Set(tokenize(normalizedQuery));
   const contextTerms = extractContextTerms(normalizedContext)
@@ -463,7 +512,8 @@ function dedupeKey(result: SearchResult): string {
 }
 
 function normalizedTitleKey(title: string): string {
-  return tokenize(title).filter((token) => token.length > 2).sort().join(' ');
+  // Numbers stay: "Node 18 docs" and "Node 20 docs" are different pages.
+  return tokenize(title).filter((token) => token.length > 2 || /\d/.test(token)).sort().join(' ');
 }
 
 function parsedRecencyBoost(value: string | null): number {
@@ -486,7 +536,11 @@ export function mergeAndRankResults(results: SearchResult[], query: string, limi
 
   for (const result of results) {
     let key = dedupeKey(result);
-    const titleKey = normalizedTitleKey(result.title);
+    // The same page under two URLs (http/https, a tracking variant) shares a
+    // host and a title; pages on different hosts with one stock title
+    // ("Installation guide") are different sources and keep their own text.
+    const title = normalizedTitleKey(result.title);
+    const titleKey = title ? `${getDomain(result.url)}|${title}` : '';
     if (titleKey && titleKeys.has(titleKey)) key = titleKeys.get(titleKey)!;
     const existing = merged.get(key);
     const reciprocalRank = 1 / (60 + Math.max(1, result.source_rank || 1));

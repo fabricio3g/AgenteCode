@@ -10,7 +10,7 @@
 use std::collections::HashMap;
 use std::path::Path;
 
-use agente_protocol::SessionId;
+use agente_protocol::{Message, Role, SessionId};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -28,6 +28,14 @@ struct Batch {
     conversation_len: usize,
     turn_index: usize,
     created_at: i64,
+    /// Hash of the turn's user message, so a compaction can find where the
+    /// turn now sits in the shorter conversation.
+    #[serde(default)]
+    anchor: Option<u64>,
+    /// Compaction summarized the turn's user message away: the batch no
+    /// longer has a position, only its place in the history.
+    #[serde(default)]
+    unresolved: bool,
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -37,7 +45,16 @@ struct History {
     /// Set when a turn starts; the batch is recorded when it ends.
     #[serde(skip)]
     pending_start: Option<usize>,
+    #[serde(skip)]
+    pending_anchor: Option<u64>,
+    #[serde(skip)]
+    pending_unresolved: bool,
     turn_index: usize,
+    /// After a compaction: the first message kept from before it (what the
+    /// summary, carried skills and notes precede). Batches without a
+    /// position are older than it.
+    #[serde(default)]
+    compacted_floor: Option<usize>,
 }
 
 #[derive(Debug, Default)]
@@ -46,9 +63,18 @@ pub(crate) struct EditLog {
 }
 
 impl EditLog {
-    pub fn begin_turn(&mut self, session_id: SessionId, conversation_len: usize) {
+    /// `prompt` is the turn's user message, the anchor a later compaction
+    /// uses to find the turn again.
+    pub fn begin_turn(
+        &mut self,
+        session_id: SessionId,
+        conversation_len: usize,
+        prompt: Option<&str>,
+    ) {
         let history = self.sessions.entry(session_id).or_default();
         history.pending_start = Some(conversation_len);
+        history.pending_anchor = prompt.map(anchor_of);
+        history.pending_unresolved = false;
         history.turn_index += 1;
     }
 
@@ -57,6 +83,8 @@ impl EditLog {
     pub fn end_turn(&mut self, session_id: SessionId, edits: Vec<FileEdit>) {
         let history = self.sessions.entry(session_id).or_default();
         let start = history.pending_start.take().unwrap_or(0);
+        let anchor = history.pending_anchor.take();
+        let unresolved = std::mem::take(&mut history.pending_unresolved);
         let edits = merge(edits);
         if edits.is_empty() {
             return;
@@ -67,6 +95,8 @@ impl EditLog {
             conversation_len: start,
             turn_index: history.turn_index,
             created_at: chrono::Utc::now().timestamp_millis(),
+            anchor,
+            unresolved,
         });
     }
 
@@ -121,14 +151,20 @@ impl EditLog {
         let first = history
             .undo
             .iter()
-            .position(|batch| batch.conversation_len > conversation_index)
+            .position(|batch| !batch.unresolved && batch.conversation_len > conversation_index)
             .unwrap_or(history.undo.len());
-        let edits = merge(
-            history.undo[first..]
-                .iter()
-                .flat_map(|batch| batch.edits.clone())
-                .collect(),
-        );
+        // Batches whose prompt a compaction summarized away are older than
+        // every message kept from before it. A point inside the compacted
+        // part cannot say which of them came after it: refuse rather than
+        // truncate the conversation and leave their edits on disk.
+        if history
+            .compacted_floor
+            .is_some_and(|floor| conversation_index < floor)
+            && history.undo[..first].iter().any(|batch| batch.unresolved)
+        {
+            return Err(COMPACTED_REWIND.into());
+        }
+        let edits = merge_chain(&history.undo[first..])?;
         apply(&edits, project_dir, Side::Before)?;
         let batches = history.undo.split_off(first);
         let undone = batches.len();
@@ -154,12 +190,7 @@ impl EditLog {
         if first == history.undo.len() {
             return Ok(Vec::new());
         }
-        let edits = merge(
-            history.undo[first..]
-                .iter()
-                .flat_map(|batch| batch.edits.clone())
-                .collect(),
-        );
+        let edits = merge_chain(&history.undo[first..])?;
         let paths = apply(&edits, project_dir, Side::Before)?;
         let batches = history.undo.split_off(first);
         history.redo.extend(batches.into_iter().rev());
@@ -200,14 +231,131 @@ impl EditLog {
         self.sessions.remove(&session_id);
     }
 
-    /// Keep undo/redo after compaction, without stale conversation positions.
-    pub fn compacted(&mut self, session_id: SessionId) {
-        if let Some(history) = self.sessions.get_mut(&session_id) {
-            for batch in history.undo.iter_mut().chain(&mut history.redo) {
-                batch.conversation_len = 0;
+    /// Keep undo/redo after compaction: each batch finds its turn's user
+    /// message in the compacted `conversation` (newest first, so a repeated
+    /// prompt goes to the newest turn); one whose prompt was summarized away
+    /// keeps only its place in the history.
+    pub fn compacted(&mut self, session_id: SessionId, conversation: &[Message]) {
+        let Some(history) = self.sessions.get_mut(&session_id) else {
+            return;
+        };
+        let mut cursor = conversation.len();
+        if history.pending_start.is_some() {
+            match locate(conversation, history.pending_anchor, cursor) {
+                Some(index) => {
+                    history.pending_start = Some(index + 1);
+                    cursor = index;
+                }
+                None => {
+                    history.pending_start = Some(0);
+                    history.pending_unresolved = true;
+                }
             }
-            history.pending_start = Some(0);
         }
+        for batch in history.undo.iter_mut().rev() {
+            let found = if batch.unresolved {
+                None
+            } else {
+                locate(conversation, batch.anchor, cursor)
+            };
+            match found {
+                Some(index) => {
+                    batch.conversation_len = index + 1;
+                    cursor = index;
+                }
+                None => {
+                    batch.conversation_len = 0;
+                    batch.unresolved = true;
+                }
+            }
+        }
+        for batch in &mut history.redo {
+            match locate(conversation, batch.anchor, conversation.len()) {
+                Some(index) => batch.conversation_len = index + 1,
+                None => {
+                    batch.conversation_len = 0;
+                    batch.unresolved = true;
+                }
+            }
+        }
+        history.compacted_floor = Some(
+            conversation
+                .iter()
+                .position(|message| {
+                    !matches!(message.role, Role::System) && !compaction_note(&message.content)
+                })
+                .unwrap_or(conversation.len()),
+        );
+    }
+}
+
+const COMPACTED_REWIND: &str = "This point is in the part of the conversation that was \
+compacted, so its file edits can no longer be matched to it. Use Undo to step back through \
+them instead.";
+
+/// A message compaction itself wrote: the summary, carried skills, a gap
+/// note or the project reminder.
+fn compaction_note(content: &str) -> bool {
+    use agente_core::context::compaction::{CARRIED_SKILLS_HEADING, COMPACTED_GAP_NOTE};
+    content.starts_with("[Conversation summary]")
+        || content.starts_with(CARRIED_SKILLS_HEADING)
+        || content.starts_with(COMPACTED_GAP_NOTE)
+        || content.starts_with(agente_core::context::PROJECT_REMINDER_MARKER)
+}
+
+/// Stable across runs (it is persisted): FNV-1a over the trimmed prompt.
+fn anchor_of(prompt: &str) -> u64 {
+    prompt
+        .trim()
+        .bytes()
+        .fold(0xcbf2_9ce4_8422_2325u64, |hash, byte| {
+            (hash ^ u64::from(byte)).wrapping_mul(0x0100_0000_01b3)
+        })
+}
+
+/// The last user message before `before` whose text hashes to `anchor`.
+fn locate(conversation: &[Message], anchor: Option<u64>, before: usize) -> Option<usize> {
+    let anchor = anchor?;
+    conversation[..before.min(conversation.len())]
+        .iter()
+        .rposition(|message| {
+            matches!(message.role, Role::User) && anchor_of(&message.content) == anchor
+        })
+}
+
+/// Several batches as one edit per file, refusing when a later batch did
+/// not start from what an earlier one left: the file was changed by hand
+/// between those turns, and restoring the first `before` would erase it.
+fn merge_chain(batches: &[Batch]) -> Result<Vec<FileEdit>, String> {
+    let mut merged: Vec<FileEdit> = Vec::new();
+    for edit in batches.iter().flat_map(|batch| batch.edits.iter()) {
+        match merged.iter_mut().find(|existing| existing.path == edit.path) {
+            Some(existing) => {
+                if existing.after != edit.before {
+                    return Err(format!(
+                        "{} was changed between the agent's turns; refusing to overwrite",
+                        edit.path
+                    ));
+                }
+                existing.after = edit.after.clone();
+            }
+            None => merged.push(edit.clone()),
+        }
+    }
+    merged.retain(|edit| edit.before != edit.after);
+    Ok(merged)
+}
+
+/// What a file holds now: `None` only when it does not exist. A file that
+/// is there but unreadable or not UTF-8 is not "missing": treating it so let
+/// redo overwrite a file someone recreated with other bytes.
+fn read_current(path: &Path, shown: &str) -> Result<Option<String>, String> {
+    match std::fs::read(path) {
+        Ok(bytes) => String::from_utf8(bytes).map(Some).map_err(|_| {
+            format!("{shown} changed since (it is not UTF-8 text); refusing to overwrite")
+        }),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(format!("{shown}: {error}")),
     }
 }
 
@@ -254,7 +402,7 @@ enum Side {
 /// nothing.
 fn apply(edits: &[FileEdit], project_dir: &str, side: Side) -> Result<Vec<String>, String> {
     for edit in edits {
-        let current = std::fs::read_to_string(Path::new(project_dir).join(&edit.path)).ok();
+        let current = read_current(&Path::new(project_dir).join(&edit.path), &edit.path)?;
         let (expected, _) = pick(edit, side);
         if &current != expected {
             return Err(format!(
@@ -322,7 +470,7 @@ mod tests {
         std::fs::write(dir.join("a.txt"), "v2").unwrap();
         std::fs::write(dir.join("new.txt"), "fresh").unwrap();
         let mut log = EditLog::default();
-        log.begin_turn(session, 2);
+        log.begin_turn(session, 2, None);
         log.end_turn(
             session,
             vec![
@@ -360,7 +508,7 @@ mod tests {
         std::fs::write(dir.join("a.txt"), "agent").unwrap();
         std::fs::write(dir.join("b.txt"), "mine now").unwrap();
         let mut log = EditLog::default();
-        log.begin_turn(session, 2);
+        log.begin_turn(session, 2, None);
         log.end_turn(
             session,
             vec![
@@ -391,7 +539,7 @@ mod tests {
         std::fs::write(dir.join("a.txt"), "t3").unwrap();
         let mut log = EditLog::default();
         for (start, before, after) in [(2, "t0", "t1"), (5, "t1", "t2"), (8, "t2", "t3")] {
-            log.begin_turn(session, start);
+            log.begin_turn(session, start, None);
             log.end_turn(session, vec![edit("a.txt", Some(before), Some(after))]);
         }
 
@@ -410,18 +558,98 @@ mod tests {
         let root = dir.to_str().unwrap();
         let session = SessionId::new();
         let mut log = EditLog::default();
-        log.begin_turn(session, 2);
+        log.begin_turn(session, 2, None);
         log.end_turn(
             session,
             vec![edit("a.txt", Some("original"), Some("agent"))],
         );
-        log.begin_turn(session, 5);
+        log.begin_turn(session, 5, None);
         log.end_turn(session, vec![edit("b.txt", None, Some("new"))]);
         std::fs::write(dir.join("a.txt"), "hand edited").unwrap();
         std::fs::write(dir.join("b.txt"), "new").unwrap();
         assert!(log.rewind(session, 1, root).unwrap_err().contains("a.txt"));
         assert_eq!(read(&dir, "b.txt").as_deref(), Some("new"));
         assert_eq!(log.checkpoints(session).as_array().unwrap().len(), 2);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    fn message(role: Role, content: &str) -> Message {
+        serde_json::from_value(serde_json::json!({ "role": role, "content": content })).unwrap()
+    }
+
+    #[test]
+    fn redo_refuses_a_recreated_file_that_is_not_utf8() {
+        let dir = project("redo-binary");
+        let root = dir.to_str().unwrap();
+        let session = SessionId::new();
+        std::fs::write(dir.join("a.txt"), "agent text").unwrap();
+        let mut log = EditLog::default();
+        log.begin_turn(session, 2, None);
+        log.end_turn(session, vec![edit("a.txt", None, Some("agent text"))]);
+        log.undo(session, root).unwrap();
+        assert_eq!(read(&dir, "a.txt"), None);
+        std::fs::write(dir.join("a.txt"), [0xff, 0xfe, 0x00, 0x80]).unwrap();
+        assert!(log.redo(session, root).unwrap_err().contains("a.txt"));
+        assert_eq!(
+            std::fs::read(dir.join("a.txt")).unwrap(),
+            [0xff, 0xfe, 0x00, 0x80]
+        );
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn rewind_refuses_to_erase_a_hand_edit_made_between_turns() {
+        let dir = project("rewind-between");
+        let root = dir.to_str().unwrap();
+        let session = SessionId::new();
+        let mut log = EditLog::default();
+        log.begin_turn(session, 2, None);
+        log.end_turn(session, vec![edit("a.txt", Some("orig\n"), Some("agent1\n"))]);
+        // The user adds a line by hand; the next turn keeps it.
+        log.begin_turn(session, 5, None);
+        log.end_turn(
+            session,
+            vec![edit("a.txt", Some("agent1\nmine\n"), Some("agent2\nmine\n"))],
+        );
+        std::fs::write(dir.join("a.txt"), "agent2\nmine\n").unwrap();
+        let error = log.rewind(session, 1, root).unwrap_err();
+        assert!(error.contains("a.txt"), "{error}");
+        assert_eq!(read(&dir, "a.txt").as_deref(), Some("agent2\nmine\n"));
+        assert_eq!(log.checkpoints(session).as_array().unwrap().len(), 2);
+        // Undoing one turn at a time still works and keeps the hand edit.
+        log.undo(session, root).unwrap();
+        assert_eq!(read(&dir, "a.txt").as_deref(), Some("agent1\nmine\n"));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn rewind_after_compaction_finds_a_retained_prompt() {
+        let dir = project("rewind-compacted");
+        let root = dir.to_str().unwrap();
+        let session = SessionId::new();
+        std::fs::write(dir.join("a.txt"), "t2").unwrap();
+        let mut log = EditLog::default();
+        // Turn 1 ("old task") at 2, turn 2 ("keep this") at 4.
+        log.begin_turn(session, 2, Some("old task"));
+        log.end_turn(session, vec![edit("a.txt", Some("t0"), Some("t1"))]);
+        log.begin_turn(session, 4, Some("keep this"));
+        log.end_turn(session, vec![edit("a.txt", Some("t1"), Some("t2"))]);
+
+        // Compaction summarized turn 1 away and kept turn 2's prompt.
+        let compacted = vec![
+            message(Role::System, "system"),
+            message(Role::User, "[Conversation summary]\nold task done"),
+            message(Role::User, "keep this"),
+            message(Role::Assistant, "done"),
+        ];
+        log.compacted(session, &compacted);
+
+        // A point inside the summary is refused before anything changes.
+        assert!(log.rewind(session, 1, root).is_err());
+        assert_eq!(read(&dir, "a.txt").as_deref(), Some("t2"));
+        // Back to before the retained prompt (now at index 2): turn 2 only.
+        assert_eq!(log.rewind(session, 2, root).unwrap(), 1);
+        assert_eq!(read(&dir, "a.txt").as_deref(), Some("t1"));
         let _ = std::fs::remove_dir_all(dir);
     }
 
@@ -433,11 +661,11 @@ mod tests {
         std::fs::write(dir.join("a.txt"), "t3").unwrap();
         std::fs::write(dir.join("b.txt"), "b2").unwrap();
         let mut log = EditLog::default();
-        log.begin_turn(session, 1);
+        log.begin_turn(session, 1, None);
         log.end_turn(session, vec![edit("a.txt", Some("t0"), Some("t1"))]);
-        log.begin_turn(session, 3);
+        log.begin_turn(session, 3, None);
         log.end_turn(session, vec![edit("a.txt", Some("t1"), Some("t2"))]);
-        log.begin_turn(session, 5);
+        log.begin_turn(session, 5, None);
         log.end_turn(
             session,
             vec![

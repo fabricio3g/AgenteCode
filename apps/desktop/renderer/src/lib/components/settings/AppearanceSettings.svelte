@@ -13,10 +13,12 @@
   import ColorInput from '$lib/components/ui/ColorInput.svelte';
   import {
     ACCENT_PRESETS,
+    AGENT_STYLE_IDS,
     COMPOSER_STYLE_IDS,
     DEFAULT_APPEARANCE,
     THEME_PRESETS,
     UI_STYLE_IDS,
+    type AgentStyleId,
     type ColorMode,
     type ComposerStyleId,
     type ThemePresetId,
@@ -43,6 +45,10 @@
 
   function selectComposerStyle(composerStyle: ComposerStyleId) {
     appearanceStore.update({ composerStyle });
+  }
+
+  function selectAgentStyle(agentStyle: AgentStyleId) {
+    appearanceStore.update({ agentStyle });
   }
 
   function onCustomColorInput(event: Event) {
@@ -252,6 +258,70 @@
               {#if selected}<Check class="h-3.5 w-3.5 text-[var(--brand-accent)]" />{/if}
             </div>
             <p class="choice-desc">{$t(`appearance.composer_${styleId}_desc`)}</p>
+          </button>
+        {/each}
+      </div>
+    </SettingsRow>
+  </SettingsSection>
+
+  <!-- Agent Activity -->
+  <SettingsSection title={$t('appearance.agentSection')}>
+    <SettingsRow layout="stack" label={$t('appearance.agentStyle')} description={$t('appearance.agentStyleDesc')}>
+      <div class="composer-grid mt-2.5" role="radiogroup" aria-label={$t('appearance.agentStyle')}>
+        {#each AGENT_STYLE_IDS as styleId (styleId)}
+          {@const selected = prefs.agentStyle === styleId}
+          <button
+            type="button"
+            role="radio"
+            aria-checked={selected}
+            class="choice-card composer-card-option"
+            class:is-selected={selected}
+            onclick={() => selectAgentStyle(styleId)}
+          >
+            <div class="agent-wf" data-agent-wf={styleId} aria-hidden="true">
+              {#if styleId === 'agente'}
+                <div class="aw-row is-header"><span class="aw-chev"></span><span class="aw-bar w-1/2"></span></div>
+                <div class="aw-rail-group">
+                  <div class="aw-row"><span class="aw-badge"></span><span class="aw-bar w-2/3"></span><span class="aw-chip"></span></div>
+                  <div class="aw-row is-live"><span class="aw-dot"></span><span class="aw-bar w-1/2"></span></div>
+                </div>
+              {:else if styleId === 'pills'}
+                <div class="aw-pills"><span class="aw-pill"></span><span class="aw-pill is-accent"></span><span class="aw-pill"></span></div>
+                <div class="aw-row is-card"><span class="aw-dot"></span><span class="aw-bar w-2/3"></span><span class="aw-chip"></span></div>
+              {:else if styleId === 'rail'}
+                <div class="aw-spine">
+                  <div class="aw-row"><span class="aw-node"></span><span class="aw-bar w-2/3"></span><span class="aw-chip"></span></div>
+                  <div class="aw-row is-live"><span class="aw-node is-accent"></span><span class="aw-bar w-1/2"></span></div>
+                </div>
+              {:else if styleId === 'spotlight'}
+                <div class="aw-row is-dim"><span class="aw-badge"></span><span class="aw-bar w-3/5"></span></div>
+                <div class="aw-row is-focus is-live"><span class="aw-dot"></span><span class="aw-bar w-2/3"></span><span class="aw-chip"></span></div>
+              {:else if styleId === 'notebook'}
+                <div class="aw-cell"><span class="aw-gutter"><span class="aw-gutter-mark"></span></span><span class="aw-bar w-3/5"></span><span class="aw-chip"></span></div>
+                <div class="aw-cell is-live"><span class="aw-gutter is-accent"><span class="aw-gutter-mark is-accent"></span></span><span class="aw-bar w-1/2"></span><span class="aw-chip"></span></div>
+              {:else if styleId === 'accented'}
+                <div class="aw-row is-bar-neutral"><span class="aw-badge"></span><span class="aw-bar w-2/3"></span><span class="aw-chip"></span></div>
+                <div class="aw-row is-bar-accent is-live"><span class="aw-dot"></span><span class="aw-bar w-1/2"></span><span class="aw-chip"></span></div>
+              {:else if styleId === 'sheet'}
+                <div class="aw-sheet">
+                  <div class="aw-row is-sheet-head"><span class="aw-chev"></span><span class="aw-bar w-1/2"></span></div>
+                  <div class="aw-row"><span class="aw-badge"></span><span class="aw-bar w-2/3"></span><span class="aw-chip"></span></div>
+                  <div class="aw-row is-live"><span class="aw-dot"></span><span class="aw-bar w-1/2"></span></div>
+                </div>
+              {:else if styleId === 'minimal'}
+                <div class="aw-row is-quiet"><span class="aw-bar w-2/3"></span><span class="aw-chip"></span></div>
+                <div class="aw-row is-live"><span class="aw-dot"></span><span class="aw-bar w-1/2"></span></div>
+              {:else}
+                <div class="aw-row is-card"><span class="aw-badge"></span><span class="aw-bar w-2/3"></span><span class="aw-chip"></span></div>
+                <div class="aw-row is-card is-running is-live"><span class="aw-dot"></span><span class="aw-bar w-1/2"></span><span class="aw-chip"></span></div>
+              {/if}
+            </div>
+
+            <div class="choice-header">
+              <span class="choice-title">{$t(`appearance.agent_${styleId}`)}</span>
+              {#if selected}<Check class="h-3.5 w-3.5 text-[var(--brand-accent)]" />{/if}
+            </div>
+            <p class="choice-desc">{$t(`appearance.agent_${styleId}_desc`)}</p>
           </button>
         {/each}
       </div>
@@ -685,5 +755,218 @@
     border-radius: 9999px;
     background: var(--muted-foreground);
     opacity: 0.3;
+  }
+
+  .agent-wf {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 0.3rem;
+    min-height: 3.15rem;
+    padding: 0.4rem 0.45rem;
+    border-radius: 0.45rem;
+    background: var(--background);
+    border: 1px solid var(--border-subtle);
+  }
+  .agent-wf[data-agent-wf='minimal'] {
+    background: transparent;
+    border-color: transparent;
+  }
+  .agent-wf[data-agent-wf='sheet'] {
+    padding: 0.35rem 0.4rem;
+  }
+  .aw-row {
+    display: flex;
+    align-items: center;
+    gap: 0.32rem;
+  }
+  .aw-row.is-dim {
+    opacity: 0.48;
+  }
+  .aw-row.is-quiet {
+    opacity: 0.72;
+  }
+  .aw-chev {
+    width: 0.3rem;
+    height: 0.3rem;
+    border-right: 1.25px solid var(--muted-foreground);
+    border-bottom: 1.25px solid var(--muted-foreground);
+    transform: rotate(45deg);
+    opacity: 0.6;
+    flex: none;
+    margin-left: 0.1rem;
+  }
+  .aw-rail-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    margin-left: 0.22rem;
+    padding-left: 0.45rem;
+    border-left: 1px solid var(--border-hover);
+  }
+  .aw-row.is-card {
+    position: relative;
+    overflow: hidden;
+    padding: 0.22rem 0.35rem;
+    border-radius: 0.35rem;
+    background: var(--card);
+    border: 1px solid var(--border-subtle);
+  }
+  .aw-row.is-card.is-running {
+    border-color: color-mix(in srgb, var(--brand-accent) 45%, var(--border-subtle));
+  }
+  .aw-row.is-card.is-running::before,
+  .aw-row.is-focus::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 12%;
+    width: 42%;
+    height: 1.5px;
+    background: var(--brand-accent);
+  }
+  .aw-row.is-focus {
+    position: relative;
+    overflow: hidden;
+    padding: 0.26rem 0.4rem;
+    border-radius: 0.4rem;
+    background: var(--card);
+    border: 1px solid color-mix(in srgb, var(--brand-accent) 50%, var(--border-subtle));
+    box-shadow: 0 2px 8px rgb(0 0 0 / 0.12);
+  }
+  .aw-spine {
+    display: flex;
+    flex-direction: column;
+    gap: 0.32rem;
+    margin-left: 0.45rem;
+    padding-left: 0.55rem;
+    border-left: 1.5px solid var(--border-hover);
+  }
+  .aw-node {
+    width: 0.58rem;
+    height: 0.58rem;
+    margin-left: calc(-0.55rem - 0.29rem - 0.75px);
+    border-radius: 9999px;
+    border: 1px solid var(--border-hover);
+    background: var(--card);
+    box-shadow: 0 0 0 2px var(--background);
+    flex: none;
+  }
+  .aw-node.is-accent {
+    border-color: var(--brand-accent);
+    background: color-mix(in srgb, var(--brand-accent) 18%, var(--card));
+  }
+  .aw-row.is-bar-neutral,
+  .aw-row.is-bar-accent {
+    padding: 0.22rem 0.35rem;
+    border-radius: 0 0.35rem 0.35rem 0;
+    background: var(--card);
+    border: 1px solid var(--border-subtle);
+    border-left: 2.5px solid color-mix(in srgb, var(--foreground) 25%, transparent);
+  }
+  .aw-row.is-bar-accent {
+    border-left-color: var(--brand-accent);
+  }
+  .aw-cell {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding-right: 0.35rem;
+    border-radius: 0.32rem;
+    background: var(--card);
+    border: 1px solid var(--border-subtle);
+    overflow: hidden;
+  }
+  .aw-gutter {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.15rem;
+    height: 0.95rem;
+    background: color-mix(in srgb, var(--foreground) 3%, var(--background));
+    border-right: 1px solid var(--border-subtle);
+    flex: none;
+  }
+  .aw-gutter.is-accent {
+    background: color-mix(in srgb, var(--brand-accent) 10%, var(--background));
+  }
+  .aw-gutter-mark {
+    width: 0.5rem;
+    height: 2.5px;
+    border-radius: 9999px;
+    background: var(--muted-foreground);
+    opacity: 0.55;
+  }
+  .aw-gutter-mark.is-accent {
+    background: var(--brand-accent);
+    opacity: 0.9;
+  }
+  .aw-sheet {
+    display: flex;
+    flex-direction: column;
+    border-radius: 0.38rem;
+    background: var(--card);
+    border: 1px solid var(--border-subtle);
+    overflow: hidden;
+  }
+  .aw-sheet .aw-row {
+    padding: 0.18rem 0.35rem;
+    border-bottom: 1px solid var(--border-subtle);
+  }
+  .aw-sheet .aw-row.is-sheet-head {
+    background: color-mix(in srgb, var(--foreground) 3%, transparent);
+  }
+  .aw-sheet .aw-row:last-child {
+    border-bottom: 0;
+  }
+  .aw-pills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+  }
+  .aw-pill {
+    width: 1.75rem;
+    height: 0.55rem;
+    border-radius: 9999px;
+    background: var(--card);
+    border: 1px solid var(--border-subtle);
+  }
+  .aw-pill.is-accent {
+    border-color: color-mix(in srgb, var(--brand-accent) 55%, var(--border-subtle));
+    background: color-mix(in srgb, var(--brand-accent) 8%, var(--card));
+  }
+  .aw-badge {
+    width: 0.42rem;
+    height: 0.42rem;
+    border-radius: 2px;
+    background: var(--muted-foreground);
+    opacity: 0.45;
+    flex: none;
+  }
+  .aw-dot {
+    width: 0.375rem;
+    height: 0.375rem;
+    border-radius: 9999px;
+    background: var(--brand-accent);
+    flex: none;
+  }
+  .aw-bar {
+    height: 3.5px;
+    border-radius: 9999px;
+    background: var(--muted-foreground);
+    opacity: 0.35;
+  }
+  .aw-row.is-live .aw-bar,
+  .aw-cell.is-live .aw-bar {
+    background: var(--foreground);
+    opacity: 0.55;
+  }
+  .aw-chip {
+    margin-left: auto;
+    width: 1rem;
+    height: 0.32rem;
+    border-radius: 9999px;
+    background: var(--muted-foreground);
+    opacity: 0.22;
   }
 </style>

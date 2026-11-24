@@ -17,6 +17,7 @@ use std::time::{Duration, Instant};
 
 use futures::StreamExt;
 
+use super::output::{MAX_OUTPUT_BYTES, MAX_OUTPUT_LINES};
 use super::{ToolCore, ToolError, ToolExecutionContext, ToolExecutionMode};
 
 /// A page is read up to this size; html5ever copes with a cut document.
@@ -442,7 +443,7 @@ async fn fetch_page(url: reqwest::Url) -> Result<(Fetched, reqwest::StatusCode),
 
     match classify(&content_type, &bytes) {
         Kind::Html => {
-            let html = decode(&bytes, &content_type);
+            let html = decode(&bytes, &content_type, true);
             let extracted = extract::extract(&html, Some(&final_url));
             page.title = extracted.title;
             page.description = extracted.description.clone();
@@ -466,13 +467,13 @@ async fn fetch_page(url: reqwest::Url) -> Result<(Fetched, reqwest::StatusCode),
             }
         }
         Kind::Json => {
-            let text = decode(&bytes, &content_type);
+            let text = decode(&bytes, &content_type, false);
             page.text = serde_json::from_str::<serde_json::Value>(&text)
                 .ok()
                 .and_then(|value| serde_json::to_string_pretty(&value).ok())
                 .unwrap_or(text);
         }
-        Kind::Text => page.text = decode(&bytes, &content_type),
+        Kind::Text => page.text = decode(&bytes, &content_type, false),
         Kind::Pdf => {
             return Err(ToolError::ExecutionError(format!(
                 "{} is a PDF. web_fetch reads HTML, JSON and text; download it (curl -L -o file.pdf <url>) and extract its text with a PDF tool, or open it in the browser.",
@@ -551,18 +552,38 @@ fn classify(content_type: &str, bytes: &[u8]) -> Kind {
     Kind::Binary
 }
 
-/// Bytes to text in the page's own encoding: the header's charset, else a
-/// `<meta charset>` in the first bytes, else UTF-8 (a BOM wins over both).
-fn decode(bytes: &[u8], content_type: &str) -> String {
+/// Bytes to text in the page's own encoding: the header's charset, else (for
+/// HTML only) a `<meta>` declaration in the first bytes, else UTF-8 (a BOM
+/// wins over all). JSON and text never read their body as metadata: a
+/// literal `charset=` string in a JSON value is data.
+fn decode(bytes: &[u8], content_type: &str, html: bool) -> String {
     let label = charset_in(content_type).or_else(|| {
+        if !html {
+            return None;
+        }
         let head = String::from_utf8_lossy(&bytes[..bytes.len().min(4096)]).to_ascii_lowercase();
-        charset_in(&head)
+        meta_charset(&head)
     });
     let encoding = label
         .and_then(|label| encoding_rs::Encoding::for_label(label.as_bytes()))
         .unwrap_or(encoding_rs::UTF_8);
     let (text, _, _) = encoding.decode(bytes);
     text.into_owned()
+}
+
+/// The charset a `<meta charset>` or `<meta http-equiv content="…;
+/// charset=…">` tag declares; `charset=` in the page's prose is not one.
+fn meta_charset(head: &str) -> Option<String> {
+    let mut rest = head;
+    while let Some(start) = rest.find("<meta") {
+        let tag = &rest[start..];
+        let end = tag.find('>').unwrap_or(tag.len());
+        if let Some(label) = charset_in(&tag[..end]) {
+            return Some(label);
+        }
+        rest = &tag[end..];
+    }
+    None
 }
 
 fn charset_in(text: &str) -> Option<String> {
@@ -598,7 +619,15 @@ fn render_part(page: &Fetched, offset: usize, max_chars: Option<usize>) -> Strin
         ));
         return out;
     }
-    let (part, end) = window(&page.text, offset, max_chars.unwrap_or(usize::MAX));
+    // The registry cuts any result past its byte and line caps, so the part
+    // must fit them with its framing: otherwise the advertised offset would
+    // point past text the model never received.
+    let budget = Budget {
+        chars: max_chars.unwrap_or(usize::MAX),
+        bytes: MAX_OUTPUT_BYTES.saturating_sub(out.len() + FRAMING_RESERVE),
+        lines: MAX_OUTPUT_LINES.saturating_sub(out.lines().count() + 6),
+    };
+    let (part, end) = window(&page.text, offset, budget);
     if offset > 0 || end < total {
         out.push_str(&format!("Part: characters {offset}–{end} of {total}."));
         if end < total {
@@ -617,10 +646,33 @@ fn render_part(page: &Fetched, offset: usize, max_chars: Option<usize>) -> Strin
     out
 }
 
-/// Up to `max` characters from char `offset`, ending at a paragraph (else
-/// line, else word) boundary in the part's last 40% when the text goes on.
+/// Bytes kept free for the part line and the continuation footer.
+const FRAMING_RESERVE: usize = 256;
+
+/// How much one part may hold: the caller's characters and the registry's
+/// byte and line caps.
+#[derive(Clone, Copy)]
+struct Budget {
+    chars: usize,
+    bytes: usize,
+    lines: usize,
+}
+
+impl Budget {
+    #[cfg(test)]
+    fn chars(chars: usize) -> Self {
+        Self {
+            chars,
+            bytes: usize::MAX,
+            lines: usize::MAX,
+        }
+    }
+}
+
+/// Up to the budget from char `offset`, ending at a paragraph (else line,
+/// else word) boundary in the part's last 40% when the text goes on.
 /// Returns the part and the char offset it ends at.
-fn window(text: &str, offset: usize, max: usize) -> (&str, usize) {
+fn window(text: &str, offset: usize, budget: Budget) -> (&str, usize) {
     let byte_at = |chars: usize| {
         text.char_indices()
             .nth(chars)
@@ -629,11 +681,17 @@ fn window(text: &str, offset: usize, max: usize) -> (&str, usize) {
     };
     let start = byte_at(offset);
     let rest = &text[start..];
-    let limit = rest
-        .char_indices()
-        .nth(max)
-        .map(|(i, _)| i)
-        .unwrap_or(rest.len());
+    let mut limit = rest.len();
+    let mut newlines = 0;
+    for (chars, (i, ch)) in rest.char_indices().enumerate() {
+        if chars >= budget.chars || i + ch.len_utf8() > budget.bytes || newlines >= budget.lines {
+            limit = i;
+            break;
+        }
+        if ch == '\n' {
+            newlines += 1;
+        }
+    }
     if limit == rest.len() {
         return (rest, offset + rest.chars().count());
     }
@@ -763,8 +821,48 @@ mod tests {
     }
 
     #[test]
+    fn parts_fit_the_output_caps_and_continue_where_they_stopped() {
+        // 150k characters, multibyte and multiline, with a marker at 52k.
+        let mut text = String::new();
+        while text.chars().count() < 52_000 {
+            text.push_str("línea de texto número uno\n");
+        }
+        text.push_str("MARKER\n");
+        while text.chars().count() < 150_000 {
+            text.push_str("más texto después del marcador\n");
+        }
+        let page = Fetched {
+            url: "https://example.test/big".into(),
+            text: text.clone(),
+            ..Fetched::default()
+        };
+        let mut offset = 0;
+        let mut seen = String::new();
+        for limit in [Some(100_000), None, Some(100_000), None, None, None, None, None] {
+            let out = render_part(&page, offset, limit);
+            assert!(!crate::tools::truncate_output(&out).truncated, "part overflowed the caps");
+            let body = out.split_once("\n\n").map(|(_, b)| b).unwrap_or("");
+            let body = body.split("\n\n[").next().unwrap_or("");
+            seen.push_str(body);
+            let Some(next) = out
+                .split("Continue with offset=")
+                .nth(1)
+                .and_then(|r| r.split('.').next())
+                .and_then(|n| n.parse::<usize>().ok())
+            else {
+                break;
+            };
+            assert!(next > offset);
+            let delivered: String = text.chars().skip(offset).take(next - offset).collect();
+            assert!(body.starts_with(delivered.trim_end()), "offset skips text");
+            offset = next;
+        }
+        assert!(seen.contains("MARKER"));
+    }
+
+    #[test]
     fn window_counts_characters_not_bytes() {
-        let (part, end) = window("été été été", 4, 3);
+        let (part, end) = window("été été été", 4, Budget::chars(3));
         assert_eq!(part, "été");
         assert_eq!(end, 7);
     }
@@ -788,10 +886,25 @@ mod tests {
     fn decoding_follows_the_page_charset() {
         // "café" in Windows-1252.
         let bytes = b"caf\xe9";
-        assert_eq!(decode(bytes, "text/plain; charset=windows-1252"), "café");
+        assert_eq!(
+            decode(bytes, "text/plain; charset=windows-1252", false),
+            "café"
+        );
         let html = b"<html><head><meta charset=\"iso-8859-1\"></head><body>caf\xe9</body></html>";
-        assert!(decode(html, "text/html").contains("café"));
-        assert_eq!(decode("naïve".as_bytes(), "text/plain"), "naïve");
+        assert!(decode(html, "text/html", true).contains("café"));
+        assert_eq!(decode("naïve".as_bytes(), "text/plain", false), "naïve");
+    }
+
+    #[test]
+    fn literal_charset_text_is_not_metadata() {
+        let json = r#"{"name":"café","note":"charset=windows-1252"}"#;
+        assert!(decode(json.as_bytes(), "application/json", false).contains("café"));
+        let text = "café — set charset=windows-1252 in the config";
+        assert_eq!(decode(text.as_bytes(), "text/plain", false), text);
+        let prose = "<html><body><p>café: use charset=windows-1252</p></body></html>";
+        assert!(decode(prose.as_bytes(), "text/html", true).contains("café"));
+        let equiv = b"<html><head><meta http-equiv=\"Content-Type\" content=\"text/html; charset=windows-1252\"></head><body>caf\xe9</body></html>";
+        assert!(decode(equiv, "text/html", true).contains("café"));
     }
 
     #[test]

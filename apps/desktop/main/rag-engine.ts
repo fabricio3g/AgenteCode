@@ -505,11 +505,22 @@ async function queryDocumentsHybrid({ query, chat_id, top_k, scope, files, file_
     wantedDocIds = new Set<string>();
     try {
       const records = await chatDatabase.request<Array<{ hash?: string; name?: string; ragDocId?: string | null }>>('listFileRecords');
+      // A hash names one file. A name can belong to files in several chats
+      // (or two in one): keep every candidate, and let the scope below pick
+      // the ones this chat may read — choosing one record first lost the
+      // in-scope file whenever another chat used the same name.
       const byHash = new Map(records.map((file) => [String(file.hash), file]));
-      const byName = new Map(records.map((file) => [String(file.name).toLowerCase(), file]));
+      const byName = new Map<string, typeof records>();
+      for (const file of records) {
+        const name = String(file.name).toLowerCase();
+        byName.set(name, [...(byName.get(name) || []), file]);
+      }
       for (const entry of wanted) {
-        const file = byHash.get(entry) || byName.get(entry.toLowerCase());
-        if (file?.ragDocId) wantedDocIds.add(String(file.ragDocId));
+        const exact = byHash.get(entry);
+        const matches = exact ? [exact] : byName.get(entry.toLowerCase()) || [];
+        for (const file of matches) {
+          if (file.ragDocId) wantedDocIds.add(String(file.ragDocId));
+        }
       }
     } catch {
       // Without the registry a name filter cannot be resolved; the other

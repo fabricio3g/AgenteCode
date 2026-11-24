@@ -1,6 +1,7 @@
 import { appStore } from '$lib/stores/app.svelte';
 import { isConfigModelReady } from '$lib/stores/chat-model';
 import { approvalsStore } from '$lib/stores/approvals.svelte';
+import { toastStore } from '$lib/stores/toast.svelte';
 import {
   loadCodeProjectsFromDb,
   saveCodeProjectToDb,
@@ -950,6 +951,8 @@ class CodeStore {
     try {
       const result = await steerCodeAgent(chatId, text, attachments);
       if (result.ok) return;
+      // The message stays in the panel to edit or resend; say why.
+      if (result.error) toastStore.error(result.error);
     } catch { /* falls through: back to the panel */ }
     this.#rollbackQueued(run);
     item.sending = false;

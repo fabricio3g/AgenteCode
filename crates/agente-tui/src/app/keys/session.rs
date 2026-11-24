@@ -48,7 +48,7 @@ impl App {
         let total_items = 1 + filtered_count;
 
         if matches!(key.code, KeyCode::Up | KeyCode::Down) {
-            self.state.picker.session_picker_confirm_delete = false;
+            self.state.picker.session_picker_confirm_delete = None;
             step_list_selection(
                 &mut self.state.picker.session_picker_selected,
                 total_items,
@@ -60,11 +60,24 @@ impl App {
         match key.code {
             KeyCode::Esc => {
                 self.state.picker.show_session_picker = false;
-                self.state.picker.session_picker_confirm_delete = false;
+                self.state.picker.session_picker_confirm_delete = None;
             }
             KeyCode::Enter => {
                 let idx = self.state.picker.session_picker_selected;
-                if !self.state.can_replace_session() {
+                let target = (idx > 0)
+                    .then(|| {
+                        self.state
+                            .picker
+                            .sessions
+                            .iter()
+                            .filter(|s| crate::session_picker::session_matches(s, &folder, &query))
+                            .nth(idx - 1)
+                            .map(|meta| meta.session_id)
+                    })
+                    .flatten();
+                if target.is_some_and(|id| self.focus_open_session(id)) {
+                    self.state.picker.close();
+                } else if !self.state.can_replace_session() {
                     self.state.add_system_message(
                         "Stop the agent and running subagents before switching sessions"
                             .to_string(),
@@ -80,20 +93,24 @@ impl App {
             KeyCode::Delete => {
                 let idx = self.state.picker.session_picker_selected;
                 if idx > 0 {
-                    if self.state.picker.session_picker_confirm_delete {
-                        let folder = self.state.picker.session_picker_folder_input.trim();
-                        let query = self.state.picker.session_picker_query.to_lowercase();
-                        let sid = self
-                            .state
-                            .picker
-                            .sessions
-                            .iter()
-                            .filter(|session| {
-                                crate::session_picker::session_matches(session, folder, &query)
-                            })
-                            .nth(idx - 1)
-                            .map(|meta| meta.session_id);
-                        if let Some(sid) = sid {
+                    let folder = self.state.picker.session_picker_folder_input.trim();
+                    let query = self.state.picker.session_picker_query.to_lowercase();
+                    let selected_id = self
+                        .state
+                        .picker
+                        .sessions
+                        .iter()
+                        .filter(|session| {
+                            crate::session_picker::session_matches(session, folder, &query)
+                        })
+                        .nth(idx - 1)
+                        .map(|meta| meta.session_id);
+                    // Confirm only the session the first press armed; a
+                    // selection moved since (hover, query) arms the new one.
+                    if selected_id.is_some()
+                        && self.state.picker.session_picker_confirm_delete == selected_id
+                    {
+                        if let Some(sid) = selected_id {
                             self.persistence.delete(sid);
                             self.state.picker.sessions.retain(|s| s.session_id != sid);
                             self.state
@@ -102,12 +119,12 @@ impl App {
                                 .retain(|s| s.session_id != sid);
                             self.state.ui.needs_render = true;
                         }
-                        self.state.picker.session_picker_confirm_delete = false;
+                        self.state.picker.session_picker_confirm_delete = None;
                         if self.state.picker.session_picker_selected > 0 {
                             self.state.picker.session_picker_selected -= 1;
                         }
                     } else {
-                        self.state.picker.session_picker_confirm_delete = true;
+                        self.state.picker.session_picker_confirm_delete = selected_id;
                     }
                 }
             }

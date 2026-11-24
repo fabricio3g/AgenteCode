@@ -13,6 +13,16 @@ export type AccentPresetId =
   | 'custom';
 export type UiStyleId = 'default' | 'soft' | 'sharp' | 'minimal';
 export type ComposerStyleId = 'agente' | 'pill' | 'card' | 'terminal' | 'minimal';
+export type AgentStyleId =
+  | 'agente'
+  | 'cards'
+  | 'pills'
+  | 'spotlight'
+  | 'rail'
+  | 'accented'
+  | 'notebook'
+  | 'sheet'
+  | 'minimal';
 
 export interface AppearancePrefs {
   mode: ColorMode;
@@ -21,6 +31,7 @@ export interface AppearancePrefs {
   customAccentHex: string;
   uiStyle: UiStyleId;
   composerStyle: ComposerStyleId;
+  agentStyle: AgentStyleId;
   tintedUserBubbles: boolean;
 }
 
@@ -33,6 +44,7 @@ export const DEFAULT_APPEARANCE: AppearancePrefs = {
   customAccentHex: '#e8793a',
   uiStyle: 'default',
   composerStyle: 'agente',
+  agentStyle: 'agente',
   tintedUserBubbles: false
 };
 
@@ -99,11 +111,23 @@ export const ACCENT_PRESETS: readonly AccentPresetMeta[] = [
 
 export const UI_STYLE_IDS: readonly UiStyleId[] = ['default', 'soft', 'sharp', 'minimal'] as const;
 export const COMPOSER_STYLE_IDS: readonly ComposerStyleId[] = ['agente', 'pill', 'card', 'terminal', 'minimal'] as const;
+export const AGENT_STYLE_IDS: readonly AgentStyleId[] = [
+  'agente',
+  'cards',
+  'pills',
+  'spotlight',
+  'rail',
+  'accented',
+  'notebook',
+  'sheet',
+  'minimal'
+] as const;
 
 const THEME_ID_SET = new Set<string>(THEME_PRESETS.map((preset) => preset.id));
 const ACCENT_ID_SET = new Set<string>([...ACCENT_PRESETS.map((preset) => preset.id), 'custom']);
 const UI_STYLE_SET = new Set<string>(UI_STYLE_IDS);
 const COMPOSER_STYLE_SET = new Set<string>(COMPOSER_STYLE_IDS);
+const AGENT_STYLE_SET = new Set<string>(AGENT_STYLE_IDS);
 
 export function normalizeHexColor(value: unknown, fallback = DEFAULT_APPEARANCE.customAccentHex): string {
   if (typeof value !== 'string') return fallback;
@@ -150,6 +174,10 @@ export function parseAppearance(raw: string | null, legacyTheme?: 'light' | 'dar
       typeof saved.composerStyle === 'string' && COMPOSER_STYLE_SET.has(saved.composerStyle)
         ? (saved.composerStyle as ComposerStyleId)
         : base.composerStyle,
+    agentStyle:
+      typeof saved.agentStyle === 'string' && AGENT_STYLE_SET.has(saved.agentStyle)
+        ? (saved.agentStyle as AgentStyleId)
+        : base.agentStyle,
     tintedUserBubbles: saved.tintedUserBubbles === true
   };
 }

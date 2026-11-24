@@ -12,6 +12,7 @@
 
 <script lang="ts">
   import EmptyState from '$lib/components/ui/EmptyState.svelte';
+  import UiButton from '$lib/components/ui/Button.svelte';
   import UiListRow from '$lib/components/ui/ListRow.svelte';
   import UiInput from '$lib/components/ui/Input.svelte';
   import { cn as uiClass } from '$lib/utils/cn';
@@ -83,15 +84,17 @@
     snippet: string | null;
   }
 
-  let dbMatches = $state<Record<string, { messageId: string; content: string }>>({});
+  // Database matches carry the query they answer: rows found for an earlier
+  // query must not stay selectable (or open) while the next lookup runs.
+  let dbMatches = $state<{ query: string; hits: Record<string, { messageId: string; content: string }> }>({ query: '', hits: {} });
   $effect(() => {
     const q = query.trim();
     const unloaded = spaceChats.filter((chat) => chat.messagesLoaded === false).map((chat) => chat.id);
-    if (!q || !unloaded.length) { dbMatches = {}; return; }
+    if (!q || !unloaded.length) { dbMatches = { query: '', hits: {} }; return; }
     let current = true;
     const timer = setTimeout(() => {
       void searchChatsInDb(q, unloaded).then((hits) => {
-        if (current) dbMatches = Object.fromEntries(hits.map((hit) => [hit.chatId, { messageId: hit.messageId, content: hit.content }]));
+        if (current) dbMatches = { query: q, hits: Object.fromEntries(hits.map((hit) => [hit.chatId, { messageId: hit.messageId, content: hit.content }])) };
       });
     }, 150);
     return () => { current = false; clearTimeout(timer); };
@@ -105,9 +108,9 @@
         hits.push({ chat, matchMessageId: null, snippet: null });
         continue;
       }
-      const titleHit = (chat.title || '').toLowerCase().includes(q);
-      const stored = chat.messagesLoaded === false ? dbMatches[chat.id] : undefined;
-      const msg = stored ? { id: stored.messageId, content: stored.content } : chat.messages.find((m) => (m.content || '').toLowerCase().includes(q));
+      const titleHit = (chat.title || '').toLowerCase().includes(q) || displayChatTitle(chat).toLowerCase().includes(q);
+      const stored = chat.messagesLoaded === false && dbMatches.query.toLowerCase() === q ? dbMatches.hits[chat.id] : undefined;
+      const msg = stored ? { id: stored.messageId, content: stored.content } : (chat.messages ?? []).find((m) => (m.content || '').toLowerCase().includes(q));
       if (!titleHit && !msg) continue;
       let snippet: string | null = null;
       if (msg) {
@@ -164,6 +167,7 @@
   $effect(() => {
     const id = activeHit?.chat.id;
     const matchId = activeHit?.matchMessageId;
+    void previewMessages.length;
     if (!id || !previewEnabled) return;
     void tick().then(() => {
       if (!previewScroll) return;

@@ -168,7 +168,9 @@ pub(crate) fn forward_legacy_events(
                 tokens_after,
                 smart,
             } => {
-                inner.lock_edits().compacted(session_id);
+                inner
+                    .lock_edits()
+                    .compacted(session_id, &compacted_conversation);
                 inner.persist_edits(session_id);
                 let revision = replace_conversation(&inner, session_id, compacted_conversation);
                 forwarder.emit(RuntimeEvent::ContextCompacted {

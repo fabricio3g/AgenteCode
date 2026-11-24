@@ -1072,3 +1072,127 @@ async fn explicit_cap_still_stops_the_loop() {
     );
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// Answers in parts: every reply but the last stops at the output limit.
+struct LengthLimitedProvider {
+    info: crate::providers::ProviderInfo,
+    parts: Vec<&'static str>,
+    seen: std::sync::Mutex<Vec<Vec<Message>>>,
+}
+
+#[async_trait::async_trait]
+impl crate::providers::Provider for LengthLimitedProvider {
+    fn info(&self) -> &crate::providers::ProviderInfo {
+        &self.info
+    }
+
+    async fn stream_completion(
+        &self,
+        messages: &[Message],
+        _tools: Option<&[crate::types::ToolDefinition]>,
+        _model: &crate::providers::ModelInfo,
+        sender: tokio::sync::mpsc::Sender<crate::llm::StreamEvent>,
+        _context: crate::providers::RequestContext,
+    ) -> Result<crate::llm::Usage, crate::llm::LlmError> {
+        let call = {
+            let mut seen = self.seen.lock().unwrap();
+            seen.push(messages.to_vec());
+            seen.len() - 1
+        };
+        let last = call + 1 >= self.parts.len();
+        let text = self.parts[call.min(self.parts.len() - 1)];
+        sender
+            .send(crate::llm::StreamEvent::TextDelta(text.to_string()))
+            .await
+            .ok();
+        sender
+            .send(crate::llm::StreamEvent::Done {
+                usage: crate::llm::Usage::default(),
+                stop_reason: if last {
+                    crate::llm::StopReason::Stop
+                } else {
+                    crate::llm::StopReason::Length
+                },
+            })
+            .await
+            .ok();
+        Ok(crate::llm::Usage::default())
+    }
+
+    async fn list_models(&self) -> Result<Vec<crate::providers::ModelInfo>, crate::llm::LlmError> {
+        Ok(Vec::new())
+    }
+}
+
+#[tokio::test]
+async fn a_reply_cut_by_the_output_limit_is_continued() {
+    use crate::cancellation::AbortController;
+    use crate::permissions::{shared_permission_engine, ApprovalBroker};
+
+    let registry = Arc::new(ProviderRegistry::new());
+    let provider = Arc::new(LengthLimitedProvider {
+        info: crate::providers::ProviderInfo {
+            id: "test-length".into(),
+            models: vec![overflow_test_model()],
+            ..Default::default()
+        },
+        parts: vec!["first half", "second half"],
+        seen: std::sync::Mutex::new(Vec::new()),
+    });
+    registry.register("test-length", provider.clone());
+    let (tx, rx) = std::sync::mpsc::channel();
+    let config = AgentRunConfig {
+        session_id: uuid::Uuid::new_v4(),
+        task_id: 1,
+        sender: tx,
+        messages: vec![Message::user("write the essay")],
+        provider_id: "test-length".into(),
+        model: "stub-model".into(),
+        thinking_level: "off".into(),
+        project_dir: ".".into(),
+        max_iterations: Some(5),
+        registry,
+        catalog: None,
+        permission_engine: shared_permission_engine(AgentMode::Build),
+        cancel_signal: AbortController::new().signal(),
+        approval_broker: ApprovalBroker::new(),
+        mcp_manager: None,
+        subagent_host: None,
+        custom_agents: Vec::new(),
+        tool_policy: None,
+        is_subagent: false,
+        depth: 0,
+        loop_nudge_after: DEFAULT_LOOP_NUDGE_AFTER,
+        loop_stop_after: DEFAULT_LOOP_STOP_AFTER,
+        smart_compaction: false,
+        compaction_model: None,
+        user_inbox: None,
+        extra_tools: Vec::new(),
+        only_tools: None,
+        shell_env: Default::default(),
+        initial_gap: 0,
+    };
+    tokio::time::timeout(std::time::Duration::from_secs(5), run_agent_loop(config))
+        .await
+        .expect("turn finishes")
+        .expect("turn completes");
+
+    let seen = provider.seen.lock().unwrap().clone();
+    assert_eq!(seen.len(), 2, "the cut reply was continued once");
+    let second = &seen[1];
+    assert_eq!(second[second.len() - 2].content, "first half");
+    assert!(second
+        .last()
+        .is_some_and(|m| m.role == Role::User && m.content.contains("cut off")));
+    let done = rx
+        .try_iter()
+        .find_map(|e| match e.event {
+            AgentEvent::Done { conversation, .. } => Some(conversation),
+            _ => None,
+        })
+        .expect("Done");
+    assert_eq!(done.last().unwrap().content, "second half");
+    assert!(!done
+        .iter()
+        .any(|m| m.content.contains("response truncated by the model's output limit")));
+}

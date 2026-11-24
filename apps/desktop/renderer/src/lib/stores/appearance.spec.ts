@@ -30,6 +30,7 @@ describe('appearance shared helpers', () => {
         customAccentHex: '#abc',
         uiStyle: 'sharp',
         composerStyle: 'card',
+        agentStyle: 'pills',
         tintedUserBubbles: true
       })
     );
@@ -40,6 +41,7 @@ describe('appearance shared helpers', () => {
       customAccentHex: '#aabbcc',
       uiStyle: 'sharp',
       composerStyle: 'card',
+      agentStyle: 'pills',
       tintedUserBubbles: true
     });
 
@@ -51,6 +53,7 @@ describe('appearance shared helpers', () => {
         customAccentHex: 'not-a-hex',
         uiStyle: 'weird',
         composerStyle: 'floating',
+        agentStyle: 'cyberpunk',
         tintedUserBubbles: 'yes'
       })
     );

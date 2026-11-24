@@ -110,3 +110,22 @@ export async function getEmbeddings(texts) {
 export function clearEmbeddingCache() {
   embeddingCache.clear();
 }
+
+/**
+ * Cosine similarity of two embeddings (0 when either is empty, zero-length
+ * or the sizes differ, as after a model change). The crawler's link scorer
+ * imports it; without it semantic scoring silently stayed off.
+ */
+export function cosineSimilarity(left: ArrayLike<number>, right: ArrayLike<number>): number {
+  if (!left || !right || left.length === 0 || left.length !== right.length) return 0;
+  let dot = 0;
+  let leftNorm = 0;
+  let rightNorm = 0;
+  for (let i = 0; i < left.length; i += 1) {
+    dot += left[i] * right[i];
+    leftNorm += left[i] * left[i];
+    rightNorm += right[i] * right[i];
+  }
+  if (leftNorm === 0 || rightNorm === 0) return 0;
+  return dot / Math.sqrt(leftNorm * rightNorm);
+}

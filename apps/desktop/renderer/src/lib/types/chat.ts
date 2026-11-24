@@ -32,6 +32,12 @@ export interface MessageVersion {
   content: string;
   reasoning?: string;
   createdAt: number;
+  /**
+   * The sources this version's answer cites; its `[n]` markers index into
+   * them. Absent on versions saved before sources moved here, which fall
+   * back to the message's list.
+   */
+  sources?: SearchResult[];
   metadata?: {
     /** Optional reaction chosen by the Home agent for a user message. */
     agentReaction?: string;

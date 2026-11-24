@@ -2584,10 +2584,21 @@ class AppStore {
 
     // A reply that never recorded its first version keeps it as version 1.
     if (!message.versions?.length && message.content) {
-      message.versions = [{ content: message.content, reasoning: message.reasoning || '', createdAt: message.createdAt, metadata: message.metadata }];
+      message.versions = [{ content: message.content, reasoning: message.reasoning || '', createdAt: message.createdAt, metadata: message.metadata, sources: [...(message.sources || [])] }];
     }
+    // Sources belong to the answer that cites them: the version being left
+    // keeps its own, and the new one starts empty, so a retry's `[1]` never
+    // points at the previous answer's first source.
+    const leaving = message.versions?.[message.activeVersion ?? 0];
+    if (leaving && leaving.sources === undefined) leaving.sources = [...(message.sources || [])];
+    nextVersion.sources = [];
+    message.sources = [];
     message.versions = [...(message.versions || []), nextVersion];
     message.activeVersion = message.versions.length - 1;
+    // The array element is the reactive copy the transcript reads; writes to
+    // the plain `nextVersion` object no longer reach it, which left a
+    // finished retry showing its progress placeholder.
+    const liveVersion = message.versions[message.activeVersion];
     message.content = agentic ? optimisticAck(regenPrompt, message.mode === 'agent' ? 'work' : 'lookup') : '';
     message.reasoning = '';
     message.done = false;
@@ -2605,9 +2616,9 @@ class AppStore {
         currentActivity: initial.activity,
         activityLabel: activityLabel(initial.activity)
       };
-      nextVersion.content = message.content;
-      nextVersion.reasoning = message.reasoning;
-      nextVersion.metadata = { ...(nextVersion.metadata || {}), currentActivity: initial.activity, activityLabel: activityLabel(initial.activity), codeTimeline: undefined };
+      liveVersion.content = message.content;
+      liveVersion.reasoning = message.reasoning;
+      liveVersion.metadata = { ...(liveVersion.metadata || {}), currentActivity: initial.activity, activityLabel: activityLabel(initial.activity), codeTimeline: undefined };
       message.artifact = null;
       message.artifacts = [];
       if (this.currentArtifactMessageId === message.id) {
@@ -2619,7 +2630,7 @@ class AppStore {
     await executeChatTurn(this.chatTurnHost, {
       chatId: targetChatId,
       message,
-      targetVersion: nextVersion,
+      targetVersion: liveVersion,
       backendMode: activeBackendMode,
       runMode: message.mode === 'instant' ? 'instant' : message.mode === 'agent' ? 'agent' : 'chat',
       modelLabel: activeModelLabel,
@@ -2681,7 +2692,7 @@ class AppStore {
       onSuccess: async () => {
         if (message.mode === 'slides') {
           try {
-            const slides = await parseSlidesFromMarkdown(nextVersion.content);
+            const slides = await parseSlidesFromMarkdown(liveVersion.content);
             message.slides = slides.length ? slides : [];
           } catch {
             message.slides = [];
@@ -2700,6 +2711,9 @@ class AppStore {
     const next = Math.max(0, Math.min(current + direction, message.versions.length - 1));
     if (next === current) return;
     message.activeVersion = next;
+    // Citations resolve against the shown answer's own sources.
+    const shownSources = message.versions[next]?.sources;
+    if (shownSources) message.sources = [...shownSources];
     if (chat.contextMode === 'roleplay') {
       const version = message.versions[next];
       const snapshot = version.metadata?.roleplay;

@@ -88,14 +88,13 @@ async function run() {
         metadata: { codeTodos: [{ content: 'Read the code', status: 'completed' }, { content: 'Verify the change', status: 'pending' }] }
       });
     })()`);
-    // In Code the session column carries the tasks; the pane strip has no Tasks chip.
-    const tasksPanel = '[data-project-controls=code-a] .tasks';
-    await run(`(async () => { const { projectControls } = await import('/src/lib/features/code/workspace/project-controls.svelte.ts'); projectControls.set(true); })()`);
+    // In Code the main chat column carries the tasks; the pane strip has no Tasks chip.
+    const tasksPanel = '[data-chat-todos=code-a]';
     await new Promise(resolve => setTimeout(resolve, 100));
     assert.equal(await run<boolean>('!document.querySelector("[data-panel-tab=tasks]")'), true, 'Code has no Tasks chip');
     assert.match(await run<string>(`document.querySelector('${tasksPanel}').textContent`), /Verify the change/);
     assert.equal(await run<string>(`document.querySelector('${tasksPanel} [role=progressbar]').getAttribute('aria-valuenow')`), '1');
-    assert.equal(await run<number>(`document.body.textContent.split('Verify the change').length - 1`), 1, 'Tasks render only in the session column');
+    assert.equal(await run<number>(`document.body.textContent.split('Verify the change').length - 1`), 1, 'Tasks render only in the main chat column');
     await run(`(async () => { const { workspaceLayout } = await import('/src/lib/stores/workspace-layout.svelte.ts'); workspaceLayout.show('changes'); })()`);
     await new Promise(resolve => setTimeout(resolve, 100));
     assert.equal(await run<boolean>('!!document.querySelector("[data-workspace-panel=changes]:not([hidden])")'), true);

@@ -413,8 +413,13 @@ impl Connection {
         // delivery and the response may race on separate connection tasks.
         let summary = if smart && tokens_after < tokens_before {
             snapshot.conversation.iter().find_map(|message| {
-                (message.role == agente_protocol::Role::Assistant)
-                    .then(|| message.content.strip_prefix("[Conversation summary]\n"))
+                // User since the checkpoint became a user turn; Assistant in
+                // sessions compacted before that.
+                matches!(
+                    message.role,
+                    agente_protocol::Role::User | agente_protocol::Role::Assistant
+                )
+                .then(|| message.content.strip_prefix("[Conversation summary]\n"))
                     .flatten()
                     .map(str::to_owned)
             })

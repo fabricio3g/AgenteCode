@@ -2,7 +2,7 @@
 <script lang="ts">
   import { setContext, untrack } from 'svelte';
   import { t } from 'svelte-i18n';
-  import { Activity, Bot, ClipboardList, FolderTree, GitCompareArrows, Globe, Image, LayoutGrid, SquareTerminal, X } from '$lib/icons';
+  import { Activity, Bot, ClipboardList, FolderTree, GitCompareArrows, Globe, Image, LayoutGrid, PanelsTopLeft, SquareTerminal, X } from '$lib/icons';
   import type { ChatSession } from '$lib/types/chat';
   import { conversationScope } from '$shared/workspace-scope';
   import { appStore } from '$lib/stores/app.svelte';
@@ -25,7 +25,6 @@
   import SubagentView from './SubagentView.svelte';
   import BoardPanel from './BoardPanel.svelte';
   import { swarmStore } from './swarm.svelte';
-  import { projectControls } from './workspace/project-controls.svelte';
   import { subagentFocus } from './subagent-focus.svelte';
   import CodeSurface from './CodeSurface.svelte';
   import { latestPlan } from './plan-review';
@@ -57,6 +56,7 @@
   const panels = $derived.by(() => {
     const available = !!project;
     const items: WorkspacePanel[] = [
+      { id: 'session', title: $t('sessionHud.title'), icon: PanelsTopLeft, content: sessionPanel, region: 'right', available, open: layout.isOpen('session'), onhide: () => layout.hide('session') },
       { id: 'changes', title: $t('codeWs.changes'), icon: GitCompareArrows, content: changesPanel, region: 'right', available, open: layout.isOpen('changes'), onhide: () => layout.hide('changes') },
       { id: 'files', title: $t('codeWs.files'), icon: FolderTree, content: filesPanel, region: 'right', available, open: layout.isOpen('files'), onhide: () => layout.hide('files') },
       { id: 'plan', title: plan?.title ?? $t('code.plan.title'), icon: ClipboardList, content: planPanel, region: 'right', available, open: layout.isOpen('plan'), onhide: () => layout.hide('plan') },
@@ -89,13 +89,13 @@
     </PaneHeader>
   {/if}
   <WorkspaceHost {panels} {layout}>
-    <div class="conversation-row">
-      <CodeSurface {chat} />
-      {#if project && projectControls.open}<SessionPanel {chat} {project} {layout} {browser} />{/if}
-    </div>
+    <CodeSurface {chat} />
   </WorkspaceHost>
 </div>
 
+{#snippet sessionPanel(state: PanelRenderState)}
+  {#if project}<SessionPanel {chat} {project} {layout} {browser} exposed={state.exposed} />{/if}
+{/snippet}
 {#snippet changesPanel()}
   {#if project}<ChangesPane embedded chatId={chat.id} projectRoot={project.rootPath} sessionId={chat.codeAgent?.sessionId} />{/if}
 {/snippet}
@@ -122,11 +122,6 @@
 
 <style>
   .conversation-workspace { display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; }
-  /* The conversation and its session column share the width: neither covers the other. */
-  .conversation-row { display: flex; flex: 1; min-width: 0; min-height: 0; container-type: inline-size; }
-  /* Too narrow for both (a split, or the dock open on a small window): the
-     conversation keeps the room and the column steps aside until it returns. */
-  @container (max-width: 46rem) { .conversation-row :global(.session-panel) { display: none; } }
   :global(.conversation-header) { container-type:inline-size; }
   .conversation-tools {display:flex;justify-content:flex-end;min-width:0;flex:0 0 auto;margin-left:auto;}
   @container (max-width:26rem) { :global(.conversation-header .changes-badge) {display:none;} }

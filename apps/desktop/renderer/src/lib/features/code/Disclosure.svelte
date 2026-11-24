@@ -28,6 +28,8 @@
     chevron = 'trailing',
     defaultOpen = false,
     disabled = false,
+    kind,
+    running = false,
     onActivate,
     header,
     actions,
@@ -42,6 +44,10 @@
     defaultOpen?: boolean;
     /** A row with nothing to reveal: no chevron, no toggle, no focus stop. */
     disabled?: boolean;
+    /** Semantic kind of step (read, search, edit, command, thought, etc.) for layout themes. */
+    kind?: string;
+    /** True while this step is actively executing. */
+    running?: boolean;
     /** A row that acts instead of opening (a presented plan opens the dock). */
     onActivate?: () => void;
     header: Snippet;
@@ -60,7 +66,7 @@
   }
 </script>
 
-<div class="disclosure level-{level}">
+<div class="disclosure level-{level}" data-step-kind={kind} data-step-running={running ? 'true' : undefined}>
   <div class="row">
     <UiButton variant="plain"
       type="button"
@@ -141,57 +147,74 @@
      around them breathe at `--thread-gap`. */
   .level-block > .body {
     display: flex;
-    flex-direction: column;
-    gap: var(--row-gap, 2px);
-    margin-left: 0.9375rem;
-    padding-left: 0.25rem;
-    border-left: 1px solid var(--border-subtle);
+    flex-direction: var(--block-body-direction, column);
+    flex-wrap: var(--block-body-wrap, nowrap);
+    align-items: var(--block-body-align, stretch);
+    gap: var(--block-body-gap, var(--row-gap, 2px));
+    margin-left: var(--block-body-ml, 0.9375rem);
+    padding-left: var(--block-body-pl, 0.25rem);
+    padding-top: var(--block-body-pt, 0);
+    border-left: var(--block-body-bl, 1px solid var(--border-subtle));
   }
 
   /* ── L2: one tool call ───────────────────────────────────────────────── */
   .level-step > .row > :global(.head.ui-local-2c22291d) {
-    gap: 0.5rem;
-    padding: 0.3125rem 0.5rem;
-    border-radius: 0.5rem;
-    font-size: var(--text-sm);
+    gap: var(--step-head-gap, 0.5rem);
+    padding: var(--step-head-padding, 0.3125rem 0.5rem);
+    border-radius: var(--step-head-radius, 0.5rem);
+    font-size: var(--step-head-font-size, var(--text-sm));
+    min-height: var(--step-head-min-h, 0);
   }
   .level-step > .body {
     display: flex;
     flex-direction: column;
     gap: 0.375rem;
-    padding: 0.5rem 0.5rem 0.5rem var(--step-body-indent, 1.875rem);
+    padding: var(--step-body-padding, 0.5rem 0.5rem 0.5rem var(--step-body-indent, 1.875rem));
+    border-top: var(--step-body-bt, 0);
   }
 
   /* ── L2: a subagent, which is an agent and not a call ────────────────── */
   .level-subagent > .row > :global(.head.ui-local-2c22291d) {
     gap: 0.5rem;
-    padding: 0.375rem 0.5rem;
-    border-radius: 0.5rem;
+    padding: var(--subagent-head-padding, 0.375rem 0.5rem);
+    border-radius: var(--subagent-head-radius, 0.5rem);
     font-size: var(--text-sm);
+    min-height: var(--subagent-head-min-h, 0);
   }
   /* One indent deeper than a step, behind its own rail, and its rows tuck in
-     closer so three levels still fit a narrow window. */
+     closer so three levels still fit a narrow window. Reset `--step-*` so
+     outer layout overrides never leak into nested subagent tool steps. */
   .level-subagent > .body {
     --step-body-indent: 0.875rem;
+    --step-head-gap: 0.5rem;
+    --step-head-padding: 0.3125rem 0.5rem;
+    --step-head-radius: 0.5rem;
+    --step-head-font-size: var(--text-sm);
+    --step-head-min-h: 0;
+    --step-body-padding: 0.5rem 0.5rem 0.5rem 0.875rem;
+    --step-body-bt: 0;
     display: flex;
     flex-direction: column;
     gap: 0.375rem;
-    margin-left: 0.75rem;
-    padding: 0.125rem 0.375rem 0.375rem 0.5rem;
-    border-left: 1px solid var(--border-subtle);
+    margin-left: var(--subagent-body-ml, 0.75rem);
+    padding: var(--subagent-body-padding, 0.125rem 0.375rem 0.375rem 0.5rem);
+    border-left: var(--subagent-body-bl, 1px solid var(--border-subtle));
+    border-top: var(--subagent-body-bt, 0);
   }
 
   /* ── Lq: what the model thought, the quietest row on the page ────────── */
   .level-thought > .row > :global(.head.ui-local-2c22291d) {
-    gap: 0.5rem;
-    padding: 0.3125rem 0.5rem;
-    border-radius: 0.5rem;
+    gap: var(--thought-head-gap, 0.5rem);
+    padding: var(--thought-head-padding, 0.3125rem 0.5rem);
+    border-radius: var(--thought-head-radius, 0.5rem);
     font-size: var(--text-code);
+    min-height: var(--thought-head-min-h, 0);
   }
   .level-thought > .body {
-    margin: 0.125rem 0 0.375rem 0.5rem;
-    padding: 0.125rem 0.5rem 0.125rem 0.75rem;
-    border-left: 1px solid var(--border-subtle);
+    margin: var(--thought-body-margin, 0.125rem 0 0.375rem 0.5rem);
+    padding: var(--thought-body-padding, 0.125rem 0.5rem 0.125rem 0.75rem);
+    border-left: var(--thought-body-bl, 1px solid var(--border-subtle));
+    border-top: var(--thought-body-bt, 0);
     font-size: var(--text-sm);
     line-height: 1.6;
   }

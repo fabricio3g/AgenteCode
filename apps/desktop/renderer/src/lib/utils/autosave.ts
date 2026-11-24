@@ -11,6 +11,12 @@ export interface AutosaveController<T> {
   block(message: string, value?: T): void;
   retry(): void;
   flush(): Promise<void>;
+  /**
+   * Drop the pending value and wait for a write already under way, so an
+   * explicit save made next is the last word (a debounced write of an older
+   * value can no longer land after it).
+   */
+  cancel(): Promise<void>;
   dispose(): void;
 }
 
@@ -25,10 +31,19 @@ export function createAutosaveController<T>(
   let hasValue = false;
   let running = false;
   let disposed = false;
+  let inflight: Promise<void> | null = null;
 
-  async function persist(targetRevision: number, value: T) {
-    if (disposed) return;
-    if (running) return;
+  function persist(targetRevision: number, value: T): Promise<void> {
+    if (disposed || running) return inflight ?? Promise.resolve();
+    const run = persistNow(targetRevision, value);
+    inflight = run;
+    void run.finally(() => {
+      if (inflight === run) inflight = null;
+    });
+    return run;
+  }
+
+  async function persistNow(targetRevision: number, value: T) {
     running = true;
     onstate({ state: 'saving', value });
     try {
@@ -47,7 +62,7 @@ export function createAutosaveController<T>(
     } finally {
       running = false;
       if (targetRevision !== revision && hasValue && latestValue !== undefined && !disposed) {
-        await persist(revision, latestValue);
+        await persistNow(revision, latestValue);
       }
     }
   }
@@ -90,6 +105,14 @@ export function createAutosaveController<T>(
       if (hasValue && latestValue !== undefined) schedule(latestValue);
     },
     flush,
+    async cancel() {
+      if (timer) clearTimeout(timer);
+      timer = undefined;
+      hasValue = false;
+      latestValue = undefined;
+      revision += 1;
+      if (inflight) await inflight.catch(() => undefined);
+    },
     dispose() {
       if (timer) clearTimeout(timer);
       timer = undefined;

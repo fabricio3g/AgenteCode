@@ -100,15 +100,37 @@ function takeawayFromSource(source: SearchResult): string {
   return clean(sentence, 220);
 }
 
+/**
+ * Which source a URL names: scheme and host are case-insensitive and the
+ * fragment never reaches the server, but the path and query are the
+ * site's own (`/docs/Api` and `/docs/API` can be two pages). A source
+ * without a URL is known by its title.
+ */
+export function sourceIdentity(url: unknown, title: unknown = ''): string {
+  const raw = String(url ?? '').trim();
+  if (raw) {
+    try {
+      const parsed = new URL(raw);
+      parsed.hash = '';
+      return parsed.toString();
+    } catch {
+      return raw.replace(/#.*$/, '');
+    }
+  }
+  return clean(title, 240).toLowerCase();
+}
+
 /** Normalize and dedupe sources for research exports. Never invent metadata. */
 export function buildResearchCitations(sources: SearchResult[]): ResearchCitation[] {
   const seen = new Set<string>();
   const out: ResearchCitation[] = [];
   for (const source of sources || []) {
-    const url = clean(source.url, 500);
+    // The whole destination: a long query string can carry the part that
+    // matters (`&page=2`). Only the visible label is ever shortened.
+    const url = String(source.url ?? '').trim();
     const title = clean(source.title || url, 240);
     if (!url && !title) continue;
-    const key = (url || title).toLowerCase().replace(/#.*$/, '');
+    const key = sourceIdentity(url, title);
     if (seen.has(key)) continue;
     seen.add(key);
     out.push({

@@ -133,7 +133,7 @@
       onpointerdown={() => focus(leaf)}
       onfocusin={() => focus(leaf)}
     >
-      <div class="pane-body">
+      <div class="pane-content">
         {#if chat}{#key chat.id}<ConversationWorkspace {chat} split={many}
           onclose={() => {if(workspaceLayout.closePane(leaf.id)&&workspaceLayout.centreChatId)codeStore.openConversation(workspaceLayout.centreChatId);}}
           oncontextmenu={(event) => {event.preventDefault();menuChatId=leaf.chatId;anchorPoint={x:event.clientX,y:event.clientY};menuOpen=true;}}
@@ -179,11 +179,12 @@
     background: var(--chat-bg);
   }
   .pane[hidden] { display:none; }
-  .pane-body {
+  .pane-content {
     display: flex;
     min-width: 0;
     min-height: 0;
     flex: 1;
+    padding: 0;
     overflow: hidden;
   }
   .divider { position: absolute; z-index: 2; }

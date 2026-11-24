@@ -6,7 +6,7 @@ import {
   normalizeProviderName, providerHasCredentials, providerDisplayName, providerCandidates,
   getCacheKey, getCachedResult, setCachedResult, mergeAndRankResults, buildContext,
   buildJinaReaderUrl, toErrorMessage, classifyNetworkError, providerSearchError,
-  REMOVED_SEARCH_PROVIDERS
+  REMOVED_SEARCH_PROVIDERS, tokenize
 } from './search-providers/shared.ts';
 import type { SearchResult } from './search-providers/shared.ts';
 import {
@@ -135,7 +135,11 @@ async function fetchPageContent(url: string, options: Record<string, unknown> = 
 
 /** Prefer pages with more query-relevant title/snippet before scraping. */
 function scoreResultForDeepFetch(result: SearchResult, query: string): number {
-  const terms = normalizeWhitespace(query).toLowerCase().match(/[a-z0-9]+/g)?.filter((t) => t.length > 2).slice(0, 12) || [];
+  // Short words count outside ASCII: a Japanese or Chinese word is often one
+  // or two characters.
+  const terms = tokenize(query)
+    .filter((t) => t.length > 2 || /[^\p{ASCII}]/u.test(t))
+    .slice(0, 12);
   const title = normalizeWhitespace(result.title || '').toLowerCase();
   const snippet = normalizeWhitespace(result.snippet || '').toLowerCase();
   let score = 0;
@@ -204,11 +208,16 @@ async function enrichWithDeepContent(results: SearchResult[], limit: number, emi
         warning: page?.warning,
         scrape_quality: normalizeWhitespace(content).length < 200 ? 'thin' : 'ok'
       };
-      if (!content || normalizeWhitespace(content).length < 200) {
+      // A blocked or thin read ("Sign in to continue") never replaces a
+      // fuller body the provider already returned; the warning stays in
+      // the metadata.
+      const providerBody = item.r.full_content || '';
+      const fetchedLength = normalizeWhitespace(content).length;
+      if (!content || fetchedLength < 200 || fetchedLength < normalizeWhitespace(providerBody).length) {
         return {
           ...item.r,
           title: page?.title || item.r.title,
-          full_content: content || undefined,
+          full_content: normalizeWhitespace(providerBody).length >= fetchedLength ? providerBody : content,
           published_at: page?.published_at || item.r.published_at,
           metadata: meta,
           scrape_quality: 'thin' as const

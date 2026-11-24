@@ -59,9 +59,10 @@ pub fn normalize_tool_messages_tracked(messages: Vec<Message>) -> (Vec<Message>,
                 .is_some_and(|id| expected.remove(id))
             {
                 tool_results.push(tool_result);
+            } else {
+                // A result with a stale/duplicate id is protocol noise — drop it.
+                changed = true;
             }
-            // A result with a stale/duplicate id is protocol noise — drop it.
-            changed = true;
         }
 
         if expected.is_empty() {
@@ -95,6 +96,54 @@ pub fn normalize_tool_messages_tracked(messages: Vec<Message>) -> (Vec<Message>,
     }
 
     (output, changed)
+}
+
+/// Stands in for the user turn compaction removed between two messages.
+pub const COMPACTED_GAP_NOTE: &str = "[Earlier messages were compacted to save context.]";
+
+/// Keep the transcript in an order strict providers accept after
+/// compaction removed messages: the first turn after the system prompt is a
+/// user turn, and two assistant turns never touch. A short user note fills
+/// each gap (the removed turn) instead of guessing at what to merge.
+pub(super) fn repair_role_order(messages: Vec<Message>) -> Vec<Message> {
+    let mut out: Vec<Message> = Vec::with_capacity(messages.len() + 1);
+    for message in messages {
+        if matches!(message.role, Role::Assistant)
+            && out
+                .last()
+                .is_none_or(|prev| matches!(prev.role, Role::System | Role::Assistant))
+        {
+            out.push(Message::user(COMPACTED_GAP_NOTE));
+        }
+        out.push(message);
+    }
+    out
+}
+
+/// Merge runs of plain user messages into one turn (on a request copy):
+/// reminders, a compaction summary, carried skills and queued messages can
+/// otherwise reach the provider as several user turns in a row.
+pub fn merge_consecutive_user_turns(messages: &mut Vec<Message>) {
+    fn plain_user(message: &Message) -> bool {
+        matches!(message.role, Role::User)
+            && message.tool_call_id.is_none()
+            && message.tool_calls.as_ref().is_none_or(Vec::is_empty)
+    }
+    let mut out: Vec<Message> = Vec::with_capacity(messages.len());
+    for message in messages.drain(..) {
+        if let Some(last) = out.last_mut() {
+            if plain_user(last) && plain_user(&message) {
+                if !last.content.is_empty() && !message.content.is_empty() {
+                    last.content.push_str("\n\n");
+                }
+                last.content.push_str(&message.content);
+                last.attachments.extend(message.attachments);
+                continue;
+            }
+        }
+        out.push(message);
+    }
+    *messages = out;
 }
 
 pub(super) fn carries_skill(message: &Message) -> bool {

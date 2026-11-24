@@ -39,12 +39,10 @@
   import { conversationSpend, spendCostLabel } from './accounting';
   import { latestPlan } from './plan-review';
   import { gitPullRequest, mcpStatus, type McpServer } from './code-ipc';
-  import TasksPanel from './TasksPanel.svelte';
   import BranchMenu from './workspace/BranchMenu.svelte';
   import { openFileInEditor } from './workspace/editor-actions';
-  import { projectControls } from './workspace/project-controls.svelte';
 
-  let { chat, project, layout, browser }: { chat: ChatSession; project: CodeProject; layout: WorkspaceLayoutStore; browser: BrowserPanelStore } = $props();
+  let { chat, project, layout, browser, exposed = true }: { chat: ChatSession; project: CodeProject; layout: WorkspaceLayoutStore; browser: BrowserPanelStore; exposed?: boolean } = $props();
 
   const run = $derived(codeStore.runFor(chat.id));
   const branch = $derived(codeWorkspace.branchFor(project.rootPath));
@@ -58,14 +56,12 @@
   const model = $derived([...chat.messages].reverse().find((message) => message.metadata?.modelName)?.metadata?.modelName);
   const worked = $derived(chat.messages.reduce((sum, { metadata: m }) => sum + (m?.codeElapsedMs ?? 0), 0));
 
-  const todos = $derived(codeStore.todosFor(chat));
-
   // What this conversation has running; a process that printed a local
   // address is a server, and its address is the row's link.
   const running = $derived(codeWorkspace.processesFor(chat.id).filter((process) => process.status === 'running'));
   let now = $state(Date.now());
   $effect(() => {
-    if (!running.length) return;
+    if (!exposed || !running.length) return;
     const timer = setInterval(() => (now = Date.now()), 1000);
     return () => clearInterval(timer);
   });
@@ -90,12 +86,14 @@
     servers = nextServers;
   }
   $effect(() => {
+    if (!exposed) return;
     const root = project.rootPath;
     void branch?.current;
     if (run?.running) return;
     void refresh(root);
   });
   $effect(() => {
+    if (!exposed) return;
     const onFocus = () => void refresh(project.rootPath);
     window.addEventListener('focus', onFocus);
     return () => window.removeEventListener('focus', onFocus);
@@ -138,11 +136,10 @@
   ]);
 </script>
 
-<aside class="session-panel" aria-label={$t('sessionHud.title')} data-project-controls={chat.id}>
+<div class="pane-body session-panel" data-project-controls={chat.id}>
   <header class="head">
     <FolderOpen class="size-3.5 shrink-0" />
     <span class="name" title={project.rootPath}>{project.rootName}</span>
-    <IconButton quiet size="xs" label={$t('sessionHud.fold')} onclick={() => projectControls.set(false)}><X /></IconButton>
   </header>
   <p class="path" title={project.rootPath}>{project.rootPath}</p>
   <div class="tools">
@@ -187,10 +184,6 @@
       <div class="fact"><span class="label">{$t('context.worked')}</span><span class="value">{formatToolDuration(worked)}</span></div>
     {/if}
   </section>
-
-  {#if todos.length}
-    <div class="tasks"><TasksPanel {chat} /></div>
-  {/if}
 
   {#if running.length}
     <section>
@@ -253,20 +246,10 @@
       <Button variant="plain" type="button" class="pane-row add ui-local-3526aefe" data-keep-open onclick={() => adding = true}><Plus class="size-3.5" /><span class="pane-row-label">{$t('projectControls.addScript')}</span></Button>
     {/if}
   </section>
-</aside>
+</div>
 
 <style>
-  /* A column, not a card: one hairline against the conversation, no radius. */
   .session-panel {
-    display: flex;
-    flex-direction: column;
-    gap: 1rem;
-    width: clamp(15rem, 26%, 18.5rem);
-    flex-shrink: 0;
-    min-height: 0;
-    overflow-y: auto;
-    padding: 0.75rem 0.625rem 1rem;
-    border-left: 1px solid var(--border-subtle);
     color: var(--muted-foreground);
     font-size: var(--text-xs);
     scrollbar-width: thin;
@@ -307,9 +290,6 @@
   .time { flex-shrink: 0; color: var(--muted-foreground); font-variant-numeric: tabular-nums; }
   :global(.chip.ui-local-3526aefe){ display: inline-flex; align-items: center; gap: 0.3125rem; max-width: calc(100% - 1.5rem); margin: 0 0 0.25rem 1.5rem; overflow: hidden; padding: 0.125rem 0.5rem; border: 0; border-radius: var(--radius-full); background: color-mix(in srgb, var(--brand-accent) 14%, transparent); color: var(--foreground); font: inherit; font-family: var(--font-mono); text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
   :global(.chip.ui-local-3526aefe:hover){ background: color-mix(in srgb, var(--brand-accent) 22%, transparent); }
-
-  /* The Tasks pane, embedded: the column already scrolls and pads. */
-  .tasks :global(.pane-body) { padding: 0; overflow: visible; }
 
   .script-row { display: flex; align-items: center; gap: 0.25rem; }
   :global(.add.ui-local-3526aefe){ color: var(--muted-foreground); }

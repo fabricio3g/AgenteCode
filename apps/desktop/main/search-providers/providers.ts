@@ -9,7 +9,8 @@ import type { SearchResult } from './shared.ts';
 
 export async function searchSearxng(query: string, maxResults: number, options: Record<string, unknown>): Promise<SearchResult[]> {
   const baseUrl = requireOption(options, 'searxng_base_url', 'No SearXNG base URL');
-  const url = new URL('/search', baseUrl.replace(/\/+$/, '') + '/');
+  // Relative to the configured base, so a path prefix (`/searx/`) is kept.
+  const url = new URL('search', baseUrl.replace(/\/+$/, '') + '/');
   url.searchParams.set('q', query);
   url.searchParams.set('format', 'json');
   url.searchParams.set('language', 'en');
@@ -112,18 +113,13 @@ export async function searchPerplexity(query: string, maxResults: number, option
         ? data.sources as unknown[]
         : [];
 
-  const parsed = parseSearchResultsFromText('perplexity', text, maxResults, 'https://www.perplexity.ai');
-  if (parsed.length) return parsed;
-
-  if (citations.length) {
-    return citations.slice(0, maxResults).map((citation, index) => normalizeSearchItem('perplexity', {
-      title: text.split(/\r?\n/).find(Boolean) || `Perplexity result ${index + 1}`,
-      url: typeof citation === 'string' ? citation : (citation as Record<string, unknown>)?.url || (citation as Record<string, unknown>)?.link || '',
-      snippet: text.slice(0, 1200),
-      full_content: text.slice(0, 4000),
-      metadata: citation as Record<string, unknown>
-    }, index));
-  }
+  // Structured citations are the real sources: prefer them to anything read
+  // out of the answer text, whose last resort is the Perplexity homepage.
+  const inline = parseSearchResultsFromText('perplexity', text, maxResults)
+    .filter((result) => /^https?:\/\//i.test(result.url));
+  const cited = citationResults(citations, inline, text, maxResults);
+  if (cited.length) return cited;
+  if (inline.length) return inline;
 
   if (text) {
     return [normalizeSearchItem('perplexity', {
@@ -136,4 +132,28 @@ export async function searchPerplexity(query: string, maxResults: number, option
   }
 
   return [];
+}
+
+/** One result per distinct citation URL, titled from the citation or a matching inline link. */
+function citationResults(citations: unknown[], inline: SearchResult[], text: string, maxResults: number): SearchResult[] {
+  const seen = new Set<string>();
+  const results: SearchResult[] = [];
+  for (const citation of citations) {
+    if (results.length >= maxResults) break;
+    const record = (citation && typeof citation === 'object' ? citation : {}) as Record<string, unknown>;
+    const url = String(typeof citation === 'string' ? citation : record.url || record.link || '').trim();
+    if (!/^https?:\/\//i.test(url) || seen.has(url)) continue;
+    seen.add(url);
+    const linked = inline.find((result) => result.url === url);
+    let host = url;
+    try { host = new URL(url).hostname.replace(/^www\./, ''); } catch { /* keep the URL */ }
+    results.push(normalizeSearchItem('perplexity', {
+      title: String(record.title || linked?.title || host),
+      url,
+      snippet: linked?.snippet || text.slice(0, 1200),
+      full_content: text.slice(0, 4000),
+      metadata: typeof citation === 'string' ? { citation_index: results.length + 1 } : record
+    }, results.length));
+  }
+  return results;
 }
