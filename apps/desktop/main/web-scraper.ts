@@ -1,9 +1,6 @@
 import dns from 'node:dns/promises';
 import { APP_USER_AGENT } from '../shared/brand.ts';
-import { Readability } from '@mozilla/readability';
-import { parseHTML } from 'linkedom';
 import { normalizeWhitespace, cleanText } from './search-providers/shared.ts';
-import { elementToMarkdown, pickContentRoot, removeNoise } from './html-markdown.ts';
 
 const DEFAULT_TIMEOUT_MS = 10000;
 const DEFAULT_MAX_LINKS = 120;
@@ -362,183 +359,52 @@ export function normalizeAbsoluteUrl(href, baseUrl) {
   }
 }
 
-function metaContent(document, selector) {
-  return normalizeWhitespace(document.querySelector(selector)?.getAttribute('content') || '');
-}
-
-function extractMeta(document) {
-  const title =
-    metaContent(document, 'meta[property="og:title"]')
-    || metaContent(document, 'meta[name="twitter:title"]')
-    || normalizeWhitespace(document.querySelector('title')?.textContent || '');
-
-  const description =
-    metaContent(document, 'meta[property="og:description"]')
-    || metaContent(document, 'meta[name="description"]')
-    || metaContent(document, 'meta[name="twitter:description"]');
-
-  const siteName =
-    metaContent(document, 'meta[property="og:site_name"]')
-    || normalizeWhitespace(document.querySelector('meta[name="application-name"]')?.getAttribute('content') || '');
-
-  const ogImage =
-    metaContent(document, 'meta[property="og:image"]')
-    || metaContent(document, 'meta[name="twitter:image"]');
-
-  // Bibliographic fields for APA-style references (never invent — only page metadata).
-  const author =
-    metaContent(document, 'meta[name="author"]')
-    || metaContent(document, 'meta[property="article:author"]')
-    || metaContent(document, 'meta[name="byl"]')
-    || metaContent(document, 'meta[name="sailthru.author"]')
-    || normalizeWhitespace(document.querySelector('[rel="author"]')?.textContent || '')
-    || normalizeWhitespace(document.querySelector('.author, .byline, [itemprop="author"]')?.textContent || '');
-
-  const published_at =
-    metaContent(document, 'meta[property="article:published_time"]')
-    || metaContent(document, 'meta[name="article:published_time"]')
-    || metaContent(document, 'meta[name="date"]')
-    || metaContent(document, 'meta[name="publish-date"]')
-    || metaContent(document, 'meta[name="pubdate"]')
-    || metaContent(document, 'meta[itemprop="datePublished"]')
-    || normalizeWhitespace(document.querySelector('time[datetime]')?.getAttribute('datetime') || '')
-    || normalizeWhitespace(document.querySelector('time')?.textContent || '');
-
-  return {
-    title,
-    description,
-    site_name: siteName,
-    og_image: ogImage,
-    author: author.slice(0, 200),
-    published_at: published_at.slice(0, 80)
-  };
-}
-
-function extractLinks(document, baseUrl, maxLinks = DEFAULT_MAX_LINKS) {
-  const links = [];
-  const seen = new Set();
-  const baseHost = (() => {
-    try {
-      return new URL(baseUrl).hostname.replace(/^www\./, '').toLowerCase();
-    } catch {
-      return '';
-    }
-  })();
-
-  for (const anchor of document.querySelectorAll('a[href]')) {
-    if (links.length >= maxLinks) break;
-    const href = String(anchor.getAttribute('href') || '').trim();
-    if (!href || href.startsWith('#')) continue;
-    if (href.startsWith('javascript:') || href.startsWith('mailto:') || href.startsWith('tel:')) continue;
-
-    const absolute = normalizeAbsoluteUrl(href, baseUrl);
-    if (!absolute || seen.has(absolute)) continue;
-    seen.add(absolute);
-
-    let url;
-    try {
-      url = new URL(absolute);
-    } catch {
-      continue;
-    }
-
-    const domain = url.hostname.replace(/^www\./, '').toLowerCase();
-    links.push({
-      text: normalizeWhitespace(anchor.textContent || '') || domain,
-      url: absolute,
-      domain,
-      sameSite: !!baseHost && domain === baseHost
-    });
-  }
-
-  return links;
-}
-
 /**
- * A page as readable markdown: Mozilla Readability (Firefox's Reader View)
- * finds the article, `html-markdown.ts` renders it — headings, lists, tables,
- * code and links, with the spaces between words kept. When Readability finds
- * no article, the page's own content region is read instead, with menus,
- * banners and hidden text removed — never the raw text of the whole body,
- * which carried scripts, styles and navigation. The whole text is returned
- * unless the caller passes `maxLength`.
+ * Delegate HTML/text page fetching and extraction to the Rust daemon (`web.fetch`),
+ * which uses html5ever (`scraper`) + connect-time DNS SSRF validation.
  */
-export function parseHtmlToReadable({ html, url, maxLength = undefined, maxLinks = DEFAULT_MAX_LINKS }) {
-  const limit = optionalLimit(maxLength);
-  const safeMaxLinks = clampNumber(maxLinks, 10, 300, DEFAULT_MAX_LINKS);
-  const source = String(html || '');
-  const { document } = parseHTML(source);
-
-  const links = extractLinks(document, url, safeMaxLinks);
-  const metadata = extractMeta(document);
-  removeNoise(document);
-
-  let article = null;
+async function tryRustWebFetch(url, maxLength, maxLinks) {
   try {
-    const reader = new Readability(document, {
-      // Classes carry code languages (`language-js`) and mark share bars and
-      // promos the renderer still drops inside an article.
-      keepClasses: true,
-      charThreshold: 120
-    });
-    article = reader.parse();
+    const { runtimeConnection } = await import('./agente/rust-engine.ts');
+    const client = await runtimeConnection();
+    const page = await client.request('web.fetch', { url });
+    const raw = String(page?.text || '').trim();
+    if (!raw) return null;
+    const limit = optionalLimit(maxLength);
+    const content = limit ? raw.slice(0, limit) : raw;
+    const safeMaxLinks = clampNumber(maxLinks, 10, 300, DEFAULT_MAX_LINKS);
+    const links = Array.isArray(page?.links) ? page.links.slice(0, safeMaxLinks) : [];
+    const title = normalizeWhitespace(page?.title || '') || url;
+    const excerpt =
+      normalizeWhitespace(page?.description || '')
+      || normalizeWhitespace(content.slice(0, 280));
+    const status = Number(page?.status) || 200;
+    const result = {
+      url: String(page?.url || url),
+      status,
+      title,
+      excerpt,
+      content,
+      links,
+      site_name: String(page?.site_name || ''),
+      og_image: String(page?.og_image || ''),
+      author: String(page?.author || ''),
+      published_at: String(page?.published_at || ''),
+      length: content.length,
+      truncated: content.length < raw.length,
+      document_kind: 'html',
+      extraction: 'rust_html5ever',
+      warning: Array.isArray(page?.notes) && page.notes.length ? page.notes.join(' ') : undefined
+    };
+    const quality = classifyScrapeQuality(result);
+    return {
+      ...result,
+      quality: quality.quality,
+      warning: quality.warning || result.warning
+    };
   } catch {
-    article = null;
+    return null;
   }
-
-  let rawContent = '';
-  let extraction = 'readability';
-  if (article?.content) {
-    const { document: articleDocument } = parseHTML(`<!doctype html><html><body>${article.content}</body></html>`);
-    rawContent = articleDocument.body ? elementToMarkdown(articleDocument.body, url) : '';
-  }
-  if (rawContent.length < THIN_CONTENT_CHARS) {
-    // Readability rewrites the document it parses, so the fallback reads a fresh copy.
-    const { document: copy } = parseHTML(source);
-    removeNoise(copy);
-    const root = pickContentRoot(copy);
-    const fallback = root ? elementToMarkdown(root, url) : '';
-    if (fallback.length > rawContent.length) {
-      rawContent = fallback;
-      extraction = 'fallback';
-    }
-  }
-
-  const whole = cleanText(rawContent).replace(/\n{3,}/g, '\n\n').trim();
-  const content = limit ? whole.slice(0, limit) : whole;
-  const title =
-    normalizeWhitespace(article?.title || '')
-    || metadata.title
-    || url;
-  const excerpt =
-    normalizeWhitespace(article?.excerpt || '')
-    || metadata.description
-    || normalizeWhitespace(content.slice(0, 280));
-
-  const result = {
-    url,
-    title,
-    excerpt,
-    content,
-    links,
-    site_name: metadata.site_name || normalizeWhitespace(article?.siteName || ''),
-    og_image: metadata.og_image,
-    author: metadata.author || '',
-    published_at: metadata.published_at || '',
-    length: content.length,
-    truncated: content.length < whole.length,
-    document_kind: 'html',
-    extraction,
-    warning: extraction === 'fallback'
-      ? 'Reader View found no article on this page; its main region was read instead.'
-      : undefined
-  };
-  const quality = classifyScrapeQuality(result);
-  return {
-    ...result,
-    quality: quality.quality,
-    warning: quality.warning || result.warning
-  };
 }
 
 function buildReaderFallbackUrl(url) {
@@ -652,6 +518,20 @@ export async function scrapeUrlStructured({
     HARD_MAX_DOWNLOAD_BYTES,
     DEFAULT_MAX_DOWNLOAD_BYTES
   );
+
+  // Fast path: delegate HTML/text pages to the Rust daemon (`web.fetch`),
+  // which runs html5ever extraction + connect-time DNS SSRF validation.
+  const lowerUrl = normalizedUrl.toLowerCase();
+  if (!lowerUrl.endsWith('.pdf') && !lowerUrl.endsWith('.docx')) {
+    const rustPage = await tryRustWebFetch(normalizedUrl, safeMaxLength, maxLinks);
+    if (rustPage) {
+      if (rustPage.quality !== 'ok') {
+        const fallback = await fetchReaderFallback(rustPage.url, safeMaxLength, Math.min(safeTimeout, 20000));
+        if (fallback && fallback.content.length > rustPage.content.length) return fallback;
+      }
+      return rustPage;
+    }
+  }
 
   const requestHeaders = {
     'User-Agent': BROWSER_USER_AGENT,
@@ -868,22 +748,20 @@ export async function scrapeUrlStructured({
     };
   }
 
-  // HTML: Mozilla Readability article extraction (token-efficient)
-  const parsed = parseHtmlToReadable({
-    html: bodyText,
+  // HTML fallback when the Rust daemon is unavailable (e.g., standalone unit tests):
+  // prefer reader fallback, else strip tags to plain text.
+  const fallback = await fetchReaderFallback(finalUrl, safeMaxLength, Math.min(safeTimeout, 20000));
+  if (fallback) return fallback;
+  const plainText = bodyText
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ');
+  return documentResult({
     url: finalUrl,
-    maxLength: safeMaxLength,
-    maxLinks
+    status: response.status,
+    title: filenameFromUrl(finalUrl),
+    content: plainText,
+    kind: 'html',
+    maxLength: safeMaxLength
   });
-
-  const finalResult = {
-    ...parsed,
-    url: finalUrl,
-    status: response.status
-  };
-  if (finalResult.quality !== 'ok') {
-    const fallback = await fetchReaderFallback(finalUrl, safeMaxLength, Math.min(safeTimeout, 20000));
-    if (fallback && fallback.content.length > finalResult.content.length) return fallback;
-  }
-  return finalResult;
 }

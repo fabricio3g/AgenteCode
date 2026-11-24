@@ -10,7 +10,7 @@ import {
 } from './search-providers/shared.ts';
 import type { SearchResult } from './search-providers/shared.ts';
 import {
-  searchTavily, searchBrave, searchSearxng, searchExa, searchJina, searchYouCom, searchPerplexity
+  searchSearxng, searchJina, searchYouCom, searchPerplexity
 } from './search-providers/providers.ts';
 import { searchAggregator } from './search-providers/aggregator.ts';
 import { isSafePublicUrl, scrapeUrlStructured } from './web-scraper.ts';
@@ -19,8 +19,8 @@ const RUST_CORE_SEARCH_PROVIDERS = new Set(['duckduckgo', 'brave', 'tavily', 'ex
 
 async function tryRustProviderSearch(provider: string, query: string, maxResults: number, options: Record<string, unknown>): Promise<SearchResult[] | null> {
   if (!RUST_CORE_SEARCH_PROVIDERS.has(provider)) return null;
-  // If the caller passed an explicit per-request key/URL override not yet synced, stay on TS.
-  if (options.api_key || options.searxng_url) return null;
+  // If the caller passed an explicit per-request SearXNG base URL (e.g. unit tests), stay on TS.
+  if (provider === 'searxng' && (options.searxng_url || options.searxng_base_url)) return null;
   try {
     const { runtimeConnection } = await import('./agente/rust-engine.ts');
     const client = await runtimeConnection();
@@ -29,7 +29,7 @@ async function tryRustProviderSearch(provider: string, query: string, maxResults
       max_results: maxResults,
       provider
     });
-    if (!Array.isArray(res?.hits) || !res.hits.length) return null;
+    if (!Array.isArray(res?.hits)) return null;
     return res.hits.map((hit) => ({
       title: hit.title,
       url: hit.url,
@@ -46,13 +46,15 @@ async function runProviderSearch(provider: string, query: string, maxResults: nu
   if (fromRust) return fromRust;
   switch (provider) {
     case 'aggregator': return searchAggregator(query, maxResults, options);
-    case 'tavily': return searchTavily(query, maxResults, options);
-    case 'brave': return searchBrave(query, maxResults, options);
     case 'searxng': return searchSearxng(query, maxResults, options);
-    case 'exa': return searchExa(query, maxResults, options);
     case 'jina': return searchJina(query, maxResults, options);
     case 'youcom': return searchYouCom(query, maxResults, options);
     case 'perplexity': return searchPerplexity(query, maxResults, options);
+    case 'duckduckgo':
+    case 'tavily':
+    case 'brave':
+    case 'exa':
+      throw new Error(`Search provider '${provider}' requires the Rust daemon (web.search)`);
     default: throw new Error(`Unsupported search provider: ${provider}`);
   }
 }

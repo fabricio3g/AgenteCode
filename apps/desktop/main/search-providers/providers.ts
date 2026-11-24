@@ -1,4 +1,4 @@
-// HTTP-based search provider implementations
+// Desktop-only HTTP search providers (Tavily, Brave, Exa, DuckDuckGo live in Rust `agente-core` via `web.search`).
 import { APP_USER_AGENT } from '../../shared/brand.ts';
 import {
   fetchWithRetry, normalizeSearchItem, parseSearchResultsFromText,
@@ -6,51 +6,6 @@ import {
   requireOption, pickFirstArray, mapSearchResults
 } from './shared.ts';
 import type { SearchResult } from './shared.ts';
-
-export async function searchTavily(query: string, maxResults: number, options: Record<string, unknown>): Promise<SearchResult[]> {
-  const apiKey = requireOption(options, 'tavily_api_key', 'No Tavily API key');
-  const resp = await fetchWithRetry('https://api.tavily.com/search', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    timeout_ms: 15000,
-    body: JSON.stringify({
-      api_key: apiKey,
-      query,
-      max_results: maxResults,
-      include_answer: false
-    })
-  });
-  const data = await resp.json() as Record<string, unknown>;
-  return mapSearchResults('tavily', pickFirstArray(data, ['results']), (item) => ({
-    title: item?.title,
-    url: item?.url,
-    snippet: item?.content || item?.snippet || '',
-    full_content: item?.content || '',
-    score: item?.score,
-    published_at: item?.published_date || item?.published_at,
-    metadata: item
-  }), maxResults);
-}
-
-export async function searchBrave(query: string, maxResults: number, options: Record<string, unknown>): Promise<SearchResult[]> {
-  const apiKey = requireOption(options, 'brave_api_key', 'No Brave API key');
-  const url = `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(query)}&count=${maxResults}`;
-  const resp = await fetchWithRetry(url, {
-    headers: { 'X-Subscription-Token': apiKey, Accept: 'application/json' },
-    timeout_ms: 15000
-  });
-  const data = await resp.json() as Record<string, unknown>;
-  const webResults = (data?.web as Record<string, unknown> | undefined)?.results as Record<string, unknown>[] | undefined;
-  const items = Array.isArray(webResults) ? webResults : pickFirstArray(data, ['results']);
-  return mapSearchResults('brave', items, (item) => ({
-    title: item?.title,
-    url: item?.url,
-    snippet: item?.description || item?.snippet || '',
-    full_content: item?.description || item?.snippet || '',
-    published_at: item?.age || item?.published_at,
-    metadata: item
-  }), maxResults);
-}
 
 export async function searchSearxng(query: string, maxResults: number, options: Record<string, unknown>): Promise<SearchResult[]> {
   const baseUrl = requireOption(options, 'searxng_base_url', 'No SearXNG base URL');
@@ -70,37 +25,6 @@ export async function searchSearxng(query: string, maxResults: number, options: 
     published_at: item?.publishedDate || item?.pubdate,
     metadata: item
   }), maxResults);
-}
-
-export async function searchExa(query: string, maxResults: number, options: Record<string, unknown>): Promise<SearchResult[]> {
-  const apiKey = requireOption(options, 'exa_api_key', 'No Exa API key');
-  const resp = await fetchWithRetry('https://api.exa.ai/search', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': apiKey,
-      Accept: 'application/json'
-    },
-    timeout_ms: 20000,
-    body: JSON.stringify({
-      query,
-      type: 'neural',
-      numResults: maxResults,
-      contents: { text: true, highlights: true }
-    })
-  });
-  const data = await resp.json() as Record<string, unknown>;
-  return mapSearchResults('exa', pickFirstArray(data, ['results', 'searchResults']), (item) => {
-    const highlight = Array.isArray(item?.highlights) ? (item.highlights as string[]).join(' ') : '';
-    return {
-      title: item?.title,
-      url: item?.url,
-      snippet: item?.text || item?.highlight || highlight,
-      full_content: item?.text || item?.highlight || highlight,
-      published_at: item?.publishedDate || item?.date,
-      metadata: item
-    };
-  }, maxResults);
 }
 
 export async function searchJina(query: string, maxResults: number, options: Record<string, unknown>): Promise<SearchResult[]> {

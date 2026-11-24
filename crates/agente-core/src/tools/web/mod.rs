@@ -345,8 +345,15 @@ pub async fn fetch_url_structured(url: &str) -> Result<Fetched, ToolError> {
 #[derive(Debug, Clone, Default, serde::Serialize)]
 pub struct Fetched {
     pub url: String,
+    pub status: u16,
     pub title: String,
+    pub description: String,
+    pub site_name: String,
+    pub og_image: String,
+    pub author: String,
+    pub published_at: String,
     pub text: String,
+    pub links: Vec<extract::ExtractedLink>,
     pub notes: Vec<String>,
 }
 
@@ -422,6 +429,7 @@ async fn fetch_page(url: reqwest::Url) -> Result<(Fetched, reqwest::StatusCode),
 
     let mut page = Fetched {
         url: final_url.to_string(),
+        status: status.as_u16(),
         ..Fetched::default()
     };
     if overflow {
@@ -437,6 +445,12 @@ async fn fetch_page(url: reqwest::Url) -> Result<(Fetched, reqwest::StatusCode),
             let html = decode(&bytes, &content_type);
             let extracted = extract::extract(&html, Some(&final_url));
             page.title = extracted.title;
+            page.description = extracted.description.clone();
+            page.site_name = extracted.site_name;
+            page.og_image = extracted.og_image;
+            page.author = extracted.author;
+            page.published_at = extracted.published_at;
+            page.links = extracted.links;
             page.text = if extracted.markdown.trim().is_empty() {
                 extracted.description
             } else {
@@ -703,6 +717,7 @@ mod tests {
             title: "A".into(),
             text: text.clone(),
             notes: vec![],
+            ..Fetched::default()
         };
         let first = render_part(&page, 0, Some(400));
         assert!(
@@ -855,6 +870,7 @@ mod tests {
             title: "Error".into(),
             text: "service unavailable".into(),
             notes: vec!["HTTP 503.".into()],
+            ..Fetched::default()
         });
         remember_if_success(
             parsed_upper.as_str(),
@@ -871,6 +887,7 @@ mod tests {
             title: "OK".into(),
             text: "hello".into(),
             notes: vec![],
+            ..Fetched::default()
         });
         remember_if_success(parsed_upper.as_str(), reqwest::StatusCode::OK, ok_page);
         let hit = cached(parsed_lower.as_str()).expect("normalized URL should hit cache");
