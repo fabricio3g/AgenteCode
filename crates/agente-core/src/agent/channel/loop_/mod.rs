@@ -42,6 +42,16 @@ use request::{
 use stream::{consume_completion_stream, StreamCollected, StreamOutcome};
 use todo_review::should_review_todos;
 
+/// How many times one turn asks a reply the output limit cut off to go on.
+const MAX_LENGTH_CONTINUATIONS: u32 = 2;
+
+const LENGTH_CONTINUE_NOTE: &str = "[Your previous reply was cut off by the output token limit. \
+Continue exactly where it stopped, without repeating what you already wrote.]";
+
+const EMPTY_LENGTH_NOTE: &str = "[Your previous reply hit the output token limit before producing \
+anything usable — probably one very large tool call. Work in smaller steps: split large file \
+writes into several edits and keep each call's arguments short.]";
+
 #[allow(clippy::too_many_arguments)]
 pub fn spawn_chat_task(
     session_id: uuid::Uuid,
@@ -266,6 +276,15 @@ impl TurnState {
         messages: Vec<Message>,
         tokens_after: usize,
     ) {
+        // The gap was measured against the transcript before compaction and
+        // grows with it; carried over whole it would hold back room the
+        // smaller transcript no longer needs (or, after an overflow, keep
+        // the wrong size). Scale it with the transcript until the next
+        // provider-reported usage measures it again.
+        if self.running_tokens > 0 {
+            self.tokenizer_gap = ((self.tokenizer_gap as u128 * tokens_after as u128)
+                / self.running_tokens as u128) as usize;
+        }
         self.messages = messages;
         self.running_tokens = tokens_after;
         self.tokens_measured = false;
@@ -438,6 +457,8 @@ async fn run_agent_loop_inner(cfg: AgentRunConfig) -> Result<(), AgentLoopFailur
     let mut generation_progress = StreamProgress::default();
     let mut retry_attempt = 0u32;
     let mut empty_response_retries = 0u32;
+    // Replies the output limit cut off that were asked to go on, this turn.
+    let mut length_continuations = 0u32;
     let max_retries = 2u32;
     let base_delay_ms = 500u64;
     const MAX_OVERFLOW_RECOVERIES: u32 = 2;
@@ -761,6 +782,12 @@ async fn run_agent_loop_inner(cfg: AgentRunConfig) -> Result<(), AgentLoopFailur
                     iteration,
                     "Empty completion; retrying once"
                 );
+                if stream_stop_reason == StopReason::Length {
+                    // The output limit ran out before anything usable — most
+                    // often one huge tool call. The same request would end
+                    // the same way, so ask for smaller steps.
+                    state.push_message(Message::user(EMPTY_LENGTH_NOTE));
+                }
                 iteration = iteration.saturating_sub(1);
                 continue;
             }
@@ -772,7 +799,19 @@ async fn run_agent_loop_inner(cfg: AgentRunConfig) -> Result<(), AgentLoopFailur
         }
         empty_response_retries = 0;
 
-        if stream_stop_reason == StopReason::Length && !full_response.is_empty() {
+        // A reply the output limit cut off mid-text: keep it and ask the model
+        // to go on from where it stopped, a bounded number of times, instead
+        // of ending the turn on half an answer.
+        let continue_after_length = stream_stop_reason == StopReason::Length
+            && tool_calls.is_empty()
+            && !full_response.is_empty()
+            && length_continuations < MAX_LENGTH_CONTINUATIONS
+            && !cancel_signal.is_aborted()
+            && max_iterations.map(|max| iteration < max).unwrap_or(true);
+        if stream_stop_reason == StopReason::Length
+            && !full_response.is_empty()
+            && !continue_after_length
+        {
             full_response.push_str("\n\n[response truncated by the model's output limit]");
         }
 
@@ -809,6 +848,17 @@ async fn run_agent_loop_inner(cfg: AgentRunConfig) -> Result<(), AgentLoopFailur
                     AgentEvent::AssistantText(response_text),
                 );
             }
+        }
+
+        if continue_after_length {
+            length_continuations += 1;
+            tracing::info!(
+                iteration,
+                length_continuations,
+                "Reply hit the output limit; asking the model to continue"
+            );
+            state.push_message(Message::user(LENGTH_CONTINUE_NOTE));
+            continue;
         }
 
         if tool_calls.is_empty()

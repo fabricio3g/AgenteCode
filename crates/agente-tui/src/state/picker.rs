@@ -25,8 +25,10 @@ pub struct SessionPickerState {
     pub session_picker_browse_path: String,
     /// Selected browse entry
     pub session_picker_browse_selected: usize,
-    /// Confirm delete session
-    pub session_picker_confirm_delete: bool,
+    /// The session a first Delete armed for deletion. Bound to its id, not
+    /// the selected row: hover or a new query can move the selection, and the
+    /// second Delete must never remove a different session.
+    pub session_picker_confirm_delete: Option<uuid::Uuid>,
     /// Use the picker as a project/folder selector instead of only a session picker.
     pub session_picker_project_select: bool,
     /// Snapshot of saved sessions loaded when the picker opens (and pruned on
@@ -40,7 +42,7 @@ impl SessionPickerState {
         self.show_session_picker = true;
         self.session_picker_query.clear();
         self.session_picker_selected = 0;
-        self.session_picker_confirm_delete = false;
+        self.session_picker_confirm_delete = None;
         self.sessions = agente_core::session::list_sessions();
     }
 
@@ -68,7 +70,7 @@ impl SessionPickerState {
         self.show_session_picker = false;
         self.session_picker_query.clear();
         self.session_picker_selected = 0;
-        self.session_picker_confirm_delete = false;
+        self.session_picker_confirm_delete = None;
         self.session_picker_browsing = false;
         self.session_picker_folder_input.clear();
         self.session_picker_browse_path.clear();

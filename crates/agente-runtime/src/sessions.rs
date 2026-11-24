@@ -439,7 +439,7 @@ impl RuntimeHandle {
         smart: bool,
     ) -> SessionSnapshot {
         self.inner.session_context(session_id, None);
-        self.inner.lock_edits().compacted(session_id);
+        self.inner.lock_edits().compacted(session_id, &messages);
         self.inner.persist_edits(session_id);
         let revision = bridge::replace_conversation(&self.inner, session_id, messages);
         self.inner.publish(&self.envelope(

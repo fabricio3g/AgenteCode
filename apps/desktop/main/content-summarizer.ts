@@ -33,12 +33,24 @@ function topParagraphsByQuery(text, queryTerms, maxChars) {
     return left.index - right.index;
   });
 
+  // Take the best paragraphs that fit whole (the best one is cut to fit if
+  // it alone is too long). Picking past the budget and cutting the joined
+  // text afterwards dropped exactly the late, relevant paragraph once the
+  // selection went back into page order.
   const selected = [];
   let used = 0;
   for (const item of ranked) {
-    if (used >= maxChars) break;
+    const room = maxChars - used;
+    if (room <= 0) break;
     const candidate = item.paragraph;
     if (!candidate) continue;
+    if (candidate.length > room) {
+      if (!selected.length) {
+        selected.push({ ...item, paragraph: candidate.slice(0, room) });
+        used = maxChars;
+      }
+      continue;
+    }
     selected.push(item);
     used += candidate.length + 2;
   }
@@ -50,7 +62,7 @@ function topParagraphsByQuery(text, queryTerms, maxChars) {
 export function summarizeCrawledPages({ pages, query, targetChars } = {}) {
   const list = Array.isArray(pages) ? pages : [];
   const budget = Math.max(500, Number(targetChars) || 4000);
-  if (!list.length) return { text: '', truncated: false, usedChars: 0 };
+  if (!list.length) return { text: '', truncated: false, omitted: 0, usedChars: 0 };
 
   const queryTerms = tokenize(query).slice(0, 12);
   const rankedPages = [...list].sort((left, right) => {
@@ -60,21 +72,27 @@ export function summarizeCrawledPages({ pages, query, targetChars } = {}) {
     return Number(right?.score || 0) - Number(left?.score || 0);
   });
 
+  // Each page gets a fair share of what is left, so every source keeps a
+  // short excerpt instead of the first pages taking the whole budget.
   const blocks = [];
+  const omittedUrls = [];
   let used = 0;
-  for (const page of rankedPages) {
-    if (used >= budget) break;
-    const pageBudget = Math.max(600, Math.min(2200, Math.floor((budget - used) * 0.55)));
-    const condensed = topParagraphsByQuery(page?.content || '', queryTerms, pageBudget);
-    if (!condensed) continue;
-    const block = [
+  for (let i = 0; i < rankedPages.length; i += 1) {
+    const page = rankedPages[i];
+    const header = [
       `## ${page?.title || page?.url || 'Untitled page'}`,
-      page?.url ? `URL: ${page.url}` : null,
-      condensed
+      page?.url ? `URL: ${page.url}` : null
     ].filter(Boolean).join('\n\n');
-    if (!block) continue;
+    const share = Math.floor((budget - used) / (rankedPages.length - i)) - header.length - 12;
+    const pageBudget = Math.min(2200, share);
+    const condensed = pageBudget >= 120 ? topParagraphsByQuery(page?.content || '', queryTerms, pageBudget) : '';
+    if (!condensed) {
+      if (page?.url) omittedUrls.push(page.url);
+      continue;
+    }
+    const block = `${header}\n\n${condensed}`;
     blocks.push(block);
-    used += block.length + 6;
+    used += block.length + 7;
   }
 
   let text = blocks.join('\n\n---\n\n');
@@ -88,10 +106,14 @@ export function summarizeCrawledPages({ pages, query, targetChars } = {}) {
   if (blocks.length < list.length) {
     truncated = true;
   }
+  if (omittedUrls.length) {
+    text = `${text}\n\n(Not included for space: ${omittedUrls.join(', ')})`;
+  }
 
   return {
     text,
     truncated,
+    omitted: list.length - blocks.length,
     usedChars: text.length
   };
 }

@@ -12,7 +12,8 @@ mod tests;
 mod trim;
 
 pub use normalize::{
-    normalize_tool_messages, normalize_tool_messages_tracked, CARRIED_SKILLS_HEADING,
+    merge_consecutive_user_turns, normalize_tool_messages, normalize_tool_messages_tracked,
+    CARRIED_SKILLS_HEADING, COMPACTED_GAP_NOTE,
 };
 pub use semantic::{
     build_summarization_messages, serialize_conversation, SummarizeError, Summarizer,

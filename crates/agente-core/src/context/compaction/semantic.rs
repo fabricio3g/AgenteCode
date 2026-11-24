@@ -2,7 +2,9 @@
 
 use async_trait::async_trait;
 
-use super::normalize::{carry_skills, compaction_boundary, normalize_tool_messages};
+use super::normalize::{
+    carry_skills, compaction_boundary, normalize_tool_messages, repair_role_order,
+};
 use super::{CompactionResult, ContextCompactor, Summary, SummaryMetadata, SummaryType};
 use crate::context::budget::estimate_message_tokens;
 use crate::types::{Message, Role};
@@ -177,10 +179,12 @@ pub fn build_summarization_messages(
     ]
 }
 
-/// Build a message that carries a compaction summary into the conversation.
+/// Build a message that carries a compaction summary into the conversation:
+/// a user-side context checkpoint, so the turn after the system prompt is a
+/// user turn and an assistant turn kept from before still follows one.
 pub(super) fn summary_message(content: &str) -> Message {
     Message {
-        role: Role::Assistant,
+        role: Role::User,
         content: format!("[Conversation summary]\n{content}"),
         tool_calls: None,
         tool_call_id: None,
@@ -239,7 +243,7 @@ impl ContextCompactor {
         let mut result = system_msgs;
         result.push(summary_message(&summary_text));
         result.extend(recent);
-        result = carry_skills(&messages, normalize_tool_messages(result));
+        result = repair_role_order(carry_skills(&messages, normalize_tool_messages(result)));
 
         let compressed_tokens = estimate_message_tokens(&result);
         let tokens_saved = original_tokens.saturating_sub(compressed_tokens);

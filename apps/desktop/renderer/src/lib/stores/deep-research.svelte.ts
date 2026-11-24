@@ -6,6 +6,7 @@ import {
 } from '$lib/services/agent-prompts';
 import { listen, invoke, isElectron } from '$lib/services/bridge';
 import { webSearch } from '$lib/services/search';
+import { sourceIdentity } from '$lib/services/research-artifacts';
 import { createId } from '$lib/utils/id';
 import { safeParse, normalizeWhitespace } from '$lib/utils/storage';
 
@@ -203,7 +204,7 @@ function raceWithAbort<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T>
 }
 
 async function synthesizeResearch(task: DeepResearchTask, signal?: AbortSignal): Promise<string> {
-  const sourceLines = buildSourceLines(task, task.mode === 'max' ? 40 : 24);
+  const sourceLines = buildSourceLines(task, sourceLimit(task.mode));
   const answerContext = buildAnswerContext(task);
   const query = task.enhancedQuery || task.query;
   const medical = isMedicalResearchQuery(query);
@@ -626,13 +627,15 @@ class DeepResearchStore {
       if (signal.aborted || this.getTask(taskId)?.status === 'cancelled') return;
 
       const allResults: SearchResult[] = [];
-      let combinedContext = '';
+      // Each search's own context with the results its numbers refer to;
+      // renumbered against the merged list once it is known.
+      const searchContexts: Array<{ context: string; results: SearchResult[] }> = [];
       const providers = new Set<string>();
 
       for (const result of searchResults) {
         if (result.status === 'fulfilled' && result.value) {
           allResults.push(...(result.value.results || []));
-          combinedContext += (result.value.context || '') + '\n\n';
+          searchContexts.push({ context: result.value.context || '', results: result.value.results || [] });
           if (result.value.provider_used) providers.add(result.value.provider_used);
           const providerWarnings = normalizeWhitespace(result.value.error || '');
           if (providerWarnings && /401|unauthorized|authentication/i.test(providerWarnings)) {
@@ -642,6 +645,13 @@ class DeepResearchStore {
       }
 
       const dedupedResults = dedupeResults(allResults).slice(0, 36);
+      const combinedContext = (() => {
+        const used = new Set<number>();
+        return searchContexts
+          .map(({ context, results }) => renumberEvidence(context, results, dedupedResults, sourceLimit(task?.mode || 'deep'), used))
+          .filter(Boolean)
+          .join('\n\n---\n\n');
+      })();
       this.updateTask(taskId, (entry) => ({
         ...entry,
         status: 'crawling',
@@ -677,7 +687,14 @@ class DeepResearchStore {
       if (signal.aborted || this.getTask(taskId)?.status === 'cancelled') return;
 
       const merged = dedupeResults([...(dedupedResults || []), ...((crawl?.results || []) as SearchResult[])]).slice(0, task.mode === 'max' ? 70 : 36);
-      const mergedContext = [combinedContext, crawl?.context || ''].filter(Boolean).join('\n\n---\n\n');
+      // One numbering for every block: the merged list's, which the source
+      // index in the synthesis prompt is built from.
+      const evidenceUsed = new Set<number>();
+      const limit = sourceLimit(task.mode);
+      const mergedContext = [
+        ...searchContexts.map(({ context, results }) => renumberEvidence(context, results, merged, limit, evidenceUsed)),
+        renumberEvidence(crawl?.context || '', (crawl?.results || []) as SearchResult[], merged, limit, evidenceUsed),
+      ].filter(Boolean).join('\n\n---\n\n');
 
       this.updateTask(taskId, (entry) => ({
         ...entry,
@@ -811,12 +828,54 @@ function entryMode(taskId: string, tasks: DeepResearchTask[]) {
 function dedupeResults(results: SearchResult[]) {
   const seen = new Set<string>();
   return (Array.isArray(results) ? results : []).filter((entry) => {
-    const url = normalizeWhitespace(entry?.url || '').toLowerCase();
-    if (!url) return false;
-    if (seen.has(url)) return false;
-    seen.add(url);
+    if (!normalizeWhitespace(entry?.url || '')) return false;
+    const key = sourceIdentity(entry.url);
+    if (seen.has(key)) return false;
+    seen.add(key);
     return true;
   });
+}
+
+/** How many sources the synthesis prompt lists (and may cite). */
+function sourceLimit(mode: string): number {
+  return mode === 'max' ? 40 : 24;
+}
+
+/**
+ * Give every evidence block the number its source has in `merged`, the list
+ * the source index is built from. Each search (and the crawler, `[C n]`)
+ * numbers its own results from one, so two queries both said `[1]` for
+ * different pages. A block whose source is not in the first `limit` merged
+ * results, or was already given, is dropped; blocks with no number (the
+ * crawler's condensed summary) are kept as they are.
+ */
+export function renumberEvidence(
+  context: string,
+  results: SearchResult[],
+  merged: SearchResult[],
+  limit: number,
+  used: Set<number>,
+): string {
+  const idByIdentity = new Map<string, number>();
+  merged.slice(0, limit).forEach((entry, index) => {
+    const key = sourceIdentity(entry.url);
+    if (!idByIdentity.has(key)) idByIdentity.set(key, index + 1);
+  });
+  const blocks: string[] = [];
+  for (const block of String(context || '').split(/\n\n---\n\n/)) {
+    if (!block.trim()) continue;
+    const header = block.match(/^\s*## \[C?(\d+)\] /);
+    if (!header) {
+      blocks.push(block.trim());
+      continue;
+    }
+    const source = results[Number(header[1]) - 1];
+    const id = source?.url ? idByIdentity.get(sourceIdentity(source.url)) : undefined;
+    if (!id || used.has(id)) continue;
+    used.add(id);
+    blocks.push(block.trim().replace(/^## \[C?\d+\] /, `## [${id}] `));
+  }
+  return blocks.join('\n\n---\n\n');
 }
 
 function isAuthFailure(searchError: unknown) {

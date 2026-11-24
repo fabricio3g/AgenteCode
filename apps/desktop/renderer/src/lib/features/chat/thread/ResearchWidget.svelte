@@ -22,6 +22,7 @@
   import {
     buildResearchExportFiles,
     downloadResearchExportFile,
+    sourceIdentity,
     suggestedExportKinds,
     type ResearchExportKind
   } from '$lib/services/research-artifacts';
@@ -41,7 +42,7 @@
     const seen = new Set<string>();
     const out: SearchResult[] = [];
     for (const source of ctx.message.sources || []) {
-      const key = String(source.url || source.title || '').trim().toLowerCase().replace(/#.*$/, '').replace(/\/$/, '');
+      const key = sourceIdentity(source.url, source.title);
       if (!key || seen.has(key)) continue;
       seen.add(key);
       out.push(source);

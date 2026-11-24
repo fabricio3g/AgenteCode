@@ -60,6 +60,10 @@ pub fn extract(html: &str, base: Option<&reqwest::Url>) -> Page {
                 .filter(|s| !s.is_empty())
         })
         .unwrap_or_default();
+    // `<base href>` (the first one with an href) resolves relative links;
+    // the response URL is the fallback and resolves a relative base itself.
+    let doc_base = document_base(&document, base);
+    let base = doc_base.as_ref().or(base);
     let links = extract_links(&document, base, 120);
 
     let Some(body) = document.select(sel("body")).next() else {
@@ -100,6 +104,25 @@ pub fn extract(html: &str, base: Option<&reqwest::Url>) -> Page {
         links,
         body_chars,
     }
+}
+
+/// The document's base URL: the first `<base href>` resolved against the
+/// response URL, kept only when it is http(s).
+fn document_base(document: &Html, response: Option<&reqwest::Url>) -> Option<reqwest::Url> {
+    let href = document
+        .select(sel("base[href]"))
+        .next()?
+        .value()
+        .attr("href")?
+        .trim();
+    if href.is_empty() {
+        return None;
+    }
+    let url = match response {
+        Some(r) => r.join(href).ok()?,
+        None => reqwest::Url::parse(href).ok()?,
+    };
+    matches!(url.scheme(), "http" | "https").then_some(url)
 }
 
 fn extract_links(
@@ -184,7 +207,7 @@ const CONTENT_SELECTOR: &str = "main, [role=main], article, #content, #main, #ma
 fn content_root<'a>(document: &'a Html, body: ElementRef<'a>, body_chars: usize) -> ElementRef<'a> {
     let candidates: Vec<(ElementRef<'a>, usize)> = document
         .select(sel(CONTENT_SELECTOR))
-        .filter(|el| !skipped(el))
+        .filter(|el| !skipped(el) && !inside_skipped(el, body))
         .map(|el| (el, score(el)))
         .collect();
     let Some(best) = candidates.iter().map(|(_, s)| *s).max() else {
@@ -201,6 +224,15 @@ fn content_root<'a>(document: &'a Html, body: ElementRef<'a>, body_chars: usize)
         .max_by_key(|(el, _)| el.ancestors().count())
         .map(|(el, _)| *el)
         .unwrap_or(body)
+}
+
+/// Whether an ancestor of `el` (below `body`) is chrome or hidden: a hidden
+/// archive wrapper must not hand its `<article>` to root selection.
+fn inside_skipped(el: &ElementRef, body: ElementRef) -> bool {
+    el.ancestors()
+        .take_while(|node| node.id() != body.id())
+        .filter_map(ElementRef::wrap)
+        .any(|ancestor| skipped(&ancestor))
 }
 
 /// Maximum DOM traversal depth to prevent stack overflow on pathological HTML.
@@ -586,7 +618,8 @@ impl<'b> Writer<'b> {
                 if text.is_empty() {
                     String::new()
                 } else if text.contains('`') {
-                    format!("`` {text} ``")
+                    let ticks = "`".repeat(longest_backtick_run(&text) + 1);
+                    format!("{ticks} {text} {ticks}")
                 } else {
                     format!("`{text}`")
                 }
@@ -677,22 +710,70 @@ impl<'b> Writer<'b> {
         {
             return None;
         }
-        let grid: Vec<Vec<String>> = rows
-            .iter()
-            .map(|row| {
-                row.child_elements()
-                    .filter(|c| matches!(c.value().name(), "td" | "th"))
-                    .map(|cell| {
-                        self.sub_with_mode(cell, true)
-                            .replace('\n', " ")
-                            .replace('|', "\\|")
-                            .trim()
-                            .to_string()
-                    })
-                    .collect::<Vec<_>>()
-            })
-            .filter(|row| row.iter().any(|cell| !cell.is_empty()))
-            .collect();
+        // Lay cells on a grid: a `rowspan` cell occupies its column in the
+        // rows below and a `colspan` cell the columns beside it, each copy
+        // carrying the value so every row keeps its data under its heading.
+        let span = |cell: &ElementRef, name: &str| {
+            cell.value()
+                .attr(name)
+                .and_then(|v| v.trim().parse::<usize>().ok())
+                .map(|n| n.clamp(1, 64))
+                .unwrap_or(1)
+        };
+        // Column -> (rows still covered, value) of a rowspan from above.
+        let mut pending: Vec<Option<(usize, String)>> = Vec::new();
+        let take_pending =
+            |col: usize, out: &mut Vec<String>, pending: &mut Vec<Option<(usize, String)>>| {
+                let Some(Some((left, value))) = pending.get_mut(col) else {
+                    return false;
+                };
+                out.push(value.clone());
+                *left -= 1;
+                if *left == 0 {
+                    pending[col] = None;
+                }
+                true
+            };
+        let mut grid: Vec<Vec<String>> = Vec::with_capacity(rows.len());
+        for row in &rows {
+            let mut out: Vec<String> = Vec::new();
+            let mut col = 0;
+            for cell in row
+                .child_elements()
+                .filter(|c| matches!(c.value().name(), "td" | "th"))
+            {
+                while take_pending(col, &mut out, &mut pending) {
+                    col += 1;
+                }
+                let text = self
+                    .sub_with_mode(cell, true)
+                    .replace('\n', " ")
+                    .replace('|', "\\|")
+                    .trim()
+                    .to_string();
+                let (rowspan, colspan) = (span(&cell, "rowspan"), span(&cell, "colspan"));
+                for _ in 0..colspan {
+                    if rowspan > 1 {
+                        if pending.len() <= col {
+                            pending.resize(col + 1, None);
+                        }
+                        pending[col] = Some((rowspan - 1, text.clone()));
+                    }
+                    out.push(text.clone());
+                    col += 1;
+                }
+            }
+            // Spans from above that reach past this row's last cell.
+            while col < pending.len() {
+                if !take_pending(col, &mut out, &mut pending) {
+                    out.push(String::new());
+                }
+                col += 1;
+            }
+            if out.iter().any(|cell| !cell.is_empty()) {
+                grid.push(out);
+            }
+        }
         let columns = grid.iter().map(Vec::len).max().unwrap_or(0);
         if grid.len() < 2 || columns < 2 {
             return None;
@@ -759,8 +840,23 @@ fn code_block(el: ElementRef, depth: usize) -> String {
     if text.is_empty() {
         return String::new();
     }
-    let fence = if text.contains("```") { "````" } else { "```" };
+    let fence = "`".repeat(longest_backtick_run(text).max(2) + 1);
     format!("{fence}{language}\n{text}\n{fence}")
+}
+
+/// Longest run of consecutive backticks: the fence around a code block must
+/// be longer, or a fence inside the code would close it early.
+fn longest_backtick_run(text: &str) -> usize {
+    let (mut best, mut run) = (0, 0);
+    for ch in text.chars() {
+        if ch == '`' {
+            run += 1;
+            best = best.max(run);
+        } else {
+            run = 0;
+        }
+    }
+    best
 }
 
 /// Source whitespace (newlines included) is one space; `<br>` adds a real
@@ -1085,5 +1181,78 @@ mod tests {
         assert_eq!(page.links[1].url, "https://rust-lang.org/");
         assert_eq!(page.links[1].domain, "rust-lang.org");
         assert!(!page.links[1].same_site);
+    }
+
+    #[test]
+    fn base_href_resolves_relative_links() {
+        let base = reqwest::Url::parse("https://example.test/docs/intro.html").unwrap();
+        let html = r#"<html><head><base href="/reference/"></head><body><main>
+            <p>See <a href="installation.html">install</a> for the setup steps.</p></main></body></html>"#;
+        let page = extract(html, Some(&base));
+        assert!(
+            page.markdown
+                .contains("[install](https://example.test/reference/installation.html)"),
+            "{}",
+            page.markdown
+        );
+        assert_eq!(
+            page.links[0].url,
+            "https://example.test/reference/installation.html"
+        );
+
+        let absolute = extract(
+            r#"<head><base href="https://other.test/x/"></head><body><p><a href="y">y link</a></p></body>"#,
+            Some(&base),
+        );
+        assert_eq!(absolute.links[0].url, "https://other.test/x/y");
+
+        let invalid = extract(
+            r#"<head><base href="javascript:alert(1)"></head><body><p><a href="y">y link</a></p></body>"#,
+            Some(&base),
+        );
+        assert_eq!(invalid.links[0].url, "https://example.test/docs/y");
+    }
+
+    #[test]
+    fn hidden_article_does_not_replace_visible_content() {
+        let visible = "Current guide sentence with real words. ".repeat(10);
+        let archived = "Archived guide sentence that is much longer. ".repeat(40);
+        let html = format!(
+            r#"<body><article><p>{visible}</p></article>
+            <div hidden><article><p>{archived}</p></article></div></body>"#
+        );
+        let out = md(&html);
+        assert!(out.contains("Current guide"), "{out}");
+        assert!(!out.contains("Archived guide"), "{out}");
+    }
+
+    #[test]
+    fn code_fence_outlasts_backtick_runs_inside() {
+        let out = md("<body><pre><code>````md\nexample\n````\nliteral line</code></pre></body>");
+        assert!(
+            out.starts_with("`````\n````md\nexample\n````\nliteral line\n`````"),
+            "{out}"
+        );
+        let three = md("<body><pre><code>```\nx\n```\ntail</code></pre></body>");
+        assert!(three.starts_with("````\n```\nx"), "{three}");
+        let inline = md("<body><p>Use <code>a``b</code> here</p></body>");
+        assert!(inline.contains("``` a``b ```"), "{inline}");
+    }
+
+    #[test]
+    fn rowspan_and_colspan_keep_cells_under_their_headings() {
+        let html = r#"<body><table>
+            <tr><th>Region</th><th>Status</th></tr>
+            <tr><td rowspan="2">South</td><td>Online</td></tr>
+            <tr><td>Offline</td></tr>
+            <tr><td colspan="2">Total</td></tr>
+        </table></body>"#;
+        let out = md(html);
+        assert!(
+            out.contains(
+                "| Region | Status |\n| --- | --- |\n| South | Online |\n| South | Offline |\n| Total | Total |"
+            ),
+            "{out}"
+        );
     }
 }

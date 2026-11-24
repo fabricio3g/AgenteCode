@@ -219,6 +219,27 @@ impl App {
         self.after_tab_change();
     }
 
+    /// Bring the tab that already has session `id` open to the front.
+    /// Loading it again in another tab would give two tabs one session id
+    /// and one saved snapshot, so the last tab to save would erase the
+    /// other's continuation. Returns whether a tab had it.
+    pub(super) fn focus_open_session(&mut self, id: uuid::Uuid) -> bool {
+        if self.state.session.session_id == id {
+            return true;
+        }
+        let Some(index) = self.tabs.slots.iter().position(|slot| {
+            slot.as_ref()
+                .is_some_and(|tab| tab.state.session.session_id == id)
+        }) else {
+            return false;
+        };
+        self.switch_tab(index);
+        self.state
+            .ui
+            .show_toast("This session is already open in this tab".to_string());
+        true
+    }
+
     /// Next (`+1`) or previous (`-1`) tab, wrapping.
     pub(super) fn cycle_tab(&mut self, step: isize) {
         let len = self.tabs.len() as isize;
@@ -446,6 +467,23 @@ mod tests {
 
         app.cycle_tab(1);
         assert_eq!(app.state.input.input_text, "draft two");
+    }
+
+    #[test]
+    fn resuming_a_session_open_in_another_tab_focuses_that_tab() {
+        let mut app = test_app();
+        let first = app.state.session.session_id;
+        app.state.input.input_text = "pending draft".into();
+        app.handle_key(KeyEvent::new(KeyCode::F(2), KeyModifiers::NONE))
+            .unwrap();
+        assert_eq!(app.tabs.active(), 1);
+
+        assert!(app.focus_open_session(first));
+        assert_eq!(app.tabs.len(), 2, "no second copy of the session");
+        assert_eq!(app.tabs.active(), 0);
+        assert_eq!(app.state.session.session_id, first);
+        assert_eq!(app.state.input.input_text, "pending draft");
+        assert!(!app.focus_open_session(uuid::Uuid::new_v4()));
     }
 
     #[test]

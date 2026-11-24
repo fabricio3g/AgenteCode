@@ -171,7 +171,11 @@ fn render_session_list(frame: &mut Frame, folder_area: Rect, list_area: Rect, st
     } else {
         style::muted()
     };
-    let first = if picker.session_picker_confirm_delete && selected > 0 {
+    let armed = selected > 0
+        && picker.session_picker_confirm_delete.is_some()
+        && filtered.get(selected - 1).map(|meta| meta.session_id)
+            == picker.session_picker_confirm_delete;
+    let first = if armed {
         PickItem::row_with_trail(
             vec![Span::styled("Delete this session?", style::error())],
             vec![Span::styled("Del confirm", style::dim())],

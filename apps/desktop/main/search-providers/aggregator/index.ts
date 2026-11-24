@@ -82,12 +82,13 @@ async function executeEngine(
 
   try {
     const results = await runAggregatorEngine(engine, query, limit, { ...options, aggregator_signal: signal });
-    const success = results.length > 0;
-    if (success) recordSuccess(key);
-    else recordFailure(key);
+    // A well-formed answer with no matches is a healthy engine: only
+    // transport, service or response failures (thrown below) count toward
+    // the cooldown. The empty count stays visible in the diagnostics.
+    recordSuccess(key);
     return {
       results,
-      attempt: { engine, success, result_count: results.length, latency_ms: Date.now() - started, error: success ? undefined : 'No results' },
+      attempt: { engine, success: true, result_count: results.length, latency_ms: Date.now() - started },
     };
   } catch (error: unknown) {
     const cooldownUntil = signal.aborted ? 0 : recordFailure(key);

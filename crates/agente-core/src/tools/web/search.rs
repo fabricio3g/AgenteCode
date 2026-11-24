@@ -352,23 +352,34 @@ fn parse_ddg_html(html: &str) -> Vec<Hit> {
 /// `lite.duckduckgo.com`: links and snippet cells in table rows, in order.
 fn parse_ddg_lite(html: &str) -> Vec<Hit> {
     let document = Html::parse_document(html);
-    let links: Vec<_> = document.select(&selector("a.result-link")).collect();
-    let snippets: Vec<String> = document
-        .select(&selector("td.result-snippet"))
-        .map(|cell| clip(&collapse_text(cell.text()), SNIPPET_CHARS))
-        .collect();
-    links
-        .into_iter()
-        .enumerate()
-        .filter_map(|(i, anchor)| {
-            let url = resolve_ddg_url(anchor.value().attr("href")?);
-            (!url.is_empty()).then(|| Hit {
-                title: collapse_text(anchor.text()),
-                url,
-                snippet: snippets.get(i).cloned().unwrap_or_default(),
-            })
-        })
-        .collect()
+    // Walk links and snippets in document order: a snippet belongs to the
+    // result row above it, so one result without a snippet leaves only its
+    // own empty instead of shifting every later snippet up a result.
+    let mut hits: Vec<Hit> = Vec::new();
+    let mut open = false;
+    for el in document.select(&selector("a.result-link, td.result-snippet")) {
+        if el.value().name() == "a" {
+            let url = el
+                .value()
+                .attr("href")
+                .map(resolve_ddg_url)
+                .unwrap_or_default();
+            open = !url.is_empty();
+            if open {
+                hits.push(Hit {
+                    title: collapse_text(el.text()),
+                    url,
+                    snippet: String::new(),
+                });
+            }
+        } else if open {
+            if let Some(hit) = hits.last_mut() {
+                hit.snippet = clip(&collapse_text(el.text()), SNIPPET_CHARS);
+            }
+            open = false;
+        }
+    }
+    hits
 }
 
 /// DuckDuckGo links are redirect wrappers
@@ -458,6 +469,34 @@ mod tests {
         assert_eq!(hits[0].title, "The Rust Programming Language");
         assert_eq!(hits[0].url, "https://www.rust-lang.org");
         assert!(hits[0].snippet.contains("reliable software"));
+    }
+
+    #[test]
+    fn lite_snippets_stay_with_their_own_result() {
+        let row = |n: u8| {
+            format!(r#"<tr><td><a class="result-link" href="https://r{n}.test/">R{n}</a></td></tr>"#)
+        };
+        let snippet = |n: u8| format!(r#"<tr><td class="result-snippet">About {n}</td></tr>"#);
+        let html = format!(
+            "<table>{}{}{}<tr><td>sponsored spacer</td></tr>{}{}</table>",
+            row(1),
+            row(2),
+            snippet(2),
+            row(3),
+            snippet(3)
+        );
+        let hits = parse_ddg_lite(&html);
+        assert_eq!(hits.len(), 3);
+        assert_eq!(hits[0].snippet, "");
+        assert_eq!(hits[1].snippet, "About 2");
+        assert_eq!(hits[2].snippet, "About 3");
+
+        let middle = format!("<table>{}{}{}{}{}</table>", row(1), snippet(1), row(2), row(3), snippet(3));
+        let hits = parse_ddg_lite(&middle);
+        assert_eq!(
+            hits.iter().map(|h| h.snippet.as_str()).collect::<Vec<_>>(),
+            ["About 1", "", "About 3"]
+        );
     }
 
     #[test]

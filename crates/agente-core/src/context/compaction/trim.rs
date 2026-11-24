@@ -2,7 +2,9 @@
 
 use std::collections::HashSet;
 
-use super::normalize::{carries_skill, carry_skills, compaction_boundary, normalize_tool_messages};
+use super::normalize::{
+    carries_skill, carry_skills, compaction_boundary, normalize_tool_messages, repair_role_order,
+};
 use super::{ContextCompactor, Summary, SummaryMetadata, SummaryType};
 use crate::context::budget::{estimate_message_tokens, estimated_message_cost};
 use crate::types::{Message, Role};
@@ -30,20 +32,46 @@ impl ContextCompactor {
             recent_start = compaction_boundary(&messages, keep, 0);
         }
         let keep_recent = messages.len().saturating_sub(recent_start);
-        let recent: Vec<Message> = messages[recent_start..].to_vec();
+        let mut recent: Vec<Message> = messages[recent_start..].to_vec();
         let older: Vec<Message> = messages[..recent_start].to_vec();
 
         // Estimate tokens in recent messages (we'll keep all of these)
-        let recent_tokens = tokens_from(recent_start);
+        let mut recent_tokens = tokens_from(recent_start);
+
+        // The newest exchange alone can be over the target — one huge read
+        // or a minified single-line result. Recent messages are otherwise
+        // kept whole, so shrink their largest tool outputs (never a skill)
+        // until they fit, or an overflow recovery saves nothing.
+        let mut recent_saved = 0usize;
+        if recent_tokens > target {
+            let mut largest: Vec<usize> = recent
+                .iter()
+                .enumerate()
+                .filter(|(_, m)| matches!(m.role, Role::Tool) && !carries_skill(m))
+                .map(|(i, _)| i)
+                .collect();
+            largest.sort_by_key(|&i| std::cmp::Reverse(estimated_message_cost(&recent[i])));
+            for i in largest {
+                if recent_tokens <= target {
+                    break;
+                }
+                let before = estimated_message_cost(&recent[i]);
+                self.compress_tool_result(&mut recent[i]);
+                let saved = before.saturating_sub(estimated_message_cost(&recent[i]));
+                recent_tokens = recent_tokens.saturating_sub(saved);
+                recent_saved += saved;
+            }
+        }
 
         let budget_for_older = target.saturating_sub(recent_tokens);
 
         // Compact older messages to fit the budget
-        let (compacted_older, tokens_saved) = self.compact_messages(older, budget_for_older);
+        let (compacted_older, older_saved) = self.compact_messages(older, budget_for_older);
+        let tokens_saved = older_saved + recent_saved;
 
         let mut result = compacted_older;
         result.extend(recent);
-        result = carry_skills(&messages, normalize_tool_messages(result));
+        result = repair_role_order(carry_skills(&messages, normalize_tool_messages(result)));
 
         let compressed_tokens = estimate_message_tokens(&result);
 
@@ -180,17 +208,25 @@ impl ContextCompactor {
     }
 
     fn compress_tool_result(&self, message: &mut Message) {
-        // Tool results are often large; compress significantly
-        let max_lines = 10;
-        let lines: Vec<&str> = message.content.lines().collect();
-
-        if lines.len() > max_lines {
-            let kept: Vec<&str> = lines.iter().take(max_lines).cloned().collect();
-            message.content = format!(
-                "{}\n\n... [Tool output truncated: {} total lines] ...",
-                kept.join("\n"),
-                lines.len()
-            );
+        // Tool results are often large; compress significantly. Bytes are
+        // capped as well as lines: minified JSON or a long log line is one
+        // line, and a line cap alone left it whole.
+        const MAX_LINES: usize = 10;
+        const MAX_BYTES: usize = 2_000;
+        let total_lines = message.content.lines().count();
+        let total_bytes = message.content.len();
+        if total_lines <= MAX_LINES && total_bytes <= MAX_BYTES {
+            return;
         }
+        let head = message
+            .content
+            .lines()
+            .take(MAX_LINES)
+            .collect::<Vec<_>>()
+            .join("\n");
+        let head = crate::util::truncate_at_char_boundary(&head, MAX_BYTES);
+        message.content = format!(
+            "{head}\n\n... [Tool output truncated: {total_lines} lines, {total_bytes} bytes total] ..."
+        );
     }
 }

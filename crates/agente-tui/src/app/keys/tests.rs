@@ -1075,9 +1075,38 @@ fn session_picker_matches_title_and_deletes_from_shared_snapshot() {
     assert_eq!(app.state.picker.session_picker_selected, 1);
     app.handle_key(key(KeyCode::Delete, KeyModifiers::NONE))
         .unwrap();
-    assert!(app.state.picker.session_picker_confirm_delete);
+    assert_eq!(
+        app.state.picker.session_picker_confirm_delete,
+        Some(s2.session_id)
+    );
     app.handle_key(key(KeyCode::Delete, KeyModifiers::NONE))
         .unwrap();
     assert_eq!(app.state.picker.sessions.len(), 1);
     assert_eq!(app.state.picker.sessions[0].session_id, s1.session_id);
+}
+
+#[test]
+fn a_moved_selection_rearms_delete_instead_of_deleting_another_session() {
+    let mut app = test_app();
+    let mut s1 = agente_core::session::create_session_meta("/tmp/proj-a");
+    s1.title = "First".into();
+    let mut s2 = agente_core::session::create_session_meta("/tmp/proj-a");
+    s2.title = "Second".into();
+    app.state.picker.show_session_picker = true;
+    app.state.picker.session_picker_folder_input = "/tmp/proj-a".into();
+    app.state.picker.sessions = vec![s1.clone(), s2.clone()];
+
+    app.state.picker.session_picker_selected = 1;
+    app.handle_key(key(KeyCode::Delete, KeyModifiers::NONE))
+        .unwrap();
+    // The pointer moves to the other row (hover-to-select) before the
+    // second press.
+    app.state.picker.session_picker_selected = 2;
+    app.handle_key(key(KeyCode::Delete, KeyModifiers::NONE))
+        .unwrap();
+    assert_eq!(app.state.picker.sessions.len(), 2, "nothing deleted");
+    assert_eq!(
+        app.state.picker.session_picker_confirm_delete,
+        Some(s2.session_id)
+    );
 }

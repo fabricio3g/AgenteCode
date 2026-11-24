@@ -95,3 +95,26 @@ describe('research-artifacts', () => {
     expect(parseExportKinds('shortlist,bibliography')).toEqual(['shortlist', 'bibliography']);
   });
 });
+
+describe('citation identity', () => {
+  const source = (url: string, title = 'Doc'): SearchResult => ({
+    title, url, snippet: 'snippet', full_content: '', provider: 'test', providers: ['test'], source_rank: 1,
+    published_at: null, metadata: {},
+  } as unknown as SearchResult);
+
+  it('keeps pages whose paths differ only in case', () => {
+    const citations = buildResearchCitations([
+      source('https://Docs.Example/docs/Api'),
+      source('https://docs.example/docs/API'),
+      source('https://DOCS.example/docs/Api#section'),
+    ]);
+    expect(citations.map((c) => c.url)).toEqual(['https://Docs.Example/docs/Api', 'https://docs.example/docs/API']);
+  });
+
+  it('exports the whole destination of a long link', () => {
+    const url = `https://example.test/search?q=${'x'.repeat(520)}&page=2`;
+    const [citation] = buildResearchCitations([source(url)]);
+    expect(citation.url).toBe(url);
+    expect(buildApaReferences([citation])).toContain('&page=2');
+  });
+});

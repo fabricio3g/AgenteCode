@@ -113,6 +113,7 @@ export async function executeChatTurn(host: ChatTurnHost, args: ExecuteChatTurnA
     if (!targetVersion) return;
     targetVersion.content = message.content;
     targetVersion.reasoning = message.reasoning;
+    if (message.sources) targetVersion.sources = [...message.sources];
     const { currentActivity, activityLabel: label, codeTimeline } = message.metadata || {};
     if (currentActivity) {
       targetVersion.metadata = { ...(targetVersion.metadata || {}), currentActivity, activityLabel: label, codeTimeline };
@@ -143,12 +144,14 @@ export async function executeChatTurn(host: ChatTurnHost, args: ExecuteChatTurnA
       targetVersion.content = message.content;
       targetVersion.reasoning = message.reasoning;
       targetVersion.metadata = message.metadata;
+      targetVersion.sources = [...(message.sources || [])];
     } else {
       message.versions = [{
         content: message.content,
         createdAt: message.createdAt,
         reasoning: message.reasoning,
-        metadata: message.metadata
+        metadata: message.metadata,
+        sources: [...(message.sources || [])]
       }];
     }
   };
@@ -202,6 +205,7 @@ export async function executeChatTurn(host: ChatTurnHost, args: ExecuteChatTurnA
         targetVersion.content = message.content;
         targetVersion.reasoning = message.reasoning;
         targetVersion.metadata = message.metadata;
+        targetVersion.sources = [...(message.sources || [])];
       }
       if (execution.agentDebugLogs && (agentResult.warning || agentResult.error)) {
         console.info('[agent]', agentResult.warning || agentResult.error);

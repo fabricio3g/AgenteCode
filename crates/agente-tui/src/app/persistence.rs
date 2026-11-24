@@ -234,6 +234,9 @@ impl App {
             return Ok(());
         }
         let id = resolve_session_id(&agente_core::session::list_sessions(), query)?;
+        if self.focus_open_session(id) {
+            return Ok(());
+        }
         let data = agente_core::session::load_session(&id)?;
         self.open_saved_session(&data);
         Ok(())

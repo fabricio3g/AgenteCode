@@ -17,7 +17,7 @@ export function promptCodeAgent(chatId: string, text: string, attachments?: Atta
   return invoke('agente_prompt', { chatId, text, attachments });
 }
 
-export function steerCodeAgent(chatId: string, text: string, attachments?: Attachment[]): Promise<{ ok: boolean }> {
+export function steerCodeAgent(chatId: string, text: string, attachments?: Attachment[]): Promise<{ ok: boolean; error?: string }> {
   return invoke('agente_steer', { chatId, text, attachments });
 }
 

@@ -50,6 +50,8 @@ type ChatState = {
   /** Sent with the first turn of a new session only. */
   systemPrompt?: string;
   turnId: string | null;
+  /** The provider and model the running turn uses: steered input goes to it. */
+  turnModel?: { id: string; model: string };
   stopRequested: boolean;
   stopGrace?: ReturnType<typeof setTimeout>;
   settlement?: { promise: Promise<void>; resolve: () => void };
@@ -559,17 +561,13 @@ async function prompt(chatId: string, text: string, images?: Array<{ data: strin
     const provider = await useProvider(client, chat.provider, chat.model, chat.localSelection);
     const expanded = await client.request<{ text: string }>('project.expand_prompt', { project_dir: chat.projectRoot, text });
     const media = [...attachments, ...(await storeImages(client, images))];
-    if (media.length) {
-      const info = await client.request<{ capabilities: { input_modalities?: string[]; vision: boolean } }>('models.info', { provider: provider.id, model: provider.model });
-      const modalities = info.capabilities.input_modalities || [];
-      const unsupported = media.filter((item) => modalities.length ? !modalities.includes(item.kind) && !(item.kind === 'pdf' && modalities.includes('file')) : item.kind !== 'image' || !info.capabilities.vision);
-      if (unsupported.length) throw new Error(`The selected model cannot accept ${unsupported.map((item) => item.name).join(', ')}. Choose a model with those input modalities.`);
-    }
+    await assertModelAccepts(client, provider, media);
     const message: Message = { role: 'user', content: expanded.text, attachments: media };
     if (chat.owner) trackGoalTurn(chat.sessionId, client, chat.owner, provider.id, provider.model, message.content);
     const started = await client.request<{ turn_id: string; conversation_index?: number }>('turn.start', turnParams(chat, provider, message));
     chat.systemPrompt = undefined;
     chat.turnId = started.turn_id;
+    chat.turnModel = { id: provider.id, model: provider.model };
     goalTurnStarted(chat.sessionId,started.turn_id);
     const computerOwner = codeComputerOwner(chat); if (computerOwner) bindComputerOwner(computerOwner);
     return { ok: true, conversationIndex: started.conversation_index };
@@ -580,16 +578,37 @@ async function prompt(chatId: string, text: string, images?: Array<{ data: strin
   }
 }
 
+/**
+ * One capability decision for every way input reaches a model (a new turn,
+ * a steer into a running one, a queued follow-up when it starts): refuse
+ * media the model that will receive it cannot read, rather than letting the
+ * provider swap the file for a note while the UI still shows it attached.
+ */
+async function assertModelAccepts(client: Awaited<ReturnType<typeof connect>>, provider: { id: string; model: string }, media: Attachment[]): Promise<void> {
+  if (!media.length) return;
+  const info = await client.request<{ capabilities: { input_modalities?: string[]; vision: boolean } }>('models.info', { provider: provider.id, model: provider.model });
+  const modalities = info.capabilities.input_modalities || [];
+  const unsupported = media.filter((item) => modalities.length ? !modalities.includes(item.kind) && !(item.kind === 'pdf' && modalities.includes('file')) : item.kind !== 'image' || !info.capabilities.vision);
+  if (unsupported.length) throw new Error(`The selected model cannot accept ${unsupported.map((item) => item.name).join(', ')}. Choose a model with those input modalities.`);
+}
+
 function failedPrompt(error: unknown, message: string): { ok: false; error: string; errorKey?: string } {
   return { ok: false, error: message, ...(error instanceof RuntimeNoModelError ? { errorKey: error.errorKey } : {}) };
 }
 
-async function steer(chatId: string, text: string, attachments: Attachment[] = []): Promise<{ ok: boolean }> {
+async function steer(chatId: string, text: string, attachments: Attachment[] = []): Promise<{ ok: boolean; error?: string }> {
   const chat = chats.get(chatId);
   if (!chat || chat.stopRequested) return { ok: false };
   if (!chat.turnId) return queueFollowUp(chat, text, attachments);
   const turnId = chat.turnId;
   const client = await connect();
+  if (attachments.length) {
+    try {
+      await assertModelAccepts(client, chat.turnModel || { id: chat.provider, model: chat.model }, attachments);
+    } catch (error: unknown) {
+      return { ok: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  }
   const expanded = await client.request<{ text: string }>('project.expand_prompt', { project_dir: chat.projectRoot, text });
   if (chat.stopRequested || chat.turnId !== turnId) return { ok: false };
   return client.request('turn.steer', { turn_id: turnId, content: expanded.text, attachments });

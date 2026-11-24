@@ -8,7 +8,7 @@ fn saved_edits_recover_the_project_and_remain_undoable_after_restart() {
     runtime
         .open_session(session, project.to_str().unwrap())
         .unwrap();
-    runtime.inner.lock_edits().begin_turn(session, 3);
+    runtime.inner.lock_edits().begin_turn(session, 3, None);
     std::fs::write(project.join("a.txt"), "keep\nnew\n").unwrap();
     runtime.inner.lock_edits().end_turn(
         session,
@@ -1003,7 +1003,7 @@ fn commit_compaction_after_restart_restores_and_preserves_edit_history() {
         runtime
             .open_session(session, project.to_str().unwrap())
             .unwrap();
-        runtime.inner.lock_edits().begin_turn(session, 1);
+        runtime.inner.lock_edits().begin_turn(session, 1, None);
         runtime.inner.lock_edits().end_turn(
             session,
             vec![edits::FileEdit {

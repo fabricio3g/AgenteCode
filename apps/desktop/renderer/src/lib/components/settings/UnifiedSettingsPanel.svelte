@@ -27,7 +27,17 @@
   let persistedSearchProvider = $state(appStore.config.search?.provider || 'aggregator');
   let searchMaxResults = $state(String(appStore.config.search?.max_results ?? 6));
   let searchApiKey = $state('');
-  let searchBaseUrl = $state(appStore.config.search?.providers?.searxng?.base_url || 'https://searx.org');
+  // One field edits the base URL of whichever provider takes one; each keeps
+  // its own saved value and default (the connectors' defaults).
+  const DEFAULT_BASE_URLS: Record<string, string> = {
+    searxng: 'https://searx.org',
+    jina: 'https://s.jina.ai',
+  };
+  function storedBaseUrl(provider: string): string {
+    const providers = (appStore.config.search?.providers || {}) as Record<string, { base_url?: string }>;
+    return providers[provider]?.base_url || DEFAULT_BASE_URLS[provider] || '';
+  }
+  let searchBaseUrl = $state(storedBaseUrl(appStore.config.search?.provider || 'aggregator') || DEFAULT_BASE_URLS.searxng);
   let searchModel = $state(appStore.config.search?.providers?.perplexity?.model || 'sonar');
   let searchApiUrl = $state(appStore.config.search?.providers?.perplexity?.api_url || 'https://api.perplexity.ai');
   let aggregatorEngines = $state<string[]>([
@@ -150,6 +160,7 @@
   $effect(() => {
     const provider = String(searchProvider || 'auto').toLowerCase();
     searchApiKey = getStoredSearchApiKey(provider);
+    if (provider in DEFAULT_BASE_URLS) searchBaseUrl = untrack(() => storedBaseUrl(provider));
   });
 
   $effect(() => {
@@ -195,6 +206,10 @@
     }
     savingSearchConfiguration = true;
     try {
+      // A debounced preference write captured the previous provider (an
+      // unconfigured one cannot be activated by autosave); drop it so it
+      // cannot land after this save and switch the provider back.
+      await searchAutosave.cancel();
       await appStore.updateSearchSettings({
         provider: searchProvider,
         max_results: normalizedMaxResults(),
@@ -209,7 +224,7 @@
             ? { searxng: { base_url: searchBaseUrl || appStore.config.search?.providers?.searxng?.base_url || 'https://searx.org' } }
             : {}),
           ...(searchProvider === 'jina'
-            ? { jina: { api_key: searchApiKey || appStore.config.search?.providers?.jina?.api_key, base_url: searchBaseUrl || appStore.config.search?.providers?.jina?.base_url || 'https://api.jina.ai' } }
+            ? { jina: { api_key: searchApiKey || appStore.config.search?.providers?.jina?.api_key, base_url: searchBaseUrl || storedBaseUrl('jina') } }
             : {}),
           ...(searchProvider === 'perplexity'
             ? { perplexity: { api_key: searchApiKey || appStore.config.search?.providers?.perplexity?.api_key, model: searchModel || appStore.config.search?.providers?.perplexity?.model || 'sonar', api_url: searchApiUrl || appStore.config.search?.providers?.perplexity?.api_url || 'https://api.perplexity.ai' } }

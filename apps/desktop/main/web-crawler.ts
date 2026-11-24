@@ -20,18 +20,41 @@ const MODE_CONFIG = {
   }
 };
 
+/**
+ * The URL to request: http(s) only, without its fragment. The path is kept
+ * as written: `/guide/` and `/guide` can be different documents (one may
+ * 404), so a trailing slash is never stripped. Pages read twice under both
+ * spellings are deduplicated by their content instead.
+ */
 function normalizeUrl(url) {
   try {
     const parsed = new URL(String(url || '').trim());
     if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return '';
     parsed.hash = '';
-    if (parsed.pathname.length > 1 && parsed.pathname.endsWith('/')) {
-      parsed.pathname = parsed.pathname.slice(0, -1);
-    }
     return parsed.toString();
   } catch {
     return '';
   }
+}
+
+/**
+ * Page text with its paragraphs kept: spaces collapse within each line and
+ * blank-line runs shrink to one, so the summarizer can still pick the
+ * paragraph that answers the query.
+ */
+function tidyPageText(text) {
+  return String(text || '')
+    .replace(/\r\n?/g, '\n')
+    .split('\n')
+    .map((line) => line.replace(/[ \t\f\v ]+/g, ' ').trim())
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+function contentKey(text) {
+  const flat = normalizeWhitespace(text).toLowerCase();
+  return `${flat.length}:${flat.slice(0, 2000)}`;
 }
 
 function enqueue(queue, candidate) {
@@ -54,28 +77,39 @@ function uniqueSeedUrls(seedUrls) {
   return items;
 }
 
+/**
+ * Every page whole, in crawl order, while they fit. Reports what it left
+ * out (`omitted` pages, `clipped` text) so the caller never mistakes a
+ * partial context for the full one.
+ */
 function buildCrawlContext(pages, budgetChars) {
   const budget = Math.max(500, Number(budgetChars) || 7000);
   const blocks = [];
   let used = 0;
+  let omitted = 0;
+  let clipped = false;
   for (let i = 0; i < pages.length; i += 1) {
-    if (used >= budget) break;
     const page = pages[i];
-    const content = normalizeWhitespace(page.content || '');
-    if (!content) continue;
+    const content = page.content || '';
+    if (!normalizeWhitespace(content)) continue;
+    const limit = Math.min(4200, budget);
+    if (content.length > limit) clipped = true;
 
     const block = [
       `## [C${i + 1}] ${page.title || page.url || 'Untitled page'}`,
       `URL: ${page.url}`,
       `Depth: ${page.depth}`,
-      content.slice(0, Math.min(4200, budget))
+      content.slice(0, limit)
     ].join('\n\n');
 
-    if (blocks.length > 0 && used + block.length > budget) break;
+    if (used >= budget || (blocks.length > 0 && used + block.length > budget)) {
+      omitted += 1;
+      continue;
+    }
     blocks.push(block);
     used += block.length + 24;
   }
-  return blocks.join('\n\n---\n\n');
+  return { text: blocks.join('\n\n---\n\n'), omitted, clipped };
 }
 
 export async function crawlWeb({
@@ -106,6 +140,9 @@ export async function crawlWeb({
       stats: {
         pages_crawled: 0,
         pages_discovered: 0,
+        pages_attempted: 0,
+        pages_failed: 0,
+        pages_omitted: 0,
         truncated: false,
         max_depth_reached: 0
       }
@@ -115,15 +152,22 @@ export async function crawlWeb({
   const queue = [];
   const queued = new Set();
   const visited = new Set();
+  const seenContent = new Set();
   const pages = [];
   let maxDepthReached = 0;
+  // Network reads have their own hard cap: a failed read (404, timeout)
+  // adds no page, and without a cap a burst of dead links kept the crawl
+  // going well past the page budget.
+  const maxAttempts = Math.ceil(modeConfig.maxPages * 1.5);
+  let attempts = 0;
+  let failed = 0;
 
   for (const url of seeds) {
     enqueue(queue, { url, depth: 0, parentUrl: '', priority: 1.0 });
     queued.add(url);
   }
 
-  while (queue.length && pages.length < modeConfig.maxPages) {
+  while (queue.length && pages.length < modeConfig.maxPages && attempts < maxAttempts) {
     const next = queue.shift();
     if (!next) break;
     queued.delete(next.url);
@@ -133,21 +177,35 @@ export async function crawlWeb({
 
     emit?.('crawl_page', `Crawling page ${pages.length + 1}/${modeConfig.maxPages}: ${next.url}`);
 
-    const scraped = await scrapeFn({
-      url: next.url,
-      maxLength: modeConfig.maxCharsPerPage,
-      timeoutMs: 18000,
-      maxLinks: 120
-    });
+    attempts += 1;
+    let scraped;
+    try {
+      scraped = await scrapeFn({
+        url: next.url,
+        maxLength: modeConfig.maxCharsPerPage,
+        timeoutMs: 18000,
+        maxLinks: 120
+      });
+    } catch {
+      scraped = null;
+    }
 
     if (!scraped || scraped.error || !normalizeWhitespace(scraped.content)) {
+      failed += 1;
       continue;
     }
+
+    const content = tidyPageText(scraped.content);
+    // The same document under another spelling of its URL (`/guide` and
+    // `/guide/`, a redirect): read once, kept once.
+    const key = contentKey(content);
+    if (seenContent.has(key)) continue;
+    seenContent.add(key);
 
     pages.push({
       url: next.url,
       title: scraped.title || next.url,
-      content: normalizeWhitespace(scraped.content),
+      content,
       excerpt: scraped.excerpt || '',
       depth: next.depth,
       parentUrl: next.parentUrl || '',
@@ -181,22 +239,23 @@ export async function crawlWeb({
     }
   }
 
-  const contextRaw = buildCrawlContext(pages, budgetChars);
-  const summary = summarizeCrawledPages({
+  const raw = buildCrawlContext(pages, budgetChars);
+  // The whole pages fit: send them. Otherwise condense every page to its
+  // most relevant paragraphs, which keeps a short excerpt of each source
+  // (and names any that still did not fit) instead of silently dropping
+  // the ones at the end.
+  const complete = raw.omitted === 0 && !raw.clipped && raw.text.length <= budgetChars;
+  const summary = complete ? null : summarizeCrawledPages({
     pages,
     query,
     targetChars: budgetChars
   });
-
-  const shouldSummarize = contextRaw.length > budgetChars || summary.truncated;
-  const finalContext = shouldSummarize
-    ? summary.text || contextRaw.slice(0, budgetChars)
-    : contextRaw;
+  const finalContext = complete ? raw.text : (summary?.text || raw.text.slice(0, budgetChars));
 
   const results = pages.map((page, index) => ({
     title: page.title,
     url: page.url,
-    snippet: page.excerpt || page.content.slice(0, 280),
+    snippet: page.excerpt || normalizeWhitespace(page.content).slice(0, 280),
     full_content: page.content.slice(0, modeConfig.maxCharsPerPage),
     provider: 'crawler',
     source_rank: index + 1,
@@ -216,7 +275,10 @@ export async function crawlWeb({
     stats: {
       pages_crawled: pages.length,
       pages_discovered: visited.size,
-      truncated: shouldSummarize,
+      pages_attempted: attempts,
+      pages_failed: failed,
+      pages_omitted: summary ? summary.omitted : raw.omitted,
+      truncated: !complete,
       max_depth_reached: maxDepthReached
     }
   };

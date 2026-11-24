@@ -425,6 +425,10 @@ pub(super) fn prepare_request_messages(
     if let Some(index) = todo_review_at {
         reminder_tokens += inject_todo_review(&mut request_messages, index);
     }
+    // Goal, budget and todo notes join the user turn they follow instead of
+    // reaching the provider as two or three user turns in a row
+    // (deterministic, so the cached prefix stays byte-stable).
+    crate::context::compaction::merge_consecutive_user_turns(&mut request_messages);
     let request_estimate = used + tool_tokens + reminder_tokens;
     (request_messages, request_estimate)
 }
