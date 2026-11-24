@@ -7,6 +7,7 @@
 mod client_tools;
 mod complements;
 mod connection;
+mod git;
 mod project;
 mod tcp;
 

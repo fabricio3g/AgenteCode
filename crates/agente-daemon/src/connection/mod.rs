@@ -53,7 +53,7 @@ pub(crate) fn initialize_result() -> Value {
         "protocol_version": agente_protocol::PROTOCOL_VERSION,
         "server": "agente",
         "version": env!("CARGO_PKG_VERSION"),
-        "capabilities": ["project", "processes", "sessions", "turns", "edits", "desktop_v1", "home_turns_v1", "provider_settings_v1", "complements_v1", "llm_stream_v1", "process_push_v1", "web_v1"],
+        "capabilities": ["project", "processes", "sessions", "turns", "edits", "desktop_v1", "home_turns_v1", "provider_settings_v1", "complements_v1", "llm_stream_v1", "process_push_v1", "web_v1", "git_v1"],
     })
 }
 
@@ -132,6 +132,12 @@ where
                         | "project.files"
                         | "web.search"
                         | "web.fetch"
+                        | "git.changes"
+                        | "git.diff"
+                        | "git.revert"
+                        | "git.branches"
+                        | "git.switch_branch"
+                        | "git.pull_request"
                 ) {
                     // Long-running and network-bound RPCs must never block the
                     // JSON-RPC reader loop (so turn.cancel, approval.respond,
@@ -165,6 +171,7 @@ where
                             }
                             "web.search" => connection.web_search(params).await,
                             "web.fetch" => connection.web_fetch(params).await,
+                            m if m.starts_with("git.") => crate::git::handle_async(m, params).await,
                             _ => unreachable!(),
                         };
                         let reply = match outcome {
