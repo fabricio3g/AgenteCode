@@ -291,7 +291,12 @@ export async function webSearch({ query, context, deep, mode, options }: { query
   const requestedProvider = normalizeProviderName(options?.provider || 'auto');
   // A saved choice of a removed provider (a scraper or reseller) searches with auto.
   const explicitProvider = REMOVED_SEARCH_PROVIDERS.includes(requestedProvider) ? 'auto' : requestedProvider;
-  const maxResults = Math.max(1, Math.min(Number(options?.max_results) || 6, 20));
+  // The caller (the model, through its tool) says how many results it wants;
+  // with no count the depth decides. There is no user setting for this.
+  const requestedResults = Math.round(Number(options?.max_results));
+  const maxResults = Number.isFinite(requestedResults) && requestedResults >= 1
+    ? Math.min(requestedResults, 50)
+    : searchMode === 'max' ? 18 : searchMode === 'deep' ? 12 : 8;
   const searchOptions = { ...(options || {}), conversation_context: conversationContext, search_query: effectiveQuery || normalizedQuery };
 
   const emit = (step: string, detail: string) => {
@@ -403,7 +408,7 @@ export async function webSearch({ query, context, deep, mode, options }: { query
   }
 
   const responseLimit = searchMode === 'max'
-    ? Math.min(40, Math.max(maxResults * 2, 18))
+    ? Math.max(maxResults, Math.min(40, Math.max(maxResults * 2, 18)))
     : searchMode === 'deep'
       ? Math.max(maxResults, 12)
       : maxResults;

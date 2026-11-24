@@ -1460,8 +1460,6 @@
     "providerSection": "Proveedor",
     "provider": "Proveedor de búsqueda",
     "providerHint": "Usa un proveedor directamente o combina un grupo de motores.",
-    "targetResults": "Resultados objetivo",
-    "targetResultsHint": "Las búsquedas web normales piden de 1 a 20 resultados. Los modos profundos usan su propio presupuesto de investigación, mayor.",
     "safeSearch": "Búsqueda segura",
     "safeSearchHint": "Se aplica cuando el motor seleccionado lo admite.",
     "safeOff": "Desactivada",

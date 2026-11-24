@@ -25,7 +25,6 @@
 
   let searchProvider = $state(appStore.config.search?.provider || 'aggregator');
   let persistedSearchProvider = $state(appStore.config.search?.provider || 'aggregator');
-  let searchMaxResults = $state(String(appStore.config.search?.max_results ?? 6));
   let searchApiKey = $state('');
   // One field edits the base URL of whichever provider takes one; each keeps
   // its own saved value and default (the connectors' defaults).
@@ -65,7 +64,6 @@
 
   type SearchPreferences = {
     provider: string;
-    max_results: number;
     aggregator_engines: string[];
     safe_search: number;
   };
@@ -100,7 +98,6 @@
   })));
   let previousSearchSignature = JSON.stringify(untrack(() => ({
     searchProvider,
-    searchMaxResults,
     aggregatorEngines,
     searchSafeSearch,
   })));
@@ -131,16 +128,10 @@
     return searchApiKey.trim().length > 0;
   }
 
-  function normalizedMaxResults(): number {
-    const parsed = Number(searchMaxResults);
-    return Number.isFinite(parsed) ? Math.max(1, Math.min(Math.round(parsed), 20)) : 6;
-  }
-
   function currentSearchPreferences(): SearchPreferences {
     const canActivateProvider = providerHasConfiguration(searchProvider);
     return {
       provider: canActivateProvider ? searchProvider : persistedSearchProvider,
-      max_results: normalizedMaxResults(),
       aggregator_engines: [...aggregatorEngines],
       safe_search: Number(searchSafeSearch),
     };
@@ -174,7 +165,7 @@
   });
 
   $effect(() => {
-    const signature = JSON.stringify({ searchProvider, searchMaxResults, aggregatorEngines, searchSafeSearch });
+    const signature = JSON.stringify({ searchProvider, aggregatorEngines, searchSafeSearch });
     if (!mounted || signature === previousSearchSignature) return;
     previousSearchSignature = signature;
 
@@ -212,7 +203,6 @@
       await searchAutosave.cancel();
       await appStore.updateSearchSettings({
         provider: searchProvider,
-        max_results: normalizedMaxResults(),
         aggregator_engines: aggregatorEngines,
         safe_search: Number(searchSafeSearch),
         providers: {
@@ -265,7 +255,6 @@
     {:else}
       <SearchSettings
         bind:searchProvider
-        bind:searchMaxResults
         bind:searchApiKey
         bind:searchBaseUrl
         bind:searchModel

@@ -43,7 +43,6 @@ function renderSearch(provider = 'aggregator') {
   return render(SearchSettings, {
     props: {
       searchProvider: provider,
-      searchMaxResults: '6',
       searchApiKey: '',
       searchBaseUrl: '',
       searchModel: 'sonar',

@@ -346,7 +346,7 @@ describe('migrateConfig', () => {
       tts: { model_variant: 'kokoro_v11', model_dir: '/path/to/models/kokoro-multi-lang-v1_1', model: 'model.int8.onnx' },
       stt: { provider: 'local' },
       onboarding: { completed: true },
-      search: { provider: 'aggregator', max_results: 6, aggregator_engines: ['wikipedia', 'arxiv'] },
+      search: { provider: 'aggregator', aggregator_engines: ['wikipedia', 'arxiv'] },
     };
     const result = migrateConfig(cfg, modelsRoot);
     assert.strictEqual(result.dirty, false);
@@ -378,7 +378,7 @@ describe('migrateConfig', () => {
     const cfg = {
       llm: { providers: {} },
       onboarding: { completed: false },
-      search: { provider: 'aggregator', max_results: 6, aggregator_engines: ['wikipedia', 'arxiv'] },
+      search: { provider: 'aggregator', aggregator_engines: ['wikipedia', 'arxiv'] },
     };
     const result = migrateConfig(cfg, modelsRoot);
     assert.strictEqual(result.dirty, false);
@@ -389,7 +389,7 @@ describe('migrateConfig', () => {
       custom_field: 'should_remain',
       llm: { providers: {} },
       onboarding: { completed: true },
-      search: { provider: 'aggregator', max_results: 6, aggregator_engines: ['wikipedia', 'arxiv'] },
+      search: { provider: 'aggregator', aggregator_engines: ['wikipedia', 'arxiv'] },
     };
     const result = migrateConfig(cfg, modelsRoot);
     assert.strictEqual(result.dirty, false);
@@ -409,20 +409,26 @@ describe('ensureSearchConfig', () => {
     const dirty = ensureSearchConfig(cfg);
     assert.strictEqual(dirty, true);
     assert.strictEqual(cfg.search.provider, 'auto');
-    assert.strictEqual(cfg.search.max_results, 6);
+    assert.strictEqual('max_results' in cfg.search, false);
     assert.deepStrictEqual(cfg.search.aggregator_engines, ['wikipedia', 'arxiv', 'crossref', 'pubmed']);
   });
 
   it('does not overwrite an explicit provider', () => {
-    const cfg = { search: { provider: 'brave', max_results: 8, aggregator_engines: ['wikipedia'] } };
+    const cfg = { search: { provider: 'brave', aggregator_engines: ['wikipedia'] } };
     const dirty = ensureSearchConfig(cfg);
     assert.strictEqual(dirty, false);
     assert.strictEqual(cfg.search.provider, 'brave');
-    assert.strictEqual(cfg.search.max_results, 8);
+  });
+
+  it('drops the removed result-count setting', () => {
+    const cfg = { search: { provider: 'brave', max_results: 8, aggregator_engines: ['wikipedia'] } };
+    assert.strictEqual(ensureSearchConfig(cfg), true);
+    assert.strictEqual('max_results' in cfg.search, false);
+    assert.strictEqual(cfg.search.provider, 'brave');
   });
 
   it('moves users off removed scrapers and resellers', () => {
-    const cfg = { search: { provider: 'serpapi', max_results: 6, aggregator_engines: ['duckduckgo', 'google', 'wikipedia'], providers: { serpapi: { api_key: 'k' }, tavily: { api_key: 't' } } } };
+    const cfg = { search: { provider: 'serpapi', aggregator_engines: ['duckduckgo', 'google', 'wikipedia'], providers: { serpapi: { api_key: 'k' }, tavily: { api_key: 't' } } } };
     assert.strictEqual(ensureSearchConfig(cfg), true);
     assert.strictEqual(cfg.search.provider, 'auto');
     assert.deepStrictEqual(cfg.search.aggregator_engines, ['wikipedia']);
@@ -430,7 +436,7 @@ describe('ensureSearchConfig', () => {
   });
 
   it('falls back to the default engines when none are left', () => {
-    const cfg = { search: { provider: 'aggregator', max_results: 6, aggregator_engines: ['duckduckgo', 'mojeek'] } };
+    const cfg = { search: { provider: 'aggregator', aggregator_engines: ['duckduckgo', 'mojeek'] } };
     ensureSearchConfig(cfg);
     assert.deepStrictEqual(cfg.search.aggregator_engines, ['wikipedia', 'arxiv', 'crossref', 'pubmed']);
   });

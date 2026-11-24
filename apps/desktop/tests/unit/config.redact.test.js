@@ -260,7 +260,6 @@ describe('redactConfig', () => {
       onboarding: {},
       search: {
         provider: 'brave',
-        max_results: 6,
         providers: {
           brave: { api_key: 'BSA-secret-token' },
           tavily: { api_key: '' },
