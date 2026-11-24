@@ -430,7 +430,15 @@
       },
       "waitsFor": "Attend {cards}",
       "openCard": "Ouvrir son sous-agent",
-      "clear": "Vider le tableau"
+      "clear": "Vider le tableau",
+      "lane": {
+        "title": "Essaim",
+        "feeds": "Alimente {cards}",
+        "failed": "Échec",
+        "findings": "Constats",
+        "lead": "Pilote",
+        "more": "{n, plural, one {# constat précédent} other {# constats précédents}} sur le tableau"
+      }
     },
     "traceCopyInput": "Copier l’entrée",
     "traceCopyOutput": "Copier le résultat",

@@ -30,6 +30,8 @@
   import MediaAttachmentCard from './MediaAttachmentCard.svelte';
   import CodeWorkBlock from './CodeWorkBlock.svelte';
   import SubagentTally from './SubagentTally.svelte';
+  import SwarmBlock from './SwarmBlock.svelte';
+  import { swarmStore } from './swarm.svelte';
   import { composerChildren } from './subagent-row';
   import { subagentFocus } from './subagent-focus.svelte';
   import CodeLiveStatus from './CodeLiveStatus.svelte';
@@ -67,6 +69,11 @@
 
   /** Live run state for retry + todo visibility while streaming. */
   const run = $derived(codeStore.runFor(chatId));
+  // The board joins a turn's swarm members into one block; keep it current
+  // even while the Board pane is closed.
+  $effect(() => { void swarmStore.load(chatId).catch(() => {}); });
+  /** Subagents working a board card: the swarm block draws them, not the tally line. */
+  const swarmChildIds = $derived(new Set((swarmStore.boardFor(chatId)?.cards ?? []).map((card) => card.child_id).filter((id): id is string => !!id)));
   const dockedChildren = $derived(new Set(liveSubagentDock ? composerChildren(run).map((child) => child.id) : []));
   const plan = $derived(pendingPlan(messages));
 
@@ -319,7 +326,8 @@
         {@const live = run?.assistantMessageId === message.id}
         {@const entries = entriesFor(message)}
         {@const children = live ? run?.children ?? [] : message.metadata?.codeChildren ?? []}
-        {@const transcriptChildren = children.filter((child) => !dockedChildren.has(child.id))}
+        {@const swarmChildren = children.filter((child) => swarmChildIds.has(child.id))}
+        {@const transcriptChildren = children.filter((child) => !dockedChildren.has(child.id) && !swarmChildIds.has(child.id))}
         {@const diagnostics = live ? run?.diagnostics ?? [] : message.metadata?.codeDiagnostics ?? []}
         {@const blocks = replyBlocks(entries)}
         <div class="group flex min-w-0 flex-col gap-[var(--thread-gap)]">
@@ -348,7 +356,12 @@
             {/if}
           {/if}
 
-          <!-- The turn's subagents in one line; the pane holds the detail. -->
+          <!-- The turn's swarm as one block: a lane per card, then what the members told each other. -->
+          {#if swarmChildren.length}
+            <SwarmBlock {chatId} children={swarmChildren} stopping={live && !!run?.stopping} />
+          {/if}
+
+          <!-- The turn's other subagents in one line; the pane holds the detail. -->
           {#if transcriptChildren.length}
             <Button variant="plain" type="button" class="subagent-line ui-local-3e9cc53a" data-subagent-line={message.id}
               onclick={() => subagentFocus.open(chatId, (transcriptChildren.find((child) => child.status === 'running') ?? transcriptChildren[0]).id)}>

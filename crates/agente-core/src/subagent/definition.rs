@@ -126,7 +126,7 @@ pub fn custom_capability(
         Some(list) => {
             let has_shell = list.iter().any(|t| t == "shell");
             let all_read_only = list.iter().all(|t| {
-                is_read_only_tool(t) || matches!(t.as_str(), "todo_write" | "present_plan")
+                is_read_only_tool(t) || matches!(t.as_str(), "todo_write" | "present_plan" | "swarm")
             });
             if has_shell {
                 SubagentCapabilityMode::Execute
@@ -339,7 +339,7 @@ pub fn is_hosted_tool(name: &str) -> bool {
 /// True when a tool name is allowed for the given capability mode.
 pub fn tool_allowed_by_capability(name: &str, capability: SubagentCapabilityMode) -> bool {
     use crate::tools::ToolKind;
-    if is_read_only_tool(name) || matches!(name, "todo_write" | "present_plan") {
+    if is_read_only_tool(name) || matches!(name, "todo_write" | "present_plan" | "swarm") {
         return true;
     }
     if is_hosted_tool(name) {

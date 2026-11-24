@@ -6,9 +6,12 @@
   - Jakob: a kanban — Backlog, Working, Review, Done — columns side by side
     when the pane is wide, stacked sections when it is a side pane.
   - Von Restorff: Review is the one thing that needs the user, so review
-    cards carry the amber rail and the tally names them; done cards dim.
+    cards carry the amber `◆` and the tally names them; done cards dim. No
+    rails or card borders: a card is a row on the canvas, lit on hover.
   - Chunking + proximity: a card is its title, then `role · model`, then
     what it waits for / owns, then its result — one block per card.
+  - Findings: under the columns, what the members told each other — the
+    same list the transcript's swarm block shows the newest of.
   - Hick + Occam: the board is read-only; the agent moves cards. The only
     controls are the swarm switch and "Clear board".
   - Fitts: the whole card opens its subagent.
@@ -23,6 +26,7 @@
   import type { SwarmCard } from '$shared/agente-protocol';
   import { subagentFocus } from './subagent-focus.svelte';
   import { columnsOf, swarmStore, tallyOf } from './swarm.svelte';
+  import SwarmFindingList from './SwarmFindingList.svelte';
 
   let { chatId }: { chatId: string } = $props();
 
@@ -30,6 +34,7 @@
   const enabled = $derived(!!board?.enabled);
   const columns = $derived(columnsOf(board));
   const tally = $derived(tallyOf(board));
+  const findings = $derived(board?.findings ?? []);
   let switching = $state(false);
   /** The switch follows the store; a failed change puts it back. */
   let checked = $state(false);
@@ -122,6 +127,13 @@
       {/each}
     </div>
 
+    {#if findings.length}
+      <section class="findings" aria-labelledby={`board-${chatId}-findings`}>
+        <h3 id={`board-${chatId}-findings`}>{$t('code.swarm.lane.findings')}<span class="count">{findings.length}</span></h3>
+        <SwarmFindingList {findings} />
+      </section>
+    {/if}
+
     {#if !tally.working}
       <div class="foot"><Button size="sm" variant="ghost" onclick={() => void swarmStore.clear(chatId).catch((error) => toastStore.error(String(error)))}>{$t('code.swarm.clear')}</Button></div>
     {/if}
@@ -142,16 +154,15 @@
   /* Side pane: sections stacked. Wide pane: the kanban side by side. */
   .columns { display: grid; gap: 1rem; }
   @container (min-width: 44rem) { .columns { grid-template-columns: repeat(4, minmax(0, 1fr)); align-items: start; } }
-  .column { display: grid; gap: 0.5rem; min-width: 0; }
-  .column h3 { display: flex; align-items: baseline; gap: 0.375rem; font-size: var(--text-xs); font-weight: 500; color: var(--muted-foreground); }
+  .column { display: grid; gap: 0.125rem; min-width: 0; }
+  .findings { display: grid; gap: 0.5rem; min-width: 0; }
+  .column h3, .findings h3 { display: flex; align-items: baseline; gap: 0.375rem; font-size: var(--text-xs); font-weight: 500; color: var(--muted-foreground); }
   .count { color: var(--text-muted, var(--muted-foreground)); font-variant-numeric: tabular-nums; }
   .column-empty { font-size: var(--text-xs); color: var(--muted-foreground); padding-left: 0.25rem; }
 
-  :global(.card.ui-local-0875e6c3){ display: grid; gap: 0.25rem; width: 100%; min-width: 0; border: 1px solid var(--border-subtle); border-radius: 0.625rem; background: var(--card, transparent); padding: 0.625rem 0.75rem; text-align: left; transition: background var(--motion-instant) var(--motion-ease); }
+  :global(.card.ui-local-0875e6c3){ display: grid; gap: 0.25rem; min-width: 0; border: 0; border-radius: 0.5rem; background: transparent; margin-inline: -0.5rem; width: calc(100% + 1rem); padding: 0.5rem; text-align: left; transition: background var(--motion-instant) var(--motion-ease); }
   :global(.card.ui-local-0875e6c3:not(:disabled)){ cursor: pointer; }
   :global(.card.ui-local-0875e6c3:not(:disabled):hover), :global(.card.ui-local-0875e6c3:focus-visible){ background: var(--surface-hover); }
-  :global(.card.ui-local-0875e6c3.status-review){ box-shadow: inset 3px 0 0 var(--warning); }
-  :global(.card.ui-local-0875e6c3.status-failed){ box-shadow: inset 3px 0 0 var(--error); }
   :global(.card.ui-local-0875e6c3.status-done){ opacity: 0.72; }
   .card-head { display: flex; min-width: 0; align-items: baseline; gap: 0.5rem; }
   .mark { width: 1rem; flex-shrink: 0; text-align: center; font-size: var(--text-xs); color: var(--muted-foreground); }

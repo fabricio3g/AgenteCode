@@ -430,7 +430,15 @@
       },
       "waitsFor": "Espera a {cards}",
       "openCard": "Abrir su subagente",
-      "clear": "Vaciar tablero"
+      "clear": "Vaciar tablero",
+      "lane": {
+        "title": "Enjambre",
+        "feeds": "Alimenta a {cards}",
+        "failed": "Falló",
+        "findings": "Hallazgos",
+        "lead": "Líder",
+        "more": "{n, plural, one {# hallazgo anterior} other {# hallazgos anteriores}} en el tablero"
+      }
     },
     "traceCopyInput": "Copiar entrada",
     "traceCopyOutput": "Copiar resultado",

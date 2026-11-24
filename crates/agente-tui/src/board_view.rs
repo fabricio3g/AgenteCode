@@ -4,7 +4,9 @@
 //! Four columns hard-left to hard-right: Backlog, Working, Review, Done
 //! (failed cards sit in Done with a red `✗`). A card is two lines: its title,
 //! then `role · model` dim; the working ones carry the accent `●`, cards
-//! waiting on others say what for. Esc closes, `s` turns swarm mode off/on.
+//! waiting on others say what for. Under the columns, the newest findings
+//! the members posted to each other (`c1 → c2  text`), route in a column.
+//! Esc closes, `s` turns swarm mode off/on.
 
 use agente_core::swarm::{Board, Card, CardStatus};
 use ratatui::layout::Rect;
@@ -23,6 +25,40 @@ const COLUMNS: [(&str, &[CardStatus]); 4] = [
     ("Review", &[CardStatus::Review]),
     ("Done", &[CardStatus::Done, CardStatus::Failed]),
 ];
+
+/// Findings the board shows under its columns.
+const MAX_FINDING_ROWS: usize = 4;
+
+/// `Findings  N` then the newest `shown`, oldest first: the route in a
+/// column hard left, the text beside it.
+fn finding_lines(board: &Board, shown: usize, width: usize) -> Vec<Line<'static>> {
+    let newest = &board.findings[board.findings.len() - shown..];
+    let route_width = newest
+        .iter()
+        .map(|finding| finding.route().chars().count())
+        .max()
+        .unwrap_or(0)
+        .min(width / 3);
+    let mut lines = vec![Line::from(vec![
+        s("Findings", style::muted()),
+        s(format!("  {}", board.findings.len()), style::dim()),
+    ])];
+    for finding in newest {
+        let route = truncate_cells(&finding.route(), route_width);
+        let pad = route_width.saturating_sub(route.chars().count());
+        let text_width = width.saturating_sub(route_width + 2);
+        let route_style = if finding.from == agente_core::swarm::LEAD {
+            style::muted()
+        } else {
+            style::dim()
+        };
+        lines.push(Line::from(vec![
+            s(format!("{route}{}  ", " ".repeat(pad)), route_style),
+            s(truncate_cells(&finding.text, text_width), style::muted()),
+        ]));
+    }
+    lines
+}
 
 fn card_lines(card: &Card, width: usize) -> [Line<'static>; 2] {
     let (mark, mark_style) = match card.status {
@@ -125,7 +161,15 @@ pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState) {
             frame.render_widget(Paragraph::new(s(tally(&board), style::dim())), top);
             let gap = 2u16;
             let column_width = (inner_width.saturating_sub(gap * 3)) / 4;
-            let rows = modal.body.height.saturating_sub(3);
+            // The findings band: a header and the newest few, when there is
+            // room for them and the columns both.
+            let shown_findings = board.findings.len().min(MAX_FINDING_ROWS);
+            let findings_rows = if shown_findings > 0 && modal.body.height >= 14 {
+                shown_findings as u16 + 2
+            } else {
+                0
+            };
+            let rows = modal.body.height.saturating_sub(3 + findings_rows);
             let rows_usize = rows as usize;
             // Each card occupies 2 lines + 1 gap row (the final card needs no gap).
             let full_cap = ((rows_usize + 1) / 3).max(1);
@@ -194,6 +238,13 @@ pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState) {
                 let list = Rect::new(x, top.y + 3, column_width, rows);
                 frame.render_widget(Paragraph::new(lines), list);
             }
+            if findings_rows > 0 {
+                let band = Rect::new(top.x, top.y + 3 + rows + 1, inner_width, findings_rows - 1);
+                frame.render_widget(
+                    Paragraph::new(finding_lines(&board, shown_findings, inner_width as usize)),
+                    band,
+                );
+            }
         }
     }
     let mut hints = vec![(
@@ -257,6 +308,32 @@ mod tests {
         assert!(text.contains("○ c2 Write docs"), "{text}");
         assert!(text.contains("waits for c1"), "{text}");
         assert!(text.contains("2 cards · 1 working"), "{text}");
+    }
+
+    #[test]
+    fn findings_sit_under_the_columns() {
+        let mut board = Board::default();
+        board.enabled = true;
+        let spec = |title: &str| -> CardSpec {
+            serde_json::from_value(serde_json::json!({
+                "title": title, "role": "Mapper", "prompt": "p"
+            }))
+            .unwrap()
+        };
+        board.add(vec![spec("Map code"), spec("Write docs")]).unwrap();
+        board.start("c1", "child-1");
+        board.start("c2", "child-2");
+        board.post("c1", "Tokens live in lexer.rs", &[]).unwrap();
+        board.post("c2", "Docs cite parse()", &["c1".into()]).unwrap();
+        board.post(agente_core::swarm::LEAD, "Keep the public API", &[]).unwrap();
+        let mut state = AppState::new(AppConfig::default(), "/tmp/board-findings".into());
+        state.agent.board = Some(board);
+        state.input.show_board = true;
+        let text = draw(&mut state);
+        assert!(text.contains("Findings  3"), "{text}");
+        assert!(text.contains("c1       Tokens live in lexer.rs"), "{text}");
+        assert!(text.contains("c2 → c1  Docs cite parse()"), "{text}");
+        assert!(text.contains("lead     Keep the public API"), "{text}");
     }
 
     #[test]

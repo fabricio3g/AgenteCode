@@ -430,7 +430,15 @@
       },
       "waitsFor": "Wartet auf {cards}",
       "openCard": "Subagent öffnen",
-      "clear": "Board leeren"
+      "clear": "Board leeren",
+      "lane": {
+        "title": "Schwarm",
+        "feeds": "Liefert an {cards}",
+        "failed": "Fehlgeschlagen",
+        "findings": "Erkenntnisse",
+        "lead": "Leitung",
+        "more": "{n, plural, one {# frühere Erkenntnis} other {# frühere Erkenntnisse}} auf dem Board"
+      }
     },
     "traceCopyInput": "Eingabe kopieren",
     "traceCopyOutput": "Ausgabe kopieren",

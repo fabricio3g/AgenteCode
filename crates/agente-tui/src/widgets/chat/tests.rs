@@ -94,6 +94,55 @@ fn subagent_card_stays_compact_with_long_history() {
 }
 
 #[test]
+fn a_swarm_member_card_reads_as_its_lane() {
+    let mut board = agente_core::swarm::Board::default();
+    let spec = |title: &str, deps: &[&str]| -> agente_core::swarm::CardSpec {
+        serde_json::from_value(serde_json::json!({
+            "title": title, "role": "Lexer mapper", "prompt": "p", "depends_on": deps
+        }))
+        .unwrap()
+    };
+    board
+        .add(vec![spec("Map lexer", &[]), spec("Wire parser", &["c1"])])
+        .unwrap();
+    board.start("c1", "child");
+    board.post("c1", "Tokens live in lexer.rs", &[]).unwrap();
+
+    let mut entry = tool_entry("task", "Map lexer", None);
+    entry.subagent_id = Some("child".into());
+    let mut ui = SubagentUiState {
+        status: "running".into(),
+        description: "Map lexer".into(),
+        swarm: crate::state::SwarmLane::of(&board, "child"),
+        ..Default::default()
+    };
+    let text = |line: &Line<'static>| -> String {
+        line.spans
+            .iter()
+            .map(|span| span.content.as_ref())
+            .collect()
+    };
+    let lines = render_subagent(&entry, 100, Some(&ui), false);
+    assert_eq!(lines.len(), 4, "header + activity + finding + gap");
+    let row1 = text(&lines[0]);
+    assert!(row1.contains("c1 Map lexer  Lexer mapper"), "row1: {row1:?}");
+    assert!(text(&lines[1]).contains("· feeds c2"), "{:?}", text(&lines[1]));
+    assert!(
+        text(&lines[2]).contains("\u{270e} c1  Tokens live in lexer.rs"),
+        "{:?}",
+        text(&lines[2])
+    );
+
+    // A new finding re-renders the card.
+    let mut map = std::collections::HashMap::from([("child".into(), ui.clone())]);
+    let before = subagent_fingerprint(&map, 100);
+    board.post(agente_core::swarm::LEAD, "Keep the API", &["c1".into()]).unwrap();
+    ui.swarm = crate::state::SwarmLane::of(&board, "child");
+    map.insert("child".into(), ui);
+    assert_ne!(before, subagent_fingerprint(&map, 100));
+}
+
+#[test]
 fn expanded_group_survives_opening_a_child_and_keeps_line_alignment() {
     let entries: Vec<_> = (0..3).map(|_| tool_entry("grep", "output", None)).collect();
     let expanded = HashSet::from([entries[0].id]);

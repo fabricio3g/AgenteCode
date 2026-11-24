@@ -430,7 +430,15 @@
       },
       "waitsFor": "Espera {cards}",
       "openCard": "Abrir o subagente",
-      "clear": "Limpar quadro"
+      "clear": "Limpar quadro",
+      "lane": {
+        "title": "Enxame",
+        "feeds": "Alimenta {cards}",
+        "failed": "Falhou",
+        "findings": "Descobertas",
+        "lead": "Líder",
+        "more": "{n, plural, one {# descoberta anterior} other {# descobertas anteriores}} no quadro"
+      }
     },
     "traceCopyInput": "Copiar entrada",
     "traceCopyOutput": "Copiar resultado",

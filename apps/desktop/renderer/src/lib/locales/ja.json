@@ -430,7 +430,15 @@
       },
       "waitsFor": "{cards} を待機中",
       "openCard": "サブエージェントを開く",
-      "clear": "ボードを空にする"
+      "clear": "ボードを空にする",
+      "lane": {
+        "title": "スウォーム",
+        "feeds": "{cards} に渡す",
+        "failed": "失敗",
+        "findings": "共有メモ",
+        "lead": "リード",
+        "more": "ボードに以前のメモ {n} 件"
+      }
     },
     "traceCopyInput": "入力をコピー",
     "traceCopyOutput": "出力をコピー",
