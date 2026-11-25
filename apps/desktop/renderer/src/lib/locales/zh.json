@@ -1499,7 +1499,7 @@
   },
   "searchSettings": {
     "title": "网页搜索",
-    "description": "网页结果的来源和使用数量。",
+    "description": "网页结果的来源以及使用哪些引擎。",
     "getKey": "获取 {name} API 密钥",
     "auto": "Auto",
     "providerSection": "Provider",
@@ -1534,20 +1534,30 @@
     "resetRecommended": "Reset to recommended",
     "filter": "Filter engines…",
     "filterLabel": "Filter engines",
+    "clearFilter": "清除筛选",
+    "view": {
+      "all": "全部",
+      "on": "已开启",
+      "setup": "需要设置"
+    },
     "emptyPool": "Enable at least one engine. This empty pool will not replace your last saved selection.",
     "group": {
       "recommended": "Recommended",
       "general": "General",
       "research": "Research",
-      "configured": "Self-hosted / API"
+      "configured": "Self-hosted / API",
+      "other": "其他"
     },
     "experimental": "Experimental",
+    "beta": "测试版",
     "missing": "Missing {what}",
     "configured": "Configured",
     "enable": "Enable {name}",
     "disable": "Disable {name}",
     "configure": "Configure",
     "noMatch": "No engines match “{query}”.",
+    "noneOn": "没有开启的引擎。请在“全部”中开启一个。",
+    "noneSetup": "所有引擎均已设置。",
     "catalogError": "Could not load the engine catalog.",
     "probeError": "Could not test the selected engines.",
     "cooldown": "Cooling down until {time}",

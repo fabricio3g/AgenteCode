@@ -1515,7 +1515,7 @@
   },
   "searchSettings": {
     "title": "Web search",
-    "description": "Where web results come from and how many to use.",
+    "description": "Where web results come from and which engines to use.",
     "getKey": "Get a {name} API key",
     "auto": "Auto",
     "providerSection": "Provider",
@@ -1550,20 +1550,30 @@
     "resetRecommended": "Reset to recommended",
     "filter": "Filter engines…",
     "filterLabel": "Filter engines",
+    "clearFilter": "Clear filter",
+    "view": {
+      "all": "All",
+      "on": "On",
+      "setup": "Needs setup"
+    },
     "emptyPool": "Enable at least one engine. This empty pool will not replace your last saved selection.",
     "group": {
       "recommended": "Recommended",
       "general": "General",
       "research": "Research",
-      "configured": "Self-hosted / API"
+      "configured": "Self-hosted / API",
+      "other": "Other"
     },
     "experimental": "Experimental",
+    "beta": "Beta",
     "missing": "Missing {what}",
     "configured": "Configured",
     "enable": "Enable {name}",
     "disable": "Disable {name}",
     "configure": "Configure",
     "noMatch": "No engines match “{query}”.",
+    "noneOn": "No engines are on. Turn one on under All.",
+    "noneSetup": "Every engine is set up.",
     "catalogError": "Could not load the engine catalog.",
     "probeError": "Could not test the selected engines.",
     "cooldown": "Cooling down until {time}",

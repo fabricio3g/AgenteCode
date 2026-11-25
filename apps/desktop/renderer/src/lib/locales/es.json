@@ -1499,7 +1499,7 @@
   },
   "searchSettings": {
     "title": "Búsqueda web",
-    "description": "De dónde salen los resultados web y cuántos usar.",
+    "description": "De dónde salen los resultados web y qué motores usar.",
     "getKey": "Obtener una clave API de {name}",
     "auto": "Automático",
     "providerSection": "Proveedor",
@@ -1534,20 +1534,30 @@
     "resetRecommended": "Restablecer a recomendados",
     "filter": "Filtrar motores…",
     "filterLabel": "Filtrar motores",
+    "clearFilter": "Borrar filtro",
+    "view": {
+      "all": "Todos",
+      "on": "Activos",
+      "setup": "Por configurar"
+    },
     "emptyPool": "Activa al menos un motor. Este grupo vacío no reemplazará tu última selección guardada.",
     "group": {
       "recommended": "Recomendados",
       "general": "General",
       "research": "Investigación",
-      "configured": "Autoalojados / API"
+      "configured": "Autoalojados / API",
+      "other": "Otros"
     },
     "experimental": "Experimental",
+    "beta": "Beta",
     "missing": "Falta {what}",
     "configured": "Configurado",
     "enable": "Activar {name}",
     "disable": "Desactivar {name}",
     "configure": "Configurar",
     "noMatch": "Ningún motor coincide con “{query}”.",
+    "noneOn": "No hay motores activos. Activa uno en Todos.",
+    "noneSetup": "Todos los motores están configurados.",
     "catalogError": "No se pudo cargar el catálogo de motores.",
     "probeError": "No se pudieron probar los motores seleccionados.",
     "cooldown": "En pausa hasta las {time}",

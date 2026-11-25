@@ -1499,7 +1499,7 @@
   },
   "searchSettings": {
     "title": "ウェブ検索",
-    "description": "ウェブ検索結果の取得元と件数。",
+    "description": "Web 検索結果の取得元と使用するエンジン。",
     "getKey": "{name} の API キーを取得",
     "auto": "Auto",
     "providerSection": "Provider",
@@ -1534,20 +1534,30 @@
     "resetRecommended": "Reset to recommended",
     "filter": "Filter engines…",
     "filterLabel": "Filter engines",
+    "clearFilter": "フィルターをクリア",
+    "view": {
+      "all": "すべて",
+      "on": "オン",
+      "setup": "要設定"
+    },
     "emptyPool": "Enable at least one engine. This empty pool will not replace your last saved selection.",
     "group": {
       "recommended": "Recommended",
       "general": "General",
       "research": "Research",
-      "configured": "Self-hosted / API"
+      "configured": "Self-hosted / API",
+      "other": "その他"
     },
     "experimental": "Experimental",
+    "beta": "ベータ",
     "missing": "Missing {what}",
     "configured": "Configured",
     "enable": "Enable {name}",
     "disable": "Disable {name}",
     "configure": "Configure",
     "noMatch": "No engines match “{query}”.",
+    "noneOn": "オンのエンジンはありません。「すべて」から有効にしてください。",
+    "noneSetup": "すべてのエンジンが設定済みです。",
     "catalogError": "Could not load the engine catalog.",
     "probeError": "Could not test the selected engines.",
     "cooldown": "Cooling down until {time}",

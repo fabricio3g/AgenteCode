@@ -5,13 +5,15 @@
 
   import { t } from 'svelte-i18n';
   import { onMount } from 'svelte';
-  import { ChevronDown, MoreHorizontal, Search, TestTube2 } from '$lib/icons';
+  import { ChevronDown, MoreHorizontal, TestTube2 } from '$lib/icons';
   import { get } from 'svelte/store';
   import { say } from '$lib/copy';
   import {
     Badge,
     Button,
     Field,
+    FilterBar,
+    FilterChip,
     Input,
     Menu,
     MenuItem,
@@ -26,6 +28,12 @@
     probeAggregatorEngines,
     type AggregatorCatalogItem,
   } from '$lib/services/search';
+  import {
+    ENGINE_GROUP_ORDER,
+    engineGroup,
+    filterEngines,
+    type EngineView,
+  } from './engine-filter';
 
   type SearchProviderItem = {
     id: string;
@@ -53,16 +61,6 @@
     { id: 'youcom', label: 'You.com', needsKey: true, keyUrl: 'https://api.you.com' },
   ];
 
-  const ENGINE_GROUPS: Array<{
-    id: string;
-    labelKey: string;
-    includes: (item: AggregatorCatalogItem) => boolean;
-  }> = [
-    { id: 'recommended', labelKey: 'searchSettings.group.recommended', includes: (item) => item.recommended },
-    { id: 'general', labelKey: 'searchSettings.group.general', includes: (item) => !item.recommended && item.category === 'general' },
-    { id: 'research', labelKey: 'searchSettings.group.research', includes: (item) => item.category === 'research' },
-    { id: 'configured', labelKey: 'searchSettings.group.configured', includes: (item) => item.category === 'self_hosted' || item.category === 'api' },
-  ];
 
   let {
     searchProvider = $bindable(),
@@ -90,6 +88,7 @@
 
   let catalog = $state<AggregatorCatalogItem[]>([]);
   let engineFilter = $state('');
+  let engineView = $state<EngineView>('all');
   let catalogError = $state('');
   let probing = $state(false);
   let actionsOpen = $state(false);
@@ -100,10 +99,24 @@
   const currentSearchProvider = $derived(
     SEARCH_PROVIDERS.find((provider) => provider.id === searchProvider) || SEARCH_PROVIDERS[0]
   );
-  const visibleCatalog = $derived(catalog.filter((item) => {
-    const needle = engineFilter.trim().toLowerCase();
-    return !needle || `${item.label} ${item.id} ${item.category} ${item.stability}`.toLowerCase().includes(needle);
-  }));
+  const enabledEngines = $derived(new Set(aggregatorEngines));
+  const needsSetup = (item: AggregatorCatalogItem) => missingRequirements(item).length > 0;
+  // Each chip counts what it would show for the current query.
+  const viewCount = (view: EngineView) =>
+    filterEngines(catalog, { query: engineFilter, view, enabled: enabledEngines, needsSetup }).length;
+  const visibleCatalog = $derived(
+    filterEngines(catalog, { query: engineFilter, view: engineView, enabled: enabledEngines, needsSetup })
+  );
+  const visibleGroups = $derived(
+    ENGINE_GROUP_ORDER
+      .map((id) => ({ id, items: visibleCatalog.filter((item) => engineGroup(item) === id) }))
+      .filter((group) => group.items.length)
+  );
+  const ENGINE_VIEWS: Array<{ id: EngineView; labelKey: string }> = [
+    { id: 'all', labelKey: 'searchSettings.view.all' },
+    { id: 'on', labelKey: 'searchSettings.view.on' },
+    { id: 'setup', labelKey: 'searchSettings.view.setup' },
+  ];
   const providerNeedsConfiguration = $derived(
     Boolean(
       currentSearchProvider.needsKey
@@ -303,10 +316,20 @@
       </div>
 
       <div class="border-b border-[var(--border-subtle)] p-3">
-        <div class="relative">
-          <Search class="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-          <Input class="pl-9" bind:value={engineFilter} placeholder={$t('searchSettings.filter')} aria-label={$t('searchSettings.filterLabel')} />
-        </div>
+        <FilterBar
+          bind:query={engineFilter}
+          placeholder={$t('searchSettings.filter')}
+          clearLabel={$t('searchSettings.clearFilter')}
+          label={$t('searchSettings.filterLabel')}
+        >
+          {#snippet chips()}
+            {#each ENGINE_VIEWS as view (view.id)}
+              <FilterChip on={engineView === view.id} count={viewCount(view.id)} onclick={() => (engineView = view.id)}>
+                {$t(view.labelKey)}
+              </FilterChip>
+            {/each}
+          {/snippet}
+        </FilterBar>
       </div>
 
       {#if aggregatorEngines.length === 0}
@@ -319,12 +342,12 @@
       {/if}
 
       <div class="max-h-[520px] overflow-y-auto">
-        {#each ENGINE_GROUPS as group (group.id)}
-          {@const items = visibleCatalog.filter(group.includes)}
+        {#each visibleGroups as group (group.id)}
+          {@const items = group.items}
           {#if items.length}
             <div class="border-b border-[var(--border-subtle)] last:border-b-0">
               <div class="sticky top-0 z-10 bg-card/95 px-4 py-2 backdrop-blur">
-                <h5 class="text-[length:var(--text-xs)] font-semibold text-muted-foreground">{$t(group.labelKey)}</h5>
+                <h5 class="text-[length:var(--text-xs)] font-semibold text-muted-foreground">{$t(`searchSettings.group.${group.id}`)}</h5>
               </div>
               <div>
                 {#each items as item (item.id)}
@@ -336,18 +359,19 @@
                       <div class="min-w-0 flex-1">
                         <div class="flex flex-wrap items-center gap-1.5">
                           <span class="text-[length:var(--text-sm)] font-medium text-foreground">{item.label}</span>
-                          {#if item.stability === 'experimental'}<Badge tone="warning">{$t('searchSettings.experimental')}</Badge>{/if}
+                          {#if item.stability === 'experimental'}<Badge tone="warning">{$t('searchSettings.experimental')}</Badge>
+                          {:else if item.stability === 'beta'}<Badge>{$t('searchSettings.beta')}</Badge>{/if}
                         </div>
+                        <!-- What it searches: the line people scan for. The setup
+                             state only takes colour when something is missing. -->
                         <div class="mt-0.5 flex flex-wrap items-center gap-1 text-[length:var(--text-xs)] text-muted-foreground">
-                          <span>{item.transport.toUpperCase()}</span>
-                          <span aria-hidden="true">·</span>
-                          <span>{item.stability}</span>
+                          {#if item.description}<span>{item.description}</span>{/if}
                           {#if missing.length}
-                            <span aria-hidden="true">·</span>
+                            {#if item.description}<span aria-hidden="true">·</span>{/if}
                             <span class="text-warning">{$t('searchSettings.missing', { values: { what: missing.join(' and ').replaceAll('_', ' ') } })}</span>
                           {:else if item.requires.length}
-                            <span aria-hidden="true">·</span>
-                            <span class="text-success">{$t('searchSettings.configured')}</span>
+                            {#if item.description}<span aria-hidden="true">·</span>{/if}
+                            <span>{$t('searchSettings.configured')}</span>
                           {/if}
                         </div>
                         {#if probeStatuses[item.id]}
@@ -424,7 +448,13 @@
         {/each}
 
         {#if catalog.length > 0 && visibleCatalog.length === 0}
-          <div class="px-4 py-10 text-center text-[length:var(--text-sm)] text-muted-foreground">{$t('searchSettings.noMatch', { values: { query: engineFilter } })}</div>
+          <div class="px-4 py-10 text-center text-[length:var(--text-sm)] text-muted-foreground">
+            {#if engineFilter.trim()}
+              {$t('searchSettings.noMatch', { values: { query: engineFilter.trim() } })}
+            {:else}
+              {$t(engineView === 'on' ? 'searchSettings.noneOn' : 'searchSettings.noneSetup')}
+            {/if}
+          </div>
         {/if}
       </div>
     </section>
