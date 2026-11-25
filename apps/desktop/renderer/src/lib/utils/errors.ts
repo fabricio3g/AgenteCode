@@ -7,7 +7,7 @@ export function isAbortError(err: unknown): boolean {
 }
 
 /** Strip Electron IPC wrappers and stacked `Error:` prefixes. */
-function cleanIpcError(raw: string): string {
+export function cleanIpcError(raw: string): string {
   return raw
     .replace(/^Error invoking remote method '[^']+':\s*/i, '')
     .replace(/^(Error:\s*)+/i, '')

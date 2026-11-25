@@ -3,6 +3,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import nodePath from 'node:path';
 import { readWorkspaceBinary } from '../filesystem.ts';
+import { cloneProjectRepo, createProjectFolder, expandHome } from '../project-setup.ts';
 
 /** Files that mark a folder as a project root in the folder browser. */
 const PROJECT_MARKERS = ['.git', 'package.json', 'Cargo.toml', 'pyproject.toml', 'go.mod', 'pom.xml', 'build.gradle', 'deno.json', 'composer.json', 'Gemfile'];
@@ -15,7 +16,8 @@ const PROJECT_MARKERS = ['.git', 'package.json', 'Cargo.toml', 'pyproject.toml',
  */
 async function browseFolders(requested?: string) {
   const home = os.homedir();
-  const target = nodePath.resolve(requested || home);
+  // A typed path may start with `~`.
+  const target = requested ? expandHome(requested, home) : home;
   const entries = await fs.readdir(target, { withFileTypes: true });
   const folders = await Promise.all(entries
     .filter((entry) => entry.isDirectory() && !entry.name.startsWith('.'))
@@ -81,6 +83,10 @@ export function registerWorkspaceHandlers({
   ipcMain.handle('list_mmproj_candidates', (_e, { modelPath }) => listMmprojCandidates(modelPath));
   ipcMain.handle('browse_folders', (_e, { path } = {}) => browseFolders(typeof path === 'string' ? path : undefined));
   ipcMain.handle('open_models_folder', () => openModelsFolder());
+  ipcMain.handle('create_project_folder', (_e, { parent, name, git } = {}) =>
+    createProjectFolder({ parent: String(parent ?? ''), name: String(name ?? ''), git: git !== false }));
+  ipcMain.handle('clone_project_repo', (_e, { url, parent, name } = {}) =>
+    cloneProjectRepo({ url: String(url ?? ''), parent: String(parent ?? ''), name: typeof name === 'string' ? name : undefined }));
   ipcMain.handle('pick_workspace_folder', () => pickWorkspaceFolder());
   ipcMain.handle('pick_model_file', () => pickModelFile());
   ipcMain.handle('pick_mmproj_file', () => pickMmprojFile());

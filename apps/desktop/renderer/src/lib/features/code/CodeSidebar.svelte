@@ -2,6 +2,8 @@
 
 <!--
   Code sidebar: a tree of project folders, each holding its conversations.
+  The header's folder-plus adds a project; the rail's New conversation starts
+  one whose folder the composer's project picker chooses.
 
   Every project row has a hover "+" (new conversation) and a "…" menu that a
   right-click also opens: New conversation, Rename, Show in folder, Copy path,
@@ -309,6 +311,11 @@
   <div class="sidebar-section-row">
     <span class="sidebar-section">{$t(sidebarMode === 'threads' ? 'code.threads' : 'code.projects')}</span>
     <div class="sidebar-header-controls">
+      <Tooltip label={$t('code.addProject')} position="bottom">
+        <button type="button" class="mode-btn" aria-label={$t('code.addProject')} onclick={() => void codeStore.addProject()}>
+          <FolderPlus class="size-3.5" />
+        </button>
+      </Tooltip>
       <Menu placement="bottom-end" label={$t('code.filterToggle')}>
         {#snippet trigger(props)}
           <Tooltip label={$t('code.filterToggle')} position="bottom">

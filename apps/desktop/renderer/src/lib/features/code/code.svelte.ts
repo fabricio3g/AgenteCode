@@ -332,6 +332,31 @@ class CodeStore {
     return chat;
   }
 
+  /**
+   * "New conversation" with no folder named: one in the project you were last
+   * in (else the first), whose folder the composer's project picker can still
+   * change until the first message. With no projects yet it adds one first.
+   */
+  async startConversation(): Promise<ChatSession | null> {
+    const project = this.projectById(this.activeProjectId) ?? this.projects[0] ?? (await this.addProject());
+    return project ? this.newConversation(project) : null;
+  }
+
+  /** The folder is the conversation's until it starts: no message, no engine session. */
+  canChangeProject(chat: ChatSession): boolean {
+    return !chat.messages.length && !chat.codeAgent?.sessionId;
+  }
+
+  /** Point a conversation that has not started at another project. */
+  setConversationProject(chatId: string, projectId: string): void {
+    const chat = appStore.chats.find((c) => c.id === chatId);
+    if (!chat || !this.canChangeProject(chat) || !this.projectById(projectId)) return;
+    chat.projectId = projectId;
+    this.activeProjectId = projectId;
+    this.expandedProjects[projectId] = true;
+    appStore.persist();
+  }
+
   openConversation(chatId: string): void {
     const chat = appStore.chats.find((c) => c.id === chatId);
     if (chat?.projectId) this.activeProjectId = chat.projectId;

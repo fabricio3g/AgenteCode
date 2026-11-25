@@ -112,7 +112,7 @@
 
   const newButtonLabel = $derived(
     appStore.activeSpace === 'code'
-      ? $t('code.addProject')
+      ? $t(codeStore.projects.length ? 'code.newConversation' : 'code.addProject')
       : appStore.activeSpace === 'roleplay'
         ? copy.roleplay.newRoleplay
         : appStore.activeSpace === 'design'
@@ -147,7 +147,8 @@
   function createForActiveSpace() {
     onNavigate?.();
     if (appStore.activeSpace === 'code') {
-      void codeStore.addProject();
+      // The project is picked on the composer; with none yet, this adds one.
+      void codeStore.startConversation();
       return;
     }
     if (appStore.activeSpace === 'roleplay') {

@@ -194,14 +194,7 @@
             {#key chat.id}<CodeTranscript messages={chat.messages} chatId={chat.id} />{/key}
           </div>
         {:else if empty}
-          <!-- Which folder the agent touches: the one thing a conversation has
-               not had the chance to say yet. -->
-          {#if chatProject}
-            <p class="empty-project composer-column px-3 md:px-6">
-              <span class="empty-project-name">{chatProject.rootName}</span>
-              <span class="empty-project-path">{chatProject.rootPath}</span>
-            </p>
-          {/if}
+          <!-- The folder is chosen on the composer's project picker now. -->
         {:else}
           <div class="ui-top-fade ui-bottom-fade flex min-h-0 min-w-0 flex-1 flex-col">
             {#key chat.id}<CodeTranscript messages={chat.messages} chatId={chat.id} liveSubagentDock />{/key}
@@ -252,14 +245,6 @@
      so the composer keeps its focus across the first send. */
   .is-empty { justify-content:center;padding-block:1.5rem; }
 
-  /* Which folder the agent will touch — the one piece of context that is not
-     visible from the conversation, because there is no conversation yet.
-     `margin-block`, never the shorthand: the shorthand resets the inline
-     margins `.composer-column` centres this row with, which drops the folder
-     line to the window's edge while the composer and the links stay put. */
-  .empty-project { display:flex;align-items:baseline;gap:0.5rem;min-width:0;margin-block:0 0.75rem;color:var(--muted-foreground);font-size:var(--text-xs); }
-  .empty-project-name { color:var(--text-secondary);font-weight:500; }
-  .empty-project-path { overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:var(--font-mono);font-size:var(--text-xs); }
 
   .empty-links { margin-top:0.75rem; }
   .chat-todos-wrap { flex-shrink: 0; margin-top: 0.375rem; margin-bottom: 0.25rem; }

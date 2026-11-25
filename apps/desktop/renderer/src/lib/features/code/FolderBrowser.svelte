@@ -3,27 +3,66 @@
 <!--
   Minimal in-app project folder picker: one flat surface, no inner boxes.
   Top line: Up + bare breadcrumb path on the left, quick places on the right.
+  The pencil (or Ctrl+L, `/`, `~` in the list) turns the path into a field
+  you can type or paste into; Enter goes there, Esc puts the crumbs back.
   Middle: flat folder rows with bare icons (project roots in accent).
-  Bottom: Browse… on the left, Open <name> on the right.
+  Bottom: Browse… on the left, Open <name> (or Use <name>) on the right.
 -->
 
 <script lang="ts">
   import UiIconButton from '$lib/components/ui/IconButton.svelte';
   import { onMount, tick } from 'svelte';
   import { t } from 'svelte-i18n';
-  import { ArrowUp, ChevronRight, Folder, FolderGit2, FolderOpen, LoaderCircle } from '$lib/icons';
+  import { ArrowUp, ChevronRight, Folder, FolderGit2, FolderOpen, LoaderCircle, Pencil } from '$lib/icons';
   import { Button } from '$lib/components/ui';
   import { browseFolders, type FolderListing } from '$lib/services/files';
 
   let {
     onopen,
     onsystem,
-    embedded = false
+    embedded = false,
+    start,
+    choose = false
   }: {
     onopen: (path: string) => void;
     onsystem: () => void;
     embedded?: boolean;
+    /** The folder to open first (home when absent). */
+    start?: string;
+    /** Picking a parent folder rather than a project: the button says "Use". */
+    choose?: boolean;
   } = $props();
+
+  /** The path field, while it replaces the crumbs. */
+  let editing = $state(false);
+  let typed = $state('');
+  let typedFailed = $state(false);
+  let pathInput = $state<HTMLInputElement>();
+
+  async function editPath(seed?: string) {
+    typed = seed ?? listing?.path ?? '';
+    typedFailed = false;
+    editing = true;
+    await tick();
+    pathInput?.focus();
+    if (seed === undefined) pathInput?.select();
+  }
+
+  async function goTyped() {
+    const path = typed.trim();
+    if (!path) return;
+    try {
+      const next = await browseFolders(path);
+      listing = next;
+      selected = null;
+      failed = false;
+      editing = false;
+      await tick();
+      listEl?.focus();
+    } catch {
+      typedFailed = true;
+    }
+  }
 
   let listing = $state<FolderListing | null>(null);
   let loading = $state(true);
@@ -46,7 +85,7 @@
     }
   }
 
-  onMount(() => void go());
+  onMount(() => void go(start));
 
   const crumbs = $derived.by(() => {
     if (!listing) return [];
@@ -64,6 +103,11 @@
 
   function onkeydown(event: KeyboardEvent) {
     if (!listing) return;
+    if ((event.key === 'l' && (event.ctrlKey || event.metaKey)) || event.key === '/' || event.key === '~') {
+      event.preventDefault();
+      void editPath(event.key === '~' ? '~' : event.key === '/' ? '/' : undefined);
+      return;
+    }
     const folders = listing.folders;
     const index = folders.findIndex((folder) => folder.path === selected);
     if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
@@ -105,19 +149,42 @@
         <ArrowUp />
       </UiIconButton>
 
-      <div class="crumbs" title={listing?.path}>
-        {#each crumbs as crumb, index (crumb.path)}
-          {#if index > 0}<span class="crumb-sep" aria-hidden="true">/</span>{/if}
-          <button
-            type="button"
-            class="crumb"
-            class:is-last={index === crumbs.length - 1}
-            onclick={() => void go(crumb.path)}
-          >
-            {crumb.name}
-          </button>
-        {/each}
-      </div>
+      {#if editing}
+        <input
+          bind:this={pathInput}
+          bind:value={typed}
+          class="path-input"
+          class:is-invalid={typedFailed}
+          spellcheck="false"
+          autocomplete="off"
+          aria-label={$t('code.browseTypePath')}
+          aria-invalid={typedFailed}
+          placeholder={$t('code.browseTypePathHint')}
+          oninput={() => (typedFailed = false)}
+          onkeydown={(event) => {
+            if (event.key === 'Enter') { event.preventDefault(); void goTyped(); }
+            else if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); editing = false; listEl?.focus(); }
+          }}
+          onblur={() => { if (!typedFailed) editing = false; }}
+        />
+      {:else}
+        <div class="crumbs" title={listing?.path}>
+          {#each crumbs as crumb, index (crumb.path)}
+            {#if index > 0}<span class="crumb-sep" aria-hidden="true">/</span>{/if}
+            <button
+              type="button"
+              class="crumb"
+              class:is-last={index === crumbs.length - 1}
+              onclick={() => void go(crumb.path)}
+            >
+              {crumb.name}
+            </button>
+          {/each}
+          <UiIconButton label={$t('code.browseTypePath')} size="xs" type="button" title={`${$t('code.browseTypePath')} (Ctrl+L)`} class="edit-path" onclick={() => void editPath()}>
+            <Pencil />
+          </UiIconButton>
+        </div>
+      {/if}
 
       {#if loading}
         <LoaderCircle class="spin" />
@@ -186,7 +253,7 @@
     <div class="footer">
       <Button variant="ghost" size="sm" onclick={onsystem}>{$t('code.browseSystem')}</Button>
       <Button size="sm" disabled={!target} onclick={() => target && onopen(target)}>
-        <span class="open-label">{$t('code.browseOpenNamed', { values: { name: targetName } })}</span>
+        <span class="open-label">{$t(choose ? 'code.browseUseNamed' : 'code.browseOpenNamed', { values: { name: targetName } })}</span>
       </Button>
     </div>
   </div>
@@ -223,6 +290,39 @@
     overflow-x: auto;
     scrollbar-width: none;
     white-space: nowrap;
+  }
+
+  .path-input {
+    min-width: 0;
+    flex: 1;
+    height: 1.625rem;
+    padding: 0 0.5rem;
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: var(--float-row-hover);
+    color: var(--foreground);
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    outline: none;
+  }
+
+  .path-input:focus-visible {
+    box-shadow: 0 0 0 1px var(--brand-accent);
+  }
+
+  .path-input.is-invalid {
+    box-shadow: 0 0 0 1px var(--error);
+  }
+
+  .crumbs :global(.edit-path) {
+    flex-shrink: 0;
+    opacity: 0;
+    transition: opacity var(--motion-instant) var(--motion-ease);
+  }
+
+  .bar:hover .crumbs :global(.edit-path),
+  .crumbs :global(.edit-path:focus-visible) {
+    opacity: 0.85;
   }
 
   .crumb-sep {

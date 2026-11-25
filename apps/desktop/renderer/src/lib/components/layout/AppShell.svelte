@@ -112,9 +112,9 @@
   const inDesignSpace = $derived(appStore.activeTab === 'design');
   /** The screen to leave: Settings is open, or nothing is. */
   const settingsShowing = $derived(appStore.settingsScreenOpen);
-  /** Ctrl/⌘+K means "new" in every space — a chat, a roleplay, or a project. */
+  /** Ctrl/⌘+K means "new" in every space — a chat, a roleplay, or a Code conversation (a project first when there is none). */
   const shortcutRows = $derived<Array<[string, string]>>([
-    ['mod+k', inCodeSpace ? $t('shortcuts.addProject') : inRoleplaySpace ? copy.roleplay.newRoleplay : inDesignSpace ? copy.design.newDesign : $t('shortcuts.newChat')],
+    ['mod+k', inCodeSpace ? $t(codeStore.projects.length ? 'code.newConversation' : 'shortcuts.addProject') : inRoleplaySpace ? copy.roleplay.newRoleplay : inDesignSpace ? copy.design.newDesign : $t('shortcuts.newChat')],
     ['mod+shift+k', $t('shortcuts.search')],
     ['mod+,', $t('shortcuts.settings')],
     ['mod+b', $t('shortcuts.sidebar')],
@@ -129,7 +129,7 @@
 
   function startNewSession() {
     if (inCodeSpace) {
-      void codeStore.addProject();
+      void codeStore.startConversation();
       return;
     }
     if (appStore.activeSpace === 'roleplay') {

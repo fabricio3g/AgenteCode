@@ -778,6 +778,17 @@ const handlers: Record<string, (args?: Record<string, unknown>) => unknown> = {
       folders: (tree[path] ?? []).map(([name, isProject]) => ({ name, path: `${path}/${name}`, isProject })).sort((a, b) => Number(b.isProject) - Number(a.isProject))
     };
   },
+  create_project_folder: (args) => {
+    const { parent, name } = args as { parent: string; name: string };
+    return { path: `${parent}/${name}`, gitInitialized: true };
+  },
+  clone_project_repo: async (args) => {
+    const { url, parent, name } = args as { url: string; parent: string; name?: string };
+    await new Promise((resolve) => setTimeout(resolve, 1200));
+    if (url.includes('fail')) throw new Error('Repository not found.');
+    const repo = name || url.replace(/\/+$/, '').split(/[/:]/).pop()!.replace(/\.git$/, '');
+    return { path: `${parent}/${repo}` };
+  },
   path_exists: (args) => !String((args as { path?: string } | undefined)?.path ?? '').includes('missing'),
   open_workspace_file: () => undefined,
   agente_delete_session_data: () => ({ ok: true, removed: 1 }),

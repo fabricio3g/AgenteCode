@@ -49,6 +49,16 @@ export async function browseFolders(path?: string): Promise<FolderListing> {
   return invoke<FolderListing>('browse_folders', { path });
 }
 
+/** Create `<parent>/<name>` and `git init` it (main checks the name). */
+export async function createProjectFolder(parent: string, name: string, git = true): Promise<{ path: string; gitInitialized?: boolean }> {
+  return invoke('create_project_folder', { parent, name, git });
+}
+
+/** Clone a remote repository into `<parent>/<name>` (name defaults to the repo's). */
+export async function cloneProjectRepo(url: string, parent: string, name?: string): Promise<{ path: string }> {
+  return invoke('clone_project_repo', { url, parent, name });
+}
+
 export async function pickWorkspaceFolder(): Promise<string | null> {
   return invoke<string | null>('pick_workspace_folder');
 }
