@@ -1462,7 +1462,7 @@
   },
   "searchSettings": {
     "title": "Websuche",
-    "description": "Woher Webergebnisse kommen und wie viele genutzt werden.",
+    "description": "Woher Webergebnisse kommen und welche Suchmaschinen genutzt werden.",
     "getKey": "{name}-API-Schlüssel holen",
     "auto": "Auto",
     "providerSection": "Provider",
@@ -1497,20 +1497,30 @@
     "resetRecommended": "Reset to recommended",
     "filter": "Filter engines…",
     "filterLabel": "Filter engines",
+    "clearFilter": "Filter löschen",
+    "view": {
+      "all": "Alle",
+      "on": "Aktiv",
+      "setup": "Einrichtung nötig"
+    },
     "emptyPool": "Enable at least one engine. This empty pool will not replace your last saved selection.",
     "group": {
       "recommended": "Recommended",
       "general": "General",
       "research": "Research",
-      "configured": "Self-hosted / API"
+      "configured": "Self-hosted / API",
+      "other": "Weitere"
     },
     "experimental": "Experimental",
+    "beta": "Beta",
     "missing": "Missing {what}",
     "configured": "Configured",
     "enable": "Enable {name}",
     "disable": "Disable {name}",
     "configure": "Configure",
     "noMatch": "No engines match “{query}”.",
+    "noneOn": "Keine Suchmaschine ist aktiv. Aktiviere eine unter Alle.",
+    "noneSetup": "Alle Suchmaschinen sind eingerichtet.",
     "catalogError": "Could not load the engine catalog.",
     "probeError": "Could not test the selected engines.",
     "cooldown": "Cooling down until {time}",
