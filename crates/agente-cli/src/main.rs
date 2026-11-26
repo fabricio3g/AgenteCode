@@ -7,6 +7,7 @@ use agente_tui::App;
 mod attach;
 mod bridge_cli;
 mod logging;
+mod mcp_bridge;
 
 #[derive(Parser)]
 #[command(name = "agente", version)]
@@ -98,6 +99,15 @@ enum Command {
         /// A session id (or a unique prefix). Without
         /// one, the most recent session.
         target: Option<String>,
+        /// Open a fresh session on the daemon instead of resuming an existing one.
+        #[arg(long)]
+        new: bool,
+        /// Driver instance id for a new session (`agente`, `claude`, `codex`, ...).
+        #[arg(long)]
+        driver: Option<String>,
+        /// Provision an isolated Git worktree for a new session.
+        #[arg(long)]
+        worktree: bool,
         /// Socket path of a local `agente serve`.
         #[arg(long, conflicts_with = "remote")]
         socket: Option<std::path::PathBuf>,
@@ -107,6 +117,41 @@ enum Command {
         /// Token of the remote server.
         #[arg(long, env = "AGENTE_TOKEN", hide_env_values = true)]
         token: Option<String>,
+    },
+    /// Run a single prompt through `agente serve` using any configured driver.
+    Run {
+        /// Prompt to run.
+        prompt: String,
+        /// Driver instance id (`agente`, `claude`, `codex`, ...).
+        #[arg(long)]
+        driver: Option<String>,
+        /// Provision an isolated Git worktree for this session.
+        #[arg(long)]
+        worktree: bool,
+        /// Permission mode (`plan`, `build`, `auto`).
+        #[arg(long)]
+        mode: Option<String>,
+        /// Optional model override for the target driver.
+        #[arg(long)]
+        model: Option<String>,
+        /// Socket path of a local `agente serve`.
+        #[arg(long, conflicts_with = "remote")]
+        socket: Option<std::path::PathBuf>,
+        /// host:port of a remote `agente serve --listen`.
+        #[arg(long, value_name = "HOST:PORT")]
+        remote: Option<String>,
+        /// Token of the remote server.
+        #[arg(long, env = "AGENTE_TOKEN", hide_env_values = true)]
+        token: Option<String>,
+    },
+    /// Bridge stdio MCP JSON-RPC frames to an HTTP MCP server (internal adapter).
+    McpBridge {
+        /// Streamable HTTP MCP URL to forward frames to.
+        #[arg(long)]
+        url: String,
+        /// Environment variable carrying the Bearer token.
+        #[arg(long, default_value = "AGENTE_MCP_BEARER_TOKEN")]
+        token_env: String,
     },
 }
 
@@ -166,15 +211,58 @@ fn main() -> anyhow::Result<()> {
         return bridge_cli::run(action);
     }
 
+    if let Some(Command::McpBridge { url, token_env }) = cli.command {
+        return mcp_bridge::run(url, token_env);
+    }
+
     if let Some(Command::Attach {
         target,
+        new,
+        driver,
+        worktree,
         socket,
         remote,
         token,
     }) = cli.command
     {
+        let project_dir = agente_core::util::normalize_project_dir(
+            std::fs::canonicalize(&cli.project_dir)
+                .unwrap_or_else(|_| std::path::PathBuf::from(&cli.project_dir)),
+        );
         return attach::run(attach::AttachOptions {
             target,
+            create_new: new,
+            driver,
+            worktree,
+            project_dir,
+            server: attach::ServerOptions {
+                socket,
+                remote,
+                token,
+            },
+        });
+    }
+
+    if let Some(Command::Run {
+        prompt,
+        driver,
+        worktree,
+        mode,
+        model,
+        socket,
+        remote,
+        token,
+    }) = cli.command
+    {
+        let project_dir =
+            agente_core::util::normalize_project_dir(std::fs::canonicalize(&cli.project_dir)?);
+        return attach::run_oneshot(attach::RunOptions {
+            prompt,
+            driver,
+            worktree,
+            mode,
+            model,
+            project_dir,
             server: attach::ServerOptions {
                 socket,
                 remote,
@@ -363,7 +451,9 @@ async fn shutdown_signal() {
 }
 
 fn run_serve(project_dir: &str, config: AppConfig, options: ServeOptions) -> anyhow::Result<()> {
-    use agente_runtime::{RuntimeConfig, RuntimeSupervisor};
+    use agente_daemon::orchestrator::{OrchestratorConfig, OrchestratorServer};
+    use agente_runtime::{OrchestratorProvider, RuntimeConfig, RuntimeSupervisor};
+    use std::sync::Arc;
 
     let ServeOptions {
         socket,
@@ -376,9 +466,11 @@ fn run_serve(project_dir: &str, config: AppConfig, options: ServeOptions) -> any
         if agente_daemon::is_serving(&socket).await {
             anyhow::bail!("agente is already serving on {}", socket.display());
         }
+        let orchestrator = OrchestratorServer::start(OrchestratorConfig::default()).await?;
         let runtime_config = RuntimeConfig::from_app_config(&config, project_dir)
             .with_user_store()
-            .map_err(|error| anyhow::anyhow!("session store unavailable: {error}"))?;
+            .map_err(|error| anyhow::anyhow!("session store unavailable: {error}"))?
+            .with_orchestrator(Arc::clone(&orchestrator) as Arc<dyn OrchestratorProvider>);
         if let Some(store) = runtime_config.session_store.as_ref() {
             let report = agente_runtime::import::import_legacy_sessions(store);
             if report.imported > 0 || report.failed > 0 {
@@ -386,7 +478,8 @@ fn run_serve(project_dir: &str, config: AppConfig, options: ServeOptions) -> any
             }
         }
         let runtime = RuntimeSupervisor::start(runtime_config);
-        let service = agente_daemon::Service { runtime };
+        orchestrator.attach_runtime(runtime.clone());
+        let service = agente_daemon::Service::with_orchestrator(runtime, orchestrator);
         // One signal stops every listener.
         let (stop, stopped) = tokio::sync::watch::channel(false);
         let stop = std::sync::Arc::new(stop);
@@ -543,5 +636,64 @@ mod tests {
         ));
         let cli = Cli::try_parse_from(["agente", "--inspect"]).unwrap();
         assert!(cli.inspect);
+    }
+
+    #[test]
+    fn cli_parses_mcp_bridge_run_and_driver_attach_flags() {
+        let bridge = Cli::try_parse_from([
+            "agente",
+            "mcp-bridge",
+            "--url",
+            "http://127.0.0.1:41234/mcp",
+            "--token-env",
+            "CUSTOM_TOKEN",
+        ])
+        .unwrap();
+        assert!(matches!(
+            bridge.command,
+            Some(Command::McpBridge { ref url, ref token_env })
+                if url == "http://127.0.0.1:41234/mcp" && token_env == "CUSTOM_TOKEN"
+        ));
+
+        let run = Cli::try_parse_from([
+            "agente",
+            "run",
+            "--driver",
+            "codex",
+            "--worktree",
+            "--mode",
+            "build",
+            "fix tests",
+        ])
+        .unwrap();
+        assert!(matches!(
+            run.command,
+            Some(Command::Run {
+                ref prompt,
+                driver: Some(ref d),
+                worktree: true,
+                mode: Some(ref m),
+                ..
+            }) if prompt == "fix tests" && d == "codex" && m == "build"
+        ));
+
+        let attach = Cli::try_parse_from([
+            "agente",
+            "attach",
+            "--new",
+            "--driver",
+            "claude",
+            "--worktree",
+        ])
+        .unwrap();
+        assert!(matches!(
+            attach.command,
+            Some(Command::Attach {
+                new: true,
+                driver: Some(ref d),
+                worktree: true,
+                ..
+            }) if d == "claude"
+        ));
     }
 }

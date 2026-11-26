@@ -299,6 +299,7 @@ fn legacy_approve(state: &ServerState, params: &Value) -> Result<Value, RequestF
     let accepted = state.runtime.approve(ApprovalDecision {
         request_id: request_id.to_string(),
         decision,
+        option_id: None,
     });
     state
         .lock_pending_approvals()
@@ -443,9 +444,15 @@ async fn handle_response(
         );
     }
     let decision = updates::decision_from_response(result.as_ref(), error.is_some());
+    let option_id = result
+        .as_ref()
+        .and_then(|value| value.pointer("/outcome/optionId"))
+        .and_then(Value::as_str)
+        .map(str::to_string);
     let accepted = state.runtime.approve(ApprovalDecision {
         request_id: approval_id,
         decision,
+        option_id,
     });
     tracing::debug!(
         ?decision,
@@ -1202,6 +1209,7 @@ mod tests {
                     child_run_id: None,
                     old_content: None,
                     new_content: None,
+                    options: Vec::new(),
                 },
             ))
             .await
@@ -1275,6 +1283,7 @@ mod tests {
                     child_run_id: None,
                     old_content: None,
                     new_content: None,
+                    options: Vec::new(),
                 },
             ))
             .await
@@ -1409,6 +1418,7 @@ mod tests {
                     child_run_id: None,
                     old_content: None,
                     new_content: None,
+                    options: Vec::new(),
                 },
             ))
             .await
@@ -1447,6 +1457,7 @@ mod tests {
                     child_run_id: None,
                     old_content: None,
                     new_content: None,
+                    options: Vec::new(),
                 },
             ))
             .await

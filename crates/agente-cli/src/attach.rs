@@ -18,6 +18,25 @@ pub struct AttachOptions {
     /// A session id (or a unique prefix), or nothing
     /// for the most recent session.
     pub target: Option<String>,
+    /// Create a new session on the daemon instead of attaching to an existing one.
+    pub create_new: bool,
+    /// Driver instance id for a new session (`"agente"`, `"claude"`, `"codex"`, ...).
+    pub driver: Option<String>,
+    /// Create an isolated Git worktree for a new session.
+    pub worktree: bool,
+    /// Project directory used when opening a new session.
+    pub project_dir: String,
+    pub server: ServerOptions,
+}
+
+/// Options for one-shot headless execution through `agente serve` (`agente run`).
+pub struct RunOptions {
+    pub prompt: String,
+    pub driver: Option<String>,
+    pub worktree: bool,
+    pub mode: Option<String>,
+    pub model: Option<String>,
+    pub project_dir: String,
     pub server: ServerOptions,
 }
 
@@ -245,9 +264,16 @@ fn render(event: &RuntimeEvent) -> Option<String> {
             "\n? Allow {tool_name}: {} — [y]es / [a]lways / [n]o: ",
             shorten(description, 200)
         )),
+        RuntimeEvent::InputRequested { message, .. } => {
+            line(format!("? Input requested: {}", shorten(message, 200)))
+        }
         RuntimeEvent::TurnFinished { .. } => Some("\n".into()),
         RuntimeEvent::TurnCancelled { .. } => line("(cancelled)".into()),
         RuntimeEvent::TurnFailed { message } => line(format!("error: {message}")),
+        RuntimeEvent::UsageLimitReached { message, reset_at } => match reset_at {
+            Some(at) => line(format!("usage limit: {message} (resets {at})")),
+            None => line(format!("usage limit: {message}")),
+        },
         _ => None,
     }
 }
@@ -292,9 +318,183 @@ pub(crate) async fn open(
     Ok((client, notifications))
 }
 
+async fn open_new_session(
+    client: &Client,
+    project_dir: &str,
+    driver: Option<&str>,
+    with_worktree: bool,
+) -> anyhow::Result<(String, String, Option<Value>)> {
+    let session_id = uuid::Uuid::new_v4().to_string();
+    let worktree = if with_worktree {
+        let wt = client
+            .call(
+                "worktree.create",
+                json!({ "project_dir": project_dir, "session_id": session_id }),
+            )
+            .await?;
+        Some(wt["worktree"].clone())
+    } else {
+        None
+    };
+    client
+        .call(
+            "session.open",
+            json!({
+                "session_id": session_id,
+                "project_dir": project_dir,
+                "instance_id": driver,
+            }),
+        )
+        .await?;
+    let label = match driver {
+        Some(id) => format!("new {id} session"),
+        None => "new session".to_string(),
+    };
+    Ok((session_id, label, worktree))
+}
+
+fn parse_turn_mode(raw: Option<&str>) -> anyhow::Result<Option<&'static str>> {
+    let Some(mode) = raw.map(str::trim).filter(|s| !s.is_empty()) else {
+        return Ok(None);
+    };
+    match mode.to_ascii_lowercase().as_str() {
+        "plan" => Ok(Some("plan")),
+        "build" => Ok(Some("build")),
+        "auto" => Ok(Some("auto")),
+        other => bail!("unknown mode '{other}': expected plan, build, or auto"),
+    }
+}
+
+pub fn run_oneshot(options: RunOptions) -> anyhow::Result<()> {
+    let runtime = tokio::runtime::Runtime::new()?;
+    runtime.block_on(run_oneshot_async(options))
+}
+
+async fn run_oneshot_async(options: RunOptions) -> anyhow::Result<()> {
+    if options.prompt.trim().is_empty() {
+        bail!("prompt must not be empty");
+    }
+    let parsed_mode = parse_turn_mode(options.mode.as_deref())?;
+    let (client, mut notifications) = open(&options.server).await?;
+    let (session_id, _label, worktree) = open_new_session(
+        &client,
+        &options.project_dir,
+        options.driver.as_deref(),
+        options.worktree,
+    )
+    .await?;
+
+    client
+        .call("events.subscribe", json!({ "session_ids": [session_id] }))
+        .await?;
+
+    let mut params = json!({
+        "session_id": session_id,
+        "project_dir": options.project_dir,
+        "prompt": Message::user(&options.prompt),
+    });
+    if let Some(driver) = &options.driver {
+        params["instance_id"] = json!(driver);
+    }
+    if let Some(mode) = parsed_mode {
+        params["mode"] = json!(mode);
+    }
+    if let Some(model) = &options.model {
+        params["model"] = json!(model);
+    }
+    if let Some(wt) = &worktree {
+        params["worktree"] = wt.clone();
+    }
+
+    client.call("turn.start", params).await?;
+
+    let mut stdin = BufReader::new(tokio::io::stdin()).lines();
+    let mut running: Option<String> = None;
+    let mut approvals: VecDeque<String> = VecDeque::new();
+    let mut turn_error: Option<String> = None;
+
+    loop {
+        tokio::select! {
+            notification = notifications.recv() => {
+                let Some((method, params)) = notification else {
+                    bail!("agente closed the connection before the turn completed");
+                };
+                if method != "event" {
+                    continue;
+                }
+                let Ok(envelope) = serde_json::from_value::<RuntimeEventEnvelope>(params) else {
+                    continue;
+                };
+                if envelope.session_id.to_string() != session_id {
+                    continue;
+                }
+                apply_event_state(&envelope, &mut running, &mut approvals);
+                match &envelope.event {
+                    RuntimeEvent::AssistantDelta { text } => {
+                        print!("{text}");
+                        let _ = std::io::stdout().flush();
+                    }
+                    RuntimeEvent::TurnFinished { .. } => {
+                        println!();
+                        break;
+                    }
+                    RuntimeEvent::TurnCancelled { .. } => {
+                        eprintln!("\n(cancelled)");
+                        turn_error = Some("turn cancelled".to_string());
+                        break;
+                    }
+                    RuntimeEvent::TurnFailed { message } => {
+                        turn_error = Some(message.clone());
+                        eprintln!("\nerror: {message}");
+                        break;
+                    }
+                    other => {
+                        if let Some(text) = render(other) {
+                            eprint!("{text}");
+                            let _ = std::io::stderr().flush();
+                        }
+                    }
+                }
+            }
+            line = stdin.next_line(), if !approvals.is_empty() => {
+                if let Ok(Some(line)) = line {
+                    if let Some(request_id) = approvals.front().cloned() {
+                        match decision(&line) {
+                            Some(kind) => {
+                                client.call("approval.respond", json!({ "request_id": request_id, "decision": kind })).await?;
+                                approvals.pop_front();
+                            }
+                            None => eprint!("Answer y, a or n: "),
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if let Some(err) = turn_error {
+        bail!("{err}");
+    }
+    Ok(())
+}
+
 async fn attach(options: AttachOptions) -> anyhow::Result<()> {
     let (client, mut notifications) = open(&options.server).await?;
-    let mut target = resolve(&client, options.target.as_deref()).await?;
+    let mut session_driver = options.driver.clone();
+    let mut session_worktree: Option<Value> = None;
+    let mut target = if options.create_new || (options.driver.is_some() && options.target.is_none()) {
+        let (id, title, wt) = open_new_session(
+            &client,
+            &options.project_dir,
+            options.driver.as_deref(),
+            options.worktree,
+        )
+        .await?;
+        session_worktree = wt;
+        Target::Session { id, title }
+    } else {
+        resolve(&client, options.target.as_deref()).await?
+    };
     if let Some(session) = target.session() {
         client
             .call("events.subscribe", json!({ "session_ids": [session] }))
@@ -338,7 +538,14 @@ async fn attach(options: AttachOptions) -> anyhow::Result<()> {
                             client.call("turn.steer", json!({ "turn_id": turn_id, "content": text })).await?;
                             eprintln!("(added to the running turn)");
                         } else {
-                            send(&client, &mut target, text).await?;
+                            send(
+                                &client,
+                                &mut target,
+                                text,
+                                session_driver.take().as_deref(),
+                                session_worktree.take().as_ref(),
+                            )
+                            .await?;
                         }
                     }
                 }
@@ -388,15 +595,23 @@ fn apply_event_state(
 }
 
 /// Start a turn with `text` in the target's session.
-async fn send(client: &Client, target: &mut Target, text: &str) -> anyhow::Result<()> {
+async fn send(
+    client: &Client,
+    target: &mut Target,
+    text: &str,
+    instance_id: Option<&str>,
+    worktree: Option<&Value>,
+) -> anyhow::Result<()> {
     match target {
         Target::Session { id, .. } => {
-            client
-                .call(
-                    "turn.start",
-                    json!({ "session_id": id, "prompt": Message::user(text) }),
-                )
-                .await?;
+            let mut params = json!({ "session_id": id, "prompt": Message::user(text) });
+            if let Some(driver) = instance_id {
+                params["instance_id"] = json!(driver);
+            }
+            if let Some(wt) = worktree {
+                params["worktree"] = wt.clone();
+            }
+            client.call("turn.start", params).await?;
         }
     }
     Ok(())
@@ -482,6 +697,7 @@ mod tests {
                 old_content: None,
                 new_content: None,
                 child_run_id: None,
+                options: Vec::new(),
             });
             apply_event_state(&env, &mut running, &mut approvals);
         }
@@ -504,6 +720,7 @@ mod tests {
                 old_content: None,
                 new_content: None,
                 child_run_id: None,
+                options: Vec::new(),
             }),
             &mut running,
             &mut approvals,

@@ -177,6 +177,7 @@ pub(crate) fn update_for_event(event: &RuntimeEvent) -> Option<Value> {
         | RuntimeEvent::AssistantMessage { .. }
         | RuntimeEvent::ToolHeartbeat { .. }
         | RuntimeEvent::ApprovalRequested { .. }
+        | RuntimeEvent::InputRequested { .. }
         | RuntimeEvent::FileChanged { .. }
         | RuntimeEvent::ChildStarted { .. }
         | RuntimeEvent::ChildDelta { .. }
@@ -193,7 +194,10 @@ pub(crate) fn update_for_event(event: &RuntimeEvent) -> Option<Value> {
         | RuntimeEvent::CompactionStarted { .. }
         | RuntimeEvent::GenerationProgress { .. }
         | RuntimeEvent::ChildCompletedNotice { .. }
-        | RuntimeEvent::Diagnostic { .. } => return None,
+        | RuntimeEvent::Diagnostic { .. }
+        | RuntimeEvent::ModeChanged { .. }
+        | RuntimeEvent::ModelChanged { .. }
+        | RuntimeEvent::UsageLimitReached { .. } => return None,
     };
     Some(update)
 }
@@ -412,6 +416,7 @@ mod tests {
                 child_run_id: None,
                 old_content: None,
                 new_content: None,
+                options: Vec::new(),
             },
             RuntimeEvent::ContextCompacted {
                 summary: "s".into(),

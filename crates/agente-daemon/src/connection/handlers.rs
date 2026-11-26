@@ -5,7 +5,8 @@ use std::sync::Arc;
 
 use agente_protocol::rpc;
 use agente_protocol::{
-    ApprovalDecision, Attachment, Message, RunId, SessionId, StartTurn, Trust, TurnId,
+    ApprovalDecision, Attachment, DriverInstanceConfig, InputResponse, Message, RunId, SessionId,
+    StartTurn, Trust, TurnId,
 };
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -81,6 +82,37 @@ fn default_smart_compaction() -> bool {
 struct OpenSessionParams {
     session_id: SessionId,
     project_dir: String,
+    #[serde(default)]
+    instance_id: Option<String>,
+}
+
+#[derive(Default, Deserialize)]
+struct DriversListParams {
+    #[serde(default)]
+    probe: bool,
+}
+
+#[derive(Default, Deserialize)]
+struct ProbeDriverParams {
+    #[serde(default)]
+    instance_id: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct SaveDriverInstanceParams {
+    instance_id: String,
+    config: DriverInstanceConfig,
+}
+
+#[derive(Deserialize)]
+struct DeleteDriverInstanceParams {
+    instance_id: String,
+}
+
+#[derive(Default, Deserialize)]
+struct OrchestratorTasksParams {
+    #[serde(default)]
+    parent_session_id: Option<SessionId>,
 }
 
 #[derive(Deserialize)]
@@ -387,6 +419,39 @@ impl Connection {
             .await
             .map(|()| json!({ "ok": true }))
             .map_err(runtime_failure)
+    }
+
+    pub(super) async fn list_drivers(&self, params: Value) -> Result<Value, Failure> {
+        let DriversListParams { probe } = if params.is_null() {
+            DriversListParams::default()
+        } else {
+            parse(params)?
+        };
+        let drivers = if probe {
+            self.runtime.probe_drivers().await
+        } else {
+            self.runtime.list_drivers()
+        };
+        Ok(json!({ "drivers": to_json(drivers)? }))
+    }
+
+    pub(super) async fn probe_driver(&self, params: Value) -> Result<Value, Failure> {
+        let ProbeDriverParams { instance_id } = if params.is_null() {
+            ProbeDriverParams::default()
+        } else {
+            parse(params)?
+        };
+        if let Some(instance_id) = instance_id {
+            let driver = self
+                .runtime
+                .probe_driver(&instance_id)
+                .await
+                .map_err(runtime_failure)?;
+            Ok(json!({ "driver": to_json(driver)? }))
+        } else {
+            let drivers = self.runtime.probe_drivers().await;
+            Ok(json!({ "drivers": to_json(drivers)? }))
+        }
     }
 
     pub(super) async fn compact_session(&self, params: Value) -> Result<Value, Failure> {
@@ -912,10 +977,13 @@ impl Connection {
                 let OpenSessionParams {
                     session_id,
                     project_dir,
+                    instance_id,
                 } = parse(params)?;
-                Ok(
-                    json!({ "snapshot": runtime.open_session(session_id, &project_dir).map_err(runtime_failure)? }),
-                )
+                Ok(json!({
+                    "snapshot": runtime
+                        .open_session_with_driver(session_id, &project_dir, instance_id.as_deref())
+                        .map_err(runtime_failure)?
+                }))
             }
             "session.checkpoints" => {
                 let SessionParams { session_id } = parse(params)?;
@@ -927,6 +995,9 @@ impl Connection {
                     .delete_session(session_id)
                     .map_err(runtime_failure)?;
                 self.client_tools.remove_session(session_id);
+                if let Some(orchestrator) = &self.orchestrator {
+                    orchestrator.revoke_session(session_id);
+                }
                 Ok(json!({ "deleted": deleted }))
             }
             "session.fork" => {
@@ -1130,6 +1201,10 @@ impl Connection {
                 let decision: ApprovalDecision = parse(params)?;
                 Ok(json!({ "ok": runtime.approve(decision) }))
             }
+            "input.respond" => {
+                let response: InputResponse = parse(params)?;
+                Ok(json!({ "ok": runtime.respond_input(response) }))
+            }
             "edits.undo" => {
                 let SessionParams { session_id } = parse(params)?;
                 Ok(json!({ "paths": runtime.undo(session_id).map_err(runtime_failure)? }))
@@ -1219,6 +1294,44 @@ impl Connection {
             }
             "project.info" | "project.init" | "project.expand_prompt" | "mcp.status" => {
                 crate::project::handle(runtime, method, params)
+            }
+            "drivers.instances.save" => {
+                let SaveDriverInstanceParams {
+                    instance_id,
+                    config,
+                } = parse(params)?;
+                let info = runtime
+                    .save_driver_instance(instance_id, config)
+                    .map_err(runtime_failure)?;
+                Ok(json!({ "driver": to_json(info)? }))
+            }
+            "drivers.instances.delete" => {
+                let DeleteDriverInstanceParams { instance_id } = parse(params)?;
+                let deleted = runtime
+                    .delete_driver_instance(&instance_id)
+                    .map_err(runtime_failure)?;
+                Ok(json!({ "deleted": deleted }))
+            }
+            "orchestrator.status" => {
+                let Some(orchestrator) = &self.orchestrator else {
+                    return Ok(json!({ "enabled": false }));
+                };
+                let mut status = orchestrator.status_json();
+                status["enabled"] = json!(true);
+                Ok(status)
+            }
+            "orchestrator.tasks" => {
+                let OrchestratorTasksParams { parent_session_id } = if params.is_null() {
+                    OrchestratorTasksParams::default()
+                } else {
+                    parse(params)?
+                };
+                let tasks = self
+                    .orchestrator
+                    .as_ref()
+                    .map(|orch| orch.list_tasks_json(parent_session_id))
+                    .unwrap_or_else(|| json!([]));
+                Ok(json!({ "tasks": tasks }))
             }
             _ => Err((rpc::METHOD_NOT_FOUND, format!("unknown method {method}"))),
         }

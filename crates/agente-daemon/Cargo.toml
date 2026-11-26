@@ -8,6 +8,7 @@ description = "agente serve: the runtime over a local socket, for Desktop and at
 
 [dependencies]
 agente-core = { workspace = true }
+agente-drivers = { workspace = true }
 agente-protocol = { workspace = true }
 agente-runtime = { workspace = true }
 async-trait = { workspace = true }

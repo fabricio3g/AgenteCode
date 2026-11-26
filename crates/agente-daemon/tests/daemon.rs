@@ -87,7 +87,7 @@ fn runtime(tag: &str) -> (Service, std::path::PathBuf) {
     std::fs::create_dir_all(&dir).unwrap();
     let config = RuntimeConfig::from_app_config(&AppConfig::default(), dir.to_string_lossy());
     let runtime = RuntimeSupervisor::start(config);
-    let service = Service { runtime };
+    let service = Service::new(runtime);
     (service, dir)
 }
 
@@ -680,5 +680,192 @@ async fn manual_compaction_defaults_to_llm_and_uses_the_configured_cached_model(
         .configure(json!({"compaction_model":null}))
         .unwrap();
     assert!(service.runtime.settings()["compaction_model"].is_null());
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[tokio::test]
+async fn drivers_rpc_lists_saves_binds_session_and_deletes_instance() {
+    use agente_protocol::SessionId;
+    use agente_runtime::{DriverRegistry, DriversConfig};
+    use std::sync::Arc;
+
+    let (mut service, dir) = runtime("drivers-rpc");
+    let proj = dir.join("proj");
+    std::fs::create_dir_all(&proj).unwrap();
+    let registry = Arc::new(DriverRegistry::new(
+        DriversConfig::default(),
+        Some(dir.join("drivers.json")),
+    ));
+    let cfg = RuntimeConfig::from_app_config(&AppConfig::default(), proj.to_string_lossy())
+        .with_persistence_dir(dir.join("sessions"))
+        .unwrap()
+        .with_driver_registry(registry);
+    service.runtime = RuntimeSupervisor::start(cfg);
+
+    let mut client = Client::connect(&service);
+    let (init, _) = client.request("initialize", json!({})).await;
+    let caps = init["result"]["capabilities"].as_array().unwrap();
+    assert!(caps.iter().any(|c| c == "drivers_v1"));
+
+    let (listed, _) = client.request("drivers.list", json!({})).await;
+    let drivers = listed["result"]["drivers"].as_array().unwrap();
+    assert!(drivers.iter().any(|d| d["instance_id"] == "agente"));
+    assert!(drivers.iter().any(|d| d["instance_id"] == "claude"));
+    assert!(drivers.iter().any(|d| d["instance_id"] == "codex"));
+
+    let (saved, _) = client
+        .request(
+            "drivers.instances.save",
+            json!({
+                "instance_id": "custom-acp",
+                "config": {
+                    "extends": "acp",
+                    "label": "Custom ACP",
+                    "command": ["gemini", "--acp"],
+                    "enabled": true
+                }
+            }),
+        )
+        .await;
+    assert!(saved.get("error").is_none(), "{saved}");
+    assert_eq!(saved["result"]["driver"]["instance_id"], "custom-acp");
+    assert_eq!(saved["result"]["driver"]["driver_kind"], "acp");
+
+    let (listed_after, _) = client.request("drivers.list", json!({})).await;
+    assert!(listed_after["result"]["drivers"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|d| d["instance_id"] == "custom-acp"));
+
+    let session_id = SessionId::new();
+    let (opened, _) = client
+        .request(
+            "session.open",
+            json!({
+                "session_id": session_id,
+                "project_dir": proj,
+                "instance_id": "custom-acp",
+            }),
+        )
+        .await;
+    assert!(opened.get("error").is_none(), "{opened}");
+
+    let (got, _) = client
+        .request("session.get", json!({ "session_id": session_id }))
+        .await;
+    assert_eq!(got["result"]["meta"]["info"]["instance_id"], "custom-acp");
+    assert_eq!(got["result"]["meta"]["info"]["driver_kind"], "acp");
+
+    let (deleted, _) = client
+        .request(
+            "drivers.instances.delete",
+            json!({ "instance_id": "custom-acp" }),
+        )
+        .await;
+    assert_eq!(deleted["result"]["deleted"], true);
+
+    let (listed_final, _) = client.request("drivers.list", json!({})).await;
+    assert!(!listed_final["result"]["drivers"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|d| d["instance_id"] == "custom-acp"));
+
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[tokio::test]
+async fn worktrees_and_orchestrator_rpc_capabilities_and_round_trip() {
+    use agente_daemon::orchestrator::{OrchestratorConfig, OrchestratorServer};
+    use agente_protocol::SessionId;
+    use agente_runtime::OrchestratorProvider;
+    use std::sync::Arc;
+
+    let dir = std::env::temp_dir().join(format!(
+        "agente-daemon-orch-rpc-{}",
+        uuid::Uuid::new_v4()
+    ));
+    let repo = dir.join("repo");
+    std::fs::create_dir_all(&repo).unwrap();
+    for args in [
+        vec!["init", "-b", "main"],
+        vec!["config", "user.name", "Test User"],
+        vec!["config", "user.email", "test@example.com"],
+    ] {
+        let mut cmd = std::process::Command::new("git");
+        cmd.args(args).current_dir(&repo);
+        assert!(cmd.status().unwrap().success());
+    }
+    std::fs::write(repo.join("README.md"), "hello\n").unwrap();
+    for args in [vec!["add", "."], vec!["commit", "-m", "init"]] {
+        let mut cmd = std::process::Command::new("git");
+        cmd.args(args).current_dir(&repo);
+        assert!(cmd.status().unwrap().success());
+    }
+
+    let orchestrator = OrchestratorServer::start(OrchestratorConfig::default())
+        .await
+        .unwrap();
+    let cfg = RuntimeConfig::from_app_config(&AppConfig::default(), repo.to_string_lossy())
+        .with_persistence_dir(dir.join("sessions"))
+        .unwrap()
+        .with_orchestrator(Arc::clone(&orchestrator) as Arc<dyn OrchestratorProvider>);
+    let runtime = RuntimeSupervisor::start(cfg);
+    orchestrator.attach_runtime(runtime.clone());
+    let service = Service::with_orchestrator(runtime, orchestrator);
+
+    let mut client = Client::connect(&service);
+    let (init, _) = client.request("initialize", json!({})).await;
+    let caps = init["result"]["capabilities"].as_array().unwrap();
+    assert!(caps.iter().any(|c| c == "worktrees_v1"));
+    assert!(caps.iter().any(|c| c == "orchestrator_v1"));
+
+    let (status_res, _) = client.request("orchestrator.status", json!({})).await;
+    assert!(status_res.get("error").is_none(), "{status_res}");
+    assert!(status_res["result"]["mcp_url"]
+        .as_str()
+        .unwrap()
+        .starts_with("http://127.0.0.1:"));
+    assert_eq!(status_res["result"]["max_depth"], 2);
+
+    let (tasks_res, _) = client.request("orchestrator.tasks", json!({})).await;
+    assert_eq!(tasks_res["result"]["tasks"], json!([]));
+
+    let sid = SessionId::new();
+    let (wt_created, _) = client
+        .request(
+            "worktree.create",
+            json!({ "project_dir": repo, "label": "rpc-wt", "session_id": sid }),
+        )
+        .await;
+    assert!(wt_created.get("error").is_none(), "{wt_created}");
+    let wt = wt_created["result"]["worktree"].clone();
+    assert!(std::path::Path::new(wt["path"].as_str().unwrap()).is_dir());
+
+    let (wt_list, _) = client
+        .request("worktree.list", json!({ "project_dir": repo }))
+        .await;
+    assert!(wt_list["result"]["worktrees"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|w| w["path"] == wt["path"]));
+
+    let (wt_removed, _) = client
+        .request(
+            "worktree.remove",
+            json!({
+                "repo_root": wt["repo_root"],
+                "path": wt["path"],
+                "branch": wt["branch"],
+                "base_commit": wt["base_commit"],
+                "session_id": sid,
+            }),
+        )
+        .await;
+    assert_eq!(wt_removed["result"]["removed"], true);
+    assert!(!std::path::Path::new(wt["path"].as_str().unwrap()).exists());
+
     let _ = std::fs::remove_dir_all(dir);
 }

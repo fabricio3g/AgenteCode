@@ -20,7 +20,7 @@ use tokio::sync::{broadcast, mpsc};
 use tokio::task::JoinHandle;
 
 use crate::Service;
-use agente_runtime::{RuntimeError, RuntimeHandle, TurnHandle};
+use agente_runtime::{DriverError, RuntimeError, RuntimeHandle, TurnHandle};
 
 /// Messages queued for the client before sends start to wait on it.
 const OUTBOX_CAPACITY: usize = 4_096;
@@ -36,6 +36,7 @@ pub(crate) type Failure = (i32, String);
 
 struct Connection {
     runtime: RuntimeHandle,
+    orchestrator: Option<Arc<crate::orchestrator::OrchestratorServer>>,
     outbox: mpsc::Sender<Value>,
     /// Turns started here: their events come from the turn's own channel, so
     /// the subscription must not send them a second time.
@@ -53,7 +54,7 @@ pub(crate) fn initialize_result() -> Value {
         "protocol_version": agente_protocol::PROTOCOL_VERSION,
         "server": "agente",
         "version": env!("CARGO_PKG_VERSION"),
-        "capabilities": ["project", "processes", "sessions", "turns", "edits", "desktop_v1", "home_turns_v1", "provider_settings_v1", "complements_v1", "llm_stream_v1", "process_push_v1", "web_v1", "git_v1"],
+        "capabilities": ["project", "processes", "sessions", "turns", "edits", "desktop_v1", "home_turns_v1", "provider_settings_v1", "complements_v1", "llm_stream_v1", "process_push_v1", "web_v1", "git_v1", "drivers_v1", "worktrees_v1", "orchestrator_v1"],
     })
 }
 
@@ -96,6 +97,7 @@ where
 
     let connection = Arc::new(Connection {
         runtime: service.runtime,
+        orchestrator: service.orchestrator,
         outbox,
         own_turns: Mutex::new(HashSet::new()),
         subscription: Mutex::new(None),
@@ -138,6 +140,12 @@ where
                         | "git.branches"
                         | "git.switch_branch"
                         | "git.pull_request"
+                        | "worktree.create"
+                        | "worktree.list"
+                        | "worktree.merge"
+                        | "worktree.remove"
+                        | "drivers.list"
+                        | "drivers.probe"
                 ) {
                     // Long-running and network-bound RPCs must never block the
                     // JSON-RPC reader loop (so turn.cancel, approval.respond,
@@ -171,6 +179,11 @@ where
                             }
                             "web.search" => connection.web_search(params).await,
                             "web.fetch" => connection.web_fetch(params).await,
+                            "drivers.list" => connection.list_drivers(params).await,
+                            "drivers.probe" => connection.probe_driver(params).await,
+                            m if m.starts_with("worktree.") => {
+                                crate::worktree::handle_async(&connection.runtime, m, params).await
+                            }
                             m if m.starts_with("git.") => crate::git::handle_async(m, params).await,
                             _ => unreachable!(),
                         };
@@ -228,10 +241,13 @@ pub(crate) fn parse<T: DeserializeOwned>(params: Value) -> Result<T, Failure> {
 }
 
 pub(crate) fn runtime_failure(error: RuntimeError) -> Failure {
-    let code = match error {
+    let code = match &error {
         RuntimeError::SessionBusy(_) => BUSY,
         RuntimeError::NotAllowed(_) => NOT_ALLOWED,
         RuntimeError::Config(_) => rpc::INVALID_PARAMS,
+        RuntimeError::Driver(
+            DriverError::NotFound(_) | DriverError::InvalidConfig(_) | DriverError::Disabled(_),
+        ) => rpc::INVALID_PARAMS,
         _ => rpc::INTERNAL_ERROR,
     };
     (code, error.to_string())
@@ -473,7 +489,7 @@ mod tests {
     fn test_service() -> Service {
         let runtime =
             RuntimeSupervisor::start(RuntimeConfig::from_app_config(&AppConfig::default(), "."));
-        Service { runtime }
+        Service::new(runtime)
     }
 
     #[tokio::test]
@@ -621,6 +637,7 @@ mod tests {
         let (outbox, _outgoing) = mpsc::channel::<Value>(32);
         let connection = Arc::new(Connection {
             runtime: service.runtime,
+            orchestrator: service.orchestrator,
             outbox,
             own_turns: Mutex::new(HashSet::new()),
             subscription: Mutex::new(None),

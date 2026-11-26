@@ -8,20 +8,43 @@ mod client_tools;
 mod complements;
 mod connection;
 mod git;
+pub mod orchestrator;
 mod project;
 mod tcp;
+mod worktree;
 
 pub use connection::serve_connection;
 pub use tcp::{default_token_path, load_or_create_token, serve_tcp};
 
 use agente_runtime::RuntimeHandle;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use thiserror::Error;
 
 /// What a daemon serves.
 #[derive(Clone)]
 pub struct Service {
     pub runtime: RuntimeHandle,
+    pub orchestrator: Option<Arc<orchestrator::OrchestratorServer>>,
+}
+
+impl Service {
+    pub fn new(runtime: RuntimeHandle) -> Self {
+        Self {
+            runtime,
+            orchestrator: None,
+        }
+    }
+
+    pub fn with_orchestrator(
+        runtime: RuntimeHandle,
+        orchestrator: Arc<orchestrator::OrchestratorServer>,
+    ) -> Self {
+        Self {
+            runtime,
+            orchestrator: Some(orchestrator),
+        }
+    }
 }
 
 #[derive(Debug, Error)]
