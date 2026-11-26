@@ -390,6 +390,7 @@ fn map_event(inner: &RuntimeInner, event: AgentEvent) -> Option<(RuntimeEvent, O
             file_path: request.file_path,
             old_content: request.old_content,
             new_content: request.new_content,
+            options: Vec::new(),
         },
         AgentEvent::SubagentStarted {
             id,
@@ -832,6 +833,7 @@ mod tests {
                 },
                 events,
                 session_id,
+                external_driver: None,
             },
         );
     }
@@ -1095,6 +1097,7 @@ mod tests {
                 inbox: agente_core::agent::UserInbox::default(),
                 events: tx_env.clone(),
                 session_id,
+                external_driver: None,
             },
         );
 
@@ -1234,6 +1237,7 @@ mod tests {
                 inbox: agente_core::agent::UserInbox::default(),
                 events: tx_env.clone(),
                 session_id,
+                external_driver: None,
             },
         );
 

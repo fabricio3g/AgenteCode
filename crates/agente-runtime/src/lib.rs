@@ -18,7 +18,13 @@ mod turns;
 #[cfg(test)]
 mod tests;
 
-pub use config::{ProfileSource, ProfileTurn, RuntimeConfig};
+pub use agente_drivers::{
+    AgentDriver, ApprovalRouter, DriverError, DriverRegistry, DriverSession, DriversConfig,
+    InjectedMcpServer,
+};
+pub use config::{
+    OrchestratorContext, OrchestratorProvider, ProfileSource, ProfileTurn, RuntimeConfig,
+};
 pub use turns::TurnHandle;
 
 use std::collections::HashMap;
@@ -56,6 +62,10 @@ impl RuntimeSupervisor {
         }
         let (events, _) = broadcast::channel(BROADCAST_CAPACITY);
         let live = LiveSettings::from_config(&config);
+        let driver_registry = config
+            .driver_registry
+            .clone()
+            .unwrap_or_else(|| Arc::new(DriverRegistry::load_default()));
         RuntimeHandle {
             inner: Arc::new(RuntimeInner {
                 config,
@@ -64,6 +74,11 @@ impl RuntimeSupervisor {
                 contexts: Mutex::new(HashMap::new()),
                 project_mcps: Mutex::new(HashMap::new()),
                 turns: Mutex::new(HashMap::new()),
+                driver_sessions: Mutex::new(HashMap::new()),
+                bound_instances: Mutex::new(HashMap::new()),
+                session_depths: Mutex::new(HashMap::new()),
+                driver_registry,
+                approval_router: ApprovalRouter::new(),
                 child_ids: Mutex::new(HashMap::new()),
                 sequence: AtomicU64::new(0),
                 task_sequence: AtomicU64::new(0),
@@ -75,6 +90,12 @@ impl RuntimeSupervisor {
             }),
         }
     }
+}
+
+#[derive(Clone)]
+pub(crate) struct BoundDriverSession {
+    pub(crate) instance_id: String,
+    pub(crate) session: Arc<dyn DriverSession>,
 }
 
 #[derive(Clone)]
@@ -91,6 +112,11 @@ pub(crate) struct RuntimeInner {
     pub(crate) contexts: Mutex<HashMap<SessionId, SessionContext>>,
     pub(crate) project_mcps: Mutex<HashMap<String, Arc<McpManager>>>,
     pub(crate) turns: Mutex<HashMap<TurnId, TurnControl>>,
+    pub(crate) driver_sessions: Mutex<HashMap<SessionId, BoundDriverSession>>,
+    pub(crate) bound_instances: Mutex<HashMap<SessionId, String>>,
+    pub(crate) session_depths: Mutex<HashMap<SessionId, u32>>,
+    pub(crate) driver_registry: Arc<DriverRegistry>,
+    pub(crate) approval_router: ApprovalRouter,
     pub(crate) child_ids: Mutex<HashMap<String, RunId>>,
     pub(crate) sequence: AtomicU64,
     pub(crate) task_sequence: AtomicU64,
@@ -126,6 +152,8 @@ pub enum RuntimeError {
     NotAllowed(String),
     #[error("invalid configuration: {0}")]
     Config(String),
+    #[error("{0}")]
+    Driver(#[from] DriverError),
 }
 
 impl RuntimeInner {
@@ -133,6 +161,25 @@ impl RuntimeInner {
         self.turns
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    pub(crate) fn lock_driver_sessions(
+        &self,
+    ) -> std::sync::MutexGuard<'_, HashMap<SessionId, BoundDriverSession>> {
+        self.driver_sessions
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    pub(crate) fn close_bound_driver_session(&self, session_id: SessionId) {
+        let removed = self.lock_driver_sessions().remove(&session_id);
+        if let Some(bound) = removed {
+            if let Ok(executor) = tokio::runtime::Handle::try_current() {
+                executor.spawn(async move {
+                    bound.session.close().await;
+                });
+            }
+        }
     }
 
     pub(crate) fn read_sessions(

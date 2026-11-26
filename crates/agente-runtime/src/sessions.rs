@@ -6,8 +6,10 @@ use std::sync::{Arc, Mutex};
 use agente_core::agent::UserInbox;
 use agente_core::permissions::{shared_permission_engine_with_config, SharedPermissionEngine};
 use agente_core::AbortController;
+use agente_drivers::{DriverError, BUILTIN_AGENTE_INSTANCE};
 use agente_protocol::{
-    Message, Role, RuntimeEvent, SessionId, SessionInfo, SessionSnapshot, Trust, TurnId,
+    DriverInfo, DriverInstanceConfig, DriverKind, Message, Role, RuntimeEvent, SessionId,
+    SessionInfo, SessionSnapshot, SessionWorktree, Trust, TurnId,
 };
 use agente_session::SessionMeta;
 use chrono::Utc;
@@ -36,6 +38,10 @@ pub(crate) fn new_info(session_id: SessionId, project_dir: &str) -> SessionInfo 
         model: String::new(),
         thinking_level: String::new(),
         profile: None,
+        instance_id: None,
+        driver_kind: None,
+        external_session_id: None,
+        worktree: None,
     }
 }
 
@@ -347,6 +353,18 @@ impl RuntimeHandle {
         if self.is_busy(session_id) {
             return Err(RuntimeError::SessionBusy(session_id));
         }
+        self.inner.approval_router.cancel_session(session_id);
+        self.inner.close_bound_driver_session(session_id);
+        self.inner
+            .bound_instances
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .remove(&session_id);
+        self.inner
+            .session_depths
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .remove(&session_id);
         let mut existed = self.inner.write_sessions().remove(&session_id).is_some();
         self.inner.lock_edits().forget(session_id);
         self.inner
@@ -424,6 +442,7 @@ impl RuntimeHandle {
                 inbox,
                 events,
                 session_id,
+                external_driver: None,
             },
         );
         Ok((TurnGuard::new(Arc::clone(&self.inner), turn_id), signal))
@@ -655,6 +674,16 @@ impl RuntimeHandle {
         session_id: SessionId,
         project_dir: &str,
     ) -> Result<SessionSnapshot, RuntimeError> {
+        self.open_session_with_driver(session_id, project_dir, None)
+    }
+
+    /// Bind a client session to a project directory and optional coding-CLI driver instance.
+    pub fn open_session_with_driver(
+        &self,
+        session_id: SessionId,
+        project_dir: &str,
+        instance_id: Option<&str>,
+    ) -> Result<SessionSnapshot, RuntimeError> {
         if self.is_busy(session_id) {
             return Err(RuntimeError::SessionBusy(session_id));
         }
@@ -663,10 +692,53 @@ impl RuntimeHandle {
                 "project folder does not exist: {project_dir}"
             )));
         }
+        let normalized_instance = instance_id
+            .map(str::trim)
+            .filter(|id| !id.is_empty());
+        let resolved_driver = match normalized_instance {
+            Some(BUILTIN_AGENTE_INSTANCE) => {
+                Some((BUILTIN_AGENTE_INSTANCE.to_string(), DriverKind::Agente))
+            }
+            Some(id) => {
+                let driver = self
+                    .inner
+                    .driver_registry
+                    .get(id)
+                    .ok_or_else(|| DriverError::NotFound(id.to_string()))?;
+                if !driver.descriptor().enabled {
+                    return Err(DriverError::Disabled(id.to_string()).into());
+                }
+                Some((id.to_string(), driver.driver_kind()))
+            }
+            None => None,
+        };
+        if let Some((ref id, _)) = resolved_driver {
+            let stale = {
+                let guard = self.inner.lock_driver_sessions();
+                guard
+                    .get(&session_id)
+                    .is_some_and(|bound| bound.instance_id != *id)
+            };
+            if stale {
+                self.inner.close_bound_driver_session(session_id);
+            }
+            self.inner
+                .bound_instances
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .insert(session_id, id.clone());
+        }
         self.inner.session_context(session_id, Some(project_dir));
         let snapshot = self.session_snapshot(session_id);
         self.inner.update_meta(session_id, project_dir, |info| {
-            info.project_dir = project_dir.to_string()
+            info.project_dir = project_dir.to_string();
+            if let Some((ref id, kind)) = resolved_driver {
+                if info.instance_id.as_deref() != Some(id.as_str()) {
+                    info.external_session_id = None;
+                }
+                info.instance_id = Some(id.clone());
+                info.driver_kind = Some(kind);
+            }
         });
         Ok(snapshot)
     }
@@ -706,9 +778,73 @@ impl RuntimeHandle {
                 info.model = source_info.model;
                 info.thinking_level = source_info.thinking_level;
                 info.profile = source_info.profile;
+                info.instance_id = source_info.instance_id;
+                info.driver_kind = source_info.driver_kind;
             }
         });
         self.inner.persist_snapshot(&snapshot);
         snapshot
+    }
+
+    /// Fast synchronous descriptors of all built-in and configured driver instances.
+    pub fn list_drivers(&self) -> Vec<DriverInfo> {
+        self.inner.driver_registry.list_descriptors()
+    }
+
+    /// Passively probe every configured driver instance concurrently.
+    pub async fn probe_drivers(&self) -> Vec<DriverInfo> {
+        self.inner.driver_registry.probe_all().await
+    }
+
+    /// Passively probe one configured driver instance.
+    pub async fn probe_driver(&self, instance_id: &str) -> Result<DriverInfo, RuntimeError> {
+        Ok(self.inner.driver_registry.probe(instance_id).await?)
+    }
+
+    /// Validate, persist, and activate a driver instance profile.
+    pub fn save_driver_instance(
+        &self,
+        instance_id: String,
+        cfg: DriverInstanceConfig,
+    ) -> Result<DriverInfo, RuntimeError> {
+        Ok(self.inner.driver_registry.save_instance(instance_id, cfg)?)
+    }
+
+    /// Delete a custom or overridden driver instance profile.
+    pub fn delete_driver_instance(&self, instance_id: &str) -> Result<bool, RuntimeError> {
+        Ok(self.inner.driver_registry.delete_instance(instance_id)?)
+    }
+
+    /// Record recursion depth for an orchestrated session (defaults to 0).
+    pub fn set_session_depth(&self, session_id: SessionId, depth: u32) {
+        self.inner
+            .session_depths
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .insert(session_id, depth);
+    }
+
+    /// Current orchestration recursion depth of `session_id`.
+    pub fn session_depth(&self, session_id: SessionId) -> u32 {
+        self.inner
+            .session_depths
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .get(&session_id)
+            .copied()
+            .unwrap_or(0)
+    }
+
+    /// Bind or clear isolated Git worktree metadata on `session_id`.
+    pub fn set_session_worktree(
+        &self,
+        session_id: SessionId,
+        project_dir: &str,
+        worktree: Option<SessionWorktree>,
+    ) {
+        self.inner.update_meta(session_id, project_dir, |info| {
+            info.worktree = worktree;
+            info.last_active = Utc::now();
+        });
     }
 }

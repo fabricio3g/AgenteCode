@@ -12,6 +12,7 @@ use agente_core::permissions::ApprovalBroker;
 use agente_core::providers::ProviderRegistry;
 use agente_core::subagent::SubagentRegistry;
 use agente_core::types::AgentMode;
+use agente_drivers::DriverRegistry;
 use agente_protocol::Origin;
 use agente_session::{SessionStore, SessionStoreError};
 
@@ -40,6 +41,30 @@ pub trait ProfileSource: Send + Sync {
     /// environment instead.
     fn sandbox(&self, _profile: &str) -> agente_core::sandbox::SandboxPolicy {
         agente_core::sandbox::SandboxPolicy::default()
+    }
+}
+
+/// Context passed when provisioning per-session orchestration endpoints and tools.
+#[derive(Debug, Clone)]
+pub struct OrchestratorContext {
+    pub session_id: agente_protocol::SessionId,
+    pub project_dir: String,
+    pub mode: agente_protocol::TurnMode,
+    pub depth: u32,
+}
+
+/// Optional daemon-level orchestration hook injecting peer-agent controls into every session.
+pub trait OrchestratorProvider: Send + Sync {
+    fn mcp_for_session(
+        &self,
+        ctx: &OrchestratorContext,
+    ) -> Option<agente_drivers::InjectedMcpServer>;
+
+    fn builtin_tools(
+        &self,
+        _ctx: &OrchestratorContext,
+    ) -> Vec<Box<dyn agente_core::tools::Tool>> {
+        Vec::new()
     }
 }
 
@@ -85,6 +110,10 @@ pub struct RuntimeConfig {
     pub app_config: AppConfig,
     /// Personas for turns that name a profile (a bot).
     pub profile_source: Option<Arc<dyn ProfileSource>>,
+    /// Registry of built-in and external coding-CLI drivers (`None` loads `~/.agente/drivers.json`).
+    pub driver_registry: Option<Arc<DriverRegistry>>,
+    /// Daemon orchestration provider injecting MCP endpoints and native delegation tools.
+    pub orchestrator: Option<Arc<dyn OrchestratorProvider>>,
 }
 
 impl RuntimeConfig {
@@ -132,11 +161,25 @@ impl RuntimeConfig {
             session_store: None,
             app_config: app_config.clone(),
             profile_source: None,
+            driver_registry: None,
+            orchestrator: None,
         }
     }
 
     pub fn with_profile_source(mut self, source: Arc<dyn ProfileSource>) -> Self {
         self.profile_source = Some(source);
+        self
+    }
+
+    /// Supply an explicit driver registry (used by daemon wiring and isolated tests).
+    pub fn with_driver_registry(mut self, registry: Arc<DriverRegistry>) -> Self {
+        self.driver_registry = Some(registry);
+        self
+    }
+
+    /// Supply a daemon orchestrator provider injecting MCP endpoints and native tools.
+    pub fn with_orchestrator(mut self, provider: Arc<dyn OrchestratorProvider>) -> Self {
+        self.orchestrator = Some(provider);
         self
     }
 
@@ -876,7 +919,7 @@ impl RuntimeHandle {
         )?;
         let ctx = agente_core::providers::RequestContext::new(
             session_id
-                .unwrap_or_else(agente_protocol::SessionId::new)
+                .unwrap_or_default()
                 .as_uuid(),
         );
         agente_core::providers::summarizer::complete_text(provider, model, &messages, ctx)
@@ -907,7 +950,7 @@ impl RuntimeHandle {
         model.options = provider.get_request_options(&model);
         let ctx = agente_core::providers::RequestContext::new(
             session_id
-                .unwrap_or_else(agente_protocol::SessionId::new)
+                .unwrap_or_default()
                 .as_uuid(),
         );
         agente_core::providers::generate_session_title(

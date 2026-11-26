@@ -223,6 +223,7 @@ async fn drive_done_turn(
             },
             events: event_tx.clone(),
             session_id,
+            external_driver: None,
         },
     );
 
@@ -529,6 +530,7 @@ fn active_controls_are_scoped_and_keep_untrusted_turns_read_only() {
             inbox: inbox.clone(),
             events: mpsc::channel(1).0,
             session_id,
+            external_driver: None,
         },
     );
     assert!(handle.update_turn(turn_id, Some("high".into()), Some(TurnMode::Auto)));
@@ -565,6 +567,7 @@ async fn steering_joins_the_running_turn_without_cancelling_it() {
             inbox: Arc::clone(&inbox),
             events,
             session_id,
+            external_driver: None,
         },
     );
 
@@ -618,6 +621,7 @@ fn list_and_delete_cover_memory_and_disk() {
             inbox: UserInbox::default(),
             events: mpsc::channel(1).0,
             session_id,
+            external_driver: None,
         },
     );
     assert!(matches!(
@@ -1031,4 +1035,492 @@ fn commit_compaction_after_restart_restores_and_preserves_edit_history() {
         "runtime_edits must be restored before persist_edits rather than overwritten with null"
     );
     let _ = std::fs::remove_dir_all(root);
+}
+
+mod external_driver_tests {
+    use super::*;
+    use agente_drivers::{DriverEvent, DriverSessionOpen, DriverTurnRequest};
+    use agente_protocol::{
+        ApprovalDecision, ApprovalDecisionKind, ApprovalOption, DriverCapabilities, DriverInfo,
+        DriverKind, DriverStatus,
+    };
+    use std::sync::Mutex as StdMutex;
+
+    #[derive(Clone)]
+    enum MockMode {
+        Reply(String),
+        WaitApproval(Arc<StdMutex<Option<ApprovalDecision>>>),
+    }
+
+    struct MockExternalDriver {
+        instance_id: String,
+        kind: DriverKind,
+        mode: MockMode,
+        seen_resume_ids: Arc<StdMutex<Vec<Option<String>>>>,
+        seen_cwds: Arc<StdMutex<Vec<String>>>,
+    }
+
+    struct MockExternalSession {
+        mode: MockMode,
+        approvals: ApprovalRouter,
+        external_id: Arc<StdMutex<Option<String>>>,
+    }
+
+    #[async_trait::async_trait]
+    impl AgentDriver for MockExternalDriver {
+        fn instance_id(&self) -> &str {
+            &self.instance_id
+        }
+
+        fn driver_kind(&self) -> DriverKind {
+            self.kind
+        }
+
+        fn descriptor(&self) -> DriverInfo {
+            DriverInfo {
+                instance_id: self.instance_id.clone(),
+                driver_kind: self.kind,
+                label: "Mock External".into(),
+                status: DriverStatus::Ready,
+                version: None,
+                binary_path: None,
+                error: None,
+                auth_hint: None,
+                builtin: false,
+                enabled: true,
+                use_for: None,
+                capabilities: DriverCapabilities {
+                    steer: true,
+                    approvals: true,
+                    resume: true,
+                    ..Default::default()
+                },
+                models: Vec::new(),
+                config: None,
+            }
+        }
+
+        async fn probe(&self) -> DriverInfo {
+            self.descriptor()
+        }
+
+        async fn open_session(
+            &self,
+            spec: DriverSessionOpen,
+            approvals: ApprovalRouter,
+        ) -> Result<Arc<dyn DriverSession>, DriverError> {
+            self.seen_resume_ids
+                .lock()
+                .unwrap()
+                .push(spec.external_session_id.clone());
+            self.seen_cwds.lock().unwrap().push(spec.project_dir.clone());
+            Ok(Arc::new(MockExternalSession {
+                mode: self.mode.clone(),
+                approvals,
+                external_id: Arc::new(StdMutex::new(spec.external_session_id)),
+            }))
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl DriverSession for MockExternalSession {
+        async fn start_turn(
+            &self,
+            request: DriverTurnRequest,
+            sink: mpsc::Sender<DriverEvent>,
+        ) -> Result<(), DriverError> {
+            match &self.mode {
+                MockMode::Reply(text) => {
+                    *self.external_id.lock().unwrap() = Some("ext-thread-42".into());
+                    let _ = sink
+                        .send(DriverEvent::ExternalSessionBound("ext-thread-42".into()))
+                        .await;
+                    let _ = sink
+                        .send(DriverEvent::Runtime(RuntimeEvent::AssistantDelta {
+                            text: text.clone(),
+                        }))
+                        .await;
+                    let _ = sink
+                        .send(DriverEvent::TurnComplete {
+                            status: TurnStatus::Completed,
+                            assistant_text: text.clone(),
+                            tokens: 77,
+                            error: None,
+                        })
+                        .await;
+                    Ok(())
+                }
+                MockMode::WaitApproval(recorded) => {
+                    let rx = self.approvals.register(request.session_id, "perm-ext-1");
+                    let _ = sink
+                        .send(DriverEvent::Runtime(RuntimeEvent::ApprovalRequested {
+                            request_id: "perm-ext-1".into(),
+                            source: "mock-ext".into(),
+                            tool_name: "shell".into(),
+                            tool_args: "{\"command\":\"ls\"}".into(),
+                            description: "run ls".into(),
+                            is_dangerous: false,
+                            file_path: None,
+                            old_content: None,
+                            new_content: None,
+                            child_run_id: None,
+                            options: vec![ApprovalOption {
+                                id: "allow_always".into(),
+                                label: "Always allow".into(),
+                                kind: ApprovalDecisionKind::ApproveAll,
+                            }],
+                        }))
+                        .await;
+                    match rx.await {
+                        Ok(decision) => {
+                            let approved = matches!(
+                                decision.decision,
+                                ApprovalDecisionKind::ApproveOnce | ApprovalDecisionKind::ApproveAll
+                            );
+                            *recorded.lock().unwrap() = Some(decision);
+                            if approved {
+                                let _ = sink
+                                    .send(DriverEvent::Runtime(RuntimeEvent::AssistantDelta {
+                                        text: "approved-done".into(),
+                                    }))
+                                    .await;
+                                let _ = sink
+                                    .send(DriverEvent::TurnComplete {
+                                        status: TurnStatus::Completed,
+                                        assistant_text: "approved-done".into(),
+                                        tokens: 12,
+                                        error: None,
+                                    })
+                                    .await;
+                            } else {
+                                let _ = sink
+                                    .send(DriverEvent::TurnComplete {
+                                        status: TurnStatus::Cancelled,
+                                        assistant_text: String::new(),
+                                        tokens: 0,
+                                        error: None,
+                                    })
+                                    .await;
+                            }
+                        }
+                        Err(_) => {
+                            let _ = sink
+                                .send(DriverEvent::TurnComplete {
+                                    status: TurnStatus::Cancelled,
+                                    assistant_text: String::new(),
+                                    tokens: 0,
+                                    error: None,
+                                })
+                                .await;
+                        }
+                    }
+                    Ok(())
+                }
+            }
+        }
+
+        async fn steer(&self, _message: Message) -> bool {
+            false
+        }
+
+        async fn cancel(&self, _turn_id: TurnId) -> bool {
+            true
+        }
+
+        fn external_session_id(&self) -> Option<String> {
+            self.external_id.lock().unwrap().clone()
+        }
+
+        async fn close(&self) {}
+    }
+
+    #[tokio::test]
+    async fn external_driver_streams_persists_meta_and_resumes_across_restart() {
+        let (base_cfg, root) = persistent_config("ext-driver-resume");
+        let proj = root.join("work");
+        std::fs::create_dir_all(&proj).unwrap();
+
+        let seen_resume_ids = Arc::new(StdMutex::new(Vec::new()));
+        let seen_cwds = Arc::new(StdMutex::new(Vec::new()));
+
+        let registry = Arc::new(DriverRegistry::new(DriversConfig::default(), None));
+        registry.register_driver(Arc::new(MockExternalDriver {
+            instance_id: "mock-acp".into(),
+            kind: DriverKind::Acp,
+            mode: MockMode::Reply("hello from external cli".into()),
+            seen_resume_ids: Arc::clone(&seen_resume_ids),
+            seen_cwds: Arc::clone(&seen_cwds),
+        }));
+
+        let runtime = RuntimeSupervisor::start(base_cfg.with_driver_registry(Arc::clone(&registry)));
+        let session_id = SessionId::new();
+        runtime
+            .open_session_with_driver(session_id, proj.to_str().unwrap(), Some("mock-acp"))
+            .unwrap();
+
+        let mut turn = runtime
+            .start_turn(StartTurn {
+                session_id,
+                prompt: Some(Message::user("first task")),
+                ..StartTurn::default()
+            })
+            .unwrap();
+
+        let mut deltas = String::new();
+        while let Some(env) = turn.recv().await {
+            if let RuntimeEvent::AssistantDelta { text } = env.event {
+                deltas.push_str(&text);
+            }
+        }
+        let outcome = turn.outcome().await.expect("turn outcome");
+        assert_eq!(outcome.status, TurnStatus::Completed);
+        assert_eq!(outcome.tokens, 77);
+        assert_eq!(deltas, "hello from external cli");
+
+        let meta = runtime.session_meta(session_id).expect("saved meta");
+        assert_eq!(meta.info.instance_id.as_deref(), Some("mock-acp"));
+        assert_eq!(meta.info.driver_kind, Some(DriverKind::Acp));
+        assert_eq!(meta.info.external_session_id.as_deref(), Some("ext-thread-42"));
+
+        let snap = runtime.session_snapshot(session_id);
+        assert_eq!(
+            contents_of(&snap.conversation),
+            vec!["first task", "hello from external cli"]
+        );
+
+        // Simulate daemon restart: fresh supervisor, same persistence directory.
+        let restarted = RuntimeSupervisor::start(
+            persistent_config_at(&root).with_driver_registry(Arc::clone(&registry)),
+        );
+        let mut turn2 = restarted
+            .start_turn(StartTurn {
+                session_id,
+                prompt: Some(Message::user("second task")),
+                ..StartTurn::default()
+            })
+            .unwrap();
+        let outcome2 = turn2.outcome().await.expect("second outcome");
+        assert_eq!(outcome2.status, TurnStatus::Completed);
+
+        let resume_history = seen_resume_ids.lock().unwrap().clone();
+        assert_eq!(
+            resume_history,
+            vec![None, Some("ext-thread-42".to_string())]
+        );
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[tokio::test]
+    async fn external_driver_routes_native_approval_options_and_cancel_unblocks() {
+        let recorded = Arc::new(StdMutex::new(None));
+        let registry = Arc::new(DriverRegistry::new(DriversConfig::default(), None));
+        registry.register_driver(Arc::new(MockExternalDriver {
+            instance_id: "mock-claude".into(),
+            kind: DriverKind::Claude,
+            mode: MockMode::WaitApproval(Arc::clone(&recorded)),
+            seen_resume_ids: Arc::new(StdMutex::new(Vec::new())),
+            seen_cwds: Arc::new(StdMutex::new(Vec::new())),
+        }));
+
+        let runtime = RuntimeSupervisor::start(test_config().with_driver_registry(registry));
+
+        // 1. Bidirectional approval with native option_id preserved.
+        let session_approve = SessionId::new();
+        let mut turn = runtime
+            .start_turn(StartTurn {
+                session_id: session_approve,
+                instance_id: Some("mock-claude".into()),
+                prompt: Some(Message::user("run command")),
+                ..StartTurn::default()
+            })
+            .unwrap();
+
+        let mut saw_options = Vec::new();
+        while let Some(env) = turn.recv().await {
+            if let RuntimeEvent::ApprovalRequested {
+                request_id, options, ..
+            } = env.event
+            {
+                saw_options = options;
+                assert!(runtime.approve(ApprovalDecision {
+                    request_id,
+                    decision: ApprovalDecisionKind::ApproveAll,
+                    option_id: Some("allow_always".into()),
+                }));
+            }
+        }
+        assert_eq!(saw_options.len(), 1);
+        assert_eq!(saw_options[0].id, "allow_always");
+        let outcome = turn.outcome().await.unwrap();
+        assert_eq!(outcome.status, TurnStatus::Completed);
+        assert_eq!(
+            recorded.lock().unwrap().as_ref().unwrap().option_id.as_deref(),
+            Some("allow_always")
+        );
+
+        // 2. Cancelling a blocked approval unblocks immediately and cancels the turn.
+        let session_cancel = SessionId::new();
+        let mut cancel_turn = runtime
+            .start_turn(StartTurn {
+                session_id: session_cancel,
+                instance_id: Some("mock-claude".into()),
+                prompt: Some(Message::user("run and cancel")),
+                ..StartTurn::default()
+            })
+            .unwrap();
+        let turn_id = cancel_turn.turn_id();
+
+        while let Some(env) = cancel_turn.recv().await {
+            if matches!(env.event, RuntimeEvent::ApprovalRequested { .. }) {
+                assert!(runtime.cancel(turn_id));
+            }
+        }
+        let cancelled_outcome = cancel_turn.outcome().await.unwrap();
+        assert_eq!(cancelled_outcome.status, TurnStatus::Cancelled);
+    }
+
+    #[tokio::test]
+    async fn orchestrator_injects_mcp_with_depth_and_mode_into_external_driver() {
+        struct RecordingOrchestrator {
+            recorded_ctx: Arc<StdMutex<Vec<OrchestratorContext>>>,
+        }
+
+        impl OrchestratorProvider for RecordingOrchestrator {
+            fn mcp_for_session(&self, ctx: &OrchestratorContext) -> Option<InjectedMcpServer> {
+                self.recorded_ctx.lock().unwrap().push(ctx.clone());
+                Some(InjectedMcpServer {
+                    name: "agente-orchestrator".into(),
+                    url: "http://127.0.0.1:49001/mcp".into(),
+                    bearer_token: Some(format!("tok-depth-{}", ctx.depth)),
+                })
+            }
+        }
+
+        struct McpCaptureDriver {
+            open_mcps: Arc<StdMutex<Vec<Vec<InjectedMcpServer>>>>,
+            turn_mcps: Arc<StdMutex<Vec<Vec<InjectedMcpServer>>>>,
+        }
+
+        struct McpCaptureSession {
+            turn_mcps: Arc<StdMutex<Vec<Vec<InjectedMcpServer>>>>,
+        }
+
+        #[async_trait::async_trait]
+        impl AgentDriver for McpCaptureDriver {
+            fn instance_id(&self) -> &str {
+                "mcp-capture"
+            }
+            fn driver_kind(&self) -> DriverKind {
+                DriverKind::Codex
+            }
+            fn descriptor(&self) -> DriverInfo {
+                DriverInfo {
+                    instance_id: "mcp-capture".into(),
+                    driver_kind: DriverKind::Codex,
+                    label: "Capture".into(),
+                    status: DriverStatus::Ready,
+                    version: None,
+                    binary_path: None,
+                    error: None,
+                    auth_hint: None,
+                    builtin: false,
+                    enabled: true,
+                    use_for: None,
+                    capabilities: DriverCapabilities::default(),
+                    models: Vec::new(),
+                    config: None,
+                }
+            }
+            async fn probe(&self) -> DriverInfo {
+                self.descriptor()
+            }
+            async fn open_session(
+                &self,
+                spec: DriverSessionOpen,
+                _approvals: ApprovalRouter,
+            ) -> Result<Arc<dyn DriverSession>, DriverError> {
+                self.open_mcps.lock().unwrap().push(spec.mcp_servers);
+                Ok(Arc::new(McpCaptureSession {
+                    turn_mcps: Arc::clone(&self.turn_mcps),
+                }))
+            }
+        }
+
+        #[async_trait::async_trait]
+        impl DriverSession for McpCaptureSession {
+            async fn start_turn(
+                &self,
+                request: DriverTurnRequest,
+                sink: mpsc::Sender<DriverEvent>,
+            ) -> Result<(), DriverError> {
+                self.turn_mcps.lock().unwrap().push(request.mcp_servers);
+                let _ = sink
+                    .send(DriverEvent::TurnComplete {
+                        status: TurnStatus::Completed,
+                        assistant_text: "ok".into(),
+                        tokens: 5,
+                        error: None,
+                    })
+                    .await;
+                Ok(())
+            }
+            async fn steer(&self, _message: Message) -> bool {
+                false
+            }
+            async fn cancel(&self, _turn_id: TurnId) -> bool {
+                true
+            }
+            fn external_session_id(&self) -> Option<String> {
+                None
+            }
+            async fn close(&self) {}
+        }
+
+        let recorded_ctx = Arc::new(StdMutex::new(Vec::new()));
+        let open_mcps = Arc::new(StdMutex::new(Vec::new()));
+        let turn_mcps = Arc::new(StdMutex::new(Vec::new()));
+
+        let registry = Arc::new(DriverRegistry::new(DriversConfig::default(), None));
+        registry.register_driver(Arc::new(McpCaptureDriver {
+            open_mcps: Arc::clone(&open_mcps),
+            turn_mcps: Arc::clone(&turn_mcps),
+        }));
+
+        let runtime = RuntimeSupervisor::start(
+            test_config()
+                .with_driver_registry(registry)
+                .with_orchestrator(Arc::new(RecordingOrchestrator {
+                    recorded_ctx: Arc::clone(&recorded_ctx),
+                })),
+        );
+
+        let sid = SessionId::new();
+        runtime.set_session_depth(sid, 1);
+
+        let mut turn = runtime
+            .start_turn(StartTurn {
+                session_id: sid,
+                instance_id: Some("mcp-capture".into()),
+                mode: Some(TurnMode::Build),
+                prompt: Some(Message::user("orchestrate")),
+                ..StartTurn::default()
+            })
+            .unwrap();
+        let outcome = turn.outcome().await.unwrap();
+        assert_eq!(outcome.status, TurnStatus::Completed);
+
+        let seen_ctx = recorded_ctx.lock().unwrap();
+        assert_eq!(seen_ctx.len(), 1);
+        assert_eq!(seen_ctx[0].session_id, sid);
+        assert_eq!(seen_ctx[0].depth, 1);
+        assert_eq!(seen_ctx[0].mode, TurnMode::Build);
+
+        let expected = vec![InjectedMcpServer {
+            name: "agente-orchestrator".into(),
+            url: "http://127.0.0.1:49001/mcp".into(),
+            bearer_token: Some("tok-depth-1".into()),
+        }];
+        assert_eq!(open_mcps.lock().unwrap()[0], expected);
+        assert_eq!(turn_mcps.lock().unwrap()[0], expected);
+    }
 }

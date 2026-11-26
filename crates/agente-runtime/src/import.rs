@@ -78,6 +78,10 @@ fn import_one(store: &SessionStore, session_id: SessionId) -> anyhow::Result<()>
             model: meta.model.clone(),
             thinking_level: meta.thinking_level.clone(),
             profile: None,
+            instance_id: None,
+            driver_kind: None,
+            external_session_id: None,
+            worktree: None,
         },
         clients,
     })?;
