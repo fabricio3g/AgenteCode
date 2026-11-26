@@ -51,12 +51,19 @@
   import { codeWorkspace } from './workspace.svelte';
   import { toastStore } from '$lib/stores/toast.svelte';
   import { approvalsStore } from '$lib/stores/approvals.svelte';
+  import { userInputsStore } from '$lib/stores/user-inputs.svelte';
   import { editedFiles, replyBlocks } from './work-blocks';
   import FileChangesCard from '$lib/components/agent/FileChangesCard.svelte';
   import { restoreCodeEdits } from './code-edits';
   import { appStore } from '$lib/stores/app.svelte';
+  import { driversStore } from './drivers.svelte';
 
   let { messages, chatId, liveSubagentDock = false }: { messages: ChatMessage[]; chatId: string; liveSubagentDock?: boolean } = $props();
+
+  const transcriptChat = $derived(appStore.chats.find((item) => item.id === chatId));
+  const activeDriver = $derived(driversStore.byId(transcriptChat?.codeAgent?.instanceId));
+  const canFork = $derived(activeDriver?.capabilities.fork ?? true);
+  const canRewind = $derived(activeDriver?.capabilities.rewind_conversation ?? true);
 
   let viewport = $state<HTMLDivElement | undefined>(undefined);
   const follow = new ConversationFollow();
@@ -92,7 +99,7 @@
 
   /* An approval waiting on you is the one thing a scrolled-away transcript
      cannot show, so the status row and the jump button share the answer. */
-  const awaitingApproval = $derived(approvalsStore.forChat(chatId).length > 0);
+  const awaitingApproval = $derived(approvalsStore.forChat(chatId).length > 0 || userInputsStore.forChat(chatId).length > 0);
 
   /* The button's meter reads the same clock as the status row, and only ticks
      while a run is live: an idle transcript must not wake twice a second. */
@@ -308,8 +315,12 @@
           <div class="prompt-actions flex min-h-6 max-w-full flex-wrap items-center justify-end gap-2 px-2 py-0.5 text-xs text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
             <UiButton variant="plain" type="button" class={uiClass("flex items-center gap-1", "ui-local-7965b84d")} onclick={() => messageAction(message, 'copy')}><Copy class="size-3" />{$t('code.message.copy')}</UiButton>
             {#if message.metadata?.codeConversationIndex !== undefined && !run?.running}
-              <UiButton variant="plain" type="button" class={uiClass("flex items-center gap-1", "ui-local-7965b84d")} onclick={() => messageAction(message, 'fork')}><GitFork class="size-3" />{$t('code.message.fork')}</UiButton>
-              <UiButton variant="plain" type="button" class={uiClass("flex items-center gap-1", "ui-local-7965b84d")} onclick={() => messageAction(message, 'rewind')}><RotateCcw class="size-3" />{$t('code.message.revert')}</UiButton>
+              {#if canFork}
+                <UiButton variant="plain" type="button" class={uiClass("flex items-center gap-1", "ui-local-7965b84d")} onclick={() => messageAction(message, 'fork')}><GitFork class="size-3" />{$t('code.message.fork')}</UiButton>
+              {/if}
+              {#if canRewind}
+                <UiButton variant="plain" type="button" class={uiClass("flex items-center gap-1", "ui-local-7965b84d")} onclick={() => messageAction(message, 'rewind')}><RotateCcw class="size-3" />{$t('code.message.revert')}</UiButton>
+              {/if}
             {/if}
           </div>
         </div>

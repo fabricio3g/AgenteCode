@@ -29,7 +29,7 @@
 <script lang="ts">
   import DialogActions from '$lib/components/ui/DialogActions.svelte';
 
-  import { Accessibility, Box, Compass, Cpu, Layers, Palette, Search as SearchIcon, Settings as SettingsIcon, Shapes, Volume2 } from '$lib/icons';
+  import { Accessibility, Box, Compass, Cpu, Layers, Palette, Search as SearchIcon, Settings as SettingsIcon, Shapes, SquareTerminal, Volume2 } from '$lib/icons';
   import { onMount, untrack } from 'svelte';
   import { t } from 'svelte-i18n';
   import { Dialog, Input } from '$lib/components/ui';
@@ -37,6 +37,7 @@
   import { downloadsStore } from '$lib/stores/downloads.svelte';
   import { modelsStore } from '$lib/stores/models.svelte';
   import { toastStore } from '$lib/stores/toast.svelte';
+  import { driversStore } from '$lib/features/code/drivers.svelte';
   import { getInstalledRuntimes } from '$lib/services/files';
   import { cloudProviders, isProviderConfigured, providerMeta } from '$lib/utils/providers';
   import { DEFAULT_PROVIDER_ID } from '$shared/providers';
@@ -45,6 +46,7 @@
   import AppearanceSettings from './AppearanceSettings.svelte';
   import ArtifactTypesPanel from './ArtifactTypesPanel.svelte';
   import DomainsSettings from './DomainsSettings.svelte';
+  import ExternalClisSettings from './ExternalClisSettings.svelte';
   import ModelWorkspace from './ModelWorkspace.svelte';
   import SettingsPage from './SettingsPage.svelte';
   import SettingsRail, { type RailGroup, type RailItem } from './SettingsRail.svelte';
@@ -192,6 +194,7 @@
         { kind: 'section', id: 'search', label: $t('settingsNav.search'), icon: SearchIcon },
         { kind: 'section', id: 'artifacts', label: $t('settingsNav.artifacts'), icon: Shapes },
         { kind: 'section', id: 'domains', label: 'Domains', icon: Layers },
+        { kind: 'section', id: 'external-clis', label: $t('settingsNav.externalClis'), icon: SquareTerminal, dot: driversStore.readyExternalCount > 0 },
         // The dot marks sections that depend on something installed.
         { kind: 'section', id: 'local', label: $t('settingsNav.local'), icon: Cpu, dot: hasRuntime },
         { kind: 'section', id: 'voice', label: $t('settingsNav.voice'), icon: Volume2 },
@@ -217,6 +220,7 @@
   function onMountRuntimes() {
     downloadsStore.startPolling();
     void getInstalledRuntimes().then((r) => { hasRuntime = (r.runtimes?.length ?? 0) > 0; }).catch(() => {});
+    void driversStore.load(false).catch(() => {});
   }
 
   onMount(() => {
@@ -272,6 +276,8 @@
         </SettingsPage>
       {:else if activeSection === 'domains'}
         <DomainsSettings />
+      {:else if activeSection === 'external-clis'}
+        <ExternalClisSettings />
       {:else if activeSection === 'providers'}
         {#key selectedProviderId}<ProviderDetail providerId={selectedProviderId} />{/key}
       {:else if activeSection === 'local'}

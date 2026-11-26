@@ -15,6 +15,7 @@
   import SessionRow from '$lib/features/shared/SessionRow.svelte';
   import type { ChatFolder, ChatSession, CodeProject } from '$lib/types/chat';
   import { codeStore } from './code.svelte';
+  import { sessionBadgeFor } from './drivers.svelte';
   import { sidebarOrganization as organization, itemKey, type SidebarItem } from './sidebar-organization.svelte';
   import { toastStore } from '$lib/stores/toast.svelte';
 
@@ -73,6 +74,7 @@
   {@const status=statusFor(chat.id)}
   <SessionRow {chat} active={appStore.currentChatId===chat.id} open={!!workspaceLayout.paneForChat(chat.id)}
     pinned={organization.isPinned('chats', chat.id)} onpin={()=>organization.togglePin('chats', chat.id)}
+    badge={sessionBadgeFor(chat)}
     onselect={()=>codeStore.openConversation(chat.id)} onsplit={(edge)=>onsplit(chat.id,edge)} {status}
     statusLabel={status==='approval'?$t('code.awaitingApproval'):$t('code.running')} menuLabel={$t('code.conversationOptions')}
     ondragstart={(event)=>organization.start(event,chatItem(chat))} ondragend={()=>organization.end()}

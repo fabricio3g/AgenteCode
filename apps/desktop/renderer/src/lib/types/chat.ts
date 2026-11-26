@@ -395,7 +395,17 @@ export interface AgentArtifact {
 export type WorkProductKind = 'report' | 'documents' | 'spreadsheet' | 'presentation' | 'bundle';
 export type WorkProductStatus = 'creating' | 'ready' | 'partial' | 'failed';
 
-export type CodeAgentDriverKind = 'agente' | 'chatea' | 'chatea-agent' | 'codex' | 'claude' | 'cursor' | 'opencode' | 'pi';
+export type CodeAgentDriverKind =
+  | 'agente'
+  | 'acp'
+  | 'claude'
+  | 'codex'
+  | 'custom'
+  | 'chatea'
+  | 'chatea-agent'
+  | 'cursor'
+  | 'opencode'
+  | 'pi';
 export type CodeAgentInstanceId = string;
 export type CodeAgentProviderId = CodeAgentInstanceId;
 export type CodeAgentProviderStatus = 'ready' | 'missing' | 'login' | 'soon' | 'disabled';
@@ -405,11 +415,14 @@ export interface CodeAgentSessionMeta {
   draftAttachments?: CodeAttachment[];
   instanceId: CodeAgentInstanceId;
   driverKind?: CodeAgentDriverKind;
+  driverModel?: string | null;
+  driverEffort?: string | null;
   providerId?: CodeAgentProviderId;
   status?: CodeAgentProviderStatus;
   runtimeMode?: CodeAgentRuntimeMode;
   substrate?: 'native' | 'pi';
   sessionId?: string;
+  worktree?: import('$shared/agente-protocol').SessionWorktree | null;
   checkpointsEnabled?: boolean;
   updatedAt: number;
 }

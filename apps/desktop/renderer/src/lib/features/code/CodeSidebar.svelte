@@ -53,6 +53,7 @@
   import { sidebarOrganization as organization } from './sidebar-organization.svelte';
   import SessionRow from '$lib/features/shared/SessionRow.svelte';
   import { codeStore } from './code.svelte';
+  import { driversStore, sessionBadgeFor } from './drivers.svelte';
   import { appStore } from '$lib/stores/app.svelte';
   import { workspaceLayout } from '$lib/stores/workspace-layout.svelte';
   import { approvalsStore } from '$lib/stores/approvals.svelte';
@@ -64,6 +65,7 @@
 
   onMount(() => {
     void codeStore.load();
+    void driversStore.load(false);
   });
 
   /**
@@ -401,7 +403,7 @@
                 status={statusFor(chat.id)}
                 pinned={organization.isPinned('chats', chat.id)}
                 onpin={() => organization.togglePin('chats', chat.id)}
-                badge={chat.projectId ? (projectNames.get(chat.projectId) ?? '') : ''}
+                badge={[chat.projectId ? (projectNames.get(chat.projectId) ?? '') : '', sessionBadgeFor(chat)].filter(Boolean).join(' · ')}
                 onselect={() => codeStore.openConversation(chat.id)}
                 onsplit={(edge) => splitWith(chat.id, edge)}
                 menuLabel={$t('code.conversationOptions')}

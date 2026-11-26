@@ -14,6 +14,7 @@ export async function restoreCodeEdits(chat: Pick<ChatSession, 'id' | 'projectId
   if (!result.ok) throw new Error(result.error || 'Could not restore files.');
   await codeStore.refreshCheckpoints(chat.id);
   const project = codeStore.projectById(chat.projectId ?? null);
-  if (project) await codeWorkspace.refreshChanges({ chatId: chat.id, projectRoot: project.rootPath, sessionId: chat.codeAgent?.sessionId || undefined });
+  const root = chat.codeAgent?.worktree?.path || project?.rootPath;
+  if (root) await codeWorkspace.refreshChanges({ chatId: chat.id, projectRoot: root, sessionId: chat.codeAgent?.sessionId || undefined });
   toastStore.success(`${action === 'undo' ? 'Restored' : 'Reapplied'} ${result.files?.length ?? 0} files`);
 }

@@ -1,6 +1,7 @@
 import { appStore } from '$lib/stores/app.svelte';
 import { isConfigModelReady } from '$lib/stores/chat-model';
 import { approvalsStore } from '$lib/stores/approvals.svelte';
+import { userInputsStore } from '$lib/stores/user-inputs.svelte';
 import { toastStore } from '$lib/stores/toast.svelte';
 import {
   loadCodeProjectsFromDb,
@@ -15,8 +16,10 @@ import { pathExists, pickWorkspaceFolder } from '$lib/services/files';
 import { createId } from '$lib/utils/id';
 import { isDefaultChatTitle } from '$lib/stores/app-store-helpers';
 import type { ChatSession, CodeProject, CodeTimelineEntry } from '$lib/types/chat';
-import type { AgenteCheckpointSummary, CodeAgentEvent } from '$shared/agente-protocol';
+import type { AgenteCheckpointSummary, CodeAgentEvent, MergeWorktreeResult, SessionWorktree } from '$shared/agente-protocol';
 import { applyCodeAgentEvent, codeRunElapsed, conversationTodos, createCodeRunState, type CodeRunState } from './code-run';
+import { clampModeForDriver, driversStore, isExternalDriverId, turnModeToCodeMode } from './drivers.svelte';
+import { codeWorkspace } from './workspace.svelte';
 import {
   startCodeAgentSession,
   promptCodeAgent,
@@ -26,12 +29,17 @@ import {
   compactCodeAgent,
   setCodeAgentRuntimeMode,
   respondToCodeAgentApproval,
+  respondToCodeAgentInput,
   listCodeAgentCheckpoints,
   rollbackCodeAgent,
   deleteCodeAgentSessionData,
   listLiveCodeAgentChats,
   setAgenteModel,
-  execCodeCommand
+  execCodeCommand,
+  createWorktree,
+  mergeWorktree,
+  removeWorktree,
+  setCodeWorktree
 } from './code-ipc';
 import { codeMessageAction } from './code-ipc';
 import type { Attachment, SessionInfo, SessionSnapshot } from '$shared/agente-protocol.gen';
@@ -357,6 +365,178 @@ class CodeStore {
     appStore.persist();
   }
 
+  /** The engine (built-in or external CLI) can change until the conversation starts. */
+  canChangeDriver(chat: ChatSession): boolean {
+    return !chat.messages.length && !chat.codeAgent?.sessionId;
+  }
+
+  /** Point a conversation that has not started at another coding CLI driver. */
+  setConversationDriver(chatId: string, instanceId: string): void {
+    const chat = appStore.chats.find((c) => c.id === chatId);
+    if (!chat || !this.canChangeDriver(chat)) return;
+    const driver = driversStore.byId(instanceId);
+    const prevMode = chat.codeAgent?.runtimeMode ?? this.defaultMode;
+    const driverModel = isExternalDriverId(instanceId)
+      ? (driver?.models?.find((m) => m.is_default)?.id ?? driver?.models?.[0]?.id ?? null)
+      : null;
+    chat.codeAgent = {
+      ...chat.codeAgent,
+      instanceId,
+      driverKind: driver?.driver_kind ?? 'agente',
+      driverModel,
+      driverEffort: null,
+      substrate: 'native',
+      runtimeMode: clampModeForDriver(prevMode, driver),
+      updatedAt: Date.now()
+    };
+    appStore.markChatDirty(chatId);
+    appStore.persist();
+  }
+
+  /** Set the model override used by an external coding CLI conversation. */
+  async setConversationDriverModel(chatId: string, modelId: string | null): Promise<void> {
+    const chat = appStore.chats.find((c) => c.id === chatId);
+    if (!chat?.codeAgent) return;
+    chat.codeAgent.driverModel = modelId;
+    chat.codeAgent.updatedAt = Date.now();
+    appStore.markChatDirty(chatId);
+    appStore.persist();
+    if (this.hasSession(chatId) && isExternalDriverId(chat.codeAgent.instanceId)) {
+      await setAgenteModel(
+        chatId,
+        chat.codeAgent.instanceId,
+        modelId ?? '',
+        chat.codeAgent.driverEffort || undefined
+      );
+    }
+  }
+
+  /** Set the reasoning/effort override used by an external coding CLI conversation. */
+  async setConversationDriverEffort(chatId: string, effort: string | null): Promise<void> {
+    const chat = appStore.chats.find((c) => c.id === chatId);
+    if (!chat?.codeAgent) return;
+    chat.codeAgent.driverEffort = effort;
+    chat.codeAgent.updatedAt = Date.now();
+    appStore.markChatDirty(chatId);
+    appStore.persist();
+    if (this.hasSession(chatId) && isExternalDriverId(chat.codeAgent.instanceId)) {
+      await setAgenteModel(
+        chatId,
+        chat.codeAgent.instanceId,
+        chat.codeAgent.driverModel ?? '',
+        effort ?? undefined
+      );
+    }
+  }
+
+  /** Isolate this conversation inside its own Git worktree. */
+  async enableWorktree(chatId: string): Promise<SessionWorktree> {
+    const chat = appStore.chats.find((c) => c.id === chatId);
+    const project = this.projectById(chat?.projectId ?? null);
+    if (!chat || !project) throw new Error('Select a project first.');
+    if (chat.codeAgent?.worktree) return chat.codeAgent.worktree;
+    if (this.runFor(chatId)?.running) throw new Error('Wait for the turn to finish.');
+    const { worktree } = await createWorktree({
+      projectRoot: project.rootPath,
+      label: chat.title || chat.id,
+      sessionId: chat.codeAgent?.sessionId
+    });
+    chat.codeAgent ??= {
+      instanceId: 'agente',
+      driverKind: 'agente',
+      substrate: 'native',
+      runtimeMode: this.defaultMode,
+      updatedAt: Date.now()
+    };
+    chat.codeAgent.worktree = worktree;
+    chat.codeAgent.updatedAt = Date.now();
+    if (this.hasSession(chatId)) {
+      await setCodeWorktree(chatId, worktree).catch(() => {});
+    }
+    appStore.markChatDirty(chatId);
+    appStore.persist();
+    void codeWorkspace.refreshChanges({ chatId, projectRoot: worktree.path, sessionId: chat.codeAgent?.sessionId });
+    return worktree;
+  }
+
+  /** Merge this conversation's isolated Git worktree back into its base repository. */
+  async mergeConversationWorktree(
+    chatId: string,
+    options: { commitMessage?: string; removeAfter?: boolean } = {}
+  ): Promise<MergeWorktreeResult> {
+    const chat = appStore.chats.find((c) => c.id === chatId);
+    const project = this.projectById(chat?.projectId ?? null);
+    const wt = chat?.codeAgent?.worktree;
+    if (!chat || !project || !wt) throw new Error('No isolated worktree attached.');
+    const result = await mergeWorktree({
+      repoRoot: wt.repo_root || project.rootPath,
+      path: wt.path,
+      branch: wt.branch,
+      baseCommit: wt.base_commit,
+      ...(options.commitMessage ? { commitMessage: options.commitMessage } : {}),
+      removeAfter: options.removeAfter
+    });
+    if (result.merged) {
+      if (result.removed && chat.codeAgent) {
+        chat.codeAgent.worktree = null;
+        chat.codeAgent.updatedAt = Date.now();
+        if (this.hasSession(chatId)) await setCodeWorktree(chatId, null).catch(() => {});
+        appStore.markChatDirty(chatId);
+        appStore.persist();
+        void codeWorkspace.refreshChanges({ chatId, projectRoot: project.rootPath, sessionId: chat.codeAgent?.sessionId });
+      } else {
+        void codeWorkspace.refreshChanges({ chatId, projectRoot: wt.path, sessionId: chat.codeAgent?.sessionId });
+      }
+    }
+    return result;
+  }
+
+  /** Remove this conversation's isolated Git worktree without merging. */
+  async removeConversationWorktree(chatId: string): Promise<void> {
+    const chat = appStore.chats.find((c) => c.id === chatId);
+    const project = this.projectById(chat?.projectId ?? null);
+    const wt = chat?.codeAgent?.worktree;
+    if (!chat || !project || !wt) return;
+    await removeWorktree({
+      repoRoot: wt.repo_root || project.rootPath,
+      path: wt.path,
+      branch: wt.branch,
+      baseCommit: wt.base_commit,
+      sessionId: chat.codeAgent?.sessionId
+    });
+    if (chat.codeAgent) {
+      chat.codeAgent.worktree = null;
+      chat.codeAgent.updatedAt = Date.now();
+    }
+    if (this.hasSession(chatId)) await setCodeWorktree(chatId, null).catch(() => {});
+    appStore.markChatDirty(chatId);
+    appStore.persist();
+    void codeWorkspace.refreshChanges({ chatId, projectRoot: project.rootPath, sessionId: chat.codeAgent?.sessionId });
+  }
+
+  /** Start a fresh conversation on another coding CLI with a concise handoff brief. */
+  async handoffToDriver(chatId: string, targetInstanceId: string): Promise<ChatSession | null> {
+    await appStore.ensureChatMessages(chatId);
+    const chat = appStore.chats.find((c) => c.id === chatId);
+    const project = this.projectById(chat?.projectId ?? null);
+    if (!chat || !project) return null;
+    const brief = buildHandoffBrief(chat);
+    const created = this.newConversation(project);
+    const next = appStore.chats.find((c) => c.id === created.id);
+    if (!next) return null;
+    this.setConversationDriver(next.id, targetInstanceId);
+    const sourceLabel = driversStore.byId(chat.codeAgent?.instanceId)?.label || chat.codeAgent?.instanceId || 'Agente Core';
+    next.title = chat.title && !isDefaultChatTitle(chat.title) ? `${chat.title} (handoff)` : `Handoff from ${sourceLabel}`;
+    next.draft = brief;
+    appStore.markChatDirty(next.id);
+    appStore.persist();
+    this.openConversation(next.id);
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('code-composer-draft', { detail: { chatId: next.id, text: brief } }));
+    }
+    return next;
+  }
+
   openConversation(chatId: string): void {
     const chat = appStore.chats.find((c) => c.id === chatId);
     if (chat?.projectId) this.activeProjectId = chat.projectId;
@@ -376,6 +556,12 @@ class CodeStore {
     const chat = appStore.chats.find((item) => item.id === created.id)!;
     const turns = await invoke<Array<{ prompt: string; conversationIndex: number; events: CodeAgentEvent[] }>>('agente_session_history', { sessionId: info.session_id, chatId: chat.id });
     chat.codeAgent!.sessionId = info.session_id;
+    chat.codeAgent!.instanceId = info.instance_id || 'agente';
+    chat.codeAgent!.driverKind = info.driver_kind || 'agente';
+    chat.codeAgent!.worktree = info.worktree ?? null;
+    if (isExternalDriverId(info.instance_id) && info.model) {
+      chat.codeAgent!.driverModel = info.model;
+    }
     chat.title = info.title || info.first_prompt || 'Resumed session';
     for (const turn of turns) {
       const run = createCodeRunState();
@@ -589,17 +775,47 @@ class CodeStore {
       }
       void this.refreshCheckpoints(event.chatId);
     }
+    if (event.type === 'mode_changed' && chat.codeAgent) {
+      const mapped = turnModeToCodeMode(event.mode);
+      if (chat.codeAgent.runtimeMode !== mapped) {
+        chat.codeAgent.runtimeMode = mapped;
+        chat.codeAgent.updatedAt = Date.now();
+        appStore.markChatDirty(chat.id);
+        appStore.persist();
+      }
+    }
+    if (event.type === 'model_changed' && chat.codeAgent) {
+      if (chat.codeAgent.driverModel !== event.model) {
+        chat.codeAgent.driverModel = event.model;
+        chat.codeAgent.updatedAt = Date.now();
+        appStore.markChatDirty(chat.id);
+        appStore.persist();
+      }
+    }
+    if (event.type === 'usage_limit_reached') {
+      const detail = event.resetAt ? `${event.message} (resets at ${event.resetAt})` : event.message;
+      run.diagnostics = [...run.diagnostics, detail].slice(-20);
+      toastStore.error(detail);
+    }
     if (event.type === 'approval_resolved') {
       // Settled by the engine (Stop, shutdown) or echoing our own answer: in
       // both cases the buttons must go and nothing must be sent back.
       if (approvalsStore.items.some((item) => item.id === event.requestId)) {
         this.#engineSettled.add(event.requestId);
-        approvalsStore.resolve(event.requestId, event.decision === 'allow');
+        approvalsStore.resolve(event.requestId, event.decision !== 'deny');
+      }
+    }
+    if (event.type === 'input_resolved') {
+      if (userInputsStore.items.some((item) => item.id === event.requestId)) {
+        this.#engineSettled.add(event.requestId);
+        userInputsStore.resolve(event.requestId, { action: event.action });
       }
     }
     if (event.type === 'agent_end' || event.type === 'error') {
       for (const pending of approvalsStore.forChat(event.chatId)) this.#engineSettled.add(pending.id);
       approvalsStore.clearForChat(event.chatId);
+      for (const pending of userInputsStore.forChat(event.chatId)) this.#engineSettled.add(pending.id);
+      userInputsStore.clearForChat(event.chatId);
     }
     if (isStreamingDelta(event)) this.#scheduleFlush(event.chatId, run);
     else this.#flushNow(event.chatId, run);
@@ -611,18 +827,33 @@ class CodeStore {
         // project may belong to a different conversation.
         const chat = appStore.chats.find((c) => c.id === event.chatId);
         const project = this.projectById(chat?.projectId ?? null);
-        const allow = await approvalsStore.request({
+        const resolution = await approvalsStore.requestDetailed({
           id: event.requestId,
           chatId: event.chatId,
           command: isPlan
             ? `Approve plan — ${summarizeArgs(event.args) || event.toolName}`
             : `${event.toolName} ${summarizeArgs(event.args)}`.trim(),
-          cwd: project?.rootPath || 'project',
+          cwd: chat?.codeAgent?.worktree?.path || project?.rootPath || 'project',
           dangerous: event.dangerous,
-          reason: event.reason
+          reason: event.reason,
+          options: event.options
         });
         if (this.#engineSettled.delete(event.requestId)) return;
-        await respondToCodeAgentApproval(event.chatId, event.requestId, allow ? 'allow' : 'deny').catch(() => {});
+        await respondToCodeAgentApproval(event.chatId, event.requestId, resolution.decision, resolution.optionId).catch(() => {});
+      })();
+    }
+
+    if (event.type === 'input_request') {
+      void (async () => {
+        const resolution = await userInputsStore.request({
+          id: event.requestId,
+          chatId: event.chatId,
+          message: event.message,
+          ...(event.toolCallId ? { toolCallId: event.toolCallId } : {}),
+          schema: event.schema
+        });
+        if (this.#engineSettled.delete(event.requestId)) return;
+        await respondToCodeAgentInput(event.chatId, event.requestId, resolution.action, resolution.content).catch(() => {});
       })();
     }
   }
@@ -771,6 +1002,9 @@ class CodeStore {
   }
 
   private modelLabelFor(chat: ChatSession): string {
+    if (isExternalDriverId(chat.codeAgent?.instanceId)) {
+      return chat.codeAgent?.driverModel || driversStore.byId(chat.codeAgent?.instanceId)?.label || chat.codeAgent?.instanceId || '';
+    }
     const llm = appStore.configForChat(chat).llm;
     return llm?.backend_mode === 'local' || !llm?.provider ? llm?.local?.model ?? '' : llm.providers?.[llm.provider]?.model ?? '';
   }
@@ -778,6 +1012,7 @@ class CodeStore {
   #appendAssistant(chat: ChatSession): void {
     const assistantMessageId = createId('msg');
     this.#requireRun(chat.id).assistantMessageId = assistantMessageId;
+    const isExternal = isExternalDriverId(chat.codeAgent?.instanceId);
     chat.messages.push({
       id: assistantMessageId,
       role: 'assistant',
@@ -786,7 +1021,13 @@ class CodeStore {
       status: 'streaming',
       mode: 'agent',
       agentSteps: [],
-      metadata: { modelName: chat.modelSelection?.backendMode === 'local' ? chat.modelSelection.localModel : chat.modelSelection?.model || this.modelLabelFor(chat) }
+      metadata: {
+        modelName: isExternal
+          ? this.modelLabelFor(chat)
+          : chat.modelSelection?.backendMode === 'local'
+            ? chat.modelSelection.localModel
+            : chat.modelSelection?.model || this.modelLabelFor(chat)
+      }
     });
     appStore.markChatDirty(chat.id);
     appStore.persist();
@@ -901,7 +1142,11 @@ class CodeStore {
         if (snapshot) this.#conversationIndices.set(chatId, snapshot.snapshot.conversation.length);
         return null;
       }
-      const { provider, model } = await currentProviderModel(appStore.configForChat(chat));
+      const instanceId = chat.codeAgent?.instanceId || 'agente';
+      const external = isExternalDriverId(instanceId);
+      const { provider, model } = external
+        ? { provider: instanceId, model: chat.codeAgent?.driverModel || '' }
+        : await currentProviderModel(appStore.configForChat(chat));
       const runtimeMode = chat.codeAgent?.runtimeMode || this.defaultMode;
       const resumeSessionId = chat.codeAgent?.sessionId || undefined;
       const { sessionId, conversationIndex } = await startCodeAgentSession({
@@ -909,10 +1154,12 @@ class CodeStore {
         projectRoot: project.rootPath,
         provider,
         model,
-        localSelection: chat.modelSelection ? { modelPath: chat.modelSelection.localModelPath, baseUrl: chat.modelSelection.localBaseUrl } : undefined,
+        localSelection: !external && chat.modelSelection ? { modelPath: chat.modelSelection.localModelPath, baseUrl: chat.modelSelection.localBaseUrl } : undefined,
         runtimeMode,
+        instanceId,
+        worktree: chat.codeAgent?.worktree ?? null,
         resumeSessionId,
-        ...(chat.reasoningLevel ? { thinkingLevel: chat.reasoningLevel } : {})
+        thinkingLevel: external ? (chat.codeAgent?.driverEffort || undefined) : (chat.reasoningLevel || undefined)
       });
       this.#sessionIds.set(chatId, sessionId);
       if (conversationIndex !== undefined) this.#conversationIndices.set(chatId, conversationIndex);
@@ -927,6 +1174,16 @@ class CodeStore {
   }
 
   async #syncSelectedModel(chat: ChatSession): Promise<void> {
+    const instanceId = chat.codeAgent?.instanceId || 'agente';
+    if (isExternalDriverId(instanceId)) {
+      await setAgenteModel(
+        chat.id,
+        instanceId,
+        chat.codeAgent?.driverModel || '',
+        chat.codeAgent?.driverEffort || undefined
+      );
+      return;
+    }
     const { provider, model } = await currentProviderModel(appStore.configForChat(chat));
     if (model || provider === 'local') await setAgenteModel(chat.id, provider, model, chat.reasoningLevel || undefined, chat.modelSelection ? { modelPath: chat.modelSelection.localModelPath, baseUrl: chat.modelSelection.localBaseUrl } : undefined);
   }
@@ -1177,6 +1434,37 @@ const RUNTIME_DELTAS = new Set(['assistant_delta', 'child_delta', 'child_tool', 
 function isStreamingDelta(event: CodeAgentEvent): boolean {
   if (event.type === 'text_delta' || event.type === 'thinking_delta' || event.type === 'tool_update') return true;
   return event.type === 'runtime_event' && RUNTIME_DELTAS.has(event.event.type);
+}
+
+/** Build a concise handoff prompt so another CLI can pick up this conversation cleanly. */
+function buildHandoffBrief(chat: ChatSession): string {
+  const lines: string[] = [
+    `Handoff from previous session "${chat.title || 'Untitled conversation'}":`
+  ];
+  if (chat.codeAgent?.worktree?.branch) {
+    lines.push(`- Active worktree branch: ${chat.codeAgent.worktree.branch} (${chat.codeAgent.worktree.path})`);
+  }
+  const todos = conversationTodos(chat.messages);
+  if (todos.length) {
+    lines.push('Tasks:');
+    for (const todo of todos.slice(0, 12)) {
+      lines.push(`- [${todo.status}] ${todo.content}`);
+    }
+  }
+  const recent = chat.messages
+    .filter((m) => (m.role === 'user' || m.role === 'assistant') && m.content.trim())
+    .slice(-6);
+  if (recent.length) {
+    lines.push('Recent context:');
+    for (const msg of recent) {
+      const snippet = msg.content.trim().replace(/\s+/g, ' ');
+      const clipped = snippet.length > 400 ? `${snippet.slice(0, 399)}…` : snippet;
+      lines.push(`- ${msg.role === 'user' ? 'User' : 'Previous agent'}: ${clipped}`);
+    }
+  }
+  lines.push('', 'Next instruction: ');
+  const combined = lines.join('\n');
+  return combined.length > 3500 ? `${combined.slice(0, 3499)}…` : combined;
 }
 
 export const codeStore = new CodeStore();

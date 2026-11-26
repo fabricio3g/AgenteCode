@@ -15,17 +15,88 @@
   import { Button, PaneHeader, Tooltip } from '$lib/components/ui';
   import { conversationScope } from '$shared/workspace-scope';
   import { t } from 'svelte-i18n';
-  import { FileCode2, FolderOpen, GitBranch, LoaderCircle, RefreshCw, Undo2, X } from '$lib/icons';
+  import { FileCode2, FolderOpen, GitBranch, GitPullRequest, LoaderCircle, RefreshCw, Trash2, TriangleAlert, Undo2, X } from '$lib/icons';
   import { invoke } from '$lib/services/bridge';
   import { confirmStore } from '$lib/stores/confirm.svelte';
   import { toastStore } from '$lib/stores/toast.svelte';
+  import type { SessionWorktree } from '$shared/agente-protocol';
+  import { codeStore } from '../code.svelte';
   import { codeWorkspace } from '../workspace.svelte';
   import { parsePatch } from '../patch';
   import DiffRows from '../DiffRows.svelte';
   import DiffView from './DiffView.svelte';
   import type { ChangeKind, FileDiff } from '$shared/code-workspace';
 
-  let { chatId, projectRoot, sessionId, embedded = false }: { chatId: string; projectRoot: string; sessionId?: string; embedded?: boolean } = $props();
+  let {
+    chatId,
+    projectRoot,
+    sessionId,
+    worktree = null,
+    embedded = false
+  }: {
+    chatId: string;
+    projectRoot: string;
+    sessionId?: string;
+    worktree?: SessionWorktree | null;
+    embedded?: boolean;
+  } = $props();
+
+  let merging = $state(false);
+  let removing = $state(false);
+  let isolating = $state(false);
+  let confirmRemove = $state(false);
+  let mergeConflicts = $state<string[]>([]);
+
+  async function handleIsolateWorktree() {
+    if (worktree || isolating) return;
+    isolating = true;
+    try {
+      await codeStore.enableWorktree(chatId);
+    } catch (error) {
+      toastStore.error(error instanceof Error ? error.message : String(error));
+    } finally {
+      isolating = false;
+    }
+  }
+
+  $effect(() => {
+    void worktree?.path;
+    mergeConflicts = [];
+    confirmRemove = false;
+  });
+
+  async function handleMergeWorktree() {
+    if (!worktree || merging || removing) return;
+    merging = true;
+    mergeConflicts = [];
+    try {
+      const result = await codeStore.mergeConversationWorktree(chatId, { removeAfter: false });
+      if (result.merged) {
+        toastStore.success($t('code.worktree.merged', { values: { commit: result.commit.slice(0, 7) } }));
+      } else {
+        mergeConflicts = result.conflicts;
+      }
+    } catch (error) {
+      toastStore.error(error instanceof Error ? error.message : String(error));
+    } finally {
+      merging = false;
+    }
+  }
+
+  async function handleRemoveWorktree() {
+    if (!worktree || merging || removing) return;
+    removing = true;
+    try {
+      await codeStore.removeConversationWorktree(chatId);
+      confirmRemove = false;
+      mergeConflicts = [];
+      toastStore.success($t('code.worktree.removed'));
+    } catch (error) {
+      toastStore.error(error instanceof Error ? error.message : String(error));
+    } finally {
+      removing = false;
+    }
+  }
 
   /** A listed file: from git, or only from the transcript's own record of an edit. */
   type Entry = { path: string; kind: ChangeKind; additions: number; deletions: number; patches?: string[] };
@@ -148,12 +219,70 @@
       {/if}
     </p>
     {#snippet actions()}
+    {#if !worktree && (list?.source === 'git' || !!branch)}
+      <Tooltip label={$t('code.worktree.commandHint')} position="bottom">
+        <Button variant="ghost" size="xs" type="button" disabled={isolating || !!codeStore.runFor(chatId)?.running} onclick={() => void handleIsolateWorktree()}>
+          {#if isolating}<LoaderCircle class="size-3 animate-spin" />{:else}<GitBranch class="size-3" />{/if}
+          {$t('code.worktree.isolateShort')}
+        </Button>
+      </Tooltip>
+    {/if}
     <Tooltip label={$t('codeWs.refresh')} position="bottom"><UiIconButton label={$t('codeWs.refresh')} size="xs" type="button" class={uiClass(" ", "ui-local-8f978f5f")} onclick={refresh} disabled={codeWorkspace.changeLoading[chatId]} >
       <RefreshCw class={codeWorkspace.changeLoading[chatId] ? 'animate-spin' : ''} />
     </UiIconButton></Tooltip>
     {#if !embedded}<Tooltip label={$t('codeWs.close')} position="bottom"><UiIconButton label={$t('codeWs.close')} size="xs" type="button" class={uiClass(" ", "ui-local-8f978f5f")} onclick={() => codeWorkspace.toggleChanges(false)} ><X /></UiIconButton></Tooltip>{/if}
     {/snippet}
   </PaneHeader>
+
+  {#if worktree}
+    <div class="worktree-strip">
+      <div class="worktree-id">
+        <GitBranch class="size-3.5 shrink-0 text-[var(--brand-accent-strong)]" aria-hidden="true" />
+        <span class="truncate font-mono" title={worktree.path}>{worktree.branch}</span>
+        <span class="worktree-tag">{$t('code.worktree.isolated')}</span>
+      </div>
+      <div class="worktree-actions">
+        {#if confirmRemove}
+          <span class="text-xs text-muted-foreground">{$t('code.worktree.confirmRemove')}</span>
+          <Button variant="ghost" size="xs" type="button" disabled={removing} onclick={() => (confirmRemove = false)}>
+            {$t('code.worktree.cancel')}
+          </Button>
+          <Button variant="destructive" size="xs" type="button" disabled={removing} onclick={() => void handleRemoveWorktree()}>
+            {#if removing}<LoaderCircle class="size-3 animate-spin" />{:else}<Trash2 class="size-3" />{/if}
+            {$t('code.worktree.remove')}
+          </Button>
+        {:else}
+          <Button variant="outline" size="xs" type="button" disabled={merging || removing} onclick={() => void handleMergeWorktree()}>
+            {#if merging}<LoaderCircle class="size-3 animate-spin" />{:else}<GitPullRequest class="size-3" />{/if}
+            {$t('code.worktree.merge')}
+          </Button>
+          <Button variant="ghost" size="xs" type="button" disabled={merging || removing} onclick={() => (confirmRemove = true)} title={$t('code.worktree.remove')}>
+            <Trash2 class="size-3" />
+            {$t('code.worktree.remove')}
+          </Button>
+        {/if}
+      </div>
+    </div>
+    {#if mergeConflicts.length}
+      <div class="conflict-strip" role="alert">
+        <div class="flex items-start gap-2 min-w-0 flex-1">
+          <TriangleAlert class="size-3.5 shrink-0 text-error mt-0.5" aria-hidden="true" />
+          <div class="min-w-0 flex-1">
+            <p class="text-xs font-medium text-error">{$t('code.worktree.conflictsTitle')}</p>
+            <p class="text-xs text-muted-foreground">{$t('code.worktree.conflictsHint')}</p>
+            <ul class="mt-1 space-y-0.5 font-mono text-xs text-foreground">
+              {#each mergeConflicts as file (file)}
+                <li class="truncate">{file}</li>
+              {/each}
+            </ul>
+          </div>
+        </div>
+        <Button variant="ghost" size="xs" type="button" onclick={() => (mergeConflicts = [])}>
+          {$t('code.worktree.dismiss')}
+        </Button>
+      </div>
+    {/if}
+  {/if}
 
   {#if !list && codeWorkspace.changeLoading[chatId]}
     <div class="flex flex-1 items-center justify-center"><LoaderCircle class="size-4 animate-spin text-muted-foreground" /></div>
@@ -237,6 +366,44 @@
     color: var(--muted-foreground);
   }
   .branch-label :global(svg) { flex-shrink: 0; }
+
+  .worktree-strip {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.375rem 0.75rem;
+    border-bottom: 1px solid var(--border-subtle);
+    padding: 0.4375rem 0.75rem;
+    font-size: var(--text-xs);
+  }
+  .worktree-id {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 0.375rem;
+    color: var(--foreground);
+  }
+  .worktree-tag {
+    flex-shrink: 0;
+    color: var(--muted-foreground);
+  }
+  .worktree-actions {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    gap: 0.25rem;
+    margin-left: auto;
+  }
+  .conflict-strip {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.5rem;
+    border-bottom: 1px solid var(--error-border, var(--border-subtle));
+    background: color-mix(in srgb, var(--error) 8%, transparent);
+    padding: 0.5rem 0.75rem;
+  }
 
   .changes-list {
     /* Rows are full-radius hover pills: with no gap they merge into one band,

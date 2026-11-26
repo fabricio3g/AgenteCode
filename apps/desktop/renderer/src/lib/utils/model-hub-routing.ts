@@ -1,6 +1,16 @@
 import type { ModelHubTab } from '$lib/types/model-hub';
 
-export type SettingsSection = 'general' | 'appearance' | 'providers' | 'search' | 'artifacts' | 'domains' | 'local' | 'voice' | 'accessibility';
+export type SettingsSection =
+  | 'general'
+  | 'appearance'
+  | 'providers'
+  | 'external-clis'
+  | 'search'
+  | 'artifacts'
+  | 'domains'
+  | 'local'
+  | 'voice'
+  | 'accessibility';
 
 export type ModelHubSection =
   | 'models'
@@ -25,6 +35,7 @@ const MODEL_HUB_SECTIONS = new Set<ModelHubSection>([
   'general',
   'appearance',
   'providers',
+  'external-clis',
   'search',
   'artifacts',
   'domains',
@@ -39,6 +50,7 @@ export function resolveModelHubSection(section?: string | null): ModelHubSection
   if (section === 'hardware' || section === 'runtime') return 'local';
   if (section === 'voices' || section === 'whisper') return 'voice';
   if (section === 'api' || section === 'provider' || section === 'providers-api') return 'providers';
+  if (section === 'drivers' || section === 'clis' || section === 'external-agents') return 'external-clis';
   return MODEL_HUB_SECTIONS.has(section as ModelHubSection) ? section as ModelHubSection : 'models';
 }
 

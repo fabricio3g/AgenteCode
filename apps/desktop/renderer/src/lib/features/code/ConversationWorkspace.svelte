@@ -40,6 +40,8 @@
   const browser = browserPanelStore.forScope(scope);
   setContext(CANVAS_CONTEXT, canvasBoard.forChat(chatId));
   const project = $derived(codeStore.projectById(chat.projectId ?? null));
+  const worktree = $derived(chat.codeAgent?.worktree ?? null);
+  const activeRoot = $derived(worktree?.path || project?.rootPath || '');
   const plan = $derived(codeWorkspace.plan?.chatId === chat.id ? codeWorkspace.plan.plan ?? latestPlan(chat.messages) : latestPlan(chat.messages));
   /** The subagent the dock's Subagent pane follows; picked from the composer's pill. */
   const childId = $derived(subagentFocus.get(chatId));
@@ -94,13 +96,13 @@
 </div>
 
 {#snippet sessionPanel(state: PanelRenderState)}
-  {#if project}<SessionPanel {chat} {project} {layout} {browser} exposed={state.exposed} />{/if}
+  {#if project}<SessionPanel {chat} project={{ ...project, rootPath: activeRoot }} {layout} {browser} exposed={state.exposed} />{/if}
 {/snippet}
 {#snippet changesPanel()}
-  {#if project}<ChangesPane embedded chatId={chat.id} projectRoot={project.rootPath} sessionId={chat.codeAgent?.sessionId} />{/if}
+  {#if project}<ChangesPane embedded chatId={chat.id} projectRoot={activeRoot} sessionId={chat.codeAgent?.sessionId} {worktree} />{/if}
 {/snippet}
 {#snippet filesPanel()}
-  {#if project}<FileExplorer {layout} embedded chatId={chat.id} projectRoot={project.rootPath} />{/if}
+  {#if project}<FileExplorer {layout} embedded chatId={chat.id} projectRoot={activeRoot} />{/if}
 {/snippet}
 {#snippet planPanel()}
   {#if plan}<PlanPanel embedded chatId={chat.id} {plan} />{:else}<p class="p-5 text-xs text-muted-foreground">{$t('workspace.noPlan')}</p>{/if}
@@ -113,7 +115,7 @@
   <BrowserPanel embedded store={browser} exposed={state.exposed && !appStore.settingsScreenOpen} presentationKey={JSON.stringify(state.rect)} chatId={chat.id} />
 {/snippet}
 {#snippet processesPanel()}
-  {#if project}<ProcessesView {browser} chatId={chat.id} cwd={project.rootPath} />{/if}
+  {#if project}<ProcessesView {browser} chatId={chat.id} cwd={activeRoot} />{/if}
 {/snippet}
 {#snippet terminalPanel(state: PanelRenderState)}
   {#await loadTerminal() then { default: TerminalView }}<TerminalView id={state.id.slice('terminal:'.length)} active={state.exposed} focused={state.focused} />{/await}

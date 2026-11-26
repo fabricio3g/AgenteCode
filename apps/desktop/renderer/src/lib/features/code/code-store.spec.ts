@@ -29,8 +29,10 @@ vi.mock('$lib/services/bridge', () => ({
 
 import { appStore } from '$lib/stores/app.svelte';
 import { codeStore } from './code.svelte';
+import { BUILTIN_AGENTE_DRIVER, driversStore } from './drivers.svelte';
 import { conversationTodos } from './code-run';
 import { approvalsStore } from '$lib/stores/approvals.svelte';
+import { userInputsStore } from '$lib/stores/user-inputs.svelte';
 
 const CHAT_ID = 'chat-1';
 const PROJECT_ID = 'proj-1';
@@ -568,5 +570,204 @@ describe('manual compaction reporting', () => {
     emit({ type: 'compaction_start', chatId: CHAT_ID, reason: 'manual' });
     emit({ type: 'compaction_end', chatId: CHAT_ID, reason: 'manual', success: false });
     expect(appStore.chats[0]!.messages.at(-1)!.metadata?.codeCompaction).toMatchObject({ running: false, success: false });
+  });
+});
+
+describe('external CLI drivers, native options, worktrees, and handoff', () => {
+  it('starts an external driver session with worktree and without Agente LLM config', async () => {
+    localStorage.removeItem('chatealm_app_config');
+    driversStore.drivers = [
+      BUILTIN_AGENTE_DRIVER,
+      {
+        instance_id: 'claude',
+        driver_kind: 'claude',
+        label: 'Claude Code',
+        builtin: true,
+        enabled: true,
+        status: 'ready',
+        models: [{ id: 'sonnet', label: 'Sonnet', is_default: true }],
+        capabilities: {
+          approvals: true,
+          attachments: [],
+          compact: false,
+          cost: true,
+          fork: false,
+          mcp_injection: true,
+          models: true,
+          modes: ['plan', 'build', 'auto'],
+          native_plan_cards: false,
+          resume: true,
+          rewind_conversation: false,
+          session_import: false,
+          steer: true,
+          thinking: false,
+          usage: true
+        }
+      }
+    ];
+    const worktree = { repo_root: '/tmp/proj', path: '/tmp/proj/.agente/worktrees/wt-1', branch: 'agente/wt-1', base_commit: 'abc123' };
+    bridge.responses.agente_worktree_create = { worktree };
+    bridge.responses.agente_set_worktree = { ok: true };
+
+    codeStore.setConversationDriver(CHAT_ID, 'claude');
+    expect(appStore.chats[0]?.codeAgent?.instanceId).toBe('claude');
+    expect(appStore.chats[0]?.codeAgent?.driverModel).toBe('sonnet');
+
+    await codeStore.enableWorktree(CHAT_ID);
+    expect(appStore.chats[0]?.codeAgent?.worktree).toEqual(worktree);
+
+    await codeStore.send(CHAT_ID, 'run external check');
+    const startCall = bridge.invokes.find((call) => call.command === 'agente_start_session');
+    expect(startCall?.args?.instanceId).toBe('claude');
+    expect(startCall?.args?.provider).toBe('claude');
+    expect(startCall?.args?.model).toBe('sonnet');
+    expect(startCall?.args?.worktree).toEqual(worktree);
+
+    emit({ type: 'mode_changed', chatId: CHAT_ID, mode: 'plan' });
+    emit({ type: 'model_changed', chatId: CHAT_ID, model: 'opus' });
+    expect(appStore.chats[0]?.codeAgent?.runtimeMode).toBe('plan');
+    expect(appStore.chats[0]?.codeAgent?.driverModel).toBe('opus');
+  });
+
+  it('forwards native ApprovalOption decision and optionId', async () => {
+    bridge.responses.agente_respond_approval = { ok: true };
+    await startRun();
+    const options = [
+      { id: 'deny', kind: 'deny' as const, label: 'Deny' },
+      { id: 'allow-sess', kind: 'approve_all' as const, label: 'Allow for session' }
+    ];
+    emit({ type: 'approval_request', chatId: CHAT_ID, requestId: 'apr-ext', toolName: 'bash', args: { command: 'npm test' }, options });
+
+    const pending = approvalsStore.forChat(CHAT_ID)[0]!;
+    expect(pending.options).toEqual(options);
+    approvalsStore.resolve(pending.id, { allow: true, decision: 'allow_all', optionId: 'allow-sess' });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    const respondCall = bridge.invokes.find((call) => call.command === 'agente_respond_approval');
+    expect(respondCall?.args).toEqual({
+      chatId: CHAT_ID,
+      requestId: 'apr-ext',
+      decision: 'allow_all',
+      optionId: 'allow-sess'
+    });
+  });
+
+  it('merges/handles conflicts/removes worktree and builds handoff conversation', async () => {
+    const worktree = { repo_root: '/tmp/proj', path: '/tmp/proj/.agente/worktrees/wt-2', branch: 'agente/wt-2', base_commit: 'deadbeef' };
+    appStore.chats[0]!.codeAgent!.worktree = worktree;
+    bridge.responses.agente_worktree_merge = { merged: false, conflicts: ['src/main.ts'] };
+    bridge.responses.agente_worktree_remove = { removed: true };
+
+    const conflict = await codeStore.mergeConversationWorktree(CHAT_ID);
+    expect(conflict).toEqual({ merged: false, conflicts: ['src/main.ts'] });
+    expect(appStore.chats[0]!.codeAgent!.worktree).toEqual(worktree);
+
+    bridge.responses.agente_worktree_merge = { merged: true, commit: '1234567', removed: true };
+    const merged = await codeStore.mergeConversationWorktree(CHAT_ID, { removeAfter: true });
+    expect(merged).toEqual({ merged: true, commit: '1234567', removed: true });
+    expect(appStore.chats[0]!.codeAgent!.worktree).toBeNull();
+
+    appStore.chats[0]!.messages.push(
+      { id: 'u1', role: 'user', content: 'Refactor auth', createdAt: 1 },
+      { id: 'a1', role: 'assistant', content: 'Updated middleware', createdAt: 2, done: true, status: 'idle' }
+    );
+    const handoff = await codeStore.handoffToDriver(CHAT_ID, 'codex');
+    expect(handoff).not.toBeNull();
+    expect(handoff!.codeAgent?.instanceId).toBe('codex');
+    expect(handoff!.draft).toContain('Refactor auth');
+    expect(handoff!.draft).toContain('Updated middleware');
+  });
+
+  it('persists external driver effort and forwards thinkingLevel on start and update', async () => {
+    driversStore.drivers = [
+      BUILTIN_AGENTE_DRIVER,
+      {
+        instance_id: 'claude',
+        driver_kind: 'claude',
+        label: 'Claude Code',
+        builtin: true,
+        enabled: true,
+        status: 'ready',
+        models: [{ id: 'sonnet', label: 'Sonnet', is_default: true, thinking_levels: ['low', 'medium', 'high', 'max'] }],
+        capabilities: {
+          approvals: true,
+          attachments: [],
+          compact: false,
+          cost: true,
+          fork: false,
+          mcp_injection: true,
+          models: true,
+          modes: ['plan', 'build', 'auto'],
+          native_plan_cards: false,
+          resume: true,
+          rewind_conversation: false,
+          session_import: false,
+          steer: true,
+          thinking: true,
+          usage: true
+        }
+      }
+    ];
+    bridge.responses.agente_set_model = { ok: true };
+    codeStore.setConversationDriver(CHAT_ID, 'claude');
+
+    await codeStore.setConversationDriverEffort(CHAT_ID, 'high');
+    expect(appStore.chats[0]?.codeAgent?.driverEffort).toBe('high');
+
+    bridge.invokes.length = 0;
+    await codeStore.send(CHAT_ID, 'Check types');
+    const startCall = bridge.invokes.find((entry) => entry.command === 'agente_start_session');
+    expect(startCall?.args?.instanceId).toBe('claude');
+    expect(startCall?.args?.thinkingLevel).toBe('high');
+
+    await codeStore.setConversationDriverEffort(CHAT_ID, 'max');
+    expect(appStore.chats[0]?.codeAgent?.driverEffort).toBe('max');
+    const updateCall = bridge.invokes.filter((entry) => entry.command === 'agente_set_model').at(-1);
+    expect(updateCall?.args?.thinkingLevel).toBe('max');
+  });
+
+  it('forwards interactive elicitation answers and preserves step start timing on late tool_start updates', async () => {
+    bridge.responses.agente_respond_input = { ok: true };
+    await startRun();
+
+    emit({ type: 'tool_start', chatId: CHAT_ID, toolCallId: 'q-1', toolName: 'question', args: {} });
+    const stepBefore = codeStore.runFor(CHAT_ID)?.steps.find((s) => s.id === 'q-1');
+    expect(stepBefore?.startedAt).toBeTypeOf('number');
+
+    emit({
+      type: 'tool_start',
+      chatId: CHAT_ID,
+      toolCallId: 'q-1',
+      toolName: 'question',
+      args: { questions: [{ header: 'Scope', question: 'Pick scope' }] }
+    });
+    const stepAfter = codeStore.runFor(CHAT_ID)?.steps.find((s) => s.id === 'q-1');
+    expect(stepAfter?.startedAt).toBe(stepBefore?.startedAt);
+    expect(stepAfter?.detail).toBe('Scope');
+    expect(stepAfter?.toolInput).toContain('Pick scope');
+
+    emit({
+      type: 'input_request',
+      chatId: CHAT_ID,
+      requestId: 'inp-ext-1',
+      message: 'Questions',
+      toolCallId: 'q-1',
+      schema: { type: 'object', properties: { q0: { type: 'string', title: 'Scope' } } }
+    });
+
+    const pending = userInputsStore.forChat(CHAT_ID)[0]!;
+    expect(pending.requestId).toBe('inp-ext-1');
+    userInputsStore.resolve(pending.id, { action: 'accept', content: { q0: 'Full' } });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    const respondCall = bridge.invokes.find((call) => call.command === 'agente_respond_input');
+    expect(respondCall?.args).toEqual({
+      chatId: CHAT_ID,
+      requestId: 'inp-ext-1',
+      action: 'accept',
+      content: { q0: 'Full' }
+    });
   });
 });

@@ -1,7 +1,19 @@
 // Typed client for the agente_* IPC surface.
 
 import { invoke } from '$lib/services/bridge';
-import type { CodeCheckpointSummary, AgenteStartSessionArgs } from '$shared/agente-protocol';
+import type {
+  AgenteStartSessionArgs,
+  ApprovalDecision,
+  CodeCheckpointSummary,
+  DriverInfo,
+  DriverInstanceConfig,
+  InputResponseAction,
+  ListedWorktree,
+  MergeWorktreeResult,
+  OrchestratorStatus,
+  OrchestratorTaskSummary,
+  SessionWorktree
+} from '$shared/agente-protocol';
 import type { Attachment } from '$shared/agente-protocol.gen';
 import type { GitBranches, OpenInEditorArgs, OpenInEditorResult, PullRequestState, SwitchBranchResult } from '$shared/code-workspace';
 
@@ -41,8 +53,22 @@ export function setCodeAgentRuntimeMode(chatId: string, mode: 'full' | 'supervis
   return invoke('agente_set_runtime_mode', { chatId, mode });
 }
 
-export function respondToCodeAgentApproval(chatId: string, requestId: string, decision: 'allow' | 'deny'): Promise<{ ok: boolean }> {
-  return invoke('agente_respond_approval', { chatId, requestId, decision });
+export function respondToCodeAgentApproval(
+  chatId: string,
+  requestId: string,
+  decision: ApprovalDecision,
+  optionId?: string
+): Promise<{ ok: boolean }> {
+  return invoke('agente_respond_approval', { chatId, requestId, decision, ...(optionId ? { optionId } : {}) });
+}
+
+export function respondToCodeAgentInput(
+  chatId: string,
+  requestId: string,
+  action: InputResponseAction,
+  content?: Record<string, unknown>
+): Promise<{ ok: boolean }> {
+  return invoke('agente_respond_input', { chatId, requestId, action, ...(content !== undefined ? { content } : {}) });
 }
 
 export function listCodeAgentCheckpoints(chatId: string, sessionId?: string): Promise<CodeCheckpointSummary[]> {
@@ -142,4 +168,78 @@ export function trashPath(projectRoot: string, path: string): Promise<{ ok: bool
 /** Open `path` in the user's editor, at `line` when the editor understands it. */
 export function openInEditor(args: OpenInEditorArgs): Promise<OpenInEditorResult> {
   return invoke('agente_open_in_editor', args as unknown as Record<string, unknown>);
+}
+
+// ── External coding CLI drivers, worktrees, and orchestrator ───────────
+
+export async function listDrivers(probe = false): Promise<DriverInfo[]> {
+  const res = await invoke<{ drivers?: DriverInfo[] }>('agente_drivers_list', { probe });
+  return Array.isArray(res?.drivers) ? res.drivers : [];
+}
+
+export async function probeDrivers(instanceId?: string): Promise<DriverInfo[]> {
+  const res = await invoke<{ drivers?: DriverInfo[]; driver?: DriverInfo }>(
+    'agente_drivers_probe',
+    instanceId ? { instanceId } : {}
+  );
+  if (Array.isArray(res?.drivers)) return res.drivers;
+  return res?.driver ? [res.driver] : [];
+}
+
+export function saveDriverInstance(instanceId: string, config: DriverInstanceConfig): Promise<{ driver: DriverInfo }> {
+  return invoke('agente_drivers_save', { instanceId, config });
+}
+
+export function deleteDriverInstance(instanceId: string): Promise<{ deleted: boolean }> {
+  return invoke('agente_drivers_delete', { instanceId });
+}
+
+export function createWorktree(args: {
+  projectRoot: string;
+  label?: string;
+  sessionId?: string;
+}): Promise<{ worktree: SessionWorktree }> {
+  return invoke('agente_worktree_create', args);
+}
+
+export async function listWorktrees(projectRoot: string): Promise<ListedWorktree[]> {
+  const res = await invoke<{ worktrees?: ListedWorktree[] }>('agente_worktree_list', { projectRoot });
+  return Array.isArray(res?.worktrees) ? res.worktrees : [];
+}
+
+export function mergeWorktree(args: {
+  repoRoot: string;
+  path: string;
+  branch?: string;
+  baseCommit?: string;
+  commitMessage?: string;
+  removeAfter?: boolean;
+}): Promise<MergeWorktreeResult> {
+  return invoke('agente_worktree_merge', args);
+}
+
+export function removeWorktree(args: {
+  repoRoot: string;
+  path: string;
+  branch?: string;
+  baseCommit?: string;
+  sessionId?: string;
+}): Promise<{ removed: boolean }> {
+  return invoke('agente_worktree_remove', args);
+}
+
+export function setCodeWorktree(chatId: string, worktree: SessionWorktree | null): Promise<{ ok: boolean }> {
+  return invoke('agente_set_worktree', { chatId, worktree });
+}
+
+export function orchestratorStatus(): Promise<OrchestratorStatus> {
+  return invoke('agente_orchestrator_status', {});
+}
+
+export async function orchestratorTasks(parentSessionId?: string): Promise<OrchestratorTaskSummary[]> {
+  const res = await invoke<{ tasks?: OrchestratorTaskSummary[] }>(
+    'agente_orchestrator_tasks',
+    parentSessionId ? { parentSessionId } : {}
+  );
+  return Array.isArray(res?.tasks) ? res.tasks : [];
 }

@@ -361,6 +361,12 @@ function describeToolArgs(toolName: string, args: unknown): string {
     case 'task_output':
     case 'kill_task':
       return firstLine(text('description') || text('task_id'));
+    case 'question': {
+      const qs = Array.isArray(record.questions) ? record.questions : [];
+      const first = (qs[0] && typeof qs[0] === 'object' ? qs[0] : null) as { header?: unknown; question?: unknown } | null;
+      const summary = first ? firstLine(String(first.header || first.question || '')) : '';
+      return qs.length > 1 && summary ? `${summary} +${qs.length - 1}` : summary;
+    }
     case 'present_plan':
       return firstLine(text('title'));
     case 'skill':
@@ -535,11 +541,22 @@ export function applyCodeAgentEvent(state: CodeRunState, event: CodeAgentEvent):
       return true;
     }
     case 'tool_start': {
-      const step = eventToStep(event);
-      if (step) {
-        const ids = state.toolStepIds ??= new Map();
-        step.id = invocationId(state.steps, event.toolCallId, ids, true);
-        upsertStep(state, step);
+      const existingId = state.toolStepIds?.get(event.toolCallId);
+      const existingStep = existingId
+        ? state.steps.find((s) => s.id === existingId && (s.status === 'running' || s.status === 'pending'))
+        : undefined;
+      if (existingStep) {
+        existingStep.label = event.label || toolLabel(event.toolName);
+        existingStep.toolName = event.toolName;
+        existingStep.detail = event.detail || describeToolArgs(event.toolName, event.args);
+        if (event.args != null) existingStep.toolInput = formatTraceInput(event.args);
+      } else {
+        const step = eventToStep(event);
+        if (step) {
+          const ids = state.toolStepIds ??= new Map();
+          step.id = invocationId(state.steps, event.toolCallId, ids, true);
+          upsertStep(state, step);
+        }
       }
       state.preparing = null;
       state.retrying = null;
@@ -603,8 +620,9 @@ export function applyCodeAgentEvent(state: CodeRunState, event: CodeAgentEvent):
     case 'approval_resolved': {
       const step = state.steps.find((s) => s.id === event.requestId);
       if (step) {
-        step.status = event.decision === 'allow' ? 'done' : 'error';
-        step.detail = event.decision === 'allow' ? copy.codeRun.approved : copy.codeRun.denied;
+        const allowed = event.decision !== 'deny';
+        step.status = allowed ? 'done' : 'error';
+        step.detail = allowed ? copy.codeRun.approved : copy.codeRun.denied;
       }
       return true;
     }

@@ -25,6 +25,7 @@
   import type { CodeChild, SwarmCard } from '$shared/agente-protocol';
   import { subagentFocus } from './subagent-focus.svelte';
   import { childElapsedMs, childModelLabel, subagentDisplay } from './subagent-row';
+  import { driverBadgeLabel } from './drivers.svelte';
   import { feedsOf, lanesFor, recentFindings } from './swarm-lanes';
   import SwarmFindingList from './SwarmFindingList.svelte';
   import { swarmStore } from './swarm.svelte';
@@ -114,7 +115,7 @@
             <span class="id">{card.id}</span>
             <span class="who">
               <span class="card-title">{card.title}</span>
-              <span class="role">{card.role}{#if child?.model || card.model}{' · '}{child ? childModelLabel(child) : card.model}{/if}</span>
+              <span class="role">{#if driverBadgeLabel(card.instance_id)}{driverBadgeLabel(card.instance_id)} · {/if}{card.role}{#if child?.model || card.model}{' · '}{child ? childModelLabel(child) : card.model}{/if}</span>
             </span>
             <span class="state">{stateText(card, child)}</span>
             <span class="elapsed">{elapsed !== undefined && card.status !== 'backlog' ? formatToolDuration(elapsed) : ''}</span>

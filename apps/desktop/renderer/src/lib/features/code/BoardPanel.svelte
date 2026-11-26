@@ -23,22 +23,40 @@
   import { Button, Switch } from '$lib/components/ui';
   import TileMeter from '$lib/components/ui/TileMeter.svelte';
   import { toastStore } from '$lib/stores/toast.svelte';
-  import type { SwarmCard } from '$shared/agente-protocol';
+  import type { OrchestratorTaskSummary, SwarmCard } from '$shared/agente-protocol';
   import { subagentFocus } from './subagent-focus.svelte';
   import { columnsOf, swarmStore, tallyOf } from './swarm.svelte';
+  import { driverBadgeLabel } from './drivers.svelte';
+  import { codeStore } from './code.svelte';
+  import { orchestratorTasks } from './code-ipc';
   import SwarmFindingList from './SwarmFindingList.svelte';
 
   let { chatId }: { chatId: string } = $props();
 
   const board = $derived(swarmStore.boardFor(chatId));
+  const sessionId = $derived(codeStore.sessionIdFor(chatId));
   const enabled = $derived(!!board?.enabled);
   const columns = $derived(columnsOf(board));
   const tally = $derived(tallyOf(board));
   const findings = $derived(board?.findings ?? []);
+  let delegatedTasks = $state<OrchestratorTaskSummary[]>([]);
   let switching = $state(false);
   /** The switch follows the store; a failed change puts it back. */
   let checked = $state(false);
   $effect(() => { checked = enabled; });
+  $effect(() => {
+    const sid = sessionId;
+    void board;
+    if (!sid) {
+      delegatedTasks = [];
+      return;
+    }
+    let active = true;
+    void orchestratorTasks(sid)
+      .then((list) => { if (active) delegatedTasks = list; })
+      .catch(() => {});
+    return () => { active = false; };
+  });
 
   onMount(() => {
     void swarmStore.load(chatId).catch(() => {});
@@ -109,7 +127,7 @@
                 <span class="card-title">{card.title}</span>
                 <span class="card-id">{card.id}</span>
               </span>
-              <span class="card-who">{card.role}{#if card.model}<span class="model">{' · '}{card.model}</span>{/if}</span>
+              <span class="card-who">{#if driverBadgeLabel(card.instance_id)}{driverBadgeLabel(card.instance_id)} · {/if}{card.role}{#if card.model}<span class="model">{' · '}{card.model}</span>{/if}</span>
               {#if card.status === 'backlog' && card.depends_on?.length}
                 <span class="card-meta">{$t('code.swarm.waitsFor', { values: { cards: card.depends_on.join(', ') } })}</span>
               {/if}
@@ -137,6 +155,22 @@
     {#if !tally.working}
       <div class="foot"><Button size="sm" variant="ghost" onclick={() => void swarmStore.clear(chatId).catch((error) => toastStore.error(String(error)))}>{$t('code.swarm.clear')}</Button></div>
     {/if}
+  {/if}
+
+  {#if delegatedTasks.length}
+    <section class="findings" aria-labelledby={`board-${chatId}-delegated`}>
+      <h3 id={`board-${chatId}-delegated`}>{$t('code.swarm.delegatedTitle')}<span class="count">{delegatedTasks.length}</span></h3>
+      <ul class="delegated-list">
+        {#each delegatedTasks as task (task.task_id)}
+          <li class="delegated-row">
+            <span class="mark" aria-hidden="true">{task.status === 'completed' ? '✓' : task.status === 'failed' || task.status === 'cancelled' ? '✕' : '●'}</span>
+            <span class="delegated-driver">{driverBadgeLabel(task.instance_id) || task.instance_id}</span>
+            <span class="delegated-summary">{task.summary || task.error || task.task_id}</span>
+            <span class="delegated-status">{task.status}</span>
+          </li>
+        {/each}
+      </ul>
+    </section>
   {/if}
 </div>
 
@@ -175,5 +209,10 @@
   .card-meta { padding-left: 1.5rem; font-size: var(--text-xs); color: var(--muted-foreground); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .card-meta.files { font-family: var(--font-mono); }
   .card-result { padding-left: 1.5rem; display: -webkit-box; -webkit-line-clamp: 3; line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; font-size: var(--text-xs); line-height: 1.5; color: var(--prose-ink, var(--foreground)); }
+  .delegated-list { display: grid; gap: 0.25rem; }
+  .delegated-row { display: flex; align-items: baseline; gap: 0.5rem; min-width: 0; font-size: var(--text-xs); color: var(--muted-foreground); }
+  .delegated-driver { flex-shrink: 0; font-weight: 500; color: var(--foreground); }
+  .delegated-summary { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .delegated-status { flex-shrink: 0; font-variant-numeric: tabular-nums; }
   .foot { display: flex; justify-content: flex-end; }
 </style>
