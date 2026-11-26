@@ -57,7 +57,7 @@
     align-items: flex-end;
     justify-content: space-between;
     gap: 0.75rem;
-    padding: 0 0 0.5rem;
+    padding: 0 0.125rem 0.625rem;
   }
 
   .settings-section-title {
@@ -68,37 +68,27 @@
 
   .settings-section-description {
     margin-top: 0.125rem;
+    max-width: 60ch;
     color: var(--muted-foreground);
     font-size: var(--text-xs);
-    line-height: 1.5;
+    line-height: 1.55;
   }
 
-  /* Law of Common Region: each settings group sits inside a clean neutral
-     machined card with a subtle B1 top crown and hairline row dividers. */
+  /* Law of Common Region by tint alone: a group is a soft fill, not a ring
+     with a shadow and a crown. The column edge and the space between groups
+     already separate them, so a border would be an edge on an edge. */
   .settings-card {
     position: relative;
     overflow: visible;
-    border: 1px solid var(--float-border);
     border-radius: var(--float-radius);
-    background: color-mix(in srgb, var(--foreground) 1.8%, var(--card));
-    padding-inline: 1rem;
-    box-shadow: var(--control-shadow);
+    background: color-mix(in srgb, var(--foreground) 4%, transparent);
+    padding-inline: 1.125rem;
   }
   .settings-card.is-flush {
     padding-inline: 0;
   }
-  .settings-card::after {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 12%;
-    right: 12%;
-    height: 1px;
-    background: linear-gradient(90deg, transparent, var(--composer-crown), transparent);
-    pointer-events: none;
-  }
   .settings-rows > :global(* + *) {
-    border-top: 1px solid color-mix(in srgb, var(--foreground) 6%, transparent);
+    border-top: 1px solid color-mix(in srgb, var(--foreground) 7%, transparent);
   }
 
   .settings-card.is-danger {

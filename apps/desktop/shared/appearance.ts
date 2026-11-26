@@ -13,16 +13,13 @@ export type AccentPresetId =
   | 'custom';
 export type UiStyleId = 'default' | 'soft' | 'sharp' | 'minimal';
 export type ComposerStyleId = 'agente' | 'pill' | 'card' | 'terminal' | 'minimal';
-export type AgentStyleId =
-  | 'agente'
-  | 'cards'
-  | 'pills'
-  | 'spotlight'
-  | 'rail'
-  | 'accented'
-  | 'notebook'
-  | 'sheet'
-  | 'minimal';
+/**
+ * How a run's live work is drawn on the desktop. Each is one recognisable way
+ * desktop agents show their work: Agente's quiet rail, a chat app's activity
+ * feed, a builder's stream of files, a planner's phases, an editor panel's
+ * diff review, a research trail of sources, a session timeline, and tiles.
+ */
+export type AgentStyleId = 'agente' | 'feed' | 'files' | 'plan' | 'review' | 'research' | 'timeline' | 'tiles';
 
 export interface AppearancePrefs {
   mode: ColorMode;
@@ -71,22 +68,22 @@ export const THEME_PRESETS: readonly ThemePresetMeta[] = [
   {
     id: 'parchment',
     light: { background: '#f6f4ef', foreground: '#1f1d1a', sidebar: '#efece5', card: '#fcfbf8', accentSwatch: '#d97757' },
-    dark: { background: '#1f1d1a', foreground: '#f4f0e8', sidebar: '#26231f', card: '#2a2622', accentSwatch: '#de8363' }
+    dark: { background: '#1f1d1a', foreground: '#f4f0e8', sidebar: '#25221e', card: '#2a2622', accentSwatch: '#de8363' }
   },
   {
     id: 'midnight',
     light: { background: '#f8f9fb', foreground: '#0f1218', sidebar: '#f1f3f7', card: '#ffffff', accentSwatch: '#3b82f6' },
-    dark: { background: '#0f1012', foreground: '#f3f4f6', sidebar: '#14161a', card: '#17191e', accentSwatch: '#60a5fa' }
+    dark: { background: '#111318', foreground: '#f1f3f7', sidebar: '#161921', card: '#1b1f27', accentSwatch: '#60a5fa' }
   },
   {
     id: 'slate',
     light: { background: '#f2f5f8', foreground: '#121821', sidebar: '#e9eef4', card: '#fafbfd', accentSwatch: '#2563eb' },
-    dark: { background: '#181c23', foreground: '#eef2f7', sidebar: '#1d222b', card: '#212731', accentSwatch: '#5897f5' }
+    dark: { background: '#181c23', foreground: '#eef2f7', sidebar: '#1d222b', card: '#222833', accentSwatch: '#5897f5' }
   },
   {
     id: 'sepia',
     light: { background: '#f4efe4', foreground: '#26221b', sidebar: '#ece6d8', card: '#faf6ec', accentSwatch: '#b86b2b' },
-    dark: { background: '#1d1e19', foreground: '#efeae0', sidebar: '#23241e', card: '#272821', accentSwatch: '#d49048' }
+    dark: { background: '#1d1e19', foreground: '#efeae0', sidebar: '#22231d', card: '#272821', accentSwatch: '#d49048' }
   }
 ] as const;
 
@@ -111,17 +108,26 @@ export const ACCENT_PRESETS: readonly AccentPresetMeta[] = [
 
 export const UI_STYLE_IDS: readonly UiStyleId[] = ['default', 'soft', 'sharp', 'minimal'] as const;
 export const COMPOSER_STYLE_IDS: readonly ComposerStyleId[] = ['agente', 'pill', 'card', 'terminal', 'minimal'] as const;
-export const AGENT_STYLE_IDS: readonly AgentStyleId[] = [
-  'agente',
-  'cards',
-  'pills',
-  'spotlight',
-  'rail',
-  'accented',
-  'notebook',
-  'sheet',
-  'minimal'
-] as const;
+export const AGENT_STYLE_IDS: readonly AgentStyleId[] = ['agente', 'feed', 'files', 'plan', 'review', 'research', 'timeline', 'tiles'] as const;
+
+/** Earlier layout ids, carried to the layout closest to each. */
+const LEGACY_AGENT_STYLES: Record<string, AgentStyleId> = {
+  cards: 'feed',
+  pills: 'files',
+  spotlight: 'agente',
+  rail: 'timeline',
+  accented: 'agente',
+  notebook: 'agente',
+  sheet: 'agente',
+  minimal: 'agente',
+  workbench: 'review',
+  chips: 'files',
+  terminal: 'feed',
+  progress: 'timeline',
+  blocks: 'agente',
+  checklist: 'plan',
+  boxes: 'feed'
+};
 
 const THEME_ID_SET = new Set<string>(THEME_PRESETS.map((preset) => preset.id));
 const ACCENT_ID_SET = new Set<string>([...ACCENT_PRESETS.map((preset) => preset.id), 'custom']);
@@ -177,7 +183,7 @@ export function parseAppearance(raw: string | null, legacyTheme?: 'light' | 'dar
     agentStyle:
       typeof saved.agentStyle === 'string' && AGENT_STYLE_SET.has(saved.agentStyle)
         ? (saved.agentStyle as AgentStyleId)
-        : base.agentStyle,
+        : (typeof saved.agentStyle === 'string' && LEGACY_AGENT_STYLES[saved.agentStyle]) || base.agentStyle,
     tintedUserBubbles: saved.tintedUserBubbles === true
   };
 }
@@ -194,6 +200,25 @@ export function getThemePreset(id: ThemePresetId): ThemePresetMeta {
 export function getTitlebarColors(theme: ThemePresetId, resolvedMode: ResolvedColorMode): { color: string; symbolColor: string } {
   const palette = getThemePreset(theme)[resolvedMode];
   return { color: palette.background, symbolColor: palette.foreground };
+}
+
+/**
+ * Ink for text and glyphs drawn on an accent fill (a filled send button, a
+ * selected chip): white while it reads, near-black on an accent too light for
+ * it. Without it the monochrome accent in dark mode put
+ * white text on light grey.
+ */
+export function accentForeground(hex: string): string {
+  const safe = normalizeHexColor(hex);
+  const channel = (offset: number) => {
+    const value = parseInt(safe.slice(offset, offset + 2), 16) / 255;
+    return value <= 0.03928 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+  };
+  const luminance = 0.2126 * channel(1) + 0.7152 * channel(3) + 0.0722 * channel(5);
+  // White keeps the brand look while it stays near the 3:1 bar for glyphs and
+  // bold labels (dark-mode Ember sits at 2.9); a lighter accent takes dark ink.
+  const onWhite = 1.05 / (luminance + 0.05);
+  return onWhite >= 2.8 ? '#ffffff' : '#111111';
 }
 
 export function getAccentPreset(id: Exclude<AccentPresetId, 'custom'>): AccentPresetMeta {

@@ -949,7 +949,7 @@
           <!-- Capability and policy in one glyph: what the model sees, and
                the door to the toggles that decide what gets attached. -->
           <Tooltip label={mediaLabel} position="top">
-            <Button variant="plain" type="button" class={uiClass("media-status", "ui-local-49e9c79c")} aria-label={mediaLabel} onclick={() => (dialog = 'settings')}>
+            <Button variant="plain" type="button" class={uiClass("media-status", "ui-local-49e9c79c", { "is-default": vision })} aria-label={mediaLabel} onclick={() => (dialog = 'settings')}>
               {#if vision}<Eye class="size-3.5" />{:else}<EyeOff class="size-3.5" />{$t('code.media.textOnly')}{/if}
             </Button>
           </Tooltip>
@@ -1020,6 +1020,10 @@
     transition: background-color var(--motion-fast) var(--motion-ease), color var(--motion-fast) var(--motion-ease);
   }
   :global(.media-status:hover.ui-local-49e9c79c) { background: var(--surface-hover); color: var(--foreground); }
+  /* Seeing images is the usual case, so the eye rests half-lit and only
+     "Text only" — the exception — reads at full muted strength. */
+  :global(.media-status.is-default.ui-local-49e9c79c) { opacity: 0.55; }
+  :global(.media-status.is-default:is(:hover, :focus-visible).ui-local-49e9c79c) { opacity: 1; }
   /* Compact rectangle: clear edges, quiet depth, no pill or glyph motion. */
   :global(.mode-menu) {width:16rem;max-width:calc(100vw - 1.5rem);}
   :global(.mode-menu .mode-option) {padding:0.3125rem 0.625rem;}

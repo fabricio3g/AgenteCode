@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_APPEARANCE,
+  accentForeground,
   getTitlebarColors,
   hexToRgbTriplet,
   isIntegratedComposerStyle,
@@ -30,7 +31,7 @@ describe('appearance shared helpers', () => {
         customAccentHex: '#abc',
         uiStyle: 'sharp',
         composerStyle: 'card',
-        agentStyle: 'pills',
+        agentStyle: 'feed',
         tintedUserBubbles: true
       })
     );
@@ -41,7 +42,7 @@ describe('appearance shared helpers', () => {
       customAccentHex: '#aabbcc',
       uiStyle: 'sharp',
       composerStyle: 'card',
-      agentStyle: 'pills',
+      agentStyle: 'feed',
       tintedUserBubbles: true
     });
 
@@ -60,6 +61,12 @@ describe('appearance shared helpers', () => {
     expect(invalid).toEqual(DEFAULT_APPEARANCE);
   });
 
+  it('carries earlier work layout ids to their replacements', () => {
+    expect(parseAppearance(JSON.stringify({ agentStyle: 'cards' })).agentStyle).toBe('feed');
+    expect(parseAppearance(JSON.stringify({ agentStyle: 'rail' })).agentStyle).toBe('timeline');
+    expect(parseAppearance(JSON.stringify({ agentStyle: 'minimal' })).agentStyle).toBe('agente');
+  });
+
   it('normalizes hex colors and converts to RGB triplets', () => {
     expect(normalizeHexColor('#F0A')).toBe('#ff00aa');
     expect(normalizeHexColor('  #3B82F6 ')).toBe('#3b82f6');
@@ -74,6 +81,14 @@ describe('appearance shared helpers', () => {
     expect(resolveColorMode('dark', false)).toBe('dark');
   });
 
+  it('picks readable ink for text on an accent fill', () => {
+    expect(accentForeground('#e76d1f')).toBe('#ffffff');
+    expect(accentForeground('#e8793a')).toBe('#ffffff');
+    expect(accentForeground('#d4d4d4')).toBe('#111111');
+    expect(accentForeground('#ffffff')).toBe('#111111');
+    expect(accentForeground('#262626')).toBe('#ffffff');
+  });
+
   it('reports integrated composer layout for non-default prompt shells', () => {
     expect(isIntegratedComposerStyle('agente')).toBe(false);
     expect(isIntegratedComposerStyle('pill')).toBe(true);
@@ -84,7 +99,7 @@ describe('appearance shared helpers', () => {
 
   it('provides titlebar colors and startup CSS/bootstrap for all themes', () => {
     expect(getTitlebarColors('parchment', 'dark')).toEqual({ color: '#1f1d1a', symbolColor: '#f4f0e8' });
-    expect(getTitlebarColors('midnight', 'dark')).toEqual({ color: '#0f1012', symbolColor: '#f3f4f6' });
+    expect(getTitlebarColors('midnight', 'dark')).toEqual({ color: '#111318', symbolColor: '#f1f3f7' });
 
     const css = windowThemeCss();
     expect(css).toContain(':root[data-theme="parchment"]');

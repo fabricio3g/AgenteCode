@@ -312,7 +312,7 @@
 <div class="flex flex-col gap-0.5 pb-2">
   <div class="sidebar-section-row">
     <span class="sidebar-section">{$t(sidebarMode === 'threads' ? 'code.threads' : 'code.projects')}</span>
-    <div class="sidebar-header-controls">
+    <div class="sidebar-header-controls" class:has-filter={hasFilter}>
       <Tooltip label={$t('code.addProject')} position="bottom">
         <button type="button" class="mode-btn" aria-label={$t('code.addProject')} onclick={() => void codeStore.addProject()}>
           <FolderPlus class="size-3.5" />
@@ -623,10 +623,20 @@
 </div>
 
 <style>
+  /* Hick's Law: four tools beside one heading compete with the list for the
+     eye. They rest half-lit and come up when you reach for the heading; an
+     active filter keeps them lit so the narrowed list explains itself. */
   .sidebar-header-controls {
     display: inline-flex;
     align-items: center;
     gap: 0.25rem;
+    opacity: 0.5;
+    transition: opacity var(--motion-fast) var(--motion-ease);
+  }
+  .sidebar-section-row:hover .sidebar-header-controls,
+  .sidebar-section-row:focus-within .sidebar-header-controls,
+  .sidebar-header-controls.has-filter {
+    opacity: 1;
   }
 
   .sidebar-mode-toggle {
@@ -676,8 +686,7 @@
   }
 
   .thread-group-label {
-    font-size: 0.6875rem;
-    opacity: 0.8;
+    font-size: var(--text-xs);
   }
 
   /*

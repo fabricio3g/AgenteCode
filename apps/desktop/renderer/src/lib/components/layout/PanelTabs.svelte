@@ -309,7 +309,7 @@
     display: inline-flex;
     align-items: center;
     gap: 0.25rem;
-    font-size: 0.6875rem;
+    font-size: var(--text-xs);
     font-variant-numeric: tabular-nums;
     line-height: 1;
   }

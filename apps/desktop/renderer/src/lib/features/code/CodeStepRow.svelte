@@ -21,6 +21,7 @@
     chatId,
     children,
     codeActions = true,
+    bare = false,
     onstop
   }: {
     step: AgentStep;
@@ -30,6 +31,8 @@
     /** The run's children, so a spawn finds the one it started. */
     children?: CodeChild[];
     codeActions?: boolean;
+    /** Only the call's detail, for a work layout that draws its own row. */
+    bare?: boolean;
     onstop?: () => void;
   } = $props();
 
@@ -41,5 +44,5 @@
 {#if isSpawn}
   <SubagentCard child={child ?? childFromStep(step)} {id} {chatId} pending={!child && running} />
 {:else}
-  <ToolStepRow {step} {id} {chatId} {codeActions} {onstop} />
+  <ToolStepRow {step} {id} {chatId} {codeActions} {bare} {onstop} />
 {/if}

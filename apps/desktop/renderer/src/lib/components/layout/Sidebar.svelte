@@ -177,7 +177,7 @@
   </div>
   {/if}
   <div class="relative z-10 flex min-h-0 flex-1 flex-col px-2 pb-1">
-    <div class="flex flex-col gap-0.5 pb-2 pt-1">
+    <div class="flex flex-col gap-0.5 pb-3 pt-1">
       <UiListRow
         type="button"
         class={uiClass("sidebar-row is-emphasis", "ui-local-0456fb2e")}
@@ -404,6 +404,6 @@
     /* Places, not actions: distance says "different group" without drawing a
        second edge into a column that is otherwise one sheet. The composer's
        bar is one line of controls with no dividers; the rail follows it. */
-    margin-top: 0.75rem;
+    margin-top: 1rem;
   }
 </style>

@@ -31,6 +31,7 @@
     kind,
     running = false,
     onActivate,
+    bare = false,
     header,
     actions,
     body
@@ -50,6 +51,9 @@
     running?: boolean;
     /** A row that acts instead of opening (a presented plan opens the dock). */
     onActivate?: () => void;
+    /** Only the body, always shown: a work layout drew the row itself and
+        opens this for its detail (the diff, the command's output). */
+    bare?: boolean;
     header: Snippet;
     /** Buttons that belong to the row but outside its toggle (Stop, …). */
     actions?: Snippet;
@@ -66,6 +70,9 @@
   }
 </script>
 
+{#if bare}
+  {#if body && !disabled}<div class="disclosure-bare">{@render body()}</div>{/if}
+{:else}
 <div class="disclosure level-{level}" data-step-kind={kind} data-step-running={running ? 'true' : undefined}>
   <div class="row">
     <UiButton variant="plain"
@@ -85,8 +92,15 @@
     <div class="body">{@render body()}</div>
   {/if}
 </div>
+{/if}
 
 <style>
+  .disclosure-bare {
+    display: flex;
+    flex-direction: column;
+    gap: 0.375rem;
+    padding: 0.375rem 0 0.5rem;
+  }
   .row {
     display: flex;
     min-width: 0;
@@ -105,8 +119,11 @@
   :is(.head:focus-visible, :global(.head:focus-visible.ui-local-2c22291d)) {
     color: var(--foreground);
   }
+  /* A step with nothing to open is finished, not unavailable: it keeps its
+     siblings' strength instead of the shared button's half-faded disabled look. */
   :is(.head:disabled, :global(.head:disabled.ui-local-2c22291d)) {
     cursor: default;
+    opacity: 1;
   }
   /* The chevron is an icon component: its svg carries no scope class of ours,
      so every rule that reaches it goes through :global. */

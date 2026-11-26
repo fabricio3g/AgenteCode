@@ -42,6 +42,7 @@
     id,
     chatId,
     codeActions = true,
+    bare = false,
     onstop
   }: {
     step: AgentStep;
@@ -49,6 +50,8 @@
     id: string;
     chatId?: string;
     codeActions?: boolean;
+    /** Render only the detail; a work layout draws the row. */
+    bare?: boolean;
     onstop?: () => void;
   } = $props();
 
@@ -129,6 +132,7 @@
     disabled={!expandable}
     defaultOpen={isApproval}
     onActivate={plan ? openPlan : undefined}
+    {bare}
   >
     {#snippet header()}
       <Icon class="step-icon size-3.5 shrink-0 {isError ? 'is-error' : ''} {isApproval ? 'is-approval' : ''} {running ? 'is-running' : ''}" />
@@ -211,8 +215,10 @@
     font-size: var(--text-xs);
     color: var(--text-secondary);
   }
+  /* The model is a quieter fact than the call, so it takes the muted ink —
+     a real colour rather than a faded one, which blurs small mono type. */
   .model-chip {
-    opacity: 0.75;
+    color: var(--muted-foreground);
   }
   .duration {
     font-size: var(--text-xs);

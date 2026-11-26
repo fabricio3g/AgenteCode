@@ -1,6 +1,7 @@
 import {
   APPEARANCE_STORAGE_KEY,
   DEFAULT_APPEARANCE,
+  accentForeground,
   getAccentPreset,
   getTitlebarColors,
   hexToRgbTriplet,
@@ -119,6 +120,7 @@ class AppearanceStore {
       const safeHex = normalizeHexColor(customAccentHex);
       const rgb = hexToRgbTriplet(safeHex);
       root.style.setProperty('--brand-accent', safeHex);
+      root.style.setProperty('--brand-accent-fg', accentForeground(safeHex));
       root.style.setProperty(
         '--brand-accent-strong',
         resolved === 'dark' ? `color-mix(in srgb, ${safeHex} 72%, #ffffff)` : `color-mix(in srgb, ${safeHex} 76%, #000000)`
@@ -132,6 +134,7 @@ class AppearanceStore {
       const strong = resolved === 'dark' ? preset.darkStrong : preset.lightStrong;
       const rgb = hexToRgbTriplet(color);
       root.style.setProperty('--brand-accent', color);
+      root.style.setProperty('--brand-accent-fg', accentForeground(color));
       root.style.setProperty('--brand-accent-strong', strong);
       if (accent === 'ember') {
         root.style.removeProperty('--tile-accent');

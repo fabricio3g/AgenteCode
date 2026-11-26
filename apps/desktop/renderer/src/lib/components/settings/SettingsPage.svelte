@@ -64,9 +64,9 @@
     width: 100%;
     max-width: 44rem;
     flex-direction: column;
-    gap: 1.75rem;
+    gap: 2.5rem;
     margin-inline: 0;
-    padding: 1.5rem 1rem 3rem;
+    padding: 2rem 1rem 4rem;
   }
 
   .settings-column.is-large { max-width: 50rem; }
@@ -106,7 +106,7 @@
   }
 
   .settings-page-description {
-    margin-top: 0.125rem;
+    margin-top: 0.25rem;
     color: var(--muted-foreground);
     font-size: var(--text-sm);
     line-height: 1.5;

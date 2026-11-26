@@ -344,7 +344,7 @@
           style="max-width: var(--thread-width);"
         >
           {#each messages as message, index (message.id)}
-            <div class="message-slot" class:is-live={message.status === 'streaming' || appStore.editingMessageId === message.id} use:registerSlot={message.id}>
+            <div class="message-slot" class:is-live={message.status === 'streaming' || appStore.editingMessageId === message.id} class:is-turn-start={density !== 'compact' && index > 0 && message.role === 'user'} use:registerSlot={message.id}>
               <DeferredMessage content={message.content} immediate={messages.length < 60 || index >= messages.length - 6 || message.status === 'streaming' || appStore.editingMessageId === message.id}>
               {#if appStore.editingMessageId === message.id}
                 <div
@@ -411,6 +411,12 @@
     position: relative;
     content-visibility: auto;
     contain-intrinsic-size: auto 160px;
+  }
+
+  /* Law of Proximity: a prompt sits closer to its own reply than to the turn
+     before it, so the thread scans as turns rather than an even stack. */
+  .message-slot.is-turn-start {
+    margin-top: 1.25rem;
   }
 
   .message-slot.is-live {

@@ -439,6 +439,36 @@ The transcript walks its content twice per frame: once to measure the block and 
 
 const childSpend = (costUsd: number, promptTokens: number) => ({ costUsd, estimated: false, unpriced: false, promptTokens, cacheReadTokens: 0, cacheWriteTokens: 0 });
 
+// Every step kind in one run, so the live work layouts can be compared side by
+// side (`?mock=1&space=code&chat=chat-layouts`).
+savedSessions.push({
+  id: 'chat-layouts',
+  title: 'Work layouts',
+  createdAt: Date.now() - 40_000,
+  updatedAt: Date.now() - 40_000,
+  folderId: null,
+  draft: '',
+  contextMode: 'code',
+  projectId: 'proj-1',
+  messages: [
+    { id: 'wl-user', role: 'user', content: 'Find where the session expiry is checked and make it configurable.', createdAt: Date.now() - 40_000 },
+    {
+      id: 'wl-assistant', role: 'assistant', done: true, createdAt: Date.now() - 39_000,
+      content: 'Expiry is now read from `auth.sessionTtl`, defaulting to 30 minutes; the tests pass.',
+      agentSteps: [
+        { id: 'wl-1', type: 'searching', label: 'Search', toolName: 'grep', status: 'done', detail: 'sessionExpiry', output: 'src/auth/session.ts:14\nsrc/routes/login.ts:40', startedAt: Date.now() - 39_000, durationMs: 120 },
+        { id: 'wl-2', type: 'reading', label: 'Read', toolName: 'read', status: 'done', detail: 'src/auth/session.ts', output: 'export const SESSION_TTL = 30 * 60_000;', startedAt: Date.now() - 38_800, durationMs: 30 },
+        { id: 'wl-3', type: 'reading', label: 'List', toolName: 'list_dir', status: 'done', detail: 'src/config', output: 'index.ts\nschema.ts', startedAt: Date.now() - 38_700, durationMs: 20 },
+        { id: 'wl-4', type: 'searching', label: 'Search the web', toolName: 'web_search', status: 'done', detail: 'OWASP session timeout guidance', output: 'Session Management Cheat Sheet https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html\nSet-Cookie expiry https://developer.mozilla.org/docs/Web/HTTP/Headers/Set-Cookie\nIdle timeout guidance https://pages.nist.gov/800-63-3/sp800-63b.html', startedAt: Date.now() - 38_600, durationMs: 1_400 },
+        { id: 'wl-5', type: 'editing', label: 'Edit', toolName: 'edit_file', status: 'done', detail: 'src/auth/session.ts', diffStats: [{ path: 'src/auth/session.ts', kind: 'modified', additions: 6, deletions: 2, patch: '--- a/src/auth/session.ts\n+++ b/src/auth/session.ts\n@@ -12,4 +12,8 @@\n-export const SESSION_TTL = 30 * 60_000;\n+import { config } from \'../config\';\n+\n+export const SESSION_TTL = config.auth.sessionTtl ?? 30 * 60_000;\n' }], startedAt: Date.now() - 37_000, durationMs: 60 },
+        { id: 'wl-6', type: 'executing', label: 'Run', toolName: 'bash', status: 'error', detail: 'npm test -- auth', output: '1 failing: expected 1800000 to equal 900000', startedAt: Date.now() - 36_900, durationMs: 4_100 },
+        { id: 'wl-7', type: 'editing', label: 'Edit', toolName: 'edit_file', status: 'done', detail: 'tests/auth/session.test.ts', diffStats: [{ path: 'tests/auth/session.test.ts', kind: 'modified', additions: 3, deletions: 1 }], startedAt: Date.now() - 32_000, durationMs: 40 },
+        { id: 'wl-8', type: 'executing', label: 'Run', toolName: 'bash', status: 'done', detail: 'npm test -- auth', output: '12 passing', startedAt: Date.now() - 31_900, durationMs: 3_800 }
+      ]
+    }
+  ]
+});
+
 savedSessions.push({
   id: 'chat-subagents',
   title: 'Subagent cards',

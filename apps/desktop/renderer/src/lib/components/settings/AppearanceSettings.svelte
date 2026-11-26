@@ -1,14 +1,17 @@
 <svelte:options runes={true} />
 
 <!--
-  Settings → Appearance: color mode, surface theme palettes, accent colors,
-  interface geometry style, and prompt shell layouts. Changes apply at once
-  and stay on this computer.
+  Settings → Appearance. Laid out for scanning (Laws of UX): three groups —
+  Color, Shape, Layout — each row a read-first line with the choice in effect
+  named in its description, so the page answers "what is set" before it asks
+  "what do you want". Choices are shown, not told: swatches, dots and
+  wireframes carry a one-word name and no paragraph; the one in effect wears an
+  accent ring. The preview at the top repaints with every change.
 -->
 
 <script lang="ts">
   import { t } from 'svelte-i18n';
-  import { Check, RotateCcw } from '$lib/icons';
+  import { RotateCcw } from '$lib/icons';
   import { Button, SegmentedControl, Switch } from '$lib/components/ui';
   import ColorInput from '$lib/components/ui/ColorInput.svelte';
   import {
@@ -18,10 +21,8 @@
     DEFAULT_APPEARANCE,
     THEME_PRESETS,
     UI_STYLE_IDS,
-    type AgentStyleId,
+    getThemePreset,
     type ColorMode,
-    type ComposerStyleId,
-    type ThemePresetId,
     type UiStyleId
   } from '$shared/appearance';
   import { appearanceStore } from '$lib/stores/appearance.svelte';
@@ -32,24 +33,10 @@
   const prefs = $derived(appearanceStore.prefs);
   const resolvedMode = $derived(appearanceStore.resolvedMode);
   const changed = $derived(JSON.stringify(prefs) !== JSON.stringify(DEFAULT_APPEARANCE));
-
-  let customColor = $derived(prefs.customAccentHex);
-
-  function selectTheme(theme: ThemePresetId) {
-    appearanceStore.update({ theme });
-  }
-
-  function selectUiStyle(uiStyle: UiStyleId) {
-    appearanceStore.update({ uiStyle });
-  }
-
-  function selectComposerStyle(composerStyle: ComposerStyleId) {
-    appearanceStore.update({ composerStyle });
-  }
-
-  function selectAgentStyle(agentStyle: AgentStyleId) {
-    appearanceStore.update({ agentStyle });
-  }
+  const previewPalette = $derived(getThemePreset(prefs.theme)[resolvedMode]);
+  const accentName = $derived(
+    prefs.accent === 'custom' ? $t('appearance.accentCustom') : $t(`appearance.accent_${prefs.accent}`)
+  );
 
   function onCustomColorInput(event: Event) {
     const value = (event.currentTarget as HTMLInputElement).value;
@@ -58,51 +45,41 @@
 </script>
 
 <SettingsPage title={$t('appearance.title')} description={$t('appearance.description')}>
-  <!-- Live mini-preview -->
-  <div class="preview-stage" aria-label={$t('appearance.preview')}>
-    <div class="preview-messages">
+  {#snippet actions()}
+    {#if changed}
+      <Button variant="ghost" size="sm" onclick={() => appearanceStore.reset()}>
+        <RotateCcw /> {$t('appearance.reset')}
+      </Button>
+    {/if}
+  {/snippet}
+
+  <!-- A miniature window: the sidebar tone on the left, the canvas with a sent
+       message, a reply and the message box on the right. -->
+  <div class="preview" aria-label={$t('appearance.preview')} style:--preview-rail={previewPalette.sidebar}>
+    <div class="preview-rail" aria-hidden="true">
+      <span class="preview-rail-line is-current"></span>
+      <span class="preview-rail-line"></span>
+      <span class="preview-rail-line is-short"></span>
+    </div>
+    <div class="preview-canvas">
       <div class="preview-user-bubble">{$t('appearance.previewUser')}</div>
       <div class="preview-assistant-row">
         <span class="preview-accent-dot" aria-hidden="true"></span>
         <span>{$t('appearance.previewAssistant')}</span>
       </div>
-    </div>
-
-    <div class="preview-composer-wrap">
-      <div class="preview-shell" data-preview-composer={prefs.composerStyle}>
-        <div class="preview-shell-input">
-          {#if prefs.composerStyle === 'terminal'}
-            <span class="preview-term-prompt">›</span>
-          {/if}
+      <div class="preview-composer" data-preview-composer={prefs.composerStyle}>
+        <div class="preview-shell">
+          {#if prefs.composerStyle === 'terminal'}<span class="preview-term-prompt" aria-hidden="true">›</span>{/if}
           <span class="preview-placeholder">{$t('appearance.previewPlaceholder')}</span>
-          {#if prefs.composerStyle === 'agente' || prefs.composerStyle === 'terminal' || prefs.composerStyle === 'minimal'}
-            <span class="preview-send-btn" aria-hidden="true">↑</span>
-          {/if}
+          <span class="preview-send" aria-hidden="true">↑</span>
         </div>
-        {#if prefs.composerStyle !== 'agente'}
-          <div class="preview-shell-bar">
-            <span class="preview-chips">
-              <span class="preview-chip">+</span>
-              <span class="preview-chip">Model</span>
-            </span>
-            {#if prefs.composerStyle === 'pill' || prefs.composerStyle === 'card'}
-              <span class="preview-send-btn" aria-hidden="true">↑</span>
-            {/if}
-          </div>
-        {/if}
       </div>
-      {#if prefs.composerStyle === 'agente'}
-        <div class="preview-external-tray">
-          <span class="preview-chip">+</span>
-          <span class="preview-chip">Model</span>
-        </div>
-      {/if}
     </div>
   </div>
 
-  <!-- Theme -->
+  <!-- Color -->
   <SettingsSection title={$t('appearance.themeSection')}>
-    <SettingsRow label={$t('appearance.mode')} description={$t('appearance.modeDesc')} control="auto">
+    <SettingsRow label={$t('appearance.mode')} control="auto">
       <SegmentedControl
         label={$t('appearance.mode')}
         value={prefs.mode}
@@ -115,8 +92,8 @@
       />
     </SettingsRow>
 
-    <SettingsRow layout="stack" label={$t('appearance.palette')} description={$t('appearance.paletteDesc')}>
-      <div class="theme-grid mt-2.5" role="radiogroup" aria-label={$t('appearance.palette')}>
+    <SettingsRow layout="stack" label={$t('appearance.palette')} description={$t(`appearance.theme_${prefs.theme}_desc`)}>
+      <div class="tile-grid is-themes" role="radiogroup" aria-label={$t('appearance.palette')}>
         {#each THEME_PRESETS as preset (preset.id)}
           {@const palette = preset[resolvedMode]}
           {@const selected = prefs.theme === preset.id}
@@ -124,65 +101,53 @@
             type="button"
             role="radio"
             aria-checked={selected}
-            class="theme-card"
+            class="tile"
             class:is-selected={selected}
-            onclick={() => selectTheme(preset.id)}
+            onclick={() => appearanceStore.update({ theme: preset.id })}
           >
-            <div class="theme-swatch" style:background={palette.background}>
-              <div class="theme-swatch-rail" style:background={palette.sidebar}></div>
-              <div class="theme-swatch-canvas">
-                <span class="theme-swatch-line" style:background={palette.foreground}></span>
-                <span class="theme-swatch-card" style:background={palette.card}></span>
-                <span class="theme-swatch-dot" style:background={palette.accentSwatch}></span>
-              </div>
-            </div>
-            <span class="theme-card-label">
-              <span>{$t(`appearance.theme_${preset.id}`)}</span>
-              {#if selected}<Check class="h-3.5 w-3.5 text-[var(--brand-accent)]" />{/if}
+            <span class="tile-art theme-art" style:background={palette.background} aria-hidden="true">
+              <span class="theme-art-rail" style:background={palette.sidebar}></span>
+              <span class="theme-art-canvas">
+                <span class="theme-art-line" style:background={palette.foreground}></span>
+                <span class="theme-art-card" style:background={palette.card}></span>
+                <span class="theme-art-dot" style:background={palette.accentSwatch}></span>
+              </span>
             </span>
+            <span class="tile-label">{$t(`appearance.theme_${preset.id}`)}</span>
           </button>
         {/each}
       </div>
     </SettingsRow>
-  </SettingsSection>
 
-  <!-- Colors -->
-  <SettingsSection title={$t('appearance.colorsSection')}>
-    <SettingsRow layout="stack" label={$t('appearance.accent')} description={$t('appearance.accentDesc')}>
-      <div class="accent-row mt-2.5" role="radiogroup" aria-label={$t('appearance.accent')}>
+    <SettingsRow label={$t('appearance.accent')} description={accentName} control="auto">
+      <div class="accent-dots" role="radiogroup" aria-label={$t('appearance.accent')}>
         {#each ACCENT_PRESETS as preset (preset.id)}
           {@const selected = prefs.accent === preset.id}
-          {@const dotColor = resolvedMode === 'dark' ? preset.dark : preset.light}
           <button
             type="button"
             role="radio"
             aria-checked={selected}
-            class="accent-pill"
+            aria-label={$t(`appearance.accent_${preset.id}`)}
+            title={$t(`appearance.accent_${preset.id}`)}
+            class="accent-dot"
             class:is-selected={selected}
+            style:--dot={resolvedMode === 'dark' ? preset.dark : preset.light}
             onclick={() => appearanceStore.update({ accent: preset.id })}
-          >
-            <span class="accent-dot" style:background={dotColor}></span>
-            <span>{$t(`appearance.accent_${preset.id}`)}</span>
-          </button>
+          ></button>
         {/each}
-
-        <label class="accent-pill accent-custom" class:is-selected={prefs.accent === 'custom'}>
+        <span class="accent-dot is-custom" class:is-selected={prefs.accent === 'custom'} title={$t('appearance.accentCustom')}>
           <ColorInput
-            value={customColor}
+            value={prefs.customAccentHex}
             aria-label={$t('appearance.accentCustom')}
-            class="h-4 w-4 rounded-full"
+            class="accent-custom-input"
+            onclick={() => appearanceStore.update({ accent: 'custom' })}
             oninput={onCustomColorInput}
           />
-          <span>{$t('appearance.accentCustom')}</span>
-        </label>
+        </span>
       </div>
     </SettingsRow>
 
-    <SettingsRow
-      label={$t('appearance.tintedBubbles')}
-      description={$t('appearance.tintedBubblesDesc')}
-      control="auto"
-    >
+    <SettingsRow label={$t('appearance.tintedBubbles')} description={$t('appearance.tintedBubblesDesc')} control="auto">
       <Switch
         label={$t('appearance.tintedBubbles')}
         checked={prefs.tintedUserBubbles}
@@ -191,165 +156,164 @@
     </SettingsRow>
   </SettingsSection>
 
-  <!-- Interface Style -->
+  <!-- Shape -->
   <SettingsSection title={$t('appearance.styleSection')}>
-    <SettingsRow layout="stack" label={$t('appearance.uiStyle')} description={$t('appearance.uiStyleDesc')}>
-      <div class="style-grid mt-2.5" role="radiogroup" aria-label={$t('appearance.uiStyle')}>
-        {#each UI_STYLE_IDS as styleId (styleId)}
-          {@const selected = prefs.uiStyle === styleId}
-          <button
-            type="button"
-            role="radio"
-            aria-checked={selected}
-            class="choice-card"
-            class:is-selected={selected}
-            onclick={() => selectUiStyle(styleId)}
-          >
-            <div class="choice-header">
-              <span class="choice-title">{$t(`appearance.uiStyle_${styleId}`)}</span>
-              {#if selected}<Check class="h-3.5 w-3.5 text-[var(--brand-accent)]" />{/if}
-            </div>
-            <p class="choice-desc">{$t(`appearance.uiStyle_${styleId}_desc`)}</p>
-          </button>
-        {/each}
-      </div>
+    <SettingsRow label={$t('appearance.uiStyle')} description={$t(`appearance.uiStyle_${prefs.uiStyle}_desc`)} control="auto">
+      <SegmentedControl
+        label={$t('appearance.uiStyle')}
+        value={prefs.uiStyle}
+        options={UI_STYLE_IDS.map((id) => ({ value: id, label: $t(`appearance.uiStyle_${id}`) }))}
+        onchange={(value) => appearanceStore.update({ uiStyle: value as UiStyleId })}
+      />
     </SettingsRow>
   </SettingsSection>
 
-  <!-- Prompt Shell -->
-  <SettingsSection title={$t('appearance.promptSection')}>
-    <SettingsRow layout="stack" label={$t('appearance.composerStyle')} description={$t('appearance.composerStyleDesc')}>
-      <div class="composer-grid mt-2.5" role="radiogroup" aria-label={$t('appearance.composerStyle')}>
+  <!-- Layout -->
+  <SettingsSection title={$t('appearance.layoutSection')}>
+    <SettingsRow layout="stack" label={$t('appearance.composerStyle')} description={$t(`appearance.composer_${prefs.composerStyle}_desc`)}>
+      <div class="tile-grid is-composers" role="radiogroup" aria-label={$t('appearance.composerStyle')}>
         {#each COMPOSER_STYLE_IDS as styleId (styleId)}
           {@const selected = prefs.composerStyle === styleId}
           <button
             type="button"
             role="radio"
             aria-checked={selected}
-            class="choice-card composer-card-option"
+            class="tile"
             class:is-selected={selected}
-            onclick={() => selectComposerStyle(styleId)}
+            onclick={() => appearanceStore.update({ composerStyle: styleId })}
           >
-            <div class="wireframe-box" data-wireframe={styleId} aria-hidden="true">
-              <div class="wf-shell">
-                <div class="wf-top">
-                  {#if styleId === 'terminal'}<span class="wf-prompt">›</span>{/if}
-                  <span class="wf-line"></span>
-                  {#if styleId === 'agente' || styleId === 'terminal' || styleId === 'minimal'}
-                    <span class="wf-send"></span>
-                  {/if}
-                </div>
-                {#if styleId !== 'agente'}
-                  <div class="wf-bottom">
-                    <span class="wf-dots"><span></span><span></span></span>
-                    {#if styleId === 'pill' || styleId === 'card'}
+            <span class="tile-art wire-art" aria-hidden="true">
+              <span class="wireframe-box" data-wireframe={styleId}>
+                <span class="wf-shell">
+                  <span class="wf-top">
+                    {#if styleId === 'terminal'}<span class="wf-prompt">›</span>{/if}
+                    <span class="wf-line"></span>
+                    {#if styleId === 'agente' || styleId === 'terminal' || styleId === 'minimal'}
                       <span class="wf-send"></span>
                     {/if}
-                  </div>
+                  </span>
+                  {#if styleId !== 'agente'}
+                    <span class="wf-bottom">
+                      <span class="wf-dots"><span></span><span></span></span>
+                      {#if styleId === 'pill' || styleId === 'card'}<span class="wf-send"></span>{/if}
+                    </span>
+                  {/if}
+                </span>
+                {#if styleId === 'agente'}
+                  <span class="wf-tray"><span></span><span></span></span>
                 {/if}
-              </div>
-              {#if styleId === 'agente'}
-                <div class="wf-tray"><span></span><span></span></div>
-              {/if}
-            </div>
-
-            <div class="choice-header">
-              <span class="choice-title">{$t(`appearance.composer_${styleId}`)}</span>
-              {#if selected}<Check class="h-3.5 w-3.5 text-[var(--brand-accent)]" />{/if}
-            </div>
-            <p class="choice-desc">{$t(`appearance.composer_${styleId}_desc`)}</p>
+              </span>
+            </span>
+            <span class="tile-label">{$t(`appearance.composer_${styleId}`)}</span>
           </button>
         {/each}
       </div>
     </SettingsRow>
-  </SettingsSection>
 
-  <!-- Agent Activity -->
-  <SettingsSection title={$t('appearance.agentSection')}>
-    <SettingsRow layout="stack" label={$t('appearance.agentStyle')} description={$t('appearance.agentStyleDesc')}>
-      <div class="composer-grid mt-2.5" role="radiogroup" aria-label={$t('appearance.agentStyle')}>
+    <SettingsRow layout="stack" label={$t('appearance.agentStyle')} description={$t(`appearance.agent_${prefs.agentStyle}_desc`)}>
+      <div class="tile-grid is-agents" role="radiogroup" aria-label={$t('appearance.agentStyle')}>
         {#each AGENT_STYLE_IDS as styleId (styleId)}
           {@const selected = prefs.agentStyle === styleId}
           <button
             type="button"
             role="radio"
             aria-checked={selected}
-            class="choice-card composer-card-option"
+            class="tile"
             class:is-selected={selected}
-            onclick={() => selectAgentStyle(styleId)}
+            onclick={() => appearanceStore.update({ agentStyle: styleId })}
           >
-            <div class="agent-wf" data-agent-wf={styleId} aria-hidden="true">
-              {#if styleId === 'agente'}
-                <div class="aw-row is-header"><span class="aw-chev"></span><span class="aw-bar w-1/2"></span></div>
-                <div class="aw-rail-group">
-                  <div class="aw-row"><span class="aw-badge"></span><span class="aw-bar w-2/3"></span><span class="aw-chip"></span></div>
-                  <div class="aw-row is-live"><span class="aw-dot"></span><span class="aw-bar w-1/2"></span></div>
-                </div>
-              {:else if styleId === 'pills'}
-                <div class="aw-pills"><span class="aw-pill"></span><span class="aw-pill is-accent"></span><span class="aw-pill"></span></div>
-                <div class="aw-row is-card"><span class="aw-dot"></span><span class="aw-bar w-2/3"></span><span class="aw-chip"></span></div>
-              {:else if styleId === 'rail'}
-                <div class="aw-spine">
-                  <div class="aw-row"><span class="aw-node"></span><span class="aw-bar w-2/3"></span><span class="aw-chip"></span></div>
-                  <div class="aw-row is-live"><span class="aw-node is-accent"></span><span class="aw-bar w-1/2"></span></div>
-                </div>
-              {:else if styleId === 'spotlight'}
-                <div class="aw-row is-dim"><span class="aw-badge"></span><span class="aw-bar w-3/5"></span></div>
-                <div class="aw-row is-focus is-live"><span class="aw-dot"></span><span class="aw-bar w-2/3"></span><span class="aw-chip"></span></div>
-              {:else if styleId === 'notebook'}
-                <div class="aw-cell"><span class="aw-gutter"><span class="aw-gutter-mark"></span></span><span class="aw-bar w-3/5"></span><span class="aw-chip"></span></div>
-                <div class="aw-cell is-live"><span class="aw-gutter is-accent"><span class="aw-gutter-mark is-accent"></span></span><span class="aw-bar w-1/2"></span><span class="aw-chip"></span></div>
-              {:else if styleId === 'accented'}
-                <div class="aw-row is-bar-neutral"><span class="aw-badge"></span><span class="aw-bar w-2/3"></span><span class="aw-chip"></span></div>
-                <div class="aw-row is-bar-accent is-live"><span class="aw-dot"></span><span class="aw-bar w-1/2"></span><span class="aw-chip"></span></div>
-              {:else if styleId === 'sheet'}
-                <div class="aw-sheet">
-                  <div class="aw-row is-sheet-head"><span class="aw-chev"></span><span class="aw-bar w-1/2"></span></div>
-                  <div class="aw-row"><span class="aw-badge"></span><span class="aw-bar w-2/3"></span><span class="aw-chip"></span></div>
-                  <div class="aw-row is-live"><span class="aw-dot"></span><span class="aw-bar w-1/2"></span></div>
-                </div>
-              {:else if styleId === 'minimal'}
-                <div class="aw-row is-quiet"><span class="aw-bar w-2/3"></span><span class="aw-chip"></span></div>
-                <div class="aw-row is-live"><span class="aw-dot"></span><span class="aw-bar w-1/2"></span></div>
-              {:else}
-                <div class="aw-row is-card"><span class="aw-badge"></span><span class="aw-bar w-2/3"></span><span class="aw-chip"></span></div>
-                <div class="aw-row is-card is-running is-live"><span class="aw-dot"></span><span class="aw-bar w-1/2"></span><span class="aw-chip"></span></div>
-              {/if}
-            </div>
-
-            <div class="choice-header">
-              <span class="choice-title">{$t(`appearance.agent_${styleId}`)}</span>
-              {#if selected}<Check class="h-3.5 w-3.5 text-[var(--brand-accent)]" />{/if}
-            </div>
-            <p class="choice-desc">{$t(`appearance.agent_${styleId}_desc`)}</p>
+            <span class="tile-art wire-art" aria-hidden="true">
+              <span class="agent-wf" data-agent-wf={styleId}>
+                {#if styleId === 'feed'}
+                  <span class="aw-row"><span class="aw-stack"><span class="aw-circle"></span><span class="aw-circle"></span><span class="aw-circle"></span></span><span class="aw-bar w-1/3"></span></span>
+                  <span class="aw-row"><span class="aw-sq"></span><span class="aw-col"><span class="aw-bar is-strong w-2/3"></span><span class="aw-bar is-thin w-1/3"></span></span></span>
+                  <span class="aw-row"><span class="aw-sq"></span><span class="aw-col"><span class="aw-bar is-strong w-1/2"></span><span class="aw-bar is-thin w-2/5"></span></span></span>
+                {:else if styleId === 'files'}
+                  <span class="aw-row"><span class="aw-pill"></span><span class="aw-bar w-1/4"></span></span>
+                  <span class="aw-row aw-filled"><span class="aw-sq is-sky"></span><span class="aw-bar is-strong w-1/2"></span><span class="aw-check"></span></span>
+                  <span class="aw-row aw-filled"><span class="aw-sq is-ok"></span><span class="aw-bar is-strong w-2/5"></span><span class="aw-check"></span></span>
+                {:else if styleId === 'plan'}
+                  <span class="aw-row"><span class="aw-ring"></span><span class="aw-bar is-strong w-1/2"></span></span>
+                  <span class="aw-row"><span class="aw-check"></span><span class="aw-bar w-3/5"></span></span>
+                  <span class="aw-row"><span class="aw-circle is-accent"></span><span class="aw-bar is-strong w-1/2"></span></span>
+                {:else if styleId === 'review'}
+                  <span class="aw-row"><span class="aw-bar is-thin w-1/2"></span></span>
+                  <span class="aw-card">
+                    <span class="aw-row"><span class="aw-sq is-accent"></span><span class="aw-bar is-strong w-1/3"></span><span class="aw-pill"></span></span>
+                    <span class="aw-line is-del"></span>
+                    <span class="aw-line is-add"></span>
+                  </span>
+                {:else if styleId === 'research'}
+                  <span class="aw-row"><span class="aw-sq"></span><span class="aw-bar is-strong w-2/5"></span><span class="aw-stack aw-push"><span class="aw-circle is-sky"></span><span class="aw-circle is-violet"></span><span class="aw-circle is-ok"></span></span></span>
+                  <span class="aw-row"><span class="aw-sq"></span><span class="aw-bar is-strong w-1/3"></span></span>
+                  <span class="aw-row"><span class="aw-pill"></span><span class="aw-pill"></span><span class="aw-pill"></span></span>
+                {:else if styleId === 'timeline'}
+                  <span class="aw-log">
+                    <span class="aw-row"><span class="aw-time"></span><span class="aw-check"></span><span class="aw-bar is-strong w-1/2"></span></span>
+                    <span class="aw-row"><span class="aw-time"></span><span class="aw-check"></span><span class="aw-bar is-strong w-2/5"></span></span>
+                    <span class="aw-row"><span class="aw-time"></span><span class="aw-circle is-accent"></span><span class="aw-bar is-strong w-1/3"></span></span>
+                  </span>
+                {:else if styleId === 'tiles'}
+                  <span class="aw-tiles">
+                    <span class="aw-tile"><span class="aw-sq"></span></span>
+                    <span class="aw-tile"><span class="aw-sq is-accent"></span></span>
+                    <span class="aw-tile"><span class="aw-sq"></span></span>
+                    <span class="aw-tile"><span class="aw-sq is-ok"></span></span>
+                  </span>
+                {:else}
+                  <span class="aw-row"><span class="aw-chev"></span><span class="aw-bar w-1/2"></span></span>
+                  <span class="aw-rail">
+                    <span class="aw-row"><span class="aw-bar w-2/3"></span></span>
+                    <span class="aw-row"><span class="aw-dot"></span><span class="aw-bar is-strong w-1/2"></span></span>
+                  </span>
+                {/if}
+              </span>
+            </span>
+            <span class="tile-label">{$t(`appearance.agent_${styleId}`)}</span>
           </button>
         {/each}
       </div>
     </SettingsRow>
   </SettingsSection>
-
-  <div class="flex justify-end">
-    <Button variant="ghost" size="sm" disabled={!changed} onclick={() => appearanceStore.reset()}>
-      <RotateCcw /> {$t('appearance.reset')}
-    </Button>
-  </div>
 </SettingsPage>
 
 <style>
-  .preview-stage {
+  /* ── Preview: a miniature window ─────────────────────────────────────── */
+  .preview {
     display: flex;
-    flex-direction: column;
-    gap: 0.75rem;
-    padding: 1rem;
-    border-radius: var(--radius-xl);
-    background: var(--card);
-    border: 1px solid var(--border);
+    overflow: hidden;
+    min-height: 9.5rem;
+    border-radius: var(--float-radius);
+    background: var(--chat-bg, var(--background));
+    box-shadow: 0 0 0 1px var(--border);
   }
 
-  .preview-messages {
+  .preview-rail {
     display: flex;
+    width: 22%;
+    max-width: 9rem;
     flex-direction: column;
     gap: 0.5rem;
+    padding: 1rem 0.75rem;
+    background: var(--preview-rail);
+    border-right: 1px solid var(--sidebar-border);
+  }
+
+  .preview-rail-line {
+    height: 0.375rem;
+    border-radius: 9999px;
+    background: color-mix(in srgb, var(--foreground) 14%, transparent);
+  }
+  .preview-rail-line.is-current { background: color-mix(in srgb, var(--foreground) 30%, transparent); }
+  .preview-rail-line.is-short { width: 60%; }
+
+  .preview-canvas {
+    display: flex;
+    min-width: 0;
+    flex: 1;
+    flex-direction: column;
+    gap: 0.75rem;
+    padding: 1rem 1.25rem;
   }
 
   .preview-user-bubble {
@@ -366,64 +330,42 @@
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    font-size: var(--text-sm);
     color: var(--prose-ink);
+    font-size: var(--text-sm);
   }
 
   .preview-accent-dot {
     width: 0.5rem;
     height: 0.5rem;
+    flex: none;
     border-radius: 9999px;
     background: var(--brand-accent);
-    flex: none;
   }
 
-  .preview-composer-wrap {
-    display: flex;
-    flex-direction: column;
-    gap: 0.375rem;
-  }
+  .preview-composer { margin-top: auto; }
 
   .preview-shell {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0.5rem 0.5rem 0.875rem;
     border: 1px solid var(--composer-ring);
     border-radius: var(--composer-radius);
     background: var(--composer-surface);
-    padding: 0.5rem 0.625rem 0.5rem 0.875rem;
-    display: flex;
-    flex-direction: column;
-    gap: 0.45rem;
-    transition: border-radius var(--motion-fast) var(--motion-ease), border-color var(--motion-fast) var(--motion-ease);
+    transition: border-radius var(--motion-fast) var(--motion-ease);
   }
 
-  .preview-shell[data-preview-composer='pill'] {
-    border-radius: 1.5rem;
-    padding: 0.625rem 0.625rem 0.5rem 0.95rem;
-  }
-
-  .preview-shell[data-preview-composer='card'] {
-    border-radius: 1.05rem;
-    padding: 0.7rem 0.65rem 0.55rem 0.875rem;
-    gap: 0.65rem;
-  }
-
-  .preview-shell[data-preview-composer='terminal'] {
-    border-radius: 0.375rem;
+  .preview-composer[data-preview-composer='terminal'] .preview-shell {
     border-left: 2px solid var(--brand-accent);
     font-family: var(--font-mono);
   }
 
-  .preview-shell[data-preview-composer='minimal'] {
-    background: transparent;
+  .preview-composer[data-preview-composer='minimal'] .preview-shell {
     border-color: transparent;
-    border-bottom: 1px solid var(--brand-accent);
+    border-bottom-color: var(--brand-accent);
     border-radius: 0;
+    background: transparent;
     padding-inline: 0.25rem;
-  }
-
-  .preview-shell-input {
-    display: flex;
-    align-items: center;
-    gap: 0.4rem;
   }
 
   .preview-term-prompt {
@@ -433,235 +375,178 @@
 
   .preview-placeholder {
     flex: 1;
-    font-size: var(--text-sm);
+    min-width: 0;
+    overflow: hidden;
     color: var(--composer-placeholder);
+    font-size: var(--text-sm);
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
-  .preview-shell-bar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-  }
-
-  .preview-chips,
-  .preview-external-tray {
-    display: flex;
-    align-items: center;
-    gap: 0.375rem;
-  }
-
-  .preview-chip {
+  .preview-send {
     display: inline-flex;
-    align-items: center;
-    height: 1.25rem;
-    padding: 0 0.45rem;
-    border-radius: var(--radius-sm);
-    background: var(--accent);
-    color: var(--muted-foreground);
-    font-size: 0.7rem;
-  }
-
-  .preview-send-btn {
-    display: inline-flex;
+    width: 1.625rem;
+    height: 1.625rem;
+    flex: none;
     align-items: center;
     justify-content: center;
-    width: 1.5rem;
-    height: 1.5rem;
-    border-radius: var(--radius-sm);
+    border-radius: 9999px;
+    background: color-mix(in srgb, var(--foreground) 12%, transparent);
+    color: var(--foreground);
+    font-size: var(--text-xs);
+    font-weight: 600;
+  }
+
+  .preview-composer[data-preview-composer='card'] .preview-send {
+    border-radius: calc(var(--float-row-radius) + 0.0625rem);
+    background: var(--brand-accent);
+    color: var(--brand-accent-fg);
+  }
+
+  .preview-composer[data-preview-composer='pill'] .preview-send {
     background: var(--foreground);
     color: var(--background);
-    font-size: 0.75rem;
-    font-weight: 600;
-    flex: none;
   }
 
-  .preview-shell[data-preview-composer='pill'] .preview-send-btn {
-    border-radius: 9999px;
-  }
-
-  .preview-shell[data-preview-composer='card'] .preview-send-btn {
-    border-radius: 0.45rem;
-    background: var(--brand-accent);
-    color: #ffffff;
-  }
-
-  .theme-grid {
+  /* ── Tiles: the picture is the choice ────────────────────────────────── */
+  .tile-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(7.25rem, 1fr));
-    gap: 0.625rem;
+    gap: 1rem 0.75rem;
+    margin-top: 0.75rem;
   }
+  .tile-grid.is-themes { grid-template-columns: repeat(auto-fill, minmax(6.5rem, 1fr)); }
+  .tile-grid.is-composers { grid-template-columns: repeat(auto-fit, minmax(5.5rem, 1fr)); }
+  .tile-grid.is-agents { grid-template-columns: repeat(auto-fill, minmax(9.5rem, 1fr)); }
 
-  .theme-card {
+  .tile {
     display: flex;
+    min-width: 0;
     flex-direction: column;
-    gap: 0.45rem;
-    padding: 0.4rem;
-    border-radius: var(--radius-lg);
-    border: 1px solid var(--border);
-    background: var(--card);
+    gap: 0.5rem;
+    padding: 0;
+    border: 0;
+    background: transparent;
     text-align: left;
     cursor: pointer;
-    transition: border-color var(--motion-instant) var(--motion-ease), background-color var(--motion-instant) var(--motion-ease);
   }
 
-  .theme-card:hover {
-    border-color: var(--border-hover);
-  }
-
-  .theme-card.is-selected {
-    border-color: var(--brand-accent);
-    box-shadow: 0 0 0 1px var(--brand-accent);
-  }
-
-  .theme-swatch {
+  .tile-art {
     display: flex;
-    height: 3.1rem;
-    border-radius: calc(var(--radius-md) - 1px);
     overflow: hidden;
-    border: 1px solid rgb(128 128 128 / 0.16);
+    border-radius: var(--float-row-radius);
+    box-shadow: 0 0 0 1px var(--border);
+    transition: box-shadow var(--motion-instant) var(--motion-ease);
   }
 
-  .theme-swatch-rail {
+  .tile:hover .tile-art { box-shadow: 0 0 0 1px var(--border-hover); }
+  .tile.is-selected .tile-art { box-shadow: 0 0 0 2px var(--brand-accent); }
+  .tile:focus-visible { outline: none; }
+  .tile:focus-visible .tile-art { box-shadow: 0 0 0 2px var(--background), 0 0 0 4px var(--brand-accent); }
+
+  .tile-label {
+    overflow: hidden;
+    padding-inline: 0.125rem;
+    color: var(--text-secondary);
+    font-size: var(--text-xs);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .tile:hover .tile-label,
+  .tile.is-selected .tile-label { color: var(--foreground); }
+  .tile.is-selected .tile-label { font-weight: 500; }
+
+  .theme-art { height: 3.5rem; }
+  .theme-art-rail {
     width: 28%;
-    height: 100%;
     border-right: 1px solid rgb(128 128 128 / 0.14);
   }
-
-  .theme-swatch-canvas {
+  .theme-art-canvas {
     position: relative;
-    flex: 1;
-    padding: 0.45rem;
     display: flex;
+    flex: 1;
     flex-direction: column;
-    gap: 0.3rem;
+    gap: 0.375rem;
+    padding: 0.5rem;
   }
-
-  .theme-swatch-line {
-    width: 65%;
+  .theme-art-line {
+    width: 60%;
     height: 3px;
     border-radius: 9999px;
-    opacity: 0.55;
+    opacity: 0.6;
   }
-
-  .theme-swatch-card {
-    width: 88%;
-    height: 1rem;
+  .theme-art-card {
+    width: 90%;
+    height: 1.125rem;
     border-radius: 3px;
-    border: 1px solid rgb(128 128 128 / 0.16);
+    box-shadow: 0 0 0 1px rgb(128 128 128 / 0.16);
   }
-
-  .theme-swatch-dot {
+  .theme-art-dot {
     position: absolute;
-    right: 0.4rem;
-    top: 0.4rem;
+    top: 0.45rem;
+    right: 0.45rem;
     width: 0.45rem;
     height: 0.45rem;
     border-radius: 9999px;
   }
 
-  .theme-card-label {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding-inline: 0.2rem;
-    font-size: var(--text-xs);
-    font-weight: 500;
-    color: var(--foreground);
+  .wire-art {
+    min-height: 4.25rem;
+    flex-direction: column;
+    justify-content: center;
+    padding: 0.625rem;
+    background: var(--background);
   }
+  .wire-art .wireframe-box { margin-bottom: 0; }
 
-  .accent-row {
+  /* ── Accent dots ─────────────────────────────────────────────────────── */
+  .accent-dots {
     display: flex;
     flex-wrap: wrap;
-    gap: 0.5rem;
-  }
-
-  .accent-pill {
-    display: inline-flex;
     align-items: center;
-    gap: 0.45rem;
-    height: 2rem;
-    padding: 0 0.7rem 0 0.5rem;
-    border-radius: 9999px;
-    border: 1px solid var(--border);
-    background: var(--card);
-    color: var(--foreground);
-    font-size: var(--text-xs);
-    font-weight: 500;
-    cursor: pointer;
-    transition: border-color var(--motion-instant) var(--motion-ease), background-color var(--motion-instant) var(--motion-ease);
-  }
-
-  .accent-pill:hover {
-    border-color: var(--border-hover);
-    background: var(--surface-hover);
-  }
-
-  .accent-pill.is-selected {
-    border-color: var(--brand-accent);
-    box-shadow: 0 0 0 1px var(--brand-accent);
+    gap: 0.5rem;
   }
 
   .accent-dot {
-    width: 0.875rem;
-    height: 0.875rem;
-    border-radius: 9999px;
+    position: relative;
+    display: inline-flex;
+    width: 1.375rem;
+    height: 1.375rem;
     flex: none;
-  }
-
-  .style-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
-    gap: 0.625rem;
-  }
-
-  .composer-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr));
-    gap: 0.625rem;
-  }
-
-  .choice-card {
-    display: flex;
-    flex-direction: column;
-    gap: 0.35rem;
-    padding: 0.75rem;
-    border-radius: var(--radius-lg);
-    border: 1px solid var(--border);
-    background: var(--card);
-    text-align: left;
+    padding: 0;
+    border: 0;
+    border-radius: 9999px;
+    background: var(--dot);
+    box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.12);
     cursor: pointer;
-    transition: border-color var(--motion-instant) var(--motion-ease), background-color var(--motion-instant) var(--motion-ease);
+    transition: transform var(--motion-instant) var(--motion-ease), box-shadow var(--motion-instant) var(--motion-ease);
+  }
+  .accent-dot:hover { transform: scale(1.08); }
+  .accent-dot.is-selected,
+  .accent-dot:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 2px var(--background), 0 0 0 4px var(--dot, var(--brand-accent));
   }
 
-  .choice-card:hover {
-    border-color: var(--border-hover);
+  /* Custom: the colour well itself, ringed by a hue wheel until it is chosen. */
+  .accent-dot.is-custom {
+    overflow: visible;
+    background: conic-gradient(#e8793a, #e05d7b, #8b5cf6, #3b82f6, #2f9e73, #e5b454, #e8793a);
+  }
+  .accent-dot.is-custom.is-selected { --dot: var(--brand-accent); }
+  .accent-dot.is-custom :global(.accent-custom-input) {
+    width: 100%;
+    height: 100%;
+    border-radius: 9999px;
+    opacity: 0;
+  }
+  .accent-dot.is-custom.is-selected :global(.accent-custom-input) { opacity: 1; }
+  .accent-dot.is-custom :global(.accent-custom-input::-webkit-color-swatch-wrapper) { padding: 0; }
+  .accent-dot.is-custom :global(.accent-custom-input::-webkit-color-swatch) {
+    border: 0;
+    border-radius: 9999px;
   }
 
-  .choice-card.is-selected {
-    border-color: var(--brand-accent);
-    box-shadow: 0 0 0 1px var(--brand-accent);
-  }
-
-  .choice-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.5rem;
-  }
-
-  .choice-title {
-    font-size: var(--text-sm);
-    font-weight: 500;
-    color: var(--foreground);
-  }
-
-  .choice-desc {
-    margin: 0;
-    font-size: var(--text-xs);
-    color: var(--muted-foreground);
-    line-height: 1.4;
-  }
-
+  /* ── Wireframes (composer and work layouts) ──────────────────────────── */
   .wireframe-box {
     display: flex;
     flex-direction: column;
@@ -759,44 +644,124 @@
 
   .agent-wf {
     display: flex;
+    min-height: 3.75rem;
     flex-direction: column;
     justify-content: center;
     gap: 0.3rem;
-    min-height: 3.15rem;
-    padding: 0.4rem 0.45rem;
-    border-radius: 0.45rem;
-    background: var(--background);
-    border: 1px solid var(--border-subtle);
-  }
-  .agent-wf[data-agent-wf='minimal'] {
-    background: transparent;
-    border-color: transparent;
-  }
-  .agent-wf[data-agent-wf='sheet'] {
-    padding: 0.35rem 0.4rem;
   }
   .aw-row {
     display: flex;
+    min-width: 0;
     align-items: center;
-    gap: 0.32rem;
+    gap: 0.3rem;
   }
-  .aw-row.is-dim {
-    opacity: 0.48;
+  .aw-col {
+    display: flex;
+    min-width: 0;
+    flex: 1;
+    flex-direction: column;
+    gap: 0.18rem;
   }
-  .aw-row.is-quiet {
-    opacity: 0.72;
+  .aw-bar {
+    height: 3.5px;
+    border-radius: 9999px;
+    background: color-mix(in srgb, var(--foreground) 22%, transparent);
   }
+  .aw-bar.is-strong { background: color-mix(in srgb, var(--foreground) 45%, transparent); }
+  .aw-bar.is-thin { height: 2.5px; }
+  .aw-sq {
+    width: 0.85rem;
+    height: 0.85rem;
+    flex: none;
+    border-radius: 0.22rem;
+    background: color-mix(in srgb, var(--foreground) 12%, transparent);
+  }
+  .aw-circle,
+  .aw-check {
+    width: 0.6rem;
+    height: 0.6rem;
+    flex: none;
+    border-radius: 9999px;
+    background: color-mix(in srgb, var(--foreground) 18%, transparent);
+  }
+  .aw-check { background: var(--success); }
+  .aw-stack { display: inline-flex; }
+  .aw-stack .aw-circle { box-shadow: 0 0 0 1.5px var(--background); }
+  .aw-stack .aw-circle + .aw-circle { margin-left: -0.22rem; }
+  .aw-push { margin-left: auto; }
+  .aw-sq.is-sky, .aw-circle.is-sky { background: color-mix(in srgb, var(--accent-sky) 45%, transparent); }
+  .aw-circle.is-violet { background: color-mix(in srgb, var(--accent-violet) 45%, transparent); }
+  .aw-sq.is-ok, .aw-circle.is-ok { background: color-mix(in srgb, var(--success) 45%, transparent); }
+  .aw-sq.is-accent, .aw-circle.is-accent { background: color-mix(in srgb, var(--brand-accent) 55%, transparent); }
+  .aw-pill {
+    width: 1.4rem;
+    height: 0.45rem;
+    flex: none;
+    border-radius: 9999px;
+    background: color-mix(in srgb, var(--foreground) 12%, transparent);
+  }
+  .aw-row .aw-pill:last-child:not(:first-child) { margin-left: auto; }
+  .aw-filled {
+    padding: 0.15rem 0.25rem;
+    border-radius: 0.25rem;
+    background: color-mix(in srgb, var(--foreground) 5%, transparent);
+  }
+  .aw-filled .aw-check { margin-left: auto; }
+  .aw-ring {
+    width: 0.85rem;
+    height: 0.85rem;
+    flex: none;
+    border: 2px solid var(--success);
+    border-right-color: color-mix(in srgb, var(--foreground) 15%, transparent);
+    border-radius: 9999px;
+  }
+  .aw-card {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    border-radius: 0.3rem;
+    background: var(--card);
+  }
+  .aw-card > .aw-row { padding: 0.18rem 0.25rem; }
+  .aw-line { height: 0.32rem; }
+  .aw-line.is-del { background: color-mix(in srgb, var(--error) 30%, transparent); }
+  .aw-line.is-add { background: color-mix(in srgb, var(--success) 30%, transparent); }
+  .aw-log {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+  }
+  .aw-time {
+    width: 0.55rem;
+    height: 2.5px;
+    flex: none;
+    border-radius: 9999px;
+    background: color-mix(in srgb, var(--foreground) 22%, transparent);
+  }
+  .aw-tiles {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.22rem;
+  }
+  .aw-tile {
+    display: flex;
+    height: 1.2rem;
+    padding: 0.18rem;
+    border-radius: 0.25rem;
+    background: color-mix(in srgb, var(--foreground) 6%, transparent);
+  }
+  .aw-tile .aw-sq { width: 0.5rem; height: 0.5rem; }
   .aw-chev {
     width: 0.3rem;
     height: 0.3rem;
+    flex: none;
+    margin-left: 0.1rem;
     border-right: 1.25px solid var(--muted-foreground);
     border-bottom: 1.25px solid var(--muted-foreground);
     transform: rotate(45deg);
-    opacity: 0.6;
-    flex: none;
-    margin-left: 0.1rem;
   }
-  .aw-rail-group {
+  .aw-rail {
     display: flex;
     flex-direction: column;
     gap: 0.25rem;
@@ -804,169 +769,11 @@
     padding-left: 0.45rem;
     border-left: 1px solid var(--border-hover);
   }
-  .aw-row.is-card {
-    position: relative;
-    overflow: hidden;
-    padding: 0.22rem 0.35rem;
-    border-radius: 0.35rem;
-    background: var(--card);
-    border: 1px solid var(--border-subtle);
-  }
-  .aw-row.is-card.is-running {
-    border-color: color-mix(in srgb, var(--brand-accent) 45%, var(--border-subtle));
-  }
-  .aw-row.is-card.is-running::before,
-  .aw-row.is-focus::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 12%;
-    width: 42%;
-    height: 1.5px;
-    background: var(--brand-accent);
-  }
-  .aw-row.is-focus {
-    position: relative;
-    overflow: hidden;
-    padding: 0.26rem 0.4rem;
-    border-radius: 0.4rem;
-    background: var(--card);
-    border: 1px solid color-mix(in srgb, var(--brand-accent) 50%, var(--border-subtle));
-    box-shadow: 0 2px 8px rgb(0 0 0 / 0.12);
-  }
-  .aw-spine {
-    display: flex;
-    flex-direction: column;
-    gap: 0.32rem;
-    margin-left: 0.45rem;
-    padding-left: 0.55rem;
-    border-left: 1.5px solid var(--border-hover);
-  }
-  .aw-node {
-    width: 0.58rem;
-    height: 0.58rem;
-    margin-left: calc(-0.55rem - 0.29rem - 0.75px);
-    border-radius: 9999px;
-    border: 1px solid var(--border-hover);
-    background: var(--card);
-    box-shadow: 0 0 0 2px var(--background);
-    flex: none;
-  }
-  .aw-node.is-accent {
-    border-color: var(--brand-accent);
-    background: color-mix(in srgb, var(--brand-accent) 18%, var(--card));
-  }
-  .aw-row.is-bar-neutral,
-  .aw-row.is-bar-accent {
-    padding: 0.22rem 0.35rem;
-    border-radius: 0 0.35rem 0.35rem 0;
-    background: var(--card);
-    border: 1px solid var(--border-subtle);
-    border-left: 2.5px solid color-mix(in srgb, var(--foreground) 25%, transparent);
-  }
-  .aw-row.is-bar-accent {
-    border-left-color: var(--brand-accent);
-  }
-  .aw-cell {
-    display: flex;
-    align-items: center;
-    gap: 0.35rem;
-    padding-right: 0.35rem;
-    border-radius: 0.32rem;
-    background: var(--card);
-    border: 1px solid var(--border-subtle);
-    overflow: hidden;
-  }
-  .aw-gutter {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 1.15rem;
-    height: 0.95rem;
-    background: color-mix(in srgb, var(--foreground) 3%, var(--background));
-    border-right: 1px solid var(--border-subtle);
-    flex: none;
-  }
-  .aw-gutter.is-accent {
-    background: color-mix(in srgb, var(--brand-accent) 10%, var(--background));
-  }
-  .aw-gutter-mark {
-    width: 0.5rem;
-    height: 2.5px;
-    border-radius: 9999px;
-    background: var(--muted-foreground);
-    opacity: 0.55;
-  }
-  .aw-gutter-mark.is-accent {
-    background: var(--brand-accent);
-    opacity: 0.9;
-  }
-  .aw-sheet {
-    display: flex;
-    flex-direction: column;
-    border-radius: 0.38rem;
-    background: var(--card);
-    border: 1px solid var(--border-subtle);
-    overflow: hidden;
-  }
-  .aw-sheet .aw-row {
-    padding: 0.18rem 0.35rem;
-    border-bottom: 1px solid var(--border-subtle);
-  }
-  .aw-sheet .aw-row.is-sheet-head {
-    background: color-mix(in srgb, var(--foreground) 3%, transparent);
-  }
-  .aw-sheet .aw-row:last-child {
-    border-bottom: 0;
-  }
-  .aw-pills {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.25rem;
-  }
-  .aw-pill {
-    width: 1.75rem;
-    height: 0.55rem;
-    border-radius: 9999px;
-    background: var(--card);
-    border: 1px solid var(--border-subtle);
-  }
-  .aw-pill.is-accent {
-    border-color: color-mix(in srgb, var(--brand-accent) 55%, var(--border-subtle));
-    background: color-mix(in srgb, var(--brand-accent) 8%, var(--card));
-  }
-  .aw-badge {
-    width: 0.42rem;
-    height: 0.42rem;
-    border-radius: 2px;
-    background: var(--muted-foreground);
-    opacity: 0.45;
-    flex: none;
-  }
   .aw-dot {
     width: 0.375rem;
     height: 0.375rem;
+    flex: none;
     border-radius: 9999px;
     background: var(--brand-accent);
-    flex: none;
-  }
-  .aw-bar {
-    height: 3.5px;
-    border-radius: 9999px;
-    background: var(--muted-foreground);
-    opacity: 0.35;
-  }
-  .aw-row.is-live .aw-bar,
-  .aw-cell.is-live .aw-bar {
-    background: var(--foreground);
-    opacity: 0.55;
-  }
-  .aw-chip {
-    margin-left: auto;
-    width: 1rem;
-    height: 0.32rem;
-    border-radius: 9999px;
-    background: var(--muted-foreground);
-    opacity: 0.22;
   }
 </style>

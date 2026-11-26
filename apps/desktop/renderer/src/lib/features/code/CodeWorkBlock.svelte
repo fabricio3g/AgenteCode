@@ -16,10 +16,22 @@
   import { formatToolDuration } from '$lib/utils/tool-ui';
   import { activitySummary } from './activity';
   import { changedFiles, isRunning, needsAttention, workBlockKey, type WorkItem } from './work-blocks';
-  import { disclosureKey } from './disclosure-state.svelte';
+  import { disclosure, disclosureKey } from './disclosure-state.svelte';
+  import { appearanceStore } from '$lib/stores/appearance.svelte';
+  import { workEntries, workTotals, type WorkEntry } from './work-layouts';
   import CodeStepRow from './CodeStepRow.svelte';
   import CodeThoughtRow from './CodeThoughtRow.svelte';
   import Disclosure from './Disclosure.svelte';
+  import FeedLayout from './work-layouts/FeedLayout.svelte';
+  import FilesLayout from './work-layouts/FilesLayout.svelte';
+  import PlanLayout from './work-layouts/PlanLayout.svelte';
+  import ResearchLayout from './work-layouts/ResearchLayout.svelte';
+  import ReviewLayout from './work-layouts/ReviewLayout.svelte';
+  import TilesLayout from './work-layouts/TilesLayout.svelte';
+  import TimelineLayout from './work-layouts/TimelineLayout.svelte';
+
+  /** Settings → Appearance → Agent work: every layout but Agente's own rail. */
+  const LAYOUTS = { feed: FeedLayout, files: FilesLayout, plan: PlanLayout, review: ReviewLayout, research: ResearchLayout, timeline: TimelineLayout, tiles: TilesLayout };
 
   let {
     items,
@@ -100,6 +112,11 @@
   });
 
   const lastKey = $derived(visible.at(-1)?.key);
+
+  const Layout = $derived(LAYOUTS[appearanceStore.prefs.agentStyle as keyof typeof LAYOUTS]);
+  const entries = $derived(workEntries(folded));
+  const totals = $derived(workTotals(entries));
+  const entryKey = (entry: WorkEntry) => disclosureKey(chatId, messageId, entry.key);
 </script>
 
 {#snippet row(item: WorkItem)}
@@ -121,8 +138,30 @@
   {/if}
 {/snippet}
 
+{#snippet detail(item: WorkItem)}
+  {#if item.step}
+    <CodeStepRow step={item.step} {chatId} {children} {onstop} {codeActions} bare id={disclosureKey(chatId, messageId, item.key)} />
+  {/if}
+{/snippet}
+
 {#if folded.length === 1}
   <div class="work work-single min-w-0">{@render row(folded[0])}</div>
+{:else if folded.length && Layout}
+  <div class="work work-layout min-w-0">
+    <Layout
+      {entries}
+      {totals}
+      {line}
+      {span}
+      {live}
+      open={disclosure.isOpen(id, defaultOpen)}
+      ontoggle={() => disclosure.toggle(id, defaultOpen)}
+      {row}
+      {detail}
+      isOpen={(entry) => disclosure.isOpen(entryKey(entry), false)}
+      toggleEntry={(entry) => disclosure.toggle(entryKey(entry), false)}
+    />
+  </div>
 {:else if folded.length}
   <div class="work work-multi min-w-0">
     <Disclosure {id} level="block" chevron="leading" {defaultOpen}>

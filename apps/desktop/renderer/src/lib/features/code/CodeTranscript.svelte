@@ -297,7 +297,7 @@
 <div bind:this={viewport} class="conversation-scroll relative min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden px-4 pb-4 pt-6" use:pauseOnScrollIntent={follow} onwheel={() => (timelineBrowsing = false)} onscroll={onScroll}>
   <div class="mx-auto flex min-w-0 flex-col gap-[var(--thread-gap)]" style="max-width: var(--thread-width);" use:followContentGrowth>
     {#each messages as message, messageIndex (message.id)}
-      <div class="code-message-slot" class:is-live={message.status === 'streaming'}>
+      <div class="code-message-slot" class:is-live={message.status === 'streaming'} class:is-turn-start={messageIndex > 0 && message.role === 'user'}>
       <DeferredMessage content={message.content} immediate={messages.length < 60 || messageIndex >= messages.length - 6 || message.status === 'streaming'}>
       {#if message.role === 'user'}
         {@const queued = !!message.metadata?.codeQueued && !!run?.running}
@@ -484,6 +484,9 @@
 
   .code-message-slot { min-width: 0; content-visibility: auto; contain-intrinsic-size: auto 120px; }
   .code-message-slot.is-live { content-visibility: visible; }
+  /* Law of Proximity: a prompt binds to its own run, so the space before a new
+     turn is wider than the steady `--thread-gap` inside one. */
+  .code-message-slot.is-turn-start { margin-top: 1.5rem; }
   /* One quiet line per turn; hover lifts it like any row that opens a pane. */
   :global(.subagent-line.ui-local-3e9cc53a){ display: inline-flex; align-self: flex-start; align-items: center; gap: 0.375rem; height: 1.75rem; margin-inline: -0.5rem; padding: 0 0.5rem; border: 0; border-radius: var(--radius-full); background: none; color: var(--muted-foreground); font: inherit; font-size: var(--text-xs); font-variant-numeric: tabular-nums; cursor: pointer; transition: background-color var(--motion-instant) var(--motion-ease); }
   :global(.subagent-line.ui-local-3e9cc53a:hover){ background: var(--float-row-hover); }

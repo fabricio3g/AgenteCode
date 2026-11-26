@@ -56,7 +56,7 @@
 <div class={cn('settings-row', density === 'compact' && 'is-compact', align === 'start' && 'is-start', layout === 'stack' && 'is-stack', className)}>
   <div class="settings-row-text">
     {#if tile}<span class="settings-row-tile">{@render tile()}</span>{/if}
-    <div class="min-w-0 space-y-0.5">
+    <div class="min-w-0 space-y-1">
       <label class="settings-row-label" for={htmlFor}>{label}</label>
       {#if description}<p class="settings-row-description">{description}</p>{/if}
       {#if error}<p class="text-xs text-error" role="alert">{error}</p>{/if}
@@ -72,10 +72,10 @@
      between rows, so the row itself draws no border. */
   .settings-row {
     display: flex;
-    min-height: 3.25rem;
+    min-height: 3.5rem;
     flex-direction: column;
     gap: 0.75rem;
-    padding: 0.875rem 0;
+    padding: 1rem 0;
   }
 
   .settings-row.is-compact { min-height:0; padding:0; gap:0.5rem; }
@@ -87,10 +87,12 @@
     font-weight: 500;
   }
 
+  /* A short measure keeps the note a glance, not a paragraph to read. */
   .settings-row-description {
+    max-width: 56ch;
     color: var(--muted-foreground);
     font-size: var(--text-xs);
-    line-height: 1.5;
+    line-height: 1.55;
   }
 
   @media (min-width: 640px) {
@@ -98,7 +100,7 @@
       flex-direction: row;
       align-items: center;
       justify-content: space-between;
-      gap: 1.5rem;
+      gap: 2rem;
     }
     .settings-row.is-start { align-items: flex-start; }
   }
