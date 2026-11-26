@@ -9,7 +9,30 @@
 // error on the side that has not caught up, instead of a silent drift
 // between two hand-synced copies.
 
-import type { RuntimeEvent } from './agente-protocol.gen';
+import type {
+  ApprovalOption,
+  DriverCapabilities,
+  DriverInfo,
+  DriverInstanceConfig,
+  DriverKind,
+  DriverModel,
+  DriverStatus,
+  RuntimeEvent,
+  SessionWorktree,
+  TurnMode
+} from './agente-protocol.gen';
+
+export type {
+  ApprovalOption,
+  DriverCapabilities,
+  DriverInfo,
+  DriverInstanceConfig,
+  DriverKind,
+  DriverModel,
+  DriverStatus,
+  SessionWorktree,
+  TurnMode
+};
 
 /** How much autonomy the runtime has: plan-first, per-action approval, or free rein. */
 export type AgenteRuntimeMode = 'full' | 'supervised' | 'plan';
@@ -76,7 +99,10 @@ export function normalizeHomeRuntimeMode(
 }
 
 /** Answer to an `approval_request`. */
-export type ApprovalDecision = 'allow' | 'deny';
+export type ApprovalDecision = 'allow' | 'allow_all' | 'deny';
+
+/** Answer to an `input_request`. */
+export type InputResponseAction = 'accept' | 'decline' | 'cancel';
 
 export type CodeStopReason = 'stop' | 'toolUse' | 'length' | 'error' | 'aborted';
 
@@ -132,6 +158,7 @@ export interface SwarmCard {
   instructions?: string;
   capability: 'read-only' | 'read-write' | 'execute' | 'all';
   model?: string;
+  instance_id?: string | null;
   prompt: string;
   depends_on?: string[];
   owns?: string[];
@@ -253,8 +280,13 @@ export type CodeAgentEvent =
   | { type: 'board_update'; chatId: string; board: SwarmBoard }
   | { type: 'compaction_start'; chatId: string; reason: string; model?: string | null }
   | { type: 'compaction_end'; chatId: string; reason: string; success: boolean; tokensBefore?: number; tokensAfter?: number; summary?: string; smart?: boolean; requestedSmart?: boolean; modelTokens?: number; inputTokens?: number; outputTokens?: number; cacheReadTokens?: number; cacheWriteTokens?: number }
-  | { type: 'approval_request'; chatId: string; requestId: string; toolName: string; args: unknown; diff?: string; kind?: 'action' | 'plan'; dangerous?: boolean; reason?: string }
+  | { type: 'approval_request'; chatId: string; requestId: string; toolName: string; args: unknown; diff?: string; kind?: 'action' | 'plan'; dangerous?: boolean; reason?: string; options?: ApprovalOption[] }
   | { type: 'approval_resolved'; chatId: string; requestId: string; decision: ApprovalDecision }
+  | { type: 'input_request'; chatId: string; requestId: string; message: string; toolCallId?: string; schema: Record<string, unknown> }
+  | { type: 'input_resolved'; chatId: string; requestId: string; action: InputResponseAction }
+  | { type: 'mode_changed'; chatId: string; mode: TurnMode }
+  | { type: 'model_changed'; chatId: string; model: string; provider?: string | null }
+  | { type: 'usage_limit_reached'; chatId: string; message: string; resetAt?: string | null }
   | { type: 'checkpoint_captured'; chatId: string; turnIndex: number; fileCount: number }
   | {
       type: 'checkpoint_finalized';
@@ -295,6 +327,8 @@ export interface AgenteStartSessionArgs {
   model: string;
   thinkingLevel?: string;
   runtimeMode: AgenteRuntimeMode;
+  instanceId?: string;
+  worktree?: SessionWorktree | null;
   systemPromptOverride?: string;
   resumeSessionId?: string;
   checkpointsEnabled?: boolean;
@@ -313,3 +347,45 @@ export interface AgenteCheckpointSummary {
 
 /** Alias kept for renderer code that imports CodeCheckpointSummary. */
 export type CodeCheckpointSummary = AgenteCheckpointSummary;
+
+/** Active Git worktree entry returned by `worktree.list`. */
+export interface ListedWorktree {
+  repo_root: string;
+  path: string;
+  branch: string;
+  base_commit: string;
+  dirty: boolean;
+  changed_files: string[];
+}
+
+/** Result returned by `worktree.merge`. */
+export type MergeWorktreeResult =
+  | { merged: true; commit: string; removed: boolean }
+  | { merged: false; conflicts: string[] };
+
+/** Summary returned by `orchestrator.status`. */
+export interface OrchestratorStatus {
+  enabled: boolean;
+  mcp_url?: string;
+  max_depth?: number;
+  max_concurrent?: number;
+  active_tasks?: number;
+  total_tasks?: number;
+  scoped_sessions?: number;
+}
+
+/** Child agent task summary returned by `orchestrator.tasks`. */
+export interface OrchestratorTaskSummary {
+  task_id: string;
+  parent_session_id: string;
+  child_session_id: string;
+  turn_id?: string;
+  instance_id: string;
+  mode?: string;
+  depth?: number;
+  status: string;
+  tokens?: number;
+  worktree?: (SessionWorktree & { changed_files?: string[] }) | null;
+  summary?: string | null;
+  error?: string | null;
+}

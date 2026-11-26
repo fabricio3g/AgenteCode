@@ -2,10 +2,16 @@
 
 pub mod rpc;
 
+use std::collections::BTreeMap;
+
 use chrono::{DateTime, Utc};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
+
+fn default_true() -> bool {
+    true
+}
 
 /// 2: turn options (profile, mode, origin, project), steering without
 /// cancelling, per-call spend, compaction and generation progress events.
@@ -302,6 +308,159 @@ pub struct StartTurn {
     /// Replaces the runtime's system prompt for a session that has none yet.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub system_prompt: Option<String>,
+    /// Driver instance id (`"agente"` by default, or an external CLI instance).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub instance_id: Option<String>,
+    /// Isolated Git worktree assigned to this session, if any.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub worktree: Option<SessionWorktree>,
+}
+
+/// Wire protocol family backing a driver instance.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum DriverKind {
+    Agente,
+    Acp,
+    Claude,
+    Codex,
+    #[serde(rename = "opencode")]
+    OpenCode,
+    Pi,
+}
+
+/// Passive readiness state reported for a driver instance.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum DriverStatus {
+    Ready,
+    Missing,
+    NeedsAuth,
+    Disabled,
+    Error,
+}
+
+/// A model offered or overridden on a driver instance.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct DriverModel {
+    pub id: String,
+    pub label: String,
+    #[serde(default)]
+    pub is_default: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub thinking_levels: Vec<String>,
+}
+
+/// Features natively supported by a driver instance.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize, JsonSchema)]
+pub struct DriverCapabilities {
+    pub models: bool,
+    pub thinking: bool,
+    #[serde(default)]
+    pub modes: Vec<TurnMode>,
+    pub native_plan_cards: bool,
+    pub approvals: bool,
+    pub steer: bool,
+    pub resume: bool,
+    pub fork: bool,
+    pub compact: bool,
+    pub rewind_conversation: bool,
+    pub mcp_injection: bool,
+    pub session_import: bool,
+    #[serde(default)]
+    pub attachments: Vec<AttachmentKind>,
+    pub usage: bool,
+    pub cost: bool,
+}
+
+/// User-configured driver instance or profile extending a built-in driver.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct DriverInstanceConfig {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub extends: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub driver_kind: Option<DriverKind>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub command: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub args: Vec<String>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub env: BTreeMap<String, String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub strip_env: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub models: Vec<DriverModel>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default_mode: Option<TurnMode>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub use_for: Option<String>,
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+}
+
+impl Default for DriverInstanceConfig {
+    fn default() -> Self {
+        Self {
+            extends: None,
+            driver_kind: None,
+            label: None,
+            command: Vec::new(),
+            args: Vec::new(),
+            env: BTreeMap::new(),
+            strip_env: Vec::new(),
+            models: Vec::new(),
+            default_mode: None,
+            use_for: None,
+            enabled: true,
+        }
+    }
+}
+
+/// Live probe descriptor of a configured or built-in driver instance.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct DriverInfo {
+    pub instance_id: String,
+    pub driver_kind: DriverKind,
+    pub label: String,
+    pub status: DriverStatus,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub version: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub binary_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub auth_hint: Option<String>,
+    #[serde(default)]
+    pub builtin: bool,
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub use_for: Option<String>,
+    pub capabilities: DriverCapabilities,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub models: Vec<DriverModel>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub config: Option<DriverInstanceConfig>,
+}
+
+/// A native approval option offered by a driver.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct ApprovalOption {
+    pub id: String,
+    pub label: String,
+    pub kind: ApprovalDecisionKind,
+}
+
+/// Isolated Git worktree metadata attached to a session.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct SessionWorktree {
+    pub repo_root: String,
+    pub path: String,
+    pub branch: String,
+    pub base_commit: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -322,6 +481,25 @@ pub enum ApprovalDecisionKind {
 pub struct ApprovalDecision {
     pub request_id: String,
     pub decision: ApprovalDecisionKind,
+    /// Native option ID returned by an external driver when explicit options were provided.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub option_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum InputResponseAction {
+    Accept,
+    Decline,
+    Cancel,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct InputResponse {
+    pub request_id: String,
+    pub action: InputResponseAction,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub content: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
@@ -384,6 +562,16 @@ pub enum RuntimeEvent {
         /// The subagent asking, when it is not the turn's own loop.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         child_run_id: Option<RunId>,
+        /// Native approval options offered by an external driver, when available.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        options: Vec<ApprovalOption>,
+    },
+    InputRequested {
+        request_id: String,
+        message: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        tool_call_id: Option<String>,
+        schema: serde_json::Value,
     },
     FileChanged {
         path: String,
@@ -509,6 +697,22 @@ pub enum RuntimeEvent {
     Diagnostic {
         message: String,
     },
+    /// An active session switched permission mode.
+    ModeChanged {
+        mode: TurnMode,
+    },
+    /// An active session updated its resolved model.
+    ModelChanged {
+        model: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        provider: Option<String>,
+    },
+    /// A provider or external CLI reported a quota or rate-limit reset window.
+    UsageLimitReached {
+        message: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        reset_at: Option<String>,
+    },
     TurnFinished {
         revision: u64,
     },
@@ -592,6 +796,18 @@ pub struct SessionInfo {
     /// The bot or client preset the session belongs to.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub profile: Option<String>,
+    /// Driver instance id backing this session (`"agente"` when absent).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub instance_id: Option<String>,
+    /// Driver protocol kind backing this session.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub driver_kind: Option<DriverKind>,
+    /// Native thread or session id tracked by an external driver for resume.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub external_session_id: Option<String>,
+    /// Isolated Git worktree bound to this session, if any.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub worktree: Option<SessionWorktree>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -613,11 +829,15 @@ pub fn protocol_schema() -> serde_json::Value {
     generator.subschema_for::<ClientToolResult>();
     generator.subschema_for::<UserInput>();
     generator.subschema_for::<ApprovalDecision>();
+    generator.subschema_for::<InputResponse>();
     generator.subschema_for::<RuntimeEventEnvelope>();
     generator.subschema_for::<TurnOutcome>();
     generator.subschema_for::<SessionSnapshot>();
     generator.subschema_for::<ChildSnapshot>();
     generator.subschema_for::<SessionInfo>();
+    generator.subschema_for::<DriverInfo>();
+    generator.subschema_for::<DriverInstanceConfig>();
+    generator.subschema_for::<SessionWorktree>();
     let definitions = generator.take_definitions();
     serde_json::json!({
         "$schema": "http://json-schema.org/draft-07/schema#",

@@ -72,6 +72,9 @@ pub struct Card {
     /// A name from the user's subagent model list, or `main`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
+    /// Driver instance id targeting a specific CLI backend (e.g. `"claude"`, `"codex"`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub instance_id: Option<String>,
     pub prompt: String,
     /// Card ids this card waits for.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -165,6 +168,8 @@ pub struct CardSpec {
     pub capability_mode: Option<SubagentCapabilityMode>,
     #[serde(default)]
     pub model: Option<String>,
+    #[serde(default)]
+    pub instance_id: Option<String>,
     pub prompt: String,
     /// Ids (`c1`) or titles of cards this one waits for — earlier cards in
     /// the same call included.
@@ -390,6 +395,10 @@ impl Board {
                 capability,
                 model: spec
                     .model
+                    .map(|text| text.trim().to_string())
+                    .filter(|text| !text.is_empty()),
+                instance_id: spec
+                    .instance_id
                     .map(|text| text.trim().to_string())
                     .filter(|text| !text.is_empty()),
                 prompt,
@@ -1070,6 +1079,7 @@ impl crate::tools::Tool for BoardTool {
                             "role": { "type": "string", "description": "Who the subagent created for it is." },
                             "instructions": { "type": "string" },
                             "capability_mode": { "type": "string", "enum": ["read-only", "read-write", "execute"] },
+                            "instance_id": { "type": "string", "description": "Driver instance id such as \"agente\", \"claude\", \"codex\", or a custom ACP instance." },
                             "prompt": { "type": "string", "description": "Everything the subagent needs: it sees nothing else." },
                             "depends_on": { "type": "array", "items": { "type": "string" } },
                             "owns": { "type": "array", "items": { "type": "string" } }
@@ -1124,6 +1134,7 @@ mod tests {
             instructions: None,
             capability_mode: writer.then_some(SubagentCapabilityMode::ReadWrite),
             model: Some("scout".into()),
+            instance_id: None,
             prompt: format!("do {title}"),
             depends_on: deps.iter().map(|d| d.to_string()).collect(),
             owns: owns.iter().map(|o| o.to_string()).collect(),
@@ -1425,5 +1436,24 @@ mod tests {
             &[serde_json::json!("scout"), serde_json::json!("main")]
         );
         assert!(with_menu.description().contains("Models you can assign"));
+    }
+
+    #[test]
+    fn card_instance_id_round_trips_through_board_add_and_json() {
+        let mut board = Board::default();
+        let spec: CardSpec = serde_json::from_value(serde_json::json!({
+            "title": "Audit API",
+            "role": "Reviewer",
+            "instance_id": "  claude-work  ",
+            "prompt": "Review the changes"
+        }))
+        .unwrap();
+        let ids = board.add(vec![spec]).unwrap();
+        assert_eq!(ids, ["c1"]);
+        assert_eq!(board.cards[0].instance_id.as_deref(), Some("claude-work"));
+
+        let json = serde_json::to_string(&board).unwrap();
+        let restored: Board = serde_json::from_str(&json).unwrap();
+        assert_eq!(restored.cards[0].instance_id.as_deref(), Some("claude-work"));
     }
 }

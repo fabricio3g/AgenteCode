@@ -6,6 +6,13 @@
         "decision": {
           "$ref": "#/definitions/ApprovalDecisionKind"
         },
+        "option_id": {
+          "description": "Native option ID returned by an external driver when explicit options were provided.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "request_id": {
           "type": "string"
         }
@@ -24,6 +31,26 @@
         "cancel"
       ],
       "type": "string"
+    },
+    "ApprovalOption": {
+      "description": "A native approval option offered by a driver.",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/definitions/ApprovalDecisionKind"
+        },
+        "label": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "label"
+      ],
+      "type": "object"
     },
     "Attachment": {
       "properties": {
@@ -181,6 +208,289 @@
       ],
       "type": "object"
     },
+    "DriverCapabilities": {
+      "description": "Features natively supported by a driver instance.",
+      "properties": {
+        "approvals": {
+          "type": "boolean"
+        },
+        "attachments": {
+          "default": [],
+          "items": {
+            "$ref": "#/definitions/AttachmentKind"
+          },
+          "type": "array"
+        },
+        "compact": {
+          "type": "boolean"
+        },
+        "cost": {
+          "type": "boolean"
+        },
+        "fork": {
+          "type": "boolean"
+        },
+        "mcp_injection": {
+          "type": "boolean"
+        },
+        "models": {
+          "type": "boolean"
+        },
+        "modes": {
+          "default": [],
+          "items": {
+            "$ref": "#/definitions/TurnMode"
+          },
+          "type": "array"
+        },
+        "native_plan_cards": {
+          "type": "boolean"
+        },
+        "resume": {
+          "type": "boolean"
+        },
+        "rewind_conversation": {
+          "type": "boolean"
+        },
+        "session_import": {
+          "type": "boolean"
+        },
+        "steer": {
+          "type": "boolean"
+        },
+        "thinking": {
+          "type": "boolean"
+        },
+        "usage": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "approvals",
+        "compact",
+        "cost",
+        "fork",
+        "mcp_injection",
+        "models",
+        "native_plan_cards",
+        "resume",
+        "rewind_conversation",
+        "session_import",
+        "steer",
+        "thinking",
+        "usage"
+      ],
+      "type": "object"
+    },
+    "DriverInfo": {
+      "description": "Live probe descriptor of a configured or built-in driver instance.",
+      "properties": {
+        "auth_hint": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "binary_path": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "builtin": {
+          "default": false,
+          "type": "boolean"
+        },
+        "capabilities": {
+          "$ref": "#/definitions/DriverCapabilities"
+        },
+        "config": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/DriverInstanceConfig"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "driver_kind": {
+          "$ref": "#/definitions/DriverKind"
+        },
+        "enabled": {
+          "default": true,
+          "type": "boolean"
+        },
+        "error": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "instance_id": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "models": {
+          "items": {
+            "$ref": "#/definitions/DriverModel"
+          },
+          "type": "array"
+        },
+        "status": {
+          "$ref": "#/definitions/DriverStatus"
+        },
+        "use_for": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "version": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "capabilities",
+        "driver_kind",
+        "instance_id",
+        "label",
+        "status"
+      ],
+      "type": "object"
+    },
+    "DriverInstanceConfig": {
+      "description": "User-configured driver instance or profile extending a built-in driver.",
+      "properties": {
+        "args": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "command": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "default_mode": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/TurnMode"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "driver_kind": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/DriverKind"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "enabled": {
+          "default": true,
+          "type": "boolean"
+        },
+        "env": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "extends": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "label": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "models": {
+          "items": {
+            "$ref": "#/definitions/DriverModel"
+          },
+          "type": "array"
+        },
+        "strip_env": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "use_for": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "DriverKind": {
+      "description": "Wire protocol family backing a driver instance.",
+      "enum": [
+        "agente",
+        "acp",
+        "claude",
+        "codex",
+        "opencode",
+        "pi"
+      ],
+      "type": "string"
+    },
+    "DriverModel": {
+      "description": "A model offered or overridden on a driver instance.",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "is_default": {
+          "default": false,
+          "type": "boolean"
+        },
+        "label": {
+          "type": "string"
+        },
+        "thinking_levels": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "label"
+      ],
+      "type": "object"
+    },
+    "DriverStatus": {
+      "description": "Passive readiness state reported for a driver instance.",
+      "enum": [
+        "ready",
+        "missing",
+        "needs_auth",
+        "disabled",
+        "error"
+      ],
+      "type": "string"
+    },
     "FunctionCall": {
       "properties": {
         "arguments": {
@@ -226,6 +536,30 @@
         "max_tool_calls"
       ],
       "type": "object"
+    },
+    "InputResponse": {
+      "properties": {
+        "action": {
+          "$ref": "#/definitions/InputResponseAction"
+        },
+        "content": true,
+        "request_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "action",
+        "request_id"
+      ],
+      "type": "object"
+    },
+    "InputResponseAction": {
+      "enum": [
+        "accept",
+        "decline",
+        "cancel"
+      ],
+      "type": "string"
     },
     "Message": {
       "properties": {
@@ -572,6 +906,13 @@
                 "null"
               ]
             },
+            "options": {
+              "description": "Native approval options offered by an external driver, when available.",
+              "items": {
+                "$ref": "#/definitions/ApprovalOption"
+              },
+              "type": "array"
+            },
             "request_id": {
               "type": "string"
             },
@@ -598,6 +939,36 @@
             "source",
             "tool_args",
             "tool_name",
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "message": {
+              "type": "string"
+            },
+            "request_id": {
+              "type": "string"
+            },
+            "schema": true,
+            "tool_call_id": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "type": {
+              "enum": [
+                "input_requested"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "message",
+            "request_id",
+            "schema",
             "type"
           ],
           "type": "object"
@@ -1149,6 +1520,75 @@
           "type": "object"
         },
         {
+          "description": "An active session switched permission mode.",
+          "properties": {
+            "mode": {
+              "$ref": "#/definitions/TurnMode"
+            },
+            "type": {
+              "enum": [
+                "mode_changed"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "mode",
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "An active session updated its resolved model.",
+          "properties": {
+            "model": {
+              "type": "string"
+            },
+            "provider": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "type": {
+              "enum": [
+                "model_changed"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "model",
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "A provider or external CLI reported a quota or rate-limit reset window.",
+          "properties": {
+            "message": {
+              "type": "string"
+            },
+            "reset_at": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "type": {
+              "enum": [
+                "usage_limit_reached"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "message",
+            "type"
+          ],
+          "type": "object"
+        },
+        {
           "properties": {
             "revision": {
               "format": "uint64",
@@ -1264,10 +1704,35 @@
           "format": "date-time",
           "type": "string"
         },
+        "driver_kind": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/DriverKind"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Driver protocol kind backing this session."
+        },
+        "external_session_id": {
+          "description": "Native thread or session id tracked by an external driver for resume.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "first_prompt": {
           "default": "",
           "description": "First user message, trimmed: the fallback label.",
           "type": "string"
+        },
+        "instance_id": {
+          "description": "Driver instance id backing this session (`\"agente\"` when absent).",
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "last_active": {
           "format": "date-time",
@@ -1309,6 +1774,17 @@
           "default": "",
           "description": "Short generated label; empty until one is made.",
           "type": "string"
+        },
+        "worktree": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/SessionWorktree"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Isolated Git worktree bound to this session, if any."
         }
       },
       "required": [
@@ -1344,6 +1820,30 @@
       ],
       "type": "object"
     },
+    "SessionWorktree": {
+      "description": "Isolated Git worktree metadata attached to a session.",
+      "properties": {
+        "base_commit": {
+          "type": "string"
+        },
+        "branch": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "repo_root": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "base_commit",
+        "branch",
+        "path",
+        "repo_root"
+      ],
+      "type": "object"
+    },
     "StartTurn": {
       "properties": {
         "conversation": {
@@ -1361,6 +1861,13 @@
             {
               "type": "null"
             }
+          ]
+        },
+        "instance_id": {
+          "description": "Driver instance id (`\"agente\"` by default, or an external CLI instance).",
+          "type": [
+            "string",
+            "null"
           ]
         },
         "mode": {
@@ -1437,6 +1944,17 @@
             "string",
             "null"
           ]
+        },
+        "worktree": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/SessionWorktree"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Isolated Git worktree assigned to this session, if any."
         }
       },
       "required": [

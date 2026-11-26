@@ -734,6 +734,10 @@ mod tests {
             model: "m".into(),
             thinking_level: "off".into(),
             profile: None,
+            instance_id: None,
+            driver_kind: None,
+            external_session_id: None,
+            worktree: None,
         };
         let older = SessionMeta {
             info: info(0),

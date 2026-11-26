@@ -49,6 +49,10 @@ fn main() {
             model: String::new(),
             thinking_level: String::new(),
             profile: None,
+            instance_id: None,
+            driver_kind: None,
+            external_session_id: None,
+            worktree: None,
         };
         let bytes = serde_json::to_vec(&serde_json::json!({
             "protocol_version": PROTOCOL_VERSION, "info": info,

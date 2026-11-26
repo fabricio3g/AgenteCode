@@ -6,10 +6,19 @@ export const AGENTE_PROTOCOL_VERSION = 2;
 
 export interface ApprovalDecision {
   decision: ApprovalDecisionKind;
+  /** Native option ID returned by an external driver when explicit options were provided. */
+  option_id?: string | null;
   request_id: string;
 }
 
 export type ApprovalDecisionKind = "approve_once" | "approve_all" | "deny" | "cancel";
+
+/** A native approval option offered by a driver. */
+export interface ApprovalOption {
+  id: string;
+  kind: ApprovalDecisionKind;
+  label: string;
+}
 
 export interface Attachment {
   bytes: number;
@@ -57,6 +66,72 @@ export interface ClientToolResult {
   turn_id: string;
 }
 
+/** Features natively supported by a driver instance. */
+export interface DriverCapabilities {
+  approvals: boolean;
+  attachments?: AttachmentKind[];
+  compact: boolean;
+  cost: boolean;
+  fork: boolean;
+  mcp_injection: boolean;
+  models: boolean;
+  modes?: TurnMode[];
+  native_plan_cards: boolean;
+  resume: boolean;
+  rewind_conversation: boolean;
+  session_import: boolean;
+  steer: boolean;
+  thinking: boolean;
+  usage: boolean;
+}
+
+/** Live probe descriptor of a configured or built-in driver instance. */
+export interface DriverInfo {
+  auth_hint?: string | null;
+  binary_path?: string | null;
+  builtin?: boolean;
+  capabilities: DriverCapabilities;
+  config?: DriverInstanceConfig | null;
+  driver_kind: DriverKind;
+  enabled?: boolean;
+  error?: string | null;
+  instance_id: string;
+  label: string;
+  models?: DriverModel[];
+  status: DriverStatus;
+  use_for?: string | null;
+  version?: string | null;
+}
+
+/** User-configured driver instance or profile extending a built-in driver. */
+export interface DriverInstanceConfig {
+  args?: string[];
+  command?: string[];
+  default_mode?: TurnMode | null;
+  driver_kind?: DriverKind | null;
+  enabled?: boolean;
+  env?: Record<string, unknown>;
+  extends?: string | null;
+  label?: string | null;
+  models?: DriverModel[];
+  strip_env?: string[];
+  use_for?: string | null;
+}
+
+/** Wire protocol family backing a driver instance. */
+export type DriverKind = "agente" | "acp" | "claude" | "codex" | "opencode" | "pi";
+
+/** A model offered or overridden on a driver instance. */
+export interface DriverModel {
+  id: string;
+  is_default?: boolean;
+  label: string;
+  thinking_levels?: string[];
+}
+
+/** Passive readiness state reported for a driver instance. */
+export type DriverStatus = "ready" | "missing" | "needs_auth" | "disabled" | "error";
+
 export interface FunctionCall {
   arguments: string;
   name: string;
@@ -70,6 +145,14 @@ export interface HomeTurnPolicy {
   max_time_ms: number;
   max_tool_calls: number;
 }
+
+export interface InputResponse {
+  action: InputResponseAction;
+  content?: unknown;
+  request_id: string;
+}
+
+export type InputResponseAction = "accept" | "decline" | "cancel";
 
 export interface Message {
   /** Media sent with a user message (images, audio, video, PDFs). Each is a stored copy on disk; providers encode it at request time, so saved sessions carry references, not bytes. */
@@ -154,11 +237,20 @@ export type RuntimeEvent =
     new_content?: string | null;
     /** The file as it is and as the edit would leave it, for a diff. */
     old_content?: string | null;
+    /** Native approval options offered by an external driver, when available. */
+    options?: ApprovalOption[];
     request_id: string;
     source: string;
     tool_args: string;
     tool_name: string;
     type: "approval_requested";
+  }
+  | {
+    message: string;
+    request_id: string;
+    schema: unknown;
+    tool_call_id?: string | null;
+    type: "input_requested";
   }
   | {
     after?: string | null;
@@ -284,6 +376,23 @@ export type RuntimeEvent =
     message: string;
     type: "diagnostic";
   }
+  /** An active session switched permission mode. */
+  | {
+    mode: TurnMode;
+    type: "mode_changed";
+  }
+  /** An active session updated its resolved model. */
+  | {
+    model: string;
+    provider?: string | null;
+    type: "model_changed";
+  }
+  /** A provider or external CLI reported a quota or rate-limit reset window. */
+  | {
+    message: string;
+    reset_at?: string | null;
+    type: "usage_limit_reached";
+  }
   | {
     revision: number;
     type: "turn_finished";
@@ -311,8 +420,14 @@ export interface RuntimeEventEnvelope {
 /** What a session list shows: one per saved session, whatever client made it. */
 export interface SessionInfo {
   created_at: string;
+  /** Driver protocol kind backing this session. */
+  driver_kind?: DriverKind | null;
+  /** Native thread or session id tracked by an external driver for resume. */
+  external_session_id?: string | null;
   /** First user message, trimmed: the fallback label. */
   first_prompt?: string;
+  /** Driver instance id backing this session (`"agente"` when absent). */
+  instance_id?: string | null;
   last_active: string;
   message_count?: number;
   model?: string;
@@ -324,6 +439,8 @@ export interface SessionInfo {
   thinking_level?: string;
   /** Short generated label; empty until one is made. */
   title?: string;
+  /** Isolated Git worktree bound to this session, if any. */
+  worktree?: SessionWorktree | null;
 }
 
 export interface SessionSnapshot {
@@ -332,9 +449,19 @@ export interface SessionSnapshot {
   session_id: string;
 }
 
+/** Isolated Git worktree metadata attached to a session. */
+export interface SessionWorktree {
+  base_commit: string;
+  branch: string;
+  path: string;
+  repo_root: string;
+}
+
 export interface StartTurn {
   conversation?: Message[];
   home?: HomeTurnPolicy | null;
+  /** Driver instance id (`"agente"` by default, or an external CLI instance). */
+  instance_id?: string | null;
   /** Mode for this turn; the session keeps it until another turn sets one. */
   mode?: TurnMode | null;
   model?: string | null;
@@ -350,6 +477,8 @@ export interface StartTurn {
   /** Replaces the runtime's system prompt for a session that has none yet. */
   system_prompt?: string | null;
   thinking_level?: string | null;
+  /** Isolated Git worktree assigned to this session, if any. */
+  worktree?: SessionWorktree | null;
 }
 
 export interface ToolCall {
