@@ -6,6 +6,7 @@ members = [
     "crates/agente-runtime",
     "crates/agente-acp",
     "crates/agente-daemon",
+    "crates/agente-drivers",
     "crates/agente-core",
     "crates/agente-tui",
     "crates/agente-cli",
@@ -87,5 +88,6 @@ agente-session = { path = "crates/agente-session" }
 agente-runtime = { path = "crates/agente-runtime" }
 agente-acp = { path = "crates/agente-acp" }
 agente-daemon = { path = "crates/agente-daemon" }
+agente-drivers = { path = "crates/agente-drivers" }
 agente-bridge = { path = "crates/agente-bridge" }
 agente-tui = { path = "crates/agente-tui" }

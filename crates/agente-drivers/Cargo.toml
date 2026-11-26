@@ -1,0 +1,22 @@
+[package]
+name = "agente-drivers"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Pluggable external coding-CLI drivers for the Agente runtime"
+
+[dependencies]
+agente-protocol = { workspace = true }
+async-trait = { workspace = true }
+dirs = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+similar = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+uuid = { workspace = true }
+
+[lints]
+workspace = true
