@@ -18,7 +18,7 @@
     "dev:main": "npm run build:main:watch",
     "build:main:watch": "node scripts/build-bundles.mjs main --watch",
     "dev:agente": "cargo build --bin agente --bin agente-computer --manifest-path ../../Cargo.toml",
-    "dev:electron": "npm run dev:agente && wait-on http://localhost:5173 dist-electron/main/index.cjs && npx electron . --no-sandbox",
+    "dev:electron": "npm run dev:agente && wait-on http://localhost:5173 dist-electron/main/index.cjs && node scripts/dev-electron.mjs --no-sandbox",
     "prebuild": "npm run rebuild:native && npm run build:agente",
     "build:main": "node scripts/build-bundles.mjs main --minify",
     "build:icons": "node scripts/build-icons.mjs",
@@ -178,6 +178,7 @@
       "category": "Education"
     },
     "win": {
+      "icon": "build/app-icon-dev.ico",
       "target": [
         "nsis"
       ],

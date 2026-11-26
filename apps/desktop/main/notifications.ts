@@ -22,7 +22,13 @@ export function notifyActivity(input: Omit<ActivityNotification, 'createdAt' | '
   const win = owner && BrowserWindow.fromWebContents(owner);
   if (!enabled || (win?.isVisible() && win.isFocused()) || !Notification.isSupported()) return;
   try {
-    const notification = new Notification({ title: `${APP_NAME} · ${item.title}`, body: item.body, silent: true });
+    const iconPath = path.join(app.getAppPath(), 'renderer', app.isPackaged ? 'dist' : 'public', 'app-icon.png');
+    const notification = new Notification({
+      title: `${APP_NAME} · ${item.title}`,
+      body: item.body,
+      silent: true,
+      ...(fs.existsSync(iconPath) ? { icon: iconPath } : {})
+    });
     native.add(notification);
     notification.on('click', () => { item.read = true; publish(); openChat(item.chatId); });
     notification.once('close', () => native.delete(notification));

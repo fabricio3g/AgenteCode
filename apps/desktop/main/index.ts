@@ -47,6 +47,8 @@ const DEV_WINDOWS_ICON = IS_DEV && process.platform === 'win32'
   ? path.join(APP_ROOT, 'build', 'app-icon-dev.ico')
   : undefined;
 
+if (process.platform === 'win32') app.setAppUserModelId(APP_ID);
+
 let tray = null;
 
 // Resolve preload path - different for dev (bundled) vs production (packaged)
@@ -90,7 +92,15 @@ function createWindow(chatId?: string) {
   });
   // In development the executable is Electron. Give the Windows shell an
   // icon resource for Agente's own taskbar group.
-  if (taskbarIcon) mainWindow.setAppDetails({ appId: APP_ID, appIconPath: taskbarIcon });
+  if (taskbarIcon) {
+    mainWindow.setAppDetails({
+      appId: APP_ID,
+      appIconPath: taskbarIcon,
+      appIconIndex: 0,
+      relaunchCommand: `"${process.execPath}" "${APP_ROOT}"`,
+      relaunchDisplayName: APP_NAME
+    });
+  }
 
   if (!getMainWindow()) setMainWindow(mainWindow);
   attachCloseToTray(mainWindow);
@@ -130,8 +140,11 @@ function createWindow(chatId?: string) {
 setConversationWindowFactory((chatId) => createWindow(chatId));
 
 function createTray() {
-  const icon = fs.existsSync(APP_ICON_PATH)
-    ? nativeImage.createFromPath(APP_ICON_PATH)
+  const trayIconPath = DEV_WINDOWS_ICON && fs.existsSync(DEV_WINDOWS_ICON)
+    ? DEV_WINDOWS_ICON
+    : APP_ICON_PATH;
+  const icon = fs.existsSync(trayIconPath)
+    ? nativeImage.createFromPath(trayIconPath)
     : nativeImage.createEmpty();
   tray = new Tray(icon);
   tray.setToolTip(APP_NAME);
@@ -174,7 +187,6 @@ app.whenReady().then(async () => {
   registerIpcHandlers();
   registerDomainHandlers();
   registerDomainMediaProtocol();
-  app.setAppUserModelId(APP_ID);
   if (IS_DEV && app.dock && fs.existsSync(APP_ICON_PATH)) app.dock.setIcon(APP_ICON_PATH);
   if (!smokeMode) { try { createTray(); } catch (error) { console.warn('[tray]', error); } }
   registerActivityNotifications(chatId => {
@@ -212,8 +224,9 @@ app.on('before-quit', async event => {
   try { await flushWindowTheme(); } catch (error) { console.warn('[window theme] shutdown:', error); }
   try { await chatDatabase.close(); } catch (error) { console.warn('[database] shutdown:', error); }
   try {
-    const { disposeAllAgenteSessions, disposeCodeWorkspace, stopBrowserChat } = await import('./ipc-handlers.js');
+    const { disposeAllAgenteSessions, disposeCodeWorkspace, disposeLinkPreview, stopBrowserChat } = await import('./ipc-handlers.js');
     stopBrowserChat();
+    disposeLinkPreview();
     disposeAllAgenteSessions();
     disposeCodeWorkspace();
   } catch { /* ignore cleanup errors */ }
