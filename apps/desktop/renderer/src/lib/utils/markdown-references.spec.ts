@@ -19,6 +19,10 @@ it('decorates web links with their own favicon and preserves the original destin
   expect(html).toContain('referrerpolicy="no-referrer"');
   expect(html).not.toContain('google.com');
   expect(html).toContain('target="_blank"');
+  expect(html).not.toContain('data-favicon-tone="dark-mono"');
+  const ghHtml=renderMarkdown('[Repo](https://github.com/anomalyco/opencode)',{cache:false});
+  expect(ghHtml).toContain('src="https://github.com/favicon.ico"');
+  expect(ghHtml).toContain('data-favicon-tone="dark-mono"');
   expect(renderMarkdown('[Local page](http://localhost:5173)',{cache:false})).not.toContain('<img');
 });
 it('falls back to the page icon when a favicon fails, using one removable delegate',()=>{

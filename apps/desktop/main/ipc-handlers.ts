@@ -29,6 +29,7 @@ import {
 import { webSearch } from './search-engine.ts';
 import { searchHfModels, hfRepoGguf, fetchHfReadme } from './hf-models.ts';
 import { scrapeUrlStructured } from './web-scraper.ts';
+import { fetchLinkPreview, disposeLinkPreview } from './link-preview.ts';
 import { crawlWeb } from './web-crawler.ts';
 import { getAggregatorCatalog, probeAggregatorEngines } from './search-providers/aggregator.ts';
 import {
@@ -295,6 +296,7 @@ export function registerIpcHandlers() {
     fetchHfReadme,
     createWebviewerWindow,
     scrapeUrlStructured,
+    fetchLinkPreview,
     crawlWeb,
     getAggregatorCatalog,
     probeAggregatorEngines,
@@ -365,4 +367,4 @@ export function registerIpcHandlers() {
   registerDesignReferenceHandlers(ipcMain);
 }
 
-export { disposeAllAgenteSessions, disposeCodeWorkspace, stopBrowserChat };
+export { disposeAllAgenteSessions, disposeCodeWorkspace, disposeLinkPreview, stopBrowserChat };

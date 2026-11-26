@@ -3886,6 +3886,8 @@ html.a11y-reduce-motion *::after {
 .markdown-body .inline-reference::before { content: ''; display: inline-block; width: .95em; height: .95em; background: currentColor; opacity: .65; mask: var(--reference-icon) center / contain no-repeat; }
 .markdown-body .link-site-icon::before { position: absolute; inset: 0; --reference-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.5'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M3 12h18M12 3c-5 6-5 12 0 18 5-6 5-12 0-18'/%3E%3C/svg%3E"); }
 .markdown-body .link-site-icon:has(img:not([hidden]))::before { display: none; }
+html.dark :is(.markdown-body .link-site-icon img, .link-preview-favicon, .research img.fav)[data-favicon-tone="dark-mono"] { filter: invert(1) brightness(1.06); }
+html.dark :is(.markdown-body .link-site-icon img, .link-preview-favicon, .research img.fav):not([data-favicon-tone="dark-mono"]) { filter: drop-shadow(0 0 0.75px rgba(255, 255, 255, 0.35)); }
 .markdown-body .inline-reference { color: var(--text-secondary); background: transparent; padding: 0; }
 .markdown-body .inline-reference::before { margin-right: .25em; vertical-align: -.12em; }
 .markdown-body .folder-reference { --reference-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.5' stroke-linejoin='round'%3E%3Cpath d='M3 7V5h6l2 2h10v12H3V7Z'/%3E%3C/svg%3E"); }

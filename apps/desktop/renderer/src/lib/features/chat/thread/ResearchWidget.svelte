@@ -18,6 +18,7 @@
   import type { AgentStep } from '$lib/types/chat';
   import type { SearchResult } from '$lib/types/bridge';
   import { renderMarkdown } from '$lib/utils/markdown';
+  import { needsDarkModeInvert } from '$lib/utils/site-favicon';
   import { formatDuration } from '$lib/utils/format';
   import {
     buildResearchExportFiles,
@@ -135,7 +136,7 @@
 {#snippet favicon(url: string, size = 'size-4')}
   {@const host = hostOf(url)}
   {#if host && !faviconFailed[host]}
-    <img class="fav {size}" src={`https://${host}/favicon.ico`} alt="" loading="lazy" referrerpolicy="no-referrer" onerror={() => (faviconFailed[host] = true)} />
+    <img class="fav {size}" src={`https://${host}/favicon.ico`} data-favicon-tone={needsDarkModeInvert(host) ? 'dark-mono' : undefined} alt="" loading="lazy" referrerpolicy="no-referrer" onerror={() => (faviconFailed[host] = true)} />
   {:else}
     <span class="fav fav-letter {size}" aria-hidden="true">{(host || '?').charAt(0).toUpperCase()}</span>
   {/if}

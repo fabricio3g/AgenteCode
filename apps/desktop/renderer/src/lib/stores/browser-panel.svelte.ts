@@ -133,7 +133,7 @@ export class BrowserPanelStore {
     this.loading = true;
     try {
       if (!this.activeTabId) await this.openUrl(normalized);
-      else await browserNavigate(scope, normalized, this.activeTabId).catch(() => {});
+      else await browserNavigate(scope, normalized, this.activeTabId, true).catch(() => {});
     } finally {
       if (this.scope === scope) this.loading = false;
     }

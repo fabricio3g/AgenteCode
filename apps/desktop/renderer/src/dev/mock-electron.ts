@@ -656,6 +656,15 @@ const browserHandlers: Record<string, (args?: Record<string, unknown>) => unknow
   browser_takeover: (args) => { const state = browserState(args); state.takeover = !!args?.on; pushBrowser(state); },
   browser_viewport: (args) => { const state = browserState(args); const tab = state.tabs.find((tab) => tab.id === (args?.tabId ?? state.activeTabId)); if (tab) tab.preset = args?.preset as typeof tab.preset; pushBrowser(state); },
   browser_navigate: (args) => { const state = browserState(args); const tab = state.tabs.find((tab) => tab.id === (args?.tabId ?? state.activeTabId)); if (tab) tab.url = String(args?.url); pushBrowser(state); },
+  link_preview: (args) => {
+    const raw = String(args?.url ?? '');
+    try {
+      const u = new URL(raw);
+      return { url: u.toString(), host: u.hostname, title: u.hostname, description: 'Mock preview' };
+    } catch {
+      return { url: raw, host: '', title: '', description: '', error: 'Invalid URL' };
+    }
+  },
 
 };
 
@@ -1147,10 +1156,47 @@ const handlers: Record<string, (args?: Record<string, unknown>) => unknown> = {
     return { ok: true };
   },
   'agente_respond_approval': (args) => {
-    const { chatId, decision } = (args ?? {}) as { chatId?: string; decision?: 'allow' | 'deny' };
+    const { chatId, decision } = (args ?? {}) as { chatId?: string; decision?: 'allow' | 'allow_all' | 'deny' };
     void finishApprovedRun(String(chatId ?? ''), decision === 'deny' ? 'deny' : 'allow');
     return { ok: true };
   },
+  'agente_respond_input': () => ({ ok: true }),
+  'agente_drivers_list': () => ({
+    drivers: [
+      {
+        instance_id: 'agente',
+        driver_kind: 'agente',
+        label: 'Agente Core',
+        builtin: true,
+        enabled: true,
+        status: 'ready',
+        capabilities: {
+          approvals: true,
+          attachments: ['image', 'audio', 'video', 'pdf'],
+          compact: true,
+          cost: true,
+          fork: true,
+          mcp_injection: true,
+          models: true,
+          modes: ['plan', 'build', 'auto'],
+          native_plan_cards: true,
+          resume: true,
+          rewind_conversation: true,
+          session_import: true,
+          steer: true,
+          thinking: true,
+          usage: true
+        }
+      }
+    ]
+  }),
+  'agente_drivers_probe': () => ({ drivers: [] }),
+  'agente_drivers_save': (args) => ({ driver: { ...(args as Record<string, unknown>) } }),
+  'agente_drivers_delete': () => ({ deleted: true }),
+  'agente_worktree_list': () => ({ worktrees: [] }),
+  'agente_set_worktree': () => ({ ok: true }),
+  'agente_orchestrator_status': () => ({ enabled: false }),
+  'agente_orchestrator_tasks': () => ({ tasks: [] }),
   'agente_list_checkpoints': () => [{ turnIndex: 1, createdAt: Date.now(), fileCount: 1, additions: 1, deletions: 1, files: ['src/index.ts'] }],
   'agente_rollback': () => ({ ok: true, restored: 1, files: ['src/index.ts'] })
 };

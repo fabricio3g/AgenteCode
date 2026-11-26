@@ -11,7 +11,7 @@ type ToolingHandlerDeps = {
   panelSetVisible: (visible: boolean) => unknown;
   panelSetPresentation: (presentation: BrowserPresentation) => unknown;
   panelSetViewport: (preset: unknown, tabId?: string) => unknown;
-  browserNavigate: (url: string, tabId?: string) => unknown;
+  browserNavigate: (url: string, tabId?: string, opts?: { fast?: boolean }) => unknown;
   browserSnapshot: (tabId?: string) => unknown;
   browserClick: (text: string, tabId?: string) => unknown;
   browserScreenshot: (tabId?: string) => unknown;
@@ -33,7 +33,7 @@ export function registerToolingHandlers(deps: ToolingHandlerDeps): void {
   deps.ipcMain.handle('browser_panel_presentation', (event, presentation) => withBrowserScope(presentation.scope, () => { if (!panelSetHost(event.sender, presentation.exposed)) return { image: null }; return deps.panelSetPresentation(presentation); }));
   deps.ipcMain.handle('browser_viewport', (_e, { preset, tabId, scope } = {}) => withBrowserScope(scope, () => deps.panelSetViewport(preset, tabId)));
 
-  deps.ipcMain.handle('browser_navigate', (_e, { url, tabId, scope }) => withBrowserScope(scope, () => deps.browserNavigate(url, tabId)));
+  deps.ipcMain.handle('browser_navigate', (_e, { url, tabId, scope, fast }) => withBrowserScope(scope, () => deps.browserNavigate(url, tabId, fast ? { fast: true } : undefined)));
   deps.ipcMain.handle('browser_snapshot', (_e, { tabId, scope } = {}) => withBrowserScope(scope, () => deps.browserSnapshot(tabId)));
   deps.ipcMain.handle('browser_click', (_e, { text, tabId, scope }) => withBrowserScope(scope, () => deps.browserClick(text, tabId)));
   deps.ipcMain.handle('browser_pick_element', (_e, { tabId, scope, multi } = {}) => withBrowserScope(scope, () => panelPickElement(tabId, !!multi)));

@@ -11,7 +11,6 @@
 <script lang="ts">
   import EmptyState from '$lib/components/ui/EmptyState.svelte';
   import UiIconButton from '$lib/components/ui/IconButton.svelte';
-  import UiInput from '$lib/components/ui/Input.svelte';
   import { cn as uiClass } from '$lib/utils/cn';
 
   import { Button, Tooltip } from '$lib/components/ui';
@@ -38,7 +37,10 @@
   let { store: browserPanelStore = defaultBrowser, embedded = false, exposed = true, presentationKey = '', chatId }: { store?: BrowserPanelStore; embedded?: boolean; exposed?: boolean; presentationKey?: string; chatId?: string } = $props();
   let annotating = $state(false);
   let capturing = $state(false);
-  const hasPage = $derived(!!browserPanelStore.activeTab?.url && browserPanelStore.activeTab.url !== 'about:blank');
+  const activeTab = $derived(browserPanelStore.activeTab);
+  const hasPage = $derived(!!activeTab?.url && activeTab.url !== 'about:blank');
+  const pageLoading = $derived(browserPanelStore.loading || !!activeTab?.loading);
+  const pageError = $derived(activeTab?.error || '');
 
   let picking = $state(false);
   async function togglePick() {
@@ -112,7 +114,7 @@
   async function present() {
     if (!mounted) return;
     const scope = browserPanelStore.scope;
-    const nativeExposed = exposed && hasPage && !annotating;
+    const nativeExposed = exposed && hasPage && !annotating && !pageError;
     const rect = nativeExposed ? viewportEl?.getBoundingClientRect() : null;
     const occluded = covered();
     const value: BrowserPresentation = { bounds: rect && rect.width > 0 && rect.height > 0 ? { x: rect.left, y: rect.top, width: rect.width, height: rect.height } : null, exposed: nativeExposed, occluded: nativeExposed && occluded };
@@ -193,7 +195,7 @@
     void browserPanelStore.activeTabId;
     void browserPanelStore.tabs.length;
     void browserPanelStore.viewport;
-    void exposed; void presentationKey; void accessibilityStore.prefs.uiScale; void hasPage; void annotating;
+    void exposed; void presentationKey; void accessibilityStore.prefs.uiScale; void hasPage; void pageError; void annotating;
     void tick().then(schedulePresentation);
   });
 
@@ -214,8 +216,10 @@
       {#if browserPanelStore.agentDriving}
         <span class="driving-dot" title={$t('browser.agentUsing')} aria-label={$t('browser.agentUsing')}></span>
       {/if}
-      <UiInput class={uiClass('', "ui-local-b510f76f")}
+      <input
         id="browser-address-input"
+        class="browser-url-input"
+        type="text"
         placeholder={$t('browser.address')}
         aria-label={$t('browser.address')}
         bind:value={browserPanelStore.addressInput}
@@ -223,7 +227,7 @@
         spellcheck={false}
         autocomplete="off"
       />
-      {#if browserPanelStore.loading}<LoaderCircle class="size-3 shrink-0 animate-spin text-muted-foreground" />{/if}
+      {#if pageLoading}<LoaderCircle class="size-3 shrink-0 animate-spin text-muted-foreground" />{/if}
     </label>
     <Tooltip label={$t('browser.reload')} position="bottom"><UiIconButton label={$t('browser.reload')} size="sm" type="button" class={uiClass("", "ui-local-b510f76f")} onclick={() => void browserPanelStore.history('reload')} >
       <RotateCw />
@@ -304,8 +308,21 @@
   {#if picking}<div class="browser-pick-hint" role="status">{$t('browser.pickHint')}</div>{/if}
 
   <div bind:this={viewportEl} class="browser-viewport-box" class:annotating aria-label={$t('browser.page')}>
+    {#if hasPage && pageLoading && !annotating && !pageError}
+      <div class="browser-loading-bar" aria-hidden="true"></div>
+    {/if}
     {#if annotating && chatId}
       <CanvasPanel {chatId} />
+    {:else if pageError}
+      <EmptyState
+        size="compact"
+        icon={Globe}
+        title={pageError}
+        description={activeTab?.url || ''}
+        action={$t('browser.reload')}
+        onaction={() => void browserPanelStore.history('reload')}
+        class="h-full"
+      />
     {:else if !hasPage}
       <EmptyState size="compact" icon={Globe} title={$t('browser.emptyTitle')} description={$t('browser.emptyHint')} class="h-full" />
     {:else if still}<img class="viewport-still" src={still} alt="" onerror={() => (still = null)} />{/if}
@@ -339,9 +356,59 @@
   }
 
   .browser-url {
-    min-width:0;
+    min-width: 0;
     flex: 1 1 auto;
+    height: 1.75rem;
     margin: 0 0.125rem;
+    padding: 0 0.625rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-full);
+    background: var(--muted);
+    box-shadow: none;
+    transition: border-color var(--motion-instant) var(--motion-ease), background-color var(--motion-instant) var(--motion-ease);
+  }
+
+  .browser-url:focus-within {
+    border-color: var(--border-hover);
+    background: var(--background);
+    box-shadow: none;
+  }
+
+  .browser-url-input {
+    width: 100%;
+    height: 100%;
+    min-width: 0;
+    flex: 1 1 auto;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+    color: var(--foreground);
+    font-size: var(--text-xs);
+    line-height: 1;
+    outline: none;
+  }
+
+  .browser-url-input::placeholder {
+    color: var(--muted-foreground);
+  }
+
+  .browser-loading-bar {
+    position: absolute;
+    inset: 0 0 auto 0;
+    z-index: 2;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, var(--brand-accent), transparent);
+    background-size: 40% 100%;
+    background-repeat: no-repeat;
+    animation: browser-load-slide 1.1s ease-in-out infinite;
+    pointer-events: none;
+  }
+
+  @keyframes browser-load-slide {
+    0% { background-position: -45% 0; }
+    100% { background-position: 145% 0; }
   }
 
   .driving-dot {
@@ -451,7 +518,8 @@
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .driving-dot {
+    .driving-dot,
+    .browser-loading-bar {
       animation: none;
     }
   }

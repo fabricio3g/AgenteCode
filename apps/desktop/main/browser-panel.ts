@@ -1,4 +1,4 @@
-import { BrowserWindow, WebContentsView, session, shell, type WebContents } from 'electron';
+import { BrowserWindow, WebContentsView, session, type WebContents } from 'electron';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { createHash } from 'node:crypto';
 import { isWorkspaceScope } from '../shared/workspace-scope.ts';
@@ -25,6 +25,12 @@ export interface PanelTab {
   view: WebContentsView;
   preset: AgentBrowserViewportPreset;
   debuggerAttached: boolean;
+  /** Target URL while an initial/pending navigation has not yet committed. */
+  pendingUrl?: string;
+  /** True while the active tab navigation is in progress. */
+  loading: boolean;
+  /** Last main-frame load failure message, cleared on next navigation. */
+  loadError?: string;
   /** Ring buffer of the last console / exception / network entries. */
   console: PanelConsoleEntry[];
   consoleSeq: number;
@@ -48,6 +54,7 @@ type BrowserOwner = {
   userTakeover: boolean;
 };
 const owners = new Map<string, BrowserOwner>();
+const hardenedSessions = new Set<string>();
 const scopeContext = new AsyncLocalStorage<string>();
 let foregroundScope = 'unassigned';
 let tabSeq = 0;
@@ -73,7 +80,10 @@ function guestSession() {
 }
 
 function hardenGuestSession() {
-  const ses = guestSession();
+  const part = partition();
+  if (hardenedSessions.has(part)) return;
+  hardenedSessions.add(part);
+  const ses = session.fromPartition(part);
   ses.setPermissionRequestHandler((_wc, _permission, callback) => callback(false));
   ses.setPermissionCheckHandler(() => false);
   const anySes = ses as unknown as Record<string, unknown>;
@@ -82,16 +92,23 @@ function hardenGuestSession() {
   }
   ses.webRequest.onBeforeRequest((details, callback) => {
     try {
-      const parsed = new URL(details.url);
-      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-        callback({ cancel: true });
+      const protocol = new URL(details.url).protocol;
+      if (
+        protocol === 'http:' ||
+        protocol === 'https:' ||
+        protocol === 'data:' ||
+        protocol === 'blob:' ||
+        protocol === 'ws:' ||
+        protocol === 'wss:' ||
+        protocol === 'about:'
+      ) {
+        callback({ cancel: false });
         return;
       }
     } catch {
-      callback({ cancel: true });
-      return;
+      // cancel invalid URLs
     }
-    callback({ cancel: false });
+    callback({ cancel: true });
   });
 }
 
@@ -99,7 +116,7 @@ export function panelState(scope = browserScope()) {
   const owner = state(scope);
   return {
     scope, visible: owner.panelVisible, activeTabId: owner.activeTabId, agentDriving: owner.agentDriving, takeover: owner.userTakeover,
-    tabs: [...owner.tabs.values()].map((t) => ({ id: t.id, url: safeUrl(t), title: safeTitle(t.view), preset: t.preset }))
+    tabs: [...owner.tabs.values()].map((t) => ({ id: t.id, url: safeUrl(t), title: safeTitle(t.view), preset: t.preset, loading: t.loading, ...(t.loadError ? { error: t.loadError } : {}) }))
   };
 }
 function pushState(scope = browserScope()) {
@@ -112,10 +129,10 @@ function safeUrl(target: PanelTab | WebContentsView): string {
   try {
     const wc = 'view' in target ? target.view.webContents : target.webContents;
     const url = wc.getURL();
-    // A new tab holds about:blank (see createTab); the address bar stays empty.
-    return url === 'about:blank' ? '' : url;
+    if (url && url !== 'about:blank') return url;
+    return 'pendingUrl' in target && target.pendingUrl ? target.pendingUrl : '';
   } catch {
-    return '';
+    return 'pendingUrl' in target && target.pendingUrl ? target.pendingUrl : '';
   }
 }
 
@@ -184,18 +201,44 @@ function allowWebNavigation(event: { preventDefault(): void }, url: string): voi
 
 function wireGuestEvents(tab: PanelTab) {
   const wc = tab.view.webContents;
-  const refresh = () => pushState(tab.scope);
-  wc.on('did-navigate', refresh);
-  wc.on('did-navigate-in-page', refresh);
-  wc.on('did-finish-load', refresh);
-  wc.on('did-fail-load', refresh);
-  wc.on('did-start-loading', refresh);
-  wc.on('did-stop-loading', refresh);
+  const onStart = () => {
+    tab.loading = true;
+    tab.loadError = undefined;
+    pushState(tab.scope);
+  };
+  const onNavigate = () => {
+    tab.pendingUrl = undefined;
+    tab.loadError = undefined;
+    pushState(tab.scope);
+  };
+  const onFinish = () => {
+    tab.loading = false;
+    tab.pendingUrl = undefined;
+    pushState(tab.scope);
+  };
+  const onStop = () => {
+    tab.loading = false;
+    pushState(tab.scope);
+  };
+  const onFail = (_e: unknown, errorCode: number, errorDescription: string, _validatedURL: string, isMainFrame: boolean) => {
+    if (errorCode === -3) return;
+    if (isMainFrame) {
+      tab.loading = false;
+      tab.loadError = errorDescription || `Failed to load (${errorCode})`;
+      pushState(tab.scope);
+    }
+  };
+  wc.on('did-start-loading', onStart);
+  wc.on('did-navigate', onNavigate);
+  wc.on('did-navigate-in-page', () => pushState(tab.scope));
+  wc.on('did-finish-load', onFinish);
+  wc.on('did-stop-loading', onStop);
+  wc.on('did-fail-load', onFail);
   wc.setWindowOpenHandler(({ url }) => {
     try {
       const parsed = new URL(url);
       if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
-        shell.openExternal(url).catch(() => {});
+        withBrowserScope(tab.scope, () => panelOpenTab(parsed.toString()));
       }
     } catch { /* ignore */ }
     return { action: 'deny' };
@@ -222,26 +265,33 @@ function createTab(url?: string): PanelTab {
   } catch { /* ignore */ }
   // No setBorderRadius: on Linux it crashed the whole app (SIGSEGV) when the
   // panel opened from the UI, reproduced and cleared by removing only this call.
-  // The panel's card already rounds the box around the page.
+  // The panel's card already rounds the box around the box.
   tabSeq += 1;
   view.setBounds({ x: 0, y: 0, width: 640, height: 480 });
   view.setVisible(false);
-  const tab: PanelTab = { scope: browserScope(), id: `btab-${Date.now()}-${tabSeq}`, view, preset: 'desktop', debuggerAttached: false, console: [], consoleSeq: 0 };
+  const tab: PanelTab = {
+    scope: browserScope(),
+    id: `btab-${Date.now()}-${tabSeq}`,
+    view,
+    preset: 'fit',
+    debuggerAttached: false,
+    pendingUrl: url || undefined,
+    loading: !!url,
+    console: [],
+    consoleSeq: 0
+  };
   wireGuestEvents(tab);
   attachToMainWindow(view);
-  // Attach before the first load so the page's console is captured from the start.
-  void ensureDebugger(tab).catch(() => {});
   state().tabs.set(tab.id, tab);
   state().activeTabId = tab.id;
   // Emulation on a view that has never held a document crashes Electron
   // (SIGSEGV on Linux, reproduced with only attach + setDeviceMetricsOverride):
-  // the viewport waits for the first page — this load, or one that replaces it.
+  // viewport emulation waits lazily for the first loaded page.
   tab.firstLoad = new Promise<void>((resolve) => {
     view.webContents.once('did-finish-load', () => resolve());
     view.webContents.on('did-fail-load', (_event, code) => { if (code !== -3) resolve(); });
   });
   void view.webContents.loadURL(url || 'about:blank').catch(() => {});
-  void panelSetViewport('desktop', tab.id).catch(() => {});
   applyBounds();
   pushState();
   return tab;
@@ -378,10 +428,34 @@ export async function panelHistory(action: 'back' | 'forward' | 'reload', tabId?
 }
 
 export function panelOpenTab(url?: string) {
+  let normalized: string | undefined;
   if (url && typeof url === 'string') {
     const parsed = new URL(url);
     if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
       throw new Error('Only http(s) URLs allowed');
+    }
+    normalized = parsed.toString();
+  }
+  if (normalized) {
+    for (const existing of state().tabs.values()) {
+      if (safeUrl(existing) === normalized) {
+        state().activeTabId = existing.id;
+        state().panelVisible = true;
+        applyBounds();
+        pushState();
+        return { id: existing.id, url: normalized };
+      }
+    }
+    const active = state().activeTabId ? state().tabs.get(state().activeTabId!) : null;
+    if (active && !safeUrl(active)) {
+      active.pendingUrl = normalized;
+      active.loading = true;
+      active.loadError = undefined;
+      state().panelVisible = true;
+      void active.view.webContents.loadURL(normalized).catch(() => {});
+      applyBounds();
+      pushState();
+      return { id: active.id, url: normalized };
     }
   }
   if (state().tabs.size >= AGENT_BROWSER_MAX_TABS) {
@@ -389,12 +463,12 @@ export function panelOpenTab(url?: string) {
     if (oldest) closeTabEntry(oldest.id);
   }
   state().panelVisible = true;
-  const tab = createTab(url);
-  return { id: tab.id, url: url || '' };
+  const tab = createTab(normalized);
+  return { id: tab.id, url: normalized || '' };
 }
 
 export function panelListTabs() {
-  return [...state().tabs.values()].map((t) => ({ id: t.id, url: safeUrl(t), title: safeTitle(t.view), preset: t.preset }));
+  return [...state().tabs.values()].map((t) => ({ id: t.id, url: safeUrl(t), title: safeTitle(t.view), preset: t.preset, loading: t.loading, ...(t.loadError ? { error: t.loadError } : {}) }));
 }
 
 export function panelSetActive(tabId: string) {
@@ -510,15 +584,25 @@ export async function panelSetPresentation(presentation: BrowserPresentation): P
   return { image: await capture };
 }
 
-export async function panelNavigate(url: string, tabId?: string) {
+export async function panelNavigate(url: string, tabId?: string, opts?: { fast?: boolean }) {
   const parsed = new URL(url);
   if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
     throw new Error('Only http(s) URLs allowed');
   }
+  const normalized = parsed.toString();
   state().panelVisible = true;
   const tab = tabId ? requireTab(tabId) : state().activeTabId ? requireTab(state().activeTabId!) : createTab();
   state().activeTabId = tab.id;
-  await tab.view.webContents.loadURL(url);
+  tab.pendingUrl = normalized;
+  tab.loading = true;
+  tab.loadError = undefined;
+  applyBounds();
+  pushState();
+  if (opts?.fast) {
+    void tab.view.webContents.loadURL(normalized).catch(() => {});
+    return { id: tab.id, url: normalized };
+  }
+  await tab.view.webContents.loadURL(normalized);
   applyBounds();
   pushState();
   return readSnapshot(tab);

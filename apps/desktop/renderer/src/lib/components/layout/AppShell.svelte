@@ -37,6 +37,7 @@
   import ChatSearchModal from '$lib/components/layout/ChatSearchModal.svelte';
   import SearchSidebar from '$lib/components/search/SearchSidebar.svelte';
   import BrowserPanel from '$lib/components/browser/BrowserPanel.svelte';
+  import LinkPreviewPopover from '$lib/components/browser/LinkPreviewPopover.svelte';
   import { browserPanelStore } from '$lib/stores/browser-panel.svelte';
   import OnboardingWizard from '$lib/components/onboarding/OnboardingWizard.svelte';
   import { SidebarPeek } from './sidebar-peek.svelte';
@@ -424,6 +425,7 @@
 
 
 <Toaster />
+<LinkPreviewPopover />
 <ConfirmDialog />
 <LLMDrawer />
 

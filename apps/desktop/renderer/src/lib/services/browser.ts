@@ -10,6 +10,8 @@ export interface BrowserPanelTab {
   url: string;
   title: string;
   preset: BrowserViewportPreset;
+  loading?: boolean;
+  error?: string;
 }
 
 export interface BrowserPanelState {
@@ -52,8 +54,8 @@ export async function setBrowserTakeover(scope: string, on: boolean): Promise<vo
 export async function browserHistory(scope: string, action: 'back' | 'forward' | 'reload', tabId?: string): Promise<void> {
   await invoke('browser_history', { scope, action, tabId });
 }
-export function browserNavigate(scope: string, url: string, tabId?: string): Promise<unknown> {
-  return invoke('browser_navigate', { scope, url, tabId });
+export function browserNavigate(scope: string, url: string, tabId?: string, fast = false): Promise<unknown> {
+  return invoke('browser_navigate', { scope, url, tabId, fast });
 }
 
 export function onBrowserPanelState(handler: (state: BrowserPanelState) => void): Promise<() => void> {

@@ -47,7 +47,7 @@ const ALLOWED_INVOKE_CHANNELS = new Set([
   'browser_screenshot', 'browser_pick_element', 'browser_pick_cancel', 'browser_close',
   'generate_pptx', 'parse_slides_from_markdown',
   'generate_docx', 'generate_xlsx', 'generate_pdf',
-  'fetch_url_content', 'crawl_web',
+  'fetch_url_content', 'crawl_web', 'link_preview',
   'design_tool', 'design_files', 'design_render', 'design_manage', 'design_handoff', 'design_systems', 'design_reference', 'design_view', 'design_3d',
   'home_runtime_start', 'home_runtime_result', 'home_runtime_cancel', 'home_runtime_update', 'home_runtime_steer',
   'home_runtime_approval', 'complements_list', 'complements_change',
@@ -56,7 +56,7 @@ const ALLOWED_INVOKE_CHANNELS = new Set([
   'agente_start_session', 'agente_prompt', 'agente_goal_get', 'agente_goal_set', 'agente_goal_clear', 'agente_goal_action',
   'agente_steer', 'agente_follow_up', 'agente_abort',
   'agente_compact', 'model_sees_images', 'agente_set_model', 'agente_set_runtime_mode',
-  'agente_respond_approval', 'agente_list_checkpoints', 'agente_rollback',
+  'agente_respond_approval', 'agente_respond_input', 'agente_list_checkpoints', 'agente_rollback',
   'agente_delete_session_data', 'agente_live_chats',
   'voice_models_status', 'voice_model_download', 'voice_model_delete', 'voice_engine_restart', 'voice_engine_download', 'voice_catalog', 'voice_clone_pick', 'voice_clone_read', 'voice_clone_save', 'voice_clone_delete',
   'terminal_create', 'terminal_write', 'terminal_resize', 'terminal_kill',
@@ -64,7 +64,10 @@ const ALLOWED_INVOKE_CHANNELS = new Set([
   'agente_changes', 'agente_file_diff', 'agente_revert_file',
   'agente_git_branches', 'agente_git_pull_request', 'agente_git_switch_branch', 'agente_open_in_editor', 'agente_reveal_path', 'agente_trash_path',
    'agente_exec', 'agente_undo', 'agente_redo', 'agente_project_info', 'agente_project_init', 'agente_mcp_status', 'agente_project_files',
-   'agente_message_action', 'agente_session_snapshot', 'agente_session_list', 'agente_session_history', 'agente_runtime_configure', 'agente_runtime_settings', 'agente_model_inputs', 'agente_child_cancel', 'agente_subagent_settings', 'agente_board', 'agente_media_import', 'agente_media_preview', 'agente_mcp_control'
+   'agente_message_action', 'agente_session_snapshot', 'agente_session_list', 'agente_session_history', 'agente_runtime_configure', 'agente_runtime_settings', 'agente_model_inputs', 'agente_child_cancel', 'agente_subagent_settings', 'agente_board', 'agente_media_import', 'agente_media_preview', 'agente_mcp_control',
+   'agente_drivers_list', 'agente_drivers_probe', 'agente_drivers_save', 'agente_drivers_delete',
+   'agente_worktree_create', 'agente_worktree_list', 'agente_worktree_merge', 'agente_worktree_remove', 'agente_set_worktree',
+   'agente_orchestrator_status', 'agente_orchestrator_tasks'
 ]);
 
 const ALLOWED_EVENT_CHANNELS = new Set([

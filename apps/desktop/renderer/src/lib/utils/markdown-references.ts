@@ -1,4 +1,5 @@
 import type { Renderer } from 'marked';
+import { faviconUrlFor, needsDarkModeInvert } from './site-favicon';
 
 /** Presentation only: references never become invented file-opening actions. */
 export function referenceKind(text: string): 'file' | 'folder' | undefined {
@@ -26,8 +27,11 @@ export function withReferences<T extends Renderer>(renderer: T): T {
       const url = new URL(token.href);
       if (!/^https?:$/.test(url.protocol)) return html;
       // Fetch only the linked site's icon, never a third-party favicon service.
-      const favicon = url.protocol === 'https:' && !url.hostname.includes(':') && url.hostname !== 'localhost' && !/^\d+\.\d+\.\d+\.\d+$/.test(url.hostname)
-        ? `<img src="${url.origin}/favicon.ico" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer">` : '';
+      const faviconSrc = faviconUrlFor(url.toString());
+      const toneAttr = needsDarkModeInvert(url.hostname) ? ' data-favicon-tone="dark-mono"' : '';
+      const favicon = faviconSrc
+        ? `<img src="${faviconSrc}"${toneAttr} alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer">`
+        : '';
       return html.replace('<a ', '<a class="site-reference" ').replace(/(<a\b[^>]*>)/, `$1<span class="link-site-icon" aria-hidden="true">${favicon}</span>`);
     } catch { return html; }
   };

@@ -12,6 +12,7 @@ type SearchHandlerDeps = {
   fetchHfReadme: (repoId: string, hfToken?: string) => unknown;
   createWebviewerWindow: (url: string, title?: string) => unknown;
   scrapeUrlStructured: (args: { url: string; maxLength?: number; timeoutMs?: number; maxLinks?: number }) => Promise<unknown>;
+  fetchLinkPreview: (url: string) => Promise<unknown>;
   crawlWeb: (args: unknown) => unknown;
   getAggregatorCatalog: () => unknown;
   probeAggregatorEngines: (engineIds: unknown, options?: Record<string, unknown>, query?: string) => unknown;
@@ -28,6 +29,7 @@ export function registerSearchHandlers({
   fetchHfReadme,
   createWebviewerWindow,
   scrapeUrlStructured,
+  fetchLinkPreview,
   crawlWeb,
   getAggregatorCatalog,
   probeAggregatorEngines,
@@ -78,6 +80,9 @@ export function registerSearchHandlers({
       return { url: String(url), content: '', error: toErrorMessage(err), status: 0 };
     }
   });
+
+  ipcMain.handle('link_preview', (_e, args: { url?: string } = {}) =>
+    fetchLinkPreview(String(args?.url ?? '')));
 
   ipcMain.handle('crawl_web', (_e, args) => crawlWeb(args));
 }
