@@ -11,7 +11,7 @@ import { registerSessionGoals } from '../session-goals.ts';
 import { modelSeesImages, rustEngine as engine } from '../agente/rust-engine.ts';
 import { setMainWindowGetter } from '../agente/event-bridge.ts';
 import { historyTurns } from '../agente/bot-history.ts';
-import type { Attachment, SessionSnapshot } from '../../shared/agente-protocol.gen.ts';
+import type { Attachment, DriverInstanceConfig, SessionSnapshot, SessionWorktree } from '../../shared/agente-protocol.gen.ts';
 import type { AgenteRuntimeMode, AgenteStartSessionArgs, ApprovalDecision, SubagentSettings } from '../../shared/agente-protocol.ts';
 
 type AgenteHandlerDeps = {
@@ -45,8 +45,11 @@ export function registerAgenteHandlers({ ipcMain, getMainWindow }: AgenteHandler
     engine.setRuntimeMode(args.chatId, args.mode)
   );
 
-  ipcMain.handle('agente_respond_approval', (_e, args: { chatId: string; requestId: string; decision: ApprovalDecision }) =>
-    engine.respondApproval(args.chatId, args.requestId, args.decision)
+  ipcMain.handle('agente_respond_approval', (_e, args: { chatId: string; requestId: string; decision: ApprovalDecision; optionId?: string }) =>
+    engine.respondApproval(args.chatId, args.requestId, args.decision, args.optionId)
+  );
+  ipcMain.handle('agente_respond_input', (_e, args: { chatId: string; requestId: string; action: import('../../shared/agente-protocol.ts').InputResponseAction; content?: Record<string, unknown> }) =>
+    engine.respondInput(args.chatId, args.requestId, args.action, args.content)
   );
 
   ipcMain.handle('agente_list_checkpoints', (_e, args: { chatId: string; sessionId?: string }) =>
@@ -112,6 +115,70 @@ export function registerAgenteHandlers({ ipcMain, getMainWindow }: AgenteHandler
   ipcMain.handle('agente_child_cancel', (_e, args: { runId: string }) => engine.runtimeRequest('children.cancel', { run_id: args.runId }));
   ipcMain.handle('agente_live_chats', () => engine.liveChatIds());
   ipcMain.handle('agente_delete_session_data', (_e, args: { chatIds?: string[]; sessionIds?: string[] }) => engine.deleteSessionData(args ?? {}));
+
+  ipcMain.handle('agente_drivers_list', (_e, args?: { probe?: boolean }) =>
+    engine.runtimeRequest('drivers.list', { probe: !!args?.probe })
+  );
+  ipcMain.handle('agente_drivers_probe', (_e, args?: { instanceId?: string }) =>
+    engine.runtimeRequest('drivers.probe', args?.instanceId ? { instance_id: args.instanceId } : {})
+  );
+  ipcMain.handle('agente_drivers_save', (_e, args: { instanceId: string; config: DriverInstanceConfig }) =>
+    engine.runtimeRequest('drivers.instances.save', { instance_id: args.instanceId, config: args.config })
+  );
+  ipcMain.handle('agente_drivers_delete', (_e, args: { instanceId: string }) =>
+    engine.runtimeRequest('drivers.instances.delete', { instance_id: args.instanceId })
+  );
+
+  ipcMain.handle('agente_worktree_create', (_e, args: { projectRoot: string; label?: string; sessionId?: string }) =>
+    engine.runtimeRequest('worktree.create', {
+      project_dir: args.projectRoot,
+      ...(args.label ? { label: args.label } : {}),
+      ...(args.sessionId ? { session_id: args.sessionId } : {})
+    })
+  );
+  ipcMain.handle('agente_worktree_list', (_e, args: { projectRoot: string }) =>
+    engine.runtimeRequest('worktree.list', { project_dir: args.projectRoot })
+  );
+  ipcMain.handle('agente_worktree_merge', (_e, args: {
+    repoRoot: string;
+    path: string;
+    branch?: string;
+    baseCommit?: string;
+    commitMessage?: string;
+    removeAfter?: boolean;
+  }) =>
+    engine.runtimeRequest('worktree.merge', {
+      repo_root: args.repoRoot,
+      path: args.path,
+      ...(args.branch ? { branch: args.branch } : {}),
+      ...(args.baseCommit ? { base_commit: args.baseCommit } : {}),
+      ...(args.commitMessage ? { commit_message: args.commitMessage } : {}),
+      remove_after: !!args.removeAfter
+    })
+  );
+  ipcMain.handle('agente_worktree_remove', (_e, args: {
+    repoRoot: string;
+    path: string;
+    branch?: string;
+    baseCommit?: string;
+    sessionId?: string;
+  }) =>
+    engine.runtimeRequest('worktree.remove', {
+      repo_root: args.repoRoot,
+      path: args.path,
+      ...(args.branch ? { branch: args.branch } : {}),
+      ...(args.baseCommit ? { base_commit: args.baseCommit } : {}),
+      ...(args.sessionId ? { session_id: args.sessionId } : {})
+    })
+  );
+  ipcMain.handle('agente_set_worktree', (_e, args: { chatId: string; worktree: SessionWorktree | null }) =>
+    engine.setWorktree(args.chatId, args.worktree)
+  );
+
+  ipcMain.handle('agente_orchestrator_status', () => engine.runtimeRequest('orchestrator.status', {}));
+  ipcMain.handle('agente_orchestrator_tasks', (_e, args?: { parentSessionId?: string }) =>
+    engine.runtimeRequest('orchestrator.tasks', args?.parentSessionId ? { parent_session_id: args.parentSessionId } : {})
+  );
 }
 
 export function disposeAgenteSessions(): void {

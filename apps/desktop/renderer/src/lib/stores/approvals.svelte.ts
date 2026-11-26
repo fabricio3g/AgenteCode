@@ -13,6 +13,14 @@
  * can just read `items`.
  */
 
+import type { ApprovalOption } from '$shared/agente-protocol';
+
+export interface ApprovalResolution {
+  allow: boolean;
+  decision: 'allow' | 'allow_all' | 'deny';
+  optionId?: string;
+}
+
 export interface PendingApproval {
   /** Unique inside the store; equal to `requestId` unless two calls collided. */
   id: string;
@@ -29,13 +37,33 @@ export interface PendingApproval {
   dangerous?: boolean;
   /** Why a call asks beyond its kind, e.g. a shell command that reaches outside the project. */
   reason?: string;
+  /** Native options offered by an external CLI driver, when available. */
+  options?: ApprovalOption[];
+}
+
+/** Map a simple Enter/Esc boolean answer to a concrete resolution (choosing the primary native option when present). */
+export function defaultResolution(allow: boolean, options?: readonly ApprovalOption[]): ApprovalResolution {
+  if (allow) {
+    const opt = options?.find((o) => o.kind === 'approve_once') ?? options?.find((o) => o.kind === 'approve_all');
+    return {
+      allow: true,
+      decision: opt?.kind === 'approve_all' ? 'allow_all' : 'allow',
+      ...(opt ? { optionId: opt.id } : {})
+    };
+  }
+  const opt = options?.find((o) => o.kind === 'deny') ?? options?.find((o) => o.kind === 'cancel');
+  return {
+    allow: false,
+    decision: 'deny',
+    ...(opt ? { optionId: opt.id } : {})
+  };
 }
 
 class ApprovalsStore {
   items = $state<PendingApproval[]>([]);
 
   /** Resolvers are kept out of reactive state — they are not render data. */
-  #resolvers = new Map<string, (allow: boolean) => void>();
+  #resolvers = new Map<string, (resolution: ApprovalResolution) => void>();
 
   forChat(chatId: string): PendingApproval[] {
     if (!chatId) return [];
@@ -56,6 +84,11 @@ class ApprovalsStore {
 
   /** Resolves once the user answers, or `false` if the run is torn down first. */
   request(input: Omit<PendingApproval, 'requestId'>): Promise<boolean> {
+    return this.requestDetailed(input).then((resolution) => resolution.allow);
+  }
+
+  /** Resolves with the explicit decision and native option id, when chosen. */
+  requestDetailed(input: Omit<PendingApproval, 'requestId'>): Promise<ApprovalResolution> {
     /*
      * The id is made unique here rather than trusted from the caller.
      *
@@ -68,21 +101,23 @@ class ApprovalsStore {
      */
     this.#seq += 1;
     const id = this.#resolvers.has(input.id) ? `${input.id}#${this.#seq}` : input.id;
-    return new Promise<boolean>((resolve) => {
+    return new Promise<ApprovalResolution>((resolve) => {
       this.#resolvers.set(id, resolve);
       // Reassign rather than mutate so the rune notifies.
       this.items = [...this.items, { ...input, id, requestId: input.id }];
     });
   }
 
-  resolve(id: string, allow: boolean): void {
+  resolve(id: string, answer: boolean | ApprovalResolution): void {
     const resolver = this.#resolvers.get(id);
     if (!resolver) return;
+    const pending = this.items.find((item) => item.id === id);
+    const resolution = typeof answer === 'boolean' ? defaultResolution(answer, pending?.options) : answer;
     // Drop before resolving: a synchronous re-entrant request() from the
     // continuation must not observe this entry still pending.
     this.#resolvers.delete(id);
     this.items = this.items.filter((item) => item.id !== id);
-    resolver(allow);
+    resolver(resolution);
   }
 
   /** Denies and drops everything still pending for a chat. */
@@ -94,7 +129,7 @@ class ApprovalsStore {
     for (const item of stale) {
       const resolver = this.#resolvers.get(item.id);
       this.#resolvers.delete(item.id);
-      resolver?.(false);
+      resolver?.(defaultResolution(false, item.options));
     }
   }
 }

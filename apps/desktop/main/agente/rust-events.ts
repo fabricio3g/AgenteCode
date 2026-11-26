@@ -133,7 +133,13 @@ export class RustTurnTranslator {
 
   translate(envelope: RuntimeEventEnvelope): CodeAgentEvent[] {
     // A subagent's own events are not this chat's steps.
-    if (envelope.parent_run_id && envelope.event.type !== 'approval_requested') return [this.runtimeEvent(envelope.event, envelope.parent_run_id)];
+    if (
+      envelope.parent_run_id &&
+      envelope.event.type !== 'approval_requested' &&
+      envelope.event.type !== 'input_requested'
+    ) {
+      return [this.runtimeEvent(envelope.event, envelope.parent_run_id)];
+    }
     const event = envelope.event;
     if (event.type === 'file_changed') {
       this.recordFile(event);
@@ -227,7 +233,7 @@ export class RustTurnTranslator {
     // The tool being written ("Preparing edit…") in the names the UI knows.
     generation_progress: (event) => [this.runtimeEvent({ ...event, tool_name: event.tool_name ? uiToolName(event.tool_name) : event.tool_name })],
     tool_proposed: (event) => {
-      this.output.set(event.id, '');
+      if (!this.output.has(event.id)) this.output.set(event.id, '');
       return [{ type: 'tool_start', chatId: this.chatId, toolCallId: event.id, toolName: uiToolName(event.name), args: parseArgs(event.arguments) }];
     },
     tool_progress: (event) => {
@@ -256,8 +262,20 @@ export class RustTurnTranslator {
       diff: approvalDiff(event.file_path, event.old_content, event.new_content) ?? event.description,
       kind: 'action',
       ...(event.is_dangerous ? { dangerous: true } : {}),
+      ...(event.options?.length ? { options: event.options } : {}),
       ...outsideProjectReason(event.description)
     }],
+    input_requested: (event) => [{
+      type: 'input_request',
+      chatId: this.chatId,
+      requestId: event.request_id,
+      message: event.message,
+      ...(event.tool_call_id ? { toolCallId: event.tool_call_id } : {}),
+      schema: (event.schema && typeof event.schema === 'object' ? event.schema : { type: 'object', properties: {} }) as Record<string, unknown>
+    }],
+    mode_changed: (event) => [{ type: 'mode_changed', chatId: this.chatId, mode: event.mode }],
+    model_changed: (event) => [{ type: 'model_changed', chatId: this.chatId, model: event.model, ...(event.provider !== undefined ? { provider: event.provider } : {}) }],
+    usage_limit_reached: (event) => [{ type: 'usage_limit_reached', chatId: this.chatId, message: event.message, ...(event.reset_at !== undefined ? { resetAt: event.reset_at } : {}) }],
     todo_changed: (event) => [{ type: 'todo_update', chatId: this.chatId, todos: todos(event.todos) }],
     board_changed: (event) => [{ type: 'board_update', chatId: this.chatId, board: event.board as unknown as SwarmBoard }],
     compaction_started: (event) => [{ type: 'compaction_start', chatId: this.chatId, reason: 'auto', model: event.model ?? null }],

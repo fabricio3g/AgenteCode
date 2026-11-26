@@ -15,11 +15,14 @@
   import type { AgentStep } from '$lib/types/chat';
   import type { PendingApproval } from '$lib/stores/approvals.svelte';
   import { approvalsStore } from '$lib/stores/approvals.svelte';
+  import type { PendingUserInput } from '$lib/stores/user-inputs.svelte';
+  import { userInputsStore } from '$lib/stores/user-inputs.svelte';
   import { appearanceStore } from '$lib/stores/appearance.svelte';
   import type { Dictation } from '$lib/features/chat/composer/use-dictation.svelte';
   import DictationSetupPopover from '$lib/features/chat/composer/DictationSetupPopover.svelte';
   import ComposerRecorder from '$lib/features/chat/composer/ComposerRecorder.svelte';
   import ApprovalBar from './ApprovalBar.svelte';
+  import QuestionBar from './QuestionBar.svelte';
   import SendButton from './SendButton.svelte';
 
   let {
@@ -42,6 +45,7 @@
     stopShortcut,
     dictationSlot,
     pendingApprovals,
+    pendingInputs = [],
     approvalStep,
     approvalService = false,
     bodyClass = '',
@@ -79,6 +83,7 @@
     stopShortcut?: 'escape';
     dictationSlot?: { label: string; onclick: () => void; glyph?: Snippet };
     pendingApprovals: PendingApproval[];
+    pendingInputs?: PendingUserInput[];
     approvalStep?: (requestId: string) => AgentStep | undefined;
     approvalService?: boolean;
     bodyClass?: string;
@@ -130,7 +135,14 @@
           step={approvalStep?.(approval.requestId)}
           service={approvalService}
           total={pendingApprovals.length}
-          onanswer={(allow) => approvalsStore.resolve(approval.id, allow)}
+          onanswer={(answer) => approvalsStore.resolve(approval.id, answer)}
+        />
+      {:else if pendingInputs.length}
+        {@const input = pendingInputs[0]!}
+        <QuestionBar
+          {input}
+          total={pendingInputs.length}
+          onanswer={(resolution) => userInputsStore.resolve(input.id, resolution)}
         />
       {/if}
 

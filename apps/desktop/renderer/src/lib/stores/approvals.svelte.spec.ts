@@ -71,4 +71,24 @@ describe('approvalsStore', () => {
     approvalsStore.resolve('a5', true);
     await expect(keep).resolves.toBe(true);
   });
+
+  it('preserves native ApprovalOption ids on detailed resolution and boolean fallback', async () => {
+    const options = [
+      { id: 'deny-once', kind: 'deny' as const, label: 'Reject' },
+      { id: 'allow-always', kind: 'approve_all' as const, label: 'Allow for session' },
+      { id: 'allow-once', kind: 'approve_once' as const, label: 'Allow once' }
+    ];
+
+    const p1 = approvalsStore.requestDetailed({ id: 'ext-1', chatId: 'chat-ext', command: 'bash ls', cwd: '/tmp', options });
+    approvalsStore.resolve('ext-1', { allow: true, decision: 'allow_all', optionId: 'allow-always' });
+    await expect(p1).resolves.toEqual({ allow: true, decision: 'allow_all', optionId: 'allow-always' });
+
+    const p2 = approvalsStore.requestDetailed({ id: 'ext-2', chatId: 'chat-ext', command: 'bash pwd', cwd: '/tmp', options });
+    approvalsStore.resolve('ext-2', true);
+    await expect(p2).resolves.toEqual({ allow: true, decision: 'allow', optionId: 'allow-once' });
+
+    const p3 = approvalsStore.requestDetailed({ id: 'ext-3', chatId: 'chat-ext', command: 'bash rm', cwd: '/tmp', options });
+    approvalsStore.clearForChat('chat-ext');
+    await expect(p3).resolves.toEqual({ allow: false, decision: 'deny', optionId: 'deny-once' });
+  });
 });

@@ -30,11 +30,15 @@ import { coreProviderStatus, migrateKeysToCore } from './core-providers.ts';
 import { resetWebSearchSync, syncWebSearchToCore } from './core-web.ts';
 import { modelTransportConfig, providerTransportPolicy, type ModelTransport } from './model-transport.ts';
 import type { AgenteCheckpointSummary, AgenteRuntimeMode, AgenteStartSessionArgs, ApprovalDecision, CodeAgentEvent, LocalModelSelection, SubagentModelEntry, SubagentSettings } from '../../shared/agente-protocol.ts';
-import type { Attachment, Message, RuntimeEventEnvelope, SessionSnapshot, TurnMode, TurnOutcome } from '../../shared/agente-protocol.gen.ts';
+import type { Attachment, Message, RuntimeEventEnvelope, SessionSnapshot, SessionWorktree, TurnMode, TurnOutcome } from '../../shared/agente-protocol.gen.ts';
 import { trackGoalTurn, goalTurnStarted } from '../session-goals.ts';
 
 const FALLBACK_CONTEXT_WINDOW = 32_768;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function isExternalDriver(instanceId?: string | null): boolean {
+  return !!instanceId && instanceId !== 'agente';
+}
 
 type ChatState = {
   owner?: WebContents;
@@ -42,6 +46,8 @@ type ChatState = {
   chatId: string;
   sessionId: string;
   projectRoot: string;
+  instanceId: string;
+  worktree?: SessionWorktree | null;
   provider: string;
   model: string;
   localSelection?: LocalModelSelection;
@@ -455,6 +461,7 @@ async function runtimeContextWindow(chat: ChatState): Promise<number | null> {
 }
 
 function refreshContextWindow(chat: ChatState): void {
+  if (isExternalDriver(chat.instanceId)) return;
   void runtimeContextWindow(chat)
     .catch(() => null)
     .then((window) => window ?? resolveContextWindow(resolveTransport(chat.provider, chat.model, chat.localSelection)))
@@ -466,6 +473,19 @@ function refreshContextWindow(chat: ChatState): void {
 
 /** turn.start parameters for a chat's next message. */
 function turnParams(chat: ChatState, provider: { id: string; model: string }, message: Message): Record<string, unknown> {
+  if (isExternalDriver(chat.instanceId)) {
+    return {
+      session_id: chat.sessionId,
+      prompt: message,
+      instance_id: chat.instanceId,
+      ...(chat.model ? { model: chat.model } : {}),
+      mode: TURN_MODES[chat.mode],
+      project_dir: chat.projectRoot,
+      ...(chat.worktree ? { worktree: chat.worktree } : {}),
+      origin: { channel: 'desktop', trust: 'owner' },
+      ...(chat.systemPrompt ? { system_prompt: chat.systemPrompt } : {})
+    };
+  }
   return {
     session_id: chat.sessionId,
     prompt: message,
@@ -474,6 +494,7 @@ function turnParams(chat: ChatState, provider: { id: string; model: string }, me
     thinking_level: chat.thinkingLevel ?? null,
     mode: TURN_MODES[chat.mode],
     project_dir: chat.projectRoot,
+    ...(chat.worktree ? { worktree: chat.worktree } : {}),
     origin: { channel: 'desktop', trust: 'owner' },
     ...(chat.systemPrompt ? { system_prompt: chat.systemPrompt } : {})
   };
@@ -507,22 +528,40 @@ function bindChatWindow(chat: ChatState, owner?: WebContents) {
   };
 }
 async function startSession(args: AgenteStartSessionArgs, owner?: WebContents): Promise<{ sessionId: string; resumed: boolean; conversationIndex: number }> {
-  await ensureProvider(resolveTransport(args.provider, args.model, args.localSelection));
+  const instanceId = args.instanceId || 'agente';
+  const external = isExternalDriver(instanceId);
+  if (!external) {
+    await ensureProvider(resolveTransport(args.provider, args.model, args.localSelection));
+  }
   const live = chats.get(args.chatId);
   if (live) {
     bindChatWindow(live, owner);
-    Object.assign(live, { provider: args.provider, model: args.model, mode: args.runtimeMode, thinkingLevel: args.thinkingLevel, localSelection: args.localSelection });
+    Object.assign(live, {
+      provider: args.provider,
+      model: args.model,
+      mode: args.runtimeMode,
+      thinkingLevel: args.thinkingLevel,
+      localSelection: args.localSelection,
+      ...(!live.turnId ? { instanceId } : {}),
+      ...(args.worktree !== undefined ? { worktree: args.worktree } : {})
+    });
     const current = await runtimeRequest<{ snapshot: SessionSnapshot }>('session.get', { session_id: live.sessionId });
     return { sessionId: live.sessionId, resumed: true, conversationIndex: current.snapshot.conversation.length };
   }
   const client = await connect();
   const sessionId = args.resumeSessionId && UUID.test(args.resumeSessionId) ? args.resumeSessionId : crypto.randomUUID();
-  const existing = await client.request<{ snapshot: SessionSnapshot }>('session.open', { session_id: sessionId, project_dir: args.projectRoot });
+  const existing = await client.request<{ snapshot: SessionSnapshot }>('session.open', {
+    session_id: sessionId,
+    project_dir: args.projectRoot,
+    ...(external ? { instance_id: instanceId } : {})
+  });
   const resumed = existing.snapshot.conversation.length > 0;
   const chat: ChatState = {
     chatId: args.chatId,
     sessionId,
     projectRoot: args.projectRoot,
+    instanceId,
+    worktree: args.worktree ?? null,
     provider: args.provider,
     model: args.model,
     localSelection: args.localSelection,
@@ -542,7 +581,7 @@ async function startSession(args: AgenteStartSessionArgs, owner?: WebContents): 
   chats.set(args.chatId, chat);
   chatsBySession.set(sessionId, chat);
   bindChatWindow(chat, owner);
-  refreshContextWindow(chat);
+  if (!external) refreshContextWindow(chat);
   return { sessionId, resumed, conversationIndex: existing.snapshot.conversation.length };
 }
 
@@ -556,12 +595,19 @@ async function prompt(chatId: string, text: string, images?: Array<{ data: strin
     // The terminal event reaches the renderer before the runtime releases its turn slot.
     // Wait for turn.outcome before starting the next queued prompt.
     if (chat.settlement) await chat.settlement.promise;
-    await ensureProvider(resolveTransport(chat.provider, chat.model, chat.localSelection));
+    const external = isExternalDriver(chat.instanceId);
+    if (!external) {
+      await ensureProvider(resolveTransport(chat.provider, chat.model, chat.localSelection));
+    }
     const client = await connect();
-    const provider = await useProvider(client, chat.provider, chat.model, chat.localSelection);
+    const provider = external
+      ? { id: chat.instanceId, model: chat.model }
+      : await useProvider(client, chat.provider, chat.model, chat.localSelection);
     const expanded = await client.request<{ text: string }>('project.expand_prompt', { project_dir: chat.projectRoot, text });
     const media = [...attachments, ...(await storeImages(client, images))];
-    await assertModelAccepts(client, provider, media);
+    if (!external) {
+      await assertModelAccepts(client, provider, media);
+    }
     const message: Message = { role: 'user', content: expanded.text, attachments: media };
     if (chat.owner) trackGoalTurn(chat.sessionId, client, chat.owner, provider.id, provider.model, message.content);
     const started = await client.request<{ turn_id: string; conversation_index?: number }>('turn.start', turnParams(chat, provider, message));
@@ -602,7 +648,7 @@ async function steer(chatId: string, text: string, attachments: Attachment[] = [
   if (!chat.turnId) return queueFollowUp(chat, text, attachments);
   const turnId = chat.turnId;
   const client = await connect();
-  if (attachments.length) {
+  if (attachments.length && !isExternalDriver(chat.instanceId)) {
     try {
       await assertModelAccepts(client, chat.turnModel || { id: chat.provider, model: chat.model }, attachments);
     } catch (error: unknown) {
@@ -677,11 +723,38 @@ function settleStopped(chat: ChatState): void {
   emit({ type: 'agent_end', chatId: chat.chatId, stopReason: 'aborted' });
 }
 
-async function respondApproval(chatId: string, requestId: string, decision: ApprovalDecision): Promise<{ ok: boolean }> {
+async function respondApproval(
+  chatId: string,
+  requestId: string,
+  decision: ApprovalDecision,
+  optionId?: string
+): Promise<{ ok: boolean }> {
   if (!chats.has(chatId)) return { ok: false };
   const client = await connect();
-  const result = await client.request<{ ok: boolean }>('approval.respond', { request_id: requestId, decision: decision === 'allow' ? 'approve_once' : 'deny' });
+  const wireDecision = decision === 'allow_all' ? 'approve_all' : decision === 'allow' ? 'approve_once' : 'deny';
+  const result = await client.request<{ ok: boolean }>('approval.respond', {
+    request_id: requestId,
+    decision: wireDecision,
+    ...(optionId ? { option_id: optionId } : {})
+  });
   if (result.ok) emit({ type: 'approval_resolved', chatId, requestId, decision });
+  return result;
+}
+
+async function respondInput(
+  chatId: string,
+  requestId: string,
+  action: import('../../shared/agente-protocol.ts').InputResponseAction,
+  content?: Record<string, unknown>
+): Promise<{ ok: boolean }> {
+  if (!chats.has(chatId)) return { ok: false };
+  const client = await connect();
+  const result = await client.request<{ ok: boolean }>('input.respond', {
+    request_id: requestId,
+    action,
+    ...(content !== undefined ? { content } : {})
+  });
+  if (result.ok) emit({ type: 'input_resolved', chatId, requestId, action });
   return result;
 }
 
@@ -696,10 +769,22 @@ async function setRuntimeMode(chatId: string, mode: AgenteRuntimeMode): Promise<
 async function setModel(chatId: string, provider: string, model: string, thinkingLevel?: string, localSelection?: LocalModelSelection): Promise<{ ok: boolean }> {
   const chat = chats.get(chatId);
   if (!chat) return { ok: false };
+  if (isExternalDriver(chat.instanceId)) {
+    chat.model = model;
+    if (thinkingLevel !== undefined) chat.thinkingLevel = thinkingLevel;
+    return { ok: true };
+  }
   const thinkingChanged = chat.thinkingLevel !== thinkingLevel;
   Object.assign(chat, { provider, model, thinkingLevel, localSelection });
   if (chat.turnId && thinkingChanged) await (await connect()).request('turn.update', { turn_id: chat.turnId, thinking_level: thinkingLevel ?? 'auto' });
   refreshContextWindow(chat);
+  return { ok: true };
+}
+
+function setWorktree(chatId: string, worktree: SessionWorktree | null): { ok: boolean } {
+  const chat = chats.get(chatId);
+  if (!chat) return { ok: false };
+  chat.worktree = worktree ?? null;
   return { ok: true };
 }
 
@@ -905,8 +990,10 @@ export const rustEngine = {
   followUp,
   abort,
   respondApproval,
+  respondInput,
   setRuntimeMode,
   setModel,
+  setWorktree,
   compact,
   exec,
   edits,

@@ -16,6 +16,7 @@ export function getCodeMainWindow(): BrowserWindow | null {
 export function emitCodeAgentEvent(win: BrowserWindow | null, event: CodeAgentEvent): void {
   if (event.type === 'agent_end' && event.stopReason !== 'aborted') notifyActivity({ id: `code-${event.chatId}-${Date.now()}`, chatId: event.chatId, space: 'code', title: event.stopReason === 'error' ? 'Task failed' : 'Task finished', body: 'Open Code to review the result.' }, win?.webContents);
   if (event.type === 'approval_request') notifyActivity({ id: `approval-${event.requestId}`, chatId: event.chatId, space: 'code', title: 'Approval needed', body: 'An agent is waiting for your decision.' }, win?.webContents);
+  if (event.type === 'input_request') notifyActivity({ id: `input-${event.requestId}`, chatId: event.chatId, space: 'code', title: 'Input needed', body: event.message || 'An agent is asking a question.' }, win?.webContents);
   const targets = new Set([...BrowserWindow.getAllWindows(), ...(win ? [win] : [])]);
   for (const target of targets) try {
     if (!target.isDestroyed()) target.webContents?.send('code_agent_event', event);

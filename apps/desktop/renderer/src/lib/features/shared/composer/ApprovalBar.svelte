@@ -25,7 +25,8 @@
   import { t } from 'svelte-i18n';
   import { FilePen, ListChecks, SquareTerminal, TriangleAlert, Wrench } from '$lib/icons';
   import Button from '$lib/components/ui/Button.svelte';
-  import type { PendingApproval } from '$lib/stores/approvals.svelte';
+  import type { ApprovalOption } from '$shared/agente-protocol';
+  import type { ApprovalResolution, PendingApproval } from '$lib/stores/approvals.svelte';
   import type { AgentStep } from '$lib/types/chat';
   import { copy } from '$lib/copy';
   import { titleCaseToolName } from '$lib/utils/tool-ui';
@@ -50,8 +51,33 @@
     total?: number;
     /** A connected service's action rather than a coding tool call. */
     service?: boolean;
-    onanswer: (allow: boolean) => void;
+    onanswer: (answer: boolean | ApprovalResolution) => void;
   } = $props();
+
+  function resolutionForOption(option: ApprovalOption): ApprovalResolution {
+    if (option.kind === 'approve_once') return { allow: true, decision: 'allow', optionId: option.id };
+    if (option.kind === 'approve_all') return { allow: true, decision: 'allow_all', optionId: option.id };
+    return { allow: false, decision: 'deny', optionId: option.id };
+  }
+
+  const orderedOptions = $derived.by(() => {
+    const opts = approval.options;
+    if (!opts?.length) return [] as ApprovalOption[];
+    const rank = (kind: ApprovalOption['kind']) =>
+      kind === 'deny' || kind === 'cancel' ? 0 : kind === 'approve_all' ? 1 : 2;
+    return [...opts].sort((a, b) => rank(a.kind) - rank(b.kind));
+  });
+
+  const primaryDenyId = $derived(
+    orderedOptions.find((o) => o.kind === 'deny')?.id ??
+    orderedOptions.find((o) => o.kind === 'cancel')?.id ??
+    null
+  );
+  const primaryAllowId = $derived(
+    orderedOptions.find((o) => o.kind === 'approve_once')?.id ??
+    orderedOptions.find((o) => o.kind === 'approve_all')?.id ??
+    null
+  );
 
   const PLAN = /^Approve plan\s*—\s*/;
 
@@ -131,12 +157,27 @@
   </div>
 
   <div class="actions">
-    <Button variant="ghost" size="sm" onclick={() => onanswer(false)}>
-      {copy.tool.deny}<kbd>{formatShortcut('escape')}</kbd>
-    </Button>
-    <Button variant={approval.dangerous ? 'destructive' : 'default'} size="sm" onclick={() => onanswer(true)}>
-      {copy.tool.allow}<kbd>{formatShortcut('enter')}</kbd>
-    </Button>
+    {#if orderedOptions.length}
+      {#each orderedOptions as option (option.id)}
+        {@const isReject = option.kind === 'deny' || option.kind === 'cancel'}
+        {@const isPrimaryAllow = option.id === primaryAllowId}
+        {@const isPrimaryDeny = option.id === primaryDenyId}
+        <Button
+          variant={isReject ? 'ghost' : isPrimaryAllow ? (approval.dangerous ? 'destructive' : 'default') : 'outline'}
+          size="sm"
+          onclick={() => onanswer(resolutionForOption(option))}
+        >
+          {option.label}{#if isPrimaryDeny}<kbd>{formatShortcut('escape')}</kbd>{:else if isPrimaryAllow}<kbd>{formatShortcut('enter')}</kbd>{/if}
+        </Button>
+      {/each}
+    {:else}
+      <Button variant="ghost" size="sm" onclick={() => onanswer(false)}>
+        {copy.tool.deny}<kbd>{formatShortcut('escape')}</kbd>
+      </Button>
+      <Button variant={approval.dangerous ? 'destructive' : 'default'} size="sm" onclick={() => onanswer(true)}>
+        {copy.tool.allow}<kbd>{formatShortcut('enter')}</kbd>
+      </Button>
+    {/if}
   </div>
 </div>
 </div>
@@ -256,8 +297,10 @@
   }
   .actions {
     display: flex;
+    flex-wrap: wrap;
     flex-shrink: 0;
     align-items: center;
+    justify-content: flex-end;
     gap: 0.375rem;
     padding-top: 0.125rem;
   }
