@@ -266,15 +266,14 @@
           <span class="min-w-0 flex-1 row-title">{kind === 'pdf' ? 'PDFs' : $t(`code.project.settings.${kind}`)}</span>
           <div class="media-policy" role="radiogroup" aria-label={kind === 'pdf' ? 'PDFs' : $t(`code.project.settings.${kind}`)}>
             {#each (['ask', 'allow', 'block'] as const) as mode (mode)}
-              <button
+              <Button
+                variant="plain"
                 type="button"
                 role="radio"
                 aria-checked={current === mode}
-                class="policy-btn"
-                class:active={current === mode}
-                class:blocked={current === mode && mode === 'block'}
+                class={uiClass('policy-btn', { active: current === mode, blocked: current === mode && mode === 'block' })}
                 onclick={() => setMediaPolicy(kind, mode)}
-              >{mode === 'ask' ? 'Ask' : mode === 'allow' ? 'Allow' : 'Block'}</button>
+              >{mode === 'ask' ? 'Ask' : mode === 'allow' ? 'Allow' : 'Block'}</Button>
             {/each}
           </div>
         </div>
@@ -323,7 +322,7 @@
     border-radius: 0.5rem;
     background: var(--surface-subtle, rgba(255, 255, 255, 0.04));
   }
-  .policy-btn {
+  .media-policy :global(.policy-btn) {
     border: 0;
     background: transparent;
     color: var(--muted-foreground);
@@ -334,12 +333,12 @@
     cursor: pointer;
     transition: background var(--motion-instant, 90ms), color var(--motion-instant, 90ms);
   }
-  .policy-btn:hover { color: var(--foreground); }
-  .policy-btn.active {
+  .media-policy :global(.policy-btn:hover) { color: var(--foreground); }
+  .media-policy :global(.policy-btn.active) {
     background: var(--surface-active, rgba(255, 255, 255, 0.1));
     color: var(--foreground);
   }
-  .policy-btn.blocked {
+  .media-policy :global(.policy-btn.blocked) {
     color: var(--status-warning, #e8793a);
   }
 </style>

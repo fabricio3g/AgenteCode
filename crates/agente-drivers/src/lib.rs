@@ -283,7 +283,10 @@ pub fn builtin_agente_info() -> DriverInfo {
         auth_hint: None,
         builtin: true,
         enabled: true,
-        use_for: Some("Built-in Agente runtime with direct provider APIs, compaction, and subagents.".to_string()),
+        use_for: Some(
+            "Built-in Agente runtime with direct provider APIs, compaction, and subagents."
+                .to_string(),
+        ),
         capabilities: DriverCapabilities {
             models: true,
             thinking: true,

@@ -185,7 +185,8 @@ impl RuntimeHandle {
             return Err(RuntimeError::MissingExecutor);
         }
         let session_id = start.session_id;
-        let resolved_instance_id = self.resolve_instance_id(session_id, start.instance_id.as_deref());
+        let resolved_instance_id =
+            self.resolve_instance_id(session_id, start.instance_id.as_deref());
         let external_driver = if resolved_instance_id != BUILTIN_AGENTE_INSTANCE {
             let driver = self
                 .inner
@@ -670,8 +671,7 @@ impl RuntimeHandle {
                 let Ok(executor) = tokio::runtime::Handle::try_current() else {
                     return false;
                 };
-                let queued =
-                    self.envelope(session_id, turn_id, None, RuntimeEvent::SteeringQueued);
+                let queued = self.envelope(session_id, turn_id, None, RuntimeEvent::SteeringQueued);
                 self.inner.publish(&queued);
                 let _ = events.try_send(queued);
                 let inner = Arc::clone(&self.inner);
@@ -1249,7 +1249,8 @@ async fn run_external_turn(spec: ExternalTurnRunnerSpec) {
         cwd,
         mcp_servers,
     };
-    let runner = tokio::spawn(async move { turn_session.start_turn(turn_request, driver_tx).await });
+    let runner =
+        tokio::spawn(async move { turn_session.start_turn(turn_request, driver_tx).await });
 
     let mut streamed_text = String::new();
     let mut completion: Option<(TurnStatus, String, u32, Option<String>)> = None;
@@ -1299,7 +1300,12 @@ async fn run_external_turn(spec: ExternalTurnRunnerSpec) {
             Ok(Ok(())) => (TurnStatus::Completed, String::new(), 0, None),
             Ok(Err(DriverError::Cancelled)) => (TurnStatus::Cancelled, String::new(), 0, None),
             Ok(Err(err)) => (TurnStatus::Failed, String::new(), 0, Some(err.to_string())),
-            Err(join_err) => (TurnStatus::Failed, String::new(), 0, Some(join_err.to_string())),
+            Err(join_err) => (
+                TurnStatus::Failed,
+                String::new(),
+                0,
+                Some(join_err.to_string()),
+            ),
         },
     };
 

@@ -1,6 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+  import { Button } from '$lib/components/ui';
   import { onDestroy, onMount } from 'svelte';
   import { t } from 'svelte-i18n';
   import { ExternalLink, Globe, LoaderCircle } from '$lib/icons';
@@ -264,7 +265,7 @@
     onpointerenter={() => clearLeaveTimer()}
     onpointerleave={() => scheduleLeave()}
   >
-    <button
+    <Button variant="plain"
       type="button"
       class="link-preview-main"
       onclick={() => {
@@ -308,10 +309,10 @@
           <p class="link-preview-desc">{preview.description}</p>
         {/if}
       </div>
-    </button>
+    </Button>
     <div class="link-preview-foot">
       <span class="link-preview-hint">{$t('browser.preview.openInBrowser')}</span>
-      <button
+      <Button variant="plain"
         type="button"
         class="link-preview-ext"
         title={$t('browser.preview.openExternal')}
@@ -319,7 +320,7 @@
         onclick={() => openExternal(preview!.url)}
       >
         <ExternalLink class="size-3.5" />
-      </button>
+      </Button>
     </div>
   </div>
 {/if}
@@ -335,7 +336,7 @@
     box-shadow: var(--shadow-lg);
     animation: preview-in var(--motion-fast) var(--motion-ease-out) both;
   }
-  .link-preview-main {
+  .link-preview-card :global(.link-preview-main) {
     display: block;
     width: 100%;
     padding: 0;
@@ -430,7 +431,7 @@
     font-size: var(--text-xs);
     color: var(--muted-foreground);
   }
-  .link-preview-ext {
+  .link-preview-card :global(.link-preview-ext) {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -442,7 +443,7 @@
     cursor: pointer;
     transition: background var(--motion-instant) var(--motion-ease), color var(--motion-instant) var(--motion-ease);
   }
-  .link-preview-ext:hover {
+  .link-preview-card :global(.link-preview-ext:hover) {
     background: var(--surface-hover);
     color: var(--foreground);
   }

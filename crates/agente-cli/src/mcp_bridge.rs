@@ -55,10 +55,7 @@ async fn forward_line(
     if let Some(tok) = token {
         req = req.bearer_auth(tok);
     }
-    let resp = req
-        .send()
-        .await
-        .with_context(|| format!("POST {url}"))?;
+    let resp = req.send().await.with_context(|| format!("POST {url}"))?;
     let status = resp.status();
     let body = resp.text().await.unwrap_or_default();
     if !status.is_success() {

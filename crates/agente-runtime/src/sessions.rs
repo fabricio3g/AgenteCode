@@ -692,9 +692,7 @@ impl RuntimeHandle {
                 "project folder does not exist: {project_dir}"
             )));
         }
-        let normalized_instance = instance_id
-            .map(str::trim)
-            .filter(|id| !id.is_empty());
+        let normalized_instance = instance_id.map(str::trim).filter(|id| !id.is_empty());
         let resolved_driver = match normalized_instance {
             Some(BUILTIN_AGENTE_INSTANCE) => {
                 Some((BUILTIN_AGENTE_INSTANCE.to_string(), DriverKind::Agente))

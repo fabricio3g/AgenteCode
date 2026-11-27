@@ -49,8 +49,8 @@ pub fn resolve_executable(program: &str) -> Option<PathBuf> {
 fn check_candidate(base: &Path) -> Option<PathBuf> {
     #[cfg(windows)]
     if base.extension().is_none() {
-        let pathext = std::env::var("PATHEXT")
-            .unwrap_or_else(|_| ".COM;.EXE;.BAT;.CMD".to_string());
+        let pathext =
+            std::env::var("PATHEXT").unwrap_or_else(|_| ".COM;.EXE;.BAT;.CMD".to_string());
         for ext in pathext.split(';').filter(|s| !s.is_empty()) {
             let ext = ext.trim_start_matches('.');
             let candidate = base.with_extension(ext);
@@ -154,8 +154,14 @@ pub async fn passive_probe(
             };
             ProbeOutcome {
                 binary_path,
-                version: (!version.is_empty())
-                    .then(|| version.lines().next().unwrap_or(&version).trim().to_string()),
+                version: (!version.is_empty()).then(|| {
+                    version
+                        .lines()
+                        .next()
+                        .unwrap_or(&version)
+                        .trim()
+                        .to_string()
+                }),
                 error: None,
             }
         }
@@ -194,7 +200,10 @@ pub async fn run_cli_output(
     timeout: Duration,
 ) -> Result<String, DriverError> {
     let resolved = resolve_executable(program).ok_or_else(|| {
-        DriverError::Unavailable(program.to_string(), format!("executable '{program}' not found"))
+        DriverError::Unavailable(
+            program.to_string(),
+            format!("executable '{program}' not found"),
+        )
     })?;
     let canon_cwd = cwd.map(canonical_cwd);
     let mut cmd = prepare_command(&resolved, args, canon_cwd.as_deref(), env, strip_env);
@@ -236,7 +245,14 @@ impl SpawnedStdio {
         cwd: &str,
         env: &BTreeMap<String, String>,
         strip_env: &[String],
-    ) -> Result<(Self, tokio::process::ChildStdout, tokio::process::ChildStdin), DriverError> {
+    ) -> Result<
+        (
+            Self,
+            tokio::process::ChildStdout,
+            tokio::process::ChildStdin,
+        ),
+        DriverError,
+    > {
         let Some(program) = command.first() else {
             return Err(DriverError::InvalidConfig("no command configured".into()));
         };
@@ -372,10 +388,7 @@ impl JsonLineWriter {
     }
 
     pub fn close(&self) {
-        self.tx
-            .lock()
-            .unwrap_or_else(|p| p.into_inner())
-            .take();
+        self.tx.lock().unwrap_or_else(|p| p.into_inner()).take();
     }
 }
 
@@ -412,12 +425,7 @@ impl JsonRpcHandler for NoopJsonRpcHandler {
 }
 
 impl JsonRpcTransport {
-    pub fn start<R, W, H>(
-        reader: R,
-        writer: W,
-        max_line_bytes: usize,
-        handler: Arc<H>,
-    ) -> Arc<Self>
+    pub fn start<R, W, H>(reader: R, writer: W, max_line_bytes: usize, handler: Arc<H>) -> Arc<Self>
     where
         R: AsyncRead + Unpin + Send + 'static,
         W: AsyncWrite + Unpin + Send + 'static,
@@ -491,7 +499,11 @@ impl JsonRpcTransport {
         transport
     }
 
-    pub async fn request_detailed(&self, method: &str, params: Value) -> Result<Value, JsonRpcError> {
+    pub async fn request_detailed(
+        &self,
+        method: &str,
+        params: Value,
+    ) -> Result<Value, JsonRpcError> {
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);
         let (tx, rx) = oneshot::channel();
         self.pending

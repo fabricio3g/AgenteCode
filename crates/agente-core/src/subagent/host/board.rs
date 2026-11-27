@@ -8,7 +8,9 @@
 
 use super::*;
 use crate::subagent::definition::capability_for_parent_mode;
-use crate::swarm::{BoardAction, BoardArgs, BoardStore, ChildState, DeliverFinding, SwarmTool, LEAD};
+use crate::swarm::{
+    BoardAction, BoardArgs, BoardStore, ChildState, DeliverFinding, SwarmTool, LEAD,
+};
 
 /// Children claimed for a card but not yet admitted to the registry. The
 /// claim marks the card Working before `spawn` runs, so for that moment the
@@ -113,7 +115,9 @@ impl SubagentHost {
         };
         // The newest call's turn is the one card starts belong to: a later
         // turn's board call takes over from the turn that first used it.
-        with_swarm(session, |swarm| swarm.lead = Some(BoardLead { cancel, depth }));
+        with_swarm(session, |swarm| {
+            swarm.lead = Some(BoardLead { cancel, depth })
+        });
         // A card left Working by a run that is gone would block the board
         // (and everything that waits on it) for good: settle those first.
         self.reconcile_board();
@@ -134,10 +138,23 @@ impl SubagentHost {
                 .update(session, |board| board.add(args.cards))
                 .map(|(ids, board)| (format!("Added {}.", ids.join(", ")), board)),
             BoardAction::Post => {
-                let text = args.text.as_deref().or(args.note.as_deref()).unwrap_or_default();
+                let text = args
+                    .text
+                    .as_deref()
+                    .or(args.note.as_deref())
+                    .unwrap_or_default();
                 let deliver = self.finding_deliverer();
-                match crate::swarm::post_and_deliver(session, LEAD, text, &args.recipients, &deliver) {
-                    Ok(said) => store.get(session).map(|board| (said, board)).map_err(|e| e.to_string()),
+                match crate::swarm::post_and_deliver(
+                    session,
+                    LEAD,
+                    text,
+                    &args.recipients,
+                    &deliver,
+                ) {
+                    Ok(said) => store
+                        .get(session)
+                        .map(|board| (said, board))
+                        .map_err(|e| e.to_string()),
                     Err(error) => Err(error),
                 }
             }
@@ -277,16 +294,22 @@ impl SubagentHost {
         let summary = snapshot.summary.clone().unwrap_or_default();
         // What a writer really changed in its checkout, whatever tool did it:
         // the scope check sees only the file tools, not a shell redirect.
-        let work = snapshot.worktree.as_ref().map(|info| crate::swarm::CardWork {
-            repo_root: info.repo_root.clone(),
-            worktree: info.path.clone(),
-            base_commit: info.base_commit.clone(),
-            files: crate::subagent::worktree::child_work(info),
-        });
+        let work = snapshot
+            .worktree
+            .as_ref()
+            .map(|info| crate::swarm::CardWork {
+                repo_root: info.repo_root.clone(),
+                worktree: info.path.clone(),
+                base_commit: info.base_commit.clone(),
+                files: crate::subagent::worktree::child_work(info),
+            });
         let Ok((Some(_card), board)) = store.update(session, |board| {
             let card = board.child_finished(child_id, ok, &summary);
             if let Some(card) = &card {
-                let owns = board.card(card).map(|card| card.owns.clone()).unwrap_or_default();
+                let owns = board
+                    .card(card)
+                    .map(|card| card.owns.clone())
+                    .unwrap_or_default();
                 if let Some(work) = &work {
                     if !owns.is_empty() {
                         let changed: Vec<String> =
@@ -329,7 +352,10 @@ impl SubagentHost {
     pub(super) fn swarm_member_tools(
         &self,
         child_id: &str,
-    ) -> Option<(crate::agent::channel::UserInbox, Box<dyn crate::tools::Tool>)> {
+    ) -> Option<(
+        crate::agent::channel::UserInbox,
+        Box<dyn crate::tools::Tool>,
+    )> {
         let session = self.board_session()?;
         let inbox = crate::agent::channel::UserInbox::default();
         let card_id = with_swarm(session, |swarm| {
@@ -410,7 +436,9 @@ impl SubagentHost {
                     for child_id in board.recipients(finding) {
                         if let Some(inbox) = swarm.inboxes.get(&child_id) {
                             if !inbox.is_closed() {
-                                inbox.lock().push(crate::types::Message::user(message.clone()));
+                                inbox
+                                    .lock()
+                                    .push(crate::types::Message::user(message.clone()));
                             }
                         }
                     }

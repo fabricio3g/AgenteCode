@@ -9,6 +9,7 @@
 <script lang="ts">
   import { t } from 'svelte-i18n';
   import { CircleCheck, FilePen, LoaderCircle, Search, SquareTerminal, XCircle } from '$lib/icons';
+  import { Button } from '$lib/components/ui';
   import { EXPLORE_KINDS, entryResult, type WorkEntry, type WorkLayoutProps } from '../work-layouts';
   import EntryRow from './EntryRow.svelte';
   import LayoutHead from './LayoutHead.svelte';
@@ -54,11 +55,11 @@
         {#each tiles as tile (tile.id)}
           {@const Icon = tile.icon}
           {@const running = groups[tile.id].some((entry) => entry.status === 'running')}
-          <button type="button" class="wl-tile" class:is-chosen={chosen === tile.id} aria-expanded={chosen === tile.id} onclick={() => (chosen = chosen === tile.id ? null : tile.id)}>
+          <Button variant="plain" type="button" class="wl-tile {chosen === tile.id ? 'is-chosen' : ''}" aria-expanded={chosen === tile.id} onclick={() => (chosen = chosen === tile.id ? null : tile.id)}>
             <Icon class="wl-tile-icon tone-{tile.tone} {running || Icon === LoaderCircle ? 'wl-spin' : ''}" />
             <span class="wl-tile-label">{tile.label}</span>
             <span class="wl-tile-value" class:is-error={tile.tone === 'error'}>{tile.value}</span>
-          </button>
+          </Button>
         {/each}
       </div>
       {#if chosen}

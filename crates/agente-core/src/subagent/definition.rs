@@ -126,7 +126,8 @@ pub fn custom_capability(
         Some(list) => {
             let has_shell = list.iter().any(|t| t == "shell");
             let all_read_only = list.iter().all(|t| {
-                is_read_only_tool(t) || matches!(t.as_str(), "todo_write" | "present_plan" | "swarm")
+                is_read_only_tool(t)
+                    || matches!(t.as_str(), "todo_write" | "present_plan" | "swarm")
             });
             if has_shell {
                 SubagentCapabilityMode::Execute

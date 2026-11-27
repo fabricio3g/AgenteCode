@@ -13,7 +13,7 @@
   import UiIconButton from '$lib/components/ui/IconButton.svelte';
   import { cn as uiClass } from '$lib/utils/cn';
 
-  import { Button, Tooltip } from '$lib/components/ui';
+  import { Button, Input, Tooltip } from '$lib/components/ui';
   import { onMount, tick } from 'svelte';
   import { X, Plus, ArrowLeft, ArrowRight, RotateCw, LoaderCircle, Monitor, Laptop, Tablet, Smartphone, PanelRight, Hand, MoreHorizontal, Pencil, Globe, SquareDashedMousePointer } from '$lib/icons';
   import { t } from 'svelte-i18n';
@@ -216,7 +216,7 @@
       {#if browserPanelStore.agentDriving}
         <span class="driving-dot" title={$t('browser.agentUsing')} aria-label={$t('browser.agentUsing')}></span>
       {/if}
-      <input
+      <Input variant="inline"
         id="browser-address-input"
         class="browser-url-input"
         type="text"
@@ -374,7 +374,7 @@
     box-shadow: none;
   }
 
-  .browser-url-input {
+  .browser-url :global(.browser-url-input) {
     width: 100%;
     height: 100%;
     min-width: 0;
@@ -390,7 +390,7 @@
     outline: none;
   }
 
-  .browser-url-input::placeholder {
+  .browser-url :global(.browser-url-input)::placeholder {
     color: var(--muted-foreground);
   }
 

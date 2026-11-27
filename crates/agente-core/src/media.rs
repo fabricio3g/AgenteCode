@@ -126,10 +126,18 @@ pub fn kind_for_mime(mime: &str) -> Option<(AttachmentKind, &'static str)> {
 /// MIME types or script payloads cannot masquerade as media.
 pub fn validate_magic_bytes(bytes: &[u8], kind: AttachmentKind, mime: &str) -> anyhow::Result<()> {
     let valid = match (kind, mime) {
-        (AttachmentKind::Image, "image/png") => bytes.starts_with(&[0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A]),
-        (AttachmentKind::Image, "image/jpeg") => bytes.len() >= 3 && bytes[0] == 0xFF && bytes[1] == 0xD8 && bytes[2] == 0xFF,
-        (AttachmentKind::Image, "image/gif") => bytes.starts_with(b"GIF87a") || bytes.starts_with(b"GIF89a"),
-        (AttachmentKind::Image, "image/webp") => bytes.len() >= 12 && &bytes[0..4] == b"RIFF" && &bytes[8..12] == b"WEBP",
+        (AttachmentKind::Image, "image/png") => {
+            bytes.starts_with(&[0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A])
+        }
+        (AttachmentKind::Image, "image/jpeg") => {
+            bytes.len() >= 3 && bytes[0] == 0xFF && bytes[1] == 0xD8 && bytes[2] == 0xFF
+        }
+        (AttachmentKind::Image, "image/gif") => {
+            bytes.starts_with(b"GIF87a") || bytes.starts_with(b"GIF89a")
+        }
+        (AttachmentKind::Image, "image/webp") => {
+            bytes.len() >= 12 && &bytes[0..4] == b"RIFF" && &bytes[8..12] == b"WEBP"
+        }
         (AttachmentKind::Pdf, "application/pdf") => bytes.starts_with(b"%PDF-"),
         _ => true,
     };
@@ -641,7 +649,11 @@ pub(crate) mod tests {
         // Valid PNG signature passes validation.
         let png_bytes = [0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A, 0, 0, 0, 0];
         assert!(validate_magic_bytes(&png_bytes, AttachmentKind::Image, "image/png").is_ok());
-        assert!(validate_magic_bytes(b"%PDF-1.7\n", AttachmentKind::Pdf, "application/pdf").is_ok());
-        assert!(validate_magic_bytes(b"not a pdf", AttachmentKind::Pdf, "application/pdf").is_err());
+        assert!(
+            validate_magic_bytes(b"%PDF-1.7\n", AttachmentKind::Pdf, "application/pdf").is_ok()
+        );
+        assert!(
+            validate_magic_bytes(b"not a pdf", AttachmentKind::Pdf, "application/pdf").is_err()
+        );
     }
 }

@@ -30,10 +30,9 @@ impl App {
     /// Refuse when blocked, ask when this kind needs consent, otherwise do it.
     pub(super) fn request_media(&mut self, request: MediaRequest) {
         if self.state.config.config.is_media_denied(request.kind) {
-            self.state.ui.show_toast(format!(
-                "{} is disabled in /settings",
-                request.kind.label()
-            ));
+            self.state
+                .ui
+                .show_toast(format!("{} is disabled in /settings", request.kind.label()));
             self.state.ui.needs_render = true;
             return;
         }

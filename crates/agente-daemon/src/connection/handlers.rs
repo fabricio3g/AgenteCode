@@ -295,7 +295,9 @@ fn parse_llm_messages(
                                 .map_err(runtime_failure)?;
                             let url = part
                                 .get("image_url")
-                                .and_then(|v| v.as_str().or_else(|| v.get("url").and_then(Value::as_str)))
+                                .and_then(|v| {
+                                    v.as_str().or_else(|| v.get("url").and_then(Value::as_str))
+                                })
                                 .ok_or_else(|| {
                                     (rpc::INVALID_PARAMS, "image_url part missing url".into())
                                 })?;
@@ -496,8 +498,8 @@ impl Connection {
                     agente_protocol::Role::User | agente_protocol::Role::Assistant
                 )
                 .then(|| message.content.strip_prefix("[Conversation summary]\n"))
-                    .flatten()
-                    .map(str::to_owned)
+                .flatten()
+                .map(str::to_owned)
             })
         } else {
             None
@@ -566,10 +568,7 @@ impl Connection {
             .map_err(runtime_failure)
     }
 
-    pub(super) fn start_llm_stream(
-        self: &Arc<Self>,
-        params: Value,
-    ) -> Result<Value, Failure> {
+    pub(super) fn start_llm_stream(self: &Arc<Self>, params: Value) -> Result<Value, Failure> {
         let LlmStreamParams {
             stream_id,
             provider: provider_id,
@@ -605,11 +604,8 @@ impl Connection {
             .filter(|id| !id.trim().is_empty())
             .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
 
-        let ctx = agente_core::providers::RequestContext::new(
-            session_id
-                .unwrap_or_else(SessionId::new)
-                .as_uuid(),
-        );
+        let ctx =
+            agente_core::providers::RequestContext::new(session_id.unwrap_or_default().as_uuid());
         let connection = Arc::clone(self);
         let id_for_task = stream_id.clone();
 

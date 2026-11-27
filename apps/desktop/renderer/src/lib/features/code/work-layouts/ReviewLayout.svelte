@@ -10,6 +10,7 @@
 <script lang="ts">
   import { t } from 'svelte-i18n';
   import { FileCode, LoaderCircle } from '$lib/icons';
+  import { Button } from '$lib/components/ui';
   import { EXPLORE_KINDS, diffPreview, entryResult, type WorkLayoutProps } from '../work-layouts';
   import { codeWorkspace } from '../workspace.svelte';
   import EntryRow from './EntryRow.svelte';
@@ -33,9 +34,9 @@
   {#if open}
     <div class="wl-body">
       {#if explored.length}
-        <button type="button" class="wl-fold" aria-expanded={showExplored} onclick={() => (showExplored = !showExplored)}>
+        <Button variant="plain" type="button" class="wl-fold" aria-expanded={showExplored} onclick={() => (showExplored = !showExplored)}>
           <span class:ui-shimmer-text={exploring}>{exploredLine}</span>
-        </button>
+        </Button>
         {#if showExplored}
           <div class="wl-nested">
             {#each explored as entry (entry.key)}
@@ -50,14 +51,14 @@
           {@const preview = diffPreview(file?.patch)}
           <div class="wl-card" class:is-running={entry.status === 'running'}>
             <div class="wl-card-head">
-              <button type="button" class="wl-card-title" aria-expanded={isOpen(entry)} onclick={() => toggleEntry(entry)}>
+              <Button variant="plain" type="button" class="wl-card-title" aria-expanded={isOpen(entry)} onclick={() => toggleEntry(entry)}>
                 {#if entry.status === 'running'}<LoaderCircle class="wl-icon-glyph wl-spin wl-accent" />{:else}<FileCode class="wl-icon-glyph wl-accent" />{/if}
                 <span class="wl-target">{entry.name}</span>
                 {#if entry.folder}<span class="wl-folder">{entry.folder}</span>{/if}
                 <span class="wl-diff"><span class="is-add">+{entry.additions}</span> <span class="is-del">−{entry.deletions}</span></span>
-              </button>
+              </Button>
               {#if file && entry.status === 'done'}
-                <button type="button" class="wl-chip-button" onclick={() => codeWorkspace.showFileInChanges(file.path)}>{$t('code.layout.open')}</button>
+                <Button variant="plain" type="button" class="wl-chip-button" onclick={() => codeWorkspace.showFileInChanges(file.path)}>{$t('code.layout.open')}</Button>
               {/if}
             </div>
             {#if isOpen(entry)}

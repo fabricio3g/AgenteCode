@@ -1113,7 +1113,10 @@ mod external_driver_tests {
                 .lock()
                 .unwrap()
                 .push(spec.external_session_id.clone());
-            self.seen_cwds.lock().unwrap().push(spec.project_dir.clone());
+            self.seen_cwds
+                .lock()
+                .unwrap()
+                .push(spec.project_dir.clone());
             Ok(Arc::new(MockExternalSession {
                 mode: self.mode.clone(),
                 approvals,
@@ -1175,7 +1178,8 @@ mod external_driver_tests {
                         Ok(decision) => {
                             let approved = matches!(
                                 decision.decision,
-                                ApprovalDecisionKind::ApproveOnce | ApprovalDecisionKind::ApproveAll
+                                ApprovalDecisionKind::ApproveOnce
+                                    | ApprovalDecisionKind::ApproveAll
                             );
                             *recorded.lock().unwrap() = Some(decision);
                             if approved {
@@ -1252,7 +1256,8 @@ mod external_driver_tests {
             seen_cwds: Arc::clone(&seen_cwds),
         }));
 
-        let runtime = RuntimeSupervisor::start(base_cfg.with_driver_registry(Arc::clone(&registry)));
+        let runtime =
+            RuntimeSupervisor::start(base_cfg.with_driver_registry(Arc::clone(&registry)));
         let session_id = SessionId::new();
         runtime
             .open_session_with_driver(session_id, proj.to_str().unwrap(), Some("mock-acp"))
@@ -1280,7 +1285,10 @@ mod external_driver_tests {
         let meta = runtime.session_meta(session_id).expect("saved meta");
         assert_eq!(meta.info.instance_id.as_deref(), Some("mock-acp"));
         assert_eq!(meta.info.driver_kind, Some(DriverKind::Acp));
-        assert_eq!(meta.info.external_session_id.as_deref(), Some("ext-thread-42"));
+        assert_eq!(
+            meta.info.external_session_id.as_deref(),
+            Some("ext-thread-42")
+        );
 
         let snap = runtime.session_snapshot(session_id);
         assert_eq!(
@@ -1338,7 +1346,9 @@ mod external_driver_tests {
         let mut saw_options = Vec::new();
         while let Some(env) = turn.recv().await {
             if let RuntimeEvent::ApprovalRequested {
-                request_id, options, ..
+                request_id,
+                options,
+                ..
             } = env.event
             {
                 saw_options = options;
@@ -1354,7 +1364,13 @@ mod external_driver_tests {
         let outcome = turn.outcome().await.unwrap();
         assert_eq!(outcome.status, TurnStatus::Completed);
         assert_eq!(
-            recorded.lock().unwrap().as_ref().unwrap().option_id.as_deref(),
+            recorded
+                .lock()
+                .unwrap()
+                .as_ref()
+                .unwrap()
+                .option_id
+                .as_deref(),
             Some("allow_always")
         );
 

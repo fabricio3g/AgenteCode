@@ -482,7 +482,8 @@ async fn attach(options: AttachOptions) -> anyhow::Result<()> {
     let (client, mut notifications) = open(&options.server).await?;
     let mut session_driver = options.driver.clone();
     let mut session_worktree: Option<Value> = None;
-    let mut target = if options.create_new || (options.driver.is_some() && options.target.is_none()) {
+    let mut target = if options.create_new || (options.driver.is_some() && options.target.is_none())
+    {
         let (id, title, wt) = open_new_session(
             &client,
             &options.project_dir,

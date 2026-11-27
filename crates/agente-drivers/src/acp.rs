@@ -23,8 +23,8 @@ use uuid::Uuid;
 
 use crate::config::{default_auth_hint, ResolvedInstance};
 use crate::process::{
-    canonical_cwd, passive_probe, resolve_executable, run_cli_output, JsonRpcError,
-    JsonRpcHandler, JsonRpcTransport, NoopJsonRpcHandler, SpawnedStdio,
+    canonical_cwd, passive_probe, resolve_executable, run_cli_output, JsonRpcError, JsonRpcHandler,
+    JsonRpcTransport, NoopJsonRpcHandler, SpawnedStdio,
 };
 use crate::{
     effective_model, flatten_prompt_text, AgentDriver, ApprovalRouter, DriverError, DriverEvent,
@@ -78,7 +78,12 @@ impl AgentDriver for AcpDriver {
     }
 
     fn descriptor(&self) -> DriverInfo {
-        let program = self.instance.command.first().map(String::as_str).unwrap_or("");
+        let program = self
+            .instance
+            .command
+            .first()
+            .map(String::as_str)
+            .unwrap_or("");
         let resolved = resolve_executable(program);
         let status = if !self.instance.enabled {
             DriverStatus::Disabled
@@ -305,9 +310,9 @@ impl JsonRpcHandler for AcpHandler {
                             .unwrap_or_else(|p| p.into_inner());
                         if let Some(turn) = guard.as_mut() {
                             turn.assistant_text.push_str(&text);
-                            let _ = turn
-                                .sink
-                                .try_send(DriverEvent::Runtime(RuntimeEvent::AssistantDelta { text }));
+                            let _ = turn.sink.try_send(DriverEvent::Runtime(
+                                RuntimeEvent::AssistantDelta { text },
+                            ));
                         }
                     }
                 }
@@ -417,14 +422,14 @@ impl JsonRpcHandler for AcpHandler {
                             .tool_names
                             .remove(&id)
                             .unwrap_or_else(|| "tool".to_string());
-                        let _ = turn
-                            .sink
-                            .try_send(DriverEvent::Runtime(RuntimeEvent::ToolResult {
-                                id,
-                                name,
-                                content: text,
-                                is_error: status == "failed",
-                            }));
+                        let _ =
+                            turn.sink
+                                .try_send(DriverEvent::Runtime(RuntimeEvent::ToolResult {
+                                    id,
+                                    name,
+                                    content: text,
+                                    is_error: status == "failed",
+                                }));
                     }
                 } else if !text.is_empty() {
                     self.core
@@ -459,18 +464,19 @@ impl JsonRpcHandler for AcpHandler {
                 }
                 if let (Some(used), Some(size)) = (used, size) {
                     if size > 0 {
-                        self.core.emit(DriverEvent::Runtime(RuntimeEvent::ContextBudget {
-                            used,
-                            room: size,
-                            window: size,
-                            tool_tokens: 0,
-                            gap: 0,
-                            system_tokens: None,
-                            message_tokens: None,
-                            tool_result_tokens: None,
-                            reserve: None,
-                            measured: true,
-                        }));
+                        self.core
+                            .emit(DriverEvent::Runtime(RuntimeEvent::ContextBudget {
+                                used,
+                                room: size,
+                                window: size,
+                                tool_tokens: 0,
+                                gap: 0,
+                                system_tokens: None,
+                                message_tokens: None,
+                                tool_result_tokens: None,
+                                reserve: None,
+                                measured: true,
+                            }));
                     }
                 }
             }
@@ -698,7 +704,10 @@ fn handle_fs_read(project_root: &Path, params: &Value) -> Result<Value, (i32, St
         .get("line")
         .and_then(Value::as_u64)
         .map(|n| n.saturating_sub(1) as usize);
-    let limit = params.get("limit").and_then(Value::as_u64).map(|n| n as usize);
+    let limit = params
+        .get("limit")
+        .and_then(Value::as_u64)
+        .map(|n| n as usize);
     let sliced = match (line, limit) {
         (None, None) => content,
         _ => {
@@ -902,7 +911,9 @@ impl AcpSession {
                 let id = created
                     .get("sessionId")
                     .and_then(Value::as_str)
-                    .ok_or_else(|| DriverError::Protocol("ACP session/new returned no sessionId".into()))?
+                    .ok_or_else(|| {
+                        DriverError::Protocol("ACP session/new returned no sessionId".into())
+                    })?
                     .to_string();
                 (id, created)
             }
@@ -955,10 +966,7 @@ impl AcpSession {
 
         if let Some(model) = effective_model(spec.model.as_deref()) {
             apply_acp_model(&transport, &ext_id, model_config_id.as_deref(), model).await;
-            *core
-                .current_model
-                .lock()
-                .unwrap_or_else(|p| p.into_inner()) = Some(model.to_string());
+            *core.current_model.lock().unwrap_or_else(|p| p.into_inner()) = Some(model.to_string());
         }
 
         Ok(Self {
@@ -1351,7 +1359,9 @@ fn config_option_matches(entry: &Value, expected_category: &str, alt_ids: &[&str
 
 /// Extract the `configOptions[].id` used for model selection, when advertised.
 pub fn extract_acp_model_config_id(session_result: &Value) -> Option<String> {
-    let items = session_result.get("configOptions").and_then(Value::as_array)?;
+    let items = session_result
+        .get("configOptions")
+        .and_then(Value::as_array)?;
     items.iter().find_map(|entry| {
         if config_option_matches(entry, "model", &["model"]) {
             entry
@@ -1368,7 +1378,9 @@ pub fn extract_acp_model_config_id(session_result: &Value) -> Option<String> {
 
 /// Extract the `configOptions[].id` used for reasoning/thought effort, when advertised.
 pub fn extract_acp_thinking_config_id(session_result: &Value) -> Option<String> {
-    let items = session_result.get("configOptions").and_then(Value::as_array)?;
+    let items = session_result
+        .get("configOptions")
+        .and_then(Value::as_array)?;
     items.iter().find_map(|entry| {
         if config_option_matches(
             entry,
@@ -1390,7 +1402,9 @@ pub fn extract_acp_thinking_config_id(session_result: &Value) -> Option<String> 
 /// Parse available models from ACP `session/new` (supports both modern `configOptions`
 /// and `models.availableModels`).
 pub fn parse_acp_models(session_result: &Value) -> Vec<DriverModel> {
-    let config_items = session_result.get("configOptions").and_then(Value::as_array);
+    let config_items = session_result
+        .get("configOptions")
+        .and_then(Value::as_array);
     let thinking_levels: Vec<String> = config_items
         .and_then(|items| {
             items.iter().find(|entry| {
@@ -1489,9 +1503,7 @@ fn matches_acp_mode(id: &str, label: &str, mode: TurnMode) -> bool {
     let label_norm = label.trim().to_ascii_lowercase();
     match mode {
         TurnMode::Plan => {
-            id_norm.contains("plan")
-                || id_norm.contains("architect")
-                || label_norm.contains("plan")
+            id_norm.contains("plan") || id_norm.contains("architect") || label_norm.contains("plan")
         }
         TurnMode::Build => {
             matches!(
@@ -1520,7 +1532,10 @@ pub fn extract_acp_mode_target(
     session_result: &Value,
     mode: TurnMode,
 ) -> Option<(Option<String>, String)> {
-    if let Some(items) = session_result.get("configOptions").and_then(Value::as_array) {
+    if let Some(items) = session_result
+        .get("configOptions")
+        .and_then(Value::as_array)
+    {
         if let Some(entry) = items
             .iter()
             .find(|entry| config_option_matches(entry, "mode", &["mode"]))
@@ -1756,7 +1771,9 @@ async fn probe_acp_live(instance: &ResolvedInstance) -> AcpProbeOutcome {
 
     transport.close();
     drop(transport);
-    spawned.shutdown_gracefully(Duration::from_millis(150)).await;
+    spawned
+        .shutdown_gracefully(Duration::from_millis(150))
+        .await;
 
     match probe_res {
         Ok((Some(init_err), _)) => {
@@ -1846,7 +1863,8 @@ fn acp_mcp_servers(servers: &[InjectedMcpServer]) -> Vec<Value> {
         .map(|srv| {
             let mut headers = Vec::new();
             if let Some(token) = &srv.bearer_token {
-                headers.push(json!({ "name": "Authorization", "value": format!("Bearer {token}") }));
+                headers
+                    .push(json!({ "name": "Authorization", "value": format!("Bearer {token}") }));
             }
             json!({
                 "type": "http",
@@ -1905,11 +1923,8 @@ fn extract_tool_update_text(update: &Value) -> String {
         let parts: Vec<String> = arr
             .iter()
             .filter_map(|item| {
-                extract_text_content(item.get("content")).or_else(|| {
-                    item.get("text")
-                        .and_then(Value::as_str)
-                        .map(str::to_string)
-                })
+                extract_text_content(item.get("content"))
+                    .or_else(|| item.get("text").and_then(Value::as_str).map(str::to_string))
             })
             .collect();
         if !parts.is_empty() {
@@ -2155,7 +2170,8 @@ mod tests {
 
     #[tokio::test]
     async fn acp_cancel_unblocks_pending_permission() {
-        let dir = std::env::temp_dir().join(format!("agente-acp-cancel-{}", Uuid::new_v4().simple()));
+        let dir =
+            std::env::temp_dir().join(format!("agente-acp-cancel-{}", Uuid::new_v4().simple()));
         std::fs::create_dir_all(&dir).unwrap();
 
         let (client_side, server_side) = tokio::io::duplex(64 * 1024);
@@ -2412,9 +2428,15 @@ mod tests {
             ]
         });
 
-        assert_eq!(extract_acp_thinking_config_id(&session_result).as_deref(), Some("effort"));
+        assert_eq!(
+            extract_acp_thinking_config_id(&session_result).as_deref(),
+            Some("effort")
+        );
         let models = parse_acp_models(&session_result);
-        assert_eq!(models[0].thinking_levels, vec!["minimal", "low", "medium", "high", "xhigh", "max"]);
+        assert_eq!(
+            models[0].thinking_levels,
+            vec!["minimal", "low", "medium", "high", "xhigh", "max"]
+        );
     }
 
     #[test]
@@ -2483,8 +2505,7 @@ mod tests {
 
     #[tokio::test]
     async fn acp_connect_applies_config_option_model_and_mode() {
-        let dir =
-            std::env::temp_dir().join(format!("agente-acp-cfg-{}", Uuid::new_v4().simple()));
+        let dir = std::env::temp_dir().join(format!("agente-acp-cfg-{}", Uuid::new_v4().simple()));
         std::fs::create_dir_all(&dir).unwrap();
 
         let (client_side, server_side) = tokio::io::duplex(64 * 1024);
@@ -2736,10 +2757,8 @@ mod tests {
 
     #[tokio::test]
     async fn acp_session_handles_elicitation_late_raw_input_and_usage() {
-        let dir = std::env::temp_dir().join(format!(
-            "agente-acp-elicit-{}",
-            Uuid::new_v4().simple()
-        ));
+        let dir =
+            std::env::temp_dir().join(format!("agente-acp-elicit-{}", Uuid::new_v4().simple()));
         std::fs::create_dir_all(&dir).unwrap();
 
         let (client_side, server_side) = tokio::io::duplex(64 * 1024);
@@ -2969,7 +2988,9 @@ mod tests {
 
         while let Some(ev) = rx.recv().await {
             match ev {
-                DriverEvent::Runtime(RuntimeEvent::ToolProposed { name, arguments, .. }) => {
+                DriverEvent::Runtime(RuntimeEvent::ToolProposed {
+                    name, arguments, ..
+                }) => {
                     assert_eq!(name, "question");
                     proposed_args.push(arguments);
                 }
@@ -2981,11 +3002,13 @@ mod tests {
                 }) => {
                     assert_eq!(message, "Questions");
                     assert!(schema["properties"]["q0"].is_object());
-                    assert!(approvals_reply.respond_input(agente_protocol::InputResponse {
-                        request_id,
-                        action: InputResponseAction::Accept,
-                        content: Some(json!({ "q0": "Blue" })),
-                    }));
+                    assert!(
+                        approvals_reply.respond_input(agente_protocol::InputResponse {
+                            request_id,
+                            action: InputResponseAction::Accept,
+                            content: Some(json!({ "q0": "Blue" })),
+                        })
+                    );
                 }
                 DriverEvent::Runtime(RuntimeEvent::ContextBudget { used, room, .. }) => {
                     assert_eq!(used, 1200);
@@ -3022,10 +3045,8 @@ mod tests {
     #[tokio::test]
     #[ignore = "spawns locally installed opencode CLI with free model opencode/beam-free"]
     async fn acp_live_opencode_question_and_free_model() {
-        let dir = std::env::temp_dir().join(format!(
-            "agente-opencode-live-{}",
-            Uuid::new_v4().simple()
-        ));
+        let dir =
+            std::env::temp_dir().join(format!("agente-opencode-live-{}", Uuid::new_v4().simple()));
         std::fs::create_dir_all(&dir).unwrap();
 
         let instance = crate::config::DriversConfig::default()
@@ -3139,8 +3160,14 @@ mod tests {
 
         let _ = session.close().await;
         turn_task.await.unwrap().expect("opencode turn completed");
-        assert!(saw_elicitation, "expected opencode to send elicitation/create");
-        assert!(saw_question_input, "expected question tool rawInput from tool_call_update");
+        assert!(
+            saw_elicitation,
+            "expected opencode to send elicitation/create"
+        );
+        assert!(
+            saw_question_input,
+            "expected question tool rawInput from tool_call_update"
+        );
         assert!(completed_ok);
         let _ = std::fs::remove_dir_all(dir);
     }

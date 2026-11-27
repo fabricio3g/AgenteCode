@@ -438,12 +438,26 @@
         "findings": "Erkenntnisse",
         "lead": "Leitung",
         "more": "{n, plural, one {# frühere Erkenntnis} other {# frühere Erkenntnisse}} auf dem Board"
-      }
+      },
+      "accept": "Annehmen",
+      "sendBack": "Zurückgeben",
+      "giveUp": "Aufgeben",
+      "retry": "Erneut versuchen",
+      "notePlaceholder": "Was soll der neue Versuch beheben? (optional)",
+      "changes": "{n, plural, one {# geänderte Datei wartet aufs Übernehmen} other {# geänderte Dateien warten aufs Übernehmen}}",
+      "clearTitle": "Board leeren?",
+      "clearMessage": "{n, plural, one {# Karte wurde} other {# Karten wurden}} weder geprüft noch begonnen. Leeren entfernt sie und das Fundprotokoll; Änderungen, die auf Prüfung warten, werden nicht übernommen.",
+      "delegatedTitle": "An CLIs delegierte Aufgaben"
     },
     "traceCopyInput": "Eingabe kopieren",
     "traceCopyOutput": "Ausgabe kopieren",
     "traceCopyCommand": "Befehl kopieren",
-    "todoStatus": {"pending": "Ausstehend", "in_progress": "In Arbeit", "completed": "Abgeschlossen", "cancelled": "Abgebrochen"},
+    "todoStatus": {
+      "pending": "Ausstehend",
+      "in_progress": "In Arbeit",
+      "completed": "Abgeschlossen",
+      "cancelled": "Abgebrochen"
+    },
     "pane": {
       "openWindow": "In einem neuen Fenster öffnen",
       "close": "Bereich schließen",
@@ -856,7 +870,148 @@
     },
     "modeCycle": "Umschalt+Tab zum Wechseln",
     "todosMore": "+{n} weitere",
-    "todosLess": "Weniger anzeigen"
+    "todosLess": "Weniger anzeigen",
+    "layout": {
+      "files": "{n, plural, one {# Datei} other {# Dateien}}",
+      "verb": {
+        "done": {
+          "read": "Gelesen",
+          "list": "Aufgelistet",
+          "search": "Gesucht nach",
+          "web": "Im Web gesucht nach",
+          "edit": "Bearbeitet",
+          "command": "Ausgeführt",
+          "subagent": "Delegiert",
+          "other": "Verwendet",
+          "thought": "Nachgedacht"
+        },
+        "running": {
+          "read": "Liest",
+          "list": "Listet auf",
+          "search": "Sucht nach",
+          "web": "Sucht im Web nach",
+          "edit": "Bearbeitet",
+          "command": "Führt aus",
+          "subagent": "Delegiert",
+          "other": "Verwendet",
+          "thought": "Denkt nach"
+        }
+      },
+      "waiting": "Wartet auf dich",
+      "failed": "Fehlgeschlagen",
+      "used": "{n, plural, one {# Werkzeug} other {# Werkzeuge}} verwendet",
+      "explored": "{n, plural, one {# Datei} other {# Dateien}} erkundet",
+      "searches": "{n, plural, one {# Suche} other {# Suchen}}",
+      "commands": "{n, plural, one {# Befehl} other {# Befehle}}",
+      "progress": "{done} von {total} Schritten",
+      "phase": {
+        "explore": "Code durchgesehen",
+        "change": "Änderungen vorgenommen",
+        "run": "Befehle ausgeführt",
+        "think": "Durchdacht",
+        "delegate": "Arbeit an Subagenten übergeben"
+      },
+      "sources": "Quellen",
+      "tile": {
+        "explored": "Erkundet",
+        "edited": "Bearbeitet",
+        "ran": "Ausgeführt",
+        "result": "Ergebnis",
+        "none": "Noch nichts",
+        "passing": "Letzter Befehl erfolgreich",
+        "failing": "Letzter Befehl fehlgeschlagen"
+      },
+      "open": "Öffnen"
+    },
+    "stepResult": {
+      "lines": "{n, plural, one {# Zeile} other {# Zeilen}}",
+      "entries": "{n, plural, one {# Eintrag} other {# Einträge}}",
+      "more": "+{n} weitere"
+    },
+    "threads": "Threads",
+    "viewProjects": "Nach Projekt gruppieren",
+    "viewThreads": "Alle Threads zeigen",
+    "activeThreads": "Aktiv",
+    "pinned": "Angeheftet",
+    "pin": "Anheften",
+    "unpin": "Lösen",
+    "filterToggle": "Projekte und Threads filtern",
+    "filterPlaceholder": "Projekte oder Threads filtern…",
+    "filterAll": "Alle",
+    "filterActive": "Aktiv",
+    "filterPinned": "Angeheftet",
+    "clearFilters": "Filter zurücksetzen",
+    "noFilterMatches": "Keine passenden Projekte oder Threads.",
+    "noThreads": "Noch keine Threads. Starte eine Unterhaltung in einem Projekt.",
+    "empty": {
+      "start": "Neue Unterhaltung",
+      "startHint": "Den Ordner wählst du beim Schreiben",
+      "fromFolder": "Oder mit einem Ordner beginnen",
+      "open": "Ordner öffnen",
+      "openHint": "Ein Projekt, das schon auf diesem Computer liegt",
+      "new": "Neues Projekt",
+      "newHint": "Ein leerer Ordner, bereit für git",
+      "clone": "Repository klonen",
+      "cloneHint": "Von GitHub, GitLab oder jeder git-URL",
+      "shortcut": "{key} startet überall eine Unterhaltung"
+    },
+    "projectBox": {
+      "title": "Arbeiten in",
+      "agent": "Agent",
+      "all": "Alle anzeigen ({n})",
+      "fewer": "Weniger anzeigen"
+    },
+    "driverPicker": {
+      "label": "Agent",
+      "builtin": "Agente Core",
+      "builtinTag": "Eingebaut",
+      "manage": "Externe CLIs verwalten…",
+      "switchHint": "Ein Wechsel behält diese Unterhaltung: Die nächste Nachricht gibt dem neuen Agenten den Verlauf mit.",
+      "busyHint": "Der Agent lässt sich wechseln, sobald dieser Durchlauf endet.",
+      "driverNotReady": "{driver} ist nicht bereit — prüfe es in den Einstellungen",
+      "configureDriver": "CLI unter Einstellungen → Externe CLIs einrichten",
+      "driverModel": "CLI-Modell",
+      "defaultModel": "CLI-Standard",
+      "effortTitle": "Denkaufwand",
+      "defaultEffort": "Standard",
+      "refreshModels": "Modelle aktualisieren",
+      "loadingModels": "Modelle werden geladen…",
+      "noModelsDiscovered": "Diese CLI hat noch keine Modelle gemeldet",
+      "noAttachments": "Diese CLI nimmt keine Medienanhänge an",
+      "queuePlaceholder": "Nachricht für das Ende dieses Durchlaufs einreihen…",
+      "queueHint": "Enter reiht die nächste Nachricht ein · Esc stoppt",
+      "status": {
+        "ready": "Bereit",
+        "missing": "Nicht gefunden",
+        "needs_auth": "Anmelden",
+        "disabled": "Deaktiviert",
+        "error": "Fehler"
+      }
+    },
+    "worktree": {
+      "isolate": "In Git-Worktree isolieren",
+      "isolateShort": "Isolieren",
+      "activePrefix": "Worktree",
+      "commandHint": "Diese Unterhaltung auf einem eigenen Git-Worktree-Branch ausführen",
+      "isolated": "Isolierter Worktree",
+      "merge": "Zusammenführen",
+      "remove": "Entfernen",
+      "confirmRemove": "Worktree entfernen?",
+      "cancel": "Abbrechen",
+      "merged": "Worktree ins Repository übernommen ({commit})",
+      "removed": "Isolierten Worktree entfernt",
+      "conflictsTitle": "Zusammenführen wegen Konflikten gestoppt",
+      "conflictsHint": "Das Arbeitsverzeichnis des Repositorys blieb sauber. Löse diese Pfade zuerst im Worktree:",
+      "dismiss": "Schließen"
+    },
+    "question": {
+      "title": "Frage",
+      "submit": "Senden",
+      "skip": "Überspringen",
+      "otherPlaceholder": "Eigene Antwort eingeben…",
+      "answerPlaceholder": "Antwort eingeben…",
+      "requiredField": "Bitte beantworte {field}"
+    }
   },
   "searchModal": {
     "inMessages": "In Nachrichten",
@@ -875,7 +1030,9 @@
     "escape": "Dialog schließen · Lauf stoppen",
     "backToConversation": "Zurück zur Unterhaltung",
     "rename": "Ausgewählte Unterhaltung umbenennen",
-    "resizeSidebar": "Seitenleiste skalieren"
+    "resizeSidebar": "Seitenleiste skalieren",
+    "back": "Zurück",
+    "forward": "Vorwärts"
   },
   "search": {
     "source": {
@@ -931,7 +1088,12 @@
     "browse": "Return to the live page",
     "pick": "Select element",
     "pickHint": "Click an element · Shift-click for several · Esc to stop",
-    "pickAdded": "{n, plural, one {# element added to the message} other {# elements added to the message}}"
+    "pickAdded": "{n, plural, one {# element added to the message} other {# elements added to the message}}",
+    "preview": {
+      "loading": "Vorschau wird erstellt…",
+      "openInBrowser": "Im eingebauten Browser öffnen",
+      "openExternal": "Im externen Browser öffnen"
+    }
   },
   "localLoad": {
     "title": "Lokales Modell laden",
@@ -1156,7 +1318,9 @@
     "endpointAddedReady": "{name} hinzugefügt und bereit",
     "artifacts": "Artefakte",
     "title": "Einstellungen",
-    "accessibility": "Barrierefreiheit"
+    "accessibility": "Barrierefreiheit",
+    "appearance": "Darstellung",
+    "externalClis": "Externe CLIs"
   },
   "providers": {
     "cloudDescription": "Nutzt deinen eigenen API-Schlüssel. Chats gehen direkt von der App zum Anbieter.",
@@ -1959,12 +2123,16 @@
       },
       "widget": {
         "name": "Interaktive Widgets",
-         "description": "Rechner, Vergleiche, Quiz und Erklärungen direkt im Chat"
-       },
-       "lesson": {
-         "name": "Lektionen",
-         "description": "Interaktive Erklärungen und Übungen – nur wenn du danach fragst"
-       }
+        "description": "Rechner, Vergleiche, Quiz und Erklärungen direkt im Chat"
+      },
+      "lesson": {
+        "name": "Lektionen",
+        "description": "Interaktive Erklärungen und Übungen – nur wenn du danach fragst"
+      },
+      "scene_3d": {
+        "name": "3D-Szenen",
+        "description": "Interaktive, drehbare 3D-Modelle für Wissenschaft, Systeme und räumliche Themen"
+      }
     },
     "kind": {
       "report": "Bericht",
@@ -1983,7 +2151,8 @@
       "web": "Webseite",
       "files": "Dateien",
       "widget": "Widget",
-      "lesson": "Lektion"
+      "lesson": "Lektion",
+      "scene_3d": "3D-Szene"
     },
     "lesson": {
       "steps": "Schritte",
@@ -2461,7 +2630,9 @@
     "minimize": "Minimieren",
     "maximize": "Maximieren",
     "restore": "Wiederherstellen",
-    "window": "Window"
+    "window": "Window",
+    "back": "Zurück",
+    "forward": "Vorwärts"
   },
   "roleplay": {
     "regenerateEarlier": {
@@ -3373,8 +3544,8 @@
         "files": "Files & documents",
         "productivity": "Productivity",
         "media": "Media",
-         "data": "Data & charts",
-         "learning": "Lernen",
+        "data": "Data & charts",
+        "learning": "Lernen",
         "code": "Code"
       }
     }
@@ -3427,5 +3598,131 @@
       "failed": "Fehlgeschlagen",
       "ready": "Bereit"
     }
+  },
+  "externalClis": {
+    "title": "Externe CLIs",
+    "description": "Installierte Coding-CLIs und isolierte Zugangsprofile neben Agente Core nutzen.",
+    "probeAll": "Verfügbarkeit prüfen",
+    "probing": "Wird geprüft…",
+    "probeOne": "Prüfen",
+    "addInstance": "CLI / Profil hinzufügen",
+    "addProfile": "Profil hinzufügen",
+    "edit": "Bearbeiten",
+    "delete": "Löschen",
+    "confirmDelete": "Löschen?",
+    "sectionTitle": "Installierte und eingerichtete CLIs",
+    "sectionHint": "Gefundene lokale Coding-CLIs, eingebaute Engines und Benutzerprofile aus ~/.agente/drivers.json.",
+    "availableTitle": "Unterstützte CLIs (nicht installiert)",
+    "availableHint": "Eingebaute CLIs, die nicht im PATH gefunden wurden. Installiere eine im Terminal oder lege mit Bearbeiten einen eigenen Pfad fest.",
+    "modelCount": "{n, plural, one {# Modell} other {# Modelle}}",
+    "modelsShow": "{n, plural, one {# Modell} other {# Modelle}}",
+    "modelsHide": "Modelle ausblenden",
+    "builtinHint": "Eingebaute Coding-Engine für mehrere Anbieter",
+    "saved": "CLI-Profil „{name}“ gespeichert",
+    "deleted": "CLI-Profil „{id}“ entfernt",
+    "orchestratorTitle": "Lokaler Orchestrator",
+    "orchestratorHint": "Lokaler MCP-Server, der in CLI-Durchläufe eingebunden wird, damit jede Engine Aufgaben delegieren und Swarm-Karten teilen kann.",
+    "orchestratorEndpoint": "MCP-Brücke des Orchestrators",
+    "orchestratorActive": "Aktiv",
+    "orchestratorInactive": "Bereit",
+    "orchestratorStats": "{active} aktiv · max. {maxConcurrent} gleichzeitig · Tiefenlimit {maxDepth}",
+    "orchestratorInactiveHint": "Startet automatisch, wenn ein Code-Durchlauf beginnt.",
+    "orchestratorTasksTitle": "Delegierte Aufgaben",
+    "orchestratorRefresh": "Aktualisieren",
+    "dialog": {
+      "addTitle": "Coding-CLI oder Profil hinzufügen",
+      "editTitle": "„{id}“ konfigurieren",
+      "description": "Eine eingebaute CLI für ein weiteres Konto erweitern oder eine eigene ACP-Programmdatei registrieren.",
+      "modeProfile": "Eingebaute CLI erweitern",
+      "modeAcp": "Eigene ACP-CLI",
+      "instanceId": "Instanz-ID",
+      "label": "Anzeigename",
+      "baseCli": "Basis-CLI",
+      "command": "Ausführbarer Befehl",
+      "inheritCommand": "Von der Basis-CLI übernehmen",
+      "args": "Zusätzliche Argumente",
+      "env": "Umgebungsvariablen (KEY=VALUE pro Zeile)",
+      "stripEnv": "Geerbte Umgebungsvariablen entfernen",
+      "useFor": "Routing-Hinweis (use_for)",
+      "useForPlaceholder": "Wann ein Orchestrator diesen Agenten wählen soll",
+      "enabled": "Aktiviert",
+      "save": "Profil speichern"
+    },
+    "error": {
+      "badId": "Die Instanz-ID muss mit einem Kleinbuchstaben beginnen und darf nur [a-z0-9-] enthalten (nicht 'agente').",
+      "commandRequired": "Gib einen ausführbaren Befehl für eine eigene ACP-CLI an.",
+      "badEnvLine": "Ungültige Umgebungszeile: „{line}“ (erwartet KEY=VALUE)."
+    }
+  },
+  "appearance": {
+    "title": "Darstellung",
+    "description": "Farbe, Form und Layout. Änderungen gelten sofort und bleiben auf diesem Computer.",
+    "reset": "Zurücksetzen",
+    "themeSection": "Farbe",
+    "mode": "Modus",
+    "modeSystem": "System",
+    "modeLight": "Hell",
+    "modeDark": "Dunkel",
+    "palette": "Design",
+    "theme_agente": "Agente",
+    "theme_agente_desc": "Neutrales Graphit oder Weiß, ohne Tönung.",
+    "theme_parchment": "Pergament",
+    "theme_parchment_desc": "Warme Papiertöne, die die Augen schonen.",
+    "theme_midnight": "Mitternacht",
+    "theme_midnight_desc": "Tiefes, kühles Blauschwarz für späte Sitzungen.",
+    "theme_slate": "Schiefer",
+    "theme_slate_desc": "Kühles Graublau mit etwas mehr Tiefe.",
+    "theme_sepia": "Sepia",
+    "theme_sepia_desc": "Blendarmes Oliv und Creme, wie ein altes Buch.",
+    "accent": "Akzent",
+    "accent_ember": "Glut",
+    "accent_terracotta": "Terrakotta",
+    "accent_emerald": "Smaragd",
+    "accent_cobalt": "Kobalt",
+    "accent_violet": "Violett",
+    "accent_rose": "Rose",
+    "accent_monochrome": "Monochrom",
+    "accentCustom": "Eigene",
+    "tintedBubbles": "Eigene Nachrichten tönen",
+    "tintedBubblesDesc": "Ein Hauch der Akzentfarbe auf dem, was du sendest.",
+    "styleSection": "Form",
+    "uiStyle": "Ecken und Kanten",
+    "uiStyle_default": "Standard",
+    "uiStyle_default_desc": "Ausgewogene Ecken und dezente Haarlinien.",
+    "uiStyle_soft": "Weich",
+    "uiStyle_soft_desc": "Rundere Ecken auf allen Flächen.",
+    "uiStyle_sharp": "Scharf",
+    "uiStyle_sharp_desc": "Enge Ecken und klare Kanten.",
+    "uiStyle_minimal": "Minimal",
+    "uiStyle_minimal_desc": "Kaum Rahmen, Flächen nur durch den Ton getrennt.",
+    "layoutSection": "Layout",
+    "composerStyle": "Nachrichtenfeld",
+    "composer_agente": "Agente",
+    "composer_agente_desc": "Das Feld mit seinen Werkzeugen in einer Leiste darunter.",
+    "composer_pill": "Pille",
+    "composer_pill_desc": "Ein rundes Feld mit den Werkzeugen und einem runden Senden-Knopf darin.",
+    "composer_card": "Karte",
+    "composer_card_desc": "Eine geräumige Schreibkarte mit Senden-Knopf in der Akzentfarbe.",
+    "composer_terminal": "Terminal",
+    "composer_terminal_desc": "Eine Eingabezeile in Festbreitenschrift mit Fokusleiste.",
+    "composer_minimal": "Minimal",
+    "composer_minimal_desc": "Eine einzelne Unterstreichung, die nicht stört.",
+    "agentStyle": "Arbeit des Agenten",
+    "agent_agente": "Agente",
+    "agent_agente_desc": "Ruhige Zeilen an einer Leiste.",
+    "agent_feed": "Aktivitäten-Feed",
+    "agent_feed_desc": "Eine Zusammenfassung mit gestapelten Symbolen, dann zwei Zeilen pro Werkzeug.",
+    "agent_files": "Dateistrom",
+    "agent_files_desc": "Dateien erscheinen beim Schreiben; der Rest klappt in eine Zeile zusammen.",
+    "agent_plan": "Aufgabenplan",
+    "agent_plan_desc": "Ein Fortschrittsring und Phasen, die aktuelle aufgeklappt.",
+    "agent_review": "Diff-Prüfung",
+    "agent_review_desc": "Erkunden klappt weg; jede Änderung zeigt ihren Diff.",
+    "agent_research": "Recherchepfad",
+    "agent_research_desc": "Suchen und die gefundenen Seiten als Favicons und Chips.",
+    "agent_timeline": "Zeitleiste",
+    "agent_timeline_desc": "Ein Sitzungsprotokoll mit der Uhrzeit links.",
+    "agent_tiles": "Schrittkacheln",
+    "agent_tiles_desc": "Eine Kachel pro Art von Arbeit: erkundet, bearbeitet, ausgeführt, Ergebnis."
   }
 }

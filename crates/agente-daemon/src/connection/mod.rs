@@ -175,7 +175,9 @@ where
                                     crate::project::handle(&runtime, "project.files", params)
                                 })
                                 .await
-                                .unwrap_or_else(|error| Err((rpc::INTERNAL_ERROR, error.to_string())))
+                                .unwrap_or_else(|error| {
+                                    Err((rpc::INTERNAL_ERROR, error.to_string()))
+                                })
                             }
                             "web.search" => connection.web_search(params).await,
                             "web.fetch" => connection.web_fetch(params).await,
@@ -343,11 +345,7 @@ impl Connection {
 
     /// Replace this client's subscription to other turns' events and optional
     /// live background process push events.
-    fn subscribe(
-        self: &Arc<Self>,
-        sessions: Option<HashSet<SessionId>>,
-        include_processes: bool,
-    ) {
+    fn subscribe(self: &Arc<Self>, sessions: Option<HashSet<SessionId>>, include_processes: bool) {
         let mut events = self.runtime.subscribe();
         let mut proc_events = include_processes.then(agente_core::tools::processes::subscribe);
         let connection = Arc::clone(self);

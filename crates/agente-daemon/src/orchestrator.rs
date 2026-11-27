@@ -14,8 +14,8 @@ use agente_core::swarm::{BoardStore, LEAD};
 use agente_core::tools::{Tool, ToolError, ToolExecutionMode, ToolKind};
 use agente_drivers::InjectedMcpServer;
 use agente_protocol::{
-    RuntimeEvent, SessionId, SessionWorktree, StartTurn, TurnId, TurnMode, TurnOutcome,
-    TurnStatus, UserInput,
+    RuntimeEvent, SessionId, SessionWorktree, StartTurn, TurnId, TurnMode, TurnOutcome, TurnStatus,
+    UserInput,
 };
 use agente_runtime::{OrchestratorContext, OrchestratorProvider, RuntimeHandle};
 use serde::{Deserialize, Serialize};
@@ -269,9 +269,7 @@ impl OrchestratorServer {
             depth: ctx.depth,
             max_mode: ctx.mode,
         };
-        tokens
-            .by_session
-            .insert(ctx.session_id, token.clone());
+        tokens.by_session.insert(ctx.session_id, token.clone());
         tokens.by_token.insert(token, scope.clone());
         scope
     }
@@ -465,7 +463,8 @@ impl Tool for OrchestratorToolAdapter {
         let value = dispatch_tool(&self.inner, &self.scope, self.spec.name, args)
             .await
             .map_err(ToolError::ExecutionError)?;
-        serde_json::to_string_pretty(&value).map_err(|err| ToolError::ExecutionError(err.to_string()))
+        serde_json::to_string_pretty(&value)
+            .map_err(|err| ToolError::ExecutionError(err.to_string()))
     }
 }
 
@@ -530,12 +529,9 @@ async fn dispatch_tool(
 
     match name {
         "orchestrator_list_drivers" => {
-            let ListDriversArgs { probe } = serde_json::from_value(if args.is_null() {
-                json!({})
-            } else {
-                args
-            })
-            .map_err(|e| format!("invalid arguments: {e}"))?;
+            let ListDriversArgs { probe } =
+                serde_json::from_value(if args.is_null() { json!({}) } else { args })
+                    .map_err(|e| format!("invalid arguments: {e}"))?;
             let drivers = if probe {
                 runtime.probe_drivers().await
             } else {
@@ -615,10 +611,10 @@ async fn dispatch_tool(
             let BoardPostArgs { text, from, to } =
                 serde_json::from_value(args).map_err(|e| format!("invalid arguments: {e}"))?;
             let from = from.as_deref().unwrap_or(LEAD).to_string();
-            let (finding, _board) = BoardStore::user().update(
-                scope.parent_session_id.as_uuid(),
-                |board| board.post(&from, &text, &to),
-            )?;
+            let (finding, _board) = BoardStore::user()
+                .update(scope.parent_session_id.as_uuid(), |board| {
+                    board.post(&from, &text, &to)
+                })?;
             serde_json::to_value(finding).map_err(|e| e.to_string())
         }
         other => Err(format!("unknown orchestrator tool: {other}")),
@@ -694,11 +690,9 @@ async fn spawn_task(
     let child_depth = scope.depth.saturating_add(1);
     runtime.set_session_depth(child_session_id, child_depth);
 
-    if let Err(err) = runtime.open_session_with_driver(
-        child_session_id,
-        &scope.project_dir,
-        Some(&instance_id),
-    ) {
+    if let Err(err) =
+        runtime.open_session_with_driver(child_session_id, &scope.project_dir, Some(&instance_id))
+    {
         if let Some(wt) = &created_worktree {
             let _ = crate::worktree::remove_worktree(
                 Some(runtime),
@@ -984,7 +978,8 @@ async fn handle_http_connection(
             continue;
         }
 
-        let Some(scope) = authorize_bearer(&inner, headers.get("authorization").map(String::as_str))
+        let Some(scope) =
+            authorize_bearer(&inner, headers.get("authorization").map(String::as_str))
         else {
             write_http_response(
                 reader.get_mut(),
@@ -1069,11 +1064,11 @@ async fn handle_mcp_request(
             Ok(json!({ "tools": tools }))
         }
         "tools/call" => {
-            let tool_name = params
-                .get("name")
-                .and_then(Value::as_str)
-                .unwrap_or("");
-            let args = params.get("arguments").cloned().unwrap_or_else(|| json!({}));
+            let tool_name = params.get("name").and_then(Value::as_str).unwrap_or("");
+            let args = params
+                .get("arguments")
+                .cloned()
+                .unwrap_or_else(|| json!({}));
             let res = match dispatch_tool(inner, scope, tool_name, args).await {
                 Ok(val) => json!({
                     "content": [{ "type": "text", "text": serde_json::to_string_pretty(&val).unwrap_or_default() }],
@@ -1228,10 +1223,8 @@ async fn write_http_response(
 mod tests {
     use super::*;
     use agente_core::config::AppConfig;
-    use agente_protocol::{
-        DriverCapabilities, DriverInfo, DriverKind, DriverStatus, Message,
-    };
     use agente_drivers::{DriverEvent, DriverSessionOpen, DriverTurnRequest};
+    use agente_protocol::{DriverCapabilities, DriverInfo, DriverKind, DriverStatus, Message};
     use agente_runtime::{
         AgentDriver, ApprovalRouter, DriverError, DriverRegistry, DriverSession, DriversConfig,
         RuntimeConfig, RuntimeSupervisor,
@@ -1385,10 +1378,8 @@ mod tests {
 
     #[tokio::test]
     async fn orchestrator_mcp_enforces_auth_mode_ceiling_depth_and_cancel() {
-        let root = std::env::temp_dir().join(format!(
-            "agente-orchestrator-test-{}",
-            Uuid::new_v4()
-        ));
+        let root =
+            std::env::temp_dir().join(format!("agente-orchestrator-test-{}", Uuid::new_v4()));
         std::fs::create_dir_all(&root).unwrap();
 
         let orchestrator = OrchestratorServer::start(OrchestratorConfig {

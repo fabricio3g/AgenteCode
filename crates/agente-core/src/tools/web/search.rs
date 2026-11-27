@@ -476,7 +476,9 @@ mod tests {
     #[test]
     fn lite_snippets_stay_with_their_own_result() {
         let row = |n: u8| {
-            format!(r#"<tr><td><a class="result-link" href="https://r{n}.test/">R{n}</a></td></tr>"#)
+            format!(
+                r#"<tr><td><a class="result-link" href="https://r{n}.test/">R{n}</a></td></tr>"#
+            )
         };
         let snippet = |n: u8| format!(r#"<tr><td class="result-snippet">About {n}</td></tr>"#);
         let html = format!(
@@ -493,7 +495,14 @@ mod tests {
         assert_eq!(hits[1].snippet, "About 2");
         assert_eq!(hits[2].snippet, "About 3");
 
-        let middle = format!("<table>{}{}{}{}{}</table>", row(1), snippet(1), row(2), row(3), snippet(3));
+        let middle = format!(
+            "<table>{}{}{}{}{}</table>",
+            row(1),
+            snippet(1),
+            row(2),
+            row(3),
+            snippet(3)
+        );
         let hits = parse_ddg_lite(&middle);
         assert_eq!(
             hits.iter().map(|h| h.snippet.as_str()).collect::<Vec<_>>(),

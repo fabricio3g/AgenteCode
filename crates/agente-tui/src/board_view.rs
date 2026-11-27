@@ -320,12 +320,18 @@ mod tests {
             }))
             .unwrap()
         };
-        board.add(vec![spec("Map code"), spec("Write docs")]).unwrap();
+        board
+            .add(vec![spec("Map code"), spec("Write docs")])
+            .unwrap();
         board.start("c1", "child-1");
         board.start("c2", "child-2");
         board.post("c1", "Tokens live in lexer.rs", &[]).unwrap();
-        board.post("c2", "Docs cite parse()", &["c1".into()]).unwrap();
-        board.post(agente_core::swarm::LEAD, "Keep the public API", &[]).unwrap();
+        board
+            .post("c2", "Docs cite parse()", &["c1".into()])
+            .unwrap();
+        board
+            .post(agente_core::swarm::LEAD, "Keep the public API", &[])
+            .unwrap();
         let mut state = AppState::new(AppConfig::default(), "/tmp/board-findings".into());
         state.agent.board = Some(board);
         state.input.show_board = true;

@@ -681,7 +681,10 @@ fn normalize_reports_no_change_for_a_valid_exchange() {
     let mut messages = vec![create_message(Role::User, "go")];
     messages.extend(tool_exchange(&["a", "b"]));
     let (_, changed) = normalize_tool_messages_tracked(messages);
-    assert!(!changed, "a complete exchange must not force a token recount");
+    assert!(
+        !changed,
+        "a complete exchange must not force a token recount"
+    );
 }
 
 #[test]
@@ -718,7 +721,10 @@ fn consecutive_user_turns_merge_on_the_request_copy() {
     ];
     merge_consecutive_user_turns(&mut messages);
     assert_eq!(messages.len(), 2);
-    assert_eq!(messages[1].content, "prompt\n\ngoal reminder\n\nbudget notice");
+    assert_eq!(
+        messages[1].content,
+        "prompt\n\ngoal reminder\n\nbudget notice"
+    );
     assert!(summary_message("x").role == Role::User);
 }
 
@@ -736,5 +742,8 @@ fn a_huge_single_line_recent_tool_result_still_shrinks() {
     let result = compactor.compact_forced(messages);
     assert!(result.summary.tokens_saved > 0);
     assert!(estimate_tokens_for_test(&result.messages) < before / 10);
-    assert!(result.messages.iter().any(|m| m.content.contains("Tool output truncated")));
+    assert!(result
+        .messages
+        .iter()
+        .any(|m| m.content.contains("Tool output truncated")));
 }

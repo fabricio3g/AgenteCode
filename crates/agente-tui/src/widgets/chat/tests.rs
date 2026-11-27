@@ -125,8 +125,15 @@ fn a_swarm_member_card_reads_as_its_lane() {
     let lines = render_subagent(&entry, 100, Some(&ui), false);
     assert_eq!(lines.len(), 4, "header + activity + finding + gap");
     let row1 = text(&lines[0]);
-    assert!(row1.contains("c1 Map lexer  Lexer mapper"), "row1: {row1:?}");
-    assert!(text(&lines[1]).contains("· feeds c2"), "{:?}", text(&lines[1]));
+    assert!(
+        row1.contains("c1 Map lexer  Lexer mapper"),
+        "row1: {row1:?}"
+    );
+    assert!(
+        text(&lines[1]).contains("· feeds c2"),
+        "{:?}",
+        text(&lines[1])
+    );
     assert!(
         text(&lines[2]).contains("\u{270e} c1  Tokens live in lexer.rs"),
         "{:?}",
@@ -136,7 +143,9 @@ fn a_swarm_member_card_reads_as_its_lane() {
     // A new finding re-renders the card.
     let mut map = std::collections::HashMap::from([("child".into(), ui.clone())]);
     let before = subagent_fingerprint(&map, 100);
-    board.post(agente_core::swarm::LEAD, "Keep the API", &["c1".into()]).unwrap();
+    board
+        .post(agente_core::swarm::LEAD, "Keep the API", &["c1".into()])
+        .unwrap();
     ui.swarm = crate::state::SwarmLane::of(&board, "child");
     map.insert("child".into(), ui);
     assert_ne!(before, subagent_fingerprint(&map, 100));

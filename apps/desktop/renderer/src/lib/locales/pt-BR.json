@@ -438,12 +438,26 @@
         "findings": "Descobertas",
         "lead": "Líder",
         "more": "{n, plural, one {# descoberta anterior} other {# descobertas anteriores}} no quadro"
-      }
+      },
+      "accept": "Aceitar",
+      "sendBack": "Devolver",
+      "giveUp": "Desistir",
+      "retry": "Tentar de novo",
+      "notePlaceholder": "O que a nova tentativa deve corrigir? (opcional)",
+      "changes": "{n, plural, one {# arquivo alterado aguarda ser aplicado} other {# arquivos alterados aguardam ser aplicados}}",
+      "clearTitle": "Limpar o quadro?",
+      "clearMessage": "{n, plural, one {# cartão não foi revisado nem iniciado} other {# cartões não foram revisados nem iniciados}}. Limpar remove os cartões e o registro de descobertas; mudanças aguardando revisão não são aplicadas.",
+      "delegatedTitle": "Tarefas delegadas a CLIs"
     },
     "traceCopyInput": "Copiar entrada",
     "traceCopyOutput": "Copiar resultado",
     "traceCopyCommand": "Copiar comando",
-    "todoStatus": {"pending": "Pendente", "in_progress": "Em andamento", "completed": "Concluída", "cancelled": "Cancelada"},
+    "todoStatus": {
+      "pending": "Pendente",
+      "in_progress": "Em andamento",
+      "completed": "Concluída",
+      "cancelled": "Cancelada"
+    },
     "pane": {
       "openWindow": "Abrir em uma nova janela",
       "close": "Fechar painel",
@@ -856,7 +870,148 @@
     },
     "modeCycle": "Shift+Tab para trocar",
     "todosMore": "+{n} mais",
-    "todosLess": "Mostrar menos"
+    "todosLess": "Mostrar menos",
+    "layout": {
+      "files": "{n, plural, one {# arquivo} other {# arquivos}}",
+      "verb": {
+        "done": {
+          "read": "Leu",
+          "list": "Listou",
+          "search": "Buscou por",
+          "web": "Buscou na web por",
+          "edit": "Editou",
+          "command": "Executou",
+          "subagent": "Delegou",
+          "other": "Usou",
+          "thought": "Pensou"
+        },
+        "running": {
+          "read": "Lendo",
+          "list": "Listando",
+          "search": "Buscando por",
+          "web": "Buscando na web por",
+          "edit": "Editando",
+          "command": "Executando",
+          "subagent": "Delegando",
+          "other": "Usando",
+          "thought": "Pensando"
+        }
+      },
+      "waiting": "Esperando por você",
+      "failed": "Falhou",
+      "used": "Usou {n, plural, one {# ferramenta} other {# ferramentas}}",
+      "explored": "Explorou {n, plural, one {# arquivo} other {# arquivos}}",
+      "searches": "{n, plural, one {# busca} other {# buscas}}",
+      "commands": "{n, plural, one {# comando} other {# comandos}}",
+      "progress": "{done} de {total} etapas",
+      "phase": {
+        "explore": "Percorreu o código",
+        "change": "Fez mudanças",
+        "run": "Executou comandos",
+        "think": "Pensou a fundo",
+        "delegate": "Passou trabalho a subagentes"
+      },
+      "sources": "Fontes",
+      "tile": {
+        "explored": "Explorado",
+        "edited": "Editado",
+        "ran": "Executado",
+        "result": "Resultado",
+        "none": "Nada ainda",
+        "passing": "Último comando passou",
+        "failing": "Último comando falhou"
+      },
+      "open": "Abrir"
+    },
+    "stepResult": {
+      "lines": "{n, plural, one {# linha} other {# linhas}}",
+      "entries": "{n, plural, one {# entrada} other {# entradas}}",
+      "more": "+{n} mais"
+    },
+    "threads": "Threads",
+    "viewProjects": "Agrupar por projeto",
+    "viewThreads": "Mostrar todas as threads",
+    "activeThreads": "Ativas",
+    "pinned": "Fixadas",
+    "pin": "Fixar",
+    "unpin": "Desafixar",
+    "filterToggle": "Filtrar projetos e threads",
+    "filterPlaceholder": "Filtrar projetos ou threads…",
+    "filterAll": "Todas",
+    "filterActive": "Ativas",
+    "filterPinned": "Fixadas",
+    "clearFilters": "Limpar filtros",
+    "noFilterMatches": "Nenhum projeto ou thread corresponde.",
+    "noThreads": "Ainda não há threads. Comece uma conversa em um projeto.",
+    "empty": {
+      "start": "Nova conversa",
+      "startHint": "Escolha a pasta enquanto escreve",
+      "fromFolder": "Ou comece por uma pasta",
+      "open": "Abrir uma pasta",
+      "openHint": "Um projeto que já está neste computador",
+      "new": "Novo projeto",
+      "newHint": "Uma pasta vazia, pronta para o git",
+      "clone": "Clonar um repositório",
+      "cloneHint": "Do GitHub, GitLab ou qualquer URL git",
+      "shortcut": "{key} inicia uma conversa de qualquer lugar"
+    },
+    "projectBox": {
+      "title": "Trabalhar em",
+      "agent": "Agente",
+      "all": "Ver todos ({n})",
+      "fewer": "Ver menos"
+    },
+    "driverPicker": {
+      "label": "Agente",
+      "builtin": "Agente Core",
+      "builtinTag": "Integrado",
+      "manage": "Gerenciar CLIs externas…",
+      "switchHint": "Trocar mantém esta conversa: a próxima mensagem passa o histórico ao novo agente.",
+      "busyHint": "O agente pode ser trocado quando este turno terminar.",
+      "driverNotReady": "{driver} não está pronto — confira nas Configurações",
+      "configureDriver": "Configurar a CLI em Configurações → CLIs externas",
+      "driverModel": "Modelo da CLI",
+      "defaultModel": "Padrão da CLI",
+      "effortTitle": "Esforço de raciocínio",
+      "defaultEffort": "Padrão",
+      "refreshModels": "Atualizar modelos",
+      "loadingModels": "Carregando modelos…",
+      "noModelsDiscovered": "Esta CLI ainda não informou modelos",
+      "noAttachments": "Esta CLI não aceita anexos de mídia",
+      "queuePlaceholder": "Enfileirar uma mensagem para quando este turno terminar…",
+      "queueHint": "Enter enfileira a próxima mensagem · Esc para",
+      "status": {
+        "ready": "Pronto",
+        "missing": "Não encontrado",
+        "needs_auth": "Entrar",
+        "disabled": "Desativado",
+        "error": "Erro"
+      }
+    },
+    "worktree": {
+      "isolate": "Isolar em um worktree do Git",
+      "isolateShort": "Isolar",
+      "activePrefix": "Worktree",
+      "commandHint": "Executar esta conversa em seu próprio branch de worktree do Git",
+      "isolated": "Worktree isolado",
+      "merge": "Mesclar",
+      "remove": "Remover",
+      "confirmRemove": "Remover o worktree?",
+      "cancel": "Cancelar",
+      "merged": "Worktree mesclado no repositório ({commit})",
+      "removed": "Worktree isolado removido",
+      "conflictsTitle": "A mesclagem parou por conflitos",
+      "conflictsHint": "A árvore de trabalho do repositório ficou limpa. Resolva primeiro estes caminhos no worktree:",
+      "dismiss": "Dispensar"
+    },
+    "question": {
+      "title": "Pergunta",
+      "submit": "Enviar",
+      "skip": "Pular",
+      "otherPlaceholder": "Digite sua própria resposta…",
+      "answerPlaceholder": "Digite sua resposta…",
+      "requiredField": "Responda {field}"
+    }
   },
   "searchModal": {
     "inMessages": "Nas mensagens",
@@ -875,7 +1030,9 @@
     "escape": "Fechar diálogo · parar uma execução",
     "backToConversation": "Voltar à conversa",
     "rename": "Renomear a conversa selecionada",
-    "resizeSidebar": "Redimensionar a barra lateral"
+    "resizeSidebar": "Redimensionar a barra lateral",
+    "back": "Voltar",
+    "forward": "Avançar"
   },
   "search": {
     "source": {
@@ -931,7 +1088,12 @@
     "browse": "Return to the live page",
     "pick": "Select element",
     "pickHint": "Click an element · Shift-click for several · Esc to stop",
-    "pickAdded": "{n, plural, one {# element added to the message} other {# elements added to the message}}"
+    "pickAdded": "{n, plural, one {# element added to the message} other {# elements added to the message}}",
+    "preview": {
+      "loading": "Gerando prévia…",
+      "openInBrowser": "Abrir no navegador integrado",
+      "openExternal": "Abrir no navegador externo"
+    }
   },
   "localLoad": {
     "title": "Carregar modelo local",
@@ -1156,7 +1318,9 @@
     "endpointAddedReady": "{name} adicionado e pronto",
     "artifacts": "Artefatos",
     "title": "Configurações",
-    "accessibility": "Acessibilidade"
+    "accessibility": "Acessibilidade",
+    "appearance": "Aparência",
+    "externalClis": "CLIs externas"
   },
   "providers": {
     "cloudDescription": "Usa sua própria chave de API. Os chats vão direto deste app para o provedor.",
@@ -1959,12 +2123,16 @@
       },
       "widget": {
         "name": "Widgets interativos",
-         "description": "Calculadoras, comparações, quizzes e explicações para usar no chat"
-       },
-       "lesson": {
-         "name": "Lições",
-         "description": "Explicações interativas e exercícios, só quando você pedir"
-       }
+        "description": "Calculadoras, comparações, quizzes e explicações para usar no chat"
+      },
+      "lesson": {
+        "name": "Lições",
+        "description": "Explicações interativas e exercícios, só quando você pedir"
+      },
+      "scene_3d": {
+        "name": "Cenas 3D",
+        "description": "Modelos 3D interativos e giratórios para temas de ciência, sistemas e espaço"
+      }
     },
     "kind": {
       "report": "Relatório",
@@ -1983,7 +2151,8 @@
       "web": "Página web",
       "files": "Arquivos",
       "widget": "Widget",
-      "lesson": "Lição"
+      "lesson": "Lição",
+      "scene_3d": "Cena 3D"
     },
     "lesson": {
       "steps": "passos",
@@ -2461,7 +2630,9 @@
     "minimize": "Minimizar",
     "maximize": "Maximizar",
     "restore": "Restaurar",
-    "window": "Window"
+    "window": "Window",
+    "back": "Voltar",
+    "forward": "Avançar"
   },
   "roleplay": {
     "regenerateEarlier": {
@@ -3373,8 +3544,8 @@
         "files": "Files & documents",
         "productivity": "Productivity",
         "media": "Media",
-         "data": "Data & charts",
-         "learning": "Aprendizado",
+        "data": "Data & charts",
+        "learning": "Aprendizado",
         "code": "Code"
       }
     }
@@ -3427,5 +3598,131 @@
       "failed": "Falhou",
       "ready": "Pronto"
     }
+  },
+  "externalClis": {
+    "title": "CLIs externas",
+    "description": "Use as CLIs de programação instaladas e perfis de credenciais isolados ao lado do Agente Core.",
+    "probeAll": "Verificar disponibilidade",
+    "probing": "Verificando…",
+    "probeOne": "Verificar",
+    "addInstance": "Adicionar CLI / perfil",
+    "addProfile": "Adicionar perfil",
+    "edit": "Editar",
+    "delete": "Excluir",
+    "confirmDelete": "Excluir?",
+    "sectionTitle": "CLIs instaladas e configuradas",
+    "sectionHint": "CLIs de programação locais detectadas, motores integrados e perfis de usuário de ~/.agente/drivers.json.",
+    "availableTitle": "CLIs compatíveis (não instaladas)",
+    "availableHint": "CLIs integradas que não estão no PATH. Instale uma pelo terminal ou clique em Editar para definir um caminho próprio.",
+    "modelCount": "{n, plural, one {# modelo} other {# modelos}}",
+    "modelsShow": "{n, plural, one {# modelo} other {# modelos}}",
+    "modelsHide": "Ocultar modelos",
+    "builtinHint": "Motor de programação integrado com vários provedores",
+    "saved": "Perfil de CLI “{name}” salvo",
+    "deleted": "Perfil de CLI “{id}” removido",
+    "orchestratorTitle": "Orquestrador local",
+    "orchestratorHint": "Servidor MCP local injetado nos turnos das CLIs para que qualquer motor possa delegar tarefas e compartilhar cartões do enxame.",
+    "orchestratorEndpoint": "Ponte MCP do orquestrador",
+    "orchestratorActive": "Ativo",
+    "orchestratorInactive": "Em espera",
+    "orchestratorStats": "{active} ativas · máx. {maxConcurrent} simultâneas · limite de profundidade {maxDepth}",
+    "orchestratorInactiveHint": "Inicia sozinho quando um turno de Code começa.",
+    "orchestratorTasksTitle": "Tarefas delegadas",
+    "orchestratorRefresh": "Atualizar",
+    "dialog": {
+      "addTitle": "Adicionar CLI de programação ou perfil",
+      "editTitle": "Configurar “{id}”",
+      "description": "Estenda uma CLI integrada para outra conta ou registre um executável ACP próprio.",
+      "modeProfile": "Estender CLI integrada",
+      "modeAcp": "CLI ACP própria",
+      "instanceId": "ID da instância",
+      "label": "Nome de exibição",
+      "baseCli": "CLI base",
+      "command": "Comando executável",
+      "inheritCommand": "Herdar da CLI base",
+      "args": "Argumentos extras",
+      "env": "Variáveis de ambiente (CHAVE=VALOR por linha)",
+      "stripEnv": "Remover variáveis de ambiente herdadas",
+      "useFor": "Dica de roteamento (use_for)",
+      "useForPlaceholder": "Quando um orquestrador deve escolher este agente",
+      "enabled": "Ativado",
+      "save": "Salvar perfil"
+    },
+    "error": {
+      "badId": "O ID da instância deve começar com uma letra minúscula e conter só [a-z0-9-] (não 'agente').",
+      "commandRequired": "Informe um comando executável para uma CLI ACP própria.",
+      "badEnvLine": "Linha de ambiente inválida: “{line}” (esperado CHAVE=VALOR)."
+    }
+  },
+  "appearance": {
+    "title": "Aparência",
+    "description": "Cor, forma e layout. As mudanças valem na hora e ficam neste computador.",
+    "reset": "Redefinir",
+    "themeSection": "Cor",
+    "mode": "Modo",
+    "modeSystem": "Sistema",
+    "modeLight": "Claro",
+    "modeDark": "Escuro",
+    "palette": "Tema",
+    "theme_agente": "Agente",
+    "theme_agente_desc": "Grafite ou branco neutro, sem tonalidade.",
+    "theme_parchment": "Pergaminho",
+    "theme_parchment_desc": "Tons quentes de papel, suaves para os olhos.",
+    "theme_midnight": "Meia-noite",
+    "theme_midnight_desc": "Preto-azulado frio e profundo para sessões tardias.",
+    "theme_slate": "Ardósia",
+    "theme_slate_desc": "Cinza-azulado frio com um pouco mais de profundidade.",
+    "theme_sepia": "Sépia",
+    "theme_sepia_desc": "Oliva e creme sem brilho, como um livro antigo.",
+    "accent": "Destaque",
+    "accent_ember": "Brasa",
+    "accent_terracotta": "Terracota",
+    "accent_emerald": "Esmeralda",
+    "accent_cobalt": "Cobalto",
+    "accent_violet": "Violeta",
+    "accent_rose": "Rosa",
+    "accent_monochrome": "Monocromático",
+    "accentCustom": "Personalizado",
+    "tintedBubbles": "Colorir suas mensagens",
+    "tintedBubblesDesc": "Um toque leve da cor de destaque no que você envia.",
+    "styleSection": "Forma",
+    "uiStyle": "Cantos e bordas",
+    "uiStyle_default": "Padrão",
+    "uiStyle_default_desc": "Cantos equilibrados e linhas discretas.",
+    "uiStyle_soft": "Suave",
+    "uiStyle_soft_desc": "Cantos mais arredondados em todas as superfícies.",
+    "uiStyle_sharp": "Nítido",
+    "uiStyle_sharp_desc": "Cantos justos e bordas nítidas.",
+    "uiStyle_minimal": "Mínimo",
+    "uiStyle_minimal_desc": "Quase sem bordas, superfícies separadas pelo tom.",
+    "layoutSection": "Layout",
+    "composerStyle": "Caixa de mensagem",
+    "composer_agente": "Agente",
+    "composer_agente_desc": "O campo com suas ferramentas em uma barra abaixo.",
+    "composer_pill": "Pílula",
+    "composer_pill_desc": "Um campo arredondado com as ferramentas e um botão de enviar redondo dentro.",
+    "composer_card": "Cartão",
+    "composer_card_desc": "Um cartão de escrita espaçoso com botão de enviar na cor de destaque.",
+    "composer_terminal": "Terminal",
+    "composer_terminal_desc": "Uma linha de prompt monoespaçada com uma barra de foco.",
+    "composer_minimal": "Mínimo",
+    "composer_minimal_desc": "Um único sublinhado que não atrapalha.",
+    "agentStyle": "Trabalho do agente",
+    "agent_agente": "Agente",
+    "agent_agente_desc": "Linhas discretas presas a um trilho.",
+    "agent_feed": "Feed de atividade",
+    "agent_feed_desc": "Um resumo com ícones empilhados e depois duas linhas por ferramenta.",
+    "agent_files": "Fluxo de arquivos",
+    "agent_files_desc": "Os arquivos aparecem conforme são escritos; o resto cabe em uma linha.",
+    "agent_plan": "Plano de tarefas",
+    "agent_plan_desc": "Um anel de progresso e fases, com a atual aberta.",
+    "agent_review": "Revisão de diff",
+    "agent_review_desc": "A exploração recolhe; cada edição mostra seu diff.",
+    "agent_research": "Trilha de pesquisa",
+    "agent_research_desc": "Buscas e os sites alcançados, como favicons e etiquetas.",
+    "agent_timeline": "Linha do tempo",
+    "agent_timeline_desc": "Um registro da sessão com o horário à esquerda.",
+    "agent_tiles": "Blocos de etapas",
+    "agent_tiles_desc": "Um bloco por tipo de trabalho: explorado, editado, executado, resultado."
   }
 }

@@ -782,10 +782,7 @@ async fn worktrees_and_orchestrator_rpc_capabilities_and_round_trip() {
     use agente_runtime::OrchestratorProvider;
     use std::sync::Arc;
 
-    let dir = std::env::temp_dir().join(format!(
-        "agente-daemon-orch-rpc-{}",
-        uuid::Uuid::new_v4()
-    ));
+    let dir = std::env::temp_dir().join(format!("agente-daemon-orch-rpc-{}", uuid::Uuid::new_v4()));
     let repo = dir.join("repo");
     std::fs::create_dir_all(&repo).unwrap();
     for args in [

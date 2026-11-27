@@ -18,8 +18,8 @@ describe('providers utils', () => {
     providerDirectory.providers = specs.map((s) => metaFromSpec({ ...s })).filter((m) => m !== null);
 
     const ids = cloudProviders().map((p) => p.id);
-    // llama.cpp has its own section; an endpoint Desktop cannot speak to is left out.
-    expect(ids).toEqual(['opencode-go', 'opencode', 'minimax', 'ollama', 'custom']);
+    // llama.cpp has its own section; the Rust daemon speaks every provider's native wire format.
+    expect(ids).toEqual(['opencode-go', 'opencode', 'minimax', 'deepseek', 'ollama', 'custom']);
     expect(providerLabel('ollama')).toBe('Ollama');
     expect(providerLabel('opencode-go')).toBe('OpenCode Go');
     expect(providerLabel('opencode')).toBe('OpenCode');

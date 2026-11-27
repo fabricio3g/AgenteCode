@@ -1192,7 +1192,7 @@ async fn a_reply_cut_by_the_output_limit_is_continued() {
         })
         .expect("Done");
     assert_eq!(done.last().unwrap().content, "second half");
-    assert!(!done
-        .iter()
-        .any(|m| m.content.contains("response truncated by the model's output limit")));
+    assert!(!done.iter().any(|m| m
+        .content
+        .contains("response truncated by the model's output limit")));
 }

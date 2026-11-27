@@ -446,7 +446,8 @@
         "findings": "Hallazgos",
         "lead": "Líder",
         "more": "{n, plural, one {# hallazgo anterior} other {# hallazgos anteriores}} en el tablero"
-      }
+      },
+      "delegatedTitle": "Tareas delegadas a CLI"
     },
     "driverPicker": {
       "label": "Agente",
@@ -535,7 +536,12 @@
     "traceCopyInput": "Copiar entrada",
     "traceCopyOutput": "Copiar resultado",
     "traceCopyCommand": "Copiar comando",
-    "todoStatus": {"pending": "Pendiente", "in_progress": "En curso", "completed": "Completada", "cancelled": "Cancelada"},
+    "todoStatus": {
+      "pending": "Pendiente",
+      "in_progress": "En curso",
+      "completed": "Completada",
+      "cancelled": "Cancelada"
+    },
     "pane": {
       "openWindow": "Abrir en una nueva ventana",
       "close": "Cerrar panel",
@@ -966,7 +972,46 @@
     },
     "modeCycle": "Shift+Tab para cambiar",
     "todosMore": "+{n} más",
-    "todosLess": "Mostrar menos"
+    "todosLess": "Mostrar menos",
+    "threads": "Hilos",
+    "viewProjects": "Agrupar por proyecto",
+    "viewThreads": "Ver todos los hilos",
+    "activeThreads": "Activos",
+    "pinned": "Fijados",
+    "pin": "Fijar",
+    "unpin": "Desfijar",
+    "filterToggle": "Filtrar proyectos e hilos",
+    "filterPlaceholder": "Filtrar proyectos o hilos…",
+    "filterAll": "Todos",
+    "filterActive": "Activos",
+    "filterPinned": "Fijados",
+    "clearFilters": "Quitar filtros",
+    "noFilterMatches": "Ningún proyecto o hilo coincide.",
+    "noThreads": "Aún no hay hilos. Empieza una conversación en un proyecto.",
+    "worktree": {
+      "isolate": "Aislar en un worktree de Git",
+      "isolateShort": "Aislar",
+      "activePrefix": "Worktree",
+      "commandHint": "Ejecutar esta conversación en su propia rama de worktree de Git",
+      "isolated": "Worktree aislado",
+      "merge": "Fusionar",
+      "remove": "Quitar",
+      "confirmRemove": "¿Quitar el worktree?",
+      "cancel": "Cancelar",
+      "merged": "Worktree fusionado en el repositorio ({commit})",
+      "removed": "Worktree aislado quitado",
+      "conflictsTitle": "La fusión se detuvo por conflictos",
+      "conflictsHint": "El árbol de trabajo del repositorio quedó limpio. Resuelve primero estas rutas en el worktree:",
+      "dismiss": "Descartar"
+    },
+    "question": {
+      "title": "Pregunta",
+      "submit": "Enviar",
+      "skip": "Omitir",
+      "otherPlaceholder": "Escribe tu propia respuesta…",
+      "answerPlaceholder": "Escribe tu respuesta…",
+      "requiredField": "Responde {field}"
+    }
   },
   "searchModal": {
     "inMessages": "En los mensajes",
@@ -1043,7 +1088,12 @@
     "browse": "Volver a la página en vivo",
     "pick": "Seleccionar elemento",
     "pickHint": "Haz clic en un elemento · Mayús+clic para varios · Esc para parar",
-    "pickAdded": "{n, plural, one {# elemento añadido al mensaje} other {# elementos añadidos al mensaje}}"
+    "pickAdded": "{n, plural, one {# elemento añadido al mensaje} other {# elementos añadidos al mensaje}}",
+    "preview": {
+      "loading": "Generando vista previa…",
+      "openInBrowser": "Abrir en el navegador integrado",
+      "openExternal": "Abrir en el navegador externo"
+    }
   },
   "localLoad": {
     "title": "Cargar modelo local",
@@ -2073,12 +2123,16 @@
       },
       "widget": {
         "name": "Widgets interactivos",
-         "description": "Calculadoras, comparativas, cuestionarios y explicaciones que puedes usar en el chat"
-       },
-       "lesson": {
-         "name": "Lecciones",
-         "description": "Explicaciones interactivas y ejercicios, solo si los pides"
-       }
+        "description": "Calculadoras, comparativas, cuestionarios y explicaciones que puedes usar en el chat"
+      },
+      "lesson": {
+        "name": "Lecciones",
+        "description": "Explicaciones interactivas y ejercicios, solo si los pides"
+      },
+      "scene_3d": {
+        "name": "Escenas 3D",
+        "description": "Modelos 3D interactivos que se pueden girar, para temas de ciencia, sistemas y espacio"
+      }
     },
     "kind": {
       "report": "Informe",
@@ -2097,7 +2151,8 @@
       "web": "Página web",
       "files": "Archivos",
       "widget": "Widget",
-      "lesson": "Lección"
+      "lesson": "Lección",
+      "scene_3d": "Escena 3D"
     },
     "lesson": {
       "steps": "pasos",
@@ -3489,8 +3544,8 @@
         "files": "Archivos y documentos",
         "productivity": "Productividad",
         "media": "Multimedia",
-         "data": "Datos y gráficos",
-         "learning": "Aprendizaje",
+        "data": "Datos y gráficos",
+        "learning": "Aprendizaje",
         "code": "Código"
       }
     }
@@ -3614,5 +3669,60 @@
     "agent_timeline_desc": "Un registro de la sesión con la hora a la izquierda.",
     "agent_tiles": "Mosaicos",
     "agent_tiles_desc": "Un mosaico por tipo de trabajo: exploró, editó, ejecutó, resultado."
+  },
+  "externalClis": {
+    "title": "CLI externas",
+    "description": "Usa las CLI de programación instaladas y perfiles de credenciales aislados junto a Agente Core.",
+    "probeAll": "Comprobar disponibilidad",
+    "probing": "Comprobando…",
+    "probeOne": "Comprobar",
+    "addInstance": "Añadir CLI / perfil",
+    "addProfile": "Añadir perfil",
+    "edit": "Editar",
+    "delete": "Eliminar",
+    "confirmDelete": "¿Eliminar?",
+    "sectionTitle": "CLI instaladas y configuradas",
+    "sectionHint": "CLI de programación locales detectadas, motores integrados y perfiles de usuario de ~/.agente/drivers.json.",
+    "availableTitle": "CLI compatibles (no instaladas)",
+    "availableHint": "CLI integradas que no se encuentran en el PATH. Instala una desde tu terminal o pulsa Editar para indicar una ruta propia.",
+    "modelCount": "{n, plural, one {# modelo} other {# modelos}}",
+    "modelsShow": "{n, plural, one {# modelo} other {# modelos}}",
+    "modelsHide": "Ocultar modelos",
+    "builtinHint": "Motor de programación integrado con varios proveedores",
+    "saved": "Perfil de CLI «{name}» guardado",
+    "deleted": "Perfil de CLI «{id}» eliminado",
+    "orchestratorTitle": "Orquestador local",
+    "orchestratorHint": "Servidor MCP local que se inyecta en los turnos de las CLI para que cualquier motor pueda delegar tareas y compartir tarjetas del enjambre.",
+    "orchestratorEndpoint": "Puente MCP del orquestador",
+    "orchestratorActive": "Activo",
+    "orchestratorInactive": "En espera",
+    "orchestratorStats": "{active} activas · máx. {maxConcurrent} simultáneas · límite de profundidad {maxDepth}",
+    "orchestratorInactiveHint": "Se inicia solo cuando arranca un turno de Code.",
+    "orchestratorTasksTitle": "Tareas delegadas",
+    "orchestratorRefresh": "Actualizar",
+    "dialog": {
+      "addTitle": "Añadir CLI de programación o perfil",
+      "editTitle": "Configurar «{id}»",
+      "description": "Extiende una CLI integrada para otra cuenta o registra un ejecutable ACP propio.",
+      "modeProfile": "Extender CLI integrada",
+      "modeAcp": "CLI ACP propia",
+      "instanceId": "ID de instancia",
+      "label": "Nombre visible",
+      "baseCli": "CLI base",
+      "command": "Comando ejecutable",
+      "inheritCommand": "Heredar de la CLI base",
+      "args": "Argumentos extra",
+      "env": "Variables de entorno (CLAVE=VALOR por línea)",
+      "stripEnv": "Quitar las variables de entorno heredadas",
+      "useFor": "Pista de enrutado (use_for)",
+      "useForPlaceholder": "Cuándo debería elegir un orquestador este agente",
+      "enabled": "Activado",
+      "save": "Guardar perfil"
+    },
+    "error": {
+      "badId": "El ID de instancia debe empezar por una letra minúscula y contener solo [a-z0-9-] (no 'agente').",
+      "commandRequired": "Indica un comando ejecutable para una CLI ACP propia.",
+      "badEnvLine": "Línea de entorno no válida: «{line}» (se esperaba CLAVE=VALOR)."
+    }
   }
 }

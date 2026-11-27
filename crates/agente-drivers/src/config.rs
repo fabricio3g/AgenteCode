@@ -324,7 +324,10 @@ pub fn default_auth_hint(instance_id: &str) -> Option<&'static str> {
     }
 }
 
-fn merge_override(base: &DriverInstanceConfig, overlay: &DriverInstanceConfig) -> DriverInstanceConfig {
+fn merge_override(
+    base: &DriverInstanceConfig,
+    overlay: &DriverInstanceConfig,
+) -> DriverInstanceConfig {
     let mut env = base.env.clone();
     for (k, v) in &overlay.env {
         env.insert(k.clone(), v.clone());
@@ -474,10 +477,16 @@ mod tests {
             },
         );
         let list = cfg.resolve_all().unwrap();
-        let work = list.iter().find(|i| i.instance_id == "claude-work").unwrap();
+        let work = list
+            .iter()
+            .find(|i| i.instance_id == "claude-work")
+            .unwrap();
         assert_eq!(work.driver_kind, DriverKind::Claude);
         assert_eq!(work.command, vec!["claude"]);
-        assert_eq!(work.env.get("CLAUDE_CONFIG_DIR").unwrap(), "/tmp/claude-work");
+        assert_eq!(
+            work.env.get("CLAUDE_CONFIG_DIR").unwrap(),
+            "/tmp/claude-work"
+        );
         assert_eq!(work.strip_env, vec!["ANTHROPIC_API_KEY"]);
         assert!(!work.builtin);
     }

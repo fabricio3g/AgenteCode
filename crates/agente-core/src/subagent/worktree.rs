@@ -251,7 +251,11 @@ pub fn child_changed_paths(info: &WorktreeInfo) -> Vec<String> {
     paths.sort();
     paths.dedup();
     paths.retain(|rel| {
-        match info.seed_fingerprint.iter().find(|(seeded, _)| seeded == rel) {
+        match info
+            .seed_fingerprint
+            .iter()
+            .find(|(seeded, _)| seeded == rel)
+        {
             Some((_, hash)) => file_hash(&path.join(rel)) != Some(*hash),
             None => true,
         }
@@ -277,14 +281,21 @@ pub fn child_work(info: &WorktreeInfo) -> Vec<ChangedFile> {
     child_changed_paths(info)
         .into_iter()
         .map(|rel| {
-            let baseline = match info.seed_fingerprint.iter().find(|(seeded, _)| *seeded == rel) {
+            let baseline = match info
+                .seed_fingerprint
+                .iter()
+                .find(|(seeded, _)| *seeded == rel)
+            {
                 Some((_, hash)) => Some(*hash),
                 None => git(&path, &["show", &format!("{}:{rel}", info.base_commit)])
                     .ok()
                     .filter(|out| out.status.success())
                     .map(|out| bytes_hash(&out.stdout)),
             };
-            ChangedFile { path: rel, baseline }
+            ChangedFile {
+                path: rel,
+                baseline,
+            }
         })
         .collect()
 }
@@ -369,7 +380,12 @@ pub fn apply_child_work(
 /// The diff of a child's own changes against its base commit (new files
 /// included), capped at `cap` characters — what a retry is shown of the
 /// attempt before it.
-pub fn work_diff(worktree: &str, base_commit: &str, files: &[ChangedFile], cap: usize) -> Option<String> {
+pub fn work_diff(
+    worktree: &str,
+    base_commit: &str,
+    files: &[ChangedFile],
+    cap: usize,
+) -> Option<String> {
     let path = PathBuf::from(worktree);
     if files.is_empty() || !path.is_dir() {
         return None;
@@ -942,11 +958,23 @@ mod tests {
         std::fs::write(checkout.join("src/a.rs"), "new a").unwrap();
         std::fs::write(checkout.join("src/new.rs"), "fresh").unwrap();
         let files = vec![
-            ChangedFile { path: "src/a.rs".into(), baseline: Some(bytes_hash(b"old a")) },
-            ChangedFile { path: "src/new.rs".into(), baseline: None },
-            ChangedFile { path: "src/gone.rs".into(), baseline: Some(bytes_hash(b"bye")) },
+            ChangedFile {
+                path: "src/a.rs".into(),
+                baseline: Some(bytes_hash(b"old a")),
+            },
+            ChangedFile {
+                path: "src/new.rs".into(),
+                baseline: None,
+            },
+            ChangedFile {
+                path: "src/gone.rs".into(),
+                baseline: Some(bytes_hash(b"bye")),
+            },
         ];
-        let (r, w) = (root.to_string_lossy().to_string(), checkout.to_string_lossy().to_string());
+        let (r, w) = (
+            root.to_string_lossy().to_string(),
+            checkout.to_string_lossy().to_string(),
+        );
 
         // Someone else changed a.rs in the project meanwhile: nothing is applied.
         std::fs::write(root.join("src/a.rs"), "user edit").unwrap();
@@ -958,8 +986,14 @@ mod tests {
         std::fs::write(root.join("src/a.rs"), "old a").unwrap();
         let applied = apply_child_work(&r, &w, &files).unwrap();
         assert_eq!(applied.written.len(), 3);
-        assert_eq!(std::fs::read_to_string(root.join("src/a.rs")).unwrap(), "new a");
-        assert_eq!(std::fs::read_to_string(root.join("src/new.rs")).unwrap(), "fresh");
+        assert_eq!(
+            std::fs::read_to_string(root.join("src/a.rs")).unwrap(),
+            "new a"
+        );
+        assert_eq!(
+            std::fs::read_to_string(root.join("src/new.rs")).unwrap(),
+            "fresh"
+        );
         assert!(!root.join("src/gone.rs").exists());
 
         // Applying again is a no-op, not a conflict.
@@ -967,7 +1001,10 @@ mod tests {
         assert!(again.written.is_empty());
 
         // Paths that would leave the repository are refused.
-        let escape = vec![ChangedFile { path: "../outside.rs".into(), baseline: None }];
+        let escape = vec![ChangedFile {
+            path: "../outside.rs".into(),
+            baseline: None,
+        }];
         assert!(apply_child_work(&r, &w, &escape).is_err());
         let _ = std::fs::remove_dir_all(&base);
     }

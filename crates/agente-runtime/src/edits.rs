@@ -329,7 +329,10 @@ fn locate(conversation: &[Message], anchor: Option<u64>, before: usize) -> Optio
 fn merge_chain(batches: &[Batch]) -> Result<Vec<FileEdit>, String> {
     let mut merged: Vec<FileEdit> = Vec::new();
     for edit in batches.iter().flat_map(|batch| batch.edits.iter()) {
-        match merged.iter_mut().find(|existing| existing.path == edit.path) {
+        match merged
+            .iter_mut()
+            .find(|existing| existing.path == edit.path)
+        {
             Some(existing) => {
                 if existing.after != edit.before {
                     return Err(format!(
@@ -604,12 +607,19 @@ mod tests {
         let session = SessionId::new();
         let mut log = EditLog::default();
         log.begin_turn(session, 2, None);
-        log.end_turn(session, vec![edit("a.txt", Some("orig\n"), Some("agent1\n"))]);
+        log.end_turn(
+            session,
+            vec![edit("a.txt", Some("orig\n"), Some("agent1\n"))],
+        );
         // The user adds a line by hand; the next turn keeps it.
         log.begin_turn(session, 5, None);
         log.end_turn(
             session,
-            vec![edit("a.txt", Some("agent1\nmine\n"), Some("agent2\nmine\n"))],
+            vec![edit(
+                "a.txt",
+                Some("agent1\nmine\n"),
+                Some("agent2\nmine\n"),
+            )],
         );
         std::fs::write(dir.join("a.txt"), "agent2\nmine\n").unwrap();
         let error = log.rewind(session, 1, root).unwrap_err();

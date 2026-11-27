@@ -18,6 +18,7 @@
   import { t } from 'svelte-i18n';
   import { slide } from 'svelte/transition';
   import { Check, Folder, FolderPlus } from '$lib/icons';
+  import { Button } from '$lib/components/ui';
   import type { ChatSession } from '$lib/types/chat';
   import { codeStore } from './code.svelte';
   import { driversStore, isExternalDriverId } from './drivers.svelte';
@@ -68,33 +69,34 @@
   <div class="box-head">
     <span class="box-title">{$t('code.projectBox.title')}</span>
     {#if more > 0}
-      <button type="button" class="head-link" aria-expanded={showAll} onclick={() => (showAll = !showAll)}>
+      <Button variant="plain" type="button" class="head-link" aria-expanded={showAll} onclick={() => (showAll = !showAll)}>
         {showAll ? $t('code.projectBox.fewer') : $t('code.projectBox.all', { values: { n: usable.length } })}
-      </button>
+      </Button>
     {/if}
   </div>
   <div class="box-rows" role="radiogroup" aria-label={$t('code.projectBox.title')}>
     {#each shown as project (project.id)}
       {@const selected = project.id === chat.projectId}
-      <button
-        type="button"
-        role="radio"
-        aria-checked={selected}
-        class="box-row"
-        class:is-selected={selected}
-        title={project.rootPath}
-        onclick={() => codeStore.setConversationProject(chat.id, project.id)}
-        transition:slide={{ duration: 140 }}
-      >
-        <Folder class="row-icon" aria-hidden="true" />
-        <span class="row-name">{project.rootName}</span>
-        {#if selected}<Check class="row-check" aria-hidden="true" />{/if}
-      </button>
+      <div class="box-row-slide" transition:slide={{ duration: 140 }}>
+        <Button
+          variant="plain"
+          type="button"
+          role="radio"
+          aria-checked={selected}
+          class="box-row {selected ? 'is-selected' : ''}"
+          title={project.rootPath}
+          onclick={() => codeStore.setConversationProject(chat.id, project.id)}
+        >
+          <Folder class="row-icon" aria-hidden="true" />
+          <span class="row-name">{project.rootName}</span>
+          {#if selected}<Check class="row-check" aria-hidden="true" />{/if}
+        </Button>
+      </div>
     {/each}
-    <button type="button" class="box-row is-add" onclick={() => void addAndUse()}>
+    <Button variant="plain" type="button" class="box-row is-add" onclick={() => void addAndUse()}>
       <FolderPlus class="row-icon" aria-hidden="true" />
       <span class="row-name">{$t('code.projectPicker.add')}</span>
-    </button>
+    </Button>
   </div>
 </div>
 <div class="box-col">
@@ -102,19 +104,19 @@
   <div class="box-rows" role="radiogroup" aria-label={$t('code.projectBox.agent')}>
     {#each agents as agent (agent.instance_id)}
       {@const selected = agent.instance_id === instanceId}
-      <button
+      <Button
+        variant="plain"
         type="button"
         role="radio"
         aria-checked={selected}
-        class="box-row"
-        class:is-selected={selected}
+        class="box-row {selected ? 'is-selected' : ''}"
         title={agent.use_for || agent.label}
         onclick={() => useAgent(agent.instance_id)}
       >
         <DriverIcon instanceId={agent.instance_id} driverKind={agent.driver_kind} name={agent.label} size={14} class="row-icon" />
         <span class="row-name">{agent.label}</span>
         {#if selected}<Check class="row-check" aria-hidden="true" />{/if}
-      </button>
+      </Button>
     {/each}
   </div>
 </div>
@@ -163,7 +165,7 @@
     color: var(--muted-foreground);
     font-size: var(--text-xs);
   }
-  .head-link {
+  .box-head :global(.head-link) {
     padding: 0;
     border: 0;
     background: transparent;
@@ -172,15 +174,21 @@
     font-size: var(--text-xs);
     cursor: pointer;
   }
-  .head-link:hover { color: var(--foreground); }
-  .head-link:focus-visible { outline: 2px solid var(--brand-accent); outline-offset: 2px; border-radius: 2px; }
+  .box-head :global(.head-link:hover) { color: var(--foreground); }
+  .box-head :global(.head-link:focus-visible) { outline: 2px solid var(--brand-accent); outline-offset: 2px; border-radius: 2px; }
   .box-rows {
     display: flex;
     flex-direction: column;
     gap: 1px;
   }
-  .box-row {
+  .box-row-slide {
     display: flex;
+    min-width: 0;
+    flex-direction: column;
+  }
+  .box-rows :global(.box-row) {
+    display: flex;
+    width: 100%;
     min-width: 0;
     height: 1.875rem;
     align-items: center;
@@ -196,12 +204,12 @@
     cursor: pointer;
     transition: background-color var(--motion-instant) var(--motion-ease), color var(--motion-instant) var(--motion-ease);
   }
-  .box-row:hover { background: var(--float-row-hover); color: var(--foreground); }
-  .box-row.is-selected { background: var(--float-row-selected); color: var(--foreground); }
-  .box-row.is-add { color: var(--muted-foreground); }
-  .box-row.is-add:hover { color: var(--foreground); }
-  .box-row:focus-visible { outline: 2px solid var(--brand-accent); outline-offset: -2px; }
-  .box-row :global(.row-icon) { width: 0.875rem; height: 0.875rem; flex: none; color: var(--muted-foreground); }
+  .box-rows :global(.box-row:hover) { background: var(--float-row-hover); color: var(--foreground); }
+  .box-rows :global(.box-row.is-selected) { background: var(--float-row-selected); color: var(--foreground); }
+  .box-rows :global(.box-row.is-add) { color: var(--muted-foreground); }
+  .box-rows :global(.box-row.is-add:hover) { color: var(--foreground); }
+  .box-rows :global(.box-row:focus-visible) { outline: 2px solid var(--brand-accent); outline-offset: -2px; }
+  .box-rows :global(.box-row .row-icon) { width: 0.875rem; height: 0.875rem; flex: none; color: var(--muted-foreground); }
   .row-name { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .box-row :global(.row-check) { width: 0.875rem; height: 0.875rem; flex: none; color: var(--brand-accent-strong); }
+  .box-rows :global(.box-row .row-check) { width: 0.875rem; height: 0.875rem; flex: none; color: var(--brand-accent-strong); }
 </style>

@@ -4,7 +4,8 @@ const mockGetDownloadJobs = vi.fn();
 const mockClearFinishedDownloads = vi.fn();
 
 vi.mock('$lib/services/bridge', () => ({
-  isElectron: () => true
+  isElectron: () => true,
+  listen: vi.fn(() => Promise.resolve(() => {}))
 }));
 
 vi.mock('$lib/services/downloads', () => ({

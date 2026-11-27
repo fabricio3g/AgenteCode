@@ -74,17 +74,17 @@
       <div class="tile-grid is-themes" role="radiogroup" aria-label={$t('appearance.palette')}>
         {#each THEME_PRESETS as preset (preset.id)}
           {@const selected = prefs.theme === preset.id}
-          <button
+          <Button
+            variant="plain"
             type="button"
             role="radio"
             aria-checked={selected}
-            class="tile"
-            class:is-selected={selected}
+            class="tile {selected ? 'is-selected' : ''}"
             onclick={() => appearanceStore.update({ theme: preset.id })}
           >
             <span class="tile-art"><ThemePreview theme={preset.id} /></span>
             <span class="tile-label">{$t(`appearance.theme_${preset.id}`)}</span>
-          </button>
+          </Button>
         {/each}
       </div>
     </SettingsRow>
@@ -93,17 +93,17 @@
       <div class="accent-dots" role="radiogroup" aria-label={$t('appearance.accent')}>
         {#each ACCENT_PRESETS as preset (preset.id)}
           {@const selected = prefs.accent === preset.id}
-          <button
+          <Button
+            variant="plain"
             type="button"
             role="radio"
             aria-checked={selected}
             aria-label={$t(`appearance.accent_${preset.id}`)}
             title={$t(`appearance.accent_${preset.id}`)}
-            class="accent-dot"
-            class:is-selected={selected}
-            style:--dot={resolvedMode === 'dark' ? preset.dark : preset.light}
+            class="accent-dot {selected ? 'is-selected' : ''}"
+            style="--dot: {resolvedMode === 'dark' ? preset.dark : preset.light}"
             onclick={() => appearanceStore.update({ accent: preset.id })}
-          ></button>
+          ></Button>
         {/each}
         <span class="accent-dot is-custom" class:is-selected={prefs.accent === 'custom'} title={$t('appearance.accentCustom')}>
           <ColorInput
@@ -144,17 +144,17 @@
       <div class="tile-grid is-composers" role="radiogroup" aria-label={$t('appearance.composerStyle')}>
         {#each COMPOSER_STYLE_IDS as styleId (styleId)}
           {@const selected = prefs.composerStyle === styleId}
-          <button
+          <Button
+            variant="plain"
             type="button"
             role="radio"
             aria-checked={selected}
-            class="tile"
-            class:is-selected={selected}
+            class="tile {selected ? 'is-selected' : ''}"
             onclick={() => appearanceStore.update({ composerStyle: styleId })}
           >
             <span class="tile-art"><ComposerStylePreview composerStyle={styleId} /></span>
             <span class="tile-label">{$t(`appearance.composer_${styleId}`)}</span>
-          </button>
+          </Button>
         {/each}
       </div>
     </SettingsRow>
@@ -163,17 +163,17 @@
       <div class="tile-grid is-agents" role="radiogroup" aria-label={$t('appearance.agentStyle')}>
         {#each AGENT_STYLE_IDS as styleId (styleId)}
           {@const selected = prefs.agentStyle === styleId}
-          <button
+          <Button
+            variant="plain"
             type="button"
             role="radio"
             aria-checked={selected}
-            class="tile"
-            class:is-selected={selected}
+            class="tile {selected ? 'is-selected' : ''}"
             onclick={() => appearanceStore.update({ agentStyle: styleId })}
           >
             <span class="tile-art"><WorkLayoutPreview layout={styleId} /></span>
             <span class="tile-label">{$t(`appearance.agent_${styleId}`)}</span>
-          </button>
+          </Button>
         {/each}
       </div>
     </SettingsRow>
@@ -191,7 +191,7 @@
   .tile-grid.is-composers { grid-template-columns: repeat(auto-fill, minmax(10rem, 1fr)); }
   .tile-grid.is-agents { grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr)); }
 
-  .tile {
+  .tile-grid :global(.tile) {
     display: flex;
     min-width: 0;
     flex-direction: column;
@@ -211,10 +211,10 @@
     transition: box-shadow var(--motion-instant) var(--motion-ease);
   }
 
-  .tile:hover .tile-art { box-shadow: 0 0 0 1px var(--border-hover); }
-  .tile.is-selected .tile-art { box-shadow: 0 0 0 2px var(--brand-accent); }
-  .tile:focus-visible { outline: none; }
-  .tile:focus-visible .tile-art { box-shadow: 0 0 0 2px var(--background), 0 0 0 4px var(--brand-accent); }
+  .tile-grid :global(.tile:hover .tile-art) { box-shadow: 0 0 0 1px var(--border-hover); }
+  .tile-grid :global(.tile.is-selected .tile-art) { box-shadow: 0 0 0 2px var(--brand-accent); }
+  .tile-grid :global(.tile:focus-visible) { outline: none; }
+  .tile-grid :global(.tile:focus-visible .tile-art) { box-shadow: 0 0 0 2px var(--background), 0 0 0 4px var(--brand-accent); }
 
   .tile-label {
     overflow: hidden;
@@ -224,9 +224,9 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  .tile:hover .tile-label,
-  .tile.is-selected .tile-label { color: var(--foreground); }
-  .tile.is-selected .tile-label { font-weight: 500; }
+  .tile-grid :global(.tile:hover .tile-label),
+  .tile-grid :global(.tile.is-selected .tile-label) { color: var(--foreground); }
+  .tile-grid :global(.tile.is-selected .tile-label) { font-weight: 500; }
 
   /* ── Accent dots ─────────────────────────────────────────────────────── */
   .accent-dots {
@@ -236,7 +236,7 @@
     gap: 0.5rem;
   }
 
-  .accent-dot {
+  .accent-dots :global(.accent-dot) {
     position: relative;
     display: inline-flex;
     width: 1.375rem;
@@ -250,9 +250,9 @@
     cursor: pointer;
     transition: transform var(--motion-instant) var(--motion-ease), box-shadow var(--motion-instant) var(--motion-ease);
   }
-  .accent-dot:hover { transform: scale(1.08); }
-  .accent-dot.is-selected,
-  .accent-dot:focus-visible {
+  .accent-dots :global(.accent-dot:hover) { transform: scale(1.08); }
+  .accent-dots :global(.accent-dot.is-selected),
+  .accent-dots :global(.accent-dot:focus-visible) {
     outline: none;
     box-shadow: 0 0 0 2px var(--background), 0 0 0 4px var(--dot, var(--brand-accent));
   }

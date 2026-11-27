@@ -912,19 +912,19 @@
               <div class="driver-effort-group">
                 <p class="driver-effort-label">{$t('code.driverPicker.effortTitle')}</p>
                 <div class="driver-effort-pills">
-                  <button
+                  <Button
+                    variant="plain"
                     type="button"
-                    class="driver-effort-pill"
-                    class:is-active={!selectedDriverEffort}
+                    class={uiClass('driver-effort-pill', { 'is-active': !selectedDriverEffort })}
                     onclick={() => void codeStore.setConversationDriverEffort(chat.id, null)}
-                  >{$t('code.driverPicker.defaultEffort')}</button>
+                  >{$t('code.driverPicker.defaultEffort')}</Button>
                   {#each driverThinkingLevels as lvl (lvl)}
-                    <button
+                    <Button
+                      variant="plain"
                       type="button"
-                      class="driver-effort-pill"
-                      class:is-active={selectedDriverEffort === lvl}
+                      class={uiClass('driver-effort-pill', { 'is-active': selectedDriverEffort === lvl })}
                       onclick={() => void codeStore.setConversationDriverEffort(chat.id, lvl)}
-                    >{lvl}</button>
+                    >{lvl}</Button>
                   {/each}
                 </div>
               </div>
@@ -1051,13 +1051,13 @@
   .driver-effort-group { padding: 0.375rem 0.625rem 0.5rem; }
   .driver-effort-label { margin: 0 0 0.375rem; color: var(--muted-foreground); font-size: var(--text-xs); font-weight: 500; }
   .driver-effort-pills { display: flex; flex-wrap: wrap; gap: 0.25rem; }
-  .driver-effort-pill {
+  .driver-effort-pills :global(.driver-effort-pill) {
     padding: 0.1875rem 0.5rem; border: 0; border-radius: var(--radius-full);
     background: var(--surface-fill, color-mix(in srgb, var(--foreground) 6%, transparent));
     color: var(--muted-foreground); font-size: var(--text-xs); line-height: 1.3; cursor: pointer;
     transition: background-color var(--motion-instant) var(--motion-ease), color var(--motion-instant) var(--motion-ease);
   }
-  .driver-effort-pill:hover { background: var(--float-row-hover); color: var(--foreground); }
-  .driver-effort-pill.is-active { background: var(--float-row-selected); color: var(--brand-accent-strong); font-weight: 500; }
+  .driver-effort-pills :global(.driver-effort-pill:hover) { background: var(--float-row-hover); color: var(--foreground); }
+  .driver-effort-pills :global(.driver-effort-pill.is-active) { background: var(--float-row-selected); color: var(--brand-accent-strong); font-weight: 500; }
 
 </style>

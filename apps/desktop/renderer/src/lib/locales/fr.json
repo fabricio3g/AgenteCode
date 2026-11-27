@@ -438,12 +438,26 @@
         "findings": "Constats",
         "lead": "Pilote",
         "more": "{n, plural, one {# constat précédent} other {# constats précédents}} sur le tableau"
-      }
+      },
+      "accept": "Accepter",
+      "sendBack": "Renvoyer",
+      "giveUp": "Abandonner",
+      "retry": "Réessayer",
+      "notePlaceholder": "Que doit corriger le nouvel essai ? (facultatif)",
+      "changes": "{n, plural, one {# fichier modifié attend d’être appliqué} other {# fichiers modifiés attendent d’être appliqués}}",
+      "clearTitle": "Vider le tableau ?",
+      "clearMessage": "{n, plural, one {# carte n’a} other {# cartes n’ont}} été ni relue(s) ni commencée(s). Vider les retire avec le journal des constats ; les changements en attente de relecture ne sont pas appliqués.",
+      "delegatedTitle": "Tâches déléguées aux CLI"
     },
     "traceCopyInput": "Copier l’entrée",
     "traceCopyOutput": "Copier le résultat",
     "traceCopyCommand": "Copier la commande",
-    "todoStatus": {"pending": "En attente", "in_progress": "En cours", "completed": "Terminée", "cancelled": "Annulée"},
+    "todoStatus": {
+      "pending": "En attente",
+      "in_progress": "En cours",
+      "completed": "Terminée",
+      "cancelled": "Annulée"
+    },
     "pane": {
       "openWindow": "Ouvrir dans une nouvelle fenêtre",
       "close": "Fermer le volet",
@@ -856,7 +870,148 @@
     },
     "modeCycle": "Maj+Tab pour changer",
     "todosMore": "+{n} de plus",
-    "todosLess": "Afficher moins"
+    "todosLess": "Afficher moins",
+    "layout": {
+      "files": "{n, plural, one {# fichier} other {# fichiers}}",
+      "verb": {
+        "done": {
+          "read": "Lu",
+          "list": "Listé",
+          "search": "Recherché",
+          "web": "Recherché sur le web",
+          "edit": "Modifié",
+          "command": "Exécuté",
+          "subagent": "Délégué",
+          "other": "Utilisé",
+          "thought": "Réfléchi"
+        },
+        "running": {
+          "read": "Lecture de",
+          "list": "Liste de",
+          "search": "Recherche de",
+          "web": "Recherche web de",
+          "edit": "Modification de",
+          "command": "Exécution de",
+          "subagent": "Délégation de",
+          "other": "Utilisation de",
+          "thought": "Réflexion"
+        }
+      },
+      "waiting": "Attend votre réponse",
+      "failed": "Échec",
+      "used": "{n, plural, one {# outil utilisé} other {# outils utilisés}}",
+      "explored": "{n, plural, one {# fichier exploré} other {# fichiers explorés}}",
+      "searches": "{n, plural, one {# recherche} other {# recherches}}",
+      "commands": "{n, plural, one {# commande} other {# commandes}}",
+      "progress": "{done} étapes sur {total}",
+      "phase": {
+        "explore": "Parcouru le code",
+        "change": "Fait des modifications",
+        "run": "Exécuté des commandes",
+        "think": "Réfléchi",
+        "delegate": "Confié du travail aux sous-agents"
+      },
+      "sources": "Sources",
+      "tile": {
+        "explored": "Exploré",
+        "edited": "Modifié",
+        "ran": "Exécuté",
+        "result": "Résultat",
+        "none": "Rien pour l’instant",
+        "passing": "Dernière commande réussie",
+        "failing": "Dernière commande en échec"
+      },
+      "open": "Ouvrir"
+    },
+    "stepResult": {
+      "lines": "{n, plural, one {# ligne} other {# lignes}}",
+      "entries": "{n, plural, one {# entrée} other {# entrées}}",
+      "more": "+{n} de plus"
+    },
+    "threads": "Fils",
+    "viewProjects": "Grouper par projet",
+    "viewThreads": "Afficher tous les fils",
+    "activeThreads": "Actifs",
+    "pinned": "Épinglés",
+    "pin": "Épingler",
+    "unpin": "Désépingler",
+    "filterToggle": "Filtrer les projets et les fils",
+    "filterPlaceholder": "Filtrer les projets ou les fils…",
+    "filterAll": "Tous",
+    "filterActive": "Actifs",
+    "filterPinned": "Épinglés",
+    "clearFilters": "Effacer les filtres",
+    "noFilterMatches": "Aucun projet ni fil ne correspond.",
+    "noThreads": "Aucun fil pour l’instant. Commencez une conversation dans un projet.",
+    "empty": {
+      "start": "Nouvelle conversation",
+      "startHint": "Choisissez le dossier en écrivant",
+      "fromFolder": "Ou partez d’un dossier",
+      "open": "Ouvrir un dossier",
+      "openHint": "Un projet déjà sur cet ordinateur",
+      "new": "Nouveau projet",
+      "newHint": "Un dossier vide, prêt pour git",
+      "clone": "Cloner un dépôt",
+      "cloneHint": "Depuis GitHub, GitLab ou toute URL git",
+      "shortcut": "{key} lance une conversation de n’importe où"
+    },
+    "projectBox": {
+      "title": "Travailler dans",
+      "agent": "Agent",
+      "all": "Tout voir ({n})",
+      "fewer": "Voir moins"
+    },
+    "driverPicker": {
+      "label": "Agent",
+      "builtin": "Agente Core",
+      "builtinTag": "Intégré",
+      "manage": "Gérer les CLI externes…",
+      "switchHint": "Changer garde cette conversation : le prochain message transmet l’historique au nouvel agent.",
+      "busyHint": "L’agent pourra changer à la fin de ce tour.",
+      "driverNotReady": "{driver} n’est pas prêt — vérifiez-le dans les Réglages",
+      "configureDriver": "Configurer la CLI dans Réglages → CLI externes",
+      "driverModel": "Modèle de la CLI",
+      "defaultModel": "Par défaut de la CLI",
+      "effortTitle": "Effort de raisonnement",
+      "defaultEffort": "Par défaut",
+      "refreshModels": "Actualiser les modèles",
+      "loadingModels": "Chargement des modèles…",
+      "noModelsDiscovered": "Cette CLI n’a encore signalé aucun modèle",
+      "noAttachments": "Cette CLI n’accepte pas les pièces jointes multimédias",
+      "queuePlaceholder": "Mettre un message en file pour la fin de ce tour…",
+      "queueHint": "Entrée met le message suivant en file · Échap arrête",
+      "status": {
+        "ready": "Prêt",
+        "missing": "Introuvable",
+        "needs_auth": "Se connecter",
+        "disabled": "Désactivé",
+        "error": "Erreur"
+      }
+    },
+    "worktree": {
+      "isolate": "Isoler dans un worktree Git",
+      "isolateShort": "Isoler",
+      "activePrefix": "Worktree",
+      "commandHint": "Exécuter cette conversation sur sa propre branche de worktree Git",
+      "isolated": "Worktree isolé",
+      "merge": "Fusionner",
+      "remove": "Supprimer",
+      "confirmRemove": "Supprimer le worktree ?",
+      "cancel": "Annuler",
+      "merged": "Worktree fusionné dans le dépôt ({commit})",
+      "removed": "Worktree isolé supprimé",
+      "conflictsTitle": "Fusion arrêtée par des conflits",
+      "conflictsHint": "L’arbre de travail du dépôt est resté propre. Résolvez d’abord ces chemins dans le worktree :",
+      "dismiss": "Fermer"
+    },
+    "question": {
+      "title": "Question",
+      "submit": "Envoyer",
+      "skip": "Passer",
+      "otherPlaceholder": "Saisissez votre propre réponse…",
+      "answerPlaceholder": "Saisissez votre réponse…",
+      "requiredField": "Veuillez répondre à {field}"
+    }
   },
   "searchModal": {
     "inMessages": "Dans les messages",
@@ -875,7 +1030,9 @@
     "escape": "Fermer la fenêtre · arrêter une exécution",
     "backToConversation": "Retour à la conversation",
     "rename": "Renommer la conversation sélectionnée",
-    "resizeSidebar": "Redimensionner la barre latérale"
+    "resizeSidebar": "Redimensionner la barre latérale",
+    "back": "Revenir en arrière",
+    "forward": "Aller en avant"
   },
   "search": {
     "source": {
@@ -931,7 +1088,12 @@
     "browse": "Return to the live page",
     "pick": "Select element",
     "pickHint": "Click an element · Shift-click for several · Esc to stop",
-    "pickAdded": "{n, plural, one {# element added to the message} other {# elements added to the message}}"
+    "pickAdded": "{n, plural, one {# element added to the message} other {# elements added to the message}}",
+    "preview": {
+      "loading": "Génération de l’aperçu…",
+      "openInBrowser": "Ouvrir dans le navigateur intégré",
+      "openExternal": "Ouvrir dans le navigateur externe"
+    }
   },
   "localLoad": {
     "title": "Charger un modèle local",
@@ -1156,7 +1318,9 @@
     "endpointAddedReady": "{name} ajouté et prêt",
     "artifacts": "Artefacts",
     "title": "Réglages",
-    "accessibility": "Accessibilité"
+    "accessibility": "Accessibilité",
+    "appearance": "Apparence",
+    "externalClis": "CLI externes"
   },
   "providers": {
     "cloudDescription": "Utilise votre propre clé API. Les discussions vont directement de l'app au fournisseur.",
@@ -1959,12 +2123,16 @@
       },
       "widget": {
         "name": "Widgets interactifs",
-         "description": "Calculatrices, comparatifs, quiz et explications à utiliser dans la discussion"
-       },
-       "lesson": {
-         "name": "Leçons",
-         "description": "Explications interactives et exercices, seulement si vous les demandez"
-       }
+        "description": "Calculatrices, comparatifs, quiz et explications à utiliser dans la discussion"
+      },
+      "lesson": {
+        "name": "Leçons",
+        "description": "Explications interactives et exercices, seulement si vous les demandez"
+      },
+      "scene_3d": {
+        "name": "Scènes 3D",
+        "description": "Modèles 3D interactifs et orientables pour les sciences, les systèmes et les sujets spatiaux"
+      }
     },
     "kind": {
       "report": "Rapport",
@@ -1983,7 +2151,8 @@
       "web": "Page web",
       "files": "Fichiers",
       "widget": "Widget",
-      "lesson": "Leçon"
+      "lesson": "Leçon",
+      "scene_3d": "Scène 3D"
     },
     "lesson": {
       "steps": "étapes",
@@ -2461,7 +2630,9 @@
     "minimize": "Réduire",
     "maximize": "Agrandir",
     "restore": "Restaurer",
-    "window": "Window"
+    "window": "Window",
+    "back": "Précédent",
+    "forward": "Suivant"
   },
   "roleplay": {
     "regenerateEarlier": {
@@ -3373,8 +3544,8 @@
         "files": "Files & documents",
         "productivity": "Productivity",
         "media": "Media",
-         "data": "Data & charts",
-         "learning": "Apprentissage",
+        "data": "Data & charts",
+        "learning": "Apprentissage",
         "code": "Code"
       }
     }
@@ -3427,5 +3598,131 @@
       "failed": "Échec",
       "ready": "Prêt"
     }
+  },
+  "externalClis": {
+    "title": "CLI externes",
+    "description": "Utilisez les CLI de code installées et des profils d’identifiants isolés à côté d’Agente Core.",
+    "probeAll": "Vérifier la disponibilité",
+    "probing": "Vérification…",
+    "probeOne": "Vérifier",
+    "addInstance": "Ajouter une CLI / un profil",
+    "addProfile": "Ajouter un profil",
+    "edit": "Modifier",
+    "delete": "Supprimer",
+    "confirmDelete": "Supprimer ?",
+    "sectionTitle": "CLI installées et configurées",
+    "sectionHint": "CLI de code locales détectées, moteurs intégrés et profils utilisateur de ~/.agente/drivers.json.",
+    "availableTitle": "CLI prises en charge (non installées)",
+    "availableHint": "CLI intégrées introuvables dans le PATH. Installez-en une dans votre terminal ou cliquez sur Modifier pour indiquer un chemin.",
+    "modelCount": "{n, plural, one {# modèle} other {# modèles}}",
+    "modelsShow": "{n, plural, one {# modèle} other {# modèles}}",
+    "modelsHide": "Masquer les modèles",
+    "builtinHint": "Moteur de code intégré multi-fournisseurs",
+    "saved": "Profil de CLI « {name} » enregistré",
+    "deleted": "Profil de CLI « {id} » supprimé",
+    "orchestratorTitle": "Orchestrateur local",
+    "orchestratorHint": "Serveur MCP local injecté dans les tours des CLI pour que tout moteur puisse déléguer des tâches et partager les cartes de l’essaim.",
+    "orchestratorEndpoint": "Pont MCP de l’orchestrateur",
+    "orchestratorActive": "Actif",
+    "orchestratorInactive": "En veille",
+    "orchestratorStats": "{active} actives · {maxConcurrent} simultanées max. · limite de profondeur {maxDepth}",
+    "orchestratorInactiveHint": "Démarre automatiquement au lancement d’un tour Code.",
+    "orchestratorTasksTitle": "Tâches déléguées",
+    "orchestratorRefresh": "Actualiser",
+    "dialog": {
+      "addTitle": "Ajouter une CLI de code ou un profil",
+      "editTitle": "Configurer « {id} »",
+      "description": "Étendez une CLI intégrée pour un autre compte ou enregistrez un exécutable ACP personnalisé.",
+      "modeProfile": "Étendre une CLI intégrée",
+      "modeAcp": "CLI ACP personnalisée",
+      "instanceId": "ID d’instance",
+      "label": "Nom affiché",
+      "baseCli": "CLI de base",
+      "command": "Commande exécutable",
+      "inheritCommand": "Hériter de la CLI de base",
+      "args": "Arguments supplémentaires",
+      "env": "Variables d’environnement (CLÉ=VALEUR par ligne)",
+      "stripEnv": "Retirer les variables d’environnement héritées",
+      "useFor": "Indice de routage (use_for)",
+      "useForPlaceholder": "Quand un orchestrateur doit choisir cet agent",
+      "enabled": "Activé",
+      "save": "Enregistrer le profil"
+    },
+    "error": {
+      "badId": "L’ID d’instance doit commencer par une lettre minuscule et ne contenir que [a-z0-9-] (pas 'agente').",
+      "commandRequired": "Indiquez une commande exécutable pour une CLI ACP personnalisée.",
+      "badEnvLine": "Ligne d’environnement invalide : « {line} » (attendu CLÉ=VALEUR)."
+    }
+  },
+  "appearance": {
+    "title": "Apparence",
+    "description": "Couleur, forme et disposition. Les changements s’appliquent tout de suite et restent sur cet ordinateur.",
+    "reset": "Réinitialiser",
+    "themeSection": "Couleur",
+    "mode": "Mode",
+    "modeSystem": "Système",
+    "modeLight": "Clair",
+    "modeDark": "Sombre",
+    "palette": "Thème",
+    "theme_agente": "Agente",
+    "theme_agente_desc": "Graphite ou blanc neutre, sans teinte.",
+    "theme_parchment": "Parchemin",
+    "theme_parchment_desc": "Des tons de papier chauds, doux pour les yeux.",
+    "theme_midnight": "Minuit",
+    "theme_midnight_desc": "Un noir bleuté profond et froid pour les longues soirées.",
+    "theme_slate": "Ardoise",
+    "theme_slate_desc": "Un gris-bleu froid avec un peu plus de profondeur.",
+    "theme_sepia": "Sépia",
+    "theme_sepia_desc": "Olive et crème peu éblouissants, comme un vieux livre.",
+    "accent": "Accent",
+    "accent_ember": "Braise",
+    "accent_terracotta": "Terre cuite",
+    "accent_emerald": "Émeraude",
+    "accent_cobalt": "Cobalt",
+    "accent_violet": "Violet",
+    "accent_rose": "Rose",
+    "accent_monochrome": "Monochrome",
+    "accentCustom": "Personnalisé",
+    "tintedBubbles": "Teinter vos messages",
+    "tintedBubblesDesc": "Un léger voile de la couleur d’accent sur ce que vous envoyez.",
+    "styleSection": "Forme",
+    "uiStyle": "Coins et bords",
+    "uiStyle_default": "Par défaut",
+    "uiStyle_default_desc": "Des coins équilibrés et des filets discrets.",
+    "uiStyle_soft": "Doux",
+    "uiStyle_soft_desc": "Des coins plus arrondis sur toutes les surfaces.",
+    "uiStyle_sharp": "Net",
+    "uiStyle_sharp_desc": "Des coins serrés et des bords nets.",
+    "uiStyle_minimal": "Minimal",
+    "uiStyle_minimal_desc": "Presque aucun contour, les surfaces se distinguent par le ton.",
+    "layoutSection": "Disposition",
+    "composerStyle": "Zone de message",
+    "composer_agente": "Agente",
+    "composer_agente_desc": "Le champ avec ses outils sur une barre en dessous.",
+    "composer_pill": "Pilule",
+    "composer_pill_desc": "Un champ arrondi avec les outils et un bouton d’envoi rond à l’intérieur.",
+    "composer_card": "Carte",
+    "composer_card_desc": "Une carte d’écriture spacieuse avec un bouton d’envoi coloré.",
+    "composer_terminal": "Terminal",
+    "composer_terminal_desc": "Une ligne d’invite à chasse fixe avec un rail de focus.",
+    "composer_minimal": "Minimal",
+    "composer_minimal_desc": "Un simple soulignement qui reste discret.",
+    "agentStyle": "Travail de l’agent",
+    "agent_agente": "Agente",
+    "agent_agente_desc": "Des lignes discrètes suspendues à un rail.",
+    "agent_feed": "Fil d’activité",
+    "agent_feed_desc": "Un résumé avec des icônes empilées, puis deux lignes par outil.",
+    "agent_files": "Flux de fichiers",
+    "agent_files_desc": "Les fichiers apparaissent à mesure qu’ils sont écrits ; le reste tient en une ligne.",
+    "agent_plan": "Plan de tâches",
+    "agent_plan_desc": "Un anneau de progression et des phases, la phase en cours ouverte.",
+    "agent_review": "Revue de diff",
+    "agent_review_desc": "L’exploration se replie ; chaque modification montre son diff.",
+    "agent_research": "Piste de recherche",
+    "agent_research_desc": "Les recherches et les sites atteints, en favicons et pastilles.",
+    "agent_timeline": "Chronologie",
+    "agent_timeline_desc": "Un journal de session avec l’heure à gauche.",
+    "agent_tiles": "Tuiles d’étapes",
+    "agent_tiles_desc": "Une tuile par type de travail : exploré, modifié, exécuté, résultat."
   }
 }

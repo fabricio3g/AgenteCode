@@ -271,12 +271,8 @@ async fn list_changes(project_root: &str) -> Value {
     );
     let status = status_res.unwrap_or_default();
     let numstat = numstat_res.unwrap_or_default();
-    let branch = branch_res
-        .map(|s| s.trim().to_string())
-        .unwrap_or_default();
-    let prefix = prefix_res
-        .map(|s| s.trim().to_string())
-        .unwrap_or_default();
+    let branch = branch_res.map(|s| s.trim().to_string()).unwrap_or_default();
+    let prefix = prefix_res.map(|s| s.trim().to_string()).unwrap_or_default();
 
     let mut counts: HashMap<String, (usize, usize)> = HashMap::new();
     for line in numstat.split('\0') {
@@ -529,14 +525,10 @@ fn web_url(remote: &str) -> Option<String> {
         .strip_prefix("https://")
         .or_else(|| value.strip_prefix("http://"))
     {
-        let without_auth = rest
-            .split_once('/')
-            .map(|(authority, path)| {
-                let host = authority
-                    .rsplit_once('@')
-                    .map_or(authority, |(_, h)| h);
-                (host, path.trim_end_matches(".git"))
-            })?;
+        let without_auth = rest.split_once('/').map(|(authority, path)| {
+            let host = authority.rsplit_once('@').map_or(authority, |(_, h)| h);
+            (host, path.trim_end_matches(".git"))
+        })?;
         if without_auth.0.is_empty() || without_auth.1.is_empty() {
             return None;
         }
@@ -575,13 +567,22 @@ fn rollup_checks(rollup: Option<&Value>) -> &'static str {
             pending = true;
         }
     }
-    if pending { "pending" } else { "pass" }
+    if pending {
+        "pending"
+    } else {
+        "pass"
+    }
 }
 
 async fn base_branch(cwd: &str) -> Option<String> {
     if let Ok(head) = git(
         cwd,
-        &["symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"],
+        &[
+            "symbolic-ref",
+            "--quiet",
+            "--short",
+            "refs/remotes/origin/HEAD",
+        ],
     )
     .await
     {
@@ -634,7 +635,12 @@ async fn existing_pr(cwd: &str) -> Option<Value> {
 fn encode_uri_component(input: &str) -> String {
     let mut out = String::with_capacity(input.len());
     for byte in input.bytes() {
-        if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b'!' | b'~' | b'*' | b'\'' | b'(' | b')') {
+        if byte.is_ascii_alphanumeric()
+            || matches!(
+                byte,
+                b'-' | b'_' | b'.' | b'!' | b'~' | b'*' | b'\'' | b'(' | b')'
+            )
+        {
             out.push(byte as char);
         } else {
             out.push_str(&format!("%{byte:02X}"));
@@ -709,7 +715,8 @@ mod tests {
 
     #[test]
     fn parses_porcelain_refs_urls_and_checks() {
-        let entries = parse_porcelain("?? new.txt\0 M mod.rs\0 D gone.rs\0R  after.rs\0before.rs\0");
+        let entries =
+            parse_porcelain("?? new.txt\0 M mod.rs\0 D gone.rs\0R  after.rs\0before.rs\0");
         assert_eq!(
             entries,
             vec![
@@ -725,11 +732,15 @@ mod tests {
             Some("https://github.com/fabricio3g/AgenteCode")
         );
         assert_eq!(
-            rollup_checks(Some(&json!([{"status":"COMPLETED","conclusion":"SUCCESS"}]))),
+            rollup_checks(Some(
+                &json!([{"status":"COMPLETED","conclusion":"SUCCESS"}])
+            )),
             "pass"
         );
         assert_eq!(
-            rollup_checks(Some(&json!([{"status":"COMPLETED","conclusion":"FAILURE"}]))),
+            rollup_checks(Some(
+                &json!([{"status":"COMPLETED","conclusion":"FAILURE"}])
+            )),
             "fail"
         );
     }
@@ -749,8 +760,12 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let root = dir.to_str().unwrap();
         git(root, &["init", "-b", "main"]).await.unwrap();
-        git(root, &["config", "core.autocrlf", "false"]).await.unwrap();
-        git(root, &["config", "user.email", "test@example.com"]).await.unwrap();
+        git(root, &["config", "core.autocrlf", "false"])
+            .await
+            .unwrap();
+        git(root, &["config", "user.email", "test@example.com"])
+            .await
+            .unwrap();
         git(root, &["config", "user.name", "Test"]).await.unwrap();
         std::fs::write(dir.join("a.txt"), "one\n").unwrap();
         git(root, &["add", "."]).await.unwrap();

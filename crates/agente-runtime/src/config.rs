@@ -60,10 +60,7 @@ pub trait OrchestratorProvider: Send + Sync {
         ctx: &OrchestratorContext,
     ) -> Option<agente_drivers::InjectedMcpServer>;
 
-    fn builtin_tools(
-        &self,
-        _ctx: &OrchestratorContext,
-    ) -> Vec<Box<dyn agente_core::tools::Tool>> {
+    fn builtin_tools(&self, _ctx: &OrchestratorContext) -> Vec<Box<dyn agente_core::tools::Tool>> {
         Vec::new()
     }
 }
@@ -830,10 +827,9 @@ impl RuntimeHandle {
         };
         let ad_hoc_url = base_url.map(str::trim).filter(|u| !u.is_empty());
         let ad_hoc_key = api_key.map(str::trim).filter(|k| !k.is_empty());
-        let is_local_or_custom = matches!(
-            canonical_id,
-            "llamacpp" | "ollama" | "lmstudio" | "custom"
-        ) || canonical_id.starts_with("custom");
+        let is_local_or_custom =
+            matches!(canonical_id, "llamacpp" | "ollama" | "lmstudio" | "custom")
+                || canonical_id.starts_with("custom");
 
         let (provider, effective_id): (Arc<dyn agente_core::providers::Provider>, &str) =
             if let Some(raw_url) = ad_hoc_url.filter(|_| is_local_or_custom) {
@@ -917,11 +913,8 @@ impl RuntimeHandle {
             base_url,
             api_key,
         )?;
-        let ctx = agente_core::providers::RequestContext::new(
-            session_id
-                .unwrap_or_default()
-                .as_uuid(),
-        );
+        let ctx =
+            agente_core::providers::RequestContext::new(session_id.unwrap_or_default().as_uuid());
         agente_core::providers::summarizer::complete_text(provider, model, &messages, ctx)
             .await
             .map_err(|error| RuntimeError::Config(error.to_string()))
@@ -948,11 +941,8 @@ impl RuntimeHandle {
             model_id,
         );
         model.options = provider.get_request_options(&model);
-        let ctx = agente_core::providers::RequestContext::new(
-            session_id
-                .unwrap_or_default()
-                .as_uuid(),
-        );
+        let ctx =
+            agente_core::providers::RequestContext::new(session_id.unwrap_or_default().as_uuid());
         agente_core::providers::generate_session_title(
             provider,
             model,

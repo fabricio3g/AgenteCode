@@ -662,7 +662,11 @@ impl Board {
             let files: Vec<&str> = work.files.iter().map(|file| file.path.as_str()).collect();
             out.push_str(&format!(
                 "\nchanged (applied when accepted): {}",
-                if files.is_empty() { "nothing".to_string() } else { files.join(", ") }
+                if files.is_empty() {
+                    "nothing".to_string()
+                } else {
+                    files.join(", ")
+                }
             ));
         }
         for note in &card.notes {
@@ -987,7 +991,11 @@ pub fn move_with_work(
     let mut last_attempt = None;
     match (to, &card.work) {
         (MoveTo::Done, Some(work)) => {
-            match crate::subagent::worktree::apply_child_work(&work.repo_root, &work.worktree, &work.files) {
+            match crate::subagent::worktree::apply_child_work(
+                &work.repo_root,
+                &work.worktree,
+                &work.files,
+            ) {
                 Ok(applied) => {
                     said = if applied.written.is_empty() {
                         format!("Accepted {id}; the project already had its changes.")
@@ -1186,11 +1194,15 @@ pub fn post_and_deliver(
     to: &[String],
     deliver: &DeliverFinding,
 ) -> Result<String, String> {
-    let (finding, board) = BoardStore::user().update(session, |board| board.post(from, text, to))?;
+    let (finding, board) =
+        BoardStore::user().update(session, |board| board.post(from, text, to))?;
     let reached = board.recipients(&finding).len();
     deliver(&board, &finding);
     Ok(match reached {
-        0 => format!("Posted #{}. No other member is working right now; cards that start later will see it.", finding.id),
+        0 => format!(
+            "Posted #{}. No other member is working right now; cards that start later will see it.",
+            finding.id
+        ),
         1 => format!("Posted #{} to 1 working member.", finding.id),
         n => format!("Posted #{} to {n} working members.", finding.id),
     })
@@ -1596,12 +1608,16 @@ mod tests {
         board.start("c3", "child-3");
 
         // Everyone working but the author hears a broadcast.
-        let all = board.post("c1", "  Tokens live in lexer.rs  ", &[]).unwrap();
+        let all = board
+            .post("c1", "  Tokens live in lexer.rs  ", &[])
+            .unwrap();
         assert_eq!((all.id, all.text.as_str()), (1, "Tokens live in lexer.rs"));
         assert_eq!(board.recipients(&all), vec!["child-2", "child-3"]);
 
         // Addressed by id or title, only the addressee.
-        let one = board.post("c2", "parse() now returns Result", &["docs".into()]).unwrap();
+        let one = board
+            .post("c2", "parse() now returns Result", &["docs".into()])
+            .unwrap();
         assert_eq!(one.to, vec!["c3"]);
         assert_eq!(board.recipients(&one), vec!["child-3"]);
         assert!(board.post("c2", "x", &["nope".into()]).is_err());
@@ -1611,20 +1627,35 @@ mod tests {
         // The lead posts too, and sees everything in its summary.
         board.post(LEAD, "Keep the public API", &[]).unwrap();
         let summary = board.summary();
-        assert!(summary.contains("findings:\n- #1 c1 \"Map\" (Map role): Tokens live in lexer.rs"), "{summary}");
-        assert!(summary.contains("#2 c2 \"Parse\" (Parse role) \u{2192} c3: parse() now returns Result"), "{summary}");
-        assert!(summary.contains("#3 the lead: Keep the public API"), "{summary}");
+        assert!(
+            summary.contains("findings:\n- #1 c1 \"Map\" (Map role): Tokens live in lexer.rs"),
+            "{summary}"
+        );
+        assert!(
+            summary
+                .contains("#2 c2 \"Parse\" (Parse role) \u{2192} c3: parse() now returns Result"),
+            "{summary}"
+        );
+        assert!(
+            summary.contains("#3 the lead: Keep the public API"),
+            "{summary}"
+        );
 
         // A card starting later gets the broadcasts, not others' private notes.
         let prompt = board.child_prompt("c4").unwrap();
         assert!(prompt.contains("Tokens live in lexer.rs"), "{prompt}");
         assert!(prompt.contains("Keep the public API"), "{prompt}");
         assert!(!prompt.contains("returns Result"), "{prompt}");
-        assert!(prompt.contains("`swarm` tool") && prompt.contains("Your card id is c4."), "{prompt}");
+        assert!(
+            prompt.contains("`swarm` tool") && prompt.contains("Your card id is c4."),
+            "{prompt}"
+        );
 
         // The addressee's view has it.
         assert!(board.member_view("c3").contains("returns Result"));
-        assert!(board.member_view("c3").contains("c3 Docs [Docs role · working] (you)"));
+        assert!(board
+            .member_view("c3")
+            .contains("c3 Docs [Docs role · working] (you)"));
     }
 
     #[test]
@@ -1762,7 +1793,10 @@ mod tests {
 
         let json = serde_json::to_string(&board).unwrap();
         let restored: Board = serde_json::from_str(&json).unwrap();
-        assert_eq!(restored.cards[0].instance_id.as_deref(), Some("claude-work"));
+        assert_eq!(
+            restored.cards[0].instance_id.as_deref(),
+            Some("claude-work")
+        );
     }
 
     #[test]
@@ -1777,9 +1811,13 @@ mod tests {
             assert!(error.contains("whole project"), "{pattern}: {error}");
         }
         // Folders, folder globs and an explicit whole project are fine.
-        board.add(vec![spec("A", true, &[], &["src/auth/**"])]).unwrap();
+        board
+            .add(vec![spec("A", true, &[], &["src/auth/**"])])
+            .unwrap();
         board.add(vec![spec("B", true, &[], &["docs/"])]).unwrap();
-        board.add(vec![spec("C", true, &["A", "B"], &["."])]).unwrap();
+        board
+            .add(vec![spec("C", true, &["A", "B"], &["."])])
+            .unwrap();
         // Readers never need owns.
         board.add(vec![spec("Read", false, &[], &[])]).unwrap();
     }
@@ -1800,12 +1838,21 @@ mod tests {
         board.start("c3", "k3");
         let moved = board.reconcile(|child| match child {
             "k1" => ChildState::Gone,
-            "k2" => ChildState::Finished { ok: true, summary: "patched".into() },
+            "k2" => ChildState::Finished {
+                ok: true,
+                summary: "patched".into(),
+            },
             _ => ChildState::Live,
         });
         assert_eq!(moved, ["c1", "c2"]);
         assert_eq!(board.card("c1").unwrap().status, CardStatus::Failed);
-        assert!(board.card("c1").unwrap().result.as_deref().unwrap().starts_with("Interrupted"));
+        assert!(board
+            .card("c1")
+            .unwrap()
+            .result
+            .as_deref()
+            .unwrap()
+            .starts_with("Interrupted"));
         // A writer that finished unheard still goes to review, not done.
         assert_eq!(board.card("c2").unwrap().status, CardStatus::Review);
         assert_eq!(board.card("c3").unwrap().status, CardStatus::Working);
@@ -1813,8 +1860,12 @@ mod tests {
         assert_eq!(board.failed_dependencies(board.card("c4").unwrap()), ["c1"]);
         assert!(board.summary().contains("blocked: c1 failed"));
         // Sending the dependency back clears the block.
-        board.move_card("c1", MoveTo::Backlog, Some("retry")).unwrap();
-        assert!(board.failed_dependencies(board.card("c4").unwrap()).is_empty());
+        board
+            .move_card("c1", MoveTo::Backlog, Some("retry"))
+            .unwrap();
+        assert!(board
+            .failed_dependencies(board.card("c4").unwrap())
+            .is_empty());
     }
 
     #[test]
@@ -1826,16 +1877,24 @@ mod tests {
         let outside = outside_owns(&owns, &changed);
         assert_eq!(outside, ["src/db.rs", "Cargo.toml"]);
         let mut board = Board::default();
-        board.add(vec![spec("Auth", true, &[], &["src/auth/"])]).unwrap();
+        board
+            .add(vec![spec("Auth", true, &[], &["src/auth/"])])
+            .unwrap();
         board.start("c1", "k1");
         board.child_finished("k1", true, "done the auth");
         board.note_outside_owns("c1", &outside);
         let result = board.card("c1").unwrap().result.clone().unwrap();
-        assert!(result.starts_with("Changed files outside its owns (2): src/db.rs, Cargo.toml"), "{result}");
+        assert!(
+            result.starts_with("Changed files outside its owns (2): src/db.rs, Cargo.toml"),
+            "{result}"
+        );
         assert!(result.ends_with("done the auth"));
         // Nothing outside: the result is left alone.
         board.note_outside_owns("c1", &[]);
-        assert_eq!(board.card("c1").unwrap().result.as_deref(), Some(result.as_str()));
+        assert_eq!(
+            board.card("c1").unwrap().result.as_deref(),
+            Some(result.as_str())
+        );
     }
 
     #[test]
@@ -1859,7 +1918,9 @@ mod tests {
             .unwrap();
         assert!(store.clear(session).unwrap().cards.is_empty());
         let (ids, _) = store
-            .update(session, |board| board.add(vec![spec("Next", false, &[], &[])]))
+            .update(session, |board| {
+                board.add(vec![spec("Next", false, &[], &[])])
+            })
             .unwrap();
         assert_eq!(ids, ["c2"], "a new card never reuses an old id");
         let _ = fs::remove_dir_all(&dir);
@@ -1879,7 +1940,10 @@ mod tests {
             repo_root: root.to_string_lossy().into(),
             worktree: checkout.to_string_lossy().into(),
             base_commit: "HEAD".into(),
-            files: vec![crate::subagent::worktree::ChangedFile { path: "a.rs".into(), baseline: None }],
+            files: vec![crate::subagent::worktree::ChangedFile {
+                path: "a.rs".into(),
+                baseline: None,
+            }],
         };
         store
             .update(session, |board| {
@@ -1895,7 +1959,10 @@ mod tests {
         assert!(error.contains("a.rs"), "{error}");
         let board = store.get(session).unwrap();
         assert_eq!(board.card("c1").unwrap().status, CardStatus::Review);
-        assert!(board.card("c1").unwrap().work.is_some(), "a refused accept keeps the work");
+        assert!(
+            board.card("c1").unwrap().work.is_some(),
+            "a refused accept keeps the work"
+        );
         assert_eq!(fs::read_to_string(root.join("a.rs")).unwrap(), "user edit");
 
         // Without the conflict the accept applies it.

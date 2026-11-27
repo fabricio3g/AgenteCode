@@ -4,7 +4,7 @@
   import { spaceVisible } from '$lib/components/layout/space-visibility';
   import { t } from 'svelte-i18n';
   import { Check, ListChecks } from '$lib/icons';
-  import Button from '$lib/components/ui/Button.svelte';
+  import { Button, Checkbox, Input } from '$lib/components/ui';
   import type { PendingUserInput, UserInputResolution } from '$lib/stores/user-inputs.svelte';
   import { formatShortcut } from '$lib/utils/shortcuts';
   import {
@@ -162,10 +162,10 @@
               <div class="options-grid" role="radiogroup" aria-label={field.title}>
                 {#each field.options as opt, optIdx (opt.value)}
                   {@const selected = formState.values[field.key] === opt.value}
-                  <button
+                  <Button
+                    variant="plain"
                     type="button"
-                    class="option-row"
-                    class:is-selected={selected}
+                    class="option-row {selected ? 'is-selected' : ''}"
                     role="radio"
                     aria-checked={selected}
                     onclick={() => selectSingle(field, opt.value)}
@@ -178,11 +178,12 @@
                     {#if fields.length === 1 && optIdx < 9}
                       <span class="opt-key">{optIdx + 1}</span>
                     {/if}
-                  </button>
+                  </Button>
                 {/each}
               </div>
               {#if field.customKey}
-                <input
+                <Input
+                  variant="inline"
                   type="text"
                   class="text-input"
                   value={formState.customValues[field.key] ?? ''}
@@ -194,10 +195,10 @@
               <div class="options-grid" role="group" aria-label={field.title}>
                 {#each field.options as opt, optIdx (opt.value)}
                   {@const selected = Array.isArray(formState.values[field.key]) && (formState.values[field.key] as string[]).includes(opt.value)}
-                  <button
+                  <Button
+                    variant="plain"
                     type="button"
-                    class="option-row"
-                    class:is-selected={selected}
+                    class="option-row {selected ? 'is-selected' : ''}"
                     role="checkbox"
                     aria-checked={selected}
                     onclick={() => toggleMulti(field.key, opt.value)}
@@ -212,11 +213,12 @@
                     {#if fields.length === 1 && optIdx < 9}
                       <span class="opt-key">{optIdx + 1}</span>
                     {/if}
-                  </button>
+                  </Button>
                 {/each}
               </div>
               {#if field.customKey}
-                <input
+                <Input
+                  variant="inline"
                   type="text"
                   class="text-input"
                   value={formState.customValues[field.key] ?? ''}
@@ -226,15 +228,15 @@
               {/if}
             {:else if field.kind === 'boolean'}
               <label class="bool-row">
-                <input
-                  type="checkbox"
+                <Checkbox
                   checked={!!formState.values[field.key]}
                   onchange={(e) => updateScalar(field.key, (e.currentTarget as HTMLInputElement).checked)}
                 />
                 <span>{field.description || field.title}</span>
               </label>
             {:else if field.kind === 'number'}
-              <input
+              <Input
+                variant="inline"
                 type="number"
                 step={field.isInteger ? '1' : 'any'}
                 class="text-input"
@@ -243,7 +245,8 @@
                 oninput={(e) => updateScalar(field.key, (e.currentTarget as HTMLInputElement).value)}
               />
             {:else}
-              <input
+              <Input
+                variant="inline"
                 type="text"
                 class="text-input"
                 value={String(formState.values[field.key] ?? '')}
@@ -370,7 +373,7 @@
     flex-direction: column;
     gap: 0.1875rem;
   }
-  .option-row {
+  .options-grid :global(.option-row) {
     display: flex;
     align-items: center;
     gap: 0.5rem;
@@ -384,12 +387,12 @@
     cursor: pointer;
     transition: background var(--motion-instant) var(--motion-ease);
   }
-  .option-row:hover,
-  .option-row:focus-visible {
+  .options-grid :global(.option-row:hover),
+  .options-grid :global(.option-row:focus-visible) {
     background: var(--surface-hover);
     outline: none;
   }
-  .option-row.is-selected {
+  .options-grid :global(.option-row.is-selected) {
     background: color-mix(in srgb, var(--brand-accent) 12%, transparent);
   }
   .radio-dot {
@@ -445,7 +448,7 @@
     font-variant-numeric: tabular-nums;
     opacity: 0.7;
   }
-  .text-input {
+  .field-block :global(.text-input) {
     width: 100%;
     padding: 0.3125rem 0.5rem;
     border: 1px solid var(--border-subtle);
@@ -455,7 +458,7 @@
     font-size: var(--text-xs);
     outline: none;
   }
-  .text-input:focus {
+  .field-block :global(.text-input:focus) {
     border-color: var(--brand-accent-strong);
   }
   .bool-row {

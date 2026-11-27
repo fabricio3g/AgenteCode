@@ -23,7 +23,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { t } from 'svelte-i18n';
-  import { Button, Switch } from '$lib/components/ui';
+  import { Button, Input, Switch } from '$lib/components/ui';
   import TileMeter from '$lib/components/ui/TileMeter.svelte';
   import { toastStore } from '$lib/stores/toast.svelte';
   import { confirmStore } from '$lib/stores/confirm.svelte';
@@ -199,12 +199,13 @@
             {#if card.status === 'review' || card.status === 'failed'}
               {#if noteFor === card.id}
                 <form class="card-note" onsubmit={(event) => { event.preventDefault(); void move(card, 'backlog', note.trim() || undefined); }}>
-                  <input
+                  <Input
+                    variant="inline"
                     class="note-input"
                     bind:value={note}
                     placeholder={$t('code.swarm.notePlaceholder')}
                     aria-label={$t('code.swarm.notePlaceholder')}
-                    use:focusNote
+                    action={focusNote}
                     onkeydown={(event) => { if (event.key === 'Escape') { event.stopPropagation(); noteFor = null; } }}
                   />
                   <Button size="sm" type="submit" disabled={moving === card.id}>{$t('code.swarm.sendBack')}</Button>
@@ -297,8 +298,8 @@
   /* Actions start on the card's text edge (under the title, past the mark). */
   .card-actions, .card-note { display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem; padding: 0 0 0.375rem 1.5rem; }
   .card-actions :global(.give-up:hover) { color: var(--error); }
-  .note-input { min-width: 0; flex: 1; height: 1.75rem; padding: 0 0.5rem; border: 1px solid var(--border); border-radius: var(--float-row-radius); background: transparent; color: var(--foreground); font: inherit; font-size: var(--text-xs); outline: none; }
-  .note-input:focus-visible { border-color: var(--brand-accent); }
+  .card-note :global(.note-input) { min-width: 0; flex: 1; height: 1.75rem; padding: 0 0.5rem; border: 1px solid var(--border); border-radius: var(--float-row-radius); background: transparent; color: var(--foreground); font: inherit; font-size: var(--text-xs); outline: none; }
+  .card-note :global(.note-input:focus-visible) { border-color: var(--brand-accent); }
   .delegated-list { display: grid; gap: 0.25rem; }
   .delegated-row { display: flex; align-items: baseline; gap: 0.5rem; min-width: 0; font-size: var(--text-xs); color: var(--muted-foreground); }
   .delegated-driver { flex-shrink: 0; font-weight: 500; color: var(--foreground); }

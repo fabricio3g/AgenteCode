@@ -89,7 +89,12 @@ impl AgentDriver for ClaudeDriver {
     }
 
     fn descriptor(&self) -> DriverInfo {
-        let program = self.instance.command.first().map(String::as_str).unwrap_or("");
+        let program = self
+            .instance
+            .command
+            .first()
+            .map(String::as_str)
+            .unwrap_or("");
         let resolved = resolve_executable(program);
         let status = if !self.instance.enabled {
             DriverStatus::Disabled
@@ -389,7 +394,11 @@ where
         };
         *alive_flag.lock().unwrap_or_else(|p| p.into_inner()) = false;
         core.approvals.cancel_session(core.session_id);
-        let finished = core.active_turn.lock().unwrap_or_else(|p| p.into_inner()).take();
+        let finished = core
+            .active_turn
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .take();
         if let Some(mut turn) = finished {
             if let Some(tx) = turn.done_tx.take() {
                 let status = if turn.cancelled {
@@ -397,19 +406,19 @@ where
                 } else {
                     TurnStatus::Failed
                 };
-                let _ = tx.send(TurnOutcomeData {
-                    status,
-                    assistant_text: turn.assistant_text,
-                    tokens: 0,
-                    error: if turn.cancelled {
-                        None
-                    } else {
-                        Some(
-                            close_err
-                                .unwrap_or_else(|| "Claude CLI exited before completing turn".into()),
-                        )
-                    },
-                });
+                let _ =
+                    tx.send(TurnOutcomeData {
+                        status,
+                        assistant_text: turn.assistant_text,
+                        tokens: 0,
+                        error: if turn.cancelled {
+                            None
+                        } else {
+                            Some(close_err.unwrap_or_else(|| {
+                                "Claude CLI exited before completing turn".into()
+                            }))
+                        },
+                    });
             }
         }
     });
@@ -534,20 +543,17 @@ fn handle_claude_frame(core: &Arc<ClaudeCore>, writer: &JsonLineWriter, frame: V
                             .and_then(Value::as_str)
                             .unwrap_or("tool")
                             .to_string();
-                        let raw_name = block
-                            .get("name")
-                            .and_then(Value::as_str)
-                            .unwrap_or("tool");
+                        let raw_name = block.get("name").and_then(Value::as_str).unwrap_or("tool");
                         let name = normalize_claude_tool_name(raw_name).to_string();
                         let input = block.get("input").cloned().unwrap_or_else(|| json!({}));
                         turn.tool_names.insert(id.clone(), name.clone());
-                        let _ = turn.sink.try_send(DriverEvent::Runtime(
-                            RuntimeEvent::ToolProposed {
-                                id,
-                                name: name.clone(),
-                                arguments: input.to_string(),
-                            },
-                        ));
+                        let _ =
+                            turn.sink
+                                .try_send(DriverEvent::Runtime(RuntimeEvent::ToolProposed {
+                                    id,
+                                    name: name.clone(),
+                                    arguments: input.to_string(),
+                                }));
                         if name == "todo_write" {
                             if let Some(todos) = input.get("todos") {
                                 let _ = turn.sink.try_send(DriverEvent::Runtime(
@@ -650,32 +656,32 @@ fn handle_claude_frame(core: &Arc<ClaudeCore>, writer: &JsonLineWriter, frame: V
             {
                 let guard = core.active_turn.lock().unwrap_or_else(|p| p.into_inner());
                 if let Some(turn) = guard.as_ref() {
-                    let _ = turn.sink.try_send(DriverEvent::Runtime(
-                        RuntimeEvent::ApprovalRequested {
-                            request_id: perm_id,
-                            source: "claude".to_string(),
-                            tool_name,
-                            tool_args: input.to_string(),
-                            description,
-                            is_dangerous,
-                            file_path,
-                            old_content,
-                            new_content,
-                            child_run_id: None,
-                            options: vec![
-                                ApprovalOption {
-                                    id: "allow".to_string(),
-                                    label: "Allow".to_string(),
-                                    kind: ApprovalDecisionKind::ApproveOnce,
-                                },
-                                ApprovalOption {
-                                    id: "deny".to_string(),
-                                    label: "Deny".to_string(),
-                                    kind: ApprovalDecisionKind::Deny,
-                                },
-                            ],
-                        },
-                    ));
+                    let _ =
+                        turn.sink
+                            .try_send(DriverEvent::Runtime(RuntimeEvent::ApprovalRequested {
+                                request_id: perm_id,
+                                source: "claude".to_string(),
+                                tool_name,
+                                tool_args: input.to_string(),
+                                description,
+                                is_dangerous,
+                                file_path,
+                                old_content,
+                                new_content,
+                                child_run_id: None,
+                                options: vec![
+                                    ApprovalOption {
+                                        id: "allow".to_string(),
+                                        label: "Allow".to_string(),
+                                        kind: ApprovalDecisionKind::ApproveOnce,
+                                    },
+                                    ApprovalOption {
+                                        id: "deny".to_string(),
+                                        label: "Deny".to_string(),
+                                        kind: ApprovalDecisionKind::Deny,
+                                    },
+                                ],
+                            }));
                 }
             }
 
@@ -772,20 +778,20 @@ fn handle_claude_frame(core: &Arc<ClaudeCore>, writer: &JsonLineWriter, frame: V
                         }));
                 }
                 if is_error && looks_like_usage_limit(&result_text) {
-                    let _ = turn.sink.try_send(DriverEvent::Runtime(
-                        RuntimeEvent::UsageLimitReached {
-                            message: result_text.clone(),
-                            reset_at: None,
-                        },
-                    ));
+                    let _ =
+                        turn.sink
+                            .try_send(DriverEvent::Runtime(RuntimeEvent::UsageLimitReached {
+                                message: result_text.clone(),
+                                reset_at: None,
+                            }));
                 }
                 if !is_error && turn.assistant_text.is_empty() && !result_text.is_empty() {
                     turn.assistant_text = result_text.clone();
-                    let _ = turn
-                        .sink
-                        .try_send(DriverEvent::Runtime(RuntimeEvent::AssistantDelta {
-                            text: result_text.clone(),
-                        }));
+                    let _ =
+                        turn.sink
+                            .try_send(DriverEvent::Runtime(RuntimeEvent::AssistantDelta {
+                                text: result_text.clone(),
+                            }));
                 }
                 let status = if turn.cancelled {
                     TurnStatus::Cancelled
@@ -1137,7 +1143,9 @@ async fn probe_claude_live(instance: &ResolvedInstance) -> ClaudeProbeOutcome {
     {
         writer.close();
         drop(writer);
-        spawned.shutdown_gracefully(Duration::from_millis(150)).await;
+        spawned
+            .shutdown_gracefully(Duration::from_millis(150))
+            .await;
         return ClaudeProbeOutcome::default();
     }
 
@@ -1174,7 +1182,8 @@ async fn probe_claude_live(instance: &ResolvedInstance) -> ClaudeProbeOutcome {
                     }
                     let payload = resp.get("response").unwrap_or(&Value::Null);
                     let models = parse_claude_initialize_models(payload);
-                    let account_missing = matches!(payload.get("account"), None | Some(Value::Null));
+                    let account_missing =
+                        matches!(payload.get("account"), None | Some(Value::Null));
                     return ClaudeProbeOutcome {
                         needs_auth: account_missing && models.is_empty(),
                         error: None,
@@ -1189,7 +1198,9 @@ async fn probe_claude_live(instance: &ResolvedInstance) -> ClaudeProbeOutcome {
 
     writer.close();
     drop(writer);
-    spawned.shutdown_gracefully(Duration::from_millis(150)).await;
+    spawned
+        .shutdown_gracefully(Duration::from_millis(150))
+        .await;
 
     match read_outcome {
         Ok(outcome) => outcome,

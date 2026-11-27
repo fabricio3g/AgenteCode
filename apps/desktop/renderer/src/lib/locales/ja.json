@@ -438,12 +438,26 @@
         "findings": "共有メモ",
         "lead": "リード",
         "more": "ボードに以前のメモ {n} 件"
-      }
+      },
+      "accept": "承認",
+      "sendBack": "差し戻す",
+      "giveUp": "諦める",
+      "retry": "再試行",
+      "notePlaceholder": "再試行で直してほしい点（任意）",
+      "changes": "{n, plural, other {変更された # 個のファイルが反映待ちです}}",
+      "clearTitle": "ボードを空にしますか？",
+      "clearMessage": "{n, plural, other {# 枚のカード}}がまだレビューも開始もされていません。空にするとカードと発見ログが消え、レビュー待ちの変更は反映されません。",
+      "delegatedTitle": "CLI に委任したタスク"
     },
     "traceCopyInput": "入力をコピー",
     "traceCopyOutput": "出力をコピー",
     "traceCopyCommand": "コマンドをコピー",
-    "todoStatus": {"pending": "未着手", "in_progress": "進行中", "completed": "完了", "cancelled": "キャンセル"},
+    "todoStatus": {
+      "pending": "未着手",
+      "in_progress": "進行中",
+      "completed": "完了",
+      "cancelled": "キャンセル"
+    },
     "pane": {
       "openWindow": "新しいウィンドウで開く",
       "close": "ペインを閉じる",
@@ -856,7 +870,148 @@
     },
     "modeCycle": "Shift+Tabで切り替え",
     "todosMore": "ほか {n} 件",
-    "todosLess": "折りたたむ"
+    "todosLess": "折りたたむ",
+    "layout": {
+      "files": "{n, plural, other {# 個のファイル}}",
+      "verb": {
+        "done": {
+          "read": "読んだ",
+          "list": "一覧表示した",
+          "search": "検索した",
+          "web": "ウェブで検索した",
+          "edit": "編集した",
+          "command": "実行した",
+          "subagent": "委任した",
+          "other": "使った",
+          "thought": "考えた"
+        },
+        "running": {
+          "read": "読んでいます",
+          "list": "一覧表示しています",
+          "search": "検索しています",
+          "web": "ウェブで検索しています",
+          "edit": "編集しています",
+          "command": "実行しています",
+          "subagent": "委任しています",
+          "other": "使っています",
+          "thought": "考えています"
+        }
+      },
+      "waiting": "あなたの操作を待っています",
+      "failed": "失敗",
+      "used": "{n, plural, other {# 個のツール}}を使用",
+      "explored": "{n, plural, other {# 個のファイル}}を調査",
+      "searches": "{n, plural, other {# 回の検索}}",
+      "commands": "{n, plural, other {# 個のコマンド}}",
+      "progress": "{total} ステップ中 {done}",
+      "phase": {
+        "explore": "コードを調べた",
+        "change": "変更を加えた",
+        "run": "コマンドを実行した",
+        "think": "よく考えた",
+        "delegate": "サブエージェントに任せた"
+      },
+      "sources": "情報源",
+      "tile": {
+        "explored": "調査",
+        "edited": "編集",
+        "ran": "実行",
+        "result": "結果",
+        "none": "まだありません",
+        "passing": "直前のコマンドは成功",
+        "failing": "直前のコマンドは失敗"
+      },
+      "open": "開く"
+    },
+    "stepResult": {
+      "lines": "{n, plural, other {# 行}}",
+      "entries": "{n, plural, other {# 件}}",
+      "more": "ほか {n} 件"
+    },
+    "threads": "スレッド",
+    "viewProjects": "プロジェクトごとにまとめる",
+    "viewThreads": "すべてのスレッドを表示",
+    "activeThreads": "実行中",
+    "pinned": "ピン留め",
+    "pin": "ピン留め",
+    "unpin": "ピン留めを外す",
+    "filterToggle": "プロジェクトとスレッドを絞り込む",
+    "filterPlaceholder": "プロジェクトやスレッドを絞り込む…",
+    "filterAll": "すべて",
+    "filterActive": "実行中",
+    "filterPinned": "ピン留め",
+    "clearFilters": "絞り込みを解除",
+    "noFilterMatches": "一致するプロジェクトやスレッドはありません。",
+    "noThreads": "スレッドはまだありません。プロジェクトで会話を始めてください。",
+    "empty": {
+      "start": "新しい会話",
+      "startHint": "フォルダは書きながら選べます",
+      "fromFolder": "フォルダから始める",
+      "open": "フォルダを開く",
+      "openHint": "このコンピューターにあるプロジェクト",
+      "new": "新しいプロジェクト",
+      "newHint": "git の準備ができた空のフォルダ",
+      "clone": "リポジトリをクローン",
+      "cloneHint": "GitHub、GitLab、または任意の git URL から",
+      "shortcut": "{key} でどこからでも会話を始められます"
+    },
+    "projectBox": {
+      "title": "作業場所",
+      "agent": "エージェント",
+      "all": "すべて表示（{n}）",
+      "fewer": "表示を減らす"
+    },
+    "driverPicker": {
+      "label": "エージェント",
+      "builtin": "Agente Core",
+      "builtinTag": "内蔵",
+      "manage": "外部 CLI を管理…",
+      "switchHint": "切り替えてもこの会話は続きます。次のメッセージで新しいエージェントに履歴を渡します。",
+      "busyHint": "このターンが終われば、エージェントを切り替えられます。",
+      "driverNotReady": "{driver} の準備ができていません — 設定で確認してください",
+      "configureDriver": "設定 → 外部 CLI で CLI を設定",
+      "driverModel": "CLI のモデル",
+      "defaultModel": "CLI の既定",
+      "effortTitle": "推論の強さ",
+      "defaultEffort": "既定",
+      "refreshModels": "モデルを更新",
+      "loadingModels": "モデルを読み込み中…",
+      "noModelsDiscovered": "この CLI からはまだモデルが報告されていません",
+      "noAttachments": "この CLI はメディアの添付に対応していません",
+      "queuePlaceholder": "このターンの後に送るメッセージを予約…",
+      "queueHint": "Enter で次のメッセージを予約 · Esc で停止",
+      "status": {
+        "ready": "準備完了",
+        "missing": "見つかりません",
+        "needs_auth": "サインイン",
+        "disabled": "無効",
+        "error": "エラー"
+      }
+    },
+    "worktree": {
+      "isolate": "Git ワークツリーで分離",
+      "isolateShort": "分離",
+      "activePrefix": "ワークツリー",
+      "commandHint": "この会話を専用の Git ワークツリーのブランチで実行します",
+      "isolated": "分離されたワークツリー",
+      "merge": "マージ",
+      "remove": "削除",
+      "confirmRemove": "ワークツリーを削除しますか？",
+      "cancel": "キャンセル",
+      "merged": "ワークツリーをリポジトリにマージしました（{commit}）",
+      "removed": "分離されたワークツリーを削除しました",
+      "conflictsTitle": "競合のためマージを中止しました",
+      "conflictsHint": "リポジトリの作業ツリーはそのままです。先にワークツリーで次のパスを解決してください：",
+      "dismiss": "閉じる"
+    },
+    "question": {
+      "title": "質問",
+      "submit": "送信",
+      "skip": "スキップ",
+      "otherPlaceholder": "自分の答えを入力…",
+      "answerPlaceholder": "答えを入力…",
+      "requiredField": "{field} に答えてください"
+    }
   },
   "searchModal": {
     "inMessages": "メッセージ内",
@@ -875,7 +1030,9 @@
     "escape": "ダイアログを閉じる · 実行を停止",
     "backToConversation": "会話に戻る",
     "rename": "選択した会話の名前を変更",
-    "resizeSidebar": "サイドバーのサイズを変更"
+    "resizeSidebar": "サイドバーのサイズを変更",
+    "back": "戻る",
+    "forward": "進む"
   },
   "search": {
     "source": {
@@ -931,7 +1088,12 @@
     "browse": "Return to the live page",
     "pick": "Select element",
     "pickHint": "Click an element · Shift-click for several · Esc to stop",
-    "pickAdded": "{n, plural, one {# element added to the message} other {# elements added to the message}}"
+    "pickAdded": "{n, plural, one {# element added to the message} other {# elements added to the message}}",
+    "preview": {
+      "loading": "プレビューを生成中…",
+      "openInBrowser": "内蔵ブラウザで開く",
+      "openExternal": "外部ブラウザで開く"
+    }
   },
   "localLoad": {
     "title": "ローカルモデルを読み込む",
@@ -1156,7 +1318,9 @@
     "endpointAddedReady": "{name} を追加しました",
     "artifacts": "アーティファクト",
     "title": "設定",
-    "accessibility": "アクセシビリティ"
+    "accessibility": "アクセシビリティ",
+    "appearance": "外観",
+    "externalClis": "外部 CLI"
   },
   "providers": {
     "cloudDescription": "ご自身の API キーを使います。チャットはこのアプリからプロバイダーへ直接送られます。",
@@ -1959,12 +2123,16 @@
       },
       "widget": {
         "name": "インタラクティブウィジェット",
-         "description": "チャット内で使える計算ツール、比較、クイズ、解説"
-       },
-       "lesson": {
-         "name": "レッスン",
-         "description": "頼まれたときだけ作る、インタラクティブな解説と練習"
-       }
+        "description": "チャット内で使える計算ツール、比較、クイズ、解説"
+      },
+      "lesson": {
+        "name": "レッスン",
+        "description": "頼まれたときだけ作る、インタラクティブな解説と練習"
+      },
+      "scene_3d": {
+        "name": "3D シーン",
+        "description": "科学やシステム、空間的なテーマ向けの、回して見られるインタラクティブな 3D モデル"
+      }
     },
     "kind": {
       "report": "レポート",
@@ -1983,7 +2151,8 @@
       "web": "ウェブページ",
       "files": "ファイル",
       "widget": "ウィジェット",
-      "lesson": "レッスン"
+      "lesson": "レッスン",
+      "scene_3d": "3D シーン"
     },
     "lesson": {
       "steps": "ステップ",
@@ -2461,7 +2630,9 @@
     "minimize": "最小化",
     "maximize": "最大化",
     "restore": "元に戻す",
-    "window": "Window"
+    "window": "Window",
+    "back": "戻る",
+    "forward": "進む"
   },
   "roleplay": {
     "regenerateEarlier": {
@@ -3373,8 +3544,8 @@
         "files": "Files & documents",
         "productivity": "Productivity",
         "media": "Media",
-         "data": "Data & charts",
-         "learning": "学習",
+        "data": "Data & charts",
+        "learning": "学習",
         "code": "Code"
       }
     }
@@ -3427,5 +3598,131 @@
       "failed": "失敗",
       "ready": "準備完了"
     }
+  },
+  "externalClis": {
+    "title": "外部 CLI",
+    "description": "インストール済みのコーディング CLI と分離した認証プロファイルを Agente Core と併用します。",
+    "probeAll": "利用可否を確認",
+    "probing": "確認中…",
+    "probeOne": "確認",
+    "addInstance": "CLI / プロファイルを追加",
+    "addProfile": "プロファイルを追加",
+    "edit": "編集",
+    "delete": "削除",
+    "confirmDelete": "削除しますか？",
+    "sectionTitle": "インストール・設定済みの CLI",
+    "sectionHint": "検出されたローカルのコーディング CLI、内蔵エンジン、~/.agente/drivers.json のユーザープロファイル。",
+    "availableTitle": "対応 CLI（未インストール）",
+    "availableHint": "PATH に見つからない内蔵 CLI です。ターミナルでインストールするか、編集でパスを指定してください。",
+    "modelCount": "{n, plural, other {# 個のモデル}}",
+    "modelsShow": "{n, plural, other {# 個のモデル}}",
+    "modelsHide": "モデルを隠す",
+    "builtinHint": "複数プロバイダー対応の内蔵コーディングエンジン",
+    "saved": "CLI プロファイル「{name}」を保存しました",
+    "deleted": "CLI プロファイル「{id}」を削除しました",
+    "orchestratorTitle": "ローカルオーケストレーター",
+    "orchestratorHint": "CLI のターンに組み込まれるローカル MCP サーバー。どのエンジンでもタスクを委任し、スウォームのカードを共有できます。",
+    "orchestratorEndpoint": "オーケストレーターの MCP ブリッジ",
+    "orchestratorActive": "稼働中",
+    "orchestratorInactive": "待機中",
+    "orchestratorStats": "稼働 {active} · 同時実行 最大 {maxConcurrent} · 深さ上限 {maxDepth}",
+    "orchestratorInactiveHint": "Code のターン開始時に自動で起動します。",
+    "orchestratorTasksTitle": "委任したタスク",
+    "orchestratorRefresh": "更新",
+    "dialog": {
+      "addTitle": "コーディング CLI またはプロファイルを追加",
+      "editTitle": "「{id}」を設定",
+      "description": "内蔵 CLI を別アカウント用に拡張するか、独自の ACP 実行ファイルを登録します。",
+      "modeProfile": "内蔵 CLI を拡張",
+      "modeAcp": "独自の ACP CLI",
+      "instanceId": "インスタンス ID",
+      "label": "表示名",
+      "baseCli": "ベース CLI",
+      "command": "実行コマンド",
+      "inheritCommand": "ベース CLI から継承",
+      "args": "追加の引数",
+      "env": "環境変数（1 行に KEY=VALUE）",
+      "stripEnv": "継承した環境変数を外す",
+      "useFor": "ルーティングのヒント（use_for）",
+      "useForPlaceholder": "オーケストレーターがこのエージェントを選ぶ場面",
+      "enabled": "有効",
+      "save": "プロファイルを保存"
+    },
+    "error": {
+      "badId": "インスタンス ID は英小文字で始まり、[a-z0-9-] のみを使ってください（'agente' は不可）。",
+      "commandRequired": "独自の ACP CLI には実行コマンドを入力してください。",
+      "badEnvLine": "無効な環境変数の行：「{line}」（KEY=VALUE の形式にしてください）。"
+    }
+  },
+  "appearance": {
+    "title": "外観",
+    "description": "色、形、レイアウト。変更はすぐに反映され、このコンピューターに保存されます。",
+    "reset": "リセット",
+    "themeSection": "色",
+    "mode": "モード",
+    "modeSystem": "システム",
+    "modeLight": "ライト",
+    "modeDark": "ダーク",
+    "palette": "テーマ",
+    "theme_agente": "Agente",
+    "theme_agente_desc": "色味のないグラファイトか白。",
+    "theme_parchment": "羊皮紙",
+    "theme_parchment_desc": "目にやさしい温かみのある紙の色。",
+    "theme_midnight": "ミッドナイト",
+    "theme_midnight_desc": "夜の作業向けの、深く冷たい青みの黒。",
+    "theme_slate": "スレート",
+    "theme_slate_desc": "少し奥行きのある冷たいグレーブルー。",
+    "theme_sepia": "セピア",
+    "theme_sepia_desc": "古い本のような、まぶしくないオリーブとクリーム。",
+    "accent": "アクセント",
+    "accent_ember": "エンバー",
+    "accent_terracotta": "テラコッタ",
+    "accent_emerald": "エメラルド",
+    "accent_cobalt": "コバルト",
+    "accent_violet": "バイオレット",
+    "accent_rose": "ローズ",
+    "accent_monochrome": "モノクロ",
+    "accentCustom": "カスタム",
+    "tintedBubbles": "自分のメッセージに色を付ける",
+    "tintedBubblesDesc": "送った内容にアクセント色をうっすら重ねます。",
+    "styleSection": "形",
+    "uiStyle": "角と縁",
+    "uiStyle_default": "標準",
+    "uiStyle_default_desc": "ほどよい角と控えめな細線。",
+    "uiStyle_soft": "ソフト",
+    "uiStyle_soft_desc": "すべての面の角をより丸く。",
+    "uiStyle_sharp": "シャープ",
+    "uiStyle_sharp_desc": "小さめの角とくっきりした縁。",
+    "uiStyle_minimal": "ミニマル",
+    "uiStyle_minimal_desc": "枠線はほとんどなく、面は色調で区別します。",
+    "layoutSection": "レイアウト",
+    "composerStyle": "メッセージ欄",
+    "composer_agente": "Agente",
+    "composer_agente_desc": "入力欄の下にツールのバー。",
+    "composer_pill": "ピル",
+    "composer_pill_desc": "ツールと丸い送信ボタンを中に収めた丸い入力欄。",
+    "composer_card": "カード",
+    "composer_card_desc": "アクセント色の送信ボタンが付いた、ゆったりした入力カード。",
+    "composer_terminal": "ターミナル",
+    "composer_terminal_desc": "フォーカス線の付いた等幅のプロンプト行。",
+    "composer_minimal": "ミニマル",
+    "composer_minimal_desc": "邪魔にならない一本の下線だけ。",
+    "agentStyle": "エージェントの作業",
+    "agent_agente": "Agente",
+    "agent_agente_desc": "一本の線に沿った控えめな行。",
+    "agent_feed": "アクティビティフィード",
+    "agent_feed_desc": "重ねたアイコンの要約と、ツールごとの 2 行表示。",
+    "agent_files": "ファイルストリーム",
+    "agent_files_desc": "書かれたファイルが順に現れ、残りは 1 行にまとまります。",
+    "agent_plan": "タスクプラン",
+    "agent_plan_desc": "進捗リングとフェーズ。現在のフェーズを開いて表示。",
+    "agent_review": "差分レビュー",
+    "agent_review_desc": "調査はたたみ、各編集の差分を表示します。",
+    "agent_research": "リサーチの軌跡",
+    "agent_research_desc": "検索と訪れたサイトを、ファビコンとピルで表示。",
+    "agent_timeline": "タイムライン",
+    "agent_timeline_desc": "左に時刻が並ぶセッションのログ。",
+    "agent_tiles": "ステップタイル",
+    "agent_tiles_desc": "作業の種類ごとに 1 枚：調査、編集、実行、結果。"
   }
 }

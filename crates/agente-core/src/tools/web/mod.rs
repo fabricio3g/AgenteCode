@@ -838,9 +838,21 @@ mod tests {
         };
         let mut offset = 0;
         let mut seen = String::new();
-        for limit in [Some(100_000), None, Some(100_000), None, None, None, None, None] {
+        for limit in [
+            Some(100_000),
+            None,
+            Some(100_000),
+            None,
+            None,
+            None,
+            None,
+            None,
+        ] {
             let out = render_part(&page, offset, limit);
-            assert!(!crate::tools::truncate_output(&out).truncated, "part overflowed the caps");
+            assert!(
+                !crate::tools::truncate_output(&out).truncated,
+                "part overflowed the caps"
+            );
             let body = out.split_once("\n\n").map(|(_, b)| b).unwrap_or("");
             let body = body.split("\n\n[").next().unwrap_or("");
             seen.push_str(body);

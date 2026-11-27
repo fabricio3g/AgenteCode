@@ -439,7 +439,8 @@ mod tests {
         scope_session(session_b, async {
             let err = ensure_fresh(&path).await.unwrap_err();
             assert!(
-                err.to_string().contains("read the file with read_file first"),
+                err.to_string()
+                    .contains("read the file with read_file first"),
                 "{err}"
             );
         })

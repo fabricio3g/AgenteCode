@@ -10,6 +10,7 @@
 <script lang="ts">
   import { t } from 'svelte-i18n';
   import { AlertCircle, ChevronDown, CircleCheck, LoaderCircle, XCircle } from '$lib/icons';
+  import { Button } from '$lib/components/ui';
   import { workPhases, type WorkLayoutProps, type WorkPhase } from '../work-layouts';
   import EntryRow from './EntryRow.svelte';
   import LayoutHead from './LayoutHead.svelte';
@@ -49,7 +50,7 @@
           {#if phase.kind === 'think' || phase.kind === 'delegate'}
             {#each phase.entries as entry (entry.key)}{@render row(entry.item)}{/each}
           {:else}
-            <button type="button" class="wl-phase-head" aria-expanded={expanded} onclick={() => (chosen = { ...chosen, [phase.key]: !expanded })}>
+            <Button variant="plain" type="button" class="wl-phase-head" aria-expanded={expanded} onclick={() => (chosen = { ...chosen, [phase.key]: !expanded })}>
               <span class="wl-status is-{phase.status}" aria-hidden="true">
                 {#if phase.status === 'running'}<LoaderCircle class="wl-icon-glyph wl-spin" />{:else if phase.status === 'error'}<XCircle class="wl-icon-glyph" />{:else if phase.status === 'ask'}<AlertCircle class="wl-icon-glyph" />{:else}<CircleCheck class="wl-icon-glyph" />{/if}
               </span>
@@ -57,7 +58,7 @@
               <span class="wl-fill"></span>
               <span class="wl-head-meta">{$t('code.work.steps', { values: { n: steps.length } })}</span>
               <ChevronDown class="wl-chev {expanded ? 'is-open' : ''}" />
-            </button>
+            </Button>
             {#if expanded}
               <div class="wl-nested">
                 {#each phase.entries as entry (entry.key)}

@@ -132,7 +132,11 @@ fn extract_links(
 ) -> Vec<ExtractedLink> {
     let base_host = base
         .and_then(|u| u.host_str())
-        .map(|h| h.to_ascii_lowercase().trim_start_matches("www.").to_string())
+        .map(|h| {
+            h.to_ascii_lowercase()
+                .trim_start_matches("www.")
+                .to_string()
+        })
         .unwrap_or_default();
     let mut seen = std::collections::HashSet::new();
     let mut out = Vec::new();
@@ -167,7 +171,11 @@ fn extract_links(
         }
         let domain = parsed
             .host_str()
-            .map(|h| h.to_ascii_lowercase().trim_start_matches("www.").to_string())
+            .map(|h| {
+                h.to_ascii_lowercase()
+                    .trim_start_matches("www.")
+                    .to_string()
+            })
             .unwrap_or_default();
         let text = collapse(&el.text().collect::<String>());
         let text = if text.len() > 140 {

@@ -14,7 +14,7 @@
   import { onMount, tick } from 'svelte';
   import { t } from 'svelte-i18n';
   import { ArrowUp, ChevronRight, Folder, FolderGit2, FolderOpen, LoaderCircle, Pencil } from '$lib/icons';
-  import { Button } from '$lib/components/ui';
+  import { Button, Input } from '$lib/components/ui';
   import { browseFolders, type FolderListing } from '$lib/services/files';
 
   let {
@@ -157,12 +157,12 @@
       </UiIconButton>
 
       {#if editing}
-        <input
-          bind:this={pathInput}
+        <Input
+          variant="inline"
+          bind:ref={pathInput}
           bind:value={typed}
-          class="path-input"
-          class:is-invalid={typedFailed}
-          spellcheck="false"
+          class="path-input {typedFailed ? 'is-invalid' : ''}"
+          spellcheck={false}
           autocomplete="off"
           aria-label={$t('code.browseTypePath')}
           aria-invalid={typedFailed}
@@ -178,14 +178,14 @@
         <div class="crumbs" title={listing?.path}>
           {#each crumbs as crumb, index (crumb.path)}
             {#if index > 0}<span class="crumb-sep" aria-hidden="true">/</span>{/if}
-            <button
+            <Button
+              variant="plain"
               type="button"
-              class="crumb"
-              class:is-last={index === crumbs.length - 1}
+              class="crumb {index === crumbs.length - 1 ? 'is-last' : ''}"
               onclick={() => void go(crumb.path)}
             >
               {crumb.name}
-            </button>
+            </Button>
           {/each}
           <UiIconButton label={$t('code.browseTypePath')} size="xs" type="button" title={`${$t('code.browseTypePath')} (Ctrl+L)`} class="edit-path" onclick={() => void editPath()}>
             <Pencil />
@@ -198,13 +198,14 @@
       {:else if places.length}
         <nav class="places" aria-label={$t('code.browsePlaces')}>
           {#each places as place (place.path)}
-            <button
+            <Button
+              variant="plain"
               type="button"
               class="place"
               onclick={() => void go(place.path)}
             >
               {place.name}
-            </button>
+            </Button>
           {/each}
         </nav>
       {/if}
@@ -239,7 +240,8 @@
             {#if folder.isProject}
               <span class="row-tag">{$t('code.browseProject')}</span>
             {/if}
-            <button
+            <Button
+              variant="plain"
               type="button"
               class="row-enter"
               tabindex={-1}
@@ -250,7 +252,7 @@
               }}
             >
               <ChevronRight class="size-3.5" />
-            </button>
+            </Button>
           </div>
         {/each}
       {/if}
@@ -298,7 +300,7 @@
     white-space: nowrap;
   }
 
-  .path-input {
+  .bar :global(.path-input) {
     min-width: 0;
     flex: 1;
     height: 1.625rem;
@@ -312,11 +314,11 @@
     outline: none;
   }
 
-  .path-input:focus-visible {
+  .bar :global(.path-input:focus-visible) {
     box-shadow: 0 0 0 1px var(--brand-accent);
   }
 
-  .path-input.is-invalid {
+  .bar :global(.path-input.is-invalid) {
     box-shadow: 0 0 0 1px var(--error);
   }
 
@@ -338,7 +340,7 @@
     user-select: none;
   }
 
-  .crumb {
+  .crumbs :global(.crumb) {
     flex-shrink: 0;
     padding: 0.125rem 0.3rem;
     border: 0;
@@ -351,12 +353,12 @@
       background-color var(--motion-instant) var(--motion-ease);
   }
 
-  .crumb:hover {
+  .crumbs :global(.crumb:hover) {
     color: var(--foreground);
     background: var(--float-row-hover);
   }
 
-  .crumb.is-last {
+  .crumbs :global(.crumb.is-last) {
     color: var(--foreground);
     font-weight: 500;
   }
@@ -368,7 +370,7 @@
     flex-shrink: 0;
   }
 
-  .place {
+  .places :global(.place) {
     padding: 0.125rem 0.4rem;
     border: 0;
     border-radius: var(--radius-sm);
@@ -379,7 +381,7 @@
     transition: color var(--motion-instant) var(--motion-ease);
   }
 
-  .place:hover {
+  .places :global(.place:hover) {
     color: var(--foreground);
   }
 
@@ -459,7 +461,7 @@
     font-size: var(--text-xs);
   }
 
-  .row-enter {
+  .row :global(.row-enter) {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -476,12 +478,12 @@
       color var(--motion-instant) var(--motion-ease);
   }
 
-  .row:hover .row-enter,
-  .row.is-selected .row-enter {
+  .row:hover :global(.row-enter),
+  .row.is-selected :global(.row-enter) {
     opacity: 0.85;
   }
 
-  .row-enter:hover {
+  .row :global(.row-enter:hover) {
     color: var(--foreground);
   }
 

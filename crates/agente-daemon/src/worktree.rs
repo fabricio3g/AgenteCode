@@ -78,8 +78,8 @@ pub(crate) async fn handle_async(
                 label,
                 session_id,
             } = parse(params)?;
-            let worktree = create_worktree(runtime, &project_dir, label.as_deref(), session_id)
-                .await?;
+            let worktree =
+                create_worktree(runtime, &project_dir, label.as_deref(), session_id).await?;
             Ok(json!({ "worktree": worktree }))
         }
         "worktree.list" => {
@@ -171,8 +171,13 @@ pub(crate) async fn create_worktree(
         })?;
 
     let wt = SessionWorktree {
-        repo_root: display_path(&std::fs::canonicalize(&info.repo_root).unwrap_or_else(|_| PathBuf::from(&info.repo_root))),
-        path: display_path(&std::fs::canonicalize(&info.path).unwrap_or_else(|_| PathBuf::from(&info.path))),
+        repo_root: display_path(
+            &std::fs::canonicalize(&info.repo_root)
+                .unwrap_or_else(|_| PathBuf::from(&info.repo_root)),
+        ),
+        path: display_path(
+            &std::fs::canonicalize(&info.path).unwrap_or_else(|_| PathBuf::from(&info.path)),
+        ),
         branch: info.branch,
         base_commit: info.base_commit,
     };
@@ -300,7 +305,9 @@ pub(crate) async fn merge_worktree(
                 "conflicts": conflicts,
             }));
         }
-        let stderr = String::from_utf8_lossy(&merge_res.stderr).trim().to_string();
+        let stderr = String::from_utf8_lossy(&merge_res.stderr)
+            .trim()
+            .to_string();
         return Err((
             rpc::INTERNAL_ERROR,
             if stderr.is_empty() {
@@ -358,7 +365,10 @@ pub(crate) async fn remove_worktree(
     Ok(())
 }
 
-fn confine_existing_worktree(repo_root: &str, wt_path: &str) -> Result<(PathBuf, PathBuf), Failure> {
+fn confine_existing_worktree(
+    repo_root: &str,
+    wt_path: &str,
+) -> Result<(PathBuf, PathBuf), Failure> {
     let canon_repo = canonical_repo_root(repo_root)?;
     let pool_root = canon_repo.join(".agente").join("worktrees");
     let wt = Path::new(wt_path);
@@ -368,8 +378,12 @@ fn confine_existing_worktree(repo_root: &str, wt_path: &str) -> Result<(PathBuf,
             format!("worktree does not exist: {wt_path}"),
         ));
     }
-    let canon_wt = std::fs::canonicalize(wt)
-        .map_err(|error| (rpc::INVALID_PARAMS, format!("invalid worktree path: {error}")))?;
+    let canon_wt = std::fs::canonicalize(wt).map_err(|error| {
+        (
+            rpc::INVALID_PARAMS,
+            format!("invalid worktree path: {error}"),
+        )
+    })?;
     if !canon_wt.starts_with(&pool_root) || canon_wt == pool_root {
         return Err((
             rpc::INVALID_PARAMS,
@@ -393,8 +407,12 @@ fn confine_worktree_for_remove(
         ));
     }
     if raw.exists() {
-        let canon_wt = std::fs::canonicalize(raw)
-            .map_err(|error| (rpc::INVALID_PARAMS, format!("invalid worktree path: {error}")))?;
+        let canon_wt = std::fs::canonicalize(raw).map_err(|error| {
+            (
+                rpc::INVALID_PARAMS,
+                format!("invalid worktree path: {error}"),
+            )
+        })?;
         if !canon_wt.starts_with(&pool_root) || canon_wt == pool_root {
             return Err((
                 rpc::INVALID_PARAMS,
@@ -452,9 +470,12 @@ async fn git_raw(cwd: &Path, args: &[&str]) -> Result<std::process::Output, Fail
         const CREATE_NO_WINDOW: u32 = 0x0800_0000;
         cmd.creation_flags(CREATE_NO_WINDOW);
     }
-    cmd.output()
-        .await
-        .map_err(|error| (rpc::INTERNAL_ERROR, format!("git {}: {error}", args.join(" "))))
+    cmd.output().await.map_err(|error| {
+        (
+            rpc::INTERNAL_ERROR,
+            format!("git {}: {error}", args.join(" ")),
+        )
+    })
 }
 
 async fn git_output(cwd: &Path, args: &[&str]) -> Result<String, Failure> {
@@ -503,10 +524,8 @@ mod tests {
 
     #[tokio::test]
     async fn worktree_create_list_merge_conflict_and_remove_lifecycle() {
-        let root = std::env::temp_dir().join(format!(
-            "agente-daemon-wt-test-{}",
-            uuid::Uuid::new_v4()
-        ));
+        let root =
+            std::env::temp_dir().join(format!("agente-daemon-wt-test-{}", uuid::Uuid::new_v4()));
         let repo = root.join("repo");
         init_repo(&repo);
 
@@ -530,7 +549,9 @@ mod tests {
 
         std::fs::write(Path::new(&created.path).join("feature.txt"), "hello\n").unwrap();
         let listed = list_worktrees(&repo_str).await.unwrap();
-        assert!(listed.iter().any(|item| item.path == created.path && item.dirty));
+        assert!(listed
+            .iter()
+            .any(|item| item.path == created.path && item.dirty));
 
         // 2. Traversal rejection outside .agente/worktrees.
         let outside = merge_worktree(&repo_str, &repo_str, None, None, None, false).await;

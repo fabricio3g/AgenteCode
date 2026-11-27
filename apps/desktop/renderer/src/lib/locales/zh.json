@@ -438,12 +438,26 @@
         "findings": "发现",
         "lead": "主控",
         "more": "看板上还有 {n} 条更早的发现"
-      }
+      },
+      "accept": "接受",
+      "sendBack": "退回",
+      "giveUp": "放弃",
+      "retry": "重试",
+      "notePlaceholder": "重试时要修正什么？（可选）",
+      "changes": "{n, plural, other {# 个已改动的文件等待应用}}",
+      "clearTitle": "清空看板？",
+      "clearMessage": "{n, plural, other {# 张卡片}}尚未审阅或开始。清空会删除这些卡片和发现记录；等待审阅的改动不会被应用。",
+      "delegatedTitle": "委派给 CLI 的任务"
     },
     "traceCopyInput": "复制输入",
     "traceCopyOutput": "复制输出",
     "traceCopyCommand": "复制命令",
-    "todoStatus": {"pending": "待处理", "in_progress": "进行中", "completed": "已完成", "cancelled": "已取消"},
+    "todoStatus": {
+      "pending": "待处理",
+      "in_progress": "进行中",
+      "completed": "已完成",
+      "cancelled": "已取消"
+    },
     "pane": {
       "openWindow": "在新窗口中打开",
       "close": "关闭窗格",
@@ -856,7 +870,148 @@
     },
     "modeCycle": "Shift+Tab 切换",
     "todosMore": "还有 {n} 项",
-    "todosLess": "收起"
+    "todosLess": "收起",
+    "layout": {
+      "files": "{n, plural, other {# 个文件}}",
+      "verb": {
+        "done": {
+          "read": "已读取",
+          "list": "已列出",
+          "search": "已搜索",
+          "web": "已在网上搜索",
+          "edit": "已编辑",
+          "command": "已运行",
+          "subagent": "已委派",
+          "other": "已使用",
+          "thought": "已思考"
+        },
+        "running": {
+          "read": "正在读取",
+          "list": "正在列出",
+          "search": "正在搜索",
+          "web": "正在网上搜索",
+          "edit": "正在编辑",
+          "command": "正在运行",
+          "subagent": "正在委派",
+          "other": "正在使用",
+          "thought": "正在思考"
+        }
+      },
+      "waiting": "等待你的操作",
+      "failed": "失败",
+      "used": "使用了 {n, plural, other {# 个工具}}",
+      "explored": "查看了 {n, plural, other {# 个文件}}",
+      "searches": "{n, plural, other {# 次搜索}}",
+      "commands": "{n, plural, other {# 条命令}}",
+      "progress": "第 {done} 步，共 {total} 步",
+      "phase": {
+        "explore": "浏览了代码",
+        "change": "做了修改",
+        "run": "运行了命令",
+        "think": "仔细思考",
+        "delegate": "把工作交给子智能体"
+      },
+      "sources": "来源",
+      "tile": {
+        "explored": "已查看",
+        "edited": "已编辑",
+        "ran": "已运行",
+        "result": "结果",
+        "none": "暂无",
+        "passing": "上一条命令成功",
+        "failing": "上一条命令失败"
+      },
+      "open": "打开"
+    },
+    "stepResult": {
+      "lines": "{n, plural, other {# 行}}",
+      "entries": "{n, plural, other {# 项}}",
+      "more": "还有 {n} 项"
+    },
+    "threads": "会话",
+    "viewProjects": "按项目分组",
+    "viewThreads": "显示所有会话",
+    "activeThreads": "进行中",
+    "pinned": "已固定",
+    "pin": "固定",
+    "unpin": "取消固定",
+    "filterToggle": "筛选项目和会话",
+    "filterPlaceholder": "筛选项目或会话…",
+    "filterAll": "全部",
+    "filterActive": "进行中",
+    "filterPinned": "已固定",
+    "clearFilters": "清除筛选",
+    "noFilterMatches": "没有匹配的项目或会话。",
+    "noThreads": "还没有会话。在项目中开始一段对话吧。",
+    "empty": {
+      "start": "新对话",
+      "startHint": "边写边选择文件夹",
+      "fromFolder": "或从一个文件夹开始",
+      "open": "打开文件夹",
+      "openHint": "这台电脑上已有的项目",
+      "new": "新项目",
+      "newHint": "一个空文件夹，可直接使用 git",
+      "clone": "克隆仓库",
+      "cloneHint": "来自 GitHub、GitLab 或任意 git 地址",
+      "shortcut": "{key} 可在任何地方开始对话"
+    },
+    "projectBox": {
+      "title": "工作位置",
+      "agent": "智能体",
+      "all": "查看全部（{n}）",
+      "fewer": "收起"
+    },
+    "driverPicker": {
+      "label": "智能体",
+      "builtin": "Agente Core",
+      "builtinTag": "内置",
+      "manage": "管理外部 CLI…",
+      "switchHint": "切换后对话会保留：下一条消息会把历史交给新的智能体。",
+      "busyHint": "这一回合结束后才能切换智能体。",
+      "driverNotReady": "{driver} 尚未就绪 — 请在设置中检查",
+      "configureDriver": "在 设置 → 外部 CLI 中配置 CLI",
+      "driverModel": "CLI 模型",
+      "defaultModel": "CLI 默认",
+      "effortTitle": "推理强度",
+      "defaultEffort": "默认",
+      "refreshModels": "刷新模型",
+      "loadingModels": "正在加载模型…",
+      "noModelsDiscovered": "这个 CLI 还没有报告任何模型",
+      "noAttachments": "这个 CLI 不接受媒体附件",
+      "queuePlaceholder": "排队一条消息，在本回合结束后发送…",
+      "queueHint": "Enter 排队下一条消息 · Esc 停止",
+      "status": {
+        "ready": "就绪",
+        "missing": "未找到",
+        "needs_auth": "登录",
+        "disabled": "已停用",
+        "error": "错误"
+      }
+    },
+    "worktree": {
+      "isolate": "在 Git 工作树中隔离",
+      "isolateShort": "隔离",
+      "activePrefix": "工作树",
+      "commandHint": "让这段对话在自己的 Git 工作树分支上运行",
+      "isolated": "隔离的工作树",
+      "merge": "合并",
+      "remove": "移除",
+      "confirmRemove": "移除工作树？",
+      "cancel": "取消",
+      "merged": "已将工作树合并到仓库（{commit}）",
+      "removed": "已移除隔离的工作树",
+      "conflictsTitle": "合并因冲突而停止",
+      "conflictsHint": "仓库的工作区保持干净。请先在工作树中解决这些路径：",
+      "dismiss": "关闭"
+    },
+    "question": {
+      "title": "问题",
+      "submit": "提交",
+      "skip": "跳过",
+      "otherPlaceholder": "输入你自己的答案…",
+      "answerPlaceholder": "输入你的答案…",
+      "requiredField": "请回答 {field}"
+    }
   },
   "searchModal": {
     "inMessages": "在消息中",
@@ -875,7 +1030,9 @@
     "escape": "关闭对话框 · 停止运行",
     "backToConversation": "返回对话",
     "rename": "重命名所选对话",
-    "resizeSidebar": "调整侧边栏大小"
+    "resizeSidebar": "调整侧边栏大小",
+    "back": "后退",
+    "forward": "前进"
   },
   "search": {
     "source": {
@@ -931,7 +1088,12 @@
     "browse": "Return to the live page",
     "pick": "Select element",
     "pickHint": "Click an element · Shift-click for several · Esc to stop",
-    "pickAdded": "{n, plural, one {# element added to the message} other {# elements added to the message}}"
+    "pickAdded": "{n, plural, one {# element added to the message} other {# elements added to the message}}",
+    "preview": {
+      "loading": "正在生成预览…",
+      "openInBrowser": "在内置浏览器中打开",
+      "openExternal": "在外部浏览器中打开"
+    }
   },
   "localLoad": {
     "title": "加载本地模型",
@@ -1156,7 +1318,9 @@
     "endpointAddedReady": "已添加 {name}，可以使用",
     "artifacts": "产物",
     "title": "设置",
-    "accessibility": "辅助功能"
+    "accessibility": "辅助功能",
+    "appearance": "外观",
+    "externalClis": "外部 CLI"
   },
   "providers": {
     "cloudDescription": "使用你自己的 API 密钥，聊天内容直接从本应用发送给提供商。",
@@ -1959,12 +2123,16 @@
       },
       "widget": {
         "name": "交互式小组件",
-         "description": "可在聊天中使用的计算器、对比、测验和讲解"
-       },
-       "lesson": {
-         "name": "课程",
-         "description": "只有你主动要求时才生成的互动讲解与练习"
-       }
+        "description": "可在聊天中使用的计算器、对比、测验和讲解"
+      },
+      "lesson": {
+        "name": "课程",
+        "description": "只有你主动要求时才生成的互动讲解与练习"
+      },
+      "scene_3d": {
+        "name": "3D 场景",
+        "description": "可旋转查看的交互式 3D 模型，适合科学、系统和空间类主题"
+      }
     },
     "kind": {
       "report": "报告",
@@ -1983,7 +2151,8 @@
       "web": "网页",
       "files": "文件",
       "widget": "小组件",
-      "lesson": "课程"
+      "lesson": "课程",
+      "scene_3d": "3D 场景"
     },
     "lesson": {
       "steps": "步",
@@ -2461,7 +2630,9 @@
     "minimize": "最小化",
     "maximize": "最大化",
     "restore": "还原",
-    "window": "Window"
+    "window": "Window",
+    "back": "后退",
+    "forward": "前进"
   },
   "roleplay": {
     "regenerateEarlier": {
@@ -3373,8 +3544,8 @@
         "files": "Files & documents",
         "productivity": "Productivity",
         "media": "Media",
-         "data": "Data & charts",
-         "learning": "学习",
+        "data": "Data & charts",
+        "learning": "学习",
         "code": "Code"
       }
     }
@@ -3427,5 +3598,131 @@
       "failed": "失败",
       "ready": "就绪"
     }
+  },
+  "externalClis": {
+    "title": "外部 CLI",
+    "description": "在 Agente Core 之外使用已安装的编程 CLI 和隔离的凭据配置。",
+    "probeAll": "检查可用性",
+    "probing": "正在检查…",
+    "probeOne": "检查",
+    "addInstance": "添加 CLI / 配置",
+    "addProfile": "添加配置",
+    "edit": "编辑",
+    "delete": "删除",
+    "confirmDelete": "删除？",
+    "sectionTitle": "已安装和配置的 CLI",
+    "sectionHint": "检测到的本地编程 CLI、内置引擎，以及 ~/.agente/drivers.json 中的用户配置。",
+    "availableTitle": "支持的 CLI（未安装）",
+    "availableHint": "在 PATH 中找不到的内置 CLI。可在终端中安装，或点击编辑设置自定义路径。",
+    "modelCount": "{n, plural, other {# 个模型}}",
+    "modelsShow": "{n, plural, other {# 个模型}}",
+    "modelsHide": "隐藏模型",
+    "builtinHint": "内置的多提供商编程引擎",
+    "saved": "已保存 CLI 配置“{name}”",
+    "deleted": "已移除 CLI 配置“{id}”",
+    "orchestratorTitle": "本地编排器",
+    "orchestratorHint": "注入到 CLI 回合中的本地 MCP 服务器，让任何引擎都能委派任务并共享集群卡片。",
+    "orchestratorEndpoint": "编排器 MCP 桥接",
+    "orchestratorActive": "运行中",
+    "orchestratorInactive": "待命",
+    "orchestratorStats": "{active} 个运行中 · 最多 {maxConcurrent} 个并发 · 深度上限 {maxDepth}",
+    "orchestratorInactiveHint": "Code 回合开始时自动启动。",
+    "orchestratorTasksTitle": "委派的任务",
+    "orchestratorRefresh": "刷新",
+    "dialog": {
+      "addTitle": "添加编程 CLI 或配置",
+      "editTitle": "配置“{id}”",
+      "description": "为另一个账户扩展内置 CLI，或注册自定义的 ACP 可执行文件。",
+      "modeProfile": "扩展内置 CLI",
+      "modeAcp": "自定义 ACP CLI",
+      "instanceId": "实例 ID",
+      "label": "显示名称",
+      "baseCli": "基础 CLI",
+      "command": "可执行命令",
+      "inheritCommand": "沿用基础 CLI",
+      "args": "额外参数",
+      "env": "环境变量覆盖（每行一个 KEY=VALUE）",
+      "stripEnv": "去掉继承的环境变量",
+      "useFor": "路由提示（use_for）",
+      "useForPlaceholder": "编排器应在什么情况下选择这个智能体",
+      "enabled": "已启用",
+      "save": "保存配置"
+    },
+    "error": {
+      "badId": "实例 ID 必须以小写字母开头，且只能包含 [a-z0-9-]（不能是 'agente'）。",
+      "commandRequired": "请为自定义 ACP CLI 输入可执行命令。",
+      "badEnvLine": "无效的环境变量行：“{line}”（应为 KEY=VALUE）。"
+    }
+  },
+  "appearance": {
+    "title": "外观",
+    "description": "颜色、形状和布局。更改立即生效，并保存在这台电脑上。",
+    "reset": "重置",
+    "themeSection": "颜色",
+    "mode": "模式",
+    "modeSystem": "跟随系统",
+    "modeLight": "浅色",
+    "modeDark": "深色",
+    "palette": "主题",
+    "theme_agente": "Agente",
+    "theme_agente_desc": "中性的石墨色或白色，不带色调。",
+    "theme_parchment": "羊皮纸",
+    "theme_parchment_desc": "温暖的纸张色调，看着不累。",
+    "theme_midnight": "午夜",
+    "theme_midnight_desc": "深沉冷调的蓝黑色，适合深夜工作。",
+    "theme_slate": "石板",
+    "theme_slate_desc": "冷调的灰蓝色，层次更丰富。",
+    "theme_sepia": "复古棕",
+    "theme_sepia_desc": "低眩光的橄榄色和米色，像一本旧书。",
+    "accent": "强调色",
+    "accent_ember": "余烬",
+    "accent_terracotta": "陶土",
+    "accent_emerald": "翡翠",
+    "accent_cobalt": "钴蓝",
+    "accent_violet": "紫罗兰",
+    "accent_rose": "玫瑰",
+    "accent_monochrome": "单色",
+    "accentCustom": "自定义",
+    "tintedBubbles": "为你的消息着色",
+    "tintedBubblesDesc": "在你发送的内容上叠一层淡淡的强调色。",
+    "styleSection": "形状",
+    "uiStyle": "圆角与边框",
+    "uiStyle_default": "默认",
+    "uiStyle_default_desc": "均衡的圆角和低调的细线。",
+    "uiStyle_soft": "柔和",
+    "uiStyle_soft_desc": "所有界面的圆角更圆。",
+    "uiStyle_sharp": "锐利",
+    "uiStyle_sharp_desc": "更小的圆角和清晰的边缘。",
+    "uiStyle_minimal": "极简",
+    "uiStyle_minimal_desc": "几乎没有边框，用色调区分各个界面。",
+    "layoutSection": "布局",
+    "composerStyle": "消息框",
+    "composer_agente": "Agente",
+    "composer_agente_desc": "输入框下方是一排工具。",
+    "composer_pill": "胶囊",
+    "composer_pill_desc": "圆形输入框，工具和圆形发送按钮都在里面。",
+    "composer_card": "卡片",
+    "composer_card_desc": "宽敞的书写卡片，带强调色的发送按钮。",
+    "composer_terminal": "终端",
+    "composer_terminal_desc": "带焦点竖线的等宽提示行。",
+    "composer_minimal": "极简",
+    "composer_minimal_desc": "只有一条不打扰的下划线。",
+    "agentStyle": "智能体工作",
+    "agent_agente": "Agente",
+    "agent_agente_desc": "沿着一条竖线排列的安静行。",
+    "agent_feed": "动态流",
+    "agent_feed_desc": "先是一行叠放图标的摘要，然后每个工具两行。",
+    "agent_files": "文件流",
+    "agent_files_desc": "文件写出时依次出现；其余折叠为一行。",
+    "agent_plan": "任务计划",
+    "agent_plan_desc": "进度环和各个阶段，当前阶段展开。",
+    "agent_review": "差异审阅",
+    "agent_review_desc": "浏览过程会折叠；每次编辑都显示差异。",
+    "agent_research": "研究轨迹",
+    "agent_research_desc": "搜索及其访问的网站，以图标和标签显示。",
+    "agent_timeline": "时间线",
+    "agent_timeline_desc": "左侧带时间的会话日志。",
+    "agent_tiles": "步骤卡片",
+    "agent_tiles_desc": "每类工作一张卡片：查看、编辑、运行、结果。"
   }
 }

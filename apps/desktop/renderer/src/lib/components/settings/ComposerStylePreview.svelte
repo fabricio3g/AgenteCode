@@ -11,6 +11,7 @@
 <script lang="ts">
   import { t } from 'svelte-i18n';
   import { Plus, Zap } from '$lib/icons';
+  import { Textarea } from '$lib/components/ui';
   import type { ComposerStyleId } from '$shared/appearance';
   import { isIntegratedComposerStyle } from '$shared/appearance';
   import SendButton from '$lib/features/shared/composer/SendButton.svelte';
@@ -42,7 +43,7 @@
       <div class="composer-body">
         <div class="composer-input-row" class:has-footer-send={sendInFooter}>
           {#if composerStyle === 'terminal'}<span class="composer-terminal-prompt">›</span>{/if}
-          <textarea class="composer-textarea w-full resize-none bg-transparent text-foreground outline-none" rows="1" tabindex="-1" readonly placeholder={$t('code.composerPlaceholder')}></textarea>
+          <Textarea variant="composer" class="composer-textarea w-full resize-none bg-transparent text-foreground outline-none" rows={1} tabindex={-1} readonly placeholder={$t('code.composerPlaceholder')} />
           {#if !sendInFooter}{@render send()}{/if}
         </div>
       </div>

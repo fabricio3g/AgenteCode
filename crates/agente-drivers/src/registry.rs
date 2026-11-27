@@ -115,7 +115,10 @@ impl DriverRegistry {
             }
         }
         {
-            let mut cache = self.cached_probes.write().unwrap_or_else(|p| p.into_inner());
+            let mut cache = self
+                .cached_probes
+                .write()
+                .unwrap_or_else(|p| p.into_inner());
             for info in probed_entries {
                 cache.insert(info.instance_id.clone(), info);
             }
@@ -146,7 +149,11 @@ impl DriverRegistry {
         cfg: DriverInstanceConfig,
     ) -> Result<DriverInfo, DriverError> {
         validate_instance_id(&instance_id)?;
-        let mut next = self.config.read().unwrap_or_else(|p| p.into_inner()).clone();
+        let mut next = self
+            .config
+            .read()
+            .unwrap_or_else(|p| p.into_inner())
+            .clone();
         next.instances.insert(instance_id.clone(), cfg);
         let rebuilt = build_drivers(&next)?;
         if let Some(path) = &self.config_path {
@@ -173,7 +180,11 @@ impl DriverRegistry {
                 "cannot delete built-in 'agente' instance".into(),
             ));
         }
-        let mut next = self.config.read().unwrap_or_else(|p| p.into_inner()).clone();
+        let mut next = self
+            .config
+            .read()
+            .unwrap_or_else(|p| p.into_inner())
+            .clone();
         let removed = next.instances.remove(instance_id).is_some();
         if !removed {
             return Ok(false);
@@ -284,10 +295,8 @@ mod tests {
 
     #[test]
     fn registry_saves_persists_and_deletes_custom_acp_instance() {
-        let dir = std::env::temp_dir().join(format!(
-            "agente-drv-reg-{}",
-            uuid::Uuid::new_v4().simple()
-        ));
+        let dir =
+            std::env::temp_dir().join(format!("agente-drv-reg-{}", uuid::Uuid::new_v4().simple()));
         let path = dir.join("drivers.json");
         let registry = DriverRegistry::new(DriversConfig::default(), Some(path.clone()));
 
@@ -375,13 +384,22 @@ mod tests {
                 },
             )
             .unwrap();
-        assert_eq!(saved.config.as_ref().and_then(|c| c.extends.as_deref()), Some("claude"));
+        assert_eq!(
+            saved.config.as_ref().and_then(|c| c.extends.as_deref()),
+            Some("claude")
+        );
         let post_save = registry.list_descriptors();
-        let extra = post_save.iter().find(|d| d.instance_id == "custom-extra").unwrap();
+        let extra = post_save
+            .iter()
+            .find(|d| d.instance_id == "custom-extra")
+            .unwrap();
         let cfg = extra.config.as_ref().unwrap();
         assert_eq!(cfg.args, vec!["--flag"]);
         assert_eq!(cfg.strip_env, vec!["ANTHROPIC_API_KEY"]);
-        assert_eq!(cfg.env.get("CLAUDE_CONFIG_DIR").map(String::as_str), Some("/tmp/work"));
+        assert_eq!(
+            cfg.env.get("CLAUDE_CONFIG_DIR").map(String::as_str),
+            Some("/tmp/work")
+        );
         assert_eq!(cfg.use_for.as_deref(), Some("Work tasks"));
         // save_instance cleared cached_probes
         assert!(post_save.iter().all(|d| d.instance_id != "mock-cli"));
@@ -395,9 +413,7 @@ mod tests {
         let registry = DriverRegistry::new(DriversConfig::default(), None);
         let probed = registry.probe_all().await;
         for info in probed {
-            if info.instance_id == BUILTIN_AGENTE_INSTANCE
-                || info.status == DriverStatus::Missing
-            {
+            if info.instance_id == BUILTIN_AGENTE_INSTANCE || info.status == DriverStatus::Missing {
                 continue;
             }
             let sample: Vec<&str> = info.models.iter().take(5).map(|m| m.id.as_str()).collect();

@@ -9,6 +9,7 @@
   import { untrack } from 'svelte';
   import { t } from 'svelte-i18n';
   import { ChevronDown, ChevronUp } from '$lib/icons';
+  import { Button } from '$lib/components/ui';
   import type { ChatSession } from '$lib/types/chat';
   import { codeStore } from './code.svelte';
 
@@ -41,7 +42,7 @@
 
 {#if todos.length}
   <section class="todo-dock" class:is-complete={allDone} class:is-expanded={expanded} aria-label={$t('code.todosTitle')} data-chat-todos={chat.id}>
-    <button type="button" class="todo-head" aria-expanded={expanded} onclick={() => (expanded = !expanded)}>
+    <Button variant="plain" type="button" class="todo-head" aria-expanded={expanded} onclick={() => (expanded = !expanded)}>
       <span class="todo-ring-wrap" aria-hidden="true">
         <svg class="todo-ring" viewBox="0 0 18 18">
           <circle class="todo-ring-bg" cx="9" cy="9" r="6.5" />
@@ -64,7 +65,7 @@
       <span class="todo-head-chevron" aria-hidden="true">
         {#if expanded}<ChevronDown class="size-3.5" />{:else}<ChevronUp class="size-3.5" />{/if}
       </span>
-    </button>
+    </Button>
 
     {#if total}
       <div class="todo-progress" role="progressbar" aria-label={$t('code.todosTitle')} aria-valuemin="0" aria-valuemax={total} aria-valuenow={done}>
@@ -117,7 +118,7 @@
     border-color: color-mix(in srgb, var(--foreground) 12%, transparent);
   }
 
-  .todo-head {
+  .todo-dock :global(.todo-head) {
     display: flex;
     width: 100%;
     min-width: 0;
@@ -133,7 +134,7 @@
     cursor: pointer;
     transition: background-color var(--motion-instant) var(--motion-ease), color var(--motion-instant) var(--motion-ease);
   }
-  .todo-head:hover {
+  .todo-dock :global(.todo-head:hover) {
     background: color-mix(in srgb, var(--foreground) 3%, transparent);
     color: var(--foreground);
   }

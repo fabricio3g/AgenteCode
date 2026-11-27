@@ -227,21 +227,21 @@
         <h1 class="no-projects-title">{$t('code.surfaceTitle')}</h1>
         <p class="no-projects-lead">{$t('code.noProjectsHint')}</p>
       </div>
-      <button type="button" class="way-in" onclick={() => void codeStore.startConversation()}>
+      <Button variant="plain" type="button" class="way-in" onclick={() => void codeStore.startConversation()}>
         <span class="way-in-icon" aria-hidden="true"><Plus /></span>
         <span class="way-in-text">
           <span class="way-in-title">{$t('code.empty.start')}</span>
           <span class="way-in-hint">{$t('code.empty.startHint')}</span>
         </span>
         <kbd class="way-in-key">{formatShortcut('mod+k')}</kbd>
-      </button>
+      </Button>
       <p class="from-folder">
         <span>{$t('code.empty.fromFolder')}</span>
         {#each WAYS_IN as way (way.mode)}
           {@const Icon = way.icon}
-          <button type="button" class="from-folder-link" title={$t(`code.empty.${way.mode}Hint`)} onclick={() => void codeStore.addProject(undefined, way.mode)}>
+          <Button variant="plain" type="button" class="from-folder-link" title={$t(`code.empty.${way.mode}Hint`)} onclick={() => void codeStore.addProject(undefined, way.mode)}>
             <Icon aria-hidden="true" />{$t(`code.empty.${way.mode}`)}
-          </button>
+          </Button>
         {/each}
       </p>
     </div>
@@ -302,7 +302,7 @@
     line-height: 1.6;
   }
   /* The one action: a wide row — mark hard left, its key hard right. */
-  .way-in {
+  .no-projects :global(.way-in) {
     display: flex;
     width: 100%;
     max-width: 24rem;
@@ -318,11 +318,11 @@
     cursor: pointer;
     transition: background-color var(--motion-instant) var(--motion-ease), border-color var(--motion-instant) var(--motion-ease);
   }
-  .way-in:hover {
+  .no-projects :global(.way-in:hover) {
     border-color: var(--border-hover);
     background: color-mix(in srgb, var(--foreground) 4%, var(--card));
   }
-  .way-in:focus-visible {
+  .no-projects :global(.way-in:focus-visible) {
     outline: none;
     box-shadow: 0 0 0 2px var(--brand-accent);
   }
@@ -367,7 +367,7 @@
     color: var(--muted-foreground);
     font-size: var(--text-xs);
   }
-  .from-folder-link {
+  .from-folder :global(.from-folder-link) {
     display: inline-flex;
     align-items: center;
     gap: 0.375rem;
@@ -380,13 +380,13 @@
     cursor: pointer;
     transition: background-color var(--motion-instant) var(--motion-ease), color var(--motion-instant) var(--motion-ease);
   }
-  .from-folder-link:hover,
-  .from-folder-link:focus-visible {
+  .from-folder :global(.from-folder-link:hover),
+  .from-folder :global(.from-folder-link:focus-visible) {
     outline: none;
     background: var(--float-row-hover);
     color: var(--foreground);
   }
-  .from-folder-link :global(svg) { width: 0.875rem; height: 0.875rem; }
+  .from-folder :global(.from-folder-link svg) { width: 0.875rem; height: 0.875rem; }
 
   /* Before the first message the column centres instead of docking to the
      bottom: the composer is the only control on the screen, so it sits where

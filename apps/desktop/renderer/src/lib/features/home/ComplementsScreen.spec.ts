@@ -5,7 +5,7 @@ import type { Complement } from '$shared/complements';
 import ComplementsScreen from './ComplementsScreen.svelte';
 
 const invoke = vi.hoisted(() => vi.fn());
-vi.mock('$lib/services/bridge', () => ({ invoke }));
+vi.mock('$lib/services/bridge', () => ({ invoke, isElectron: () => true }));
 afterEach(() => { cleanup(); invoke.mockReset(); });
 
 it('connects a hosted server and lets the user pause or remove it', async () => {

@@ -76,7 +76,12 @@ impl AgentDriver for CodexDriver {
     }
 
     fn descriptor(&self) -> DriverInfo {
-        let program = self.instance.command.first().map(String::as_str).unwrap_or("");
+        let program = self
+            .instance
+            .command
+            .first()
+            .map(String::as_str)
+            .unwrap_or("");
         let resolved = resolve_executable(program);
         let status = if !self.instance.enabled {
             DriverStatus::Disabled
@@ -286,11 +291,11 @@ impl JsonRpcHandler for CodexHandler {
                         turn.streamed_items.insert(id);
                     }
                     turn.assistant_text.push_str(&delta);
-                    let _ = turn
-                        .sink
-                        .try_send(DriverEvent::Runtime(RuntimeEvent::AssistantDelta {
-                            text: delta,
-                        }));
+                    let _ =
+                        turn.sink
+                            .try_send(DriverEvent::Runtime(RuntimeEvent::AssistantDelta {
+                                text: delta,
+                            }));
                 }
             }
             "item/reasoning/summaryTextDelta" | "item/reasoning/textDelta" => {
@@ -467,7 +472,9 @@ impl JsonRpcHandler for CodexHandler {
                     error: if active.cancelled {
                         None
                     } else {
-                        Some(reason.unwrap_or_else(|| "Codex app-server closed unexpectedly".into()))
+                        Some(
+                            reason.unwrap_or_else(|| "Codex app-server closed unexpectedly".into()),
+                        )
                     },
                 });
             }
@@ -797,7 +804,10 @@ impl CodexSession {
             let mut params = serde_json::Map::new();
             params.insert("threadId".into(), json!(ext_id));
             params.insert("cwd".into(), json!(cwd));
-            params.insert("approvalPolicy".into(), json!(approval_policy_for(spec.mode)));
+            params.insert(
+                "approvalPolicy".into(),
+                json!(approval_policy_for(spec.mode)),
+            );
             params.insert("sandbox".into(), json!(sandbox_for(spec.mode)));
             if let Some(model) = effective_model(spec.model.as_deref()) {
                 params.insert("model".into(), json!(model));
@@ -816,7 +826,10 @@ impl CodexSession {
             None => {
                 let mut params = serde_json::Map::new();
                 params.insert("cwd".into(), json!(cwd));
-                params.insert("approvalPolicy".into(), json!(approval_policy_for(spec.mode)));
+                params.insert(
+                    "approvalPolicy".into(),
+                    json!(approval_policy_for(spec.mode)),
+                );
                 params.insert("sandbox".into(), json!(sandbox_for(spec.mode)));
                 if let Some(model) = effective_model(spec.model.as_deref()) {
                     params.insert("model".into(), json!(model));
@@ -886,8 +899,14 @@ impl DriverSession for CodexSession {
             json!([{ "type": "text", "text": flatten_prompt_text(&request.prompt) }]),
         );
         params.insert("cwd".into(), json!(canonical_cwd(&request.cwd)));
-        params.insert("approvalPolicy".into(), json!(approval_policy_for(request.mode)));
-        params.insert("sandboxPolicy".into(), json!({ "type": sandbox_policy_type(request.mode) }));
+        params.insert(
+            "approvalPolicy".into(),
+            json!(approval_policy_for(request.mode)),
+        );
+        params.insert(
+            "sandboxPolicy".into(),
+            json!({ "type": sandbox_policy_type(request.mode) }),
+        );
         if let Some(model) = effective_model(request.model.as_deref()) {
             params.insert("model".into(), json!(model));
         }
@@ -1055,7 +1074,10 @@ fn sandbox_policy_type(mode: TurnMode) -> &'static str {
 
 fn extract_codex_usage(params: &Value) -> Option<Usage> {
     let info = params.get("tokenUsage").or_else(|| params.get("usage"))?;
-    let last = info.get("last").or_else(|| info.get("total")).unwrap_or(info);
+    let last = info
+        .get("last")
+        .or_else(|| info.get("total"))
+        .unwrap_or(info);
     let prompt_tokens = last
         .get("inputTokens")
         .or_else(|| last.get("input_tokens"))
@@ -1206,7 +1228,9 @@ async fn probe_codex_live(instance: &ResolvedInstance) -> CodexProbeOutcome {
 
     transport.close();
     drop(transport);
-    spawned.shutdown_gracefully(Duration::from_millis(150)).await;
+    spawned
+        .shutdown_gracefully(Duration::from_millis(150))
+        .await;
 
     match probe_res {
         Ok(Ok(result)) => CodexProbeOutcome {
@@ -1536,7 +1560,8 @@ mod tests {
         );
         assert!(!args.iter().any(|a| a.contains("tok-very-secret")));
         assert_eq!(
-            env.get("AGENTE_MCP_TOKEN_AGENTE_ORCHESTRATOR").map(String::as_str),
+            env.get("AGENTE_MCP_TOKEN_AGENTE_ORCHESTRATOR")
+                .map(String::as_str),
             Some("tok-very-secret")
         );
     }

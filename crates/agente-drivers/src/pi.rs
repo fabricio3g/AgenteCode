@@ -73,7 +73,12 @@ impl AgentDriver for PiDriver {
     }
 
     fn descriptor(&self) -> DriverInfo {
-        let program = self.instance.command.first().map(String::as_str).unwrap_or("");
+        let program = self
+            .instance
+            .command
+            .first()
+            .map(String::as_str)
+            .unwrap_or("");
         let resolved = resolve_executable(program);
         let status = if !self.instance.enabled {
             DriverStatus::Disabled
@@ -243,8 +248,8 @@ pub fn parse_pi_models(data: &Value, active_model_id: Option<&str>) -> Vec<Drive
             .get("reasoning")
             .and_then(Value::as_bool)
             .unwrap_or(false);
-        let is_default = active_trimmed
-            .is_some_and(|active| active == encoded_id || active == model_id);
+        let is_default =
+            active_trimmed.is_some_and(|active| active == encoded_id || active == model_id);
         out.push(DriverModel {
             id: encoded_id,
             label,
@@ -281,7 +286,9 @@ async fn probe_pi_live(instance: &ResolvedInstance) -> PiProbeOutcome {
     {
         writer.close();
         drop(writer);
-        spawned.shutdown_gracefully(Duration::from_millis(150)).await;
+        spawned
+            .shutdown_gracefully(Duration::from_millis(150))
+            .await;
         return PiProbeOutcome::default();
     }
 
@@ -329,12 +336,11 @@ async fn probe_pi_live(instance: &ResolvedInstance) -> PiProbeOutcome {
             } else if requested_state && id == Some("probe_state") {
                 if let Some(model_obj) = frame.pointer("/data/model") {
                     if let Some(mid) = model_obj.get("id").and_then(Value::as_str) {
-                        active_key = Some(
-                            match model_obj.get("provider").and_then(Value::as_str) {
+                        active_key =
+                            Some(match model_obj.get("provider").and_then(Value::as_str) {
                                 Some(prov) if !prov.is_empty() => format!("{prov}/{mid}"),
                                 _ => mid.to_string(),
-                            },
-                        );
+                            });
                     }
                 }
                 break;
@@ -354,7 +360,9 @@ async fn probe_pi_live(instance: &ResolvedInstance) -> PiProbeOutcome {
 
     writer.close();
     drop(writer);
-    spawned.shutdown_gracefully(Duration::from_millis(150)).await;
+    spawned
+        .shutdown_gracefully(Duration::from_millis(150))
+        .await;
 
     match probe_res {
         Ok(outcome) => outcome,
@@ -812,7 +820,10 @@ fn handle_pi_frame(core: &PiCore, frame: Value) {
                     .unwrap_or_else(|p| p.into_inner())
                     .remove(id);
                 if let Some(waiter) = waiter {
-                    let success = frame.get("success").and_then(Value::as_bool).unwrap_or(false);
+                    let success = frame
+                        .get("success")
+                        .and_then(Value::as_bool)
+                        .unwrap_or(false);
                     if success {
                         let _ = waiter.send(Ok(frame.get("data").cloned().unwrap_or(Value::Null)));
                     } else {

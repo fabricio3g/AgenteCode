@@ -9,6 +9,7 @@
 <script lang="ts">
   import { t } from 'svelte-i18n';
   import { Check, FileCode, LoaderCircle, XCircle } from '$lib/icons';
+  import { Button } from '$lib/components/ui';
   import { EXPLORE_KINDS, fileTone, type WorkLayoutProps } from '../work-layouts';
   import EntryRow from './EntryRow.svelte';
   import LayoutHead from './LayoutHead.svelte';
@@ -37,9 +38,9 @@
   {#if open}
     <div class="wl-body">
       {#if others.length}
-        <button type="button" class="wl-fold" aria-expanded={showOthers} onclick={() => (showOthers = !showOthers)}>
+        <Button variant="plain" type="button" class="wl-fold" aria-expanded={showOthers} onclick={() => (showOthers = !showOthers)}>
           <span class:ui-shimmer-text={exploring}>{othersLine}</span>
-        </button>
+        </Button>
         {#if showOthers}
           <div class="wl-nested">
             {#each others as entry (entry.key)}

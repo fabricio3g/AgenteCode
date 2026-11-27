@@ -10,6 +10,7 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
   import { t } from 'svelte-i18n';
+  import { Button } from '$lib/components/ui';
   import type { WorkItem } from '../work-blocks';
   import { canOpen, entryResult, entryVerb, type WorkEntry } from '../work-layouts';
   import EntryIcon from './EntryIcon.svelte';
@@ -42,10 +43,10 @@
 </script>
 
 <div class="wl-entry">
-  <button
+  <Button
+    variant="plain"
     type="button"
-    class="wl-row"
-    class:is-compact={compact}
+    class="wl-row {compact ? 'is-compact' : ''}"
     disabled={!openable}
     aria-expanded={openable ? open : undefined}
     onclick={ontoggle}
@@ -67,6 +68,6 @@
       {/if}
     </span>
     {#if trail}{@render trail()}{/if}
-  </button>
+  </Button>
   {#if open && openable}<div class="wl-detail">{@render detail(entry.item)}</div>{/if}
 </div>
