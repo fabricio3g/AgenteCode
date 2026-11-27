@@ -581,11 +581,10 @@ impl JsonRpcTransport {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, windows))]
 mod tests {
     use super::*;
 
-    #[cfg(windows)]
     #[test]
     fn windows_check_candidate_prefers_pathext_over_extensionless_posix_shim() {
         let dir = std::env::temp_dir().join(format!(
