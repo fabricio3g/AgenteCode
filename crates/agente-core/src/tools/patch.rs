@@ -60,11 +60,20 @@ impl ToolCore for ApplyPatchTool {
             .patch
             .ok_or_else(|| ToolError::InvalidArguments("Missing 'patch' parameter".to_string()))?;
 
+        let targets = extract_all_target_files_from_patch(&patch_text);
+        if targets.len() > 1 {
+            return Err(ToolError::InvalidArguments(format!(
+                "apply_patch modifies one file per call, but the patch targets {} files ({}). Split into one apply_patch call per file.",
+                targets.len(),
+                targets.join(", ")
+            )));
+        }
+
         // Resolve target file: either from argument or from diff header
         let path = if let Some(p) = args.path.filter(|p| !p.trim().is_empty()) {
             p
         } else {
-            extract_target_file_from_patch(&patch_text).ok_or_else(|| {
+            targets.into_iter().next().ok_or_else(|| {
                 ToolError::InvalidArguments(
                     "Missing 'path' parameter and could not extract target filename from patch header"
                         .to_string(),
@@ -155,6 +164,16 @@ fn parse_unified_diff(patch: &str) -> Result<Vec<PatchHunk>, String> {
     let mut current_hunk: Option<PatchHunk> = None;
 
     for line in patch.lines() {
+        if let Some(rest) = line.strip_prefix("+++ ") {
+            let clean = rest.split('\t').next().unwrap_or(rest).trim();
+            if clean != "/dev/null" && (current_hunk.is_some() || !hunks.is_empty()) {
+                return Err(
+                    "Multi-file patch is not supported; split into one apply_patch call per file"
+                        .to_string(),
+                );
+            }
+            continue;
+        }
         if line.starts_with("@@") {
             if let Some(hunk) = current_hunk.take() {
                 hunks.push(hunk);
@@ -456,5 +475,42 @@ mod tests {
         assert!(err.contains("Wanted:"), "{err}");
         assert!(err.contains("File has:"), "{err}");
         assert!(err.contains("actual();"), "{err}");
+    }
+
+    #[tokio::test]
+    async fn multi_file_patch_is_rejected_instead_of_merging_hunks() {
+        let dir = tempfile::tempdir().unwrap();
+        let file1 = dir.path().join("a.txt");
+        let file2 = dir.path().join("b.txt");
+        std::fs::write(&file1, "one\n").unwrap();
+        std::fs::write(&file2, "two\n").unwrap();
+        atomic_fs::record_read(&file1, "one\n");
+        atomic_fs::record_read(&file2, "two\n");
+
+        let multi = "\
+--- a/a.txt
++++ b/a.txt
+@@ -1 +1 @@
+-one
++ONE
+--- a/b.txt
++++ b/b.txt
+@@ -1 +1 @@
+-two
++TWO
+";
+        assert!(parse_unified_diff(multi).is_err());
+
+        use crate::tools::Tool;
+        let err = crate::tools::TypedTool::new(ApplyPatchTool)
+            .execute(
+                serde_json::json!({ "patch": multi }),
+                dir.path().to_str().unwrap(),
+            )
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("one file per call"), "{err}");
+        assert_eq!(std::fs::read_to_string(&file1).unwrap(), "one\n");
+        assert_eq!(std::fs::read_to_string(&file2).unwrap(), "two\n");
     }
 }

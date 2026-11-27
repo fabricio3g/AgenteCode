@@ -1030,7 +1030,7 @@ async fn run_agent_loop_inner(cfg: AgentRunConfig) -> Result<(), AgentLoopFailur
                 );
                 if !computer_budget_granted
                     && !outcome.is_error
-                    && call.function.name == "desktop_computer_request"
+                    && super::loop_detection::is_computer_request_tool(&call.function.name)
                 {
                     max_iterations =
                         max_iterations.map(|limit| limit.max(iteration.saturating_add(300)));

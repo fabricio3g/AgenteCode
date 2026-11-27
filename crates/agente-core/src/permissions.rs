@@ -176,6 +176,9 @@ pub fn plan_mode_default_rules() -> Vec<PermissionRule> {
         PermissionRule::new("tool:task", Permission::Allow),
         PermissionRule::new("tool:task_output", Permission::Allow),
         PermissionRule::new("tool:kill_task", Permission::Allow),
+        // Cross-driver orchestrator tools are also allowed in Plan mode; the
+        // orchestrator clamps delegated children to the parent's Plan ceiling.
+        PermissionRule::new("tool:orchestrator_*", Permission::Allow),
         // Present finished plan for Accept / Redo / Comment (writes only under .agente/plans/)
         PermissionRule::new("tool:present_plan", Permission::Allow),
         // Mutating operations are denied in Plan mode. Switch to Build mode to edit.
@@ -781,10 +784,11 @@ pub fn is_destructive_command(cmd: &str) -> bool {
 /// Project files that decide what code runs later; edits to them always ask.
 fn is_protected_path(path: &str) -> bool {
     path.replace('\\', "/").split('/').any(|part| {
+        let lower = part.to_ascii_lowercase();
         matches!(
-            part,
+            lower.as_str(),
             ".git" | ".agente" | ".claude" | ".agents" | ".mcp.json" | "agente.json" | ".envrc"
-        ) || part.starts_with(".env")
+        ) || lower.starts_with(".env")
     })
 }
 
@@ -1619,6 +1623,74 @@ mod tests {
             assert!(
                 is_dangerous_command(command),
                 "should be dangerous: {command}"
+            );
+        }
+    }
+
+    #[test]
+    fn protected_paths_are_case_insensitive() {
+        let config = AutoApproveConfig {
+            write_new_files: true,
+            max_auto_edit_lines: 500,
+            ..Default::default()
+        };
+        let engine = PermissionEngine::from_config(AgentMode::Build, &config);
+        for path in [
+            ".MCP.JSON",
+            ".ENV",
+            ".ENV.local",
+            ".GIT/hooks/pre-commit",
+            ".AGENTE/config.json",
+            "AGENTE.JSON",
+        ] {
+            let edit_args = serde_json::json!({ "path": path, "search": "a", "replace": "b" });
+            assert_eq!(
+                engine.check_tool_with_default(
+                    "edit_file",
+                    &edit_args,
+                    &ToolFsFacts {
+                        target_exists: true,
+                        target_line_count: Some(3),
+                    },
+                    None,
+                ),
+                Permission::Ask,
+                "edit_file on {path} must ask"
+            );
+            let write_args = serde_json::json!({ "path": path, "content": "x" });
+            assert_eq!(
+                engine.check_tool_with_default(
+                    "write_file",
+                    &write_args,
+                    &ToolFsFacts {
+                        target_exists: false,
+                        target_line_count: None,
+                    },
+                    None,
+                ),
+                Permission::Ask,
+                "write_file on {path} must ask"
+            );
+        }
+    }
+
+    #[test]
+    fn plan_mode_allows_orchestrator_tools() {
+        let engine = PermissionEngine::new(AgentMode::Plan);
+        for tool in [
+            "orchestrator_list_drivers",
+            "orchestrator_spawn_task",
+            "orchestrator_get_task",
+            "orchestrator_list_tasks",
+            "orchestrator_cancel_task",
+            "orchestrator_steer_task",
+            "orchestrator_board_get",
+            "orchestrator_board_post",
+        ] {
+            assert_eq!(
+                engine.check_tool(tool, &serde_json::json!({})),
+                Permission::Allow,
+                "{tool} must be allowed in Plan mode"
             );
         }
     }

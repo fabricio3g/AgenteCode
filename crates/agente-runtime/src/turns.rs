@@ -1153,10 +1153,38 @@ async fn run_external_turn(spec: ExternalTurnRunnerSpec) {
                 mcp_servers: mcp_servers.clone(),
                 interactive,
             };
-            match driver
-                .open_session(open_spec, inner.approval_router.clone())
-                .await
-            {
+            let cancel_signal = cancel.signal();
+            let open_res = tokio::select! {
+                res = driver.open_session(open_spec, inner.approval_router.clone()) => Some(res),
+                _ = cancel_signal.wait_aborted() => None,
+            };
+            let Some(open_res) = open_res else {
+                inner.lock_edits().end_turn(session_id, Vec::new());
+                inner.persist_edits(session_id);
+                inner.approval_router.cancel_session(session_id);
+                let revision = inner.lookup_session(session_id).revision;
+                emit_runtime(
+                    &inner,
+                    &event_tx,
+                    session_id,
+                    turn_id,
+                    RuntimeEvent::TurnCancelled {
+                        revision,
+                        partial_text: String::new(),
+                    },
+                );
+                drop(turn_guard);
+                let _ = outcome_tx.send(TurnOutcome {
+                    turn_id,
+                    session_id,
+                    status: TurnStatus::Cancelled,
+                    revision,
+                    tokens: 0,
+                    error: None,
+                });
+                return;
+            };
+            match open_res {
                 Ok(session) => {
                     let replaced = inner.lock_driver_sessions().insert(
                         session_id,
@@ -1176,6 +1204,8 @@ async fn run_external_turn(spec: ExternalTurnRunnerSpec) {
                     session
                 }
                 Err(error) => {
+                    inner.lock_edits().end_turn(session_id, Vec::new());
+                    inner.persist_edits(session_id);
                     let message = error.to_string();
                     emit_runtime(
                         &inner,
@@ -1212,6 +1242,8 @@ async fn run_external_turn(spec: ExternalTurnRunnerSpec) {
     }
 
     if cancel.signal().is_aborted() {
+        inner.lock_edits().end_turn(session_id, Vec::new());
+        inner.persist_edits(session_id);
         let _ = session.cancel(turn_id).await;
         inner.approval_router.cancel_session(session_id);
         let revision = inner.lookup_session(session_id).revision;
@@ -1253,6 +1285,7 @@ async fn run_external_turn(spec: ExternalTurnRunnerSpec) {
         tokio::spawn(async move { turn_session.start_turn(turn_request, driver_tx).await });
 
     let mut streamed_text = String::new();
+    let mut turn_edits = Vec::new();
     let mut completion: Option<(TurnStatus, String, u32, Option<String>)> = None;
     while let Some(ev) = driver_rx.recv().await {
         match ev {
@@ -1265,6 +1298,18 @@ async fn run_external_turn(spec: ExternalTurnRunnerSpec) {
                     RuntimeEvent::AssistantDelta { text } => streamed_text.push_str(text),
                     RuntimeEvent::AssistantMessage { text } if !text.is_empty() => {
                         streamed_text = text.clone();
+                    }
+                    RuntimeEvent::FileChanged {
+                        path,
+                        before,
+                        after,
+                        ..
+                    } if before.is_some() || after.is_some() => {
+                        turn_edits.push(crate::edits::FileEdit {
+                            path: path.clone(),
+                            before: before.clone(),
+                            after: after.clone(),
+                        });
                     }
                     RuntimeEvent::ModelChanged { model, provider } => {
                         let new_model = model.clone();
@@ -1343,6 +1388,9 @@ async fn run_external_turn(spec: ExternalTurnRunnerSpec) {
     } else {
         inner.lookup_session(session_id).revision
     };
+
+    inner.lock_edits().end_turn(session_id, turn_edits);
+    inner.persist_edits(session_id);
 
     let terminal_event = match status {
         TurnStatus::Completed => RuntimeEvent::TurnFinished { revision },

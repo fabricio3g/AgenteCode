@@ -12,7 +12,6 @@ import { app, BrowserWindow, type WebContents } from 'electron';
 import { createComputerTools } from './tools/computer.ts';
 import { bindComputerOwner, cancelComputerTurn, settleComputerTurn, computerSession, type ComputerOwner } from '../computer/desktop.ts';
 import { resolveApiKey } from '../provider-auth.ts';
-import { getAppPaths } from '../paths.ts';
 import { forgetProviderKey, loadConfig, saveConfig } from '../config.ts';
 import { getLlamaStatus, getPendingMainLaunch, startLlama } from '../llm-runner.ts';
 import { moduleDirname } from '../module-env.ts';
@@ -426,23 +425,16 @@ function providerConfig(providerName: string, models: string[], selection?: Loca
 }
 
 /** Pasted images become stored files in the Rust core's content-addressed media store. */
-async function storeImages(client: AgenteClient, images: Array<{ data: string; mimeType: string }> | undefined): Promise<Attachment[]> {
+export async function storeImages(client: Pick<AgenteClient, 'request'>, images: Array<{ data: string; mimeType: string }> | undefined): Promise<Attachment[]> {
   if (!images?.length) return [];
   return Promise.all(images.map(async (image, index) => {
     const extension = image.mimeType.split('/')[1]?.replace(/[^a-z0-9]/gi, '') || 'png';
     const name = `image-${index + 1}.${extension}`;
-    try {
-      const imported = await client.request<{ attachment: Attachment }>('media.import', { name, data: image.data });
-      if (imported?.attachment) return imported.attachment;
-    } catch {
-      // Fallback to local appData attachment file only if daemon media.import fails.
+    const imported = await client.request<{ attachment?: Attachment }>('media.import', { name, data: image.data });
+    if (!imported?.attachment) {
+      throw new Error(`Image import failed for ${name}`);
     }
-    const dir = path.join(getAppPaths().appData, 'agente', 'attachments');
-    fs.mkdirSync(dir, { recursive: true });
-    const file = path.join(dir, `${crypto.randomUUID()}.${extension}`);
-    const bytes = Buffer.from(image.data.replace(/^data:[^,]*,/, ''), 'base64');
-    fs.writeFileSync(file, bytes);
-    return { kind: 'image', mime: image.mimeType, name, path: file, bytes: bytes.length };
+    return imported.attachment;
   }));
 }
 
@@ -472,13 +464,18 @@ function refreshContextWindow(chat: ChatState): void {
 }
 
 /** turn.start parameters for a chat's next message. */
-function turnParams(chat: ChatState, provider: { id: string; model: string }, message: Message): Record<string, unknown> {
+export function turnParams(
+  chat: Pick<ChatState, 'sessionId' | 'instanceId' | 'model' | 'thinkingLevel' | 'mode' | 'projectRoot' | 'worktree' | 'systemPrompt'>,
+  provider: { id: string; model: string },
+  message: Message
+): Record<string, unknown> {
   if (isExternalDriver(chat.instanceId)) {
     return {
       session_id: chat.sessionId,
       prompt: message,
       instance_id: chat.instanceId,
       ...(chat.model ? { model: chat.model } : {}),
+      thinking_level: chat.thinkingLevel ?? null,
       mode: TURN_MODES[chat.mode],
       project_dir: chat.projectRoot,
       ...(chat.worktree ? { worktree: chat.worktree } : {}),

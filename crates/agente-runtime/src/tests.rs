@@ -1539,4 +1539,150 @@ mod external_driver_tests {
         assert_eq!(open_mcps.lock().unwrap()[0], expected);
         assert_eq!(turn_mcps.lock().unwrap()[0], expected);
     }
+
+    #[tokio::test]
+    async fn external_driver_file_changes_record_undoable_edits_and_cancel_unblocks_open() {
+        struct EditAndHangDriver {
+            block_open: bool,
+        }
+        struct EditSession;
+
+        #[async_trait::async_trait]
+        impl AgentDriver for EditAndHangDriver {
+            fn instance_id(&self) -> &str {
+                if self.block_open {
+                    "hang-open"
+                } else {
+                    "ext-edit"
+                }
+            }
+            fn driver_kind(&self) -> DriverKind {
+                DriverKind::Acp
+            }
+            fn descriptor(&self) -> DriverInfo {
+                DriverInfo {
+                    instance_id: self.instance_id().into(),
+                    driver_kind: DriverKind::Acp,
+                    label: "EditMock".into(),
+                    status: DriverStatus::Ready,
+                    version: None,
+                    binary_path: None,
+                    error: None,
+                    auth_hint: None,
+                    builtin: false,
+                    enabled: true,
+                    use_for: None,
+                    capabilities: DriverCapabilities::default(),
+                    models: Vec::new(),
+                    config: None,
+                }
+            }
+            async fn probe(&self) -> DriverInfo {
+                self.descriptor()
+            }
+            async fn open_session(
+                &self,
+                _spec: DriverSessionOpen,
+                _approvals: ApprovalRouter,
+            ) -> Result<Arc<dyn DriverSession>, DriverError> {
+                if self.block_open {
+                    std::future::pending::<()>().await;
+                }
+                Ok(Arc::new(EditSession))
+            }
+        }
+
+        #[async_trait::async_trait]
+        impl DriverSession for EditSession {
+            async fn start_turn(
+                &self,
+                request: DriverTurnRequest,
+                sink: mpsc::Sender<DriverEvent>,
+            ) -> Result<(), DriverError> {
+                let target = PathBuf::from(&request.cwd).join("ext.txt");
+                std::fs::write(&target, "after").unwrap();
+                let _ = sink
+                    .send(DriverEvent::Runtime(RuntimeEvent::FileChanged {
+                        path: "ext.txt".into(),
+                        summary: "edited externally".into(),
+                        before: Some("before".into()),
+                        after: Some("after".into()),
+                    }))
+                    .await;
+                let _ = sink
+                    .send(DriverEvent::TurnComplete {
+                        status: TurnStatus::Completed,
+                        assistant_text: "done".into(),
+                        tokens: 4,
+                        error: None,
+                    })
+                    .await;
+                Ok(())
+            }
+            async fn steer(&self, _message: Message) -> bool {
+                false
+            }
+            async fn cancel(&self, _turn_id: TurnId) -> bool {
+                true
+            }
+            fn external_session_id(&self) -> Option<String> {
+                None
+            }
+            async fn close(&self) {}
+        }
+
+        let dir = std::env::temp_dir().join(format!("agente-rt-ext-edit-{}", SessionId::new()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("ext.txt");
+        std::fs::write(&file, "before").unwrap();
+
+        let registry = Arc::new(DriverRegistry::new(DriversConfig::default(), None));
+        registry.register_driver(Arc::new(EditAndHangDriver { block_open: false }));
+        registry.register_driver(Arc::new(EditAndHangDriver { block_open: true }));
+
+        let runtime = RuntimeSupervisor::start(
+            RuntimeConfig::from_app_config(&AppConfig::default(), dir.to_string_lossy())
+                .with_driver_registry(registry),
+        );
+
+        let sid = SessionId::new();
+        let mut turn = runtime
+            .start_turn(StartTurn {
+                session_id: sid,
+                instance_id: Some("ext-edit".into()),
+                prompt: Some(Message::user("edit ext.txt")),
+                ..StartTurn::default()
+            })
+            .unwrap();
+        let outcome = turn.outcome().await.unwrap();
+        assert_eq!(outcome.status, TurnStatus::Completed);
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), "after");
+
+        let undone = runtime.undo(sid).unwrap();
+        assert_eq!(undone, vec!["ext.txt".to_string()]);
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), "before");
+
+        // Cancelling during a hung open_session must return Cancelled promptly.
+        let hang_sid = SessionId::new();
+        let mut hang_turn = runtime
+            .start_turn(StartTurn {
+                session_id: hang_sid,
+                instance_id: Some("hang-open".into()),
+                prompt: Some(Message::user("hang")),
+                ..StartTurn::default()
+            })
+            .unwrap();
+        let hang_tid = hang_turn.turn_id();
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        assert!(runtime.cancel(hang_tid));
+        let cancelled = tokio::time::timeout(
+            std::time::Duration::from_secs(2),
+            hang_turn.outcome(),
+        )
+        .await
+        .expect("cancel during open_session must not hang")
+        .unwrap();
+        assert_eq!(cancelled.status, TurnStatus::Cancelled);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

@@ -148,36 +148,63 @@ pub(crate) fn check_missing_args(
     tool_name: &str,
     args: &serde_json::Value,
 ) -> Option<ToolCallOutcome> {
-    let required = match tool_name {
-        "read_file" | "file_outline" | "list_dir" => vec!["path"],
-        "write_file" => vec!["path", "content"],
-        "apply_patch" => vec!["patch"],
+    let mut missing: Vec<&str> = Vec::new();
+    match tool_name {
+        "read_file" | "file_outline" | "list_dir" => {
+            if is_missing_required_arg(args.get("path")) {
+                missing.push("path");
+            }
+        }
+        "write_file" => {
+            if is_missing_required_arg(args.get("path")) {
+                missing.push("path");
+            }
+            if is_missing_string_arg(args.get("content")) {
+                missing.push("content");
+            }
+        }
+        "apply_patch" => {
+            if is_missing_required_arg(args.get("patch")) {
+                missing.push("patch");
+            }
+        }
         "edit_file" => {
+            if is_missing_required_arg(args.get("path")) {
+                missing.push("path");
+            }
             let has_single = !is_missing_required_arg(args.get("search"))
-                && !is_missing_required_arg(args.get("replace"));
+                && !is_missing_string_arg(args.get("replace"));
             let has_multi = args
                 .get("edits")
                 .and_then(|v| v.as_array())
                 .map(|arr| !arr.is_empty())
                 .unwrap_or(false);
-            if has_single || has_multi {
-                vec!["path"]
-            } else {
-                vec!["path", "search", "replace"]
+            if !has_single && !has_multi {
+                if is_missing_required_arg(args.get("search")) {
+                    missing.push("search");
+                }
+                if is_missing_string_arg(args.get("replace")) {
+                    missing.push("replace");
+                }
             }
         }
-        "shell" => vec!["command"],
-        "grep" => vec!["pattern"],
-        "find" => vec!["pattern"],
-        "todo_write" => vec!["todos"],
-        _ => vec![],
-    };
-
-    let missing: Vec<&str> = required
-        .iter()
-        .filter(|name| is_missing_required_arg(args.get(**name)))
-        .copied()
-        .collect();
+        "shell" => {
+            if is_missing_required_arg(args.get("command")) {
+                missing.push("command");
+            }
+        }
+        "grep" | "find" => {
+            if is_missing_required_arg(args.get("pattern")) {
+                missing.push("pattern");
+            }
+        }
+        "todo_write" => {
+            if is_missing_required_arg(args.get("todos")) {
+                missing.push("todos");
+            }
+        }
+        _ => {}
+    }
 
     if !missing.is_empty() {
         return Some(ToolCallOutcome::error(
@@ -189,6 +216,10 @@ pub(crate) fn check_missing_args(
     None
 }
 
+fn is_missing_string_arg(value: Option<&serde_json::Value>) -> bool {
+    !matches!(value, Some(serde_json::Value::String(_)))
+}
+
 pub(crate) fn is_missing_required_arg(value: Option<&serde_json::Value>) -> bool {
     match value {
         None | Some(serde_json::Value::Null) => true,
@@ -196,5 +227,50 @@ pub(crate) fn is_missing_required_arg(value: Option<&serde_json::Value>) -> bool
         Some(serde_json::Value::Array(items)) => items.is_empty(),
         Some(serde_json::Value::Object(obj)) => obj.is_empty(),
         Some(_) => false,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn write_file_allows_empty_content_and_rejects_null_or_missing() {
+        assert!(check_missing_args(
+            "c1",
+            "write_file",
+            &json!({ "path": ".gitkeep", "content": "" })
+        )
+        .is_none());
+        assert!(check_missing_args("c2", "write_file", &json!({ "path": "a.txt" })).is_some());
+        assert!(check_missing_args(
+            "c3",
+            "write_file",
+            &json!({ "path": "a.txt", "content": null })
+        )
+        .is_some());
+    }
+
+    #[test]
+    fn edit_file_allows_empty_replace_deletion_and_rejects_empty_search() {
+        assert!(check_missing_args(
+            "c1",
+            "edit_file",
+            &json!({ "path": "a.rs", "search": "dead_code", "replace": "" })
+        )
+        .is_none());
+        assert!(check_missing_args(
+            "c2",
+            "edit_file",
+            &json!({ "path": "a.rs", "search": "", "replace": "x" })
+        )
+        .is_some());
+        assert!(check_missing_args(
+            "c3",
+            "edit_file",
+            &json!({ "path": "a.rs", "search": "dead_code" })
+        )
+        .is_some());
     }
 }

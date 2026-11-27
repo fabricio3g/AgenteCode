@@ -21,6 +21,12 @@ pub(crate) fn is_computer_tool(name: &str) -> bool {
     )
 }
 
+/// Request tool that arms interactive desktop control and qualifies for the
+/// extended computer-use iteration budget (both Home and Code MCP forms).
+pub(crate) fn is_computer_request_tool(name: &str) -> bool {
+    name.strip_prefix("desktop_").unwrap_or(name) == "computer_request"
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum LoopVerdict {
     /// Keep going.
@@ -257,5 +263,13 @@ mod tests {
             signature_for("shell", "ls -la"),
             signature_for("shell", "  ls -la  ")
         );
+    }
+
+    #[test]
+    fn computer_request_matches_home_and_desktop_mcp_names() {
+        assert!(is_computer_request_tool("computer_request"));
+        assert!(is_computer_request_tool("desktop_computer_request"));
+        assert!(!is_computer_request_tool("untrusted_computer_request"));
+        assert!(!is_computer_request_tool("computer_observe"));
     }
 }

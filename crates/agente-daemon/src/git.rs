@@ -6,7 +6,7 @@
 //! JSON-RPC reader loop, with symlink-safe project-root confinement.
 
 use std::collections::HashMap;
-use std::path::{Component, Path, PathBuf};
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use agente_protocol::rpc;
@@ -150,54 +150,37 @@ async fn is_git_repo(project_root: &str) -> bool {
         .is_ok_and(|out| out.trim() == "true")
 }
 
-fn normalize_lexical(path: &Path) -> PathBuf {
-    let mut out = PathBuf::new();
-    for component in path.components() {
-        match component {
-            Component::CurDir => {}
-            Component::ParentDir => {
-                out.pop();
-            }
-            other => out.push(other.as_os_str()),
+fn comparable_path(path: &Path) -> PathBuf {
+    #[cfg(windows)]
+    {
+        const VERBATIM: &str = r"\\?\";
+        const VERBATIM_UNC: &str = r"\\?\UNC\";
+        let text = path.to_string_lossy();
+        if let Some(rest) = text.strip_prefix(VERBATIM_UNC) {
+            return PathBuf::from(format!(r"\\{rest}"));
         }
+        if let Some(rest) = text.strip_prefix(VERBATIM) {
+            return PathBuf::from(rest);
+        }
+        path.to_path_buf()
     }
-    out
-}
-
-fn realpath_nearest_ancestor(target: &Path) -> PathBuf {
-    let mut parts = Vec::new();
-    let mut cursor = normalize_lexical(target);
-    loop {
-        if let Ok(real) = std::fs::canonicalize(&cursor) {
-            let mut resolved = real;
-            for part in parts.into_iter().rev() {
-                resolved.push(part);
-            }
-            return resolved;
-        }
-        let Some(name) = cursor.file_name().map(|n| n.to_os_string()) else {
-            return normalize_lexical(target);
-        };
-        let Some(parent) = cursor.parent() else {
-            return normalize_lexical(target);
-        };
-        parts.push(name);
-        cursor = parent.to_path_buf();
+    #[cfg(not(windows))]
+    {
+        path.to_path_buf()
     }
 }
 
-/// Resolve `relative` inside `project_root`, rejecting symlink and `..` escapes.
+/// Resolve `relative` inside `project_root`, rejecting symlink (including
+/// dangling symlink) and `..` escapes.
 fn resolve_in_root(project_root: &str, relative: &str) -> Result<(PathBuf, String), String> {
-    let root = realpath_nearest_ancestor(Path::new(project_root));
-    let rel_path = Path::new(relative);
-    let candidate = if rel_path.is_absolute() {
-        rel_path.to_path_buf()
-    } else {
-        root.join(rel_path)
-    };
-    let abs = realpath_nearest_ancestor(&candidate);
-    let stripped = abs
-        .strip_prefix(&root)
+    let abs = agente_core::tools::resolve_project_path(relative, project_root)
+        .map_err(|_| format!("Path \"{relative}\" escapes the project root"))?;
+    let canon_root =
+        std::fs::canonicalize(project_root).unwrap_or_else(|_| PathBuf::from(project_root));
+    let abs_cmp = comparable_path(&abs);
+    let root_cmp = comparable_path(&canon_root);
+    let stripped = abs_cmp
+        .strip_prefix(&root_cmp)
         .map_err(|_| format!("Path \"{relative}\" escapes the project root"))?;
     let rel_posix = stripped.to_string_lossy().replace('\\', "/");
     Ok((abs, rel_posix))
@@ -752,6 +735,25 @@ mod tests {
         assert!(resolve_in_root(dir.to_str().unwrap(), "../escape.txt").is_err());
         assert!(resolve_in_root(dir.to_str().unwrap(), "sub/file.txt").is_ok());
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn resolve_in_root_blocks_dangling_symlink_escape() {
+        let tmp =
+            std::env::temp_dir().join(format!("agente-git-dangling-{}", uuid::Uuid::new_v4()));
+        let proj = tmp.join("proj");
+        let outside = tmp.join("outside");
+        std::fs::create_dir_all(&proj).unwrap();
+        std::fs::create_dir_all(&outside).unwrap();
+        #[cfg(unix)]
+        let made = std::os::unix::fs::symlink(outside.join("missing"), proj.join("dangling")).is_ok();
+        #[cfg(windows)]
+        let made = std::os::windows::fs::symlink_dir(outside.join("missing"), proj.join("dangling"))
+            .is_ok();
+        if made {
+            assert!(resolve_in_root(proj.to_str().unwrap(), "dangling/file.txt").is_err());
+        }
+        let _ = std::fs::remove_dir_all(&tmp);
     }
 
     #[tokio::test]

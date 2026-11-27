@@ -644,7 +644,7 @@ fn handle_claude_frame(core: &Arc<ClaudeCore>, writer: &JsonLineWriter, frame: V
                 && input
                     .get("command")
                     .and_then(Value::as_str)
-                    .is_some_and(looks_dangerous_command);
+                    .is_some_and(crate::looks_dangerous_command);
             let description = req
                 .get("description")
                 .and_then(Value::as_str)
@@ -1010,15 +1010,6 @@ fn extract_tool_result_text(value: Option<&Value>) -> String {
             .join("\n");
     }
     content.to_string()
-}
-
-fn looks_dangerous_command(cmd: &str) -> bool {
-    let lower = cmd.to_ascii_lowercase();
-    lower.contains("rm -rf")
-        || lower.contains("git push --force")
-        || lower.contains("git reset --hard")
-        || lower.contains("drop table")
-        || lower.contains("mkfs")
 }
 
 #[derive(Default)]

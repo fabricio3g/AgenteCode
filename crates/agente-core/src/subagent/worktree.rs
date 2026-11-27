@@ -27,10 +27,11 @@ pub struct WorktreeInfo {
     pub base_commit: String,
     /// True once the child changed anything beyond the seeded parent state.
     pub dirty: bool,
-    /// Relative path plus content hash of every file seeded from the parent's
-    /// dirty state. Comparing these at release time detects child edits even
-    /// when the child changed a file the parent had already modified.
-    seed_fingerprint: Vec<(String, u64)>,
+    /// Relative path plus content hash (`None` when tracked in git but
+    /// deleted in the parent's working tree) of every file seeded from the
+    /// parent's dirty state. Comparing these at release time detects child
+    /// edits (or recreations) even when the parent had already modified/deleted it.
+    seed_fingerprint: Vec<(String, Option<u64>)>,
 }
 
 impl WorktreeInfo {
@@ -256,7 +257,7 @@ pub fn child_changed_paths(info: &WorktreeInfo) -> Vec<String> {
             .iter()
             .find(|(seeded, _)| seeded == rel)
         {
-            Some((_, hash)) => file_hash(&path.join(rel)) != Some(*hash),
+            Some((_, expected)) => file_hash(&path.join(rel)) != *expected,
             None => true,
         }
     });
@@ -286,7 +287,7 @@ pub fn child_work(info: &WorktreeInfo) -> Vec<ChangedFile> {
                 .iter()
                 .find(|(seeded, _)| *seeded == rel)
             {
-                Some((_, hash)) => Some(*hash),
+                Some((_, expected)) => *expected,
                 None => git(&path, &["show", &format!("{}:{rel}", info.base_commit)])
                     .ok()
                     .filter(|out| out.status.success())
@@ -580,8 +581,8 @@ impl WorktreePool {
     /// endings differently from the parent tree.
     fn seed_and_info(&self, path: &Path, short: &str) -> Option<WorktreeInfo> {
         let repo = &self.repo_root;
-        let mut fingerprint: Vec<(String, u64)> = Vec::new();
-        let seed_one = |rel: String, fingerprint: &mut Vec<(String, u64)>| {
+        let mut fingerprint: Vec<(String, Option<u64>)> = Vec::new();
+        let seed_one = |rel: String, fingerprint: &mut Vec<(String, Option<u64>)>| {
             // Agente's own checkout pool must never be seeded into a child:
             // nested worktrees and their ownership markers would make the
             // child look dirty.
@@ -596,11 +597,12 @@ impl WorktreePool {
                 }
                 if std::fs::copy(&from, &to).is_ok() {
                     if let Some(hash) = file_hash(&to) {
-                        fingerprint.push((rel, hash));
+                        fingerprint.push((rel, Some(hash)));
                     }
                 }
             } else {
                 let _ = std::fs::remove_file(&to);
+                fingerprint.push((rel, None));
             }
         };
         // Tracked changes against HEAD (staged + unstaged).
@@ -689,11 +691,11 @@ impl WorktreePool {
                 }
             }
         }
-        // Seeded files must still match their parent snapshot byte for byte.
-        for (rel, hash) in &info.seed_fingerprint {
-            match file_hash(&path.join(rel)) {
-                Some(current) if current == *hash => {}
-                _ => return true,
+        // Seeded files must still match their parent snapshot (including
+        // tracked deletions, recorded as `None`).
+        for (rel, expected) in &info.seed_fingerprint {
+            if file_hash(&path.join(rel)) != *expected {
+                return true;
             }
         }
         false
@@ -1211,5 +1213,33 @@ mod tests {
         release_resume_claim(&path);
         assert!(claim_for_resume(&path), "released claim is available again");
         release_resume_claim(&path);
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn parent_deleted_tracked_file_is_clean_unless_child_touches_it() {
+        let temp = tempfile::tempdir().unwrap();
+        if !git_available() {
+            return;
+        }
+        init_repo(temp.path());
+        std::fs::write(temp.path().join("gone.txt"), "bye\n").unwrap();
+        assert!(git(temp.path(), &["add", "."]).unwrap().status.success());
+        assert!(git(temp.path(), &["commit", "--quiet", "-m", "add gone"])
+            .unwrap()
+            .status
+            .success());
+        std::fs::remove_file(temp.path().join("gone.txt")).unwrap();
+
+        let pool = pool_for(temp.path());
+        let info = pool.acquire("child-del").await.expect("worktree");
+        let wt = Path::new(&info.path);
+        assert!(!wt.join("gone.txt").exists());
+        assert!(!pool.is_dirty(&info), "parent deletion alone is not child dirt");
+        assert!(child_changed_paths(&info).is_empty());
+
+        std::fs::write(wt.join("gone.txt"), "recreated\n").unwrap();
+        assert!(pool.is_dirty(&info));
+        assert_eq!(child_changed_paths(&info), vec!["gone.txt".to_string()]);
+        pool.remove_blocking(&info).unwrap();
     }
 }

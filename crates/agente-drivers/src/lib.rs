@@ -321,6 +321,52 @@ pub fn effective_model(model: Option<&str>) -> Option<&str> {
         .filter(|value| !value.is_empty() && !value.eq_ignore_ascii_case("default"))
 }
 
+/// Return `true` if a shell command matches known destructive or irreversible
+/// patterns so external driver approval prompts can surface dangerous warnings.
+pub(crate) fn looks_dangerous_command(cmd: &str) -> bool {
+    let lower = cmd.to_ascii_lowercase();
+    let compact: String = lower.chars().filter(|c| !c.is_whitespace()).collect();
+    if compact.contains(":(){:|:&};:")
+        || lower.contains("drop table")
+        || lower.contains("drop database")
+        || lower.contains("git reset --hard")
+        || lower.contains("mkfs")
+    {
+        return true;
+    }
+    for segment in lower.split([';', '|', '&', '\n', '\r', '(', ')', '`']) {
+        let mut words = segment.split_whitespace();
+        let Some(first) = words.next() else {
+            continue;
+        };
+        let base = first
+            .trim_matches(['\'', '"'])
+            .trim_start_matches('\\')
+            .rsplit(['/', '\\'])
+            .next()
+            .unwrap_or(first);
+        let args: Vec<&str> = words.collect();
+        if base == "rm"
+            && args.iter().take_while(|&&a| a != "--").any(|a| {
+                *a == "--recursive"
+                    || (a.starts_with('-') && !a.starts_with("--") && a[1..].contains('r'))
+            })
+        {
+            return true;
+        }
+        if base == "git" && args.first() == Some(&"push") {
+            let forced = args[1..].iter().take_while(|&&a| a != "--").any(|a| {
+                *a == "--force"
+                    || (a.starts_with('-') && !a.starts_with("--") && a[1..].contains('f'))
+            });
+            if forced {
+                return true;
+            }
+        }
+    }
+    false
+}
+
 /// Extract text prompt content along with simple file-path notes for attachments
 /// when a driver only consumes plain text or accepts paths inline.
 pub fn flatten_prompt_text(message: &Message) -> String {

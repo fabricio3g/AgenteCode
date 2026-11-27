@@ -342,14 +342,18 @@ pub(crate) async fn execute_prepared_tool(
                     // language server when configured). A heuristic here once
                     // reported "Unbalanced braces" on files that compiled, and
                     // the model then "fixed" working code.
-                    let full_path = {
+                    let full_path = crate::tools::resolve_project_path(
+                        path,
+                        tool_registry.project_dir(),
+                    )
+                    .unwrap_or_else(|_| {
                         let p = std::path::Path::new(path);
                         if p.is_absolute() {
                             p.to_path_buf()
                         } else {
                             std::path::Path::new(tool_registry.project_dir()).join(p)
                         }
-                    };
+                    });
                     before_content = file_before
                         .as_ref()
                         .filter(|(tracked, _)| tracked == &clean)

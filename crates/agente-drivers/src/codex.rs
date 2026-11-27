@@ -716,6 +716,8 @@ async fn handle_codex_approval(
         },
     ];
 
+    let is_dangerous = tool_name == "shell" && command.is_some_and(crate::looks_dangerous_command);
+
     let rx = core.approvals.register(core.session_id, request_id.clone());
     core.emit(DriverEvent::Runtime(RuntimeEvent::ApprovalRequested {
         request_id,
@@ -723,7 +725,7 @@ async fn handle_codex_approval(
         tool_name: tool_name.to_string(),
         tool_args: args,
         description,
-        is_dangerous: false,
+        is_dangerous,
         file_path: None,
         old_content: None,
         new_content: None,
@@ -1564,5 +1566,82 @@ mod tests {
                 .map(String::as_str),
             Some("tok-very-secret")
         );
+    }
+
+    #[tokio::test]
+    async fn codex_approval_marks_destructive_shell_commands_dangerous() {
+        let (client_side, server_side) = tokio::io::duplex(16 * 1024);
+        let (c_read, c_write) = tokio::io::split(client_side);
+        let (s_read, mut s_write) = tokio::io::split(server_side);
+        let session_id = SessionId::new();
+        let approvals = ApprovalRouter::new();
+        let approvals_reply = approvals.clone();
+
+        let (tx, mut rx) = mpsc::channel(16);
+        let core = Arc::new(CodexCore {
+            session_id,
+            approvals,
+            thread_id: Mutex::new(Some("th-1".into())),
+            active_turn: Mutex::new(Some(ActiveCodexTurn {
+                sink: tx,
+                done_tx: None,
+                native_turn_id: None,
+                assistant_text: String::new(),
+                streamed_items: HashSet::new(),
+                tool_names: HashMap::new(),
+                cancelled: false,
+            })),
+            transport: Mutex::new(None),
+            closed_reason: Mutex::new(None),
+        });
+        let handler = Arc::new(CodexHandler {
+            core: Arc::clone(&core),
+        });
+        let transport = JsonRpcTransport::start(c_read, c_write, CODEX_MAX_LINE_BYTES, handler);
+        *core.transport.lock().unwrap() = Some(Arc::downgrade(&transport));
+
+        let server = tokio::spawn(async move {
+            let mut lines = BufReader::new(s_read).lines();
+            for (rpc_id, cmd) in [(1, "rm -rf /tmp/x"), (2, "cargo test")] {
+                s_write
+                    .write_all(
+                        format!(
+                            "{}\n",
+                            json!({
+                                "jsonrpc": "2.0",
+                                "id": rpc_id,
+                                "method": "item/commandExecution/requestApproval",
+                                "params": { "command": cmd, "cwd": "." }
+                            })
+                        )
+                        .as_bytes(),
+                    )
+                    .await
+                    .unwrap();
+                let reply: Value =
+                    serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
+                assert_eq!(reply["id"], rpc_id);
+            }
+        });
+
+        let mut seen = Vec::new();
+        for _ in 0..2 {
+            if let Some(DriverEvent::Runtime(RuntimeEvent::ApprovalRequested {
+                request_id,
+                is_dangerous,
+                ..
+            })) = rx.recv().await
+            {
+                seen.push(is_dangerous);
+                assert!(approvals_reply.respond(agente_protocol::ApprovalDecision {
+                    request_id,
+                    decision: ApprovalDecisionKind::ApproveOnce,
+                    option_id: Some("accept".into()),
+                }));
+            }
+        }
+        assert_eq!(seen, vec![true, false]);
+        server.await.unwrap();
+        transport.close();
     }
 }

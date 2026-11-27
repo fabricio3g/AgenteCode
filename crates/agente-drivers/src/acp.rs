@@ -257,6 +257,8 @@ struct AcpCore {
     project_root: PathBuf,
     approvals: ApprovalRouter,
     external_session_id: Mutex<Option<String>>,
+    session_payload: Mutex<Value>,
+    current_mode: Mutex<TurnMode>,
     model_config_id: Mutex<Option<String>>,
     current_model: Mutex<Option<String>>,
     thinking_config_id: Mutex<Option<String>>,
@@ -491,6 +493,11 @@ impl JsonRpcHandler for AcpHandler {
             "current_mode_update" => {
                 if let Some(raw_mode) = update.get("currentModeId").and_then(Value::as_str) {
                     if let Some(mode) = parse_mode(raw_mode) {
+                        *self
+                            .core
+                            .current_mode
+                            .lock()
+                            .unwrap_or_else(|p| p.into_inner()) = mode;
                         self.core
                             .emit(DriverEvent::Runtime(RuntimeEvent::ModeChanged { mode }));
                     }
@@ -723,6 +730,17 @@ fn handle_fs_read(project_root: &Path, params: &Value) -> Result<Value, (i32, St
 }
 
 fn handle_fs_write(core: &AcpCore, params: &Value) -> Result<Value, (i32, String)> {
+    if *core
+        .current_mode
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        == TurnMode::Plan
+    {
+        return Err((
+            rpc::INVALID_PARAMS,
+            "fs/write_text_file is not allowed in Plan mode".to_string(),
+        ));
+    }
     let raw_path = params
         .get("path")
         .and_then(Value::as_str)
@@ -739,8 +757,10 @@ fn handle_fs_write(core: &AcpCore, params: &Value) -> Result<Value, (i32, String
     }
     std::fs::write(&path, content)
         .map_err(|error| (rpc::INTERNAL_ERROR, format!("write failed: {error}")))?;
-    let rel = path
-        .strip_prefix(&core.project_root)
+    let canon_root = std::fs::canonicalize(&core.project_root)
+        .unwrap_or_else(|_| core.project_root.clone());
+    let rel = comparable_path(&path)
+        .strip_prefix(comparable_path(&canon_root))
         .map(|p| p.to_string_lossy().replace('\\', "/"))
         .unwrap_or_else(|_| raw_path.to_string());
     core.emit(DriverEvent::Runtime(RuntimeEvent::FileChanged {
@@ -752,16 +772,74 @@ fn handle_fs_write(core: &AcpCore, params: &Value) -> Result<Value, (i32, String
     Ok(json!({}))
 }
 
+const MAX_SYMLINK_HOPS: usize = 40;
+
+fn comparable_path(path: &Path) -> PathBuf {
+    #[cfg(windows)]
+    {
+        const VERBATIM: &str = r"\\?\";
+        const VERBATIM_UNC: &str = r"\\?\UNC\";
+        let text = path.to_string_lossy();
+        if let Some(rest) = text.strip_prefix(VERBATIM_UNC) {
+            return PathBuf::from(format!(r"\\{rest}"));
+        }
+        if let Some(rest) = text.strip_prefix(VERBATIM) {
+            return PathBuf::from(rest);
+        }
+        path.to_path_buf()
+    }
+    #[cfg(not(windows))]
+    {
+        path.to_path_buf()
+    }
+}
+
+fn is_symlink(path: &Path) -> bool {
+    std::fs::symlink_metadata(path)
+        .map(|m| m.file_type().is_symlink())
+        .unwrap_or(false)
+}
+
+fn resolve_leaf_symlink(target: &Path, raw_path: &str) -> Result<PathBuf, (i32, String)> {
+    let mut current = target.to_path_buf();
+    for _ in 0..MAX_SYMLINK_HOPS {
+        if !is_symlink(&current) {
+            return Ok(current);
+        }
+        let link = std::fs::read_link(&current).map_err(|_| {
+            (
+                rpc::INVALID_PARAMS,
+                format!("cannot resolve symlink for '{raw_path}'"),
+            )
+        })?;
+        current = if link.is_absolute() {
+            link
+        } else {
+            current.parent().map(|p| p.join(&link)).unwrap_or(link)
+        };
+    }
+    if is_symlink(&current) {
+        return Err((
+            rpc::INVALID_PARAMS,
+            format!("symlink chain exceeds {MAX_SYMLINK_HOPS} hops for '{raw_path}'"),
+        ));
+    }
+    Ok(current)
+}
+
 fn resolve_confined_path(root: &Path, raw_path: &str) -> Result<PathBuf, (i32, String)> {
-    let canon_root = realpath_nearest_ancestor(root);
+    let canon_root = std::fs::canonicalize(root).unwrap_or_else(|_| normalize_lexical(root));
     let candidate = Path::new(raw_path);
     let joined = if candidate.is_absolute() {
         candidate.to_path_buf()
     } else {
-        canon_root.join(candidate)
+        root.join(candidate)
     };
-    let resolved = realpath_nearest_ancestor(&joined);
-    if !resolved.starts_with(&canon_root) {
+    let resolved = match std::fs::canonicalize(&joined) {
+        Ok(canon) => canon,
+        Err(_) => canonicalize_closest_ancestor(&joined, raw_path)?,
+    };
+    if !comparable_path(&resolved).starts_with(comparable_path(&canon_root)) {
         return Err((
             rpc::INVALID_PARAMS,
             format!("path '{raw_path}' escapes project root"),
@@ -770,36 +848,82 @@ fn resolve_confined_path(root: &Path, raw_path: &str) -> Result<PathBuf, (i32, S
     Ok(resolved)
 }
 
-fn realpath_nearest_ancestor(target: &Path) -> PathBuf {
+fn canonicalize_closest_ancestor(target: &Path, raw_path: &str) -> Result<PathBuf, (i32, String)> {
+    let mut current = resolve_leaf_symlink(target, raw_path)?;
+    let mut hops = 0usize;
+
+    'resolve: loop {
+        let mut ancestor = current.as_path();
+        let mut remainder: Vec<std::ffi::OsString> = Vec::new();
+        loop {
+            if let Ok(canon) = std::fs::canonicalize(ancestor) {
+                let mut out = canon;
+                for component in remainder.iter().rev() {
+                    if component == ".." {
+                        out.pop();
+                    } else if component != "." {
+                        out.push(component);
+                    }
+                }
+                return Ok(normalize_lexical(&out));
+            }
+            if is_symlink(ancestor) {
+                hops += 1;
+                if hops > MAX_SYMLINK_HOPS {
+                    return Err((
+                        rpc::INVALID_PARAMS,
+                        format!("symlink chain exceeds {MAX_SYMLINK_HOPS} hops for '{raw_path}'"),
+                    ));
+                }
+                let mut next = resolve_leaf_symlink(ancestor, raw_path)?;
+                for component in remainder.iter().rev() {
+                    next.push(component);
+                }
+                current = next;
+                continue 'resolve;
+            }
+            match ancestor.parent() {
+                Some(parent) => {
+                    match ancestor.components().next_back() {
+                        Some(Component::Normal(name)) => {
+                            remainder.push(name.to_os_string());
+                        }
+                        Some(Component::ParentDir) => {
+                            remainder.push(std::ffi::OsString::from(".."));
+                        }
+                        _ => {}
+                    }
+                    ancestor = parent;
+                }
+                None => {
+                    return Err((
+                        rpc::INVALID_PARAMS,
+                        format!("path '{raw_path}' escapes project root"),
+                    ));
+                }
+            }
+        }
+    }
+}
+
+fn normalize_lexical(path: &Path) -> PathBuf {
     let mut normalized = PathBuf::new();
-    for comp in target.components() {
+    for comp in path.components() {
         match comp {
+            Component::Prefix(p) => normalized.push(p.as_os_str()),
+            Component::RootDir => normalized.push(std::path::MAIN_SEPARATOR_STR),
             Component::CurDir => {}
+            Component::Normal(p) if p == "." => {}
             Component::ParentDir => {
                 normalized.pop();
             }
-            other => normalized.push(other.as_os_str()),
-        }
-    }
-    let mut tail = Vec::new();
-    let mut cursor = normalized.clone();
-    loop {
-        if let Ok(canon) = std::fs::canonicalize(&cursor) {
-            let mut out = canon;
-            for part in tail.into_iter().rev() {
-                out.push(part);
+            Component::Normal(p) if p == ".." => {
+                normalized.pop();
             }
-            return out;
+            Component::Normal(p) => normalized.push(p),
         }
-        let Some(name) = cursor.file_name().map(|n| n.to_os_string()) else {
-            return normalized;
-        };
-        let Some(parent) = cursor.parent() else {
-            return normalized;
-        };
-        tail.push(name);
-        cursor = parent.to_path_buf();
     }
+    normalized
 }
 
 /// Active ACP subprocess session.
@@ -829,6 +953,8 @@ impl AcpSession {
             project_root: PathBuf::from(&cwd),
             approvals,
             external_session_id: Mutex::new(spec.external_session_id.clone()),
+            session_payload: Mutex::new(Value::Null),
+            current_mode: Mutex::new(spec.mode),
             model_config_id: Mutex::new(None),
             current_model: Mutex::new(None),
             thinking_config_id: Mutex::new(None),
@@ -923,6 +1049,10 @@ impl AcpSession {
             .external_session_id
             .lock()
             .unwrap_or_else(|p| p.into_inner()) = Some(ext_id.clone());
+        *core
+            .session_payload
+            .lock()
+            .unwrap_or_else(|p| p.into_inner()) = session_payload.clone();
 
         let model_config_id = extract_acp_model_config_id(&session_payload);
         *core
@@ -937,31 +1067,7 @@ impl AcpSession {
             .unwrap_or_else(|p| p.into_inner()) = thinking_config_id;
 
         if let Some((cfg_id, target_mode)) = extract_acp_mode_target(&session_payload, spec.mode) {
-            let _ = match cfg_id {
-                Some(config_id) => {
-                    transport
-                        .request(
-                            "session/set_config_option",
-                            json!({
-                                "sessionId": ext_id,
-                                "configId": config_id,
-                                "value": target_mode,
-                            }),
-                        )
-                        .await
-                }
-                None => {
-                    transport
-                        .request(
-                            "session/set_mode",
-                            json!({
-                                "sessionId": ext_id,
-                                "modeId": target_mode,
-                            }),
-                        )
-                        .await
-                }
-            };
+            let _ = apply_acp_mode(&transport, &ext_id, cfg_id.as_deref(), &target_mode).await;
         }
 
         if let Some(model) = effective_model(spec.model.as_deref()) {
@@ -992,6 +1098,37 @@ impl DriverSession for AcpSession {
         let _ = sink
             .send(DriverEvent::ExternalSessionBound(ext_id.clone()))
             .await;
+
+        let mode_changed = {
+            let current = self
+                .core
+                .current_mode
+                .lock()
+                .unwrap_or_else(|p| p.into_inner());
+            *current != request.mode
+        };
+        if mode_changed {
+            *self
+                .core
+                .current_mode
+                .lock()
+                .unwrap_or_else(|p| p.into_inner()) = request.mode;
+            let payload = self
+                .core
+                .session_payload
+                .lock()
+                .unwrap_or_else(|p| p.into_inner())
+                .clone();
+            if let Some((cfg_id, target_mode)) = extract_acp_mode_target(&payload, request.mode) {
+                let _ = apply_acp_mode(
+                    &self.transport,
+                    &ext_id,
+                    cfg_id.as_deref(),
+                    &target_mode,
+                )
+                .await;
+            }
+        }
 
         if let Some(req_model) = effective_model(request.model.as_deref()) {
             let needs_switch = {
@@ -1259,6 +1396,37 @@ struct AcpProbeOutcome {
     init_succeeded: bool,
     needs_auth: bool,
     auth_hint: Option<String>,
+}
+
+async fn apply_acp_mode(
+    transport: &JsonRpcTransport,
+    ext_id: &str,
+    config_id: Option<&str>,
+    target_mode: &str,
+) -> bool {
+    match config_id {
+        Some(config_id) => transport
+            .request(
+                "session/set_config_option",
+                json!({
+                    "sessionId": ext_id,
+                    "configId": config_id,
+                    "value": target_mode,
+                }),
+            )
+            .await
+            .is_ok(),
+        None => transport
+            .request(
+                "session/set_mode",
+                json!({
+                    "sessionId": ext_id,
+                    "modeId": target_mode,
+                }),
+            )
+            .await
+            .is_ok(),
+    }
 }
 
 async fn apply_acp_model(
@@ -3170,5 +3338,199 @@ mod tests {
         );
         assert!(completed_ok);
         let _ = std::fs::remove_dir_all(dir);
+    }
+
+    fn temp_test_dir(tag: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "agente-acp-{tag}-{}",
+            Uuid::new_v4().simple()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    fn try_symlink_dir(original: &Path, link: &Path) -> bool {
+        #[cfg(unix)]
+        let made = std::os::unix::fs::symlink(original, link).is_ok();
+        #[cfg(windows)]
+        let made = std::os::windows::fs::symlink_dir(original, link).is_ok();
+        made
+    }
+
+    #[test]
+    fn resolve_confined_path_rejects_dangling_symlinks_outside_root() {
+        let tmp = temp_test_dir("dangling");
+        let proj = tmp.join("proj");
+        let outside = tmp.join("outside");
+        std::fs::create_dir_all(&proj).unwrap();
+        std::fs::create_dir_all(&outside).unwrap();
+        if !try_symlink_dir(&outside.join("missing"), &proj.join("dangling")) {
+            let _ = std::fs::remove_dir_all(&tmp);
+            return;
+        }
+        assert!(resolve_confined_path(&proj, "dangling").is_err());
+        assert!(resolve_confined_path(&proj, "dangling/new.txt").is_err());
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn fs_write_is_blocked_in_plan_mode() {
+        let tmp = temp_test_dir("plan-write");
+        let core = AcpCore {
+            session_id: SessionId::new(),
+            project_root: tmp.clone(),
+            approvals: ApprovalRouter::new(),
+            external_session_id: Mutex::new(None),
+            session_payload: Mutex::new(Value::Null),
+            current_mode: Mutex::new(TurnMode::Plan),
+            model_config_id: Mutex::new(None),
+            current_model: Mutex::new(None),
+            thinking_config_id: Mutex::new(None),
+            current_thinking: Mutex::new(None),
+            active_turn: Mutex::new(None),
+            transport: Mutex::new(None),
+            closed_reason: Mutex::new(None),
+        };
+        let err = handle_fs_write(&core, &json!({ "path": "out.txt", "content": "nope" }))
+            .unwrap_err();
+        assert!(err.1.contains("Plan mode"), "{err:?}");
+        assert!(!tmp.join("out.txt").exists());
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[tokio::test]
+    async fn acp_session_updates_mode_on_subsequent_turn() {
+        let tmp = temp_test_dir("mode-sync");
+        let (client_side, server_side) = tokio::io::duplex(32 * 1024);
+        let (c_read, c_write) = tokio::io::split(client_side);
+        let (s_read, mut s_write) = tokio::io::split(server_side);
+        let session_id = SessionId::new();
+
+        let mock_agent = tokio::spawn(async move {
+            let mut lines = tokio::io::BufReader::new(s_read).lines();
+            let init: Value =
+                serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
+            s_write
+                .write_all(
+                    format!(
+                        "{}\n",
+                        json!({
+                            "jsonrpc": "2.0",
+                            "id": init["id"],
+                            "result": { "protocolVersion": 1, "agentCapabilities": {} }
+                        })
+                    )
+                    .as_bytes(),
+                )
+                .await
+                .unwrap();
+
+            let new_sess: Value =
+                serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
+            s_write
+                .write_all(
+                    format!(
+                        "{}\n",
+                        json!({
+                            "jsonrpc": "2.0",
+                            "id": new_sess["id"],
+                            "result": {
+                                "sessionId": "ext-mode-1",
+                                "modes": {
+                                    "availableModes": [
+                                        { "id": "plan", "name": "Plan" },
+                                        { "id": "build", "name": "Build" }
+                                    ]
+                                }
+                            }
+                        })
+                    )
+                    .as_bytes(),
+                )
+                .await
+                .unwrap();
+
+            // Initial session/set_mode to Plan
+            let set1: Value =
+                serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
+            assert_eq!(set1["method"], "session/set_mode");
+            assert_eq!(set1["params"]["modeId"], "plan");
+            s_write
+                .write_all(
+                    format!("{}\n", json!({ "jsonrpc": "2.0", "id": set1["id"], "result": {} }))
+                        .as_bytes(),
+                )
+                .await
+                .unwrap();
+
+            // Turn starts in Build: must send session/set_mode before session/prompt
+            let set2: Value =
+                serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
+            assert_eq!(set2["method"], "session/set_mode");
+            assert_eq!(set2["params"]["modeId"], "build");
+            s_write
+                .write_all(
+                    format!("{}\n", json!({ "jsonrpc": "2.0", "id": set2["id"], "result": {} }))
+                        .as_bytes(),
+                )
+                .await
+                .unwrap();
+
+            let prompt: Value =
+                serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
+            assert_eq!(prompt["method"], "session/prompt");
+            s_write
+                .write_all(
+                    format!(
+                        "{}\n",
+                        json!({
+                            "jsonrpc": "2.0",
+                            "id": prompt["id"],
+                            "result": { "stopReason": "end_turn" }
+                        })
+                    )
+                    .as_bytes(),
+                )
+                .await
+                .unwrap();
+        });
+
+        let session = AcpSession::connect_io(
+            c_read,
+            c_write,
+            None,
+            DriverSessionOpen {
+                session_id,
+                project_dir: tmp.to_string_lossy().into_owned(),
+                external_session_id: None,
+                mode: TurnMode::Plan,
+                model: None,
+                mcp_servers: Vec::new(),
+                interactive: true,
+            },
+            ApprovalRouter::new(),
+        )
+        .await
+        .unwrap();
+
+        let (tx, _rx) = mpsc::channel(16);
+        session
+            .start_turn(
+                DriverTurnRequest {
+                    session_id,
+                    turn_id: TurnId::new(),
+                    prompt: Message::user("edit now"),
+                    model: None,
+                    thinking_level: None,
+                    mode: TurnMode::Build,
+                    cwd: tmp.to_string_lossy().into_owned(),
+                    mcp_servers: Vec::new(),
+                },
+                tx,
+            )
+            .await
+            .unwrap();
+        mock_agent.await.unwrap();
+        let _ = std::fs::remove_dir_all(&tmp);
     }
 }

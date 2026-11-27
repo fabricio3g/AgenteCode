@@ -167,6 +167,13 @@ impl Drop for OrchestratorServer {
     }
 }
 
+fn revoke_session_inner(inner: &OrchestratorInner, session_id: SessionId) {
+    let mut tokens = inner.lock_tokens();
+    if let Some(tok) = tokens.by_session.remove(&session_id) {
+        tokens.by_token.remove(&tok);
+    }
+}
+
 impl OrchestratorServer {
     /// Bind a loopback HTTP listener on `127.0.0.1:0` and start serving MCP requests.
     pub async fn start(config: OrchestratorConfig) -> std::io::Result<Arc<Self>> {
@@ -213,10 +220,7 @@ impl OrchestratorServer {
 
     /// Revoke any issued token tied to `session_id`.
     pub fn revoke_session(&self, session_id: SessionId) {
-        let mut tokens = self.inner.lock_tokens();
-        if let Some(tok) = tokens.by_session.remove(&session_id) {
-            tokens.by_token.remove(&tok);
-        }
+        revoke_session_inner(&self.inner, session_id);
     }
 
     /// Summary state for `orchestrator.status` (never includes bearer tokens).
@@ -810,16 +814,19 @@ async fn spawn_task(
                 0,
             ),
         };
-        let mut tasks = watch_inner.lock_tasks();
-        if let Some(entry) = tasks.tasks.get_mut(&watch_task_id) {
-            entry.status = status;
-            if !trimmed.is_empty() {
-                entry.summary = Some(trimmed);
+        {
+            let mut tasks = watch_inner.lock_tasks();
+            if let Some(entry) = tasks.tasks.get_mut(&watch_task_id) {
+                entry.status = status;
+                if !trimmed.is_empty() {
+                    entry.summary = Some(trimmed);
+                }
+                entry.error = error;
+                entry.tokens = tokens;
+                entry.notify.notify_waiters();
             }
-            entry.error = error;
-            entry.tokens = tokens;
-            entry.notify.notify_waiters();
         }
+        revoke_session_inner(&watch_inner, child_session_id);
     });
 
     if wait {
@@ -1025,6 +1032,7 @@ async fn handle_http_connection(
             break;
         }
     }
+    let _ = reader.get_mut().shutdown().await;
     Ok(())
 }
 
@@ -1571,6 +1579,33 @@ mod tests {
             .as_str()
             .unwrap()
             .contains("depth limit reached"));
+
+        // 6. Rapid Connection: close requests succeed without WSAECONNRESET, and
+        // completed child tokens are revoked automatically.
+        for _ in 0..8 {
+            let (status, _) = http_post_json(
+                &injected.url,
+                Some("wrong-token"),
+                &json!({ "jsonrpc": "2.0", "id": 99, "method": "ping", "params": {} }),
+            )
+            .await;
+            assert_eq!(status, 401);
+        }
+        let child_sid = spawned["child_session_id"]
+            .as_str()
+            .unwrap()
+            .parse::<SessionId>()
+            .unwrap();
+        // Give the watcher a brief moment to revoke after Notify wakes the parent.
+        tokio::time::sleep(Duration::from_millis(25)).await;
+        assert!(
+            !orchestrator
+                .inner
+                .lock_tokens()
+                .by_session
+                .contains_key(&child_sid),
+            "completed child session token must be revoked"
+        );
 
         let _ = std::fs::remove_dir_all(root);
     }
