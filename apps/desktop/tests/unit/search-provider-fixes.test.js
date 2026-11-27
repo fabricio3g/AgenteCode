@@ -146,4 +146,34 @@ describe('unicode terms', () => {
     assert.deepEqual(tokenize('Café Zürich 2024'), ['café', 'zürich', '2024']);
     assert.deepEqual(tokenize('Rust 1.80 release'), ['rust', '1', '80', 'release']);
   });
+
+  it('ranks relevant Japanese, Arabic and accented Latin pages ahead of unrelated pages', () => {
+    const ja = mergeAndRankResults([
+      normalizeSearchItem('exa', { title: 'Unrelated news', url: 'https://a.example/other', snippet: 'weather today' }, 0),
+      normalizeSearchItem('exa', { title: '東京の日本語の検索ガイド', url: 'https://b.example/ja', snippet: '日本語の検索エンジン比較' }, 1),
+    ], '日本語の検索 東京', 5);
+    assert.equal(ja[0].url, 'https://b.example/ja');
+
+    const ar = mergeAndRankResults([
+      normalizeSearchItem('exa', { title: 'Unrelated page', url: 'https://a.example/other', snippet: 'sports' }, 0),
+      normalizeSearchItem('exa', { title: 'دليل البحث العربي', url: 'https://b.example/ar', snippet: 'محركات البحث العربي' }, 1),
+    ], 'البحث العربي', 5);
+    assert.equal(ar[0].url, 'https://b.example/ar');
+
+    const latin = mergeAndRankResults([
+      normalizeSearchItem('exa', { title: 'Plain cafe', url: 'https://a.example/other', snippet: 'coffee menu' }, 0),
+      normalizeSearchItem('exa', { title: 'Café Zürich guide', url: 'https://b.example/ch', snippet: 'best café in zürich' }, 1),
+    ], 'Café Zürich', 5);
+    assert.equal(latin[0].url, 'https://b.example/ch');
+  });
+
+  it('retains non-ASCII terms from conversation context for follow-up queries', () => {
+    const jaEffective = buildEffectiveSearchQuery('what about that?', 'User: 東京 天気 予報');
+    assert.notEqual(jaEffective, 'what about that?');
+    assert.match(jaEffective, /東京/);
+
+    const arEffective = buildEffectiveSearchQuery('what about that?', 'User: البحث العربي الحديث');
+    assert.notEqual(arEffective, 'what about that?');
+    assert.match(arEffective, /البحث/);
+  });
 });

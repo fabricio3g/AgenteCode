@@ -238,8 +238,8 @@ function extractContextTerms(context: string): string[] {
     'there', 'their', 'these', 'those', 'context', 'message'
   ]);
   const add = (value: string) => {
-    const term = normalizeWhitespace(value).replace(/^[^A-Za-z0-9]+|[^A-Za-z0-9]+$/g, '');
-    if (!term || term.length < 3) return;
+    const term = normalizeWhitespace(value).replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, '');
+    if (!term || (term.length < 3 && !/[^\p{ASCII}]/u.test(term))) return;
     const key = term.toLowerCase();
     if (stopTerms.has(key)) return;
     if (seen.has(key)) return;
@@ -255,7 +255,7 @@ function extractContextTerms(context: string): string[] {
 
   if (terms.length < 4) {
     const candidates = tokenize(text)
-      .filter((token) => token.length > 4 && !stopTerms.has(token));
+      .filter((token) => (token.length > 4 || /[^\p{ASCII}]/u.test(token)) && !stopTerms.has(token));
     for (const token of candidates) {
       add(token);
       if (terms.length >= 6) break;
@@ -488,9 +488,12 @@ function scoreText(text: string, queryTerms: string[]): number {
     if (haystack.includes(term)) {
       score += 1;
     }
-    const hits = haystack.match(new RegExp(`\\b${escapeRegExp(term)}\\b`, 'g')) || [];
-    if (hits.length) {
-      score += Math.min(hits.length, 4) * 0.25;
+    const isUnspaced = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/u.test(term);
+    const hitCount = isUnspaced
+      ? Math.max(0, haystack.split(term).length - 1)
+      : (haystack.match(new RegExp(`(?<![\\p{L}\\p{N}])${escapeRegExp(term)}(?![\\p{L}\\p{N}])`, 'gu')) || []).length;
+    if (hitCount > 0) {
+      score += Math.min(hitCount, 4) * 0.25;
     }
   }
   return score;

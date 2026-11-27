@@ -17,18 +17,39 @@ import { isSafePublicUrl, scrapeUrlStructured } from './web-scraper.ts';
 
 const RUST_CORE_SEARCH_PROVIDERS = new Set(['duckduckgo', 'brave', 'tavily', 'exa', 'searxng']);
 
+function throwIfAborted(signal?: AbortSignal): void {
+  if (signal?.aborted) {
+    throw new DOMException('Search aborted', 'AbortError');
+  }
+}
+
+function raceAbort<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
+  if (!signal) return promise;
+  if (signal.aborted) return Promise.reject(new DOMException('Search aborted', 'AbortError'));
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => reject(new DOMException('Search aborted', 'AbortError'));
+    signal.addEventListener('abort', onAbort, { once: true });
+    promise.then(
+      (value) => { signal.removeEventListener('abort', onAbort); resolve(value); },
+      (err) => { signal.removeEventListener('abort', onAbort); reject(err); }
+    );
+  });
+}
+
 async function tryRustProviderSearch(provider: string, query: string, maxResults: number, options: Record<string, unknown>): Promise<SearchResult[] | null> {
   if (!RUST_CORE_SEARCH_PROVIDERS.has(provider)) return null;
   // If the caller passed an explicit per-request SearXNG base URL (e.g. unit tests), stay on TS.
   if (provider === 'searxng' && (options.searxng_url || options.searxng_base_url)) return null;
+  const signal = options.signal as AbortSignal | undefined;
+  throwIfAborted(signal);
   try {
     const { runtimeConnection } = await import('./agente/rust-engine.ts');
-    const client = await runtimeConnection();
-    const res = await client.request<{ hits?: Array<{ title: string; url: string; snippet: string }> }>('web.search', {
+    const client = await raceAbort(runtimeConnection(), signal);
+    const res = await raceAbort(client.request<{ hits?: Array<{ title: string; url: string; snippet: string }> }>('web.search', {
       query,
       max_results: maxResults,
       provider
-    });
+    }), signal);
     if (!Array.isArray(res?.hits)) return null;
     return res.hits.map((hit) => ({
       title: hit.title,
@@ -36,7 +57,9 @@ async function tryRustProviderSearch(provider: string, query: string, maxResults
       snippet: hit.snippet,
       source: provider
     }));
-  } catch {
+  } catch (err) {
+    throwIfAborted(signal);
+    if (err instanceof Error && err.name === 'AbortError') throw err;
     return null;
   }
 }
@@ -71,6 +94,8 @@ type FetchedPage = {
 
 /** A result's whole page, read through Reader View — no character budget. */
 async function fetchPageContent(url: string, options: Record<string, unknown> = {}): Promise<FetchedPage | null> {
+  const signal = options.signal as AbortSignal | undefined;
+  throwIfAborted(signal);
   if (!isSafePublicUrl(url)) return null;
   try {
     // Fast path: use Rust's compiled html5ever/scraper + connect-time DNS SSRF
@@ -79,21 +104,24 @@ async function fetchPageContent(url: string, options: Record<string, unknown> = 
     if (options?.use_local_readability !== false && !lowerUrl.endsWith('.pdf') && !lowerUrl.endsWith('.docx')) {
       try {
         const { runtimeConnection } = await import('./agente/rust-engine.ts');
-        const client = await runtimeConnection();
-        const page = await client.request<{ url?: string; title?: string; text?: string }>('web.fetch', { url });
+        const client = await raceAbort(runtimeConnection(), signal);
+        const page = await raceAbort(client.request<{ url?: string; title?: string; text?: string }>('web.fetch', { url }), signal);
         const text = String(page?.text || '').trim();
         if (text.length >= 200) {
           return { content: text, title: page?.title || undefined, quality: 'ok' };
         }
       } catch {
+        throwIfAborted(signal);
         // Fall through to Desktop scraper when daemon is offline or page needs Readability/PDF extraction.
       }
     }
+    throwIfAborted(signal);
     if (options?.use_local_readability !== false) {
       const scraped = await scrapeUrlStructured({
         url,
         timeoutMs: 18000,
         maxLinks: 80,
+        signal
       }) as {
         content?: string;
         title?: string;
@@ -118,6 +146,7 @@ async function fetchPageContent(url: string, options: Record<string, unknown> = 
       }
     }
 
+    throwIfAborted(signal);
     if (!isSafePublicUrl(url)) return null;
     const readerUrl = buildJinaReaderUrl(url, 'https://r.jina.ai');
     if (!readerUrl) return null;
@@ -125,10 +154,12 @@ async function fetchPageContent(url: string, options: Record<string, unknown> = 
     if (options.jina_api_key) {
       headers.Authorization = `Bearer ${options.jina_api_key as string}`;
     }
-    const resp = await fetchWithRetry(readerUrl, { headers, timeout_ms: 22000 });
+    const resp = await fetchWithRetry(readerUrl, { headers, timeout_ms: 22000, signal });
     if (!resp.ok) return null;
     return { content: (await resp.text()).trim(), quality: 'ok' };
-  } catch {
+  } catch (err) {
+    throwIfAborted(signal);
+    if (err instanceof Error && err.name === 'AbortError') throw err;
     return null;
   }
 }
@@ -160,14 +191,15 @@ function scoreResultForDeepFetch(result: SearchResult, query: string): number {
 async function mapWithConcurrency<T, R>(
   items: T[],
   concurrency: number,
-  worker: (item: T, index: number) => Promise<R>
+  worker: (item: T, index: number) => Promise<R>,
+  signal?: AbortSignal
 ): Promise<PromiseSettledResult<R>[]> {
   const results: PromiseSettledResult<R>[] = new Array(items.length);
   let next = 0;
   const limit = Math.max(1, Math.min(concurrency, items.length || 1));
 
   async function runOne() {
-    while (next < items.length) {
+    while (next < items.length && !signal?.aborted) {
       const i = next++;
       try {
         results[i] = { status: 'fulfilled', value: await worker(items[i], i) };
@@ -182,6 +214,8 @@ async function mapWithConcurrency<T, R>(
 }
 
 async function enrichWithDeepContent(results: SearchResult[], limit: number, emit: (step: string, detail: string) => void, options: Record<string, unknown> = {}): Promise<SearchResult[]> {
+  const signal = options?.signal as AbortSignal | undefined;
+  throwIfAborted(signal);
   const query = String(options?.search_query || '');
   // Rank candidates before scrape; deprioritize empty URLs
   const ranked = [...results]
@@ -193,6 +227,7 @@ async function enrichWithDeepContent(results: SearchResult[], limit: number, emi
   emit('deep_fetching', `Reading up to ${pick.length} pages (concurrency ${concurrency})…`);
 
   const fetched = await mapWithConcurrency(pick, concurrency, async (item, i) => {
+    throwIfAborted(signal);
     emit('fetching_page', `Reading page ${i + 1}/${pick.length}: ${item.r.url}`);
     try {
       const page = await fetchPageContent(item.r.url, {
@@ -231,14 +266,18 @@ async function enrichWithDeepContent(results: SearchResult[], limit: number, emi
         metadata: meta,
         scrape_quality: 'ok' as const
       };
-    } catch {
+    } catch (err) {
+      throwIfAborted(signal);
+      if (err instanceof Error && err.name === 'AbortError') throw err;
       return {
         ...item.r,
         scrape_quality: 'blocked' as const,
         metadata: { ...(item.r.metadata || {}), quality: 'blocked', scrape_quality: 'blocked' }
       };
     }
-  });
+  }, signal);
+
+  throwIfAborted(signal);
 
   const byUrl = new Map<string, SearchResult>();
   for (let i = 0; i < pick.length; i += 1) {
@@ -283,7 +322,11 @@ function buildCacheDiscriminator(
     .digest('hex');
 }
 
-export async function webSearch({ query, context, deep, mode, options }: { query: string; context?: string; deep?: boolean; mode?: string; options?: Record<string, unknown> }, win: BrowserWindow | null = null) {
+export async function webSearch(
+  { query, context, deep, mode, options, signal, operationId }: { query: string; context?: string; deep?: boolean; mode?: string; options?: Record<string, unknown>; signal?: AbortSignal; operationId?: string },
+  win: BrowserWindow | null = null
+) {
+  throwIfAborted(signal);
   const normalizedQuery = normalizeWhitespace(query);
   const conversationContext = compactSearchContext(context || options?.conversation_context || '');
   const effectiveQuery = buildEffectiveSearchQuery(normalizedQuery, conversationContext);
@@ -297,11 +340,17 @@ export async function webSearch({ query, context, deep, mode, options }: { query
   const maxResults = Number.isFinite(requestedResults) && requestedResults >= 1
     ? Math.min(requestedResults, 50)
     : searchMode === 'max' ? 18 : searchMode === 'deep' ? 12 : 8;
-  const searchOptions = { ...(options || {}), conversation_context: conversationContext, search_query: effectiveQuery || normalizedQuery };
+  const searchOptions = {
+    ...(options || {}),
+    conversation_context: conversationContext,
+    search_query: effectiveQuery || normalizedQuery,
+    ...(signal ? { signal } : {})
+  };
 
   const emit = (step: string, detail: string) => {
+    if (signal?.aborted) return;
     try {
-      win?.webContents?.send('search-progress', { step, detail });
+      win?.webContents?.send('search-progress', { step, detail, ...(operationId ? { operationId } : {}) });
     } catch {
       // ignore renderer channel errors
     }
@@ -341,6 +390,7 @@ export async function webSearch({ query, context, deep, mode, options }: { query
       providerUsed = explicitProvider;
       providerAttempts.push({ provider: explicitProvider, success: providerResults.length > 0, resultCount: providerResults.length });
     } catch (err: unknown) {
+      throwIfAborted(signal);
       providerAttempts.push({ provider: explicitProvider, success: false, resultCount: 0, error: toErrorMessage(err) });
       const error = providerSearchError(explicitProvider, err);
       return { ...error, query: normalizedQuery, effective_query: effectiveQuery, search_mode: searchMode, provider_attempts: providerAttempts };
@@ -350,6 +400,7 @@ export async function webSearch({ query, context, deep, mode, options }: { query
     const settled = await Promise.allSettled(
       configuredProviders.map((provider) => runProviderSearch(provider, effectiveQuery, Math.max(maxResults, 6), searchOptions))
     );
+    throwIfAborted(signal);
 
     for (let i = 0; i < settled.length; i += 1) {
       const entry = settled[i];
@@ -381,12 +432,15 @@ export async function webSearch({ query, context, deep, mode, options }: { query
           emit('provider_failed', `${providerDisplayName(provider)} returned only ${results.length} result(s); trying another provider...`);
         }
       } catch (err: unknown) {
+        throwIfAborted(signal);
         lastError = err;
         providerAttempts.push({ provider, success: false, resultCount: 0, error: toErrorMessage(err) });
         emit('provider_failed', `${providerDisplayName(provider)} failed: ${classifyNetworkError(err).hint}`);
       }
     }
   }
+
+  throwIfAborted(signal);
 
   if (!providerResults.length) {
     const info = classifyNetworkError(lastError || new Error('No results'));
@@ -424,7 +478,7 @@ export async function webSearch({ query, context, deep, mode, options }: { query
     );
     const enriched = await enrichWithDeepContent(mergedResults, deepLimit, emit, {
       ...searchOptions,
-      scrape_concurrency: searchMode === 'max' ? 4 : 3
+      scrape_concurrency: searchOptions.scrape_concurrency ?? (searchMode === 'max' ? 4 : 3)
     });
     // Prefer pages with full_content after enrich
     const withContent = enriched.filter((r) => r.full_content && String(r.full_content).length > 400);
@@ -458,6 +512,7 @@ export async function webSearch({ query, context, deep, mode, options }: { query
     aggregation_deadline_reached: (searchOptions.aggregator_diagnostics as { deadline_reached?: boolean } | undefined)?.deadline_reached,
   };
 
+  throwIfAborted(signal);
   setCachedResult(cacheKey, result);
   return result;
 }

@@ -56,39 +56,59 @@ function flattenAggregatorProviderOptions(providers: Record<string, Record<strin
   return flattened;
 }
 
+export async function cancelSearchOperations(operationIds: string[]): Promise<void> {
+  const unique = [...new Set(operationIds.map((id) => String(id || '').trim()).filter(Boolean))];
+  if (!unique.length) return;
+  await invoke('search_cancel', { operationIds: unique });
+}
+
 export async function webSearch(args: {
   query: string;
   context?: string;
   deep?: boolean;
   mode?: string;
+  operationId?: string;
+  signal?: AbortSignal;
   options?: SearchOptions;
 }): Promise<SearchResponse> {
+  args.signal?.throwIfAborted();
   const stored = await loadAppConfig();
+  args.signal?.throwIfAborted();
   const searchProviders = stored.search?.providers || {};
-  return invoke<SearchResponse>('web_search', {
-    query: args.query,
-    context: args.context,
-    deep: args.deep ?? false,
-    mode: args.mode,
-    options: {
-      provider: stored.search?.provider || 'aggregator',
-      aggregator_engines: stored.search?.aggregator_engines,
-      safe_search: stored.search?.safe_search,
-      brave_api_key: searchProviders.brave?.api_key,
-      tavily_api_key: searchProviders.tavily?.api_key,
-      exa_api_key: searchProviders.exa?.api_key,
-      searxng_base_url: searchProviders.searxng?.base_url,
-      jina_api_key: searchProviders.jina?.api_key,
-      jina_base_url: searchProviders.jina?.base_url,
-      youcom_api_key: searchProviders.youcom?.api_key,
-      perplexity_api_key: searchProviders.perplexity?.api_key,
-      perplexity_model: searchProviders.perplexity?.model,
-      perplexity_api_url: searchProviders.perplexity?.api_url,
-      ...flattenAggregatorProviderOptions(searchProviders as Record<string, Record<string, unknown>>),
-      conversation_context: args.context,
-      ...resolveSearchOptions(args.options)
-    }
-  });
+  const operationId = args.operationId || (args.signal ? `search_${Date.now()}_${Math.random().toString(36).slice(2, 8)}` : undefined);
+  const onAbort = operationId
+    ? () => { void cancelSearchOperations([operationId]).catch(() => {}); }
+    : undefined;
+  if (onAbort) args.signal?.addEventListener('abort', onAbort, { once: true });
+  try {
+    return await invoke<SearchResponse>('web_search', {
+      query: args.query,
+      context: args.context,
+      deep: args.deep ?? false,
+      mode: args.mode,
+      ...(operationId ? { operationId } : {}),
+      options: {
+        provider: stored.search?.provider || 'aggregator',
+        aggregator_engines: stored.search?.aggregator_engines,
+        safe_search: stored.search?.safe_search,
+        brave_api_key: searchProviders.brave?.api_key,
+        tavily_api_key: searchProviders.tavily?.api_key,
+        exa_api_key: searchProviders.exa?.api_key,
+        searxng_base_url: searchProviders.searxng?.base_url,
+        jina_api_key: searchProviders.jina?.api_key,
+        jina_base_url: searchProviders.jina?.base_url,
+        youcom_api_key: searchProviders.youcom?.api_key,
+        perplexity_api_key: searchProviders.perplexity?.api_key,
+        perplexity_model: searchProviders.perplexity?.model,
+        perplexity_api_url: searchProviders.perplexity?.api_url,
+        ...flattenAggregatorProviderOptions(searchProviders as Record<string, Record<string, unknown>>),
+        conversation_context: args.context,
+        ...resolveSearchOptions(args.options)
+      }
+    });
+  } finally {
+    if (onAbort) args.signal?.removeEventListener('abort', onAbort);
+  }
 }
 
 export interface HfModelSearchItem {

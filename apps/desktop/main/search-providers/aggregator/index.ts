@@ -117,6 +117,12 @@ export async function searchAggregator(query: string, maxResults: number, option
 
   const perEngineLimit = Math.max(3, Math.min(maxResults, 10));
   const controller = new AbortController();
+  const externalSignal = options?.signal as AbortSignal | undefined;
+  if (externalSignal?.aborted) {
+    throw new DOMException('Search aborted', 'AbortError');
+  }
+  const onExternalAbort = () => controller.abort(externalSignal?.reason ?? new DOMException('Search aborted', 'AbortError'));
+  externalSignal?.addEventListener('abort', onExternalAbort, { once: true });
   const concurrency = Math.max(1, Math.min(Number(options?.aggregator_concurrency) || AGGREGATOR_CONCURRENCY, AGGREGATOR_CONCURRENCY));
   const deadlineMs = Math.max(1000, Math.min(Number(options?.aggregator_deadline_ms) || AGGREGATOR_DEADLINE_MS, 30_000));
   const allResults: SearchResult[] = [];
@@ -139,17 +145,22 @@ export async function searchAggregator(query: string, maxResults: number, option
   };
 
   let deadlineTimer: ReturnType<typeof setTimeout> | undefined;
-  const deadline = new Promise<void>((resolve) => {
-    deadlineTimer = setTimeout(() => {
-      diagnostics.deadline_reached = true;
-      controller.abort(new Error('Aggregate deadline reached'));
-      resolve();
-    }, deadlineMs);
-  });
-  const workers = Promise.all(Array.from({ length: Math.min(concurrency, engines.length) }, () => worker())).then(() => undefined);
-  await Promise.race([workers, deadline]);
-  if (deadlineTimer) clearTimeout(deadlineTimer);
-  if (!controller.signal.aborted) controller.abort();
+  try {
+    const deadline = new Promise<void>((resolve) => {
+      deadlineTimer = setTimeout(() => {
+        diagnostics.deadline_reached = true;
+        controller.abort(new Error('Aggregate deadline reached'));
+        resolve();
+      }, deadlineMs);
+    });
+    const workers = Promise.all(Array.from({ length: Math.min(concurrency, engines.length) }, () => worker())).then(() => undefined);
+    await Promise.race([workers, deadline]);
+    if (externalSignal?.aborted) throw new DOMException('Search aborted', 'AbortError');
+  } finally {
+    if (deadlineTimer) clearTimeout(deadlineTimer);
+    externalSignal?.removeEventListener('abort', onExternalAbort);
+    if (!controller.signal.aborted) controller.abort();
+  }
   diagnostics.elapsed_ms = Date.now() - started;
 
   return mergeAndRankResults(allResults, query, maxResults).map((result, index) => ({

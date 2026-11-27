@@ -796,4 +796,118 @@ describe('external CLI drivers, native options, worktrees, and handoff', () => {
       content: { q0: 'Full' }
     });
   });
+
+  it('routes late background subagent completion to its originating turn before and after a second turn starts', async () => {
+    const { composerChildren } = await import('./subagent-row');
+    await startRun();
+
+    emit({
+      type: 'runtime_event',
+      chatId: CHAT_ID,
+      event: { type: 'child_started', run_id: 'bg-child-1', kind: 'explore', description: 'Audit logs in background', model: 'test' }
+    });
+    emit({ type: 'text_delta', chatId: CHAT_ID, delta: 'Started background audit.' });
+    emit({ type: 'agent_end', chatId: CHAT_ID, stopReason: 'stop' });
+
+    const chat = appStore.chats[0]!;
+    const turn1Assistant = chat.messages[1]!;
+    expect(turn1Assistant.metadata?.codeChildren?.[0]).toMatchObject({
+      id: 'bg-child-1',
+      description: 'Audit logs in background',
+      status: 'running'
+    });
+    // Still running after parent ended -> stays in composer pill.
+    expect(composerChildren(codeStore.runFor(CHAT_ID), chat.messages).map((c) => c.id)).toEqual(['bg-child-1']);
+
+    // Start a second turn while the first turn's child is still running.
+    await codeStore.send(CHAT_ID, 'Second turn question');
+    expect(codeStore.runFor(CHAT_ID)?.children).toEqual([]);
+    expect(composerChildren(codeStore.runFor(CHAT_ID), chat.messages).map((c) => c.id)).toEqual(['bg-child-1']);
+
+    // Deliver late child events from Turn 1 while Turn 2 is active.
+    emit({ type: 'runtime_event', chatId: CHAT_ID, event: { type: 'child_delta', run_id: 'bg-child-1', text: 'Found 2 warnings.' } });
+    emit({
+      type: 'runtime_event',
+      chatId: CHAT_ID,
+      event: { type: 'child_finished', run_id: 'bg-child-1', summary: 'Audit complete: 2 warnings.', is_error: false }
+    });
+
+    // Turn 2 must not receive a phantom child, and Turn 1 keeps the real result.
+    expect(codeStore.runFor(CHAT_ID)?.children).toEqual([]);
+    const turn2Assistant = chat.messages[3]!;
+    expect(turn2Assistant.metadata?.codeChildren ?? []).toEqual([]);
+    expect(turn1Assistant.metadata?.codeChildren?.[0]).toMatchObject({
+      id: 'bg-child-1',
+      description: 'Audit logs in background',
+      text: 'Found 2 warnings.',
+      summary: 'Audit complete: 2 warnings.',
+      status: 'done'
+    });
+    expect(composerChildren(codeStore.runFor(CHAT_ID), chat.messages)).toEqual([]);
+
+    // Also works before a second turn starts (updating Turn 1 directly while idle).
+    emit({ type: 'agent_end', chatId: CHAT_ID, stopReason: 'stop' });
+    await codeStore.send(CHAT_ID, 'Third turn');
+    emit({
+      type: 'runtime_event',
+      chatId: CHAT_ID,
+      event: { type: 'child_started', run_id: 'bg-child-2', kind: 'explore', description: 'Check metrics', model: 'test' }
+    });
+    emit({ type: 'agent_end', chatId: CHAT_ID, stopReason: 'stop' });
+    emit({
+      type: 'runtime_event',
+      chatId: CHAT_ID,
+      event: { type: 'child_finished', run_id: 'bg-child-2', summary: 'Metrics healthy.', is_error: false }
+    });
+    expect(chat.messages[5]!.metadata?.codeChildren?.[0]).toMatchObject({
+      id: 'bg-child-2',
+      description: 'Check metrics',
+      summary: 'Metrics healthy.',
+      status: 'done'
+    });
+  });
+
+  it('routes late child completion on a reopened historical chat without prior live mapping', async () => {
+    const chat = appStore.chats[0]!;
+    chat.messages.push(
+      { id: 'u-old', role: 'user', content: 'Old prompt', createdAt: 1 },
+      {
+        id: 'a-old',
+        role: 'assistant',
+        content: 'Spawned worker.',
+        createdAt: 2,
+        done: true,
+        status: 'idle',
+        metadata: {
+          codeChildren: [
+            {
+              id: 'reopened-child',
+              kind: 'explore',
+              description: 'Reopened background worker',
+              status: 'running',
+              text: '',
+              tools: [],
+              spend: { costUsd: 0, estimated: false, unpriced: true, promptTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 },
+              startedAt: 10
+            }
+          ]
+        }
+      }
+    );
+
+    // Ensure subscription is active, as on store load, without running send().
+    await codeStore.load();
+    emit({
+      type: 'runtime_event',
+      chatId: CHAT_ID,
+      event: { type: 'child_finished', run_id: 'reopened-child', summary: 'Done after reload', is_error: false }
+    });
+
+    expect(chat.messages[1]!.metadata?.codeChildren?.[0]).toMatchObject({
+      id: 'reopened-child',
+      description: 'Reopened background worker',
+      summary: 'Done after reload',
+      status: 'done'
+    });
+  });
 });

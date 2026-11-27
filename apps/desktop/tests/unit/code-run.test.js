@@ -73,7 +73,7 @@ describe('code-run parallel step and subagent cleanup', () => {
     assert.equal(state.children[0].tools[0].status, 'error');
   });
 
-  it('closes all still-running parallel steps and subagents on agent_end', () => {
+  it('closes running parent steps on normal agent_end while keeping background subagents open until finished', () => {
     const state = createCodeRunState();
     applyCodeAgentEvent(state, { type: 'agent_start', chatId: 'c1' });
     applyCodeAgentEvent(state, { type: 'tool_start', chatId: 'c1', toolCallId: 't1', toolName: 'read', args: { path: 'a.ts' } });
@@ -93,8 +93,27 @@ describe('code-run parallel step and subagent cleanup', () => {
 
     assert.equal(state.done, true);
     assert.deepEqual(state.steps.map((s) => s.status), ['done', 'done']);
-    assert.deepEqual(state.children.map((c) => c.status), ['done', 'done']);
-    assert.ok(state.children.every((c) => typeof c.finishedAt === 'number'));
+    assert.deepEqual(state.children.map((c) => c.status), ['running', 'running']);
+    assert.ok(state.children.every((c) => c.finishedAt === undefined));
+
+    applyCodeAgentEvent(state, {
+      type: 'runtime_event',
+      chatId: 'c1',
+      event: { type: 'child_finished', run_id: 'child-1', summary: 'Finished later', is_error: false }
+    });
+    assert.equal(state.children[0].status, 'done');
+    assert.equal(typeof state.children[0].finishedAt, 'number');
+
+    const aborted = createCodeRunState();
+    applyCodeAgentEvent(aborted, { type: 'agent_start', chatId: 'c1' });
+    applyCodeAgentEvent(aborted, {
+      type: 'runtime_event',
+      chatId: 'c1',
+      event: { type: 'child_started', run_id: 'child-aborted', kind: 'explore', description: 'Aborted child' }
+    });
+    applyCodeAgentEvent(aborted, { type: 'agent_end', chatId: 'c1', stopReason: 'aborted' });
+    assert.equal(aborted.children[0].status, 'error');
+    assert.equal(typeof aborted.children[0].finishedAt, 'number');
   });
 
   it('normalizes multiline and long descriptions with firstLine(..., 160) in linkChildToStep', () => {

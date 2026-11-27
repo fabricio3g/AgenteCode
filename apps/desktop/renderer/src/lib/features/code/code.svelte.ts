@@ -16,8 +16,9 @@ import { pathExists, pickWorkspaceFolder } from '$lib/services/files';
 import { createId } from '$lib/utils/id';
 import { isDefaultChatTitle } from '$lib/stores/app-store-helpers';
 import type { ChatSession, CodeProject, CodeTimelineEntry } from '$lib/types/chat';
-import type { AgenteCheckpointSummary, CodeAgentEvent, MergeWorktreeResult, SessionWorktree } from '$shared/agente-protocol';
-import { applyCodeAgentEvent, codeRunElapsed, conversationTodos, createCodeRunState, type CodeRunState } from './code-run';
+import type { AgenteCheckpointSummary, CodeAgentEvent, CodeChild, MergeWorktreeResult, SessionWorktree } from '$shared/agente-protocol';
+import { addCallSpend } from '$shared/accounting';
+import { applyChildRuntimeEvent, applyCodeAgentEvent, codeRunElapsed, conversationTodos, createCodeRunState, emptySpend, type CodeRunState } from './code-run';
 import { clampModeForDriver, driversStore, isExternalDriverId, turnModeToCodeMode } from './drivers.svelte';
 import { codeWorkspace } from './workspace.svelte';
 import {
@@ -108,6 +109,10 @@ class CodeStore {
   #stopEpoch = new Map<string, number>();
   /** Guards against rapid double-send races while ensureChatMessages is awaiting. */
   #startingTurns = new Set<string>();
+  /** Tracks which assistant message owns each spawned child run_id per chat. */
+  #childMessageIds = new Map<string, Map<string, string>>();
+  /** Preserves child tool call_id -> step id mappings for late background child events. */
+  #childToolStepIds = new Map<string, Map<string, Map<string, string>>>();
 
   constructor() {
     // Deleted conversations must not leave run state behind (unbounded growth)
@@ -667,6 +672,8 @@ class CodeStore {
     }
     this.#sessionIds.delete(chatId);
     this.#conversationIndices.delete(chatId);
+    this.#childMessageIds.delete(chatId);
+    this.#childToolStepIds.delete(chatId);
   }
 
   /** True once an engine session has been started for this chat. */
@@ -749,6 +756,34 @@ class CodeStore {
         }
       }
       this.#appendAssistant(chat);
+    }
+
+    if (event.type === 'runtime_event') {
+      const childId = event.parentRunId || ('run_id' in event.event ? event.event.run_id : undefined);
+      if (childId) {
+        let ownerMap = this.#childMessageIds.get(event.chatId);
+        if (!ownerMap) {
+          ownerMap = new Map();
+          this.#childMessageIds.set(event.chatId, ownerMap);
+        }
+        let ownerMsgId = ownerMap.get(childId);
+        if (!ownerMsgId) {
+          const existingOwner = [...chat.messages].reverse().find(
+            (message) => message.role === 'assistant' && message.metadata?.codeChildren?.some((child) => child.id === childId)
+          );
+          if (existingOwner) {
+            ownerMsgId = existingOwner.id;
+            ownerMap.set(childId, ownerMsgId);
+          } else if (run.running && run.assistantMessageId) {
+            ownerMsgId = run.assistantMessageId;
+            ownerMap.set(childId, ownerMsgId);
+          }
+        }
+        if (ownerMsgId && (!run.running || ownerMsgId !== run.assistantMessageId)) {
+          this.#applyLateChildEvent(chat, run, ownerMsgId, childId, event.event);
+          return;
+        }
+      }
     }
 
     if (event.type === 'runtime_event' && event.event.type === 'user_messages_injected') {
@@ -917,6 +952,57 @@ class CodeStore {
       this.#pendingFlush.delete(chatId);
     }
     this.#flushToMessage(chatId, run);
+  }
+
+  /** Route a late background subagent event back to its originating turn message. */
+  #applyLateChildEvent(
+    chat: ChatSession,
+    run: AgenteRun,
+    ownerMsgId: string,
+    childId: string,
+    value: Extract<CodeAgentEvent, { type: 'runtime_event' }>['event']
+  ): void {
+    const targetMsg = chat.messages.find((message) => message.id === ownerMsgId && message.role === 'assistant');
+    if (!targetMsg) return;
+    let toolIds = this.#childToolStepIds.get(chat.id);
+    if (!toolIds) {
+      toolIds = new Map();
+      this.#childToolStepIds.set(chat.id, toolIds);
+    }
+    if (!toolIds.has(childId) && run.assistantMessageId === ownerMsgId && run.childToolStepIds?.has(childId)) {
+      toolIds.set(childId, new Map(run.childToolStepIds.get(childId)));
+    }
+    const existing = targetMsg.metadata?.codeChildren ?? [];
+    const children: CodeChild[] = existing.map((item) => ({
+      ...item,
+      tools: item.tools.map((tool) => ({ ...tool })),
+      spend: { ...item.spend }
+    }));
+    let child = children.find((item) => item.id === childId);
+    if (!child) {
+      child = { id: childId, kind: 'subagent', description: '', status: 'running', text: '', tools: [], spend: emptySpend(), startedAt: Date.now() };
+      children.push(child);
+    }
+    if (!applyChildRuntimeEvent(child, value, toolIds)) return;
+    const nextSpend = value.type === 'call_usage' && targetMsg.metadata?.codeSpend
+      ? (() => { const spend = { ...targetMsg.metadata!.codeSpend! }; addCallSpend(spend, value); return spend; })()
+      : targetMsg.metadata?.codeSpend;
+    targetMsg.metadata = {
+      ...targetMsg.metadata,
+      codeChildren: children,
+      ...(nextSpend ? { codeSpend: nextSpend } : {})
+    };
+    if (run.assistantMessageId === ownerMsgId) {
+      const liveIdx = run.children.findIndex((item) => item.id === childId);
+      const snapshot: CodeChild = { ...child, tools: child.tools.map((tool) => ({ ...tool })), spend: { ...child.spend } };
+      if (liveIdx >= 0) run.children[liveIdx] = snapshot;
+      else run.children.push(snapshot);
+      if (value.type === 'call_usage') addCallSpend(run.spend, value);
+    }
+    appStore.markChatDirty(chat.id);
+    if (value.type !== 'child_delta' && value.type !== 'assistant_delta') {
+      appStore.persist();
+    }
   }
 
   /** Mirror run state into the streaming assistant message of the chat. */

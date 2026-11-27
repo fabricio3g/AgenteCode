@@ -170,9 +170,17 @@ function readPropsFields(props: Record<string, unknown> | null): Record<string, 
 
 async function clearEmbeddingCacheSafe(): Promise<void> {
   try {
-    const embeddingClient = await import('./embedding-client.js');
+    const embeddingClient = await import('./embedding-client.ts');
     if (typeof embeddingClient.clearEmbeddingCache === 'function') {
       embeddingClient.clearEmbeddingCache();
+    }
+  } catch {
+    // ignore cache clear failures
+  }
+  try {
+    const ragEngine = await import('./rag-engine.ts');
+    if (typeof ragEngine.clearQueryEmbeddingCache === 'function') {
+      ragEngine.clearQueryEmbeddingCache();
     }
   } catch {
     // ignore cache clear failures
@@ -339,12 +347,14 @@ export async function startEmbeddingServer(config: Record<string, unknown>, _win
 
   const port = (config.embedding_port as number) || 11436;
   const args = buildEmbeddingArgs(config, systemInfo, runtimePath);
+  const modelPath = String(config.embedding_model_path);
+  const modelId = path.basename(modelPath);
 
   await embedding.start({
     binaryPath: runtimePath,
     args,
     healthPort: port,
-    statusFields: { state: 'starting', port }
+    statusFields: { state: 'starting', port, model_id: modelId, model_path: modelPath, dimension: null }
   });
   return 'started';
 }
@@ -363,7 +373,7 @@ export function cleanupLlm() {
   endLlamaSession();
   void clearEmbeddingCacheSafe();
   llamaStatus = { state: 'idle', model_id: null, model_path: null, runtime_path: null, port: null };
-  setEmbeddingStatus({ state: 'idle', port: null });
+  setEmbeddingStatus({ state: 'idle', port: null, model_id: null, model_path: null, dimension: null });
 }
 
 export async function getInstalledRuntimes() {

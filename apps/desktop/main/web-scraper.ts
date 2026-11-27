@@ -363,11 +363,23 @@ export function normalizeAbsoluteUrl(href, baseUrl) {
  * Delegate HTML/text page fetching and extraction to the Rust daemon (`web.fetch`),
  * which uses html5ever (`scraper`) + connect-time DNS SSRF validation.
  */
-async function tryRustWebFetch(url, maxLength, maxLinks) {
+async function tryRustWebFetch(url, maxLength, maxLinks, signal) {
+  if (signal?.aborted) return null;
   try {
     const { runtimeConnection } = await import('./agente/rust-engine.ts');
     const client = await runtimeConnection();
-    const page = await client.request('web.fetch', { url });
+    if (signal?.aborted) return null;
+    const req = client.request('web.fetch', { url });
+    const page = signal
+      ? await new Promise((resolve, reject) => {
+          const onAbort = () => reject(new DOMException('Scrape aborted', 'AbortError'));
+          signal.addEventListener('abort', onAbort, { once: true });
+          req.then(
+            (val) => { signal.removeEventListener('abort', onAbort); resolve(val); },
+            (err) => { signal.removeEventListener('abort', onAbort); reject(err); }
+          );
+        })
+      : await req;
     const raw = String(page?.text || '').trim();
     if (!raw) return null;
     const limit = optionalLimit(maxLength);
@@ -416,13 +428,16 @@ function buildReaderFallbackUrl(url) {
   }
 }
 
-async function fetchReaderFallback(url, maxLength, timeoutMs) {
+async function fetchReaderFallback(url, maxLength, timeoutMs, externalSignal) {
+  if (externalSignal?.aborted) return null;
   if (!(await assertSafePublicUrl(url))) return null;
+  if (externalSignal?.aborted) return null;
   const readerUrl = buildReaderFallbackUrl(url);
   if (!readerUrl) return null;
   try {
+    const timeout = AbortSignal.timeout(timeoutMs);
     const response = await fetch(readerUrl, {
-      signal: AbortSignal.timeout(timeoutMs),
+      signal: externalSignal ? AbortSignal.any([timeout, externalSignal]) : timeout,
       headers: {
         Accept: 'text/plain',
         'X-Return-Format': 'markdown',
@@ -497,8 +512,12 @@ export async function scrapeUrlStructured({
   maxLength,
   timeoutMs,
   maxLinks,
-  maxDownloadBytes
+  maxDownloadBytes,
+  signal: externalSignal
 } = {}) {
+  if (externalSignal?.aborted) {
+    throw new DOMException('Scrape aborted', 'AbortError');
+  }
   const normalizedUrl = String(url || '').trim();
   if (!(await assertSafePublicUrl(normalizedUrl))) {
     return {
@@ -507,6 +526,9 @@ export async function scrapeUrlStructured({
       status: 0,
       quality: 'blocked'
     };
+  }
+  if (externalSignal?.aborted) {
+    throw new DOMException('Scrape aborted', 'AbortError');
   }
 
   const safeTimeout = clampNumber(timeoutMs, 1000, 60000, DEFAULT_TIMEOUT_MS);
@@ -523,10 +545,14 @@ export async function scrapeUrlStructured({
   // which runs html5ever extraction + connect-time DNS SSRF validation.
   const lowerUrl = normalizedUrl.toLowerCase();
   if (!lowerUrl.endsWith('.pdf') && !lowerUrl.endsWith('.docx')) {
-    const rustPage = await tryRustWebFetch(normalizedUrl, safeMaxLength, maxLinks);
+    const rustPage = await tryRustWebFetch(normalizedUrl, safeMaxLength, maxLinks, externalSignal);
+    if (externalSignal?.aborted) {
+      throw new DOMException('Scrape aborted', 'AbortError');
+    }
     if (rustPage) {
       if (rustPage.quality !== 'ok') {
-        const fallback = await fetchReaderFallback(rustPage.url, safeMaxLength, Math.min(safeTimeout, 20000));
+        const fallback = await fetchReaderFallback(rustPage.url, safeMaxLength, Math.min(safeTimeout, 20000), externalSignal);
+        if (externalSignal?.aborted) throw new DOMException('Scrape aborted', 'AbortError');
         if (fallback && fallback.content.length > rustPage.content.length) return fallback;
       }
       return rustPage;
@@ -542,7 +568,8 @@ export async function scrapeUrlStructured({
 
   let response;
   let currentUrl = normalizedUrl;
-  const signal = AbortSignal.timeout(safeTimeout);
+  const timeoutSignal = AbortSignal.timeout(safeTimeout);
+  const signal = externalSignal ? AbortSignal.any([timeoutSignal, externalSignal]) : timeoutSignal;
   try {
     for (let hop = 0; hop <= MAX_REDIRECT_HOPS; hop += 1) {
       response = await fetch(currentUrl, {
@@ -615,7 +642,8 @@ export async function scrapeUrlStructured({
     // Reader fallback only for HTML-ish pages, not binary document URLs
     const kindGuess = detectDocumentKind(finalUrl, response.headers.get('content-type') || '');
     if (kindGuess === 'html' || kindGuess === 'unknown' || kindGuess === 'text') {
-      const fallback = await fetchReaderFallback(finalUrl, safeMaxLength, Math.min(safeTimeout, 20000));
+      const fallback = await fetchReaderFallback(finalUrl, safeMaxLength, Math.min(safeTimeout, 20000), externalSignal);
+      if (externalSignal?.aborted) throw new DOMException('Scrape aborted', 'AbortError');
       if (fallback) return fallback;
     }
     return { error, status: response.status, url: finalUrl, quality: quality.quality, warning: quality.warning };
@@ -750,7 +778,8 @@ export async function scrapeUrlStructured({
 
   // HTML fallback when the Rust daemon is unavailable (e.g., standalone unit tests):
   // prefer reader fallback, else strip tags to plain text.
-  const fallback = await fetchReaderFallback(finalUrl, safeMaxLength, Math.min(safeTimeout, 20000));
+  const fallback = await fetchReaderFallback(finalUrl, safeMaxLength, Math.min(safeTimeout, 20000), externalSignal);
+  if (externalSignal?.aborted) throw new DOMException('Scrape aborted', 'AbortError');
   if (fallback) return fallback;
   const plainText = bodyText
     .replace(/<script[\s\S]*?<\/script>/gi, ' ')

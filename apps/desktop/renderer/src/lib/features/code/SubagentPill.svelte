@@ -28,7 +28,7 @@
   let { chat }: { chat: ChatSession } = $props();
 
   const run = $derived(codeStore.runFor(chat.id));
-  const children = $derived(composerChildren(run));
+  const children = $derived(composerChildren(run, chat.messages));
   const working = $derived(children.filter((child) => child.status === 'running').length);
 
   let hovered = $state(false);

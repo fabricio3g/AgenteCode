@@ -119,6 +119,57 @@ function linkChild(state: CodeRunState, child: CodeChild, description: string): 
   if (step) step.subagentId = child.id;
 }
 
+type ChildRuntimeEvent = Extract<CodeAgentEvent, { type: 'runtime_event' }>['event'];
+
+/**
+ * Apply one runtime event to a specific child record. Used both for live
+ * turns in `applyRuntimeEvent` and for late background child updates routed
+ * back to an earlier turn's persisted message.
+ */
+export function applyChildRuntimeEvent(
+  child: CodeChild,
+  value: ChildRuntimeEvent,
+  childToolStepIds?: Map<string, Map<string, string>>
+): boolean {
+  switch (value.type) {
+    case 'child_started':
+      Object.assign(child, { kind: value.kind, description: value.description, status: 'running', model: value.model, seat: value.seat ?? undefined });
+      return true;
+    case 'assistant_delta':
+    case 'child_delta':
+      child.text += value.text;
+      return true;
+    case 'child_tool': {
+      const byChild = childToolStepIds ?? new Map<string, Map<string, string>>();
+      let ids = byChild.get(child.id);
+      if (!ids) { ids = new Map(); byChild.set(child.id, ids); }
+      const callId = invocationId(child.tools, value.call_id, ids, !!value.name && !value.finished);
+      let tool = child.tools.find((item) => item.id === callId);
+      if (!tool) {
+        tool = { id: callId, name: value.name, output: '', status: 'running' };
+        child.tools.push(tool);
+      }
+      if (value.name) tool.name = value.name;
+      tool.output = value.finished || value.name ? value.content : (tool.output + value.content).slice(-32_768);
+      tool.status = value.finished ? (value.is_error ? 'error' : 'done') : 'running';
+      return true;
+    }
+    case 'child_finished':
+    case 'child_completed_notice':
+      Object.assign(child, {
+        summary: value.summary,
+        status: value.type === 'child_finished' ? (value.is_error ? 'error' : 'done') : (value.status === 'completed' ? 'done' : 'error')
+      });
+      child.finishedAt ??= Date.now();
+      return true;
+    case 'call_usage':
+      addCallSpend(child.spend, value);
+      return true;
+    default:
+      return false;
+  }
+}
+
 function applyRuntimeEvent(state: CodeRunState, event: Extract<CodeAgentEvent, { type: 'runtime_event' }>): boolean {
   const value = event.event;
   const id = event.parentRunId || ('run_id' in value ? value.run_id : undefined);
@@ -134,44 +185,25 @@ function applyRuntimeEvent(state: CodeRunState, event: Extract<CodeAgentEvent, {
       state.preparing = null;
       return false;
     case 'child_started':
-      Object.assign(child!, { kind: value.kind, description: value.description, status: 'running', model: value.model, seat: value.seat ?? undefined });
+      applyChildRuntimeEvent(child!, value);
       // One spawn, one row: hand the child to the `task` step that asked for it,
       // so the transcript draws its card there instead of a generic tool row.
       linkChild(state, child!, value.description);
       return true;
     case 'assistant_delta':
       if (!child) return false;
-      child.text += value.text;
-      return true;
+      return applyChildRuntimeEvent(child, value);
     case 'child_delta':
-      child!.text += value.text;
-      return true;
-    case 'child_tool': {
-      const byChild = state.childToolStepIds ??= new Map();
-      let ids = byChild.get(child!.id);
-      if (!ids) { ids = new Map(); byChild.set(child!.id, ids); }
-      const callId = invocationId(child!.tools, value.call_id, ids, !!value.name && !value.finished);
-      let tool = child!.tools.find((item) => item.id === callId);
-      if (!tool) {
-        tool = { id: callId, name: value.name, output: '', status: 'running' };
-        child!.tools.push(tool);
-      }
-      if (value.name) tool.name = value.name;
-      tool.output = value.finished || value.name ? value.content : (tool.output + value.content).slice(-32_768);
-      tool.status = value.finished ? (value.is_error ? 'error' : 'done') : 'running';
-      return true;
-    }
     case 'child_finished':
     case 'child_completed_notice':
-      Object.assign(child!, { summary: value.summary, status: value.type === 'child_finished' ? (value.is_error ? 'error' : 'done') : (value.status === 'completed' ? 'done' : 'error') });
-      child!.finishedAt ??= Date.now();
-      return true;
+      return applyChildRuntimeEvent(child!, value);
+    case 'child_tool':
+      return applyChildRuntimeEvent(child!, value, state.childToolStepIds ??= new Map());
     case 'call_usage': {
       if (!child && state.phase === 'compacting') state.compactionTokens = (state.compactionTokens ?? 0) + value.usage.prompt_tokens + value.usage.completion_tokens + value.usage.cache_read_tokens + value.usage.cache_creation_tokens;
       // The session includes its children; a child also keeps its own subtotal.
-      for (const spend of child ? [state.spend, child.spend] : [state.spend]) {
-        addCallSpend(spend, value);
-      }
+      addCallSpend(state.spend, value);
+      if (child) applyChildRuntimeEvent(child, value);
       return true;
     }
     case 'diagnostic':
@@ -738,20 +770,26 @@ export function applyCodeAgentEvent(state: CodeRunState, event: CodeAgentEvent):
       stopRunClock(state);
       state.retrying = null;
       state.preparing = null;
-      // A still-running step or child at the end of a run only means failure if
-      // the run itself failed; on success it was simply never closed out.
+      // A still-running step at the end of a run only means failure if the
+      // run itself failed; on success it was simply never closed out.
+      // Background subagents can outlive a normal parent turn and settle later
+      // via `child_finished` / `child_completed_notice`, so only force-close
+      // running children when the parent run failed or was aborted.
       const terminalStatus = state.error ? 'error' : 'done';
+      const abortedOrFailed = !!state.error || event.stopReason === 'error' || event.stopReason === 'aborted';
       const now = Date.now();
       for (const step of state.steps) {
         if (step.status === 'running') step.status = terminalStatus;
       }
-      for (const child of state.children) {
-        if (child.status === 'running') {
-          child.status = terminalStatus;
-          child.finishedAt ??= now;
-        }
-        for (const tool of child.tools) {
-          if (tool.status === 'running') tool.status = terminalStatus;
+      if (abortedOrFailed) {
+        for (const child of state.children) {
+          if (child.status === 'running') {
+            child.status = 'error';
+            child.finishedAt ??= now;
+          }
+          for (const tool of child.tools) {
+            if (tool.status === 'running') tool.status = 'error';
+          }
         }
       }
       return true;

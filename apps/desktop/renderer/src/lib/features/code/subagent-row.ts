@@ -129,9 +129,25 @@ export function sessionChildren(messages: ReadonlyArray<{ metadata?: { codeChild
 }
 
 /** Keep history in the transcript and any known active children at the composer. */
-export function composerChildren(run: { running: boolean; children: CodeChild[] } | null): CodeChild[] {
-  if (!run) return [];
-  return run.running ? run.children : run.children.filter((child) => child.status === 'running');
+export function composerChildren(
+  run: { running: boolean; children: CodeChild[] } | null,
+  messages: ReadonlyArray<{ metadata?: { codeChildren?: CodeChild[] } }> = []
+): CodeChild[] {
+  const byId = new Map<string, CodeChild>();
+  for (const message of messages) {
+    for (const child of message.metadata?.codeChildren ?? []) {
+      if (child.status === 'running') byId.set(child.id, child);
+    }
+  }
+  if (run?.running) {
+    for (const child of run.children) byId.set(child.id, child);
+  } else {
+    for (const child of run?.children ?? []) {
+      if (child.status === 'running') byId.set(child.id, child);
+      else byId.delete(child.id);
+    }
+  }
+  return [...byId.values()];
 }
 
 export interface SubagentDisplay {

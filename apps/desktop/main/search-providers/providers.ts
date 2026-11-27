@@ -37,7 +37,8 @@ export async function searchJina(query: string, maxResults: number, options: Rec
   }
   const resp = await fetchWithRetry(url, {
     headers,
-    timeout_ms: 20000
+    timeout_ms: 20000,
+    signal: options?.signal
   });
   const text = await resp.text();
   return parseSearchResultsFromText('jina', text, maxResults, url);
@@ -52,7 +53,8 @@ export async function searchYouCom(query: string, maxResults: number, options: R
   url.searchParams.set('max_num_results', String(maxResults));
   const resp = await fetchWithRetry(url.toString(), {
     headers: { 'X-API-Key': apiKey, Accept: 'application/json' },
-    timeout_ms: 20000
+    timeout_ms: 20000,
+    signal: options?.signal
   });
   const data = await resp.json() as Record<string, unknown>;
   const items = pickFirstArray(data, ['hits', 'results', 'web_results']);
@@ -80,6 +82,7 @@ export async function searchPerplexity(query: string, maxResults: number, option
       Accept: 'application/json'
     },
     timeout_ms: 25000,
+    signal: options?.signal,
     body: JSON.stringify({
       model,
       messages: [

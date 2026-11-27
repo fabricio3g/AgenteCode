@@ -117,8 +117,12 @@ export async function crawlWeb({
   mode = 'deep',
   seed_urls,
   context_budget_chars,
-  emit
+  emit,
+  signal
 } = {}, deps = {}) {
+  if (signal?.aborted) {
+    throw new DOMException('Crawl aborted', 'AbortError');
+  }
   const modeConfig = mode === 'max' ? MODE_CONFIG.max : MODE_CONFIG.deep;
   const budgetChars = clampNumber(
     context_budget_chars,
@@ -168,6 +172,9 @@ export async function crawlWeb({
   }
 
   while (queue.length && pages.length < modeConfig.maxPages && attempts < maxAttempts) {
+    if (signal?.aborted) {
+      throw new DOMException('Crawl aborted', 'AbortError');
+    }
     const next = queue.shift();
     if (!next) break;
     queued.delete(next.url);
@@ -184,10 +191,17 @@ export async function crawlWeb({
         url: next.url,
         maxLength: modeConfig.maxCharsPerPage,
         timeoutMs: 18000,
-        maxLinks: 120
+        maxLinks: 120,
+        signal
       });
     } catch {
+      if (signal?.aborted) {
+        throw new DOMException('Crawl aborted', 'AbortError');
+      }
       scraped = null;
+    }
+    if (signal?.aborted) {
+      throw new DOMException('Crawl aborted', 'AbortError');
     }
 
     if (!scraped || scraped.error || !normalizeWhitespace(scraped.content)) {

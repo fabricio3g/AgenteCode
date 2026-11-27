@@ -81,7 +81,7 @@
   $effect(() => { void swarmStore.load(chatId).catch(() => {}); });
   /** Subagents working a board card: the swarm block draws them, not the tally line. */
   const swarmChildIds = $derived(new Set((swarmStore.boardFor(chatId)?.cards ?? []).map((card) => card.child_id).filter((id): id is string => !!id)));
-  const dockedChildren = $derived(new Set(liveSubagentDock ? composerChildren(run).map((child) => child.id) : []));
+  const dockedChildren = $derived(new Set(liveSubagentDock ? composerChildren(run, messages).map((child) => child.id) : []));
   const plan = $derived(pendingPlan(messages));
 
   /* Undo reverts the latest edits, so only the last reply that edited offers it. */

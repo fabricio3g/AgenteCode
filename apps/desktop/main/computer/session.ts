@@ -98,6 +98,9 @@ export class ComputerSession {
     this.state = { ...this.state, phase: 'preparing', activity: 'Preparing computer control', canResume: false };
     this.publish();
     try {
+      await this.platform.ready();
+      signal.throwIfAborted();
+      if (revision !== this.revision || this.state.phase !== 'preparing') throw new Error('Computer control was revoked.');
       await this.platform.arm(lease);
       signal.throwIfAborted();
       if (revision !== this.revision || this.state.phase !== 'preparing') throw new Error('Computer control was revoked.');
@@ -128,12 +131,24 @@ export class ComputerSession {
     this.pendingAction = true;
     try { return await fn(); } finally { this.pendingAction = false; }
   }
+  invalidateObservation() {
+    this.observation = undefined;
+  }
   async observe(owner: ComputerOwner, signal: AbortSignal) {
     return this.serial(async () => {
       await this.active(owner, signal);
       const generation = this.generation;
+      this.observation = undefined;
       this.state.activity = 'Looking at the desktop'; this.publish();
-      const observation = await this.platform.observe();
+      let observation: ComputerObservation;
+      try {
+        observation = await this.platform.observe();
+      } catch (error) {
+        if (this.state.phase === 'active' && this.generation === generation) {
+          this.takeover('capture_failed');
+        }
+        throw error;
+      }
       this.verify(owner, generation, signal);
       this.observation = observation;
       return observation;

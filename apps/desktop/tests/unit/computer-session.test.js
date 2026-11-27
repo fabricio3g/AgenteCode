@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { ComputerSession, ComputerActionRejected } from '../../main/computer/session.ts';
+import { classifyDisplayChange, computePhysicalRect, mapObservationPoint } from '../../main/computer/geometry.ts';
 
 const signal = () => new AbortController().signal;
 function deferred() { let resolve; const promise = new Promise(done => { resolve = done; }); return { promise, resolve }; }
@@ -134,4 +135,96 @@ test('takeover during native arming cannot show an active session afterwards', a
   await new Promise(resolve => setImmediate(resolve));
   session.takeover('escape'); armed.resolve();
   await assert.rejects(() => pending, /revoked/); assert.equal(session.state.phase, 'paused'); session.end();
+});
+
+test('resume after helper disconnect re-runs ready() before arming the fresh helper', async () => {
+  const order = [];
+  const { session, owner, calls } = setup({
+    ready: async () => { order.push('ready'); },
+    arm: async (lease) => { order.push(`arm:${lease}`); calls.arm.push(lease); },
+  });
+  await session.request(owner, 'Test app', signal());
+  session.takeover('helper_disconnected');
+  assert.equal(session.state.phase, 'paused');
+  assert.equal(session.state.reason, 'helper_disconnected');
+
+  session.settled(owner.sessionId, owner.turnId);
+  session.resume();
+  const next = { ...owner, turnId: 'turn-b' };
+  session.attach(next);
+  const fresh = await session.observe(next, signal());
+  await session.act(next, fresh.id, { kind: 'click', x: 20, y: 20 }, signal());
+  assert.equal(order[0], 'ready');
+  const arm1Idx = order.indexOf('arm:1');
+  const arm3Idx = order.indexOf('arm:3');
+  assert.ok(arm1Idx > 0);
+  assert.ok(arm3Idx > arm1Idx);
+  assert.ok(order.slice(arm1Idx + 1, arm3Idx).includes('ready'));
+  assert.equal(calls.actions, 1);
+  session.end();
+});
+
+test('capture failure clears the observation and pauses the session with capture_failed', async () => {
+  let failCapture = false;
+  const { session, owner, calls } = setup({
+    observe: async () => {
+      if (failCapture) throw new Error('No screen image is available.');
+      calls.captures++;
+      return { id: 'shot-1', width: 800, height: 600, displayId: '1', capturedAt: Date.now(), image: { data: '', mimeType: 'image/jpeg' } };
+    },
+  });
+  await session.request(owner, 'Test app', signal());
+  const shot = await session.observe(owner, signal());
+  failCapture = true;
+  await assert.rejects(() => session.observe(owner, signal()), /No screen image/);
+  assert.equal(session.state.phase, 'paused');
+  assert.equal(session.state.reason, 'capture_failed');
+  assert.equal(calls.revoke, 1);
+  assert.equal(calls.stop, 1);
+  await assert.rejects(() => session.act(owner, shot.id, { kind: 'click', x: 10, y: 10 }, signal()), /control_revoked/);
+  session.end();
+});
+
+test('unrelated display changes do not revoke control while active display changes do', () => {
+  const active = {
+    displayId: 1,
+    bounds: { x: 0, y: 0, width: 1920, height: 1080 },
+    scale: 1.5,
+    physical: { x: 0, y: 0, width: 2880, height: 1620 },
+  };
+  const primary = { id: 1, bounds: active.bounds, scaleFactor: 1.5 };
+  const secondary = { id: 2, bounds: { x: 1920, y: 0, width: 1280, height: 720 }, scaleFactor: 1 };
+
+  assert.equal(classifyDisplayChange(active, 'added', [primary, secondary]), 'invalidate');
+  assert.equal(classifyDisplayChange(active, 'removed', [primary]), 'invalidate');
+  assert.equal(classifyDisplayChange(active, 'metrics', [primary, secondary], 2, ['bounds', 'scaleFactor']), 'ignore');
+  assert.equal(classifyDisplayChange(active, 'metrics', [primary], 1, ['workArea']), 'ignore');
+  assert.equal(classifyDisplayChange(active, 'metrics', [primary], 1, ['rotation']), 'takeover');
+  assert.equal(classifyDisplayChange(active, 'removed', [secondary]), 'takeover');
+  assert.equal(
+    classifyDisplayChange(active, 'metrics', [{ id: 1, bounds: active.bounds, scaleFactor: 2 }], 1, ['scaleFactor']),
+    'takeover',
+  );
+});
+
+test('mixed-DPI and capped ultra-wide screenshot coordinates map within physical display bounds', () => {
+  // Ultra-wide 5120x1440 at 1x capped to 4096x1152 on a negative-x secondary monitor at 125% DPI.
+  const bounds = { x: -4096, y: 0, width: 4096, height: 1152 };
+  const physical = computePhysicalRect(bounds, (pt) => ({
+    x: Math.round(pt.x * 1.25),
+    y: Math.round(pt.y * 1.25),
+  }));
+  const observation = { width: 4096, height: 1152 };
+
+  const topLeft = mapObservationPoint(0, 0, observation, physical);
+  assert.deepEqual(topLeft, { x: physical.x, y: physical.y });
+
+  const bottomRight = mapObservationPoint(observation.width - 1, observation.height - 1, observation, physical);
+  assert.deepEqual(bottomRight, {
+    x: physical.x + physical.width - 1,
+    y: physical.y + physical.height - 1,
+  });
+
+  assert.equal(mapObservationPoint(observation.width, 0, observation, physical), null);
+  assert.equal(mapObservationPoint(-1, 0, observation, physical), null);
 });

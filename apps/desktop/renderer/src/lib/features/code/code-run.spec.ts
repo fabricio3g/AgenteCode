@@ -484,3 +484,19 @@ it('keeps each invocation when a subagent reuses a provider tool ID',()=>{
   ]);
   expect(state.children[0]!.tools.map(tool=>tool.output)).toEqual(['A result','B result']);
 });
+
+it('leaves running background children open on normal agent_end and closes them on error or abort', () => {
+  const normal = run([
+    { type: 'runtime_event', chatId: 'c', event: { type: 'child_started', run_id: 'bg-1', kind: 'explore', description: 'Background task', model: 'test' } },
+    { type: 'agent_end', chatId: 'c', stopReason: 'stop' }
+  ]);
+  expect(normal.children[0]!.status).toBe('running');
+  expect(normal.children[0]!.finishedAt).toBeUndefined();
+
+  const failed = run([
+    { type: 'runtime_event', chatId: 'c', event: { type: 'child_started', run_id: 'bg-2', kind: 'explore', description: 'Aborted task', model: 'test' } },
+    { type: 'agent_end', chatId: 'c', stopReason: 'aborted' }
+  ]);
+  expect(failed.children[0]!.status).toBe('error');
+  expect(failed.children[0]!.finishedAt).toBeTypeOf('number');
+});

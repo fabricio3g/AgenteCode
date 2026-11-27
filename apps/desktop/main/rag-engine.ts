@@ -3,8 +3,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { getAppPaths } from './paths.ts';
 import { getEmbedding, getEmbeddings } from './embedding-client.ts';
+import { getEmbeddingModelKey } from './embedding-state.ts';
 import { rerankChunks } from './reranker.ts';
-import { vectorStore } from './vector-store.ts';
+import { vectorStore, type VectorModelSpace } from './vector-store.ts';
 import { loadConfig } from './config.ts';
 import { storeAttachmentFile } from './attachment-store.ts';
 import { extractIngestionText, type IngestionText } from './document-ingestion.ts';
@@ -95,8 +96,48 @@ function getRagRuntimeSettings() {
   }
 }
 
-function queryEmbeddingCacheKey(query: string, chatId: string): string {
-  return `${requireChatId(chatId)}:${String(query || '').trim().toLowerCase()}`;
+export function clearQueryEmbeddingCache(): void {
+  queryEmbeddingCache.clear();
+}
+
+function queryEmbeddingCacheKey(query: string, chatId: string, modelKey = getEmbeddingModelKey()): string {
+  return `${modelKey}:${requireChatId(chatId)}:${String(query || '').trim().toLowerCase()}`;
+}
+
+function currentSpaceFor(vector: ArrayLike<number>): VectorModelSpace {
+  return { modelId: getEmbeddingModelKey(), dimension: vector.length, version: 1 };
+}
+
+const pendingSpaceRebuilds = new Map<string, Promise<void>>();
+
+function scheduleModelSpaceRebuild(docIds: string[], space: VectorModelSpace): void {
+  for (const docId of docIds) {
+    const key = `${space.modelId}:${space.dimension}:${space.version ?? 1}:${docId}`;
+    if (pendingSpaceRebuilds.has(key)) continue;
+    const task = (async () => {
+      try {
+        const stored = findStoredDocument(docId);
+        if (!stored) return;
+        const indexable = stored.chunks.filter((chunk) => searchableText(chunk as { text: string; heading?: string }).trim()) as Array<{ id: string; text: string; index: number; heading?: string; line_start?: number; line_end?: number }>;
+        if (!indexable.length) return;
+        const embeddings = await getEmbeddings(indexable.map((chunk) => searchableText(chunk)), { modelId: space.modelId }).catch(() => null);
+        const embeddedCount = embeddings ? embeddings.filter((vec) => vec && vec.length === space.dimension).length : 0;
+        if (!embeddedCount) return;
+        await vectorStore.addChunks(stored.chatId, stored.doc as { id: string; source?: string; file_type?: string }, indexable, embeddings!, space);
+        Object.assign(stored.doc, {
+          embedded_chunks: embeddedCount,
+          embedding_status: embeddedCount === indexable.length ? 'complete' : 'partial',
+          embedding_model_id: space.modelId,
+          embedding_dim: space.dimension
+        });
+      } catch (err: unknown) {
+        log.warn('Background vector rebuild failed:', toErrorMessage(err));
+      } finally {
+        pendingSpaceRebuilds.delete(key);
+      }
+    })();
+    pendingSpaceRebuilds.set(key, task);
+  }
 }
 
 function setQueryEmbeddingCache(key: string, embedding: number[] | null | undefined): void {
@@ -123,25 +164,39 @@ function getQueryEmbeddingCache(key: string): number[] | null {
   return cached.embedding;
 }
 
-async function getCachedQueryEmbedding(query: string, chatId: string): Promise<number[] | null> {
+async function getCachedQueryEmbedding(query: string, chatId: string): Promise<Float32Array | number[] | null> {
   const key = queryEmbeddingCacheKey(query, chatId);
   const fromCache = getQueryEmbeddingCache(key);
   if (fromCache) return fromCache;
   const embedding = await getEmbedding(query);
-  if (embedding) setQueryEmbeddingCache(key, embedding);
+  if (embedding) setQueryEmbeddingCache(key, Array.from(embedding));
   return embedding;
 }
 
-async function indexRecordEmbeddings(chatId: string, record: { doc: Record<string, unknown>; chunks: Array<{ text: string; heading?: string }> }): Promise<void> {
-  if (!record.chunks.some((chunk) => searchableText(chunk).trim())) return;
+async function indexRecordEmbeddings(chatId: string, record: { doc: Record<string, unknown>; chunks: Array<{ id: string; text: string; index: number; heading?: string; line_start?: number; line_end?: number }> }): Promise<void> {
+  const indexable = record.chunks.filter((chunk) => searchableText(chunk).trim());
+  if (!indexable.length) return;
   // The heading trail is embedded with the text: "Page 3 › Results" is context the
-  // chunk body alone does not carry. Order must match `record.chunks` for addChunks.
-  const chunkTexts = record.chunks.map((chunk) => searchableText(chunk));
+  // chunk body alone does not carry. Order must match `indexable` for addChunks.
+  const chunkTexts = indexable.map((chunk) => searchableText(chunk));
 
   await ensureRagEmbeddingRuntime().catch(() => {});
 
   const embeddings = await getEmbeddings(chunkTexts).catch(() => null);
-  if (!embeddings) return;
+  const firstValid = embeddings?.find((vec) => vec && vec.length > 0);
+  const embeddedCount = embeddings ? embeddings.filter((vec) => vec && vec.length > 0).length : 0;
+  if (!firstValid || !embeddedCount) {
+    Object.assign(record.doc, { embedded_chunks: 0, embedding_status: 'none' });
+    return;
+  }
+
+  const space = currentSpaceFor(firstValid);
+  Object.assign(record.doc, {
+    embedded_chunks: embeddedCount,
+    embedding_status: embeddedCount === indexable.length ? 'complete' : 'partial',
+    embedding_model_id: space.modelId,
+    embedding_dim: space.dimension
+  });
 
   if (!vectorStoreReady) {
     await ensureVectorStore().catch(() => {});
@@ -149,7 +204,8 @@ async function indexRecordEmbeddings(chatId: string, record: { doc: Record<strin
   if (!vectorStoreReady) return;
 
   try {
-    await vectorStore.addChunks(chatId, record.doc, record.chunks, embeddings);
+    vectorStore.setModelSpace(space);
+    await vectorStore.addChunks(chatId, record.doc as { id: string; source?: string; file_type?: string }, indexable, embeddings!, space);
   } catch (err: unknown) {
     log.warn('LanceDB addChunks failed:', toErrorMessage(err));
   }
@@ -448,8 +504,11 @@ async function adoptStoredDocument(docId: string, chatId: string): Promise<Recor
     if (!hasVectors) {
       const indexable = found.chunks.filter((chunk) => searchableText(chunk as { text: string; heading?: string }).trim()) as Array<{ id: string; text: string; index: number; heading?: string; line_start?: number; line_end?: number }>;
       const embeddings = await getEmbeddings(indexable.map((chunk) => searchableText(chunk))).catch(() => null);
-      if (embeddings) {
-        await vectorStore.addChunks(chatId, found.doc, indexable, embeddings).catch((err: unknown) => {
+      const firstValid = embeddings?.find((vec) => vec && vec.length > 0);
+      if (embeddings && firstValid) {
+        const space = currentSpaceFor(firstValid);
+        vectorStore.setModelSpace(space);
+        await vectorStore.addChunks(chatId, found.doc as { id: string; source?: string; file_type?: string }, indexable, embeddings, space).catch((err: unknown) => {
           log.warn('Re-embedding a shared document failed:', toErrorMessage(err));
         });
       }
@@ -565,15 +624,31 @@ async function queryDocumentsHybrid({ query, chat_id, top_k, scope, files, file_
     const queryEmbedding = await getCachedQueryEmbedding(query, chatId);
     if (vectorStoreReady && queryEmbedding) {
       try {
+        const space = currentSpaceFor(queryEmbedding);
         const docIds = [...new Set(hits.map((hit) => String(hit.chunk.doc_id)))];
-        const rows = await vectorStore.search(docIds, queryEmbedding, Math.max(k * 4, 20));
-        for (const row of rows) vectorById.set(String(row.id), row._distance != null ? Math.max(0, 1 - row._distance) : 0);
-        retrieval = 'hybrid';
+        const hasFlags = await Promise.all(docIds.map((id) => vectorStore.hasVectors(id, space).catch(() => false)));
+        const readyDocIds = docIds.filter((_, idx) => hasFlags[idx]);
+        const missingDocIds = docIds.filter((_, idx) => !hasFlags[idx]);
+
+        if (readyDocIds.length > 0) {
+          const rows = await vectorStore.search(readyDocIds, queryEmbedding, Math.max(k * 4, 20), space);
+          for (const row of rows) vectorById.set(String(row.id), row._distance != null ? Math.max(0, 1 - Number(row._distance)) : 0);
+          retrieval = 'hybrid';
+          if (missingDocIds.length > 0) {
+            scheduleModelSpaceRebuild(missingDocIds, space);
+            notice = 'Some documents are being updated for the active embedding model; combining available semantic and keyword results.';
+          } else if (hits.some((hit) => hit.doc.embedding_status === 'partial')) {
+            notice = 'Some documents have partial vector coverage; combining available semantic and keyword results.';
+          }
+        } else {
+          scheduleModelSpaceRebuild(docIds, space);
+          notice = 'Embedding model changed or vectors incomplete for this model space; using keyword search while updating vectors.';
+        }
       } catch (err: unknown) {
         log.warn('LanceDB search failed, using keyword scoring:', toErrorMessage(err));
       }
     }
-    if (retrieval === 'keyword') {
+    if (retrieval === 'keyword' && !notice) {
       notice = 'Semantic search unavailable (embedding model not installed or not running); results are keyword matches only.';
     }
   }

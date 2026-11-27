@@ -5,7 +5,7 @@ import {
   isMedicalResearchQuery
 } from '$lib/services/agent-prompts';
 import { listen, invoke, isElectron } from '$lib/services/bridge';
-import { webSearch } from '$lib/services/search';
+import { cancelSearchOperations, webSearch } from '$lib/services/search';
 import { sourceIdentity } from '$lib/services/research-artifacts';
 import { createId } from '$lib/utils/id';
 import { safeParse, normalizeWhitespace } from '$lib/utils/storage';
@@ -386,6 +386,38 @@ class DeepResearchStore {
   private controllers = new Map<string, AbortController>();
   private waiters = new Map<string, { resolve: (task: DeepResearchTask) => void; reject: (error: unknown) => void }>();
   private inputWaiters = new Map<string, { resolve: (answers: Record<string, string>) => void }>();
+  private taskOperations = new Map<string, Set<string>>();
+  private operationToTask = new Map<string, string>();
+
+  private registerOperation(taskId: string): string {
+    const operationId = createId('searchop');
+    let ops = this.taskOperations.get(taskId);
+    if (!ops) {
+      ops = new Set();
+      this.taskOperations.set(taskId, ops);
+    }
+    ops.add(operationId);
+    this.operationToTask.set(operationId, taskId);
+    return operationId;
+  }
+
+  private unregisterOperation(taskId: string, operationId: string): void {
+    this.operationToTask.delete(operationId);
+    const ops = this.taskOperations.get(taskId);
+    if (ops) {
+      ops.delete(operationId);
+      if (ops.size === 0) this.taskOperations.delete(taskId);
+    }
+  }
+
+  private clearTaskOperations(taskId: string): string[] {
+    const ops = this.taskOperations.get(taskId);
+    if (!ops) return [];
+    const list = [...ops];
+    this.taskOperations.delete(taskId);
+    for (const opId of list) this.operationToTask.delete(opId);
+    return list;
+  }
 
   private getTask(taskId: string | null | undefined): DeepResearchTask | null {
     if (!taskId) return null;
@@ -419,9 +451,10 @@ class DeepResearchStore {
     this.initialized = true;
     if (!isElectron()) return;
 
-    void listen<{ step: string; detail: string }>('search-progress', (payload) => {
-      if (!this.activeTaskId) return;
-      this.appendProgress(this.activeTaskId, payload.step, payload.detail);
+    void listen<{ step: string; detail: string; operationId?: string }>('search-progress', (payload) => {
+      const targetTaskId = payload.operationId ? this.operationToTask.get(payload.operationId) : undefined;
+      if (!targetTaskId) return;
+      this.appendProgress(targetTaskId, payload.step, payload.detail);
     }).then((dispose) => {
       this.unlisten = dispose;
     }).catch(() => {
@@ -619,7 +652,16 @@ class DeepResearchStore {
 
       const searchResults = await raceWithAbort(
         Promise.allSettled(
-          allQueries.map((query) => searchWithFallback(query, entryMode(taskId, this.tasks), task?.conversationContext, signal))
+          allQueries.map((query) =>
+            searchWithFallback(
+              query,
+              entryMode(taskId, this.tasks),
+              task?.conversationContext,
+              signal,
+              () => this.registerOperation(taskId),
+              (opId) => this.unregisterOperation(taskId, opId)
+            )
+          )
         ),
         signal
       );
@@ -665,6 +707,7 @@ class DeepResearchStore {
       }));
 
       const crawlSeeds = dedupedResults.map((item) => item.url).filter(Boolean).slice(0, task.mode === 'max' ? 16 : 8);
+      const crawlOpId = this.registerOperation(taskId);
       const crawl = await raceWithAbort(
         invoke<{
           results: SearchResult[];
@@ -679,10 +722,11 @@ class DeepResearchStore {
           query: enhancedQuery,
           context: task.conversationContext,
           mode: task.mode,
-          seed_urls: crawlSeeds
+          seed_urls: crawlSeeds,
+          operationId: crawlOpId
         }),
         signal
-      );
+      ).finally(() => this.unregisterOperation(taskId, crawlOpId));
 
       if (signal.aborted || this.getTask(taskId)?.status === 'cancelled') return;
 
@@ -750,6 +794,7 @@ class DeepResearchStore {
       });
       this.settleTask(taskId, failedTask!, error);
     } finally {
+      this.clearTaskOperations(taskId);
       this.controllers.delete(taskId);
       if (this.activeTaskId === taskId) this.activeTaskId = null;
       this.processing = false;
@@ -761,6 +806,10 @@ class DeepResearchStore {
     const task = this.getTask(taskId);
     if (!task) return;
     this.queue = this.queue.filter((id) => id !== taskId);
+    const ops = this.clearTaskOperations(taskId);
+    if (ops.length) {
+      void cancelSearchOperations(ops).catch(() => {});
+    }
     const controller = this.controllers.get(taskId);
     if (controller) {
       this.controllers.delete(taskId);
@@ -887,9 +936,36 @@ function isAuthFailure(searchError: unknown) {
     || text.includes('authentication');
 }
 
-async function searchWithFallback(query: string, mode: 'deep' | 'max', context?: string, signal?: AbortSignal) {
-  signal?.throwIfAborted();
-  const primary = await raceWithAbort(webSearch({ query, context, deep: true, mode }), signal);
+async function searchWithFallback(
+  query: string,
+  mode: 'deep' | 'max',
+  context?: string,
+  signal?: AbortSignal,
+  registerOp?: () => string,
+  unregisterOp?: (opId: string) => void
+) {
+  const runSearch = async (extraOptions?: Record<string, unknown>) => {
+    signal?.throwIfAborted();
+    const operationId = registerOp ? registerOp() : undefined;
+    try {
+      return await raceWithAbort(
+        webSearch({
+          query,
+          context,
+          deep: true,
+          mode,
+          ...(operationId ? { operationId } : {}),
+          signal,
+          ...(extraOptions ? { options: extraOptions } : {})
+        }),
+        signal
+      );
+    } finally {
+      if (operationId && unregisterOp) unregisterOp(operationId);
+    }
+  };
+
+  const primary = await runSearch();
   const primaryResults = Array.isArray(primary?.results) ? primary.results : [];
   if (primaryResults.length > 0) return primary;
 
@@ -897,34 +973,18 @@ async function searchWithFallback(query: string, mode: 'deep' | 'max', context?:
     return primary;
   }
 
-  signal?.throwIfAborted();
-  const fallback = await raceWithAbort(webSearch({
-    query,
-    context,
-    deep: true,
-    mode,
-    options: {
-      provider: 'aggregator',
-      max_results: mode === 'max' ? 18 : 12
-    }
-  }), signal);
+  const fallback = await runSearch({
+    provider: 'aggregator',
+    max_results: mode === 'max' ? 18 : 12
+  });
 
   const fallbackResults = Array.isArray(fallback?.results) ? fallback.results : [];
   if (fallbackResults.length > 0) return fallback;
 
-  signal?.throwIfAborted();
-  const secondFallback = await raceWithAbort(webSearch({
-    query,
-    context,
-    deep: true,
-    mode,
-    options: {
-      provider: 'aggregator',
-      max_results: mode === 'max' ? 18 : 12
-    }
-  }), signal);
-
-  return secondFallback;
+  return runSearch({
+    provider: 'aggregator',
+    max_results: mode === 'max' ? 18 : 12
+  });
 }
 
 export const deepResearchStore = new DeepResearchStore();

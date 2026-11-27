@@ -1,4 +1,4 @@
-import { BrowserWindow, type IpcMain } from 'electron';
+import { BrowserWindow, type IpcMain, type IpcMainInvokeEvent, type WebContents } from 'electron';
 import { withBrowserScope } from '../browser-panel.ts';
 import type { ErrorMessageFn } from './types.ts';
 
@@ -35,7 +35,80 @@ export function registerSearchHandlers({
   probeAggregatorEngines,
   toErrorMessage,
 }: SearchHandlerDeps): void {
-  ipcMain.handle('web_search', (event, args) => webSearch(args, BrowserWindow.fromWebContents(event.sender) ?? getMainWindow()));
+  const activeOperations = new Map<string, { controller: AbortController; senderId: number }>();
+  const trackedSenders = new Set<number>();
+
+  const trackSender = (sender: WebContents) => {
+    const senderId = sender.id;
+    if (trackedSenders.has(senderId)) return;
+    trackedSenders.add(senderId);
+    const cleanup = () => {
+      trackedSenders.delete(senderId);
+      for (const [id, entry] of activeOperations) {
+        if (entry.senderId === senderId) {
+          activeOperations.delete(id);
+          entry.controller.abort();
+        }
+      }
+    };
+    sender.once('destroyed', cleanup);
+    sender.once('render-process-gone', cleanup);
+  };
+
+  const beginOperation = (event: IpcMainInvokeEvent, args: unknown) => {
+    const record = (args && typeof args === 'object' ? args : {}) as Record<string, unknown>;
+    const operationId = typeof record.operationId === 'string' && record.operationId.trim()
+      ? record.operationId.trim()
+      : undefined;
+    const controller = new AbortController();
+    if (operationId) {
+      trackSender(event.sender);
+      activeOperations.get(operationId)?.controller.abort();
+      activeOperations.set(operationId, { controller, senderId: event.sender.id });
+    }
+    return {
+      record,
+      operationId,
+      controller,
+      finish: () => {
+        if (operationId && activeOperations.get(operationId)?.controller === controller) {
+          activeOperations.delete(operationId);
+        }
+      }
+    };
+  };
+
+  ipcMain.handle('web_search', async (event, args) => {
+    const op = beginOperation(event, args);
+    const win = BrowserWindow.fromWebContents(event.sender) ?? getMainWindow();
+    try {
+      return await webSearch({
+        ...op.record,
+        ...(op.operationId ? { operationId: op.operationId } : {}),
+        signal: op.controller.signal
+      }, win);
+    } finally {
+      op.finish();
+    }
+  });
+  ipcMain.handle('search_cancel', (_event, args: { operationId?: unknown; operationIds?: unknown } = {}) => {
+    const ids: string[] = [];
+    if (typeof args?.operationId === 'string' && args.operationId.trim()) ids.push(args.operationId.trim());
+    if (Array.isArray(args?.operationIds)) {
+      for (const id of args.operationIds) {
+        if (typeof id === 'string' && id.trim()) ids.push(id.trim());
+      }
+    }
+    let cancelled = 0;
+    for (const id of ids) {
+      const entry = activeOperations.get(id);
+      if (!entry) continue;
+      activeOperations.delete(id);
+      entry.controller.abort();
+      cancelled += 1;
+    }
+    return { cancelled };
+  });
   ipcMain.handle('search:get-catalog', () => getAggregatorCatalog());
   ipcMain.handle('search:probe-engines', (_e, args: { engine_ids?: unknown; options?: Record<string, unknown>; query?: string } = {}) =>
     probeAggregatorEngines(args.engine_ids, args.options || {}, args.query));
@@ -84,5 +157,28 @@ export function registerSearchHandlers({
   ipcMain.handle('link_preview', (_e, args: { url?: string } = {}) =>
     fetchLinkPreview(String(args?.url ?? '')));
 
-  ipcMain.handle('crawl_web', (_e, args) => crawlWeb(args));
+  ipcMain.handle('crawl_web', async (event, args) => {
+    const op = beginOperation(event, args);
+    const win = BrowserWindow.fromWebContents(event.sender) ?? getMainWindow();
+    try {
+      return await crawlWeb({
+        ...op.record,
+        signal: op.controller.signal,
+        emit: (step: string, detail: string) => {
+          if (op.controller.signal.aborted) return;
+          try {
+            win?.webContents?.send('search-progress', {
+              step,
+              detail,
+              ...(op.operationId ? { operationId: op.operationId } : {})
+            });
+          } catch {
+            // ignore renderer channel errors
+          }
+        }
+      });
+    } finally {
+      op.finish();
+    }
+  });
 }

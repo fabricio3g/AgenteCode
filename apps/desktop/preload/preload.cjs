@@ -32,7 +32,7 @@ const ALLOWED_INVOKE_CHANNELS = new Set([
   'ingest_document', 'read_ingested_document', 'ingest_text', 'ingest_text_fast', 'query_documents', 'list_rag_documents',
   'remove_rag_document', 'clear_rag_documents',
   'files_list', 'files_pin', 'files_trash',
-  'web_search', 'search:get-catalog', 'search:probe-engines',
+  'web_search', 'search_cancel', 'search:get-catalog', 'search:probe-engines',
   'search_hf_models', 'hf_repo_gguf', 'fetch_hf_readme', 'open_url_window', 'open_webviewer',
   'live_get_weather', 'live_convert_currency', 'live_get_quote', 'live_geocode_place',
 

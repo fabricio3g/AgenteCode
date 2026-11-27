@@ -4,16 +4,14 @@ import type { ComputerAction, ComputerObservation } from '../../shared/computer.
 import { ComputerSession, ComputerActionRejected, type ComputerOwner } from './session.ts';
 import { ComputerHelper, computerHelperPath } from './helper.ts';
 import { ComputerOverlayWindows } from './overlay.ts';
+import { classifyDisplayChange, computePhysicalRect, mapObservationPoint, type DisplayGeometry } from './geometry.ts';
 
-type Geometry = { displayId: number; bounds: Electron.Rectangle; scale: number; physical: Electron.Rectangle; protected?: Electron.Rectangle };
 const helper = new ComputerHelper();
 const overlay = new ComputerOverlayWindows();
-let geometry: Geometry | undefined;
+let geometry: DisplayGeometry | undefined;
 
 function physical(bounds: Electron.Rectangle) {
-  const start = screen.dipToScreenPoint({ x: bounds.x, y: bounds.y });
-  const end = screen.dipToScreenPoint({ x: bounds.x + bounds.width - 1, y: bounds.y + bounds.height - 1 });
-  return { x: start.x, y: start.y, width: end.x - start.x + 1, height: end.y - start.y + 1 };
+  return computePhysicalRect(bounds, (point) => screen.dipToScreenPoint(point));
 }
 function within(point: { x: number; y: number }, bounds: Electron.Rectangle) {
   return point.x >= bounds.x && point.y >= bounds.y && point.x < bounds.x + bounds.width && point.y < bounds.y + bounds.height;
@@ -71,8 +69,8 @@ function mapAction(action: ComputerAction, observation: ComputerObservation): Co
   if (!geometry || !current || observation.displayId !== String(current.id) || JSON.stringify(current.bounds) !== JSON.stringify(geometry.bounds) || current.scaleFactor !== geometry.scale) throw new ComputerActionRejected('Display geometry changed. Take another computer_observe. No input was sent.');
   const rect = geometry.physical;
   const transform = (x: number, y: number) => {
-    if (!Number.isInteger(x) || !Number.isInteger(y) || x < 0 || y < 0 || x >= observation.width || y >= observation.height) throw new ComputerActionRejected('Pointer coordinates must be within the latest screenshot. No input was sent. Observe again and correct the coordinates.');
-    const point = { x: rect.x + Math.round(x * (rect.width - 1) / Math.max(1, observation.width - 1)), y: rect.y + Math.round(y * (rect.height - 1) / Math.max(1, observation.height - 1)) };
+    const point = mapObservationPoint(x, y, observation, rect);
+    if (!point) throw new ComputerActionRejected('Pointer coordinates must be within the latest screenshot. No input was sent. Observe again and correct the coordinates.');
     if (geometry!.protected && within(point, geometry!.protected)) throw new ComputerActionRejected('The control bar covers this target. No input was sent. Use a keyboard shortcut or another target, then observe again.');
     return point;
   };
@@ -120,12 +118,28 @@ export function registerComputerHandlers(ipcMain: IpcMain) {
     return { ok: true };
   });
   ipcMain.handle('computer_overlay_ready', event => { if (!overlay.owns(event.sender)) throw new Error('Not a computer overlay.'); overlay.send(); });
-  const displayChanged = () => { computerSession.takeover('display_changed'); overlay.dismiss(); };
-  screen.on('display-added', displayChanged); screen.on('display-removed', displayChanged);
-  // Taskbar/work-area changes do not change screenshot coordinates. Showing
-  // the overlay can cause these events; cancelling here stopped the agent.
-  screen.on('display-metrics-changed', (_event, _display, metrics) => {
-    if (metrics.some(metric => ['bounds', 'scaleFactor', 'rotation'].includes(metric))) displayChanged();
+  const handleDisplayEvent = (event: 'added' | 'removed' | 'metrics', changedDisplayId?: number, metrics?: string[]) => {
+    const decision = classifyDisplayChange(
+      geometry,
+      event,
+      screen.getAllDisplays(),
+      changedDisplayId,
+      metrics,
+      (bounds) => physical(bounds),
+    );
+    if (decision === 'takeover') {
+      computerSession.takeover('display_changed');
+      overlay.dismiss();
+    } else if (decision === 'invalidate') {
+      geometry = undefined;
+      computerSession.invalidateObservation();
+    }
+  };
+  screen.on('display-added', () => handleDisplayEvent('added'));
+  screen.on('display-removed', () => handleDisplayEvent('removed'));
+  // Taskbar/work-area changes and unrelated monitor changes do not abort the active display.
+  screen.on('display-metrics-changed', (_event, display, metrics) => {
+    handleDisplayEvent('metrics', display.id, metrics);
   });
   powerMonitor.on('lock-screen', () => computerSession.takeover('screen_locked'));
   powerMonitor.on('suspend', () => computerSession.takeover('suspended'));
