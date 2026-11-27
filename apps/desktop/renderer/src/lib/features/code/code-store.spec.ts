@@ -679,6 +679,32 @@ describe('external CLI drivers, native options, worktrees, and handoff', () => {
     expect(handoff!.draft).toContain('Updated middleware');
   });
 
+  it('switches the engine mid-conversation and hands the new one the history once', async () => {
+    const chat = appStore.chats[0]!;
+    chat.messages.push(
+      { id: 'u1', role: 'user', content: 'Refactor auth', createdAt: 1 },
+      { id: 'a1', role: 'assistant', content: 'Updated middleware', createdAt: 2, done: true, status: 'idle' }
+    );
+    chat.codeAgent!.sessionId = 'old-session';
+    expect(codeStore.canChangeDriver(chat)).toBe(true);
+
+    codeStore.setConversationDriver(CHAT_ID, 'codex');
+    expect(appStore.chats[0]).toBe(chat);
+    expect(chat.codeAgent?.instanceId).toBe('codex');
+    expect(chat.codeAgent?.sessionId).not.toBe('old-session');
+    expect(chat.codeAgent?.carryHistory).toBe(true);
+
+    await codeStore.send(CHAT_ID, 'Now add tests');
+    const prompts = bridge.invokes.filter((call) => call.command === 'agente_prompt');
+    const first = (prompts.at(-1)!.args as { text: string }).text;
+    expect(first).toContain('Refactor auth');
+    expect(first).toContain('Updated middleware');
+    expect(first.trim().endsWith('Now add tests')).toBe(true);
+    // The bubble keeps what was typed; the carry happens once.
+    expect(chat.messages.some((m) => m.role === 'user' && m.content === 'Now add tests')).toBe(true);
+    expect(chat.codeAgent?.carryHistory).toBe(false);
+  });
+
   it('persists external driver effort and forwards thinkingLevel on start and update', async () => {
     driversStore.drivers = [
       BUILTIN_AGENTE_DRIVER,

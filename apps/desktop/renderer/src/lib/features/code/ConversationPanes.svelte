@@ -120,7 +120,7 @@
 <div class="panes" bind:clientWidth={width} bind:clientHeight={height}>
   <!-- No panes yet (no project, nothing opened): the surface's own empty
        states, instead of a blank canvas. -->
-  {#if !placements.length}<div class="pane-empty"><CodeSurface /></div>{/if}
+  {#if !placements.length}<div class="panes-idle"><CodeSurface /></div>{/if}
   {#each placements as leaf (leaf.id)}
     {@const chat = appStore.chats.find((item) => item.id === leaf.chatId) ?? null}
     <section
@@ -159,7 +159,8 @@
 </Menu>
 
 <style>
-  .pane-empty { position: absolute; inset: 0; display: flex; }
+  /* No pane open: the surface fills the area (its first-run screen centres in it). */
+  .panes-idle { position: absolute; inset: 0; display: flex; }
   .panes {
     position: relative;
     display: block;

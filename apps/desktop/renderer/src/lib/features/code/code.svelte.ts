@@ -87,6 +87,8 @@ class CodeStore {
   activeProjectId = $state<string | null>(null);
   /** The "Add project" folder browser modal (FolderBrowserDialog, mounted once in AppShell). */
   folderBrowserOpen = $state(false);
+  /** Which way in the Add project dialog opens on: an existing folder, a new one, or a clone. */
+  folderBrowserMode = $state<'open' | 'new' | 'clone'>('open');
   #folderPick: ((path: string | null) => void) | null = null;
 
   /** Live runs keyed by chatId. */
@@ -176,11 +178,12 @@ class CodeStore {
   }
 
   /**
-   * Adds the given folder; with none, opens the folder browser modal and adds
-   * what is picked there (its "Browse…" falls back to the system dialog).
+   * Adds the given folder; with none, opens the folder browser modal (on the
+   * tab `mode` names) and adds what is picked there (its "Browse…" falls back
+   * to the system dialog).
    */
-  async addProject(folder?: string): Promise<CodeProject | null> {
-    const rootPath = folder || (await this.#askForFolder());
+  async addProject(folder?: string, mode: 'open' | 'new' | 'clone' = 'open'): Promise<CodeProject | null> {
+    const rootPath = folder || (await this.#askForFolder(mode));
     if (!rootPath) return null;
     // The same folder twice is one project: select the one that exists.
     const existing = this.projects.find((project) => samePath(project.rootPath, rootPath));
@@ -204,8 +207,9 @@ class CodeStore {
     return project;
   }
 
-  #askForFolder(): Promise<string | null> {
+  #askForFolder(mode: 'open' | 'new' | 'clone'): Promise<string | null> {
     this.#folderPick?.(null);
+    this.folderBrowserMode = mode;
     this.folderBrowserOpen = true;
     return new Promise((resolve) => { this.#folderPick = resolve; });
   }
@@ -322,11 +326,12 @@ class CodeStore {
     return 'full';
   }
 
-  newConversation(project: CodeProject): ChatSession {
+  /** A new Code conversation, in `project` — or with no folder yet, picked on the composer's chip. */
+  newConversation(project: CodeProject | null): ChatSession {
     const created = appStore.createChat('code');
     const chat = appStore.chats.find((c) => c.id === created.id);
     if (!chat) return created;
-    chat.projectId = project.id;
+    chat.projectId = project?.id ?? null;
     chat.codeAgent = {
       instanceId: 'agente',
       driverKind: 'agente',
@@ -334,8 +339,10 @@ class CodeStore {
       runtimeMode: this.defaultMode,
       updatedAt: Date.now()
     };
-    this.activeProjectId = project.id;
-    this.expandedProjects[project.id] = true;
+    if (project) {
+      this.activeProjectId = project.id;
+      this.expandedProjects[project.id] = true;
+    }
     appStore.persist();
     return chat;
   }
@@ -345,9 +352,14 @@ class CodeStore {
    * in (else the first), whose folder the composer's project picker can still
    * change until the first message. With no projects yet it adds one first.
    */
+  /**
+   * New conversation: in the project you were last in, else the first one —
+   * and with none yet, a conversation without a folder; its composer's project
+   * chip (or its first send) adds one. Nobody is stopped at an Add project
+   * dialog before they can even type.
+   */
   async startConversation(): Promise<ChatSession | null> {
-    const project = this.projectById(this.activeProjectId) ?? this.projects[0] ?? (await this.addProject());
-    return project ? this.newConversation(project) : null;
+    return this.newConversation(this.projectById(this.activeProjectId) ?? this.projects[0] ?? null);
   }
 
   /** The folder is the conversation's until it starts: no message, no engine session. */
@@ -365,15 +377,28 @@ class CodeStore {
     appStore.persist();
   }
 
-  /** The engine (built-in or external CLI) can change until the conversation starts. */
+  /**
+   * The engine (built-in or external CLI) can change whenever no turn is
+   * running. Before the first message it is a plain choice; afterwards the
+   * conversation stays where it is and the next turn hands the new engine its
+   * history (`switchConversationDriver`).
+   */
   canChangeDriver(chat: ChatSession): boolean {
-    return !chat.messages.length && !chat.codeAgent?.sessionId;
+    return !this.runs[chat.id]?.running && !this.#startingTurns.has(chat.id);
   }
 
-  /** Point a conversation that has not started at another coding CLI driver. */
+  /** Point a conversation at another coding CLI driver, keeping what was said. */
   setConversationDriver(chatId: string, instanceId: string): void {
     const chat = appStore.chats.find((c) => c.id === chatId);
     if (!chat || !this.canChangeDriver(chat)) return;
+    if ((chat.codeAgent?.instanceId || 'agente') === instanceId) return;
+    const started = chat.messages.length > 0 || !!chat.codeAgent?.sessionId;
+    if (started) {
+      // The old engine's session cannot continue under another CLI: forget it,
+      // and let the next turn carry the transcript over instead.
+      this.#sessionIds.delete(chatId);
+      this.#conversationIndices.delete(chatId);
+    }
     const driver = driversStore.byId(instanceId);
     const prevMode = chat.codeAgent?.runtimeMode ?? this.defaultMode;
     const driverModel = isExternalDriverId(instanceId)
@@ -387,6 +412,8 @@ class CodeStore {
       driverEffort: null,
       substrate: 'native',
       runtimeMode: clampModeForDriver(prevMode, driver),
+      sessionId: started ? undefined : chat.codeAgent?.sessionId,
+      carryHistory: started ? true : chat.codeAgent?.carryHistory,
       updatedAt: Date.now()
     };
     appStore.markChatDirty(chatId);
@@ -1040,7 +1067,19 @@ class CodeStore {
    * The assistant placeholder message streams live from code_agent_event.
    */
   async send(chatId: string, text: string, attachments: Attachment[] = []): Promise<void> {
-    await this.#runTurn(chatId, text, () => promptCodeAgent(chatId, text, attachments), attachments);
+    const chat = appStore.chats.find((c) => c.id === chatId);
+    // After an engine switch the new CLI starts with an empty session: the first
+    // prompt it gets carries the conversation so far (the bubble shows only what
+    // was typed).
+    const carried = chat?.codeAgent?.carryHistory && chat.messages.length ? buildCarriedPrompt(chat, text) : null;
+    await this.#runTurn(chatId, text, async () => {
+      const result = await promptCodeAgent(chatId, carried ?? text, attachments);
+      if (result.ok && carried && chat?.codeAgent) {
+        chat.codeAgent.carryHistory = false;
+        appStore.markChatDirty(chatId);
+      }
+      return result;
+    }, attachments);
   }
 
   /** `!command`: run it in the project's shell, outside the model (the TUI's `!`). */
@@ -1065,6 +1104,12 @@ class CodeStore {
       await appStore.ensureChatMessages(chatId);
       chat = appStore.chats.find((c) => c.id === chatId);
       project = this.projectById(chat?.projectId ?? null);
+      // A new conversation may start before it has a folder (the composer's
+      // project chip picks one): the first send asks for it, then goes on.
+      if (chat && !chat.projectId && this.canChangeProject(chat)) {
+        project = await this.addProject();
+        if (project) this.setConversationProject(chatId, project.id);
+      }
       if (!chat || !project) return;
 
       run = this.#requireRun(chatId);
@@ -1434,6 +1479,35 @@ const RUNTIME_DELTAS = new Set(['assistant_delta', 'child_delta', 'child_tool', 
 function isStreamingDelta(event: CodeAgentEvent): boolean {
   if (event.type === 'text_delta' || event.type === 'thinking_delta' || event.type === 'tool_update') return true;
   return event.type === 'runtime_event' && RUNTIME_DELTAS.has(event.event.type);
+}
+
+/**
+ * The first prompt a newly switched engine sees: the conversation so far (the
+ * newest turns kept whole while they fit), then what was just asked.
+ */
+function buildCarriedPrompt(chat: ChatSession, text: string): string {
+  const BUDGET = 24_000;
+  const turns = chat.messages
+    .filter((m) => (m.role === 'user' || m.role === 'assistant') && m.content.trim())
+    .map((m) => `${m.role === 'user' ? 'User' : 'Agent'}: ${m.content.trim()}`);
+  const kept: string[] = [];
+  let used = 0;
+  for (let i = turns.length - 1; i >= 0; i--) {
+    const turn = turns[i].length > 6000 ? `${turns[i].slice(0, 5999)}…` : turns[i];
+    if (used + turn.length > BUDGET) break;
+    kept.unshift(turn);
+    used += turn.length;
+  }
+  const lines = [
+    'This conversation continues from another coding agent. Its transcript so far, for context (the files on disk are already as it left them):',
+    ''
+  ];
+  if (kept.length < turns.length) lines.push(`[${turns.length - kept.length} earlier messages omitted]`, '');
+  if (chat.codeAgent?.worktree?.branch) lines.push(`Working in worktree branch ${chat.codeAgent.worktree.branch} (${chat.codeAgent.worktree.path}).`, '');
+  const todos = conversationTodos(chat.messages);
+  if (todos.length) lines.push('Tasks:', ...todos.slice(0, 12).map((todo) => `- [${todo.status}] ${todo.content}`), '');
+  lines.push('<transcript>', ...kept.flatMap((turn) => [turn, '']), '</transcript>', '', 'Now, the user says:', text);
+  return lines.join('\n');
 }
 
 /** Build a concise handoff prompt so another CLI can pick up this conversation cleanly. */

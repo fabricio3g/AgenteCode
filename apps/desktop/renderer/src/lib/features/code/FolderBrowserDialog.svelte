@@ -30,6 +30,11 @@
 
   type Mode = 'open' | 'new' | 'clone';
   let mode = $state<Mode>('open');
+  // Each opening starts on the tab its caller asked for (the Code empty
+  // state's three ways in); switching tabs afterwards is the reader's own.
+  $effect(() => {
+    if (codeStore.folderBrowserOpen) mode = codeStore.folderBrowserMode;
+  });
 
   let home = $state('');
   let root = $state('');

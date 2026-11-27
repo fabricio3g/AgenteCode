@@ -49,6 +49,7 @@
   import CanvasPanel from '$lib/features/canvas/CanvasPanel.svelte';
   import { codeWorkspace } from '$lib/features/code/workspace.svelte';
   import { appStore } from '$lib/stores/app.svelte';
+  import { navHistory } from '$lib/stores/nav-history.svelte';
   import { capabilitiesStore } from '$lib/stores/capabilities.svelte';
   import { hardwareStore } from '$lib/stores/hardware.svelte';
   import { isElectron } from '$lib/services/bridge';
@@ -115,10 +116,12 @@
   const settingsShowing = $derived(appStore.settingsScreenOpen);
   /** Ctrl/⌘+K means "new" in every space — a chat, a roleplay, or a Code conversation (a project first when there is none). */
   const shortcutRows = $derived<Array<[string, string]>>([
-    ['mod+k', inCodeSpace ? $t(codeStore.projects.length ? 'code.newConversation' : 'shortcuts.addProject') : inRoleplaySpace ? copy.roleplay.newRoleplay : inDesignSpace ? copy.design.newDesign : $t('shortcuts.newChat')],
+    ['mod+k', inCodeSpace ? $t('code.newConversation') : inRoleplaySpace ? copy.roleplay.newRoleplay : inDesignSpace ? copy.design.newDesign : $t('shortcuts.newChat')],
     ['mod+shift+k', $t('shortcuts.search')],
     ['mod+,', $t('shortcuts.settings')],
     ['mod+b', $t('shortcuts.sidebar')],
+    [isMacPlatform() ? 'mod+[' : 'alt+left', $t('shortcuts.back')],
+    [isMacPlatform() ? 'mod+]' : 'alt+right', $t('shortcuts.forward')],
     ...(inCodeSpace ? [] : ([['mod+`', $t('shortcuts.artifactStudio')]] as Array<[string, string]>)),
     ['mod+e', $t('shortcuts.export')],
     ['F2', $t('shortcuts.rename')],
@@ -159,6 +162,15 @@
     const target = event.target as HTMLElement;
     const inInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
 
+    // Back / Forward, as in a browser: Alt+←/→, or ⌘[ / ⌘] on macOS.
+    const historyStep = isMacPlatform()
+      ? (ctrl && !event.shiftKey && !event.altKey && (event.key === '[' || event.key === ']') ? (event.key === '[' ? -1 : 1) : 0)
+      : (event.altKey && !event.ctrlKey && !event.shiftKey && (event.key === 'ArrowLeft' || event.key === 'ArrowRight') ? (event.key === 'ArrowLeft' ? -1 : 1) : 0);
+    if (historyStep && openModalLayerCount() === 0) {
+      event.preventDefault();
+      if (historyStep < 0) navHistory.back(); else navHistory.forward();
+      return;
+    }
     if (ctrl && event.key.toLowerCase() === 'k' && !event.shiftKey) {
       event.preventDefault();
       startNewSession();
@@ -213,8 +225,22 @@
     }
   }
 
+  /** The mouse's side buttons step through history, as in a browser. */
+  function handleMouseHistory(event: MouseEvent) {
+    if (event.button !== 3 && event.button !== 4) return;
+    event.preventDefault();
+    if (event.button === 3) navHistory.back(); else navHistory.forward();
+  }
+
+  // Every place the window lands becomes a history entry (repeats are ignored).
+  $effect(() => {
+    const location = navHistory.current();
+    untrack(() => navHistory.record(location));
+  });
+
   onMount(() => {
     document.addEventListener('keydown', handleKeydown);
+    window.addEventListener('mouseup', handleMouseHistory);
     browserPanelStore.init();
     // Roleplay library: one query at startup, independent of the space gate.
     // The starter kit follows the loads so it can see what already exists.
@@ -225,6 +251,7 @@
     }
     return () => {
       document.removeEventListener('keydown', handleKeydown);
+      window.removeEventListener('mouseup', handleMouseHistory);
       peek.clearTimers();
     };
   });
@@ -271,14 +298,6 @@
     appStore.sidebarOpen = !appStore.sidebarOpen;
   }
 
-  function hideSidebar() {
-    if (appStore.sidebarOpen) toggleSidebar();
-    else {
-      peek.toggled();
-      requestAnimationFrame(() => document.querySelector<HTMLButtonElement>('.titlebar-row [data-sidebar-toggle]')?.focus());
-    }
-  }
-
   $effect(() => {
     // Settings hides the sidebar; a preview floating over it would be a ghost.
     if (appStore.sidebarOpen || settingsShowing) peek.close();
@@ -303,11 +322,21 @@
   }
 </script>
 
-<!-- The window is the sidebar's plane; the title bar and content are one
-     sheet resting on it (see .canvas-sheet). -->
-<div data-desktop-shell class="relative flex h-full overflow-hidden bg-sidebar text-foreground" class:caption-overlay={captionOverlay} class:sheet-alone={!appStore.sidebarOpen || settingsShowing}>
-  <!-- Full-height sidebar: sidebar | titlebar+main. The spaces head it
-       (SpaceSwitcher) and Settings is its footer row; Settings hides it. -->
+<!-- The window is the sidebar's plane. Like a browser, one top bar spans the
+     whole width in that plane's colour — sidebar toggle, Back/Forward and the
+     space tabs always at the same place, open sidebar or not — and the content
+     sheet rests below it, beside the sidebar (see .canvas-sheet). -->
+<div data-desktop-shell class="relative flex h-full flex-col overflow-hidden bg-sidebar text-foreground" class:caption-overlay={captionOverlay} class:sheet-alone={!appStore.sidebarOpen || settingsShowing}>
+  <Titlebar
+    sidebarPreview={peek.open}
+    settingsOpen={settingsShowing}
+    onSidebarEnter={() => peek.show()}
+    onSidebarLeave={(event) => peek.leave(event)}
+    onSidebarToggle={toggleSidebar}
+  />
+
+  <div class="flex min-h-0 flex-1">
+  <!-- Settings is the sidebar's footer row and hides it. -->
   {#if !settingsShowing}
     <div
       class="sidebar-outer relative flex shrink-0 flex-col bg-sidebar"
@@ -322,7 +351,8 @@
         class:preview={!appStore.sidebarOpen && peek.open}
         inert={!appStore.sidebarOpen && !peek.open}
       >
-        <Sidebar onNavigate={() => peek.toggled()} onToggle={hideSidebar} />
+        <Sidebar onNavigate={() => peek.toggled()} />
+        <span class="peek-corner" aria-hidden="true"></span>
       </div>
     </div>
 
@@ -340,14 +370,6 @@
   <!-- The sheet clips to its own rounded corners; the titlebar fade hangs
        below h-9 but inside it, so the clip never cuts it. -->
   <div class="canvas-sheet relative flex min-h-0 min-w-0 flex-1 flex-col bg-background">
-    <Titlebar
-      sidebarPreview={peek.open}
-      settingsOpen={settingsShowing}
-      onSidebarEnter={() => peek.show()}
-      onSidebarLeave={(event) => peek.leave(event)}
-      onSidebarToggle={toggleSidebar}
-    />
-
     <div class="relative flex min-h-0 min-w-0 flex-1 flex-col">
       {#if codeOpened || inCodeSpace}
         <SpaceLayer name="code" visible={inCodeSpace}><ConversationPanes /></SpaceLayer>
@@ -392,10 +414,8 @@
       <!-- Settings sits over the workspace rather than in the branch above it:
            the surface underneath stays mounted, so a trip to Settings costs no
            scroll position and no streaming turn, and leaving lands you exactly
-           where you were. It covers the title bar too — the screen's nav column
-           runs to the top edge of the window, and the page header carries the
-           drag region the bar gave up. Above the dock panels (z-index 1..n) and
-           above the bar itself on purpose. -->
+           where you were. The top bar stays above it, so the space tabs and
+           Back/Forward never move. Above the dock panels (z-index 1..n). -->
       {#if settingsShowing}
         <div
           data-overlay="settings"
@@ -406,6 +426,7 @@
         </div>
       {/if}
     </div>
+  </div>
   </div>
 </div>
 
@@ -486,15 +507,22 @@
      against the sidebar, lifted by its shadow. The sidebar is the ground it
      rests on, so no seam line is drawn between them; with the sidebar away
      the sheet takes the gap on its left too. */
+  /* The content is a sheet resting on the window's plane: a hairline on its
+     top and its sidebar side, and a rounded corner where the two meet. With
+     the sidebar away it spans the width and the corner goes. */
   .canvas-sheet {
     margin: 0;
-    border-radius: 0;
+    border-top: 1px solid var(--sidebar-border);
     border-inline-start: 1px solid var(--sidebar-border);
+    border-start-start-radius: 0.75rem;
     box-shadow: none;
     overflow: hidden;
     isolation: isolate;
   }
-  .sheet-alone .canvas-sheet { border-inline-start: 0; }
+  .sheet-alone .canvas-sheet {
+    border-inline-start: 0;
+    border-start-start-radius: 0;
+  }
   .caption-overlay .canvas-sheet {
     margin-top: 0;
     margin-right: 0;
@@ -520,19 +548,55 @@
     pointer-events: auto;
   }
 
-  /* Keep the title bar and its toggle visible above the floating preview. */
+  /* The hover preview hangs from the top bar as its continuation: flush to
+     the bar's bottom and the window's left edge, in the same plane colour,
+     with no top edge or corner of its own — only a seam and a soft shadow on
+     the side that floats over the content. */
   .sidebar-view-full.preview {
     position: fixed;
     z-index: var(--z-float);
     top: 3rem;
-    bottom: var(--sheet-gap);
-    left: var(--sheet-gap);
+    bottom: 0;
+    left: 0;
     right: auto;
     max-width: calc(100vw - 1rem);
     background: var(--sidebar);
-    border: 1px solid var(--sidebar-border);
-    border-radius: var(--sheet-radius);
-    box-shadow: var(--shadow-xl);
+    border: 0;
+    border-inline-end: 1px solid var(--sidebar-border);
+    border-radius: 0;
+    box-shadow: 12px 0 28px -16px rgb(0 0 0 / 0.45);
+    /* The sidebar inside clips itself; the preview lets its corner show. */
+    overflow: visible;
+  }
+  /* Where the preview meets the bar, the content keeps the rounded corner it
+     has beside the open sidebar. A real rounded box (antialiased, unlike a
+     gradient) whose spread shadow paints the plane colour outside its curve,
+     clipped to one corner square; its 1px top and left edges land on the same
+     pixels as the content's top line and the preview's seam. */
+  .peek-corner {
+    display: none;
+  }
+  .sidebar-view-full.preview .peek-corner {
+    position: absolute;
+    top: 0;
+    left: 100%;
+    display: block;
+    width: 0.75rem;
+    height: 0.75rem;
+    overflow: hidden;
+    pointer-events: none;
+  }
+  .peek-corner::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 1.5rem;
+    height: 1.5rem;
+    border-top: 1px solid var(--sidebar-border);
+    border-left: 1px solid var(--sidebar-border);
+    border-top-left-radius: 0.75rem;
+    box-shadow: 0 0 0 0.75rem var(--sidebar);
   }
   @media (prefers-reduced-motion: reduce) {
     .sidebar-outer { transition: none; will-change: auto; }

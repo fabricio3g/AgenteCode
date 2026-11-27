@@ -8,10 +8,9 @@
   import EmptyState from '$lib/components/ui/EmptyState.svelte';
   import { cn as uiClass } from '$lib/utils/cn';
 
-  let { onNavigate, onToggle }: { onNavigate?: () => void; onToggle?: () => void } = $props();
-  import { PanelLeftClose, Search as SearchIcon } from '$lib/icons';
+  let { onNavigate }: { onNavigate?: () => void } = $props();
+  import { Search as SearchIcon } from '$lib/icons';
   import SidebarInstances from './SidebarInstances.svelte';
-  import SpaceSwitcher from './SpaceSwitcher.svelte';
   import CalendarPreview from '$lib/features/home/CalendarPreview.svelte';
   import Tooltip from '$lib/components/ui/Tooltip.svelte';
   import { appStore } from '$lib/stores/app.svelte';
@@ -112,7 +111,7 @@
 
   const newButtonLabel = $derived(
     appStore.activeSpace === 'code'
-      ? $t(codeStore.projects.length ? 'code.newConversation' : 'code.addProject')
+      ? $t('code.newConversation')
       : appStore.activeSpace === 'roleplay'
         ? copy.roleplay.newRoleplay
         : appStore.activeSpace === 'design'
@@ -161,23 +160,11 @@
 </script>
 
 <aside class="sidebar relative isolate flex h-full w-full flex-col overflow-hidden bg-sidebar text-sidebar-foreground">
-  <!-- The spaces head the column they switch. With the column closed they
-       move to the titlebar, and a peek at it (which floats under the
-       titlebar) draws no head at all: it would be an empty band. -->
-  {#if appStore.sidebarOpen}
-  <div class="sidebar-head" class:is-mac={typeof window !== 'undefined' && window.electronAPI?.platform === 'darwin'}>
-    <SpaceSwitcher />
-    {#if onToggle}
-      <UiIconButton label={$t('titlebar.hideSidebar')}
-        size="sm" data-sidebar-toggle aria-controls="app-sidebar" aria-expanded="true"
-        onclick={onToggle}>
-        <PanelLeftClose />
-      </UiIconButton>
-    {/if}
-  </div>
-  {/if}
+  <!-- The space tabs, Back/Forward and the sidebar toggle live in the top bar,
+       which spans the window, so they never move when this column opens or
+       closes. The column starts with its own actions. -->
   <div class="relative z-10 flex min-h-0 flex-1 flex-col px-2 pb-1">
-    <div class="flex flex-col gap-0.5 pb-3 pt-1">
+    <div class="flex flex-col gap-0.5 pb-3 pt-2">
       <UiListRow
         type="button"
         class={uiClass("sidebar-row is-emphasis", "ui-local-0456fb2e")}
@@ -333,31 +320,6 @@
 </aside>
 
 <style>
-  .sidebar-head { display: flex; flex-shrink: 0; align-items: center; justify-content: space-between; gap: 0.5rem; height: 3rem; padding: 0 0.5rem; -webkit-app-region: drag; }
-  .sidebar-head :global(button) { -webkit-app-region: no-drag; }
-  .sidebar-head :global(.space-group) { padding-inline: 0; }
-  /* The spaces are the rail's own controls, so they use the rail's two states:
-     no track, no bordered chip — one flat fill on the space in effect, the same
-     band the selected row and the composer's bar use. Nothing else competes for
-     the eye when you scan for "where am I". */
-  .sidebar-head :global(.space-strip) {
-    border-color: transparent;
-    background: transparent;
-  }
-  .sidebar-head :global(.space-strip > span[aria-hidden='true']) {
-    border-color: transparent;
-    border-radius: var(--float-row-radius);
-    background: var(--float-row-selected);
-    box-shadow: none;
-  }
-  /* Inactive spaces get the composer's hover band, not just a colour change:
-     the band is the feedback that says "this is a target" before you click. */
-  .sidebar-head :global(.space-strip button:not([aria-selected='true']):hover) {
-    background: var(--float-row-hover);
-    color: var(--foreground);
-  }
-  .sidebar-head.is-mac { padding-inline-start: 78px; }
-
   .sidebar-scroll-wrap {
     isolation: isolate;
   }

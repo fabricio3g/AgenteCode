@@ -43,8 +43,6 @@
   import { restoreCodeEdits } from './code-edits';
   import CodeProjectDialog from './CodeProjectDialog.svelte';
   import CodeAttachmentShelf from './CodeAttachmentShelf.svelte';
-  import DriverSelector from './DriverSelector.svelte';
-  import ProjectSelector from './ProjectSelector.svelte';
   import PromptQueue from '$lib/features/shared/PromptQueue.svelte';
   import SessionGoal from '$lib/features/shared/SessionGoal.svelte';
   import { parseGoalCommand, type GoalCommand } from '$shared/session-goal';
@@ -871,8 +869,6 @@
       {/snippet}
       {#snippet extras()}
         {@render overflowMenu()}
-        <ProjectSelector {chat} />
-        <DriverSelector {chat} />
         {@render selectedMode()}
         {#if isExternal && !modelReady}
           <Tooltip label={driverReadyInfo.detail || $t('code.driverPicker.configureDriver')} position="top"><UiIconButton label={$t('code.driverPicker.configureDriver')} size="xs" type="button" class={uiClass(" provider-setup", "ui-local-49e9c79c")} onclick={() => appStore.openSettings('external-clis')}><Settings2 class="size-3" /></UiIconButton></Tooltip>

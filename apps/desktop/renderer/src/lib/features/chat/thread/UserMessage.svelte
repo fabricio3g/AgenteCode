@@ -191,6 +191,18 @@
 </div>
 
 <style>
+  /* The actions float under the bubble instead of reserving a band of empty
+     space below every prompt: they appear on hover, hard right, where the
+     reply's text (held to the reading measure) never reaches. */
+  .user-message-stack { position: relative; }
+  .user-message-stack.user-message-stack > :global(.message-action-bar) {
+    position: absolute;
+    top: 100%;
+    right: 0;
+    z-index: 1;
+    margin-top: 0.125rem;
+    flex-wrap: nowrap;
+  }
   .agent-reaction { display:flex; justify-content:flex-end; margin-top:0.25rem; padding-inline:0.5rem; font-size:var(--text-base); }
   .agent-reaction span {
     display:inline-grid;

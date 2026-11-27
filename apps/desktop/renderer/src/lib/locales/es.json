@@ -440,6 +440,33 @@
         "more": "{n, plural, one {# hallazgo anterior} other {# hallazgos anteriores}} en el tablero"
       }
     },
+    "driverPicker": {
+      "label": "Agente",
+      "builtin": "Agente Core",
+      "builtinTag": "Integrado",
+      "manage": "Gestionar CLI externas…",
+      "switchHint": "Cambiar mantiene esta conversación: el siguiente mensaje le pasa el historial al nuevo agente.",
+      "busyHint": "El agente se puede cambiar cuando termine este turno.",
+      "driverNotReady": "{driver} no está listo; revísalo en Configuración",
+      "configureDriver": "Configura la CLI en Configuración → CLI externas",
+      "driverModel": "Modelo de la CLI",
+      "defaultModel": "Predeterminado de la CLI",
+      "effortTitle": "Esfuerzo de razonamiento",
+      "defaultEffort": "Predeterminado",
+      "refreshModels": "Actualizar modelos",
+      "loadingModels": "Cargando modelos…",
+      "noModelsDiscovered": "Esta CLI aún no ha informado de modelos",
+      "noAttachments": "Esta CLI no acepta archivos adjuntos",
+      "queuePlaceholder": "Pon en cola un mensaje para cuando termine este turno…",
+      "queueHint": "Enter lo pone en cola · Esc detiene",
+      "status": {
+        "ready": "Listo",
+        "missing": "No encontrado",
+        "needs_auth": "Inicia sesión",
+        "disabled": "Desactivado",
+        "error": "Error"
+      }
+    },
     "layout": {
       "files": "{n, plural, one {# archivo} other {# archivos}}",
       "verb": {
@@ -519,8 +546,20 @@
     "addProject": "Añadir proyecto",
     "newConversation": "Nueva conversación",
     "noProjects": "Aún no hay proyectos",
-    "noProjectsHint": "Añade una carpeta de proyecto y Agente programará contigo.",
-    "surfaceTitle": "Agente Coding",
+    "empty": {
+      "start": "Nueva conversación",
+      "startHint": "Elige la carpeta mientras escribes",
+      "fromFolder": "O empieza desde una carpeta",
+      "open": "Abrir una carpeta",
+      "openHint": "Un proyecto que ya está en este equipo",
+      "new": "Proyecto nuevo",
+      "newHint": "Una carpeta vacía, lista para git",
+      "clone": "Clonar un repositorio",
+      "cloneHint": "De GitHub, GitLab o cualquier URL de git",
+      "shortcut": "{key} inicia una conversación desde cualquier lugar"
+    },
+    "noProjectsHint": "Elige una carpeta y Agente trabaja en ella contigo: lee el código, edita archivos y ejecuta comandos, y cada cambio espera tu revisión.",
+    "surfaceTitle": "Agente Code",
     "browseOpen": "Abrir",
     "browseOpenNamed": "Abrir {name}",
     "projectPicker": {
@@ -619,7 +658,7 @@
     "conversationOptions": "Opciones de la conversación",
     "folderMissing": "Carpeta no encontrada",
     "locateFolder": "Buscar carpeta…",
-    "unlinked": "Conversaciones sin proyecto",
+    "unlinked": "Sin proyecto",
     "unlinkedHint": "Su proyecto se quitó, así que ya no pueden ejecutarse.",
     "deleteAll": "Eliminar todas",
     "deleteUnlinkedTitle": "¿Eliminar {conversations}?",
@@ -920,6 +959,8 @@
     "noContentMatches": "Sin coincidencias en mensajes"
   },
   "shortcuts": {
+    "back": "Ir atrás",
+    "forward": "Ir adelante",
     "title": "Atajos de teclado",
     "newChat": "Nuevo chat",
     "addProject": "Añadir proyecto",
@@ -2510,6 +2551,8 @@
     "branchTitle": "{title} · rama"
   },
   "titlebar": {
+    "back": "Atrás",
+    "forward": "Adelante",
     "hideSidebar": "Ocultar barra lateral",
     "showSidebar": "Mostrar barra lateral",
     "search": "Buscar conversaciones",

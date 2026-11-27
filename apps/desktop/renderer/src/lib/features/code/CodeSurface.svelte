@@ -14,7 +14,7 @@
 
   import { onMount } from 'svelte';
   import { t } from 'svelte-i18n';
-  import { Bug, FlaskConical, FolderOpen, Globe, Telescope } from '$lib/icons';
+  import { Bug, FlaskConical, FolderOpen, FolderPlus, GitBranch, Globe, Plus, Telescope } from '$lib/icons';
   import { Button } from '$lib/components/ui';
   import StarterList from '$lib/components/ui/StarterList.svelte';
   import type { Starter } from '$lib/components/ui/starter-list';
@@ -70,8 +70,9 @@
     return current && judgeable && isCodeSession(current) ? current : null;
   });
   const chatProject = $derived(codeStore.projectById(chat?.projectId ?? null));
-  /** Its project was deleted (older builds orphaned conversations): read-only. */
-  const unlinked = $derived(!!chat && codeStore.loaded && !chatProject);
+  /** Its project was deleted (older builds orphaned conversations): read-only.
+      A new conversation with no folder yet is not that: its chip picks one. */
+  const unlinked = $derived(!!chat?.projectId && codeStore.loaded && !chatProject);
   const activeProject = $derived(chatProject ?? codeStore.projectById(codeStore.activeProjectId));
   const run = $derived(codeStore.runFor(chat?.id));
   const sessionId = $derived(chat?.codeAgent?.sessionId || undefined);
@@ -145,6 +146,13 @@
     }));
   }
 
+  /** Starting from a folder: the Add project dialog's three ways in, each opening its own tab. */
+  const WAYS_IN = [
+    { mode: 'open', icon: FolderOpen },
+    { mode: 'new', icon: FolderPlus },
+    { mode: 'clone', icon: GitBranch }
+  ] as const;
+
   const shown = spaceVisible();
   /** The starters are on screen, so their keys are live. */
   /**
@@ -173,15 +181,6 @@
 <div class="code-surface relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
   {#if !codeStore.loaded && codeStore.loading}
     <div class="flex flex-1 items-center justify-center"></div>
-  {:else if !codeStore.projects.length}
-    <!-- Calm default: one headline, one action (it opens the folder browser). -->
-    <div class="flex flex-1 flex-col items-center justify-center gap-5 px-6 text-center">
-      <div class="max-w-md space-y-2">
-        <h1 class="text-2xl font-semibold tracking-tight text-foreground">{$t('code.surfaceTitle')}</h1>
-        <p class="text-sm leading-relaxed text-muted-foreground">{$t('code.noProjectsHint')}</p>
-      </div>
-      <Button onclick={() => void codeStore.addProject()}><FolderOpen />{$t('code.addProject')}</Button>
-    </div>
   {:else if chat}
     <div class="flex min-h-0 flex-1">
       <!-- Conversation + bottom dock. Before the first message the column is
@@ -215,6 +214,33 @@
         {/if}
       </div>
     </div>
+  {:else if !codeStore.projects.length}
+    <!-- First run: what the space is for and one way in — a new conversation,
+         whose composer picks the folder as you write. Starting from a folder
+         (open, create, clone) stays one quiet line under it. -->
+    <div class="no-projects">
+      <div class="no-projects-head">
+        <h1 class="no-projects-title">{$t('code.surfaceTitle')}</h1>
+        <p class="no-projects-lead">{$t('code.noProjectsHint')}</p>
+      </div>
+      <button type="button" class="way-in" onclick={() => void codeStore.startConversation()}>
+        <span class="way-in-icon" aria-hidden="true"><Plus /></span>
+        <span class="way-in-text">
+          <span class="way-in-title">{$t('code.empty.start')}</span>
+          <span class="way-in-hint">{$t('code.empty.startHint')}</span>
+        </span>
+        <kbd class="way-in-key">{formatShortcut('mod+k')}</kbd>
+      </button>
+      <p class="from-folder">
+        <span>{$t('code.empty.fromFolder')}</span>
+        {#each WAYS_IN as way (way.mode)}
+          {@const Icon = way.icon}
+          <button type="button" class="from-folder-link" title={$t(`code.empty.${way.mode}Hint`)} onclick={() => void codeStore.addProject(undefined, way.mode)}>
+            <Icon aria-hidden="true" />{$t(`code.empty.${way.mode}`)}
+          </button>
+        {/each}
+      </p>
+    </div>
   {:else}
     <div class="flex flex-1 flex-col items-center justify-center gap-5 px-6 text-center">
       {#if activeProject}
@@ -237,6 +263,126 @@
 
 <style>
   .code-surface { container-type: inline-size; }
+
+  /* ── First run ───────────────────────────────────────────────────────── */
+  .no-projects {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 1.75rem;
+    padding: 2rem 1.5rem;
+  }
+  .no-projects-head {
+    display: flex;
+    max-width: 30rem;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.75rem;
+    text-align: center;
+  }
+  .no-projects-title {
+    margin: 0;
+    color: var(--foreground);
+    font-size: calc(26px * var(--reading-scale, 1));
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    line-height: 1.2;
+  }
+  .no-projects-lead {
+    margin: 0;
+    max-width: 52ch;
+    color: var(--muted-foreground);
+    font-size: var(--text-sm);
+    line-height: 1.6;
+  }
+  /* The one action: a wide row — mark hard left, its key hard right. */
+  .way-in {
+    display: flex;
+    width: 100%;
+    max-width: 24rem;
+    align-items: center;
+    gap: 0.875rem;
+    padding: 0.75rem 0.875rem;
+    border: 1px solid var(--border);
+    border-radius: var(--float-radius);
+    background: var(--card);
+    color: var(--foreground);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    transition: background-color var(--motion-instant) var(--motion-ease), border-color var(--motion-instant) var(--motion-ease);
+  }
+  .way-in:hover {
+    border-color: var(--border-hover);
+    background: color-mix(in srgb, var(--foreground) 4%, var(--card));
+  }
+  .way-in:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 2px var(--brand-accent);
+  }
+  .way-in-icon {
+    display: inline-flex;
+    width: 2.25rem;
+    height: 2.25rem;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    border-radius: calc(var(--float-row-radius) + 0.125rem);
+    background: var(--foreground);
+    color: var(--background);
+  }
+  .way-in-icon :global(svg) { width: 1.125rem; height: 1.125rem; }
+  .way-in-text {
+    display: flex;
+    min-width: 0;
+    flex: 1;
+    flex-direction: column;
+    gap: 0.125rem;
+  }
+  .way-in-title { font-size: var(--text-sm); font-weight: 500; }
+  .way-in-hint { color: var(--muted-foreground); font-size: var(--text-xs); }
+  .way-in-key {
+    flex-shrink: 0;
+    padding: 0.125rem 0.375rem;
+    border: 1px solid var(--border);
+    border-radius: 0.375rem;
+    color: var(--muted-foreground);
+    font-family: inherit;
+    font-size: var(--text-xs);
+  }
+  /* Starting from a folder: one quiet line of links under the action. */
+  .from-folder {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 0.25rem 0.75rem;
+    margin: 0;
+    color: var(--muted-foreground);
+    font-size: var(--text-xs);
+  }
+  .from-folder-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.25rem 0.5rem;
+    border: 0;
+    border-radius: var(--float-row-radius);
+    background: transparent;
+    color: var(--text-secondary);
+    font: inherit;
+    cursor: pointer;
+    transition: background-color var(--motion-instant) var(--motion-ease), color var(--motion-instant) var(--motion-ease);
+  }
+  .from-folder-link:hover,
+  .from-folder-link:focus-visible {
+    outline: none;
+    background: var(--float-row-hover);
+    color: var(--foreground);
+  }
+  .from-folder-link :global(svg) { width: 0.875rem; height: 0.875rem; }
 
   /* Before the first message the column centres instead of docking to the
      bottom: the composer is the only control on the screen, so it sits where

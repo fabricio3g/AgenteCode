@@ -23,14 +23,13 @@ describe('space switcher', () => {
     const view = render(SpaceSwitcher);
     expect(view.container.querySelector('[data-space-switcher]')).toBeTruthy();
 
-    // Bots no longer appears in the product navigation. The active space shows
-    // its name; inactive spaces stay icon-only, named for assistive tech and on hover.
+    // Bots no longer appears in the product navigation. Every space is icon-only,
+    // named for assistive tech and on hover.
     const tabs = view.getAllByRole('tab');
     const nameOf = (tab: HTMLElement) => tab.getAttribute('aria-label') ?? tab.textContent?.trim();
     expect(tabs.map(nameOf)).toEqual(['Home', 'Code', 'Design', 'Roleplay']);
     const [home, code, design, roleplay] = tabs;
-    expect(home.textContent?.trim()).toBe('Home');
-    expect([code, design, roleplay].every((tab) => !tab.textContent?.trim())).toBe(true);
+    expect([home, code, design, roleplay].every((tab) => !tab.textContent?.trim())).toBe(true);
     home.focus();
     await fireEvent.keyDown(home, { key: 'ArrowRight' });
     expect(document.activeElement).toBe(code);
@@ -95,7 +94,7 @@ describe('space switcher', () => {
     const row = modules['./SpaceSwitcher.svelte'];
     // Active space shows its label; inactive glyphs name themselves via SegmentedControl's tooltip.
     expect(row).toContain('<SegmentedControl');
-    expect(row).toContain('labels="active"');
+    expect(row).toContain('labels="none"');
     expect(row).not.toContain('<Tooltip');
     const style = row.slice(row.indexOf('<style>'));
 
@@ -107,14 +106,16 @@ describe('space switcher', () => {
      */
     expect(style).toMatch(/\.space-group\s*\{[^}]*app-region:\s*no-drag/s);
 
-    // The switcher heads the sidebar, and the titlebar while the sidebar is closed.
+    // One switcher, in the top bar that spans the window, so it never moves when
+    // the sidebar opens or closes; the sidebar's hover preview hangs flush from it.
     const shell = import.meta.glob<string>('./AppShell.svelte', { query: '?raw', import: 'default', eager: true });
     expect(shell['./AppShell.svelte']).not.toContain('ActivityRail');
-    expect(shell['./AppShell.svelte']).toContain('left: var(--sheet-gap)');
+    expect(shell['./AppShell.svelte']).toMatch(/\.sidebar-view-full\.preview\s*\{[^}]*left:\s*0;/s);
     const titlebar = import.meta.glob<string>('./Titlebar.svelte', { query: '?raw', import: 'default', eager: true });
     expect(titlebar['./Titlebar.svelte']).toContain('<SpaceSwitcher />');
+    expect(titlebar['./Titlebar.svelte']).toContain('<NavHistoryButtons />');
     const sidebar = import.meta.glob<string>('./Sidebar.svelte', { query: '?raw', import: 'default', eager: true });
-    expect(sidebar['./Sidebar.svelte']).toContain('<SpaceSwitcher />');
+    expect(sidebar['./Sidebar.svelte']).not.toContain('<SpaceSwitcher />');
   });
 
   it('keeps downloads, theme and the window controls in the titlebar', async () => {

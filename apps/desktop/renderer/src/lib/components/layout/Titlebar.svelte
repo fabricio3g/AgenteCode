@@ -8,7 +8,7 @@
   import DownloadsButton from './DownloadsButton.svelte';
   import { onMount } from 'svelte';
   import { appStore } from '$lib/stores/app.svelte';
-  import { ArrowLeft, Globe, MoonStar, Search, SunMedium } from '$lib/icons';
+  import { Globe, MoonStar, Search, SlidersHorizontal, SunMedium } from '$lib/icons';
   import Tooltip from '$lib/components/ui/Tooltip.svelte';
   import { themeStore } from '$lib/stores/theme.svelte';
   import { downloadsStore } from '$lib/stores/downloads.svelte';
@@ -21,7 +21,9 @@
   import { isCodeSession } from '$lib/features/shared/session-guards';
   import PanelTabs from './PanelTabs.svelte';
   import TitlebarLeftTools from './TitlebarLeftTools.svelte';
+  import NavHistoryButtons from './NavHistoryButtons.svelte';
   import SpaceSwitcher from './SpaceSwitcher.svelte';
+  import WorkspaceSelector from '$lib/features/code/WorkspaceSelector.svelte';
   import WindowControls from './WindowControls.svelte';
   import { PanelRight as ContextIcon } from '$lib/icons';
   import ComputerButton from '$lib/features/computer/ComputerButton.svelte';
@@ -126,6 +128,15 @@
     {#if showDownloads}
       <DownloadsButton />
     {/if}
+    <!-- Local-engine tuning (context length, GPU layers…): a cloud model has none.
+         It sits here, not beside the tabs, so it never moves them. -->
+    {#if appStore.backendMode !== 'api'}
+      <Tooltip label={$t('titlebar.llmSettings')} position="bottom">
+        <UiIconButton label={$t('titlebar.llmSettings')} title="" size="sm" class="titlebar-no-drag" onclick={() => (appStore.llmDrawerOpen = true)}>
+          <SlidersHorizontal class="size-4" />
+        </UiIconButton>
+      </Tooltip>
+    {/if}
     <NotificationsButton />
     <Tooltip label={$t('titlebar.theme')} position="bottom">
       <UiIconButton label={$t('titlebar.theme')} title="" size="sm" class="titlebar-no-drag"
@@ -143,46 +154,31 @@
     </Tooltip>
   </div>
 {/snippet}
+<!-- One bar across the window, browser-like: the left group never moves —
+     sidebar toggle, Back/Forward, the space tabs — whether the sidebar is open,
+     closed or Settings is up; search joins it only while the sidebar (which has
+     its own) is away. -->
 <div
-  class="titlebar-row titlebar-drag relative z-20 h-12 shrink-0 select-none bg-background"
+  class="titlebar-row titlebar-drag relative z-20 h-12 shrink-0 select-none"
   class:is-mac={isMac}
   role="banner"
 >
-  {#if settingsOpen}
-    <!-- Seamless sidebar continuation to topbar -->
-    <div
-      class="pointer-events-none absolute inset-y-0 left-0 w-[236px] border-r border-[var(--border)] bg-[var(--sheet-rail)]"
-      aria-hidden="true"
-    ></div>
-  {/if}
-
   <div class="titlebar-safe">
-    <div class="titlebar-left flex min-w-0 items-center">
-      {#if !settingsOpen}
-        <!-- The spaces and search live in the sidebar; they come up here only
-             while it is closed. -->
-        {#if !appStore.sidebarOpen}
-          <TitlebarLeftTools expanded={appStore.sidebarOpen || sidebarPreview} onToggle={onSidebarToggle} onEnter={onSidebarEnter} onLeave={onSidebarLeave} />
-          <SpaceSwitcher />
-          <Tooltip label={$t('titlebar.search')} shortcut="mod+shift+k" position="bottom">
-            <UiIconButton label={$t('titlebar.search')} title="" size="sm" class="titlebar-no-drag"
-              onclick={() => appStore.openSearch()}><Search /></UiIconButton>
-          </Tooltip>
-        {/if}
-      {:else}
-        <div class="flex items-center gap-1.5 pl-1.5">
-          <Tooltip label={$t('shortcuts.backToConversation')} shortcut="escape">
-            <UiIconButton label={$t('shortcuts.backToConversation')} size="sm"
-              type="button"
-              class={uiClass(" titlebar-no-drag")}
-              onclick={() => appStore.closeSettings()}
-
-            >
-              <ArrowLeft class="size-4" />
-            </UiIconButton>
-          </Tooltip>
-          <span class="px-1 text-[length:var(--text-sm)] font-semibold text-foreground">{$t('sidebar.settings')}</span>
-        </div>
+    <div class="titlebar-left flex min-w-0 items-center gap-1">
+      <TitlebarLeftTools expanded={appStore.sidebarOpen || sidebarPreview} disabled={settingsOpen} onToggle={onSidebarToggle} onEnter={onSidebarEnter} onLeave={onSidebarLeave} />
+      <NavHistoryButtons />
+      <span class="titlebar-divider" aria-hidden="true"></span>
+      <SpaceSwitcher />
+      {#if !appStore.sidebarOpen || settingsOpen}
+        <Tooltip label={$t('titlebar.search')} shortcut="mod+shift+k" position="bottom">
+          <UiIconButton label={$t('titlebar.search')} title="" size="sm" class="titlebar-no-drag"
+            onclick={() => appStore.openSearch()}><Search /></UiIconButton>
+        </Tooltip>
+      {/if}
+      <!-- Code: where the open conversation works and with which engine,
+           after search. -->
+      {#if codeChat && !settingsOpen}
+        <WorkspaceSelector chat={codeChat} />
       {/if}
     </div>
 
@@ -238,6 +234,13 @@
   .titlebar-right {
     justify-self: end;
     overflow: visible;
+  }
+
+  .titlebar-divider {
+    width: 1px;
+    height: 1rem;
+    margin-inline: 0.25rem;
+    background: var(--border);
   }
 
   .titlebar-left {

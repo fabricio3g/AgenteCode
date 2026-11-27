@@ -422,6 +422,8 @@ export interface CodeAgentSessionMeta {
   runtimeMode?: CodeAgentRuntimeMode;
   substrate?: 'native' | 'pi';
   sessionId?: string;
+  /** The engine changed mid-conversation: its next prompt carries the transcript. */
+  carryHistory?: boolean;
   worktree?: import('$shared/agente-protocol').SessionWorktree | null;
   checkpointsEnabled?: boolean;
   updatedAt: number;

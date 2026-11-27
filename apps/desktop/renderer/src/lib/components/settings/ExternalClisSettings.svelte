@@ -291,7 +291,7 @@
           align="start"
           control="auto"
         >
-          {#snippet tile()}<DriverIcon instanceId={driver.instance_id} driverKind={driver.driver_kind} size={16} />{/snippet}
+          {#snippet tile()}<DriverIcon instanceId={driver.instance_id} driverKind={driver.driver_kind} name={driver.label} size={16} />{/snippet}
           <div class="flex flex-wrap items-center justify-end gap-1.5">
             <Badge tone={badgeTone(driver.status)}>{$t(`code.driverPicker.status.${driver.status}`)}</Badge>
             {#if driver.models?.length}
@@ -375,7 +375,7 @@
           align="start"
           control="auto"
         >
-          {#snippet tile()}<DriverIcon instanceId={driver.instance_id} driverKind={driver.driver_kind} size={16} />{/snippet}
+          {#snippet tile()}<DriverIcon instanceId={driver.instance_id} driverKind={driver.driver_kind} name={driver.label} size={16} />{/snippet}
           <div class="flex flex-wrap items-center justify-end gap-1.5">
             <Badge tone="neutral">{$t(`code.driverPicker.status.${driver.status}`)}</Badge>
             <Button

@@ -535,8 +535,20 @@
     "addProject": "Add project",
     "newConversation": "New conversation",
     "noProjects": "No projects yet",
-    "noProjectsHint": "Add a project folder and Agente will code on it with you.",
-    "surfaceTitle": "Agente Coding",
+    "empty": {
+      "start": "New conversation",
+      "startHint": "Pick the folder as you write",
+      "fromFolder": "Or start from a folder",
+      "open": "Open a folder",
+      "openHint": "A project already on this computer",
+      "new": "New project",
+      "newHint": "An empty folder, ready for git",
+      "clone": "Clone a repository",
+      "cloneHint": "From GitHub, GitLab or any git URL",
+      "shortcut": "{key} starts a conversation from anywhere"
+    },
+    "noProjectsHint": "Pick a folder and Agente works in it with you: it reads the code, edits files and runs commands, and every change waits for your review.",
+    "surfaceTitle": "Agente Code",
     "browseOpen": "Open",
     "browseOpenNamed": "Open {name}",
     "projectPicker": {
@@ -546,13 +558,12 @@
       "fixed": "Works in {path}. Start a new conversation to use another folder."
     },
     "driverPicker": {
-      "label": "Agent CLI",
+      "label": "Agent",
       "builtin": "Agente Core",
       "builtinTag": "Built-in",
       "manage": "Manage external CLIs…",
-      "fixedHint": "This conversation is bound to this CLI. Start a handoff below to switch.",
-      "handoffTitle": "Continue in another agent",
-      "handoffHint": "Open a new conversation with a summary of progress so far",
+      "switchHint": "Switching keeps this conversation: the next message hands the new agent its history.",
+      "busyHint": "The agent can change once this turn finishes.",
       "driverNotReady": "{driver} is not ready — open Settings to check it",
       "configureDriver": "Configure CLI in Settings → External CLIs",
       "driverModel": "CLI model",
@@ -679,7 +690,7 @@
     "conversationOptions": "Conversation options",
     "folderMissing": "Folder not found",
     "locateFolder": "Locate folder…",
-    "unlinked": "Unlinked conversations",
+    "unlinked": "No project",
     "unlinkedHint": "Their project was removed, so they can’t run anymore.",
     "deleteAll": "Delete all",
     "deleteUnlinkedTitle": "Delete {conversations}?",
@@ -988,6 +999,8 @@
     "noContentMatches": "No message matches"
   },
   "shortcuts": {
+    "back": "Go back",
+    "forward": "Go forward",
     "title": "Keyboard shortcuts",
     "newChat": "New chat",
     "addProject": "Add project",
@@ -2718,6 +2731,8 @@
     "branchTitle": "{title} · branch"
   },
   "titlebar": {
+    "back": "Back",
+    "forward": "Forward",
     "hideSidebar": "Hide sidebar",
     "showSidebar": "Show sidebar",
     "search": "Search conversations",

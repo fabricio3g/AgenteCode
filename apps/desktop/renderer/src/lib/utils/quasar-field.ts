@@ -36,6 +36,9 @@ const STARS: ReadonlyArray<readonly [row: number, col: number, luminance: number
 /** One full orbital revolution, shared by every tile's delay. */
 export const QUASAR_ORBIT_PERIOD = 3.6;
 
+/** How long the field takes to light up, horizon to edge, before the orbit reads. */
+export const QUASAR_ASSEMBLY = 0.55;
+
 export interface QuasarTile {
   /** Left edge on the 120×120 icon grid. */
   x: number;
@@ -49,6 +52,8 @@ export interface QuasarTile {
   opacity: number;
   /** Negative animation delay, in seconds: the sweep is already in orbit. */
   delay: number;
+  /** When the tile lights up on launch, in seconds: the horizon first, the edge last. */
+  enter: number;
 }
 
 /** Normalized tilted Quasar Orbital luminance field, in [-1, 1]². */
@@ -118,6 +123,10 @@ function build(): QuasarTile[] {
       const v = -nx * sin + ny * cos;
       const turn = (Math.atan2(v / DISK_V, u / DISK_U) + Math.PI) / (2 * Math.PI);
 
+      // Launch lights the field from the event horizon outward: a ripple, so
+      // the mark assembles rather than fading in as one picture.
+      const reach = Math.min(1, Math.max(0, (Math.hypot(nx, ny) - 0.2) / 1.05));
+
       tiles.push({
         x: round(cx - size / 2),
         y: round(cy - size / 2),
@@ -125,6 +134,7 @@ function build(): QuasarTile[] {
         rx: round(size * 0.22),
         opacity,
         delay: round((turn - 1) * QUASAR_ORBIT_PERIOD),
+        enter: round(reach * QUASAR_ASSEMBLY),
       });
     }
   }

@@ -1,13 +1,12 @@
 <svelte:options runes={true} />
 <script lang="ts">
-  import UiListRow from '$lib/components/ui/ListRow.svelte';
 
   import UiInput from '$lib/components/ui/Input.svelte';
   import { cn as uiClass } from '$lib/utils/cn';
 
   import { tick } from 'svelte';
   import { t } from 'svelte-i18n';
-  import { ArrowDown, ArrowUp, Folder, FolderOpen, MoreHorizontal, Pencil, Plus, Trash2 } from '$lib/icons';
+  import { ArrowDown, ArrowUp, Folder, FolderOpen, MoreHorizontal, Pencil, Trash2 } from '$lib/icons';
   import { appStore } from '$lib/stores/app.svelte';
   import { workspaceLayout } from '$lib/stores/workspace-layout.svelte';
   import { copy } from '$lib/copy';
@@ -72,7 +71,7 @@
 
 {#snippet conversation(chat: ChatSession)}
   {@const status=statusFor(chat.id)}
-  <SessionRow {chat} active={appStore.currentChatId===chat.id} open={!!workspaceLayout.paneForChat(chat.id)}
+  <SessionRow {chat} active={appStore.currentChatId===chat.id} open={workspaceLayout.panes.length > 1 && !!workspaceLayout.paneForChat(chat.id)}
     pinned={organization.isPinned('chats', chat.id)} onpin={()=>organization.togglePin('chats', chat.id)}
     badge={sessionBadgeFor(chat)}
     onselect={()=>codeStore.openConversation(chat.id)} onsplit={(edge)=>onsplit(chat.id,edge)} {status}
@@ -126,9 +125,6 @@
     </div>
   {:else if entry.chat}{@render conversation(entry.chat)}{/if}
 {/each}
-{#if !missing}
-  <UiListRow  type="button" class={uiClass("sidebar-row is-muted", "ui-local-01f39bb9")} onclick={()=>codeStore.newConversation(project)}><Plus class="sidebar-row-icon" /><span class="sidebar-row-label">{$t('code.newConversation')}</span></UiListRow>
-{/if}
 
 <style>
   .folder-form { display:flex;gap:0.375rem;align-items:center;padding:0.375rem; } .folder-form :global(input.ui-local-01f39bb9) { min-width:0;flex:1; }

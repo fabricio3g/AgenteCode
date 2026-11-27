@@ -134,8 +134,25 @@ impl AgentDriver for AcpDriver {
             )
             .await
             {
-                let parsed = parse_opencode_models_output(&stdout);
+                let mut parsed = parse_opencode_models_output(&stdout);
                 if !parsed.is_empty() {
+                    // `opencode models` prints names only; the effort levels
+                    // (minimal … max) come from the ACP session's
+                    // `thought_level` option, so ask the live session once and
+                    // give every model its levels — otherwise OpenCode never
+                    // offered a thinking level at all.
+                    let live = probe_acp_live(&self.instance).await;
+                    if let Some(levels) = live
+                        .models
+                        .iter()
+                        .find(|model| !model.thinking_levels.is_empty())
+                        .map(|model| model.thinking_levels.clone())
+                    {
+                        for model in &mut parsed {
+                            model.thinking_levels = levels.clone();
+                        }
+                        info.capabilities.thinking = true;
+                    }
                     info.models = parsed;
                     info.version = passive_probe(
                         &self.instance.command,
@@ -1388,6 +1405,9 @@ pub fn parse_acp_models(session_result: &Value) -> Vec<DriverModel> {
             let mut seen_levels = HashSet::new();
             collect_config_option_entries(entry)
                 .into_iter()
+                // "default" is the absence of a choice: the picker draws its
+                // own Default, so it is not a level of its own.
+                .filter(|&(val, _)| !val.eq_ignore_ascii_case("default"))
                 .filter(|&(val, _)| seen_levels.insert(val))
                 .map(|(val, _)| val.to_string())
                 .collect()
@@ -2363,6 +2383,38 @@ mod tests {
         assert_eq!(models[1].id, "gemini-3-pro");
         assert_eq!(models[1].label, "Gemini 3 Pro");
         assert!(models[1].is_default);
+    }
+
+    #[test]
+    fn opencode_effort_option_becomes_thinking_levels_without_default() {
+        // What `opencode acp` (v2.4) answers to `session/new`: the effort
+        // option is `effort` in the `thought_level` category, and lists
+        // "default" beside the real levels.
+        let session_result = json!({
+            "sessionId": "s-oc",
+            "configOptions": [
+                {
+                    "id": "model",
+                    "category": "model",
+                    "currentValue": "opencode/big-pickle",
+                    "options": [{ "value": "opencode/big-pickle", "name": "Big Pickle" }]
+                },
+                {
+                    "id": "effort",
+                    "category": "thought_level",
+                    "currentValue": "default",
+                    "options": [
+                        { "value": "minimal" }, { "value": "low" }, { "value": "medium" },
+                        { "value": "high" }, { "value": "xhigh" }, { "value": "max" },
+                        { "value": "default" }
+                    ]
+                }
+            ]
+        });
+
+        assert_eq!(extract_acp_thinking_config_id(&session_result).as_deref(), Some("effort"));
+        let models = parse_acp_models(&session_result);
+        assert_eq!(models[0].thinking_levels, vec!["minimal", "low", "medium", "high", "xhigh", "max"]);
     }
 
     #[test]

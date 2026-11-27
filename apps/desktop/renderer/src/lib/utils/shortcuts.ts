@@ -9,8 +9,8 @@ export function isMacPlatform(): boolean {
   return platform === 'darwin' || /mac/i.test(platform);
 }
 
-const MAC_KEYS: Record<string, string> = { mod: '⌘', shift: '⇧', alt: '⌥', ctrl: '⌃', enter: '↩', escape: 'Esc' };
-const PC_KEYS: Record<string, string> = { mod: 'Ctrl', shift: 'Shift', alt: 'Alt', ctrl: 'Ctrl', enter: 'Enter', escape: 'Esc' };
+const MAC_KEYS: Record<string, string> = { mod: '⌘', shift: '⇧', alt: '⌥', ctrl: '⌃', enter: '↩', escape: 'Esc', left: '←', right: '→' };
+const PC_KEYS: Record<string, string> = { mod: 'Ctrl', shift: 'Shift', alt: 'Alt', ctrl: 'Ctrl', enter: 'Enter', escape: 'Esc', left: '←', right: '→' };
 
 /** The keys of a combo, one cap each: `mod+shift+k` → ["⌘","⇧","K"] / ["Ctrl","Shift","K"]. */
 export function shortcutKeys(combo: string, mac = isMacPlatform()): string[] {

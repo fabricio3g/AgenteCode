@@ -1,12 +1,12 @@
 <svelte:options runes={true} />
 
 <!--
-  The spaces, as one segmented control: a soft track with a raised segment on
-  the space you are in. It reuses `SegmentedControl` rather than drawing its own
-  pills, so the control matches every picker in Settings — and inherits
-  roving tabindex, Arrow/Home/End, the sliding indicator and reduced motion.
-  Glyphs only: each segment names itself in a tooltip. It heads the sidebar,
-  and the titlebar while the sidebar is closed.
+  The spaces as one tab group in the top bar: icons only, all inside a single
+  bordered container, the one you are in on a filled tab; each names itself in
+  a tooltip, and a dot marks a space whose work runs while you are elsewhere.
+  The top bar spans the window, so the tabs sit at one place whether
+  the sidebar is open, closed or Settings is up. It reuses `SegmentedControl`
+  for roving tabindex, Arrow/Home/End and the sliding indicator.
 -->
 
 <script lang="ts">
@@ -47,13 +47,13 @@
 
 <!-- `id="space"` keeps the `space-tab-<space>` ids that AppShell focuses after
      Settings closes. -->
-<div class="space-group titlebar-no-drag" data-space-switcher>
+<div class="space-group titlebar-no-drag" class:is-dimmed={appStore.settingsScreenOpen} data-space-switcher>
   <SegmentedControl
     variant="tabs"
     shape="soft"
     id="space"
     controlsPanels={false}
-    labels="active"
+    labels="none"
     class="space-strip"
     label={copy.spaces.label}
     value={appStore.activeTab}
@@ -63,40 +63,52 @@
 </div>
 
 <style>
-  /* The head is a window drag region: without this a press on a tab drags
-     the window instead of switching the space. */
+  /* The bar is a window drag region: without this a press on a tab drags the
+     window instead of switching the space. */
   .space-group {
     display: flex;
-    align-items: stretch;
-    height: 100%;
-    padding-inline: 0.375rem;
+    align-items: center;
     -webkit-app-region: no-drag;
   }
 
-  /* Flush tab strip: no pill track, no floating capsule — just clean tabs
-     with a sliding 2px accent underline on the active space. */
+  /* One container for the group: a hairline border around all the tabs, the
+     space in effect on a filled tab inside it. */
   .space-group :global(.space-strip) {
-    align-items: stretch;
     gap: 0.125rem;
-    padding: 0;
-    border: 0;
-    border-radius: 0;
+    padding: 0.125rem;
+    border: 1px solid var(--border);
+    border-radius: calc(var(--float-row-radius) + 0.125rem);
     background: transparent;
   }
 
   .space-group :global(.space-strip > span[aria-hidden='true']) {
-    top: auto !important;
-    bottom: 0;
-    height: 2px !important;
     border: 0;
-    border-radius: 9999px;
-    background: var(--brand-accent);
+    border-radius: var(--float-row-radius);
+    background: var(--float-row-selected);
     box-shadow: none;
   }
 
   .space-group :global(.space-strip [role='tab']) {
-    height: 100%;
-    min-height: 2rem;
-    border-radius: 0;
+    width: 1.875rem;
+    min-width: 1.875rem;
+    height: 1.75rem;
+    padding: 0;
+    justify-content: center;
+    border-radius: var(--float-row-radius);
+    color: var(--text-secondary);
+  }
+
+  .space-group :global(.space-strip [role='tab'][aria-selected='true']) {
+    color: var(--foreground);
+  }
+
+  .space-group :global(.space-strip [role='tab']:not([aria-selected='true']):hover) {
+    background: var(--float-row-hover);
+    color: var(--foreground);
+  }
+
+  /* Settings is up: the tab under it is where you return, not where you are. */
+  .space-group.is-dimmed :global(.space-strip > span[aria-hidden='true']) {
+    background: var(--float-row-hover);
   }
 </style>

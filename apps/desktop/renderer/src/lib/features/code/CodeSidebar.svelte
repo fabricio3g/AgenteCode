@@ -222,6 +222,9 @@
     return Array.from(map.values()).sort((a, b) => a.key - b.key);
   });
 
+  // Which pane a conversation sits in only says something once the centre is split.
+  const split = $derived(workspaceLayout.panes.length > 1);
+
   /** One read of the unlinked list instead of one per reference in the markup. */
   const unlinked = $derived(codeStore.unlinkedConversations);
 
@@ -399,7 +402,7 @@
               <SessionRow
                 {chat}
                 active={appStore.currentChatId === chat.id}
-                open={!!workspaceLayout.paneForChat(chat.id)}
+                open={split && !!workspaceLayout.paneForChat(chat.id)}
                 status={statusFor(chat.id)}
                 pinned={organization.isPinned('chats', chat.id)}
                 onpin={() => organization.togglePin('chats', chat.id)}
@@ -473,7 +476,7 @@
           }}
         >
           {#if missing}
-            <TriangleAlert class="sidebar-row-icon text-[var(--warning)]" />
+            <TriangleAlert class="sidebar-row-icon missing-mark" />
           {:else if expanded}
             <FolderOpen class="sidebar-row-icon" />
           {:else}
@@ -501,7 +504,7 @@
               onblur={commitRename}
             />
           {:else}
-            <span class="sidebar-row-label" class:line-through={missing}>{project.rootName}</span>
+            <span class="sidebar-row-label" class:is-missing={missing}>{project.rootName}</span>
             {#if pinnedProject}
               <Pin class="project-pin" aria-hidden="true" />
             {/if}
@@ -593,7 +596,6 @@
           onclick={() => (unlinkedOpen = !unlinkedOpen)}
         >
           <span class="truncate">{$t('code.unlinked')}</span>
-          <span class="pane-count">{unlinked.length}</span>
         </UiButton>
         <IconButton
           class="sidebar-row-action"
@@ -610,7 +612,7 @@
             <SessionRow
               {chat}
               active={appStore.currentChatId === chat.id}
-              open={!!workspaceLayout.paneForChat(chat.id)}
+              open={split && !!workspaceLayout.paneForChat(chat.id)}
               onselect={() => appStore.selectChat(chat.id)}
               onsplit={(edge) => splitWith(chat.id, edge)}
               menuLabel={$t('code.conversationOptions')}
@@ -683,6 +685,15 @@
     flex-shrink: 0;
     color: var(--brand-accent);
     opacity: 0.85;
+  }
+
+  /* A folder that went missing: a quiet warning glyph and a dimmed name — the
+     tooltip and the Locate row say the rest. */
+  :global(.missing-mark) {
+    color: color-mix(in srgb, var(--warning) 70%, var(--muted-foreground));
+  }
+  .is-missing {
+    color: var(--muted-foreground);
   }
 
   .thread-group-label {

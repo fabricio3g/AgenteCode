@@ -758,7 +758,8 @@ const handlers: Record<string, (args?: Record<string, unknown>) => unknown> = {
   get_desktop_capabilities: () => ({ platform: 'linux', capabilities: [] }),
   get_runtime_recommendations: () => ({ platform: 'linux', arch: 'x64', gpu_backend: 'vulkan', has_gpu: true, recommended_variant: 'vulkan' }),
 
-  chat_db_load_all: () => savedSessions,
+  // `&noprojects` is a first run in Code: no projects and no Code conversations.
+  chat_db_load_all: () => (bootParams.has('noprojects') ? savedSessions.filter((entry) => (entry as { contextMode?: string }).contextMode !== 'code') : savedSessions),
   chat_db_save_draft: (args) => {
     const draft = args as { chatId: string; draft: string; codeAgent?: unknown; pendingPrompts?: unknown; updatedAt: number };
     const session = savedSessions.find((entry) => (entry as { id?: string }).id === draft.chatId) as Record<string, unknown> | undefined;
@@ -786,7 +787,7 @@ const handlers: Record<string, (args?: Record<string, unknown>) => unknown> = {
   chat_db_load_folders: () => [],
   chat_db_save_folder: () => ({ ok: true }),
   chat_db_delete_folder: () => ({ ok: true }),
-  chat_db_load_code_projects: () => savedProjects,
+  chat_db_load_code_projects: () => (bootParams.has('noprojects') ? [] : savedProjects),
   chat_db_save_code_project: (args) => {
     const project = (args as { project?: Record<string, unknown> } | undefined)?.project;
     if (!project) return { ok: true };

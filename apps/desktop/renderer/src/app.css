@@ -3242,7 +3242,7 @@ kbd {
 .markdown-body li::marker { color: var(--text-muted); }
 .markdown-body ol > li::marker { font-variant-numeric: tabular-nums; }
 .markdown-body li > ul,
-.markdown-body li > ol { margin: 0.25em 0 0; }
+.markdown-body li > ol { margin: 0.15em 0 0; }
 
 .markdown-body pre {
   overflow-x: auto;
@@ -3586,6 +3586,12 @@ kbd {
 .markdown-body li + li {
   margin-top: 0.4em;
 }
+/* A nested list is usually short fragments ("base delay 120ms"): a sentence's
+   breathing room between them made a three-word list look like a column of
+   islands. */
+.markdown-body li li + li {
+  margin-top: 0.15em;
+}
 .markdown-body li > p {
   margin-bottom: 0.35em;
 }
@@ -3726,6 +3732,15 @@ input[type="range"]::-moz-range-thumb {
   overscroll-behavior-y: contain;
   overflow-anchor: none;
   scrollbar-gutter: stable;
+  container: conversation / inline-size;
+}
+/* A wide column reads at a step larger type rather than leaving a strip of
+   empty canvas: the measure is in `ch`, so lines stay near 72 characters and
+   simply fill more of the column (17px at 100%, still under Text size). */
+@container conversation (min-width: 56rem) {
+  .markdown-body {
+    font-size: calc(var(--text-prose) * 1.0625);
+  }
 }
 @media (hover: none) {
   .message-action-bar { opacity: 1; pointer-events: auto; }

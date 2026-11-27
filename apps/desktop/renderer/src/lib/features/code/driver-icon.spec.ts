@@ -49,3 +49,31 @@ it('falls back to driverKind when the instance id is custom, and generic for cus
   expect(resolveDriverIcon('internal-acp-tool', 'acp')).toBe('generic');
   expect(resolveDriverIcon(undefined, undefined)).toBe('generic');
 });
+
+it('gives every built-in CLI a letter mark, told apart by hue when initials match', async () => {
+  const { driverMark } = await import('./driver-icon');
+  const marks = BUILTINS.filter((id) => id !== 'agente').map((id) => driverMark(id));
+  for (const mark of marks) expect(mark.letter).toMatch(/^[A-Z]$/);
+  const cs = ['claude', 'codex', 'copilot', 'cursor', 'cline'].map((id) => driverMark(id as (typeof BUILTINS)[number]).hue);
+  expect(new Set(cs).size).toBe(cs.length);
+});
+
+it('names an unknown CLI by its own initial', async () => {
+  const { driverMark } = await import('./driver-icon');
+  expect(driverMark('generic', 'zed agent').letter).toBe('Z');
+  expect(driverMark('generic', '').letter).toBe('›');
+});
+
+it('draws a CLI with its own shipped logo and falls back to a letter mark', async () => {
+  const { existsSync } = await import('node:fs');
+  const { resolve } = await import('node:path');
+  const { driverLogo } = await import('./driver-icon');
+  expect(driverLogo('agente')).toBeNull();
+  expect(driverLogo('generic')).toBeNull();
+  expect(driverLogo('pi')).toBeNull();
+  for (const id of BUILTINS) {
+    const logo = driverLogo(id);
+    if (logo) expect(existsSync(resolve(__dirname, '../../../../public', logo))).toBe(true);
+  }
+  expect(driverLogo('claude')).toBe('./drivers/claude.svg');
+});

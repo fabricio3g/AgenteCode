@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { QUASAR_ORBIT_PERIOD, quasarOrbitalField, quasarTiles } from './quasar-field';
+import { QUASAR_ASSEMBLY, QUASAR_ORBIT_PERIOD, quasarOrbitalField, quasarTiles } from './quasar-field';
 
 describe('quasar field', () => {
   it('leaves the event horizon empty', () => {
@@ -24,5 +24,16 @@ describe('quasar field', () => {
     expect(Math.max(...delays)).toBeLessThanOrEqual(0);
     // Not one shared delay: the highlight has to travel.
     expect(new Set(delays).size).toBeGreaterThan(20);
+  });
+
+  it('lights the field from the horizon outward on launch', () => {
+    const tiles = quasarTiles();
+    const distance = (tile: (typeof tiles)[number]) => Math.hypot(tile.x + tile.size / 2 - 60, tile.y + tile.size / 2 - 60);
+    const nearest = tiles.reduce((a, b) => (distance(a) < distance(b) ? a : b));
+    const farthest = tiles.reduce((a, b) => (distance(a) > distance(b) ? a : b));
+
+    expect(nearest.enter).toBeLessThan(farthest.enter);
+    expect(Math.min(...tiles.map((tile) => tile.enter))).toBeGreaterThanOrEqual(0);
+    expect(Math.max(...tiles.map((tile) => tile.enter))).toBeLessThanOrEqual(QUASAR_ASSEMBLY);
   });
 });

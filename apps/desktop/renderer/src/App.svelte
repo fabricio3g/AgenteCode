@@ -6,6 +6,7 @@
   import StartupMark from '$lib/components/layout/StartupMark.svelte';
   import WindowControls from '$lib/components/layout/WindowControls.svelte';
   import { initMotion } from '$lib/utils/motion.svelte';
+  import { motionFade } from '$lib/utils/transitions';
   import { appStore } from '$lib/stores/app.svelte';
   import { deepResearchStore } from '$lib/stores/deep-research.svelte';
   import { appearanceStore } from '$lib/stores/appearance.svelte';
@@ -114,8 +115,9 @@
 
 {#if !startupReady && !startupBypassed}
   <!-- Quiet on purpose: the app's own background, its mark. The top strip
-       stays draggable so the window can move while it loads. -->
-  <div class="startup-loading-screen">
+       stays draggable so the window can move while it loads. It overlays the
+       app and dissolves into it once ready, instead of cutting away. -->
+  <div class="startup-loading-screen" out:motionFade={{ duration: 280 }}>
     <div class="startup-drag titlebar-drag">
       <WindowControls />
     </div>
@@ -125,9 +127,10 @@
 
 <style>
   .startup-loading-screen {
-    position: relative;
+    position: fixed;
+    z-index: 2147483000;
+    inset: 0;
     display: flex;
-    height: 100%;
     flex-direction: column;
     align-items: center;
     justify-content: center;
