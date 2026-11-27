@@ -47,8 +47,10 @@ async function run() {
     })()`);
     await new Promise((resolve) => setTimeout(resolve, 100));
     assert.equal(await run<string>('document.getElementById("browser-address-input").value'), 'https://a.test');
-    const opacity = await run<string>('getComputedStyle(document.querySelector(".workspace-divider .resize-handle"), "::before").opacity');
-    assert.equal(opacity, '0', 'Resize cue is hidden at rest');
+    const seamOpacity = await run<string>('getComputedStyle(document.querySelector(".workspace-divider .resize-handle"), "::after").opacity');
+    assert.equal(seamOpacity, '0', 'Resize seam hairline is hidden at rest');
+    const gripOpacity = await run<string>('getComputedStyle(document.querySelector(".workspace-divider .resize-handle"), "::before").opacity');
+    assert.equal(gripOpacity, '0.22', 'Resize grip rests at subtle opacity');
     await run(`(async () => { const { appStore } = await import('/src/lib/stores/app.svelte.ts'); appStore.currentChatId = 'workspace-b'; })()`);
     await new Promise((resolve) => setTimeout(resolve, 100));
     assert.equal(await run<boolean>('!document.querySelector("[data-workspace-panel=browser]:not([hidden])")'), true, 'Other conversation starts with its own hidden browser');
