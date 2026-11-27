@@ -134,6 +134,17 @@ struct BoardEnableParams {
     enabled: bool,
 }
 
+/// `board.move`: the user accepts, sends back or gives up a card from the
+/// board itself, the same move the lead makes with `board` `move`.
+#[derive(Deserialize)]
+struct BoardMoveParams {
+    session_id: SessionId,
+    id: String,
+    to: agente_core::swarm::MoveTo,
+    #[serde(default)]
+    note: Option<String>,
+}
+
 #[derive(Deserialize)]
 struct ComplementsSyncParams {
     servers: HashMap<String, crate::complements::ComplementConfig>,
@@ -951,6 +962,24 @@ impl Connection {
                     .set_enabled(session_id.as_uuid(), enabled)
                     .map_err(|error| (rpc::INTERNAL_ERROR, error))?;
                 to_json(board)
+            }
+            "board.move" => {
+                let BoardMoveParams {
+                    session_id,
+                    id,
+                    to,
+                    note,
+                } = parse(params)?;
+                let store = agente_core::swarm::BoardStore::user();
+                let (said, board) = agente_core::swarm::move_with_work(
+                    &store,
+                    session_id.as_uuid(),
+                    &id,
+                    to,
+                    note.as_deref(),
+                )
+                .map_err(|error| (rpc::INVALID_PARAMS, error))?;
+                Ok(json!({ "message": said, "board": to_json(board)? }))
             }
             "board.clear" => {
                 let SessionParams { session_id } = parse(params)?;

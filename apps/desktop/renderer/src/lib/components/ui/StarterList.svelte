@@ -40,7 +40,8 @@
       <Button
         variant="plain"
         type="button"
-        class="starter-link"
+        class={starter.hue === undefined ? 'starter-link' : 'starter-link has-hue'}
+        style={starter.hue === undefined ? undefined : `--hue:${starter.hue}`}
         onpointerenter={() => onpreview?.(starter)}
         onpointerleave={() => onpreview?.(null)}
         onfocus={() => onpreview?.(starter)}
@@ -254,6 +255,17 @@
     transition: color var(--motion-instant) var(--motion-ease), opacity var(--motion-instant) var(--motion-ease);
   }
 
+  /* A kind's hue tints its glyph only — the label stays grey, so the line still
+     reads as one quiet row and the colour tells the kinds apart (differentiation,
+     not emphasis). Muted lightness and chroma in both themes. */
+  :global(.starter-link.has-hue .starter-link-icon) {
+    color: oklch(0.56 0.11 var(--hue));
+    opacity: 1;
+  }
+  :global(.dark .starter-link.has-hue .starter-link-icon) {
+    color: oklch(0.76 0.09 var(--hue));
+  }
+
   :global(.starter-link:hover),
   :global(.starter-link:focus-visible) {
     border-color: color-mix(in srgb, var(--foreground) 10%, transparent);
@@ -261,8 +273,8 @@
     color: var(--foreground);
   }
 
-  :global(.starter-link:hover .starter-link-icon),
-  :global(.starter-link:focus-visible .starter-link-icon) {
+  :global(.starter-link:not(.has-hue):hover .starter-link-icon),
+  :global(.starter-link:not(.has-hue):focus-visible .starter-link-icon) {
     color: var(--foreground);
     opacity: 1;
   }

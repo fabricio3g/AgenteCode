@@ -227,6 +227,173 @@ pub async fn changed_files(info: &WorktreeInfo) -> Vec<String> {
     .unwrap_or_default()
 }
 
+/// The files the child changed in its checkout, relative to the repository
+/// root: tracked changes against the base commit (committed or not) plus new
+/// untracked files, leaving out files seeded from the parent's dirty state
+/// that still match their snapshot. Blocking; capped at 500.
+pub fn child_changed_paths(info: &WorktreeInfo) -> Vec<String> {
+    let path = PathBuf::from(&info.path);
+    let mut paths: Vec<String> = Vec::new();
+    let mut collect = |args: &[&str]| {
+        if let Ok(out) = git(&path, args) {
+            if out.status.success() {
+                paths.extend(
+                    out.stdout
+                        .split(|byte| *byte == 0)
+                        .filter(|entry| !entry.is_empty())
+                        .map(|entry| String::from_utf8_lossy(entry).replace('\\', "/")),
+                );
+            }
+        }
+    };
+    collect(&["diff", "--name-only", "-z", &info.base_commit]);
+    collect(&["ls-files", "--others", "--exclude-standard", "-z"]);
+    paths.sort();
+    paths.dedup();
+    paths.retain(|rel| {
+        match info.seed_fingerprint.iter().find(|(seeded, _)| seeded == rel) {
+            Some((_, hash)) => file_hash(&path.join(rel)) != Some(*hash),
+            None => true,
+        }
+    });
+    paths.truncate(500);
+    paths
+}
+
+/// One file a child changed, with what it looked like when the child
+/// started: the content hash ([`file_hash`]) of the parent's copy it was
+/// seeded from, or of the base commit's, or `None` when it did not exist.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ChangedFile {
+    pub path: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub baseline: Option<u64>,
+}
+
+/// The child's own changes ([`child_changed_paths`]) with their baselines,
+/// so they can be applied to the project later — even from another process.
+pub fn child_work(info: &WorktreeInfo) -> Vec<ChangedFile> {
+    let path = PathBuf::from(&info.path);
+    child_changed_paths(info)
+        .into_iter()
+        .map(|rel| {
+            let baseline = match info.seed_fingerprint.iter().find(|(seeded, _)| *seeded == rel) {
+                Some((_, hash)) => Some(*hash),
+                None => git(&path, &["show", &format!("{}:{rel}", info.base_commit)])
+                    .ok()
+                    .filter(|out| out.status.success())
+                    .map(|out| bytes_hash(&out.stdout)),
+            };
+            ChangedFile { path: rel, baseline }
+        })
+        .collect()
+}
+
+/// What applying a child's work did.
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct Applied {
+    /// Files written to (or removed from) the project.
+    pub written: Vec<String>,
+    /// Files that already matched the child's version.
+    pub unchanged: Vec<String>,
+}
+
+/// Copy a child's changed files from its checkout into the repository it
+/// came from. A file is written only when the project's copy is still what
+/// the child started from (its baseline) — or already equals the child's;
+/// if anyone else changed it meanwhile, nothing at all is applied and the
+/// conflicting files come back as the error, so accepting never overwrites
+/// someone's work and never half-applies.
+pub fn apply_child_work(
+    repo_root: &str,
+    worktree: &str,
+    files: &[ChangedFile],
+) -> Result<Applied, Vec<String>> {
+    let root = PathBuf::from(repo_root);
+    let checkout = PathBuf::from(worktree);
+    if !checkout.is_dir() {
+        return Err(vec![format!("its worktree is gone ({worktree})")]);
+    }
+    let safe = |rel: &str| {
+        let path = Path::new(rel);
+        !rel.is_empty()
+            && path.is_relative()
+            && path
+                .components()
+                .all(|part| matches!(part, std::path::Component::Normal(_)))
+    };
+    let mut plan: Vec<(&ChangedFile, Option<u64>)> = Vec::new();
+    let mut conflicts = Vec::new();
+    let mut applied = Applied::default();
+    for file in files {
+        if !safe(&file.path) {
+            conflicts.push(file.path.clone());
+            continue;
+        }
+        let child_now = file_hash(&checkout.join(&file.path));
+        let root_now = file_hash(&root.join(&file.path));
+        if root_now == child_now {
+            applied.unchanged.push(file.path.clone());
+        } else if root_now == file.baseline {
+            plan.push((file, child_now));
+        } else {
+            conflicts.push(file.path.clone());
+        }
+    }
+    if !conflicts.is_empty() {
+        return Err(conflicts);
+    }
+    for (file, child_now) in plan {
+        let target = root.join(&file.path);
+        let result = match child_now {
+            None => std::fs::remove_file(&target).or_else(|error| {
+                if error.kind() == std::io::ErrorKind::NotFound {
+                    Ok(())
+                } else {
+                    Err(error)
+                }
+            }),
+            Some(_) => target
+                .parent()
+                .map_or(Ok(()), std::fs::create_dir_all)
+                .and_then(|()| std::fs::copy(checkout.join(&file.path), &target).map(|_| ())),
+        };
+        match result {
+            Ok(()) => applied.written.push(file.path.clone()),
+            Err(error) => return Err(vec![format!("{}: {error}", file.path)]),
+        }
+    }
+    Ok(applied)
+}
+
+/// The diff of a child's own changes against its base commit (new files
+/// included), capped at `cap` characters — what a retry is shown of the
+/// attempt before it.
+pub fn work_diff(worktree: &str, base_commit: &str, files: &[ChangedFile], cap: usize) -> Option<String> {
+    let path = PathBuf::from(worktree);
+    if files.is_empty() || !path.is_dir() {
+        return None;
+    }
+    let names: Vec<&str> = files.iter().map(|file| file.path.as_str()).collect();
+    // Untracked files only show in a diff once git knows they are intended.
+    let mut add = vec!["add", "--intent-to-add", "--"];
+    add.extend(names.iter().copied());
+    let _ = git(&path, &add);
+    let mut args = vec!["diff", "--no-color", base_commit, "--"];
+    args.extend(names.iter().copied());
+    let out = git(&path, &args).ok()?;
+    let mut text = String::from_utf8_lossy(&out.stdout).to_string();
+    if text.trim().is_empty() {
+        return None;
+    }
+    if text.len() > cap {
+        let end = crate::util::truncate_at_char_boundary(&text, cap).len();
+        text.truncate(end);
+        text.push_str("\n… diff truncated …\n");
+    }
+    Some(text)
+}
+
 /// Unified diff of the child's tree against its base commit, capped.
 pub async fn diff(info: &WorktreeInfo) -> Option<String> {
     let info = info.clone();
@@ -740,14 +907,20 @@ fn short_uuid() -> String {
     uuid::Uuid::new_v4().simple().to_string()[..8].to_string()
 }
 
-/// Content hash for the seed fingerprint. `DefaultHasher` is per-process but
-/// the fingerprint never leaves the process.
+/// Content hash for the seed fingerprint and a child's file baselines.
+/// `DefaultHasher::new()` uses fixed keys, so the same build hashes the same
+/// bytes the same way in every process; a baseline saved by another build
+/// can only fail to match, which reads as a conflict, never as a false match.
 fn file_hash(path: &Path) -> Option<u64> {
-    use std::hash::Hasher;
     let bytes = std::fs::read(path).ok()?;
+    Some(bytes_hash(&bytes))
+}
+
+fn bytes_hash(bytes: &[u8]) -> u64 {
+    use std::hash::Hasher;
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    hasher.write(&bytes);
-    Some(hasher.finish())
+    hasher.write(bytes);
+    hasher.finish()
 }
 
 fn git(dir: &Path, args: &[&str]) -> std::io::Result<std::process::Output> {
@@ -757,6 +930,47 @@ fn git(dir: &Path, args: &[&str]) -> std::io::Result<std::process::Output> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn applying_child_work_writes_only_untouched_files_and_never_half_applies() {
+        let base = std::env::temp_dir().join(format!("agente-apply-{}", uuid::Uuid::new_v4()));
+        let (root, checkout) = (base.join("root"), base.join("wt"));
+        std::fs::create_dir_all(root.join("src")).unwrap();
+        std::fs::create_dir_all(checkout.join("src")).unwrap();
+        std::fs::write(root.join("src/a.rs"), "old a").unwrap();
+        std::fs::write(root.join("src/gone.rs"), "bye").unwrap();
+        std::fs::write(checkout.join("src/a.rs"), "new a").unwrap();
+        std::fs::write(checkout.join("src/new.rs"), "fresh").unwrap();
+        let files = vec![
+            ChangedFile { path: "src/a.rs".into(), baseline: Some(bytes_hash(b"old a")) },
+            ChangedFile { path: "src/new.rs".into(), baseline: None },
+            ChangedFile { path: "src/gone.rs".into(), baseline: Some(bytes_hash(b"bye")) },
+        ];
+        let (r, w) = (root.to_string_lossy().to_string(), checkout.to_string_lossy().to_string());
+
+        // Someone else changed a.rs in the project meanwhile: nothing is applied.
+        std::fs::write(root.join("src/a.rs"), "user edit").unwrap();
+        assert_eq!(apply_child_work(&r, &w, &files).unwrap_err(), ["src/a.rs"]);
+        assert!(!root.join("src/new.rs").exists(), "no half-applied work");
+        assert!(root.join("src/gone.rs").exists());
+
+        // Back to what the child started from: every change lands.
+        std::fs::write(root.join("src/a.rs"), "old a").unwrap();
+        let applied = apply_child_work(&r, &w, &files).unwrap();
+        assert_eq!(applied.written.len(), 3);
+        assert_eq!(std::fs::read_to_string(root.join("src/a.rs")).unwrap(), "new a");
+        assert_eq!(std::fs::read_to_string(root.join("src/new.rs")).unwrap(), "fresh");
+        assert!(!root.join("src/gone.rs").exists());
+
+        // Applying again is a no-op, not a conflict.
+        let again = apply_child_work(&r, &w, &files).unwrap();
+        assert!(again.written.is_empty());
+
+        // Paths that would leave the repository are refused.
+        let escape = vec![ChangedFile { path: "../outside.rs".into(), baseline: None }];
+        assert!(apply_child_work(&r, &w, &escape).is_err());
+        let _ = std::fs::remove_dir_all(&base);
+    }
     use std::process::Stdio;
 
     fn git_available() -> bool {

@@ -208,14 +208,6 @@ pub(super) struct SubagentHostInner {
     /// OS threads, and child runtimes disappear when their loops finish.
     pub(super) scheduler: OnceLock<tokio::runtime::Handle>,
     pub(super) mcp_session_id: OnceLock<uuid::Uuid>,
-    /// Set by the first `board` call of the turn: what card starts run under.
-    board_lead: OnceLock<board::BoardLead>,
-    /// Swarm members of this host: child id → card id, set before a card's
-    /// spawn so its launch gives the child the `swarm` tool and an inbox.
-    swarm_members: parking_lot::Mutex<std::collections::HashMap<String, String>>,
-    /// Running members' inboxes, where findings from the others land.
-    swarm_inboxes:
-        parking_lot::Mutex<std::collections::HashMap<String, crate::agent::channel::UserInbox>>,
 }
 
 fn outcome_from_result(
@@ -243,9 +235,6 @@ impl SubagentHost {
                 max_concurrent,
                 scheduler: OnceLock::new(),
                 mcp_session_id: OnceLock::new(),
-                board_lead: OnceLock::new(),
-                swarm_members: Default::default(),
-                swarm_inboxes: Default::default(),
             }),
         }
     }

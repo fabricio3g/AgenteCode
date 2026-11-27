@@ -166,6 +166,10 @@ export interface SwarmCard {
   child_id?: string;
   result?: string;
   notes?: string[];
+  /** A writer's finished work, applied to the project when the card is accepted. */
+  work?: { repo_root: string; worktree: string; base_commit: string; files?: Array<{ path: string; baseline?: number }> } | null;
+  /** The diff of the attempt before a send-back, shown to the retry. */
+  last_attempt?: string | null;
 }
 
 /**

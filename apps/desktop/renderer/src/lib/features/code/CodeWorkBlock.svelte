@@ -18,6 +18,7 @@
   import { changedFiles, isRunning, needsAttention, workBlockKey, type WorkItem } from './work-blocks';
   import { disclosure, disclosureKey } from './disclosure-state.svelte';
   import { appearanceStore } from '$lib/stores/appearance.svelte';
+  import type { AgentStyleId } from '$shared/appearance';
   import { workEntries, workTotals, type WorkEntry } from './work-layouts';
   import CodeStepRow from './CodeStepRow.svelte';
   import CodeThoughtRow from './CodeThoughtRow.svelte';
@@ -42,7 +43,9 @@
     thinkingLive,
     codeActions = true,
     activeChildIds = new Set<string>(),
-    onstop
+    onstop,
+    layout,
+    openByDefault
   }: {
     items: WorkItem[];
     chatId: string;
@@ -54,6 +57,10 @@
     codeActions?: boolean;
     activeChildIds?: ReadonlySet<string>;
     onstop?: () => void;
+    /** Draw in this layout instead of the one Appearance picked (its own preview tiles). */
+    layout?: AgentStyleId;
+    /** Start opened or closed regardless of the run's state (previews). */
+    openByDefault?: boolean;
   } = $props();
 
   const approvals = $derived(new Set(approvalsStore.items.map((item) => item.requestId)));
@@ -78,7 +85,7 @@
   const files = $derived(changedFiles(visible));
   const steps = $derived(visible.flatMap((item) => (item.step ? [item.step] : [])));
   const running = $derived(steps.some(isRunning));
-  const defaultOpen = $derived(live || steps.some((step) => step.status === 'error'));
+  const defaultOpen = $derived(openByDefault ?? (live || steps.some((step) => step.status === 'error')));
 
   /**
    * The block's own key: namespaced away from its first row's, which is what
@@ -113,7 +120,7 @@
 
   const lastKey = $derived(visible.at(-1)?.key);
 
-  const Layout = $derived(LAYOUTS[appearanceStore.prefs.agentStyle as keyof typeof LAYOUTS]);
+  const Layout = $derived(LAYOUTS[(layout ?? appearanceStore.prefs.agentStyle) as keyof typeof LAYOUTS]);
   const entries = $derived(workEntries(folded));
   const totals = $derived(workTotals(entries));
   const entryKey = (entry: WorkEntry) => disclosureKey(chatId, messageId, entry.key);

@@ -17,6 +17,7 @@
   import { Bug, FlaskConical, FolderOpen, FolderPlus, GitBranch, Globe, Plus, Telescope } from '$lib/icons';
   import { Button } from '$lib/components/ui';
   import StarterList from '$lib/components/ui/StarterList.svelte';
+  import ConversationProjectBox from './ConversationProjectBox.svelte';
   import type { Starter } from '$lib/components/ui/starter-list';
   import { formatShortcut } from '$lib/utils/shortcuts';
   import { appStore } from '$lib/stores/app.svelte';
@@ -193,7 +194,10 @@
             {#key chat.id}<CodeTranscript messages={chat.messages} chatId={chat.id} />{/key}
           </div>
         {:else if empty}
-          <!-- The folder is chosen on the composer's project picker now. -->
+          <!-- Where it will work, asked before the first message. -->
+          {#if codeStore.canChangeProject(chat)}
+            <div class="composer-column px-3 md:px-6"><ConversationProjectBox {chat} /></div>
+          {/if}
         {:else}
           <div class="ui-top-fade ui-bottom-fade flex min-h-0 min-w-0 flex-1 flex-col">
             {#key chat.id}<CodeTranscript messages={chat.messages} chatId={chat.id} liveSubagentDock />{/key}

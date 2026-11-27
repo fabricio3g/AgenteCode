@@ -31,6 +31,17 @@
     practice: ListChecks
   };
 
+  /** Hue per kind (oklch degrees): tells the starters apart, never emphasis. */
+  const HUES: Record<string, number> = {
+    weather: 75,
+    code: 250,
+    write: 20,
+    analyze: 165,
+    brainstorm: 300,
+    teach: 130,
+    practice: 205
+  };
+
   interface Props {
     /** Focuses the composer textarea after the prompt is inserted. */
     onpick: () => void;
@@ -56,6 +67,7 @@
     suggestions.map((suggestion) => ({
       id: suggestion.id,
       icon: ICONS[suggestion.id],
+      hue: HUES[suggestion.id],
       label: suggestion.label,
       preview: suggestion.prompt,
       group: suggestion.group

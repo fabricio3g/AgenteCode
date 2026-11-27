@@ -92,11 +92,36 @@ pub struct Card {
     /// Feedback from the main model when it sent the card back.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub notes: Vec<String>,
+    /// A writer's finished work, waiting to be accepted: where it is and
+    /// what it changed. Applied to the project on `move` to done.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub work: Option<CardWork>,
+    /// The diff of the attempt before a send-back, so the retry starts from
+    /// it instead of from nothing.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_attempt: Option<String>,
+}
+
+/// Where a writer's work is and what it changed (`subagent::worktree`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CardWork {
+    pub repo_root: String,
+    pub worktree: String,
+    pub base_commit: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub files: Vec<crate::subagent::worktree::ChangedFile>,
 }
 
 impl Card {
     fn is_writer(&self) -> bool {
         self.capability != SubagentCapabilityMode::ReadOnly
+    }
+
+    fn capability_label(&self) -> &'static str {
+        match self.capability {
+            SubagentCapabilityMode::ReadOnly => "reads",
+            _ => "writes",
+        }
     }
 }
 
@@ -124,6 +149,12 @@ const MAX_FINDINGS: usize = 200;
 const PROMPT_FINDINGS: usize = 20;
 /// Findings the main model's board result carries.
 const SUMMARY_FINDINGS: usize = 10;
+/// How much of a subagent's report a card keeps.
+const RESULT_LIMIT: usize = 16_000;
+/// How much of each dependency's result a card's prompt carries.
+const BUILT_ON_LIMIT: usize = 6_000;
+/// How much of the previous attempt's diff a retry is shown.
+const ATTEMPT_DIFF_LIMIT: usize = 12_000;
 
 impl Finding {
     /// Who it came from and went to: `c1 → c2, c3`, `lead`, `c4`.
@@ -303,6 +334,53 @@ fn waits_for_open(cards: &[Card], staged: &[Card], from_deps: &[String], target_
     false
 }
 
+/// A writer must say what it may change, and each entry must mean to: an
+/// empty `owns` used to leave the writer unrestricted and invisible to the
+/// one-writer-per-file check, and a pattern at the project root (`*.rs`,
+/// `**`) quietly claimed the whole project. Owning everything is allowed
+/// only when asked for in so many words (`.` or `/`).
+fn check_writer_owns(title: &str, owns: &[String]) -> Result<(), String> {
+    if owns.is_empty() {
+        return Err(format!(
+            "card \"{title}\" may change files, so it needs `owns`: the files or folders (`src/auth/`) only it may change"
+        ));
+    }
+    for path in owns {
+        let trimmed = path.trim();
+        let whole = matches!(trimmed, "." | "./" | "/");
+        if claim(path) == "/" && !whole {
+            return Err(format!(
+                "card \"{title}\" owns `{path}`, which would cover the whole project: name the files or folders it changes (`src/auth/`, `src/auth/**`), not a pattern"
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// The files in `changed` (project-relative) that none of `owns` covers.
+pub(crate) fn outside_owns(owns: &[String], changed: &[String]) -> Vec<String> {
+    changed
+        .iter()
+        .filter(|path| !owns.iter().any(|owned| path_is_owned(owned, path)))
+        .cloned()
+        .collect()
+}
+
+/// What became of the subagent a working card is waiting on.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ChildState {
+    /// Still queued or running.
+    Live,
+    /// It finished, but its card never heard (the finish was lost).
+    Finished { ok: bool, summary: String },
+    /// Nothing knows it any more: the app restarted, or the session was
+    /// resumed elsewhere, while the card was working.
+    Gone,
+}
+
+/// The result a card gets when its subagent vanished.
+const INTERRUPTED: &str = "Interrupted: its subagent is no longer running (the app restarted or the run was lost). Send it back to the backlog to retry.";
+
 impl Board {
     pub fn card(&self, id: &str) -> Option<&Card> {
         self.cards.iter().find(|card| card.id == id)
@@ -361,6 +439,9 @@ impl Board {
                     .filter(|path| !path.is_empty())
                     .collect()
             };
+            if capability != SubagentCapabilityMode::ReadOnly {
+                check_writer_owns(&title, &owns)?;
+            }
             for other in self
                 .cards
                 .iter()
@@ -408,6 +489,8 @@ impl Board {
                 child_id: None,
                 result: None,
                 notes: Vec::new(),
+                work: None,
+                last_attempt: None,
             });
         }
         self.next_id = next;
@@ -464,13 +547,132 @@ impl Board {
         if card.status != CardStatus::Working {
             return None;
         }
-        card.result = Some(trim_limit(summary, 4_000));
+        card.result = Some(trim_limit(summary, RESULT_LIMIT));
         card.status = match (ok, card.is_writer()) {
             (false, _) => CardStatus::Failed,
             (true, true) => CardStatus::Review,
             (true, false) => CardStatus::Done,
         };
         Some(card.id.clone())
+    }
+
+    /// Settle working cards whose subagent is gone or finished unheard, so a
+    /// card never stays Working forever (and its dependents never wait on a
+    /// dead run). `probe` says what became of a child. Returns the cards
+    /// that moved.
+    pub fn reconcile(&mut self, probe: impl Fn(&str) -> ChildState) -> Vec<String> {
+        let working: Vec<(String, Option<String>)> = self
+            .cards
+            .iter()
+            .filter(|card| card.status == CardStatus::Working)
+            .map(|card| (card.id.clone(), card.child_id.clone()))
+            .collect();
+        let mut moved = Vec::new();
+        for (id, child) in working {
+            let state = child.as_deref().map_or(ChildState::Gone, &probe);
+            match state {
+                ChildState::Live => {}
+                ChildState::Finished { ok, summary } => {
+                    if let Some(child) = child.as_deref() {
+                        if self.child_finished(child, ok, &summary).is_some() {
+                            moved.push(id);
+                        }
+                    }
+                }
+                ChildState::Gone => {
+                    if let Some(card) = self.card_mut(&id) {
+                        card.status = CardStatus::Failed;
+                        card.result = Some(INTERRUPTED.to_string());
+                        moved.push(id);
+                    }
+                }
+            }
+        }
+        moved
+    }
+
+    /// The dependencies holding `card` back for good: ones that failed (or
+    /// left the board). A backlog card only starts once every dependency is
+    /// done, so these need the lead — retry the dependency, or give this
+    /// card up.
+    pub fn failed_dependencies(&self, card: &Card) -> Vec<String> {
+        card.depends_on
+            .iter()
+            .filter(|dep| {
+                self.card(dep)
+                    .is_none_or(|dep| dep.status == CardStatus::Failed)
+            })
+            .cloned()
+            .collect()
+    }
+
+    /// A writer changed files its `owns` does not cover (a shell command, a
+    /// tool the scope check cannot see): say so on the card, ahead of its
+    /// result, so the lead sees it before accepting the work.
+    pub fn note_outside_owns(&mut self, id: &str, outside: &[String]) {
+        if outside.is_empty() {
+            return;
+        }
+        let Some(card) = self.card_mut(id) else {
+            return;
+        };
+        let shown: Vec<&str> = outside.iter().take(10).map(String::as_str).collect();
+        let more = outside.len().saturating_sub(shown.len());
+        let mut warning = format!(
+            "Changed files outside its owns ({}): {}",
+            outside.len(),
+            shown.join(", ")
+        );
+        if more > 0 {
+            warning.push_str(&format!(" and {more} more"));
+        }
+        warning.push_str(". Check them before accepting.");
+        card.result = Some(match card.result.take() {
+            Some(result) if !result.is_empty() => format!("{warning}\n\n{result}"),
+            _ => warning,
+        });
+    }
+
+    /// Record a writer's finished work on its card.
+    pub fn set_work(&mut self, id: &str, work: Option<CardWork>) {
+        if let Some(card) = self.card_mut(id) {
+            card.work = work;
+        }
+    }
+
+    /// One card in full — for `board` `show` with an `id`: everything the
+    /// summary shortens.
+    pub fn card_detail(&self, id: &str) -> Option<String> {
+        let card = self.card(id)?;
+        let mut out = format!(
+            "{} {} [{} · {}] {}",
+            card.id,
+            card.title,
+            card.role,
+            card.capability_label(),
+            card.status.as_str()
+        );
+        if !card.depends_on.is_empty() {
+            out.push_str(&format!("\nwaits for: {}", card.depends_on.join(", ")));
+        }
+        if !card.owns.is_empty() {
+            out.push_str(&format!("\nowns: {}", card.owns.join(", ")));
+        }
+        if let Some(work) = &card.work {
+            let files: Vec<&str> = work.files.iter().map(|file| file.path.as_str()).collect();
+            out.push_str(&format!(
+                "\nchanged (applied when accepted): {}",
+                if files.is_empty() { "nothing".to_string() } else { files.join(", ") }
+            ));
+        }
+        for note in &card.notes {
+            out.push_str(&format!("\nnote: {note}"));
+        }
+        out.push_str(&format!("\nprompt: {}", card.prompt));
+        if let Some(result) = &card.result {
+            out.push_str(&format!("\nresult:\n{result}"));
+        }
+        Some(out)
     }
 
     /// The main model moves a card: accept it, send it back with feedback,
@@ -663,6 +865,13 @@ impl Board {
                 out.push_str(&format!("\n- {note}"));
             }
         }
+        if let Some(diff) = &card.last_attempt {
+            out.push_str(
+                "\n\nThe previous attempt was not applied to the project. Its changes, as a diff against where it started — redo what holds up, fix what the feedback names:\n```diff\n",
+            );
+            out.push_str(diff.trim_end());
+            out.push_str("\n```");
+        }
         let built_on: Vec<&Card> = card
             .depends_on
             .iter()
@@ -676,7 +885,7 @@ impl Board {
                     "\n- {} \"{}\": {}",
                     dep.id,
                     dep.title,
-                    trim_limit(dep.result.as_deref().unwrap_or_default(), 1_500)
+                    trim_limit(dep.result.as_deref().unwrap_or_default(), BUILT_ON_LIMIT)
                 ));
             }
         }
@@ -716,7 +925,15 @@ impl Board {
                 }
                 out.push(']');
                 if !card.depends_on.is_empty() && status == CardStatus::Backlog {
-                    out.push_str(&format!(" waits for {}", card.depends_on.join(", ")));
+                    let failed = self.failed_dependencies(card);
+                    if failed.is_empty() {
+                        out.push_str(&format!(" waits for {}", card.depends_on.join(", ")));
+                    } else {
+                        out.push_str(&format!(
+                            " blocked: {} failed — send it back to the backlog to retry, or give this card up",
+                            failed.join(", ")
+                        ));
+                    }
                 }
                 if let Some(result) = &card.result {
                     if matches!(
@@ -724,6 +941,9 @@ impl Board {
                         CardStatus::Review | CardStatus::Failed | CardStatus::Done
                     ) {
                         out.push_str(&format!(" — {}", trim_limit(result, 300)));
+                        if result.chars().count() > 300 {
+                            out.push_str(&format!(" (show {} for all of it)", card.id));
+                        }
                     }
                 }
                 out.push('\n');
@@ -738,6 +958,78 @@ impl Board {
         }
         out.trim_end().to_string()
     }
+}
+
+/// Move a card the way both the lead (`board` `move`) and the user (the
+/// board's buttons) do, with the writer's work going where the move says:
+/// accepting a writer applies its changed files to the project — all of
+/// them, or none when someone else changed one meanwhile — and sending it
+/// back keeps the attempt's diff for the retry. Returns what to tell the
+/// caller and the board after the move.
+pub fn move_with_work(
+    store: &BoardStore,
+    session: Uuid,
+    id: &str,
+    to: MoveTo,
+    note: Option<&str>,
+) -> Result<(String, Board), String> {
+    let board = store.get(session).map_err(|error| error.to_string())?;
+    let card = board
+        .card(id)
+        .cloned()
+        .ok_or_else(|| format!("no card {id} on the board"))?;
+    if card.status == CardStatus::Working {
+        return Err(format!(
+            "{id} is still working; wait for it or stop its subagent with kill_task first"
+        ));
+    }
+    let mut said = format!("Moved {id}.");
+    let mut last_attempt = None;
+    match (to, &card.work) {
+        (MoveTo::Done, Some(work)) => {
+            match crate::subagent::worktree::apply_child_work(&work.repo_root, &work.worktree, &work.files) {
+                Ok(applied) => {
+                    said = if applied.written.is_empty() {
+                        format!("Accepted {id}; the project already had its changes.")
+                    } else {
+                        format!(
+                            "Accepted {id} and applied {} file(s) to the project: {}.",
+                            applied.written.len(),
+                            applied.written.join(", ")
+                        )
+                    };
+                }
+                Err(conflicts) => {
+                    return Err(format!(
+                        "{id} was not accepted: these files changed in the project since it started, so nothing was applied — {}. Send it back with a note to redo it on top of the current files, or give it up",
+                        conflicts.join(", ")
+                    ));
+                }
+            }
+        }
+        (MoveTo::Backlog, Some(work)) => {
+            last_attempt = crate::subagent::worktree::work_diff(
+                &work.worktree,
+                &work.base_commit,
+                &work.files,
+                ATTEMPT_DIFF_LIMIT,
+            );
+        }
+        _ => {}
+    }
+    let (_, board) = store.update(session, |board| {
+        board.move_card(id, to, note)?;
+        if let Some(card) = board.card_mut(id) {
+            card.work = None;
+            if to == MoveTo::Backlog {
+                card.last_attempt = last_attempt.take().or(card.last_attempt.take());
+            } else {
+                card.last_attempt = None;
+            }
+        }
+        Ok(())
+    })?;
+    Ok((said, board))
 }
 
 /// How a member works with the others; ends every card's prompt.
@@ -824,11 +1116,25 @@ impl BoardStore {
         .map(|(_, board)| board)
     }
 
-    /// Empty the board, keeping the switch as it is.
+    /// Empty the board, keeping the switch as it is. Refused while a card is
+    /// working: its subagent would keep running (and spending) with no card
+    /// to report to. Card ids keep counting, so a late post from an old
+    /// member can never land on a new card with the same id.
     pub fn clear(&self, session: Uuid) -> Result<Board, String> {
         self.update(session, |board| {
+            let working = board
+                .cards
+                .iter()
+                .filter(|card| card.status == CardStatus::Working)
+                .count();
+            if working > 0 {
+                return Err(format!(
+                    "{working} card(s) still working: wait for them or stop their subagents before clearing the board"
+                ));
+            }
             *board = Board {
                 enabled: board.enabled,
+                next_id: board.next_id,
                 ..Board::default()
             };
             Ok(())
@@ -1034,13 +1340,15 @@ Each card is one piece of work and the subagent created for it: a `title`, a `ro
 e.g. \"Parser refactorer\"), optional `instructions`, a `capability_mode` (\"read-only\" by default; \
 \"read-write\" to edit files, \"execute\" to also run commands), a `model` from the user's list, \
 the `prompt` with everything it needs, `depends_on` (ids or titles of cards it waits for) and, for \
-writers, `owns` (the paths only it may change — one writer per file; use `dir/**` for a folder).\n\
+writers, `owns` (required: the files or folders only it may change — one writer per file; `src/auth/` or \
+`src/auth/**` for a folder; a pattern at the project root such as `*.rs` is refused).\n\
 - action \"add\": add cards. Every card whose dependencies are done starts at once, each on its own \
 subagent; the rest start as their dependencies finish. Readers go to done when they finish, writers \
 to review.\n\
-- action \"move\": accept a reviewed card (`to`: \"done\"), send one back with a `note` of what to fix \
+- action \"move\": accept a reviewed card (`to`: \"done\" — a writer's changes are applied to the project then; \
+until you accept, they sit in its own checkout), send one back with a `note` of what to fix \
 (`to`: \"backlog\" — a new subagent retries with your note), or give up on one (`to`: \"failed\").\n\
-- action \"show\": the board and the newest findings.\n\
+- action \"show\": the board and the newest findings; with `id`, that card in full (its whole result).\n\
 - action \"post\": tell the working members something (`text`; `recipients` to address some cards) — \
 a decision, a correction, a change of plan. It reaches them at their next step.\n\
 Members post findings to each other as they work (they have a `swarm` tool), so related cards can run \
@@ -1455,5 +1763,160 @@ mod tests {
         let json = serde_json::to_string(&board).unwrap();
         let restored: Board = serde_json::from_str(&json).unwrap();
         assert_eq!(restored.cards[0].instance_id.as_deref(), Some("claude-work"));
+    }
+
+    #[test]
+    fn writers_must_own_something_specific() {
+        let mut board = Board::default();
+        let error = board.add(vec![spec("Edit", true, &[], &[])]).unwrap_err();
+        assert!(error.contains("needs `owns`"), "{error}");
+        for pattern in ["*.rs", "**", "**/*.rs", "./*"] {
+            let error = board
+                .add(vec![spec("Edit", true, &[], &[pattern])])
+                .unwrap_err();
+            assert!(error.contains("whole project"), "{pattern}: {error}");
+        }
+        // Folders, folder globs and an explicit whole project are fine.
+        board.add(vec![spec("A", true, &[], &["src/auth/**"])]).unwrap();
+        board.add(vec![spec("B", true, &[], &["docs/"])]).unwrap();
+        board.add(vec![spec("C", true, &["A", "B"], &["."])]).unwrap();
+        // Readers never need owns.
+        board.add(vec![spec("Read", false, &[], &[])]).unwrap();
+    }
+
+    #[test]
+    fn reconcile_settles_cards_whose_run_is_gone_or_finished() {
+        let mut board = Board::default();
+        board
+            .add(vec![
+                spec("Gone", false, &[], &[]),
+                spec("Unheard", true, &[], &["src/a.rs"]),
+                spec("Live", false, &[], &[]),
+                spec("After", false, &["Gone"], &[]),
+            ])
+            .unwrap();
+        board.start("c1", "k1");
+        board.start("c2", "k2");
+        board.start("c3", "k3");
+        let moved = board.reconcile(|child| match child {
+            "k1" => ChildState::Gone,
+            "k2" => ChildState::Finished { ok: true, summary: "patched".into() },
+            _ => ChildState::Live,
+        });
+        assert_eq!(moved, ["c1", "c2"]);
+        assert_eq!(board.card("c1").unwrap().status, CardStatus::Failed);
+        assert!(board.card("c1").unwrap().result.as_deref().unwrap().starts_with("Interrupted"));
+        // A writer that finished unheard still goes to review, not done.
+        assert_eq!(board.card("c2").unwrap().status, CardStatus::Review);
+        assert_eq!(board.card("c3").unwrap().status, CardStatus::Working);
+        // Its dependent is not left waiting silently: the lead is told.
+        assert_eq!(board.failed_dependencies(board.card("c4").unwrap()), ["c1"]);
+        assert!(board.summary().contains("blocked: c1 failed"));
+        // Sending the dependency back clears the block.
+        board.move_card("c1", MoveTo::Backlog, Some("retry")).unwrap();
+        assert!(board.failed_dependencies(board.card("c4").unwrap()).is_empty());
+    }
+
+    #[test]
+    fn changes_outside_owns_are_flagged_on_the_card() {
+        let owns = vec!["src/auth/".to_string(), "README.md".to_string()];
+        let changed = ["src/auth/a.rs", "README.md", "src/db.rs", "Cargo.toml"]
+            .map(String::from)
+            .to_vec();
+        let outside = outside_owns(&owns, &changed);
+        assert_eq!(outside, ["src/db.rs", "Cargo.toml"]);
+        let mut board = Board::default();
+        board.add(vec![spec("Auth", true, &[], &["src/auth/"])]).unwrap();
+        board.start("c1", "k1");
+        board.child_finished("k1", true, "done the auth");
+        board.note_outside_owns("c1", &outside);
+        let result = board.card("c1").unwrap().result.clone().unwrap();
+        assert!(result.starts_with("Changed files outside its owns (2): src/db.rs, Cargo.toml"), "{result}");
+        assert!(result.ends_with("done the auth"));
+        // Nothing outside: the result is left alone.
+        board.note_outside_owns("c1", &[]);
+        assert_eq!(board.card("c1").unwrap().result.as_deref(), Some(result.as_str()));
+    }
+
+    #[test]
+    fn clear_waits_for_working_cards_and_keeps_counting() {
+        let dir = std::env::temp_dir().join(format!("agente-boards-{}", Uuid::new_v4()));
+        let store = BoardStore::new(&dir);
+        let session = Uuid::new_v4();
+        store
+            .update(session, |board| {
+                board.add(vec![spec("Map", false, &[], &[])])?;
+                board.start("c1", "k1");
+                Ok(())
+            })
+            .unwrap();
+        assert!(store.clear(session).unwrap_err().contains("still working"));
+        store
+            .update(session, |board| {
+                board.child_finished("k1", true, "mapped");
+                Ok(())
+            })
+            .unwrap();
+        assert!(store.clear(session).unwrap().cards.is_empty());
+        let (ids, _) = store
+            .update(session, |board| board.add(vec![spec("Next", false, &[], &[])]))
+            .unwrap();
+        assert_eq!(ids, ["c2"], "a new card never reuses an old id");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn accepting_a_writer_applies_its_work_or_refuses_on_conflict() {
+        let base = std::env::temp_dir().join(format!("agente-accept-{}", Uuid::new_v4()));
+        let (root, checkout) = (base.join("root"), base.join("wt"));
+        fs::create_dir_all(&root).unwrap();
+        fs::create_dir_all(&checkout).unwrap();
+        fs::write(root.join("a.rs"), "user edit").unwrap();
+        fs::write(checkout.join("a.rs"), "child edit").unwrap();
+        let store = BoardStore::new(base.join("boards"));
+        let session = Uuid::new_v4();
+        let work = CardWork {
+            repo_root: root.to_string_lossy().into(),
+            worktree: checkout.to_string_lossy().into(),
+            base_commit: "HEAD".into(),
+            files: vec![crate::subagent::worktree::ChangedFile { path: "a.rs".into(), baseline: None }],
+        };
+        store
+            .update(session, |board| {
+                board.add(vec![spec("Edit", true, &[], &["a.rs"])])?;
+                board.start("c1", "k1");
+                board.child_finished("k1", true, "edited");
+                board.set_work("c1", Some(work.clone()));
+                Ok(())
+            })
+            .unwrap();
+        // The project's a.rs is not what the child started from (absent).
+        let error = move_with_work(&store, session, "c1", MoveTo::Done, None).unwrap_err();
+        assert!(error.contains("a.rs"), "{error}");
+        let board = store.get(session).unwrap();
+        assert_eq!(board.card("c1").unwrap().status, CardStatus::Review);
+        assert!(board.card("c1").unwrap().work.is_some(), "a refused accept keeps the work");
+        assert_eq!(fs::read_to_string(root.join("a.rs")).unwrap(), "user edit");
+
+        // Without the conflict the accept applies it.
+        fs::remove_file(root.join("a.rs")).unwrap();
+        let (said, board) = move_with_work(&store, session, "c1", MoveTo::Done, None).unwrap();
+        assert!(said.contains("applied 1 file"), "{said}");
+        assert_eq!(fs::read_to_string(root.join("a.rs")).unwrap(), "child edit");
+        assert_eq!(board.card("c1").unwrap().status, CardStatus::Done);
+        assert!(board.card("c1").unwrap().work.is_none());
+        let _ = fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn show_with_an_id_gives_the_whole_result() {
+        let mut board = Board::default();
+        board.add(vec![spec("Map", false, &[], &[])]).unwrap();
+        board.start("c1", "k1");
+        let long = "x".repeat(5_000);
+        board.child_finished("k1", true, &long);
+        assert!(board.summary().contains("(show c1 for all of it)"));
+        assert!(board.card_detail("c1").unwrap().contains(&long));
+        assert!(board.card_detail("c9").is_none());
     }
 }

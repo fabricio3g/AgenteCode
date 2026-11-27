@@ -12,8 +12,11 @@
     what it waits for / owns, then its result — one block per card.
   - Findings: under the columns, what the members told each other — the
     same list the transcript's swarm block shows the newest of.
-  - Hick + Occam: the board is read-only; the agent moves cards. The only
-    controls are the swarm switch and "Clear board".
+  - Hick + Occam: the agent moves cards; the user acts only where a card is
+    waiting on someone — Review (Accept applies a writer's changes to the
+    project · Send back with a note · Give up) and Failed (Retry). The other
+    controls are the swarm switch and "Clear board", which asks first when
+    unreviewed or unstarted work would go with it.
   - Fitts: the whole card opens its subagent.
 -->
 
@@ -23,6 +26,7 @@
   import { Button, Switch } from '$lib/components/ui';
   import TileMeter from '$lib/components/ui/TileMeter.svelte';
   import { toastStore } from '$lib/stores/toast.svelte';
+  import { confirmStore } from '$lib/stores/confirm.svelte';
   import type { OrchestratorTaskSummary, SwarmCard } from '$shared/agente-protocol';
   import { subagentFocus } from './subagent-focus.svelte';
   import { columnsOf, swarmStore, tallyOf } from './swarm.svelte';
@@ -74,6 +78,55 @@
     }
   }
 
+  /** The card whose send-back note is being written, and the note. */
+  let noteFor = $state<string | null>(null);
+  let note = $state('');
+  let moving = $state<string | null>(null);
+
+  async function move(card: SwarmCard, to: 'done' | 'backlog' | 'failed', text?: string) {
+    moving = card.id;
+    try {
+      const said = await swarmStore.move(chatId, card.id, to, text);
+      if (said) toastStore.success(said, 3500);
+      noteFor = null;
+      note = '';
+    } catch (error) {
+      toastStore.error(error instanceof Error ? error.message : String(error));
+    } finally {
+      moving = null;
+    }
+  }
+
+  function startNote(card: SwarmCard) {
+    noteFor = card.id;
+    note = '';
+  }
+
+  function focusNote(node: HTMLInputElement) {
+    node.focus();
+  }
+
+  /** Unreviewed or unstarted work goes with a clear: ask before dropping it. */
+  function clearBoard() {
+    const pending = (board?.cards ?? []).filter((card) => card.status === 'review' || card.status === 'backlog').length;
+    const run = () => void swarmStore.clear(chatId).catch((error) => toastStore.error(String(error)));
+    if (!pending) {
+      run();
+      return;
+    }
+    confirmStore.show({
+      title: $t('code.swarm.clearTitle'),
+      message: $t('code.swarm.clearMessage', { values: { n: pending } }),
+      confirmLabel: $t('code.swarm.clear'),
+      danger: true,
+      onConfirm: run
+    });
+  }
+
+  function changedFiles(card: SwarmCard): string[] {
+    return (card.work?.files ?? []).map((file) => file.path);
+  }
+
   function open(card: SwarmCard) {
     if (card.child_id) subagentFocus.open(chatId, card.child_id);
   }
@@ -111,6 +164,7 @@
             {$t(`code.swarm.column.${column.id}`)}<span class="count">{column.cards.length}</span>
           </h3>
           {#each column.cards as card (card.id)}
+            <div class="card-wrap">
             <Button variant="plain"
               type="button"
               class="card status-{card.status} ui-local-0875e6c3"
@@ -134,10 +188,40 @@
               {#if card.owns?.length && card.status !== 'done'}
                 <span class="card-meta files" title={(card.owns ?? []).join('\n')}>{owned(card)}</span>
               {/if}
+              {#if card.status === 'review' && changedFiles(card).length}
+                <span class="card-meta" title={changedFiles(card).join('\n')}>{$t('code.swarm.changes', { values: { n: changedFiles(card).length } })}</span>
+              {/if}
               {#if card.result && card.status !== 'working' && card.status !== 'backlog'}
                 <span class="card-result">{card.result}</span>
               {/if}
             </Button>
+            <!-- A card waiting on someone can be answered here; the lead can too. -->
+            {#if card.status === 'review' || card.status === 'failed'}
+              {#if noteFor === card.id}
+                <form class="card-note" onsubmit={(event) => { event.preventDefault(); void move(card, 'backlog', note.trim() || undefined); }}>
+                  <input
+                    class="note-input"
+                    bind:value={note}
+                    placeholder={$t('code.swarm.notePlaceholder')}
+                    aria-label={$t('code.swarm.notePlaceholder')}
+                    use:focusNote
+                    onkeydown={(event) => { if (event.key === 'Escape') { event.stopPropagation(); noteFor = null; } }}
+                  />
+                  <Button size="sm" type="submit" disabled={moving === card.id}>{$t('code.swarm.sendBack')}</Button>
+                </form>
+              {:else}
+                <div class="card-actions">
+                  {#if card.status === 'review'}
+                    <Button size="sm" disabled={moving === card.id} onclick={() => void move(card, 'done')}>{$t('code.swarm.accept')}</Button>
+                    <Button size="sm" variant="ghost" disabled={moving === card.id} onclick={() => startNote(card)}>{$t('code.swarm.sendBack')}</Button>
+                    <Button size="sm" variant="ghost" class="give-up" disabled={moving === card.id} onclick={() => void move(card, 'failed')}>{$t('code.swarm.giveUp')}</Button>
+                  {:else}
+                    <Button size="sm" variant="ghost" disabled={moving === card.id} onclick={() => startNote(card)}>{$t('code.swarm.retry')}</Button>
+                  {/if}
+                </div>
+              {/if}
+            {/if}
+            </div>
           {:else}
             <p class="column-empty">—</p>
           {/each}
@@ -153,7 +237,7 @@
     {/if}
 
     {#if !tally.working}
-      <div class="foot"><Button size="sm" variant="ghost" onclick={() => void swarmStore.clear(chatId).catch((error) => toastStore.error(String(error)))}>{$t('code.swarm.clear')}</Button></div>
+      <div class="foot"><Button size="sm" variant="ghost" onclick={clearBoard}>{$t('code.swarm.clear')}</Button></div>
     {/if}
   {/if}
 
@@ -209,6 +293,12 @@
   .card-meta { padding-left: 1.5rem; font-size: var(--text-xs); color: var(--muted-foreground); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .card-meta.files { font-family: var(--font-mono); }
   .card-result { padding-left: 1.5rem; display: -webkit-box; -webkit-line-clamp: 3; line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; font-size: var(--text-xs); line-height: 1.5; color: var(--prose-ink, var(--foreground)); }
+  .card-wrap { display: grid; min-width: 0; }
+  /* Actions start on the card's text edge (under the title, past the mark). */
+  .card-actions, .card-note { display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem; padding: 0 0 0.375rem 1.5rem; }
+  .card-actions :global(.give-up:hover) { color: var(--error); }
+  .note-input { min-width: 0; flex: 1; height: 1.75rem; padding: 0 0.5rem; border: 1px solid var(--border); border-radius: var(--float-row-radius); background: transparent; color: var(--foreground); font: inherit; font-size: var(--text-xs); outline: none; }
+  .note-input:focus-visible { border-color: var(--brand-accent); }
   .delegated-list { display: grid; gap: 0.25rem; }
   .delegated-row { display: flex; align-items: baseline; gap: 0.5rem; min-width: 0; font-size: var(--text-xs); color: var(--muted-foreground); }
   .delegated-driver { flex-shrink: 0; font-weight: 500; color: var(--foreground); }

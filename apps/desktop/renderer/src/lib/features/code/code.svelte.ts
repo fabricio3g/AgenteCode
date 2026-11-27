@@ -359,7 +359,9 @@ class CodeStore {
    * dialog before they can even type.
    */
   async startConversation(): Promise<ChatSession | null> {
-    return this.newConversation(this.projectById(this.activeProjectId) ?? this.projects[0] ?? null);
+    // A folder that went missing cannot host a turn: skip it for the next one that exists.
+    const usable = (project: CodeProject | null | undefined) => (project && !this.missingProjects[project.id] ? project : null);
+    return this.newConversation(usable(this.projectById(this.activeProjectId)) ?? this.projects.find((p) => usable(p)) ?? null);
   }
 
   /** The folder is the conversation's until it starts: no message, no engine session. */

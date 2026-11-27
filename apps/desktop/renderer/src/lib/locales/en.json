@@ -431,6 +431,14 @@
       "waitsFor": "Waits for {cards}",
       "openCard": "Open its subagent",
       "clear": "Clear board",
+      "accept": "Accept",
+      "sendBack": "Send back",
+      "giveUp": "Give up",
+      "retry": "Retry",
+      "notePlaceholder": "What should the retry fix? (optional)",
+      "changes": "{n, plural, one {# changed file waits to be applied} other {# changed files wait to be applied}}",
+      "clearTitle": "Clear the board?",
+      "clearMessage": "{n, plural, one {# card has} other {# cards have}} not been reviewed or started. Clearing removes them and the findings log; changes waiting for review are not applied.",
       "delegatedTitle": "Delegated CLI tasks",
       "lane": {
         "title": "Swarm",
@@ -551,6 +559,12 @@
     "surfaceTitle": "Agente Code",
     "browseOpen": "Open",
     "browseOpenNamed": "Open {name}",
+    "projectBox": {
+      "title": "Work in",
+      "agent": "Agent",
+      "all": "View all ({n})",
+      "fewer": "Show fewer"
+    },
     "projectPicker": {
       "label": "Project",
       "none": "Pick a project",
@@ -2605,10 +2619,6 @@
     "title": "Appearance",
     "description": "Color, shape and layout. Changes apply at once and stay on this computer.",
     "reset": "Reset",
-    "preview": "Preview",
-    "previewUser": "Summarize the architecture in three bullets",
-    "previewAssistant": "Three layers: the core, the runtime and the desktop shell.",
-    "previewPlaceholder": "Message Agente…",
     "themeSection": "Color",
     "mode": "Mode",
     "modeSystem": "System",

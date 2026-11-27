@@ -106,6 +106,9 @@ pub fn spawn_chat_task(
             max_parallel_subagents,
         )
         .with_mcp_session_id(session_id);
+        // A swarm card left Working by a run this process no longer has (a
+        // restart, a resumed session) would hold its dependents forever.
+        let _ = host.reconcile_board();
         if let (Some(manager), Some(turn)) = (
             &mcp_manager,
             turn_tools.mcp_turn_id.filter(|_| {

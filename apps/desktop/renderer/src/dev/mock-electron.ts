@@ -478,6 +478,8 @@ savedSessions.push({
   draft: '',
   contextMode: 'code',
   projectId: 'proj-1',
+  // `&swarm`: an engine session, so the chat's swarm board (agente_board) loads.
+  ...(bootParams.has('swarm') ? { codeAgent: { instanceId: 'agente', sessionId: 'mock-swarm-session', updatedAt: Date.now() } } : {}),
   pendingPrompts: new URLSearchParams(window.location.search).has('queue') ? [
     { id: 'queue-one', content: 'Revisa el resultado y ejecuta las pruebas' },
     { id: 'queue-two', content: 'Resume los cambios cuando termines' }
@@ -529,6 +531,27 @@ savedSessions.push({
     }
   ]
 });
+
+/** Swarm board fixture; `move` from the board's buttons changes a card's column. */
+const mockBoardMoves: Record<string, string> = {};
+function mockBoard(enabled: boolean) {
+  const board = {
+    enabled,
+    cards: [
+      { id: 'c1', title: 'Map the parser', role: 'Code mapper', capability: 'read-only', model: 'scout', prompt: '', status: 'done', result: 'Parser lives in src/parser; three entry points.' },
+      { id: 'c2', title: 'Refactor tokenizer', role: 'Refactorer', capability: 'read-write', model: 'builder', prompt: '', status: 'working', depends_on: ['c1'], owns: ['src/parser/lexer.rs'], child_id: 'child-2' },
+      { id: 'c3', title: 'Speed up AST walk', role: 'Performance engineer', capability: 'read-write', model: 'builder', prompt: '', status: 'review', depends_on: ['c1'], owns: ['src/parser/ast.rs'], result: 'Walk is 2.1× faster; tests pass.', work: { repo_root: '/home/work/Code/demo-app', worktree: '/tmp/wt-c3', base_commit: 'abc123', files: [{ path: 'src/parser/ast.rs' }] } },
+      { id: 'c4', title: 'Write parser tests', role: 'Test writer', capability: 'read-write', model: 'scout', prompt: '', status: 'backlog', depends_on: ['c2', 'c3'], owns: ['tests/parser.rs'] },
+      { id: 'c5', title: 'Update docs', role: 'Docs writer', capability: 'read-write', model: 'scout', prompt: '', status: 'failed', owns: ['docs/parser.md'], result: 'Rate limited by OpenRouter.' }
+    ]
+  };
+  const status: Record<string, string> = { done: 'done', backlog: 'backlog', failed: 'failed' };
+  for (const card of board.cards as Array<{ id: string; status: string; child_id?: string }>) {
+    const to = mockBoardMoves[card.id];
+    if (to) card.status = status[to] ?? card.status;
+  }
+  return board;
+}
 
 /** Last runtime mode set via agente_set_runtime_mode — steers the script. */
 let runtimeMode: 'full' | 'supervised' | 'plan' = 'supervised';
@@ -912,16 +935,15 @@ const handlers: Record<string, (args?: Record<string, unknown>) => unknown> = {
     allow_media: ['image', 'audio', 'video']
   }),
   agente_subagent_settings: () => ({ ok: true }),
-  agente_board: (args?: Record<string, unknown>) => ({
-    enabled: args?.action !== 'disable',
-    cards: [
-      { id: 'c1', title: 'Map the parser', role: 'Code mapper', capability: 'read-only', model: 'scout', prompt: '', status: 'done', result: 'Parser lives in src/parser; three entry points.' },
-      { id: 'c2', title: 'Refactor tokenizer', role: 'Refactorer', capability: 'read-write', model: 'builder', prompt: '', status: 'working', depends_on: ['c1'], owns: ['src/parser/lexer.rs'], child_id: 'child-2' },
-      { id: 'c3', title: 'Speed up AST walk', role: 'Performance engineer', capability: 'read-write', model: 'builder', prompt: '', status: 'review', depends_on: ['c1'], owns: ['src/parser/ast.rs'], result: 'Walk is 2.1× faster; tests pass.' },
-      { id: 'c4', title: 'Write parser tests', role: 'Test writer', capability: 'read-write', model: 'scout', prompt: '', status: 'backlog', depends_on: ['c2', 'c3'], owns: ['tests/parser.rs'] },
-      { id: 'c5', title: 'Update docs', role: 'Docs writer', capability: 'read-write', model: 'scout', prompt: '', status: 'failed', owns: ['docs/parser.md'], result: 'Rate limited by OpenRouter.' }
-    ]
-  }),
+  agente_board: (args?: Record<string, unknown>) => {
+    if (args?.action === 'move') {
+      const id = String(args.id);
+      const to = String(args.to);
+      mockBoardMoves[id] = to;
+      return { message: to === 'done' ? `Accepted ${id} and applied 1 file(s) to the project: src/parser/ast.rs.` : `Moved ${id}.`, board: mockBoard(true) };
+    }
+    return mockBoard(args?.action !== 'disable');
+  },
   agente_git_branches: () => ({
     source: 'git',
     current: 'main',

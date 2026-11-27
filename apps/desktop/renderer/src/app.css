@@ -7,7 +7,8 @@
 @tailwind utilities;
 
 /* ─── Flaxeo-aligned design tokens (monochrome) ─────────────────────────── */
-:root {
+:root,
+[data-theme-preview] {
   /* Native macOS SF Pro first, then Inter Variable (optical-sizing build) and
      hinted system sans/mono so UI text and code stay crisp on both HiDPI and
      100%–125% Windows displays. Keep emoji and CJK hooks so mixed-script
@@ -378,7 +379,8 @@
   --code-terminal-warn: #f59e0b;
 }
 
-.dark {
+.dark,
+.dark [data-theme-preview] {
   color-scheme: dark;
 
   /*
@@ -556,7 +558,8 @@
 }
 
 /* ─── Appearance: Theme Surface Palettes ───────────────────────────────── */
-:root[data-theme='parchment'] {
+:root[data-theme='parchment'],
+[data-theme-preview='parchment'] {
   --theme-background: #f6f4ef;
   --theme-foreground: #1f1d1a;
   --card: #fcfbf8;
@@ -583,7 +586,8 @@
   --composer-ring: rgb(31 29 26 / 0.12);
 }
 
-:root.dark[data-theme='parchment'] {
+:root.dark[data-theme='parchment'],
+.dark [data-theme-preview='parchment'] {
   --theme-background: #1f1d1a;
   --theme-foreground: #f4f0e8;
   --card: #2a2622;
@@ -610,7 +614,8 @@
   --composer-ring: rgb(244 240 232 / 0.13);
 }
 
-:root[data-theme='midnight'] {
+:root[data-theme='midnight'],
+[data-theme-preview='midnight'] {
   --theme-background: #f8f9fb;
   --theme-foreground: #0f1218;
   --card: #ffffff;
@@ -637,7 +642,8 @@
   --composer-ring: rgb(15 18 24 / 0.12);
 }
 
-:root.dark[data-theme='midnight'] {
+:root.dark[data-theme='midnight'],
+.dark [data-theme-preview='midnight'] {
   --theme-background: #111318;
   --theme-foreground: #f1f3f7;
   --card: #1b1f27;
@@ -665,7 +671,8 @@
   --composer-ring: rgb(241 243 247 / 0.13);
 }
 
-:root[data-theme='slate'] {
+:root[data-theme='slate'],
+[data-theme-preview='slate'] {
   --theme-background: #f2f5f8;
   --theme-foreground: #121821;
   --card: #fafbfd;
@@ -692,7 +699,8 @@
   --composer-ring: rgb(18 24 33 / 0.12);
 }
 
-:root.dark[data-theme='slate'] {
+:root.dark[data-theme='slate'],
+.dark [data-theme-preview='slate'] {
   --theme-background: #181c23;
   --theme-foreground: #eef2f7;
   --card: #222833;
@@ -719,7 +727,8 @@
   --composer-ring: rgb(238 242 247 / 0.13);
 }
 
-:root[data-theme='sepia'] {
+:root[data-theme='sepia'],
+[data-theme-preview='sepia'] {
   --theme-background: #f4efe4;
   --theme-foreground: #26221b;
   --card: #faf6ec;
@@ -746,7 +755,8 @@
   --composer-ring: rgb(38 34 27 / 0.12);
 }
 
-:root.dark[data-theme='sepia'] {
+:root.dark[data-theme='sepia'],
+.dark [data-theme-preview='sepia'] {
   --theme-background: #1d1e19;
   --theme-foreground: #efeae0;
   --card: #272821;
@@ -1312,120 +1322,132 @@ textarea {
 }
 
 /* ─── Appearance: Prompt Shell Styles ──────────────────────────────────── */
-:root[data-composer-style='pill'] {
-  --composer-radius: 1.625rem;
-}
-:root[data-composer-style='pill'] .ui-composer::after {
-  display: none;
-}
-:root[data-composer-style='pill'] .composer-shell {
-  --radius-full: 9999px;
-}
-:root[data-composer-style='pill'] .composer-input-row.has-footer-send {
-  padding: 0.875rem 1.125rem 0.375rem;
-}
-:root[data-composer-style='pill'] .composer-shell-footer {
-  padding: 0.25rem 0.625rem 0.5625rem 0.875rem;
-}
-:root[data-composer-style='pill'] .composer-send.ui-local-2f6b41d9 {
-  width: 2rem;
-  height: 2rem;
-  border-radius: 9999px;
-  background: var(--foreground);
-  color: var(--background);
-}
-:root[data-composer-style='pill'] .composer-send.ui-local-2f6b41d9:disabled,
-:root[data-composer-style='pill'] .composer-send.ui-local-2f6b41d9.is-dictate {
-  background: color-mix(in srgb, var(--foreground) 12%, transparent);
-  color: var(--muted-foreground);
-}
-:root[data-composer-style='pill'] .composer-send.ui-local-2f6b41d9:not(:disabled):hover {
-  opacity: 0.88;
-  background: var(--foreground);
-  color: var(--background);
-}
-
-:root[data-composer-style='card'] {
-  --composer-radius: calc(var(--float-radius) + 0.375rem);
-}
-:root[data-composer-style='card'] .ui-composer::after {
-  display: none;
-}
-:root[data-composer-style='card'] .composer-input-row.has-footer-send {
-  padding: 0.9375rem 1rem 0.625rem;
-}
-:root[data-composer-style='card'] .composer-textarea {
-  min-height: calc(var(--composer-line) * 1.45);
-}
-:root[data-composer-style='card'] .composer-shell-footer {
-  padding: 0.25rem 0.625rem 0.625rem 0.75rem;
-}
-:root[data-composer-style='card'] .composer-send.ui-local-2f6b41d9 {
-  width: 1.875rem;
-  height: 1.875rem;
-  border-radius: calc(var(--float-row-radius) + 0.0625rem);
-  background: var(--brand-accent);
-  color: var(--brand-accent-fg);
-}
-:root[data-composer-style='card'] .composer-send.ui-local-2f6b41d9:disabled,
-:root[data-composer-style='card'] .composer-send.ui-local-2f6b41d9.is-dictate {
-  background: color-mix(in srgb, var(--brand-accent) 18%, transparent);
-  color: var(--muted-foreground);
-}
-:root[data-composer-style='card'] .composer-send.ui-local-2f6b41d9:not(:disabled):hover {
-  background: var(--brand-accent-strong);
-  color: var(--brand-accent-fg);
+/* Each style is scoped to the element that names it and stops at any nested
+   element naming another, so a Settings tile can show one style inside a
+   window that wears a different one. `:scope[data-composer-style]` keeps the
+   old `:root[data-composer-style]` specificity. */
+@scope ([data-composer-style='pill']) to ([data-composer-style]) {
+  :scope[data-composer-style] {
+    --composer-radius: 1.625rem;
+  }
+  :scope[data-composer-style] .ui-composer::after {
+    display: none;
+  }
+  :scope[data-composer-style] .composer-shell {
+    --radius-full: 9999px;
+  }
+  :scope[data-composer-style] .composer-input-row.has-footer-send {
+    padding: 0.875rem 1.125rem 0.375rem;
+  }
+  :scope[data-composer-style] .composer-shell-footer {
+    padding: 0.25rem 0.625rem 0.5625rem 0.875rem;
+  }
+  :scope[data-composer-style] .composer-send.ui-local-2f6b41d9 {
+    width: 2rem;
+    height: 2rem;
+    border-radius: 9999px;
+    background: var(--foreground);
+    color: var(--background);
+  }
+  :scope[data-composer-style] .composer-send.ui-local-2f6b41d9:disabled,
+  :scope[data-composer-style] .composer-send.ui-local-2f6b41d9.is-dictate {
+    background: color-mix(in srgb, var(--foreground) 12%, transparent);
+    color: var(--muted-foreground);
+  }
+  :scope[data-composer-style] .composer-send.ui-local-2f6b41d9:not(:disabled):hover {
+    opacity: 0.88;
+    background: var(--foreground);
+    color: var(--background);
+  }
 }
 
-:root[data-composer-style='terminal'] {
-  --composer-radius: 0.375rem;
-}
-:root[data-composer-style='terminal'] .ui-composer {
-  border-left: 2px solid var(--border-hover);
-  box-shadow: none;
-}
-:root[data-composer-style='terminal'] .composer-textarea::placeholder {
-  font-family: var(--font-mono);
-}
-:root[data-composer-style='terminal'] .ui-composer:focus-within {
-  border-left-color: var(--brand-accent);
-  box-shadow: none;
-}
-:root[data-composer-style='terminal'] .ui-composer::after {
-  display: none;
-}
-:root[data-composer-style='terminal'] .composer-input-row {
-  padding: 0.4375rem 0.5rem 0.4375rem 0.75rem;
-}
-:root[data-composer-style='terminal'] .composer-textarea {
-  font-family: var(--font-mono);
-  font-size: var(--text-code);
-}
-:root[data-composer-style='terminal'] .composer-shell-footer {
-  padding: 0.25rem 0.5rem 0.375rem 0.75rem;
-  border-top: 1px solid var(--border-subtle);
+@scope ([data-composer-style='card']) to ([data-composer-style]) {
+  :scope[data-composer-style] {
+    --composer-radius: calc(var(--float-radius) + 0.375rem);
+  }
+  :scope[data-composer-style] .ui-composer::after {
+    display: none;
+  }
+  :scope[data-composer-style] .composer-input-row.has-footer-send {
+    padding: 0.9375rem 1rem 0.625rem;
+  }
+  :scope[data-composer-style] .composer-textarea {
+    min-height: calc(var(--composer-line) * 1.45);
+  }
+  :scope[data-composer-style] .composer-shell-footer {
+    padding: 0.25rem 0.625rem 0.625rem 0.75rem;
+  }
+  :scope[data-composer-style] .composer-send.ui-local-2f6b41d9 {
+    width: 1.875rem;
+    height: 1.875rem;
+    border-radius: calc(var(--float-row-radius) + 0.0625rem);
+    background: var(--brand-accent);
+    color: var(--brand-accent-fg);
+  }
+  :scope[data-composer-style] .composer-send.ui-local-2f6b41d9:disabled,
+  :scope[data-composer-style] .composer-send.ui-local-2f6b41d9.is-dictate {
+    background: color-mix(in srgb, var(--brand-accent) 18%, transparent);
+    color: var(--muted-foreground);
+  }
+  :scope[data-composer-style] .composer-send.ui-local-2f6b41d9:not(:disabled):hover {
+    background: var(--brand-accent-strong);
+    color: var(--brand-accent-fg);
+  }
 }
 
-:root[data-composer-style='minimal'] .ui-composer {
-  background: transparent;
-  border-color: transparent;
-  border-bottom: 1px solid var(--border);
-  border-radius: 0;
-  box-shadow: none;
+@scope ([data-composer-style='terminal']) to ([data-composer-style]) {
+  :scope[data-composer-style] {
+    --composer-radius: 0.375rem;
+  }
+  :scope[data-composer-style] .ui-composer {
+    border-left: 2px solid var(--border-hover);
+    box-shadow: none;
+  }
+  :scope[data-composer-style] .composer-textarea::placeholder {
+    font-family: var(--font-mono);
+  }
+  :scope[data-composer-style] .ui-composer:focus-within {
+    border-left-color: var(--brand-accent);
+    box-shadow: none;
+  }
+  :scope[data-composer-style] .ui-composer::after {
+    display: none;
+  }
+  :scope[data-composer-style] .composer-input-row {
+    padding: 0.4375rem 0.5rem 0.4375rem 0.75rem;
+  }
+  :scope[data-composer-style] .composer-textarea {
+    font-family: var(--font-mono);
+    font-size: var(--text-code);
+  }
+  :scope[data-composer-style] .composer-shell-footer {
+    padding: 0.25rem 0.5rem 0.375rem 0.75rem;
+    border-top: 1px solid var(--border-subtle);
+  }
 }
-:root[data-composer-style='minimal'] .ui-composer:focus-within {
-  border-color: transparent;
-  border-bottom-color: var(--brand-accent);
-  box-shadow: none;
-}
-:root[data-composer-style='minimal'] .ui-composer::after {
-  display: none;
-}
-:root[data-composer-style='minimal'] .composer-input-row {
-  padding: 0.5rem 0.25rem;
-}
-:root[data-composer-style='minimal'] .composer-shell-footer {
-  padding: 0.25rem 0.125rem 0.375rem;
+
+@scope ([data-composer-style='minimal']) to ([data-composer-style]) {
+  :scope[data-composer-style] .ui-composer {
+    background: transparent;
+    border-color: transparent;
+    border-bottom: 1px solid var(--border);
+    border-radius: 0;
+    box-shadow: none;
+  }
+  :scope[data-composer-style] .ui-composer:focus-within {
+    border-color: transparent;
+    border-bottom-color: var(--brand-accent);
+    box-shadow: none;
+  }
+  :scope[data-composer-style] .ui-composer::after {
+    display: none;
+  }
+  :scope[data-composer-style] .composer-input-row {
+    padding: 0.5rem 0.25rem;
+  }
+  :scope[data-composer-style] .composer-shell-footer {
+    padding: 0.25rem 0.125rem 0.375rem;
+  }
 }
 
 /* ── Work layouts (Settings → Appearance → Agent work) ─────────────────────

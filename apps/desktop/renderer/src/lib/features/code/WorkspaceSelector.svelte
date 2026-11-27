@@ -3,8 +3,9 @@
 <!--
   Where and with what the conversation works, as one chip in the top bar,
   beside the conversation's pane tools (Changes, Files, Browser…):
-  the engine's mark (its own logo, or the app's for Agente Core), then the
-  project folder's name — so which agent is working is always on screen.
+  the project folder's name, a hairline, then the engine's mark (its own logo,
+  or the app's for Agente Core) and name — so which agent is working is always
+  on screen.
 
   One menu holds both choices. Before the first message: the projects (the one
   in effect checked, its path dim on the right) and "Add project…". The folder
@@ -101,8 +102,10 @@
       {title}
       {...props}
     >
-      <DriverIcon {instanceId} driverKind={driver?.driver_kind} name={driverLabel} size={15} class={uiClass('workspace-engine', { 'is-external': external })} />
       <span class="trigger-label truncate">{projectLabel}</span>
+      <span class="trigger-sep" aria-hidden="true"></span>
+      <DriverIcon {instanceId} driverKind={driver?.driver_kind} name={driverLabel} size={14} class={uiClass('workspace-engine', { 'is-external': external })} />
+      <span class="trigger-engine truncate">{driverLabel}</span>
       <ChevronDown class={`workspace-chevron h-3 w-3 shrink-0 text-[var(--text-muted)] transition-transform duration-150${open ? ' rotate-180' : ''}`} />
     </Button>
   {/snippet}
@@ -143,12 +146,15 @@
 </Menu>
 
 <style>
-  :global(.workspace-trigger) { min-width: 0; max-width: 16rem; color: var(--text-secondary); font-size: var(--text-sm); }
+  :global(.workspace-trigger) { min-width: 0; max-width: 24rem; color: var(--text-secondary); font-size: var(--text-sm); }
   :global(.workspace-trigger:hover), :global(.workspace-trigger.is-open) { color: var(--foreground); }
   /* The top bar sizes its icon buttons' glyphs at 1rem; a breadcrumb's are text-sized. */
   :global(.titlebar-row .ui-button.workspace-trigger svg) { inline-size: 0.875rem; block-size: 0.875rem; }
   :global(.workspace-trigger:focus-visible) { outline: 2px solid var(--brand-accent); outline-offset: 2px; }
   :global(.workspace-trigger .workspace-engine) { flex-shrink: 0; color: var(--foreground); }
+  :global(.workspace-trigger .trigger-label) { color: var(--foreground); font-weight: 500; }
+  :global(.workspace-trigger .trigger-sep) { flex-shrink: 0; width: 1px; height: 0.875rem; margin-inline: 0.125rem; background: var(--border); }
+  :global(.workspace-trigger .trigger-engine) { min-width: 0; max-width: 9rem; }
   :global(.workspace-menu) { width: 22rem; max-width: calc(100vw - 1.5rem); }
   :global(.workspace-menu .workspace-option) { padding: 0.3125rem 0.625rem; }
   :global(.workspace-menu .workspace-option.is-active) { background: var(--float-row-selected); }

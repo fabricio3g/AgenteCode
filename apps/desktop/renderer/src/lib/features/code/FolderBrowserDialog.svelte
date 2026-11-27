@@ -182,9 +182,11 @@
 <style>
   .add-project { display: flex; flex-direction: column; min-width: 0; }
   /* The tabs sit on the dialog itself: no track box, the active tab is the lit one. */
-  .modes { padding: 0 0.75rem 0.25rem; }
+  /* Every block shares one left edge with the header's title (1.25rem); the
+     tabs, crumbs and rows only hang their own inner padding off it. */
+  .modes { padding: 0.75rem 1rem 0.25rem 0.5rem; }
   /* As tall as the folder browser, footer on the bottom edge, so switching tabs never moves the dialog. */
-  .form { display: flex; flex-direction: column; gap: 0.875rem; height: min(27rem, 62vh); padding: 0.75rem 1rem 0.75rem; }
+  .form { display: flex; flex-direction: column; gap: 0.875rem; height: min(27rem, 62vh); padding: 0.75rem 1.25rem 1rem; }
   .field { display: grid; gap: 0.375rem; }
   .label { font-size: var(--text-xs); font-weight: 500; color: var(--muted-foreground); }
   /* Label hard left, the path beside it, Change hard right. */

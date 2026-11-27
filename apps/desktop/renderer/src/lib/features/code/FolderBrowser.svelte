@@ -98,6 +98,13 @@
     }));
   });
 
+  /**
+   * Shortcuts only where they save a trip: a place already listed below (Home's
+   * own Desktop, Documents…) or the folder you are in would say it twice.
+   */
+  const places = $derived(
+    listing ? listing.places.filter((place) => place.path !== listing!.path && !listing!.folders.some((folder) => folder.path === place.path)) : []
+  );
   const target = $derived(selected ?? listing?.path ?? null);
   const targetName = $derived(target ? target.split(/[\\/]/).filter(Boolean).pop() ?? target : '');
 
@@ -188,13 +195,12 @@
 
       {#if loading}
         <LoaderCircle class="spin" />
-      {:else if listing?.places.length}
+      {:else if places.length}
         <nav class="places" aria-label={$t('code.browsePlaces')}>
-          {#each listing.places as place (place.path)}
+          {#each places as place (place.path)}
             <button
               type="button"
               class="place"
-              class:is-current={listing.path === place.path}
               onclick={() => void go(place.path)}
             >
               {place.name}
@@ -251,7 +257,7 @@
     </div>
 
     <div class="footer">
-      <Button variant="ghost" size="sm" onclick={onsystem}>{$t('code.browseSystem')}</Button>
+      <Button variant="ghost" size="sm" class="browse-system" onclick={onsystem}><FolderOpen class="size-3.5" />{$t('code.browseSystem')}</Button>
       <Button size="sm" disabled={!target} onclick={() => target && onopen(target)}>
         <span class="open-label">{$t(choose ? 'code.browseUseNamed' : 'code.browseOpenNamed', { values: { name: targetName } })}</span>
       </Button>
@@ -278,7 +284,7 @@
     display: flex;
     align-items: center;
     gap: 0.375rem;
-    padding: 0.5rem 1rem 0.5rem 0.75rem;
+    padding: 0.5rem 1.25rem 0.5rem 0.875rem;
   }
 
   .crumbs {
@@ -377,11 +383,6 @@
     color: var(--foreground);
   }
 
-  .place.is-current {
-    color: var(--foreground);
-    font-weight: 500;
-  }
-
   .bar :global(.spin) {
     width: 0.875rem;
     height: 0.875rem;
@@ -400,7 +401,7 @@
     flex-direction: column;
     gap: 1px;
     overflow-y: auto;
-    padding: 0.25rem 0.75rem 0.5rem;
+    padding: 0.25rem 1.25rem 0.5rem 0.75rem;
     outline: none;
   }
 
@@ -489,7 +490,16 @@
     align-items: center;
     justify-content: space-between;
     gap: 0.5rem;
-    padding: 0.625rem 1rem 0.75rem;
+    padding: 0.625rem 1.25rem 1rem 0.4375rem;
+  }
+  /* A quiet button, not bold text: the system picker is the way out, not the way in. */
+  .footer :global(.browse-system) {
+    gap: 0.375rem;
+    color: var(--text-secondary);
+    font-weight: 400;
+  }
+  .footer :global(.browse-system:hover) {
+    color: var(--foreground);
   }
 
   .open-label {

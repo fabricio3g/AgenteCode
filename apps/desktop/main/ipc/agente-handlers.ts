@@ -86,9 +86,11 @@ export function registerAgenteHandlers({ ipcMain, getMainWindow }: AgenteHandler
   });
   ipcMain.handle('agente_subagent_settings', (_e, args: SubagentSettings) => engine.subagentSettings(args));
   // Swarm mode: the session's board and its switch (`agente_core::swarm`).
-  ipcMain.handle('agente_board', (_e, args: { sessionId: string; action: 'get' | 'enable' | 'disable' | 'clear' }) => {
+  ipcMain.handle('agente_board', (_e, args: { sessionId: string; action: 'get' | 'enable' | 'disable' | 'clear' | 'move'; id?: string; to?: 'done' | 'backlog' | 'failed'; note?: string }) => {
     const session_id = args.sessionId;
     if (args.action === 'get') return engine.runtimeRequest('board.get', { session_id });
+    // Accept / send back / give up from the board: `{ message, board }`.
+    if (args.action === 'move') return engine.runtimeRequest('board.move', { session_id, id: args.id, to: args.to, note: args.note });
     if (args.action === 'clear') return engine.runtimeRequest('board.clear', { session_id });
     return engine.runtimeRequest('board.enable', { session_id, enabled: args.action === 'enable' });
   });

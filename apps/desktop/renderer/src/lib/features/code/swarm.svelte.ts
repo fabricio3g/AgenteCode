@@ -76,6 +76,19 @@ class SwarmStore {
     if (board) this.boards[chatId] = board;
   }
 
+  /**
+   * Accept a card (a writer's changes are applied to the project), send it
+   * back with a note (a fresh subagent retries with it), or give it up — the
+   * same move the lead makes. Returns what the engine said happened.
+   */
+  async move(chatId: string, id: string, to: 'done' | 'backlog' | 'failed', note?: string): Promise<string> {
+    const sessionId = this.#sessionId(chatId);
+    if (!sessionId) throw new Error('Start a Code session first.');
+    const result = await invoke<{ message: string; board: SwarmBoard }>('agente_board', { sessionId, action: 'move', id, to, note });
+    if (result?.board) this.boards[chatId] = result.board;
+    return result?.message ?? '';
+  }
+
   /** Empty the board, keeping the switch. */
   async clear(chatId: string): Promise<void> {
     const sessionId = this.#sessionId(chatId);

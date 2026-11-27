@@ -115,7 +115,11 @@
   ondragstart={hide}
   onmouseenter={show}
   onmouseleave={hide}
-  onfocusin={show}
+  onfocusin={(event) => {
+    // Keyboard focus names the control; focus a dialog places on open, or that
+    // follows a click, does not pop a pill over the content.
+    if ((event.target as HTMLElement).matches?.(':focus-visible')) show();
+  }}
   onfocusout={hide}
 >
   {@render children?.()}

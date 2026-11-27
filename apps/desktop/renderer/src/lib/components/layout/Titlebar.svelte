@@ -178,6 +178,7 @@
       <!-- Code: where the open conversation works and with which engine,
            after search. -->
       {#if codeChat && !settingsOpen}
+        <span class="titlebar-divider" aria-hidden="true"></span>
         <WorkspaceSelector chat={codeChat} />
       {/if}
     </div>

@@ -431,6 +431,14 @@
       "waitsFor": "Espera a {cards}",
       "openCard": "Abrir su subagente",
       "clear": "Vaciar tablero",
+      "accept": "Aceptar",
+      "sendBack": "Devolver",
+      "giveUp": "Descartar",
+      "retry": "Reintentar",
+      "notePlaceholder": "¿Qué debe corregir el reintento? (opcional)",
+      "changes": "{n, plural, one {# archivo cambiado espera aplicarse} other {# archivos cambiados esperan aplicarse}}",
+      "clearTitle": "¿Vaciar el tablero?",
+      "clearMessage": "{n, plural, one {# tarjeta no se ha} other {# tarjetas no se han}} revisado ni empezado. Vaciar las quita junto con el registro de hallazgos; los cambios pendientes de revisión no se aplican.",
       "lane": {
         "title": "Enjambre",
         "feeds": "Alimenta a {cards}",
@@ -562,6 +570,12 @@
     "surfaceTitle": "Agente Code",
     "browseOpen": "Abrir",
     "browseOpenNamed": "Abrir {name}",
+    "projectBox": {
+      "title": "Trabajar en",
+      "agent": "Agente",
+      "all": "Ver todos ({n})",
+      "fewer": "Ver menos"
+    },
     "projectPicker": {
       "label": "Proyecto",
       "none": "Elige un proyecto",
@@ -3534,10 +3548,6 @@
     "title": "Apariencia",
     "description": "Color, forma y disposición. Los cambios se aplican al instante y se guardan en este equipo.",
     "reset": "Restablecer",
-    "preview": "Vista previa",
-    "previewUser": "Resume la arquitectura en tres puntos",
-    "previewAssistant": "Tres capas: el núcleo, el runtime y la app de escritorio.",
-    "previewPlaceholder": "Escribe a Agente…",
     "themeSection": "Color",
     "mode": "Modo",
     "modeSystem": "Sistema",

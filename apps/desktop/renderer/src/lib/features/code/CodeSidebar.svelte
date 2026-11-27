@@ -315,57 +315,38 @@
 <div class="flex flex-col gap-0.5 pb-2">
   <div class="sidebar-section-row">
     <span class="sidebar-section">{$t(sidebarMode === 'threads' ? 'code.threads' : 'code.projects')}</span>
-    <div class="sidebar-header-controls" class:has-filter={hasFilter}>
+    <!-- The heading's tools rest hidden, inline beside it, and come up when you
+         reach for the heading — the rows' own hover-action grammar. An active
+         filter keeps its button lit so the narrowed list explains itself. -->
+    <div class="sidebar-header-controls">
       <Tooltip label={$t('code.addProject')} position="bottom">
-        <button type="button" class="mode-btn" aria-label={$t('code.addProject')} onclick={() => void codeStore.addProject()}>
-          <FolderPlus class="size-3.5" />
-        </button>
+        <IconButton class="sidebar-row-action" size="xs" label={$t('code.addProject')} onclick={() => void codeStore.addProject()}>
+          <FolderPlus />
+        </IconButton>
       </Tooltip>
       <Menu placement="bottom-end" label={$t('code.filterToggle')}>
         {#snippet trigger(props)}
           <Tooltip label={$t('code.filterToggle')} position="bottom">
-            <button
-              {...props}
-              type="button"
-              class="mode-btn filter-btn"
-              class:is-active={hasFilter}
-              class:has-filter={hasFilter}
-              aria-label={$t('code.filterToggle')}
-            >
-              <SlidersHorizontal class="size-3.5" />
-            </button>
+            <IconButton {...props} class={uiClass('sidebar-row-action', { 'has-filter': hasFilter })} size="xs" label={$t('code.filterToggle')}>
+              <SlidersHorizontal />
+            </IconButton>
           </Tooltip>
         {/snippet}
         <MenuItem icon={filterKind === 'all' ? Check : undefined} label={$t('code.filterAll')} onselect={() => (filterKind = 'all')} />
         <MenuItem icon={filterKind === 'active' ? Check : undefined} label={$t('code.filterActive')} onselect={() => (filterKind = 'active')} />
         <MenuItem icon={filterKind === 'pinned' ? Check : undefined} label={$t('code.filterPinned')} onselect={() => (filterKind = 'pinned')} />
       </Menu>
-      <div class="sidebar-mode-toggle" role="group" aria-label={$t('code.threads')}>
-        <Tooltip label={$t('code.viewProjects')} position="bottom">
-          <button
-            type="button"
-            class="mode-btn"
-            class:is-active={sidebarMode === 'projects'}
-            aria-pressed={sidebarMode === 'projects'}
-            aria-label={$t('code.viewProjects')}
-            onclick={() => setSidebarMode('projects')}
-          >
-            <FolderTree class="size-3.5" />
-          </button>
-        </Tooltip>
-        <Tooltip label={$t('code.viewThreads')} position="bottom">
-          <button
-            type="button"
-            class="mode-btn"
-            class:is-active={sidebarMode === 'threads'}
-            aria-pressed={sidebarMode === 'threads'}
-            aria-label={$t('code.viewThreads')}
-            onclick={() => setSidebarMode('threads')}
-          >
-            <LayoutList class="size-3.5" />
-          </button>
-        </Tooltip>
-      </div>
+      <!-- One toggle: it shows the view it switches to. -->
+      <Tooltip label={$t(sidebarMode === 'projects' ? 'code.viewThreads' : 'code.viewProjects')} position="bottom">
+        <IconButton
+          class="sidebar-row-action"
+          size="xs"
+          label={$t(sidebarMode === 'projects' ? 'code.viewThreads' : 'code.viewProjects')}
+          onclick={() => setSidebarMode(sidebarMode === 'projects' ? 'threads' : 'projects')}
+        >
+          {#if sidebarMode === 'projects'}<LayoutList />{:else}<FolderTree />{/if}
+        </IconButton>
+      </Tooltip>
     </div>
   </div>
 
@@ -510,6 +491,8 @@
             {/if}
             {#if projectRunning(project.id) && !expanded}
               <StatusDot tone="running" />
+            {:else if !expanded && sessions.length}
+              <span class="project-count">{sessions.length}</span>
             {/if}
             <IconButton
               class="sidebar-row-action"
@@ -571,7 +554,7 @@
             {#if missing}
               <UiListRow
                 type="button"
-                class={uiClass("sidebar-row is-warning")}
+                class={uiClass("sidebar-row is-muted")}
                 onclick={() => void codeStore.locateProject(project.id)}
               >
                 <FolderSearch class="sidebar-row-icon" />
@@ -625,57 +608,14 @@
 </div>
 
 <style>
-  /* Hick's Law: four tools beside one heading compete with the list for the
-     eye. They rest half-lit and come up when you reach for the heading; an
-     active filter keeps them lit so the narrowed list explains itself. */
   .sidebar-header-controls {
     display: inline-flex;
     align-items: center;
-    gap: 0.25rem;
-    opacity: 0.5;
-    transition: opacity var(--motion-fast) var(--motion-ease);
+    gap: 0.125rem;
   }
-  .sidebar-section-row:hover .sidebar-header-controls,
-  .sidebar-section-row:focus-within .sidebar-header-controls,
-  .sidebar-header-controls.has-filter {
+  /* A filter in effect stays visible and tinted, even at rest. */
+  .sidebar-header-controls :global(.sidebar-row-action.has-filter) {
     opacity: 1;
-  }
-
-  .sidebar-mode-toggle {
-    display: inline-flex;
-    align-items: center;
-    gap: 2px;
-    padding: 2px;
-    border-radius: var(--radius-sm);
-    background: var(--accent);
-  }
-
-  .mode-btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 1.375rem;
-    height: 1.375rem;
-    border: 0;
-    border-radius: calc(var(--radius-sm) - 1px);
-    background: transparent;
-    color: var(--muted-foreground);
-    cursor: pointer;
-    transition: color var(--motion-instant) var(--motion-ease),
-      background-color var(--motion-instant) var(--motion-ease);
-  }
-
-  .mode-btn:hover {
-    color: var(--foreground);
-  }
-
-  .mode-btn.is-active {
-    background: var(--segment-active-bg);
-    color: var(--foreground);
-    box-shadow: var(--segment-active-shadow);
-  }
-
-  .filter-btn.has-filter {
     color: var(--brand-accent);
   }
 
@@ -694,6 +634,20 @@
   }
   .is-missing {
     color: var(--muted-foreground);
+  }
+
+  /* A closed folder says how much it holds; its hover actions take the place. */
+  .project-count {
+    margin-left: auto;
+    padding-inline: 0.375rem;
+    color: var(--muted-foreground);
+    font-size: var(--text-xs);
+    font-weight: 400;
+    font-variant-numeric: tabular-nums;
+  }
+  .sidebar-row:hover .project-count,
+  .sidebar-row:focus-within .project-count {
+    display: none;
   }
 
   .thread-group-label {
